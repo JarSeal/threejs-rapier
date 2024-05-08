@@ -10,7 +10,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite serve --port 8080 --host",
-    "lint": "eslint . --ext .ts",
+    "lint": "eslint",
     "build": "tsc && vite build"
   },
   "dependencies": {
