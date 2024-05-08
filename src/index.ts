@@ -3,6 +3,10 @@ import { getWindowSize } from './utils/window';
 import { createRenderer } from './core/Renderer';
 import { createScene, getCurrentScene } from './core/Scene';
 
+export const loopState = {
+  play: true,
+};
+
 const windowSize = getWindowSize();
 
 const scene = createScene('boxScene', true);
@@ -18,7 +22,10 @@ scene.add(cube);
 camera.position.z = 5;
 
 const animate = () => {
-  requestAnimationFrame(animate);
+  if (loopState.play) requestAnimationFrame(animate);
   renderer.render(getCurrentScene() as THREE.Scene, camera);
 };
-animate();
+
+if (loopState.play) {
+  animate();
+}
