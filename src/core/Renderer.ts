@@ -24,7 +24,7 @@ export const createRenderer = () => {
 export const getRenderer = () => {
   if (!r) {
     // eslint-disable-next-line no-console
-    console.warn(`The renderer has not been created or it has been deleted in getRenderer().`);
+    console.warn(`The renderer has not been created or it has been deleted, in getRenderer().`);
   }
   return r;
 };
@@ -32,7 +32,9 @@ export const getRenderer = () => {
 export const deleteRenderer = () => {
   if (!r) {
     // eslint-disable-next-line no-console
-    console.warn(`The renderer has not been created or it has been deleted in deleteRenderer(id).`);
+    console.warn(
+      `The renderer has not been created or it has been deleted, in deleteRenderer(id).`
+    );
     return;
   }
   r.dispose();

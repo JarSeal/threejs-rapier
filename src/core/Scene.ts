@@ -24,7 +24,7 @@ export const getScene = (id: string) => {
   const scene = scenes[id];
   if (!scene) {
     // eslint-disable-next-line no-console
-    console.warn(`Could not find scene with id "${id}" in getScene(id).`);
+    console.warn(`Could not find scene with id "${id}", in getScene(id).`);
   }
   return scene || null;
 };
@@ -42,7 +42,7 @@ export const deleteScene = (
   const scene = scenes[id];
   if (!scene) {
     // eslint-disable-next-line no-console
-    console.warn(`Could not find scene with id "${id}" in deleteScene(id).`);
+    console.warn(`Could not find scene with id "${id}", in deleteScene(id).`);
     return;
   }
 
@@ -66,7 +66,7 @@ export const setCurrentScene = (id: string | null) => {
   const nextScene = id ? scenes[id] : null;
   if (id && !nextScene) {
     // eslint-disable-next-line no-console
-    console.warn(`Could not find scene with id "${id}" in useScene(id).`);
+    console.warn(`Could not find scene with id "${id}", in setCurrentScene(id).`);
     return currentScene;
   }
   currentSceneId = id;
@@ -74,4 +74,6 @@ export const setCurrentScene = (id: string | null) => {
   return nextScene;
 };
 
-export const getCurrentScene = () => currentScene;
+export const getCurrentScene = () => currentScene as THREE.Scene;
+
+export const getAllScenes = () => scenes;
