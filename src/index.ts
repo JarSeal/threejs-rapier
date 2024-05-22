@@ -21,7 +21,8 @@ camera.position.y = 1;
 const renderer = createRenderer();
 
 const geometry = createGeometry('box1', { box: { width: 1 } });
-const material = createMaterial('box1Material', {
+const material = createMaterial({
+  id: 'box1Material',
   type: 'BASIC',
   params: { color: 0xff0000, wireframe: true },
 });

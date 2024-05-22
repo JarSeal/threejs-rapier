@@ -40,8 +40,25 @@ export const createGeometry = (
   return geo;
 };
 
-// getGeometry
+export const getGeometry = (id: string | string[]) => {
+  if (typeof id === 'string') return geometries[id];
+  return id.map((geoId) => geometries[geoId]);
+};
 
-// deleteGeometry
+export const deleteGeometry = (id: string | string[]) => {
+  if (typeof id === 'string') {
+    const geo = geometries[id];
+    geo.dispose();
+    delete geometries[id];
+    return;
+  }
 
-// getAllGeometries
+  for (let i = 0; i < id.length; i++) {
+    const geoId = id[i];
+    const geo = geometries[geoId];
+    geo.dispose();
+    delete geometries[geoId];
+  }
+};
+
+export const getAllGeometries = () => geometries;
