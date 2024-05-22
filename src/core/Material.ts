@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-type Materials =
+export type Materials =
   | THREE.LineBasicMaterial
   | THREE.LineDashedMaterial
   | THREE.MeshBasicMaterial
@@ -87,6 +87,7 @@ export const createMaterial = ({
       mat = new THREE.MeshLambertMaterial(params);
       mat.userData.type = 'LAMBERT';
       break;
+    // @TODO: add all material types
   }
 
   if (!mat) {

@@ -2,23 +2,23 @@ import * as THREE from 'three';
 
 const geometries: { [id: string]: THREE.BufferGeometry } = {};
 
-export const createGeometry = (
-  id: string,
-  props?: {
-    box?: {
-      width?: number;
-      height?: number;
-      depth?: number;
-      widthSegments?: number;
-      heightSegments?: number;
-      depthSegments?: number;
-    };
-  }
-) => {
+export type GeoProps = {
+  id?: string;
+  box?: {
+    width?: number;
+    height?: number;
+    depth?: number;
+    widthSegments?: number;
+    heightSegments?: number;
+    depthSegments?: number;
+  };
+};
+
+export const createGeometry = (props?: GeoProps) => {
   let geo;
-  if (geometries[id]) {
+  if (props?.id && geometries[props?.id]) {
     throw new Error(
-      `Geometry with id "${id}" already exists. Pick another id or delete the geometry first before recreating it.`
+      `Geometry with id "${props.id}" already exists. Pick another id or delete the geometry first before recreating it.`
     );
   }
 
@@ -30,7 +30,7 @@ export const createGeometry = (
     const heightSegments = props.box.heightSegments || 1;
     const depthSegments = props.box.depthSegments || 1;
     geo = new THREE.BoxGeometry(width, height, depth, widthSegments, heightSegments, depthSegments);
-    geometries[id] = geo;
+    geometries[props?.id || geo.uuid] = geo;
   }
 
   if (!geo) {

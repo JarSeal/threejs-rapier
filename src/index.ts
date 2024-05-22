@@ -20,7 +20,7 @@ camera.position.y = 1;
 
 const renderer = createRenderer();
 
-const geometry = createGeometry('box1', { box: { width: 1 } });
+const geometry = createGeometry({ id: 'box1', box: { width: 1 } });
 const material = createMaterial({
   id: 'box1Material',
   type: 'BASIC',
