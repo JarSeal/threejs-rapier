@@ -47,11 +47,7 @@ const textureMapKeys = [
   'transmissionMap',
 ];
 
-export const createMaterial = ({
-  id,
-  type,
-  params,
-}: { id?: string } & (
+export type MatParams = { id?: string } & (
   | { type: 'LINEBASIC'; params: THREE.LineBasicMaterialParameters }
   | { type: 'LINEDASHED'; params: THREE.LineDashedMaterialParameters }
   | { type: 'BASIC'; params: THREE.MeshBasicMaterialParameters }
@@ -69,7 +65,9 @@ export const createMaterial = ({
   | { type: 'SHADER'; params: THREE.ShaderMaterialParameters }
   | { type: 'SHADOW'; params: THREE.ShadowMaterialParameters }
   | { type: 'SPRITE'; params: THREE.SpriteMaterialParameters }
-)) => {
+);
+
+export const createMaterial = ({ id, type, params }: MatParams) => {
   let mat: Materials | null = null;
 
   if (id && materials[id]) {

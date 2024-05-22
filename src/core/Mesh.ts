@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Materials, createMaterial } from './Material';
+import { MatParams, createMaterial } from './Material';
 import { createGeometry, type GeoProps } from './Geometry';
 
 const meshes: { [id: string]: THREE.Mesh } = {};
@@ -11,7 +11,7 @@ export const createMesh = ({
 }: {
   id?: string;
   geo: THREE.BufferGeometry | GeoProps;
-  mat: THREE.Material | Materials;
+  mat: THREE.Material | MatParams;
 }) => {
   let mesh: THREE.Mesh | null = null;
 
