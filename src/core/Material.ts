@@ -115,6 +115,7 @@ export const deleteTexturesFromMaterial = (mat: Materials) => {
 export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) => {
   if (typeof id === 'string') {
     const mat = materials[id];
+    if (!mat) return;
     if (deleteTextures) deleteTexturesFromMaterial(mat);
     mat.dispose();
     delete materials[id];
@@ -124,6 +125,7 @@ export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) 
   for (let i = 0; i < id.length; i++) {
     const matId = id[i];
     const mat = materials[matId];
+    if (!mat) continue;
     if (deleteTextures) deleteTexturesFromMaterial(mat);
     mat.dispose();
     delete materials[matId];

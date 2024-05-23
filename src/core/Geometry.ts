@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const geometries: { [id: string]: THREE.BufferGeometry } = {};
 
-export type GeoProps = {
+export type GeoProps2 = {
   id?: string;
   box?: {
     width?: number;
@@ -14,7 +14,33 @@ export type GeoProps = {
   };
 };
 
-export const createGeometry = (props?: GeoProps) => {
+export type GeoProps = { id?: string } & (
+  | {
+      type: 'BOX';
+      params?: {
+        width?: number;
+        height?: number;
+        depth?: number;
+        widthSegments?: number;
+        heightSegments?: number;
+        depthSegments?: number;
+      };
+    }
+  | {
+      type: 'SPHERE';
+      params?: {
+        radius?: number;
+        widthSegments?: number;
+        heightSegments?: number;
+        phiStart?: number;
+        phiLength?: number;
+        thetaStart?: number;
+        thetaLength?: number;
+      };
+    }
+);
+
+export const createGeometry = (props: GeoProps) => {
   let geo;
   if (props?.id && geometries[props?.id]) {
     throw new Error(
@@ -22,20 +48,35 @@ export const createGeometry = (props?: GeoProps) => {
     );
   }
 
-  if (props?.box) {
-    const width = props.box.width || 1;
-    const height = props.box.height || 1;
-    const depth = props.box.depth || 1;
-    const widthSegments = props.box.widthSegments || 1;
-    const heightSegments = props.box.heightSegments || 1;
-    const depthSegments = props.box.depthSegments || 1;
-    geo = new THREE.BoxGeometry(width, height, depth, widthSegments, heightSegments, depthSegments);
-    geometries[props?.id || geo.uuid] = geo;
+  switch (props.type) {
+    case 'BOX':
+      geo = new THREE.BoxGeometry(
+        props.params?.width,
+        props.params?.height,
+        props.params?.depth,
+        props.params?.widthSegments,
+        props.params?.heightSegments,
+        props.params?.depthSegments
+      );
+      break;
+    case 'SPHERE':
+      geo = new THREE.SphereGeometry(
+        props.params?.radius,
+        props.params?.widthSegments,
+        props.params?.heightSegments,
+        props.params?.phiStart,
+        props.params?.phiLength,
+        props.params?.thetaStart,
+        props.params?.thetaLength
+      );
+      break;
   }
 
   if (!geo) {
-    throw new Error('Could not create geometry (propably unknown props).');
+    throw new Error(`Could not create geometry (unknown type: ${props.type}).`);
   }
+
+  geometries[props?.id || geo.uuid] = geo;
 
   return geo;
 };
@@ -48,6 +89,7 @@ export const getGeometry = (id: string | string[]) => {
 export const deleteGeometry = (id: string | string[]) => {
   if (typeof id === 'string') {
     const geo = geometries[id];
+    if (!geo) return;
     geo.dispose();
     delete geometries[id];
     return;
@@ -56,6 +98,7 @@ export const deleteGeometry = (id: string | string[]) => {
   for (let i = 0; i < id.length; i++) {
     const geoId = id[i];
     const geo = geometries[geoId];
+    if (!geo) continue;
     geo.dispose();
     delete geometries[geoId];
   }

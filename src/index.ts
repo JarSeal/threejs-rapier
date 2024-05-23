@@ -6,10 +6,10 @@ import { createGeometry } from './core/Geometry';
 import { createMaterial } from './core/Material';
 
 export const loopState = {
-  mainPlay: true,
-  gamePlay: true,
-  isMainPlaying: false,
-  isGamePlaying: false,
+  masterPlay: true,
+  appPlay: true,
+  isMasterPlaying: false,
+  isAppPlaying: false,
 };
 
 const scene = createScene('boxScene', true);
@@ -20,7 +20,7 @@ camera.position.y = 1;
 
 const renderer = createRenderer();
 
-const geometry = createGeometry({ id: 'box1', box: { width: 1 } });
+const geometry = createGeometry({ id: 'box1', type: 'SPHERE' });
 const material = createMaterial({
   id: 'box1Material',
   type: 'BASIC',
@@ -32,41 +32,41 @@ scene.add(cube);
 camera.lookAt(cube.position);
 
 const animate = () => {
-  if (loopState.mainPlay) {
+  if (loopState.masterPlay) {
     requestAnimationFrame(animate);
-    loopState.isMainPlaying = true;
+    loopState.isMasterPlaying = true;
   } else {
-    loopState.isMainPlaying = false;
+    loopState.isMasterPlaying = false;
     return;
   }
-  if (loopState.gamePlay) {
-    loopState.isGamePlaying = true;
+  if (loopState.appPlay) {
+    loopState.isAppPlaying = true;
     // @TODO: add gamePlay loop here
-    cube.rotation.z -= 0.01;
-    cube.rotation.y += 0.01;
+    cube.rotation.z -= 0.001;
+    cube.rotation.y += 0.001;
   } else {
-    loopState.isGamePlaying = false;
+    loopState.isAppPlaying = false;
   }
   renderer.render(getCurrentScene(), getCurrentCamera());
 };
 
-if (loopState.mainPlay) {
+if (loopState.masterPlay) {
   animate();
 }
 
 export const toggleMainPlay = (value?: boolean) => {
   if (value !== undefined) {
-    loopState.mainPlay = value;
+    loopState.masterPlay = value;
   } else {
-    loopState.mainPlay = !loopState.mainPlay;
+    loopState.masterPlay = !loopState.masterPlay;
   }
-  if (loopState.mainPlay && !loopState.isMainPlaying) animate();
+  if (loopState.masterPlay && !loopState.isMasterPlaying) animate();
 };
 
 export const toggleGamePlay = (value?: boolean) => {
   if (value !== undefined) {
-    loopState.gamePlay = value;
+    loopState.appPlay = value;
     return;
   }
-  loopState.gamePlay = !loopState.gamePlay;
+  loopState.appPlay = !loopState.appPlay;
 };
