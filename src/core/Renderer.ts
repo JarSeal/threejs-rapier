@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { getWindowSize } from '../utils/window';
+import { llog } from '../utils/Logger';
 
 let r: THREE.WebGPURenderer | null = null;
 const ELEM_ID = 'mainCanvas';
@@ -19,6 +20,7 @@ export const createRenderer = (opts?: RendererOptions) => {
   const windowSize = getWindowSize();
 
   setRendererOptions(opts);
+  llog('Render options', options);
 
   const renderer = new THREE.WebGPURenderer({
     antialias: options.antialias,
