@@ -4,7 +4,15 @@ const scenes: { [id: string]: THREE.Scene } = {};
 let currentScene: THREE.Scene | null = null;
 let currentSceneId: string | null = null;
 
-export const createScene = (id: string, isCurrentScene?: boolean) => {
+export type SceneOptions = {
+  isCurrentScene?: boolean;
+  background?: THREE.Color | THREE.Texture | THREE.CubeTexture;
+  backgroundColor?: THREE.Color;
+  backgroundTexture?: THREE.Texture;
+  backgroundSkybox?: THREE.CubeTexture;
+};
+
+export const createScene = (id: string, opts?: SceneOptions) => {
   if (scenes[id]) {
     throw new Error(
       `Scene with id "${id}" already exists. Pick another id or delete the scene first before recreating it.`
@@ -12,10 +20,14 @@ export const createScene = (id: string, isCurrentScene?: boolean) => {
   }
 
   const scene = new THREE.Scene();
+  if (opts?.background) scene.background = opts.background;
+  if (opts?.backgroundColor) scene.background = opts.backgroundColor;
+  if (opts?.backgroundTexture) scene.background = opts.backgroundTexture;
+  if (opts?.backgroundSkybox) scene.background = opts.backgroundSkybox;
 
   scenes[id] = scene;
 
-  if (isCurrentScene) setCurrentScene(id);
+  if (opts?.isCurrentScene) setCurrentScene(id);
 
   return scene;
 };

@@ -70,6 +70,7 @@ export const createGeometry = (props: GeoProps) => {
         props.params?.thetaLength
       );
       break;
+    // @TODO: add all geometry types
   }
 
   if (!geo) {

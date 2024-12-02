@@ -12,13 +12,16 @@ export const loopState = {
   isAppPlaying: false,
 };
 
-const scene = createScene('boxScene', true);
+const scene = createScene('boxScene', {
+  isCurrentScene: true,
+  background: new THREE.Color(0x222222),
+});
 const camera = createCamera('mainCam', { isCurrentCamera: true });
 camera.position.z = 5;
 camera.position.x = 2.5;
 camera.position.y = 1;
 
-const renderer = createRenderer();
+const renderer = createRenderer({ antialias: true, forceWebGL: false });
 
 const geometry = createGeometry({ id: 'box1', type: 'SPHERE' });
 const material = createMaterial({
@@ -47,7 +50,7 @@ const animate = () => {
   } else {
     loopState.isAppPlaying = false;
   }
-  renderer.render(getCurrentScene(), getCurrentCamera());
+  renderer.renderAsync(getCurrentScene(), getCurrentCamera());
 };
 
 if (loopState.masterPlay) {

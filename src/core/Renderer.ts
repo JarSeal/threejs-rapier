@@ -1,13 +1,30 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { getWindowSize } from '../utils/window';
 
-let r: THREE.WebGLRenderer | null = null;
+let r: THREE.WebGPURenderer | null = null;
 const ELEM_ID = 'mainCanvas';
+const options: { antialias?: boolean; forceWebGL?: boolean; devicePixelRatio: number } = {
+  antialias: undefined,
+  forceWebGL: undefined,
+  devicePixelRatio: 1,
+};
 
-export const createRenderer = () => {
+type RendererOptions = {
+  antialias?: boolean;
+  forceWebGL?: boolean;
+  devicePixelRatio?: number;
+};
+
+export const createRenderer = (opts?: RendererOptions) => {
   const windowSize = getWindowSize();
 
-  const renderer = new THREE.WebGLRenderer();
+  setRendererOptions(opts);
+
+  const renderer = new THREE.WebGPURenderer({
+    antialias: options.antialias,
+    forceWebGL: options.forceWebGL,
+  });
+  renderer.setPixelRatio(options.devicePixelRatio);
   renderer.setSize(windowSize.width, windowSize.height);
 
   const canvasElem = document.getElementById(ELEM_ID);
@@ -40,3 +57,11 @@ export const deleteRenderer = () => {
   r.dispose();
   r = null;
 };
+
+const setRendererOptions = (opts?: RendererOptions) => {
+  options.antialias = Boolean(opts?.antialias);
+  options.forceWebGL = Boolean(opts?.forceWebGL);
+  options.devicePixelRatio = opts?.devicePixelRatio || window?.devicePixelRatio || 1;
+};
+
+export const getRendererOptions = () => options;
