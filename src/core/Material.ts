@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { deleteTexture } from './Texture';
 
 export type Materials =
   | THREE.LineBasicMaterial
@@ -85,6 +86,10 @@ export const createMaterial = ({ id, type, params }: MatProps) => {
       mat = new THREE.MeshLambertMaterial(params);
       mat.userData.type = 'LAMBERT';
       break;
+    case 'PHONG':
+      mat = new THREE.MeshPhongMaterial(params);
+      mat.userData.type = 'PHONG';
+      break;
     // @TODO: add all material types
   }
 
@@ -92,22 +97,22 @@ export const createMaterial = ({ id, type, params }: MatProps) => {
     throw new Error(`Could not create material (unknown type: '${type}').`);
   }
 
-  mat.userData.id = id;
+  mat.userData.id = id || mat.uuid;
   materials[id || mat.uuid] = mat;
 
   return mat;
 };
 
-export const getMaterial = (id: string | string[]) => {
-  if (typeof id === 'string') return materials[id];
-  return id.map((matId) => materials[matId]);
-};
+export const getMaterial = (id: string) => materials[id];
+
+export const getMaterials = (id: string[]) => id.map((matId) => materials[matId]);
 
 export const deleteTexturesFromMaterial = (mat: Materials) => {
   for (let i = 0; i < textureMapKeys.length; i++) {
     const key = textureMapKeys[i] as keyof Materials;
-    if (mat[key]) {
-      // @TODO: delete textures here
+    const texture = mat[key] as THREE.Texture;
+    if (texture && texture.userData?.id) {
+      deleteTexture(texture.userData.id);
     }
   }
 };

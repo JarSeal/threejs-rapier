@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { lerror } from '../utils/Logger';
+import { lerror, lwarn } from '../utils/Logger';
 
 type TexOpts = {
   image?: TexImageSource | OffscreenCanvas;
@@ -29,7 +29,7 @@ const setTextureOpts = (texture: THREE.Texture, texOpts?: TexOpts) => {
   return texture;
 };
 
-const loadTexture = (fileName?: string, texOpts?: TexOpts) => {
+const loadTexture = (id?: string, fileName?: string, texOpts?: TexOpts) => {
   if (!fileName) {
     return new THREE.Texture(
       texOpts?.image,
@@ -45,7 +45,18 @@ const loadTexture = (fileName?: string, texOpts?: TexOpts) => {
     );
   }
   const loader = new THREE.TextureLoader();
-  const texture = setTextureOpts(loader.load(fileName), texOpts);
+  const texture = setTextureOpts(
+    loader.load(
+      fileName,
+      (texture) => texture,
+      undefined,
+      (err) => {
+        const errorMsg = `Could not load texture in loadTexture (id: ${id}, fileName: ${fileName})`;
+        lerror(errorMsg, err);
+      }
+    ),
+    texOpts
+  );
   return texture;
 };
 
@@ -62,7 +73,7 @@ export const loadTextures = (
     loadedCount: number,
     totalCount: number
   ) => void,
-  onErrorAction?: 'noTexture' | 'emptyTexture' | 'throwError'
+  onErrorAction?: 'NO_TEXTURE' | 'EMPTY_TEXTURE' | 'THROW_ERROR'
 ) => {
   const totalCount = texData.length;
   let loadedCount = 0;
@@ -97,11 +108,11 @@ export const loadTextures = (
         (err) => {
           const errorMsg = `Could not load texture in loadTextures (id: ${id}, fileName: ${fileName})`;
           lerror(errorMsg, err);
-          if (onErrorAction === 'throwError') {
+          if (onErrorAction === 'THROW_ERROR') {
             throw new Error(errorMsg);
           }
-          if (onErrorAction === 'emptyTexture') {
-            const texture = loadTexture(undefined, texOpts);
+          if (onErrorAction === 'EMPTY_TEXTURE') {
+            const texture = loadTexture(id, undefined, texOpts);
             const texId = id || texture.uuid;
             texture.userData.id = texId;
             batchTextures[texId] = texture;
@@ -112,7 +123,7 @@ export const loadTextures = (
         }
       );
     } else {
-      const texture = loadTexture(undefined, texOpts);
+      const texture = loadTexture(id, undefined, texOpts);
       const texId = id || texture.uuid;
       texture.userData.id = texId;
       batchTextures[texId] = texture;
@@ -154,19 +165,54 @@ export const createTexture = ({
     );
   }
 
-  texture = loadTexture(fileName, texOpts);
+  texture = loadTexture(id, fileName, texOpts);
   texture.userData.id = id || texture.uuid;
   textures[id || texture.uuid] = texture;
 
   return texture;
 };
 
-export const getTexture = (id: string | string[]) => {
-  if (typeof id === 'string') return textures[id];
-  return id.map((textureId) => textures[textureId]);
-};
+export const getTexture = (id: string) => textures[id];
 
-// deleteOneTexture
-// export deleteTexture
+export const getTextures = (ids: string[]) => ids.map((id) => textures[id]);
+
+export const deleteTexture = (id: string | string[]) => {
+  if (typeof id === 'string') {
+    const texture = getTexture(id);
+    if (!texture) {
+      lwarn(
+        `Texture with id "${id}" could not be found and could not be deleted (single texture deletion).`
+      );
+      return;
+    }
+    texture.dispose();
+    delete textures[id];
+    return;
+  }
+
+  const textureArr = getTextures(id);
+  const idsDeleted: string[] = [];
+  for (let i = 0; i < textureArr.length; i++) {
+    const texture = textureArr[i];
+    if (!texture) continue;
+    texture.dispose();
+    delete textures[id[i]];
+    idsDeleted.push(id[i]);
+  }
+
+  if (!textureArr.length) {
+    lwarn(
+      `None of the textures with ids "${id.join(', ')}" could be found and could not be deleted (multiple texture deletion).`
+    );
+    return;
+  }
+
+  const idsNotDeleted = id.filter((texId) => !idsDeleted.includes(texId));
+  if (idsNotDeleted) {
+    lwarn(
+      `Textures with ids "${idsNotDeleted.join(', ')}" could be found and could not be deleted (multiple texture deletion) or textures did not have an userData.id set.`
+    );
+  }
+};
 
 export const getAllTextures = () => textures;

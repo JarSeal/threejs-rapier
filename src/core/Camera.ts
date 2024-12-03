@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getWindowSize } from '../utils/window';
+import { lwarn } from '../utils/Logger';
 
 const cameras: { [id: string]: THREE.Camera } = {};
 let currentCamera: THREE.Camera | null = null;
@@ -31,18 +32,14 @@ export const createCamera = (
 
 export const getCamera = (id: string) => {
   const camera = cameras[id];
-  if (!camera) {
-    // eslint-disable-next-line no-console
-    console.warn(`Could not find camera with id "${id}" in getCamera(id).`);
-  }
+  if (!camera) lwarn(`Could not find camera with id "${id}" in getCamera(id).`);
   return camera || null;
 };
 
 export const deleteCamera = (id: string) => {
   const camera = cameras[id];
   if (!camera) {
-    // eslint-disable-next-line no-console
-    console.warn(`Could not find camera with id "${id}" in deleteCamera(id).`);
+    lwarn(`Could not find camera with id "${id}" in deleteCamera(id).`);
     return;
   }
 
@@ -53,8 +50,7 @@ export const setCurrentCamera = (id: string) => {
   if (currentCameraId === id) return currentCamera;
   const nextCamera = id ? cameras[id] : null;
   if (!nextCamera) {
-    // eslint-disable-next-line no-console
-    console.warn(`Could not find camera with id "${id}" in setCurrentCamera(id).`);
+    lwarn(`Could not find camera with id "${id}" in setCurrentCamera(id).`);
     return currentCamera;
   }
   currentCameraId = id;

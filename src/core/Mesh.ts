@@ -38,10 +38,9 @@ export const createMesh = ({
   return mesh;
 };
 
-export const getMesh = (id: string | string[]) => {
-  if (typeof id === 'string') return meshes[id];
-  return id.map((meshId) => meshes[meshId]);
-};
+export const getMesh = (id: string) => meshes[id];
+
+export const getMeshes = (id: string[]) => id.map((meshId) => meshes[meshId]);
 
 const deleteOneMesh = (
   id: string,
