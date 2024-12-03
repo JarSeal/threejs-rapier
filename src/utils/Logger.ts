@@ -13,7 +13,8 @@ let logger:
 
 const initLogger = () => {
   if (loggerInitiated) return;
-  // @TODO: Do not init the logger for production
+  // @TODO: Do not init the logger for production, but enable it when a certain
+  // url param is set (?useLogger=1)
   logger = console;
   loggerInitiated = true;
 };
