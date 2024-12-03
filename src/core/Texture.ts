@@ -49,10 +49,16 @@ const loadTexture = (fileName?: string, texOpts?: TexOpts) => {
   return texture;
 };
 
-export const batchLoadTextures = (
+/**
+ * Loads one or more textures
+ * @param texData array of objects: { id?: string; fileName?: string; texOpts?: {@link TexOpts} }[]
+ * @param updateStatusFn optional status update function: (loadedTextures: { [id: string]: THREE.Texture }, loadedCount: number, totalCount: number) => void
+ * @param onErrorAction optional on error action: 'noTexture' | 'emptyTexture' | 'throwError'. This determines what happens when a texture load fails. 'noTexture' does nothing (default), 'emptyTexture' creates an empty placeholder texture for the failed texture, and 'throwError' throws an Error.
+ */
+export const loadTextures = (
   texData: { id?: string; fileName?: string; texOpts?: TexOpts }[],
   updateStatusFn?: (
-    batchTextures: { [id: string]: THREE.Texture },
+    loadedTextures: { [id: string]: THREE.Texture },
     loadedCount: number,
     totalCount: number
   ) => void,
@@ -61,7 +67,7 @@ export const batchLoadTextures = (
   const totalCount = texData.length;
   let loadedCount = 0;
   if (!totalCount) {
-    throw new Error('Could not batch load textures, "idsAndFileNames" object was empty.');
+    throw new Error('Could not load textures, "texData" array was empty.');
   }
 
   const batchTextures: { [id: string]: THREE.Texture } = {};
@@ -72,7 +78,7 @@ export const batchLoadTextures = (
 
     if (id && textures[id]) {
       throw new Error(
-        `Texture with id "${id}" already exists. Pick another id or delete the texture first before recreating it (in batch loader).`
+        `Texture with id "${id}" already exists. Pick another id or delete the texture first before recreating it (in load textures).`
       );
     }
 
@@ -89,7 +95,7 @@ export const batchLoadTextures = (
         },
         undefined,
         (err) => {
-          const errorMsg = `Could not load texture in batch loader (id: ${id}, fileName: ${fileName})`;
+          const errorMsg = `Could not load texture in loadTextures (id: ${id}, fileName: ${fileName})`;
           lerror(errorMsg, err);
           if (onErrorAction === 'throwError') {
             throw new Error(errorMsg);
@@ -124,6 +130,13 @@ export const batchLoadTextures = (
   }
 };
 
+/**
+ * Creates a texture to be used without loading logic
+ * @param id optional id string, defaults to texture.uuid
+ * @param fileName optional file path to be loaded. If no fileName is provided, an empty Texture is created.
+ * @param texOpts optional {@link TexOpts}
+ * @returns THREE.Texture
+ */
 export const createTexture = ({
   id,
   fileName,
