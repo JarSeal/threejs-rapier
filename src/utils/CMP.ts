@@ -68,7 +68,7 @@ export type TProps = {
   settings?: TSettings;
 
   /** Component ID. If no component is provided
-   * a UUID will be created.
+   * a UUID will be created. Has to be unique.
    */
   id?: string;
 

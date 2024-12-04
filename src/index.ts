@@ -8,7 +8,7 @@ import { createTexture, loadTextures } from './core/Texture';
 import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
 import { initStats } from './debug/Stats';
-import { initDebugGUI } from './debug/GUI';
+import { initDebugGUI } from './debug/DebuggerGUI';
 
 export const loopState = {
   masterPlay: true,
