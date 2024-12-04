@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import Stats from 'stats-gl';
 import { createRenderer } from './core/Renderer';
 import { createScene, getCurrentScene } from './core/Scene';
 import { createCamera, getCurrentCamera } from './core/Camera';
@@ -8,6 +7,8 @@ import { createMaterial } from './core/Material';
 import { createTexture, loadTextures } from './core/Texture';
 import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
+import { initStats } from './debug/Stats';
+import { initDebugGUI } from './debug/GUI';
 
 export const loopState = {
   masterPlay: true,
@@ -98,9 +99,10 @@ const hemisphere = createLight({
 scene.add(hemisphere);
 
 // Stats
-const stats = new Stats();
-document.getElementById('mainCanvas')?.appendChild(stats.dom);
-stats.init(renderer);
+const stats = initStats({ trackGPU: true, trackCPT: true, horizontal: false });
+
+// GUI
+initDebugGUI();
 
 const animate = () => {
   if (loopState.masterPlay) {

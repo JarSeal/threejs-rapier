@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getWindowSize } from '../utils/window';
+import { getWindowSize } from '../utils/Window';
 import { lwarn } from '../utils/Logger';
 
 const cameras: { [id: string]: THREE.Camera } = {};

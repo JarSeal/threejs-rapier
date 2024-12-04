@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import WebGL from 'three/addons/capabilities/WebGL.js';
-import { getWindowSize } from '../utils/window';
-import { llog } from '../utils/Logger';
+import { getWindowSize } from '../utils/Window';
+import { llog, lwarn } from '../utils/Logger';
 
 let r: THREE.WebGPURenderer | null = null;
 const ELEM_ID = 'mainCanvas';
@@ -36,31 +36,32 @@ export const createRenderer = (opts?: Partial<RendererOptions>) => {
   renderer.setPixelRatio(options.devicePixelRatio);
   renderer.setSize(windowSize.width, windowSize.height);
 
-  const canvasElem = document.getElementById(ELEM_ID);
-  if (!canvasElem) {
-    throw new Error(`Canvas element with id "${ELEM_ID}" was not found.`);
-  }
-  canvasElem.appendChild(renderer.domElement);
+  const canvasParentElem = getCanvasParentElem();
+  canvasParentElem.appendChild(renderer.domElement);
 
   r = renderer;
 
   return renderer;
 };
 
+export const getCanvasParentElem = () => {
+  const canvasParentElem = document.getElementById(ELEM_ID);
+  if (!canvasParentElem) {
+    throw new Error(`Canvas parent element with id "${ELEM_ID}" was not found.`);
+  }
+  return canvasParentElem;
+};
+
 export const getRenderer = () => {
   if (!r) {
-    // eslint-disable-next-line no-console
-    console.warn(`The renderer has not been created or it has been deleted, in getRenderer().`);
+    lwarn(`The renderer has not been created or it has been deleted, in getRenderer().`);
   }
   return r;
 };
 
 export const deleteRenderer = () => {
   if (!r) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `The renderer has not been created or it has been deleted, in deleteRenderer(id).`
-    );
+    lwarn(`The renderer has not been created or it has been deleted, in deleteRenderer(id).`);
     return;
   }
   r.dispose();

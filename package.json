@@ -14,10 +14,12 @@
     "build": "tsc && vite build"
   },
   "dependencies": {
+    "dat.gui": "0.7.9",
     "stats-gl": "3.6.0",
     "three": "0.171.0"
   },
   "devDependencies": {
+    "@types/dat.gui": "0.7.13",
     "@types/three": "0.170.0",
     "@typescript-eslint/eslint-plugin": "7.8.0",
     "@typescript-eslint/parser": "7.8.0",
