@@ -1,117 +1,89 @@
+export type StorageValue = boolean | number | string;
+
+let lsAvailable: null | boolean = null;
+let ssAvailable: null | boolean = null;
+
+const checkStorage = (type: 'local' | 'session' = 'local') => {
+  if (type === 'local') {
+    if (lsAvailable !== null) return;
+    try {
+      const test = '__testLocalStorageAvailability';
+      localStorage.setItem(test, test);
+      localStorage.removeItem(test);
+      lsAvailable = true;
+    } catch (e) {
+      lsAvailable = false;
+    }
+  } else {
+    if (ssAvailable !== null) return;
+    try {
+      const test = '__testSessionStorageAvailability';
+      sessionStorage.setItem(test, test);
+      sessionStorage.removeItem(test);
+      ssAvailable = true;
+    } catch (e) {
+      ssAvailable = false;
+    }
+  }
+};
+
+const checkIfItemExists = (key: string) => {
+  if (!lsAvailable) return false;
+  return Object.prototype.hasOwnProperty.call(localStorage, key);
+};
+
+const convertValue = (defaultValue: StorageValue, lsValue: string) => {
+  if (typeof defaultValue === 'boolean') return lsValue === 'true';
+  if (typeof defaultValue === 'number') return Number(lsValue);
+  return lsValue; // typeof string
+};
+
 // Local Storage
-// class LocalStorage {
-//   constructor(keyPrefix) {
-//     this.keyPrefix = keyPrefix || '';
-//     this.localStorageAvailable = this._lsTest();
-//   }
+export const lsGetItem = (key: string, defaultValue: StorageValue, doNotConvert?: boolean) => {
+  checkStorage('local');
+  if (!lsAvailable) return defaultValue || null;
+  if (checkIfItemExists(key)) {
+    const rawValue = localStorage.getItem(key);
+    if (doNotConvert || rawValue === null) return rawValue;
+    return convertValue(defaultValue, rawValue);
+  } else {
+    return defaultValue || null;
+  }
+};
 
-//   getItem(key, defaultValue) {
-//     // defaultValue is returned (if provided) if local storage is not available or the key is not found
-//     if (!this.localStorageAvailable) return defaultValue || null;
-//     if (this.checkIfItemExists(key)) {
-//       return localStorage.getItem(this.keyPrefix + key);
-//     } else {
-//       return defaultValue || null;
-//     }
-//   }
+export const lsSetItem = (key: string, value: StorageValue) => {
+  checkStorage('local');
+  if (!lsAvailable) return;
+  localStorage.setItem(key, String(value));
+};
 
-//   checkIfItemExists(key) {
-//     if (!this.localStorageAvailable) return false;
-//     return Object.prototype.hasOwnProperty.call(localStorage, this.keyPrefix + key);
-//   }
+export const lsRemoveItem = (key: string) => {
+  checkStorage('local');
+  if (!lsAvailable) return;
+  localStorage.removeItem(key);
+};
 
-//   setItem(key, value) {
-//     if (!this.localStorageAvailable) return false;
-//     localStorage.setItem(this.keyPrefix + key, value);
-//     return true;
-//   }
+// Session Storage
+export const ssGetItem = (key: string, defaultValue: StorageValue, doNotConvert?: boolean) => {
+  checkStorage('session');
+  if (!ssAvailable) return defaultValue || null;
+  if (checkIfItemExists(key)) {
+    const rawValue = sessionStorage.getItem(key);
+    if (doNotConvert || rawValue === null) return rawValue;
+    return convertValue(defaultValue, rawValue);
+  } else {
+    return defaultValue || null;
+  }
+};
 
-//   removeItem(key) {
-//     if (!this.localStorageAvailable) return false;
-//     if (this.checkIfItemExists(key)) {
-//       localStorage.removeItem(this.keyPrefix + key);
-//     }
-//     return true;
-//   }
+export const ssSetItem = (key: string, value: StorageValue) => {
+  checkStorage('session');
+  if (!ssAvailable) return;
+  sessionStorage.setItem(key, String(value));
+};
 
-//   convertValue(defaultValue, lsValue) {
-//     if (typeof defaultValue === 'boolean') {
-//       return lsValue === 'true';
-//     } else if (typeof defaultValue === 'number') {
-//       return Number(lsValue);
-//     } else {
-//       // typeof string
-//       return lsValue;
-//     }
-//   }
-
-//   _lsTest() {
-//     const test = this.keyPrefix + 'testLSAvailability';
-//     try {
-//       localStorage.setItem(test, test);
-//       localStorage.removeItem(test);
-//       return true;
-//     } catch (e) {
-//       return false;
-//     }
-//   }
-// }
-
-// // Session Storage
-// class SessionStorage {
-//   constructor(keyPrefix) {
-//     this.keyPrefix = keyPrefix || '';
-//     this.sessionStorageAvailable = this._lsTest();
-//   }
-
-//   getItem(key, defaultValue) {
-//     // defaultValue is returned (if provided) if session storage is not available or the key is not found
-//     if (!this.sessionStorageAvailable) return defaultValue || null;
-//     if (this.checkIfItemExists(key)) {
-//       return sessionStorage.getItem(this.keyPrefix + key);
-//     } else {
-//       return defaultValue || null;
-//     }
-//   }
-
-//   checkIfItemExists(key) {
-//     if (!this.sessionStorageAvailable) return false;
-//     return Object.prototype.hasOwnProperty.call(sessionStorage, this.keyPrefix + key);
-//   }
-
-//   setItem(key, value) {
-//     if (!this.sessionStorageAvailable) return false;
-//     sessionStorage.setItem(this.keyPrefix + key, value);
-//     return true;
-//   }
-
-//   removeItem(key) {
-//     if (!this.sessionStorageAvailable) return false;
-//     if (this.checkIfItemExists(key)) {
-//       sessionStorage.removeItem(this.keyPrefix + key);
-//     }
-//     return true;
-//   }
-
-//   convertValue(defaultValue, lsValue) {
-//     if (typeof defaultValue === 'boolean') {
-//       return lsValue === 'true';
-//     } else if (typeof defaultValue === 'number') {
-//       return Number(lsValue);
-//     } else {
-//       // typeof string
-//       return lsValue;
-//     }
-//   }
-
-//   _lsTest() {
-//     const test = this.keyPrefix + 'testSSAvailability';
-//     try {
-//       sessionStorage.setItem(test, test);
-//       sessionStorage.removeItem(test);
-//       return true;
-//     } catch (e) {
-//       return false;
-//     }
-//   }
-// }
+export const ssRemoveItem = (key: string) => {
+  checkStorage('session');
+  if (!ssAvailable) return;
+  sessionStorage.removeItem(key);
+};
