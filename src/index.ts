@@ -9,6 +9,9 @@ import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
 import { initStats } from './debug/Stats';
 import { initDebugGUI } from './debug/DebuggerGUI';
+import './styles/index.scss';
+
+export const GUI_CONTAINER_ID = 'guiContainer';
 
 export const loopState = {
   masterPlay: true,
@@ -44,7 +47,6 @@ const material2 = createMaterial({
   id: 'box1Material',
   type: 'PHONG',
   params: {
-    // color: 0xff2200,
     map: createTexture({
       id: 'box1Texture',
       fileName: '/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',

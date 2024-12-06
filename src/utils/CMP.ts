@@ -394,11 +394,11 @@ const createElem = (cmp: TCMP, props?: TProps) => {
   let classes: string[] = [];
   if (props?.class && Array.isArray(props.class)) {
     classes = props.class;
-  } else if (typeof props?.class === 'string') {
+  } else if (props?.class && typeof props?.class === 'string') {
     classes = props.class.split(' ');
   }
   for (let i = 0; i < classes.length; i++) {
-    elem.classList.add(classes[i].trim());
+    classes[i] && elem.classList.add(classes[i].trim());
   }
 
   // Styles
@@ -626,7 +626,7 @@ const updateCmpClass = (
   let oldClasses: string[] = [];
   if (Array.isArray(newClass)) {
     classes = newClass;
-  } else {
+  } else if (newClass) {
     classes = newClass.split(' ');
   }
   if (cmp.props?.class && Array.isArray(cmp.props.class)) {

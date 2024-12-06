@@ -1,0 +1,49 @@
+@use '../styles/variables.scss';
+
+$drawerWidth: 40rem;
+.debuggerGUI {
+  position: fixed;
+  top: 0;
+  right: -$drawerWidth;
+  background-color: variables.$debugGuiBackground;
+  width: $drawerWidth;
+  height: 100%;
+  padding: 1.2rem 0.8rem 1.2rem 2.4rem;
+  transition: right 0.2s ease-in-out;
+}
+
+.debuggerGUI_open {
+  right: 0;
+}
+
+.debuggerGUI_closed {
+  right: -$drawerWidth;
+}
+
+.debugDrawerToggler {
+  @include variables.nakedButton;
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translate3d(3.1rem, -50%, 0) rotate(90deg);
+  height: 3rem;
+  padding: 0 2rem;
+  border-radius: 0 0 0.4rem 0.4rem;
+  background: variables.$debugGuiBackground;
+  color: variables.$white;
+}
+
+.debugDrawerTabsMenu {
+  button {
+    margin-right: 1.2rem;
+    margin-bottom: 1.2rem;
+  }
+}
+
+.debugDrawerTabButton_selected {
+  color: red;
+}
+
+.debugDrawerTabsContainer {
+  color: variables.$white;
+}

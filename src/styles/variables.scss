@@ -1,0 +1,14 @@
+// Colors
+$white: #ffffff;
+$debugGuiBackground: #020202;
+
+// Naked styles
+@mixin nakedButton {
+  border-radius: 0;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  margin: 0;
+  background: $white;
+  cursor: pointer;
+}
