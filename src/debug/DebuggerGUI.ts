@@ -36,8 +36,9 @@ type TabAndContainer = {
   id: string;
   buttonText: string;
   scrollPos: number;
-  container: TCMP;
+  container: TCMP | (() => TCMP);
   button: null | TCMP;
+  orderNr?: number;
 };
 
 const tabsAndContainers: TabAndContainer[] = [
@@ -46,7 +47,16 @@ const tabsAndContainers: TabAndContainer[] = [
     buttonText: 'S',
     scrollPos: 0,
     button: null,
-    container: CMP({ id: 'debuggerStatsContainer', text: 'STATISICTIFSFS' }),
+    container: () => {
+      const container = CMP({ id: 'debuggerStatsContainer' });
+      const debugGui = new dat.GUI({ autoPlace: false, closeOnTop: false });
+      debugGui.useLocalStorage = true;
+      const testMenu = debugGui.addFolder('Stats');
+      testMenu.add({ message: 'dat.gui' }, 'message');
+      container.elem.append(debugGui.domElement);
+      return container;
+    },
+    orderNr: 0,
   },
   {
     id: 'otherstats',
@@ -54,6 +64,7 @@ const tabsAndContainers: TabAndContainer[] = [
     scrollPos: 0,
     button: null,
     container: CMP({ id: 'debuggerOtherStatsContainer', text: 'OTHER STATS' }),
+    orderNr: 1,
   },
 ];
 
@@ -62,9 +73,10 @@ for (let i = 0; i < tabsAndContainers.length; i++) {
   const button = CMP({
     id: `debugTabsMenuButton-${data.id}`,
     tag: 'button',
+    class: styles.debugDrawerTabButton,
     text: data.buttonText,
     onClick: () => {
-      const container = data.container;
+      const container = typeof data.container === 'function' ? data.container() : data.container;
       tabsContainerWrapper?.removeChildren();
       tabsContainerWrapper?.add(container);
       for (let i = 0; i < tabsAndContainers.length; i++) {
@@ -79,8 +91,8 @@ for (let i = 0; i < tabsAndContainers.length; i++) {
 }
 
 export const initDebugGUI = () => {
-  debugGui = new dat.GUI({ autoPlace: false, closeOnTop: false });
-  debugGui.useLocalStorage = true;
+  // debugGui = new dat.GUI({ autoPlace: false, closeOnTop: false });
+  // debugGui.useLocalStorage = true;
 
   const guiContainerElem = document.getElementById(GUI_CONTAINER_ID);
   if (!guiContainerElem) {
@@ -98,14 +110,14 @@ export const initDebugGUI = () => {
   const drawerCMP = createDebugGuiCmp(guiContainerElem);
   // 3. Add opening and closing logic to drawer
   // 4. Attach gui to drawer
-  drawerCMP.elem.append(debugGui.domElement);
+  // drawerCMP.elem.append(debugGui.domElement);
   // 5. Add drawer states to localStorage (bring helper util from Lighter)
 
   // gui.domElement =
   //   document.getElementById('mainCanvas') || document.getElementsByTagName('body')[0];
 
-  const testMenu = debugGui.addFolder('Stats');
-  testMenu.add({ message: 'dat.gui' }, 'message');
+  // const testMenu = debugGui.addFolder('Stats');
+  // testMenu.add({ message: 'dat.gui' }, 'message');
 
   // 6. Create sub menus for different debuggers (for now "Stats" only)
   // 7. Create "Stats" gui controllers
@@ -157,8 +169,18 @@ const createDebugGuiCmp = (guiContainerElem: HTMLElement) => {
     id: 'debugDrawerTabsMenu',
     class: styles.debugDrawerTabsMenu,
   });
-  for (let i = 0; i < tabsAndContainers.length; i++) {
-    const button = tabsAndContainers[i].button;
+  const orderedTabsAndContainers = tabsAndContainers.sort((a, b) => {
+    const maxOrderNr = 9999;
+    let aOrderNr = a.orderNr;
+    let bOrderNr = b.orderNr;
+    if (aOrderNr === undefined) aOrderNr = maxOrderNr;
+    if (bOrderNr === undefined) bOrderNr = maxOrderNr;
+    if (aOrderNr < bOrderNr) return -1;
+    if (aOrderNr > bOrderNr) return 1;
+    return 0;
+  });
+  for (let i = 0; i < orderedTabsAndContainers.length; i++) {
+    const button = orderedTabsAndContainers[i].button;
     if (button) tabsMenuContainer.add(button);
   }
 
@@ -168,7 +190,9 @@ const createDebugGuiCmp = (guiContainerElem: HTMLElement) => {
   // Show current tab
   let data = tabsAndContainers.find((tab) => drawerState.currentTabId === tab.id);
   if (!data) data = tabsAndContainers[0];
-  tabsContainerWrapper?.add(data.container);
+  tabsContainerWrapper?.add(
+    typeof data.container === 'function' ? data.container() : data.container
+  );
   for (let i = 0; i < tabsAndContainers.length; i++) {
     const btn = tabsAndContainers[i].button;
     if (btn) btn.updateClass(styles.debugDrawerTabButton_selected, 'remove');

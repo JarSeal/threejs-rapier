@@ -40,8 +40,19 @@ $drawerWidth: 40rem;
   }
 }
 
+.debugDrawerTabButton {
+  @include variables.nakedButton;
+  padding: 0.6rem 1.2rem 0.4rem;
+  border-radius: 0.4rem;
+  background-color: variables.$selectedDebugTabButton;
+  border: 0.1rem solid variables.$white;
+  color: variables.$white;
+}
+
 .debugDrawerTabButton_selected {
-  color: red;
+  background-color: variables.$white;
+  border: 0.1rem solid transparent;
+  color: variables.$black;
 }
 
 .debugDrawerTabsContainer {
