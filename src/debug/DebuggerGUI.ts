@@ -5,6 +5,8 @@ import styles from './DebuggerGUI.module.scss';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 
+// @TODO: add window size listener to update the scrollable area
+
 let debugGui: dat.GUI | null = null;
 let tabsContainerWrapper: null | TCMP = null;
 const GUI_CONTAINER_ID = 'guiContainer';
@@ -12,11 +14,13 @@ const GUI_CONTAINER_ID = 'guiContainer';
 type DrawerState = {
   isOpen: boolean;
   currentTabId: string;
+  currentScrollPos: number;
 };
 
 let drawerState: DrawerState = {
   isOpen: false,
   currentTabId: 'stats',
+  currentScrollPos: 0,
 };
 
 const saveDrawerState = (newState?: Partial<DrawerState>) => {
@@ -37,7 +41,6 @@ type TabAndContainer = {
   id: string;
   buttonText: string;
   title?: string;
-  scrollPos: number;
   container: TCMP | (() => TCMP);
   button: null | TCMP;
   orderNr?: number;
@@ -48,7 +51,6 @@ const tabsAndContainers: TabAndContainer[] = [
     id: 'stats',
     buttonText: 'S',
     title: 'Statistics',
-    scrollPos: 0,
     button: null,
     container: () => {
       const container = CMP({ id: 'debuggerStatsContainer' });
@@ -66,7 +68,6 @@ const tabsAndContainers: TabAndContainer[] = [
     id: 'otherstats',
     buttonText: 'M',
     title: 'Other stats',
-    scrollPos: 0,
     button: null,
     container: CMP({
       id: 'debuggerOtherStatsContainer',
@@ -143,7 +144,7 @@ for (let i = 0; i < tabsAndContainers.length; i++) {
         if (btn) btn.updateClass(styles.debugDrawerTabButton_selected, 'remove');
       }
       data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
-      saveDrawerState({ currentTabId: data.id });
+      saveDrawerState({ currentTabId: data.id, currentScrollPos: 0 });
     },
   });
   tabsAndContainers[i].button = button;
@@ -255,7 +256,19 @@ const createDebugGuiCmp = (guiContainerElem: HTMLElement, opts?: DebugGUIOpts) =
   drawerCMP.add(tabsMenuContainer);
   drawerCMP.add(tabsContainerWrapper);
   const containerHeight = getWindowSize().height - tabsMenuContainer.elem.offsetHeight - 24; // 24 is padding
-  tabsContainerWrapper.update({ attr: { style: `height: ${containerHeight}px` } });
+
+  tabsContainerWrapper.update({
+    attr: { style: `height: ${containerHeight}px` },
+    listeners: [
+      {
+        type: 'scroll',
+        fn: () => {
+          const scrollPos = tabsContainerWrapper?.elem.scrollTop;
+          saveDrawerState({ currentScrollPos: scrollPos || 0 });
+        },
+      },
+    ],
+  });
 
   // Show current tab
   let data = tabsAndContainers.find((tab) => drawerState.currentTabId === tab.id);
@@ -268,6 +281,7 @@ const createDebugGuiCmp = (guiContainerElem: HTMLElement, opts?: DebugGUIOpts) =
     if (btn) btn.updateClass(styles.debugDrawerTabButton_selected, 'remove');
   }
   data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
+  tabsContainerWrapper.elem.scrollTop = drawerState.currentScrollPos || 0;
 
   return drawerCMP;
 };
