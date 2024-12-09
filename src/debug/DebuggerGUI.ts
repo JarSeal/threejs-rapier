@@ -3,6 +3,7 @@ import { CMP, TCMP } from '../utils/CMP';
 import { lerror } from '../utils/Logger';
 import styles from './DebuggerGUI.module.scss';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
+import { getWindowSize } from '../utils/Window';
 
 let debugGui: dat.GUI | null = null;
 let tabsContainerWrapper: null | TCMP = null;
@@ -35,6 +36,7 @@ const getDrawerState = () => {
 type TabAndContainer = {
   id: string;
   buttonText: string;
+  title?: string;
   scrollPos: number;
   container: TCMP | (() => TCMP);
   button: null | TCMP;
@@ -45,10 +47,12 @@ const tabsAndContainers: TabAndContainer[] = [
   {
     id: 'stats',
     buttonText: 'S',
+    title: 'Statistics',
     scrollPos: 0,
     button: null,
     container: () => {
       const container = CMP({ id: 'debuggerStatsContainer' });
+      container.add({ tag: 'h3', text: 'Statistics', class: 'debuggerHeading' });
       const debugGui = new dat.GUI({ autoPlace: false, closeOnTop: false });
       debugGui.useLocalStorage = true;
       const testMenu = debugGui.addFolder('Stats');
@@ -61,9 +65,62 @@ const tabsAndContainers: TabAndContainer[] = [
   {
     id: 'otherstats',
     buttonText: 'M',
+    title: 'Other stats',
     scrollPos: 0,
     button: null,
-    container: CMP({ id: 'debuggerOtherStatsContainer', text: 'OTHER STATS' }),
+    container: CMP({
+      id: 'debuggerOtherStatsContainer',
+      html: `<div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div style="height:300px;background:red;">LONG stuff</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div style="height:300px;background:yellow;">LONG stuff</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div style="height:300px;background:green;">LONG stuff</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div>MYSTATAFFA</div>
+      <div style="height:300px;background:blue;">LONG stuff</div>
+      </div>`,
+    }),
     orderNr: 1,
   },
 ];
@@ -75,7 +132,9 @@ for (let i = 0; i < tabsAndContainers.length; i++) {
     tag: 'button',
     class: styles.debugDrawerTabButton,
     text: data.buttonText,
-    onClick: () => {
+    attr: data.title ? { title: data.title } : undefined,
+    onClick: (_, cmp) => {
+      if (cmp.elem.classList.contains(styles.debugDrawerTabButton_selected)) return;
       const container = typeof data.container === 'function' ? data.container() : data.container;
       tabsContainerWrapper?.removeChildren();
       tabsContainerWrapper?.add(container);
@@ -90,7 +149,17 @@ for (let i = 0; i < tabsAndContainers.length; i++) {
   tabsAndContainers[i].button = button;
 }
 
-export const initDebugGUI = () => {
+export const getGUIContainerElem = () => {
+  const guiContainerElem = document.getElementById(GUI_CONTAINER_ID);
+  if (!guiContainerElem) {
+    throw new Error(`GUI container parent element with id "${GUI_CONTAINER_ID}" was not found.`);
+  }
+  return guiContainerElem;
+};
+
+export type DebugGUIOpts = { drawerBtnPlace: 'TOP' | 'MIDDLE' | 'BOTTOM' };
+
+export const initDebugGUI = (opts?: DebugGUIOpts) => {
   // debugGui = new dat.GUI({ autoPlace: false, closeOnTop: false });
   // debugGui.useLocalStorage = true;
 
@@ -107,7 +176,7 @@ export const initDebugGUI = () => {
   //   attach: guiContainerElem,
   //   settings: { replaceRootDom: false },
   // });
-  const drawerCMP = createDebugGuiCmp(guiContainerElem);
+  const drawerCMP = createDebugGuiCmp(guiContainerElem, opts);
   // 3. Add opening and closing logic to drawer
   // 4. Attach gui to drawer
   // drawerCMP.elem.append(debugGui.domElement);
@@ -125,7 +194,7 @@ export const initDebugGUI = () => {
 
 export const getDebugGUI = () => debugGui;
 
-const createDebugGuiCmp = (guiContainerElem: HTMLElement) => {
+const createDebugGuiCmp = (guiContainerElem: HTMLElement, opts?: DebugGUIOpts) => {
   getDrawerState();
 
   // Drawer
@@ -144,24 +213,15 @@ const createDebugGuiCmp = (guiContainerElem: HTMLElement) => {
     id: 'debugDrawerToggler',
     tag: 'button',
     text: 'Debug',
-    class: styles.debugDrawerToggler,
-    onClick: () => {
-      saveDrawerState({ isOpen: !drawerState.isOpen });
-      if (drawerState.isOpen) {
-        drawerCMP.updateClass(styles.debuggerGUI_open, 'add');
-        drawerCMP.updateClass(styles.debuggerGUI_closed, 'remove');
-        return;
-      }
-      drawerCMP.updateClass(styles.debuggerGUI_open, 'remove');
-      drawerCMP.updateClass(styles.debuggerGUI_closed, 'add');
-    },
+    class: [styles.debugDrawerToggler, opts?.drawerBtnPlace],
+    onClick: () => toggleDrawer(drawerCMP),
   });
   drawerCMP.add(toggleDrawerButton);
 
   // Tabs container wrapper
   tabsContainerWrapper = CMP({
     id: 'debugDrawerTabsContainerWrapper',
-    class: styles.debugDrawerTabsContainer,
+    class: [styles.debugDrawerTabsContainer, 'debugDrawerTabsContainer'],
   });
 
   // Tabs menu container
@@ -184,8 +244,18 @@ const createDebugGuiCmp = (guiContainerElem: HTMLElement) => {
     if (button) tabsMenuContainer.add(button);
   }
 
+  tabsMenuContainer.add({
+    id: 'debugCloseBtn',
+    tag: 'button',
+    class: styles.closeBtn,
+    attr: { title: 'Close' },
+    onClick: () => toggleDrawer(drawerCMP, 'CLOSE'),
+  });
+
   drawerCMP.add(tabsMenuContainer);
   drawerCMP.add(tabsContainerWrapper);
+  const containerHeight = getWindowSize().height - tabsMenuContainer.elem.offsetHeight - 24; // 24 is padding
+  tabsContainerWrapper.update({ attr: { style: `height: ${containerHeight}px` } });
 
   // Show current tab
   let data = tabsAndContainers.find((tab) => drawerState.currentTabId === tab.id);
@@ -200,4 +270,23 @@ const createDebugGuiCmp = (guiContainerElem: HTMLElement) => {
   data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
 
   return drawerCMP;
+};
+
+const toggleDrawer = (drawerCMP: TCMP, openOrClose?: 'OPEN' | 'CLOSE') => {
+  let newState: boolean = false;
+  if (openOrClose === 'CLOSE') {
+    newState = false;
+  } else if (openOrClose === 'OPEN') {
+    newState = true;
+  } else {
+    newState = !drawerState.isOpen;
+  }
+  saveDrawerState({ isOpen: newState });
+  if (drawerState.isOpen) {
+    drawerCMP.updateClass(styles.debuggerGUI_open, 'add');
+    drawerCMP.updateClass(styles.debuggerGUI_closed, 'remove');
+    return;
+  }
+  drawerCMP.updateClass(styles.debuggerGUI_open, 'remove');
+  drawerCMP.updateClass(styles.debuggerGUI_closed, 'add');
 };

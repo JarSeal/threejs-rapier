@@ -1,5 +1,6 @@
 import Stats from 'stats-gl';
-import { getCanvasParentElem, getRenderer } from '../core/Renderer';
+import { getRenderer } from '../core/Renderer';
+import { getGUIContainerElem } from './DebuggerGUI';
 
 export type StatsOptions = {
   trackGPU?: boolean;
@@ -19,7 +20,7 @@ let stats: Stats | null = null;
 
 export const initStats = (initConfigs: StatsOptions) => {
   stats = new Stats(initConfigs);
-  getCanvasParentElem().appendChild(stats.dom);
+  getGUIContainerElem().appendChild(stats.dom);
   stats.init(getRenderer());
   return stats;
 };

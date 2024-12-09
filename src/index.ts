@@ -104,7 +104,7 @@ scene.add(hemisphere);
 const stats = initStats({ trackGPU: true, trackCPT: true, horizontal: false });
 
 // GUI
-initDebugGUI();
+initDebugGUI({ drawerBtnPlace: 'BOTTOM' });
 
 const animate = () => {
   if (loopState.masterPlay) {

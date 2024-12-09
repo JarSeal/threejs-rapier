@@ -1,0 +1,14 @@
+.debuggerHeading {
+  margin: 0;
+  margin-bottom: 0.4rem;
+}
+
+.debugDrawerTabsContainer {
+  .dg.main {
+    width: 100% !important;
+
+    .close-button {
+      display: none;
+    }
+  }
+}
