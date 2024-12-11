@@ -8,8 +8,9 @@ import { createTexture, loadTextures } from './core/Texture';
 import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
 import { initStats } from './debug/Stats';
-import { initDebugGUI } from './debug/DebuggerGUI';
+import { createDebugGui } from './debug/DebuggerGUI';
 import './styles/index.scss';
+import { createHudContainer } from './core/HUD';
 
 export const GUI_CONTAINER_ID = 'guiContainer';
 
@@ -100,11 +101,12 @@ const hemisphere = createLight({
 });
 scene.add(hemisphere);
 
+// HUD and Debug GUI
+createHudContainer();
+createDebugGui();
+
 // Stats
 const stats = initStats({ trackGPU: true, trackCPT: true, horizontal: false });
-
-// GUI
-initDebugGUI({ drawerBtnPlace: 'BOTTOM' });
 
 const animate = () => {
   if (loopState.masterPlay) {

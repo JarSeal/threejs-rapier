@@ -1,15 +1,15 @@
-import * as dat from 'dat.gui';
+import GUI from 'lil-gui';
 import { CMP, TCMP } from '../utils/CMP';
-import { lerror } from '../utils/Logger';
 import styles from './DebuggerGUI.module.scss';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
+import { getHUDRootCMP } from '../core/HUD';
 
 // @TODO: add window size listener to update the scrollable area
 
-let debugGui: dat.GUI | null = null;
+let drawerCMP: TCMP | null = null;
 let tabsContainerWrapper: null | TCMP = null;
-const GUI_CONTAINER_ID = 'guiContainer';
+const LS_PREFIX = 'debug-folders-';
 
 type DrawerState = {
   isOpen: boolean;
@@ -48,18 +48,18 @@ type TabAndContainer = {
 
 const tabsAndContainers: TabAndContainer[] = [
   {
-    id: 'stats',
+    id: 'statsToBeRemoved',
     buttonText: 'S',
-    title: 'Statistics',
+    title: 'Statistics (Remove this)',
     button: null,
     container: () => {
-      const container = CMP({ id: 'debuggerStatsContainer' });
-      container.add({ tag: 'h3', text: 'Statistics', class: 'debuggerHeading' });
-      const debugGui = new dat.GUI({ autoPlace: false, closeOnTop: false });
-      debugGui.useLocalStorage = true;
+      const { container, debugGui } = createNewDebuggerGUI(
+        'statsToBeRemoved',
+        'Statistic (remove this)'
+      );
       const testMenu = debugGui.addFolder('Stats');
-      testMenu.add({ message: 'dat.gui' }, 'message');
-      container.elem.append(debugGui.domElement);
+      // testMenu.open();
+      testMenu.add({ message: 'Tester' }, 'message');
       return container;
     },
     orderNr: 0,
@@ -126,98 +126,61 @@ const tabsAndContainers: TabAndContainer[] = [
   },
 ];
 
-for (let i = 0; i < tabsAndContainers.length; i++) {
-  const data = tabsAndContainers[i];
-  const button = CMP({
-    id: `debugTabsMenuButton-${data.id}`,
-    tag: 'button',
-    class: styles.debugDrawerTabButton,
-    text: data.buttonText,
-    attr: data.title ? { title: data.title } : undefined,
-    onClick: (_, cmp) => {
-      if (cmp.elem.classList.contains(styles.debugDrawerTabButton_selected)) return;
-      const container = typeof data.container === 'function' ? data.container() : data.container;
-      tabsContainerWrapper?.removeChildren();
-      tabsContainerWrapper?.add(container);
-      for (let i = 0; i < tabsAndContainers.length; i++) {
-        const btn = tabsAndContainers[i].button;
-        if (btn) btn.updateClass(styles.debugDrawerTabButton_selected, 'remove');
-      }
-      data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
-      saveDrawerState({ currentTabId: data.id, currentScrollPos: 0 });
-    },
-  });
-  tabsAndContainers[i].button = button;
-}
-
-export const getGUIContainerElem = () => {
-  const guiContainerElem = document.getElementById(GUI_CONTAINER_ID);
-  if (!guiContainerElem) {
-    throw new Error(`GUI container parent element with id "${GUI_CONTAINER_ID}" was not found.`);
+const createTabMenuButtons = () => {
+  for (let i = 0; i < tabsAndContainers.length; i++) {
+    const data = tabsAndContainers[i];
+    if (data.button) data.button.remove();
+    const button = CMP({
+      id: `debugTabsMenuButton-${data.id}`,
+      tag: 'button',
+      class: styles.debugDrawerTabButton,
+      text: data.buttonText,
+      attr: data.title ? { title: data.title } : undefined,
+      onClick: (_, cmp) => {
+        if (cmp.elem.classList.contains(styles.debugDrawerTabButton_selected)) return;
+        const container = typeof data.container === 'function' ? data.container() : data.container;
+        tabsContainerWrapper?.removeChildren();
+        tabsContainerWrapper?.add(container);
+        for (let i = 0; i < tabsAndContainers.length; i++) {
+          const btn = tabsAndContainers[i]?.button;
+          if (btn) btn.updateClass(styles.debugDrawerTabButton_selected, 'remove');
+        }
+        data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
+        saveDrawerState({ currentTabId: data.id, currentScrollPos: 0 });
+        setFolderData(container.controls?.id as string, container.controls?.debugGui as GUI);
+      },
+    });
+    tabsAndContainers[i].button = button;
   }
-  return guiContainerElem;
 };
+createTabMenuButtons();
 
-export type DebugGUIOpts = { drawerBtnPlace: 'TOP' | 'MIDDLE' | 'BOTTOM' };
+export type DebugGUIOpts = { drawerBtnPlace?: 'TOP' | 'MIDDLE' | 'BOTTOM' };
+let guiOpts: DebugGUIOpts | undefined = undefined;
 
-export const initDebugGUI = (opts?: DebugGUIOpts) => {
-  // debugGui = new dat.GUI({ autoPlace: false, closeOnTop: false });
-  // debugGui.useLocalStorage = true;
-
-  const guiContainerElem = document.getElementById(GUI_CONTAINER_ID);
-  if (!guiContainerElem) {
-    lerror(`Could not find GUI container element with id: ${GUI_CONTAINER_ID}`);
-    return;
-  }
-
-  // Create custom GUI drawer
-  // const drawerCMP = CMP({
-  //   id: 'debugDrawer',
-  //   class: styles.debuggerGUI,
-  //   attach: guiContainerElem,
-  //   settings: { replaceRootDom: false },
-  // });
-  const drawerCMP = createDebugGuiCmp(guiContainerElem, opts);
-  // 3. Add opening and closing logic to drawer
-  // 4. Attach gui to drawer
-  // drawerCMP.elem.append(debugGui.domElement);
-  // 5. Add drawer states to localStorage (bring helper util from Lighter)
-
-  // gui.domElement =
-  //   document.getElementById('mainCanvas') || document.getElementsByTagName('body')[0];
-
-  // const testMenu = debugGui.addFolder('Stats');
-  // testMenu.add({ message: 'dat.gui' }, 'message');
-
-  // 6. Create sub menus for different debuggers (for now "Stats" only)
-  // 7. Create "Stats" gui controllers
-};
-
-export const getDebugGUI = () => debugGui;
-
-const createDebugGuiCmp = (guiContainerElem: HTMLElement, opts?: DebugGUIOpts) => {
+export const createDebugGui = (opts?: DebugGUIOpts) => {
+  guiOpts = opts;
   getDrawerState();
 
   // Drawer
-  const drawerCMP = CMP({
+  if (drawerCMP) drawerCMP.remove();
+  drawerCMP = getHUDRootCMP().add({
     id: 'debugDrawer',
     class: [
       styles.debuggerGUI,
       drawerState.isOpen ? styles.debuggerGUI_open : styles.debuggerGUI_closed,
     ],
-    attach: guiContainerElem,
     settings: { replaceRootDom: false },
   });
 
   // Drawer toggle button
-  const toggleDrawerButton = CMP({
+  drawerCMP.add({
     id: 'debugDrawerToggler',
     tag: 'button',
     text: 'Debug',
     class: [styles.debugDrawerToggler, opts?.drawerBtnPlace],
     onClick: () => toggleDrawer(drawerCMP),
   });
-  drawerCMP.add(toggleDrawerButton);
 
   // Tabs container wrapper
   tabsContainerWrapper = CMP({
@@ -241,7 +204,7 @@ const createDebugGuiCmp = (guiContainerElem: HTMLElement, opts?: DebugGUIOpts) =
     return 0;
   });
   for (let i = 0; i < orderedTabsAndContainers.length; i++) {
-    const button = orderedTabsAndContainers[i].button;
+    const button = orderedTabsAndContainers[i]?.button;
     if (button) tabsMenuContainer.add(button);
   }
 
@@ -272,21 +235,28 @@ const createDebugGuiCmp = (guiContainerElem: HTMLElement, opts?: DebugGUIOpts) =
 
   // Show current tab
   let data = tabsAndContainers.find((tab) => drawerState.currentTabId === tab.id);
-  if (!data) data = tabsAndContainers[0];
-  tabsContainerWrapper?.add(
+  let tabFound = true;
+  if (!data) {
+    data = tabsAndContainers[0];
+    tabFound = false;
+  }
+  const container = tabsContainerWrapper?.add(
     typeof data.container === 'function' ? data.container() : data.container
   );
+  setFolderData(container.controls?.id as string, container.controls?.debugGui as GUI);
+
   for (let i = 0; i < tabsAndContainers.length; i++) {
-    const btn = tabsAndContainers[i].button;
+    const btn = tabsAndContainers[i]?.button;
     if (btn) btn.updateClass(styles.debugDrawerTabButton_selected, 'remove');
   }
   data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
-  tabsContainerWrapper.elem.scrollTop = drawerState.currentScrollPos || 0;
+  tabsContainerWrapper.elem.scrollTop = tabFound ? drawerState.currentScrollPos || 0 : 0;
 
   return drawerCMP;
 };
 
-const toggleDrawer = (drawerCMP: TCMP, openOrClose?: 'OPEN' | 'CLOSE') => {
+const toggleDrawer = (drawerCMP: TCMP | null, openOrClose?: 'OPEN' | 'CLOSE') => {
+  if (!drawerCMP) return;
   let newState: boolean = false;
   if (openOrClose === 'CLOSE') {
     newState = false;
@@ -303,4 +273,60 @@ const toggleDrawer = (drawerCMP: TCMP, openOrClose?: 'OPEN' | 'CLOSE') => {
   }
   drawerCMP.updateClass(styles.debuggerGUI_open, 'remove');
   drawerCMP.updateClass(styles.debuggerGUI_closed, 'add');
+};
+
+export const setDebuggerTabAndContainer = (
+  tabAndContainer: Omit<TabAndContainer, 'button'>,
+  opts?: DebugGUIOpts
+) => {
+  tabsAndContainers.push({ ...tabAndContainer, button: null });
+  createTabMenuButtons();
+  if (!drawerCMP) return;
+  const options = { ...guiOpts, ...opts };
+  createDebugGui(options);
+};
+
+export const createNewDebuggerGUI = (id: string, heading?: string) => {
+  const idAndName = `debuggerContainer-${id}`;
+  const container = CMP({
+    id: idAndName,
+    onRemoveCmp: () => debugGui.destroy(),
+  });
+  if (heading) container.add({ tag: 'h3', text: heading, class: 'debuggerHeading' });
+  const debugGui = new GUI({
+    autoPlace: false,
+    title: '',
+  });
+  debugGui.open();
+
+  debugGui.onOpenClose(() => {
+    const rootFolder = debugGui.folders[0].root;
+    rootFolder.open();
+    const folderData = debugGui
+      .foldersRecursive()
+      .map((folder) => ({ closed: folder._closed, hidden: folder._hidden }));
+    lsSetItem(LS_PREFIX + id, JSON.stringify(folderData));
+  });
+
+  container.elem.append(debugGui.domElement);
+  container.controls.debugGui = debugGui;
+  container.controls.id = id;
+  return { container, debugGui };
+};
+
+const setFolderData = (id?: string, debugGui?: GUI) => {
+  if (!id || !debugGui) return;
+
+  const folderData = lsGetItem(LS_PREFIX + id, []);
+  const folders = debugGui.foldersRecursive();
+
+  if (folderData.length !== folders.length) return;
+  for (let i = 0; i < folders.length; i++) {
+    const closed = folderData[i].closed;
+    if (closed) {
+      folders[i].close();
+      continue;
+    }
+    folders[i].open();
+  }
 };

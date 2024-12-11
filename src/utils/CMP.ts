@@ -528,10 +528,7 @@ const removeCmp = (cmp: TCMP, doNotRemoveElem?: boolean) => {
   const id = cmp.id;
 
   // Remove children CMPs
-  for (let i = 0; i < cmp.children.length; i++) {
-    const child = cmp.children[i];
-    child.remove();
-  }
+  removeCmpChildren(cmp);
 
   // Remove reference from parent
   if (cmp.parent?.children.length) {

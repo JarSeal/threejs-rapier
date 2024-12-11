@@ -14,7 +14,7 @@
     "build": "tsc && vite build"
   },
   "dependencies": {
-    "dat.gui": "0.7.9",
+    "lil-gui": "0.20.0",
     "stats-gl": "3.6.0",
     "three": "0.171.0"
   },

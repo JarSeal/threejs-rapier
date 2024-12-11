@@ -1,4 +1,10 @@
-export type StorageValue = boolean | number | string;
+export type StorageValue =
+  | boolean
+  | number
+  | string
+  | null
+  | { [key: string]: unknown }
+  | (boolean | number | string | null | { [key: string]: unknown })[];
 
 let lsAvailable: null | boolean = null;
 let ssAvailable: null | boolean = null;
@@ -35,6 +41,8 @@ const checkIfItemExists = (key: string) => {
 const convertValue = (defaultValue: StorageValue, lsValue: string) => {
   if (typeof defaultValue === 'boolean') return lsValue === 'true';
   if (typeof defaultValue === 'number') return Number(lsValue);
+  if (Array.isArray(defaultValue) || (typeof defaultValue === 'object' && defaultValue !== null))
+    return JSON.parse(lsValue);
   return lsValue; // typeof string
 };
 
@@ -54,6 +62,9 @@ export const lsGetItem = (key: string, defaultValue: StorageValue, doNotConvert?
 export const lsSetItem = (key: string, value: StorageValue) => {
   checkStorage('local');
   if (!lsAvailable) return;
+  if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
+    value = JSON.stringify(value);
+  }
   localStorage.setItem(key, String(value));
 };
 

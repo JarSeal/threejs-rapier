@@ -1,13 +1,13 @@
 .debuggerHeading {
   margin: 0;
-  margin-bottom: 0.4rem;
+  margin-bottom: 1rem;
 }
 
 .debugDrawerTabsContainer {
-  .dg.main {
+  .lil-gui.root {
     width: 100% !important;
 
-    .close-button {
+    > .title {
       display: none;
     }
   }
