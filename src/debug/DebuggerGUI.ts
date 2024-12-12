@@ -46,85 +46,7 @@ type TabAndContainer = {
   orderNr?: number;
 };
 
-const tabsAndContainers: TabAndContainer[] = [
-  {
-    id: 'statsToBeRemoved',
-    buttonText: 'S',
-    title: 'Statistics (Remove this)',
-    button: null,
-    container: () => {
-      const { container, debugGui } = createNewDebuggerGUI(
-        'statsToBeRemoved',
-        'Statistic (remove this)'
-      );
-      const testMenu = debugGui.addFolder('Stats');
-      // testMenu.open();
-      testMenu.add({ message: 'Tester' }, 'message');
-      return container;
-    },
-    orderNr: 0,
-  },
-  {
-    id: 'otherstats',
-    buttonText: 'M',
-    title: 'Other stats',
-    button: null,
-    container: CMP({
-      id: 'debuggerOtherStatsContainer',
-      html: `<div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div style="height:300px;background:red;">LONG stuff</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div style="height:300px;background:yellow;">LONG stuff</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div style="height:300px;background:green;">LONG stuff</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div>MYSTATAFFA</div>
-      <div style="height:300px;background:blue;">LONG stuff</div>
-      </div>`,
-    }),
-    orderNr: 1,
-  },
-];
+const tabsAndContainers: TabAndContainer[] = [];
 
 const createTabMenuButtons = () => {
   for (let i = 0; i < tabsAndContainers.length; i++) {
@@ -240,6 +162,7 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     data = tabsAndContainers[0];
     tabFound = false;
   }
+  if (!data) return;
   const container = tabsContainerWrapper?.add(
     typeof data.container === 'function' ? data.container() : data.container
   );

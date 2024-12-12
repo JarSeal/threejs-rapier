@@ -8,7 +8,11 @@ import { createTexture, loadTextures } from './core/Texture';
 import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
 import { initStats } from './debug/Stats';
-import { createDebugGui } from './debug/DebuggerGUI';
+import {
+  createDebugGui,
+  createNewDebuggerGUI,
+  setDebuggerTabAndContainer,
+} from './debug/DebuggerGUI';
 import './styles/index.scss';
 import { createHudContainer } from './core/HUD';
 
@@ -106,7 +110,7 @@ createHudContainer();
 createDebugGui();
 
 // Stats
-const stats = initStats({ trackGPU: true, trackCPT: true, horizontal: false });
+const stats = initStats();
 
 const animate = () => {
   if (loopState.masterPlay) {
@@ -119,15 +123,15 @@ const animate = () => {
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
     // @TODO: add gamePlay loop here
-    sphere.rotation.z -= 0.001;
-    sphere.rotation.y += 0.001;
-    box.rotation.y -= 0.001;
-    box.rotation.z -= 0.001;
+    sphere.rotation.z -= 0.001; // REMOVE
+    sphere.rotation.y += 0.001; // REMOVE
+    box.rotation.y -= 0.001; // REMOVE
+    box.rotation.z -= 0.001; //REMOVE
   } else {
     loopState.isAppPlaying = false;
   }
   renderer.renderAsync(getCurrentScene(), getCurrentCamera());
-  stats.update();
+  stats?.update();
 };
 
 if (loopState.masterPlay) {
@@ -150,3 +154,22 @@ export const toggleGamePlay = (value?: boolean) => {
   }
   loopState.appPlay = !loopState.appPlay;
 };
+
+setDebuggerTabAndContainer({
+  id: 'loopControls',
+  buttonText: 'LOOP',
+  title: 'Loop controls',
+  orderNr: 4,
+  container: () => {
+    const { container, debugGui } = createNewDebuggerGUI('Loop', 'Loop Controls');
+    debugGui
+      .add(loopState, 'masterPlay')
+      .name('Master loop')
+      .onChange((value: boolean) => {
+        if (value) requestAnimationFrame(animate);
+      });
+    debugGui.add(loopState, 'appPlay').name('App loop');
+    // @TODO: add forced max FPS debugger
+    return container;
+  },
+});
