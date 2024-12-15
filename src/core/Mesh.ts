@@ -32,7 +32,7 @@ export const createMesh = ({
   }
 
   mesh = new THREE.Mesh(g, m);
-  saveMesh(mesh, id);
+  saveMesh(mesh, id, true);
 
   return mesh;
 };

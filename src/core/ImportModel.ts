@@ -57,7 +57,7 @@ export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
   let depthIndex = 0;
   let modelMesh: unknown = null;
 
-  const getIndexedChild = (children: THREE.Object3D[]) => {
+  const getIndexedChild = (children: THREE.Object3D[]): THREE.Object3D | null => {
     if (!Array.isArray(index)) {
       return children[index] || null;
     }

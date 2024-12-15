@@ -18,7 +18,8 @@ export type Materials =
   | THREE.RawShaderMaterial
   | THREE.ShaderMaterial
   | THREE.ShadowMaterial
-  | THREE.SpriteMaterial;
+  | THREE.SpriteMaterial
+  | THREE.Material;
 
 const materials: { [id: string]: Materials } = {};
 
@@ -97,8 +98,7 @@ export const createMaterial = ({ id, type, params }: MatProps) => {
     throw new Error(`Could not create material (unknown type: '${type}').`);
   }
 
-  mat.userData.id = id || mat.uuid;
-  materials[id || mat.uuid] = mat;
+  saveMaterial(mat, id);
 
   return mat;
 };
@@ -139,4 +139,40 @@ export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) 
 
 export const getAllMaterials = () => materials;
 
-export const saveMaterial = (material: THREE.Material | THREE.Material[], givenId?: string) => {};
+export const saveMaterial = (material: Materials | Materials[], givenId?: string) => {
+  if (!Array.isArray(material)) {
+    if (givenId && materials[givenId]) {
+      throw new Error(
+        `Material with id "${givenId}" already exists. Pick another id or delete the mesh first before recreating it.`
+      );
+    }
+
+    const id = givenId || material.uuid;
+
+    // Save material
+    material.userData.id = id;
+    materials[id] = material;
+
+    return material;
+  }
+
+  const mats = material;
+  for (let i = 0; i < mats.length; i++) {
+    const mat = mats[i];
+    if (!mat.isMaterial) continue;
+    const newId = `${givenId}-${i}`;
+    if (givenId && materials[newId]) {
+      throw new Error(
+        `Material with id "${newId}" already exists. Pick another id or delete the mesh first before recreating it.`
+      );
+    }
+
+    const id = givenId || mat.uuid;
+
+    // Save material
+    mat.userData.id = id;
+    materials[id] = mat;
+  }
+
+  return material;
+};
