@@ -138,3 +138,5 @@ export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) 
 };
 
 export const getAllMaterials = () => materials;
+
+export const saveMaterial = (material: THREE.Material | THREE.Material[], givenId?: string) => {};

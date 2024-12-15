@@ -77,6 +77,7 @@ export const createGeometry = (props: GeoProps) => {
     throw new Error(`Could not create geometry (unknown type: ${props.type}).`);
   }
 
+  geo.userData.id = props?.id || geo.uuid;
   geometries[props?.id || geo.uuid] = geo;
 
   return geo;
@@ -106,3 +107,11 @@ export const deleteGeometry = (id: string | string[]) => {
 };
 
 export const getAllGeometries = () => geometries;
+
+export const saveGeometry = (geometry: THREE.BufferGeometry, givenId?: string) => {
+  if (!geometry.isBufferGeometry) return;
+  const id = givenId || geometry.uuid;
+  geometry.userData.id = id;
+  geometries[id] = geometry;
+  return geometry;
+};

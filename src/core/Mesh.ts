@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { MatProps, createMaterial, deleteMaterial } from './Material';
-import { createGeometry, deleteGeometry, type GeoProps } from './Geometry';
+import { MatProps, createMaterial, deleteMaterial, saveMaterial } from './Material';
+import { createGeometry, deleteGeometry, saveGeometry, type GeoProps } from './Geometry';
 
 const meshes: { [id: string]: THREE.Mesh } = {};
 
@@ -32,8 +32,7 @@ export const createMesh = ({
   }
 
   mesh = new THREE.Mesh(g, m);
-  mesh.userData.id = id || mesh.uuid;
-  meshes[id || mesh.uuid] = mesh;
+  saveMesh(mesh, id);
 
   return mesh;
 };
@@ -81,6 +80,29 @@ export const deleteMesh = (
   for (let i = 0; i < id.length; i++) {
     deleteOneMesh(id[i], opts);
   }
+};
+
+export const saveMesh = (mesh: THREE.Mesh, givenId?: string, doNotSaveMaterial?: boolean) => {
+  if (!mesh.isMesh) return;
+  if (givenId && meshes[givenId]) {
+    throw new Error(
+      `Mesh with id "${givenId}" already exists. Pick another id or delete the mesh first before recreating it.`
+    );
+  }
+
+  const id = givenId || mesh.uuid;
+
+  // Save mesh
+  mesh.userData.id = id;
+  meshes[id] = mesh;
+
+  // Save geometry
+  saveGeometry(mesh.geometry, givenId ? `${givenId}-geo` : undefined);
+
+  // Save material
+  if (!doNotSaveMaterial) saveMaterial(mesh.material, givenId ? `${givenId}-mat` : undefined);
+
+  return mesh;
 };
 
 export const getAllMeshes = () => meshes;

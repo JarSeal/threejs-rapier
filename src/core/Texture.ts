@@ -51,7 +51,7 @@ const loadTexture = (id?: string, fileName?: string, texOpts?: TexOpts) => {
       (texture) => texture,
       undefined,
       (err) => {
-        const errorMsg = `Could not load texture in loadTexture (id: ${id}, fileName: ${fileName})`;
+        const errorMsg = `Could not load texture in loadTexture (id: "${id}", "fileName: ${fileName}")`;
         lerror(errorMsg, err);
       }
     ),
@@ -61,10 +61,10 @@ const loadTexture = (id?: string, fileName?: string, texOpts?: TexOpts) => {
 };
 
 /**
- * Loads one or more textures
+ * Loads one or more textures in the background.
  * @param texData array of objects: { id?: string; fileName?: string; texOpts?: {@link TexOpts} }[]
  * @param updateStatusFn optional status update function: (loadedTextures: { [id: string]: THREE.Texture }, loadedCount: number, totalCount: number) => void
- * @param onErrorAction optional on error action: 'noTexture' | 'emptyTexture' | 'throwError'. This determines what happens when a texture load fails. 'noTexture' does nothing (default), 'emptyTexture' creates an empty placeholder texture for the failed texture, and 'throwError' throws an Error.
+ * @param onErrorAction optional on error action: 'NO_TEXTURE' | 'EMPTY_TEXTURE' | 'THROW_ERROR'. This determines what happens when a texture load fails. 'NO_TEXTURE' does nothing (default), 'EMPTY_TEXTURE' creates an empty placeholder texture for the failed texture, and 'THROW_ERROR' throws an Error.
  */
 export const loadTextures = (
   texData: { id?: string; fileName?: string; texOpts?: TexOpts }[],
@@ -142,7 +142,7 @@ export const loadTextures = (
 };
 
 /**
- * Creates a texture to be used without loading logic
+ * Creates a texture to be used without loading logic. The texture is usable right away.
  * @param id optional id string, defaults to texture.uuid
  * @param fileName optional file path to be loaded. If no fileName is provided, an empty Texture is created.
  * @param texOpts optional {@link TexOpts}

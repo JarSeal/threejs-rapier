@@ -71,11 +71,6 @@ $breakpointXSmall: 379px;
   padding-right: 2.4rem;
   margin-bottom: 1.2rem;
 
-  button {
-    margin-right: -0.1rem;
-    margin-bottom: -0.1rem;
-  }
-
   .closeBtn {
     @include variables.nakedButton;
     background-color: transparent;
@@ -114,11 +109,14 @@ $breakpointXSmall: 379px;
 
 .debugDrawerTabButton {
   @include variables.nakedButton;
+  margin-right: -0.1rem;
+  margin-bottom: -0.1rem;
   padding: 0.6rem 1.2rem 0.4rem;
   background-color: variables.$debugTabButton;
   border: 0.1rem solid variables.$white;
   color: variables.$white;
   user-select: none;
+  font-size: 1rem;
   transition: background-color 0.2s ease-in-out;
 
   &:hover:not(.debugDrawerTabButton_selected) {
