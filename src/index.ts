@@ -15,6 +15,7 @@ import {
 } from './debug/DebuggerGUI';
 import './styles/index.scss';
 import { createHudContainer } from './core/HUD';
+import { importModelAsync } from './core/ImportModel';
 
 export const GUI_CONTAINER_ID = 'guiContainer';
 
@@ -79,6 +80,15 @@ loadTextures(
   updateLoadStatusFn
 );
 
+const importedBox = await importModelAsync<THREE.Mesh>({
+  fileName: '/testModels/box01.glb',
+  throwOnError: true,
+});
+if (importedBox) {
+  importedBox.position.set(-2, 0, 0);
+  scene.add(importedBox);
+}
+
 const point = createLight({
   id: 'pointLight',
   type: 'POINT',
@@ -127,6 +137,10 @@ const animate = () => {
     sphere.rotation.y += 0.001; // REMOVE
     box.rotation.y -= 0.001; // REMOVE
     box.rotation.z -= 0.001; //REMOVE
+    if (importedBox) {
+      importedBox.rotation.y -= 0.0014; // REMOVE
+      importedBox.rotation.z -= 0.0014; // REMOVE
+    }
   } else {
     loopState.isAppPlaying = false;
   }
