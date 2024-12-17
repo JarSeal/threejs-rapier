@@ -4,7 +4,7 @@ import { createScene, getCurrentScene } from './core/Scene';
 import { createCamera, getCurrentCamera } from './core/Camera';
 import { createGeometry } from './core/Geometry';
 import { createMaterial } from './core/Material';
-import { createTexture, loadTextures } from './core/Texture';
+import { createTexture, getTexture, loadTextures } from './core/Texture';
 import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
 import { initStats } from './debug/Stats';
@@ -86,15 +86,23 @@ const importedBox = await importModelAsync<THREE.Mesh>({
 });
 if (importedBox) {
   importedBox.position.set(-2, 0, 0);
+  const material = createMaterial({
+    id: 'importedBox01Material',
+    type: 'PHONG',
+    params: {
+      map: getTexture('box1Texture'),
+    },
+  });
+  importedBox.material = material;
   scene.add(importedBox);
 }
 
 const point = createLight({
   id: 'pointLight',
   type: 'POINT',
-  params: { color: 0xffffff, intensity: 5, distance: 3 },
+  params: { color: 0xffffff, intensity: 5, distance: 5 },
 });
-point.position.set(1, 2, 1);
+point.position.set(0, 2, 0);
 scene.add(point);
 
 const ambient = createLight({
