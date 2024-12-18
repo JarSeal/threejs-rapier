@@ -60,6 +60,8 @@ const loadTexture = (id?: string, fileName?: string, texOpts?: TexOpts) => {
   return texture;
 };
 
+// @TODO: loadTextureAsync
+
 /**
  * Loads one or more textures in the background.
  * @param texData array of objects: { id?: string; fileName?: string; texOpts?: {@link TexOpts} }[]
