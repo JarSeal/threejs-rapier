@@ -113,6 +113,8 @@ export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
   return parseImportResult<T>(modelGroup as T, params);
 };
 
+// @TODO: importModel
+
 export const importModels = (
   modelsParams: ImportModelParams[],
   updateStatusFn?: (
