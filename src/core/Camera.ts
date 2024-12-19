@@ -6,6 +6,7 @@ const cameras: { [id: string]: THREE.Camera } = {};
 let currentCamera: THREE.Camera | null = null;
 let currentCameraId: string | null = null;
 
+// @TODO: add JSDoc comment
 export const createCamera = (
   id: string,
   opts?: { isCurrentCamera: boolean; fov?: number; near?: number; far?: number }
@@ -30,12 +31,14 @@ export const createCamera = (
   return camera;
 };
 
+// @TODO: add JSDoc comment
 export const getCamera = (id: string) => {
   const camera = cameras[id];
   if (!camera) lwarn(`Could not find camera with id "${id}" in getCamera(id).`);
   return camera || null;
 };
 
+// @TODO: add JSDoc comment
 export const deleteCamera = (id: string) => {
   const camera = cameras[id];
   if (!camera) {
@@ -46,6 +49,7 @@ export const deleteCamera = (id: string) => {
   delete cameras[id];
 };
 
+// @TODO: add JSDoc comment
 export const setCurrentCamera = (id: string) => {
   if (currentCameraId === id) return currentCamera;
   const nextCamera = id ? cameras[id] : null;
@@ -58,6 +62,8 @@ export const setCurrentCamera = (id: string) => {
   return nextCamera;
 };
 
+// @TODO: add JSDoc comment
 export const getCurrentCamera = () => currentCamera as THREE.Camera;
 
+// @TODO: add JSDoc comment
 export const getAllCameras = () => cameras;

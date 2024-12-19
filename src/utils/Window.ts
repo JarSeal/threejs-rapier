@@ -1,3 +1,4 @@
+// @TODO: add JSDoc comment
 export const getWindowSize = () => {
   const width = window.innerWidth;
   const height = window.innerHeight;

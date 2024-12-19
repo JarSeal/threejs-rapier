@@ -26,6 +26,7 @@ export type LightProps = { id?: string } & (
 
 const lights: { [id: string]: Lights } = {};
 
+// @TODO: add JSDoc comment
 export const createLight = ({ id, type, params }: LightProps) => {
   let light: Lights | null = null;
 
@@ -66,10 +67,13 @@ export const createLight = ({ id, type, params }: LightProps) => {
   return light;
 };
 
+// @TODO: add JSDoc comment
 export const getLight = (id: string) => lights[id];
 
+// @TODO: add JSDoc comment
 export const getLights = (id: string[]) => id.map((lightId) => lights[lightId]);
 
+// @TODO: add JSDoc comment
 export const deleteLight = (id: string) => {
   const light = lights[id];
   if (!light) {
@@ -81,4 +85,5 @@ export const deleteLight = (id: string) => {
   delete lights[id];
 };
 
+// @TODO: add JSDoc comment
 export const getAllLights = () => lights;

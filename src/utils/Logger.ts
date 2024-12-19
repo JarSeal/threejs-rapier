@@ -1,14 +1,16 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 let loggerInitiated = false;
 let logger:
   | {
-      log: (...data: any[]) => void;
-      warn: (...data: any[]) => void;
-      error: (...data: any[]) => void;
+      log: (...data: unknown[]) => void;
+      warn: (...data: unknown[]) => void;
+      error: (...data: unknown[]) => void;
     }
   | Console = {
-  log: (..._data: any[]) => undefined,
-  warn: (..._data: any[]) => undefined,
-  error: (..._data: any[]) => undefined,
+  log: (..._data: unknown[]) => undefined,
+  warn: (..._data: unknown[]) => undefined,
+  error: (..._data: unknown[]) => undefined,
 };
 
 const initLogger = () => {
@@ -19,20 +21,26 @@ const initLogger = () => {
   loggerInitiated = true;
 };
 
+// @TODO: add JSDoc comment
 export const getLogger = () => {
   initLogger();
   return logger;
 };
 
-export const llog = (...data: any[]) => {
+// @TODO: add JSDoc comment
+export const llog = (...data: unknown[]) => {
   initLogger();
   return logger.log(...data);
 };
-export const lwarn = (...data: any[]) => {
+
+// @TODO: add JSDoc comment
+export const lwarn = (...data: unknown[]) => {
   initLogger();
   return logger.warn(...data);
 };
-export const lerror = (...data: any[]) => {
+
+// @TODO: add JSDoc comment
+export const lerror = (...data: unknown[]) => {
   initLogger();
   return logger.error(...data);
 };

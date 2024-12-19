@@ -40,6 +40,7 @@ export type GeoProps = { id?: string } & (
     }
 );
 
+// @TODO: add JSDoc comment
 export const createGeometry = (props: GeoProps) => {
   let geo;
   if (props?.id && geometries[props?.id]) {
@@ -83,11 +84,13 @@ export const createGeometry = (props: GeoProps) => {
   return geo;
 };
 
+// @TODO: add JSDoc comment
 export const getGeometry = (id: string | string[]) => {
   if (typeof id === 'string') return geometries[id];
   return id.map((geoId) => geometries[geoId]);
 };
 
+// @TODO: add JSDoc comment
 export const deleteGeometry = (id: string | string[]) => {
   if (typeof id === 'string') {
     const geo = geometries[id];
@@ -106,8 +109,10 @@ export const deleteGeometry = (id: string | string[]) => {
   }
 };
 
+// @TODO: add JSDoc comment
 export const getAllGeometries = () => geometries;
 
+// @TODO: add JSDoc comment
 export const saveGeometry = (geometry: THREE.BufferGeometry, givenId?: string) => {
   if (!geometry.isBufferGeometry) return;
   const id = givenId || geometry.uuid;

@@ -23,6 +23,7 @@ type RendererOptions = {
   currentApiIsWebGL: boolean;
 };
 
+// @TODO: add JSDoc comment
 export const createRenderer = (opts?: Partial<RendererOptions>) => {
   const windowSize = getWindowSize();
 
@@ -44,6 +45,7 @@ export const createRenderer = (opts?: Partial<RendererOptions>) => {
   return renderer;
 };
 
+// @TODO: add JSDoc comment
 export const getCanvasParentElem = () => {
   const canvasParentElem = document.getElementById(ELEM_ID);
   if (!canvasParentElem) {
@@ -52,6 +54,7 @@ export const getCanvasParentElem = () => {
   return canvasParentElem;
 };
 
+// @TODO: add JSDoc comment
 export const getRenderer = () => {
   if (!r) {
     lwarn(`The renderer has not been created or it has been deleted, in getRenderer().`);
@@ -59,6 +62,7 @@ export const getRenderer = () => {
   return r;
 };
 
+// @TODO: add JSDoc comment
 export const deleteRenderer = () => {
   if (!r) {
     lwarn(`The renderer has not been created or it has been deleted, in deleteRenderer(id).`);
@@ -83,4 +87,5 @@ const setRendererOptions = async (opts?: Partial<RendererOptions>) => {
   }
 };
 
+// @TODO: add JSDoc comment
 export const getRendererOptions = () => options;

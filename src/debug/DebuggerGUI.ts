@@ -48,6 +48,7 @@ type TabAndContainer = {
 
 const tabsAndContainers: TabAndContainer[] = [];
 
+// @TODO: add JSDoc comment
 const createTabMenuButtons = () => {
   for (let i = 0; i < tabsAndContainers.length; i++) {
     const data = tabsAndContainers[i];
@@ -80,6 +81,7 @@ createTabMenuButtons();
 export type DebugGUIOpts = { drawerBtnPlace?: 'TOP' | 'MIDDLE' | 'BOTTOM' };
 let guiOpts: DebugGUIOpts | undefined = undefined;
 
+// @TODO: add JSDoc comment
 export const createDebugGui = (opts?: DebugGUIOpts) => {
   guiOpts = opts;
   getDrawerState();
@@ -198,6 +200,7 @@ const toggleDrawer = (drawerCMP: TCMP | null, openOrClose?: 'OPEN' | 'CLOSE') =>
   drawerCMP.updateClass(styles.debuggerGUI_closed, 'add');
 };
 
+// @TODO: add JSDoc comment
 export const setDebuggerTabAndContainer = (
   tabAndContainer: Omit<TabAndContainer, 'button'>,
   opts?: DebugGUIOpts
@@ -209,6 +212,7 @@ export const setDebuggerTabAndContainer = (
   createDebugGui(options);
 };
 
+// @TODO: add JSDoc comment
 export const createNewDebuggerGUI = (id: string, heading?: string) => {
   const idAndName = `debuggerContainer-${id}`;
   const container = CMP({

@@ -29,21 +29,34 @@ const setTextureOpts = (texture: THREE.Texture, texOpts?: TexOpts) => {
   return texture;
 };
 
-const loadTexture = (id?: string, fileName?: string, texOpts?: TexOpts) => {
-  if (!fileName) {
-    return new THREE.Texture(
-      texOpts?.image,
-      texOpts?.mapping,
-      texOpts?.wrapS,
-      texOpts?.wrapT,
-      texOpts?.magFilter,
-      texOpts?.minFilter,
-      texOpts?.format,
-      texOpts?.type,
-      texOpts?.anisotropy,
-      texOpts?.colorSpace
+const getNoFileTexture = (texOpts?: TexOpts) =>
+  new THREE.Texture(
+    texOpts?.image,
+    texOpts?.mapping,
+    texOpts?.wrapS,
+    texOpts?.wrapT,
+    texOpts?.magFilter,
+    texOpts?.minFilter,
+    texOpts?.format,
+    texOpts?.type,
+    texOpts?.anisotropy,
+    texOpts?.colorSpace
+  );
+
+const createTexture = (
+  id?: string,
+  fileName?: string,
+  texOpts?: TexOpts,
+  throwOnError?: boolean
+) => {
+  if (id && textures[id]) {
+    throw new Error(
+      `Texture with id "${id}" already exists. Pick another id or delete the texture first before recreating it (in loadTexture).`
     );
   }
+
+  if (!fileName) return getNoFileTexture(texOpts);
+
   const loader = new THREE.TextureLoader();
   const texture = setTextureOpts(
     loader.load(
@@ -51,16 +64,16 @@ const loadTexture = (id?: string, fileName?: string, texOpts?: TexOpts) => {
       (texture) => texture,
       undefined,
       (err) => {
-        const errorMsg = `Could not load texture in loadTexture (id: "${id}", "fileName: ${fileName}")`;
+        const errorMsg = `Could not load texture in createTexture (id: "${id}", "fileName: ${fileName}")`;
         lerror(errorMsg, err);
+        if (throwOnError) throw new Error(errorMsg);
+        return new THREE.Texture();
       }
     ),
     texOpts
   );
   return texture;
 };
-
-// @TODO: loadTextureAsync
 
 /**
  * Loads one or more textures in the background.
@@ -91,7 +104,7 @@ export const loadTextures = (
 
     if (id && textures[id]) {
       throw new Error(
-        `Texture with id "${id}" already exists. Pick another id or delete the texture first before recreating it (in load textures).`
+        `Texture with id "${id}" already exists. Pick another id or delete the texture first before recreating it (in loadTextures).`
       );
     }
 
@@ -114,7 +127,7 @@ export const loadTextures = (
             throw new Error(errorMsg);
           }
           if (onErrorAction === 'EMPTY_TEXTURE') {
-            const texture = loadTexture(id, undefined, texOpts);
+            const texture = createTexture(id, undefined, texOpts);
             const texId = id || texture.uuid;
             texture.userData.id = texId;
             batchTextures[texId] = texture;
@@ -125,7 +138,7 @@ export const loadTextures = (
         }
       );
     } else {
-      const texture = loadTexture(id, undefined, texOpts);
+      const texture = createTexture(id, undefined, texOpts);
       const texId = id || texture.uuid;
       texture.userData.id = texId;
       batchTextures[texId] = texture;
@@ -150,34 +163,65 @@ export const loadTextures = (
  * @param texOpts optional {@link TexOpts}
  * @returns THREE.Texture
  */
-export const createTexture = ({
+export const loadTexture = ({
   id,
   fileName,
   texOpts,
+  throwOnError,
 }: {
   id?: string;
   fileName?: string;
   texOpts?: TexOpts;
+  throwOnError?: boolean;
 }) => {
-  let texture: THREE.Texture | null = null;
-
-  if (id && textures[id]) {
-    throw new Error(
-      `Texture with id "${id}" already exists. Pick another id or delete the texture first before recreating it.`
-    );
-  }
-
-  texture = loadTexture(id, fileName, texOpts);
+  const texture = createTexture(id, fileName, texOpts, throwOnError);
   texture.userData.id = id || texture.uuid;
   textures[id || texture.uuid] = texture;
-
   return texture;
 };
 
+// @TODO: add JSDoc comment
+export const loadTextureAsync = async ({
+  id,
+  fileName,
+  texOpts,
+  throwOnError,
+}: {
+  id?: string;
+  fileName?: string;
+  texOpts?: TexOpts;
+  throwOnError?: boolean;
+}) => {
+  if (id && textures[id]) {
+    throw new Error(
+      `Texture with id "${id}" already exists. Pick another id or delete the texture first before recreating it (in loadTextureAsync).`
+    );
+  }
+
+  if (!fileName) return getNoFileTexture(texOpts);
+
+  const loader = new THREE.TextureLoader();
+  try {
+    const loadedTexture = await loader.loadAsync(fileName);
+    const texture = setTextureOpts(loadedTexture, texOpts);
+    texture.userData.id = id || texture.uuid;
+    textures[id || texture.uuid] = texture;
+    return texture;
+  } catch (err) {
+    const errorMsg = `Could not load texture in loadTextureAsync (id: "${id}", "fileName: ${fileName}")`;
+    lerror(errorMsg, err);
+    if (throwOnError) throw new Error(errorMsg);
+    return getNoFileTexture(texOpts);
+  }
+};
+
+// @TODO: add JSDoc comment
 export const getTexture = (id: string) => textures[id];
 
+// @TODO: add JSDoc comment
 export const getTextures = (ids: string[]) => ids.map((id) => textures[id]);
 
+// @TODO: add JSDoc comment
 export const deleteTexture = (id: string | string[]) => {
   if (typeof id === 'string') {
     const texture = getTexture(id);
@@ -217,4 +261,5 @@ export const deleteTexture = (id: string | string[]) => {
   }
 };
 
+// @TODO: add JSDoc comment
 export const getAllTextures = () => textures;

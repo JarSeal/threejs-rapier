@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTF, GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/Addons.js';
 import { lerror } from '../utils/Logger';
 import { saveMesh } from './Mesh';
 
@@ -14,6 +15,13 @@ export type ImportModelParams = {
 
 const ALLOWED_FILENAME_EXTENSIONS = ['gltf', 'glb'];
 
+const setDracoLoader = (loader: GLTFLoader) => {
+  // @TODO: test this properly (setDecoderPath is probably wrong now)
+  const dracoLoader = new DRACOLoader();
+  dracoLoader.setDecoderPath('/examples/jsm/libs/draco/');
+  loader.setDRACOLoader(dracoLoader);
+};
+
 const parseImportResult = <T extends THREE.Group | THREE.Mesh>(
   groupOrMesh: T,
   params: ImportModelParams
@@ -26,6 +34,7 @@ const parseImportResult = <T extends THREE.Group | THREE.Mesh>(
     let index = 0;
     for (let i = 0; i < kids.length; i++) {
       const kid = kids[i];
+      // @TODO: saveGroup (this should replace this implementation below)
       if ('isMesh' in kid && kid.isMesh) {
         const newId = id ? `${id}-${index}` : undefined;
         saveMesh(kid as THREE.Mesh, newId, !saveMaterial);
@@ -85,18 +94,15 @@ const checkImportFileName = (fileName: string) => {
   }
 };
 
+// @TODO: add JSDoc comment
 export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
   params: ImportModelParams
 ): Promise<T | null> => {
   const { id, fileName, importGroup, throwOnError } = params;
-
   checkImportFileName(fileName);
 
   const loader = new GLTFLoader();
-  // @TODO: Make dracoLoader available (if needed)
-  // const dracoLoader = new DRACOLoader();
-  // dracoLoader.setDecoderPath('/examples/jsm/libs/draco/');
-  // loader.setDRACOLoader(dracoLoader);
+  setDracoLoader(loader);
 
   let modelGroup: THREE.Group | null = null;
   try {
@@ -113,8 +119,7 @@ export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
   return parseImportResult<T>(modelGroup as T, params);
 };
 
-// @TODO: importModel
-
+// @TODO: add JSDoc comment
 export const importModels = (
   modelsParams: ImportModelParams[],
   updateStatusFn?: (
@@ -124,19 +129,15 @@ export const importModels = (
   ) => void,
   throwOnErrors?: boolean
 ) => {
-  const loader = new GLTFLoader();
   const modelGroups: (THREE.Group | THREE.Mesh)[] = [];
   let loadedCount = 0;
 
+  const loader = new GLTFLoader();
+  setDracoLoader(loader);
+
   for (let i = 0; i < modelsParams.length; i++) {
     const { id, fileName, importGroup, throwOnError } = modelsParams[i];
-
     checkImportFileName(fileName);
-
-    // @TODO: Make dracoLoader available (if needed)
-    // const dracoLoader = new DRACOLoader();
-    // dracoLoader.setDecoderPath('/examples/jsm/libs/draco/');
-    // loader.setDRACOLoader(dracoLoader);
 
     loader.load(
       fileName,
@@ -159,3 +160,13 @@ export const importModels = (
     );
   }
 };
+
+// @TODO: add JSDoc comment
+export const importModel = (
+  modelParams: ImportModelParams,
+  updateStatusFn?: (
+    loadedModels: (THREE.Group | THREE.Mesh)[],
+    loadedCount: number,
+    totalCount: number
+  ) => void
+) => importModels([modelParams], updateStatusFn);

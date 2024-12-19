@@ -4,6 +4,7 @@ import { createGeometry, deleteGeometry, saveGeometry, type GeoProps } from './G
 
 const meshes: { [id: string]: THREE.Mesh } = {};
 
+// @TODO: add JSDoc comment
 export const createMesh = ({
   id,
   geo,
@@ -37,8 +38,10 @@ export const createMesh = ({
   return mesh;
 };
 
+// @TODO: add JSDoc comment
 export const getMesh = (id: string) => meshes[id];
 
+// @TODO: add JSDoc comment
 export const getMeshes = (id: string[]) => id.map((meshId) => meshes[meshId]);
 
 const deleteOneMesh = (
@@ -68,6 +71,7 @@ const deleteOneMesh = (
   delete meshes[id];
 };
 
+// @TODO: add JSDoc comment
 export const deleteMesh = (
   id: string | string[],
   opts?: { deleteGeometries?: boolean; deleteMaterials?: boolean; deleteTextures?: boolean }
@@ -82,6 +86,7 @@ export const deleteMesh = (
   }
 };
 
+// @TODO: add JSDoc comment
 export const saveMesh = (mesh: THREE.Mesh, givenId?: string, doNotSaveMaterial?: boolean) => {
   if (!mesh.isMesh) return;
   if (givenId && meshes[givenId]) {
@@ -105,4 +110,5 @@ export const saveMesh = (mesh: THREE.Mesh, givenId?: string, doNotSaveMaterial?:
   return mesh;
 };
 
+// @TODO: add JSDoc comment
 export const getAllMeshes = () => meshes;

@@ -4,6 +4,7 @@ let hudRoot: TCMP | null = null;
 const GUI_CONTAINER_ID = 'guiContainer';
 const HUD_ROOT_ID = 'hudRoot';
 
+// @TODO: add JSDoc comment
 export const getGUIContainerElem = () => {
   let guiContainerElem = document.getElementById(HUD_ROOT_ID);
   if (!guiContainerElem) {
@@ -15,10 +16,12 @@ export const getGUIContainerElem = () => {
   return guiContainerElem;
 };
 
+// @TODO: add JSDoc comment
 export const createHudContainer = () => {
   hudRoot = CMP({ id: HUD_ROOT_ID, idAttr: true, attach: getGUIContainerElem(), class: 'hudRoot' });
 };
 
+// @TODO: add JSDoc comment
 export const getHUDRootCMP = () => {
   if (!hudRoot) {
     throw new Error('HUD root CMP not found.');

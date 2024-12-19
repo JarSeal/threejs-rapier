@@ -69,6 +69,7 @@ export type MatProps = { id?: string } & (
   | { type: 'SPRITE'; params: THREE.SpriteMaterialParameters }
 );
 
+// @TODO: add JSDoc comment
 export const createMaterial = ({ id, type, params }: MatProps) => {
   let mat: Materials | null = null;
 
@@ -103,10 +104,13 @@ export const createMaterial = ({ id, type, params }: MatProps) => {
   return mat;
 };
 
+// @TODO: add JSDoc comment
 export const getMaterial = (id: string) => materials[id];
 
+// @TODO: add JSDoc comment
 export const getMaterials = (id: string[]) => id.map((matId) => materials[matId]);
 
+// @TODO: add JSDoc comment
 export const deleteTexturesFromMaterial = (mat: Materials) => {
   for (let i = 0; i < textureMapKeys.length; i++) {
     const key = textureMapKeys[i] as keyof Materials;
@@ -117,6 +121,7 @@ export const deleteTexturesFromMaterial = (mat: Materials) => {
   }
 };
 
+// @TODO: add JSDoc comment
 export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) => {
   if (typeof id === 'string') {
     const mat = materials[id];
@@ -137,8 +142,10 @@ export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) 
   }
 };
 
+// @TODO: add JSDoc comment
 export const getAllMaterials = () => materials;
 
+// @TODO: add JSDoc comment
 export const saveMaterial = (material: Materials | Materials[], givenId?: string) => {
   if (!Array.isArray(material)) {
     if (givenId && materials[givenId]) {

@@ -32,6 +32,7 @@ const defaultStatsOptions = {
   enabled: true,
 };
 
+// @TODO: add JSDoc comment
 export const initStats = (config?: StatsOptions) => {
   savedConfig = { ...defaultStatsOptions, ...lsGetItem(LS_KEY, config || {}) };
   if ('enabled' in savedConfig && savedConfig.enabled) {
@@ -44,6 +45,7 @@ export const initStats = (config?: StatsOptions) => {
   return stats;
 };
 
+// @TODO: add JSDoc comment
 export const getStats = () => stats;
 
 const setDebuggerUI = (config: StatsOptions) =>

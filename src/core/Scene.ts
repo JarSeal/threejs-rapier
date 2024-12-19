@@ -12,6 +12,7 @@ export type SceneOptions = {
   backgroundSkybox?: THREE.CubeTexture;
 };
 
+// @TODO: add JSDoc comment
 export const createScene = (id: string, opts?: SceneOptions) => {
   if (scenes[id]) {
     throw new Error(
@@ -32,6 +33,7 @@ export const createScene = (id: string, opts?: SceneOptions) => {
   return scene;
 };
 
+// @TODO: add JSDoc comment
 export const getScene = (id: string) => {
   const scene = scenes[id];
   if (!scene) {
@@ -41,6 +43,7 @@ export const getScene = (id: string) => {
   return scene || null;
 };
 
+// @TODO: add JSDoc comment
 export const deleteScene = (
   id: string,
   opts?: {
@@ -73,6 +76,7 @@ export const deleteScene = (
   delete scenes[id];
 };
 
+// @TODO: add JSDoc comment
 export const setCurrentScene = (id: string | null) => {
   if (currentSceneId === id) return currentScene;
   const nextScene = id ? scenes[id] : null;
@@ -86,6 +90,8 @@ export const setCurrentScene = (id: string | null) => {
   return nextScene;
 };
 
+// @TODO: add JSDoc comment
 export const getCurrentScene = () => currentScene as THREE.Scene;
 
+// @TODO: add JSDoc comment
 export const getAllScenes = () => scenes;

@@ -4,7 +4,7 @@ import { createScene, getCurrentScene } from './core/Scene';
 import { createCamera, getCurrentCamera } from './core/Camera';
 import { createGeometry } from './core/Geometry';
 import { createMaterial } from './core/Material';
-import { createTexture, getTexture, loadTextures } from './core/Texture';
+import { loadTexture, getTexture, loadTextures } from './core/Texture';
 import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
 import { initStats } from './debug/Stats';
@@ -53,7 +53,7 @@ const material2 = createMaterial({
   id: 'box1Material',
   type: 'PHONG',
   params: {
-    map: createTexture({
+    map: loadTexture({
       id: 'box1Texture',
       fileName: '/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
     }),

@@ -47,6 +47,7 @@ const convertValue = (defaultValue: StorageValue, lsValue: string) => {
 };
 
 // Local Storage
+// @TODO: add JSDoc comment
 export const lsGetItem = (key: string, defaultValue: StorageValue, doNotConvert?: boolean) => {
   checkStorage('local');
   if (!lsAvailable) return defaultValue || null;
@@ -59,6 +60,7 @@ export const lsGetItem = (key: string, defaultValue: StorageValue, doNotConvert?
   }
 };
 
+// @TODO: add JSDoc comment
 export const lsSetItem = (key: string, value: StorageValue) => {
   checkStorage('local');
   if (!lsAvailable) return;
@@ -68,6 +70,7 @@ export const lsSetItem = (key: string, value: StorageValue) => {
   localStorage.setItem(key, String(value));
 };
 
+// @TODO: add JSDoc comment
 export const lsRemoveItem = (key: string) => {
   checkStorage('local');
   if (!lsAvailable) return;
@@ -75,6 +78,7 @@ export const lsRemoveItem = (key: string) => {
 };
 
 // Session Storage
+// @TODO: add JSDoc comment
 export const ssGetItem = (key: string, defaultValue: StorageValue, doNotConvert?: boolean) => {
   checkStorage('session');
   if (!ssAvailable) return defaultValue || null;
@@ -87,12 +91,14 @@ export const ssGetItem = (key: string, defaultValue: StorageValue, doNotConvert?
   }
 };
 
+// @TODO: add JSDoc comment
 export const ssSetItem = (key: string, value: StorageValue) => {
   checkStorage('session');
   if (!ssAvailable) return;
   sessionStorage.setItem(key, String(value));
 };
 
+// @TODO: add JSDoc comment
 export const ssRemoveItem = (key: string) => {
   checkStorage('session');
   if (!ssAvailable) return;
