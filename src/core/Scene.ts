@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { deleteMesh } from './Mesh';
+import { deleteGeometry } from './Geometry';
+import { deleteMaterial } from './Material';
 
 const scenes: { [id: string]: THREE.Scene } = {};
 let currentScene: THREE.Scene | null = null;
@@ -61,17 +64,35 @@ export const deleteScene = (
     return;
   }
 
-  // @TODO:
-  // Traverse all children objects:
-  // - Remove all textures (if keepTextures !== true)
-  // - Remove all materials (if keepMaterials !== true)
-  // - Remove all geometries (if keepGeometries !== true)
-  // - Remove all objects (respect keepMeshes and keepLights)
-  opts?.keepTextures;
-  opts?.keepMaterials;
-  opts?.keepGeometries;
-  opts?.keepMeshes;
-  opts?.keepLights;
+  scene.traverse((obj) => {
+    if ('isMesh' in obj && !opts?.keepMeshes && obj.userData.id) {
+      deleteMesh(obj.userData.id, {
+        deleteGeometries: !opts?.keepGeometries,
+        deleteMaterials: !opts?.keepMaterials,
+        deleteTextures: !opts?.keepTextures,
+      });
+    } else if ('isMesh' in obj && opts?.keepMeshes) {
+      const mesh = obj as THREE.Mesh;
+      if (!opts?.keepGeometries) {
+        const geo = mesh.geometry;
+        deleteGeometry(geo.userData.id);
+      }
+      if (!opts?.keepMaterials) {
+        const mat = mesh.material;
+        if (Array.isArray(mat)) {
+          for (let i = 0; i < mat.length; i++) {
+            deleteMaterial(mat[i].userData.id, !opts.keepTextures);
+          }
+        } else {
+          deleteMaterial(mat.userData.id, !opts.keepTextures);
+        }
+      }
+    }
+
+    // @TODO: keepLights
+    // @TODO: keepGroups
+    opts?.keepLights;
+  });
 
   delete scenes[id];
 };
