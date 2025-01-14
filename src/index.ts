@@ -1,23 +1,20 @@
 import * as THREE from 'three';
 import { createRenderer } from './core/Renderer';
-import { createScene, getCurrentScene } from './core/Scene';
-import { createCamera, getCurrentCamera } from './core/Camera';
+import { createScene } from './core/Scene';
+import { createCamera } from './core/Camera';
 import { createGeometry } from './core/Geometry';
 import { createMaterial } from './core/Material';
 import { loadTexture, getTexture, loadTextures } from './core/Texture';
 import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
 import { initStats } from './debug/Stats';
-import {
-  createDebugGui,
-  createNewDebuggerGUI,
-  setDebuggerTabAndContainer,
-} from './debug/DebuggerGUI';
+import { createDebugGui } from './debug/DebuggerGUI';
 import './styles/index.scss';
 import { createHudContainer } from './core/HUD';
 import { importModelAsync } from './core/ImportModel';
 import { createMesh } from './core/Mesh';
 import { addToGroup, createGroup } from './core/Group';
+import { mainLoop } from './core/MainLoop';
 
 export const GUI_CONTAINER_ID = 'guiContainer';
 
@@ -37,7 +34,7 @@ camera.position.z = 5;
 camera.position.x = 2.5;
 camera.position.y = 1;
 
-const renderer = createRenderer({ antialias: true, forceWebGL: false });
+createRenderer({ antialias: true, forceWebGL: false });
 
 const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });
 const material1 = createMaterial({
@@ -45,7 +42,7 @@ const material1 = createMaterial({
   type: 'BASIC',
   params: { color: 0xff0000, wireframe: true },
 });
-const sphere = createMesh({ geo: geometry1, mat: material1 });
+const sphere = createMesh({ id: 'sphereMesh1', geo: geometry1, mat: material1 });
 scene.add(sphere);
 
 camera.lookAt(sphere.position);
@@ -61,7 +58,7 @@ const material2 = createMaterial({
     }),
   },
 });
-const box = createMesh({ geo: geometry2, mat: material2 });
+const box = createMesh({ id: 'boxMesh1', geo: geometry2, mat: material2 });
 box.position.set(2, 0, 0);
 scene.add(box);
 
@@ -105,6 +102,7 @@ loadTextures(
 );
 
 const importedBox = await importModelAsync<THREE.Mesh>({
+  id: 'importedMesh1',
   fileName: '/testModels/box01.glb',
   throwOnError: true,
 });
@@ -152,70 +150,7 @@ createHudContainer();
 createDebugGui();
 
 // Stats
-const stats = initStats();
+initStats();
 
-const animate = () => {
-  if (loopState.masterPlay) {
-    requestAnimationFrame(animate);
-    loopState.isMasterPlaying = true;
-  } else {
-    loopState.isMasterPlaying = false;
-    return;
-  }
-  if (loopState.appPlay) {
-    loopState.isAppPlaying = true;
-    // @TODO: add gamePlay loop here
-    sphere.rotation.z -= 0.001; // REMOVE
-    sphere.rotation.y += 0.001; // REMOVE
-    box.rotation.y -= 0.001; // REMOVE
-    box.rotation.z -= 0.001; //REMOVE
-    if (importedBox) {
-      importedBox.rotation.y -= 0.0014; // REMOVE
-      importedBox.rotation.z -= 0.0014; // REMOVE
-    }
-  } else {
-    loopState.isAppPlaying = false;
-  }
-  renderer.renderAsync(getCurrentScene(), getCurrentCamera());
-  stats?.update();
-};
-
-if (loopState.masterPlay) {
-  animate();
-}
-
-export const toggleMainPlay = (value?: boolean) => {
-  if (value !== undefined) {
-    loopState.masterPlay = value;
-  } else {
-    loopState.masterPlay = !loopState.masterPlay;
-  }
-  if (loopState.masterPlay && !loopState.isMasterPlaying) animate();
-};
-
-export const toggleGamePlay = (value?: boolean) => {
-  if (value !== undefined) {
-    loopState.appPlay = value;
-    return;
-  }
-  loopState.appPlay = !loopState.appPlay;
-};
-
-setDebuggerTabAndContainer({
-  id: 'loopControls',
-  buttonText: 'LOOP',
-  title: 'Loop controls',
-  orderNr: 4,
-  container: () => {
-    const { container, debugGui } = createNewDebuggerGUI('Loop', 'Loop Controls');
-    debugGui
-      .add(loopState, 'masterPlay')
-      .name('Master loop')
-      .onChange((value: boolean) => {
-        if (value) requestAnimationFrame(animate);
-      });
-    debugGui.add(loopState, 'appPlay').name('App loop');
-    // @TODO: add forced max FPS debugger
-    return container;
-  },
-});
+// Start loop
+mainLoop();
