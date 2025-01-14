@@ -16,6 +16,8 @@ import {
 import './styles/index.scss';
 import { createHudContainer } from './core/HUD';
 import { importModelAsync } from './core/ImportModel';
+import { createMesh } from './core/Mesh';
+import { addToGroup, createGroup } from './core/Group';
 
 export const GUI_CONTAINER_ID = 'guiContainer';
 
@@ -43,7 +45,7 @@ const material1 = createMaterial({
   type: 'BASIC',
   params: { color: 0xff0000, wireframe: true },
 });
-const sphere = new THREE.Mesh(geometry1, material1);
+const sphere = createMesh({ geo: geometry1, mat: material1 });
 scene.add(sphere);
 
 camera.lookAt(sphere.position);
@@ -59,9 +61,31 @@ const material2 = createMaterial({
     }),
   },
 });
-const box = new THREE.Mesh(geometry2, material2);
+const box = createMesh({ geo: geometry2, mat: material2 });
 box.position.set(2, 0, 0);
 scene.add(box);
+
+// Group example
+const group = createGroup({ id: 'myGroup' });
+const groupBox1 = createMesh({
+  geo: createGeometry<THREE.BoxGeometry>({
+    type: 'BOX',
+    params: { width: 0.2, height: 0.2, depth: 0.2 },
+  }),
+  mat: createMaterial({ type: 'BASIC', params: { color: '#f0cc00' } }),
+});
+groupBox1.position.set(-0.2, 0, 0);
+const groupBox2 = createMesh({
+  geo: createGeometry<THREE.BoxGeometry>({
+    type: 'BOX',
+    params: { width: 0.2, height: 0.2, depth: 0.2 },
+  }),
+  mat: createMaterial({ type: 'BASIC', params: { color: '#ff00c0' } }),
+});
+groupBox2.position.set(0.2, 0, 0);
+addToGroup(group, [groupBox1, groupBox2]);
+group.position.y = 1.4;
+scene.add(group);
 
 // Batch load textures example
 const updateLoadStatusFn = (

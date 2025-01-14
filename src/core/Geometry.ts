@@ -40,8 +40,10 @@ export type GeoProps = { id?: string } & (
     }
 );
 
+export type GeoTypes = THREE.BoxGeometry | THREE.SphereGeometry;
+
 // @TODO: add JSDoc comment
-export const createGeometry = (props: GeoProps) => {
+export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
   let geo;
   if (props?.id && geometries[props?.id]) {
     throw new Error(
@@ -81,7 +83,7 @@ export const createGeometry = (props: GeoProps) => {
   geo.userData.id = props?.id || geo.uuid;
   geometries[props?.id || geo.uuid] = geo;
 
-  return geo;
+  return geo as T;
 };
 
 // @TODO: add JSDoc comment

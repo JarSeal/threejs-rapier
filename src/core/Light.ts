@@ -81,6 +81,7 @@ export const deleteLight = (id: string) => {
     return;
   }
 
+  light.removeFromParent();
   light.dispose();
   delete lights[id];
 };

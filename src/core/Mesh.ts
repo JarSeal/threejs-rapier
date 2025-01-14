@@ -46,25 +46,32 @@ export const getMeshes = (id: string[]) => id.map((meshId) => meshes[meshId]);
 
 const deleteOneMesh = (
   id: string,
-  opts?: { deleteGeometries?: boolean; deleteMaterials?: boolean; deleteTextures?: boolean }
+  opts?: {
+    deleteGeometries?: boolean;
+    deleteMaterials?: boolean;
+    deleteTextures?: boolean;
+    deleteAll?: boolean;
+  }
 ) => {
   const mesh = meshes[id];
   if (!mesh) return;
-  if (opts?.deleteGeometries) {
+  if (opts?.deleteGeometries || opts?.deleteAll) {
     const geoId = mesh.geometry.userData.id;
     if (geoId) deleteGeometry(geoId);
   }
-  if (opts?.deleteMaterials) {
+  if (opts?.deleteMaterials || opts?.deleteAll) {
+    const deleteTextures =
+      opts?.deleteTextures !== undefined ? opts.deleteTextures : opts?.deleteAll;
     if (Array.isArray(mesh.material)) {
       const matIds: string[] = [];
       for (let i = 0; i < mesh.material.length; i++) {
         const matId = mesh.material[i].userData.id;
         if (matId) matIds.push(matId);
       }
-      deleteMaterial(matIds, opts?.deleteTextures);
+      deleteMaterial(matIds, deleteTextures);
     } else {
       const matId = mesh.material.userData.id;
-      if (matId) deleteMaterial(matId, opts?.deleteTextures);
+      if (matId) deleteMaterial(matId, deleteTextures);
     }
   }
   mesh.removeFromParent();
@@ -74,7 +81,12 @@ const deleteOneMesh = (
 // @TODO: add JSDoc comment
 export const deleteMesh = (
   id: string | string[],
-  opts?: { deleteGeometries?: boolean; deleteMaterials?: boolean; deleteTextures?: boolean }
+  opts?: {
+    deleteGeometries?: boolean;
+    deleteMaterials?: boolean;
+    deleteTextures?: boolean;
+    deleteAll?: boolean;
+  }
 ) => {
   if (typeof id === 'string') {
     deleteOneMesh(id, opts);

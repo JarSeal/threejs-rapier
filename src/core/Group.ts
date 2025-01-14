@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { deleteMesh } from './Mesh';
-import { getLogger } from '../utils/Logger';
+import { lwarn } from '../utils/Logger';
 
 const groups: { [id: string]: THREE.Group } = {};
 
@@ -12,7 +12,7 @@ export const addToGroup = (
   if (typeof idOrGroup === 'string') {
     const group = groups[idOrGroup];
     if (!group) {
-      getLogger().warn(`Could not find group with id "${idOrGroup}" in addToGroup.`);
+      lwarn(`Could not find group with id "${idOrGroup}" in addToGroup.`);
       return;
     }
     if (Array.isArray(obj)) {
@@ -50,13 +50,13 @@ export const removeFromGroup = (
   const group = typeof groupIdOrGroup === 'string' ? groups[groupIdOrGroup] : groupIdOrGroup;
   const groupId = group.userData.id;
   if (!group) {
-    getLogger().warn(`Could not find group with id "${groupId}" in removeFromGroup.`);
+    lwarn(`Could not find group with id "${groupId}" in removeFromGroup.`);
     return;
   }
   if (typeof objIdOrIndex === 'string') {
     const obj = group.children.find((obj) => obj.userData.id === objIdOrIndex);
     if (!obj) {
-      getLogger().warn(
+      lwarn(
         `Could not find object in group "${groupId}" with object id "${objIdOrIndex}" in removeFromGroup.`
       );
       return group;
@@ -65,7 +65,7 @@ export const removeFromGroup = (
   } else if (typeof objIdOrIndex === 'number') {
     const obj = group.children[objIdOrIndex];
     if (!obj) {
-      getLogger().warn(
+      lwarn(
         `Could not find object in group "${groupId}" with index "${objIdOrIndex}" in removeFromGroup.`
       );
       return group;
@@ -77,7 +77,7 @@ export const removeFromGroup = (
       if (typeof objIdOrIndex === 'string') {
         const obj = group.children.find((obj) => obj.userData.id === objIdOrIndex[i]);
         if (!obj) {
-          getLogger().warn(
+          lwarn(
             `Could not find object in group "${groupId}" with object id "${objIdOrIndex[i]}" in removeFromGroup.`
           );
           continue;
@@ -88,7 +88,7 @@ export const removeFromGroup = (
       // objIdOrIndex[i] is a number
       const obj = group.children[objIdOrIndex[i] as number];
       if (!obj) {
-        getLogger().warn(
+        lwarn(
           `Could not find object in group "${groupId}" with index "${objIdOrIndex[i]}" in removeFromGroup.`
         );
         continue;
@@ -149,6 +149,7 @@ const deleteOneGroup = (
     deleteGeometries?: boolean;
     deleteMaterials?: boolean;
     deleteTextures?: boolean;
+    deleteAll?: boolean;
   }
 ) => {
   const group = groups[id];
@@ -156,11 +157,12 @@ const deleteOneGroup = (
   const children = group.children;
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
-    if (opts?.deleteMeshes && 'isMesh' in child && child.isMesh) {
+    if ((opts?.deleteMeshes || opts?.deleteAll) && 'isMesh' in child) {
       deleteMesh(child.userData.id, {
         deleteGeometries: opts?.deleteGeometries,
         deleteMaterials: opts?.deleteMaterials,
         deleteTextures: opts?.deleteTextures,
+        deleteAll: opts?.deleteAll,
       });
     }
   }
@@ -170,21 +172,41 @@ const deleteOneGroup = (
 
 // @TODO: add JSDoc comment
 export const deleteGroup = (
-  id: string | string[],
+  idOrGroup: string | string[] | THREE.Group | THREE.Group[],
   opts?: {
     deleteMeshes?: boolean;
     deleteGeometries?: boolean;
     deleteMaterials?: boolean;
     deleteTextures?: boolean;
+    deleteAll?: boolean;
   }
 ) => {
-  if (typeof id === 'string') {
+  if (typeof idOrGroup === 'string') {
+    deleteOneGroup(idOrGroup, opts);
+    return;
+  }
+  if ('isGroup' in idOrGroup) {
+    const id = idOrGroup.userData.id;
+    if (!id) {
+      lwarn(`Could not find group with id "${id}" in deleteGroup.`);
+      return;
+    }
     deleteOneGroup(id, opts);
     return;
   }
 
-  for (let i = 0; i < id.length; i++) {
-    deleteOneGroup(id[i], opts);
+  for (let i = 0; i < idOrGroup.length; i++) {
+    const item = idOrGroup[i];
+    if (typeof item === 'string') {
+      deleteOneGroup(item as string, opts);
+    } else {
+      const id = item.userData.id;
+      if (!id) {
+        lwarn(`Could not find group with id "${id}" in deleteGroup (array of groups).`);
+        return;
+      }
+      deleteOneGroup(id, opts);
+    }
   }
 };
 
