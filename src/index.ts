@@ -7,20 +7,14 @@ import { createMaterial } from './core/Material';
 import { loadTexture, getTexture, loadTextures } from './core/Texture';
 import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
-import './styles/index.scss';
 import { importModelAsync } from './core/ImportModel';
 import { createMesh } from './core/Mesh';
 import { addToGroup, createGroup } from './core/Group';
 import { initMainLoop } from './core/MainLoop';
+import './styles/index.scss';
+import { loadConfig } from './core/Config';
 
-export const GUI_CONTAINER_ID = 'guiContainer';
-
-export const loopState = {
-  masterPlay: true,
-  appPlay: true,
-  isMasterPlaying: false,
-  isAppPlaying: false,
-};
+loadConfig();
 
 const scene = createScene('testScene1', {
   isCurrentScene: true,

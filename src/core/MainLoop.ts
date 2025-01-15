@@ -13,6 +13,7 @@ import { lerror, lwarn } from '../utils/Logger';
 import { createHudContainer } from './HUD';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
+import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -87,27 +88,24 @@ const mainLoopForDebug = () => {
   }
 };
 
-// const mainLoopForProduction = () => {
-//   requestAnimationFrame(mainLoop);
-//   delta = clock.getDelta();
-//   // @TODO: add app play loop here
-//   getRenderer()?.renderAsync(getCurrentScene(), getCurrentCamera());
-// };
+const mainLoopForProduction = () => {
+  requestAnimationFrame(mainLoop);
+  delta = clock.getDelta();
+  // @TODO: add app play loop here
+  getRenderer()?.renderAsync(getCurrentScene(), getCurrentCamera());
+};
 
-// const mainLoopForProductionWithFPSLimiter = () => {
-//   requestAnimationFrame(mainLoop);
-//   delta = clock.getDelta();
-//   accDelta += delta;
-//   // @TODO: add app play loop here
-//   if (accDelta > loopState.maxFPSInterval) {
-//     getRenderer()?.renderAsync(getCurrentScene(), getCurrentCamera());
-//     getStats()?.update();
-//     accDelta = accDelta % loopState.maxFPSInterval;
-//   }
-// };
-
-// @TODO: add env check and use either debug or production loop (and whether to use FPS limiter or not)
-mainLoop = mainLoopForDebug;
+const mainLoopForProductionWithFPSLimiter = () => {
+  requestAnimationFrame(mainLoop);
+  delta = clock.getDelta();
+  accDelta += delta;
+  // @TODO: add app play loop here
+  if (accDelta > loopState.maxFPSInterval) {
+    getRenderer()?.renderAsync(getCurrentScene(), getCurrentCamera());
+    getStats()?.update();
+    accDelta = accDelta % loopState.maxFPSInterval;
+  }
+};
 
 // Init mainLoop
 export const initMainLoop = () => {
@@ -130,18 +128,39 @@ export const initMainLoop = () => {
     throw new Error(msg);
   }
 
+  if (isDebugEnvironment()) {
+    mainLoop = mainLoopForDebug;
+  } else if (isCurrentEnvironment('production') && loopState.maxFPS > 0) {
+    mainLoop = mainLoopForProductionWithFPSLimiter;
+  } else {
+    mainLoop = mainLoopForProduction;
+  }
+
   // HUD container
   createHudContainer();
 
-  // Debug GUI and Stats
-  // @TODO: skip these if ENV is production
-  const savedValues = lsGetItem(LS_KEY, loopState);
-  loopState = { ...loopState, ...savedValues };
-  createDebugGui();
-  initStats();
+  const maxFPS = Number(getEnv('VITE_MAX_FPS'));
+  if (maxFPS !== undefined && !isNaN(maxFPS)) {
+    loopState.maxFPS = maxFPS;
+    if (maxFPS > 0) loopState.maxFPSInterval = 1 / maxFPS;
+  }
+
+  if (isDebugEnvironment()) {
+    // Debug GUI and Stats (if debug environment)
+    createDebugGui();
+    const savedValues = lsGetItem(LS_KEY, loopState);
+    loopState = {
+      ...loopState,
+      ...savedValues,
+      ...(maxFPS !== undefined && !isNaN(maxFPS)
+        ? { maxFPS: loopState.maxFPS, maxFPSInterval: loopState.maxFPSInterval }
+        : {}),
+    };
+    createLoopDebugGUI();
+    initStats();
+  }
 
   renderer.renderAsync(currentScene, currentCamera);
-  // @TODO: skip masterPlay check if ENV is production
   if (loopState.masterPlay) requestAnimationFrame(mainLoop);
 };
 
@@ -186,38 +205,40 @@ export const deleteResizer = (id: string) => {
 };
 
 // Debug GUI for loop
-setDebuggerTabAndContainer({
-  id: 'loopControls',
-  buttonText: 'LOOP',
-  title: 'Loop controls',
-  orderNr: 4,
-  container: () => {
-    const { container, debugGui } = createNewDebuggerGUI('Loop', 'Loop Controls');
-    debugGui
-      .add(loopState, 'masterPlay')
-      .name('Master loop')
-      .onChange((value: boolean) => {
-        if (value) requestAnimationFrame(mainLoop);
-        lsSetItem(LS_KEY, loopState);
-      });
-    debugGui
-      .add(loopState, 'appPlay')
-      .name('App loop')
-      .onChange(() => lsSetItem(LS_KEY, loopState));
-    debugGui
-      .add(loopState, 'maxFPS')
-      .name('Forced max FPS (0 = off)')
-      .onChange((value: number) => {
-        if (value > 0) {
-          loopState.maxFPSInterval = 1 / value;
+const createLoopDebugGUI = () => {
+  setDebuggerTabAndContainer({
+    id: 'loopControls',
+    buttonText: 'LOOP',
+    title: 'Loop controls',
+    orderNr: 4,
+    container: () => {
+      const { container, debugGui } = createNewDebuggerGUI('Loop', 'Loop Controls');
+      debugGui
+        .add(loopState, 'masterPlay')
+        .name('Master loop')
+        .onChange((value: boolean) => {
+          if (value) requestAnimationFrame(mainLoop);
           lsSetItem(LS_KEY, loopState);
-          return;
-        }
-        lsSetItem(LS_KEY, loopState);
-      });
-    return container;
-  },
-});
+        });
+      debugGui
+        .add(loopState, 'appPlay')
+        .name('App loop')
+        .onChange(() => lsSetItem(LS_KEY, loopState));
+      debugGui
+        .add(loopState, 'maxFPS')
+        .name('Forced max FPS (0 = off)')
+        .onChange((value: number) => {
+          if (value > 0) {
+            loopState.maxFPSInterval = 1 / value;
+            lsSetItem(LS_KEY, loopState);
+            return;
+          }
+          lsSetItem(LS_KEY, loopState);
+        });
+      return container;
+    },
+  });
+};
 
 export const toggleMainPlay = (value?: boolean) => {
   if (value !== undefined) {

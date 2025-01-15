@@ -9,7 +9,9 @@
   "private": false,
   "type": "module",
   "scripts": {
-    "dev": "vite serve --port 8080 --host",
+    "dev": "VITE_APP_ENV=development vite serve --port 8080 --host",
+    "dev:test": "VITE_APP_ENV=test vite serve --port 8080 --host",
+    "dev:production": "vite serve --port 8080 --host",
     "lint": "eslint",
     "build": "tsc && vite build"
   },
@@ -20,6 +22,7 @@
   },
   "devDependencies": {
     "@types/dat.gui": "0.7.13",
+    "@types/node": "22.10.6",
     "@types/three": "0.170.0",
     "@typescript-eslint/eslint-plugin": "7.8.0",
     "@typescript-eslint/parser": "7.8.0",
