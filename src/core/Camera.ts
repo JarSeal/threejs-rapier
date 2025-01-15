@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { getWindowSize } from '../utils/Window';
 import { lwarn } from '../utils/Logger';
 
-const cameras: { [id: string]: THREE.Camera } = {};
-let currentCamera: THREE.Camera | null = null;
+const cameras: { [id: string]: THREE.PerspectiveCamera } = {};
+let currentCamera: THREE.PerspectiveCamera | null = null;
 let currentCameraId: string | null = null;
 
 // @TODO: add JSDoc comment
@@ -63,7 +63,7 @@ export const setCurrentCamera = (id: string) => {
 };
 
 // @TODO: add JSDoc comment
-export const getCurrentCamera = () => currentCamera as THREE.Camera;
+export const getCurrentCamera = () => currentCamera as THREE.PerspectiveCamera;
 
 // @TODO: add JSDoc comment
 export const getAllCameras = () => cameras;
