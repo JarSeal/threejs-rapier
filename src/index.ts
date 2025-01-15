@@ -7,14 +7,11 @@ import { createMaterial } from './core/Material';
 import { loadTexture, getTexture, loadTextures } from './core/Texture';
 import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
-import { initStats } from './debug/Stats';
-import { createDebugGui } from './debug/DebuggerGUI';
 import './styles/index.scss';
-import { createHudContainer } from './core/HUD';
 import { importModelAsync } from './core/ImportModel';
 import { createMesh } from './core/Mesh';
 import { addToGroup, createGroup } from './core/Group';
-import { mainLoop } from './core/MainLoop';
+import { initMainLoop } from './core/MainLoop';
 
 export const GUI_CONTAINER_ID = 'guiContainer';
 
@@ -145,12 +142,5 @@ const hemisphere = createLight({
 });
 scene.add(hemisphere);
 
-// HUD and Debug GUI
-createHudContainer();
-createDebugGui();
-
-// Stats
-initStats();
-
 // Start loop
-mainLoop();
+initMainLoop();

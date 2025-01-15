@@ -55,12 +55,7 @@ export const getCanvasParentElem = () => {
 };
 
 // @TODO: add JSDoc comment
-export const getRenderer = () => {
-  if (!r) {
-    lwarn(`The renderer has not been created or it has been deleted, in getRenderer().`);
-  }
-  return r;
-};
+export const getRenderer = () => r;
 
 // @TODO: add JSDoc comment
 export const deleteRenderer = () => {

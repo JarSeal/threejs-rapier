@@ -34,6 +34,7 @@ const defaultStatsOptions = {
 
 // @TODO: add JSDoc comment
 export const initStats = (config?: StatsOptions) => {
+  // @TODO: disable for production ENV
   savedConfig = { ...defaultStatsOptions, ...lsGetItem(LS_KEY, config || {}) };
   if ('enabled' in savedConfig && savedConfig.enabled) {
     if (stats) stats.update();
