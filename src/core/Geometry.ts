@@ -2,18 +2,6 @@ import * as THREE from 'three/webgpu';
 
 const geometries: { [id: string]: THREE.BufferGeometry } = {};
 
-export type GeoProps2 = {
-  id?: string;
-  box?: {
-    width?: number;
-    height?: number;
-    depth?: number;
-    widthSegments?: number;
-    heightSegments?: number;
-    depthSegments?: number;
-  };
-};
-
 export type GeoProps = { id?: string } & (
   | {
       type: 'BOX';
@@ -42,7 +30,11 @@ export type GeoProps = { id?: string } & (
 
 export type GeoTypes = THREE.BoxGeometry | THREE.SphereGeometry;
 
-// @TODO: add JSDoc comment
+/**
+ * Creates a Three.js geometry.
+ * @param props geometry props: {@link GeoProps}
+ * @returns geometry ({@link GeoTypes})
+ */
 export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
   let geo;
   if (props?.id && geometries[props?.id]) {
@@ -86,13 +78,20 @@ export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
   return geo as T;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns one or many geometries.
+ * @param id geometry id or array of ids
+ * @returns one or many geometries (THREE.BufferGeometry)
+ */
 export const getGeometry = (id: string | string[]) => {
   if (typeof id === 'string') return geometries[id];
   return id.map((geoId) => geometries[geoId]);
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes one or many geometries.
+ * @param id geometry id or array of ids
+ */
 export const deleteGeometry = (id: string | string[]) => {
   if (typeof id === 'string') {
     const geo = geometries[id];
@@ -111,13 +110,22 @@ export const deleteGeometry = (id: string | string[]) => {
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns all geometries.
+ * @returns object: { [id: string]: THREE.BufferGeometry }
+ */
 export const getAllGeometries = () => geometries;
 
-// @TODO: add JSDoc comment
+/**
+ * Saves a geometry to memory;
+ * @param geometry THREE.BufferGeometry
+ * @param givenId optional string for geometry id, if not provided, the geometry's UUID will be used as id
+ * @returns THREE.BufferGeometry or undefined
+ */
 export const saveGeometry = (geometry: THREE.BufferGeometry, givenId?: string) => {
   if (!geometry.isBufferGeometry) return;
   const id = givenId || geometry.uuid;
+  if (geometries[id]) return geometries[id];
   geometry.userData.id = id;
   geometries[id] = geometry;
   return geometry;

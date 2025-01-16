@@ -7,7 +7,12 @@ import {
 import { getStats, initStats } from '../debug/Stats';
 import { getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
-import { getCurrentScene, getSceneAppLoopers, getSceneMainLoopers } from './Scene';
+import {
+  getCurrentScene,
+  getSceneAppLoopers,
+  getSceneMainLoopers,
+  getSceneResizers,
+} from './Scene';
 import { lerror, lwarn } from '../utils/Logger';
 import { createHudContainer } from './HUD';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
@@ -176,9 +181,18 @@ resizers['canvasResizer'] = () => {
 window.addEventListener(
   'resize',
   () => {
+    // Global resizers
     const ids = Object.keys(resizers);
     for (let i = 0; i < ids.length; i++) {
       resizers[ids[i]]();
+    }
+
+    // Scene resizers
+    const sceneResizers = getSceneResizers();
+    if (sceneResizers) {
+      for (let i = 0; i < sceneResizers.length; i++) {
+        sceneResizers[i]();
+      }
     }
   },
   false

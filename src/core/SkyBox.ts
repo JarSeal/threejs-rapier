@@ -29,6 +29,7 @@ type SkyBoxProps = {
     }
 );
 
+// @TODO: add jsDoc
 export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
   const renderer = getRenderer();
   if (!renderer) {
@@ -62,30 +63,14 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
       equirectTexture.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
       const shaderNodeTexture = texture(equirectTexture, equirectUV(), 0);
       scene.backgroundNode = shaderNodeTexture as unknown as ShaderNodeObject<THREE.Node>;
-      // @TODO: remove backgroundNode texture in deleteScene
-
-      // new THREE.TextureLoader().load(
-      //   file,
-      //   (equirectTexture) => {
-      //     equirectTexture.colorSpace = THREE.SRGBColorSpace;
-      //     const shaderNodeTexture = texture(equirectTexture, equirectUV(), 0);
-      //     equirectTexture.dispose();
-      //     scene.backgroundNode = shaderNodeTexture as unknown as ShaderNodeObject<THREE.Node>;
-      //   },
-      //   undefined,
-      //   (err) => {
-      //     if (err) {
-      //       const msg = `Error while loading equirectangular texture for ${sceneId ? `scene with id "${sceneId}"` : 'current scene'} in addSkyBox (type: ${type}, file: ${params.file}).`;
-      //       lerror(msg, err);
-      //       throw new Error(msg);
-      //     }
-      //   }
-      // );
+      scene.userData.backgroundNodeTextureId = textureId || equirectTexture.userData.id;
     } else if (file) {
       file.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
       const shaderNodeTexture = texture(file, equirectUV(), 0);
       scene.backgroundNode = shaderNodeTexture as unknown as ShaderNodeObject<THREE.Node>;
+      scene.userData.backgroundNodeTextureId = file.userData.id;
     }
+    return;
   }
 
   if (type === 'CUBETEXTURE') {

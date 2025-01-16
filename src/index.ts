@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { createRenderer } from './core/Renderer';
-import { addSceneAppLoopers, addSceneMainLoopers, createScene } from './core/Scene';
+import { addSceneAppLooper, addSceneMainLooper, createScene } from './core/Scene';
 import { createCamera } from './core/Camera';
 import { createGeometry } from './core/Geometry';
 import { createMaterial } from './core/Material';
@@ -119,18 +119,18 @@ if (importedBox) {
   importedBox.material = material;
   scene.add(importedBox);
 
-  addSceneAppLoopers(() => {
+  addSceneAppLooper(() => {
     importedBox.rotation.y += getTransformValue(0.2);
     importedBox.rotation.z -= getTransformValue(0.14);
   });
 }
 
-addSceneMainLoopers(() => {
+addSceneMainLooper(() => {
   sphere.rotation.z -= getTransformValue(0.1);
   sphere.rotation.y += getTransformValue(0.1);
 });
 
-addSceneAppLoopers(() => {
+addSceneAppLooper(() => {
   box.rotation.y -= getTransformValue(0.1);
   box.rotation.z -= getTransformValue(0.1);
 });

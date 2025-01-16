@@ -5,6 +5,7 @@ import { deleteMaterial } from './Material';
 import { deleteGroup } from './Group';
 import { lwarn } from '../utils/Logger';
 import { deleteLight } from './Light';
+import { deleteTexture } from './Texture';
 
 type Looper = (delta: number) => void;
 
@@ -13,6 +14,7 @@ let currentScene: THREE.Scene | null = null;
 let currentSceneId: string | null = null;
 const sceneMainLoopers: { [sceneId: string]: Looper[] } = {};
 const sceneAppLoopers: { [sceneId: string]: Looper[] } = {};
+const sceneResizers: { [sceneId: string]: (() => void)[] } = {};
 
 export type SceneOptions = {
   isCurrentScene?: boolean;
@@ -159,8 +161,12 @@ export const deleteScene = (
     }
   });
 
+  // Delete loopers
   deleteSceneMainLoopers(id);
   deleteSceneAppLoopers(id);
+
+  // Delete skybox textures
+  if (scene.userData.backgroundNodeTextureId) deleteTexture(scene.userData.backgroundNodeTextureId);
 
   delete scenes[id];
 };
@@ -193,7 +199,7 @@ export const getSceneMainLoopers = (sceneId?: string) => {
 };
 
 // @TODO: add JSDoc comment
-export const addSceneMainLoopers = (looper: Looper, sceneId?: string) => {
+export const addSceneMainLooper = (looper: Looper, sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
   if (id && sceneMainLoopers[id]) {
@@ -207,7 +213,7 @@ export const addSceneMainLoopers = (looper: Looper, sceneId?: string) => {
 };
 
 // @TODO: add JSDoc comment
-export const removeSceneMainLoopers = (index: number | number[], sceneId?: string) => {
+export const removeSceneMainLooper = (index: number | number[], sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
   if (id) {
@@ -237,7 +243,7 @@ export const getSceneAppLoopers = (sceneId?: string) => {
 };
 
 // @TODO: add JSDoc comment
-export const addSceneAppLoopers = (looper: Looper, sceneId?: string) => {
+export const addSceneAppLooper = (looper: Looper, sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
   if (id && sceneAppLoopers[id]) {
@@ -251,7 +257,7 @@ export const addSceneAppLoopers = (looper: Looper, sceneId?: string) => {
 };
 
 // @TODO: add JSDoc comment
-export const removeSceneAppLoopers = (index: number | number[], sceneId?: string) => {
+export const removeSceneAppLooper = (index: number | number[], sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
   if (id) {
@@ -270,4 +276,48 @@ export const removeSceneAppLoopers = (index: number | number[], sceneId?: string
 };
 
 // @TODO: add JSDoc comment
-export const deleteSceneAppLoopers = (sceneId: string) => delete sceneMainLoopers[sceneId];
+export const deleteSceneAppLoopers = (sceneId: string) => delete sceneAppLoopers[sceneId];
+
+// @TODO: add JSDoc comment
+export const getSceneResizers = (sceneId?: string) => {
+  let id = currentSceneId;
+  if (sceneId) id = sceneId;
+  if (id) return sceneResizers[id];
+  lwarn(`Could not find scene with id ${id} in getSceneResizers.`);
+};
+
+// @TODO: add JSDoc comment
+export const addSceneResizer = (resizer: () => void, sceneId?: string) => {
+  let id = currentSceneId;
+  if (sceneId) id = sceneId;
+  if (id && sceneResizers[id]) {
+    sceneResizers[id].push(resizer);
+    return;
+  } else if (id) {
+    sceneResizers[id] = [resizer];
+    return;
+  }
+  lwarn(`Could not find scene with id ${id} in addSceneResizer.`);
+};
+
+// @TODO: add JSDoc comment
+export const removeSceneResizer = (index: number | number[], sceneId?: string) => {
+  let id = currentSceneId;
+  if (sceneId) id = sceneId;
+  if (id) {
+    if (!sceneResizers[id]) return;
+    if (typeof index === 'number') {
+      sceneResizers[id] = sceneResizers[id].filter((_, i) => i !== index);
+      return;
+    } else {
+      for (let i = 0; i < index.length; i++) {
+        sceneResizers[id] = sceneResizers[id].filter((_, i) => i !== index[i]);
+      }
+      return;
+    }
+  }
+  lwarn(`Could not find scene with id ${id} in deleteSceneResizer.`);
+};
+
+// @TODO: add JSDoc comment
+export const deleteSceneResizer = (sceneId: string) => delete sceneResizers[sceneId];
