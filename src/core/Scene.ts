@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { deleteMesh } from './Mesh';
 import { deleteGeometry } from './Geometry';
 import { deleteMaterial } from './Material';
@@ -6,9 +6,13 @@ import { deleteGroup } from './Group';
 import { lwarn } from '../utils/Logger';
 import { deleteLight } from './Light';
 
+type Looper = (delta: number) => void;
+
 const scenes: { [id: string]: THREE.Scene } = {};
 let currentScene: THREE.Scene | null = null;
 let currentSceneId: string | null = null;
+const sceneMainLoopers: { [sceneId: string]: Looper[] } = {};
+const sceneAppLoopers: { [sceneId: string]: Looper[] } = {};
 
 export type SceneOptions = {
   isCurrentScene?: boolean;
@@ -16,6 +20,8 @@ export type SceneOptions = {
   backgroundColor?: THREE.Color;
   backgroundTexture?: THREE.Texture;
   backgroundSkybox?: THREE.CubeTexture;
+  mainLoopers?: Looper[];
+  appLoopers?: Looper[];
 };
 
 // @TODO: add JSDoc comment
@@ -35,6 +41,9 @@ export const createScene = (id: string, opts?: SceneOptions) => {
   scenes[id] = scene;
 
   if (opts?.isCurrentScene) setCurrentScene(id);
+
+  if (opts?.mainLoopers) sceneMainLoopers[id] = opts.mainLoopers;
+  if (opts?.appLoopers) sceneAppLoopers[id] = opts.appLoopers;
 
   return scene;
 };
@@ -150,6 +159,9 @@ export const deleteScene = (
     }
   });
 
+  deleteSceneMainLoopers(id);
+  deleteSceneAppLoopers(id);
+
   delete scenes[id];
 };
 
@@ -171,3 +183,91 @@ export const getCurrentScene = () => currentScene as THREE.Scene;
 
 // @TODO: add JSDoc comment
 export const getAllScenes = () => scenes;
+
+// @TODO: add JSDoc comment
+export const getSceneMainLoopers = (sceneId?: string) => {
+  let id = currentSceneId;
+  if (sceneId) id = sceneId;
+  if (id) return sceneMainLoopers[id];
+  lwarn(`Could not find scene with id ${id} in getSceneMainLoopers.`);
+};
+
+// @TODO: add JSDoc comment
+export const addSceneMainLoopers = (looper: Looper, sceneId?: string) => {
+  let id = currentSceneId;
+  if (sceneId) id = sceneId;
+  if (id && sceneMainLoopers[id]) {
+    sceneMainLoopers[id].push(looper);
+    return;
+  } else if (id) {
+    sceneMainLoopers[id] = [looper];
+    return;
+  }
+  lwarn(`Could not find scene with id ${id} in addSceneMainLoopers.`);
+};
+
+// @TODO: add JSDoc comment
+export const removeSceneMainLoopers = (index: number | number[], sceneId?: string) => {
+  let id = currentSceneId;
+  if (sceneId) id = sceneId;
+  if (id) {
+    if (!sceneMainLoopers[id]) return;
+    if (typeof index === 'number') {
+      sceneMainLoopers[id] = sceneMainLoopers[id].filter((_, i) => i !== index);
+      return;
+    } else {
+      for (let i = 0; i < index.length; i++) {
+        sceneMainLoopers[id] = sceneMainLoopers[id].filter((_, i) => i !== index[i]);
+      }
+      return;
+    }
+  }
+  lwarn(`Could not find scene with id ${id} in deleteSceneMainLoopers.`);
+};
+
+// @TODO: add JSDoc comment
+export const deleteSceneMainLoopers = (sceneId: string) => delete sceneMainLoopers[sceneId];
+
+// @TODO: add JSDoc comment
+export const getSceneAppLoopers = (sceneId?: string) => {
+  let id = currentSceneId;
+  if (sceneId) id = sceneId;
+  if (id) return sceneAppLoopers[id];
+  lwarn(`Could not find scene with id ${id} in getSceneAppLoopers.`);
+};
+
+// @TODO: add JSDoc comment
+export const addSceneAppLoopers = (looper: Looper, sceneId?: string) => {
+  let id = currentSceneId;
+  if (sceneId) id = sceneId;
+  if (id && sceneAppLoopers[id]) {
+    sceneAppLoopers[id].push(looper);
+    return;
+  } else if (id) {
+    sceneAppLoopers[id] = [looper];
+    return;
+  }
+  lwarn(`Could not find scene with id ${id} in addSceneAppLoopers.`);
+};
+
+// @TODO: add JSDoc comment
+export const removeSceneAppLoopers = (index: number | number[], sceneId?: string) => {
+  let id = currentSceneId;
+  if (sceneId) id = sceneId;
+  if (id) {
+    if (!sceneAppLoopers[id]) return;
+    if (typeof index === 'number') {
+      sceneAppLoopers[id] = sceneAppLoopers[id].filter((_, i) => i !== index);
+      return;
+    } else {
+      for (let i = 0; i < index.length; i++) {
+        sceneAppLoopers[id] = sceneAppLoopers[id].filter((_, i) => i !== index[i]);
+      }
+      return;
+    }
+  }
+  lwarn(`Could not find scene with id ${id} in deleteSceneAppLoopers.`);
+};
+
+// @TODO: add JSDoc comment
+export const deleteSceneAppLoopers = (sceneId: string) => delete sceneMainLoopers[sceneId];

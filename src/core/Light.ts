@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { lwarn } from '../utils/Logger';
 
 export type Lights = THREE.AmbientLight | THREE.HemisphereLight | THREE.PointLight;

@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { deleteMesh } from './Mesh';
 import { lwarn } from '../utils/Logger';
 

@@ -1,4 +1,4 @@
-import { Clock } from 'three';
+import { Clock } from 'three/webgpu';
 import {
   createDebugGui,
   createNewDebuggerGUI,
@@ -6,9 +6,8 @@ import {
 } from '../debug/DebuggerGUI';
 import { getStats, initStats } from '../debug/Stats';
 import { getCurrentCamera } from './Camera';
-import { getMesh } from './Mesh';
 import { getRenderer } from './Renderer';
-import { getCurrentScene } from './Scene';
+import { getCurrentScene, getSceneAppLoopers, getSceneMainLoopers } from './Scene';
 import { lerror, lwarn } from '../utils/Logger';
 import { createHudContainer } from './HUD';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
@@ -45,6 +44,7 @@ export const getTransformValue = (speedInUnitsPerSecond: number) => delta * spee
 let mainLoop: () => void = () => {};
 
 const mainLoopForDebug = () => {
+  delta = clock.getDelta();
   if (loopState.masterPlay) {
     requestAnimationFrame(mainLoop);
     loopState.isMasterPlaying = true;
@@ -52,24 +52,21 @@ const mainLoopForDebug = () => {
     loopState.isMasterPlaying = false;
     return;
   }
-  delta = clock.getDelta();
+  // main loopers
+  const mainLoopers = getSceneMainLoopers();
+  if (mainLoopers) {
+    for (let i = 0; i < mainLoopers.length; i++) {
+      mainLoopers[i](delta);
+    }
+  }
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
-    // @TODO: add app play loop here
-    const sphere = getMesh('sphereMesh1'); // REMOVE
-    if (sphere) {
-      sphere.rotation.z -= getTransformValue(0.1); // REMOVE
-      sphere.rotation.y += getTransformValue(0.1); // REMOVE
-    }
-    const box = getMesh('boxMesh1'); // REMOVE
-    if (box) {
-      box.rotation.y -= getTransformValue(0.1); // REMOVE
-      box.rotation.z -= getTransformValue(0.1); //REMOVE
-    }
-    const importedBox = getMesh('importedMesh1'); // REMOVE
-    if (importedBox) {
-      importedBox.rotation.y += getTransformValue(0.2); // REMOVE
-      importedBox.rotation.z -= getTransformValue(0.14); // REMOVE
+    // app loopers
+    const appLoopers = getSceneAppLoopers();
+    if (appLoopers) {
+      for (let i = 0; i < appLoopers.length; i++) {
+        appLoopers[i](delta);
+      }
     }
   } else {
     loopState.isAppPlaying = false;

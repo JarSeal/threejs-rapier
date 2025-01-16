@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { MatProps, createMaterial, deleteMaterial, saveMaterial } from './Material';
 import { createGeometry, deleteGeometry, saveGeometry, type GeoProps } from './Geometry';
 

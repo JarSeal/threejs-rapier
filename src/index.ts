@@ -1,6 +1,7 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { createRenderer } from './core/Renderer';
-import { createScene } from './core/Scene';
+import { addSceneAppLoopers, addSceneMainLoopers, createScene } from './core/Scene';
 import { createCamera } from './core/Camera';
 import { createGeometry } from './core/Geometry';
 import { createMaterial } from './core/Material';
@@ -10,12 +11,14 @@ import { createLight } from './core/Light';
 import { importModelAsync } from './core/ImportModel';
 import { createMesh } from './core/Mesh';
 import { addToGroup, createGroup } from './core/Group';
-import { initMainLoop } from './core/MainLoop';
+import { getTransformValue, initMainLoop } from './core/MainLoop';
 import './styles/index.scss';
 import { loadConfig } from './core/Config';
+import { addSkyBox } from './core/SkyBox';
 
 loadConfig();
 
+// Init scene, camera, and renderer
 const scene = createScene('testScene1', {
   isCurrentScene: true,
   background: new THREE.Color(0x222222),
@@ -24,8 +27,15 @@ const camera = createCamera('mainCam', { isCurrentCamera: true });
 camera.position.z = 5;
 camera.position.x = 2.5;
 camera.position.y = 1;
+const renderer = createRenderer({ antialias: true, forceWebGL: false });
 
-createRenderer({ antialias: true, forceWebGL: false });
+new OrbitControls(camera, renderer.domElement);
+
+// App specific
+addSkyBox({
+  type: 'EQUIRECTANGULAR',
+  params: { file: '/testTextures/equi_grass_and_forest_4k.jpg' },
+});
 
 const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });
 const material1 = createMaterial({
@@ -108,7 +118,22 @@ if (importedBox) {
   });
   importedBox.material = material;
   scene.add(importedBox);
+
+  addSceneAppLoopers(() => {
+    importedBox.rotation.y += getTransformValue(0.2);
+    importedBox.rotation.z -= getTransformValue(0.14);
+  });
 }
+
+addSceneMainLoopers(() => {
+  sphere.rotation.z -= getTransformValue(0.1);
+  sphere.rotation.y += getTransformValue(0.1);
+});
+
+addSceneAppLoopers(() => {
+  box.rotation.y -= getTransformValue(0.1);
+  box.rotation.z -= getTransformValue(0.1);
+});
 
 const point = createLight({
   id: 'pointLight',

@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { deleteTexture } from './Texture';
 
 export type Materials =
