@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { createRenderer } from './core/Renderer';
 import { addSceneAppLooper, addSceneMainLooper, createScene } from './core/Scene';
 import { createCamera } from './core/Camera';
@@ -27,14 +26,12 @@ const camera = createCamera('mainCam', { isCurrentCamera: true });
 camera.position.z = 5;
 camera.position.x = 2.5;
 camera.position.y = 1;
-const renderer = createRenderer({ antialias: true, forceWebGL: false });
-
-new OrbitControls(camera, renderer.domElement);
+createRenderer({ antialias: true, forceWebGL: false });
 
 // App specific
 addSkyBox({
   type: 'EQUIRECTANGULAR',
-  params: { file: '/testTextures/equi_grass_and_forest_4k.jpg' },
+  params: { file: '/testTextures/equi_grass_and_forest_4k.jpg', isEnvMap: true },
 });
 
 const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });

@@ -85,6 +85,12 @@ export const setCurrentCamera = (id: string) => {
 export const getCurrentCamera = () => currentCamera as THREE.PerspectiveCamera;
 
 /**
+ * Return the current camera id.
+ * @returns string or null
+ */
+export const getCurrentCameraId = () => currentCameraId;
+
+/**
  * Returns all cameras.
  * @returns object: { [id: string]: THREE.PerspectiveCamera }
  */

@@ -18,6 +18,7 @@ import { createHudContainer } from './HUD';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
+import { initDebugTools } from '../debug/DebugTools';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -160,6 +161,7 @@ export const initMainLoop = () => {
     };
     createLoopDebugGUI();
     initStats();
+    initDebugTools();
   }
 
   renderer.renderAsync(currentScene, currentCamera);
@@ -223,7 +225,7 @@ const createLoopDebugGUI = () => {
     title: 'Loop controls',
     orderNr: 4,
     container: () => {
-      const { container, debugGui } = createNewDebuggerGUI('Loop', 'Loop Controls');
+      const { container, debugGui } = createNewDebuggerGUI('loop', 'Loop Controls');
       debugGui
         .add(loopState, 'masterPlay')
         .name('Master loop')

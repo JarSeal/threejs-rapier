@@ -67,6 +67,7 @@ export type MatProps = { id?: string } & (
   | { type: 'SHADER'; params: THREE.ShaderMaterialParameters }
   | { type: 'SHADOW'; params: THREE.ShadowMaterialParameters }
   | { type: 'SPRITE'; params: THREE.SpriteMaterialParameters }
+  | { type: 'BASICNODEMATERIAL'; params: THREE.MeshBasicNodeMaterialParameters }
 );
 
 // @TODO: add JSDoc comment
@@ -80,25 +81,66 @@ export const createMaterial = ({ id, type, params }: MatProps) => {
   }
 
   switch (type) {
+    case 'LINEBASIC':
+      mat = new THREE.LineBasicMaterial(params);
+      break;
+    case 'LINEDASHED':
+      mat = new THREE.LineDashedMaterial(params);
+      break;
     case 'BASIC':
       mat = new THREE.MeshBasicMaterial(params);
-      mat.userData.type = 'BASIC';
+      break;
+    case 'DEPTH':
+      mat = new THREE.MeshDepthMaterial(params);
+      break;
+    case 'DISTANCE':
+      mat = new THREE.MeshDistanceMaterial(params);
       break;
     case 'LAMBERT':
       mat = new THREE.MeshLambertMaterial(params);
-      mat.userData.type = 'LAMBERT';
+      break;
+    case 'MATCAP':
+      mat = new THREE.MeshMatcapMaterial(params);
+      break;
+    case 'NORMAL':
+      mat = new THREE.MeshNormalMaterial(params);
       break;
     case 'PHONG':
       mat = new THREE.MeshPhongMaterial(params);
-      mat.userData.type = 'PHONG';
       break;
-    // @TODO: add all material types
+    case 'PHYSICAL':
+      mat = new THREE.MeshPhysicalMaterial(params);
+      break;
+    case 'STANDARD':
+      mat = new THREE.MeshStandardMaterial(params);
+      break;
+    case 'TOON':
+      mat = new THREE.MeshToonMaterial(params);
+      break;
+    case 'POINTS':
+      mat = new THREE.PointsMaterial(params);
+      break;
+    case 'SHADERRAW':
+    case 'SHADER':
+      mat = new THREE.ShaderMaterial(params);
+      break;
+    case 'SHADOW':
+      mat = new THREE.ShadowMaterial(params);
+      break;
+    case 'SPRITE':
+      mat = new THREE.SpriteMaterial(params);
+      break;
+    case 'BASICNODEMATERIAL':
+      mat = new THREE.MeshBasicNodeMaterial(params);
+      break;
+    // @TODO: add all node materials
   }
 
   if (!mat) {
     throw new Error(`Could not create material (unknown type: '${type}').`);
   }
 
+  mat.userData.type = type;
   saveMaterial(mat, id);
 
   return mat;

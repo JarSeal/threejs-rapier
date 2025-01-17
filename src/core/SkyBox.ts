@@ -1,10 +1,26 @@
 import * as THREE from 'three/webgpu';
-import { texture, equirectUV, ShaderNodeObject } from 'three/tsl';
+import {
+  texture,
+  equirectUV,
+  ShaderNodeObject,
+  normalWorld,
+  uniform,
+  normalView,
+  positionViewDirection,
+  cameraViewMatrix,
+  pmremTexture,
+} from 'three/tsl';
 import { lerror, lwarn } from '../utils/Logger';
 import { getCurrentScene, getScene } from './Scene';
 import { getRenderer } from './Renderer';
 import { getTexture, loadTexture } from './Texture';
 import { isDebugEnvironment } from './Config';
+import { createMesh } from './Mesh';
+import { createGeometry } from './Geometry';
+import { createMaterial } from './Material';
+import { getCurrentCamera } from './Camera';
+import { createNewDebuggerGUI, setDebuggerTabAndContainer } from '../debug/DebuggerGUI';
+import { lsSetItem } from '../utils/LocalAndSessionStorage';
 
 type SkyBoxProps = {
   sceneId?: string;
@@ -12,9 +28,10 @@ type SkyBoxProps = {
   | {
       type: 'EQUIRECTANGULAR';
       params: {
-        file?: string | THREE.Texture;
+        file?: string | THREE.Texture | THREE.DataTexture;
         textureId?: string;
         colorSpace?: string;
+        isEnvMap?: boolean;
       };
     }
   | {
@@ -29,7 +46,20 @@ type SkyBoxProps = {
     }
 );
 
-// @TODO: add jsDoc
+const LS_KEY = 'debugSkyBox';
+const skyBoxState = {
+  type: '',
+  file: '',
+  textureId: '',
+  colorSpace: THREE.SRGBColorSpace,
+  isEnvMap: false,
+};
+let debuggerCreated = false;
+
+/**
+ * Creates either a sky box (equirectangular, cube texture, or sky and sun). The sky and sun type ("SKYANDSUN") includes a dynamic sun element.
+ * @param skyBoxProps object that has different property's based on the type property, {@link SkyBoxProps}
+ */
 export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
   const renderer = getRenderer();
   if (!renderer) {
@@ -43,6 +73,11 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
     const msg = `Could not find ${sceneId ? `scene with id "${sceneId}"` : 'current scene'} in addSkyBox (type: ${type}).`;
     lerror(msg);
     throw new Error(msg);
+  }
+
+  if (isDebugEnvironment() && !debuggerCreated) {
+    createSkyBoxDebugGUI();
+    debuggerCreated = true;
   }
 
   if (type === 'EQUIRECTANGULAR') {
@@ -60,10 +95,52 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
             throwOnError: isDebugEnvironment(),
           })
         : getTexture(textureId || '');
+      if (!equirectTexture) {
+        const msg = `Could not find or load equirectangular texture in addSkyBox (params: ${JSON.stringify(params)}).`;
+        lerror(msg);
+        return;
+      }
       equirectTexture.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
-      const shaderNodeTexture = texture(equirectTexture, equirectUV(), 0);
-      scene.backgroundNode = shaderNodeTexture as unknown as ShaderNodeObject<THREE.Node>;
-      scene.userData.backgroundNodeTextureId = textureId || equirectTexture.userData.id;
+
+      // Sky box without environment map
+      if (!params.isEnvMap) {
+        const shaderNodeTexture = texture(equirectTexture, equirectUV(), 0);
+        scene.backgroundNode = shaderNodeTexture as unknown as ShaderNodeObject<THREE.Node>;
+        scene.userData.backgroundNodeTextureId = textureId || equirectTexture.userData.id;
+        return;
+      }
+
+      // Use sky box as environment map
+      if (typeof file === 'string') {
+        equirectTexture.mapping = THREE.EquirectangularReflectionMapping;
+        const reflectVec = positionViewDirection
+          .negate()
+          .reflect(normalView)
+          .transformDirection(cameraViewMatrix);
+        const pmremRoughness = uniform(1);
+        const pmremNode = pmremTexture(equirectTexture, reflectVec, pmremRoughness);
+        scene.backgroundNode = pmremTexture(equirectTexture, normalWorld, pmremRoughness);
+        scene.userData.backgroundNodeTextureId = textureId || equirectTexture.userData.id;
+
+        const mesh = createMesh({
+          id: 'envTestMesh',
+          geo: createGeometry({
+            id: 'envTestGeo',
+            type: 'SPHERE',
+            params: { radius: 0.015, widthSegments: 64, heightSegments: 64 },
+          }),
+          mat: createMaterial({
+            id: 'envTestMat',
+            type: 'BASICNODEMATERIAL',
+            params: { colorNode: pmremNode, depthTest: false },
+          }),
+        });
+        mesh.renderOrder = 9999;
+        const camera = getCurrentCamera();
+        scene.add(camera);
+        camera.add(mesh);
+        mesh.position.set(0, 0, -1);
+      }
     } else if (file) {
       file.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
       const shaderNodeTexture = texture(file, equirectUV(), 0);
@@ -84,4 +161,48 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
     lwarn('At the moment SKYANDSUN skybox type is not supported (maybe in the future).');
     return;
   }
+};
+
+// Debug GUI for sky box
+const createSkyBoxDebugGUI = () => {
+  setDebuggerTabAndContainer({
+    id: 'skyBoxControls',
+    buttonText: 'SKYBOX',
+    title: 'Sky box controls',
+    orderNr: 5,
+    container: () => {
+      const { container, debugGui } = createNewDebuggerGUI('skyBox', 'Sky Box Controls');
+      debugGui
+        .add(skyBoxState, 'type')
+        .name('Type')
+        .onChange(() => {
+          lsSetItem(LS_KEY, skyBoxState);
+        });
+      debugGui
+        .add(skyBoxState, 'file')
+        .name('File path')
+        .onChange(() => {
+          lsSetItem(LS_KEY, skyBoxState);
+        });
+      debugGui
+        .add(skyBoxState, 'textureId')
+        .name('Texture id')
+        .onChange(() => {
+          lsSetItem(LS_KEY, skyBoxState);
+        });
+      debugGui
+        .add(skyBoxState, 'colorSpace')
+        .name('Color space')
+        .onChange(() => {
+          lsSetItem(LS_KEY, skyBoxState);
+        });
+      debugGui
+        .add(skyBoxState, 'isEnvMap')
+        .name('Is environment map')
+        .onChange(() => {
+          lsSetItem(LS_KEY, skyBoxState);
+        });
+      return container;
+    },
+  });
 };
