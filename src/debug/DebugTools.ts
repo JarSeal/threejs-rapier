@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
+import { ShaderNodeObject, uniform } from 'three/tsl';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
-import { createCamera, getCurrentCameraId, setCurrentCamera } from '../core/Camera';
+import { createCamera, getAllCameras, getCurrentCameraId, setCurrentCamera } from '../core/Camera';
 import { getRenderer } from '../core/Renderer';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { createNewDebuggerGUI, setDebuggerTabAndContainer } from './DebuggerGUI';
@@ -11,7 +12,11 @@ import { getCurrentScene } from '../core/Scene';
 import { createGroup } from '../core/Group';
 
 const LS_KEY = 'debugTools';
+const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
 export const DEBUG_CAMERA_ID = '_debugCamera';
+let envBallColorNode: ShaderNodeObject<THREE.PMREMNode> | null = null;
+let envBallRoughnessNode: ShaderNodeObject<THREE.UniformNode<number>> = uniform(0);
+let envRoughnessNode: ShaderNodeObject<THREE.UniformNode<number>> = uniform(0);
 let debugCamera: THREE.PerspectiveCamera | null = null;
 let orbitControls: OrbitControls | null = null;
 let debugToolsState: {
@@ -22,19 +27,27 @@ let debugToolsState: {
     near: number;
     far: number;
     position: number[];
-    rotation: number[];
     target: number[];
+  };
+  env: {
+    envRoughness: number;
+    ballRoughness: number;
+    ballRoughnessIsTheSameAsEnvRoughness: boolean;
   };
 } = {
   useDebugCamera: false,
   latestAppCameraId: null,
   camera: {
-    fov: 45,
+    fov: 25,
     near: 0.001,
     far: 1000,
     position: [0, 0, 10],
-    rotation: [0, 0, 0],
     target: [0, 0, 0],
+  },
+  env: {
+    envRoughness: 0,
+    ballRoughness: 0,
+    ballRoughnessIsTheSameAsEnvRoughness: false,
   },
 };
 
@@ -58,7 +71,18 @@ const createDebugToolsDebugGUI = () => {
   });
   if (!debugCamera)
     throw new Error('Error while creating debug camera in createDebugToolsDebugGUI');
-  debugCamera.position.z = 10;
+  debugCamera.position.set(
+    debugToolsState.camera.position[0],
+    debugToolsState.camera.position[1],
+    debugToolsState.camera.position[2]
+  );
+  debugCamera.lookAt(
+    new THREE.Vector3(
+      debugToolsState.camera.target[0],
+      debugToolsState.camera.target[1],
+      debugToolsState.camera.target[2]
+    )
+  );
 
   createOnScreenTools(debugCamera);
 
@@ -66,13 +90,21 @@ const createDebugToolsDebugGUI = () => {
   if (!renderer) throw new Error('Renderer not found in createDebugToolsDebugGUI');
   orbitControls = new OrbitControls(debugCamera, renderer.domElement);
   orbitControls.addEventListener('end', () => {
-    console.log('CHANGE HAPPENED');
-    // @TODO: save position, rotation, and target to the debugToolsState and to LS
+    const position = [
+      debugCamera?.position.x || 0,
+      debugCamera?.position.y || 0,
+      debugCamera?.position.z || 0,
+    ];
+    const target = [
+      orbitControls?.target.x || 0,
+      orbitControls?.target.y || 0,
+      orbitControls?.target.z || 0,
+    ];
+    debugToolsState.camera.position = position;
+    debugToolsState.camera.target = target;
+    lsSetItem(LS_KEY, debugToolsState);
   });
-  // controls.update();
-  // controls.connect();
-  // controls.enabled = true;
-  // controls.update();
+  orbitControls.enabled = debugToolsState.useDebugCamera;
 
   setDebuggerTabAndContainer({
     id: 'debugToolsControls',
@@ -86,13 +118,26 @@ const createDebugToolsDebugGUI = () => {
         .name('Use debug camera')
         .onChange((value: boolean) => {
           if (value) {
-            debugToolsState.latestAppCameraId = getCurrentCameraId();
-            setCurrentCamera(DEBUG_CAMERA_ID);
-          } else if (debugToolsState.latestAppCameraId) {
-            setCurrentCamera(debugToolsState.latestAppCameraId);
+            setDebugToolsVisibility(true);
+          } else {
+            setDebugToolsVisibility(false);
           }
           lsSetItem(LS_KEY, debugToolsState);
         });
+      const envFolder = debugGui.addFolder('Equirectangular sky box');
+      envFolder
+        .add(debugToolsState.env, 'envRoughness', 0, 1, 0.001)
+        .name('Sky box roughness')
+        .onChange((value: number) => {
+          envRoughnessNode.value = value;
+        });
+      envFolder
+        .add(debugToolsState.env, 'ballRoughness', 0, 1, 0.001)
+        .name('Debug ball roughness')
+        .onChange((value: number) => {
+          envBallRoughnessNode.value = value;
+        });
+      // envFolder.add (debugToolsState.env, 'ballRoughnessIsTheSameAsEnvRoughness').name('Use same values');
       return container;
     },
   });
@@ -108,7 +153,7 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
 
   // Environment mirror ball
   const mesh = createMesh({
-    id: 'envMirrorBallMesh',
+    id: ENV_MIRROR_BALL_MESH_ID,
     geo: createGeometry({
       id: 'envMirrorBallGeo',
       type: 'SPHERE',
@@ -117,16 +162,77 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
     mat: createMaterial({
       id: 'envMirrorBallMat',
       type: 'BASICNODEMATERIAL',
-      params: { depthTest: false },
+      params: {
+        depthTest: false,
+        ...(envBallColorNode ? { colorNode: envBallColorNode } : {}),
+      },
     }),
   });
-  mesh.renderOrder = 9999;
-  mesh.position.y += 0.009;
-  mesh.position.x += 0.009;
+  mesh.renderOrder = 999999;
+  mesh.position.y += 0.008;
+  mesh.position.x += 0.008;
+  mesh.visible = Boolean(envBallColorNode);
   toolGroup.add(mesh);
 
   // Add toolgroup to mesh and debugCamera to scene
   debugCamera.add(toolGroup);
-  toolGroup.position.set(viewBoundsMin.x + 0.01, viewBoundsMin.y + 0.01, -0.5);
+  toolGroup.position.set(viewBoundsMin.x + 0.002, viewBoundsMin.y + 0.002, -0.5);
   getCurrentScene().add(debugCamera);
+};
+
+const setDebugToolsVisibility = (show: boolean) => {
+  if (show) {
+    debugToolsState.latestAppCameraId = getCurrentCameraId();
+    if (orbitControls) orbitControls.enabled = true;
+    if (debugCamera) {
+      if (debugCamera.children[0]) debugCamera.children[0].visible = true;
+      debugCamera.position.set(
+        debugToolsState.camera.position[0],
+        debugToolsState.camera.position[1],
+        debugToolsState.camera.position[2]
+      );
+      debugCamera.lookAt(
+        new THREE.Vector3(
+          debugToolsState.camera.target[0],
+          debugToolsState.camera.target[1],
+          debugToolsState.camera.target[2]
+        )
+      );
+    }
+    setCurrentCamera(DEBUG_CAMERA_ID);
+    return;
+  }
+
+  if (orbitControls) orbitControls.enabled = false;
+  if (debugCamera?.children[0]) debugCamera.children[0].visible = false;
+  setCurrentCamera(debugToolsState.latestAppCameraId || Object.keys(getAllCameras())[0]);
+};
+
+/**
+ * Adds a new colorNode to the environment debug ball (in the bottom left corner when using the debug camera).
+ * @param colorNode
+ * @param ballRough
+ * @param envRough
+ * @returns
+ */
+export const setDebugEnvBallMaterial = (
+  colorNode?: ShaderNodeObject<THREE.PMREMNode>,
+  ballRoughness?: ShaderNodeObject<THREE.UniformNode<number>>,
+  envRoughness?: ShaderNodeObject<THREE.UniformNode<number>>
+) => {
+  envBallColorNode = colorNode || null;
+  envBallRoughnessNode = ballRoughness !== undefined ? ballRoughness : uniform(0);
+  envRoughnessNode = envRoughness !== undefined ? envRoughness : uniform(0);
+  console.log('roughness', envBallRoughnessNode);
+  if (!debugCamera) return;
+  const children = debugCamera.children[0].children;
+  const envBallMesh = children.find(
+    (child) => child.userData.id === ENV_MIRROR_BALL_MESH_ID
+  ) as THREE.Mesh;
+  if (!envBallMesh) return;
+  envBallMesh.material = createMaterial({
+    id: `${ENV_MIRROR_BALL_MESH_ID}-material`,
+    type: 'BASICNODEMATERIAL',
+    params: { colorNode },
+  });
 };

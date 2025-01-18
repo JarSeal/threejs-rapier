@@ -128,8 +128,8 @@ addSceneMainLooper(() => {
 });
 
 addSceneAppLooper(() => {
-  box.rotation.y -= getTransformValue(0.1);
-  box.rotation.z -= getTransformValue(0.1);
+  box.rotation.y -= getTransformValue(2);
+  box.rotation.z -= getTransformValue(2);
 });
 
 const point = createLight({

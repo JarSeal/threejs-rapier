@@ -21,6 +21,7 @@ import { createMaterial } from './Material';
 import { getCurrentCamera } from './Camera';
 import { createNewDebuggerGUI, setDebuggerTabAndContainer } from '../debug/DebuggerGUI';
 import { lsSetItem } from '../utils/LocalAndSessionStorage';
+import { setDebugEnvBallMaterial } from '../debug/DebugTools';
 
 type SkyBoxProps = {
   sceneId?: string;
@@ -117,29 +118,13 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
           .negate()
           .reflect(normalView)
           .transformDirection(cameraViewMatrix);
-        const pmremRoughness = uniform(1);
-        const pmremNode = pmremTexture(equirectTexture, reflectVec, pmremRoughness);
-        scene.backgroundNode = pmremTexture(equirectTexture, normalWorld, pmremRoughness);
+        const pmremRoughnessBg = uniform(1);
+        const pmremRoughnessBall = uniform(1);
+        const pmremNodeBall = pmremTexture(equirectTexture, reflectVec, pmremRoughnessBall);
+        scene.backgroundNode = pmremTexture(equirectTexture, normalWorld, pmremRoughnessBg);
         scene.userData.backgroundNodeTextureId = textureId || equirectTexture.userData.id;
-
-        const mesh = createMesh({
-          id: 'envTestMesh',
-          geo: createGeometry({
-            id: 'envTestGeo',
-            type: 'SPHERE',
-            params: { radius: 0.015, widthSegments: 64, heightSegments: 64 },
-          }),
-          mat: createMaterial({
-            id: 'envTestMat',
-            type: 'BASICNODEMATERIAL',
-            params: { colorNode: pmremNode, depthTest: false },
-          }),
-        });
-        mesh.renderOrder = 9999;
-        const camera = getCurrentCamera();
-        scene.add(camera);
-        camera.add(mesh);
-        mesh.position.set(0, 0, -1);
+        console.log(pmremRoughnessBall);
+        setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall, pmremRoughnessBg);
       }
     } else if (file) {
       file.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
