@@ -130,12 +130,14 @@ const createDebugToolsDebugGUI = () => {
         .name('Sky box roughness')
         .onChange((value: number) => {
           envRoughnessNode.value = value;
+          lsSetItem(LS_KEY, debugToolsState);
         });
       envFolder
         .add(debugToolsState.env, 'ballRoughness', 0, 1, 0.001)
         .name('Debug ball roughness')
         .onChange((value: number) => {
           envBallRoughnessNode.value = value;
+          lsSetItem(LS_KEY, debugToolsState);
         });
       // envFolder.add (debugToolsState.env, 'ballRoughnessIsTheSameAsEnvRoughness').name('Use same values');
       return container;
@@ -223,7 +225,12 @@ export const setDebugEnvBallMaterial = (
   envBallColorNode = colorNode || null;
   envBallRoughnessNode = ballRoughness !== undefined ? ballRoughness : uniform(0);
   envRoughnessNode = envRoughness !== undefined ? envRoughness : uniform(0);
-  console.log('roughness', envBallRoughnessNode);
+  debugToolsState.env.ballRoughness = envBallRoughnessNode.value;
+  debugToolsState.env.envRoughness = envRoughnessNode.value;
+  // const savedDebugToolsState = lsGetItem(LS_KEY, debugToolsState);
+  // savedDebugToolsState.env.ballRoughness = envBallRoughnessNode.value;
+  // savedDebugToolsState.env.envRoughness = envRoughnessNode.value;
+  // lsSetItem(LS_KEY, savedDebugToolsState);
   if (!debugCamera) return;
   const children = debugCamera.children[0].children;
   const envBallMesh = children.find(

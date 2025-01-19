@@ -118,7 +118,7 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
           .negate()
           .reflect(normalView)
           .transformDirection(cameraViewMatrix);
-        const pmremRoughnessBg = uniform(1);
+        const pmremRoughnessBg = uniform(0.5);
         const pmremRoughnessBall = uniform(1);
         const pmremNodeBall = pmremTexture(equirectTexture, reflectVec, pmremRoughnessBall);
         scene.backgroundNode = pmremTexture(equirectTexture, normalWorld, pmremRoughnessBg);
