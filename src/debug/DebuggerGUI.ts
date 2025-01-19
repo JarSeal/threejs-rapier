@@ -4,6 +4,7 @@ import styles from './DebuggerGUI.module.scss';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getHUDRootCMP } from '../core/HUD';
+import { Pane } from 'tweakpane';
 
 // @TODO: add window size listener to update the scrollable area
 
@@ -238,7 +239,11 @@ export const createNewDebuggerGUI = (id: string, heading?: string) => {
   container.elem.append(debugGui.domElement);
   container.controls.debugGui = debugGui;
   container.controls.id = id;
-  return { container, debugGui };
+
+  // NEW DEBUG GUI
+  const debugGUI = new Pane({ container: container.elem });
+
+  return { container, debugGui, debugGUI };
 };
 
 const setFolderData = (id?: string, debugGui?: GUI) => {

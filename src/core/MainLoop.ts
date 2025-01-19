@@ -225,22 +225,18 @@ const createLoopDebugGUI = () => {
     title: 'Loop controls',
     orderNr: 4,
     container: () => {
-      const { container, debugGui } = createNewDebuggerGUI('loop', 'Loop Controls');
-      debugGui
-        .add(loopState, 'masterPlay')
-        .name('Master loop')
-        .onChange((value: boolean) => {
-          if (value) requestAnimationFrame(mainLoop);
-          lsSetItem(LS_KEY, loopState);
-        });
-      debugGui
-        .add(loopState, 'appPlay')
-        .name('App loop')
-        .onChange(() => lsSetItem(LS_KEY, loopState));
-      debugGui
-        .add(loopState, 'maxFPS')
-        .name('Forced max FPS (0 = off)')
-        .onChange((value: number) => {
+      const { container, debugGUI } = createNewDebuggerGUI('loop', 'Loop Controls');
+      debugGUI.addBinding(loopState, 'masterPlay', { label: 'Master loop' }).on('change', (e) => {
+        if (e.value) requestAnimationFrame(mainLoop);
+        lsSetItem(LS_KEY, loopState);
+      });
+      debugGUI
+        .addBinding(loopState, 'appPlay', { label: 'App loop' })
+        .on('change', () => lsSetItem(LS_KEY, loopState));
+      debugGUI
+        .addBinding(loopState, 'maxFPS', { label: 'Forced max FPS (0 = off)', step: 1, min: 0 })
+        .on('change', (e) => {
+          const value = e.value;
           if (value > 0) {
             loopState.maxFPSInterval = 1 / value;
             lsSetItem(LS_KEY, loopState);

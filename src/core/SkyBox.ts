@@ -123,7 +123,6 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
         const pmremNodeBall = pmremTexture(equirectTexture, reflectVec, pmremRoughnessBall);
         scene.backgroundNode = pmremTexture(equirectTexture, normalWorld, pmremRoughnessBg);
         scene.userData.backgroundNodeTextureId = textureId || equirectTexture.userData.id;
-        console.log(pmremRoughnessBall);
         setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall, pmremRoughnessBg);
       }
     } else if (file) {
