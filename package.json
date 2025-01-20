@@ -16,7 +16,6 @@
     "build": "tsc && vite build"
   },
   "dependencies": {
-    "lil-gui": "0.20.0",
     "stats-gl": "3.6.0",
     "three": "0.172.0",
     "tweakpane": "4.0.5"

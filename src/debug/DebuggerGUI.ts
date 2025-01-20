@@ -1,4 +1,3 @@
-import GUI from 'lil-gui';
 import { CMP, TCMP } from '../utils/CMP';
 import styles from './DebuggerGUI.module.scss';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
@@ -10,7 +9,6 @@ import { Pane } from 'tweakpane';
 
 let drawerCMP: TCMP | null = null;
 let tabsContainerWrapper: null | TCMP = null;
-const LS_PREFIX = 'debug-folders-';
 
 type DrawerState = {
   isOpen: boolean;
@@ -165,9 +163,6 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     tabFound = false;
   }
   if (!data) return;
-  const container = tabsContainerWrapper?.add(
-    typeof data.container === 'function' ? data.container() : data.container
-  );
 
   for (let i = 0; i < tabsAndContainers.length; i++) {
     const btn = tabsAndContainers[i]?.button;
@@ -220,8 +215,6 @@ export const createNewDebuggerGUI = (id: string, heading?: string) => {
   });
   if (heading) container.add({ tag: 'h3', text: heading, class: 'debuggerHeading' });
   container.controls.id = id;
-
-  // NEW DEBUG GUI
   const debugGUI = new Pane({ container: container.elem });
 
   return { container, debugGUI };
