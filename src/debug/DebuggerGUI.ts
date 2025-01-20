@@ -163,6 +163,9 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     tabFound = false;
   }
   if (!data) return;
+  tabsContainerWrapper?.add(
+    typeof data.container === 'function' ? data.container() : data.container
+  );
 
   for (let i = 0; i < tabsAndContainers.length; i++) {
     const btn = tabsAndContainers[i]?.button;

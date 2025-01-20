@@ -251,18 +251,24 @@ const createSkyBoxDebugGUI = () => {
         debugGUI.refresh();
       });
 
-      const cubeTextureFolder = debugGUI
-        .addFolder({
-          title: 'Cube texture sky box params',
-          hidden: skyBoxState.type !== 'CUBETEXTURE',
-          expanded: skyBoxState.cubeTextFolderExpanded,
-        })
-        .on('fold', (state) => {
-          skyBoxState.cubeTextFolderExpanded = state.expanded;
-          lsSetItem(LS_KEY, skyBoxState);
-        });
+      // const cubeTextureFolder = debugGUI
+      //   .addFolder({
+      //     title: 'Cube texture sky box params',
+      //     hidden: skyBoxState.type !== 'CUBETEXTURE',
+      //     expanded: skyBoxState.cubeTextFolderExpanded,
+      //   })
+      //   .on('fold', (state) => {
+      //     skyBoxState.cubeTextFolderExpanded = state.expanded;
+      //     lsSetItem(LS_KEY, skyBoxState);
+      //   });
 
       return container;
     },
   });
 };
+
+/**
+ * Get pmremRoughnessBg (the environment map roughness shader node)
+ * @returns ShaderNodeObject<THREE.UniformNode<number>>
+ */
+export const getEnvMapRoughnessBg = () => pmremRoughnessBg;

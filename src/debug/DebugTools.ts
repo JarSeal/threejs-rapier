@@ -10,6 +10,7 @@ import { createGeometry } from '../core/Geometry';
 import { createMaterial } from '../core/Material';
 import { getCurrentScene } from '../core/Scene';
 import { createGroup } from '../core/Group';
+import { getEnvMapRoughnessBg } from '../core/SkyBox';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -149,11 +150,11 @@ const createDebugToolsDebugGUI = () => {
           label: 'Separate env ball values',
         })
         .on('change', (e) => {
-          if (e.value) {
-            envBallRoughnessNode.value = debugToolsState.env.ballRoughness;
-          } else {
-            envBallRoughnessNode.value = debugToolsState.env.ballDefaultRoughness;
-          }
+          envBallRoughnessNode.value = e.value
+            ? debugToolsState.env.ballRoughness
+            : getEnvMapRoughnessBg()?.value !== undefined
+              ? getEnvMapRoughnessBg().value
+              : debugToolsState.env.ballDefaultRoughness;
           ballRoughnesGUI.disabled = !e.value;
           lsSetItem(LS_KEY, debugToolsState);
         });
