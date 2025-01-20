@@ -105,6 +105,7 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
       lerror('Provide either file or textureId in the equirectangular params in addSkyBox.');
       return;
     }
+    let envTexture: null | THREE.Texture | THREE.DataTexture = null;
     if (typeof file === 'string' || textureId) {
       // File is a string or textureId was provided (texture was preloaded)
       const equirectTexture = file
@@ -130,30 +131,39 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
         scene.userData.backgroundNodeTextureId = textureId || equirectTexture.userData.id;
         return;
       }
-
-      // Use sky box as environment map
-      if (typeof file === 'string') {
-        equirectTexture.mapping = THREE.EquirectangularReflectionMapping;
-        const reflectVec = positionViewDirection
-          .negate()
-          .reflect(normalView)
-          .transformDirection(cameraViewMatrix);
-        pmremRoughnessBg.value = skyBoxState.equiRectRoughness;
-        scene.backgroundNode = pmremTexture(equirectTexture, normalWorld, pmremRoughnessBg);
-        scene.userData.backgroundNodeTextureId = textureId || equirectTexture.userData.id;
-        if (isDebugEnvironment()) {
-          const pmremRoughnessBall = uniform(skyBoxState.equiRectRoughness);
-          const pmremNodeBall = pmremTexture(equirectTexture, reflectVec, pmremRoughnessBall);
-          setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
-        }
-      }
+      envTexture = equirectTexture;
     } else if (file) {
       // File is a Texture/DataTexture
       file.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
-      const shaderNodeTexture = texture(file, equirectUV(), 0);
-      scene.backgroundNode = shaderNodeTexture as unknown as ShaderNodeObject<THREE.Node>;
-      scene.userData.backgroundNodeTextureId = file.userData.id;
+      if (!params.isEnvMap) {
+        const shaderNodeTexture = texture(file, equirectUV(), 0);
+        scene.backgroundNode = shaderNodeTexture as unknown as ShaderNodeObject<THREE.Node>;
+        scene.userData.backgroundNodeTextureId = textureId || file.userData.id;
+        return;
+      }
+      envTexture = file;
     }
+
+    // Use sky box as environment map
+    if (!envTexture) {
+      const msg = 'Could not find envTexture in addSkyBox';
+      lerror(msg);
+      throw new Error(msg);
+    }
+    envTexture.mapping = THREE.EquirectangularReflectionMapping;
+    const reflectVec = positionViewDirection
+      .negate()
+      .reflect(normalView)
+      .transformDirection(cameraViewMatrix);
+    pmremRoughnessBg.value = skyBoxState.equiRectRoughness;
+    scene.backgroundNode = pmremTexture(envTexture, normalWorld, pmremRoughnessBg);
+    scene.userData.backgroundNodeTextureId = textureId || envTexture.userData.id;
+    if (isDebugEnvironment()) {
+      const pmremRoughnessBall = uniform(skyBoxState.equiRectRoughness);
+      const pmremNodeBall = pmremTexture(envTexture, reflectVec, pmremRoughnessBall);
+      setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
+    }
+
     return;
   }
 

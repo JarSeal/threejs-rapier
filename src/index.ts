@@ -4,7 +4,7 @@ import { addSceneAppLooper, addSceneMainLooper, createScene } from './core/Scene
 import { createCamera } from './core/Camera';
 import { createGeometry } from './core/Geometry';
 import { createMaterial } from './core/Material';
-import { loadTexture, getTexture, loadTextures } from './core/Texture';
+import { loadTexture, getTexture, loadTextures, loadTextureAsync } from './core/Texture';
 import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
 import { importModelAsync } from './core/ImportModel';
@@ -29,9 +29,14 @@ camera.position.y = 1;
 createRenderer({ antialias: true, forceWebGL: false });
 
 // App specific
+// const envTexture = await loadTextureAsync({
+//   id: 'equiRectId',
+//   fileName: '/testTextures/equi_grass_and_forest_4k.jpg',
+// });
 addSkyBox({
   type: 'EQUIRECTANGULAR',
   params: {
+    // file: envTexture,
     file: '/testTextures/equi_grass_and_forest_4k.jpg',
     textureId: 'equiRectId',
     isEnvMap: true,

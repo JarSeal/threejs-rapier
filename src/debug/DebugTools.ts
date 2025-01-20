@@ -129,6 +129,7 @@ const createDebugToolsDebugGUI = () => {
         .addFolder({
           title: 'Environment ball',
           expanded: debugToolsState.env.envBallFolderExpanded,
+          hidden: !Boolean(envBallColorNode),
         })
         .on('fold', (state) => {
           debugToolsState.env.envBallFolderExpanded = state.expanded;
@@ -139,11 +140,12 @@ const createDebugToolsDebugGUI = () => {
           label: 'Hide env ball',
         })
         .on('change', (e) => {
+          lsSetItem(LS_KEY, debugToolsState);
+          if (!Boolean(envBallColorNode)) return;
           const mesh = getMesh(ENV_MIRROR_BALL_MESH_ID);
           if (mesh) {
             mesh.visible = !e.value;
           }
-          lsSetItem(LS_KEY, debugToolsState);
         });
       envBallFolder
         .addBinding(debugToolsState.env, 'separateBallValues', {
@@ -200,6 +202,9 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
       },
     }),
   });
+  envBallRoughnessNode.value = debugToolsState.env.separateBallValues
+    ? debugToolsState.env.ballRoughness
+    : getEnvMapRoughnessBg()?.value || debugToolsState.env.ballDefaultRoughness;
   mesh.renderOrder = 999999;
   mesh.position.y += 0.008;
   mesh.position.x += 0.008;
