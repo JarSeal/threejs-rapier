@@ -5,7 +5,7 @@ import { createCamera, getAllCameras, getCurrentCameraId, setCurrentCamera } fro
 import { getRenderer } from '../core/Renderer';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { createNewDebuggerGUI, setDebuggerTabAndContainer } from './DebuggerGUI';
-import { createMesh } from '../core/Mesh';
+import { createMesh, getMesh } from '../core/Mesh';
 import { createGeometry } from '../core/Geometry';
 import { createMaterial } from '../core/Material';
 import { getCurrentScene } from '../core/Scene';
@@ -16,7 +16,6 @@ const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
 export const DEBUG_CAMERA_ID = '_debugCamera';
 let envBallColorNode: ShaderNodeObject<THREE.PMREMNode> | null = null;
 let envBallRoughnessNode: ShaderNodeObject<THREE.UniformNode<number>> = uniform(0);
-let envRoughnessNode: ShaderNodeObject<THREE.UniformNode<number>> = uniform(0);
 let debugCamera: THREE.PerspectiveCamera | null = null;
 let orbitControls: OrbitControls | null = null;
 let debugToolsState: {
@@ -30,9 +29,11 @@ let debugToolsState: {
     target: number[];
   };
   env: {
-    envRoughness: number;
+    envBallFolderExpanded: boolean;
+    envBallHidden: boolean;
+    separateBallValues: boolean;
     ballRoughness: number;
-    ballRoughnessIsTheSameAsEnvRoughness: boolean;
+    ballDefaultRoughness: number;
   };
 } = {
   useDebugCamera: false,
@@ -45,9 +46,11 @@ let debugToolsState: {
     target: [0, 0, 0],
   },
   env: {
-    envRoughness: 0,
+    envBallFolderExpanded: false,
+    envBallHidden: false,
+    separateBallValues: false,
     ballRoughness: 0,
-    ballRoughnessIsTheSameAsEnvRoughness: false,
+    ballDefaultRoughness: 0,
   },
 };
 
@@ -112,34 +115,60 @@ const createDebugToolsDebugGUI = () => {
     title: 'Debug tools controls',
     orderNr: 6,
     container: () => {
-      const { container, debugGui } = createNewDebuggerGUI('debugTools', 'Debug Tools Controls');
-      debugGui
-        .add(debugToolsState, 'useDebugCamera')
-        .name('Use debug camera')
-        .onChange((value: boolean) => {
-          if (value) {
-            setDebugToolsVisibility(true);
-          } else {
-            setDebugToolsVisibility(false);
+      const { container, debugGUI } = createNewDebuggerGUI('debugTools', 'Debug Tools Controls');
+
+      debugGUI
+        .addBinding(debugToolsState, 'useDebugCamera', { label: 'Use debug camera' })
+        .on('change', (e) => {
+          setDebugToolsVisibility(e.value);
+          lsSetItem(LS_KEY, debugToolsState);
+        });
+      debugGUI.addBlade({ view: 'separator' });
+      const envBallFolder = debugGUI
+        .addFolder({
+          title: 'Environment ball',
+          expanded: debugToolsState.env.envBallFolderExpanded,
+        })
+        .on('fold', (state) => {
+          debugToolsState.env.envBallFolderExpanded = state.expanded;
+          lsSetItem(LS_KEY, debugToolsState);
+        });
+      envBallFolder
+        .addBinding(debugToolsState.env, 'envBallHidden', {
+          label: 'Hide env ball',
+        })
+        .on('change', (e) => {
+          const mesh = getMesh(ENV_MIRROR_BALL_MESH_ID);
+          if (mesh) {
+            mesh.visible = !e.value;
           }
           lsSetItem(LS_KEY, debugToolsState);
         });
-      const envFolder = debugGui.addFolder('Equirectangular sky box');
-      envFolder
-        .add(debugToolsState.env, 'envRoughness', 0, 1, 0.001)
-        .name('Sky box roughness')
-        .onChange((value: number) => {
-          envRoughnessNode.value = value;
+      envBallFolder
+        .addBinding(debugToolsState.env, 'separateBallValues', {
+          label: 'Separate env ball values',
+        })
+        .on('change', (e) => {
+          if (e.value) {
+            envBallRoughnessNode.value = debugToolsState.env.ballRoughness;
+          } else {
+            envBallRoughnessNode.value = debugToolsState.env.ballDefaultRoughness;
+          }
+          ballRoughnesGUI.disabled = !e.value;
           lsSetItem(LS_KEY, debugToolsState);
         });
-      envFolder
-        .add(debugToolsState.env, 'ballRoughness', 0, 1, 0.001)
-        .name('Debug ball roughness')
-        .onChange((value: number) => {
-          envBallRoughnessNode.value = value;
+      const ballRoughnesGUI = envBallFolder
+        .addBinding(debugToolsState.env, 'ballRoughness', {
+          label: 'Env ball roughness',
+          step: 0.001,
+          min: 0,
+          max: 1,
+          disabled: !debugToolsState.env.separateBallValues,
+        })
+        .on('change', (e) => {
+          envBallRoughnessNode.value = e.value;
           lsSetItem(LS_KEY, debugToolsState);
         });
-      // envFolder.add (debugToolsState.env, 'ballRoughnessIsTheSameAsEnvRoughness').name('Use same values');
       return container;
     },
   });
@@ -212,25 +241,17 @@ const setDebugToolsVisibility = (show: boolean) => {
 
 /**
  * Adds a new colorNode to the environment debug ball (in the bottom left corner when using the debug camera).
- * @param colorNode
- * @param ballRough
- * @param envRough
- * @returns
+ * @param colorNode ShaderNodeObject<THREE.PMREMNode> to use in the env ball material
+ * @param ballRough ShaderNodeObject<THREE.UniformNode<number>> to control the env ball roughness
  */
 export const setDebugEnvBallMaterial = (
   colorNode?: ShaderNodeObject<THREE.PMREMNode>,
-  ballRoughness?: ShaderNodeObject<THREE.UniformNode<number>>,
-  envRoughness?: ShaderNodeObject<THREE.UniformNode<number>>
+  ballRoughness?: ShaderNodeObject<THREE.UniformNode<number>>
 ) => {
   envBallColorNode = colorNode || null;
   envBallRoughnessNode = ballRoughness !== undefined ? ballRoughness : uniform(0);
-  envRoughnessNode = envRoughness !== undefined ? envRoughness : uniform(0);
   debugToolsState.env.ballRoughness = envBallRoughnessNode.value;
-  debugToolsState.env.envRoughness = envRoughnessNode.value;
-  // const savedDebugToolsState = lsGetItem(LS_KEY, debugToolsState);
-  // savedDebugToolsState.env.ballRoughness = envBallRoughnessNode.value;
-  // savedDebugToolsState.env.envRoughness = envRoughnessNode.value;
-  // lsSetItem(LS_KEY, savedDebugToolsState);
+  debugToolsState.env.ballDefaultRoughness = envBallRoughnessNode.value;
   if (!debugCamera) return;
   const children = debugCamera.children[0].children;
   const envBallMesh = children.find(
@@ -243,3 +264,15 @@ export const setDebugEnvBallMaterial = (
     params: { colorNode },
   });
 };
+
+/**
+ * Change the env map ball roughness
+ * @param value roughness value (0.0 - 1.0)
+ */
+export const changeDebugEnvBallRoughness = (value: number) => (envBallRoughnessNode.value = value);
+
+/**
+ * Getter for the debugToolsState object
+ * @returns debugToolsState {@link debugToolsState}
+ */
+export const getDebugToolsState = () => debugToolsState;

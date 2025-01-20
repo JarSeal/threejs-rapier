@@ -71,7 +71,6 @@ const createTabMenuButtons = () => {
         }
         data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
         saveDrawerState({ currentTabId: data.id, currentScrollPos: 0 });
-        setFolderData(container.controls?.id as string, container.controls?.debugGui as GUI);
       },
     });
     tabsAndContainers[i].button = button;
@@ -169,7 +168,6 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
   const container = tabsContainerWrapper?.add(
     typeof data.container === 'function' ? data.container() : data.container
   );
-  setFolderData(container.controls?.id as string, container.controls?.debugGui as GUI);
 
   for (let i = 0; i < tabsAndContainers.length; i++) {
     const btn = tabsAndContainers[i]?.button;
@@ -218,47 +216,13 @@ export const createNewDebuggerGUI = (id: string, heading?: string) => {
   const idAndName = `debuggerContainer-${id}`;
   const container = CMP({
     id: idAndName,
-    onRemoveCmp: () => debugGui.destroy(),
+    onRemoveCmp: () => debugGUI.dispose(),
   });
   if (heading) container.add({ tag: 'h3', text: heading, class: 'debuggerHeading' });
-  const debugGui = new GUI({
-    autoPlace: false,
-    title: '',
-  });
-  debugGui.open();
-
-  debugGui.onOpenClose(() => {
-    const rootFolder = debugGui.folders[0].root;
-    rootFolder.open();
-    const folderData = debugGui
-      .foldersRecursive()
-      .map((folder) => ({ closed: folder._closed, hidden: folder._hidden }));
-    lsSetItem(LS_PREFIX + id, JSON.stringify(folderData));
-  });
-
-  container.elem.append(debugGui.domElement);
-  container.controls.debugGui = debugGui;
   container.controls.id = id;
 
   // NEW DEBUG GUI
   const debugGUI = new Pane({ container: container.elem });
 
-  return { container, debugGui, debugGUI };
-};
-
-const setFolderData = (id?: string, debugGui?: GUI) => {
-  if (!id || !debugGui) return;
-
-  const folderData = lsGetItem(LS_PREFIX + id, []);
-  const folders = debugGui.foldersRecursive();
-
-  if (folderData.length !== folders.length) return;
-  for (let i = 0; i < folders.length; i++) {
-    const closed = folderData[i].closed;
-    if (closed) {
-      folders[i].close();
-      continue;
-    }
-    folders[i].open();
-  }
+  return { container, debugGUI };
 };

@@ -50,7 +50,7 @@ $breakpointXSmall: 379px;
   padding: 0 2rem;
   border-radius: 0.4rem 0.4rem 0 0;
   background: variables.$debugGuiBackground;
-  color: variables.$white;
+  color: variables.$debugTextColor;
   user-select: none;
   transition: background 0.2s ease-in-out;
 
@@ -84,7 +84,7 @@ $breakpointXSmall: 379px;
     transition: background-color 0.2s ease-in-out;
 
     &:hover {
-      background-color: rgba(255, 255, 255, 0.2);
+      background-color: rgba(variables.$debugTextColor, 0.2);
     }
 
     &:before,
@@ -113,8 +113,8 @@ $breakpointXSmall: 379px;
   margin-bottom: -0.1rem;
   padding: 0.6rem 1.2rem 0.4rem;
   background-color: variables.$debugTabButton;
-  border: 0.1rem solid variables.$white;
-  color: variables.$white;
+  border: 0.1rem solid variables.$debugTextColor;
+  color: variables.$debugTextColor;
   user-select: none;
   font-size: 1rem;
   transition: background-color 0.2s ease-in-out;
@@ -125,12 +125,12 @@ $breakpointXSmall: 379px;
 }
 
 .debugDrawerTabButton_selected {
-  background-color: variables.$white;
+  background-color: variables.$debugTextColor;
   border: 0.1rem solid transparent;
   color: variables.$black;
 }
 
 .debugDrawerTabsContainer {
-  color: variables.$white;
+  color: variables.$debugTextColor;
   overflow: auto;
 }

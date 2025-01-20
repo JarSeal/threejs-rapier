@@ -5,6 +5,7 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getGUIContainerElem } from '../core/HUD';
 
 export type StatsOptions = {
+  performanceFolderExpanded?: boolean;
   trackGPU?: boolean;
   trackCPT?: boolean;
   trackHz?: boolean;
@@ -13,6 +14,7 @@ export type StatsOptions = {
   samplesLog?: number;
   samplesGraph?: number;
   precision?: number;
+  outlookFolderExpanded?: boolean;
   minimal?: boolean;
   horizontal?: boolean;
   mode?: number;
@@ -24,9 +26,11 @@ let savedConfig = {};
 const LS_KEY = 'debugStats';
 
 const defaultStatsOptions = {
+  performanceFolderExpanded: true,
   trackGPU: false,
   trackHz: false,
   trackCPT: false,
+  outlookFolderExpanded: true,
   horizontal: false,
   minimal: true,
   enabled: true,
@@ -56,72 +60,71 @@ const setDebuggerUI = (config: StatsOptions) =>
     title: 'Statistics',
     orderNr: 3,
     container: () => {
-      const { container, debugGui } = createNewDebuggerGUI('Stats', 'Statistics');
-      const performanceFolder = debugGui.addFolder('Performance Measuring (reloads the app)');
-      const outlookFolder = debugGui.addFolder('Measuring Outlook (reloads the app)');
+      const { container, debugGUI } = createNewDebuggerGUI('Stats', 'Statistics');
+
+      const performanceFolder = debugGUI
+        .addFolder({
+          title: 'Performance Measuring (reloads the app)',
+          expanded: config.performanceFolderExpanded,
+        })
+        .on('fold', (state) => {
+          config.performanceFolderExpanded = state.expanded;
+          lsSetItem(LS_KEY, config);
+        });
+      const outlookFolder = debugGUI
+        .addFolder({
+          title: 'Measuring Outlook (reloads the app)',
+          expanded: config.outlookFolderExpanded,
+        })
+        .on('fold', (state) => {
+          config.outlookFolderExpanded = state.expanded;
+          lsSetItem(LS_KEY, config);
+        });
+
       performanceFolder
-        .add(config, 'enabled')
-        .name('Enable measuring')
-        .onChange((value: boolean) => {
-          config.enabled = value;
+        .addBinding(config, 'enabled', { label: 'Enable measuring' })
+        .on('change', (state) => {
+          config.enabled = state.value;
           lsSetItem(LS_KEY, config);
           location.reload();
         });
       performanceFolder
-        .add(config, 'trackGPU')
-        .name('Track GPU')
-        .onChange((value: boolean) => {
-          config.trackGPU = value;
+        .addBinding(config, 'trackGPU', { label: 'Track GPU' })
+        .on('change', (state) => {
+          config.trackGPU = state.value;
           lsSetItem(LS_KEY, config);
-          if (!stats) return;
-          stats.trackGPU = value;
           location.reload();
         });
       performanceFolder
-        .add(config, 'trackHz')
-        .name('Track Hz')
-        .onChange((value: boolean) => {
-          config.trackHz = value;
+        .addBinding(config, 'trackHz', { label: 'Track Hz' })
+        .on('change', (state) => {
+          config.trackHz = state.value;
           lsSetItem(LS_KEY, config);
-          if (!stats) return;
-          stats.trackHz = value;
           location.reload();
         });
       performanceFolder
-        .add(config, 'trackCPT')
-        .name('Track CPT')
-        .onChange((value: boolean) => {
-          config.trackCPT = value;
+        .addBinding(config, 'trackCPT', { label: 'Track CPT' })
+        .on('change', (state) => {
+          config.trackCPT = state.value;
           lsSetItem(LS_KEY, config);
-          if (!stats) return;
-          stats.trackCPT = value;
           location.reload();
         });
-      // @TODO: logsPerSecond
-      // @TODO: graphsPerSecond
-      // @TODO: samplesLog
-      // @TODO: samplesGraph
-      // @TODO: precision
+
       outlookFolder
-        .add(config, 'horizontal')
-        .name('Horizontal')
-        .onChange((value: boolean) => {
-          config.horizontal = value;
+        .addBinding(config, 'horizontal', { label: 'Horizontal' })
+        .on('change', (state) => {
+          config.horizontal = state.value;
           lsSetItem(LS_KEY, config);
-          if (!stats) return;
-          stats.horizontal = value;
           location.reload();
         });
       outlookFolder
-        .add(config, 'minimal')
-        .name('Minimal look')
-        .onChange((value: boolean) => {
-          config.minimal = value;
+        .addBinding(config, 'minimal', { label: 'Minimal look' })
+        .on('change', (state) => {
+          config.minimal = state.value;
           lsSetItem(LS_KEY, config);
-          if (!stats) return;
-          stats.minimal = value;
           location.reload();
         });
+
       // @TODO: add current scene and all loaded scene stats
       // Current and all scenes stats:
       // - draw calls count

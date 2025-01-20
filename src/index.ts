@@ -31,7 +31,11 @@ createRenderer({ antialias: true, forceWebGL: false });
 // App specific
 addSkyBox({
   type: 'EQUIRECTANGULAR',
-  params: { file: '/testTextures/equi_grass_and_forest_4k.jpg', isEnvMap: true },
+  params: {
+    file: '/testTextures/equi_grass_and_forest_4k.jpg',
+    textureId: 'equiRectId',
+    isEnvMap: true,
+  },
 });
 
 const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });

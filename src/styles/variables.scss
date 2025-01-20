@@ -1,9 +1,10 @@
 // Colors
 $white: #ffffff;
 $black: #000000;
-$debugGuiBackground: #020202;
+$debugGuiBackground: #1f1f1f;
 $debugGuiBackgroundLighter: #181818;
-$debugTabButton: #080808;
+$debugTabButton: #1f1f1f;
+$debugTextColor: #bbbcc4;
 
 // Naked styles
 @mixin nakedButton {
