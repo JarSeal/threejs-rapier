@@ -4,7 +4,7 @@ import { addSceneAppLooper, addSceneMainLooper, createScene } from './core/Scene
 import { createCamera } from './core/Camera';
 import { createGeometry } from './core/Geometry';
 import { createMaterial } from './core/Material';
-import { loadTexture, getTexture, loadTextures, loadTextureAsync } from './core/Texture';
+import { loadTexture, getTexture, loadTextures } from './core/Texture';
 import { llog } from './utils/Logger';
 import { createLight } from './core/Light';
 import { importModelAsync } from './core/ImportModel';
@@ -76,7 +76,7 @@ const map02 = [
 await addSkyBox({
   type: 'CUBETEXTURE',
   params: {
-    fileNames: map02,
+    fileNames: map01,
     path: '/testTextures',
     textureId: 'cubeTextureId',
   },
