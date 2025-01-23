@@ -20,26 +20,65 @@ loadConfig();
 // Init scene, camera, and renderer
 const scene = createScene('testScene1', {
   isCurrentScene: true,
-  background: new THREE.Color(0x222222),
+  // background: new THREE.Color(0x222222),
 });
-const camera = createCamera('mainCam', { isCurrentCamera: true });
+const camera = createCamera('mainCam', { isCurrentCamera: true, fov: 90 });
 camera.position.z = 5;
 camera.position.x = 2.5;
 camera.position.y = 1;
-createRenderer({ antialias: true, forceWebGL: false });
+createRenderer({
+  antialias: true,
+  forceWebGL: false,
+  toneMapping: THREE.ACESFilmicToneMapping,
+  toneMappingExposure: 0.7,
+  outputColorSpace: THREE.SRGBColorSpace,
+  alpha: true,
+});
 
 // App specific
 // const envTexture = await loadTextureAsync({
 //   id: 'equiRectId',
 //   fileName: '/testTextures/equi_grass_and_forest_4k.jpg',
 // });
-addSkyBox({
-  type: 'EQUIRECTANGULAR',
+// await addSkyBox({
+//   type: 'EQUIRECTANGULAR',
+//   params: {
+//     // file: envTexture,
+//     file: '/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
+//     // file: '/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
+//     // file: '/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
+//     // file: '/testTextures/evening_road_01_puresky_8k.hdr',
+//     // file: '/testTextures/pizzo_pernice_puresky_8k.hdr',
+//     textureId: 'equiRectId',
+//     isEnvMap: false,
+//     // colorSpace: THREE.SRGBColorSpace,
+//     colorSpace: THREE.LinearSRGBColorSpace,
+//     // colorSpace: THREE.NoColorSpace,
+//   },
+// });
+
+const map01 = [
+  '/cubemap01_positive_x.png',
+  '/cubemap01_negative_x.png',
+  '/cubemap01_negative_y.png',
+  '/cubemap01_positive_y.png',
+  '/cubemap01_positive_z.png',
+  '/cubemap01_negative_z.png',
+];
+const map02 = [
+  '/cubemap02_positive_x.png',
+  '/cubemap02_negative_x.png',
+  '/cubemap02_negative_y.png',
+  '/cubemap02_positive_y.png',
+  '/cubemap02_positive_z.png',
+  '/cubemap02_negative_z.png',
+];
+await addSkyBox({
+  type: 'CUBETEXTURE',
   params: {
-    // file: envTexture,
-    file: '/testTextures/equi_grass_and_forest_4k.jpg',
-    textureId: 'equiRectId',
-    isEnvMap: true,
+    fileNames: map02,
+    path: '/testTextures',
+    textureId: 'cubeTextureId',
   },
 });
 
@@ -152,7 +191,7 @@ scene.add(point);
 const ambient = createLight({
   id: 'ambientLight',
   type: 'AMBIENT',
-  params: { color: '#ffffff', intensity: 0.13 },
+  params: { color: '#ffffff', intensity: 0.8 },
 });
 scene.add(ambient);
 
@@ -162,7 +201,7 @@ const hemisphere = createLight({
   params: {
     skyColor: 0x220000,
     groundColor: 0x225599,
-    intensity: 1,
+    intensity: 1.5,
   },
 });
 scene.add(hemisphere);

@@ -16,7 +16,7 @@ export const createCamera = (
   id: string,
   opts?: { isCurrentCamera?: boolean; fov?: number; near?: number; far?: number }
 ) => {
-  const fov = opts?.fov || 45;
+  const fov = opts?.fov !== undefined ? opts.fov : 45;
   const near = opts?.near || 0.1;
   const far = opts?.far || 1000;
 

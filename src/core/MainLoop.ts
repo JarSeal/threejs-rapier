@@ -10,6 +10,7 @@ import { getRenderer } from './Renderer';
 import {
   getCurrentScene,
   getSceneAppLoopers,
+  getSceneMainLateLoopers,
   getSceneMainLoopers,
   getSceneResizers,
 } from './Scene';
@@ -49,7 +50,15 @@ export const getTransformValue = (speedInUnitsPerSecond: number) => delta * spee
 
 let mainLoop: () => void = () => {};
 
-const mainLoopForDebug = () => {
+const runMainLateLoopers = () => {
+  // main late loopers
+  const mainLateLoopers = getSceneMainLateLoopers();
+  for (let i = 0; i < mainLateLoopers.length; i++) {
+    mainLateLoopers[i](delta);
+  }
+};
+
+const mainLoopForDebug = async () => {
   delta = clock.getDelta();
   if (loopState.masterPlay) {
     requestAnimationFrame(mainLoop);
@@ -60,34 +69,38 @@ const mainLoopForDebug = () => {
   }
   // main loopers
   const mainLoopers = getSceneMainLoopers();
-  if (mainLoopers) {
-    for (let i = 0; i < mainLoopers.length; i++) {
-      mainLoopers[i](delta);
-    }
+  for (let i = 0; i < mainLoopers.length; i++) {
+    mainLoopers[i](delta);
   }
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
     // app loopers
     const appLoopers = getSceneAppLoopers();
-    if (appLoopers) {
-      for (let i = 0; i < appLoopers.length; i++) {
-        appLoopers[i](delta);
-      }
+    for (let i = 0; i < appLoopers.length; i++) {
+      appLoopers[i](delta);
     }
   } else {
     loopState.isAppPlaying = false;
   }
+  const renderer = getRenderer();
+  const windowSize = getWindowSize();
+  renderer?.setViewport(0, 0, windowSize.width, windowSize.height);
   if (loopState.maxFPS > 0) {
+    // maxFPS limiter
     accDelta += delta;
     if (accDelta > loopState.maxFPSInterval) {
-      getRenderer()?.renderAsync(getCurrentScene(), getCurrentCamera());
-      getStats()?.update();
-      accDelta = accDelta % loopState.maxFPSInterval;
+      renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
+        runMainLateLoopers();
+        getStats()?.update();
+        accDelta = accDelta % loopState.maxFPSInterval;
+      });
     }
   } else {
     // No maxFPS limiter
-    getRenderer()?.renderAsync(getCurrentScene(), getCurrentCamera());
-    getStats()?.update();
+    renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
+      runMainLateLoopers();
+      getStats()?.update();
+    });
   }
 };
 
@@ -168,7 +181,7 @@ export const initMainLoop = () => {
   if (loopState.masterPlay) requestAnimationFrame(mainLoop);
 };
 
-// Resizers
+// Add three.js global resizer
 resizers['canvasResizer'] = () => {
   const camera = getCurrentCamera();
   const renderer = getRenderer();

@@ -1,14 +1,12 @@
 import * as THREE from 'three/webgpu';
 import {
-  texture,
-  equirectUV,
-  ShaderNodeObject,
   normalWorld,
   uniform,
   normalView,
   positionViewDirection,
   cameraViewMatrix,
   pmremTexture,
+  reflectVector,
 } from 'three/tsl';
 import { lerror, lwarn } from '../utils/Logger';
 import { getCurrentScene, getScene } from './Scene';
@@ -22,6 +20,8 @@ import {
   getDebugToolsState,
   setDebugEnvBallMaterial,
 } from '../debug/DebugTools';
+import { RGBELoader } from 'three/examples/jsm/Addons.js';
+import { isHDR } from '../utils/helpers';
 
 type SkyBoxProps = {
   sceneId?: string;
@@ -43,7 +43,12 @@ type SkyBoxProps = {
   | {
       type: 'CUBETEXTURE';
       params: {
-        file: string;
+        fileNames: string[];
+        path?: string;
+        textureId?: string;
+        colorSpace?: string;
+        roughness?: number;
+        cubeTextRotate?: number;
       };
     }
   | {
@@ -52,9 +57,10 @@ type SkyBoxProps = {
     }
 );
 
-const LS_KEY = 'debugSkyBox';
 let defaultRoughness = 0.5;
 const pmremRoughnessBg = uniform(defaultRoughness);
+
+const LS_KEY = 'debugSkyBox';
 let skyBoxState = {
   type: '',
   equiRectFolderExpanded: false,
@@ -64,14 +70,20 @@ let skyBoxState = {
   equiRectIsEnvMap: false,
   equiRectRoughness: defaultRoughness,
   cubeTextFolderExpanded: false,
+  cubeTextFile: '',
+  cubeTextTextureId: '',
+  cubeTextColorSpace: THREE.SRGBColorSpace,
+  cubeTextRoughness: defaultRoughness,
+  cubeTextRotate: 0,
 };
 let debuggerCreated = false;
+let cubeTexture: THREE.CubeTexture | null = null;
 
 /**
  * Creates either a sky box (equirectangular, cube texture, or sky and sun). The sky and sun type ("SKYANDSUN") includes a dynamic sun element.
  * @param skyBoxProps object that has different property's based on the type property, {@link SkyBoxProps}
  */
-export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
+export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
   if (params && 'roughness' in params) {
     defaultRoughness = params.roughness || 0.5;
     skyBoxState.equiRectRoughness = defaultRoughness;
@@ -108,39 +120,33 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
     let envTexture: null | THREE.Texture | THREE.DataTexture = null;
     if (typeof file === 'string' || textureId) {
       // File is a string or textureId was provided (texture was preloaded)
-      const equirectTexture = file
-        ? loadTexture({
-            id: textureId,
-            fileName: file as string,
-            throwOnError: isDebugEnvironment(),
-          })
-        : getTexture(textureId || '');
+      let equirectTexture: THREE.Texture | THREE.DataTexture | null = null;
+      if (isHDR(file as string)) {
+        equirectTexture = await new RGBELoader().loadAsync(file as string);
+        // equirectTexture.magFilter = THREE.LinearFilter;
+        // equirectTexture.minFilter = THREE.LinearMipMapLinearFilter;
+        // equirectTexture.anisotropy = 16;
+      } else {
+        equirectTexture = file
+          ? loadTexture({
+              id: textureId,
+              fileName: file as string,
+              throwOnError: isDebugEnvironment(),
+            })
+          : getTexture(textureId || '');
+      }
       if (!equirectTexture) {
         const msg = `Could not find or load equirectangular texture in addSkyBox (params: ${JSON.stringify(params)}).`;
         lerror(msg);
         return;
       }
       if (typeof file === 'string') skyBoxState.equiRectFile = file;
-      if (textureId) skyBoxState.equiRectTextureId = textureId;
+      skyBoxState.equiRectTextureId = textureId ? textureId : equirectTexture.userData.id;
       equirectTexture.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
-
-      // Sky box without environment map
-      if (!params.isEnvMap) {
-        const shaderNodeTexture = texture(equirectTexture, equirectUV(), 0);
-        scene.backgroundNode = shaderNodeTexture as unknown as ShaderNodeObject<THREE.Node>;
-        scene.userData.backgroundNodeTextureId = textureId || equirectTexture.userData.id;
-        return;
-      }
       envTexture = equirectTexture;
     } else if (file) {
       // File is a Texture/DataTexture
       file.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
-      if (!params.isEnvMap) {
-        const shaderNodeTexture = texture(file, equirectUV(), 0);
-        scene.backgroundNode = shaderNodeTexture as unknown as ShaderNodeObject<THREE.Node>;
-        scene.userData.backgroundNodeTextureId = textureId || file.userData.id;
-        return;
-      }
       envTexture = file;
     }
 
@@ -156,7 +162,9 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
       .reflect(normalView)
       .transformDirection(cameraViewMatrix);
     pmremRoughnessBg.value = skyBoxState.equiRectRoughness;
-    scene.backgroundNode = pmremTexture(envTexture, normalWorld, pmremRoughnessBg);
+    const backgroundEnvNode = pmremTexture(envTexture, normalWorld, pmremRoughnessBg);
+    scene.backgroundNode = backgroundEnvNode;
+    scene.environmentNode = backgroundEnvNode;
     scene.userData.backgroundNodeTextureId = textureId || envTexture.userData.id;
     if (isDebugEnvironment()) {
       const pmremRoughnessBall = uniform(skyBoxState.equiRectRoughness);
@@ -168,8 +176,27 @@ export const addSkyBox = ({ sceneId, type, params }: SkyBoxProps) => {
   }
 
   if (type === 'CUBETEXTURE') {
-    // @TODO: implement CUBETEXTURE
-    lwarn('At the moment CUBETEXTURE skybox type is not supported (maybe in the future).');
+    const { fileNames, path, textureId } = params;
+
+    cubeTexture = await new THREE.CubeTextureLoader().setPath(path || './').loadAsync(fileNames);
+    cubeTexture.userData.id = textureId || cubeTexture.uuid;
+    cubeTexture.generateMipmaps = true;
+    cubeTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    cubeTexture.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
+
+    pmremRoughnessBg.value = skyBoxState.cubeTextRoughness;
+    const rotateYMatrix = new THREE.Matrix4();
+    rotateYMatrix.makeRotationY(Math.PI * skyBoxState.cubeTextRotate);
+    const backgroundUV = reflectVector.xyz.mul(uniform(rotateYMatrix));
+    scene.backgroundNode = pmremTexture(cubeTexture, backgroundUV);
+    scene.userData.backgroundNodeTextureId = textureId || cubeTexture.userData.id;
+    if (isDebugEnvironment()) {
+      const pmremRoughnessBall = uniform(skyBoxState.cubeTextRoughness);
+      const pmremNodeBall = pmremTexture(cubeTexture, backgroundUV.mul(-1), pmremRoughnessBall);
+      setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
+    }
+
+    lwarn('CUBETEXTURE skybox type is under work in progress and may not work properly.');
     return;
   }
 
@@ -261,16 +288,47 @@ const createSkyBoxDebugGUI = () => {
         debugGUI.refresh();
       });
 
-      // const cubeTextureFolder = debugGUI
-      //   .addFolder({
-      //     title: 'Cube texture sky box params',
-      //     hidden: skyBoxState.type !== 'CUBETEXTURE',
-      //     expanded: skyBoxState.cubeTextFolderExpanded,
-      //   })
-      //   .on('fold', (state) => {
-      //     skyBoxState.cubeTextFolderExpanded = state.expanded;
-      //     lsSetItem(LS_KEY, skyBoxState);
-      //   });
+      const cubeTextureFolder = debugGUI
+        .addFolder({
+          title: 'Cube texture sky box params',
+          hidden: skyBoxState.type !== 'CUBETEXTURE',
+          expanded: skyBoxState.cubeTextFolderExpanded,
+        })
+        .on('fold', (state) => {
+          skyBoxState.cubeTextFolderExpanded = state.expanded;
+          lsSetItem(LS_KEY, skyBoxState);
+        });
+      cubeTextureFolder.addBinding(skyBoxState, 'equiRectFile', {
+        label: 'File path or URL',
+        readonly: true,
+      });
+      cubeTextureFolder.addBinding(skyBoxState, 'equiRectTextureId', {
+        label: 'Texture id',
+        readonly: true,
+      });
+      cubeTextureFolder.addBinding(skyBoxState, 'equiRectColorSpace', {
+        label: 'Color space',
+        readonly: true,
+      });
+      cubeTextureFolder.addBinding(skyBoxState, 'equiRectIsEnvMap', {
+        label: 'Is environment map',
+        readonly: true,
+      });
+      cubeTextureFolder
+        .addBinding(skyBoxState, 'equiRectRoughness', {
+          label: 'Roughness',
+          step: 0.001,
+          min: 0,
+          max: 1,
+        })
+        .on('change', (e) => {
+          pmremRoughnessBg.value = e.value;
+          const debugToolsState = getDebugToolsState();
+          if (!debugToolsState.env.separateBallValues) {
+            changeDebugEnvBallRoughness(e.value);
+          }
+          lsSetItem(LS_KEY, skyBoxState);
+        });
 
       return container;
     },

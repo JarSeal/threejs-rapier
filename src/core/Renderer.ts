@@ -2,6 +2,18 @@ import * as THREE from 'three/webgpu';
 import WebGL from 'three/addons/capabilities/WebGL.js';
 import { getWindowSize } from '../utils/Window';
 import { llog, lwarn } from '../utils/Logger';
+import { isDebugEnvironment } from './Config';
+
+const TONE_MAPPINGS: { [key: string]: THREE.ToneMapping } = {
+  NoToneMapping: THREE.NoToneMapping,
+  LinearToneMapping: THREE.LinearToneMapping,
+  ReinhardToneMapping: THREE.ReinhardToneMapping,
+  CineonToneMapping: THREE.CineonToneMapping,
+  ACESFilmicToneMapping: THREE.ACESFilmicToneMapping,
+  AgXToneMapping: THREE.AgXToneMapping,
+  NeutralToneMapping: THREE.NeutralToneMapping,
+  CustomToneMapping: THREE.CustomToneMapping,
+};
 
 let r: THREE.WebGPURenderer | null = null;
 const ELEM_ID = 'mainCanvas';
@@ -12,6 +24,10 @@ const options: RendererOptions = {
   currentApi: 'WebGL',
   currentApiIsWebGPU: false,
   currentApiIsWebGL: true,
+  toneMapping: THREE.NoToneMapping,
+  toneMappingExposure: 1,
+  outputColorSpace: THREE.SRGBColorSpace,
+  alpha: false,
 };
 
 type RendererOptions = {
@@ -21,6 +37,10 @@ type RendererOptions = {
   currentApi: 'WebGL' | 'WebGL2' | 'WebGPU';
   currentApiIsWebGPU: boolean;
   currentApiIsWebGL: boolean;
+  toneMapping: THREE.ToneMapping;
+  toneMappingExposure: number;
+  outputColorSpace: THREE.ColorSpace;
+  alpha?: boolean;
 };
 
 // @TODO: add JSDoc comment
@@ -33,7 +53,12 @@ export const createRenderer = (opts?: Partial<RendererOptions>) => {
   const renderer = new THREE.WebGPURenderer({
     antialias: options.antialias,
     forceWebGL: options.forceWebGL || options.currentApiIsWebGL,
+    alpha: opts?.alpha || options.alpha,
   });
+  renderer.toneMapping = opts?.toneMapping || options.toneMapping;
+  renderer.toneMappingExposure = opts?.toneMappingExposure || options.toneMappingExposure;
+  renderer.outputColorSpace = opts?.outputColorSpace || options.outputColorSpace;
+  renderer.debug.checkShaderErrors = isDebugEnvironment();
   renderer.setPixelRatio(options.devicePixelRatio);
   renderer.setSize(windowSize.width, windowSize.height);
 

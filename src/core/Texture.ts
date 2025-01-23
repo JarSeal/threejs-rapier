@@ -1,5 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { lerror, lwarn } from '../utils/Logger';
+import { RGBELoader } from 'three/examples/jsm/Addons.js';
+import { isHDR } from '../utils/helpers';
 
 type TexOpts = {
   image?: TexImageSource | OffscreenCanvas;
@@ -16,7 +18,7 @@ type TexOpts = {
 
 const textures: { [id: string]: THREE.Texture } = {};
 
-const setTextureOpts = (texture: THREE.Texture, texOpts?: TexOpts) => {
+const setTextureOpts = (texture: THREE.Texture | THREE.DataTexture, texOpts?: TexOpts) => {
   if (texOpts?.mapping) texture.mapping = texOpts.mapping;
   if (texOpts?.wrapS) texture.wrapS = texOpts.wrapS;
   if (texOpts?.wrapT) texture.wrapT = texOpts.wrapT;
@@ -56,6 +58,25 @@ const createTexture = (
   }
 
   if (!fileName) return getNoFileTexture(texOpts);
+
+  if (isHDR(fileName)) {
+    const loader = new RGBELoader();
+    const texture = setTextureOpts(
+      loader.setDataType(THREE.HalfFloatType).load(
+        fileName,
+        (texture) => texture,
+        undefined,
+        (err) => {
+          const errorMsg = `Could not load HDR texture in createTexture (id: "${id}", "fileName: ${fileName}")`;
+          lerror(errorMsg, err);
+          if (throwOnError) throw new Error(errorMsg);
+          return new THREE.Texture();
+        }
+      ),
+      texOpts
+    );
+    return texture;
+  }
 
   const loader = new THREE.TextureLoader();
   const texture = setTextureOpts(
@@ -161,7 +182,7 @@ export const loadTextures = (
  * @param id optional id string, defaults to texture.uuid
  * @param fileName optional file path to be loaded. If no fileName is provided, an empty Texture is created.
  * @param texOpts optional {@link TexOpts}
- * @returns THREE.Texture
+ * @returns THREE.Texture | THREE.DataTexture
  */
 export const loadTexture = ({
   id,

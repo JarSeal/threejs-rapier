@@ -2,15 +2,17 @@ import * as THREE from 'three/webgpu';
 import { ShaderNodeObject, uniform } from 'three/tsl';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { createCamera, getAllCameras, getCurrentCameraId, setCurrentCamera } from '../core/Camera';
-import { getRenderer } from '../core/Renderer';
+import { getRenderer, getRendererOptions } from '../core/Renderer';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { createNewDebuggerGUI, setDebuggerTabAndContainer } from './DebuggerGUI';
 import { createMesh, getMesh } from '../core/Mesh';
 import { createGeometry } from '../core/Geometry';
 import { createMaterial } from '../core/Material';
-import { getCurrentScene } from '../core/Scene';
+import { addSceneMainLooper, getCurrentScene } from '../core/Scene';
 import { createGroup } from '../core/Group';
 import { getEnvMapRoughnessBg } from '../core/SkyBox';
+import { getWindowSize } from '../utils/Window';
+import Color4 from 'three/src/renderers/common/Color4.js';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -69,10 +71,14 @@ const createDebugToolsDebugGUI = () => {
 
   debugCamera = createCamera(DEBUG_CAMERA_ID, {
     isCurrentCamera: debugToolsState.useDebugCamera,
-    fov: debugToolsState.camera.fov,
+    fov: 90,
     near: debugToolsState.camera.near,
     far: debugToolsState.camera.far,
   });
+  const horizontalFov = 90;
+  debugCamera.fov =
+    (Math.atan(Math.tan(((horizontalFov / 2) * Math.PI) / 180) / debugCamera.aspect) * 2 * 180) /
+    Math.PI;
   if (!debugCamera)
     throw new Error('Error while creating debug camera in createDebugToolsDebugGUI');
   debugCamera.position.set(
@@ -177,44 +183,132 @@ const createDebugToolsDebugGUI = () => {
   });
 };
 
+// const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
+//   const viewBoundsMin = new THREE.Vector2();
+//   const viewBoundsMax = new THREE.Vector2();
+//   debugCamera.getViewBounds(1, viewBoundsMin, viewBoundsMax);
+
+//   // Tool group
+//   // const toolGroup = createGroup({ id: 'debugToolsGroup' });
+//   const toolGroup = createMesh({
+//     id: 'debugToolsGroup',
+//     geo: createGeometry({
+//       id: 'debugToolsGroupGep',
+//       type: 'BOX',
+//       params: {
+//         width: viewBoundsMax.x - viewBoundsMin.x,
+//         height: viewBoundsMax.y - viewBoundsMin.y,
+//         depth: 2,
+//       },
+//     }),
+//     mat: createMaterial({
+//       id: 'debugToolsGroupMat',
+//       type: 'BASIC',
+//       params: {
+//         transparent: true,
+//         opacity: 0,
+//       },
+//       // type: 'BASICNODEMATERIAL',
+//       // params: {
+//       //   depthTest: false,
+//       //   ...(envBallColorNode ? { colorNode: envBallColorNode } : {}),
+//       // },
+//     }),
+//   });
+
+//   // Environment mirror ball
+//   const mesh = createMesh({
+//     id: ENV_MIRROR_BALL_MESH_ID,
+//     geo: createGeometry({
+//       id: 'envMirrorBallGeo',
+//       type: 'SPHERE',
+//       params: { radius: 0.03, widthSegments: 64, heightSegments: 64 },
+//     }),
+//     mat: createMaterial({
+//       id: 'envMirrorBallMat',
+//       type: 'BASICNODEMATERIAL',
+//       params: {
+//         depthTest: false,
+//         ...(envBallColorNode ? { colorNode: envBallColorNode } : {}),
+//       },
+//     }),
+//   });
+//   envBallRoughnessNode.value = debugToolsState.env.separateBallValues
+//     ? debugToolsState.env.ballRoughness
+//     : getEnvMapRoughnessBg()?.value || debugToolsState.env.ballDefaultRoughness;
+//   toolGroup.add(mesh);
+//   mesh.visible = Boolean(envBallColorNode);
+
+//   toolGroup.geometry.computeBoundingBox();
+//   const box = new THREE.Box3();
+//   if (toolGroup.geometry.boundingBox)
+//     box.copy(toolGroup.geometry.boundingBox).applyMatrix4(toolGroup.matrixWorld);
+//   mesh.position.x = 0;
+//   mesh.position.y = box.min.y;
+//   mesh.position.z = 1;
+//   mesh.renderOrder = 999999;
+
+//   // Add toolgroup to mesh and debugCamera to scene
+//   debugCamera.add(toolGroup);
+//   toolGroup.position.set(0, 0, -2.5);
+//   toolGroup.lookAt(debugCamera.position);
+
+//   getCurrentScene().add(debugCamera);
+// };
+
 const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
-  const viewBoundsMin = new THREE.Vector2();
-  const viewBoundsMax = new THREE.Vector2();
-  debugCamera.getViewBounds(0.5, viewBoundsMin, viewBoundsMax);
+  // This currently only works with WebGL renderer
+  // @TODO: check if fixes have been made in newer versions
+  if (getRendererOptions().currentApiIsWebGPU) return;
 
-  // Tool group
-  const toolGroup = createGroup({ id: 'debugToolsGroup' });
+  const renderer = getRenderer();
+  if (!renderer) return;
+  const scene = getCurrentScene();
+  if (!scene) return;
+  const windowSize = getWindowSize();
 
-  // Environment mirror ball
-  const mesh = createMesh({
-    id: ENV_MIRROR_BALL_MESH_ID,
-    geo: createGeometry({
-      id: 'envMirrorBallGeo',
-      type: 'SPHERE',
-      params: { radius: 0.007, widthSegments: 64, heightSegments: 64 },
-    }),
-    mat: createMaterial({
-      id: 'envMirrorBallMat',
-      type: 'BASICNODEMATERIAL',
-      params: {
-        depthTest: false,
-        ...(envBallColorNode ? { colorNode: envBallColorNode } : {}),
-      },
-    }),
-  });
-  envBallRoughnessNode.value = debugToolsState.env.separateBallValues
-    ? debugToolsState.env.ballRoughness
-    : getEnvMapRoughnessBg()?.value || debugToolsState.env.ballDefaultRoughness;
-  mesh.renderOrder = 999999;
-  mesh.position.y += 0.008;
-  mesh.position.x += 0.008;
-  mesh.visible = Boolean(envBallColorNode);
-  toolGroup.add(mesh);
+  const view = {
+    left: 0,
+    bottom: windowSize.height - 300,
+    width: 300,
+    height: 300,
+    fov: 30,
+  };
 
-  // Add toolgroup to mesh and debugCamera to scene
-  debugCamera.add(toolGroup);
-  toolGroup.position.set(viewBoundsMin.x + 0.002, viewBoundsMin.y + 0.002, -0.5);
-  getCurrentScene().add(debugCamera);
+  const envBallCamera = new THREE.PerspectiveCamera(view.fov, windowSize.aspect, 0.1, 10);
+  debugCamera.add(envBallCamera);
+
+  addSceneMainLooper(
+    async () => {
+      const oldColor = new Color4();
+      renderer.getClearColor(oldColor);
+      const backgroundNode = scene.backgroundNode;
+      const background = scene.background;
+
+      renderer.setViewport(view.left, view.bottom, view.width, view.height);
+      renderer.setScissor(view.left, view.bottom, view.width, view.height);
+      renderer.setScissorTest(true);
+
+      // renderer.alpha = true;
+      // renderer.setClearColor(0xffffff, 0.5);
+
+      scene.backgroundNode = null;
+      scene.background = null;
+
+      envBallCamera.aspect = view.width / view.height;
+      envBallCamera.updateProjectionMatrix();
+
+      renderer.renderAsync(scene, envBallCamera).then(() => {
+        renderer.setScissorTest(false);
+        scene.backgroundNode = backgroundNode;
+        scene.background = background;
+        // renderer.alpha = false;
+        // renderer.setClearColor(oldColor, 1);
+      });
+    },
+    undefined,
+    true
+  );
 };
 
 const setDebugToolsVisibility = (show: boolean) => {

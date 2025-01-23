@@ -13,6 +13,7 @@ const scenes: { [id: string]: THREE.Scene } = {};
 let currentScene: THREE.Scene | null = null;
 let currentSceneId: string | null = null;
 const sceneMainLoopers: { [sceneId: string]: Looper[] } = {};
+const sceneMainLateLoopers: { [sceneId: string]: Looper[] } = {};
 const sceneAppLoopers: { [sceneId: string]: Looper[] } = {};
 const sceneResizers: { [sceneId: string]: (() => void)[] } = {};
 
@@ -23,6 +24,7 @@ export type SceneOptions = {
   backgroundTexture?: THREE.Texture;
   backgroundSkybox?: THREE.CubeTexture;
   mainLoopers?: Looper[];
+  mainLateLoopers?: Looper[];
   appLoopers?: Looper[];
 };
 
@@ -45,6 +47,7 @@ export const createScene = (id: string, opts?: SceneOptions) => {
   if (opts?.isCurrentScene) setCurrentScene(id);
 
   if (opts?.mainLoopers) sceneMainLoopers[id] = opts.mainLoopers;
+  if (opts?.mainLateLoopers) sceneMainLateLoopers[id] = opts.mainLateLoopers;
   if (opts?.appLoopers) sceneAppLoopers[id] = opts.appLoopers;
 
   return scene;
@@ -163,6 +166,7 @@ export const deleteScene = (
 
   // Delete loopers
   deleteSceneMainLoopers(id);
+  deleteSceneMainLateLoopers(id);
   deleteSceneAppLoopers(id);
 
   // Delete skybox textures
@@ -194,38 +198,75 @@ export const getAllScenes = () => scenes;
 export const getSceneMainLoopers = (sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
-  if (id) return sceneMainLoopers[id];
+  if (id) return sceneMainLoopers[id] || [];
   lwarn(`Could not find scene with id ${id} in getSceneMainLoopers.`);
+  return [];
 };
 
 // @TODO: add JSDoc comment
-export const addSceneMainLooper = (looper: Looper, sceneId?: string) => {
+export const getSceneMainLateLoopers = (sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
-  if (id && sceneMainLoopers[id]) {
-    sceneMainLoopers[id].push(looper);
-    return;
-  } else if (id) {
-    sceneMainLoopers[id] = [looper];
-    return;
+  if (id) return sceneMainLateLoopers[id] || [];
+  lwarn(`Could not find scene with id ${id} in getSceneMainLateLoopers.`);
+  return [];
+};
+
+// @TODO: add JSDoc comment
+export const addSceneMainLooper = (looper: Looper, sceneId?: string, isLateLooper?: boolean) => {
+  let id = currentSceneId;
+  if (sceneId) id = sceneId;
+  if (isLateLooper) {
+    if (id && sceneMainLateLoopers[id]) {
+      sceneMainLateLoopers[id].push(looper);
+      return;
+    } else if (id) {
+      sceneMainLateLoopers[id] = [looper];
+      return;
+    }
+  } else {
+    if (id && sceneMainLoopers[id]) {
+      sceneMainLoopers[id].push(looper);
+      return;
+    } else if (id) {
+      sceneMainLoopers[id] = [looper];
+      return;
+    }
   }
   lwarn(`Could not find scene with id ${id} in addSceneMainLoopers.`);
 };
 
 // @TODO: add JSDoc comment
-export const removeSceneMainLooper = (index: number | number[], sceneId?: string) => {
+export const removeSceneMainLooper = (
+  index: number | number[],
+  sceneId?: string,
+  isLateLooper?: boolean
+) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
   if (id) {
-    if (!sceneMainLoopers[id]) return;
-    if (typeof index === 'number') {
-      sceneMainLoopers[id] = sceneMainLoopers[id].filter((_, i) => i !== index);
-      return;
-    } else {
-      for (let i = 0; i < index.length; i++) {
-        sceneMainLoopers[id] = sceneMainLoopers[id].filter((_, i) => i !== index[i]);
+    if (isLateLooper) {
+      if (!sceneMainLateLoopers[id]) return;
+      if (typeof index === 'number') {
+        sceneMainLateLoopers[id] = sceneMainLateLoopers[id].filter((_, i) => i !== index);
+        return;
+      } else {
+        for (let i = 0; i < index.length; i++) {
+          sceneMainLateLoopers[id] = sceneMainLateLoopers[id].filter((_, i) => i !== index[i]);
+        }
+        return;
       }
-      return;
+    } else {
+      if (!sceneMainLoopers[id]) return;
+      if (typeof index === 'number') {
+        sceneMainLoopers[id] = sceneMainLoopers[id].filter((_, i) => i !== index);
+        return;
+      } else {
+        for (let i = 0; i < index.length; i++) {
+          sceneMainLoopers[id] = sceneMainLoopers[id].filter((_, i) => i !== index[i]);
+        }
+        return;
+      }
     }
   }
   lwarn(`Could not find scene with id ${id} in deleteSceneMainLoopers.`);
@@ -235,11 +276,15 @@ export const removeSceneMainLooper = (index: number | number[], sceneId?: string
 export const deleteSceneMainLoopers = (sceneId: string) => delete sceneMainLoopers[sceneId];
 
 // @TODO: add JSDoc comment
+export const deleteSceneMainLateLoopers = (sceneId: string) => delete sceneMainLateLoopers[sceneId];
+
+// @TODO: add JSDoc comment
 export const getSceneAppLoopers = (sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
-  if (id) return sceneAppLoopers[id];
+  if (id) return sceneAppLoopers[id] || [];
   lwarn(`Could not find scene with id ${id} in getSceneAppLoopers.`);
+  return [];
 };
 
 // @TODO: add JSDoc comment
