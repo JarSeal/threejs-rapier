@@ -4,22 +4,11 @@ import { getWindowSize } from '../utils/Window';
 import { llog, lwarn } from '../utils/Logger';
 import { isDebugEnvironment } from './Config';
 
-const TONE_MAPPINGS: { [key: string]: THREE.ToneMapping } = {
-  NoToneMapping: THREE.NoToneMapping,
-  LinearToneMapping: THREE.LinearToneMapping,
-  ReinhardToneMapping: THREE.ReinhardToneMapping,
-  CineonToneMapping: THREE.CineonToneMapping,
-  ACESFilmicToneMapping: THREE.ACESFilmicToneMapping,
-  AgXToneMapping: THREE.AgXToneMapping,
-  NeutralToneMapping: THREE.NeutralToneMapping,
-  CustomToneMapping: THREE.CustomToneMapping,
-};
-
 let r: THREE.WebGPURenderer | null = null;
 const ELEM_ID = 'mainCanvas';
 const options: RendererOptions = {
   antialias: undefined,
-  forceWebGL: undefined,
+  forceWebGL: false,
   devicePixelRatio: 1,
   currentApi: 'WebGL',
   currentApiIsWebGPU: false,
@@ -43,7 +32,11 @@ type RendererOptions = {
   alpha?: boolean;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Creates a Three.js WebGPU renderer
+ * @param opts (object) optional render options object {@link RendererOptions}
+ * @returns THREE.WebGPURenderer
+ */
 export const createRenderer = (opts?: Partial<RendererOptions>) => {
   const windowSize = getWindowSize();
 
@@ -70,7 +63,10 @@ export const createRenderer = (opts?: Partial<RendererOptions>) => {
   return renderer;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns the canvas parent element in the DOM which the canvas is in
+ * @returns HTMLElement
+ */
 export const getCanvasParentElem = () => {
   const canvasParentElem = document.getElementById(ELEM_ID);
   if (!canvasParentElem) {
@@ -79,10 +75,15 @@ export const getCanvasParentElem = () => {
   return canvasParentElem;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns the initialized renderer or null
+ * @returns THREE.WebGPURenderer | null
+ */
 export const getRenderer = () => r;
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes the initialized renderer
+ */
 export const deleteRenderer = () => {
   if (!r) {
     lwarn(`The renderer has not been created or it has been deleted, in deleteRenderer(id).`);
@@ -107,5 +108,8 @@ const setRendererOptions = async (opts?: Partial<RendererOptions>) => {
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns render options object
+ * @returns (object) {@link RendererOptions}
+ */
 export const getRendererOptions = () => options;

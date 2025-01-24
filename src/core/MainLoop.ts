@@ -32,6 +32,7 @@ type LoopState = {
   appPlay: boolean;
   isMasterPlaying: boolean;
   isAppPlaying: boolean;
+  playSpeedMultiplier: number;
   maxFPS: number;
   maxFPSInterval: number;
 };
@@ -41,12 +42,32 @@ let loopState: LoopState = {
   appPlay: true,
   isMasterPlaying: false,
   isAppPlaying: false,
+  playSpeedMultiplier: 1,
   maxFPS: 0, // 0 = maxFPS limiter is off and is not used
   maxFPSInterval: 0, // if maxFPS = 60, then this would be 1 / 60
 };
 
+/**
+ * Returns the loop delta time
+ * @returns (number) delta time
+ */
 export const getDelta = () => delta;
-export const getTransformValue = (speedInUnitsPerSecond: number) => delta * speedInUnitsPerSecond;
+
+/**
+ * Returns linear speed value in relation to delta time
+ * @param unitsPerSecond (number) units per second
+ * @returns (number) transformed speed value (delta * unitsPerSecond * loopState.playSpeedMultiplier)
+ */
+export const transformSpeedValue = (unitsPerSecond: number) =>
+  delta * unitsPerSecond * loopState.playSpeedMultiplier;
+
+/**
+ * Transforms time value in relation to the loopState.playSpeedMultiplier
+ * @param durationInMs (number) duration in milliseconds to transform
+ * @returns (number) transformed duration in milliseconds (durationInMs * loopState.playSpeedMultiplier)
+ */
+export const transformTimeValue = (durationInMs: number) =>
+  durationInMs * loopState.playSpeedMultiplier;
 
 let mainLoop: () => void = () => {};
 
@@ -123,7 +144,9 @@ const mainLoopForProductionWithFPSLimiter = () => {
   }
 };
 
-// Init mainLoop
+/**
+ * Initializes the main loop. Requires that the renderer, camera, and scene have been created.
+ */
 export const initMainLoop = () => {
   const renderer = getRenderer();
   const currentScene = getCurrentScene();
@@ -213,6 +236,11 @@ window.addEventListener(
   false
 );
 
+/**
+ * Adds a global resizer function.
+ * @param id (string) resizer id
+ * @param resizer (() => void) resizer function
+ */
 export const addResizer = (id: string, resizer: () => void) => {
   if (resizers[id]) {
     throw new Error(
@@ -222,6 +250,10 @@ export const addResizer = (id: string, resizer: () => void) => {
   resizers[id] = resizer;
 };
 
+/**
+ * Deletes a resizer with an id
+ * @param id (string) resizer id
+ */
 export const deleteResizer = (id: string) => {
   if (!resizers[id]) {
     lwarn(`Could not find resizer with id "${id}" in deleteResizer.`);
@@ -262,6 +294,10 @@ const createLoopDebugGUI = () => {
   });
 };
 
+/**
+ * Toggles the main loop player state (play / pause)
+ * @param value (boolean) optional value whether the loop state in playing (true) or paused (false). If not provided then value is the opposite to the current value.
+ */
 export const toggleMainPlay = (value?: boolean) => {
   if (value !== undefined) {
     loopState.masterPlay = value;
@@ -271,6 +307,10 @@ export const toggleMainPlay = (value?: boolean) => {
   if (loopState.masterPlay && !loopState.isMasterPlaying) mainLoop();
 };
 
+/**
+ * Toggles the app loop player state (play / pause)
+ * @param value (boolean) optional value whether the loop state in playing (true) or paused (false). If not provided then value is the opposite to the current value.
+ */
 export const toggleGamePlay = (value?: boolean) => {
   if (value !== undefined) {
     loopState.appPlay = value;
@@ -278,3 +318,12 @@ export const toggleGamePlay = (value?: boolean) => {
   }
   loopState.appPlay = !loopState.appPlay;
 };
+
+/**
+ * Returns the read-only loop state object
+ * @returns ({@link LoopState}) copy of LoopState
+ */
+export const getReadOnlyLoopState = () => JSON.parse(JSON.stringify(loopState));
+
+// TODO: getPlaySpeedMultiplier
+// TODO: setPlaySpeedMultiplier

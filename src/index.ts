@@ -10,7 +10,7 @@ import { createLight } from './core/Light';
 import { importModelAsync } from './core/ImportModel';
 import { createMesh } from './core/Mesh';
 import { addToGroup, createGroup } from './core/Group';
-import { getTransformValue, initMainLoop } from './core/MainLoop';
+import { transformSpeedValue, initMainLoop } from './core/MainLoop';
 import './styles/index.scss';
 import { loadConfig } from './core/Config';
 import { addSkyBox } from './core/SkyBox';
@@ -76,7 +76,7 @@ const map02 = [
 await addSkyBox({
   type: 'CUBETEXTURE',
   params: {
-    fileNames: map01,
+    fileNames: map02,
     path: '/testTextures',
     textureId: 'cubeTextureId',
   },
@@ -165,19 +165,19 @@ if (importedBox) {
   scene.add(importedBox);
 
   addSceneAppLooper(() => {
-    importedBox.rotation.y += getTransformValue(0.2);
-    importedBox.rotation.z -= getTransformValue(0.14);
+    importedBox.rotation.y += transformSpeedValue(0.2);
+    importedBox.rotation.z -= transformSpeedValue(0.14);
   });
 }
 
 addSceneMainLooper(() => {
-  sphere.rotation.z -= getTransformValue(0.1);
-  sphere.rotation.y += getTransformValue(0.1);
+  sphere.rotation.z -= transformSpeedValue(0.1);
+  sphere.rotation.y += transformSpeedValue(0.1);
 });
 
 addSceneAppLooper(() => {
-  box.rotation.y -= getTransformValue(2);
-  box.rotation.z -= getTransformValue(2);
+  box.rotation.y -= transformSpeedValue(2);
+  box.rotation.z -= transformSpeedValue(2);
 });
 
 const point = createLight({

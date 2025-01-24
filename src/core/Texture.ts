@@ -182,6 +182,7 @@ export const loadTextures = (
  * @param id optional id string, defaults to texture.uuid
  * @param fileName optional file path to be loaded. If no fileName is provided, an empty Texture is created.
  * @param texOpts optional {@link TexOpts}
+ * @param throwOnError optional value whether loadTexture should throw on an error
  * @returns THREE.Texture | THREE.DataTexture
  */
 export const loadTexture = ({
@@ -201,7 +202,14 @@ export const loadTexture = ({
   return texture;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Creates a texture to be used without loading logic. The texture is usable right away.
+ * @param id optional id string, defaults to texture.uuid
+ * @param fileName optional file path to be loaded. If no fileName is provided, an empty Texture is created.
+ * @param texOpts optional {@link TexOpts}
+ * @param throwOnError optional value whether loadTextureAsync should throw on an error
+ * @returns Promise<THREE.Texture | THREE.DataTexture>
+ */
 export const loadTextureAsync = async ({
   id,
   fileName,
@@ -236,13 +244,24 @@ export const loadTextureAsync = async ({
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns a texture or undefined based on the id
+ * @param id (string) texture id
+ * @returns Three.js texture | undefined
+ */
 export const getTexture = (id: string) => textures[id];
 
-// @TODO: add JSDoc comment
+/**
+ * Returns one or multiple textures based on the ids
+ * @param id (array of strings) one or multiple texture ids
+ * @returns Array of Three.js textures
+ */
 export const getTextures = (ids: string[]) => ids.map((id) => textures[id]);
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes a texture based on an id
+ * @param id (string | string[]) texture id or array of texture ids
+ */
 export const deleteTexture = (id: string | string[]) => {
   if (typeof id === 'string') {
     const texture = getTexture(id);
@@ -282,5 +301,8 @@ export const deleteTexture = (id: string | string[]) => {
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns all created textures that exist
+ * @returns array of Three.js textures
+ */
 export const getAllTextures = () => textures;
