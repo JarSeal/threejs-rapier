@@ -134,3 +134,16 @@ $breakpointXSmall: 379px;
   color: variables.$debugTextColor;
   overflow: auto;
 }
+
+.childContainer {
+  :global(.debuggerHeading) {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  &:first-of-type {
+    :global(.debuggerHeading) {
+      margin-top: 0 !important;
+    }
+  }
+}

@@ -1,9 +1,5 @@
 import { Clock } from 'three/webgpu';
-import {
-  createDebugGui,
-  createNewDebuggerGUI,
-  setDebuggerTabAndContainer,
-} from '../debug/DebuggerGUI';
+import { createDebugGui, createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
 import { getStats, initStats } from '../debug/Stats';
 import { getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
@@ -232,13 +228,13 @@ export const deleteResizer = (id: string) => {
 
 // Debug GUI for loop
 const createLoopDebugGUI = () => {
-  setDebuggerTabAndContainer({
+  createDebuggerTab({
     id: 'loopControls',
     buttonText: 'LOOP',
     title: 'Loop controls',
     orderNr: 4,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerGUI('loop', 'Loop Controls');
+      const { container, debugGUI } = createNewDebuggerPane('loop', 'Loop Controls');
       debugGUI.addBinding(loopState, 'masterPlay', { label: 'Master loop' }).on('change', (e) => {
         if (e.value) requestAnimationFrame(mainLoop);
         lsSetItem(LS_KEY, loopState);

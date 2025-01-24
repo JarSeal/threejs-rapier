@@ -4,12 +4,13 @@ import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { createCamera, getAllCameras, getCurrentCameraId, setCurrentCamera } from '../core/Camera';
 import { getRenderer } from '../core/Renderer';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
-import { createNewDebuggerGUI, setDebuggerTabAndContainer } from './DebuggerGUI';
+import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
 import { createMesh, getMesh } from '../core/Mesh';
 import { createGeometry } from '../core/Geometry';
 import { createMaterial } from '../core/Material';
 import { getCurrentScene } from '../core/Scene';
 import { getEnvMapRoughnessBg } from '../core/SkyBox';
+import { isDebugEnvironment } from '../core/Config';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -58,6 +59,7 @@ let debugToolsState: {
  * Initializes the debug tools (only for debug environments).
  */
 export const initDebugTools = () => {
+  if (!isDebugEnvironment()) return;
   createDebugToolsDebugGUI();
 };
 
@@ -114,13 +116,13 @@ const createDebugToolsDebugGUI = () => {
   });
   orbitControls.enabled = debugToolsState.useDebugCamera;
 
-  setDebuggerTabAndContainer({
+  createDebuggerTab({
     id: 'debugToolsControls',
     buttonText: 'TOOLS',
     title: 'Debug tools controls',
     orderNr: 6,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerGUI('debugTools', 'Debug Tools Controls');
+      const { container, debugGUI } = createNewDebuggerPane('debugTools', 'Debug Tools Controls');
 
       debugGUI
         .addBinding(debugToolsState, 'useDebugCamera', { label: 'Use debug camera' })
@@ -215,11 +217,13 @@ const createDebugToolsDebugGUI = () => {
           envBallRoughnessNode.value = e.value;
           lsSetItem(LS_KEY, debugToolsState);
         });
+
       return container;
     },
   });
 };
 
+// On screen tools (eg. env ball)
 const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
   const viewBoundsMin = new THREE.Vector2();
   const viewBoundsMax = new THREE.Vector2();

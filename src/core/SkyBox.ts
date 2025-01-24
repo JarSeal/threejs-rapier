@@ -13,7 +13,7 @@ import { getCurrentScene, getScene } from './Scene';
 import { getRenderer } from './Renderer';
 import { getTexture, loadTexture } from './Texture';
 import { isDebugEnvironment } from './Config';
-import { createNewDebuggerGUI, setDebuggerTabAndContainer } from '../debug/DebuggerGUI';
+import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import {
   changeDebugEnvBallRoughness,
@@ -209,13 +209,13 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
 
 // Debug GUI for sky box
 const createSkyBoxDebugGUI = () => {
-  setDebuggerTabAndContainer({
+  createDebuggerTab({
     id: 'skyBoxControls',
     buttonText: 'SKYBOX',
     title: 'Sky box controls',
     orderNr: 5,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerGUI('skyBox', 'Sky Box Controls');
+      const { container, debugGUI } = createNewDebuggerPane('skyBox', 'Sky Box Controls');
 
       debugGUI.addBinding(skyBoxState, 'type', {
         label: 'Type',

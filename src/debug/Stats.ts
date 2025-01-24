@@ -1,6 +1,6 @@
 import Stats from 'stats-gl';
 import { getRenderer } from '../core/Renderer';
-import { createNewDebuggerGUI, setDebuggerTabAndContainer } from './DebuggerGUI';
+import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getGUIContainerElem } from '../core/HUD';
 
@@ -54,13 +54,13 @@ export const initStats = (config?: StatsOptions) => {
 export const getStats = () => stats;
 
 const setDebuggerUI = (config: StatsOptions) =>
-  setDebuggerTabAndContainer({
+  createDebuggerTab({
     id: 'statsControls',
     buttonText: 'STATS',
     title: 'Statistics',
     orderNr: 3,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerGUI('Stats', 'Statistics');
+      const { container, debugGUI } = createNewDebuggerPane('Stats', 'Statistics');
 
       const performanceFolder = debugGUI
         .addFolder({

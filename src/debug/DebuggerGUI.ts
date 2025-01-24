@@ -5,8 +5,6 @@ import { getWindowSize } from '../utils/Window';
 import { getHUDRootCMP } from '../core/HUD';
 import { Pane } from 'tweakpane';
 
-// @TODO: add window size listener to update the scrollable area
-
 let drawerCMP: TCMP | null = null;
 let tabsContainerWrapper: null | TCMP = null;
 
@@ -40,14 +38,13 @@ type TabAndContainer = {
   id: string;
   buttonText: string;
   title?: string;
-  container: TCMP | (() => TCMP);
+  container: TCMP | (() => TCMP | TCMP[]);
   button: null | TCMP;
   orderNr?: number;
 };
 
 const tabsAndContainers: TabAndContainer[] = [];
 
-// @TODO: add JSDoc comment
 const createTabMenuButtons = () => {
   for (let i = 0; i < tabsAndContainers.length; i++) {
     const data = tabsAndContainers[i];
@@ -60,9 +57,29 @@ const createTabMenuButtons = () => {
       attr: data.title ? { title: data.title } : undefined,
       onClick: (_, cmp) => {
         if (cmp.elem.classList.contains(styles.debugDrawerTabButton_selected)) return;
-        const container = typeof data.container === 'function' ? data.container() : data.container;
+        let container: TCMP | TCMP[] | null = null;
+        // const container = typeof data.container === 'function' ? data.container() : data.container;
+        if (typeof data.container !== 'function') {
+          container = data.container.updateClass(styles.childContainer);
+        } else {
+          const containerOrcontainers = data.container();
+          if (Array.isArray(containerOrcontainers)) {
+            for (let i = 0; i < containerOrcontainers.length; i++) {
+              containerOrcontainers[i].updateClass(styles.childContainer);
+            }
+            container = containerOrcontainers;
+          } else {
+            container = containerOrcontainers.updateClass(styles.childContainer);
+          }
+        }
         tabsContainerWrapper?.removeChildren();
-        tabsContainerWrapper?.add(container);
+        if (Array.isArray(container)) {
+          for (let i = 0; i < container.length; i++) {
+            tabsContainerWrapper?.add(container[i]);
+          }
+        } else {
+          tabsContainerWrapper?.add(container);
+        }
         for (let i = 0; i < tabsAndContainers.length; i++) {
           const btn = tabsAndContainers[i]?.button;
           if (btn) btn.updateClass(styles.debugDrawerTabButton_selected, 'remove');
@@ -79,7 +96,11 @@ createTabMenuButtons();
 export type DebugGUIOpts = { drawerBtnPlace?: 'TOP' | 'MIDDLE' | 'BOTTOM' };
 let guiOpts: DebugGUIOpts | undefined = undefined;
 
-// @TODO: add JSDoc comment
+/**
+ * Creates the debug GUI (the root functionality)
+ * @param opts (object) optional debug GUI options {@link DebugGUIOpts}
+ * @returns TCMP or undefined
+ */
 export const createDebugGui = (opts?: DebugGUIOpts) => {
   guiOpts = opts;
   getDrawerState();
@@ -140,10 +161,10 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
 
   drawerCMP.add(tabsMenuContainer);
   drawerCMP.add(tabsContainerWrapper);
-  const containerHeight = getWindowSize().height - tabsMenuContainer.elem.offsetHeight - 24; // 24 is padding
+  const getWrapperHeight = () => getWindowSize().height - tabsMenuContainer.elem.offsetHeight - 24; // 24 is padding
 
   tabsContainerWrapper.update({
-    attr: { style: `height: ${containerHeight}px` },
+    attr: { style: `height: ${getWrapperHeight()}px` },
     listeners: [
       {
         type: 'scroll',
@@ -155,6 +176,16 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     ],
   });
 
+  const setWrapperHeightOnResize = () => {
+    tabsContainerWrapper?.updateAttr({ style: `height: ${getWrapperHeight()}px` });
+  };
+  window.addEventListener('resize', setWrapperHeightOnResize, true);
+  tabsContainerWrapper.update({
+    onRemoveCmp: () => {
+      window.removeEventListener('resize', setWrapperHeightOnResize);
+    },
+  });
+
   // Show current tab
   let data = tabsAndContainers.find((tab) => drawerState.currentTabId === tab.id);
   let tabFound = true;
@@ -163,9 +194,19 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     tabFound = false;
   }
   if (!data) return;
-  tabsContainerWrapper?.add(
-    typeof data.container === 'function' ? data.container() : data.container
-  );
+
+  if (typeof data.container !== 'function') {
+    tabsContainerWrapper?.add(data.container.updateClass(styles.childContainer));
+  } else {
+    const container = data.container();
+    if (Array.isArray(container)) {
+      for (let i = 0; i < container.length; i++) {
+        tabsContainerWrapper?.add(container[i].updateClass(styles.childContainer));
+      }
+    } else {
+      tabsContainerWrapper?.add(container.updateClass(styles.childContainer));
+    }
+  }
 
   for (let i = 0; i < tabsAndContainers.length; i++) {
     const btn = tabsAndContainers[i]?.button;
@@ -197,8 +238,12 @@ const toggleDrawer = (drawerCMP: TCMP | null, openOrClose?: 'OPEN' | 'CLOSE') =>
   drawerCMP.updateClass(styles.debuggerGUI_closed, 'add');
 };
 
-// @TODO: add JSDoc comment
-export const setDebuggerTabAndContainer = (
+/**
+ * Creates a debugger tab (and container)
+ * @param tabAndContainer (object: Omit<TabAndContainer, 'button'>) {@link TabAndContainer}
+ * @param opts (object: DebugGUIOpts) optional debug GUI options {@link DebugGUIOpts}
+ */
+export const createDebuggerTab = (
   tabAndContainer: Omit<TabAndContainer, 'button'>,
   opts?: DebugGUIOpts
 ) => {
@@ -209,11 +254,16 @@ export const setDebuggerTabAndContainer = (
   createDebugGui(options);
 };
 
-// @TODO: add JSDoc comment
-export const createNewDebuggerGUI = (id: string, heading?: string) => {
-  const idAndName = `debuggerContainer-${id}`;
+/**
+ * Creates a new debugger pane (in a CMP container).
+ * @param id (string) debugger pane id
+ * @param heading (string) optional heading for the section
+ * @returns (object: { container, debugGUI }) the container component and the debugGUI parent object
+ */
+export const createNewDebuggerPane = (id: string, heading?: string) => {
+  const nameAndId = `debuggerPane-${id}`;
   const container = CMP({
-    id: idAndName,
+    id: nameAndId,
     onRemoveCmp: () => debugGUI.dispose(),
   });
   if (heading) container.add({ tag: 'h3', text: heading, class: 'debuggerHeading' });
