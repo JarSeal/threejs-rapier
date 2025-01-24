@@ -4,7 +4,12 @@ import { lwarn } from '../utils/Logger';
 
 const groups: { [id: string]: THREE.Group } = {};
 
-// @TODO: add JSDoc comment
+/**
+ * Adds a Three.js object to a group
+ * @param idOrGroup (string | THREE.Group) group id or Three.js group
+ * @param obj (THREE.Object3D | THREE.Object3D[]) Three.js object3D or array of them
+ * @returns Three.js group or undefined
+ */
 export const addToGroup = (
   idOrGroup: string | THREE.Group,
   obj: THREE.Object3D | THREE.Object3D[]
@@ -35,7 +40,13 @@ export const addToGroup = (
   return idOrGroup;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Removes the Three.js object3D's from the group and possibly deletes meshes, geometries, materials, and/or textures
+ * @param groupIdOrGroup (string | THREE.Group) group id or Three.js group
+ * @param objIdOrIndex (string | string[] | number | number[]) Three.js object's id or index number to be removed in the group, or array of them
+ * @param opts (object) optional delete options for meshes, geometries, materials, and/or textures
+ * @returns Three.js group or undefined
+ */
 export const removeFromGroup = (
   groupIdOrGroup: string | THREE.Group,
   objIdOrIndex: string | string[] | number | number[],
@@ -112,7 +123,12 @@ export const removeFromGroup = (
   return group;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Creates a Three.js group
+ * @param id (string) optional group id, if not provided then the group's uuid is used as and id
+ * @param obj (THREE.Object3D | THREE.Object3D[]) optional Three.js object3Ds to be added to the group on creation
+ * @returns Three.js group
+ */
 export const createGroup = ({
   id,
   obj,
@@ -136,10 +152,18 @@ export const createGroup = ({
   return group;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns a group or undefined based on the id
+ * @param id (string) group id
+ * @returns Three.js group | undefined
+ */
 export const getGroup = (id: string) => groups[id];
 
-// @TODO: add JSDoc comment
+/**
+ * Returns one or multiple groups based on the ids
+ * @param id (array of strings) one or multiple groups ids
+ * @returns Array of Three.js groups
+ */
 export const getGroups = (id: string[]) => id.map((meshId) => groups[meshId]);
 
 const deleteOneGroup = (
@@ -170,7 +194,11 @@ const deleteOneGroup = (
   delete groups[id];
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes a light based on an id or Three.js group, or array of them
+ * @param idOrGroup (string | string[] | THREE.Group | THREE.Group[]) group id or Three.js group, or array of them to be deleted
+ * @param opts (object) optional delete options for meshes, geometries, materials, and/or textures
+ */
 export const deleteGroup = (
   idOrGroup: string | string[] | THREE.Group | THREE.Group[],
   opts?: {
@@ -210,5 +238,8 @@ export const deleteGroup = (
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns all created groups that exist
+ * @returns array of Three.js groups
+ */
 export const getAllGroups = () => groups;

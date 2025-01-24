@@ -26,7 +26,13 @@ export type LightProps = { id?: string } & (
 
 const lights: { [id: string]: Lights } = {};
 
-// @TODO: add JSDoc comment
+/**
+ * Creates a Three.js light
+ * @param id (string) optional id for the light, if id is not provided the uuid of the light is used as id.
+ * @param type ({@link LightProps.type}) required enum string that defines the type of light.
+ * @param params ({@link LightProps.params}) optional light params, the params props depends on the type of the light.
+ * @returns Three.js light
+ */
 export const createLight = ({ id, type, params }: LightProps) => {
   let light: Lights | null = null;
 
@@ -67,13 +73,24 @@ export const createLight = ({ id, type, params }: LightProps) => {
   return light;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns a light or undefined based on the id
+ * @param id (string) light id
+ * @returns Three.js light | undefined
+ */
 export const getLight = (id: string) => lights[id];
 
-// @TODO: add JSDoc comment
+/**
+ * Returns one or multiple lights based on the ids
+ * @param id (array of strings) one or multiple light ids
+ * @returns Array of Three.js lights
+ */
 export const getLights = (id: string[]) => id.map((lightId) => lights[lightId]);
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes a light based on an id
+ * @param id (string) light id
+ */
 export const deleteLight = (id: string) => {
   const light = lights[id];
   if (!light) {
@@ -86,5 +103,8 @@ export const deleteLight = (id: string) => {
   delete lights[id];
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns all created lights that exist
+ * @returns array of Three.js lights
+ */
 export const getAllLights = () => lights;

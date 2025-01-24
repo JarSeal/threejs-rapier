@@ -19,7 +19,8 @@ export type Materials =
   | THREE.ShaderMaterial
   | THREE.ShadowMaterial
   | THREE.SpriteMaterial
-  | THREE.Material;
+  | THREE.Material
+  | THREE.MeshBasicNodeMaterial;
 
 const materials: { [id: string]: Materials } = {};
 
@@ -70,7 +71,13 @@ export type MatProps = { id?: string } & (
   | { type: 'BASICNODEMATERIAL'; params: THREE.MeshBasicNodeMaterialParameters }
 );
 
-// @TODO: add JSDoc comment
+/**
+ * Creates a Three.js Material
+ * @param id (string) optional id for the material, if id is not provided the uuid of the material is used as id.
+ * @param type ({@link MatProps.type}) required enum string that defines the type of material.
+ * @param params ({@link MatProps.params}) optional material params, the params props depends on the type of the material.
+ * @returns Three.js material {@link Materials}
+ */
 export const createMaterial = ({ id, type, params }: MatProps) => {
   let mat: Materials | null = null;
 
@@ -146,13 +153,24 @@ export const createMaterial = ({ id, type, params }: MatProps) => {
   return mat;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns a material or undefined based on the id
+ * @param id (string) material id
+ * @returns Three.js material | undefined
+ */
 export const getMaterial = (id: string) => materials[id];
 
-// @TODO: add JSDoc comment
+/**
+ * Returns one or multiple materials based on the ids
+ * @param id (array of strings) one or multiple material ids
+ * @returns Array of Three.js materials
+ */
 export const getMaterials = (id: string[]) => id.map((matId) => materials[matId]);
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes a materials textures
+ * @param mat (Three.js material) {@link Materials}
+ */
 export const deleteTexturesFromMaterial = (mat: Materials) => {
   for (let i = 0; i < textureMapKeys.length; i++) {
     const key = textureMapKeys[i] as keyof Materials;
@@ -163,7 +181,11 @@ export const deleteTexturesFromMaterial = (mat: Materials) => {
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes a material based on an id
+ * @param id (string) material id
+ * @param deleteTextures (boolean) optional value to determine whether the textures in the material should be deleted or not
+ */
 export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) => {
   if (typeof id === 'string') {
     const mat = materials[id];
@@ -184,10 +206,18 @@ export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) 
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns all created materials that exist
+ * @returns array of Three.js lights
+ */
 export const getAllMaterials = () => materials;
 
-// @TODO: add JSDoc comment
+/**
+ * Saves a material to be easily accessed later
+ * @param material (Three.js material or array of Three.js materials) {@link Materials}
+ * @param givenId (string) optional id for the material, if no id is provided then the material's uuid is used as id. For arrays of materials, the givenId will be formed like this: `${givenId}-${i}`.
+ * @returns Three.js material {@link Materials}
+ */
 export const saveMaterial = (material: Materials | Materials[], givenId?: string) => {
   if (!Array.isArray(material)) {
     if (givenId && materials[givenId]) {

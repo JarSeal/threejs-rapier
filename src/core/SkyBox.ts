@@ -188,7 +188,7 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
     const rotateYMatrix = new THREE.Matrix4();
     rotateYMatrix.makeRotationY(Math.PI * skyBoxState.cubeTextRotate);
     const backgroundUV = reflectVector.xyz.mul(uniform(rotateYMatrix));
-    scene.backgroundNode = pmremTexture(cubeTexture, backgroundUV);
+    scene.backgroundNode = pmremTexture(cubeTexture, backgroundUV, pmremRoughnessBg);
     scene.userData.backgroundNodeTextureId = textureId || cubeTexture.userData.id;
     if (isDebugEnvironment()) {
       const pmremRoughnessBall = uniform(skyBoxState.cubeTextRoughness);
