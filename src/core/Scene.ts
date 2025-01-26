@@ -22,13 +22,17 @@ export type SceneOptions = {
   background?: THREE.Color | THREE.Texture | THREE.CubeTexture;
   backgroundColor?: THREE.Color;
   backgroundTexture?: THREE.Texture;
-  backgroundSkybox?: THREE.CubeTexture;
   mainLoopers?: Looper[];
   mainLateLoopers?: Looper[];
   appLoopers?: Looper[];
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Creates a Three.js scene
+ * @param id (string) scene id
+ * @param opts ({@link SceneOptions})
+ * @returns Three.Scene
+ */
 export const createScene = (id: string, opts?: SceneOptions) => {
   if (scenes[id]) {
     throw new Error(
@@ -40,7 +44,6 @@ export const createScene = (id: string, opts?: SceneOptions) => {
   if (opts?.background) scene.background = opts.background;
   if (opts?.backgroundColor) scene.background = opts.backgroundColor;
   if (opts?.backgroundTexture) scene.background = opts.backgroundTexture;
-  if (opts?.backgroundSkybox) scene.background = opts.backgroundSkybox;
 
   scenes[id] = scene;
 
@@ -53,7 +56,11 @@ export const createScene = (id: string, opts?: SceneOptions) => {
   return scene;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns a created scene (if it exists) based on the scene id
+ * @param id (string) scene id
+ * @returns THREE.Scene | null
+ */
 export const getScene = (id: string) => {
   const scene = scenes[id];
   if (!scene) {
@@ -62,7 +69,11 @@ export const getScene = (id: string) => {
   return scene || null;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes a scene based on the scene id. Options to delete the scene's objects can also be given.
+ * @param id (string) scene id
+ * @param opts (object) optional delete options
+ */
 export const deleteScene = (
   id: string,
   opts?: {
@@ -175,7 +186,11 @@ export const deleteScene = (
   delete scenes[id];
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Sets the current scene to be rendered
+ * @param id (string) scene id
+ * @returns THREE.Scene | null
+ */
 export const setCurrentScene = (id: string | null) => {
   if (currentSceneId === id) return currentScene;
   const nextScene = id ? scenes[id] : null;
@@ -188,13 +203,23 @@ export const setCurrentScene = (id: string | null) => {
   return nextScene;
 };
 
-// @TODO: add JSDoc comment
-export const getCurrentScene = () => currentScene as THREE.Scene;
+/**
+ * Returns the current scene
+ * @returns THREE.Scene
+ */
+export const getCurrentScene = () => currentScene || new THREE.Scene();
 
-// @TODO: add JSDoc comment
+/**
+ * Return all existing scenes as an object
+ * @returns (object) { [sceneId: string]: THREE.Scene }
+ */
 export const getAllScenes = () => scenes;
 
-// @TODO: add JSDoc comment
+/**
+ * Returns all scene's main loopers
+ * @param sceneId (string) scene id
+ * @returns ({@link Looper}[])
+ */
 export const getSceneMainLoopers = (sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
@@ -203,7 +228,11 @@ export const getSceneMainLoopers = (sceneId?: string) => {
   return [];
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns all scene's main late loopers (they are executed after the loop rendering)
+ * @param sceneId (string) scene id
+ * @returns ({@link Looper}[])
+ */
 export const getSceneMainLateLoopers = (sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
@@ -212,7 +241,12 @@ export const getSceneMainLateLoopers = (sceneId?: string) => {
   return [];
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Adds a scene main looper
+ * @param looper ({@link Looper}) the looper function to be executed
+ * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ * @param isLateLooper (boolean) whether the looper is a scene main late looper or not (default is false).
+ */
 export const addSceneMainLooper = (looper: Looper, sceneId?: string, isLateLooper?: boolean) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
@@ -236,7 +270,12 @@ export const addSceneMainLooper = (looper: Looper, sceneId?: string, isLateLoope
   lwarn(`Could not find scene with id ${id} in addSceneMainLoopers.`);
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Removes a scene main looper by index
+ * @param index (number | number[]) a number or array of numbers of the indexes to be removed from the main looper.
+ * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ * @param isLateLooper (boolean) whether the looper is a scene main late looper or not (default is false).
+ */
 export const removeSceneMainLooper = (
   index: number | number[],
   sceneId?: string,
@@ -272,13 +311,23 @@ export const removeSceneMainLooper = (
   lwarn(`Could not find scene with id ${id} in deleteSceneMainLoopers.`);
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes all scene's main loopers
+ * @param sceneId (string) scene id
+ */
 export const deleteSceneMainLoopers = (sceneId: string) => delete sceneMainLoopers[sceneId];
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes all scene's main late loopers
+ * @param sceneId (string) scene id
+ */
 export const deleteSceneMainLateLoopers = (sceneId: string) => delete sceneMainLateLoopers[sceneId];
 
-// @TODO: add JSDoc comment
+/**
+ * Returns all scene's app loopers
+ * @param sceneId (string) scene id
+ * @returns ({@link Looper}[])
+ */
 export const getSceneAppLoopers = (sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
@@ -287,7 +336,11 @@ export const getSceneAppLoopers = (sceneId?: string) => {
   return [];
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Adds a scene app looper
+ * @param looper ({@link Looper}) the looper function to be executed
+ * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ */
 export const addSceneAppLooper = (looper: Looper, sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
@@ -301,7 +354,11 @@ export const addSceneAppLooper = (looper: Looper, sceneId?: string) => {
   lwarn(`Could not find scene with id ${id} in addSceneAppLoopers.`);
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Removes a scene app looper by index
+ * @param index (number | number[]) a number or array of numbers of the indexes to be removed from the app looper.
+ * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ */
 export const removeSceneAppLooper = (index: number | number[], sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
@@ -320,10 +377,17 @@ export const removeSceneAppLooper = (index: number | number[], sceneId?: string)
   lwarn(`Could not find scene with id ${id} in deleteSceneAppLoopers.`);
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes all scene's app loopers
+ * @param sceneId (string) scene id
+ */
 export const deleteSceneAppLoopers = (sceneId: string) => delete sceneAppLoopers[sceneId];
 
-// @TODO: add JSDoc comment
+/**
+ * Returns all scene's resizers
+ * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ * @returns (array of functions) (() => void)[]
+ */
 export const getSceneResizers = (sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
@@ -331,7 +395,11 @@ export const getSceneResizers = (sceneId?: string) => {
   lwarn(`Could not find scene with id ${id} in getSceneResizers.`);
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Adds a scene resizer
+ * @param resizer (() => void) scene resizer function to be added
+ * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ */
 export const addSceneResizer = (resizer: () => void, sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
@@ -345,7 +413,11 @@ export const addSceneResizer = (resizer: () => void, sceneId?: string) => {
   lwarn(`Could not find scene with id ${id} in addSceneResizer.`);
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Removes a scene resizers by index
+ * @param index (number | number[]) a number or array of numbers of the indexes to be removed from the resizers.
+ * @param sceneId (string) optional scene id. If no scene id is provided then the current scene is selected.
+ */
 export const removeSceneResizer = (index: number | number[], sceneId?: string) => {
   let id = currentSceneId;
   if (sceneId) id = sceneId;
@@ -364,5 +436,7 @@ export const removeSceneResizer = (index: number | number[], sceneId?: string) =
   lwarn(`Could not find scene with id ${id} in deleteSceneResizer.`);
 };
 
-// @TODO: add JSDoc comment
+/** Deletes all scene's resizers depending on the sceneId
+ * @param sceneId (string) scene id
+ */
 export const deleteSceneResizer = (sceneId: string) => delete sceneResizers[sceneId];
