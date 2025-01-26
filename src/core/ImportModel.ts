@@ -94,7 +94,11 @@ const checkImportFileName = (fileName: string) => {
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Imports a model asynchronously using the GLTFLoader
+ * @param params ({@link ImportModelParams})
+ * @returns Promise<T | null>
+ */
 export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
   params: ImportModelParams
 ): Promise<T | null> => {
@@ -119,7 +123,12 @@ export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
   return parseImportResult<T>(modelGroup as T, params);
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Imports models synchronously using the GLTFLoader
+ * @param modelParams (array of {@link ImportModelParams})
+ * @param updateStatusFn (function) optional status update function: (loadedModels: (THREE.Group | THREE.Mesh)[], loadedCount: number, totalCount: number) => void
+ * @param throwOnErrors (boolean) optional value to determine whether the importing should throw on errors or not
+ */
 export const importModels = (
   modelsParams: ImportModelParams[],
   updateStatusFn?: (
@@ -161,12 +170,18 @@ export const importModels = (
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Imports a model synchronously using the GLTFLoader
+ * @param modelParams ({@link ImportModelParams})
+ * @param updateStatusFn (function) optional status update function: (loadedModels: (THREE.Group | THREE.Mesh)[], loadedCount: number, totalCount: number) => void
+ * @param throwOnError (boolean) optional value to determine whether the importing should throw on error or not
+ */
 export const importModel = (
   modelParams: ImportModelParams,
   updateStatusFn?: (
     loadedModels: (THREE.Group | THREE.Mesh)[],
     loadedCount: number,
     totalCount: number
-  ) => void
-) => importModels([modelParams], updateStatusFn);
+  ) => void,
+  throwOnError?: boolean
+) => importModels([modelParams], updateStatusFn, throwOnError);

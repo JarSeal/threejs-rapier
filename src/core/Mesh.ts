@@ -4,7 +4,11 @@ import { createGeometry, deleteGeometry, saveGeometry, type GeoProps } from './G
 
 const meshes: { [id: string]: THREE.Mesh } = {};
 
-// @TODO: add JSDoc comment
+/**
+ * Creates a Three.js mesh
+ * @param params (object) mesh params, { id: string (optional), geo: THREE.BufferGeometry | {@link GeoPropsB}, and mat: THREE.Material | {@link MatProps} }
+ * @returns THREE.Mesh
+ */
 export const createMesh = ({
   id,
   geo,
@@ -38,10 +42,18 @@ export const createMesh = ({
   return mesh;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns a created and existing Three.js mesh depending on the id
+ * @param id (string) mesh id
+ * @returns THREE.Mesh | undefined
+ */
 export const getMesh = (id: string) => meshes[id];
 
-// @TODO: add JSDoc comment
+/**
+ * Returns a created and existing Three.js meshes depending on the ids
+ * @param id (array of strings) mesh ids
+ * @returns array of (THREE.Mesh | undefined)
+ */
 export const getMeshes = (id: string[]) => id.map((meshId) => meshes[meshId]);
 
 const deleteOneMesh = (
@@ -78,7 +90,11 @@ const deleteOneMesh = (
   delete meshes[id];
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Deletes a mesh based on the mesh id. Options to delete the mesh's geometries, materials, and textures can also be given.
+ * @param id (string) scene id
+ * @param opts (object) optional delete options
+ */
 export const deleteMesh = (
   id: string | string[],
   opts?: {
@@ -98,7 +114,13 @@ export const deleteMesh = (
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Saves a mesh to memory so it can be accessed more easily
+ * @param mesh (THREE.Mesh) the mesh that is saved
+ * @param givenId (string) optional mesh id to use when saving
+ * @param doNotSaveMaterial (boolean) optional value to determine whether the material should be saved or not (default false)
+ * @returns THREE.Mesh | undefined
+ */
 export const saveMesh = (mesh: THREE.Mesh, givenId?: string, doNotSaveMaterial?: boolean) => {
   if (!mesh.isMesh) return;
   if (givenId && meshes[givenId]) {
@@ -122,5 +144,7 @@ export const saveMesh = (mesh: THREE.Mesh, givenId?: string, doNotSaveMaterial?:
   return mesh;
 };
 
-// @TODO: add JSDoc comment
+/** Returns all existing meshes
+ * @returns (object) { [meshId: string]: THREE.Mesh }
+ */
 export const getAllMeshes = () => meshes;
