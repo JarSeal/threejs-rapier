@@ -52,10 +52,9 @@ export const getDelta = () => delta;
 /**
  * Returns linear speed value in relation to delta time
  * @param unitsPerSecond (number) units per second
- * @returns (number) transformed speed value (delta * unitsPerSecond * loopState.playSpeedMultiplier)
+ * @returns (number) transformed speed value (delta * unitsPerSecond)
  */
-export const transformSpeedValue = (unitsPerSecond: number) =>
-  delta * unitsPerSecond * loopState.playSpeedMultiplier;
+export const transformSpeedValue = (unitsPerSecond: number) => delta * unitsPerSecond;
 
 /**
  * Transforms time value in relation to the loopState.playSpeedMultiplier
@@ -76,7 +75,7 @@ const runMainLateLoopers = () => {
 };
 
 const mainLoopForDebug = async () => {
-  delta = clock.getDelta();
+  delta = clock.getDelta() * loopState.playSpeedMultiplier;
   if (loopState.masterPlay) {
     requestAnimationFrame(mainLoop);
     loopState.isMasterPlaying = true;
@@ -123,14 +122,14 @@ const mainLoopForDebug = async () => {
 
 const mainLoopForProduction = () => {
   requestAnimationFrame(mainLoop);
-  delta = clock.getDelta();
+  delta = clock.getDelta() * loopState.playSpeedMultiplier;
   // @TODO: add app play loop here
   getRenderer()?.renderAsync(getCurrentScene(), getCurrentCamera());
 };
 
 const mainLoopForProductionWithFPSLimiter = () => {
   requestAnimationFrame(mainLoop);
-  delta = clock.getDelta();
+  delta = clock.getDelta() * loopState.playSpeedMultiplier;
   accDelta += delta;
   // @TODO: add app play loop here
   if (accDelta > loopState.maxFPSInterval) {
@@ -285,6 +284,16 @@ const createLoopDebugGUI = () => {
           }
           lsSetItem(LS_KEY, loopState);
         });
+      debugGUI
+        .addBinding(loopState, 'playSpeedMultiplier', {
+          label: 'Play speed multiplier',
+          step: 0.01,
+          min: 0,
+        })
+        .on('change', (e) => {
+          loopState.playSpeedMultiplier = e.value;
+          lsSetItem(LS_KEY, loopState);
+        });
       return container;
     },
   });
@@ -321,5 +330,11 @@ export const toggleGamePlay = (value?: boolean) => {
  */
 export const getReadOnlyLoopState = () => JSON.parse(JSON.stringify(loopState));
 
-// TODO: getPlaySpeedMultiplier
-// TODO: setPlaySpeedMultiplier
+/**
+ * Returns the play speed multiplier
+ * @returns (number) loopState.playSpeedMultiplier
+ */
+export const getPlaySpeedMultiplier = () => loopState.playSpeedMultiplier;
+
+export const setPlaySpeedMultiplier = (multiplier: number) =>
+  (loopState.playSpeedMultiplier = multiplier < 0 ? 0 : multiplier);
