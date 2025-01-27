@@ -1,0 +1,274 @@
+import { CMP, TCMP } from '../utils/CMP';
+import styles from './DebuggerGUI.module.scss';
+import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
+import { getWindowSize } from '../utils/Window';
+import { getHUDRootCMP } from '../core/HUD';
+import { Pane } from 'tweakpane';
+
+let drawerCMP: TCMP | null = null;
+let tabsContainerWrapper: null | TCMP = null;
+
+type DrawerState = {
+  isOpen: boolean;
+  currentTabId: string;
+  currentScrollPos: number;
+};
+
+let drawerState: DrawerState = {
+  isOpen: false,
+  currentTabId: 'stats',
+  currentScrollPos: 0,
+};
+
+const saveDrawerState = (newState?: Partial<DrawerState>) => {
+  const updatedState = { ...drawerState, ...newState };
+  drawerState = updatedState;
+  lsSetItem('debugDrawerState', JSON.stringify(updatedState));
+};
+
+const getDrawerState = () => {
+  const savedState = lsGetItem('debugDrawerState', '{}');
+  if (!savedState || typeof savedState !== 'string') return drawerState;
+  const parsedSavedState = JSON.parse(savedState);
+  drawerState = { ...drawerState, ...parsedSavedState };
+  return drawerState;
+};
+
+type TabAndContainer = {
+  id: string;
+  buttonText: string;
+  title?: string;
+  container: TCMP | (() => TCMP | TCMP[]);
+  button: null | TCMP;
+  orderNr?: number;
+};
+
+const tabsAndContainers: TabAndContainer[] = [];
+
+const createTabMenuButtons = () => {
+  for (let i = 0; i < tabsAndContainers.length; i++) {
+    const data = tabsAndContainers[i];
+    if (data.button) data.button.remove();
+    const button = CMP({
+      id: `debugTabsMenuButton-${data.id}`,
+      tag: 'button',
+      class: styles.debugDrawerTabButton,
+      text: data.buttonText,
+      attr: data.title ? { title: data.title } : undefined,
+      onClick: (_, cmp) => {
+        if (cmp.elem.classList.contains(styles.debugDrawerTabButton_selected)) return;
+        let container: TCMP | TCMP[] | null = null;
+        // const container = typeof data.container === 'function' ? data.container() : data.container;
+        if (typeof data.container !== 'function') {
+          container = data.container.updateClass(styles.childContainer);
+        } else {
+          const containerOrcontainers = data.container();
+          if (Array.isArray(containerOrcontainers)) {
+            for (let i = 0; i < containerOrcontainers.length; i++) {
+              containerOrcontainers[i].updateClass(styles.childContainer);
+            }
+            container = containerOrcontainers;
+          } else {
+            container = containerOrcontainers.updateClass(styles.childContainer);
+          }
+        }
+        tabsContainerWrapper?.removeChildren();
+        if (Array.isArray(container)) {
+          for (let i = 0; i < container.length; i++) {
+            tabsContainerWrapper?.add(container[i]);
+          }
+        } else {
+          tabsContainerWrapper?.add(container);
+        }
+        for (let i = 0; i < tabsAndContainers.length; i++) {
+          const btn = tabsAndContainers[i]?.button;
+          if (btn) btn.updateClass(styles.debugDrawerTabButton_selected, 'remove');
+        }
+        data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
+        saveDrawerState({ currentTabId: data.id, currentScrollPos: 0 });
+      },
+    });
+    tabsAndContainers[i].button = button;
+  }
+};
+createTabMenuButtons();
+
+export type DebugGUIOpts = { drawerBtnPlace?: 'TOP' | 'MIDDLE' | 'BOTTOM' };
+let guiOpts: DebugGUIOpts | undefined = undefined;
+
+/**
+ * Creates the debug GUI (the root functionality)
+ * @param opts (object) optional debug GUI options {@link DebugGUIOpts}
+ * @returns TCMP or undefined
+ */
+export const createDebugGui = (opts?: DebugGUIOpts) => {
+  guiOpts = opts;
+  getDrawerState();
+
+  // Drawer
+  if (drawerCMP) drawerCMP.remove();
+  drawerCMP = getHUDRootCMP().add({
+    id: 'debugDrawer',
+    class: [
+      styles.debuggerGUI,
+      drawerState.isOpen ? styles.debuggerGUI_open : styles.debuggerGUI_closed,
+    ],
+    settings: { replaceRootDom: false },
+  });
+
+  // Drawer toggle button
+  drawerCMP.add({
+    id: 'debugDrawerToggler',
+    tag: 'button',
+    text: 'Debug',
+    class: [styles.debugDrawerToggler, opts?.drawerBtnPlace || 'MIDDLE'],
+    onClick: () => toggleDrawer(drawerCMP),
+  });
+
+  // Tabs container wrapper
+  tabsContainerWrapper = CMP({
+    id: 'debugDrawerTabsContainerWrapper',
+    class: [styles.debugDrawerTabsContainer, 'debugDrawerTabsContainer'],
+  });
+
+  // Tabs menu container
+  const tabsMenuContainer = CMP({
+    id: 'debugDrawerTabsMenu',
+    class: styles.debugDrawerTabsMenu,
+  });
+  const orderedTabsAndContainers = tabsAndContainers.sort((a, b) => {
+    const maxOrderNr = 9999;
+    let aOrderNr = a.orderNr;
+    let bOrderNr = b.orderNr;
+    if (aOrderNr === undefined) aOrderNr = maxOrderNr;
+    if (bOrderNr === undefined) bOrderNr = maxOrderNr;
+    if (aOrderNr < bOrderNr) return -1;
+    if (aOrderNr > bOrderNr) return 1;
+    return 0;
+  });
+  for (let i = 0; i < orderedTabsAndContainers.length; i++) {
+    const button = orderedTabsAndContainers[i]?.button;
+    if (button) tabsMenuContainer.add(button);
+  }
+
+  tabsMenuContainer.add({
+    id: 'debugCloseBtn',
+    tag: 'button',
+    class: styles.closeBtn,
+    attr: { title: 'Close' },
+    onClick: () => toggleDrawer(drawerCMP, 'CLOSE'),
+  });
+
+  drawerCMP.add(tabsMenuContainer);
+  drawerCMP.add(tabsContainerWrapper);
+  const getWrapperHeight = () => getWindowSize().height - tabsMenuContainer.elem.offsetHeight - 24; // 24 is padding
+
+  tabsContainerWrapper.update({
+    attr: { style: `height: ${getWrapperHeight()}px` },
+    listeners: [
+      {
+        type: 'scroll',
+        fn: () => {
+          const scrollPos = tabsContainerWrapper?.elem.scrollTop;
+          saveDrawerState({ currentScrollPos: scrollPos || 0 });
+        },
+      },
+    ],
+  });
+
+  const setWrapperHeightOnResize = () => {
+    tabsContainerWrapper?.updateAttr({ style: `height: ${getWrapperHeight()}px` });
+  };
+  window.addEventListener('resize', setWrapperHeightOnResize, true);
+  tabsContainerWrapper.update({
+    onRemoveCmp: () => {
+      window.removeEventListener('resize', setWrapperHeightOnResize);
+    },
+  });
+
+  // Show current tab
+  let data = tabsAndContainers.find((tab) => drawerState.currentTabId === tab.id);
+  let tabFound = true;
+  if (!data) {
+    data = tabsAndContainers[0];
+    tabFound = false;
+  }
+  if (!data) return;
+
+  if (typeof data.container !== 'function') {
+    tabsContainerWrapper?.add(data.container.updateClass(styles.childContainer));
+  } else {
+    const container = data.container();
+    if (Array.isArray(container)) {
+      for (let i = 0; i < container.length; i++) {
+        tabsContainerWrapper?.add(container[i].updateClass(styles.childContainer));
+      }
+    } else {
+      tabsContainerWrapper?.add(container.updateClass(styles.childContainer));
+    }
+  }
+
+  for (let i = 0; i < tabsAndContainers.length; i++) {
+    const btn = tabsAndContainers[i]?.button;
+    if (btn) btn.updateClass(styles.debugDrawerTabButton_selected, 'remove');
+  }
+  data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
+  tabsContainerWrapper.elem.scrollTop = tabFound ? drawerState.currentScrollPos || 0 : 0;
+
+  return drawerCMP;
+};
+
+const toggleDrawer = (drawerCMP: TCMP | null, openOrClose?: 'OPEN' | 'CLOSE') => {
+  if (!drawerCMP) return;
+  let newState: boolean = false;
+  if (openOrClose === 'CLOSE') {
+    newState = false;
+  } else if (openOrClose === 'OPEN') {
+    newState = true;
+  } else {
+    newState = !drawerState.isOpen;
+  }
+  saveDrawerState({ isOpen: newState });
+  if (drawerState.isOpen) {
+    drawerCMP.updateClass(styles.debuggerGUI_open, 'add');
+    drawerCMP.updateClass(styles.debuggerGUI_closed, 'remove');
+    return;
+  }
+  drawerCMP.updateClass(styles.debuggerGUI_open, 'remove');
+  drawerCMP.updateClass(styles.debuggerGUI_closed, 'add');
+};
+
+/**
+ * Creates a debugger tab (and container)
+ * @param tabAndContainer (object: Omit<TabAndContainer, 'button'>) {@link TabAndContainer}
+ * @param opts (object: DebugGUIOpts) optional debug GUI options {@link DebugGUIOpts}
+ */
+export const createDebuggerTab = (
+  tabAndContainer: Omit<TabAndContainer, 'button'>,
+  opts?: DebugGUIOpts
+) => {
+  tabsAndContainers.push({ ...tabAndContainer, button: null });
+  createTabMenuButtons();
+  if (!drawerCMP) return;
+  const options = { ...guiOpts, ...opts };
+  createDebugGui(options);
+};
+
+/**
+ * Creates a new debugger pane (in a CMP container).
+ * @param id (string) debugger pane id
+ * @param heading (string) optional heading for the section
+ * @returns (object: { container, debugGUI }) the container component and the debugGUI parent object
+ */
+export const createNewDebuggerPane = (id: string, heading?: string) => {
+  const nameAndId = `debuggerPane-${id}`;
+  const container = CMP({
+    id: nameAndId,
+    onRemoveCmp: () => debugGUI.dispose(),
+  });
+  if (heading) container.add({ tag: 'h3', text: heading, class: 'debuggerHeading' });
+  container.controls.id = id;
+  const debugGUI = new Pane({ container: container.elem });
+
+  return { container, debugGUI };
+};

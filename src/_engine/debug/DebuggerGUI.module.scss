@@ -1,0 +1,149 @@
+@use '../styles/variables.scss';
+
+$drawerWidth: 40rem;
+$drawerWidthSmall: 30rem;
+$breakpointSmall: 479px;
+$breakpointXSmall: 379px;
+
+.debuggerGUI {
+  position: fixed;
+  top: 0;
+  right: -$drawerWidth;
+  z-index: 10200;
+  background-color: variables.$debugGuiBackground;
+  width: $drawerWidth;
+  height: 100%;
+  padding: 1.2rem;
+  transition: right 0.2s ease-in-out;
+
+  @media screen and (max-width: $breakpointSmall) {
+    width: $drawerWidthSmall;
+  }
+  @media screen and (max-width: $breakpointXSmall) {
+    width: 100%;
+  }
+}
+
+.debuggerGUI_open {
+  right: 0;
+}
+
+.debuggerGUI_closed {
+  right: -$drawerWidth;
+
+  @media screen and (max-width: $breakpointSmall) {
+    right: -$drawerWidthSmall;
+  }
+  @media screen and (max-width: $breakpointXSmall) {
+    right: -100%;
+  }
+}
+
+.debugDrawerToggler,
+.debugDrawerToggler:global(.MIDDLE) {
+  @include variables.nakedButton;
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translate3d(3.1rem, -50%, 0) rotate(-90deg);
+  height: 3rem;
+  padding: 0 2rem;
+  border-radius: 0.4rem 0.4rem 0 0;
+  background: variables.$debugGuiBackground;
+  color: variables.$debugTextColor;
+  user-select: none;
+  transition: background 0.2s ease-in-out;
+
+  &:hover {
+    background: variables.$debugGuiBackgroundLighter;
+  }
+}
+.debugDrawerToggler:global(.TOP) {
+  top: 10%;
+}
+.debugDrawerToggler:global(.BOTTOM) {
+  top: auto;
+  bottom: 10%;
+}
+
+.debugDrawerTabsMenu {
+  position: relative;
+  padding-right: 2.4rem;
+  margin-bottom: 1.2rem;
+
+  .closeBtn {
+    @include variables.nakedButton;
+    background-color: transparent;
+    width: 2.4rem;
+    height: 2.4rem;
+    margin: 0;
+    position: absolute;
+    top: 0;
+    right: 0;
+    border-radius: 0.4rem;
+    transition: background-color 0.2s ease-in-out;
+
+    &:hover {
+      background-color: rgba(variables.$debugTextColor, 0.2);
+    }
+
+    &:before,
+    &:after {
+      display: block;
+      content: '';
+      width: 2rem;
+      height: 0.1rem;
+      background: variables.$white;
+      position: absolute;
+      top: 50%;
+      left: 0.2rem;
+    }
+    &:before {
+      transform: rotate(45deg);
+    }
+    &:after {
+      transform: rotate(-45deg);
+    }
+  }
+}
+
+.debugDrawerTabButton {
+  @include variables.nakedButton;
+  margin-right: -0.1rem;
+  margin-bottom: -0.1rem;
+  padding: 0.6rem 1.2rem 0.4rem;
+  background-color: variables.$debugTabButton;
+  border: 0.1rem solid variables.$debugTextColor;
+  color: variables.$debugTextColor;
+  user-select: none;
+  font-size: 1rem;
+  transition: background-color 0.2s ease-in-out;
+
+  &:hover:not(.debugDrawerTabButton_selected) {
+    background-color: rgba(255, 255, 255, 0.25);
+  }
+}
+
+.debugDrawerTabButton_selected {
+  background-color: variables.$debugTextColor;
+  border: 0.1rem solid transparent;
+  color: variables.$black;
+}
+
+.debugDrawerTabsContainer {
+  color: variables.$debugTextColor;
+  overflow: auto;
+}
+
+.childContainer {
+  :global(.debuggerHeading) {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  &:first-of-type {
+    :global(.debuggerHeading) {
+      margin-top: 0 !important;
+    }
+  }
+}

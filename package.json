@@ -16,11 +16,12 @@
     "build": "tsc && vite build"
   },
   "dependencies": {
-    "lil-gui": "0.20.0",
     "stats-gl": "3.6.0",
-    "three": "0.172.0"
+    "three": "0.172.0",
+    "tweakpane": "4.0.5"
   },
   "devDependencies": {
+    "@tweakpane/core": "2.0.5",
     "@types/dat.gui": "0.7.13",
     "@types/node": "22.10.6",
     "@types/three": "0.172.0",
