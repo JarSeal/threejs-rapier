@@ -210,6 +210,12 @@ export const setCurrentScene = (id: string | null) => {
 export const getCurrentScene = () => currentScene || new THREE.Scene();
 
 /**
+ * Return the current scene id
+ * @returns string
+ */
+export const getCurrentSceneId = () => currentSceneId;
+
+/**
  * Return all existing scenes as an object
  * @returns (object) { [sceneId: string]: THREE.Scene }
  */

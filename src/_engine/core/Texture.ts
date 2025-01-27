@@ -196,9 +196,17 @@ export const loadTexture = ({
   texOpts?: TexOpts;
   throwOnError?: boolean;
 }) => {
+  if (id) {
+    const texture = getTexture(id);
+    if (texture) return texture;
+  }
+  if (fileName) {
+    const texture = getTexture(fileName);
+    if (texture) return texture;
+  }
   const texture = createTexture(id, fileName, texOpts, throwOnError);
-  texture.userData.id = id || texture.uuid;
-  textures[id || texture.uuid] = texture;
+  texture.userData.id = id || fileName || texture.uuid;
+  textures[id || fileName || texture.uuid] = texture;
   return texture;
 };
 
