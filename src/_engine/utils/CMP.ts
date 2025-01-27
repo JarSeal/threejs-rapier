@@ -164,7 +164,6 @@ export type TProps = {
   // onWindowResize?: TListener; // This is going to be the same as onClickOutside
 };
 
-// @TODO: add jsDoc comments
 export type TCMP = {
   id: string;
   children: TCMP[];
@@ -209,6 +208,13 @@ const globalSettings: TSettings = {
   replaceRootDom: true,
 };
 
+/**
+ * Creates and renders a CMP
+ * @param props ({@link TProps}) optional component props
+ * @param wrapper ((props?: never) => {@link TCMP} | (props: never) => TCMP) optional wrapper for the CMP to attach to
+ * @param wrapperProps (unknown) optional wrapper props to set when a wrapper is used
+ * @returns ({@link TCMP})
+ */
 export const CMP = (
   props?: TProps,
   wrapper?: ((props?: never) => TCMP) | ((props: never) => TCMP),
@@ -340,8 +346,17 @@ const addTemplateChildCmp = (cmp: TCMP) => {
   if (focusComponent) setTimeout(() => focusComponent && focusCmp(focusComponent), 0);
 };
 
+/**
+ * Returns a CMP depending on the id
+ * @param id (string) CMP id
+ * @returns ({@link TCMP} | null)
+ */
 export const getCmpById = (id: string): TCMP | null => cmps[id] || null;
 
+/**
+ * Creates a new id in the form of c-[uuid]
+ * @returns (string)
+ */
 export const createNewId = () => `c-${THREE.MathUtils.generateUUID()}`;
 
 const getTempTemplate = (id: string, tag: string = 'cmp') => `<${tag} id="${id}"></${tag}>`;
@@ -931,6 +946,12 @@ const replaceCmpWithAnother = (oldCmp: TCMP, newCmp: TCMP) => {
 };
 
 const stylesInHead: { [key: string]: boolean } = {};
+
+/**
+ * Adds styles to the Document head
+ * @param id (string) id of the styles addition to the Document head
+ * @param css (string) CSS string to be added inside the style tags
+ */
 export const addStylesToHead = (id: string, css: string) => {
   if (stylesInHead[id]) return;
 
@@ -947,8 +968,13 @@ export const addStylesToHead = (id: string, css: string) => {
   stylesInHead[id] = true;
 };
 
+/**
+ * Returns an array of CSS class strings
+ * @param classArgs ((string | string[] | undefined | null)[]) classes to be added to the classes array
+ * @returns (string[])
+ */
 export const classes = (...classArgs: (string | string[] | undefined | null)[]) => {
-  let classes: string | string[] = [];
+  let classes: string[] = [];
   for (let i = 0; i < classArgs.length; i++) {
     const c = classArgs[i];
     if (!c) continue;

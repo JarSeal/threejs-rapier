@@ -21,26 +21,40 @@ const initLogger = () => {
   loggerInitiated = true;
 };
 
-// @TODO: add JSDoc comment
+// @TODO: add setLogger that sets a custom logger to replace the default
+
+/**
+ * Returns the logger
+ * @returns ({@link logger})
+ */
 export const getLogger = () => {
   initLogger();
   return logger;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Logs data as info type
+ * @param data (...unknow[])
+ */
 export const llog = (...data: unknown[]) => {
   initLogger();
-  return logger.log(...data);
+  logger.log(...data);
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Logs data as warning type
+ * @param data (...unknow[])
+ */
 export const lwarn = (...data: unknown[]) => {
   initLogger();
-  return logger.warn(...data);
+  logger.warn(...data);
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Logs data as error type
+ * @param data (...unknow[])
+ */
 export const lerror = (...data: unknown[]) => {
   initLogger();
-  return logger.error(...data);
+  logger.error(...data);
 };

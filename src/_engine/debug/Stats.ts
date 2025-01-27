@@ -36,9 +36,12 @@ const defaultStatsOptions = {
   enabled: true,
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Initializes statistics for debugging
+ * @param config ({@link StatsOptions}) optional configurations for stats
+ * @returns ({@link Stats} | null)
+ */
 export const initStats = (config?: StatsOptions) => {
-  // @TODO: disable for production ENV
   savedConfig = { ...defaultStatsOptions, ...lsGetItem(LS_KEY, config || {}) };
   if ('enabled' in savedConfig && savedConfig.enabled) {
     if (stats) stats.update();
@@ -50,7 +53,10 @@ export const initStats = (config?: StatsOptions) => {
   return stats;
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Returns the stats 'stats-gl' instance
+ * @returns ({@link Stats} | null)
+ */
 export const getStats = () => stats;
 
 const setDebuggerUI = (config: StatsOptions) =>

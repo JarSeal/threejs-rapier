@@ -121,7 +121,7 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     id: 'debugDrawerToggler',
     tag: 'button',
     text: 'Debug',
-    class: [styles.debugDrawerToggler, opts?.drawerBtnPlace],
+    class: [styles.debugDrawerToggler, opts?.drawerBtnPlace || 'MIDDLE'],
     onClick: () => toggleDrawer(drawerCMP),
   });
 

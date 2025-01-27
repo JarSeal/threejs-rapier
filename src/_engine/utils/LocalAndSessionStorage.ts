@@ -46,8 +46,13 @@ const convertValue = (defaultValue: StorageValue, lsValue: string) => {
   return lsValue; // typeof string
 };
 
-// Local Storage
-// @TODO: add JSDoc comment
+/**
+ * Returns a possible value from the LocalStorage based on the key provided
+ * @param key (string) key of LocalStorage item
+ * @param defaultValue ({@link StorageValue}) if no value is found with the key provided then the default value is returned
+ * @param doNotConvert (boolean) optional value to determine whether the value should be converted to the same type as the default value or not
+ * @returns (any)
+ */
 export const lsGetItem = (key: string, defaultValue: StorageValue, doNotConvert?: boolean) => {
   checkStorage('local');
   if (!lsAvailable) return defaultValue || null;
@@ -60,7 +65,11 @@ export const lsGetItem = (key: string, defaultValue: StorageValue, doNotConvert?
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Saves the value provided with the key to the LocalStorage
+ * @param key (string) key of the value being stored
+ * @param value ({@link StorageValue}) value to be stored
+ */
 export const lsSetItem = (key: string, value: StorageValue) => {
   checkStorage('local');
   if (!lsAvailable) return;
@@ -70,15 +79,23 @@ export const lsSetItem = (key: string, value: StorageValue) => {
   localStorage.setItem(key, String(value));
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Removes the key value pair from the LocalStorage
+ * @param key (string) key of the value to remove
+ */
 export const lsRemoveItem = (key: string) => {
   checkStorage('local');
   if (!lsAvailable) return;
   localStorage.removeItem(key);
 };
 
-// Session Storage
-// @TODO: add JSDoc comment
+/**
+ * Returns a possible value from the SessionStorage based on the key provided
+ * @param key (string) key of SessionStorage item
+ * @param defaultValue ({@link StorageValue}) if no value is found with the key provided then the default value is returned
+ * @param doNotConvert (boolean) optional value to determine whether the value should be converted to the same type as the default value or not
+ * @returns (any)
+ */
 export const ssGetItem = (key: string, defaultValue: StorageValue, doNotConvert?: boolean) => {
   checkStorage('session');
   if (!ssAvailable) return defaultValue || null;
@@ -91,14 +108,21 @@ export const ssGetItem = (key: string, defaultValue: StorageValue, doNotConvert?
   }
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Saves the value provided with the key to the SessionStorage
+ * @param key (string) key of the value being stored
+ * @param value ({@link StorageValue}) value to be stored
+ */
 export const ssSetItem = (key: string, value: StorageValue) => {
   checkStorage('session');
   if (!ssAvailable) return;
   sessionStorage.setItem(key, String(value));
 };
 
-// @TODO: add JSDoc comment
+/**
+ * Removes the key value pair from the SessionStorage
+ * @param key (string) key of the value to remove
+ */
 export const ssRemoveItem = (key: string) => {
   checkStorage('session');
   if (!ssAvailable) return;
