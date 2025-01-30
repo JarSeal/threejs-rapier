@@ -1,5 +1,6 @@
 import { loadConfig } from './core/Config';
 import { initMainLoop } from './core/MainLoop';
+import { InitPhysics } from './core/Physics';
 import { getCurrentScene, getCurrentSceneId } from './core/Scene';
 import './styles/index.scss';
 import { lerror } from './utils/Logger';
@@ -20,6 +21,9 @@ export const InitEngine = async (appStartFn: () => void) => {
     lerror(msg, err);
     throw new Error(msg);
   }
+
+  // Init physics
+  InitPhysics();
 
   const currentScene = getCurrentScene();
   const currentSceneId = getCurrentSceneId();

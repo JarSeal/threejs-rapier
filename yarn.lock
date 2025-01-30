@@ -2,6 +2,11 @@
 # yarn lockfile v1
 
 
+"@dimforge/rapier3d@^0.14.0":
+  version "0.14.0"
+  resolved "https://registry.yarnpkg.com/@dimforge/rapier3d/-/rapier3d-0.14.0.tgz#52a8770ecde3968b5f420f4ed6db1a1df953a432"
+  integrity sha512-+R9T/AGbvdRLentporVaOYEYjPHKdUeUuGObOBAskhSv8fFFyTiUcGMKhRH4VyCaGP8JAKMLapAETR4xAvJqlg==
+
 "@esbuild/aix-ppc64@0.20.2":
   version "0.20.2"
   resolved "https://registry.yarnpkg.com/@esbuild/aix-ppc64/-/aix-ppc64-0.20.2.tgz#a70f4ac11c6a1dfc18b8bbb13284155d933b9537"
