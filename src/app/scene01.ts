@@ -168,10 +168,10 @@ export const scene01 = async () => {
     sphere.rotation.y += transformSpeedValue(0.1);
   });
 
-  addSceneAppLooper(() => {
-    box.rotation.y -= transformSpeedValue(2);
-    box.rotation.z -= transformSpeedValue(2);
-  });
+  // addSceneAppLooper(() => {
+  //   box.rotation.y -= transformSpeedValue(2);
+  //   box.rotation.z -= transformSpeedValue(2);
+  // });
 
   const point = createLight({
     id: 'pointLight',

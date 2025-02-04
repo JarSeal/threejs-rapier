@@ -3,8 +3,11 @@ import { createRenderer } from './_engine/core/Renderer';
 import { createCamera } from './_engine/core/Camera';
 import { InitEngine } from './_engine/InitApp';
 import { scene01 } from './app/scene01';
+import { InitPhysics } from './_engine/core/Physics';
 
 InitEngine(async () => {
+  await InitPhysics();
+
   // Init camera
   createCamera('mainCam', { isCurrentCamera: true, fov: 90 });
 
@@ -20,5 +23,5 @@ InitEngine(async () => {
 
   // Load scene
   // @TODO: add scene loader
-  scene01();
+  await scene01();
 });
