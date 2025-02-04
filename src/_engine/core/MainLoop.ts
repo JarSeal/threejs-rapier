@@ -16,6 +16,7 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugTools';
+import { stepPhysicsWorld } from './Physics';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -105,6 +106,7 @@ const mainLoopForDebug = async () => {
     // maxFPS limiter
     accDelta += delta;
     if (accDelta > loopState.maxFPSInterval) {
+      stepPhysicsWorld();
       renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
         runMainLateLoopers();
         getStats()?.update();
@@ -113,6 +115,7 @@ const mainLoopForDebug = async () => {
     }
   } else {
     // No maxFPS limiter
+    stepPhysicsWorld();
     renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
       runMainLateLoopers();
       getStats()?.update();

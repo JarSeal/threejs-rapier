@@ -6,6 +6,7 @@ import { deleteGroup } from './Group';
 import { lwarn } from '../utils/Logger';
 import { deleteLight } from './Light';
 import { deleteTexture } from './Texture';
+import { setCurrentScenePhysicsObjects } from './Physics';
 
 type Looper = (delta: number) => void;
 
@@ -47,7 +48,7 @@ export const createScene = (id: string, opts?: SceneOptions) => {
 
   scenes[id] = scene;
 
-  if (opts?.isCurrentScene) setCurrentScene(id);
+  if (opts?.isCurrentScene || !currentSceneId) setCurrentScene(id);
 
   if (opts?.mainLoopers) sceneMainLoopers[id] = opts.mainLoopers;
   if (opts?.mainLateLoopers) sceneMainLateLoopers[id] = opts.mainLateLoopers;
@@ -200,6 +201,9 @@ export const setCurrentScene = (id: string | null) => {
   }
   currentSceneId = id;
   currentScene = nextScene;
+
+  setCurrentScenePhysicsObjects(id);
+
   return nextScene;
 };
 
