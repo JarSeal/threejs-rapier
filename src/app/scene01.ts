@@ -77,6 +77,7 @@ export const scene01 = async () => {
   });
 
   const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });
+  console.log('TADAA!!!', geometry1);
   const material1 = createMaterial({
     id: 'sphere1Material',
     type: 'BASIC',

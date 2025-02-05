@@ -3,10 +3,10 @@ import { createRenderer } from './_engine/core/Renderer';
 import { createCamera } from './_engine/core/Camera';
 import { InitEngine } from './_engine/InitApp';
 import { scene01 } from './app/scene01';
-import { InitPhysics } from './_engine/core/Physics';
+import { InitRapierPhysics } from './_engine/core/PhysicsRapier';
 
 InitEngine(async () => {
-  await InitPhysics();
+  await InitRapierPhysics();
 
   // Init camera
   createCamera('mainCam', { isCurrentCamera: true, fov: 90 });

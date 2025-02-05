@@ -130,3 +130,10 @@ export const saveGeometry = (geometry: THREE.BufferGeometry, givenId?: string) =
   geometries[id] = geometry;
   return geometry;
 };
+
+/**
+ * Checks, with a geometry id, whether a geometry exists or not
+ * @param id (string) geometry id
+ * @returns boolean
+ */
+export const doesGeoExist = (id: string) => Boolean(geometries[id]);

@@ -108,3 +108,10 @@ export const deleteLight = (id: string) => {
  * @returns array of Three.js lights
  */
 export const getAllLights = () => lights;
+
+/**
+ * Checks, with a light id, whether a light exists or not
+ * @param id (string) light id
+ * @returns boolean
+ */
+export const doesLightExist = (id: string) => Boolean(lights[id]);

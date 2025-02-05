@@ -255,3 +255,10 @@ export const saveMaterial = (material: Materials | Materials[], givenId?: string
 
   return material;
 };
+
+/**
+ * Checks, with a material id, whether a material exists or not
+ * @param id (string) material id
+ * @returns boolean
+ */
+export const doesMatExist = (id: string) => Boolean(materials[id]);
