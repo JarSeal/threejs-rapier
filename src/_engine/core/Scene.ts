@@ -6,7 +6,7 @@ import { deleteGroup } from './Group';
 import { lwarn } from '../utils/Logger';
 import { deleteLight } from './Light';
 import { deleteTexture } from './Texture';
-import { setCurrentScenePhysicsObjects } from './Physics';
+import { setCurrentScenePhysicsObjects } from './PhysicsRapier';
 
 type Looper = (delta: number) => void;
 
@@ -450,3 +450,10 @@ export const removeSceneResizer = (index: number | number[], sceneId?: string) =
  * @param sceneId (string) scene id
  */
 export const deleteSceneResizer = (sceneId: string) => delete sceneResizers[sceneId];
+
+/**
+ * Checks, with a scene id, whether a scene exists or not
+ * @param id (string) scene id
+ * @returns boolean
+ */
+export const doesSceneExist = (id: string) => Boolean(scenes[id]);

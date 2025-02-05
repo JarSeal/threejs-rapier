@@ -314,3 +314,10 @@ export const deleteTexture = (id: string | string[]) => {
  * @returns array of Three.js textures
  */
 export const getAllTextures = () => textures;
+
+/**
+ * Checks, with a texture id, whether a texture exists or not
+ * @param id (string) texture id
+ * @returns boolean
+ */
+export const doesTextureExist = (id: string) => Boolean(textures[id]);

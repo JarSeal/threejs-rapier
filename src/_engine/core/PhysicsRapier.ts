@@ -15,6 +15,89 @@ export type PhysicsObject = {
   // autoAnimate: boolean;
 };
 
+export type PhysicsParams = {
+  /** Collider type and params */
+  collider:
+    | {
+        type: 'SPHERE' | 'BALL';
+        radius?: number;
+      }
+    | {
+        type: 'CAPSULE';
+        halfHeight: number;
+        radius: number;
+      };
+
+  /** Rigid body type and params */
+  rigidBody: {
+    /** Type of rigid body */
+    rigidType: 'FIXED' | 'DYNAMIC' | 'POS_BASED' | 'VELO_BASED';
+
+    /** Translation (position) */
+    translation?: { x: number; y: number; z: number };
+
+    /** Rotation (position) in quaternion */
+    rotation?: { x: number; y: number; z: number; w: number };
+
+    /** Linear (translation) velocity */
+    linvel?: { x: number; y: number; z: number };
+
+    /** Angular (rotation) velocity */
+    angvel?: { x: number; y: number; z: number };
+
+    /** Gravity scale */
+    gravityScale?: number;
+
+    /** Force to be applied (constant force) */
+    force?: { x: number; y: number; z: number };
+
+    /** Torque force to be applied (constant force) */
+    torqueForce?: { x: number; y: number; z: number };
+
+    /** Force at point to be applied (constant force) */
+    forceAtPoint?: {
+      force: { x: number; y: number; z: number };
+      point: { x: number; y: number; z: number };
+    };
+
+    /** Impulse force to be applied */
+    impulse?: { x: number; y: number; z: number };
+
+    /** Impulse torque force to be applied */
+    torqueImpulse?: { x: number; y: number; z: number };
+
+    /** Impulse at point to be applied (constant force) */
+    impulseAtPoint?: {
+      force: { x: number; y: number; z: number };
+      point: { x: number; y: number; z: number };
+    };
+
+    /** Mass (default 1.0) */
+    density?: number;
+
+    /** Translation locks */
+    lockTranslations?: { x: boolean; y: boolean; z: boolean };
+
+    /** Rotation locks */
+    lockRotations?: { x: boolean; y: boolean; z: boolean };
+
+    /** Linear damping (slowing down of movement, eg. air friction) */
+    linearDamping?: { x: number; y: number; z: number };
+
+    /** Angular damping (slowing down of rotation, eg. air friction) */
+    angularDamping?: { x: number; y: number; z: number };
+
+    /** Dominance group, from -127 to 127 (default 0) */
+    dominance?: number;
+
+    /** Continuous Collision Detection (CCD) enabled (default false) */
+    ccdEnabled?: boolean;
+
+    /** Soft CCD prediction distance */
+    softCcdDistance?: number;
+  };
+};
+
 type PhysicsState = {
   stepperEnabled: boolean;
 };
@@ -62,17 +145,20 @@ const initRapier = async () => {
   return RAPIER;
 };
 
-// @TODO: add jsDoc
-export const InitPhysics = async (
-  initPhysicsCallback?: (RAPIER: typeof Rapier, physicsWorld: Rapier.World) => boolean
-) => {
-  return initRapier().then((rapier) => {
+/**
+ * Initializes the Rapier physics
+ * @param initPhysicsCallback ((Rapier.World, Rapier) => void) optional function that will be called after the physics have been initalized
+ * @returns Promise<Rapier>
+ */
+export const InitRapierPhysics = async (
+  initPhysicsCallback?: (physicsWorld: Rapier.World, RAPIER: typeof Rapier) => void
+) =>
+  initRapier().then((rapier) => {
     RAPIER = rapier;
     physicsWorld = new RAPIER.World(GRAVITY);
     if (isDebugEnvironment()) createDebugGUI();
-    if (initPhysicsCallback) initPhysicsCallback(RAPIER, physicsWorld as Rapier.World);
+    if (initPhysicsCallback) initPhysicsCallback(physicsWorld as Rapier.World, RAPIER);
   });
-};
 
 /**
  * Registers the physics object to the scene id (or current scene id) in the physicsObjects object.
@@ -255,4 +341,15 @@ const createDebugGUI = () => {
       return container;
     },
   });
+};
+
+/**
+ * Checks, with a physics object id, whether a physics object exists or not
+ * @param id (string) physics object id
+ * @param sceneId (string) optional scene id, if not defined the current scene id will be used
+ * @returns boolean
+ */
+export const doesGeoExist = (id: string, sceneId?: string) => {
+  const sId = getSceneIdForPhysics(sceneId, 'doesGeoExist', true);
+  return Boolean(physicsObjects[sId][id]);
 };

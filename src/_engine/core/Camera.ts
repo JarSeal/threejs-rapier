@@ -95,3 +95,10 @@ export const getCurrentCameraId = () => currentCameraId;
  * @returns object: { [id: string]: THREE.PerspectiveCamera }
  */
 export const getAllCameras = () => cameras;
+
+/**
+ * Checks, with a camera id, whether a camera exists or not
+ * @param id (string) camera id
+ * @returns boolean
+ */
+export const doesCameraExist = (id: string) => Boolean(cameras[id]);

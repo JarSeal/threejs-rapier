@@ -16,7 +16,7 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugTools';
-import { stepPhysicsWorld } from './Physics';
+import { stepPhysicsWorld } from './PhysicsRapier';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();

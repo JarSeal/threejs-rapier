@@ -243,3 +243,10 @@ export const deleteGroup = (
  * @returns array of Three.js groups
  */
 export const getAllGroups = () => groups;
+
+/**
+ * Checks, with a group id, whether a group exists or not
+ * @param id (string) group id
+ * @returns boolean
+ */
+export const doesGroupExist = (id: string) => Boolean(groups[id]);
