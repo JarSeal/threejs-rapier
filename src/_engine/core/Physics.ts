@@ -2,6 +2,9 @@ import * as THREE from 'three/webgpu';
 import Rapier from '@dimforge/rapier3d';
 import { lerror, lwarn } from '../utils/Logger';
 import { getCurrentSceneId, getScene } from './Scene';
+import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
+import { isDebugEnvironment } from './Config';
+import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
 
 export type PhysicsObject = {
   id?: string;
@@ -12,8 +15,17 @@ export type PhysicsObject = {
   // autoAnimate: boolean;
 };
 
+type PhysicsState = {
+  stepperEnabled: boolean;
+};
+
+let physicsState: PhysicsState = {
+  stepperEnabled: true,
+};
+
 // @TODO: add these values to env, LS, and debugger controllable values
 const GRAVITY = new THREE.Vector3(0, -9.81, 0);
+const LS_KEY = 'debugPhysics';
 let RAPIER: typeof Rapier;
 let physicsWorld: Rapier.World | { step: () => void } = { step: () => {} };
 const physicsObjects: { [sceneId: string]: { [id: string]: PhysicsObject } } = {};
@@ -52,12 +64,13 @@ const initRapier = async () => {
 
 // @TODO: add jsDoc
 export const InitPhysics = async (
-  initPhysicsUpdate?: (RAPIER: typeof Rapier, physicsWorld: Rapier.World) => boolean
+  initPhysicsCallback?: (RAPIER: typeof Rapier, physicsWorld: Rapier.World) => boolean
 ) => {
   return initRapier().then((rapier) => {
     RAPIER = rapier;
     physicsWorld = new RAPIER.World(GRAVITY);
-    if (initPhysicsUpdate) initPhysicsUpdate(RAPIER, physicsWorld as Rapier.World);
+    if (isDebugEnvironment()) createDebugGUI();
+    if (initPhysicsCallback) initPhysicsCallback(RAPIER, physicsWorld as Rapier.World);
   });
 };
 
@@ -164,10 +177,8 @@ export const getPhysicsWorld = () => {
   return physicsWorld as Rapier.World;
 };
 
-/**
- * Steps the physics world (called in main loop) and sets mesh positions and rotations in the current scene.
- */
-export const stepPhysicsWorld = () => {
+// Two different stepper functions to use for debug and production
+const stepperFnProduction = () => {
   // Step the world
   physicsWorld.step();
 
@@ -178,6 +189,26 @@ export const stepPhysicsWorld = () => {
     po.mesh.quaternion.copy(po.collider.rotation());
   }
 };
+const stepperFnDebug = () => {
+  if (!physicsState.stepperEnabled) return;
+
+  // Step the world
+  physicsWorld.step();
+
+  // Set physics objects mesh positions and rotations
+  for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+    const po = currentScenePhysicsObjects[i];
+    po.mesh.position.copy(po.collider.translation());
+    po.mesh.quaternion.copy(po.collider.rotation());
+  }
+};
+
+const stepperFn = isDebugEnvironment() ? stepperFnDebug : stepperFnProduction;
+
+/**
+ * Steps the physics world (called in main loop) and sets mesh positions and rotations in the current scene.
+ */
+export const stepPhysicsWorld = () => stepperFn();
 
 /**
  * Changes the scene to be used for the scene's physics objects (optimizes the stepping)
@@ -197,5 +228,31 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
   for (let i = 0; i < keys.length; i++) {
     if (!allNewPhysicsObjects[keys[i]]) continue;
     currentScenePhysicsObjects.push(allNewPhysicsObjects[keys[i]]);
+    console.log('Added physics objects in setCurrentScenePhysicsObjects');
   }
+};
+
+const createDebugGUI = () => {
+  const savedValues = lsGetItem(LS_KEY, physicsState);
+  physicsState = {
+    ...physicsState,
+    ...savedValues,
+  };
+
+  createDebuggerTab({
+    id: 'physicsControls',
+    buttonText: 'PHYSICS',
+    title: 'Physics controls',
+    orderNr: 5,
+    container: () => {
+      const { container, debugGUI } = createNewDebuggerPane('physics', 'Physics Controls');
+      debugGUI
+        .addBinding(physicsState, 'stepperEnabled', { label: 'Enable world step' })
+        .on('change', () => {
+          lsSetItem(LS_KEY, physicsState);
+        });
+
+      return container;
+    },
+  });
 };
