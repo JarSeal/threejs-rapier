@@ -189,9 +189,7 @@ export const initMainLoop = () => {
     loopState = {
       ...loopState,
       ...savedValues,
-      ...(maxFPS !== undefined && !isNaN(maxFPS)
-        ? { maxFPS: loopState.maxFPS, maxFPSInterval: loopState.maxFPSInterval }
-        : {}),
+      ...{ maxFPS: loopState.maxFPS, maxFPSInterval: loopState.maxFPSInterval },
     };
     createLoopDebugGUI();
     initStats();
