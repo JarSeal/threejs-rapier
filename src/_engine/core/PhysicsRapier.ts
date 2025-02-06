@@ -19,14 +19,25 @@ export type PhysicsParams = {
   /** Collider type and params */
   collider:
     | {
-        type: 'SPHERE' | 'BALL';
+        type: 'BALL' | 'SPHERE';
         radius?: number;
       }
     | {
-        type: 'CAPSULE';
-        halfHeight: number;
-        radius: number;
+        type: 'CAPSULE' | 'CONE' | 'CYLINDER';
+        halfHeight?: number;
+        radius?: number;
+        borderRadius?: number;
+      }
+    // CONVEXHULL (+ rounded)
+    // CONVEXMESH (+ rounded)
+    | {
+        type: 'CUBOID' | 'BOX';
+        hx?: number;
+        hy?: number;
+        hz?: number;
+        borderRadius?: number;
       };
+  // TRIANGLE (+ rounded)
 
   /** Rigid body type and params */
   rigidBody: {
@@ -106,7 +117,7 @@ let physicsState: PhysicsState = {
   stepperEnabled: true,
 };
 
-// @TODO: add these values to env, LS, and debugger controllable values
+// @TODO: add the GRAVITY values to env, LS, and debugger controllable values
 const GRAVITY = new THREE.Vector3(0, -9.81, 0);
 const LS_KEY = 'debugPhysics';
 let RAPIER: typeof Rapier;
