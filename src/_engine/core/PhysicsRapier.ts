@@ -152,7 +152,7 @@ let physicsState: PhysicsState = {
 // @TODO: add the GRAVITY values to env, LS, and debugger controllable values
 const GRAVITY = new THREE.Vector3(0, -9.81, 0);
 const LS_KEY = 'debugPhysics';
-let stepperFn = () => {};
+let stepperFn = (_: number) => {};
 let RAPIER: typeof Rapier;
 let physicsWorld: Rapier.World | { step: () => void } = { step: () => {} };
 const physicsObjects: { [sceneId: string]: { [id: string]: PhysicsObject } } = {};
@@ -494,7 +494,7 @@ export const getPhysicsWorld = () => {
 };
 
 // Two different stepper functions to use for debug and production
-const stepperFnProduction = () => {
+const stepperFnProduction = (delta: number) => {
   // Step the world
   physicsWorld.step();
 
@@ -505,7 +505,7 @@ const stepperFnProduction = () => {
     po.mesh.quaternion.copy(po.collider.rotation());
   }
 };
-const stepperFnDebug = () => {
+const stepperFnDebug = (delta: number) => {
   if (!physicsState.stepperEnabled) return;
 
   // Step the world
@@ -526,7 +526,7 @@ const stepperFnDebug = () => {
 /**
  * Steps the physics world (called in main loop) and sets mesh positions and rotations in the current scene.
  */
-export const stepPhysicsWorld = () => stepperFn();
+export const stepPhysicsWorld = (delta: number) => stepperFn(delta);
 
 /**
  * Changes the scene to be used for the scene's physics objects (optimizes the stepping)
@@ -546,7 +546,6 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
   for (let i = 0; i < keys.length; i++) {
     if (!allNewPhysicsObjects[keys[i]]) continue;
     currentScenePhysicsObjects.push(allNewPhysicsObjects[keys[i]]);
-    console.log('Added physics objects in setCurrentScenePhysicsObjects');
   }
 };
 
