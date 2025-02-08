@@ -5,19 +5,27 @@ import { getCurrentSceneId, getScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
+import { getMesh } from './Mesh';
 
 export type PhysicsObject = {
   id?: string;
   mesh: THREE.Mesh;
   collider: Rapier.Collider;
-  rigidBody: Rapier.RigidBody;
+  rigidBody?: Rapier.RigidBody;
   // fn?: Function;
   // autoAnimate: boolean;
 };
 
 export type PhysicsParams = {
   /** Collider type and params */
-  collider:
+  collider: (
+    | {
+        type: 'CUBOID' | 'BOX';
+        hx?: number;
+        hy?: number;
+        hz?: number;
+        borderRadius?: number;
+      }
     | {
         type: 'BALL' | 'SPHERE';
         radius?: number;
@@ -28,19 +36,43 @@ export type PhysicsParams = {
         radius?: number;
         borderRadius?: number;
       }
-    // CONVEXHULL (+ rounded)
-    // CONVEXMESH (+ rounded)
     | {
-        type: 'CUBOID' | 'BOX';
-        hx?: number;
-        hy?: number;
-        hz?: number;
+        type: 'TRIANGLE';
+        a: Rapier.Vector3;
+        b: Rapier.Vector3;
+        c: Rapier.Vector3;
         borderRadius?: number;
-      };
-  // TRIANGLE (+ rounded)
+      }
+    | {
+        type: 'TRIMESH';
+        vertices: Float32Array;
+        indices: Uint32Array;
+      }
+  ) & {
+    /** Mass (default 1.0) */
+    density?: number;
+
+    /** Translation (position), only has affect if there is no rigid body */
+    translation?: { x: number; y: number; z: number };
+
+    /** Rotation (position) in quaternion, only has affect if there is no rigid body */
+    rotation?: { x: number; y: number; z: number; w: number };
+
+    /** Object's friction value, usually between 0 to 1 but can me more (default is @TODO: find out default) */
+    friction?: number;
+
+    /** How two colliding objects apply friction (default AVERAGE). The following precedence is used: MAX > MULTIPLY > MIN > AVERAGE. */
+    frictionCombineRule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE';
+
+    /** Object restitution (bounce) value, usually between 0 to 1 but can me more (default is @TODO: find out default) */
+    restitution?: number;
+
+    /** How two colliding objects apply restitution (default AVERAGE). The following precedence is used: MAX > MULTIPLY > MIN > AVERAGE. */
+    restitutionCombineRule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE';
+  };
 
   /** Rigid body type and params */
-  rigidBody: {
+  rigidBody?: {
     /** Type of rigid body */
     rigidType: 'FIXED' | 'DYNAMIC' | 'POS_BASED' | 'VELO_BASED';
 
@@ -83,9 +115,6 @@ export type PhysicsParams = {
       point: { x: number; y: number; z: number };
     };
 
-    /** Mass (default 1.0) */
-    density?: number;
-
     /** Translation locks */
     lockTranslations?: { x: boolean; y: boolean; z: boolean };
 
@@ -93,10 +122,10 @@ export type PhysicsParams = {
     lockRotations?: { x: boolean; y: boolean; z: boolean };
 
     /** Linear damping (slowing down of movement, eg. air friction) */
-    linearDamping?: { x: number; y: number; z: number };
+    linearDamping?: number;
 
     /** Angular damping (slowing down of rotation, eg. air friction) */
-    angularDamping?: { x: number; y: number; z: number };
+    angularDamping?: number;
 
     /** Dominance group, from -127 to 127 (default 0) */
     dominance?: number;
@@ -106,6 +135,9 @@ export type PhysicsParams = {
 
     /** Soft CCD prediction distance */
     softCcdDistance?: number;
+
+    /** Whether the body should be waken up or not (default true) */
+    wakeUp?: boolean;
   };
 };
 
@@ -120,6 +152,7 @@ let physicsState: PhysicsState = {
 // @TODO: add the GRAVITY values to env, LS, and debugger controllable values
 const GRAVITY = new THREE.Vector3(0, -9.81, 0);
 const LS_KEY = 'debugPhysics';
+let stepperFn = () => {};
 let RAPIER: typeof Rapier;
 let physicsWorld: Rapier.World | { step: () => void } = { step: () => {} };
 const physicsObjects: { [sceneId: string]: { [id: string]: PhysicsObject } } = {};
@@ -150,50 +183,236 @@ const getSceneIdForPhysics = (
   return sId;
 };
 
-const initRapier = async () => {
-  const mod = await import('@dimforge/rapier3d');
-  const RAPIER = mod.default;
-  return RAPIER;
+const createRigidBody = (physicsParams: PhysicsParams) => {
+  const rigidBodyParams = physicsParams.rigidBody;
+  let rigidBody: Rapier.RigidBody | undefined = undefined;
+  let rigidBodyDesc: Rapier.RigidBodyDesc;
+
+  if (!rigidBodyParams) return undefined;
+
+  switch (rigidBodyParams.rigidType) {
+    case 'DYNAMIC':
+      rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic();
+      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      break;
+    case 'POS_BASED':
+      rigidBodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased();
+      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      break;
+    case 'VELO_BASED':
+      rigidBodyDesc = RAPIER.RigidBodyDesc.kinematicVelocityBased();
+      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      break;
+    case 'FIXED':
+    default:
+      rigidBodyDesc = RAPIER.RigidBodyDesc.fixed();
+      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      break;
+  }
+
+  const wakeUp = rigidBodyParams.wakeUp !== false ? true : false;
+
+  if (rigidBodyParams.translation) rigidBody.setTranslation(rigidBodyParams.translation, wakeUp);
+  if (rigidBodyParams.rotation) rigidBody.setRotation(rigidBodyParams.rotation, wakeUp);
+  if (rigidBodyParams.linvel) rigidBody.setLinvel(rigidBodyParams.linvel, wakeUp);
+  if (rigidBodyParams.angvel) rigidBody.setAngvel(rigidBodyParams.angvel, wakeUp);
+  if (rigidBodyParams.gravityScale) rigidBody.setGravityScale(rigidBodyParams.gravityScale, wakeUp);
+  if (rigidBodyParams.force) rigidBody.addForce(rigidBodyParams.force, wakeUp);
+  if (rigidBodyParams.torqueForce) rigidBody.addTorque(rigidBodyParams.torqueForce, wakeUp);
+  if (rigidBodyParams.forceAtPoint)
+    rigidBody.addForceAtPoint(
+      rigidBodyParams.forceAtPoint.force,
+      rigidBodyParams.forceAtPoint.point,
+      wakeUp
+    );
+  if (rigidBodyParams.impulse) rigidBody.applyImpulse(rigidBodyParams.impulse, wakeUp);
+  if (rigidBodyParams.torqueImpulse)
+    rigidBody.applyTorqueImpulse(rigidBodyParams.torqueImpulse, wakeUp);
+  if (rigidBodyParams.impulseAtPoint)
+    rigidBody.applyImpulseAtPoint(
+      rigidBodyParams.impulseAtPoint.force,
+      rigidBodyParams.impulseAtPoint.point,
+      wakeUp
+    );
+  if (rigidBodyParams.lockTranslations) {
+    rigidBody.lockTranslations(true, wakeUp);
+    rigidBody.setEnabledTranslations(
+      rigidBodyParams.lockTranslations.x,
+      rigidBodyParams.lockTranslations.y,
+      rigidBodyParams.lockTranslations.z,
+      wakeUp
+    );
+  }
+  if (rigidBodyParams.lockRotations) {
+    rigidBody.lockRotations(true, wakeUp);
+    rigidBody.setEnabledRotations(
+      rigidBodyParams.lockRotations.x,
+      rigidBodyParams.lockRotations.y,
+      rigidBodyParams.lockRotations.z,
+      wakeUp
+    );
+  }
+  if (rigidBodyParams.linearDamping) rigidBody.setLinearDamping(rigidBodyParams.linearDamping);
+  if (rigidBodyParams.angularDamping) rigidBody.setAngularDamping(rigidBodyParams.angularDamping);
+  if (rigidBodyParams.dominance) rigidBody.setDominanceGroup(rigidBodyParams.dominance);
+  if (rigidBodyParams.ccdEnabled) rigidBody.enableCcd(rigidBodyParams.ccdEnabled);
+  if (rigidBodyParams.softCcdDistance)
+    rigidBody.setSoftCcdPrediction(rigidBodyParams.softCcdDistance);
+
+  return rigidBody;
+};
+
+const getCombineRule = (rule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE') => {
+  switch (rule) {
+    case 'MAX':
+      return RAPIER.CoefficientCombineRule.Max;
+    case 'MULTIPLY':
+      return RAPIER.CoefficientCombineRule.Multiply;
+    case 'MIN':
+      return RAPIER.CoefficientCombineRule.Min;
+    case 'AVERAGE':
+    default:
+      return RAPIER.CoefficientCombineRule.Average;
+  }
+};
+
+const createCollider = (physicsParams: PhysicsParams) => {
+  const colliderParams = physicsParams.collider;
+  let shape: Rapier.Shape;
+
+  switch (colliderParams.type) {
+    case 'CUBOID':
+    case 'BOX':
+      shape = colliderParams.borderRadius
+        ? new RAPIER.RoundCuboid(
+            colliderParams.hx || 0.5,
+            colliderParams.hy || 0.5,
+            colliderParams.hz || 0.5,
+            colliderParams.borderRadius
+          )
+        : new RAPIER.Cuboid(
+            colliderParams.hx || 0.5,
+            colliderParams.hy || 0.5,
+            colliderParams.hz || 0.5
+          );
+      break;
+    case 'BALL':
+    case 'SPHERE':
+      shape = new RAPIER.Ball(colliderParams.radius || 0.5);
+      break;
+    case 'CAPSULE':
+      shape = new RAPIER.Capsule(colliderParams.halfHeight || 0.25, colliderParams.radius || 0.25);
+      break;
+    case 'CONE':
+      shape = colliderParams.borderRadius
+        ? new RAPIER.RoundCone(
+            colliderParams.halfHeight || 0.25,
+            colliderParams.radius || 0.25,
+            colliderParams.borderRadius
+          )
+        : new RAPIER.Cone(colliderParams.halfHeight || 0.25, colliderParams.radius || 0.25);
+      break;
+    case 'CYLINDER':
+      shape = colliderParams.borderRadius
+        ? new RAPIER.RoundCylinder(
+            colliderParams.halfHeight || 0.25,
+            colliderParams.radius || 0.25,
+            colliderParams.borderRadius
+          )
+        : new RAPIER.Cylinder(colliderParams.halfHeight || 0.25, colliderParams.radius || 0.25);
+      break;
+    case 'TRIANGLE':
+      shape = colliderParams.borderRadius
+        ? new RAPIER.RoundTriangle(
+            colliderParams.a,
+            colliderParams.b,
+            colliderParams.c,
+            colliderParams.borderRadius
+          )
+        : new RAPIER.Triangle(colliderParams.a, colliderParams.b, colliderParams.c);
+      break;
+    case 'TRIMESH':
+      shape = new RAPIER.TriMesh(colliderParams.vertices, colliderParams.indices);
+      break;
+  }
+
+  if (!shape) {
+    const message = 'Could not create collider shape in createCollider';
+    lerror(message);
+    throw new Error(message);
+  }
+
+  const colliderDesc = new RAPIER.ColliderDesc(shape);
+
+  if (colliderParams.density !== undefined) colliderDesc.setDensity(colliderParams.density);
+  if (colliderParams.translation)
+    colliderDesc.setTranslation(
+      colliderParams.translation.x,
+      colliderParams.translation.y,
+      colliderParams.translation.z
+    );
+  if (colliderParams.rotation) colliderDesc.setRotation(colliderParams.rotation);
+  if (colliderParams.friction) colliderDesc.setFriction(colliderParams.friction);
+  if (colliderParams.restitution) colliderDesc.setRestitution(colliderDesc.restitution);
+  if (colliderParams.frictionCombineRule)
+    colliderDesc.setFrictionCombineRule(getCombineRule(colliderParams.frictionCombineRule));
+  if (colliderParams.restitutionCombineRule)
+    colliderDesc.setRestitutionCombineRule(getCombineRule(colliderParams.restitutionCombineRule));
+
+  return colliderDesc;
 };
 
 /**
- * Initializes the Rapier physics
- * @param initPhysicsCallback ((Rapier.World, Rapier) => void) optional function that will be called after the physics have been initalized
- * @returns Promise<Rapier>
- */
-export const InitRapierPhysics = async (
-  initPhysicsCallback?: (physicsWorld: Rapier.World, RAPIER: typeof Rapier) => void
-) =>
-  initRapier().then((rapier) => {
-    RAPIER = rapier;
-    physicsWorld = new RAPIER.World(GRAVITY);
-    if (isDebugEnvironment()) createDebugGUI();
-    if (initPhysicsCallback) initPhysicsCallback(physicsWorld as Rapier.World, RAPIER);
-  });
-
-/**
  * Registers the physics object to the scene id (or current scene id) in the physicsObjects object.
- * @param obj PhysicsObject ({@link PhysicsObject})
- * @param sceneId optional scene id string where the physics object should be mapped to, if not provided the current scene id will be used
- * @param noWarnForUnitializedScene optional boolean to suppress logger warning for unitialized scene (true = no warning, default = false)
+ * @param physicsParamas (PhysicsParams) ({@link PhysicsParams})
+ * @param meshOrMeshId (THREE.Mesh | string) mesh or mesh id of the representation of the physics object
+ * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
+ * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
  * @returns PhysicsObject ({@link PhysicsObject})
  */
-export const addPhysicsObject = (
-  obj: PhysicsObject,
+export const addPhysicsObjectWithMesh = (
+  physicsParams: PhysicsParams,
+  meshOrMeshId: THREE.Mesh | string,
   sceneId?: string,
   noWarnForUnitializedScene?: boolean
 ) => {
   const sId = getSceneIdForPhysics(sceneId, 'addPhysicsObject', noWarnForUnitializedScene);
+  let id: string;
+  let mesh: THREE.Mesh;
 
-  const id = obj.id ? obj.id : obj.mesh.userData.id || obj.mesh.uuid;
-  obj.mesh.userData.isPhysicsObject = true;
-  physicsObjects[sId][id] = obj;
+  if (typeof meshOrMeshId === 'string') {
+    id = meshOrMeshId;
+    mesh = getMesh(id);
+    if (!mesh) {
+      lwarn(
+        `Could not find mesh with id "${id}" in addPhysicsObjectWithMesh. Physics object was not added.`
+      );
+      return;
+    }
+  } else {
+    id = meshOrMeshId.userData.id;
+    mesh = meshOrMeshId;
+  }
+  mesh.userData.isPhysicsObject = true;
 
-  if (sceneId === getCurrentSceneId()) {
-    currentScenePhysicsObjects.push(obj);
+  const rigidBody = createRigidBody(physicsParams);
+  const colliderDesc = createCollider(physicsParams);
+  const collider = getPhysicsWorld().createCollider(colliderDesc, rigidBody);
+
+  const physObj: PhysicsObject = {
+    id,
+    mesh,
+    ...(rigidBody ? { rigidBody } : {}),
+    collider,
+  };
+  if (!physicsObjects[sId]) physicsObjects[sId] = {};
+  physicsObjects[sId][id] = physObj;
+
+  if (sId === getCurrentSceneId()) {
+    currentScenePhysicsObjects.push(physObj);
   }
 
-  return obj;
+  return physObj;
 };
 
 /**
@@ -297,10 +516,12 @@ const stepperFnDebug = () => {
     const po = currentScenePhysicsObjects[i];
     po.mesh.position.copy(po.collider.translation());
     po.mesh.quaternion.copy(po.collider.rotation());
+    // Uncomment for debug of dynamic bodies
+    // if (po.rigidBody?.bodyType() === Rapier.RigidBodyType.Dynamic && !po.rigidBody?.isSleeping()) {
+    //   console.log(performance.now(), `Index: ${i}`, po.collider.translation());
+    // }
   }
 };
-
-const stepperFn = isDebugEnvironment() ? stepperFnDebug : stepperFnProduction;
 
 /**
  * Steps the physics world (called in main loop) and sets mesh positions and rotations in the current scene.
@@ -364,3 +585,29 @@ export const doesGeoExist = (id: string, sceneId?: string) => {
   const sId = getSceneIdForPhysics(sceneId, 'doesGeoExist', true);
   return Boolean(physicsObjects[sId][id]);
 };
+
+const initRapier = async () => {
+  const mod = await import('@dimforge/rapier3d');
+  const RAPIER = mod.default;
+  return RAPIER;
+};
+
+/**
+ * Initializes the Rapier physics
+ * @param initPhysicsCallback ((Rapier.World, Rapier) => void) optional function that will be called after the physics have been initalized
+ * @returns Promise<Rapier>
+ */
+export const InitRapierPhysics = async (
+  initPhysicsCallback?: (physicsWorld: Rapier.World, RAPIER: typeof Rapier) => void
+) =>
+  initRapier().then((rapier) => {
+    RAPIER = rapier;
+    physicsWorld = new RAPIER.World(GRAVITY);
+    if (isDebugEnvironment()) {
+      createDebugGUI();
+      stepperFn = stepperFnDebug;
+    } else {
+      stepperFn = stepperFnProduction;
+    }
+    if (initPhysicsCallback) initPhysicsCallback(physicsWorld as Rapier.World, RAPIER);
+  });

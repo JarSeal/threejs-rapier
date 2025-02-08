@@ -11,6 +11,7 @@ import { addToGroup, createGroup } from '../_engine/core/Group';
 import { transformSpeedValue } from '../_engine/core/MainLoop';
 import { addSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
+import { addPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
 
 export const assets = {};
 // export const preloadAssets = () => {};
@@ -75,8 +76,33 @@ export const scene01 = async () => {
     },
   });
 
+  // Create ground
+  const groundWidthAndDepth = 10;
+  const groundHeight = 0.2;
+  const groundPos = { x: 0, y: -2, z: 0 };
+  const groundGeo = createGeometry({
+    id: 'ground',
+    type: 'BOX',
+    params: { width: groundWidthAndDepth, height: groundHeight, depth: groundWidthAndDepth },
+  });
+  const groundMat = createMaterial({ id: 'ground', type: 'BASIC', params: { color: 0xff2000 } });
+  const groundMesh = createMesh({ geo: groundGeo, mat: groundMat });
+  groundMesh.position.set(groundPos.x, groundPos.y, groundPos.z);
+  addPhysicsObjectWithMesh(
+    {
+      collider: {
+        type: 'BOX',
+        hx: groundWidthAndDepth / 2,
+        hy: groundHeight / 2,
+        hz: groundWidthAndDepth / 2,
+      },
+      rigidBody: { rigidType: 'FIXED', translation: groundPos },
+    },
+    groundMesh
+  );
+  scene.add(groundMesh);
+
   const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });
-  console.log('TADAA!!!', geometry1);
   const material1 = createMaterial({
     id: 'sphere1Material',
     type: 'BASIC',
@@ -100,6 +126,22 @@ export const scene01 = async () => {
   });
   const box = createMesh({ id: 'boxMesh1', geo: geometry2, mat: material2 });
   box.position.set(2, 0, 0);
+  addPhysicsObjectWithMesh(
+    {
+      collider: {
+        type: 'BOX',
+        hx: 0.5,
+        hy: 0.5,
+        hz: 0.5,
+      },
+      rigidBody: {
+        rigidType: 'DYNAMIC',
+        translation: { x: 2, y: 0, z: 0 },
+        angvel: { x: 1, y: -2, z: 20 },
+      },
+    },
+    box
+  );
   scene.add(box);
 
   // Group example
