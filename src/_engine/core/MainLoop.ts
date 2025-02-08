@@ -16,7 +16,8 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugTools';
-import { stepPhysicsWorld } from './PhysicsRapier';
+import { getPhysicsWorld, stepPhysicsWorld } from './PhysicsRapier';
+import RAPIER from '@dimforge/rapier3d';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -76,7 +77,8 @@ const runMainLateLoopers = () => {
 };
 
 const mainLoopForDebug = async () => {
-  delta = clock.getDelta() * loopState.playSpeedMultiplier;
+  const dt = clock.getDelta();
+  delta = dt * loopState.playSpeedMultiplier;
   if (loopState.masterPlay) {
     requestAnimationFrame(mainLoop);
     loopState.isMasterPlaying = true;
@@ -99,6 +101,7 @@ const mainLoopForDebug = async () => {
   } else {
     loopState.isAppPlaying = false;
   }
+
   const renderer = getRenderer();
   const windowSize = getWindowSize();
   renderer?.setViewport(0, 0, windowSize.width, windowSize.height);
@@ -106,7 +109,7 @@ const mainLoopForDebug = async () => {
     // maxFPS limiter
     accDelta += delta;
     if (accDelta > loopState.maxFPSInterval) {
-      stepPhysicsWorld();
+      stepPhysicsWorld(delta);
       renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
         runMainLateLoopers();
         getStats()?.update();
@@ -115,7 +118,7 @@ const mainLoopForDebug = async () => {
     }
   } else {
     // No maxFPS limiter
-    stepPhysicsWorld();
+    stepPhysicsWorld(delta);
     renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
       runMainLateLoopers();
       getStats()?.update();
@@ -165,14 +168,6 @@ export const initMainLoop = () => {
     throw new Error(msg);
   }
 
-  if (isDebugEnvironment()) {
-    mainLoop = mainLoopForDebug;
-  } else if (isCurrentEnvironment('production') && loopState.maxFPS > 0) {
-    mainLoop = mainLoopForProductionWithFPSLimiter;
-  } else {
-    mainLoop = mainLoopForProduction;
-  }
-
   // HUD container
   createHudContainer();
 
@@ -189,11 +184,18 @@ export const initMainLoop = () => {
     loopState = {
       ...loopState,
       ...savedValues,
-      ...{ maxFPS: loopState.maxFPS, maxFPSInterval: loopState.maxFPSInterval },
     };
     createLoopDebugGUI();
     initStats();
     initDebugTools();
+  }
+
+  if (isDebugEnvironment()) {
+    mainLoop = mainLoopForDebug;
+  } else if (isCurrentEnvironment('production') && loopState.maxFPS > 0) {
+    mainLoop = mainLoopForProductionWithFPSLimiter;
+  } else {
+    mainLoop = mainLoopForProduction;
   }
 
   renderer.renderAsync(currentScene, currentCamera);

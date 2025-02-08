@@ -85,7 +85,7 @@ export const scene01 = async () => {
     type: 'BOX',
     params: { width: groundWidthAndDepth, height: groundHeight, depth: groundWidthAndDepth },
   });
-  const groundMat = createMaterial({ id: 'ground', type: 'BASIC', params: { color: 0xff2000 } });
+  const groundMat = createMaterial({ id: 'ground', type: 'BASIC', params: { color: 0x0024000 } });
   const groundMesh = createMesh({ geo: groundGeo, mat: groundMat });
   groundMesh.position.set(groundPos.x, groundPos.y, groundPos.z);
   addPhysicsObjectWithMesh(
