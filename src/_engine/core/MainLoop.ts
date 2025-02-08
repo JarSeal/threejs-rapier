@@ -102,6 +102,8 @@ const mainLoopForDebug = async () => {
     loopState.isAppPlaying = false;
   }
 
+  stepPhysicsWorld(delta);
+
   const renderer = getRenderer();
   const windowSize = getWindowSize();
   renderer?.setViewport(0, 0, windowSize.width, windowSize.height);
@@ -109,7 +111,6 @@ const mainLoopForDebug = async () => {
     // maxFPS limiter
     accDelta += delta;
     if (accDelta > loopState.maxFPSInterval) {
-      stepPhysicsWorld(delta);
       renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
         runMainLateLoopers();
         getStats()?.update();
@@ -118,7 +119,6 @@ const mainLoopForDebug = async () => {
     }
   } else {
     // No maxFPS limiter
-    stepPhysicsWorld(delta);
     renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
       runMainLateLoopers();
       getStats()?.update();

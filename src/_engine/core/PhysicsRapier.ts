@@ -143,18 +143,21 @@ export type PhysicsParams = {
 
 type PhysicsState = {
   stepperEnabled: boolean;
+  timestep: number;
 };
 
 let physicsState: PhysicsState = {
   stepperEnabled: true,
+  timestep: 1 / 60,
 };
 
 // @TODO: add the GRAVITY values to env, LS, and debugger controllable values
 const GRAVITY = new THREE.Vector3(0, -9.81, 0);
 const LS_KEY = 'debugPhysics';
 let stepperFn = (_: number) => {};
+let accDelta = 0;
 let RAPIER: typeof Rapier;
-let physicsWorld: Rapier.World | { step: () => void } = { step: () => {} };
+let physicsWorld: Rapier.World = { step: () => {} } as Rapier.World;
 const physicsObjects: { [sceneId: string]: { [id: string]: PhysicsObject } } = {};
 let currentScenePhysicsObjects: PhysicsObject[] = [];
 
@@ -493,20 +496,11 @@ export const getPhysicsWorld = () => {
   return physicsWorld as Rapier.World;
 };
 
-// Two different stepper functions to use for debug and production
-const stepperFnProduction = (delta: number) => {
-  // Step the world
-  physicsWorld.step();
-
-  // Set physics objects mesh positions and rotations
-  for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
-    const po = currentScenePhysicsObjects[i];
-    po.mesh.position.copy(po.collider.translation());
-    po.mesh.quaternion.copy(po.collider.rotation());
-  }
-};
-const stepperFnDebug = (delta: number) => {
-  if (!physicsState.stepperEnabled) return;
+// Different stepper functions to use for debug and production
+const baseStepper = (delta: number) => {
+  accDelta += delta;
+  if (accDelta < physicsState.timestep) return;
+  accDelta = accDelta % physicsState.timestep;
 
   // Step the world
   physicsWorld.step();
@@ -521,6 +515,14 @@ const stepperFnDebug = (delta: number) => {
     //   console.log(performance.now(), `Index: ${i}`, po.collider.translation());
     // }
   }
+};
+const stepperFnProduction = (delta: number) => {
+  baseStepper(delta);
+};
+const stepperFnDebug = (delta: number) => {
+  if (!physicsState.stepperEnabled) return;
+
+  baseStepper(delta);
 };
 
 /**
@@ -580,7 +582,7 @@ const createDebugGUI = () => {
  * @param sceneId (string) optional scene id, if not defined the current scene id will be used
  * @returns boolean
  */
-export const doesGeoExist = (id: string, sceneId?: string) => {
+export const doesPOExist = (id: string, sceneId?: string) => {
   const sId = getSceneIdForPhysics(sceneId, 'doesGeoExist', true);
   return Boolean(physicsObjects[sId][id]);
 };
@@ -602,6 +604,7 @@ export const InitRapierPhysics = async (
   initRapier().then((rapier) => {
     RAPIER = rapier;
     physicsWorld = new RAPIER.World(GRAVITY);
+    physicsWorld.timestep = physicsState.timestep;
     if (isDebugEnvironment()) {
       createDebugGUI();
       stepperFn = stepperFnDebug;
