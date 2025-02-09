@@ -3,7 +3,7 @@ import Rapier from '@dimforge/rapier3d';
 import { lerror, lwarn } from '../utils/Logger';
 import { getCurrentSceneId, getScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
-import { isDebugEnvironment } from './Config';
+import { getEnv, isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
 import { getMesh } from './Mesh';
 
@@ -144,15 +144,17 @@ export type PhysicsParams = {
 type PhysicsState = {
   stepperEnabled: boolean;
   timestep: number;
+  timestepRatio: number;
+  gravity: { x: number; y: number; z: number };
 };
 
 let physicsState: PhysicsState = {
   stepperEnabled: true,
-  timestep: 1 / 60,
+  timestep: 60,
+  timestepRatio: 1 / 60,
+  gravity: { x: 0, y: -9.81, z: 0 },
 };
 
-// @TODO: add the GRAVITY values to env, LS, and debugger controllable values
-const GRAVITY = new THREE.Vector3(0, -9.81, 0);
 const LS_KEY = 'debugPhysics';
 let stepperFn = (_: number) => {};
 let accDelta = 0;
@@ -356,7 +358,7 @@ const createCollider = (physicsParams: PhysicsParams) => {
     );
   if (colliderParams.rotation) colliderDesc.setRotation(colliderParams.rotation);
   if (colliderParams.friction) colliderDesc.setFriction(colliderParams.friction);
-  if (colliderParams.restitution) colliderDesc.setRestitution(colliderDesc.restitution);
+  if (colliderParams.restitution) colliderDesc.setRestitution(colliderParams.restitution);
   if (colliderParams.frictionCombineRule)
     colliderDesc.setFrictionCombineRule(getCombineRule(colliderParams.frictionCombineRule));
   if (colliderParams.restitutionCombineRule)
@@ -499,8 +501,8 @@ export const getPhysicsWorld = () => {
 // Different stepper functions to use for debug and production
 const baseStepper = (delta: number) => {
   accDelta += delta;
-  if (accDelta < physicsState.timestep) return;
-  accDelta = accDelta % physicsState.timestep;
+  if (accDelta < physicsState.timestepRatio) return;
+  accDelta = accDelta % physicsState.timestepRatio;
 
   // Step the world
   physicsWorld.step();
@@ -557,6 +559,8 @@ const createDebugGUI = () => {
     ...physicsState,
     ...savedValues,
   };
+  physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
+  physicsWorld.gravity = physicsState.gravity;
 
   createDebuggerTab({
     id: 'physicsControls',
@@ -570,6 +574,21 @@ const createDebugGUI = () => {
         .on('change', () => {
           lsSetItem(LS_KEY, physicsState);
         });
+      debugGUI
+        .addBinding(physicsState, 'timestep', { label: 'Timestep (1 / ts)', step: 1, min: 1 })
+        .on('change', (e) => {
+          physicsState.timestepRatio = 1 / e.value;
+          lsSetItem(LS_KEY, physicsState);
+        });
+      debugGUI.addBinding(physicsState, 'gravity', { label: 'Gravity' }).on('change', (e) => {
+        physicsWorld.gravity.x = e.value.x;
+        physicsWorld.gravity.y = e.value.y;
+        physicsWorld.gravity.z = e.value.z;
+        for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+          currentScenePhysicsObjects[i].rigidBody?.wakeUp();
+        }
+        lsSetItem(LS_KEY, physicsState);
+      });
 
       return container;
     },
@@ -602,9 +621,20 @@ export const InitRapierPhysics = async (
   initPhysicsCallback?: (physicsWorld: Rapier.World, RAPIER: typeof Rapier) => void
 ) =>
   initRapier().then((rapier) => {
+    const gravity = getEnv<{ x: number; y: number; z: number }>('VITE_GRAVITY');
+    const timestep = getEnv<number>('VITE_TIMESTEP');
+    physicsState = {
+      ...physicsState,
+      ...(gravity ? { gravity } : {}),
+      ...(timestep ? { timestep } : {}),
+    };
+    physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
+
     RAPIER = rapier;
-    physicsWorld = new RAPIER.World(GRAVITY);
-    physicsWorld.timestep = physicsState.timestep;
+    physicsWorld = new RAPIER.World(
+      new THREE.Vector3(physicsState.gravity.x, physicsState.gravity.y, physicsState.gravity.z)
+    );
+    physicsWorld.timestep = physicsState.timestepRatio;
     if (isDebugEnvironment()) {
       createDebugGUI();
       stepperFn = stepperFnDebug;

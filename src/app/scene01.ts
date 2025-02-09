@@ -95,6 +95,7 @@ export const scene01 = async () => {
         hx: groundWidthAndDepth / 2,
         hy: groundHeight / 2,
         hz: groundWidthAndDepth / 2,
+        friction: 0,
       },
       rigidBody: { rigidType: 'FIXED', translation: groundPos },
     },
@@ -133,6 +134,8 @@ export const scene01 = async () => {
         hx: 0.5,
         hy: 0.5,
         hz: 0.5,
+        restitution: 0.5,
+        friction: 0,
       },
       rigidBody: {
         rigidType: 'DYNAMIC',

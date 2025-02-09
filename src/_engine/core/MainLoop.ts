@@ -16,8 +16,7 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugTools';
-import { getPhysicsWorld, stepPhysicsWorld } from './PhysicsRapier';
-import RAPIER from '@dimforge/rapier3d';
+import { stepPhysicsWorld } from './PhysicsRapier';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -98,31 +97,33 @@ const mainLoopForDebug = async () => {
     for (let i = 0; i < appLoopers.length; i++) {
       appLoopers[i](delta);
     }
-  } else {
-    loopState.isAppPlaying = false;
-  }
 
-  stepPhysicsWorld(delta);
+    stepPhysicsWorld(delta);
 
-  const renderer = getRenderer();
-  const windowSize = getWindowSize();
-  renderer?.setViewport(0, 0, windowSize.width, windowSize.height);
-  if (loopState.maxFPS > 0) {
-    // maxFPS limiter
-    accDelta += delta;
-    if (accDelta > loopState.maxFPSInterval) {
+    const renderer = getRenderer();
+    const windowSize = getWindowSize();
+    renderer?.setViewport(0, 0, windowSize.width, windowSize.height);
+    if (loopState.maxFPS > 0) {
+      // maxFPS limiter
+      accDelta += delta;
+      if (accDelta > loopState.maxFPSInterval) {
+        renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
+          runMainLateLoopers();
+          getStats()?.update();
+          accDelta = accDelta % loopState.maxFPSInterval;
+        });
+      }
+    } else {
+      // No maxFPS limiter
       renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
         runMainLateLoopers();
         getStats()?.update();
-        accDelta = accDelta % loopState.maxFPSInterval;
       });
     }
   } else {
-    // No maxFPS limiter
-    renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
-      runMainLateLoopers();
-      getStats()?.update();
-    });
+    loopState.isAppPlaying = false;
+    runMainLateLoopers();
+    getStats()?.update();
   }
 };
 
