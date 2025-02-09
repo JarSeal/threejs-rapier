@@ -30,7 +30,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     return;
   }
 
-  if (!isDebugEnvironment()) {
+  if (isDebugEnvironment()) {
     createPhysicsDebugMesh();
   }
 
