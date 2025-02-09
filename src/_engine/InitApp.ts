@@ -1,5 +1,6 @@
-import { loadConfig } from './core/Config';
+import { isDebugEnvironment, loadConfig } from './core/Config';
 import { initMainLoop } from './core/MainLoop';
+import { createPhysicsDebugMesh } from './core/PhysicsRapier';
 import { getCurrentScene, getCurrentSceneId } from './core/Scene';
 import './styles/index.scss';
 import { lerror } from './utils/Logger';
@@ -27,6 +28,10 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     const msg = 'Could not find current scene in InitEngine';
     lerror(msg);
     return;
+  }
+
+  if (!isDebugEnvironment()) {
+    createPhysicsDebugMesh();
   }
 
   // Start engine/loop

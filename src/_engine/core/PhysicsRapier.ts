@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import Rapier from '@dimforge/rapier3d';
 import { lerror, lwarn } from '../utils/Logger';
-import { getCurrentSceneId, getScene } from './Scene';
+import { getCurrentScene, getCurrentSceneId, getScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getEnv, isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
@@ -12,8 +12,6 @@ export type PhysicsObject = {
   mesh: THREE.Mesh;
   collider: Rapier.Collider;
   rigidBody?: Rapier.RigidBody;
-  // fn?: Function;
-  // autoAnimate: boolean;
 };
 
 export type PhysicsParams = {
@@ -146,6 +144,7 @@ type PhysicsState = {
   timestep: number;
   timestepRatio: number;
   gravity: { x: number; y: number; z: number };
+  visualizerEnabled: boolean;
 };
 
 let physicsState: PhysicsState = {
@@ -153,6 +152,7 @@ let physicsState: PhysicsState = {
   timestep: 60,
   timestepRatio: 1 / 60,
   gravity: { x: 0, y: -9.81, z: 0 },
+  visualizerEnabled: false,
 };
 
 const LS_KEY = 'debugPhysics';
@@ -162,6 +162,9 @@ let RAPIER: typeof Rapier;
 let physicsWorld: Rapier.World = { step: () => {} } as Rapier.World;
 const physicsObjects: { [sceneId: string]: { [id: string]: PhysicsObject } } = {};
 let currentScenePhysicsObjects: PhysicsObject[] = [];
+let debugMesh: THREE.LineSegments;
+let debugMeshGeo: THREE.BufferGeometry;
+let debugMeshMat: THREE.LineBasicMaterial;
 
 const getSceneIdForPhysics = (
   sceneId?: string,
@@ -498,6 +501,27 @@ export const getPhysicsWorld = () => {
   return physicsWorld as Rapier.World;
 };
 
+/**
+ * Creates physics debug mesh (only in debug mode)
+ */
+export const createPhysicsDebugMesh = (onUpdate?: boolean) => {
+  if (!onUpdate && debugMesh) debugMesh.removeFromParent();
+  if (!onUpdate && debugMeshGeo) debugMeshGeo.dispose();
+  debugMeshGeo = new THREE.BufferGeometry();
+  if (onUpdate) {
+    debugMesh.geometry = debugMeshGeo;
+  } else {
+    if (!debugMeshMat)
+      debugMeshMat = new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        vertexColors: true,
+      });
+    debugMesh = new THREE.LineSegments(debugMeshGeo, debugMeshMat);
+    debugMesh.frustumCulled = false;
+    getCurrentScene().add(debugMesh);
+  }
+};
+
 // Different stepper functions to use for debug and production
 const baseStepper = (delta: number) => {
   accDelta += delta;
@@ -525,6 +549,17 @@ const stepperFnDebug = (delta: number) => {
   if (!physicsState.stepperEnabled) return;
 
   baseStepper(delta);
+
+  if (physicsState.visualizerEnabled) {
+    const { vertices, colors } = physicsWorld.debugRender();
+    createPhysicsDebugMesh(true);
+    debugMesh.geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    debugMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4));
+    debugMesh.visible = true;
+    debugMesh.geometry.getAttribute('position').needsUpdate = true;
+  } else {
+    debugMesh.visible = false;
+  }
 };
 
 /**
@@ -551,6 +586,8 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
     if (!allNewPhysicsObjects[keys[i]]) continue;
     currentScenePhysicsObjects.push(allNewPhysicsObjects[keys[i]]);
   }
+
+  createPhysicsDebugMesh();
 };
 
 const createDebugGUI = () => {
@@ -571,6 +608,11 @@ const createDebugGUI = () => {
       const { container, debugGUI } = createNewDebuggerPane('physics', 'Physics Controls');
       debugGUI
         .addBinding(physicsState, 'stepperEnabled', { label: 'Enable world step' })
+        .on('change', () => {
+          lsSetItem(LS_KEY, physicsState);
+        });
+      debugGUI
+        .addBinding(physicsState, 'visualizerEnabled', { label: 'Enable visualizer' })
         .on('change', () => {
           lsSetItem(LS_KEY, physicsState);
         });
