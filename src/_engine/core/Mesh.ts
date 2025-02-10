@@ -7,7 +7,12 @@ import {
   saveGeometry,
   type GeoProps,
 } from './Geometry';
-import { type PhysicsParams } from './PhysicsRapier';
+import {
+  addPhysicsObjectWithMesh,
+  doesPOExist,
+  removePhysicsObject,
+  type PhysicsParams,
+} from './PhysicsRapier';
 
 const meshes: { [id: string]: THREE.Mesh } = {};
 
@@ -46,9 +51,13 @@ export const createMesh = ({
   }
 
   mesh = new THREE.Mesh(g, m);
-  saveMesh(mesh, id, true);
+  const savedMesh = saveMesh(mesh, id, true);
 
-  return mesh;
+  if (phy && savedMesh) {
+    addPhysicsObjectWithMesh(phy, savedMesh);
+  }
+
+  return savedMesh || mesh;
 };
 
 /**
@@ -95,7 +104,13 @@ const deleteOneMesh = (
       if (matId) deleteMaterial(matId, deleteTextures);
     }
   }
+
+  if (mesh.userData.isPhysicsObject || doesPOExist(id)) {
+    removePhysicsObject(id);
+  }
+
   mesh.removeFromParent();
+
   delete meshes[id];
 };
 
