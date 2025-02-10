@@ -428,12 +428,15 @@ export const addPhysicsObjectWithMesh = (
  * @param id string
  * @param sceneId optional string, if not provided the current scene id will be used
  */
-// @TODO: add options to delete the mesh, material, and textures
-// @TODO: remove the physics object collider properly (not sure how to do it yet)
 export const removePhysicsObject = (id: string, sceneId?: string) => {
   const sId = getSceneIdForPhysics(sceneId, 'removePhysicsObject');
   const scenePhysicsObjects = physicsObjects[sId];
   if (!scenePhysicsObjects) return;
+
+  const obj = scenePhysicsObjects[id];
+  physicsWorld.removeCollider(obj.collider, false);
+  if (obj.rigidBody) physicsWorld.removeRigidBody(obj.rigidBody);
+
   delete scenePhysicsObjects[id];
 
   if (sId === getCurrentSceneId()) {
