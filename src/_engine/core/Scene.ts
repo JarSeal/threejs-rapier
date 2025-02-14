@@ -6,6 +6,11 @@ import { deleteGroup } from './Group';
 import { lwarn } from '../utils/Logger';
 import { deleteLight } from './Light';
 import { deleteTexture } from './Texture';
+import {
+  deletePhysicsObjectsBySceneId,
+  deletePhysicsWorld,
+  setCurrentScenePhysicsObjects,
+} from './PhysicsRapier';
 
 type Looper = (delta: number) => void;
 
@@ -47,7 +52,7 @@ export const createScene = (id: string, opts?: SceneOptions) => {
 
   scenes[id] = scene;
 
-  if (opts?.isCurrentScene) setCurrentScene(id);
+  if (opts?.isCurrentScene || !currentSceneId) setCurrentScene(id);
 
   if (opts?.mainLoopers) sceneMainLoopers[id] = opts.mainLoopers;
   if (opts?.mainLateLoopers) sceneMainLateLoopers[id] = opts.mainLateLoopers;
@@ -83,6 +88,8 @@ export const deleteScene = (
     deleteMeshes?: boolean;
     deleteLights?: boolean;
     deleteGroups?: boolean;
+    deletePhysicsObjects?: boolean;
+    deletePhysicsWorld?: boolean;
     deleteAll?: boolean;
   }
 ) => {
@@ -183,6 +190,13 @@ export const deleteScene = (
   // Delete skybox textures
   if (scene.userData.backgroundNodeTextureId) deleteTexture(scene.userData.backgroundNodeTextureId);
 
+  if (opts?.deletePhysicsWorld || opts?.deleteAll) {
+    // Delete physics world
+    deletePhysicsWorld();
+  } else if (opts?.deletePhysicsObjects) {
+    deletePhysicsObjectsBySceneId(id);
+  }
+
   delete scenes[id];
 };
 
@@ -200,6 +214,9 @@ export const setCurrentScene = (id: string | null) => {
   }
   currentSceneId = id;
   currentScene = nextScene;
+
+  setCurrentScenePhysicsObjects(id);
+
   return nextScene;
 };
 
@@ -214,6 +231,13 @@ export const getCurrentScene = () => currentScene || new THREE.Scene();
  * @returns string
  */
 export const getCurrentSceneId = () => currentSceneId;
+
+/**
+ * Checks if the scene id provided is the current scene id
+ * @param id (string) scene id
+ * @returns boolean
+ */
+export const isCurrentScene = (id: string) => id === currentSceneId;
 
 /**
  * Return all existing scenes as an object
@@ -446,3 +470,10 @@ export const removeSceneResizer = (index: number | number[], sceneId?: string) =
  * @param sceneId (string) scene id
  */
 export const deleteSceneResizer = (sceneId: string) => delete sceneResizers[sceneId];
+
+/**
+ * Checks, with a scene id, whether a scene exists or not
+ * @param id (string) scene id
+ * @returns boolean
+ */
+export const doesSceneExist = (id: string) => Boolean(scenes[id]);

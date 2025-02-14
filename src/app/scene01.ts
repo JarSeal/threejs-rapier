@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
-import { addSceneAppLooper, addSceneMainLooper, createScene } from '../_engine/core/Scene';
+import { addSceneMainLooper, createScene } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
-import { loadTexture, getTexture, loadTextures } from '../_engine/core/Texture';
+import { getTexture, loadTexture, loadTextures } from '../_engine/core/Texture';
 import { llog } from '../_engine/utils/Logger';
 import { createLight } from '../_engine/core/Light';
 import { importModelAsync } from '../_engine/core/ImportModel';
@@ -11,6 +11,7 @@ import { addToGroup, createGroup } from '../_engine/core/Group';
 import { transformSpeedValue } from '../_engine/core/MainLoop';
 import { addSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
+import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
 
 export const assets = {};
 // export const preloadAssets = () => {};
@@ -75,6 +76,33 @@ export const scene01 = async () => {
     },
   });
 
+  // Create ground
+  const groundWidthAndDepth = 10;
+  const groundHeight = 0.2;
+  const groundPos = { x: 0, y: -2, z: 0 };
+  const groundGeo = createGeometry({
+    id: 'ground',
+    type: 'BOX',
+    params: { width: groundWidthAndDepth, height: groundHeight, depth: groundWidthAndDepth },
+  });
+  const groundMat = createMaterial({ id: 'ground', type: 'BASIC', params: { color: 0x0024000 } });
+  const groundMesh = createMesh({ geo: groundGeo, mat: groundMat });
+  groundMesh.position.set(groundPos.x, groundPos.y, groundPos.z);
+  createPhysicsObjectWithMesh(
+    {
+      collider: {
+        type: 'BOX',
+        hx: groundWidthAndDepth / 2,
+        hy: groundHeight / 2,
+        hz: groundWidthAndDepth / 2,
+        friction: 0,
+      },
+      rigidBody: { rigidType: 'FIXED', translation: groundPos },
+    },
+    groundMesh
+  );
+  scene.add(groundMesh);
+
   const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });
   const material1 = createMaterial({
     id: 'sphere1Material',
@@ -99,7 +127,67 @@ export const scene01 = async () => {
   });
   const box = createMesh({ id: 'boxMesh1', geo: geometry2, mat: material2 });
   box.position.set(2, 0, 0);
+  createPhysicsObjectWithMesh(
+    {
+      collider: {
+        type: 'BOX',
+        hx: 0.5,
+        hy: 0.5,
+        hz: 0.5,
+        restitution: 0.5,
+        friction: 0,
+      },
+      rigidBody: {
+        rigidType: 'DYNAMIC',
+        translation: { x: 2, y: 0, z: 0 },
+        angvel: { x: 1, y: -2, z: 20 },
+      },
+    },
+    box
+  );
   scene.add(box);
+
+  const physBall01 = createMesh({
+    id: 'physicsBall01',
+    geo: { type: 'SPHERE', params: { radius: 1, widthSegments: 32, heightSegments: 32 } },
+    mat: material2,
+    phy: {
+      collider: { type: 'SPHERE' },
+      rigidBody: { rigidType: 'DYNAMIC', translation: { x: 2, y: 3, z: -2 } },
+    },
+  });
+  scene.add(physBall01);
+
+  const cylMat = createMaterial({
+    id: 'cylinder01Material',
+    type: 'PHONG',
+    params: {
+      map: getTexture('box1Texture'),
+    },
+  });
+  const physCyl01 = createMesh({
+    id: 'physicsCyl01',
+    geo: {
+      type: 'CYLINDER',
+      params: {
+        radiusTop: 0.5,
+        radiusBottom: 0.5,
+        height: 0.25,
+        heightSegments: 2,
+        radialSegments: 32,
+      },
+    },
+    mat: cylMat,
+    phy: {
+      collider: { type: 'CYLINDER' },
+      rigidBody: {
+        rigidType: 'DYNAMIC',
+        translation: { x: -2, y: 3, z: -2 },
+        angvel: { x: 23, y: 1, z: 5 },
+      },
+    },
+  });
+  scene.add(physCyl01);
 
   // Group example
   const group = createGroup({ id: 'myGroup' });
@@ -146,7 +234,17 @@ export const scene01 = async () => {
     throwOnError: true,
   });
   if (importedBox) {
-    importedBox.position.set(-2, 0, 0);
+    createPhysicsObjectWithMesh(
+      {
+        collider: { type: 'TRIMESH' },
+        rigidBody: {
+          rigidType: 'DYNAMIC',
+          translation: { x: 3, y: 3, z: 2 },
+          angvel: { x: 3, y: 1, z: 5 },
+        },
+      },
+      importedBox
+    );
     const material = createMaterial({
       id: 'importedBox01Material',
       type: 'PHONG',
@@ -154,13 +252,14 @@ export const scene01 = async () => {
         map: getTexture('box1Texture'),
       },
     });
+    importedBox.position.set(3, 3, 2);
     importedBox.material = material;
     scene.add(importedBox);
 
-    addSceneAppLooper(() => {
-      importedBox.rotation.y += transformSpeedValue(0.2);
-      importedBox.rotation.z -= transformSpeedValue(0.14);
-    });
+    // addSceneAppLooper(() => {
+    //   importedBox.rotation.y += transformSpeedValue(0.2);
+    //   importedBox.rotation.z -= transformSpeedValue(0.14);
+    // });
   }
 
   addSceneMainLooper(() => {
@@ -168,17 +267,17 @@ export const scene01 = async () => {
     sphere.rotation.y += transformSpeedValue(0.1);
   });
 
-  addSceneAppLooper(() => {
-    box.rotation.y -= transformSpeedValue(2);
-    box.rotation.z -= transformSpeedValue(2);
-  });
+  // addSceneAppLooper(() => {
+  //   box.rotation.y -= transformSpeedValue(2);
+  //   box.rotation.z -= transformSpeedValue(2);
+  // });
 
   const point = createLight({
     id: 'pointLight',
     type: 'POINT',
-    params: { color: 0xffffff, intensity: 5, distance: 5 },
+    params: { color: 0xffffff, intensity: 7, distance: 10 },
   });
-  point.position.set(0, 2, 0);
+  point.position.set(2, 1, 1);
   scene.add(point);
 
   const ambient = createLight({

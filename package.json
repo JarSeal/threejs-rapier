@@ -16,6 +16,7 @@
     "build": "tsc && vite build"
   },
   "dependencies": {
+    "@dimforge/rapier3d": "0.14.0",
     "stats-gl": "3.6.0",
     "three": "0.172.0",
     "tweakpane": "4.0.5"
@@ -35,7 +36,8 @@
     "prettier": "3.2.5",
     "sass": "1.82.0",
     "typescript": "5.4.5",
-    "vite": "5.2.11"
+    "vite": "5.2.11",
+    "vite-plugin-wasm": "3.4.1"
   },
   "engines": {
     "node": ">=22.1.0",

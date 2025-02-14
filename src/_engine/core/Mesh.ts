@@ -1,22 +1,36 @@
 import * as THREE from 'three/webgpu';
-import { MatProps, createMaterial, deleteMaterial, saveMaterial } from './Material';
-import { createGeometry, deleteGeometry, saveGeometry, type GeoProps } from './Geometry';
+import { MatProps, createMaterial, deleteMaterial, doesMatExist, saveMaterial } from './Material';
+import {
+  createGeometry,
+  deleteGeometry,
+  doesGeoExist,
+  saveGeometry,
+  type GeoProps,
+} from './Geometry';
+import {
+  createPhysicsObjectWithMesh,
+  deletePhysicsObject,
+  doesPOExist,
+  type PhysicsParams,
+} from './PhysicsRapier';
 
 const meshes: { [id: string]: THREE.Mesh } = {};
 
 /**
  * Creates a Three.js mesh
- * @param params (object) mesh params, { id: string (optional), geo: THREE.BufferGeometry | {@link GeoPropsB}, and mat: THREE.Material | {@link MatProps} }
+ * @param params (object) mesh params, { id: string (optional), geo: THREE.BufferGeometry | {@link GeoPropsB}, mat: THREE.Material | {@link MatProps}, phy?: {@link PhysicsParams} & { sceneId?: string, noWarnForUnitializedScene?: boolean } }
  * @returns THREE.Mesh
  */
 export const createMesh = ({
   id,
   geo,
   mat,
+  phy,
 }: {
   id?: string;
   geo: THREE.BufferGeometry | GeoProps;
   mat: THREE.Material | MatProps;
+  phy?: PhysicsParams & { sceneId?: string; noWarnForUnitializedScene?: boolean };
 }) => {
   let mesh: THREE.Mesh | null = null;
 
@@ -37,9 +51,13 @@ export const createMesh = ({
   }
 
   mesh = new THREE.Mesh(g, m);
-  saveMesh(mesh, id, true);
+  const savedMesh = saveMesh(mesh, id, true);
 
-  return mesh;
+  if (phy && savedMesh) {
+    createPhysicsObjectWithMesh(phy, savedMesh, phy.sceneId, phy.noWarnForUnitializedScene);
+  }
+
+  return savedMesh || mesh;
 };
 
 /**
@@ -86,7 +104,13 @@ const deleteOneMesh = (
       if (matId) deleteMaterial(matId, deleteTextures);
     }
   }
+
+  if (mesh.userData.isPhysicsObject || doesPOExist(id)) {
+    deletePhysicsObject(id);
+  }
+
   mesh.removeFromParent();
+
   delete meshes[id];
 };
 
@@ -136,10 +160,25 @@ export const saveMesh = (mesh: THREE.Mesh, givenId?: string, doNotSaveMaterial?:
   meshes[id] = mesh;
 
   // Save geometry
-  saveGeometry(mesh.geometry, givenId ? `${givenId}-geo` : undefined);
+  if (!doesGeoExist(mesh.geometry.userData.id)) {
+    saveGeometry(mesh.geometry);
+  }
 
   // Save material
-  if (!doNotSaveMaterial) saveMaterial(mesh.material, givenId ? `${givenId}-mat` : undefined);
+  if (!doNotSaveMaterial && Array.isArray(mesh.material)) {
+    for (let i = 0; i < mesh.material.length; i++) {
+      const meshMat = mesh.material[i];
+      if (!doNotSaveMaterial && !doesMatExist(meshMat.userData.id)) {
+        saveMaterial(mesh.material, givenId ? `${givenId}-mat` : undefined);
+      }
+    }
+  } else if (
+    !doNotSaveMaterial &&
+    !Array.isArray(mesh.material) &&
+    !doesMatExist(mesh.material.userData.id)
+  ) {
+    saveMaterial(mesh.material, givenId ? `${givenId}-mat` : undefined);
+  }
 
   return mesh;
 };

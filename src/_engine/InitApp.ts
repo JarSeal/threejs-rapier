@@ -1,5 +1,6 @@
-import { loadConfig } from './core/Config';
+import { isDebugEnvironment, loadConfig } from './core/Config';
 import { initMainLoop } from './core/MainLoop';
+import { createPhysicsDebugMesh } from './core/PhysicsRapier';
 import { getCurrentScene, getCurrentSceneId } from './core/Scene';
 import './styles/index.scss';
 import { lerror } from './utils/Logger';
@@ -8,13 +9,13 @@ import { lerror } from './utils/Logger';
  * Initializes the engine and injects the start function (startFn) into the engine
  * @param appStartFn (function) app start function, () => Promise<undefined>
  */
-export const InitEngine = async (appStartFn: () => void) => {
+export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
   // Load env variables and other configurations
   loadConfig();
 
   // Start app
   try {
-    appStartFn();
+    await appStartFn();
   } catch (err) {
     const msg = 'Error at app start function';
     lerror(msg, err);
@@ -27,6 +28,10 @@ export const InitEngine = async (appStartFn: () => void) => {
     const msg = 'Could not find current scene in InitEngine';
     lerror(msg);
     return;
+  }
+
+  if (isDebugEnvironment()) {
+    createPhysicsDebugMesh();
   }
 
   // Start engine/loop
