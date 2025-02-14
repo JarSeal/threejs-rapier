@@ -8,9 +8,9 @@ import {
   type GeoProps,
 } from './Geometry';
 import {
-  addPhysicsObjectWithMesh,
+  createPhysicsObjectWithMesh,
+  deletePhysicsObject,
   doesPOExist,
-  removePhysicsObject,
   type PhysicsParams,
 } from './PhysicsRapier';
 
@@ -18,7 +18,7 @@ const meshes: { [id: string]: THREE.Mesh } = {};
 
 /**
  * Creates a Three.js mesh
- * @param params (object) mesh params, { id: string (optional), geo: THREE.BufferGeometry | {@link GeoPropsB}, mat: THREE.Material | {@link MatProps}, phy?: {@link PhysicsParams} }
+ * @param params (object) mesh params, { id: string (optional), geo: THREE.BufferGeometry | {@link GeoPropsB}, mat: THREE.Material | {@link MatProps}, phy?: {@link PhysicsParams} & { sceneId?: string, noWarnForUnitializedScene?: boolean } }
  * @returns THREE.Mesh
  */
 export const createMesh = ({
@@ -30,7 +30,7 @@ export const createMesh = ({
   id?: string;
   geo: THREE.BufferGeometry | GeoProps;
   mat: THREE.Material | MatProps;
-  phy?: PhysicsParams;
+  phy?: PhysicsParams & { sceneId?: string; noWarnForUnitializedScene?: boolean };
 }) => {
   let mesh: THREE.Mesh | null = null;
 
@@ -54,7 +54,7 @@ export const createMesh = ({
   const savedMesh = saveMesh(mesh, id, true);
 
   if (phy && savedMesh) {
-    addPhysicsObjectWithMesh(phy, savedMesh);
+    createPhysicsObjectWithMesh(phy, savedMesh, phy.sceneId, phy.noWarnForUnitializedScene);
   }
 
   return savedMesh || mesh;
@@ -106,7 +106,7 @@ const deleteOneMesh = (
   }
 
   if (mesh.userData.isPhysicsObject || doesPOExist(id)) {
-    removePhysicsObject(id);
+    deletePhysicsObject(id);
   }
 
   mesh.removeFromParent();
