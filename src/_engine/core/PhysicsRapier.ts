@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import Rapier from '@dimforge/rapier3d';
 import { lerror, lwarn } from '../utils/Logger';
-import { getCurrentScene, getCurrentSceneId, getScene } from './Scene';
+import { getCurrentScene, getCurrentSceneId, getScene, isCurrentScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getEnv, isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
@@ -43,8 +43,8 @@ export type PhysicsParams = {
       }
     | {
         type: 'TRIMESH';
-        vertices: Float32Array;
-        indices: Uint32Array;
+        vertices?: Float32Array;
+        indices?: Uint32Array;
       }
   ) & {
     /** Mass (default 1.0) */
@@ -284,29 +284,43 @@ const getCombineRule = (rule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE') => {
   }
 };
 
-const createCollider = (physicsParams: PhysicsParams) => {
+const createCollider = (physicsParams: PhysicsParams, mesh: THREE.Mesh) => {
   const colliderParams = physicsParams.collider;
-  let shape: Rapier.Shape;
+  let shape: Rapier.Shape | null = null;
+  let geo: THREE.BufferGeometry;
+  let size: { [key: string]: number };
 
   switch (colliderParams.type) {
     case 'CUBOID':
     case 'BOX':
+      size = { hx: 0.5, hy: 0.5, hz: 0.5 };
+      geo = mesh.geometry;
+      if (geo.type === 'BoxGeometry') {
+        size.hx = mesh.geometry.userData.props?.params?.width / 2 || size.hx;
+        size.hx = mesh.geometry.userData.props?.params?.height / 2 || size.hy;
+        size.hx = mesh.geometry.userData.props?.params?.depth / 2 || size.hz;
+      }
       shape = colliderParams.borderRadius
         ? new RAPIER.RoundCuboid(
-            colliderParams.hx || 0.5,
-            colliderParams.hy || 0.5,
-            colliderParams.hz || 0.5,
-            colliderParams.borderRadius
+            colliderParams.hx || size.hx,
+            colliderParams.hy || size.hy,
+            colliderParams.hz || size.hz,
+            colliderParams.borderRadius || 0
           )
         : new RAPIER.Cuboid(
-            colliderParams.hx || 0.5,
-            colliderParams.hy || 0.5,
-            colliderParams.hz || 0.5
+            colliderParams.hx || size.hx,
+            colliderParams.hy || size.hy,
+            colliderParams.hz || size.hz
           );
       break;
     case 'BALL':
     case 'SPHERE':
-      shape = new RAPIER.Ball(colliderParams.radius || 0.5);
+      let radius = 0.5;
+      geo = mesh.geometry;
+      if (geo.type === 'SphereGeometry') {
+        radius = geo.userData.props?.params?.radius || radius;
+      }
+      shape = new RAPIER.Ball(colliderParams.radius || radius);
       break;
     case 'CAPSULE':
       shape = new RAPIER.Capsule(colliderParams.halfHeight || 0.25, colliderParams.radius || 0.25);
@@ -316,18 +330,30 @@ const createCollider = (physicsParams: PhysicsParams) => {
         ? new RAPIER.RoundCone(
             colliderParams.halfHeight || 0.25,
             colliderParams.radius || 0.25,
-            colliderParams.borderRadius
+            colliderParams.borderRadius || 0
           )
         : new RAPIER.Cone(colliderParams.halfHeight || 0.25, colliderParams.radius || 0.25);
       break;
     case 'CYLINDER':
+      size = { halfHeight: 0.5, radius: 1 };
+      geo = mesh.geometry;
+      if (geo.type === 'CylinderGeometry') {
+        size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
+        size.radius =
+          geo.userData.props?.params?.radiusBottom ||
+          geo.userData.props?.params?.radiusTop ||
+          size.radius;
+      }
       shape = colliderParams.borderRadius
         ? new RAPIER.RoundCylinder(
-            colliderParams.halfHeight || 0.25,
-            colliderParams.radius || 0.25,
-            colliderParams.borderRadius
+            colliderParams.halfHeight || size.halfHeight,
+            colliderParams.radius || size.radius,
+            colliderParams.borderRadius || 0
           )
-        : new RAPIER.Cylinder(colliderParams.halfHeight || 0.25, colliderParams.radius || 0.25);
+        : new RAPIER.Cylinder(
+            colliderParams.halfHeight || size.halfHeight,
+            colliderParams.radius || size.radius
+          );
       break;
     case 'TRIANGLE':
       shape = colliderParams.borderRadius
@@ -335,13 +361,36 @@ const createCollider = (physicsParams: PhysicsParams) => {
             colliderParams.a,
             colliderParams.b,
             colliderParams.c,
-            colliderParams.borderRadius
+            colliderParams.borderRadius || 0
           )
         : new RAPIER.Triangle(colliderParams.a, colliderParams.b, colliderParams.c);
       break;
     case 'TRIMESH':
-      shape = new RAPIER.TriMesh(colliderParams.vertices, colliderParams.indices);
-      break;
+      geo = mesh.geometry;
+      if (colliderParams.vertices && colliderParams.indices) {
+        shape = new RAPIER.TriMesh(colliderParams.vertices, colliderParams.indices);
+        break;
+      } else if (geo) {
+        // size = { hx: 0.5, hy: 0.5, hz: 0.5 };
+        // geo = mesh.geometry;
+        // shape = new RAPIER.Cuboid(size.hx, size.hy, size.hz);
+        // break;
+        const vertices = new Float32Array(geo.attributes.position.array);
+        let indices;
+        if (geo.index) {
+          indices = new Uint32Array(geo.index.array);
+        } else {
+          // Handle unindexed geometry by generating indices
+          indices = new Uint32Array([...Array(vertices.length / 3).keys()]);
+        }
+        if (vertices && indices) {
+          shape = new RAPIER.TriMesh(vertices, indices);
+          break;
+        }
+      }
+      const message = `Could not find vertices and indices in the collider params, nor was there mesh with vertices present. Could not create trimesh physics shape in createCollider.`;
+      lerror(message);
+      throw new Error(message);
   }
 
   if (!shape) {
@@ -371,20 +420,20 @@ const createCollider = (physicsParams: PhysicsParams) => {
 };
 
 /**
- * Registers the physics object to the scene id (or current scene id) in the physicsObjects object.
+ * Creates a new physics object and registers it to the scene id (or current scene id if scene id is not provided) in the physicsObjects object.
  * @param physicsParamas (PhysicsParams) ({@link PhysicsParams})
  * @param meshOrMeshId (THREE.Mesh | string) mesh or mesh id of the representation of the physics object
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
  * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
  * @returns PhysicsObject ({@link PhysicsObject})
  */
-export const addPhysicsObjectWithMesh = (
+export const createPhysicsObjectWithMesh = (
   physicsParams: PhysicsParams,
   meshOrMeshId: THREE.Mesh | string,
   sceneId?: string,
   noWarnForUnitializedScene?: boolean
 ) => {
-  const sId = getSceneIdForPhysics(sceneId, 'addPhysicsObject', noWarnForUnitializedScene);
+  const sId = getSceneIdForPhysics(sceneId, 'createPhysicsObject', noWarnForUnitializedScene);
   let id: string;
   let mesh: THREE.Mesh;
 
@@ -393,7 +442,7 @@ export const addPhysicsObjectWithMesh = (
     mesh = getMesh(id);
     if (!mesh) {
       lwarn(
-        `Could not find mesh with id "${id}" in addPhysicsObjectWithMesh. Physics object was not added.`
+        `Could not find mesh with id "${id}" in createPhysicsObjectWithMesh. Physics object was not added.`
       );
       return;
     }
@@ -404,7 +453,7 @@ export const addPhysicsObjectWithMesh = (
   mesh.userData.isPhysicsObject = true;
 
   const rigidBody = createRigidBody(physicsParams);
-  const colliderDesc = createCollider(physicsParams);
+  const colliderDesc = createCollider(physicsParams, mesh);
   const collider = getPhysicsWorld().createCollider(colliderDesc, rigidBody);
 
   const physObj: PhysicsObject = {
@@ -424,11 +473,11 @@ export const addPhysicsObjectWithMesh = (
 };
 
 /**
- * Removes a physics object (WIP, check the TODOs after this jsDoc)
+ * Deletes a physics object
  * @param id string
  * @param sceneId optional string, if not provided the current scene id will be used
  */
-export const removePhysicsObject = (id: string, sceneId?: string) => {
+export const deletePhysicsObject = (id: string, sceneId?: string) => {
   const sId = getSceneIdForPhysics(sceneId, 'removePhysicsObject');
   const scenePhysicsObjects = physicsObjects[sId];
   if (!scenePhysicsObjects) return;
@@ -444,6 +493,46 @@ export const removePhysicsObject = (id: string, sceneId?: string) => {
       (obj) => obj.mesh.userData.id !== id
     );
   }
+
+  if (isCurrentScene(sId)) {
+    currentScenePhysicsObjects.filter((obj) => obj.id !== id);
+  }
+};
+
+/**
+ * Deletes all physics objects for a scene
+ * @param sceneId (string) scene id
+ */
+export const deletePhysicsObjectsBySceneId = (sceneId: string) => {
+  const objects = physicsObjects[sceneId];
+  if (!objects) return;
+  const keys = Object.keys(objects);
+  for (let i = 0; i < keys.length; i++) {
+    deletePhysicsObject(keys[i], sceneId);
+  }
+  delete physicsObjects[sceneId];
+};
+
+/**
+ * Creates the physics world and sets gravity
+ */
+export const createPhysicsWorld = () => {
+  physicsWorld = new RAPIER.World(
+    new THREE.Vector3(physicsState.gravity.x, physicsState.gravity.y, physicsState.gravity.z)
+  );
+};
+
+/**
+ * Deletes the physics world and all its children
+ */
+export const deletePhysicsWorld = () => {
+  physicsWorld.free();
+  physicsWorld = { step: () => {} } as Rapier.World;
+  const sceneIds = Object.keys(physicsObjects);
+  for (let i = 0; i < sceneIds.length; i++) {
+    delete physicsObjects[sceneIds[i]];
+  }
+  currentScenePhysicsObjects = [];
 };
 
 /**
@@ -537,11 +626,12 @@ const baseStepper = (delta: number) => {
   // Set physics objects mesh positions and rotations
   for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
     const po = currentScenePhysicsObjects[i];
+    if (po.id === 'importedMesh01') continue;
     po.mesh.position.copy(po.collider.translation());
     po.mesh.quaternion.copy(po.collider.rotation());
     // Uncomment for debug of dynamic bodies
     // if (po.rigidBody?.bodyType() === Rapier.RigidBodyType.Dynamic && !po.rigidBody?.isSleeping()) {
-    //   console.log(performance.now(), `Index: ${i}`, po.collider.translation());
+    //   console.log(po.id, `Index: ${i}`, po.collider.translation());
     // }
   }
 };
@@ -676,9 +766,7 @@ export const InitRapierPhysics = async (
     physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
 
     RAPIER = rapier;
-    physicsWorld = new RAPIER.World(
-      new THREE.Vector3(physicsState.gravity.x, physicsState.gravity.y, physicsState.gravity.z)
-    );
+    createPhysicsWorld();
     physicsWorld.timestep = physicsState.timestepRatio;
     if (isDebugEnvironment()) {
       createDebugGUI();

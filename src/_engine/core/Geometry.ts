@@ -26,6 +26,19 @@ export type GeoProps = { id?: string } & (
         thetaLength?: number;
       };
     }
+  | {
+      type: 'CYLINDER';
+      params?: {
+        radiusTop?: number;
+        radiusBottom?: number;
+        height?: number;
+        radialSegments?: number;
+        heightSegments?: number;
+        openEnded?: boolean;
+        thetaStart?: number;
+        thetaLength?: number;
+      };
+    }
 );
 
 export type GeoTypes = THREE.BoxGeometry | THREE.SphereGeometry;
@@ -65,6 +78,18 @@ export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
         props.params?.thetaLength
       );
       break;
+    case 'CYLINDER':
+      geo = new THREE.CylinderGeometry(
+        props.params?.radiusTop,
+        props.params?.radiusBottom,
+        props.params?.height,
+        props.params?.radialSegments,
+        props.params?.heightSegments,
+        props.params?.openEnded,
+        props.params?.thetaStart,
+        props.params?.thetaLength
+      );
+      break;
     // @TODO: add all geometry types
   }
 
@@ -73,6 +98,7 @@ export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
   }
 
   geo.userData.id = props?.id || geo.uuid;
+  geo.userData.props = props;
   geometries[props?.id || geo.uuid] = geo;
 
   return geo as T;
