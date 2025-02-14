@@ -11,6 +11,7 @@ import { addToGroup, createGroup } from '../_engine/core/Group';
 import { transformSpeedValue } from '../_engine/core/MainLoop';
 import { addSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
+import { addKeyInputControl } from '../_engine/core/InputControls';
 
 export const assets = {};
 // export const preloadAssets = () => {};
@@ -199,3 +200,12 @@ export const scene01 = async () => {
   });
   scene.add(hemisphere);
 };
+
+// Input
+addKeyInputControl({
+  type: 'KEY_UP',
+  key: 'd',
+  fn: (e, time) => {
+    console.log('PRESSED', e, time);
+  },
+});
