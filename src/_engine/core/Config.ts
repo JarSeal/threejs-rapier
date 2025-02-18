@@ -1,19 +1,47 @@
 import { llog } from '../utils/Logger';
+import configFile from '../../CONFIG';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 
+export type AppConfig = {
+  debugKeys?: {
+    enabled?: boolean; // Default is true
+    id?: string;
+    key?: string;
+    sceneId?: string;
+    fn: (e: KeyboardEvent, pressedTime: number) => void;
+  }[];
+  physics?: {
+    enabled?: boolean;
+    gravity?: { x: number; y: number; z: number };
+    timestep?: number;
+  };
+};
+
 let curEnvironment: Environments = 'production';
 let envVars: { [key: string]: unknown } = {};
+let config: AppConfig = {
+  // These are the default values (if the values are not found in ENV variables or CONFIG file)
+  debugKeys: [],
+  physics: {
+    enabled: false,
+    gravity: { x: 0, y: 0, z: 0 },
+    timestep: 60,
+  },
+};
 
 /**
  * Loads all environment variables and configurations. This should be the first thing called in a project.
  */
 export const loadConfig = () => {
-  // Load config file
-  // @TODO: load the config file from the root
-
   // Load ENV variables
   envVars = import.meta.env;
+
+  // Load CONFIG file
+  config = {
+    ...config,
+    ...configFile,
+  };
 
   if (
     envVars.VITE_APP_ENV === 'development' ||
@@ -25,18 +53,39 @@ export const loadConfig = () => {
     curEnvironment = 'production';
   }
 
-  if (typeof envVars.VITE_GRAVITY === 'string') {
-    const gr: (number | string)[] = envVars.VITE_GRAVITY.split(',');
-    gr.forEach((value, index) => {
-      let num = Number(value);
+  // Setup physics ENV configs
+  if (!config.physics) config.physics = {};
+
+  if (typeof envVars.VITE_PHYS_ENABLED === 'string') {
+    const physicsEnabled = Boolean(envVars.VITE_PHYS_ENABLED);
+    config.physics.enabled = physicsEnabled;
+    envVars.VITE_PHYS_ENABLED = physicsEnabled;
+  }
+
+  if (typeof envVars.VITE_PHYS_GRAVITY === 'string') {
+    const grRaw: (number | string)[] = envVars.VITE_PHYS_GRAVITY.split(',');
+    const gr: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      let num = Number(grRaw[i]);
       if (isNaN(num)) num = 0;
-      gr[index] = num;
-    });
-    envVars.VITE_GRAVITY = { x: gr[0], y: gr[1], z: gr[2] };
+      gr.push(num);
+    }
+    config.physics.gravity = { x: gr[0], y: gr[1], z: gr[2] };
+    envVars.VITE_PHYS_GRAVITY = config.physics.gravity;
+  }
+
+  if (typeof envVars.VITE_PHYS_TIMESTEP === 'string') {
+    const timestep = Number(envVars.VITE_PHYS_TIMESTEP);
+    if (!isNaN(timestep)) {
+      config.physics.timestep = timestep;
+      envVars.VITE_PHYS_TIMESTEP = timestep;
+    } else {
+      envVars.VITE_PHYS_TIMESTEP = undefined;
+    }
   }
 
   llog(`Current environment: ${getCurrentEnvironment()}`);
-  console.log('envVars', envVars);
+  console.log('envVars', envVars); // @TODO: remove
 };
 
 /**
@@ -79,4 +128,4 @@ export const isDebugEnvironment = () =>
  */
 export const getCurrentEnvironment = () => curEnvironment;
 
-export const getConfig = () => {};
+export const getConfig = () => config;

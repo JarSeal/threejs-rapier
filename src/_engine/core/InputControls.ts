@@ -11,9 +11,10 @@ export type InputControlType =
 
 type KeyMapping = {
   id?: string;
-  key?: string;
+  key?: string | string[];
   fn: (e: KeyboardEvent, pressedTime: number) => void;
   time?: number;
+  enabled?: boolean; // Default is true
 };
 
 const initiatedControlTypes = {
@@ -51,9 +52,13 @@ const initKeyUpControls = () => {
     const timeNow = performance.now();
     for (let i = 0; i < keyUpMappings.length; i++) {
       const mapping = keyUpMappings[i];
-      if (KEY === mapping.key || !mapping.key) {
-        mapping.fn(e, timeNow - (mapping.time || timeNow));
-        mapping.time = 0;
+      if (mapping.enabled !== false) {
+        let isCurrentKey = KEY === mapping.key;
+        if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+        if (isCurrentKey || !mapping.key) {
+          mapping.fn(e, timeNow - (mapping.time || timeNow));
+          mapping.time = 0;
+        }
       }
     }
     const sceneId = getCurrentSceneId();
@@ -62,9 +67,13 @@ const initKeyUpControls = () => {
     if (!sceneKeyUpMappings) return;
     for (let i = 0; i < sceneKeyUpMappings.length; i++) {
       const mapping = sceneKeyUpMappings[i];
-      if (KEY === mapping.key || !mapping.key) {
-        mapping.fn(e, timeNow - (mapping.time || timeNow));
-        mapping.time = 0;
+      if (mapping.enabled !== false) {
+        let isCurrentKey = KEY === mapping.key;
+        if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+        if (isCurrentKey || !mapping.key) {
+          mapping.fn(e, timeNow - (mapping.time || timeNow));
+          mapping.time = 0;
+        }
       }
     }
   };
@@ -77,15 +86,21 @@ const initKeyDownControls = () => {
     const timeNow = performance.now();
     for (let i = 0; i < keyUpMappings.length; i++) {
       const mapping = keyUpMappings[i];
-      if ((KEY === mapping.key || !mapping.key) && !mapping.time) {
+      let isCurrentKey = KEY === mapping.key;
+      if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+      if ((isCurrentKey || !mapping.key) && !mapping.time) {
         mapping.time = timeNow;
       }
     }
     for (let i = 0; i < keyDownMappings.length; i++) {
       const mapping = keyDownMappings[i];
-      if (KEY === mapping.key || !mapping.key) {
-        mapping.time = timeNow;
-        mapping.fn(e, timeNow);
+      if (mapping.enabled !== false) {
+        let isCurrentKey = KEY === mapping.key;
+        if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+        if (isCurrentKey || !mapping.key) {
+          mapping.time = timeNow;
+          mapping.fn(e, timeNow);
+        }
       }
     }
 
@@ -95,8 +110,10 @@ const initKeyDownControls = () => {
     if (sceneKeyUpMappings) {
       for (let i = 0; i < sceneKeyUpMappings.length; i++) {
         const mapping = sceneKeyUpMappings[i];
-        if (KEY === mapping.key || !mapping.key) {
-          mapping.fn(e, timeNow - (mapping.time || timeNow));
+        let isCurrentKey = KEY === mapping.key;
+        if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+        if ((isCurrentKey || !mapping.key) && !mapping.time) {
+          mapping.time = timeNow;
         }
       }
     }
@@ -104,8 +121,12 @@ const initKeyDownControls = () => {
     if (!sceneKeyDownMappings) return;
     for (let i = 0; i < sceneKeyDownMappings.length; i++) {
       const mapping = sceneKeyDownMappings[i];
-      if (KEY === mapping.key || !mapping.key) {
-        mapping.fn(e, timeNow - (mapping.time || timeNow));
+      if (mapping.enabled !== false) {
+        let isCurrentKey = KEY === mapping.key;
+        if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+        if (isCurrentKey || !mapping.key) {
+          mapping.fn(e, timeNow - (mapping.time || timeNow));
+        }
       }
     }
   };
@@ -227,30 +248,54 @@ export const removeKeyInputControl = ({
 };
 
 /**
- * Removes all or specific controller listeners
- * @param type (enum) 'ALL' | 'MOUSE' | {@link InputControlType}: 'ALL' | 'KEY' | 'MOUSE' | 'KEY_UP' | 'KEY_DOWN' | 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE' | 'CONTROLLER'
+ * Removes all or specific controller listeners (also removes mappings)
+ * @param type (enum) 'ALL' | 'KEY' | 'MOUSE' | 'KEY_UP' | 'KEY_DOWN' | 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE' | 'CONTROLLER'
  */
 export const removeControlsListeners = (type: 'ALL' | 'KEY' | 'MOUSE' | InputControlType) => {
   if (type === 'ALL') {
     if (controlListenerFns.keyUp) window.removeEventListener('keyup', controlListenerFns.keyUp);
+    if (controlListenerFns.keyDown)
+      window.removeEventListener('keydown', controlListenerFns.keyDown);
     controlListenerFns.keyUp = null;
     controlListenerFns.keyDown = null;
     controlListenerFns.mouseUp = null;
     controlListenerFns.mouseDown = null;
     controlListenerFns.mouseMove = null;
     controlListenerFns.controller = null;
+    keyUpMappings = [];
+    keyUpSceneMappings = {};
+    keyDownMappings = [];
+    keyDownSceneMappings = {};
     return;
   }
 
-  if (type === 'KEY' || type === 'KEY_UP') {
+  if (type === 'KEY') {
     if (controlListenerFns.keyUp) window.removeEventListener('keyup', controlListenerFns.keyUp);
+    if (controlListenerFns.keyDown)
+      window.removeEventListener('keydown', controlListenerFns.keyDown);
     controlListenerFns.keyUp = null;
     controlListenerFns.keyDown = null;
+    keyUpMappings = [];
+    keyUpSceneMappings = {};
+    keyDownMappings = [];
+    keyDownSceneMappings = {};
+    return;
+  }
+
+  if (type === 'KEY_UP') {
+    if (controlListenerFns.keyUp) window.removeEventListener('keyup', controlListenerFns.keyUp);
+    controlListenerFns.keyUp = null;
+    keyUpMappings = [];
+    keyUpSceneMappings = {};
     return;
   }
 
   if (type === 'KEY_DOWN') {
+    if (controlListenerFns.keyDown)
+      window.removeEventListener('keydown', controlListenerFns.keyDown);
     controlListenerFns.keyDown = null;
+    keyDownMappings = [];
+    keyDownSceneMappings = {};
     return;
   }
 

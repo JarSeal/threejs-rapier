@@ -26,7 +26,7 @@ const saveDrawerState = (newState?: Partial<DrawerState>) => {
   lsSetItem('debugDrawerState', JSON.stringify(updatedState));
 };
 
-const getDrawerState = () => {
+const initDrawerState = () => {
   const savedState = lsGetItem('debugDrawerState', '{}');
   if (!savedState || typeof savedState !== 'string') return drawerState;
   const parsedSavedState = JSON.parse(savedState);
@@ -103,7 +103,7 @@ let guiOpts: DebugGUIOpts | undefined = undefined;
  */
 export const createDebugGui = (opts?: DebugGUIOpts) => {
   guiOpts = opts;
-  getDrawerState();
+  initDrawerState();
 
   // Drawer
   if (drawerCMP) drawerCMP.remove();
@@ -122,7 +122,7 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     tag: 'button',
     text: 'Debug',
     class: [styles.debugDrawerToggler, opts?.drawerBtnPlace || 'MIDDLE'],
-    onClick: () => toggleDrawer(drawerCMP),
+    onClick: () => toggleDrawer(),
   });
 
   // Tabs container wrapper
@@ -156,7 +156,7 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     tag: 'button',
     class: styles.closeBtn,
     attr: { title: 'Close' },
-    onClick: () => toggleDrawer(drawerCMP, 'CLOSE'),
+    onClick: () => toggleDrawer('CLOSE'),
   });
 
   drawerCMP.add(tabsMenuContainer);
@@ -218,7 +218,11 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
   return drawerCMP;
 };
 
-const toggleDrawer = (drawerCMP: TCMP | null, openOrClose?: 'OPEN' | 'CLOSE') => {
+/**
+ * Toggles the drawer open or closed
+ * @param openOrClose ('OPEN' | 'CLOSE') optional next state of the drawer, if not provided then the opposite of the current state is the next state
+ */
+export const toggleDrawer = (openOrClose?: 'OPEN' | 'CLOSE') => {
   if (!drawerCMP) return;
   let newState: boolean = false;
   if (openOrClose === 'CLOSE') {
@@ -272,3 +276,9 @@ export const createNewDebuggerPane = (id: string, heading?: string) => {
 
   return { container, debugGUI };
 };
+
+/**
+ * Returns the current drawerState
+ * @returns object {@link DrawerState}
+ */
+export const getDrawerState = () => drawerState;

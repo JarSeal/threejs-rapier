@@ -140,7 +140,7 @@ export type PhysicsParams = {
 };
 
 type PhysicsState = {
-  stepperEnabled: boolean;
+  enabled: boolean;
   timestep: number;
   timestepRatio: number;
   gravity: { x: number; y: number; z: number };
@@ -148,7 +148,7 @@ type PhysicsState = {
 };
 
 let physicsState: PhysicsState = {
-  stepperEnabled: true,
+  enabled: true,
   timestep: 60,
   timestepRatio: 1 / 60,
   gravity: { x: 0, y: -9.81, z: 0 },
@@ -156,7 +156,7 @@ let physicsState: PhysicsState = {
 };
 
 const LS_KEY = 'debugPhysics';
-let stepperFn = (_: number) => {};
+let stepperFn: (delta: number) => void = () => {};
 let accDelta = 0;
 let RAPIER: typeof Rapier;
 let physicsWorld: Rapier.World = { step: () => {} } as Rapier.World;
@@ -639,7 +639,7 @@ const stepperFnProduction = (delta: number) => {
   baseStepper(delta);
 };
 const stepperFnDebug = (delta: number) => {
-  if (!physicsState.stepperEnabled) return;
+  if (!physicsState.enabled) return;
 
   baseStepper(delta);
 
@@ -700,7 +700,7 @@ const createDebugGUI = () => {
     container: () => {
       const { container, debugGUI } = createNewDebuggerPane('physics', 'Physics Controls');
       debugGUI
-        .addBinding(physicsState, 'stepperEnabled', { label: 'Enable world step' })
+        .addBinding(physicsState, 'enabled', { label: 'Enable world step' })
         .on('change', () => {
           lsSetItem(LS_KEY, physicsState);
         });
@@ -756,8 +756,8 @@ export const InitRapierPhysics = async (
   initPhysicsCallback?: (physicsWorld: Rapier.World, RAPIER: typeof Rapier) => void
 ) =>
   initRapier().then((rapier) => {
-    const gravity = getEnv<{ x: number; y: number; z: number }>('VITE_GRAVITY');
-    const timestep = getEnv<number>('VITE_TIMESTEP');
+    const gravity = getEnv<{ x: number; y: number; z: number }>('VITE_PHYS_GRAVITY');
+    const timestep = getEnv<number>('VITE_PHYS_TIMESTEP');
     physicsState = {
       ...physicsState,
       ...(gravity ? { gravity } : {}),
