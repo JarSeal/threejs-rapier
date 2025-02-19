@@ -284,6 +284,10 @@ const createSkyBoxDebugGUI = () => {
       equiRectFolder.addButton({ title: 'Reset' }).on('click', () => {
         skyBoxState.equiRectRoughness = defaultRoughness;
         pmremRoughnessBg.value = defaultRoughness;
+        const debugToolsState = getDebugToolsState();
+        if (!debugToolsState.env.separateBallValues) {
+          changeDebugEnvBallRoughness(defaultRoughness);
+        }
         lsRemoveItem(LS_KEY);
         debugGUI.refresh();
       });
@@ -298,24 +302,20 @@ const createSkyBoxDebugGUI = () => {
           skyBoxState.cubeTextFolderExpanded = state.expanded;
           lsSetItem(LS_KEY, skyBoxState);
         });
-      cubeTextureFolder.addBinding(skyBoxState, 'equiRectFile', {
+      cubeTextureFolder.addBinding(skyBoxState, 'cubeTextFile', {
         label: 'File path or URL',
         readonly: true,
       });
-      cubeTextureFolder.addBinding(skyBoxState, 'equiRectTextureId', {
+      cubeTextureFolder.addBinding(skyBoxState, 'cubeTextTextureId', {
         label: 'Texture id',
         readonly: true,
       });
-      cubeTextureFolder.addBinding(skyBoxState, 'equiRectColorSpace', {
+      cubeTextureFolder.addBinding(skyBoxState, 'cubeTextColorSpace', {
         label: 'Color space',
         readonly: true,
       });
-      cubeTextureFolder.addBinding(skyBoxState, 'equiRectIsEnvMap', {
-        label: 'Is environment map',
-        readonly: true,
-      });
       cubeTextureFolder
-        .addBinding(skyBoxState, 'equiRectRoughness', {
+        .addBinding(skyBoxState, 'cubeTextRoughness', {
           label: 'Roughness',
           step: 0.001,
           min: 0,
@@ -329,6 +329,16 @@ const createSkyBoxDebugGUI = () => {
           }
           lsSetItem(LS_KEY, skyBoxState);
         });
+      cubeTextureFolder.addButton({ title: 'Reset' }).on('click', () => {
+        skyBoxState.cubeTextRoughness = defaultRoughness;
+        pmremRoughnessBg.value = defaultRoughness;
+        const debugToolsState = getDebugToolsState();
+        if (!debugToolsState.env.separateBallValues) {
+          changeDebugEnvBallRoughness(defaultRoughness);
+        }
+        lsRemoveItem(LS_KEY);
+        debugGUI.refresh();
+      });
 
       return container;
     },
