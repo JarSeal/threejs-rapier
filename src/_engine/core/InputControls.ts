@@ -43,10 +43,12 @@ let keyUpMappings: KeyMapping[] = [];
 let keyDownMappings: KeyMapping[] = [];
 let mouseUpMappings: MouseMapping[] = [];
 let mouseDownMappings: MouseMapping[] = [];
+let mouseMoveMappings: MouseMapping[] = [];
 let keyUpSceneMappings: { [sceneId: string]: KeyMapping[] } = {};
 let keyDownSceneMappings: { [sceneId: string]: KeyMapping[] } = {};
 let mouseUpSceneMappings: { [sceneId: string]: MouseMapping[] } = {};
 let mouseDownSceneMappings: { [sceneId: string]: MouseMapping[] } = {};
+let mouseMoveSceneMappings: { [sceneId: string]: MouseMapping[] } = {};
 
 const initKeyUpControls = () => {
   if (controlListenerFns.keyUp) return;
@@ -200,6 +202,32 @@ const initMouseDownControls = () => {
   window.addEventListener('mousedown', controlListenerFns.mouseDown);
 };
 
+const initMouseMoveControls = () => {
+  if (controlListenerFns.mouseMove) return;
+  controlListenerFns.mouseMove = (e: MouseEvent) => {
+    const timeNow = performance.now();
+    for (let i = 0; i < mouseMoveMappings.length; i++) {
+      const mapping = mouseMoveMappings[i];
+      if (mapping.enabled !== false) {
+        mapping.fn(e, timeNow);
+        mapping.time = 0;
+      }
+    }
+    const sceneId = getCurrentSceneId();
+    if (!sceneId) return;
+    const sceneMouseMoveMappings = mouseMoveSceneMappings[sceneId];
+    if (!sceneMouseMoveMappings) return;
+    for (let i = 0; i < sceneMouseMoveMappings.length; i++) {
+      const mapping = sceneMouseMoveMappings[i];
+      if (mapping.enabled !== false) {
+        mapping.fn(e, timeNow);
+        mapping.time = 0;
+      }
+    }
+  };
+  window.addEventListener('mousemove', controlListenerFns.mouseMove);
+};
+
 /**
  * Adds a keyboard input control. Only the fn (function) is a required property.
  * @param params (object) { id?: string, key?: string, sceneId?: string, type?: 'KEY_UP' | 'KEY_DOWN', fn: (e: KeyboardEvent) => void, enabled?: boolean }
@@ -307,6 +335,35 @@ export const addMouseInputControl = ({
 }) => {
   let idTaken = false;
   switch (type) {
+    case 'MOUSE_MOVE':
+      idTaken = Boolean(
+        id &&
+          (mouseMoveMappings.find((mapping) => mapping.id === id) ||
+            (sceneId && mouseMoveSceneMappings[sceneId].find((mapping) => mapping.id === id)))
+      );
+      if (idTaken) {
+        const msg = `Mouse (move) input control id already taken (id: ${id}), could not add mouse control. Remove the old control with the same id first before adding it (the id has to be unique, no matter if the id is global or scene related).`;
+        lerror(msg);
+        return;
+      }
+      initMouseMoveControls();
+      if (sceneId) {
+        if (!mouseMoveSceneMappings[sceneId]) mouseMoveSceneMappings[sceneId] = [];
+        mouseMoveSceneMappings[sceneId].push({
+          fn,
+          time: 0,
+          ...(id ? { id } : {}),
+          enabled: enabled !== false,
+        });
+      } else {
+        mouseMoveMappings.push({
+          fn,
+          time: 0,
+          ...(id ? { id } : {}),
+          enabled: enabled !== false,
+        });
+      }
+      break;
     case 'MOUSE_DOWN':
       idTaken = Boolean(
         id &&
@@ -564,7 +621,7 @@ export const getMouseInputControl = ({
 }: {
   id: string;
   sceneId?: string;
-  type?: 'MOUSE_UP' | 'MOUSE_DOWN';
+  type?: 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
 }): MouseMapping[] => {
   const mappings: (MouseMapping | null)[] = [];
   if (sceneId) {
@@ -582,12 +639,22 @@ export const getMouseInputControl = ({
           : null
       );
     }
+    if (type === 'MOUSE_MOVE' || !type) {
+      mappings.push(
+        mouseMoveSceneMappings[sceneId]
+          ? mouseMoveSceneMappings[sceneId].find((mapping) => mapping.id === id) || null
+          : null
+      );
+    }
   } else {
     if (type === 'MOUSE_UP' || !type) {
       mappings.push(mouseUpMappings.find((mapping) => mapping.id === id) || null);
     }
     if (type === 'MOUSE_DOWN' || !type) {
       mappings.push(mouseDownMappings.find((mapping) => mapping.id === id) || null);
+    }
+    if (type === 'MOUSE_MOVE' || !type) {
+      mappings.push(mouseMoveMappings.find((mapping) => mapping.id === id) || null);
     }
   }
 
@@ -606,7 +673,7 @@ export const enableMouseInputControl = ({
 }: {
   id: string;
   sceneId?: string;
-  type?: 'MOUSE_UP' | 'MOUSE_DOWN';
+  type?: 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
   enabled: boolean;
 }) => {
   const mappings = getMouseInputControl({ id, sceneId, type });
@@ -632,7 +699,7 @@ export const removeMouseInputControl = ({
 }: {
   id: string;
   sceneId?: string;
-  type?: 'MOUSE_UP' | 'MOUSE_DOWN';
+  type?: 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
 }) => {
   if (sceneId) {
     if ((type === 'MOUSE_UP' || !type) && mouseUpSceneMappings[sceneId]) {
@@ -645,6 +712,11 @@ export const removeMouseInputControl = ({
         (mapping) => mapping.id !== id
       );
     }
+    if ((type === 'MOUSE_MOVE' || !type) && mouseMoveSceneMappings[sceneId]) {
+      mouseMoveSceneMappings[sceneId] = mouseMoveSceneMappings[sceneId].filter(
+        (mapping) => mapping.id !== id
+      );
+    }
     return;
   }
 
@@ -653,6 +725,9 @@ export const removeMouseInputControl = ({
   }
   if (type === 'MOUSE_DOWN' || !type) {
     mouseDownMappings = mouseDownMappings.filter((mapping) => mapping.id !== id);
+  }
+  if (type === 'MOUSE_MOVE' || !type) {
+    mouseMoveMappings = mouseMoveMappings.filter((mapping) => mapping.id !== id);
   }
 };
 
@@ -677,6 +752,10 @@ export const removeControlsListeners = (type: 'ALL' | 'KEY' | 'MOUSE' | InputCon
     keyDownSceneMappings = {};
     mouseUpMappings = [];
     mouseUpSceneMappings = {};
+    mouseDownMappings = [];
+    mouseDownSceneMappings = {};
+    mouseMoveMappings = [];
+    mouseMoveSceneMappings = {};
     return;
   }
 
@@ -718,6 +797,8 @@ export const removeControlsListeners = (type: 'ALL' | 'KEY' | 'MOUSE' | InputCon
     mouseUpSceneMappings = {};
     mouseDownMappings = [];
     mouseDownSceneMappings = {};
+    mouseMoveMappings = [];
+    mouseMoveSceneMappings = {};
     return;
   }
 
@@ -737,6 +818,8 @@ export const removeControlsListeners = (type: 'ALL' | 'KEY' | 'MOUSE' | InputCon
 
   if (type === 'MOUSE_MOVE') {
     controlListenerFns.mouseMove = null;
+    mouseMoveMappings = [];
+    mouseMoveSceneMappings = {};
     return;
   }
 

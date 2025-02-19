@@ -308,11 +308,15 @@ addKeyInputControl({
     console.log('PRESSED', performance.now() - time);
   },
 });
-addMouseInputControl({
-  type: 'MOUSE_DOWN',
-  fn: (_, time) => console.log('CLICK', performance.now() - time),
-});
-addMouseInputControl({
-  type: 'MOUSE_UP',
-  fn: (_, time) => console.log('CLACK', time),
-});
+// addMouseInputControl({
+//   type: 'MOUSE_MOVE',
+//   fn: (e) => console.log('move', e.clientX, e.clientY),
+// });
+// addMouseInputControl({
+//   type: 'MOUSE_DOWN',
+//   fn: (_, time) => console.log('CLICK', performance.now() - time),
+// });
+// addMouseInputControl({
+//   type: 'MOUSE_UP',
+//   fn: (_, time) => console.log('CLACK', time),
+// });
