@@ -7,7 +7,8 @@ export type AppConfig = {
   debugKeys?: {
     enabled?: boolean; // Default is true
     id?: string;
-    key?: string;
+    key?: string | string[];
+    type?: 'KEY_UP' | 'KEY_DOWN'; // Default is 'KEY_UP'
     sceneId?: string;
     fn: (e: KeyboardEvent, pressedTime: number) => void;
   }[];

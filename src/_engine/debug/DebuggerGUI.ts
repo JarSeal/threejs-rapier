@@ -4,9 +4,12 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getHUDRootCMP } from '../core/HUD';
 import { Pane } from 'tweakpane';
+import { getConfig } from '../core/Config';
+import { addKeyInputControl } from '../core/InputControls';
 
 let drawerCMP: TCMP | null = null;
 let tabsContainerWrapper: null | TCMP = null;
+let debugKeysFromConfigInitiated = false;
 
 type DrawerState = {
   isOpen: boolean;
@@ -27,6 +30,25 @@ const saveDrawerState = (newState?: Partial<DrawerState>) => {
 };
 
 const initDrawerState = () => {
+  // Setup debug shortcut keys
+  if (!debugKeysFromConfigInitiated) {
+    const { debugKeys } = getConfig();
+    if (debugKeys && debugKeys.length) {
+      for (let i = 0; i < debugKeys.length; i++) {
+        const keyParams = debugKeys[i];
+        addKeyInputControl({
+          type: keyParams.type || 'KEY_UP',
+          fn: keyParams.fn,
+          ...(keyParams.key ? { key: keyParams.key } : {}),
+          ...(keyParams.id ? { id: keyParams.id } : {}),
+          ...(keyParams.sceneId ? { sceneId: keyParams.sceneId } : {}),
+        });
+      }
+    }
+    debugKeysFromConfigInitiated = true;
+  }
+
+  // Setup drawerState
   const savedState = lsGetItem('debugDrawerState', '{}');
   if (!savedState || typeof savedState !== 'string') return drawerState;
   const parsedSavedState = JSON.parse(savedState);

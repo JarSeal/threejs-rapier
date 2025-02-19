@@ -683,7 +683,7 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
   createPhysicsDebugMesh();
 };
 
-const createDebugGUI = () => {
+const createDebugControls = () => {
   const savedValues = lsGetItem(LS_KEY, physicsState);
   physicsState = {
     ...physicsState,
@@ -769,7 +769,7 @@ export const InitRapierPhysics = async (
     createPhysicsWorld();
     physicsWorld.timestep = physicsState.timestepRatio;
     if (isDebugEnvironment()) {
-      createDebugGUI();
+      createDebugControls();
       stepperFn = stepperFnDebug;
     } else {
       stepperFn = stepperFnProduction;

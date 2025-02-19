@@ -6,7 +6,8 @@ const config: AppConfig = {
     {
       enabled: true,
       id: 'sc-toggle-debug-drawer',
-      key: 'h',
+      key: ['h', 'H'],
+      type: 'KEY_UP',
       fn: () => toggleDrawer(),
     },
   ],
