@@ -6,6 +6,7 @@ import { getHUDRootCMP } from '../core/HUD';
 import { Pane } from 'tweakpane';
 import { getConfig } from '../core/Config';
 import { addKeyInputControl } from '../core/InputControls';
+import { lwarn } from '../utils/Logger';
 
 let drawerCMP: TCMP | null = null;
 let tabsContainerWrapper: null | TCMP = null;
@@ -65,7 +66,7 @@ type TabAndContainer = {
   orderNr?: number;
 };
 
-const tabsAndContainers: TabAndContainer[] = [];
+let tabsAndContainers: TabAndContainer[] = [];
 
 const createTabMenuButtons = () => {
   for (let i = 0; i < tabsAndContainers.length; i++) {
@@ -281,15 +282,30 @@ export const createDebuggerTab = (
 };
 
 /**
+ * Removes a tab and container
+ * @param id (string) tabsAndContainers id to be removed
+ */
+export const removeDebuggerTab = (id: string) => {
+  const foundTabAndContainer = tabsAndContainers.find((tnc) => tnc.id === id);
+  if (!foundTabAndContainer) {
+    lwarn(`Could not find a tabAndContainer to remove with id "${id}" in removeDebuggerTab`);
+    return;
+  }
+  tabsAndContainers = tabsAndContainers.filter((tnc) => tnc.id !== id);
+  createTabMenuButtons();
+  if (!drawerCMP) return;
+  createDebugGui(guiOpts);
+};
+
+/**
  * Creates a new debugger pane (in a CMP container).
  * @param id (string) debugger pane id
  * @param heading (string) optional heading for the section
  * @returns (object: { container, debugGUI }) the container component and the debugGUI parent object
  */
 export const createNewDebuggerPane = (id: string, heading?: string) => {
-  const nameAndId = `debuggerPane-${id}`;
   const container = CMP({
-    id: nameAndId,
+    id: `debuggerPane-${id}`,
     onRemoveCmp: () => debugGUI.dispose(),
   });
   if (heading) container.add({ tag: 'h3', text: heading, class: 'debuggerHeading' });

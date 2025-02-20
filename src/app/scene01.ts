@@ -13,6 +13,12 @@ import { addSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
 import { addKeyInputControl, addMouseInputControl } from '../_engine/core/InputControls';
 import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
+import {
+  createDebuggerTab,
+  createNewDebuggerPane,
+  removeDebuggerTab,
+} from '../_engine/debug/DebuggerGUI';
+import { TCMP } from '../_engine/utils/CMP';
 
 export const assets = {};
 // export const preloadAssets = () => {};
@@ -308,6 +314,21 @@ addKeyInputControl({
     console.log('PRESSED', performance.now() - time);
   },
 });
+
+// setTimeout(() => {
+//   createDebuggerTab({
+//     id: 'test-tab',
+//     buttonText: 'TADAA',
+//     container: () => {
+//       const { container } = createNewDebuggerPane('test-scene', 'Testing scene');
+//       return container;
+//     },
+//   });
+// }, 2000);
+// setTimeout(() => {
+//   removeDebuggerTab('test-tab');
+// }, 18000);
+
 // addMouseInputControl({
 //   type: 'MOUSE_MOVE',
 //   fn: (e) => console.log('move', e.clientX, e.clientY),
