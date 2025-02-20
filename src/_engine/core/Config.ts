@@ -35,6 +35,9 @@ let config: AppConfig = {
  * Loads all environment variables and configurations. This should be the first thing called in a project.
  */
 export const loadConfig = () => {
+  // Load config file
+  // @TODO: load the config file from the root
+
   // Load ENV variables
   envVars = import.meta.env;
 
@@ -129,4 +132,8 @@ export const isDebugEnvironment = () =>
  */
 export const getCurrentEnvironment = () => curEnvironment;
 
+/**
+ * Return app config
+ * @returns config ({@link AppConfig})
+ */
 export const getConfig = () => config;
