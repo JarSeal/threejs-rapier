@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { addSceneMainLooper, createScene } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
-import { getTexture, loadTexture, loadTextures } from '../_engine/core/Texture';
+import { getTexture, loadTexture, loadTextureAsync, loadTextures } from '../_engine/core/Texture';
 import { llog } from '../_engine/utils/Logger';
 import { createLight } from '../_engine/core/Light';
 import { importModelAsync } from '../_engine/core/ImportModel';
@@ -11,7 +11,14 @@ import { addToGroup, createGroup } from '../_engine/core/Group';
 import { transformSpeedValue } from '../_engine/core/MainLoop';
 import { addSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
+import { addKeyInputControl, addMouseInputControl } from '../_engine/core/InputControls';
 import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
+import {
+  createDebuggerTab,
+  createNewDebuggerPane,
+  removeDebuggerTab,
+} from '../_engine/debug/DebuggerGUI';
+import { TCMP } from '../_engine/utils/CMP';
 
 export const assets = {};
 // export const preloadAssets = () => {};
@@ -34,47 +41,47 @@ export const scene01 = async () => {
   //   id: 'equiRectId',
   //   fileName: '/testTextures/equi_grass_and_forest_4k.jpg',
   // });
-  // await addSkyBox({
-  //   type: 'EQUIRECTANGULAR',
-  //   params: {
-  //     // file: envTexture,
-  //     file: '/assets/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
-  //     // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
-  //     // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
-  //     // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
-  //     // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
-  //     textureId: 'equiRectId',
-  //     isEnvMap: false,
-  //     // colorSpace: THREE.SRGBColorSpace,
-  //     colorSpace: THREE.LinearSRGBColorSpace,
-  //     // colorSpace: THREE.NoColorSpace,
-  //   },
-  // });
-
-  const map01 = [
-    '/cubemap01_positive_x.png',
-    '/cubemap01_negative_x.png',
-    '/cubemap01_negative_y.png',
-    '/cubemap01_positive_y.png',
-    '/cubemap01_positive_z.png',
-    '/cubemap01_negative_z.png',
-  ];
-  const map02 = [
-    '/cubemap02_positive_x.png',
-    '/cubemap02_negative_x.png',
-    '/cubemap02_negative_y.png',
-    '/cubemap02_positive_y.png',
-    '/cubemap02_positive_z.png',
-    '/cubemap02_negative_z.png',
-  ];
   await addSkyBox({
-    type: 'CUBETEXTURE',
+    type: 'EQUIRECTANGULAR',
     params: {
-      fileNames: map02,
-      path: '/assets/testTextures',
-      textureId: 'cubeTextureId',
+      // file: envTexture,
+      // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
+      file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
+      // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
+      // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
+      // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
+      textureId: 'equiRectId',
+      isEnvMap: false,
+      // colorSpace: THREE.SRGBColorSpace,
+      colorSpace: THREE.LinearSRGBColorSpace,
+      // colorSpace: THREE.NoColorSpace,
     },
   });
+
+  // const map01 = [
+  //   '/cubemap01_positive_x.png',
+  //   '/cubemap01_negative_x.png',
+  //   '/cubemap01_negative_y.png',
+  //   '/cubemap01_positive_y.png',
+  //   '/cubemap01_positive_z.png',
+  //   '/cubemap01_negative_z.png',
+  // ];
+  // const map02 = [
+  //   '/cubemap02_positive_x.png',
+  //   '/cubemap02_negative_x.png',
+  //   '/cubemap02_negative_y.png',
+  //   '/cubemap02_positive_y.png',
+  //   '/cubemap02_positive_z.png',
+  //   '/cubemap02_negative_z.png',
+  // ];
+  // await addSkyBox({
+  //   type: 'CUBETEXTURE',
+  //   params: {
+  //     fileNames: map02,
+  //     path: '/assets/testTextures',
+  //     textureId: 'cubeTextureId',
+  //   },
+  // });
 
   // Create ground
   const groundWidthAndDepth = 10;
@@ -298,3 +305,39 @@ export const scene01 = async () => {
   });
   scene.add(hemisphere);
 };
+
+// Input
+addKeyInputControl({
+  type: 'KEY_DOWN',
+  key: 'd',
+  fn: (_, time) => {
+    console.log('PRESSED', performance.now() - time);
+  },
+});
+
+// setTimeout(() => {
+//   createDebuggerTab({
+//     id: 'test-tab',
+//     buttonText: 'TADAA',
+//     container: () => {
+//       const { container } = createNewDebuggerPane('test-scene', 'Testing scene');
+//       return container;
+//     },
+//   });
+// }, 2000);
+// setTimeout(() => {
+//   removeDebuggerTab('test-tab');
+// }, 18000);
+
+// addMouseInputControl({
+//   type: 'MOUSE_MOVE',
+//   fn: (e) => console.log('move', e.clientX, e.clientY),
+// });
+// addMouseInputControl({
+//   type: 'MOUSE_DOWN',
+//   fn: (_, time) => console.log('CLICK', performance.now() - time),
+// });
+// addMouseInputControl({
+//   type: 'MOUSE_UP',
+//   fn: (_, time) => console.log('CLACK', time),
+// });

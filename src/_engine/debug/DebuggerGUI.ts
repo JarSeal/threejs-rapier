@@ -4,9 +4,13 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getHUDRootCMP } from '../core/HUD';
 import { Pane } from 'tweakpane';
+import { getConfig } from '../core/Config';
+import { addKeyInputControl } from '../core/InputControls';
+import { lwarn } from '../utils/Logger';
 
 let drawerCMP: TCMP | null = null;
 let tabsContainerWrapper: null | TCMP = null;
+let debugKeysFromConfigInitiated = false;
 
 type DrawerState = {
   isOpen: boolean;
@@ -26,7 +30,26 @@ const saveDrawerState = (newState?: Partial<DrawerState>) => {
   lsSetItem('debugDrawerState', JSON.stringify(updatedState));
 };
 
-const getDrawerState = () => {
+const initDrawerState = () => {
+  // Setup debug shortcut keys
+  if (!debugKeysFromConfigInitiated) {
+    const { debugKeys } = getConfig();
+    if (debugKeys && debugKeys.length) {
+      for (let i = 0; i < debugKeys.length; i++) {
+        const keyParams = debugKeys[i];
+        addKeyInputControl({
+          type: keyParams.type || 'KEY_UP',
+          fn: keyParams.fn,
+          ...(keyParams.key ? { key: keyParams.key } : {}),
+          ...(keyParams.id ? { id: keyParams.id } : {}),
+          ...(keyParams.sceneId ? { sceneId: keyParams.sceneId } : {}),
+        });
+      }
+    }
+    debugKeysFromConfigInitiated = true;
+  }
+
+  // Setup drawerState
   const savedState = lsGetItem('debugDrawerState', '{}');
   if (!savedState || typeof savedState !== 'string') return drawerState;
   const parsedSavedState = JSON.parse(savedState);
@@ -43,7 +66,7 @@ type TabAndContainer = {
   orderNr?: number;
 };
 
-const tabsAndContainers: TabAndContainer[] = [];
+let tabsAndContainers: TabAndContainer[] = [];
 
 const createTabMenuButtons = () => {
   for (let i = 0; i < tabsAndContainers.length; i++) {
@@ -103,7 +126,7 @@ let guiOpts: DebugGUIOpts | undefined = undefined;
  */
 export const createDebugGui = (opts?: DebugGUIOpts) => {
   guiOpts = opts;
-  getDrawerState();
+  initDrawerState();
 
   // Drawer
   if (drawerCMP) drawerCMP.remove();
@@ -122,7 +145,7 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     tag: 'button',
     text: 'Debug',
     class: [styles.debugDrawerToggler, opts?.drawerBtnPlace || 'MIDDLE'],
-    onClick: () => toggleDrawer(drawerCMP),
+    onClick: () => toggleDrawer(),
   });
 
   // Tabs container wrapper
@@ -156,7 +179,7 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     tag: 'button',
     class: styles.closeBtn,
     attr: { title: 'Close' },
-    onClick: () => toggleDrawer(drawerCMP, 'CLOSE'),
+    onClick: () => toggleDrawer('CLOSE'),
   });
 
   drawerCMP.add(tabsMenuContainer);
@@ -218,7 +241,11 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
   return drawerCMP;
 };
 
-const toggleDrawer = (drawerCMP: TCMP | null, openOrClose?: 'OPEN' | 'CLOSE') => {
+/**
+ * Toggles the drawer open or closed
+ * @param openOrClose ('OPEN' | 'CLOSE') optional next state of the drawer, if not provided then the opposite of the current state is the next state
+ */
+export const toggleDrawer = (openOrClose?: 'OPEN' | 'CLOSE') => {
   if (!drawerCMP) return;
   let newState: boolean = false;
   if (openOrClose === 'CLOSE') {
@@ -255,15 +282,30 @@ export const createDebuggerTab = (
 };
 
 /**
+ * Removes a tab and container
+ * @param id (string) tabsAndContainers id to be removed
+ */
+export const removeDebuggerTab = (id: string) => {
+  const foundTabAndContainer = tabsAndContainers.find((tnc) => tnc.id === id);
+  if (!foundTabAndContainer) {
+    lwarn(`Could not find a tabAndContainer to remove with id "${id}" in removeDebuggerTab`);
+    return;
+  }
+  tabsAndContainers = tabsAndContainers.filter((tnc) => tnc.id !== id);
+  createTabMenuButtons();
+  if (!drawerCMP) return;
+  createDebugGui(guiOpts);
+};
+
+/**
  * Creates a new debugger pane (in a CMP container).
  * @param id (string) debugger pane id
  * @param heading (string) optional heading for the section
  * @returns (object: { container, debugGUI }) the container component and the debugGUI parent object
  */
 export const createNewDebuggerPane = (id: string, heading?: string) => {
-  const nameAndId = `debuggerPane-${id}`;
   const container = CMP({
-    id: nameAndId,
+    id: `debuggerPane-${id}`,
     onRemoveCmp: () => debugGUI.dispose(),
   });
   if (heading) container.add({ tag: 'h3', text: heading, class: 'debuggerHeading' });
@@ -272,3 +314,9 @@ export const createNewDebuggerPane = (id: string, heading?: string) => {
 
   return { container, debugGUI };
 };
+
+/**
+ * Returns the current drawerState
+ * @returns object {@link DrawerState}
+ */
+export const getDrawerState = () => drawerState;

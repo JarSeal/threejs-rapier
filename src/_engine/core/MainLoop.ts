@@ -180,13 +180,12 @@ export const initMainLoop = () => {
 
   if (isDebugEnvironment()) {
     // Debug GUI and Stats (if debug environment)
-    createDebugGui();
     const savedValues = lsGetItem(LS_KEY, loopState);
     loopState = {
       ...loopState,
       ...savedValues,
     };
-    createLoopDebugGUI();
+    createLoopDebugControls();
     initStats();
     initDebugTools();
   }
@@ -262,7 +261,8 @@ export const deleteResizer = (id: string) => {
 };
 
 // Debug GUI for loop
-const createLoopDebugGUI = () => {
+const createLoopDebugControls = () => {
+  createDebugGui();
   createDebuggerTab({
     id: 'loopControls',
     buttonText: 'LOOP',
