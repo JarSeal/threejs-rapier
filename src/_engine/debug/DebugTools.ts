@@ -1,6 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { ShaderNodeObject, uniform } from 'three/tsl';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
+import { ListBladeApi } from 'tweakpane';
+import { BladeController, View } from '@tweakpane/core';
 import { createCamera, getAllCameras, getCurrentCameraId, setCurrentCamera } from '../core/Camera';
 import { getRenderer } from '../core/Renderer';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
@@ -8,9 +10,12 @@ import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
 import { createMesh, getMesh } from '../core/Mesh';
 import { createGeometry } from '../core/Geometry';
 import { createMaterial } from '../core/Material';
-import { getCurrentScene } from '../core/Scene';
+import { getCurrentScene, getCurrentSceneId, setCurrentScene } from '../core/Scene';
 import { getEnvMapRoughnessBg } from '../core/SkyBox';
-import { isDebugEnvironment } from '../core/Config';
+import { getConfig, isDebugEnvironment } from '../core/Config';
+import { debugSceneListingInits } from './DebugSceneListing';
+
+export type SceneListing = { value: string; text?: string };
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -19,6 +24,7 @@ let envBallColorNode: ShaderNodeObject<THREE.PMREMNode> | null = null;
 let envBallRoughnessNode: ShaderNodeObject<THREE.UniformNode<number>> = uniform(0);
 let debugCamera: THREE.PerspectiveCamera | null = null;
 let orbitControls: OrbitControls | null = null;
+let scenesDropDown: ListBladeApi<BladeController<View>>;
 let debugToolsState: {
   useDebugCamera: boolean;
   latestAppCameraId: null | string;
@@ -35,6 +41,10 @@ let debugToolsState: {
     separateBallValues: boolean;
     ballRoughness: number;
     ballDefaultRoughness: number;
+  };
+  scenesListing: {
+    scenesFolderExpanded: boolean;
+    scenes: SceneListing[];
   };
 } = {
   useDebugCamera: false,
@@ -53,6 +63,10 @@ let debugToolsState: {
     ballRoughness: 0,
     ballDefaultRoughness: 0,
   },
+  scenesListing: {
+    scenesFolderExpanded: false,
+    scenes: [],
+  },
 };
 
 /**
@@ -61,6 +75,13 @@ let debugToolsState: {
 export const initDebugTools = () => {
   if (!isDebugEnvironment()) return;
   createDebugToolsDebugGUI();
+  const debugSceneListingConfig = getConfig().debugScenes || [];
+  if (debugSceneListingConfig?.length) {
+    addScenesToSceneListing(debugSceneListingConfig);
+  }
+  // for (let i = 0; i < debugSceneListingConfig.length; i++) {
+  //   debugSceneListingInits[debugSceneListingConfig[i].value]();
+  // }
 };
 
 // Debug GUI for sky box
@@ -217,6 +238,29 @@ const createDebugToolsDebugGUI = () => {
           envBallRoughnessNode.value = e.value;
           lsSetItem(LS_KEY, debugToolsState);
         });
+
+      // Scene listing
+      debugGUI.addBlade({ view: 'separator' });
+      const scenesFolder = debugGUI
+        .addFolder({
+          title: 'Scenes and debug scenes',
+          expanded: debugToolsState.scenesListing.scenesFolderExpanded,
+        })
+        .on('fold', (state) => {
+          debugToolsState.scenesListing.scenesFolderExpanded = state.expanded;
+          lsSetItem(LS_KEY, debugToolsState);
+        });
+      scenesDropDown = scenesFolder.addBlade({
+        view: 'list',
+        label: 'Scenes',
+        options: debugToolsState.scenesListing.scenes,
+        value: getCurrentSceneId(),
+      }) as ListBladeApi<BladeController<View>>;
+      scenesDropDown.on('change', (e) => {
+        const value = String(e.value);
+        if (value === getCurrentSceneId()) return;
+        setCurrentScene(value);
+      });
 
       return container;
     },
@@ -408,3 +452,64 @@ export const changeDebugEnvBallRoughness = (value: number) => (envBallRoughnessN
  * @returns debugToolsState {@link debugToolsState}
  */
 export const getDebugToolsState = () => debugToolsState;
+
+/**
+ * Adds a scene or scenes to the debugToolsState scenes listing
+ * @param scenes (SceneListing | SceneListing[]) either an object or an array of objects ({@link SceneListing})
+ */
+export const addScenesToSceneListing = (scenes: SceneListing | SceneListing[]) => {
+  if (Array.isArray(scenes)) {
+    for (let i = 0; i < scenes.length; i++) {
+      console.log('HUUT1', scenes[i]);
+      const foundScene = debugToolsState.scenesListing.scenes.find(
+        (scene) => scene.value === scenes[i].value
+      );
+      if (!foundScene) debugToolsState.scenesListing.scenes.push(scenes[i]);
+      const init = debugSceneListingInits[scenes[i].value];
+      if (init && !init.initiated) {
+        init.initiated = true;
+        init.fn();
+      }
+    }
+    reloadSceneListingBlade();
+    return;
+  }
+  console.log('HUUT2', scenes);
+  const foundScene = debugToolsState.scenesListing.scenes.find(
+    (scene) => scene.value === scenes.value
+  );
+  if (!foundScene) debugToolsState.scenesListing.scenes.push(scenes);
+  const init = debugSceneListingInits[scenes.value];
+  if (init && !init.initiated) {
+    init.initiated = true;
+    init.fn();
+  }
+  reloadSceneListingBlade();
+};
+
+/**
+ * Removes a scene or scenes from the scene listing
+ * @param sceneIds (string | string[]) a single or multiple sceneIds that need to be remove from scene listing
+ */
+export const removeScenesFromSceneListing = (sceneIds: string | string[]) => {
+  if (Array.isArray(sceneIds)) {
+    debugToolsState.scenesListing.scenes = debugToolsState.scenesListing.scenes.filter(
+      (scene) => !sceneIds.includes(scene.value)
+    );
+    reloadSceneListingBlade();
+    return;
+  }
+  debugToolsState.scenesListing.scenes = debugToolsState.scenesListing.scenes.filter(
+    (scene) => sceneIds !== scene.value
+  );
+  reloadSceneListingBlade();
+};
+
+const reloadSceneListingBlade = () => {
+  if (scenesDropDown) {
+    scenesDropDown.importState({
+      ...scenesDropDown.exportState(),
+      options: debugToolsState.scenesListing.scenes,
+    });
+  }
+};

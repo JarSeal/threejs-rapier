@@ -1,5 +1,6 @@
 import { llog } from '../utils/Logger';
 import configFile from '../../CONFIG';
+import { SceneListing } from '../debug/DebugTools';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 
@@ -12,6 +13,7 @@ export type AppConfig = {
     sceneId?: string;
     fn: (e: KeyboardEvent, pressedTime: number) => void;
   }[];
+  debugScenes?: SceneListing[];
   physics?: {
     enabled?: boolean;
     gravity?: { x: number; y: number; z: number };

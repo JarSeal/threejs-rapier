@@ -11,6 +11,8 @@ import {
   deletePhysicsWorld,
   setCurrentScenePhysicsObjects,
 } from './PhysicsRapier';
+import { isDebugEnvironment } from './Config';
+import { addScenesToSceneListing, removeScenesFromSceneListing } from '../debug/DebugTools';
 
 type Looper = (delta: number) => void;
 
@@ -57,6 +59,8 @@ export const createScene = (id: string, opts?: SceneOptions) => {
   if (opts?.mainLoopers) sceneMainLoopers[id] = opts.mainLoopers;
   if (opts?.mainLateLoopers) sceneMainLateLoopers[id] = opts.mainLateLoopers;
   if (opts?.appLoopers) sceneAppLoopers[id] = opts.appLoopers;
+
+  if (isDebugEnvironment()) addScenesToSceneListing({ value: id, text: `[App] ${id}` });
 
   return scene;
 };
@@ -180,6 +184,8 @@ export const deleteScene = (
         deleteAll: opts?.deleteAll,
       });
     }
+
+    if (isDebugEnvironment()) removeScenesFromSceneListing(id);
   });
 
   // Delete loopers
