@@ -4,84 +4,18 @@
 import * as THREE from 'three/webgpu';
 import { lwarn } from '../utils/Logger';
 import { deleteScene, getCurrentScene, getScene, setCurrentScene } from './Scene';
-import { TCMP } from '../utils/CMP';
+import { getCmpById, TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
 
-// export type SceneLoaderParams = {
-//   loaderId: string;
-//   scenes: {
-//     [id: string]: {
-//       assets: string[] | { [id: string]: { type: '' } };
-//       sceneFn: () => void;
-//     };
-//   };
-//   currentSceneId: string;
-// };
-
-// const LS_KEY_PREFIX = 'sceneLoaderParams';
-
-// export class SceneLoader {
-//   loaderId: string;
-//   scenes: SceneLoaderParams['scenes'];
-//   currentSceneId: string;
-
-//   constructor(initParams: SceneLoaderParams) {
-//     let params = initParams;
-//     this.scenes = params.scenes;
-//     this.loaderId = params.loaderId;
-
-//     // Get current scene to load
-//     if (isDebugEnvironment()) {
-//       const savedParams = lsGetItem(`${LS_KEY_PREFIX}-${this.loaderId}`, params);
-//       params = { ...params, ...savedParams };
-//       this.currentSceneId = params.currentSceneId;
-//     } else {
-//       this.currentSceneId = params.currentSceneId;
-//     }
-//   }
-// }
-
-// const loadedScenes: {
-//   [loaderId: string]: {
-//     [sceneId: string]: {
-//       assets: {
-//         id?: string;
-//         type: 'texture' | 'equiRectTexture' | 'model';
-//         url: string | string[];
-//       }[];
-//       sceneFn: () => boolean | void;
-//       loaderFn: {};
-//       loadOnLoaderInit?: boolean;
-//     };
-//   };
-// } = {};
-
-// export const loadScene = async ({
-//   loaderId,
-//   currentScene,
-// }: {
-//   loaderId: string;
-//   currentScene: string;
-// }) => {
-//   let loaderData = loadedScenes[loaderId];
-//   if (!loaderData) {
-//     // Need to initialize the loader
-//   }
-//   const sceneData = loadedScenes[loaderId][currentScene];
-//   if (sceneData) {
-//     sceneData.sceneFn();
-//   }
-// };
-
-export type UpdateLoaderStatusFn = () => Promise<boolean>;
+export type UpdateLoaderStatusFn = (loader: SceneLoader) => Promise<boolean>;
 
 export type SceneLoader = {
   id: string;
   loaderGroup?: THREE.Group;
   loaderContainer?: TCMP;
   loadFn: (loader: SceneLoader, updateLoaderStatusFn?: UpdateLoaderStatusFn) => Promise<boolean>;
-  loadStartFn?: (loader: SceneLoader) => Promise<void>;
-  loadEndFn?: (loader: SceneLoader) => Promise<void>;
+  loadStartFn?: (loader: SceneLoader, updateLoaderStatusFn?: UpdateLoaderStatusFn) => Promise<void>;
+  loadEndFn?: (loader: SceneLoader, updateLoaderStatusFn?: UpdateLoaderStatusFn) => Promise<void>;
   phase?: 'START' | 'LOAD' | 'END';
 };
 
@@ -148,8 +82,10 @@ export const getCurrentSceneLoaderId = () => {
 export const loadScene = async (loadSceneProps: {
   nextSceneId: string;
   updateLoaderStatusFn?: UpdateLoaderStatusFn;
-  loaderId?: string;
+  loaderId?: string; // loaderId to use, if not provided then the currentSceneLoader will be used
   deletePrevScene?: boolean;
+  // @TODO: add possibility to disable inputControls for prevScene while loading
+  // @TODO: add possibility to add nextSceneCamera (maybe)
 }) => {
   let loader: SceneLoader | undefined = getCurrentSceneLoader();
   if (loadSceneProps.loaderId) {
@@ -161,15 +97,18 @@ export const loadScene = async (loadSceneProps: {
     }
   }
 
-  let prevScene = getCurrentScene();
+  // Add possible CMP container to HUD
+  let loaderContainerId: string | null = null;
+  if (loader.loaderContainer) {
+    loaderContainerId = loader.loaderContainer.id;
+    getHUDRootCMP().add(loader.loaderContainer);
+  }
+
+  const prevScene = getCurrentScene();
   if (prevScene) {
     // Add possible loader group to current scene
     if (loader.loaderGroup) prevScene.add(loader.loaderGroup);
-  } else if (loader.loaderGroup) {
-    // @TODO: create temp scene
   }
-  // Add possible CMP container to HUD
-  if (loader.loaderContainer) getHUDRootCMP().add(loader.loaderContainer);
 
   const nextScene = getScene(loadSceneProps.nextSceneId);
   if (!nextScene) {
@@ -178,15 +117,16 @@ export const loadScene = async (loadSceneProps: {
     return;
   }
 
-  loader.phase = 'START';
-  if (loader.loadStartFn) await loader.loadStartFn(loader);
+  if (prevScene) {
+    // Run loadStartFn if prevScene found
+    loader.phase = 'START';
+    if (loader.loadStartFn) await loader.loadStartFn(loader);
+  }
 
   // Add loader group to next scene
   if (loader.loaderGroup) nextScene.add(loader.loaderGroup);
 
-  loader.phase = 'LOAD';
-  setCurrentScene(loadSceneProps.nextSceneId);
-  if (loader.loaderGroup) {
+  if (prevScene && loader.loaderGroup) {
     // Remove loader group from prev scene
     const groupUUID = loader.loaderGroup.uuid;
     for (let i = 0; i < prevScene.children.length; i++) {
@@ -201,13 +141,22 @@ export const loadScene = async (loadSceneProps: {
     deleteScene(prevScene.userData.id, { deleteAll: true });
   }
 
+  loader.phase = 'LOAD';
+  setCurrentScene(loadSceneProps.nextSceneId);
   await loader.loadFn(loader, loadSceneProps.updateLoaderStatusFn);
 
-  loader.phase = 'END';
-  if (loader.loadEndFn) await loader.loadEndFn(loader);
+  if (loader.loadEndFn) {
+    loader.phase = 'END';
+    await loader.loadEndFn(loader, loadSceneProps.updateLoaderStatusFn);
+  }
+
+  if (loaderContainerId) {
+    const loaderContainer = getCmpById(loaderContainerId);
+    if (loaderContainer) loaderContainer.remove();
+  }
 
   if (loader.loaderGroup) {
-    // Remove loader group from prev scene
+    // Remove loader group from next scene
     const groupUUID = loader.loaderGroup.uuid;
     for (let i = 0; i < nextScene.children.length; i++) {
       const child = nextScene.children[i];
