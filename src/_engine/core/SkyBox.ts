@@ -88,8 +88,7 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
     defaultRoughness = params.roughness || 0.5;
     skyBoxState.equiRectRoughness = defaultRoughness;
   }
-  const savedSkyBoxState = lsGetItem(LS_KEY, skyBoxState);
-  skyBoxState = { ...skyBoxState, ...savedSkyBoxState };
+
   const renderer = getRenderer();
   if (!renderer) {
     const msg = `Could not find renderer in addSkyBox (type: ${type}).`;
@@ -104,9 +103,13 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
     throw new Error(msg);
   }
 
-  if (isDebugEnvironment() && !debuggerCreated) {
-    createSkyBoxDebugGUI();
-    debuggerCreated = true;
+  if (isDebugEnvironment()) {
+    const savedSkyBoxState = lsGetItem(LS_KEY, skyBoxState);
+    skyBoxState = { ...skyBoxState, ...savedSkyBoxState };
+    if (!debuggerCreated) {
+      createSkyBoxDebugGUI();
+      debuggerCreated = true;
+    }
   }
 
   skyBoxState.type = type;

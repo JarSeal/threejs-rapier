@@ -13,6 +13,7 @@ import {
 } from './PhysicsRapier';
 import { isDebugEnvironment } from './Config';
 import { addScenesToSceneListing, removeScenesFromSceneListing } from '../debug/DebugTools';
+import { getCurrentSceneLoader } from './SceneLoader';
 
 type Looper = (delta: number) => void;
 
@@ -70,9 +71,9 @@ export const createScene = (id: string, opts?: SceneOptions) => {
  * @param id (string) scene id
  * @returns THREE.Scene | null
  */
-export const getScene = (id: string) => {
+export const getScene = (id: string, silent?: boolean) => {
   const scene = scenes[id];
-  if (!scene) {
+  if (!scene && !silent) {
     lwarn(`Could not find scene with id "${id}", in getScene(id).`);
   }
   return scene || null;
@@ -220,6 +221,12 @@ export const setCurrentScene = (id: string | null) => {
   }
   currentSceneId = id;
   currentScene = nextScene;
+
+  // Check scene loader status, if loading, add loaderGroup to current scene
+  const sceneLoader = getCurrentSceneLoader();
+  if (sceneLoader?.loaderGroup && sceneLoader.phase === 'LOAD' && currentScene) {
+    currentScene.add(sceneLoader.loaderGroup);
+  }
 
   setCurrentScenePhysicsObjects(id);
 

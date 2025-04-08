@@ -1,21 +1,63 @@
-// import { lsGetItem } from '../utils/LocalAndSessionStorage';
-// import { isDebugEnvironment } from './Config';
-
 import * as THREE from 'three/webgpu';
 import { lwarn } from '../utils/Logger';
-import { deleteScene, getCurrentScene, getScene, setCurrentScene } from './Scene';
+import { deleteScene, getCurrentScene } from './Scene';
 import { getCmpById, TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
 
-export type UpdateLoaderStatusFn = (loader: SceneLoader) => Promise<boolean>;
+export type UpdateLoaderStatusFn = (
+  loader: SceneLoader,
+  params?: { [key: string]: unknown }
+) => Promise<boolean>;
 
 export type SceneLoader = {
+  /**
+   * Scene Loader ID
+   */
   id: string;
-  loaderGroup?: THREE.Group;
-  loaderContainer?: TCMP;
+
+  /**
+   * Next scene loader function, returns true when done
+   * @param loader SceneLoader ({@link SceneLoader})
+   * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
+   * @returns Promise<boolean>
+   */
   loadFn: (loader: SceneLoader, updateLoaderStatusFn?: UpdateLoaderStatusFn) => Promise<boolean>;
-  loadStartFn?: (loader: SceneLoader, updateLoaderStatusFn?: UpdateLoaderStatusFn) => Promise<void>;
-  loadEndFn?: (loader: SceneLoader, updateLoaderStatusFn?: UpdateLoaderStatusFn) => Promise<void>;
+
+  /**
+   * Load start function, returns true when done
+   * @param loader SceneLoader ({@link SceneLoader})
+   * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
+   * @returns Promise<boolean>
+   */
+  loadStartFn?: (
+    loader: SceneLoader,
+    updateLoaderStatusFn?: UpdateLoaderStatusFn
+  ) => Promise<boolean>;
+
+  /**
+   * Load end function, returns true when done
+   * @param loader SceneLoader ({@link SceneLoader})
+   * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
+   * @returns Promise<boolean>
+   */
+  loadEndFn?: (
+    loader: SceneLoader,
+    updateLoaderStatusFn?: UpdateLoaderStatusFn
+  ) => Promise<boolean>;
+
+  /**
+   * The optional three.js group to be used in the loader
+   */
+  loaderGroup?: THREE.Group;
+
+  /**
+   * The optional HTML overlay component of the loader view that is attached to the
+   */
+  loaderContainer?: TCMP;
+
+  /**
+   * Loading phase (no loading phase = undefined)
+   */
   phase?: 'START' | 'LOAD' | 'END';
 };
 
@@ -24,9 +66,9 @@ let currentSceneLoader: SceneLoader | null = null;
 let currentSceneLoaderId: string | null = null;
 
 export const createSceneLoader = async (
-  sceneLoader: SceneLoader,
-  createLoaderFn?: (sceneLoader: SceneLoader) => Promise<void>,
-  isNotCurrent?: boolean
+  sceneLoader: Omit<SceneLoader, 'phase'>,
+  isCurrent?: boolean // default is true
+  // createLoaderFn?: (sceneLoader: SceneLoader) => Promise<void>
 ) => {
   const foundSameId = sceneLoaders.find((sl) => sl.id);
   if (foundSameId) {
@@ -35,12 +77,14 @@ export const createSceneLoader = async (
     return;
   }
 
-  if (createLoaderFn) await createLoaderFn(sceneLoader);
+  // @TODO: implement this
+  // if (createLoaderFn) await createLoaderFn(sceneLoader);
 
   sceneLoaders.push(sceneLoader);
 
-  if (!isNotCurrent) {
-    currentSceneLoader;
+  // default value is true (even if undefined)
+  if (isCurrent !== false) {
+    setCurrentSceneLoader(sceneLoader.id);
   }
 };
 
@@ -80,7 +124,7 @@ export const getCurrentSceneLoaderId = () => {
 };
 
 export const loadScene = async (loadSceneProps: {
-  nextSceneId: string;
+  newSceneFn?: () => void;
   updateLoaderStatusFn?: UpdateLoaderStatusFn;
   loaderId?: string; // loaderId to use, if not provided then the currentSceneLoader will be used
   deletePrevScene?: boolean;
@@ -110,21 +154,11 @@ export const loadScene = async (loadSceneProps: {
     if (loader.loaderGroup) prevScene.add(loader.loaderGroup);
   }
 
-  const nextScene = getScene(loadSceneProps.nextSceneId);
-  if (!nextScene) {
-    const msg = `Could not find next scene next scene id "${loadSceneProps.nextSceneId}" in loadScene. Next scene was not loaded.`;
-    lwarn(msg);
-    return;
-  }
-
   if (prevScene) {
     // Run loadStartFn if prevScene found
     loader.phase = 'START';
     if (loader.loadStartFn) await loader.loadStartFn(loader);
   }
-
-  // Add loader group to next scene
-  if (loader.loaderGroup) nextScene.add(loader.loaderGroup);
 
   if (prevScene && loader.loaderGroup) {
     // Remove loader group from prev scene
@@ -138,11 +172,12 @@ export const loadScene = async (loadSceneProps: {
     }
   }
   if (prevScene && loadSceneProps.deletePrevScene) {
+    // Delete the whole previous scene and assets
+    // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps
     deleteScene(prevScene.userData.id, { deleteAll: true });
   }
 
   loader.phase = 'LOAD';
-  setCurrentScene(loadSceneProps.nextSceneId);
   await loader.loadFn(loader, loadSceneProps.updateLoaderStatusFn);
 
   if (loader.loadEndFn) {
@@ -155,11 +190,12 @@ export const loadScene = async (loadSceneProps: {
     if (loaderContainer) loaderContainer.remove();
   }
 
-  if (loader.loaderGroup) {
-    // Remove loader group from next scene
+  const newScene = getCurrentScene();
+  if (loader.loaderGroup && newScene) {
+    // Remove loader group from new scene
     const groupUUID = loader.loaderGroup.uuid;
-    for (let i = 0; i < nextScene.children.length; i++) {
-      const child = nextScene.children[i];
+    for (let i = 0; i < newScene.children.length; i++) {
+      const child = newScene.children[i];
       if (child.uuid === groupUUID) {
         child.removeFromParent();
         break;

@@ -4,6 +4,7 @@ import { createCamera } from './_engine/core/Camera';
 import { InitEngine } from './_engine/InitApp';
 import { scene01 } from './app/scene01';
 import { InitRapierPhysics } from './_engine/core/PhysicsRapier';
+import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 
 InitEngine(async () => {
   await InitRapierPhysics();
@@ -20,6 +21,20 @@ InitEngine(async () => {
     outputColorSpace: THREE.SRGBColorSpace,
     alpha: true,
   });
+
+  // Create sceneLoader
+  createSceneLoader({
+    id: 'main-scene-loader',
+    loadFn: (loader) => {
+      console.log('LOAD_FN', loader);
+      return new Promise((resolve) => resolve(true));
+    },
+    // updateLoaderFn: (loader) => {
+    //   console.log();
+    // },
+  });
+
+  // loadScene({  })
 
   // Load scene
   // @TODO: add scene loader
