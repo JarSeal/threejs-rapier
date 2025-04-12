@@ -1,4 +1,5 @@
 import { isDebugEnvironment, loadConfig } from './core/Config';
+import { createHudContainer } from './core/HUD';
 import { initMainLoop } from './core/MainLoop';
 import { createPhysicsDebugMesh } from './core/PhysicsRapier';
 import { getCurrentScene, getCurrentSceneId } from './core/Scene';
@@ -12,6 +13,9 @@ import { lerror } from './utils/Logger';
 export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
   // Load env variables and other configurations
   loadConfig();
+
+  // HUD container
+  createHudContainer();
 
   // Start app
   try {

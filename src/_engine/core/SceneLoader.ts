@@ -21,7 +21,7 @@ export type SceneLoader = {
    * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
    * @returns Promise<boolean>
    */
-  loadFn: (loader: SceneLoader, nextSceneFn: () => void) => Promise<boolean>;
+  loadFn: (loader: SceneLoader, nextSceneFn: () => Promise<unknown>) => Promise<unknown>;
 
   /**
    * Load start function, returns true when done
@@ -67,7 +67,7 @@ export type SceneLoader = {
 };
 
 type LoadSceneProps = {
-  nextSceneFn: () => void;
+  nextSceneFn: () => Promise<unknown>;
   updateLoaderStatusFn?: UpdateLoaderStatusFn;
   loaderId?: string; // loaderId to use, if not provided then the currentSceneLoader will be used
   deletePrevScene?: boolean;
@@ -153,8 +153,6 @@ const loadSceneCleanup = (loader: SceneLoader, loaderContainerId: string | null)
     }
   }
 
-  console.log('SCENE_LOADER_4', loader.phase);
-
   loader.phase = undefined;
 };
 
@@ -165,7 +163,6 @@ const loadSceneEndPhase = async (
 ) => {
   loader.phase = 'END';
   if (loader.loadEndFn) {
-    console.log('SCENE_LOADER_3.1', loader.phase);
     await loader
       .loadEndFn(loader, loadSceneProps.updateLoaderStatusFn)
       .then(() => loadSceneCleanup(loader, loaderContainerId));
@@ -217,6 +214,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
   // Add possible CMP container to HUD
   let loaderContainerId: string | null = null;
+  console.log('TADAA', loader);
   if (loader.loaderContainer) {
     loaderContainerId = loader.loaderContainer.id;
     getHUDRootCMP().add(loader.loaderContainer);
@@ -232,14 +230,13 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
   if (prevScene && loader.loadStartFn) {
     // Run loadStartFn if prevScene found
-    console.log('SCENE_LOADER_1.1', loader.phase);
     await loader
       .loadStartFn(loader)
       .then(() => loadSceneLoadPhase(loadSceneProps, loader, prevScene, loaderContainerId));
     return;
   }
 
-  loadSceneLoadPhase(loadSceneProps, loader, prevScene, loaderContainerId);
+  await loadSceneLoadPhase(loadSceneProps, loader, prevScene, loaderContainerId);
 };
 
 /**

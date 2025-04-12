@@ -460,7 +460,6 @@ export const getDebugToolsState = () => debugToolsState;
 export const addScenesToSceneListing = (scenes: SceneListing | SceneListing[]) => {
   if (Array.isArray(scenes)) {
     for (let i = 0; i < scenes.length; i++) {
-      console.log('HUUT1', scenes[i]);
       const foundScene = debugToolsState.scenesListing.scenes.find(
         (scene) => scene.value === scenes[i].value
       );
@@ -474,7 +473,6 @@ export const addScenesToSceneListing = (scenes: SceneListing | SceneListing[]) =
     reloadSceneListingBlade();
     return;
   }
-  console.log('HUUT2', scenes);
   const foundScene = debugToolsState.scenesListing.scenes.find(
     (scene) => scene.value === scenes.value
   );

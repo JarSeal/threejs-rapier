@@ -11,7 +11,6 @@ import {
   getSceneResizers,
 } from './Scene';
 import { lerror, lwarn } from '../utils/Logger';
-import { createHudContainer } from './HUD';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
@@ -168,9 +167,6 @@ export const initMainLoop = () => {
     lerror(msg);
     throw new Error(msg);
   }
-
-  // HUD container
-  createHudContainer();
 
   const maxFPS = Number(getEnv('VITE_MAX_FPS'));
   if (maxFPS !== undefined && !isNaN(maxFPS)) {

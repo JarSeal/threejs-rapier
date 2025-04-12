@@ -5,6 +5,7 @@ import { InitEngine } from './_engine/InitApp';
 import { scene01 } from './app/scene01_v2';
 import { InitRapierPhysics } from './_engine/core/PhysicsRapier';
 import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
+import { CMP } from './_engine/utils/CMP';
 
 InitEngine(async () => {
   await InitRapierPhysics();
@@ -25,13 +26,21 @@ InitEngine(async () => {
   // Create sceneLoader
   createSceneLoader({
     id: 'main-scene-loader',
-    loadFn: (loader, nextSceneFn) => {
-      console.log('LOAD_FN', loader);
-      nextSceneFn();
-      return new Promise((resolve) => resolve(true));
-    },
+    loadFn: (_loader, nextSceneFn) => nextSceneFn(),
+    loaderContainer: CMP({
+      text: 'LOADING...',
+      style: {
+        id: 'main-sene-loader-container',
+        width: '100vw',
+        height: '100vh',
+        background: 'blue',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        zIndex: 99999,
+      },
+    }),
     updateLoaderStatusFn: async (_, params) => {
-      console.log('Update loader status', params);
       if (!params) return true;
       if ('loadedCount' in params && 'totalCount' in params) {
         if (params.loaded === params.totalCount) return true;
@@ -42,7 +51,6 @@ InitEngine(async () => {
   });
 
   // Load scene
-  // @TODO: add scene loader
   loadScene({ nextSceneFn: scene01 });
   // await scene01();
 });
