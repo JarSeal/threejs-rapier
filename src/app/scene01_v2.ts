@@ -20,6 +20,7 @@ const SCENE_ID = 'testScene1';
 export const scene01 = async () =>
   new Promise((resolve) => {
     const updateLoaderFn = getLoaderStatusUpdater();
+    updateLoaderFn({ loadedCount: 0, totalCount: 2 });
 
     // Position camera
     const camera = getCurrentCamera();
@@ -38,7 +39,7 @@ export const scene01 = async () =>
       setCurrentScene(SCENE_ID);
     }
 
-    updateLoaderFn({ loadedCount: 1, totalCount: 2 });
+    setTimeout(() => updateLoaderFn({ loadedCount: 1, totalCount: 2 }), 500);
 
     setTimeout(async () => {
       await addSkyBox({
@@ -297,5 +298,5 @@ export const scene01 = async () =>
       updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 
       resolve(true);
-    }, 3000);
+    }, 1300);
   });

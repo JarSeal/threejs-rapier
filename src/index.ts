@@ -26,27 +26,43 @@ InitEngine(async () => {
   // Create sceneLoader
   createSceneLoader({
     id: 'main-scene-loader',
-    loadFn: (_loader, nextSceneFn) => nextSceneFn(),
     loaderContainer: CMP({
-      text: 'LOADING...',
+      text: '',
       style: {
-        id: 'main-sene-loader-container',
+        id: 'main-sene-loader-cmp',
         width: '100vw',
         height: '100vh',
         background: 'blue',
         position: 'fixed',
         top: 0,
         left: 0,
-        zIndex: 99999,
+        zIndex: 1000,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        transition: 'opacity 0.5s ease-in',
+        opacity: 1,
       },
     }),
-    updateLoaderStatusFn: async (_, params) => {
+    // @TODO: This does not work, because we cannot have multiple Three.js scenes.
+    // Change the scenes to be Three.js Groups and create a root scene in the
+    // initEngine method.
+    // loadStartFn: (loader) =>
+    //   new Promise((resolve) => {
+    //     loader.loaderContainer?.updateStyle({ opacity: 1 });
+    //     setTimeout(() => resolve(true), 500);
+    //   }),
+    loadEndFn: (loader) =>
+      new Promise((resolve) => {
+        loader.loaderContainer?.updateStyle({ opacity: 0 });
+        setTimeout(() => resolve(true), 500);
+      }),
+    updateLoaderStatusFn: async (loader, params) => {
       if (!params) return true;
       if ('loadedCount' in params && 'totalCount' in params) {
+        loader.loaderContainer?.updateText(`Loading, ${params.loadedCount} / ${params.totalCount}`);
         if (params.loaded === params.totalCount) return true;
-        return false;
       }
-      return true;
     },
   });
 

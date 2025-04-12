@@ -7,7 +7,7 @@ import { getHUDRootCMP } from './HUD';
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
   params?: { [key: string]: unknown }
-) => Promise<boolean>;
+) => void;
 
 export type SceneLoader = {
   /**
@@ -21,7 +21,7 @@ export type SceneLoader = {
    * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
    * @returns Promise<boolean>
    */
-  loadFn: (loader: SceneLoader, nextSceneFn: () => Promise<unknown>) => Promise<unknown>;
+  loadFn?: (loader: SceneLoader, nextSceneFn: () => Promise<unknown>) => Promise<unknown>;
 
   /**
    * Load start function, returns true when done
@@ -29,10 +29,7 @@ export type SceneLoader = {
    * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
    * @returns Promise<boolean>
    */
-  loadStartFn?: (
-    loader: SceneLoader,
-    updateLoaderStatusFn?: UpdateLoaderStatusFn
-  ) => Promise<boolean>;
+  loadStartFn?: (loader: SceneLoader) => Promise<boolean>;
 
   /**
    * Load end function, returns true when done
@@ -40,10 +37,7 @@ export type SceneLoader = {
    * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
    * @returns Promise<boolean>
    */
-  loadEndFn?: (
-    loader: SceneLoader,
-    updateLoaderStatusFn?: UpdateLoaderStatusFn
-  ) => Promise<boolean>;
+  loadEndFn?: (loader: SceneLoader) => Promise<boolean>;
 
   /**
    * Update loader status function, returns true when loading is done. {@link UpdateLoaderStatusFn}
@@ -134,73 +128,6 @@ export const getCurrentSceneLoaderId = () => {
   return currentSceneLoaderId;
 };
 
-const loadSceneCleanup = (loader: SceneLoader, loaderContainerId: string | null) => {
-  if (loaderContainerId) {
-    const loaderContainer = getCmpById(loaderContainerId);
-    if (loaderContainer) loaderContainer.remove();
-  }
-
-  const newScene = getCurrentScene();
-  if (loader.loaderGroup && newScene) {
-    // Remove loader group from the new scene
-    const groupUUID = loader.loaderGroup.uuid;
-    for (let i = 0; i < newScene.children.length; i++) {
-      const child = newScene.children[i];
-      if (child.uuid === groupUUID) {
-        child.removeFromParent();
-        break;
-      }
-    }
-  }
-
-  loader.phase = undefined;
-};
-
-const loadSceneEndPhase = async (
-  loadSceneProps: LoadSceneProps,
-  loader: SceneLoader,
-  loaderContainerId: string | null
-) => {
-  loader.phase = 'END';
-  if (loader.loadEndFn) {
-    await loader
-      .loadEndFn(loader, loadSceneProps.updateLoaderStatusFn)
-      .then(() => loadSceneCleanup(loader, loaderContainerId));
-    return;
-  }
-
-  loadSceneCleanup(loader, loaderContainerId);
-};
-
-const loadSceneLoadPhase = async (
-  loadSceneProps: LoadSceneProps,
-  loader: SceneLoader,
-  prevScene: THREE.Scene,
-  loaderContainerId: string | null
-) => {
-  if (prevScene && loader.loaderGroup) {
-    // Remove loader group from prev scene
-    const groupUUID = loader.loaderGroup.uuid;
-    for (let i = 0; i < prevScene.children.length; i++) {
-      const child = prevScene.children[i];
-      if (child.uuid === groupUUID) {
-        child.removeFromParent();
-        break;
-      }
-    }
-  }
-  if (prevScene && loadSceneProps.deletePrevScene) {
-    // Delete the whole previous scene and assets
-    // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps (like deleteMeshes, deleteTextures, etc.)
-    deleteScene(prevScene.userData.id, { deleteAll: true });
-  }
-
-  loader.phase = 'LOAD';
-  await loader
-    .loadFn(loader, loadSceneProps.nextSceneFn)
-    .then(() => loadSceneEndPhase(loadSceneProps, loader, loaderContainerId));
-};
-
 export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   let loader: SceneLoader | undefined = getCurrentSceneLoader();
   if (loadSceneProps.loaderId) {
@@ -212,9 +139,21 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
     }
   }
 
+  let loadStartFn = loader.loadStartFn;
+  if (!loadStartFn) {
+    loadStartFn = () => new Promise((resolve) => resolve(true));
+  }
+  let loadFn = loader.loadFn;
+  if (!loadFn) {
+    loadFn = (_loader, nextSceneFn) => nextSceneFn();
+  }
+  let loadEndFn = loader.loadEndFn;
+  if (!loadEndFn) {
+    loadEndFn = () => new Promise((resolve) => resolve(true));
+  }
+
   // Add possible CMP container to HUD
   let loaderContainerId: string | null = null;
-  console.log('TADAA', loader);
   if (loader.loaderContainer) {
     loaderContainerId = loader.loaderContainer.id;
     getHUDRootCMP().add(loader.loaderContainer);
@@ -228,15 +167,50 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   // Listen to the phase changes. Add checks to the main loop.
   loader.phase = 'START';
 
-  if (prevScene && loader.loadStartFn) {
-    // Run loadStartFn if prevScene found
-    await loader
-      .loadStartFn(loader)
-      .then(() => loadSceneLoadPhase(loadSceneProps, loader, prevScene, loaderContainerId));
-    return;
-  }
+  await loadStartFn(loader).then(async () => {
+    if (loader.loaderGroup) {
+      // Remove loader group from prev scene
+      const groupUUID = loader.loaderGroup.uuid;
+      for (let i = 0; i < prevScene.children.length; i++) {
+        const child = prevScene.children[i];
+        if (child.uuid === groupUUID) {
+          child.removeFromParent();
+          break;
+        }
+      }
+    }
+    if (loadSceneProps.deletePrevScene) {
+      // Delete the whole previous scene and assets
+      // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps (like deleteMeshes, deleteTextures, etc.)
+      deleteScene(prevScene.userData.id, { deleteAll: true });
+    }
 
-  await loadSceneLoadPhase(loadSceneProps, loader, prevScene, loaderContainerId);
+    loader.phase = 'LOAD';
+    await loadFn(loader, loadSceneProps.nextSceneFn).then(async () => {
+      loader.phase = 'END';
+      await loadEndFn(loader).then(() => {
+        if (loaderContainerId) {
+          const loaderContainer = getCmpById(loaderContainerId);
+          if (loaderContainer) loaderContainer.remove();
+        }
+
+        const newScene = getCurrentScene();
+        if (loader.loaderGroup && newScene) {
+          // Remove loader group from the new scene
+          const groupUUID = loader.loaderGroup.uuid;
+          for (let i = 0; i < newScene.children.length; i++) {
+            const child = newScene.children[i];
+            if (child.uuid === groupUUID) {
+              child.removeFromParent();
+              break;
+            }
+          }
+        }
+
+        loader.phase = undefined;
+      });
+    });
+  });
 };
 
 /**
