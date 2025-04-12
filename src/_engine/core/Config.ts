@@ -129,6 +129,12 @@ export const isDebugEnvironment = () =>
   curEnvironment === 'development' || curEnvironment === 'test';
 
 /**
+ * Checks whether the current environment is a production environment.
+ * @returns boolean
+ */
+export const isProductionEnvironment = () => curEnvironment === 'production';
+
+/**
  * Returns the current environment.
  * @returns one of the environments ({@link Environments})
  */

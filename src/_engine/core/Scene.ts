@@ -237,7 +237,8 @@ export const setCurrentScene = (id: string | null) => {
  * Returns the current scene
  * @returns THREE.Scene
  */
-export const getCurrentScene = () => currentScene || new THREE.Scene();
+export const getCurrentScene = () =>
+  currentScene || createScene('__place_holder_scene', { isCurrentScene: true });
 
 /**
  * Return the current scene id
