@@ -610,7 +610,7 @@ export const createPhysicsDebugMesh = (onUpdate?: boolean) => {
       });
     debugMesh = new THREE.LineSegments(debugMeshGeo, debugMeshMat);
     debugMesh.frustumCulled = false;
-    getCurrentScene().add(debugMesh);
+    getCurrentScene()?.add(debugMesh);
   }
 };
 

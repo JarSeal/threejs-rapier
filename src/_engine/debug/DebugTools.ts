@@ -329,7 +329,7 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
   toolGroup.position.set(0, 0, -2.5);
   toolGroup.lookAt(debugCamera.position);
 
-  getCurrentScene().add(debugCamera);
+  getCurrentScene()?.add(debugCamera);
 };
 
 // const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {

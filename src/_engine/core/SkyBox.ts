@@ -9,7 +9,7 @@ import {
   reflectVector,
 } from 'three/tsl';
 import { lerror, lwarn } from '../utils/Logger';
-import { getCurrentScene, getScene } from './Scene';
+import { getCurrentScene, getRootScene, getScene, isCurrentScene } from './Scene';
 import { getRenderer } from './Renderer';
 import { getTexture, loadTexture } from './Texture';
 import { isDebugEnvironment } from './Config';
@@ -95,9 +95,10 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
     lerror(msg);
     throw new Error(msg);
   }
-  // @TODO: Refactor this to go into the scene opts and use root scene as scene
+
   let scene = getCurrentScene();
   if (sceneId) scene = getScene(sceneId);
+  const isCurScene = isCurrentScene(scene?.userData.id);
   if (!scene) {
     const msg = `Could not find ${sceneId ? `scene with id "${sceneId}"` : 'current scene'} in addSkyBox (type: ${type}).`;
     lerror(msg);
@@ -167,8 +168,11 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
       .transformDirection(cameraViewMatrix);
     pmremRoughnessBg.value = skyBoxState.equiRectRoughness;
     const backgroundEnvNode = pmremTexture(envTexture, normalWorld, pmremRoughnessBg);
-    scene.backgroundNode = backgroundEnvNode;
-    scene.environmentNode = backgroundEnvNode;
+    if (isCurScene) {
+      const rootScene = getRootScene() as THREE.Scene;
+      rootScene.backgroundNode = backgroundEnvNode;
+      rootScene.environmentNode = backgroundEnvNode;
+    }
     scene.userData.backgroundNodeTextureId = textureId || envTexture.userData.id;
     if (isDebugEnvironment()) {
       const pmremRoughnessBall = uniform(skyBoxState.equiRectRoughness);
@@ -192,7 +196,10 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
     const rotateYMatrix = new THREE.Matrix4();
     rotateYMatrix.makeRotationY(Math.PI * skyBoxState.cubeTextRotate);
     const backgroundUV = reflectVector.xyz.mul(uniform(rotateYMatrix));
-    scene.backgroundNode = pmremTexture(cubeTexture, backgroundUV, pmremRoughnessBg);
+    if (isCurScene) {
+      const rootScene = getRootScene() as THREE.Scene;
+      rootScene.backgroundNode = pmremTexture(cubeTexture, backgroundUV, pmremRoughnessBg);
+    }
     scene.userData.backgroundNodeTextureId = textureId || cubeTexture.userData.id;
     if (isDebugEnvironment()) {
       const pmremRoughnessBall = uniform(skyBoxState.cubeTextRoughness);

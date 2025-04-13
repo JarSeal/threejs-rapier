@@ -44,9 +44,7 @@ InitEngine(async () => {
         opacity: 1,
       },
     }),
-    // @TODO: This does not work, because we cannot have multiple Three.js scenes.
-    // Change the scenes to be Three.js Groups and create a root scene in the
-    // initEngine method.
+    // @TODO: study why this doesn't work properly (camera is weird and opacity does not obey)
     // loadStartFn: (loader) =>
     //   new Promise((resolve) => {
     //     loader.loaderContainer?.updateStyle({ opacity: 1 });

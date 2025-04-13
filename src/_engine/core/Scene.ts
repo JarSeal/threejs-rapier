@@ -52,13 +52,10 @@ export const createScene = (id: string, opts?: SceneOptions) => {
   }
 
   const scene = new THREE.Group();
-  // @TODO: Remove these
-  // if (opts?.background) scene.background = opts.background;
-  // if (opts?.backgroundColor) scene.background = opts.backgroundColor;
-  // if (opts?.backgroundTexture) scene.background = opts.backgroundTexture;
 
   if (opts) sceneOpts[id] = opts;
   scenes[id] = scene;
+  scene.userData.id = id;
 
   if (opts?.isCurrentScene || !currentSceneId) setCurrentScene(id);
 
@@ -110,7 +107,7 @@ export const deleteScene = (
   }
 
   const currentScene = getCurrentScene();
-  if (currentScene.userData.id === scene.userData.id && currentScene.uuid === scene.uuid) {
+  if (currentScene?.userData.id === scene.userData.id && currentScene?.uuid === scene.uuid) {
     lwarn(
       `Cannot delete the current scene. Switch to another scene and then delete this scene (id: ${scene.userData.id || scene.uuid}). No scene was deleted.`
     );
@@ -231,6 +228,10 @@ export const setCurrentScene = (id: string | null) => {
   if (nextScene) {
     createRootScene();
     const rootScene = getRootScene() as THREE.Scene;
+    if (currentSceneOpts?.background) rootScene.background = currentSceneOpts.background;
+    if (currentSceneOpts?.backgroundColor) rootScene.background = currentSceneOpts.backgroundColor;
+    if (currentSceneOpts?.backgroundTexture)
+      rootScene.background = currentSceneOpts.backgroundTexture;
     rootScene.add(nextScene);
   }
 
@@ -246,11 +247,10 @@ export const setCurrentScene = (id: string | null) => {
 };
 
 /**
- * Returns the current scene or creates one if not found
+ * Returns the current scene or null if not defined
  * @returns THREE.Group
  */
-export const getCurrentScene = () =>
-  currentScene || createScene('__place_holder_scene', { isCurrentScene: true });
+export const getCurrentScene = () => currentScene || null;
 
 /**
  * Return the current scene id
@@ -291,7 +291,7 @@ export const setSceneOpts = (id: string, opts: Partial<SceneOptions>) => {
  * @param id (string) scene id
  * @returns boolean
  */
-export const isCurrentScene = (id: string) => id === currentSceneId;
+export const isCurrentScene = (id?: string) => id === currentSceneId;
 
 /**
  * Return all existing scenes as an object

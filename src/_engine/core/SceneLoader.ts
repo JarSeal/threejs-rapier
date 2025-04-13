@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { lerror, lwarn } from '../utils/Logger';
-import { deleteScene, getCurrentScene } from './Scene';
+import { deleteScene, getCurrentScene, getRootScene } from './Scene';
 import { getCmpById, TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
 
@@ -160,29 +160,16 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   }
 
   const prevScene = getCurrentScene();
+  const rootScene = getRootScene() as THREE.Scene;
   // Add possible loader group to current scene
-  if (loader.loaderGroup) prevScene.add(loader.loaderGroup);
+  if (loader.loaderGroup) rootScene.add(loader.loaderGroup);
 
-  // Add a listener loop to continue with main loop (awoid await).
-  // Listen to the phase changes. Add checks to the main loop.
   loader.phase = 'START';
-
   await loadStartFn(loader).then(async () => {
-    if (loader.loaderGroup) {
-      // Remove loader group from prev scene
-      const groupUUID = loader.loaderGroup.uuid;
-      for (let i = 0; i < prevScene.children.length; i++) {
-        const child = prevScene.children[i];
-        if (child.uuid === groupUUID) {
-          child.removeFromParent();
-          break;
-        }
-      }
-    }
-    if (loadSceneProps.deletePrevScene) {
+    if (loadSceneProps.deletePrevScene && prevScene) {
       // Delete the whole previous scene and assets
       // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps (like deleteMeshes, deleteTextures, etc.)
-      deleteScene(prevScene.userData.id, { deleteAll: true });
+      deleteScene(prevScene?.userData.id, { deleteAll: true });
     }
 
     loader.phase = 'LOAD';
@@ -194,20 +181,11 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
           if (loaderContainer) loaderContainer.remove();
         }
 
-        const newScene = getCurrentScene();
-        if (loader.loaderGroup && newScene) {
-          // Remove loader group from the new scene
-          const groupUUID = loader.loaderGroup.uuid;
-          for (let i = 0; i < newScene.children.length; i++) {
-            const child = newScene.children[i];
-            if (child.uuid === groupUUID) {
-              child.removeFromParent();
-              break;
-            }
-          }
-        }
+        if (loader.loaderGroup) rootScene.remove(loader.loaderGroup);
 
         loader.phase = undefined;
+
+        console.log('ROOT_SCENE', rootScene);
       });
     });
   });
