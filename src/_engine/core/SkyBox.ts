@@ -95,6 +95,7 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
     lerror(msg);
     throw new Error(msg);
   }
+  // @TODO: Refactor this to go into the scene opts and use root scene as scene
   let scene = getCurrentScene();
   if (sceneId) scene = getScene(sceneId);
   if (!scene) {

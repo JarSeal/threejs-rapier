@@ -1,10 +1,11 @@
-import { Clock } from 'three/webgpu';
+import { Clock, type Scene } from 'three/webgpu';
 import { createDebugGui, createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
 import { getStats, initStats } from '../debug/Stats';
 import { getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
 import {
-  getCurrentScene,
+  createRootScene,
+  getRootScene,
   getSceneAppLoopers,
   getSceneMainLateLoopers,
   getSceneMainLoopers,
@@ -106,7 +107,7 @@ const mainLoopForDebug = async () => {
       // maxFPS limiter
       accDelta += delta;
       if (accDelta > loopState.maxFPSInterval) {
-        renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
+        renderer?.renderAsync(getRootScene() as Scene, getCurrentCamera()).then(() => {
           runMainLateLoopers();
           getStats()?.update();
           accDelta = accDelta % loopState.maxFPSInterval;
@@ -114,7 +115,7 @@ const mainLoopForDebug = async () => {
       }
     } else {
       // No maxFPS limiter
-      renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
+      renderer?.renderAsync(getRootScene() as Scene, getCurrentCamera()).then(() => {
         runMainLateLoopers();
         getStats()?.update();
       });
@@ -130,7 +131,7 @@ const mainLoopForProduction = () => {
   requestAnimationFrame(mainLoop);
   delta = clock.getDelta() * loopState.playSpeedMultiplier;
   // @TODO: add app play loop here
-  getRenderer()?.renderAsync(getCurrentScene(), getCurrentCamera());
+  getRenderer()?.renderAsync(getRootScene() as Scene, getCurrentCamera());
 };
 
 const mainLoopForProductionWithFPSLimiter = () => {
@@ -139,7 +140,7 @@ const mainLoopForProductionWithFPSLimiter = () => {
   accDelta += delta;
   // @TODO: add app play loop here
   if (accDelta > loopState.maxFPSInterval) {
-    getRenderer()?.renderAsync(getCurrentScene(), getCurrentCamera());
+    getRenderer()?.renderAsync(getRootScene() as Scene, getCurrentCamera());
     getStats()?.update();
     accDelta = accDelta % loopState.maxFPSInterval;
   }
@@ -150,15 +151,11 @@ const mainLoopForProductionWithFPSLimiter = () => {
  */
 export const initMainLoop = () => {
   const renderer = getRenderer();
-  const currentScene = getCurrentScene();
+  createRootScene();
+  const rootScene = getRootScene() as Scene;
   const currentCamera = getCurrentCamera();
   if (!renderer) {
     const msg = 'Renderer has not been created or has been deleted (initMainLoop).';
-    lerror(msg);
-    throw new Error(msg);
-  }
-  if (!currentScene) {
-    const msg = 'Current scene has not been created or has been deleted (initMainLoop).';
     lerror(msg);
     throw new Error(msg);
   }
@@ -194,7 +191,7 @@ export const initMainLoop = () => {
     mainLoop = mainLoopForProduction;
   }
 
-  renderer.renderAsync(currentScene, currentCamera);
+  renderer.renderAsync(rootScene, currentCamera);
   if (loopState.masterPlay) requestAnimationFrame(mainLoop);
 };
 

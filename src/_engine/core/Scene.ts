@@ -17,9 +17,12 @@ import { getCurrentSceneLoader } from './SceneLoader';
 
 type Looper = (delta: number) => void;
 
-const scenes: { [id: string]: THREE.Scene } = {};
-let currentScene: THREE.Scene | null = null;
+const scenes: { [id: string]: THREE.Group } = {};
+const sceneOpts: { [id: string]: SceneOptions } = {};
+let rootScene: THREE.Scene | null = null;
+let currentScene: THREE.Group | null = null;
 let currentSceneId: string | null = null;
+let currentSceneOpts: SceneOptions | null = null;
 const sceneMainLoopers: { [sceneId: string]: Looper[] } = {};
 const sceneMainLateLoopers: { [sceneId: string]: Looper[] } = {};
 const sceneAppLoopers: { [sceneId: string]: Looper[] } = {};
@@ -39,7 +42,7 @@ export type SceneOptions = {
  * Creates a Three.js scene
  * @param id (string) scene id
  * @param opts ({@link SceneOptions})
- * @returns Three.Scene
+ * @returns THREE.Group
  */
 export const createScene = (id: string, opts?: SceneOptions) => {
   if (scenes[id]) {
@@ -48,11 +51,13 @@ export const createScene = (id: string, opts?: SceneOptions) => {
     );
   }
 
-  const scene = new THREE.Scene();
-  if (opts?.background) scene.background = opts.background;
-  if (opts?.backgroundColor) scene.background = opts.backgroundColor;
-  if (opts?.backgroundTexture) scene.background = opts.backgroundTexture;
+  const scene = new THREE.Group();
+  // @TODO: Remove these
+  // if (opts?.background) scene.background = opts.background;
+  // if (opts?.backgroundColor) scene.background = opts.backgroundColor;
+  // if (opts?.backgroundTexture) scene.background = opts.backgroundTexture;
 
+  if (opts) sceneOpts[id] = opts;
   scenes[id] = scene;
 
   if (opts?.isCurrentScene || !currentSceneId) setCurrentScene(id);
@@ -69,7 +74,7 @@ export const createScene = (id: string, opts?: SceneOptions) => {
 /**
  * Returns a created scene (if it exists) based on the scene id
  * @param id (string) scene id
- * @returns THREE.Scene | null
+ * @returns THREE.Group | null
  */
 export const getScene = (id: string, silent?: boolean) => {
   const scene = scenes[id];
@@ -185,9 +190,9 @@ export const deleteScene = (
         deleteAll: opts?.deleteAll,
       });
     }
-
-    if (isDebugEnvironment()) removeScenesFromSceneListing(id);
   });
+
+  if (isDebugEnvironment()) removeScenesFromSceneListing(id);
 
   // Delete loopers
   deleteSceneMainLoopers(id);
@@ -210,7 +215,7 @@ export const deleteScene = (
 /**
  * Sets the current scene to be rendered
  * @param id (string) scene id
- * @returns THREE.Scene | null
+ * @returns THREE.Group | null
  */
 export const setCurrentScene = (id: string | null) => {
   if (currentSceneId === id) return currentScene;
@@ -221,6 +226,13 @@ export const setCurrentScene = (id: string | null) => {
   }
   currentSceneId = id;
   currentScene = nextScene;
+  currentSceneOpts = id && sceneOpts[id] ? sceneOpts[id] : null;
+
+  if (nextScene) {
+    createRootScene();
+    const rootScene = getRootScene() as THREE.Scene;
+    rootScene.add(nextScene);
+  }
 
   // Check scene loader status, if loading, add loaderGroup to current scene
   const sceneLoader = getCurrentSceneLoader();
@@ -234,8 +246,8 @@ export const setCurrentScene = (id: string | null) => {
 };
 
 /**
- * Returns the current scene
- * @returns THREE.Scene
+ * Returns the current scene or creates one if not found
+ * @returns THREE.Group
  */
 export const getCurrentScene = () =>
   currentScene || createScene('__place_holder_scene', { isCurrentScene: true });
@@ -247,6 +259,34 @@ export const getCurrentScene = () =>
 export const getCurrentSceneId = () => currentSceneId;
 
 /**
+ * Return the current scene's scene options if found
+ * @returns SceneOptions ({@link SceneOptions}) or undefined
+ */
+export const getCurrentSceneOpts = () => currentSceneOpts;
+
+/**
+ * Return the current scene's scene options if found
+ * @param id (string) scene id
+ * @returns SceneOptions ({@link SceneOptions}) or undefined
+ */
+export const getSceneOpts = (id: string) => sceneOpts[id];
+
+/**
+ * Sets the scene options for a specific scene
+ * @param id (string) scene id
+ * @param opts (partial {@link SceneOptions}) scene options
+ */
+export const setSceneOpts = (id: string, opts: Partial<SceneOptions>) => {
+  const sOpts = sceneOpts[id];
+  if (!sOpts) {
+    const msg = `Could not find scene opts with id '${id}'. No scene opts were set.`;
+    lwarn(msg);
+    return;
+  }
+  sceneOpts[id] = { ...sOpts, ...opts };
+};
+
+/**
  * Checks if the scene id provided is the current scene id
  * @param id (string) scene id
  * @returns boolean
@@ -255,7 +295,7 @@ export const isCurrentScene = (id: string) => id === currentSceneId;
 
 /**
  * Return all existing scenes as an object
- * @returns (object) { [sceneId: string]: THREE.Scene }
+ * @returns (object) { [sceneId: string]: THREE.Group }
  */
 export const getAllScenes = () => scenes;
 
@@ -491,3 +531,17 @@ export const deleteSceneResizer = (sceneId: string) => delete sceneResizers[scen
  * @returns boolean
  */
 export const doesSceneExist = (id: string) => Boolean(scenes[id]);
+
+/**
+ * Creates a root scene of the app. If it already exists, this does nothing.
+ */
+export const createRootScene = () => {
+  if (rootScene) return;
+  rootScene = new THREE.Scene();
+};
+
+/**
+ * Returns the root scene of the app.
+ * @returns THREE.Scene (rootScene)
+ */
+export const getRootScene = () => rootScene;
