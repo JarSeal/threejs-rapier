@@ -1,8 +1,16 @@
 import * as THREE from 'three/webgpu';
 import { lerror, lwarn } from '../utils/Logger';
-import { deleteScene, getCurrentScene, getRootScene } from './Scene';
-import { getCmpById, TCMP } from '../utils/CMP';
+import {
+  deleteAllSceneLoopers,
+  deleteScene,
+  getCurrentScene,
+  getRootScene,
+  getScene,
+  setCurrentScene,
+} from './Scene';
+import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
+import { deleteCurrentScenePhysicsObjects, deletePhysicsWorld } from './PhysicsRapier';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -21,7 +29,7 @@ export type SceneLoader = {
    * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
    * @returns Promise<boolean>
    */
-  loadFn?: (loader: SceneLoader, nextSceneFn: () => Promise<unknown>) => Promise<unknown>;
+  loadFn?: (loader: SceneLoader, nextSceneFn: () => Promise<string>) => Promise<string>;
 
   /**
    * Load start function, returns true when done
@@ -50,6 +58,12 @@ export type SceneLoader = {
   loaderGroup?: THREE.Group;
 
   /**
+   * The optional function to create a loader container
+   * @returns function (() => TCMP)
+   */
+  loaderContainerFn?: () => TCMP;
+
+  /**
    * The optional HTML overlay component of the loader view that is attached to the
    */
   loaderContainer?: TCMP;
@@ -61,7 +75,7 @@ export type SceneLoader = {
 };
 
 type LoadSceneProps = {
-  nextSceneFn: () => Promise<unknown>;
+  nextSceneFn: () => Promise<string>;
   updateLoaderStatusFn?: UpdateLoaderStatusFn;
   loaderId?: string; // loaderId to use, if not provided then the currentSceneLoader will be used
   deletePrevScene?: boolean;
@@ -72,9 +86,10 @@ type LoadSceneProps = {
 const sceneLoaders: SceneLoader[] = [];
 let currentSceneLoader: SceneLoader | null = null;
 let currentSceneLoaderId: string | null = null;
+let currentlyLoading = false;
 
 export const createSceneLoader = async (
-  sceneLoader: Omit<SceneLoader, 'phase'>,
+  sceneLoader: Omit<SceneLoader, 'phase' | 'loaderContainer'>,
   isCurrent?: boolean // default is true
   // createLoaderFn?: (sceneLoader: SceneLoader) => Promise<void>
 ) => {
@@ -129,6 +144,7 @@ export const getCurrentSceneLoaderId = () => {
 };
 
 export const loadScene = async (loadSceneProps: LoadSceneProps) => {
+  currentlyLoading = true;
   let loader: SceneLoader | undefined = getCurrentSceneLoader();
   if (loadSceneProps.loaderId) {
     loader = sceneLoaders.find((sl) => sl.id === loadSceneProps.loaderId);
@@ -153,13 +169,15 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   }
 
   // Add possible CMP container to HUD
-  let loaderContainerId: string | null = null;
-  if (loader.loaderContainer) {
-    loaderContainerId = loader.loaderContainer.id;
-    getHUDRootCMP().add(loader.loaderContainer);
+  let loaderContainer: TCMP | null = null;
+  if (loader.loaderContainerFn) {
+    loaderContainer = loader.loaderContainerFn();
+    loader.loaderContainer = loaderContainer;
+    getHUDRootCMP().add(loaderContainer);
   }
 
   const prevScene = getCurrentScene();
+  const prevSceneId = prevScene?.userData.id;
   const rootScene = getRootScene() as THREE.Scene;
   // Add possible loader group to current scene
   if (loader.loaderGroup) rootScene.add(loader.loaderGroup);
@@ -169,23 +187,30 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
     if (loadSceneProps.deletePrevScene && prevScene) {
       // Delete the whole previous scene and assets
       // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps (like deleteMeshes, deleteTextures, etc.)
-      deleteScene(prevScene?.userData.id, { deleteAll: true });
+      deleteScene(prevSceneId, { deleteAll: true });
+    } else if (prevScene) {
+      deleteAllSceneLoopers(prevSceneId);
+      deleteCurrentScenePhysicsObjects();
+      deletePhysicsWorld();
     }
 
     loader.phase = 'LOAD';
-    await loadFn(loader, loadSceneProps.nextSceneFn).then(async () => {
+    await loadFn(loader, loadSceneProps.nextSceneFn).then(async (newSceneId) => {
+      const nextScene = getScene(newSceneId);
+      if (!nextScene) {
+        const msg = `Scene loader could not find scene with scene id '${newSceneId}'.`;
+        lerror(msg);
+        throw new Error(msg);
+      }
+      setCurrentScene(newSceneId);
+
       loader.phase = 'END';
       await loadEndFn(loader).then(() => {
-        if (loaderContainerId) {
-          const loaderContainer = getCmpById(loaderContainerId);
-          if (loaderContainer) loaderContainer.remove();
-        }
-
+        if (loaderContainer) loaderContainer.remove();
         if (loader.loaderGroup) rootScene.remove(loader.loaderGroup);
 
         loader.phase = undefined;
-
-        console.log('ROOT_SCENE', rootScene);
+        currentlyLoading = false;
       });
     });
   });
@@ -231,3 +256,5 @@ export const getLoaderStatusUpdater = (loaderId?: string) => {
 
   return (params?: { [key: string]: unknown }) => updateLoaderStatusFn(loader, params);
 };
+
+export const isCurrentlyLoading = () => currentlyLoading;

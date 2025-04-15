@@ -38,6 +38,8 @@ type RendererOptions = {
  * @returns THREE.WebGPURenderer
  */
 export const createRenderer = (opts?: Partial<RendererOptions>) => {
+  if (r) return r;
+
   const windowSize = getWindowSize();
 
   setRendererOptions(opts);

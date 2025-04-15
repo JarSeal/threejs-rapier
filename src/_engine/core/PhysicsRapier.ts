@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 import Rapier from '@dimforge/rapier3d';
 import { lerror, lwarn } from '../utils/Logger';
-import { getCurrentScene, getCurrentSceneId, getScene, isCurrentScene } from './Scene';
+import { getCurrentSceneId, getRootScene, getScene, isCurrentScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
-import { getEnv, isDebugEnvironment } from './Config';
+import { getConfig, isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
 import { getMesh } from './Mesh';
 
@@ -141,6 +141,7 @@ export type PhysicsParams = {
 
 type PhysicsState = {
   enabled: boolean;
+  worldStepEnabled: boolean;
   timestep: number;
   timestepRatio: number;
   gravity: { x: number; y: number; z: number };
@@ -149,6 +150,7 @@ type PhysicsState = {
 
 let physicsState: PhysicsState = {
   enabled: true,
+  worldStepEnabled: true,
   timestep: 60,
   timestepRatio: 1 / 60,
   gravity: { x: 0, y: -9.81, z: 0 },
@@ -160,11 +162,13 @@ let stepperFn: (delta: number) => void = () => {};
 let accDelta = 0;
 let RAPIER: typeof Rapier;
 let physicsWorld: Rapier.World = { step: () => {} } as Rapier.World;
+let physicsWorldEnabled = false;
 const physicsObjects: { [sceneId: string]: { [id: string]: PhysicsObject } } = {};
 let currentScenePhysicsObjects: PhysicsObject[] = [];
 let debugMesh: THREE.LineSegments;
 let debugMeshGeo: THREE.BufferGeometry;
 let debugMeshMat: THREE.LineBasicMaterial;
+let debugMeshAdded = false;
 
 const getSceneIdForPhysics = (
   sceneId?: string,
@@ -196,25 +200,27 @@ const createRigidBody = (physicsParams: PhysicsParams) => {
   let rigidBody: Rapier.RigidBody | undefined = undefined;
   let rigidBodyDesc: Rapier.RigidBodyDesc;
 
+  if (!physicsWorldEnabled) createPhysicsWorld();
+
   if (!rigidBodyParams) return undefined;
 
   switch (rigidBodyParams.rigidType) {
     case 'DYNAMIC':
       rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic();
-      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      rigidBody = physicsWorld.createRigidBody(rigidBodyDesc);
       break;
     case 'POS_BASED':
       rigidBodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased();
-      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      rigidBody = physicsWorld.createRigidBody(rigidBodyDesc);
       break;
     case 'VELO_BASED':
       rigidBodyDesc = RAPIER.RigidBodyDesc.kinematicVelocityBased();
-      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      rigidBody = physicsWorld.createRigidBody(rigidBodyDesc);
       break;
     case 'FIXED':
     default:
       rigidBodyDesc = RAPIER.RigidBodyDesc.fixed();
-      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      rigidBody = physicsWorld.createRigidBody(rigidBodyDesc);
       break;
   }
 
@@ -450,11 +456,12 @@ export const createPhysicsObjectWithMesh = (
     id = meshOrMeshId.userData.id;
     mesh = meshOrMeshId;
   }
+
   mesh.userData.isPhysicsObject = true;
 
   const rigidBody = createRigidBody(physicsParams);
   const colliderDesc = createCollider(physicsParams, mesh);
-  const collider = getPhysicsWorld().createCollider(colliderDesc, rigidBody);
+  const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
 
   const physObj: PhysicsObject = {
     id,
@@ -467,6 +474,11 @@ export const createPhysicsObjectWithMesh = (
 
   if (sId === getCurrentSceneId()) {
     currentScenePhysicsObjects.push(physObj);
+    if (physObj.rigidBody) {
+      physObj.rigidBody.setEnabled(true);
+    } else {
+      physObj.collider.setEnabled(true);
+    }
   }
 
   return physObj;
@@ -511,6 +523,21 @@ export const deletePhysicsObjectsBySceneId = (sceneId: string) => {
     deletePhysicsObject(keys[i], sceneId);
   }
   delete physicsObjects[sceneId];
+  if (isCurrentScene(sceneId)) deleteCurrentScenePhysicsObjects();
+};
+
+export const deleteCurrentScenePhysicsObjects = () => {
+  for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+    const obj = currentScenePhysicsObjects[i];
+    if (obj.rigidBody) {
+      obj.rigidBody.setEnabled(false);
+    } else {
+      obj.collider.setEnabled(false);
+    }
+    // if (obj.collider) physicsWorld.removeCollider(obj.collider, false);
+    // if (obj.rigidBody) physicsWorld.removeRigidBody(obj.rigidBody);
+  }
+  currentScenePhysicsObjects = [];
 };
 
 /**
@@ -520,13 +547,17 @@ export const createPhysicsWorld = () => {
   physicsWorld = new RAPIER.World(
     new THREE.Vector3(physicsState.gravity.x, physicsState.gravity.y, physicsState.gravity.z)
   );
+  physicsWorld.timestep = physicsState.timestepRatio;
+  physicsWorldEnabled = true;
 };
 
 /**
  * Deletes the physics world and all its children
  */
 export const deletePhysicsWorld = () => {
+  if (!physicsWorldEnabled) return;
   physicsWorld.free();
+  physicsWorldEnabled = false;
   physicsWorld = { step: () => {} } as Rapier.World;
   const sceneIds = Object.keys(physicsObjects);
   for (let i = 0; i < sceneIds.length; i++) {
@@ -596,22 +627,23 @@ export const getPhysicsWorld = () => {
 /**
  * Creates physics debug mesh (only in debug mode)
  */
-export const createPhysicsDebugMesh = (onUpdate?: boolean) => {
-  if (!onUpdate && debugMesh) debugMesh.removeFromParent();
-  if (!onUpdate && debugMeshGeo) debugMeshGeo.dispose();
-  debugMeshGeo = new THREE.BufferGeometry();
-  if (onUpdate) {
-    debugMesh.geometry = debugMeshGeo;
-  } else {
-    if (!debugMeshMat)
-      debugMeshMat = new THREE.LineBasicMaterial({
-        color: 0xffffff,
-        vertexColors: true,
-      });
-    debugMesh = new THREE.LineSegments(debugMeshGeo, debugMeshMat);
-    debugMesh.frustumCulled = false;
-    getCurrentScene()?.add(debugMesh);
+export const createPhysicsDebugMesh = () => {
+  if (debugMesh) {
+    debugMesh.removeFromParent();
+    debugMeshAdded = false;
   }
+  if (debugMeshGeo) {
+    debugMeshGeo.dispose();
+    debugMeshGeo = new THREE.BufferGeometry();
+  }
+  if (!debugMeshMat) {
+    debugMeshMat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+    });
+  }
+  debugMesh = new THREE.LineSegments(debugMeshGeo, debugMeshMat);
+  debugMesh.frustumCulled = false;
 };
 
 // Different stepper functions to use for debug and production
@@ -626,7 +658,6 @@ const baseStepper = (delta: number) => {
   // Set physics objects mesh positions and rotations
   for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
     const po = currentScenePhysicsObjects[i];
-    if (po.id === 'importedMesh01') continue;
     po.mesh.position.copy(po.collider.translation());
     po.mesh.quaternion.copy(po.collider.rotation());
     // Uncomment for debug of dynamic bodies
@@ -639,17 +670,24 @@ const stepperFnProduction = (delta: number) => {
   baseStepper(delta);
 };
 const stepperFnDebug = (delta: number) => {
-  if (!physicsState.enabled) return;
+  if (!physicsState.worldStepEnabled) return;
 
   baseStepper(delta);
 
-  if (physicsState.visualizerEnabled) {
+  if (physicsWorldEnabled && physicsState.visualizerEnabled) {
     const { vertices, colors } = physicsWorld.debugRender();
-    createPhysicsDebugMesh(true);
+    if (!vertices.length) return;
+    if (!debugMeshAdded) {
+      getRootScene()?.add(debugMesh);
+      debugMeshAdded = true;
+    }
+    debugMeshGeo = new THREE.BufferGeometry();
+    debugMesh.geometry = debugMeshGeo;
     debugMesh.geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
     debugMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4));
     debugMesh.visible = true;
     debugMesh.geometry.getAttribute('position').needsUpdate = true;
+    debugMesh.geometry.getAttribute('color').needsUpdate = true;
   } else {
     debugMesh.visible = false;
   }
@@ -672,12 +710,21 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
   if (!sceneId) return;
 
   const allNewPhysicsObjects = physicsObjects[sceneId];
-  if (!allNewPhysicsObjects) return;
+  if (!allNewPhysicsObjects) {
+    createPhysicsDebugMesh();
+    return;
+  }
 
   const keys = Object.keys(allNewPhysicsObjects);
   for (let i = 0; i < keys.length; i++) {
-    if (!allNewPhysicsObjects[keys[i]]) continue;
-    currentScenePhysicsObjects.push(allNewPhysicsObjects[keys[i]]);
+    const obj = allNewPhysicsObjects[keys[i]];
+    if (!obj) continue;
+    currentScenePhysicsObjects.push(obj);
+    if (obj.rigidBody) {
+      obj.rigidBody.setEnabled(true);
+    } else {
+      obj.collider.setEnabled(true);
+    }
   }
 
   createPhysicsDebugMesh();
@@ -700,7 +747,7 @@ const createDebugControls = () => {
     container: () => {
       const { container, debugGUI } = createNewDebuggerPane('physics', 'Physics Controls');
       debugGUI
-        .addBinding(physicsState, 'enabled', { label: 'Enable world step' })
+        .addBinding(physicsState, 'worldStepEnabled', { label: 'Enable world step' })
         .on('change', () => {
           lsSetItem(LS_KEY, physicsState);
         });
@@ -754,25 +801,27 @@ const initRapier = async () => {
  */
 export const InitRapierPhysics = async (
   initPhysicsCallback?: (physicsWorld: Rapier.World, RAPIER: typeof Rapier) => void
-) =>
-  initRapier().then((rapier) => {
-    const gravity = getEnv<{ x: number; y: number; z: number }>('VITE_PHYS_GRAVITY');
-    const timestep = getEnv<number>('VITE_PHYS_TIMESTEP');
-    physicsState = {
-      ...physicsState,
-      ...(gravity ? { gravity } : {}),
-      ...(timestep ? { timestep } : {}),
-    };
-    physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
+) => {
+  const physicsConfig = getConfig().physics;
+  const enabled = physicsConfig?.enabled || false;
+  return enabled
+    ? initRapier().then((rapier) => {
+        physicsState = {
+          ...physicsState,
+          ...(physicsConfig || {}),
+        };
+        physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
 
-    RAPIER = rapier;
-    createPhysicsWorld();
-    physicsWorld.timestep = physicsState.timestepRatio;
-    if (isDebugEnvironment()) {
-      createDebugControls();
-      stepperFn = stepperFnDebug;
-    } else {
-      stepperFn = stepperFnProduction;
-    }
-    if (initPhysicsCallback) initPhysicsCallback(physicsWorld as Rapier.World, RAPIER);
-  });
+        RAPIER = rapier;
+        if (isDebugEnvironment()) {
+          createDebugControls();
+          stepperFn = stepperFnDebug;
+        } else {
+          stepperFn = stepperFnProduction;
+        }
+        if (initPhysicsCallback) initPhysicsCallback(physicsWorld as Rapier.World, RAPIER);
+
+        return rapier;
+      })
+    : null;
+};

@@ -1,6 +1,6 @@
 import { AppConfig } from './_engine/core/Config';
 import { toggleDrawer } from './_engine/debug/DebuggerGUI';
-import { DEBUG_SCENE_LISTING } from './_engine/debug/DebugSceneListing';
+import { debugSceneListing } from './_engine/debug/DebugSceneListing';
 
 const config: AppConfig = {
   debugKeys: [
@@ -12,9 +12,10 @@ const config: AppConfig = {
       fn: () => toggleDrawer(),
     },
   ],
-  debugScenes: [DEBUG_SCENE_LISTING.materialEditor],
+  debugScenes: debugSceneListing,
   physics: {
     enabled: true,
+    worldStepEnabled: true,
     gravity: { x: 0, y: -9.81, z: 0 },
     timestep: 60,
   },

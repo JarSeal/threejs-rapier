@@ -50,11 +50,7 @@ export type GeoTypes = THREE.BoxGeometry | THREE.SphereGeometry;
  */
 export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
   let geo;
-  if (props?.id && geometries[props?.id]) {
-    throw new Error(
-      `Geometry with id "${props.id}" already exists. Pick another id or delete the geometry first before recreating it.`
-    );
-  }
+  if (props?.id && geometries[props.id]) return geometries[props.id] as T;
 
   switch (props.type) {
     case 'BOX':

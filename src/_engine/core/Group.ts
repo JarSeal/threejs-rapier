@@ -136,13 +136,9 @@ export const createGroup = ({
   id?: string;
   obj?: THREE.Object3D | THREE.Object3D[];
 }) => {
-  const group: THREE.Group | null = new THREE.Group();
+  if (id && groups[id]) return groups[id];
 
-  if (id && groups[id]) {
-    throw new Error(
-      `Group with id "${id}" already exists. Pick another id or delete the group first before recreating it.`
-    );
-  }
+  const group: THREE.Group | null = new THREE.Group();
 
   group.userData.id = id || group.uuid;
   groups[id || group.uuid] = group;

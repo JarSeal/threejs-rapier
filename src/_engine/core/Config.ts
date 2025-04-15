@@ -1,6 +1,6 @@
 import { llog } from '../utils/Logger';
 import configFile from '../../CONFIG';
-import { SceneListing } from '../debug/DebugTools';
+import { type DebugScene } from '../debug/DebugSceneListing';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 
@@ -13,9 +13,10 @@ export type AppConfig = {
     sceneId?: string;
     fn: (e: KeyboardEvent, pressedTime: number) => void;
   }[];
-  debugScenes?: SceneListing[];
+  debugScenes?: DebugScene[];
   physics?: {
     enabled?: boolean;
+    worldStepEnabled?: boolean;
     gravity?: { x: number; y: number; z: number };
     timestep?: number;
   };
@@ -28,6 +29,7 @@ let config: AppConfig = {
   debugKeys: [],
   physics: {
     enabled: false,
+    worldStepEnabled: true,
     gravity: { x: 0, y: 0, z: 0 },
     timestep: 60,
   },
@@ -91,7 +93,7 @@ export const loadConfig = () => {
   }
 
   llog(`Current environment: ${getCurrentEnvironment()}`);
-  console.log('envVars', envVars); // @TODO: remove
+  llog('envVars', envVars); // @TODO: remove
 };
 
 /**

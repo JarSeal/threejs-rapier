@@ -51,11 +51,7 @@ const createTexture = (
   texOpts?: TexOpts,
   throwOnError?: boolean
 ) => {
-  if (id && textures[id]) {
-    throw new Error(
-      `Texture with id "${id}" already exists. Pick another id or delete the texture first before recreating it (in loadTexture).`
-    );
-  }
+  if (id && textures[id]) return textures[id];
 
   if (!fileName) return getNoFileTexture(texOpts);
 
@@ -123,11 +119,7 @@ export const loadTextures = (
     const { id, fileName, texOpts } = texData[index];
     const loader = new THREE.TextureLoader();
 
-    if (id && textures[id]) {
-      throw new Error(
-        `Texture with id "${id}" already exists. Pick another id or delete the texture first before recreating it (in loadTextures).`
-      );
-    }
+    if (id && textures[id]) return;
 
     if (fileName) {
       loader.load(
@@ -229,11 +221,7 @@ export const loadTextureAsync = async ({
   texOpts?: TexOpts;
   throwOnError?: boolean;
 }) => {
-  if (id && textures[id]) {
-    throw new Error(
-      `Texture with id "${id}" already exists. Pick another id or delete the texture first before recreating it (in loadTextureAsync).`
-    );
-  }
+  if (id && textures[id]) return textures[id];
 
   if (!fileName) return getNoFileTexture(texOpts);
 

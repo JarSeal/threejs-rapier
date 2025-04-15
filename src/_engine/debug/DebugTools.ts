@@ -2,26 +2,28 @@ import * as THREE from 'three/webgpu';
 import { ShaderNodeObject, uniform } from 'three/tsl';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { ListBladeApi } from 'tweakpane';
-import { BladeController, View } from '@tweakpane/core';
+import { BladeController, FolderApi, View } from '@tweakpane/core';
 import { createCamera, getAllCameras, getCurrentCameraId, setCurrentCamera } from '../core/Camera';
 import { getRenderer } from '../core/Renderer';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
-import { createMesh, getMesh } from '../core/Mesh';
+import { createMesh } from '../core/Mesh';
 import { createGeometry } from '../core/Geometry';
-import { createMaterial } from '../core/Material';
-import { getCurrentScene, getCurrentSceneId, setCurrentScene } from '../core/Scene';
+import { createMaterial, deleteMaterial } from '../core/Material';
+import { getCurrentSceneId, getRootScene } from '../core/Scene';
 import { getEnvMapRoughnessBg } from '../core/SkyBox';
 import { getConfig, isDebugEnvironment } from '../core/Config';
-import { debugSceneListingInits } from './DebugSceneListing';
-
-export type SceneListing = { value: string; text?: string };
+import { debugSceneListing, type DebugScene } from './DebugSceneListing';
+import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
+import { lerror } from '../utils/Logger';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
 export const DEBUG_CAMERA_ID = '_debugCamera';
+let envBallMesh: THREE.Mesh | null = null;
 let envBallColorNode: ShaderNodeObject<THREE.PMREMNode> | null = null;
 let envBallRoughnessNode: ShaderNodeObject<THREE.UniformNode<number>> = uniform(0);
+let envBallFolder: FolderApi | null = null;
 let debugCamera: THREE.PerspectiveCamera | null = null;
 let orbitControls: OrbitControls | null = null;
 let scenesDropDown: ListBladeApi<BladeController<View>>;
@@ -44,7 +46,6 @@ let debugToolsState: {
   };
   scenesListing: {
     scenesFolderExpanded: boolean;
-    scenes: SceneListing[];
   };
 } = {
   useDebugCamera: false,
@@ -65,7 +66,6 @@ let debugToolsState: {
   },
   scenesListing: {
     scenesFolderExpanded: false,
-    scenes: [],
   },
 };
 
@@ -79,9 +79,6 @@ export const initDebugTools = () => {
   if (debugSceneListingConfig?.length) {
     addScenesToSceneListing(debugSceneListingConfig);
   }
-  // for (let i = 0; i < debugSceneListingConfig.length; i++) {
-  //   debugSceneListingInits[debugSceneListingConfig[i].value]();
-  // }
 };
 
 // Debug GUI for sky box
@@ -190,8 +187,7 @@ const createDebugToolsDebugGUI = () => {
         });
 
       // Env ball
-      debugGUI.addBlade({ view: 'separator' });
-      const envBallFolder = debugGUI
+      envBallFolder = debugGUI
         .addFolder({
           title: 'Environment ball',
           expanded: debugToolsState.env.envBallFolderExpanded,
@@ -208,10 +204,7 @@ const createDebugToolsDebugGUI = () => {
         .on('change', (e) => {
           lsSetItem(LS_KEY, debugToolsState);
           if (!Boolean(envBallColorNode)) return;
-          const mesh = getMesh(ENV_MIRROR_BALL_MESH_ID);
-          if (mesh) {
-            mesh.visible = e.value;
-          }
+          if (envBallMesh) envBallMesh.visible = e.value;
         });
       envBallFolder
         .addBinding(debugToolsState.env, 'separateBallValues', {
@@ -240,7 +233,6 @@ const createDebugToolsDebugGUI = () => {
         });
 
       // Scene listing
-      debugGUI.addBlade({ view: 'separator' });
       const scenesFolder = debugGUI
         .addFolder({
           title: 'Scenes and debug scenes',
@@ -253,13 +245,21 @@ const createDebugToolsDebugGUI = () => {
       scenesDropDown = scenesFolder.addBlade({
         view: 'list',
         label: 'Scenes',
-        options: debugToolsState.scenesListing.scenes,
+        options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })), // @TODO: add app scene name here
         value: getCurrentSceneId(),
       }) as ListBladeApi<BladeController<View>>;
       scenesDropDown.on('change', (e) => {
         const value = String(e.value);
         if (value === getCurrentSceneId()) return;
-        setCurrentScene(value);
+        const nextScene = debugSceneListing.find((s) => s.id === value);
+        if (!isCurrentlyLoading() && nextScene) {
+          loadScene({ nextSceneFn: nextScene.fn });
+          // @TODO: save current scene id to debugToolsState and to localStorage
+          return;
+        }
+        if (!isCurrentlyLoading) {
+          lerror(`Could not find scene with id '${value}' in scenes dropdown debugger.`);
+        }
       });
 
       return container;
@@ -297,7 +297,10 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
   });
 
   // Environment mirror ball
-  const mesh = createMesh({
+  envBallRoughnessNode.value = debugToolsState.env.separateBallValues
+    ? debugToolsState.env.ballRoughness
+    : getEnvMapRoughnessBg()?.value || debugToolsState.env.ballDefaultRoughness;
+  envBallMesh = createMesh({
     id: ENV_MIRROR_BALL_MESH_ID,
     geo: createGeometry({
       id: 'envMirrorBallGeo',
@@ -313,79 +316,21 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
       },
     }),
   });
-  envBallRoughnessNode.value = debugToolsState.env.separateBallValues
-    ? debugToolsState.env.ballRoughness
-    : getEnvMapRoughnessBg()?.value || debugToolsState.env.ballDefaultRoughness;
-  toolGroup.add(mesh);
-  mesh.visible = Boolean(envBallColorNode && debugToolsState.env.envBallVisible);
+  toolGroup.add(envBallMesh);
+  envBallMesh.visible = Boolean(envBallColorNode && debugToolsState.env.envBallVisible);
 
-  mesh.position.x = 0;
-  mesh.position.y = 0;
-  mesh.position.z = 1;
-  mesh.renderOrder = 999999;
+  envBallMesh.position.x = 0;
+  envBallMesh.position.y = 0;
+  envBallMesh.position.z = 1;
+  envBallMesh.renderOrder = 999999;
 
   // Add toolgroup to mesh and debugCamera to scene
   debugCamera.add(toolGroup);
   toolGroup.position.set(0, 0, -2.5);
   toolGroup.lookAt(debugCamera.position);
 
-  getCurrentScene()?.add(debugCamera);
+  getRootScene()?.add(debugCamera);
 };
-
-// const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
-//   // This (renderer.setScissorTest) currently only works with WebGL renderer
-//   // @TODO: check if fixes have been made in newer versions
-//   if (getRendererOptions().currentApiIsWebGPU) return;
-
-//   const renderer = getRenderer();
-//   if (!renderer) return;
-//   const scene = getCurrentScene();
-//   if (!scene) return;
-//   const windowSize = getWindowSize();
-
-//   const view = {
-//     left: 0,
-//     bottom: windowSize.height - 300,
-//     width: 300,
-//     height: 300,
-//     fov: 30,
-//   };
-
-//   const envBallCamera = new THREE.PerspectiveCamera(view.fov, windowSize.aspect, 0.1, 10);
-//   debugCamera.add(envBallCamera);
-
-//   addSceneMainLooper(
-//     async () => {
-//       const oldColor = new Color4();
-//       renderer.getClearColor(oldColor);
-//       const backgroundNode = scene.backgroundNode;
-//       const background = scene.background;
-
-//       renderer.setViewport(view.left, view.bottom, view.width, view.height);
-//       renderer.setScissor(view.left, view.bottom, view.width, view.height);
-//       renderer.setScissorTest(true);
-
-//       // renderer.alpha = true;
-//       // renderer.setClearColor(0xffffff, 0.5);
-
-//       scene.backgroundNode = null;
-//       scene.background = null;
-
-//       envBallCamera.aspect = view.width / view.height;
-//       envBallCamera.updateProjectionMatrix();
-
-//       renderer.renderAsync(scene, envBallCamera).then(() => {
-//         renderer.setScissorTest(false);
-//         scene.backgroundNode = backgroundNode;
-//         scene.background = background;
-//         // renderer.alpha = false;
-//         // renderer.setClearColor(oldColor, 1);
-//       });
-//     },
-//     undefined,
-//     true
-//   );
-// };
 
 const setDebugToolsVisibility = (show: boolean) => {
   if (show) {
@@ -426,16 +371,31 @@ export const setDebugEnvBallMaterial = (
 ) => {
   envBallColorNode = colorNode || null;
   envBallRoughnessNode = ballRoughness !== undefined ? ballRoughness : uniform(0);
-  debugToolsState.env.ballRoughness = envBallRoughnessNode.value;
-  debugToolsState.env.ballDefaultRoughness = envBallRoughnessNode.value;
-  if (!debugCamera) return;
-  const children = debugCamera.children[0].children;
-  const envBallMesh = children.find(
-    (child) => child.userData.id === ENV_MIRROR_BALL_MESH_ID
-  ) as THREE.Mesh;
-  if (!envBallMesh) return;
+  if (debugToolsState.env.separateBallValues) {
+    envBallRoughnessNode.value = debugToolsState.env.ballRoughness;
+  }
+
+  if (debugToolsState.env.envBallVisible) {
+    if (envBallMesh) envBallMesh.visible = true;
+  } else {
+    if (envBallMesh) envBallMesh.visible = false;
+  }
+
+  if (colorNode && envBallFolder) envBallFolder.hidden = false;
+  if (!colorNode && envBallFolder) envBallFolder.hidden = true;
+
+  if (!colorNode && !ballRoughness) {
+    // Disable the env ball and env ball tools
+    if (envBallMesh) envBallMesh.visible = false;
+    debugToolsState.env.envBallVisible = false;
+    return;
+  }
+
+  if (!envBallMesh || !debugCamera) return;
+  const matId = `${ENV_MIRROR_BALL_MESH_ID}-material`;
+  deleteMaterial(matId);
   envBallMesh.material = createMaterial({
-    id: `${ENV_MIRROR_BALL_MESH_ID}-material`,
+    id: matId,
     type: 'BASICNODEMATERIAL',
     params: { colorNode },
   });
@@ -457,31 +417,17 @@ export const getDebugToolsState = () => debugToolsState;
  * Adds a scene or scenes to the debugToolsState scenes listing
  * @param scenes (SceneListing | SceneListing[]) either an object or an array of objects ({@link SceneListing})
  */
-export const addScenesToSceneListing = (scenes: SceneListing | SceneListing[]) => {
+export const addScenesToSceneListing = (scenes: DebugScene | DebugScene[]) => {
   if (Array.isArray(scenes)) {
     for (let i = 0; i < scenes.length; i++) {
-      const foundScene = debugToolsState.scenesListing.scenes.find(
-        (scene) => scene.value === scenes[i].value
-      );
-      if (!foundScene) debugToolsState.scenesListing.scenes.push(scenes[i]);
-      const init = debugSceneListingInits[scenes[i].value];
-      if (init && !init.initiated) {
-        init.initiated = true;
-        init.fn();
-      }
+      const foundScene = debugSceneListing.find((scene) => scene.id === scenes[i].id);
+      if (!foundScene) debugSceneListing.push(scenes[i]);
     }
     reloadSceneListingBlade();
     return;
   }
-  const foundScene = debugToolsState.scenesListing.scenes.find(
-    (scene) => scene.value === scenes.value
-  );
-  if (!foundScene) debugToolsState.scenesListing.scenes.push(scenes);
-  const init = debugSceneListingInits[scenes.value];
-  if (init && !init.initiated) {
-    init.initiated = true;
-    init.fn();
-  }
+  const foundScene = debugSceneListing.find((scene) => scene.id === scenes.id);
+  if (!foundScene) debugSceneListing.push(scenes);
   reloadSceneListingBlade();
 };
 
@@ -491,23 +437,34 @@ export const addScenesToSceneListing = (scenes: SceneListing | SceneListing[]) =
  */
 export const removeScenesFromSceneListing = (sceneIds: string | string[]) => {
   if (Array.isArray(sceneIds)) {
-    debugToolsState.scenesListing.scenes = debugToolsState.scenesListing.scenes.filter(
-      (scene) => !sceneIds.includes(scene.value)
-    );
+    const indexes: number[] = [];
+    for (let i = 0; i < debugSceneListing.length; i++) {
+      if (sceneIds.includes(debugSceneListing[i].id)) {
+        indexes.push(i);
+      }
+    }
+    for (let i = 0; i < indexes.length; i++) {
+      debugSceneListing.splice(indexes[i], 1);
+    }
     reloadSceneListingBlade();
     return;
   }
-  debugToolsState.scenesListing.scenes = debugToolsState.scenesListing.scenes.filter(
-    (scene) => sceneIds !== scene.value
-  );
+  let index: number | null = null;
+  for (let i = 0; i < debugSceneListing.length; i++) {
+    if (sceneIds.includes(debugSceneListing[i].id)) {
+      index = i;
+    }
+  }
+  if (index !== null) debugSceneListing.splice(index, 1);
   reloadSceneListingBlade();
 };
 
+// For reloading the scenes listing in debugging
 const reloadSceneListingBlade = () => {
   if (scenesDropDown) {
     scenesDropDown.importState({
       ...scenesDropDown.exportState(),
-      options: debugToolsState.scenesListing.scenes,
+      options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
     });
   }
 };

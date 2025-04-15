@@ -1,7 +1,9 @@
+import { type Scene } from 'three/webgpu';
 import { isDebugEnvironment, loadConfig } from './core/Config';
 import { createHudContainer } from './core/HUD';
 import { initMainLoop } from './core/MainLoop';
-import { createPhysicsDebugMesh } from './core/PhysicsRapier';
+import { createPhysicsDebugMesh, InitRapierPhysics } from './core/PhysicsRapier';
+import { createRootScene, getRootScene } from './core/Scene';
 import './styles/index.scss';
 import { lerror } from './utils/Logger';
 
@@ -13,22 +15,27 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
   // Load env variables and other configurations
   loadConfig();
 
+  // Create base scene
+  createRootScene();
+
   // HUD container
   createHudContainer();
 
   // Start app
   try {
+    await InitRapierPhysics();
     await appStartFn();
+
+    // Start engine/loop if root scene has children
+    const rootScene = getRootScene() as Scene;
+    if (rootScene.children.length) initMainLoop();
+
+    if (isDebugEnvironment()) {
+      createPhysicsDebugMesh();
+    }
   } catch (err) {
-    const msg = 'Error at app start function';
+    const msg = 'Error at app start function (InitEngine)';
     lerror(msg, err);
     throw new Error(msg);
   }
-
-  if (isDebugEnvironment()) {
-    createPhysicsDebugMesh();
-  }
-
-  // Start engine/loop
-  initMainLoop();
 };

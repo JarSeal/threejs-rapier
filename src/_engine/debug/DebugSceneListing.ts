@@ -1,14 +1,14 @@
-import { initDebugMaterialEditorScene } from './debugScenes/materialEditor';
+import {
+  DEBUG_MATERIAL_EDITOR_ID,
+  initDebugMaterialEditorScene,
+} from './debugScenes/materialEditor';
 
-export const DEBUG_SCENE_LISTING = {
-  materialEditor: { value: '_debug-material-editor', text: '[Debug] Material editor' },
-};
+export type DebugScene = { id: string; fn: () => Promise<string>; text: string };
 
-export const debugSceneListingInits: {
-  [sceneId: string]: {
-    fn: () => void;
-    initiated?: boolean;
-  };
-} = {
-  [DEBUG_SCENE_LISTING.materialEditor.value]: { fn: () => initDebugMaterialEditorScene() },
-};
+export const debugSceneListing: DebugScene[] = [
+  {
+    id: DEBUG_MATERIAL_EDITOR_ID,
+    fn: initDebugMaterialEditorScene,
+    text: '[Debug] Material editor',
+  },
+];

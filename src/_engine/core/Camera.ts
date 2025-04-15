@@ -16,15 +16,11 @@ export const createCamera = (
   id: string,
   opts?: { isCurrentCamera?: boolean; fov?: number; near?: number; far?: number }
 ) => {
+  if (cameras[id]) return cameras[id];
+
   const fov = opts?.fov !== undefined ? opts.fov : 45;
   const near = opts?.near || 0.1;
   const far = opts?.far || 1000;
-
-  if (cameras[id]) {
-    throw new Error(
-      `Camera with id "${id}" already exists. Pick another id or delete the camera first before recreating it.`
-    );
-  }
 
   const windowSize = getWindowSize();
   const camera = new THREE.PerspectiveCamera(fov, windowSize.aspect, near, far);

@@ -14,11 +14,13 @@ import { getCurrentCamera } from '../_engine/core/Camera';
 import { addKeyInputControl } from '../_engine/core/InputControls';
 import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
+import { isDebugEnvironment } from '../_engine/core/Config';
+import { addScenesToSceneListing } from '../_engine/debug/DebugTools';
 
 const SCENE_ID = 'testScene1';
 
 export const scene01 = async () =>
-  new Promise((resolve) => {
+  new Promise<string>((resolve) => {
     const updateLoaderFn = getLoaderStatusUpdater();
     updateLoaderFn({ loadedCount: 0, totalCount: 2 });
 
@@ -33,8 +35,11 @@ export const scene01 = async () =>
     if (!scene) {
       // Init scene
       scene = createScene(SCENE_ID, {
+        name: 'Test scene 1',
         isCurrentScene: true,
       });
+      if (isDebugEnvironment())
+        addScenesToSceneListing({ id: SCENE_ID, text: `[App] ${SCENE_ID}`, fn: scene01 });
     } else {
       setCurrentScene(SCENE_ID);
     }
@@ -74,7 +79,7 @@ export const scene01 = async () =>
         type: 'BASIC',
         params: { color: 0x0024000 },
       });
-      const groundMesh = createMesh({ geo: groundGeo, mat: groundMat });
+      const groundMesh = createMesh({ id: 'groundMesh', geo: groundGeo, mat: groundMat });
       groundMesh.position.set(groundPos.x, groundPos.y, groundPos.z);
       createPhysicsObjectWithMesh(
         {
@@ -291,12 +296,13 @@ export const scene01 = async () =>
         type: 'KEY_DOWN',
         key: 'd',
         fn: (_, time) => {
-          console.log('PRESSED', performance.now() - time);
+          // eslint-disable-next-line no-console
+          console.log('PRESSED', time);
         },
       });
 
       updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 
-      resolve(true);
+      resolve(SCENE_ID);
     }, 1300);
   });

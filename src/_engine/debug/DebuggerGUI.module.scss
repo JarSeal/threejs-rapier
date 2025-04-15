@@ -68,43 +68,7 @@ $breakpointXSmall: 379px;
 
 .debugDrawerTabsMenu {
   position: relative;
-  padding-right: 2.4rem;
   margin-bottom: 1.2rem;
-
-  .closeBtn {
-    @include variables.nakedButton;
-    background-color: transparent;
-    width: 2.4rem;
-    height: 2.4rem;
-    margin: 0;
-    position: absolute;
-    top: 0;
-    right: 0;
-    border-radius: 0.4rem;
-    transition: background-color 0.2s ease-in-out;
-
-    &:hover {
-      background-color: rgba(variables.$debugTextColor, 0.2);
-    }
-
-    &:before,
-    &:after {
-      display: block;
-      content: '';
-      width: 2rem;
-      height: 0.1rem;
-      background: variables.$white;
-      position: absolute;
-      top: 50%;
-      left: 0.2rem;
-    }
-    &:before {
-      transform: rotate(45deg);
-    }
-    &:after {
-      transform: rotate(-45deg);
-    }
-  }
 }
 
 .debugDrawerTabButton {
@@ -146,4 +110,59 @@ $breakpointXSmall: 379px;
       margin-top: 0 !important;
     }
   }
+}
+
+.debugCurrentSceneTitle {
+  width: 100%;
+  height: 3rem;
+  padding: 0.4rem 0 0.8rem;
+  padding-right: 3rem;
+  position: relative;
+  color: variables.$debugTextColor;
+
+  .closeBtn {
+    @include variables.nakedButton;
+    background-color: transparent;
+    width: 2.4rem;
+    height: 2.4rem;
+    margin: 0;
+    position: absolute;
+    top: 0;
+    right: 0;
+    border-radius: 0.4rem;
+    transition: background-color 0.2s ease-in-out;
+
+    &:hover {
+      background-color: rgba(variables.$debugTextColor, 0.2);
+    }
+
+    &:before,
+    &:after {
+      display: block;
+      content: '';
+      width: 2rem;
+      height: 0.1rem;
+      background: variables.$white;
+      position: absolute;
+      top: 50%;
+      left: 0.2rem;
+    }
+    &:before {
+      transform: rotate(45deg);
+    }
+    &:after {
+      transform: rotate(-45deg);
+    }
+  }
+}
+
+.debugCurrentSceneTitleHeading {
+  position: absolute;
+  top: -0.8rem;
+  left: 0;
+  font-size: 0.8rem;
+}
+
+.debugCurrentSceneTitleText {
+  font-size: 1.4rem;
 }

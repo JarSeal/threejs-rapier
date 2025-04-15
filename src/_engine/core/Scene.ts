@@ -12,8 +12,10 @@ import {
   setCurrentScenePhysicsObjects,
 } from './PhysicsRapier';
 import { isDebugEnvironment } from './Config';
-import { addScenesToSceneListing, removeScenesFromSceneListing } from '../debug/DebugTools';
+import { removeScenesFromSceneListing, setDebugEnvBallMaterial } from '../debug/DebugTools';
 import { getCurrentSceneLoader } from './SceneLoader';
+import { initMainLoop } from './MainLoop';
+import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
 
 type Looper = (delta: number) => void;
 
@@ -29,6 +31,7 @@ const sceneAppLoopers: { [sceneId: string]: Looper[] } = {};
 const sceneResizers: { [sceneId: string]: (() => void)[] } = {};
 
 export type SceneOptions = {
+  name?: string;
   isCurrentScene?: boolean;
   background?: THREE.Color | THREE.Texture | THREE.CubeTexture;
   backgroundColor?: THREE.Color;
@@ -45,11 +48,7 @@ export type SceneOptions = {
  * @returns THREE.Group
  */
 export const createScene = (id: string, opts?: SceneOptions) => {
-  if (scenes[id]) {
-    throw new Error(
-      `Scene with id "${id}" already exists. Pick another id or delete the scene first before recreating it.`
-    );
-  }
+  if (scenes[id]) return scenes[id];
 
   const scene = new THREE.Group();
 
@@ -62,8 +61,6 @@ export const createScene = (id: string, opts?: SceneOptions) => {
   if (opts?.mainLoopers) sceneMainLoopers[id] = opts.mainLoopers;
   if (opts?.mainLateLoopers) sceneMainLateLoopers[id] = opts.mainLateLoopers;
   if (opts?.appLoopers) sceneAppLoopers[id] = opts.appLoopers;
-
-  if (isDebugEnvironment()) addScenesToSceneListing({ value: id, text: `[App] ${id}` });
 
   return scene;
 };
@@ -95,8 +92,8 @@ export const deleteScene = (
     deleteMeshes?: boolean;
     deleteLights?: boolean;
     deleteGroups?: boolean;
-    deletePhysicsObjects?: boolean;
     deletePhysicsWorld?: boolean;
+    deleteSavedScene?: boolean;
     deleteAll?: boolean;
   }
 ) => {
@@ -192,21 +189,23 @@ export const deleteScene = (
   if (isDebugEnvironment()) removeScenesFromSceneListing(id);
 
   // Delete loopers
-  deleteSceneMainLoopers(id);
-  deleteSceneMainLateLoopers(id);
-  deleteSceneAppLoopers(id);
+  deleteAllSceneLoopers(id);
 
   // Delete skybox textures
-  if (scene.userData.backgroundNodeTextureId) deleteTexture(scene.userData.backgroundNodeTextureId);
+  if (scene.userData.backgroundNodeTextureId) {
+    deleteTexture(scene.userData.backgroundNodeTextureId);
+    const rootScene = getRootScene();
+    if (isCurrentScene(id) && rootScene) rootScene.backgroundNode = null;
+  }
 
+  // Delete physics
+  deletePhysicsObjectsBySceneId(id);
   if (opts?.deletePhysicsWorld || opts?.deleteAll) {
     // Delete physics world
     deletePhysicsWorld();
-  } else if (opts?.deletePhysicsObjects) {
-    deletePhysicsObjectsBySceneId(id);
   }
 
-  delete scenes[id];
+  if (opts?.deleteSavedScene) delete scenes[id];
 };
 
 /**
@@ -221,13 +220,20 @@ export const setCurrentScene = (id: string | null) => {
     lwarn(`Could not find scene with id "${id}" in setCurrentScene(id).`);
     return currentScene;
   }
+
+  setDebugEnvBallMaterial();
+
+  const rootScene = getRootScene() as THREE.Scene;
+
+  if (currentScene) rootScene.remove(currentScene);
+
   currentSceneId = id;
   currentScene = nextScene;
   currentSceneOpts = id && sceneOpts[id] ? sceneOpts[id] : null;
 
   if (nextScene) {
-    createRootScene();
-    const rootScene = getRootScene() as THREE.Scene;
+    rootScene.background = null;
+    rootScene.backgroundNode = null;
     if (currentSceneOpts?.background) rootScene.background = currentSceneOpts.background;
     if (currentSceneOpts?.backgroundColor) rootScene.background = currentSceneOpts.backgroundColor;
     if (currentSceneOpts?.backgroundTexture)
@@ -242,6 +248,12 @@ export const setCurrentScene = (id: string | null) => {
   }
 
   setCurrentScenePhysicsObjects(id);
+
+  if (rootScene.children.length) initMainLoop();
+
+  updateDebuggerSceneTitle(
+    currentSceneOpts?.name || id || nextScene?.userData.id || '[No scene..]'
+  );
 
   return nextScene;
 };
@@ -406,6 +418,16 @@ export const deleteSceneMainLoopers = (sceneId: string) => delete sceneMainLoope
  * @param sceneId (string) scene id
  */
 export const deleteSceneMainLateLoopers = (sceneId: string) => delete sceneMainLateLoopers[sceneId];
+
+/**
+ * Deletes all scene's main loopers, main late loopers, and app loopers
+ * @param sceneId (string) scene id
+ */
+export const deleteAllSceneLoopers = (sceneId: string) => {
+  deleteSceneMainLoopers(sceneId);
+  deleteSceneMainLateLoopers(sceneId);
+  deleteSceneAppLoopers(sceneId);
+};
 
 /**
  * Returns all scene's app loopers

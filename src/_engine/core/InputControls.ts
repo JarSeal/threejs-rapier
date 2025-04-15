@@ -273,19 +273,15 @@ export const addKeyInputControl = ({
   enabled?: boolean;
   enabledInDebugCam?: EnabledInDebugCam;
 }) => {
-  let idTaken = false;
+  let idFound = false;
   switch (type) {
     case 'KEY_DOWN':
-      idTaken = Boolean(
+      idFound = Boolean(
         id &&
           (keyDownMappings.find((mapping) => mapping.id === id) ||
             (sceneId && keyDownSceneMappings[sceneId].find((mapping) => mapping.id === id)))
       );
-      if (idTaken) {
-        const msg = `Key (down) input control id already taken (id: ${id}), could not add key control. Remove the old control with the same id first before adding it (the id has to be unique, no matter if the id is global or scene related).`;
-        lerror(msg);
-        return;
-      }
+      if (idFound) return;
       initKeyDownControls();
       if (sceneId) {
         if (!keyDownSceneMappings[sceneId]) keyDownSceneMappings[sceneId] = [];
@@ -314,16 +310,12 @@ export const addKeyInputControl = ({
       break;
     default:
     case 'KEY_UP':
-      idTaken = Boolean(
+      idFound = Boolean(
         id &&
           (keyUpMappings.find((mapping) => mapping.id === id) ||
             (sceneId && keyUpSceneMappings[sceneId].find((mapping) => mapping.id === id)))
       );
-      if (idTaken) {
-        const msg = `Key (up) input control id already taken (id: ${id}), could not add key control. Remove the old control with the same id first before adding it (the id has to be unique, no matter if the id is global or scene related).`;
-        lerror(msg);
-        return;
-      }
+      if (idFound) return;
       initKeyUpControls();
       initKeyDownControls();
       if (sceneId) {
@@ -373,19 +365,15 @@ export const addMouseInputControl = ({
   enabled?: boolean;
   enabledInDebugCam?: EnabledInDebugCam;
 }) => {
-  let idTaken = false;
+  let idFound = false;
   switch (type) {
     case 'MOUSE_MOVE':
-      idTaken = Boolean(
+      idFound = Boolean(
         id &&
           (mouseMoveMappings.find((mapping) => mapping.id === id) ||
             (sceneId && mouseMoveSceneMappings[sceneId].find((mapping) => mapping.id === id)))
       );
-      if (idTaken) {
-        const msg = `Mouse (move) input control id already taken (id: ${id}), could not add mouse control. Remove the old control with the same id first before adding it (the id has to be unique, no matter if the id is global or scene related).`;
-        lerror(msg);
-        return;
-      }
+      if (idFound) return;
       initMouseMoveControls();
       if (sceneId) {
         if (!mouseMoveSceneMappings[sceneId]) mouseMoveSceneMappings[sceneId] = [];
@@ -411,16 +399,12 @@ export const addMouseInputControl = ({
       }
       break;
     case 'MOUSE_DOWN':
-      idTaken = Boolean(
+      idFound = Boolean(
         id &&
           (mouseDownMappings.find((mapping) => mapping.id === id) ||
             (sceneId && mouseDownSceneMappings[sceneId].find((mapping) => mapping.id === id)))
       );
-      if (idTaken) {
-        const msg = `Mouse (down) input control id already taken (id: ${id}), could not add mouse control. Remove the old control with the same id first before adding it (the id has to be unique, no matter if the id is global or scene related).`;
-        lerror(msg);
-        return;
-      }
+      if (idFound) return;
       initMouseDownControls();
       if (sceneId) {
         if (!mouseDownSceneMappings[sceneId]) mouseDownSceneMappings[sceneId] = [];
@@ -447,16 +431,12 @@ export const addMouseInputControl = ({
       break;
     default:
     case 'MOUSE_UP':
-      idTaken = Boolean(
+      idFound = Boolean(
         id &&
           (mouseUpMappings.find((mapping) => mapping.id === id) ||
             (sceneId && mouseUpSceneMappings[sceneId].find((mapping) => mapping.id === id)))
       );
-      if (idTaken) {
-        const msg = `Mouse (up) input control id already taken (id: ${id}), could not add mouse control. Remove the old control with the same id first before adding it (the id has to be unique, no matter if the id is global or scene related).`;
-        lerror(msg);
-        return;
-      }
+      if (idFound) return;
       initMouseUpControls();
       initMouseDownControls();
       if (sceneId) {
