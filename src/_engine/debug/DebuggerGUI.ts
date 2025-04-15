@@ -13,6 +13,7 @@ let currentSceneTitleCMP: TCMP | null = null;
 let currentSceneTitleText: string = '';
 let tabsContainerWrapper: null | TCMP = null;
 let debugKeysFromConfigInitiated = false;
+let debuggerDisabled = false;
 
 type DrawerState = {
   isOpen: boolean;
@@ -136,6 +137,7 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     class: [
       styles.debuggerGUI,
       drawerState.isOpen ? styles.debuggerGUI_open : styles.debuggerGUI_closed,
+      debuggerDisabled ? styles.debuggerDisabled : '',
     ],
     settings: { replaceRootDom: false },
   });
@@ -346,3 +348,14 @@ export const updateDebuggerSceneTitle = (title: string) => {
   currentSceneTitleText = title;
   createDebugGui(guiOpts);
 };
+
+export const disableDebugger = (disable: boolean) => {
+  debuggerDisabled = disable;
+  if (disable) {
+    drawerCMP?.updateClass(styles.debuggerDisabled, 'add');
+    return;
+  }
+  drawerCMP?.updateClass(styles.debuggerDisabled, 'remove');
+};
+
+export const isDebuggerDisabled = () => debuggerDisabled;

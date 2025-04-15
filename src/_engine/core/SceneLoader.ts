@@ -11,6 +11,9 @@ import {
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
 import { deleteCurrentScenePhysicsObjects, deletePhysicsWorld } from './PhysicsRapier';
+import { disableDebugger } from '../debug/DebuggerGUI';
+import { setAllInputsEnabled } from './InputControls';
+import { getCanvasParentElem } from './Renderer';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -182,6 +185,12 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   // Add possible loader group to current scene
   if (loader.loaderGroup) rootScene.add(loader.loaderGroup);
 
+  // Disable debuggers and input controls
+  disableDebugger(true);
+  setAllInputsEnabled(false);
+  const canvasParentElem = getCanvasParentElem();
+  if (canvasParentElem) canvasParentElem.style.setProperty('pointer-events', 'none');
+
   loader.phase = 'START';
   await loadStartFn(loader).then(async () => {
     if (loadSceneProps.deletePrevScene && prevScene) {
@@ -203,6 +212,12 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         throw new Error(msg);
       }
       setCurrentScene(newSceneId);
+
+      // Enable debuggers and input controls
+      disableDebugger(false);
+      setAllInputsEnabled(true);
+      const canvasParentElem = getCanvasParentElem();
+      if (canvasParentElem) canvasParentElem.style.setProperty('pointer-events', '');
 
       loader.phase = 'END';
       await loadEndFn(loader).then(() => {
