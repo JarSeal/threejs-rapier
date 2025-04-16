@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { addSceneMainLooper, createScene } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
-import { getTexture, loadTexture, loadTextureAsync, loadTextures } from '../_engine/core/Texture';
+import { getTexture, loadTexture, loadTextures } from '../_engine/core/Texture';
 import { llog } from '../_engine/utils/Logger';
 import { createLight } from '../_engine/core/Light';
 import { importModelAsync } from '../_engine/core/ImportModel';
@@ -11,14 +11,8 @@ import { addToGroup, createGroup } from '../_engine/core/Group';
 import { transformSpeedValue } from '../_engine/core/MainLoop';
 import { addSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
-import { addKeyInputControl, addMouseInputControl } from '../_engine/core/InputControls';
+import { addKeyInputControl } from '../_engine/core/InputControls';
 import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
-import {
-  createDebuggerTab,
-  createNewDebuggerPane,
-  removeDebuggerTab,
-} from '../_engine/debug/DebuggerGUI';
-import { TCMP } from '../_engine/utils/CMP';
 
 export const assets = {};
 // export const preloadAssets = () => {};
@@ -59,14 +53,14 @@ export const scene01 = async () =>
     //   },
     // });
 
-    const map01 = [
-      '/cubemap01_positive_x.png',
-      '/cubemap01_negative_x.png',
-      '/cubemap01_negative_y.png',
-      '/cubemap01_positive_y.png',
-      '/cubemap01_positive_z.png',
-      '/cubemap01_negative_z.png',
-    ];
+    // const map01 = [
+    //   '/cubemap01_positive_x.png',
+    //   '/cubemap01_negative_x.png',
+    //   '/cubemap01_negative_y.png',
+    //   '/cubemap01_positive_y.png',
+    //   '/cubemap01_positive_z.png',
+    //   '/cubemap01_negative_z.png',
+    // ];
     const map02 = [
       '/cubemap02_positive_x.png',
       '/cubemap02_negative_x.png',
