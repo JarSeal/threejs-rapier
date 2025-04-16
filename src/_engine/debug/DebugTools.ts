@@ -526,3 +526,8 @@ const reloadSceneListingBlade = () => {
     });
   }
 };
+
+/**
+ * TODO
+ */
+export const isUsingDebugCamera = () => isDebugEnvironment() && debugToolsState.useDebugCamera;

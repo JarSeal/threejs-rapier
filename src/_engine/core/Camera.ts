@@ -1,8 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { getWindowSize } from '../utils/Window';
 import { lwarn } from '../utils/Logger';
-import { getDebugToolsState } from '../debug/DebugTools';
-import { isDebugEnvironment } from './Config';
+import { isUsingDebugCamera } from '../debug/DebugTools';
 
 const cameras: { [id: string]: THREE.PerspectiveCamera } = {};
 let currentCamera: THREE.PerspectiveCamera | null = null;
@@ -24,7 +23,7 @@ export const createCamera = (
     if (opts?.fov) c.fov = opts.fov;
     if (opts?.near) c.near = opts.near;
     if (opts?.far) c.far = opts.far;
-    if (opts?.isCurrentCamera && isDebugEnvironment() && getDebugToolsState().useDebugCamera) {
+    if (opts?.isCurrentCamera && !isUsingDebugCamera()) {
       setCurrentCamera(id);
     }
     return c;
@@ -40,7 +39,7 @@ export const createCamera = (
   cameras[id] = camera;
   camera.userData.id = id;
 
-  if (opts?.isCurrentCamera && isDebugEnvironment() && getDebugToolsState().useDebugCamera) {
+  if (opts?.isCurrentCamera && !isUsingDebugCamera()) {
     setCurrentCamera(id);
   }
 
