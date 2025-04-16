@@ -16,7 +16,14 @@ export const createCamera = (
   id: string,
   opts?: { isCurrentCamera?: boolean; fov?: number; near?: number; far?: number }
 ) => {
-  if (cameras[id]) return cameras[id];
+  if (cameras[id]) {
+    // Use the existing camera and set options
+    const c = cameras[id];
+    if (opts?.fov) c.fov = opts.fov;
+    if (opts?.near) c.near = opts.near;
+    if (opts?.far) c.far = opts.far;
+    return c;
+  }
 
   const fov = opts?.fov !== undefined ? opts.fov : 45;
   const near = opts?.near || 0.1;
@@ -26,6 +33,7 @@ export const createCamera = (
   const camera = new THREE.PerspectiveCamera(fov, windowSize.aspect, near, far);
 
   cameras[id] = camera;
+  camera.userData.id = id;
 
   if (opts?.isCurrentCamera) setCurrentCamera(id);
 

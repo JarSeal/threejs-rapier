@@ -1,4 +1,3 @@
-import { llog } from '../utils/Logger';
 import configFile from '../../CONFIG';
 import { type DebugScene } from '../debug/DebugSceneListing';
 
@@ -91,9 +90,6 @@ export const loadConfig = () => {
       envVars.VITE_PHYS_TIMESTEP = undefined;
     }
   }
-
-  llog(`Current environment: ${getCurrentEnvironment()}`);
-  llog('envVars', envVars); // @TODO: remove
 };
 
 /**

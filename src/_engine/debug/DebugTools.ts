@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { ListBladeApi } from 'tweakpane';
 import { BladeController, FolderApi, View } from '@tweakpane/core';
 import { createCamera, getAllCameras, getCurrentCameraId, setCurrentCamera } from '../core/Camera';
-import { getRenderer } from '../core/Renderer';
+import { getRenderer, getRendererOptions } from '../core/Renderer';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
 import { createMesh } from '../core/Mesh';
@@ -12,10 +12,10 @@ import { createGeometry } from '../core/Geometry';
 import { createMaterial, deleteMaterial } from '../core/Material';
 import { getCurrentSceneId, getRootScene } from '../core/Scene';
 import { getEnvMapRoughnessBg } from '../core/SkyBox';
-import { getConfig, isDebugEnvironment } from '../core/Config';
+import { getConfig, getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../core/Config';
 import { debugSceneListing, type DebugScene } from './DebugSceneListing';
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
-import { lerror } from '../utils/Logger';
+import { lerror, llog } from '../utils/Logger';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -47,6 +47,9 @@ let debugToolsState: {
   scenesListing: {
     scenesFolderExpanded: boolean;
   };
+  loggingActions: {
+    loggingFolderExpanded: boolean;
+  };
 } = {
   useDebugCamera: false,
   latestAppCameraId: null,
@@ -66,6 +69,9 @@ let debugToolsState: {
   },
   scenesListing: {
     scenesFolderExpanded: false,
+  },
+  loggingActions: {
+    loggingFolderExpanded: false,
   },
 };
 
@@ -262,6 +268,52 @@ const createDebugToolsDebugGUI = () => {
         }
       });
 
+      // Logging actions
+      const loggingFolder = debugGUI
+        .addFolder({
+          title: 'Logging actions ',
+          expanded: debugToolsState.loggingActions.loggingFolderExpanded,
+        })
+        .on('fold', (state) => {
+          debugToolsState.loggingActions.loggingFolderExpanded = state.expanded;
+          lsSetItem(LS_KEY, debugToolsState);
+        });
+      const getLogActionList = () => ({
+        environmentVariables: [
+          'ENV VARIABLES:********\n',
+          `Current environment: ${getCurrentEnvironment()}`,
+          getEnvs(),
+          '**********************',
+        ],
+        rendererOptions: ['RENDER OPTIONS:*******', getRendererOptions(), '**********************'],
+        rootScene: ['ROOT SCENE:***********', getRootScene(), '**********************'],
+        cameras: [
+          'CAMERAS***************\n',
+          `current camera id: ${getCurrentCameraId()}`,
+          getAllCameras(),
+          '**********************',
+        ],
+      });
+      const getLogActionListItem = (key: string) => {
+        const logActionList = getLogActionList();
+        return logActionList[key as keyof typeof logActionList];
+      };
+      loggingFolder.addButton({ title: 'ALL' }).on('click', () => {
+        const logActionList = getLogActionList();
+        const keys = Object.keys(logActionList);
+        for (let i = 0; i < keys.length; i++) {
+          llog(...logActionList[keys[i] as keyof typeof logActionList]);
+        }
+      });
+      const logActionList = getLogActionList();
+      const logActionKeys = Object.keys(logActionList);
+      for (let i = 0; i < logActionKeys.length; i++) {
+        const key = logActionKeys[i] as keyof typeof logActionList;
+        loggingFolder.addButton({ title: key }).on('click', () => {
+          llog(...getLogActionListItem(key));
+        });
+      }
+
       return container;
     },
   });
@@ -332,9 +384,15 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
   getRootScene()?.add(debugCamera);
 };
 
-const setDebugToolsVisibility = (show: boolean) => {
+/**
+ * TODO
+ * @param show
+ * @returns
+ */
+export const setDebugToolsVisibility = (show: boolean) => {
   if (show) {
-    debugToolsState.latestAppCameraId = getCurrentCameraId();
+    const currentCameraId = getCurrentCameraId();
+    if (currentCameraId !== DEBUG_CAMERA_ID) debugToolsState.latestAppCameraId = currentCameraId;
     if (orbitControls) orbitControls.enabled = true;
     if (debugCamera) {
       if (debugCamera.children[0]) debugCamera.children[0].visible = true;

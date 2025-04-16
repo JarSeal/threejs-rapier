@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import WebGL from 'three/addons/capabilities/WebGL.js';
 import { getWindowSize } from '../utils/Window';
-import { llog, lwarn } from '../utils/Logger';
+import { lwarn } from '../utils/Logger';
 import { isDebugEnvironment } from './Config';
 
 let r: THREE.WebGPURenderer | null = null;
@@ -43,7 +43,6 @@ export const createRenderer = (opts?: Partial<RendererOptions>) => {
   const windowSize = getWindowSize();
 
   setRendererOptions(opts);
-  llog('Render options', options);
 
   const renderer = new THREE.WebGPURenderer({
     antialias: options.antialias,

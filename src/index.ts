@@ -8,7 +8,7 @@ import { CMP } from './_engine/utils/CMP';
 
 InitEngine(async () => {
   // Init camera
-  createCamera('mainCam', { isCurrentCamera: true, fov: 90 });
+  createCamera('mainAppCam', { isCurrentCamera: true, fov: 90 });
 
   // Init renderer
   createRenderer({

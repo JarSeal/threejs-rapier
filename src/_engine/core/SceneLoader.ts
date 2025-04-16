@@ -14,6 +14,8 @@ import { deleteCurrentScenePhysicsObjects, deletePhysicsWorld } from './PhysicsR
 import { disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
+import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
+import { isDebugEnvironment } from './Config';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -192,43 +194,50 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   if (canvasParentElem) canvasParentElem.style.setProperty('pointer-events', 'none');
 
   loader.phase = 'START';
-  await loadStartFn(loader).then(async () => {
-    if (loadSceneProps.deletePrevScene && prevScene) {
-      // Delete the whole previous scene and assets
-      // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps (like deleteMeshes, deleteTextures, etc.)
-      deleteScene(prevSceneId, { deleteAll: true });
-    } else if (prevScene) {
-      deleteAllSceneLoopers(prevSceneId);
-      deleteCurrentScenePhysicsObjects();
-      deletePhysicsWorld();
-    }
-
-    loader.phase = 'LOAD';
-    await loadFn(loader, loadSceneProps.nextSceneFn).then(async (newSceneId) => {
-      const nextScene = getScene(newSceneId);
-      if (!nextScene) {
-        const msg = `Scene loader could not find scene with scene id '${newSceneId}'.`;
-        lerror(msg);
-        throw new Error(msg);
+  await loadStartFn(loader)
+    .then(async () => {
+      if (loadSceneProps.deletePrevScene && prevScene) {
+        // Delete the whole previous scene and assets
+        // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps (like deleteMeshes, deleteTextures, etc.)
+        deleteScene(prevSceneId, { deleteAll: true });
+      } else if (prevScene) {
+        deleteAllSceneLoopers(prevSceneId);
+        deleteCurrentScenePhysicsObjects();
+        deletePhysicsWorld();
       }
-      setCurrentScene(newSceneId);
 
-      // Enable debuggers and input controls
-      disableDebugger(false);
-      setAllInputsEnabled(true);
-      const canvasParentElem = getCanvasParentElem();
-      if (canvasParentElem) canvasParentElem.style.setProperty('pointer-events', '');
+      loader.phase = 'LOAD';
+      await loadFn(loader, loadSceneProps.nextSceneFn).then(async (newSceneId) => {
+        const nextScene = getScene(newSceneId);
+        if (!nextScene) {
+          const msg = `Scene loader could not find scene with scene id '${newSceneId}'.`;
+          lerror(msg);
+          throw new Error(msg);
+        }
+        setCurrentScene(newSceneId);
 
-      loader.phase = 'END';
-      await loadEndFn(loader).then(() => {
-        if (loaderContainer) loaderContainer.remove();
-        if (loader.loaderGroup) rootScene.remove(loader.loaderGroup);
+        // Enable debuggers and input controls
+        disableDebugger(false);
+        setAllInputsEnabled(true);
+        const canvasParentElem = getCanvasParentElem();
+        if (canvasParentElem) canvasParentElem.style.setProperty('pointer-events', '');
 
-        loader.phase = undefined;
-        currentlyLoading = false;
+        if (isDebugEnvironment()) setDebugToolsVisibility(getDebugToolsState().useDebugCamera);
+
+        loader.phase = 'END';
+        await loadEndFn(loader).then(() => {
+          if (loaderContainer) loaderContainer.remove();
+          if (loader.loaderGroup) rootScene.remove(loader.loaderGroup);
+
+          loader.phase = undefined;
+          currentlyLoading = false;
+        });
       });
+    })
+    .catch((reason) => {
+      const msg = `Could not load scene (phase '${loader.phase}')`;
+      lerror(msg, reason);
     });
-  });
 };
 
 /**
