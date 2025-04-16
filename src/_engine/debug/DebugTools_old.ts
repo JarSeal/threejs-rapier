@@ -27,26 +27,16 @@ let envBallFolder: FolderApi | null = null;
 let debugCamera: THREE.PerspectiveCamera | null = null;
 let orbitControls: OrbitControls | null = null;
 let scenesDropDown: ListBladeApi<BladeController<View>>;
-type DebugCameraState = {
-  enabled: boolean;
+let debugToolsState: {
+  useDebugCamera: boolean;
   latestAppCameraId: null | string;
-  fov: number;
-  near: number;
-  far: number;
-  position: number[];
-  target: number[];
-};
-type DebugToolsState = {
-  useDebugCamera: boolean; // @TODO: remove
-  latestAppCameraId: null | string; // @TODO: remove
-  // @TODO: remove
   camera: {
-    fov: number; // @TODO: remove
-    near: number; // @TODO: remove
-    far: number; // @TODO: remove
-    position: number[]; // @TODO: remove
-    target: number[]; // @TODO: remove
-  }; // @TODO: remove
+    fov: number;
+    near: number;
+    far: number;
+    position: number[];
+    target: number[];
+  };
   env: {
     envBallFolderExpanded: boolean;
     envBallVisible: boolean;
@@ -60,9 +50,7 @@ type DebugToolsState = {
   loggingActions: {
     loggingFolderExpanded: boolean;
   };
-  debugCamera: { [sceneId: string]: DebugCameraState };
-};
-let debugToolsState: DebugToolsState = {
+} = {
   useDebugCamera: false,
   latestAppCameraId: null,
   camera: {
@@ -85,16 +73,6 @@ let debugToolsState: DebugToolsState = {
   loggingActions: {
     loggingFolderExpanded: false,
   },
-  debugCamera: {},
-};
-const DEFAULT_DEBUG_CAM_PARAMS: DebugCameraState = {
-  enabled: false,
-  latestAppCameraId: null,
-  fov: 60,
-  near: 0.001,
-  far: 1000,
-  position: [0, 0, 10],
-  target: [0, 0, 0],
 };
 
 /**
@@ -114,37 +92,36 @@ const createDebugToolsDebugGUI = () => {
   const savedDebugToolsState = lsGetItem(LS_KEY, debugToolsState);
   debugToolsState = { ...debugToolsState, ...savedDebugToolsState };
 
-  const currentSceneId = getCurrentSceneId();
-  let curSceneDebugCamParams = DEFAULT_DEBUG_CAM_PARAMS;
-  if (currentSceneId) {
-    curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-  }
-
   debugCamera = createCamera(DEBUG_CAMERA_ID, {
-    isCurrentCamera: curSceneDebugCamParams.enabled,
-    fov: curSceneDebugCamParams.fov,
-    near: curSceneDebugCamParams.near,
-    far: curSceneDebugCamParams.far,
+    isCurrentCamera: debugToolsState.useDebugCamera,
+    fov: debugToolsState.camera.fov,
+    near: debugToolsState.camera.near,
+    far: debugToolsState.camera.far,
   });
-  // @MAYBE: @TODO: add this as debug camera (and also add to createCamera)
+  // @TODO: add this as debug camera (and also add to createCamera)
   // const horizontalFov = 90;
   // debugCamera.fov =
   //   (Math.atan(Math.tan(((horizontalFov / 2) * Math.PI) / 180) / debugCamera.aspect) * 2 * 180) /
   //   Math.PI;
-  if (!debugCamera) {
-    const msg = 'Error while creating debug camera in createDebugToolsDebugGUI';
-    lerror(msg);
-    throw new Error(msg);
-  }
+  if (!debugCamera)
+    throw new Error('Error while creating debug camera in createDebugToolsDebugGUI');
+  debugCamera.position.set(
+    debugToolsState.camera.position[0],
+    debugToolsState.camera.position[1],
+    debugToolsState.camera.position[2]
+  );
+  debugCamera.lookAt(
+    new THREE.Vector3(
+      debugToolsState.camera.target[0],
+      debugToolsState.camera.target[1],
+      debugToolsState.camera.target[2]
+    )
+  );
 
-  createOnScreenTools(debugCamera, curSceneDebugCamParams);
+  createOnScreenTools(debugCamera);
 
   const renderer = getRenderer();
-  if (!renderer) {
-    const msg = 'Renderer not found in createDebugToolsDebugGUI';
-    lerror(msg);
-    throw new Error(msg);
-  }
+  if (!renderer) throw new Error('Renderer not found in createDebugToolsDebugGUI');
   orbitControls = new OrbitControls(debugCamera, renderer.domElement);
   orbitControls.addEventListener('end', () => {
     const position = [
@@ -343,23 +320,7 @@ const createDebugToolsDebugGUI = () => {
 };
 
 // On screen tools (eg. env ball)
-const createOnScreenTools = (
-  debugCamera: THREE.PerspectiveCamera,
-  curSceneDebugCamParams: DebugCameraState
-) => {
-  debugCamera.position.set(
-    curSceneDebugCamParams.position[0],
-    curSceneDebugCamParams.position[1],
-    curSceneDebugCamParams.position[2]
-  );
-  debugCamera.lookAt(
-    new THREE.Vector3(
-      curSceneDebugCamParams.target[0],
-      curSceneDebugCamParams.target[1],
-      curSceneDebugCamParams.target[2]
-    )
-  );
-
+const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
   const viewBoundsMin = new THREE.Vector2();
   const viewBoundsMax = new THREE.Vector2();
   debugCamera.getViewBounds(1, viewBoundsMin, viewBoundsMax);
@@ -424,40 +385,27 @@ const createOnScreenTools = (
 };
 
 /**
- * TODO jsDoc
+ * TODO
  * @param show
  * @returns
  */
 export const setDebugToolsVisibility = (show: boolean) => {
   if (show) {
     const currentCameraId = getCurrentCameraId();
-    const currentSceneId = getCurrentSceneId();
-    if (!currentSceneId) {
-      const msg = 'Could not find current scene id in setDebugToolsVisibility';
-      lerror(msg);
-      throw new Error(msg);
-    }
-    let curSceneDebugCamParams = DEFAULT_DEBUG_CAM_PARAMS;
-    if (currentSceneId) {
-      curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-    }
-
-    if (currentCameraId !== DEBUG_CAMERA_ID) {
-      curSceneDebugCamParams.latestAppCameraId = currentCameraId;
-    }
+    if (currentCameraId !== DEBUG_CAMERA_ID) debugToolsState.latestAppCameraId = currentCameraId;
     if (orbitControls) orbitControls.enabled = true;
     if (debugCamera) {
       if (debugCamera.children[0]) debugCamera.children[0].visible = true;
       debugCamera.position.set(
-        curSceneDebugCamParams.position[0],
-        curSceneDebugCamParams.position[1],
-        curSceneDebugCamParams.position[2]
+        debugToolsState.camera.position[0],
+        debugToolsState.camera.position[1],
+        debugToolsState.camera.position[2]
       );
       debugCamera.lookAt(
         new THREE.Vector3(
-          curSceneDebugCamParams.target[0],
-          curSceneDebugCamParams.target[1],
-          curSceneDebugCamParams.target[2]
+          debugToolsState.camera.target[0],
+          debugToolsState.camera.target[1],
+          debugToolsState.camera.target[2]
         )
       );
     }
@@ -580,14 +528,6 @@ const reloadSceneListingBlade = () => {
 };
 
 /**
- * TODO jsDoc
- * @returns boolean
+ * TODO
  */
-export const isUsingDebugCamera = () => {
-  const currentSceneId = getCurrentSceneId();
-  let curSceneDebugCamParams = DEFAULT_DEBUG_CAM_PARAMS;
-  if (currentSceneId) {
-    curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-  }
-  return isDebugEnvironment() && curSceneDebugCamParams.enabled;
-};
+export const isUsingDebugCamera = () => isDebugEnvironment() && debugToolsState.useDebugCamera;
