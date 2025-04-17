@@ -6,9 +6,11 @@ import { scene01 } from './app/scene01_v2';
 import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 import { CMP } from './_engine/utils/CMP';
 
+export const MAIN_APP_CAM_ID = 'mainAppCam';
+
 InitEngine(async () => {
   // Init camera
-  createCamera('mainAppCam', { isCurrentCamera: true, fov: 90 });
+  createCamera(MAIN_APP_CAM_ID, { isCurrentCamera: true, fov: 90 });
 
   // Init renderer
   createRenderer({

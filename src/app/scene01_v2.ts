@@ -38,13 +38,14 @@ export const scene01 = async () =>
         name: 'Test scene 1',
         isCurrentScene: true,
       });
-      if (isDebugEnvironment())
+      if (isDebugEnvironment()) {
         addScenesToSceneListing({ id: SCENE_ID, text: `[App] ${SCENE_ID}`, fn: scene01 });
+      }
     } else {
       setCurrentScene(SCENE_ID);
     }
 
-    setTimeout(() => updateLoaderFn({ loadedCount: 1, totalCount: 2 }), 500);
+    setTimeout(() => updateLoaderFn({ loadedCount: 1, totalCount: 2 }), 250);
 
     setTimeout(async () => {
       await addSkyBox({
@@ -304,5 +305,5 @@ export const scene01 = async () =>
       updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 
       resolve(SCENE_ID);
-    }, 1300);
+    }, 500);
   });

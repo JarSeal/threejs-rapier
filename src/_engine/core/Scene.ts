@@ -18,7 +18,6 @@ import {
   removeScenesFromSceneListing,
   setDebugEnvBallMaterial,
 } from '../debug/DebugTools';
-import { getCurrentSceneLoader } from './SceneLoader';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
 
@@ -253,11 +252,12 @@ export const setCurrentScene = (id: string | null) => {
     rootScene.add(nextScene);
   }
 
+  // @TODO: this should not be necessary anymore, since we have a root scene, so remove this after testing loaderGroup
   // Check scene loader status, if loading, add loaderGroup to current scene
-  const sceneLoader = getCurrentSceneLoader();
-  if (sceneLoader?.loaderGroup && sceneLoader.phase === 'LOAD' && currentScene) {
-    currentScene.add(sceneLoader.loaderGroup);
-  }
+  // const sceneLoader = getCurrentSceneLoader();
+  // if (sceneLoader?.loaderGroup && sceneLoader.phase === 'LOAD' && currentScene) {
+  //   currentScene.add(sceneLoader.loaderGroup);
+  // }
 
   setCurrentScenePhysicsObjects(id);
 

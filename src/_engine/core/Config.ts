@@ -16,6 +16,7 @@ export type AppConfig = {
   physics?: {
     enabled?: boolean;
     worldStepEnabled?: boolean;
+    visualizerEnabled?: boolean;
     gravity?: { x: number; y: number; z: number };
     timestep?: number;
   };

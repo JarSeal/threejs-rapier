@@ -29,12 +29,13 @@ const DEFAULT_DEBUG_CAM_PARAMS: DebugCameraState = {
   position: [0, 0, 10],
   target: [0, 0, 0],
 };
+const getDefaultDebugCamParams = () => ({ ...DEFAULT_DEBUG_CAM_PARAMS }) as DebugCameraState;
 let envBallMesh: THREE.Mesh | null = null;
 let envBallColorNode: ShaderNodeObject<THREE.PMREMNode> | null = null;
 let envBallRoughnessNode: ShaderNodeObject<THREE.UniformNode<number>> = uniform(0);
 let envBallFolder: FolderApi | null = null;
 let debugCamera: THREE.PerspectiveCamera | null = null;
-let curSceneDebugCamParams = DEFAULT_DEBUG_CAM_PARAMS;
+let curSceneDebugCamParams = getDefaultDebugCamParams();
 let orbitControls: OrbitControls | null = null;
 let scenesDropDown: ListBladeApi<BladeController<View>>;
 let toolsDebugGUI: Pane | null = null;
@@ -100,7 +101,7 @@ const createDebugToolsDebugGUI = () => {
   const currentSceneId = getCurrentSceneId();
   if (currentSceneId) {
     curSceneDebugCamParams =
-      debugToolsState.debugCamera[currentSceneId] || DEFAULT_DEBUG_CAM_PARAMS;
+      debugToolsState.debugCamera[currentSceneId] || getDefaultDebugCamParams();
   }
 
   debugCamera = createCamera(DEBUG_CAMERA_ID, {
@@ -254,7 +255,7 @@ export const setDebugToolsVisibility = (show: boolean, refreshPane?: boolean) =>
   }
   if (currentSceneId) {
     curSceneDebugCamParams =
-      debugToolsState.debugCamera[currentSceneId] || DEFAULT_DEBUG_CAM_PARAMS;
+      debugToolsState.debugCamera[currentSceneId] || getDefaultDebugCamParams();
   }
 
   if (show) {
@@ -300,6 +301,7 @@ export const setDebugEnvBallMaterial = (
   colorNode?: ShaderNodeObject<THREE.PMREMNode>,
   ballRoughness?: ShaderNodeObject<THREE.UniformNode<number>>
 ) => {
+  if (!isDebugEnvironment()) return;
   envBallColorNode = colorNode || null;
   envBallRoughnessNode = ballRoughness !== undefined ? ballRoughness : uniform(0);
   if (debugToolsState.env.separateBallValues) {
@@ -415,8 +417,7 @@ export const addSceneToDebugtools = (sceneId: string) => {
   const foundScene = getScene(sceneId);
   if (!foundScene || debugToolsState.debugCamera[sceneId]) return;
 
-  debugToolsState.debugCamera[sceneId] = DEFAULT_DEBUG_CAM_PARAMS;
-  lsSetItem(LS_KEY, debugToolsState);
+  debugToolsState.debugCamera[sceneId] = getDefaultDebugCamParams();
 };
 
 const buildDebugGUI = () => {
@@ -424,7 +425,7 @@ const buildDebugGUI = () => {
   const currentSceneId = getCurrentSceneId();
   if (!debugGUI || !currentSceneId) return;
   if (!debugToolsState.debugCamera[currentSceneId]) {
-    debugToolsState.debugCamera[currentSceneId] = DEFAULT_DEBUG_CAM_PARAMS;
+    debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
   }
   curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
 
@@ -441,7 +442,7 @@ const buildDebugGUI = () => {
       const currentSceneId = getCurrentSceneId();
       if (!currentSceneId) return;
       if (!debugToolsState.debugCamera[currentSceneId]) {
-        debugToolsState.debugCamera[currentSceneId] = DEFAULT_DEBUG_CAM_PARAMS;
+        debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
       }
       debugToolsState.debugCamera[currentSceneId].enabled = e.value;
       curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
@@ -462,7 +463,7 @@ const buildDebugGUI = () => {
       const currentSceneId = getCurrentSceneId();
       if (!currentSceneId) return;
       if (!debugToolsState.debugCamera[currentSceneId]) {
-        debugToolsState.debugCamera[currentSceneId] = DEFAULT_DEBUG_CAM_PARAMS;
+        debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
       }
       debugToolsState.debugCamera[currentSceneId].fov = e.value;
       curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
@@ -481,7 +482,7 @@ const buildDebugGUI = () => {
       const currentSceneId = getCurrentSceneId();
       if (!currentSceneId) return;
       if (!debugToolsState.debugCamera[currentSceneId]) {
-        debugToolsState.debugCamera[currentSceneId] = DEFAULT_DEBUG_CAM_PARAMS;
+        debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
       }
       debugToolsState.debugCamera[currentSceneId].near = e.value;
       curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
@@ -500,7 +501,7 @@ const buildDebugGUI = () => {
       const currentSceneId = getCurrentSceneId();
       if (!currentSceneId) return;
       if (!debugToolsState.debugCamera[currentSceneId]) {
-        debugToolsState.debugCamera[currentSceneId] = DEFAULT_DEBUG_CAM_PARAMS;
+        debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
       }
       debugToolsState.debugCamera[currentSceneId].far = e.value;
       curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
@@ -566,7 +567,7 @@ const buildDebugGUI = () => {
   scenesDropDown = scenesFolder.addBlade({
     view: 'list',
     label: 'Scenes',
-    options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })), // @TODO: add app scene name here
+    options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
     value: getCurrentSceneId(),
   }) as ListBladeApi<BladeController<View>>;
   scenesDropDown.on('change', (e) => {

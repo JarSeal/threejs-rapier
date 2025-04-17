@@ -4,7 +4,7 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getHUDRootCMP } from '../core/HUD';
 import { Pane } from 'tweakpane';
-import { getConfig } from '../core/Config';
+import { getConfig, isDebugEnvironment } from '../core/Config';
 import { addKeyInputControl } from '../core/InputControls';
 import { lwarn } from '../utils/Logger';
 
@@ -350,6 +350,7 @@ export const updateDebuggerSceneTitle = (title: string) => {
 };
 
 export const disableDebugger = (disable: boolean) => {
+  if (!isDebugEnvironment) return;
   debuggerDisabled = disable;
   if (disable) {
     drawerCMP?.updateClass(styles.debuggerDisabled, 'add');

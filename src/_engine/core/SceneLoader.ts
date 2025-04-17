@@ -223,7 +223,10 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         if (canvasParentElem) canvasParentElem.style.setProperty('pointer-events', '');
 
         if (isDebugEnvironment()) {
-          setDebugToolsVisibility(getDebugToolsState().debugCamera[newSceneId]?.enabled, true);
+          setDebugToolsVisibility(
+            Boolean(getDebugToolsState().debugCamera[newSceneId]?.enabled),
+            true
+          );
         }
 
         loader.phase = 'END';
