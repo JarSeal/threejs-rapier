@@ -24,7 +24,11 @@ import { RGBELoader } from 'three/examples/jsm/Addons.js';
 import { isHDR } from '../utils/helpers';
 
 type SkyBoxProps = {
+  id: string; // @TODO
+  name?: string; // @TODO
+  isCurrent?: boolean;
   sceneId?: string;
+  deleteWhenSceneUnloads?: boolean; // @TODO
 } & (
   | {
       type: '';
@@ -35,7 +39,7 @@ type SkyBoxProps = {
       params: {
         file?: string | THREE.Texture | THREE.DataTexture;
         textureId?: string;
-        colorSpace?: string;
+        colorSpace?: THREE.ColorSpace;
         isEnvMap?: boolean;
         roughness?: number;
       };
@@ -46,7 +50,7 @@ type SkyBoxProps = {
         fileNames: string[];
         path?: string;
         textureId?: string;
-        colorSpace?: string;
+        colorSpace?: THREE.ColorSpace;
         roughness?: number;
         cubeTextRotate?: number;
       };
@@ -57,11 +61,36 @@ type SkyBoxProps = {
     }
 );
 
-let defaultRoughness = 0.5;
-const pmremRoughnessBg = uniform(defaultRoughness);
+type SkyBoxState = {
+  type: '' | 'EQUIRECTANGULAR' | 'CUBETEXTURE' | 'SKYANDSUN';
+  equiRectFolderExpanded: boolean;
+  equiRectFile: string;
+  equiRectTextureId: string;
+  equiRectColorSpace: THREE.ColorSpace;
+  equiRectIsEnvMap: boolean;
+  equiRectRoughness: number;
+  cubeTextFolderExpanded: boolean;
+  cubeTextFile: string;
+  cubeTextTextureId: string;
+  cubeTextColorSpace: THREE.ColorSpace;
+  cubeTextRoughness: number;
+  cubeTextRotate: number;
+};
+
+type SkyBoxNodes = {
+  equiRectTextureId: string;
+};
 
 const LS_KEY = 'debugSkyBox';
-let skyBoxState = {
+let defaultRoughness = 0.5;
+const pmremRoughnessBg = uniform(defaultRoughness);
+const skyboxes: {
+  [sceneId: string]: {
+    [id: string]: { skybox: SkyBoxNodes; props: SkyBoxProps };
+  };
+} = {};
+
+let skyBoxState: SkyBoxState = {
   type: '',
   equiRectFolderExpanded: false,
   equiRectFile: '',

@@ -49,6 +49,7 @@ export const scene01 = async () =>
 
     setTimeout(async () => {
       await addSkyBox({
+        id: 'partly-cloudy',
         sceneId: SCENE_ID,
         type: 'EQUIRECTANGULAR',
         params: {

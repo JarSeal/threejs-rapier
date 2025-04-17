@@ -70,6 +70,7 @@ export const scene01 = async () =>
       '/cubemap02_negative_z.png',
     ];
     await addSkyBox({
+      id: 'desert-dunes',
       type: 'CUBETEXTURE',
       params: {
         fileNames: map02,
