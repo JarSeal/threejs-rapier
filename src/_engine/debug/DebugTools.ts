@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { ShaderNodeObject, uniform } from 'three/tsl';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
-import { ListBladeApi } from 'tweakpane';
+import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, FolderApi, View } from '@tweakpane/core';
 import { createCamera, getAllCameras, getCurrentCameraId, setCurrentCamera } from '../core/Camera';
 import { getRenderer, getRendererOptions } from '../core/Renderer';
@@ -10,7 +10,7 @@ import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
 import { createMesh } from '../core/Mesh';
 import { createGeometry } from '../core/Geometry';
 import { createMaterial, deleteMaterial } from '../core/Material';
-import { getCurrentSceneId, getRootScene } from '../core/Scene';
+import { getCurrentSceneId, getRootScene, getScene } from '../core/Scene';
 import { getEnvMapRoughnessBg } from '../core/SkyBox';
 import { getConfig, getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../core/Config';
 import { debugSceneListing, type DebugScene } from './DebugSceneListing';
@@ -20,13 +20,24 @@ import { lerror, llog } from '../utils/Logger';
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
 export const DEBUG_CAMERA_ID = '_debugCamera';
+const DEFAULT_DEBUG_CAM_PARAMS: DebugCameraState = {
+  enabled: false,
+  latestAppCameraId: null,
+  fov: 60,
+  near: 0.001,
+  far: 1000,
+  position: [0, 0, 10],
+  target: [0, 0, 0],
+};
 let envBallMesh: THREE.Mesh | null = null;
 let envBallColorNode: ShaderNodeObject<THREE.PMREMNode> | null = null;
 let envBallRoughnessNode: ShaderNodeObject<THREE.UniformNode<number>> = uniform(0);
 let envBallFolder: FolderApi | null = null;
 let debugCamera: THREE.PerspectiveCamera | null = null;
+let curSceneDebugCamParams = DEFAULT_DEBUG_CAM_PARAMS;
 let orbitControls: OrbitControls | null = null;
 let scenesDropDown: ListBladeApi<BladeController<View>>;
+let toolsDebugGUI: Pane | null = null;
 type DebugCameraState = {
   enabled: boolean;
   latestAppCameraId: null | string;
@@ -37,16 +48,6 @@ type DebugCameraState = {
   target: number[];
 };
 type DebugToolsState = {
-  useDebugCamera: boolean; // @TODO: remove
-  latestAppCameraId: null | string; // @TODO: remove
-  // @TODO: remove
-  camera: {
-    fov: number; // @TODO: remove
-    near: number; // @TODO: remove
-    far: number; // @TODO: remove
-    position: number[]; // @TODO: remove
-    target: number[]; // @TODO: remove
-  }; // @TODO: remove
   env: {
     envBallFolderExpanded: boolean;
     envBallVisible: boolean;
@@ -63,15 +64,6 @@ type DebugToolsState = {
   debugCamera: { [sceneId: string]: DebugCameraState };
 };
 let debugToolsState: DebugToolsState = {
-  useDebugCamera: false,
-  latestAppCameraId: null,
-  camera: {
-    fov: 60,
-    near: 0.001,
-    far: 1000,
-    position: [0, 0, 10],
-    target: [0, 0, 0],
-  },
   env: {
     envBallFolderExpanded: false,
     envBallVisible: false,
@@ -86,15 +78,6 @@ let debugToolsState: DebugToolsState = {
     loggingFolderExpanded: false,
   },
   debugCamera: {},
-};
-const DEFAULT_DEBUG_CAM_PARAMS: DebugCameraState = {
-  enabled: false,
-  latestAppCameraId: null,
-  fov: 60,
-  near: 0.001,
-  far: 1000,
-  position: [0, 0, 10],
-  target: [0, 0, 0],
 };
 
 /**
@@ -115,9 +98,9 @@ const createDebugToolsDebugGUI = () => {
   debugToolsState = { ...debugToolsState, ...savedDebugToolsState };
 
   const currentSceneId = getCurrentSceneId();
-  let curSceneDebugCamParams = DEFAULT_DEBUG_CAM_PARAMS;
   if (currentSceneId) {
-    curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+    curSceneDebugCamParams =
+      debugToolsState.debugCamera[currentSceneId] || DEFAULT_DEBUG_CAM_PARAMS;
   }
 
   debugCamera = createCamera(DEBUG_CAMERA_ID, {
@@ -126,7 +109,7 @@ const createDebugToolsDebugGUI = () => {
     near: curSceneDebugCamParams.near,
     far: curSceneDebugCamParams.far,
   });
-  // @MAYBE: @TODO: add this as debug camera (and also add to createCamera)
+  // @MAYBE: add this as debug camera (and also add to createCamera)
   // const horizontalFov = 90;
   // debugCamera.fov =
   //   (Math.atan(Math.tan(((horizontalFov / 2) * Math.PI) / 180) / debugCamera.aspect) * 2 * 180) /
@@ -137,7 +120,7 @@ const createDebugToolsDebugGUI = () => {
     throw new Error(msg);
   }
 
-  createOnScreenTools(debugCamera, curSceneDebugCamParams);
+  createOnScreenTools(debugCamera);
 
   const renderer = getRenderer();
   if (!renderer) {
@@ -157,11 +140,11 @@ const createDebugToolsDebugGUI = () => {
       orbitControls?.target.y || 0,
       orbitControls?.target.z || 0,
     ];
-    debugToolsState.camera.position = position;
-    debugToolsState.camera.target = target;
+    curSceneDebugCamParams.position = position;
+    curSceneDebugCamParams.target = target;
     lsSetItem(LS_KEY, debugToolsState);
   });
-  orbitControls.enabled = debugToolsState.useDebugCamera;
+  orbitControls.enabled = curSceneDebugCamParams.enabled;
 
   createDebuggerTab({
     id: 'debugToolsControls',
@@ -170,172 +153,8 @@ const createDebugToolsDebugGUI = () => {
     orderNr: 6,
     container: () => {
       const { container, debugGUI } = createNewDebuggerPane('debugTools', 'Debug Tools Controls');
-
-      debugGUI
-        .addBinding(debugToolsState, 'useDebugCamera', { label: 'Use debug camera' })
-        .on('change', (e) => {
-          setDebugToolsVisibility(e.value);
-          lsSetItem(LS_KEY, debugToolsState);
-        });
-      debugGUI
-        .addBinding(debugToolsState.camera, 'fov', {
-          label: 'Debug camera FOV',
-          step: 1,
-          min: 1,
-          max: 180,
-        })
-        .on('change', (e) => {
-          if (!debugCamera) return;
-          debugCamera.fov = e.value;
-          debugCamera.updateProjectionMatrix();
-          lsSetItem(LS_KEY, debugToolsState);
-        });
-      debugGUI
-        .addBinding(debugToolsState.camera, 'near', {
-          label: 'Debug camera near',
-          step: 0.01,
-          min: 0.01,
-        })
-        .on('change', (e) => {
-          if (!debugCamera) return;
-          debugCamera.near = e.value;
-          debugCamera.updateProjectionMatrix();
-          lsSetItem(LS_KEY, debugToolsState);
-        });
-      debugGUI
-        .addBinding(debugToolsState.camera, 'far', {
-          label: 'Debug camera far',
-          step: 0.01,
-          min: 0.02,
-        })
-        .on('change', (e) => {
-          if (!debugCamera) return;
-          debugCamera.far = e.value;
-          debugCamera.updateProjectionMatrix();
-          lsSetItem(LS_KEY, debugToolsState);
-        });
-
-      // Env ball
-      envBallFolder = debugGUI
-        .addFolder({
-          title: 'Environment ball',
-          expanded: debugToolsState.env.envBallFolderExpanded,
-          hidden: !Boolean(envBallColorNode),
-        })
-        .on('fold', (state) => {
-          debugToolsState.env.envBallFolderExpanded = state.expanded;
-          lsSetItem(LS_KEY, debugToolsState);
-        });
-      envBallFolder
-        .addBinding(debugToolsState.env, 'envBallVisible', {
-          label: 'Show env ball',
-        })
-        .on('change', (e) => {
-          lsSetItem(LS_KEY, debugToolsState);
-          if (!Boolean(envBallColorNode)) return;
-          if (envBallMesh) envBallMesh.visible = e.value;
-        });
-      envBallFolder
-        .addBinding(debugToolsState.env, 'separateBallValues', {
-          label: 'Separate env ball values',
-        })
-        .on('change', (e) => {
-          envBallRoughnessNode.value = e.value
-            ? debugToolsState.env.ballRoughness
-            : getEnvMapRoughnessBg()?.value !== undefined
-              ? getEnvMapRoughnessBg().value
-              : debugToolsState.env.ballDefaultRoughness;
-          ballRoughnesGUI.disabled = !e.value;
-          lsSetItem(LS_KEY, debugToolsState);
-        });
-      const ballRoughnesGUI = envBallFolder
-        .addBinding(debugToolsState.env, 'ballRoughness', {
-          label: 'Env ball roughness',
-          step: 0.001,
-          min: 0,
-          max: 1,
-          disabled: !debugToolsState.env.separateBallValues,
-        })
-        .on('change', (e) => {
-          envBallRoughnessNode.value = e.value;
-          lsSetItem(LS_KEY, debugToolsState);
-        });
-
-      // Scene listing
-      const scenesFolder = debugGUI
-        .addFolder({
-          title: 'Scenes and debug scenes',
-          expanded: debugToolsState.scenesListing.scenesFolderExpanded,
-        })
-        .on('fold', (state) => {
-          debugToolsState.scenesListing.scenesFolderExpanded = state.expanded;
-          lsSetItem(LS_KEY, debugToolsState);
-        });
-      scenesDropDown = scenesFolder.addBlade({
-        view: 'list',
-        label: 'Scenes',
-        options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })), // @TODO: add app scene name here
-        value: getCurrentSceneId(),
-      }) as ListBladeApi<BladeController<View>>;
-      scenesDropDown.on('change', (e) => {
-        const value = String(e.value);
-        if (value === getCurrentSceneId()) return;
-        const nextScene = debugSceneListing.find((s) => s.id === value);
-        if (!isCurrentlyLoading() && nextScene) {
-          loadScene({ nextSceneFn: nextScene.fn });
-          // @TODO: save current scene id to debugToolsState and to localStorage
-          return;
-        }
-        if (!isCurrentlyLoading) {
-          lerror(`Could not find scene with id '${value}' in scenes dropdown debugger.`);
-        }
-      });
-
-      // Logging actions
-      const loggingFolder = debugGUI
-        .addFolder({
-          title: 'Logging actions ',
-          expanded: debugToolsState.loggingActions.loggingFolderExpanded,
-        })
-        .on('fold', (state) => {
-          debugToolsState.loggingActions.loggingFolderExpanded = state.expanded;
-          lsSetItem(LS_KEY, debugToolsState);
-        });
-      const getLogActionList = () => ({
-        environmentVariables: [
-          'ENV VARIABLES:********\n',
-          `Current environment: ${getCurrentEnvironment()}`,
-          getEnvs(),
-          '**********************',
-        ],
-        rendererOptions: ['RENDER OPTIONS:*******', getRendererOptions(), '**********************'],
-        rootScene: ['ROOT SCENE:***********', getRootScene(), '**********************'],
-        cameras: [
-          'CAMERAS***************\n',
-          `current camera id: ${getCurrentCameraId()}`,
-          getAllCameras(),
-          '**********************',
-        ],
-      });
-      const getLogActionListItem = (key: string) => {
-        const logActionList = getLogActionList();
-        return logActionList[key as keyof typeof logActionList];
-      };
-      loggingFolder.addButton({ title: 'ALL' }).on('click', () => {
-        const logActionList = getLogActionList();
-        const keys = Object.keys(logActionList);
-        for (let i = 0; i < keys.length; i++) {
-          llog(...logActionList[keys[i] as keyof typeof logActionList]);
-        }
-      });
-      const logActionList = getLogActionList();
-      const logActionKeys = Object.keys(logActionList);
-      for (let i = 0; i < logActionKeys.length; i++) {
-        const key = logActionKeys[i] as keyof typeof logActionList;
-        loggingFolder.addButton({ title: key }).on('click', () => {
-          llog(...getLogActionListItem(key));
-        });
-      }
+      toolsDebugGUI = debugGUI;
+      buildDebugGUI();
 
       return container;
     },
@@ -343,10 +162,7 @@ const createDebugToolsDebugGUI = () => {
 };
 
 // On screen tools (eg. env ball)
-const createOnScreenTools = (
-  debugCamera: THREE.PerspectiveCamera,
-  curSceneDebugCamParams: DebugCameraState
-) => {
+const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
   debugCamera.position.set(
     curSceneDebugCamParams.position[0],
     curSceneDebugCamParams.position[1],
@@ -424,24 +240,25 @@ const createOnScreenTools = (
 };
 
 /**
- * TODO jsDoc
- * @param show
+ * Sets the debug tools visibility (on screen tools and debug tools)
+ * @param show (boolean) whether to show the debug tools (and use debug camera) or not
+ * @param refreshPane (boolean) optional value to determine whether the debug pane should be refreshed or not
  * @returns
  */
-export const setDebugToolsVisibility = (show: boolean) => {
+export const setDebugToolsVisibility = (show: boolean, refreshPane?: boolean) => {
+  const currentSceneId = getCurrentSceneId();
+  if (!currentSceneId) {
+    const msg = 'Could not find current scene id in setDebugToolsVisibility';
+    lerror(msg);
+    throw new Error(msg);
+  }
+  if (currentSceneId) {
+    curSceneDebugCamParams =
+      debugToolsState.debugCamera[currentSceneId] || DEFAULT_DEBUG_CAM_PARAMS;
+  }
+
   if (show) {
     const currentCameraId = getCurrentCameraId();
-    const currentSceneId = getCurrentSceneId();
-    if (!currentSceneId) {
-      const msg = 'Could not find current scene id in setDebugToolsVisibility';
-      lerror(msg);
-      throw new Error(msg);
-    }
-    let curSceneDebugCamParams = DEFAULT_DEBUG_CAM_PARAMS;
-    if (currentSceneId) {
-      curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-    }
-
     if (currentCameraId !== DEBUG_CAMERA_ID) {
       curSceneDebugCamParams.latestAppCameraId = currentCameraId;
     }
@@ -462,12 +279,16 @@ export const setDebugToolsVisibility = (show: boolean) => {
       );
     }
     setCurrentCamera(DEBUG_CAMERA_ID);
+    if (refreshPane) buildDebugGUI();
     return;
   }
 
   if (orbitControls) orbitControls.enabled = false;
   if (debugCamera?.children[0]) debugCamera.children[0].visible = false;
-  setCurrentCamera(debugToolsState.latestAppCameraId || Object.keys(getAllCameras())[0]);
+  setCurrentCamera(
+    debugToolsState.debugCamera[currentSceneId].latestAppCameraId || Object.keys(getAllCameras())[0]
+  );
+  if (refreshPane) buildDebugGUI();
 };
 
 /**
@@ -583,11 +404,232 @@ const reloadSceneListingBlade = () => {
  * TODO jsDoc
  * @returns boolean
  */
-export const isUsingDebugCamera = () => {
+export const isUsingDebugCamera = () => isDebugEnvironment() && curSceneDebugCamParams.enabled;
+
+/**
+ * Add scene to debug tools states
+ * @param sceneId (string)
+ */
+export const addSceneToDebugtools = (sceneId: string) => {
+  if (!isDebugEnvironment()) return;
+  const foundScene = getScene(sceneId);
+  if (!foundScene || debugToolsState.debugCamera[sceneId]) return;
+
+  console.log('TUUT', foundScene.userData.id);
+
+  debugToolsState.debugCamera[sceneId] = DEFAULT_DEBUG_CAM_PARAMS;
+  lsSetItem(LS_KEY, debugToolsState);
+};
+
+const buildDebugGUI = () => {
+  const debugGUI = toolsDebugGUI;
   const currentSceneId = getCurrentSceneId();
-  let curSceneDebugCamParams = DEFAULT_DEBUG_CAM_PARAMS;
-  if (currentSceneId) {
-    curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+  if (!debugGUI || !currentSceneId) return;
+  if (!debugToolsState.debugCamera[currentSceneId]) {
+    debugToolsState.debugCamera[currentSceneId] = DEFAULT_DEBUG_CAM_PARAMS;
   }
-  return isDebugEnvironment() && curSceneDebugCamParams.enabled;
+  curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+
+  const blades = debugGUI?.children || [];
+  for (let i = 0; i < blades.length; i++) {
+    blades[i].dispose();
+  }
+
+  debugGUI
+    .addBinding(curSceneDebugCamParams, 'enabled', {
+      label: 'Use debug camera',
+    })
+    .on('change', (e) => {
+      const currentSceneId = getCurrentSceneId();
+      if (!currentSceneId) return;
+      if (!debugToolsState.debugCamera[currentSceneId]) {
+        debugToolsState.debugCamera[currentSceneId] = DEFAULT_DEBUG_CAM_PARAMS;
+      }
+      debugToolsState.debugCamera[currentSceneId].enabled = e.value;
+      curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+      lsSetItem(LS_KEY, debugToolsState);
+      setDebugToolsVisibility(e.value);
+    });
+  debugGUI
+    .addBinding(curSceneDebugCamParams, 'fov', {
+      label: 'Debug camera FOV',
+      step: 1,
+      min: 1,
+      max: 180,
+    })
+    .on('change', (e) => {
+      if (!debugCamera) return;
+      debugCamera.fov = e.value;
+      debugCamera.updateProjectionMatrix();
+      const currentSceneId = getCurrentSceneId();
+      if (!currentSceneId) return;
+      if (!debugToolsState.debugCamera[currentSceneId]) {
+        debugToolsState.debugCamera[currentSceneId] = DEFAULT_DEBUG_CAM_PARAMS;
+      }
+      debugToolsState.debugCamera[currentSceneId].fov = e.value;
+      curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  debugGUI
+    .addBinding(curSceneDebugCamParams, 'near', {
+      label: 'Debug camera near',
+      step: 0.01,
+      min: 0.01,
+    })
+    .on('change', (e) => {
+      if (!debugCamera) return;
+      debugCamera.near = e.value;
+      debugCamera.updateProjectionMatrix();
+      const currentSceneId = getCurrentSceneId();
+      if (!currentSceneId) return;
+      if (!debugToolsState.debugCamera[currentSceneId]) {
+        debugToolsState.debugCamera[currentSceneId] = DEFAULT_DEBUG_CAM_PARAMS;
+      }
+      debugToolsState.debugCamera[currentSceneId].near = e.value;
+      curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  debugGUI
+    .addBinding(curSceneDebugCamParams, 'far', {
+      label: 'Debug camera far',
+      step: 0.01,
+      min: 0.02,
+    })
+    .on('change', (e) => {
+      if (!debugCamera) return;
+      debugCamera.far = e.value;
+      debugCamera.updateProjectionMatrix();
+      const currentSceneId = getCurrentSceneId();
+      if (!currentSceneId) return;
+      if (!debugToolsState.debugCamera[currentSceneId]) {
+        debugToolsState.debugCamera[currentSceneId] = DEFAULT_DEBUG_CAM_PARAMS;
+      }
+      debugToolsState.debugCamera[currentSceneId].far = e.value;
+      curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+
+  // Env ball
+  envBallFolder = debugGUI
+    .addFolder({
+      title: 'Environment ball',
+      expanded: debugToolsState.env.envBallFolderExpanded,
+      hidden: !Boolean(envBallColorNode),
+    })
+    .on('fold', (state) => {
+      debugToolsState.env.envBallFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  envBallFolder
+    .addBinding(debugToolsState.env, 'envBallVisible', {
+      label: 'Show env ball',
+    })
+    .on('change', (e) => {
+      lsSetItem(LS_KEY, debugToolsState);
+      if (!Boolean(envBallColorNode)) return;
+      if (envBallMesh) envBallMesh.visible = e.value;
+    });
+  envBallFolder
+    .addBinding(debugToolsState.env, 'separateBallValues', {
+      label: 'Separate env ball values',
+    })
+    .on('change', (e) => {
+      envBallRoughnessNode.value = e.value
+        ? debugToolsState.env.ballRoughness
+        : getEnvMapRoughnessBg()?.value !== undefined
+          ? getEnvMapRoughnessBg().value
+          : debugToolsState.env.ballDefaultRoughness;
+      ballRoughnesGUI.disabled = !e.value;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  const ballRoughnesGUI = envBallFolder
+    .addBinding(debugToolsState.env, 'ballRoughness', {
+      label: 'Env ball roughness',
+      step: 0.001,
+      min: 0,
+      max: 1,
+      disabled: !debugToolsState.env.separateBallValues,
+    })
+    .on('change', (e) => {
+      envBallRoughnessNode.value = e.value;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+
+  // Scene listing
+  const scenesFolder = debugGUI
+    .addFolder({
+      title: 'Scenes and debug scenes',
+      expanded: debugToolsState.scenesListing.scenesFolderExpanded,
+    })
+    .on('fold', (state) => {
+      debugToolsState.scenesListing.scenesFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  scenesDropDown = scenesFolder.addBlade({
+    view: 'list',
+    label: 'Scenes',
+    options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })), // @TODO: add app scene name here
+    value: getCurrentSceneId(),
+  }) as ListBladeApi<BladeController<View>>;
+  scenesDropDown.on('change', (e) => {
+    const value = String(e.value);
+    if (value === getCurrentSceneId()) return;
+    const nextScene = debugSceneListing.find((s) => s.id === value);
+    if (!isCurrentlyLoading() && nextScene) {
+      loadScene({ nextSceneFn: nextScene.fn });
+      // @TODO: save current scene id to debugToolsState and to localStorage
+      return;
+    }
+    if (!isCurrentlyLoading) {
+      lerror(`Could not find scene with id '${value}' in scenes dropdown debugger.`);
+    }
+  });
+
+  // Logging actions
+  const loggingFolder = debugGUI
+    .addFolder({
+      title: 'Logging actions ',
+      expanded: debugToolsState.loggingActions.loggingFolderExpanded,
+    })
+    .on('fold', (state) => {
+      debugToolsState.loggingActions.loggingFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  const getLogActionList = () => ({
+    environmentVariables: [
+      'ENV VARIABLES:********\n',
+      `Current environment: ${getCurrentEnvironment()}`,
+      getEnvs(),
+      '**********************',
+    ],
+    rendererOptions: ['RENDER OPTIONS:*******', getRendererOptions(), '**********************'],
+    rootScene: ['ROOT SCENE:***********', getRootScene(), '**********************'],
+    cameras: [
+      'CAMERAS***************\n',
+      `current camera id: ${getCurrentCameraId()}`,
+      getAllCameras(),
+      '**********************',
+    ],
+  });
+  const getLogActionListItem = (key: string) => {
+    const logActionList = getLogActionList();
+    return logActionList[key as keyof typeof logActionList];
+  };
+  loggingFolder.addButton({ title: 'ALL' }).on('click', () => {
+    const logActionList = getLogActionList();
+    const keys = Object.keys(logActionList);
+    for (let i = 0; i < keys.length; i++) {
+      llog(...logActionList[keys[i] as keyof typeof logActionList]);
+    }
+  });
+  const logActionList = getLogActionList();
+  const logActionKeys = Object.keys(logActionList);
+  for (let i = 0; i < logActionKeys.length; i++) {
+    const key = logActionKeys[i] as keyof typeof logActionList;
+    loggingFolder.addButton({ title: key }).on('click', () => {
+      llog(...getLogActionListItem(key));
+    });
+  }
+
+  debugGUI.refresh();
 };

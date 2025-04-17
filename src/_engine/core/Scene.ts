@@ -12,7 +12,12 @@ import {
   setCurrentScenePhysicsObjects,
 } from './PhysicsRapier';
 import { isDebugEnvironment } from './Config';
-import { removeScenesFromSceneListing, setDebugEnvBallMaterial } from '../debug/DebugTools';
+import {
+  addSceneToDebugtools,
+  getDebugToolsState,
+  removeScenesFromSceneListing,
+  setDebugEnvBallMaterial,
+} from '../debug/DebugTools';
 import { getCurrentSceneLoader } from './SceneLoader';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
@@ -55,6 +60,8 @@ export const createScene = (id: string, opts?: SceneOptions) => {
   if (opts) sceneOpts[id] = opts;
   scenes[id] = scene;
   scene.userData.id = id;
+
+  addSceneToDebugtools(id);
 
   if (opts?.isCurrentScene || !currentSceneId) setCurrentScene(id);
 
@@ -206,6 +213,11 @@ export const deleteScene = (
   }
 
   if (opts?.deleteSavedScene) delete scenes[id];
+
+  const debugToolsState = getDebugToolsState();
+  if (debugToolsState.debugCamera[id]) {
+    delete debugToolsState.debugCamera[id];
+  }
 };
 
 /**
@@ -249,11 +261,11 @@ export const setCurrentScene = (id: string | null) => {
 
   setCurrentScenePhysicsObjects(id);
 
-  if (rootScene.children.length) initMainLoop();
-
   updateDebuggerSceneTitle(
     currentSceneOpts?.name || id || nextScene?.userData.id || '[No scene..]'
   );
+
+  if (rootScene.children.length) initMainLoop();
 
   return nextScene;
 };

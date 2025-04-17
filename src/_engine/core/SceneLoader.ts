@@ -14,7 +14,11 @@ import { deleteCurrentScenePhysicsObjects, deletePhysicsWorld } from './PhysicsR
 import { disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
-import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
+import {
+  addSceneToDebugtools,
+  getDebugToolsState,
+  setDebugToolsVisibility,
+} from '../debug/DebugTools';
 import { isDebugEnvironment } from './Config';
 
 export type UpdateLoaderStatusFn = (
@@ -222,7 +226,9 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         const canvasParentElem = getCanvasParentElem();
         if (canvasParentElem) canvasParentElem.style.setProperty('pointer-events', '');
 
-        if (isDebugEnvironment()) setDebugToolsVisibility(getDebugToolsState().useDebugCamera);
+        if (isDebugEnvironment()) {
+          setDebugToolsVisibility(getDebugToolsState().debugCamera[newSceneId]?.enabled, true);
+        }
 
         loader.phase = 'END';
         await loadEndFn(loader).then(() => {

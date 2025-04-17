@@ -26,6 +26,7 @@ export const createCamera = (
     if (opts?.isCurrentCamera && !isUsingDebugCamera()) {
       setCurrentCamera(id);
     }
+    c.updateProjectionMatrix();
     return c;
   }
 
