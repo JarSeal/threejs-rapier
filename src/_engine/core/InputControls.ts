@@ -1,4 +1,4 @@
-import { getDebugToolsState } from '../debug/DebugTools';
+import { isUsingDebugCamera } from '../debug/DebugTools';
 import { lerror, lwarn } from '../utils/Logger';
 import { isDebugEnvironment } from './Config';
 import { getCurrentSceneId } from './Scene';
@@ -66,8 +66,8 @@ export const setMouseInputsEnabled = (enabled: boolean) => (mouseInputsEnabled =
 
 const isInputInDebugCamInvalid = (enabledInDebugCam?: EnabledInDebugCam) =>
   isDebugEnvironment() &&
-  ((enabledInDebugCam === 'NOT_ENABLED_IN_DEBUG' && getDebugToolsState().useDebugCamera) ||
-    (enabledInDebugCam === 'ENABLED_ONLY_IN_DEBUG' && !getDebugToolsState().useDebugCamera));
+  ((enabledInDebugCam === 'NOT_ENABLED_IN_DEBUG' && isUsingDebugCamera()) ||
+    (enabledInDebugCam === 'ENABLED_ONLY_IN_DEBUG' && !isUsingDebugCamera()));
 
 const isKeyInputDisabled = (mapping: KeyMapping) =>
   mapping.enabled === false || isInputInDebugCamInvalid(mapping.enabledInDebugCam);

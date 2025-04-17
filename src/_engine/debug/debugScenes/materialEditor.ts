@@ -7,6 +7,7 @@ export const DEBUG_MATERIAL_EDITOR_ID = '_debug-material-editor';
 
 export const initDebugMaterialEditorScene = async () =>
   new Promise<string>(async (resolve) => {
+    // eslint-disable-next-line no-console
     console.log('INIT MATERIAL EDItoR');
     const debugScene = debugSceneListing.find((item) => item.id === DEBUG_MATERIAL_EDITOR_ID);
     if (!debugScene) {

@@ -415,8 +415,6 @@ export const addSceneToDebugtools = (sceneId: string) => {
   const foundScene = getScene(sceneId);
   if (!foundScene || debugToolsState.debugCamera[sceneId]) return;
 
-  console.log('TUUT', foundScene.userData.id);
-
   debugToolsState.debugCamera[sceneId] = DEFAULT_DEBUG_CAM_PARAMS;
   lsSetItem(LS_KEY, debugToolsState);
 };

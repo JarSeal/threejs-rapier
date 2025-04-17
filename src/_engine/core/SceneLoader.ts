@@ -14,11 +14,7 @@ import { deleteCurrentScenePhysicsObjects, deletePhysicsWorld } from './PhysicsR
 import { disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
-import {
-  addSceneToDebugtools,
-  getDebugToolsState,
-  setDebugToolsVisibility,
-} from '../debug/DebugTools';
+import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
 import { isDebugEnvironment } from './Config';
 
 export type UpdateLoaderStatusFn = (

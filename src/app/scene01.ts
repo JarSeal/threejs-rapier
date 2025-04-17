@@ -308,6 +308,7 @@ addKeyInputControl({
   type: 'KEY_DOWN',
   key: 'd',
   fn: (_, time) => {
+    // eslint-disable-next-line no-console
     console.log('PRESSED', performance.now() - time);
   },
 });
