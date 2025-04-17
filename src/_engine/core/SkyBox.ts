@@ -90,7 +90,7 @@ const skyboxes: {
   };
 } = {};
 
-let skyBoxState: SkyBoxState = {
+const defaultSkyBoxState: SkyBoxState = {
   type: '',
   equiRectFolderExpanded: false,
   equiRectFile: '',
@@ -105,6 +105,7 @@ let skyBoxState: SkyBoxState = {
   cubeTextRoughness: defaultRoughness,
   cubeTextRotate: 0,
 };
+let skyBoxState = { ...defaultSkyBoxState };
 let debuggerCreated = false;
 let cubeTexture: THREE.CubeTexture | null = null;
 
