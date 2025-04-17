@@ -446,6 +446,7 @@ const buildDebugGUI = () => {
       }
       debugToolsState.debugCamera[currentSceneId].enabled = e.value;
       curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+      if (envBallFolder) envBallFolder.hidden = !e.value;
       lsSetItem(LS_KEY, debugToolsState);
       setDebugToolsVisibility(e.value);
     });
@@ -513,7 +514,9 @@ const buildDebugGUI = () => {
     .addFolder({
       title: 'Environment ball',
       expanded: debugToolsState.env.envBallFolderExpanded,
-      hidden: !Boolean(envBallColorNode),
+      hidden:
+        !Boolean(envBallColorNode) ||
+        !debugToolsState.debugCamera[getCurrentSceneId() || '']?.enabled,
     })
     .on('fold', (state) => {
       debugToolsState.env.envBallFolderExpanded = state.expanded;
@@ -527,6 +530,7 @@ const buildDebugGUI = () => {
       lsSetItem(LS_KEY, debugToolsState);
       if (!Boolean(envBallColorNode)) return;
       if (envBallMesh) envBallMesh.visible = e.value;
+      console.log(!Boolean(envBallColorNode), envBallMesh?.visible);
     });
   envBallFolder
     .addBinding(debugToolsState.env, 'separateBallValues', {
