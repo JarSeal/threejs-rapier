@@ -62,7 +62,11 @@ type SkyBoxProps = {
 );
 
 type SkyBoxState = {
+  id: string;
+  name?: string;
+  deleteWhenSceneUnloads?: boolean;
   type: '' | 'EQUIRECTANGULAR' | 'CUBETEXTURE' | 'SKYANDSUN';
+  textureId?: string;
   equiRectFolderExpanded: boolean;
   equiRectFile: string;
   equiRectTextureId: string;
@@ -70,28 +74,28 @@ type SkyBoxState = {
   equiRectIsEnvMap: boolean;
   equiRectRoughness: number;
   cubeTextFolderExpanded: boolean;
-  cubeTextFile: string;
+  cubeTextFile: string; // Check if this works, there should an array of strings
   cubeTextTextureId: string;
   cubeTextColorSpace: THREE.ColorSpace;
   cubeTextRoughness: number;
   cubeTextRotate: number;
+  envBallRoughness: number;
 };
 
-type SkyBoxNodes = {
-  equiRectTextureId: string;
-};
-
-const LS_KEY = 'debugSkyBox';
+const LS_KEY_STATE = 'debugSkyBoxState';
+const LS_KEY_ALL_STATES = 'debugAllSkyBoxStates';
 let defaultRoughness = 0.5;
 const pmremRoughnessBg = uniform(defaultRoughness);
-const skyboxes: {
+let allSkyBoxStates: {
   [sceneId: string]: {
-    [id: string]: { skybox: SkyBoxNodes; props: SkyBoxProps };
+    [id: string]: SkyBoxState;
   };
 } = {};
 
 const defaultSkyBoxState: SkyBoxState = {
+  id: '',
   type: '',
+  textureId: undefined,
   equiRectFolderExpanded: false,
   equiRectFile: '',
   equiRectTextureId: '',
@@ -104,6 +108,7 @@ const defaultSkyBoxState: SkyBoxState = {
   cubeTextColorSpace: THREE.SRGBColorSpace,
   cubeTextRoughness: defaultRoughness,
   cubeTextRotate: 0,
+  envBallRoughness: defaultRoughness,
 };
 let skyBoxState = { ...defaultSkyBoxState };
 let debuggerCreated = false;
@@ -136,8 +141,10 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
   }
 
   if (isDebugEnvironment()) {
-    const savedSkyBoxState = lsGetItem(LS_KEY, skyBoxState);
+    const savedSkyBoxState = lsGetItem(LS_KEY_STATE, skyBoxState);
     skyBoxState = { ...skyBoxState, ...savedSkyBoxState };
+    const savedAllSkyBoxStates = lsGetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+    allSkyBoxStates = { ...allSkyBoxStates, ...savedAllSkyBoxStates };
     if (!debuggerCreated) {
       createSkyBoxDebugGUI();
       debuggerCreated = true;
@@ -281,6 +288,7 @@ const createSkyBoxDebugGUI = () => {
         ],
       });
 
+      // Equirectangular
       const equiRectFolder = debugGUI
         .addFolder({
           title: 'Equirectangular sky box params',
@@ -289,7 +297,7 @@ const createSkyBoxDebugGUI = () => {
         })
         .on('fold', (state) => {
           skyBoxState.equiRectFolderExpanded = state.expanded;
-          lsSetItem(LS_KEY, skyBoxState);
+          lsSetItem(LS_KEY_STATE, skyBoxState);
         });
       equiRectFolder.addBinding(skyBoxState, 'equiRectFile', {
         label: 'File path or URL',
@@ -320,7 +328,7 @@ const createSkyBoxDebugGUI = () => {
           if (!debugToolsState.env.separateBallValues) {
             changeDebugEnvBallRoughness(e.value);
           }
-          lsSetItem(LS_KEY, skyBoxState);
+          lsSetItem(LS_KEY_STATE, skyBoxState);
         });
       equiRectFolder.addButton({ title: 'Reset' }).on('click', () => {
         skyBoxState.equiRectRoughness = defaultRoughness;
@@ -329,10 +337,11 @@ const createSkyBoxDebugGUI = () => {
         if (!debugToolsState.env.separateBallValues) {
           changeDebugEnvBallRoughness(defaultRoughness);
         }
-        lsRemoveItem(LS_KEY);
+        lsRemoveItem(LS_KEY_STATE);
         debugGUI.refresh();
       });
 
+      // Cubetexture
       const cubeTextureFolder = debugGUI
         .addFolder({
           title: 'Cube texture sky box params',
@@ -341,7 +350,7 @@ const createSkyBoxDebugGUI = () => {
         })
         .on('fold', (state) => {
           skyBoxState.cubeTextFolderExpanded = state.expanded;
-          lsSetItem(LS_KEY, skyBoxState);
+          lsSetItem(LS_KEY_STATE, skyBoxState);
         });
       cubeTextureFolder.addBinding(skyBoxState, 'cubeTextFile', {
         label: 'File path or URL',
@@ -368,7 +377,7 @@ const createSkyBoxDebugGUI = () => {
           if (!debugToolsState.env.separateBallValues) {
             changeDebugEnvBallRoughness(e.value);
           }
-          lsSetItem(LS_KEY, skyBoxState);
+          lsSetItem(LS_KEY_STATE, skyBoxState);
         });
       cubeTextureFolder.addButton({ title: 'Reset' }).on('click', () => {
         skyBoxState.cubeTextRoughness = defaultRoughness;
@@ -377,7 +386,7 @@ const createSkyBoxDebugGUI = () => {
         if (!debugToolsState.env.separateBallValues) {
           changeDebugEnvBallRoughness(defaultRoughness);
         }
-        lsRemoveItem(LS_KEY);
+        lsRemoveItem(LS_KEY_STATE);
         debugGUI.refresh();
       });
 
