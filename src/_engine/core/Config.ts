@@ -40,7 +40,6 @@ let config: AppConfig = {
  */
 export const loadConfig = () => {
   // Load config file
-  // @TODO: load the config file from the root
 
   // Load ENV variables
   envVars = import.meta.env;

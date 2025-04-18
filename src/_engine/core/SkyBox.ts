@@ -9,7 +9,13 @@ import {
   reflectVector,
 } from 'three/tsl';
 import { lerror, lwarn } from '../utils/Logger';
-import { getCurrentScene, getRootScene, getScene, isCurrentScene } from './Scene';
+import {
+  getCurrentScene,
+  getCurrentSceneId,
+  getRootScene,
+  getScene,
+  isCurrentScene,
+} from './Scene';
 import { getRenderer } from './Renderer';
 import { getTexture, loadTexture } from './Texture';
 import { isDebugEnvironment } from './Config';
@@ -66,7 +72,6 @@ type SkyBoxState = {
   name?: string;
   deleteWhenSceneUnloads?: boolean;
   type: '' | 'EQUIRECTANGULAR' | 'CUBETEXTURE' | 'SKYANDSUN';
-  textureId?: string;
   equiRectFolderExpanded: boolean;
   equiRectFile: string;
   equiRectTextureId: string;
@@ -86,7 +91,7 @@ const LS_KEY_STATE = 'debugSkyBoxState';
 const LS_KEY_ALL_STATES = 'debugAllSkyBoxStates';
 let defaultRoughness = 0.5;
 const pmremRoughnessBg = uniform(defaultRoughness);
-let allSkyBoxStates: {
+const allSkyBoxStates: {
   [sceneId: string]: {
     [id: string]: SkyBoxState;
   };
@@ -95,7 +100,6 @@ let allSkyBoxStates: {
 const defaultSkyBoxState: SkyBoxState = {
   id: '',
   type: '',
-  textureId: undefined,
   equiRectFolderExpanded: false,
   equiRectFile: '',
   equiRectTextureId: '',
@@ -115,13 +119,21 @@ let debuggerCreated = false;
 let cubeTexture: THREE.CubeTexture | null = null;
 
 /**
- * Creates either a sky box (equirectangular, cube texture, or sky and sun). The sky and sun type ("SKYANDSUN") includes a dynamic sun element.
+ * Creates either a sky box (equirectangular, cube texture, or sky and sun). The sky and sun type ("SKYANDSUN") includes a dynamic sun element in the sky.
  * @param skyBoxProps object that has different property's based on the type property, {@link SkyBoxProps}
  */
-export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
+export const addSkyBox = async ({
+  id,
+  name,
+  sceneId,
+  type,
+  deleteWhenSceneUnloads,
+  params,
+}: SkyBoxProps) => {
   if (params && 'roughness' in params) {
     defaultRoughness = params.roughness || 0.5;
     skyBoxState.equiRectRoughness = defaultRoughness;
+    skyBoxState.cubeTextRoughness = defaultRoughness;
   }
 
   const renderer = getRenderer();
@@ -140,11 +152,19 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
     throw new Error(msg);
   }
 
+  const givenOrCurrentSceneId = scene.userData.id;
+  if (!givenOrCurrentSceneId) {
+    const msg = 'Could not find current scene id in addSkyBox (EQUIRECTANGULAR).';
+    lerror(msg);
+    throw new Error(msg);
+  }
+
   if (isDebugEnvironment()) {
     const savedSkyBoxState = lsGetItem(LS_KEY_STATE, skyBoxState);
     skyBoxState = { ...skyBoxState, ...savedSkyBoxState };
     const savedAllSkyBoxStates = lsGetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
-    allSkyBoxStates = { ...allSkyBoxStates, ...savedAllSkyBoxStates };
+    // @TODO: fix
+    allSkyBoxStates[givenOrCurrentSceneId] = { ...allSkyBoxStates, ...savedAllSkyBoxStates };
     if (!debuggerCreated) {
       createSkyBoxDebugGUI();
       debuggerCreated = true;
@@ -164,6 +184,7 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
       // File is a string or textureId was provided (texture was preloaded)
       let equirectTexture: THREE.Texture | THREE.DataTexture | null = null;
       if (isHDR(file as string)) {
+        // @TODO: create a cache for these and load them when needed to reload
         equirectTexture = await new RGBELoader().loadAsync(file as string);
         // equirectTexture.magFilter = THREE.LinearFilter;
         // equirectTexture.minFilter = THREE.LinearMipMapLinearFilter;
@@ -216,6 +237,21 @@ export const addSkyBox = async ({ sceneId, type, params }: SkyBoxProps) => {
       const pmremNodeBall = pmremTexture(envTexture, reflectVec, pmremRoughnessBall);
       setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
     }
+
+    if (!allSkyBoxStates[givenOrCurrentSceneId]) allSkyBoxStates[givenOrCurrentSceneId] = {};
+    allSkyBoxStates[givenOrCurrentSceneId][id] = {
+      ...defaultSkyBoxState,
+      id,
+      name,
+      type,
+      deleteWhenSceneUnloads,
+      equiRectFolderExpanded: false,
+      equiRectFile: typeof file === 'string' ? file : '',
+      equiRectTextureId: textureId || '',
+      equiRectColorSpace: params.colorSpace || THREE.SRGBColorSpace,
+      equiRectIsEnvMap: params.isEnvMap || false,
+      equiRectRoughness: defaultRoughness,
+    };
 
     return;
   }
