@@ -16,6 +16,7 @@ import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
 import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
 import { isDebugEnvironment } from './Config';
+import { clearSkyBox } from './SkyBox';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -205,6 +206,8 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         deleteCurrentScenePhysicsObjects();
         deletePhysicsWorld();
       }
+
+      clearSkyBox();
 
       loader.phase = 'LOAD';
       await loadFn(loader, loadSceneProps.nextSceneFn).then(async (newSceneId) => {

@@ -50,7 +50,6 @@ export const scene01 = async () =>
     setTimeout(async () => {
       await addSkyBox({
         id: 'partly-cloudy',
-        sceneId: SCENE_ID,
         type: 'EQUIRECTANGULAR',
         params: {
           // file: envTexture,
@@ -64,6 +63,23 @@ export const scene01 = async () =>
           // colorSpace: THREE.SRGBColorSpace,
           colorSpace: THREE.LinearSRGBColorSpace,
           // colorSpace: THREE.NoColorSpace,
+        },
+      });
+      const map02 = [
+        '/cubemap02_positive_x.png',
+        '/cubemap02_negative_x.png',
+        '/cubemap02_negative_y.png',
+        '/cubemap02_positive_y.png',
+        '/cubemap02_positive_z.png',
+        '/cubemap02_negative_z.png',
+      ];
+      await addSkyBox({
+        id: 'desert-dunes',
+        type: 'CUBETEXTURE',
+        params: {
+          fileNames: map02,
+          path: '/assets/testTextures',
+          textureId: 'cubeTextureId',
         },
       });
 

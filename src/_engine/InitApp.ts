@@ -6,6 +6,7 @@ import { createPhysicsDebugMesh, InitRapierPhysics } from './core/PhysicsRapier'
 import { createRootScene, getRootScene } from './core/Scene';
 import './styles/index.scss';
 import { lerror } from './utils/Logger';
+import { buildSkyBoxDebugGUI } from './core/SkyBox';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -32,6 +33,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     if (isDebugEnvironment()) {
       createPhysicsDebugMesh();
+      buildSkyBoxDebugGUI();
     }
   } catch (err) {
     const msg = 'Error at app start function (InitEngine)';

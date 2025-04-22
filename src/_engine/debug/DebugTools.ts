@@ -338,7 +338,13 @@ export const setDebugEnvBallMaterial = (
  * Change the env map ball roughness
  * @param value roughness value (0.0 - 1.0)
  */
-export const changeDebugEnvBallRoughness = (value: number) => (envBallRoughnessNode.value = value);
+export const changeDebugEnvBallRoughness = (value: number) => {
+  if (!debugToolsState.env.separateBallValues) {
+    envBallRoughnessNode.value = value;
+    debugToolsState.env.ballRoughness = value;
+    lsSetItem(LS_KEY, debugToolsState);
+  }
+};
 
 /**
  * Getter for the debugToolsState object
@@ -530,7 +536,6 @@ const buildDebugGUI = () => {
       lsSetItem(LS_KEY, debugToolsState);
       if (!Boolean(envBallColorNode)) return;
       if (envBallMesh) envBallMesh.visible = e.value;
-      console.log(!Boolean(envBallColorNode), envBallMesh?.visible);
     });
   envBallFolder
     .addBinding(debugToolsState.env, 'separateBallValues', {
