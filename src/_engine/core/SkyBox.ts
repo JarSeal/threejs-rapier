@@ -28,7 +28,8 @@ import {
 } from '../debug/DebugTools';
 import { RGBELoader } from 'three/examples/jsm/Addons.js';
 import { isHDR } from '../utils/helpers';
-import { Pane } from 'tweakpane';
+import { ListBladeApi, Pane } from 'tweakpane';
+import { BladeController, View } from '@tweakpane/core';
 
 type SkyBoxProps = {
   id: string;
@@ -494,6 +495,28 @@ export const buildSkyBoxDebugGUI = () => {
       }
       lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
     });
+  const sceneId = getCurSceneSkyBoxSceneId();
+  const sceneSkyBoxes = allSkyBoxStates[sceneId];
+  const sceneSkyBoxesKeys = Object.keys(sceneSkyBoxes || {});
+  const scenesSkyBoxesDropDown = sceneSkyBoxesFolder.addBlade({
+    view: 'list',
+    label: "Scene's sky boxes",
+    value: findScenesCurrentSkyBoxState().id,
+    options: sceneSkyBoxesKeys
+      .map((key) => ({
+        text: sceneSkyBoxes[key].name || sceneSkyBoxes[key].id,
+        value: sceneSkyBoxes[key].id,
+      }))
+      .sort((a, b) => {
+        if (a.text < b.text) return -1;
+        if (a.text > b.text) return 1;
+        return 0;
+      }),
+  }) as ListBladeApi<BladeController<View>>;
+  scenesSkyBoxesDropDown.on('change', (e) => {
+    const value = String(e.value);
+    console.log(value);
+  });
 };
 
 const getCurSceneSkyBoxSceneId = () => {
