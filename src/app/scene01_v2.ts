@@ -76,7 +76,6 @@ export const scene01 = async () =>
           // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
           // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
           textureId: 'equiRectId',
-          isEnvMap: false,
           // colorSpace: THREE.SRGBColorSpace,
           colorSpace: THREE.LinearSRGBColorSpace,
           // colorSpace: THREE.NoColorSpace,

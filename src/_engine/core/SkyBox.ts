@@ -149,8 +149,10 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
     throw new Error(msg);
   }
 
-  let skyBoxStateToBeAdded = { ...defaultSkyBoxState, ...findScenesCurrentSkyBoxState() };
-  skyBoxStateToBeAdded.isCurrent = isCurrent !== false;
+  let skyBoxStateToBeAdded = {
+    ...defaultSkyBoxState,
+    isCurrent: isCurrent !== false,
+  };
   if (!allSkyBoxStates[givenOrCurrentSceneId]) allSkyBoxStates[givenOrCurrentSceneId] = {};
   if (!allSkyBoxStates[givenOrCurrentSceneId][id]) {
     allSkyBoxStates[givenOrCurrentSceneId][id] = { ...defaultSkyBoxState };
@@ -183,39 +185,66 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
     }
     let equirectTexture: THREE.Texture | THREE.DataTexture | null = null;
     let envTexture: null | THREE.Texture | THREE.DataTexture = null;
-    if (typeof file === 'string' || textureId) {
-      // File is a string or textureId was provided (texture has been already loaded)
-      if (isHDR(file as string)) {
-        equirectTexture = await loadTextureAsync({
-          id: textureId,
-          fileName: file as string,
-          useRGBELoader: true,
-          throwOnError: isDebugEnvironment(),
-        });
-        // equirectTexture.magFilter = THREE.LinearFilter;
-        // equirectTexture.minFilter = THREE.LinearMipMapLinearFilter;
-        // equirectTexture.anisotropy = 16;
-      } else {
-        equirectTexture = file
-          ? loadTexture({
-              id: textureId,
-              fileName: file as string,
-              throwOnError: isDebugEnvironment(),
-            })
-          : getTexture(textureId || '');
+
+    if (isCurScene && skyBoxStateToBeAdded.isCurrent) {
+      if (typeof file === 'string' || textureId) {
+        // File is a string or textureId was provided (texture has been already loaded)
+        if (isHDR(file as string)) {
+          equirectTexture = await loadTextureAsync({
+            id: textureId,
+            fileName: file as string,
+            useRGBELoader: true,
+            throwOnError: isDebugEnvironment(),
+          });
+          // equirectTexture.magFilter = THREE.LinearFilter;
+          // equirectTexture.minFilter = THREE.LinearMipMapLinearFilter;
+          // equirectTexture.anisotropy = 16;
+        } else {
+          equirectTexture = file
+            ? loadTexture({
+                id: textureId,
+                fileName: file as string,
+                throwOnError: isDebugEnvironment(),
+              })
+            : getTexture(textureId || '');
+        }
+        if (!equirectTexture) {
+          const msg = `Could not find or load equirectangular texture in addSkyBox (params: ${JSON.stringify(params)}).`;
+          lerror(msg);
+          return;
+        }
+        equirectTexture.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
+        envTexture = equirectTexture;
+      } else if (file) {
+        // File is a Texture/DataTexture
+        file.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
+        equirectTexture = file;
+        envTexture = file;
       }
-      if (!equirectTexture) {
-        const msg = `Could not find or load equirectangular texture in addSkyBox (params: ${JSON.stringify(params)}).`;
+
+      // Use sky box as environment map
+      if (!envTexture) {
+        const msg = 'Could not find envTexture in addSkyBox';
         lerror(msg);
-        return;
+        throw new Error(msg);
       }
-      equirectTexture.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
-      envTexture = equirectTexture;
-    } else if (file) {
-      // File is a Texture/DataTexture
-      file.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
-      equirectTexture = file;
-      envTexture = file;
+      envTexture.mapping = THREE.EquirectangularReflectionMapping;
+      const reflectVec = positionViewDirection
+        .negate()
+        .reflect(normalView)
+        .transformDirection(cameraViewMatrix);
+      pmremRoughnessBg.value = skyBoxStateToBeAdded.equiRectRoughness;
+      const backgroundEnvNode = pmremTexture(envTexture, normalWorld, pmremRoughnessBg);
+
+      const rootScene = getRootScene() as THREE.Scene;
+      rootScene.backgroundNode = backgroundEnvNode;
+      rootScene.environmentNode = backgroundEnvNode;
+      scene.userData.backgroundNodeTextureId = textureId || envTexture.userData.id;
+      if (isDebugEnvironment()) {
+        const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.equiRectRoughness);
+        const pmremNodeBall = pmremTexture(envTexture, reflectVec, pmremRoughnessBall);
+        setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
+      }
     }
 
     // Add to skyBoxStateToBeAdded
@@ -224,64 +253,42 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
       ? textureId
       : equirectTexture?.userData.id || undefined;
     skyBoxStateToBeAdded.equiRectColorSpace = params.colorSpace || THREE.SRGBColorSpace;
-
-    // Use sky box as environment map
-    if (!envTexture) {
-      const msg = 'Could not find envTexture in addSkyBox';
-      lerror(msg);
-      throw new Error(msg);
-    }
-    envTexture.mapping = THREE.EquirectangularReflectionMapping;
-    const reflectVec = positionViewDirection
-      .negate()
-      .reflect(normalView)
-      .transformDirection(cameraViewMatrix);
-    pmremRoughnessBg.value = skyBoxStateToBeAdded.equiRectRoughness;
-    const backgroundEnvNode = pmremTexture(envTexture, normalWorld, pmremRoughnessBg);
-    if (isCurScene && isCurrent !== false) {
-      const rootScene = getRootScene() as THREE.Scene;
-      rootScene.backgroundNode = backgroundEnvNode;
-      rootScene.environmentNode = backgroundEnvNode;
-    }
-    scene.userData.backgroundNodeTextureId = textureId || envTexture.userData.id;
-    if (isDebugEnvironment()) {
-      const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.equiRectRoughness);
-      const pmremNodeBall = pmremTexture(envTexture, reflectVec, pmremRoughnessBall);
-      setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
-    }
   } else if (type === 'CUBETEXTURE') {
     // CUBETEXTURE
     const { fileNames, path, textureId } = params;
 
-    // @TODO: cache cube textures
-    cubeTexture = await new THREE.CubeTextureLoader().setPath(path || './').loadAsync(fileNames);
-    cubeTexture.userData.id = textureId || cubeTexture.uuid;
-    cubeTexture.generateMipmaps = true;
-    cubeTexture.minFilter = THREE.LinearMipmapLinearFilter;
-    cubeTexture.colorSpace = params.colorSpace || defaultSkyBoxState.cubeTextColorSpace;
+    if (isCurScene && skyBoxStateToBeAdded.isCurrent) {
+      // @TODO: cache cube textures
+      cubeTexture = await new THREE.CubeTextureLoader().setPath(path || './').loadAsync(fileNames);
+      cubeTexture.userData.id = textureId || cubeTexture.uuid;
+      cubeTexture.generateMipmaps = true;
+      cubeTexture.minFilter = THREE.LinearMipmapLinearFilter;
+      cubeTexture.colorSpace = params.colorSpace || defaultSkyBoxState.cubeTextColorSpace;
 
+      pmremRoughnessBg.value = skyBoxStateToBeAdded.cubeTextRoughness;
+      const rotateYMatrix = new THREE.Matrix4();
+      rotateYMatrix.makeRotationY(Math.PI * skyBoxStateToBeAdded.cubeTextRotate);
+      const backgroundUV = reflectVector.xyz.mul(uniform(rotateYMatrix));
+      if (isCurScene && isCurrent !== false) {
+        const rootScene = getRootScene() as THREE.Scene;
+        rootScene.backgroundNode = pmremTexture(cubeTexture, backgroundUV, pmremRoughnessBg);
+      }
+      scene.userData.backgroundNodeTextureId = textureId || cubeTexture.userData.id;
+      if (isDebugEnvironment()) {
+        const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.cubeTextRoughness);
+        const pmremNodeBall = pmremTexture(cubeTexture, backgroundUV.mul(-1), pmremRoughnessBall);
+        setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
+      }
+    }
+
+    // Add to skyBoxStateToBeAdded
     skyBoxStateToBeAdded.cubeTextFile = fileNames;
     skyBoxStateToBeAdded.cubeTextPath = path || defaultSkyBoxState.cubeTextPath;
-    skyBoxStateToBeAdded.cubeTextTextureId = textureId || cubeTexture.userData.id;
+    skyBoxStateToBeAdded.cubeTextTextureId = textureId || cubeTexture?.userData.id || undefined;
     skyBoxStateToBeAdded.cubeTextColorSpace =
       params.colorSpace || defaultSkyBoxState.cubeTextColorSpace;
     skyBoxStateToBeAdded.cubeTextRotate =
       params.cubeTextRotate || defaultSkyBoxState.cubeTextRotate;
-
-    pmremRoughnessBg.value = skyBoxStateToBeAdded.cubeTextRoughness;
-    const rotateYMatrix = new THREE.Matrix4();
-    rotateYMatrix.makeRotationY(Math.PI * skyBoxStateToBeAdded.cubeTextRotate);
-    const backgroundUV = reflectVector.xyz.mul(uniform(rotateYMatrix));
-    if (isCurScene && isCurrent !== false) {
-      const rootScene = getRootScene() as THREE.Scene;
-      rootScene.backgroundNode = pmremTexture(cubeTexture, backgroundUV, pmremRoughnessBg);
-    }
-    scene.userData.backgroundNodeTextureId = textureId || cubeTexture.userData.id;
-    if (isDebugEnvironment()) {
-      const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.cubeTextRoughness);
-      const pmremNodeBall = pmremTexture(cubeTexture, backgroundUV.mul(-1), pmremRoughnessBall);
-      setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
-    }
 
     lwarn('CUBETEXTURE skybox type is under work in progress and may not work properly.'); // @TODO: remove when fully implemented
   } else if (type === 'SKYANDSUN') {
@@ -290,12 +297,7 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
     lwarn('At the moment SKYANDSUN skybox type is not supported (maybe in the future).'); // @TODO: remove when fully implemented
   }
 
-  if (isDebugEnvironment()) {
-    const savedAllSkyBoxStates = lsGetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
-    allSkyBoxStates = { ...allSkyBoxStates, ...savedAllSkyBoxStates };
-  }
-
-  if (isCurrent !== false) {
+  if (skyBoxStateToBeAdded.isCurrent) {
     // If the sky box is set to current, then set all the scene's existing sky boxes as not current
     const curSceneStates = allSkyBoxStates[givenOrCurrentSceneId];
     const curSceneStatesKeys = Object.keys(curSceneStates);
@@ -310,10 +312,11 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
     ...defaultSkyBoxState,
     ...skyBoxStateToBeAdded,
     name,
-    isCurrent: !(isCurrent === false),
   };
 
-  skyBoxState = { ...skyBoxState, ...allSkyBoxStates[givenOrCurrentSceneId][id] };
+  if (skyBoxStateToBeAdded.isCurrent) {
+    skyBoxState = { ...skyBoxState, ...allSkyBoxStates[givenOrCurrentSceneId][id] };
+  }
 
   buildSkyBoxDebugGUI();
 };
@@ -351,6 +354,7 @@ export const buildSkyBoxDebugGUI = () => {
   for (let i = 0; i < blades.length; i++) {
     blades[i].dispose();
   }
+  debugGUI.refresh();
 
   // Equirectangular
   const equiRectFolder = debugGUI
@@ -484,6 +488,7 @@ export const buildSkyBoxDebugGUI = () => {
       }
       lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
     });
+  // @TODO: show cubeTextRotate
   cubeTextureFolder.addButton({ title: 'Reset' }).on('click', () => {
     skyBoxState.cubeTextRoughness = defaultRoughness;
     pmremRoughnessBg.value = defaultRoughness;
@@ -522,11 +527,11 @@ export const buildSkyBoxDebugGUI = () => {
   const sceneSkyBoxesKeys = Object.keys(sceneSkyBoxes || {});
   const scenesSkyBoxesDropDown = sceneSkyBoxesFolder.addBlade({
     view: 'list',
-    label: "Scene's sky boxes",
+    label: 'Sky boxes in scene',
     value: findScenesCurrentSkyBoxState().id,
     options: sceneSkyBoxesKeys
       .map((key) => ({
-        text: (sceneSkyBoxes[key] as typeof defaultSkyBoxState).name || sceneSkyBoxes[key].id,
+        text: sceneSkyBoxes[key].name || sceneSkyBoxes[key].id,
         value: sceneSkyBoxes[key].id,
       }))
       .sort((a, b) => {
@@ -535,19 +540,22 @@ export const buildSkyBoxDebugGUI = () => {
         return 0;
       }),
   }) as ListBladeApi<BladeController<View>>;
-  scenesSkyBoxesDropDown.on('change', async (e) => {
+  scenesSkyBoxesDropDown.on('change', (e) => {
     const id = String(e.value);
     if (id === NO_SKYBOX_ID) return;
     const sbState = sceneSkyBoxes[id];
-    await addSkyBox({
-      ...extractSkyBoxParamsFromState(sbState),
-      id,
-      name: sbState.name,
-      sceneId: getCurSceneSkyBoxSceneId(),
-      isCurrent: true,
-    });
+    sbState.isCurrent = true;
     lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
-    console.log(id, sbState, findScenesCurrentSkyBoxState().id);
+    setTimeout(async () => {
+      await addSkyBox({
+        ...extractSkyBoxParamsFromState(sbState),
+        id,
+        name: sbState.name,
+        sceneId: getCurSceneSkyBoxSceneId(),
+        isCurrent: true,
+      });
+      lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+    }, 0);
   });
 };
 
@@ -599,19 +607,18 @@ const getCurSceneSkyBoxSceneId = () => {
 };
 
 const findScenesCurrentSkyBoxState = () => {
-  let curState = { ...defaultSkyBoxState };
   const sceneId = getCurrentSceneId();
   if (!sceneId) {
     clearSkyBox();
-    return curState;
+    return { ...defaultSkyBoxState };
   }
   if (!allSkyBoxStates[sceneId]) allSkyBoxStates[sceneId] = {};
   const sceneSkyboxStatesKeys = Object.keys(allSkyBoxStates[sceneId]);
   for (let i = 0; i < sceneSkyboxStatesKeys.length; i++) {
     const state = allSkyBoxStates[sceneId][sceneSkyboxStatesKeys[i]];
-    if (state?.isCurrent) curState = state;
+    if (state?.isCurrent) return state;
   }
-  return curState;
+  return { ...defaultSkyBoxState };
 };
 
 /**
