@@ -133,10 +133,42 @@ const mainLoopForDebug = async () => {
 // LOOP (for production)
 // **************************************
 const mainLoopForProduction = () => {
-  requestAnimationFrame(mainLoop);
-  delta = clock.getDelta() * loopState.playSpeedMultiplier;
-  // @TODO: add app play loop here
-  getRenderer()?.renderAsync(getRootScene() as Scene, getCurrentCamera());
+  const dt = clock.getDelta();
+  delta = dt * loopState.playSpeedMultiplier;
+  if (loopState.masterPlay) {
+    requestAnimationFrame(mainLoop);
+    loopState.isMasterPlaying = true;
+  } else {
+    loopState.isMasterPlaying = false;
+    return;
+  }
+  // main loopers
+  const mainLoopers = getSceneMainLoopers();
+  for (let i = 0; i < mainLoopers.length; i++) {
+    mainLoopers[i](delta);
+  }
+  if (loopState.appPlay) {
+    loopState.isAppPlaying = true;
+    // app loopers
+    const appLoopers = getSceneAppLoopers();
+    for (let i = 0; i < appLoopers.length; i++) {
+      appLoopers[i](delta);
+    }
+
+    stepPhysicsWorld(delta);
+
+    const renderer = getRenderer();
+    const windowSize = getWindowSize();
+    const rootScene = getRootScene() as Scene;
+    renderer?.setViewport(0, 0, windowSize.width, windowSize.height);
+    // No maxFPS limiter
+    renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
+      runMainLateLoopers();
+    });
+  } else {
+    loopState.isAppPlaying = false;
+    runMainLateLoopers();
+  }
 };
 
 // LOOP (for production with FPS limiter)

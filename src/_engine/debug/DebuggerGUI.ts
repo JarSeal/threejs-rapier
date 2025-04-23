@@ -126,6 +126,8 @@ let guiOpts: DebugGUIOpts | undefined = undefined;
  * @returns TCMP or undefined
  */
 export const createDebugGui = (opts?: DebugGUIOpts) => {
+  if (!isDebugEnvironment()) return;
+
   guiOpts = opts;
   initDrawerState();
   createTabMenuButtons();

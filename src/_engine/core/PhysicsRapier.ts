@@ -599,7 +599,7 @@ export const createPhysicsWorld = () => {
   physicsWorld.timestep = physicsState.timestepRatio;
   physicsWorldEnabled = true;
 
-  initDebuggerScenePhysState();
+  if (isDebugEnvironment()) initDebuggerScenePhysState();
 };
 
 /**
