@@ -80,7 +80,8 @@ type SkyBoxState = {
   equiRectIsEnvMap: boolean;
   equiRectRoughness: number;
   cubeTextFolderExpanded: boolean;
-  cubeTextFile: string; // Check if this works, there should an array of strings
+  cubeTextFile: string[];
+  cubeTextPath: string;
   cubeTextTextureId: string;
   cubeTextColorSpace: THREE.ColorSpace;
   cubeTextRoughness: number;
@@ -90,11 +91,12 @@ type SkyBoxState = {
 };
 
 const LS_KEY_ALL_STATES = 'debugAllSkyBoxStates';
+const NO_SKYBOX_ID = '__no_skybox';
 let defaultRoughness = 0.5;
 const pmremRoughnessBg = uniform(defaultRoughness);
 
 const defaultSkyBoxState: SkyBoxState = {
-  id: '',
+  id: NO_SKYBOX_ID,
   type: '',
   equiRectFolderExpanded: false,
   equiRectFile: '',
@@ -103,7 +105,8 @@ const defaultSkyBoxState: SkyBoxState = {
   equiRectIsEnvMap: false,
   equiRectRoughness: defaultRoughness,
   cubeTextFolderExpanded: false,
-  cubeTextFile: '',
+  cubeTextFile: [],
+  cubeTextPath: '',
   cubeTextTextureId: '',
   cubeTextColorSpace: THREE.SRGBColorSpace,
   cubeTextRoughness: defaultRoughness,
@@ -269,6 +272,11 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
     lwarn('At the moment SKYANDSUN skybox type is not supported (maybe in the future).'); // @TODO: remove when fully implemented
   }
 
+  if (isDebugEnvironment()) {
+    const savedAllSkyBoxStates = lsGetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+    allSkyBoxStates = { ...allSkyBoxStates, ...savedAllSkyBoxStates };
+  }
+
   if (isCurrent !== false) {
     // If the sky box is set to current, then set all the scene's existing sky boxes as not current
     const curSceneStates = allSkyBoxStates[givenOrCurrentSceneId];
@@ -286,11 +294,6 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
     name,
     isCurrent: !(isCurrent === false),
   };
-
-  if (isDebugEnvironment()) {
-    const savedAllSkyBoxStates = lsGetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
-    allSkyBoxStates = { ...allSkyBoxStates, ...savedAllSkyBoxStates };
-  }
 
   skyBoxState = { ...skyBoxState, ...allSkyBoxStates[givenOrCurrentSceneId][id] };
 
@@ -430,10 +433,12 @@ export const buildSkyBoxDebugGUI = () => {
     readonly: true,
     options: [{ value: skyBoxState.type }],
   });
-  cubeTextureFolder.addBinding(skyBoxState, 'cubeTextFile', {
-    label: 'File path or URL',
-    readonly: true,
-  });
+  // @TODO: show cubeTextFiles (array of strings)
+  // cubeTextureFolder.addBinding(skyBoxState, 'cubeTextFile', {
+  //   label: 'File path or URL',
+  //   readonly: true,
+  // });
+  // @TODO: show cubeTextPath
   cubeTextureFolder.addBinding(skyBoxState, 'cubeTextTextureId', {
     label: 'Texture id',
     readonly: true,
@@ -496,7 +501,10 @@ export const buildSkyBoxDebugGUI = () => {
       lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
     });
   const sceneId = getCurSceneSkyBoxSceneId();
-  const sceneSkyBoxes = allSkyBoxStates[sceneId];
+  const sceneSkyBoxes = {
+    ...allSkyBoxStates[sceneId],
+    [NO_SKYBOX_ID]: { ...defaultSkyBoxState, id: NO_SKYBOX_ID, name: '[No skybox]' },
+  } as { [key: string]: SkyBoxState };
   const sceneSkyBoxesKeys = Object.keys(sceneSkyBoxes || {});
   const scenesSkyBoxesDropDown = sceneSkyBoxesFolder.addBlade({
     view: 'list',
@@ -504,7 +512,7 @@ export const buildSkyBoxDebugGUI = () => {
     value: findScenesCurrentSkyBoxState().id,
     options: sceneSkyBoxesKeys
       .map((key) => ({
-        text: sceneSkyBoxes[key].name || sceneSkyBoxes[key].id,
+        text: (sceneSkyBoxes[key] as typeof defaultSkyBoxState).name || sceneSkyBoxes[key].id,
         value: sceneSkyBoxes[key].id,
       }))
       .sort((a, b) => {
@@ -513,10 +521,57 @@ export const buildSkyBoxDebugGUI = () => {
         return 0;
       }),
   }) as ListBladeApi<BladeController<View>>;
-  scenesSkyBoxesDropDown.on('change', (e) => {
-    const value = String(e.value);
-    console.log(value);
+  scenesSkyBoxesDropDown.on('change', async (e) => {
+    const id = String(e.value);
+    if (id === NO_SKYBOX_ID) return;
+    const sbState = sceneSkyBoxes[id];
+    await addSkyBox({
+      ...extractSkyBoxParamsFromState(sbState),
+      id,
+      name: sbState.name,
+      sceneId: getCurSceneSkyBoxSceneId(),
+      isCurrent: true,
+    });
+    console.log(id, sbState, findScenesCurrentSkyBoxState().id);
   });
+};
+
+const extractSkyBoxParamsFromState = (state: SkyBoxState) => {
+  if (state.type === 'EQUIRECTANGULAR') {
+    return {
+      type: state.type,
+      params: {
+        file: state.equiRectFile || undefined,
+        textureId: state.equiRectTextureId || undefined,
+        colorSpace: state.equiRectColorSpace || undefined,
+        isEnvMap: state.equiRectIsEnvMap || undefined,
+        roughness: state.equiRectRoughness || undefined,
+      },
+    } as SkyBoxProps;
+  }
+  if (state.type === 'CUBETEXTURE') {
+    return {
+      type: state.type,
+      params: {
+        fileNames: state.cubeTextFile || undefined,
+        path: state.cubeTextPath || undefined,
+        textureId: state.cubeTextTextureId || undefined,
+        colorSpace: state.cubeTextColorSpace || undefined,
+        roughness: state.cubeTextRoughness || undefined,
+        cubeTextRotate: state.cubeTextRotate || undefined,
+      },
+    } as SkyBoxProps;
+  }
+  if (state.type === 'SKYANDSUN') {
+    return {
+      type: state.type,
+      params: null,
+    } as SkyBoxProps;
+  }
+  return {
+    type: '',
+    params: null,
+  } as SkyBoxProps;
 };
 
 const getCurSceneSkyBoxSceneId = () => {

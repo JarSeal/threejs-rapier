@@ -48,23 +48,6 @@ export const scene01 = async () =>
     setTimeout(() => updateLoaderFn({ loadedCount: 1, totalCount: 2 }), 250);
 
     setTimeout(async () => {
-      await addSkyBox({
-        id: 'partly-cloudy',
-        type: 'EQUIRECTANGULAR',
-        params: {
-          // file: envTexture,
-          // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
-          file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
-          // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
-          // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
-          // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
-          textureId: 'equiRectId',
-          isEnvMap: false,
-          // colorSpace: THREE.SRGBColorSpace,
-          colorSpace: THREE.LinearSRGBColorSpace,
-          // colorSpace: THREE.NoColorSpace,
-        },
-      });
       const map02 = [
         '/cubemap02_positive_x.png',
         '/cubemap02_negative_x.png',
@@ -80,6 +63,23 @@ export const scene01 = async () =>
           fileNames: map02,
           path: '/assets/testTextures',
           textureId: 'cubeTextureId',
+        },
+      });
+      await addSkyBox({
+        id: 'partly-cloudy',
+        type: 'EQUIRECTANGULAR',
+        params: {
+          // file: envTexture,
+          // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
+          file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
+          // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
+          // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
+          // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
+          textureId: 'equiRectId',
+          isEnvMap: false,
+          // colorSpace: THREE.SRGBColorSpace,
+          colorSpace: THREE.LinearSRGBColorSpace,
+          // colorSpace: THREE.NoColorSpace,
         },
       });
 
