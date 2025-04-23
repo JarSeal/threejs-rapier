@@ -213,11 +213,13 @@ export const loadTexture = ({
 export const loadTextureAsync = async ({
   id,
   fileName,
+  useRGBELoader,
   texOpts,
   throwOnError,
 }: {
   id?: string;
   fileName?: string;
+  useRGBELoader?: boolean;
   texOpts?: TexOpts;
   throwOnError?: boolean;
 }) => {
@@ -225,7 +227,7 @@ export const loadTextureAsync = async ({
 
   if (!fileName) return getNoFileTexture(texOpts);
 
-  const loader = new THREE.TextureLoader();
+  const loader = useRGBELoader ? new RGBELoader() : new THREE.TextureLoader();
   try {
     const loadedTexture = await loader.loadAsync(fileName);
     const texture = setTextureOpts(loadedTexture, texOpts);

@@ -17,7 +17,7 @@ import {
   isCurrentScene,
 } from './Scene';
 import { getRenderer } from './Renderer';
-import { getTexture, loadTexture } from './Texture';
+import { getTexture, loadTexture, loadTextureAsync } from './Texture';
 import { isDebugEnvironment } from './Config';
 import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
@@ -26,7 +26,6 @@ import {
   getDebugToolsState,
   setDebugEnvBallMaterial,
 } from '../debug/DebugTools';
-import { RGBELoader } from 'three/examples/jsm/Addons.js';
 import { isHDR } from '../utils/helpers';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
@@ -47,8 +46,8 @@ type SkyBoxProps = {
         file?: string | THREE.Texture | THREE.DataTexture;
         textureId?: string;
         colorSpace?: THREE.ColorSpace;
-        isEnvMap?: boolean;
         roughness?: number;
+        // @TODO: check if equiTextRotate can be added
       };
     }
   | {
@@ -77,7 +76,6 @@ type SkyBoxState = {
   equiRectFile: string;
   equiRectTextureId: string;
   equiRectColorSpace: THREE.ColorSpace;
-  equiRectIsEnvMap: boolean;
   equiRectRoughness: number;
   cubeTextFolderExpanded: boolean;
   cubeTextFile: string[];
@@ -92,7 +90,7 @@ type SkyBoxState = {
 
 const LS_KEY_ALL_STATES = 'debugAllSkyBoxStates';
 const NO_SKYBOX_ID = '__no_skybox';
-let defaultRoughness = 0.5;
+let defaultRoughness = 0;
 const pmremRoughnessBg = uniform(defaultRoughness);
 
 const defaultSkyBoxState: SkyBoxState = {
@@ -102,7 +100,6 @@ const defaultSkyBoxState: SkyBoxState = {
   equiRectFile: '',
   equiRectTextureId: '',
   equiRectColorSpace: THREE.SRGBColorSpace,
-  equiRectIsEnvMap: false,
   equiRectRoughness: defaultRoughness,
   cubeTextFolderExpanded: false,
   cubeTextFile: [],
@@ -153,13 +150,15 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
   }
 
   let skyBoxStateToBeAdded = { ...defaultSkyBoxState, ...findScenesCurrentSkyBoxState() };
+  skyBoxStateToBeAdded.isCurrent = isCurrent !== false;
   if (!allSkyBoxStates[givenOrCurrentSceneId]) allSkyBoxStates[givenOrCurrentSceneId] = {};
   if (!allSkyBoxStates[givenOrCurrentSceneId][id]) {
     allSkyBoxStates[givenOrCurrentSceneId][id] = { ...defaultSkyBoxState };
   }
 
   if (params && 'roughness' in params) {
-    defaultRoughness = params.roughness || 0.5;
+    // @TODO: refactor this to save the original input value as default value (the value to reset to)
+    defaultRoughness = params.roughness !== undefined ? params.roughness : defaultRoughness;
     skyBoxStateToBeAdded.equiRectRoughness = defaultRoughness;
     skyBoxStateToBeAdded.cubeTextRoughness = defaultRoughness;
   }
@@ -182,13 +181,17 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
       lerror('Provide either file or textureId in the equirectangular params in addSkyBox.');
       return;
     }
+    let equirectTexture: THREE.Texture | THREE.DataTexture | null = null;
     let envTexture: null | THREE.Texture | THREE.DataTexture = null;
     if (typeof file === 'string' || textureId) {
-      // File is a string or textureId was provided (texture was preloaded)
-      let equirectTexture: THREE.Texture | THREE.DataTexture | null = null;
+      // File is a string or textureId was provided (texture has been already loaded)
       if (isHDR(file as string)) {
-        // @TODO: create a cache for these and load them when needed to reload
-        equirectTexture = await new RGBELoader().loadAsync(file as string);
+        equirectTexture = await loadTextureAsync({
+          id: textureId,
+          fileName: file as string,
+          useRGBELoader: true,
+          throwOnError: isDebugEnvironment(),
+        });
         // equirectTexture.magFilter = THREE.LinearFilter;
         // equirectTexture.minFilter = THREE.LinearMipMapLinearFilter;
         // equirectTexture.anisotropy = 16;
@@ -206,15 +209,21 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
         lerror(msg);
         return;
       }
-      if (typeof file === 'string') skyBoxStateToBeAdded.equiRectFile = file;
-      skyBoxStateToBeAdded.equiRectTextureId = textureId ? textureId : equirectTexture.userData.id;
       equirectTexture.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
       envTexture = equirectTexture;
     } else if (file) {
       // File is a Texture/DataTexture
       file.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
+      equirectTexture = file;
       envTexture = file;
     }
+
+    // Add to skyBoxStateToBeAdded
+    skyBoxStateToBeAdded.equiRectFile = typeof file === 'string' ? file : '';
+    skyBoxStateToBeAdded.equiRectTextureId = textureId
+      ? textureId
+      : equirectTexture?.userData.id || undefined;
+    skyBoxStateToBeAdded.equiRectColorSpace = params.colorSpace || THREE.SRGBColorSpace;
 
     // Use sky box as environment map
     if (!envTexture) {
@@ -229,7 +238,7 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
       .transformDirection(cameraViewMatrix);
     pmremRoughnessBg.value = skyBoxStateToBeAdded.equiRectRoughness;
     const backgroundEnvNode = pmremTexture(envTexture, normalWorld, pmremRoughnessBg);
-    if (isCurrent !== false) {
+    if (isCurScene && isCurrent !== false) {
       const rootScene = getRootScene() as THREE.Scene;
       rootScene.backgroundNode = backgroundEnvNode;
       rootScene.environmentNode = backgroundEnvNode;
@@ -244,17 +253,26 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
     // CUBETEXTURE
     const { fileNames, path, textureId } = params;
 
+    // @TODO: cache cube textures
     cubeTexture = await new THREE.CubeTextureLoader().setPath(path || './').loadAsync(fileNames);
     cubeTexture.userData.id = textureId || cubeTexture.uuid;
     cubeTexture.generateMipmaps = true;
     cubeTexture.minFilter = THREE.LinearMipmapLinearFilter;
-    cubeTexture.colorSpace = params.colorSpace || THREE.SRGBColorSpace;
+    cubeTexture.colorSpace = params.colorSpace || defaultSkyBoxState.cubeTextColorSpace;
+
+    skyBoxStateToBeAdded.cubeTextFile = fileNames;
+    skyBoxStateToBeAdded.cubeTextPath = path || defaultSkyBoxState.cubeTextPath;
+    skyBoxStateToBeAdded.cubeTextTextureId = textureId || cubeTexture.userData.id;
+    skyBoxStateToBeAdded.cubeTextColorSpace =
+      params.colorSpace || defaultSkyBoxState.cubeTextColorSpace;
+    skyBoxStateToBeAdded.cubeTextRotate =
+      params.cubeTextRotate || defaultSkyBoxState.cubeTextRotate;
 
     pmremRoughnessBg.value = skyBoxStateToBeAdded.cubeTextRoughness;
     const rotateYMatrix = new THREE.Matrix4();
     rotateYMatrix.makeRotationY(Math.PI * skyBoxStateToBeAdded.cubeTextRotate);
     const backgroundUV = reflectVector.xyz.mul(uniform(rotateYMatrix));
-    if (isCurScene) {
+    if (isCurScene && isCurrent !== false) {
       const rootScene = getRootScene() as THREE.Scene;
       rootScene.backgroundNode = pmremTexture(cubeTexture, backgroundUV, pmremRoughnessBg);
     }
@@ -368,10 +386,6 @@ export const buildSkyBoxDebugGUI = () => {
   });
   equiRectFolder.addBinding(skyBoxState, 'equiRectColorSpace', {
     label: 'Color space',
-    readonly: true,
-  });
-  equiRectFolder.addBinding(skyBoxState, 'equiRectIsEnvMap', {
-    label: 'Is environment map',
     readonly: true,
   });
   equiRectFolder
@@ -532,6 +546,7 @@ export const buildSkyBoxDebugGUI = () => {
       sceneId: getCurSceneSkyBoxSceneId(),
       isCurrent: true,
     });
+    lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
     console.log(id, sbState, findScenesCurrentSkyBoxState().id);
   });
 };
@@ -544,7 +559,6 @@ const extractSkyBoxParamsFromState = (state: SkyBoxState) => {
         file: state.equiRectFile || undefined,
         textureId: state.equiRectTextureId || undefined,
         colorSpace: state.equiRectColorSpace || undefined,
-        isEnvMap: state.equiRectIsEnvMap || undefined,
         roughness: state.equiRectRoughness || undefined,
       },
     } as SkyBoxProps;
