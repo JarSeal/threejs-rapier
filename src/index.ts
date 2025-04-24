@@ -2,9 +2,11 @@ import * as THREE from 'three/webgpu';
 import { createRenderer } from './_engine/core/Renderer';
 import { createCamera } from './_engine/core/Camera';
 import { InitEngine } from './_engine/InitApp';
-import { scene01 } from './app/scene01_v2';
+import { scene01, SCENE01_ID } from './app/scene01_v2';
 import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 import { CMP } from './_engine/utils/CMP';
+import { isDebugEnvironment } from './_engine/core/Config';
+import { addScenesToSceneListing } from './_engine/debug/DebugTools';
 
 export const MAIN_APP_CAM_ID = 'mainAppCam';
 
@@ -62,6 +64,10 @@ InitEngine(async () => {
       }
     },
   });
+
+  if (isDebugEnvironment()) {
+    addScenesToSceneListing({ id: SCENE01_ID, text: `[App] ${SCENE01_ID}`, fn: scene01 });
+  }
 
   // Load scene
   loadScene({ nextSceneFn: scene01 });

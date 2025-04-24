@@ -72,12 +72,10 @@ type SkyBoxState = {
   name?: string;
   isCurrent?: boolean;
   type: '' | 'EQUIRECTANGULAR' | 'CUBETEXTURE' | 'SKYANDSUN';
-  equiRectFolderExpanded: boolean;
   equiRectFile: string;
   equiRectTextureId: string;
   equiRectColorSpace: THREE.ColorSpace;
   equiRectRoughness: number;
-  cubeTextFolderExpanded: boolean;
   cubeTextFile: string[];
   cubeTextPath: string;
   cubeTextTextureId: string;
@@ -88,7 +86,8 @@ type SkyBoxState = {
   sceneSkyBoxesFolderExpanded: boolean;
 };
 
-const LS_KEY_ALL_STATES = 'debugAllSkyBoxStates';
+const LS_KEY_ALL_STATES = 'debugSkyBoxStates';
+const LS_KEY_UI = 'debugSkyBoxUI';
 const NO_SKYBOX_ID = '__no_skybox';
 let defaultRoughness = 0;
 const pmremRoughnessBg = uniform(defaultRoughness);
@@ -96,12 +95,10 @@ const pmremRoughnessBg = uniform(defaultRoughness);
 const defaultSkyBoxState: SkyBoxState = {
   id: NO_SKYBOX_ID,
   type: '',
-  equiRectFolderExpanded: false,
   equiRectFile: '',
   equiRectTextureId: '',
   equiRectColorSpace: THREE.SRGBColorSpace,
   equiRectRoughness: defaultRoughness,
-  cubeTextFolderExpanded: false,
   cubeTextFile: [],
   cubeTextPath: '',
   cubeTextTextureId: '',
@@ -120,6 +117,11 @@ let allSkyBoxStates: {
 let debuggerCreated = false;
 let cubeTexture: THREE.CubeTexture | null = null;
 let skyBoxDebugGUI: Pane | null = null;
+
+let debugSkyBoxUIState = {
+  currentFolderExpanded: true,
+  scenesSkyBoxesListExpanded: true,
+};
 
 /**
  * Creates either a sky box (equirectangular, cube texture, or sky and sun). The sky and sun type ("SKYANDSUN") includes a dynamic sun element in the sky.
@@ -289,8 +291,6 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
       params.colorSpace || defaultSkyBoxState.cubeTextColorSpace;
     skyBoxStateToBeAdded.cubeTextRotate =
       params.cubeTextRotate || defaultSkyBoxState.cubeTextRotate;
-
-    lwarn('CUBETEXTURE skybox type is under work in progress and may not work properly.'); // @TODO: remove when fully implemented
   } else if (type === 'SKYANDSUN') {
     // SKYANDSUN
     // @TODO: implement SKYANDSUN
@@ -319,6 +319,26 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
   }
 
   buildSkyBoxDebugGUI();
+};
+
+/**
+ * Removes the current scene's current sky box
+ */
+export const removeCurrentSkyBox = () => {
+  const rootScene = getRootScene() as THREE.Scene;
+  rootScene.backgroundNode = null;
+  rootScene.environmentNode = null;
+  skyBoxState = { ...defaultSkyBoxState };
+
+  const sceneId = getCurSceneSkyBoxSceneId();
+  const curSceneStates = allSkyBoxStates[sceneId];
+  const curSceneStatesKeys = Object.keys(curSceneStates);
+  for (let i = 0; i < curSceneStatesKeys.length; i++) {
+    const key = curSceneStatesKeys[i];
+    if (allSkyBoxStates[sceneId][key]) {
+      allSkyBoxStates[sceneId][key].isCurrent = false;
+    }
+  }
 };
 
 /**
@@ -354,27 +374,19 @@ export const buildSkyBoxDebugGUI = () => {
   for (let i = 0; i < blades.length; i++) {
     blades[i].dispose();
   }
-  debugGUI.refresh();
+
+  debugSkyBoxUIState = { ...debugSkyBoxUIState, ...lsGetItem(LS_KEY_UI, debugSkyBoxUIState) };
 
   // Equirectangular
   const equiRectFolder = debugGUI
     .addFolder({
       title: 'Current: Equirectangular sky box params',
       hidden: skyBoxState.type !== 'EQUIRECTANGULAR',
-      expanded: skyBoxState.equiRectFolderExpanded,
+      expanded: debugSkyBoxUIState.currentFolderExpanded,
     })
     .on('fold', (state) => {
-      const sceneId = getCurSceneSkyBoxSceneId();
-      const curSceneState = allSkyBoxStates[sceneId][skyBoxState.id];
-      if (curSceneState) {
-        allSkyBoxStates[sceneId][skyBoxState.id].equiRectFolderExpanded = state.expanded;
-      } else {
-        allSkyBoxStates[sceneId][skyBoxState.id] = {
-          ...defaultSkyBoxState,
-          equiRectFolderExpanded: state.expanded,
-        };
-      }
-      lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+      debugSkyBoxUIState.currentFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY_UI, debugSkyBoxUIState);
     });
   equiRectFolder.addBinding(skyBoxState, 'type', {
     label: 'Type',
@@ -431,32 +443,28 @@ export const buildSkyBoxDebugGUI = () => {
     .addFolder({
       title: 'Current: Cube texture sky box params',
       hidden: skyBoxState.type !== 'CUBETEXTURE',
-      expanded: skyBoxState.cubeTextFolderExpanded,
+      expanded: debugSkyBoxUIState.currentFolderExpanded,
     })
     .on('fold', (state) => {
-      const sceneId = getCurSceneSkyBoxSceneId();
-      const curSceneState = allSkyBoxStates[sceneId][skyBoxState.id];
-      if (curSceneState) {
-        allSkyBoxStates[sceneId][skyBoxState.id].cubeTextFolderExpanded = state.expanded;
-      } else {
-        allSkyBoxStates[sceneId][skyBoxState.id] = {
-          ...defaultSkyBoxState,
-          cubeTextFolderExpanded: state.expanded,
-        };
-      }
-      lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+      debugSkyBoxUIState.currentFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY_UI, debugSkyBoxUIState);
     });
   cubeTextureFolder.addBinding(skyBoxState, 'type', {
     label: 'Type',
     readonly: true,
     options: [{ value: skyBoxState.type }],
   });
-  // @TODO: show cubeTextFiles (array of strings)
-  // cubeTextureFolder.addBinding(skyBoxState, 'cubeTextFile', {
-  //   label: 'File path or URL',
-  //   readonly: true,
-  // });
-  // @TODO: show cubeTextPath
+  cubeTextureFolder.addBinding(skyBoxState, 'cubeTextPath', {
+    label: 'Texture path',
+    readonly: true,
+  });
+  const files = { v: skyBoxState.cubeTextFile.join('\n') };
+  cubeTextureFolder.addBinding(files, 'v', {
+    readonly: true,
+    multiline: true,
+    label: 'Files',
+    rows: 3,
+  });
   cubeTextureFolder.addBinding(skyBoxState, 'cubeTextTextureId', {
     label: 'Texture id',
     readonly: true,
@@ -489,6 +497,14 @@ export const buildSkyBoxDebugGUI = () => {
       lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
     });
   // @TODO: show cubeTextRotate
+  // cubeTextureFolder
+  //   .addBinding(skyBoxState, 'cubeTextRotate', {
+  //     label: 'Rotate',
+  //     step: 0.001,
+  //     min: 0,
+  //     max: 1,
+  //   })
+  //   .on('change', (e) => {});
   cubeTextureFolder.addButton({ title: 'Reset' }).on('click', () => {
     skyBoxState.cubeTextRoughness = defaultRoughness;
     pmremRoughnessBg.value = defaultRoughness;
@@ -504,20 +520,11 @@ export const buildSkyBoxDebugGUI = () => {
   const sceneSkyBoxesFolder = debugGUI
     .addFolder({
       title: "Scene's skyboxes",
-      expanded: skyBoxState.sceneSkyBoxesFolderExpanded,
+      expanded: debugSkyBoxUIState.scenesSkyBoxesListExpanded,
     })
     .on('fold', (state) => {
-      const sceneId = getCurSceneSkyBoxSceneId();
-      const curSceneState = allSkyBoxStates[sceneId][skyBoxState.id];
-      if (curSceneState) {
-        allSkyBoxStates[sceneId][skyBoxState.id].sceneSkyBoxesFolderExpanded = state.expanded;
-      } else {
-        allSkyBoxStates[sceneId][skyBoxState.id] = {
-          ...defaultSkyBoxState,
-          sceneSkyBoxesFolderExpanded: state.expanded,
-        };
-      }
-      lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+      debugSkyBoxUIState.scenesSkyBoxesListExpanded = state.expanded;
+      lsSetItem(LS_KEY_UI, debugSkyBoxUIState);
     });
   const sceneId = getCurSceneSkyBoxSceneId();
   const sceneSkyBoxes = {
@@ -542,7 +549,12 @@ export const buildSkyBoxDebugGUI = () => {
   }) as ListBladeApi<BladeController<View>>;
   scenesSkyBoxesDropDown.on('change', (e) => {
     const id = String(e.value);
-    if (id === NO_SKYBOX_ID) return;
+    if (id === NO_SKYBOX_ID) {
+      removeCurrentSkyBox();
+      lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+      setTimeout(() => buildSkyBoxDebugGUI(), 0);
+      return;
+    }
     const sbState = sceneSkyBoxes[id];
     sbState.isCurrent = true;
     lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);

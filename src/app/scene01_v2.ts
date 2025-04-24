@@ -14,10 +14,8 @@ import { getCurrentCamera } from '../_engine/core/Camera';
 import { addKeyInputControl } from '../_engine/core/InputControls';
 import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
-import { isDebugEnvironment } from '../_engine/core/Config';
-import { addScenesToSceneListing } from '../_engine/debug/DebugTools';
 
-const SCENE_ID = 'testScene1';
+export const SCENE01_ID = 'testScene1';
 
 export const scene01 = async () =>
   new Promise<string>((resolve) => {
@@ -30,19 +28,16 @@ export const scene01 = async () =>
     camera.position.x = 2.5;
     camera.position.y = 1;
 
-    let scene = getScene(SCENE_ID, true);
+    let scene = getScene(SCENE01_ID, true);
 
     if (!scene) {
       // Init scene
-      scene = createScene(SCENE_ID, {
+      scene = createScene(SCENE01_ID, {
         name: 'Test scene 1',
         isCurrentScene: true,
       });
-      if (isDebugEnvironment()) {
-        addScenesToSceneListing({ id: SCENE_ID, text: `[App] ${SCENE_ID}`, fn: scene01 });
-      }
     } else {
-      setCurrentScene(SCENE_ID);
+      setCurrentScene(SCENE01_ID);
     }
 
     setTimeout(() => updateLoaderFn({ loadedCount: 1, totalCount: 2 }), 250);
@@ -320,6 +315,6 @@ export const scene01 = async () =>
 
       updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 
-      resolve(SCENE_ID);
+      resolve(SCENE01_ID);
     }, 500);
   });

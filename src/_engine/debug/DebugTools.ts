@@ -38,6 +38,7 @@ let debugCamera: THREE.PerspectiveCamera | null = null;
 let curSceneDebugCamParams = getDefaultDebugCamParams();
 let orbitControls: OrbitControls | null = null;
 let scenesDropDown: ListBladeApi<BladeController<View>>;
+let sceneStarterDropDown: ListBladeApi<BladeController<View>>;
 let toolsDebugGUI: Pane | null = null;
 type DebugCameraState = {
   enabled: boolean;
@@ -58,6 +59,7 @@ type DebugToolsState = {
   };
   scenesListing: {
     scenesFolderExpanded: boolean;
+    debugStartScene: string;
   };
   loggingActions: {
     loggingFolderExpanded: boolean;
@@ -74,6 +76,7 @@ let debugToolsState: DebugToolsState = {
   },
   scenesListing: {
     scenesFolderExpanded: false,
+    debugStartScene: '',
   },
   loggingActions: {
     loggingFolderExpanded: false,
@@ -398,12 +401,23 @@ export const removeScenesFromSceneListing = (sceneIds: string | string[]) => {
   reloadSceneListingBlade();
 };
 
+const getSceneStarterDropDownOptions = () => [
+  { value: '', text: '---NOT-SET---' },
+  ...debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
+];
+
 // For reloading the scenes listing in debugging
 const reloadSceneListingBlade = () => {
   if (scenesDropDown) {
     scenesDropDown.importState({
       ...scenesDropDown.exportState(),
       options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
+    });
+  }
+  if (sceneStarterDropDown) {
+    sceneStarterDropDown.importState({
+      ...sceneStarterDropDown.exportState(),
+      options: getSceneStarterDropDownOptions(),
     });
   }
 };
@@ -584,13 +598,23 @@ const buildDebugGUI = () => {
     if (value === getCurrentSceneId()) return;
     const nextScene = debugSceneListing.find((s) => s.id === value);
     if (!isCurrentlyLoading() && nextScene) {
+      lsSetItem(LS_KEY, debugToolsState);
       loadScene({ nextSceneFn: nextScene.fn });
-      // @TODO: save current scene id to debugToolsState and to localStorage
       return;
     }
     if (!isCurrentlyLoading) {
       lerror(`Could not find scene with id '${value}' in scenes dropdown debugger.`);
     }
+  });
+  sceneStarterDropDown = scenesFolder.addBlade({
+    view: 'list',
+    label: 'Start scene (in debugger)',
+    options: getSceneStarterDropDownOptions(),
+    value: debugToolsState.scenesListing.debugStartScene || '',
+  }) as ListBladeApi<BladeController<View>>;
+  sceneStarterDropDown.on('change', (e) => {
+    debugToolsState.scenesListing.debugStartScene = String(e.value);
+    lsSetItem(LS_KEY, debugToolsState);
   });
 
   // Logging actions
