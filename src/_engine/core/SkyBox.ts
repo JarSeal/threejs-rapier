@@ -32,7 +32,7 @@ import { BladeController, View } from '@tweakpane/core';
 
 type SkyBoxProps = {
   id: string;
-  name?: string; // @TODO
+  name?: string;
   isCurrent?: boolean; // Default is true
   sceneId?: string;
 } & (
@@ -71,6 +71,7 @@ type SkyBoxState = {
   id: string;
   name?: string;
   isCurrent?: boolean;
+  isDefaultForScene?: boolean;
   type: '' | 'EQUIRECTANGULAR' | 'CUBETEXTURE' | 'SKYANDSUN';
   equiRectFile: string;
   equiRectTextureId: string;
@@ -125,9 +126,13 @@ let debugSkyBoxUIState = {
 
 /**
  * Creates either a sky box (equirectangular, cube texture, or sky and sun). The sky and sun type ("SKYANDSUN") includes a dynamic sun element in the sky.
- * @param skyBoxProps object that has different property's based on the type property, {@link SkyBoxProps}
+ * @param skyBoxProps (object) object that has different property's based on the type property, {@link SkyBoxProps}
+ * @param doNotUpdateDebuggerSceneDefault (boolean) optional flag to be used only within the sky box debugger
  */
-export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: SkyBoxProps) => {
+export const addSkyBox = async (
+  { id, name, sceneId, isCurrent, type, params }: SkyBoxProps,
+  doNotUpdateDebuggerSceneDefault?: boolean // This is to keep the [*default] indicator in the debugger listings when the debugger changes the sky box
+) => {
   const renderer = getRenderer();
   if (!renderer) {
     const msg = `Could not find renderer in addSkyBox (type: ${type}).`;
@@ -172,6 +177,15 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
     allSkyBoxStates = { ...allSkyBoxStates, ...savedAllSkyBoxStates };
     const curSceneState = allSkyBoxStates[givenOrCurrentSceneId][id];
     skyBoxStateToBeAdded = { ...skyBoxStateToBeAdded, ...(curSceneState || {}) };
+
+    if (!doNotUpdateDebuggerSceneDefault) {
+      const sceneSkyBoxes = allSkyBoxStates[givenOrCurrentSceneId];
+      const sceneSkyBoxKeys = Object.keys(sceneSkyBoxes);
+      for (let i = 0; i < sceneSkyBoxKeys.length; i++) {
+        const ssb = sceneSkyBoxes[sceneSkyBoxKeys[i]];
+        ssb.isDefaultForScene = false;
+      }
+    }
   }
 
   skyBoxStateToBeAdded.id = id;
@@ -301,12 +315,17 @@ export const addSkyBox = async ({ id, name, sceneId, isCurrent, type, params }: 
     // If the sky box is set to current, then set all the scene's existing sky boxes as not current
     const curSceneStates = allSkyBoxStates[givenOrCurrentSceneId];
     const curSceneStatesKeys = Object.keys(curSceneStates);
+
     for (let i = 0; i < curSceneStatesKeys.length; i++) {
       const key = curSceneStatesKeys[i];
       if (allSkyBoxStates[givenOrCurrentSceneId][key]) {
         allSkyBoxStates[givenOrCurrentSceneId][key].isCurrent = false;
+        if (!doNotUpdateDebuggerSceneDefault) {
+          allSkyBoxStates[givenOrCurrentSceneId][key].isDefaultForScene = false;
+        }
       }
     }
+    if (!doNotUpdateDebuggerSceneDefault) skyBoxStateToBeAdded.isDefaultForScene = true;
   }
   allSkyBoxStates[givenOrCurrentSceneId][id] = {
     ...defaultSkyBoxState,
@@ -464,6 +483,7 @@ export const buildSkyBoxDebugGUI = () => {
     multiline: true,
     label: 'Files',
     rows: 3,
+    interval: 0,
   });
   cubeTextureFolder.addBinding(skyBoxState, 'cubeTextTextureId', {
     label: 'Texture id',
@@ -538,7 +558,7 @@ export const buildSkyBoxDebugGUI = () => {
     value: findScenesCurrentSkyBoxState().id,
     options: sceneSkyBoxesKeys
       .map((key) => ({
-        text: sceneSkyBoxes[key].name || sceneSkyBoxes[key].id,
+        text: `${sceneSkyBoxes[key].name || sceneSkyBoxes[key].id}${sceneSkyBoxes[key].isDefaultForScene ? ' [*default]' : ''}`,
         value: sceneSkyBoxes[key].id,
       }))
       .sort((a, b) => {
@@ -552,20 +572,25 @@ export const buildSkyBoxDebugGUI = () => {
     if (id === NO_SKYBOX_ID) {
       removeCurrentSkyBox();
       lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+      // We have to use setTimeout, because the debugGUI is rebuilt
       setTimeout(() => buildSkyBoxDebugGUI(), 0);
       return;
     }
     const sbState = sceneSkyBoxes[id];
     sbState.isCurrent = true;
     lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+    // We have to use setTimeout, because the debugGUI is rebuilt
     setTimeout(async () => {
-      await addSkyBox({
-        ...extractSkyBoxParamsFromState(sbState),
-        id,
-        name: sbState.name,
-        sceneId: getCurSceneSkyBoxSceneId(),
-        isCurrent: true,
-      });
+      await addSkyBox(
+        {
+          ...extractSkyBoxParamsFromState(sbState),
+          id,
+          name: sbState.name,
+          sceneId: getCurSceneSkyBoxSceneId(),
+          isCurrent: true,
+        },
+        true
+      );
       lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
     }, 0);
   });

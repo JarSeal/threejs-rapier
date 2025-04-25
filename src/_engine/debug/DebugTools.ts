@@ -40,6 +40,7 @@ let orbitControls: OrbitControls | null = null;
 let scenesDropDown: ListBladeApi<BladeController<View>>;
 let sceneStarterDropDown: ListBladeApi<BladeController<View>>;
 let toolsDebugGUI: Pane | null = null;
+
 type DebugCameraState = {
   enabled: boolean;
   latestAppCameraId: null | string;
@@ -49,6 +50,7 @@ type DebugCameraState = {
   position: number[];
   target: number[];
 };
+
 type DebugToolsState = {
   env: {
     envBallFolderExpanded: boolean;
@@ -59,13 +61,17 @@ type DebugToolsState = {
   };
   scenesListing: {
     scenesFolderExpanded: boolean;
+    useDebugStartScene: boolean;
     debugStartScene: string;
+    useDebuggerSceneLoader: boolean;
   };
   loggingActions: {
     loggingFolderExpanded: boolean;
   };
   debugCamera: { [sceneId: string]: DebugCameraState };
 };
+
+let firstDebugToolsStateLoaded = false;
 let debugToolsState: DebugToolsState = {
   env: {
     envBallFolderExpanded: false,
@@ -76,7 +82,9 @@ let debugToolsState: DebugToolsState = {
   },
   scenesListing: {
     scenesFolderExpanded: false,
+    useDebugStartScene: false,
     debugStartScene: '',
+    useDebuggerSceneLoader: false,
   },
   loggingActions: {
     loggingFolderExpanded: false,
@@ -100,6 +108,7 @@ export const initDebugTools = () => {
 const createDebugToolsDebugGUI = () => {
   const savedDebugToolsState = lsGetItem(LS_KEY, debugToolsState);
   debugToolsState = { ...debugToolsState, ...savedDebugToolsState };
+  firstDebugToolsStateLoaded = true;
 
   const currentSceneId = getCurrentSceneId();
   if (currentSceneId) {
@@ -351,9 +360,16 @@ export const changeDebugEnvBallRoughness = (value: number) => {
 
 /**
  * Getter for the debugToolsState object
+ * @param loadFromLS (boolean) optional flag to get the debugToolsState from the LS
  * @returns debugToolsState {@link debugToolsState}
  */
-export const getDebugToolsState = () => debugToolsState;
+export const getDebugToolsState = (loadFromLS?: boolean) => {
+  if (!firstDebugToolsStateLoaded && loadFromLS) {
+    const savedDebugToolsState = lsGetItem(LS_KEY, debugToolsState);
+    debugToolsState = { ...debugToolsState, ...savedDebugToolsState };
+  }
+  return debugToolsState;
+};
 
 /**
  * Adds a scene or scenes to the debugToolsState scenes listing
@@ -580,7 +596,7 @@ const buildDebugGUI = () => {
   // Scene listing
   const scenesFolder = debugGUI
     .addFolder({
-      title: 'Scenes and debug scenes',
+      title: 'Change scene and debug start scene',
       expanded: debugToolsState.scenesListing.scenesFolderExpanded,
     })
     .on('fold', (state) => {
@@ -589,7 +605,7 @@ const buildDebugGUI = () => {
     });
   scenesDropDown = scenesFolder.addBlade({
     view: 'list',
-    label: 'Scenes',
+    label: 'Change scene',
     options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
     value: getCurrentSceneId(),
   }) as ListBladeApi<BladeController<View>>;
@@ -606,16 +622,34 @@ const buildDebugGUI = () => {
       lerror(`Could not find scene with id '${value}' in scenes dropdown debugger.`);
     }
   });
+  scenesFolder
+    .addBinding(debugToolsState.scenesListing, 'useDebugStartScene', {
+      label: 'Use debug start scene',
+    })
+    .on('change', (e) => {
+      sceneStarterDropDown.disabled = !e.value;
+      useDebuggerSceneLoader.disabled = !e.value;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
   sceneStarterDropDown = scenesFolder.addBlade({
     view: 'list',
-    label: 'Start scene (in debugger)',
+    label: 'Start scene to load',
     options: getSceneStarterDropDownOptions(),
     value: debugToolsState.scenesListing.debugStartScene || '',
+    disabled: !debugToolsState.scenesListing.useDebugStartScene,
   }) as ListBladeApi<BladeController<View>>;
   sceneStarterDropDown.on('change', (e) => {
     debugToolsState.scenesListing.debugStartScene = String(e.value);
     lsSetItem(LS_KEY, debugToolsState);
   });
+  const useDebuggerSceneLoader = scenesFolder
+    .addBinding(debugToolsState.scenesListing, 'useDebuggerSceneLoader', {
+      label: 'Use debugger scene loader',
+      disabled: !debugToolsState.scenesListing.useDebugStartScene,
+    })
+    .on('change', () => {
+      lsSetItem(LS_KEY, debugToolsState);
+    });
 
   // Logging actions
   const loggingFolder = debugGUI

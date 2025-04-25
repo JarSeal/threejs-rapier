@@ -17,6 +17,7 @@ import { getCanvasParentElem } from './Renderer';
 import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
 import { isDebugEnvironment } from './Config';
 import { clearSkyBox } from './SkyBox';
+import { debugSceneListing } from '../debug/DebugSceneListing';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -93,6 +94,7 @@ const sceneLoaders: SceneLoader[] = [];
 let currentSceneLoader: SceneLoader | null = null;
 let currentSceneLoaderId: string | null = null;
 let currentlyLoading = false;
+let firstSceneLoaded = false;
 
 export const createSceneLoader = async (
   sceneLoader: Omit<SceneLoader, 'phase' | 'loaderContainer'>,
@@ -114,7 +116,7 @@ export const createSceneLoader = async (
   }
 };
 
-// @TODO
+// @TODO: deleteSceneLoader
 // export const deleteSceneLoader = (id: string) => {};
 
 export const setCurrentSceneLoader = (id: string) => {
@@ -152,12 +154,30 @@ export const getCurrentSceneLoaderId = () => {
 export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   currentlyLoading = true;
   let loader: SceneLoader | undefined = getCurrentSceneLoader();
+  let initNextSceneFn: () => Promise<string> = loadSceneProps.nextSceneFn;
+
   if (loadSceneProps.loaderId) {
     loader = sceneLoaders.find((sl) => sl.id === loadSceneProps.loaderId);
     if (!loader) {
       const msg = `Could not find scene loader with loader id "${loadSceneProps.loaderId}" in loadScene. Next scene was not loaded.`;
       lerror(msg);
       throw new Error(msg);
+    }
+  }
+
+  // Debug start scene check
+  const debugToolsState =
+    isDebugEnvironment() && !firstSceneLoaded ? getDebugToolsState(true) : null;
+  if (debugToolsState?.scenesListing.useDebugStartScene) {
+    if (debugToolsState.scenesListing.useDebuggerSceneLoader) {
+      // @TODO: Use debugger sceneLoader
+    }
+
+    if (debugToolsState?.scenesListing.debugStartScene) {
+      const debugScene = debugSceneListing.find(
+        (scene) => scene.id === debugToolsState.scenesListing.debugStartScene
+      );
+      if (debugScene) initNextSceneFn = debugScene.fn;
     }
   }
 
@@ -192,7 +212,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   disableDebugger(true);
   setAllInputsEnabled(false);
   const canvasParentElem = getCanvasParentElem();
-  if (canvasParentElem) canvasParentElem.style.setProperty('pointer-events', 'none');
+  canvasParentElem?.style.setProperty('pointer-events', 'none');
 
   loader.phase = 'START';
   await loadStartFn(loader)
@@ -210,7 +230,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       clearSkyBox();
 
       loader.phase = 'LOAD';
-      await loadFn(loader, loadSceneProps.nextSceneFn).then(async (newSceneId) => {
+      await loadFn(loader, initNextSceneFn).then(async (newSceneId) => {
         const nextScene = getScene(newSceneId);
         if (!nextScene) {
           const msg = `Scene loader could not find scene with scene id '${newSceneId}'.`;
@@ -223,7 +243,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         disableDebugger(false);
         setAllInputsEnabled(true);
         const canvasParentElem = getCanvasParentElem();
-        if (canvasParentElem) canvasParentElem.style.setProperty('pointer-events', '');
+        canvasParentElem?.style.setProperty('pointer-events', '');
 
         if (isDebugEnvironment()) {
           setDebugToolsVisibility(
@@ -231,6 +251,8 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
             true
           );
         }
+
+        firstSceneLoaded = true;
 
         loader.phase = 'END';
         await loadEndFn(loader).then(() => {
@@ -245,6 +267,8 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
     .catch((reason) => {
       const msg = `Could not load scene (phase '${loader.phase}')`;
       lerror(msg, reason);
+
+      // @CONSIDER: should this throw an error?
     });
 };
 
@@ -290,3 +314,5 @@ export const getLoaderStatusUpdater = (loaderId?: string) => {
 };
 
 export const isCurrentlyLoading = () => currentlyLoading;
+
+export const hasFirstSceneBeenLoaded = () => firstSceneLoaded;
