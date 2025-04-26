@@ -1,5 +1,5 @@
-import { llog } from '../utils/Logger';
 import configFile from '../../CONFIG';
+import { type DebugScene } from '../debug/DebugSceneListing';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 
@@ -12,8 +12,11 @@ export type AppConfig = {
     sceneId?: string;
     fn: (e: KeyboardEvent, pressedTime: number) => void;
   }[];
+  debugScenes?: DebugScene[];
   physics?: {
     enabled?: boolean;
+    worldStepEnabled?: boolean;
+    visualizerEnabled?: boolean;
     gravity?: { x: number; y: number; z: number };
     timestep?: number;
   };
@@ -26,6 +29,7 @@ let config: AppConfig = {
   debugKeys: [],
   physics: {
     enabled: false,
+    worldStepEnabled: true,
     gravity: { x: 0, y: 0, z: 0 },
     timestep: 60,
   },
@@ -36,7 +40,6 @@ let config: AppConfig = {
  */
 export const loadConfig = () => {
   // Load config file
-  // @TODO: load the config file from the root
 
   // Load ENV variables
   envVars = import.meta.env;
@@ -87,9 +90,6 @@ export const loadConfig = () => {
       envVars.VITE_PHYS_TIMESTEP = undefined;
     }
   }
-
-  llog(`Current environment: ${getCurrentEnvironment()}`);
-  console.log('envVars', envVars); // @TODO: remove
 };
 
 /**
@@ -125,6 +125,12 @@ export const isNotCurrentEnvironment = (environment: Environments) =>
  */
 export const isDebugEnvironment = () =>
   curEnvironment === 'development' || curEnvironment === 'test';
+
+/**
+ * Checks whether the current environment is a production environment.
+ * @returns boolean
+ */
+export const isProductionEnvironment = () => curEnvironment === 'production';
 
 /**
  * Returns the current environment.

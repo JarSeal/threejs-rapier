@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { getWindowSize } from '../utils/Window';
 import { lwarn } from '../utils/Logger';
+import { isUsingDebugCamera } from '../debug/DebugTools';
 
 const cameras: { [id: string]: THREE.PerspectiveCamera } = {};
 let currentCamera: THREE.PerspectiveCamera | null = null;
@@ -16,22 +17,32 @@ export const createCamera = (
   id: string,
   opts?: { isCurrentCamera?: boolean; fov?: number; near?: number; far?: number }
 ) => {
+  if (cameras[id]) {
+    // Use the existing camera and set options
+    const c = cameras[id];
+    if (opts?.fov) c.fov = opts.fov;
+    if (opts?.near) c.near = opts.near;
+    if (opts?.far) c.far = opts.far;
+    if (opts?.isCurrentCamera && !isUsingDebugCamera()) {
+      setCurrentCamera(id);
+    }
+    c.updateProjectionMatrix();
+    return c;
+  }
+
   const fov = opts?.fov !== undefined ? opts.fov : 45;
   const near = opts?.near || 0.1;
   const far = opts?.far || 1000;
-
-  if (cameras[id]) {
-    throw new Error(
-      `Camera with id "${id}" already exists. Pick another id or delete the camera first before recreating it.`
-    );
-  }
 
   const windowSize = getWindowSize();
   const camera = new THREE.PerspectiveCamera(fov, windowSize.aspect, near, far);
 
   cameras[id] = camera;
+  camera.userData.id = id;
 
-  if (opts?.isCurrentCamera) setCurrentCamera(id);
+  if (opts?.isCurrentCamera && !isUsingDebugCamera()) {
+    setCurrentCamera(id);
+  }
 
   return camera;
 };

@@ -1,17 +1,16 @@
-import { Clock } from 'three/webgpu';
+import { Clock, type Scene } from 'three/webgpu';
 import { createDebugGui, createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
 import { getStats, initStats } from '../debug/Stats';
 import { getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
 import {
-  getCurrentScene,
+  getRootScene,
   getSceneAppLoopers,
   getSceneMainLateLoopers,
   getSceneMainLoopers,
   getSceneResizers,
 } from './Scene';
 import { lerror, lwarn } from '../utils/Logger';
-import { createHudContainer } from './HUD';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
@@ -22,6 +21,7 @@ const LS_KEY = 'debugLoop';
 const clock = new Clock();
 let delta = 0;
 let accDelta = clock.getDelta();
+let mainLoopInitiated = false;
 const resizers: { [key: string]: () => void } = {};
 
 type LoopState = {
@@ -75,6 +75,8 @@ const runMainLateLoopers = () => {
   }
 };
 
+// LOOP (for debug)
+// **************************************
 const mainLoopForDebug = async () => {
   const dt = clock.getDelta();
   delta = dt * loopState.playSpeedMultiplier;
@@ -102,12 +104,13 @@ const mainLoopForDebug = async () => {
 
     const renderer = getRenderer();
     const windowSize = getWindowSize();
+    const rootScene = getRootScene() as Scene;
     renderer?.setViewport(0, 0, windowSize.width, windowSize.height);
     if (loopState.maxFPS > 0) {
       // maxFPS limiter
       accDelta += delta;
       if (accDelta > loopState.maxFPSInterval) {
-        renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
+        renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
           runMainLateLoopers();
           getStats()?.update();
           accDelta = accDelta % loopState.maxFPSInterval;
@@ -115,7 +118,7 @@ const mainLoopForDebug = async () => {
       }
     } else {
       // No maxFPS limiter
-      renderer?.renderAsync(getCurrentScene(), getCurrentCamera()).then(() => {
+      renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
         runMainLateLoopers();
         getStats()?.update();
       });
@@ -127,20 +130,56 @@ const mainLoopForDebug = async () => {
   }
 };
 
+// LOOP (for production)
+// **************************************
 const mainLoopForProduction = () => {
-  requestAnimationFrame(mainLoop);
-  delta = clock.getDelta() * loopState.playSpeedMultiplier;
-  // @TODO: add app play loop here
-  getRenderer()?.renderAsync(getCurrentScene(), getCurrentCamera());
+  const dt = clock.getDelta();
+  delta = dt * loopState.playSpeedMultiplier;
+  if (loopState.masterPlay) {
+    requestAnimationFrame(mainLoop);
+    loopState.isMasterPlaying = true;
+  } else {
+    loopState.isMasterPlaying = false;
+    return;
+  }
+  // main loopers
+  const mainLoopers = getSceneMainLoopers();
+  for (let i = 0; i < mainLoopers.length; i++) {
+    mainLoopers[i](delta);
+  }
+  if (loopState.appPlay) {
+    loopState.isAppPlaying = true;
+    // app loopers
+    const appLoopers = getSceneAppLoopers();
+    for (let i = 0; i < appLoopers.length; i++) {
+      appLoopers[i](delta);
+    }
+
+    stepPhysicsWorld(delta);
+
+    const renderer = getRenderer();
+    const windowSize = getWindowSize();
+    const rootScene = getRootScene() as Scene;
+    renderer?.setViewport(0, 0, windowSize.width, windowSize.height);
+    // No maxFPS limiter
+    renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
+      runMainLateLoopers();
+    });
+  } else {
+    loopState.isAppPlaying = false;
+    runMainLateLoopers();
+  }
 };
 
+// LOOP (for production with FPS limiter)
+// **************************************
 const mainLoopForProductionWithFPSLimiter = () => {
   requestAnimationFrame(mainLoop);
   delta = clock.getDelta() * loopState.playSpeedMultiplier;
   accDelta += delta;
   // @TODO: add app play loop here
   if (accDelta > loopState.maxFPSInterval) {
-    getRenderer()?.renderAsync(getCurrentScene(), getCurrentCamera());
+    getRenderer()?.renderAsync(getRootScene() as Scene, getCurrentCamera());
     getStats()?.update();
     accDelta = accDelta % loopState.maxFPSInterval;
   }
@@ -150,16 +189,14 @@ const mainLoopForProductionWithFPSLimiter = () => {
  * Initializes the main loop. Requires that the renderer, camera, and scene have been created.
  */
 export const initMainLoop = () => {
+  // Make sure initMainLoop is only initiated once
+  if (mainLoopInitiated) return;
+  mainLoopInitiated = true;
+
   const renderer = getRenderer();
-  const currentScene = getCurrentScene();
   const currentCamera = getCurrentCamera();
   if (!renderer) {
     const msg = 'Renderer has not been created or has been deleted (initMainLoop).';
-    lerror(msg);
-    throw new Error(msg);
-  }
-  if (!currentScene) {
-    const msg = 'Current scene has not been created or has been deleted (initMainLoop).';
     lerror(msg);
     throw new Error(msg);
   }
@@ -169,8 +206,36 @@ export const initMainLoop = () => {
     throw new Error(msg);
   }
 
-  // HUD container
-  createHudContainer();
+  // Add three.js global resizer
+  resizers['canvasResizer'] = () => {
+    const camera = getCurrentCamera();
+    const renderer = getRenderer();
+    if (!camera) throw new Error('Could not find current camera in canvas resizer.');
+    if (!renderer) throw new Error('Could not find current renderer in canvas resizer.');
+    const windowSize = getWindowSize();
+    camera.aspect = windowSize.aspect;
+    camera.updateProjectionMatrix();
+    renderer.setSize(windowSize.width, windowSize.height);
+  };
+  window.addEventListener(
+    'resize',
+    () => {
+      // Global resizers
+      const ids = Object.keys(resizers);
+      for (let i = 0; i < ids.length; i++) {
+        resizers[ids[i]]();
+      }
+
+      // Scene resizers
+      const sceneResizers = getSceneResizers();
+      if (sceneResizers) {
+        for (let i = 0; i < sceneResizers.length; i++) {
+          sceneResizers[i]();
+        }
+      }
+    },
+    false
+  );
 
   const maxFPS = Number(getEnv('VITE_MAX_FPS'));
   if (maxFPS !== undefined && !isNaN(maxFPS)) {
@@ -198,41 +263,9 @@ export const initMainLoop = () => {
     mainLoop = mainLoopForProduction;
   }
 
-  renderer.renderAsync(currentScene, currentCamera);
+  renderer.renderAsync(getRootScene() as Scene, currentCamera);
   if (loopState.masterPlay) requestAnimationFrame(mainLoop);
 };
-
-// Add three.js global resizer
-resizers['canvasResizer'] = () => {
-  const camera = getCurrentCamera();
-  const renderer = getRenderer();
-  if (!camera) throw new Error('Could not find current camera in canvas resizer.');
-  if (!renderer) throw new Error('Could not find current renderer in canvas resizer.');
-  const windowSize = getWindowSize();
-  camera.aspect = windowSize.aspect;
-  camera.updateProjectionMatrix();
-  renderer.setSize(windowSize.width, windowSize.height);
-};
-
-window.addEventListener(
-  'resize',
-  () => {
-    // Global resizers
-    const ids = Object.keys(resizers);
-    for (let i = 0; i < ids.length; i++) {
-      resizers[ids[i]]();
-    }
-
-    // Scene resizers
-    const sceneResizers = getSceneResizers();
-    if (sceneResizers) {
-      for (let i = 0; i < sceneResizers.length; i++) {
-        sceneResizers[i]();
-      }
-    }
-  },
-  false
-);
 
 /**
  * Adds a global resizer function.

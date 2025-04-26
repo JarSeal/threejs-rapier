@@ -2,7 +2,8 @@ import * as THREE from 'three/webgpu';
 import { GLTF, GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/Addons.js';
 import { lerror } from '../utils/Logger';
-import { saveMesh } from './Mesh';
+import { getMesh, saveMesh } from './Mesh';
+import { getGroup } from './Group';
 
 export type ImportModelParams = {
   fileName: string;
@@ -103,6 +104,14 @@ export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
   params: ImportModelParams
 ): Promise<T | null> => {
   const { id, fileName, importGroup, throwOnError } = params;
+  if (id && !importGroup) {
+    const mesh = getMesh(id);
+    if (mesh) return mesh as T;
+  }
+  if (id && importGroup) {
+    const group = getGroup(id);
+    if (group) return group as T;
+  }
   checkImportFileName(fileName);
 
   const loader = new GLTFLoader();
@@ -110,7 +119,7 @@ export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
 
   let modelGroup: THREE.Group | null = null;
   try {
-    const gltf = await loader.loadAsync(fileName); // @TODO: add onProgress loader data to be tracked
+    const gltf = await loader.loadAsync(fileName);
     modelGroup = new THREE.Group();
     modelGroup.children = gltf?.scene?.children || [];
   } catch (err) {
@@ -146,6 +155,25 @@ export const importModels = (
 
   for (let i = 0; i < modelsParams.length; i++) {
     const { id, fileName, importGroup, throwOnError } = modelsParams[i];
+    if (id && !importGroup) {
+      const mesh = getMesh(id);
+      if (mesh) {
+        modelGroups.push(mesh);
+        loadedCount++;
+        if (updateStatusFn) updateStatusFn(modelGroups, loadedCount, modelsParams.length);
+        continue;
+      }
+    }
+    if (id && importGroup) {
+      const group = getGroup(id);
+      if (group) {
+        modelGroups.push(group);
+        loadedCount++;
+        if (updateStatusFn) updateStatusFn(modelGroups, loadedCount, modelsParams.length);
+        continue;
+      }
+    }
+
     checkImportFileName(fileName);
 
     loader.load(

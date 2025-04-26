@@ -36,11 +36,7 @@ const lights: { [id: string]: Lights } = {};
 export const createLight = ({ id, type, params }: LightProps) => {
   let light: Lights | null = null;
 
-  if (id && lights[id]) {
-    throw new Error(
-      `Light with id "${id}" already exists. Pick another id or delete the light first before recreating it.`
-    );
-  }
+  if (id && lights[id]) return lights[id];
 
   switch (type) {
     case 'AMBIENT':

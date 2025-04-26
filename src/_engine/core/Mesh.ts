@@ -32,25 +32,25 @@ export const createMesh = ({
   mat: THREE.Material | MatProps;
   phy?: PhysicsParams & { sceneId?: string; noWarnForUnitializedScene?: boolean };
 }) => {
+  if (id && meshes[id] && !phy) return meshes[id];
+
   let mesh: THREE.Mesh | null = null;
-
-  if (id && meshes[id]) {
-    throw new Error(
-      `Mesh with id "${id}" already exists. Pick another id or delete the mesh first before recreating it.`
-    );
-  }
-
   let g = geo as THREE.BufferGeometry;
-  if (!('isBufferGeometry' in geo)) {
-    g = createGeometry(geo);
-  }
-
   let m = mat as THREE.Material;
-  if (!('isMaterial' in mat)) {
-    m = createMaterial(mat);
+
+  if (!id || (id && !meshes[id])) {
+    if (!('isBufferGeometry' in geo)) {
+      g = createGeometry(geo);
+    }
+    if (!('isMaterial' in mat)) {
+      m = createMaterial(mat);
+    }
+
+    mesh = new THREE.Mesh(g, m);
+  } else {
+    mesh = meshes[id];
   }
 
-  mesh = new THREE.Mesh(g, m);
   const savedMesh = saveMesh(mesh, id, true);
 
   if (phy && savedMesh) {
@@ -147,11 +147,7 @@ export const deleteMesh = (
  */
 export const saveMesh = (mesh: THREE.Mesh, givenId?: string, doNotSaveMaterial?: boolean) => {
   if (!mesh.isMesh) return;
-  if (givenId && meshes[givenId]) {
-    throw new Error(
-      `Mesh with id "${givenId}" already exists. Pick another id or delete the mesh first before recreating it.`
-    );
-  }
+  if (givenId && meshes[givenId]) return meshes[givenId];
 
   const id = givenId || mesh.uuid;
 

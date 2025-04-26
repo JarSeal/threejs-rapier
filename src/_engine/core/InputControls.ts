@@ -1,4 +1,6 @@
+import { isUsingDebugCamera } from '../debug/DebugTools';
 import { lerror, lwarn } from '../utils/Logger';
+import { isDebugEnvironment } from './Config';
 import { getCurrentSceneId } from './Scene';
 
 export type InputControlType =
@@ -9,18 +11,22 @@ export type InputControlType =
   | 'MOUSE_MOVE'
   | 'CONTROLLER';
 
+type EnabledInDebugCam = 'ENABLED_IN_DEBUG' | 'ENABLED_ONLY_IN_DEBUG' | 'NOT_ENABLED_IN_DEBUG';
+
 type KeyMapping = {
   id?: string;
   key?: string | string[];
   fn: (e: KeyboardEvent, pressedTime: number) => void;
   time?: number;
   enabled?: boolean; // Default is true
+  enabledInDebugCam?: EnabledInDebugCam; // Default is 'ENABLED_IN_DEBUG'
 };
 type MouseMapping = {
   id?: string;
   fn: (e: MouseEvent, pressedTime: number) => void;
   time?: number;
   enabled?: boolean; // Default is true
+  enabledInDebugCam?: EnabledInDebugCam; // Default is 'ENABLED_IN_DEBUG'
 };
 
 const controlListenerFns: {
@@ -50,20 +56,39 @@ let mouseUpSceneMappings: { [sceneId: string]: MouseMapping[] } = {};
 let mouseDownSceneMappings: { [sceneId: string]: MouseMapping[] } = {};
 let mouseMoveSceneMappings: { [sceneId: string]: MouseMapping[] } = {};
 
+let allInputsEnabled = true;
+let keyInputsEnabled = true;
+let mouseInputsEnabled = true;
+
+export const setAllInputsEnabled = (enabled: boolean) => (allInputsEnabled = enabled);
+export const setKeyInputsEnabled = (enabled: boolean) => (keyInputsEnabled = enabled);
+export const setMouseInputsEnabled = (enabled: boolean) => (mouseInputsEnabled = enabled);
+
+const isInputInDebugCamInvalid = (enabledInDebugCam?: EnabledInDebugCam) =>
+  isDebugEnvironment() &&
+  ((enabledInDebugCam === 'NOT_ENABLED_IN_DEBUG' && isUsingDebugCamera()) ||
+    (enabledInDebugCam === 'ENABLED_ONLY_IN_DEBUG' && !isUsingDebugCamera()));
+
+const isKeyInputDisabled = (mapping: KeyMapping) =>
+  mapping.enabled === false || isInputInDebugCamInvalid(mapping.enabledInDebugCam);
+
+const isMouseInputDisabled = (mapping: MouseMapping) =>
+  mapping.enabled === false || isInputInDebugCamInvalid(mapping.enabledInDebugCam);
+
 const initKeyUpControls = () => {
   if (controlListenerFns.keyUp) return;
   controlListenerFns.keyUp = (e: KeyboardEvent) => {
+    if (!allInputsEnabled || !keyInputsEnabled) return;
     const KEY = e.key;
     const timeNow = performance.now();
     for (let i = 0; i < keyUpMappings.length; i++) {
       const mapping = keyUpMappings[i];
-      if (mapping.enabled !== false) {
-        let isCurrentKey = KEY === mapping.key;
-        if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
-        if (isCurrentKey || !mapping.key) {
-          mapping.fn(e, timeNow - (mapping.time || timeNow));
-          mapping.time = 0;
-        }
+      if (isKeyInputDisabled(mapping)) continue;
+      let isCurrentKey = KEY === mapping.key;
+      if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+      if (isCurrentKey || !mapping.key) {
+        mapping.fn(e, timeNow - (mapping.time || timeNow));
+        mapping.time = 0;
       }
     }
     const sceneId = getCurrentSceneId();
@@ -72,13 +97,12 @@ const initKeyUpControls = () => {
     if (!sceneKeyUpMappings) return;
     for (let i = 0; i < sceneKeyUpMappings.length; i++) {
       const mapping = sceneKeyUpMappings[i];
-      if (mapping.enabled !== false) {
-        let isCurrentKey = KEY === mapping.key;
-        if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
-        if (isCurrentKey || !mapping.key) {
-          mapping.fn(e, timeNow - (mapping.time || timeNow));
-          mapping.time = 0;
-        }
+      if (isKeyInputDisabled(mapping)) continue;
+      let isCurrentKey = KEY === mapping.key;
+      if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+      if (isCurrentKey || !mapping.key) {
+        mapping.fn(e, timeNow - (mapping.time || timeNow));
+        mapping.time = 0;
       }
     }
   };
@@ -88,10 +112,12 @@ const initKeyUpControls = () => {
 const initKeyDownControls = () => {
   if (controlListenerFns.keyDown) return;
   controlListenerFns.keyDown = (e: KeyboardEvent) => {
+    if (!allInputsEnabled || !keyInputsEnabled) return;
     const KEY = e.key;
     const timeNow = performance.now();
     for (let i = 0; i < keyUpMappings.length; i++) {
       const mapping = keyUpMappings[i];
+      if (isKeyInputDisabled(mapping)) continue;
       let isCurrentKey = KEY === mapping.key;
       if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
       if ((isCurrentKey || !mapping.key) && !mapping.time) {
@@ -100,13 +126,12 @@ const initKeyDownControls = () => {
     }
     for (let i = 0; i < keyDownMappings.length; i++) {
       const mapping = keyDownMappings[i];
-      if (mapping.enabled !== false) {
-        let isCurrentKey = KEY === mapping.key;
-        if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
-        if (isCurrentKey || !mapping.key) {
-          mapping.time = timeNow;
-          mapping.fn(e, timeNow);
-        }
+      if (isKeyInputDisabled(mapping)) continue;
+      let isCurrentKey = KEY === mapping.key;
+      if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+      if (isCurrentKey || !mapping.key) {
+        mapping.time = timeNow;
+        mapping.fn(e, timeNow);
       }
     }
 
@@ -116,6 +141,7 @@ const initKeyDownControls = () => {
     if (sceneKeyUpMappings) {
       for (let i = 0; i < sceneKeyUpMappings.length; i++) {
         const mapping = sceneKeyUpMappings[i];
+        if (isKeyInputDisabled(mapping)) continue;
         let isCurrentKey = KEY === mapping.key;
         if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
         if ((isCurrentKey || !mapping.key) && !mapping.time) {
@@ -127,12 +153,11 @@ const initKeyDownControls = () => {
     if (!sceneKeyDownMappings) return;
     for (let i = 0; i < sceneKeyDownMappings.length; i++) {
       const mapping = sceneKeyDownMappings[i];
-      if (mapping.enabled !== false) {
-        let isCurrentKey = KEY === mapping.key;
-        if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
-        if (isCurrentKey || !mapping.key) {
-          mapping.fn(e, timeNow - (mapping.time || timeNow));
-        }
+      if (isKeyInputDisabled(mapping)) continue;
+      let isCurrentKey = KEY === mapping.key;
+      if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+      if (isCurrentKey || !mapping.key) {
+        mapping.fn(e, timeNow - (mapping.time || timeNow));
       }
     }
   };
@@ -142,13 +167,13 @@ const initKeyDownControls = () => {
 const initMouseUpControls = () => {
   if (controlListenerFns.mouseUp) return;
   controlListenerFns.mouseUp = (e: MouseEvent) => {
+    if (!allInputsEnabled || !mouseInputsEnabled) return;
     const timeNow = performance.now();
     for (let i = 0; i < mouseUpMappings.length; i++) {
       const mapping = mouseUpMappings[i];
-      if (mapping.enabled !== false) {
-        mapping.fn(e, timeNow - (mapping.time || timeNow));
-        mapping.time = 0;
-      }
+      if (isMouseInputDisabled(mapping)) continue;
+      mapping.fn(e, timeNow - (mapping.time || timeNow));
+      mapping.time = 0;
     }
     const sceneId = getCurrentSceneId();
     if (!sceneId) return;
@@ -156,10 +181,9 @@ const initMouseUpControls = () => {
     if (!sceneMouseUpMappings) return;
     for (let i = 0; i < sceneMouseUpMappings.length; i++) {
       const mapping = sceneMouseUpMappings[i];
-      if (mapping.enabled !== false) {
-        mapping.fn(e, timeNow - (mapping.time || timeNow));
-        mapping.time = 0;
-      }
+      if (isMouseInputDisabled(mapping)) continue;
+      mapping.fn(e, timeNow - (mapping.time || timeNow));
+      mapping.time = 0;
     }
   };
   window.addEventListener('mouseup', controlListenerFns.mouseUp);
@@ -168,17 +192,18 @@ const initMouseUpControls = () => {
 const initMouseDownControls = () => {
   if (controlListenerFns.mouseDown) return;
   controlListenerFns.mouseDown = (e: MouseEvent) => {
+    if (!allInputsEnabled || !mouseInputsEnabled) return;
     const timeNow = performance.now();
     for (let i = 0; i < mouseUpMappings.length; i++) {
       const mapping = mouseUpMappings[i];
+      if (isMouseInputDisabled(mapping)) continue;
       mapping.time = timeNow;
     }
     for (let i = 0; i < mouseDownMappings.length; i++) {
       const mapping = mouseDownMappings[i];
-      if (mapping.enabled !== false) {
-        mapping.time = timeNow;
-        mapping.fn(e, timeNow);
-      }
+      if (isMouseInputDisabled(mapping)) continue;
+      mapping.time = timeNow;
+      mapping.fn(e, timeNow);
     }
 
     const sceneId = getCurrentSceneId();
@@ -187,6 +212,7 @@ const initMouseDownControls = () => {
     if (sceneMouseUpMappings) {
       for (let i = 0; i < sceneMouseUpMappings.length; i++) {
         const mapping = sceneMouseUpMappings[i];
+        if (isMouseInputDisabled(mapping)) continue;
         mapping.time = timeNow;
       }
     }
@@ -194,9 +220,8 @@ const initMouseDownControls = () => {
     if (!sceneMouseDownMappings) return;
     for (let i = 0; i < sceneMouseDownMappings.length; i++) {
       const mapping = sceneMouseDownMappings[i];
-      if (mapping.enabled !== false) {
-        mapping.fn(e, timeNow - (mapping.time || timeNow));
-      }
+      if (isMouseInputDisabled(mapping)) continue;
+      mapping.fn(e, timeNow - (mapping.time || timeNow));
     }
   };
   window.addEventListener('mousedown', controlListenerFns.mouseDown);
@@ -205,13 +230,13 @@ const initMouseDownControls = () => {
 const initMouseMoveControls = () => {
   if (controlListenerFns.mouseMove) return;
   controlListenerFns.mouseMove = (e: MouseEvent) => {
+    if (!allInputsEnabled || !mouseInputsEnabled) return;
     const timeNow = performance.now();
     for (let i = 0; i < mouseMoveMappings.length; i++) {
       const mapping = mouseMoveMappings[i];
-      if (mapping.enabled !== false) {
-        mapping.fn(e, timeNow);
-        mapping.time = 0;
-      }
+      if (isMouseInputDisabled(mapping)) continue;
+      mapping.fn(e, timeNow);
+      mapping.time = 0;
     }
     const sceneId = getCurrentSceneId();
     if (!sceneId) return;
@@ -219,10 +244,9 @@ const initMouseMoveControls = () => {
     if (!sceneMouseMoveMappings) return;
     for (let i = 0; i < sceneMouseMoveMappings.length; i++) {
       const mapping = sceneMouseMoveMappings[i];
-      if (mapping.enabled !== false) {
-        mapping.fn(e, timeNow);
-        mapping.time = 0;
-      }
+      if (isMouseInputDisabled(mapping)) continue;
+      mapping.fn(e, timeNow);
+      mapping.time = 0;
     }
   };
   window.addEventListener('mousemove', controlListenerFns.mouseMove);
@@ -239,6 +263,7 @@ export const addKeyInputControl = ({
   sceneId,
   fn,
   enabled,
+  enabledInDebugCam,
 }: {
   id?: string;
   key?: string | string[];
@@ -246,20 +271,17 @@ export const addKeyInputControl = ({
   type?: 'KEY_UP' | 'KEY_DOWN';
   fn: (e: KeyboardEvent, time: number) => void;
   enabled?: boolean;
+  enabledInDebugCam?: EnabledInDebugCam;
 }) => {
-  let idTaken = false;
+  let idFound = false;
   switch (type) {
     case 'KEY_DOWN':
-      idTaken = Boolean(
+      idFound = Boolean(
         id &&
           (keyDownMappings.find((mapping) => mapping.id === id) ||
             (sceneId && keyDownSceneMappings[sceneId].find((mapping) => mapping.id === id)))
       );
-      if (idTaken) {
-        const msg = `Key (down) input control id already taken (id: ${id}), could not add key control. Remove the old control with the same id first before adding it (the id has to be unique, no matter if the id is global or scene related).`;
-        lerror(msg);
-        return;
-      }
+      if (idFound) return;
       initKeyDownControls();
       if (sceneId) {
         if (!keyDownSceneMappings[sceneId]) keyDownSceneMappings[sceneId] = [];
@@ -269,6 +291,9 @@ export const addKeyInputControl = ({
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
         });
       } else {
         keyDownMappings.push({
@@ -277,21 +302,20 @@ export const addKeyInputControl = ({
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
         });
       }
       break;
     default:
     case 'KEY_UP':
-      idTaken = Boolean(
+      idFound = Boolean(
         id &&
           (keyUpMappings.find((mapping) => mapping.id === id) ||
             (sceneId && keyUpSceneMappings[sceneId].find((mapping) => mapping.id === id)))
       );
-      if (idTaken) {
-        const msg = `Key (up) input control id already taken (id: ${id}), could not add key control. Remove the old control with the same id first before adding it (the id has to be unique, no matter if the id is global or scene related).`;
-        lerror(msg);
-        return;
-      }
+      if (idFound) return;
       initKeyUpControls();
       initKeyDownControls();
       if (sceneId) {
@@ -302,6 +326,9 @@ export const addKeyInputControl = ({
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
         });
       } else {
         keyUpMappings.push({
@@ -310,6 +337,9 @@ export const addKeyInputControl = ({
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
         });
       }
       break;
@@ -326,26 +356,24 @@ export const addMouseInputControl = ({
   sceneId,
   fn,
   enabled,
+  enabledInDebugCam,
 }: {
   id?: string;
   sceneId?: string;
   type?: 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
   fn: (e: MouseEvent, time: number) => void;
   enabled?: boolean;
+  enabledInDebugCam?: EnabledInDebugCam;
 }) => {
-  let idTaken = false;
+  let idFound = false;
   switch (type) {
     case 'MOUSE_MOVE':
-      idTaken = Boolean(
+      idFound = Boolean(
         id &&
           (mouseMoveMappings.find((mapping) => mapping.id === id) ||
             (sceneId && mouseMoveSceneMappings[sceneId].find((mapping) => mapping.id === id)))
       );
-      if (idTaken) {
-        const msg = `Mouse (move) input control id already taken (id: ${id}), could not add mouse control. Remove the old control with the same id first before adding it (the id has to be unique, no matter if the id is global or scene related).`;
-        lerror(msg);
-        return;
-      }
+      if (idFound) return;
       initMouseMoveControls();
       if (sceneId) {
         if (!mouseMoveSceneMappings[sceneId]) mouseMoveSceneMappings[sceneId] = [];
@@ -354,6 +382,9 @@ export const addMouseInputControl = ({
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
         });
       } else {
         mouseMoveMappings.push({
@@ -361,20 +392,19 @@ export const addMouseInputControl = ({
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
         });
       }
       break;
     case 'MOUSE_DOWN':
-      idTaken = Boolean(
+      idFound = Boolean(
         id &&
           (mouseDownMappings.find((mapping) => mapping.id === id) ||
             (sceneId && mouseDownSceneMappings[sceneId].find((mapping) => mapping.id === id)))
       );
-      if (idTaken) {
-        const msg = `Mouse (down) input control id already taken (id: ${id}), could not add mouse control. Remove the old control with the same id first before adding it (the id has to be unique, no matter if the id is global or scene related).`;
-        lerror(msg);
-        return;
-      }
+      if (idFound) return;
       initMouseDownControls();
       if (sceneId) {
         if (!mouseDownSceneMappings[sceneId]) mouseDownSceneMappings[sceneId] = [];
@@ -383,6 +413,9 @@ export const addMouseInputControl = ({
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
         });
       } else {
         mouseDownMappings.push({
@@ -390,21 +423,20 @@ export const addMouseInputControl = ({
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
         });
       }
       break;
     default:
     case 'MOUSE_UP':
-      idTaken = Boolean(
+      idFound = Boolean(
         id &&
           (mouseUpMappings.find((mapping) => mapping.id === id) ||
             (sceneId && mouseUpSceneMappings[sceneId].find((mapping) => mapping.id === id)))
       );
-      if (idTaken) {
-        const msg = `Mouse (up) input control id already taken (id: ${id}), could not add mouse control. Remove the old control with the same id first before adding it (the id has to be unique, no matter if the id is global or scene related).`;
-        lerror(msg);
-        return;
-      }
+      if (idFound) return;
       initMouseUpControls();
       initMouseDownControls();
       if (sceneId) {
@@ -414,6 +446,9 @@ export const addMouseInputControl = ({
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
         });
       } else {
         mouseUpMappings.push({
@@ -421,6 +456,9 @@ export const addMouseInputControl = ({
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
         });
       }
       break;

@@ -4,13 +4,16 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getHUDRootCMP } from '../core/HUD';
 import { Pane } from 'tweakpane';
-import { getConfig } from '../core/Config';
+import { getConfig, isDebugEnvironment } from '../core/Config';
 import { addKeyInputControl } from '../core/InputControls';
 import { lwarn } from '../utils/Logger';
 
 let drawerCMP: TCMP | null = null;
+let currentSceneTitleCMP: TCMP | null = null;
+let currentSceneTitleText: string = '';
 let tabsContainerWrapper: null | TCMP = null;
 let debugKeysFromConfigInitiated = false;
+let debuggerDisabled = false;
 
 type DrawerState = {
   isOpen: boolean;
@@ -81,7 +84,6 @@ const createTabMenuButtons = () => {
       onClick: (_, cmp) => {
         if (cmp.elem.classList.contains(styles.debugDrawerTabButton_selected)) return;
         let container: TCMP | TCMP[] | null = null;
-        // const container = typeof data.container === 'function' ? data.container() : data.container;
         if (typeof data.container !== 'function') {
           container = data.container.updateClass(styles.childContainer);
         } else {
@@ -114,7 +116,6 @@ const createTabMenuButtons = () => {
     tabsAndContainers[i].button = button;
   }
 };
-createTabMenuButtons();
 
 export type DebugGUIOpts = { drawerBtnPlace?: 'TOP' | 'MIDDLE' | 'BOTTOM' };
 let guiOpts: DebugGUIOpts | undefined = undefined;
@@ -125,8 +126,11 @@ let guiOpts: DebugGUIOpts | undefined = undefined;
  * @returns TCMP or undefined
  */
 export const createDebugGui = (opts?: DebugGUIOpts) => {
+  if (!isDebugEnvironment()) return;
+
   guiOpts = opts;
   initDrawerState();
+  createTabMenuButtons();
 
   // Drawer
   if (drawerCMP) drawerCMP.remove();
@@ -135,6 +139,7 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     class: [
       styles.debuggerGUI,
       drawerState.isOpen ? styles.debuggerGUI_open : styles.debuggerGUI_closed,
+      debuggerDisabled ? styles.debuggerDisabled : '',
     ],
     settings: { replaceRootDom: false },
   });
@@ -146,6 +151,29 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     text: 'Debug',
     class: [styles.debugDrawerToggler, opts?.drawerBtnPlace || 'MIDDLE'],
     onClick: () => toggleDrawer(),
+  });
+
+  // Current scene title
+  currentSceneTitleCMP = CMP({
+    class: [styles.debugCurrentSceneTitle, 'debugCurrentSceneTitle'],
+  });
+  currentSceneTitleCMP.add({
+    text: 'SCENE',
+    tag: 'span',
+    class: [styles.debugCurrentSceneTitleHeading, 'debugCurrentSceneTitleHeading'],
+  });
+  currentSceneTitleCMP.add({
+    id: 'debugCurrentSceneTitleText',
+    text: currentSceneTitleText,
+    tag: 'span',
+    class: [styles.debugCurrentSceneTitleText, 'debugCurrentSceneTitleText'],
+  });
+  currentSceneTitleCMP.add({
+    id: 'debugCloseBtn',
+    tag: 'button',
+    class: styles.closeBtn,
+    attr: { title: 'Close' },
+    onClick: () => toggleDrawer('CLOSE'),
   });
 
   // Tabs container wrapper
@@ -174,17 +202,14 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
     if (button) tabsMenuContainer.add(button);
   }
 
-  tabsMenuContainer.add({
-    id: 'debugCloseBtn',
-    tag: 'button',
-    class: styles.closeBtn,
-    attr: { title: 'Close' },
-    onClick: () => toggleDrawer('CLOSE'),
-  });
-
+  drawerCMP.add(currentSceneTitleCMP);
   drawerCMP.add(tabsMenuContainer);
   drawerCMP.add(tabsContainerWrapper);
-  const getWrapperHeight = () => getWindowSize().height - tabsMenuContainer.elem.offsetHeight - 24; // 24 is padding
+  const getWrapperHeight = () =>
+    getWindowSize().height -
+    (currentSceneTitleCMP?.elem.offsetHeight || 0) -
+    tabsMenuContainer.elem.offsetHeight -
+    30; // 30 is padding
 
   tabsContainerWrapper.update({
     attr: { style: `height: ${getWrapperHeight()}px` },
@@ -320,3 +345,20 @@ export const createNewDebuggerPane = (id: string, heading?: string) => {
  * @returns object {@link DrawerState}
  */
 export const getDrawerState = () => drawerState;
+
+export const updateDebuggerSceneTitle = (title: string) => {
+  currentSceneTitleText = title;
+  createDebugGui(guiOpts);
+};
+
+export const disableDebugger = (disable: boolean) => {
+  if (!isDebugEnvironment) return;
+  debuggerDisabled = disable;
+  if (disable) {
+    drawerCMP?.updateClass(styles.debuggerDisabled, 'add');
+    return;
+  }
+  drawerCMP?.updateClass(styles.debuggerDisabled, 'remove');
+};
+
+export const isDebuggerDisabled = () => debuggerDisabled;

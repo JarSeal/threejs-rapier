@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
 import Rapier from '@dimforge/rapier3d';
 import { lerror, lwarn } from '../utils/Logger';
-import { getCurrentScene, getCurrentSceneId, getScene, isCurrentScene } from './Scene';
+import { getCurrentSceneId, getRootScene, getScene, isCurrentScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
-import { getEnv, isDebugEnvironment } from './Config';
+import { getConfig, isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
 import { getMesh } from './Mesh';
+import { Pane } from 'tweakpane';
 
 export type PhysicsObject = {
   id?: string;
@@ -139,32 +140,46 @@ export type PhysicsParams = {
   };
 };
 
+type ScenePhysicsState = {
+  worldStepEnabled: boolean;
+  visualizerEnabled: boolean;
+  gravity: { x: number; y: number; z: number };
+};
+
 type PhysicsState = {
   enabled: boolean;
   timestep: number;
   timestepRatio: number;
-  gravity: { x: number; y: number; z: number };
-  visualizerEnabled: boolean;
+  scenes: { [sceneId: string]: ScenePhysicsState };
 };
 
 let physicsState: PhysicsState = {
-  enabled: true,
+  enabled: false,
   timestep: 60,
   timestepRatio: 1 / 60,
-  gravity: { x: 0, y: -9.81, z: 0 },
-  visualizerEnabled: false,
+  scenes: {},
 };
 
 const LS_KEY = 'debugPhysics';
+const DEFAULT_SCENE_PHYS_STATE: ScenePhysicsState = {
+  worldStepEnabled: true,
+  visualizerEnabled: false,
+  gravity: { x: 0, y: -9.81, z: 0 },
+};
+const getDefaultScenePhysParams = () => ({ ...DEFAULT_SCENE_PHYS_STATE }) as ScenePhysicsState;
 let stepperFn: (delta: number) => void = () => {};
 let accDelta = 0;
 let RAPIER: typeof Rapier;
 let physicsWorld: Rapier.World = { step: () => {} } as Rapier.World;
+let physicsWorldEnabled = false;
 const physicsObjects: { [sceneId: string]: { [id: string]: PhysicsObject } } = {};
 let currentScenePhysicsObjects: PhysicsObject[] = [];
 let debugMesh: THREE.LineSegments;
 let debugMeshGeo: THREE.BufferGeometry;
 let debugMeshMat: THREE.LineBasicMaterial;
+let debugMeshAdded = false;
+let physicsDebugGUI: Pane | null = null;
+let curScenePhysParams = getDefaultScenePhysParams();
 
 const getSceneIdForPhysics = (
   sceneId?: string,
@@ -196,25 +211,27 @@ const createRigidBody = (physicsParams: PhysicsParams) => {
   let rigidBody: Rapier.RigidBody | undefined = undefined;
   let rigidBodyDesc: Rapier.RigidBodyDesc;
 
+  if (!physicsWorldEnabled) createPhysicsWorld();
+
   if (!rigidBodyParams) return undefined;
 
   switch (rigidBodyParams.rigidType) {
     case 'DYNAMIC':
       rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic();
-      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      rigidBody = physicsWorld.createRigidBody(rigidBodyDesc);
       break;
     case 'POS_BASED':
       rigidBodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased();
-      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      rigidBody = physicsWorld.createRigidBody(rigidBodyDesc);
       break;
     case 'VELO_BASED':
       rigidBodyDesc = RAPIER.RigidBodyDesc.kinematicVelocityBased();
-      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      rigidBody = physicsWorld.createRigidBody(rigidBodyDesc);
       break;
     case 'FIXED':
     default:
       rigidBodyDesc = RAPIER.RigidBodyDesc.fixed();
-      rigidBody = getPhysicsWorld().createRigidBody(rigidBodyDesc);
+      rigidBody = physicsWorld.createRigidBody(rigidBodyDesc);
       break;
   }
 
@@ -289,6 +306,8 @@ const createCollider = (physicsParams: PhysicsParams, mesh: THREE.Mesh) => {
   let shape: Rapier.Shape | null = null;
   let geo: THREE.BufferGeometry;
   let size: { [key: string]: number };
+
+  if (!physicsWorldEnabled) createPhysicsWorld();
 
   switch (colliderParams.type) {
     case 'CUBOID':
@@ -420,7 +439,28 @@ const createCollider = (physicsParams: PhysicsParams, mesh: THREE.Mesh) => {
 };
 
 /**
- * Creates a new physics object and registers it to the scene id (or current scene id if scene id is not provided) in the physicsObjects object.
+ * Creates a new physics object without a mesh and registers it to the scene id (or current scene id if scene id is not provided) in the physicsObjects object.
+ * @param physicsParamas (PhysicsParams) ({@link PhysicsParams})
+ * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
+ * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
+ * @returns PhysicsObject ({@link PhysicsObject})
+ */
+export const createPhysicsObjectWithoutMesh = (
+  physicsParams: PhysicsParams,
+  sceneId?: string,
+  noWarnForUnitializedScene?: boolean
+) => {
+  // @TODO: implement this
+  lwarn(
+    '"createPhysicsObjectWithoutMesh" has not been implemented yet',
+    physicsParams,
+    sceneId,
+    noWarnForUnitializedScene
+  );
+};
+
+/**
+ * Creates a new physics object with a mesh and registers it to the scene id (or current scene id if scene id is not provided) in the physicsObjects object.
  * @param physicsParamas (PhysicsParams) ({@link PhysicsParams})
  * @param meshOrMeshId (THREE.Mesh | string) mesh or mesh id of the representation of the physics object
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
@@ -433,6 +473,7 @@ export const createPhysicsObjectWithMesh = (
   sceneId?: string,
   noWarnForUnitializedScene?: boolean
 ) => {
+  if (!RAPIER) return;
   const sId = getSceneIdForPhysics(sceneId, 'createPhysicsObject', noWarnForUnitializedScene);
   let id: string;
   let mesh: THREE.Mesh;
@@ -450,11 +491,12 @@ export const createPhysicsObjectWithMesh = (
     id = meshOrMeshId.userData.id;
     mesh = meshOrMeshId;
   }
+
   mesh.userData.isPhysicsObject = true;
 
   const rigidBody = createRigidBody(physicsParams);
   const colliderDesc = createCollider(physicsParams, mesh);
-  const collider = getPhysicsWorld().createCollider(colliderDesc, rigidBody);
+  const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
 
   const physObj: PhysicsObject = {
     id,
@@ -467,6 +509,11 @@ export const createPhysicsObjectWithMesh = (
 
   if (sId === getCurrentSceneId()) {
     currentScenePhysicsObjects.push(physObj);
+    if (physObj.rigidBody) {
+      physObj.rigidBody.setEnabled(true);
+    } else {
+      physObj.collider.setEnabled(true);
+    }
   }
 
   return physObj;
@@ -511,21 +558,56 @@ export const deletePhysicsObjectsBySceneId = (sceneId: string) => {
     deletePhysicsObject(keys[i], sceneId);
   }
   delete physicsObjects[sceneId];
+  if (isCurrentScene(sceneId)) deleteCurrentScenePhysicsObjects();
+};
+
+export const deleteCurrentScenePhysicsObjects = () => {
+  for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+    const obj = currentScenePhysicsObjects[i];
+    if (obj.rigidBody) {
+      obj.rigidBody.setEnabled(false);
+    } else {
+      obj.collider.setEnabled(false);
+    }
+    // if (obj.collider) physicsWorld.removeCollider(obj.collider, false);
+    // if (obj.rigidBody) physicsWorld.removeRigidBody(obj.rigidBody);
+  }
+  currentScenePhysicsObjects = [];
+};
+
+/**
+ * Checks, with a physics object id, whether a physics object exists or not
+ * @param id (string) physics object id
+ * @param sceneId (string) optional scene id, if not defined the current scene id will be used
+ * @returns boolean
+ */
+export const doesPOExist = (id: string, sceneId?: string) => {
+  const sId = getSceneIdForPhysics(sceneId, 'doesGeoExist', true);
+  return Boolean(physicsObjects[sId][id]);
 };
 
 /**
  * Creates the physics world and sets gravity
  */
 export const createPhysicsWorld = () => {
-  physicsWorld = new RAPIER.World(
-    new THREE.Vector3(physicsState.gravity.x, physicsState.gravity.y, physicsState.gravity.z)
-  );
+  const currentSceneId = getCurrentSceneId();
+  if (!RAPIER || !currentSceneId) return;
+
+  const gravity =
+    physicsState.scenes[currentSceneId]?.gravity || getDefaultScenePhysParams().gravity;
+  physicsWorld = new RAPIER.World(new THREE.Vector3(gravity.x, gravity.y, gravity.z));
+  physicsWorld.timestep = physicsState.timestepRatio;
+  physicsWorldEnabled = true;
+
+  if (isDebugEnvironment()) initDebuggerScenePhysState();
 };
 
 /**
  * Deletes the physics world and all its children
  */
 export const deletePhysicsWorld = () => {
+  if (!physicsWorldEnabled) return;
+  physicsWorldEnabled = false;
   physicsWorld.free();
   physicsWorld = { step: () => {} } as Rapier.World;
   const sceneIds = Object.keys(physicsObjects);
@@ -596,22 +678,23 @@ export const getPhysicsWorld = () => {
 /**
  * Creates physics debug mesh (only in debug mode)
  */
-export const createPhysicsDebugMesh = (onUpdate?: boolean) => {
-  if (!onUpdate && debugMesh) debugMesh.removeFromParent();
-  if (!onUpdate && debugMeshGeo) debugMeshGeo.dispose();
-  debugMeshGeo = new THREE.BufferGeometry();
-  if (onUpdate) {
-    debugMesh.geometry = debugMeshGeo;
-  } else {
-    if (!debugMeshMat)
-      debugMeshMat = new THREE.LineBasicMaterial({
-        color: 0xffffff,
-        vertexColors: true,
-      });
-    debugMesh = new THREE.LineSegments(debugMeshGeo, debugMeshMat);
-    debugMesh.frustumCulled = false;
-    getCurrentScene().add(debugMesh);
+export const createPhysicsDebugMesh = () => {
+  if (debugMesh) {
+    debugMesh.removeFromParent();
+    debugMeshAdded = false;
   }
+  if (debugMeshGeo) {
+    debugMeshGeo.dispose();
+    debugMeshGeo = new THREE.BufferGeometry();
+  }
+  if (!debugMeshMat) {
+    debugMeshMat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+    });
+  }
+  debugMesh = new THREE.LineSegments(debugMeshGeo, debugMeshMat);
+  debugMesh.frustumCulled = false;
 };
 
 // Different stepper functions to use for debug and production
@@ -626,7 +709,6 @@ const baseStepper = (delta: number) => {
   // Set physics objects mesh positions and rotations
   for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
     const po = currentScenePhysicsObjects[i];
-    if (po.id === 'importedMesh01') continue;
     po.mesh.position.copy(po.collider.translation());
     po.mesh.quaternion.copy(po.collider.rotation());
     // Uncomment for debug of dynamic bodies
@@ -639,17 +721,25 @@ const stepperFnProduction = (delta: number) => {
   baseStepper(delta);
 };
 const stepperFnDebug = (delta: number) => {
-  if (!physicsState.enabled) return;
+  const curSceneParams = physicsState.scenes[getCurrentSceneId() || ''];
+  if (!curSceneParams?.worldStepEnabled) return;
 
   baseStepper(delta);
 
-  if (physicsState.visualizerEnabled) {
+  if (physicsWorldEnabled && curSceneParams?.visualizerEnabled) {
     const { vertices, colors } = physicsWorld.debugRender();
-    createPhysicsDebugMesh(true);
+    if (!vertices.length) return;
+    if (!debugMeshAdded) {
+      getRootScene()?.add(debugMesh);
+      debugMeshAdded = true;
+    }
+    debugMeshGeo = new THREE.BufferGeometry();
+    debugMesh.geometry = debugMeshGeo;
     debugMesh.geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
     debugMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4));
     debugMesh.visible = true;
     debugMesh.geometry.getAttribute('position').needsUpdate = true;
+    debugMesh.geometry.getAttribute('color').needsUpdate = true;
   } else {
     debugMesh.visible = false;
   }
@@ -667,20 +757,41 @@ export const stepPhysicsWorld = (delta: number) => stepperFn(delta);
 export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
   if (!RAPIER) return;
 
+  initDebuggerScenePhysState();
+
   currentScenePhysicsObjects = [];
 
   if (!sceneId) return;
 
   const allNewPhysicsObjects = physicsObjects[sceneId];
-  if (!allNewPhysicsObjects) return;
+  if (!allNewPhysicsObjects) {
+    createPhysicsDebugMesh();
+    return;
+  }
 
   const keys = Object.keys(allNewPhysicsObjects);
   for (let i = 0; i < keys.length; i++) {
-    if (!allNewPhysicsObjects[keys[i]]) continue;
-    currentScenePhysicsObjects.push(allNewPhysicsObjects[keys[i]]);
+    const obj = allNewPhysicsObjects[keys[i]];
+    if (!obj) continue;
+    currentScenePhysicsObjects.push(obj);
+    if (obj.rigidBody) {
+      obj.rigidBody.setEnabled(true);
+    } else {
+      obj.collider.setEnabled(true);
+    }
   }
 
   createPhysicsDebugMesh();
+};
+
+const initDebuggerScenePhysState = () => {
+  const currentSceneId = getCurrentSceneId();
+  if (!currentSceneId) return;
+  if (!physicsState.scenes[currentSceneId]) {
+    physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
+  }
+  curScenePhysParams = physicsState.scenes[currentSceneId];
+  buildDebugGUI();
 };
 
 const createDebugControls = () => {
@@ -690,7 +801,8 @@ const createDebugControls = () => {
     ...savedValues,
   };
   physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
-  physicsWorld.gravity = physicsState.gravity;
+
+  initDebuggerScenePhysState();
 
   createDebuggerTab({
     id: 'physicsControls',
@@ -699,46 +811,70 @@ const createDebugControls = () => {
     orderNr: 5,
     container: () => {
       const { container, debugGUI } = createNewDebuggerPane('physics', 'Physics Controls');
-      debugGUI
-        .addBinding(physicsState, 'enabled', { label: 'Enable world step' })
-        .on('change', () => {
-          lsSetItem(LS_KEY, physicsState);
-        });
-      debugGUI
-        .addBinding(physicsState, 'visualizerEnabled', { label: 'Enable visualizer' })
-        .on('change', () => {
-          lsSetItem(LS_KEY, physicsState);
-        });
-      debugGUI
-        .addBinding(physicsState, 'timestep', { label: 'Timestep (1 / ts)', step: 1, min: 1 })
-        .on('change', (e) => {
-          physicsState.timestepRatio = 1 / e.value;
-          lsSetItem(LS_KEY, physicsState);
-        });
-      debugGUI.addBinding(physicsState, 'gravity', { label: 'Gravity' }).on('change', (e) => {
-        physicsWorld.gravity.x = e.value.x;
-        physicsWorld.gravity.y = e.value.y;
-        physicsWorld.gravity.z = e.value.z;
-        for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
-          currentScenePhysicsObjects[i].rigidBody?.wakeUp();
-        }
-        lsSetItem(LS_KEY, physicsState);
-      });
-
+      physicsDebugGUI = debugGUI;
+      buildDebugGUI();
       return container;
     },
   });
 };
 
-/**
- * Checks, with a physics object id, whether a physics object exists or not
- * @param id (string) physics object id
- * @param sceneId (string) optional scene id, if not defined the current scene id will be used
- * @returns boolean
- */
-export const doesPOExist = (id: string, sceneId?: string) => {
-  const sId = getSceneIdForPhysics(sceneId, 'doesGeoExist', true);
-  return Boolean(physicsObjects[sId][id]);
+const buildDebugGUI = () => {
+  const debugGUI = physicsDebugGUI;
+  if (!debugGUI) return;
+
+  const blades = debugGUI?.children || [];
+  for (let i = 0; i < blades.length; i++) {
+    blades[i].dispose();
+  }
+
+  debugGUI
+    .addBinding(physicsState, 'timestep', { label: 'Global timestep (1 / ts)', step: 1, min: 1 })
+    .on('change', (e) => {
+      physicsState.timestepRatio = 1 / e.value;
+      lsSetItem(LS_KEY, physicsState);
+    });
+  debugGUI.addBlade({ view: 'separator' });
+  debugGUI
+    .addBinding(curScenePhysParams, 'worldStepEnabled', { label: 'Enable world step' })
+    .on('change', (e) => {
+      const currentSceneId = getCurrentSceneId();
+      if (!currentSceneId) return;
+      if (!physicsState.scenes[currentSceneId]) {
+        physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
+      }
+      physicsState.scenes[currentSceneId].worldStepEnabled = e.value;
+      curScenePhysParams = physicsState.scenes[currentSceneId];
+      lsSetItem(LS_KEY, physicsState);
+    });
+  debugGUI
+    .addBinding(curScenePhysParams, 'visualizerEnabled', { label: 'Enable visualizer' })
+    .on('change', (e) => {
+      const currentSceneId = getCurrentSceneId();
+      if (!currentSceneId) return;
+      if (!physicsState.scenes[currentSceneId]) {
+        physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
+      }
+      physicsState.scenes[currentSceneId].visualizerEnabled = e.value;
+      curScenePhysParams = physicsState.scenes[currentSceneId];
+      lsSetItem(LS_KEY, physicsState);
+    });
+  debugGUI.addBinding(curScenePhysParams, 'gravity', { label: 'Gravity' }).on('change', (e) => {
+    const currentSceneId = getCurrentSceneId();
+    if (!currentSceneId) return;
+    if (!physicsState.scenes[currentSceneId]) {
+      physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
+    }
+    physicsState.scenes[currentSceneId].gravity = { ...e.value };
+    curScenePhysParams = physicsState.scenes[currentSceneId];
+    for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+      currentScenePhysicsObjects[i].rigidBody?.wakeUp();
+    }
+    lsSetItem(LS_KEY, physicsState);
+    if (!physicsWorld?.gravity) return;
+    physicsWorld.gravity.x = e.value.x;
+    physicsWorld.gravity.y = e.value.y;
+    physicsWorld.gravity.z = e.value.z;
+  });
 };
 
 const initRapier = async () => {
@@ -754,25 +890,38 @@ const initRapier = async () => {
  */
 export const InitRapierPhysics = async (
   initPhysicsCallback?: (physicsWorld: Rapier.World, RAPIER: typeof Rapier) => void
-) =>
-  initRapier().then((rapier) => {
-    const gravity = getEnv<{ x: number; y: number; z: number }>('VITE_PHYS_GRAVITY');
-    const timestep = getEnv<number>('VITE_PHYS_TIMESTEP');
-    physicsState = {
-      ...physicsState,
-      ...(gravity ? { gravity } : {}),
-      ...(timestep ? { timestep } : {}),
-    };
-    physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
+) => {
+  const physicsConfig = getConfig().physics;
+  const enabled = physicsConfig?.enabled || false;
+  return enabled
+    ? initRapier().then((rapier) => {
+        physicsState = {
+          ...physicsState,
+          ...(physicsConfig?.timestep ? { timestep: physicsConfig.timestep } : {}),
+          enabled,
+        };
+        physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
 
-    RAPIER = rapier;
-    createPhysicsWorld();
-    physicsWorld.timestep = physicsState.timestepRatio;
-    if (isDebugEnvironment()) {
-      createDebugControls();
-      stepperFn = stepperFnDebug;
-    } else {
-      stepperFn = stepperFnProduction;
-    }
-    if (initPhysicsCallback) initPhysicsCallback(physicsWorld as Rapier.World, RAPIER);
-  });
+        if (physicsConfig?.gravity) {
+          getDefaultScenePhysParams().gravity = physicsConfig.gravity;
+        }
+        if (physicsConfig?.visualizerEnabled) {
+          getDefaultScenePhysParams().visualizerEnabled = physicsConfig.visualizerEnabled;
+        }
+        if (physicsConfig?.worldStepEnabled) {
+          getDefaultScenePhysParams().worldStepEnabled = physicsConfig.worldStepEnabled;
+        }
+
+        RAPIER = rapier;
+        if (isDebugEnvironment()) {
+          createDebugControls();
+          stepperFn = stepperFnDebug;
+        } else {
+          stepperFn = stepperFnProduction;
+        }
+        if (initPhysicsCallback) initPhysicsCallback(physicsWorld as Rapier.World, RAPIER);
+
+        return rapier;
+      })
+    : null;
+};

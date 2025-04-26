@@ -81,11 +81,7 @@ export type MatProps = { id?: string } & (
 export const createMaterial = ({ id, type, params }: MatProps) => {
   let mat: Materials | null = null;
 
-  if (id && materials[id]) {
-    throw new Error(
-      `Material with id "${id}" already exists. Pick another id or delete the material first before recreating it.`
-    );
-  }
+  if (id && materials[id]) return materials[id];
 
   switch (type) {
     case 'LINEBASIC':
@@ -220,11 +216,7 @@ export const getAllMaterials = () => materials;
  */
 export const saveMaterial = (material: Materials | Materials[], givenId?: string) => {
   if (!Array.isArray(material)) {
-    if (givenId && materials[givenId]) {
-      throw new Error(
-        `Material with id "${givenId}" already exists. Pick another id or delete the mesh first before recreating it.`
-      );
-    }
+    if (givenId && materials[givenId]) return materials[givenId];
 
     const id = givenId || material.uuid;
 
@@ -240,11 +232,7 @@ export const saveMaterial = (material: Materials | Materials[], givenId?: string
     const mat = mats[i];
     if (!mat.isMaterial) continue;
     const newId = `${givenId}-${i}`;
-    if (givenId && materials[newId]) {
-      throw new Error(
-        `Material with id "${newId}" already exists. Pick another id or delete the mesh first before recreating it.`
-      );
-    }
+    if (givenId && materials[newId]) continue;
 
     const id = givenId || mat.uuid;
 
