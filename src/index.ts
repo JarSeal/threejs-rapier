@@ -29,9 +29,9 @@ InitEngine(async () => {
     id: 'main-scene-loader',
     loaderContainerFn: () =>
       CMP({
+        id: 'main-sene-loader-cmp',
         text: '',
         style: {
-          id: 'main-sene-loader-cmp',
           width: '100vw',
           height: '100vh',
           background: 'blue',
@@ -48,13 +48,17 @@ InitEngine(async () => {
       }),
     loadStartFn: (loader) =>
       new Promise((resolve) => {
-        setTimeout(() => loader.loaderContainer?.updateStyle({ opacity: 1 }), 1);
-        setTimeout(() => resolve(true), 500);
+        setTimeout(() => {
+          loader.loaderContainer?.updateStyle({ opacity: 1 });
+          setTimeout(() => resolve(true), 500);
+        }, 0);
       }),
     loadEndFn: (loader) =>
       new Promise((resolve) => {
-        loader.loaderContainer?.updateStyle({ opacity: 0 });
-        setTimeout(() => resolve(true), 500);
+        setTimeout(() => {
+          loader.loaderContainer?.updateStyle({ opacity: 0 });
+          setTimeout(() => resolve(true), 500);
+        }, 0);
       }),
     updateLoaderStatusFn: async (loader, params) => {
       if (!params) return true;
@@ -70,5 +74,5 @@ InitEngine(async () => {
   }
 
   // Load scene
-  loadScene({ nextSceneFn: scene01 });
+  await loadScene({ nextSceneFn: scene01 });
 });

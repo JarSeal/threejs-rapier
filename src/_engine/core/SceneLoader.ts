@@ -101,7 +101,7 @@ export const createSceneLoader = async (
   isCurrent?: boolean // default is true
   // createLoaderFn?: (sceneLoader: SceneLoader) => Promise<void>
 ) => {
-  const foundSameId = sceneLoaders.find((sl) => sl.id);
+  const foundSameId = sceneLoaders.find((sl) => sl.id === sceneLoader.id);
   if (foundSameId) {
     const msg = `Could not add scene loader because the scene loader has already been created (loader id: ${sceneLoader.id}).`;
     lwarn(msg);
@@ -151,6 +151,10 @@ export const getCurrentSceneLoaderId = () => {
   return currentSceneLoaderId;
 };
 
+/**
+ * Loads a scene with a scene loader
+ * @param loadSceneProps (object) {@link LoadSceneProps}
+ */
 export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   currentlyLoading = true;
   let loader: SceneLoader | undefined = getCurrentSceneLoader();
@@ -183,15 +187,15 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
   let loadStartFn = loader.loadStartFn;
   if (!loadStartFn) {
-    loadStartFn = () => new Promise((resolve) => resolve(true));
+    loadStartFn = async () => new Promise((resolve) => resolve(true));
   }
   let loadFn = loader.loadFn;
   if (!loadFn) {
-    loadFn = (_loader, nextSceneFn) => nextSceneFn();
+    loadFn = async (_loader, nextSceneFn) => await nextSceneFn();
   }
   let loadEndFn = loader.loadEndFn;
   if (!loadEndFn) {
-    loadEndFn = () => new Promise((resolve) => resolve(true));
+    loadEndFn = async () => new Promise((resolve) => resolve(true));
   }
 
   // Add possible CMP container to HUD
@@ -267,7 +271,6 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
     .catch((reason) => {
       const msg = `Could not load scene (phase '${loader.phase}')`;
       lerror(msg, reason);
-
       // @CONSIDER: should this throw an error?
     });
 };

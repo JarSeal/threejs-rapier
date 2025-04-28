@@ -1,0 +1,38 @@
+@use '../styles/variables.scss';
+
+@keyframes loadingSpinner {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.debuggerSceneLoader {
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: variables.$debugGuiBackground;
+  opacity: 0;
+  transition-property: opacity;
+  transition-timing-function: ease-in;
+
+  &__spinner {
+    width: 7rem;
+    height: 7rem;
+    border-radius: 50%;
+    border: 5px solid white;
+    border-top-color: transparent;
+    animation-name: loadingSpinner;
+    animation-duration: 700ms;
+    animation-iteration-count: infinite;
+    animation-timing-function: linear;
+  }
+}
