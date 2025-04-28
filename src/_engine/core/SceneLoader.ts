@@ -187,15 +187,15 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
   let loadStartFn = loader.loadStartFn;
   if (!loadStartFn) {
-    loadStartFn = () => new Promise((resolve) => resolve(true));
+    loadStartFn = async () => new Promise((resolve) => resolve(true));
   }
   let loadFn = loader.loadFn;
   if (!loadFn) {
-    loadFn = (_loader, nextSceneFn) => nextSceneFn();
+    loadFn = async (_loader, nextSceneFn) => await nextSceneFn();
   }
   let loadEndFn = loader.loadEndFn;
   if (!loadEndFn) {
-    loadEndFn = () => new Promise((resolve) => resolve(true));
+    loadEndFn = async () => new Promise((resolve) => resolve(true));
   }
 
   // Add possible CMP container to HUD
@@ -271,7 +271,6 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
     .catch((reason) => {
       const msg = `Could not load scene (phase '${loader.phase}')`;
       lerror(msg, reason);
-
       // @CONSIDER: should this throw an error?
     });
 };

@@ -21,20 +21,20 @@ export const createDebuggerSceneLoader = () =>
       },
       loadStartFn: (loader) =>
         new Promise((resolve) => {
-          setTimeout(() => loader.loaderContainer?.updateStyle({ opacity: 1 }), 1);
-          setTimeout(() => resolve(true), START_ANIM_LENGTH_IN_MS);
+          setTimeout(() => {
+            loader.loaderContainer?.updateStyle({ opacity: 1 });
+            setTimeout(() => resolve(true), START_ANIM_LENGTH_IN_MS);
+          }, 0);
         }),
       loadEndFn: (loader) =>
         new Promise((resolve) => {
-          setTimeout(
-            () =>
-              loader.loaderContainer?.updateStyle({
-                opacity: 0,
-                transitionDuration: `${END_ANIM_LENGTH_IN_MS}ms`,
-              }),
-            1
-          );
-          setTimeout(() => resolve(true), END_ANIM_LENGTH_IN_MS);
+          setTimeout(() => {
+            loader.loaderContainer?.updateStyle({
+              opacity: 0,
+              transitionDuration: `${END_ANIM_LENGTH_IN_MS}ms`,
+            });
+            setTimeout(() => resolve(true), END_ANIM_LENGTH_IN_MS + 20);
+          }, 20);
         }),
     },
     false
