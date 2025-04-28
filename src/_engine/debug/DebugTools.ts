@@ -16,6 +16,7 @@ import { getConfig, getCurrentEnvironment, getEnvs, isDebugEnvironment } from '.
 import { debugSceneListing, type DebugScene } from './DebugSceneListing';
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { lerror, llog } from '../utils/Logger';
+import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -615,7 +616,7 @@ const buildDebugGUI = () => {
     const nextScene = debugSceneListing.find((s) => s.id === value);
     if (!isCurrentlyLoading() && nextScene) {
       lsSetItem(LS_KEY, debugToolsState);
-      loadScene({ nextSceneFn: nextScene.fn });
+      loadScene({ nextSceneFn: nextScene.fn, loaderId: DEBUGGER_SCENE_LOADER_ID });
       return;
     }
     if (!isCurrentlyLoading) {

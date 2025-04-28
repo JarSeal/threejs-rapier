@@ -101,7 +101,7 @@ export const createSceneLoader = async (
   isCurrent?: boolean // default is true
   // createLoaderFn?: (sceneLoader: SceneLoader) => Promise<void>
 ) => {
-  const foundSameId = sceneLoaders.find((sl) => sl.id);
+  const foundSameId = sceneLoaders.find((sl) => sl.id === sceneLoader.id);
   if (foundSameId) {
     const msg = `Could not add scene loader because the scene loader has already been created (loader id: ${sceneLoader.id}).`;
     lwarn(msg);
@@ -151,6 +151,10 @@ export const getCurrentSceneLoaderId = () => {
   return currentSceneLoaderId;
 };
 
+/**
+ * Loads a scene with a scene loader
+ * @param loadSceneProps (object) {@link LoadSceneProps}
+ */
 export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   currentlyLoading = true;
   let loader: SceneLoader | undefined = getCurrentSceneLoader();

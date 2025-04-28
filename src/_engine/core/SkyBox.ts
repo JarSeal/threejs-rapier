@@ -206,6 +206,7 @@ export const addSkyBox = async (
       if (typeof file === 'string' || textureId) {
         // File is a string or textureId was provided (texture has been already loaded)
         if (isHDR(file as string)) {
+          // @TODO: cache equirectangular textures
           equirectTexture = await loadTextureAsync({
             id: textureId,
             fileName: file as string,
@@ -268,7 +269,8 @@ export const addSkyBox = async (
     skyBoxStateToBeAdded.equiRectTextureId = textureId
       ? textureId
       : equirectTexture?.userData.id || undefined;
-    skyBoxStateToBeAdded.equiRectColorSpace = params.colorSpace || THREE.SRGBColorSpace;
+    skyBoxStateToBeAdded.equiRectColorSpace =
+      params.colorSpace !== undefined ? params.colorSpace : THREE.SRGBColorSpace;
   } else if (type === 'CUBETEXTURE') {
     // CUBETEXTURE
     const { fileNames, path, textureId } = params;
@@ -302,9 +304,11 @@ export const addSkyBox = async (
     skyBoxStateToBeAdded.cubeTextPath = path || defaultSkyBoxState.cubeTextPath;
     skyBoxStateToBeAdded.cubeTextTextureId = textureId || cubeTexture?.userData.id || undefined;
     skyBoxStateToBeAdded.cubeTextColorSpace =
-      params.colorSpace || defaultSkyBoxState.cubeTextColorSpace;
+      params.colorSpace !== undefined ? params.colorSpace : defaultSkyBoxState.cubeTextColorSpace;
     skyBoxStateToBeAdded.cubeTextRotate =
-      params.cubeTextRotate || defaultSkyBoxState.cubeTextRotate;
+      params.cubeTextRotate !== undefined
+        ? params.cubeTextRotate
+        : defaultSkyBoxState.cubeTextRotate;
   } else if (type === 'SKYANDSUN') {
     // SKYANDSUN
     // @TODO: implement SKYANDSUN

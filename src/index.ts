@@ -29,9 +29,9 @@ InitEngine(async () => {
     id: 'main-scene-loader',
     loaderContainerFn: () =>
       CMP({
+        id: 'main-sene-loader-cmp',
         text: '',
         style: {
-          id: 'main-sene-loader-cmp',
           width: '100vw',
           height: '100vh',
           background: 'blue',
