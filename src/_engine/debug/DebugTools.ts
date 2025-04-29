@@ -669,7 +669,14 @@ const buildDebugGUI = () => {
       getEnvs(),
       '**********************',
     ],
-    rendererOptions: ['RENDER OPTIONS:*******', getRendererOptions(), '**********************'],
+    renderer: [
+      'RENDER OPTIONS:*******',
+      getRendererOptions(),
+      '**********************',
+      'RENDERER:*******',
+      getRenderer(),
+      '**********************',
+    ],
     rootScene: ['ROOT SCENE:***********', getRootScene(), '**********************'],
     cameras: [
       'CAMERAS***************\n',

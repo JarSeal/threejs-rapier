@@ -30,6 +30,8 @@ type RendererOptions = {
   toneMappingExposure: number;
   outputColorSpace: THREE.ColorSpace;
   alpha?: boolean;
+  enableShadows?: boolean;
+  shadowMapType?: THREE.ShadowMapType;
 };
 
 /**
@@ -46,13 +48,18 @@ export const createRenderer = (opts?: Partial<RendererOptions>) => {
 
   const renderer = new THREE.WebGPURenderer({
     antialias: options.antialias,
-    forceWebGL: options.forceWebGL || options.currentApiIsWebGL,
+    forceWebGL:
+      opts?.forceWebGL !== undefined ? opts.forceWebGL : options.currentApiIsWebGL || false,
     alpha: opts?.alpha || options.alpha,
   });
   renderer.toneMapping = opts?.toneMapping || options.toneMapping;
   renderer.toneMappingExposure = opts?.toneMappingExposure || options.toneMappingExposure;
   renderer.outputColorSpace = opts?.outputColorSpace || options.outputColorSpace;
   renderer.debug.checkShaderErrors = isDebugEnvironment();
+
+  renderer.shadowMap.enabled = opts?.enableShadows || false;
+  if (opts?.shadowMapType) renderer.shadowMap.type = opts.shadowMapType || THREE.PCFShadowMap;
+
   renderer.setPixelRatio(options.devicePixelRatio);
   renderer.setSize(windowSize.width, windowSize.height);
 

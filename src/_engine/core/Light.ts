@@ -1,7 +1,11 @@
 import * as THREE from 'three/webgpu';
 import { lwarn } from '../utils/Logger';
 
-export type Lights = THREE.AmbientLight | THREE.HemisphereLight | THREE.PointLight;
+export type Lights =
+  | THREE.AmbientLight
+  | THREE.HemisphereLight
+  | THREE.PointLight
+  | THREE.DirectionalLight;
 
 export type LightProps = { id?: string } & (
   | { type: 'AMBIENT'; params?: { color?: THREE.ColorRepresentation; intensity?: number } }
@@ -20,6 +24,21 @@ export type LightProps = { id?: string } & (
         intensity?: number;
         distance?: number;
         decay?: number;
+        castShadow?: boolean;
+        shadowMapSize?: number[];
+        shadowCamNearFar?: number[];
+      };
+    }
+  | {
+      type: 'DIRECTIONAL';
+      params?: {
+        color?: THREE.ColorRepresentation;
+        intensity?: number;
+        castShadow?: boolean;
+        shadowMapSize?: number[];
+        shadowCamNearFar?: number[];
+        shadowCamLeftRightTopBottom?: number[];
+        shadowBias?: number;
       };
     }
 );
@@ -55,8 +74,46 @@ export const createLight = ({ id, type, params }: LightProps) => {
         params?.decay
       );
       light.userData.type = 'POINT';
+      if (params?.castShadow !== undefined) light.castShadow = true;
+      if (params?.shadowMapSize) {
+        light.shadow.mapSize.width = params.shadowMapSize[0] || 512;
+        light.shadow.mapSize.height = params.shadowMapSize[1] || 512;
+      }
+      if (params?.shadowCamNearFar) {
+        light.shadow.camera.near = params.shadowCamNearFar[0] || 0.1;
+        light.shadow.camera.far = params.shadowCamNearFar[1] || 2000;
+      }
+      light.shadow.camera.updateProjectionMatrix();
       break;
-    // @TODO: add all light types
+    case 'DIRECTIONAL':
+      light = new THREE.DirectionalLight(params?.color, params?.intensity);
+      light.userData.type = 'DIRECTIONAL';
+      if (params?.shadowMapSize) {
+        light.shadow.mapSize.width = params.shadowMapSize[0] || 512;
+        light.shadow.mapSize.height = params.shadowMapSize[1] || 512;
+      }
+      let shadowCamNear = 0.1;
+      let shadowCamFar = 2000;
+      if (params?.shadowCamNearFar) {
+        shadowCamNear = params.shadowCamNearFar[0] || shadowCamNear;
+        shadowCamFar = params.shadowCamNearFar[1] || shadowCamFar;
+      }
+      light.shadow.camera.near = shadowCamNear;
+      light.shadow.camera.far = shadowCamFar;
+      if (params?.shadowCamLeftRightTopBottom) {
+        light.shadow.camera.left = params.shadowCamLeftRightTopBottom[0] || -1;
+        light.shadow.camera.right = params.shadowCamLeftRightTopBottom[1] || 1;
+        light.shadow.camera.top = params.shadowCamLeftRightTopBottom[2] || 1;
+        light.shadow.camera.bottom = params.shadowCamLeftRightTopBottom[3] || -1;
+      }
+      if (params?.castShadow === true) {
+        light.castShadow = true;
+        light.shadow.bias = params?.shadowBias !== undefined ? params?.shadowBias : -0.002;
+      } else {
+        light.castShadow = true;
+      }
+      light.shadow.camera.updateProjectionMatrix();
+      break;
   }
 
   if (!light) {

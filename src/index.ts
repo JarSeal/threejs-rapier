@@ -22,6 +22,8 @@ InitEngine(async () => {
     toneMappingExposure: 0.7,
     outputColorSpace: THREE.SRGBColorSpace,
     alpha: true,
+    enableShadows: true,
+    shadowMapType: THREE.PCFSoftShadowMap,
   });
 
   // Create sceneLoader
@@ -29,7 +31,7 @@ InitEngine(async () => {
     id: 'main-scene-loader',
     loaderContainerFn: () =>
       CMP({
-        id: 'main-sene-loader-cmp',
+        id: 'main-scene-loader-cmp',
         text: '',
         style: {
           width: '100vw',

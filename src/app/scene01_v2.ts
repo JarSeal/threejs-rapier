@@ -88,10 +88,16 @@ export const scene01 = async () =>
       });
       const groundMat = createMaterial({
         id: 'ground',
-        type: 'BASIC',
-        params: { color: 0x0024000 },
+        type: 'LAMBERT',
+        params: { color: 0x556334 },
       });
-      const groundMesh = createMesh({ id: 'groundMesh', geo: groundGeo, mat: groundMat });
+      const groundMesh = createMesh({
+        id: 'groundMesh',
+        geo: groundGeo,
+        mat: groundMat,
+        receiveShadow: true,
+        castShadow: true,
+      });
       groundMesh.position.set(groundPos.x, groundPos.y, groundPos.z);
       createPhysicsObjectWithMesh(
         {
@@ -111,7 +117,7 @@ export const scene01 = async () =>
       const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });
       const material1 = createMaterial({
         id: 'sphere1Material',
-        type: 'BASIC',
+        type: 'LAMBERT',
         params: { color: 0xff0000, wireframe: true },
       });
       const sphere = createMesh({ id: 'sphereMesh1', geo: geometry1, mat: material1 });
@@ -150,6 +156,7 @@ export const scene01 = async () =>
         },
         box
       );
+      box.castShadow = true;
       scene.add(box);
 
       const physBall01 = createMesh({
@@ -160,6 +167,8 @@ export const scene01 = async () =>
           collider: { type: 'SPHERE' },
           rigidBody: { rigidType: 'DYNAMIC', translation: { x: 2, y: 3, z: -2 } },
         },
+        castShadow: true,
+        receiveShadow: true,
       });
       scene.add(physBall01);
 
@@ -192,6 +201,7 @@ export const scene01 = async () =>
           },
         },
       });
+      physCyl01.castShadow = true;
       scene.add(physCyl01);
 
       // Group example
@@ -239,6 +249,8 @@ export const scene01 = async () =>
         throwOnError: true,
       });
       if (importedBox) {
+        importedBox.receiveShadow = true;
+        importedBox.castShadow = true;
         createPhysicsObjectWithMesh(
           {
             collider: { type: 'TRIMESH' },
@@ -277,13 +289,14 @@ export const scene01 = async () =>
       //   box.rotation.z -= transformSpeedValue(2);
       // });
 
-      const point = createLight({
-        id: 'pointLight',
-        type: 'POINT',
-        params: { color: 0xffffff, intensity: 7, distance: 10 },
-      });
-      point.position.set(2, 1, 1);
-      scene.add(point);
+      // Lights
+      // const point = createLight({
+      //   id: 'pointLight',
+      //   type: 'POINT',
+      //   params: { color: 0xffffff, intensity: 7, distance: 10, castShadow: true },
+      // });
+      // point.position.set(2, 1, 1);
+      // scene.add(point);
 
       const ambient = createLight({
         id: 'ambientLight',
@@ -302,6 +315,33 @@ export const scene01 = async () =>
         },
       });
       scene.add(hemisphere);
+
+      const directionalLight = createLight({
+        id: 'directionalLight',
+        type: 'DIRECTIONAL',
+        params: {
+          color: 0xffe5c7,
+          intensity: Math.PI,
+          castShadow: true,
+          // shadowMapSize: [2048, 2048],
+          // shadowMapSize: [256, 256],
+          shadowBias: -0.0125,
+          shadowCamNearFar: [1, 50],
+          shadowCamLeftRightTopBottom: [-20, 20, 20, -20],
+        },
+      });
+      directionalLight.position.set(-25, 15, 15);
+      scene.add(directionalLight);
+      // if (directionalLight.shadow) {
+      //   const cameraHelper = new THREE.CameraHelper(directionalLight.shadow.camera);
+      //   scene.add(cameraHelper);
+      //   const lightHelper = new THREE.DirectionalLightHelper(
+      //     directionalLight as THREE.DirectionalLight
+      //   );
+      //   scene.add(lightHelper);
+      //   cameraHelper.update();
+      //   lightHelper.update();
+      // }
 
       // Input
       addKeyInputControl({
