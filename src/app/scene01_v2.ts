@@ -289,14 +289,6 @@ export const scene01 = async () =>
     // });
 
     // Lights
-    // const point = createLight({
-    //   id: 'pointLight',
-    //   type: 'POINT',
-    //   params: { color: 0xffffff, intensity: 7, distance: 10, castShadow: true },
-    // });
-    // point.position.set(2, 1, 1);
-    // scene.add(point);
-
     const ambient = createLight({
       id: 'ambientLight',
       type: 'AMBIENT',
@@ -314,6 +306,21 @@ export const scene01 = async () =>
       },
     });
     scene.add(hemisphere);
+
+    // const point = createLight({
+    //   id: 'pointLight',
+    //   type: 'POINT',
+    //   params: {
+    //     color: 0xffffff,
+    //     intensity: 7,
+    //     distance: 10,
+    //     castShadow: true,
+    //     shadowBias: -0.01,
+    //     // shadowNormalBias: -0.01,
+    //   },
+    // });
+    // point.position.set(2, 1, 1);
+    // scene.add(point);
 
     const directionalLight = createLight({
       id: 'directionalLight',

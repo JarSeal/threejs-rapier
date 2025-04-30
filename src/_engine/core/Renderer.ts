@@ -146,18 +146,22 @@ export const createRendererDebugGUI = () => {
     orderNr: 7,
     container: () => {
       const { container, debugGUI } = createNewDebuggerPane('renderer', 'Renderer Controls');
+
+      // Antialias
       debugGUI
-        .addBinding(options, 'antialias', { label: 'Antialias (reload)' })
+        .addBinding(options, 'antialias', { label: 'Antialias (reloads)' })
         .on('change', () => {
           lsSetItem(LS_KEY, options);
           location.reload();
         });
+      // Force WebGL
       debugGUI
-        .addBinding(options, 'forceWebGL', { label: 'Force WebGL (reload)' })
+        .addBinding(options, 'forceWebGL', { label: 'Force WebGL (reloads)' })
         .on('change', () => {
           lsSetItem(LS_KEY, options);
           location.reload();
         });
+      // Device pixel ratio
       debugGUI
         .addBinding(options, 'devicePixelRatio', {
           label: `Device pixel ratio (${window?.devicePixelRatio})`,
@@ -169,6 +173,7 @@ export const createRendererDebugGUI = () => {
           r?.setPixelRatio(options.devicePixelRatio);
           lsSetItem(LS_KEY, options);
         });
+      // Tone mapping
       const toneMappingDropDown = debugGUI.addBlade({
         view: 'list',
         label: 'Tone mapping',
@@ -190,6 +195,7 @@ export const createRendererDebugGUI = () => {
         if (r) r.toneMapping = options.toneMapping;
         lsSetItem(LS_KEY, options);
       });
+      // Tone mapping exposure
       debugGUI
         .addBinding(options, 'toneMappingExposure', {
           label: 'Tone mapping exposure',
@@ -201,6 +207,7 @@ export const createRendererDebugGUI = () => {
           if (r) r.toneMappingExposure = options.toneMappingExposure;
           lsSetItem(LS_KEY, options);
         });
+      // Output color space
       const outputColorSpaceDropDown = debugGUI.addBlade({
         view: 'list',
         label: 'Output color space',
@@ -217,19 +224,22 @@ export const createRendererDebugGUI = () => {
         if (r) r.outputColorSpace = options.outputColorSpace;
         lsSetItem(LS_KEY, options);
       });
+      // Enable alpha
       debugGUI.addBinding(options, 'alpha', { label: 'Enable alpha' }).on('change', () => {
         if (r) r.alpha = Boolean(options.alpha);
         lsSetItem(LS_KEY, options);
       });
+      // Enable shadows
       debugGUI
         .addBinding(options, 'enableShadows', { label: 'Enable shadows' })
         .on('change', () => {
           if (r) r.shadowMap.enabled = Boolean(options.enableShadows);
           lsSetItem(LS_KEY, options);
         });
+      // Shadow map type
       const shadowMapTypeDropDown = debugGUI.addBlade({
         view: 'list',
-        label: 'Shadow map type (reload)',
+        label: 'Shadow map type (reloads)',
         options: [
           { value: THREE.BasicShadowMap, text: 'Basic shadow map' },
           { value: THREE.PCFShadowMap, text: 'PCF shadow map' },

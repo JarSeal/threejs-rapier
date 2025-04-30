@@ -27,6 +27,13 @@ export type LightProps = { id?: string } & (
         castShadow?: boolean;
         shadowMapSize?: number[];
         shadowCamNearFar?: number[];
+        shadowBias?: number;
+        shadowNormalBias?: number;
+        /** Note: has no effect for PCFSoftShadowMap type */
+        shadowBlurSamples?: number;
+        /** Note: only for VSM shadowmap types */
+        shadowRadius?: number;
+        shadowIntensity?: number;
       };
     }
   | {
@@ -39,12 +46,12 @@ export type LightProps = { id?: string } & (
         shadowCamNearFar?: number[];
         shadowCamLeftRightTopBottom?: number[];
         shadowBias?: number;
-        shadowIntensity?: number;
         shadowNormalBias?: number;
         /** Note: has no effect for PCFSoftShadowMap type */
         shadowBlurSamples?: number;
         /** Note: only for VSM shadowmap types */
         shadowRadius?: number;
+        shadowIntensity?: number;
       };
     }
 );
@@ -80,14 +87,34 @@ export const createLight = ({ id, type, params }: LightProps) => {
         params?.decay
       );
       light.userData.type = 'POINT';
-      if (params?.castShadow !== undefined) light.castShadow = true;
-      if (params?.shadowMapSize) {
-        light.shadow.mapSize.width = params.shadowMapSize[0] || 512;
-        light.shadow.mapSize.height = params.shadowMapSize[1] || 512;
-      }
-      if (params?.shadowCamNearFar) {
-        light.shadow.camera.near = params.shadowCamNearFar[0] || 0.1;
-        light.shadow.camera.far = params.shadowCamNearFar[1] || 2000;
+      // @TODO: @BUG: Three.js bug with VSMShadowMap and point light in WebGPU
+      // Complete breakdown in WebGPU renderer when shadowMap type is VSMShadowMap and a point light tries to cast shadows.
+      // Also breaks when forceWebGL is set to true but gives a different error. REPORT THIS!
+      if (params?.castShadow === true) {
+        light.castShadow = true;
+        if (params.shadowMapSize) {
+          light.shadow.mapSize.width = params.shadowMapSize[0] || 512;
+          light.shadow.mapSize.height = params.shadowMapSize[1] || 512;
+        }
+        let shadowCamNear = 0.1;
+        let shadowCamFar = 500;
+        if (params.shadowCamNearFar) {
+          shadowCamNear = params.shadowCamNearFar[0] || shadowCamNear;
+          shadowCamFar = params.shadowCamNearFar[1] || shadowCamFar;
+        }
+        light.shadow.camera.near = shadowCamNear;
+        light.shadow.camera.far = shadowCamFar;
+        if (params.shadowBlurSamples !== undefined) {
+          light.shadow.blurSamples = params.shadowBlurSamples;
+        }
+        if (params.shadowRadius !== undefined) light.shadow.radius = params.shadowRadius;
+        if (params.shadowBias !== undefined) light.shadow.bias = params.shadowBias;
+        if (params.shadowNormalBias !== undefined) {
+          light.shadow.normalBias = params.shadowNormalBias;
+        }
+        if (params.shadowIntensity) light.shadow.intensity = params.shadowIntensity;
+      } else {
+        light.castShadow = false;
       }
       light.shadow.camera.updateProjectionMatrix();
       break;
@@ -118,7 +145,6 @@ export const createLight = ({ id, type, params }: LightProps) => {
           light.shadow.blurSamples = params.shadowBlurSamples;
         }
         if (params.shadowRadius !== undefined) light.shadow.radius = params.shadowRadius;
-
         if (params.shadowBias !== undefined) light.shadow.bias = params.shadowBias;
         if (params.shadowNormalBias !== undefined) {
           light.shadow.normalBias = params.shadowNormalBias;
