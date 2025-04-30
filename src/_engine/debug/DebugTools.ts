@@ -13,7 +13,7 @@ import { createMaterial, deleteMaterial } from '../core/Material';
 import { getCurrentSceneId, getRootScene, getScene } from '../core/Scene';
 import { getEnvMapRoughnessBg } from '../core/SkyBox';
 import { getConfig, getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../core/Config';
-import { debugSceneListing, type DebugScene } from './DebugSceneListing';
+import { debuggerSceneListing, type DebugScene } from './debugScenes/debuggerSceneListing';
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { lerror, llog } from '../utils/Logger';
 import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
@@ -99,9 +99,9 @@ let debugToolsState: DebugToolsState = {
 export const initDebugTools = () => {
   if (!isDebugEnvironment()) return;
   createDebugToolsDebugGUI();
-  const debugSceneListingConfig = getConfig().debugScenes || [];
-  if (debugSceneListingConfig?.length) {
-    addScenesToSceneListing(debugSceneListingConfig);
+  const debuggerSceneListingConfig = getConfig().debugScenes || [];
+  if (debuggerSceneListingConfig?.length) {
+    addScenesToSceneListing(debuggerSceneListingConfig);
   }
 };
 
@@ -379,14 +379,14 @@ export const getDebugToolsState = (loadFromLS?: boolean) => {
 export const addScenesToSceneListing = (scenes: DebugScene | DebugScene[]) => {
   if (Array.isArray(scenes)) {
     for (let i = 0; i < scenes.length; i++) {
-      const foundScene = debugSceneListing.find((scene) => scene.id === scenes[i].id);
-      if (!foundScene) debugSceneListing.push(scenes[i]);
+      const foundScene = debuggerSceneListing.find((scene) => scene.id === scenes[i].id);
+      if (!foundScene) debuggerSceneListing.push(scenes[i]);
     }
     reloadSceneListingBlade();
     return;
   }
-  const foundScene = debugSceneListing.find((scene) => scene.id === scenes.id);
-  if (!foundScene) debugSceneListing.push(scenes);
+  const foundScene = debuggerSceneListing.find((scene) => scene.id === scenes.id);
+  if (!foundScene) debuggerSceneListing.push(scenes);
   reloadSceneListingBlade();
 };
 
@@ -397,30 +397,30 @@ export const addScenesToSceneListing = (scenes: DebugScene | DebugScene[]) => {
 export const removeScenesFromSceneListing = (sceneIds: string | string[]) => {
   if (Array.isArray(sceneIds)) {
     const indexes: number[] = [];
-    for (let i = 0; i < debugSceneListing.length; i++) {
-      if (sceneIds.includes(debugSceneListing[i].id)) {
+    for (let i = 0; i < debuggerSceneListing.length; i++) {
+      if (sceneIds.includes(debuggerSceneListing[i].id)) {
         indexes.push(i);
       }
     }
     for (let i = 0; i < indexes.length; i++) {
-      debugSceneListing.splice(indexes[i], 1);
+      debuggerSceneListing.splice(indexes[i], 1);
     }
     reloadSceneListingBlade();
     return;
   }
   let index: number | null = null;
-  for (let i = 0; i < debugSceneListing.length; i++) {
-    if (sceneIds.includes(debugSceneListing[i].id)) {
+  for (let i = 0; i < debuggerSceneListing.length; i++) {
+    if (sceneIds.includes(debuggerSceneListing[i].id)) {
       index = i;
     }
   }
-  if (index !== null) debugSceneListing.splice(index, 1);
+  if (index !== null) debuggerSceneListing.splice(index, 1);
   reloadSceneListingBlade();
 };
 
 const getSceneStarterDropDownOptions = () => [
   { value: '', text: '---NOT-SET---' },
-  ...debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
+  ...debuggerSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
 ];
 
 // For reloading the scenes listing in debugging
@@ -428,7 +428,7 @@ const reloadSceneListingBlade = () => {
   if (scenesDropDown) {
     scenesDropDown.importState({
       ...scenesDropDown.exportState(),
-      options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
+      options: debuggerSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
     });
   }
   if (sceneStarterDropDown) {
@@ -607,13 +607,13 @@ const buildDebugGUI = () => {
   scenesDropDown = scenesFolder.addBlade({
     view: 'list',
     label: 'Change scene',
-    options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
+    options: debuggerSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
     value: getCurrentSceneId(),
   }) as ListBladeApi<BladeController<View>>;
   scenesDropDown.on('change', (e) => {
     const value = String(e.value);
     if (value === getCurrentSceneId()) return;
-    const nextScene = debugSceneListing.find((s) => s.id === value);
+    const nextScene = debuggerSceneListing.find((s) => s.id === value);
     if (!isCurrentlyLoading() && nextScene) {
       lsSetItem(LS_KEY, debugToolsState);
       loadScene({ nextSceneFn: nextScene.fn, loaderId: DEBUGGER_SCENE_LOADER_ID });

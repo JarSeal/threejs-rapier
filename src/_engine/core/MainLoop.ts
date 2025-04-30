@@ -110,7 +110,7 @@ const mainLoopForDebug = async () => {
       // maxFPS limiter
       accDelta += delta;
       if (accDelta > loopState.maxFPSInterval) {
-        renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
+        await renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
           runMainLateLoopers();
           getStats()?.update();
           accDelta = accDelta % loopState.maxFPSInterval;
@@ -118,7 +118,7 @@ const mainLoopForDebug = async () => {
       }
     } else {
       // No maxFPS limiter
-      renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
+      await renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
         runMainLateLoopers();
         getStats()?.update();
       });
@@ -132,7 +132,7 @@ const mainLoopForDebug = async () => {
 
 // LOOP (for production)
 // **************************************
-const mainLoopForProduction = () => {
+const mainLoopForProduction = async () => {
   const dt = clock.getDelta();
   delta = dt * loopState.playSpeedMultiplier;
   if (loopState.masterPlay) {
@@ -162,7 +162,7 @@ const mainLoopForProduction = () => {
     const rootScene = getRootScene() as Scene;
     renderer?.setViewport(0, 0, windowSize.width, windowSize.height);
     // No maxFPS limiter
-    renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
+    await renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
       runMainLateLoopers();
     });
   } else {
@@ -173,13 +173,13 @@ const mainLoopForProduction = () => {
 
 // LOOP (for production with FPS limiter)
 // **************************************
-const mainLoopForProductionWithFPSLimiter = () => {
+const mainLoopForProductionWithFPSLimiter = async () => {
   requestAnimationFrame(mainLoop);
   delta = clock.getDelta() * loopState.playSpeedMultiplier;
   accDelta += delta;
   // @TODO: add app play loop here
   if (accDelta > loopState.maxFPSInterval) {
-    getRenderer()?.renderAsync(getRootScene() as Scene, getCurrentCamera());
+    await getRenderer()?.renderAsync(getRootScene() as Scene, getCurrentCamera());
     getStats()?.update();
     accDelta = accDelta % loopState.maxFPSInterval;
   }

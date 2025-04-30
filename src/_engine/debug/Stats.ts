@@ -89,47 +89,31 @@ const setDebuggerUI = (config: StatsOptions) =>
 
       performanceFolder
         .addBinding(config, 'enabled', { label: 'Enable measuring' })
-        .on('change', (state) => {
-          config.enabled = state.value;
+        .on('change', () => {
           lsSetItem(LS_KEY, config);
           location.reload();
         });
-      performanceFolder
-        .addBinding(config, 'trackGPU', { label: 'Track GPU' })
-        .on('change', (state) => {
-          config.trackGPU = state.value;
-          lsSetItem(LS_KEY, config);
-          location.reload();
-        });
-      performanceFolder
-        .addBinding(config, 'trackHz', { label: 'Track Hz' })
-        .on('change', (state) => {
-          config.trackHz = state.value;
-          lsSetItem(LS_KEY, config);
-          location.reload();
-        });
-      performanceFolder
-        .addBinding(config, 'trackCPT', { label: 'Track CPT' })
-        .on('change', (state) => {
-          config.trackCPT = state.value;
-          lsSetItem(LS_KEY, config);
-          location.reload();
-        });
+      performanceFolder.addBinding(config, 'trackGPU', { label: 'Track GPU' }).on('change', () => {
+        lsSetItem(LS_KEY, config);
+        location.reload();
+      });
+      performanceFolder.addBinding(config, 'trackHz', { label: 'Track Hz' }).on('change', () => {
+        lsSetItem(LS_KEY, config);
+        location.reload();
+      });
+      performanceFolder.addBinding(config, 'trackCPT', { label: 'Track CPT' }).on('change', () => {
+        lsSetItem(LS_KEY, config);
+        location.reload();
+      });
 
-      outlookFolder
-        .addBinding(config, 'horizontal', { label: 'Horizontal' })
-        .on('change', (state) => {
-          config.horizontal = state.value;
-          lsSetItem(LS_KEY, config);
-          location.reload();
-        });
-      outlookFolder
-        .addBinding(config, 'minimal', { label: 'Minimal look' })
-        .on('change', (state) => {
-          config.minimal = state.value;
-          lsSetItem(LS_KEY, config);
-          location.reload();
-        });
+      outlookFolder.addBinding(config, 'horizontal', { label: 'Horizontal' }).on('change', () => {
+        lsSetItem(LS_KEY, config);
+        location.reload();
+      });
+      outlookFolder.addBinding(config, 'minimal', { label: 'Minimal look' }).on('change', () => {
+        lsSetItem(LS_KEY, config);
+        location.reload();
+      });
 
       // @TODO: add current scene and all loaded scene stats
       // Current and all scenes stats:

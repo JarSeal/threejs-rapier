@@ -39,6 +39,7 @@ export type LightProps = { id?: string } & (
         shadowCamNearFar?: number[];
         shadowCamLeftRightTopBottom?: number[];
         shadowBias?: number;
+        shadowIntensity?: number;
         shadowNormalBias?: number;
         /** Note: has no effect for PCFSoftShadowMap type */
         shadowBlurSamples?: number;
@@ -122,6 +123,7 @@ export const createLight = ({ id, type, params }: LightProps) => {
         if (params.shadowNormalBias !== undefined) {
           light.shadow.normalBias = params.shadowNormalBias;
         }
+        if (params.shadowIntensity) light.shadow.intensity = params.shadowIntensity;
         light.shadow.camera.updateProjectionMatrix();
       } else {
         light.castShadow = false;

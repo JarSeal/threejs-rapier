@@ -17,7 +17,7 @@ InitEngine(async () => {
   // Init renderer
   createRenderer({
     antialias: true,
-    forceWebGL: true,
+    forceWebGL: false,
     toneMapping: THREE.ACESFilmicToneMapping,
     toneMappingExposure: 0.7,
     outputColorSpace: THREE.SRGBColorSpace,

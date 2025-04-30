@@ -3,10 +3,15 @@ import WebGL from 'three/addons/capabilities/WebGL.js';
 import { getWindowSize } from '../utils/Window';
 import { lwarn } from '../utils/Logger';
 import { isDebugEnvironment } from './Config';
+import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
+import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
+import { ListBladeApi } from 'tweakpane';
+import { BladeController, View } from '@tweakpane/core';
 
 let r: THREE.WebGPURenderer | null = null;
 const ELEM_ID = 'mainCanvas';
-const options: RendererOptions = {
+const LS_KEY = 'debugRenderer';
+let options: RendererOptions = {
   antialias: undefined,
   forceWebGL: false,
   devicePixelRatio: 1,
@@ -17,6 +22,8 @@ const options: RendererOptions = {
   toneMappingExposure: 1,
   outputColorSpace: THREE.SRGBColorSpace,
   alpha: false,
+  enableShadows: false,
+  shadowMapType: THREE.BasicShadowMap,
 };
 
 type RendererOptions = {
@@ -48,17 +55,16 @@ export const createRenderer = (opts?: Partial<RendererOptions>) => {
 
   const renderer = new THREE.WebGPURenderer({
     antialias: options.antialias,
-    forceWebGL:
-      opts?.forceWebGL !== undefined ? opts.forceWebGL : options.currentApiIsWebGL || false,
-    alpha: opts?.alpha || options.alpha,
+    forceWebGL: options.currentApiIsWebGL || options.forceWebGL,
+    alpha: options.alpha,
   });
-  renderer.toneMapping = opts?.toneMapping || options.toneMapping;
-  renderer.toneMappingExposure = opts?.toneMappingExposure || options.toneMappingExposure;
-  renderer.outputColorSpace = opts?.outputColorSpace || options.outputColorSpace;
+  renderer.toneMapping = options.toneMapping;
+  renderer.toneMappingExposure = options.toneMappingExposure;
+  renderer.outputColorSpace = options.outputColorSpace;
   renderer.debug.checkShaderErrors = isDebugEnvironment();
 
-  renderer.shadowMap.enabled = opts?.enableShadows || false;
-  if (opts?.shadowMapType) renderer.shadowMap.type = opts.shadowMapType || THREE.PCFShadowMap;
+  renderer.shadowMap.enabled = options.enableShadows || false;
+  if (opts?.shadowMapType) renderer.shadowMap.type = options.shadowMapType || THREE.BasicShadowMap;
 
   renderer.setPixelRatio(options.devicePixelRatio);
   renderer.setSize(windowSize.width, windowSize.height);
@@ -102,9 +108,16 @@ export const deleteRenderer = () => {
 };
 
 const setRendererOptions = async (opts?: Partial<RendererOptions>) => {
+  options = { ...options, ...opts };
   options.antialias = Boolean(opts?.antialias);
   options.forceWebGL = Boolean(opts?.forceWebGL);
   options.devicePixelRatio = opts?.devicePixelRatio || window?.devicePixelRatio || 1;
+
+  if (isDebugEnvironment()) {
+    const savedOptions = lsGetItem(LS_KEY, options);
+    options = { ...options, ...opts, ...savedOptions };
+  }
+
   if (!options.forceWebGL && navigator.gpu) {
     options.currentApi = 'WebGPU';
     options.currentApiIsWebGPU = true;
@@ -121,3 +134,119 @@ const setRendererOptions = async (opts?: Partial<RendererOptions>) => {
  * @returns (object) {@link RendererOptions}
  */
 export const getRendererOptions = () => options;
+
+export const createRendererDebugGUI = () => {
+  const savedOptions = lsGetItem(LS_KEY, options);
+  options = { ...options, ...savedOptions };
+
+  createDebuggerTab({
+    id: 'rendererControls',
+    buttonText: 'RENDERER',
+    title: 'Renderer controls',
+    orderNr: 7,
+    container: () => {
+      const { container, debugGUI } = createNewDebuggerPane('renderer', 'Renderer Controls');
+      debugGUI
+        .addBinding(options, 'antialias', { label: 'Antialias (reload)' })
+        .on('change', () => {
+          lsSetItem(LS_KEY, options);
+          location.reload();
+        });
+      debugGUI
+        .addBinding(options, 'forceWebGL', { label: 'Force WebGL (reload)' })
+        .on('change', () => {
+          lsSetItem(LS_KEY, options);
+          location.reload();
+        });
+      debugGUI
+        .addBinding(options, 'devicePixelRatio', {
+          label: `Device pixel ratio (${window?.devicePixelRatio})`,
+          step: 0.5,
+          min: 1,
+          max: 4,
+        })
+        .on('change', () => {
+          r?.setPixelRatio(options.devicePixelRatio);
+          lsSetItem(LS_KEY, options);
+        });
+      const toneMappingDropDown = debugGUI.addBlade({
+        view: 'list',
+        label: 'Tone mapping',
+        options: [
+          { value: THREE.NoToneMapping, text: 'No tone mapping' },
+          { value: THREE.LinearToneMapping, text: 'Linear' },
+          { value: THREE.ReinhardToneMapping, text: 'Reinhard' },
+          { value: THREE.CineonToneMapping, text: 'Cineon' },
+          { value: THREE.ACESFilmicToneMapping, text: 'ACES Filmic' },
+          { value: THREE.CustomToneMapping, text: 'Custom' },
+          { value: THREE.AgXToneMapping, text: 'AgX' },
+          { value: THREE.NeutralToneMapping, text: 'Neutral' },
+        ],
+        value: options.toneMapping,
+      }) as ListBladeApi<BladeController<View>>;
+      toneMappingDropDown.on('change', (e) => {
+        const value = Number(e.value);
+        options.toneMapping = value as THREE.ToneMapping;
+        if (r) r.toneMapping = options.toneMapping;
+        lsSetItem(LS_KEY, options);
+      });
+      debugGUI
+        .addBinding(options, 'toneMappingExposure', {
+          label: 'Tone mapping exposure',
+          step: 0.005,
+          min: 0,
+          max: 50,
+        })
+        .on('change', () => {
+          if (r) r.toneMappingExposure = options.toneMappingExposure;
+          lsSetItem(LS_KEY, options);
+        });
+      const outputColorSpaceDropDown = debugGUI.addBlade({
+        view: 'list',
+        label: 'Output color space',
+        options: [
+          { value: THREE.NoColorSpace, text: 'No color space' },
+          { value: THREE.SRGBColorSpace, text: 'SRGB' },
+          { value: THREE.LinearSRGBColorSpace, text: 'Linear SRGB' },
+        ],
+        value: options.outputColorSpace,
+      }) as ListBladeApi<BladeController<View>>;
+      outputColorSpaceDropDown.on('change', (e) => {
+        const value = String(e.value);
+        options.outputColorSpace = value as THREE.ColorSpace;
+        if (r) r.outputColorSpace = options.outputColorSpace;
+        lsSetItem(LS_KEY, options);
+      });
+      debugGUI.addBinding(options, 'alpha', { label: 'Enable alpha' }).on('change', () => {
+        if (r) r.alpha = Boolean(options.alpha);
+        lsSetItem(LS_KEY, options);
+      });
+      debugGUI
+        .addBinding(options, 'enableShadows', { label: 'Enable shadows' })
+        .on('change', () => {
+          if (r) r.shadowMap.enabled = Boolean(options.enableShadows);
+          lsSetItem(LS_KEY, options);
+        });
+      const shadowMapTypeDropDown = debugGUI.addBlade({
+        view: 'list',
+        label: 'Shadow map type (reload)',
+        options: [
+          { value: THREE.BasicShadowMap, text: 'Basic shadow map' },
+          { value: THREE.PCFShadowMap, text: 'PCF shadow map' },
+          { value: THREE.PCFSoftShadowMap, text: 'PCF soft shadow map' },
+          { value: THREE.VSMShadowMap, text: 'VSM shadow map' },
+        ],
+        value: options.shadowMapType,
+      }) as ListBladeApi<BladeController<View>>;
+      shadowMapTypeDropDown.on('change', (e) => {
+        const value = Number(e.value);
+        options.shadowMapType = value as THREE.ShadowMapType;
+        if (r) r.shadowMap.type = options.shadowMapType;
+        lsSetItem(LS_KEY, options);
+        location.reload();
+      });
+
+      return container;
+    },
+  });
+};

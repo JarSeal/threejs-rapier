@@ -1,5 +1,5 @@
 import configFile from '../../CONFIG';
-import { type DebugScene } from '../debug/DebugSceneListing';
+import { type DebugScene } from '../debug/debugScenes/debuggerSceneListing';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 

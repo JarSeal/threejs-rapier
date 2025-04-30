@@ -17,7 +17,7 @@ import { getCanvasParentElem } from './Renderer';
 import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
 import { isDebugEnvironment } from './Config';
 import { clearSkyBox } from './SkyBox';
-import { debugSceneListing } from '../debug/DebugSceneListing';
+import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -178,7 +178,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
     }
 
     if (debugToolsState?.scenesListing.debugStartScene) {
-      const debugScene = debugSceneListing.find(
+      const debugScene = debuggerSceneListing.find(
         (scene) => scene.id === debugToolsState.scenesListing.debugStartScene
       );
       if (debugScene) initNextSceneFn = debugScene.fn;

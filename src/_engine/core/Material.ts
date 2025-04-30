@@ -204,7 +204,7 @@ export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) 
 
 /**
  * Returns all created materials that exist
- * @returns array of Three.js lights
+ * @returns all materials ({ [id: string]: Material })
  */
 export const getAllMaterials = () => materials;
 
