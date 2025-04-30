@@ -39,6 +39,11 @@ export type LightProps = { id?: string } & (
         shadowCamNearFar?: number[];
         shadowCamLeftRightTopBottom?: number[];
         shadowBias?: number;
+        shadowNormalBias?: number;
+        /** Note: has no effect for PCFSoftShadowMap type */
+        shadowBlurSamples?: number;
+        /** Note: only for VSM shadowmap types */
+        shadowRadius?: number;
       };
     }
 );
@@ -88,31 +93,39 @@ export const createLight = ({ id, type, params }: LightProps) => {
     case 'DIRECTIONAL':
       light = new THREE.DirectionalLight(params?.color, params?.intensity);
       light.userData.type = 'DIRECTIONAL';
-      if (params?.shadowMapSize) {
-        light.shadow.mapSize.width = params.shadowMapSize[0] || 512;
-        light.shadow.mapSize.height = params.shadowMapSize[1] || 512;
-      }
-      let shadowCamNear = 0.1;
-      let shadowCamFar = 2000;
-      if (params?.shadowCamNearFar) {
-        shadowCamNear = params.shadowCamNearFar[0] || shadowCamNear;
-        shadowCamFar = params.shadowCamNearFar[1] || shadowCamFar;
-      }
-      light.shadow.camera.near = shadowCamNear;
-      light.shadow.camera.far = shadowCamFar;
-      if (params?.shadowCamLeftRightTopBottom) {
-        light.shadow.camera.left = params.shadowCamLeftRightTopBottom[0] || -1;
-        light.shadow.camera.right = params.shadowCamLeftRightTopBottom[1] || 1;
-        light.shadow.camera.top = params.shadowCamLeftRightTopBottom[2] || 1;
-        light.shadow.camera.bottom = params.shadowCamLeftRightTopBottom[3] || -1;
-      }
       if (params?.castShadow === true) {
         light.castShadow = true;
-        light.shadow.bias = params?.shadowBias !== undefined ? params?.shadowBias : -0.002;
+        if (params.shadowMapSize) {
+          light.shadow.mapSize.width = params.shadowMapSize[0] || 512;
+          light.shadow.mapSize.height = params.shadowMapSize[1] || 512;
+        }
+        let shadowCamNear = 0.1;
+        let shadowCamFar = 2000;
+        if (params.shadowCamNearFar) {
+          shadowCamNear = params.shadowCamNearFar[0] || shadowCamNear;
+          shadowCamFar = params.shadowCamNearFar[1] || shadowCamFar;
+        }
+        light.shadow.camera.near = shadowCamNear;
+        light.shadow.camera.far = shadowCamFar;
+        if (params.shadowCamLeftRightTopBottom) {
+          light.shadow.camera.left = params.shadowCamLeftRightTopBottom[0] || -1;
+          light.shadow.camera.right = params.shadowCamLeftRightTopBottom[1] || 1;
+          light.shadow.camera.top = params.shadowCamLeftRightTopBottom[2] || 1;
+          light.shadow.camera.bottom = params.shadowCamLeftRightTopBottom[3] || -1;
+        }
+        if (params.shadowBlurSamples !== undefined) {
+          light.shadow.blurSamples = params.shadowBlurSamples;
+        }
+        if (params.shadowRadius !== undefined) light.shadow.radius = params.shadowRadius;
+
+        if (params.shadowBias !== undefined) light.shadow.bias = params.shadowBias;
+        if (params.shadowNormalBias !== undefined) {
+          light.shadow.normalBias = params.shadowNormalBias;
+        }
+        light.shadow.camera.updateProjectionMatrix();
       } else {
-        light.castShadow = true;
+        light.castShadow = false;
       }
-      light.shadow.camera.updateProjectionMatrix();
       break;
   }
 

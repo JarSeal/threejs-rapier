@@ -321,27 +321,31 @@ export const scene01 = async () =>
         type: 'DIRECTIONAL',
         params: {
           color: 0xffe5c7,
-          intensity: Math.PI,
+          // intensity: Math.PI,
+          intensity: 5,
           castShadow: true,
           // shadowMapSize: [2048, 2048],
-          // shadowMapSize: [256, 256],
-          shadowBias: -0.0125,
+          shadowMapSize: [256, 256],
           shadowCamNearFar: [1, 50],
-          shadowCamLeftRightTopBottom: [-20, 20, 20, -20],
+          shadowCamLeftRightTopBottom: [-10, 10, 10, -10],
+          // shadowBias: -0.01,
+          // shadowNormalBias: -0.3,
+          shadowRadius: 5, // Not for PCFSoftShadowMap type
+          shadowBlurSamples: 25, // Only for VSM shadowmap types
         },
       });
       directionalLight.position.set(-25, 15, 15);
       scene.add(directionalLight);
-      // if (directionalLight.shadow) {
-      //   const cameraHelper = new THREE.CameraHelper(directionalLight.shadow.camera);
-      //   scene.add(cameraHelper);
-      //   const lightHelper = new THREE.DirectionalLightHelper(
-      //     directionalLight as THREE.DirectionalLight
-      //   );
-      //   scene.add(lightHelper);
-      //   cameraHelper.update();
-      //   lightHelper.update();
-      // }
+      if (directionalLight.shadow) {
+        const cameraHelper = new THREE.CameraHelper(directionalLight.shadow.camera);
+        scene.add(cameraHelper);
+        const lightHelper = new THREE.DirectionalLightHelper(
+          directionalLight as THREE.DirectionalLight
+        );
+        scene.add(lightHelper);
+        cameraHelper.update();
+        lightHelper.update();
+      }
 
       // Input
       addKeyInputControl({

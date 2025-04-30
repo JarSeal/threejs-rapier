@@ -17,13 +17,16 @@ InitEngine(async () => {
   // Init renderer
   createRenderer({
     antialias: true,
-    forceWebGL: false,
+    forceWebGL: true,
     toneMapping: THREE.ACESFilmicToneMapping,
     toneMappingExposure: 0.7,
     outputColorSpace: THREE.SRGBColorSpace,
     alpha: true,
     enableShadows: true,
-    shadowMapType: THREE.PCFSoftShadowMap,
+    // shadowMapType: THREE.PCFSoftShadowMap,
+    // shadowMapType: THREE.PCFShadowMap,
+    // shadowMapType: THREE.BasicShadowMap,
+    shadowMapType: THREE.VSMShadowMap,
   });
 
   // Create sceneLoader
