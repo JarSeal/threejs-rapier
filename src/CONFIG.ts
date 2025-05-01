@@ -1,4 +1,5 @@
 import { AppConfig } from './_engine/core/Config';
+import { editObjectPropsContentFn } from './_engine/core/UI/DragWinContents/EditObjectProps';
 import { toggleDrawer } from './_engine/debug/DebuggerGUI';
 import { debuggerSceneListing } from './_engine/debug/debugScenes/debuggerSceneListing';
 
@@ -18,6 +19,9 @@ const config: AppConfig = {
     worldStepEnabled: false,
     gravity: { x: 0, y: -9.81, z: 0 },
     timestep: 60,
+  },
+  draggableWindows: {
+    myFirstDraggableTest: { contentFn: editObjectPropsContentFn },
   },
 };
 

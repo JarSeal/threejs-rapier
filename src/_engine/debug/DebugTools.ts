@@ -17,6 +17,7 @@ import { debuggerSceneListing, type DebugScene } from './debugScenes/debuggerSce
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { lerror, llog } from '../utils/Logger';
 import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
+import { openDraggableWindow } from '../core/UI/DraggableWindow';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -704,6 +705,17 @@ const buildDebugGUI = () => {
       llog(...getLogActionListItem(key));
     });
   }
+
+  // @TODO: REMOVE THIS!
+  loggingFolder.addButton({ title: 'OPEN DRAGGABLE WINDOW' }).on('click', () => {
+    openDraggableWindow({
+      id: 'myFirstDraggableTest',
+      closeIfOpen: true,
+      defaultPosition: { x: 400, y: 400 },
+      defaultSize: { w: 20, h: 40 },
+      saveToLS: true,
+    });
+  });
 
   debugGUI.refresh();
 };

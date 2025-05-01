@@ -23,7 +23,13 @@ export const getGUIContainerElem = () => {
  * Creates the HUD container and sets it to DOM
  */
 export const createHudContainer = () => {
-  hudRoot = CMP({ id: HUD_ROOT_ID, idAttr: true, attach: getGUIContainerElem(), class: 'hudRoot' });
+  hudRoot = CMP({
+    id: HUD_ROOT_ID,
+    idAttr: true,
+    attach: getGUIContainerElem(),
+    class: 'hudRoot',
+    style: { position: 'fixed', top: 0, left: 0, width: 0, height: 0 },
+  });
 };
 
 /**

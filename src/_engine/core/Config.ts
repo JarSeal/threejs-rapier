@@ -1,5 +1,7 @@
 import configFile from '../../CONFIG';
 import { type DebugScene } from '../debug/debugScenes/debuggerSceneListing';
+import { TCMP } from '../utils/CMP';
+import { DraggableWindow } from './UI/DraggableWindow';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 
@@ -20,6 +22,7 @@ export type AppConfig = {
     gravity?: { x: number; y: number; z: number };
     timestep?: number;
   };
+  draggableWindows?: { [id: string]: Partial<DraggableWindow> & { contentFn?: () => TCMP } };
 };
 
 let curEnvironment: Environments = 'production';
@@ -39,8 +42,6 @@ let config: AppConfig = {
  * Loads all environment variables and configurations. This should be the first thing called in a project.
  */
 export const loadConfig = () => {
-  // Load config file
-
   // Load ENV variables
   envVars = import.meta.env;
 

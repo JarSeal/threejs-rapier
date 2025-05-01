@@ -1,0 +1,6 @@
+@use '../../styles/variables.scss';
+
+.draggableWindow {
+  position: fixed;
+  background: variables.$debugGuiBackgroundLighter;
+}
