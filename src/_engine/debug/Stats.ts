@@ -3,6 +3,8 @@ import { getRenderer } from '../core/Renderer';
 import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getGUIContainerElem } from '../core/HUD';
+import { Pane } from 'tweakpane';
+import { openDraggableWindow } from '../core/UI/DraggableWindow';
 
 export type StatsOptions = {
   performanceFolderExpanded?: boolean;
@@ -23,6 +25,7 @@ export type StatsOptions = {
 
 let stats: Stats | null = null;
 let savedConfig = {};
+const statsDebugGUIs: Pane[] = [];
 const LS_KEY = 'debugStats';
 
 const defaultStatsOptions = {
@@ -33,6 +36,22 @@ const defaultStatsOptions = {
   outlookFolderExpanded: true,
   horizontal: false,
   minimal: true,
+  enabled: true,
+};
+let statsConfig: StatsOptions = {
+  performanceFolderExpanded: false,
+  trackGPU: false,
+  trackCPT: false,
+  trackHz: false,
+  logsPerSecond: undefined,
+  graphsPerSecond: undefined,
+  samplesLog: undefined,
+  samplesGraph: undefined,
+  precision: undefined,
+  outlookFolderExpanded: false,
+  minimal: true,
+  horizontal: false,
+  mode: undefined,
   enabled: true,
 };
 
@@ -49,7 +68,8 @@ export const initStats = (config?: StatsOptions) => {
     getGUIContainerElem().appendChild(stats.dom);
     stats.init(getRenderer());
   }
-  setDebuggerUI(savedConfig);
+  statsConfig = savedConfig;
+  setDebuggerUI();
   return stats;
 };
 
@@ -59,7 +79,7 @@ export const initStats = (config?: StatsOptions) => {
  */
 export const getStats = () => stats;
 
-const setDebuggerUI = (config: StatsOptions) =>
+const setDebuggerUI = () =>
   createDebuggerTab({
     id: 'statsControls',
     buttonText: 'STATS',
@@ -68,59 +88,90 @@ const setDebuggerUI = (config: StatsOptions) =>
     container: () => {
       const { container, debugGUI } = createNewDebuggerPane('Stats', 'Statistics');
 
-      const performanceFolder = debugGUI
-        .addFolder({
-          title: 'Performance Measuring (reloads the app)',
-          expanded: config.performanceFolderExpanded,
-        })
-        .on('fold', (state) => {
-          config.performanceFolderExpanded = state.expanded;
-          lsSetItem(LS_KEY, config);
-        });
-      const outlookFolder = debugGUI
-        .addFolder({
-          title: 'Measuring Outlook (reloads the app)',
-          expanded: config.outlookFolderExpanded,
-        })
-        .on('fold', (state) => {
-          config.outlookFolderExpanded = state.expanded;
-          lsSetItem(LS_KEY, config);
-        });
+      statsDebugGUIs.push(debugGUI);
+      buildStatsDebugGUI(debugGUI, true);
 
-      performanceFolder
-        .addBinding(config, 'enabled', { label: 'Enable measuring' })
-        .on('change', () => {
-          lsSetItem(LS_KEY, config);
-          location.reload();
-        });
-      performanceFolder.addBinding(config, 'trackGPU', { label: 'Track GPU' }).on('change', () => {
-        lsSetItem(LS_KEY, config);
-        location.reload();
-      });
-      performanceFolder.addBinding(config, 'trackHz', { label: 'Track Hz' }).on('change', () => {
-        lsSetItem(LS_KEY, config);
-        location.reload();
-      });
-      performanceFolder.addBinding(config, 'trackCPT', { label: 'Track CPT' }).on('change', () => {
-        lsSetItem(LS_KEY, config);
-        location.reload();
-      });
-
-      outlookFolder.addBinding(config, 'horizontal', { label: 'Horizontal' }).on('change', () => {
-        lsSetItem(LS_KEY, config);
-        location.reload();
-      });
-      outlookFolder.addBinding(config, 'minimal', { label: 'Minimal look' }).on('change', () => {
-        lsSetItem(LS_KEY, config);
-        location.reload();
-      });
-
-      // @TODO: add current scene and all loaded scene stats
-      // Current and all scenes stats:
-      // - draw calls count
-      // - imported objects count
-      // - list of imported objects (and sizes, face count, edge count, vertex count)
-      // - texture count, texture sizes, list of textures (and type, sizes, dimensions)
       return container;
     },
   });
+
+export const updateStatsDebugGUI = () => {
+  for (let i = 0; i < statsDebugGUIs.length; i++) {
+    statsDebugGUIs[i].refresh();
+  }
+};
+
+export const buildStatsDebugGUI = (debugGUI: Pane, addButton?: boolean) => {
+  const performanceFolder = debugGUI
+    .addFolder({
+      title: 'Performance Measuring (reloads the app)',
+      expanded: statsConfig.performanceFolderExpanded,
+    })
+    .on('fold', (state) => {
+      statsConfig.performanceFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, statsConfig || {});
+      updateStatsDebugGUI();
+    });
+  const outlookFolder = debugGUI
+    .addFolder({
+      title: 'Measuring Outlook (reloads the app)',
+      expanded: statsConfig.outlookFolderExpanded,
+    })
+    .on('fold', (state) => {
+      statsConfig.outlookFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, statsConfig || {});
+      updateStatsDebugGUI();
+    });
+
+  performanceFolder
+    .addBinding(statsConfig, 'enabled', { label: 'Enable measuring' })
+    .on('change', () => {
+      lsSetItem(LS_KEY, statsConfig);
+      location.reload();
+      updateStatsDebugGUI();
+    });
+  performanceFolder.addBinding(statsConfig, 'trackGPU', { label: 'Track GPU' }).on('change', () => {
+    lsSetItem(LS_KEY, statsConfig);
+    location.reload();
+    updateStatsDebugGUI();
+  });
+  performanceFolder.addBinding(statsConfig, 'trackHz', { label: 'Track Hz' }).on('change', () => {
+    lsSetItem(LS_KEY, statsConfig);
+    location.reload();
+    updateStatsDebugGUI();
+  });
+  performanceFolder.addBinding(statsConfig, 'trackCPT', { label: 'Track CPT' }).on('change', () => {
+    lsSetItem(LS_KEY, statsConfig);
+    location.reload();
+    updateStatsDebugGUI();
+  });
+
+  outlookFolder.addBinding(statsConfig, 'horizontal', { label: 'Horizontal' }).on('change', () => {
+    lsSetItem(LS_KEY, statsConfig);
+    location.reload();
+    updateStatsDebugGUI();
+  });
+  outlookFolder.addBinding(statsConfig, 'minimal', { label: 'Minimal look' }).on('change', () => {
+    lsSetItem(LS_KEY, statsConfig);
+    location.reload();
+    updateStatsDebugGUI();
+  });
+
+  // @TODO: add current scene and all loaded scene stats
+  // Current and all scenes stats:
+  // - draw calls count
+  // - imported objects count
+  // - list of imported objects (and sizes, face count, edge count, vertex count)
+  // - texture count, texture sizes, list of textures (and type, sizes, dimensions)
+
+  if (addButton) {
+    debugGUI.addButton({ title: 'Open in window' }).on('click', () => {
+      openDraggableWindow({
+        id: 'statsDraggableWin',
+        saveToLS: true,
+        title: 'Stats',
+        isDebugWindow: true,
+      });
+    });
+  }
+};

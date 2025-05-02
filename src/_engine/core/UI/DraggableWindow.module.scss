@@ -1,6 +1,159 @@
 @use '../../styles/variables.scss';
 
+$headerHeight: 3rem;
+
 .draggableWindow {
   position: fixed;
+  border-radius: variables.$borderRadiusSmall;
+  overflow: hidden;
+  background: variables.$debugGuiBackgroundLighter2;
+  box-shadow:
+    rgba(0, 0, 0, 0.19) 0px 10px 20px,
+    rgba(0, 0, 0, 0.23) 0px 6px 6px;
+}
+
+.vertResizable {
+  padding-bottom: 1rem;
+}
+
+.horiResizable {
+  .contentWrapper {
+    margin-right: 1rem;
+  }
+}
+
+.vertHandle {
+  position: absolute;
+  bottom: 0.3rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3rem;
+  height: 0.4rem;
+  max-width: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: ns-resize;
+  user-select: none;
+  border-radius: 2px;
+}
+
+.horiHandle {
+  position: absolute;
+  top: calc(50% + ($headerHeight / 2));
+  right: 0.3rem;
+  transform: translateY(-50%);
+  width: 0.4rem;
+  height: 3rem;
+  max-height: calc(50% - ($headerHeight / 2));
+  background: rgba(255, 255, 255, 0.05);
+  cursor: ew-resize;
+  user-select: none;
+  border-radius: 2px;
+}
+
+.vertAndHoriHandle {
+  position: absolute;
+  bottom: 0.3rem;
+  right: 0.3rem;
+  width: 1rem;
+  height: 1rem;
+  max-width: 50%;
+  cursor: nwse-resize;
+  user-select: none;
+
+  &:before,
+  &:after {
+    display: block;
+    content: '';
+    background: rgba(255, 255, 255, 0.05);
+    position: absolute;
+  }
+
+  &:before {
+    width: 0.6rem;
+    height: 0.4rem;
+    bottom: 0;
+    left: 0;
+    border-radius: 2px 0 0 2px;
+  }
+
+  &:after {
+    width: 0.4rem;
+    height: 1rem;
+    bottom: 0;
+    right: 0;
+    border-radius: 2px 2px 2px 0;
+  }
+}
+
+.headerBar {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  height: $headerHeight;
   background: variables.$debugGuiBackgroundLighter;
+  cursor: grab;
+  user-select: none;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.title {
+  color: variables.$white;
+  display: block;
+  width: calc(100% - $headerHeight);
+  height: 2.4rem;
+  margin: 0;
+  padding: 1rem 0 0 variables.$dragWinContentPadding;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: variables.$debugTextColor;
+  user-select: none;
+  overflow: hidden;
+}
+
+.closeBtn {
+  @include variables.nakedButton;
+  position: relative;
+  width: $headerHeight;
+  height: $headerHeight;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.15s ease-in-out;
+
+  &:before,
+  &:after {
+    display: block;
+    position: absolute;
+    content: '';
+    top: 1.4rem;
+    left: 0.6rem;
+    width: 1.8rem;
+    height: 0.3rem;
+    background: variables.$debugTextColor;
+    border-radius: 0.1rem;
+  }
+
+  &:before {
+    transform: rotate(-45deg);
+  }
+  &:after {
+    transform: rotate(45deg);
+  }
+
+  &:hover {
+    background: rgba(variables.$debugTextColor, 0.3);
+
+    &:before,
+    &:after {
+      background: variables.$white;
+    }
+  }
+}
+
+.contentWrapper {
+  overflow: auto;
+  height: calc(100% - $headerHeight);
+  scrollbar-color: variables.$debugTextColor variables.$debugGuiBackgroundLighter2;
+  scrollbar-width: thin;
 }

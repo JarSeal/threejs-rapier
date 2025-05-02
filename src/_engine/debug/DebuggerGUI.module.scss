@@ -97,6 +97,7 @@ $breakpointXSmall: 379px;
 .debugDrawerTabsContainer {
   color: variables.$debugTextColor;
   overflow: auto;
+  scrollbar-color: variables.$debugTextColor variables.$debugGuiBackground;
 }
 
 .childContainer {

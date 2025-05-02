@@ -1,7 +1,10 @@
+import { Pane } from 'tweakpane';
 import { AppConfig } from './_engine/core/Config';
 import { editObjectPropsContentFn } from './_engine/core/UI/DragWinContents/EditObjectProps';
 import { toggleDrawer } from './_engine/debug/DebuggerGUI';
 import { debuggerSceneListing } from './_engine/debug/debugScenes/debuggerSceneListing';
+import { buildStatsDebugGUI } from './_engine/debug/Stats';
+import { CMP } from './_engine/utils/CMP';
 
 const config: AppConfig = {
   debugKeys: [
@@ -22,6 +25,14 @@ const config: AppConfig = {
   },
   draggableWindows: {
     myFirstDraggableTest: { contentFn: editObjectPropsContentFn },
+    statsDraggableWin: {
+      contentFn: () => {
+        const cmp = CMP();
+        const debugGUI = new Pane({ container: cmp.elem });
+        buildStatsDebugGUI(debugGUI);
+        return cmp;
+      },
+    },
   },
 };
 
