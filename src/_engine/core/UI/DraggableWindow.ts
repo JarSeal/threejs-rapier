@@ -12,6 +12,8 @@ export type DraggableWindow = {
   isOpen: boolean;
   position: { x: number; y: number };
   size: { w: number; h: number };
+  maxSize: { w: number; h: number };
+  minSize: { w: number; h: number };
   defaultPosition: { x: number; y: number };
   defaultSize: { w: number; h: number };
   saveToLS?: boolean;
@@ -24,8 +26,10 @@ export type DraggableWindow = {
 type OpenDraggableWindowProps = {
   id: string;
   content?: TCMP | (() => TCMP);
-  defaultPosition?: { x: number; y: number };
-  defaultSize?: { w: number; h: number };
+  position?: { x: number; y: number };
+  size?: { w: number; h: number };
+  maxSize?: { w: number; h: number };
+  minSize?: { w: number; h: number };
   resetPosition?: boolean;
   resetSize?: boolean;
   closeIfOpen?: boolean;
@@ -51,8 +55,10 @@ const listeners: {
   onMouseUp: null,
 };
 const LS_KEY = 'draggableWindows';
-const DEFAULT_MIN_WIDTH = 320;
-const DEFAULT_MIN_HEIGHT = 320;
+const DEFAULT_WIDTH = 320;
+const DEFAULT_HEIGHT = 320;
+const DEFAULT_MIN_WIDTH = 100;
+const DEFAULT_MIN_HEIGHT = 120;
 const WINDOW_CLASS = 'draggableWindow';
 const HEADER_CLASS = 'dragWinHeader';
 const VERT_RESIZER_CLASS = 'vertDragHandle';
@@ -62,14 +68,17 @@ const VERT_AND_HORI_RESIZER_CLASS = 'vertAndHoriDragHandle';
 export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   let windowCMP: TCMP | undefined;
   const hudRoot = getHUDRootCMP();
+  const appWinSize = getWindowSize();
   const {
     id,
     content,
     resetPosition,
     resetSize,
     closeIfOpen,
-    defaultPosition,
-    defaultSize,
+    position: pos,
+    size: sze,
+    maxSize: sizeMax,
+    minSize: sizeMin,
     saveToLS,
     title,
     isDebugWindow,
@@ -86,26 +95,28 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   const foundWindow = draggableWindows[id];
 
   let size = {
-    w: foundWindow?.size?.w || defaultSize?.w || DEFAULT_MIN_WIDTH,
-    h: foundWindow?.size?.h || defaultSize?.h || DEFAULT_MIN_HEIGHT,
+    w: foundWindow?.size?.w || sze?.w || DEFAULT_WIDTH,
+    h: foundWindow?.size?.h || sze?.h || DEFAULT_HEIGHT,
   };
   let position = {
     ...(foundWindow?.position || {
         x: screenSize.width / 2 - size.w / 2,
         y: screenSize.height / 2 - size.h / 2,
       } ||
-      defaultPosition),
+      pos),
   };
   const defaultS = {
     ...size,
     ...foundWindow?.defaultSize,
-    ...defaultSize,
+    ...sze,
   };
   const defaultP = {
     ...position,
     ...foundWindow?.defaultPosition,
-    ...defaultPosition,
+    ...pos,
   };
+  const maxSize = sizeMax || { w: appWinSize.width, h: appWinSize.height };
+  const minSize = sizeMin || { w: DEFAULT_MIN_WIDTH, h: DEFAULT_MIN_HEIGHT };
   const headerTitle = foundWindow?.title || title || '';
   const isDebugWin =
     foundWindow?.isDebugWindow !== undefined ? foundWindow.isDebugWindow : Boolean(isDebugWindow);
@@ -138,7 +149,8 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
       id,
       size,
       position,
-      defaultS,
+      maxSize,
+      minSize,
       content,
       headerTitle,
       isDebugWin,
@@ -156,6 +168,8 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     isOpen: true,
     position,
     size,
+    maxSize,
+    minSize,
     defaultSize: defaultS,
     defaultPosition: defaultP,
     saveToLS: saveToLS !== undefined ? saveToLS : foundWindow.saveToLS,
@@ -183,7 +197,8 @@ const createWindowCMP = (
   id: string,
   size: { w: number; h: number },
   position: { x: number; y: number },
-  defaultSize: { w: number; h: number },
+  maxSize: { w: number; h: number },
+  minSize: { w: number; h: number },
   content?: TCMP | (() => TCMP),
   title?: string,
   isDebugWindow?: boolean,
@@ -201,8 +216,10 @@ const createWindowCMP = (
     style: {
       width: `${size.w}px`,
       height: `${size.h}px`,
-      minWidth: `${defaultSize.w}px`,
-      minHeight: `${defaultSize.h}px`,
+      minWidth: `${minSize.w}px`,
+      minHeight: `${minSize.h}px`,
+      maxWidth: `${maxSize.w}px`,
+      maxHeight: `${maxSize.h}px`,
       left: `${position.x}px`,
       top: `${position.y}px`,
       ...(isDebugWindow ? { zIndex: 20000 } : {}),
@@ -355,7 +372,10 @@ const createListeners = () => {
 
       // Mouse move
       listeners.onMouseMove = listeners.onMouseMove = (e) => {
-        winElem.style.height = `${startHeight + e.clientY - startPos}px`;
+        let height = startHeight + e.clientY - startPos;
+        if (height > state.maxSize.h) height = state.maxSize.h;
+        if (height < state.minSize.w) height = state.minSize.w;
+        winElem.style.height = `${height}px`;
       };
       window.addEventListener('mousemove', listeners.onMouseMove);
       return;
@@ -374,7 +394,10 @@ const createListeners = () => {
 
       // Mouse move
       listeners.onMouseMove = listeners.onMouseMove = (e) => {
-        winElem.style.width = `${startWidth + e.clientX - startPos}px`;
+        let width = startWidth + e.clientX - startPos;
+        if (width > state.maxSize.w) width = state.maxSize.w;
+        if (width < state.minSize.w) width = state.minSize.w;
+        winElem.style.width = `${width}px`;
       };
       window.addEventListener('mousemove', listeners.onMouseMove);
       return;
@@ -396,8 +419,14 @@ const createListeners = () => {
 
       // Mouse move
       listeners.onMouseMove = listeners.onMouseMove = (e) => {
-        winElem.style.width = `${startWidth + e.clientX - startPosX}px`;
-        winElem.style.height = `${startHeight + e.clientY - startPosY}px`;
+        let width = startWidth + e.clientX - startPosX;
+        if (width > state.maxSize.w) width = state.maxSize.w;
+        if (width < state.minSize.w) width = state.minSize.w;
+        let height = startHeight + e.clientY - startPosY;
+        if (height > state.maxSize.h) height = state.maxSize.h;
+        if (height < state.minSize.w) height = state.minSize.w;
+        winElem.style.width = `${width}px`;
+        winElem.style.height = `${height}px`;
       };
       window.addEventListener('mousemove', listeners.onMouseMove);
       return;
@@ -413,7 +442,6 @@ const createListeners = () => {
       if (!state?.windowCMP) return;
       state.position.x = state.windowCMP.elem.offsetLeft;
       state.position.y = state.windowCMP.elem.offsetTop;
-      draggingPosId = null;
       saveDraggableWindowStatesToLS();
     }
 
@@ -421,7 +449,6 @@ const createListeners = () => {
       const state = draggableWindows[draggingVertId];
       if (!state?.windowCMP) return;
       state.size.h = state.windowCMP.elem.clientHeight;
-      draggingVertId = null;
       saveDraggableWindowStatesToLS();
     }
 
@@ -429,9 +456,12 @@ const createListeners = () => {
       const state = draggableWindows[draggingHoriId];
       if (!state?.windowCMP) return;
       state.size.w = state.windowCMP.elem.clientWidth;
-      draggingHoriId = null;
       saveDraggableWindowStatesToLS();
     }
+
+    draggingPosId = null;
+    draggingVertId = null;
+    draggingHoriId = null;
   };
 
   window.addEventListener('mousedown', listeners.onMouseDown);
