@@ -21,6 +21,7 @@ export type DraggableWindow = {
   isDebugWindow?: boolean;
   disableVertResize?: boolean;
   disableHoriResize?: boolean;
+  disableDragging?: boolean;
 };
 
 type OpenDraggableWindowProps = {
@@ -38,6 +39,7 @@ type OpenDraggableWindowProps = {
   isDebugWindow?: boolean;
   disableVertResize?: boolean;
   disableHoriResize?: boolean;
+  disableDragging?: boolean;
 };
 
 let draggableWindows: { [id: string]: DraggableWindow } = {};
@@ -84,6 +86,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     isDebugWindow,
     disableVertResize,
     disableHoriResize,
+    disableDragging,
   } = props;
   const screenSize = getWindowSize();
   if (!id) {
@@ -128,6 +131,10 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     foundWindow?.disableHoriResize !== undefined
       ? foundWindow.disableHoriResize
       : Boolean(disableHoriResize);
+  const draggingDisabled =
+    foundWindow?.disableDragging !== undefined
+      ? foundWindow.disableDragging
+      : Boolean(disableDragging);
   let isOpen = true;
 
   if (foundWindow?.windowCMP) {
@@ -155,7 +162,8 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
       headerTitle,
       isDebugWin,
       vertResizeDisabled,
-      horiResizeDisabled
+      horiResizeDisabled,
+      disableDragging
     );
     hudRoot.add(windowCMP);
   }
@@ -177,6 +185,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     isDebugWindow: isDebugWin,
     disableVertResize: vertResizeDisabled,
     disableHoriResize: horiResizeDisabled,
+    disableDragging: draggingDisabled,
   };
   saveDraggableWindowStatesToLS();
 };
@@ -203,12 +212,14 @@ const createWindowCMP = (
   title?: string,
   isDebugWindow?: boolean,
   disableVertResize?: boolean,
-  disableHoriResize?: boolean
+  disableHoriResize?: boolean,
+  disableDragging?: boolean
 ) => {
   // Main wrapper
   const windowClassList = [styles.draggableWindow, WINDOW_CLASS];
   if (!disableVertResize) windowClassList.push(styles.vertResizable);
   if (!disableHoriResize) windowClassList.push(styles.horiResizable);
+  if (!disableDragging) windowClassList.push(styles.draggable);
   const windowCMP = CMP({
     id,
     idAttr: true,
@@ -344,7 +355,7 @@ const createListeners = () => {
       const id = headerElem.parentElement?.id;
       const state = draggableWindows[id || ''];
       const winElem = state?.windowCMP?.elem;
-      if (!id || !state || !winElem) return;
+      if (!id || !state || !winElem || state?.disableDragging) return;
 
       const offsetX = e.clientX - winElem.offsetLeft;
       const offsetY = e.clientY - winElem.offsetTop;

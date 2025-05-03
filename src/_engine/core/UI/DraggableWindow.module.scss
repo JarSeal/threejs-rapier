@@ -99,8 +99,12 @@ $headerHeight: 3rem;
   cursor: grab;
   user-select: none;
 
-  &:active {
-    cursor: grabbing;
+  .draggable & {
+    cursor: grab;
+
+    &:active {
+      cursor: grabbing;
+    }
   }
 }
 
