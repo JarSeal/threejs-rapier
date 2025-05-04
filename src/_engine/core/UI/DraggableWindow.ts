@@ -14,6 +14,13 @@ export type DraggableWindow = {
   size: { w: number; h: number };
   maxSize: { w: number; h: number };
   minSize: { w: number; h: number };
+  units?: {
+    // Default is 'px'
+    position?: { x?: Units; y?: Units };
+    size?: { w?: Units; h?: Units };
+    maxSize?: { w?: Units; h?: Units };
+    minSize?: { w?: Units; h?: Units };
+  };
   defaultPosition: { x: number; y: number };
   defaultSize: { w: number; h: number };
   saveToLS?: boolean;
@@ -24,6 +31,8 @@ export type DraggableWindow = {
   disableDragging?: boolean;
 };
 
+type Units = 'px' | '%' | 'vw' | 'vh';
+
 type OpenDraggableWindowProps = {
   id: string;
   content?: TCMP | (() => TCMP);
@@ -31,6 +40,13 @@ type OpenDraggableWindowProps = {
   size?: { w: number; h: number };
   maxSize?: { w: number; h: number };
   minSize?: { w: number; h: number };
+  units?: {
+    // Default is 'px'
+    position?: { x?: Units; y?: Units };
+    size?: { w?: Units; h?: Units };
+    maxSize?: { w?: Units; h?: Units };
+    minSize?: { w?: Units; h?: Units };
+  };
   resetPosition?: boolean;
   resetSize?: boolean;
   closeIfOpen?: boolean;
@@ -47,6 +63,7 @@ let listenersCreated = false;
 let draggingPosId: null | string = null;
 let draggingVertId: null | string = null;
 let draggingHoriId: null | string = null;
+let rightMouseClickDown = false;
 const listeners: {
   onMouseDown: null | ((e: MouseEvent) => void);
   onMouseMove: null | ((e: MouseEvent) => void);
@@ -81,6 +98,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     size: sze,
     maxSize: sizeMax,
     minSize: sizeMin,
+    units,
     saveToLS,
     title,
     isDebugWindow,
@@ -98,28 +116,33 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   const foundWindow = draggableWindows[id];
 
   let size = {
-    w: foundWindow?.size?.w || sze?.w || DEFAULT_WIDTH,
-    h: foundWindow?.size?.h || sze?.h || DEFAULT_HEIGHT,
+    ...(foundWindow?.size ||
+      sze || {
+        x: DEFAULT_WIDTH,
+        y: DEFAULT_HEIGHT,
+      }),
   };
   let position = {
-    ...(foundWindow?.position || {
+    ...(foundWindow?.position ||
+      pos || {
         x: screenSize.width / 2 - size.w / 2,
         y: screenSize.height / 2 - size.h / 2,
-      } ||
-      pos),
+      }),
   };
   const defaultS = {
-    ...size,
     ...foundWindow?.defaultSize,
+    ...size,
     ...sze,
   };
   const defaultP = {
-    ...position,
     ...foundWindow?.defaultPosition,
+    ...position,
     ...pos,
   };
-  const maxSize = sizeMax || { w: appWinSize.width, h: appWinSize.height };
-  const minSize = sizeMin || { w: DEFAULT_MIN_WIDTH, h: DEFAULT_MIN_HEIGHT };
+  const maxSize = foundWindow?.maxSize || sizeMax || { w: appWinSize.width, h: appWinSize.height };
+  const minSize = foundWindow?.minSize ||
+    sizeMin || { w: DEFAULT_MIN_WIDTH, h: DEFAULT_MIN_HEIGHT };
+  const winUnits = foundWindow?.units || units;
   const headerTitle = foundWindow?.title || title || '';
   const isDebugWin =
     foundWindow?.isDebugWindow !== undefined ? foundWindow.isDebugWindow : Boolean(isDebugWindow);
@@ -158,6 +181,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
       position,
       maxSize,
       minSize,
+      winUnits,
       content,
       headerTitle,
       isDebugWin,
@@ -178,6 +202,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     size,
     maxSize,
     minSize,
+    units: winUnits,
     defaultSize: defaultS,
     defaultPosition: defaultP,
     saveToLS: saveToLS !== undefined ? saveToLS : foundWindow.saveToLS,
@@ -208,6 +233,7 @@ const createWindowCMP = (
   position: { x: number; y: number },
   maxSize: { w: number; h: number },
   minSize: { w: number; h: number },
+  units: OpenDraggableWindowProps['units'],
   content?: TCMP | (() => TCMP),
   title?: string,
   isDebugWindow?: boolean,
@@ -225,26 +251,31 @@ const createWindowCMP = (
     idAttr: true,
     class: windowClassList,
     style: {
-      width: `${size.w}px`,
-      height: `${size.h}px`,
-      minWidth: `${minSize.w}px`,
-      minHeight: `${minSize.h}px`,
-      maxWidth: `${maxSize.w}px`,
-      maxHeight: `${maxSize.h}px`,
-      left: `${position.x}px`,
-      top: `${position.y}px`,
+      width: `${size.w}${units?.size?.w || 'px'}`,
+      height: `${size.h}${units?.size?.h || 'px'}`,
+      minWidth: `${minSize.w}${units?.minSize?.w || 'px'}`,
+      minHeight: `${minSize.h}${units?.minSize?.h || 'px'}`,
+      maxWidth: `${maxSize.w}${units?.maxSize?.w || 'px'}`,
+      maxHeight: `${maxSize.h}${units?.maxSize?.h || 'px'}`,
+      left: `${position.x}${units?.position?.x || 'px'}`,
+      top: `${position.y}${units?.position?.y || 'px'}`,
+      ...(units?.position
+        ? {
+            transform: `translate3D(${units.position.x && units.position.x !== 'px' ? '-50%' : '0'}, ${units.position.y && units.position.y !== 'px' ? '-50%' : '0'}, 0)`,
+          }
+        : {}),
       ...(isDebugWindow ? { zIndex: 20000 } : {}),
     },
   });
 
   // Header bar
-  const headerBarCMP = CMP({ tag: 'header', class: [styles.headerBar, HEADER_CLASS] });
+  const headerBarCMP = CMP({
+    tag: 'header',
+    class: [styles.headerBar, HEADER_CLASS],
+  });
   headerBarCMP.add({
     tag: 'h3',
     class: styles.title,
-    onClick: () => {
-      /*@TODO: add drag*/
-    },
     text: title || '',
     style: { userSelect: 'none' },
   });
@@ -337,7 +368,7 @@ const createListeners = () => {
     window.removeEventListener('mousedown', listeners.onMouseDown);
   }
   if (listeners.onMouseMove !== null) {
-    window.removeEventListener('mousemove', listeners.onMouseMove);
+    window.removeEventListener('mousemove', listeners.onMouseMove, true);
   }
   if (listeners.onMouseUp !== null) {
     window.removeEventListener('mouseup', listeners.onMouseUp);
@@ -346,6 +377,10 @@ const createListeners = () => {
   // Mouse down
   listeners.onMouseDown = (e) => {
     const target = e.target as HTMLElement;
+    if (e.button !== 0 || rightMouseClickDown) {
+      rightMouseClickDown = true;
+      return;
+    }
 
     const curTargetHasHeaderClass = target?.classList?.contains(HEADER_CLASS);
     const curTargetParentHasHeaderClass = target?.parentElement?.classList?.contains(HEADER_CLASS);
@@ -363,10 +398,17 @@ const createListeners = () => {
 
       // Mouse move
       listeners.onMouseMove = listeners.onMouseMove = (e) => {
+        if (!draggingPosId) {
+          if (listeners.onMouseMove) {
+            window.removeEventListener('mousemove', listeners.onMouseMove, true);
+            listeners.onMouseMove = null;
+          }
+          return;
+        }
         winElem.style.left = `${e.clientX - offsetX}px`;
         winElem.style.top = `${e.clientY - offsetY}px`;
       };
-      window.addEventListener('mousemove', listeners.onMouseMove);
+      window.addEventListener('mousemove', listeners.onMouseMove, true);
       return;
     }
 
@@ -383,12 +425,19 @@ const createListeners = () => {
 
       // Mouse move
       listeners.onMouseMove = listeners.onMouseMove = (e) => {
+        if (!draggingVertId) {
+          if (listeners.onMouseMove) {
+            window.removeEventListener('mousemove', listeners.onMouseMove, true);
+            listeners.onMouseMove = null;
+          }
+          return;
+        }
         let height = startHeight + e.clientY - startPos;
         if (height > state.maxSize.h) height = state.maxSize.h;
         if (height < state.minSize.w) height = state.minSize.w;
         winElem.style.height = `${height}px`;
       };
-      window.addEventListener('mousemove', listeners.onMouseMove);
+      window.addEventListener('mousemove', listeners.onMouseMove, true);
       return;
     }
 
@@ -405,12 +454,19 @@ const createListeners = () => {
 
       // Mouse move
       listeners.onMouseMove = listeners.onMouseMove = (e) => {
+        if (!draggingHoriId) {
+          if (listeners.onMouseMove) {
+            window.removeEventListener('mousemove', listeners.onMouseMove, true);
+            listeners.onMouseMove = null;
+          }
+          return;
+        }
         let width = startWidth + e.clientX - startPos;
         if (width > state.maxSize.w) width = state.maxSize.w;
         if (width < state.minSize.w) width = state.minSize.w;
         winElem.style.width = `${width}px`;
       };
-      window.addEventListener('mousemove', listeners.onMouseMove);
+      window.addEventListener('mousemove', listeners.onMouseMove, true);
       return;
     }
 
@@ -439,14 +495,22 @@ const createListeners = () => {
         winElem.style.width = `${width}px`;
         winElem.style.height = `${height}px`;
       };
-      window.addEventListener('mousemove', listeners.onMouseMove);
+      window.addEventListener('mousemove', listeners.onMouseMove, true);
       return;
     }
   };
 
   // Mouse up
-  listeners.onMouseUp = () => {
-    if (listeners.onMouseMove) window.removeEventListener('mousemove', listeners.onMouseMove);
+  listeners.onMouseUp = (e) => {
+    if (e.button !== 0) {
+      rightMouseClickDown = false;
+      return;
+    }
+
+    if (listeners.onMouseMove) {
+      window.removeEventListener('mousemove', listeners.onMouseMove, true);
+      listeners.onMouseMove = null;
+    }
 
     if (draggingPosId) {
       const state = draggableWindows[draggingPosId];
@@ -494,7 +558,7 @@ const removeListeners = () => {
     window.removeEventListener('mousedown', listeners.onMouseDown);
   }
   if (listeners.onMouseMove !== null) {
-    window.removeEventListener('mousemove', listeners.onMouseMove);
+    window.removeEventListener('mousemove', listeners.onMouseMove, true);
   }
   if (listeners.onMouseUp !== null) {
     window.removeEventListener('mouseup', listeners.onMouseUp);

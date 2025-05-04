@@ -711,14 +711,19 @@ const buildDebugGUI = () => {
     openDraggableWindow({
       id: 'myFirstDraggableTest',
       closeIfOpen: true,
-      position: { x: 400, y: 400 },
-      size: { w: 200, h: 100 },
+      // position: { x: 400, y: 400 },
+      // size: { w: 200, h: 100 },
+      position: { x: 50, y: 50 },
+      size: { w: 100, h: 90 },
+      maxSize: { w: 500, h: 2000 },
+      units: { position: { x: '%', y: '%' }, size: { w: '%', h: 'vh' } },
       saveToLS: true,
       title: 'My draggable window',
       isDebugWindow: true,
       disableHoriResize: false,
       disableVertResize: false,
-      disableDragging: true,
+      disableDragging: false,
+      resetPosition: true,
     });
   });
 
