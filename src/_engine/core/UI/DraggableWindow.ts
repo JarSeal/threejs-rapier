@@ -4,6 +4,7 @@ import { lerror } from '../../utils/Logger';
 import { getWindowSize } from '../../utils/Window';
 import { getConfig } from '../Config';
 import { getHUDRootCMP } from '../HUD';
+import { addResizer, deleteResizer } from '../MainLoop';
 import styles from './DraggableWindow.module.scss';
 
 export type DraggableWindow = {
@@ -64,6 +65,7 @@ let draggingPosId: null | string = null;
 let draggingVertId: null | string = null;
 let draggingHoriId: null | string = null;
 let rightMouseClickDown = false;
+let resizerListener: null | NodeJS.Timeout = null;
 const listeners: {
   onMouseDown: null | ((e: MouseEvent) => void);
   onMouseMove: null | ((e: MouseEvent) => void);
@@ -87,6 +89,8 @@ const HEADER_CLASS = 'dragWinHeader';
 const VERT_RESIZER_CLASS = 'vertDragHandle';
 const HORI_RESIZER_CLASS = 'horiDragHandle';
 const VERT_AND_HORI_RESIZER_CLASS = 'vertAndHoriDragHandle';
+const MAX_OFF_SCREEN_HORI_THRESHOLD = 50;
+const MAX_OFF_SCREEN_VERT_THRESHOLD = 10;
 
 export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   let windowCMP: TCMP | undefined;
@@ -122,8 +126,8 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   let size = {
     ...(foundWindow?.size ||
       sze || {
-        x: DEFAULT_WIDTH,
-        y: DEFAULT_HEIGHT,
+        w: DEFAULT_WIDTH,
+        h: DEFAULT_HEIGHT,
       }),
   };
   let position = {
@@ -220,6 +224,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     disableHoriResize: horiResizeDisabled,
     disableDragging: draggingDisabled,
   };
+  checkAndSetMaxWindowPosition(draggableWindows[id]);
   saveDraggableWindowStatesToLS();
 };
 
@@ -422,6 +427,7 @@ const createListeners = () => {
         }
         winElem.style.left = `${e.clientX - offsetX}px`;
         winElem.style.top = `${e.clientY - offsetY}px`;
+        checkAndSetMaxWindowPosition(state);
       };
       window.addEventListener('mousemove', listeners.onMouseMove, true);
       return;
@@ -554,6 +560,15 @@ const createListeners = () => {
     draggingHoriId = null;
   };
 
+  // Resize
+  addResizer('draggableWindows', () => {
+    if (resizerListener) clearTimeout(resizerListener);
+    resizerListener = setTimeout(() => {
+      // @TODO: Make sure all the windows are on the screen
+      setOpenWinPositionsWithingScreen();
+    }, 200);
+  });
+
   window.addEventListener('mousedown', listeners.onMouseDown);
   window.addEventListener('mouseup', listeners.onMouseUp);
 
@@ -579,6 +594,8 @@ const removeListeners = () => {
     window.removeEventListener('mouseup', listeners.onMouseUp);
   }
 
+  deleteResizer('draggableWindows');
+
   listeners.onMouseDown = null;
   listeners.onMouseMove = null;
   listeners.onMouseUp = null;
@@ -595,5 +612,37 @@ const setAllOpenWindowsZIndexInactive = () => {
         zIndex: state.isDebugWindow ? DEFAULT_DEBUG_Z_INDEX : DEFAULT_Z_INDEX,
       });
     }
+  }
+};
+
+const setOpenWinPositionsWithingScreen = () => {
+  const keys = Object.keys(draggableWindows);
+  for (let i = 0; i < keys.length; i++) {
+    const state = draggableWindows[keys[i]];
+    checkAndSetMaxWindowPosition(state);
+  }
+};
+
+const checkAndSetMaxWindowPosition = (state: DraggableWindow) => {
+  if (!state.isOpen || !state.windowCMP) return;
+  const screenSize = getWindowSize();
+  const posX = state.windowCMP.elem.offsetLeft;
+  const posY = state.windowCMP.elem.offsetTop;
+  const winWidth = state.windowCMP.elem.clientWidth;
+
+  if (posX < -(winWidth - MAX_OFF_SCREEN_HORI_THRESHOLD)) {
+    state.windowCMP.updateStyle({ left: `${-(winWidth - MAX_OFF_SCREEN_HORI_THRESHOLD)}px` });
+  } else if (posX > screenSize.width - MAX_OFF_SCREEN_HORI_THRESHOLD) {
+    state.windowCMP.updateStyle({
+      left: `${screenSize.width - MAX_OFF_SCREEN_HORI_THRESHOLD}px`,
+    });
+  }
+
+  if (posY < -MAX_OFF_SCREEN_VERT_THRESHOLD) {
+    state.windowCMP.updateStyle({ top: `${-MAX_OFF_SCREEN_VERT_THRESHOLD}px` });
+  } else if (posY > screenSize.height - MAX_OFF_SCREEN_VERT_THRESHOLD * 2) {
+    state.windowCMP.updateStyle({
+      top: `${screenSize.height - MAX_OFF_SCREEN_VERT_THRESHOLD * 2}px`,
+    });
   }
 };
