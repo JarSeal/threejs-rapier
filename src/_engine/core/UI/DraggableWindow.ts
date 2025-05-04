@@ -78,6 +78,10 @@ const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 320;
 const DEFAULT_MIN_WIDTH = 100;
 const DEFAULT_MIN_HEIGHT = 120;
+const DEFAULT_Z_INDEX = 100;
+const DEFAULT_Z_INDEX_ACTIVE = 105;
+const DEFAULT_DEBUG_Z_INDEX = 20000;
+const DEFAULT_DEBUG_Z_INDEX_ACTIVE = 20005;
 const WINDOW_CLASS = 'draggableWindow';
 const HEADER_CLASS = 'dragWinHeader';
 const VERT_RESIZER_CLASS = 'vertDragHandle';
@@ -173,6 +177,10 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     size = resetSize ? foundWindow.defaultSize : foundWindow.size;
     position = resetPosition ? foundWindow.defaultPosition : foundWindow.position;
     windowCMP = foundWindow.windowCMP;
+    setAllOpenWindowsZIndexInactive();
+    windowCMP.updateStyle({
+      zIndex: foundWindow.isDebugWindow ? DEFAULT_DEBUG_Z_INDEX_ACTIVE : DEFAULT_Z_INDEX_ACTIVE,
+    });
     hudRoot.add(foundWindow.windowCMP);
   } else {
     windowCMP = createWindowCMP(
@@ -246,6 +254,7 @@ const createWindowCMP = (
   if (!disableVertResize) windowClassList.push(styles.vertResizable);
   if (!disableHoriResize) windowClassList.push(styles.horiResizable);
   if (!disableDragging) windowClassList.push(styles.draggable);
+  setAllOpenWindowsZIndexInactive();
   const windowCMP = CMP({
     id,
     idAttr: true,
@@ -264,7 +273,13 @@ const createWindowCMP = (
             transform: `translate3D(${units.position.x && units.position.x !== 'px' ? '-50%' : '0'}, ${units.position.y && units.position.y !== 'px' ? '-50%' : '0'}, 0)`,
           }
         : {}),
-      ...(isDebugWindow ? { zIndex: 20000 } : {}),
+      zIndex: isDebugWindow ? DEFAULT_DEBUG_Z_INDEX_ACTIVE : DEFAULT_Z_INDEX_ACTIVE,
+    },
+    onClick: () => {
+      setAllOpenWindowsZIndexInactive();
+      windowCMP.updateStyle({
+        zIndex: isDebugWindow ? DEFAULT_DEBUG_Z_INDEX_ACTIVE : DEFAULT_Z_INDEX_ACTIVE,
+      });
     },
   });
 
@@ -569,4 +584,16 @@ const removeListeners = () => {
   listeners.onMouseUp = null;
 
   listenersCreated = false;
+};
+
+const setAllOpenWindowsZIndexInactive = () => {
+  const keys = Object.keys(draggableWindows);
+  for (let i = 0; i < keys.length; i++) {
+    const state = draggableWindows[keys[i]];
+    if (state.isOpen && state.windowCMP) {
+      state.windowCMP.updateStyle({
+        zIndex: state.isDebugWindow ? DEFAULT_DEBUG_Z_INDEX : DEFAULT_Z_INDEX,
+      });
+    }
+  }
 };
