@@ -30,6 +30,7 @@ export type DraggableWindow = {
   disableVertResize?: boolean;
   disableHoriResize?: boolean;
   disableDragging?: boolean;
+  disableCollapse?: boolean;
 };
 
 type Units = 'px' | '%' | 'vw' | 'vh';
@@ -57,6 +58,7 @@ type OpenDraggableWindowProps = {
   disableVertResize?: boolean;
   disableHoriResize?: boolean;
   disableDragging?: boolean;
+  disableCollapse?: boolean;
 };
 
 let draggableWindows: { [id: string]: DraggableWindow } = {};
@@ -113,6 +115,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     disableVertResize,
     disableHoriResize,
     disableDragging,
+    disableCollapse,
   } = props;
   const screenSize = getWindowSize();
   if (!id) {
@@ -199,7 +202,8 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
       isDebugWin,
       vertResizeDisabled,
       horiResizeDisabled,
-      disableDragging
+      disableDragging,
+      disableCollapse
     );
     hudRoot.add(windowCMP);
   }
@@ -240,6 +244,13 @@ export const closeDraggableWindow = (id: string) => {
   removeListeners();
 };
 
+export const toggleCollapse = (id: string) => {
+  const state = draggableWindows[id];
+  if (!state || !state.windowCMP) return;
+
+  // @TODO: finish this
+};
+
 const createWindowCMP = (
   id: string,
   size: { w: number; h: number },
@@ -252,7 +263,8 @@ const createWindowCMP = (
   isDebugWindow?: boolean,
   disableVertResize?: boolean,
   disableHoriResize?: boolean,
-  disableDragging?: boolean
+  disableDragging?: boolean,
+  disableCollapse?: boolean
 ) => {
   // Main wrapper
   const windowClassList = [styles.draggableWindow, WINDOW_CLASS];
@@ -299,6 +311,16 @@ const createWindowCMP = (
     text: title || '',
     style: { userSelect: 'none' },
   });
+  if (!disableCollapse) {
+    headerBarCMP.add({
+      tag: 'button',
+      class: styles.collapseBtn,
+      onClick: (e) => {
+        e.preventDefault();
+        toggleCollapse(id);
+      },
+    });
+  }
   headerBarCMP.add({
     tag: 'button',
     class: styles.closeBtn,
