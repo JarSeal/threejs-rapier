@@ -18,6 +18,7 @@ import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { lerror, llog } from '../utils/Logger';
 import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
 import { openDraggableWindow } from '../core/UI/DraggableWindow';
+import { openDialog } from '../core/UI/DialogWindow';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -706,17 +707,13 @@ const buildDebugGUI = () => {
     });
   }
 
-  // @TODO: REMOVE THIS!
+  // @TODO: REMOVE THESE!
   loggingFolder.addButton({ title: 'OPEN DRAGGABLE WINDOW' }).on('click', () => {
     openDraggableWindow({
       id: 'myFirstDraggableTest',
       closeIfOpen: true,
-      // position: { x: 400, y: 400 },
-      // size: { w: 200, h: 100 },
-      position: { x: 50, y: 50 },
-      size: { w: 100, h: 90 },
-      maxSize: { w: 500, h: 2000 },
-      units: { position: { x: '%', y: '%' }, size: { w: '%', h: 'vh' } },
+      position: { x: 400, y: 400 },
+      size: { w: 200, h: 100 },
       saveToLS: true,
       title: 'My draggable window',
       isDebugWindow: true,
@@ -724,6 +721,15 @@ const buildDebugGUI = () => {
       disableVertResize: false,
       disableDragging: false,
       resetPosition: true,
+    });
+  });
+  loggingFolder.addButton({ title: 'OPEN DIALOG WINDOW' }).on('click', () => {
+    openDialog({
+      id: 'myFirstDialogTest',
+      saveToLS: true,
+      title: 'My dialog window',
+      // isDebugWindow: true,
+      backDropClickClosesWindow: true,
     });
   });
 

@@ -22,7 +22,9 @@ export type AppConfig = {
     gravity?: { x: number; y: number; z: number };
     timestep?: number;
   };
-  draggableWindows?: { [id: string]: Partial<DraggableWindow> & { contentFn?: () => TCMP } };
+  draggableWindows?: {
+    [id: string]: Partial<DraggableWindow> & { contentFn?: (id: string) => TCMP };
+  };
 };
 
 let curEnvironment: Environments = 'production';

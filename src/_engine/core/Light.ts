@@ -7,7 +7,7 @@ export type Lights =
   | THREE.PointLight
   | THREE.DirectionalLight;
 
-export type LightProps = { id?: string } & (
+export type LightProps = { id?: string; name?: string } & (
   | { type: 'AMBIENT'; params?: { color?: THREE.ColorRepresentation; intensity?: number } }
   | {
       type: 'HEMISPHERE';

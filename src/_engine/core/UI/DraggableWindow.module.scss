@@ -1,8 +1,9 @@
 @use '../../styles/variables.scss';
 
 $headerHeight: 3rem;
+$collapseAnimLength: 150ms;
 
-.draggableWindow {
+.popupWindow {
   position: fixed;
   border-radius: variables.$borderRadiusSmall;
   overflow: hidden;
@@ -10,6 +11,14 @@ $headerHeight: 3rem;
   box-shadow:
     rgba(0, 0, 0, 0.19) 0px 10px 20px,
     rgba(0, 0, 0, 0.23) 0px 6px 6px;
+  transition:
+    height $collapseAnimLength ease-in-out,
+    min-height $collapseAnimLength ease-in-out,
+    max-height $collapseAnimLength ease-in-out;
+}
+
+.resizing {
+  transition: none;
 }
 
 .vertResizable {
@@ -33,7 +42,7 @@ $headerHeight: 3rem;
   background: rgba(255, 255, 255, 0.05);
   cursor: ns-resize;
   user-select: none;
-  border-radius: 2px;
+  border-radius: 0.2rem;
 }
 
 .horiHandle {
@@ -47,7 +56,7 @@ $headerHeight: 3rem;
   background: rgba(255, 255, 255, 0.05);
   cursor: ew-resize;
   user-select: none;
-  border-radius: 2px;
+  border-radius: 0.2rem;
 }
 
 .vertAndHoriHandle {
@@ -73,7 +82,7 @@ $headerHeight: 3rem;
     height: 0.4rem;
     bottom: 0;
     left: 0;
-    border-radius: 2px 0 0 2px;
+    border-radius: 0.2rem 0 0 0.2rem;
   }
 
   &:after {
@@ -81,7 +90,20 @@ $headerHeight: 3rem;
     height: 1rem;
     bottom: 0;
     right: 0;
-    border-radius: 2px 2px 2px 0;
+    border-radius: 0.2rem 0.2rem 0.2rem 0;
+  }
+}
+
+.collapsed {
+  height: $headerHeight !important;
+  min-height: $headerHeight !important;
+  max-height: $headerHeight !important;
+  overflow: hidden;
+
+  .vertHandle,
+  .horiHandle,
+  .vertAndHoriHandle {
+    display: none;
   }
 }
 
@@ -91,13 +113,13 @@ $headerHeight: 3rem;
   justify-content: space-between;
   height: $headerHeight;
   background: variables.$debugTabButton;
-  border-top: 1px solid;
-  border-left: 1px solid;
-  border-right: 1px solid;
-  border-color: rgba(255, 255, 255, 0.08);
+  border-top: 0.1rem solid variables.$debugGuiBackgroundLighter2;
+  border-left: 0.1rem solid variables.$debugGuiBackgroundLighter2;
+  border-right: 0.1rem solid variables.$debugGuiBackgroundLighter2;
+  overflow: hidden;
   border-bottom-width: 0;
-  cursor: grab;
   user-select: none;
+  border-radius: variables.$borderRadiusSmall variables.$borderRadiusSmall 0 0;
 
   .draggable & {
     cursor: grab;
@@ -112,9 +134,9 @@ $headerHeight: 3rem;
   color: variables.$white;
   display: block;
   width: calc(100% - $headerHeight);
-  height: 2.4rem;
+  height: 2.2rem;
   margin: 0;
-  padding: 1rem 0 0 variables.$dragWinContentPadding;
+  padding: 0.8rem 0 0 variables.$dragWinContentPadding;
   font-size: 1.2rem;
   font-weight: 600;
   color: variables.$debugTextColor;
@@ -122,11 +144,11 @@ $headerHeight: 3rem;
   overflow: hidden;
 }
 
-.closeBtn {
+.collapseBtn {
   @include variables.nakedButton;
   position: relative;
-  width: calc($headerHeight - 1px);
-  height: calc($headerHeight - 1px);
+  width: $headerHeight;
+  height: calc($headerHeight - 0.1rem);
   background: rgba(255, 255, 255, 0.08);
   transition: background 0.15s ease-in-out;
 
@@ -136,6 +158,64 @@ $headerHeight: 3rem;
     position: absolute;
     content: '';
     top: 1.4rem;
+    left: 0.6rem;
+    width: 0.9rem;
+    height: 0.3rem;
+    background: variables.$debugTextColor;
+    border-radius: 0.1rem;
+    transition: transform $collapseAnimLength ease-in-out;
+  }
+
+  &:before {
+    transform: rotate(-45deg);
+
+    .collapsed & {
+      transform: rotate(45deg);
+    }
+  }
+  &:after {
+    transform: rotate(45deg);
+    left: 1.1rem;
+
+    .collapsed & {
+      transform: rotate(-45deg);
+    }
+  }
+
+  &:hover {
+    background: rgba(variables.$debugTextColor, 0.3);
+
+    &:before,
+    &:after {
+      background: variables.$white;
+    }
+  }
+
+  + button {
+    border-left: 0.1rem solid variables.$debugTabButton;
+
+    &:before,
+    &:after {
+      left: 0.5rem;
+    }
+  }
+}
+
+.closeBtn {
+  @include variables.nakedButton;
+  position: relative;
+  width: $headerHeight;
+  height: calc($headerHeight - 0.1rem);
+  margin-right: -0.1rem;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.15s ease-in-out;
+
+  &:before,
+  &:after {
+    display: block;
+    position: absolute;
+    content: '';
+    top: 1.3rem;
     left: 0.6rem;
     width: 1.8rem;
     height: 0.3rem;
@@ -165,4 +245,13 @@ $headerHeight: 3rem;
   height: calc(100% - $headerHeight);
   scrollbar-color: variables.$debugTextColor variables.$debugGuiBackgroundLighter2;
   scrollbar-width: thin;
+}
+
+.backDrop {
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  background: rgba(0, 0, 0, 0.8);
 }

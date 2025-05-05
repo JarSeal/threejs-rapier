@@ -18,6 +18,7 @@ import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools
 import { isDebugEnvironment } from './Config';
 import { clearSkyBox } from './SkyBox';
 import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
+import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -232,6 +233,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       }
 
       clearSkyBox();
+      handleDraggableWindowsOnSceneChangeStart();
 
       loader.phase = 'LOAD';
       await loadFn(loader, initNextSceneFn).then(async (newSceneId) => {

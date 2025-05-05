@@ -1,4 +1,4 @@
-import { CMP, TCMP } from '../../utils/CMP';
+import { CMP, getCmpById, TCMP } from '../../utils/CMP';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lerror } from '../../utils/Logger';
 import { getWindowSize } from '../../utils/Window';
@@ -9,8 +9,12 @@ import styles from './DraggableWindow.module.scss';
 
 export type DraggableWindow = {
   id: string;
+  orderNr: number;
+  isActive: boolean;
   windowCMP: TCMP;
+  backDropCMP?: TCMP;
   isOpen: boolean;
+  isCollapsed?: boolean;
   position: { x: number; y: number };
   size: { w: number; h: number };
   maxSize: { w: number; h: number };
@@ -30,14 +34,24 @@ export type DraggableWindow = {
   disableVertResize?: boolean;
   disableHoriResize?: boolean;
   disableDragging?: boolean;
-  disableCollapse?: boolean;
+  disableCollapseBtn?: boolean;
+  disableCloseBtn?: boolean;
+  closeOnSceneChange?: boolean;
+  removeOnSceneChange?: boolean;
+  removeOnClose?: boolean;
+  customZIndex?: number;
+  hasBackDrop?: boolean;
+  backDropClickClosesWindow?: boolean;
+  windowClass?: string | string[];
+  backDropClass?: string | string[];
 };
 
 type Units = 'px' | '%' | 'vw' | 'vh';
 
-type OpenDraggableWindowProps = {
+export type OpenDraggableWindowProps = {
   id: string;
-  content?: TCMP | (() => TCMP);
+  content?: TCMP | ((winId: string) => TCMP);
+  isCollapsed?: boolean;
   position?: { x: number; y: number };
   size?: { w: number; h: number };
   maxSize?: { w: number; h: number };
@@ -58,11 +72,21 @@ type OpenDraggableWindowProps = {
   disableVertResize?: boolean;
   disableHoriResize?: boolean;
   disableDragging?: boolean;
-  disableCollapse?: boolean;
+  disableCollapseBtn?: boolean;
+  disableCloseBtn?: boolean;
+  closeOnSceneChange?: boolean;
+  removeOnSceneChange?: boolean;
+  removeOnClose?: boolean;
+  customZIndex?: number;
+  hasBackDrop?: boolean;
+  backDropClickClosesWindow?: boolean;
+  windowClass?: string | string[];
+  backDropClass?: string | string[];
 };
 
 let draggableWindows: { [id: string]: DraggableWindow } = {};
 let listenersCreated = false;
+let orderNr = 0;
 let draggingPosId: null | string = null;
 let draggingVertId: null | string = null;
 let draggingHoriId: null | string = null;
@@ -77,7 +101,7 @@ const listeners: {
   onMouseMove: null,
   onMouseUp: null,
 };
-const LS_KEY = 'draggableWindows';
+const LS_KEY = 'popupWindows';
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 320;
 const DEFAULT_MIN_WIDTH = 100;
@@ -86,13 +110,32 @@ const DEFAULT_Z_INDEX = 100;
 const DEFAULT_Z_INDEX_ACTIVE = 105;
 const DEFAULT_DEBUG_Z_INDEX = 20000;
 const DEFAULT_DEBUG_Z_INDEX_ACTIVE = 20005;
-const WINDOW_CLASS = 'draggableWindow';
-const HEADER_CLASS = 'dragWinHeader';
-const VERT_RESIZER_CLASS = 'vertDragHandle';
-const HORI_RESIZER_CLASS = 'horiDragHandle';
-const VERT_AND_HORI_RESIZER_CLASS = 'vertAndHoriDragHandle';
-const MAX_OFF_SCREEN_HORI_THRESHOLD = 50;
-const MAX_OFF_SCREEN_VERT_THRESHOLD = 10;
+const DEFAULT_DEBUG_ADDITION_TO_CUSTOM_Z_INDEX = 100;
+const WINDOW_CLASS_NAME = 'popupWindow';
+const BACKDROP_CLASS_NAME = 'containerWindowBackDrop';
+const BACKDROP_CLOSES_WINDOW_CLASS_NAME = 'backDropClickClose';
+const DRAGGABLE_CLASS_NAME = 'draggableWindow';
+const RESIZE_HORI_CLASS_NAME = 'horizontalResize';
+const RESIZE_VERT_CLASS_NAME = 'verticalResize';
+const COLLAPSABLE_CLASS_NAME = 'collapsableWindow';
+const COLLAPSED_CLASS_NAME = 'collapsed';
+const COLLAPSE_BTN_CLASS_NAME = 'collapseBtn';
+const CLOSE_BTN_CLASS_NAME = 'closeBtn';
+const CONTENT_CONTAINER_CLASS_NAME = 'contentContainer';
+const HEADER_CLASS = 'windowHeader';
+const VERT_RESIZER_CLASS_NAME = 'vertDragHandle';
+const HORI_RESIZER_CLASS_NAME = 'horiDragHandle';
+const VERT_AND_HORI_RESIZER_CLASS_NAME = 'vertAndHoriDragHandle';
+const MAX_OFF_SCREEN_HORI_THRESHOLD = 65;
+const MAX_OFF_SCREEN_VERT_THRESHOLD = 10; // For the the bottom threshold this number is *2
+
+export const getDraggableWindowsDefaultZIndexes = () => ({
+  defaultZIndex: DEFAULT_Z_INDEX,
+  defaultZIndexActive: DEFAULT_Z_INDEX_ACTIVE,
+  defaultDebugZIndex: DEFAULT_DEBUG_Z_INDEX,
+  defaultDebugZIndexActive: DEFAULT_DEBUG_Z_INDEX_ACTIVE,
+  defaultDebugAdditionToCustomZIndex: DEFAULT_DEBUG_ADDITION_TO_CUSTOM_Z_INDEX,
+});
 
 export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   let windowCMP: TCMP | undefined;
@@ -101,6 +144,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   const {
     id,
     content,
+    isCollapsed: winIsCollapsed,
     resetPosition,
     resetSize,
     closeIfOpen,
@@ -115,7 +159,16 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     disableVertResize,
     disableHoriResize,
     disableDragging,
-    disableCollapse,
+    disableCollapseBtn,
+    disableCloseBtn,
+    closeOnSceneChange: shouldCloseOnSceneChange,
+    removeOnSceneChange: shouldRemoveOnSceneChange,
+    removeOnClose: shouldRemoveOnClose,
+    customZIndex,
+    hasBackDrop: winHasBackDrop,
+    backDropClickClosesWindow: winBackDropClickClosesWindow,
+    windowClass: winClass,
+    backDropClass: bdClass,
   } = props;
   const screenSize = getWindowSize();
   if (!id) {
@@ -169,6 +222,26 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     foundWindow?.disableDragging !== undefined
       ? foundWindow.disableDragging
       : Boolean(disableDragging);
+  const isCollapsed =
+    foundWindow?.isCollapsed !== undefined ? foundWindow.isCollapsed : Boolean(winIsCollapsed);
+  const closeOnSceneChange =
+    foundWindow?.closeOnSceneChange !== undefined
+      ? foundWindow.closeOnSceneChange
+      : Boolean(shouldCloseOnSceneChange);
+  const removeOnSceneChange =
+    foundWindow?.removeOnSceneChange !== undefined
+      ? foundWindow.removeOnSceneChange
+      : Boolean(shouldRemoveOnSceneChange);
+  const removeOnClose =
+    foundWindow?.removeOnClose !== undefined
+      ? foundWindow.removeOnClose
+      : Boolean(shouldRemoveOnClose);
+  const hasBackDrop =
+    foundWindow?.hasBackDrop !== undefined ? foundWindow.hasBackDrop : Boolean(winHasBackDrop);
+  const backDropClickClosesWindow =
+    foundWindow?.backDropClickClosesWindow !== undefined
+      ? foundWindow.backDropClickClosesWindow
+      : Boolean(winBackDropClickClosesWindow);
   let isOpen = true;
 
   if (foundWindow?.windowCMP) {
@@ -185,9 +258,31 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     position = resetPosition ? foundWindow.defaultPosition : foundWindow.position;
     windowCMP = foundWindow.windowCMP;
     setAllOpenWindowsZIndexInactive();
-    windowCMP.updateStyle({
-      zIndex: foundWindow.isDebugWindow ? DEFAULT_DEBUG_Z_INDEX_ACTIVE : DEFAULT_Z_INDEX_ACTIVE,
-    });
+    let zIndex = foundWindow.isDebugWindow ? DEFAULT_DEBUG_Z_INDEX_ACTIVE : DEFAULT_Z_INDEX_ACTIVE;
+    if (foundWindow.customZIndex) {
+      zIndex = foundWindow.isDebugWindow
+        ? foundWindow.customZIndex + DEFAULT_DEBUG_ADDITION_TO_CUSTOM_Z_INDEX
+        : foundWindow.customZIndex;
+    }
+    windowCMP.updateStyle({ zIndex });
+    if (foundWindow.backDropCMP) {
+      zIndex -= 2;
+      foundWindow.backDropCMP.updateStyle({ zIndex });
+    }
+    windowCMP.updateClass(styles.collapsed, isCollapsed ? 'add' : 'remove');
+    if (hasBackDrop && !foundWindow.backDropCMP) {
+      const backDropCMP = createBackDropCMP(
+        id,
+        backDropClickClosesWindow,
+        foundWindow.isDebugWindow,
+        customZIndex,
+        foundWindow.backDropClass
+      );
+      hudRoot.add(backDropCMP);
+    } else if (hasBackDrop && foundWindow.backDropCMP) {
+      hudRoot.add(foundWindow.backDropCMP);
+    }
+    orderNr += 1;
     hudRoot.add(foundWindow.windowCMP);
   } else {
     windowCMP = createWindowCMP(
@@ -203,8 +298,23 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
       vertResizeDisabled,
       horiResizeDisabled,
       disableDragging,
-      disableCollapse
+      disableCollapseBtn,
+      isCollapsed,
+      disableCloseBtn,
+      customZIndex,
+      winClass
     );
+    if (hasBackDrop) {
+      const backDropCMP = createBackDropCMP(
+        id,
+        backDropClickClosesWindow,
+        isDebugWin,
+        customZIndex,
+        bdClass
+      );
+      hudRoot.add(backDropCMP);
+    }
+    orderNr += 1;
     hudRoot.add(windowCMP);
   }
 
@@ -212,6 +322,8 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
 
   draggableWindows[id] = {
     id,
+    orderNr,
+    isActive: true,
     windowCMP,
     isOpen: true,
     position,
@@ -227,28 +339,58 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     disableVertResize: vertResizeDisabled,
     disableHoriResize: horiResizeDisabled,
     disableDragging: draggingDisabled,
+    disableCollapseBtn,
+    isCollapsed,
+    disableCloseBtn,
+    closeOnSceneChange,
+    removeOnSceneChange,
+    removeOnClose,
+    ...(customZIndex !== undefined ? { customZIndex } : {}),
+    hasBackDrop,
+    backDropClickClosesWindow,
+    windowClass: winClass,
+    backDropClass: bdClass,
   };
+
+  if (hasBackDrop) {
+    const backDropCmp = getCmpById(createBackDropId(id));
+    if (backDropCmp) draggableWindows[id].backDropCMP = backDropCmp;
+  }
   checkAndSetMaxWindowPosition(draggableWindows[id]);
   saveDraggableWindowStatesToLS();
 };
 
 export const closeDraggableWindow = (id: string) => {
-  const foundWindow = draggableWindows[id];
-  if (!foundWindow) return;
+  const state = draggableWindows[id];
+  if (!state) return;
 
-  foundWindow.windowCMP.elem.remove();
-  foundWindow.isOpen = false;
-  draggableWindows[id] = foundWindow;
-  saveDraggableWindowStatesToLS();
+  if (state.backDropCMP) {
+    state.backDropCMP.remove();
+    state.backDropCMP = undefined;
+  }
 
+  if (state.removeOnClose) {
+    removeDraggableWindow(state.id);
+    return;
+  }
+
+  state.windowCMP.elem.remove();
+  state.isOpen = false;
+  draggableWindows[id] = state;
   removeListeners();
+  saveDraggableWindowStatesToLS();
 };
 
 export const toggleCollapse = (id: string) => {
   const state = draggableWindows[id];
   if (!state || !state.windowCMP) return;
 
-  // @TODO: finish this
+  state.windowCMP.updateClass(
+    [styles.collapsed, COLLAPSED_CLASS_NAME],
+    state.isCollapsed ? 'remove' : 'add'
+  );
+  state.isCollapsed = !Boolean(state.isCollapsed);
+  saveDraggableWindowStatesToLS();
 };
 
 const createWindowCMP = (
@@ -258,19 +400,36 @@ const createWindowCMP = (
   maxSize: { w: number; h: number },
   minSize: { w: number; h: number },
   units: OpenDraggableWindowProps['units'],
-  content?: TCMP | (() => TCMP),
+  content?: TCMP | ((winId: string) => TCMP),
   title?: string,
   isDebugWindow?: boolean,
   disableVertResize?: boolean,
   disableHoriResize?: boolean,
   disableDragging?: boolean,
-  disableCollapse?: boolean
+  disableCollapseBtn?: boolean,
+  isCollapsed?: boolean,
+  disableCloseBtn?: boolean,
+  customZIndex?: number,
+  winClass?: string | string[]
 ) => {
   // Main wrapper
-  const windowClassList = [styles.draggableWindow, WINDOW_CLASS];
-  if (!disableVertResize) windowClassList.push(styles.vertResizable);
-  if (!disableHoriResize) windowClassList.push(styles.horiResizable);
-  if (!disableDragging) windowClassList.push(styles.draggable);
+  let zIndex = isDebugWindow ? DEFAULT_DEBUG_Z_INDEX_ACTIVE : DEFAULT_Z_INDEX_ACTIVE;
+  if (customZIndex) {
+    zIndex = isDebugWindow ? customZIndex + DEFAULT_DEBUG_ADDITION_TO_CUSTOM_Z_INDEX : customZIndex;
+  }
+  const windowClassList = [styles.popupWindow, WINDOW_CLASS_NAME];
+  if (!disableVertResize) windowClassList.push(styles.vertResizable, RESIZE_VERT_CLASS_NAME);
+  if (!disableHoriResize) windowClassList.push(styles.horiResizable, RESIZE_HORI_CLASS_NAME);
+  if (!disableDragging) windowClassList.push(styles.draggable, DRAGGABLE_CLASS_NAME);
+  if (!disableCollapseBtn) windowClassList.push(COLLAPSABLE_CLASS_NAME);
+  if (isCollapsed) windowClassList.push(styles.collapsed, COLLAPSED_CLASS_NAME);
+  if (winClass) {
+    if (typeof winClass === 'string') {
+      windowClassList.push(winClass);
+    } else {
+      windowClassList.concat(winClass);
+    }
+  }
   setAllOpenWindowsZIndexInactive();
   const windowCMP = CMP({
     id,
@@ -290,13 +449,16 @@ const createWindowCMP = (
             transform: `translate3D(${units.position.x && units.position.x !== 'px' ? '-50%' : '0'}, ${units.position.y && units.position.y !== 'px' ? '-50%' : '0'}, 0)`,
           }
         : {}),
-      zIndex: isDebugWindow ? DEFAULT_DEBUG_Z_INDEX_ACTIVE : DEFAULT_Z_INDEX_ACTIVE,
+      zIndex,
     },
     onClick: () => {
       setAllOpenWindowsZIndexInactive();
-      windowCMP.updateStyle({
-        zIndex: isDebugWindow ? DEFAULT_DEBUG_Z_INDEX_ACTIVE : DEFAULT_Z_INDEX_ACTIVE,
-      });
+      windowCMP.updateStyle({ zIndex });
+
+      const state = draggableWindows[id];
+      if (!state) return;
+      state.isActive = true;
+      saveDraggableWindowStatesToLS();
     },
   });
 
@@ -311,56 +473,98 @@ const createWindowCMP = (
     text: title || '',
     style: { userSelect: 'none' },
   });
-  if (!disableCollapse) {
+  if (!disableCollapseBtn) {
     headerBarCMP.add({
       tag: 'button',
-      class: styles.collapseBtn,
+      class: [styles.collapseBtn, COLLAPSE_BTN_CLASS_NAME],
       onClick: (e) => {
         e.preventDefault();
         toggleCollapse(id);
       },
     });
   }
-  headerBarCMP.add({
-    tag: 'button',
-    class: styles.closeBtn,
-    onClick: (e) => {
-      e.preventDefault();
-      closeDraggableWindow(id);
-    },
-    attr: { title: 'Close' },
-  });
+  if (!disableCloseBtn) {
+    headerBarCMP.add({
+      tag: 'button',
+      class: [styles.closeBtn, CLOSE_BTN_CLASS_NAME],
+      onClick: (e) => {
+        e.preventDefault();
+        closeDraggableWindow(id);
+      },
+      attr: { title: 'Close' },
+    });
+  }
   windowCMP.add(headerBarCMP);
 
   // Content wrapper
-  const contentWrapperCMP = CMP({ class: styles.contentWrapper });
+  const contentWrapperCMP = CMP({ class: [styles.contentWrapper, CONTENT_CONTAINER_CLASS_NAME] });
   windowCMP.add(contentWrapperCMP);
 
   // Resizers
   if (!disableVertResize) {
-    windowCMP.add({ class: [styles.vertHandle, VERT_RESIZER_CLASS] });
+    windowCMP.add({ class: [styles.vertHandle, VERT_RESIZER_CLASS_NAME] });
   }
   if (!disableHoriResize) {
-    windowCMP.add({ class: [styles.horiHandle, HORI_RESIZER_CLASS] });
+    windowCMP.add({ class: [styles.horiHandle, HORI_RESIZER_CLASS_NAME] });
   }
   if (!disableVertResize && !disableHoriResize) {
-    windowCMP.add({ class: [styles.vertAndHoriHandle, VERT_AND_HORI_RESIZER_CLASS] });
+    windowCMP.add({ class: [styles.vertAndHoriHandle, VERT_AND_HORI_RESIZER_CLASS_NAME] });
   }
 
   // Content
   if (content) {
     if (typeof content === 'function') {
-      contentWrapperCMP.add(content());
+      contentWrapperCMP.add(content(id));
     } else {
       contentWrapperCMP.add(content);
     }
   } else {
     const config = getConfig();
     const state = config.draggableWindows ? config.draggableWindows[id] : null;
-    if (state?.contentFn) contentWrapperCMP.add(state.contentFn());
+    if (state?.contentFn) contentWrapperCMP.add(state.contentFn(id));
   }
 
   return windowCMP;
+};
+
+const createBackDropId = (id: string) => `backdrop-${id}`;
+
+const createBackDropCMP = (
+  id: string,
+  backDropClickClosesWindow: boolean,
+  isDebugWindow?: boolean,
+  customZIndex?: number,
+  bdClass?: string | string[]
+) => {
+  let zIndex = isDebugWindow ? DEFAULT_DEBUG_Z_INDEX_ACTIVE : DEFAULT_Z_INDEX_ACTIVE;
+  if (customZIndex !== undefined) {
+    zIndex = isDebugWindow ? customZIndex + DEFAULT_DEBUG_ADDITION_TO_CUSTOM_Z_INDEX : customZIndex;
+  }
+  zIndex -= 2; // Make z-index slightly smaller than the window z-index
+
+  const backDropClasses = [styles.backDrop, BACKDROP_CLASS_NAME];
+  if (bdClass) {
+    if (typeof bdClass === 'string') {
+      backDropClasses.push(bdClass);
+    } else {
+      backDropClasses.concat(bdClass);
+    }
+  }
+  if (backDropClickClosesWindow) backDropClasses.push(BACKDROP_CLOSES_WINDOW_CLASS_NAME);
+  const backDropCMP = CMP({
+    id: createBackDropId(id),
+    class: backDropClasses,
+    style: { zIndex },
+    ...(backDropClickClosesWindow
+      ? {
+          onClick: () => closeDraggableWindow(id),
+        }
+      : {}),
+  });
+
+  if (draggableWindows[id]) draggableWindows[id].backDropCMP = backDropCMP;
+
+  return backDropCMP;
 };
 
 const saveDraggableWindowStatesToLS = () => {
@@ -376,31 +580,13 @@ const saveDraggableWindowStatesToLS = () => {
     const keys = Object.keys(state);
     for (let j = 0; j < keys.length; j++) {
       const key = keys[j] as keyof DraggableWindow;
-      if (key === 'windowCMP') continue;
+      if (key === 'windowCMP' || key === 'backDropCMP') continue;
       saveableState[key] = state[key];
     }
     saveableStates[id] = saveableState;
   }
   if (!Object.keys(saveableStates).length) return;
   lsSetItem(LS_KEY, saveableStates);
-};
-
-export const loadDraggableWindowStatesFromLS = () => {
-  const savedStates = lsGetItem(LS_KEY, draggableWindows);
-  draggableWindows = { ...draggableWindows, ...savedStates };
-
-  const draggableWindowsFromConfig = getConfig().draggableWindows;
-  if (!draggableWindowsFromConfig) return;
-
-  const keys = Object.keys(draggableWindowsFromConfig);
-  for (let i = 0; i < keys.length; i++) {
-    const id = keys[i];
-    if (!draggableWindows[id]) continue;
-    const state = draggableWindowsFromConfig[id];
-    draggableWindows[id] = { ...draggableWindows[id], ...state, ...savedStates };
-
-    if (draggableWindows[id].isOpen) openDraggableWindow({ id });
-  }
 };
 
 const createListeners = () => {
@@ -455,7 +641,7 @@ const createListeners = () => {
       return;
     }
 
-    const curTargetHasVertClass = target?.classList.contains(VERT_RESIZER_CLASS);
+    const curTargetHasVertClass = target?.classList.contains(VERT_RESIZER_CLASS_NAME);
     if (curTargetHasVertClass) {
       const id = target.parentElement?.id;
       const state = draggableWindows[id || ''];
@@ -465,6 +651,7 @@ const createListeners = () => {
       const startHeight = winElem.clientHeight;
       const startPos = e.clientY;
       draggingVertId = id;
+      state.windowCMP.updateClass(styles.resizing, 'add');
 
       // Mouse move
       listeners.onMouseMove = listeners.onMouseMove = (e) => {
@@ -472,6 +659,7 @@ const createListeners = () => {
           if (listeners.onMouseMove) {
             window.removeEventListener('mousemove', listeners.onMouseMove, true);
             listeners.onMouseMove = null;
+            state.windowCMP.updateClass(styles.resizing, 'remove');
           }
           return;
         }
@@ -484,7 +672,7 @@ const createListeners = () => {
       return;
     }
 
-    const curTargetHasHoriClass = target?.classList.contains(HORI_RESIZER_CLASS);
+    const curTargetHasHoriClass = target?.classList.contains(HORI_RESIZER_CLASS_NAME);
     if (curTargetHasHoriClass) {
       const id = target.parentElement?.id;
       const state = draggableWindows[id || ''];
@@ -494,6 +682,7 @@ const createListeners = () => {
       const startWidth = winElem.clientWidth;
       const startPos = e.clientX;
       draggingHoriId = id;
+      state.windowCMP.updateClass(styles.resizing, 'add');
 
       // Mouse move
       listeners.onMouseMove = listeners.onMouseMove = (e) => {
@@ -501,6 +690,7 @@ const createListeners = () => {
           if (listeners.onMouseMove) {
             window.removeEventListener('mousemove', listeners.onMouseMove, true);
             listeners.onMouseMove = null;
+            state.windowCMP.updateClass(styles.resizing, 'remove');
           }
           return;
         }
@@ -513,7 +703,9 @@ const createListeners = () => {
       return;
     }
 
-    const curTargetHasVertAndHoriClass = target?.classList.contains(VERT_AND_HORI_RESIZER_CLASS);
+    const curTargetHasVertAndHoriClass = target?.classList.contains(
+      VERT_AND_HORI_RESIZER_CLASS_NAME
+    );
     if (curTargetHasVertAndHoriClass) {
       const id = target.parentElement?.id;
       const state = draggableWindows[id || ''];
@@ -526,9 +718,18 @@ const createListeners = () => {
       const startPosY = e.clientY;
       draggingHoriId = id;
       draggingVertId = id;
+      state.windowCMP.updateClass(styles.resizing, 'add');
 
       // Mouse move
       listeners.onMouseMove = listeners.onMouseMove = (e) => {
+        if (!draggingHoriId && !draggingVertId) {
+          if (listeners.onMouseMove) {
+            window.removeEventListener('mousemove', listeners.onMouseMove, true);
+            listeners.onMouseMove = null;
+            state.windowCMP.updateClass(styles.resizing, 'remove');
+          }
+          return;
+        }
         let width = startWidth + e.clientX - startPosX;
         if (width > state.maxSize.w) width = state.maxSize.w;
         if (width < state.minSize.w) width = state.minSize.w;
@@ -567,6 +768,7 @@ const createListeners = () => {
       const state = draggableWindows[draggingVertId];
       if (!state?.windowCMP) return;
       state.size.h = state.windowCMP.elem.clientHeight;
+      state.windowCMP.updateClass(styles.resizing, 'remove');
       saveDraggableWindowStatesToLS();
     }
 
@@ -574,6 +776,7 @@ const createListeners = () => {
       const state = draggableWindows[draggingHoriId];
       if (!state?.windowCMP) return;
       state.size.w = state.windowCMP.elem.clientWidth;
+      state.windowCMP.updateClass(styles.resizing, 'remove');
       saveDraggableWindowStatesToLS();
     }
 
@@ -606,6 +809,8 @@ const removeListeners = () => {
     if (state.isOpen) return;
   }
 
+  orderNr = 0;
+
   if (listeners.onMouseDown !== null) {
     window.removeEventListener('mousedown', listeners.onMouseDown);
   }
@@ -630,9 +835,19 @@ const setAllOpenWindowsZIndexInactive = () => {
   for (let i = 0; i < keys.length; i++) {
     const state = draggableWindows[keys[i]];
     if (state.isOpen && state.windowCMP) {
-      state.windowCMP.updateStyle({
-        zIndex: state.isDebugWindow ? DEFAULT_DEBUG_Z_INDEX : DEFAULT_Z_INDEX,
-      });
+      let zIndex = state.isDebugWindow ? DEFAULT_DEBUG_Z_INDEX : DEFAULT_Z_INDEX;
+      if (state.customZIndex) {
+        zIndex = state.isDebugWindow
+          ? state.customZIndex + DEFAULT_DEBUG_ADDITION_TO_CUSTOM_Z_INDEX
+          : state.customZIndex;
+      }
+      state.windowCMP.updateStyle({ zIndex });
+      state.isActive = false;
+
+      if (state.isOpen && state.backDropCMP) {
+        zIndex -= 2;
+        state.backDropCMP.updateStyle({ zIndex });
+      }
     }
   }
 };
@@ -666,5 +881,59 @@ const checkAndSetMaxWindowPosition = (state: DraggableWindow) => {
     state.windowCMP.updateStyle({
       top: `${screenSize.height - MAX_OFF_SCREEN_VERT_THRESHOLD * 2}px`,
     });
+  }
+};
+
+export const removeDraggableWindow = (id: string) => {
+  const state = draggableWindows[id];
+  if (!state) return;
+
+  if (state.windowCMP) state.windowCMP.remove();
+  delete draggableWindows[id];
+  removeListeners();
+  lsSetItem(LS_KEY, draggableWindows);
+};
+
+export const handleDraggableWindowsOnSceneChangeStart = () => {
+  const keys = Object.keys(draggableWindows);
+  for (let i = 0; i < keys.length; i++) {
+    const state = draggableWindows[keys[i]];
+    if (state.closeOnSceneChange) closeDraggableWindow(state.id);
+    if (state.removeOnSceneChange) removeDraggableWindow(state.id);
+  }
+};
+
+export const loadDraggableWindowStatesFromLS = () => {
+  const savedStates = lsGetItem(LS_KEY, draggableWindows);
+  draggableWindows = { ...draggableWindows, ...savedStates };
+
+  const draggableWindowsFromConfig = getConfig().draggableWindows || {};
+
+  const keys = Object.keys(draggableWindows).sort((a, b) => {
+    const aOrderNr = draggableWindows[a]?.orderNr || 9999;
+    const bOrderNr = draggableWindows[b]?.orderNr || 9999;
+    if (aOrderNr > bOrderNr) return 1;
+    if (aOrderNr < bOrderNr) return -1;
+    return 0;
+  });
+  let activeState: DraggableWindow | null = null;
+  for (let i = 0; i < keys.length; i++) {
+    const id = keys[i];
+    if (!draggableWindows[id]) continue;
+    if (draggableWindows[id].isOpen && draggableWindows[id].isActive) {
+      activeState = draggableWindows[id];
+      continue;
+    }
+    const state = draggableWindowsFromConfig[id] || {};
+    draggableWindows[id] = { ...draggableWindows[id], ...state };
+
+    if (draggableWindows[id].isOpen) openDraggableWindow({ id });
+  }
+
+  if (activeState) {
+    const id = activeState.id;
+    const state = draggableWindowsFromConfig[id] || {};
+    draggableWindows[id] = { ...draggableWindows[id], ...state };
+    openDraggableWindow({ id });
   }
 };
