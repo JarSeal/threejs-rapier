@@ -44,6 +44,7 @@ type SkyBoxProps = {
       type: 'EQUIRECTANGULAR';
       params: {
         file?: string | THREE.Texture | THREE.DataTexture;
+        path?: string;
         textureId?: string;
         colorSpace?: THREE.ColorSpace;
         roughness?: number;
@@ -213,6 +214,7 @@ export const addSkyBox = async (
           equirectTexture = await loadTextureAsync({
             id: textureId,
             fileName: file as string,
+            path: params.path,
             useRGBELoader: true,
             throwOnError: isDebugEnvironment(),
           });
@@ -279,8 +281,12 @@ export const addSkyBox = async (
     const { fileNames, path, textureId, flipY } = params;
 
     if (isCurScene && skyBoxStateToBeAdded.isCurrent) {
-      // @TODO: cache cube textures
-      cubeTexture = await new THREE.CubeTextureLoader().setPath(path || './').loadAsync(fileNames);
+      cubeTexture = (await loadTextureAsync({
+        id: textureId,
+        fileName: fileNames,
+        path,
+        throwOnError: isDebugEnvironment(),
+      })) as THREE.CubeTexture;
       cubeTexture.userData.id = textureId || cubeTexture.uuid;
       cubeTexture.generateMipmaps = true;
       cubeTexture.minFilter = THREE.LinearMipmapLinearFilter;
