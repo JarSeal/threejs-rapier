@@ -1,5 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { lwarn } from '../utils/Logger';
+import { createDebuggerTab, createNewDebuggerContainer } from '../debug/DebuggerGUI';
+import { CMP, TCMP, TProps } from '../utils/CMP';
 
 export type Lights =
   | THREE.AmbientLight
@@ -65,7 +67,7 @@ const lights: { [id: string]: Lights } = {};
  * @param params ({@link LightProps.params}) optional light params, the params props depends on the type of the light.
  * @returns Three.js light
  */
-export const createLight = ({ id, type, params }: LightProps) => {
+export const createLight = ({ id, name, type, params }: LightProps) => {
   let light: Lights | null = null;
 
   if (id && lights[id]) return lights[id];
@@ -162,6 +164,7 @@ export const createLight = ({ id, type, params }: LightProps) => {
   }
 
   light.userData.id = id || light.uuid;
+  light.userData.name = name;
   lights[id || light.uuid] = light;
 
   return light;
@@ -209,3 +212,52 @@ export const getAllLights = () => lights;
  * @returns boolean
  */
 export const doesLightExist = (id: string) => Boolean(lights[id]);
+
+const getLightTypeShorthand = (type: string) => {
+  switch (type) {
+    case 'AMBIENT':
+      return 'AL';
+    case 'HEMISPHERE':
+      return 'HL';
+    case 'POINT':
+      return 'PL';
+    case 'DIRECTIONAL':
+      return 'DL';
+    default:
+      return '??';
+  }
+};
+
+let debuggerContainerCMP: TCMP | null = null;
+const updateLightsDebuggerList = () => {
+  const keys = Object.keys(lights);
+  let html = '<ul>';
+  // AL, HL, PL, DL, SL
+  for (let i = 0; i < keys.length; i++) {
+    const light = lights[keys[i]];
+    html += `<li>
+  ${!light.userData.name ? '' : `<span>[${light.userData.id}]</span>`}
+  <h4>${light.userData.name || `[${light.userData.id}]`}</h4>
+  <span>${getLightTypeShorthand(light.userData.type)}</span>
+</li>`;
+  }
+  html += '</ul>';
+  return html;
+};
+
+export const createLightsDebuggerGUI = () => {
+  createDebuggerTab({
+    id: 'lightsControls',
+    buttonText: 'LIGHTS',
+    title: 'Light controls',
+    orderNr: 10,
+    container: () => {
+      const container = createNewDebuggerContainer('debuggerLights', 'Light Controls');
+      debuggerContainerCMP = CMP({ id: 'debuggerLightsList', html: updateLightsDebuggerList });
+      container.add(debuggerContainerCMP);
+      return debuggerContainerCMP;
+    },
+  });
+};
+
+export const updateLightsDebuggerGUI = () => {};

@@ -322,6 +322,15 @@ export const removeDebuggerTab = (id: string) => {
   createDebugGui(guiOpts);
 };
 
+export const createNewDebuggerContainer = (id: string, heading?: string) => {
+  const container = CMP({
+    id: `debuggerPane-${id}`,
+  });
+  if (heading) container.add({ tag: 'h3', text: heading, class: 'debuggerHeading' });
+  container.controls.id = id;
+  return container;
+};
+
 /**
  * Creates a new debugger pane (in a CMP container).
  * @param id (string) debugger pane id
@@ -329,12 +338,14 @@ export const removeDebuggerTab = (id: string) => {
  * @returns (object: { container, debugGUI }) the container component and the debugGUI parent object
  */
 export const createNewDebuggerPane = (id: string, heading?: string) => {
-  const container = CMP({
-    id: `debuggerPane-${id}`,
-    onRemoveCmp: () => debugGUI.dispose(),
-  });
-  if (heading) container.add({ tag: 'h3', text: heading, class: 'debuggerHeading' });
-  container.controls.id = id;
+  // const container = CMP({
+  //   id: `debuggerPane-${id}`,
+  //   onRemoveCmp: () => debugGUI.dispose(),
+  // });
+  // if (heading) container.add({ tag: 'h3', text: heading, class: 'debuggerHeading' });
+  // container.controls.id = id;
+  const container = createNewDebuggerContainer(id, heading);
+  container.update({ onRemoveCmp: () => debugGUI.dispose() });
   const debugGUI = new Pane({ container: container.elem });
 
   return { container, debugGUI };

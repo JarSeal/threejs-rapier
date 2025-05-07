@@ -10,6 +10,7 @@ import { buildSkyBoxDebugGUI } from './core/SkyBox';
 import { createDebuggerSceneLoader } from './debug/DebuggerSceneLoader';
 import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
+import { createLightsDebuggerGUI } from './core/Light';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -37,6 +38,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Create debug GUIs and utils
     if (isDebugEnvironment()) {
       createRendererDebugGUI();
+      createLightsDebuggerGUI();
       createPhysicsDebugMesh();
       buildSkyBoxDebugGUI();
       createDebuggerSceneLoader();

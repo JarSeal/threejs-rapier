@@ -328,6 +328,7 @@ export const scene01 = async () =>
     // Lights
     const ambient = createLight({
       id: 'ambientLight',
+      name: 'Ambient light',
       type: 'AMBIENT',
       params: { color: '#ffffff', intensity: 0.5 },
     });
