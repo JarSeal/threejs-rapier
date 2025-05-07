@@ -17,7 +17,7 @@ import {
   isCurrentScene,
 } from './Scene';
 import { getRenderer } from './Renderer';
-import { getTexture, loadTexture, loadTextureAsync } from './Texture';
+import { getTexture, loadTextureAsync } from './Texture';
 import { isDebugEnvironment } from './Config';
 import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
@@ -47,7 +47,7 @@ type SkyBoxProps = {
         textureId?: string;
         colorSpace?: THREE.ColorSpace;
         roughness?: number;
-        // @TODO: check if equiTextRotate can be added
+        // @TODO: check if equiTextRotate can be added (just rotate)
       };
     }
   | {
@@ -58,7 +58,8 @@ type SkyBoxProps = {
         textureId?: string;
         colorSpace?: THREE.ColorSpace;
         roughness?: number;
-        cubeTextRotate?: number;
+        cubeTextRotate?: number; // @TODO: change this to just rotate
+        flipY?: boolean;
       };
     }
   | {
@@ -83,6 +84,7 @@ type SkyBoxState = {
   cubeTextColorSpace: THREE.ColorSpace;
   cubeTextRoughness: number;
   cubeTextRotate: number;
+  cubeTextFlipY: boolean;
   envBallRoughness: number;
   sceneSkyBoxesFolderExpanded: boolean;
 };
@@ -106,6 +108,7 @@ const defaultSkyBoxState: SkyBoxState = {
   cubeTextColorSpace: THREE.SRGBColorSpace,
   cubeTextRoughness: defaultRoughness,
   cubeTextRotate: 0,
+  cubeTextFlipY: false,
   envBallRoughness: defaultRoughness,
   sceneSkyBoxesFolderExpanded: false,
 };
@@ -218,7 +221,7 @@ export const addSkyBox = async (
           // equirectTexture.anisotropy = 16;
         } else {
           equirectTexture = file
-            ? loadTexture({
+            ? await loadTextureAsync({
                 id: textureId,
                 fileName: file as string,
                 throwOnError: isDebugEnvironment(),
@@ -273,7 +276,7 @@ export const addSkyBox = async (
       params.colorSpace !== undefined ? params.colorSpace : THREE.SRGBColorSpace;
   } else if (type === 'CUBETEXTURE') {
     // CUBETEXTURE
-    const { fileNames, path, textureId } = params;
+    const { fileNames, path, textureId, flipY } = params;
 
     if (isCurScene && skyBoxStateToBeAdded.isCurrent) {
       // @TODO: cache cube textures
@@ -286,7 +289,7 @@ export const addSkyBox = async (
       pmremRoughnessBg.value = skyBoxStateToBeAdded.cubeTextRoughness;
       const rotateYMatrix = new THREE.Matrix4();
       rotateYMatrix.makeRotationY(Math.PI * skyBoxStateToBeAdded.cubeTextRotate);
-      const backgroundUV = reflectVector.xyz.mul(uniform(rotateYMatrix));
+      const backgroundUV = reflectVector.xyz.mul(uniform(rotateYMatrix)).mul(flipY ? 1 : -1);
       if (isCurScene && isCurrent !== false) {
         const rootScene = getRootScene() as THREE.Scene;
         rootScene.backgroundNode = pmremTexture(cubeTexture, backgroundUV, pmremRoughnessBg);
@@ -309,6 +312,7 @@ export const addSkyBox = async (
       params.cubeTextRotate !== undefined
         ? params.cubeTextRotate
         : defaultSkyBoxState.cubeTextRotate;
+    skyBoxStateToBeAdded.cubeTextFlipY = Boolean(flipY);
   } else if (type === 'SKYANDSUN') {
     // SKYANDSUN
     // @TODO: implement SKYANDSUN
@@ -622,6 +626,7 @@ const extractSkyBoxParamsFromState = (state: SkyBoxState) => {
         colorSpace: state.cubeTextColorSpace || undefined,
         roughness: state.cubeTextRoughness || undefined,
         cubeTextRotate: state.cubeTextRotate || undefined,
+        flipY: state.cubeTextFlipY || undefined,
       },
     } as SkyBoxProps;
   }

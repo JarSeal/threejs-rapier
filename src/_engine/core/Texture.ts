@@ -205,7 +205,8 @@ export const loadTexture = ({
 /**
  * Creates a texture to be used without loading logic. The texture is usable right away.
  * @param id optional id string, defaults to texture.uuid
- * @param fileName optional file path to be loaded. If no fileName is provided, an empty Texture is created.
+ * @param fileName optional file name to be loaded. If no fileName is provided, an empty Texture is created. If the
+ * @param path optional file path, default is './'.
  * @param texOpts optional {@link TexOpts}
  * @param throwOnError optional value whether loadTextureAsync should throw on an error
  * @returns Promise<THREE.Texture | THREE.DataTexture>
@@ -213,23 +214,26 @@ export const loadTexture = ({
 export const loadTextureAsync = async ({
   id,
   fileName,
+  path,
   useRGBELoader,
   texOpts,
   throwOnError,
 }: {
   id?: string;
-  fileName?: string;
+  fileName?: string | string[];
+  path?: string;
   useRGBELoader?: boolean;
   texOpts?: TexOpts;
   throwOnError?: boolean;
 }) => {
   if (id && textures[id]) return textures[id];
 
-  if (!fileName) return getNoFileTexture(texOpts);
+  // @TODO: add cubetexture loader
+  if (!fileName || Array.isArray(fileName)) return getNoFileTexture(texOpts);
 
   const loader = useRGBELoader ? new RGBELoader() : new THREE.TextureLoader();
   try {
-    const loadedTexture = await loader.loadAsync(fileName);
+    const loadedTexture = await loader.setPath(path || './').loadAsync(fileName);
     const texture = setTextureOpts(loadedTexture, texOpts);
     texture.userData.id = id || texture.uuid;
     textures[id || texture.uuid] = texture;

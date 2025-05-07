@@ -43,6 +43,42 @@ export const scene01 = async () =>
     updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 
     await addSkyBox({
+      id: 'emptyBlueSkyEquiRect',
+      name: 'Empty Blue Sky EquiRect',
+      type: 'EQUIRECTANGULAR',
+      params: {
+        file: '/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png',
+        textureId: 'equiRectEmptyId',
+        colorSpace: THREE.SRGBColorSpace,
+        // colorSpace: THREE.LinearSRGBColorSpace,
+        // colorSpace: THREE.NoColorSpace,
+      },
+    });
+    await addSkyBox({
+      id: 'stylizedSunsetEquiRect',
+      name: 'Stylized Sunset EquiRect 4K',
+      type: 'EQUIRECTANGULAR',
+      params: {
+        file: '/assets/testTextures/skyboxes/sunset_stylized/sky_41_4k.png',
+        textureId: 'equiRectSunsetStylizedId',
+        colorSpace: THREE.SRGBColorSpace,
+        // colorSpace: THREE.LinearSRGBColorSpace,
+        // colorSpace: THREE.NoColorSpace,
+      },
+    });
+    // const mapStylizedSunset = ['/px.png', '/nx.png', '/py.png', '/ny.png', '/pz.png', '/nz.png'];
+    // await addSkyBox({
+    //   id: 'stylizedSunsetCubemap',
+    //   name: 'Stylized Sunset Cubemap',
+    //   type: 'CUBETEXTURE',
+    //   params: {
+    //     fileNames: mapStylizedSunset,
+    //     path: '/assets/testTextures/skyboxes/sunset_stylized',
+    //     textureId: 'cubemapSunsetStylizedId',
+    //     cubeTextRotate: 0.625,
+    //   },
+    // });
+    await addSkyBox({
       id: 'partly-cloudy',
       type: 'EQUIRECTANGULAR',
       params: {
@@ -73,6 +109,7 @@ export const scene01 = async () =>
         fileNames: map02,
         path: '/assets/testTextures',
         textureId: 'cubeTextureId',
+        flipY: true,
       },
     });
 
