@@ -255,7 +255,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     }
 
     size = resetSize ? foundWindow.defaultSize : foundWindow.size;
-    position = resetPosition ? foundWindow.defaultPosition : foundWindow.position;
+    position = resetPosition && pos ? pos : foundWindow.defaultPosition; // @TODO: FIX THIS
     windowCMP = foundWindow.windowCMP;
     setAllOpenWindowsZIndexInactive();
     let zIndex = foundWindow.isDebugWindow ? DEFAULT_DEBUG_Z_INDEX_ACTIVE : DEFAULT_Z_INDEX_ACTIVE;

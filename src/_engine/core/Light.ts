@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { lwarn } from '../utils/Logger';
 import { createDebuggerTab, createNewDebuggerContainer } from '../debug/DebuggerGUI';
 import { CMP, TCMP, TProps } from '../utils/CMP';
+import { openDraggableWindow, removeDraggableWindow } from './UI/DraggableWindow';
 
 export type Lights =
   | THREE.AmbientLight
@@ -223,6 +224,8 @@ const getLightTypeShorthand = (type: string) => {
       return 'PL';
     case 'DIRECTIONAL':
       return 'DL';
+    case 'SPOT':
+      return 'SL';
     default:
       return '??';
   }
@@ -232,14 +235,29 @@ let debuggerContainerCMP: TCMP | null = null;
 const updateLightsDebuggerList = () => {
   const keys = Object.keys(lights);
   let html = '<ul>';
-  // AL, HL, PL, DL, SL
+  if (!keys.length) html += `<li class="emptyState">No lights registered..</li>`;
   for (let i = 0; i < keys.length; i++) {
     const light = lights[keys[i]];
-    html += `<li>
+    html += `${CMP({
+      onClick: () => {
+        // deleteLight(light.userData.id);
+        // debuggerContainerCMP?.update({ html: updateLightsDebuggerList });
+        removeDraggableWindow('lightEditorWindow');
+        openDraggableWindow({
+          id: 'lightEditorWindow',
+          position: { x: 110, y: 60 },
+          size: { w: 400, h: 400 },
+          saveToLS: true,
+          title: `Edit light: ${light.userData.name || `[${light.userData.id}]`}`,
+          isDebugWindow: true,
+        });
+      },
+      html: `<li>
   ${!light.userData.name ? '' : `<span>[${light.userData.id}]</span>`}
   <h4>${light.userData.name || `[${light.userData.id}]`}</h4>
   <span>${getLightTypeShorthand(light.userData.type)}</span>
-</li>`;
+</li>`,
+    })}`;
   }
   html += '</ul>';
   return html;
@@ -260,4 +278,6 @@ export const createLightsDebuggerGUI = () => {
   });
 };
 
-export const updateLightsDebuggerGUI = () => {};
+export const updateLightsDebuggerGUI = () => {
+  updateLightsDebuggerList();
+};

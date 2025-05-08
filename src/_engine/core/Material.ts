@@ -250,3 +250,10 @@ export const saveMaterial = (material: Materials | Materials[], givenId?: string
  * @returns boolean
  */
 export const doesMatExist = (id: string) => Boolean(materials[id]);
+
+export const updateMaterials = () => {
+  const keys = Object.keys(materials);
+  for (let i = 0; keys.length; i++) {
+    materials[keys[i]].needsUpdate = true;
+  }
+};
