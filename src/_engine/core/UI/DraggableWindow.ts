@@ -46,6 +46,7 @@ export type DraggableWindow = {
   backDropClickClosesWindow?: boolean;
   windowClass?: string | string[];
   backDropClass?: string | string[];
+  onClose?: () => void;
 };
 
 type Units = 'px' | '%' | 'vw' | 'vh';
@@ -247,7 +248,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
       ? foundWindow.backDropClickClosesWindow
       : Boolean(winBackDropClickClosesWindow);
   let isOpen = true;
-  let data = dataProp || foundWindow?.data;
+  const data = dataProp || foundWindow?.data;
 
   if (foundWindow?.windowCMP) {
     isOpen = foundWindow.isOpen;
@@ -357,6 +358,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   createListeners();
 
   draggableWindows[id] = {
+    ...(draggableWindows[id] || {}),
     id,
     orderNr,
     isActive: true,
@@ -417,6 +419,8 @@ export const closeDraggableWindow = (id: string) => {
   draggableWindows[id] = state;
   removeListeners();
   saveDraggableWindowStatesToLS();
+
+  if (state.onClose) state.onClose();
 };
 
 export const toggleCollapse = (id: string) => {
@@ -615,6 +619,7 @@ const createBackDropCMP = (
 
 const saveDraggableWindowStatesToLS = () => {
   const ids = Object.keys(draggableWindows);
+  const DO_NOT_SAVE_KEYS = ['windowCMP', 'content', 'backDropCMP', 'onClose'];
   const saveableStates: {
     [id: string]: { [key: string]: DraggableWindow[keyof DraggableWindow] };
   } = {};
@@ -626,7 +631,7 @@ const saveDraggableWindowStatesToLS = () => {
     const keys = Object.keys(state);
     for (let j = 0; j < keys.length; j++) {
       const key = keys[j] as keyof DraggableWindow;
-      if (key === 'windowCMP' || key === 'content' || key === 'backDropCMP') continue;
+      if (DO_NOT_SAVE_KEYS.includes(key)) continue;
       saveableState[key] = state[key];
     }
     saveableStates[id] = saveableState;
@@ -934,6 +939,8 @@ export const removeDraggableWindow = (id: string) => {
   const state = draggableWindows[id];
   if (!state) return;
 
+  if (state.onClose) state.onClose();
+
   if (state.windowCMP) state.windowCMP.remove();
   delete draggableWindows[id];
   removeListeners();
@@ -982,4 +989,10 @@ export const loadDraggableWindowStatesFromLS = () => {
     draggableWindows[id] = { ...draggableWindows[id], ...state };
     openDraggableWindow({ id });
   }
+};
+
+export const getDraggableWindow = (id: string) => draggableWindows[id];
+
+export const addOnCloseToWindow = (id: string, onClose: () => void) => {
+  draggableWindows[id].onClose = onClose;
 };

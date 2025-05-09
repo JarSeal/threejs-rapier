@@ -1,3 +1,4 @@
+@use 'sass:color';
 @use '../../styles/variables.scss';
 
 $headerHeight: 3rem;
@@ -15,6 +16,8 @@ $collapseAnimLength: 150ms;
     height $collapseAnimLength ease-in-out,
     min-height $collapseAnimLength ease-in-out,
     max-height $collapseAnimLength ease-in-out;
+  color: variables.$debugTextColor;
+  font-size: 1.2rem;
 }
 
 .resizing {
@@ -254,4 +257,39 @@ $collapseAnimLength: 150ms;
   left: 0;
   top: 0;
   background: rgba(0, 0, 0, 0.8);
+}
+
+:global(.winPaddedContent) {
+  padding: 0.8rem 1rem;
+}
+
+:global(.winNotRightPaddedContent) {
+  padding: 0.8rem 0 0.8rem 1rem;
+}
+
+:global(.winFlexContent) {
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+}
+
+:global(.winSmallLabel) {
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+}
+
+:global(.winSmallIconButton) {
+  @include variables.nakedButton;
+  border-radius: 0.2rem;
+  padding: 0.4rem;
+  margin-left: 0.4rem;
+  margin-bottom: 0.4rem;
+  background-color: variables.$debugTextColor;
+  transition: background-color 0.17s ease-in-out;
+
+  &:hover {
+    background-color: variables.$white;
+  }
 }

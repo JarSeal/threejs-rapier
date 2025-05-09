@@ -1,9 +1,15 @@
 import * as THREE from 'three/webgpu';
-import { lwarn } from '../utils/Logger';
+import { llog, lwarn } from '../utils/Logger';
 import { createDebuggerTab, createNewDebuggerContainer } from '../debug/DebuggerGUI';
 import { CMP, TCMP } from '../utils/CMP';
-import { openDraggableWindow } from './UI/DraggableWindow';
+import {
+  addOnCloseToWindow,
+  closeDraggableWindow,
+  getDraggableWindow,
+  openDraggableWindow,
+} from './UI/DraggableWindow';
 import { Pane } from 'tweakpane';
+import { isDebugEnvironment } from './Config';
 
 export type Lights =
   | THREE.AmbientLight
@@ -169,6 +175,8 @@ export const createLight = ({ id, name, type, params }: LightProps) => {
   light.userData.name = name;
   lights[id || light.uuid] = light;
 
+  updateLightsDebuggerGUI();
+
   return light;
 };
 
@@ -200,6 +208,8 @@ export const deleteLight = (id: string) => {
   light.removeFromParent();
   light.dispose();
   delete lights[id];
+
+  updateLightsDebuggerGUI();
 };
 
 /**
@@ -214,6 +224,9 @@ export const getAllLights = () => lights;
  * @returns boolean
  */
 export const doesLightExist = (id: string) => Boolean(lights[id]);
+
+// Debugger stuff for lights
+// *************************
 
 const getLightTypeShorthand = (type: string) => {
   switch (type) {
@@ -235,12 +248,18 @@ const getLightTypeShorthand = (type: string) => {
 let debuggerListCmp: TCMP | null = null;
 let debuggerWindowCmp: TCMP | null = null;
 let debuggerWindowPane: Pane | null = null;
+const WIN_ID = 'lightEditorWindow';
 
 export const createEditLightContent = (data?: { [key: string]: unknown }) => {
-  const d = data as { id: string };
+  const d = data as { id: string; winId: string };
   const light = lights[d.id];
   if (debuggerWindowCmp) debuggerWindowCmp.remove();
-  if (!light) return CMP({});
+  if (!light) return CMP();
+
+  addOnCloseToWindow(WIN_ID, () => {
+    updateDebuggerLightsListSelectedClass('');
+  });
+  updateDebuggerLightsListSelectedClass(d.id);
 
   debuggerWindowCmp = CMP({
     tag: 'div',
@@ -250,41 +269,105 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       debuggerWindowPane = null;
     },
   });
+
+  const type = light.userData.type;
+  if (!type) return debuggerWindowCmp;
+
   debuggerWindowPane = new Pane({ container: debuggerWindowCmp.elem });
 
-  debuggerWindowPane.addBinding(light, 'intensity', { step: 0.001 });
+  const logButton = CMP({
+    tag: 'button',
+    class: 'winSmallIconButton',
+    text: 'LOG',
+    onClick: () => {
+      llog('LIGHT:****************', light, '**********************');
+    },
+  });
+  const deleteButton = CMP({
+    tag: 'button',
+    class: 'winSmallIconButton',
+    text: 'DEL',
+    onClick: () => {
+      deleteLight(d.id);
+      updateLightsDebuggerGUI();
+      closeDraggableWindow(d.winId);
+    },
+  });
+
+  debuggerWindowCmp.add({
+    prepend: true,
+    class: ['winNotRightPaddedContent', 'winFlexContent'],
+    html: () => `<div>
+<div>
+  <div><span class="winSmallLabel">Type:</span> ${light.userData.type || ''} (${getLightTypeShorthand(light.userData.type)})</div>
+  <div><span class="winSmallLabel">Name:</span> ${light.userData.name || ''}</div>
+  <div><span class="winSmallLabel">Id:</span> ${light.userData.id}</div>
+</div>
+<div style="text-align:right">${logButton}${deleteButton}</div>
+</div>`,
+  });
+
+  // Shared bindings
+  debuggerWindowPane.addBinding(light, 'visible', { label: 'Enabled' });
+  debuggerWindowPane.addBinding(light, 'intensity', { label: 'Intensity', step: 0.001 });
+
+  if (type === 'AMBIENT') {
+    const l = light as THREE.AmbientLight;
+    debuggerWindowPane.addBinding(l, 'color', { label: 'Color', color: { type: 'float' } });
+    return debuggerWindowCmp;
+  }
+
+  if (type === 'HEMISPHERE') {
+    const l = light as THREE.HemisphereLight;
+    debuggerWindowPane.addBinding(l, 'color', { label: 'Top color', color: { type: 'float' } });
+    debuggerWindowPane.addBinding(l, 'groundColor', {
+      label: 'Bottom color',
+      color: { type: 'float' },
+    });
+    return debuggerWindowCmp;
+  }
 
   return debuggerWindowCmp;
 };
 
 const createLightsDebuggerList = () => {
   const keys = Object.keys(lights);
-  let html = '<ul>';
+  let html = '<ul class="ulList">';
   if (!keys.length) html += `<li class="emptyState">No lights registered..</li>`;
+
   for (let i = 0; i < keys.length; i++) {
     const light = lights[keys[i]];
-    html += `${CMP({
+    const button = CMP({
       onClick: () => {
-        // debuggerListCmp?.update({ html: createLightsDebuggerList });
-        // removeDraggableWindow('lightEditorWindow');
+        // @TODO: get draggable window state here and if open and data.id === keys[i], then close the window
+        const winState = getDraggableWindow(WIN_ID);
+        if (winState?.isOpen && winState?.data?.id === keys[i]) {
+          closeDraggableWindow(WIN_ID);
+          return;
+        }
         openDraggableWindow({
-          id: 'lightEditorWindow',
+          id: WIN_ID,
           position: { x: 110, y: 60 },
           size: { w: 400, h: 400 },
           saveToLS: true,
           title: `Edit light: ${light.userData.name || `[${light.userData.id}]`}`,
           isDebugWindow: true,
           content: createEditLightContent,
-          data: { id: light.userData.id },
+          data: { id: light.userData.id, WIN_ID },
+          closeOnSceneChange: true,
         });
+        updateDebuggerLightsListSelectedClass(keys[i]);
       },
-      html: `<li>
-  ${!light.userData.name ? '' : `<span>[${light.userData.id}]</span>`}
+      html: `<button class="listItemWithId">
+  <span class="itemId">[${light.userData.id}]</span>
+  <span title="${light.userData.type}">${getLightTypeShorthand(light.userData.type)}</span>
   <h4>${light.userData.name || `[${light.userData.id}]`}</h4>
-  <span>${getLightTypeShorthand(light.userData.type)}</span>
-</li>`,
-    })}`;
+</button>`,
+    });
+
+    html += `<li data-id="${keys[i]}">${button}</li>`;
   }
+
   html += '</ul>';
   return html;
 };
@@ -299,11 +382,26 @@ export const createLightsDebuggerGUI = () => {
       const container = createNewDebuggerContainer('debuggerLights', 'Light Controls');
       debuggerListCmp = CMP({ id: 'debuggerLightsList', html: createLightsDebuggerList });
       container.add(debuggerListCmp);
-      return debuggerListCmp;
+      return container;
     },
   });
 };
 
 export const updateLightsDebuggerGUI = () => {
+  if (!isDebugEnvironment()) return;
   debuggerListCmp?.update({ html: createLightsDebuggerList });
+};
+
+export const updateDebuggerLightsListSelectedClass = (id: string) => {
+  const ulElem = debuggerListCmp?.elem;
+  if (!ulElem) return;
+
+  for (const child of ulElem.children) {
+    const elemId = child.getAttribute('data-id');
+    if (elemId === id) {
+      child.classList.add('selected');
+      continue;
+    }
+    child.classList.remove('selected');
+  }
 };
