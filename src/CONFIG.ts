@@ -5,6 +5,7 @@ import { toggleDrawer } from './_engine/debug/DebuggerGUI';
 import { debuggerSceneListing } from './_engine/debug/debugScenes/debuggerSceneListing';
 import { buildStatsDebugGUI } from './_engine/debug/Stats';
 import { CMP } from './_engine/utils/CMP';
+import { createEditLightContent } from './_engine/core/Light';
 
 const config: AppConfig = {
   debugKeys: [
@@ -24,6 +25,7 @@ const config: AppConfig = {
     timestep: 60,
   },
   draggableWindows: {
+    lightEditorWindow: { contentFn: createEditLightContent },
     myFirstDraggableTest: { contentFn: editObjectPropsContentFn },
     statsDraggableWin: {
       contentFn: () => {

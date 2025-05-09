@@ -12,7 +12,9 @@ export type DraggableWindow = {
   orderNr: number;
   isActive: boolean;
   windowCMP: TCMP;
+  content?: TCMP | ((data?: { [key: string]: unknown }) => TCMP);
   backDropCMP?: TCMP;
+  data?: { [key: string]: unknown };
   isOpen: boolean;
   isCollapsed?: boolean;
   position: { x: number; y: number };
@@ -50,7 +52,8 @@ type Units = 'px' | '%' | 'vw' | 'vh';
 
 export type OpenDraggableWindowProps = {
   id: string;
-  content?: TCMP | ((winId: string) => TCMP);
+  content?: TCMP | ((data?: { [key: string]: unknown }) => TCMP);
+  data?: { [key: string]: unknown };
   isCollapsed?: boolean;
   position?: { x: number; y: number };
   size?: { w: number; h: number };
@@ -144,6 +147,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   const {
     id,
     content,
+    data: dataProp,
     isCollapsed: winIsCollapsed,
     resetPosition,
     resetSize,
@@ -207,7 +211,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   const minSize = foundWindow?.minSize ||
     sizeMin || { w: DEFAULT_MIN_WIDTH, h: DEFAULT_MIN_HEIGHT };
   const winUnits = foundWindow?.units || units;
-  const headerTitle = foundWindow?.title || title || '';
+  let headerTitle = foundWindow?.title || title || '';
   const isDebugWin =
     foundWindow?.isDebugWindow !== undefined ? foundWindow.isDebugWindow : Boolean(isDebugWindow);
   const vertResizeDisabled =
@@ -243,6 +247,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
       ? foundWindow.backDropClickClosesWindow
       : Boolean(winBackDropClickClosesWindow);
   let isOpen = true;
+  let data = dataProp || foundWindow?.data;
 
   if (foundWindow?.windowCMP) {
     isOpen = foundWindow.isOpen;
@@ -283,6 +288,36 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
       hudRoot.add(foundWindow.backDropCMP);
     }
     orderNr += 1;
+
+    // Update content
+    if (JSON.stringify(foundWindow.data) !== JSON.stringify(data)) {
+      const contentWrapperCMP = foundWindow.windowCMP.children.find(
+        (child) => child.id === getContentWrapperId(id)
+      );
+      if (contentWrapperCMP) {
+        contentWrapperCMP.removeChildren();
+        const contentFnOrCMP = content || foundWindow.content;
+        if (contentFnOrCMP) {
+          if (typeof content === 'function') {
+            contentWrapperCMP.add(content(data));
+          } else {
+            contentWrapperCMP.add(content);
+          }
+        } else {
+          const config = getConfig();
+          const state = config.draggableWindows ? config.draggableWindows[id] : null;
+          if (state?.contentFn) contentWrapperCMP.add(state.contentFn(data));
+        }
+      }
+    }
+
+    // Update heading
+    if (headerTitle !== title) {
+      headerTitle = title || '';
+      const headerTitleCMP = getCmpById(getHeaderTitleId(id));
+      headerTitleCMP?.updateText(headerTitle);
+    }
+
     hudRoot.add(foundWindow.windowCMP);
   } else {
     windowCMP = createWindowCMP(
@@ -293,6 +328,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
       minSize,
       winUnits,
       content,
+      data,
       headerTitle,
       isDebugWin,
       vertResizeDisabled,
@@ -325,6 +361,8 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     orderNr,
     isActive: true,
     windowCMP,
+    content,
+    data,
     isOpen: true,
     position,
     size,
@@ -393,6 +431,9 @@ export const toggleCollapse = (id: string) => {
   saveDraggableWindowStatesToLS();
 };
 
+const getHeaderTitleId = (id: string) => `${id}-headerTitle`;
+const getContentWrapperId = (id: string) => `${id}-contentWrapper`;
+
 const createWindowCMP = (
   id: string,
   size: { w: number; h: number },
@@ -400,7 +441,8 @@ const createWindowCMP = (
   maxSize: { w: number; h: number },
   minSize: { w: number; h: number },
   units: OpenDraggableWindowProps['units'],
-  content?: TCMP | ((winId: string) => TCMP),
+  content?: OpenDraggableWindowProps['content'],
+  data?: OpenDraggableWindowProps['data'],
   title?: string,
   isDebugWindow?: boolean,
   disableVertResize?: boolean,
@@ -468,6 +510,7 @@ const createWindowCMP = (
     class: [styles.headerBar, HEADER_CLASS],
   });
   headerBarCMP.add({
+    id: getHeaderTitleId(id),
     tag: 'h3',
     class: styles.title,
     text: title || '',
@@ -497,7 +540,10 @@ const createWindowCMP = (
   windowCMP.add(headerBarCMP);
 
   // Content wrapper
-  const contentWrapperCMP = CMP({ class: [styles.contentWrapper, CONTENT_CONTAINER_CLASS_NAME] });
+  const contentWrapperCMP = CMP({
+    id: getContentWrapperId(id),
+    class: [styles.contentWrapper, CONTENT_CONTAINER_CLASS_NAME],
+  });
   windowCMP.add(contentWrapperCMP);
 
   // Resizers
@@ -514,14 +560,14 @@ const createWindowCMP = (
   // Content
   if (content) {
     if (typeof content === 'function') {
-      contentWrapperCMP.add(content(id));
+      contentWrapperCMP.add(content(data));
     } else {
       contentWrapperCMP.add(content);
     }
   } else {
     const config = getConfig();
     const state = config.draggableWindows ? config.draggableWindows[id] : null;
-    if (state?.contentFn) contentWrapperCMP.add(state.contentFn(id));
+    if (state?.contentFn) contentWrapperCMP.add(state.contentFn(data));
   }
 
   return windowCMP;
@@ -580,7 +626,7 @@ const saveDraggableWindowStatesToLS = () => {
     const keys = Object.keys(state);
     for (let j = 0; j < keys.length; j++) {
       const key = keys[j] as keyof DraggableWindow;
-      if (key === 'windowCMP' || key === 'backDropCMP') continue;
+      if (key === 'windowCMP' || key === 'content' || key === 'backDropCMP') continue;
       saveableState[key] = state[key];
     }
     saveableStates[id] = saveableState;

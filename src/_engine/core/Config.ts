@@ -23,7 +23,9 @@ export type AppConfig = {
     timestep?: number;
   };
   draggableWindows?: {
-    [id: string]: Partial<DraggableWindow> & { contentFn?: (id: string) => TCMP };
+    [id: string]: Partial<DraggableWindow> & {
+      contentFn?: (data?: { [key: string]: unknown }) => TCMP;
+    };
   };
 };
 

@@ -1,8 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { lwarn } from '../utils/Logger';
 import { createDebuggerTab, createNewDebuggerContainer } from '../debug/DebuggerGUI';
-import { CMP, TCMP, TProps } from '../utils/CMP';
-import { openDraggableWindow, removeDraggableWindow } from './UI/DraggableWindow';
+import { CMP, TCMP } from '../utils/CMP';
+import { openDraggableWindow } from './UI/DraggableWindow';
+import { Pane } from 'tweakpane';
 
 export type Lights =
   | THREE.AmbientLight
@@ -231,8 +232,32 @@ const getLightTypeShorthand = (type: string) => {
   }
 };
 
-let debuggerContainerCMP: TCMP | null = null;
-const updateLightsDebuggerList = () => {
+let debuggerListCmp: TCMP | null = null;
+let debuggerWindowCmp: TCMP | null = null;
+let debuggerWindowPane: Pane | null = null;
+
+export const createEditLightContent = (data?: { [key: string]: unknown }) => {
+  const d = data as { id: string };
+  const light = lights[d.id];
+  if (debuggerWindowCmp) debuggerWindowCmp.remove();
+  if (!light) return CMP({});
+
+  debuggerWindowCmp = CMP({
+    tag: 'div',
+    class: 'testing',
+    onRemoveCmp: () => {
+      debuggerWindowPane?.dispose();
+      debuggerWindowPane = null;
+    },
+  });
+  debuggerWindowPane = new Pane({ container: debuggerWindowCmp.elem });
+
+  debuggerWindowPane.addBinding(light, 'intensity', { step: 0.001 });
+
+  return debuggerWindowCmp;
+};
+
+const createLightsDebuggerList = () => {
   const keys = Object.keys(lights);
   let html = '<ul>';
   if (!keys.length) html += `<li class="emptyState">No lights registered..</li>`;
@@ -240,9 +265,8 @@ const updateLightsDebuggerList = () => {
     const light = lights[keys[i]];
     html += `${CMP({
       onClick: () => {
-        // deleteLight(light.userData.id);
-        // debuggerContainerCMP?.update({ html: updateLightsDebuggerList });
-        removeDraggableWindow('lightEditorWindow');
+        // debuggerListCmp?.update({ html: createLightsDebuggerList });
+        // removeDraggableWindow('lightEditorWindow');
         openDraggableWindow({
           id: 'lightEditorWindow',
           position: { x: 110, y: 60 },
@@ -250,6 +274,8 @@ const updateLightsDebuggerList = () => {
           saveToLS: true,
           title: `Edit light: ${light.userData.name || `[${light.userData.id}]`}`,
           isDebugWindow: true,
+          content: createEditLightContent,
+          data: { id: light.userData.id },
         });
       },
       html: `<li>
@@ -271,13 +297,13 @@ export const createLightsDebuggerGUI = () => {
     orderNr: 10,
     container: () => {
       const container = createNewDebuggerContainer('debuggerLights', 'Light Controls');
-      debuggerContainerCMP = CMP({ id: 'debuggerLightsList', html: updateLightsDebuggerList });
-      container.add(debuggerContainerCMP);
-      return debuggerContainerCMP;
+      debuggerListCmp = CMP({ id: 'debuggerLightsList', html: createLightsDebuggerList });
+      container.add(debuggerListCmp);
+      return debuggerListCmp;
     },
   });
 };
 
 export const updateLightsDebuggerGUI = () => {
-  updateLightsDebuggerList();
+  debuggerListCmp?.update({ html: createLightsDebuggerList });
 };
