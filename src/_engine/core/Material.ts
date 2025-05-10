@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { deleteTexture } from './Texture';
+import { getRootScene } from './Scene';
 
 export type Materials =
   | THREE.LineBasicMaterial
@@ -251,9 +252,26 @@ export const saveMaterial = (material: Materials | Materials[], givenId?: string
  */
 export const doesMatExist = (id: string) => Boolean(materials[id]);
 
-export const updateMaterials = () => {
-  const keys = Object.keys(materials);
-  for (let i = 0; keys.length; i++) {
-    materials[keys[i]].needsUpdate = true;
-  }
+export const updateAllMaterials = () => {
+  // const keys = Object.keys(materials);
+  // for (let i = 0; keys.length; i++) {
+  //   const material = materials[keys[i]];
+  //   console.log('Materila', material);
+  //   break;
+  //   if (material?.isMaterial) material.needsUpdate = true;
+  // }
+
+  const rootScene = getRootScene();
+  if (!rootScene) return;
+
+  rootScene.traverse((child) => {
+    const c = child as THREE.Mesh;
+    if (c?.material) {
+      if (Array.isArray(c.material)) {
+        // @TODO
+      } else {
+        c.material.needsUpdate = true;
+      }
+    }
+  });
 };

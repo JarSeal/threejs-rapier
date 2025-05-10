@@ -373,7 +373,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     units: winUnits,
     defaultSize: defaultS,
     defaultPosition: defaultP,
-    saveToLS: saveToLS !== undefined ? saveToLS : foundWindow.saveToLS,
+    saveToLS: Boolean(saveToLS !== undefined ? saveToLS : foundWindow?.saveToLS),
     title: headerTitle,
     isDebugWindow: isDebugWin,
     disableVertResize: vertResizeDisabled,
@@ -575,6 +575,14 @@ const createWindowCMP = (
   }
 
   return windowCMP;
+};
+
+export const updateDraggableWindow = (id: string) => {
+  const state = draggableWindows[id];
+  if (!state) return;
+  removeDraggableWindow(id);
+  openDraggableWindow(state);
+  if (!state.isOpen) closeDraggableWindow(id);
 };
 
 const createBackDropId = (id: string) => `backdrop-${id}`;
@@ -994,5 +1002,6 @@ export const loadDraggableWindowStatesFromLS = () => {
 export const getDraggableWindow = (id: string) => draggableWindows[id];
 
 export const addOnCloseToWindow = (id: string, onClose: () => void) => {
+  if (!draggableWindows[id]) return;
   draggableWindows[id].onClose = onClose;
 };

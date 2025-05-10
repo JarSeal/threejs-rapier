@@ -7,9 +7,12 @@ import {
   closeDraggableWindow,
   getDraggableWindow,
   openDraggableWindow,
+  updateDraggableWindow,
 } from './UI/DraggableWindow';
 import { Pane } from 'tweakpane';
 import { isDebugEnvironment } from './Config';
+import { getCurrentScene } from './Scene';
+import { getRendererOptions } from './Renderer';
 
 export type Lights =
   | THREE.AmbientLight
@@ -308,6 +311,15 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   });
 
   // Shared bindings
+  if (light.userData.showHelper === undefined) light.userData.showHelper = false;
+  if (type !== 'AMBIENT' && type !== 'HEMISPHERE') {
+    debuggerWindowPane
+      .addBinding(light.userData, 'showHelper', { label: 'Show helper' })
+      .on('change', (e) => {
+        const show = e.value;
+        // @TODO: add helper
+      });
+  }
   debuggerWindowPane.addBinding(light, 'visible', { label: 'Enabled' });
   debuggerWindowPane.addBinding(light, 'intensity', { label: 'Intensity', step: 0.001 });
 
@@ -324,6 +336,59 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       label: 'Bottom color',
       color: { type: 'float' },
     });
+    return debuggerWindowCmp;
+  }
+
+  if (type === 'DIRECTIONAL') {
+    const l = light as THREE.DirectionalLight;
+    debuggerWindowPane.addBinding(l, 'color', { label: 'Color', color: { type: 'float' } });
+    debuggerWindowPane.addBinding(l, 'position', { label: 'Position' });
+    debuggerWindowPane.addBinding(l.target, 'position', { label: 'Target' }).on('change', (e) => {
+      const curScene = getCurrentScene();
+      if (!curScene) return;
+      const value = e.value;
+      let target = l.target;
+      if (!target.userData.addedToScene) {
+        target = new THREE.Object3D();
+        target.userData.addedToScene = true;
+        target.userData.id = `${l.userData.id}-target`;
+        l.target = target;
+        curScene.add(target);
+      }
+      target.position.set(value.x, value.y, value.z);
+    });
+    const renderOptions = getRendererOptions();
+    const shadowOptionsEnabled = !(renderOptions.enableShadows && l.castShadow);
+    debuggerWindowPane
+      .addBinding(l, 'castShadow', {
+        label: 'Cast shadow (NOT_WORKING)',
+        disabled: !renderOptions.enableShadows,
+      })
+      .on('change', (e) => {
+        shadowOptsBindings.forEach(
+          (binding) => (binding.disabled = !renderOptions.enableShadows || !e.value)
+        );
+        l.castShadow = e.value;
+        // @TODO: check if this is a bug in the WebGPU renderer, ask in three.js forum
+      });
+    const shadowOptsBindings = [
+      debuggerWindowPane.addBinding(l.shadow.mapSize, 'width', {
+        label: 'Shadow map width (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+      debuggerWindowPane.addBinding(l.shadow.mapSize, 'height', {
+        label: 'Shadow map height (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+      debuggerWindowPane.addBinding(l.shadow.camera, 'near', {
+        label: 'Shadow map cam near (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+      debuggerWindowPane.addBinding(l.shadow.camera, 'far', {
+        label: 'Shadow map cam far (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+    ];
     return debuggerWindowCmp;
   }
 
@@ -390,6 +455,8 @@ export const createLightsDebuggerGUI = () => {
 export const updateLightsDebuggerGUI = () => {
   if (!isDebugEnvironment()) return;
   debuggerListCmp?.update({ html: createLightsDebuggerList });
+  const winState = getDraggableWindow(WIN_ID);
+  if (winState) updateDraggableWindow(WIN_ID);
 };
 
 export const updateDebuggerLightsListSelectedClass = (id: string) => {
