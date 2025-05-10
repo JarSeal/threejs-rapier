@@ -388,6 +388,42 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         label: 'Shadow map cam far (NOT_WORKING)',
         disabled: shadowOptionsEnabled,
       }),
+      debuggerWindowPane.addBinding(l.shadow, 'bias', {
+        label: 'Shadow bias (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+      debuggerWindowPane.addBinding(l.shadow, 'normalBias', {
+        label: 'Shadow normal bias (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+      debuggerWindowPane.addBinding(l.shadow, 'blurSamples', {
+        label: 'Shadow blur samples (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+      debuggerWindowPane.addBinding(l.shadow, 'intensity', {
+        label: 'Shadow intensity (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+      debuggerWindowPane.addBinding(l.shadow, 'radius', {
+        label: 'Shadow radius (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+      debuggerWindowPane.addBinding(l.shadow.camera, 'left', {
+        label: 'Shadow camera left (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+      debuggerWindowPane.addBinding(l.shadow.camera, 'right', {
+        label: 'Shadow camera right (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+      debuggerWindowPane.addBinding(l.shadow.camera, 'top', {
+        label: 'Shadow camera top (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
+      debuggerWindowPane.addBinding(l.shadow.camera, 'bottom', {
+        label: 'Shadow camera bottom (NOT_WORKING)',
+        disabled: shadowOptionsEnabled,
+      }),
     ];
     return debuggerWindowCmp;
   }
