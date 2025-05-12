@@ -13,6 +13,7 @@ import { Pane } from 'tweakpane';
 import { isDebugEnvironment } from './Config';
 import { getCurrentScene } from './Scene';
 import { getRendererOptions } from './Renderer';
+import { updateAllMaterials } from './Material';
 
 export type Lights =
   | THREE.AmbientLight
@@ -371,59 +372,113 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         l.castShadow = e.value;
         // @TODO: check if this is a bug in the WebGPU renderer, ask in three.js forum
       });
+    const shadowMap = { size: l.shadow.mapSize.width };
     const shadowOptsBindings = [
-      debuggerWindowPane.addBinding(l.shadow.mapSize, 'width', {
-        label: 'Shadow map width (NOT_WORKING)',
-        disabled: shadowOptionsEnabled,
-      }),
-      debuggerWindowPane.addBinding(l.shadow.mapSize, 'height', {
-        label: 'Shadow map height (NOT_WORKING)',
-        disabled: shadowOptionsEnabled,
-      }),
-      debuggerWindowPane.addBinding(l.shadow.camera, 'near', {
-        label: 'Shadow map cam near (NOT_WORKING)',
-        disabled: shadowOptionsEnabled,
-      }),
-      debuggerWindowPane.addBinding(l.shadow.camera, 'far', {
-        label: 'Shadow map cam far (NOT_WORKING)',
-        disabled: shadowOptionsEnabled,
-      }),
+      debuggerWindowPane
+        .addBinding(shadowMap, 'size', {
+          label: 'Shadow map size (width & height) (NOT_WORKING)',
+          disabled: shadowOptionsEnabled,
+        })
+        .on('change', (e) => {
+          if (!l.shadow?.map) return;
+          l.shadow.mapSize.set(e.value, e.value);
+          l.shadow.map.setSize(e.value, e.value);
+          l.shadow.camera.updateProjectionMatrix();
+          updateAllMaterials();
+        }),
+      // debuggerWindowPane
+      //   .addBinding(l.shadow.mapSize, 'width', {
+      //     label: 'Shadow map width (NOT_WORKING)',
+      //     disabled: shadowOptionsEnabled,
+      //   })
+      //   .on('change', () => {
+      //     l.shadow.camera.updateProjectionMatrix();
+      //   }),
+      // debuggerWindowPane
+      //   .addBinding(l.shadow.mapSize, 'height', {
+      //     label: 'Shadow map height (NOT_WORKING)',
+      //     disabled: shadowOptionsEnabled,
+      //   })
+      //   .on('change', () => {
+      //     l.shadow.camera.updateProjectionMatrix();
+      //   }),
+      debuggerWindowPane
+        .addBinding(l.shadow.camera, 'near', {
+          label: 'Shadow map cam near',
+          disabled: shadowOptionsEnabled,
+          keyScale: 1,
+          step: 0.0001,
+        })
+        .on('change', () => {
+          l.shadow.camera.updateProjectionMatrix();
+        }),
+      debuggerWindowPane
+        .addBinding(l.shadow.camera, 'far', {
+          label: 'Shadow map cam far',
+          disabled: shadowOptionsEnabled,
+        })
+        .on('change', () => {
+          l.shadow.camera.updateProjectionMatrix();
+        }),
       debuggerWindowPane.addBinding(l.shadow, 'bias', {
-        label: 'Shadow bias (NOT_WORKING)',
+        label: 'Shadow bias',
         disabled: shadowOptionsEnabled,
+        step: 0.0001,
       }),
       debuggerWindowPane.addBinding(l.shadow, 'normalBias', {
-        label: 'Shadow normal bias (NOT_WORKING)',
+        label: 'Shadow normal bias',
         disabled: shadowOptionsEnabled,
+        step: 0.0001,
       }),
-      debuggerWindowPane.addBinding(l.shadow, 'blurSamples', {
-        label: 'Shadow blur samples (NOT_WORKING)',
-        disabled: shadowOptionsEnabled,
-      }),
+      debuggerWindowPane
+        .addBinding(l.shadow, 'blurSamples', {
+          label: 'Shadow blur samples',
+          disabled: shadowOptionsEnabled,
+        })
+        .on('change', () => {
+          l.shadow.camera.updateProjectionMatrix();
+        }),
       debuggerWindowPane.addBinding(l.shadow, 'intensity', {
-        label: 'Shadow intensity (NOT_WORKING)',
+        label: 'Shadow intensity',
         disabled: shadowOptionsEnabled,
+        step: 0.001,
       }),
       debuggerWindowPane.addBinding(l.shadow, 'radius', {
-        label: 'Shadow radius (NOT_WORKING)',
+        label: 'Shadow radius',
         disabled: shadowOptionsEnabled,
       }),
-      debuggerWindowPane.addBinding(l.shadow.camera, 'left', {
-        label: 'Shadow camera left (NOT_WORKING)',
-        disabled: shadowOptionsEnabled,
-      }),
-      debuggerWindowPane.addBinding(l.shadow.camera, 'right', {
-        label: 'Shadow camera right (NOT_WORKING)',
-        disabled: shadowOptionsEnabled,
-      }),
-      debuggerWindowPane.addBinding(l.shadow.camera, 'top', {
-        label: 'Shadow camera top (NOT_WORKING)',
-        disabled: shadowOptionsEnabled,
-      }),
-      debuggerWindowPane.addBinding(l.shadow.camera, 'bottom', {
-        label: 'Shadow camera bottom (NOT_WORKING)',
-        disabled: shadowOptionsEnabled,
-      }),
+      debuggerWindowPane
+        .addBinding(l.shadow.camera, 'left', {
+          label: 'Shadow camera left',
+          disabled: shadowOptionsEnabled,
+        })
+        .on('change', () => {
+          l.shadow.camera.updateProjectionMatrix();
+        }),
+      debuggerWindowPane
+        .addBinding(l.shadow.camera, 'right', {
+          label: 'Shadow camera right',
+          disabled: shadowOptionsEnabled,
+        })
+        .on('change', () => {
+          l.shadow.camera.updateProjectionMatrix();
+        }),
+      debuggerWindowPane
+        .addBinding(l.shadow.camera, 'top', {
+          label: 'Shadow camera top',
+          disabled: shadowOptionsEnabled,
+        })
+        .on('change', () => {
+          l.shadow.camera.updateProjectionMatrix();
+        }),
+      debuggerWindowPane
+        .addBinding(l.shadow.camera, 'bottom', {
+          label: 'Shadow camera bottom',
+          disabled: shadowOptionsEnabled,
+        })
+        .on('change', () => {
+          l.shadow.camera.updateProjectionMatrix();
+        }),
     ];
     return debuggerWindowCmp;
   }
