@@ -414,7 +414,7 @@ export const closeDraggableWindow = (id: string) => {
     return;
   }
 
-  state.windowCMP.elem.remove();
+  state.windowCMP?.elem.remove();
   state.isOpen = false;
   draggableWindows[id] = state;
   removeListeners();

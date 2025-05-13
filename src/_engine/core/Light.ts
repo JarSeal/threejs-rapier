@@ -9,11 +9,13 @@ import {
   openDraggableWindow,
   updateDraggableWindow,
 } from './UI/DraggableWindow';
-import { Pane } from 'tweakpane';
+import { ListBladeApi, Pane } from 'tweakpane';
 import { isDebugEnvironment } from './Config';
-import { getCurrentScene } from './Scene';
+import { getCurrentScene, getRootScene } from './Scene';
 import { getRendererOptions } from './Renderer';
-import { updateAllMaterials } from './Material';
+import { BladeController, View } from '@tweakpane/core';
+import { FOUR_PX_TO_8K_LIST } from '../utils/constants';
+import { getSvgIcon } from './UI/icons/SvgIcon';
 
 export type Lights =
   | THREE.AmbientLight
@@ -280,17 +282,15 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   debuggerWindowPane = new Pane({ container: debuggerWindowCmp.elem });
 
   const logButton = CMP({
-    tag: 'button',
     class: 'winSmallIconButton',
-    text: 'LOG',
+    html: () => `<button>${getSvgIcon('fileCode')}</button>`,
     onClick: () => {
       llog('LIGHT:****************', light, '**********************');
     },
   });
   const deleteButton = CMP({
-    tag: 'button',
-    class: 'winSmallIconButton',
-    text: 'DEL',
+    class: ['winSmallIconButton', 'dangerColor'],
+    html: () => `<button>${getSvgIcon('thrash')}</button>`,
     onClick: () => {
       deleteLight(d.id);
       updateLightsDebuggerGUI();
@@ -341,7 +341,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   }
 
   if (type === 'DIRECTIONAL') {
-    const l = light as THREE.DirectionalLight;
+    let l = light as THREE.DirectionalLight;
     debuggerWindowPane.addBinding(l, 'color', { label: 'Color', color: { type: 'float' } });
     debuggerWindowPane.addBinding(l, 'position', { label: 'Position' });
     debuggerWindowPane.addBinding(l.target, 'position', { label: 'Target' }).on('change', (e) => {
@@ -362,49 +362,142 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     const shadowOptionsEnabled = !(renderOptions.enableShadows && l.castShadow);
     debuggerWindowPane
       .addBinding(l, 'castShadow', {
-        label: 'Cast shadow (NOT_WORKING)',
+        label: 'Cast shadow',
         disabled: !renderOptions.enableShadows,
       })
       .on('change', (e) => {
+        const curScene = getCurrentScene();
+        if (!curScene) return;
+
         shadowOptsBindings.forEach(
           (binding) => (binding.disabled = !renderOptions.enableShadows || !e.value)
         );
-        l.castShadow = e.value;
-        // @TODO: check if this is a bug in the WebGPU renderer, ask in three.js forum
+        l.castShadow = e.value; // @TODO: check if this is a bug in the WebGPU renderer, ask in three.js forum
+        const newLight = l.clone(true);
+
+        l.removeFromParent();
+        l.dispose();
+        if (l.uuid === l.userData.id) {
+          delete lights[l.uuid];
+          newLight.userData.id = newLight.uuid;
+          lights[newLight.uuid] = newLight;
+        } else {
+          lights[newLight.userData.id] = newLight;
+        }
+        l = newLight;
+        curScene.add(newLight);
+
+        updateLightsDebuggerGUI('LIST');
+        updateDebuggerLightsListSelectedClass(d.id);
+        setTimeout(() => {
+          updateLightsDebuggerGUI('WINDOW');
+        }, 10);
       });
-    const shadowMap = { size: l.shadow.mapSize.width };
+    const shadowFolder = debuggerWindowPane.addFolder({ title: 'Shadow', expanded: true });
     const shadowOptsBindings = [
-      debuggerWindowPane
-        .addBinding(shadowMap, 'size', {
-          label: 'Shadow map size (width & height) (NOT_WORKING)',
+      (
+        shadowFolder.addBlade({
+          view: 'list',
+          label: 'Shadow map width',
           disabled: shadowOptionsEnabled,
-        })
-        .on('change', (e) => {
-          if (!l.shadow?.map) return;
-          l.shadow.mapSize.set(e.value, e.value);
-          l.shadow.map.setSize(e.value, e.value);
-          l.shadow.camera.updateProjectionMatrix();
-          updateAllMaterials();
-        }),
-      // debuggerWindowPane
-      //   .addBinding(l.shadow.mapSize, 'width', {
-      //     label: 'Shadow map width (NOT_WORKING)',
-      //     disabled: shadowOptionsEnabled,
-      //   })
-      //   .on('change', () => {
-      //     l.shadow.camera.updateProjectionMatrix();
-      //   }),
-      // debuggerWindowPane
-      //   .addBinding(l.shadow.mapSize, 'height', {
-      //     label: 'Shadow map height (NOT_WORKING)',
-      //     disabled: shadowOptionsEnabled,
-      //   })
-      //   .on('change', () => {
-      //     l.shadow.camera.updateProjectionMatrix();
-      //   }),
-      debuggerWindowPane
+          value: l.shadow.map?.width || 512,
+          options: FOUR_PX_TO_8K_LIST,
+        }) as ListBladeApi<BladeController<View>>
+      ).on('change', (e) => {
+        const curScene = getCurrentScene();
+        if (!curScene) return;
+
+        const value = Number(e.value);
+        const height = l.shadow.map?.width || 512;
+        l.shadow.mapSize.set(value, height);
+        l.shadow.map?.setSize(value, height);
+        const newLight = l.clone(true);
+        newLight.shadow.mapSize.set(value, height);
+        newLight.shadow.map?.setSize(value, height);
+
+        l.removeFromParent();
+        l.dispose();
+        if (l.uuid === l.userData.id) {
+          delete lights[l.uuid];
+          newLight.userData.id = newLight.uuid;
+          lights[newLight.uuid] = newLight;
+        } else {
+          lights[newLight.userData.id] = newLight;
+        }
+        l = newLight;
+        curScene.add(newLight);
+
+        updateLightsDebuggerGUI('LIST');
+        updateDebuggerLightsListSelectedClass(d.id);
+        setTimeout(() => {
+          updateLightsDebuggerGUI('WINDOW');
+        }, 10);
+      }),
+      (
+        shadowFolder.addBlade({
+          view: 'list',
+          label: 'Shadow map height',
+          disabled: shadowOptionsEnabled,
+          value: l.shadow.map?.height || 512,
+          options: FOUR_PX_TO_8K_LIST,
+        }) as ListBladeApi<BladeController<View>>
+      ).on('change', (e) => {
+        const curScene = getCurrentScene();
+        if (!curScene) return;
+
+        const value = Number(e.value);
+        const width = l.shadow.map?.width || 512;
+        l.shadow.mapSize.set(width, value);
+        l.shadow.map?.setSize(width, value);
+        const newLight = l.clone(true);
+        newLight.shadow.mapSize.set(width, value);
+        newLight.shadow.map?.setSize(width, value);
+
+        l.removeFromParent();
+        l.dispose();
+        if (l.uuid === l.userData.id) {
+          delete lights[l.uuid];
+          newLight.userData.id = newLight.uuid;
+          lights[newLight.uuid] = newLight;
+        } else {
+          lights[newLight.userData.id] = newLight;
+        }
+        l = newLight;
+        curScene.add(newLight);
+
+        updateLightsDebuggerGUI('LIST');
+        updateDebuggerLightsListSelectedClass(d.id);
+        setTimeout(() => {
+          updateLightsDebuggerGUI('WINDOW');
+        }, 10);
+      }),
+      shadowFolder.addBinding(l.shadow, 'bias', {
+        label: 'Shadow bias',
+        disabled: shadowOptionsEnabled,
+        step: 0.0001,
+      }),
+      shadowFolder.addBinding(l.shadow, 'normalBias', {
+        label: 'Shadow normal bias',
+        disabled: shadowOptionsEnabled,
+        step: 0.0001,
+      }),
+      shadowFolder.addBinding(l.shadow, 'blurSamples', {
+        label: 'Shadow blur samples',
+        disabled: shadowOptionsEnabled,
+      }),
+      shadowFolder.addBinding(l.shadow, 'intensity', {
+        label: 'Shadow intensity',
+        disabled: shadowOptionsEnabled,
+        step: 0.001,
+      }),
+      shadowFolder.addBinding(l.shadow, 'radius', {
+        label: 'Shadow radius',
+        disabled: shadowOptionsEnabled,
+      }),
+      shadowFolder.addBlade({ view: 'separator' }),
+      shadowFolder
         .addBinding(l.shadow.camera, 'near', {
-          label: 'Shadow map cam near',
+          label: 'Shadow camera near',
           disabled: shadowOptionsEnabled,
           keyScale: 1,
           step: 0.0001,
@@ -412,42 +505,15 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
         }),
-      debuggerWindowPane
+      shadowFolder
         .addBinding(l.shadow.camera, 'far', {
-          label: 'Shadow map cam far',
+          label: 'Shadow camera far',
           disabled: shadowOptionsEnabled,
         })
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
         }),
-      debuggerWindowPane.addBinding(l.shadow, 'bias', {
-        label: 'Shadow bias',
-        disabled: shadowOptionsEnabled,
-        step: 0.0001,
-      }),
-      debuggerWindowPane.addBinding(l.shadow, 'normalBias', {
-        label: 'Shadow normal bias',
-        disabled: shadowOptionsEnabled,
-        step: 0.0001,
-      }),
-      debuggerWindowPane
-        .addBinding(l.shadow, 'blurSamples', {
-          label: 'Shadow blur samples',
-          disabled: shadowOptionsEnabled,
-        })
-        .on('change', () => {
-          l.shadow.camera.updateProjectionMatrix();
-        }),
-      debuggerWindowPane.addBinding(l.shadow, 'intensity', {
-        label: 'Shadow intensity',
-        disabled: shadowOptionsEnabled,
-        step: 0.001,
-      }),
-      debuggerWindowPane.addBinding(l.shadow, 'radius', {
-        label: 'Shadow radius',
-        disabled: shadowOptionsEnabled,
-      }),
-      debuggerWindowPane
+      shadowFolder
         .addBinding(l.shadow.camera, 'left', {
           label: 'Shadow camera left',
           disabled: shadowOptionsEnabled,
@@ -455,7 +521,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
         }),
-      debuggerWindowPane
+      shadowFolder
         .addBinding(l.shadow.camera, 'right', {
           label: 'Shadow camera right',
           disabled: shadowOptionsEnabled,
@@ -463,7 +529,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
         }),
-      debuggerWindowPane
+      shadowFolder
         .addBinding(l.shadow.camera, 'top', {
           label: 'Shadow camera top',
           disabled: shadowOptionsEnabled,
@@ -471,7 +537,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
         }),
-      debuggerWindowPane
+      shadowFolder
         .addBinding(l.shadow.camera, 'bottom', {
           label: 'Shadow camera bottom',
           disabled: shadowOptionsEnabled,
@@ -489,10 +555,17 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 const createLightsDebuggerList = () => {
   const keys = Object.keys(lights);
   let html = '<ul class="ulList">';
-  if (!keys.length) html += `<li class="emptyState">No lights registered..</li>`;
+  let lightsInScene = false;
 
   for (let i = 0; i < keys.length; i++) {
     const light = lights[keys[i]];
+    const rootScene = getRootScene();
+    if (!rootScene) continue;
+
+    const foundInScene = rootScene.getObjectByProperty('uuid', light.uuid);
+    if (!foundInScene) continue;
+    lightsInScene = true;
+
     const button = CMP({
       onClick: () => {
         // @TODO: get draggable window state here and if open and data.id === keys[i], then close the window
@@ -524,6 +597,8 @@ const createLightsDebuggerList = () => {
     html += `<li data-id="${keys[i]}">${button}</li>`;
   }
 
+  if (!lightsInScene) html += `<li class="emptyState">No lights registered..</li>`;
+
   html += '</ul>';
   return html;
 };
@@ -538,14 +613,20 @@ export const createLightsDebuggerGUI = () => {
       const container = createNewDebuggerContainer('debuggerLights', 'Light Controls');
       debuggerListCmp = CMP({ id: 'debuggerLightsList', html: createLightsDebuggerList });
       container.add(debuggerListCmp);
+      const winState = getDraggableWindow(WIN_ID);
+      if (winState?.isOpen && winState.data?.id) {
+        const id = (winState.data as { id: string }).id;
+        updateDebuggerLightsListSelectedClass(id);
+      }
       return container;
     },
   });
 };
 
-export const updateLightsDebuggerGUI = () => {
+export const updateLightsDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (!isDebugEnvironment()) return;
-  debuggerListCmp?.update({ html: createLightsDebuggerList });
+  if (only !== 'WINDOW') debuggerListCmp?.update({ html: createLightsDebuggerList });
+  if (only === 'LIST') return;
   const winState = getDraggableWindow(WIN_ID);
   if (winState) updateDraggableWindow(WIN_ID);
 };

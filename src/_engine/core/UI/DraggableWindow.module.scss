@@ -282,14 +282,28 @@ $collapseAnimLength: 150ms;
 
 :global(.winSmallIconButton) {
   @include variables.nakedButton;
+  vertical-align: top;
+  overflow: hidden;
   border-radius: 0.2rem;
-  padding: 0.4rem;
+  padding: 0.5rem;
   margin-left: 0.4rem;
   margin-bottom: 0.4rem;
   background-color: variables.$debugTextColor;
   transition: background-color 0.17s ease-in-out;
+  width: 2.6rem;
+  height: 2.6rem;
 
   &:hover {
     background-color: variables.$white;
+  }
+
+  svg path {
+    fill: variables.$debugGuiBackgroundLighter2;
+  }
+
+  &:global(.dangerColor) {
+    svg path {
+      fill: variables.$errorDark;
+    }
   }
 }

@@ -188,8 +188,8 @@ $breakpointXSmall: 379px;
 
 :global(ul li.emptyState) {
   padding: 2.4rem;
-  color: color.adjust(variables.$debugTextColorDark, $lightness: -34%);
-  font-size: 1.6rem;
+  color: color.adjust(variables.$debugTextColorDark, $lightness: -20%);
+  font-size: 1.2rem;
   font-weight: 700;
 }
 

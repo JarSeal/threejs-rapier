@@ -67,7 +67,7 @@ export const createRenderer = (opts?: Partial<RendererOptions>) => {
   renderer.shadowMap.enabled = options.enableShadows || false;
   if (opts?.shadowMapType) renderer.shadowMap.type = options.shadowMapType || THREE.BasicShadowMap;
 
-  renderer.setPixelRatio(options.devicePixelRatio);
+  renderer.setPixelRatio(options.devicePixelRatio || window.devicePixelRatio);
   renderer.setSize(windowSize.width, windowSize.height);
 
   const canvasParentElem = getCanvasParentElem();
