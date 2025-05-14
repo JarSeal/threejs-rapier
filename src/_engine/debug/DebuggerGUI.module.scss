@@ -105,6 +105,13 @@ $breakpointXSmall: 379px;
   :global(.debuggerTabHeading) {
     margin-top: 1rem;
     margin-bottom: 1rem;
+    font-size: 1.8rem;
+
+    :global(.uiIcon) {
+      display: inline-block;
+      width: 1.4rem;
+      margin-right: 0.2rem;
+    }
   }
 
   &:first-of-type {

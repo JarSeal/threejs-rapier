@@ -528,6 +528,7 @@ const createWindowCMP = (
         e.preventDefault();
         toggleCollapse(id);
       },
+      attr: { title: 'Collapse / Expand' },
     });
   }
   if (!disableCloseBtn) {

@@ -1,3 +1,5 @@
+import * as THREE from 'three/webgpu';
+
 export const FOUR_PX_TO_8K_LIST = [
   { value: 4, text: '4px' },
   { value: 8, text: '8px' },
@@ -11,4 +13,11 @@ export const FOUR_PX_TO_8K_LIST = [
   { value: 2048, text: '2048px' },
   { value: 4096, text: '4096px' },
   { value: 8192, text: '8192px' },
+];
+
+export const RENDERER_SHADOW_OPTIONS = [
+  { value: THREE.BasicShadowMap, text: 'Basic shadow map' },
+  { value: THREE.PCFShadowMap, text: 'PCF shadow map' },
+  { value: THREE.PCFSoftShadowMap, text: 'PCF soft shadow map' },
+  { value: THREE.VSMShadowMap, text: 'VSM shadow map' },
 ];

@@ -19,6 +19,7 @@ import { lerror, llog } from '../utils/Logger';
 import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
 import { openDraggableWindow } from '../core/UI/DraggableWindow';
 import { openDialog } from '../core/UI/DialogWindow';
+import { getSvgIcon } from '../core/UI/icons/SvgIcon';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -162,13 +163,17 @@ const createDebugToolsDebugGUI = () => {
   });
   orbitControls.enabled = curSceneDebugCamParams.enabled;
 
+  const icon = getSvgIcon('tools');
   createDebuggerTab({
     id: 'debugToolsControls',
-    buttonText: 'TOOLS',
+    buttonText: icon,
     title: 'Debug tools controls',
     orderNr: 6,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('debugTools', 'Debug Tools Controls');
+      const { container, debugGUI } = createNewDebuggerPane(
+        'debugTools',
+        `${icon} Debug Tools Controls`
+      );
       toolsDebugGUI = debugGUI;
       buildDebugGUI();
 

@@ -16,6 +16,7 @@ import { getWindowSize } from '../utils/Window';
 import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugTools';
 import { stepPhysicsWorld } from './PhysicsRapier';
+import { getSvgIcon } from './UI/icons/SvgIcon';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -296,13 +297,14 @@ export const deleteResizer = (id: string) => {
 // Debug GUI for loop
 const createLoopDebugControls = () => {
   createDebugGui();
+  const icon = getSvgIcon('infinity');
   createDebuggerTab({
     id: 'loopControls',
-    buttonText: 'LOOP',
+    buttonText: icon,
     title: 'Loop controls',
     orderNr: 4,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('loop', 'Loop Controls');
+      const { container, debugGUI } = createNewDebuggerPane('loop', `${icon} Loop Controls`);
       debugGUI.addBinding(loopState, 'masterPlay', { label: 'Master loop' }).on('change', (e) => {
         if (e.value) requestAnimationFrame(mainLoop);
         lsSetItem(LS_KEY, loopState);

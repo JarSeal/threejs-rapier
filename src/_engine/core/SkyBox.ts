@@ -29,6 +29,7 @@ import {
 import { isHDR } from '../utils/helpers';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
+import { getSvgIcon } from './UI/icons/SvgIcon';
 
 type SkyBoxProps = {
   id: string;
@@ -378,13 +379,14 @@ export const removeCurrentSkyBox = () => {
  * Creates the sky box debug GUI for the first time
  */
 const createSkyBoxDebugGUI = () => {
+  const icon = getSvgIcon('cloudSun');
   createDebuggerTab({
     id: 'skyBoxControls',
-    buttonText: 'SKYBOX',
+    buttonText: icon,
     title: 'Sky box controls',
     orderNr: 5,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('skyBox', 'Sky Box Controls');
+      const { container, debugGUI } = createNewDebuggerPane('skyBox', `${icon} Sky Box Controls`);
       skyBoxDebugGUI = debugGUI;
       buildSkyBoxDebugGUI();
       return container;

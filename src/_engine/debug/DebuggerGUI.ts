@@ -62,7 +62,7 @@ const initDrawerState = () => {
 
 type TabAndContainer = {
   id: string;
-  buttonText: string;
+  buttonText: string | TCMP;
   title?: string;
   container: TCMP | (() => TCMP | TCMP[]);
   button: null | TCMP;
@@ -77,9 +77,10 @@ const createTabMenuButtons = () => {
     if (data.button) data.button.remove();
     const button = CMP({
       id: `debugTabsMenuButton-${data.id}`,
-      tag: 'button',
       class: styles.debugDrawerTabButton,
-      text: data.buttonText,
+      // tag: 'button',
+      // text: data.buttonText,
+      html: () => `<button>${data.buttonText}</button>`,
       attr: data.title ? { title: data.title } : undefined,
       onClick: (_, cmp) => {
         if (cmp.elem.classList.contains(styles.debugDrawerTabButton_selected)) return;
@@ -326,7 +327,7 @@ export const createNewDebuggerContainer = (id: string, heading?: string) => {
   const container = CMP({
     id: `debuggerPane-${id}`,
   });
-  if (heading) container.add({ tag: 'h3', text: heading, class: 'debuggerTabHeading' });
+  if (heading) container.add({ html: () => `<h3>${heading}</h3>`, class: 'debuggerTabHeading' });
   container.controls.id = id;
   return container;
 };

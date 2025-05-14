@@ -8,6 +8,8 @@ import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
 import { ListBladeApi } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
 import { updateLightsDebuggerGUI } from './Light';
+import { RENDERER_SHADOW_OPTIONS } from '../utils/constants';
+import { getSvgIcon } from './UI/icons/SvgIcon';
 
 let r: THREE.WebGPURenderer | null = null;
 const ELEM_ID = 'mainCanvas';
@@ -140,13 +142,17 @@ export const createRendererDebugGUI = () => {
   const savedOptions = lsGetItem(LS_KEY, options);
   options = { ...options, ...savedOptions };
 
+  const icon = getSvgIcon('gpuCard');
   createDebuggerTab({
     id: 'rendererControls',
-    buttonText: 'RENDERER',
+    buttonText: icon,
     title: 'Renderer controls',
     orderNr: 7,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('renderer', 'Renderer Controls');
+      const { container, debugGUI } = createNewDebuggerPane(
+        'renderer',
+        `${icon} Renderer Controls`
+      );
 
       // Antialias
       debugGUI
@@ -242,12 +248,7 @@ export const createRendererDebugGUI = () => {
       const shadowMapTypeDropDown = debugGUI.addBlade({
         view: 'list',
         label: 'Shadow map type (reloads)',
-        options: [
-          { value: THREE.BasicShadowMap, text: 'Basic shadow map' },
-          { value: THREE.PCFShadowMap, text: 'PCF shadow map' },
-          { value: THREE.PCFSoftShadowMap, text: 'PCF soft shadow map' },
-          { value: THREE.VSMShadowMap, text: 'VSM shadow map' },
-        ],
+        options: RENDERER_SHADOW_OPTIONS,
         value: options.shadowMapType,
       }) as ListBladeApi<BladeController<View>>;
       shadowMapTypeDropDown.on('change', (e) => {

@@ -12,9 +12,9 @@ import {
 import { ListBladeApi, Pane } from 'tweakpane';
 import { isDebugEnvironment } from './Config';
 import { getCurrentScene, getRootScene } from './Scene';
-import { getRendererOptions } from './Renderer';
+import { getRenderer, getRendererOptions } from './Renderer';
 import { BladeController, View } from '@tweakpane/core';
-import { FOUR_PX_TO_8K_LIST } from '../utils/constants';
+import { FOUR_PX_TO_8K_LIST, RENDERER_SHADOW_OPTIONS } from '../utils/constants';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 
 export type Lights =
@@ -23,7 +23,7 @@ export type Lights =
   | THREE.PointLight
   | THREE.DirectionalLight;
 
-export type LightProps = { id?: string; name?: string } & (
+export type LightProps = { id?: string; name?: string; enabled?: boolean } & (
   | { type: 'AMBIENT'; params?: { color?: THREE.ColorRepresentation; intensity?: number } }
   | {
       type: 'HEMISPHERE';
@@ -40,6 +40,7 @@ export type LightProps = { id?: string; name?: string } & (
         intensity?: number;
         distance?: number;
         decay?: number;
+        position?: { x: number; y: number; z: number };
         castShadow?: boolean;
         shadowMapSize?: number[];
         shadowCamNearFar?: number[];
@@ -57,6 +58,8 @@ export type LightProps = { id?: string; name?: string } & (
       params?: {
         color?: THREE.ColorRepresentation;
         intensity?: number;
+        position?: { x: number; y: number; z: number };
+        target?: { x: number; y: number; z: number };
         castShadow?: boolean;
         shadowMapSize?: number[];
         shadowCamNearFar?: number[];
@@ -81,7 +84,7 @@ const lights: { [id: string]: Lights } = {};
  * @param params ({@link LightProps.params}) optional light params, the params props depends on the type of the light.
  * @returns Three.js light
  */
-export const createLight = ({ id, name, type, params }: LightProps) => {
+export const createLight = ({ id, name, enabled, type, params }: LightProps) => {
   let light: Lights | null = null;
 
   if (id && lights[id]) return lights[id];
@@ -103,6 +106,9 @@ export const createLight = ({ id, name, type, params }: LightProps) => {
         params?.decay
       );
       light.userData.type = 'POINT';
+      if (params?.position) {
+        light.position.set(params.position.x, params.position.y, params.position.z);
+      }
       // @TODO: @BUG: Three.js bug with VSMShadowMap and point light in WebGPU
       // Complete breakdown in WebGPU renderer when shadowMap type is VSMShadowMap and a point light tries to cast shadows.
       // Also breaks when forceWebGL is set to true but gives a different error. REPORT THIS!
@@ -137,6 +143,12 @@ export const createLight = ({ id, name, type, params }: LightProps) => {
     case 'DIRECTIONAL':
       light = new THREE.DirectionalLight(params?.color, params?.intensity);
       light.userData.type = 'DIRECTIONAL';
+      if (params?.position) {
+        light.position.set(params.position.x, params.position.y, params.position.z);
+      }
+      if (params?.target) {
+        light.target.position.set(params.target.x, params.target.y, params.target.z);
+      }
       if (params?.castShadow === true) {
         light.castShadow = true;
         if (params.shadowMapSize) {
@@ -179,6 +191,7 @@ export const createLight = ({ id, name, type, params }: LightProps) => {
 
   light.userData.id = id || light.uuid;
   light.userData.name = name;
+  if (enabled !== undefined) light.visible = enabled;
   lights[id || light.uuid] = light;
 
   updateLightsDebuggerGUI();
@@ -268,8 +281,6 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   updateDebuggerLightsListSelectedClass(d.id);
 
   debuggerWindowCmp = CMP({
-    tag: 'div',
-    class: 'testing',
     onRemoveCmp: () => {
       debuggerWindowPane?.dispose();
       debuggerWindowPane = null;
@@ -281,20 +292,109 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
   debuggerWindowPane = new Pane({ container: debuggerWindowCmp.elem });
 
+  const copyCodeButton = CMP({
+    class: 'winSmallIconButton',
+    html: () => `<button title="Copy light creation script">${getSvgIcon('fileCode')}</button>`,
+    onClick: () => {
+      let paramsString = '';
+      if (type === 'AMBIENT') {
+        paramsString = `params: {
+    color: '#${light.color.getHexString()}',
+    intensity: ${light.intensity},
+  },`;
+      } else if (type === 'HEMISPHERE') {
+        paramsString = `params: {
+    skyColor: '#${light.color.getHexString()}',
+    groundColor: '#${(light as THREE.HemisphereLight).groundColor.getHexString()}',
+    intensity: ${light.intensity},
+  },`;
+      } else if (type === 'POINT') {
+        paramsString = `params: {
+    color: '#${light.color.getHexString()}',
+    intensity: ${light.intensity},
+    distance: ${(light as THREE.PointLight).distance},
+    decay: ${(light as THREE.PointLight).decay},
+    position: { x: ${light.position.x}, y: ${light.position.y}, z: ${light.position.z} },
+    castShadow: ${light.castShadow},`;
+        paramsString += light.shadow?.map
+          ? `\n    shadowMapSize: [${light.shadow?.map?.width}, ${light.shadow?.map?.height}],`
+          : '';
+        const cam = light.shadow?.camera as THREE.PerspectiveCamera | undefined;
+        paramsString += cam ? `\n    shadowCamNearFar: [${cam?.near}, ${cam?.far}],` : '';
+        paramsString +=
+          light.shadow?.bias !== undefined ? `\n    shadowBias: ${light.shadow?.bias},` : '';
+        paramsString +=
+          light.shadow?.normalBias !== undefined
+            ? `\n    shadowNormalBias: ${light.shadow?.normalBias},`
+            : '';
+        paramsString +=
+          light.shadow?.blurSamples !== undefined
+            ? `\n    shadowBlurSamples: ${light.shadow?.blurSamples},`
+            : '';
+        paramsString +=
+          light.shadow?.radius !== undefined ? `\n    shadowRadius: ${light.shadow?.radius},` : '';
+        paramsString +=
+          light.shadow?.intensity !== undefined
+            ? `\n    shadowIntensity: ${light.shadow?.intensity},`
+            : '';
+        paramsString += '\n  },';
+      } else if (type === 'DIRECTIONAL') {
+        paramsString = `params: {
+    color: '#${light.color.getHexString()}',
+    intensity: ${light.intensity},
+    position: { x: ${light.position.x}, y: ${light.position.y}, z: ${light.position.z} },
+    target: { x: ${(light as THREE.DirectionalLight).target.position.x}, y: ${(light as THREE.DirectionalLight).target.position.y}, z: ${(light as THREE.DirectionalLight).target.position.z} },
+    castShadow: ${light.castShadow},`;
+        paramsString += light.shadow?.map
+          ? `\n    shadowMapSize: [${light.shadow?.map?.width}, ${light.shadow?.map?.height}],`
+          : '';
+        const cam = light.shadow?.camera as THREE.OrthographicCamera | undefined;
+        paramsString += cam ? `\n    shadowCamNearFar: [${cam?.near}, ${cam?.far}],` : '';
+        paramsString += cam
+          ? `\n    shadowCamLeftRightTopBottom: [${cam?.left}, ${cam?.right}, ${cam?.top}, ${cam?.bottom}],`
+          : '';
+        paramsString +=
+          light.shadow?.bias !== undefined ? `\n    shadowBias: ${light.shadow?.bias},` : '';
+        paramsString +=
+          light.shadow?.normalBias !== undefined
+            ? `\n    shadowNormalBias: ${light.shadow?.normalBias},`
+            : '';
+        paramsString +=
+          light.shadow?.blurSamples !== undefined
+            ? `\n    shadowBlurSamples: ${light.shadow?.blurSamples},`
+            : '';
+        paramsString +=
+          light.shadow?.radius !== undefined ? `\n    shadowRadius: ${light.shadow?.radius},` : '';
+        paramsString +=
+          light.shadow?.intensity !== undefined
+            ? `\n    shadowIntensity: ${light.shadow?.intensity},`
+            : '';
+        paramsString += '\n  },';
+      }
+      const createScript = `createLight({
+  id: '${light.userData.id}',${light.userData.name ? `\n  name: '${light.userData.name}',` : ''}
+  type: '${type}',${light.visible === false ? '\n  enabled: false,' : ''}
+  ${paramsString}
+});`;
+      console.log(createScript);
+    },
+  });
   const logButton = CMP({
     class: 'winSmallIconButton',
-    html: () => `<button>${getSvgIcon('fileCode')}</button>`,
+    html: () =>
+      `<button title="Console.log / print this light to browser console">${getSvgIcon('fileAsterix')}</button>`,
     onClick: () => {
       llog('LIGHT:****************', light, '**********************');
     },
   });
   const deleteButton = CMP({
     class: ['winSmallIconButton', 'dangerColor'],
-    html: () => `<button>${getSvgIcon('thrash')}</button>`,
+    html: () =>
+      `<button title="Remove light (only for this browser load, does not delete light permanently)">${getSvgIcon('thrash')}</button>`,
     onClick: () => {
       deleteLight(d.id);
-      updateLightsDebuggerGUI();
-      closeDraggableWindow(d.winId);
+      updateLightsDebuggerGUI('LIST');
+      closeDraggableWindow(WIN_ID);
     },
   });
 
@@ -306,8 +406,10 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   <div><span class="winSmallLabel">Type:</span> ${light.userData.type || ''} (${getLightTypeShorthand(light.userData.type)})</div>
   <div><span class="winSmallLabel">Name:</span> ${light.userData.name || ''}</div>
   <div><span class="winSmallLabel">Id:</span> ${light.userData.id}</div>
+  <div><span class="winSmallLabel">Shadows enabled:</span> ${getRenderer()?.shadowMap.enabled}</div>
+  <div><span class="winSmallLabel">Shadow map type:</span> ${RENDERER_SHADOW_OPTIONS.find((opt) => opt.value === getRenderer()?.shadowMap.type)?.text || '[Not defined]'}</div>
 </div>
-<div style="text-align:right">${logButton}${deleteButton}</div>
+<div style="text-align:right">${copyCodeButton}${logButton}${deleteButton}</div>
 </div>`,
   });
 
@@ -332,11 +434,177 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
   if (type === 'HEMISPHERE') {
     const l = light as THREE.HemisphereLight;
-    debuggerWindowPane.addBinding(l, 'color', { label: 'Top color', color: { type: 'float' } });
+    debuggerWindowPane.addBinding(l, 'color', { label: 'Sky color', color: { type: 'float' } });
     debuggerWindowPane.addBinding(l, 'groundColor', {
-      label: 'Bottom color',
+      label: 'Ground color',
       color: { type: 'float' },
     });
+    return debuggerWindowCmp;
+  }
+
+  if (type === 'POINT') {
+    let l = light as THREE.PointLight;
+    debuggerWindowPane.addBinding(l, 'color', { label: 'Color', color: { type: 'float' } });
+    debuggerWindowPane.addBinding(l, 'position', { label: 'Position' });
+    debuggerWindowPane.addBinding(l, 'distance', { label: 'Distance' });
+    debuggerWindowPane.addBinding(l, 'decay', { label: 'Decay' });
+    const renderOptions = getRendererOptions();
+    const shadowOptionsEnabled = !(
+      renderOptions.enableShadows &&
+      renderOptions.shadowMapType !== THREE.VSMShadowMap && // @TODO: THERE IS A BUG IN Three.js WebGPU renderer with VSMShadowMap and PointLight, fix this when this works
+      l.castShadow
+    );
+    debuggerWindowPane
+      .addBinding(l, 'castShadow', {
+        label: 'Cast shadow',
+        disabled:
+          !renderOptions.enableShadows || renderOptions.shadowMapType === THREE.VSMShadowMap, // @TODO: THERE IS A BUG IN Three.js WebGPU renderer with VSMShadowMap and PointLight, fix this when this works
+      })
+      .on('change', (e) => {
+        const curScene = getCurrentScene();
+        if (!curScene) return;
+
+        shadowOptsBindings.forEach(
+          (binding) => (binding.disabled = !renderOptions.enableShadows || !e.value)
+        );
+        l.castShadow = e.value; // @TODO: check if this is a bug in the WebGPU renderer, ask in three.js forum (the shadows won't just turn on/off, we have to do this trick below)
+        const newLight = l.clone(true);
+
+        l.removeFromParent();
+        l.dispose();
+        if (l.uuid === l.userData.id) {
+          delete lights[l.uuid];
+          newLight.userData.id = newLight.uuid;
+          lights[newLight.uuid] = newLight;
+        } else {
+          lights[newLight.userData.id] = newLight;
+        }
+        l = newLight;
+        curScene.add(newLight);
+
+        updateLightsDebuggerGUI('LIST');
+        updateDebuggerLightsListSelectedClass(d.id);
+        setTimeout(() => {
+          updateLightsDebuggerGUI('WINDOW');
+        }, 10);
+      });
+    const shadowFolder = debuggerWindowPane.addFolder({ title: 'Shadow', expanded: true });
+    const shadowOptsBindings = [
+      (
+        shadowFolder.addBlade({
+          view: 'list',
+          label: 'Shadow map width',
+          disabled: shadowOptionsEnabled,
+          value: l.shadow.mapSize.width || 512,
+          options: FOUR_PX_TO_8K_LIST,
+        }) as ListBladeApi<BladeController<View>>
+      ).on('change', (e) => {
+        const curScene = getCurrentScene();
+        if (!curScene) return;
+
+        const value = Number(e.value);
+        const height = l.shadow.mapSize.height || 512;
+        l.shadow.mapSize.set(value, height);
+        const newLight = l.clone(true);
+        newLight.shadow.mapSize.set(value, height);
+
+        l.removeFromParent();
+        l.dispose();
+        if (l.uuid === l.userData.id) {
+          delete lights[l.uuid];
+          newLight.userData.id = newLight.uuid;
+          lights[newLight.uuid] = newLight;
+        } else {
+          lights[newLight.userData.id] = newLight;
+        }
+        l = newLight;
+        curScene.add(newLight);
+
+        updateLightsDebuggerGUI('LIST');
+        updateDebuggerLightsListSelectedClass(d.id);
+        setTimeout(() => {
+          updateLightsDebuggerGUI('WINDOW');
+        }, 10);
+      }),
+      (
+        shadowFolder.addBlade({
+          view: 'list',
+          label: 'Shadow map height',
+          disabled: shadowOptionsEnabled,
+          value: l.shadow.mapSize.height || 512,
+          options: FOUR_PX_TO_8K_LIST,
+        }) as ListBladeApi<BladeController<View>>
+      ).on('change', (e) => {
+        const curScene = getCurrentScene();
+        if (!curScene) return;
+
+        const value = Number(e.value);
+        const width = l.shadow.mapSize.width || 512;
+        l.shadow.mapSize.set(width, value);
+        const newLight = l.clone(true);
+        newLight.shadow.mapSize.set(width, value);
+
+        l.removeFromParent();
+        l.dispose();
+        if (l.uuid === l.userData.id) {
+          delete lights[l.uuid];
+          newLight.userData.id = newLight.uuid;
+          lights[newLight.uuid] = newLight;
+        } else {
+          lights[newLight.userData.id] = newLight;
+        }
+        l = newLight;
+        curScene.add(newLight);
+
+        updateLightsDebuggerGUI('LIST');
+        updateDebuggerLightsListSelectedClass(d.id);
+        setTimeout(() => {
+          updateLightsDebuggerGUI('WINDOW');
+        }, 10);
+      }),
+      shadowFolder.addBinding(l.shadow, 'bias', {
+        label: 'Shadow bias',
+        disabled: shadowOptionsEnabled,
+        step: 0.0001,
+      }),
+      shadowFolder.addBinding(l.shadow, 'normalBias', {
+        label: 'Shadow normal bias',
+        disabled: shadowOptionsEnabled,
+        step: 0.0001,
+      }),
+      shadowFolder.addBinding(l.shadow, 'blurSamples', {
+        label: 'Shadow blur samples',
+        disabled: shadowOptionsEnabled || renderOptions.shadowMapType === THREE.VSMShadowMap,
+      }),
+      shadowFolder.addBinding(l.shadow, 'intensity', {
+        label: 'Shadow intensity',
+        disabled: shadowOptionsEnabled,
+        step: 0.001,
+      }),
+      shadowFolder.addBinding(l.shadow, 'radius', {
+        label: 'Shadow radius',
+        disabled: shadowOptionsEnabled || renderOptions.shadowMapType === THREE.BasicShadowMap,
+      }),
+      shadowFolder.addBlade({ view: 'separator' }),
+      shadowFolder
+        .addBinding(l.shadow.camera, 'near', {
+          label: 'Shadow camera near',
+          disabled: shadowOptionsEnabled,
+          keyScale: 1,
+          step: 0.0001,
+        })
+        .on('change', () => {
+          l.shadow.camera.updateProjectionMatrix();
+        }),
+      shadowFolder
+        .addBinding(l.shadow.camera, 'far', {
+          label: 'Shadow camera far',
+          disabled: shadowOptionsEnabled,
+        })
+        .on('change', () => {
+          l.shadow.camera.updateProjectionMatrix();
+        }),
+    ];
     return debuggerWindowCmp;
   }
 
@@ -372,7 +640,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         shadowOptsBindings.forEach(
           (binding) => (binding.disabled = !renderOptions.enableShadows || !e.value)
         );
-        l.castShadow = e.value; // @TODO: check if this is a bug in the WebGPU renderer, ask in three.js forum
+        l.castShadow = e.value; // @TODO: check if this is a bug in the WebGPU renderer, ask in three.js forum (the shadows won't just turn on/off, we have to do this trick below)
         const newLight = l.clone(true);
 
         l.removeFromParent();
@@ -400,7 +668,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           view: 'list',
           label: 'Shadow map width',
           disabled: shadowOptionsEnabled,
-          value: l.shadow.map?.width || 512,
+          value: l.shadow.mapSize.width || 512,
           options: FOUR_PX_TO_8K_LIST,
         }) as ListBladeApi<BladeController<View>>
       ).on('change', (e) => {
@@ -408,7 +676,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         if (!curScene) return;
 
         const value = Number(e.value);
-        const height = l.shadow.map?.width || 512;
+        const height = l.shadow.map?.height || 512;
         l.shadow.mapSize.set(value, height);
         l.shadow.map?.setSize(value, height);
         const newLight = l.clone(true);
@@ -438,7 +706,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           view: 'list',
           label: 'Shadow map height',
           disabled: shadowOptionsEnabled,
-          value: l.shadow.map?.height || 512,
+          value: l.shadow.mapSize.height || 512,
           options: FOUR_PX_TO_8K_LIST,
         }) as ListBladeApi<BladeController<View>>
       ).on('change', (e) => {
@@ -604,13 +872,14 @@ const createLightsDebuggerList = () => {
 };
 
 export const createLightsDebuggerGUI = () => {
+  const icon = getSvgIcon('lightBulb');
   createDebuggerTab({
     id: 'lightsControls',
-    buttonText: 'LIGHTS',
+    buttonText: icon,
     title: 'Light controls',
     orderNr: 10,
     container: () => {
-      const container = createNewDebuggerContainer('debuggerLights', 'Light Controls');
+      const container = createNewDebuggerContainer('debuggerLights', `${icon} Light Controls`);
       debuggerListCmp = CMP({ id: 'debuggerLightsList', html: createLightsDebuggerList });
       container.add(debuggerListCmp);
       const winState = getDraggableWindow(WIN_ID);

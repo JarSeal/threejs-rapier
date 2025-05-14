@@ -5,6 +5,7 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getGUIContainerElem } from '../core/HUD';
 import { Pane } from 'tweakpane';
 import { openDraggableWindow } from '../core/UI/DraggableWindow';
+import { getSvgIcon } from '../core/UI/icons/SvgIcon';
 
 export type StatsOptions = {
   performanceFolderExpanded?: boolean;
@@ -79,14 +80,15 @@ export const initStats = (config?: StatsOptions) => {
  */
 export const getStats = () => stats;
 
-const setDebuggerUI = () =>
-  createDebuggerTab({
+const setDebuggerUI = () => {
+  const icon = getSvgIcon('speedometer');
+  return createDebuggerTab({
     id: 'statsControls',
-    buttonText: 'STATS',
+    buttonText: icon,
     title: 'Statistics',
     orderNr: 3,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('Stats', 'Statistics');
+      const { container, debugGUI } = createNewDebuggerPane('Stats', `${icon} Statistics`);
 
       statsDebugGUIs.push(debugGUI);
       buildStatsDebugGUI(debugGUI, true);
@@ -94,6 +96,7 @@ const setDebuggerUI = () =>
       return container;
     },
   });
+};
 
 export const updateStatsDebugGUI = () => {
   for (let i = 0; i < statsDebugGUIs.length; i++) {
