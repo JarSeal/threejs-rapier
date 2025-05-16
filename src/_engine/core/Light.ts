@@ -16,6 +16,7 @@ import { getRenderer, getRendererOptions } from './Renderer';
 import { BladeController, View } from '@tweakpane/core';
 import { FOUR_PX_TO_8K_LIST, RENDERER_SHADOW_OPTIONS } from '../utils/constants';
 import { getSvgIcon } from './UI/icons/SvgIcon';
+import { toggleLightHelper } from './Helpers';
 
 export type Lights =
   | THREE.AmbientLight
@@ -376,7 +377,9 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   type: '${type}',${light.visible === false ? '\n  enabled: false,' : ''}
   ${paramsString}
 });`;
-      console.log(createScript);
+      llog(createScript);
+      // @TODO: copy to clipboard (and maybe remove the llog above)
+      // @TODO: add toast that the script has been copied
     },
   });
   const logButton = CMP({
@@ -418,10 +421,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   if (type !== 'AMBIENT' && type !== 'HEMISPHERE') {
     debuggerWindowPane
       .addBinding(light.userData, 'showHelper', { label: 'Show helper' })
-      .on('change', (e) => {
-        const show = e.value;
-        // @TODO: add helper
-      });
+      .on('change', (e) => toggleLightHelper(light.userData.id, e.value));
   }
   debuggerWindowPane.addBinding(light, 'visible', { label: 'Enabled' });
   debuggerWindowPane.addBinding(light, 'intensity', { label: 'Intensity', step: 0.001 });
@@ -640,7 +640,9 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         shadowOptsBindings.forEach(
           (binding) => (binding.disabled = !renderOptions.enableShadows || !e.value)
         );
-        l.castShadow = e.value; // @TODO: check if this is a bug in the WebGPU renderer, ask in three.js forum (the shadows won't just turn on/off, we have to do this trick below)
+        // @TODO: check if this is a bug in the WebGPU renderer, ask in three.js forum (the shadows won't just turn on/off, we have to do this trick below)
+        // @NOTE: this has been fixed to the current dev branch, so refactor this when a new release of three.js is released
+        l.castShadow = e.value;
         const newLight = l.clone(true);
 
         l.removeFromParent();
@@ -829,14 +831,12 @@ const createLightsDebuggerList = () => {
     const light = lights[keys[i]];
     const rootScene = getRootScene();
     if (!rootScene) continue;
-
     const foundInScene = rootScene.getObjectByProperty('uuid', light.uuid);
     if (!foundInScene) continue;
     lightsInScene = true;
 
     const button = CMP({
       onClick: () => {
-        // @TODO: get draggable window state here and if open and data.id === keys[i], then close the window
         const winState = getDraggableWindow(WIN_ID);
         if (winState?.isOpen && winState?.data?.id === keys[i]) {
           closeDraggableWindow(WIN_ID);

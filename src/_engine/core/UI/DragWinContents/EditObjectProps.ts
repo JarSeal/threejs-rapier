@@ -1,5 +1,6 @@
 import { CMP } from '../../../utils/CMP';
 
+// @TODO: remove this at some point
 export const editObjectPropsContentFn = () => {
   const wrapperCMP = CMP({
     html: () =>

@@ -17,6 +17,7 @@ import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugTools';
 import { stepPhysicsWorld } from './PhysicsRapier';
 import { getSvgIcon } from './UI/icons/SvgIcon';
+import { updateHelpers } from './Helpers';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -88,6 +89,10 @@ const mainLoopForDebug = async () => {
     loopState.isMasterPlaying = false;
     return;
   }
+
+  // Update helpers (only in debug)
+  updateHelpers();
+
   // main loopers
   const mainLoopers = getSceneMainLoopers();
   for (let i = 0; i < mainLoopers.length; i++) {

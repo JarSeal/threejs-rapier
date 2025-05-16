@@ -1,0 +1,107 @@
+import * as THREE from 'three/webgpu';
+import { getLight } from './Light';
+import { isDebugEnvironment } from './Config';
+
+type LightHelper = THREE.DirectionalLightHelper | THREE.PointLightHelper;
+
+let lightHelpers: LightHelper[] = [];
+let cameraHelpers: THREE.CameraHelper[] = [];
+
+const addToLightHelpers = (helper: LightHelper) => {
+  const foundHelper = lightHelpers.find((h) => h.userData.id === helper.userData.id);
+  if (foundHelper) return;
+  lightHelpers.push(helper);
+};
+
+const removeFromLightHelpers = (helper: LightHelper) => {
+  lightHelpers = lightHelpers.filter((h) => h.userData.id !== helper.userData.id);
+};
+
+const addToCameraHelpers = (helper: THREE.CameraHelper) => {
+  const foundHelper = cameraHelpers.find((h) => h.userData.id === helper.userData.id);
+  if (foundHelper) return;
+  cameraHelpers.push(helper);
+};
+
+const removeFromCameraHelpers = (helper: THREE.CameraHelper) => {
+  cameraHelpers = cameraHelpers.filter((h) => h.userData.id !== helper.userData.id);
+};
+
+export const toggleLightHelper = (id: string, show: boolean) => {
+  const light = getLight(id);
+  if (!light || !isDebugEnvironment()) return;
+
+  // Light found in scene
+  if (!show && light.userData.helperCreated) {
+    // Hide helper
+    const cameraHelper = light.children.find(
+      (child) => child.type === 'CameraHelper'
+    ) as THREE.CameraHelper;
+    if (cameraHelper) {
+      cameraHelper.visible = false;
+      removeFromCameraHelpers(cameraHelper);
+    }
+    const lightHelper = light.children.find(
+      (child) => child.type === 'DirectionalLightHelper' || child.type === 'PointLightHelper'
+    ) as LightHelper;
+    if (lightHelper) {
+      lightHelper.visible = false;
+      removeFromLightHelpers(lightHelper);
+    }
+  } else if (show && light.userData.helperCreated) {
+    // Show helper
+    const cameraHelper = light.children.find(
+      (child) => child.type === 'CameraHelper'
+    ) as THREE.CameraHelper;
+    if (cameraHelper) {
+      cameraHelper.visible = true;
+      addToCameraHelpers(cameraHelper);
+    }
+    const lightHelper = light.children.find(
+      (child) => child.type === 'DirectionalLightHelper' || child.type === 'PointLightHelper'
+    ) as LightHelper;
+    if (lightHelper) {
+      lightHelper.visible = true;
+      addToLightHelpers(lightHelper);
+    }
+  } else {
+    // Create helper and then show helper
+    if (light.shadow?.camera) {
+      const cameraHelper = new THREE.CameraHelper(light.shadow.camera);
+      addToCameraHelpers(cameraHelper);
+      light.add(cameraHelper);
+      cameraHelper.update();
+    }
+    const type = light.userData.type;
+    if (type === 'DIRECTIONAL') {
+      const l = light as THREE.DirectionalLight;
+      const lightHelper = new THREE.DirectionalLightHelper(l);
+      lightHelper.userData.id = `${l.userData.id}__helper`;
+      addToLightHelpers(lightHelper);
+      l.add(lightHelper);
+      lightHelper.update();
+      l.target.userData.id = `${l.userData.id}__target`;
+      lightHelper.update();
+    } else if (type === 'POINT') {
+      const lightHelper = new THREE.PointLightHelper(light as THREE.PointLight);
+      lightHelper.userData.id = `${light.userData.id}__helper`;
+      addToLightHelpers(lightHelper);
+      light.add(lightHelper);
+      lightHelper.update();
+    } else if (type === 'SPOT') {
+      // @TODO: add spotlight helper
+    }
+    light.userData.showHelper = true;
+    light.userData.helperCreated = true;
+  }
+};
+
+export const updateHelpers = () => {
+  for (let i = 0; i < cameraHelpers.length; i++) {
+    cameraHelpers[i]?.update();
+  }
+  for (let i = 0; i < lightHelpers.length; i++) {
+    // @NOTE: There is a bug with (at least) directional light that the helper does not update in some cases, this setTimeout fixes it (dirty fix)
+    setTimeout(() => lightHelpers[i]?.update(), 0);
+  }
+};

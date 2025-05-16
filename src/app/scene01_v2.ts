@@ -364,16 +364,16 @@ export const scene01 = async () =>
         color: 0xffe5c7,
         // intensity: Math.PI,
         intensity: 5,
-        castShadow: true,
-        // shadowMapSize: [2048, 2048],
-        shadowMapSize: [512, 512],
-        shadowCamNearFar: [1, 15],
-        shadowCamLeftRightTopBottom: [-10, 10, 10, -10],
-        shadowBias: -0.01,
-        shadowNormalBias: -0.01,
-        shadowRadius: 5, // Not for PCFSoftShadowMap type
-        shadowBlurSamples: 10, // Only for VSM shadowmap types
-        shadowIntensity: 0.75,
+        // castShadow: true,
+        // // shadowMapSize: [2048, 2048],
+        // shadowMapSize: [512, 512],
+        // shadowCamNearFar: [1, 15],
+        // shadowCamLeftRightTopBottom: [-10, 10, 10, -10],
+        // shadowBias: -0.01,
+        // shadowNormalBias: -0.01,
+        // shadowRadius: 5, // Not for PCFSoftShadowMap type
+        // shadowBlurSamples: 10, // Only for VSM shadowmap types
+        // shadowIntensity: 0.75,
       },
     });
     directionalLight.position.set(-5, 2.5, 2.5);
