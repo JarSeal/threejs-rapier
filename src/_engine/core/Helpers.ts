@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { getLight } from './Light';
 import { isDebugEnvironment } from './Config';
+import { getDebugMeshIcon } from './UI/icons/DebugMeshIcons';
 
 type LightHelper = THREE.DirectionalLightHelper | THREE.PointLightHelper;
 
@@ -79,10 +80,13 @@ export const toggleLightHelper = (id: string, show: boolean) => {
 
       const l = light as THREE.DirectionalLight;
       const lightHelper = new THREE.DirectionalLightHelper(l);
+      const iconMesh = getDebugMeshIcon('DIRECTIONAL');
+      lightHelper.add(iconMesh);
       lightHelper.userData.id = `${l.userData.id}__helper`;
       addToLightHelpers(lightHelper);
       l.add(lightHelper);
       lightHelper.update();
+      iconMesh.lookAt(l.target.position);
       l.target.userData.id = `${l.userData.id}__target`;
       lightHelper.update();
     } else if (type === 'POINT') {
