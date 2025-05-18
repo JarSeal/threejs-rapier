@@ -421,7 +421,10 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   if (type !== 'AMBIENT' && type !== 'HEMISPHERE') {
     debuggerWindowPane
       .addBinding(light.userData, 'showHelper', { label: 'Show helper' })
-      .on('change', (e) => toggleLightHelper(light.userData.id, e.value));
+      .on('change', (e) => {
+        toggleLightHelper(light.userData.id, e.value);
+        light.userData.showHelper = e.value;
+      });
   }
   debuggerWindowPane.addBinding(light, 'visible', { label: 'Enabled' });
   debuggerWindowPane.addBinding(light, 'intensity', { label: 'Intensity', step: 0.001 });
@@ -637,6 +640,26 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         const curScene = getCurrentScene();
         if (!curScene) return;
 
+        // Hide camera helper temporarily
+        if (l.userData.helperCreated) {
+          toggleLightHelper(l.userData.id, false);
+          const lightHelper = light.children.find(
+            (child) => child.type === 'DirectionalLightHelper'
+          ) as THREE.DirectionalLightHelper;
+          if (lightHelper) {
+            lightHelper.removeFromParent();
+            lightHelper.dispose();
+          }
+          const cameraHelper = light.children.find(
+            (child) => child.type === 'CameraHelper'
+          ) as THREE.DirectionalLightHelper;
+          if (cameraHelper) {
+            cameraHelper.removeFromParent();
+            cameraHelper.dispose();
+          }
+          l.userData.helperCreated = false;
+        }
+
         shadowOptsBindings.forEach(
           (binding) => (binding.disabled = !renderOptions.enableShadows || !e.value)
         );
@@ -662,6 +685,11 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         setTimeout(() => {
           updateLightsDebuggerGUI('WINDOW');
         }, 10);
+
+        // Show camera helper for new light
+        if (l.userData.showHelper) {
+          toggleLightHelper(l.userData.id, true);
+        }
       });
     const shadowFolder = debuggerWindowPane.addFolder({ title: 'Shadow', expanded: true });
     const shadowOptsBindings = [

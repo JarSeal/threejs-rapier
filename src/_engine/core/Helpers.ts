@@ -50,12 +50,14 @@ export const toggleLightHelper = (id: string, show: boolean) => {
     }
   } else if (show && light.userData.helperCreated) {
     // Show helper
-    const cameraHelper = light.children.find(
-      (child) => child.type === 'CameraHelper'
-    ) as THREE.CameraHelper;
-    if (cameraHelper) {
-      cameraHelper.visible = true;
-      addToCameraHelpers(cameraHelper);
+    if (light.castShadow) {
+      const cameraHelper = light.children.find(
+        (child) => child.type === 'CameraHelper'
+      ) as THREE.CameraHelper;
+      if (cameraHelper) {
+        cameraHelper.visible = true;
+        addToCameraHelpers(cameraHelper);
+      }
     }
     const lightHelper = light.children.find(
       (child) => child.type === 'DirectionalLightHelper' || child.type === 'PointLightHelper'
@@ -66,14 +68,15 @@ export const toggleLightHelper = (id: string, show: boolean) => {
     }
   } else {
     // Create helper and then show helper
-    if (light.shadow?.camera) {
-      const cameraHelper = new THREE.CameraHelper(light.shadow.camera);
-      addToCameraHelpers(cameraHelper);
-      light.add(cameraHelper);
-      cameraHelper.update();
-    }
     const type = light.userData.type;
     if (type === 'DIRECTIONAL') {
+      if (light.castShadow && light.shadow?.camera) {
+        const cameraHelper = new THREE.CameraHelper(light.shadow.camera);
+        addToCameraHelpers(cameraHelper);
+        light.add(cameraHelper);
+        cameraHelper.update();
+      }
+
       const l = light as THREE.DirectionalLight;
       const lightHelper = new THREE.DirectionalLightHelper(l);
       lightHelper.userData.id = `${l.userData.id}__helper`;
