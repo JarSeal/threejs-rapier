@@ -31,8 +31,8 @@ const createDirectionalLightIcon = () => {
   return group;
 };
 
-const createDefaultMesh = () => {
-  const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2, 1, 1, 1);
+const createPointLightIcon = () => {
+  const geometry = new THREE.SphereGeometry(0.3, 16, 8);
   const material = new THREE.MeshBasicMaterial({ color: MESH_ICON_COLOR });
   const mesh = new THREE.Mesh(geometry, material);
   const group = new THREE.Group();
@@ -41,10 +41,22 @@ const createDefaultMesh = () => {
   return group;
 };
 
+const createDefaultMesh = () => {
+  // This icon should not be shown if all icon creators have been defined
+  const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2, 1, 1, 1);
+  const material = new THREE.MeshBasicMaterial({ color: MESH_ICON_COLOR });
+  const mesh = new THREE.Mesh(geometry, material);
+  const group = new THREE.Group();
+  group.add(mesh);
+  debugMeshIcons.POINT = group;
+  return group;
+};
+
 export const getDebugMeshIcon = (type: keyof typeof debugMeshIcons) => {
   let mesh = debugMeshIcons[type];
   if (!mesh) {
     if (type === 'DIRECTIONAL') mesh = createDirectionalLightIcon();
+    if (type === 'POINT') mesh = createPointLightIcon();
   }
   if (!mesh) {
     lerror(`Could not find debug mesh icon for type '${type}'`);

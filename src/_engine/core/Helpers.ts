@@ -1,13 +1,34 @@
+import * as THREEGL from 'three';
 import * as THREE from 'three/webgpu';
+import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
 import { getLight } from './Light';
 import { isDebugEnvironment } from './Config';
 import { getDebugMeshIcon } from './UI/icons/DebugMeshIcons';
+import { DEBUG_CAMERA_ID } from '../debug/DebugTools';
+import { getCamera } from './Camera';
+import { getRenderer } from './Renderer';
 
 type LightHelper = THREE.DirectionalLightHelper | THREE.PointLightHelper;
 
+let axisGizmo: ViewHelper | null = null;
 let lightHelpers: LightHelper[] = [];
 let cameraHelpers: THREE.CameraHelper[] = [];
 
+// Axis helper
+export const createAxisGizmo = () => {
+  const debugCamera = getCamera(DEBUG_CAMERA_ID);
+  const renderer = getRenderer();
+  if (!debugCamera || !renderer) return;
+  axisGizmo = null;
+  return; // Disable for now
+  // axisGizmo = new ViewHelper(debugCamera, renderer?.domElement);
+};
+
+export const toggleAxisGizmoVisibility = (show: boolean) => {
+  if (axisGizmo) axisGizmo.visible = show;
+};
+
+// Light and camera helpers
 const addToLightHelpers = (helper: LightHelper) => {
   const foundHelper = lightHelpers.find((h) => h.userData.id === helper.userData.id);
   if (foundHelper) return;
@@ -92,6 +113,8 @@ export const toggleLightHelper = (id: string, show: boolean) => {
     } else if (type === 'POINT') {
       const lightHelper = new THREE.PointLightHelper(light as THREE.PointLight);
       lightHelper.userData.id = `${light.userData.id}__helper`;
+      const iconMesh = getDebugMeshIcon('POINT');
+      lightHelper.add(iconMesh);
       addToLightHelpers(lightHelper);
       light.add(lightHelper);
       lightHelper.update();
@@ -104,9 +127,15 @@ export const toggleLightHelper = (id: string, show: boolean) => {
 };
 
 export const updateHelpers = () => {
+  const renderer = getRenderer();
+  if (renderer) {
+    axisGizmo?.render(renderer as unknown as THREEGL.WebGLRenderer); // Small hack with typing to make this work
+  }
+
   for (let i = 0; i < cameraHelpers.length; i++) {
     cameraHelpers[i]?.update();
   }
+
   for (let i = 0; i < lightHelpers.length; i++) {
     // @NOTE: There is a bug with (at least) directional light that the helper does not update in some cases, this setTimeout fixes it (dirty fix)
     setTimeout(() => lightHelpers[i]?.update(), 0);

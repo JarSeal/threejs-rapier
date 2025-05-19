@@ -25,7 +25,7 @@ export type Materials =
 
 const materials: { [id: string]: Materials } = {};
 
-const textureMapKeys = [
+export const textureMapKeys = [
   'map',
   'alphaMap',
   'aoMap',
@@ -252,15 +252,10 @@ export const saveMaterial = (material: Materials | Materials[], givenId?: string
  */
 export const doesMatExist = (id: string) => Boolean(materials[id]);
 
+/**
+ * Update all materials (needsUpdate = true) in the scene
+ */
 export const updateAllMaterials = () => {
-  // const keys = Object.keys(materials);
-  // for (let i = 0; keys.length; i++) {
-  //   const material = materials[keys[i]];
-  //   console.log('Materila', material);
-  //   break;
-  //   if (material?.isMaterial) material.needsUpdate = true;
-  // }
-
   const rootScene = getRootScene();
   if (!rootScene) return;
 
@@ -268,7 +263,9 @@ export const updateAllMaterials = () => {
     const c = child as THREE.Mesh;
     if (c?.material) {
       if (Array.isArray(c.material)) {
-        // @TODO
+        for (let i = 0; i < c.material.length; i++) {
+          c.material[i].needsUpdate = true;
+        }
       } else {
         c.material.needsUpdate = true;
       }

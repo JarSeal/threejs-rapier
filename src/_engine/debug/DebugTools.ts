@@ -20,6 +20,7 @@ import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
 import { openDraggableWindow } from '../core/UI/DraggableWindow';
 import { openDialog } from '../core/UI/DialogWindow';
 import { getSvgIcon } from '../core/UI/icons/SvgIcon';
+import { createAxisGizmo, toggleAxisGizmoVisibility } from '../core/Helpers';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -73,6 +74,9 @@ type DebugToolsState = {
     loggingFolderExpanded: boolean;
   };
   debugCamera: { [sceneId: string]: DebugCameraState };
+  helpers: {
+    showAxisHelper: boolean;
+  };
 };
 
 let firstDebugToolsStateLoaded = false;
@@ -94,6 +98,9 @@ let debugToolsState: DebugToolsState = {
     loggingFolderExpanded: false,
   },
   debugCamera: {},
+  helpers: {
+    showAxisHelper: true,
+  },
 };
 
 /**
@@ -162,6 +169,9 @@ const createDebugToolsDebugGUI = () => {
     lsSetItem(LS_KEY, debugToolsState);
   });
   orbitControls.enabled = curSceneDebugCamParams.enabled;
+
+  createAxisGizmo();
+  toggleAxisGizmoVisibility(debugToolsState.helpers.showAxisHelper);
 
   const icon = getSvgIcon('tools');
   createDebuggerTab({

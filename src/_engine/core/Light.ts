@@ -17,6 +17,7 @@ import { BladeController, View } from '@tweakpane/core';
 import { FOUR_PX_TO_8K_LIST, RENDERER_SHADOW_OPTIONS } from '../utils/constants';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { toggleLightHelper } from './Helpers';
+import { removeObjectAndChildrenFromMemory } from '../utils/helpers';
 
 export type Lights =
   | THREE.AmbientLight
@@ -467,6 +468,16 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         const curScene = getCurrentScene();
         if (!curScene) return;
 
+        // Hide helper temporarily
+        if (l.userData.helperCreated) {
+          toggleLightHelper(l.userData.id, false);
+          const lightHelper = light.children.find(
+            (child) => child.type === 'PointLightHelper'
+          ) as THREE.PointLightHelper;
+          if (lightHelper) removeObjectAndChildrenFromMemory(lightHelper);
+          l.userData.helperCreated = false;
+        }
+
         shadowOptsBindings.forEach(
           (binding) => (binding.disabled = !renderOptions.enableShadows || !e.value)
         );
@@ -490,6 +501,11 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         setTimeout(() => {
           updateLightsDebuggerGUI('WINDOW');
         }, 10);
+
+        // Show camera helper for new light
+        if (l.userData.showHelper) {
+          toggleLightHelper(l.userData.id, true);
+        }
       });
     const shadowFolder = debuggerWindowPane.addFolder({ title: 'Shadow', expanded: true });
     const shadowOptsBindings = [
@@ -640,23 +656,17 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         const curScene = getCurrentScene();
         if (!curScene) return;
 
-        // Hide camera helper temporarily
+        // Hide helpers temporarily
         if (l.userData.helperCreated) {
           toggleLightHelper(l.userData.id, false);
           const lightHelper = light.children.find(
             (child) => child.type === 'DirectionalLightHelper'
           ) as THREE.DirectionalLightHelper;
-          if (lightHelper) {
-            lightHelper.removeFromParent();
-            lightHelper.dispose();
-          }
+          if (lightHelper) removeObjectAndChildrenFromMemory(lightHelper);
           const cameraHelper = light.children.find(
             (child) => child.type === 'CameraHelper'
           ) as THREE.DirectionalLightHelper;
-          if (cameraHelper) {
-            cameraHelper.removeFromParent();
-            cameraHelper.dispose();
-          }
+          if (cameraHelper) removeObjectAndChildrenFromMemory(cameraHelper);
           l.userData.helperCreated = false;
         }
 
