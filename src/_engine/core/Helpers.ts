@@ -1,31 +1,67 @@
-import * as THREEGL from 'three';
 import * as THREE from 'three/webgpu';
-import { ViewHelper } from 'three/addons/helpers/ViewHelper.js';
 import { getLight } from './Light';
 import { isDebugEnvironment } from './Config';
 import { getDebugMeshIcon } from './UI/icons/DebugMeshIcons';
-import { DEBUG_CAMERA_ID } from '../debug/DebugTools';
-import { getCamera } from './Camera';
-import { getRenderer } from './Renderer';
+import { getRootScene } from './Scene';
+import { getDebugToolsState } from '../debug/DebugTools';
 
 type LightHelper = THREE.DirectionalLightHelper | THREE.PointLightHelper;
 
-let axisGizmo: ViewHelper | null = null;
+let axesHelper: THREE.AxesHelper | null = null;
+let gridHelper: THREE.GridHelper | null = null;
+let polarGridHelper: THREE.PolarGridHelper | null = null;
 let lightHelpers: LightHelper[] = [];
 let cameraHelpers: THREE.CameraHelper[] = [];
 
-// Axis helper
-export const createAxisGizmo = () => {
-  const debugCamera = getCamera(DEBUG_CAMERA_ID);
-  const renderer = getRenderer();
-  if (!debugCamera || !renderer) return;
-  axisGizmo = null;
-  return; // Disable for now
-  // axisGizmo = new ViewHelper(debugCamera, renderer?.domElement);
+// Axes helper
+export const createAxesHelper = (size?: number) => {
+  const rootScene = getRootScene();
+  if (!rootScene) return;
+  if (axesHelper) {
+    axesHelper.removeFromParent();
+    axesHelper.dispose();
+  }
+  if (!size) size = getDebugToolsState().helpers.axesHelperSize;
+  axesHelper = new THREE.AxesHelper(size);
+  rootScene.add(axesHelper);
+};
+export const toggleAxesHelperVisibility = (show: boolean) => {
+  if (axesHelper) axesHelper.visible = show;
 };
 
-export const toggleAxisGizmoVisibility = (show: boolean) => {
-  if (axisGizmo) axisGizmo.visible = show;
+// Grid helper
+export const createGridHelper = (gridSize: number, gridDivisionsSize: number) => {
+  const rootScene = getRootScene();
+  if (!rootScene) return;
+  if (gridHelper) {
+    gridHelper.removeFromParent();
+    gridHelper.dispose();
+  }
+  gridHelper = new THREE.GridHelper(gridSize, gridDivisionsSize);
+  rootScene.add(gridHelper);
+};
+export const toggleGridHelperVisibility = (show: boolean) => {
+  if (gridHelper) gridHelper.visible = show;
+};
+
+// Polar grid helper
+export const createPolarGridHelper = (
+  radius: number,
+  sectors: number,
+  rings: number,
+  divisions: number
+) => {
+  const rootScene = getRootScene();
+  if (!rootScene) return;
+  if (polarGridHelper) {
+    polarGridHelper.removeFromParent();
+    polarGridHelper.dispose();
+  }
+  polarGridHelper = new THREE.PolarGridHelper(radius, sectors, rings, divisions);
+  rootScene.add(polarGridHelper);
+};
+export const togglePolarGridHelperVisibility = (show: boolean) => {
+  if (polarGridHelper) polarGridHelper.visible = show;
 };
 
 // Light and camera helpers
@@ -39,15 +75,19 @@ const removeFromLightHelpers = (helper: LightHelper) => {
   lightHelpers = lightHelpers.filter((h) => h.userData.id !== helper.userData.id);
 };
 
-const addToCameraHelpers = (helper: THREE.CameraHelper) => {
+const addToCameraHelpers = (helper: THREE.CameraHelper, isLightHelper?: boolean) => {
   const foundHelper = cameraHelpers.find((h) => h.userData.id === helper.userData.id);
   if (foundHelper) return;
+  if (isLightHelper) helper.userData.isLightHelper = true;
   cameraHelpers.push(helper);
 };
 
 const removeFromCameraHelpers = (helper: THREE.CameraHelper) => {
   cameraHelpers = cameraHelpers.filter((h) => h.userData.id !== helper.userData.id);
 };
+
+export const getAllLightHelpers = () => lightHelpers;
+export const getAllCameraHelpers = () => cameraHelpers;
 
 export const toggleLightHelper = (id: string, show: boolean) => {
   const light = getLight(id);
@@ -78,7 +118,7 @@ export const toggleLightHelper = (id: string, show: boolean) => {
       ) as THREE.CameraHelper;
       if (cameraHelper) {
         cameraHelper.visible = true;
-        addToCameraHelpers(cameraHelper);
+        addToCameraHelpers(cameraHelper, true);
       }
     }
     const lightHelper = light.children.find(
@@ -94,7 +134,7 @@ export const toggleLightHelper = (id: string, show: boolean) => {
     if (type === 'DIRECTIONAL') {
       if (light.castShadow && light.shadow?.camera) {
         const cameraHelper = new THREE.CameraHelper(light.shadow.camera);
-        addToCameraHelpers(cameraHelper);
+        addToCameraHelpers(cameraHelper, true);
         light.add(cameraHelper);
         cameraHelper.update();
       }
@@ -108,7 +148,7 @@ export const toggleLightHelper = (id: string, show: boolean) => {
       l.add(lightHelper);
       lightHelper.update();
       iconMesh.lookAt(l.target.position);
-      l.target.userData.id = `${l.userData.id}__target`;
+      l.target.userData.id = `${l.userData.id}__helperTarget`;
       lightHelper.update();
     } else if (type === 'POINT') {
       const lightHelper = new THREE.PointLightHelper(light as THREE.PointLight);
@@ -127,11 +167,6 @@ export const toggleLightHelper = (id: string, show: boolean) => {
 };
 
 export const updateHelpers = () => {
-  const renderer = getRenderer();
-  if (renderer) {
-    axisGizmo?.render(renderer as unknown as THREEGL.WebGLRenderer); // Small hack with typing to make this work
-  }
-
   for (let i = 0; i < cameraHelpers.length; i++) {
     cameraHelpers[i]?.update();
   }

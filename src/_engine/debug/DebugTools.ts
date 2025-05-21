@@ -20,7 +20,18 @@ import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
 import { openDraggableWindow } from '../core/UI/DraggableWindow';
 import { openDialog } from '../core/UI/DialogWindow';
 import { getSvgIcon } from '../core/UI/icons/SvgIcon';
-import { createAxisGizmo, toggleAxisGizmoVisibility } from '../core/Helpers';
+import {
+  createAxesHelper,
+  createGridHelper,
+  createPolarGridHelper,
+  getAllCameraHelpers,
+  getAllLightHelpers,
+  toggleAxesHelperVisibility,
+  toggleGridHelperVisibility,
+  toggleLightHelper,
+  togglePolarGridHelperVisibility,
+} from '../core/Helpers';
+import { getAllLights } from '../core/Light';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -75,7 +86,17 @@ type DebugToolsState = {
   };
   debugCamera: { [sceneId: string]: DebugCameraState };
   helpers: {
-    showAxisHelper: boolean;
+    helpersFolderExpanded: boolean;
+    showAxesHelper: boolean;
+    axesHelperSize: number;
+    showGridHelper: boolean;
+    gridSize: number;
+    gridDivisionsSize: number;
+    showPolarGridHelper: boolean;
+    polarGridRadius: number;
+    polarGridSectors: number;
+    polarGridRings: number;
+    polarGridDivisions: number;
   };
 };
 
@@ -99,7 +120,17 @@ let debugToolsState: DebugToolsState = {
   },
   debugCamera: {},
   helpers: {
-    showAxisHelper: true,
+    helpersFolderExpanded: false,
+    showAxesHelper: false,
+    axesHelperSize: 1,
+    showGridHelper: false,
+    gridSize: 100,
+    gridDivisionsSize: 100,
+    showPolarGridHelper: false,
+    polarGridRadius: 10,
+    polarGridSectors: 16,
+    polarGridRings: 8,
+    polarGridDivisions: 16,
   },
 };
 
@@ -170,8 +201,19 @@ const createDebugToolsDebugGUI = () => {
   });
   orbitControls.enabled = curSceneDebugCamParams.enabled;
 
-  createAxisGizmo();
-  toggleAxisGizmoVisibility(debugToolsState.helpers.showAxisHelper);
+  createAxesHelper(debugToolsState.helpers.axesHelperSize);
+  toggleAxesHelperVisibility(debugToolsState.helpers.showAxesHelper);
+
+  createGridHelper(debugToolsState.helpers.gridSize, debugToolsState.helpers.gridDivisionsSize);
+  toggleGridHelperVisibility(debugToolsState.helpers.showGridHelper);
+
+  createPolarGridHelper(
+    debugToolsState.helpers.polarGridRadius,
+    debugToolsState.helpers.polarGridSectors,
+    debugToolsState.helpers.polarGridRings,
+    debugToolsState.helpers.polarGridDivisions
+  );
+  togglePolarGridHelperVisibility(debugToolsState.helpers.showPolarGridHelper);
 
   const icon = getSvgIcon('tools');
   createDebuggerTab({
@@ -668,6 +710,158 @@ const buildDebugGUI = () => {
     .on('change', () => {
       lsSetItem(LS_KEY, debugToolsState);
     });
+
+  // Helpers
+  const helpersFolder = debugGUI
+    .addFolder({
+      title: 'Helpers',
+      expanded: debugToolsState.helpers.helpersFolderExpanded,
+    })
+    .on('fold', (state) => {
+      debugToolsState.helpers.helpersFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'showAxesHelper', { label: 'Show axes helper' })
+    .on('change', (e) => {
+      toggleAxesHelperVisibility(e.value);
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'axesHelperSize', {
+      label: 'Axes helper size',
+      min: 0.1,
+      step: 0.1,
+    })
+    .on('change', (e) => {
+      createAxesHelper(Number(e.value));
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'showGridHelper', { label: 'Show grid helper' })
+    .on('change', (e) => {
+      toggleGridHelperVisibility(e.value);
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'gridSize', { label: 'Grid size', min: 0.01, step: 0.01 })
+    .on('change', (e) => {
+      createGridHelper(Number(e.value), debugToolsState.helpers.gridDivisionsSize);
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'gridDivisionsSize', {
+      label: "Grid division's size",
+      min: 0.01,
+      step: 0.01,
+    })
+    .on('change', (e) => {
+      createGridHelper(debugToolsState.helpers.gridSize, Number(e.value));
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'showPolarGridHelper', { label: 'Show polar grid helper' })
+    .on('change', (e) => {
+      togglePolarGridHelperVisibility(e.value);
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'polarGridRadius', {
+      label: 'Polar grid radius  ',
+      min: 0.01,
+      step: 0.01,
+    })
+    .on('change', (e) => {
+      createPolarGridHelper(
+        Number(e.value),
+        debugToolsState.helpers.polarGridSectors,
+        debugToolsState.helpers.polarGridRings,
+        debugToolsState.helpers.polarGridDivisions
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'polarGridSectors', {
+      label: 'Polar grid sectors',
+      min: 1,
+      step: 1,
+    })
+    .on('change', (e) => {
+      createPolarGridHelper(
+        debugToolsState.helpers.polarGridRadius,
+        Number(e.value),
+        debugToolsState.helpers.polarGridRings,
+        debugToolsState.helpers.polarGridDivisions
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'polarGridRings', {
+      label: 'Polar grid rings',
+      min: 0,
+      step: 1,
+    })
+    .on('change', (e) => {
+      createPolarGridHelper(
+        debugToolsState.helpers.polarGridRadius,
+        debugToolsState.helpers.polarGridSectors,
+        Number(e.value),
+        debugToolsState.helpers.polarGridDivisions
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'polarGridDivisions', {
+      label: 'Polar grid divisions',
+      min: 0,
+      step: 1,
+    })
+    .on('change', (e) => {
+      createPolarGridHelper(
+        debugToolsState.helpers.polarGridRadius,
+        debugToolsState.helpers.polarGridSectors,
+        debugToolsState.helpers.polarGridRings,
+        Number(e.value)
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder.addButton({ title: 'Hide / show all light helpers' }).on('click', () => {
+    const lightHelpers = getAllLightHelpers();
+    let allNotVisible = true;
+    for (let i = 0; i < lightHelpers.length; i++) {
+      if (lightHelpers[i].visible) {
+        allNotVisible = false;
+        break;
+      }
+    }
+    const allLights = getAllLights();
+    const allLightKeys = Object.keys(allLights);
+    for (let i = 0; i < allLightKeys.length; i++) {
+      const l = allLights[allLightKeys[i]];
+      const id = l.userData.id;
+      if (!id) continue;
+      toggleLightHelper(id, allNotVisible);
+    }
+  });
+  helpersFolder.addButton({ title: 'Hide / show all camera helpers' }).on('click', () => {
+    const cameraHelpers = getAllCameraHelpers();
+    let allNotVisible = true;
+    for (let i = 0; i < cameraHelpers.length; i++) {
+      if (cameraHelpers[i].visible && !cameraHelpers[i].userData.isLightHelper) {
+        allNotVisible = false;
+        break;
+      }
+    }
+    const allCameras = getAllCameras();
+    const allCameraKeys = Object.keys(allCameras);
+    for (let i = 0; i < allCameraKeys.length; i++) {
+      const l = allCameras[allCameraKeys[i]];
+      const id = l.userData.id;
+      if (!id) continue;
+      // @TODO: finish this...
+      // toggleCameraHelper(id, allNotVisible);
+    }
+  });
 
   // Logging actions
   const loggingFolder = debugGUI
