@@ -3,7 +3,8 @@ import { getLight, updateLightsDebuggerGUI } from './Light';
 import { isDebugEnvironment } from './Config';
 import { getDebugMeshIcon } from './UI/icons/DebugMeshIcons';
 import { getRootScene } from './Scene';
-import { getDebugToolsState } from '../debug/DebugTools';
+import { DEBUG_CAMERA_ID, getDebugToolsState } from '../debug/DebugTools';
+import { getCamera, updateCamerasDebuggerGUI } from './Camera';
 
 type LightHelper = THREE.DirectionalLightHelper | THREE.PointLightHelper;
 
@@ -206,6 +207,50 @@ export const toggleLightHelper = (id: string, show: boolean) => {
     light.userData.helperCreated = true;
   }
   updateLightsDebuggerGUI();
+};
+
+export const toggleCameraHelper = (id: string, show: boolean) => {
+  const camera = getCamera(id);
+  if (!camera || !isDebugEnvironment() || camera.userData.id === DEBUG_CAMERA_ID) {
+    return;
+  }
+
+  if (!show && camera.userData.helperCreated) {
+    // Hide helper
+    const cameraHelper = camera.children.find(
+      (child) => child.type === 'CameraHelper'
+    ) as THREE.CameraHelper;
+    if (cameraHelper) {
+      cameraHelper.visible = false;
+      removeFromCameraHelpers(cameraHelper);
+    }
+    camera.userData.showHelper = false;
+  } else if (show && camera.userData.helperCreated) {
+    // Show helper
+    const cameraHelper = camera.children.find(
+      (child) => child.type === 'CameraHelper'
+    ) as THREE.CameraHelper;
+    if (cameraHelper) {
+      cameraHelper.visible = true;
+      addToCameraHelpers(cameraHelper);
+    }
+    camera.userData.showHelper = true;
+  } else if (show) {
+    // Create helper and then show helper
+    const type = camera.userData.type;
+    if (type === 'PERSPECTIVE') {
+      const cameraHelper = new THREE.CameraHelper(camera);
+      cameraHelper.userData.id = `${camera.userData.id}__helper`;
+      const iconMesh = getDebugMeshIcon('CAMERA');
+      cameraHelper.add(iconMesh);
+      addToCameraHelpers(cameraHelper);
+      camera.add(cameraHelper);
+      cameraHelper.update();
+    }
+    camera.userData.showHelper = true;
+    camera.userData.helperCreated = true;
+  }
+  updateCamerasDebuggerGUI();
 };
 
 export const updateHelpers = () => {

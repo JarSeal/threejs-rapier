@@ -380,7 +380,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   ${paramsString}
 });`;
       llog(createScript);
-      // @TODO: copy to clipboard (and maybe remove the llog above)
+      navigator.clipboard.writeText(createScript);
       // @TODO: add toast that the script has been copied
     },
   });

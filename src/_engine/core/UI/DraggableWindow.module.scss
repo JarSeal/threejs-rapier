@@ -282,6 +282,7 @@ $collapseAnimLength: 150ms;
 
 :global(.winSmallIconButton) {
   @include variables.nakedButton;
+  position: relative;
   vertical-align: top;
   overflow: hidden;
   border-radius: 0.2rem;
@@ -304,6 +305,32 @@ $collapseAnimLength: 150ms;
   &:global(.dangerColor) {
     svg path {
       fill: variables.$errorDark;
+    }
+  }
+
+  &:global(.current) {
+    &:before {
+      display: block;
+      content: '';
+      position: absolute;
+      left: -0.6rem;
+      top: -0.6rem;
+      background-color: variables.$debugGuiBackgroundLighter2;
+      width: 1rem;
+      height: 1.2rem;
+      transform: rotate(45deg);
+    }
+  }
+
+  &:disabled {
+    svg path {
+      fill: color.adjust(variables.$debugGuiBackgroundLighter2, $lightness: 20%);
+    }
+
+    &:global(.current) {
+      &:before {
+        background-color: color.adjust(variables.$debugGuiBackgroundLighter2, $lightness: 20%);
+      }
     }
   }
 }

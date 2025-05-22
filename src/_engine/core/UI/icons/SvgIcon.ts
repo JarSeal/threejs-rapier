@@ -1,5 +1,6 @@
 import arrowClockwiseIcon from './svg/arrow-clockwise.svg?raw';
 import arrowCounterClockwiseIcon from './svg/arrow-counterclockwise.svg?raw';
+import cameraIcon from './svg/camera2.svg?raw';
 import cloudSunIcon from './svg/cloud-sun-fill.svg?raw';
 import fileAsterixIcon from './svg/file-earmark-medical-fill.svg?raw';
 import fileCodeIcon from './svg/file-earmark-code-fill.svg?raw';
@@ -14,6 +15,7 @@ import toolsIcon from './svg/tools.svg?raw';
 const icons = {
   arrowClockwise: arrowClockwiseIcon,
   arrowCounterClockwise: arrowCounterClockwiseIcon,
+  camera: cameraIcon,
   cloudSun: cloudSunIcon,
   fileAsterix: fileAsterixIcon,
   fileCode: fileCodeIcon,

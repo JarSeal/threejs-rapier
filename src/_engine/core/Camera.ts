@@ -1,7 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { getWindowSize } from '../utils/Window';
 import { llog, lwarn } from '../utils/Logger';
-import { DEBUG_CAMERA_ID, isUsingDebugCamera } from '../debug/DebugTools';
+import {
+  buildDebugToolsGUI,
+  DEBUG_CAMERA_ID,
+  handleCameraSwitch,
+  isUsingDebugCamera,
+} from '../debug/DebugTools';
 import { CMP, TCMP } from '../utils/CMP';
 import { Pane } from 'tweakpane';
 import {
@@ -14,6 +19,8 @@ import {
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerContainer } from '../debug/DebuggerGUI';
 import { isDebugEnvironment } from './Config';
+import { toggleCameraHelper } from './Helpers';
+import { getRootScene } from './Scene';
 
 const cameras: { [id: string]: THREE.PerspectiveCamera } = {};
 let currentCamera: THREE.PerspectiveCamera | null = null;
@@ -60,6 +67,9 @@ export const createCamera = (
     setCurrentCamera(id);
   }
 
+  const rootScene = getRootScene();
+  if (rootScene) rootScene.add(camera);
+
   return camera;
 };
 
@@ -93,7 +103,7 @@ export const deleteCamera = (id: string) => {
  * @param id camera id
  * @returns THREE.PerspectiveCamera
  */
-export const setCurrentCamera = (id: string) => {
+export const setCurrentCamera = (id: string, doNotHandleDebugCameraSwitch?: boolean) => {
   if (currentCameraId === id) return currentCamera;
   const nextCamera = id ? cameras[id] : null;
   if (!nextCamera) {
@@ -102,6 +112,11 @@ export const setCurrentCamera = (id: string) => {
   }
   currentCameraId = id;
   currentCamera = nextCamera;
+
+  if (isDebugEnvironment() && !doNotHandleDebugCameraSwitch) {
+    handleCameraSwitch(nextCamera.userData.id, undefined, true);
+  }
+
   return nextCamera;
 };
 
@@ -173,6 +188,16 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
 
   debuggerWindowPane = new Pane({ container: debuggerWindowCmp.elem });
 
+  const isCurCam = camera.userData.id === getCurrentCameraId();
+  const useCamBtnClasses = ['winSmallIconButton'];
+  if (isCurCam) useCamBtnClasses.push('current');
+  const useCameraButton = CMP({
+    class: useCamBtnClasses,
+    html: () =>
+      `<button title="${isCurCam ? 'This is the current camera being used' : 'Switch to use this camera'}">${getSvgIcon('camera')}</button>`,
+    attr: isCurCam ? { disabled: 'true' } : {},
+    onClick: () => setCurrentCamera(camera.userData.id),
+  });
   const copyCodeButton = CMP({
     class: 'winSmallIconButton',
     html: () => `<button title="Copy camera creation script">${getSvgIcon('fileCode')}</button>`,
@@ -184,7 +209,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     fov: ${camera.fov},
     near: ${camera.near},
     far: ${camera.far},
-  },`;
+  }`;
       } else if (type === 'ORTOGRAPHIC') {
         // @TODO: add ortographic camera paramsString
         paramsString = `{}`;
@@ -194,7 +219,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   ${paramsString}
 );`;
       llog(createScript);
-      // @TODO: copy to clipboard (and maybe remove the llog above)
+      navigator.clipboard.writeText(createScript);
       // @TODO: add toast that the script has been copied
     },
   });
@@ -226,7 +251,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   <div><span class="winSmallLabel">Name:</span> ${camera.userData.name || ''}</div>
   <div><span class="winSmallLabel">Id:</span> ${camera.userData.id}</div>
 </div>
-<div style="text-align:right">${copyCodeButton}${logButton}${deleteButton}</div>
+<div style="text-align:right">${useCameraButton}${copyCodeButton}${logButton}${deleteButton}</div>
 </div>`,
   });
 
@@ -235,9 +260,11 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   debuggerWindowPane
     .addBinding(camera.userData, 'showHelper', { label: 'Show helper' })
     .on('change', (e) => {
-      // toggleCameraHelper(camera.userData.id, e.value);
-      camera.userData.showHelper = e.value;
+      toggleCameraHelper(camera.userData.id, e.value);
     });
+  debuggerWindowPane.addBinding(camera, 'position', { label: 'Position' }).on('change', () => {
+    camera.updateProjectionMatrix();
+  });
 
   if (type === 'PERSPECTIVE') {
     const c = camera as THREE.PerspectiveCamera;
@@ -313,7 +340,7 @@ const createCameraDebuggerList = () => {
 };
 
 export const createCamerasDebuggerGUI = () => {
-  const icon = getSvgIcon('lightBulb'); // @TODO: change to camera icon
+  const icon = getSvgIcon('camera');
   createDebuggerTab({
     id: 'camerasControls',
     buttonText: icon,

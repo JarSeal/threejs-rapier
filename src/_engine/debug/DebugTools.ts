@@ -3,7 +3,13 @@ import { ShaderNodeObject, uniform } from 'three/tsl';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, FolderApi, View } from '@tweakpane/core';
-import { createCamera, getAllCameras, getCurrentCameraId, setCurrentCamera } from '../core/Camera';
+import {
+  createCamera,
+  getAllCameras,
+  getCurrentCameraId,
+  setCurrentCamera,
+  updateCamerasDebuggerGUI,
+} from '../core/Camera';
 import { getRenderer, getRendererOptions } from '../core/Renderer';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
@@ -27,6 +33,7 @@ import {
   getAllCameraHelpers,
   getAllLightHelpers,
   toggleAxesHelperVisibility,
+  toggleCameraHelper,
   toggleGridHelperVisibility,
   toggleLightHelper,
   togglePolarGridHelperVisibility,
@@ -223,7 +230,7 @@ const createDebugToolsDebugGUI = () => {
         `${icon} Debug Tools Controls`
       );
       toolsDebugGUI = debugGUI;
-      buildDebugGUI();
+      buildDebugToolsGUI();
 
       return container;
     },
@@ -314,7 +321,11 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
  * @param refreshPane (boolean) optional value to determine whether the debug pane should be refreshed or not
  * @returns
  */
-export const setDebugToolsVisibility = (show: boolean, refreshPane?: boolean) => {
+export const setDebugToolsVisibility = (
+  show: boolean,
+  refreshPane?: boolean,
+  doNotSetCamera?: boolean
+) => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) {
     const msg = 'Could not find current scene id in setDebugToolsVisibility';
@@ -347,17 +358,23 @@ export const setDebugToolsVisibility = (show: boolean, refreshPane?: boolean) =>
         )
       );
     }
-    setCurrentCamera(DEBUG_CAMERA_ID);
-    if (refreshPane) buildDebugGUI();
+    if (!doNotSetCamera) setCurrentCamera(DEBUG_CAMERA_ID, true);
+    if (refreshPane) buildDebugToolsGUI();
+    updateCamerasDebuggerGUI();
     return;
   }
 
   if (orbitControls) orbitControls.enabled = false;
   if (debugCamera?.children[0]) debugCamera.children[0].visible = false;
-  setCurrentCamera(
-    debugToolsState.debugCamera[currentSceneId].latestAppCameraId || Object.keys(getAllCameras())[0]
-  );
-  if (refreshPane) buildDebugGUI();
+  if (!doNotSetCamera) {
+    setCurrentCamera(
+      debugToolsState.debugCamera[currentSceneId].latestAppCameraId ||
+        Object.keys(getAllCameras())[0],
+      true
+    );
+  }
+  if (refreshPane) buildDebugToolsGUI();
+  updateCamerasDebuggerGUI();
 };
 
 /**
@@ -512,7 +529,31 @@ export const addSceneToDebugtools = (sceneId: string) => {
   debugToolsState.debugCamera[sceneId] = getDefaultDebugCamParams();
 };
 
-const buildDebugGUI = () => {
+export const handleCameraSwitch = (
+  cameraId?: string,
+  useDebugCamera?: boolean,
+  doNotSetCamera?: boolean
+) => {
+  const currentSceneId = getCurrentSceneId();
+  if (!cameraId && useDebugCamera === undefined) {
+    lerror(
+      'handleCameraSwitch was called without cameraId and without useDebugCamera, one of them is required (in DebugTools).'
+    );
+    return;
+  }
+  if (!currentSceneId) return;
+  const isDebugCamera = cameraId ? cameraId === DEBUG_CAMERA_ID : Boolean(useDebugCamera);
+  if (!debugToolsState.debugCamera[currentSceneId]) {
+    debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
+  }
+  debugToolsState.debugCamera[currentSceneId].enabled = isDebugCamera;
+  curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+  if (envBallFolder) envBallFolder.hidden = !isDebugCamera;
+  lsSetItem(LS_KEY, debugToolsState);
+  setDebugToolsVisibility(isDebugCamera, Boolean(cameraId), doNotSetCamera);
+};
+
+export const buildDebugToolsGUI = () => {
   const debugGUI = toolsDebugGUI;
   const currentSceneId = getCurrentSceneId();
   if (!debugGUI || !currentSceneId) return;
@@ -541,16 +582,7 @@ const buildDebugGUI = () => {
       label: 'Use debug camera',
     })
     .on('change', (e) => {
-      const currentSceneId = getCurrentSceneId();
-      if (!currentSceneId) return;
-      if (!debugToolsState.debugCamera[currentSceneId]) {
-        debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
-      }
-      debugToolsState.debugCamera[currentSceneId].enabled = e.value;
-      curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-      if (envBallFolder) envBallFolder.hidden = !e.value;
-      lsSetItem(LS_KEY, debugToolsState);
-      setDebugToolsVisibility(e.value);
+      handleCameraSwitch(undefined, Boolean(e.value));
     });
   debugCameraFolder
     .addBinding(curSceneDebugCamParams, 'fov', {
@@ -905,8 +937,7 @@ const buildDebugGUI = () => {
       const l = allCameras[allCameraKeys[i]];
       const id = l.userData.id;
       if (!id) continue;
-      // @TODO: finish this...
-      // toggleCameraHelper(id, allNotVisible);
+      toggleCameraHelper(id, allNotVisible);
     }
   });
 
