@@ -11,6 +11,7 @@ import { createDebuggerSceneLoader } from './debug/DebuggerSceneLoader';
 import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
 import { createLightsDebuggerGUI } from './core/Light';
+import { createCamerasDebuggerGUI } from './core/Camera';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -39,6 +40,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     if (isDebugEnvironment()) {
       createRendererDebugGUI();
       createLightsDebuggerGUI();
+      createCamerasDebuggerGUI();
       createPhysicsDebugMesh();
       buildSkyBoxDebugGUI();
       createDebuggerSceneLoader();

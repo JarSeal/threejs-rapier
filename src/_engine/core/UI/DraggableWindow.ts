@@ -580,10 +580,9 @@ const createWindowCMP = (
 
 export const updateDraggableWindow = (id: string) => {
   const state = draggableWindows[id];
-  if (!state) return;
-  removeDraggableWindow(id);
+  if (!state?.isOpen) return;
+  removeDraggableWindow(id, true);
   openDraggableWindow(state);
-  if (!state.isOpen) closeDraggableWindow(id);
 };
 
 const createBackDropId = (id: string) => `backdrop-${id}`;
@@ -944,7 +943,7 @@ const checkAndSetMaxWindowPosition = (state: DraggableWindow) => {
   }
 };
 
-export const removeDraggableWindow = (id: string) => {
+export const removeDraggableWindow = (id: string, doNotSaveToLS?: boolean) => {
   const state = draggableWindows[id];
   if (!state) return;
 
@@ -953,7 +952,7 @@ export const removeDraggableWindow = (id: string) => {
   if (state.windowCMP) state.windowCMP.remove();
   delete draggableWindows[id];
   removeListeners();
-  lsSetItem(LS_KEY, draggableWindows);
+  if (!doNotSaveToLS) lsSetItem(LS_KEY, draggableWindows);
 };
 
 export const handleDraggableWindowsOnSceneChangeStart = () => {

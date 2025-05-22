@@ -85,6 +85,7 @@ type DebugToolsState = {
     loggingFolderExpanded: boolean;
   };
   debugCamera: { [sceneId: string]: DebugCameraState };
+  debugCameraFolderExpanded: boolean;
   helpers: {
     helpersFolderExpanded: boolean;
     showAxesHelper: boolean;
@@ -121,6 +122,7 @@ let debugToolsState: DebugToolsState = {
     loggingFolderExpanded: false,
   },
   debugCamera: {},
+  debugCameraFolderExpanded: false,
   helpers: {
     helpersFolderExpanded: false,
     showAxesHelper: false,
@@ -524,7 +526,17 @@ const buildDebugGUI = () => {
     blades[i].dispose();
   }
 
-  debugGUI
+  // Debug camera
+  const debugCameraFolder = debugGUI
+    .addFolder({
+      title: 'Debug camera',
+      expanded: debugToolsState.debugCameraFolderExpanded,
+    })
+    .on('fold', (state) => {
+      debugToolsState.debugCameraFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  debugCameraFolder
     .addBinding(curSceneDebugCamParams, 'enabled', {
       label: 'Use debug camera',
     })
@@ -540,7 +552,7 @@ const buildDebugGUI = () => {
       lsSetItem(LS_KEY, debugToolsState);
       setDebugToolsVisibility(e.value);
     });
-  debugGUI
+  debugCameraFolder
     .addBinding(curSceneDebugCamParams, 'fov', {
       label: 'Debug camera FOV',
       step: 1,
@@ -560,7 +572,7 @@ const buildDebugGUI = () => {
       curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
       lsSetItem(LS_KEY, debugToolsState);
     });
-  debugGUI
+  debugCameraFolder
     .addBinding(curSceneDebugCamParams, 'near', {
       label: 'Debug camera near',
       step: 0.01,
@@ -579,7 +591,7 @@ const buildDebugGUI = () => {
       curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
       lsSetItem(LS_KEY, debugToolsState);
     });
-  debugGUI
+  debugCameraFolder
     .addBinding(curSceneDebugCamParams, 'far', {
       label: 'Debug camera far',
       step: 0.01,

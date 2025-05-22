@@ -12,7 +12,7 @@ export const MAIN_APP_CAM_ID = 'mainAppCam';
 
 InitEngine(async () => {
   // Init camera
-  createCamera(MAIN_APP_CAM_ID, { isCurrentCamera: true, fov: 90 });
+  createCamera(MAIN_APP_CAM_ID, { name: 'Main Camera', isCurrentCamera: true, fov: 90 });
 
   // Init renderer
   createRenderer({

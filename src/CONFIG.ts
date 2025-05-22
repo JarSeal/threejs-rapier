@@ -6,6 +6,7 @@ import { debuggerSceneListing } from './_engine/debug/debugScenes/debuggerSceneL
 import { buildStatsDebugGUI } from './_engine/debug/Stats';
 import { CMP } from './_engine/utils/CMP';
 import { createEditLightContent } from './_engine/core/Light';
+import { createEditCameraContent } from './_engine/core/Camera';
 
 const config: AppConfig = {
   debugKeys: [
@@ -26,6 +27,7 @@ const config: AppConfig = {
   },
   draggableWindows: {
     lightEditorWindow: { contentFn: createEditLightContent },
+    cameraEditorWindow: { contentFn: createEditCameraContent },
     myFirstDraggableTest: { contentFn: editObjectPropsContentFn },
     statsDraggableWin: {
       contentFn: () => {
