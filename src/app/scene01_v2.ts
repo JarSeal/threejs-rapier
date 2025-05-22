@@ -193,6 +193,7 @@ export const scene01 = async () =>
       box
     );
     box.castShadow = true;
+    box.receiveShadow = true;
     scene.add(box);
 
     const physBall01 = createMesh({
@@ -238,6 +239,7 @@ export const scene01 = async () =>
       },
     });
     physCyl01.castShadow = true;
+    physCyl01.receiveShadow = true;
     scene.add(physCyl01);
 
     // Group example

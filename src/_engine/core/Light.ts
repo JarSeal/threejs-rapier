@@ -541,6 +541,16 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         const curScene = getCurrentScene();
         if (!curScene) return;
 
+        // Hide helper temporarily
+        if (l.userData.helperCreated) {
+          toggleLightHelper(l.userData.id, false);
+          const lightHelper = light.children.find(
+            (child) => child.type === 'PointLightHelper'
+          ) as THREE.PointLightHelper;
+          if (lightHelper) removeObjectAndChildrenFromMemory(lightHelper);
+          l.userData.helperCreated = false;
+        }
+
         const value = Number(e.value);
         const height = l.shadow.mapSize.height || 512;
         l.shadow.mapSize.set(value, height);
@@ -564,6 +574,11 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         setTimeout(() => {
           updateLightsDebuggerGUI('WINDOW');
         }, 10);
+
+        // Show camera helper for new light
+        if (l.userData.showHelper) {
+          toggleLightHelper(l.userData.id, true);
+        }
       }),
       (
         shadowFolder.addBlade({
@@ -576,6 +591,16 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       ).on('change', (e) => {
         const curScene = getCurrentScene();
         if (!curScene) return;
+
+        // Hide helper temporarily
+        if (l.userData.helperCreated) {
+          toggleLightHelper(l.userData.id, false);
+          const lightHelper = light.children.find(
+            (child) => child.type === 'PointLightHelper'
+          ) as THREE.PointLightHelper;
+          if (lightHelper) removeObjectAndChildrenFromMemory(lightHelper);
+          l.userData.helperCreated = false;
+        }
 
         const value = Number(e.value);
         const width = l.shadow.mapSize.width || 512;
@@ -600,6 +625,11 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         setTimeout(() => {
           updateLightsDebuggerGUI('WINDOW');
         }, 10);
+
+        // Show camera helper for new light
+        if (l.userData.showHelper) {
+          toggleLightHelper(l.userData.id, true);
+        }
       }),
       shadowFolder.addBinding(l.shadow, 'bias', {
         label: 'Shadow bias',
@@ -740,6 +770,20 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         const curScene = getCurrentScene();
         if (!curScene) return;
 
+        // Hide helpers temporarily
+        if (l.userData.helperCreated) {
+          toggleLightHelper(l.userData.id, false);
+          const lightHelper = light.children.find(
+            (child) => child.type === 'DirectionalLightHelper'
+          ) as THREE.DirectionalLightHelper;
+          if (lightHelper) removeObjectAndChildrenFromMemory(lightHelper);
+          const cameraHelper = light.children.find(
+            (child) => child.type === 'CameraHelper'
+          ) as THREE.DirectionalLightHelper;
+          if (cameraHelper) removeObjectAndChildrenFromMemory(cameraHelper);
+          l.userData.helperCreated = false;
+        }
+
         const value = Number(e.value);
         const height = l.shadow.map?.height || 512;
         l.shadow.mapSize.set(value, height);
@@ -765,6 +809,11 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         setTimeout(() => {
           updateLightsDebuggerGUI('WINDOW');
         }, 10);
+
+        // Show camera helper for new light
+        if (l.userData.showHelper) {
+          toggleLightHelper(l.userData.id, true);
+        }
       }),
       (
         shadowFolder.addBlade({
@@ -777,6 +826,20 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       ).on('change', (e) => {
         const curScene = getCurrentScene();
         if (!curScene) return;
+
+        // Hide helpers temporarily
+        if (l.userData.helperCreated) {
+          toggleLightHelper(l.userData.id, false);
+          const lightHelper = light.children.find(
+            (child) => child.type === 'DirectionalLightHelper'
+          ) as THREE.DirectionalLightHelper;
+          if (lightHelper) removeObjectAndChildrenFromMemory(lightHelper);
+          const cameraHelper = light.children.find(
+            (child) => child.type === 'CameraHelper'
+          ) as THREE.DirectionalLightHelper;
+          if (cameraHelper) removeObjectAndChildrenFromMemory(cameraHelper);
+          l.userData.helperCreated = false;
+        }
 
         const value = Number(e.value);
         const width = l.shadow.map?.width || 512;
@@ -803,6 +866,11 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         setTimeout(() => {
           updateLightsDebuggerGUI('WINDOW');
         }, 10);
+
+        // Show camera helper for new light
+        if (l.userData.showHelper) {
+          toggleLightHelper(l.userData.id, true);
+        }
       }),
       shadowFolder.addBinding(l.shadow, 'bias', {
         label: 'Shadow bias',
