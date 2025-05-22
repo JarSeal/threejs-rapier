@@ -274,6 +274,10 @@ const WIN_ID = 'lightEditorWindow';
 export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   const d = data as { id: string; winId: string };
   const light = lights[d.id];
+  if (debuggerWindowPane) {
+    debuggerWindowPane.dispose();
+    debuggerWindowPane = null;
+  }
   if (debuggerWindowCmp) debuggerWindowCmp.remove();
   if (!light) return CMP();
 
@@ -283,10 +287,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   updateDebuggerLightsListSelectedClass(d.id);
 
   debuggerWindowCmp = CMP({
-    onRemoveCmp: () => {
-      debuggerWindowPane?.dispose();
-      debuggerWindowPane = null;
-    },
+    onRemoveCmp: () => (debuggerWindowPane = null),
   });
 
   const type = light.userData.type;
@@ -432,23 +433,42 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
   if (type === 'AMBIENT') {
     const l = light as THREE.AmbientLight;
-    debuggerWindowPane.addBinding(l, 'color', { label: 'Color', color: { type: 'float' } });
+    const color = { hex: l.color.getHex() };
+    debuggerWindowPane
+      .addBinding(color, 'hex', { label: 'Color', color: { type: 'float' } })
+      .on('change', (e) => {
+        l.color.setHex(e.value);
+      });
     return debuggerWindowCmp;
   }
 
   if (type === 'HEMISPHERE') {
     const l = light as THREE.HemisphereLight;
-    debuggerWindowPane.addBinding(l, 'color', { label: 'Sky color', color: { type: 'float' } });
-    debuggerWindowPane.addBinding(l, 'groundColor', {
-      label: 'Ground color',
-      color: { type: 'float' },
-    });
+    const color = { hexColor: l.color.getHex(), hexGround: l.groundColor.getHex() };
+    debuggerWindowPane
+      .addBinding(color, 'hexColor', { label: 'Sky color', color: { type: 'float' } })
+      .on('change', (e) => {
+        l.color.setHex(e.value);
+      });
+    debuggerWindowPane
+      .addBinding(color, 'hexGround', {
+        label: 'Ground color',
+        color: { type: 'float' },
+      })
+      .on('change', (e) => {
+        l.groundColor.setHex(e.value);
+      });
     return debuggerWindowCmp;
   }
 
   if (type === 'POINT') {
     let l = light as THREE.PointLight;
-    debuggerWindowPane.addBinding(l, 'color', { label: 'Color', color: { type: 'float' } });
+    const color = { hex: l.color.getHex() };
+    debuggerWindowPane
+      .addBinding(color, 'hex', { label: 'Color', color: { type: 'float' } })
+      .on('change', (e) => {
+        l.color.setHex(e.value);
+      });
     debuggerWindowPane.addBinding(l, 'position', { label: 'Position' });
     debuggerWindowPane.addBinding(l, 'distance', { label: 'Distance' });
     debuggerWindowPane.addBinding(l, 'decay', { label: 'Decay' });
@@ -629,7 +649,12 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
   if (type === 'DIRECTIONAL') {
     let l = light as THREE.DirectionalLight;
-    debuggerWindowPane.addBinding(l, 'color', { label: 'Color', color: { type: 'float' } });
+    const color = { hex: l.color.getHex() };
+    debuggerWindowPane
+      .addBinding(color, 'hex', { label: 'Color', color: { type: 'float' } })
+      .on('change', (e) => {
+        l.color.setHex(e.value);
+      });
     debuggerWindowPane.addBinding(l, 'position', { label: 'Position' });
     debuggerWindowPane.addBinding(l.target, 'position', { label: 'Target' }).on('change', (e) => {
       const curScene = getCurrentScene();

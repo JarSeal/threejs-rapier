@@ -92,6 +92,8 @@ type DebugToolsState = {
     showGridHelper: boolean;
     gridSize: number;
     gridDivisionsSize: number;
+    gridColorCenterLine: number;
+    gridColorGrid: number;
     showPolarGridHelper: boolean;
     polarGridRadius: number;
     polarGridSectors: number;
@@ -126,6 +128,8 @@ let debugToolsState: DebugToolsState = {
     showGridHelper: false,
     gridSize: 100,
     gridDivisionsSize: 100,
+    gridColorCenterLine: 0x888888,
+    gridColorGrid: 0x444444,
     showPolarGridHelper: false,
     polarGridRadius: 10,
     polarGridSectors: 16,
@@ -201,18 +205,8 @@ const createDebugToolsDebugGUI = () => {
   });
   orbitControls.enabled = curSceneDebugCamParams.enabled;
 
-  createAxesHelper(debugToolsState.helpers.axesHelperSize);
   toggleAxesHelperVisibility(debugToolsState.helpers.showAxesHelper);
-
-  createGridHelper(debugToolsState.helpers.gridSize, debugToolsState.helpers.gridDivisionsSize);
   toggleGridHelperVisibility(debugToolsState.helpers.showGridHelper);
-
-  createPolarGridHelper(
-    debugToolsState.helpers.polarGridRadius,
-    debugToolsState.helpers.polarGridSectors,
-    debugToolsState.helpers.polarGridRings,
-    debugToolsState.helpers.polarGridDivisions
-  );
   togglePolarGridHelperVisibility(debugToolsState.helpers.showPolarGridHelper);
 
   const icon = getSvgIcon('tools');
@@ -721,7 +715,7 @@ const buildDebugGUI = () => {
       debugToolsState.helpers.helpersFolderExpanded = state.expanded;
       lsSetItem(LS_KEY, debugToolsState);
     });
-  helpersFolder
+  helpersFolder // AXES HELPER
     .addBinding(debugToolsState.helpers, 'showAxesHelper', { label: 'Show axes helper' })
     .on('change', (e) => {
       toggleAxesHelperVisibility(e.value);
@@ -737,7 +731,8 @@ const buildDebugGUI = () => {
       createAxesHelper(Number(e.value));
       lsSetItem(LS_KEY, debugToolsState);
     });
-  helpersFolder
+  helpersFolder.addBlade({ view: 'separator' });
+  helpersFolder // GRID HELPER
     .addBinding(debugToolsState.helpers, 'showGridHelper', { label: 'Show grid helper' })
     .on('change', (e) => {
       toggleGridHelperVisibility(e.value);
@@ -746,7 +741,12 @@ const buildDebugGUI = () => {
   helpersFolder
     .addBinding(debugToolsState.helpers, 'gridSize', { label: 'Grid size', min: 0.01, step: 0.01 })
     .on('change', (e) => {
-      createGridHelper(Number(e.value), debugToolsState.helpers.gridDivisionsSize);
+      createGridHelper(
+        Number(e.value),
+        debugToolsState.helpers.gridDivisionsSize,
+        debugToolsState.helpers.gridColorCenterLine,
+        debugToolsState.helpers.gridColorGrid
+      );
       lsSetItem(LS_KEY, debugToolsState);
     });
   helpersFolder
@@ -756,10 +756,44 @@ const buildDebugGUI = () => {
       step: 0.01,
     })
     .on('change', (e) => {
-      createGridHelper(debugToolsState.helpers.gridSize, Number(e.value));
+      createGridHelper(
+        debugToolsState.helpers.gridSize,
+        Number(e.value),
+        debugToolsState.helpers.gridColorCenterLine,
+        debugToolsState.helpers.gridColorGrid
+      );
       lsSetItem(LS_KEY, debugToolsState);
     });
   helpersFolder
+    .addBinding(debugToolsState.helpers, 'gridColorCenterLine', {
+      label: "Grid's center line color",
+      color: { type: 'float' },
+    })
+    .on('change', (e) => {
+      createGridHelper(
+        debugToolsState.helpers.gridSize,
+        debugToolsState.helpers.gridDivisionsSize,
+        Number(e.value),
+        debugToolsState.helpers.gridColorGrid
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'gridColorGrid', {
+      label: "Grid's color",
+      color: { type: 'float' },
+    })
+    .on('change', (e) => {
+      createGridHelper(
+        debugToolsState.helpers.gridSize,
+        debugToolsState.helpers.gridDivisionsSize,
+        debugToolsState.helpers.gridColorCenterLine,
+        Number(e.value)
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder.addBlade({ view: 'separator' });
+  helpersFolder // POLAR GRID HELPER
     .addBinding(debugToolsState.helpers, 'showPolarGridHelper', { label: 'Show polar grid helper' })
     .on('change', (e) => {
       togglePolarGridHelperVisibility(e.value);
@@ -825,6 +859,7 @@ const buildDebugGUI = () => {
       );
       lsSetItem(LS_KEY, debugToolsState);
     });
+  helpersFolder.addBlade({ view: 'separator' });
   helpersFolder.addButton({ title: 'Hide / show all light helpers' }).on('click', () => {
     const lightHelpers = getAllLightHelpers();
     let allNotVisible = true;

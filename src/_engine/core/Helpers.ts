@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { getLight } from './Light';
+import { getLight, updateLightsDebuggerGUI } from './Light';
 import { isDebugEnvironment } from './Config';
 import { getDebugMeshIcon } from './UI/icons/DebugMeshIcons';
 import { getRootScene } from './Scene';
@@ -26,22 +26,43 @@ export const createAxesHelper = (size?: number) => {
   rootScene.add(axesHelper);
 };
 export const toggleAxesHelperVisibility = (show: boolean) => {
-  if (axesHelper) axesHelper.visible = show;
+  if (axesHelper) {
+    axesHelper.visible = show;
+    return;
+  }
+  if (!show) return;
+  createAxesHelper();
 };
 
 // Grid helper
-export const createGridHelper = (gridSize: number, gridDivisionsSize: number) => {
+export const createGridHelper = (
+  gridSize: number,
+  gridDivisionsSize: number,
+  centerLineColor: number,
+  gridColor: number
+) => {
   const rootScene = getRootScene();
   if (!rootScene) return;
   if (gridHelper) {
     gridHelper.removeFromParent();
     gridHelper.dispose();
   }
-  gridHelper = new THREE.GridHelper(gridSize, gridDivisionsSize);
+  gridHelper = new THREE.GridHelper(gridSize, gridDivisionsSize, centerLineColor, gridColor);
   rootScene.add(gridHelper);
 };
 export const toggleGridHelperVisibility = (show: boolean) => {
-  if (gridHelper) gridHelper.visible = show;
+  if (gridHelper) {
+    gridHelper.visible = show;
+    return;
+  }
+  if (!show) return;
+  const debugToolsState = getDebugToolsState();
+  createGridHelper(
+    debugToolsState.helpers.gridSize,
+    debugToolsState.helpers.gridDivisionsSize,
+    debugToolsState.helpers.gridColorCenterLine,
+    debugToolsState.helpers.gridColorGrid
+  );
 };
 
 // Polar grid helper
@@ -61,7 +82,18 @@ export const createPolarGridHelper = (
   rootScene.add(polarGridHelper);
 };
 export const togglePolarGridHelperVisibility = (show: boolean) => {
-  if (polarGridHelper) polarGridHelper.visible = show;
+  if (polarGridHelper) {
+    polarGridHelper.visible = show;
+    return;
+  }
+  if (!show) return;
+  const debugToolsState = getDebugToolsState();
+  createPolarGridHelper(
+    debugToolsState.helpers.polarGridRadius,
+    debugToolsState.helpers.polarGridSectors,
+    debugToolsState.helpers.polarGridRings,
+    debugToolsState.helpers.polarGridDivisions
+  );
 };
 
 // Light and camera helpers
@@ -91,7 +123,14 @@ export const getAllCameraHelpers = () => cameraHelpers;
 
 export const toggleLightHelper = (id: string, show: boolean) => {
   const light = getLight(id);
-  if (!light || !isDebugEnvironment()) return;
+  if (
+    !light ||
+    !isDebugEnvironment() ||
+    light.userData.type === 'AMBIENT' ||
+    light.userData.type === 'HEMISPHERE'
+  ) {
+    return;
+  }
 
   // Light found in scene
   if (!show && light.userData.helperCreated) {
@@ -110,6 +149,7 @@ export const toggleLightHelper = (id: string, show: boolean) => {
       lightHelper.visible = false;
       removeFromLightHelpers(lightHelper);
     }
+    light.userData.showHelper = false;
   } else if (show && light.userData.helperCreated) {
     // Show helper
     if (light.castShadow) {
@@ -128,7 +168,8 @@ export const toggleLightHelper = (id: string, show: boolean) => {
       lightHelper.visible = true;
       addToLightHelpers(lightHelper);
     }
-  } else {
+    light.userData.showHelper = true;
+  } else if (show) {
     // Create helper and then show helper
     const type = light.userData.type;
     if (type === 'DIRECTIONAL') {
@@ -164,6 +205,7 @@ export const toggleLightHelper = (id: string, show: boolean) => {
     light.userData.showHelper = true;
     light.userData.helperCreated = true;
   }
+  updateLightsDebuggerGUI();
 };
 
 export const updateHelpers = () => {
