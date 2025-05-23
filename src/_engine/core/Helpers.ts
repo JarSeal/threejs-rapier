@@ -122,7 +122,7 @@ const removeFromCameraHelpers = (helper: THREE.CameraHelper) => {
 export const getAllLightHelpers = () => lightHelpers;
 export const getAllCameraHelpers = () => cameraHelpers;
 
-export const toggleLightHelper = (id: string, show: boolean) => {
+export const toggleLightHelper = (id: string, show: boolean, doNotUpdateDebuggerGUI?: boolean) => {
   const light = getLight(id);
   if (
     !light ||
@@ -206,7 +206,7 @@ export const toggleLightHelper = (id: string, show: boolean) => {
     light.userData.showHelper = true;
     light.userData.helperCreated = true;
   }
-  updateLightsDebuggerGUI();
+  if (!doNotUpdateDebuggerGUI) updateLightsDebuggerGUI();
 };
 
 export const toggleCameraHelper = (id: string, show: boolean) => {
@@ -260,6 +260,18 @@ export const updateHelpers = () => {
 
   for (let i = 0; i < lightHelpers.length; i++) {
     // @NOTE: There is a bug with (at least) directional light that the helper does not update in some cases, this setTimeout fixes it (dirty fix)
-    setTimeout(() => lightHelpers[i]?.update(), 0);
+    setTimeout(() => {
+      lightHelpers[i]?.update();
+      if (
+        lightHelpers[i]?.parent?.userData.showHelper &&
+        lightHelpers[i].type === 'DirectionalLightHelper'
+      ) {
+        const child = lightHelpers[i].children.find((child) => child.userData.isHelperIcon);
+        if (child) {
+          const target = (lightHelpers[i].parent as THREE.DirectionalLight).target;
+          if (target) child.lookAt(target.position);
+        }
+      }
+    }, 0);
   }
 };

@@ -1,12 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { getWindowSize } from '../utils/Window';
 import { llog, lwarn } from '../utils/Logger';
-import {
-  buildDebugToolsGUI,
-  DEBUG_CAMERA_ID,
-  handleCameraSwitch,
-  isUsingDebugCamera,
-} from '../debug/DebugTools';
+import { DEBUG_CAMERA_ID, handleCameraSwitch, isUsingDebugCamera } from '../debug/DebugTools';
 import { CMP, TCMP } from '../utils/CMP';
 import { Pane } from 'tweakpane';
 import {
@@ -21,10 +16,13 @@ import { createDebuggerTab, createNewDebuggerContainer } from '../debug/Debugger
 import { isDebugEnvironment } from './Config';
 import { toggleCameraHelper } from './Helpers';
 import { getRootScene } from './Scene';
+import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 
+const LS_KEY = 'debugCameras';
 const cameras: { [id: string]: THREE.PerspectiveCamera } = {};
 let currentCamera: THREE.PerspectiveCamera | null = null;
 let currentCameraId: string | null = null;
+let clearLSButton: TCMP | null = null;
 
 /**
  * Creates a perspective camera.
@@ -47,6 +45,8 @@ export const createCamera = (
     if (opts?.isCurrentCamera && !isUsingDebugCamera()) {
       setCurrentCamera(id);
     }
+    mergeCameraDataFromLS(id);
+    toggleCameraHelper(id, Boolean(c.userData.showHelper));
     c.updateProjectionMatrix();
     return c;
   }
@@ -69,6 +69,10 @@ export const createCamera = (
 
   const rootScene = getRootScene();
   if (rootScene) rootScene.add(camera);
+
+  mergeCameraDataFromLS(id);
+  toggleCameraHelper(id, Boolean(camera.userData.showHelper));
+  camera.updateProjectionMatrix();
 
   return camera;
 };
@@ -231,6 +235,23 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
       llog('CAMERA:***************', camera, '**********************');
     },
   });
+  const cameraState = lsGetItem(LS_KEY, {})[camera.userData.id];
+  const lsIsEmpty =
+    !cameraState ||
+    (cameraState && Object.keys(cameraState).length === 1 && cameraState.saveToLS === false);
+  clearLSButton = CMP({
+    class: 'winSmallIconButton',
+    html: () =>
+      `<button title="Clear Local Storage params for this light">${getSvgIcon('databaseX')}</button>`,
+    attr: lsIsEmpty ? { disabled: 'true' } : {},
+    onClick: () => {
+      const state = lsGetItem(LS_KEY, {});
+      delete state[camera.userData.id];
+      lsSetItem(LS_KEY, state);
+      updateCamerasDebuggerGUI('WINDOW');
+      // @TODO: add toast to tell that the Local Storage has been cleared for this light
+    },
+  });
   const deleteButton = CMP({
     class: ['winSmallIconButton', 'dangerColor'],
     html: () =>
@@ -251,19 +272,32 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   <div><span class="winSmallLabel">Name:</span> ${camera.userData.name || ''}</div>
   <div><span class="winSmallLabel">Id:</span> ${camera.userData.id}</div>
 </div>
-<div style="text-align:right">${useCameraButton}${copyCodeButton}${logButton}${deleteButton}</div>
+<div style="text-align:right">${useCameraButton}${copyCodeButton}${logButton}${clearLSButton}${deleteButton}</div>
 </div>`,
   });
 
   // Shared bindings
+  if (camera.userData.id) {
+    if (camera.userData.saveToLS === undefined) camera.userData.saveToLS = false;
+    debuggerWindowPane
+      .addBinding(camera.userData, 'saveToLS', { label: 'Save to LS' })
+      .on('change', (e) => {
+        camera.userData.saveToLS = e.value;
+        saveCameraToLS(camera.userData.id);
+      });
+    debuggerWindowPane.addBlade({ view: 'separator' });
+  }
+
   if (camera.userData.showHelper === undefined) camera.userData.showHelper = false;
   debuggerWindowPane
     .addBinding(camera.userData, 'showHelper', { label: 'Show helper' })
     .on('change', (e) => {
       toggleCameraHelper(camera.userData.id, e.value);
+      saveCameraToLS(camera.userData.id);
     });
   debuggerWindowPane.addBinding(camera, 'position', { label: 'Position' }).on('change', () => {
     camera.updateProjectionMatrix();
+    saveCameraToLS(camera.userData.id);
   });
 
   if (type === 'PERSPECTIVE') {
@@ -272,15 +306,15 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
       .addBinding(c, 'fov', { label: 'Field of view (FOV)', step: 1, min: 1, max: 180 })
       .on('change', () => {
         c.updateProjectionMatrix();
-        // @TODO: save value
+        saveCameraToLS(c.userData.id);
       });
     debuggerWindowPane.addBinding(c, 'near', { label: 'Camera near' }).on('change', () => {
       c.updateProjectionMatrix();
-      // @TODO: save value
+      saveCameraToLS(c.userData.id);
     });
     debuggerWindowPane.addBinding(c, 'far', { label: 'Camera far' }).on('change', () => {
       c.updateProjectionMatrix();
-      // @TODO: save value
+      saveCameraToLS(c.userData.id);
     });
     return debuggerWindowCmp;
   }
@@ -380,4 +414,43 @@ export const updateDebuggerCamerasListSelectedClass = (id: string) => {
     }
     child.classList.remove('selected');
   }
+};
+
+export const mergeCameraDataFromLS = (id: string | undefined) => {
+  if (!isDebugEnvironment() || !id) return;
+
+  const curState = lsGetItem(LS_KEY, {});
+  if (!id || !curState[id]) return;
+
+  const state = curState[id];
+  const camera = cameras[id];
+
+  if (state.saveToLS !== undefined) camera.userData.saveToLS = state.saveToLS;
+  if (state.showHelper !== undefined) camera.userData.showHelper = state.showHelper;
+  if (state.position) camera.position.set(state.position.x, state.position.y, state.position.z);
+  if (state.cameraNear !== undefined) camera.near = state.cameraNear;
+  if (state.cameraFar !== undefined) camera.far = state.cameraFar;
+};
+
+export const saveCameraToLS = (id: string | undefined) => {
+  if (!isDebugEnvironment || !id) return;
+
+  const camera = getCamera(id);
+  if (!camera?.userData.id) return;
+
+  const curState = lsGetItem(LS_KEY, {});
+  if (!curState[id]) {
+    if (!camera?.userData.saveToLS) return;
+    curState[id] = {};
+  }
+
+  curState[id].saveToLS = camera.userData.saveToLS;
+  curState[id].showHelper = camera.userData.showHelper;
+  curState[id].position = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+  curState[id].fov = camera.userData.fov;
+  curState[id].cameraNear = camera.near;
+  curState[id].cameraFar = camera.far;
+
+  lsSetItem(LS_KEY, curState);
+  clearLSButton?.removeAttr('disabled');
 };

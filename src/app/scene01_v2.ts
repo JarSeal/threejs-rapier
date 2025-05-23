@@ -363,6 +363,7 @@ export const scene01 = async () =>
       id: 'directionalLight',
       type: 'DIRECTIONAL',
       params: {
+        position: { x: -5, y: 2.5, z: 2.5 },
         color: 0xffe5c7,
         // intensity: Math.PI,
         intensity: 5,
@@ -378,18 +379,7 @@ export const scene01 = async () =>
         shadowIntensity: 0.75,
       },
     });
-    directionalLight.position.set(-5, 2.5, 2.5);
     scene.add(directionalLight);
-
-    // Input
-    addKeyInputControl({
-      type: 'KEY_DOWN',
-      key: 'd',
-      fn: (_, time) => {
-        // eslint-disable-next-line no-console
-        console.log('PRESSED', time);
-      },
-    });
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 

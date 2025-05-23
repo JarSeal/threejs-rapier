@@ -18,6 +18,7 @@ import { FOUR_PX_TO_8K_LIST, RENDERER_SHADOW_OPTIONS } from '../utils/constants'
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { toggleLightHelper } from './Helpers';
 import { removeObjectAndChildrenFromMemory } from '../utils/helpers';
+import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 
 export type Lights =
   | THREE.AmbientLight
@@ -77,7 +78,9 @@ export type LightProps = { id?: string; name?: string; enabled?: boolean } & (
     }
 );
 
+const LS_KEY = 'debugLights';
 const lights: { [id: string]: Lights } = {};
+let clearLSButton: TCMP | null = null;
 
 /**
  * Creates a Three.js light
@@ -89,7 +92,11 @@ const lights: { [id: string]: Lights } = {};
 export const createLight = ({ id, name, enabled, type, params }: LightProps) => {
   let light: Lights | null = null;
 
-  if (id && lights[id]) return lights[id];
+  if (id && lights[id]) {
+    mergeLightDataFromLS(id);
+    toggleLightHelper(lights[id].userData.id, Boolean(lights[id].userData.showHelper));
+    return lights[id];
+  }
 
   switch (type) {
     case 'AMBIENT':
@@ -196,7 +203,8 @@ export const createLight = ({ id, name, enabled, type, params }: LightProps) => 
   if (enabled !== undefined) light.visible = enabled;
   lights[id || light.uuid] = light;
 
-  updateLightsDebuggerGUI();
+  mergeLightDataFromLS(id);
+  toggleLightHelper(light.userData.id, Boolean(light.userData.showHelper));
 
   return light;
 };
@@ -392,6 +400,23 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       llog('LIGHT:****************', light, '**********************');
     },
   });
+  const lightState = lsGetItem(LS_KEY, {})[light.userData.id];
+  const lsIsEmpty =
+    !lightState ||
+    (lightState && Object.keys(lightState).length === 1 && lightState.saveToLS === false);
+  clearLSButton = CMP({
+    class: 'winSmallIconButton',
+    html: () =>
+      `<button title="Clear Local Storage params for this light">${getSvgIcon('databaseX')}</button>`,
+    attr: lsIsEmpty ? { disabled: 'true' } : {},
+    onClick: () => {
+      const state = lsGetItem(LS_KEY, {});
+      delete state[light.userData.id];
+      lsSetItem(LS_KEY, state);
+      updateLightsDebuggerGUI('WINDOW');
+      // @TODO: add toast to tell that the Local Storage has been cleared for this light
+    },
+  });
   const deleteButton = CMP({
     class: ['winSmallIconButton', 'dangerColor'],
     html: () =>
@@ -400,6 +425,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       deleteLight(d.id);
       updateLightsDebuggerGUI('LIST');
       closeDraggableWindow(WIN_ID);
+      // @TODO: add toast to tell that the light has been deleted (but not permanently)
     },
   });
 
@@ -414,22 +440,42 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   <div><span class="winSmallLabel">Shadows enabled:</span> ${getRenderer()?.shadowMap.enabled}</div>
   <div><span class="winSmallLabel">Shadow map type:</span> ${RENDERER_SHADOW_OPTIONS.find((opt) => opt.value === getRenderer()?.shadowMap.type)?.text || '[Not defined]'}</div>
 </div>
-<div style="text-align:right">${copyCodeButton}${logButton}${deleteButton}</div>
+<div style="text-align:right">${copyCodeButton}${logButton}${clearLSButton}${deleteButton}</div>
 </div>`,
   });
 
   // Shared bindings
-  if (light.userData.showHelper === undefined) light.userData.showHelper = false;
+  if (light.userData.id) {
+    if (light.userData.saveToLS === undefined) light.userData.saveToLS = false;
+    debuggerWindowPane
+      .addBinding(light.userData, 'saveToLS', { label: 'Save to LS' })
+      .on('change', (e) => {
+        light.userData.saveToLS = e.value;
+        saveLightToLS(light.userData.id);
+      });
+    debuggerWindowPane.addBlade({ view: 'separator' });
+  }
+
+  if (light.userData.showHelper === undefined) {
+    light.userData.showHelper = false;
+  }
   if (type !== 'AMBIENT' && type !== 'HEMISPHERE') {
     debuggerWindowPane
       .addBinding(light.userData, 'showHelper', { label: 'Show helper' })
       .on('change', (e) => {
         toggleLightHelper(light.userData.id, e.value);
         light.userData.showHelper = e.value;
+        saveLightToLS(light.userData.id);
       });
   }
-  debuggerWindowPane.addBinding(light, 'visible', { label: 'Enabled' });
-  debuggerWindowPane.addBinding(light, 'intensity', { label: 'Intensity', step: 0.001 });
+  debuggerWindowPane.addBinding(light, 'visible', { label: 'Enabled' }).on('change', () => {
+    saveLightToLS(light.userData.id);
+  });
+  debuggerWindowPane
+    .addBinding(light, 'intensity', { label: 'Intensity', step: 0.001 })
+    .on('change', () => {
+      saveLightToLS(light.userData.id);
+    });
 
   if (type === 'AMBIENT') {
     const l = light as THREE.AmbientLight;
@@ -438,6 +484,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       .addBinding(color, 'hex', { label: 'Color', color: { type: 'float' } })
       .on('change', (e) => {
         l.color.setHex(e.value);
+        saveLightToLS(l.userData.id);
       });
     return debuggerWindowCmp;
   }
@@ -449,6 +496,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       .addBinding(color, 'hexColor', { label: 'Sky color', color: { type: 'float' } })
       .on('change', (e) => {
         l.color.setHex(e.value);
+        saveLightToLS(l.userData.id);
       });
     debuggerWindowPane
       .addBinding(color, 'hexGround', {
@@ -457,6 +505,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       })
       .on('change', (e) => {
         l.groundColor.setHex(e.value);
+        saveLightToLS(l.userData.id);
       });
     return debuggerWindowCmp;
   }
@@ -468,8 +517,11 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       .addBinding(color, 'hex', { label: 'Color', color: { type: 'float' } })
       .on('change', (e) => {
         l.color.setHex(e.value);
+        saveLightToLS(l.userData.id);
       });
-    debuggerWindowPane.addBinding(l, 'position', { label: 'Position' });
+    debuggerWindowPane
+      .addBinding(l, 'position', { label: 'Position' })
+      .on('change', () => saveLightToLS(l.userData.id));
     debuggerWindowPane.addBinding(l, 'distance', { label: 'Distance' });
     debuggerWindowPane.addBinding(l, 'decay', { label: 'Decay' });
     const renderOptions = getRendererOptions();
@@ -526,6 +578,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         if (l.userData.showHelper) {
           toggleLightHelper(l.userData.id, true);
         }
+
+        saveLightToLS(l.userData.id);
       });
     const shadowFolder = debuggerWindowPane.addFolder({ title: 'Shadow', expanded: true });
     const shadowOptsBindings = [
@@ -579,6 +633,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         if (l.userData.showHelper) {
           toggleLightHelper(l.userData.id, true);
         }
+
+        saveLightToLS(l.userData.id);
       }),
       (
         shadowFolder.addBlade({
@@ -630,30 +686,42 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         if (l.userData.showHelper) {
           toggleLightHelper(l.userData.id, true);
         }
+
+        saveLightToLS(l.userData.id);
       }),
-      shadowFolder.addBinding(l.shadow, 'bias', {
-        label: 'Shadow bias',
-        disabled: shadowOptionsEnabled,
-        step: 0.0001,
-      }),
-      shadowFolder.addBinding(l.shadow, 'normalBias', {
-        label: 'Shadow normal bias',
-        disabled: shadowOptionsEnabled,
-        step: 0.0001,
-      }),
-      shadowFolder.addBinding(l.shadow, 'blurSamples', {
-        label: 'Shadow blur samples',
-        disabled: shadowOptionsEnabled || renderOptions.shadowMapType === THREE.VSMShadowMap,
-      }),
-      shadowFolder.addBinding(l.shadow, 'intensity', {
-        label: 'Shadow intensity',
-        disabled: shadowOptionsEnabled,
-        step: 0.001,
-      }),
-      shadowFolder.addBinding(l.shadow, 'radius', {
-        label: 'Shadow radius',
-        disabled: shadowOptionsEnabled || renderOptions.shadowMapType === THREE.BasicShadowMap,
-      }),
+      shadowFolder
+        .addBinding(l.shadow, 'bias', {
+          label: 'Shadow bias',
+          disabled: shadowOptionsEnabled,
+          step: 0.0001,
+        })
+        .on('change', () => saveLightToLS(l.userData.id)),
+      shadowFolder
+        .addBinding(l.shadow, 'normalBias', {
+          label: 'Shadow normal bias',
+          disabled: shadowOptionsEnabled,
+          step: 0.0001,
+        })
+        .on('change', () => saveLightToLS(l.userData.id)),
+      shadowFolder
+        .addBinding(l.shadow, 'blurSamples', {
+          label: 'Shadow blur samples',
+          disabled: shadowOptionsEnabled || renderOptions.shadowMapType === THREE.VSMShadowMap,
+        })
+        .on('change', () => saveLightToLS(l.userData.id)),
+      shadowFolder
+        .addBinding(l.shadow, 'intensity', {
+          label: 'Shadow intensity',
+          disabled: shadowOptionsEnabled,
+          step: 0.001,
+        })
+        .on('change', () => saveLightToLS(l.userData.id)),
+      shadowFolder
+        .addBinding(l.shadow, 'radius', {
+          label: 'Shadow radius',
+          disabled: shadowOptionsEnabled || renderOptions.shadowMapType === THREE.BasicShadowMap,
+        })
+        .on('change', () => saveLightToLS(l.userData.id)),
       shadowFolder.addBlade({ view: 'separator' }),
       shadowFolder
         .addBinding(l.shadow.camera, 'near', {
@@ -664,6 +732,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
+          saveLightToLS(l.userData.id);
         }),
       shadowFolder
         .addBinding(l.shadow.camera, 'far', {
@@ -672,6 +741,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
+          saveLightToLS(l.userData.id);
         }),
     ];
     return debuggerWindowCmp;
@@ -684,8 +754,11 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       .addBinding(color, 'hex', { label: 'Color', color: { type: 'float' } })
       .on('change', (e) => {
         l.color.setHex(e.value);
+        saveLightToLS(l.userData.id);
       });
-    debuggerWindowPane.addBinding(l, 'position', { label: 'Position' });
+    debuggerWindowPane.addBinding(l, 'position', { label: 'Position' }).on('change', () => {
+      saveLightToLS(l.userData.id);
+    });
     debuggerWindowPane.addBinding(l.target, 'position', { label: 'Target' }).on('change', (e) => {
       const curScene = getCurrentScene();
       if (!curScene) return;
@@ -699,6 +772,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         curScene.add(target);
       }
       target.position.set(value.x, value.y, value.z);
+      saveLightToLS(l.userData.id);
     });
     const renderOptions = getRendererOptions();
     const shadowOptionsEnabled = !(renderOptions.enableShadows && l.castShadow);
@@ -755,6 +829,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         if (l.userData.showHelper) {
           toggleLightHelper(l.userData.id, true);
         }
+
+        saveLightToLS(l.userData.id);
       });
     const shadowFolder = debuggerWindowPane.addFolder({ title: 'Shadow', expanded: true });
     const shadowOptsBindings = [
@@ -814,6 +890,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         if (l.userData.showHelper) {
           toggleLightHelper(l.userData.id, true);
         }
+
+        saveLightToLS(l.userData.id);
       }),
       (
         shadowFolder.addBlade({
@@ -871,30 +949,42 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         if (l.userData.showHelper) {
           toggleLightHelper(l.userData.id, true);
         }
+
+        saveLightToLS(l.userData.id);
       }),
-      shadowFolder.addBinding(l.shadow, 'bias', {
-        label: 'Shadow bias',
-        disabled: shadowOptionsEnabled,
-        step: 0.0001,
-      }),
-      shadowFolder.addBinding(l.shadow, 'normalBias', {
-        label: 'Shadow normal bias',
-        disabled: shadowOptionsEnabled,
-        step: 0.0001,
-      }),
-      shadowFolder.addBinding(l.shadow, 'blurSamples', {
-        label: 'Shadow blur samples',
-        disabled: shadowOptionsEnabled,
-      }),
-      shadowFolder.addBinding(l.shadow, 'intensity', {
-        label: 'Shadow intensity',
-        disabled: shadowOptionsEnabled,
-        step: 0.001,
-      }),
-      shadowFolder.addBinding(l.shadow, 'radius', {
-        label: 'Shadow radius',
-        disabled: shadowOptionsEnabled,
-      }),
+      shadowFolder
+        .addBinding(l.shadow, 'bias', {
+          label: 'Shadow bias',
+          disabled: shadowOptionsEnabled,
+          step: 0.0001,
+        })
+        .on('change', () => saveLightToLS(l.userData.id)),
+      shadowFolder
+        .addBinding(l.shadow, 'normalBias', {
+          label: 'Shadow normal bias',
+          disabled: shadowOptionsEnabled,
+          step: 0.0001,
+        })
+        .on('change', () => saveLightToLS(l.userData.id)),
+      shadowFolder
+        .addBinding(l.shadow, 'blurSamples', {
+          label: 'Shadow blur samples',
+          disabled: shadowOptionsEnabled,
+        })
+        .on('change', () => saveLightToLS(l.userData.id)),
+      shadowFolder
+        .addBinding(l.shadow, 'intensity', {
+          label: 'Shadow intensity',
+          disabled: shadowOptionsEnabled,
+          step: 0.001,
+        })
+        .on('change', () => saveLightToLS(l.userData.id)),
+      shadowFolder
+        .addBinding(l.shadow, 'radius', {
+          label: 'Shadow radius',
+          disabled: shadowOptionsEnabled,
+        })
+        .on('change', () => saveLightToLS(l.userData.id)),
       shadowFolder.addBlade({ view: 'separator' }),
       shadowFolder
         .addBinding(l.shadow.camera, 'near', {
@@ -905,6 +995,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
+          saveLightToLS(l.userData.id);
         }),
       shadowFolder
         .addBinding(l.shadow.camera, 'far', {
@@ -913,6 +1004,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
+          saveLightToLS(l.userData.id);
         }),
       shadowFolder
         .addBinding(l.shadow.camera, 'left', {
@@ -921,6 +1013,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
+          saveLightToLS(l.userData.id);
         }),
       shadowFolder
         .addBinding(l.shadow.camera, 'right', {
@@ -929,6 +1022,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
+          saveLightToLS(l.userData.id);
         }),
       shadowFolder
         .addBinding(l.shadow.camera, 'top', {
@@ -937,6 +1031,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
+          saveLightToLS(l.userData.id);
         }),
       shadowFolder
         .addBinding(l.shadow.camera, 'bottom', {
@@ -945,6 +1040,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', () => {
           l.shadow.camera.updateProjectionMatrix();
+          saveLightToLS(l.userData.id);
         }),
     ];
     return debuggerWindowCmp;
@@ -1028,7 +1124,7 @@ export const updateLightsDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (only !== 'WINDOW') debuggerListCmp?.update({ html: createLightsDebuggerList });
   if (only === 'LIST') return;
   const winState = getDraggableWindow(WIN_ID);
-  if (winState) updateDraggableWindow(WIN_ID);
+  if (winState?.isOpen) updateDraggableWindow(WIN_ID);
 };
 
 export const updateDebuggerLightsListSelectedClass = (id: string) => {
@@ -1043,4 +1139,129 @@ export const updateDebuggerLightsListSelectedClass = (id: string) => {
     }
     child.classList.remove('selected');
   }
+};
+
+export const mergeLightDataFromLS = (id: string | undefined) => {
+  if (!isDebugEnvironment() || !id) return;
+
+  const curState = lsGetItem(LS_KEY, {});
+  if (id && curState[id]) {
+    const state = curState[id];
+    const light = lights[id];
+    if (state.saveToLS !== undefined) light.userData.saveToLS = state.saveToLS;
+    if (state.showHelper !== undefined) light.userData.showHelper = state.showHelper;
+    if (state.visible !== undefined) light.visible = state.visible;
+    if (state.intensity !== undefined) light.intensity = state.intensity;
+    if (state.color !== undefined) light.color.setHex(Number(state.color));
+
+    if (light.type === 'HemisphereLight') {
+      if (state.groundColor !== undefined) {
+        (light as THREE.HemisphereLight).groundColor.setHex(Number(state.groundColor));
+      }
+    } else if (light.type === 'PointLight') {
+      const l = light as THREE.PointLight;
+      if (state.position) l.position.set(state.position.x, state.position.y, state.position.z);
+      if (state.distance !== undefined) l.distance = state.distance;
+      if (state.decay !== undefined) l.decay = state.decay;
+      if (state.castShadow !== undefined) l.castShadow = state.castShadow;
+      if (state.shadowMapWidth !== undefined && state.shadowMapHeight !== undefined) {
+        l.shadow.mapSize.set(state.shadowMapWidth, state.shadowMapHeight);
+        l.shadow.map?.setSize(state.shadowMapWidth, state.shadowMapHeight);
+      }
+      if (state.shadowBias !== undefined) l.shadow.bias = state.shadowBias;
+      if (state.shadowNormalBias !== undefined) l.shadow.normalBias = state.shadowNormalBias;
+      if (state.shadowBlurSamples !== undefined) l.shadow.blurSamples = state.shadowBlurSamples;
+      if (state.shadowIntensity !== undefined) l.shadow.intensity = state.shadowIntensity;
+      if (state.shadowRadius !== undefined) l.shadow.radius = state.shadowRadius;
+      if (state.shadowCameraNear !== undefined) l.shadow.camera.near = state.shadowCameraNear;
+      if (state.shadowCameraFar !== undefined) l.shadow.camera.far = state.shadowCameraFar;
+    } else if (light.type === 'DirectionalLight') {
+      const l = light as THREE.DirectionalLight;
+      if (state.position) l.position.set(state.position.x, state.position.y, state.position.z);
+      if (state.target) {
+        l.target.position.set(state.target.x, state.target.y, state.target.z);
+      }
+      if (state.castShadow !== undefined) l.castShadow = state.castShadow;
+      if (state.shadowMapWidth !== undefined && state.shadowMapHeight !== undefined) {
+        l.shadow.mapSize.set(state.shadowMapWidth, state.shadowMapHeight);
+        l.shadow.map?.setSize(state.shadowMapWidth, state.shadowMapHeight);
+      }
+      if (state.shadowBias !== undefined) l.shadow.bias = state.shadowBias;
+      if (state.shadowNormalBias !== undefined) l.shadow.normalBias = state.shadowNormalBias;
+      if (state.shadowBlurSamples !== undefined) l.shadow.blurSamples = state.shadowBlurSamples;
+      if (state.shadowIntensity !== undefined) l.shadow.intensity = state.shadowIntensity;
+      if (state.shadowRadius !== undefined) l.shadow.radius = state.shadowRadius;
+      if (state.shadowCameraNear !== undefined) l.shadow.camera.near = state.shadowCameraNear;
+      if (state.shadowCameraFar !== undefined) l.shadow.camera.far = state.shadowCameraFar;
+      if (state.shadowCameraLeft !== undefined) l.shadow.camera.left = state.shadowCameraLeft;
+      if (state.shadowCameraRight !== undefined) l.shadow.camera.right = state.shadowCameraRight;
+      if (state.shadowCameraTop !== undefined) l.shadow.camera.top = state.shadowCameraTop;
+      if (state.shadowCameraBottom !== undefined) l.shadow.camera.bottom = state.shadowCameraBottom;
+    }
+  }
+};
+
+export const saveLightToLS = (id: string | undefined) => {
+  if (!isDebugEnvironment || !id) return;
+  const light = getLight(id);
+  const rootScene = getRootScene();
+  if (!light?.userData.id || !rootScene) return;
+  const foundInScene = rootScene.getObjectByProperty('uuid', light.uuid);
+  if (!foundInScene) return;
+
+  const curState = lsGetItem(LS_KEY, {});
+  if (!curState[id]) {
+    if (!light?.userData.saveToLS) return;
+    curState[id] = {};
+  }
+
+  curState[id].saveToLS = light.userData.saveToLS;
+  curState[id].showHelper = light.userData.showHelper;
+  curState[id].visible = light.visible;
+  curState[id].intensity = light.intensity;
+  curState[id].color = light.color.getHex();
+
+  if (light.type === 'HemisphereLight') {
+    curState[id].groundColor = (light as THREE.HemisphereLight).groundColor.getHex();
+  } else if (light.type === 'PointLight') {
+    const l = light as THREE.PointLight;
+    curState[id].position = { x: l.position.x, y: l.position.y, z: l.position.z };
+    curState[id].distance = l.distance;
+    curState[id].decay = l.decay;
+    curState[id].castShadow = l.castShadow;
+    curState[id].shadowMapWidth = l.shadow.mapSize.width;
+    curState[id].shadowMapHeight = l.shadow.mapSize.height;
+    curState[id].shadowBias = l.shadow.bias;
+    curState[id].shadowNormalBias = l.shadow.normalBias;
+    curState[id].shadowBlurSamples = l.shadow.blurSamples;
+    curState[id].shadowIntensity = l.shadow.intensity;
+    curState[id].shadowRadius = l.shadow.radius;
+    curState[id].shadowCameraNear = l.shadow.camera.near;
+    curState[id].shadowCameraFar = l.shadow.camera.far;
+  } else if (light.type === 'DirectionalLight') {
+    const l = light as THREE.DirectionalLight;
+    curState[id].position = { x: l.position.x, y: l.position.y, z: l.position.z };
+    curState[id].target = {
+      x: l.target.position.x,
+      y: l.target.position.y,
+      z: l.target.position.z,
+    };
+    curState[id].castShadow = l.castShadow;
+    curState[id].shadowMapWidth = l.shadow.mapSize.width;
+    curState[id].shadowMapHeight = l.shadow.mapSize.height;
+    curState[id].shadowBias = l.shadow.bias;
+    curState[id].shadowNormalBias = l.shadow.normalBias;
+    curState[id].shadowBlurSamples = l.shadow.blurSamples;
+    curState[id].shadowIntensity = l.shadow.intensity;
+    curState[id].shadowRadius = l.shadow.radius;
+    curState[id].shadowCameraNear = l.shadow.camera.near;
+    curState[id].shadowCameraFar = l.shadow.camera.far;
+    curState[id].shadowCameraLeft = l.shadow.camera.left;
+    curState[id].shadowCameraRight = l.shadow.camera.right;
+    curState[id].shadowCameraTop = l.shadow.camera.top;
+    curState[id].shadowCameraBottom = l.shadow.camera.bottom;
+  }
+
+  lsSetItem(LS_KEY, curState);
+  clearLSButton?.removeAttr('disabled');
 };

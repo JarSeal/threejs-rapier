@@ -28,9 +28,10 @@ const createDirectionalLightIcon = () => {
   const material = new THREE.MeshBasicMaterial({ color: MESH_LIGHT_ICON_COLOR });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.rotation.x = Math.PI / 2;
-  mesh.position.z = -0.125;
+  mesh.position.z = -0.2;
   const group = new THREE.Group();
   group.add(mesh);
+  group.userData.id = '_directionalLightIcon';
   debugMeshIcons.DIRECTIONAL = group;
   return group;
 };
@@ -41,6 +42,7 @@ const createPointLightIcon = () => {
   const mesh = new THREE.Mesh(geometry, material);
   const group = new THREE.Group();
   group.add(mesh);
+  group.userData.id = '_pointLightIcon';
   debugMeshIcons.DEFAULT = group;
   return group;
 };
@@ -60,6 +62,7 @@ const createCameraIcon = () => {
   const group = new THREE.Group();
   group.add(biggerBox);
   group.add(smallerBox);
+  group.userData.id = '_cameraIcon';
   debugMeshIcons.CAMERA = group;
   return group;
 };
@@ -71,21 +74,23 @@ const createDefaultMesh = () => {
   const mesh = new THREE.Mesh(geometry, material);
   const group = new THREE.Group();
   group.add(mesh);
+  group.userData.id = '_defaultIcon';
   debugMeshIcons.POINT = group;
   return group;
 };
 
 export const getDebugMeshIcon = (type: keyof typeof debugMeshIcons) => {
-  let mesh = debugMeshIcons[type];
-  if (!mesh) {
-    if (type === 'DIRECTIONAL') mesh = createDirectionalLightIcon();
-    if (type === 'POINT') mesh = createPointLightIcon();
-    if (type === 'CAMERA') mesh = createCameraIcon();
+  let group = debugMeshIcons[type];
+  if (!group) {
+    if (type === 'DIRECTIONAL') group = createDirectionalLightIcon();
+    if (type === 'POINT') group = createPointLightIcon();
+    if (type === 'CAMERA') group = createCameraIcon();
   }
-  if (!mesh) {
+  if (!group) {
     lerror(`Could not find debug mesh icon for type '${type}'`);
-    mesh = debugMeshIcons.DEFAULT;
-    if (!mesh) mesh = createDefaultMesh();
+    group = debugMeshIcons.DEFAULT;
+    if (!group) group = createDefaultMesh();
   }
-  return mesh.clone();
+  group.userData.isHelperIcon = true;
+  return group.clone();
 };
