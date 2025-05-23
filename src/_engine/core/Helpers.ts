@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { getLight, updateLightsDebuggerGUI } from './Light';
+import { getLight, saveLightToLS, updateLightsDebuggerGUI } from './Light';
 import { isDebugEnvironment } from './Config';
 import { getDebugMeshIcon } from './UI/icons/DebugMeshIcons';
 import { getRootScene } from './Scene';
 import { DEBUG_CAMERA_ID, getDebugToolsState } from '../debug/DebugTools';
-import { getCamera, updateCamerasDebuggerGUI } from './Camera';
+import { getCamera, saveCameraToLS, updateCamerasDebuggerGUI } from './Camera';
 
 type LightHelper = THREE.DirectionalLightHelper | THREE.PointLightHelper;
 
@@ -206,6 +206,7 @@ export const toggleLightHelper = (id: string, show: boolean, doNotUpdateDebugger
     light.userData.showHelper = true;
     light.userData.helperCreated = true;
   }
+  saveLightToLS(id);
   if (!doNotUpdateDebuggerGUI) updateLightsDebuggerGUI();
 };
 
@@ -250,6 +251,7 @@ export const toggleCameraHelper = (id: string, show: boolean) => {
     camera.userData.showHelper = true;
     camera.userData.helperCreated = true;
   }
+  saveCameraToLS(id);
   updateCamerasDebuggerGUI();
 };
 
