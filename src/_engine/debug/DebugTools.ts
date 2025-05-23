@@ -177,18 +177,11 @@ const createDebugToolsDebugGUI = () => {
     near: curSceneDebugCamParams.near,
     far: curSceneDebugCamParams.far,
   });
-  // @MAYBE: add this as debug camera (and also add to createCamera)
-  // const horizontalFov = 90;
-  // debugCamera.fov =
-  //   (Math.atan(Math.tan(((horizontalFov / 2) * Math.PI) / 180) / debugCamera.aspect) * 2 * 180) /
-  //   Math.PI;
   if (!debugCamera) {
     const msg = 'Error while creating debug camera in createDebugToolsDebugGUI';
     lerror(msg);
     throw new Error(msg);
   }
-
-  createOnScreenTools(debugCamera);
 
   const renderer = getRenderer();
   if (!renderer) {
@@ -213,6 +206,8 @@ const createDebugToolsDebugGUI = () => {
     lsSetItem(LS_KEY, debugToolsState);
   });
   orbitControls.enabled = curSceneDebugCamParams.enabled;
+
+  createOnScreenTools(debugCamera);
 
   toggleAxesHelperVisibility(debugToolsState.helpers.showAxesHelper);
   toggleGridHelperVisibility(debugToolsState.helpers.showGridHelper);
@@ -244,13 +239,16 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
     curSceneDebugCamParams.position[1],
     curSceneDebugCamParams.position[2]
   );
-  debugCamera.lookAt(
-    new THREE.Vector3(
-      curSceneDebugCamParams.target[0],
-      curSceneDebugCamParams.target[1],
-      curSceneDebugCamParams.target[2]
-    )
+  const target = new THREE.Vector3(
+    curSceneDebugCamParams.target[0],
+    curSceneDebugCamParams.target[1],
+    curSceneDebugCamParams.target[2]
   );
+  debugCamera.lookAt(target);
+  if (orbitControls) {
+    orbitControls.target = target;
+    orbitControls.update();
+  }
 
   const viewBoundsMin = new THREE.Vector2();
   const viewBoundsMax = new THREE.Vector2();
@@ -642,6 +640,26 @@ export const buildDebugToolsGUI = () => {
       curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
       lsSetItem(LS_KEY, debugToolsState);
     });
+  debugCameraFolder.addButton({ title: 'Reset position' }).on('click', () => {
+    const target = new THREE.Vector3(
+      DEFAULT_DEBUG_CAM_PARAMS.target[0],
+      DEFAULT_DEBUG_CAM_PARAMS.target[1],
+      DEFAULT_DEBUG_CAM_PARAMS.target[2]
+    );
+    debugCamera?.position.set(
+      DEFAULT_DEBUG_CAM_PARAMS.position[0],
+      DEFAULT_DEBUG_CAM_PARAMS.position[1],
+      DEFAULT_DEBUG_CAM_PARAMS.position[2]
+    );
+    debugCamera?.lookAt(target);
+    if (orbitControls) {
+      orbitControls.target = target;
+      orbitControls.update();
+    }
+    curSceneDebugCamParams.position = DEFAULT_DEBUG_CAM_PARAMS.position;
+    curSceneDebugCamParams.target = DEFAULT_DEBUG_CAM_PARAMS.target;
+    lsSetItem(LS_KEY, debugToolsState);
+  });
 
   // Env ball
   envBallFolder = debugGUI
