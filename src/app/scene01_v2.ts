@@ -46,7 +46,7 @@ export const scene01 = async () =>
       name: 'Empty Blue Sky EquiRect',
       type: 'EQUIRECTANGULAR',
       params: {
-        file: '/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png',
+        file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png',
         textureId: 'equiRectEmptyId',
         colorSpace: THREE.SRGBColorSpace,
         // colorSpace: THREE.LinearSRGBColorSpace,
@@ -58,7 +58,7 @@ export const scene01 = async () =>
       name: 'Stylized Sunset EquiRect 4K',
       type: 'EQUIRECTANGULAR',
       params: {
-        file: '/assets/testTextures/skyboxes/sunset_stylized/sky_41_4k.png',
+        file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_41_4k.png',
         textureId: 'equiRectSunsetStylizedId',
         colorSpace: THREE.SRGBColorSpace,
         // colorSpace: THREE.LinearSRGBColorSpace,
@@ -83,7 +83,7 @@ export const scene01 = async () =>
       params: {
         // file: envTexture,
         // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
-        file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
+        file: '/debugger/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
         // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
         // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
         // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
@@ -106,7 +106,7 @@ export const scene01 = async () =>
       type: 'CUBETEXTURE',
       params: {
         fileNames: map02,
-        path: '/assets/testTextures',
+        path: '/debugger/assets/testTextures',
         textureId: 'cubeTextureId',
         flipY: true,
       },
@@ -167,7 +167,7 @@ export const scene01 = async () =>
       params: {
         map: loadTexture({
           id: 'box1Texture',
-          fileName: '/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
+          fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
         }),
       },
     });
@@ -273,16 +273,16 @@ export const scene01 = async () =>
     };
     loadTextures(
       [
-        { fileName: '/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg' },
-        { fileName: '/assets/testTextures/Poliigon_MetalRust_7642_AmbientOcclusion.jpg' },
-        { fileName: '/assets/testTextures/Poliigon_MetalRust_7642_Metallic.jpg' },
+        { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg' },
+        { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_AmbientOcclusion.jpg' },
+        { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_Metallic.jpg' },
       ],
       updateLoadStatusFn
     );
 
     const importedBox = await importModelAsync<THREE.Mesh>({
       id: 'importedMesh1',
-      fileName: '/assets/testModels/box01.glb',
+      fileName: '/debugger/assets/testModels/box01.glb',
       throwOnError: true,
     });
     if (importedBox) {
