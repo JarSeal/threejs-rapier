@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { deleteTexture } from './Texture';
+import { getRootScene } from './Scene';
 
 export type Materials =
   | THREE.LineBasicMaterial
@@ -24,7 +25,7 @@ export type Materials =
 
 const materials: { [id: string]: Materials } = {};
 
-const textureMapKeys = [
+export const textureMapKeys = [
   'map',
   'alphaMap',
   'aoMap',
@@ -204,7 +205,7 @@ export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) 
 
 /**
  * Returns all created materials that exist
- * @returns array of Three.js lights
+ * @returns all materials ({ [id: string]: Material })
  */
 export const getAllMaterials = () => materials;
 
@@ -250,3 +251,24 @@ export const saveMaterial = (material: Materials | Materials[], givenId?: string
  * @returns boolean
  */
 export const doesMatExist = (id: string) => Boolean(materials[id]);
+
+/**
+ * Update all materials (needsUpdate = true) in the scene
+ */
+export const updateAllMaterials = () => {
+  const rootScene = getRootScene();
+  if (!rootScene) return;
+
+  rootScene.traverse((child) => {
+    const c = child as THREE.Mesh;
+    if (c?.material) {
+      if (Array.isArray(c.material)) {
+        for (let i = 0; i < c.material.length; i++) {
+          c.material[i].needsUpdate = true;
+        }
+      } else {
+        c.material.needsUpdate = true;
+      }
+    }
+  });
+};

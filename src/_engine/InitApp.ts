@@ -8,6 +8,10 @@ import './styles/index.scss';
 import { lerror } from './utils/Logger';
 import { buildSkyBoxDebugGUI } from './core/SkyBox';
 import { createDebuggerSceneLoader } from './debug/DebuggerSceneLoader';
+import { createRendererDebugGUI } from './core/Renderer';
+import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
+import { createLightsDebuggerGUI } from './core/Light';
+import { createCamerasDebuggerGUI } from './core/Camera';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -32,11 +36,18 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     const rootScene = getRootScene() as Scene;
     if (rootScene.children.length) initMainLoop();
 
+    // Create debug GUIs and utils
     if (isDebugEnvironment()) {
+      createRendererDebugGUI();
+      createLightsDebuggerGUI();
+      createCamerasDebuggerGUI();
       createPhysicsDebugMesh();
       buildSkyBoxDebugGUI();
       createDebuggerSceneLoader();
     }
+
+    // Load draggableWindow states
+    loadDraggableWindowStatesFromLS();
   } catch (err) {
     const msg = 'Error at app start function (InitEngine)';
     lerror(msg, err);

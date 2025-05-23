@@ -12,7 +12,7 @@ export const MAIN_APP_CAM_ID = 'mainAppCam';
 
 InitEngine(async () => {
   // Init camera
-  createCamera(MAIN_APP_CAM_ID, { isCurrentCamera: true, fov: 90 });
+  createCamera(MAIN_APP_CAM_ID, { name: 'Main Camera', isCurrentCamera: true, fov: 90 });
 
   // Init renderer
   createRenderer({
@@ -22,6 +22,11 @@ InitEngine(async () => {
     toneMappingExposure: 0.7,
     outputColorSpace: THREE.SRGBColorSpace,
     alpha: true,
+    enableShadows: true,
+    // shadowMapType: THREE.PCFSoftShadowMap,
+    // shadowMapType: THREE.PCFShadowMap,
+    // shadowMapType: THREE.BasicShadowMap,
+    shadowMapType: THREE.VSMShadowMap,
   });
 
   // Create sceneLoader
@@ -29,7 +34,7 @@ InitEngine(async () => {
     id: 'main-scene-loader',
     loaderContainerFn: () =>
       CMP({
-        id: 'main-sene-loader-cmp',
+        id: 'main-scene-loader-cmp',
         text: '',
         style: {
           width: '100vw',

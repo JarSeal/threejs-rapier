@@ -26,11 +26,15 @@ export const createMesh = ({
   geo,
   mat,
   phy,
+  castShadow,
+  receiveShadow,
 }: {
   id?: string;
   geo: THREE.BufferGeometry | GeoProps;
   mat: THREE.Material | MatProps;
   phy?: PhysicsParams & { sceneId?: string; noWarnForUnitializedScene?: boolean };
+  castShadow?: boolean;
+  receiveShadow?: boolean;
 }) => {
   if (id && meshes[id] && !phy) return meshes[id];
 
@@ -39,17 +43,16 @@ export const createMesh = ({
   let m = mat as THREE.Material;
 
   if (!id || (id && !meshes[id])) {
-    if (!('isBufferGeometry' in geo)) {
-      g = createGeometry(geo);
-    }
-    if (!('isMaterial' in mat)) {
-      m = createMaterial(mat);
-    }
+    if (!('isBufferGeometry' in geo)) g = createGeometry(geo);
+    if (!('isMaterial' in mat)) m = createMaterial(mat);
 
     mesh = new THREE.Mesh(g, m);
   } else {
     mesh = meshes[id];
   }
+
+  if (castShadow !== undefined) mesh.castShadow = castShadow;
+  if (receiveShadow !== undefined) mesh.receiveShadow = receiveShadow;
 
   const savedMesh = saveMesh(mesh, id, true);
 

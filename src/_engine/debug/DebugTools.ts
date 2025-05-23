@@ -3,7 +3,13 @@ import { ShaderNodeObject, uniform } from 'three/tsl';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, FolderApi, View } from '@tweakpane/core';
-import { createCamera, getAllCameras, getCurrentCameraId, setCurrentCamera } from '../core/Camera';
+import {
+  createCamera,
+  getAllCameras,
+  getCurrentCameraId,
+  setCurrentCamera,
+  updateCamerasDebuggerGUI,
+} from '../core/Camera';
 import { getRenderer, getRendererOptions } from '../core/Renderer';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
@@ -13,10 +19,26 @@ import { createMaterial, deleteMaterial } from '../core/Material';
 import { getCurrentSceneId, getRootScene, getScene } from '../core/Scene';
 import { getEnvMapRoughnessBg } from '../core/SkyBox';
 import { getConfig, getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../core/Config';
-import { debugSceneListing, type DebugScene } from './DebugSceneListing';
+import { debuggerSceneListing, type DebugScene } from './debugScenes/debuggerSceneListing';
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { lerror, llog } from '../utils/Logger';
 import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
+import { openDraggableWindow } from '../core/UI/DraggableWindow';
+import { openDialog } from '../core/UI/DialogWindow';
+import { getSvgIcon } from '../core/UI/icons/SvgIcon';
+import {
+  createAxesHelper,
+  createGridHelper,
+  createPolarGridHelper,
+  getAllCameraHelpers,
+  getAllLightHelpers,
+  toggleAxesHelperVisibility,
+  toggleCameraHelper,
+  toggleGridHelperVisibility,
+  toggleLightHelper,
+  togglePolarGridHelperVisibility,
+} from '../core/Helpers';
+import { getAllLights } from '../core/Light';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -70,6 +92,22 @@ type DebugToolsState = {
     loggingFolderExpanded: boolean;
   };
   debugCamera: { [sceneId: string]: DebugCameraState };
+  debugCameraFolderExpanded: boolean;
+  helpers: {
+    helpersFolderExpanded: boolean;
+    showAxesHelper: boolean;
+    axesHelperSize: number;
+    showGridHelper: boolean;
+    gridSize: number;
+    gridDivisionsSize: number;
+    gridColorCenterLine: number;
+    gridColorGrid: number;
+    showPolarGridHelper: boolean;
+    polarGridRadius: number;
+    polarGridSectors: number;
+    polarGridRings: number;
+    polarGridDivisions: number;
+  };
 };
 
 let firstDebugToolsStateLoaded = false;
@@ -91,6 +129,22 @@ let debugToolsState: DebugToolsState = {
     loggingFolderExpanded: false,
   },
   debugCamera: {},
+  debugCameraFolderExpanded: false,
+  helpers: {
+    helpersFolderExpanded: false,
+    showAxesHelper: false,
+    axesHelperSize: 1,
+    showGridHelper: false,
+    gridSize: 100,
+    gridDivisionsSize: 100,
+    gridColorCenterLine: 0x888888,
+    gridColorGrid: 0x444444,
+    showPolarGridHelper: false,
+    polarGridRadius: 10,
+    polarGridSectors: 16,
+    polarGridRings: 8,
+    polarGridDivisions: 16,
+  },
 };
 
 /**
@@ -99,9 +153,9 @@ let debugToolsState: DebugToolsState = {
 export const initDebugTools = () => {
   if (!isDebugEnvironment()) return;
   createDebugToolsDebugGUI();
-  const debugSceneListingConfig = getConfig().debugScenes || [];
-  if (debugSceneListingConfig?.length) {
-    addScenesToSceneListing(debugSceneListingConfig);
+  const debuggerSceneListingConfig = getConfig().debugScenes || [];
+  if (debuggerSceneListingConfig?.length) {
+    addScenesToSceneListing(debuggerSceneListingConfig);
   }
 };
 
@@ -160,15 +214,23 @@ const createDebugToolsDebugGUI = () => {
   });
   orbitControls.enabled = curSceneDebugCamParams.enabled;
 
+  toggleAxesHelperVisibility(debugToolsState.helpers.showAxesHelper);
+  toggleGridHelperVisibility(debugToolsState.helpers.showGridHelper);
+  togglePolarGridHelperVisibility(debugToolsState.helpers.showPolarGridHelper);
+
+  const icon = getSvgIcon('tools');
   createDebuggerTab({
     id: 'debugToolsControls',
-    buttonText: 'TOOLS',
+    buttonText: icon,
     title: 'Debug tools controls',
     orderNr: 6,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('debugTools', 'Debug Tools Controls');
+      const { container, debugGUI } = createNewDebuggerPane(
+        'debugTools',
+        `${icon} Debug Tools Controls`
+      );
       toolsDebugGUI = debugGUI;
-      buildDebugGUI();
+      buildDebugToolsGUI();
 
       return container;
     },
@@ -259,7 +321,11 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
  * @param refreshPane (boolean) optional value to determine whether the debug pane should be refreshed or not
  * @returns
  */
-export const setDebugToolsVisibility = (show: boolean, refreshPane?: boolean) => {
+export const setDebugToolsVisibility = (
+  show: boolean,
+  refreshPane?: boolean,
+  doNotSetCamera?: boolean
+) => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) {
     const msg = 'Could not find current scene id in setDebugToolsVisibility';
@@ -292,17 +358,23 @@ export const setDebugToolsVisibility = (show: boolean, refreshPane?: boolean) =>
         )
       );
     }
-    setCurrentCamera(DEBUG_CAMERA_ID);
-    if (refreshPane) buildDebugGUI();
+    if (!doNotSetCamera) setCurrentCamera(DEBUG_CAMERA_ID, true);
+    if (refreshPane) buildDebugToolsGUI();
+    updateCamerasDebuggerGUI();
     return;
   }
 
   if (orbitControls) orbitControls.enabled = false;
   if (debugCamera?.children[0]) debugCamera.children[0].visible = false;
-  setCurrentCamera(
-    debugToolsState.debugCamera[currentSceneId].latestAppCameraId || Object.keys(getAllCameras())[0]
-  );
-  if (refreshPane) buildDebugGUI();
+  if (!doNotSetCamera) {
+    setCurrentCamera(
+      debugToolsState.debugCamera[currentSceneId].latestAppCameraId ||
+        Object.keys(getAllCameras())[0],
+      true
+    );
+  }
+  if (refreshPane) buildDebugToolsGUI();
+  updateCamerasDebuggerGUI();
 };
 
 /**
@@ -379,14 +451,14 @@ export const getDebugToolsState = (loadFromLS?: boolean) => {
 export const addScenesToSceneListing = (scenes: DebugScene | DebugScene[]) => {
   if (Array.isArray(scenes)) {
     for (let i = 0; i < scenes.length; i++) {
-      const foundScene = debugSceneListing.find((scene) => scene.id === scenes[i].id);
-      if (!foundScene) debugSceneListing.push(scenes[i]);
+      const foundScene = debuggerSceneListing.find((scene) => scene.id === scenes[i].id);
+      if (!foundScene) debuggerSceneListing.push(scenes[i]);
     }
     reloadSceneListingBlade();
     return;
   }
-  const foundScene = debugSceneListing.find((scene) => scene.id === scenes.id);
-  if (!foundScene) debugSceneListing.push(scenes);
+  const foundScene = debuggerSceneListing.find((scene) => scene.id === scenes.id);
+  if (!foundScene) debuggerSceneListing.push(scenes);
   reloadSceneListingBlade();
 };
 
@@ -397,30 +469,30 @@ export const addScenesToSceneListing = (scenes: DebugScene | DebugScene[]) => {
 export const removeScenesFromSceneListing = (sceneIds: string | string[]) => {
   if (Array.isArray(sceneIds)) {
     const indexes: number[] = [];
-    for (let i = 0; i < debugSceneListing.length; i++) {
-      if (sceneIds.includes(debugSceneListing[i].id)) {
+    for (let i = 0; i < debuggerSceneListing.length; i++) {
+      if (sceneIds.includes(debuggerSceneListing[i].id)) {
         indexes.push(i);
       }
     }
     for (let i = 0; i < indexes.length; i++) {
-      debugSceneListing.splice(indexes[i], 1);
+      debuggerSceneListing.splice(indexes[i], 1);
     }
     reloadSceneListingBlade();
     return;
   }
   let index: number | null = null;
-  for (let i = 0; i < debugSceneListing.length; i++) {
-    if (sceneIds.includes(debugSceneListing[i].id)) {
+  for (let i = 0; i < debuggerSceneListing.length; i++) {
+    if (sceneIds.includes(debuggerSceneListing[i].id)) {
       index = i;
     }
   }
-  if (index !== null) debugSceneListing.splice(index, 1);
+  if (index !== null) debuggerSceneListing.splice(index, 1);
   reloadSceneListingBlade();
 };
 
 const getSceneStarterDropDownOptions = () => [
   { value: '', text: '---NOT-SET---' },
-  ...debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
+  ...debuggerSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
 ];
 
 // For reloading the scenes listing in debugging
@@ -428,7 +500,7 @@ const reloadSceneListingBlade = () => {
   if (scenesDropDown) {
     scenesDropDown.importState({
       ...scenesDropDown.exportState(),
-      options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
+      options: debuggerSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
     });
   }
   if (sceneStarterDropDown) {
@@ -457,7 +529,31 @@ export const addSceneToDebugtools = (sceneId: string) => {
   debugToolsState.debugCamera[sceneId] = getDefaultDebugCamParams();
 };
 
-const buildDebugGUI = () => {
+export const handleCameraSwitch = (
+  cameraId?: string,
+  useDebugCamera?: boolean,
+  doNotSetCamera?: boolean
+) => {
+  const currentSceneId = getCurrentSceneId();
+  if (!cameraId && useDebugCamera === undefined) {
+    lerror(
+      'handleCameraSwitch was called without cameraId and without useDebugCamera, one of them is required (in DebugTools).'
+    );
+    return;
+  }
+  if (!currentSceneId) return;
+  const isDebugCamera = cameraId ? cameraId === DEBUG_CAMERA_ID : Boolean(useDebugCamera);
+  if (!debugToolsState.debugCamera[currentSceneId]) {
+    debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
+  }
+  debugToolsState.debugCamera[currentSceneId].enabled = isDebugCamera;
+  curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+  if (envBallFolder) envBallFolder.hidden = !isDebugCamera;
+  lsSetItem(LS_KEY, debugToolsState);
+  setDebugToolsVisibility(isDebugCamera, Boolean(cameraId), doNotSetCamera);
+};
+
+export const buildDebugToolsGUI = () => {
   const debugGUI = toolsDebugGUI;
   const currentSceneId = getCurrentSceneId();
   if (!debugGUI || !currentSceneId) return;
@@ -471,23 +567,24 @@ const buildDebugGUI = () => {
     blades[i].dispose();
   }
 
-  debugGUI
+  // Debug camera
+  const debugCameraFolder = debugGUI
+    .addFolder({
+      title: 'Debug camera',
+      expanded: debugToolsState.debugCameraFolderExpanded,
+    })
+    .on('fold', (state) => {
+      debugToolsState.debugCameraFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  debugCameraFolder
     .addBinding(curSceneDebugCamParams, 'enabled', {
       label: 'Use debug camera',
     })
     .on('change', (e) => {
-      const currentSceneId = getCurrentSceneId();
-      if (!currentSceneId) return;
-      if (!debugToolsState.debugCamera[currentSceneId]) {
-        debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
-      }
-      debugToolsState.debugCamera[currentSceneId].enabled = e.value;
-      curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-      if (envBallFolder) envBallFolder.hidden = !e.value;
-      lsSetItem(LS_KEY, debugToolsState);
-      setDebugToolsVisibility(e.value);
+      handleCameraSwitch(undefined, Boolean(e.value));
     });
-  debugGUI
+  debugCameraFolder
     .addBinding(curSceneDebugCamParams, 'fov', {
       label: 'Debug camera FOV',
       step: 1,
@@ -507,7 +604,7 @@ const buildDebugGUI = () => {
       curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
       lsSetItem(LS_KEY, debugToolsState);
     });
-  debugGUI
+  debugCameraFolder
     .addBinding(curSceneDebugCamParams, 'near', {
       label: 'Debug camera near',
       step: 0.01,
@@ -526,7 +623,7 @@ const buildDebugGUI = () => {
       curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
       lsSetItem(LS_KEY, debugToolsState);
     });
-  debugGUI
+  debugCameraFolder
     .addBinding(curSceneDebugCamParams, 'far', {
       label: 'Debug camera far',
       step: 0.01,
@@ -607,13 +704,13 @@ const buildDebugGUI = () => {
   scenesDropDown = scenesFolder.addBlade({
     view: 'list',
     label: 'Change scene',
-    options: debugSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
+    options: debuggerSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
     value: getCurrentSceneId(),
   }) as ListBladeApi<BladeController<View>>;
   scenesDropDown.on('change', (e) => {
     const value = String(e.value);
     if (value === getCurrentSceneId()) return;
-    const nextScene = debugSceneListing.find((s) => s.id === value);
+    const nextScene = debuggerSceneListing.find((s) => s.id === value);
     if (!isCurrentlyLoading() && nextScene) {
       lsSetItem(LS_KEY, debugToolsState);
       loadScene({ nextSceneFn: nextScene.fn, loaderId: DEBUGGER_SCENE_LOADER_ID });
@@ -652,6 +749,198 @@ const buildDebugGUI = () => {
       lsSetItem(LS_KEY, debugToolsState);
     });
 
+  // Helpers
+  const helpersFolder = debugGUI
+    .addFolder({
+      title: 'Helpers',
+      expanded: debugToolsState.helpers.helpersFolderExpanded,
+    })
+    .on('fold', (state) => {
+      debugToolsState.helpers.helpersFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder // AXES HELPER
+    .addBinding(debugToolsState.helpers, 'showAxesHelper', { label: 'Show axes helper' })
+    .on('change', (e) => {
+      toggleAxesHelperVisibility(e.value);
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'axesHelperSize', {
+      label: 'Axes helper size',
+      min: 0.1,
+      step: 0.1,
+    })
+    .on('change', (e) => {
+      createAxesHelper(Number(e.value));
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder.addBlade({ view: 'separator' });
+  helpersFolder // GRID HELPER
+    .addBinding(debugToolsState.helpers, 'showGridHelper', { label: 'Show grid helper' })
+    .on('change', (e) => {
+      toggleGridHelperVisibility(e.value);
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'gridSize', { label: 'Grid size', min: 0.01, step: 0.01 })
+    .on('change', (e) => {
+      createGridHelper(
+        Number(e.value),
+        debugToolsState.helpers.gridDivisionsSize,
+        debugToolsState.helpers.gridColorCenterLine,
+        debugToolsState.helpers.gridColorGrid
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'gridDivisionsSize', {
+      label: "Grid division's size",
+      min: 0.01,
+      step: 0.01,
+    })
+    .on('change', (e) => {
+      createGridHelper(
+        debugToolsState.helpers.gridSize,
+        Number(e.value),
+        debugToolsState.helpers.gridColorCenterLine,
+        debugToolsState.helpers.gridColorGrid
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'gridColorCenterLine', {
+      label: "Grid's center line color",
+      color: { type: 'float' },
+    })
+    .on('change', (e) => {
+      createGridHelper(
+        debugToolsState.helpers.gridSize,
+        debugToolsState.helpers.gridDivisionsSize,
+        Number(e.value),
+        debugToolsState.helpers.gridColorGrid
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'gridColorGrid', {
+      label: "Grid's color",
+      color: { type: 'float' },
+    })
+    .on('change', (e) => {
+      createGridHelper(
+        debugToolsState.helpers.gridSize,
+        debugToolsState.helpers.gridDivisionsSize,
+        debugToolsState.helpers.gridColorCenterLine,
+        Number(e.value)
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder.addBlade({ view: 'separator' });
+  helpersFolder // POLAR GRID HELPER
+    .addBinding(debugToolsState.helpers, 'showPolarGridHelper', { label: 'Show polar grid helper' })
+    .on('change', (e) => {
+      togglePolarGridHelperVisibility(e.value);
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'polarGridRadius', {
+      label: 'Polar grid radius  ',
+      min: 0.01,
+      step: 0.01,
+    })
+    .on('change', (e) => {
+      createPolarGridHelper(
+        Number(e.value),
+        debugToolsState.helpers.polarGridSectors,
+        debugToolsState.helpers.polarGridRings,
+        debugToolsState.helpers.polarGridDivisions
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'polarGridSectors', {
+      label: 'Polar grid sectors',
+      min: 1,
+      step: 1,
+    })
+    .on('change', (e) => {
+      createPolarGridHelper(
+        debugToolsState.helpers.polarGridRadius,
+        Number(e.value),
+        debugToolsState.helpers.polarGridRings,
+        debugToolsState.helpers.polarGridDivisions
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'polarGridRings', {
+      label: 'Polar grid rings',
+      min: 0,
+      step: 1,
+    })
+    .on('change', (e) => {
+      createPolarGridHelper(
+        debugToolsState.helpers.polarGridRadius,
+        debugToolsState.helpers.polarGridSectors,
+        Number(e.value),
+        debugToolsState.helpers.polarGridDivisions
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder
+    .addBinding(debugToolsState.helpers, 'polarGridDivisions', {
+      label: 'Polar grid divisions',
+      min: 0,
+      step: 1,
+    })
+    .on('change', (e) => {
+      createPolarGridHelper(
+        debugToolsState.helpers.polarGridRadius,
+        debugToolsState.helpers.polarGridSectors,
+        debugToolsState.helpers.polarGridRings,
+        Number(e.value)
+      );
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  helpersFolder.addBlade({ view: 'separator' });
+  helpersFolder.addButton({ title: 'Hide / show all light helpers' }).on('click', () => {
+    const lightHelpers = getAllLightHelpers();
+    let allNotVisible = true;
+    for (let i = 0; i < lightHelpers.length; i++) {
+      if (lightHelpers[i].visible) {
+        allNotVisible = false;
+        break;
+      }
+    }
+    const allLights = getAllLights();
+    const allLightKeys = Object.keys(allLights);
+    for (let i = 0; i < allLightKeys.length; i++) {
+      const l = allLights[allLightKeys[i]];
+      const id = l.userData.id;
+      if (!id) continue;
+      toggleLightHelper(id, allNotVisible);
+    }
+  });
+  helpersFolder.addButton({ title: 'Hide / show all camera helpers' }).on('click', () => {
+    const cameraHelpers = getAllCameraHelpers();
+    let allNotVisible = true;
+    for (let i = 0; i < cameraHelpers.length; i++) {
+      if (cameraHelpers[i].visible && !cameraHelpers[i].userData.isLightHelper) {
+        allNotVisible = false;
+        break;
+      }
+    }
+    const allCameras = getAllCameras();
+    const allCameraKeys = Object.keys(allCameras);
+    for (let i = 0; i < allCameraKeys.length; i++) {
+      const l = allCameras[allCameraKeys[i]];
+      const id = l.userData.id;
+      if (!id) continue;
+      toggleCameraHelper(id, allNotVisible);
+    }
+  });
+
   // Logging actions
   const loggingFolder = debugGUI
     .addFolder({
@@ -669,7 +958,14 @@ const buildDebugGUI = () => {
       getEnvs(),
       '**********************',
     ],
-    rendererOptions: ['RENDER OPTIONS:*******', getRendererOptions(), '**********************'],
+    renderer: [
+      'RENDER OPTIONS:*******',
+      getRendererOptions(),
+      '**********************',
+      'RENDERER:*******',
+      getRenderer(),
+      '**********************',
+    ],
     rootScene: ['ROOT SCENE:***********', getRootScene(), '**********************'],
     cameras: [
       'CAMERAS***************\n',
@@ -697,6 +993,32 @@ const buildDebugGUI = () => {
       llog(...getLogActionListItem(key));
     });
   }
+
+  // @TODO: REMOVE THESE!
+  loggingFolder.addButton({ title: 'OPEN DRAGGABLE WINDOW' }).on('click', () => {
+    openDraggableWindow({
+      id: 'myFirstDraggableTest',
+      closeIfOpen: true,
+      position: { x: 400, y: 400 },
+      size: { w: 200, h: 100 },
+      saveToLS: true,
+      title: 'My draggable window',
+      isDebugWindow: true,
+      disableHoriResize: false,
+      disableVertResize: false,
+      disableDragging: false,
+      resetPosition: true,
+    });
+  });
+  loggingFolder.addButton({ title: 'OPEN DIALOG WINDOW' }).on('click', () => {
+    openDialog({
+      id: 'myFirstDialogTest',
+      saveToLS: true,
+      title: 'My dialog window',
+      // isDebugWindow: true,
+      backDropClickClosesWindow: true,
+    });
+  });
 
   debugGUI.refresh();
 };

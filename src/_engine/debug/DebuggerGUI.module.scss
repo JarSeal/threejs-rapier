@@ -1,3 +1,4 @@
+@use 'sass:color';
 @use '../styles/variables.scss';
 
 $drawerWidth: 40rem;
@@ -97,12 +98,20 @@ $breakpointXSmall: 379px;
 .debugDrawerTabsContainer {
   color: variables.$debugTextColor;
   overflow: auto;
+  scrollbar-color: variables.$debugTextColor variables.$debugGuiBackground;
 }
 
 .childContainer {
-  :global(.debuggerHeading) {
+  :global(.debuggerTabHeading) {
     margin-top: 1rem;
     margin-bottom: 1rem;
+    font-size: 1.8rem;
+
+    :global(.uiIcon) {
+      display: inline-block;
+      width: 1.4rem;
+      margin-right: 0.2rem;
+    }
   }
 
   &:first-of-type {
@@ -181,5 +190,94 @@ $breakpointXSmall: 379px;
     position: absolute;
     top: 0;
     left: 0;
+  }
+}
+
+:global(ul li.emptyState) {
+  padding: 2.4rem;
+  color: color.adjust(variables.$debugTextColorDark, $lightness: -20%);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+:global(.ulList) {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  background-color: color.adjust(#28292e, $lightness: -2%);
+  border-radius: 0.4rem;
+  overflow: hidden;
+
+  li {
+    display: block;
+    position: relative;
+    width: 100%;
+    color: variables.$debugTextColor;
+    font-size: 1.2rem;
+
+    &:nth-child(odd) {
+      background-color: #28292e;
+    }
+
+    > button {
+      @include variables.nakedButton;
+      background: none;
+      display: block;
+      width: 100%;
+      text-align: left;
+      color: variables.$debugTextColor;
+      transition: background-color 0.075s ease-in-out;
+
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+      }
+
+      &:focus {
+        &:before {
+          display: block;
+          content: '';
+          width: 0.2rem;
+          height: 100%;
+          position: absolute;
+          left: 0;
+          top: 0;
+          background-color: rgba(255, 255, 255, 0.9);
+        }
+      }
+    }
+
+    &:global(.selected) {
+      &:before {
+        display: block;
+        content: '';
+        width: 0.4rem;
+        height: 100%;
+        position: absolute;
+        left: 0;
+        top: 0;
+        background-color: variables.$debugTextColor;
+      }
+    }
+  }
+}
+
+ul li :global(.listItemWithId) {
+  display: flex;
+  gap: 0.8rem;
+  padding: 2rem 0.8rem 0.8rem;
+  position: relative;
+
+  :global(.itemId) {
+    position: absolute;
+    top: 0;
+    font-size: 1rem;
+    padding-top: 0.5rem;
+    color: variables.$debugTextColorDark;
+  }
+
+  span,
+  h4 {
+    display: block;
+    margin: 0;
   }
 }

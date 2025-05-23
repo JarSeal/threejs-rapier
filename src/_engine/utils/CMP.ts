@@ -83,6 +83,9 @@ export type TProps = {
   /** Element text content. */
   text?: string;
 
+  /** Instead of append, prepend the element to the parent */
+  prepend?: boolean;
+
   /** Component element's tag. */
   tag?: string;
 
@@ -280,7 +283,7 @@ export const CMP = (
     if (globalSettings.replaceRootDom) {
       props.attach.replaceWith(elem);
     } else {
-      props.attach.appendChild(elem);
+      props.prepend ? props.attach.prepend(elem) : props.attach.appendChild(elem);
     }
     rootCMP = cmp;
     cmp.parentElem = elem.parentElement;
@@ -312,7 +315,8 @@ const addChildCmp = (parent: TCMP, child?: TCMP | TProps) => {
   }
 
   parent.children.push(cmp);
-  parent.elem.appendChild(cmp.elem);
+  const prepend = cmp.props?.prepend;
+  prepend ? parent.elem.prepend(cmp.elem) : parent.elem.appendChild(cmp.elem);
   cmp.parent = parent;
   cmp.parentElem = parent.elem;
   if (cmp.props?.focus) focusCmp(cmp);

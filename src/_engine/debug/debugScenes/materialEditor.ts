@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { createScene } from '../../core/Scene';
-import { debugSceneListing } from '../DebugSceneListing';
+import { debuggerSceneListing } from './debuggerSceneListing';
 import { createMesh } from '../../core/Mesh';
 
 export const DEBUG_MATERIAL_EDITOR_ID = '_debug-material-editor';
@@ -9,7 +9,7 @@ export const initDebugMaterialEditorScene = async () =>
   new Promise<string>(async (resolve) => {
     // eslint-disable-next-line no-console
     console.log('INIT MATERIAL EDItoR');
-    const debugScene = debugSceneListing.find((item) => item.id === DEBUG_MATERIAL_EDITOR_ID);
+    const debugScene = debuggerSceneListing.find((item) => item.id === DEBUG_MATERIAL_EDITOR_ID);
     if (!debugScene) {
       resolve('');
       return;

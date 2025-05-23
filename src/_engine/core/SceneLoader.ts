@@ -17,7 +17,8 @@ import { getCanvasParentElem } from './Renderer';
 import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
 import { isDebugEnvironment } from './Config';
 import { clearSkyBox } from './SkyBox';
-import { debugSceneListing } from '../debug/DebugSceneListing';
+import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
+import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -178,7 +179,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
     }
 
     if (debugToolsState?.scenesListing.debugStartScene) {
-      const debugScene = debugSceneListing.find(
+      const debugScene = debuggerSceneListing.find(
         (scene) => scene.id === debugToolsState.scenesListing.debugStartScene
       );
       if (debugScene) initNextSceneFn = debugScene.fn;
@@ -232,6 +233,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       }
 
       clearSkyBox();
+      handleDraggableWindowsOnSceneChangeStart();
 
       loader.phase = 'LOAD';
       await loadFn(loader, initNextSceneFn).then(async (newSceneId) => {

@@ -7,6 +7,7 @@ import { getConfig, isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
 import { getMesh } from './Mesh';
 import { Pane } from 'tweakpane';
+import { getSvgIcon } from './UI/icons/SvgIcon';
 
 export type PhysicsObject = {
   id?: string;
@@ -804,13 +805,14 @@ const createDebugControls = () => {
 
   initDebuggerScenePhysState();
 
+  const icon = getSvgIcon('rocketTakeoff');
   createDebuggerTab({
     id: 'physicsControls',
-    buttonText: 'PHYSICS',
+    buttonText: icon,
     title: 'Physics controls',
     orderNr: 5,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('physics', 'Physics Controls');
+      const { container, debugGUI } = createNewDebuggerPane('physics', `${icon} Physics Controls`);
       physicsDebugGUI = debugGUI;
       buildDebugGUI();
       return container;

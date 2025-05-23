@@ -18,7 +18,10 @@ type TexOpts = {
 
 const textures: { [id: string]: THREE.Texture } = {};
 
-const setTextureOpts = (texture: THREE.Texture | THREE.DataTexture, texOpts?: TexOpts) => {
+const setTextureOpts = (
+  texture: THREE.Texture | THREE.DataTexture | THREE.CubeTexture,
+  texOpts?: TexOpts
+) => {
   if (texOpts?.mapping) texture.mapping = texOpts.mapping;
   if (texOpts?.wrapS) texture.wrapS = texOpts.wrapS;
   if (texOpts?.wrapT) texture.wrapT = texOpts.wrapT;
@@ -31,19 +34,32 @@ const setTextureOpts = (texture: THREE.Texture | THREE.DataTexture, texOpts?: Te
   return texture;
 };
 
-const getNoFileTexture = (texOpts?: TexOpts) =>
-  new THREE.Texture(
-    texOpts?.image,
-    texOpts?.mapping,
-    texOpts?.wrapS,
-    texOpts?.wrapT,
-    texOpts?.magFilter,
-    texOpts?.minFilter,
-    texOpts?.format,
-    texOpts?.type,
-    texOpts?.anisotropy,
-    texOpts?.colorSpace
-  );
+const getNoFileTexture = (texOpts?: TexOpts, isCubeTexture?: boolean) =>
+  isCubeTexture
+    ? new THREE.CubeTexture(
+        undefined,
+        undefined,
+        texOpts?.wrapS,
+        texOpts?.wrapT,
+        texOpts?.magFilter,
+        texOpts?.minFilter,
+        texOpts?.format,
+        texOpts?.type,
+        texOpts?.anisotropy,
+        texOpts?.colorSpace
+      )
+    : new THREE.Texture(
+        texOpts?.image,
+        texOpts?.mapping,
+        texOpts?.wrapS,
+        texOpts?.wrapT,
+        texOpts?.magFilter,
+        texOpts?.minFilter,
+        texOpts?.format,
+        texOpts?.type,
+        texOpts?.anisotropy,
+        texOpts?.colorSpace
+      );
 
 const createTexture = (
   id?: string,
@@ -205,20 +221,23 @@ export const loadTexture = ({
 /**
  * Creates a texture to be used without loading logic. The texture is usable right away.
  * @param id optional id string, defaults to texture.uuid
- * @param fileName optional file path to be loaded. If no fileName is provided, an empty Texture is created.
+ * @param fileName (string or array of strings) optional file name to be loaded. If no fileName is provided, an empty Texture is created. If the fileName is an array, the CubeTextureLoader will be used.
+ * @param path optional file path, default is './'.
  * @param texOpts optional {@link TexOpts}
  * @param throwOnError optional value whether loadTextureAsync should throw on an error
- * @returns Promise<THREE.Texture | THREE.DataTexture>
+ * @returns Promise<THREE.Texture | THREE.DataTexture | THREE.CubeTexture>
  */
 export const loadTextureAsync = async ({
   id,
   fileName,
+  path,
   useRGBELoader,
   texOpts,
   throwOnError,
 }: {
   id?: string;
-  fileName?: string;
+  fileName?: string | string[];
+  path?: string;
   useRGBELoader?: boolean;
   texOpts?: TexOpts;
   throwOnError?: boolean;
@@ -227,18 +246,56 @@ export const loadTextureAsync = async ({
 
   if (!fileName) return getNoFileTexture(texOpts);
 
-  const loader = useRGBELoader ? new RGBELoader() : new THREE.TextureLoader();
+  let loaderType = '';
+
   try {
-    const loadedTexture = await loader.loadAsync(fileName);
-    const texture = setTextureOpts(loadedTexture, texOpts);
-    texture.userData.id = id || texture.uuid;
-    textures[id || texture.uuid] = texture;
-    return texture;
+    if (typeof fileName === 'string') {
+      if (useRGBELoader) {
+        // Data texture
+        loaderType = 'RGBELoader';
+        const loader = new RGBELoader();
+        const loadedTexture = setTextureOpts(
+          await loader.setPath(path || './').loadAsync(fileName),
+          texOpts
+        );
+        loadedTexture.userData.id = id || loadedTexture.uuid;
+        textures[id || loadedTexture.uuid] = loadedTexture;
+        return loadedTexture as THREE.DataTexture;
+      } else {
+        // Texture
+        loaderType = 'TextureLoader';
+        const loader = new THREE.TextureLoader();
+        const loadedTexture = setTextureOpts(
+          await loader.setPath(path || './').loadAsync(fileName),
+          texOpts
+        );
+        loadedTexture.userData.id = id || loadedTexture.uuid;
+        textures[id || loadedTexture.uuid] = loadedTexture;
+        return loadedTexture as THREE.Texture;
+      }
+    } else {
+      // Cube texture
+      if (fileName.length < 6 || fileName.length > 6) {
+        throw new Error(
+          `Cube texture has to have exactly 6 images in an array (found ${fileName.length} images).`
+        );
+      }
+      loaderType = 'CubeTextureLoader';
+      const loader = new THREE.CubeTextureLoader();
+      const loadedTexture = setTextureOpts(
+        await loader.setPath(path || './').loadAsync(fileName),
+        texOpts
+      );
+      loadedTexture.userData.id = id || loadedTexture.uuid;
+      textures[id || loadedTexture.uuid] = loadedTexture;
+      return loadedTexture as THREE.CubeTexture;
+    }
   } catch (err) {
-    const errorMsg = `Could not load texture in loadTextureAsync (id: "${id}", "fileName: ${fileName}")`;
+    const errorMsg = `Could not load texture in loadTextureAsync (id: "${id}", fileName: "${typeof fileName === 'string' ? fileName : fileName.join(', ')}", ${path ? `path: "${path}", ` : ''}loaderType: "${loaderType}")`;
     lerror(errorMsg, err);
     if (throwOnError) throw new Error(errorMsg);
-    return getNoFileTexture(texOpts);
+    if (Array.isArray(fileName)) return getNoFileTexture(texOpts, true) as THREE.CubeTexture;
+    return getNoFileTexture(texOpts) as THREE.Texture;
   }
 };
 

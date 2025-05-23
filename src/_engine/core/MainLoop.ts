@@ -16,6 +16,8 @@ import { getWindowSize } from '../utils/Window';
 import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugTools';
 import { stepPhysicsWorld } from './PhysicsRapier';
+import { getSvgIcon } from './UI/icons/SvgIcon';
+import { updateHelpers } from './Helpers';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -87,6 +89,10 @@ const mainLoopForDebug = async () => {
     loopState.isMasterPlaying = false;
     return;
   }
+
+  // Update helpers (only in debug)
+  updateHelpers();
+
   // main loopers
   const mainLoopers = getSceneMainLoopers();
   for (let i = 0; i < mainLoopers.length; i++) {
@@ -110,7 +116,7 @@ const mainLoopForDebug = async () => {
       // maxFPS limiter
       accDelta += delta;
       if (accDelta > loopState.maxFPSInterval) {
-        renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
+        await renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
           runMainLateLoopers();
           getStats()?.update();
           accDelta = accDelta % loopState.maxFPSInterval;
@@ -118,7 +124,7 @@ const mainLoopForDebug = async () => {
       }
     } else {
       // No maxFPS limiter
-      renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
+      await renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
         runMainLateLoopers();
         getStats()?.update();
       });
@@ -132,7 +138,7 @@ const mainLoopForDebug = async () => {
 
 // LOOP (for production)
 // **************************************
-const mainLoopForProduction = () => {
+const mainLoopForProduction = async () => {
   const dt = clock.getDelta();
   delta = dt * loopState.playSpeedMultiplier;
   if (loopState.masterPlay) {
@@ -162,7 +168,7 @@ const mainLoopForProduction = () => {
     const rootScene = getRootScene() as Scene;
     renderer?.setViewport(0, 0, windowSize.width, windowSize.height);
     // No maxFPS limiter
-    renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
+    await renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
       runMainLateLoopers();
     });
   } else {
@@ -173,13 +179,13 @@ const mainLoopForProduction = () => {
 
 // LOOP (for production with FPS limiter)
 // **************************************
-const mainLoopForProductionWithFPSLimiter = () => {
+const mainLoopForProductionWithFPSLimiter = async () => {
   requestAnimationFrame(mainLoop);
   delta = clock.getDelta() * loopState.playSpeedMultiplier;
   accDelta += delta;
   // @TODO: add app play loop here
   if (accDelta > loopState.maxFPSInterval) {
-    getRenderer()?.renderAsync(getRootScene() as Scene, getCurrentCamera());
+    await getRenderer()?.renderAsync(getRootScene() as Scene, getCurrentCamera());
     getStats()?.update();
     accDelta = accDelta % loopState.maxFPSInterval;
   }
@@ -296,13 +302,14 @@ export const deleteResizer = (id: string) => {
 // Debug GUI for loop
 const createLoopDebugControls = () => {
   createDebugGui();
+  const icon = getSvgIcon('infinity');
   createDebuggerTab({
     id: 'loopControls',
-    buttonText: 'LOOP',
+    buttonText: icon,
     title: 'Loop controls',
     orderNr: 4,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('loop', 'Loop Controls');
+      const { container, debugGUI } = createNewDebuggerPane('loop', `${icon} Loop Controls`);
       debugGUI.addBinding(loopState, 'masterPlay', { label: 'Master loop' }).on('change', (e) => {
         if (e.value) requestAnimationFrame(mainLoop);
         lsSetItem(LS_KEY, loopState);

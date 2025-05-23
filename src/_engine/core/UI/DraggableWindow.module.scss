@@ -1,0 +1,336 @@
+@use 'sass:color';
+@use '../../styles/variables.scss';
+
+$headerHeight: 3rem;
+$collapseAnimLength: 150ms;
+
+.popupWindow {
+  position: fixed;
+  border-radius: variables.$borderRadiusSmall;
+  overflow: hidden;
+  background: variables.$debugGuiBackgroundLighter2;
+  box-shadow:
+    rgba(0, 0, 0, 0.19) 0px 10px 20px,
+    rgba(0, 0, 0, 0.23) 0px 6px 6px;
+  transition:
+    height $collapseAnimLength ease-in-out,
+    min-height $collapseAnimLength ease-in-out,
+    max-height $collapseAnimLength ease-in-out;
+  color: variables.$debugTextColor;
+  font-size: 1.2rem;
+}
+
+.resizing {
+  transition: none;
+}
+
+.vertResizable {
+  padding-bottom: 1rem;
+}
+
+.horiResizable {
+  .contentWrapper {
+    margin-right: 1rem;
+  }
+}
+
+.vertHandle {
+  position: absolute;
+  bottom: 0.3rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3rem;
+  height: 0.4rem;
+  max-width: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: ns-resize;
+  user-select: none;
+  border-radius: 0.2rem;
+}
+
+.horiHandle {
+  position: absolute;
+  top: calc(50% + ($headerHeight / 2));
+  right: 0.3rem;
+  transform: translateY(-50%);
+  width: 0.4rem;
+  height: 3rem;
+  max-height: calc(50% - ($headerHeight / 2));
+  background: rgba(255, 255, 255, 0.05);
+  cursor: ew-resize;
+  user-select: none;
+  border-radius: 0.2rem;
+}
+
+.vertAndHoriHandle {
+  position: absolute;
+  bottom: 0.3rem;
+  right: 0.3rem;
+  width: 1rem;
+  height: 1rem;
+  max-width: 50%;
+  cursor: nwse-resize;
+  user-select: none;
+
+  &:before,
+  &:after {
+    display: block;
+    content: '';
+    background: rgba(255, 255, 255, 0.05);
+    position: absolute;
+  }
+
+  &:before {
+    width: 0.6rem;
+    height: 0.4rem;
+    bottom: 0;
+    left: 0;
+    border-radius: 0.2rem 0 0 0.2rem;
+  }
+
+  &:after {
+    width: 0.4rem;
+    height: 1rem;
+    bottom: 0;
+    right: 0;
+    border-radius: 0.2rem 0.2rem 0.2rem 0;
+  }
+}
+
+.collapsed {
+  height: $headerHeight !important;
+  min-height: $headerHeight !important;
+  max-height: $headerHeight !important;
+  overflow: hidden;
+
+  .vertHandle,
+  .horiHandle,
+  .vertAndHoriHandle {
+    display: none;
+  }
+}
+
+.headerBar {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  height: $headerHeight;
+  background: variables.$debugTabButton;
+  border-top: 0.1rem solid variables.$debugGuiBackgroundLighter2;
+  border-left: 0.1rem solid variables.$debugGuiBackgroundLighter2;
+  border-right: 0.1rem solid variables.$debugGuiBackgroundLighter2;
+  overflow: hidden;
+  border-bottom-width: 0;
+  user-select: none;
+  border-radius: variables.$borderRadiusSmall variables.$borderRadiusSmall 0 0;
+
+  .draggable & {
+    cursor: grab;
+
+    &:active {
+      cursor: grabbing;
+    }
+  }
+}
+
+.title {
+  color: variables.$white;
+  display: block;
+  width: calc(100% - $headerHeight);
+  height: 2.2rem;
+  margin: 0;
+  padding: 0.8rem 0 0 variables.$dragWinContentPadding;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: variables.$debugTextColor;
+  user-select: none;
+  overflow: hidden;
+}
+
+.collapseBtn {
+  @include variables.nakedButton;
+  position: relative;
+  width: $headerHeight;
+  height: calc($headerHeight - 0.1rem);
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.15s ease-in-out;
+
+  &:before,
+  &:after {
+    display: block;
+    position: absolute;
+    content: '';
+    top: 1.4rem;
+    left: 0.6rem;
+    width: 0.9rem;
+    height: 0.3rem;
+    background: variables.$debugTextColor;
+    border-radius: 0.1rem;
+    transition: transform $collapseAnimLength ease-in-out;
+  }
+
+  &:before {
+    transform: rotate(-45deg);
+
+    .collapsed & {
+      transform: rotate(45deg);
+    }
+  }
+  &:after {
+    transform: rotate(45deg);
+    left: 1.1rem;
+
+    .collapsed & {
+      transform: rotate(-45deg);
+    }
+  }
+
+  &:hover {
+    background: rgba(variables.$debugTextColor, 0.3);
+
+    &:before,
+    &:after {
+      background: variables.$white;
+    }
+  }
+
+  + button {
+    border-left: 0.1rem solid variables.$debugTabButton;
+
+    &:before,
+    &:after {
+      left: 0.5rem;
+    }
+  }
+}
+
+.closeBtn {
+  @include variables.nakedButton;
+  position: relative;
+  width: $headerHeight;
+  height: calc($headerHeight - 0.1rem);
+  margin-right: -0.1rem;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.15s ease-in-out;
+
+  &:before,
+  &:after {
+    display: block;
+    position: absolute;
+    content: '';
+    top: 1.3rem;
+    left: 0.6rem;
+    width: 1.8rem;
+    height: 0.3rem;
+    background: variables.$debugTextColor;
+    border-radius: 0.1rem;
+  }
+
+  &:before {
+    transform: rotate(-45deg);
+  }
+  &:after {
+    transform: rotate(45deg);
+  }
+
+  &:hover {
+    background: rgba(variables.$debugTextColor, 0.3);
+
+    &:before,
+    &:after {
+      background: variables.$white;
+    }
+  }
+}
+
+.contentWrapper {
+  overflow: auto;
+  height: calc(100% - $headerHeight);
+  scrollbar-color: variables.$debugTextColor variables.$debugGuiBackgroundLighter2;
+  scrollbar-width: thin;
+}
+
+.backDrop {
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  background: rgba(0, 0, 0, 0.8);
+}
+
+:global(.winPaddedContent) {
+  padding: 0.8rem 1rem;
+}
+
+:global(.winNotRightPaddedContent) {
+  padding: 0.8rem 0 0.8rem 1rem;
+}
+
+:global(.winFlexContent) {
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+}
+
+:global(.winSmallLabel) {
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+}
+
+:global(.winSmallIconButton) {
+  @include variables.nakedButton;
+  position: relative;
+  vertical-align: top;
+  overflow: hidden;
+  border-radius: 0.2rem;
+  padding: 0.5rem;
+  margin-left: 0.4rem;
+  margin-bottom: 0.4rem;
+  background-color: variables.$debugTextColor;
+  transition: background-color 0.17s ease-in-out;
+  width: 2.6rem;
+  height: 2.6rem;
+
+  &:hover {
+    background-color: variables.$white;
+  }
+
+  svg path {
+    fill: variables.$debugGuiBackgroundLighter2;
+  }
+
+  &:global(.dangerColor) {
+    svg path {
+      fill: variables.$errorDark;
+    }
+  }
+
+  &:global(.current) {
+    &:before {
+      display: block;
+      content: '';
+      position: absolute;
+      left: -0.6rem;
+      top: -0.6rem;
+      background-color: variables.$debugGuiBackgroundLighter2;
+      width: 1rem;
+      height: 1.2rem;
+      transform: rotate(45deg);
+    }
+  }
+
+  &:disabled {
+    svg path {
+      fill: color.adjust(variables.$debugGuiBackgroundLighter2, $lightness: 20%);
+    }
+
+    &:global(.current) {
+      &:before {
+        background-color: color.adjust(variables.$debugGuiBackgroundLighter2, $lightness: 20%);
+      }
+    }
+  }
+}
