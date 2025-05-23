@@ -11,7 +11,6 @@ import { addToGroup, createGroup } from '../_engine/core/Group';
 import { transformSpeedValue } from '../_engine/core/MainLoop';
 import { addSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
-import { addKeyInputControl } from '../_engine/core/InputControls';
 import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 
