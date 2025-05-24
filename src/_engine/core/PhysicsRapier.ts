@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type Rapier from '@dimforge/rapier3d';
+import type Rapier from '@dimforge/rapier3d-compat';
 import { lerror, lwarn } from '../utils/Logger';
 import { getCurrentSceneId, getRootScene, getScene, isCurrentScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
@@ -880,7 +880,7 @@ const buildDebugGUI = () => {
 };
 
 const initRapier = async () => {
-  const mod = await import('@dimforge/rapier3d');
+  const mod = await import('@dimforge/rapier3d-compat');
   const RAPIER = mod.default;
   return RAPIER;
 };
