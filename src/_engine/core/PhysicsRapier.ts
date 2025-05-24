@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import Rapier from '@dimforge/rapier3d';
+import type Rapier from '@dimforge/rapier3d';
 import { lerror, lwarn } from '../utils/Logger';
 import { getCurrentSceneId, getRootScene, getScene, isCurrentScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
