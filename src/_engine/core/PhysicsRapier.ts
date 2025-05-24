@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import Rapier from '@dimforge/rapier3d';
+import type Rapier from '@dimforge/rapier3d-compat';
 import { lerror, lwarn } from '../utils/Logger';
 import { getCurrentSceneId, getRootScene, getScene, isCurrentScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
@@ -596,7 +596,7 @@ export const createPhysicsWorld = () => {
 
   const gravity =
     physicsState.scenes[currentSceneId]?.gravity || getDefaultScenePhysParams().gravity;
-  physicsWorld = new RAPIER.World(new THREE.Vector3(gravity.x, gravity.y, gravity.z));
+  physicsWorld = new RAPIER.World(new RAPIER.Vector3(gravity.x, gravity.y, gravity.z));
   physicsWorld.timestep = physicsState.timestepRatio;
   physicsWorldEnabled = true;
 
@@ -880,8 +880,9 @@ const buildDebugGUI = () => {
 };
 
 const initRapier = async () => {
-  const mod = await import('@dimforge/rapier3d');
+  const mod = await import('@dimforge/rapier3d-compat');
   const RAPIER = mod.default;
+  await RAPIER.init();
   return RAPIER;
 };
 

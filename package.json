@@ -13,10 +13,11 @@
     "dev:test": "VITE_APP_ENV=test vite serve --port 8080 --host",
     "dev:production": "vite serve --port 8080 --host",
     "lint": "eslint",
-    "build": "tsc && vite build"
+    "build": "tsc && vite build",
+    "build:test": "tsc && VITE_APP_ENV=test vite build"
   },
   "dependencies": {
-    "@dimforge/rapier3d": "0.14.0",
+    "@dimforge/rapier3d-compat": "0.17.1",
     "stats-gl": "3.6.0",
     "three": "0.176.0",
     "tweakpane": "4.0.5"
