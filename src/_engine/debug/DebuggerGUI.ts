@@ -7,6 +7,7 @@ import { Pane } from 'tweakpane';
 import { getConfig, isDebugEnvironment } from '../core/Config';
 import { addKeyInputControl } from '../core/InputControls';
 import { lwarn } from '../utils/Logger';
+import { InitOnScreenTools } from './OnScreenTools';
 
 let drawerCMP: TCMP | null = null;
 let currentSceneTitleCMP: TCMP | null = null;
@@ -263,6 +264,9 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
   }
   data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
   tabsContainerWrapper.elem.scrollTop = tabFound ? drawerState.currentScrollPos || 0 : 0;
+
+  // Init On Screen Tools
+  InitOnScreenTools();
 
   return drawerCMP;
 };

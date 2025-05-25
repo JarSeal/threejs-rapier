@@ -1,5 +1,6 @@
 import arrowClockwiseIcon from './svg/arrow-clockwise.svg?raw';
 import arrowCounterClockwiseIcon from './svg/arrow-counterclockwise.svg?raw';
+import aspectRatioIcon from './svg/aspect-ratio.svg?raw';
 import cameraIcon from './svg/camera2.svg?raw';
 import cloudSunIcon from './svg/cloud-sun-fill.svg?raw';
 import databaseXIcon from './svg/database-fill-x.svg?raw';
@@ -16,6 +17,7 @@ import toolsIcon from './svg/tools.svg?raw';
 const icons = {
   arrowClockwise: arrowClockwiseIcon,
   arrowCounterClockwise: arrowCounterClockwiseIcon,
+  aspectRatio: aspectRatioIcon,
   camera: cameraIcon,
   cloudSun: cloudSunIcon,
   databaseX: databaseXIcon,
