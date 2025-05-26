@@ -17,6 +17,7 @@ import { isDebugEnvironment } from './Config';
 import { toggleCameraHelper } from './Helpers';
 import { getRootScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
+import { updateOnScreenTools } from '../debug/OnScreenTools';
 
 const LS_KEY = 'debugCameras';
 const cameras: { [id: string]: THREE.PerspectiveCamera } = {};
@@ -200,7 +201,10 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     html: () =>
       `<button title="${isCurCam ? 'This is the current camera being used' : 'Switch to use this camera'}">${getSvgIcon('camera')}</button>`,
     attr: isCurCam ? { disabled: 'true' } : {},
-    onClick: () => setCurrentCamera(camera.userData.id),
+    onClick: () => {
+      setCurrentCamera(camera.userData.id);
+      updateOnScreenTools('SWITCH');
+    },
   });
   const copyCodeButton = CMP({
     class: 'winSmallIconButton',

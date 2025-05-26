@@ -19,16 +19,16 @@
   overflow: hidden;
   border-radius: 0.2rem;
   padding: 0.5rem;
-  background-color: variables.$debugTextColor;
+  background-color: variables.$debugGuiBackgroundLighter2;
   transition: background-color 0.17s ease-in-out;
-  width: 2.6rem;
-  height: 2.6rem;
+  width: 3.2rem;
+  height: 3.2rem;
 
   &:hover {
-    background-color: variables.$white;
+    background-color: variables.$debugGuiBackgroundLighter;
   }
 
   svg path {
-    fill: variables.$debugGuiBackgroundLighter2;
+    fill: variables.$debugTextColor;
   }
 }
