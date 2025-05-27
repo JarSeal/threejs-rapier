@@ -19,6 +19,7 @@ import { getSvgIcon } from './UI/icons/SvgIcon';
 import { toggleLightHelper } from './Helpers';
 import { removeObjectAndChildrenFromMemory } from '../utils/helpers';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
+import { updateOnScreenTools } from '../debug/OnScreenTools';
 
 export type Lights =
   | THREE.AmbientLight
@@ -224,6 +225,12 @@ export const getLight = (id: string) => lights[id];
 export const getLights = (id: string[]) => id.map((lightId) => lights[lightId]);
 
 /**
+ * Returns all created lights that exist
+ * @returns array of Three.js lights
+ */
+export const getAllLights = () => lights;
+
+/**
  * Deletes a light based on an id
  * @param id (string) light id
  */
@@ -240,12 +247,6 @@ export const deleteLight = (id: string) => {
 
   updateLightsDebuggerGUI();
 };
-
-/**
- * Returns all created lights that exist
- * @returns array of Three.js lights
- */
-export const getAllLights = () => lights;
 
 /**
  * Checks, with a light id, whether a light exists or not
@@ -466,6 +467,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         toggleLightHelper(light.userData.id, e.value);
         light.userData.showHelper = e.value;
         saveLightToLS(light.userData.id);
+        updateOnScreenTools('SWITCH');
       });
   }
   debuggerWindowPane.addBinding(light, 'visible', { label: 'Enabled' }).on('change', () => {

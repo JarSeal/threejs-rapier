@@ -162,6 +162,25 @@ export const getGroup = (id: string) => groups[id];
  */
 export const getGroups = (id: string[]) => id.map((meshId) => groups[meshId]);
 
+/**
+ * Returns all created groups that exist
+ * @returns object of { id: THREE.Group }
+ */
+export const getAllGroups = () => groups;
+
+/**
+ * Returns all created groups that exist
+ * @returns array of Three.js groups
+ */
+export const getAllGroupsAsArray = () => {
+  const keys = Object.keys(groups);
+  const groupsArr = [];
+  for (let i = 0; i < keys.length; i++) {
+    groupsArr.push(groups[keys[i]]);
+  }
+  return groupsArr;
+};
+
 const deleteOneGroup = (
   id: string,
   opts?: {
@@ -233,12 +252,6 @@ export const deleteGroup = (
     }
   }
 };
-
-/**
- * Returns all created groups that exist
- * @returns array of Three.js groups
- */
-export const getAllGroups = () => groups;
 
 /**
  * Checks, with a group id, whether a group exists or not

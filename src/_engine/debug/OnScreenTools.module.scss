@@ -1,0 +1,89 @@
+@use '../styles/variables.scss';
+
+.onScreenToolGroup {
+  display: flex;
+  gap: 0.1rem;
+  position: fixed;
+  z-index: 10000;
+  padding: 0.4rem;
+  background-color: variables.$debugOnScreenAlphaBack;
+  border-radius: 0.2rem;
+
+  :global(.uiIcon) {
+    display: block;
+    width: 2.2rem;
+
+    &:global(.smallIcon) {
+      width: 1.7rem;
+      margin-top: 0.3rem;
+      margin-left: 0.3rem;
+    }
+  }
+}
+
+:global(.switchTools) {
+  bottom: 1.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+:global(.playTools) {
+  top: 1.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.onScreenTool {
+  @include variables.nakedButton;
+  position: relative;
+  vertical-align: top;
+  overflow: hidden;
+  border-radius: 0.2rem;
+  padding: 0.5rem;
+  background-color: variables.$debugGuiBackgroundLighter2;
+  transition: background-color 0.17s ease-in-out;
+  width: 3.2rem;
+  height: 3.2rem;
+
+  &.active {
+    &:before {
+      display: block;
+      content: '';
+      position: absolute;
+      left: -0.6rem;
+      top: -0.6rem;
+      background-color: variables.$debugTextColor;
+      width: 1rem;
+      height: 1.2rem;
+      transform: rotate(45deg);
+    }
+  }
+
+  &:hover {
+    background-color: variables.$debugGuiBackgroundLighter;
+  }
+
+  svg path {
+    fill: variables.$debugTextColor;
+  }
+}
+
+.onScreenToolDropDown {
+  width: 16rem;
+
+  select {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 140%;
+    height: 100%;
+    border: 0;
+    outline: 0;
+    padding: 0.4rem 0 0.3rem 3rem;
+    background: transparent;
+    color: variables.$debugTextColor;
+    font-size: 1.2rem;
+    cursor: pointer;
+  }
+}

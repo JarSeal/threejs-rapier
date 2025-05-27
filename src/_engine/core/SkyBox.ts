@@ -134,13 +134,13 @@ let debugSkyBoxUIState = {
  * @param skyBoxProps (object) object that has different property's based on the type property, {@link SkyBoxProps}
  * @param doNotUpdateDebuggerSceneDefault (boolean) optional flag to be used only within the sky box debugger
  */
-export const addSkyBox = async (
+export const createSkyBox = async (
   { id, name, sceneId, isCurrent, type, params }: SkyBoxProps,
   doNotUpdateDebuggerSceneDefault?: boolean // This is to keep the [*default] indicator in the debugger listings when the debugger changes the sky box
 ) => {
   const renderer = getRenderer();
   if (!renderer) {
-    const msg = `Could not find renderer in addSkyBox (type: ${type}).`;
+    const msg = `Could not find renderer in createSkyBox (type: ${type}).`;
     lerror(msg);
     throw new Error(msg);
   }
@@ -149,14 +149,14 @@ export const addSkyBox = async (
   if (sceneId) scene = getScene(sceneId);
   const isCurScene = isCurrentScene(scene?.userData.id);
   if (!scene) {
-    const msg = `Could not find ${sceneId ? `scene with id "${sceneId}"` : 'current scene'} in addSkyBox (type: ${type}).`;
+    const msg = `Could not find ${sceneId ? `scene with id "${sceneId}"` : 'current scene'} in createSkyBox (type: ${type}).`;
     lerror(msg);
     throw new Error(msg);
   }
 
   const givenOrCurrentSceneId = scene.userData.id;
   if (!givenOrCurrentSceneId) {
-    const msg = 'Could not find current scene id in addSkyBox.';
+    const msg = 'Could not find current scene id in createSkyBox.';
     lerror(msg);
     throw new Error(msg);
   }
@@ -201,7 +201,7 @@ export const addSkyBox = async (
     const file = params.file;
     const textureId = params.textureId;
     if (!file && !textureId) {
-      lerror('Provide either file or textureId in the equirectangular params in addSkyBox.');
+      lerror('Provide either file or textureId in the equirectangular params in createSkyBox.');
       return;
     }
     let equirectTexture: THREE.Texture | THREE.DataTexture | null = null;
@@ -232,7 +232,7 @@ export const addSkyBox = async (
             : getTexture(textureId || '');
         }
         if (!equirectTexture) {
-          const msg = `Could not find or load equirectangular texture in addSkyBox (params: ${JSON.stringify(params)}).`;
+          const msg = `Could not find or load equirectangular texture in createSkyBox (params: ${JSON.stringify(params)}).`;
           lerror(msg);
           return;
         }
@@ -247,7 +247,7 @@ export const addSkyBox = async (
 
       // Use sky box as environment map
       if (!envTexture) {
-        const msg = 'Could not find envTexture in addSkyBox';
+        const msg = 'Could not find envTexture in createSkyBox';
         lerror(msg);
         throw new Error(msg);
       }
@@ -356,9 +356,9 @@ export const addSkyBox = async (
 };
 
 /**
- * Removes the current scene's current sky box
+ * Deletes the current scene's current sky box
  */
-export const removeCurrentSkyBox = () => {
+export const deleteCurrentSkyBox = () => {
   const rootScene = getRootScene() as THREE.Scene;
   rootScene.backgroundNode = null;
   rootScene.environmentNode = null;
@@ -586,7 +586,7 @@ export const buildSkyBoxDebugGUI = () => {
   scenesSkyBoxesDropDown.on('change', (e) => {
     const id = String(e.value);
     if (id === NO_SKYBOX_ID) {
-      removeCurrentSkyBox();
+      deleteCurrentSkyBox();
       lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
       // We have to use setTimeout, because the debugGUI is rebuilt
       setTimeout(() => buildSkyBoxDebugGUI(), 0);
@@ -597,7 +597,7 @@ export const buildSkyBoxDebugGUI = () => {
     lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
     // We have to use setTimeout, because the debugGUI is rebuilt
     setTimeout(async () => {
-      await addSkyBox(
+      await createSkyBox(
         {
           ...extractSkyBoxParamsFromState(sbState),
           id,

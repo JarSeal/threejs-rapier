@@ -165,6 +165,12 @@ export const getMaterial = (id: string) => materials[id];
 export const getMaterials = (id: string[]) => id.map((matId) => materials[matId]);
 
 /**
+ * Returns all created materials that exist
+ * @returns all materials ({ [id: string]: Material })
+ */
+export const getAllMaterials = () => materials;
+
+/**
  * Deletes a materials textures
  * @param mat (Three.js material) {@link Materials}
  */
@@ -202,12 +208,6 @@ export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) 
     delete materials[matId];
   }
 };
-
-/**
- * Returns all created materials that exist
- * @returns all materials ({ [id: string]: Material })
- */
-export const getAllMaterials = () => materials;
 
 /**
  * Saves a material to be easily accessed later

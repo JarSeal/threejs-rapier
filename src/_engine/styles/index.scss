@@ -39,3 +39,31 @@ body {
     height: auto;
   }
 }
+
+.statsContainer {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  z-index: 10000;
+  background: #222;
+  padding: 0.4rem 0.4rem 0 0;
+  border-radius: 0 0.4rem 0 0;
+  -webkit-filter: grayscale(100%);
+  filter: brightness(200%) contrast(100%) grayscale(100%);
+
+  > div {
+    display: flex;
+    position: static !important;
+    opacity: 0.45 !important;
+  }
+
+  &.vertical {
+    > div {
+      flex-direction: column-reverse;
+    }
+  }
+
+  canvas {
+    position: static !important;
+  }
+}

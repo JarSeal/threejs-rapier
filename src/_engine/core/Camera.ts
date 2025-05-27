@@ -17,6 +17,7 @@ import { isDebugEnvironment } from './Config';
 import { toggleCameraHelper } from './Helpers';
 import { getRootScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
+import { updateOnScreenTools } from '../debug/OnScreenTools';
 
 const LS_KEY = 'debugCameras';
 const cameras: { [id: string]: THREE.PerspectiveCamera } = {};
@@ -99,6 +100,7 @@ export const deleteCamera = (id: string) => {
     return;
   }
 
+  camera.removeFromParent();
   delete cameras[id];
 };
 
@@ -141,6 +143,19 @@ export const getCurrentCameraId = () => currentCameraId;
  * @returns object: { [id: string]: THREE.PerspectiveCamera }
  */
 export const getAllCameras = () => cameras;
+
+/**
+ * Returns all cameras as an array.
+ * @returns array of THREE.PerspectiveCamera
+ */
+export const getAllCamerasAsArray = () => {
+  const keys = Object.keys(cameras);
+  const camerasArr = [];
+  for (let i = 0; i < keys.length; i++) {
+    camerasArr.push(cameras[keys[i]]);
+  }
+  return camerasArr;
+};
 
 /**
  * Checks, with a camera id, whether a camera exists or not
@@ -200,7 +215,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     html: () =>
       `<button title="${isCurCam ? 'This is the current camera being used' : 'Switch to use this camera'}">${getSvgIcon('camera')}</button>`,
     attr: isCurCam ? { disabled: 'true' } : {},
-    onClick: () => setCurrentCamera(camera.userData.id),
+    onClick: () => handleCameraSwitch(camera.userData.id),
   });
   const copyCodeButton = CMP({
     class: 'winSmallIconButton',
@@ -294,6 +309,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     .on('change', (e) => {
       toggleCameraHelper(camera.userData.id, e.value);
       saveCameraToLS(camera.userData.id);
+      updateOnScreenTools('SWITCH');
     });
   debuggerWindowPane.addBinding(camera, 'position', { label: 'Position' }).on('change', () => {
     camera.updateProjectionMatrix();
