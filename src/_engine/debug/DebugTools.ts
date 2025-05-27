@@ -39,6 +39,7 @@ import {
   togglePolarGridHelperVisibility,
 } from '../core/Helpers';
 import { getAllLights } from '../core/Light';
+import { updateOnScreenTools } from './OnScreenTools';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -549,6 +550,7 @@ export const handleCameraSwitch = (
   if (envBallFolder) envBallFolder.hidden = !isDebugCamera;
   lsSetItem(LS_KEY, debugToolsState);
   setDebugToolsVisibility(isDebugCamera, Boolean(cameraId), doNotSetCamera);
+  updateOnScreenTools('SWITCH');
 };
 
 export const buildDebugToolsGUI = () => {
@@ -730,7 +732,6 @@ export const buildDebugToolsGUI = () => {
     if (value === getCurrentSceneId()) return;
     const nextScene = debuggerSceneListing.find((s) => s.id === value);
     if (!isCurrentlyLoading() && nextScene) {
-      lsSetItem(LS_KEY, debugToolsState);
       loadScene({ nextSceneFn: nextScene.fn, loaderId: DEBUGGER_SCENE_LOADER_ID });
       return;
     }
@@ -939,6 +940,7 @@ export const buildDebugToolsGUI = () => {
       if (!id) continue;
       toggleLightHelper(id, allNotVisible);
     }
+    updateOnScreenTools('SWITCH');
   });
   helpersFolder.addButton({ title: 'Hide / show all camera helpers' }).on('click', () => {
     const cameraHelpers = getAllCameraHelpers();
@@ -957,6 +959,7 @@ export const buildDebugToolsGUI = () => {
       if (!id) continue;
       toggleCameraHelper(id, allNotVisible);
     }
+    updateOnScreenTools('SWITCH');
   });
 
   // Logging actions

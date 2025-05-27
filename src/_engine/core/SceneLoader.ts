@@ -19,6 +19,8 @@ import { isDebugEnvironment } from './Config';
 import { clearSkyBox } from './SkyBox';
 import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
+import { updateOnScreenTools } from '../debug/OnScreenTools';
+import { getAllCameraHelpers, getAllLightHelpers } from './Helpers';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -262,6 +264,17 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
         loader.phase = 'END';
         await loadEndFn(loader).then(() => {
+          if (isDebugEnvironment()) {
+            const lightHelpers = getAllLightHelpers();
+            for (let i = 0; i < lightHelpers.length; i++) {
+              lightHelpers[i].visible = false;
+            }
+            const cameraHelpers = getAllCameraHelpers();
+            for (let i = 0; i < cameraHelpers.length; i++) {
+              cameraHelpers[i].visible = false;
+            }
+            updateOnScreenTools();
+          }
           if (loaderContainer) loaderContainer.remove();
           if (loader.loaderGroup) rootScene.remove(loader.loaderGroup);
 

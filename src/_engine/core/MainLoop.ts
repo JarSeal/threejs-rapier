@@ -1,7 +1,7 @@
 import { Clock, type Scene } from 'three/webgpu';
 import { createDebugGui, createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
 import { getStats, initStats } from '../debug/Stats';
-import { getCurrentCamera } from './Camera';
+import { getAllCamerasAsArray, getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
 import {
   getRootScene,
@@ -214,13 +214,14 @@ export const initMainLoop = () => {
 
   // Add three.js global resizer
   resizers['canvasResizer'] = () => {
-    const camera = getCurrentCamera();
     const renderer = getRenderer();
-    if (!camera) throw new Error('Could not find current camera in canvas resizer.');
     if (!renderer) throw new Error('Could not find current renderer in canvas resizer.');
     const windowSize = getWindowSize();
-    camera.aspect = windowSize.aspect;
-    camera.updateProjectionMatrix();
+    const cameras = getAllCamerasAsArray();
+    for (let i = 0; i < cameras.length; i++) {
+      cameras[i].aspect = windowSize.aspect;
+      cameras[i].updateProjectionMatrix();
+    }
     renderer.setSize(windowSize.width, windowSize.height);
   };
   window.addEventListener(

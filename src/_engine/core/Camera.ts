@@ -144,6 +144,19 @@ export const getCurrentCameraId = () => currentCameraId;
 export const getAllCameras = () => cameras;
 
 /**
+ * Returns all cameras as an array.
+ * @returns array of THREE.PerspectiveCamera
+ */
+export const getAllCamerasAsArray = () => {
+  const keys = Object.keys(cameras);
+  const camerasArr = [];
+  for (let i = 0; i < keys.length; i++) {
+    camerasArr.push(cameras[keys[i]]);
+  }
+  return camerasArr;
+};
+
+/**
  * Checks, with a camera id, whether a camera exists or not
  * @param id (string) camera id
  * @returns boolean
@@ -201,10 +214,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     html: () =>
       `<button title="${isCurCam ? 'This is the current camera being used' : 'Switch to use this camera'}">${getSvgIcon('camera')}</button>`,
     attr: isCurCam ? { disabled: 'true' } : {},
-    onClick: () => {
-      setCurrentCamera(camera.userData.id);
-      updateOnScreenTools('SWITCH');
-    },
+    onClick: () => handleCameraSwitch(camera.userData.id),
   });
   const copyCodeButton = CMP({
     class: 'winSmallIconButton',
