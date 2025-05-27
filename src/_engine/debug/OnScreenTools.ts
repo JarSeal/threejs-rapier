@@ -1,5 +1,5 @@
 import { getAllCameras, getAllCamerasAsArray } from '../core/Camera';
-import { isDebugEnvironment } from '../core/Config';
+import { isDebugEnvironment, isProdTestMode } from '../core/Config';
 import {
   getAllCameraHelpers,
   getAllLightHelpers,
@@ -8,6 +8,7 @@ import {
 } from '../core/Helpers';
 import { getHUDRootCMP } from '../core/HUD';
 import { getAllLights } from '../core/Light';
+import { getReadOnlyLoopState, toggleAppPlay, toggleMainPlay } from '../core/MainLoop';
 import { getCurrentSceneId } from '../core/Scene';
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { getSvgIcon } from '../core/UI/icons/SvgIcon';
@@ -24,8 +25,97 @@ import {
 } from './DebugTools';
 import styles from './OnScreenTools.module.scss';
 
+let playToolsCMP: TCMP | null = null;
 let switchToolsCMP: TCMP | null = null;
 
+// PLAY TOOLS
+const playTools = () => {
+  const hudRootCMP = getHUDRootCMP();
+  if (!hudRootCMP) return;
+
+  const isProdTest = isProdTestMode();
+
+  if (playToolsCMP) playToolsCMP.remove();
+  playToolsCMP = CMP({ class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'playTools'] });
+
+  const buttonBaseClasses = [styles.onScreenTool, 'onScreenTool'];
+
+  if (!isProdTest) {
+    // Play prod test
+    const playProdTestBtn = CMP({
+      class: buttonBaseClasses,
+      html: () => `<button>${getSvgIcon('playFill')}</button>`,
+      attr: { title: 'Play in production test mode' },
+      onClick: (e) => {
+        e.stopPropagation();
+        const queryData = new URLSearchParams(window.location.search.slice(1));
+        queryData.set('isProdTest', 'true');
+        queryData.delete('isDebug');
+        const newUrl = new URL(window.location.href);
+        newUrl.search = queryData.toString();
+        window.location.href = newUrl.toString();
+      },
+    });
+    playToolsCMP.add(playProdTestBtn);
+  } else {
+    // Stop prod test
+    const stopProdTestBtn = CMP({
+      class: buttonBaseClasses,
+      html: () => `<button>${getSvgIcon('stop')}</button>`,
+      attr: { title: 'Stop production test mode' },
+      onClick: (e) => {
+        e.stopPropagation();
+        const queryData = new URLSearchParams(window.location.search.slice(1));
+        queryData.set('isDebug', 'true');
+        queryData.delete('isProdTest');
+        const newUrl = new URL(window.location.href);
+        newUrl.search = queryData.toString();
+        window.location.href = newUrl.toString();
+      },
+    });
+    playToolsCMP.add(stopProdTestBtn);
+  }
+
+  // App loop button
+  const loopState = getReadOnlyLoopState();
+  const mainLoopBtn = CMP({
+    class: [
+      ...buttonBaseClasses,
+      ...(loopState.masterPlay ? [styles.active, 'onScreenToolActive'] : []),
+    ],
+    html: () => `<button>${getSvgIcon('play')}</button>`,
+    attr: {
+      title: `Play main loop (currently ${loopState.masterPlay ? 'playing' : 'not playing'})`,
+    },
+    onClick: (e) => {
+      e.stopPropagation();
+      toggleMainPlay();
+      updateOnScreenTools('PLAY');
+    },
+  });
+  playToolsCMP.add(mainLoopBtn);
+
+  const appLoopBtn = CMP({
+    class: [
+      ...buttonBaseClasses,
+      ...(!loopState.appPlay ? [styles.active, 'onScreenToolActive'] : []),
+    ],
+    html: () => `<button>${getSvgIcon('pause')}</button>`,
+    attr: {
+      title: `Pause app loop (currently ${loopState.appPlay ? 'playing' : 'not playing'})`,
+    },
+    onClick: (e) => {
+      e.stopPropagation();
+      toggleAppPlay();
+      updateOnScreenTools('PLAY');
+    },
+  });
+  playToolsCMP.add(appLoopBtn);
+
+  hudRootCMP.add(playToolsCMP);
+};
+
+// SWITCH TOOLS
 const switchTools = () => {
   const hudRootCMP = getHUDRootCMP();
   if (!hudRootCMP) return;
@@ -38,7 +128,7 @@ const switchTools = () => {
   }
 
   if (switchToolsCMP) switchToolsCMP.remove();
-  switchToolsCMP = CMP({ class: [styles.switchTools, 'onScreenToolGroup', 'switchTools'] });
+  switchToolsCMP = CMP({ class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'switchTools'] });
 
   // Use debug cam button
   const useDebugCamBtnClasses = [styles.onScreenTool, 'onScreenTool'];
@@ -63,7 +153,7 @@ const switchTools = () => {
   ];
   const camSelectorId = 'onScreenSelectCamDropDown';
   const debugToolsState = getDebugToolsState();
-  const latestAppCamId = debugToolsState.debugCamera[currentSceneId].latestAppCameraId;
+  const latestAppCamId = debugToolsState.debugCamera[currentSceneId]?.latestAppCameraId;
   const camOptions = getAllCamerasAsArray()
     .filter((cam) => cam.userData.id !== DEBUG_CAMERA_ID)
     .map(
@@ -202,22 +292,35 @@ const switchTools = () => {
 };
 
 export const InitOnScreenTools = () => {
-  if (!isDebugEnvironment()) return;
+  if (!isDebugEnvironment() && !isProdTestMode()) return;
 
+  if (isProdTestMode()) {
+    playTools();
+    return;
+  }
+
+  playTools();
   switchTools();
 };
 
-type ToolTypes = 'SWITCH';
+type ToolTypes = 'SWITCH' | 'PLAY';
 
 const updateTool = (toolType: ToolTypes) => {
   switch (toolType) {
+    case 'PLAY':
+      playTools();
     case 'SWITCH':
       switchTools();
   }
 };
 
 export const updateOnScreenTools = (tools?: ToolTypes[] | ToolTypes) => {
-  if (!isDebugEnvironment()) return;
+  if (!isDebugEnvironment() && !isProdTestMode()) return;
+
+  if (isProdTestMode()) {
+    playTools();
+    return;
+  }
 
   // Updates all tools
   if (!tools) {

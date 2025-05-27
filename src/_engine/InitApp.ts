@@ -34,7 +34,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     // Start engine/loop if root scene has children
     const rootScene = getRootScene() as Scene;
-    if (rootScene.children.length) initMainLoop();
+    if (rootScene.children.length) await initMainLoop();
 
     // Create debug GUIs and utils
     if (isDebugEnvironment()) {

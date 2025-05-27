@@ -314,6 +314,19 @@ export const getTexture = (id: string) => textures[id];
 export const getTextures = (ids: string[]) => ids.map((id) => textures[id]);
 
 /**
+ * Returns all created textures that exist
+ * @returns array of Three.js textures
+ */
+export const getAllTextures = () => textures;
+
+/**
+ * Checks, with a texture id, whether a texture exists or not
+ * @param id (string) texture id
+ * @returns boolean
+ */
+export const doesTextureExist = (id: string) => Boolean(textures[id]);
+
+/**
  * Deletes a texture based on an id
  * @param id (string | string[]) texture id or array of texture ids
  */
@@ -355,16 +368,3 @@ export const deleteTexture = (id: string | string[]) => {
     );
   }
 };
-
-/**
- * Returns all created textures that exist
- * @returns array of Three.js textures
- */
-export const getAllTextures = () => textures;
-
-/**
- * Checks, with a texture id, whether a texture exists or not
- * @param id (string) texture id
- * @returns boolean
- */
-export const doesTextureExist = (id: string) => Boolean(textures[id]);

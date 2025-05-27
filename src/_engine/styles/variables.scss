@@ -10,6 +10,7 @@ $debugGuiBackgroundDarker: #111111;
 $debugTabButton: #1f1f1f;
 $debugTextColor: #bbbcc4;
 $debugTextColorDark: color.adjust($debugTextColor, $lightness: -20%);
+$debugOnScreenAlphaBack: rgba($debugTextColor, 0.2);
 
 $errorDark: #701515;
 

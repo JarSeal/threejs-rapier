@@ -12,8 +12,12 @@ import gpuCardIcon from './svg/gpu-card.svg?raw';
 import infinityIcon from './svg/infinity.svg?raw';
 import lightBulbIcon from './svg/lightbulb-fill.svg?raw';
 import lampFillIcon from './svg/lamp-fill.svg?raw';
+import pauseIcon from './svg/pause-fill.svg?raw';
+import playFillIcon from './svg/play-fill.svg?raw';
+import playIcon from './svg/play.svg?raw';
 import rocketTakeoffIcon from './svg/rocket-takeoff-fill.svg?raw';
 import speedometerIcon from './svg/speedometer.svg?raw';
+import stopIcon from './svg/stop-fill.svg?raw';
 import thrashIcon from './svg/trash3-fill.svg?raw';
 import toolsIcon from './svg/tools.svg?raw';
 
@@ -32,8 +36,12 @@ const icons = {
   infinity: infinityIcon,
   lightBulb: lightBulbIcon,
   lamp: lampFillIcon,
+  pause: pauseIcon,
+  playFill: playFillIcon,
+  play: playIcon,
   rocketTakeoff: rocketTakeoffIcon,
   speedometer: speedometerIcon,
+  stop: stopIcon,
   thrash: thrashIcon,
   tools: toolsIcon,
 };

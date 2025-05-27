@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { addSceneMainLooper, createScene } from '../_engine/core/Scene';
+import { createSceneMainLooper, createScene } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { getTexture, loadTexture, loadTextures } from '../_engine/core/Texture';
@@ -9,9 +9,9 @@ import { importModelAsync } from '../_engine/core/ImportModel';
 import { createMesh } from '../_engine/core/Mesh';
 import { addToGroup, createGroup } from '../_engine/core/Group';
 import { transformSpeedValue } from '../_engine/core/MainLoop';
-import { addSkyBox } from '../_engine/core/SkyBox';
+import { createSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
-import { addKeyInputControl } from '../_engine/core/InputControls';
+import { createKeyInputControl } from '../_engine/core/InputControls';
 import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
 
 export const assets = {};
@@ -36,7 +36,7 @@ export const scene01 = async () =>
     //   id: 'equiRectId',
     //   fileName: '/testTextures/equi_grass_and_forest_4k.jpg',
     // });
-    // await addSkyBox({
+    // await createSkyBox({
     //   type: 'EQUIRECTANGULAR',
     //   params: {
     //     // file: envTexture,
@@ -69,7 +69,7 @@ export const scene01 = async () =>
       '/cubemap02_positive_z.png',
       '/cubemap02_negative_z.png',
     ];
-    await addSkyBox({
+    await createSkyBox({
       id: 'desert-dunes',
       type: 'CUBETEXTURE',
       params: {
@@ -259,18 +259,18 @@ export const scene01 = async () =>
       importedBox.material = material;
       scene.add(importedBox);
 
-      // addSceneAppLooper(() => {
+      // createSceneAppLooper(() => {
       //   importedBox.rotation.y += transformSpeedValue(0.2);
       //   importedBox.rotation.z -= transformSpeedValue(0.14);
       // });
     }
 
-    addSceneMainLooper(() => {
+    createSceneMainLooper(() => {
       sphere.rotation.z -= transformSpeedValue(0.1);
       sphere.rotation.y += transformSpeedValue(0.1);
     });
 
-    // addSceneAppLooper(() => {
+    // createSceneAppLooper(() => {
     //   box.rotation.y -= transformSpeedValue(2);
     //   box.rotation.z -= transformSpeedValue(2);
     // });
@@ -305,7 +305,7 @@ export const scene01 = async () =>
   });
 
 // Input
-addKeyInputControl({
+createKeyInputControl({
   type: 'KEY_DOWN',
   key: 'd',
   fn: (_, time) => {
@@ -327,16 +327,3 @@ addKeyInputControl({
 // setTimeout(() => {
 //   removeDebuggerTab('test-tab');
 // }, 18000);
-
-// addMouseInputControl({
-//   type: 'MOUSE_MOVE',
-//   fn: (e) => console.log('move', e.clientX, e.clientY),
-// });
-// addMouseInputControl({
-//   type: 'MOUSE_DOWN',
-//   fn: (_, time) => console.log('CLICK', performance.now() - time),
-// });
-// addMouseInputControl({
-//   type: 'MOUSE_UP',
-//   fn: (_, time) => console.log('CLACK', time),
-// });

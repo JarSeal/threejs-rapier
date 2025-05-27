@@ -253,10 +253,10 @@ const initMouseMoveControls = () => {
 };
 
 /**
- * Adds a keyboard input control. Only the fn (function) is a required property.
+ * Creates a keyboard input control. Only the fn (function) is a required property.
  * @param params (object) { id?: string, key?: string, sceneId?: string, type?: 'KEY_UP' | 'KEY_DOWN', fn: (e: KeyboardEvent) => void, enabled?: boolean }
  */
-export const addKeyInputControl = ({
+export const createKeyInputControl = ({
   id,
   key,
   type,
@@ -347,10 +347,10 @@ export const addKeyInputControl = ({
 };
 
 /**
- * Adds a mouse input control. Only the fn (function) is a required property.
+ * Creates a mouse input control. Only the fn (function) is a required property.
  * @param params (object) { id?: string, sceneId?: string, type?: 'MOUSE_UP' | 'MOUSE_DOWN | 'MOUSE_MOVE', fn: (e: MouseEvent) => void, enabled?: boolean }
  */
-export const addMouseInputControl = ({
+export const createMouseInputControl = ({
   id,
   type,
   sceneId,
@@ -579,10 +579,10 @@ export const enableKeyInputControl = ({
 };
 
 /**
- * Removes a key input control by id or key (one is required). Also the scene id and/or type can be provided. If no type is provided, then all types will be removed.
+ * Deletes a key input control by id or key (one is required). Also the scene id and/or type can be provided. If no type is provided, then all types will be removed.
  * @param params (object) { id?: string, key?: string, sceneId?: string, type?: 'KEY_UP' | 'KEY_DOWN' }
  */
-export const removeKeyInputControl = ({
+export const deleteKeyInputControl = ({
   id,
   key,
   sceneId,
@@ -727,10 +727,10 @@ export const enableMouseInputControl = ({
 };
 
 /**
- * Removes a mouse input control by id. Also the scene id and/or type can be provided. If no type is provided, then all types will be removed.
+ * Deletes a mouse input control by id. Also the scene id and/or type can be provided. If no type is provided, then all types will be removed.
  * @param params (object) { id?: string, sceneId?: string, type?: 'MOUSE_UP' | 'MOUSE_DOWN' }
  */
-export const removeMouseInputControl = ({
+export const deleteMouseInputControl = ({
   id,
   sceneId,
   type,
@@ -770,10 +770,10 @@ export const removeMouseInputControl = ({
 };
 
 /**
- * Removes all or specific controller listeners (also removes mappings)
+ * Deletes all or specific controller listeners (also removes mappings)
  * @param type (enum) 'ALL' | 'KEY' | 'MOUSE' | 'KEY_UP' | 'KEY_DOWN' | 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE' | 'CONTROLLER'
  */
-export const removeControlsListeners = (type: 'ALL' | 'KEY' | 'MOUSE' | InputControlType) => {
+export const DeleteControlsListeners = (type: 'ALL' | 'KEY' | 'MOUSE' | InputControlType) => {
   if (type === 'ALL') {
     if (controlListenerFns.keyUp) window.removeEventListener('keyup', controlListenerFns.keyUp);
     if (controlListenerFns.keyDown)

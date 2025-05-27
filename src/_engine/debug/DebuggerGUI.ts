@@ -5,9 +5,8 @@ import { getWindowSize } from '../utils/Window';
 import { getHUDRootCMP } from '../core/HUD';
 import { Pane } from 'tweakpane';
 import { getConfig, isDebugEnvironment } from '../core/Config';
-import { addKeyInputControl } from '../core/InputControls';
+import { createKeyInputControl } from '../core/InputControls';
 import { lwarn } from '../utils/Logger';
-import { InitOnScreenTools } from './OnScreenTools';
 
 let drawerCMP: TCMP | null = null;
 let currentSceneTitleCMP: TCMP | null = null;
@@ -41,7 +40,7 @@ const initDrawerState = () => {
     if (debugKeys && debugKeys.length) {
       for (let i = 0; i < debugKeys.length; i++) {
         const keyParams = debugKeys[i];
-        addKeyInputControl({
+        createKeyInputControl({
           type: keyParams.type || 'KEY_UP',
           fn: keyParams.fn,
           ...(keyParams.key ? { key: keyParams.key } : {}),
@@ -265,9 +264,6 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
   data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
   tabsContainerWrapper.elem.scrollTop = tabFound ? drawerState.currentScrollPos || 0 : 0;
 
-  // Init On Screen Tools
-  InitOnScreenTools();
-
   return drawerCMP;
 };
 
@@ -369,6 +365,8 @@ export const disableDebugger = (disable: boolean) => {
     return;
   }
   drawerCMP?.updateClass(styles.debuggerDisabled, 'remove');
+
+  // @TODO: disable also the on screen tools
 };
 
 export const isDebuggerDisabled = () => debuggerDisabled;

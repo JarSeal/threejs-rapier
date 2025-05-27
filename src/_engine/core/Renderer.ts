@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import WebGL from 'three/addons/capabilities/WebGL.js';
 import { getWindowSize } from '../utils/Window';
-import { lwarn } from '../utils/Logger';
+import { lerror, lwarn } from '../utils/Logger';
 import { isDebugEnvironment } from './Config';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
@@ -94,9 +94,17 @@ export const getCanvasParentElem = () => {
 
 /**
  * Returns the initialized renderer or null
+ * @param throwOnError (boolean) optional flag to throw if renderer is not defined
  * @returns THREE.WebGPURenderer | null
  */
-export const getRenderer = () => r;
+export const getRenderer = (throwOnError?: boolean) => {
+  if (!r && throwOnError) {
+    const msg = 'Renderer is not defined (not created) in getRenderer.';
+    lerror(msg);
+    throw new Error(msg);
+  }
+  return r;
+};
 
 /**
  * Deletes the initialized renderer

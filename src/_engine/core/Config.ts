@@ -31,6 +31,8 @@ export type AppConfig = {
 
 let curEnvironment: Environments = 'production';
 let envVars: { [key: string]: unknown } = {};
+let isProdTestQueryParam = false;
+let isDebugQueryParam = false;
 let config: AppConfig = {
   // These are the default values (if the values are not found in ENV variables or CONFIG file)
   debugKeys: [],
@@ -95,6 +97,11 @@ export const loadConfig = () => {
       envVars.VITE_PHYS_TIMESTEP = undefined;
     }
   }
+
+  // Load url params
+  const urlParams = new URLSearchParams(window.location.search);
+  isProdTestQueryParam = urlParams.get('isProdTest') === 'true';
+  isDebugQueryParam = urlParams.get('isDebug') === 'true';
 };
 
 /**
@@ -129,19 +136,41 @@ export const isNotCurrentEnvironment = (environment: Environments) =>
  * @returns boolean
  */
 export const isDebugEnvironment = () =>
-  curEnvironment === 'development' || curEnvironment === 'test';
+  (curEnvironment === 'development' || curEnvironment === 'test') && isDebugQueryParam;
 
 /**
  * Checks whether the current environment is a production environment.
  * @returns boolean
  */
-export const isProductionEnvironment = () => curEnvironment === 'production';
+export const isProductionEnvironment = () =>
+  curEnvironment === 'production' || isProdTestQueryParam;
+
+/**
+ * Checks whether the app is in production test mode or not.
+ * This works only in 'development' and
+ * 'test' (?isProdTest=true) environments.
+ * Note: this is not the same as isProdEnvironment(),
+ * the purpose of this is to leave some debug UI elems
+ * on the screen when testing production.
+ * @returns boolean
+ */
+export const isProdTestMode = () =>
+  (curEnvironment === 'development' || curEnvironment === 'test') && isProdTestQueryParam;
 
 /**
  * Returns the current environment.
  * @returns one of the environments ({@link Environments})
  */
 export const getCurrentEnvironment = () => curEnvironment;
+
+/**
+ * Returns the engine related system query params.
+ * @returns object
+ */
+export const getDebuggerQueryParams = () => ({
+  isDebug: isDebugQueryParam,
+  isProdTest: isProdTestQueryParam,
+});
 
 /**
  * Return app config

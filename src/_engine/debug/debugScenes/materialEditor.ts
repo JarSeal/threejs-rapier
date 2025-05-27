@@ -29,7 +29,7 @@ export const initDebugMaterialEditorScene = async () =>
     //     '/cubemap02_positive_z.png',
     //     '/cubemap02_negative_z.png',
     //   ];
-    //   await addSkyBox({
+    //   await createSkyBox({
     //     id: 'desert-dunes',
     //     sceneId: DEBUG_MATERIAL_EDITOR_ID,
     //     type: 'CUBETEXTURE',

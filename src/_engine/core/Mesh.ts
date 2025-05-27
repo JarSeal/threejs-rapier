@@ -77,6 +77,11 @@ export const getMesh = (id: string) => meshes[id];
  */
 export const getMeshes = (id: string[]) => id.map((meshId) => meshes[meshId]);
 
+/** Returns all existing meshes
+ * @returns (object) { [meshId: string]: THREE.Mesh }
+ */
+export const getAllMeshes = () => meshes;
+
 const deleteOneMesh = (
   id: string,
   opts?: {
@@ -181,8 +186,3 @@ export const saveMesh = (mesh: THREE.Mesh, givenId?: string, doNotSaveMaterial?:
 
   return mesh;
 };
-
-/** Returns all existing meshes
- * @returns (object) { [meshId: string]: THREE.Mesh }
- */
-export const getAllMeshes = () => meshes;

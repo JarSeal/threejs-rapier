@@ -1,6 +1,6 @@
-import { Clock, type Scene } from 'three/webgpu';
-import { createDebugGui, createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
-import { getStats, initStats } from '../debug/Stats';
+import { Clock, type Renderer, type Scene } from 'three/webgpu';
+import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
+import { getStats, initStats, updateStats } from '../debug/Stats';
 import { getAllCamerasAsArray, getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
 import {
@@ -13,11 +13,12 @@ import {
 import { lerror, lwarn } from '../utils/Logger';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
-import { getEnv, isCurrentEnvironment, isDebugEnvironment } from './Config';
+import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugTools';
 import { stepPhysicsWorld } from './PhysicsRapier';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updateHelpers } from './Helpers';
+import { InitOnScreenTools } from '../debug/OnScreenTools';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -98,6 +99,8 @@ const mainLoopForDebug = async () => {
   for (let i = 0; i < mainLoopers.length; i++) {
     mainLoopers[i](delta);
   }
+
+  const renderer = getRenderer() as Renderer;
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
     // app loopers
@@ -108,31 +111,30 @@ const mainLoopForDebug = async () => {
 
     stepPhysicsWorld(delta);
 
-    const renderer = getRenderer();
     const windowSize = getWindowSize();
     const rootScene = getRootScene() as Scene;
-    renderer?.setViewport(0, 0, windowSize.width, windowSize.height);
+    renderer.setViewport(0, 0, windowSize.width, windowSize.height);
     if (loopState.maxFPS > 0) {
       // maxFPS limiter
       accDelta += delta;
       if (accDelta > loopState.maxFPSInterval) {
-        await renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
+        await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
           runMainLateLoopers();
-          getStats()?.update();
+          updateStats(renderer);
           accDelta = accDelta % loopState.maxFPSInterval;
         });
       }
     } else {
       // No maxFPS limiter
-      await renderer?.renderAsync(rootScene, getCurrentCamera()).then(() => {
+      await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
         runMainLateLoopers();
-        getStats()?.update();
+        updateStats(renderer);
       });
     }
   } else {
     loopState.isAppPlaying = false;
     runMainLateLoopers();
-    getStats()?.update();
+    updateStats(renderer);
   }
 };
 
@@ -194,7 +196,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
 /**
  * Initializes the main loop. Requires that the renderer, camera, and scene have been created.
  */
-export const initMainLoop = () => {
+export const initMainLoop = async () => {
   // Make sure initMainLoop is only initiated once
   if (mainLoopInitiated) return;
   mainLoopInitiated = true;
@@ -250,28 +252,31 @@ export const initMainLoop = () => {
     if (maxFPS > 0) loopState.maxFPSInterval = 1 / maxFPS;
   }
 
-  if (isDebugEnvironment()) {
-    // Debug GUI and Stats (if debug environment)
+  if (isDebugEnvironment() || isProdTestMode()) {
     const savedValues = lsGetItem(LS_KEY, loopState);
     loopState = {
       ...loopState,
       ...savedValues,
     };
     createLoopDebugControls();
-    initStats();
-    initDebugTools();
   }
 
   if (isDebugEnvironment()) {
+    initStats();
+    initDebugTools();
+
     mainLoop = mainLoopForDebug;
-  } else if (isCurrentEnvironment('production') && loopState.maxFPS > 0) {
+  } else if (isProductionEnvironment() && loopState.maxFPS > 0) {
     mainLoop = mainLoopForProductionWithFPSLimiter;
   } else {
     mainLoop = mainLoopForProduction;
   }
 
-  renderer.renderAsync(getRootScene() as Scene, currentCamera);
-  if (loopState.masterPlay) requestAnimationFrame(mainLoop);
+  await renderer.renderAsync(getRootScene() as Scene, currentCamera);
+  if (loopState.masterPlay) {
+    // Wait for a few loops and start the
+    setTimeout(() => requestAnimationFrame(mainLoop), 100);
+  }
 };
 
 /**
@@ -302,7 +307,11 @@ export const deleteResizer = (id: string) => {
 
 // Debug GUI for loop
 const createLoopDebugControls = () => {
-  createDebugGui();
+  // Init On Screen Tools
+  InitOnScreenTools();
+
+  if (!isProdTestMode) return;
+
   const icon = getSvgIcon('infinity');
   createDebuggerTab({
     id: 'loopControls',
@@ -354,14 +363,14 @@ export const toggleMainPlay = (value?: boolean) => {
   } else {
     loopState.masterPlay = !loopState.masterPlay;
   }
-  if (loopState.masterPlay && !loopState.isMasterPlaying) mainLoop();
+  if (loopState.masterPlay && !loopState.isMasterPlaying) requestAnimationFrame(mainLoop);
 };
 
 /**
  * Toggles the app loop player state (play / pause)
  * @param value (boolean) optional value whether the loop state in playing (true) or paused (false). If not provided then value is the opposite to the current value.
  */
-export const toggleGamePlay = (value?: boolean) => {
+export const toggleAppPlay = (value?: boolean) => {
   if (value !== undefined) {
     loopState.appPlay = value;
     return;
@@ -373,7 +382,7 @@ export const toggleGamePlay = (value?: boolean) => {
  * Returns the read-only loop state object
  * @returns ({@link LoopState}) copy of LoopState
  */
-export const getReadOnlyLoopState = () => JSON.parse(JSON.stringify(loopState));
+export const getReadOnlyLoopState = () => JSON.parse(JSON.stringify(loopState)) as LoopState;
 
 /**
  * Returns the play speed multiplier

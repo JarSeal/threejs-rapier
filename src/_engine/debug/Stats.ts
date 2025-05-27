@@ -1,11 +1,12 @@
 import Stats from 'stats-gl';
+import { TimestampQuery, type Renderer } from 'three/webgpu';
 import { getRenderer } from '../core/Renderer';
 import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
-import { getGUIContainerElem } from '../core/HUD';
+import { getHUDRootCMP } from '../core/HUD';
 import { Pane } from 'tweakpane';
-import { openDraggableWindow } from '../core/UI/DraggableWindow';
 import { getSvgIcon } from '../core/UI/icons/SvgIcon';
+import { CMP } from '../utils/CMP';
 
 export type StatsOptions = {
   performanceFolderExpanded?: boolean;
@@ -66,7 +67,12 @@ export const initStats = (config?: StatsOptions) => {
   if ('enabled' in savedConfig && savedConfig.enabled) {
     if (stats) stats.update();
     stats = new Stats(savedConfig as Omit<StatsOptions, 'enabled'>);
-    getGUIContainerElem().appendChild(stats.dom);
+    const statsCMP = CMP({
+      id: '_statsContainer',
+      class: ['statsContainer', ...(!(savedConfig as StatsOptions).horizontal ? ['vertical'] : [])],
+    });
+    statsCMP.elem.appendChild(stats.dom);
+    getHUDRootCMP().add(statsCMP);
     stats.init(getRenderer());
   }
   statsConfig = savedConfig;
@@ -74,11 +80,23 @@ export const initStats = (config?: StatsOptions) => {
   return stats;
 };
 
+export const updateStats = (renderer: Renderer) => {
+  if (statsConfig.trackCPT) renderer.resolveTimestampsAsync(TimestampQuery.COMPUTE);
+  if (statsConfig.trackGPU) renderer.resolveTimestampsAsync(TimestampQuery.RENDER);
+  stats?.update();
+};
+
 /**
  * Returns the stats 'stats-gl' instance
  * @returns ({@link Stats} | null)
  */
 export const getStats = () => stats;
+
+/**
+ * Returns the stats configurations
+ * @returns {@link StatsOptions}
+ */
+export const getStatsConfig = () => statsConfig;
 
 const setDebuggerUI = () => {
   const icon = getSvgIcon('speedometer');
@@ -91,7 +109,7 @@ const setDebuggerUI = () => {
       const { container, debugGUI } = createNewDebuggerPane('Stats', `${icon} Statistics`);
 
       statsDebugGUIs.push(debugGUI);
-      buildStatsDebugGUI(debugGUI, true);
+      buildStatsDebugGUI(debugGUI);
 
       return container;
     },
@@ -104,7 +122,7 @@ export const updateStatsDebugGUI = () => {
   }
 };
 
-export const buildStatsDebugGUI = (debugGUI: Pane, addButton?: boolean) => {
+export const buildStatsDebugGUI = (debugGUI: Pane) => {
   const performanceFolder = debugGUI
     .addFolder({
       title: 'Performance Measuring (reloads the app)',
@@ -166,15 +184,4 @@ export const buildStatsDebugGUI = (debugGUI: Pane, addButton?: boolean) => {
   // - imported objects count
   // - list of imported objects (and sizes, face count, edge count, vertex count)
   // - texture count, texture sizes, list of textures (and type, sizes, dimensions)
-
-  if (addButton) {
-    debugGUI.addButton({ title: 'Open in window' }).on('click', () => {
-      openDraggableWindow({
-        id: 'statsDraggableWin',
-        saveToLS: true,
-        title: 'Stats',
-        isDebugWindow: true,
-      });
-    });
-  }
 };

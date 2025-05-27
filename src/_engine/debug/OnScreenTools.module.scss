@@ -1,15 +1,12 @@
 @use '../styles/variables.scss';
 
-.switchTools {
+.onScreenToolGroup {
   display: flex;
   gap: 0.1rem;
   position: fixed;
-  bottom: 1.6rem;
-  left: 50%;
-  transform: translateX(-50%);
   z-index: 10000;
   padding: 0.4rem;
-  background-color: rgba(variables.$debugTextColor, 0.2);
+  background-color: variables.$debugOnScreenAlphaBack;
   border-radius: 0.2rem;
 
   :global(.uiIcon) {
@@ -20,10 +17,20 @@
       width: 1.7rem;
       margin-top: 0.3rem;
       margin-left: 0.3rem;
-      // padding-top: 0.2rem;
-      // padding-left: 0.2rem;
     }
   }
+}
+
+:global(.switchTools) {
+  bottom: 1.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+:global(.playTools) {
+  top: 1.6rem;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .onScreenTool {

@@ -1,5 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { addSceneMainLooper, createScene, getScene, setCurrentScene } from '../_engine/core/Scene';
+import {
+  createSceneMainLooper,
+  createScene,
+  getScene,
+  setCurrentScene,
+} from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { getTexture, loadTexture, loadTextures } from '../_engine/core/Texture';
@@ -9,7 +14,7 @@ import { importModelAsync } from '../_engine/core/ImportModel';
 import { createMesh } from '../_engine/core/Mesh';
 import { addToGroup, createGroup } from '../_engine/core/Group';
 import { transformSpeedValue } from '../_engine/core/MainLoop';
-import { addSkyBox } from '../_engine/core/SkyBox';
+import { createSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
 import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
@@ -41,7 +46,7 @@ export const scene01 = async () =>
 
     updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 
-    await addSkyBox({
+    await createSkyBox({
       id: 'emptyBlueSkyEquiRect',
       name: 'Empty Blue Sky EquiRect',
       type: 'EQUIRECTANGULAR',
@@ -53,7 +58,7 @@ export const scene01 = async () =>
         // colorSpace: THREE.NoColorSpace,
       },
     });
-    await addSkyBox({
+    await createSkyBox({
       id: 'stylizedSunsetEquiRect',
       name: 'Stylized Sunset EquiRect 4K',
       type: 'EQUIRECTANGULAR',
@@ -66,7 +71,7 @@ export const scene01 = async () =>
       },
     });
     // const mapStylizedSunset = ['/px.png', '/nx.png', '/py.png', '/ny.png', '/pz.png', '/nz.png'];
-    // await addSkyBox({
+    // await createSkyBox({
     //   id: 'stylizedSunsetCubemap',
     //   name: 'Stylized Sunset Cubemap',
     //   type: 'CUBETEXTURE',
@@ -77,7 +82,7 @@ export const scene01 = async () =>
     //     cubeTextRotate: 0.625,
     //   },
     // });
-    await addSkyBox({
+    await createSkyBox({
       id: 'partly-cloudy',
       type: 'EQUIRECTANGULAR',
       params: {
@@ -101,7 +106,7 @@ export const scene01 = async () =>
       '/cubemap02_positive_z.png',
       '/cubemap02_negative_z.png',
     ];
-    await addSkyBox({
+    await createSkyBox({
       id: 'desert-dunes',
       type: 'CUBETEXTURE',
       params: {
@@ -310,18 +315,18 @@ export const scene01 = async () =>
       importedBox.material = material;
       scene.add(importedBox);
 
-      // addSceneAppLooper(() => {
+      // createSceneAppLooper(() => {
       //   importedBox.rotation.y += transformSpeedValue(0.2);
       //   importedBox.rotation.z -= transformSpeedValue(0.14);
       // });
     }
 
-    addSceneMainLooper(() => {
+    createSceneMainLooper(() => {
       sphere.rotation.z -= transformSpeedValue(0.1);
       sphere.rotation.y += transformSpeedValue(0.1);
     });
 
-    // addSceneAppLooper(() => {
+    // createSceneAppLooper(() => {
     //   box.rotation.y -= transformSpeedValue(2);
     //   box.rotation.z -= transformSpeedValue(2);
     // });

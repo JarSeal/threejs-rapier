@@ -100,6 +100,7 @@ export const deleteCamera = (id: string) => {
     return;
   }
 
+  camera.removeFromParent();
   delete cameras[id];
 };
 
@@ -308,6 +309,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     .on('change', (e) => {
       toggleCameraHelper(camera.userData.id, e.value);
       saveCameraToLS(camera.userData.id);
+      updateOnScreenTools('SWITCH');
     });
   debuggerWindowPane.addBinding(camera, 'position', { label: 'Position' }).on('change', () => {
     camera.updateProjectionMatrix();
