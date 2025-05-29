@@ -1082,8 +1082,47 @@ const buildDebugGUI = () => {
         currentScenePhysicsObjects[i].rigidBody?.wakeUp();
       }
       lsSetItem(LS_KEY, physicsState);
-      if (!physicsWorld?.numSolverIterations) return;
       physicsWorld.numSolverIterations = e.value;
+    });
+  debugGUI
+    .addBinding(curScenePhysParams, 'internalPgsIterations', {
+      label: 'Internal PGS iterations (run at each solver iteration)',
+      min: 1,
+      step: 1,
+    })
+    .on('change', (e) => {
+      const currentSceneId = getCurrentSceneId();
+      if (!currentSceneId) return;
+      if (!physicsState.scenes[currentSceneId]) {
+        physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
+      }
+      physicsState.scenes[currentSceneId].internalPgsIterations = e.value;
+      curScenePhysParams = physicsState.scenes[currentSceneId];
+      for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+        currentScenePhysicsObjects[i].rigidBody?.wakeUp();
+      }
+      lsSetItem(LS_KEY, physicsState);
+      physicsWorld.numInternalPgsIterations = e.value;
+    });
+  debugGUI
+    .addBinding(curScenePhysParams, 'additionalFrictionIterations', {
+      label: 'Additional friction iterations',
+      min: 1,
+      step: 1,
+    })
+    .on('change', (e) => {
+      const currentSceneId = getCurrentSceneId();
+      if (!currentSceneId) return;
+      if (!physicsState.scenes[currentSceneId]) {
+        physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
+      }
+      physicsState.scenes[currentSceneId].additionalFrictionIterations = e.value;
+      curScenePhysParams = physicsState.scenes[currentSceneId];
+      for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+        currentScenePhysicsObjects[i].rigidBody?.wakeUp();
+      }
+      lsSetItem(LS_KEY, physicsState);
+      physicsWorld.numAdditionalFrictionIterations = e.value;
     });
 };
 
