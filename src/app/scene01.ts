@@ -8,7 +8,7 @@ import { createLight } from '../_engine/core/Light';
 import { importModelAsync } from '../_engine/core/ImportModel';
 import { createMesh } from '../_engine/core/Mesh';
 import { addToGroup, createGroup } from '../_engine/core/Group';
-import { transformSpeedValue } from '../_engine/core/MainLoop';
+import { transformMainSpeedValue } from '../_engine/core/MainLoop';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
 import { createKeyInputControl } from '../_engine/core/InputControls';
@@ -260,19 +260,19 @@ export const scene01 = async () =>
       scene.add(importedBox);
 
       // createSceneAppLooper(() => {
-      //   importedBox.rotation.y += transformSpeedValue(0.2);
-      //   importedBox.rotation.z -= transformSpeedValue(0.14);
+      //   importedBox.rotation.y += transformMainSpeedValue(0.2);
+      //   importedBox.rotation.z -= transformMainSpeedValue(0.14);
       // });
     }
 
     createSceneMainLooper(() => {
-      sphere.rotation.z -= transformSpeedValue(0.1);
-      sphere.rotation.y += transformSpeedValue(0.1);
+      sphere.rotation.z -= transformMainSpeedValue(0.1);
+      sphere.rotation.y += transformMainSpeedValue(0.1);
     });
 
     // createSceneAppLooper(() => {
-    //   box.rotation.y -= transformSpeedValue(2);
-    //   box.rotation.z -= transformSpeedValue(2);
+    //   box.rotation.y -= transformMainSpeedValue(2);
+    //   box.rotation.z -= transformMainSpeedValue(2);
     // });
 
     const point = createLight({

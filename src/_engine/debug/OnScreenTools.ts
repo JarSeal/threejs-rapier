@@ -83,7 +83,7 @@ const playTools = () => {
       ...buttonBaseClasses,
       ...(loopState.masterPlay ? [styles.active, 'onScreenToolActive'] : []),
     ],
-    html: () => `<button>${getSvgIcon('play')}</button>`,
+    html: () => `<button>${getSvgIcon('infinity')}</button>`,
     attr: {
       title: `Play main loop (currently ${loopState.masterPlay ? 'playing' : 'not playing'})`,
     },

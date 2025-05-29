@@ -25,7 +25,13 @@ export type StatsOptions = {
   enabled?: boolean;
 };
 
+type StatsPanel = {
+  update: (value: number, maxValue: number, decimals: number) => void;
+  updateGraph: (value: number, maxValue: number) => void;
+};
+
 let stats: Stats | null = null;
+let physicsPanel: StatsPanel | null = null;
 let savedConfig = {};
 const statsDebugGUIs: Pane[] = [];
 const LS_KEY = 'debugStats';
@@ -67,6 +73,8 @@ export const initStats = (config?: StatsOptions) => {
   if ('enabled' in savedConfig && savedConfig.enabled) {
     if (stats) stats.update();
     stats = new Stats(savedConfig as Omit<StatsOptions, 'enabled'>);
+    physicsPanel = stats.addPanel(new Stats.Panel('PHY', '#fff', '#212121')) as StatsPanel;
+    console.log('TADAA', physicsPanel);
     const statsCMP = CMP({
       id: '_statsContainer',
       class: ['statsContainer', ...(!(savedConfig as StatsOptions).horizontal ? ['vertical'] : [])],
@@ -84,6 +92,37 @@ export const updateStats = (renderer: Renderer) => {
   if (statsConfig.trackCPT) renderer.resolveTimestampsAsync(TimestampQuery.COMPUTE);
   if (statsConfig.trackGPU) renderer.resolveTimestampsAsync(TimestampQuery.RENDER);
   stats?.update();
+};
+
+let prevCurrentTime = 0;
+let prevCurrentGraphsTime = 0;
+let maxTime = 0;
+let maxTimeCheckCount = 0;
+let maxTimeGraphs = 0;
+let maxTimeGraphsCheckCount = 0;
+export const updatePhysicsPanel = (value: number) => {
+  const currentTime = performance.now();
+  value = value * 1000;
+  maxTime = Math.max(maxTime, value);
+  maxTimeGraphs = Math.max(maxTimeGraphs, value);
+  if (currentTime >= prevCurrentTime + 1000 / (stats?.logsPerSecond || 4)) {
+    physicsPanel?.update(value, maxTime, 1);
+    prevCurrentTime = currentTime;
+    maxTimeCheckCount++;
+    if (maxTimeCheckCount > 2 * (stats?.logsPerSecond || 4)) {
+      maxTime = 0;
+      maxTimeCheckCount = 0;
+    }
+  }
+  if (currentTime >= prevCurrentGraphsTime + 1000 / (stats?.graphsPerSecond || 30)) {
+    physicsPanel?.updateGraph(value, maxTimeGraphs * 1.5);
+    prevCurrentGraphsTime = currentTime;
+    maxTimeGraphsCheckCount++;
+    if (maxTimeGraphsCheckCount > 4 * (stats?.graphsPerSecond || 4)) {
+      maxTimeGraphs = 0;
+      maxTimeGraphsCheckCount = 0;
+    }
+  }
 };
 
 /**

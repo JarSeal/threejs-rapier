@@ -1,22 +1,26 @@
 import * as THREE from 'three/webgpu';
 import {
-  createSceneMainLooper,
   createScene,
   getScene,
   setCurrentScene,
+  createSceneAppLooper,
+  createSceneMainLooper,
 } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
-import { getTexture, loadTexture, loadTextures } from '../_engine/core/Texture';
-import { llog } from '../_engine/utils/Logger';
+import { getTexture, loadTexture } from '../_engine/core/Texture';
 import { createLight } from '../_engine/core/Light';
 import { importModelAsync } from '../_engine/core/ImportModel';
 import { createMesh } from '../_engine/core/Mesh';
 import { addToGroup, createGroup } from '../_engine/core/Group';
-import { transformSpeedValue } from '../_engine/core/MainLoop';
+import { transformAppSpeedValue, transformMainSpeedValue } from '../_engine/core/MainLoop';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
-import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
+import {
+  createPhysicsObjectWithMesh,
+  createPhysicsObjectWithoutMesh,
+  getPhysicsWorld,
+} from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 
 export const SCENE01_ID = 'testScene1';
@@ -147,6 +151,15 @@ export const scene01 = async () =>
           hy: groundHeight / 2,
           hz: groundWidthAndDepth / 2,
           friction: 0,
+          // contactForceEventFn: (obj1, obj2, event) => {
+          //   // console.log('FORCE', obj1, obj2, event);
+          //   // const intersections = getPhysicsWorld().intersectionPair(obj1.collider, obj2.collider);
+          //   // console.log('INTERSECTIONS', intersections);
+          //   // getPhysicsWorld().contactPair(obj1.collider, obj2.collider, (manifold, flipped) => {
+          //   //   console.log('CONTACT', manifold, flipped);
+          //   // });
+          //   console.log('EVENT', event);
+          // },
         },
         rigidBody: { rigidType: 'FIXED', translation: groundPos },
       },
@@ -269,21 +282,21 @@ export const scene01 = async () =>
     scene.add(group);
 
     // Batch load textures example
-    const updateLoadStatusFn = (
-      loadedTextures: { [id: string]: THREE.Texture },
-      loadedCount: number,
-      totalCount: number
-    ) => {
-      if (totalCount === 0) llog(`Loaded textures: ${loadedCount}/${totalCount}`, loadedTextures);
-    };
-    loadTextures(
-      [
-        { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg' },
-        { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_AmbientOcclusion.jpg' },
-        { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_Metallic.jpg' },
-      ],
-      updateLoadStatusFn
-    );
+    // const updateLoadStatusFn = (
+    //   loadedTextures: { [id: string]: THREE.Texture },
+    //   loadedCount: number,
+    //   totalCount: number
+    // ) => {
+    //   if (totalCount === 0) llog(`Loaded textures: ${loadedCount}/${totalCount}`, loadedTextures);
+    // };
+    // loadTextures(
+    //   [
+    //     { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg' },
+    //     { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_AmbientOcclusion.jpg' },
+    //     { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_Metallic.jpg' },
+    //   ],
+    //   updateLoadStatusFn
+    // );
 
     const importedBox = await importModelAsync<THREE.Mesh>({
       id: 'importedMesh1',
@@ -300,6 +313,7 @@ export const scene01 = async () =>
             rigidType: 'DYNAMIC',
             translation: { x: 3, y: 3, z: 2 },
             angvel: { x: 3, y: 1, z: 5 },
+            ccdEnabled: true,
           },
         },
         importedBox
@@ -314,22 +328,32 @@ export const scene01 = async () =>
       importedBox.position.set(3, 3, 2);
       importedBox.material = material;
       scene.add(importedBox);
-
-      // createSceneAppLooper(() => {
-      //   importedBox.rotation.y += transformSpeedValue(0.2);
-      //   importedBox.rotation.z -= transformSpeedValue(0.14);
-      // });
     }
 
-    createSceneMainLooper(() => {
-      sphere.rotation.z -= transformSpeedValue(0.1);
-      sphere.rotation.y += transformSpeedValue(0.1);
+    createPhysicsObjectWithoutMesh('sensorTest', {
+      collider: {
+        type: 'BOX',
+        hx: 10,
+        hy: 0.2,
+        hz: 10,
+        isSensor: true,
+        collisionEventFn: (obj1, obj2, started) => {
+          console.log('SENSOR ALERT', obj1, obj2, started);
+        },
+        translation: { x: 0, y: -1.5, z: 0 },
+      },
+      // rigidBody: { rigidType: 'FIXED', translation: { x: 0, y: -1.5, z: 0 } },
     });
 
-    // createSceneAppLooper(() => {
-    //   box.rotation.y -= transformSpeedValue(2);
-    //   box.rotation.z -= transformSpeedValue(2);
+    // createSceneMainLooper(() => {
+    //   sphere.rotation.z -= transformMainSpeedValue(5.1);
+    //   sphere.rotation.y += transformMainSpeedValue(3.1);
     // });
+
+    createSceneAppLooper(() => {
+      sphere.rotation.y -= transformAppSpeedValue(2);
+      sphere.rotation.z -= transformAppSpeedValue(2);
+    });
 
     // Lights
     const ambient = createLight({

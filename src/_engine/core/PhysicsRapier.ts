@@ -8,12 +8,19 @@ import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
 import { getMesh } from './Mesh';
 import { Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
+import { updatePhysicsPanel } from '../debug/Stats';
 
 export type PhysicsObject = {
   id?: string;
-  mesh: THREE.Mesh;
+  mesh?: THREE.Mesh;
   collider: Rapier.Collider;
   rigidBody?: Rapier.RigidBody;
+  collisionEventFn?: (physObj1: PhysicsObject, physObj2: PhysicsObject, started: boolean) => void;
+  contactForceEventFn?: (
+    physObj1: PhysicsObject,
+    physObj2: PhysicsObject,
+    event: Rapier.TempContactForceEvent
+  ) => void;
 };
 
 export type PhysicsParams = {
@@ -69,6 +76,25 @@ export type PhysicsParams = {
 
     /** How two colliding objects apply restitution (default AVERAGE). The following precedence is used: MAX > MULTIPLY > MIN > AVERAGE. */
     restitutionCombineRule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE';
+
+    /** Whether the collider is a sensor or not */
+    isSensor?: boolean;
+
+    /** Enables collision events, if collisionEventFn is defined this is enabled automatically */
+    enableCollisionActiveEvents?: boolean;
+
+    /** Enables collision events, if collisionEventFn is defined this is enabled automatically */
+    enableContactForceActiveEvents?: boolean;
+
+    /** Creates a collision event callback, automatically sets enableCollisionActiveEvents to true for the collider */
+    collisionEventFn?: (physObj1: PhysicsObject, physObj2: PhysicsObject, started: boolean) => void;
+
+    /** Creates a contact force event callback, automatically sets enableContactForceActiveEvents to true for the collider */
+    contactForceEventFn?: (
+      physObj1: PhysicsObject,
+      physObj2: PhysicsObject,
+      e: Rapier.TempContactForceEvent
+    ) => void;
   };
 
   /** Rigid body type and params */
@@ -145,6 +171,9 @@ type ScenePhysicsState = {
   worldStepEnabled: boolean;
   visualizerEnabled: boolean;
   gravity: { x: number; y: number; z: number };
+  solverIterations: number;
+  internalPgsIterations: number;
+  additionalFrictionIterations: number;
 };
 
 type PhysicsState = {
@@ -166,21 +195,32 @@ const DEFAULT_SCENE_PHYS_STATE: ScenePhysicsState = {
   worldStepEnabled: true,
   visualizerEnabled: false,
   gravity: { x: 0, y: -9.81, z: 0 },
+  solverIterations: 4,
+  internalPgsIterations: 1,
+  additionalFrictionIterations: 4,
 };
-const getDefaultScenePhysParams = () => ({ ...DEFAULT_SCENE_PHYS_STATE }) as ScenePhysicsState;
+const getDefaultScenePhysParams = () =>
+  ({ ...DEFAULT_SCENE_PHYS_STATE, ...getConfig().physics }) as ScenePhysicsState;
 let stepperFn: (delta: number) => void = () => {};
 let accDelta = 0;
 let RAPIER: typeof Rapier;
 let physicsWorld: Rapier.World = { step: () => {} } as Rapier.World;
 let physicsWorldEnabled = false;
+let eventQueue: Rapier.EventQueue | undefined = undefined;
+let collisionEventFnCount = 0;
+let contactForceEventFnCount = 0;
 const physicsObjects: { [sceneId: string]: { [id: string]: PhysicsObject } } = {};
+// @OPTIMIZATION: This now also has physics objects without a mesh.
+// Maybe it would be better to just add the physics objects with a mesh here,
+// because now we have to check if they have a mesh in the baseStepper (for each physics object)
+// which is not optimal.
 let currentScenePhysicsObjects: PhysicsObject[] = [];
 let debugMesh: THREE.LineSegments;
 let debugMeshGeo: THREE.BufferGeometry;
 let debugMeshMat: THREE.LineBasicMaterial;
 let debugMeshAdded = false;
 let physicsDebugGUI: Pane | null = null;
-let curScenePhysParams = getDefaultScenePhysParams();
+let curScenePhysParams = { ...DEFAULT_SCENE_PHYS_STATE };
 
 const getSceneIdForPhysics = (
   sceneId?: string,
@@ -302,10 +342,10 @@ const getCombineRule = (rule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE') => {
   }
 };
 
-const createCollider = (physicsParams: PhysicsParams, mesh: THREE.Mesh) => {
+const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) => {
   const colliderParams = physicsParams.collider;
   let shape: Rapier.Shape | null = null;
-  let geo: THREE.BufferGeometry;
+  let geo: THREE.BufferGeometry | undefined;
   let size: { [key: string]: number };
 
   if (!physicsWorldEnabled) createPhysicsWorld();
@@ -313,12 +353,12 @@ const createCollider = (physicsParams: PhysicsParams, mesh: THREE.Mesh) => {
   switch (colliderParams.type) {
     case 'CUBOID':
     case 'BOX':
-      size = { hx: 0.5, hy: 0.5, hz: 0.5 };
-      geo = mesh.geometry;
-      if (geo.type === 'BoxGeometry') {
-        size.hx = mesh.geometry.userData.props?.params?.width / 2 || size.hx;
-        size.hx = mesh.geometry.userData.props?.params?.height / 2 || size.hy;
-        size.hx = mesh.geometry.userData.props?.params?.depth / 2 || size.hz;
+      size = { hx: 0.5, hy: 0.5, hz: 0.5 }; // Default size
+      geo = mesh?.geometry;
+      if (geo?.type === 'BoxGeometry') {
+        size.hx = geo.userData.props?.params?.width / 2 || size.hx;
+        size.hy = geo.userData.props?.params?.height / 2 || size.hy;
+        size.hz = geo.userData.props?.params?.depth / 2 || size.hz;
       }
       shape = colliderParams.borderRadius
         ? new RAPIER.RoundCuboid(
@@ -335,29 +375,45 @@ const createCollider = (physicsParams: PhysicsParams, mesh: THREE.Mesh) => {
       break;
     case 'BALL':
     case 'SPHERE':
-      let radius = 0.5;
-      geo = mesh.geometry;
-      if (geo.type === 'SphereGeometry') {
+      let radius = 0.5; // Default radius
+      geo = mesh?.geometry;
+      if (geo?.type === 'SphereGeometry') {
         radius = geo.userData.props?.params?.radius || radius;
       }
       shape = new RAPIER.Ball(colliderParams.radius || radius);
       break;
     case 'CAPSULE':
-      shape = new RAPIER.Capsule(colliderParams.halfHeight || 0.25, colliderParams.radius || 0.25);
+      {
+        // @TODO: try to get the values straight from a Three.js Mesh
+        const defaultHalfHeight = 0.25; // Default half height
+        const defaultRadius = 0.25; // Default radius
+        shape = new RAPIER.Capsule(
+          colliderParams.halfHeight || defaultHalfHeight,
+          colliderParams.radius || defaultRadius
+        );
+      }
       break;
     case 'CONE':
-      shape = colliderParams.borderRadius
-        ? new RAPIER.RoundCone(
-            colliderParams.halfHeight || 0.25,
-            colliderParams.radius || 0.25,
-            colliderParams.borderRadius || 0
-          )
-        : new RAPIER.Cone(colliderParams.halfHeight || 0.25, colliderParams.radius || 0.25);
+      {
+        // @TODO: try to get the values straight from a Three.js Mesh
+        const defaultHalfHeight = 0.25; // Default half height
+        const defaultRadius = 0.25; // Default radius
+        shape = colliderParams.borderRadius
+          ? new RAPIER.RoundCone(
+              colliderParams.halfHeight || defaultHalfHeight,
+              colliderParams.radius || defaultRadius,
+              colliderParams.borderRadius || 0
+            )
+          : new RAPIER.Cone(
+              colliderParams.halfHeight || defaultHalfHeight,
+              colliderParams.radius || defaultRadius
+            );
+      }
       break;
     case 'CYLINDER':
-      size = { halfHeight: 0.5, radius: 1 };
-      geo = mesh.geometry;
-      if (geo.type === 'CylinderGeometry') {
+      size = { halfHeight: 0.5, radius: 1 }; // Default values
+      geo = mesh?.geometry;
+      if (geo?.type === 'CylinderGeometry') {
         size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
         size.radius =
           geo.userData.props?.params?.radiusBottom ||
@@ -376,6 +432,7 @@ const createCollider = (physicsParams: PhysicsParams, mesh: THREE.Mesh) => {
           );
       break;
     case 'TRIANGLE':
+      // @TODO: try to get the values straight from a Three.js Mesh (and make colliderParams a, b, c optional)
       shape = colliderParams.borderRadius
         ? new RAPIER.RoundTriangle(
             colliderParams.a,
@@ -386,15 +443,11 @@ const createCollider = (physicsParams: PhysicsParams, mesh: THREE.Mesh) => {
         : new RAPIER.Triangle(colliderParams.a, colliderParams.b, colliderParams.c);
       break;
     case 'TRIMESH':
-      geo = mesh.geometry;
+      geo = mesh?.geometry;
       if (colliderParams.vertices && colliderParams.indices) {
         shape = new RAPIER.TriMesh(colliderParams.vertices, colliderParams.indices);
         break;
       } else if (geo) {
-        // size = { hx: 0.5, hy: 0.5, hz: 0.5 };
-        // geo = mesh.geometry;
-        // shape = new RAPIER.Cuboid(size.hx, size.hy, size.hz);
-        // break;
         const vertices = new Float32Array(geo.attributes.position.array);
         let indices;
         if (geo.index) {
@@ -411,6 +464,9 @@ const createCollider = (physicsParams: PhysicsParams, mesh: THREE.Mesh) => {
       const message = `Could not find vertices and indices in the collider params, nor was there mesh with vertices present. Could not create trimesh physics shape in createCollider.`;
       lerror(message);
       throw new Error(message);
+
+    // @TODO: Add HEIGHTFIELD type [ColliderDesc.heightfield(heights: matrix, scale)]
+    // @TODO: Add COMPOUND type (compound objects)
   }
 
   if (!shape) {
@@ -435,29 +491,88 @@ const createCollider = (physicsParams: PhysicsParams, mesh: THREE.Mesh) => {
     colliderDesc.setFrictionCombineRule(getCombineRule(colliderParams.frictionCombineRule));
   if (colliderParams.restitutionCombineRule)
     colliderDesc.setRestitutionCombineRule(getCombineRule(colliderParams.restitutionCombineRule));
+  if (colliderParams.isSensor !== undefined) colliderDesc.setSensor(colliderParams.isSensor);
+
+  if (
+    colliderParams.enableCollisionActiveEvents ||
+    colliderParams.enableContactForceActiveEvents ||
+    colliderParams.collisionEventFn ||
+    colliderParams.contactForceEventFn
+  ) {
+    let activeEvents: Rapier.ActiveEvents = RAPIER.ActiveEvents.NONE;
+    if (
+      (colliderParams.enableCollisionActiveEvents &&
+        colliderParams.enableContactForceActiveEvents) ||
+      (colliderParams.collisionEventFn && colliderParams.contactForceEventFn)
+    ) {
+      activeEvents =
+        RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS;
+    } else if (colliderParams.enableCollisionActiveEvents || colliderParams.collisionEventFn) {
+      activeEvents = RAPIER.ActiveEvents.COLLISION_EVENTS;
+      if (colliderParams.collisionEventFn) collisionEventFnCount++;
+    } else if (
+      colliderParams.enableContactForceActiveEvents ||
+      colliderParams.contactForceEventFn
+    ) {
+      activeEvents = RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS;
+      if (colliderParams.contactForceEventFn) contactForceEventFnCount++;
+    }
+
+    colliderDesc.setActiveEvents(activeEvents);
+    if (!eventQueue && activeEvents !== RAPIER.ActiveEvents.NONE) {
+      eventQueue = new RAPIER.EventQueue(true);
+    }
+  }
 
   return colliderDesc;
 };
 
 /**
  * Creates a new physics object without a mesh and registers it to the scene id (or current scene id if scene id is not provided) in the physicsObjects object.
+ * @param id (string) physics object id
  * @param physicsParamas (PhysicsParams) ({@link PhysicsParams})
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
  * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
  * @returns PhysicsObject ({@link PhysicsObject})
  */
 export const createPhysicsObjectWithoutMesh = (
+  id: string,
   physicsParams: PhysicsParams,
   sceneId?: string,
   noWarnForUnitializedScene?: boolean
 ) => {
-  // @TODO: implement this
-  lwarn(
-    '"createPhysicsObjectWithoutMesh" has not been implemented yet',
-    physicsParams,
-    sceneId,
-    noWarnForUnitializedScene
-  );
+  if (!RAPIER) return;
+  const sId = getSceneIdForPhysics(sceneId, 'createPhysicsObject', noWarnForUnitializedScene);
+
+  const rigidBody = createRigidBody(physicsParams);
+  const colliderDesc = createCollider(physicsParams);
+  const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
+
+  const physObj: PhysicsObject = {
+    id,
+    ...(rigidBody ? { rigidBody } : {}),
+    collider,
+    ...(physicsParams.collider.collisionEventFn
+      ? { collisionEventFn: physicsParams.collider.collisionEventFn }
+      : {}),
+    ...(physicsParams.collider.contactForceEventFn
+      ? { contactForceEventFn: physicsParams.collider.contactForceEventFn }
+      : {}),
+  };
+  if (!physicsObjects[sId]) physicsObjects[sId] = {};
+  physicsObjects[sId][id] = physObj;
+
+  if (sId === getCurrentSceneId()) {
+    // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
+    currentScenePhysicsObjects.push(physObj);
+    if (physObj.rigidBody) {
+      physObj.rigidBody.setEnabled(true);
+    } else {
+      physObj.collider.setEnabled(true);
+    }
+  }
+
+  return physObj;
 };
 
 /**
@@ -493,6 +608,13 @@ export const createPhysicsObjectWithMesh = (
     mesh = meshOrMeshId;
   }
 
+  if (id && sId) {
+    const existingPhysObject = getPhysicsObject(id, sId);
+    if (existingPhysObject) {
+      return existingPhysObject;
+    }
+  }
+
   mesh.userData.isPhysicsObject = true;
 
   const rigidBody = createRigidBody(physicsParams);
@@ -504,6 +626,12 @@ export const createPhysicsObjectWithMesh = (
     mesh,
     ...(rigidBody ? { rigidBody } : {}),
     collider,
+    ...(physicsParams.collider.collisionEventFn
+      ? { collisionEventFn: physicsParams.collider.collisionEventFn }
+      : {}),
+    ...(physicsParams.collider.contactForceEventFn
+      ? { contactForceEventFn: physicsParams.collider.contactForceEventFn }
+      : {}),
   };
   if (!physicsObjects[sId]) physicsObjects[sId] = {};
   physicsObjects[sId][id] = physObj;
@@ -531,19 +659,28 @@ export const deletePhysicsObject = (id: string, sceneId?: string) => {
   if (!scenePhysicsObjects) return;
 
   const obj = scenePhysicsObjects[id];
+  if (!obj) return;
   physicsWorld.removeCollider(obj.collider, false);
   if (obj.rigidBody) physicsWorld.removeRigidBody(obj.rigidBody);
 
   delete scenePhysicsObjects[id];
 
-  if (sId === getCurrentSceneId()) {
-    currentScenePhysicsObjects = currentScenePhysicsObjects.filter(
-      (obj) => obj.mesh.userData.id !== id
-    );
-  }
+  // if (sId === getCurrentSceneId()) {
+  //   currentScenePhysicsObjects = currentScenePhysicsObjects.filter(
+  //     (obj) => obj.mesh?.userData.id !== id
+  //   );
+  // }
 
   if (isCurrentScene(sId)) {
-    currentScenePhysicsObjects.filter((obj) => obj.id !== id);
+    currentScenePhysicsObjects = currentScenePhysicsObjects.filter((obj) => {
+      if (obj.id === id) {
+        if (obj.collisionEventFn) collisionEventFnCount--;
+        if (obj.contactForceEventFn) contactForceEventFnCount--;
+        if (collisionEventFnCount < 0) collisionEventFnCount = 0;
+        if (contactForceEventFnCount < 0) contactForceEventFnCount = 0;
+      }
+      return obj.id !== id;
+    });
   }
 };
 
@@ -594,11 +731,24 @@ export const createPhysicsWorld = () => {
   const currentSceneId = getCurrentSceneId();
   if (!RAPIER || !currentSceneId) return;
 
-  const gravity =
-    physicsState.scenes[currentSceneId]?.gravity || getDefaultScenePhysParams().gravity;
+  const defaultParams = getDefaultScenePhysParams();
+
+  const gravity = physicsState.scenes[currentSceneId]?.gravity || defaultParams.gravity;
+  const solverIterations =
+    physicsState.scenes[currentSceneId]?.solverIterations || defaultParams.solverIterations;
+  const internalPgsIterations =
+    physicsState.scenes[currentSceneId]?.internalPgsIterations ||
+    defaultParams.internalPgsIterations;
+  const additionalFrictionIterations =
+    physicsState.scenes[currentSceneId]?.additionalFrictionIterations ||
+    defaultParams.additionalFrictionIterations;
   physicsWorld = new RAPIER.World(new RAPIER.Vector3(gravity.x, gravity.y, gravity.z));
   physicsWorld.timestep = physicsState.timestepRatio;
   physicsWorldEnabled = true;
+  if (solverIterations) physicsWorld.numSolverIterations = solverIterations;
+  if (internalPgsIterations) physicsWorld.numInternalPgsIterations = internalPgsIterations;
+  if (additionalFrictionIterations)
+    physicsWorld.numAdditionalFrictionIterations = additionalFrictionIterations;
 
   if (isDebugEnvironment()) initDebuggerScenePhysState();
 };
@@ -705,22 +855,49 @@ const baseStepper = (delta: number) => {
   accDelta = accDelta % physicsState.timestepRatio;
 
   // Step the world
-  physicsWorld.step();
+  physicsWorld.step(eventQueue);
+
+  if (eventQueue && collisionEventFnCount) {
+    eventQueue.drainCollisionEvents((handle1, handle2, started) => {
+      const physObj1 = currentScenePhysicsObjects.find((obj) => obj.collider.handle === handle1);
+      const physObj2 = currentScenePhysicsObjects.find((obj) => obj.collider.handle === handle2);
+      if (physObj1?.collisionEventFn && physObj2) {
+        physObj1.collisionEventFn(physObj1, physObj2, started);
+      }
+      if (physObj2?.collisionEventFn && physObj1) {
+        physObj2.collisionEventFn(physObj1, physObj2, started);
+      }
+    });
+  }
+
+  if (eventQueue && contactForceEventFnCount) {
+    eventQueue.drainContactForceEvents((event) => {
+      const handle1 = event.collider1();
+      const handle2 = event.collider2();
+      const physObj1 = currentScenePhysicsObjects.find((obj) => obj.collider.handle === handle1);
+      const physObj2 = currentScenePhysicsObjects.find((obj) => obj.collider.handle === handle2);
+      if (physObj1?.contactForceEventFn && physObj2) {
+        physObj1.contactForceEventFn(physObj1, physObj2, event);
+      }
+      if (physObj2?.contactForceEventFn && physObj1) {
+        physObj2.contactForceEventFn(physObj1, physObj2, event);
+      }
+    });
+  }
 
   // Set physics objects mesh positions and rotations
   for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
     const po = currentScenePhysicsObjects[i];
+    // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
+    if (!po.mesh) continue;
     po.mesh.position.copy(po.collider.translation());
     po.mesh.quaternion.copy(po.collider.rotation());
-    // Uncomment for debug of dynamic bodies
-    // if (po.rigidBody?.bodyType() === Rapier.RigidBodyType.Dynamic && !po.rigidBody?.isSleeping()) {
-    //   console.log(po.id, `Index: ${i}`, po.collider.translation());
-    // }
   }
 };
 const stepperFnProduction = (delta: number) => {
   baseStepper(delta);
 };
+
 const stepperFnDebug = (delta: number) => {
   const curSceneParams = physicsState.scenes[getCurrentSceneId() || ''];
   if (!curSceneParams?.worldStepEnabled) return;
@@ -734,6 +911,7 @@ const stepperFnDebug = (delta: number) => {
       getRootScene()?.add(debugMesh);
       debugMeshAdded = true;
     }
+    // @TODO: @OPTIMIZATION: fix this at some point (this is just made to work and is not optimal)
     debugMeshGeo = new THREE.BufferGeometry();
     debugMesh.geometry = debugMeshGeo;
     debugMesh.geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
@@ -744,12 +922,16 @@ const stepperFnDebug = (delta: number) => {
   } else {
     debugMesh.visible = false;
   }
+
+  // @TODO: Currently measuring only FPS (I think), research how to do this right
+  updatePhysicsPanel(delta);
 };
 
 /**
- * Steps the physics world (called in main loop) and sets mesh positions and rotations in the current scene.
+ * Steps the physics world (called in the main loop) and sets mesh positions and rotations in the current scene.
  */
-export const stepPhysicsWorld = (delta: number) => stepperFn(delta);
+export const stepPhysicsWorld = (delta: number) =>
+  currentScenePhysicsObjects.length && stepperFn(delta);
 
 /**
  * Changes the scene to be used for the scene's physics objects (optimizes the stepping)
@@ -761,6 +943,9 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
   initDebuggerScenePhysState();
 
   currentScenePhysicsObjects = [];
+  collisionEventFnCount = 0;
+  contactForceEventFnCount = 0;
+  if (eventQueue) eventQueue.clear();
 
   if (!sceneId) return;
 
@@ -780,6 +965,8 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
     } else {
       obj.collider.setEnabled(true);
     }
+    if (obj.collisionEventFn) collisionEventFnCount++;
+    if (obj.contactForceEventFn) contactForceEventFnCount++;
   }
 
   createPhysicsDebugMesh();
@@ -877,6 +1064,27 @@ const buildDebugGUI = () => {
     physicsWorld.gravity.y = e.value.y;
     physicsWorld.gravity.z = e.value.z;
   });
+  debugGUI
+    .addBinding(curScenePhysParams, 'solverIterations', {
+      label: 'Solver iterations',
+      min: 1,
+      step: 1,
+    })
+    .on('change', (e) => {
+      const currentSceneId = getCurrentSceneId();
+      if (!currentSceneId) return;
+      if (!physicsState.scenes[currentSceneId]) {
+        physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
+      }
+      physicsState.scenes[currentSceneId].solverIterations = e.value;
+      curScenePhysParams = physicsState.scenes[currentSceneId];
+      for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+        currentScenePhysicsObjects[i].rigidBody?.wakeUp();
+      }
+      lsSetItem(LS_KEY, physicsState);
+      if (!physicsWorld?.numSolverIterations) return;
+      physicsWorld.numSolverIterations = e.value;
+    });
 };
 
 const initRapier = async () => {
@@ -904,16 +1112,6 @@ export const InitRapierPhysics = async (
           enabled,
         };
         physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
-
-        if (physicsConfig?.gravity) {
-          getDefaultScenePhysParams().gravity = physicsConfig.gravity;
-        }
-        if (physicsConfig?.visualizerEnabled) {
-          getDefaultScenePhysParams().visualizerEnabled = physicsConfig.visualizerEnabled;
-        }
-        if (physicsConfig?.worldStepEnabled) {
-          getDefaultScenePhysParams().worldStepEnabled = physicsConfig.worldStepEnabled;
-        }
 
         RAPIER = rapier;
         if (isDebugEnvironment()) {
