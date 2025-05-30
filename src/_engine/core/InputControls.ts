@@ -3,13 +3,9 @@ import { lerror, lwarn } from '../utils/Logger';
 import { isDebugEnvironment } from './Config';
 import { getCurrentSceneId } from './Scene';
 
-export type InputControlType =
-  | 'KEY_UP'
-  | 'KEY_DOWN'
-  | 'MOUSE_UP'
-  | 'MOUSE_DOWN'
-  | 'MOUSE_MOVE'
-  | 'CONTROLLER';
+export type KeyInputControlType = 'KEY_UP' | 'KEY_DOWN';
+export type MouseInputControlType = 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
+export type InputControlType = KeyInputControlType | MouseInputControlType | 'CONTROLLER';
 
 type EnabledInDebugCam = 'ENABLED_IN_DEBUG' | 'ENABLED_ONLY_IN_DEBUG' | 'NOT_ENABLED_IN_DEBUG';
 
@@ -252,6 +248,16 @@ const initMouseMoveControls = () => {
   window.addEventListener('mousemove', controlListenerFns.mouseMove);
 };
 
+export type KeyInputParams = {
+  id?: string;
+  key?: string | string[];
+  sceneId?: string;
+  type?: 'KEY_UP' | 'KEY_DOWN';
+  fn: (e: KeyboardEvent, time: number) => void;
+  enabled?: boolean;
+  enabledInDebugCam?: EnabledInDebugCam;
+};
+
 /**
  * Creates a keyboard input control. Only the fn (function) is a required property.
  * @param params (object) { id?: string, key?: string, sceneId?: string, type?: 'KEY_UP' | 'KEY_DOWN', fn: (e: KeyboardEvent) => void, enabled?: boolean }
@@ -264,15 +270,7 @@ export const createKeyInputControl = ({
   fn,
   enabled,
   enabledInDebugCam,
-}: {
-  id?: string;
-  key?: string | string[];
-  sceneId?: string;
-  type?: 'KEY_UP' | 'KEY_DOWN';
-  fn: (e: KeyboardEvent, time: number) => void;
-  enabled?: boolean;
-  enabledInDebugCam?: EnabledInDebugCam;
-}) => {
+}: KeyInputParams) => {
   let idFound = false;
   switch (type) {
     case 'KEY_DOWN':
@@ -346,6 +344,15 @@ export const createKeyInputControl = ({
   }
 };
 
+export type MouseInputParams = {
+  id?: string;
+  sceneId?: string;
+  type?: 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
+  fn: (e: MouseEvent, time: number) => void;
+  enabled?: boolean;
+  enabledInDebugCam?: EnabledInDebugCam;
+};
+
 /**
  * Creates a mouse input control. Only the fn (function) is a required property.
  * @param params (object) { id?: string, sceneId?: string, type?: 'MOUSE_UP' | 'MOUSE_DOWN | 'MOUSE_MOVE', fn: (e: MouseEvent) => void, enabled?: boolean }
@@ -357,14 +364,7 @@ export const createMouseInputControl = ({
   fn,
   enabled,
   enabledInDebugCam,
-}: {
-  id?: string;
-  sceneId?: string;
-  type?: 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
-  fn: (e: MouseEvent, time: number) => void;
-  enabled?: boolean;
-  enabledInDebugCam?: EnabledInDebugCam;
-}) => {
+}: MouseInputParams) => {
   let idFound = false;
   switch (type) {
     case 'MOUSE_MOVE':
