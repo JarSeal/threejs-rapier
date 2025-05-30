@@ -14,6 +14,7 @@ let currentSceneTitleText: string = '';
 let tabsContainerWrapper: null | TCMP = null;
 let debugKeysFromConfigInitiated = false;
 let debuggerDisabled = false;
+const DRAWER_OPEN_BODY_CLASS = 'debugDrawerOpen';
 
 type DrawerState = {
   isOpen: boolean;
@@ -57,6 +58,7 @@ const initDrawerState = () => {
   if (!savedState || typeof savedState !== 'string') return drawerState;
   const parsedSavedState = JSON.parse(savedState);
   drawerState = { ...drawerState, ...parsedSavedState };
+  if (drawerState.isOpen) document.body.classList.add(DRAWER_OPEN_BODY_CLASS);
   return drawerState;
 };
 
@@ -78,8 +80,6 @@ const createTabMenuButtons = () => {
     const button = CMP({
       id: `debugTabsMenuButton-${data.id}`,
       class: styles.debugDrawerTabButton,
-      // tag: 'button',
-      // text: data.buttonText,
       html: () => `<button>${data.buttonText}</button>`,
       attr: data.title ? { title: data.title } : undefined,
       onClick: (_, cmp) => {
@@ -285,10 +285,12 @@ export const toggleDrawer = (openOrClose?: 'OPEN' | 'CLOSE') => {
   if (drawerState.isOpen) {
     drawerCMP.updateClass(styles.debuggerGUI_open, 'add');
     drawerCMP.updateClass(styles.debuggerGUI_closed, 'remove');
+    document.body.classList.add(DRAWER_OPEN_BODY_CLASS);
     return;
   }
   drawerCMP.updateClass(styles.debuggerGUI_open, 'remove');
   drawerCMP.updateClass(styles.debuggerGUI_closed, 'add');
+  document.body.classList.remove(DRAWER_OPEN_BODY_CLASS);
 };
 
 /**

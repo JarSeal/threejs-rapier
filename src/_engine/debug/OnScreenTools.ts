@@ -9,6 +9,11 @@ import {
 import { getHUDRootCMP } from '../core/HUD';
 import { getAllLights } from '../core/Light';
 import { getReadOnlyLoopState, toggleAppPlay, toggleMainPlay } from '../core/MainLoop';
+import {
+  buildPhysicsDebugGUI,
+  getPhysicsState,
+  togglePhysicsVisualizer,
+} from '../core/PhysicsRapier';
 import { getCurrentSceneId } from '../core/Scene';
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { getSvgIcon } from '../core/UI/icons/SvgIcon';
@@ -282,11 +287,31 @@ const switchTools = () => {
     },
   });
 
+  // Physics visualizer toggle
+  const physicsState = getPhysicsState();
+  const togglePhysicsHelpersBtn = CMP({
+    class: [
+      styles.onScreenTool,
+      'onScreenTool',
+      ...(physicsState.scenes[getCurrentSceneId() || '']?.visualizerEnabled
+        ? [styles.active, 'onScreenToolActive']
+        : []),
+    ],
+    html: () => `<button>${getSvgIcon('rocketTakeoff', 'small')}</button>`,
+    attr: { title: 'Hide / show physics visualizer' },
+    onClick: (e) => {
+      e.stopPropagation();
+      togglePhysicsVisualizer(!physicsState.scenes[getCurrentSceneId() || '']?.visualizerEnabled);
+      buildPhysicsDebugGUI();
+    },
+  });
+
   switchToolsCMP.add(useDebugCamBtn);
   switchToolsCMP.add(selectCamDropDown);
   switchToolsCMP.add(selectSceneDropDown);
   switchToolsCMP.add(toggleLightHelpersBtn);
   switchToolsCMP.add(toggleCameraHelpersBtn);
+  if (physicsState.enabled) switchToolsCMP.add(togglePhysicsHelpersBtn);
 
   hudRootCMP.add(switchToolsCMP);
 };

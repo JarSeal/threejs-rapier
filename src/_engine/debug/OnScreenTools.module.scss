@@ -25,12 +25,45 @@
   bottom: 1.6rem;
   left: 50%;
   transform: translateX(-50%);
+  transition: transform 0.2s ease-in-out;
+
+  @media screen and (max-width: variables.$breakpointMedium) {
+    left: 100%;
+    transform: translateX(calc(-100% - 1.6rem));
+  }
+  @media screen and (max-width: variables.$breakpointSmall) {
+    display: none;
+  }
+
+  :global(.debugDrawerOpen) & {
+    transform: translateX(calc(-50% - (variables.$drawerWidth / 2)));
+
+    @media screen and (max-width: variables.$breakpointXLarge) {
+      transform: translateX(calc(-50% - (variables.$drawerWidth / 4)));
+    }
+    @media screen and (max-width: variables.$breakpointLarge) {
+      transform: translateX(-50%);
+    }
+    @media screen and (max-width: variables.$breakpointMedium) {
+      left: 100%;
+      transform: translateX(calc(-100% - 1.6rem));
+    }
+  }
 }
 
 :global(.playTools) {
   top: 1.6rem;
   left: 50%;
   transform: translateX(-50%);
+  transition: transform 0.2s ease-in-out;
+
+  :global(.debugDrawerOpen) & {
+    transform: translateX(calc(-50% - (variables.$drawerWidth / 2)));
+
+    @media screen and (max-width: variables.$breakpointMedium) {
+      transform: translateX(-50%);
+    }
+  }
 }
 
 .onScreenTool {

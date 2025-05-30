@@ -9,6 +9,7 @@ import { getMesh } from './Mesh';
 import { Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
+import { updateOnScreenTools } from '../debug/OnScreenTools';
 
 export type PhysicsObject = {
   id?: string;
@@ -727,6 +728,9 @@ export const doesPOExist = (id: string, sceneId?: string) => {
   return Boolean(physicsObjects[sId][id]);
 };
 
+/** Returns the current physicsState */
+export const getPhysicsState = () => physicsState;
+
 /**
  * Creates the physics world and sets gravity
  */
@@ -975,6 +979,18 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
   createPhysicsDebugMesh();
 };
 
+export const togglePhysicsVisualizer = (value: boolean) => {
+  const currentSceneId = getCurrentSceneId();
+  if (!currentSceneId) return;
+  if (!physicsState.scenes[currentSceneId]) {
+    physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
+  }
+  physicsState.scenes[currentSceneId].visualizerEnabled = value;
+  curScenePhysParams = physicsState.scenes[currentSceneId];
+  updateOnScreenTools('SWITCH');
+  lsSetItem(LS_KEY, physicsState);
+};
+
 const initDebuggerScenePhysState = () => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) return;
@@ -982,7 +998,7 @@ const initDebuggerScenePhysState = () => {
     physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
   }
   curScenePhysParams = physicsState.scenes[currentSceneId];
-  buildDebugGUI();
+  buildPhysicsDebugGUI();
 };
 
 const createDebugControls = () => {
@@ -1004,13 +1020,13 @@ const createDebugControls = () => {
     container: () => {
       const { container, debugGUI } = createNewDebuggerPane('physics', `${icon} Physics Controls`);
       physicsDebugGUI = debugGUI;
-      buildDebugGUI();
+      buildPhysicsDebugGUI();
       return container;
     },
   });
 };
 
-const buildDebugGUI = () => {
+export const buildPhysicsDebugGUI = () => {
   const debugGUI = physicsDebugGUI;
   if (!debugGUI) return;
 
@@ -1041,14 +1057,7 @@ const buildDebugGUI = () => {
   debugGUI
     .addBinding(curScenePhysParams, 'visualizerEnabled', { label: 'Enable visualizer' })
     .on('change', (e) => {
-      const currentSceneId = getCurrentSceneId();
-      if (!currentSceneId) return;
-      if (!physicsState.scenes[currentSceneId]) {
-        physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
-      }
-      physicsState.scenes[currentSceneId].visualizerEnabled = e.value;
-      curScenePhysParams = physicsState.scenes[currentSceneId];
-      lsSetItem(LS_KEY, physicsState);
+      togglePhysicsVisualizer(e.value);
     });
   debugGUI.addBinding(curScenePhysParams, 'gravity', { label: 'Gravity' }).on('change', (e) => {
     const currentSceneId = getCurrentSceneId();

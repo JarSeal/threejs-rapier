@@ -12,6 +12,17 @@ $debugTextColor: #bbbcc4;
 $debugTextColorDark: color.adjust($debugTextColor, $lightness: -20%);
 $debugOnScreenAlphaBack: rgba($debugTextColor, 0.2);
 
+// Drawer
+$drawerWidth: 40rem;
+$drawerWidthSmall: 30rem;
+
+// Breakpoints
+$breakpointXLarge: 1199px;
+$breakpointLarge: 899px;
+$breakpointMedium: 739px;
+$breakpointSmall: 479px;
+$breakpointXSmall: 379px;
+
 $errorDark: #701515;
 
 // Border radius
