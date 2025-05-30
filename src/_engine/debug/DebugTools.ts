@@ -458,6 +458,7 @@ export const addScenesToSceneListing = (scenes: DebugScene | DebugScene[]) => {
   }
   const foundScene = debuggerSceneListing.find((scene) => scene.id === scenes.id);
   if (!foundScene) debuggerSceneListing.push(scenes);
+  console.log('hERE', foundScene);
   reloadSceneListingBlade();
 };
 

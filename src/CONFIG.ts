@@ -29,7 +29,7 @@ const config: AppConfig = {
   draggableWindows: {
     lightEditorWindow: { contentFn: createEditLightContent },
     cameraEditorWindow: { contentFn: createEditCameraContent },
-    myFirstDraggableTest: { contentFn: editObjectPropsContentFn },
+    myFirstDraggableTest: { contentFn: editObjectPropsContentFn }, // @TODO: remove this
   },
 };
 

@@ -52,7 +52,10 @@ export type SceneOptions = {
  * @returns THREE.Group
  */
 export const createScene = (id: string, opts?: SceneOptions) => {
-  if (scenes[id]) return scenes[id];
+  if (scenes[id]) {
+    if (opts?.isCurrentScene) setCurrentScene(id);
+    return scenes[id];
+  }
 
   const scene = new THREE.Group();
 

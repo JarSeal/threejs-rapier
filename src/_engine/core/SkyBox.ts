@@ -47,6 +47,7 @@ type SkyBoxProps = {
         file?: string | THREE.Texture | THREE.DataTexture;
         path?: string;
         textureId?: string;
+        /** Default is THREE.SRGBColorSpace */
         colorSpace?: THREE.ColorSpace;
         roughness?: number;
         // @TODO: check if equiTextRotate can be added (just rotate)
@@ -58,6 +59,7 @@ type SkyBoxProps = {
         fileNames: string[];
         path?: string;
         textureId?: string;
+        /** Default is THREE.SRGBColorSpace */
         colorSpace?: THREE.ColorSpace;
         roughness?: number;
         cubeTextRotate?: number; // @TODO: change this to just rotate

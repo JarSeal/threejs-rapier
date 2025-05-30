@@ -303,18 +303,18 @@ const createRigidBody = (physicsParams: PhysicsParams) => {
   if (rigidBodyParams.lockTranslations) {
     rigidBody.lockTranslations(true, wakeUp);
     rigidBody.setEnabledTranslations(
-      rigidBodyParams.lockTranslations.x,
-      rigidBodyParams.lockTranslations.y,
-      rigidBodyParams.lockTranslations.z,
+      !rigidBodyParams.lockTranslations.x,
+      !rigidBodyParams.lockTranslations.y,
+      !rigidBodyParams.lockTranslations.z,
       wakeUp
     );
   }
   if (rigidBodyParams.lockRotations) {
     rigidBody.lockRotations(true, wakeUp);
     rigidBody.setEnabledRotations(
-      rigidBodyParams.lockRotations.x,
-      rigidBodyParams.lockRotations.y,
-      rigidBodyParams.lockRotations.z,
+      !rigidBodyParams.lockRotations.x,
+      !rigidBodyParams.lockRotations.y,
+      !rigidBodyParams.lockRotations.z,
       wakeUp
     );
   }
@@ -384,12 +384,15 @@ const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) => {
       break;
     case 'CAPSULE':
       {
-        // @TODO: try to get the values straight from a Three.js Mesh
-        const defaultHalfHeight = 0.25; // Default half height
-        const defaultRadius = 0.25; // Default radius
+        size = { halfHeight: 0.25, radius: 0.25 }; // Default values
+        geo = mesh?.geometry;
+        if (geo?.type === 'CapsuleGeometry') {
+          size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
+          size.radius = geo.userData.props?.params?.radius || size.radius;
+        }
         shape = new RAPIER.Capsule(
-          colliderParams.halfHeight || defaultHalfHeight,
-          colliderParams.radius || defaultRadius
+          colliderParams.halfHeight || size.halfHeight,
+          colliderParams.radius || size.radius
         );
       }
       break;

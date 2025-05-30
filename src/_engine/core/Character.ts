@@ -1,10 +1,11 @@
 import * as THREE from 'three/webgpu';
-import { createPhysicsObjectWithMesh, PhysicsObject, PhysicsParams } from './PhysicsRapier';
+import { createPhysicsObjectWithMesh, PhysicsParams } from './PhysicsRapier';
 import { lerror } from '../utils/Logger';
 
 type CharacterObject = {
   id: string;
-  physObject: PhysicsObject;
+  physObjectId: string;
+  meshId: string;
 };
 
 const characters: { [id: string]: CharacterObject } = {};
@@ -22,6 +23,7 @@ export const createCharacter = (
   id: string,
   physicsParams: PhysicsParams,
   meshOrMeshId: THREE.Mesh | string,
+  // controls: ???
   sceneId?: string,
   noWarnForUnitializedScene?: boolean
 ) => {
@@ -40,8 +42,13 @@ export const createCharacter = (
     lerror(msg);
     throw new Error(msg);
   }
+  if (!physObj.id) physObj.id = id;
 
-  const char = { id, physObject: physObj };
+  const char = {
+    id,
+    physObjectId: physObj.id,
+    meshId: typeof meshOrMeshId === 'string' ? meshOrMeshId : meshOrMeshId.userData.id,
+  };
   characters[id] = char;
 
   return char;

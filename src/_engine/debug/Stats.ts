@@ -74,7 +74,6 @@ export const initStats = (config?: StatsOptions) => {
     if (stats) stats.update();
     stats = new Stats(savedConfig as Omit<StatsOptions, 'enabled'>);
     physicsPanel = stats.addPanel(new Stats.Panel('PHY', '#fff', '#212121')) as StatsPanel;
-    console.log('TADAA', physicsPanel);
     const statsCMP = CMP({
       id: '_statsContainer',
       class: ['statsContainer', ...(!(savedConfig as StatsOptions).horizontal ? ['vertical'] : [])],

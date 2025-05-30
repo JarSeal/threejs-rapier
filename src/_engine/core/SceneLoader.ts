@@ -21,6 +21,8 @@ import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing'
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { getAllCameraHelpers, getAllLightHelpers } from './Helpers';
+import { updateLightsDebuggerGUI } from './Light';
+import { updateCamerasDebuggerGUI } from './Camera';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -258,6 +260,8 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
             Boolean(getDebugToolsState().debugCamera[newSceneId]?.enabled),
             true
           );
+          updateCamerasDebuggerGUI();
+          updateLightsDebuggerGUI();
         }
 
         firstSceneLoaded = true;
