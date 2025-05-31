@@ -318,6 +318,13 @@ const createRigidBody = (physicsParams: PhysicsParams) => {
       !rigidBodyParams.lockRotations.z,
       wakeUp
     );
+    if (!rigidBody.userData) rigidBody.userData = {};
+    (rigidBody.userData as { [key: string]: unknown }).lockRotationsX =
+      rigidBodyParams.lockRotations.x;
+    (rigidBody.userData as { [key: string]: unknown }).lockRotationsY =
+      rigidBodyParams.lockRotations.y;
+    (rigidBody.userData as { [key: string]: unknown }).lockRotationsZ =
+      rigidBodyParams.lockRotations.z;
   }
   if (rigidBodyParams.linearDamping) rigidBody.setLinearDamping(rigidBodyParams.linearDamping);
   if (rigidBodyParams.angularDamping) rigidBody.setAngularDamping(rigidBodyParams.angularDamping);
@@ -898,7 +905,18 @@ const baseStepper = (delta: number) => {
     // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
     if (!po.mesh) continue;
     po.mesh.position.copy(po.collider.translation());
-    po.mesh.quaternion.copy(po.collider.rotation());
+    const userData = po.rigidBody?.userData as { [key: string]: unknown };
+    if (!userData?.lockRotationsX && !userData?.lockRotationsX && !userData?.lockRotationsX) {
+      po.mesh.quaternion.copy(po.collider.rotation());
+    } else {
+      const colliderRotation = po.collider.rotation();
+      po.mesh.quaternion.copy({
+        x: userData.lockRotationsX ? po.mesh.quaternion.x : colliderRotation.x,
+        y: userData.lockRotationsY ? po.mesh.quaternion.y : colliderRotation.y,
+        z: userData.lockRotationsZ ? po.mesh.quaternion.z : colliderRotation.z,
+        w: po.mesh.quaternion.w,
+      });
+    }
   }
 };
 const stepperFnProduction = (delta: number) => {

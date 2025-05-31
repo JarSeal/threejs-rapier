@@ -3,17 +3,23 @@ import { lerror, lwarn } from '../utils/Logger';
 import { isDebugEnvironment } from './Config';
 import { getCurrentSceneId } from './Scene';
 
-export type KeyInputControlType = 'KEY_UP' | 'KEY_DOWN';
+export type KeyInputControlType = 'KEY_UP' | 'KEY_DOWN' | 'KEY_LOOP_ACTION';
 export type MouseInputControlType = 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
 export type InputControlType = KeyInputControlType | MouseInputControlType | 'CONTROLLER';
 
 type EnabledInDebugCam = 'ENABLED_IN_DEBUG' | 'ENABLED_ONLY_IN_DEBUG' | 'NOT_ENABLED_IN_DEBUG';
 
+type DataType = { [key: string]: unknown };
+
 type KeyMapping = {
   id?: string;
   key?: string | string[];
-  fn: (e: KeyboardEvent, pressedTime: number) => void;
+  fn: (e: KeyboardEvent, time: number, data?: DataType) => void;
+  fn2?: (e: KeyboardEvent, pressedTime: number, data?: DataType) => void;
   time?: number;
+  event?: KeyboardEvent;
+  data?: DataType;
+  keysPressed?: string[];
   enabled?: boolean; // Default is true
   enabledInDebugCam?: EnabledInDebugCam; // Default is 'ENABLED_IN_DEBUG'
 };
@@ -43,14 +49,18 @@ const controlListenerFns: {
 
 let keyUpMappings: KeyMapping[] = [];
 let keyDownMappings: KeyMapping[] = [];
+let keyLoopActionMappings: KeyMapping[] = [];
 let mouseUpMappings: MouseMapping[] = [];
 let mouseDownMappings: MouseMapping[] = [];
 let mouseMoveMappings: MouseMapping[] = [];
 let keyUpSceneMappings: { [sceneId: string]: KeyMapping[] } = {};
 let keyDownSceneMappings: { [sceneId: string]: KeyMapping[] } = {};
+let keyLoopActionSceneMappings: { [sceneId: string]: KeyMapping[] } = {};
 let mouseUpSceneMappings: { [sceneId: string]: MouseMapping[] } = {};
 let mouseDownSceneMappings: { [sceneId: string]: MouseMapping[] } = {};
 let mouseMoveSceneMappings: { [sceneId: string]: MouseMapping[] } = {};
+
+let keyDownIdsForLoop: string[] = [];
 
 let allInputsEnabled = true;
 let keyInputsEnabled = true;
@@ -87,6 +97,28 @@ const initKeyUpControls = () => {
         mapping.time = 0;
       }
     }
+    for (let i = 0; i < keyLoopActionMappings.length; i++) {
+      const mapping = keyLoopActionMappings[i];
+      if (isKeyInputDisabled(mapping)) continue;
+      let isCurrentKey = KEY === mapping.key;
+      if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+      if (isCurrentKey || !mapping.key) {
+        if (mapping.keysPressed?.length) {
+          mapping.keysPressed = mapping.keysPressed.filter((k) => k !== KEY);
+        }
+        if (mapping.fn2) {
+          mapping.fn2(e, timeNow - (mapping.time || timeNow), {
+            ...mapping.data,
+            keysPressed: mapping.keysPressed,
+          });
+        }
+        if (mapping.keysPressed?.length) continue;
+        keyDownIdsForLoop = keyDownIdsForLoop.filter((id) => id !== mapping.id);
+        mapping.time = 0;
+        delete mapping.event;
+        delete mapping.keysPressed;
+      }
+    }
     const sceneId = getCurrentSceneId();
     if (!sceneId) return;
     const sceneKeyUpMappings = keyUpSceneMappings[sceneId];
@@ -99,6 +131,30 @@ const initKeyUpControls = () => {
       if (isCurrentKey || !mapping.key) {
         mapping.fn(e, timeNow - (mapping.time || timeNow));
         mapping.time = 0;
+      }
+    }
+    const sceneKeyLoopActionMappings = keyLoopActionSceneMappings[sceneId];
+    if (!sceneKeyLoopActionMappings) return;
+    for (let i = 0; i < sceneKeyLoopActionMappings.length; i++) {
+      const mapping = sceneKeyLoopActionMappings[i];
+      if (isKeyInputDisabled(mapping)) continue;
+      let isCurrentKey = KEY === mapping.key;
+      if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+      if (isCurrentKey || !mapping.key) {
+        if (mapping.keysPressed?.length) {
+          mapping.keysPressed = mapping.keysPressed.filter((k) => k !== KEY);
+        }
+        if (mapping.fn2) {
+          mapping.fn2(e, timeNow - (mapping.time || timeNow), {
+            ...mapping.data,
+            keysPressed: mapping.keysPressed,
+          });
+        }
+        if (mapping.keysPressed?.length) continue;
+        keyDownIdsForLoop = keyDownIdsForLoop.filter((id) => id !== mapping.id);
+        mapping.time = 0;
+        delete mapping.event;
+        delete mapping.keysPressed;
       }
     }
   };
@@ -130,6 +186,22 @@ const initKeyDownControls = () => {
         mapping.fn(e, timeNow);
       }
     }
+    for (let i = 0; i < keyLoopActionMappings.length; i++) {
+      const mapping = keyLoopActionMappings[i];
+      if (isKeyInputDisabled(mapping)) continue;
+      let isCurrentKey = KEY === mapping.key;
+      if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+      if (isCurrentKey || !mapping.key) {
+        if (e.repeat) continue;
+        mapping.time = timeNow;
+        mapping.event = e;
+        if (!mapping.keysPressed) mapping.keysPressed = [];
+        if (!mapping.keysPressed.includes(KEY)) mapping.keysPressed.push(KEY);
+        if (mapping.id && !keyDownIdsForLoop.includes(mapping.id)) {
+          keyDownIdsForLoop.push(mapping.id);
+        }
+      }
+    }
 
     const sceneId = getCurrentSceneId();
     if (!sceneId) return;
@@ -154,6 +226,24 @@ const initKeyDownControls = () => {
       if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
       if (isCurrentKey || !mapping.key) {
         mapping.fn(e, timeNow - (mapping.time || timeNow));
+      }
+    }
+    const sceneKeyLoopActionMappings = keyLoopActionSceneMappings[sceneId];
+    if (!sceneKeyLoopActionMappings) return;
+    for (let i = 0; i < sceneKeyLoopActionMappings.length; i++) {
+      const mapping = sceneKeyLoopActionMappings[i];
+      if (isKeyInputDisabled(mapping)) continue;
+      let isCurrentKey = KEY === mapping.key;
+      if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+      if (isCurrentKey || !mapping.key) {
+        if (e.repeat) continue;
+        mapping.time = timeNow;
+        mapping.event = e;
+        if (!mapping.keysPressed) mapping.keysPressed = [];
+        if (!mapping.keysPressed.includes(KEY)) mapping.keysPressed.push(KEY);
+        if (mapping.id && !keyDownIdsForLoop.includes(mapping.id)) {
+          keyDownIdsForLoop.push(mapping.id);
+        }
       }
     }
   };
@@ -252,16 +342,17 @@ export type KeyInputParams = {
   id?: string;
   key?: string | string[];
   sceneId?: string;
-  type?: 'KEY_UP' | 'KEY_DOWN';
-  fn: (e: KeyboardEvent, time: number, data?: { [key: string]: unknown }) => void;
+  type?: KeyInputControlType;
+  fn: (e: KeyboardEvent, time: number, data?: DataType) => void;
+  fn2?: (e: KeyboardEvent, time: number, data?: DataType) => void;
   enabled?: boolean;
   enabledInDebugCam?: EnabledInDebugCam;
-  data?: { [key: string]: unknown };
+  data?: DataType;
 };
 
 /**
  * Creates a keyboard input control. Only the fn (function) is a required property.
- * @param params (object) { id?: string, key?: string, sceneId?: string, type?: 'KEY_UP' | 'KEY_DOWN', fn: (e: KeyboardEvent) => void, enabled?: boolean }
+ * @param params (object) { id?: string, key?: string, sceneId?: string, type?: {@link KeyInputControlType}, fn: (e: KeyboardEvent) => void, enabled?: boolean }
  */
 export const createKeyInputControl = ({
   id,
@@ -269,12 +360,53 @@ export const createKeyInputControl = ({
   type,
   sceneId,
   fn,
+  fn2,
   enabled,
   enabledInDebugCam,
   data,
 }: KeyInputParams) => {
   let idFound = false;
   switch (type) {
+    case 'KEY_LOOP_ACTION':
+      idFound = Boolean(
+        id &&
+          (keyLoopActionMappings.find((mapping) => mapping.id === id) ||
+            (sceneId && keyLoopActionSceneMappings[sceneId].find((mapping) => mapping.id === id)))
+      );
+      if (idFound) return;
+      initKeyUpControls();
+      initKeyDownControls();
+      if (sceneId) {
+        if (!keyLoopActionSceneMappings[sceneId]) keyLoopActionSceneMappings[sceneId] = [];
+        keyLoopActionSceneMappings[sceneId].push({
+          ...(key ? { key } : {}),
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
+          ...(fn2 ? (data ? { fn2: (e, time) => fn2(e, time, data) } : { fn2 }) : {}),
+          time: 0,
+          ...(id ? { id } : {}),
+          enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
+          ...(data ? { data } : {}),
+          keysPressed: [],
+        });
+      } else {
+        keyLoopActionMappings.push({
+          ...(key ? { key } : {}),
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
+          ...(fn2 ? (data ? { fn2: (e, time) => fn2(e, time, data) } : { fn2 }) : {}),
+          time: 0,
+          ...(id ? { id } : {}),
+          enabled: enabled !== false,
+          ...(enabledInDebugCam && enabledInDebugCam !== 'ENABLED_IN_DEBUG'
+            ? { enabledInDebugCam }
+            : {}),
+          ...(data ? { data } : {}),
+          keysPressed: [],
+        });
+      }
+      break;
     case 'KEY_DOWN':
       idFound = Boolean(
         id &&
@@ -349,7 +481,7 @@ export const createKeyInputControl = ({
 export type MouseInputParams = {
   id?: string;
   sceneId?: string;
-  type?: 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
+  type?: MouseInputControlType;
   fn: (e: MouseEvent, time: number, data?: { [key: string]: unknown }) => void;
   enabled?: boolean;
   enabledInDebugCam?: EnabledInDebugCam;
@@ -483,7 +615,7 @@ export const getKeyInputControl = ({
   id?: string;
   key?: string;
   sceneId?: string;
-  type?: 'KEY_UP' | 'KEY_DOWN';
+  type?: KeyInputControlType;
 }): KeyMapping[] => {
   if (!id && !key) {
     const msg = 'Id or key is required when searching for key input control.';
@@ -508,12 +640,22 @@ export const getKeyInputControl = ({
             : null
         );
       }
+      if (type === 'KEY_LOOP_ACTION' || !type) {
+        mappings.push(
+          keyLoopActionSceneMappings[sceneId]
+            ? keyLoopActionSceneMappings[sceneId].find((mapping) => mapping.id === id) || null
+            : null
+        );
+      }
     } else {
       if (type === 'KEY_UP' || !type) {
         mappings.push(keyUpMappings.find((mapping) => mapping.id === id) || null);
       }
       if (type === 'KEY_DOWN' || !type) {
         mappings.push(keyDownMappings.find((mapping) => mapping.id === id) || null);
+      }
+      if (type === 'KEY_LOOP_ACTION' || !type) {
+        mappings.push(keyLoopActionMappings.find((mapping) => mapping.id === id) || null);
       }
     }
   }
@@ -532,6 +674,12 @@ export const getKeyInputControl = ({
           : [null];
         if (mappingsByKey.length) mappings.push(...mappingsByKey);
       }
+      if (type === 'KEY_LOOP_ACTION' || !type) {
+        const mappingsByKey = keyLoopActionSceneMappings[sceneId]
+          ? keyLoopActionSceneMappings[sceneId].filter((mapping) => mapping.key === key)
+          : [null];
+        if (mappingsByKey.length) mappings.push(...mappingsByKey);
+      }
     } else {
       if (type === 'KEY_UP' || !type) {
         const mappingsByKey = keyUpMappings.filter((mapping) => mapping.key === key);
@@ -539,6 +687,10 @@ export const getKeyInputControl = ({
       }
       if (type === 'KEY_DOWN' || !type) {
         const mappingsByKey = keyDownMappings.filter((mapping) => mapping.key === key);
+        if (mappingsByKey.length) mappings.push(...mappingsByKey);
+      }
+      if (type === 'KEY_LOOP_ACTION' || !type) {
+        const mappingsByKey = keyLoopActionMappings.filter((mapping) => mapping.key === key);
         if (mappingsByKey.length) mappings.push(...mappingsByKey);
       }
     }
@@ -561,7 +713,7 @@ export const enableKeyInputControl = ({
   id?: string;
   key?: string;
   sceneId?: string;
-  type?: 'KEY_UP' | 'KEY_DOWN';
+  type?: KeyInputControlType;
   enabled: boolean;
 }) => {
   if (!id && !key) {
@@ -595,7 +747,7 @@ export const deleteKeyInputControl = ({
   id?: string;
   key?: string;
   sceneId?: string;
-  type?: 'KEY_UP' | 'KEY_DOWN';
+  type?: KeyInputControlType;
 }) => {
   if (!id && !key) {
     const msg = 'Id or key is required when removing key input control.';
@@ -615,6 +767,11 @@ export const deleteKeyInputControl = ({
           (mapping) => mapping.id !== id
         );
       }
+      if ((type === 'KEY_LOOP_ACTION' || !type) && keyLoopActionSceneMappings[sceneId]) {
+        keyLoopActionSceneMappings[sceneId] = keyLoopActionSceneMappings[sceneId].filter(
+          (mapping) => mapping.id !== id
+        );
+      }
       return;
     }
 
@@ -623,6 +780,9 @@ export const deleteKeyInputControl = ({
     }
     if (type === 'KEY_DOWN' || !type) {
       keyDownMappings = keyDownMappings.filter((mapping) => mapping.id !== id);
+    }
+    if (type === 'KEY_LOOP_ACTION' || !type) {
+      keyLoopActionMappings = keyLoopActionMappings.filter((mapping) => mapping.id !== id);
     }
     return;
   }
@@ -639,6 +799,11 @@ export const deleteKeyInputControl = ({
           (mapping) => mapping.key !== key
         );
       }
+      if ((type === 'KEY_LOOP_ACTION' || !type) && keyLoopActionSceneMappings[sceneId]) {
+        keyDownSceneMappings[sceneId] = keyLoopActionSceneMappings[sceneId].filter(
+          (mapping) => mapping.key !== key
+        );
+      }
       return;
     }
 
@@ -647,6 +812,9 @@ export const deleteKeyInputControl = ({
     }
     if (type === 'KEY_DOWN' || !type) {
       keyDownMappings = keyDownMappings.filter((mapping) => mapping.key !== key);
+    }
+    if (type === 'KEY_LOOP_ACTION' || !type) {
+      keyLoopActionMappings = keyLoopActionMappings.filter((mapping) => mapping.key !== key);
     }
   }
 };
@@ -663,7 +831,7 @@ export const getMouseInputControl = ({
 }: {
   id: string;
   sceneId?: string;
-  type?: 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
+  type?: MouseInputControlType;
 }): MouseMapping[] => {
   const mappings: (MouseMapping | null)[] = [];
   if (sceneId) {
@@ -715,7 +883,7 @@ export const enableMouseInputControl = ({
 }: {
   id: string;
   sceneId?: string;
-  type?: 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
+  type?: MouseInputControlType;
   enabled: boolean;
 }) => {
   const mappings = getMouseInputControl({ id, sceneId, type });
@@ -741,7 +909,7 @@ export const deleteMouseInputControl = ({
 }: {
   id: string;
   sceneId?: string;
-  type?: 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
+  type?: MouseInputControlType;
 }) => {
   if (sceneId) {
     if ((type === 'MOUSE_UP' || !type) && mouseUpSceneMappings[sceneId]) {
@@ -775,7 +943,7 @@ export const deleteMouseInputControl = ({
 
 /**
  * Deletes all or specific controller listeners (also removes mappings)
- * @param type (enum) 'ALL' | 'KEY' | 'MOUSE' | 'KEY_UP' | 'KEY_DOWN' | 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE' | 'CONTROLLER'
+ * @param type (enum) 'ALL' | 'KEY' | 'MOUSE' | 'KEY_UP' | 'KEY_DOWN' | 'KEY_LOOP_ACTION' | 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE' | 'CONTROLLER'
  */
 export const DeleteControlsListeners = (type: 'ALL' | 'KEY' | 'MOUSE' | InputControlType) => {
   if (type === 'ALL') {
@@ -792,6 +960,8 @@ export const DeleteControlsListeners = (type: 'ALL' | 'KEY' | 'MOUSE' | InputCon
     keyUpSceneMappings = {};
     keyDownMappings = [];
     keyDownSceneMappings = {};
+    keyLoopActionMappings = [];
+    keyLoopActionSceneMappings = {};
     mouseUpMappings = [];
     mouseUpSceneMappings = {};
     mouseDownMappings = [];
@@ -811,6 +981,8 @@ export const DeleteControlsListeners = (type: 'ALL' | 'KEY' | 'MOUSE' | InputCon
     keyUpSceneMappings = {};
     keyDownMappings = [];
     keyDownSceneMappings = {};
+    keyLoopActionMappings = [];
+    keyLoopActionSceneMappings = {};
     return;
   }
 
@@ -828,6 +1000,15 @@ export const DeleteControlsListeners = (type: 'ALL' | 'KEY' | 'MOUSE' | InputCon
     controlListenerFns.keyDown = null;
     keyDownMappings = [];
     keyDownSceneMappings = {};
+    return;
+  }
+
+  if (type === 'KEY_LOOP_ACTION') {
+    if (controlListenerFns.keyDown)
+      window.removeEventListener('keydown', controlListenerFns.keyDown);
+    controlListenerFns.keyDown = null;
+    keyLoopActionMappings = [];
+    keyLoopActionSceneMappings = {};
     return;
   }
 
@@ -868,5 +1049,20 @@ export const DeleteControlsListeners = (type: 'ALL' | 'KEY' | 'MOUSE' | InputCon
   if (type === 'CONTROLLER') {
     controlListenerFns.controller = null;
     return;
+  }
+};
+
+export const updateInputControllerLoopActions = (delta: number) => {
+  for (let i = 0; i < keyDownIdsForLoop.length; i++) {
+    const mappings = getKeyInputControl({ id: keyDownIdsForLoop[i], type: 'KEY_LOOP_ACTION' });
+    if (!mappings) continue;
+    for (let j = 0; j < mappings.length; j++) {
+      const mapping = mappings[j];
+      if (!mapping.data) mapping.data = {};
+      mapping.data.keysPressed = mapping.keysPressed;
+      mapping.data.delta = delta;
+      // Force casting the types here, but these should be ok
+      mapping.fn(mapping.event as KeyboardEvent, mapping.time as number);
+    }
   }
 };

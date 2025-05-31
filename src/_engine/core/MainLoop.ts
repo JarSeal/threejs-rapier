@@ -20,6 +20,7 @@ import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updateHelpers } from './Helpers';
 import { InitOnScreenTools, updateOnScreenTools } from '../debug/OnScreenTools';
 import { BindingApi } from '@tweakpane/core';
+import { updateInputControllerLoopActions } from './InputControls';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -121,6 +122,9 @@ const mainLoopForDebug = async () => {
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
+
+    // Update loop action inputs
+    updateInputControllerLoopActions(deltaApp);
 
     // app loopers
     const appLoopers = getSceneAppLoopers();

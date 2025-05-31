@@ -9,13 +9,15 @@ import {
   MouseInputControlType,
   MouseInputParams,
 } from './InputControls';
+import { getMesh } from './Mesh';
 
-type CharacterObject = {
+export type CharacterObject = {
   id: string;
   physObjectId: string;
   meshId: string;
   keyControlIds: string[];
   mouseControlIds: string[];
+  data?: { [key: string]: unknown };
 };
 
 const characters: { [id: string]: CharacterObject } = {};
@@ -30,17 +32,26 @@ const characters: { [id: string]: CharacterObject } = {};
  * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
  * @returns CharacterObject ({@link CharacterObject})
  */
-export const createCharacter = (
-  id: string,
-  physicsParams: PhysicsParams,
-  meshOrMeshId: THREE.Mesh | string,
+export const createCharacter = ({
+  id,
+  physicsParams,
+  meshOrMeshId,
+  controls,
+  sceneId,
+  noWarnForUnitializedScene,
+  data = {},
+}: {
+  id: string;
+  physicsParams: PhysicsParams;
+  meshOrMeshId: THREE.Mesh | string;
   controls?: (
     | (KeyInputParams & { id: string; type: KeyInputControlType })
     | (MouseInputParams & { id: string; type: MouseInputControlType })
-  )[],
-  sceneId?: string,
-  noWarnForUnitializedScene?: boolean
-) => {
+  )[];
+  sceneId?: string;
+  noWarnForUnitializedScene?: boolean;
+  data?: { [key: string]: unknown };
+}) => {
   const physObj = createPhysicsObjectWithMesh(
     physicsParams,
     meshOrMeshId,
@@ -54,6 +65,16 @@ export const createCharacter = (
   }
   if (!physObj.id) physObj.id = id;
 
+  const char: CharacterObject = {
+    id,
+    physObjectId: physObj.id,
+    meshId: typeof meshOrMeshId === 'string' ? meshOrMeshId : meshOrMeshId.userData.id,
+    keyControlIds: [],
+    mouseControlIds: [],
+    data,
+  };
+
+  const mesh = typeof meshOrMeshId === 'string' ? getMesh(meshOrMeshId) : meshOrMeshId;
   const keyControlIds: string[] = [];
   const mouseControlIds: string[] = [];
   if (controls) {
@@ -62,26 +83,27 @@ export const createCharacter = (
       const ctrlId = ctrl.id;
       if (ctrl.type?.startsWith('MOUSE')) {
         // Mouse control
-        createMouseInputControl(ctrl as MouseInputParams);
+        createMouseInputControl({
+          ...(ctrl as MouseInputParams),
+          data: { physObj, mesh, charObject: char },
+        });
         mouseControlIds.push(ctrlId);
         continue;
       }
       if (ctrl.type?.startsWith('KEY')) {
         // Key control
-        createKeyInputControl({ ...(ctrl as KeyInputParams), data: { physObj, meshOrMeshId } });
+        createKeyInputControl({
+          ...(ctrl as KeyInputParams),
+          data: { physObj, mesh, charObject: char },
+        });
         keyControlIds.push(ctrlId);
         continue;
       }
     }
   }
 
-  const char = {
-    id,
-    physObjectId: physObj.id,
-    meshId: typeof meshOrMeshId === 'string' ? meshOrMeshId : meshOrMeshId.userData.id,
-    keyControlIds,
-    mouseControlIds,
-  };
+  char.keyControlIds = keyControlIds;
+  char.mouseControlIds = mouseControlIds;
   characters[id] = char;
 
   return char;
