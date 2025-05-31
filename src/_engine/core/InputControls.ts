@@ -253,9 +253,10 @@ export type KeyInputParams = {
   key?: string | string[];
   sceneId?: string;
   type?: 'KEY_UP' | 'KEY_DOWN';
-  fn: (e: KeyboardEvent, time: number) => void;
+  fn: (e: KeyboardEvent, time: number, data?: { [key: string]: unknown }) => void;
   enabled?: boolean;
   enabledInDebugCam?: EnabledInDebugCam;
+  data?: { [key: string]: unknown };
 };
 
 /**
@@ -270,6 +271,7 @@ export const createKeyInputControl = ({
   fn,
   enabled,
   enabledInDebugCam,
+  data,
 }: KeyInputParams) => {
   let idFound = false;
   switch (type) {
@@ -285,7 +287,7 @@ export const createKeyInputControl = ({
         if (!keyDownSceneMappings[sceneId]) keyDownSceneMappings[sceneId] = [];
         keyDownSceneMappings[sceneId].push({
           ...(key ? { key } : {}),
-          fn,
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
@@ -296,7 +298,7 @@ export const createKeyInputControl = ({
       } else {
         keyDownMappings.push({
           ...(key ? { key } : {}),
-          fn,
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
@@ -320,7 +322,7 @@ export const createKeyInputControl = ({
         if (!keyUpSceneMappings[sceneId]) keyUpSceneMappings[sceneId] = [];
         keyUpSceneMappings[sceneId].push({
           ...(key ? { key } : {}),
-          fn,
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
@@ -331,7 +333,7 @@ export const createKeyInputControl = ({
       } else {
         keyUpMappings.push({
           ...(key ? { key } : {}),
-          fn,
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
@@ -348,9 +350,10 @@ export type MouseInputParams = {
   id?: string;
   sceneId?: string;
   type?: 'MOUSE_UP' | 'MOUSE_DOWN' | 'MOUSE_MOVE';
-  fn: (e: MouseEvent, time: number) => void;
+  fn: (e: MouseEvent, time: number, data?: { [key: string]: unknown }) => void;
   enabled?: boolean;
   enabledInDebugCam?: EnabledInDebugCam;
+  data?: { [key: string]: unknown };
 };
 
 /**
@@ -364,6 +367,7 @@ export const createMouseInputControl = ({
   fn,
   enabled,
   enabledInDebugCam,
+  data,
 }: MouseInputParams) => {
   let idFound = false;
   switch (type) {
@@ -378,7 +382,7 @@ export const createMouseInputControl = ({
       if (sceneId) {
         if (!mouseMoveSceneMappings[sceneId]) mouseMoveSceneMappings[sceneId] = [];
         mouseMoveSceneMappings[sceneId].push({
-          fn,
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
@@ -388,7 +392,7 @@ export const createMouseInputControl = ({
         });
       } else {
         mouseMoveMappings.push({
-          fn,
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
@@ -409,7 +413,7 @@ export const createMouseInputControl = ({
       if (sceneId) {
         if (!mouseDownSceneMappings[sceneId]) mouseDownSceneMappings[sceneId] = [];
         mouseDownSceneMappings[sceneId].push({
-          fn,
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
@@ -419,7 +423,7 @@ export const createMouseInputControl = ({
         });
       } else {
         mouseDownMappings.push({
-          fn,
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
@@ -442,7 +446,7 @@ export const createMouseInputControl = ({
       if (sceneId) {
         if (!mouseUpSceneMappings[sceneId]) mouseUpSceneMappings[sceneId] = [];
         mouseUpSceneMappings[sceneId].push({
-          fn,
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,
@@ -452,7 +456,7 @@ export const createMouseInputControl = ({
         });
       } else {
         mouseUpMappings.push({
-          fn,
+          ...(data ? { fn: (e, time) => fn(e, time, data) } : { fn }),
           time: 0,
           ...(id ? { id } : {}),
           enabled: enabled !== false,

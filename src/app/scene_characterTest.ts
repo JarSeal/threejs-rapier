@@ -6,7 +6,7 @@ import { createLight } from '../_engine/core/Light';
 import { createMesh } from '../_engine/core/Mesh';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
-import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
+import { createPhysicsObjectWithMesh, PhysicsObject } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture } from '../_engine/core/Texture';
 import { createCharacter } from '../_engine/core/Character';
@@ -129,7 +129,7 @@ export const sceneCharacterTest = async () =>
       {
         collider: {
           type: 'BOX',
-          friction: 0,
+          friction: 2,
         },
         rigidBody: { rigidType: 'FIXED', translation: groundPos },
       },
@@ -201,6 +201,7 @@ export const sceneCharacterTest = async () =>
     });
     directionBeakMesh.position.set(0.35, 0.43, 0);
     charMesh.add(directionBeakMesh);
+    const maxSpeed = 5;
     createCharacter(
       'testCharacter1',
       {
@@ -214,7 +215,94 @@ export const sceneCharacterTest = async () =>
           lockRotations: { x: true, y: true, z: true },
         },
       },
-      charMesh
+      charMesh,
+      [
+        {
+          id: 'charForward',
+          key: 'w',
+          type: 'KEY_DOWN',
+          fn: (_, __, data) => {
+            if (data && 'physObj' in data) {
+              const physObj = data.physObj as PhysicsObject;
+              const linvel = physObj.rigidBody?.linvel();
+              console.log('LINVEL W', linvel?.x);
+              let velX = (linvel?.x || 0) > maxSpeed ? maxSpeed : linvel?.x || 0;
+              let velY = linvel?.y || 0;
+              let velZ = (linvel?.z || 0) > maxSpeed ? maxSpeed : linvel?.z || 0;
+              if (velX < maxSpeed) {
+                physObj.rigidBody?.addForce(new THREE.Vector3(30, 0, 0), true);
+              }
+              physObj.rigidBody?.setLinvel(new THREE.Vector3(velX, velY, velZ), true);
+            }
+          },
+        },
+        {
+          id: 'charBackward',
+          key: 's',
+          type: 'KEY_DOWN',
+          fn: (_, __, data) => {
+            if (data && 'physObj' in data) {
+              const physObj = data.physObj as PhysicsObject;
+              const linvel = physObj.rigidBody?.linvel();
+              console.log('LINVEL S', linvel?.x);
+              let velX = (linvel?.x || 0) < -maxSpeed ? -maxSpeed : linvel?.x || 0;
+              let velY = linvel?.y || 0;
+              let velZ = (linvel?.z || 0) > maxSpeed ? maxSpeed : linvel?.z || 0;
+              if (velX > -maxSpeed) {
+                physObj.rigidBody?.addForce(new THREE.Vector3(-30, 0, 0), true);
+              }
+              physObj.rigidBody?.setLinvel(new THREE.Vector3(velX, velY, velZ), true);
+            }
+          },
+        },
+        {
+          id: 'charLeft',
+          key: 'a',
+          type: 'KEY_DOWN',
+          fn: (_, __, data) => {
+            if (data && 'physObj' in data) {
+              const physObj = data.physObj as PhysicsObject;
+              const linvel = physObj.rigidBody?.linvel();
+              let velX = (linvel?.x || 0) > maxSpeed ? maxSpeed : linvel?.x || 0;
+              let velY = linvel?.y || 0;
+              let velZ = (linvel?.z || 0) > maxSpeed ? maxSpeed : linvel?.z || 0;
+              if (velX < maxSpeed) {
+                physObj.rigidBody?.addForce(new THREE.Vector3(0, 0, 30), true);
+              }
+              physObj.rigidBody?.setLinvel(new THREE.Vector3(velX, velY, velZ), true);
+            }
+          },
+        },
+        {
+          id: 'charRight',
+          key: 'd',
+          type: 'KEY_DOWN',
+          fn: (_, __, data) => {
+            if (data && 'physObj' in data) {
+              const physObj = data.physObj as PhysicsObject;
+              const linvel = physObj.rigidBody?.linvel();
+              let velX = (linvel?.x || 0) > maxSpeed ? maxSpeed : linvel?.x || 0;
+              let velY = linvel?.y || 0;
+              let velZ = (linvel?.z || 0) > maxSpeed ? maxSpeed : linvel?.z || 0;
+              if (velX < maxSpeed) {
+                physObj.rigidBody?.addForce(new THREE.Vector3(0, 0, -30), true);
+              }
+              physObj.rigidBody?.setLinvel(new THREE.Vector3(velX, velY, velZ), true);
+            }
+          },
+        },
+        {
+          id: 'charStop',
+          key: ['w', 's', 'a', 'd'],
+          type: 'KEY_UP',
+          fn: (_, __, data) => {
+            if (data && 'physObj' in data) {
+              const physObj = data.physObj as PhysicsObject;
+              physObj.rigidBody?.resetForces(true);
+            }
+          },
+        },
+      ]
     );
     charMesh.castShadow = true;
     charMesh.receiveShadow = true;

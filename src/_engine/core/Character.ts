@@ -68,7 +68,7 @@ export const createCharacter = (
       }
       if (ctrl.type?.startsWith('KEY')) {
         // Key control
-        createKeyInputControl(ctrl as KeyInputParams);
+        createKeyInputControl({ ...(ctrl as KeyInputParams), data: { physObj, meshOrMeshId } });
         keyControlIds.push(ctrlId);
         continue;
       }
