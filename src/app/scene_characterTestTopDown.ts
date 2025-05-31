@@ -219,9 +219,10 @@ export const sceneCharacterTest = async () =>
         rigidBody: {
           rigidType: 'DYNAMIC',
           lockRotations: { x: true, y: true, z: true },
+          linearDamping: 0,
         },
       },
-      data: { charRotation: 0, rotateSpeed: 5, translateSpeed: 5 },
+      data: { charRotation: 0, rotateSpeed: 5, translateSpeed: 8 },
       meshOrMeshId: charMesh,
       controls: [
         {
@@ -238,7 +239,6 @@ export const sceneCharacterTest = async () =>
             };
             if (keysPressed.includes('a') && mesh && charData) {
               const rotateSpeed = transformAppSpeedValue(charData.rotateSpeed || 0);
-              // const newRotation = mesh.rotation.isEuler
               mesh.rotateY(rotateSpeed);
               charData.charRotation = eulerForCharRotation.setFromQuaternion(
                 mesh.quaternion,
@@ -256,14 +256,19 @@ export const sceneCharacterTest = async () =>
             console.log('ROT', charData.charRotation);
             if (keysPressed.includes('w') && mesh && charData) {
               const xDir =
-                charData.charRotation < HALF_PI && charData.charRotation > -HALF_PI ? 1 : -1;
-              const zDir = charData.charRotation < 0 ? -1 : 1;
+                charData.charRotation < HALF_PI && charData.charRotation >= -HALF_PI ? 1 : -1;
+              const zDir = charData.charRotation > 0 && charData.charRotation <= Math.PI ? -1 : 1;
               const xVelo =
                 (1 - Math.abs(charData.charRotation) / HALF_PI) * charData.translateSpeed;
               const zVelo =
-                (Math.abs(charData.charRotation) / Math.PI - 1) * charData.translateSpeed * zDir;
+                xDir === 1
+                  ? (1 - Math.abs(charData.charRotation + HALF_PI) / HALF_PI) *
+                    charData.translateSpeed
+                  : (1 - Math.abs(charData.charRotation + HALF_PI * zDir) / HALF_PI) *
+                    charData.translateSpeed *
+                    zDir;
               const physObj = data?.physObj as PhysicsObject;
-              console.log('HITGAS', charData.charRotation / Math.PI, xVelo, charData.charRotation);
+              console.log('HITGAS', xVelo, zVelo);
               physObj.rigidBody?.setLinvel(
                 new THREE.Vector3(xVelo, physObj.rigidBody?.linvel()?.y || 0, zVelo),
                 true
