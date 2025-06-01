@@ -5,7 +5,7 @@ import { createMaterial } from '../_engine/core/Material';
 import { createLight } from '../_engine/core/Light';
 import { createMesh } from '../_engine/core/Mesh';
 import { createSkyBox } from '../_engine/core/SkyBox';
-import { getCurrentCamera } from '../_engine/core/Camera';
+import { createCamera, getCurrentCamera, setCurrentCamera } from '../_engine/core/Camera';
 import { createPhysicsObjectWithMesh, PhysicsObject } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture } from '../_engine/core/Texture';
@@ -13,12 +13,21 @@ import { CharacterObject, createCharacter } from '../_engine/core/Character';
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import { HALF_PI } from '../_engine/utils/constants';
 
-export const SCENE_TEST_CHARACTER_ID = 'characterTestTopDown1';
+export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
 export const sceneCharacterTest = async () =>
   new Promise<string>(async (resolve) => {
     const updateLoaderFn = getLoaderStatusUpdater();
     updateLoaderFn({ loadedCount: 0, totalCount: 2 });
+
+    // Create third person camera
+    const thirdPersonCamera = createCamera('thirdPerson', {
+      name: '3rd Person Cam',
+      // isCurrentCamera: true,
+      fov: 80,
+      near: 0.5,
+      far: 1000,
+    });
 
     // Position camera
     const camera = getCurrentCamera();
@@ -178,12 +187,12 @@ export const sceneCharacterTest = async () =>
     // CHARACTER
     const eulerForCharRotation = new THREE.Euler();
     const charCapsule = createGeometry({
-      id: 'charCapsuleTopDown1',
+      id: 'charCapsuleThirdPerson1',
       type: 'CAPSULE',
       params: { radius: 0.5, height: 0.58 },
     });
     const charMaterial = createMaterial({
-      id: 'box1MaterialTopDown',
+      id: 'box1MaterialThirdPerson',
       type: 'PHONG',
       params: {
         map: loadTexture({
@@ -192,24 +201,31 @@ export const sceneCharacterTest = async () =>
         }),
       },
     });
-    const charMesh = createMesh({ id: 'charMeshTopDown1', geo: charCapsule, mat: charMaterial });
+    const charMesh = createMesh({
+      id: 'charMeshThirdPerson1',
+      geo: charCapsule,
+      mat: charMaterial,
+    });
+    thirdPersonCamera.position.set(-8, 2, 0);
+    thirdPersonCamera.lookAt(charMesh.position);
+    charMesh.add(thirdPersonCamera);
     const directionBeakMesh = createMesh({
-      id: 'directionBeakMeshTopDown',
+      id: 'directionBeakMeshThirdPerson',
       geo: createGeometry({
-        id: 'directionBeakGeoTopDown',
+        id: 'directionBeakGeoThirdPerson',
         type: 'BOX',
-        params: { width: 0.25, height: 0.25, depth: 0.44 },
+        params: { width: 0.25, height: 0.25, depth: 0.7 },
       }),
       mat: createMaterial({
-        id: 'directionBeakMatTopDown',
+        id: 'directionBeakMatThirdPerson',
         type: 'BASIC',
-        params: { color: '#a3650d' },
+        params: { color: '#333' },
       }),
     });
     directionBeakMesh.position.set(0.35, 0.43, 0);
     charMesh.add(directionBeakMesh);
     createCharacter({
-      id: 'testCharacterTopDown1',
+      id: 'testCharacterThirdPerson1',
       physicsParams: {
         collider: {
           type: 'CAPSULE',
@@ -219,10 +235,10 @@ export const sceneCharacterTest = async () =>
         rigidBody: {
           rigidType: 'DYNAMIC',
           lockRotations: { x: true, y: true, z: true },
-          linearDamping: 0,
+          linearDamping: 0.5,
         },
       },
-      data: { charRotation: 0, rotateSpeed: 5, translateSpeed: 8 },
+      data: { charRotation: 0, rotateSpeed: 3.5, translateSpeed: 1000 },
       meshOrMeshId: charMesh,
       controls: [
         {
@@ -237,6 +253,7 @@ export const sceneCharacterTest = async () =>
               rotateSpeed: number;
               translateSpeed: number;
             };
+            // Turn left
             if (keysPressed.includes('a') && mesh && charData) {
               const rotateSpeed = transformAppSpeedValue(charData.rotateSpeed || 0);
               mesh.rotateY(rotateSpeed);
@@ -245,6 +262,7 @@ export const sceneCharacterTest = async () =>
                 'XZY'
               ).y;
             }
+            // Turn right
             if (keysPressed.includes('d') && mesh && charData) {
               const rotateSpeed = -transformAppSpeedValue(charData.rotateSpeed || 0);
               mesh.rotateY(rotateSpeed);
@@ -253,126 +271,35 @@ export const sceneCharacterTest = async () =>
                 'XZY'
               ).y;
             }
-            console.log('ROT', charData.charRotation);
-            if (keysPressed.includes('w') && mesh && charData) {
+            // Forward and backward
+            if ((keysPressed.includes('w') || keysPressed.includes('s')) && mesh && charData) {
+              const mainDirection = keysPressed.includes('s') ? -1 : 1;
               const xDir =
                 charData.charRotation < HALF_PI && charData.charRotation >= -HALF_PI ? 1 : -1;
               const zDir = charData.charRotation > 0 && charData.charRotation <= Math.PI ? -1 : 1;
               const xVelo =
-                (1 - Math.abs(charData.charRotation) / HALF_PI) * charData.translateSpeed;
+                (1 - Math.abs(charData.charRotation) / HALF_PI) *
+                charData.translateSpeed *
+                mainDirection;
               const zVelo =
                 xDir === 1
                   ? (1 - Math.abs(charData.charRotation + HALF_PI) / HALF_PI) *
-                    charData.translateSpeed
+                    charData.translateSpeed *
+                    mainDirection
                   : (1 - Math.abs(charData.charRotation + HALF_PI * zDir) / HALF_PI) *
                     charData.translateSpeed *
-                    zDir;
+                    zDir *
+                    mainDirection;
               const physObj = data?.physObj as PhysicsObject;
-              console.log('HITGAS', xVelo, zVelo);
-              physObj.rigidBody?.setLinvel(
-                new THREE.Vector3(xVelo, physObj.rigidBody?.linvel()?.y || 0, zVelo),
-                true
+              const vector3 = new THREE.Vector3(
+                transformAppSpeedValue(xVelo),
+                physObj.rigidBody?.linvel()?.y || 0,
+                transformAppSpeedValue(zVelo)
               );
+              physObj.rigidBody?.setLinvel(vector3, !physObj.rigidBody?.isMoving());
             }
-            // if (data && 'physObj' in data) {
-            //   const physObj = data.physObj as PhysicsObject;
-            //   const linvel = physObj.rigidBody?.linvel();
-            //   console.log('LINVEL W', linvel?.x);
-            //   // const velX = (linvel?.x || 0) > maxSpeed ? maxSpeed : linvel?.x || 0;
-            //   const velY = linvel?.y || 0;
-            //   const velZ = (linvel?.z || 0) > maxSpeed ? maxSpeed : linvel?.z || 0;
-            //   // if (velX < maxSpeed) {
-            //   //   physObj.rigidBody?.addForce(new THREE.Vector3(30, 0, 0), true);
-            //   // }
-            //   physObj.rigidBody?.setLinvel(new THREE.Vector3(maxSpeed, velY, velZ), true);
-            // }
           },
         },
-        // {
-        //   id: 'charForward',
-        //   key: 'w',
-        //   type: 'KEY_DOWN',
-        //   fn: (_, __, data) => {
-        //     if (data && 'physObj' in data) {
-        //       const physObj = data.physObj as PhysicsObject;
-        //       const linvel = physObj.rigidBody?.linvel();
-        //       // console.log('LINVEL W', linvel?.x);
-        //       // // const velX = (linvel?.x || 0) > maxSpeed ? maxSpeed : linvel?.x || 0;
-        //       const velY = linvel?.y || 0;
-        //       const velZ = (linvel?.z || 0) > maxSpeed ? maxSpeed : linvel?.z || 0;
-        //       // // if (velX < maxSpeed) {
-        //       // //   physObj.rigidBody?.addForce(new THREE.Vector3(30, 0, 0), true);
-        //       // // }
-        //       physObj.rigidBody?.setLinvel(new THREE.Vector3(maxSpeed, velY, velZ), true);
-        //     }
-        //   },
-        // },
-        // {
-        //   id: 'charBackward',
-        //   key: 's',
-        //   type: 'KEY_DOWN',
-        //   fn: (_, __, data) => {
-        //     if (data && 'physObj' in data) {
-        //       const physObj = data.physObj as PhysicsObject;
-        //       const linvel = physObj.rigidBody?.linvel();
-        //       console.log('LINVEL S', linvel?.x);
-        //       const velX = (linvel?.x || 0) < -maxSpeed ? -maxSpeed : linvel?.x || 0;
-        //       const velY = linvel?.y || 0;
-        //       const velZ = (linvel?.z || 0) > maxSpeed ? maxSpeed : linvel?.z || 0;
-        //       if (velX > -maxSpeed) {
-        //         physObj.rigidBody?.addForce(new THREE.Vector3(-30, 0, 0), true);
-        //       }
-        //       physObj.rigidBody?.setLinvel(new THREE.Vector3(velX, velY, velZ), true);
-        //     }
-        //   },
-        // },
-        // {
-        //   id: 'charLeft',
-        //   key: 'a',
-        //   type: 'KEY_DOWN',
-        //   fn: (_, __, data) => {
-        //     if (data && 'physObj' in data) {
-        //       const physObj = data.physObj as PhysicsObject;
-        //       const linvel = physObj.rigidBody?.linvel();
-        //       const velX = (linvel?.x || 0) > maxSpeed ? maxSpeed : linvel?.x || 0;
-        //       const velY = linvel?.y || 0;
-        //       const velZ = (linvel?.z || 0) > maxSpeed ? maxSpeed : linvel?.z || 0;
-        //       if (velX < maxSpeed) {
-        //         physObj.rigidBody?.addForce(new THREE.Vector3(0, 0, 30), true);
-        //       }
-        //       physObj.rigidBody?.setLinvel(new THREE.Vector3(velX, velY, velZ), true);
-        //     }
-        //   },
-        // },
-        // {
-        //   id: 'charRight',
-        //   key: 'd',
-        //   type: 'KEY_DOWN',
-        //   fn: (_, __, data) => {
-        //     if (data && 'physObj' in data) {
-        //       const physObj = data.physObj as PhysicsObject;
-        //       const linvel = physObj.rigidBody?.linvel();
-        //       const velX = (linvel?.x || 0) > maxSpeed ? maxSpeed : linvel?.x || 0;
-        //       const velY = linvel?.y || 0;
-        //       const velZ = (linvel?.z || 0) > maxSpeed ? maxSpeed : linvel?.z || 0;
-        //       if (velX < maxSpeed) {
-        //         physObj.rigidBody?.addForce(new THREE.Vector3(0, 0, -30), true);
-        //       }
-        //       physObj.rigidBody?.setLinvel(new THREE.Vector3(velX, velY, velZ), true);
-        //     }
-        //   },
-        // },
-        // {
-        //   id: 'charStop',
-        //   key: ['w', 's', 'a', 'd'],
-        //   type: 'KEY_UP',
-        //   fn: (_, __, data) => {
-        //     if (data && 'physObj' in data) {
-        //       const physObj = data.physObj as PhysicsObject;
-        //       physObj.rigidBody?.resetForces(true);
-        //     }
-        //   },
-        // },
       ],
     });
     charMesh.castShadow = true;
@@ -420,6 +347,8 @@ export const sceneCharacterTest = async () =>
     scene.add(directionalLight);
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
+
+    setCurrentCamera(thirdPersonCamera.userData.id);
 
     resolve(SCENE_TEST_CHARACTER_ID);
   });
