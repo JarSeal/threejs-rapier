@@ -10,6 +10,7 @@ import {
   MouseInputParams,
 } from './InputControls';
 import { getMesh } from './Mesh';
+import { existsOrThrow } from '../utils/helpers';
 
 export type CharacterObject = {
   id: string;
@@ -75,6 +76,12 @@ export const createCharacter = ({
   };
 
   const mesh = typeof meshOrMeshId === 'string' ? getMesh(meshOrMeshId) : meshOrMeshId;
+  existsOrThrow(
+    mesh,
+    `Mesh not found with id '${typeof meshOrMeshId === 'string' ? meshOrMeshId : undefined}' in createCharacter.`
+  );
+  mesh.userData.isCharacter = true;
+
   const keyControlIds: string[] = [];
   const mouseControlIds: string[] = [];
   if (controls) {

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { createScene } from '../_engine/core/Scene';
+import { createScene, createSceneAppLooper, getRootScene } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { createLight } from '../_engine/core/Light';
@@ -185,11 +185,44 @@ export const sceneCharacterTest = async () =>
     scene.add(box);
 
     // CHARACTER
+    // @TODO: MOVE ALL THIS TO A CHARACTER FILE
+    type CharacterData = {
+      height: number;
+      radius: number;
+      charRotation: number;
+      rotateSpeed: number;
+      maxVelocity: number;
+      linearVelocityInterval: number;
+      lviCheckTime: number;
+      accumulateVeloPerInterval: number;
+      isMoving: boolean;
+      isGrounded: boolean;
+      groundedRayMaxDistance: number;
+      isFalling: boolean;
+      jumpTime: number;
+      jumpAmount: number;
+    };
+    const characterData: CharacterData = {
+      height: 1.74,
+      radius: 0.5,
+      charRotation: 0,
+      rotateSpeed: 3.5,
+      maxVelocity: 1000,
+      linearVelocityInterval: 50,
+      lviCheckTime: 0,
+      accumulateVeloPerInterval: 50,
+      isMoving: false,
+      isGrounded: false,
+      groundedRayMaxDistance: 0.8,
+      isFalling: false,
+      jumpTime: 0,
+      jumpAmount: 7,
+    };
     const eulerForCharRotation = new THREE.Euler();
     const charCapsule = createGeometry({
       id: 'charCapsuleThirdPerson1',
       type: 'CAPSULE',
-      params: { radius: 0.5, height: 0.58 },
+      params: { radius: characterData.radius, height: characterData.height / 3 },
     });
     const charMaterial = createMaterial({
       id: 'box1MaterialThirdPerson',
@@ -206,8 +239,8 @@ export const sceneCharacterTest = async () =>
       geo: charCapsule,
       mat: charMaterial,
     });
-    thirdPersonCamera.position.set(-8, 2, 0);
-    thirdPersonCamera.lookAt(charMesh.position);
+    thirdPersonCamera.position.set(-8, 5, 0);
+    thirdPersonCamera.lookAt(charMesh.position.x, charMesh.position.y + 2, charMesh.position.z);
     charMesh.add(thirdPersonCamera);
     const directionBeakMesh = createMesh({
       id: 'directionBeakMeshThirdPerson',
@@ -238,7 +271,7 @@ export const sceneCharacterTest = async () =>
           linearDamping: 0.5,
         },
       },
-      data: { charRotation: 0, rotateSpeed: 3.5, translateSpeed: 1000 },
+      data: characterData,
       meshOrMeshId: charMesh,
       controls: [
         {
@@ -248,13 +281,13 @@ export const sceneCharacterTest = async () =>
           fn: (_, __, data) => {
             const keysPressed = data?.keysPressed as string[];
             const mesh = data?.mesh as THREE.Mesh;
-            const charData = (data?.charObject as CharacterObject)?.data as {
-              charRotation: number;
-              rotateSpeed: number;
-              translateSpeed: number;
-            };
+            const charObj = data?.charObject as CharacterObject;
+            const charData = charObj.data as CharacterData;
+
+            if (!mesh || !charData) return;
+
             // Turn left
-            if (keysPressed.includes('a') && mesh && charData) {
+            if (keysPressed.includes('a')) {
               const rotateSpeed = transformAppSpeedValue(charData.rotateSpeed || 0);
               mesh.rotateY(rotateSpeed);
               charData.charRotation = eulerForCharRotation.setFromQuaternion(
@@ -263,7 +296,7 @@ export const sceneCharacterTest = async () =>
               ).y;
             }
             // Turn right
-            if (keysPressed.includes('d') && mesh && charData) {
+            if (keysPressed.includes('d')) {
               const rotateSpeed = -transformAppSpeedValue(charData.rotateSpeed || 0);
               mesh.rotateY(rotateSpeed);
               charData.charRotation = eulerForCharRotation.setFromQuaternion(
@@ -272,39 +305,121 @@ export const sceneCharacterTest = async () =>
               ).y;
             }
             // Forward and backward
-            if ((keysPressed.includes('w') || keysPressed.includes('s')) && mesh && charData) {
-              const mainDirection = keysPressed.includes('s') ? -1 : 1;
-              const xDir =
-                charData.charRotation < HALF_PI && charData.charRotation >= -HALF_PI ? 1 : -1;
-              const zDir = charData.charRotation > 0 && charData.charRotation <= Math.PI ? -1 : 1;
-              const xVelo =
-                (1 - Math.abs(charData.charRotation) / HALF_PI) *
-                charData.translateSpeed *
-                mainDirection;
-              const zVelo =
-                xDir === 1
-                  ? (1 - Math.abs(charData.charRotation + HALF_PI) / HALF_PI) *
-                    charData.translateSpeed *
-                    mainDirection
-                  : (1 - Math.abs(charData.charRotation + HALF_PI * zDir) / HALF_PI) *
-                    charData.translateSpeed *
-                    zDir *
-                    mainDirection;
+            if (keysPressed.includes('w') || keysPressed.includes('s')) {
+              // @TODO: add check if not touching ground, then make the moving amount much smaller (xVelo * 0.2 or something)
+              const intervalCheckOk =
+                charData?.linearVelocityInterval === 0 ||
+                (charData?.lviCheckTime || 0) + (charData?.linearVelocityInterval || 0) <
+                  performance.now();
               const physObj = data?.physObj as PhysicsObject;
-              const vector3 = new THREE.Vector3(
-                transformAppSpeedValue(xVelo),
-                physObj.rigidBody?.linvel()?.y || 0,
-                transformAppSpeedValue(zVelo)
-              );
-              physObj.rigidBody?.setLinvel(vector3, !physObj.rigidBody?.isMoving());
+              const rigidBody = physObj.rigidBody;
+              if (intervalCheckOk && physObj && rigidBody) {
+                const mainDirection = keysPressed.includes('s') ? -1 : 1;
+                const xDir =
+                  charData.charRotation < HALF_PI && charData.charRotation >= -HALF_PI ? 1 : -1;
+                const zDir = charData.charRotation > 0 && charData.charRotation <= Math.PI ? -1 : 1;
+
+                const xVelo =
+                  (1 - Math.abs(charData.charRotation) / HALF_PI) *
+                  charData.maxVelocity *
+                  mainDirection;
+
+                const zVelo =
+                  xDir === 1
+                    ? (1 - Math.abs(charData.charRotation + HALF_PI) / HALF_PI) *
+                      charData.maxVelocity *
+                      mainDirection
+                    : (1 - Math.abs(charData.charRotation + HALF_PI * zDir) / HALF_PI) *
+                      charData.maxVelocity *
+                      zDir *
+                      mainDirection;
+
+                const vector3 = new THREE.Vector3(
+                  transformAppSpeedValue(xVelo),
+                  rigidBody.linvel()?.y || 0,
+                  transformAppSpeedValue(zVelo)
+                );
+                rigidBody.setLinvel(vector3, !rigidBody.isMoving());
+                charData.lviCheckTime = performance.now();
+              }
+            }
+          },
+        },
+        {
+          id: 'charJump',
+          key: ' ', // Space
+          type: 'KEY_DOWN',
+          fn: (e, __, data) => {
+            e.preventDefault();
+            if (e.repeat) return;
+            // Jump
+            const charObj = data?.charObject as CharacterObject;
+            const charData = charObj.data as CharacterData;
+            // @TODO: add check if on the ground
+            const jumpCheckOk = charData.jumpTime + 100 < performance.now();
+            if (jumpCheckOk) {
+              const physObj = data?.physObj as PhysicsObject;
+              physObj.rigidBody?.applyImpulse(new THREE.Vector3(0, charData.jumpAmount, 0), true);
+              charData.jumpTime = performance.now();
             }
           },
         },
       ],
     });
+    const groundRaycaster = new THREE.Raycaster();
+    groundRaycaster.near = 0.01;
+    groundRaycaster.far = 10;
+    const groundRaycastVec = new THREE.Vector3();
+    const groundRaycastVecDir = new THREE.Vector3(0, -1, 0);
+    const detectGround = () => {
+      // First ray from the middle of the character
+      groundRaycaster.set(charMesh.position, groundRaycastVecDir);
+      let intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
+      if (intersects.length && intersects[0].distance < characterData.groundedRayMaxDistance) {
+        characterData.isGrounded = true;
+        return;
+      }
+
+      // Four rays from the edges of the character
+      groundRaycastVec.copy(charMesh.position).sub({ x: characterData.radius, y: 0, z: 0 });
+      groundRaycaster.set(groundRaycastVec, groundRaycastVecDir);
+      intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
+      if (intersects.length && intersects[0].distance < characterData.groundedRayMaxDistance) {
+        characterData.isGrounded = true;
+        return;
+      }
+      groundRaycastVec.copy(charMesh.position).sub({ x: 0, y: 0, z: characterData.radius });
+      groundRaycaster.set(groundRaycastVec, groundRaycastVecDir);
+      intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
+      if (intersects.length && intersects[0].distance < characterData.groundedRayMaxDistance) {
+        characterData.isGrounded = true;
+        return;
+      }
+      groundRaycastVec.copy(charMesh.position).add({ x: characterData.radius, y: 0, z: 0 });
+      groundRaycaster.set(groundRaycastVec, groundRaycastVecDir);
+      intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
+      if (intersects.length && intersects[0].distance < characterData.groundedRayMaxDistance) {
+        characterData.isGrounded = true;
+        return;
+      }
+      groundRaycastVec.copy(charMesh.position).add({ x: 0, y: 0, z: characterData.radius });
+      groundRaycaster.set(groundRaycastVec, groundRaycastVecDir);
+      intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
+      if (intersects.length && intersects[0].distance < characterData.groundedRayMaxDistance) {
+        characterData.isGrounded = true;
+        return;
+      }
+
+      characterData.isGrounded = false;
+    };
+    createSceneAppLooper(() => {
+      detectGround();
+    }, SCENE_TEST_CHARACTER_ID);
     charMesh.castShadow = true;
     charMesh.receiveShadow = true;
     scene.add(charMesh);
+    // @TODO: MOVE ALL THIS ABOVE TO A CHARACTER FILE
+    // **********************************************
 
     // Lights
     const ambient = createLight({
