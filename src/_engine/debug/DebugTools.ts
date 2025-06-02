@@ -323,7 +323,8 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
 export const setDebugToolsVisibility = (
   show: boolean,
   refreshPane?: boolean,
-  doNotSetCamera?: boolean
+  doNotSetCamera?: boolean,
+  nextCameraId?: string
 ) => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) {
@@ -338,7 +339,9 @@ export const setDebugToolsVisibility = (
 
   const currentCameraId = getCurrentCameraId();
   if (!isCurrentlyLoading() && currentCameraId !== DEBUG_CAMERA_ID) {
-    curSceneDebugCamParams.latestAppCameraId = currentCameraId;
+    const currentOrNextCamId = !doNotSetCamera && nextCameraId ? nextCameraId : currentCameraId;
+    curSceneDebugCamParams.latestAppCameraId = currentOrNextCamId;
+    debugToolsState.debugCamera[currentSceneId].latestAppCameraId = currentOrNextCamId;
   }
 
   if (show) {
@@ -368,9 +371,11 @@ export const setDebugToolsVisibility = (
   if (debugCamera?.children[0]) debugCamera.children[0].visible = false;
   if (!doNotSetCamera) {
     setCurrentCamera(
-      debugToolsState.debugCamera[currentSceneId].latestAppCameraId ||
-        getCurrentCameraId() ||
-        Object.keys(getAllCameras())[0],
+      nextCameraId && nextCameraId !== DEBUG_CAMERA_ID
+        ? nextCameraId
+        : debugToolsState.debugCamera[currentSceneId].latestAppCameraId ||
+            getCurrentCameraId() ||
+            Object.keys(getAllCameras())[0],
       true
     );
   }
@@ -553,8 +558,10 @@ export const handleDebugCameraSwitch = (
     if (envBallFolder) envBallFolder.hidden = !isDebugCamera;
   }
   lsSetItem(LS_KEY, debugToolsState);
-  setDebugToolsVisibility(isDebugCamera, Boolean(cameraId), doNotSetCamera);
-  updateOnScreenTools('SWITCH');
+  setDebugToolsVisibility(isDebugCamera, Boolean(cameraId), doNotSetCamera, cameraId);
+  setTimeout(() => {
+    updateOnScreenTools('SWITCH');
+  }, 0);
 };
 
 export const buildDebugToolsGUI = () => {
