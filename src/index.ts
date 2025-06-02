@@ -8,8 +8,7 @@ import { CMP } from './_engine/utils/CMP';
 import { isDebugEnvironment } from './_engine/core/Config';
 import { addScenesToSceneListing } from './_engine/debug/DebugTools';
 import { SCENE_TEST_CHARACTER_ID, sceneCharacterTest } from './app/scene_characterTestThirdPerson';
-
-export const MAIN_APP_CAM_ID = 'mainAppCam';
+import { MAIN_APP_CAM_ID } from './CONFIG';
 
 InitEngine(async () => {
   // Init camera

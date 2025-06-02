@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { getWindowSize } from '../utils/Window';
 import { llog, lwarn } from '../utils/Logger';
-import { DEBUG_CAMERA_ID, handleCameraSwitch, isUsingDebugCamera } from '../debug/DebugTools';
+import { DEBUG_CAMERA_ID, handleDebugCameraSwitch, isUsingDebugCamera } from '../debug/DebugTools';
 import { CMP, TCMP } from '../utils/CMP';
 import { Pane } from 'tweakpane';
 import {
@@ -64,12 +64,12 @@ export const createCamera = (
   camera.userData.type = 'PERSPECTIVE';
   if (opts?.name) camera.userData.name = opts.name;
 
+  const rootScene = getRootScene();
+  if (rootScene) rootScene.add(camera);
+
   if (opts?.isCurrentCamera && !isUsingDebugCamera()) {
     setCurrentCamera(id);
   }
-
-  const rootScene = getRootScene();
-  if (rootScene) rootScene.add(camera);
 
   mergeCameraDataFromLS(id);
   toggleCameraHelper(id, Boolean(camera.userData.showHelper));
@@ -120,7 +120,7 @@ export const setCurrentCamera = (id: string, doNotHandleDebugCameraSwitch?: bool
   currentCamera = nextCamera;
 
   if (isDebugEnvironment() && !doNotHandleDebugCameraSwitch) {
-    handleCameraSwitch(nextCamera.userData.id, undefined, true);
+    handleDebugCameraSwitch(nextCamera.userData.id, undefined, true);
   }
 
   return nextCamera;
@@ -215,7 +215,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     html: () =>
       `<button title="${isCurCam ? 'This is the current camera being used' : 'Switch to use this camera'}">${getSvgIcon('camera')}</button>`,
     attr: isCurCam ? { disabled: 'true' } : {},
-    onClick: () => handleCameraSwitch(camera.userData.id),
+    onClick: () => handleDebugCameraSwitch(camera.userData.id),
   });
   const copyCodeButton = CMP({
     class: 'winSmallIconButton',

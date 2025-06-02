@@ -14,7 +14,7 @@ import { deleteCurrentScenePhysicsObjects, deletePhysicsWorld } from './PhysicsR
 import { disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
-import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
+import { DEBUG_CAMERA_ID, getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
 import { isDebugEnvironment } from './Config';
 import { clearSkyBox } from './SkyBox';
 import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
@@ -22,7 +22,7 @@ import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { getAllCameraHelpers, getAllLightHelpers } from './Helpers';
 import { updateLightsDebuggerGUI } from './Light';
-import { updateCamerasDebuggerGUI } from './Camera';
+import { setCurrentCamera, updateCamerasDebuggerGUI } from './Camera';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -249,19 +249,22 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         }
         setCurrentScene(newSceneId);
 
-        // Enable debuggers and input controls
-        disableDebugger(false);
-        setAllInputsEnabled(true);
         const canvasParentElem = getCanvasParentElem();
         canvasParentElem?.style.setProperty('pointer-events', '');
 
         if (isDebugEnvironment()) {
-          setDebugToolsVisibility(
-            Boolean(getDebugToolsState().debugCamera[newSceneId]?.enabled),
-            true
+          // Enable debuggers and input controls
+          disableDebugger(false);
+          setAllInputsEnabled(true);
+          const debugCamEnabled = Boolean(
+            getDebugToolsState(true).debugCamera[newSceneId]?.enabled
           );
+          setDebugToolsVisibility(debugCamEnabled, true);
           updateCamerasDebuggerGUI();
           updateLightsDebuggerGUI();
+
+          // Set possible debug camera
+          if (debugCamEnabled) setCurrentCamera(DEBUG_CAMERA_ID);
         }
 
         firstSceneLoaded = true;

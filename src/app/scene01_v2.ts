@@ -1,11 +1,5 @@
 import * as THREE from 'three/webgpu';
-import {
-  createScene,
-  getScene,
-  setCurrentScene,
-  createSceneAppLooper,
-  createSceneMainLooper,
-} from '../_engine/core/Scene';
+import { createScene, createSceneAppLooper } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { getTexture, loadTexture } from '../_engine/core/Texture';
@@ -13,15 +7,15 @@ import { createLight } from '../_engine/core/Light';
 import { importModelAsync } from '../_engine/core/ImportModel';
 import { createMesh } from '../_engine/core/Mesh';
 import { addToGroup, createGroup } from '../_engine/core/Group';
-import { transformAppSpeedValue, transformMainSpeedValue } from '../_engine/core/MainLoop';
+import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import { createSkyBox } from '../_engine/core/SkyBox';
-import { getCurrentCamera } from '../_engine/core/Camera';
+import { getCamera, setCurrentCamera } from '../_engine/core/Camera';
 import {
   createPhysicsObjectWithMesh,
   createPhysicsObjectWithoutMesh,
-  getPhysicsWorld,
 } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
+import { MAIN_APP_CAM_ID } from '../CONFIG';
 
 export const SCENE01_ID = 'testScene1';
 
@@ -30,23 +24,17 @@ export const scene01 = async () =>
     const updateLoaderFn = getLoaderStatusUpdater();
     updateLoaderFn({ loadedCount: 0, totalCount: 2 });
 
-    // Position camera
-    const camera = getCurrentCamera();
+    // Set current camera and position it
+    const camera = getCamera(MAIN_APP_CAM_ID);
+    setCurrentCamera(MAIN_APP_CAM_ID);
     camera.position.z = 5;
     camera.position.x = 2.5;
     camera.position.y = 1;
 
-    let scene = getScene(SCENE01_ID, true);
-
-    if (!scene) {
-      // Init scene
-      scene = createScene(SCENE01_ID, {
-        name: 'Test scene 1',
-        isCurrentScene: true,
-      });
-    } else {
-      setCurrentScene(SCENE01_ID);
-    }
+    const scene = createScene(SCENE01_ID, {
+      name: 'Test scene 1',
+      isCurrentScene: true,
+    });
 
     updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 
@@ -176,7 +164,7 @@ export const scene01 = async () =>
     const sphere = createMesh({ id: 'sphereMesh1', geo: geometry1, mat: material1 });
     scene.add(sphere);
 
-    getCurrentCamera().lookAt(sphere.position);
+    camera.lookAt(sphere.position);
 
     const geometry2 = createGeometry({ id: 'box1', type: 'BOX' });
     const material2 = createMaterial({

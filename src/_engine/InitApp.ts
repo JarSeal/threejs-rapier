@@ -18,17 +18,17 @@ import { createCamerasDebuggerGUI } from './core/Camera';
  * @param appStartFn (function) app start function, () => Promise<undefined>
  */
 export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
-  // Load env variables and other configurations
-  loadConfig();
-
-  // Create base scene
-  createRootScene();
-
-  // HUD container
-  createHudContainer();
-
   // Start app
   try {
+    // Load env variables and other configurations
+    loadConfig();
+
+    // Create base scene
+    createRootScene();
+
+    // HUD container
+    createHudContainer();
+
     await InitRapierPhysics();
     await appStartFn();
 

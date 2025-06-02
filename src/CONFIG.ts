@@ -5,6 +5,8 @@ import { debuggerSceneListing } from './_engine/debug/debugScenes/debuggerSceneL
 import { createEditLightContent } from './_engine/core/Light';
 import { createEditCameraContent } from './_engine/core/Camera';
 
+export const MAIN_APP_CAM_ID = 'mainAppCam';
+
 const config: AppConfig = {
   debugKeys: [
     {

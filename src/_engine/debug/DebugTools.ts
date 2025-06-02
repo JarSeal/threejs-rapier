@@ -336,11 +336,12 @@ export const setDebugToolsVisibility = (
       debugToolsState.debugCamera[currentSceneId] || getDefaultDebugCamParams();
   }
 
+  const currentCameraId = getCurrentCameraId();
+  if (!isCurrentlyLoading() && currentCameraId !== DEBUG_CAMERA_ID) {
+    curSceneDebugCamParams.latestAppCameraId = currentCameraId;
+  }
+
   if (show) {
-    const currentCameraId = getCurrentCameraId();
-    if (currentCameraId !== DEBUG_CAMERA_ID) {
-      curSceneDebugCamParams.latestAppCameraId = currentCameraId;
-    }
     if (orbitControls) orbitControls.enabled = true;
     if (debugCamera) {
       if (debugCamera.children[0]) debugCamera.children[0].visible = true;
@@ -368,6 +369,7 @@ export const setDebugToolsVisibility = (
   if (!doNotSetCamera) {
     setCurrentCamera(
       debugToolsState.debugCamera[currentSceneId].latestAppCameraId ||
+        getCurrentCameraId() ||
         Object.keys(getAllCameras())[0],
       true
     );
@@ -458,7 +460,6 @@ export const addScenesToSceneListing = (scenes: DebugScene | DebugScene[]) => {
   }
   const foundScene = debuggerSceneListing.find((scene) => scene.id === scenes.id);
   if (!foundScene) debuggerSceneListing.push(scenes);
-  console.log('hERE', foundScene);
   reloadSceneListingBlade();
 };
 
@@ -529,7 +530,7 @@ export const addSceneToDebugtools = (sceneId: string) => {
   debugToolsState.debugCamera[sceneId] = getDefaultDebugCamParams();
 };
 
-export const handleCameraSwitch = (
+export const handleDebugCameraSwitch = (
   cameraId?: string,
   useDebugCamera?: boolean,
   doNotSetCamera?: boolean
@@ -537,18 +538,20 @@ export const handleCameraSwitch = (
   const currentSceneId = getCurrentSceneId();
   if (!cameraId && useDebugCamera === undefined) {
     lerror(
-      'handleCameraSwitch was called without cameraId and without useDebugCamera, one of them is required (in DebugTools).'
+      'handleDebugCameraSwitch was called without cameraId and without useDebugCamera, one of them is required (in DebugTools).'
     );
     return;
   }
   if (!currentSceneId) return;
-  const isDebugCamera = cameraId ? cameraId === DEBUG_CAMERA_ID : Boolean(useDebugCamera);
   if (!debugToolsState.debugCamera[currentSceneId]) {
     debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
   }
-  debugToolsState.debugCamera[currentSceneId].enabled = isDebugCamera;
-  curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-  if (envBallFolder) envBallFolder.hidden = !isDebugCamera;
+  const isDebugCamera = cameraId ? cameraId === DEBUG_CAMERA_ID : Boolean(useDebugCamera);
+  if (!isCurrentlyLoading()) {
+    debugToolsState.debugCamera[currentSceneId].enabled = isDebugCamera;
+    curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+    if (envBallFolder) envBallFolder.hidden = !isDebugCamera;
+  }
   lsSetItem(LS_KEY, debugToolsState);
   setDebugToolsVisibility(isDebugCamera, Boolean(cameraId), doNotSetCamera);
   updateOnScreenTools('SWITCH');
@@ -583,7 +586,7 @@ export const buildDebugToolsGUI = () => {
       label: 'Use debug camera',
     })
     .on('change', (e) => {
-      handleCameraSwitch(undefined, Boolean(e.value));
+      handleDebugCameraSwitch(undefined, Boolean(e.value));
     });
   debugCameraFolder
     .addBinding(curSceneDebugCamParams, 'fov', {

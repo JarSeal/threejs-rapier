@@ -25,7 +25,7 @@ import {
   buildDebugToolsGUI,
   DEBUG_CAMERA_ID,
   getDebugToolsState,
-  handleCameraSwitch,
+  handleDebugCameraSwitch,
   isUsingDebugCamera,
 } from './DebugTools';
 import styles from './OnScreenTools.module.scss';
@@ -144,7 +144,7 @@ const switchTools = () => {
     attr: { title: 'Toggle between debug camera and app camera' },
     onClick: (e) => {
       e.stopPropagation();
-      handleCameraSwitch(undefined, !isUsingDebugCamera());
+      handleDebugCameraSwitch(undefined, !isUsingDebugCamera());
       buildDebugToolsGUI();
     },
   });
@@ -174,7 +174,7 @@ const switchTools = () => {
     onInput: (e) => {
       const target = e.target as HTMLSelectElement;
       const value = target.options[target.options.selectedIndex].value;
-      handleCameraSwitch(value);
+      handleDebugCameraSwitch(value);
     },
   });
   const selectCamDropDown = CMP({
