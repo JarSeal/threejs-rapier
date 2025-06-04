@@ -5,12 +5,16 @@ import { getDebugMeshIcon } from './UI/icons/DebugMeshIcons';
 import { getRootScene } from './Scene';
 import { DEBUG_CAMERA_ID, getDebugToolsState } from '../debug/DebugTools';
 import { getCamera, saveCameraToLS, updateCamerasDebuggerGUI } from './Camera';
+import { existsOrThrow } from '../utils/helpers';
 
 type LightHelper = THREE.DirectionalLightHelper | THREE.PointLightHelper;
 
+// Global helpers and won't be deleted on scene change
 let axesHelper: THREE.AxesHelper | null = null;
 let gridHelper: THREE.GridHelper | null = null;
 let polarGridHelper: THREE.PolarGridHelper | null = null;
+
+// Per scene helpers and will be deleted on scene change
 let lightHelpers: LightHelper[] = [];
 let cameraHelpers: THREE.CameraHelper[] = [];
 
@@ -216,10 +220,12 @@ export const toggleCameraHelper = (id: string, show: boolean) => {
     return;
   }
 
+  const rootScene = existsOrThrow(getRootScene(), 'Could not find rootScene in toggleCameraHelper');
+
   if (!show && camera.userData.helperCreated) {
     // Hide helper
-    const cameraHelper = camera.children.find(
-      (child) => child.type === 'CameraHelper'
+    const cameraHelper = rootScene.children.find(
+      (child) => child.type === 'CameraHelper' && child.userData.cameraId === id
     ) as THREE.CameraHelper;
     if (cameraHelper) {
       cameraHelper.visible = false;
@@ -228,8 +234,8 @@ export const toggleCameraHelper = (id: string, show: boolean) => {
     camera.userData.showHelper = false;
   } else if (show && camera.userData.helperCreated) {
     // Show helper
-    const cameraHelper = camera.children.find(
-      (child) => child.type === 'CameraHelper'
+    const cameraHelper = rootScene.children.find(
+      (child) => child.type === 'CameraHelper' && child.userData.cameraId === id
     ) as THREE.CameraHelper;
     if (cameraHelper) {
       cameraHelper.visible = true;
@@ -241,11 +247,13 @@ export const toggleCameraHelper = (id: string, show: boolean) => {
     const type = camera.userData.type;
     if (type === 'PERSPECTIVE') {
       const cameraHelper = new THREE.CameraHelper(camera);
-      cameraHelper.userData.id = `${camera.userData.id}__helper`;
+      cameraHelper.userData.cameraId = id;
+      cameraHelper.userData.id = `${id}__helper`;
       const iconMesh = getDebugMeshIcon('CAMERA');
       cameraHelper.add(iconMesh);
       addToCameraHelpers(cameraHelper);
-      camera.add(cameraHelper);
+      cameraHelper.visible = true;
+      rootScene.add(cameraHelper);
       cameraHelper.update();
     }
     camera.userData.showHelper = true;
@@ -257,7 +265,9 @@ export const toggleCameraHelper = (id: string, show: boolean) => {
 
 export const updateHelpers = () => {
   for (let i = 0; i < cameraHelpers.length; i++) {
-    cameraHelpers[i]?.update();
+    const helper = cameraHelpers[i];
+    if (!helper) continue;
+    helper.update();
   }
 
   for (let i = 0; i < lightHelpers.length; i++) {
@@ -276,4 +286,39 @@ export const updateHelpers = () => {
       }
     }, 0);
   }
+};
+
+export const deleteAllLightAndCameraHelpers = () => {
+  // Camera helpers
+  for (let i = 0; i < cameraHelpers.length; i++) {
+    const helper = cameraHelpers[i];
+    if (!helper) continue;
+    if ((!('isLightHelper' in helper) || !helper.isLightHelper) && helper.userData.cameraId) {
+      toggleCameraHelper(helper.userData.cameraId, false);
+    }
+    const cameraId = helper.userData.cameraId;
+    helper.removeFromParent();
+    helper.dispose;
+    if (!cameraId) continue;
+    const camera = existsOrThrow(
+      getCamera(cameraId),
+      `Could not find camera with id '${cameraId}' in deleteLightAndCameraHelpers`
+    );
+    camera.userData.helperCreated = false;
+  }
+  cameraHelpers = [];
+
+  // Light helpers
+  for (let i = 0; i < lightHelpers.length; i++) {
+    const helper = lightHelpers[i];
+    if (!helper) continue;
+    const light = helper.parent;
+    if (light && 'isLight' in light && light.userData.id) {
+      toggleLightHelper(light.userData.id, false);
+      light.userData.helperCreated = false;
+    }
+    helper.removeFromParent();
+    helper.dispose();
+  }
+  lightHelpers = [];
 };

@@ -86,9 +86,14 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     geo: charCapsule,
     mat: charMaterial,
   });
-  thirdPersonCamera.position.set(-8, 5, 0);
+  thirdPersonCamera.position.set(
+    charMesh.position.x - 8,
+    charMesh.position.y + 5,
+    charMesh.position.z
+  );
   thirdPersonCamera.lookAt(charMesh.position.x, charMesh.position.y + 2, charMesh.position.z);
   charMesh.add(thirdPersonCamera);
+
   const directionBeakMesh = createMesh({
     id: 'directionBeakMeshThirdPerson',
     geo: createGeometry({

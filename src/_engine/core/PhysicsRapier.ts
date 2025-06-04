@@ -10,6 +10,7 @@ import { Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
+import { existsOrWarn } from '../utils/helpers';
 
 export type PhysicsObject = {
   id?: string;
@@ -671,16 +672,13 @@ export const deletePhysicsObject = (id: string, sceneId?: string) => {
 
   const obj = scenePhysicsObjects[id];
   if (!obj) return;
-  physicsWorld.removeCollider(obj.collider, false);
-  if (obj.rigidBody) physicsWorld.removeRigidBody(obj.rigidBody);
+  if (obj.rigidBody) {
+    physicsWorld.removeRigidBody(obj.rigidBody);
+  } else {
+    physicsWorld.removeCollider(obj.collider, false);
+  }
 
   delete scenePhysicsObjects[id];
-
-  // if (sId === getCurrentSceneId()) {
-  //   currentScenePhysicsObjects = currentScenePhysicsObjects.filter(
-  //     (obj) => obj.mesh?.userData.id !== id
-  //   );
-  // }
 
   if (isCurrentScene(sId)) {
     currentScenePhysicsObjects = currentScenePhysicsObjects.filter((obj) => {
@@ -715,11 +713,30 @@ export const deleteCurrentScenePhysicsObjects = () => {
     const obj = currentScenePhysicsObjects[i];
     if (obj.rigidBody) {
       obj.rigidBody.setEnabled(false);
+      physicsWorld.removeRigidBody(obj.rigidBody);
     } else {
       obj.collider.setEnabled(false);
+      physicsWorld.removeCollider(obj.collider, false);
     }
-    // if (obj.collider) physicsWorld.removeCollider(obj.collider, false);
-    // if (obj.rigidBody) physicsWorld.removeRigidBody(obj.rigidBody);
+  }
+  currentScenePhysicsObjects = [];
+
+  const currentSceneId = getCurrentSceneId();
+  !existsOrWarn(
+    currentSceneId,
+    `Could not find currentSceneId (id: ${currentSceneId}) in deleteCurrentScenePhysicsObjects`
+  );
+  if (currentSceneId) physicsObjects[currentSceneId] = {};
+};
+
+/**
+ * Deletes all physics objects and clears the currentScenePhysicsObjects
+ */
+export const deleteAllPhysicsObjects = () => {
+  const sceneIds = Object.keys(physicsObjects);
+  for (let i = 0; i < sceneIds.length; i++) {
+    deletePhysicsObjectsBySceneId(sceneIds[i]);
+    delete physicsObjects[sceneIds[i]];
   }
   currentScenePhysicsObjects = [];
 };

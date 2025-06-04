@@ -18,6 +18,7 @@ import { toggleCameraHelper } from './Helpers';
 import { getRootScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
+import { existsOrThrow } from '../utils/helpers';
 
 const LS_KEY = 'debugCameras';
 const cameras: { [id: string]: THREE.PerspectiveCamera } = {};
@@ -142,18 +143,53 @@ export const getCurrentCameraId = () => currentCameraId;
  * Returns all cameras.
  * @returns object: { [id: string]: THREE.PerspectiveCamera }
  */
-export const getAllCameras = () => cameras;
+export const getAllCameras = (onlyOnesInTheScene?: boolean) => {
+  if (onlyOnesInTheScene) {
+    const rootScene = existsOrThrow(getRootScene(), 'Could not find rootScene in getAllCameras.');
+    const camerasInScene: { [id: string]: THREE.PerspectiveCamera } = {};
+    const keys = Object.keys(cameras);
+    for (let i = 0; i < keys.length; i++) {
+      const cam = cameras[keys[i]];
+      rootScene.traverse((obj) => {
+        if (obj.userData.id === cam.userData.id) {
+          // Get all cameras in the scene
+          camerasInScene[keys[i]] = cam;
+          return;
+        }
+      });
+    }
+    return camerasInScene;
+  }
+  // Get all cameras
+  return cameras;
+};
 
 /**
  * Returns all cameras as an array.
  * @returns array of THREE.PerspectiveCamera
  */
-export const getAllCamerasAsArray = () => {
+export const getAllCamerasAsArray = (onlyOnesInTheScene?: boolean) => {
+  const rootScene = onlyOnesInTheScene
+    ? existsOrThrow(getRootScene(), 'Could not find rootScene in getAllCamerasAsArray.')
+    : null;
   const keys = Object.keys(cameras);
   const camerasArr = [];
   for (let i = 0; i < keys.length; i++) {
-    camerasArr.push(cameras[keys[i]]);
+    const cam = cameras[keys[i]];
+    if (rootScene) {
+      rootScene.traverse((obj) => {
+        if (obj.userData.id === cam.userData.id) {
+          // Get all cameras in the scene
+          camerasArr.push(cam);
+          return;
+        }
+      });
+    } else {
+      // Get all cameras
+      camerasArr.push(cam);
+    }
   }
+
   return camerasArr;
 };
 
@@ -190,8 +226,17 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     debuggerWindowPane.dispose();
     debuggerWindowPane = null;
   }
-  if (debuggerWindowCmp) debuggerWindowCmp.remove();
-  if (!camera) return CMP();
+  if (debuggerWindowCmp) {
+    debuggerWindowCmp.remove();
+    debuggerWindowCmp = null;
+  }
+  if (!camera) {
+    // We want to close the window, but we have to return first, so wait one iteration
+    setTimeout(() => {
+      closeDraggableWindow(WIN_ID);
+    }, 0);
+    return CMP();
+  }
 
   addOnCloseToWindow(WIN_ID, () => {
     updateDebuggerCamerasListSelectedClass('');
@@ -345,7 +390,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
 };
 
 const createCameraDebuggerList = () => {
-  const keys = Object.keys(cameras);
+  const keys = Object.keys(getAllCameras(true));
   let html = '<ul class="ulList">';
 
   for (let i = 0; i < keys.length; i++) {

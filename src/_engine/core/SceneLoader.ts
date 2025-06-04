@@ -10,7 +10,11 @@ import {
 } from './Scene';
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
-import { deleteCurrentScenePhysicsObjects, deletePhysicsWorld } from './PhysicsRapier';
+import {
+  deleteAllPhysicsObjects,
+  deleteCurrentScenePhysicsObjects,
+  deletePhysicsWorld,
+} from './PhysicsRapier';
 import { disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
@@ -20,9 +24,10 @@ import { clearSkyBox } from './SkyBox';
 import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { getAllCameraHelpers, getAllLightHelpers } from './Helpers';
 import { updateLightsDebuggerGUI } from './Light';
 import { setCurrentCamera, updateCamerasDebuggerGUI } from './Camera';
+import { deleteAllCharacters } from './Character';
+import { existsOrThrow } from '../utils/helpers';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -217,6 +222,10 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   // Add possible loader group to current scene
   if (loader.loaderGroup) rootScene.add(loader.loaderGroup);
 
+  // Delete prev scene characters and physics objects
+  deleteAllCharacters();
+  deleteAllPhysicsObjects();
+
   // Disable debuggers and input controls
   disableDebugger(true);
   setAllInputsEnabled(false);
@@ -241,12 +250,11 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
       loader.phase = 'LOAD';
       await loadFn(loader, initNextSceneFn).then(async (newSceneId) => {
-        const nextScene = getScene(newSceneId);
-        if (!nextScene) {
-          const msg = `Scene loader could not find scene with scene id '${newSceneId}'.`;
-          lerror(msg);
-          throw new Error(msg);
-        }
+        // Scene has been loaded and initialized
+        existsOrThrow(
+          getScene(newSceneId),
+          `Scene loader could not find scene with scene id '${newSceneId}'.`
+        );
         setCurrentScene(newSceneId);
 
         const canvasParentElem = getCanvasParentElem();
@@ -265,23 +273,14 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
           // Set possible debug camera
           if (debugCamEnabled) setCurrentCamera(DEBUG_CAMERA_ID);
+
+          updateOnScreenTools();
         }
 
         firstSceneLoaded = true;
 
         loader.phase = 'END';
         await loadEndFn(loader).then(() => {
-          if (isDebugEnvironment()) {
-            const lightHelpers = getAllLightHelpers();
-            for (let i = 0; i < lightHelpers.length; i++) {
-              lightHelpers[i].visible = false;
-            }
-            const cameraHelpers = getAllCameraHelpers();
-            for (let i = 0; i < cameraHelpers.length; i++) {
-              cameraHelpers[i].visible = false;
-            }
-            updateOnScreenTools();
-          }
           if (loaderContainer) loaderContainer.remove();
           if (loader.loaderGroup) rootScene.remove(loader.loaderGroup);
 

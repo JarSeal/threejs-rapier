@@ -1,9 +1,11 @@
 import * as THREE from 'three/webgpu';
-import { createPhysicsObjectWithMesh, PhysicsParams } from './PhysicsRapier';
+import { createPhysicsObjectWithMesh, deletePhysicsObject, PhysicsParams } from './PhysicsRapier';
 import { lerror } from '../utils/Logger';
 import {
   createKeyInputControl,
   createMouseInputControl,
+  deleteKeyInputControl,
+  deleteMouseInputControl,
   KeyInputControlType,
   KeyInputParams,
   MouseInputControlType,
@@ -114,4 +116,36 @@ export const createCharacter = ({
   characters[id] = char;
 
   return char;
+};
+
+/** Delete a character by id */
+export const deleteCharacter = (id: string) => {
+  const charObj = existsOrThrow(
+    characters[id],
+    `Could not find character with id '${id}' in deleteCharacter`
+  );
+
+  // Delete controls
+  for (let i = 0; i < charObj.keyControlIds.length; i++) {
+    deleteKeyInputControl({ id: charObj.keyControlIds[i] });
+  }
+  for (let i = 0; i < charObj.mouseControlIds.length; i++) {
+    deleteMouseInputControl({ id: charObj.mouseControlIds[i] });
+  }
+
+  // Delete physic objects
+  for (let i = 0; i < charObj.physObjectId.length; i++) {
+    deletePhysicsObject(charObj.physObjectId[i]);
+  }
+
+  // Delete character
+  delete characters[id];
+};
+
+/** Deletes all characters */
+export const deleteAllCharacters = () => {
+  const keys = Object.keys(characters);
+  for (let i = 0; i < keys.length; i++) {
+    deleteCharacter(keys[i]);
+  }
 };

@@ -1,4 +1,4 @@
-import { getAllCameras, getAllCamerasAsArray } from '../core/Camera';
+import { getAllCameras, getAllCamerasAsArray, getCurrentCameraId } from '../core/Camera';
 import { isDebugEnvironment, isProdTestMode } from '../core/Config';
 import {
   getAllCameraHelpers,
@@ -159,11 +159,11 @@ const switchTools = () => {
   const camSelectorId = 'onScreenSelectCamDropDown';
   const debugToolsState = getDebugToolsState();
   const latestAppCamId = debugToolsState.debugCamera[currentSceneId]?.latestAppCameraId;
-  const camOptions = getAllCamerasAsArray()
+  const camOptions = getAllCamerasAsArray(true)
     .filter((cam) => cam.userData.id !== DEBUG_CAMERA_ID)
     .map(
       (cam) =>
-        `<option value="${cam.userData.id}"${latestAppCamId === cam.userData.id ? ' selected="true"' : ''}>${cam.userData.name || `[${cam.userData.id}]`}</option>`
+        `<option value="${cam.userData.id}"${latestAppCamId === cam.userData.id || getCurrentCameraId() === cam.userData.id ? ' selected="true"' : ''}>${cam.userData.name || `[${cam.userData.id}]`}</option>`
     );
   const camSelectCMP = CMP({
     id: camSelectorId,
@@ -174,6 +174,9 @@ const switchTools = () => {
     onInput: (e) => {
       const target = e.target as HTMLSelectElement;
       const value = target.options[target.options.selectedIndex].value;
+      // If we are using the debug camera, then we need to do this small hack (call handleDebugCameraSwitch twice) to set the
+      // latest app camera id again, so that the on screen tools show the right camera on the dropdown (this could be improved).
+      if (isUsingDebugCamera()) handleDebugCameraSwitch(value);
       handleDebugCameraSwitch(value);
     },
   });
@@ -297,7 +300,7 @@ const switchTools = () => {
         ? [styles.active, 'onScreenToolActive']
         : []),
     ],
-    html: () => `<button>${getSvgIcon('rocketTakeoff', 'small')}</button>`,
+    html: () => `<button>${getSvgIcon('rocket', 'small')}</button>`,
     attr: { title: 'Hide / show physics visualizer' },
     onClick: (e) => {
       e.stopPropagation();

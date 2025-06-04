@@ -30,15 +30,6 @@ export const sceneCharacterTest = async () =>
       isCurrentScene: true,
     });
 
-    // Create third person camera
-    // const thirdPersonCamera = createCamera('thirdPerson', {
-    //   name: '3rd Person Cam',
-    //   isCurrentCamera: true,
-    //   fov: 80,
-    //   near: 0.5,
-    //   far: 1000,
-    // });
-
     updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 
     await createSkyBox({
@@ -49,8 +40,6 @@ export const sceneCharacterTest = async () =>
         file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png',
         textureId: 'equiRectEmptyId',
         colorSpace: THREE.SRGBColorSpace,
-        // colorSpace: THREE.LinearSRGBColorSpace,
-        // colorSpace: THREE.NoColorSpace,
       },
     });
     // await createSkyBox({
@@ -184,9 +173,6 @@ export const sceneCharacterTest = async () =>
     // CHARACTER
     const { charMesh } = createThirdPersonCharacter();
     scene.add(charMesh);
-    // setTimeout(() => {
-    //   setCurrentCamera(thirdPersonCamera.userData.id);
-    // }, 0);
 
     // Lights
     const ambient = createLight({

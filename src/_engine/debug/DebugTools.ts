@@ -338,7 +338,7 @@ export const setDebugToolsVisibility = (
   }
 
   const currentCameraId = getCurrentCameraId();
-  if (!isCurrentlyLoading() && currentCameraId !== DEBUG_CAMERA_ID) {
+  if (currentCameraId !== DEBUG_CAMERA_ID) {
     const currentOrNextCamId = !doNotSetCamera && nextCameraId ? nextCameraId : currentCameraId;
     curSceneDebugCamParams.latestAppCameraId = currentOrNextCamId;
     debugToolsState.debugCamera[currentSceneId].latestAppCameraId = currentOrNextCamId;
