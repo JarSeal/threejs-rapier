@@ -86,11 +86,14 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     geo: charCapsule,
     mat: charMaterial,
   });
+  charMesh.position.set(0, 0, 0);
+  charMesh.rotation.set(0, 0, 0);
   thirdPersonCamera.position.set(
     charMesh.position.x - 8,
     charMesh.position.y + 5,
     charMesh.position.z
   );
+  thirdPersonCamera.rotation.set(0, 0, 0);
   thirdPersonCamera.lookAt(charMesh.position.x, charMesh.position.y + 2, charMesh.position.z);
   charMesh.add(thirdPersonCamera);
 

@@ -14,8 +14,8 @@ import {
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerContainer } from '../debug/DebuggerGUI';
 import { isDebugEnvironment } from './Config';
-import { toggleCameraHelper } from './Helpers';
-import { getRootScene } from './Scene';
+import { deleteCameraHelperByCamId, toggleCameraHelper } from './Helpers';
+import { getCurrentScene, getRootScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { existsOrThrow } from '../utils/helpers';
@@ -25,6 +25,8 @@ const cameras: { [id: string]: THREE.PerspectiveCamera } = {};
 let currentCamera: THREE.PerspectiveCamera | null = null;
 let currentCameraId: string | null = null;
 let clearLSButton: TCMP | null = null;
+let onCameraSet: { [cameraId: string]: () => void } = {};
+let onCameraUnset: { [cameraId: string]: () => void } = {};
 
 /**
  * Creates a perspective camera.
@@ -101,8 +103,23 @@ export const deleteCamera = (id: string) => {
     return;
   }
 
+  if (camera.userData.helperCreated) {
+    deleteCameraHelperByCamId(camera.userData.id);
+  }
+
   camera.removeFromParent();
   delete cameras[id];
+};
+
+export const deleteAllInSceneCameras = () => {
+  const curScene = getCurrentScene();
+  if (!curScene) return;
+  const cameraKeys = Object.keys(cameras);
+  for (let i = 0; i < cameraKeys.length; i++) {
+    const cam = cameras[cameraKeys[i]];
+    const foundCamInScene = curScene.getObjectById(cam.id);
+    if (foundCamInScene) deleteCamera(cam.userData.id);
+  }
 };
 
 /**
@@ -117,8 +134,15 @@ export const setCurrentCamera = (id: string, doNotHandleDebugCameraSwitch?: bool
     lwarn(`Could not find camera with id "${id}" in setCurrentCamera(id).`);
     return currentCamera;
   }
+
+  // Run onCameraUnset for the previous camera
+  if (currentCameraId && onCameraUnset[currentCameraId]) onCameraUnset[currentCameraId]();
+
   currentCameraId = id;
   currentCamera = nextCamera;
+
+  // Run onCameraSet for the new camera
+  if (onCameraSet[currentCameraId]) onCameraSet[currentCameraId]();
 
   if (isDebugEnvironment() && !doNotHandleDebugCameraSwitch) {
     handleDebugCameraSwitch(nextCamera.userData.id, undefined, true);
@@ -200,8 +224,19 @@ export const getAllCamerasAsArray = (onlyOnesInTheScene?: boolean) => {
  */
 export const doesCameraExist = (id: string) => Boolean(cameras[id]);
 
+export const registerOnCameraSet = (cameraId: string, fn: () => void) =>
+  (onCameraSet[cameraId] = fn);
+
+export const registerOnCameraUnset = (cameraId: string, fn: () => void) =>
+  (onCameraUnset[cameraId] = fn);
+
+export const deleteOnCameraSetsAndUnsets = () => {
+  onCameraSet = {};
+  onCameraUnset = {};
+};
+
 // Debugger stuff for cameras
-// *************************
+// **************************
 
 const getCameraTypeShorthand = (type: string) => {
   switch (type) {

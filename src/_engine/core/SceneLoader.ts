@@ -6,15 +6,13 @@ import {
   getCurrentScene,
   getRootScene,
   getScene,
+  runOnSceneEnter,
+  runOnSceneExit,
   setCurrentScene,
 } from './Scene';
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
-import {
-  deleteAllPhysicsObjects,
-  deleteCurrentScenePhysicsObjects,
-  deletePhysicsWorld,
-} from './PhysicsRapier';
+import { deleteAllPhysicsObjects } from './PhysicsRapier';
 import { disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
@@ -24,10 +22,16 @@ import { clearSkyBox } from './SkyBox';
 import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { updateLightsDebuggerGUI } from './Light';
-import { setCurrentCamera, updateCamerasDebuggerGUI } from './Camera';
+import { deleteAllInSceneLights, updateLightsDebuggerGUI } from './Light';
+import {
+  deleteAllInSceneCameras,
+  deleteOnCameraSetsAndUnsets,
+  setCurrentCamera,
+  updateCamerasDebuggerGUI,
+} from './Camera';
 import { deleteAllCharacters } from './Character';
 import { existsOrThrow } from '../utils/helpers';
+import { deregisterAllLightAndCameraHelpers } from './Helpers';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -120,13 +124,13 @@ export const createSceneLoader = async (
 
   sceneLoaders.push(sceneLoader);
 
-  // default value is true (even if undefined)
+  // default value of isCurrent is true (even if undefined)
   if (isCurrent !== false) {
     setCurrentSceneLoader(sceneLoader.id);
   }
 };
 
-// @TODO: deleteSceneLoader
+// @TODO: delete a scene loader (deleteSceneLoader)
 // export const deleteSceneLoader = (id: string) => {};
 
 export const setCurrentSceneLoader = (id: string) => {
@@ -222,15 +226,20 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   // Add possible loader group to current scene
   if (loader.loaderGroup) rootScene.add(loader.loaderGroup);
 
-  // Delete prev scene characters and physics objects
-  deleteAllCharacters();
-  deleteAllPhysicsObjects();
-
   // Disable debuggers and input controls
   disableDebugger(true);
   setAllInputsEnabled(false);
   const canvasParentElem = getCanvasParentElem();
   canvasParentElem?.style.setProperty('pointer-events', 'none');
+
+  // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
+  deleteAllCharacters();
+  deleteAllPhysicsObjects();
+  deleteAllInSceneCameras();
+  deleteAllInSceneLights();
+  if (isDebugEnvironment()) {
+    deregisterAllLightAndCameraHelpers();
+  }
 
   loader.phase = 'START';
   await loadStartFn(loader)
@@ -241,12 +250,13 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         deleteScene(prevSceneId, { deleteAll: true });
       } else if (prevScene) {
         deleteAllSceneLoopers(prevSceneId);
-        deleteCurrentScenePhysicsObjects();
-        deletePhysicsWorld();
       }
 
       clearSkyBox();
       handleDraggableWindowsOnSceneChangeStart();
+
+      runOnSceneExit(prevSceneId);
+      deleteOnCameraSetsAndUnsets();
 
       loader.phase = 'LOAD';
       await loadFn(loader, initNextSceneFn).then(async (newSceneId) => {
@@ -278,6 +288,8 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         }
 
         firstSceneLoaded = true;
+
+        runOnSceneEnter(newSceneId);
 
         loader.phase = 'END';
         await loadEndFn(loader).then(() => {

@@ -144,6 +144,7 @@ export const getAllCurSceneLightHelpers = () => {
   if (!currentSceneId) return [];
   return lightHelpers[currentSceneId] || [];
 };
+
 export const getAllCurSceneCameraHelpers = () => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) return [];
@@ -317,20 +318,19 @@ export const updateHelpers = () => {
   }
 };
 
-export const deleteAllLightAndCameraHelpers = () => {
+export const deregisterAllLightAndCameraHelpers = () => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) return;
 
   // Camera helpers
-  for (let i = 0; i < cameraHelpers[currentSceneId].length; i++) {
-    const helper = cameraHelpers[currentSceneId][i];
+  const camHelpers = cameraHelpers[currentSceneId] || [];
+  for (let i = 0; i < camHelpers.length; i++) {
+    const helper = camHelpers[i];
     if (!helper) continue;
-    if ((!('isLightHelper' in helper) || !helper.isLightHelper) && helper.userData.cameraId) {
-      toggleCameraHelper(helper.userData.cameraId, false);
-    }
     const cameraId = helper.userData.cameraId;
+    removeFromCameraHelpers(helper);
     helper.removeFromParent();
-    helper.dispose;
+    helper.dispose();
     if (!cameraId) continue;
     const camera = existsOrThrow(
       getCamera(cameraId),
@@ -338,19 +338,39 @@ export const deleteAllLightAndCameraHelpers = () => {
     );
     camera.userData.helperCreated = false;
   }
-  cameraHelpers[currentSceneId] = [];
+  if (cameraHelpers[currentSceneId]) cameraHelpers[currentSceneId] = [];
 
   // Light helpers
-  for (let i = 0; i < lightHelpers[currentSceneId].length; i++) {
-    const helper = lightHelpers[currentSceneId][i];
+  const ligHelpers = lightHelpers[currentSceneId] || [];
+  for (let i = 0; i < ligHelpers.length; i++) {
+    const helper = ligHelpers[i];
     if (!helper) continue;
     const light = helper.parent;
     if (light && 'isLight' in light && light.userData.id) {
-      toggleLightHelper(light.userData.id, false);
       light.userData.helperCreated = false;
     }
+    removeFromLightHelpers(helper);
     helper.removeFromParent();
     helper.dispose();
   }
-  lightHelpers[currentSceneId] = [];
+  if (lightHelpers[currentSceneId]) lightHelpers[currentSceneId] = [];
+};
+
+export const deleteCameraHelperByCamId = (camId: string) => {
+  const rootScene = getRootScene();
+  if (!rootScene) return;
+  const helper = rootScene.children.find(
+    (child) => child.userData.cameraId === camId && child.type === 'CameraHelper'
+  ) as THREE.CameraHelper;
+  if (!helper) return;
+  const cameraId = helper.userData.cameraId;
+  removeFromCameraHelpers(helper);
+  helper.removeFromParent();
+  helper.dispose();
+  if (!cameraId) return;
+  const camera = existsOrThrow(
+    getCamera(cameraId),
+    `Could not find camera with id '${cameraId}' in deleteLightAndCameraHelpers`
+  );
+  camera.userData.helperCreated = false;
 };

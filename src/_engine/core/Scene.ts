@@ -33,6 +33,8 @@ const sceneMainLoopers: { [sceneId: string]: Looper[] } = {};
 const sceneMainLateLoopers: { [sceneId: string]: Looper[] } = {};
 const sceneAppLoopers: { [sceneId: string]: Looper[] } = {};
 const sceneResizers: { [sceneId: string]: (() => void)[] } = {};
+const onSceneExit: { [sceneId: string]: () => void } = {};
+const onSceneEnter: { [sceneId: string]: () => void } = {};
 
 export type SceneOptions = {
   name?: string;
@@ -603,3 +605,16 @@ export const createRootScene = () => {
  * @returns THREE.Scene (rootScene)
  */
 export const getRootScene = () => rootScene;
+
+export const registerOnSceneEnter = (sceneId: string, fn: () => void) =>
+  (onSceneEnter[sceneId] = fn);
+
+export const registerOnSceneExit = (sceneId: string, fn: () => void) => (onSceneExit[sceneId] = fn);
+
+export const runOnSceneEnter = (sceneId: string) => {
+  if (onSceneEnter[sceneId]) onSceneEnter[sceneId]();
+};
+
+export const runOnSceneExit = (sceneId?: string) => {
+  if (sceneId && onSceneExit[sceneId]) onSceneExit[sceneId]();
+};

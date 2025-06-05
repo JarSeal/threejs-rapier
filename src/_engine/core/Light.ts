@@ -248,6 +248,17 @@ export const deleteLight = (id: string) => {
   updateLightsDebuggerGUI();
 };
 
+export const deleteAllInSceneLights = () => {
+  const curScene = getCurrentScene();
+  if (!curScene) return;
+  const lightKeys = Object.keys(lights);
+  for (let i = 0; i < lightKeys.length; i++) {
+    const light = lights[lightKeys[i]];
+    const foundLightInScene = curScene.getObjectById(light.id);
+    if (foundLightInScene) deleteLight(light.userData.id);
+  }
+};
+
 /**
  * Checks, with a light id, whether a light exists or not
  * @param id (string) light id
