@@ -248,6 +248,17 @@ export const deleteLight = (id: string) => {
   updateLightsDebuggerGUI();
 };
 
+export const deleteAllInSceneLights = () => {
+  const curScene = getCurrentScene();
+  if (!curScene) return;
+  const lightKeys = Object.keys(lights);
+  for (let i = 0; i < lightKeys.length; i++) {
+    const light = lights[lightKeys[i]];
+    const foundLightInScene = curScene.getObjectById(light.id);
+    if (foundLightInScene) deleteLight(light.userData.id);
+  }
+};
+
 /**
  * Checks, with a light id, whether a light exists or not
  * @param id (string) light id
@@ -278,7 +289,7 @@ const getLightTypeShorthand = (type: string) => {
 let debuggerListCmp: TCMP | null = null;
 let debuggerWindowCmp: TCMP | null = null;
 let debuggerWindowPane: Pane | null = null;
-const WIN_ID = 'lightEditorWindow';
+export const EDIT_LIGHT_WIN_ID = 'lightEditorWindow';
 
 export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   const d = data as { id: string; winId: string };
@@ -290,7 +301,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   if (debuggerWindowCmp) debuggerWindowCmp.remove();
   if (!light) return CMP();
 
-  addOnCloseToWindow(WIN_ID, () => {
+  addOnCloseToWindow(EDIT_LIGHT_WIN_ID, () => {
     updateDebuggerLightsListSelectedClass('');
   });
   updateDebuggerLightsListSelectedClass(d.id);
@@ -425,7 +436,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     onClick: () => {
       deleteLight(d.id);
       updateLightsDebuggerGUI('LIST');
-      closeDraggableWindow(WIN_ID);
+      closeDraggableWindow(EDIT_LIGHT_WIN_ID);
       // @TODO: add toast to tell that the light has been deleted (but not permanently)
     },
   });
@@ -1066,20 +1077,20 @@ const createLightsDebuggerList = () => {
 
     const button = CMP({
       onClick: () => {
-        const winState = getDraggableWindow(WIN_ID);
+        const winState = getDraggableWindow(EDIT_LIGHT_WIN_ID);
         if (winState?.isOpen && winState?.data?.id === keys[i]) {
-          closeDraggableWindow(WIN_ID);
+          closeDraggableWindow(EDIT_LIGHT_WIN_ID);
           return;
         }
         openDraggableWindow({
-          id: WIN_ID,
+          id: EDIT_LIGHT_WIN_ID,
           position: { x: 110, y: 60 },
           size: { w: 400, h: 400 },
           saveToLS: true,
           title: `Edit light: ${light.userData.name || `[${light.userData.id}]`}`,
           isDebugWindow: true,
           content: createEditLightContent,
-          data: { id: light.userData.id, WIN_ID },
+          data: { id: light.userData.id, EDIT_LIGHT_WIN_ID },
           closeOnSceneChange: true,
         });
         updateDebuggerLightsListSelectedClass(keys[i]);
@@ -1111,7 +1122,7 @@ export const createLightsDebuggerGUI = () => {
       const container = createNewDebuggerContainer('debuggerLights', `${icon} Light Controls`);
       debuggerListCmp = CMP({ id: 'debuggerLightsList', html: createLightsDebuggerList });
       container.add(debuggerListCmp);
-      const winState = getDraggableWindow(WIN_ID);
+      const winState = getDraggableWindow(EDIT_LIGHT_WIN_ID);
       if (winState?.isOpen && winState.data?.id) {
         const id = (winState.data as { id: string }).id;
         updateDebuggerLightsListSelectedClass(id);
@@ -1125,8 +1136,8 @@ export const updateLightsDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (!isDebugEnvironment()) return;
   if (only !== 'WINDOW') debuggerListCmp?.update({ html: createLightsDebuggerList });
   if (only === 'LIST') return;
-  const winState = getDraggableWindow(WIN_ID);
-  if (winState?.isOpen) updateDraggableWindow(WIN_ID);
+  const winState = getDraggableWindow(EDIT_LIGHT_WIN_ID);
+  if (winState?.isOpen) updateDraggableWindow(EDIT_LIGHT_WIN_ID);
 };
 
 export const updateDebuggerLightsListSelectedClass = (id: string) => {

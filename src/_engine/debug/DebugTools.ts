@@ -30,8 +30,8 @@ import {
   createAxesHelper,
   createGridHelper,
   createPolarGridHelper,
-  getAllCameraHelpers,
-  getAllLightHelpers,
+  getAllCurSceneCameraHelpers,
+  getAllCurSceneLightHelpers,
   toggleAxesHelperVisibility,
   toggleCameraHelper,
   toggleGridHelperVisibility,
@@ -935,7 +935,7 @@ export const buildDebugToolsGUI = () => {
     });
   helpersFolder.addBlade({ view: 'separator' });
   helpersFolder.addButton({ title: 'Hide / show all light helpers' }).on('click', () => {
-    const lightHelpers = getAllLightHelpers();
+    const lightHelpers = getAllCurSceneLightHelpers();
     let allNotVisible = true;
     for (let i = 0; i < lightHelpers.length; i++) {
       if (lightHelpers[i].visible) {
@@ -954,7 +954,7 @@ export const buildDebugToolsGUI = () => {
     updateOnScreenTools('SWITCH');
   });
   helpersFolder.addButton({ title: 'Hide / show all camera helpers' }).on('click', () => {
-    const cameraHelpers = getAllCameraHelpers();
+    const cameraHelpers = getAllCurSceneCameraHelpers();
     let allNotVisible = true;
     for (let i = 0; i < cameraHelpers.length; i++) {
       if (cameraHelpers[i].visible && !cameraHelpers[i].userData.isLightHelper) {

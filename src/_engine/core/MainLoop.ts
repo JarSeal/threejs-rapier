@@ -5,10 +5,10 @@ import { getAllCamerasAsArray, getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
 import {
   getRootScene,
-  getSceneAppLoopers,
-  getSceneMainLateLoopers,
-  getSceneMainLoopers,
   getSceneResizers,
+  runSceneAppLoopers,
+  runSceneMainLateLoopers,
+  runSceneMainLoopers,
 } from './Scene';
 import { lerror, lwarn } from '../utils/Logger';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
@@ -87,14 +87,6 @@ export const transformTimeValue = (durationInMs: number) =>
 
 let mainLoop: () => void = () => {};
 
-const runMainLateLoopers = () => {
-  // main late loopers
-  const mainLateLoopers = getSceneMainLateLoopers();
-  for (let i = 0; i < mainLateLoopers.length; i++) {
-    mainLateLoopers[i](delta);
-  }
-};
-
 // LOOP (for debug)
 // **************************************
 const mainLoopForDebug = async () => {
@@ -112,10 +104,7 @@ const mainLoopForDebug = async () => {
   updateHelpers();
 
   // main loopers
-  const mainLoopers = getSceneMainLoopers();
-  for (let i = 0; i < mainLoopers.length; i++) {
-    mainLoopers[i](delta);
-  }
+  runSceneMainLoopers(delta);
 
   const renderer = getRenderer() as Renderer;
   const rootScene = getRootScene() as Scene;
@@ -127,10 +116,7 @@ const mainLoopForDebug = async () => {
     updateInputControllerLoopActions(deltaApp);
 
     // app loopers
-    const appLoopers = getSceneAppLoopers();
-    for (let i = 0; i < appLoopers.length; i++) {
-      appLoopers[i](deltaApp);
-    }
+    runSceneAppLoopers(deltaApp);
 
     stepPhysicsWorld(deltaApp);
 
@@ -139,7 +125,7 @@ const mainLoopForDebug = async () => {
       accDeltaApp += dt;
       if (accDeltaApp > loopState.maxFPSInterval) {
         await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
-          runMainLateLoopers();
+          runSceneMainLateLoopers(delta);
           updateStats(renderer);
           accDeltaApp = accDeltaApp % loopState.maxFPSInterval;
         });
@@ -147,7 +133,7 @@ const mainLoopForDebug = async () => {
     } else {
       // No maxFPS limiter
       await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
-        runMainLateLoopers();
+        runSceneMainLateLoopers(delta);
         updateStats(renderer);
       });
     }
@@ -159,7 +145,7 @@ const mainLoopForDebug = async () => {
       accDelta += dt;
       if (accDelta > loopState.maxFPSInterval) {
         await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
-          runMainLateLoopers();
+          runSceneMainLateLoopers(delta);
           updateStats(renderer);
           accDelta = accDelta % loopState.maxFPSInterval;
         });
@@ -167,7 +153,7 @@ const mainLoopForDebug = async () => {
     } else {
       // No maxFPS limiter
       await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
-        runMainLateLoopers();
+        runSceneMainLateLoopers(delta);
         updateStats(renderer);
       });
     }
@@ -187,30 +173,24 @@ const mainLoopForProduction = async () => {
     return;
   }
   // main loopers
-  const mainLoopers = getSceneMainLoopers();
-  for (let i = 0; i < mainLoopers.length; i++) {
-    mainLoopers[i](delta);
-  }
+  runSceneMainLoopers(delta);
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
     // app loopers
-    const appLoopers = getSceneAppLoopers();
-    for (let i = 0; i < appLoopers.length; i++) {
-      appLoopers[i](deltaApp);
-    }
+    runSceneAppLoopers(deltaApp);
     stepPhysicsWorld(deltaApp);
     await (getRenderer() as Renderer)
       .renderAsync(getRootScene() as Scene, getCurrentCamera())
       .then(() => {
-        runMainLateLoopers();
+        runSceneMainLateLoopers(delta);
       });
   } else {
     loopState.isAppPlaying = false;
     await (getRenderer() as Renderer)
       .renderAsync(getRootScene() as Scene, getCurrentCamera())
       .then(() => {
-        runMainLateLoopers();
+        runSceneMainLateLoopers(delta);
       });
   }
 };
@@ -228,25 +208,19 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     return;
   }
   // main loopers
-  const mainLoopers = getSceneMainLoopers();
-  for (let i = 0; i < mainLoopers.length; i++) {
-    mainLoopers[i](delta);
-  }
+  runSceneMainLoopers(delta);
   const renderer = getRenderer() as Renderer;
   const rootScene = getRootScene() as Scene;
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
     // app loopers
-    const appLoopers = getSceneAppLoopers();
-    for (let i = 0; i < appLoopers.length; i++) {
-      appLoopers[i](deltaApp);
-    }
+    runSceneAppLoopers(deltaApp);
     stepPhysicsWorld(deltaApp);
     accDeltaApp += dt;
     if (accDeltaApp > loopState.maxFPSInterval) {
       await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
-        runMainLateLoopers();
+        runSceneMainLateLoopers(delta);
         accDeltaApp = accDeltaApp % loopState.maxFPSInterval;
       });
     }
@@ -255,7 +229,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     accDelta += dt;
     if (accDelta > loopState.maxFPSInterval) {
       await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
-        runMainLateLoopers();
+        runSceneMainLateLoopers(delta);
         accDelta = accDelta % loopState.maxFPSInterval;
       });
     }

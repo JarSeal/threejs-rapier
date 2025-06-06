@@ -3,8 +3,12 @@ import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { loadTexture } from '../_engine/core/Texture';
 import { createMesh } from '../_engine/core/Mesh';
-import { createCamera } from '../_engine/core/Camera';
-import { CharacterObject, createCharacter } from '../_engine/core/Character';
+import { createCamera, deleteCamera } from '../_engine/core/Camera';
+import {
+  CharacterObject,
+  createCharacter,
+  registerOnDeleteCharacter,
+} from '../_engine/core/Character';
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import { getPhysicsObject, PhysicsObject } from '../_engine/core/PhysicsRapier';
 import { HALF_PI } from '../_engine/utils/constants';
@@ -57,6 +61,8 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   // Combine character data
   characterData = { ...DEFAULT_CHARACTER_DATA, ...charData };
 
+  const CHARACTER_ID = 'thirdPersonCamCharacter';
+
   // Create third person camera
   thirdPersonCamera = createCamera('thirdPerson', {
     name: '3rd Person Cam',
@@ -86,11 +92,14 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     geo: charCapsule,
     mat: charMaterial,
   });
+  charMesh.position.set(0, 0, 0);
+  charMesh.rotation.set(0, 0, 0);
   thirdPersonCamera.position.set(
     charMesh.position.x - 8,
     charMesh.position.y + 5,
     charMesh.position.z
   );
+  thirdPersonCamera.rotation.set(0, 0, 0);
   thirdPersonCamera.lookAt(charMesh.position.x, charMesh.position.y + 2, charMesh.position.z);
   charMesh.add(thirdPersonCamera);
 
@@ -110,11 +119,11 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   directionBeakMesh.position.set(0.35, 0.43, 0);
   charMesh.add(directionBeakMesh);
   thirdPersonCharacterObject = createCharacter({
-    id: 'testCharacterThirdPerson1',
+    id: CHARACTER_ID,
     physicsParams: {
       collider: {
         type: 'CAPSULE',
-        restitution: 0.8,
+        // restitution: 0.8,
         friction: 2,
       },
       rigidBody: {
@@ -316,6 +325,10 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
 
   charMesh.castShadow = true;
   charMesh.receiveShadow = true;
+
+  registerOnDeleteCharacter(CHARACTER_ID, () => {
+    deleteCamera(thirdPersonCamera?.userData.id);
+  });
 
   return { thirdPersonCharacterObject, charMesh, charData, thirdPersonCamera };
 };

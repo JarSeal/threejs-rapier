@@ -1,8 +1,8 @@
 import { getAllCameras, getAllCamerasAsArray, getCurrentCameraId } from '../core/Camera';
 import { isDebugEnvironment, isProdTestMode } from '../core/Config';
 import {
-  getAllCameraHelpers,
-  getAllLightHelpers,
+  getAllCurSceneCameraHelpers,
+  getAllCurSceneLightHelpers,
   toggleCameraHelper,
   toggleLightHelper,
 } from '../core/Helpers';
@@ -228,7 +228,7 @@ const switchTools = () => {
 
   // Light helpers toggle
   const toggleLightHelpersBtnClasses = [styles.onScreenTool, 'onScreenTool'];
-  const lightHelpers = getAllLightHelpers();
+  const lightHelpers = getAllCurSceneLightHelpers();
   if (lightHelpers.find((h) => h.visible)) {
     toggleLightHelpersBtnClasses.push(styles.active, 'onScreenToolActive');
   }
@@ -238,7 +238,7 @@ const switchTools = () => {
     attr: { title: 'Hide / show all light helpers' },
     onClick: (e) => {
       e.stopPropagation();
-      const lightHelpers = getAllLightHelpers();
+      const lightHelpers = getAllCurSceneLightHelpers();
       let allNotVisible = true;
       for (let i = 0; i < lightHelpers.length; i++) {
         if (lightHelpers[i].visible) {
@@ -260,7 +260,7 @@ const switchTools = () => {
 
   // Camera helpers toggle
   const toggleCameraHelpersBtnClasses = [styles.onScreenTool, 'onScreenTool'];
-  const cameraHelpers = getAllCameraHelpers();
+  const cameraHelpers = getAllCurSceneCameraHelpers();
   if (cameraHelpers.find((h) => h.visible && !h.userData.isLightHelper)) {
     toggleCameraHelpersBtnClasses.push(styles.active, 'onScreenToolActive');
   }
@@ -270,7 +270,7 @@ const switchTools = () => {
     attr: { title: 'Hide / show all camera helpers' },
     onClick: (e) => {
       e.stopPropagation();
-      const cameraHelpers = getAllCameraHelpers();
+      const cameraHelpers = getAllCurSceneCameraHelpers();
       let allNotVisible = true;
       for (let i = 0; i < cameraHelpers.length; i++) {
         if (cameraHelpers[i].visible && !cameraHelpers[i].userData.isLightHelper) {

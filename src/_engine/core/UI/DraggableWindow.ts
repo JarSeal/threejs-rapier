@@ -86,6 +86,7 @@ export type OpenDraggableWindowProps = {
   backDropClickClosesWindow?: boolean;
   windowClass?: string | string[];
   backDropClass?: string | string[];
+  onClose?: () => void;
 };
 
 let draggableWindows: { [id: string]: DraggableWindow } = {};
@@ -174,6 +175,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     backDropClickClosesWindow: winBackDropClickClosesWindow,
     windowClass: winClass,
     backDropClass: bdClass,
+    onClose,
   } = props;
   const screenSize = getWindowSize();
   if (!id) {
@@ -256,6 +258,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
       foundWindow.defaultSize = defaultS;
       foundWindow.defaultPosition = defaultP;
       draggableWindows[id] = foundWindow;
+      if (onClose) addOnCloseToWindow(id, onClose);
       closeDraggableWindow(id);
       return;
     }
@@ -318,6 +321,8 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
       const headerTitleCMP = getCmpById(getHeaderTitleId(id));
       headerTitleCMP?.updateText(headerTitle);
     }
+
+    if (onClose) addOnCloseToWindow(id, onClose);
 
     hudRoot.add(foundWindow.windowCMP);
   } else {
@@ -391,6 +396,8 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     windowClass: winClass,
     backDropClass: bdClass,
   };
+
+  if (onClose) addOnCloseToWindow(id, onClose);
 
   if (hasBackDrop) {
     const backDropCmp = getCmpById(createBackDropId(id));
@@ -952,7 +959,7 @@ export const removeDraggableWindow = (id: string, doNotSaveToLS?: boolean) => {
   if (state.windowCMP) state.windowCMP.remove();
   delete draggableWindows[id];
   removeListeners();
-  if (!doNotSaveToLS) lsSetItem(LS_KEY, draggableWindows);
+  if (!doNotSaveToLS) saveDraggableWindowStatesToLS();
 };
 
 export const handleDraggableWindowsOnSceneChangeStart = () => {

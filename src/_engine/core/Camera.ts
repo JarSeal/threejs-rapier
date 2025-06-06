@@ -14,8 +14,8 @@ import {
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerContainer } from '../debug/DebuggerGUI';
 import { isDebugEnvironment } from './Config';
-import { toggleCameraHelper } from './Helpers';
-import { getRootScene } from './Scene';
+import { deleteCameraHelperByCamId, toggleCameraHelper } from './Helpers';
+import { getCurrentScene, getRootScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { existsOrThrow } from '../utils/helpers';
@@ -25,6 +25,8 @@ const cameras: { [id: string]: THREE.PerspectiveCamera } = {};
 let currentCamera: THREE.PerspectiveCamera | null = null;
 let currentCameraId: string | null = null;
 let clearLSButton: TCMP | null = null;
+let onCameraSet: { [cameraId: string]: () => void } = {};
+let onCameraUnset: { [cameraId: string]: () => void } = {};
 
 /**
  * Creates a perspective camera.
@@ -101,8 +103,31 @@ export const deleteCamera = (id: string) => {
     return;
   }
 
+  if (camera.userData.helperCreated) {
+    deleteCameraHelperByCamId(camera.userData.id);
+  }
+
   camera.removeFromParent();
   delete cameras[id];
+
+  if (currentCameraId === id) {
+    const cameraKeys = Object.keys(cameras);
+    existsOrThrow(cameraKeys.length, 'No cameras found in deleteCamera.');
+    setCurrentCamera(cameraKeys[0]);
+  }
+
+  updateOnScreenTools('SWITCH');
+};
+
+export const deleteAllInSceneCameras = () => {
+  const curScene = getCurrentScene();
+  if (!curScene) return;
+  const cameraKeys = Object.keys(cameras);
+  for (let i = 0; i < cameraKeys.length; i++) {
+    const cam = cameras[cameraKeys[i]];
+    const foundCamInScene = curScene.getObjectById(cam.id);
+    if (foundCamInScene) deleteCamera(cam.userData.id);
+  }
 };
 
 /**
@@ -117,8 +142,15 @@ export const setCurrentCamera = (id: string, doNotHandleDebugCameraSwitch?: bool
     lwarn(`Could not find camera with id "${id}" in setCurrentCamera(id).`);
     return currentCamera;
   }
+
+  // Run onCameraUnset for the previous camera
+  if (currentCameraId && onCameraUnset[currentCameraId]) onCameraUnset[currentCameraId]();
+
   currentCameraId = id;
   currentCamera = nextCamera;
+
+  // Run onCameraSet for the new camera
+  if (onCameraSet[currentCameraId]) onCameraSet[currentCameraId]();
 
   if (isDebugEnvironment() && !doNotHandleDebugCameraSwitch) {
     handleDebugCameraSwitch(nextCamera.userData.id, undefined, true);
@@ -200,8 +232,19 @@ export const getAllCamerasAsArray = (onlyOnesInTheScene?: boolean) => {
  */
 export const doesCameraExist = (id: string) => Boolean(cameras[id]);
 
+export const registerOnCameraSet = (cameraId: string, fn: () => void) =>
+  (onCameraSet[cameraId] = fn);
+
+export const registerOnCameraUnset = (cameraId: string, fn: () => void) =>
+  (onCameraUnset[cameraId] = fn);
+
+export const deleteOnCameraSetsAndUnsets = () => {
+  onCameraSet = {};
+  onCameraUnset = {};
+};
+
 // Debugger stuff for cameras
-// *************************
+// **************************
 
 const getCameraTypeShorthand = (type: string) => {
   switch (type) {
@@ -217,7 +260,7 @@ const getCameraTypeShorthand = (type: string) => {
 let debuggerListCmp: TCMP | null = null;
 let debuggerWindowCmp: TCMP | null = null;
 let debuggerWindowPane: Pane | null = null;
-const WIN_ID = 'cameraEditorWindow';
+export const EDIT_CAMERA_WIN_ID = 'cameraEditorWindow';
 
 export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   const d = data as { id: string; winId: string };
@@ -233,12 +276,12 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   if (!camera) {
     // We want to close the window, but we have to return first, so wait one iteration
     setTimeout(() => {
-      closeDraggableWindow(WIN_ID);
+      closeDraggableWindow(EDIT_CAMERA_WIN_ID);
     }, 0);
     return CMP();
   }
 
-  addOnCloseToWindow(WIN_ID, () => {
+  addOnCloseToWindow(EDIT_CAMERA_WIN_ID, () => {
     updateDebuggerCamerasListSelectedClass('');
   });
   updateDebuggerCamerasListSelectedClass(d.id);
@@ -319,7 +362,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     onClick: () => {
       deleteCamera(d.id);
       updateCamerasDebuggerGUI('LIST');
-      closeDraggableWindow(WIN_ID);
+      closeDraggableWindow(EDIT_CAMERA_WIN_ID);
     },
   });
 
@@ -400,20 +443,20 @@ const createCameraDebuggerList = () => {
 
     const button = CMP({
       onClick: () => {
-        const winState = getDraggableWindow(WIN_ID);
+        const winState = getDraggableWindow(EDIT_CAMERA_WIN_ID);
         if (winState?.isOpen && winState?.data?.id === keys[i]) {
-          closeDraggableWindow(WIN_ID);
+          closeDraggableWindow(EDIT_CAMERA_WIN_ID);
           return;
         }
         openDraggableWindow({
-          id: WIN_ID,
+          id: EDIT_CAMERA_WIN_ID,
           position: { x: 110, y: 60 },
           size: { w: 400, h: 400 },
           saveToLS: true,
           title: `Edit camera: ${camera.userData.name || `[${camera.userData.id}]`}`,
           isDebugWindow: true,
           content: createEditCameraContent,
-          data: { id: camera.userData.id, WIN_ID },
+          data: { id: camera.userData.id, EDIT_CAMERA_WIN_ID },
           closeOnSceneChange: true,
         });
         updateDebuggerCamerasListSelectedClass(keys[i]);
@@ -445,7 +488,7 @@ export const createCamerasDebuggerGUI = () => {
       const container = createNewDebuggerContainer('debuggerCameras', `${icon} Camera Controls`);
       debuggerListCmp = CMP({ id: 'debuggerCamerasList', html: createCameraDebuggerList });
       container.add(debuggerListCmp);
-      const winState = getDraggableWindow(WIN_ID);
+      const winState = getDraggableWindow(EDIT_CAMERA_WIN_ID);
       if (winState?.isOpen && winState.data?.id) {
         const id = (winState.data as { id: string }).id;
         updateDebuggerCamerasListSelectedClass(id);
@@ -459,8 +502,8 @@ export const updateCamerasDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (!isDebugEnvironment()) return;
   if (only !== 'WINDOW') debuggerListCmp?.update({ html: createCameraDebuggerList });
   if (only === 'LIST') return;
-  const winState = getDraggableWindow(WIN_ID);
-  if (winState) updateDraggableWindow(WIN_ID);
+  const winState = getDraggableWindow(EDIT_CAMERA_WIN_ID);
+  if (winState) updateDraggableWindow(EDIT_CAMERA_WIN_ID);
 };
 
 export const updateDebuggerCamerasListSelectedClass = (id: string) => {

@@ -708,6 +708,7 @@ export const deletePhysicsObjectsBySceneId = (sceneId: string) => {
   if (isCurrentScene(sceneId)) deleteCurrentScenePhysicsObjects();
 };
 
+// @CONSIDER: maybe remove this as we anyways destroy all the physics objects during scene (un)load
 export const deleteCurrentScenePhysicsObjects = () => {
   for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
     const obj = currentScenePhysicsObjects[i];
