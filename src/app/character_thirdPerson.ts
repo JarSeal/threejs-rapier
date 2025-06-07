@@ -11,15 +11,18 @@ import {
 } from '../_engine/core/Character';
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import { getPhysicsObject, PhysicsObject } from '../_engine/core/PhysicsRapier';
-import { HALF_PI } from '../_engine/utils/constants';
 import { createSceneAppLooper, getRootScene } from '../_engine/core/Scene';
 
+// @TODO: add comments for each
 export type CharacterData = {
   height: number;
   radius: number;
   charRotation: number;
   rotateSpeed: number;
   maxVelocity: number;
+  inTheAirDiminisher: number;
+  // @TODO: isRunning
+  // @TODO: runningMultiplier
   linearVelocityInterval: number;
   lviCheckTime: number;
   accumulateVeloPerInterval: number;
@@ -30,26 +33,27 @@ export type CharacterData = {
   jumpTime: number;
   jumpAmount: number;
   position: { x: number; y: number; z: number };
-  velocity: { x: number; y: number; z: number; total: number };
+  velocity: { x: number; y: number; z: number; world: number };
 };
 
 const DEFAULT_CHARACTER_DATA: CharacterData = {
   height: 1.74,
   radius: 0.5,
   charRotation: 0,
-  rotateSpeed: 3.5,
-  maxVelocity: 1000,
-  linearVelocityInterval: 50,
+  rotateSpeed: 5,
+  maxVelocity: 7,
+  inTheAirDiminisher: 0.2,
+  linearVelocityInterval: 10,
   lviCheckTime: 0,
-  accumulateVeloPerInterval: 50,
+  accumulateVeloPerInterval: 40,
   isMoving: false,
   isGrounded: false,
   groundedRayMaxDistance: 1.2,
   isFalling: false,
   jumpTime: 0,
-  jumpAmount: 7,
+  jumpAmount: 5,
   position: { x: 0, y: 0, z: 0 },
-  velocity: { x: 0, y: 0, z: 0, total: 0 },
+  velocity: { x: 0, y: 0, z: 0, world: 0 },
 };
 let characterData = DEFAULT_CHARACTER_DATA;
 
@@ -175,56 +179,32 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
             const physObj = data?.physObj as PhysicsObject;
             const rigidBody = physObj.rigidBody;
             if (intervalCheckOk && physObj.rigidBody && rigidBody) {
-              const mainDirection = keysPressed.includes('w') ? 1 : -1;
-              const xDir =
-                charData.charRotation < HALF_PI && charData.charRotation >= -HALF_PI ? 1 : -1;
-              const zDir = charData.charRotation > 0 && charData.charRotation <= Math.PI ? -1 : 1;
-
-              const xVelo =
-                (1 - Math.abs(charData.charRotation) / HALF_PI) *
-                charData.maxVelocity *
-                mainDirection;
-
-              const zVelo =
-                xDir === 1
-                  ? (1 - Math.abs(charData.charRotation + HALF_PI) / HALF_PI) *
-                    charData.maxVelocity *
-                    mainDirection
-                  : (1 - Math.abs(charData.charRotation + HALF_PI * zDir) / HALF_PI) *
-                    charData.maxVelocity *
-                    zDir *
-                    mainDirection;
-
-              const xVelo2 =
-                (1 - Math.abs(charData.charRotation) / HALF_PI) *
-                charData.maxVelocity *
-                mainDirection;
-
-              const zVelo2 =
-                (1 - Math.abs(charData.charRotation + HALF_PI * zDir) / HALF_PI) *
-                charData.maxVelocity *
-                zDir *
-                mainDirection;
-
-              const xMulti = Math.abs(1 - Math.abs(charData.charRotation / HALF_PI));
-              const zMulti = Math.abs(
-                1 - Math.abs((charData.charRotation + HALF_PI * zDir) / HALF_PI)
-              );
-
-              const xVelo3 = xMulti * xDir * 1000 + (1000 - zMulti * zDir * 1000) * xDir;
-              const zVelo3 = zMulti * zDir * 1000 + (1000 - xMulti * xDir * 1000) * zDir;
-
-              // const xVelo3 = xMulti * xDir * 1000;
-              // const zVelo3 = zMulti * zDir * 1000;
-
-              // console.log('xMulti', xMulti);
-              console.log('velo', xVelo3, zVelo3);
-
-              const vector3 = new THREE.Vector3(
-                transformAppSpeedValue(xVelo3),
-                rigidBody.linvel()?.y || 0,
-                transformAppSpeedValue(zVelo3)
-              );
+              const inTheAirDiminisher = characterData.isGrounded
+                ? 1
+                : characterData.inTheAirDiminisher;
+              const veloAccu = characterData.accumulateVeloPerInterval * inTheAirDiminisher;
+              const mainDirection = keysPressed.includes('s') ? -1 : 1;
+              const xVelo = Math.cos(characterData.charRotation) * veloAccu * mainDirection;
+              const zVelo = -Math.sin(characterData.charRotation) * veloAccu * mainDirection;
+              const xMaxVelo =
+                Math.cos(characterData.charRotation) * characterData.maxVelocity * mainDirection;
+              const zMaxVelo =
+                -Math.sin(characterData.charRotation) * characterData.maxVelocity * mainDirection;
+              const xAddition =
+                xVelo > 0
+                  ? Math.min((rigidBody.linvel()?.x || 0) + transformAppSpeedValue(xVelo), xMaxVelo)
+                  : Math.max(
+                      (rigidBody.linvel()?.x || 0) + transformAppSpeedValue(xVelo),
+                      xMaxVelo
+                    );
+              const zAddition =
+                zVelo > 0
+                  ? Math.min((rigidBody.linvel()?.z || 0) + transformAppSpeedValue(zVelo), zMaxVelo)
+                  : Math.max(
+                      (rigidBody.linvel()?.z || 0) + transformAppSpeedValue(zVelo),
+                      zMaxVelo
+                    );
+              const vector3 = new THREE.Vector3(xAddition, rigidBody.linvel()?.y || 0, zAddition);
               rigidBody.setLinvel(vector3, !rigidBody.isMoving());
               charData.lviCheckTime = performance.now();
             }
@@ -334,7 +314,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
       x: velo.x,
       y: velo.y,
       z: velo.z,
-      total: Math.round(Math.max(velo.x, velo.y, velo.z) * 1000) / 1000,
+      world: Math.round(new THREE.Vector3(velo.x, velo.y, velo.z).length() * 1000) / 1000,
     };
     characterData.position.x = physObj.mesh?.position.x || 0;
     characterData.position.y = physObj.mesh?.position.y || 0;
