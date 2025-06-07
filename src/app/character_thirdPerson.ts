@@ -195,10 +195,35 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
                     zDir *
                     mainDirection;
 
+              const xVelo2 =
+                (1 - Math.abs(charData.charRotation) / HALF_PI) *
+                charData.maxVelocity *
+                mainDirection;
+
+              const zVelo2 =
+                (1 - Math.abs(charData.charRotation + HALF_PI * zDir) / HALF_PI) *
+                charData.maxVelocity *
+                zDir *
+                mainDirection;
+
+              const xMulti = Math.abs(1 - Math.abs(charData.charRotation / HALF_PI));
+              const zMulti = Math.abs(
+                1 - Math.abs((charData.charRotation + HALF_PI * zDir) / HALF_PI)
+              );
+
+              const xVelo3 = xMulti * xDir * 1000 + (1000 - zMulti * zDir * 1000) * xDir;
+              const zVelo3 = zMulti * zDir * 1000 + (1000 - xMulti * xDir * 1000) * zDir;
+
+              // const xVelo3 = xMulti * xDir * 1000;
+              // const zVelo3 = zMulti * zDir * 1000;
+
+              // console.log('xMulti', xMulti);
+              console.log('velo', xVelo3, zVelo3);
+
               const vector3 = new THREE.Vector3(
-                transformAppSpeedValue(xVelo),
+                transformAppSpeedValue(xVelo3),
                 rigidBody.linvel()?.y || 0,
-                transformAppSpeedValue(zVelo)
+                transformAppSpeedValue(zVelo3)
               );
               rigidBody.setLinvel(vector3, !rigidBody.isMoving());
               charData.lviCheckTime = performance.now();
@@ -234,15 +259,24 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   groundRaycaster.far = 10;
   const usableVec = new THREE.Vector3();
   const groundRaycastVecDir = new THREE.Vector3(0, -1, 0);
+  const checkIntersectsObjectAndDistance = (intersects: THREE.Intersection[]) => {
+    for (let i = 0; i < intersects.length; i++) {
+      if (
+        (intersects[i].object as unknown as { userData?: { [key: string]: unknown } }).userData
+          ?.isPhysicsObject &&
+        intersects[i].distance < characterData.groundedRayMaxDistance
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
   const detectGround = () => {
     // First ray from the middle of the character
     groundRaycaster.set(charMesh.position, groundRaycastVecDir);
     let intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    let isGroundedCheck =
-      intersects.length &&
-      (intersects[0].object as unknown as { userData?: { [key: string]: unknown } }).userData
-        ?.isPhysicsObject &&
-      intersects[0].distance < characterData.groundedRayMaxDistance;
+    // console.log('GROUND', intersects.length);
+    let isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
     if (isGroundedCheck) {
       characterData.isGrounded = true;
       return;
@@ -252,11 +286,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     usableVec.copy(charMesh.position).sub({ x: characterData.radius, y: 0, z: 0 });
     groundRaycaster.set(usableVec, groundRaycastVecDir);
     intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    isGroundedCheck =
-      intersects.length &&
-      (intersects[0].object as unknown as { userData?: { [key: string]: unknown } }).userData
-        ?.isPhysicsObject &&
-      intersects[0].distance < characterData.groundedRayMaxDistance;
+    isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
     if (isGroundedCheck) {
       characterData.isGrounded = true;
       return;
@@ -264,11 +294,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     usableVec.copy(charMesh.position).sub({ x: 0, y: 0, z: characterData.radius });
     groundRaycaster.set(usableVec, groundRaycastVecDir);
     intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    isGroundedCheck =
-      intersects.length &&
-      (intersects[0].object as unknown as { userData?: { [key: string]: unknown } }).userData
-        ?.isPhysicsObject &&
-      intersects[0].distance < characterData.groundedRayMaxDistance;
+    isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
     if (isGroundedCheck) {
       characterData.isGrounded = true;
       return;
@@ -276,11 +302,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     usableVec.copy(charMesh.position).add({ x: characterData.radius, y: 0, z: 0 });
     groundRaycaster.set(usableVec, groundRaycastVecDir);
     intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    isGroundedCheck =
-      intersects.length &&
-      (intersects[0].object as unknown as { userData?: { [key: string]: unknown } }).userData
-        ?.isPhysicsObject &&
-      intersects[0].distance < characterData.groundedRayMaxDistance;
+    isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
     if (isGroundedCheck) {
       characterData.isGrounded = true;
       return;
@@ -288,11 +310,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     usableVec.copy(charMesh.position).add({ x: 0, y: 0, z: characterData.radius });
     groundRaycaster.set(usableVec, groundRaycastVecDir);
     intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    isGroundedCheck =
-      intersects.length &&
-      (intersects[0].object as unknown as { userData?: { [key: string]: unknown } }).userData
-        ?.isPhysicsObject &&
-      intersects[0].distance < characterData.groundedRayMaxDistance;
+    isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
     if (isGroundedCheck) {
       characterData.isGrounded = true;
       return;

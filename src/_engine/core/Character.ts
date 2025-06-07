@@ -239,7 +239,7 @@ export const createTrackCharacterContent = (winData?: { [key: string]: unknown }
   let trackerUpdateAccTime = 0;
   trackCharLoopIndex = createSceneAppLooper((delta) => {
     trackerUpdateAccTime += delta;
-    if (trackerUpdateAccTime > TRACKER_UPDATE_INTERVAL) {
+    if (trackerUpdateAccTime > TRACKER_UPDATE_INTERVAL && characters[d.id]) {
       trackerContainer.update();
       trackerUpdateAccTime = 0;
     }
@@ -420,7 +420,7 @@ const createCharactersDebuggerList = () => {
           isDebugWindow: true,
           content: createEditCharacterContent,
           data: { id: character.id, CHAR_EDIT_WIN_ID },
-          closeOnSceneChange: true,
+          removeOnSceneChange: true, // @TODO: This is the only way to get the character window to work properly after scene change (and coming back), fix this
         });
         updateDebuggerCharactersListSelectedClass(keys[i]);
       },
