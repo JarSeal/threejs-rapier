@@ -14,46 +14,59 @@ import { getPhysicsObject, PhysicsObject } from '../_engine/core/PhysicsRapier';
 import { createSceneAppLooper, getRootScene } from '../_engine/core/Scene';
 
 // @TODO: add comments for each
+// If a prop has one underscore (_) then it means it is a configuration,
+// if a prop has two underscores (__) then it means it is a memory slot for data (not configurable)
 export type CharacterData = {
-  height: number;
-  radius: number;
-  charRotation: number;
-  rotateSpeed: number;
-  maxVelocity: number;
-  inTheAirDiminisher: number;
-  // @TODO: isRunning
-  // @TODO: runningMultiplier
-  linearVelocityInterval: number;
-  lviCheckTime: number;
-  accumulateVeloPerInterval: number;
-  isMoving: boolean;
-  isGrounded: boolean;
-  groundedRayMaxDistance: number;
-  isFalling: boolean;
-  jumpTime: number;
-  jumpAmount: number;
   position: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number; world: number };
+  charRotation: number;
+  isMoving: boolean;
+  isGrounded: boolean;
+  isFalling: boolean;
+  isRunning: boolean;
+  isCrouching: boolean;
+  _height: number;
+  _radius: number;
+  _rotateSpeed: number;
+  _maxVelocity: number;
+  _jumpAmount: number;
+  _inTheAirDiminisher: number;
+  _linearVelocityInterval: number;
+  _accumulateVeloPerInterval: number;
+  _groundedRayMaxDistance: number;
+  /** How much time is there when the character is not touching the ground and goes into the "isFalling" state (in milliseconds) */
+  _isFallingThreshold: number;
+  _runningMultiplier: number;
+  _crouchingMultiplier: number;
+  __isFallingStartTime: number;
+  __lviCheckTime: number;
+  __jumpTime: number;
 };
 
 const DEFAULT_CHARACTER_DATA: CharacterData = {
-  height: 1.74,
-  radius: 0.5,
-  charRotation: 0,
-  rotateSpeed: 5,
-  maxVelocity: 7,
-  inTheAirDiminisher: 0.2,
-  linearVelocityInterval: 10,
-  lviCheckTime: 0,
-  accumulateVeloPerInterval: 40,
-  isMoving: false,
-  isGrounded: false,
-  groundedRayMaxDistance: 1.2,
-  isFalling: false,
-  jumpTime: 0,
-  jumpAmount: 5,
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0, world: 0 },
+  charRotation: 0,
+  isMoving: false,
+  isGrounded: false,
+  isFalling: false,
+  isRunning: false,
+  isCrouching: false,
+  _height: 1.74,
+  _radius: 0.5,
+  _rotateSpeed: 5,
+  _maxVelocity: 3.7,
+  _jumpAmount: 5,
+  _inTheAirDiminisher: 0.2,
+  _linearVelocityInterval: 10,
+  _accumulateVeloPerInterval: 80,
+  _groundedRayMaxDistance: 1.2,
+  _isFallingThreshold: 1200,
+  _runningMultiplier: 1.85,
+  _crouchingMultiplier: 0.65,
+  __isFallingStartTime: 0,
+  __lviCheckTime: 0,
+  __jumpTime: 0,
 };
 let characterData = DEFAULT_CHARACTER_DATA;
 
@@ -79,7 +92,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   const charCapsule = createGeometry({
     id: 'charCapsuleThirdPerson1',
     type: 'CAPSULE',
-    params: { radius: characterData.radius, height: characterData.height / 3 },
+    params: { radius: characterData._radius, height: characterData._height / 3 },
   });
   const charMaterial = createMaterial({
     id: 'box1MaterialThirdPerson',
@@ -153,7 +166,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
 
           // Turn left (only mesh rotation, not physical object)
           if (keysPressed.includes('a')) {
-            const rotateSpeed = transformAppSpeedValue(charData.rotateSpeed || 0);
+            const rotateSpeed = transformAppSpeedValue(charData._rotateSpeed || 0);
             mesh.rotateY(rotateSpeed);
             charData.charRotation = eulerForCharRotation.setFromQuaternion(
               mesh.quaternion,
@@ -162,7 +175,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
           }
           // Turn right (only mesh rotation, not physical object)
           if (keysPressed.includes('d')) {
-            const rotateSpeed = -transformAppSpeedValue(charData.rotateSpeed || 0);
+            const rotateSpeed = -transformAppSpeedValue(charData._rotateSpeed || 0);
             mesh.rotateY(rotateSpeed);
             charData.charRotation = eulerForCharRotation.setFromQuaternion(
               mesh.quaternion,
@@ -171,42 +184,45 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
           }
           // Forward and backward
           if (keysPressed.includes('w') || keysPressed.includes('s')) {
-            // @TODO: add check if not touching ground, then make the moving amount much smaller (xVelo * 0.2 or something)
             const intervalCheckOk =
-              charData?.linearVelocityInterval === 0 ||
-              (charData?.lviCheckTime || 0) + (charData?.linearVelocityInterval || 0) <
+              charData?._linearVelocityInterval === 0 ||
+              (charData?.__lviCheckTime || 0) + (charData?._linearVelocityInterval || 0) <
                 performance.now();
             const physObj = data?.physObj as PhysicsObject;
             const rigidBody = physObj.rigidBody;
             if (intervalCheckOk && physObj.rigidBody && rigidBody) {
-              const inTheAirDiminisher = characterData.isGrounded
-                ? 1
-                : characterData.inTheAirDiminisher;
-              const veloAccu = characterData.accumulateVeloPerInterval * inTheAirDiminisher;
+              const inTheAirDiminisher =
+                characterData.isGrounded && !characterData.isFalling
+                  ? 1
+                  : characterData._inTheAirDiminisher;
+              const veloAccu = transformAppSpeedValue(
+                characterData._accumulateVeloPerInterval * inTheAirDiminisher
+              );
+              const maxVeloMultiplier =
+                // isRunning
+                characterData.isRunning && characterData.isGrounded && !characterData.isCrouching
+                  ? characterData._runningMultiplier
+                  : // isCrouching
+                    characterData.isGrounded && characterData.isCrouching
+                    ? characterData._crouchingMultiplier
+                    : 1;
+              const maxVelo = characterData._maxVelocity * maxVeloMultiplier;
               const mainDirection = keysPressed.includes('s') ? -1 : 1;
               const xVelo = Math.cos(characterData.charRotation) * veloAccu * mainDirection;
               const zVelo = -Math.sin(characterData.charRotation) * veloAccu * mainDirection;
-              const xMaxVelo =
-                Math.cos(characterData.charRotation) * characterData.maxVelocity * mainDirection;
-              const zMaxVelo =
-                -Math.sin(characterData.charRotation) * characterData.maxVelocity * mainDirection;
+              const xMaxVelo = Math.cos(characterData.charRotation) * maxVelo * mainDirection;
+              const zMaxVelo = -Math.sin(characterData.charRotation) * maxVelo * mainDirection;
               const xAddition =
                 xVelo > 0
-                  ? Math.min((rigidBody.linvel()?.x || 0) + transformAppSpeedValue(xVelo), xMaxVelo)
-                  : Math.max(
-                      (rigidBody.linvel()?.x || 0) + transformAppSpeedValue(xVelo),
-                      xMaxVelo
-                    );
+                  ? Math.min((rigidBody.linvel()?.x || 0) + xVelo, xMaxVelo)
+                  : Math.max((rigidBody.linvel()?.x || 0) + xVelo, xMaxVelo);
               const zAddition =
                 zVelo > 0
-                  ? Math.min((rigidBody.linvel()?.z || 0) + transformAppSpeedValue(zVelo), zMaxVelo)
-                  : Math.max(
-                      (rigidBody.linvel()?.z || 0) + transformAppSpeedValue(zVelo),
-                      zMaxVelo
-                    );
+                  ? Math.min((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo)
+                  : Math.max((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo);
               const vector3 = new THREE.Vector3(xAddition, rigidBody.linvel()?.y || 0, zAddition);
               rigidBody.setLinvel(vector3, !rigidBody.isMoving());
-              charData.lviCheckTime = performance.now();
+              charData.__lviCheckTime = performance.now();
             }
           }
         },
@@ -222,12 +238,41 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
           const charObj = data?.charObject as CharacterObject;
           const charData = charObj.data as CharacterData;
           // @TODO: add check if on the ground
-          const jumpCheckOk = charData.isGrounded && charData.jumpTime + 100 < performance.now();
+          const jumpCheckOk =
+            charData.isGrounded &&
+            !charData.isCrouching &&
+            charData.__jumpTime + 100 < performance.now();
           if (jumpCheckOk) {
             const physObj = data?.physObj as PhysicsObject;
-            physObj.rigidBody?.applyImpulse(new THREE.Vector3(0, charData.jumpAmount, 0), true);
-            charData.jumpTime = performance.now();
+            physObj.rigidBody?.applyImpulse(new THREE.Vector3(0, charData._jumpAmount, 0), true);
+            charData.__jumpTime = performance.now();
           }
+        },
+      },
+      {
+        id: 'charRun',
+        key: 'Shift',
+        type: 'KEY_DOWN',
+        fn: (e, __, data) => {
+          e.preventDefault();
+          if (e.repeat) return;
+          // Set isRunning state
+          const charObj = data?.charObject as CharacterObject;
+          const charData = charObj.data as CharacterData;
+          charData.isRunning = !charData.isRunning;
+        },
+      },
+      {
+        id: 'charCrouch',
+        key: 'Control',
+        type: 'KEY_DOWN',
+        fn: (e, __, data) => {
+          e.preventDefault();
+          if (e.repeat) return;
+          // Set isCrouching state
+          const charObj = data?.charObject as CharacterObject;
+          const charData = charObj.data as CharacterData;
+          charData.isCrouching = !charData.isCrouching;
         },
       },
     ],
@@ -244,7 +289,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
       if (
         (intersects[i].object as unknown as { userData?: { [key: string]: unknown } }).userData
           ?.isPhysicsObject &&
-        intersects[i].distance < characterData.groundedRayMaxDistance
+        intersects[i].distance < characterData._groundedRayMaxDistance
       ) {
         return true;
       }
@@ -263,7 +308,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     }
 
     // Four rays from the edges of the character
-    usableVec.copy(charMesh.position).sub({ x: characterData.radius, y: 0, z: 0 });
+    usableVec.copy(charMesh.position).sub({ x: characterData._radius, y: 0, z: 0 });
     groundRaycaster.set(usableVec, groundRaycastVecDir);
     intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
     isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
@@ -271,7 +316,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
       characterData.isGrounded = true;
       return;
     }
-    usableVec.copy(charMesh.position).sub({ x: 0, y: 0, z: characterData.radius });
+    usableVec.copy(charMesh.position).sub({ x: 0, y: 0, z: characterData._radius });
     groundRaycaster.set(usableVec, groundRaycastVecDir);
     intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
     isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
@@ -279,7 +324,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
       characterData.isGrounded = true;
       return;
     }
-    usableVec.copy(charMesh.position).add({ x: characterData.radius, y: 0, z: 0 });
+    usableVec.copy(charMesh.position).add({ x: characterData._radius, y: 0, z: 0 });
     groundRaycaster.set(usableVec, groundRaycastVecDir);
     intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
     isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
@@ -287,7 +332,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
       characterData.isGrounded = true;
       return;
     }
-    usableVec.copy(charMesh.position).add({ x: 0, y: 0, z: characterData.radius });
+    usableVec.copy(charMesh.position).add({ x: 0, y: 0, z: characterData._radius });
     groundRaycaster.set(usableVec, groundRaycastVecDir);
     intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
     isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
@@ -304,18 +349,37 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     const physObj = getPhysicsObject(thirdPersonCharacterObject?.physObjectId || '');
     const mesh = physObj?.mesh;
     if (!physObj || !mesh) return;
+
+    // Set isFalling
+    if (characterData.isGrounded) {
+      characterData.__isFallingStartTime = 0;
+      characterData.isFalling = false;
+    } else if (!characterData.__isFallingStartTime) {
+      characterData.__isFallingStartTime = performance.now();
+    } else if (
+      characterData.__isFallingStartTime + characterData._isFallingThreshold <
+      performance.now()
+    ) {
+      characterData.isFalling = true;
+    }
+
+    // Set isMoving (physics isMoving, aka. is awake)
     characterData.isMoving = physObj.rigidBody?.isMoving() || false;
     const velo = usableVec.set(
       Math.round(Math.abs(physObj.rigidBody?.linvel().x || 0) * 1000) / 1000,
       Math.round(Math.abs(physObj.rigidBody?.linvel().y || 0) * 1000) / 1000,
       Math.round(Math.abs(physObj.rigidBody?.linvel().z || 0) * 1000) / 1000
     );
+
+    // Set velocity
     characterData.velocity = {
       x: velo.x,
       y: velo.y,
       z: velo.z,
       world: Math.round(new THREE.Vector3(velo.x, velo.y, velo.z).length() * 1000) / 1000,
     };
+
+    // Set position
     characterData.position.x = physObj.mesh?.position.x || 0;
     characterData.position.y = physObj.mesh?.position.y || 0;
     characterData.position.z = physObj.mesh?.position.z || 0;
