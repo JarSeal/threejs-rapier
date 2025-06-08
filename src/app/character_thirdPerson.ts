@@ -24,7 +24,7 @@ export type CharacterData = {
   isGrounded: boolean;
   isFalling: boolean;
   isRunning: boolean;
-  isCrouching: boolean;
+  isCrouching: boolean; // @TODO: add physics object switching (several physic objects)
   _height: number;
   _radius: number;
   _rotateSpeed: number;
