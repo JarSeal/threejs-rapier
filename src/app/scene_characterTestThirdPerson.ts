@@ -122,16 +122,16 @@ export const sceneCharacterTest = async () =>
       receiveShadow: true,
     });
     groundMesh.position.set(groundPos.x, groundPos.y, groundPos.z);
-    createPhysicsObjectWithMesh(
-      {
+    createPhysicsObjectWithMesh({
+      physicsParams: {
         collider: {
           type: 'BOX',
           friction: 2,
         },
         rigidBody: { rigidType: 'FIXED', translation: groundPos },
       },
-      groundMesh
-    );
+      meshOrMeshId: groundMesh,
+    });
     scene.add(groundMesh);
 
     // BOX
@@ -151,8 +151,8 @@ export const sceneCharacterTest = async () =>
       },
     });
     const box = createMesh({ id: 'testBox1Mesh', geo: geometry2, mat: material2 });
-    createPhysicsObjectWithMesh(
-      {
+    createPhysicsObjectWithMesh({
+      physicsParams: {
         collider: {
           type: 'BOX',
           restitution: 0.5,
@@ -164,8 +164,8 @@ export const sceneCharacterTest = async () =>
           angvel: { x: 1, y: -2, z: 20 },
         },
       },
-      box
-    );
+      meshOrMeshId: box,
+    });
     box.castShadow = true;
     box.receiveShadow = true;
     scene.add(box);

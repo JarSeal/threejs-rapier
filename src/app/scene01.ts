@@ -91,8 +91,8 @@ export const scene01 = async () =>
     const groundMat = createMaterial({ id: 'ground', type: 'BASIC', params: { color: 0x0024000 } });
     const groundMesh = createMesh({ geo: groundGeo, mat: groundMat });
     groundMesh.position.set(groundPos.x, groundPos.y, groundPos.z);
-    createPhysicsObjectWithMesh(
-      {
+    createPhysicsObjectWithMesh({
+      physicsParams: {
         collider: {
           type: 'BOX',
           hx: groundWidthAndDepth / 2,
@@ -102,8 +102,8 @@ export const scene01 = async () =>
         },
         rigidBody: { rigidType: 'FIXED', translation: groundPos },
       },
-      groundMesh
-    );
+      meshOrMeshId: groundMesh,
+    });
     scene.add(groundMesh);
 
     const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });
@@ -130,8 +130,8 @@ export const scene01 = async () =>
     });
     const box = createMesh({ id: 'boxMesh1', geo: geometry2, mat: material2 });
     box.position.set(2, 0, 0);
-    createPhysicsObjectWithMesh(
-      {
+    createPhysicsObjectWithMesh({
+      physicsParams: {
         collider: {
           type: 'BOX',
           hx: 0.5,
@@ -146,8 +146,8 @@ export const scene01 = async () =>
           angvel: { x: 1, y: -2, z: 20 },
         },
       },
-      box
-    );
+      meshOrMeshId: box,
+    });
     scene.add(box);
 
     const physBall01 = createMesh({
@@ -237,8 +237,8 @@ export const scene01 = async () =>
       throwOnError: true,
     });
     if (importedBox) {
-      createPhysicsObjectWithMesh(
-        {
+      createPhysicsObjectWithMesh({
+        physicsParams: {
           collider: { type: 'TRIMESH' },
           rigidBody: {
             rigidType: 'DYNAMIC',
@@ -246,8 +246,8 @@ export const scene01 = async () =>
             angvel: { x: 3, y: 1, z: 5 },
           },
         },
-        importedBox
-      );
+        meshOrMeshId: importedBox,
+      });
       const material = createMaterial({
         id: 'importedBox01Material',
         type: 'PHONG',

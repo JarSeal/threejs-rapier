@@ -131,8 +131,8 @@ export const scene01 = async () =>
       castShadow: true,
     });
     groundMesh.position.set(groundPos.x, groundPos.y, groundPos.z);
-    createPhysicsObjectWithMesh(
-      {
+    createPhysicsObjectWithMesh({
+      physicsParams: {
         collider: {
           type: 'BOX',
           hx: groundWidthAndDepth / 2,
@@ -151,8 +151,8 @@ export const scene01 = async () =>
         },
         rigidBody: { rigidType: 'FIXED', translation: groundPos },
       },
-      groundMesh
-    );
+      meshOrMeshId: groundMesh,
+    });
     scene.add(groundMesh);
 
     const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });
@@ -179,8 +179,8 @@ export const scene01 = async () =>
     });
     const box = createMesh({ id: 'boxMesh1', geo: geometry2, mat: material2 });
     box.position.set(2, 0, 0);
-    createPhysicsObjectWithMesh(
-      {
+    createPhysicsObjectWithMesh({
+      physicsParams: {
         collider: {
           type: 'BOX',
           hx: 0.5,
@@ -195,8 +195,8 @@ export const scene01 = async () =>
           angvel: { x: 1, y: -2, z: 20 },
         },
       },
-      box
-    );
+      meshOrMeshId: box,
+    });
     box.castShadow = true;
     box.receiveShadow = true;
     scene.add(box);
@@ -294,8 +294,8 @@ export const scene01 = async () =>
     if (importedBox) {
       importedBox.receiveShadow = true;
       importedBox.castShadow = true;
-      createPhysicsObjectWithMesh(
-        {
+      createPhysicsObjectWithMesh({
+        physicsParams: {
           collider: { type: 'TRIMESH' },
           rigidBody: {
             rigidType: 'DYNAMIC',
@@ -304,8 +304,8 @@ export const scene01 = async () =>
             ccdEnabled: true,
           },
         },
-        importedBox
-      );
+        meshOrMeshId: importedBox,
+      });
       const material = createMaterial({
         id: 'importedBox01Material',
         type: 'PHONG',
@@ -318,19 +318,22 @@ export const scene01 = async () =>
       scene.add(importedBox);
     }
 
-    createPhysicsObjectWithoutMesh('sensorTest', {
-      collider: {
-        type: 'BOX',
-        hx: 10,
-        hy: 0.2,
-        hz: 10,
-        isSensor: true,
-        collisionEventFn: (obj1, obj2, started) => {
-          console.log('SENSOR ALERT', obj1, obj2, started);
+    createPhysicsObjectWithoutMesh({
+      id: 'sensorTest',
+      physicsParams: {
+        collider: {
+          type: 'BOX',
+          hx: 10,
+          hy: 0.2,
+          hz: 10,
+          isSensor: true,
+          collisionEventFn: (obj1, obj2, started) => {
+            console.log('SENSOR ALERT', obj1, obj2, started);
+          },
+          translation: { x: 0, y: -1.5, z: 0 },
         },
-        translation: { x: 0, y: -1.5, z: 0 },
+        // rigidBody: { rigidType: 'FIXED', translation: { x: 0, y: -1.5, z: 0 } },
       },
-      // rigidBody: { rigidType: 'FIXED', translation: { x: 0, y: -1.5, z: 0 } },
     });
 
     // createSceneMainLooper(() => {

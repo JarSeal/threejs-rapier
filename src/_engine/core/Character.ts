@@ -77,12 +77,13 @@ export const createCharacter = ({
   noWarnForUnitializedScene?: boolean;
   data?: { [key: string]: unknown };
 }) => {
-  const physObj = createPhysicsObjectWithMesh(
+  const physObj = createPhysicsObjectWithMesh({
     physicsParams,
     meshOrMeshId,
+    id,
     sceneId,
-    noWarnForUnitializedScene
-  );
+    noWarnForUnitializedScene,
+  });
   if (!physObj) {
     const msg = `Could not create character with id "${id}" in CharacterController createCharacter. Physics params: ${JSON.stringify(physicsParams)} -- Mesh id: ${typeof meshOrMeshId === 'string' ? meshOrMeshId : meshOrMeshId.userData.id} -- Scene id: ${sceneId}`;
     lerror(msg);

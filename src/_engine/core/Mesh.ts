@@ -57,7 +57,12 @@ export const createMesh = ({
   const savedMesh = saveMesh(mesh, id, true);
 
   if (phy && savedMesh) {
-    createPhysicsObjectWithMesh(phy, savedMesh, phy.sceneId, phy.noWarnForUnitializedScene);
+    createPhysicsObjectWithMesh({
+      physicsParams: phy,
+      meshOrMeshId: savedMesh,
+      sceneId: phy.sceneId,
+      noWarnForUnitializedScene: phy.noWarnForUnitializedScene,
+    });
   }
 
   return savedMesh || mesh;

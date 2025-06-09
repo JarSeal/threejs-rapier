@@ -10,163 +10,183 @@ import { Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { existsOrWarn } from '../utils/helpers';
+import { existsOrThrow, existsOrWarn } from '../utils/helpers';
+
+type CollisionEventFn = (
+  physObj1: PhysicsObject,
+  physObj2: PhysicsObject,
+  started: boolean
+) => void;
+
+type ContactForceEventFn = (
+  physObj1: PhysicsObject,
+  physObj2: PhysicsObject,
+  event: Rapier.TempContactForceEvent
+) => void;
 
 export type PhysicsObject = {
   id?: string;
   mesh?: THREE.Mesh;
   collider: Rapier.Collider;
   rigidBody?: Rapier.RigidBody;
+  collisionEventFn?: CollisionEventFn;
+  contactForceEventFn?: ContactForceEventFn;
+  currentObjectIndex?: number;
+  multiObjects?: {
+    mesh?: THREE.Mesh;
+    collider: Rapier.Collider;
+    rigidBody?: Rapier.RigidBody;
+    collisionEventFn?: CollisionEventFn;
+    contactForceEventFn?: ContactForceEventFn;
+  }[];
+};
+
+type ColliderParams = (
+  | {
+      type: 'CUBOID' | 'BOX';
+      hx?: number;
+      hy?: number;
+      hz?: number;
+      borderRadius?: number;
+    }
+  | {
+      type: 'BALL' | 'SPHERE';
+      radius?: number;
+    }
+  | {
+      type: 'CAPSULE' | 'CONE' | 'CYLINDER';
+      halfHeight?: number;
+      radius?: number;
+      borderRadius?: number;
+    }
+  | {
+      type: 'TRIANGLE';
+      a: Rapier.Vector3;
+      b: Rapier.Vector3;
+      c: Rapier.Vector3;
+      borderRadius?: number;
+    }
+  | {
+      type: 'TRIMESH';
+      vertices?: Float32Array;
+      indices?: Uint32Array;
+    }
+) & {
+  /** Mass (default 1.0) */
+  density?: number;
+
+  /** Translation (position), only has affect if there is no rigid body */
+  translation?: { x: number; y: number; z: number };
+
+  /** Rotation (position) in quaternion, only has affect if there is no rigid body */
+  rotation?: { x: number; y: number; z: number; w: number };
+
+  /** Object's friction value, usually between 0 to 1 but can me more (default is @TODO: find out default) */
+  friction?: number;
+
+  /** How two colliding objects apply friction (default AVERAGE). The following precedence is used: MAX > MULTIPLY > MIN > AVERAGE. */
+  frictionCombineRule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE';
+
+  /** Object restitution (bounce) value, usually between 0 to 1 but can me more (default is @TODO: find out default) */
+  restitution?: number;
+
+  /** How two colliding objects apply restitution (default AVERAGE). The following precedence is used: MAX > MULTIPLY > MIN > AVERAGE. */
+  restitutionCombineRule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE';
+
+  /** Whether the collider is a sensor or not */
+  isSensor?: boolean;
+
+  /** Enables collision events, if collisionEventFn is defined this is enabled automatically */
+  enableCollisionActiveEvents?: boolean;
+
+  /** Enables collision events, if collisionEventFn is defined this is enabled automatically */
+  enableContactForceActiveEvents?: boolean;
+
+  /** Creates a collision event callback, automatically sets enableCollisionActiveEvents to true for the collider */
   collisionEventFn?: (physObj1: PhysicsObject, physObj2: PhysicsObject, started: boolean) => void;
+
+  /** Creates a contact force event callback, automatically sets enableContactForceActiveEvents to true for the collider */
   contactForceEventFn?: (
     physObj1: PhysicsObject,
     physObj2: PhysicsObject,
-    event: Rapier.TempContactForceEvent
+    e: Rapier.TempContactForceEvent
   ) => void;
 };
 
+type RigidBodyParams = {
+  /** Type of rigid body */
+  rigidType: 'FIXED' | 'DYNAMIC' | 'POS_BASED' | 'VELO_BASED';
+
+  /** Translation (position) */
+  translation?: { x: number; y: number; z: number };
+
+  /** Rotation (position) in quaternion */
+  rotation?: { x: number; y: number; z: number; w: number };
+
+  /** Linear (translation) velocity */
+  linvel?: { x: number; y: number; z: number };
+
+  /** Angular (rotation) velocity */
+  angvel?: { x: number; y: number; z: number };
+
+  /** Gravity scale */
+  gravityScale?: number;
+
+  /** Force to be applied (constant force) */
+  force?: { x: number; y: number; z: number };
+
+  /** Torque force to be applied (constant force) */
+  torqueForce?: { x: number; y: number; z: number };
+
+  /** Force at point to be applied (constant force) */
+  forceAtPoint?: {
+    force: { x: number; y: number; z: number };
+    point: { x: number; y: number; z: number };
+  };
+
+  /** Impulse force to be applied */
+  impulse?: { x: number; y: number; z: number };
+
+  /** Impulse torque force to be applied */
+  torqueImpulse?: { x: number; y: number; z: number };
+
+  /** Impulse at point to be applied (constant force) */
+  impulseAtPoint?: {
+    force: { x: number; y: number; z: number };
+    point: { x: number; y: number; z: number };
+  };
+
+  /** Translation locks */
+  lockTranslations?: { x: boolean; y: boolean; z: boolean };
+
+  /** Rotation locks */
+  lockRotations?: { x: boolean; y: boolean; z: boolean };
+
+  /** Linear damping (slowing down of movement, eg. air friction) */
+  linearDamping?: number;
+
+  /** Angular damping (slowing down of rotation, eg. air friction) */
+  angularDamping?: number;
+
+  /** Dominance group, from -127 to 127 (default 0) */
+  dominance?: number;
+
+  /** Continuous Collision Detection (CCD) enabled (default false) */
+  ccdEnabled?: boolean;
+
+  /** Soft CCD prediction distance */
+  softCcdDistance?: number;
+
+  /** Whether the body should be waken up or not (default true) */
+  wakeUp?: boolean;
+};
+
 export type PhysicsParams = {
-  /** Collider type and params */
-  collider: (
-    | {
-        type: 'CUBOID' | 'BOX';
-        hx?: number;
-        hy?: number;
-        hz?: number;
-        borderRadius?: number;
-      }
-    | {
-        type: 'BALL' | 'SPHERE';
-        radius?: number;
-      }
-    | {
-        type: 'CAPSULE' | 'CONE' | 'CYLINDER';
-        halfHeight?: number;
-        radius?: number;
-        borderRadius?: number;
-      }
-    | {
-        type: 'TRIANGLE';
-        a: Rapier.Vector3;
-        b: Rapier.Vector3;
-        c: Rapier.Vector3;
-        borderRadius?: number;
-      }
-    | {
-        type: 'TRIMESH';
-        vertices?: Float32Array;
-        indices?: Uint32Array;
-      }
-  ) & {
-    /** Mass (default 1.0) */
-    density?: number;
+  /** Collider type and params {@link ColliderParams} */
+  collider: ColliderParams;
 
-    /** Translation (position), only has affect if there is no rigid body */
-    translation?: { x: number; y: number; z: number };
-
-    /** Rotation (position) in quaternion, only has affect if there is no rigid body */
-    rotation?: { x: number; y: number; z: number; w: number };
-
-    /** Object's friction value, usually between 0 to 1 but can me more (default is @TODO: find out default) */
-    friction?: number;
-
-    /** How two colliding objects apply friction (default AVERAGE). The following precedence is used: MAX > MULTIPLY > MIN > AVERAGE. */
-    frictionCombineRule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE';
-
-    /** Object restitution (bounce) value, usually between 0 to 1 but can me more (default is @TODO: find out default) */
-    restitution?: number;
-
-    /** How two colliding objects apply restitution (default AVERAGE). The following precedence is used: MAX > MULTIPLY > MIN > AVERAGE. */
-    restitutionCombineRule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE';
-
-    /** Whether the collider is a sensor or not */
-    isSensor?: boolean;
-
-    /** Enables collision events, if collisionEventFn is defined this is enabled automatically */
-    enableCollisionActiveEvents?: boolean;
-
-    /** Enables collision events, if collisionEventFn is defined this is enabled automatically */
-    enableContactForceActiveEvents?: boolean;
-
-    /** Creates a collision event callback, automatically sets enableCollisionActiveEvents to true for the collider */
-    collisionEventFn?: (physObj1: PhysicsObject, physObj2: PhysicsObject, started: boolean) => void;
-
-    /** Creates a contact force event callback, automatically sets enableContactForceActiveEvents to true for the collider */
-    contactForceEventFn?: (
-      physObj1: PhysicsObject,
-      physObj2: PhysicsObject,
-      e: Rapier.TempContactForceEvent
-    ) => void;
-  };
-
-  /** Rigid body type and params */
-  rigidBody?: {
-    /** Type of rigid body */
-    rigidType: 'FIXED' | 'DYNAMIC' | 'POS_BASED' | 'VELO_BASED';
-
-    /** Translation (position) */
-    translation?: { x: number; y: number; z: number };
-
-    /** Rotation (position) in quaternion */
-    rotation?: { x: number; y: number; z: number; w: number };
-
-    /** Linear (translation) velocity */
-    linvel?: { x: number; y: number; z: number };
-
-    /** Angular (rotation) velocity */
-    angvel?: { x: number; y: number; z: number };
-
-    /** Gravity scale */
-    gravityScale?: number;
-
-    /** Force to be applied (constant force) */
-    force?: { x: number; y: number; z: number };
-
-    /** Torque force to be applied (constant force) */
-    torqueForce?: { x: number; y: number; z: number };
-
-    /** Force at point to be applied (constant force) */
-    forceAtPoint?: {
-      force: { x: number; y: number; z: number };
-      point: { x: number; y: number; z: number };
-    };
-
-    /** Impulse force to be applied */
-    impulse?: { x: number; y: number; z: number };
-
-    /** Impulse torque force to be applied */
-    torqueImpulse?: { x: number; y: number; z: number };
-
-    /** Impulse at point to be applied (constant force) */
-    impulseAtPoint?: {
-      force: { x: number; y: number; z: number };
-      point: { x: number; y: number; z: number };
-    };
-
-    /** Translation locks */
-    lockTranslations?: { x: boolean; y: boolean; z: boolean };
-
-    /** Rotation locks */
-    lockRotations?: { x: boolean; y: boolean; z: boolean };
-
-    /** Linear damping (slowing down of movement, eg. air friction) */
-    linearDamping?: number;
-
-    /** Angular damping (slowing down of rotation, eg. air friction) */
-    angularDamping?: number;
-
-    /** Dominance group, from -127 to 127 (default 0) */
-    dominance?: number;
-
-    /** Continuous Collision Detection (CCD) enabled (default false) */
-    ccdEnabled?: boolean;
-
-    /** Soft CCD prediction distance */
-    softCcdDistance?: number;
-
-    /** Whether the body should be waken up or not (default true) */
-    wakeUp?: boolean;
-  };
+  /** Rigid body type and params {@link RigidBodyParams} */
+  rigidBody?: RigidBodyParams;
 };
 
 type ScenePhysicsState = {
@@ -542,34 +562,84 @@ const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) => {
 /**
  * Creates a new physics object without a mesh and registers it to the scene id (or current scene id if scene id is not provided) in the physicsObjects object.
  * @param id (string) physics object id
- * @param physicsParamas (PhysicsParams) ({@link PhysicsParams})
+ * @param physicsParamas (PhysicsParams | PhysicsParams[]) Params (or and array of them) for the physics object(s) ({@link PhysicsParams}), if an array is provided, then the object will be a multi object
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
  * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
+ * @param currentObjectIndex (number) optional object index to be set as the first object for the multi object (only for arrays of params), if no index is provided, then the first (index 0) will be set
  * @returns PhysicsObject ({@link PhysicsObject})
  */
-export const createPhysicsObjectWithoutMesh = (
-  id: string,
-  physicsParams: PhysicsParams,
-  sceneId?: string,
-  noWarnForUnitializedScene?: boolean
-) => {
+export const createPhysicsObjectWithoutMesh = ({
+  id,
+  physicsParams,
+  sceneId,
+  noWarnForUnitializedScene,
+  currentObjectIndex,
+}: {
+  id: string;
+  physicsParams: PhysicsParams | PhysicsParams[];
+  sceneId?: string;
+  noWarnForUnitializedScene?: boolean;
+  currentObjectIndex?: number;
+}) => {
   if (!RAPIER) return;
-  const sId = getSceneIdForPhysics(sceneId, 'createPhysicsObject', noWarnForUnitializedScene);
+  const sId = getSceneIdForPhysics(
+    sceneId,
+    'createPhysicsObjectWithoutMesh',
+    noWarnForUnitializedScene
+  );
 
-  const rigidBody = createRigidBody(physicsParams);
-  const colliderDesc = createCollider(physicsParams);
-  const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
+  let rigidBody: Rapier.RigidBody | undefined = undefined;
+  let collider: Rapier.Collider | undefined = undefined;
+  let collisionEventFn: CollisionEventFn | undefined = undefined;
+  let contactForceEventFn: ContactForceEventFn | undefined = undefined;
+  const multiObjects = [];
+
+  if (Array.isArray(physicsParams)) {
+    for (let i = 0; i < physicsParams.length; i++) {
+      const rBody = createRigidBody(physicsParams[i]);
+      const colliderDesc = createCollider(physicsParams[i]);
+      const coll = physicsWorld.createCollider(colliderDesc, rBody);
+      const collEventFn = physicsParams[i].collider.collisionEventFn;
+      const contForceEventFn = physicsParams[i].collider.contactForceEventFn;
+      coll.setEnabled(false);
+      if (rBody) rBody.setEnabled(false);
+      multiObjects.push({
+        collider: coll,
+        rigidBody: rBody,
+        collisionEventFn: collEventFn,
+        contactForceEventFn: contForceEventFn,
+      });
+      if (
+        (currentObjectIndex !== undefined && i === currentObjectIndex) ||
+        (currentObjectIndex === undefined && i === 0)
+      ) {
+        rigidBody = rBody;
+        collider = coll;
+        collisionEventFn = collEventFn;
+        contactForceEventFn = contForceEventFn;
+      }
+    }
+  } else {
+    rigidBody = createRigidBody(physicsParams);
+    const colliderDesc = createCollider(physicsParams);
+    collider = physicsWorld.createCollider(colliderDesc, rigidBody);
+    collisionEventFn = physicsParams.collider.collisionEventFn;
+    contactForceEventFn = physicsParams.collider.contactForceEventFn;
+  }
+
+  collider = existsOrThrow(
+    collider,
+    `Could not create collider in createPhysicsObjectWithoutMesh with id '${id}'.`
+  );
 
   const physObj: PhysicsObject = {
     id,
     ...(rigidBody ? { rigidBody } : {}),
     collider,
-    ...(physicsParams.collider.collisionEventFn
-      ? { collisionEventFn: physicsParams.collider.collisionEventFn }
-      : {}),
-    ...(physicsParams.collider.contactForceEventFn
-      ? { contactForceEventFn: physicsParams.collider.contactForceEventFn }
-      : {}),
+    ...(collisionEventFn ? { collisionEventFn } : {}),
+    ...(contactForceEventFn ? { contactForceEventFn } : {}),
+    ...(currentObjectIndex !== undefined ? { currentObjectIndex } : {}),
+    ...(multiObjects.length ? { multiObjects } : {}),
   };
   if (!physicsObjects[sId]) physicsObjects[sId] = {};
   physicsObjects[sId][id] = physObj;
@@ -577,84 +647,175 @@ export const createPhysicsObjectWithoutMesh = (
   if (sId === getCurrentSceneId()) {
     // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
     currentScenePhysicsObjects.push(physObj);
-    if (physObj.rigidBody) {
-      physObj.rigidBody.setEnabled(true);
-    } else {
-      physObj.collider.setEnabled(true);
-    }
+    physObj.collider.setEnabled(true);
+    if (physObj.rigidBody) physObj.rigidBody.setEnabled(true);
   }
 
   return physObj;
 };
 
 /**
- * Creates a new physics object with a mesh and registers it to the scene id (or current scene id if scene id is not provided) in the physicsObjects object.
- * @param physicsParamas (PhysicsParams) ({@link PhysicsParams})
- * @param meshOrMeshId (THREE.Mesh | string) mesh or mesh id of the representation of the physics object
+ * Creates a new physics object with a mesh and registers it to the scene id (or current scene id if scene id is not provided) in the physicsObjects object. If an array of physics params is provided, then the object is a multi object, which means that the objects can be switched to another.
+ * @param physicsParamas (PhysicsParams | PhysicsParams[]) Params (or and array of them) for the physics object(s) ({@link PhysicsParams}), if an array is provided, then the object will be a multi object
+ * @param meshOrMeshId ((THREE.Mesh | string) | (THREE.Mesh | string)[]) mesh or a mesh id (or an array of either of them) of the representation of the physics object, if the physics object is a multi object, then the corresponding array index mesh will be used, but if the mesh is missing, then the first (or only) mesh will be used.
+ * @param id (string) optional physics object id, if no id is provided then the mesh id is used
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
  * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
+ * @param currentObjectIndex (number) optional object index to be set as the first object for the multi object (only for arrays of params), if no index is provided, then the first (index 0) will be set
  * @returns PhysicsObject ({@link PhysicsObject})
  */
-export const createPhysicsObjectWithMesh = (
-  physicsParams: PhysicsParams,
-  meshOrMeshId: THREE.Mesh | string,
-  sceneId?: string,
-  noWarnForUnitializedScene?: boolean
-) => {
+export const createPhysicsObjectWithMesh = ({
+  physicsParams,
+  meshOrMeshId,
+  id,
+  sceneId,
+  noWarnForUnitializedScene,
+  currentObjectIndex,
+}: {
+  physicsParams: PhysicsParams | PhysicsParams[];
+  meshOrMeshId: (THREE.Mesh | string) | (THREE.Mesh | string)[];
+  id?: string;
+  sceneId?: string;
+  noWarnForUnitializedScene?: boolean;
+  currentObjectIndex?: number;
+}) => {
   if (!RAPIER) return;
-  const sId = getSceneIdForPhysics(sceneId, 'createPhysicsObject', noWarnForUnitializedScene);
-  let id: string;
-  let mesh: THREE.Mesh;
+  const sId = getSceneIdForPhysics(
+    sceneId,
+    'createPhysicsObjectWithMesh',
+    noWarnForUnitializedScene
+  );
+  let meshId: string = '';
+  let mesh: THREE.Mesh | null = null;
+  const meshes: THREE.Mesh[] = [];
+
+  const meshWarnMsg = `Could not find mesh in createPhysicsObjectWithMesh. Physics object was not added.`;
 
   if (typeof meshOrMeshId === 'string') {
-    id = meshOrMeshId;
-    mesh = getMesh(id);
+    // Mesh id
+    meshId = meshOrMeshId;
+    mesh = getMesh(meshId);
     if (!mesh) {
-      lwarn(
-        `Could not find mesh with id "${id}" in createPhysicsObjectWithMesh. Physics object was not added.`
-      );
+      lwarn(meshWarnMsg, `Mesh id: ${meshId}`);
       return;
     }
+    mesh.userData.isPhysicsObject = true;
+  } else if (Array.isArray(meshOrMeshId)) {
+    // Array of meshes or mesh ids
+    for (let i = 0; i < meshOrMeshId.length; i++) {
+      const momid = meshOrMeshId[i];
+      if (typeof momid === 'string') {
+        const mId = momid;
+        const m = getMesh(mId);
+        if (
+          (currentObjectIndex !== undefined && i === currentObjectIndex) ||
+          (currentObjectIndex === undefined && i === 0)
+        ) {
+          meshId = mId;
+          mesh = m;
+        }
+        if (!m) {
+          lwarn(meshWarnMsg, `Mesh id: ${meshId}`);
+          return;
+        }
+        m.userData.isPhysicsObject = true;
+        meshes.push(m);
+      } else {
+        const mId = momid.userData.id;
+        const m = momid;
+        m.userData.isPhysicsObject = true;
+        if (
+          (currentObjectIndex !== undefined && i === currentObjectIndex) ||
+          (currentObjectIndex === undefined && i === 0)
+        ) {
+          meshId = mId;
+          mesh = m;
+        }
+        meshes.push(m);
+      }
+    }
   } else {
-    id = meshOrMeshId.userData.id;
+    // Single mesh
+    meshId = meshOrMeshId.userData.id;
     mesh = meshOrMeshId;
+    mesh.userData.isPhysicsObject = true;
   }
+
+  if (!mesh) {
+    lwarn(meshWarnMsg, `Mesh id: ${meshId}`);
+    return;
+  }
+
+  if (!id) id = meshId;
 
   if (id && sId) {
     const existingPhysObject = getPhysicsObject(id, sId);
-    if (existingPhysObject) {
-      return existingPhysObject;
-    }
+    if (existingPhysObject) return existingPhysObject;
   }
 
-  mesh.userData.isPhysicsObject = true;
+  let rigidBody: Rapier.RigidBody | undefined = undefined;
+  let collider: Rapier.Collider | undefined = undefined;
+  let collisionEventFn: CollisionEventFn | undefined = undefined;
+  let contactForceEventFn: ContactForceEventFn | undefined = undefined;
+  const multiObjects = [];
 
-  const rigidBody = createRigidBody(physicsParams);
-  const colliderDesc = createCollider(physicsParams, mesh);
-  const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
+  if (Array.isArray(physicsParams)) {
+    for (let i = 0; i < physicsParams.length; i++) {
+      const rBody = createRigidBody(physicsParams[i]);
+      const colliderDesc = createCollider(physicsParams[i]);
+      const coll = physicsWorld.createCollider(colliderDesc, rBody);
+      const collEventFn = physicsParams[i].collider.collisionEventFn;
+      const contForceEventFn = physicsParams[i].collider.contactForceEventFn;
+      coll.setEnabled(false);
+      if (rBody) rBody.setEnabled(false);
+      multiObjects.push({
+        collider: coll,
+        rigidBody: rBody,
+        mesh: meshes[i] || meshes[0],
+        collisionEventFn: collEventFn,
+        contactForceEventFn: contForceEventFn,
+      });
+      if (
+        (currentObjectIndex !== undefined && i === currentObjectIndex) ||
+        (currentObjectIndex === undefined && i === 0)
+      ) {
+        rigidBody = rBody;
+        collider = coll;
+        collisionEventFn = collEventFn;
+        contactForceEventFn = contForceEventFn;
+      }
+    }
+  } else {
+    rigidBody = createRigidBody(physicsParams);
+    const colliderDesc = createCollider(physicsParams);
+    collider = physicsWorld.createCollider(colliderDesc, rigidBody);
+    collisionEventFn = physicsParams.collider.collisionEventFn;
+    contactForceEventFn = physicsParams.collider.contactForceEventFn;
+  }
+
+  collider = existsOrThrow(
+    collider,
+    `Could not create collider in createPhysicsObjectWithoutMesh with id '${id}'.`
+  );
 
   const physObj: PhysicsObject = {
     id,
     mesh,
     ...(rigidBody ? { rigidBody } : {}),
     collider,
-    ...(physicsParams.collider.collisionEventFn
-      ? { collisionEventFn: physicsParams.collider.collisionEventFn }
-      : {}),
-    ...(physicsParams.collider.contactForceEventFn
-      ? { contactForceEventFn: physicsParams.collider.contactForceEventFn }
-      : {}),
+    ...(collisionEventFn ? { collisionEventFn } : {}),
+    ...(contactForceEventFn ? { contactForceEventFn } : {}),
+    ...(currentObjectIndex !== undefined ? { currentObjectIndex } : {}),
+    ...(multiObjects.length ? { multiObjects } : {}),
   };
   if (!physicsObjects[sId]) physicsObjects[sId] = {};
   physicsObjects[sId][id] = physObj;
 
   if (sId === getCurrentSceneId()) {
+    // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
     currentScenePhysicsObjects.push(physObj);
-    if (physObj.rigidBody) {
-      physObj.rigidBody.setEnabled(true);
-    } else {
-      physObj.collider.setEnabled(true);
-    }
+    physObj.collider.setEnabled(true);
+    if (physObj.rigidBody) physObj.rigidBody.setEnabled(true);
   }
 
   return physObj;
