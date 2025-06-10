@@ -762,7 +762,7 @@ export const createPhysicsObjectWithMesh = ({
   if (Array.isArray(physicsParams)) {
     for (let i = 0; i < physicsParams.length; i++) {
       const rBody = createRigidBody(physicsParams[i]);
-      const colliderDesc = createCollider(physicsParams[i]);
+      const colliderDesc = createCollider(physicsParams[i], mesh);
       const coll = physicsWorld.createCollider(colliderDesc, rBody);
       const collEventFn = physicsParams[i].collider.collisionEventFn;
       const contForceEventFn = physicsParams[i].collider.contactForceEventFn;
@@ -787,7 +787,7 @@ export const createPhysicsObjectWithMesh = ({
     }
   } else {
     rigidBody = createRigidBody(physicsParams);
-    const colliderDesc = createCollider(physicsParams);
+    const colliderDesc = createCollider(physicsParams, mesh);
     collider = physicsWorld.createCollider(colliderDesc, rigidBody);
     collisionEventFn = physicsParams.collider.collisionEventFn;
     contactForceEventFn = physicsParams.collider.contactForceEventFn;
@@ -821,6 +821,51 @@ export const createPhysicsObjectWithMesh = ({
   return physObj;
 };
 
+export const setCurrentPhysicsMultiObjectIndex = (physObjId: string, newIndex: number) => {
+  const currentSceneId = existsOrThrow(
+    getCurrentSceneId(),
+    'Could not find scene id in setCurrentPhysicsMultiObjectIndex.'
+  );
+  const scenePhysicsObjects = existsOrThrow(
+    physicsObjects[currentSceneId],
+    'Could not find scene physics objects in setCurrentPhysicsMultiObjectIndex.'
+  );
+  const physObj = existsOrWarn(
+    scenePhysicsObjects[physObjId],
+    `Could not find physics object with id '${physObjId}' in setCurrentPhysicsMultiObjectIndex.`
+  );
+  existsOrWarn(
+    physObj.multiObjects,
+    'Physics object is not a multi object type in setCurrentPhysicsMultiObjectIndex.'
+  );
+  if (!physObj || !physObj.multiObjects) return;
+
+  const newPhysObjData = existsOrWarn(
+    physObj.multiObjects[newIndex],
+    `Could not find multi object in setCurrentPhysicsMultiObjectIndex with index ${newIndex}.`
+  );
+  if (!newPhysObjData) return;
+  const oldPhysObjData = physObj.multiObjects[newIndex];
+
+  // Disable previous phys object data
+  oldPhysObjData.collider.setEnabled(false);
+  physObj.collider.setEnabled(false);
+  if (oldPhysObjData.rigidBody) oldPhysObjData.rigidBody.setEnabled(false);
+  if (physObj.rigidBody) physObj.rigidBody.setEnabled(false);
+
+  // Switch all data
+  physObj.collider = newPhysObjData.collider;
+  physObj.rigidBody = newPhysObjData.rigidBody;
+  physObj.mesh = newPhysObjData.mesh || physObj.multiObjects[0].mesh;
+  physObj.collisionEventFn = newPhysObjData.collisionEventFn;
+  physObj.contactForceEventFn = newPhysObjData.contactForceEventFn;
+  physObj.currentObjectIndex = newIndex;
+
+  // Enable the new object data
+  physObj.collider.setEnabled(true);
+  if (physObj.rigidBody) physObj.rigidBody.setEnabled(true);
+};
+
 /**
  * Deletes a physics object
  * @param id string
@@ -837,6 +882,20 @@ export const deletePhysicsObject = (id: string, sceneId?: string) => {
     physicsWorld.removeRigidBody(obj.rigidBody);
   } else {
     physicsWorld.removeCollider(obj.collider, false);
+  }
+
+  if (obj.multiObjects) {
+    for (let i = 0; i < obj.multiObjects.length; i++) {
+      const mObj = obj.multiObjects[i];
+      if (mObj.rigidBody) {
+        physicsWorld.removeRigidBody(mObj.rigidBody);
+      } else {
+        physicsWorld.removeCollider(mObj.collider, false);
+      }
+      mObj.mesh = undefined;
+      mObj.collisionEventFn = undefined;
+      mObj.contactForceEventFn = undefined;
+    }
   }
 
   delete scenePhysicsObjects[id];

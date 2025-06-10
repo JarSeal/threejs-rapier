@@ -5,7 +5,7 @@ import {
   getPhysicsObject,
   PhysicsParams,
 } from './PhysicsRapier';
-import { lerror, llog } from '../utils/Logger';
+import { llog } from '../utils/Logger';
 import {
   createKeyInputControl,
   createMouseInputControl,
@@ -36,7 +36,7 @@ export type CharacterObject = {
   id: string;
   name?: string;
   physObjectId: string;
-  meshId: string;
+  meshId: string | string[];
   keyControlIds: string[];
   mouseControlIds: string[];
   data?: { [key: string]: unknown };
@@ -48,8 +48,8 @@ let onDeleteCharacter: { [characterId: string]: () => void } = {};
 /**
  * Creates a character with controls. The character can be either a player controllable
  * character or controlled by an agent (AI).
- * @param physicsParamas (PhysicsParams) ({@link PhysicsParams})
- * @param meshOrMeshId (THREE.Mesh | string) mesh or mesh id of the representation of the physics object
+ * @param physicsParamas (PhysicsParams | PhysicsParams[]) ({@link PhysicsParams}) if array then the physics object is a multi object
+ * @param meshOrMeshId ((THREE.Mesh | string) | (THREE.Mesh | string)[]) mesh or mesh id (or array of either of them) of the representation of the physics object
  * @param controls (array of KeyInputParams and/or MouseInputParams) the input control params for this character
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
  * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
@@ -67,8 +67,8 @@ export const createCharacter = ({
 }: {
   id: string;
   name?: string;
-  physicsParams: PhysicsParams;
-  meshOrMeshId: THREE.Mesh | string;
+  physicsParams: PhysicsParams | PhysicsParams[];
+  meshOrMeshId: (THREE.Mesh | string) | (THREE.Mesh | string)[];
   controls?: (
     | (KeyInputParams & { id: string; type: KeyInputControlType })
     | (MouseInputParams & { id: string; type: MouseInputControlType })
@@ -77,36 +77,57 @@ export const createCharacter = ({
   noWarnForUnitializedScene?: boolean;
   data?: { [key: string]: unknown };
 }) => {
-  const physObj = createPhysicsObjectWithMesh({
-    physicsParams,
-    meshOrMeshId,
-    id,
-    sceneId,
-    noWarnForUnitializedScene,
-  });
-  if (!physObj) {
-    const msg = `Could not create character with id "${id}" in CharacterController createCharacter. Physics params: ${JSON.stringify(physicsParams)} -- Mesh id: ${typeof meshOrMeshId === 'string' ? meshOrMeshId : meshOrMeshId.userData.id} -- Scene id: ${sceneId}`;
-    lerror(msg);
-    throw new Error(msg);
-  }
+  const physObj = existsOrThrow(
+    createPhysicsObjectWithMesh({
+      physicsParams,
+      meshOrMeshId,
+      id,
+      sceneId,
+      noWarnForUnitializedScene,
+    }),
+    `Could not create character with id "${id}" in CharacterController createCharacter. Physics params: ${JSON.stringify(physicsParams)} -- Mesh params: ${JSON.stringify(physicsParams)} -- Scene id: ${sceneId}`
+  );
   if (!physObj.id) physObj.id = id;
+
+  let meshIds: string | string[] = '';
+  let mesh: THREE.Mesh | null = null;
+  if (typeof meshOrMeshId === 'string') {
+    meshIds = meshOrMeshId;
+    mesh = getMesh(meshIds);
+    existsOrThrow(mesh, `Mesh not found with id '${meshIds}' in createCharacter.`);
+    mesh.userData.isCharacter = true;
+  } else if (Array.isArray(meshOrMeshId)) {
+    meshIds = [];
+    for (let i = 0; i < meshOrMeshId.length; i++) {
+      const m = meshOrMeshId[i];
+      if (typeof m === 'string') {
+        (meshIds as string[]).push(m);
+        mesh = getMesh(m);
+        existsOrThrow(mesh, `Mesh not found with id '${m}' in createCharacter.`);
+        mesh.userData.isCharacter = true;
+      } else {
+        meshIds.push(m.userData.id);
+        mesh = m;
+        existsOrThrow(mesh, 'Mesh not found in createCharacter.');
+        mesh.userData.isCharacter = true;
+      }
+    }
+  } else {
+    meshIds = meshOrMeshId.userData.id;
+    mesh = meshOrMeshId;
+    existsOrThrow(mesh, 'Mesh not found in createCharacter.');
+    mesh.userData.isCharacter = true;
+  }
 
   const char: CharacterObject = {
     id,
     name,
     physObjectId: physObj.id,
-    meshId: typeof meshOrMeshId === 'string' ? meshOrMeshId : meshOrMeshId.userData.id,
+    meshId: meshIds,
     keyControlIds: [],
     mouseControlIds: [],
     data,
   };
-
-  const mesh = typeof meshOrMeshId === 'string' ? getMesh(meshOrMeshId) : meshOrMeshId;
-  existsOrThrow(
-    mesh,
-    `Mesh not found with id '${typeof meshOrMeshId === 'string' ? meshOrMeshId : undefined}' in createCharacter.`
-  );
-  mesh.userData.isCharacter = true;
 
   const keyControlIds: string[] = [];
   const mouseControlIds: string[] = [];
@@ -139,9 +160,6 @@ export const createCharacter = ({
   char.mouseControlIds = mouseControlIds;
   characters[id] = char;
 
-  // if (isDebugEnvironment()) {
-  //   setTimeout(() => updateCharactersDebuggerGUI(), 5000);
-  // }
   updateCharactersDebuggerGUI();
 
   return char;
@@ -168,8 +186,15 @@ export const deleteCharacter = (id: string) => {
   }
 
   // Remove mesh from the scene
-  const mesh = getMesh(charObj.meshId);
-  if (mesh) mesh.removeFromParent();
+  if (Array.isArray(charObj.meshId)) {
+    for (let i = 0; i < charObj.meshId.length; i++) {
+      const mesh = getMesh(charObj.meshId[i]);
+      if (mesh) mesh.removeFromParent();
+    }
+  } else {
+    const mesh = getMesh(charObj.meshId);
+    if (mesh) mesh.removeFromParent();
+  }
 
   // Delete character
   delete characters[id];

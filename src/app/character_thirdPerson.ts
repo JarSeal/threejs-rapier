@@ -137,24 +137,38 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   charMesh.add(directionBeakMesh);
   thirdPersonCharacterObject = createCharacter({
     id: CHARACTER_ID,
-    physicsParams: {
-      collider: {
-        type: 'CAPSULE',
-        // restitution: 0.8,
-        friction: 2,
+    physicsParams: [
+      {
+        collider: {
+          type: 'CAPSULE',
+          // restitution: 0.8,
+          friction: 0.5,
+        },
+        rigidBody: {
+          rigidType: 'DYNAMIC',
+          lockRotations: { x: true, y: true, z: true },
+          linearDamping: 0,
+        },
       },
-      rigidBody: {
-        rigidType: 'DYNAMIC',
-        lockRotations: { x: true, y: true, z: true },
-        linearDamping: 0.5,
+      {
+        collider: {
+          type: 'CAPSULE',
+          friction: 0.5,
+          halfHeight: charCapsule.userData.props?.params.height / 2,
+        },
+        rigidBody: {
+          rigidType: 'DYNAMIC',
+          lockRotations: { x: true, y: true, z: true },
+          linearDamping: 0.5,
+        },
       },
-    },
+    ],
     data: characterData,
     meshOrMeshId: charMesh,
     controls: [
       {
         id: 'charMove',
-        key: ['w', 's', 'a', 'd'],
+        key: ['w', 's', 'a', 'd', 'W', 'S', 'A', 'D'],
         type: 'KEY_LOOP_ACTION',
         fn: (_, __, data) => {
           const keysPressed = data?.keysPressed as string[];
@@ -165,7 +179,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
           if (!mesh || !charData) return;
 
           // Turn left (only mesh rotation, not physical object)
-          if (keysPressed.includes('a')) {
+          if (keysPressed.includes('a') || keysPressed.includes('A')) {
             const rotateSpeed = transformAppSpeedValue(charData._rotateSpeed || 0);
             mesh.rotateY(rotateSpeed);
             charData.charRotation = eulerForCharRotation.setFromQuaternion(
@@ -174,7 +188,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
             ).y;
           }
           // Turn right (only mesh rotation, not physical object)
-          if (keysPressed.includes('d')) {
+          if (keysPressed.includes('d') || keysPressed.includes('D')) {
             const rotateSpeed = -transformAppSpeedValue(charData._rotateSpeed || 0);
             mesh.rotateY(rotateSpeed);
             charData.charRotation = eulerForCharRotation.setFromQuaternion(
@@ -183,7 +197,12 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
             ).y;
           }
           // Forward and backward
-          if (keysPressed.includes('w') || keysPressed.includes('s')) {
+          if (
+            keysPressed.includes('w') ||
+            keysPressed.includes('s') ||
+            keysPressed.includes('W') ||
+            keysPressed.includes('S')
+          ) {
             const intervalCheckOk =
               charData?._linearVelocityInterval === 0 ||
               (charData?.__lviCheckTime || 0) + (charData?._linearVelocityInterval || 0) <
@@ -207,7 +226,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
                     ? characterData._crouchingMultiplier
                     : 1;
               const maxVelo = characterData._maxVelocity * maxVeloMultiplier;
-              const mainDirection = keysPressed.includes('s') ? -1 : 1;
+              const mainDirection = keysPressed.includes('s') || keysPressed.includes('S') ? -1 : 1;
               const xVelo = Math.cos(characterData.charRotation) * veloAccu * mainDirection;
               const zVelo = -Math.sin(characterData.charRotation) * veloAccu * mainDirection;
               const xMaxVelo = Math.cos(characterData.charRotation) * maxVelo * mainDirection;
@@ -345,10 +364,17 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   };
 
   createSceneAppLooper(() => {
-    detectGround();
     const physObj = getPhysicsObject(thirdPersonCharacterObject?.physObjectId || '');
     const mesh = physObj?.mesh;
     if (!physObj || !mesh) return;
+
+    // Set isMoving (physics isMoving, aka. is awake)
+    characterData.isMoving = physObj.rigidBody?.isMoving() || false;
+
+    // No need to calculate anything if the character is not moving
+    if (!characterData.isMoving) return;
+
+    detectGround();
 
     // Set isFalling
     if (characterData.isGrounded) {
@@ -363,15 +389,12 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
       characterData.isFalling = true;
     }
 
-    // Set isMoving (physics isMoving, aka. is awake)
-    characterData.isMoving = physObj.rigidBody?.isMoving() || false;
+    // Set velocity
     const velo = usableVec.set(
       Math.round(Math.abs(physObj.rigidBody?.linvel().x || 0) * 1000) / 1000,
       Math.round(Math.abs(physObj.rigidBody?.linvel().y || 0) * 1000) / 1000,
       Math.round(Math.abs(physObj.rigidBody?.linvel().z || 0) * 1000) / 1000
     );
-
-    // Set velocity
     characterData.velocity = {
       x: velo.x,
       y: velo.y,
