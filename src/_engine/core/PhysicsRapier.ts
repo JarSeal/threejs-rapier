@@ -27,18 +27,13 @@ type ContactForceEventFn = (
 export type PhysicsObject = {
   id?: string;
   mesh?: THREE.Mesh;
-  collider: Rapier.Collider;
+  meshes?: THREE.Mesh[];
+  collider: Rapier.Collider | Rapier.Collider[];
   rigidBody?: Rapier.RigidBody;
   collisionEventFn?: CollisionEventFn;
   contactForceEventFn?: ContactForceEventFn;
   currentObjectIndex?: number;
-  multiObjects?: {
-    mesh?: THREE.Mesh;
-    collider: Rapier.Collider;
-    rigidBody?: Rapier.RigidBody;
-    collisionEventFn?: CollisionEventFn;
-    contactForceEventFn?: ContactForceEventFn;
-  }[];
+  currentMeshIndex?: number;
 };
 
 type ColliderParams = (
@@ -589,57 +584,52 @@ export const createPhysicsObjectWithoutMesh = ({
   );
 
   let rigidBody: Rapier.RigidBody | undefined = undefined;
-  let collider: Rapier.Collider | undefined = undefined;
+  const colliders: Rapier.Collider[] = [];
   let collisionEventFn: CollisionEventFn | undefined = undefined;
   let contactForceEventFn: ContactForceEventFn | undefined = undefined;
-  const multiObjects = [];
 
   if (Array.isArray(physicsParams)) {
+    existsOrThrow(
+      physicsParams[0].rigidBody,
+      `Could not find a RigidBody in the first index of the physicsParams in createPhysicsObjectWithoutMesh with id '${id}'.`
+    );
+    rigidBody = createRigidBody(physicsParams[0]);
+    let colliderEnabled = false;
     for (let i = 0; i < physicsParams.length; i++) {
-      const rBody = createRigidBody(physicsParams[i]);
       const colliderDesc = createCollider(physicsParams[i]);
-      const coll = physicsWorld.createCollider(colliderDesc, rBody);
-      const collEventFn = physicsParams[i].collider.collisionEventFn;
-      const contForceEventFn = physicsParams[i].collider.contactForceEventFn;
-      coll.setEnabled(false);
-      if (rBody) rBody.setEnabled(false);
-      multiObjects.push({
-        collider: coll,
-        rigidBody: rBody,
-        collisionEventFn: collEventFn,
-        contactForceEventFn: contForceEventFn,
-      });
-      if (
-        (currentObjectIndex !== undefined && i === currentObjectIndex) ||
-        (currentObjectIndex === undefined && i === 0)
-      ) {
-        rigidBody = rBody;
-        collider = coll;
-        collisionEventFn = collEventFn;
-        contactForceEventFn = contForceEventFn;
+      const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
+      collisionEventFn = physicsParams[i].collider.collisionEventFn;
+      contactForceEventFn = physicsParams[i].collider.contactForceEventFn;
+      if (currentObjectIndex !== undefined && i === currentObjectIndex) {
+        collider.setEnabled(true);
+        colliderEnabled = true;
+      } else {
+        collider.setEnabled(false);
       }
+      colliders.push(collider);
     }
+    if (!colliderEnabled) colliders[0].setEnabled(true);
   } else {
     rigidBody = createRigidBody(physicsParams);
     const colliderDesc = createCollider(physicsParams);
-    collider = physicsWorld.createCollider(colliderDesc, rigidBody);
+    const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
+    colliders.push(collider);
     collisionEventFn = physicsParams.collider.collisionEventFn;
     contactForceEventFn = physicsParams.collider.contactForceEventFn;
   }
 
-  collider = existsOrThrow(
-    collider,
+  existsOrThrow(
+    colliders.length,
     `Could not create collider in createPhysicsObjectWithoutMesh with id '${id}'.`
   );
 
   const physObj: PhysicsObject = {
     id,
     ...(rigidBody ? { rigidBody } : {}),
-    collider,
+    collider: colliders.length === 1 ? colliders[0] : colliders,
     ...(collisionEventFn ? { collisionEventFn } : {}),
     ...(contactForceEventFn ? { contactForceEventFn } : {}),
     ...(currentObjectIndex !== undefined ? { currentObjectIndex } : {}),
-    ...(multiObjects.length ? { multiObjects } : {}),
   };
   if (!physicsObjects[sId]) physicsObjects[sId] = {};
   physicsObjects[sId][id] = physObj;
@@ -647,7 +637,6 @@ export const createPhysicsObjectWithoutMesh = ({
   if (sId === getCurrentSceneId()) {
     // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
     currentScenePhysicsObjects.push(physObj);
-    physObj.collider.setEnabled(true);
     if (physObj.rigidBody) physObj.rigidBody.setEnabled(true);
   }
 
@@ -662,6 +651,7 @@ export const createPhysicsObjectWithoutMesh = ({
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
  * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
  * @param currentObjectIndex (number) optional object index to be set as the first object for the multi object (only for arrays of params), if no index is provided, then the first (index 0) will be set
+ * @param currentMeshIndex (number) optional object index to be set as the first mesh for the multi object (only for arrays of params), if no index is provided, then the first (index 0) will be set
  * @returns PhysicsObject ({@link PhysicsObject})
  */
 export const createPhysicsObjectWithMesh = ({
@@ -671,6 +661,7 @@ export const createPhysicsObjectWithMesh = ({
   sceneId,
   noWarnForUnitializedScene,
   currentObjectIndex,
+  currentMeshIndex,
 }: {
   physicsParams: PhysicsParams | PhysicsParams[];
   meshOrMeshId: (THREE.Mesh | string) | (THREE.Mesh | string)[];
@@ -678,6 +669,7 @@ export const createPhysicsObjectWithMesh = ({
   sceneId?: string;
   noWarnForUnitializedScene?: boolean;
   currentObjectIndex?: number;
+  currentMeshIndex?: number;
 }) => {
   if (!RAPIER) return;
   const sId = getSceneIdForPhysics(
@@ -689,7 +681,7 @@ export const createPhysicsObjectWithMesh = ({
   let mesh: THREE.Mesh | null = null;
   const meshes: THREE.Mesh[] = [];
 
-  const meshWarnMsg = `Could not find mesh in createPhysicsObjectWithMesh. Physics object was not added.`;
+  const meshWarnMsg = `Could not find mesh in createPhysicsObjectWithMesh (with id: '${id}'). Physics object was not added.`;
 
   if (typeof meshOrMeshId === 'string') {
     // Mesh id
@@ -700,19 +692,21 @@ export const createPhysicsObjectWithMesh = ({
       return;
     }
     mesh.userData.isPhysicsObject = true;
+    meshes.push(mesh);
   } else if (Array.isArray(meshOrMeshId)) {
     // Array of meshes or mesh ids
+    let visibleMeshIsSet = false;
     for (let i = 0; i < meshOrMeshId.length; i++) {
       const momid = meshOrMeshId[i];
       if (typeof momid === 'string') {
         const mId = momid;
         const m = getMesh(mId);
-        if (
-          (currentObjectIndex !== undefined && i === currentObjectIndex) ||
-          (currentObjectIndex === undefined && i === 0)
-        ) {
+        m.visible = false;
+        if (currentMeshIndex !== undefined && i === currentMeshIndex) {
           meshId = mId;
           mesh = m;
+          m.visible = true;
+          visibleMeshIsSet = true;
         }
         if (!m) {
           lwarn(meshWarnMsg, `Mesh id: ${meshId}`);
@@ -723,22 +717,28 @@ export const createPhysicsObjectWithMesh = ({
       } else {
         const mId = momid.userData.id;
         const m = momid;
-        m.userData.isPhysicsObject = true;
-        if (
-          (currentObjectIndex !== undefined && i === currentObjectIndex) ||
-          (currentObjectIndex === undefined && i === 0)
-        ) {
+        m.visible = false;
+        if (currentObjectIndex !== undefined && i === currentObjectIndex) {
           meshId = mId;
           mesh = m;
+          m.visible = true;
+          visibleMeshIsSet = true;
         }
+        m.userData.isPhysicsObject = true;
         meshes.push(m);
       }
+    }
+    if (!visibleMeshIsSet) {
+      mesh = meshes[0];
+      meshId = mesh.userData.id;
+      mesh.visible = true;
     }
   } else {
     // Single mesh
     meshId = meshOrMeshId.userData.id;
     mesh = meshOrMeshId;
     mesh.userData.isPhysicsObject = true;
+    meshes.push(mesh);
   }
 
   if (!mesh) {
@@ -754,59 +754,55 @@ export const createPhysicsObjectWithMesh = ({
   }
 
   let rigidBody: Rapier.RigidBody | undefined = undefined;
-  let collider: Rapier.Collider | undefined = undefined;
+  const colliders: Rapier.Collider[] = [];
   let collisionEventFn: CollisionEventFn | undefined = undefined;
   let contactForceEventFn: ContactForceEventFn | undefined = undefined;
-  const multiObjects = [];
 
   if (Array.isArray(physicsParams)) {
+    existsOrThrow(
+      physicsParams[0].rigidBody,
+      `Could not find a RigidBody in the first index of the physicsParams in createPhysicsObjectWithMesh with id '${id}'.`
+    );
+    rigidBody = createRigidBody(physicsParams[0]);
+    let colliderEnabled = false;
     for (let i = 0; i < physicsParams.length; i++) {
-      const rBody = createRigidBody(physicsParams[i]);
       const colliderDesc = createCollider(physicsParams[i], mesh);
-      const coll = physicsWorld.createCollider(colliderDesc, rBody);
-      const collEventFn = physicsParams[i].collider.collisionEventFn;
-      const contForceEventFn = physicsParams[i].collider.contactForceEventFn;
-      coll.setEnabled(false);
-      if (rBody) rBody.setEnabled(false);
-      multiObjects.push({
-        collider: coll,
-        rigidBody: rBody,
-        mesh: meshes[i] || meshes[0],
-        collisionEventFn: collEventFn,
-        contactForceEventFn: contForceEventFn,
-      });
-      if (
-        (currentObjectIndex !== undefined && i === currentObjectIndex) ||
-        (currentObjectIndex === undefined && i === 0)
-      ) {
-        rigidBody = rBody;
-        collider = coll;
-        collisionEventFn = collEventFn;
-        contactForceEventFn = contForceEventFn;
+      const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
+      collisionEventFn = physicsParams[i].collider.collisionEventFn;
+      contactForceEventFn = physicsParams[i].collider.contactForceEventFn;
+      if (currentObjectIndex !== undefined && i === currentObjectIndex) {
+        collider.setEnabled(true);
+        colliderEnabled = true;
+      } else {
+        collider.setEnabled(false);
       }
+      colliders.push(collider);
     }
+    if (!colliderEnabled) colliders[0].setEnabled(true);
   } else {
     rigidBody = createRigidBody(physicsParams);
     const colliderDesc = createCollider(physicsParams, mesh);
-    collider = physicsWorld.createCollider(colliderDesc, rigidBody);
+    const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
+    colliders.push(collider);
     collisionEventFn = physicsParams.collider.collisionEventFn;
     contactForceEventFn = physicsParams.collider.contactForceEventFn;
   }
 
-  collider = existsOrThrow(
-    collider,
+  existsOrThrow(
+    colliders.length,
     `Could not create collider in createPhysicsObjectWithoutMesh with id '${id}'.`
   );
 
   const physObj: PhysicsObject = {
     id,
-    mesh,
+    mesh: mesh,
+    ...(meshes.length > 1 ? { meshes } : {}),
     ...(rigidBody ? { rigidBody } : {}),
-    collider,
+    collider: colliders.length === 1 ? colliders[0] : colliders,
     ...(collisionEventFn ? { collisionEventFn } : {}),
     ...(contactForceEventFn ? { contactForceEventFn } : {}),
     ...(currentObjectIndex !== undefined ? { currentObjectIndex } : {}),
-    ...(multiObjects.length ? { multiObjects } : {}),
+    ...(currentMeshIndex !== undefined ? { currentMeshIndex } : {}),
   };
   if (!physicsObjects[sId]) physicsObjects[sId] = {};
   physicsObjects[sId][id] = physObj;
@@ -814,56 +810,10 @@ export const createPhysicsObjectWithMesh = ({
   if (sId === getCurrentSceneId()) {
     // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
     currentScenePhysicsObjects.push(physObj);
-    physObj.collider.setEnabled(true);
     if (physObj.rigidBody) physObj.rigidBody.setEnabled(true);
   }
 
   return physObj;
-};
-
-export const setCurrentPhysicsMultiObjectIndex = (physObjId: string, newIndex: number) => {
-  const currentSceneId = existsOrThrow(
-    getCurrentSceneId(),
-    'Could not find scene id in setCurrentPhysicsMultiObjectIndex.'
-  );
-  const scenePhysicsObjects = existsOrThrow(
-    physicsObjects[currentSceneId],
-    'Could not find scene physics objects in setCurrentPhysicsMultiObjectIndex.'
-  );
-  const physObj = existsOrWarn(
-    scenePhysicsObjects[physObjId],
-    `Could not find physics object with id '${physObjId}' in setCurrentPhysicsMultiObjectIndex.`
-  );
-  existsOrWarn(
-    physObj.multiObjects,
-    'Physics object is not a multi object type in setCurrentPhysicsMultiObjectIndex.'
-  );
-  if (!physObj || !physObj.multiObjects) return;
-
-  const newPhysObjData = existsOrWarn(
-    physObj.multiObjects[newIndex],
-    `Could not find multi object in setCurrentPhysicsMultiObjectIndex with index ${newIndex}.`
-  );
-  if (!newPhysObjData) return;
-  const oldPhysObjData = physObj.multiObjects[newIndex];
-
-  // Disable previous phys object data
-  oldPhysObjData.collider.setEnabled(false);
-  physObj.collider.setEnabled(false);
-  if (oldPhysObjData.rigidBody) oldPhysObjData.rigidBody.setEnabled(false);
-  if (physObj.rigidBody) physObj.rigidBody.setEnabled(false);
-
-  // Switch all data
-  physObj.collider = newPhysObjData.collider;
-  physObj.rigidBody = newPhysObjData.rigidBody;
-  physObj.mesh = newPhysObjData.mesh || physObj.multiObjects[0].mesh;
-  physObj.collisionEventFn = newPhysObjData.collisionEventFn;
-  physObj.contactForceEventFn = newPhysObjData.contactForceEventFn;
-  physObj.currentObjectIndex = newIndex;
-
-  // Enable the new object data
-  physObj.collider.setEnabled(true);
-  if (physObj.rigidBody) physObj.rigidBody.setEnabled(true);
 };
 
 /**
@@ -881,20 +831,12 @@ export const deletePhysicsObject = (id: string, sceneId?: string) => {
   if (obj.rigidBody) {
     physicsWorld.removeRigidBody(obj.rigidBody);
   } else {
-    physicsWorld.removeCollider(obj.collider, false);
-  }
-
-  if (obj.multiObjects) {
-    for (let i = 0; i < obj.multiObjects.length; i++) {
-      const mObj = obj.multiObjects[i];
-      if (mObj.rigidBody) {
-        physicsWorld.removeRigidBody(mObj.rigidBody);
-      } else {
-        physicsWorld.removeCollider(mObj.collider, false);
+    if (Array.isArray(obj.collider)) {
+      for (let i = 0; i < obj.collider.length; i++) {
+        physicsWorld.removeCollider(obj.collider[i], false);
       }
-      mObj.mesh = undefined;
-      mObj.collisionEventFn = undefined;
-      mObj.contactForceEventFn = undefined;
+    } else {
+      physicsWorld.removeCollider(obj.collider, false);
     }
   }
 
@@ -936,8 +878,15 @@ export const deleteCurrentScenePhysicsObjects = () => {
       obj.rigidBody.setEnabled(false);
       physicsWorld.removeRigidBody(obj.rigidBody);
     } else {
-      obj.collider.setEnabled(false);
-      physicsWorld.removeCollider(obj.collider, false);
+      if (Array.isArray(obj.collider)) {
+        for (let i = 0; i < obj.collider.length; i++) {
+          obj.collider[i].setEnabled(false);
+          physicsWorld.removeCollider(obj.collider[i], false);
+        }
+      } else {
+        obj.collider.setEnabled(false);
+        physicsWorld.removeCollider(obj.collider, false);
+      }
     }
   }
   currentScenePhysicsObjects = [];
@@ -957,7 +906,6 @@ export const deleteAllPhysicsObjects = () => {
   const sceneIds = Object.keys(physicsObjects);
   for (let i = 0; i < sceneIds.length; i++) {
     deletePhysicsObjectsBySceneId(sceneIds[i]);
-    delete physicsObjects[sceneIds[i]];
   }
   currentScenePhysicsObjects = [];
 };
@@ -1111,8 +1059,18 @@ const baseStepper = (delta: number) => {
 
   if (eventQueue && collisionEventFnCount) {
     eventQueue.drainCollisionEvents((handle1, handle2, started) => {
-      const physObj1 = currentScenePhysicsObjects.find((obj) => obj.collider.handle === handle1);
-      const physObj2 = currentScenePhysicsObjects.find((obj) => obj.collider.handle === handle2);
+      const physObj1 = currentScenePhysicsObjects.find((obj) => {
+        if (Array.isArray(obj.collider)) {
+          return obj.collider[obj.currentObjectIndex || 0].handle === handle1;
+        }
+        return obj.collider.handle === handle1;
+      });
+      const physObj2 = currentScenePhysicsObjects.find((obj) => {
+        if (Array.isArray(obj.collider)) {
+          return obj.collider[obj.currentObjectIndex || 0].handle === handle2;
+        }
+        return obj.collider.handle === handle2;
+      });
       if (physObj1?.collisionEventFn && physObj2) {
         physObj1.collisionEventFn(physObj1, physObj2, started);
       }
@@ -1126,8 +1084,18 @@ const baseStepper = (delta: number) => {
     eventQueue.drainContactForceEvents((event) => {
       const handle1 = event.collider1();
       const handle2 = event.collider2();
-      const physObj1 = currentScenePhysicsObjects.find((obj) => obj.collider.handle === handle1);
-      const physObj2 = currentScenePhysicsObjects.find((obj) => obj.collider.handle === handle2);
+      const physObj1 = currentScenePhysicsObjects.find((obj) => {
+        if (Array.isArray(obj.collider)) {
+          return obj.collider[obj.currentObjectIndex || 0].handle === handle1;
+        }
+        return obj.collider.handle === handle1;
+      });
+      const physObj2 = currentScenePhysicsObjects.find((obj) => {
+        if (Array.isArray(obj.collider)) {
+          return obj.collider[obj.currentObjectIndex || 0].handle === handle2;
+        }
+        return obj.collider.handle === handle2;
+      });
       if (physObj1?.contactForceEventFn && physObj2) {
         physObj1.contactForceEventFn(physObj1, physObj2, event);
       }
@@ -1142,12 +1110,15 @@ const baseStepper = (delta: number) => {
     const po = currentScenePhysicsObjects[i];
     // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
     if (!po.mesh) continue;
-    po.mesh.position.copy(po.collider.translation());
+    const collider = Array.isArray(po.collider)
+      ? po.collider[po.currentObjectIndex || 0]
+      : po.collider;
+    po.mesh.position.copy(collider.translation());
     const userData = po.rigidBody?.userData as { [key: string]: unknown };
     if (!userData?.lockRotationsX && !userData?.lockRotationsX && !userData?.lockRotationsX) {
-      po.mesh.quaternion.copy(po.collider.rotation());
+      po.mesh.quaternion.copy(collider.rotation());
     } else {
-      const colliderRotation = po.collider.rotation();
+      const colliderRotation = collider.rotation();
       po.mesh.quaternion.copy({
         x: userData.lockRotationsX ? po.mesh.quaternion.x : colliderRotation.x,
         y: userData.lockRotationsY ? po.mesh.quaternion.y : colliderRotation.y,
@@ -1174,14 +1145,23 @@ const stepperFnDebug = (delta: number) => {
       getRootScene()?.add(debugMesh);
       debugMeshAdded = true;
     }
-    // @TODO: @OPTIMIZATION: fix this at some point (this is just made to work and is not optimal)
-    debugMeshGeo = new THREE.BufferGeometry();
-    debugMesh.geometry = debugMeshGeo;
-    debugMesh.geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-    debugMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4));
     debugMesh.visible = true;
-    debugMesh.geometry.getAttribute('position').needsUpdate = true;
-    debugMesh.geometry.getAttribute('color').needsUpdate = true;
+    const posAttr = debugMesh.geometry.attributes.position;
+    const colorAttr = debugMesh.geometry.attributes.color;
+    if (vertices.length !== posAttr?.array.length) {
+      debugMeshGeo = new THREE.BufferGeometry();
+      debugMesh.geometry = debugMeshGeo;
+      debugMesh.geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      debugMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4));
+      debugMesh.geometry.getAttribute('position').needsUpdate = true;
+      debugMesh.geometry.getAttribute('color').needsUpdate = true;
+    }
+    if (posAttr) {
+      posAttr.array.set(vertices);
+      colorAttr.array.set(colors);
+      posAttr.needsUpdate = true;
+      colorAttr.needsUpdate = true;
+    }
   } else {
     debugMesh.visible = false;
   }
@@ -1226,7 +1206,11 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
     if (obj.rigidBody) {
       obj.rigidBody.setEnabled(true);
     } else {
-      obj.collider.setEnabled(true);
+      if (Array.isArray(obj.collider)) {
+        obj.collider[obj.currentObjectIndex || 0].setEnabled(true);
+      } else {
+        obj.collider.setEnabled(true);
+      }
     }
     if (obj.collisionEventFn) collisionEventFnCount++;
     if (obj.contactForceEventFn) contactForceEventFnCount++;

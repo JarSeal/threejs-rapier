@@ -141,8 +141,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
       {
         collider: {
           type: 'CAPSULE',
-          // restitution: 0.8,
-          friction: 0.5,
+          friction: 1.5,
         },
         rigidBody: {
           rigidType: 'DYNAMIC',
@@ -153,13 +152,13 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
       {
         collider: {
           type: 'CAPSULE',
-          friction: 0.5,
-          halfHeight: charCapsule.userData.props?.params.height / 2,
-        },
-        rigidBody: {
-          rigidType: 'DYNAMIC',
-          lockRotations: { x: true, y: true, z: true },
-          linearDamping: 0.5,
+          friction: 1.5,
+          halfHeight: charCapsule.userData.props?.params.height / 4,
+          translation: {
+            x: charMesh.position.x,
+            y: charMesh.position.y - charCapsule.userData.props?.params.height / 4,
+            z: charMesh.position.z,
+          },
         },
       },
     ],
