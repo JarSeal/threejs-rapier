@@ -10,7 +10,11 @@ import {
   registerOnDeleteCharacter,
 } from '../_engine/core/Character';
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
-import { getPhysicsObject, PhysicsObject } from '../_engine/core/PhysicsRapier';
+import {
+  getPhysicsObject,
+  PhysicsObject,
+  switchPhysicsCollider,
+} from '../_engine/core/PhysicsRapier';
 import { createSceneAppLooper, getRootScene } from '../_engine/core/Scene';
 
 // @TODO: add comments for each
@@ -291,6 +295,8 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
           const charObj = data?.charObject as CharacterObject;
           const charData = charObj.data as CharacterData;
           charData.isCrouching = !charData.isCrouching;
+          const nextIndex = charData.isCrouching ? 1 : 0;
+          switchPhysicsCollider(charObj.id, nextIndex);
         },
       },
     ],

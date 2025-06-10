@@ -816,6 +816,55 @@ export const createPhysicsObjectWithMesh = ({
   return physObj;
 };
 
+export const switchPhysicsCollider = (id: string, newIndex: number) => {
+  const obj = existsOrThrow(
+    getPhysicsObject(id),
+    `Could not find physics object with id '${id}' in switchPhysicsCollider.`
+  );
+  if (!Array.isArray(obj.collider)) {
+    lwarn(
+      `Physics object has only 1 collider and cannot be switched in switchPhysicsCollider (id: '${id}').`
+    );
+    return;
+  }
+  const newCollider = obj.collider[newIndex];
+  if (!newCollider) {
+    lwarn(
+      `Physics object collider not found with index ${newIndex} in switchPhysicsCollider (id: '${id}')`
+    );
+  }
+
+  const currentIndex = obj.currentObjectIndex || 0;
+  obj.collider[currentIndex].setEnabled(false);
+  newCollider.setEnabled(true);
+  obj.currentObjectIndex = newIndex;
+};
+
+export const switchPhysicsMesh = (id: string, newIndex: number) => {
+  const obj = existsOrThrow(
+    getPhysicsObject(id),
+    `Could not find physics object with id '${id}' in switchPhysicsMesh.`
+  );
+  if (!obj.meshes) {
+    lwarn(
+      `Physics object has only 1 mesh and cannot be switched in switchPhysicsMesh (id: '${id}').`
+    );
+    return;
+  }
+  const newMesh = obj.meshes[newIndex];
+  if (!newMesh) {
+    lwarn(
+      `Physics object mesh not found with index ${newIndex} in switchPhysicsMesh (id: '${id}')`
+    );
+  }
+
+  const currentIndex = obj.currentObjectIndex || 0;
+  obj.meshes[currentIndex].visible = false;
+  newMesh.visible = true;
+  obj.mesh = newMesh;
+  obj.currentMeshIndex = newIndex;
+};
+
 /**
  * Deletes a physics object
  * @param id string
@@ -1048,7 +1097,8 @@ export const createPhysicsDebugMesh = () => {
   debugMesh.frustumCulled = false;
 };
 
-// Different stepper functions to use for debug and production
+// Different stepper functions to use for debug and production.
+// baseStepper is used for both.
 const baseStepper = (delta: number) => {
   accDelta += delta;
   if (accDelta < physicsState.timestepRatio) return;
@@ -1109,7 +1159,7 @@ const baseStepper = (delta: number) => {
   for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
     const po = currentScenePhysicsObjects[i];
     // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
-    if (!po.mesh) continue;
+    if (!po.mesh || (po.rigidBody && !po.rigidBody?.isMoving())) continue;
     const collider = Array.isArray(po.collider)
       ? po.collider[po.currentObjectIndex || 0]
       : po.collider;
@@ -1128,11 +1178,16 @@ const baseStepper = (delta: number) => {
     }
   }
 };
+
+// PRODUCTION STEPPER
 const stepperFnProduction = (delta: number) => {
   baseStepper(delta);
 };
 
+// DEBUG STEPPER
 const stepperFnDebug = (delta: number) => {
+  const startMeasuring = performance.now();
+
   const curSceneParams = physicsState.scenes[getCurrentSceneId() || ''];
   if (!curSceneParams?.worldStepEnabled) return;
 
@@ -1166,8 +1221,8 @@ const stepperFnDebug = (delta: number) => {
     debugMesh.visible = false;
   }
 
-  // @TODO: Currently measuring only FPS (I think), research how to do this right
-  updatePhysicsPanel(delta);
+  const stopMeasuring = performance.now();
+  updatePhysicsPanel(stopMeasuring - startMeasuring); // @TODO: fix this
 };
 
 /**

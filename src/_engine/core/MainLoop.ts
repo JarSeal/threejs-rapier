@@ -118,6 +118,7 @@ const mainLoopForDebug = async () => {
     // app loopers
     runSceneAppLoopers(deltaApp);
 
+    // Step physics
     stepPhysicsWorld(deltaApp);
 
     if (loopState.maxFPS > 0) {
