@@ -8,8 +8,9 @@ import { createSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
 import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
-import { loadTexture } from '../_engine/core/Texture';
+import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createThirdPersonCharacter } from './character_thirdPerson';
+import { characterTestObjects } from './character_test_objects';
 
 export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
@@ -101,6 +102,12 @@ export const sceneCharacterTest = async () =>
     //   },
     // });
 
+    // UV texture
+    const uvTexture = await loadTextureAsync({
+      id: 'largeGroundTexture',
+      fileName: '/debugger/assets/testTextures/UVMaps/UVCheckerMap-grey-white-512.png',
+    });
+
     // Ground
     const groundWidthAndDepth = 50;
     const groundHeight = 0.2;
@@ -110,10 +117,14 @@ export const sceneCharacterTest = async () =>
       type: 'BOX',
       params: { width: groundWidthAndDepth, height: groundHeight, depth: groundWidthAndDepth },
     });
+    const groundTexture = uvTexture.clone();
+    groundTexture.wrapS = THREE.RepeatWrapping;
+    groundTexture.wrapT = THREE.RepeatWrapping;
+    groundTexture.repeat.set(groundWidthAndDepth / 4, groundWidthAndDepth / 4);
     const groundMat = createMaterial({
       id: 'largeGroundMat',
-      type: 'LAMBERT',
-      params: { color: 0x556334 },
+      type: 'PHONG',
+      params: { map: groundTexture },
     });
     const groundMesh = createMesh({
       id: 'largeGroundMesh',
@@ -133,6 +144,13 @@ export const sceneCharacterTest = async () =>
       meshOrMeshId: groundMesh,
     });
     scene.add(groundMesh);
+
+    // OBSTACLES
+    const { stairsMesh, stairsPhysicsObject } = characterTestObjects();
+    stairsMesh.position.set(5, -1.8, 0);
+    (stairsMesh.material as THREE.MeshPhongMaterial).map = uvTexture.clone();
+    scene.add(stairsMesh);
+    stairsPhysicsObject?.rigidBody?.setTranslation(new THREE.Vector3(5, -1.8, 0), true);
 
     // BOX
     const geometry2 = createGeometry({

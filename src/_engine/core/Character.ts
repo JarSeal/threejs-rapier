@@ -230,7 +230,7 @@ export const CHAR_EDIT_WIN_ID = 'characterEditorWindow';
 export const CHAR_TRACKER_WIN_ID = 'characterDataTrackerWindow';
 
 export const createTrackCharacterContent = (winData?: { [key: string]: unknown }) => {
-  const TRACKER_UPDATE_INTERVAL = 0.1;
+  const TRACKER_UPDATE_INTERVAL = 0.0000001;
   const d = winData as { id: string; winId: string };
   debuggerTrackerWindowCmp = CMP();
   debuggerTrackerWindowCmp.add({ text: `Update interval: ${TRACKER_UPDATE_INTERVAL}` }); // @TODO: add Pane and input to set TRACKER_UPDATE_INTERVAL
@@ -328,7 +328,7 @@ export const createEditCharacterContent = (data?: { [key: string]: unknown }) =>
         title: `Character data: ${character.name || `[${character.id}]`}`,
         isDebugWindow: true,
         content: createTrackCharacterContent,
-        data: { id: character.id, WIN_ID: CHAR_TRACKER_WIN_ID },
+        data: { id: character.id, winId: CHAR_TRACKER_WIN_ID },
         closeOnSceneChange: true,
         removeOnClose: true, // @TODO: Without this the tracker won't work on the second time opening it. Fix this at some point in the DraggableWindow.
       });
@@ -360,6 +360,14 @@ export const createEditCharacterContent = (data?: { [key: string]: unknown }) =>
 <div>
   <div><span class="winSmallLabel">Name:</span> ${character.name || ''}</div>
   <div><span class="winSmallLabel">Id:</span> ${character.id}</div>
+  <div><span class="winSmallLabel">Physics object id:</span> ${character.physObjectId}</div>
+  ${
+    Array.isArray(character.meshId)
+      ? `<div><span class="winSmallLabel">Mesh ids:</span> ${character.meshId.join(', ')}</div>`
+      : `<div><span class="winSmallLabel">Mesh id:</span> ${character.meshId}</div>`
+  }
+  <div><span class="winSmallLabel">Key control ids:</span> ${character.keyControlIds.length ? character.keyControlIds.join(', ') : ''}</div>
+  <div><span class="winSmallLabel">Mouse control ids:</span> ${character.mouseControlIds.length ? character.mouseControlIds.join(', ') : ''}</div>
 </div>
 <div style="text-align:right">${openCharacterDataButton}${logButton}${deleteButton}</div>
 </div>`,
@@ -447,6 +455,7 @@ const createCharactersDebuggerList = () => {
           content: createEditCharacterContent,
           data: { id: character.id, CHAR_EDIT_WIN_ID },
           removeOnSceneChange: true, // @TODO: This is the only way to get the character window to work properly after scene change (and coming back), fix this
+          onClose: () => updateDebuggerCharactersListSelectedClass(null),
         });
         updateDebuggerCharactersListSelectedClass(keys[i]);
       },
@@ -497,13 +506,14 @@ export const updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (winState) updateDraggableWindow(CHAR_EDIT_WIN_ID);
 };
 
-export const updateDebuggerCharactersListSelectedClass = (id: string) => {
+export const updateDebuggerCharactersListSelectedClass = (id: string | null) => {
   const ulElem = debuggerListCmp?.elem;
   if (!ulElem) return;
 
   for (const child of ulElem.children) {
-    const elemId = child.getAttribute('data-id');
     child.classList.remove('selected');
+    if (id === null) continue;
+    const elemId = child.getAttribute('data-id');
     if (elemId === id) child.classList.add('selected');
   }
 };

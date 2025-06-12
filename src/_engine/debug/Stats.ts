@@ -101,7 +101,6 @@ let maxTimeGraphs = 0;
 let maxTimeGraphsCheckCount = 0;
 export const updatePhysicsPanel = (value: number) => {
   const currentTime = performance.now();
-  value = value * 1000;
   maxTime = Math.max(maxTime, value);
   maxTimeGraphs = Math.max(maxTimeGraphs, value);
   if (currentTime >= prevCurrentTime + 1000 / (stats?.logsPerSecond || 4)) {

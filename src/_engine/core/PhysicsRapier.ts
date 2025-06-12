@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type Rapier from '@dimforge/rapier3d-compat';
-import { lerror, lwarn } from '../utils/Logger';
+import { lerror, llog, lwarn } from '../utils/Logger';
 import { getCurrentSceneId, getRootScene, getScene, isCurrentScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getConfig, isDebugEnvironment } from './Config';
@@ -11,6 +11,14 @@ import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { existsOrThrow, existsOrWarn } from '../utils/helpers';
+import { CMP, TCMP } from '../utils/CMP';
+import {
+  addOnCloseToWindow,
+  closeDraggableWindow,
+  getDraggableWindow,
+  openDraggableWindow,
+  updateDraggableWindow,
+} from './UI/DraggableWindow';
 
 type CollisionEventFn = (
   physObj1: PhysicsObject,
@@ -25,7 +33,8 @@ type ContactForceEventFn = (
 ) => void;
 
 export type PhysicsObject = {
-  id?: string;
+  id: string;
+  name?: string;
   mesh?: THREE.Mesh;
   meshes?: THREE.Mesh[];
   collider: Rapier.Collider | Rapier.Collider[];
@@ -237,6 +246,7 @@ let debugMeshGeo: THREE.BufferGeometry;
 let debugMeshMat: THREE.LineBasicMaterial;
 let debugMeshAdded = false;
 let physicsDebugGUI: Pane | null = null;
+let physicsObjectsDebugList: TCMP | null = null;
 let curScenePhysParams = { ...DEFAULT_SCENE_PHYS_STATE };
 
 const getSceneIdForPhysics = (
@@ -557,6 +567,7 @@ const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) => {
 /**
  * Creates a new physics object without a mesh and registers it to the scene id (or current scene id if scene id is not provided) in the physicsObjects object.
  * @param id (string) physics object id
+ * @param name (string) optional physics object name
  * @param physicsParamas (PhysicsParams | PhysicsParams[]) Params (or and array of them) for the physics object(s) ({@link PhysicsParams}), if an array is provided, then the object will be a multi object
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
  * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
@@ -565,16 +576,20 @@ const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) => {
  */
 export const createPhysicsObjectWithoutMesh = ({
   id,
+  name,
   physicsParams,
   sceneId,
   noWarnForUnitializedScene,
   currentObjectIndex,
+  isCompoundObject,
 }: {
   id: string;
+  name?: string;
   physicsParams: PhysicsParams | PhysicsParams[];
   sceneId?: string;
   noWarnForUnitializedScene?: boolean;
   currentObjectIndex?: number;
+  isCompoundObject?: boolean;
 }) => {
   if (!RAPIER) return;
   const sId = getSceneIdForPhysics(
@@ -600,11 +615,13 @@ export const createPhysicsObjectWithoutMesh = ({
       const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
       collisionEventFn = physicsParams[i].collider.collisionEventFn;
       contactForceEventFn = physicsParams[i].collider.contactForceEventFn;
-      if (currentObjectIndex !== undefined && i === currentObjectIndex) {
-        collider.setEnabled(true);
-        colliderEnabled = true;
-      } else {
-        collider.setEnabled(false);
+      if (!isCompoundObject) {
+        if (currentObjectIndex !== undefined && i === currentObjectIndex) {
+          collider.setEnabled(true);
+          colliderEnabled = true;
+        } else {
+          collider.setEnabled(false);
+        }
       }
       colliders.push(collider);
     }
@@ -625,6 +642,7 @@ export const createPhysicsObjectWithoutMesh = ({
 
   const physObj: PhysicsObject = {
     id,
+    name,
     ...(rigidBody ? { rigidBody } : {}),
     collider: colliders.length === 1 ? colliders[0] : colliders,
     ...(collisionEventFn ? { collisionEventFn } : {}),
@@ -640,6 +658,8 @@ export const createPhysicsObjectWithoutMesh = ({
     if (physObj.rigidBody) physObj.rigidBody.setEnabled(true);
   }
 
+  updatePhysObjectDebuggerGUI('LIST');
+
   return physObj;
 };
 
@@ -648,6 +668,7 @@ export const createPhysicsObjectWithoutMesh = ({
  * @param physicsParamas (PhysicsParams | PhysicsParams[]) Params (or and array of them) for the physics object(s) ({@link PhysicsParams}), if an array is provided, then the object will be a multi object
  * @param meshOrMeshId ((THREE.Mesh | string) | (THREE.Mesh | string)[]) mesh or a mesh id (or an array of either of them) of the representation of the physics object, if the physics object is a multi object, then the corresponding array index mesh will be used, but if the mesh is missing, then the first (or only) mesh will be used.
  * @param id (string) optional physics object id, if no id is provided then the mesh id is used
+ * @param name (string) optional physics object name
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
  * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
  * @param currentObjectIndex (number) optional object index to be set as the first object for the multi object (only for arrays of params), if no index is provided, then the first (index 0) will be set
@@ -658,18 +679,22 @@ export const createPhysicsObjectWithMesh = ({
   physicsParams,
   meshOrMeshId,
   id,
+  name,
   sceneId,
   noWarnForUnitializedScene,
   currentObjectIndex,
   currentMeshIndex,
+  isCompoundObject,
 }: {
   physicsParams: PhysicsParams | PhysicsParams[];
   meshOrMeshId: (THREE.Mesh | string) | (THREE.Mesh | string)[];
   id?: string;
+  name?: string;
   sceneId?: string;
   noWarnForUnitializedScene?: boolean;
   currentObjectIndex?: number;
   currentMeshIndex?: number;
+  isCompoundObject?: boolean;
 }) => {
   if (!RAPIER) return;
   const sId = getSceneIdForPhysics(
@@ -770,11 +795,13 @@ export const createPhysicsObjectWithMesh = ({
       const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
       collisionEventFn = physicsParams[i].collider.collisionEventFn;
       contactForceEventFn = physicsParams[i].collider.contactForceEventFn;
-      if (currentObjectIndex !== undefined && i === currentObjectIndex) {
-        collider.setEnabled(true);
-        colliderEnabled = true;
-      } else {
-        collider.setEnabled(false);
+      if (!isCompoundObject) {
+        if (currentObjectIndex !== undefined && i === currentObjectIndex) {
+          collider.setEnabled(true);
+          colliderEnabled = true;
+        } else {
+          collider.setEnabled(false);
+        }
       }
       colliders.push(collider);
     }
@@ -795,6 +822,7 @@ export const createPhysicsObjectWithMesh = ({
 
   const physObj: PhysicsObject = {
     id,
+    name,
     mesh: mesh,
     ...(meshes.length > 1 ? { meshes } : {}),
     ...(rigidBody ? { rigidBody } : {}),
@@ -812,6 +840,8 @@ export const createPhysicsObjectWithMesh = ({
     currentScenePhysicsObjects.push(physObj);
     if (physObj.rigidBody) physObj.rigidBody.setEnabled(true);
   }
+
+  updatePhysObjectDebuggerGUI('LIST');
 
   return physObj;
 };
@@ -838,6 +868,8 @@ export const switchPhysicsCollider = (id: string, newIndex: number) => {
   obj.collider[currentIndex].setEnabled(false);
   newCollider.setEnabled(true);
   obj.currentObjectIndex = newIndex;
+
+  updatePhysObjectDebuggerGUI('WINDOW');
 };
 
 export const switchPhysicsMesh = (id: string, newIndex: number) => {
@@ -863,6 +895,8 @@ export const switchPhysicsMesh = (id: string, newIndex: number) => {
   newMesh.visible = true;
   obj.mesh = newMesh;
   obj.currentMeshIndex = newIndex;
+
+  updatePhysObjectDebuggerGUI('WINDOW');
 };
 
 /**
@@ -902,6 +936,8 @@ export const deletePhysicsObject = (id: string, sceneId?: string) => {
       return obj.id !== id;
     });
   }
+
+  updatePhysObjectDebuggerGUI('LIST');
 };
 
 /**
@@ -917,6 +953,8 @@ export const deletePhysicsObjectsBySceneId = (sceneId: string) => {
   }
   delete physicsObjects[sceneId];
   if (isCurrentScene(sceneId)) deleteCurrentScenePhysicsObjects();
+
+  updatePhysObjectDebuggerGUI();
 };
 
 // @CONSIDER: maybe remove this as we anyways destroy all the physics objects during scene (un)load
@@ -946,6 +984,8 @@ export const deleteCurrentScenePhysicsObjects = () => {
     `Could not find currentSceneId (id: ${currentSceneId}) in deleteCurrentScenePhysicsObjects`
   );
   if (currentSceneId) physicsObjects[currentSceneId] = {};
+
+  updatePhysObjectDebuggerGUI();
 };
 
 /**
@@ -1222,7 +1262,7 @@ const stepperFnDebug = (delta: number) => {
   }
 
   const stopMeasuring = performance.now();
-  updatePhysicsPanel(stopMeasuring - startMeasuring); // @TODO: fix this
+  updatePhysicsPanel(stopMeasuring - startMeasuring);
 };
 
 /**
@@ -1316,6 +1356,7 @@ const createDebugControls = () => {
       const { container, debugGUI } = createNewDebuggerPane('physics', `${icon} Physics Controls`);
       physicsDebugGUI = debugGUI;
       buildPhysicsDebugGUI();
+      container.add(buildPhysicsObjectsDebugList());
       return container;
     },
   });
@@ -1431,6 +1472,252 @@ export const buildPhysicsDebugGUI = () => {
       lsSetItem(LS_KEY, physicsState);
       physicsWorld.numAdditionalFrictionIterations = e.value;
     });
+};
+
+export const EDIT_PHY_OBJ_WIN_ID = 'physicsObjectEditorWindow';
+let debuggerWindowPane: Pane | null = null;
+let debuggerWindowCmp: TCMP | null = null;
+
+const getColliderShapeName = (enumNumber: number) => {
+  switch (enumNumber) {
+    case 0:
+      return 'Ball';
+    case 2:
+      return 'Capsule';
+    case 11:
+      return 'Cone';
+    case 9:
+      return 'ConvexPolyhedron';
+    case 1:
+      return 'Cuboid';
+    case 10:
+      return 'Cylinder';
+    case 17:
+      return 'HalfSpace';
+    case 7:
+      return 'HeightField';
+    case 4:
+      return 'Polyline';
+    case 15:
+      return 'RoundCone';
+    case 16:
+      return 'RoundConvexPolyhedron';
+    case 12:
+      return 'RoundCuboid';
+    case 14:
+      return 'RoundCylinder';
+    case 13:
+      return 'RoundTriangle';
+    case 3:
+      return 'Segment';
+    case 6:
+      return 'TriMesh';
+    case 5:
+      return 'Triangle';
+  }
+  return '[UNKNOWN]';
+};
+
+export const createEditPhysObjContent = (data?: { [key: string]: unknown }) => {
+  const d = data as { id: string; winId: string };
+  const obj = currentScenePhysicsObjects.find((obj) => obj.id === d.id);
+  if (debuggerWindowPane) {
+    debuggerWindowPane.dispose();
+    debuggerWindowPane = null;
+  }
+  if (debuggerWindowCmp) {
+    debuggerWindowCmp.remove();
+    debuggerWindowCmp = null;
+  }
+  if (!obj) {
+    // We want to close the window when no phys object is found,
+    // but we have to return first, so wait one iteration.
+    setTimeout(() => {
+      closeDraggableWindow(EDIT_PHY_OBJ_WIN_ID);
+    }, 0);
+    return CMP();
+  }
+
+  addOnCloseToWindow(EDIT_PHY_OBJ_WIN_ID, () => {
+    updateDebuggerPhysObjListSelectedClass(null);
+  });
+  updateDebuggerPhysObjListSelectedClass(d.id);
+
+  debuggerWindowCmp = CMP({
+    onRemoveCmp: () => (debuggerWindowPane = null),
+  });
+
+  debuggerWindowPane = new Pane({ container: debuggerWindowCmp.elem });
+
+  // @TODO: copy code button
+  const logButton = CMP({
+    class: 'winSmallIconButton',
+    html: () =>
+      `<button title="Console.log / print this physics object to browser console">${getSvgIcon('fileAsterix')}</button>`,
+    onClick: () => {
+      llog('PHYSICS OBJECT:***************', obj, '**********************');
+    },
+  });
+  const deleteButton = CMP({
+    class: ['winSmallIconButton', 'dangerColor'],
+    html: () =>
+      `<button title="Remove physics object (only for this browser load, does not delete character permanently)">${getSvgIcon('thrash')}</button>`,
+    onClick: () => {
+      deletePhysicsObject(obj.id);
+      closeDraggableWindow(EDIT_PHY_OBJ_WIN_ID);
+    },
+  });
+
+  // const colliders = Array.isArray(obj.collider) ?
+
+  debuggerWindowCmp.add({
+    prepend: true,
+    class: ['winNotRightPaddedContent', 'winFlexContent'],
+    html: () => `<div>
+<div>
+  <div><span class="winSmallLabel">Name:</span> ${obj.name || ''}</div>
+  <div><span class="winSmallLabel">Id:</span> ${obj.id}</div>
+  ${
+    Array.isArray(obj.collider)
+      ? `<div><span class="winSmallLabel">Colliders (${obj.collider.length}):</span> ${obj.collider.map((coll) => getColliderShapeName(coll.shape.type)).join(', ')}</div>`
+      : `<div><span class="winSmallLabel">Collider:</span> ${getColliderShapeName(obj.collider.shape.type)}</div>`
+  }
+  ${Array.isArray(obj.collider) ? `<div><span class="winSmallLabel">Current obj index:</span> ${obj.currentObjectIndex || 0}</div>` : ''}
+  ${
+    Array.isArray(obj.meshes)
+      ? `<div><span class="winSmallLabel">Meshes (${obj.meshes.length}):</span> ${obj.meshes.map((m) => m.userData.id).join(', ')}</div>`
+      : `<div><span class="winSmallLabel">Mesh:</span> ${obj.mesh?.userData.id || '[No mesh]'}</div>`
+  }
+  ${Array.isArray(obj.collider) ? `<div><span class="winSmallLabel">Current mesh index:</span> ${obj.currentMeshIndex || 0}</div>` : ''}
+</div>
+<div style="text-align:right">${logButton}${deleteButton}</div>
+</div>`,
+  });
+
+  if (obj.rigidBody) {
+    const rigidBody = {
+      position: obj.rigidBody.translation(),
+      rotation: new THREE.Euler().setFromQuaternion(
+        new THREE.Quaternion(
+          obj.rigidBody.rotation().x,
+          obj.rigidBody.rotation().y,
+          obj.rigidBody.rotation().z,
+          obj.rigidBody.rotation().w
+        )
+      ),
+    };
+    // Position
+    const positionInput = debuggerWindowPane.addBinding(rigidBody, 'position', {
+      label: 'Position',
+    });
+    debuggerWindowPane.addButton({ title: 'Set position' }).on('click', () => {
+      obj.rigidBody?.setTranslation(
+        new THREE.Vector3(rigidBody.position.x, rigidBody.position.y, rigidBody.position.z),
+        true
+      );
+    });
+    debuggerWindowPane.addButton({ title: 'Update position input' }).on('click', () => {
+      rigidBody.position = obj.rigidBody?.translation() || rigidBody.position;
+      positionInput.refresh();
+    });
+    debuggerWindowPane.addBlade({ view: 'separator' });
+    // Rotation
+    const rotationInput = debuggerWindowPane.addBinding(rigidBody, 'rotation', {
+      label: 'Rotation',
+      step: Math.PI / 8,
+    });
+    debuggerWindowPane.addButton({ title: 'Set rotation' }).on('click', () => {
+      obj.rigidBody?.setRotation(
+        new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(rigidBody.rotation.x, rigidBody.rotation.y, rigidBody.rotation.z)
+        ),
+        true
+      );
+    });
+    debuggerWindowPane.addButton({ title: 'Update rotation input' }).on('click', () => {
+      rigidBody.rotation = new THREE.Euler().setFromQuaternion(
+        new THREE.Quaternion(
+          obj.rigidBody?.rotation().x,
+          obj.rigidBody?.rotation().y,
+          obj.rigidBody?.rotation().z,
+          obj.rigidBody?.rotation().w
+        )
+      );
+      rotationInput.refresh();
+    });
+  }
+
+  return debuggerWindowCmp;
+};
+
+const buildPhysicsObjectsDebugList = () => {
+  if (!physicsObjectsDebugList) physicsObjectsDebugList = CMP();
+
+  let html = `<div><h3 class="listItemCount">${currentScenePhysicsObjects.length} physics objects:</h3>`;
+
+  html += '<ul class="ulList">';
+  for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+    const obj = currentScenePhysicsObjects[i];
+    const button = CMP({
+      onClick: () => {
+        const winState = getDraggableWindow(EDIT_PHY_OBJ_WIN_ID);
+        if (winState?.isOpen && winState?.data?.id === obj.id) {
+          closeDraggableWindow(EDIT_PHY_OBJ_WIN_ID);
+          return;
+        }
+        openDraggableWindow({
+          id: EDIT_PHY_OBJ_WIN_ID,
+          position: { x: 110, y: 60 },
+          size: { w: 400, h: 400 },
+          saveToLS: true,
+          title: `Edit physics object: ${obj.name || `[${obj.id}]`}`,
+          isDebugWindow: true,
+          content: createEditPhysObjContent,
+          data: { id: obj.id, winId: EDIT_PHY_OBJ_WIN_ID },
+          closeOnSceneChange: true,
+          onClose: () => updateDebuggerPhysObjListSelectedClass(null),
+        });
+        updateDebuggerPhysObjListSelectedClass(obj.id);
+      },
+      html: `<button class="listItemWithId">
+  <span class="itemId">[${obj.id}]${Array.isArray(obj.collider) ? '<span class="additionalInfo">MULTI</span>' : ''}</span>
+  <h4>${obj.name || `[${obj.id}]`}</h4>
+</button>`,
+    });
+
+    html += `<li data-id="${obj.id}">${button}</li>`;
+  }
+
+  if (!currentScenePhysicsObjects.length) {
+    html += `<li class="emptyState">No physics objects registered..</li>`;
+  }
+  html += '</ul></div>';
+
+  physicsObjectsDebugList.update({ html: () => html });
+
+  return physicsObjectsDebugList;
+};
+
+export const updatePhysObjectDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
+  if (!isDebugEnvironment()) return;
+  if (only !== 'WINDOW') buildPhysicsObjectsDebugList();
+  if (only === 'LIST') return;
+  const winState = getDraggableWindow(EDIT_PHY_OBJ_WIN_ID);
+  if (winState) updateDraggableWindow(EDIT_PHY_OBJ_WIN_ID);
+};
+
+export const updateDebuggerPhysObjListSelectedClass = (id: string | null) => {
+  const ulElem = physicsObjectsDebugList?.elem.getElementsByTagName('ul')[0];
+  if (!ulElem) return;
+
+  for (const child of ulElem.children) {
+    child.classList.remove('selected');
+    if (id === null) continue;
+    const elemId = child.getAttribute('data-id');
+    if (elemId === id) {
+      child.classList.add('selected');
+    }
+  }
 };
 
 const initRapier = async () => {

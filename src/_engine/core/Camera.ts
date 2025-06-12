@@ -456,8 +456,9 @@ const createCameraDebuggerList = () => {
           title: `Edit camera: ${camera.userData.name || `[${camera.userData.id}]`}`,
           isDebugWindow: true,
           content: createEditCameraContent,
-          data: { id: camera.userData.id, EDIT_CAMERA_WIN_ID },
+          data: { id: camera.userData.id, winId: EDIT_CAMERA_WIN_ID },
           closeOnSceneChange: true,
+          onClose: () => updateDebuggerCamerasListSelectedClass(null),
         });
         updateDebuggerCamerasListSelectedClass(keys[i]);
       },
@@ -506,17 +507,17 @@ export const updateCamerasDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (winState) updateDraggableWindow(EDIT_CAMERA_WIN_ID);
 };
 
-export const updateDebuggerCamerasListSelectedClass = (id: string) => {
+export const updateDebuggerCamerasListSelectedClass = (id: string | null) => {
   const ulElem = debuggerListCmp?.elem;
   if (!ulElem) return;
 
   for (const child of ulElem.children) {
+    child.classList.remove('selected');
+    if (id === null) continue;
     const elemId = child.getAttribute('data-id');
     if (elemId === id) {
       child.classList.add('selected');
-      continue;
     }
-    child.classList.remove('selected');
   }
 };
 

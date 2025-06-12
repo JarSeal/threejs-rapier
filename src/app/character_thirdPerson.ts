@@ -16,6 +16,7 @@ import {
   switchPhysicsCollider,
 } from '../_engine/core/PhysicsRapier';
 import { createSceneAppLooper, getRootScene } from '../_engine/core/Scene';
+import { castRayFromPoints } from '../_engine/core/Raycast';
 
 // @TODO: add comments for each
 // If a prop has one underscore (_) then it means it is a configuration,
@@ -145,7 +146,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
       {
         collider: {
           type: 'CAPSULE',
-          friction: 1.5,
+          friction: 1,
         },
         rigidBody: {
           rigidType: 'DYNAMIC',
@@ -307,7 +308,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   groundRaycaster.near = 0.01;
   groundRaycaster.far = 10;
   const usableVec = new THREE.Vector3();
-  const groundRaycastVecDir = new THREE.Vector3(0, -1, 0);
+  const groundRaycastVecDir = new THREE.Vector3(0, -1, 0).normalize();
   const checkIntersectsObjectAndDistance = (intersects: THREE.Intersection[]) => {
     for (let i = 0; i < intersects.length; i++) {
       if (
@@ -321,51 +322,68 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     return false;
   };
   const detectGround = () => {
+    characterData.isGrounded = false;
+
     // First ray from the middle of the character
-    groundRaycaster.set(charMesh.position, groundRaycastVecDir);
-    let intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    // console.log('GROUND', intersects.length);
-    let isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
-    if (isGroundedCheck) {
-      characterData.isGrounded = true;
-      return;
-    }
+    castRayFromPoints<THREE.Mesh>(
+      getRootScene()?.children || [],
+      charMesh.position,
+      groundRaycastVecDir,
+      {
+        helperId: 'middleGroundDetector',
+        startLength: characterData._height / 3,
+        endLength: characterData._groundedRayMaxDistance,
+        perIntersectFn: (intersect) => {
+          if (intersect.object.userData.isPhysicsObject) {
+            characterData.isGrounded = true;
+            return true;
+          }
+        },
+      }
+    );
+    // groundRaycaster.set(charMesh.position, charMesh.position);
+    // let intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
+    // let isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
+    // if (isGroundedCheck) {
+    //   characterData.isGrounded = true;
+    //   return;
+    // }
 
     // Four rays from the edges of the character
-    usableVec.copy(charMesh.position).sub({ x: characterData._radius, y: 0, z: 0 });
-    groundRaycaster.set(usableVec, groundRaycastVecDir);
-    intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
-    if (isGroundedCheck) {
-      characterData.isGrounded = true;
-      return;
-    }
-    usableVec.copy(charMesh.position).sub({ x: 0, y: 0, z: characterData._radius });
-    groundRaycaster.set(usableVec, groundRaycastVecDir);
-    intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
-    if (isGroundedCheck) {
-      characterData.isGrounded = true;
-      return;
-    }
-    usableVec.copy(charMesh.position).add({ x: characterData._radius, y: 0, z: 0 });
-    groundRaycaster.set(usableVec, groundRaycastVecDir);
-    intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
-    if (isGroundedCheck) {
-      characterData.isGrounded = true;
-      return;
-    }
-    usableVec.copy(charMesh.position).add({ x: 0, y: 0, z: characterData._radius });
-    groundRaycaster.set(usableVec, groundRaycastVecDir);
-    intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
-    if (isGroundedCheck) {
-      characterData.isGrounded = true;
-      return;
-    }
+    // usableVec.copy(charMesh.position).sub({ x: characterData._radius, y: 0, z: 0 });
+    // groundRaycaster.set(usableVec, groundRaycastVecDir);
+    // intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
+    // isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
+    // if (isGroundedCheck) {
+    //   characterData.isGrounded = true;
+    //   return;
+    // }
+    // usableVec.copy(charMesh.position).sub({ x: 0, y: 0, z: characterData._radius });
+    // groundRaycaster.set(usableVec, groundRaycastVecDir);
+    // intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
+    // isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
+    // if (isGroundedCheck) {
+    //   characterData.isGrounded = true;
+    //   return;
+    // }
+    // usableVec.copy(charMesh.position).add({ x: characterData._radius, y: 0, z: 0 });
+    // groundRaycaster.set(usableVec, groundRaycastVecDir);
+    // intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
+    // isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
+    // if (isGroundedCheck) {
+    //   characterData.isGrounded = true;
+    //   return;
+    // }
+    // usableVec.copy(charMesh.position).add({ x: 0, y: 0, z: characterData._radius });
+    // groundRaycaster.set(usableVec, groundRaycastVecDir);
+    // intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
+    // isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
+    // if (isGroundedCheck) {
+    //   characterData.isGrounded = true;
+    //   return;
+    // }
 
-    characterData.isGrounded = false;
+    // characterData.isGrounded = false;
   };
 
   createSceneAppLooper(() => {

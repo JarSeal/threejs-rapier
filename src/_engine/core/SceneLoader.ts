@@ -32,6 +32,7 @@ import {
 import { deleteAllCharacters } from './Character';
 import { existsOrThrow } from '../utils/helpers';
 import { deregisterAllLightAndCameraHelpers } from './Helpers';
+import { deleteAllRayHelpers } from './Raycast';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -257,6 +258,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
       runOnSceneExit(prevSceneId);
       deleteOnCameraSetsAndUnsets();
+      deleteAllRayHelpers();
 
       loader.phase = 'LOAD';
       await loadFn(loader, initNextSceneFn).then(async (newSceneId) => {

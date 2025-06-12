@@ -10,6 +10,7 @@ import {
   createEditCharacterContent,
   createTrackCharacterContent,
 } from './_engine/core/Character';
+import { createEditPhysObjContent, EDIT_PHY_OBJ_WIN_ID } from './_engine/core/PhysicsRapier';
 
 export const MAIN_APP_CAM_ID = 'mainAppCam';
 
@@ -37,6 +38,7 @@ const config: AppConfig = {
   draggableWindows: {
     [EDIT_LIGHT_WIN_ID]: { contentFn: createEditLightContent },
     [EDIT_CAMERA_WIN_ID]: { contentFn: createEditCameraContent },
+    [EDIT_PHY_OBJ_WIN_ID]: { contentFn: createEditPhysObjContent },
     [CHAR_EDIT_WIN_ID]: { contentFn: createEditCharacterContent },
     [CHAR_TRACKER_WIN_ID]: { contentFn: createTrackCharacterContent },
     myFirstDraggableTest: { contentFn: editObjectPropsContentFn }, // @TODO: remove this

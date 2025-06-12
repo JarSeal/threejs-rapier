@@ -188,6 +188,11 @@
   }
 }
 
+:global(.listItemCount) {
+  margin: 2.4rem 0 1.6rem;
+  font-size: 1.4rem;
+}
+
 :global(ul li.emptyState) {
   padding: 2.4rem;
   color: color.adjust(variables.$debugTextColorDark, $lightness: -20%);
@@ -268,6 +273,19 @@ ul li :global(.listItemWithId) {
     font-size: 1rem;
     padding-top: 0.5rem;
     color: variables.$debugTextColorDark;
+  }
+
+  :global(.additionalInfo) {
+    display: inline-block;
+    font-size: 0.8rem;
+    color: variables.$debugGuiBackgroundLighter;
+    background-color: variables.$debugTextColorDark;
+    position: absolute;
+    top: 0.4rem;
+    left: 100%;
+    margin-left: 0.8rem;
+    padding: 0.2rem 0.2rem 0 0.2rem;
+    border-radius: 0.2rem;
   }
 
   span,

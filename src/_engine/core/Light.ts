@@ -1090,8 +1090,9 @@ const createLightsDebuggerList = () => {
           title: `Edit light: ${light.userData.name || `[${light.userData.id}]`}`,
           isDebugWindow: true,
           content: createEditLightContent,
-          data: { id: light.userData.id, EDIT_LIGHT_WIN_ID },
+          data: { id: light.userData.id, winId: EDIT_LIGHT_WIN_ID },
           closeOnSceneChange: true,
+          onClose: () => updateDebuggerLightsListSelectedClass(null),
         });
         updateDebuggerLightsListSelectedClass(keys[i]);
       },
@@ -1140,17 +1141,17 @@ export const updateLightsDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (winState?.isOpen) updateDraggableWindow(EDIT_LIGHT_WIN_ID);
 };
 
-export const updateDebuggerLightsListSelectedClass = (id: string) => {
+export const updateDebuggerLightsListSelectedClass = (id: string | null) => {
   const ulElem = debuggerListCmp?.elem;
   if (!ulElem) return;
 
   for (const child of ulElem.children) {
+    child.classList.remove('selected');
+    if (id === null) continue;
     const elemId = child.getAttribute('data-id');
     if (elemId === id) {
       child.classList.add('selected');
-      continue;
     }
-    child.classList.remove('selected');
   }
 };
 

@@ -6,6 +6,7 @@ import { getCurrentSceneId, getRootScene } from './Scene';
 import { DEBUG_CAMERA_ID, getDebugToolsState } from '../debug/DebugTools';
 import { getCamera, saveCameraToLS, updateCamerasDebuggerGUI } from './Camera';
 import { existsOrThrow } from '../utils/helpers';
+import { cleanUpRayHelpers } from './Raycast';
 
 type LightHelper = THREE.DirectionalLightHelper | THREE.PointLightHelper;
 
@@ -291,6 +292,8 @@ export const toggleCameraHelper = (id: string, show: boolean) => {
 export const updateHelpers = () => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) return;
+
+  cleanUpRayHelpers();
 
   const camHelpers = cameraHelpers[currentSceneId] || [];
   for (let i = 0; i < camHelpers.length; i++) {

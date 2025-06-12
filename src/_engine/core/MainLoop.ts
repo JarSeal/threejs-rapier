@@ -21,6 +21,7 @@ import { updateHelpers } from './Helpers';
 import { InitOnScreenTools, updateOnScreenTools } from '../debug/OnScreenTools';
 import { BindingApi } from '@tweakpane/core';
 import { updateInputControllerLoopActions } from './InputControls';
+import { initRayCasting } from './Raycast';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -308,6 +309,7 @@ export const initMainLoop = async () => {
   if (isDebugEnvironment()) {
     initStats();
     initDebugTools();
+    initRayCasting();
 
     mainLoop = mainLoopForDebug;
   } else if (isProductionEnvironment() && loopState.maxFPS > 0) {
