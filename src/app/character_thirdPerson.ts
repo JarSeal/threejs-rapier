@@ -309,18 +309,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   groundRaycaster.far = 10;
   const usableVec = new THREE.Vector3();
   const groundRaycastVecDir = new THREE.Vector3(0, -1, 0).normalize();
-  const checkIntersectsObjectAndDistance = (intersects: THREE.Intersection[]) => {
-    for (let i = 0; i < intersects.length; i++) {
-      if (
-        (intersects[i].object as unknown as { userData?: { [key: string]: unknown } }).userData
-          ?.isPhysicsObject &&
-        intersects[i].distance < characterData._groundedRayMaxDistance
-      ) {
-        return true;
-      }
-    }
-    return false;
-  };
+  const charHalfRadius = characterData._radius / 2;
   const detectGround = () => {
     characterData.isGrounded = false;
 
@@ -341,49 +330,76 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
         },
       }
     );
-    // groundRaycaster.set(charMesh.position, charMesh.position);
-    // let intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    // let isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
-    // if (isGroundedCheck) {
-    //   characterData.isGrounded = true;
-    //   return;
-    // }
+    if (characterData.isGrounded) return;
 
     // Four rays from the edges of the character
-    // usableVec.copy(charMesh.position).sub({ x: characterData._radius, y: 0, z: 0 });
-    // groundRaycaster.set(usableVec, groundRaycastVecDir);
-    // intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    // isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
-    // if (isGroundedCheck) {
-    //   characterData.isGrounded = true;
-    //   return;
-    // }
-    // usableVec.copy(charMesh.position).sub({ x: 0, y: 0, z: characterData._radius });
-    // groundRaycaster.set(usableVec, groundRaycastVecDir);
-    // intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    // isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
-    // if (isGroundedCheck) {
-    //   characterData.isGrounded = true;
-    //   return;
-    // }
-    // usableVec.copy(charMesh.position).add({ x: characterData._radius, y: 0, z: 0 });
-    // groundRaycaster.set(usableVec, groundRaycastVecDir);
-    // intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    // isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
-    // if (isGroundedCheck) {
-    //   characterData.isGrounded = true;
-    //   return;
-    // }
-    // usableVec.copy(charMesh.position).add({ x: 0, y: 0, z: characterData._radius });
-    // groundRaycaster.set(usableVec, groundRaycastVecDir);
-    // intersects = groundRaycaster.intersectObjects(getRootScene()?.children || []);
-    // isGroundedCheck = checkIntersectsObjectAndDistance(intersects);
-    // if (isGroundedCheck) {
-    //   characterData.isGrounded = true;
-    //   return;
-    // }
-
-    // characterData.isGrounded = false;
+    castRayFromPoints<THREE.Mesh>(
+      getRootScene()?.children || [],
+      charMesh.position.clone().sub({ x: charHalfRadius, y: 0, z: 0 }),
+      groundRaycastVecDir,
+      {
+        helperId: 'off1GroundDetector',
+        startLength: characterData._height / 3,
+        endLength: characterData._groundedRayMaxDistance,
+        perIntersectFn: (intersect) => {
+          if (intersect.object.userData.isPhysicsObject) {
+            characterData.isGrounded = true;
+            return true;
+          }
+        },
+      }
+    );
+    if (characterData.isGrounded) return;
+    castRayFromPoints<THREE.Mesh>(
+      getRootScene()?.children || [],
+      charMesh.position.clone().sub({ x: -charHalfRadius, y: 0, z: 0 }),
+      groundRaycastVecDir,
+      {
+        helperId: 'off2GroundDetector',
+        startLength: characterData._height / 3,
+        endLength: characterData._groundedRayMaxDistance,
+        perIntersectFn: (intersect) => {
+          if (intersect.object.userData.isPhysicsObject) {
+            characterData.isGrounded = true;
+            return true;
+          }
+        },
+      }
+    );
+    if (characterData.isGrounded) return;
+    castRayFromPoints<THREE.Mesh>(
+      getRootScene()?.children || [],
+      charMesh.position.clone().sub({ x: 0, y: 0, z: charHalfRadius }),
+      groundRaycastVecDir,
+      {
+        helperId: 'off3GroundDetector',
+        startLength: characterData._height / 3,
+        endLength: characterData._groundedRayMaxDistance,
+        perIntersectFn: (intersect) => {
+          if (intersect.object.userData.isPhysicsObject) {
+            characterData.isGrounded = true;
+            return true;
+          }
+        },
+      }
+    );
+    if (characterData.isGrounded) return;
+    castRayFromPoints<THREE.Mesh>(
+      getRootScene()?.children || [],
+      charMesh.position.clone().sub({ x: 0, y: 0, z: -charHalfRadius }),
+      groundRaycastVecDir,
+      {
+        helperId: 'off4GroundDetector',
+        startLength: characterData._height / 3,
+        endLength: characterData._groundedRayMaxDistance,
+        perIntersectFn: (intersect) => {
+          if (intersect.object.userData.isPhysicsObject) {
+            characterData.isGrounded = true;
+            return true;
+          }
+        },
+      }
+    );
   };
 
   createSceneAppLooper(() => {

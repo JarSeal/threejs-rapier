@@ -18,6 +18,7 @@ let ray: THREE.Raycaster | null = null;
 // let vec3: THREE.Vector3 | null = null;
 let helperLineGeom: THREE.BufferGeometry | null = null;
 let helperIds: string[] = [];
+let drawnHelperIds: string[] = [];
 
 export const initRayCasting = () => {
   ray = new THREE.Raycaster();
@@ -32,21 +33,25 @@ export const cleanUpRayHelpers = () => {
   const lines = (getRootScene() as THREE.Scene).children.filter(
     (line) => line.userData.isRayHelper
   );
-  // const rogueLines = (getRootScene() as THREE.Scene).children
-  //   .filter((line) => line.userData.isRayHelper)
-  //   .filter((line) => !helperIds.includes(line.userData.helperId));
-  const stillActiveIds = [];
+  // const stillActiveIds = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] as THREE.Line;
-    if (helperIds.includes(line.userData.helperId)) {
-      stillActiveIds.push(line.userData.helperId);
-    }
-    if (!helperIds.includes(line.userData.helperId)) {
+    if (!drawnHelperIds.includes(line.userData.helperId)) {
+      // Remove because not anymore drawn
+      helperIds = helperIds.filter((id) => id !== line.userData.helperId);
       line.geometry.dispose();
       line.removeFromParent();
     }
+    // if (helperIds.includes(line.userData.helperId)) {
+    //   stillActiveIds.push(line.userData.helperId);
+    // }
+    // if (!helperIds.includes(line.userData.helperId)) {
+    //   line.geometry.dispose();
+    //   line.removeFromParent();
+    // }
   }
-  helperIds = [...stillActiveIds];
+  helperIds = [...drawnHelperIds];
+  drawnHelperIds = [];
 };
 
 export const deleteAllRayHelpers = () => {
@@ -69,7 +74,7 @@ export let castRayFromPoints = <TIntersected extends THREE.Object3D = THREE.Obje
   opts?: Opts<TIntersected>
 ): Array<THREE.Intersection<TIntersected>> => {
   const { startLength, endLength, perIntersectFn, optionalTargetArr, recursive } = opts || {};
-  (ray as THREE.Raycaster).set(from, direction.normalize());
+  (ray as THREE.Raycaster).set(from, direction);
   let intersects: Array<THREE.Intersection<TIntersected>>;
   if (Array.isArray(objects)) {
     // intersectObjects (multiple objects)
@@ -143,6 +148,7 @@ const _castRayFromPointsDebug = <TIntersected extends THREE.Object3D = THREE.Obj
       rootScene.add(rayLine);
     }
     helperIds.push(helperId);
+    drawnHelperIds.push(helperId);
   }
   if (perIntersectFn) {
     for (let i = 0; i < intersects.length; i++) {
