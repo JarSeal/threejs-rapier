@@ -69,6 +69,7 @@ export const createCharacter = ({
   name?: string;
   physicsParams: PhysicsParams | PhysicsParams[];
   meshOrMeshId: (THREE.Mesh | string) | (THREE.Mesh | string)[];
+  // @TODO: add FunctionInputParams (this is for AI controllable characters, aka. NPCs)
   controls?: (
     | (KeyInputParams & { id: string; type: KeyInputControlType })
     | (MouseInputParams & { id: string; type: MouseInputControlType })

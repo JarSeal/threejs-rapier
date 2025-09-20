@@ -10,7 +10,7 @@ import { Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { existsOrThrow, existsOrWarn } from '../utils/helpers';
+import { existsOrThrow, existsOrWarn, ThreeVector3 } from '../utils/helpers';
 import { CMP, TCMP } from '../utils/CMP';
 import {
   addOnCloseToWindow,
@@ -19,6 +19,7 @@ import {
   openDraggableWindow,
   updateDraggableWindow,
 } from './UI/DraggableWindow';
+import { LoopState } from './MainLoop';
 
 type CollisionEventFn = (
   physObj1: PhysicsObject,
@@ -43,6 +44,7 @@ export type PhysicsObject = {
   contactForceEventFn?: ContactForceEventFn;
   currentObjectIndex?: number;
   currentMeshIndex?: number;
+  setTranslation: (translation: { x?: number; y?: number; z?: number }) => void;
 };
 
 type ColliderParams = (
@@ -227,8 +229,7 @@ const DEFAULT_SCENE_PHYS_STATE: ScenePhysicsState = {
 };
 const getDefaultScenePhysParams = () =>
   ({ ...DEFAULT_SCENE_PHYS_STATE, ...getConfig().physics }) as ScenePhysicsState;
-let stepperFn: (delta: number) => void = () => {};
-let accDelta = 0;
+let stepperFn: (loopState: LoopState) => void = () => {};
 let RAPIER: typeof Rapier;
 let physicsWorld: Rapier.World = { step: () => {} } as Rapier.World;
 let physicsWorldEnabled = false;
@@ -376,7 +377,8 @@ const getCombineRule = (rule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE') => {
   }
 };
 
-const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) => {
+/** Creates a RAPIER collider desc */
+export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) => {
   const colliderParams = physicsParams.collider;
   let shape: Rapier.Shape | null = null;
   let geo: THREE.BufferGeometry | undefined;
@@ -648,6 +650,29 @@ export const createPhysicsObjectWithoutMesh = ({
     ...(collisionEventFn ? { collisionEventFn } : {}),
     ...(contactForceEventFn ? { contactForceEventFn } : {}),
     ...(currentObjectIndex !== undefined ? { currentObjectIndex } : {}),
+    setTranslation: (translation: { x?: number; y?: number; z?: number }) => {
+      if (rigidBody) {
+        rigidBody.setTranslation(
+          ThreeVector3.set(
+            translation.x || rigidBody.translation().x,
+            translation.y || rigidBody.translation().y,
+            translation.z || rigidBody.translation().z
+          ),
+          true
+        );
+        return;
+      }
+      for (let i = 0; i < colliders.length; i++) {
+        const collider = colliders[i];
+        collider.setTranslation(
+          ThreeVector3.set(
+            translation.x || collider.translation().x,
+            translation.y || collider.translation().y,
+            translation.z || collider.translation().z
+          )
+        );
+      }
+    },
   };
   if (!physicsObjects[sId]) physicsObjects[sId] = {};
   physicsObjects[sId][id] = physObj;
@@ -786,7 +811,7 @@ export const createPhysicsObjectWithMesh = ({
   if (Array.isArray(physicsParams)) {
     existsOrThrow(
       physicsParams[0].rigidBody,
-      `Could not find a RigidBody in the first index of the physicsParams in createPhysicsObjectWithMesh with id '${id}'.`
+      `Could not find a RigidBody in the first index of the physicsParams in createPhysicsObjectWithMesh with id '${id}'. The first index of a multi object should have a rigidbody.`
     );
     rigidBody = createRigidBody(physicsParams[0]);
     let colliderEnabled = false;
@@ -795,6 +820,7 @@ export const createPhysicsObjectWithMesh = ({
       const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
       collisionEventFn = physicsParams[i].collider.collisionEventFn;
       contactForceEventFn = physicsParams[i].collider.contactForceEventFn;
+      // @TODO: refactor this to have multiple objects enabled (this only supports one)
       if (!isCompoundObject) {
         if (currentObjectIndex !== undefined && i === currentObjectIndex) {
           collider.setEnabled(true);
@@ -803,8 +829,11 @@ export const createPhysicsObjectWithMesh = ({
           collider.setEnabled(false);
         }
       }
+      // @TODO: refactor this to have the enabled param in the phys obj params
+      if (physicsParams[i].collider.isSensor) collider.setEnabled(true);
       colliders.push(collider);
     }
+    // @TODO: this might not be needed after the refactoring above
     if (!colliderEnabled) colliders[0].setEnabled(true);
   } else {
     rigidBody = createRigidBody(physicsParams);
@@ -831,6 +860,35 @@ export const createPhysicsObjectWithMesh = ({
     ...(contactForceEventFn ? { contactForceEventFn } : {}),
     ...(currentObjectIndex !== undefined ? { currentObjectIndex } : {}),
     ...(currentMeshIndex !== undefined ? { currentMeshIndex } : {}),
+    setTranslation: (translation: { x?: number; y?: number; z?: number }) => {
+      if (rigidBody) {
+        rigidBody.setTranslation(
+          ThreeVector3.set(
+            translation.x || rigidBody.translation().x,
+            translation.y || rigidBody.translation().y,
+            translation.z || rigidBody.translation().z
+          ),
+          true
+        );
+      } else {
+        for (let i = 0; i < colliders.length; i++) {
+          const collider = colliders[i];
+          collider.setTranslation(
+            ThreeVector3.set(
+              translation.x || collider.translation().x,
+              translation.y || collider.translation().y,
+              translation.z || collider.translation().z
+            )
+          );
+        }
+      }
+      mesh.position.set(
+        translation.x || mesh.position.x,
+        translation.y || mesh.position.y,
+        translation.z || mesh.position.z
+      );
+    },
+    // @TODO: add setRotation
   };
   if (!physicsObjects[sId]) physicsObjects[sId] = {};
   physicsObjects[sId][id] = physObj;
@@ -1139,11 +1197,7 @@ export const createPhysicsDebugMesh = () => {
 
 // Different stepper functions to use for debug and production.
 // baseStepper is used for both.
-const baseStepper = (delta: number) => {
-  accDelta += delta;
-  if (accDelta < physicsState.timestepRatio) return;
-  accDelta = accDelta % physicsState.timestepRatio;
-
+const baseStepper = () => {
   // Step the world
   physicsWorld.step(eventQueue);
 
@@ -1151,13 +1205,13 @@ const baseStepper = (delta: number) => {
     eventQueue.drainCollisionEvents((handle1, handle2, started) => {
       const physObj1 = currentScenePhysicsObjects.find((obj) => {
         if (Array.isArray(obj.collider)) {
-          return obj.collider[obj.currentObjectIndex || 0].handle === handle1;
+          return Boolean(obj.collider.find((collider) => collider.handle === handle1));
         }
         return obj.collider.handle === handle1;
       });
       const physObj2 = currentScenePhysicsObjects.find((obj) => {
         if (Array.isArray(obj.collider)) {
-          return obj.collider[obj.currentObjectIndex || 0].handle === handle2;
+          return Boolean(obj.collider.find((collider) => collider.handle === handle2));
         }
         return obj.collider.handle === handle2;
       });
@@ -1176,13 +1230,13 @@ const baseStepper = (delta: number) => {
       const handle2 = event.collider2();
       const physObj1 = currentScenePhysicsObjects.find((obj) => {
         if (Array.isArray(obj.collider)) {
-          return obj.collider[obj.currentObjectIndex || 0].handle === handle1;
+          return Boolean(obj.collider.find((collider) => collider.handle === handle1));
         }
         return obj.collider.handle === handle1;
       });
       const physObj2 = currentScenePhysicsObjects.find((obj) => {
         if (Array.isArray(obj.collider)) {
-          return obj.collider[obj.currentObjectIndex || 0].handle === handle2;
+          return Boolean(obj.collider.find((collider) => collider.handle === handle2));
         }
         return obj.collider.handle === handle2;
       });
@@ -1220,18 +1274,24 @@ const baseStepper = (delta: number) => {
 };
 
 // PRODUCTION STEPPER
-const stepperFnProduction = (delta: number) => {
-  baseStepper(delta);
+const stepperFnProduction = () => {
+  baseStepper();
 };
 
 // DEBUG STEPPER
-const stepperFnDebug = (delta: number) => {
+const stepperFnDebug = (loopState: LoopState) => {
   const startMeasuring = performance.now();
+
+  if (loopState.masterPlay && loopState.appPlay) {
+    requestAnimationFrame(() => stepPhysicsWorld(loopState));
+  } else {
+    return;
+  }
 
   const curSceneParams = physicsState.scenes[getCurrentSceneId() || ''];
   if (!curSceneParams?.worldStepEnabled) return;
 
-  baseStepper(delta);
+  baseStepper();
 
   if (physicsWorldEnabled && curSceneParams?.visualizerEnabled) {
     const { vertices, colors } = physicsWorld.debugRender();
@@ -1268,8 +1328,8 @@ const stepperFnDebug = (delta: number) => {
 /**
  * Steps the physics world (called in the main loop) and sets mesh positions and rotations in the current scene.
  */
-export const stepPhysicsWorld = (delta: number) =>
-  currentScenePhysicsObjects.length && stepperFn(delta);
+export const stepPhysicsWorld = (loopState: LoopState) =>
+  currentScenePhysicsObjects.length && stepperFn(loopState);
 
 /**
  * Changes the scene to be used for the scene's physics objects (optimizes the stepping)

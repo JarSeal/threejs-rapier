@@ -5,6 +5,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { createMesh } from '../_engine/core/Mesh';
 import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
 
+// @TODO: refactor this to produce only the needed objects (not all like it is now)
+
 export const characterTestObjects = () => {
   // Stairs
   const stairOffsetW = 0.4;
@@ -85,5 +87,38 @@ export const characterTestObjects = () => {
     meshOrMeshId: stairsMesh,
   });
 
-  return { stairsMesh, stairsPhysicsObject };
+  // Walls
+  const bigBoxWallGeo = createGeometry({
+    id: 'bigBoxWallGeo',
+    type: 'BOX',
+    params: { width: 10, height: 10, depth: 10 },
+  });
+  const bigBoxWallMat = createMaterial({
+    id: 'bigBoxWallUvMat',
+    type: 'PHONG',
+    params: { color: '#999' },
+  });
+  const bigBoxWallMesh = createMesh({
+    id: 'bigBoxWallMesh',
+    geo: bigBoxWallGeo,
+    mat: bigBoxWallMat,
+    castShadow: true,
+    receiveShadow: true,
+  });
+  const bigBoxWallPhysicsObject = createPhysicsObjectWithMesh({
+    id: 'bigBoxWallPhyObj',
+    name: 'Big box wall',
+    physicsParams: [
+      {
+        collider: {
+          type: 'BOX',
+          friction: 1,
+        },
+        rigidBody: { rigidType: 'FIXED' },
+      },
+    ],
+    meshOrMeshId: bigBoxWallMesh,
+  });
+
+  return { stairsMesh, stairsPhysicsObject, bigBoxWallMesh, bigBoxWallPhysicsObject };
 };

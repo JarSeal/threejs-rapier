@@ -32,7 +32,7 @@ let accDeltaApp = clock.getDelta();
 let mainLoopInitiated = false;
 const resizers: { [key: string]: () => void } = {};
 
-type LoopState = {
+export type LoopState = {
   masterPlay: boolean;
   appPlay: boolean;
   isMasterPlaying: boolean;
@@ -119,9 +119,6 @@ const mainLoopForDebug = async () => {
     // app loopers
     runSceneAppLoopers(deltaApp);
 
-    // Step physics
-    stepPhysicsWorld(deltaApp);
-
     if (loopState.maxFPS > 0) {
       // maxFPS limiter
       accDeltaApp += dt;
@@ -181,12 +178,9 @@ const mainLoopForProduction = async () => {
     deltaApp = dt * loopState.playSpeedMultiplier;
     // app loopers
     runSceneAppLoopers(deltaApp);
-    stepPhysicsWorld(deltaApp);
     await (getRenderer() as Renderer)
       .renderAsync(getRootScene() as Scene, getCurrentCamera())
-      .then(() => {
-        runSceneMainLateLoopers(delta);
-      });
+      .then(() => runSceneMainLateLoopers(delta));
   } else {
     loopState.isAppPlaying = false;
     await (getRenderer() as Renderer)
@@ -218,7 +212,6 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     deltaApp = dt * loopState.playSpeedMultiplier;
     // app loopers
     runSceneAppLoopers(deltaApp);
-    stepPhysicsWorld(deltaApp);
     accDeltaApp += dt;
     if (accDeltaApp > loopState.maxFPSInterval) {
       await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
@@ -320,8 +313,9 @@ export const initMainLoop = async () => {
 
   await renderer.renderAsync(getRootScene() as Scene, currentCamera);
   if (loopState.masterPlay) {
-    // Wait for a few loops and start the
+    // Wait for a few loops and start the main loop and physics loop
     setTimeout(() => requestAnimationFrame(mainLoop), 100);
+    setTimeout(() => requestAnimationFrame(() => stepPhysicsWorld(loopState)), 100);
   }
 };
 
@@ -371,7 +365,10 @@ const createLoopDebugControls = () => {
       masterPlayBinding = debugGUI
         .addBinding(loopState, 'masterPlay', { label: 'Master loop' })
         .on('change', (e) => {
-          if (e.value) requestAnimationFrame(mainLoop);
+          if (e.value) {
+            requestAnimationFrame(mainLoop);
+            requestAnimationFrame(() => stepPhysicsWorld(loopState));
+          }
           lsSetItem(LS_KEY, loopState);
           updateOnScreenTools('PLAY');
         });
@@ -379,6 +376,7 @@ const createLoopDebugControls = () => {
         .addBinding(loopState, 'appPlay', { label: 'App loop' })
         .on('change', () => {
           lsSetItem(LS_KEY, loopState);
+          requestAnimationFrame(() => stepPhysicsWorld(loopState));
           updateOnScreenTools('PLAY');
         });
       debugGUI

@@ -215,3 +215,5 @@ export const isNotUndefinedNorNullOrWarn = <T>(
   }
   return item;
 };
+
+export const ThreeVector3 = new THREE.Vector3();

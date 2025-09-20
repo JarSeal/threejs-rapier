@@ -6,7 +6,7 @@ import { createLight } from '../_engine/core/Light';
 import { createMesh } from '../_engine/core/Mesh';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import { getCurrentCamera } from '../_engine/core/Camera';
-import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
+import { createPhysicsObjectWithMesh, getPhysicsObject } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createThirdPersonCharacter } from './character_thirdPerson';
@@ -146,11 +146,19 @@ export const sceneCharacterTest = async () =>
     scene.add(groundMesh);
 
     // OBSTACLES
-    const { stairsMesh, stairsPhysicsObject } = characterTestObjects();
-    stairsMesh.position.set(5, -1.8, 0);
+    const { stairsMesh, stairsPhysicsObject, bigBoxWallMesh, bigBoxWallPhysicsObject } =
+      characterTestObjects();
     (stairsMesh.material as THREE.MeshPhongMaterial).map = uvTexture.clone();
     scene.add(stairsMesh);
-    stairsPhysicsObject?.rigidBody?.setTranslation(new THREE.Vector3(5, -1.8, 0), true);
+    stairsPhysicsObject?.setTranslation({ x: 5, y: -1.8 });
+
+    const bigBoxWallMat = bigBoxWallMesh.material as THREE.MeshPhongMaterial;
+    bigBoxWallMat.map = uvTexture.clone();
+    bigBoxWallMat.map.wrapS = THREE.RepeatWrapping;
+    bigBoxWallMat.map.wrapT = THREE.RepeatWrapping;
+    bigBoxWallMat.map.repeat.set(2.5, 2.5);
+    bigBoxWallPhysicsObject?.setTranslation({ x: -2, y: -5 + groundHeight / 2 });
+    scene.add(bigBoxWallMesh);
 
     // BOX
     const geometry2 = createGeometry({
@@ -189,7 +197,9 @@ export const sceneCharacterTest = async () =>
     scene.add(box);
 
     // CHARACTER
-    const { charMesh } = createThirdPersonCharacter();
+    const { charMesh, thirdPersonCharacterObject } = createThirdPersonCharacter();
+    const charPhysObj = getPhysicsObject(thirdPersonCharacterObject.physObjectId);
+    charPhysObj?.setTranslation({ x: 5, y: 5, z: -5 });
     scene.add(charMesh);
 
     // Lights

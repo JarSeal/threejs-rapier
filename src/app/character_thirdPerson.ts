@@ -166,6 +166,20 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
           },
         },
       },
+      {
+        collider: {
+          type: 'BOX',
+          hx: 0.5,
+          hy: 0.5,
+          hz: 0.5,
+          isSensor: true,
+          density: 0,
+          collisionEventFn: (obj1, obj2, started) => {
+            console.log('SENSOR ALERT', obj1, obj2, started);
+          },
+          // translation: { x: 0, y: 0, z: 0 },
+        },
+      },
     ],
     data: characterData,
     meshOrMeshId: charMesh,
@@ -207,6 +221,8 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
             keysPressed.includes('W') ||
             keysPressed.includes('S')
           ) {
+            // @TODO: add a check whether the character is moving forward or backward and first slow down the character to 0 before setting full linear velocity addition.
+            // @TODO: when landing from a jump, the character slows down significantly (probably friction) and then accelerates back to full speed, try to fix this.
             const intervalCheckOk =
               charData?._linearVelocityInterval === 0 ||
               (charData?.__lviCheckTime || 0) + (charData?._linearVelocityInterval || 0) <
@@ -243,6 +259,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
                 zVelo > 0
                   ? Math.min((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo)
                   : Math.max((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo);
+              // @TODO: character gets stuck on walls, add detection and correct the linear velocity direction to the direction of the wall (or cancel it if head on collision)
               const vector3 = new THREE.Vector3(xAddition, rigidBody.linvel()?.y || 0, zAddition);
               rigidBody.setLinvel(vector3, !rigidBody.isMoving());
               charData.__lviCheckTime = performance.now();
