@@ -168,16 +168,20 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
       },
       {
         collider: {
-          type: 'BOX',
-          hx: 0.5,
-          hy: 0.5,
-          hz: 0.5,
+          type: 'CAPSULE',
+          halfHeight: (charCapsule.userData.props?.params.height / 2.5) * 1.05,
+          radius: charCapsule.userData.props?.params.radius * 1.05,
           isSensor: true,
           density: 0,
           collisionEventFn: (obj1, obj2, started) => {
             console.log('SENSOR ALERT', obj1, obj2, started);
+            if (started) {
+              //
+            } else {
+              //
+            }
           },
-          // translation: { x: 0, y: 0, z: 0 },
+          translation: { x: 0, y: 0.05, z: 0 },
         },
       },
     ],
