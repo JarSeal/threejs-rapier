@@ -1,5 +1,7 @@
 import * as THREE from 'three/webgpu';
 
+export const HALF_PI = Math.PI / 2;
+
 export const FOUR_PX_TO_8K_LIST = [
   { value: 4, text: '4px' },
   { value: 8, text: '8px' },

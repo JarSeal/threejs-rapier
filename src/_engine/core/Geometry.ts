@@ -39,6 +39,16 @@ export type GeoProps = { id?: string } & (
         thetaLength?: number;
       };
     }
+  | {
+      type: 'CAPSULE';
+      params?: {
+        radius?: number;
+        height?: number;
+        capSegments?: number;
+        radialSegments?: number;
+        heightSegments?: number;
+      };
+    }
 );
 
 export type GeoTypes = THREE.BoxGeometry | THREE.SphereGeometry;
@@ -84,6 +94,15 @@ export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
         props.params?.openEnded,
         props.params?.thetaStart,
         props.params?.thetaLength
+      );
+      break;
+    case 'CAPSULE':
+      geo = new THREE.CapsuleGeometry(
+        props.params?.radius,
+        props.params?.height,
+        props.params?.capSegments,
+        props.params?.radialSegments,
+        props.params?.heightSegments
       );
       break;
     // @TODO: add all geometry types

@@ -30,8 +30,8 @@ import {
   createAxesHelper,
   createGridHelper,
   createPolarGridHelper,
-  getAllCameraHelpers,
-  getAllLightHelpers,
+  getAllCurSceneCameraHelpers,
+  getAllCurSceneLightHelpers,
   toggleAxesHelperVisibility,
   toggleCameraHelper,
   toggleGridHelperVisibility,
@@ -323,7 +323,8 @@ const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
 export const setDebugToolsVisibility = (
   show: boolean,
   refreshPane?: boolean,
-  doNotSetCamera?: boolean
+  doNotSetCamera?: boolean,
+  nextCameraId?: string
 ) => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) {
@@ -336,11 +337,14 @@ export const setDebugToolsVisibility = (
       debugToolsState.debugCamera[currentSceneId] || getDefaultDebugCamParams();
   }
 
+  const currentCameraId = getCurrentCameraId();
+  if (currentCameraId !== DEBUG_CAMERA_ID) {
+    const currentOrNextCamId = !doNotSetCamera && nextCameraId ? nextCameraId : currentCameraId;
+    curSceneDebugCamParams.latestAppCameraId = currentOrNextCamId;
+    debugToolsState.debugCamera[currentSceneId].latestAppCameraId = currentOrNextCamId;
+  }
+
   if (show) {
-    const currentCameraId = getCurrentCameraId();
-    if (currentCameraId !== DEBUG_CAMERA_ID) {
-      curSceneDebugCamParams.latestAppCameraId = currentCameraId;
-    }
     if (orbitControls) orbitControls.enabled = true;
     if (debugCamera) {
       if (debugCamera.children[0]) debugCamera.children[0].visible = true;
@@ -367,8 +371,11 @@ export const setDebugToolsVisibility = (
   if (debugCamera?.children[0]) debugCamera.children[0].visible = false;
   if (!doNotSetCamera) {
     setCurrentCamera(
-      debugToolsState.debugCamera[currentSceneId].latestAppCameraId ||
-        Object.keys(getAllCameras())[0],
+      nextCameraId && nextCameraId !== DEBUG_CAMERA_ID
+        ? nextCameraId
+        : debugToolsState.debugCamera[currentSceneId].latestAppCameraId ||
+            getCurrentCameraId() ||
+            Object.keys(getAllCameras())[0],
       true
     );
   }
@@ -528,7 +535,7 @@ export const addSceneToDebugtools = (sceneId: string) => {
   debugToolsState.debugCamera[sceneId] = getDefaultDebugCamParams();
 };
 
-export const handleCameraSwitch = (
+export const handleDebugCameraSwitch = (
   cameraId?: string,
   useDebugCamera?: boolean,
   doNotSetCamera?: boolean
@@ -536,21 +543,25 @@ export const handleCameraSwitch = (
   const currentSceneId = getCurrentSceneId();
   if (!cameraId && useDebugCamera === undefined) {
     lerror(
-      'handleCameraSwitch was called without cameraId and without useDebugCamera, one of them is required (in DebugTools).'
+      'handleDebugCameraSwitch was called without cameraId and without useDebugCamera, one of them is required (in DebugTools).'
     );
     return;
   }
   if (!currentSceneId) return;
-  const isDebugCamera = cameraId ? cameraId === DEBUG_CAMERA_ID : Boolean(useDebugCamera);
   if (!debugToolsState.debugCamera[currentSceneId]) {
     debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
   }
-  debugToolsState.debugCamera[currentSceneId].enabled = isDebugCamera;
-  curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-  if (envBallFolder) envBallFolder.hidden = !isDebugCamera;
+  const isDebugCamera = cameraId ? cameraId === DEBUG_CAMERA_ID : Boolean(useDebugCamera);
+  if (!isCurrentlyLoading()) {
+    debugToolsState.debugCamera[currentSceneId].enabled = isDebugCamera;
+    curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
+    if (envBallFolder) envBallFolder.hidden = !isDebugCamera;
+  }
   lsSetItem(LS_KEY, debugToolsState);
-  setDebugToolsVisibility(isDebugCamera, Boolean(cameraId), doNotSetCamera);
-  updateOnScreenTools('SWITCH');
+  setDebugToolsVisibility(isDebugCamera, Boolean(cameraId), doNotSetCamera, cameraId);
+  setTimeout(() => {
+    updateOnScreenTools('SWITCH');
+  }, 0);
 };
 
 export const buildDebugToolsGUI = () => {
@@ -582,7 +593,7 @@ export const buildDebugToolsGUI = () => {
       label: 'Use debug camera',
     })
     .on('change', (e) => {
-      handleCameraSwitch(undefined, Boolean(e.value));
+      handleDebugCameraSwitch(undefined, Boolean(e.value));
     });
   debugCameraFolder
     .addBinding(curSceneDebugCamParams, 'fov', {
@@ -924,7 +935,7 @@ export const buildDebugToolsGUI = () => {
     });
   helpersFolder.addBlade({ view: 'separator' });
   helpersFolder.addButton({ title: 'Hide / show all light helpers' }).on('click', () => {
-    const lightHelpers = getAllLightHelpers();
+    const lightHelpers = getAllCurSceneLightHelpers();
     let allNotVisible = true;
     for (let i = 0; i < lightHelpers.length; i++) {
       if (lightHelpers[i].visible) {
@@ -943,7 +954,7 @@ export const buildDebugToolsGUI = () => {
     updateOnScreenTools('SWITCH');
   });
   helpersFolder.addButton({ title: 'Hide / show all camera helpers' }).on('click', () => {
-    const cameraHelpers = getAllCameraHelpers();
+    const cameraHelpers = getAllCurSceneCameraHelpers();
     let allNotVisible = true;
     for (let i = 0; i < cameraHelpers.length; i++) {
       if (cameraHelpers[i].visible && !cameraHelpers[i].userData.isLightHelper) {

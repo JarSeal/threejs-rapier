@@ -6,21 +6,33 @@ import {
   getCurrentScene,
   getRootScene,
   getScene,
+  runOnSceneEnter,
+  runOnSceneExit,
   setCurrentScene,
 } from './Scene';
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
-import { deleteCurrentScenePhysicsObjects, deletePhysicsWorld } from './PhysicsRapier';
+import { deleteAllPhysicsObjects } from './PhysicsRapier';
 import { disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
-import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
+import { DEBUG_CAMERA_ID, getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
 import { isDebugEnvironment } from './Config';
 import { clearSkyBox } from './SkyBox';
 import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { getAllCameraHelpers, getAllLightHelpers } from './Helpers';
+import { deleteAllInSceneLights, updateLightsDebuggerGUI } from './Light';
+import {
+  deleteAllInSceneCameras,
+  deleteOnCameraSetsAndUnsets,
+  setCurrentCamera,
+  updateCamerasDebuggerGUI,
+} from './Camera';
+import { deleteAllCharacters } from './Character';
+import { existsOrThrow } from '../utils/helpers';
+import { deregisterAllLightAndCameraHelpers } from './Helpers';
+import { deleteAllRayHelpers } from './Raycast';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -113,13 +125,13 @@ export const createSceneLoader = async (
 
   sceneLoaders.push(sceneLoader);
 
-  // default value is true (even if undefined)
+  // default value of isCurrent is true (even if undefined)
   if (isCurrent !== false) {
     setCurrentSceneLoader(sceneLoader.id);
   }
 };
 
-// @TODO: deleteSceneLoader
+// @TODO: delete a scene loader (deleteSceneLoader)
 // export const deleteSceneLoader = (id: string) => {};
 
 export const setCurrentSceneLoader = (id: string) => {
@@ -221,6 +233,15 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   const canvasParentElem = getCanvasParentElem();
   canvasParentElem?.style.setProperty('pointer-events', 'none');
 
+  // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
+  deleteAllCharacters();
+  deleteAllPhysicsObjects();
+  deleteAllInSceneCameras();
+  deleteAllInSceneLights();
+  if (isDebugEnvironment()) {
+    deregisterAllLightAndCameraHelpers();
+  }
+
   loader.phase = 'START';
   await loadStartFn(loader)
     .then(async () => {
@@ -230,51 +251,50 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         deleteScene(prevSceneId, { deleteAll: true });
       } else if (prevScene) {
         deleteAllSceneLoopers(prevSceneId);
-        deleteCurrentScenePhysicsObjects();
-        deletePhysicsWorld();
       }
 
       clearSkyBox();
       handleDraggableWindowsOnSceneChangeStart();
 
+      runOnSceneExit(prevSceneId);
+      deleteOnCameraSetsAndUnsets();
+      deleteAllRayHelpers();
+
       loader.phase = 'LOAD';
       await loadFn(loader, initNextSceneFn).then(async (newSceneId) => {
-        const nextScene = getScene(newSceneId);
-        if (!nextScene) {
-          const msg = `Scene loader could not find scene with scene id '${newSceneId}'.`;
-          lerror(msg);
-          throw new Error(msg);
-        }
+        // Scene has been loaded and initialized
+        existsOrThrow(
+          getScene(newSceneId),
+          `Scene loader could not find scene with scene id '${newSceneId}'.`
+        );
         setCurrentScene(newSceneId);
 
-        // Enable debuggers and input controls
-        disableDebugger(false);
-        setAllInputsEnabled(true);
         const canvasParentElem = getCanvasParentElem();
         canvasParentElem?.style.setProperty('pointer-events', '');
 
         if (isDebugEnvironment()) {
-          setDebugToolsVisibility(
-            Boolean(getDebugToolsState().debugCamera[newSceneId]?.enabled),
-            true
+          // Enable debuggers and input controls
+          disableDebugger(false);
+          setAllInputsEnabled(true);
+          const debugCamEnabled = Boolean(
+            getDebugToolsState(true).debugCamera[newSceneId]?.enabled
           );
+          setDebugToolsVisibility(debugCamEnabled, true);
+          updateCamerasDebuggerGUI();
+          updateLightsDebuggerGUI();
+
+          // Set possible debug camera
+          if (debugCamEnabled) setCurrentCamera(DEBUG_CAMERA_ID);
+
+          updateOnScreenTools();
         }
 
         firstSceneLoaded = true;
 
+        runOnSceneEnter(newSceneId);
+
         loader.phase = 'END';
         await loadEndFn(loader).then(() => {
-          if (isDebugEnvironment()) {
-            const lightHelpers = getAllLightHelpers();
-            for (let i = 0; i < lightHelpers.length; i++) {
-              lightHelpers[i].visible = false;
-            }
-            const cameraHelpers = getAllCameraHelpers();
-            for (let i = 0; i < cameraHelpers.length; i++) {
-              cameraHelpers[i].visible = false;
-            }
-            updateOnScreenTools();
-          }
           if (loaderContainer) loaderContainer.remove();
           if (loader.loaderGroup) rootScene.remove(loader.loaderGroup);
 

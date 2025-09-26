@@ -1,14 +1,19 @@
-import { getAllCameras, getAllCamerasAsArray } from '../core/Camera';
+import { getAllCameras, getAllCamerasAsArray, getCurrentCameraId } from '../core/Camera';
 import { isDebugEnvironment, isProdTestMode } from '../core/Config';
 import {
-  getAllCameraHelpers,
-  getAllLightHelpers,
+  getAllCurSceneCameraHelpers,
+  getAllCurSceneLightHelpers,
   toggleCameraHelper,
   toggleLightHelper,
 } from '../core/Helpers';
 import { getHUDRootCMP } from '../core/HUD';
 import { getAllLights } from '../core/Light';
 import { getReadOnlyLoopState, toggleAppPlay, toggleMainPlay } from '../core/MainLoop';
+import {
+  buildPhysicsDebugGUI,
+  getPhysicsState,
+  togglePhysicsVisualizer,
+} from '../core/PhysicsRapier';
 import { getCurrentSceneId } from '../core/Scene';
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { getSvgIcon } from '../core/UI/icons/SvgIcon';
@@ -20,7 +25,7 @@ import {
   buildDebugToolsGUI,
   DEBUG_CAMERA_ID,
   getDebugToolsState,
-  handleCameraSwitch,
+  handleDebugCameraSwitch,
   isUsingDebugCamera,
 } from './DebugTools';
 import styles from './OnScreenTools.module.scss';
@@ -83,7 +88,7 @@ const playTools = () => {
       ...buttonBaseClasses,
       ...(loopState.masterPlay ? [styles.active, 'onScreenToolActive'] : []),
     ],
-    html: () => `<button>${getSvgIcon('play')}</button>`,
+    html: () => `<button>${getSvgIcon('infinity')}</button>`,
     attr: {
       title: `Play main loop (currently ${loopState.masterPlay ? 'playing' : 'not playing'})`,
     },
@@ -139,7 +144,7 @@ const switchTools = () => {
     attr: { title: 'Toggle between debug camera and app camera' },
     onClick: (e) => {
       e.stopPropagation();
-      handleCameraSwitch(undefined, !isUsingDebugCamera());
+      handleDebugCameraSwitch(undefined, !isUsingDebugCamera());
       buildDebugToolsGUI();
     },
   });
@@ -154,11 +159,11 @@ const switchTools = () => {
   const camSelectorId = 'onScreenSelectCamDropDown';
   const debugToolsState = getDebugToolsState();
   const latestAppCamId = debugToolsState.debugCamera[currentSceneId]?.latestAppCameraId;
-  const camOptions = getAllCamerasAsArray()
+  const camOptions = getAllCamerasAsArray(true)
     .filter((cam) => cam.userData.id !== DEBUG_CAMERA_ID)
     .map(
       (cam) =>
-        `<option value="${cam.userData.id}"${latestAppCamId === cam.userData.id ? ' selected="true"' : ''}>${cam.userData.name || `[${cam.userData.id}]`}</option>`
+        `<option value="${cam.userData.id}"${latestAppCamId === cam.userData.id || getCurrentCameraId() === cam.userData.id ? ' selected="true"' : ''}>${cam.userData.name || `[${cam.userData.id}]`}</option>`
     );
   const camSelectCMP = CMP({
     id: camSelectorId,
@@ -169,7 +174,10 @@ const switchTools = () => {
     onInput: (e) => {
       const target = e.target as HTMLSelectElement;
       const value = target.options[target.options.selectedIndex].value;
-      handleCameraSwitch(value);
+      // If we are using the debug camera, then we need to do this small hack (call handleDebugCameraSwitch twice) to set the
+      // latest app camera id again, so that the on screen tools show the right camera on the dropdown (this could be improved).
+      if (isUsingDebugCamera()) handleDebugCameraSwitch(value);
+      handleDebugCameraSwitch(value);
     },
   });
   const selectCamDropDown = CMP({
@@ -220,7 +228,7 @@ const switchTools = () => {
 
   // Light helpers toggle
   const toggleLightHelpersBtnClasses = [styles.onScreenTool, 'onScreenTool'];
-  const lightHelpers = getAllLightHelpers();
+  const lightHelpers = getAllCurSceneLightHelpers();
   if (lightHelpers.find((h) => h.visible)) {
     toggleLightHelpersBtnClasses.push(styles.active, 'onScreenToolActive');
   }
@@ -230,7 +238,7 @@ const switchTools = () => {
     attr: { title: 'Hide / show all light helpers' },
     onClick: (e) => {
       e.stopPropagation();
-      const lightHelpers = getAllLightHelpers();
+      const lightHelpers = getAllCurSceneLightHelpers();
       let allNotVisible = true;
       for (let i = 0; i < lightHelpers.length; i++) {
         if (lightHelpers[i].visible) {
@@ -252,7 +260,7 @@ const switchTools = () => {
 
   // Camera helpers toggle
   const toggleCameraHelpersBtnClasses = [styles.onScreenTool, 'onScreenTool'];
-  const cameraHelpers = getAllCameraHelpers();
+  const cameraHelpers = getAllCurSceneCameraHelpers();
   if (cameraHelpers.find((h) => h.visible && !h.userData.isLightHelper)) {
     toggleCameraHelpersBtnClasses.push(styles.active, 'onScreenToolActive');
   }
@@ -262,7 +270,7 @@ const switchTools = () => {
     attr: { title: 'Hide / show all camera helpers' },
     onClick: (e) => {
       e.stopPropagation();
-      const cameraHelpers = getAllCameraHelpers();
+      const cameraHelpers = getAllCurSceneCameraHelpers();
       let allNotVisible = true;
       for (let i = 0; i < cameraHelpers.length; i++) {
         if (cameraHelpers[i].visible && !cameraHelpers[i].userData.isLightHelper) {
@@ -282,11 +290,31 @@ const switchTools = () => {
     },
   });
 
+  // Physics visualizer toggle
+  const physicsState = getPhysicsState();
+  const togglePhysicsHelpersBtn = CMP({
+    class: [
+      styles.onScreenTool,
+      'onScreenTool',
+      ...(physicsState.scenes[getCurrentSceneId() || '']?.visualizerEnabled
+        ? [styles.active, 'onScreenToolActive']
+        : []),
+    ],
+    html: () => `<button>${getSvgIcon('rocket', 'small')}</button>`,
+    attr: { title: 'Hide / show physics visualizer' },
+    onClick: (e) => {
+      e.stopPropagation();
+      togglePhysicsVisualizer(!physicsState.scenes[getCurrentSceneId() || '']?.visualizerEnabled);
+      buildPhysicsDebugGUI();
+    },
+  });
+
   switchToolsCMP.add(useDebugCamBtn);
   switchToolsCMP.add(selectCamDropDown);
   switchToolsCMP.add(selectSceneDropDown);
   switchToolsCMP.add(toggleLightHelpersBtn);
   switchToolsCMP.add(toggleCameraHelpersBtn);
+  if (physicsState.enabled) switchToolsCMP.add(togglePhysicsHelpersBtn);
 
   hudRootCMP.add(switchToolsCMP);
 };

@@ -7,8 +7,8 @@ import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 import { CMP } from './_engine/utils/CMP';
 import { isDebugEnvironment } from './_engine/core/Config';
 import { addScenesToSceneListing } from './_engine/debug/DebugTools';
-
-export const MAIN_APP_CAM_ID = 'mainAppCam';
+import { SCENE_TEST_CHARACTER_ID, sceneCharacterTest } from './app/scene_characterTestThirdPerson';
+import { MAIN_APP_CAM_ID } from './CONFIG';
 
 InitEngine(async () => {
   // Init camera
@@ -75,7 +75,14 @@ InitEngine(async () => {
   });
 
   if (isDebugEnvironment()) {
-    addScenesToSceneListing({ id: SCENE01_ID, text: `[App] ${SCENE01_ID}`, fn: scene01 });
+    addScenesToSceneListing([
+      { id: SCENE01_ID, text: `[App] ${SCENE01_ID}`, fn: scene01 },
+      {
+        id: SCENE_TEST_CHARACTER_ID,
+        text: `[Debug] ${SCENE_TEST_CHARACTER_ID}`,
+        fn: sceneCharacterTest,
+      },
+    ]);
   }
 
   // Load scene

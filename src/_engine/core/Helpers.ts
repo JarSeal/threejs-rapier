@@ -2,17 +2,22 @@ import * as THREE from 'three/webgpu';
 import { getLight, saveLightToLS, updateLightsDebuggerGUI } from './Light';
 import { isDebugEnvironment } from './Config';
 import { getDebugMeshIcon } from './UI/icons/DebugMeshIcons';
-import { getRootScene } from './Scene';
+import { getCurrentSceneId, getRootScene } from './Scene';
 import { DEBUG_CAMERA_ID, getDebugToolsState } from '../debug/DebugTools';
 import { getCamera, saveCameraToLS, updateCamerasDebuggerGUI } from './Camera';
+import { existsOrThrow } from '../utils/helpers';
+import { cleanUpRayHelpers } from './Raycast';
 
 type LightHelper = THREE.DirectionalLightHelper | THREE.PointLightHelper;
 
+// Global helpers and won't be deleted on scene change
 let axesHelper: THREE.AxesHelper | null = null;
 let gridHelper: THREE.GridHelper | null = null;
 let polarGridHelper: THREE.PolarGridHelper | null = null;
-let lightHelpers: LightHelper[] = [];
-let cameraHelpers: THREE.CameraHelper[] = [];
+
+// Per scene helpers and will be deleted on scene change
+const lightHelpers: { [sceneId: string]: LightHelper[] } = {};
+const cameraHelpers: { [sceneId: string]: THREE.CameraHelper[] } = {};
 
 // Axes helper
 export const createAxesHelper = (size?: number) => {
@@ -99,28 +104,53 @@ export const togglePolarGridHelperVisibility = (show: boolean) => {
 
 // Light and camera helpers
 const addToLightHelpers = (helper: LightHelper) => {
-  const foundHelper = lightHelpers.find((h) => h.userData.id === helper.userData.id);
+  const currentSceneId = getCurrentSceneId();
+  if (!currentSceneId) return;
+  const foundHelper = lightHelpers[currentSceneId]?.find(
+    (h) => h.userData.id === helper.userData.id
+  );
   if (foundHelper) return;
-  lightHelpers.push(helper);
+  if (!lightHelpers[currentSceneId]) lightHelpers[currentSceneId] = [];
+  lightHelpers[currentSceneId].push(helper);
 };
 
 const removeFromLightHelpers = (helper: LightHelper) => {
-  lightHelpers = lightHelpers.filter((h) => h.userData.id !== helper.userData.id);
+  const currentSceneId = getCurrentSceneId();
+  if (!currentSceneId) return;
+  lightHelpers[currentSceneId] =
+    lightHelpers[currentSceneId]?.filter((h) => h.userData.id !== helper.userData.id) || [];
 };
 
 const addToCameraHelpers = (helper: THREE.CameraHelper, isLightHelper?: boolean) => {
-  const foundHelper = cameraHelpers.find((h) => h.userData.id === helper.userData.id);
+  const currentSceneId = getCurrentSceneId();
+  if (!currentSceneId) return;
+  const foundHelper = cameraHelpers[currentSceneId]?.find(
+    (h) => h.userData.id === helper.userData.id
+  );
   if (foundHelper) return;
   if (isLightHelper) helper.userData.isLightHelper = true;
-  cameraHelpers.push(helper);
+  if (!cameraHelpers[currentSceneId]) cameraHelpers[currentSceneId] = [];
+  cameraHelpers[currentSceneId].push(helper);
 };
 
 const removeFromCameraHelpers = (helper: THREE.CameraHelper) => {
-  cameraHelpers = cameraHelpers.filter((h) => h.userData.id !== helper.userData.id);
+  const currentSceneId = getCurrentSceneId();
+  if (!currentSceneId) return;
+  cameraHelpers[currentSceneId] =
+    cameraHelpers[currentSceneId]?.filter((h) => h.userData.id !== helper.userData.id) || [];
 };
 
-export const getAllLightHelpers = () => lightHelpers;
-export const getAllCameraHelpers = () => cameraHelpers;
+export const getAllCurSceneLightHelpers = () => {
+  const currentSceneId = getCurrentSceneId();
+  if (!currentSceneId) return [];
+  return lightHelpers[currentSceneId] || [];
+};
+
+export const getAllCurSceneCameraHelpers = () => {
+  const currentSceneId = getCurrentSceneId();
+  if (!currentSceneId) return [];
+  return cameraHelpers[currentSceneId] || [];
+};
 
 export const toggleLightHelper = (id: string, show: boolean, doNotUpdateDebuggerGUI?: boolean) => {
   const light = getLight(id);
@@ -216,10 +246,12 @@ export const toggleCameraHelper = (id: string, show: boolean) => {
     return;
   }
 
+  const rootScene = existsOrThrow(getRootScene(), 'Could not find rootScene in toggleCameraHelper');
+
   if (!show && camera.userData.helperCreated) {
     // Hide helper
-    const cameraHelper = camera.children.find(
-      (child) => child.type === 'CameraHelper'
+    const cameraHelper = rootScene.children.find(
+      (child) => child.type === 'CameraHelper' && child.userData.cameraId === id
     ) as THREE.CameraHelper;
     if (cameraHelper) {
       cameraHelper.visible = false;
@@ -228,8 +260,8 @@ export const toggleCameraHelper = (id: string, show: boolean) => {
     camera.userData.showHelper = false;
   } else if (show && camera.userData.helperCreated) {
     // Show helper
-    const cameraHelper = camera.children.find(
-      (child) => child.type === 'CameraHelper'
+    const cameraHelper = rootScene.children.find(
+      (child) => child.type === 'CameraHelper' && child.userData.cameraId === id
     ) as THREE.CameraHelper;
     if (cameraHelper) {
       cameraHelper.visible = true;
@@ -241,11 +273,13 @@ export const toggleCameraHelper = (id: string, show: boolean) => {
     const type = camera.userData.type;
     if (type === 'PERSPECTIVE') {
       const cameraHelper = new THREE.CameraHelper(camera);
-      cameraHelper.userData.id = `${camera.userData.id}__helper`;
+      cameraHelper.userData.cameraId = id;
+      cameraHelper.userData.id = `${id}__helper`;
       const iconMesh = getDebugMeshIcon('CAMERA');
       cameraHelper.add(iconMesh);
       addToCameraHelpers(cameraHelper);
-      camera.add(cameraHelper);
+      cameraHelper.visible = true;
+      rootScene.add(cameraHelper);
       cameraHelper.update();
     }
     camera.userData.showHelper = true;
@@ -256,24 +290,90 @@ export const toggleCameraHelper = (id: string, show: boolean) => {
 };
 
 export const updateHelpers = () => {
-  for (let i = 0; i < cameraHelpers.length; i++) {
-    cameraHelpers[i]?.update();
+  const currentSceneId = getCurrentSceneId();
+  if (!currentSceneId) return;
+
+  cleanUpRayHelpers();
+
+  const camHelpers = cameraHelpers[currentSceneId] || [];
+  for (let i = 0; i < camHelpers.length; i++) {
+    const helper = camHelpers[i];
+    if (!helper) continue;
+    helper.update();
   }
 
-  for (let i = 0; i < lightHelpers.length; i++) {
+  const ligHelpers = lightHelpers[currentSceneId] || [];
+  for (let i = 0; i < ligHelpers.length; i++) {
     // @NOTE: There is a bug with (at least) directional light that the helper does not update in some cases, this setTimeout fixes it (dirty fix)
     setTimeout(() => {
-      lightHelpers[i]?.update();
+      ligHelpers[i]?.update();
       if (
-        lightHelpers[i]?.parent?.userData.showHelper &&
-        lightHelpers[i].type === 'DirectionalLightHelper'
+        ligHelpers[i]?.parent?.userData.showHelper &&
+        ligHelpers[i].type === 'DirectionalLightHelper'
       ) {
-        const child = lightHelpers[i].children.find((child) => child.userData.isHelperIcon);
+        const child = ligHelpers[i].children.find((child) => child.userData.isHelperIcon);
         if (child) {
-          const target = (lightHelpers[i].parent as THREE.DirectionalLight).target;
+          const target = (ligHelpers[i].parent as THREE.DirectionalLight).target;
           if (target) child.lookAt(target.position);
         }
       }
     }, 0);
   }
+};
+
+export const deregisterAllLightAndCameraHelpers = () => {
+  const currentSceneId = getCurrentSceneId();
+  if (!currentSceneId) return;
+
+  // Camera helpers
+  const camHelpers = cameraHelpers[currentSceneId] || [];
+  for (let i = 0; i < camHelpers.length; i++) {
+    const helper = camHelpers[i];
+    if (!helper) continue;
+    const cameraId = helper.userData.cameraId;
+    removeFromCameraHelpers(helper);
+    helper.removeFromParent();
+    helper.dispose();
+    if (!cameraId) continue;
+    const camera = existsOrThrow(
+      getCamera(cameraId),
+      `Could not find camera with id '${cameraId}' in deleteLightAndCameraHelpers`
+    );
+    camera.userData.helperCreated = false;
+  }
+  if (cameraHelpers[currentSceneId]) cameraHelpers[currentSceneId] = [];
+
+  // Light helpers
+  const ligHelpers = lightHelpers[currentSceneId] || [];
+  for (let i = 0; i < ligHelpers.length; i++) {
+    const helper = ligHelpers[i];
+    if (!helper) continue;
+    const light = helper.parent;
+    if (light && 'isLight' in light && light.userData.id) {
+      light.userData.helperCreated = false;
+    }
+    removeFromLightHelpers(helper);
+    helper.removeFromParent();
+    helper.dispose();
+  }
+  if (lightHelpers[currentSceneId]) lightHelpers[currentSceneId] = [];
+};
+
+export const deleteCameraHelperByCamId = (camId: string) => {
+  const rootScene = getRootScene();
+  if (!rootScene) return;
+  const helper = rootScene.children.find(
+    (child) => child.userData.cameraId === camId && child.type === 'CameraHelper'
+  ) as THREE.CameraHelper;
+  if (!helper) return;
+  const cameraId = helper.userData.cameraId;
+  removeFromCameraHelpers(helper);
+  helper.removeFromParent();
+  helper.dispose();
+  if (!cameraId) return;
+  const camera = existsOrThrow(
+    getCamera(cameraId),
+    `Could not find camera with id '${cameraId}' in deleteLightAndCameraHelpers`
+  );
+  camera.userData.helperCreated = false;
 };

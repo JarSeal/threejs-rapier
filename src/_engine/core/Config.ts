@@ -21,6 +21,9 @@ export type AppConfig = {
     visualizerEnabled?: boolean;
     gravity?: { x: number; y: number; z: number };
     timestep?: number;
+    solverIterations?: number;
+    internalPgsIterations?: number;
+    additionalFrictionIterations?: number;
   };
   draggableWindows?: {
     [id: string]: Partial<DraggableWindow> & {

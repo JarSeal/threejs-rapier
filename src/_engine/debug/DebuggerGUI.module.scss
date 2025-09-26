@@ -1,26 +1,21 @@
 @use 'sass:color';
 @use '../styles/variables.scss';
 
-$drawerWidth: 40rem;
-$drawerWidthSmall: 30rem;
-$breakpointSmall: 479px;
-$breakpointXSmall: 379px;
-
 .debuggerGUI {
   position: fixed;
   top: 0;
-  right: -$drawerWidth;
+  right: variables.$drawerWidth * -1;
   z-index: 10200;
   background-color: variables.$debugGuiBackground;
-  width: $drawerWidth;
+  width: variables.$drawerWidth;
   height: 100%;
   padding: 1.2rem;
   transition: right 0.2s ease-in-out;
 
-  @media screen and (max-width: $breakpointSmall) {
-    width: $drawerWidthSmall;
+  @media screen and (max-width: variables.$breakpointSmall) {
+    width: variables.$drawerWidthSmall;
   }
-  @media screen and (max-width: $breakpointXSmall) {
+  @media screen and (max-width: variables.$breakpointXSmall) {
     width: 100%;
   }
 }
@@ -30,12 +25,12 @@ $breakpointXSmall: 379px;
 }
 
 .debuggerGUI_closed {
-  right: -$drawerWidth;
+  right: variables.$drawerWidth * -1;
 
-  @media screen and (max-width: $breakpointSmall) {
-    right: -$drawerWidthSmall;
+  @media screen and (max-width: variables.$breakpointSmall) {
+    right: variables.$drawerWidthSmall * -1;
   }
-  @media screen and (max-width: $breakpointXSmall) {
+  @media screen and (max-width: variables.$breakpointXSmall) {
     right: -100%;
   }
 }
@@ -193,6 +188,11 @@ $breakpointXSmall: 379px;
   }
 }
 
+:global(.listItemCount) {
+  margin: 2.4rem 0 1.6rem;
+  font-size: 1.4rem;
+}
+
 :global(ul li.emptyState) {
   padding: 2.4rem;
   color: color.adjust(variables.$debugTextColorDark, $lightness: -20%);
@@ -273,6 +273,19 @@ ul li :global(.listItemWithId) {
     font-size: 1rem;
     padding-top: 0.5rem;
     color: variables.$debugTextColorDark;
+  }
+
+  :global(.additionalInfo) {
+    display: inline-block;
+    font-size: 0.8rem;
+    color: variables.$debugGuiBackgroundLighter;
+    background-color: variables.$debugTextColorDark;
+    position: absolute;
+    top: 0.4rem;
+    left: 100%;
+    margin-left: 0.8rem;
+    padding: 0.2rem 0.2rem 0 0.2rem;
+    border-radius: 0.2rem;
   }
 
   span,

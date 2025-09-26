@@ -21,7 +21,7 @@ import {
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
 
-type Looper = (delta: number) => void;
+export type Looper = (delta: number) => void;
 
 const scenes: { [id: string]: THREE.Group } = {};
 const sceneOpts: { [id: string]: SceneOptions } = {};
@@ -29,10 +29,15 @@ let rootScene: THREE.Scene | null = null;
 let currentScene: THREE.Group | null = null;
 let currentSceneId: string | null = null;
 let currentSceneOpts: SceneOptions | null = null;
-const sceneMainLoopers: { [sceneId: string]: Looper[] } = {};
-const sceneMainLateLoopers: { [sceneId: string]: Looper[] } = {};
-const sceneAppLoopers: { [sceneId: string]: Looper[] } = {};
+const sceneMainLoopers: { [sceneId: string]: (Looper | null)[] } = {};
+const sceneMainLateLoopers: { [sceneId: string]: (Looper | null)[] } = {};
+const sceneAppLoopers: { [sceneId: string]: (Looper | null)[] } = {};
+let curSceneAppLoopers: Looper[] = [];
+let curSceneMainLoopers: Looper[] = [];
+let curSceneMainLateLoopers: Looper[] = [];
 const sceneResizers: { [sceneId: string]: (() => void)[] } = {};
+const onSceneExit: { [sceneId: string]: () => void } = {};
+const onSceneEnter: { [sceneId: string]: () => void } = {};
 
 export type SceneOptions = {
   name?: string;
@@ -52,7 +57,10 @@ export type SceneOptions = {
  * @returns THREE.Group
  */
 export const createScene = (id: string, opts?: SceneOptions) => {
-  if (scenes[id]) return scenes[id];
+  if (scenes[id]) {
+    if (opts?.isCurrentScene) setCurrentScene(id);
+    return scenes[id];
+  }
 
   const scene = new THREE.Group();
 
@@ -259,13 +267,6 @@ export const setCurrentScene = (id: string | null) => {
     rootScene.add(nextScene);
   }
 
-  // @TODO: this should not be necessary anymore, since we have a root scene, so remove this after testing loaderGroup
-  // Check scene loader status, if loading, add loaderGroup to current scene
-  // const sceneLoader = getCurrentSceneLoader();
-  // if (sceneLoader?.loaderGroup && sceneLoader.phase === 'LOAD' && currentScene) {
-  //   currentScene.add(sceneLoader.loaderGroup);
-  // }
-
   setCurrentScenePhysicsObjects(id);
 
   updateDebuggerSceneTitle(
@@ -382,21 +383,30 @@ export const createSceneMainLooper = (looper: Looper, sceneId?: string, isLateLo
   if (isLateLooper) {
     if (id && sceneMainLateLoopers[id]) {
       sceneMainLateLoopers[id].push(looper);
-      return;
+      const index = sceneMainLateLoopers[id].length - 1;
+      curSceneMainLateLoopers = sceneMainLateLoopers[id].filter(Boolean) as Looper[];
+      return index;
     } else if (id) {
       sceneMainLateLoopers[id] = [looper];
-      return;
+      const index = sceneMainLateLoopers[id].length - 1;
+      curSceneMainLateLoopers = sceneMainLateLoopers[id].filter(Boolean) as Looper[];
+      return index;
     }
   } else {
     if (id && sceneMainLoopers[id]) {
       sceneMainLoopers[id].push(looper);
-      return;
+      const index = sceneMainLoopers[id].length - 1;
+      curSceneMainLoopers = sceneMainLoopers[id].filter(Boolean) as Looper[];
+      return index;
     } else if (id) {
       sceneMainLoopers[id] = [looper];
-      return;
+      const index = sceneMainLoopers[id].length - 1;
+      curSceneMainLoopers = sceneMainLoopers[id].filter(Boolean) as Looper[];
+      return index;
     }
   }
   lwarn(`Could not find scene with id ${id} in createSceneMainLoopers.`);
+  return -1;
 };
 
 /**
@@ -416,23 +426,27 @@ export const deleteSceneMainLooper = (
     if (isLateLooper) {
       if (!sceneMainLateLoopers[id]) return;
       if (typeof index === 'number') {
-        sceneMainLateLoopers[id] = sceneMainLateLoopers[id].filter((_, i) => i !== index);
+        sceneMainLateLoopers[id][index] = null;
+        curSceneMainLateLoopers = sceneMainLateLoopers[id].filter(Boolean) as Looper[];
         return;
       } else {
         for (let i = 0; i < index.length; i++) {
-          sceneMainLateLoopers[id] = sceneMainLateLoopers[id].filter((_, i) => i !== index[i]);
+          sceneMainLateLoopers[id][index[i]] = null;
         }
+        curSceneMainLateLoopers = sceneMainLateLoopers[id].filter(Boolean) as Looper[];
         return;
       }
     } else {
       if (!sceneMainLoopers[id]) return;
       if (typeof index === 'number') {
-        sceneMainLoopers[id] = sceneMainLoopers[id].filter((_, i) => i !== index);
+        sceneMainLoopers[id][index] = null;
+        curSceneMainLoopers = sceneMainLoopers[id].filter(Boolean) as Looper[];
         return;
       } else {
         for (let i = 0; i < index.length; i++) {
-          sceneMainLoopers[id] = sceneMainLoopers[id].filter((_, i) => i !== index[i]);
+          sceneMainLoopers[id][index[i]] = null;
         }
+        curSceneMainLoopers = sceneMainLoopers[id].filter(Boolean) as Looper[];
         return;
       }
     }
@@ -444,13 +458,19 @@ export const deleteSceneMainLooper = (
  * Deletes all scene's main loopers
  * @param sceneId (string) scene id
  */
-export const deleteSceneMainLoopers = (sceneId: string) => delete sceneMainLoopers[sceneId];
+export const deleteSceneMainLoopers = (sceneId: string) => {
+  sceneMainLoopers[sceneId] = [];
+  if (sceneId === currentSceneId) curSceneMainLoopers = [];
+};
 
 /**
  * Deletes all scene's main late loopers
  * @param sceneId (string) scene id
  */
-export const deleteSceneMainLateLoopers = (sceneId: string) => delete sceneMainLateLoopers[sceneId];
+export const deleteSceneMainLateLoopers = (sceneId: string) => {
+  sceneMainLateLoopers[sceneId] = [];
+  if (sceneId === currentSceneId) curSceneMainLateLoopers = [];
+};
 
 /**
  * Deletes all scene's main loopers, main late loopers, and app loopers
@@ -460,6 +480,18 @@ export const deleteAllSceneLoopers = (sceneId: string) => {
   deleteSceneMainLoopers(sceneId);
   deleteSceneMainLateLoopers(sceneId);
   deleteSceneAppLoopers(sceneId);
+};
+
+export const runSceneMainLoopers = (delta: number) => {
+  for (let i = 0; i < curSceneMainLoopers.length; i++) {
+    curSceneMainLoopers[i](delta);
+  }
+};
+
+export const runSceneMainLateLoopers = (delta: number) => {
+  for (let i = 0; i < curSceneMainLateLoopers.length; i++) {
+    curSceneMainLateLoopers[i](delta);
+  }
 };
 
 /**
@@ -485,12 +517,17 @@ export const createSceneAppLooper = (looper: Looper, sceneId?: string) => {
   if (sceneId) id = sceneId;
   if (id && sceneAppLoopers[id]) {
     sceneAppLoopers[id].push(looper);
-    return;
+    const index = sceneAppLoopers[id].length - 1;
+    curSceneAppLoopers = sceneAppLoopers[id].filter(Boolean) as Looper[];
+    return index;
   } else if (id) {
     sceneAppLoopers[id] = [looper];
-    return;
+    const index = sceneAppLoopers[id].length - 1;
+    curSceneAppLoopers = sceneAppLoopers[id].filter(Boolean) as Looper[];
+    return index;
   }
   lwarn(`Could not find scene with id ${id} in createSceneAppLoopers.`);
+  return -1;
 };
 
 /**
@@ -504,11 +541,17 @@ export const deleteSceneAppLooper = (index: number | number[], sceneId?: string)
   if (id) {
     if (!sceneAppLoopers[id]) return;
     if (typeof index === 'number') {
-      sceneAppLoopers[id] = sceneAppLoopers[id].filter((_, i) => i !== index);
+      sceneAppLoopers[id][index] = null;
+      if (!sceneId || sceneId === currentSceneId) {
+        curSceneAppLoopers = sceneAppLoopers[id].filter(Boolean) as Looper[];
+      }
       return;
     } else {
       for (let i = 0; i < index.length; i++) {
-        sceneAppLoopers[id] = sceneAppLoopers[id].filter((_, i) => i !== index[i]);
+        sceneAppLoopers[id][index[i]] = null;
+      }
+      if (!sceneId || sceneId === currentSceneId) {
+        curSceneAppLoopers = sceneAppLoopers[id].filter(Boolean) as Looper[];
       }
       return;
     }
@@ -520,7 +563,16 @@ export const deleteSceneAppLooper = (index: number | number[], sceneId?: string)
  * Deletes all scene's app loopers
  * @param sceneId (string) scene id
  */
-export const deleteSceneAppLoopers = (sceneId: string) => delete sceneAppLoopers[sceneId];
+export const deleteSceneAppLoopers = (sceneId: string) => {
+  sceneAppLoopers[sceneId] = [];
+  if (sceneId === currentSceneId) curSceneAppLoopers = [];
+};
+
+export const runSceneAppLoopers = (delta: number) => {
+  for (let i = 0; i < curSceneAppLoopers.length; i++) {
+    curSceneAppLoopers[i](delta);
+  }
+};
 
 /**
  * Returns all scene's resizers
@@ -600,3 +652,16 @@ export const createRootScene = () => {
  * @returns THREE.Scene (rootScene)
  */
 export const getRootScene = () => rootScene;
+
+export const registerOnSceneEnter = (sceneId: string, fn: () => void) =>
+  (onSceneEnter[sceneId] = fn);
+
+export const registerOnSceneExit = (sceneId: string, fn: () => void) => (onSceneExit[sceneId] = fn);
+
+export const runOnSceneEnter = (sceneId: string) => {
+  if (onSceneEnter[sceneId]) onSceneEnter[sceneId]();
+};
+
+export const runOnSceneExit = (sceneId?: string) => {
+  if (sceneId && onSceneExit[sceneId]) onSceneExit[sceneId]();
+};

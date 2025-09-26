@@ -2,7 +2,7 @@ import arrowClockwiseIcon from './svg/arrow-clockwise.svg?raw';
 import arrowCounterClockwiseIcon from './svg/arrow-counterclockwise.svg?raw';
 import aspectRatioIcon from './svg/aspect-ratio.svg?raw';
 import cameraIcon from './svg/camera2.svg?raw';
-import cameraReelsIcon from './svg/camera-reels-fill.svg?raw';
+import cameraReelsIcon from './svg/camera-reels.svg?raw';
 import cloudSunIcon from './svg/cloud-sun-fill.svg?raw';
 import databaseXIcon from './svg/database-fill-x.svg?raw';
 import easelIcon from './svg/easel-fill.svg?raw';
@@ -11,10 +11,11 @@ import fileCodeIcon from './svg/file-earmark-code-fill.svg?raw';
 import gpuCardIcon from './svg/gpu-card.svg?raw';
 import infinityIcon from './svg/infinity.svg?raw';
 import lightBulbIcon from './svg/lightbulb-fill.svg?raw';
-import lampFillIcon from './svg/lamp-fill.svg?raw';
+import lampIcon from './svg/lamp.svg?raw';
 import pauseIcon from './svg/pause-fill.svg?raw';
+import personArmsUpIcon from './svg/person-arms-up.svg?raw';
 import playFillIcon from './svg/play-fill.svg?raw';
-import playIcon from './svg/play.svg?raw';
+import rocketIcon from './svg/rocket.svg?raw';
 import rocketTakeoffIcon from './svg/rocket-takeoff-fill.svg?raw';
 import speedometerIcon from './svg/speedometer.svg?raw';
 import stopIcon from './svg/stop-fill.svg?raw';
@@ -35,10 +36,11 @@ const icons = {
   gpuCard: gpuCardIcon,
   infinity: infinityIcon,
   lightBulb: lightBulbIcon,
-  lamp: lampFillIcon,
+  lamp: lampIcon,
   pause: pauseIcon,
+  personArmsUp: personArmsUpIcon,
   playFill: playFillIcon,
-  play: playIcon,
+  rocket: rocketIcon,
   rocketTakeoff: rocketTakeoffIcon,
   speedometer: speedometerIcon,
   stop: stopIcon,
