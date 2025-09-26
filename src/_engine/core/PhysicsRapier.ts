@@ -1195,14 +1195,21 @@ export const createPhysicsDebugMesh = () => {
   debugMesh.frustumCulled = false;
 };
 
+let accDelta = 0;
+const clock = new THREE.Clock();
+
 // Different stepper functions to use for debug and production.
 // baseStepper is used for both.
 const baseStepper = () => {
+  accDelta += clock.getDelta();
+  if (accDelta < physicsState.timestepRatio) return;
+  accDelta = accDelta % physicsState.timestepRatio;
+
   // Step the world
   physicsWorld.step(eventQueue);
 
-  if (eventQueue && collisionEventFnCount) {
-    eventQueue.drainCollisionEvents((handle1, handle2, started) => {
+  if (collisionEventFnCount) {
+    eventQueue?.drainCollisionEvents((handle1, handle2, started) => {
       const physObj1 = currentScenePhysicsObjects.find((obj) => {
         if (Array.isArray(obj.collider)) {
           return Boolean(obj.collider.find((collider) => collider.handle === handle1));
@@ -1224,8 +1231,8 @@ const baseStepper = () => {
     });
   }
 
-  if (eventQueue && contactForceEventFnCount) {
-    eventQueue.drainContactForceEvents((event) => {
+  if (contactForceEventFnCount) {
+    eventQueue?.drainContactForceEvents((event) => {
       const handle1 = event.collider1();
       const handle2 = event.collider2();
       const physObj1 = currentScenePhysicsObjects.find((obj) => {
