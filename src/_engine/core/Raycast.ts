@@ -22,7 +22,6 @@ let drawnHelperIds: string[] = [];
 
 export const initRayCasting = () => {
   ray = new THREE.Raycaster();
-  // vec3 = new THREE.Vector3();
   if (isDebugEnvironment()) {
     helperLineGeom = new THREE.BufferGeometry();
     castRayFromPoints = _castRayFromPointsDebug;
@@ -74,7 +73,8 @@ export let castRayFromPoints = <TIntersected extends THREE.Object3D = THREE.Obje
   opts?: Opts<TIntersected>
 ): Array<THREE.Intersection<TIntersected>> => {
   const { startLength, endLength, perIntersectFn, optionalTargetArr, recursive } = opts || {};
-  (ray as THREE.Raycaster).set(from, direction);
+  if (!ray) return [];
+  ray.set(from, direction);
   let intersects: Array<THREE.Intersection<TIntersected>>;
   if (Array.isArray(objects)) {
     // intersectObjects (multiple objects)
