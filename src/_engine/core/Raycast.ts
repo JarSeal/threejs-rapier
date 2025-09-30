@@ -22,7 +22,6 @@ let drawnHelperIds: string[] = [];
 
 export const initRayCasting = () => {
   ray = new THREE.Raycaster();
-  // vec3 = new THREE.Vector3();
   if (isDebugEnvironment()) {
     helperLineGeom = new THREE.BufferGeometry();
     castRayFromPoints = _castRayFromPointsDebug;
@@ -74,14 +73,15 @@ export let castRayFromPoints = <TIntersected extends THREE.Object3D = THREE.Obje
   opts?: Opts<TIntersected>
 ): Array<THREE.Intersection<TIntersected>> => {
   const { startLength, endLength, perIntersectFn, optionalTargetArr, recursive } = opts || {};
-  (ray as THREE.Raycaster).set(from, direction);
+  if (!ray) return [];
+  ray.set(from, direction);
   let intersects: Array<THREE.Intersection<TIntersected>>;
   if (Array.isArray(objects)) {
     // intersectObjects (multiple objects)
-    intersects = (ray as THREE.Raycaster).intersectObjects(objects, recursive, optionalTargetArr);
+    intersects = ray.intersectObjects(objects, recursive, optionalTargetArr);
   } else {
     // intersectObject (one object)
-    intersects = (ray as THREE.Raycaster).intersectObject(objects, recursive, optionalTargetArr);
+    intersects = ray.intersectObject(objects, recursive, optionalTargetArr);
   }
   if (perIntersectFn) {
     for (let i = 0; i < intersects.length; i++) {
@@ -109,14 +109,15 @@ const _castRayFromPointsDebug = <TIntersected extends THREE.Object3D = THREE.Obj
     helperId,
     helperColor,
   } = opts || {};
-  (ray as THREE.Raycaster).set(from, direction);
+  if (!ray) return [];
+  ray.set(from, direction);
   let intersects: Array<THREE.Intersection<TIntersected>>;
   if (Array.isArray(objects)) {
     // intersectObjects (multiple objects)
-    intersects = (ray as THREE.Raycaster).intersectObjects(objects, recursive, optionalTargetArr);
+    intersects = ray.intersectObjects(objects, recursive, optionalTargetArr);
   } else {
     // intersectObject (one object)
-    intersects = (ray as THREE.Raycaster).intersectObject(objects, recursive, optionalTargetArr);
+    intersects = ray.intersectObject(objects, recursive, optionalTargetArr);
   }
   if (helperId) {
     const rootScene = getRootScene() as THREE.Scene;

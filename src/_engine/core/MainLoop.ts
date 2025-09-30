@@ -113,16 +113,14 @@ const mainLoopForDebug = async () => {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
 
-    // Update loop action inputs
-    updateInputControllerLoopActions(deltaApp);
-
-    // app loopers
-    runSceneAppLoopers(deltaApp);
-
     if (loopState.maxFPS > 0) {
       // maxFPS limiter
       accDeltaApp += dt;
       if (accDeltaApp > loopState.maxFPSInterval) {
+        // Update loop action inputs
+        updateInputControllerLoopActions(deltaApp);
+        // app loopers
+        runSceneAppLoopers(deltaApp);
         await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
           runSceneMainLateLoopers(delta);
           updateStats(renderer);
@@ -131,6 +129,10 @@ const mainLoopForDebug = async () => {
       }
     } else {
       // No maxFPS limiter
+      // Update loop action inputs
+      updateInputControllerLoopActions(deltaApp);
+      // app loopers
+      runSceneAppLoopers(deltaApp);
       await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
         runSceneMainLateLoopers(delta);
         updateStats(renderer);
@@ -178,6 +180,8 @@ const mainLoopForProduction = async () => {
     deltaApp = dt * loopState.playSpeedMultiplier;
     // app loopers
     runSceneAppLoopers(deltaApp);
+    // Update loop action inputs
+    updateInputControllerLoopActions(deltaApp);
     await (getRenderer() as Renderer)
       .renderAsync(getRootScene() as Scene, getCurrentCamera())
       .then(() => runSceneMainLateLoopers(delta));
@@ -210,10 +214,12 @@ const mainLoopForProductionWithFPSLimiter = async () => {
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
-    // app loopers
-    runSceneAppLoopers(deltaApp);
     accDeltaApp += dt;
     if (accDeltaApp > loopState.maxFPSInterval) {
+      // app loopers
+      runSceneAppLoopers(deltaApp);
+      // Update loop action inputs
+      updateInputControllerLoopActions(deltaApp);
       await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
         runSceneMainLateLoopers(delta);
         accDeltaApp = accDeltaApp % loopState.maxFPSInterval;
@@ -299,10 +305,11 @@ export const initMainLoop = async () => {
     createLoopDebugControls();
   }
 
+  initRayCasting();
+
   if (isDebugEnvironment()) {
     initStats();
     initDebugTools();
-    initRayCasting();
 
     mainLoop = mainLoopForDebug;
   } else if (isProductionEnvironment() && loopState.maxFPS > 0) {
