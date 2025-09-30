@@ -305,10 +305,11 @@ export const initMainLoop = async () => {
     createLoopDebugControls();
   }
 
+  initRayCasting();
+
   if (isDebugEnvironment()) {
     initStats();
     initDebugTools();
-    initRayCasting();
 
     mainLoop = mainLoopForDebug;
   } else if (isProductionEnvironment() && loopState.maxFPS > 0) {
