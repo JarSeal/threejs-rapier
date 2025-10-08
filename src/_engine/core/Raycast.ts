@@ -70,11 +70,11 @@ export const deleteAllRayHelpers = () => {
 export let castRayFromPoints = <TIntersected extends THREE.Object3D = THREE.Object3D>(
   objects: THREE.Object3D | THREE.Object3D[],
   from: THREE.Vector3,
-  direction: THREE.Vector3,
+  to: THREE.Vector3,
   opts?: Opts<TIntersected>
 ): Array<THREE.Intersection<TIntersected>> => {
   const { startLength, endLength, perIntersectFn, optionalTargetArr, recursive } = opts || {};
-  (ray as THREE.Raycaster).set(from, direction);
+  (ray as THREE.Raycaster).set(from, to);
   let intersects: Array<THREE.Intersection<TIntersected>>;
   if (Array.isArray(objects)) {
     // intersectObjects (multiple objects)
@@ -97,7 +97,7 @@ export let castRayFromPoints = <TIntersected extends THREE.Object3D = THREE.Obje
 const _castRayFromPointsDebug = <TIntersected extends THREE.Object3D = THREE.Object3D>(
   objects: THREE.Object3D | THREE.Object3D[],
   from: THREE.Vector3,
-  direction: THREE.Vector3,
+  to: THREE.Vector3,
   opts?: Opts<TIntersected>
 ): Array<THREE.Intersection<TIntersected>> => {
   const {
@@ -109,7 +109,7 @@ const _castRayFromPointsDebug = <TIntersected extends THREE.Object3D = THREE.Obj
     helperId,
     helperColor,
   } = opts || {};
-  (ray as THREE.Raycaster).set(from, direction);
+  (ray as THREE.Raycaster).set(from, to);
   let intersects: Array<THREE.Intersection<TIntersected>>;
   if (Array.isArray(objects)) {
     // intersectObjects (multiple objects)
@@ -127,7 +127,7 @@ const _castRayFromPointsDebug = <TIntersected extends THREE.Object3D = THREE.Obj
       ) as THREE.Line;
       rayLine.geometry.setFromPoints([
         from,
-        from.clone().add(direction.clone().multiplyScalar(endLength || DEFAULT_MAX_HELPER_LENGTH)),
+        from.clone().add(to.clone().multiplyScalar(endLength || DEFAULT_MAX_HELPER_LENGTH)),
       ]);
     } else {
       // Create the helper
@@ -135,9 +135,7 @@ const _castRayFromPointsDebug = <TIntersected extends THREE.Object3D = THREE.Obj
         .clone()
         .setFromPoints([
           from,
-          from
-            .clone()
-            .add(direction.clone().multiplyScalar(endLength || DEFAULT_MAX_HELPER_LENGTH)),
+          from.clone().add(to.clone().multiplyScalar(endLength || DEFAULT_MAX_HELPER_LENGTH)),
         ]);
       const rayLine = new THREE.Line(
         geo,
@@ -156,6 +154,33 @@ const _castRayFromPointsDebug = <TIntersected extends THREE.Object3D = THREE.Obj
       if (startLength && startLength > int.distance) continue;
       if (endLength && endLength < int.distance) return intersects;
       if (perIntersectFn(int)) break;
+    }
+  }
+  return intersects;
+};
+
+export const castRayFromDirection = <TIntersected extends THREE.Object3D = THREE.Object3D>(
+  objects: THREE.Object3D | THREE.Object3D[],
+  from: THREE.Vector3,
+  direction: THREE.Vector3, // TODO: what is this if this is a direction?
+  opts?: Opts<TIntersected>
+): Array<THREE.Intersection<TIntersected>> => {
+  const { startLength, endLength, perIntersectFn, optionalTargetArr, recursive } = opts || {};
+  (ray as THREE.Raycaster).set(from, direction);
+  let intersects: Array<THREE.Intersection<TIntersected>>;
+  if (Array.isArray(objects)) {
+    // intersectObjects (multiple objects)
+    intersects = (ray as THREE.Raycaster).intersectObjects(objects, recursive, optionalTargetArr);
+  } else {
+    // intersectObject (one object)
+    intersects = (ray as THREE.Raycaster).intersectObject(objects, recursive, optionalTargetArr);
+  }
+  if (perIntersectFn) {
+    for (let i = 0; i < intersects.length; i++) {
+      const int = intersects[i];
+      if (startLength && startLength > int.distance) continue;
+      if (endLength && endLength < int.distance) return intersects;
+      perIntersectFn(int);
     }
   }
   return intersects;
