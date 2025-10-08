@@ -12,11 +12,14 @@ import {
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import {
   getPhysicsObject,
+  getPhysicsWorld,
+  getRAPIER,
   PhysicsObject,
   switchPhysicsCollider,
 } from '../_engine/core/PhysicsRapier';
 import { createSceneAppLooper, getRootScene } from '../_engine/core/Scene';
 import { castRayFromPoints } from '../_engine/core/Raycast';
+import { Collider, RigidBody } from '@dimforge/rapier3d-compat';
 
 // @TODO: add comments for each
 // If a prop has one underscore (_) then it means it is a configuration,
@@ -78,6 +81,8 @@ let characterData = DEFAULT_CHARACTER_DATA;
 const eulerForCharRotation = new THREE.Euler();
 let thirdPersonCamera: THREE.PerspectiveCamera | null = null;
 let thirdPersonCharacterObject: CharacterObject | null = null;
+
+let isTouchingWall = false;
 
 export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sceneId?: string) => {
   // Combine character data
@@ -173,12 +178,11 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
           radius: charCapsule.userData.props?.params.radius * 1.05,
           isSensor: true,
           density: 0,
-          collisionEventFn: (obj1, obj2, started) => {
-            console.log('SENSOR ALERT', obj1, obj2, started);
+          collisionEventFn: (_, __, started) => {
             if (started) {
-              //
+              isTouchingWall = true;
             } else {
-              //
+              isTouchingWall = false;
             }
           },
           translation: { x: 0, y: 0.05, z: 0 },
@@ -423,6 +427,9 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     );
   };
 
+  const acc = { x: 0, y: 0, z: 0 };
+  let count = 0;
+
   createSceneAppLooper(() => {
     const physObj = getPhysicsObject(thirdPersonCharacterObject?.physObjectId || '');
     const mesh = physObj?.mesh;
@@ -435,6 +442,32 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     if (!characterData.isMoving) return;
 
     detectGround();
+
+    if (isTouchingWall) {
+      const collider = Array.isArray(physObj.collider) ? physObj.collider[0] : physObj.collider;
+      if (collider) {
+        getPhysicsWorld().contactPairsWith(collider, (collider2) => {
+          getPhysicsWorld().contactPair(collider, collider2, (manifold, flipped) => {
+            const n = manifold.normal(); // Rapier Vector-like { x, y, z }
+
+            // We want a normal that points **out of the wall toward the player**.
+            // manifold.normal() is oriented relative to the ordering given inside contactPair.
+            // If 'flipped' is true, manifold.normal() is already oriented from other->player (wall->player).
+            // If 'flipped' is false, manifold.normal() is oriented from player->other (player->wall),
+            // so invert it to get wall->player.
+            const nx = flipped ? n.x : -n.x;
+            const ny = flipped ? n.y : -n.y;
+            const nz = flipped ? n.z : -n.z;
+
+            acc.x += nx;
+            acc.y += ny;
+            acc.z += nz;
+            count++;
+            console.log('NORMALS', n, count);
+          });
+        });
+      }
+    }
 
     // Set isFalling
     if (characterData.isGrounded) {
