@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { createScene } from '../_engine/core/Scene';
+import { createScene, createSceneAppLooper } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { createLight } from '../_engine/core/Light';
@@ -11,6 +11,7 @@ import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createThirdPersonCharacter } from './character_thirdPerson';
 import { characterTestObjects } from './character_test_objects';
+import { castRayFromAngle, castRayFromPoints } from '../_engine/core/Raycast';
 
 export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
@@ -241,6 +242,27 @@ export const sceneCharacterTest = async () =>
       },
     });
     scene.add(directionalLight);
+
+    createSceneAppLooper(() => {
+      castRayFromAngle(
+        scene.children,
+        new THREE.Vector3(0, 3, 0),
+        new THREE.Euler(0, Math.PI / 2, Math.PI / 4),
+        {
+          startLength: 0,
+          endLength: 2,
+          helperId: 'helper1',
+          helperColor: '#ff0000',
+          directionForAngle: 'RIGHT',
+        }
+      );
+      castRayFromPoints(scene.children, new THREE.Vector3(0, 5, 0), new THREE.Vector3(1, 0, 0), {
+        startLength: 0,
+        endLength: 2,
+        helperId: 'helper2',
+        helperColor: '#ffee22',
+      });
+    });
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 
