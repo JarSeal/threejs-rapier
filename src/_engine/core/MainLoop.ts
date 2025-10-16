@@ -21,7 +21,7 @@ import { updateHelpers } from './Helpers';
 import { InitOnScreenTools, updateOnScreenTools } from '../debug/OnScreenTools';
 import { BindingApi } from '@tweakpane/core';
 import { updateInputControllerLoopActions } from './InputControls';
-import { initRayCasting } from './Raycast';
+import { countRayCastFrames, initRayCasting } from './Raycast';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -118,6 +118,9 @@ const mainLoopForDebug = async () => {
 
     // app loopers
     runSceneAppLoopers(deltaApp);
+
+    // Count ray cast frames
+    countRayCastFrames();
 
     if (loopState.maxFPS > 0) {
       // maxFPS limiter
