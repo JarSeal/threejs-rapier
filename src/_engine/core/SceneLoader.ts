@@ -272,10 +272,12 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         const canvasParentElem = getCanvasParentElem();
         canvasParentElem?.style.setProperty('pointer-events', '');
 
+        // Enable input controls
+        setAllInputsEnabled(true);
+
         if (isDebugEnvironment()) {
-          // Enable debuggers and input controls
+          // Enable debuggers
           disableDebugger(false);
-          setAllInputsEnabled(true);
           const debugCamEnabled = Boolean(
             getDebugToolsState(true).debugCamera[newSceneId]?.enabled
           );

@@ -223,7 +223,7 @@ const DEFAULT_SCENE_PHYS_STATE: ScenePhysicsState = {
   worldStepEnabled: true,
   visualizerEnabled: false,
   gravity: { x: 0, y: -9.81, z: 0 },
-  solverIterations: 4,
+  solverIterations: 10,
   internalPgsIterations: 1,
   additionalFrictionIterations: 4,
 };
@@ -1281,7 +1281,13 @@ const baseStepper = () => {
 };
 
 // PRODUCTION STEPPER
-const stepperFnProduction = () => {
+const stepperFnProduction = (loopState: LoopState) => {
+  if (loopState.masterPlay && loopState.appPlay) {
+    requestAnimationFrame(() => stepPhysicsWorld(loopState));
+  } else {
+    return;
+  }
+
   baseStepper();
 };
 
@@ -1335,8 +1341,7 @@ const stepperFnDebug = (loopState: LoopState) => {
 /**
  * Steps the physics world (called in the main loop) and sets mesh positions and rotations in the current scene.
  */
-export const stepPhysicsWorld = (loopState: LoopState) =>
-  currentScenePhysicsObjects.length && stepperFn(loopState);
+export const stepPhysicsWorld = (loopState: LoopState) => stepperFn(loopState);
 
 /**
  * Changes the scene to be used for the scene's physics objects (optimizes the stepping)
