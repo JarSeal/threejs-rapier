@@ -40,6 +40,7 @@ import {
 } from '../core/Helpers';
 import { getAllLights } from '../core/Light';
 import { updateOnScreenTools } from './OnScreenTools';
+import { addToast } from '../core/UI/Toaster';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -993,7 +994,7 @@ export const buildDebugToolsGUI = () => {
     renderer: [
       'RENDER OPTIONS:*******',
       getRendererOptions(),
-      '**********************',
+      '**********************\n',
       'RENDERER:*******',
       getRenderer(),
       '**********************',
@@ -1050,6 +1051,9 @@ export const buildDebugToolsGUI = () => {
       // isDebugWindow: true,
       backDropClickClosesWindow: true,
     });
+  });
+  loggingFolder.addButton({ title: 'TEST TOASTER' }).on('click', () => {
+    addToast({ title: 'Testing 123', message: 'Hello world!' + performance.now() });
   });
 
   debugGUI.refresh();

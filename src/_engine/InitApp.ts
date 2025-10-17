@@ -47,7 +47,9 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       createPhysicsDebugMesh();
       buildSkyBoxDebugGUI();
       createDebuggerSceneLoader();
-      getHUDRootCMP().add(createToaster({ id: 'debugToaster' }));
+      getHUDRootCMP().add(
+        createToaster({ id: 'debugToaster', settings: { offset: { x: '18px', y: '-268px' } } })
+      );
     }
 
     // Load draggableWindow states
