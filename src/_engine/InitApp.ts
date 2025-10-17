@@ -1,6 +1,6 @@
 import { type Scene } from 'three/webgpu';
 import { isDebugEnvironment, loadConfig } from './core/Config';
-import { createHudContainer } from './core/HUD';
+import { createHudContainer, getHUDRootCMP } from './core/HUD';
 import { initMainLoop } from './core/MainLoop';
 import { createPhysicsDebugMesh, InitRapierPhysics } from './core/PhysicsRapier';
 import { createRootScene, getRootScene } from './core/Scene';
@@ -13,6 +13,7 @@ import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
 import { createLightsDebuggerGUI } from './core/Light';
 import { createCamerasDebuggerGUI } from './core/Camera';
 import { createCharactersDebuggerGUI } from './core/Character';
+import { createToaster } from './core/UI/Toaster';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -46,6 +47,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       createPhysicsDebugMesh();
       buildSkyBoxDebugGUI();
       createDebuggerSceneLoader();
+      getHUDRootCMP().add(createToaster({ id: 'debugToaster' }));
     }
 
     // Load draggableWindow states
