@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 
 export const HALF_PI = Math.PI / 2;
+export const QUARTER_PI = Math.PI / 4;
 
 export const FOUR_PX_TO_8K_LIST = [
   { value: 4, text: '4px' },
@@ -23,3 +24,13 @@ export const RENDERER_SHADOW_OPTIONS = [
   { value: THREE.PCFSoftShadowMap, text: 'PCF soft shadow map' },
   { value: THREE.VSMShadowMap, text: 'VSM shadow map' },
 ];
+
+// Directions for ray casting with angle (castRayFromAngle)
+export const DIRECTIONS = {
+  FORWARD: new THREE.Vector3(0, 0, -1),
+  BACKWARD: new THREE.Vector3(0, 0, 1),
+  UP: new THREE.Vector3(0, 1, 0),
+  DOWN: new THREE.Vector3(0, -1, 0),
+  RIGHT: new THREE.Vector3(1, 0, 0),
+  LEFT: new THREE.Vector3(-1, 0, 0),
+};

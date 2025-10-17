@@ -9,6 +9,7 @@ import easelIcon from './svg/easel-fill.svg?raw';
 import fileAsterixIcon from './svg/file-earmark-medical-fill.svg?raw';
 import fileCodeIcon from './svg/file-earmark-code-fill.svg?raw';
 import gpuCardIcon from './svg/gpu-card.svg?raw';
+import heartArrowIcon from './svg/heart-arrow.svg?raw';
 import infinityIcon from './svg/infinity.svg?raw';
 import lightBulbIcon from './svg/lightbulb-fill.svg?raw';
 import lampIcon from './svg/lamp.svg?raw';
@@ -34,6 +35,7 @@ const icons = {
   fileAsterix: fileAsterixIcon,
   fileCode: fileCodeIcon,
   gpuCard: gpuCardIcon,
+  heartArrow: heartArrowIcon,
   infinity: infinityIcon,
   lightBulb: lightBulbIcon,
   lamp: lampIcon,

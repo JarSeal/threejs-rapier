@@ -658,6 +658,8 @@ export const registerOnSceneEnter = (sceneId: string, fn: () => void) =>
 
 export const registerOnSceneExit = (sceneId: string, fn: () => void) => (onSceneExit[sceneId] = fn);
 
+// @CONSIDER: maybe add general 'registerOnAllSceneEnterings' and 'registerOnAllSceneExits' that run on all scene enterings / exits (not just specific ones)
+
 export const runOnSceneEnter = (sceneId: string) => {
   if (onSceneEnter[sceneId]) onSceneEnter[sceneId]();
 };

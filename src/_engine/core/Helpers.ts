@@ -304,7 +304,8 @@ export const updateHelpers = () => {
 
   const ligHelpers = lightHelpers[currentSceneId] || [];
   for (let i = 0; i < ligHelpers.length; i++) {
-    // @NOTE: There is a bug with (at least) directional light that the helper does not update in some cases, this setTimeout fixes it (dirty fix)
+    // @NOTE: There is a bug with (at least) directional light that the
+    // helper does not update in some cases, this setTimeout fixes it (dirty fix).
     setTimeout(() => {
       ligHelpers[i]?.update();
       if (

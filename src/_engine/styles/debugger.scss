@@ -1,0 +1,28 @@
+.rayCastStats {
+  ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  li {
+    display: block;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    font-size: 1.4rem;
+    padding: 0.2rem 0 0.1rem;
+  }
+
+  .rayStatHeading {
+    margin-top: 0.8rem;
+    font-weight: bold;
+  }
+
+  .rayStatLabel {
+    display: inline-block;
+    width: 50%;
+  }
+
+  .inactive {
+    opacity: 0.5;
+  }
+}

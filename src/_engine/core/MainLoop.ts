@@ -21,7 +21,7 @@ import { updateHelpers } from './Helpers';
 import { InitOnScreenTools, updateOnScreenTools } from '../debug/OnScreenTools';
 import { BindingApi } from '@tweakpane/core';
 import { updateInputControllerLoopActions } from './InputControls';
-import { initRayCasting } from './Raycast';
+import { countRayCastFrames, initRayCasting } from './Raycast';
 
 const LS_KEY = 'debugLoop';
 const clock = new Clock();
@@ -121,6 +121,8 @@ const mainLoopForDebug = async () => {
         updateInputControllerLoopActions(deltaApp);
         // app loopers
         runSceneAppLoopers(deltaApp);
+        // Count ray cast frames
+        countRayCastFrames();
         await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
           runSceneMainLateLoopers(delta);
           updateStats(renderer);
@@ -133,6 +135,8 @@ const mainLoopForDebug = async () => {
       updateInputControllerLoopActions(deltaApp);
       // app loopers
       runSceneAppLoopers(deltaApp);
+      // Count ray cast frames
+      countRayCastFrames();
       await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
         runSceneMainLateLoopers(delta);
         updateStats(renderer);

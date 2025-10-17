@@ -32,7 +32,7 @@ import {
 import { deleteAllCharacters } from './Character';
 import { existsOrThrow } from '../utils/helpers';
 import { deregisterAllLightAndCameraHelpers } from './Helpers';
-import { deleteAllRayHelpers } from './Raycast';
+import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -289,6 +289,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
           if (debugCamEnabled) setCurrentCamera(DEBUG_CAMERA_ID);
 
           updateOnScreenTools();
+          resetRayCastStats();
         }
 
         firstSceneLoaded = true;
