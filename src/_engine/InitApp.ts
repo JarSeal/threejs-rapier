@@ -47,8 +47,12 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       createPhysicsDebugMesh();
       buildSkyBoxDebugGUI();
       createDebuggerSceneLoader();
+      // @TODO: get the statsContainer height and add 18px to it to get the toaster -offset.y
       getHUDRootCMP().add(
-        createToaster({ id: 'debugToaster', settings: { offset: { x: '18px', y: '-268px' } } })
+        createToaster({
+          id: 'debugToaster',
+          settings: { offset: { x: '18px', y: '-268px' }, animationTimeMs: 200 },
+        })
       );
     }
 
