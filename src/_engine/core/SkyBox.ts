@@ -354,7 +354,7 @@ export const createSkyBox = async (
     skyBoxState = { ...skyBoxState, ...allSkyBoxStates[givenOrCurrentSceneId][id] };
   }
 
-  buildSkyBoxDebugGUI();
+  createSkyBoxDebugGUI();
 };
 
 /**
@@ -380,7 +380,7 @@ export const deleteCurrentSkyBox = () => {
 /**
  * Creates the sky box debug GUI for the first time
  */
-const createSkyBoxDebugGUI = () => {
+const buildSkyBoxDebugGUI = () => {
   const icon = getSvgIcon('cloudSun');
   createDebuggerTab({
     id: 'skyBoxControls',
@@ -390,7 +390,7 @@ const createSkyBoxDebugGUI = () => {
     container: () => {
       const { container, debugGUI } = createNewDebuggerPane('skyBox', `${icon} Sky Box Controls`);
       skyBoxDebugGUI = debugGUI;
-      buildSkyBoxDebugGUI();
+      createSkyBoxDebugGUI();
       return container;
     },
   });
@@ -400,9 +400,9 @@ const createSkyBoxDebugGUI = () => {
 /**
  * Build the debug GUI
  */
-export const buildSkyBoxDebugGUI = () => {
+export const createSkyBoxDebugGUI = () => {
   if (!isDebugEnvironment()) return;
-  if (!debuggerCreated) createSkyBoxDebugGUI();
+  if (!debuggerCreated) buildSkyBoxDebugGUI();
 
   if (!skyBoxDebugGUI) return;
   const debugGUI = skyBoxDebugGUI;
@@ -591,7 +591,7 @@ export const buildSkyBoxDebugGUI = () => {
       deleteCurrentSkyBox();
       lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
       // We have to use setTimeout, because the debugGUI is rebuilt
-      setTimeout(() => buildSkyBoxDebugGUI(), 0);
+      setTimeout(() => createSkyBoxDebugGUI(), 0);
       return;
     }
     const sbState = sceneSkyBoxes[id];
@@ -687,7 +687,7 @@ export const clearSkyBox = () => {
     rootScene.backgroundNode = null;
     rootScene.environmentNode = null;
   }
-  buildSkyBoxDebugGUI();
+  createSkyBoxDebugGUI();
 };
 
 /**

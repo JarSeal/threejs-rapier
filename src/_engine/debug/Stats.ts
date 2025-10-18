@@ -6,7 +6,7 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getHUDRootCMP } from '../core/HUD';
 import { Pane } from 'tweakpane';
 import { getSvgIcon } from '../core/UI/icons/SvgIcon';
-import { CMP } from '../utils/CMP';
+import { CMP, type TCMP } from '../utils/CMP';
 
 export type StatsOptions = {
   performanceFolderExpanded?: boolean;
@@ -31,6 +31,7 @@ type StatsPanel = {
 };
 
 let stats: Stats | null = null;
+let statsCmp: TCMP | null = null;
 let physicsPanel: StatsPanel | null = null;
 let savedConfig = {};
 const statsDebugGUIs: Pane[] = [];
@@ -74,12 +75,12 @@ export const initStats = (config?: StatsOptions) => {
     if (stats) stats.update();
     stats = new Stats(savedConfig as Omit<StatsOptions, 'enabled'>);
     physicsPanel = stats.addPanel(new Stats.Panel('PHY', '#fff', '#212121')) as StatsPanel;
-    const statsCMP = CMP({
+    statsCmp = CMP({
       id: '_statsContainer',
       class: ['statsContainer', ...(!(savedConfig as StatsOptions).horizontal ? ['vertical'] : [])],
     });
-    statsCMP.elem.appendChild(stats.dom);
-    getHUDRootCMP().add(statsCMP);
+    statsCmp.elem.appendChild(stats.dom);
+    getHUDRootCMP().add(statsCmp);
     stats.init(getRenderer());
   }
   statsConfig = savedConfig;
@@ -222,3 +223,5 @@ export const buildStatsDebugGUI = (debugGUI: Pane) => {
   // - list of imported objects (and sizes, face count, edge count, vertex count)
   // - texture count, texture sizes, list of textures (and type, sizes, dimensions)
 };
+
+export const getStatsCmp = () => statsCmp;

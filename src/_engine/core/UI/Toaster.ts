@@ -98,6 +98,7 @@ export const createToaster = ({ id, className, settings, setAsDefaultToaster }: 
     const css = `
     .toaster {
       transition: none;
+      font-size: 1.4rem;
     }
     .toaster.${TOASTER_UPDATE_CLASS} {
       padding-top: 0;
@@ -115,6 +116,19 @@ export const createToaster = ({ id, className, settings, setAsDefaultToaster }: 
       top: -9999px;
       left: -9999px;
       opacity: 0;
+      padding: 0.8rem;
+      background: rgba(255, 255, 255, 0.25);
+      margin-bottom: 0.2rem;
+      border-radius: 0.4rem;
+    }
+    .toast .toastTitle {
+      font-weight: 700;
+    }
+    .toast .toastMessage {
+      font-size: 1.2rem;
+    }
+    .toast .toastTitle + .toastMessage {
+      margin-top: 0.4rem;
     }
     .toast.${START_PHASE_CLASS} {
       transform: translate(0,0) !important;
