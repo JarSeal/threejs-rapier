@@ -1053,7 +1053,7 @@ export const buildDebugToolsGUI = () => {
     });
   });
   loggingFolder.addButton({ title: 'TEST TOASTER' }).on('click', () => {
-    addToast({ title: 'Testing 123', message: 'Hello world!' + performance.now() });
+    addToast({ title: 'Testing 123', message: 'Hello world! ' + performance.now() });
   });
 
   debugGUI.refresh();

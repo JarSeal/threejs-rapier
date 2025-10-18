@@ -4,6 +4,7 @@ type ToasterSettings = {
   verticalPosition: 'top' | 'center' | 'bottom';
   horizontalPosition: 'left' | 'center' | 'right';
   toastDirection: 'up' | 'down' | 'left' | 'right';
+  toastAppearFromDirection: 'up' | 'down' | 'left' | 'right';
   toastMinWidth: string;
   toastMaxWidth: string;
   toastMinHeight: string;
@@ -38,6 +39,7 @@ const DEFAULT_SETTINGS: ToasterSettings = {
   horizontalPosition: 'left' as ToasterSettings['horizontalPosition'],
   offset: { x: '0', y: '0' },
   toastDirection: 'up' as ToasterSettings['toastDirection'],
+  toastAppearFromDirection: 'left' as ToasterSettings['toastAppearFromDirection'],
   toastMinWidth: '200px',
   toastMaxWidth: '200px',
   toastMinHeight: '0',
@@ -54,6 +56,8 @@ const toastCMPs: {
   };
 } = {};
 let defaultToaster: ToasterObj | null = null;
+const START_PHASE_CLASS = 'toastStart';
+const TOASTER_UPDATE_CLASS = 'toasterUpdating';
 
 export const createToaster = ({ id, className, settings, setAsDefaultToaster }: ToasterProps) => {
   const newId = id || `toaster-${performance.now()}`;
@@ -77,6 +81,7 @@ export const createToaster = ({ id, className, settings, setAsDefaultToaster }: 
   if (config.offset) {
     toasterStyle.transform = `translate(${config.offset.x}, ${config.offset.y})`;
   }
+  toasterStyle.padding = 0;
 
   const toaster = CMP({
     id: newId,
@@ -86,6 +91,9 @@ export const createToaster = ({ id, className, settings, setAsDefaultToaster }: 
 
   toasterCMPs[newId] = { cmp: toaster, settings: config };
   if (!defaultToaster || setAsDefaultToaster) defaultToaster = toasterCMPs[newId];
+
+  // @TODO: Add a style tag to the head HTML section that has the definitions for the START_PHASE_CLASS and the TOASTER_UPDATE_CLASS
+
   return toaster;
 };
 
@@ -120,14 +128,18 @@ export const addToast = ({
     maxWidth: toaster.settings.toastMaxWidth,
     minHeight: toaster.settings.toastMinHeight,
     maxHeight: toaster.settings.toastMaxHeight,
+    position: 'absolute',
+    top: -9999,
+    left: -9999,
+    transition: `translate ${animTime}ms ease-in-out`,
   };
-  const wrapperCmp = CMP({ class: classNames, id, style: toastStyles });
+  const toastCmp = CMP({ class: classNames, id, style: toastStyles });
   if (icon) {
-    wrapperCmp.add(
+    toastCmp.add(
       typeof icon === 'string' ? { html: `<div class="toastIcon">${icon || ''}</div>` } : icon
     );
   }
-  const contentCmp = wrapperCmp.add({
+  const contentCmp = toastCmp.add({
     class: 'toastContent',
     prepend:
       toaster.settings.toastDirection === 'up' || toaster.settings.toastDirection === 'right',
@@ -140,23 +152,42 @@ export const addToast = ({
       typeof message === 'string' ? { class: 'toastMessage', text: message } : message
     );
   }
-  wrapperCmp.add(contentCmp);
+  toastCmp.add(contentCmp);
 
   let endTimeout = null;
   if (animTime) {
     endTimeout = setTimeout(() => {
-      // Set the end transition
+      // Start
       setTimeout(() => {
-        // Destroy the cmp and clear queue
-      });
-    }, showTime + animTime);
+        // Set the end transition
+        setTimeout(() => {
+          // Destroy the cmp and clear queue
+        });
+      }, showTime + animTime);
+    }, animTime + 10);
   }
 
-  toastCMPs[id] = { cmp: wrapperCmp, time: totalTime, endTimeout };
+  toastCMPs[id] = { cmp: toastCmp, time: totalTime, endTimeout };
 
-  toaster.cmp.add(wrapperCmp);
+  toaster.cmp.add(toastCmp);
+
+  // Get toast dimensions
+  const width = toastCmp.elem.offsetWidth;
+  const height = toastCmp.elem.offsetHeight;
+
+  // Get right start position for the appearance of the toast
+  if (toaster.settings.toastAppearFromDirection === 'down') {
+    toastCmp.updateStyle({ transform: `translate(0, -${height}px)`, top: 0, left: 0 });
+  } else if (toaster.settings.toastAppearFromDirection === 'up') {
+    toastCmp.updateStyle({ transform: `translate(0, ${height}px)`, top: 0, left: 0 });
+  } else if (toaster.settings.toastAppearFromDirection === 'left') {
+    toastCmp.updateStyle({ transform: `translate(-${width}px, 0)`, top: 0, left: 0 });
+  } else if (toaster.settings.toastAppearFromDirection === 'right') {
+    toastCmp.updateStyle({ transform: `translate(${width}px, 0)`, top: 0, left: 0 });
+  }
 
   setTimeout(() => {
     // Set the transition for the toast to appear
+    toastCmp.updateClass(START_PHASE_CLASS, 'add');
   }, 10);
 };
