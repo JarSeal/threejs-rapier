@@ -1052,11 +1052,26 @@ export const buildDebugToolsGUI = () => {
       backDropClickClosesWindow: true,
     });
   });
-  loggingFolder.addButton({ title: 'TEST TOASTER' }).on('click', () => {
+  loggingFolder.addButton({ title: 'TEST TOASTER (info)' }).on('click', () => {
     addToast({
-      title: 'Testing 123',
+      title: 'INFO',
       message: 'Hello world! ' + performance.now(),
       showingTime: 4800,
+    });
+  });
+  loggingFolder.addButton({ title: 'TEST TOASTER (warning)' }).on('click', () => {
+    addToast({
+      type: 'warning',
+      title: 'WARNING',
+      message: 'Hello world! ' + performance.now(),
+      showingTime: 4800,
+    });
+  });
+  loggingFolder.addButton({ title: 'TEST TOASTER (alert)' }).on('click', () => {
+    addToast({
+      type: 'alert',
+      title: 'ALERT',
+      message: 'Hello world! ' + performance.now(),
     });
   });
 

@@ -15,6 +15,7 @@ import { createCamerasDebuggerGUI } from './core/Camera';
 import { createCharactersDebuggerGUI } from './core/Character';
 import { createToaster } from './core/UI/Toaster';
 import { getStatsCmp } from './debug/Stats';
+import { getSvgIcon } from './core/UI/icons/SvgIcon';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -58,12 +59,17 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
           id: 'debugToaster',
           settings: {
             animationTimeMs: 200,
-            showingTimeMs: 5000,
             verticalPosition: 'bottom',
             horizontalPosition: 'left',
             toastDirection: 'up',
             toastAppearFromDirection: 'left',
             offset: { x: '18px', y: yOffset },
+            closeBtnIcon: getSvgIcon('x'),
+            icons: {
+              info: getSvgIcon('info'),
+              warning: getSvgIcon('warning'),
+              alert: getSvgIcon('alert'),
+            },
           },
         })
       );
