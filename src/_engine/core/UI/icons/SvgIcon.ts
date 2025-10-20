@@ -1,3 +1,4 @@
+import alertIcon from './svg/exclamation-octagon-fill.svg?raw';
 import arrowClockwiseIcon from './svg/arrow-clockwise.svg?raw';
 import arrowCounterClockwiseIcon from './svg/arrow-counterclockwise.svg?raw';
 import aspectRatioIcon from './svg/aspect-ratio.svg?raw';
@@ -11,6 +12,7 @@ import fileCodeIcon from './svg/file-earmark-code-fill.svg?raw';
 import gpuCardIcon from './svg/gpu-card.svg?raw';
 import heartArrowIcon from './svg/heart-arrow.svg?raw';
 import infinityIcon from './svg/infinity.svg?raw';
+import infoIcon from './svg/info-circle-fill.svg?raw';
 import lightBulbIcon from './svg/lightbulb-fill.svg?raw';
 import lampIcon from './svg/lamp.svg?raw';
 import pauseIcon from './svg/pause-fill.svg?raw';
@@ -22,8 +24,11 @@ import speedometerIcon from './svg/speedometer.svg?raw';
 import stopIcon from './svg/stop-fill.svg?raw';
 import thrashIcon from './svg/trash3-fill.svg?raw';
 import toolsIcon from './svg/tools.svg?raw';
+import warningIcon from './svg/exclamation-triangle-fill.svg?raw';
+import xIcon from './svg/x.svg?raw';
 
 const icons = {
+  alert: alertIcon,
   arrowClockwise: arrowClockwiseIcon,
   arrowCounterClockwise: arrowCounterClockwiseIcon,
   aspectRatio: aspectRatioIcon,
@@ -37,6 +42,7 @@ const icons = {
   gpuCard: gpuCardIcon,
   heartArrow: heartArrowIcon,
   infinity: infinityIcon,
+  info: infoIcon,
   lightBulb: lightBulbIcon,
   lamp: lampIcon,
   pause: pauseIcon,
@@ -48,6 +54,8 @@ const icons = {
   stop: stopIcon,
   thrash: thrashIcon,
   tools: toolsIcon,
+  warning: warningIcon,
+  x: xIcon,
 };
 
 export const getSvgIcon = (iconKey: keyof typeof icons, size?: 'small') => {

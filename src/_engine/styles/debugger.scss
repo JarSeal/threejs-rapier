@@ -1,3 +1,5 @@
+@use './variables.scss';
+
 .rayCastStats {
   ul {
     list-style: none;
@@ -25,4 +27,14 @@
   .inactive {
     opacity: 0.5;
   }
+}
+
+#debugToaster .toastType-info .toastIcon path {
+  fill: variables.$info;
+}
+#debugToaster .toastType-warning .toastIcon path {
+  fill: variables.$warning;
+}
+#debugToaster .toastType-alert .toastIcon path {
+  fill: variables.$alert;
 }

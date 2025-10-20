@@ -1,18 +1,21 @@
 import { type Scene } from 'three/webgpu';
 import { isDebugEnvironment, loadConfig } from './core/Config';
-import { createHudContainer } from './core/HUD';
+import { createHudContainer, getHUDRootCMP } from './core/HUD';
 import { initMainLoop } from './core/MainLoop';
 import { createPhysicsDebugMesh, InitRapierPhysics } from './core/PhysicsRapier';
 import { createRootScene, getRootScene } from './core/Scene';
 import './styles/index.scss';
 import { lerror } from './utils/Logger';
-import { buildSkyBoxDebugGUI } from './core/SkyBox';
+import { createSkyBoxDebugGUI } from './core/SkyBox';
 import { createDebuggerSceneLoader } from './debug/DebuggerSceneLoader';
 import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
 import { createLightsDebuggerGUI } from './core/Light';
 import { createCamerasDebuggerGUI } from './core/Camera';
 import { createCharactersDebuggerGUI } from './core/Character';
+import { createToaster } from './core/UI/Toaster';
+import { getStatsCmp } from './debug/Stats';
+import { getSvgIcon } from './core/UI/icons/SvgIcon';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -43,9 +46,33 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       createLightsDebuggerGUI();
       createCamerasDebuggerGUI();
       createCharactersDebuggerGUI();
-      createPhysicsDebugMesh();
-      buildSkyBoxDebugGUI();
+      createSkyBoxDebugGUI();
       createDebuggerSceneLoader();
+      createPhysicsDebugMesh();
+
+      // Make the debug toaster appear above the stats cmp
+      const statsCmp = getStatsCmp();
+      let yOffset = '-268px';
+      if (statsCmp) yOffset = `${-statsCmp.elem.offsetHeight - 16}px`;
+      getHUDRootCMP().add(
+        createToaster({
+          id: 'debugToaster',
+          settings: {
+            animationTimeMs: 200,
+            verticalPosition: 'bottom',
+            horizontalPosition: 'left',
+            toastDirection: 'up',
+            toastAppearFromDirection: 'left',
+            offset: { x: '18px', y: yOffset },
+            closeBtnIcon: getSvgIcon('x'),
+            icons: {
+              info: getSvgIcon('info'),
+              warning: getSvgIcon('warning'),
+              alert: getSvgIcon('alert'),
+            },
+          },
+        })
+      );
     }
 
     // Load draggableWindow states
