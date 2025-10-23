@@ -12,6 +12,7 @@ import {
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import {
   getPhysicsObject,
+  getPhysicsWorld,
   PhysicsObject,
   switchPhysicsCollider,
 } from '../_engine/core/PhysicsRapier';
@@ -74,6 +75,7 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   __jumpTime: 0,
 };
 let characterData = DEFAULT_CHARACTER_DATA;
+let averagedWallNormal: { x: number; y: number; z: number } | null = null;
 
 const eulerForCharRotation = new THREE.Euler();
 let thirdPersonCamera: THREE.PerspectiveCamera | null = null;
@@ -140,6 +142,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   });
   directionBeakMesh.position.set(0.35, 0.43, 0);
   charMesh.add(directionBeakMesh);
+
   thirdPersonCharacterObject = createCharacter({
     id: CHARACTER_ID,
     physicsParams: [
@@ -173,12 +176,50 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
           radius: charCapsule.userData.props?.params.radius * 1.05,
           isSensor: true,
           density: 0,
-          collisionEventFn: (obj1, obj2, started) => {
-            console.log('SENSOR ALERT', obj1, obj2, started);
+          collisionEventFn: (coll1, coll2, started, obj1, obj2) => {
+            // console.log('SENSOR ALERT', obj1, obj2, coll1, coll2, started);
+            const acc = { x: 0, y: 0, z: 0 };
+            let count = 0;
             if (started) {
               //
+              // Test contactPairsWith
+              if (obj1.id === CHARACTER_ID) {
+                getPhysicsWorld().contactPairsWith(coll2, (coll1) => {
+                  getPhysicsWorld().contactPair(coll2, coll1, (manifold, flipped) => {
+                    const n = manifold.normal();
+                    const nx = flipped ? n.x : -n.x;
+                    const ny = flipped ? n.y : -n.y;
+                    const nz = flipped ? n.z : -n.z;
+                    acc.x += nx;
+                    acc.y += ny;
+                    acc.z += nz;
+                    count++;
+                    console.log('__1__', obj2.id, obj1.id, { x: nx, y: ny, z: nz });
+                  });
+                });
+              } else {
+                getPhysicsWorld().contactPairsWith(coll1, (coll2) => {
+                  getPhysicsWorld().contactPair(coll1, coll2, (manifold, flipped) => {
+                    const n = manifold.normal();
+                    const nx = flipped ? n.x : -n.x;
+                    const ny = flipped ? n.y : -n.y;
+                    const nz = flipped ? n.z : -n.z;
+                    acc.x += nx;
+                    acc.y += ny;
+                    acc.z += nz;
+                    count++;
+                    console.log('__2__', obj2.id, obj1.id, { x: nx, y: ny, z: nz }, n);
+                  });
+                });
+              }
+              if (count === 0) return;
+              const avg = { x: acc.x / count, y: acc.y / count, z: acc.z / count };
+              const len = Math.hypot(avg.x, avg.y, avg.z) || 1e-6;
+              averagedWallNormal = { x: avg.x / len, y: avg.y / len, z: avg.z / len };
+              console.log('AVERAGED', averagedWallNormal);
             } else {
               //
+              averagedWallNormal = null;
             }
           },
           translation: { x: 0, y: 0.05, z: 0 },
@@ -264,8 +305,28 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
                   ? Math.min((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo)
                   : Math.max((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo);
               // @TODO: character gets stuck on walls, add detection and correct the linear velocity direction to the direction of the wall (or cancel it if head on collision)
-              const vector3 = new THREE.Vector3(xAddition, rigidBody.linvel()?.y || 0, zAddition);
-              rigidBody.setLinvel(vector3, !rigidBody.isMoving());
+              const velo = new THREE.Vector3(xAddition, rigidBody.linvel()?.y || 0, zAddition);
+              rigidBody.setLinvel(velo, !rigidBody.isMoving());
+
+              if (averagedWallNormal) {
+                const n = averagedWallNormal;
+                const dot = velo.x * n.x + velo.y * n.y + velo.z * n.z;
+                const slide = {
+                  x: velo.x - dot * n.x,
+                  y: velo.y - dot * n.y,
+                  z: velo.z - dot * n.z,
+                };
+
+                console.log(
+                  'WALL_SLIDE',
+                  rigidBody.linvel().x === slide.x,
+                  rigidBody.linvel().y === slide.y,
+                  rigidBody.linvel().z === slide.z
+                );
+
+                rigidBody.setLinvel(slide, true);
+              }
+
               charData.__lviCheckTime = performance.now();
             }
           }

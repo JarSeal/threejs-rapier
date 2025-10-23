@@ -20,11 +20,14 @@ import {
   updateDraggableWindow,
 } from './UI/DraggableWindow';
 import { LoopState } from './MainLoop';
+import { Collider } from '@dimforge/rapier3d-compat';
 
 type CollisionEventFn = (
+  collider1: Collider,
+  collider2: Collider,
+  started: boolean,
   physObj1: PhysicsObject,
-  physObj2: PhysicsObject,
-  started: boolean
+  physObj2: PhysicsObject
 ) => void;
 
 type ContactForceEventFn = (
@@ -109,7 +112,13 @@ type ColliderParams = (
   enableContactForceActiveEvents?: boolean;
 
   /** Creates a collision event callback, automatically sets enableCollisionActiveEvents to true for the collider */
-  collisionEventFn?: (physObj1: PhysicsObject, physObj2: PhysicsObject, started: boolean) => void;
+  collisionEventFn?: (
+    collider1: Collider,
+    collider2: Collider,
+    started: boolean,
+    physObj1: PhysicsObject,
+    physObj2: PhysicsObject
+  ) => void;
 
   /** Creates a contact force event callback, automatically sets enableContactForceActiveEvents to true for the collider */
   contactForceEventFn?: (
@@ -1210,23 +1219,44 @@ const baseStepper = () => {
 
   if (collisionEventFnCount) {
     eventQueue?.drainCollisionEvents((handle1, handle2, started) => {
+      let collider1: Collider | null = null;
+      let collider2: Collider | null = null;
       const physObj1 = currentScenePhysicsObjects.find((obj) => {
         if (Array.isArray(obj.collider)) {
-          return Boolean(obj.collider.find((collider) => collider.handle === handle1));
+          const foundCollider = obj.collider.find((collider) => collider.handle === handle1);
+          if (foundCollider) {
+            collider1 = foundCollider;
+            return true;
+          }
+          return false;
         }
-        return obj.collider.handle === handle1;
+        if (obj.collider.handle === handle1) {
+          collider1 = obj.collider;
+          return true;
+        }
+        return false;
       });
       const physObj2 = currentScenePhysicsObjects.find((obj) => {
         if (Array.isArray(obj.collider)) {
-          return Boolean(obj.collider.find((collider) => collider.handle === handle2));
+          const foundCollider = obj.collider.find((collider) => collider.handle === handle2);
+          if (foundCollider) {
+            collider2 = foundCollider;
+            return true;
+          }
+          return false;
         }
-        return obj.collider.handle === handle2;
+        if (obj.collider.handle === handle2) {
+          collider2 = obj.collider;
+          return true;
+        }
+        return false;
       });
+      if (!collider1 || !collider2) return;
       if (physObj1?.collisionEventFn && physObj2) {
-        physObj1.collisionEventFn(physObj1, physObj2, started);
+        physObj1.collisionEventFn(collider1, collider2, started, physObj1, physObj2);
       }
       if (physObj2?.collisionEventFn && physObj1) {
-        physObj2.collisionEventFn(physObj1, physObj2, started);
+        physObj2.collisionEventFn(collider1, collider2, started, physObj1, physObj2);
       }
     });
   }
