@@ -201,9 +201,9 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
                 getPhysicsWorld().contactPairsWith(coll1, (coll2) => {
                   getPhysicsWorld().contactPair(coll1, coll2, (manifold, flipped) => {
                     const n = manifold.normal();
-                    const nx = flipped ? n.x : -n.x;
-                    const ny = flipped ? n.y : -n.y;
-                    const nz = flipped ? n.z : -n.z;
+                    const nx = !flipped ? n.x : -n.x;
+                    const ny = !flipped ? n.y : -n.y;
+                    const nz = !flipped ? n.z : -n.z;
                     acc.x += nx;
                     acc.y += ny;
                     acc.z += nz;
@@ -310,19 +310,16 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
 
               if (averagedWallNormal) {
                 const n = averagedWallNormal;
-                const dot = velo.x * n.x + velo.y * n.y + velo.z * n.z;
+                let dot = velo.x * n.x + velo.y * n.y + velo.z * n.z;
+                if (dot < 0) dot = 0;
                 const slide = {
                   x: velo.x - dot * n.x,
                   y: velo.y - dot * n.y,
                   z: velo.z - dot * n.z,
                 };
 
-                console.log(
-                  'WALL_SLIDE',
-                  rigidBody.linvel().x === slide.x,
-                  rigidBody.linvel().y === slide.y,
-                  rigidBody.linvel().z === slide.z
-                );
+                const maxDown = -3.0;
+                if (slide.y < maxDown) slide.y = maxDown;
 
                 rigidBody.setLinvel(slide, true);
               }
