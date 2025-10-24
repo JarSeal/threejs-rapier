@@ -196,6 +196,10 @@ type RigidBodyParams = {
   wakeUp?: boolean;
 };
 
+type ScenePhysicsLooper = (delta: number) => void;
+
+const scenePhysicsLoopers: { [id: string]: ScenePhysicsLooper } = {};
+
 export type PhysicsParams = {
   /** Collider type and params {@link ColliderParams} */
   collider: ColliderParams;
@@ -1210,7 +1214,8 @@ const clock = new THREE.Clock();
 // Different stepper functions to use for debug and production.
 // baseStepper is used for both.
 const baseStepper = () => {
-  accDelta += clock.getDelta();
+  const delta = clock.getDelta();
+  accDelta += delta;
   if (accDelta < physicsState.timestepRatio) return;
   accDelta = accDelta % physicsState.timestepRatio;
 
@@ -1284,6 +1289,12 @@ const baseStepper = () => {
         physObj2.contactForceEventFn(physObj1, physObj2, event);
       }
     });
+  }
+
+  // Run scenePhysicsLoopers
+  const looperKeys = Object.keys(scenePhysicsLoopers);
+  for (let i = 0; i < looperKeys.length; i++) {
+    scenePhysicsLoopers[looperKeys[i]](delta);
   }
 
   // Set physics objects mesh positions and rotations
@@ -1860,4 +1871,16 @@ export const InitRapierPhysics = async (
         return rapier;
       })
     : null;
+};
+
+export const addScenePhysicsLooper = (id: string, looper: ScenePhysicsLooper) =>
+  (scenePhysicsLoopers[id] = looper);
+
+export const deleteScenePhysicsLooper = (id: string) => delete scenePhysicsLoopers[id];
+
+export const deleteAllScenePhysicsLoopers = () => {
+  const looperKeys = Object.keys(scenePhysicsLoopers);
+  for (let i = 0; i < looperKeys.length; i++) {
+    deleteScenePhysicsLooper(looperKeys[i]);
+  }
 };

@@ -11,6 +11,7 @@ import {
 } from '../_engine/core/Character';
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import {
+  addScenePhysicsLooper,
   getPhysicsObject,
   getPhysicsWorld,
   PhysicsObject,
@@ -18,6 +19,8 @@ import {
 } from '../_engine/core/PhysicsRapier';
 import { createSceneAppLooper, getRootScene } from '../_engine/core/Scene';
 import { castRayFromPoints } from '../_engine/core/Raycast';
+import RAPIER from '@dimforge/rapier3d-compat';
+import { existsOrThrow } from '../_engine/utils/helpers';
 
 // @TODO: add comments for each
 // If a prop has one underscore (_) then it means it is a configuration,
@@ -58,7 +61,7 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   isFalling: false,
   isRunning: false,
   isCrouching: false,
-  _height: 1.74,
+  _height: 1.6,
   _radius: 0.5,
   _rotateSpeed: 5,
   _maxVelocity: 3.7,
@@ -75,7 +78,8 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   __jumpTime: 0,
 };
 let characterData = DEFAULT_CHARACTER_DATA;
-let averagedWallNormal: { x: number; y: number; z: number } | null = null;
+// let averagedWallNormal: { x: number; y: number; z: number } | null = null;
+let nearWall = false;
 
 const eulerForCharRotation = new THREE.Euler();
 let thirdPersonCamera: THREE.PerspectiveCamera | null = null;
@@ -99,7 +103,10 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   const charCapsule = createGeometry({
     id: 'charCapsuleThirdPerson1',
     type: 'CAPSULE',
-    params: { radius: characterData._radius, height: characterData._height / 3 },
+    params: {
+      radius: characterData._radius,
+      height: characterData._height - characterData._radius * 2,
+    },
   });
   const charMaterial = createMaterial({
     id: 'box1MaterialThirdPerson',
@@ -149,7 +156,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
       {
         collider: {
           type: 'CAPSULE',
-          friction: 1,
+          friction: 0,
         },
         rigidBody: {
           rigidType: 'DYNAMIC',
@@ -176,51 +183,54 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
           radius: charCapsule.userData.props?.params.radius * 1.05,
           isSensor: true,
           density: 0,
-          collisionEventFn: (coll1, coll2, started, obj1, obj2) => {
-            // console.log('SENSOR ALERT', obj1, obj2, coll1, coll2, started);
-            const acc = { x: 0, y: 0, z: 0 };
-            let count = 0;
-            if (started) {
-              //
-              // Test contactPairsWith
-              if (obj1.id === CHARACTER_ID) {
-                getPhysicsWorld().contactPairsWith(coll2, (coll1) => {
-                  getPhysicsWorld().contactPair(coll2, coll1, (manifold, flipped) => {
-                    const n = manifold.normal();
-                    const nx = flipped ? n.x : -n.x;
-                    const ny = flipped ? n.y : -n.y;
-                    const nz = flipped ? n.z : -n.z;
-                    acc.x += nx;
-                    acc.y += ny;
-                    acc.z += nz;
-                    count++;
-                    console.log('__1__', obj2.id, obj1.id, { x: nx, y: ny, z: nz });
-                  });
-                });
-              } else {
-                getPhysicsWorld().contactPairsWith(coll1, (coll2) => {
-                  getPhysicsWorld().contactPair(coll1, coll2, (manifold, flipped) => {
-                    const n = manifold.normal();
-                    const nx = !flipped ? n.x : -n.x;
-                    const ny = !flipped ? n.y : -n.y;
-                    const nz = !flipped ? n.z : -n.z;
-                    acc.x += nx;
-                    acc.y += ny;
-                    acc.z += nz;
-                    count++;
-                    console.log('__2__', obj2.id, obj1.id, { x: nx, y: ny, z: nz }, n);
-                  });
-                });
-              }
-              if (count === 0) return;
-              const avg = { x: acc.x / count, y: acc.y / count, z: acc.z / count };
-              const len = Math.hypot(avg.x, avg.y, avg.z) || 1e-6;
-              averagedWallNormal = { x: avg.x / len, y: avg.y / len, z: avg.z / len };
-              console.log('AVERAGED', averagedWallNormal);
-            } else {
-              //
-              averagedWallNormal = null;
+          collisionEventFn: (_, __, started, obj1, obj2) => {
+            if (obj1.id === CHARACTER_ID || obj2.id === CHARACTER_ID) {
+              nearWall = started;
             }
+            // console.log('SENSOR ALERT', obj1, obj2, coll1, coll2, started);
+            // const acc = { x: 0, y: 0, z: 0 };
+            // let count = 0;
+            // if (started) {
+            //   //
+            //   // Test contactPairsWith
+            //   if (obj1.id === CHARACTER_ID) {
+            //     getPhysicsWorld().contactPairsWith(coll2, (coll1) => {
+            //       getPhysicsWorld().contactPair(coll2, coll1, (manifold, flipped) => {
+            //         const n = manifold.normal();
+            //         const nx = flipped ? n.x : -n.x;
+            //         const ny = flipped ? n.y : -n.y;
+            //         const nz = flipped ? n.z : -n.z;
+            //         acc.x += nx;
+            //         acc.y += ny;
+            //         acc.z += nz;
+            //         count++;
+            //         console.log('__1__', obj2.id, obj1.id, { x: nx, y: ny, z: nz });
+            //       });
+            //     });
+            //   } else {
+            //     getPhysicsWorld().contactPairsWith(coll1, (coll2) => {
+            //       getPhysicsWorld().contactPair(coll1, coll2, (manifold, flipped) => {
+            //         const n = manifold.normal();
+            //         const nx = !flipped ? n.x : -n.x;
+            //         const ny = !flipped ? n.y : -n.y;
+            //         const nz = !flipped ? n.z : -n.z;
+            //         acc.x += nx;
+            //         acc.y += ny;
+            //         acc.z += nz;
+            //         count++;
+            //         console.log('__2__', obj2.id, obj1.id, { x: nx, y: ny, z: nz }, n);
+            //       });
+            //     });
+            //   }
+            //   if (count === 0) return;
+            //   const avg = { x: acc.x / count, y: acc.y / count, z: acc.z / count };
+            //   const len = Math.hypot(avg.x, avg.y, avg.z) || 1e-6;
+            //   averagedWallNormal = { x: avg.x / len, y: avg.y / len, z: avg.z / len };
+            //   console.log('AVERAGED', averagedWallNormal);
+            // } else {
+            //   //
+            //   averagedWallNormal = null;
+            // }
           },
           translation: { x: 0, y: 0.05, z: 0 },
         },
@@ -308,20 +318,50 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
               const velo = new THREE.Vector3(xAddition, rigidBody.linvel()?.y || 0, zAddition);
               rigidBody.setLinvel(velo, !rigidBody.isMoving());
 
-              if (averagedWallNormal) {
-                const n = averagedWallNormal;
-                let dot = velo.x * n.x + velo.y * n.y + velo.z * n.z;
-                if (dot < 0) dot = 0;
-                const slide = {
-                  x: velo.x - dot * n.x,
-                  y: velo.y - dot * n.y,
-                  z: velo.z - dot * n.z,
-                };
+              // if (averagedWallNormal) {
+              //   const n = averagedWallNormal;
+              //   let dot = velo.x * n.x + velo.y * n.y + velo.z * n.z;
+              //   if (dot < 0) dot = 0;
+              //   const slide = {
+              //     x: velo.x - dot * n.x,
+              //     y: velo.y - dot * n.y,
+              //     z: velo.z - dot * n.z,
+              //   };
 
-                const maxDown = -3.0;
-                if (slide.y < maxDown) slide.y = maxDown;
+              //   const maxDown = -3.0;
+              //   if (slide.y < maxDown) slide.y = maxDown;
 
-                rigidBody.setLinvel(slide, true);
+              //   rigidBody.setLinvel(slide, true);
+              // }
+              console.log('NEAR_WALL', nearWall);
+              if (nearWall) {
+                const wallNormal = getWallNormalFromRaycasts(getPhysicsWorld(), playerBody);
+                // console.log('WALL_NORMAL', wallNormal);
+                if (wallNormal) {
+                  const v = playerBody.linvel();
+                  let n = wallNormal;
+
+                  let dot = v.x * n.x + v.y * n.y + v.z * n.z;
+                  if (dot > 0) {
+                    // Flip normal so it's always wall → player
+                    n = { x: -n.x, y: -n.y, z: -n.z };
+                    dot = v.x * n.x + v.y * n.y + v.z * n.z;
+                  }
+
+                  // Only cancel the velocity if moving INTO the wall
+                  if (dot < 0) {
+                    const newVel = {
+                      x: v.x - dot * n.x,
+                      y: v.y - dot * n.y,
+                      z: v.z - dot * n.z,
+                    };
+
+                    // Optional: cap downward slide speed
+                    // if (newVel.y < -5.0) newVel.y = -5.0;
+
+                    playerBody.setLinvel(newVel, true);
+                  }
+                }
               }
 
               charData.__lviCheckTime = performance.now();
@@ -533,5 +573,147 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     deleteCamera(thirdPersonCamera?.userData.id);
   });
 
+  const playerBody = existsOrThrow(
+    getPhysicsObject(thirdPersonCharacterObject.physObjectId)?.rigidBody,
+    `Could not find character physics object rigid body with id: '${thirdPersonCharacterObject.physObjectId}'.`
+  );
+  // addScenePhysicsLooper('characterPhysicsLooper', () => {
+  //   if (nearWall) {
+  //     const wallNormal = getWallNormalFromRaycasts(getPhysicsWorld(), playerBody);
+  //     console.log('WALL_NORMAL', wallNormal);
+  //     if (wallNormal) {
+  //       const v = playerBody.linvel();
+  //       const n = wallNormal;
+
+  //       const dot = v.x * n.x + v.y * n.y + v.z * n.z;
+
+  //       // Only cancel the velocity if moving INTO the wall
+  //       if (dot < 0) {
+  //         const newVel = {
+  //           x: v.x - dot * n.x,
+  //           y: v.y - dot * n.y,
+  //           z: v.z - dot * n.z,
+  //         };
+
+  //         // Optional: cap downward slide speed
+  //         if (newVel.y < -3.0) newVel.y = -3.0;
+
+  //         console.log('NEWVEL', newVel);
+
+  //         playerBody.setLinvel(newVel, true);
+  //       }
+  //     }
+  //   }
+  // });
+
   return { thirdPersonCharacterObject, charMesh, charData, thirdPersonCamera };
+};
+
+const getWallNormalFromRaycasts = (world: RAPIER.World, playerBody: RAPIER.RigidBody) => {
+  const vel = playerBody.linvel();
+  let dir = { x: vel.x, y: 0, z: vel.z };
+  const len = Math.hypot(dir.x, dir.z);
+
+  if (len > 1e-5) {
+    dir.x /= len;
+    dir.z /= len;
+  } else {
+    dir = { x: 0, y: 0, z: 1 }; // fallback forward
+  }
+
+  const maxToi = 50;
+
+  // Center of the character
+  let origin = playerBody.translation();
+  let ray = new RAPIER.Ray(playerBody.translation(), dir);
+  let hit = world.castRayAndGetNormal(
+    ray,
+    maxToi,
+    true,
+    undefined,
+    undefined,
+    undefined,
+    playerBody
+  );
+  if (hit) {
+    const body = hit.collider.parent();
+    if (body?.bodyType() === RAPIER.RigidBodyType.Dynamic) return;
+    return hit.normal;
+  }
+
+  // No hit, try more rays from different origin (top and bottom of the character)
+  let collider = playerBody.collider(0);
+  if (!collider?.isEnabled()) {
+    collider = playerBody.collider(1);
+  }
+  const capsuleHeight =
+    (collider.shape as RAPIER.Capsule).halfHeight * 2 +
+    (collider.shape as RAPIER.Capsule).radius * 2;
+
+  // Almost bottom of the character
+  origin = playerBody.translation();
+  origin.y -= capsuleHeight * 0.49;
+  ray = new RAPIER.Ray(origin, dir);
+  hit = world.castRayAndGetNormal(ray, maxToi, true, undefined, undefined, undefined, playerBody);
+  if (hit) {
+    const body = hit.collider.parent();
+    if (body?.bodyType() === RAPIER.RigidBodyType.Dynamic) return;
+    return hit.normal;
+  }
+
+  // Almost top of the character
+  origin = playerBody.translation();
+  origin.y += capsuleHeight * 0.49;
+  ray = new RAPIER.Ray(origin, dir);
+  hit = world.castRayAndGetNormal(ray, maxToi, true, undefined, undefined, undefined, playerBody);
+  if (hit) {
+    const body = hit.collider.parent();
+    if (body?.bodyType() === RAPIER.RigidBodyType.Dynamic) return;
+    return hit.normal;
+  }
+
+  // @TODO: add rays for both sides of the collider as well. So center left, center right, bottom left, bottom right, top left, and top right === 6 more)
+
+  return;
+
+  // const origin = playerBody.translation();
+  // const dirs = [
+  //   { x: 1, y: 0, z: 0 },
+  //   { x: -1, y: 0, z: 0 },
+  //   { x: 0, y: 0, z: 1 },
+  //   { x: 0, y: 0, z: -1 },
+  // ];
+  // const maxToi = 1.7; // short distance around the player
+  // const accum = { x: 0, y: 0, z: 0 };
+  // let count = 0;
+
+  // // for (const dir of dirs) {
+  // const vel = playerBody.linvel();
+  // let dir = { x: vel.x, y: 0, z: vel.z };
+  // let len = Math.hypot(dir.x, dir.z);
+  // if (len > 1e-5) {
+  //   dir.x /= len;
+  //   dir.z /= len;
+  // } else {
+  //   // default forward if standing still
+  //   dir = { x: 0, y: 0, z: 1 };
+  // }
+  // @CONSIDER: dow we need a physics method for this?
+  // Such as "castPhysicsRayFromPoint(origin, dir)" and/or
+  // "castPhysicsRayFromDirection(origin, dir)", kinda like we have for Three.js raycasting.
+  // const ray = new RAPIER.Ray(origin, dir);
+  // const hit = world.castRayAndGetNormal(ray, maxToi, true);
+  // if (hit && hit.timeOfImpact < maxToi && Math.abs(hit.normal.y) < 0.6) {
+  //   console.log('HIT', hit.normal, len);
+  //   accum.x += hit.normal.x;
+  //   accum.y += hit.normal.y;
+  //   accum.z += hit.normal.z;
+  //   count++;
+  // }
+  // }
+
+  // if (count === 0) return null;
+  // len = Math.hypot(accum.x, accum.y, accum.z);
+  // if (!len) return { x: 0, y: 0, z: 0 };
+  // return { x: accum.x / len, y: accum.y / len, z: accum.z / len };
 };
