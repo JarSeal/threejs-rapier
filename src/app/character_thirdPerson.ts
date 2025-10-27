@@ -11,7 +11,6 @@ import {
 } from '../_engine/core/Character';
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import {
-  addScenePhysicsLooper,
   getPhysicsObject,
   getPhysicsWorld,
   PhysicsObject,
@@ -19,7 +18,7 @@ import {
 } from '../_engine/core/PhysicsRapier';
 import { createSceneAppLooper, getRootScene } from '../_engine/core/Scene';
 import { castRayFromPoints } from '../_engine/core/Raycast';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER, { type Collider } from '@dimforge/rapier3d-compat';
 import { existsOrThrow } from '../_engine/utils/helpers';
 
 // @TODO: add comments for each
@@ -40,7 +39,6 @@ export type CharacterData = {
   _maxVelocity: number;
   _jumpAmount: number;
   _inTheAirDiminisher: number;
-  _linearVelocityInterval: number;
   _accumulateVeloPerInterval: number;
   _groundedRayMaxDistance: number;
   /** How much time is there when the character is not touching the ground and goes into the "isFalling" state (in milliseconds) */
@@ -67,23 +65,32 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   _maxVelocity: 3.7,
   _jumpAmount: 5,
   _inTheAirDiminisher: 0.2,
-  _linearVelocityInterval: 10,
-  _accumulateVeloPerInterval: 80,
+  _accumulateVeloPerInterval: 30,
   _groundedRayMaxDistance: 1.2,
   _isFallingThreshold: 1200,
-  _runningMultiplier: 1.85,
-  _crouchingMultiplier: 0.65,
+  _runningMultiplier: 1.5,
+  _crouchingMultiplier: 0.7,
   __isFallingStartTime: 0,
   __lviCheckTime: 0,
   __jumpTime: 0,
 };
-let characterData = DEFAULT_CHARACTER_DATA;
-// let averagedWallNormal: { x: number; y: number; z: number } | null = null;
+let characterData = { ...DEFAULT_CHARACTER_DATA };
 let nearWall = false;
+let touchingWallColliders: Collider['handle'][] = [];
 
 const eulerForCharRotation = new THREE.Euler();
 let thirdPersonCamera: THREE.PerspectiveCamera | null = null;
 let thirdPersonCharacterObject: CharacterObject | null = null;
+
+// @TODO: make this file support several characters
+// const characters: {
+//   [id: string]: {
+//     thirdPersonCharacterObject: PhysicsObject;
+//     charMesh: THREE.Mesh;
+//     charData: CharacterData;
+//     camera?: THREE.PerspectiveCamera;
+//   };
+// } = {};
 
 export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sceneId?: string) => {
   // Combine character data
@@ -183,54 +190,37 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
           radius: charCapsule.userData.props?.params.radius * 1.05,
           isSensor: true,
           density: 0,
-          collisionEventFn: (_, __, started, obj1, obj2) => {
-            if (obj1.id === CHARACTER_ID || obj2.id === CHARACTER_ID) {
-              nearWall = started;
+          collisionEventFn: (coll1, coll2, started, obj1) => {
+            // @IDEA: when started becomes false, then we could create another sensor to double check if we are still touching the wall.
+            // This would double check the nearWall result and minimize character being stuck in the wall.
+            if (started) {
+              if (obj1.id === CHARACTER_ID) {
+                // obj1 is the character
+                const bodyType = coll2.parent()?.bodyType();
+                if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
+                  nearWall = true;
+                  touchingWallColliders.push(coll2.handle);
+                }
+              } else {
+                // obj2 is the character
+                const bodyType = coll1.parent()?.bodyType();
+                if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
+                  nearWall = true;
+                  touchingWallColliders.push(coll1.handle);
+                }
+              }
+              return;
             }
-            // console.log('SENSOR ALERT', obj1, obj2, coll1, coll2, started);
-            // const acc = { x: 0, y: 0, z: 0 };
-            // let count = 0;
-            // if (started) {
-            //   //
-            //   // Test contactPairsWith
-            //   if (obj1.id === CHARACTER_ID) {
-            //     getPhysicsWorld().contactPairsWith(coll2, (coll1) => {
-            //       getPhysicsWorld().contactPair(coll2, coll1, (manifold, flipped) => {
-            //         const n = manifold.normal();
-            //         const nx = flipped ? n.x : -n.x;
-            //         const ny = flipped ? n.y : -n.y;
-            //         const nz = flipped ? n.z : -n.z;
-            //         acc.x += nx;
-            //         acc.y += ny;
-            //         acc.z += nz;
-            //         count++;
-            //         console.log('__1__', obj2.id, obj1.id, { x: nx, y: ny, z: nz });
-            //       });
-            //     });
-            //   } else {
-            //     getPhysicsWorld().contactPairsWith(coll1, (coll2) => {
-            //       getPhysicsWorld().contactPair(coll1, coll2, (manifold, flipped) => {
-            //         const n = manifold.normal();
-            //         const nx = !flipped ? n.x : -n.x;
-            //         const ny = !flipped ? n.y : -n.y;
-            //         const nz = !flipped ? n.z : -n.z;
-            //         acc.x += nx;
-            //         acc.y += ny;
-            //         acc.z += nz;
-            //         count++;
-            //         console.log('__2__', obj2.id, obj1.id, { x: nx, y: ny, z: nz }, n);
-            //       });
-            //     });
-            //   }
-            //   if (count === 0) return;
-            //   const avg = { x: acc.x / count, y: acc.y / count, z: acc.z / count };
-            //   const len = Math.hypot(avg.x, avg.y, avg.z) || 1e-6;
-            //   averagedWallNormal = { x: avg.x / len, y: avg.y / len, z: avg.z / len };
-            //   console.log('AVERAGED', averagedWallNormal);
-            // } else {
-            //   //
-            //   averagedWallNormal = null;
-            // }
+            if (obj1.id === CHARACTER_ID) {
+              touchingWallColliders = touchingWallColliders.filter(
+                (handle) => handle !== coll2.handle
+              );
+            } else {
+              touchingWallColliders = touchingWallColliders.filter(
+                (handle) => handle !== coll1.handle
+              );
+            }
+            if (!touchingWallColliders.length) nearWall = false;
           },
           translation: { x: 0, y: 0.05, z: 0 },
         },
@@ -278,20 +268,9 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
           ) {
             // @TODO: add a check whether the character is moving forward or backward and first slow down the character to 0 before setting full linear velocity addition.
             // @TODO: when landing from a jump, the character slows down significantly (probably friction) and then accelerates back to full speed, try to fix this.
-            const intervalCheckOk =
-              charData?._linearVelocityInterval === 0 ||
-              (charData?.__lviCheckTime || 0) + (charData?._linearVelocityInterval || 0) <
-                performance.now();
             const physObj = data?.physObj as PhysicsObject;
             const rigidBody = physObj.rigidBody;
-            if (intervalCheckOk && physObj.rigidBody && rigidBody) {
-              const inTheAirDiminisher =
-                characterData.isGrounded && !characterData.isFalling
-                  ? 1
-                  : characterData._inTheAirDiminisher;
-              const veloAccu = transformAppSpeedValue(
-                characterData._accumulateVeloPerInterval * inTheAirDiminisher
-              );
+            if (physObj.rigidBody && rigidBody) {
               const maxVeloMultiplier =
                 // isRunning
                 characterData.isRunning && characterData.isGrounded && !characterData.isCrouching
@@ -302,6 +281,18 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
                     : 1;
               const maxVelo = characterData._maxVelocity * maxVeloMultiplier;
               const mainDirection = keysPressed.includes('s') || keysPressed.includes('S') ? -1 : 1;
+              const inTheAirDiminisher =
+                characterData.isGrounded && !characterData.isFalling
+                  ? 1
+                  : characterData._inTheAirDiminisher;
+              const crouchVeloAccuMultiplier = characterData.isCrouching
+                ? characterData._crouchingMultiplier + 1
+                : 1;
+              const veloAccu = transformAppSpeedValue(
+                characterData._accumulateVeloPerInterval *
+                  inTheAirDiminisher *
+                  crouchVeloAccuMultiplier
+              );
               const xVelo = Math.cos(characterData.charRotation) * veloAccu * mainDirection;
               const zVelo = -Math.sin(characterData.charRotation) * veloAccu * mainDirection;
               const xMaxVelo = Math.cos(characterData.charRotation) * maxVelo * mainDirection;
@@ -314,40 +305,22 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
                 zVelo > 0
                   ? Math.min((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo)
                   : Math.max((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo);
-              // @TODO: character gets stuck on walls, add detection and correct the linear velocity direction to the direction of the wall (or cancel it if head on collision)
+
               const velo = new THREE.Vector3(xAddition, rigidBody.linvel()?.y || 0, zAddition);
               rigidBody.setLinvel(velo, !rigidBody.isMoving());
 
-              // if (averagedWallNormal) {
-              //   const n = averagedWallNormal;
-              //   let dot = velo.x * n.x + velo.y * n.y + velo.z * n.z;
-              //   if (dot < 0) dot = 0;
-              //   const slide = {
-              //     x: velo.x - dot * n.x,
-              //     y: velo.y - dot * n.y,
-              //     z: velo.z - dot * n.z,
-              //   };
-
-              //   const maxDown = -3.0;
-              //   if (slide.y < maxDown) slide.y = maxDown;
-
-              //   rigidBody.setLinvel(slide, true);
-              // }
-              console.log('NEAR_WALL', nearWall);
               if (nearWall) {
-                const wallNormal = getWallNormalFromRaycasts(getPhysicsWorld(), playerBody);
-                // console.log('WALL_NORMAL', wallNormal);
-                if (wallNormal) {
-                  const v = playerBody.linvel();
-                  let n = wallNormal;
-
+                const hit = getWallHitFromRaycasts(getPhysicsWorld(), characterBody);
+                const bodyType = hit?.collider.parent()?.bodyType();
+                if (hit && bodyType !== RAPIER.RigidBodyType.Dynamic) {
+                  const v = characterBody.linvel();
+                  let n = hit.normal;
                   let dot = v.x * n.x + v.y * n.y + v.z * n.z;
                   if (dot > 0) {
                     // Flip normal so it's always wall → player
                     n = { x: -n.x, y: -n.y, z: -n.z };
                     dot = v.x * n.x + v.y * n.y + v.z * n.z;
                   }
-
                   // Only cancel the velocity if moving INTO the wall
                   if (dot < 0) {
                     const newVel = {
@@ -355,11 +328,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
                       y: v.y - dot * n.y,
                       z: v.z - dot * n.z,
                     };
-
-                    // Optional: cap downward slide speed
-                    // if (newVel.y < -5.0) newVel.y = -5.0;
-
-                    playerBody.setLinvel(newVel, true);
+                    characterBody.setLinvel(newVel, true);
                   }
                 }
               }
@@ -573,44 +542,16 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     deleteCamera(thirdPersonCamera?.userData.id);
   });
 
-  const playerBody = existsOrThrow(
+  const characterBody = existsOrThrow(
     getPhysicsObject(thirdPersonCharacterObject.physObjectId)?.rigidBody,
     `Could not find character physics object rigid body with id: '${thirdPersonCharacterObject.physObjectId}'.`
   );
-  // addScenePhysicsLooper('characterPhysicsLooper', () => {
-  //   if (nearWall) {
-  //     const wallNormal = getWallNormalFromRaycasts(getPhysicsWorld(), playerBody);
-  //     console.log('WALL_NORMAL', wallNormal);
-  //     if (wallNormal) {
-  //       const v = playerBody.linvel();
-  //       const n = wallNormal;
-
-  //       const dot = v.x * n.x + v.y * n.y + v.z * n.z;
-
-  //       // Only cancel the velocity if moving INTO the wall
-  //       if (dot < 0) {
-  //         const newVel = {
-  //           x: v.x - dot * n.x,
-  //           y: v.y - dot * n.y,
-  //           z: v.z - dot * n.z,
-  //         };
-
-  //         // Optional: cap downward slide speed
-  //         if (newVel.y < -3.0) newVel.y = -3.0;
-
-  //         console.log('NEWVEL', newVel);
-
-  //         playerBody.setLinvel(newVel, true);
-  //       }
-  //     }
-  //   }
-  // });
 
   return { thirdPersonCharacterObject, charMesh, charData, thirdPersonCamera };
 };
 
-const getWallNormalFromRaycasts = (world: RAPIER.World, playerBody: RAPIER.RigidBody) => {
-  const vel = playerBody.linvel();
+const getWallHitFromRaycasts = (world: RAPIER.World, characterBody: RAPIER.RigidBody) => {
+  const vel = characterBody.linvel();
   let dir = { x: vel.x, y: 0, z: vel.z };
   const len = Math.hypot(dir.x, dir.z);
 
@@ -621,11 +562,18 @@ const getWallNormalFromRaycasts = (world: RAPIER.World, playerBody: RAPIER.Rigid
     dir = { x: 0, y: 0, z: 1 }; // fallback forward
   }
 
-  const maxToi = 50;
+  let collider = characterBody.collider(0);
+  if (!collider?.isEnabled()) {
+    collider = characterBody.collider(1);
+  }
+  const capsuleRadius = (collider.shape as RAPIER.Capsule).radius;
+  const capsuleHeight = (collider.shape as RAPIER.Capsule).halfHeight * 2 + capsuleRadius * 2;
+
+  const maxToi = capsuleRadius * 4 + 0.5;
 
   // Center of the character
-  let origin = playerBody.translation();
-  let ray = new RAPIER.Ray(playerBody.translation(), dir);
+  let origin = characterBody.translation();
+  let ray = new RAPIER.Ray(characterBody.translation(), dir);
   let hit = world.castRayAndGetNormal(
     ray,
     maxToi,
@@ -633,87 +581,63 @@ const getWallNormalFromRaycasts = (world: RAPIER.World, playerBody: RAPIER.Rigid
     undefined,
     undefined,
     undefined,
-    playerBody
+    characterBody
   );
-  if (hit) {
-    const body = hit.collider.parent();
-    if (body?.bodyType() === RAPIER.RigidBodyType.Dynamic) return;
-    return hit.normal;
+  if (hit && touchingWallColliders.includes(hit.collider.handle)) {
+    const bodyType = hit?.collider.parent()?.bodyType();
+    if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
+      return hit;
+    }
   }
 
   // No hit, try more rays from different origin (top and bottom of the character)
-  let collider = playerBody.collider(0);
-  if (!collider?.isEnabled()) {
-    collider = playerBody.collider(1);
-  }
-  const capsuleHeight =
-    (collider.shape as RAPIER.Capsule).halfHeight * 2 +
-    (collider.shape as RAPIER.Capsule).radius * 2;
+  const vertOffset = capsuleHeight * 0.499;
+  const horiOffset = capsuleRadius * 0.999;
+  const positions = [
+    { x: 0, y: -vertOffset, z: 0 },
+    { x: 0, y: vertOffset, z: 0 },
+    { x: -horiOffset, y: 0, z: 0 },
+    { x: horiOffset, y: 0, z: 0 },
+    { x: -horiOffset, y: -vertOffset, z: 0 },
+    { x: horiOffset, y: -vertOffset, z: 0 },
+    { x: -horiOffset, y: vertOffset, z: 0 },
+    { x: horiOffset, y: vertOffset, z: 0 },
+    { x: 0, y: 0, z: -horiOffset },
+    { x: 0, y: 0, z: horiOffset },
+    { x: 0, y: -vertOffset, z: -horiOffset },
+    { x: 0, y: -vertOffset, z: horiOffset },
+    { x: 0, y: vertOffset, z: -horiOffset },
+    { x: 0, y: vertOffset, z: horiOffset },
+    { x: -horiOffset, y: 0, z: -horiOffset },
+    { x: horiOffset, y: 0, z: horiOffset },
+    { x: -horiOffset, y: -vertOffset, z: -horiOffset },
+    { x: horiOffset, y: -vertOffset, z: horiOffset },
+    { x: -horiOffset, y: vertOffset, z: -horiOffset },
+    { x: horiOffset, y: vertOffset, z: horiOffset },
+  ];
 
-  // Almost bottom of the character
-  origin = playerBody.translation();
-  origin.y -= capsuleHeight * 0.49;
-  ray = new RAPIER.Ray(origin, dir);
-  hit = world.castRayAndGetNormal(ray, maxToi, true, undefined, undefined, undefined, playerBody);
-  if (hit) {
-    const body = hit.collider.parent();
-    if (body?.bodyType() === RAPIER.RigidBodyType.Dynamic) return;
-    return hit.normal;
+  for (let i = 0; i < positions.length; i++) {
+    origin = characterBody.translation();
+    origin.x = origin.x + positions[i].x;
+    origin.y = origin.y + positions[i].y;
+    origin.z = origin.z + positions[i].z;
+    ray = new RAPIER.Ray(origin, dir);
+    hit = world.castRayAndGetNormal(
+      ray,
+      maxToi,
+      true,
+      undefined,
+      undefined,
+      undefined,
+      characterBody
+    );
+    if (hit && touchingWallColliders.includes(hit.collider.handle)) {
+      const bodyType = hit?.collider.parent()?.bodyType();
+      if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
+        return hit;
+      }
+    }
   }
-
-  // Almost top of the character
-  origin = playerBody.translation();
-  origin.y += capsuleHeight * 0.49;
-  ray = new RAPIER.Ray(origin, dir);
-  hit = world.castRayAndGetNormal(ray, maxToi, true, undefined, undefined, undefined, playerBody);
-  if (hit) {
-    const body = hit.collider.parent();
-    if (body?.bodyType() === RAPIER.RigidBodyType.Dynamic) return;
-    return hit.normal;
-  }
-
-  // @TODO: add rays for both sides of the collider as well. So center left, center right, bottom left, bottom right, top left, and top right === 6 more)
 
   return;
-
-  // const origin = playerBody.translation();
-  // const dirs = [
-  //   { x: 1, y: 0, z: 0 },
-  //   { x: -1, y: 0, z: 0 },
-  //   { x: 0, y: 0, z: 1 },
-  //   { x: 0, y: 0, z: -1 },
-  // ];
-  // const maxToi = 1.7; // short distance around the player
-  // const accum = { x: 0, y: 0, z: 0 };
-  // let count = 0;
-
-  // // for (const dir of dirs) {
-  // const vel = playerBody.linvel();
-  // let dir = { x: vel.x, y: 0, z: vel.z };
-  // let len = Math.hypot(dir.x, dir.z);
-  // if (len > 1e-5) {
-  //   dir.x /= len;
-  //   dir.z /= len;
-  // } else {
-  //   // default forward if standing still
-  //   dir = { x: 0, y: 0, z: 1 };
-  // }
-  // @CONSIDER: dow we need a physics method for this?
-  // Such as "castPhysicsRayFromPoint(origin, dir)" and/or
-  // "castPhysicsRayFromDirection(origin, dir)", kinda like we have for Three.js raycasting.
-  // const ray = new RAPIER.Ray(origin, dir);
-  // const hit = world.castRayAndGetNormal(ray, maxToi, true);
-  // if (hit && hit.timeOfImpact < maxToi && Math.abs(hit.normal.y) < 0.6) {
-  //   console.log('HIT', hit.normal, len);
-  //   accum.x += hit.normal.x;
-  //   accum.y += hit.normal.y;
-  //   accum.z += hit.normal.z;
-  //   count++;
-  // }
-  // }
-
-  // if (count === 0) return null;
-  // len = Math.hypot(accum.x, accum.y, accum.z);
-  // if (!len) return { x: 0, y: 0, z: 0 };
-  // return { x: accum.x / len, y: accum.y / len, z: accum.z / len };
 };
