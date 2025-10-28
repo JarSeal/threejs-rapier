@@ -34,6 +34,7 @@ export type CharacterData = {
   isCrouching: boolean;
   isNearWall: boolean;
   isOnStairs: boolean;
+  groundNormal: { x: number; y: number; z: number };
   _height: number;
   _radius: number;
   // _skinThickness: number; // @TODO: add the skin thickness for the wall sensor
@@ -79,6 +80,7 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   isCrouching: false,
   isNearWall: false,
   isOnStairs: false,
+  groundNormal: { x: 0, y: 1, z: 0 },
   _height: 1.6,
   _radius: 0.5,
   _rotateSpeed: 5,
@@ -380,6 +382,7 @@ export const createThirdPersonCharacter = (opts: {
                 stairsCollider = coll1;
               }
               characterData.isGrounded = true;
+              getFloorNormal(getPhysicsWorld(), characterBody, characterData);
 
               // isOnStairs check:
               const userData = stairsCollider.parent()?.userData as {
@@ -420,6 +423,9 @@ export const createThirdPersonCharacter = (opts: {
               stairsCollider = coll1;
             }
             if (!characterData.__touchingGroundColliders.length) characterData.isGrounded = false;
+            if (characterData.isGrounded) {
+              getFloorNormal(getPhysicsWorld(), characterBody, characterData);
+            }
 
             // isOnStairs check:
             const userData = stairsCollider.parent()?.userData as {
@@ -821,4 +827,31 @@ const getWallHitFromRaycasts = (
   }
 
   return;
+};
+
+const getFloorNormal = (
+  world: RAPIER.World,
+  characterBody: RAPIER.RigidBody,
+  characterData: CharacterData
+) => {
+  let collider = characterBody.collider(0);
+  if (!collider?.isEnabled()) {
+    collider = characterBody.collider(1);
+  }
+  const capsuleRadius = (collider.shape as RAPIER.Capsule).radius;
+  const capsuleHeight = (collider.shape as RAPIER.Capsule).halfHeight * 2 + capsuleRadius * 2;
+
+  const maxToi = capsuleHeight / 2 + 0.25;
+  const ray = new RAPIER.Ray(characterBody.translation(), { x: 0, y: -1, z: 0 });
+  const hit = world.castRayAndGetNormal(
+    ray,
+    maxToi,
+    true,
+    undefined,
+    undefined,
+    undefined,
+    characterBody
+  );
+
+  characterData.groundNormal = hit?.normal || { x: 0, y: 1, z: 0 };
 };
