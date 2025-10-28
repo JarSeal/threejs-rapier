@@ -70,7 +70,7 @@ export const characterTestObjects = () => {
             w: quaternionForRotation.w,
           },
         },
-        rigidBody: { rigidType: 'FIXED' },
+        rigidBody: { rigidType: 'FIXED', userData: { isStairs: true, stairsColliderIndex: 0 } },
       },
       {
         collider: {
