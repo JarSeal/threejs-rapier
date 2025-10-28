@@ -50,6 +50,15 @@ export type CharacterData = {
   __jumpTime: number;
 };
 
+export type ThirdPersonCharacter = {
+  thirdPersonCharacterObject: CharacterObject;
+  charMesh: THREE.Mesh;
+  charData: CharacterData;
+  camera?: THREE.PerspectiveCamera;
+  nearWall?: boolean;
+  touchingWallColliders: Collider['handle'][];
+};
+
 const DEFAULT_CHARACTER_DATA: CharacterData = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0, world: 0 },
@@ -74,29 +83,24 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   __lviCheckTime: 0,
   __jumpTime: 0,
 };
-let characterData = { ...DEFAULT_CHARACTER_DATA };
-let nearWall = false;
-let touchingWallColliders: Collider['handle'][] = [];
 
 const eulerForCharRotation = new THREE.Euler();
 let thirdPersonCamera: THREE.PerspectiveCamera | null = null;
-let thirdPersonCharacterObject: CharacterObject | null = null;
 
 // @TODO: make this file support several characters
-// const characters: {
-//   [id: string]: {
-//     thirdPersonCharacterObject: PhysicsObject;
-//     charMesh: THREE.Mesh;
-//     charData: CharacterData;
-//     camera?: THREE.PerspectiveCamera;
-//   };
-// } = {};
+const characters: { [id: string]: ThirdPersonCharacter } = {};
 
-export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sceneId?: string) => {
+export const createThirdPersonCharacter = (
+  id: string,
+  charData?: Partial<CharacterData>,
+  sceneId?: string
+) => {
   // Combine character data
-  characterData = { ...DEFAULT_CHARACTER_DATA, ...charData };
-
-  const CHARACTER_ID = 'thirdPersonCamCharacter';
+  const characterData = { ...DEFAULT_CHARACTER_DATA, ...charData };
+  const character: Partial<ThirdPersonCharacter> = {
+    charData: characterData,
+    touchingWallColliders: [],
+  };
 
   // Create third person camera
   thirdPersonCamera = createCamera('thirdPerson', {
@@ -157,8 +161,8 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   directionBeakMesh.position.set(0.35, 0.43, 0);
   charMesh.add(directionBeakMesh);
 
-  thirdPersonCharacterObject = createCharacter({
-    id: CHARACTER_ID,
+  const thirdPersonCharacterObject = createCharacter({
+    id,
     physicsParams: [
       {
         collider: {
@@ -194,33 +198,31 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
             // @IDEA: when started becomes false, then we could create another sensor to double check if we are still touching the wall.
             // This would double check the nearWall result and minimize character being stuck in the wall.
             if (started) {
-              if (obj1.id === CHARACTER_ID) {
+              if (obj1.id === id) {
                 // obj1 is the character
                 const bodyType = coll2.parent()?.bodyType();
                 if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
-                  nearWall = true;
-                  touchingWallColliders.push(coll2.handle);
+                  character.nearWall = true;
+                  character.touchingWallColliders?.push(coll2.handle);
                 }
               } else {
                 // obj2 is the character
                 const bodyType = coll1.parent()?.bodyType();
                 if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
-                  nearWall = true;
-                  touchingWallColliders.push(coll1.handle);
+                  character.nearWall = true;
+                  character.touchingWallColliders?.push(coll1.handle);
                 }
               }
               return;
             }
-            if (obj1.id === CHARACTER_ID) {
-              touchingWallColliders = touchingWallColliders.filter(
-                (handle) => handle !== coll2.handle
-              );
+            if (obj1.id === id) {
+              character.touchingWallColliders =
+                character.touchingWallColliders?.filter((handle) => handle !== coll2.handle) || [];
             } else {
-              touchingWallColliders = touchingWallColliders.filter(
-                (handle) => handle !== coll1.handle
-              );
+              character.touchingWallColliders =
+                character.touchingWallColliders?.filter((handle) => handle !== coll1.handle) || [];
             }
-            if (!touchingWallColliders.length) nearWall = false;
+            if (!character.touchingWallColliders?.length) character.nearWall = false;
           },
           translation: { x: 0, y: 0.05, z: 0 },
         },
@@ -309,8 +311,8 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
               const velo = new THREE.Vector3(xAddition, rigidBody.linvel()?.y || 0, zAddition);
               rigidBody.setLinvel(velo, !rigidBody.isMoving());
 
-              if (nearWall) {
-                const hit = getWallHitFromRaycasts(getPhysicsWorld(), characterBody);
+              if (character.nearWall) {
+                const hit = getWallHitFromRaycasts(getPhysicsWorld(), characterBody, character);
                 const bodyType = hit?.collider.parent()?.bodyType();
                 if (hit && bodyType !== RAPIER.RigidBodyType.Dynamic) {
                   const v = characterBody.linvel();
@@ -538,7 +540,7 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
   charMesh.castShadow = true;
   charMesh.receiveShadow = true;
 
-  registerOnDeleteCharacter(CHARACTER_ID, () => {
+  registerOnDeleteCharacter(id, () => {
     deleteCamera(thirdPersonCamera?.userData.id);
   });
 
@@ -547,10 +549,20 @@ export const createThirdPersonCharacter = (charData?: Partial<CharacterData>, sc
     `Could not find character physics object rigid body with id: '${thirdPersonCharacterObject.physObjectId}'.`
   );
 
-  return { thirdPersonCharacterObject, charMesh, charData, thirdPersonCamera };
+  character.camera = thirdPersonCamera;
+  character.charMesh = charMesh;
+  character.thirdPersonCharacterObject = thirdPersonCharacterObject;
+
+  characters[id] = character as ThirdPersonCharacter;
+
+  return characters[id];
 };
 
-const getWallHitFromRaycasts = (world: RAPIER.World, characterBody: RAPIER.RigidBody) => {
+const getWallHitFromRaycasts = (
+  world: RAPIER.World,
+  characterBody: RAPIER.RigidBody,
+  character: Partial<ThirdPersonCharacter>
+) => {
   const vel = characterBody.linvel();
   let dir = { x: vel.x, y: 0, z: vel.z };
   const len = Math.hypot(dir.x, dir.z);
@@ -583,7 +595,7 @@ const getWallHitFromRaycasts = (world: RAPIER.World, characterBody: RAPIER.Rigid
     undefined,
     characterBody
   );
-  if (hit && touchingWallColliders.includes(hit.collider.handle)) {
+  if (hit && character.touchingWallColliders?.includes(hit.collider.handle)) {
     const bodyType = hit?.collider.parent()?.bodyType();
     if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
       return hit;
@@ -631,7 +643,7 @@ const getWallHitFromRaycasts = (world: RAPIER.World, characterBody: RAPIER.Rigid
       undefined,
       characterBody
     );
-    if (hit && touchingWallColliders.includes(hit.collider.handle)) {
+    if (hit && character.touchingWallColliders?.includes(hit.collider.handle)) {
       const bodyType = hit?.collider.parent()?.bodyType();
       if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
         return hit;

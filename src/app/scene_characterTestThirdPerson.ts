@@ -198,7 +198,7 @@ export const sceneCharacterTest = async () =>
     scene.add(box);
 
     // CHARACTER
-    const { charMesh, thirdPersonCharacterObject } = createThirdPersonCharacter();
+    const { charMesh, thirdPersonCharacterObject } = createThirdPersonCharacter('thirdPersonChar');
     const charPhysObj = getPhysicsObject(thirdPersonCharacterObject.physObjectId);
     charPhysObj?.setTranslation({ x: 5, y: 5, z: -5 });
     scene.add(charMesh);
