@@ -33,8 +33,12 @@ export type CharacterData = {
   isRunning: boolean;
   isCrouching: boolean;
   isNearWall: boolean;
+  isOnStairs: boolean;
   _height: number;
   _radius: number;
+  // _skinThickness: number; // @TODO: add the skin thickness for the wall sensor
+  // _groundDetectorOffset: number; // @TODO: add the wall detector Y axis offset for the ground sensor
+  // _groundDetectorRadius: number; // @TODO: add the wall detector ball radius for the ground sensor
   _rotateSpeed: number;
   _maxVelocity: number;
   _jumpAmount: number;
@@ -74,6 +78,7 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   isRunning: false,
   isCrouching: false,
   isNearWall: false,
+  isOnStairs: false,
   _height: 1.6,
   _radius: 0.5,
   _rotateSpeed: 5,
@@ -303,6 +308,7 @@ export const createThirdPersonCharacter = (opts: {
         },
       },
       {
+        // Wall sensor
         collider: {
           type: 'CAPSULE',
           halfHeight: (charCapsule.userData.props?.params.height / 2.5) * 1.05,
@@ -346,13 +352,9 @@ export const createThirdPersonCharacter = (opts: {
         },
       },
       {
+        // Floor sensor
         collider: {
-          // type: 'CUBOID',
-          // hx: characterData._radius / 2,
-          // hy: characterData._radius / 2,
-          // hz: characterData._radius / 2,
-          type: 'CAPSULE',
-          halfHeight: 0.00001,
+          type: 'BALL',
           radius: charCapsule.userData.props?.params.radius * 0.8,
           isSensor: true,
           density: 0,
@@ -362,29 +364,87 @@ export const createThirdPersonCharacter = (opts: {
             z: 0,
           },
           collisionEventFn: (coll1, coll2, started, obj1) => {
+            let stairsCollider = null;
             if (started) {
               if (obj1.id === id) {
                 if (coll1.handle !== groundSensorHandle) return;
                 // obj1 is the character
+                // isGrounded check:
                 characterData.__touchingGroundColliders.push(coll2.handle);
+                stairsCollider = coll2;
               } else {
                 if (coll2.handle !== groundSensorHandle) return;
                 // obj2 is the character
+                // isGrounded check:
                 characterData.__touchingGroundColliders.push(coll1.handle);
+                stairsCollider = coll1;
               }
               characterData.isGrounded = true;
+
+              // isOnStairs check:
+              const userData = stairsCollider.parent()?.userData as {
+                isStairs: boolean;
+                stairsColliderIndex: number;
+              };
+              if (userData.isStairs && userData.stairsColliderIndex !== undefined) {
+                if (Array.isArray(userData.stairsColliderIndex)) {
+                  for (let i = 0; i < userData.stairsColliderIndex.length; i++) {
+                    const targetCollider = stairsCollider
+                      .parent()
+                      ?.collider(userData.stairsColliderIndex[i]);
+                    if (targetCollider && targetCollider.handle === stairsCollider.handle) {
+                      characterData.isOnStairs = true;
+                    }
+                  }
+                } else {
+                  const targetCollider = stairsCollider
+                    .parent()
+                    ?.collider(userData.stairsColliderIndex);
+                  if (targetCollider && targetCollider.handle === stairsCollider.handle) {
+                    characterData.isOnStairs = true;
+                  }
+                }
+              }
               return;
             }
+            // isGrounded check:
             if (obj1.id === id) {
               if (coll1.handle !== groundSensorHandle) return;
               characterData.__touchingGroundColliders =
                 characterData.__touchingGroundColliders.filter((handle) => handle !== coll2.handle);
+              stairsCollider = coll2;
             } else {
               if (coll2.handle !== groundSensorHandle) return;
               characterData.__touchingGroundColliders =
                 characterData.__touchingGroundColliders.filter((handle) => handle !== coll1.handle);
+              stairsCollider = coll1;
             }
             if (!characterData.__touchingGroundColliders.length) characterData.isGrounded = false;
+
+            // isOnStairs check:
+            const userData = stairsCollider.parent()?.userData as {
+              isStairs: boolean;
+              stairsColliderIndex: number;
+            };
+            if (userData.isStairs && userData.stairsColliderIndex !== undefined) {
+              if (Array.isArray(userData.stairsColliderIndex)) {
+                for (let i = 0; i < userData.stairsColliderIndex.length; i++) {
+                  const targetCollider = stairsCollider
+                    .parent()
+                    ?.collider(userData.stairsColliderIndex[i]);
+                  if (targetCollider && targetCollider.handle === stairsCollider.handle) {
+                    characterData.isOnStairs = false;
+                  }
+                }
+              } else {
+                const targetCollider = stairsCollider
+                  .parent()
+                  ?.collider(userData.stairsColliderIndex);
+                if (targetCollider && targetCollider.handle === stairsCollider.handle) {
+                  characterData.isOnStairs = false;
+                }
+              }
+            }
           },
         },
       },
