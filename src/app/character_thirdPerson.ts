@@ -37,9 +37,9 @@ export type CharacterData = {
   groundNormal: { x: number; y: number; z: number };
   _height: number;
   _radius: number;
-  // _skinThickness: number; // @TODO: add the skin thickness for the wall sensor
-  // _groundDetectorOffset: number; // @TODO: add the wall detector Y axis offset for the ground sensor
-  // _groundDetectorRadius: number; // @TODO: add the wall detector ball radius for the ground sensor
+  _skinThickness: number;
+  _groundDetectorOffset: number;
+  _groundDetectorRadius: number;
   _rotateSpeed: number;
   _maxVelocity: number;
   _jumpAmount: number;
@@ -83,6 +83,9 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   groundNormal: { x: 0, y: 1, z: 0 },
   _height: 1.6,
   _radius: 0.5,
+  _skinThickness: 0.05,
+  _groundDetectorOffset: 0.3,
+  _groundDetectorRadius: 0.8,
   _rotateSpeed: 5,
   _maxVelocity: 3.7,
   _jumpAmount: 5,
@@ -274,8 +277,16 @@ export const createThirdPersonCharacter = (opts: {
         charData.__jumpTime = performance.now();
       }
     },
-    run: () => {},
-    crouch: () => {},
+    run: () => {
+      // Set isRunning state
+      characterData.isRunning = !characterData.isRunning;
+    },
+    crouch: () => {
+      // Set isCrouching state
+      characterData.isCrouching = !characterData.isCrouching;
+      const nextIndex = characterData.isCrouching ? 1 : 0;
+      switchPhysicsCollider(id, nextIndex);
+    },
   };
 
   const moveInputMappings = [
@@ -287,9 +298,11 @@ export const createThirdPersonCharacter = (opts: {
     id,
     physicsParams: [
       {
+        // Main character collider (walk / run)
         collider: {
           type: 'CAPSULE',
-          friction: 0,
+          // friction: 0.7,
+          // frictionCombineRule: 'MULTIPLY',
         },
         rigidBody: {
           rigidType: 'DYNAMIC',
@@ -298,9 +311,10 @@ export const createThirdPersonCharacter = (opts: {
         },
       },
       {
+        // Crouch collider
         collider: {
           type: 'CAPSULE',
-          friction: 1.5,
+          friction: 0.9,
           halfHeight: charCapsule.userData.props?.params.height / 4,
           translation: {
             x: charMesh.position.x,
@@ -313,8 +327,9 @@ export const createThirdPersonCharacter = (opts: {
         // Wall sensor
         collider: {
           type: 'CAPSULE',
-          halfHeight: (charCapsule.userData.props?.params.height / 2.5) * 1.05,
-          radius: charCapsule.userData.props?.params.radius * 1.05,
+          halfHeight:
+            (charCapsule.userData.props?.params.height / 2.5) * (characterData._skinThickness + 1),
+          radius: charCapsule.userData.props?.params.radius * (characterData._skinThickness + 1),
           isSensor: true,
           density: 0,
           translation: { x: 0, y: 0.05, z: 0 },
@@ -357,12 +372,12 @@ export const createThirdPersonCharacter = (opts: {
         // Floor sensor
         collider: {
           type: 'BALL',
-          radius: charCapsule.userData.props?.params.radius * 0.8,
+          radius: charCapsule.userData.props?.params.radius * characterData._groundDetectorRadius,
           isSensor: true,
           density: 0,
           translation: {
             x: 0,
-            y: -characterData._height / 2 + 0.3,
+            y: -characterData._height / 2 + characterData._groundDetectorOffset,
             z: 0,
           },
           collisionEventFn: (coll1, coll2, started, obj1) => {
@@ -506,28 +521,20 @@ export const createThirdPersonCharacter = (opts: {
             id: 'charRun',
             key: inputMappings.run,
             type: 'KEY_DOWN',
-            fn: (e, __, data) => {
+            fn: (e) => {
               e.preventDefault();
               if (e.repeat) return;
-              // Set isRunning state
-              const charObj = data?.charObject as CharacterObject;
-              const charData = charObj.data as CharacterData;
-              charData.isRunning = !charData.isRunning;
+              controlFns.run();
             },
           },
           {
             id: 'charCrouch',
             key: inputMappings.crouch,
             type: 'KEY_DOWN',
-            fn: (e, __, data) => {
+            fn: (e) => {
               e.preventDefault();
               if (e.repeat) return;
-              // Set isCrouching state
-              const charObj = data?.charObject as CharacterObject;
-              const charData = charObj.data as CharacterData;
-              charData.isCrouching = !charData.isCrouching;
-              const nextIndex = charData.isCrouching ? 1 : 0;
-              switchPhysicsCollider(charObj.id, nextIndex);
+              controlFns.crouch();
             },
           },
         ]
