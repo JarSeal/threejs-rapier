@@ -10,7 +10,7 @@ import { Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { existsOrThrow, existsOrWarn, ThreeVector3 } from '../utils/helpers';
+import { existsOrThrow, existsOrWarn, slerp, ThreeVector3 } from '../utils/helpers';
 import { CMP, TCMP } from '../utils/CMP';
 import {
   addOnCloseToWindow,
@@ -20,7 +20,8 @@ import {
   updateDraggableWindow,
 } from './UI/DraggableWindow';
 import { LoopState } from './MainLoop';
-import { Collider } from '@dimforge/rapier3d-compat';
+import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
+import { updateInputControllerLoopActions } from './InputControls';
 
 type CollisionEventFn = (
   collider1: Collider,
@@ -218,6 +219,7 @@ type ScenePhysicsState = {
   solverIterations: number;
   internalPgsIterations: number;
   additionalFrictionIterations: number;
+  interpolationEnabled: boolean;
 };
 
 type PhysicsState = {
@@ -242,6 +244,7 @@ const DEFAULT_SCENE_PHYS_STATE: ScenePhysicsState = {
   solverIterations: 10,
   internalPgsIterations: 1,
   additionalFrictionIterations: 4,
+  interpolationEnabled: true,
 };
 const getDefaultScenePhysParams = () =>
   ({ ...DEFAULT_SCENE_PHYS_STATE, ...getConfig().physics }) as ScenePhysicsState;
@@ -1243,136 +1246,139 @@ export const createPhysicsDebugMesh = () => {
 let accDelta = 0;
 const clock = new THREE.Clock();
 
+const prevTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaternion }>();
+const currTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaternion }>();
+
 // Different stepper functions to use for debug and production.
 // baseStepper is used for both.
 const baseStepper = () => {
   const delta = clock.getDelta();
   accDelta += delta;
-  if (accDelta < physicsState.timestepRatio) return;
-  accDelta = accDelta % physicsState.timestepRatio;
+  // if (accDelta < physicsState.timestepRatio) return;
+  // accDelta = accDelta % physicsState.timestepRatio;
 
-  // Step the world
-  physicsWorld.step(eventQueue);
+  while (accDelta >= physicsState.timestepRatio) {
+    // Store previous transforms
+    for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+      const po = currentScenePhysicsObjects[i];
+      if (checkDynamicPhysicsObjectInvalidity(po)) continue;
+      const rb = po.rigidBody as RigidBody;
+      const handle = rb.handle;
+      const t = rb.translation();
+      const r = rb.rotation();
+      const curr = new THREE.Vector3(t.x, t.y, t.z);
+      const quat = new THREE.Quaternion(r.x, r.y, r.z, r.w);
+      prevTransforms.set(
+        handle,
+        currTransforms.get(handle) ?? { pos: curr.clone(), rot: quat.clone() }
+      );
+      currTransforms.set(handle, { pos: curr, rot: quat });
+    }
 
-  if (collisionEventFnCount) {
-    eventQueue?.drainCollisionEvents((handle1, handle2, started) => {
-      let collider1: Collider | null = null;
-      let collider2: Collider | null = null;
-      const physObj1 = currentScenePhysicsObjects.find((obj) => {
-        if (Array.isArray(obj.collider)) {
-          const foundCollider = obj.collider.find((collider) => collider.handle === handle1);
-          if (foundCollider) {
-            collider1 = foundCollider;
+    // Step the world
+    physicsWorld.step(eventQueue);
+    accDelta -= physicsState.timestepRatio;
+
+    if (collisionEventFnCount) {
+      eventQueue?.drainCollisionEvents((handle1, handle2, started) => {
+        let collider1: Collider | null = null;
+        let collider2: Collider | null = null;
+        const physObj1 = currentScenePhysicsObjects.find((obj) => {
+          if (Array.isArray(obj.collider)) {
+            const foundCollider = obj.collider.find((collider) => collider.handle === handle1);
+            if (foundCollider) {
+              collider1 = foundCollider;
+              return true;
+            }
+            return false;
+          }
+          if (obj.collider.handle === handle1) {
+            collider1 = obj.collider;
             return true;
           }
           return false;
-        }
-        if (obj.collider.handle === handle1) {
-          collider1 = obj.collider;
-          return true;
-        }
-        return false;
-      });
-      const physObj2 = currentScenePhysicsObjects.find((obj) => {
-        if (Array.isArray(obj.collider)) {
-          const foundCollider = obj.collider.find((collider) => collider.handle === handle2);
-          if (foundCollider) {
-            collider2 = foundCollider;
+        });
+        const physObj2 = currentScenePhysicsObjects.find((obj) => {
+          if (Array.isArray(obj.collider)) {
+            const foundCollider = obj.collider.find((collider) => collider.handle === handle2);
+            if (foundCollider) {
+              collider2 = foundCollider;
+              return true;
+            }
+            return false;
+          }
+          if (obj.collider.handle === handle2) {
+            collider2 = obj.collider;
             return true;
           }
           return false;
+        });
+        if (!collider1 || !collider2) return;
+        if (physObj1?.collisionEventFn && physObj2) {
+          if (Array.isArray(physObj1.collisionEventFn)) {
+            for (let i = 0; i < physObj1.collisionEventFn.length; i++) {
+              physObj1.collisionEventFn[i](collider1, collider2, started, physObj1, physObj2);
+            }
+          } else {
+            physObj1.collisionEventFn(collider1, collider2, started, physObj1, physObj2);
+          }
         }
-        if (obj.collider.handle === handle2) {
-          collider2 = obj.collider;
-          return true;
+        if (physObj2?.collisionEventFn && physObj1) {
+          if (Array.isArray(physObj2.collisionEventFn)) {
+            for (let i = 0; i < physObj2.collisionEventFn.length; i++) {
+              physObj2.collisionEventFn[i](collider1, collider2, started, physObj1, physObj2);
+            }
+          } else {
+            physObj2.collisionEventFn(collider1, collider2, started, physObj1, physObj2);
+          }
         }
-        return false;
       });
-      if (!collider1 || !collider2) return;
-      if (physObj1?.collisionEventFn && physObj2) {
-        if (Array.isArray(physObj1.collisionEventFn)) {
-          for (let i = 0; i < physObj1.collisionEventFn.length; i++) {
-            physObj1.collisionEventFn[i](collider1, collider2, started, physObj1, physObj2);
-          }
-        } else {
-          physObj1.collisionEventFn(collider1, collider2, started, physObj1, physObj2);
-        }
-      }
-      if (physObj2?.collisionEventFn && physObj1) {
-        if (Array.isArray(physObj2.collisionEventFn)) {
-          for (let i = 0; i < physObj2.collisionEventFn.length; i++) {
-            physObj2.collisionEventFn[i](collider1, collider2, started, physObj1, physObj2);
-          }
-        } else {
-          physObj2.collisionEventFn(collider1, collider2, started, physObj1, physObj2);
-        }
-      }
-    });
-  }
+    }
 
-  if (contactForceEventFnCount) {
-    eventQueue?.drainContactForceEvents((event) => {
-      const handle1 = event.collider1();
-      const handle2 = event.collider2();
-      const physObj1 = currentScenePhysicsObjects.find((obj) => {
-        if (Array.isArray(obj.collider)) {
-          return Boolean(obj.collider.find((collider) => collider.handle === handle1));
-        }
-        return obj.collider.handle === handle1;
-      });
-      const physObj2 = currentScenePhysicsObjects.find((obj) => {
-        if (Array.isArray(obj.collider)) {
-          return Boolean(obj.collider.find((collider) => collider.handle === handle2));
-        }
-        return obj.collider.handle === handle2;
-      });
-      if (physObj1?.contactForceEventFn && physObj2) {
-        if (Array.isArray(physObj1.contactForceEventFn)) {
-          for (let i = 0; i < physObj1.contactForceEventFn.length; i++) {
-            physObj1.contactForceEventFn[i](event, physObj1, physObj2);
+    if (contactForceEventFnCount) {
+      eventQueue?.drainContactForceEvents((event) => {
+        const handle1 = event.collider1();
+        const handle2 = event.collider2();
+        const physObj1 = currentScenePhysicsObjects.find((obj) => {
+          if (Array.isArray(obj.collider)) {
+            return Boolean(obj.collider.find((collider) => collider.handle === handle1));
           }
-        } else {
-          physObj1.contactForceEventFn(event, physObj1, physObj2);
-        }
-      }
-      if (physObj2?.contactForceEventFn && physObj1) {
-        if (Array.isArray(physObj2.contactForceEventFn)) {
-          for (let i = 0; i < physObj2.contactForceEventFn.length; i++) {
-            physObj2.contactForceEventFn[i](event, physObj1, physObj2);
+          return obj.collider.handle === handle1;
+        });
+        const physObj2 = currentScenePhysicsObjects.find((obj) => {
+          if (Array.isArray(obj.collider)) {
+            return Boolean(obj.collider.find((collider) => collider.handle === handle2));
           }
-        } else {
-          physObj2.contactForceEventFn(event, physObj1, physObj2);
+          return obj.collider.handle === handle2;
+        });
+        if (physObj1?.contactForceEventFn && physObj2) {
+          if (Array.isArray(physObj1.contactForceEventFn)) {
+            for (let i = 0; i < physObj1.contactForceEventFn.length; i++) {
+              physObj1.contactForceEventFn[i](event, physObj1, physObj2);
+            }
+          } else {
+            physObj1.contactForceEventFn(event, physObj1, physObj2);
+          }
         }
-      }
-    });
-  }
-
-  // Run scenePhysicsLoopers
-  const looperKeys = Object.keys(scenePhysicsLoopers);
-  for (let i = 0; i < looperKeys.length; i++) {
-    scenePhysicsLoopers[looperKeys[i]](delta);
-  }
-
-  // Set physics objects mesh positions and rotations
-  for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
-    const po = currentScenePhysicsObjects[i];
-    // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
-    if (!po.mesh || (po.rigidBody && !po.rigidBody?.isMoving())) continue;
-    const collider = Array.isArray(po.collider)
-      ? po.collider[po.currentObjectIndex || 0]
-      : po.collider;
-    po.mesh.position.copy(collider.translation());
-    const userData = po.rigidBody?.userData as { [key: string]: unknown };
-    if (!userData?.lockRotationsX && !userData?.lockRotationsX && !userData?.lockRotationsX) {
-      po.mesh.quaternion.copy(collider.rotation());
-    } else {
-      const colliderRotation = collider.rotation();
-      po.mesh.quaternion.copy({
-        x: userData.lockRotationsX ? po.mesh.quaternion.x : colliderRotation.x,
-        y: userData.lockRotationsY ? po.mesh.quaternion.y : colliderRotation.y,
-        z: userData.lockRotationsZ ? po.mesh.quaternion.z : colliderRotation.z,
-        w: po.mesh.quaternion.w,
+        if (physObj2?.contactForceEventFn && physObj1) {
+          if (Array.isArray(physObj2.contactForceEventFn)) {
+            for (let i = 0; i < physObj2.contactForceEventFn.length; i++) {
+              physObj2.contactForceEventFn[i](event, physObj1, physObj2);
+            }
+          } else {
+            physObj2.contactForceEventFn(event, physObj1, physObj2);
+          }
+        }
       });
+    }
+
+    // Update input loop actions for physics
+    updateInputControllerLoopActions(delta);
+
+    // Run scenePhysicsLoopers
+    const looperKeys = Object.keys(scenePhysicsLoopers);
+    for (let i = 0; i < looperKeys.length; i++) {
+      scenePhysicsLoopers[looperKeys[i]](delta);
     }
   }
 };
@@ -1440,6 +1446,69 @@ const stepperFnDebug = (loopState: LoopState) => {
  */
 export const stepPhysicsWorld = (loopState: LoopState) => stepperFn(loopState);
 
+const checkDynamicPhysicsObjectInvalidity = (po: PhysicsObject) =>
+  !po.mesh ||
+  (po.rigidBody &&
+    (!po.rigidBody?.isMoving() || po.rigidBody.isFixed() || !po.rigidBody.isEnabled()));
+
+export const renderPhysicsObjects = () => {
+  if (getCurrentScenePhysParams().interpolationEnabled) {
+    for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+      const po = currentScenePhysicsObjects[i];
+      // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
+      if (checkDynamicPhysicsObjectInvalidity(po)) continue;
+      const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
+      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
+      const prev = prevTransforms.get(rb.handle);
+      const curr = currTransforms.get(rb.handle);
+      if (!prev || !curr) continue;
+
+      const alpha = Math.min(accDelta / physicsState.timestepRatio, 1);
+
+      // Interpolated position
+      const interpPos = prev.pos.clone().lerp(curr.pos, alpha);
+
+      // Interpolated rotation
+      const interpRot = slerp(prev.rot, curr.rot, alpha);
+
+      mesh.position.copy(interpPos);
+      const userData = po.rigidBody?.userData as { [key: string]: unknown };
+      if (!userData?.lockRotationsX && !userData?.lockRotationsX && !userData?.lockRotationsX) {
+        mesh.quaternion.copy(interpRot);
+      } else {
+        mesh.quaternion.copy({
+          x: userData.lockRotationsX ? mesh.quaternion.x : interpRot.x,
+          y: userData.lockRotationsY ? mesh.quaternion.y : interpRot.y,
+          z: userData.lockRotationsZ ? mesh.quaternion.z : interpRot.z,
+          w: mesh.quaternion.w,
+        });
+      }
+    }
+  } else {
+    for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+      const po = currentScenePhysicsObjects[i];
+      // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
+      if (checkDynamicPhysicsObjectInvalidity(po)) continue;
+      const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
+      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
+
+      mesh.position.copy(rb.translation());
+      const userData = rb.userData as { [key: string]: unknown };
+      if (!userData?.lockRotationsX && !userData?.lockRotationsX && !userData?.lockRotationsX) {
+        mesh.quaternion.copy(rb.rotation());
+      } else {
+        const colliderRotation = rb.rotation();
+        mesh.quaternion.copy({
+          x: userData.lockRotationsX ? mesh.quaternion.x : colliderRotation.x,
+          y: userData.lockRotationsY ? mesh.quaternion.y : colliderRotation.y,
+          z: userData.lockRotationsZ ? mesh.quaternion.z : colliderRotation.z,
+          w: mesh.quaternion.w,
+        });
+      }
+    }
+  }
+};
+
 /**
  * Changes the scene to be used for the scene's physics objects (optimizes the stepping)
  * @param sceneId string of the new scene id to change to
@@ -1482,6 +1551,12 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
 
   createPhysicsDebugMesh();
 };
+
+/**
+ * Returns the current scene physics objects
+ * @returns currentScenePhysicsObjects
+ */
+export const getCurrentScenePhysicsObjects = () => currentScenePhysicsObjects;
 
 export const togglePhysicsVisualizer = (value: boolean) => {
   const currentSceneId = getCurrentSceneId();
@@ -1640,6 +1715,11 @@ export const buildPhysicsDebugGUI = () => {
       }
       lsSetItem(LS_KEY, physicsState);
       physicsWorld.numAdditionalFrictionIterations = e.value;
+    });
+  debugGUI
+    .addBinding(curScenePhysParams, 'interpolationEnabled', { label: 'Enable interpolation' })
+    .on('change', () => {
+      lsSetItem(LS_KEY, physicsState);
     });
 };
 
@@ -1939,4 +2019,16 @@ export const deleteAllScenePhysicsLoopers = () => {
   for (let i = 0; i < looperKeys.length; i++) {
     deleteScenePhysicsLooper(looperKeys[i]);
   }
+};
+
+export const getCurrentScenePhysParams = () => {
+  const currentSceneId = existsOrThrow(
+    getCurrentSceneId(),
+    "Could not get current scene id in 'getCurrentScenePhysParams'."
+  );
+  if (!physicsState.scenes[currentSceneId]) {
+    physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
+  }
+  curScenePhysParams = physicsState.scenes[currentSceneId];
+  return curScenePhysParams;
 };

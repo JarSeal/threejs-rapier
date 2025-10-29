@@ -34,6 +34,7 @@ const config: AppConfig = {
     solverIterations: 10,
     internalPgsIterations: 1,
     additionalFrictionIterations: 4,
+    interpolationEnabled: true,
   },
   draggableWindows: {
     [EDIT_LIGHT_WIN_ID]: { contentFn: createEditLightContent },

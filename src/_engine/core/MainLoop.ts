@@ -4,6 +4,7 @@ import { initStats, updateStats } from '../debug/Stats';
 import { getAllCamerasAsArray, getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
 import {
+  getCurrentSceneId,
   getRootScene,
   getSceneResizers,
   runSceneAppLoopers,
@@ -15,7 +16,7 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugTools';
-import { stepPhysicsWorld } from './PhysicsRapier';
+import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './PhysicsRapier';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updateHelpers } from './Helpers';
 import { InitOnScreenTools, updateOnScreenTools } from '../debug/OnScreenTools';
@@ -113,12 +114,22 @@ const mainLoopForDebug = async () => {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
 
+    const physicsState = getPhysicsState();
+    const sceneId = getCurrentSceneId();
+    const physDisabled =
+      !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
+
     if (loopState.maxFPS > 0) {
-      // maxFPS limiter
+      // --- maxFPS limiter ---
       accDeltaApp += dt;
       if (accDeltaApp > loopState.maxFPSInterval) {
-        // Update loop action inputs
-        updateInputControllerLoopActions(deltaApp);
+        if (physDisabled) {
+          // Update loop action inputs if physics is disabled
+          updateInputControllerLoopActions(deltaApp);
+        } else {
+          // Render physics objects
+          renderPhysicsObjects();
+        }
         // app loopers
         runSceneAppLoopers(deltaApp);
         // Count ray cast frames
@@ -130,9 +141,14 @@ const mainLoopForDebug = async () => {
         });
       }
     } else {
-      // No maxFPS limiter
-      // Update loop action inputs
-      updateInputControllerLoopActions(deltaApp);
+      // --- No maxFPS limiter ---
+      if (physDisabled) {
+        // Update loop action inputs if physics is disabled
+        updateInputControllerLoopActions(deltaApp);
+      } else {
+        // Render physics objects
+        renderPhysicsObjects();
+      }
       // app loopers
       runSceneAppLoopers(deltaApp);
       // Count ray cast frames
@@ -182,10 +198,19 @@ const mainLoopForProduction = async () => {
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
+    const physicsState = getPhysicsState();
+    const sceneId = getCurrentSceneId();
+    const physDisabled =
+      !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
+    if (physDisabled) {
+      // Update loop action inputs if physics is disabled
+      updateInputControllerLoopActions(deltaApp);
+    } else {
+      // Render physics objects
+      renderPhysicsObjects();
+    }
     // app loopers
     runSceneAppLoopers(deltaApp);
-    // Update loop action inputs
-    updateInputControllerLoopActions(deltaApp);
     await (getRenderer() as Renderer)
       .renderAsync(getRootScene() as Scene, getCurrentCamera())
       .then(() => runSceneMainLateLoopers(delta));
@@ -219,11 +244,22 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
     accDeltaApp += dt;
+    const physicsState = getPhysicsState();
+    const sceneId = getCurrentSceneId();
+    const physDisabled =
+      !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
     if (accDeltaApp > loopState.maxFPSInterval) {
+      if (physDisabled) {
+        // Update loop action inputs if physics is disabled
+        updateInputControllerLoopActions(deltaApp);
+      } else {
+        // Render physics objects
+        renderPhysicsObjects();
+      }
       // app loopers
       runSceneAppLoopers(deltaApp);
-      // Update loop action inputs
-      updateInputControllerLoopActions(deltaApp);
+      // Update loop action inputs if physics is disabled
+      if (physDisabled) updateInputControllerLoopActions(deltaApp);
       await renderer.renderAsync(rootScene, getCurrentCamera()).then(() => {
         runSceneMainLateLoopers(delta);
         accDeltaApp = accDeltaApp % loopState.maxFPSInterval;

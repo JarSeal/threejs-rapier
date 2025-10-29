@@ -24,6 +24,7 @@ export type AppConfig = {
     solverIterations?: number;
     internalPgsIterations?: number;
     additionalFrictionIterations?: number;
+    interpolationEnabled?: boolean;
   };
   draggableWindows?: {
     [id: string]: Partial<DraggableWindow> & {
