@@ -101,6 +101,22 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   __touchingWallColliders: [],
   __touchingGroundColliders: [],
 };
+const getDefaultCharacterData = () => {
+  // We need to copy all object and arrays
+  const position = { ...DEFAULT_CHARACTER_DATA.position };
+  const velocity = { ...DEFAULT_CHARACTER_DATA.velocity };
+  const groundNormal = { ...DEFAULT_CHARACTER_DATA.groundNormal };
+  const __touchingWallColliders = [...DEFAULT_CHARACTER_DATA.__touchingWallColliders];
+  const __touchingGroundColliders = [...DEFAULT_CHARACTER_DATA.__touchingGroundColliders];
+  return {
+    ...DEFAULT_CHARACTER_DATA,
+    position,
+    velocity,
+    groundNormal,
+    __touchingWallColliders,
+    __touchingGroundColliders,
+  };
+};
 
 const eulerForCharRotation = new THREE.Euler();
 let thirdPersonCamera: THREE.PerspectiveCamera | null = null;
@@ -125,7 +141,7 @@ export const createThirdPersonCharacter = (opts: {
   const { id, charData, sceneId, inputMappings } = opts;
 
   // Combine character data
-  const characterData = { ...DEFAULT_CHARACTER_DATA, ...charData };
+  const characterData = { ...getDefaultCharacterData(), ...charData };
   const character: Partial<ThirdPersonCharacter> = { charData: characterData };
 
   // Create third person camera
@@ -553,14 +569,15 @@ export const createThirdPersonCharacter = (opts: {
   const charHalfRadius = characterData._radius / 2;
   const detectGround = () => {
     characterData.isGrounded = false;
+    const rigidBodyTranslation = characterPhysObj?.rigidBody?.translation();
 
     // First ray from the middle of the character
     castRayFromPoints<THREE.Mesh>(
       getRootScene()?.children || [],
       usableVec.set(
-        characterPhysObj?.rigidBody?.translation().x || charMesh.position.x,
-        characterPhysObj?.rigidBody?.translation().y || charMesh.position.y,
-        characterPhysObj?.rigidBody?.translation().z || charMesh.position.z
+        rigidBodyTranslation?.x || charMesh.position.x,
+        rigidBodyTranslation?.y || charMesh.position.y,
+        rigidBodyTranslation?.z || charMesh.position.z
       ),
       groundRaycastVecDir,
       {
@@ -582,9 +599,9 @@ export const createThirdPersonCharacter = (opts: {
       getRootScene()?.children || [],
       usableVec
         .set(
-          characterPhysObj?.rigidBody?.translation().x || charMesh.position.x,
-          characterPhysObj?.rigidBody?.translation().y || charMesh.position.y,
-          characterPhysObj?.rigidBody?.translation().z || charMesh.position.z
+          rigidBodyTranslation?.x || charMesh.position.x,
+          rigidBodyTranslation?.y || charMesh.position.y,
+          rigidBodyTranslation?.z || charMesh.position.z
         )
         .sub({ x: charHalfRadius, y: 0, z: 0 }),
       groundRaycastVecDir,
@@ -605,9 +622,9 @@ export const createThirdPersonCharacter = (opts: {
       getRootScene()?.children || [],
       usableVec
         .set(
-          characterPhysObj?.rigidBody?.translation().x || charMesh.position.x,
-          characterPhysObj?.rigidBody?.translation().y || charMesh.position.y,
-          characterPhysObj?.rigidBody?.translation().z || charMesh.position.z
+          rigidBodyTranslation?.x || charMesh.position.x,
+          rigidBodyTranslation?.y || charMesh.position.y,
+          rigidBodyTranslation?.z || charMesh.position.z
         )
         .sub({ x: -charHalfRadius, y: 0, z: 0 }),
       groundRaycastVecDir,
@@ -628,9 +645,9 @@ export const createThirdPersonCharacter = (opts: {
       getRootScene()?.children || [],
       usableVec
         .set(
-          characterPhysObj?.rigidBody?.translation().x || charMesh.position.x,
-          characterPhysObj?.rigidBody?.translation().y || charMesh.position.y,
-          characterPhysObj?.rigidBody?.translation().z || charMesh.position.z
+          rigidBodyTranslation?.x || charMesh.position.x,
+          rigidBodyTranslation?.y || charMesh.position.y,
+          rigidBodyTranslation?.z || charMesh.position.z
         )
         .sub({ x: 0, y: 0, z: charHalfRadius }),
       groundRaycastVecDir,
@@ -651,9 +668,9 @@ export const createThirdPersonCharacter = (opts: {
       getRootScene()?.children || [],
       usableVec
         .set(
-          characterPhysObj?.rigidBody?.translation().x || charMesh.position.x,
-          characterPhysObj?.rigidBody?.translation().y || charMesh.position.y,
-          characterPhysObj?.rigidBody?.translation().z || charMesh.position.z
+          rigidBodyTranslation?.x || charMesh.position.x,
+          rigidBodyTranslation?.y || charMesh.position.y,
+          rigidBodyTranslation?.z || charMesh.position.z
         )
         .sub({ x: 0, y: 0, z: -charHalfRadius }),
       groundRaycastVecDir,
@@ -684,7 +701,6 @@ export const createThirdPersonCharacter = (opts: {
 
     // This is the backup 'isGrounded' check
     if (!characterData.__touchingGroundColliders.length) detectGround();
-    // detectGround();
 
     // Set isFalling
     if (characterData.isGrounded) {
