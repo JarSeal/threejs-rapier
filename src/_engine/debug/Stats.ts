@@ -33,6 +33,7 @@ type StatsPanel = {
 let stats: Stats | null = null;
 let statsCmp: TCMP | null = null;
 let physicsPanel: StatsPanel | null = null;
+let tFpsPanel: StatsPanel | null = null;
 let savedConfig = {};
 const statsDebugGUIs: Pane[] = [];
 const LS_KEY = 'debugStats';
@@ -75,6 +76,7 @@ export const initStats = (config?: StatsOptions) => {
     if (stats) stats.update();
     stats = new Stats(savedConfig as Omit<StatsOptions, 'enabled'>);
     physicsPanel = stats.addPanel(new Stats.Panel('PHY', '#fff', '#212121')) as StatsPanel;
+    tFpsPanel = stats.addPanel(new Stats.Panel('TFPS', '#fff', '#212121')) as StatsPanel;
     statsCmp = CMP({
       id: '_statsContainer',
       class: ['statsContainer', ...(!(savedConfig as StatsOptions).horizontal ? ['vertical'] : [])],
@@ -89,8 +91,11 @@ export const initStats = (config?: StatsOptions) => {
 };
 
 export const updateStats = (renderer: Renderer) => {
+  logicEndTime = performance.now();
+  logicDuration = logicEndTime - logicStartTime;
   if (statsConfig.trackCPT) renderer.resolveTimestampsAsync(TimestampQuery.COMPUTE);
   if (statsConfig.trackGPU) renderer.resolveTimestampsAsync(TimestampQuery.RENDER);
+  updateTFPSPanel(logicDuration);
   stats?.update();
 };
 
@@ -121,6 +126,36 @@ export const updatePhysicsPanel = (value: number) => {
       maxTimeGraphs = 0;
       maxTimeGraphsCheckCount = 0;
     }
+  }
+};
+
+let logicStartTime = 0;
+let logicEndTime = 0;
+let logicDuration = 0;
+export const startCustomMeasurments = () => {
+  logicStartTime = performance.now();
+};
+
+let tFpsPrevCurrentTime = 0;
+let tFpsPrevCurrentGraphsTime = 0;
+let tFpsMax = 0;
+const tFPSsamples: number[] = [];
+const updateTFPSPanel = (duration: number) => {
+  const currentTime = performance.now();
+  tFPSsamples.push(duration);
+  if (tFPSsamples.length > 60) tFPSsamples.shift();
+  if (currentTime >= tFpsPrevCurrentTime + 1000 / (stats?.logsPerSecond || 4)) {
+    const avgDuration = tFPSsamples.reduce((a, b) => a + b, 0) / tFPSsamples.length;
+    const tfps = 1000 / avgDuration;
+    tFpsPanel?.update(tfps, tFpsMax, 0);
+    tFpsPrevCurrentTime = currentTime;
+  }
+  if (currentTime >= tFpsPrevCurrentGraphsTime + 1000 / (stats?.graphsPerSecond || 30)) {
+    const avgDuration = tFPSsamples.reduce((a, b) => a + b, 0) / tFPSsamples.length;
+    const tfps = 1000 / avgDuration;
+    tFpsMax = Math.max(10, tFpsMax, tfps);
+    tFpsPanel?.updateGraph(tfps, tFpsMax * 1.25);
+    tFpsPrevCurrentGraphsTime = currentTime;
   }
 };
 
@@ -218,9 +253,15 @@ export const buildStatsDebugGUI = (debugGUI: Pane) => {
 
   // @TODO: add current scene and all loaded scene stats
   // Current and all scenes stats:
-  // - draw calls count
+  // - drawcalls count
+  // - objects count (Object3D)
+  // - mesh count
+  // - face count
+  // - edge count
+  // - vertex count
   // - imported objects count
   // - list of imported objects (and sizes, face count, edge count, vertex count)
+  // - list of primitive objects (face count, edge count, vertex count)
   // - texture count, texture sizes, list of textures (and type, sizes, dimensions)
 };
 

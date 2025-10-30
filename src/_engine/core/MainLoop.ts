@@ -1,6 +1,6 @@
 import { Clock, type Renderer, type Scene } from 'three/webgpu';
 import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
-import { initStats, updateStats } from '../debug/Stats';
+import { initStats, startCustomMeasurments, updateStats } from '../debug/Stats';
 import { getAllCamerasAsArray, getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
 import {
@@ -92,6 +92,7 @@ let mainLoop: () => void = () => {};
 // LOOP (for debug)
 // **************************************
 const mainLoopForDebug = async () => {
+  startCustomMeasurments();
   const dt = clock.getDelta();
   if (loopState.masterPlay) {
     delta = dt * loopState.playSpeedMultiplier;
