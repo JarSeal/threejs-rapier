@@ -21,7 +21,6 @@ import {
 } from './UI/DraggableWindow';
 import { LoopState } from './MainLoop';
 import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
-import { updateInputControllerLoopActions } from './InputControls';
 
 type CollisionEventFn = (
   collider1: Collider,
@@ -1254,8 +1253,6 @@ const currTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaterni
 const baseStepper = () => {
   const delta = clock.getDelta();
   accDelta += delta;
-  // if (accDelta < physicsState.timestepRatio) return;
-  // accDelta = accDelta % physicsState.timestepRatio;
 
   while (accDelta >= physicsState.timestepRatio) {
     // Store previous transforms
@@ -1274,10 +1271,6 @@ const baseStepper = () => {
       );
       currTransforms.set(handle, { pos: curr, rot: quat });
     }
-
-    // Step the world
-    physicsWorld.step(eventQueue);
-    accDelta -= physicsState.timestepRatio;
 
     if (collisionEventFnCount) {
       eventQueue?.drainCollisionEvents((handle1, handle2, started) => {
@@ -1372,25 +1365,21 @@ const baseStepper = () => {
       });
     }
 
-    // Update input loop actions for physics
-    updateInputControllerLoopActions(delta);
-
     // Run scenePhysicsLoopers
     const looperKeys = Object.keys(scenePhysicsLoopers);
     for (let i = 0; i < looperKeys.length; i++) {
       scenePhysicsLoopers[looperKeys[i]](delta);
     }
+
+    // Step the world
+    physicsWorld.step(eventQueue);
+    accDelta -= physicsState.timestepRatio;
   }
 };
 
 // PRODUCTION STEPPER
 const stepperFnProduction = (loopState: LoopState) => {
-  if (loopState.masterPlay && loopState.appPlay) {
-    requestAnimationFrame(() => stepPhysicsWorld(loopState));
-  } else {
-    return;
-  }
-
+  if (!loopState.masterPlay || !loopState.appPlay) return;
   baseStepper();
 };
 
@@ -1398,11 +1387,7 @@ const stepperFnProduction = (loopState: LoopState) => {
 const stepperFnDebug = (loopState: LoopState) => {
   const startMeasuring = performance.now();
 
-  if (loopState.masterPlay && loopState.appPlay) {
-    requestAnimationFrame(() => stepPhysicsWorld(loopState));
-  } else {
-    return;
-  }
+  if (!loopState.masterPlay || !loopState.appPlay) return;
 
   const curSceneParams = physicsState.scenes[getCurrentSceneId() || ''];
   if (!curSceneParams?.worldStepEnabled) return;

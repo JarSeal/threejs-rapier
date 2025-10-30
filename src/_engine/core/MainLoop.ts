@@ -114,22 +114,18 @@ const mainLoopForDebug = async () => {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
 
-    const physicsState = getPhysicsState();
-    const sceneId = getCurrentSceneId();
-    const physDisabled =
-      !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
+    // Step the physics
+    stepPhysicsWorld(loopState);
+
+    // Update loop action inputs
+    updateInputControllerLoopActions(deltaApp);
 
     if (loopState.maxFPS > 0) {
       // --- maxFPS limiter ---
       accDeltaApp += dt;
       if (accDeltaApp > loopState.maxFPSInterval) {
-        if (physDisabled) {
-          // Update loop action inputs if physics is disabled
-          updateInputControllerLoopActions(deltaApp);
-        } else {
-          // Render physics objects
-          renderPhysicsObjects();
-        }
+        // Render physics objects
+        renderPhysicsObjects();
         // app loopers
         runSceneAppLoopers(deltaApp);
         // Count ray cast frames
@@ -142,13 +138,8 @@ const mainLoopForDebug = async () => {
       }
     } else {
       // --- No maxFPS limiter ---
-      if (physDisabled) {
-        // Update loop action inputs if physics is disabled
-        updateInputControllerLoopActions(deltaApp);
-      } else {
-        // Render physics objects
-        renderPhysicsObjects();
-      }
+      // Render physics objects
+      renderPhysicsObjects();
       // app loopers
       runSceneAppLoopers(deltaApp);
       // Count ray cast frames
@@ -195,20 +186,19 @@ const mainLoopForProduction = async () => {
   }
   // main loopers
   runSceneMainLoopers(delta);
+
   if (loopState.appPlay) {
+    // Step the physics
+    stepPhysicsWorld(loopState);
+
+    // Update loop action inputs
+    updateInputControllerLoopActions(deltaApp);
+
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
-    const physicsState = getPhysicsState();
-    const sceneId = getCurrentSceneId();
-    const physDisabled =
-      !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
-    if (physDisabled) {
-      // Update loop action inputs if physics is disabled
-      updateInputControllerLoopActions(deltaApp);
-    } else {
-      // Render physics objects
-      renderPhysicsObjects();
-    }
+
+    // Render physics objects
+    renderPhysicsObjects();
     // app loopers
     runSceneAppLoopers(deltaApp);
     await (getRenderer() as Renderer)
@@ -236,11 +226,20 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     loopState.isMasterPlaying = false;
     return;
   }
+
   // main loopers
   runSceneMainLoopers(delta);
+
   const renderer = getRenderer() as Renderer;
   const rootScene = getRootScene() as Scene;
+
   if (loopState.appPlay) {
+    // Step the physics
+    stepPhysicsWorld(loopState);
+
+    // Update loop action inputs
+    updateInputControllerLoopActions(deltaApp);
+
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
     accDeltaApp += dt;
@@ -249,13 +248,8 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     const physDisabled =
       !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
     if (accDeltaApp > loopState.maxFPSInterval) {
-      if (physDisabled) {
-        // Update loop action inputs if physics is disabled
-        updateInputControllerLoopActions(deltaApp);
-      } else {
-        // Render physics objects
-        renderPhysicsObjects();
-      }
+      // Render physics objects
+      renderPhysicsObjects();
       // app loopers
       runSceneAppLoopers(deltaApp);
       // Update loop action inputs if physics is disabled
