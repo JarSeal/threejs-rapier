@@ -713,9 +713,7 @@ export const createThirdPersonCharacter = (opts: {
     };
 
     // Set position
-    characterData.position.x = physObj.mesh?.position.x || 0;
-    characterData.position.y = physObj.mesh?.position.y || 0;
-    characterData.position.z = physObj.mesh?.position.z || 0;
+    characterData.position = physObj.rigidBody?.translation() || { x: 0, y: 0, z: 0 };
   }, sceneId);
 
   charMesh.castShadow = true;

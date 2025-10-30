@@ -215,35 +215,33 @@ export const sceneCharacterTest = async () =>
     scene.add(charMesh);
 
     // Another character without input
-    // const {
-    //   controlFns,
-    //   thirdPersonCharacterObject: dummyCharacterObject,
-    //   charMesh: dummyCharMesh,
-    // } = createThirdPersonCharacter({
-    //   id: 'testDummyChar',
-    // });
-    // const dummyCharPhysObj = getPhysicsObject(dummyCharacterObject.physObjectId);
-    // dummyCharPhysObj?.setTranslation({ x: -2, y: 5, z: -2 });
-    // scene.add(dummyCharMesh);
+    const {
+      controlFns,
+      thirdPersonCharacterObject: dummyCharacterObject,
+      charMesh: dummyCharMesh,
+    } = createThirdPersonCharacter({ id: 'testDummyChar' });
+    const dummyCharPhysObj = getPhysicsObject(dummyCharacterObject.physObjectId);
+    dummyCharPhysObj?.setTranslation({ x: -2, y: 5, z: -2 });
+    scene.add(dummyCharMesh);
 
-    // // @TEMP: Set an interval to move the dummy
-    // let action: 'F' | 'T' | null = null;
-    // setInterval(() => {
-    //   if (action !== 'F') {
-    //     action = 'F';
-    //     controlFns.jump();
-    //   } else {
-    //     action = 'T';
-    //     controlFns.jump();
-    //   }
-    // }, 1500);
-    // createSceneAppLooper(() => {
-    //   if (action === 'F') {
-    //     controlFns.move('FORWARD');
-    //   } else {
-    //     controlFns.rotate('LEFT');
-    //   }
-    // });
+    // @TEMP: Set an interval to move the dummy
+    let action: 'F' | 'T' | null = null;
+    setInterval(() => {
+      if (action !== 'F') {
+        action = 'F';
+        controlFns.jump();
+      } else {
+        action = 'T';
+        controlFns.jump();
+      }
+    }, 1500);
+    createSceneAppLooper(() => {
+      if (action === 'F') {
+        controlFns.move('FORWARD');
+      } else {
+        controlFns.rotate('LEFT');
+      }
+    });
 
     // Lights
     const ambient = createLight({
