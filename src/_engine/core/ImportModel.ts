@@ -4,7 +4,12 @@ import { DRACOLoader } from 'three/examples/jsm/Addons.js';
 import { lerror } from '../utils/Logger';
 import { getMesh, saveMesh } from './Mesh';
 import { getGroup } from './Group';
-import { ColliderParams, RigidBodyParams } from './PhysicsRapier';
+import {
+  ColliderParams,
+  createPhysicsObjectWithMesh,
+  createPhysicsObjectWithoutMesh,
+  RigidBodyParams,
+} from './PhysicsRapier';
 
 export type ImportModelParams = {
   fileName: string;
@@ -38,14 +43,39 @@ const parseImportResult = <T extends THREE.Group | THREE.Mesh>(
       const kid = kids[i];
       // @TODO: saveGroup (this should replace this implementation below)
       if ('isMesh' in kid && kid.isMesh) {
-        const newId = id ? `${id}-${index}` : undefined;
+        const newId = id ? `${id}-${index}` : kid.uuid;
         const userData = kid.userData;
         if ('isPhysObj' in userData && userData.isPhysObj) {
           const customProps = cleanUpCustomProps(userData as CustomPropsUserData);
+          // @TODO: this does not work like this, we need to
+          // save customProps as an array and either set them as
+          // child colliders or in the case of a compound object,
+          // they need to probably be defined differently (not yet implemented)
           if (customProps.keepMesh) {
             // Create phys obj with mesh
+            const physObj = createPhysicsObjectWithMesh({
+              id: newId,
+              physicsParams: {
+                rigidBody: {
+                  rigidType: customProps.rigidType,
+                  userData: customProps.rigidBodyUserData,
+                },
+                collider: customProps.colliderParams,
+              },
+              meshOrMeshId: kid as THREE.Mesh,
+            });
           } else {
             // Create phys obj without mesh
+            const physObj = createPhysicsObjectWithoutMesh({
+              id: newId,
+              physicsParams: {
+                rigidBody: {
+                  rigidType: customProps.rigidType,
+                  userData: customProps.rigidBodyUserData,
+                },
+                collider: customProps.colliderParams,
+              },
+            });
           }
         } else {
           saveMesh(kid as THREE.Mesh, newId, !saveMaterial);
@@ -239,14 +269,15 @@ type CustomPropsUserData = {
 
 const cleanUpCustomProps = (userData: CustomPropsUserData) => {
   const keepMesh = Boolean(userData.keepMesh);
-  const rigidType =
+  const rigidType = (
     userData.rigidType !== 'DYNAMIC' &&
     userData.rigidType !== 'POS_BASED' &&
     userData.rigidType !== 'VELO_BASED'
       ? 'FIXED'
-      : userData.rigidType;
+      : userData.rigidType
+  ) as RigidBodyParams['rigidType'];
   if (userData.rigidType) delete userData.rigidType;
-  const colliderType =
+  const colliderType = (
     userData.colliderType !== 'CUBOID' &&
     userData.colliderType !== 'BOX' &&
     userData.colliderType !== 'BALL' &&
@@ -256,7 +287,8 @@ const cleanUpCustomProps = (userData: CustomPropsUserData) => {
     userData.colliderType !== 'CYLINDER' &&
     userData.colliderType !== 'TRIANGLE'
       ? 'TRIMESH'
-      : userData.colliderType;
+      : userData.colliderType
+  ) as ColliderParams['type'];
   if (userData.colliderType) delete userData.colliderType;
   const density = typeof userData.density === 'number' ? userData.density : 0.2;
   if (userData.density) delete userData.density;
