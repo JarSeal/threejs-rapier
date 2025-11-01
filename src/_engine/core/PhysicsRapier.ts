@@ -50,7 +50,7 @@ export type PhysicsObject = {
   setTranslation: (translation: { x?: number; y?: number; z?: number }) => void;
 };
 
-type ColliderParams = (
+export type ColliderParams = (
   | {
       type: 'CUBOID' | 'BOX';
       hx?: number;
@@ -128,7 +128,7 @@ type ColliderParams = (
   ) => void;
 };
 
-type RigidBodyParams = {
+export type RigidBodyParams = {
   /** Type of rigid body */
   rigidType: 'FIXED' | 'DYNAMIC' | 'POS_BASED' | 'VELO_BASED';
 
@@ -421,7 +421,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
             colliderParams.hx || size.hx,
             colliderParams.hy || size.hy,
             colliderParams.hz || size.hz,
-            colliderParams.borderRadius || 0
+            colliderParams.borderRadius
           )
         : new RAPIER.Cuboid(
             colliderParams.hx || size.hx,
@@ -461,7 +461,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
           ? new RAPIER.RoundCone(
               colliderParams.halfHeight || defaultHalfHeight,
               colliderParams.radius || defaultRadius,
-              colliderParams.borderRadius || 0
+              colliderParams.borderRadius
             )
           : new RAPIER.Cone(
               colliderParams.halfHeight || defaultHalfHeight,
@@ -483,7 +483,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
         ? new RAPIER.RoundCylinder(
             colliderParams.halfHeight || size.halfHeight,
             colliderParams.radius || size.radius,
-            colliderParams.borderRadius || 0
+            colliderParams.borderRadius
           )
         : new RAPIER.Cylinder(
             colliderParams.halfHeight || size.halfHeight,
@@ -492,12 +492,13 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       break;
     case 'TRIANGLE':
       // @TODO: try to get the values straight from a Three.js Mesh (and make colliderParams a, b, c optional)
+      // For example, just take the first three vertices?
       shape = colliderParams.borderRadius
         ? new RAPIER.RoundTriangle(
             colliderParams.a,
             colliderParams.b,
             colliderParams.c,
-            colliderParams.borderRadius || 0
+            colliderParams.borderRadius
           )
         : new RAPIER.Triangle(colliderParams.a, colliderParams.b, colliderParams.c);
       break;
@@ -520,7 +521,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
           break;
         }
       }
-      const message = `Could not find vertices and indices in the collider params, nor was there mesh with vertices present. Could not create trimesh physics shape in createCollider.`;
+      const message = `Could not find vertices and indices in the collider params for trimesh, nor was there mesh with vertices present. Could not create trimesh physics shape in createCollider.`;
       lerror(message);
       throw new Error(message);
 

@@ -7,8 +7,9 @@ import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
 
 // @TODO: refactor this to produce only the needed objects (not all like it is now)
 
-export const characterTestObjects = () => {
+export const characterTestObstacles = () => {
   // Stairs
+  // @TODO: remove this when importing stairs from blender is done
   const stairOffsetW = 0.4;
   const stairOffsetH = 0.2;
   const oneStairGeo = createGeometry({

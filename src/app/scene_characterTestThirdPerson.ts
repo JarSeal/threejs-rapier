@@ -10,8 +10,8 @@ import { createPhysicsObjectWithMesh, getPhysicsObject } from '../_engine/core/P
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createThirdPersonCharacter } from './character_thirdPerson';
-import { characterTestObjects } from './character_test_objects';
-import { castRayFromAngle, castRayFromPoints } from '../_engine/core/Raycast';
+import { characterTestObstacles } from './character_test_objects';
+import { importModelAsync } from '../_engine/core/ImportModel';
 
 export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
@@ -148,7 +148,7 @@ export const sceneCharacterTest = async () =>
 
     // OBSTACLES
     const { stairsMesh, stairsPhysicsObject, bigBoxWallMesh, bigBoxWallPhysicsObject } =
-      characterTestObjects();
+      characterTestObstacles();
     (stairsMesh.material as THREE.MeshPhongMaterial).map = uvTexture.clone();
     scene.add(stairsMesh);
     stairsPhysicsObject?.setTranslation({ x: 5, y: -1.8 });
@@ -283,26 +283,14 @@ export const sceneCharacterTest = async () =>
     });
     scene.add(directionalLight);
 
-    createSceneAppLooper(() => {
-      castRayFromAngle(
-        scene.children,
-        new THREE.Vector3(0, 3, 0),
-        new THREE.Euler(0, Math.PI / 2, Math.PI / 4),
-        {
-          startLength: 0,
-          endLength: 2,
-          helperId: 'helper1',
-          helperColor: '#ff0000',
-          directionForAngle: 'RIGHT',
-        }
-      );
-      castRayFromPoints(scene.children, new THREE.Vector3(0, 5, 0), new THREE.Vector3(1, 0, 0), {
-        startLength: 0,
-        endLength: 2,
-        helperId: 'helper2',
-        helperColor: '#ffee22',
-      });
+    // @TODO: remove this test when custom prop importing is done
+    const mesh = await importModelAsync<THREE.Mesh>({
+      fileName: '/debugger/assets/testModels/customPropTestCube.glb',
+      id: 'customPropTest',
     });
+    mesh?.position.set(2, 1.5, 2);
+    if (mesh) scene.add(mesh);
+    console.log('mesh', mesh);
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 

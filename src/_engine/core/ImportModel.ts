@@ -4,6 +4,7 @@ import { DRACOLoader } from 'three/examples/jsm/Addons.js';
 import { lerror } from '../utils/Logger';
 import { getMesh, saveMesh } from './Mesh';
 import { getGroup } from './Group';
+import { ColliderParams, RigidBodyParams } from './PhysicsRapier';
 
 export type ImportModelParams = {
   fileName: string;
@@ -38,7 +39,17 @@ const parseImportResult = <T extends THREE.Group | THREE.Mesh>(
       // @TODO: saveGroup (this should replace this implementation below)
       if ('isMesh' in kid && kid.isMesh) {
         const newId = id ? `${id}-${index}` : undefined;
-        saveMesh(kid as THREE.Mesh, newId, !saveMaterial);
+        const userData = kid.userData;
+        if ('isPhysObj' in userData && userData.isPhysObj) {
+          const customProps = cleanUpCustomProps(userData as CustomPropsUserData);
+          if (customProps.keepMesh) {
+            // Create phys obj with mesh
+          } else {
+            // Create phys obj without mesh
+          }
+        } else {
+          saveMesh(kid as THREE.Mesh, newId, !saveMaterial);
+        }
         index++;
       }
     }
@@ -97,7 +108,7 @@ const checkImportFileName = (fileName: string) => {
 
 /**
  * Imports a model asynchronously using the GLTFLoader
- * @param params ({@link ImportModelParams})
+ * @param {@link ImportModelParams} params
  * @returns Promise<T | null>
  */
 export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
@@ -135,7 +146,7 @@ export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
 /**
  * Imports models synchronously using the GLTFLoader
  * @param modelParams (array of {@link ImportModelParams})
- * @param updateStatusFn (function) optional status update function: (loadedModels: (THREE.Group | THREE.Mesh)[], loadedCount: number, totalCount: number) => void
+ * @param updateStatusFn (function) optional status update function
  * @param throwOnErrors (boolean) optional value to determine whether the importing should throw on errors or not
  */
 export const importModels = (
@@ -213,3 +224,119 @@ export const importModel = (
   ) => void,
   throwOnError?: boolean
 ) => importModels([modelParams], updateStatusFn, throwOnError);
+
+type CustomPropsUserData = {
+  isPhysObj: boolean;
+  keepMesh?: boolean;
+  rigidType?: RigidBodyParams['rigidType'];
+  colliderType?: ColliderParams['type'];
+  density?: number;
+  friction?: number;
+  frictionCombineRule?: ColliderParams['frictionCombineRule'];
+  restitution?: number;
+  restitutionCombineRule?: ColliderParams['restitutionCombineRule'];
+} & { [userDataKey: string]: unknown };
+
+const cleanUpCustomProps = (userData: CustomPropsUserData) => {
+  const keepMesh = Boolean(userData.keepMesh);
+  const rigidType =
+    userData.rigidType !== 'DYNAMIC' &&
+    userData.rigidType !== 'POS_BASED' &&
+    userData.rigidType !== 'VELO_BASED'
+      ? 'FIXED'
+      : userData.rigidType;
+  if (userData.rigidType) delete userData.rigidType;
+  const colliderType =
+    userData.colliderType !== 'CUBOID' &&
+    userData.colliderType !== 'BOX' &&
+    userData.colliderType !== 'BALL' &&
+    userData.colliderType !== 'SPHERE' &&
+    userData.colliderType !== 'CAPSULE' &&
+    userData.colliderType !== 'CONE' &&
+    userData.colliderType !== 'CYLINDER' &&
+    userData.colliderType !== 'TRIANGLE'
+      ? 'TRIMESH'
+      : userData.colliderType;
+  if (userData.colliderType) delete userData.colliderType;
+  const density = typeof userData.density === 'number' ? userData.density : 0.2;
+  if (userData.density) delete userData.density;
+  const friction = typeof userData.friction === 'number' ? userData.friction : 0.2;
+  if (userData.friction) delete userData.friction;
+  const frictionCombineRule =
+    userData.frictionCombineRule !== 'MAX' &&
+    userData.frictionCombineRule !== 'MIN' &&
+    userData.frictionCombineRule !== 'MULTIPLY'
+      ? 'AVERAGE'
+      : userData.frictionCombineRule;
+  if (userData.frictionCombineRule) delete userData.frictionCombineRule;
+  const restitution = typeof userData.restitution === 'number' ? userData.restitution : 0.2;
+  if (userData.restitution) delete userData.restitution;
+  const restitutionCombineRule =
+    userData.restitutionCombineRule !== 'MAX' &&
+    userData.restitutionCombineRule !== 'MIN' &&
+    userData.restitutionCombineRule !== 'MULTIPLY'
+      ? 'AVERAGE'
+      : userData.restitutionCombineRule;
+  if (userData.restitutionCombineRule) delete userData.restitutionCombineRule;
+
+  let colliderParams: ColliderParams;
+  switch (colliderType) {
+    case 'CUBOID':
+    case 'BOX':
+      colliderParams = {
+        type: colliderType,
+        ...(typeof userData.hx === 'number' ? { hx: userData.hx } : {}),
+        ...(typeof userData.hy === 'number' ? { hy: userData.hy } : {}),
+        ...(typeof userData.hz === 'number' ? { hz: userData.hz } : {}),
+        ...(typeof userData.borderRadius === 'number'
+          ? { borderRadius: userData.borderRadius }
+          : {}),
+      };
+      break;
+    case 'BALL':
+    case 'SPHERE':
+      colliderParams = {
+        type: colliderType,
+        ...(typeof userData.radius === 'number' ? { radius: userData.radius } : {}),
+      };
+      break;
+    case 'CAPSULE':
+    case 'CONE':
+    case 'CYLINDER':
+      colliderParams = {
+        type: colliderType,
+        ...(typeof userData.halfHeight === 'number' ? { halfHeight: userData.halfHeight } : {}),
+        ...(typeof userData.radius === 'number' ? { radius: userData.radius } : {}),
+        ...(typeof userData.borderRadius === 'number'
+          ? { borderRadius: userData.borderRadius }
+          : {}),
+      };
+      break;
+    default:
+      // TRIMESH (vertices and indices will come from the mesh)
+      colliderParams = { type: 'TRIMESH' };
+      break;
+  }
+  colliderParams = {
+    ...colliderParams,
+    density,
+    friction,
+    frictionCombineRule,
+    restitution,
+    restitutionCombineRule,
+  };
+
+  const allKeys = Object.keys(userData);
+  const rigidBodyUserData: { [userDataKey: string]: unknown } = {};
+  for (let i = 0; i < allKeys.length; i++) {
+    if (allKeys[i].startsWith('userData_')) {
+      const key = allKeys[i].split('userData_')[1];
+      if (key) {
+        const value = userData[allKeys[i]];
+        rigidBodyUserData[key] = value;
+      }
+    }
+  }
+
+  return { keepMesh, rigidType, rigidBodyUserData, colliderParams };
+};

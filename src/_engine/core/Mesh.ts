@@ -152,7 +152,7 @@ export const deleteMesh = (
 };
 
 /**
- * Saves a mesh to memory so it can be accessed more easily
+ * Saves a mesh to memory so it can be accessed efficiently
  * @param mesh (THREE.Mesh) the mesh that is saved
  * @param givenId (string) optional mesh id to use when saving
  * @param doNotSaveMaterial (boolean) optional value to determine whether the material should be saved or not (default false)
