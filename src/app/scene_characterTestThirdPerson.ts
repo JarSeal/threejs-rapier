@@ -284,13 +284,15 @@ export const sceneCharacterTest = async () =>
     scene.add(directionalLight);
 
     // @TODO: remove this test when custom prop importing is done
-    const mesh = await importModelAsync<THREE.Mesh>({
-      fileName: '/debugger/assets/testModels/customPropTestCube.glb',
+    const result = await importModelAsync({
+      fileName: '/debugger/assets/testModels/customPropTestMultiCollider.glb',
       id: 'customPropTest',
+      importGroup: true,
     });
-    mesh?.position.set(2, 1.5, 2);
-    if (mesh) scene.add(mesh);
-    console.log('mesh', mesh);
+    if (result.mesh && !Array.isArray(result.mesh)) {
+      result.mesh?.position.set(2, 1.5, 2);
+      if (result.mesh) scene.add(result.mesh);
+    }
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 

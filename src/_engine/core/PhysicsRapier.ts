@@ -595,6 +595,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
  * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
  * @param currentObjectIndex (number) optional object index to be set as the first object for the multi object (only for arrays of params), if no index is provided, then the first (index 0) will be set
+ * @param isCompoundObject (boolean) optional boolean value to tell whether the physics object has switchable colliders or not. This will set the first collider enabled and disable the rest.
  * @returns PhysicsObject ({@link PhysicsObject})
  */
 export const createPhysicsObjectWithoutMesh = ({
@@ -685,9 +686,9 @@ export const createPhysicsObjectWithoutMesh = ({
       if (rigidBody) {
         rigidBody.setTranslation(
           ThreeVector3.set(
-            translation.x || rigidBody.translation().x,
-            translation.y || rigidBody.translation().y,
-            translation.z || rigidBody.translation().z
+            translation.x || rigidBody.translation().x || 0,
+            translation.y || rigidBody.translation().y || 0,
+            translation.z || rigidBody.translation().z || 0
           ),
           true
         );
@@ -697,9 +698,9 @@ export const createPhysicsObjectWithoutMesh = ({
         const collider = colliders[i];
         collider.setTranslation(
           ThreeVector3.set(
-            translation.x || collider.translation().x,
-            translation.y || collider.translation().y,
-            translation.z || collider.translation().z
+            translation.x || collider.translation().x || 0,
+            translation.y || collider.translation().y || 0,
+            translation.z || collider.translation().z || 0
           )
         );
       }
@@ -726,9 +727,10 @@ export const createPhysicsObjectWithoutMesh = ({
  * @param id (string) optional physics object id, if no id is provided then the mesh id is used
  * @param name (string) optional physics object name
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
- * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
+ * @param noWarnForUnitializedScene (boolean) optional boolean value to suppress logger warning for unitialized scene (true = no warning, default = false)
  * @param currentObjectIndex (number) optional object index to be set as the first object for the multi object (only for arrays of params), if no index is provided, then the first (index 0) will be set
  * @param currentMeshIndex (number) optional object index to be set as the first mesh for the multi object (only for arrays of params), if no index is provided, then the first (index 0) will be set
+ * @param isCompoundObject (boolean) optional boolean value to tell whether the physics object has switchable colliders or not. This will set the first collider enabled and disable the rest.
  * @returns PhysicsObject ({@link PhysicsObject})
  */
 export const createPhysicsObjectWithMesh = ({
@@ -774,7 +776,7 @@ export const createPhysicsObjectWithMesh = ({
     }
     mesh.userData.isPhysicsObject = true;
     meshes.push(mesh);
-  } else if (Array.isArray(meshOrMeshId)) {
+  } else if (Array.isArray(meshOrMeshId) && meshOrMeshId.length) {
     // Array of meshes or mesh ids
     let visibleMeshIsSet = false;
     for (let i = 0; i < meshOrMeshId.length; i++) {
@@ -814,12 +816,12 @@ export const createPhysicsObjectWithMesh = ({
       meshId = mesh.userData.id;
       mesh.visible = true;
     }
-  } else {
+  } else if ('isMesh' in meshOrMeshId) {
     // Single mesh
+    meshes.push(meshOrMeshId);
     meshId = meshOrMeshId.userData.id;
     mesh = meshOrMeshId;
     mesh.userData.isPhysicsObject = true;
-    meshes.push(mesh);
   }
 
   if (!mesh) {

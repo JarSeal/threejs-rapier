@@ -8,8 +8,11 @@ import {
   ColliderParams,
   createPhysicsObjectWithMesh,
   createPhysicsObjectWithoutMesh,
+  PhysicsObject,
+  PhysicsParams,
   RigidBodyParams,
 } from './PhysicsRapier';
+import { generateUUID } from 'three/src/math/MathUtils.js';
 
 export type ImportModelParams = {
   fileName: string;
@@ -18,6 +21,12 @@ export type ImportModelParams = {
   meshIndex?: number | number[];
   throwOnError?: boolean;
   saveMaterial?: boolean;
+};
+
+type ImportReturnObj = {
+  group?: THREE.Group | THREE.Group[];
+  mesh?: THREE.Mesh | THREE.Mesh[];
+  physObj?: PhysicsObject | PhysicsObject[];
 };
 
 const ALLOWED_FILENAME_EXTENSIONS = ['gltf', 'glb'];
@@ -29,75 +38,80 @@ const setDracoLoader = (loader: GLTFLoader) => {
   loader.setDRACOLoader(dracoLoader);
 };
 
-const parseImportResult = <T extends THREE.Group | THREE.Mesh>(
-  groupOrMesh: T,
+const parseImportResult = (
+  groupOrMesh: THREE.Group | THREE.Mesh,
   params: ImportModelParams
-): T | null => {
+): ImportReturnObj => {
   const { id, fileName, importGroup, meshIndex, throwOnError, saveMaterial } = params;
+  const returnObj: ImportReturnObj = {};
 
   if (importGroup) {
     // Go through meshes and save them
     const kids = groupOrMesh.children;
+    const customProps: CleanUpCustomPropsResult[] = [];
     let index = 0;
+    returnObj.mesh = [];
+    console.log('GOES HERE', groupOrMesh);
     for (let i = 0; i < kids.length; i++) {
       const kid = kids[i];
-      // @TODO: saveGroup (this should replace this implementation below)
       if ('isMesh' in kid && kid.isMesh) {
         const newId = id ? `${id}-${index}` : kid.uuid;
         const userData = kid.userData;
-        if ('isPhysObj' in userData && userData.isPhysObj) {
-          const customProps = cleanUpCustomProps(userData as CustomPropsUserData);
-          // @TODO: this does not work like this, we need to
-          // save customProps as an array and either set them as
-          // child colliders or in the case of a compound object,
-          // they need to probably be defined differently (not yet implemented)
-          if (customProps.keepMesh) {
-            // Create phys obj with mesh
-            const physObj = createPhysicsObjectWithMesh({
-              id: newId,
-              physicsParams: {
-                rigidBody: {
-                  rigidType: customProps.rigidType,
-                  userData: customProps.rigidBodyUserData,
-                },
-                collider: customProps.colliderParams,
-              },
-              meshOrMeshId: kid as THREE.Mesh,
-            });
-          } else {
-            // Create phys obj without mesh
-            const physObj = createPhysicsObjectWithoutMesh({
-              id: newId,
-              physicsParams: {
-                rigidBody: {
-                  rigidType: customProps.rigidType,
-                  userData: customProps.rigidBodyUserData,
-                },
-                collider: customProps.colliderParams,
-              },
-            });
-          }
-        } else {
-          saveMesh(kid as THREE.Mesh, newId, !saveMaterial);
+        customProps.push(cleanUpCustomProps(userData as CustomPropsUserData, kid.uuid));
+        if (!('isPhysObj' in userData) || !userData.isPhysObj) {
+          const m = saveMesh(kid as THREE.Mesh, newId, !saveMaterial);
+          if (m) returnObj.mesh.push(m);
         }
         index++;
       }
     }
 
-    return groupOrMesh as T;
+    const physObj = importMultiplePhysicsObjects(customProps, groupOrMesh).filter(
+      Boolean
+    ) as PhysicsObject[];
+
+    for (let i = 0; i < physObj.length; i++) {
+      const obj = physObj[i];
+      if (obj.mesh) {
+        if (Array.isArray(returnObj.mesh)) {
+          returnObj.mesh.push(obj.mesh);
+        } else {
+          returnObj.mesh = obj.mesh;
+        }
+      } else if (obj.meshes) {
+        if (Array.isArray(returnObj.mesh)) {
+          returnObj.mesh.concat(obj.meshes);
+        } else {
+          returnObj.mesh = obj.meshes;
+        }
+      }
+    }
+
+    if (Array.isArray(returnObj.group) && returnObj.group.length === 1) {
+      returnObj.group = returnObj.group[0];
+    }
+    if (Array.isArray(returnObj.mesh) && returnObj.mesh.length === 1) {
+      returnObj.mesh = returnObj.mesh[0];
+    }
+    if (physObj.length) {
+      returnObj.physObj =
+        physObj.length === 1 && physObj[0] ? physObj[0] : (physObj as PhysicsObject[]);
+    }
+
+    return returnObj;
   }
 
   const index = Array.isArray(meshIndex) && !meshIndex.length ? 0 : meshIndex || 0;
   let depthIndex = 0;
-  let modelMesh: unknown = null;
+  let modelMesh: THREE.Mesh | null = null;
 
-  const getIndexedChild = (children: THREE.Object3D[]): THREE.Object3D | null => {
+  const getIndexedChild = (children: THREE.Object3D[]): THREE.Mesh | null => {
     if (!Array.isArray(index)) {
-      return children[index] || null;
+      return (children[index] as THREE.Mesh) || null;
     }
     const child = children[index[depthIndex]];
     if (depthIndex + 1 === index.length || !child) {
-      return child || null;
+      return (child as THREE.Mesh) || null;
     }
     depthIndex++;
     return getIndexedChild(child.children);
@@ -109,18 +123,79 @@ const parseImportResult = <T extends THREE.Group | THREE.Mesh>(
     const errorMsg = `Could not find a mesh in importModelAsync with index ${Array.isArray(index) ? JSON.stringify(index) : index} (id: "${id}", fileName: "${fileName}")`;
     lerror(errorMsg);
     if (throwOnError) throw new Error('Error while trying to find children after importing mesh!');
-    return null;
+    return {};
   }
   if (!(modelMesh as THREE.Mesh).isMesh) {
     const errorMsg = `Imported object is not a THREE.Mesh in importModelAsync with index ${Array.isArray(index) ? JSON.stringify(index) : index} (id: "${id}", fileName: "${fileName}")`;
     lerror(errorMsg);
     if (throwOnError) throw new Error('Error while trying to find children after importing mesh!');
-    return null;
+    return {};
   }
 
-  saveMesh(modelMesh as THREE.Mesh, id, !saveMaterial);
+  const userData = cleanUpCustomProps(modelMesh?.userData, modelMesh.userData.id);
+  const rigidAndChildParamsResult = getRigidParamsAndChildColliders([userData]);
+  if (rigidAndChildParamsResult) {
+    const { physParamsObj, rigidMeshId } = rigidAndChildParamsResult;
+    if (userData.keepMesh) {
+      // Keep mesh
+      returnObj.physObj = createPhysicsObjectWithMesh({
+        ...physParamsObj,
+        meshOrMeshId: modelMesh,
+        id: rigidMeshId,
+      });
+      if (returnObj.physObj && Array.isArray(returnObj.physObj)) {
+        for (let i = 0; i < returnObj.physObj.length; i++) {
+          const obj = returnObj.physObj[i];
+          if (obj.mesh) {
+            if (Array.isArray(returnObj.mesh)) {
+              returnObj.mesh.push(obj.mesh);
+            } else {
+              returnObj.mesh = obj.mesh;
+            }
+          } else if (obj.meshes) {
+            if (Array.isArray(returnObj.mesh)) {
+              returnObj.mesh.concat(obj.meshes);
+            } else {
+              returnObj.mesh = obj.meshes;
+            }
+          }
+        }
+      } else if (returnObj.physObj) {
+        const obj = returnObj.physObj;
+        if (obj.mesh) {
+          if (Array.isArray(returnObj.mesh)) {
+            returnObj.mesh.push(obj.mesh);
+          } else {
+            returnObj.mesh = obj.mesh;
+          }
+        } else if (obj.meshes) {
+          if (Array.isArray(returnObj.mesh)) {
+            returnObj.mesh.concat(obj.meshes);
+          } else {
+            returnObj.mesh = obj.meshes;
+          }
+        }
+      }
+    } else {
+      // Physics object only (no mesh)
+      returnObj.physObj = createPhysicsObjectWithoutMesh(physParamsObj);
+      // Remove temp mesh, geometry, and material(s)
+      modelMesh.geometry.dispose();
+      if (Array.isArray(modelMesh.material)) {
+        for (let i = 0; i < modelMesh.material.length; i++) {
+          modelMesh.material[i].dispose();
+        }
+      } else {
+        modelMesh.material.dispose();
+      }
+      modelMesh.remove();
+    }
+  } else {
+    const m = saveMesh(modelMesh as THREE.Mesh, id, !saveMaterial);
+    if (m) returnObj.mesh = m;
+  }
 
-  return modelMesh as T;
+  return returnObj;
 };
 
 const checkImportFileName = (fileName: string) => {
@@ -138,20 +213,18 @@ const checkImportFileName = (fileName: string) => {
 
 /**
  * Imports a model asynchronously using the GLTFLoader
- * @param {@link ImportModelParams} params
- * @returns Promise<T | null>
+ * @param params {@link ImportModelParams}
+ * @returns Promise<{@link ImportReturnObj}>
  */
-export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
-  params: ImportModelParams
-): Promise<T | null> => {
+export const importModelAsync = async (params: ImportModelParams): Promise<ImportReturnObj> => {
   const { id, fileName, importGroup, throwOnError } = params;
   if (id && !importGroup) {
     const mesh = getMesh(id);
-    if (mesh) return mesh as T;
+    if (mesh) return { mesh };
   }
   if (id && importGroup) {
     const group = getGroup(id);
-    if (group) return group as T;
+    if (group) return { group };
   }
   checkImportFileName(fileName);
 
@@ -167,10 +240,10 @@ export const importModelAsync = async <T extends THREE.Group | THREE.Mesh>(
     const errorMsg = `Could not import ${importGroup ? 'group' : 'model'} in importModelAsync (id: "${id}", fileName: "${fileName}")`;
     lerror(errorMsg, err);
     if (throwOnError) throw new Error('Error while importing!');
-    return null;
+    return {};
   }
 
-  return parseImportResult<T>(modelGroup as T, params);
+  return parseImportResult(modelGroup, params);
 };
 
 /**
@@ -222,9 +295,24 @@ export const importModels = (
       (gltf: GLTF) => {
         const modelGroup = new THREE.Group();
         modelGroup.children = gltf?.scene?.children || [];
-        const meshOrGroup = parseImportResult<THREE.Group>(modelGroup, modelsParams[i]);
-        if (meshOrGroup) modelGroups.push(meshOrGroup);
-        loadedCount++;
+        const meshOrGroup = parseImportResult(modelGroup, modelsParams[i]);
+        if (meshOrGroup.group && Array.isArray(meshOrGroup.group)) {
+          meshOrGroup.group.forEach((group) => {
+            modelGroups.push(group);
+            loadedCount++;
+          });
+        } else if (meshOrGroup.group) {
+          modelGroups.push(meshOrGroup.group);
+          loadedCount++;
+        } else if (meshOrGroup.mesh && Array.isArray(meshOrGroup.mesh)) {
+          meshOrGroup.mesh.forEach((mesh) => {
+            modelGroups.push(mesh);
+            loadedCount++;
+          });
+        } else if (meshOrGroup.mesh) {
+          modelGroups.push(meshOrGroup.mesh);
+          loadedCount++;
+        }
         if (updateStatusFn) updateStatusFn(modelGroups, loadedCount, modelsParams.length);
       },
       undefined, // @TODO: add onProgress loader data to be tracked
@@ -256,7 +344,7 @@ export const importModel = (
 ) => importModels([modelParams], updateStatusFn, throwOnError);
 
 type CustomPropsUserData = {
-  isPhysObj: boolean;
+  isPhysObj?: boolean;
   keepMesh?: boolean;
   rigidType?: RigidBodyParams['rigidType'];
   colliderType?: ColliderParams['type'];
@@ -265,11 +353,35 @@ type CustomPropsUserData = {
   frictionCombineRule?: ColliderParams['frictionCombineRule'];
   restitution?: number;
   restitutionCombineRule?: ColliderParams['restitutionCombineRule'];
+  index?: number;
+  id?: string;
+  name?: string;
 } & { [userDataKey: string]: unknown };
 
-const cleanUpCustomProps = (userData: CustomPropsUserData) => {
+type CleanUpCustomPropsResult = {
+  meshId: string;
+  isPhysObj?: boolean;
+  keepMesh?: boolean;
+  rigidType?: RigidBodyParams['rigidType'];
+  rigidBodyUserData?: { [userDataKey: string]: unknown };
+  colliderParams?: ColliderParams;
+  index?: number;
+  id?: string;
+  name?: string;
+};
+
+const cleanUpCustomProps = (
+  userData: CustomPropsUserData,
+  meshId?: string
+): CleanUpCustomPropsResult => {
+  const id = userData.id;
+  const name = userData.name;
+  const isPhysObj = Boolean(userData.isPhysObj);
+  if (userData.isPhysObj !== undefined) delete userData.isPhysObj;
   const keepMesh = Boolean(userData.keepMesh);
+  if (userData.keepMesh !== undefined) delete userData.keepMesh;
   const rigidType = (
+    userData.rigidType !== undefined &&
     userData.rigidType !== 'DYNAMIC' &&
     userData.rigidType !== 'POS_BASED' &&
     userData.rigidType !== 'VELO_BASED'
@@ -293,7 +405,7 @@ const cleanUpCustomProps = (userData: CustomPropsUserData) => {
   const density = typeof userData.density === 'number' ? userData.density : 0.2;
   if (userData.density) delete userData.density;
   const friction = typeof userData.friction === 'number' ? userData.friction : 0.2;
-  if (userData.friction) delete userData.friction;
+  if (userData.friction !== undefined) delete userData.friction;
   const frictionCombineRule =
     userData.frictionCombineRule !== 'MAX' &&
     userData.frictionCombineRule !== 'MIN' &&
@@ -302,7 +414,7 @@ const cleanUpCustomProps = (userData: CustomPropsUserData) => {
       : userData.frictionCombineRule;
   if (userData.frictionCombineRule) delete userData.frictionCombineRule;
   const restitution = typeof userData.restitution === 'number' ? userData.restitution : 0.2;
-  if (userData.restitution) delete userData.restitution;
+  if (userData.restitution !== undefined) delete userData.restitution;
   const restitutionCombineRule =
     userData.restitutionCombineRule !== 'MAX' &&
     userData.restitutionCombineRule !== 'MIN' &&
@@ -324,6 +436,10 @@ const cleanUpCustomProps = (userData: CustomPropsUserData) => {
           ? { borderRadius: userData.borderRadius }
           : {}),
       };
+      if (userData.hx !== undefined) delete userData.hx;
+      if (userData.hy !== undefined) delete userData.hy;
+      if (userData.hz !== undefined) delete userData.hz;
+      if (userData.borderRadius !== undefined) delete userData.borderRadius;
       break;
     case 'BALL':
     case 'SPHERE':
@@ -331,6 +447,7 @@ const cleanUpCustomProps = (userData: CustomPropsUserData) => {
         type: colliderType,
         ...(typeof userData.radius === 'number' ? { radius: userData.radius } : {}),
       };
+      if (userData.radius !== undefined) delete userData.radius;
       break;
     case 'CAPSULE':
     case 'CONE':
@@ -343,12 +460,16 @@ const cleanUpCustomProps = (userData: CustomPropsUserData) => {
           ? { borderRadius: userData.borderRadius }
           : {}),
       };
+      if (userData.halfHeight !== undefined) delete userData.halfHeight;
+      if (userData.radius !== undefined) delete userData.radius;
+      if (userData.borderRadius !== undefined) delete userData.borderRadius;
       break;
     default:
       // TRIMESH (vertices and indices will come from the mesh)
       colliderParams = { type: 'TRIMESH' };
       break;
   }
+
   colliderParams = {
     ...colliderParams,
     density,
@@ -370,5 +491,132 @@ const cleanUpCustomProps = (userData: CustomPropsUserData) => {
     }
   }
 
-  return { keepMesh, rigidType, rigidBodyUserData, colliderParams };
+  return {
+    isPhysObj,
+    ...(isPhysObj ? { keepMesh } : {}),
+    ...(rigidType ? { rigidType } : {}),
+    ...(Object.keys(rigidBodyUserData) ? { rigidBodyUserData: rigidBodyUserData } : {}),
+    ...(isPhysObj ? { colliderParams: colliderParams } : {}),
+    ...(typeof userData.index === 'number' ? { index: userData.index } : {}),
+    meshId: meshId || generateUUID(),
+    id,
+    name,
+  };
+};
+
+const importMultiplePhysicsObjects = (
+  customProps: CleanUpCustomPropsResult[],
+  groupOrMesh: THREE.Group | THREE.Mesh
+): (PhysicsObject | undefined)[] => {
+  const physObj: (PhysicsObject | undefined)[] = [];
+  if (!customProps.length) return [];
+  const customPropsWithoutIndex: CleanUpCustomPropsResult[] = [];
+  // Collect all the different indexes to an array
+  const indexes = customProps.reduce((prev, cur) => {
+    if (cur.index === undefined) {
+      // meshes with no index
+      customPropsWithoutIndex.push(cur);
+    } else if (cur.index !== undefined && !prev.includes(cur.index)) {
+      // Collect the unique index
+      return [...prev, cur.index];
+    }
+    return prev;
+  }, [] as number[]);
+  const customPropsByIndex: CleanUpCustomPropsResult[][] = [customPropsWithoutIndex];
+  for (let i = 0; i < indexes.length; i++) {
+    const items = customProps.filter((item) => item.index === indexes[i]);
+    customPropsByIndex.push(items);
+  }
+  for (let j = 0; j < customPropsByIndex.length; j++) {
+    const props = customPropsByIndex[j];
+    const rigidAndChildParamsResult = getRigidParamsAndChildColliders(props);
+    if (!rigidAndChildParamsResult) return [];
+    const { rigidMeshId, rigidParams, physParamsObj } = rigidAndChildParamsResult;
+
+    const mesh = groupOrMesh.children.find((m) => m.uuid === rigidMeshId) as THREE.Mesh;
+    if (mesh) physParamsObj.meshOrMeshId = physParamsObj.physicsParams.length > 1 ? [mesh] : mesh;
+
+    if (physParamsObj) {
+      if (
+        rigidParams.keepMesh &&
+        (physParamsObj.meshOrMeshId || physParamsObj.meshOrMeshId.length)
+      ) {
+        const newPhysObj = createPhysicsObjectWithMesh(physParamsObj);
+        if (newPhysObj) physObj.push(newPhysObj);
+      } else {
+        const allKeys = Object.keys(physParamsObj);
+        const keys = allKeys.filter((key) => key !== 'meshOrMeshId');
+        const physParamsWithoutMesh: { [key: string]: unknown } = {};
+        for (let i = 0; i < keys.length; i++) {
+          physParamsWithoutMesh[keys[i]] = physParamsObj[keys[i] as keyof typeof physParamsObj];
+        }
+        if (!physParamsWithoutMesh.id) physParamsWithoutMesh.id = generateUUID();
+        const newPhysObj = createPhysicsObjectWithoutMesh(
+          physParamsWithoutMesh as typeof physParamsObj & { id: string }
+        );
+        if (newPhysObj) physObj.push(newPhysObj);
+      }
+    }
+  }
+
+  return physObj;
+};
+
+const getRigidParamsAndChildColliders = (
+  props: CleanUpCustomPropsResult[]
+): {
+  rigidMeshId: string;
+  rigidParams: CleanUpCustomPropsResult;
+  physParamsObj: {
+    physicsParams: PhysicsParams[];
+    meshOrMeshId: (THREE.Mesh | string) | (THREE.Mesh | string)[];
+    id: string;
+    name?: string;
+    isCompoundObject: boolean;
+  };
+} | null => {
+  let rigidIndex = -1;
+  let rigidMeshId = generateUUID();
+  const rigidParams = props.find((item, index) => {
+    if (item.rigidType !== undefined) {
+      rigidIndex = index;
+      rigidMeshId = item.meshId;
+      return true;
+    }
+    return false;
+  });
+  if (!rigidParams?.isPhysObj || !rigidParams?.colliderParams) return null;
+  const restOfColliderParams = props.filter((_, index) => index !== rigidIndex);
+  const physParamsObj = {
+    physicsParams: [
+      {
+        rigidBody: {
+          rigidType: rigidParams?.rigidType,
+          userData: rigidParams?.rigidBodyUserData,
+        },
+        collider: rigidParams?.colliderParams,
+      },
+    ] as PhysicsParams[],
+    meshOrMeshId: [] as (THREE.Mesh | string) | (THREE.Mesh | string)[],
+    id: rigidParams.id || rigidMeshId,
+    name: rigidParams.name,
+    isCompoundObject: Boolean(restOfColliderParams.length),
+  };
+  if (!physParamsObj.physicsParams[0].collider) return null;
+
+  for (let i = 0; i < restOfColliderParams.length; i++) {
+    const colliderParams = restOfColliderParams[i].colliderParams;
+    if (!restOfColliderParams[i].isPhysObj || !colliderParams) {
+      continue;
+    }
+    if (!physParamsObj.id) physParamsObj.id = rigidMeshId;
+    physParamsObj.isCompoundObject = false;
+    physParamsObj.physicsParams.push({ collider: colliderParams });
+  }
+
+  return {
+    rigidMeshId,
+    rigidParams,
+    physParamsObj,
+  };
 };

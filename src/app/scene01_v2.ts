@@ -286,11 +286,12 @@ export const scene01 = async () =>
     //   updateLoadStatusFn
     // );
 
-    const importedBox = await importModelAsync<THREE.Mesh>({
+    const result = await importModelAsync({
       id: 'importedMesh1',
       fileName: '/debugger/assets/testModels/box01.glb',
       throwOnError: true,
     });
+    const importedBox = result.mesh as THREE.Mesh;
     if (importedBox) {
       importedBox.receiveShadow = true;
       importedBox.castShadow = true;
