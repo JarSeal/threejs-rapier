@@ -3,7 +3,7 @@ import { GLTF, GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/Addons.js';
 import { lerror } from '../utils/Logger';
 import { getMesh, saveMesh } from './Mesh';
-import { getGroup } from './Group';
+import { createGroup, getGroup } from './Group';
 import {
   ColliderParams,
   createPhysicsObjectWithMesh,
@@ -24,7 +24,7 @@ export type ImportModelParams = {
 };
 
 type ImportReturnObj = {
-  group?: THREE.Group | THREE.Group[];
+  group?: THREE.Group;
   mesh?: THREE.Mesh | THREE.Mesh[];
   physObj?: PhysicsObject | PhysicsObject[];
 };
@@ -51,17 +51,18 @@ const parseImportResult = (
     const customProps: CleanUpCustomPropsResult[] = [];
     let index = 0;
     returnObj.mesh = [];
-    console.log('GOES HERE', groupOrMesh);
+    if ('isGroup' in groupOrMesh) returnObj.group = groupOrMesh;
     for (let i = 0; i < kids.length; i++) {
       const kid = kids[i];
       if ('isMesh' in kid && kid.isMesh) {
-        const newId = id ? `${id}-${index}` : kid.uuid;
+        const newId = id ? `${id}-${index}-${i}` : kid.uuid;
         const userData = kid.userData;
         customProps.push(cleanUpCustomProps(userData as CustomPropsUserData, kid.uuid));
         if (!('isPhysObj' in userData) || !userData.isPhysObj) {
           const m = saveMesh(kid as THREE.Mesh, newId, !saveMaterial);
           if (m) returnObj.mesh.push(m);
         }
+        if (userData.isPhysObj !== undefined) delete userData.isPhysObj;
         index++;
       }
     }
@@ -234,7 +235,7 @@ export const importModelAsync = async (params: ImportModelParams): Promise<Impor
   let modelGroup: THREE.Group | null = null;
   try {
     const gltf = await loader.loadAsync(fileName);
-    modelGroup = new THREE.Group();
+    modelGroup = createGroup({});
     modelGroup.children = gltf?.scene?.children || [];
   } catch (err) {
     const errorMsg = `Could not import ${importGroup ? 'group' : 'model'} in importModelAsync (id: "${id}", fileName: "${fileName}")`;
@@ -293,7 +294,7 @@ export const importModels = (
     loader.load(
       fileName,
       (gltf: GLTF) => {
-        const modelGroup = new THREE.Group();
+        const modelGroup = createGroup({});
         modelGroup.children = gltf?.scene?.children || [];
         const meshOrGroup = parseImportResult(modelGroup, modelsParams[i]);
         if (meshOrGroup.group && Array.isArray(meshOrGroup.group)) {
@@ -377,7 +378,6 @@ const cleanUpCustomProps = (
   const id = userData.id;
   const name = userData.name;
   const isPhysObj = Boolean(userData.isPhysObj);
-  if (userData.isPhysObj !== undefined) delete userData.isPhysObj;
   const keepMesh = Boolean(userData.keepMesh);
   if (userData.keepMesh !== undefined) delete userData.keepMesh;
   const rigidType = (
@@ -504,6 +504,8 @@ const cleanUpCustomProps = (
   };
 };
 
+// @TODO: importing multiple colliders for the same rigid body (with the index prop)
+// does not work currently. Fix at some point.. or don't, who cares :)
 const importMultiplePhysicsObjects = (
   customProps: CleanUpCustomPropsResult[],
   groupOrMesh: THREE.Group | THREE.Mesh
@@ -522,7 +524,9 @@ const importMultiplePhysicsObjects = (
     }
     return prev;
   }, [] as number[]);
-  const customPropsByIndex: CleanUpCustomPropsResult[][] = [customPropsWithoutIndex];
+  const customPropsByIndex: CleanUpCustomPropsResult[][] = customPropsWithoutIndex.length
+    ? [customPropsWithoutIndex]
+    : [];
   for (let i = 0; i < indexes.length; i++) {
     const items = customProps.filter((item) => item.index === indexes[i]);
     customPropsByIndex.push(items);
@@ -533,8 +537,21 @@ const importMultiplePhysicsObjects = (
     if (!rigidAndChildParamsResult) return [];
     const { rigidMeshId, rigidParams, physParamsObj } = rigidAndChildParamsResult;
 
-    const mesh = groupOrMesh.children.find((m) => m.uuid === rigidMeshId) as THREE.Mesh;
-    if (mesh) physParamsObj.meshOrMeshId = physParamsObj.physicsParams.length > 1 ? [mesh] : mesh;
+    for (let i = 0; i < props.length; i++) {
+      const mesh = groupOrMesh.children.find(
+        (m) => m.uuid === props[i].id || rigidMeshId
+      ) as THREE.Mesh;
+      if (mesh) {
+        if (physParamsObj.physicsParams.length > 1) {
+          if (!physParamsObj.meshOrMeshId) physParamsObj.meshOrMeshId = [];
+          if (Array.isArray(physParamsObj.meshOrMeshId)) {
+            physParamsObj.meshOrMeshId.push(mesh);
+          }
+        } else {
+          physParamsObj.meshOrMeshId = mesh;
+        }
+      }
+    }
 
     if (physParamsObj) {
       if (

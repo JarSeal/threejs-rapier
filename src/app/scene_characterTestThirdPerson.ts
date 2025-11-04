@@ -285,13 +285,17 @@ export const sceneCharacterTest = async () =>
 
     // @TODO: remove this test when custom prop importing is done
     const result = await importModelAsync({
-      fileName: '/debugger/assets/testModels/customPropTestMultiCollider.glb',
+      fileName: '/debugger/assets/testModels/customPropTestMonkey.glb',
       id: 'customPropTest',
       importGroup: true,
     });
     if (result.mesh && !Array.isArray(result.mesh)) {
       result.mesh?.position.set(2, 1.5, 2);
-      if (result.mesh) scene.add(result.mesh);
+      scene.add(result.mesh);
+    } else if (result.mesh && Array.isArray(result.mesh)) {
+      for (let i = 0; i < result.mesh.length; i++) {
+        scene.add(result.mesh[i]);
+      }
     }
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
