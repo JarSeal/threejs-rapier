@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { createScene, createSceneAppLooper } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
-import { createMaterial, getAllMaterials } from '../_engine/core/Material';
+import { createMaterial } from '../_engine/core/Material';
 import { createLight } from '../_engine/core/Light';
 import { createMesh } from '../_engine/core/Mesh';
 import { createSkyBox } from '../_engine/core/SkyBox';
@@ -12,7 +12,7 @@ import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createThirdPersonCharacter } from './character_thirdPerson';
 import { characterTestObstacles } from './character_test_objects';
 import { importModelAsync } from '../_engine/core/ImportModel';
-import { addCheckerboardMaterialToMesh } from '../public/debugger/assets/materials/checkerBoard';
+import { addCheckerboardMaterialToMesh } from '../public/debugger/assets/materials/checkerBoardPattern';
 
 export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
