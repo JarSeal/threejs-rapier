@@ -14,13 +14,30 @@ import {
 } from './PhysicsRapier';
 import { generateUUID } from 'three/src/math/MathUtils.js';
 
+type AdditionalPhysicsParams = {
+  isPhysObj?: boolean;
+  keepMesh?: boolean;
+  id?: string;
+  name?: string;
+  index?: number;
+};
+
 export type ImportModelParams = {
   fileName: string;
   id?: string;
   importGroup?: boolean;
+  groupId?: string;
   meshIndex?: number | number[];
   throwOnError?: boolean;
   saveMaterial?: boolean;
+
+  /** These physics params will override the imported custom params or then just
+   * create a physics object out of the object if no import custom params are
+   * present (a collider and a rigidBody must be defined).
+   */
+  physicsParams?:
+    | Partial<PhysicsParams & AdditionalPhysicsParams>
+    | Partial<PhysicsParams & AdditionalPhysicsParams>[];
 };
 
 type ImportReturnObj = {
@@ -42,8 +59,12 @@ const parseImportResult = (
   groupOrMesh: THREE.Group | THREE.Mesh,
   params: ImportModelParams
 ): ImportReturnObj => {
-  const { id, fileName, importGroup, meshIndex, throwOnError, saveMaterial } = params;
+  const { id, fileName, importGroup, meshIndex, throwOnError, saveMaterial, physicsParams } =
+    params;
   const returnObj: ImportReturnObj = {};
+  const overridePhysParams = Array.isArray(physicsParams)
+    ? physicsParams
+    : [...(physicsParams ? [physicsParams] : [])];
 
   if (importGroup) {
     // Go through meshes and save them
@@ -57,7 +78,9 @@ const parseImportResult = (
       if ('isMesh' in kid && kid.isMesh) {
         const newId = id ? `${id}-${index}-${i}` : kid.uuid;
         const userData = kid.userData;
-        customProps.push(cleanUpCustomProps(userData as CustomPropsUserData, kid.uuid));
+        customProps.push(
+          cleanUpCustomProps(userData as CustomPropsUserData, overridePhysParams[i], kid.uuid)
+        );
         if (!('isPhysObj' in userData) || !userData.isPhysObj) {
           const m = saveMesh(kid as THREE.Mesh, newId, !saveMaterial);
           if (m) returnObj.mesh.push(m);
@@ -133,7 +156,11 @@ const parseImportResult = (
     return {};
   }
 
-  const userData = cleanUpCustomProps(modelMesh?.userData, modelMesh.userData.id);
+  const userData = cleanUpCustomProps(
+    modelMesh?.userData,
+    overridePhysParams[0],
+    modelMesh.userData.id
+  );
   const rigidAndChildParamsResult = getRigidParamsAndChildColliders([userData]);
   if (rigidAndChildParamsResult) {
     const { physParamsObj, rigidMeshId } = rigidAndChildParamsResult;
@@ -235,7 +262,7 @@ export const importModelAsync = async (params: ImportModelParams): Promise<Impor
   let modelGroup: THREE.Group | null = null;
   try {
     const gltf = await loader.loadAsync(fileName);
-    modelGroup = createGroup({});
+    modelGroup = createGroup({ id: params.groupId });
     modelGroup.children = gltf?.scene?.children || [];
   } catch (err) {
     const errorMsg = `Could not import ${importGroup ? 'group' : 'model'} in importModelAsync (id: "${id}", fileName: "${fileName}")`;
@@ -294,7 +321,7 @@ export const importModels = (
     loader.load(
       fileName,
       (gltf: GLTF) => {
-        const modelGroup = createGroup({});
+        const modelGroup = createGroup({ id: modelsParams[i].groupId });
         modelGroup.children = gltf?.scene?.children || [];
         const meshOrGroup = parseImportResult(modelGroup, modelsParams[i]);
         if (meshOrGroup.group && Array.isArray(meshOrGroup.group)) {
@@ -373,11 +400,69 @@ type CleanUpCustomPropsResult = {
 
 const cleanUpCustomProps = (
   userData: CustomPropsUserData,
+  overridePhysParams?: Partial<PhysicsParams & AdditionalPhysicsParams>,
   meshId?: string
 ): CleanUpCustomPropsResult => {
+  userData = {
+    ...userData,
+    ...(overridePhysParams?.isPhysObj !== undefined
+      ? { isPhysObj: overridePhysParams.isPhysObj }
+      : {}),
+    ...(overridePhysParams?.id ? { id: overridePhysParams.id } : {}),
+    ...(overridePhysParams?.name ? { name: overridePhysParams.name } : {}),
+    ...(overridePhysParams?.keepMesh !== undefined
+      ? { keepMesh: overridePhysParams.keepMesh }
+      : {}),
+    ...(overridePhysParams?.index !== undefined ? { index: overridePhysParams.index } : {}),
+    ...(overridePhysParams?.rigidBody?.rigidType
+      ? { rigidType: overridePhysParams.rigidBody.rigidType }
+      : {}),
+    ...(overridePhysParams?.collider?.type
+      ? { colliderType: overridePhysParams.collider.type }
+      : {}),
+    ...(overridePhysParams?.collider?.density !== undefined
+      ? { density: overridePhysParams.collider.density }
+      : {}),
+    ...(overridePhysParams?.collider?.friction !== undefined
+      ? { friction: overridePhysParams.collider.friction }
+      : {}),
+    ...(overridePhysParams?.collider?.restitution !== undefined
+      ? { restitution: overridePhysParams.collider.restitution }
+      : {}),
+    ...(overridePhysParams?.collider?.frictionCombineRule
+      ? { frictionCombineRule: overridePhysParams.collider.frictionCombineRule }
+      : {}),
+    ...(overridePhysParams?.collider?.restitutionCombineRule
+      ? { restitutionCombineRule: overridePhysParams.collider.restitutionCombineRule }
+      : {}),
+    ...(overridePhysParams?.collider
+      ? {
+          ...('borderRadius' in overridePhysParams.collider &&
+          overridePhysParams.collider.borderRadius !== undefined
+            ? { borderRadius: overridePhysParams.collider.borderRadius }
+            : {}),
+          ...('hx' in overridePhysParams.collider && overridePhysParams.collider.hx !== undefined
+            ? { hx: overridePhysParams.collider.hx }
+            : {}),
+          ...('hy' in overridePhysParams.collider && overridePhysParams.collider.hy !== undefined
+            ? { hy: overridePhysParams.collider.hy }
+            : {}),
+          ...('hz' in overridePhysParams.collider && overridePhysParams.collider.hz !== undefined
+            ? { hz: overridePhysParams.collider.hz }
+            : {}),
+          ...('radius' in overridePhysParams.collider &&
+          overridePhysParams.collider.radius !== undefined
+            ? { radius: overridePhysParams.collider.radius }
+            : {}),
+          ...('halfHeight' in overridePhysParams.collider &&
+          overridePhysParams.collider.halfHeight !== undefined
+            ? { halfHeight: overridePhysParams.collider.halfHeight }
+            : {}),
+        }
+      : {}),
+  };
   const id = userData.id;
   const name = userData.name;
-  const isPhysObj = Boolean(userData.isPhysObj);
   const keepMesh = Boolean(userData.keepMesh);
   if (userData.keepMesh !== undefined) delete userData.keepMesh;
   const rigidType = (
@@ -478,6 +563,8 @@ const cleanUpCustomProps = (
     restitution,
     restitutionCombineRule,
   };
+
+  const isPhysObj = Boolean(userData.isPhysObj);
 
   const allKeys = Object.keys(userData);
   const rigidBodyUserData: { [userDataKey: string]: unknown } = {};
