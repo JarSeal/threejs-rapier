@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { createScene, createSceneAppLooper } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
-import { createMaterial } from '../_engine/core/Material';
+import { createMaterial, getAllMaterials } from '../_engine/core/Material';
 import { createLight } from '../_engine/core/Light';
 import { createMesh } from '../_engine/core/Mesh';
 import { createSkyBox } from '../_engine/core/SkyBox';
@@ -12,6 +12,7 @@ import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createThirdPersonCharacter } from './character_thirdPerson';
 import { characterTestObstacles } from './character_test_objects';
 import { importModelAsync } from '../_engine/core/ImportModel';
+import { addCheckerboardMaterialToMesh } from '../public/debugger/assets/materials/checkerBoard';
 
 export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
@@ -285,17 +286,41 @@ export const sceneCharacterTest = async () =>
 
     // @TODO: remove this test when custom prop importing is done
     const result = await importModelAsync({
+      fileName: '/debugger/assets/testModels/customPropTestCube.glb',
+      id: 'customPropTest',
+      importGroup: true,
+      // physicsParams: {
+      //   rigidBody: { rigidType: 'FIXED' },
+      // },
+    });
+    if (result.mesh && !Array.isArray(result.mesh)) {
+      result.mesh?.position.set(2, 2, 2);
+      if (!Array.isArray(result.physObj))
+        result.physObj?.rigidBody?.setTranslation(new THREE.Vector3(2, 2, 2), true);
+      addCheckerboardMaterialToMesh('checkerMaterial', result.mesh);
+      result.mesh.castShadow = true;
+      result.mesh.receiveShadow = true;
+      scene.add(result.mesh);
+    }
+    const result2 = await importModelAsync({
       fileName: '/debugger/assets/testModels/customPropTestMonkey.glb',
       id: 'customPropTest',
       importGroup: true,
+      physicsParams: {
+        isPhysObj: true,
+        keepMesh: true,
+        rigidBody: { rigidType: 'DYNAMIC' },
+        collider: { type: 'TRIMESH', density: 2 },
+      },
     });
-    if (result.mesh && !Array.isArray(result.mesh)) {
-      result.mesh?.position.set(2, 1.5, 2);
-      scene.add(result.mesh);
-    } else if (result.mesh && Array.isArray(result.mesh)) {
-      for (let i = 0; i < result.mesh.length; i++) {
-        scene.add(result.mesh[i]);
-      }
+    if (result2.mesh && !Array.isArray(result2.mesh)) {
+      result2.mesh?.position.set(4, 2, 3);
+      if (!Array.isArray(result2.physObj))
+        result2.physObj?.rigidBody?.setTranslation(new THREE.Vector3(4, 2, 3), true);
+      addCheckerboardMaterialToMesh('checkerMaterial', result2.mesh);
+      result2.mesh.castShadow = true;
+      result2.mesh.receiveShadow = true;
+      scene.add(result2.mesh);
     }
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
