@@ -340,7 +340,8 @@ export const addToast = ({
 
   let hasCloseButton = isClosable !== undefined ? isClosable : toaster.settings.isClosable;
   if (typeof hasCloseButton !== 'boolean') {
-    hasCloseButton = hasCloseButton[toastType] !== undefined ? hasCloseButton[toastType] : false;
+    hasCloseButton =
+      hasCloseButton[toastType] !== undefined ? Boolean(hasCloseButton[toastType]) : false;
   }
   const closeBtnIcon = toaster.settings.closeBtnIcon;
   if (hasCloseButton) {

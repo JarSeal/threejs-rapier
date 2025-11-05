@@ -15,8 +15,16 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "typeRoots": ["./src/types", "./node_modules/@types"]
+  },
+  "typedocOptions": {
+    "entryPoints": ["src/_engine/**"],
+    "out": "docs",
+    "theme": "default",
+    "excludePrivate": true,
+    "readme": "none"
   },
   "exclude": ["node_modules"],
-  "include": ["src", "vite.config.ts", "vite-env.d.ts"]
+  "include": ["src/**/*", "vite.config.ts", "vite-env.d.ts"]
 }

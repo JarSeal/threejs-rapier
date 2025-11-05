@@ -69,7 +69,6 @@ export const createCharacter = ({
   name?: string;
   physicsParams: PhysicsParams | PhysicsParams[];
   meshOrMeshId: (THREE.Mesh | string) | (THREE.Mesh | string)[];
-  // @TODO: add FunctionInputParams (this is for AI controllable characters, aka. NPCs)
   controls?: (
     | (KeyInputParams & { id: string; type: KeyInputControlType })
     | (MouseInputParams & { id: string; type: MouseInputControlType })
@@ -246,7 +245,7 @@ export const createTrackCharacterContent = (winData?: { [key: string]: unknown }
         const key = keys[i];
         const value = data[key];
         if (Array.isArray(value)) {
-          htmlString += `<li>${key}: ${value.join(', ')}}</li>`;
+          htmlString += `<li>${key}: ${value.join(', ')}</li>`;
         } else if (typeof value === 'object' && value !== null) {
           const objKeys = Object.keys(value);
           let objString = '';

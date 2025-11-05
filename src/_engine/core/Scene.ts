@@ -7,6 +7,7 @@ import { lerror, lwarn } from '../utils/Logger';
 import { deleteLight } from './Light';
 import { deleteTexture } from './Texture';
 import {
+  deleteAllScenePhysicsLoopers,
   deletePhysicsObjectsBySceneId,
   deletePhysicsWorld,
   setCurrentScenePhysicsObjects,
@@ -250,6 +251,8 @@ export const setCurrentScene = (id: string | null) => {
   setDebugEnvBallMaterial();
 
   const rootScene = getRootScene() as THREE.Scene;
+
+  deleteAllScenePhysicsLoopers();
 
   if (currentScene) rootScene.remove(currentScene);
 

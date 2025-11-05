@@ -16,12 +16,22 @@ export type Materials =
   | THREE.MeshStandardMaterial
   | THREE.MeshToonMaterial
   | THREE.PointsMaterial
+  // RawShaderMaterial does not work with WebGPU, but keeping it here if there is future possibility to transpile
   | THREE.RawShaderMaterial
+  // ShaderMaterial does not work with WebGPU, but keeping it here if there is future possibility to transpile
   | THREE.ShaderMaterial
   | THREE.ShadowMaterial
   | THREE.SpriteMaterial
   | THREE.Material
-  | THREE.MeshBasicNodeMaterial;
+  | THREE.MeshBasicNodeMaterial
+  | THREE.MeshLambertNodeMaterial
+  | THREE.MeshPhongNodeMaterial
+  | THREE.MeshPhysicalNodeMaterial
+  | THREE.MeshStandardNodeMaterial
+  | THREE.MeshMatcapNodeMaterial
+  | THREE.MeshMatcapNodeMaterial
+  | THREE.MeshNormalNodeMaterial
+  | THREE.MeshToonNodeMaterial;
 
 const materials: { [id: string]: Materials } = {};
 
@@ -70,6 +80,13 @@ export type MatProps = { id?: string } & (
   | { type: 'SHADOW'; params: THREE.ShadowMaterialParameters }
   | { type: 'SPRITE'; params: THREE.SpriteMaterialParameters }
   | { type: 'BASICNODEMATERIAL'; params: THREE.MeshBasicNodeMaterialParameters }
+  | { type: 'LAMBERTNODEMATERIAL'; params: THREE.MeshLambertNodeMaterialParameters }
+  | { type: 'PHONGNODEMATERIAL'; params: THREE.MeshPhongNodeMaterialParameters }
+  | { type: 'PHYSICALNODEMATERIAL'; params: THREE.MeshPhysicalNodeMaterialParameters }
+  | { type: 'STANDARDNODEMATERIAL'; params: THREE.MeshStandardNodeMaterialParameters }
+  | { type: 'MATCAPNODEMATERIAL'; params: THREE.MeshMatcapNodeMaterialParameters }
+  | { type: 'NORMALNODEMATERIAL'; params: THREE.MeshNormalNodeMaterialParameters }
+  | { type: 'TOONNODEMATERIAL'; params: THREE.MeshToonNodeMaterialParameters }
 );
 
 /**
@@ -137,7 +154,27 @@ export const createMaterial = ({ id, type, params }: MatProps) => {
     case 'BASICNODEMATERIAL':
       mat = new THREE.MeshBasicNodeMaterial(params);
       break;
-    // @TODO: add all node materials
+    case 'LAMBERTNODEMATERIAL':
+      mat = new THREE.MeshLambertNodeMaterial(params);
+      break;
+    case 'PHONGNODEMATERIAL':
+      mat = new THREE.MeshPhongNodeMaterial(params);
+      break;
+    case 'PHYSICALNODEMATERIAL':
+      mat = new THREE.MeshPhysicalNodeMaterial(params);
+      break;
+    case 'STANDARDNODEMATERIAL':
+      mat = new THREE.MeshStandardNodeMaterial(params);
+      break;
+    case 'MATCAPNODEMATERIAL':
+      mat = new THREE.MeshMatcapNodeMaterial(params);
+      break;
+    case 'NORMALNODEMATERIAL':
+      mat = new THREE.MeshNormalNodeMaterial(params);
+      break;
+    case 'TOONNODEMATERIAL':
+      mat = new THREE.MeshToonNodeMaterial(params);
+      break;
   }
 
   if (!mat) {

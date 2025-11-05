@@ -286,11 +286,12 @@ export const scene01 = async () =>
     //   updateLoadStatusFn
     // );
 
-    const importedBox = await importModelAsync<THREE.Mesh>({
+    const result = await importModelAsync({
       id: 'importedMesh1',
       fileName: '/debugger/assets/testModels/box01.glb',
       throwOnError: true,
     });
+    const importedBox = result.mesh as THREE.Mesh;
     if (importedBox) {
       importedBox.receiveShadow = true;
       importedBox.castShadow = true;
@@ -327,8 +328,8 @@ export const scene01 = async () =>
           hy: 0.2,
           hz: 10,
           isSensor: true,
-          collisionEventFn: (obj1, obj2, started) => {
-            console.log('SENSOR ALERT', obj1, obj2, started);
+          collisionEventFn: (coll1, coll2, started, obj1, obj2) => {
+            console.log('SENSOR ALERT', obj1, obj2, coll1, coll2, started);
           },
           translation: { x: 0, y: -1.5, z: 0 },
         },

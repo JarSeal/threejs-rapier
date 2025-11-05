@@ -231,12 +231,13 @@ export const scene01 = async () =>
       updateLoadStatusFn
     );
 
-    const importedBox = await importModelAsync<THREE.Mesh>({
+    const result = await importModelAsync({
       id: 'importedMesh1',
       fileName: '/assets/testModels/box01.glb',
       throwOnError: true,
     });
-    if (importedBox) {
+    if (result.mesh && !Array.isArray(result.mesh)) {
+      const importedBox = result.mesh;
       createPhysicsObjectWithMesh({
         physicsParams: {
           collider: { type: 'TRIMESH' },

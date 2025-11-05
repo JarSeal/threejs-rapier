@@ -10,8 +10,9 @@ import { createPhysicsObjectWithMesh, getPhysicsObject } from '../_engine/core/P
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createThirdPersonCharacter } from './character_thirdPerson';
-import { characterTestObjects } from './character_test_objects';
-import { castRayFromAngle, castRayFromPoints } from '../_engine/core/Raycast';
+import { characterTestObstacles } from './character_test_objects';
+import { importModelAsync } from '../_engine/core/ImportModel';
+import { addCheckerboardMaterialToMesh } from '../public/debugger/assets/materials/checkerBoardPattern';
 
 export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
@@ -35,27 +36,17 @@ export const sceneCharacterTest = async () =>
     updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 
     await createSkyBox({
-      id: 'emptyBlueSkyEquiRect',
-      name: 'Empty Blue Sky EquiRect',
+      id: 'stylizedSunsetEquiRect',
+      name: 'Stylized Sunset EquiRect 4K',
       type: 'EQUIRECTANGULAR',
       params: {
-        file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png',
-        textureId: 'equiRectEmptyId',
+        file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_41_4k.png',
+        textureId: 'equiRectSunsetStylizedId',
         colorSpace: THREE.SRGBColorSpace,
+        // colorSpace: THREE.LinearSRGBColorSpace,
+        // colorSpace: THREE.NoColorSpace,
       },
     });
-    // await createSkyBox({
-    //   id: 'stylizedSunsetEquiRect',
-    //   name: 'Stylized Sunset EquiRect 4K',
-    //   type: 'EQUIRECTANGULAR',
-    //   params: {
-    //     file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_41_4k.png',
-    //     textureId: 'equiRectSunsetStylizedId',
-    //     colorSpace: THREE.SRGBColorSpace,
-    //     // colorSpace: THREE.LinearSRGBColorSpace,
-    //     // colorSpace: THREE.NoColorSpace,
-    //   },
-    // });
     // const mapStylizedSunset = ['/px.png', '/nx.png', '/py.png', '/ny.png', '/pz.png', '/nz.png'];
     // await createSkyBox({
     //   id: 'stylizedSunsetCubemap',
@@ -68,40 +59,50 @@ export const sceneCharacterTest = async () =>
     //     cubeTextRotate: 0.625,
     //   },
     // });
-    // await createSkyBox({
-    //   id: 'partly-cloudy',
-    //   type: 'EQUIRECTANGULAR',
-    //   params: {
-    //     // file: envTexture,
-    //     // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
-    //     file: '/debugger/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
-    //     // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
-    //     // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
-    //     // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
-    //     textureId: 'equiRectId',
-    //     // colorSpace: THREE.SRGBColorSpace,
-    //     colorSpace: THREE.LinearSRGBColorSpace,
-    //     // colorSpace: THREE.NoColorSpace,
-    //   },
-    // });
-    // const map02 = [
-    //   '/cubemap02_positive_x.png',
-    //   '/cubemap02_negative_x.png',
-    //   '/cubemap02_negative_y.png',
-    //   '/cubemap02_positive_y.png',
-    //   '/cubemap02_positive_z.png',
-    //   '/cubemap02_negative_z.png',
-    // ];
-    // await createSkyBox({
-    //   id: 'desert-dunes',
-    //   type: 'CUBETEXTURE',
-    //   params: {
-    //     fileNames: map02,
-    //     path: '/debugger/assets/testTextures',
-    //     textureId: 'cubeTextureId',
-    //     flipY: true,
-    //   },
-    // });
+    await createSkyBox({
+      id: 'partly-cloudy',
+      type: 'EQUIRECTANGULAR',
+      params: {
+        // file: envTexture,
+        // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
+        file: '/debugger/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
+        // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
+        // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
+        // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
+        textureId: 'equiRectId',
+        // colorSpace: THREE.SRGBColorSpace,
+        colorSpace: THREE.LinearSRGBColorSpace,
+        // colorSpace: THREE.NoColorSpace,
+      },
+    });
+    const map02 = [
+      '/cubemap02_positive_x.png',
+      '/cubemap02_negative_x.png',
+      '/cubemap02_negative_y.png',
+      '/cubemap02_positive_y.png',
+      '/cubemap02_positive_z.png',
+      '/cubemap02_negative_z.png',
+    ];
+    await createSkyBox({
+      id: 'desert-dunes',
+      type: 'CUBETEXTURE',
+      params: {
+        fileNames: map02,
+        path: '/debugger/assets/testTextures',
+        textureId: 'cubeTextureId',
+        flipY: true,
+      },
+    });
+    await createSkyBox({
+      id: 'emptyBlueSkyEquiRect',
+      name: 'Empty Blue Sky EquiRect',
+      type: 'EQUIRECTANGULAR',
+      params: {
+        file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png',
+        textureId: 'equiRectEmptyId',
+        colorSpace: THREE.SRGBColorSpace,
+      },
+    });
 
     // UV texture
     const uvTexture = await loadTextureAsync({
@@ -148,7 +149,7 @@ export const sceneCharacterTest = async () =>
 
     // OBSTACLES
     const { stairsMesh, stairsPhysicsObject, bigBoxWallMesh, bigBoxWallPhysicsObject } =
-      characterTestObjects();
+      characterTestObstacles();
     (stairsMesh.material as THREE.MeshPhongMaterial).map = uvTexture.clone();
     scene.add(stairsMesh);
     stairsPhysicsObject?.setTranslation({ x: 5, y: -1.8 });
@@ -198,10 +199,50 @@ export const sceneCharacterTest = async () =>
     scene.add(box);
 
     // CHARACTER
-    const { charMesh, thirdPersonCharacterObject } = createThirdPersonCharacter();
+    const { charMesh, thirdPersonCharacterObject } = createThirdPersonCharacter({
+      id: 'thirdPersonChar',
+      inputMappings: {
+        rotateLeft: ['a', 'A'],
+        rotateRight: ['d', 'D'],
+        moveForward: ['w', 'W'],
+        moveBackward: ['s', 'S'],
+        jump: [' '],
+        run: ['Shift'],
+        crouch: ['Control'],
+      },
+    });
     const charPhysObj = getPhysicsObject(thirdPersonCharacterObject.physObjectId);
     charPhysObj?.setTranslation({ x: 5, y: 5, z: -5 });
     scene.add(charMesh);
+
+    // Another character without input
+    const {
+      controlFns,
+      thirdPersonCharacterObject: dummyCharacterObject,
+      charMesh: dummyCharMesh,
+    } = createThirdPersonCharacter({ id: 'testDummyChar' });
+    const dummyCharPhysObj = getPhysicsObject(dummyCharacterObject.physObjectId);
+    dummyCharPhysObj?.setTranslation({ x: -2, y: 5, z: -2 });
+    scene.add(dummyCharMesh);
+
+    // @TEMP: Set an interval to move the dummy
+    let action: 'F' | 'T' | null = null;
+    setInterval(() => {
+      if (action !== 'F') {
+        action = 'F';
+        controlFns.jump();
+      } else {
+        action = 'T';
+        controlFns.jump();
+      }
+    }, 1500);
+    createSceneAppLooper(() => {
+      if (action === 'F') {
+        controlFns.move('FORWARD');
+      } else {
+        controlFns.rotate('LEFT');
+      }
+    });
 
     // Lights
     const ambient = createLight({
@@ -243,26 +284,44 @@ export const sceneCharacterTest = async () =>
     });
     scene.add(directionalLight);
 
-    createSceneAppLooper(() => {
-      castRayFromAngle(
-        scene.children,
-        new THREE.Vector3(0, 3, 0),
-        new THREE.Euler(0, Math.PI / 2, Math.PI / 4),
-        {
-          startLength: 0,
-          endLength: 2,
-          helperId: 'helper1',
-          helperColor: '#ff0000',
-          directionForAngle: 'RIGHT',
-        }
-      );
-      castRayFromPoints(scene.children, new THREE.Vector3(0, 5, 0), new THREE.Vector3(1, 0, 0), {
-        startLength: 0,
-        endLength: 2,
-        helperId: 'helper2',
-        helperColor: '#ffee22',
-      });
+    // @TODO: remove this test when custom prop importing is done
+    const result = await importModelAsync({
+      fileName: '/debugger/assets/testModels/customPropTestCube.glb',
+      id: 'customPropTest',
+      importGroup: true,
+      // physicsParams: {
+      //   rigidBody: { rigidType: 'FIXED' },
+      // },
     });
+    if (result.mesh && !Array.isArray(result.mesh)) {
+      result.mesh?.position.set(2, 2, 2);
+      if (!Array.isArray(result.physObj))
+        result.physObj?.rigidBody?.setTranslation(new THREE.Vector3(2, 2, 2), true);
+      addCheckerboardMaterialToMesh('checkerMaterial', result.mesh);
+      result.mesh.castShadow = true;
+      result.mesh.receiveShadow = true;
+      scene.add(result.mesh);
+    }
+    const result2 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/customPropTestMonkey.glb',
+      id: 'customPropTest',
+      importGroup: true,
+      physicsParams: {
+        isPhysObj: true,
+        keepMesh: true,
+        rigidBody: { rigidType: 'DYNAMIC' },
+        collider: { type: 'TRIMESH', density: 2 },
+      },
+    });
+    if (result2.mesh && !Array.isArray(result2.mesh)) {
+      result2.mesh?.position.set(4, 2, 3);
+      if (!Array.isArray(result2.physObj))
+        result2.physObj?.rigidBody?.setTranslation(new THREE.Vector3(4, 2, 3), true);
+      addCheckerboardMaterialToMesh('checkerMaterial', result2.mesh);
+      result2.mesh.castShadow = true;
+      result2.mesh.receiveShadow = true;
+      scene.add(result2.mesh);
+    }
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 

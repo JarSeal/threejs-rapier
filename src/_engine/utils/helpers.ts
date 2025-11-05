@@ -217,3 +217,5 @@ export const isNotUndefinedNorNullOrWarn = <T>(
 };
 
 export const ThreeVector3 = new THREE.Vector3();
+
+export const slerp = (a: THREE.Quaternion, b: THREE.Quaternion, t: number) => a.clone().slerp(b, t);
