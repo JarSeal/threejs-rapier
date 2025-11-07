@@ -27,7 +27,8 @@ export type CharacterData = {
   position: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number; world: number };
   charRotation: number;
-  isMoving: boolean;
+  isAwake: boolean;
+  hasMoveInput: boolean;
   isGrounded: boolean;
   isFalling: boolean;
   isRunning: boolean;
@@ -73,7 +74,8 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0, world: 0 },
   charRotation: 0,
-  isMoving: false,
+  isAwake: false,
+  hasMoveInput: false,
   isGrounded: false,
   isFalling: false,
   isRunning: false,
@@ -515,6 +517,7 @@ export const createThirdPersonCharacter = (opts: {
                 controlFns.rotate('RIGHT');
               // Forward and backward
               if (keysPressed.some((key) => moveInputMappings.includes(key))) {
+                charData.hasMoveInput = true;
                 controlFns.move(
                   keysPressed.some((key) => inputMappings.moveForward.includes(key))
                     ? 'FORWARD'
@@ -693,11 +696,11 @@ export const createThirdPersonCharacter = (opts: {
     const mesh = physObj?.mesh;
     if (!physObj || !mesh) return;
 
-    // Set isMoving (physics isMoving, aka. is awake)
-    characterData.isMoving = physObj.rigidBody?.isMoving() || false;
+    // Set isAwake (physics isMoving, aka. is awake)
+    characterData.isAwake = physObj.rigidBody?.isMoving() || false;
 
     // No need to calculate anything if the character is not moving
-    if (!characterData.isMoving) return;
+    if (!characterData.isAwake) return;
 
     // This is the backup 'isGrounded' check
     if (!characterData.__touchingGroundColliders.length) detectGround();

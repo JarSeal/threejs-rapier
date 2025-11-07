@@ -88,7 +88,10 @@ export const addCheckerboardMaterialToMesh = (
     nodeMaterialType: 'PHONGNODEMATERIAL',
   }
 ) => {
-  const repeatFactor = getUVRepeatFactor(mesh, METERS_PER_CHECKER_TILE);
+  const repeatFactor = getUVRepeatFactor(
+    mesh,
+    opts?.metersPerCheckerTile || METERS_PER_CHECKER_TILE
+  );
 
   // TSL Uniforms
   const uvRepeat = uniform(repeatFactor);

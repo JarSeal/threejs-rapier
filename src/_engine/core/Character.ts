@@ -237,8 +237,8 @@ export const createTrackCharacterContent = (winData?: { [key: string]: unknown }
   const trackerContainer = debuggerTrackerWindowCmp.add({
     html: () => {
       const character = characters[d.id];
+      if (!character?.data) return '';
       const data = character.data;
-      if (!data) return '';
       const keys = data ? Object.keys(data) : [];
       let htmlString = '<ul>';
       for (let i = 0; i < keys.length; i++) {

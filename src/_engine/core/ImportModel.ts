@@ -14,7 +14,7 @@ import {
 } from './PhysicsRapier';
 import { generateUUID } from 'three/src/math/MathUtils.js';
 
-type AdditionalPhysicsParams = {
+export type AdditionalImportPhysicsParams = {
   isPhysObj?: boolean;
   keepMesh?: boolean;
   id?: string;
@@ -36,8 +36,8 @@ export type ImportModelParams = {
    * present (a collider and a rigidBody must be defined).
    */
   physicsParams?:
-    | Partial<PhysicsParams & AdditionalPhysicsParams>
-    | Partial<PhysicsParams & AdditionalPhysicsParams>[];
+    | Partial<PhysicsParams & AdditionalImportPhysicsParams>
+    | Partial<PhysicsParams & AdditionalImportPhysicsParams>[];
 };
 
 type ImportReturnObj = {
@@ -400,7 +400,7 @@ type CleanUpCustomPropsResult = {
 
 const cleanUpCustomProps = (
   userData: CustomPropsUserData,
-  overridePhysParams?: Partial<PhysicsParams & AdditionalPhysicsParams>,
+  overridePhysParams?: Partial<PhysicsParams & AdditionalImportPhysicsParams>,
   meshId?: string
 ): CleanUpCustomPropsResult => {
   userData = {
