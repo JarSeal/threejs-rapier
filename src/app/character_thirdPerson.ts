@@ -527,6 +527,15 @@ export const createThirdPersonCharacter = (opts: {
             },
           },
           {
+            id: 'charStopMoveAndRotate',
+            key: [...inputMappings.moveForward, ...inputMappings.moveBackward],
+            type: 'KEY_UP',
+            fn: (e) => {
+              e.preventDefault();
+              characterData.hasMoveInput = false;
+            },
+          },
+          {
             id: 'charJump',
             key: inputMappings.jump,
             type: 'KEY_DOWN',
