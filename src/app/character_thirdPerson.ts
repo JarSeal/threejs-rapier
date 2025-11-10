@@ -43,6 +43,7 @@ export type CharacterData = {
   _groundDetectorRadius: number;
   _rotateSpeed: number;
   _maxVelocity: number;
+  _moveYOffset: number;
   _jumpAmount: number;
   _inTheAirDiminisher: number;
   _accumulateVeloPerInterval: number;
@@ -51,9 +52,11 @@ export type CharacterData = {
   _isFallingThreshold: number;
   _runningMultiplier: number;
   _crouchingMultiplier: number;
+  _keepMovingAfterJumpThreshold: number;
   __isFallingStartTime: number;
   __lviCheckTime: number;
   __jumpTime: number;
+  __lastIsGroundedState: boolean;
   __touchingWallColliders: Collider['handle'][];
   __touchingGroundColliders: Collider['handle'][];
 };
@@ -90,6 +93,7 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   _groundDetectorRadius: 0.8,
   _rotateSpeed: 5,
   _maxVelocity: 3.7,
+  _moveYOffset: 0, // something like 0.15 makes climb steeper slopes
   _jumpAmount: 5,
   _inTheAirDiminisher: 0.2,
   _accumulateVeloPerInterval: 30,
@@ -97,9 +101,11 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   _isFallingThreshold: 1200,
   _runningMultiplier: 1.5,
   _crouchingMultiplier: 0.9,
+  _keepMovingAfterJumpThreshold: -10,
   __isFallingStartTime: 0,
   __lviCheckTime: 0,
   __jumpTime: 0,
+  __lastIsGroundedState: false,
   __touchingWallColliders: [],
   __touchingGroundColliders: [],
 };
@@ -252,7 +258,12 @@ export const createThirdPersonCharacter = (opts: {
             ? Math.min((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo)
             : Math.max((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo);
 
-        const velo = new THREE.Vector3(xAddition, rigidBody.linvel()?.y || 0, zAddition);
+        let charLinvelY = rigidBody.linvel()?.y || 0;
+        if (characterData.isGrounded) {
+          charLinvelY += characterData._moveYOffset;
+        }
+
+        const velo = new THREE.Vector3(xAddition, charLinvelY, zAddition);
         rigidBody.setLinvel(velo, !rigidBody.isMoving());
 
         if (characterData.isNearWall) {
@@ -417,6 +428,26 @@ export const createThirdPersonCharacter = (opts: {
               characterData.isGrounded = true;
               getFloorNormal(getPhysicsWorld(), characterBody, characterData);
 
+              const physObj = getPhysicsObject(thirdPersonCharacterObject.physObjectId);
+              if (
+                characterData._keepMovingAfterJumpThreshold <
+                  (physObj?.rigidBody?.linvel().y || -5) &&
+                !characterData.isFalling &&
+                !characterData.__lastIsGroundedState &&
+                characterData.hasMoveInput
+              ) {
+                // If just landed, then apply Y linvel to the rigidBody
+                physObj?.rigidBody?.setLinvel(
+                  new THREE.Vector3(
+                    physObj?.rigidBody.linvel().x,
+                    0,
+                    physObj?.rigidBody.linvel().z
+                  ),
+                  true
+                );
+              }
+              characterData.__lastIsGroundedState = characterData.isGrounded;
+
               // isOnStairs check:
               const userData = stairsCollider.parent()?.userData as {
                 isStairs: boolean;
@@ -459,6 +490,8 @@ export const createThirdPersonCharacter = (opts: {
             if (characterData.isGrounded) {
               getFloorNormal(getPhysicsWorld(), characterBody, characterData);
             }
+
+            characterData.__lastIsGroundedState = characterData.isGrounded;
 
             // isOnStairs check:
             const userData = stairsCollider.parent()?.userData as {
@@ -518,6 +551,7 @@ export const createThirdPersonCharacter = (opts: {
               // Forward and backward
               if (keysPressed.some((key) => moveInputMappings.includes(key))) {
                 charData.hasMoveInput = true;
+                // Set small y force to character for smoother moving if hasMoveInput
                 controlFns.move(
                   keysPressed.some((key) => inputMappings.moveForward.includes(key))
                     ? 'FORWARD'
