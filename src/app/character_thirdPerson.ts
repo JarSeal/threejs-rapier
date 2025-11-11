@@ -35,6 +35,7 @@ export type CharacterData = {
   isCrouching: boolean;
   isNearWall: boolean;
   isOnStairs: boolean;
+  isSliding: boolean;
   groundNormal: { x: number; y: number; z: number };
   _height: number;
   _radius: number;
@@ -85,6 +86,7 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   isCrouching: false,
   isNearWall: false,
   isOnStairs: false,
+  isSliding: false,
   groundNormal: { x: 0, y: 1, z: 0 },
   _height: 1.6,
   _radius: 0.5,
@@ -472,6 +474,10 @@ export const createThirdPersonCharacter = (opts: {
                   }
                 }
               }
+
+              // isSliding check:
+              // is not on stairs, has world velocity
+              // if (!characterData.isOnStairs && characterData.) {}
               return;
             }
             // isGrounded check:
