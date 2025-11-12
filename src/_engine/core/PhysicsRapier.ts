@@ -293,7 +293,7 @@ const getSceneIdForPhysics = (
   return sId;
 };
 
-const createRigidBody = (physicsParams: PhysicsParams) => {
+export const createRigidBody = (physicsParams: PhysicsParams) => {
   const rigidBodyParams = physicsParams.rigidBody;
   let rigidBody: Rapier.RigidBody | undefined = undefined;
   let rigidBodyDesc: Rapier.RigidBodyDesc;
