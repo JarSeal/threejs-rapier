@@ -90,6 +90,9 @@ export type OpenDraggableWindowProps = {
 };
 
 let draggableWindows: { [id: string]: DraggableWindow } = {};
+const draggableWindowCmpsToRegister: {
+  [id: string]: TCMP | ((data?: { [key: string]: unknown }) => TCMP);
+} = {};
 let listenersCreated = false;
 let orderNr = 0;
 let draggingPosId: null | string = null;
@@ -984,8 +987,6 @@ export const loadDraggableWindowStatesFromLS = () => {
   const savedStates = lsGetItem(LS_KEY, draggableWindows);
   draggableWindows = { ...draggableWindows, ...savedStates };
 
-  const draggableWindowsFromConfig = getConfig().draggableWindows || {};
-
   const keys = Object.keys(draggableWindows).sort((a, b) => {
     const aOrderNr = draggableWindows[a]?.orderNr || 9999;
     const bOrderNr = draggableWindows[b]?.orderNr || 9999;
@@ -1001,7 +1002,7 @@ export const loadDraggableWindowStatesFromLS = () => {
       activeState = draggableWindows[id];
       continue;
     }
-    const state = draggableWindowsFromConfig[id] || {};
+    const state = draggableWindowCmpsToRegister[id] || {};
     draggableWindows[id] = { ...draggableWindows[id], ...state };
 
     if (draggableWindows[id].isOpen) openDraggableWindow({ id });
@@ -1009,7 +1010,7 @@ export const loadDraggableWindowStatesFromLS = () => {
 
   if (activeState) {
     const id = activeState.id;
-    const state = draggableWindowsFromConfig[id] || {};
+    const state = draggableWindowCmpsToRegister[id] || {};
     draggableWindows[id] = { ...draggableWindows[id], ...state };
     openDraggableWindow({ id });
   }
@@ -1031,4 +1032,17 @@ export const getDraggableWindowsStartingWith = (startingWithId: string) => {
 export const addOnCloseToWindow = (id: string, onClose: () => void) => {
   if (!draggableWindows[id]) return;
   draggableWindows[id].onClose = onClose;
+};
+
+export const registerDraggableWindowCmp = (
+  id: string,
+  content: TCMP | ((data?: { [key: string]: unknown }) => TCMP)
+) => {
+  if (draggableWindows[id]) {
+    draggableWindows[id].content = content;
+    if (draggableWindows[id].isOpen) updateDraggableWindow(id);
+    return;
+  }
+
+  draggableWindowCmpsToRegister[id] = content;
 };

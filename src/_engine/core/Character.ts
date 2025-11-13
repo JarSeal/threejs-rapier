@@ -27,6 +27,7 @@ import {
   getDraggableWindow,
   getDraggableWindowsStartingWith,
   openDraggableWindow,
+  registerDraggableWindowCmp,
   updateDraggableWindow,
 } from './UI/DraggableWindow';
 import { isDebugEnvironment } from './Config';
@@ -223,19 +224,17 @@ export const registerOnDeleteCharacter = (id: string, fn: () => void) =>
 // *****************************
 
 let debuggerListCmp: TCMP | null = null;
-// let debuggerWindowCmp: TCMP | null = null;
-// let debuggerWindowPane: Pane | null = null;
 const debuggerWindowCmp: { [id: string]: TCMP } = {};
 const debuggerWindowPane: { [id: string]: Pane } = {};
 let debuggerTrackerWindowCmp: TCMP | null = null;
 let trackCharLoopIndex = -1;
 const CHAR_EDIT_WIN_ID = 'characterEditorWindow';
-export const CHAR_TRACKER_WIN_ID = 'characterDataTrackerWindow';
+const CHAR_TRACKER_WIN_ID = 'characterDataTrackerWindow';
 
-export const getEditWindowId = (charId: string) => `${CHAR_EDIT_WIN_ID}_${charId}`;
-export const getTrackerWindowId = (charId: string) => `${CHAR_TRACKER_WIN_ID}_${charId}`;
+const getEditWindowId = (charId: string) => `${CHAR_EDIT_WIN_ID}_${charId}`;
+const getTrackerWindowId = (charId: string) => `${CHAR_TRACKER_WIN_ID}_${charId}`;
 
-export const createTrackCharacterContent = (winData?: { [key: string]: unknown }) => {
+const createTrackCharacterContent = (winData?: { [key: string]: unknown }) => {
   const TRACKER_UPDATE_INTERVAL = 0.0000001;
   const d = winData as { id: string; winId: string };
   debuggerTrackerWindowCmp = CMP();
@@ -279,7 +278,7 @@ export const createTrackCharacterContent = (winData?: { [key: string]: unknown }
 
   // @TODO: at some point fix the onClose registering (this is a hack to get it working)
   setTimeout(() => {
-    addOnCloseToWindow(CHAR_TRACKER_WIN_ID, () => {
+    addOnCloseToWindow(getTrackerWindowId(d.id), () => {
       deleteSceneAppLooper(trackCharLoopIndex);
     });
   }, 200);
@@ -287,7 +286,7 @@ export const createTrackCharacterContent = (winData?: { [key: string]: unknown }
   return debuggerTrackerWindowCmp;
 };
 
-export const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
+const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   const d = data as { id: string; winId: string };
   const character = characters[d.id];
   if (debuggerWindowPane[d.id]) {
@@ -327,14 +326,14 @@ export const createEditCharacterContent = (data?: { [key: string]: unknown }) =>
       `<button title="Open character data tracker">${getSvgIcon('personArmsUp')}</button>`,
     onClick: () => {
       openDraggableWindow({
-        id: CHAR_TRACKER_WIN_ID,
+        id: getTrackerWindowId(d.id),
         position: { x: 130, y: 80 },
         size: { w: 400, h: 400 },
         saveToLS: true,
         title: `Character data: ${character.name || `[${character.id}]`}`,
         isDebugWindow: true,
         content: createTrackCharacterContent,
-        data: { id: character.id, winId: CHAR_TRACKER_WIN_ID },
+        data: { id: character.id, winId: getTrackerWindowId(d.id) },
         closeOnSceneChange: true,
         removeOnClose: true, // @TODO: Without this the tracker won't work on the second time opening it. Fix this at some point in the DraggableWindow.
       });
@@ -354,7 +353,7 @@ export const createEditCharacterContent = (data?: { [key: string]: unknown }) =>
       `<button title="Remove character (only for this browser load, does not delete character permanently)">${getSvgIcon('thrash')}</button>`,
     onClick: () => {
       closeDraggableWindow(getEditWindowId(d.id));
-      closeDraggableWindow(CHAR_TRACKER_WIN_ID);
+      closeDraggableWindow(getTrackerWindowId(d.id));
       deleteCharacter(character.id);
     },
   });
@@ -516,10 +515,22 @@ export const updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (!isDebugEnvironment()) return;
   if (only !== 'WINDOW') debuggerListCmp?.update({ html: createCharactersDebuggerList });
   if (only === 'LIST') return;
-  const winStates = getDraggableWindowsStartingWith(CHAR_EDIT_WIN_ID);
+  const winStates = [
+    ...getDraggableWindowsStartingWith(CHAR_EDIT_WIN_ID),
+    ...getDraggableWindowsStartingWith(CHAR_TRACKER_WIN_ID),
+  ];
   for (let i = 0; i < winStates.length; i++) {
     const winState = winStates[i];
-    if (winState) updateDraggableWindow(winState.id);
+    if (winState) {
+      if (!winState.content) {
+        if (winState.id?.startsWith(CHAR_EDIT_WIN_ID)) {
+          registerDraggableWindowCmp(winState.id, createEditCharacterContent);
+        } else if (winState.id?.startsWith(CHAR_TRACKER_WIN_ID)) {
+          registerDraggableWindowCmp(winState.id, createTrackCharacterContent);
+        }
+      }
+      updateDraggableWindow(winState.id);
+    }
   }
 };
 
