@@ -25,6 +25,7 @@ import {
   addOnCloseToWindow,
   closeDraggableWindow,
   getDraggableWindow,
+  getDraggableWindowsStartingWith,
   openDraggableWindow,
   updateDraggableWindow,
 } from './UI/DraggableWindow';
@@ -222,12 +223,17 @@ export const registerOnDeleteCharacter = (id: string, fn: () => void) =>
 // *****************************
 
 let debuggerListCmp: TCMP | null = null;
-let debuggerWindowCmp: TCMP | null = null;
-let debuggerWindowPane: Pane | null = null;
+// let debuggerWindowCmp: TCMP | null = null;
+// let debuggerWindowPane: Pane | null = null;
+const debuggerWindowCmp: { [id: string]: TCMP } = {};
+const debuggerWindowPane: { [id: string]: Pane } = {};
 let debuggerTrackerWindowCmp: TCMP | null = null;
 let trackCharLoopIndex = -1;
-export const CHAR_EDIT_WIN_ID = 'characterEditorWindow';
+const CHAR_EDIT_WIN_ID = 'characterEditorWindow';
 export const CHAR_TRACKER_WIN_ID = 'characterDataTrackerWindow';
+
+export const getEditWindowId = (charId: string) => `${CHAR_EDIT_WIN_ID}_${charId}`;
+export const getTrackerWindowId = (charId: string) => `${CHAR_TRACKER_WIN_ID}_${charId}`;
 
 export const createTrackCharacterContent = (winData?: { [key: string]: unknown }) => {
   const TRACKER_UPDATE_INTERVAL = 0.0000001;
@@ -284,33 +290,33 @@ export const createTrackCharacterContent = (winData?: { [key: string]: unknown }
 export const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   const d = data as { id: string; winId: string };
   const character = characters[d.id];
-  if (debuggerWindowPane) {
-    debuggerWindowPane.dispose();
-    debuggerWindowPane = null;
+  if (debuggerWindowPane[d.id]) {
+    debuggerWindowPane[d.id].dispose();
+    delete debuggerWindowPane[d.id];
   }
-  if (debuggerWindowCmp) {
-    debuggerWindowCmp.remove();
-    debuggerWindowCmp = null;
+  if (debuggerWindowCmp[d.id]) {
+    debuggerWindowCmp[d.id].remove();
+    delete debuggerWindowCmp[d.id];
   }
   if (!character) {
     // We want to close the window when no character is found,
     // but we have to return first, so wait one iteration.
     setTimeout(() => {
-      closeDraggableWindow(CHAR_EDIT_WIN_ID);
+      closeDraggableWindow(getEditWindowId(d.id));
     }, 0);
     return CMP();
   }
 
-  addOnCloseToWindow(CHAR_EDIT_WIN_ID, () => {
+  addOnCloseToWindow(getEditWindowId(d.id), () => {
     updateDebuggerCharactersListSelectedClass('');
   });
   updateDebuggerCharactersListSelectedClass(d.id);
 
-  debuggerWindowCmp = CMP({
-    onRemoveCmp: () => (debuggerWindowPane = null),
+  debuggerWindowCmp[d.id] = CMP({
+    onRemoveCmp: () => delete debuggerWindowPane[d.id],
   });
 
-  debuggerWindowPane = new Pane({ container: debuggerWindowCmp.elem });
+  debuggerWindowPane[d.id] = new Pane({ container: debuggerWindowCmp[d.id].elem });
 
   // @NOTE: The copy code button is not that easy to implement here
   // because the character object only has references to the mesh and phys objects,
@@ -347,13 +353,13 @@ export const createEditCharacterContent = (data?: { [key: string]: unknown }) =>
     html: () =>
       `<button title="Remove character (only for this browser load, does not delete character permanently)">${getSvgIcon('thrash')}</button>`,
     onClick: () => {
-      deleteCharacter(character.id);
-      closeDraggableWindow(CHAR_EDIT_WIN_ID);
+      closeDraggableWindow(getEditWindowId(d.id));
       closeDraggableWindow(CHAR_TRACKER_WIN_ID);
+      deleteCharacter(character.id);
     },
   });
 
-  debuggerWindowCmp.add({
+  debuggerWindowCmp[d.id].add({
     prepend: true,
     class: ['winNotRightPaddedContent', 'winFlexContent'],
     html: () => `<div>
@@ -374,7 +380,7 @@ export const createEditCharacterContent = (data?: { [key: string]: unknown }) =>
   });
 
   const physObject = getPhysicsObject(character.physObjectId);
-  if (!physObject) return debuggerWindowCmp;
+  if (!physObject) return debuggerWindowCmp[d.id];
 
   if (physObject.rigidBody) {
     const rigidBody = {
@@ -389,26 +395,26 @@ export const createEditCharacterContent = (data?: { [key: string]: unknown }) =>
       ),
     };
     // Position
-    const positionInput = debuggerWindowPane.addBinding(rigidBody, 'position', {
+    const positionInput = debuggerWindowPane[d.id].addBinding(rigidBody, 'position', {
       label: 'Position',
     });
-    debuggerWindowPane.addButton({ title: 'Set position' }).on('click', () => {
+    debuggerWindowPane[d.id].addButton({ title: 'Set position' }).on('click', () => {
       physObject.rigidBody?.setTranslation(
         new THREE.Vector3(rigidBody.position.x, rigidBody.position.y, rigidBody.position.z),
         true
       );
     });
-    debuggerWindowPane.addButton({ title: 'Update position input' }).on('click', () => {
+    debuggerWindowPane[d.id].addButton({ title: 'Update position input' }).on('click', () => {
       rigidBody.position = physObject.rigidBody?.translation() || rigidBody.position;
       positionInput.refresh();
     });
-    debuggerWindowPane.addBlade({ view: 'separator' });
+    debuggerWindowPane[d.id].addBlade({ view: 'separator' });
     // Rotation
-    const rotationInput = debuggerWindowPane.addBinding(rigidBody, 'rotation', {
+    const rotationInput = debuggerWindowPane[d.id].addBinding(rigidBody, 'rotation', {
       label: 'Rotation',
       step: Math.PI / 8,
     });
-    debuggerWindowPane.addButton({ title: 'Set rotation' }).on('click', () => {
+    debuggerWindowPane[d.id].addButton({ title: 'Set rotation' }).on('click', () => {
       physObject.rigidBody?.setRotation(
         new THREE.Quaternion().setFromEuler(
           new THREE.Euler(rigidBody.rotation.x, rigidBody.rotation.y, rigidBody.rotation.z)
@@ -416,7 +422,7 @@ export const createEditCharacterContent = (data?: { [key: string]: unknown }) =>
         true
       );
     });
-    debuggerWindowPane.addButton({ title: 'Update rotation input' }).on('click', () => {
+    debuggerWindowPane[d.id].addButton({ title: 'Update rotation input' }).on('click', () => {
       rigidBody.rotation = new THREE.Euler().setFromQuaternion(
         new THREE.Quaternion(
           physObject.rigidBody?.rotation().x,
@@ -429,7 +435,7 @@ export const createEditCharacterContent = (data?: { [key: string]: unknown }) =>
     });
   }
 
-  return debuggerWindowCmp;
+  return debuggerWindowCmp[d.id];
 };
 
 const createCharactersDebuggerList = () => {
@@ -440,20 +446,20 @@ const createCharactersDebuggerList = () => {
     const character = characters[keys[i]];
     const button = CMP({
       onClick: () => {
-        const winState = getDraggableWindow(CHAR_EDIT_WIN_ID);
+        const winState = getDraggableWindow(getEditWindowId(character.id));
         if (winState?.isOpen && winState?.data?.id === keys[i]) {
-          closeDraggableWindow(CHAR_EDIT_WIN_ID);
+          closeDraggableWindow(getEditWindowId(character.id));
           return;
         }
         openDraggableWindow({
-          id: CHAR_EDIT_WIN_ID,
+          id: getEditWindowId(character.id),
           position: { x: 110, y: 60 },
           size: { w: 400, h: 400 },
           saveToLS: true,
           title: `Edit character: ${character.name || `[${character.id}]`}`,
           isDebugWindow: true,
           content: createEditCharacterContent,
-          data: { id: character.id, CHAR_EDIT_WIN_ID },
+          data: { id: character.id, CHAR_EDIT_WIN_ID: getEditWindowId(character.id) },
           removeOnSceneChange: true, // @TODO: This is the only way to get the character window to work properly after scene change (and coming back), fix this
           onClose: () => updateDebuggerCharactersListSelectedClass(null),
         });
@@ -475,6 +481,7 @@ const createCharactersDebuggerList = () => {
 };
 
 export const createCharactersDebuggerGUI = () => {
+  if (!isDebugEnvironment()) return;
   const icon = getSvgIcon('personArmsUp');
   createDebuggerTab({
     id: 'charactersControls',
@@ -488,48 +495,47 @@ export const createCharactersDebuggerGUI = () => {
       );
       debuggerListCmp = CMP({ id: 'debuggerCharactersList', html: createCharactersDebuggerList });
       container.add(debuggerListCmp);
-      const winState = getDraggableWindow(CHAR_EDIT_WIN_ID);
-      if (winState?.isOpen && winState.data?.id) {
-        const id = (winState.data as { id: string }).id;
-        updateDebuggerCharactersListSelectedClass(id);
+      const winStates = getDraggableWindowsStartingWith(CHAR_EDIT_WIN_ID);
+      for (let i = 0; i < winStates.length; i++) {
+        const winState = winStates[i];
+        if (winState?.isOpen && winState.data?.id) {
+          const id = (winState.data as { id: string }).id;
+          updateDebuggerCharactersListSelectedClass(id);
+        }
       }
       return container;
     },
   });
+
+  setTimeout(() => {
+    updateCharactersDebuggerGUI();
+  }, 2000);
 };
 
 export const updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (!isDebugEnvironment()) return;
   if (only !== 'WINDOW') debuggerListCmp?.update({ html: createCharactersDebuggerList });
   if (only === 'LIST') return;
-  const winState = getDraggableWindow(CHAR_EDIT_WIN_ID);
-  if (winState) updateDraggableWindow(CHAR_EDIT_WIN_ID);
+  const winStates = getDraggableWindowsStartingWith(CHAR_EDIT_WIN_ID);
+  for (let i = 0; i < winStates.length; i++) {
+    const winState = winStates[i];
+    if (winState) updateDraggableWindow(winState.id);
+  }
 };
 
 export const updateDebuggerCharactersListSelectedClass = (id: string | null) => {
+  if (!isDebugEnvironment()) return;
   const ulElem = debuggerListCmp?.elem;
   if (!ulElem) return;
 
   for (const child of ulElem.children) {
     child.classList.remove('selected');
-    if (id === null) continue;
+  }
+
+  if (!id) return;
+
+  for (const child of ulElem.children) {
     const elemId = child.getAttribute('data-id');
     if (elemId === id) child.classList.add('selected');
   }
 };
-
-// export const mergeCameraDataFromLS = (id: string | undefined) => {
-//   if (!isDebugEnvironment() || !id) return;
-
-//   const curState = lsGetItem(LS_KEY, {});
-//   if (!id || !curState[id]) return;
-
-//   const state = curState[id];
-//   const camera = cameras[id];
-
-//   if (state.saveToLS !== undefined) camera.userData.saveToLS = state.saveToLS;
-//   if (state.showHelper !== undefined) camera.userData.showHelper = state.showHelper;
-//   if (state.position) camera.position.set(state.position.x, state.position.y, state.position.z);
-//   if (state.cameraNear !== undefined) camera.near = state.cameraNear;
-//   if (state.cameraFar !== undefined) camera.far = state.cameraFar;
-// };

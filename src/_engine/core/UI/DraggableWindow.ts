@@ -430,6 +430,15 @@ export const closeDraggableWindow = (id: string) => {
   if (state.onClose) state.onClose();
 };
 
+export const closeAllDraggableWindowsStartingWith = (startingWithId: string) => {
+  const allIds = Object.keys(draggableWindows);
+  for (let i = 0; i < allIds.length; i++) {
+    if (allIds[i].startsWith(startingWithId)) {
+      closeDraggableWindow(allIds[i]);
+    }
+  }
+};
+
 export const toggleCollapse = (id: string) => {
   const state = draggableWindows[id];
   if (!state || !state.windowCMP) return;
@@ -1007,6 +1016,17 @@ export const loadDraggableWindowStatesFromLS = () => {
 };
 
 export const getDraggableWindow = (id: string) => draggableWindows[id];
+
+export const getDraggableWindowsStartingWith = (startingWithId: string) => {
+  const allIds = Object.keys(draggableWindows);
+  const returnArray = [];
+  for (let i = 0; i < allIds.length; i++) {
+    if (allIds[i].startsWith(startingWithId)) {
+      returnArray.push(draggableWindows[allIds[i]]);
+    }
+  }
+  return returnArray;
+};
 
 export const addOnCloseToWindow = (id: string, onClose: () => void) => {
   if (!draggableWindows[id]) return;
