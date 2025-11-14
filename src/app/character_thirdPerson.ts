@@ -19,6 +19,7 @@ import { createSceneAppLooper, getRootScene } from '../_engine/core/Scene';
 import { castRayFromPoints } from '../_engine/core/Raycast';
 import RAPIER, { type Collider } from '@dimforge/rapier3d-compat';
 import { existsOrThrow } from '../_engine/utils/helpers';
+import { LEVEL_GROUND_NORMAL } from '../_engine/utils/constants';
 
 // @TODO: add comments for each
 // If a prop has one underscore (_) then it means it is a configuration,
@@ -36,6 +37,7 @@ export type CharacterData = {
   isNearWall: boolean;
   isOnStairs: boolean;
   isSliding: boolean;
+  groundIsWalkable: boolean;
   groundNormal: { x: number; y: number; z: number };
   _height: number;
   _radius: number;
@@ -44,6 +46,8 @@ export type CharacterData = {
   _groundDetectorRadius: number;
   _rotateSpeed: number;
   _maxVelocity: number;
+  _maxWalkableAngle: number;
+  _minSlidingVelocity: number;
   _moveYOffset: number;
   _jumpAmount: number;
   _inTheAirDiminisher: number;
@@ -58,6 +62,7 @@ export type CharacterData = {
   __lviCheckTime: number;
   __jumpTime: number;
   __lastIsGroundedState: boolean;
+  __maxWalkableAngleCos: number;
   __touchingWallColliders: Collider['handle'][];
   __touchingGroundColliders: Collider['handle'][];
 };
@@ -87,6 +92,7 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   isNearWall: false,
   isOnStairs: false,
   isSliding: false,
+  groundIsWalkable: true,
   groundNormal: { x: 0, y: 1, z: 0 },
   _height: 1.6,
   _radius: 0.5,
@@ -95,6 +101,8 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   _groundDetectorRadius: 0.8,
   _rotateSpeed: 5,
   _maxVelocity: 3.7,
+  _maxWalkableAngle: Math.PI / 4, // 45 degrees (radians)
+  _minSlidingVelocity: 2,
   _moveYOffset: 0, // something like 0.15 makes climb steeper slopes
   _jumpAmount: 5,
   _inTheAirDiminisher: 0.2,
@@ -108,6 +116,7 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   __lviCheckTime: 0,
   __jumpTime: 0,
   __lastIsGroundedState: false,
+  __maxWalkableAngleCos: 0,
   __touchingWallColliders: [],
   __touchingGroundColliders: [],
 };
@@ -153,6 +162,9 @@ export const createThirdPersonCharacter = (opts: {
   // Combine character data
   const characterData = { ...getDefaultCharacterData(), ...charData };
   const character: Partial<ThirdPersonCharacter> = { charData: characterData };
+
+  // Set __maxWalkableAngleCos
+  characterData.__maxWalkableAngleCos = Math.cos(characterData._maxWalkableAngle);
 
   // Create third person camera
   thirdPersonCamera = createCamera(`thirdPersonCam-${id}`, {
@@ -748,7 +760,7 @@ export const createThirdPersonCharacter = (opts: {
     // Set isAwake (physics isMoving, aka. is awake)
     characterData.isAwake = physObj.rigidBody?.isMoving() || false;
 
-    // No need to calculate anything if the character is not moving
+    // No need to calculate anything if the character is not awake (is not moving either)
     if (!characterData.isAwake) return;
 
     // This is the backup 'isGrounded' check
@@ -773,12 +785,24 @@ export const createThirdPersonCharacter = (opts: {
       Math.round(Math.abs(physObj.rigidBody?.linvel().y || 0) * 1000) / 1000,
       Math.round(Math.abs(physObj.rigidBody?.linvel().z || 0) * 1000) / 1000
     );
+    const worldVelo = Math.round(new THREE.Vector3(velo.x, velo.y, velo.z).length() * 1000) / 1000;
     characterData.velocity = {
       x: velo.x,
       y: velo.y,
       z: velo.z,
-      world: Math.round(new THREE.Vector3(velo.x, velo.y, velo.z).length() * 1000) / 1000,
+      world: worldVelo,
     };
+
+    // Set isSliding
+    characterData.isSliding = false;
+    if (
+      characterData.isGrounded &&
+      worldVelo > characterData._minSlidingVelocity &&
+      !characterData.hasMoveInput &&
+      !characterData.isOnStairs
+    ) {
+      characterData.isSliding = true;
+    }
 
     // Set position
     characterData.position = physObj.rigidBody?.translation() || { x: 0, y: 0, z: 0 };
@@ -914,7 +938,7 @@ const getFloorNormal = (
   const capsuleRadius = (collider.shape as RAPIER.Capsule).radius;
   const capsuleHeight = (collider.shape as RAPIER.Capsule).halfHeight * 2 + capsuleRadius * 2;
 
-  const maxToi = capsuleHeight / 2 + 0.25;
+  const maxToi = capsuleHeight / 2 + 0.5;
   const ray = new RAPIER.Ray(characterBody.translation(), { x: 0, y: -1, z: 0 });
   const hit = world.castRayAndGetNormal(
     ray,
@@ -926,5 +950,17 @@ const getFloorNormal = (
     characterBody
   );
 
-  characterData.groundNormal = hit?.normal || { x: 0, y: 1, z: 0 };
+  const groundNormal = hit?.normal || { x: 0, y: 1, z: 0 };
+  characterData.groundNormal = { x: groundNormal.x, y: groundNormal.y, z: groundNormal.z };
+  const groundDot = new THREE.Vector3(groundNormal.x, groundNormal.y, groundNormal.z).dot(
+    LEVEL_GROUND_NORMAL
+  );
+
+  // Set groundIsWalkable
+  characterData.groundIsWalkable = true;
+  if (hit && characterData.__touchingGroundColliders.includes(hit.collider.handle)) {
+    if (groundDot <= characterData.__maxWalkableAngleCos) {
+      characterData.groundIsWalkable = false;
+    }
+  }
 };
