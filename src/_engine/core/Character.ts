@@ -307,9 +307,9 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   }
 
   addOnCloseToWindow(getEditWindowId(d.id), () => {
-    updateDebuggerCharactersListSelectedClass('');
+    updateDebuggerCharactersListSelectedClass();
   });
-  updateDebuggerCharactersListSelectedClass(d.id);
+  updateDebuggerCharactersListSelectedClass();
 
   debuggerWindowCmp[d.id] = CMP({
     onRemoveCmp: () => delete debuggerWindowPane[d.id],
@@ -460,9 +460,9 @@ const createCharactersDebuggerList = () => {
           content: createEditCharacterContent,
           data: { id: character.id, CHAR_EDIT_WIN_ID: getEditWindowId(character.id) },
           removeOnSceneChange: true, // @TODO: This is the only way to get the character window to work properly after scene change (and coming back), fix this
-          onClose: () => updateDebuggerCharactersListSelectedClass(null),
+          onClose: updateDebuggerCharactersListSelectedClass,
         });
-        updateDebuggerCharactersListSelectedClass(keys[i]);
+        updateDebuggerCharactersListSelectedClass();
       },
       html: `<button class="listItemWithId">
   <span class="itemId">[${character.id}]</span>
@@ -497,9 +497,8 @@ export const createCharactersDebuggerGUI = () => {
       const winStates = getDraggableWindowsStartingWith(CHAR_EDIT_WIN_ID);
       for (let i = 0; i < winStates.length; i++) {
         const winState = winStates[i];
-        if (winState?.isOpen && winState.data?.id) {
-          const id = (winState.data as { id: string }).id;
-          updateDebuggerCharactersListSelectedClass(id);
+        if (winState?.isOpen) {
+          updateDebuggerCharactersListSelectedClass();
         }
       }
       return container;
@@ -508,7 +507,7 @@ export const createCharactersDebuggerGUI = () => {
 
   setTimeout(() => {
     updateCharactersDebuggerGUI();
-  }, 2000);
+  }, 0);
 };
 
 export const updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
@@ -524,9 +523,15 @@ export const updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
     if (winState) {
       if (!winState.content) {
         if (winState.id?.startsWith(CHAR_EDIT_WIN_ID)) {
-          registerDraggableWindowCmp(winState.id, createEditCharacterContent);
+          registerDraggableWindowCmp(winState.id, {
+            content: createEditCharacterContent,
+            onClose: updateDebuggerCharactersListSelectedClass,
+          });
         } else if (winState.id?.startsWith(CHAR_TRACKER_WIN_ID)) {
-          registerDraggableWindowCmp(winState.id, createTrackCharacterContent);
+          registerDraggableWindowCmp(winState.id, {
+            content: createTrackCharacterContent,
+            onClose: updateDebuggerCharactersListSelectedClass,
+          });
         }
       }
       updateDraggableWindow(winState.id);
@@ -534,7 +539,7 @@ export const updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   }
 };
 
-export const updateDebuggerCharactersListSelectedClass = (id: string | null) => {
+export const updateDebuggerCharactersListSelectedClass = () => {
   if (!isDebugEnvironment()) return;
   const ulElem = debuggerListCmp?.elem;
   if (!ulElem) return;
@@ -543,10 +548,10 @@ export const updateDebuggerCharactersListSelectedClass = (id: string | null) => 
     child.classList.remove('selected');
   }
 
-  if (!id) return;
-
   for (const child of ulElem.children) {
     const elemId = child.getAttribute('data-id');
-    if (elemId === id) child.classList.add('selected');
+    if (!elemId) continue;
+    const winState = getDraggableWindow(getEditWindowId(elemId));
+    if (winState?.isOpen) child.classList.add('selected');
   }
 };

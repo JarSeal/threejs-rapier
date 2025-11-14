@@ -2,6 +2,7 @@ import { CMP, getCmpById, TCMP } from '../../utils/CMP';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lerror } from '../../utils/Logger';
 import { getWindowSize } from '../../utils/Window';
+import { updateDebuggerCharactersListSelectedClass } from '../Character';
 import { getConfig } from '../Config';
 import { getHUDRootCMP } from '../HUD';
 import { addResizer, deleteResizer } from '../MainLoop';
@@ -91,7 +92,10 @@ export type OpenDraggableWindowProps = {
 
 let draggableWindows: { [id: string]: DraggableWindow } = {};
 const draggableWindowCmpsToRegister: {
-  [id: string]: TCMP | ((data?: { [key: string]: unknown }) => TCMP);
+  [id: string]: {
+    content?: TCMP | ((data?: { [key: string]: unknown }) => TCMP);
+    onClose?: () => void;
+  };
 } = {};
 let listenersCreated = false;
 let orderNr = 0;
@@ -420,6 +424,7 @@ export const closeDraggableWindow = (id: string) => {
   }
 
   if (state.removeOnClose) {
+    if (state.onClose) state.onClose();
     removeDraggableWindow(state.id);
     return;
   }
@@ -602,6 +607,7 @@ export const updateDraggableWindow = (id: string) => {
   if (!state?.isOpen) return;
   removeDraggableWindow(id, true);
   openDraggableWindow(state);
+  updateDebuggerCharactersListSelectedClass();
 };
 
 const createBackDropId = (id: string) => `backdrop-${id}`;
@@ -1036,13 +1042,14 @@ export const addOnCloseToWindow = (id: string, onClose: () => void) => {
 
 export const registerDraggableWindowCmp = (
   id: string,
-  content: TCMP | ((data?: { [key: string]: unknown }) => TCMP)
+  fn: { content?: TCMP | ((data?: { [key: string]: unknown }) => TCMP); onClose?: () => void }
 ) => {
   if (draggableWindows[id]) {
-    draggableWindows[id].content = content;
+    if (fn.content) draggableWindows[id].content = fn.content;
+    if (fn.onClose) draggableWindows[id].onClose = fn.onClose;
     if (draggableWindows[id].isOpen) updateDraggableWindow(id);
     return;
   }
 
-  draggableWindowCmpsToRegister[id] = content;
+  draggableWindowCmpsToRegister[id] = fn;
 };
