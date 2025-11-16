@@ -280,6 +280,7 @@ export const createThirdPersonCharacter = (opts: {
         const velo = new THREE.Vector3(xAddition, charLinvelY, zAddition);
         rigidBody.setLinvel(velo, !rigidBody.isMoving());
 
+        // Near wall check (and possible cancelation)
         if (characterData.isNearWall) {
           const hit = getWallHitFromRaycasts(getPhysicsWorld(), characterBody, characterData);
           const bodyType = hit?.collider.parent()?.bodyType();
@@ -300,6 +301,52 @@ export const createThirdPersonCharacter = (opts: {
                 z: v.z - dot * n.z,
               };
               characterBody.setLinvel(newVel, true);
+            }
+          }
+        }
+
+        // Unwalkable slope check (and possible cancelation)
+        if (!characterData.groundIsWalkable) {
+          // 1. Normal
+          const n = new THREE.Vector3(
+            characterData.groundNormal.x,
+            characterData.groundNormal.y,
+            characterData.groundNormal.z
+          ).normalize();
+
+          const gravity = new THREE.Vector3(0, -1, 0);
+
+          // 2. Correct downhill direction = gravity projected onto surface
+          const downhill = gravity
+            .clone()
+            .sub(n.clone().multiplyScalar(gravity.dot(n)))
+            .normalize();
+
+          // 3. Movement direction from input (NOT velocity!)
+          const moveDir = new THREE.Vector3(xVelo > 0 ? 1 : -1, 0, zVelo > 0 ? 1 : -1).normalize();
+
+          if (moveDir.lengthSq() > 0) {
+            // negative dot = uphill
+            const uphillDot = moveDir.dot(downhill);
+            const movingUphill = uphillDot < 0;
+
+            if (movingUphill) {
+              const uphillDir = downhill.clone().negate();
+
+              const vel = new THREE.Vector3(
+                characterBody.linvel().x,
+                characterBody.linvel().y,
+                characterBody.linvel().z
+              );
+
+              const uphillAmount = vel.dot(uphillDir);
+
+              if (uphillAmount > 0) {
+                console.log('CANCELING');
+                const cancel = uphillDir.multiplyScalar(uphillAmount);
+                vel.sub(cancel);
+                characterBody.setLinvel(vel, true);
+              }
             }
           }
         }
@@ -486,10 +533,6 @@ export const createThirdPersonCharacter = (opts: {
                   }
                 }
               }
-
-              // isSliding check:
-              // is not on stairs, has world velocity
-              // if (!characterData.isOnStairs && characterData.) {}
               return;
             }
             // isGrounded check:
