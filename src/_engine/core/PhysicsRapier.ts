@@ -21,6 +21,7 @@ import {
 } from './UI/DraggableWindow';
 import { LoopState } from './MainLoop';
 import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
+import { updateInputControllerLoopActions } from './InputControls';
 
 type CollisionEventFn = (
   collider1: Collider,
@@ -1258,6 +1259,9 @@ const baseStepper = () => {
   accDelta += delta;
 
   while (accDelta >= physicsState.timestepRatio) {
+    // Update loop action inputs
+    updateInputControllerLoopActions(delta);
+
     // Store previous transforms
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
       const po = currentScenePhysicsObjects[i];
