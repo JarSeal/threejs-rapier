@@ -38,6 +38,7 @@ export type CharacterData = {
   isOnStairs: boolean;
   isSliding: boolean;
   groundIsWalkable: boolean;
+  isMovingTowardsImpossibleSlope: boolean;
   groundNormal: { x: number; y: number; z: number };
   _height: number;
   _radius: number;
@@ -93,6 +94,7 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   isOnStairs: false,
   isSliding: false,
   groundIsWalkable: true,
+  isMovingTowardsImpossibleSlope: false,
   groundNormal: { x: 0, y: 1, z: 0 },
   _height: 1.6,
   _radius: 0.5,
@@ -236,9 +238,13 @@ export const createThirdPersonCharacter = (opts: {
       ).y;
     },
     move: (direction: 'FORWARD' | 'BACKWARD') => {
-      // @TODO: when landing from a jump, the character slows down significantly (probably friction) and then accelerates back to full speed, try to fix this.
       const rigidBody = characterPhysObj?.rigidBody;
       if (rigidBody) {
+        const vel = new THREE.Vector3(
+          characterBody.linvel().x,
+          characterBody.linvel().y,
+          characterBody.linvel().z
+        );
         const maxVeloMultiplier =
           // isRunning
           characterData.isRunning && characterData.isGrounded && !characterData.isCrouching
@@ -261,24 +267,27 @@ export const createThirdPersonCharacter = (opts: {
         );
         const xVelo = Math.cos(characterData.charRotation) * veloAccu * mainDirection;
         const zVelo = -Math.sin(characterData.charRotation) * veloAccu * mainDirection;
+
         const xMaxVelo = Math.cos(characterData.charRotation) * maxVelo * mainDirection;
         const zMaxVelo = -Math.sin(characterData.charRotation) * maxVelo * mainDirection;
+
+        const curLinvelX = rigidBody.linvel()?.x || 0;
+        const curLinvelZ = rigidBody.linvel()?.z || 0;
         const xAddition =
           xVelo > 0
-            ? Math.min((rigidBody.linvel()?.x || 0) + xVelo, xMaxVelo)
-            : Math.max((rigidBody.linvel()?.x || 0) + xVelo, xMaxVelo);
+            ? Math.min(curLinvelX + xVelo, characterData.isGrounded ? xMaxVelo : curLinvelX)
+            : Math.max(curLinvelX + xVelo, characterData.isGrounded ? xMaxVelo : curLinvelX);
         const zAddition =
           zVelo > 0
-            ? Math.min((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo)
-            : Math.max((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo);
+            ? Math.min(curLinvelZ + zVelo, characterData.isGrounded ? zMaxVelo : curLinvelZ)
+            : Math.max(curLinvelZ + zVelo, characterData.isGrounded ? zMaxVelo : curLinvelZ);
 
         let charLinvelY = rigidBody.linvel()?.y || 0;
         if (characterData.isGrounded) {
           charLinvelY += characterData._moveYOffset;
         }
 
-        const velo = new THREE.Vector3(xAddition, charLinvelY, zAddition);
-        rigidBody.setLinvel(velo, !rigidBody.isMoving());
+        vel.set(xAddition, charLinvelY, zAddition);
 
         // Near wall check (and possible cancelation)
         if (characterData.isNearWall) {
@@ -295,12 +304,7 @@ export const createThirdPersonCharacter = (opts: {
             }
             // Only cancel the velocity if moving INTO the wall
             if (dot < 0) {
-              const newVel = {
-                x: v.x - dot * n.x,
-                y: v.y - dot * n.y,
-                z: v.z - dot * n.z,
-              };
-              characterBody.setLinvel(newVel, true);
+              vel.set(v.x - dot * n.x, v.y - dot * n.y, v.z - dot * n.z);
             }
           }
         }
@@ -324,33 +328,27 @@ export const createThirdPersonCharacter = (opts: {
 
           // 3. Movement direction from input (NOT velocity!)
           const moveDir = new THREE.Vector3(xVelo > 0 ? 1 : -1, 0, zVelo > 0 ? 1 : -1).normalize();
+          const uphillDot = moveDir.dot(downhill);
+          const movingDownHill = uphillDot > 0;
 
-          if (moveDir.lengthSq() > 0) {
-            // negative dot = uphill
-            const uphillDot = moveDir.dot(downhill);
-            const movingUphill = uphillDot < 0;
+          const downhill2 = gravity.clone().projectOnPlane(n).normalize();
+          const charVel = new THREE.Vector3(
+            rigidBody.linvel().x,
+            rigidBody.linvel().y,
+            rigidBody.linvel().z
+          );
+          const horiz = charVel.clone().projectOnPlane(n);
+          const horizDir = horiz.clone().normalize();
+          const dot = horizDir.dot(downhill2);
+          const isSideways = dot < 0.643 && dot > -0.342; // between 50 and 110 degrees
 
-            if (movingUphill) {
-              const uphillDir = downhill.clone().negate();
-
-              const vel = new THREE.Vector3(
-                characterBody.linvel().x,
-                characterBody.linvel().y,
-                characterBody.linvel().z
-              );
-
-              const uphillAmount = vel.dot(uphillDir);
-
-              if (uphillAmount > 0) {
-                console.log('CANCELING');
-                const cancel = uphillDir.multiplyScalar(uphillAmount);
-                vel.sub(cancel);
-                characterBody.setLinvel(vel, true);
-              }
-            }
+          vel.set(characterBody.linvel().x, characterBody.linvel().y, characterBody.linvel().z);
+          if (!isSideways && movingDownHill) {
+            vel.set(xAddition, rigidBody.linvel().y, zAddition);
           }
         }
 
+        rigidBody.setLinvel(vel, true);
         characterData.__lviCheckTime = performance.now();
       }
     },
@@ -841,7 +839,7 @@ export const createThirdPersonCharacter = (opts: {
     if (
       characterData.isGrounded &&
       worldVelo > characterData._minSlidingVelocity &&
-      !characterData.hasMoveInput &&
+      (!characterData.hasMoveInput || !characterData.groundIsWalkable) &&
       !characterData.isOnStairs
     ) {
       characterData.isSliding = true;
