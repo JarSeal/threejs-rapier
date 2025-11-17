@@ -34,3 +34,5 @@ export const DIRECTIONS = {
   RIGHT: new THREE.Vector3(1, 0, 0),
   LEFT: new THREE.Vector3(-1, 0, 0),
 };
+
+export const LEVEL_GROUND_NORMAL = new THREE.Vector3(0, 1, 0);

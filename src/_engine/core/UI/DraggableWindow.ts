@@ -2,6 +2,7 @@ import { CMP, getCmpById, TCMP } from '../../utils/CMP';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lerror } from '../../utils/Logger';
 import { getWindowSize } from '../../utils/Window';
+import { updateDebuggerCharactersListSelectedClass } from '../Character';
 import { getConfig } from '../Config';
 import { getHUDRootCMP } from '../HUD';
 import { addResizer, deleteResizer } from '../MainLoop';
@@ -90,6 +91,12 @@ export type OpenDraggableWindowProps = {
 };
 
 let draggableWindows: { [id: string]: DraggableWindow } = {};
+const draggableWindowCmpsToRegister: {
+  [id: string]: {
+    content?: TCMP | ((data?: { [key: string]: unknown }) => TCMP);
+    onClose?: () => void;
+  };
+} = {};
 let listenersCreated = false;
 let orderNr = 0;
 let draggingPosId: null | string = null;
@@ -417,6 +424,7 @@ export const closeDraggableWindow = (id: string) => {
   }
 
   if (state.removeOnClose) {
+    if (state.onClose) state.onClose();
     removeDraggableWindow(state.id);
     return;
   }
@@ -428,6 +436,15 @@ export const closeDraggableWindow = (id: string) => {
   saveDraggableWindowStatesToLS();
 
   if (state.onClose) state.onClose();
+};
+
+export const closeAllDraggableWindowsStartingWith = (startingWithId: string) => {
+  const allIds = Object.keys(draggableWindows);
+  for (let i = 0; i < allIds.length; i++) {
+    if (allIds[i].startsWith(startingWithId)) {
+      closeDraggableWindow(allIds[i]);
+    }
+  }
 };
 
 export const toggleCollapse = (id: string) => {
@@ -590,6 +607,7 @@ export const updateDraggableWindow = (id: string) => {
   if (!state?.isOpen) return;
   removeDraggableWindow(id, true);
   openDraggableWindow(state);
+  updateDebuggerCharactersListSelectedClass();
 };
 
 const createBackDropId = (id: string) => `backdrop-${id}`;
@@ -975,8 +993,6 @@ export const loadDraggableWindowStatesFromLS = () => {
   const savedStates = lsGetItem(LS_KEY, draggableWindows);
   draggableWindows = { ...draggableWindows, ...savedStates };
 
-  const draggableWindowsFromConfig = getConfig().draggableWindows || {};
-
   const keys = Object.keys(draggableWindows).sort((a, b) => {
     const aOrderNr = draggableWindows[a]?.orderNr || 9999;
     const bOrderNr = draggableWindows[b]?.orderNr || 9999;
@@ -992,7 +1008,7 @@ export const loadDraggableWindowStatesFromLS = () => {
       activeState = draggableWindows[id];
       continue;
     }
-    const state = draggableWindowsFromConfig[id] || {};
+    const state = draggableWindowCmpsToRegister[id] || {};
     draggableWindows[id] = { ...draggableWindows[id], ...state };
 
     if (draggableWindows[id].isOpen) openDraggableWindow({ id });
@@ -1000,7 +1016,7 @@ export const loadDraggableWindowStatesFromLS = () => {
 
   if (activeState) {
     const id = activeState.id;
-    const state = draggableWindowsFromConfig[id] || {};
+    const state = draggableWindowCmpsToRegister[id] || {};
     draggableWindows[id] = { ...draggableWindows[id], ...state };
     openDraggableWindow({ id });
   }
@@ -1008,7 +1024,32 @@ export const loadDraggableWindowStatesFromLS = () => {
 
 export const getDraggableWindow = (id: string) => draggableWindows[id];
 
+export const getDraggableWindowsStartingWith = (startingWithId: string) => {
+  const allIds = Object.keys(draggableWindows);
+  const returnArray = [];
+  for (let i = 0; i < allIds.length; i++) {
+    if (allIds[i].startsWith(startingWithId)) {
+      returnArray.push(draggableWindows[allIds[i]]);
+    }
+  }
+  return returnArray;
+};
+
 export const addOnCloseToWindow = (id: string, onClose: () => void) => {
   if (!draggableWindows[id]) return;
   draggableWindows[id].onClose = onClose;
+};
+
+export const registerDraggableWindowCmp = (
+  id: string,
+  fn: { content?: TCMP | ((data?: { [key: string]: unknown }) => TCMP); onClose?: () => void }
+) => {
+  if (draggableWindows[id]) {
+    if (fn.content) draggableWindows[id].content = fn.content;
+    if (fn.onClose) draggableWindows[id].onClose = fn.onClose;
+    if (draggableWindows[id].isOpen) updateDraggableWindow(id);
+    return;
+  }
+
+  draggableWindowCmpsToRegister[id] = fn;
 };

@@ -118,8 +118,10 @@ const mainLoopForDebug = async () => {
     // Step the physics
     stepPhysicsWorld(loopState);
 
-    // Update loop action inputs
-    updateInputControllerLoopActions(deltaApp);
+    if (!getPhysicsState().enabled) {
+      // Update loop action inputs
+      updateInputControllerLoopActions(deltaApp);
+    }
 
     if (loopState.maxFPS > 0) {
       // --- maxFPS limiter ---

@@ -13,6 +13,7 @@ import { createThirdPersonCharacter } from './character_thirdPerson';
 import { characterTestObstacles } from './character_test_objects';
 import { importModelAsync } from '../_engine/core/ImportModel';
 import { addCheckerboardMaterialToMesh } from '../public/debugger/assets/materials/checkerBoardPattern';
+import { getTestObstacle } from '../public/debugger/assets/obstacles/characterTestObstacles';
 
 export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
@@ -111,7 +112,7 @@ export const sceneCharacterTest = async () =>
     });
 
     // Ground
-    const groundWidthAndDepth = 50;
+    const groundWidthAndDepth = 200;
     const groundHeight = 0.2;
     const groundPos = { x: 0, y: -2, z: 0 };
     const groundGeo = createGeometry({
@@ -268,13 +269,13 @@ export const sceneCharacterTest = async () =>
       id: 'charSceneDirLight',
       type: 'DIRECTIONAL',
       params: {
-        position: { x: -27, y: 12.5, z: 18.5 },
+        position: { x: -40, y: 12.5, z: 30 },
         color: 0xffe5c7,
         intensity: 5,
         castShadow: true,
-        shadowMapSize: [1024, 1024],
-        shadowCamNearFar: [10, 105],
-        shadowCamLeftRightTopBottom: [-30, 30, 30, -30],
+        shadowMapSize: [2048, 2048],
+        shadowCamNearFar: [10, 250],
+        shadowCamLeftRightTopBottom: [-80, 80, 80, -80],
         shadowBias: -0.0009,
         shadowNormalBias: 0.1184,
         shadowRadius: 5, // Not for PCFSoftShadowMap type
@@ -321,6 +322,34 @@ export const sceneCharacterTest = async () =>
       result2.mesh.castShadow = true;
       result2.mesh.receiveShadow = true;
       scene.add(result2.mesh);
+    }
+
+    const slides = await getTestObstacle('slideAngles', {
+      collider: { type: 'TRIMESH', friction: 1 },
+    });
+    if (
+      slides?.mesh &&
+      !Array.isArray(slides.mesh) &&
+      slides.physObj &&
+      !Array.isArray(slides.physObj)
+    ) {
+      slides.mesh.castShadow = true;
+      slides.mesh.receiveShadow = true;
+      slides.mesh.position.set(30, -1.9, -30);
+      slides.physObj.rigidBody?.setTranslation(slides.mesh.position, true);
+
+      const slideMat = (
+        Array.isArray(bigBoxWallMesh.material)
+          ? bigBoxWallMesh.material[0]?.clone()
+          : bigBoxWallMesh.material?.clone()
+      ) as THREE.MeshPhongMaterial;
+      slideMat.map = uvTexture.clone();
+      slideMat.map.wrapS = THREE.RepeatWrapping;
+      slideMat.map.wrapT = THREE.RepeatWrapping;
+      slideMat.map.repeat.set(34, 34);
+      slides.mesh.material = slideMat;
+
+      scene.add(slides.mesh);
     }
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });

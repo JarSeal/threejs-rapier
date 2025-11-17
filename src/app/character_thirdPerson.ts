@@ -19,6 +19,7 @@ import { createSceneAppLooper, getRootScene } from '../_engine/core/Scene';
 import { castRayFromPoints } from '../_engine/core/Raycast';
 import RAPIER, { type Collider } from '@dimforge/rapier3d-compat';
 import { existsOrThrow } from '../_engine/utils/helpers';
+import { LEVEL_GROUND_NORMAL } from '../_engine/utils/constants';
 
 // @TODO: add comments for each
 // If a prop has one underscore (_) then it means it is a configuration,
@@ -27,13 +28,17 @@ export type CharacterData = {
   position: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number; world: number };
   charRotation: number;
-  isMoving: boolean;
+  isAwake: boolean;
+  hasMoveInput: boolean;
   isGrounded: boolean;
   isFalling: boolean;
   isRunning: boolean;
   isCrouching: boolean;
   isNearWall: boolean;
   isOnStairs: boolean;
+  isSliding: boolean;
+  groundIsWalkable: boolean;
+  isMovingTowardsImpossibleSlope: boolean;
   groundNormal: { x: number; y: number; z: number };
   _height: number;
   _radius: number;
@@ -42,6 +47,9 @@ export type CharacterData = {
   _groundDetectorRadius: number;
   _rotateSpeed: number;
   _maxVelocity: number;
+  _maxWalkableAngle: number;
+  _minSlidingVelocity: number;
+  _moveYOffset: number;
   _jumpAmount: number;
   _inTheAirDiminisher: number;
   _accumulateVeloPerInterval: number;
@@ -50,9 +58,12 @@ export type CharacterData = {
   _isFallingThreshold: number;
   _runningMultiplier: number;
   _crouchingMultiplier: number;
+  _keepMovingAfterJumpThreshold: number;
   __isFallingStartTime: number;
   __lviCheckTime: number;
   __jumpTime: number;
+  __lastIsGroundedState: boolean;
+  __maxWalkableAngleCos: number;
   __touchingWallColliders: Collider['handle'][];
   __touchingGroundColliders: Collider['handle'][];
 };
@@ -73,13 +84,17 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0, world: 0 },
   charRotation: 0,
-  isMoving: false,
+  isAwake: false,
+  hasMoveInput: false,
   isGrounded: false,
   isFalling: false,
   isRunning: false,
   isCrouching: false,
   isNearWall: false,
   isOnStairs: false,
+  isSliding: false,
+  groundIsWalkable: true,
+  isMovingTowardsImpossibleSlope: false,
   groundNormal: { x: 0, y: 1, z: 0 },
   _height: 1.6,
   _radius: 0.5,
@@ -88,6 +103,9 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   _groundDetectorRadius: 0.8,
   _rotateSpeed: 5,
   _maxVelocity: 3.7,
+  _maxWalkableAngle: Math.PI / 4, // 45 degrees (radians)
+  _minSlidingVelocity: 2,
+  _moveYOffset: 0, // something like 0.15 makes climb steeper slopes
   _jumpAmount: 5,
   _inTheAirDiminisher: 0.2,
   _accumulateVeloPerInterval: 30,
@@ -95,9 +113,12 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   _isFallingThreshold: 1200,
   _runningMultiplier: 1.5,
   _crouchingMultiplier: 0.9,
+  _keepMovingAfterJumpThreshold: -10,
   __isFallingStartTime: 0,
   __lviCheckTime: 0,
   __jumpTime: 0,
+  __lastIsGroundedState: false,
+  __maxWalkableAngleCos: 0,
   __touchingWallColliders: [],
   __touchingGroundColliders: [],
 };
@@ -143,6 +164,9 @@ export const createThirdPersonCharacter = (opts: {
   // Combine character data
   const characterData = { ...getDefaultCharacterData(), ...charData };
   const character: Partial<ThirdPersonCharacter> = { charData: characterData };
+
+  // Set __maxWalkableAngleCos
+  characterData.__maxWalkableAngleCos = Math.cos(characterData._maxWalkableAngle);
 
   // Create third person camera
   thirdPersonCamera = createCamera(`thirdPersonCam-${id}`, {
@@ -214,9 +238,13 @@ export const createThirdPersonCharacter = (opts: {
       ).y;
     },
     move: (direction: 'FORWARD' | 'BACKWARD') => {
-      // @TODO: when landing from a jump, the character slows down significantly (probably friction) and then accelerates back to full speed, try to fix this.
       const rigidBody = characterPhysObj?.rigidBody;
       if (rigidBody) {
+        const vel = new THREE.Vector3(
+          characterBody.linvel().x,
+          characterBody.linvel().y,
+          characterBody.linvel().z
+        );
         const maxVeloMultiplier =
           // isRunning
           characterData.isRunning && characterData.isGrounded && !characterData.isCrouching
@@ -239,20 +267,29 @@ export const createThirdPersonCharacter = (opts: {
         );
         const xVelo = Math.cos(characterData.charRotation) * veloAccu * mainDirection;
         const zVelo = -Math.sin(characterData.charRotation) * veloAccu * mainDirection;
+
         const xMaxVelo = Math.cos(characterData.charRotation) * maxVelo * mainDirection;
         const zMaxVelo = -Math.sin(characterData.charRotation) * maxVelo * mainDirection;
+
+        const curLinvelX = rigidBody.linvel()?.x || 0;
+        const curLinvelZ = rigidBody.linvel()?.z || 0;
         const xAddition =
           xVelo > 0
-            ? Math.min((rigidBody.linvel()?.x || 0) + xVelo, xMaxVelo)
-            : Math.max((rigidBody.linvel()?.x || 0) + xVelo, xMaxVelo);
+            ? Math.min(curLinvelX + xVelo, characterData.isGrounded ? xMaxVelo : curLinvelX)
+            : Math.max(curLinvelX + xVelo, characterData.isGrounded ? xMaxVelo : curLinvelX);
         const zAddition =
           zVelo > 0
-            ? Math.min((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo)
-            : Math.max((rigidBody.linvel()?.z || 0) + zVelo, zMaxVelo);
+            ? Math.min(curLinvelZ + zVelo, characterData.isGrounded ? zMaxVelo : curLinvelZ)
+            : Math.max(curLinvelZ + zVelo, characterData.isGrounded ? zMaxVelo : curLinvelZ);
 
-        const velo = new THREE.Vector3(xAddition, rigidBody.linvel()?.y || 0, zAddition);
-        rigidBody.setLinvel(velo, !rigidBody.isMoving());
+        let charLinvelY = rigidBody.linvel()?.y || 0;
+        if (characterData.isGrounded) {
+          charLinvelY += characterData._moveYOffset;
+        }
 
+        vel.set(xAddition, charLinvelY, zAddition);
+
+        // Near wall check (and possible cancelation)
         if (characterData.isNearWall) {
           const hit = getWallHitFromRaycasts(getPhysicsWorld(), characterBody, characterData);
           const bodyType = hit?.collider.parent()?.bodyType();
@@ -267,16 +304,51 @@ export const createThirdPersonCharacter = (opts: {
             }
             // Only cancel the velocity if moving INTO the wall
             if (dot < 0) {
-              const newVel = {
-                x: v.x - dot * n.x,
-                y: v.y - dot * n.y,
-                z: v.z - dot * n.z,
-              };
-              characterBody.setLinvel(newVel, true);
+              vel.set(v.x - dot * n.x, v.y - dot * n.y, v.z - dot * n.z);
             }
           }
         }
 
+        // Unwalkable slope check (and possible cancelation)
+        if (!characterData.groundIsWalkable) {
+          // 1. Normal
+          const n = new THREE.Vector3(
+            characterData.groundNormal.x,
+            characterData.groundNormal.y,
+            characterData.groundNormal.z
+          ).normalize();
+
+          const gravity = new THREE.Vector3(0, -1, 0);
+
+          // 2. Correct downhill direction = gravity projected onto surface
+          const downhill = gravity
+            .clone()
+            .sub(n.clone().multiplyScalar(gravity.dot(n)))
+            .normalize();
+
+          // 3. Movement direction from input (NOT velocity!)
+          const moveDir = new THREE.Vector3(xVelo > 0 ? 1 : -1, 0, zVelo > 0 ? 1 : -1).normalize();
+          const uphillDot = moveDir.dot(downhill);
+          const movingDownHill = uphillDot > 0;
+
+          const downhill2 = gravity.clone().projectOnPlane(n).normalize();
+          const charVel = new THREE.Vector3(
+            rigidBody.linvel().x,
+            rigidBody.linvel().y,
+            rigidBody.linvel().z
+          );
+          const horiz = charVel.clone().projectOnPlane(n);
+          const horizDir = horiz.clone().normalize();
+          const dot = horizDir.dot(downhill2);
+          const isSideways = dot < 0.643 && dot > -0.342; // between 50 and 110 degrees
+
+          vel.set(characterBody.linvel().x, characterBody.linvel().y, characterBody.linvel().z);
+          if (!isSideways && movingDownHill) {
+            vel.set(xAddition, rigidBody.linvel().y, zAddition);
+          }
+        }
+
+        rigidBody.setLinvel(vel, true);
         characterData.__lviCheckTime = performance.now();
       }
     },
@@ -415,6 +487,26 @@ export const createThirdPersonCharacter = (opts: {
               characterData.isGrounded = true;
               getFloorNormal(getPhysicsWorld(), characterBody, characterData);
 
+              const physObj = getPhysicsObject(thirdPersonCharacterObject.physObjectId);
+              if (
+                characterData._keepMovingAfterJumpThreshold <
+                  (physObj?.rigidBody?.linvel().y || -5) &&
+                !characterData.isFalling &&
+                !characterData.__lastIsGroundedState &&
+                characterData.hasMoveInput
+              ) {
+                // If just landed, then apply Y linvel to the rigidBody
+                physObj?.rigidBody?.setLinvel(
+                  new THREE.Vector3(
+                    physObj?.rigidBody.linvel().x,
+                    0,
+                    physObj?.rigidBody.linvel().z
+                  ),
+                  true
+                );
+              }
+              characterData.__lastIsGroundedState = characterData.isGrounded;
+
               // isOnStairs check:
               const userData = stairsCollider.parent()?.userData as {
                 isStairs: boolean;
@@ -457,6 +549,8 @@ export const createThirdPersonCharacter = (opts: {
             if (characterData.isGrounded) {
               getFloorNormal(getPhysicsWorld(), characterBody, characterData);
             }
+
+            characterData.__lastIsGroundedState = characterData.isGrounded;
 
             // isOnStairs check:
             const userData = stairsCollider.parent()?.userData as {
@@ -515,12 +609,23 @@ export const createThirdPersonCharacter = (opts: {
                 controlFns.rotate('RIGHT');
               // Forward and backward
               if (keysPressed.some((key) => moveInputMappings.includes(key))) {
+                charData.hasMoveInput = true;
+                // Set small y force to character for smoother moving if hasMoveInput
                 controlFns.move(
                   keysPressed.some((key) => inputMappings.moveForward.includes(key))
                     ? 'FORWARD'
                     : 'BACKWARD'
                 );
               }
+            },
+          },
+          {
+            id: 'charStopMoveAndRotate',
+            key: [...inputMappings.moveForward, ...inputMappings.moveBackward],
+            type: 'KEY_UP',
+            fn: (e) => {
+              e.preventDefault();
+              characterData.hasMoveInput = false;
             },
           },
           {
@@ -693,11 +798,11 @@ export const createThirdPersonCharacter = (opts: {
     const mesh = physObj?.mesh;
     if (!physObj || !mesh) return;
 
-    // Set isMoving (physics isMoving, aka. is awake)
-    characterData.isMoving = physObj.rigidBody?.isMoving() || false;
+    // Set isAwake (physics isMoving, aka. is awake)
+    characterData.isAwake = physObj.rigidBody?.isMoving() || false;
 
-    // No need to calculate anything if the character is not moving
-    if (!characterData.isMoving) return;
+    // No need to calculate anything if the character is not awake (is not moving either)
+    if (!characterData.isAwake) return;
 
     // This is the backup 'isGrounded' check
     if (!characterData.__touchingGroundColliders.length) detectGround();
@@ -721,12 +826,24 @@ export const createThirdPersonCharacter = (opts: {
       Math.round(Math.abs(physObj.rigidBody?.linvel().y || 0) * 1000) / 1000,
       Math.round(Math.abs(physObj.rigidBody?.linvel().z || 0) * 1000) / 1000
     );
+    const worldVelo = Math.round(new THREE.Vector3(velo.x, velo.y, velo.z).length() * 1000) / 1000;
     characterData.velocity = {
       x: velo.x,
       y: velo.y,
       z: velo.z,
-      world: Math.round(new THREE.Vector3(velo.x, velo.y, velo.z).length() * 1000) / 1000,
+      world: worldVelo,
     };
+
+    // Set isSliding
+    characterData.isSliding = false;
+    if (
+      characterData.isGrounded &&
+      worldVelo > characterData._minSlidingVelocity &&
+      (!characterData.hasMoveInput || !characterData.groundIsWalkable) &&
+      !characterData.isOnStairs
+    ) {
+      characterData.isSliding = true;
+    }
 
     // Set position
     characterData.position = physObj.rigidBody?.translation() || { x: 0, y: 0, z: 0 };
@@ -862,7 +979,7 @@ const getFloorNormal = (
   const capsuleRadius = (collider.shape as RAPIER.Capsule).radius;
   const capsuleHeight = (collider.shape as RAPIER.Capsule).halfHeight * 2 + capsuleRadius * 2;
 
-  const maxToi = capsuleHeight / 2 + 0.25;
+  const maxToi = capsuleHeight / 2 + 0.5;
   const ray = new RAPIER.Ray(characterBody.translation(), { x: 0, y: -1, z: 0 });
   const hit = world.castRayAndGetNormal(
     ray,
@@ -874,5 +991,17 @@ const getFloorNormal = (
     characterBody
   );
 
-  characterData.groundNormal = hit?.normal || { x: 0, y: 1, z: 0 };
+  const groundNormal = hit?.normal || { x: 0, y: 1, z: 0 };
+  characterData.groundNormal = { x: groundNormal.x, y: groundNormal.y, z: groundNormal.z };
+  const groundDot = new THREE.Vector3(groundNormal.x, groundNormal.y, groundNormal.z).dot(
+    LEVEL_GROUND_NORMAL
+  );
+
+  // Set groundIsWalkable
+  characterData.groundIsWalkable = true;
+  if (hit && characterData.__touchingGroundColliders.includes(hit.collider.handle)) {
+    if (groundDot <= characterData.__maxWalkableAngleCos) {
+      characterData.groundIsWalkable = false;
+    }
+  }
 };

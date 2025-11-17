@@ -90,8 +90,10 @@ const initKeyUpControls = () => {
     for (let i = 0; i < keyUpMappings.length; i++) {
       const mapping = keyUpMappings[i];
       if (isKeyInputDisabled(mapping)) continue;
-      let isCurrentKey = KEY === mapping.key;
-      if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+      let isCurrentKey = KEY.toLowerCase() === String(mapping.key).toLowerCase();
+      if (Array.isArray(mapping.key)) {
+        isCurrentKey = mapping.key.includes(KEY) || mapping.key.includes(KEY.toLowerCase());
+      }
       if (isCurrentKey || !mapping.key) {
         mapping.fn(e, timeNow - (mapping.time || timeNow));
         mapping.time = 0;
@@ -100,11 +102,15 @@ const initKeyUpControls = () => {
     for (let i = 0; i < keyLoopActionMappings.length; i++) {
       const mapping = keyLoopActionMappings[i];
       if (isKeyInputDisabled(mapping)) continue;
-      let isCurrentKey = KEY === mapping.key;
-      if (Array.isArray(mapping.key)) isCurrentKey = mapping.key.includes(KEY);
+      let isCurrentKey = KEY.toLowerCase() === String(mapping.key).toLowerCase();
+      if (Array.isArray(mapping.key)) {
+        isCurrentKey = mapping.key.includes(KEY) || mapping.key.includes(KEY.toLowerCase());
+      }
       if (isCurrentKey || !mapping.key) {
         if (mapping.keysPressed?.length) {
-          mapping.keysPressed = mapping.keysPressed.filter((k) => k !== KEY);
+          mapping.keysPressed = mapping.keysPressed.filter(
+            (k) => k.toLowerCase() !== KEY.toLowerCase()
+          );
         }
         if (mapping.fn2) {
           mapping.fn2(e, timeNow - (mapping.time || timeNow), {
