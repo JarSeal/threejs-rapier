@@ -289,7 +289,8 @@ export const toggleCameraHelper = (id: string, show: boolean) => {
   updateCamerasDebuggerGUI();
 };
 
-export const updateHelpers = () => {
+export const updateHelpers = (skipFrame: boolean) => {
+  if (skipFrame) return;
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) return;
 

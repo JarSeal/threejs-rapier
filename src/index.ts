@@ -76,15 +76,15 @@ InitEngine(async () => {
 
   if (isDebugEnvironment()) {
     addScenesToSceneListing([
-      { id: SCENE01_ID, text: `[App] ${SCENE01_ID}`, fn: scene01 },
       {
         id: SCENE_TEST_CHARACTER_ID,
         text: `[Debug] ${SCENE_TEST_CHARACTER_ID}`,
         fn: sceneCharacterTest,
       },
+      { id: SCENE01_ID, text: `[App] ${SCENE01_ID}`, fn: scene01 },
     ]);
   }
 
   // Load scene
-  await loadScene({ nextSceneFn: scene01 });
+  await loadScene({ nextSceneFn: sceneCharacterTest });
 });

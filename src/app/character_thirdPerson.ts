@@ -11,12 +11,13 @@ import {
 } from '../_engine/core/Character';
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import {
+  addScenePhysicsLooper,
   getPhysicsObject,
   getPhysicsWorld,
   PhysicsObject,
   switchPhysicsCollider,
 } from '../_engine/core/PhysicsRapier';
-import { createSceneAppLooper, getRootScene } from '../_engine/core/Scene';
+import { getRootScene } from '../_engine/core/Scene';
 import { castRayFromPoints } from '../_engine/core/Raycast';
 import RAPIER, { type Collider } from '@dimforge/rapier3d-compat';
 import { existsOrThrow } from '../_engine/utils/helpers';
@@ -28,6 +29,7 @@ import { LEVEL_GROUND_NORMAL } from '../_engine/utils/constants';
 export type CharacterData = {
   position: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number; world: number };
+  angularVelocity: { x: number; y: number; z: number; world: number };
   charRotation: number;
   isAwake: boolean;
   hasMoveInput: boolean;
@@ -37,8 +39,10 @@ export type CharacterData = {
   isCrouching: boolean;
   isNearWall: boolean;
   isOnStairs: boolean;
+  isOnMovingPlatform: boolean;
   isSliding: boolean;
   isTumbling: boolean;
+  isGettingUp: boolean;
   groundIsWalkable: boolean;
   isMovingTowardsImpossibleSlope: boolean;
   groundNormal: { x: number; y: number; z: number };
@@ -47,11 +51,14 @@ export type CharacterData = {
   _skinThickness: number;
   _groundDetectorOffset: number;
   _groundDetectorRadius: number;
-  _tumblingSpeedThreshold: number;
+  _tumblingGroundSpeedThreshold: number;
+  _tumblingWallSpeedThreshold: number;
   _tumblingMinTime: number;
-  _tumblingMinSpeed: number;
+  _tumblingEndMinVelo: number;
+  _tumblingEndMinAngVelo: number;
   _tumblingMaxAngVelo: number;
   _tumblingAngDamping: number;
+  _gettingUpDuration: number;
   _rotateSpeed: number;
   _maxVelocity: number;
   _maxWalkableAngle: number;
@@ -75,6 +82,9 @@ export type CharacterData = {
   __touchingWallColliders: Collider['handle'][];
   __touchingGroundColliders: Collider['handle'][];
   __charAngDamping: number;
+  __isGettingUpStartTime: number;
+  __wasOnMovingPlatformLastFrame: boolean; // @TODO: remove
+  __lastAppliedPlatformVelocity: { x: number; y: number; z: number };
 };
 
 export type ThirdPersonCharacter = {
@@ -92,6 +102,7 @@ export type ThirdPersonCharacter = {
 const DEFAULT_CHARACTER_DATA: CharacterData = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0, world: 0 },
+  angularVelocity: { x: 0, y: 0, z: 0, world: 0 },
   charRotation: 0,
   isAwake: false,
   hasMoveInput: false,
@@ -101,8 +112,10 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   isCrouching: false,
   isNearWall: false,
   isOnStairs: false,
+  isOnMovingPlatform: false,
   isSliding: false,
   isTumbling: false,
+  isGettingUp: false,
   groundIsWalkable: true,
   isMovingTowardsImpossibleSlope: false,
   groundNormal: { x: 0, y: 1, z: 0 },
@@ -111,18 +124,21 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   _skinThickness: 0.05,
   _groundDetectorOffset: 0.3,
   _groundDetectorRadius: 0.8,
-  _tumblingSpeedThreshold: 9,
-  _tumblingMinTime: 3500,
-  _tumblingMinSpeed: 1.4,
+  _tumblingGroundSpeedThreshold: 9,
+  _tumblingWallSpeedThreshold: 6,
+  _tumblingMinTime: 2200,
+  _tumblingEndMinVelo: 1.4,
+  _tumblingEndMinAngVelo: 0.5,
   _tumblingMaxAngVelo: 4.6,
   _tumblingAngDamping: 10,
+  _gettingUpDuration: 1000,
   _rotateSpeed: 5,
   _maxVelocity: 3.7,
   _maxWalkableAngle: Math.PI / 4, // 45 degrees (radians)
   _minSlidingVelocity: 2,
   _moveYOffset: 0, // something like 0.15 makes climb steeper slopes
   _jumpAmount: 5,
-  _inTheAirDiminisher: 0.2,
+  _inTheAirDiminisher: 0.6,
   _accumulateVeloPerInterval: 30,
   _groundedRayMaxDistance: 0.82,
   _isFallingThreshold: 1200,
@@ -138,6 +154,9 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   __touchingWallColliders: [],
   __touchingGroundColliders: [],
   __charAngDamping: 0,
+  __isGettingUpStartTime: 0,
+  __wasOnMovingPlatformLastFrame: false,
+  __lastAppliedPlatformVelocity: { x: 0, y: 0, z: 0 },
 };
 const getDefaultCharacterData = () => {
   // We need to copy all object and arrays
@@ -176,7 +195,7 @@ export const createThirdPersonCharacter = (opts: {
     crouch: string[];
   };
 }) => {
-  const { id, charData, sceneId, inputMappings } = opts;
+  const { id, charData, inputMappings } = opts;
 
   // Combine character data
   const characterData = { ...getDefaultCharacterData(), ...charData };
@@ -441,11 +460,13 @@ export const createThirdPersonCharacter = (opts: {
           isSensor: true,
           density: 0,
           translation: { x: 0, y: 0.05, z: 0 },
-          collisionEventFn: (coll1, coll2, started, obj1) => {
+          collisionEventFn: (coll1, coll2, started, obj1, obj2) => {
             if (started) {
+              let physObj: PhysicsObject;
               if (obj1.id === id) {
                 if (coll1.handle !== wallSensorHandle) return;
                 // obj1 is the character
+                physObj = obj1;
                 const bodyType = coll2.parent()?.bodyType();
                 if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
                   characterData.__touchingWallColliders.push(coll2.handle);
@@ -453,13 +474,16 @@ export const createThirdPersonCharacter = (opts: {
               } else {
                 if (coll2.handle !== wallSensorHandle) return;
                 // obj2 is the character
+                physObj = obj2;
                 const bodyType = coll1.parent()?.bodyType();
                 if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
                   characterData.__touchingWallColliders.push(coll1.handle);
                 }
               }
               characterData.isNearWall = true;
-              // @MAYBE: Check if the speed to hit the wall is above tumbling threshold and do tumble here
+              if (characterData.velocity.world > characterData._tumblingWallSpeedThreshold) {
+                startCharacterTumbling(characterData, physObj);
+              }
               return;
             }
             if (obj1.id === id) {
@@ -490,20 +514,20 @@ export const createThirdPersonCharacter = (opts: {
             z: 0,
           },
           collisionEventFn: (coll1, coll2, started, obj1) => {
-            let stairsCollider = null;
+            let curCollider = null;
             if (started) {
               if (obj1.id === id) {
                 if (coll1.handle !== groundSensorHandle) return;
                 // obj1 is the character
                 // isGrounded check:
                 characterData.__touchingGroundColliders.push(coll2.handle);
-                stairsCollider = coll2;
+                curCollider = coll2;
               } else {
                 if (coll2.handle !== groundSensorHandle) return;
                 // obj2 is the character
                 // isGrounded check:
                 characterData.__touchingGroundColliders.push(coll1.handle);
-                stairsCollider = coll1;
+                curCollider = coll1;
               }
               characterData.isGrounded = true;
               getFloorNormal(getPhysicsWorld(), characterBody, characterData);
@@ -512,7 +536,7 @@ export const createThirdPersonCharacter = (opts: {
 
               // Check if speed too fast to land, then tumble
               if (
-                characterData.velocity.world > characterData._tumblingSpeedThreshold &&
+                characterData.velocity.world > characterData._tumblingGroundSpeedThreshold &&
                 !characterData.__lastIsGroundedState
               ) {
                 startCharacterTumbling(characterData, physObj);
@@ -539,26 +563,38 @@ export const createThirdPersonCharacter = (opts: {
               characterData.__lastIsGroundedState = characterData.isGrounded;
 
               // isOnStairs check:
-              const userData = stairsCollider.parent()?.userData as {
-                isStairs: boolean;
-                stairsColliderIndex: number;
+              const userData = curCollider.parent()?.userData as {
+                isStairs?: boolean;
+                stairsColliderIndex?: number;
+                isMovingPlatform?: boolean;
               };
               if (userData.isStairs && userData.stairsColliderIndex !== undefined) {
                 if (Array.isArray(userData.stairsColliderIndex)) {
                   for (let i = 0; i < userData.stairsColliderIndex.length; i++) {
-                    const targetCollider = stairsCollider
+                    const targetCollider = curCollider
                       .parent()
                       ?.collider(userData.stairsColliderIndex[i]);
-                    if (targetCollider && targetCollider.handle === stairsCollider.handle) {
+                    if (targetCollider && targetCollider.handle === curCollider.handle) {
                       characterData.isOnStairs = true;
                     }
                   }
                 } else {
-                  const targetCollider = stairsCollider
+                  const targetCollider = curCollider
                     .parent()
                     ?.collider(userData.stairsColliderIndex);
-                  if (targetCollider && targetCollider.handle === stairsCollider.handle) {
+                  if (targetCollider && targetCollider.handle === curCollider.handle) {
                     characterData.isOnStairs = true;
+                  }
+                }
+              }
+
+              // isOnMovingPlatform check:
+              if (userData.isMovingPlatform) {
+                const numColliders = curCollider.parent()?.numColliders() || 0;
+                for (let i = 0; i < numColliders; i++) {
+                  const targetCollider = curCollider.parent()?.collider(i);
+                  if (targetCollider && targetCollider.handle === curCollider.handle) {
+                    characterData.isOnMovingPlatform = true;
                   }
                 }
               }
@@ -569,12 +605,12 @@ export const createThirdPersonCharacter = (opts: {
               if (coll1.handle !== groundSensorHandle) return;
               characterData.__touchingGroundColliders =
                 characterData.__touchingGroundColliders.filter((handle) => handle !== coll2.handle);
-              stairsCollider = coll2;
+              curCollider = coll2;
             } else {
               if (coll2.handle !== groundSensorHandle) return;
               characterData.__touchingGroundColliders =
                 characterData.__touchingGroundColliders.filter((handle) => handle !== coll1.handle);
-              stairsCollider = coll1;
+              curCollider = coll1;
             }
             if (!characterData.__touchingGroundColliders.length) characterData.isGrounded = false;
             if (characterData.isGrounded) {
@@ -584,26 +620,36 @@ export const createThirdPersonCharacter = (opts: {
             characterData.__lastIsGroundedState = characterData.isGrounded;
 
             // isOnStairs check:
-            const userData = stairsCollider.parent()?.userData as {
-              isStairs: boolean;
-              stairsColliderIndex: number;
+            const userData = curCollider.parent()?.userData as {
+              isStairs?: boolean;
+              stairsColliderIndex?: number;
+              isMovingPlatform?: boolean;
             };
             if (userData.isStairs && userData.stairsColliderIndex !== undefined) {
               if (Array.isArray(userData.stairsColliderIndex)) {
                 for (let i = 0; i < userData.stairsColliderIndex.length; i++) {
-                  const targetCollider = stairsCollider
+                  const targetCollider = curCollider
                     .parent()
                     ?.collider(userData.stairsColliderIndex[i]);
-                  if (targetCollider && targetCollider.handle === stairsCollider.handle) {
+                  if (targetCollider && targetCollider.handle === curCollider.handle) {
                     characterData.isOnStairs = false;
                   }
                 }
               } else {
-                const targetCollider = stairsCollider
-                  .parent()
-                  ?.collider(userData.stairsColliderIndex);
-                if (targetCollider && targetCollider.handle === stairsCollider.handle) {
+                const targetCollider = curCollider.parent()?.collider(userData.stairsColliderIndex);
+                if (targetCollider && targetCollider.handle === curCollider.handle) {
                   characterData.isOnStairs = false;
+                }
+              }
+            }
+
+            // isOnMovingPlatform check:
+            if (userData.isMovingPlatform) {
+              const numColliders = curCollider.parent()?.numColliders() || 0;
+              for (let i = 0; i < numColliders; i++) {
+                const targetCollider = curCollider.parent()?.collider(i);
+                if (targetCollider && targetCollider.handle === curCollider.handle) {
+                  characterData.isOnMovingPlatform = false;
                 }
               }
             }
@@ -824,18 +870,23 @@ export const createThirdPersonCharacter = (opts: {
     );
   };
 
-  createSceneAppLooper(() => {
+  addScenePhysicsLooper(`characterLooper-${id}`, () => {
     const physObj = getPhysicsObject(thirdPersonCharacterObject?.physObjectId || '');
     const mesh = physObj?.mesh;
-    if (!physObj || !mesh) return;
+    const body = physObj?.rigidBody;
+    if (!mesh || !body) return;
 
+    // Check isTumbling
     if (
       characterData.isTumbling &&
-      (characterData.__isTumblingStartTime + characterData._tumblingMinTime < performance.now() ||
-        characterData.velocity.world < characterData._tumblingMinSpeed) // @TODO: also add angular velocity check (add it to character data tracker)
+      !characterData.isGettingUp &&
+      characterData.__isTumblingStartTime + characterData._tumblingMinTime < performance.now() &&
+      characterData.velocity.world < characterData._tumblingEndMinVelo &&
+      characterData.angularVelocity.world < characterData._tumblingEndMinAngVelo
     ) {
-      // End tumbling
-      stopCharacterTumbling(characterData, physObj);
+      // End tumbling and start isGettingUp phase
+      characterData.isGettingUp = true;
+      characterData.__isGettingUpStartTime = performance.now();
     } else if (characterData.isTumbling && physObj.rigidBody) {
       // Clamp angular velocity when tumbling
       const w = physObj.rigidBody.angvel();
@@ -848,11 +899,56 @@ export const createThirdPersonCharacter = (opts: {
       }
     }
 
+    // Perform isGettingUp
+    if (characterData.isGettingUp) {
+      body.setAngularDamping(25.0);
+      const ratio = Math.min(
+        performance.now() /
+          (characterData.__isGettingUpStartTime + characterData._gettingUpDuration),
+        1
+      );
+      const rot = body.rotation();
+      const q = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
+      // Compute body's current up direction
+      const bodyUp = new THREE.Vector3(0, 1, 0).applyQuaternion(q).normalize();
+      // Axis of rotation required to align bodyUp → worldUp
+      const axis = bodyUp.clone().cross(LEVEL_GROUND_NORMAL);
+      const dot = bodyUp.dot(LEVEL_GROUND_NORMAL);
+      const angle = Math.acos(Math.min(Math.max(dot, -1), 1)); // clamp to valid range
+      const ang = body.angvel();
+      const angVel = new THREE.Vector3(ang.x, ang.y, ang.z);
+      const maxAngVel = 2.0;
+      if (angVel.length() > maxAngVel) {
+        angVel.setLength(maxAngVel);
+        body.setAngvel({ x: angVel.x, y: angVel.y, z: angVel.z }, true);
+      }
+      // Prevent NaN or tiny oscillations
+      if (angle > 0.00005) {
+        axis.normalize();
+        // fade-out
+        // const ease = 1 - Math.min(Math.max(ratio, 0), 1);
+        // ease-in-out
+        // const ease =
+        //   ratio < 0.5 ? 4 * ratio * ratio * ratio : 1 - Math.pow(-2 * ratio + 2, 3) / 2;
+        // ease-out
+        const ease = 1 - Math.pow(1 - ratio, 3);
+        const torqueStrength = 0.2 * ease;
+        const torque = axis.multiplyScalar(angle * torqueStrength);
+        body.applyTorqueImpulse({ x: torque.x, y: torque.y, z: torque.z }, true);
+      }
+      if (ratio >= 1) {
+        // Fully upright the player, preserving yaw
+        const yaw = new THREE.Euler().setFromQuaternion(q.clone(), 'YXZ').y;
+        const uprightQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0));
+        body.setRotation(uprightQuat, true);
+
+        // Clear any leftover rotational velocity
+        stopCharacterTumbling(characterData, physObj);
+      }
+    }
+
     // Set isAwake (physics isMoving, aka. is awake)
     characterData.isAwake = physObj.rigidBody?.isMoving() || false;
-
-    // No need to calculate anything if the character is not awake (is not moving either)
-    if (!characterData.isAwake) return;
 
     // This is the backup 'isGrounded' check
     if (!characterData.__touchingGroundColliders.length) detectGround();
@@ -870,18 +966,64 @@ export const createThirdPersonCharacter = (opts: {
       characterData.isFalling = true;
     }
 
+    // Handle character on moving platform
+    if (characterData.isOnMovingPlatform) {
+      for (let i = 0; i < characterData.__touchingGroundColliders.length; i++) {
+        const collider = getPhysicsWorld().colliders.get(
+          characterData.__touchingGroundColliders[i]
+        );
+        if (!collider) continue;
+        const pb = collider.parent();
+        if (!pb) continue;
+
+        const ud = pb.userData as {
+          isMovingPlatform: boolean;
+          currentPos: THREE.Vector3;
+          prevPos: THREE.Vector3;
+          velo: THREE.Vector3;
+        };
+        if (ud?.isMovingPlatform) {
+          const velo = body.linvel();
+          const newVelX = velo.x + ud.velo.x - characterData.__lastAppliedPlatformVelocity.x;
+          const newVelY = velo.y + ud.velo.y - characterData.__lastAppliedPlatformVelocity.y;
+          const newVelZ = velo.z + ud.velo.z - characterData.__lastAppliedPlatformVelocity.z;
+
+          body.setLinvel({ x: newVelX, y: newVelY, z: newVelZ }, true);
+
+          characterData.__lastAppliedPlatformVelocity = {
+            x: ud.velo.x,
+            y: ud.velo.y,
+            z: ud.velo.z,
+          };
+        }
+      }
+    }
+
     // Set velocity data
     const velo = usableVec.set(
       Math.round(Math.abs(physObj.rigidBody?.linvel().x || 0) * 1000) / 1000,
       Math.round(Math.abs(physObj.rigidBody?.linvel().y || 0) * 1000) / 1000,
       Math.round(Math.abs(physObj.rigidBody?.linvel().z || 0) * 1000) / 1000
     );
-    const worldVelo = Math.round(new THREE.Vector3(velo.x, velo.y, velo.z).length() * 1000) / 1000;
+    const worldVelo = Math.round(velo.length() * 1000) / 1000;
     characterData.velocity = {
       x: velo.x,
       y: velo.y,
       z: velo.z,
       world: worldVelo,
+    };
+
+    // Set angular velocity data
+    const angVelo = usableVec.set(
+      physObj.rigidBody?.angvel().x || 0,
+      physObj.rigidBody?.angvel().y || 0,
+      physObj.rigidBody?.angvel().z || 0
+    );
+    characterData.angularVelocity = {
+      x: Math.round(Math.abs(angVelo.x) * 1000) / 1000,
+      y: Math.round(Math.abs(angVelo.y) * 1000) / 1000,
+      z: Math.round(Math.abs(angVelo.z) * 1000) / 1000,
+      world: Math.round(angVelo.length() * 1000) / 1000,
     };
 
     // Set isSliding
@@ -897,7 +1039,7 @@ export const createThirdPersonCharacter = (opts: {
 
     // Set position
     characterData.position = physObj.rigidBody?.translation() || { x: 0, y: 0, z: 0 };
-  }, sceneId);
+  });
 
   charMesh.castShadow = true;
   charMesh.receiveShadow = true;
@@ -1057,6 +1199,7 @@ const getFloorNormal = (
 };
 
 const startCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsObject) => {
+  characterData.isGettingUp = false;
   characterData.isTumbling = true;
   characterData.__isTumblingStartTime = performance.now();
   characterData.__charAngDamping = physObj?.rigidBody?.angularDamping() || 0;
@@ -1075,28 +1218,42 @@ const startCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsO
 };
 
 const stopCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsObject) => {
-  (physObj?.rigidBody?.userData as { [key: string]: unknown }).lockRotationsX = true;
-  (physObj?.rigidBody?.userData as { [key: string]: unknown }).lockRotationsY = true;
-  (physObj?.rigidBody?.userData as { [key: string]: unknown }).lockRotationsZ = true;
-  physObj?.rigidBody?.setEnabledRotations(false, false, false, true);
-  physObj?.rigidBody?.lockRotations(true, true);
-  physObj?.rigidBody?.setRotation(new THREE.Vector4(0, 0, 0, 1), true);
-  physObj?.rigidBody?.setAngularDamping(characterData.__charAngDamping);
-  characterData.__charAngDamping = 0;
-  if (physObj?.meshes) {
-    const mesh = physObj?.meshes[physObj?.currentMeshIndex || 0];
-    if (mesh) {
-      mesh.setRotationFromQuaternion(new THREE.Quaternion(0, 0, 0, 1));
-      mesh.rotation.y = characterData.charRotation;
-    }
-  } else {
-    const mesh = physObj?.mesh;
-    if (mesh) {
-      mesh.setRotationFromQuaternion(new THREE.Quaternion(0, 0, 0, 1));
-      mesh.rotation.y = characterData.charRotation;
+  const body = physObj?.rigidBody;
+  if (body) {
+    (body.userData as { [key: string]: unknown }).lockRotationsX = true;
+    (body.userData as { [key: string]: unknown }).lockRotationsY = true;
+    (body.userData as { [key: string]: unknown }).lockRotationsZ = true;
+    body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    body.setAngularDamping(0);
+    body.setEnabledRotations(false, false, false, true);
+    body.lockRotations(true, true);
+    body.setRotation(new THREE.Vector4(0, 0, 0, 1), true);
+    body.setAngularDamping(characterData.__charAngDamping);
+    if (physObj.meshes) {
+      const mesh = physObj.meshes[physObj.currentMeshIndex || 0];
+      if (mesh) {
+        characterData.charRotation = eulerForCharRotation.setFromQuaternion(
+          mesh.quaternion,
+          'XZY'
+        ).y;
+        mesh.setRotationFromQuaternion(new THREE.Quaternion(0, 0, 0, 1));
+        mesh.rotation.y = characterData.charRotation;
+      }
+    } else {
+      const mesh = physObj.mesh;
+      if (mesh) {
+        characterData.charRotation = eulerForCharRotation.setFromQuaternion(
+          mesh.quaternion,
+          'XZY'
+        ).y;
+        mesh.setRotationFromQuaternion(new THREE.Quaternion(0, 0, 0, 1));
+        mesh.rotation.y = characterData.charRotation;
+      }
     }
   }
+  characterData.__charAngDamping = 0;
   characterData.isTumbling = false;
   characterData.__isTumblingStartTime = 0;
-  // @TODO: add isGettingUp state
+  characterData.isGettingUp = false;
+  characterData.__isGettingUpStartTime = 0;
 };

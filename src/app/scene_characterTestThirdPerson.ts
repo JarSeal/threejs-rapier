@@ -10,7 +10,7 @@ import { createPhysicsObjectWithMesh, getPhysicsObject } from '../_engine/core/P
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createThirdPersonCharacter } from './character_thirdPerson';
-import { characterTestObstacles } from './character_test_objects';
+import { characterTestObstacles, createMovingPlatform } from './character_test_objects';
 import { importModelAsync } from '../_engine/core/ImportModel';
 import { addCheckerboardMaterialToMesh } from '../public/debugger/assets/materials/checkerBoardPattern';
 import { getTestObstacle } from '../public/debugger/assets/obstacles/characterTestObstacles';
@@ -351,6 +351,11 @@ export const sceneCharacterTest = async () =>
 
       scene.add(slides.mesh);
     }
+
+    createMovingPlatform('platform1', scene, { x: 2, y: 0.2, z: 4 }, [
+      { pos: { x: -15, y: -1, z: -7 }, dur: 10000 },
+      { pos: { x: 5, y: -1, z: -7 }, dur: 5000 },
+    ]);
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 

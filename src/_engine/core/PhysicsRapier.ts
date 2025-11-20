@@ -203,6 +203,7 @@ export type RigidBodyParams = {
 type ScenePhysicsLooper = (delta: number) => void;
 
 const scenePhysicsLoopers: { [id: string]: ScenePhysicsLooper } = {};
+const scenePhysicsAfterStepLoopers: { [id: string]: ScenePhysicsLooper } = {};
 
 export type PhysicsParams = {
   /** Collider type and params {@link ColliderParams} */
@@ -1254,14 +1255,21 @@ const currTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaterni
 
 // Different stepper functions to use for debug and production.
 // baseStepper is used for both.
-const baseStepper = () => {
+// @TODO: add substeps const MAX_SUBSTEPS = 5; // prevent spiral of death
+// while (accDelta >= physicsState.timestepRatio && steps < MAX_SUBSTEPS) {
+//   ...
+//   accDelta -= physicsState.timestepRatio;
+//   steps++;
+// }
+const baseStepper = (loopState: LoopState) => {
   const delta = clock.getDelta();
-  accDelta += delta;
+  const scaledDelta = delta * loopState.playSpeedMultiplier;
+  accDelta += scaledDelta;
+
+  // Update loop action inputs
+  updateInputControllerLoopActions(scaledDelta);
 
   while (accDelta >= physicsState.timestepRatio) {
-    // Update loop action inputs
-    updateInputControllerLoopActions(delta);
-
     // Store previous transforms
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
       const po = currentScenePhysicsObjects[i];
@@ -1375,11 +1383,18 @@ const baseStepper = () => {
     // Run scenePhysicsLoopers
     const looperKeys = Object.keys(scenePhysicsLoopers);
     for (let i = 0; i < looperKeys.length; i++) {
-      scenePhysicsLoopers[looperKeys[i]](delta);
+      scenePhysicsLoopers[looperKeys[i]](physicsState.timestepRatio);
     }
 
     // Step the world
     physicsWorld.step(eventQueue);
+
+    // Run scenePhysicsAfterStepLoopers
+    const afterStepLooperKeys = Object.keys(scenePhysicsAfterStepLoopers);
+    for (let i = 0; i < afterStepLooperKeys.length; i++) {
+      scenePhysicsAfterStepLoopers[afterStepLooperKeys[i]](physicsState.timestepRatio);
+    }
+
     accDelta -= physicsState.timestepRatio;
   }
 };
@@ -1387,7 +1402,7 @@ const baseStepper = () => {
 // PRODUCTION STEPPER
 const stepperFnProduction = (loopState: LoopState) => {
   if (!loopState.masterPlay || !loopState.appPlay) return;
-  baseStepper();
+  baseStepper(loopState);
 };
 
 // DEBUG STEPPER
@@ -1399,7 +1414,7 @@ const stepperFnDebug = (loopState: LoopState) => {
   const curSceneParams = physicsState.scenes[getCurrentSceneId() || ''];
   if (!curSceneParams?.worldStepEnabled) return;
 
-  baseStepper();
+  baseStepper(loopState);
 
   if (physicsWorldEnabled && curSceneParams?.visualizerEnabled) {
     const { vertices, colors } = physicsWorld.debugRender();
@@ -2001,15 +2016,28 @@ export const InitRapierPhysics = async (
     : null;
 };
 
-export const addScenePhysicsLooper = (id: string, looper: ScenePhysicsLooper) =>
-  (scenePhysicsLoopers[id] = looper);
+export const addScenePhysicsLooper = (
+  id: string,
+  looper?: ScenePhysicsLooper,
+  afterStepLooper?: ScenePhysicsLooper
+) => {
+  if (looper) scenePhysicsLoopers[id] = looper;
+  if (afterStepLooper) scenePhysicsAfterStepLoopers[id] = afterStepLooper;
+};
 
-export const deleteScenePhysicsLooper = (id: string) => delete scenePhysicsLoopers[id];
+export const deleteScenePhysicsLooper = (id: string) => {
+  delete scenePhysicsLoopers[id];
+  delete scenePhysicsAfterStepLoopers[id];
+};
 
 export const deleteAllScenePhysicsLoopers = () => {
   const looperKeys = Object.keys(scenePhysicsLoopers);
   for (let i = 0; i < looperKeys.length; i++) {
     deleteScenePhysicsLooper(looperKeys[i]);
+  }
+  const afterStepLooperKeys = Object.keys(scenePhysicsAfterStepLoopers);
+  for (let i = 0; i < afterStepLooperKeys.length; i++) {
+    deleteScenePhysicsLooper(afterStepLooperKeys[i]);
   }
 };
 

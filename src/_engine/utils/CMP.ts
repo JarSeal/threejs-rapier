@@ -440,7 +440,7 @@ const createElem = (cmp: TCMP, props?: TProps) => {
 
 const createListeners = (cmp: TCMP, props?: TProps) => {
   // Remove possiple listeners
-  removeListeners(cmp);
+  removeListeners(cmp, true);
 
   const listeners = cmp.listeners;
 
@@ -589,6 +589,7 @@ const updateCmp = <WrapP extends TProps>(
     const template = document.createElement('template');
     template.innerHTML = getTempTemplate(cmp.id, 'cmpw');
     const tempElem = template.content.children[0] as HTMLElement;
+    removeListeners(cmp, true);
     cmp.elem.replaceWith(tempElem);
     if (cmp.props?.attach) rootCMP = null;
     const wrapperProps = wrapper.wrapperProps && {
@@ -604,6 +605,7 @@ const updateCmp = <WrapP extends TProps>(
     tempElem.replaceWith(cmp.elem);
   } else {
     // Added or template component type
+    removeListeners(cmp, true);
     cmp.props = { ...cmp.props, ...newProps };
     const elem = createElem(cmp, cmp.props);
     cmp.elem.replaceWith(elem);

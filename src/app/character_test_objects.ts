@@ -3,7 +3,8 @@ import { createGeometry, deleteGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createMesh } from '../_engine/core/Mesh';
-import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
+import { addScenePhysicsLooper, createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
+import { existsOrThrow } from '../_engine/utils/helpers';
 
 // @TODO: refactor this to produce only the needed objects (not all like it is now)
 
@@ -122,4 +123,114 @@ export const characterTestObstacles = () => {
   });
 
   return { stairsMesh, stairsPhysicsObject, bigBoxWallMesh, bigBoxWallPhysicsObject };
+};
+
+export const createMovingPlatform = (
+  id: string,
+  scene: THREE.Scene | THREE.Group,
+  platformSize: { x: number; y: number; z: number },
+  points: {
+    pos: { x: number; y: number; z: number };
+    rot?: { x: number; y: number; z: number; w: number };
+    dur?: number;
+  }[]
+) => {
+  const movingPlatformGeo = createGeometry({
+    id: `movingPlatform-geo-${id}`,
+    type: 'BOX',
+    params: { width: platformSize.x, height: platformSize.y, depth: platformSize.z },
+  });
+  const movingPlatformMat = createMaterial({
+    id: `movingPlatform-mat-${id}`,
+    type: 'PHONG',
+    params: { color: '#999' },
+  });
+  const movingPlatformMesh = createMesh({
+    id: `movingPlatform-${id}`,
+    geo: movingPlatformGeo,
+    mat: movingPlatformMat,
+    castShadow: true,
+    receiveShadow: true,
+  });
+  movingPlatformMesh.userData.isMovingPlatform = true;
+
+  const movingPlatformPhysicsObject = createPhysicsObjectWithMesh({
+    id: `movingPlatform-${id}`,
+    name: 'Big box wall',
+    physicsParams: [
+      {
+        collider: {
+          type: 'BOX',
+          friction: 1,
+        },
+        rigidBody: { rigidType: 'POS_BASED', userData: { isMovingPlatform: true } },
+      },
+    ],
+    meshOrMeshId: movingPlatformMesh,
+  });
+
+  const body = existsOrThrow(
+    movingPlatformPhysicsObject?.rigidBody,
+    'Moving platform body not found'
+  );
+  body.setTranslation(new THREE.Vector3(points[0].pos.x, points[0].pos.y, points[0].pos.z), true);
+  if (points[0].rot) {
+    body.setRotation(
+      new THREE.Quaternion(points[0].rot.x, points[0].rot.y, points[0].rot.z, points[0].rot.w),
+      true
+    );
+  }
+  let curIndex = 0;
+
+  // Pre-allocate vectors to avoid GC
+  const fromPos = new THREE.Vector3();
+  const toPos = new THREE.Vector3();
+  const curPos = new THREE.Vector3();
+
+  let t = 0; // param 0 → 1 along segment
+  let segmentDuration = (points[curIndex].dur ?? 3000) / 1000; // seconds
+  const nextIndex = (curIndex + 1) % points.length;
+  fromPos.set(points[curIndex].pos.x, points[curIndex].pos.y, points[curIndex].pos.z);
+  toPos.set(points[nextIndex].pos.x, points[nextIndex].pos.y, points[nextIndex].pos.z);
+  // This part is crucial for sticking the player to the platform
+  (body.userData as { velo: THREE.Vector3 }).velo = new THREE.Vector3(
+    (toPos.x - fromPos.x) / segmentDuration,
+    (toPos.y - fromPos.y) / segmentDuration,
+    (toPos.z - fromPos.z) / segmentDuration
+  );
+
+  addScenePhysicsLooper(id, (dt) => {
+    // Increase param by how much of the segment should pass this tick
+    t += dt / segmentDuration;
+
+    // Clamp
+    if (t > 1) t = 1;
+
+    // Lerp by param t
+    curPos.lerpVectors(fromPos, toPos, t);
+
+    // Apply kinematic motion
+    body.setNextKinematicTranslation(curPos);
+
+    // End of segment? Move to next one
+    if (t === 1) {
+      let nextIndex = (curIndex + 1) % points.length;
+      curIndex = nextIndex;
+      nextIndex = (curIndex + 1) % points.length;
+      fromPos.set(points[curIndex].pos.x, points[curIndex].pos.y, points[curIndex].pos.z);
+      toPos.set(points[nextIndex].pos.x, points[nextIndex].pos.y, points[nextIndex].pos.z);
+      const ud = body.userData as { velo: THREE.Vector3 };
+      ud.velo.set(
+        (toPos.x - fromPos.x) / segmentDuration,
+        (toPos.y - fromPos.y) / segmentDuration,
+        (toPos.z - fromPos.z) / segmentDuration
+      );
+      t = 0;
+      segmentDuration = (points[curIndex].dur ?? 3000) / 1000;
+    }
+  });
+
+  scene.add(movingPlatformMesh);
+
+  return { movingPlatformPhysicsObject, movingPlatformMesh };
 };

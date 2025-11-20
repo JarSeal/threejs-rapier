@@ -90,13 +90,12 @@ export const initStats = (config?: StatsOptions) => {
   return stats;
 };
 
-export const updateStats = (renderer: Renderer) => {
+export const updateRestOfStats = (renderer: Renderer) => {
   logicEndTime = performance.now();
   logicDuration = logicEndTime - logicStartTime;
   if (statsConfig.trackCPT) renderer.resolveTimestampsAsync(TimestampQuery.COMPUTE);
   if (statsConfig.trackGPU) renderer.resolveTimestampsAsync(TimestampQuery.RENDER);
   updateTFPSPanel(logicDuration);
-  stats?.update();
 };
 
 let prevCurrentTime = 0;
