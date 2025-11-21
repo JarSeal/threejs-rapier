@@ -75,7 +75,6 @@ export type CharacterData = {
   _keepMovingAfterJumpThreshold: number;
   __isFallingStartTime: number;
   __isTumblingStartTime: number;
-  __lviCheckTime: number;
   __jumpTime: number;
   __lastIsGroundedState: boolean;
   __maxWalkableAngleCos: number;
@@ -147,7 +146,6 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   _keepMovingAfterJumpThreshold: -10,
   __isFallingStartTime: 0,
   __isTumblingStartTime: 0,
-  __lviCheckTime: 0,
   __jumpTime: 0,
   __lastIsGroundedState: false,
   __maxWalkableAngleCos: 0,
@@ -313,12 +311,24 @@ export const createThirdPersonCharacter = (opts: {
         const curLinvelZ = rigidBody.linvel()?.z || 0;
         const xAddition =
           xVelo > 0
-            ? Math.min(curLinvelX + xVelo, characterData.isGrounded ? xMaxVelo : curLinvelX)
-            : Math.max(curLinvelX + xVelo, characterData.isGrounded ? xMaxVelo : curLinvelX);
+            ? Math.min(
+                curLinvelX + xVelo,
+                characterData.isGrounded ? xMaxVelo : curLinvelX > xMaxVelo ? curLinvelX : xMaxVelo
+              )
+            : Math.max(
+                curLinvelX + xVelo,
+                characterData.isGrounded ? xMaxVelo : curLinvelX < xMaxVelo ? curLinvelX : xMaxVelo
+              );
         const zAddition =
           zVelo > 0
-            ? Math.min(curLinvelZ + zVelo, characterData.isGrounded ? zMaxVelo : curLinvelZ)
-            : Math.max(curLinvelZ + zVelo, characterData.isGrounded ? zMaxVelo : curLinvelZ);
+            ? Math.min(
+                curLinvelZ + zVelo,
+                characterData.isGrounded ? zMaxVelo : curLinvelZ > zMaxVelo ? curLinvelZ : zMaxVelo
+              )
+            : Math.max(
+                curLinvelZ + zVelo,
+                characterData.isGrounded ? zMaxVelo : curLinvelZ < zMaxVelo ? curLinvelZ : zMaxVelo
+              );
 
         let charLinvelY = rigidBody.linvel()?.y || 0;
         if (characterData.isGrounded) {
@@ -387,7 +397,6 @@ export const createThirdPersonCharacter = (opts: {
         }
 
         rigidBody.setLinvel(vel, true);
-        characterData.__lviCheckTime = performance.now();
       }
     },
     jump: () => {
