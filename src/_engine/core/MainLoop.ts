@@ -40,6 +40,7 @@ export type LoopState = {
   playSpeedMultiplier: number;
   maxFPS: number;
   maxFPSInterval: number;
+  isWindowHidden: boolean;
 };
 
 let loopState: LoopState = {
@@ -50,6 +51,7 @@ let loopState: LoopState = {
   playSpeedMultiplier: 1,
   maxFPS: 0, // 0 = maxFPS limiter is off and is not used
   maxFPSInterval: 0, // if maxFPS = 60, then this would be 1000 / 60
+  isWindowHidden: false,
 };
 
 /**
@@ -101,7 +103,6 @@ const mainLoopForDebug = async () => {
     loopState.isMasterPlaying = true;
   } else {
     loopState.isMasterPlaying = false;
-    return;
   }
 
   // --- Max FPS limiter ---
@@ -172,7 +173,6 @@ const mainLoopForProduction = async () => {
     loopState.isMasterPlaying = true;
   } else {
     loopState.isMasterPlaying = false;
-    return;
   }
 
   // main loopers
@@ -210,7 +210,6 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     loopState.isMasterPlaying = true;
   } else {
     loopState.isMasterPlaying = false;
-    return;
   }
 
   // --- Max FPS limiter ---
@@ -376,6 +375,7 @@ let appPlayBinding: BindingApi | null = null;
 const createLoopDebugControls = () => {
   // Init On Screen Tools
   InitOnScreenTools();
+  initWinVisibilityListener();
 
   if (!isProdTestMode) return;
 
@@ -428,6 +428,23 @@ const createLoopDebugControls = () => {
   });
 };
 
+const visibilityChangeFns: { [id: string]: (isHidden: boolean) => void } = {};
+export const addVisibilityChangeFn = (id: string, fn: (isHidden: boolean) => void) =>
+  (visibilityChangeFns[id] = fn);
+
+export const deleteVisibilityChangeFn = (id: string) => delete visibilityChangeFns[id];
+
+const initWinVisibilityListener = () => {
+  document.addEventListener('visibilitychange', () => {
+    const isHidden = document.hidden;
+    loopState.isWindowHidden = isHidden;
+    const keys = Object.keys(visibilityChangeFns);
+    for (let i = 0; i < keys.length; i++) {
+      visibilityChangeFns[keys[i]](isHidden);
+    }
+  });
+};
+
 /**
  * Toggles the main loop player state (play / pause)
  * @param value (boolean) optional value whether the loop state in playing (true) or paused (false). If not provided then value is the opposite to the current value.
@@ -449,6 +466,7 @@ export const toggleMainPlay = (value?: boolean) => {
 export const toggleAppPlay = (value?: boolean) => {
   if (value !== undefined) {
     loopState.appPlay = value;
+    appPlayBinding?.refresh();
     return;
   }
   loopState.appPlay = !loopState.appPlay;

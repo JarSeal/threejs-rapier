@@ -228,21 +228,24 @@ export const sceneCharacterTest = async () =>
 
     // @TEMP: Set an interval to move the dummy
     let action: 'F' | 'T' | null = null;
-    setInterval(() => {
-      if (action !== 'F') {
-        action = 'F';
-        controlFns.jump();
-      } else {
-        action = 'T';
-        controlFns.jump();
+    let accDelta = 0;
+    createSceneAppLooper((delta) => {
+      if (accDelta > 1.5) {
+        if (action !== 'F') {
+          action = 'F';
+          controlFns.jump();
+        } else {
+          action = 'T';
+          controlFns.jump();
+        }
+        accDelta = 0;
       }
-    }, 1500);
-    createSceneAppLooper(() => {
       if (action === 'F') {
         controlFns.move('FORWARD');
       } else {
         controlFns.rotate('LEFT');
       }
+      accDelta += delta;
     });
 
     // Lights

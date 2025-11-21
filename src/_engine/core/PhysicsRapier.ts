@@ -6,7 +6,7 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getConfig, isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
 import { getMesh } from './Mesh';
-import { Pane } from 'tweakpane';
+import { ListBladeApi, Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
@@ -19,9 +19,10 @@ import {
   openDraggableWindow,
   updateDraggableWindow,
 } from './UI/DraggableWindow';
-import { LoopState } from './MainLoop';
+import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay } from './MainLoop';
 import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
 import { updateInputControllerLoopActions } from './InputControls';
+import { BladeController, View } from '@tweakpane/core';
 
 type CollisionEventFn = (
   collider1: Collider,
@@ -227,6 +228,35 @@ type PhysicsState = {
   enabled: boolean;
   timestep: number;
   timestepRatio: number;
+  /** What to do with physics loop if the app window is hidden (under another window, in another tab, minified).
+   * 'KEEP_RUNNIN' = Keeps the physics running in the background.
+   * 'KEEP_RUNNING_USE_MIN_DELTA' = If for some reason the physics cannot run in the background, the minDeltaTime will be set as new delta time. Requires: minDelta > 0.
+   * 'PAUSE' = Pauses the physics when the window is hidden and then uses the minDeltaTime to continue. Requires: minDelta > 0.
+   */
+  backgroundBehavior: 'KEEP_RUNNING' | 'KEEP_RUNNING_USE_MIN_DELTA' | 'PAUSE';
+  isPaused: boolean;
+  /** When the physics loop is on pause (backgroundBehavior = 'PAUSE', loopState.masterPlay = false, or loopState.appPlay = false)
+   * the time it was paused (performance.now()). 0 = not paused.
+   */
+  pausedTime: number;
+  /** Keeps track whether the pause reason is the background behavior (if the app window is hidden) */
+  pauseReason: 'BACKGROUND_BEHAVIOR' | null;
+  /** The minimum delta time to be used for backgroundBehaviors 'USE_MIN_DELTA' and 'PAUSE'.
+   * 0 = not in use
+   */
+  minDeltaTime: number;
+  /** Clamping protects against large delta times even in the foreground (e.g., if rendering stalls).
+   * 0 = not in use
+   */
+  maxDeltaTime: number;
+  /** This ensures stability by forcing the engine to run at least 'minSubsteps'
+   * per frame even if the frame rate is extremely high and deltaTime is tiny.
+   * 0 = not in use
+   */
+  /**  */
+  minSubSteps: number;
+  /** Prevent the spiral of death (should usually be the same as timestep) */
+  maxSubSteps: number;
   scenes: { [sceneId: string]: ScenePhysicsState };
 };
 
@@ -234,6 +264,14 @@ let physicsState: PhysicsState = {
   enabled: false,
   timestep: 60,
   timestepRatio: 1 / 60,
+  backgroundBehavior: 'PAUSE',
+  isPaused: false,
+  pausedTime: 0,
+  pauseReason: null,
+  minDeltaTime: 1 / 30,
+  maxDeltaTime: 1 / 10,
+  minSubSteps: 0,
+  maxSubSteps: 60,
   scenes: {},
 };
 
@@ -1247,6 +1285,30 @@ export const createPhysicsDebugMesh = () => {
   debugMesh.frustumCulled = false;
 };
 
+const physicsVisibilityChange = (isHidden: boolean) => {
+  const loopState = getReadOnlyLoopState();
+  if (isHidden) {
+    if (loopState.masterPlay && physicsState.backgroundBehavior === 'PAUSE') {
+      if (!physicsState.isPaused) {
+        physicsState.pausedTime = performance.now();
+      }
+      clock.stop();
+      physicsState.isPaused = true;
+      physicsState.pauseReason = 'BACKGROUND_BEHAVIOR';
+      toggleMainPlay(false);
+    }
+  } else {
+    if (physicsState.pauseReason === 'BACKGROUND_BEHAVIOR') {
+      physicsState.pauseReason = null;
+      clock.start();
+      clock.getDelta();
+      accDelta = 0;
+      toggleMainPlay(true);
+    }
+  }
+};
+addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
+
 let accDelta = 0;
 const clock = new THREE.Clock();
 
@@ -1255,21 +1317,48 @@ const currTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaterni
 
 // Different stepper functions to use for debug and production.
 // baseStepper is used for both.
-// @TODO: add substeps const MAX_SUBSTEPS = 5; // prevent spiral of death
-// while (accDelta >= physicsState.timestepRatio && steps < MAX_SUBSTEPS) {
-//   ...
-//   accDelta -= physicsState.timestepRatio;
-//   steps++;
-// }
 const baseStepper = (loopState: LoopState) => {
-  const delta = clock.getDelta();
+  let delta = clock.getDelta();
+  let stepsTaken = 0;
+  if (loopState.isWindowHidden || !loopState.masterPlay || !loopState.appPlay) {
+    if (
+      physicsState.backgroundBehavior === 'KEEP_RUNNING_USE_MIN_DELTA' &&
+      physicsState.minDeltaTime > 0
+    ) {
+      delta = physicsState.minDeltaTime;
+    } else if (
+      physicsState.backgroundBehavior === 'PAUSE' ||
+      !loopState.masterPlay ||
+      !loopState.appPlay
+    ) {
+      if (!physicsState.isPaused) {
+        physicsState.pausedTime = performance.now();
+      }
+      clock.stop();
+      physicsState.isPaused = true;
+      return;
+    }
+  } else if (physicsState.isPaused) {
+    clock.start();
+    delta = clock.getDelta();
+    delta = 0;
+    accDelta = 0;
+    if (physicsState.minDeltaTime > 0) delta = physicsState.minDeltaTime;
+    physicsState.isPaused = false;
+  }
   const scaledDelta = delta * loopState.playSpeedMultiplier;
   accDelta += scaledDelta;
+  if (physicsState.maxDeltaTime > 0) delta = Math.min(delta, physicsState.maxDeltaTime);
 
   // Update loop action inputs
   updateInputControllerLoopActions(scaledDelta);
 
-  while (accDelta >= physicsState.timestepRatio) {
+  while (
+    accDelta >= physicsState.timestepRatio &&
+    (physicsState.minSubSteps === 0 || stepsTaken <= physicsState.minSubSteps) &&
+    (physicsState.maxSubSteps === 0 || stepsTaken < physicsState.maxSubSteps)
+  ) {
+    if (physicsState.isPaused) break;
     // Store previous transforms
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
       const po = currentScenePhysicsObjects[i];
@@ -1396,25 +1485,23 @@ const baseStepper = (loopState: LoopState) => {
     }
 
     accDelta -= physicsState.timestepRatio;
+    stepsTaken++;
   }
 };
 
 // PRODUCTION STEPPER
-const stepperFnProduction = (loopState: LoopState) => {
-  if (!loopState.masterPlay || !loopState.appPlay) return;
-  baseStepper(loopState);
-};
+const stepperFnProduction = (loopState: LoopState) => baseStepper(loopState);
 
 // DEBUG STEPPER
 const stepperFnDebug = (loopState: LoopState) => {
   const startMeasuring = performance.now();
 
-  if (!loopState.masterPlay || !loopState.appPlay) return;
-
   const curSceneParams = physicsState.scenes[getCurrentSceneId() || ''];
   if (!curSceneParams?.worldStepEnabled) return;
 
   baseStepper(loopState);
+
+  if (!loopState.masterPlay || !loopState.appPlay) return;
 
   if (physicsWorldEnabled && curSceneParams?.visualizerEnabled) {
     const { vertices, colors } = physicsWorld.debugRender();
@@ -1594,6 +1681,8 @@ const createDebugControls = () => {
     ...savedValues,
   };
   physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
+  physicsState.isPaused = false;
+  physicsState.pauseReason = null;
 
   initDebuggerScenePhysState();
 
@@ -1726,6 +1815,63 @@ export const buildPhysicsDebugGUI = () => {
   debugGUI
     .addBinding(curScenePhysParams, 'interpolationEnabled', { label: 'Enable interpolation' })
     .on('change', () => {
+      lsSetItem(LS_KEY, physicsState);
+    });
+  const bgBehaviorDropDown = debugGUI.addBlade({
+    view: 'list',
+    label:
+      'Background behavior (when the loop is not running or the window is hidden, not in view, another tab, or minimized)',
+    options: [
+      { value: 'KEEP_RUNNING', text: 'Keep running' },
+      { value: 'KEEP_RUNNING_USE_MIN_DELTA', text: 'Keep running and use Minimum delta time' },
+      { value: 'PAUSE', text: 'Pause' },
+    ],
+    value: physicsState.backgroundBehavior,
+  }) as ListBladeApi<BladeController<View>>;
+  bgBehaviorDropDown.on('change', (e) => {
+    const value = e.value;
+    physicsState.backgroundBehavior = value as unknown as PhysicsState['backgroundBehavior'];
+    lsSetItem(LS_KEY, physicsState);
+  });
+  debugGUI
+    .addBinding(physicsState, 'minDeltaTime', {
+      label: 'Minimum delta time (eg. 1 / 30fps), 0 = not in use',
+      step: 0.0000000001,
+      min: 0,
+    })
+    .on('change', (e) => {
+      physicsState.minDeltaTime = 1 / e.value;
+      lsSetItem(LS_KEY, physicsState);
+    });
+  debugGUI
+    .addBinding(physicsState, 'maxDeltaTime', {
+      label: 'Maximum delta time (clamping to an fps, 1 / 10fps = 0.1), 0 = not in use',
+      step: 0.0000000001,
+      min: 0,
+    })
+    .on('change', (e) => {
+      physicsState.maxDeltaTime = 1 / e.value;
+      lsSetItem(LS_KEY, physicsState);
+    });
+  debugGUI
+    .addBinding(physicsState, 'minSubSteps', {
+      label: 'Minimum steps per render frame, 0 = not in use',
+      step: 1,
+      min: 0,
+    })
+    .on('change', (e) => {
+      physicsState.minSubSteps = e.value;
+      lsSetItem(LS_KEY, physicsState);
+    });
+  debugGUI
+    .addBinding(physicsState, 'maxSubSteps', {
+      label:
+        'Maximum steps per render frame (Prevents the spiral of death, should usually be the same as timestep), 0 = not in use',
+      step: 1,
+      min: 0,
+    })
+    .on('change', (e) => {
+      physicsState.maxSubSteps = e.value;
       lsSetItem(LS_KEY, physicsState);
     });
 };
