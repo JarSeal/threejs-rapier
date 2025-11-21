@@ -239,6 +239,8 @@ type PhysicsState = {
    * the time it was paused (performance.now()). 0 = not paused.
    */
   pausedTime: number;
+  /** Total pause duration, used for the getPhysGameTime helper (in the helpers.ts) */
+  pauseDurationTotal: number;
   /** Keeps track whether the pause reason is the background behavior (if the app window is hidden) */
   pauseReason: 'BACKGROUND_BEHAVIOR' | null;
   /** The minimum delta time to be used for backgroundBehaviors 'USE_MIN_DELTA' and 'PAUSE'.
@@ -267,6 +269,7 @@ let physicsState: PhysicsState = {
   backgroundBehavior: 'PAUSE',
   isPaused: false,
   pausedTime: 0,
+  pauseDurationTotal: 0,
   pauseReason: null,
   minDeltaTime: 1 / 30,
   maxDeltaTime: 1 / 10,
@@ -1285,15 +1288,36 @@ export const createPhysicsDebugMesh = () => {
   debugMesh.frustumCulled = false;
 };
 
+const setPhysicsPauseTime = () => {
+  const now = performance.now();
+  if (physicsState.pausedTime > 0) {
+    physicsState.pauseDurationTotal += now - physicsState.pausedTime;
+  }
+  physicsState.pausedTime = now;
+};
+
+/** Get the current phys game time, that is the performance.now()
+ * adjusted with the total pause time.
+ */
+export const getPhysGameTime = () => {
+  const now = performance.now();
+  let currentTotalPauseDuration = physicsState.pauseDurationTotal;
+
+  // If currently paused, add the time since the last pause began
+  if (physicsState.pausedTime > 0) {
+    currentTotalPauseDuration += now - physicsState.pausedTime;
+  }
+
+  return now - currentTotalPauseDuration;
+};
+
 const physicsVisibilityChange = (isHidden: boolean) => {
   const loopState = getReadOnlyLoopState();
   if (isHidden) {
     if (loopState.masterPlay && physicsState.backgroundBehavior === 'PAUSE') {
-      if (!physicsState.isPaused) {
-        physicsState.pausedTime = performance.now();
-      }
-      clock.stop();
+      setPhysicsPauseTime();
       physicsState.isPaused = true;
+      clock.stop();
       physicsState.pauseReason = 'BACKGROUND_BEHAVIOR';
       toggleMainPlay(false);
     }
@@ -1331,11 +1355,9 @@ const baseStepper = (loopState: LoopState) => {
       !loopState.masterPlay ||
       !loopState.appPlay
     ) {
-      if (!physicsState.isPaused) {
-        physicsState.pausedTime = performance.now();
-      }
-      clock.stop();
+      setPhysicsPauseTime();
       physicsState.isPaused = true;
+      clock.stop();
       return;
     }
   } else if (physicsState.isPaused) {
@@ -1345,6 +1367,8 @@ const baseStepper = (loopState: LoopState) => {
     accDelta = 0;
     if (physicsState.minDeltaTime > 0) delta = physicsState.minDeltaTime;
     physicsState.isPaused = false;
+    physicsState.pauseDurationTotal += performance.now() - physicsState.pausedTime;
+    physicsState.pausedTime = 0;
   }
   const scaledDelta = delta * loopState.playSpeedMultiplier;
   accDelta += scaledDelta;
@@ -1362,7 +1386,7 @@ const baseStepper = (loopState: LoopState) => {
     // Store previous transforms
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
       const po = currentScenePhysicsObjects[i];
-      if (checkDynamicPhysicsObjectInvalidity(po)) continue;
+      if (!isDynamicPhysicsObjectValid(po)) continue;
       const rb = po.rigidBody as RigidBody;
       const handle = rb.handle;
       const t = rb.translation();
@@ -1540,19 +1564,22 @@ const stepperFnDebug = (loopState: LoopState) => {
  */
 export const stepPhysicsWorld = (loopState: LoopState) => stepperFn(loopState);
 
-const checkDynamicPhysicsObjectInvalidity = (po: PhysicsObject) =>
-  !po.mesh ||
-  (po.rigidBody &&
-    (!po.rigidBody?.isMoving() || po.rigidBody.isFixed() || !po.rigidBody.isEnabled()));
+// @TODO: rename this to isDynamicPhysicsObjectValid and flip the checks to be !isDynamicPhysicsObjectValida(po)
+const isDynamicPhysicsObjectValid = (po: PhysicsObject) =>
+  po.mesh &&
+  po.rigidBody &&
+  po.rigidBody?.isMoving() &&
+  !po.rigidBody.isFixed() &&
+  po.rigidBody.isEnabled();
 
 export const renderPhysicsObjects = () => {
   if (getCurrentScenePhysParams().interpolationEnabled) {
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
       const po = currentScenePhysicsObjects[i];
       // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
-      if (checkDynamicPhysicsObjectInvalidity(po)) continue;
-      const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
-      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
+      if (!isDynamicPhysicsObjectValid(po)) continue;
+      const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
+      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
       const prev = prevTransforms.get(rb.handle);
       const curr = currTransforms.get(rb.handle);
       if (!prev || !curr) continue;
@@ -1582,9 +1609,9 @@ export const renderPhysicsObjects = () => {
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
       const po = currentScenePhysicsObjects[i];
       // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
-      if (checkDynamicPhysicsObjectInvalidity(po)) continue;
-      const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
-      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
+      if (!isDynamicPhysicsObjectValid(po)) continue;
+      const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
+      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
 
       mesh.position.copy(rb.translation());
       const userData = rb.userData as { [key: string]: unknown };

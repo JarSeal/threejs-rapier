@@ -12,6 +12,7 @@ import {
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import {
   addScenePhysicsLooper,
+  getPhysGameTime,
   getPhysicsObject,
   getPhysicsWorld,
   PhysicsObject,
@@ -406,11 +407,11 @@ export const createThirdPersonCharacter = (opts: {
       const jumpCheckOk =
         charData.isGrounded &&
         !charData.isCrouching &&
-        charData.__jumpTime + 100 < performance.now();
+        charData.__jumpTime + 100 < getPhysGameTime();
       if (jumpCheckOk) {
         const physObj = characterPhysObj;
         physObj?.rigidBody?.applyImpulse(new THREE.Vector3(0, charData._jumpAmount, 0), true);
-        charData.__jumpTime = performance.now();
+        charData.__jumpTime = getPhysGameTime();
       }
     },
     run: () => {
@@ -889,13 +890,13 @@ export const createThirdPersonCharacter = (opts: {
     if (
       characterData.isTumbling &&
       !characterData.isGettingUp &&
-      characterData.__isTumblingStartTime + characterData._tumblingMinTime < performance.now() &&
+      characterData.__isTumblingStartTime + characterData._tumblingMinTime < getPhysGameTime() &&
       characterData.velocity.world < characterData._tumblingEndMinVelo &&
       characterData.angularVelocity.world < characterData._tumblingEndMinAngVelo
     ) {
       // End tumbling and start isGettingUp phase
       characterData.isGettingUp = true;
-      characterData.__isGettingUpStartTime = performance.now();
+      characterData.__isGettingUpStartTime = getPhysGameTime();
     } else if (characterData.isTumbling && physObj.rigidBody) {
       // Clamp angular velocity when tumbling
       const w = physObj.rigidBody.angvel();
@@ -912,7 +913,7 @@ export const createThirdPersonCharacter = (opts: {
     if (characterData.isGettingUp) {
       body.setAngularDamping(25.0);
       const ratio = Math.min(
-        performance.now() /
+        getPhysGameTime() /
           (characterData.__isGettingUpStartTime + characterData._gettingUpDuration),
         1
       );
@@ -967,10 +968,10 @@ export const createThirdPersonCharacter = (opts: {
       characterData.__isFallingStartTime = 0;
       characterData.isFalling = false;
     } else if (!characterData.__isFallingStartTime) {
-      characterData.__isFallingStartTime = performance.now();
+      characterData.__isFallingStartTime = getPhysGameTime();
     } else if (
       characterData.__isFallingStartTime + characterData._isFallingThreshold <
-      performance.now()
+      getPhysGameTime()
     ) {
       characterData.isFalling = true;
     }
@@ -1210,7 +1211,7 @@ const getFloorNormal = (
 const startCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsObject) => {
   characterData.isGettingUp = false;
   characterData.isTumbling = true;
-  characterData.__isTumblingStartTime = performance.now();
+  characterData.__isTumblingStartTime = getPhysGameTime();
   characterData.__charAngDamping = physObj?.rigidBody?.angularDamping() || 0;
   physObj?.rigidBody?.setAngularDamping(2.5);
   physObj?.rigidBody?.lockRotations(false, true);
