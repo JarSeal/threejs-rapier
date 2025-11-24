@@ -360,6 +360,13 @@ export const sceneCharacterTest = async () =>
       { pos: { x: 5, y: -1, z: -7 }, dur: 5000 },
     ]);
 
+    createMovingPlatform('platform2', scene, { x: 2, y: 0.2, z: 4 }, [
+      { pos: { x: -12, y: -2, z: -12 }, dur: 2000 },
+      { pos: { x: -12, y: -2, z: -12 }, dur: 3000 },
+      { pos: { x: -12, y: 8, z: -12 }, dur: 3000 },
+      { pos: { x: -12, y: 8, z: -12 }, dur: 2000 },
+    ]);
+
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 
     resolve(SCENE_TEST_CHARACTER_ID);
