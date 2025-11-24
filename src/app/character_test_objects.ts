@@ -219,6 +219,7 @@ export const createMovingPlatform = (
       nextIndex = (curIndex + 1) % points.length;
       fromPos.set(points[curIndex].pos.x, points[curIndex].pos.y, points[curIndex].pos.z);
       toPos.set(points[nextIndex].pos.x, points[nextIndex].pos.y, points[nextIndex].pos.z);
+      segmentDuration = (points[curIndex].dur ?? 3000) / 1000;
       const ud = body.userData as { velo: THREE.Vector3 };
       ud.velo.set(
         (toPos.x - fromPos.x) / segmentDuration,
@@ -226,7 +227,6 @@ export const createMovingPlatform = (
         (toPos.z - fromPos.z) / segmentDuration
       );
       t = 0;
-      segmentDuration = (points[curIndex].dur ?? 3000) / 1000;
     }
   });
 
