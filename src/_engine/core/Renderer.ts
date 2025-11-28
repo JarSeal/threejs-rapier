@@ -15,7 +15,7 @@ let r: THREE.WebGPURenderer | null = null;
 const ELEM_ID = 'mainCanvas';
 const LS_KEY = 'debugRenderer';
 let options: RendererOptions = {
-  antialias: undefined,
+  antialias: true,
   forceWebGL: false,
   devicePixelRatio: 1,
   currentApi: 'WebGL',

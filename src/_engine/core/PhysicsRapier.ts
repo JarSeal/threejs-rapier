@@ -1311,28 +1311,26 @@ export const getPhysGameTime = () => {
   return now - currentTotalPauseDuration;
 };
 
-// @TODO: fix this, it will toggleMainPlay to false when refreshed (and save the state), maybe add a setTimeout for it
 const physicsVisibilityChange = (isHidden: boolean) => {
   const loopState = getReadOnlyLoopState();
-  // if (isHidden) {
-  //   if (loopState.masterPlay && physicsState.backgroundBehavior === 'PAUSE') {
-  //     setPhysicsPauseTime();
-  //     physicsState.isPaused = true;
-  //     clock.stop();
-  //     physicsState.pauseReason = 'BACKGROUND_BEHAVIOR';
-  //     toggleMainPlay(false);
-  //   }
-  // } else {
-  //   if (physicsState.pauseReason === 'BACKGROUND_BEHAVIOR') {
-  //     physicsState.pauseReason = null;
-  //     clock.start();
-  //     clock.getDelta();
-  //     accDelta = 0;
-  //     toggleMainPlay(true);
-  //   }
-  // }
+  if (isHidden) {
+    if (loopState.masterPlay && physicsState.backgroundBehavior === 'PAUSE') {
+      setPhysicsPauseTime();
+      physicsState.isPaused = true;
+      clock.stop();
+      physicsState.pauseReason = 'BACKGROUND_BEHAVIOR';
+      toggleMainPlay(false);
+    }
+  } else {
+    if (physicsState.pauseReason === 'BACKGROUND_BEHAVIOR') {
+      physicsState.pauseReason = null;
+      clock.start();
+      clock.getDelta();
+      accDelta = 0;
+      toggleMainPlay(true);
+    }
+  }
 };
-addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
 
 let accDelta = 0;
 const clock = new THREE.Clock();
@@ -1712,6 +1710,7 @@ const createDebugControls = () => {
   physicsState.isPaused = false;
   physicsState.pauseReason = null;
 
+  addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
   initDebuggerScenePhysState();
 
   const icon = getSvgIcon('rocketTakeoff');

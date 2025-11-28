@@ -217,6 +217,12 @@ export const isNotUndefinedNorNullOrWarn = <T>(
 };
 
 export const ThreeVector3 = new THREE.Vector3();
+export const ThreeQuoternion = new THREE.Quaternion();
+
+export const getQuatFromAngle = (deg: number) => {
+  ThreeQuoternion.setFromAxisAngle(ThreeVector3.set(0, 1, 0), THREE.MathUtils.degToRad(deg));
+  return { x: ThreeQuoternion.x, y: ThreeQuoternion.y, z: ThreeQuoternion.z, w: ThreeQuoternion.w };
+};
 
 // @TODO: rename this (slerp to slerpQuat)
 export const slerp = (a: THREE.Quaternion, b: THREE.Quaternion, t: number) => a.clone().slerp(b, t);

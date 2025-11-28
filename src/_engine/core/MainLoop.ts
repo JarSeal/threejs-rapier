@@ -41,6 +41,7 @@ export type LoopState = {
   maxFPS: number;
   maxFPSInterval: number;
   isWindowHidden: boolean;
+  isUnloading: boolean;
 };
 
 let loopState: LoopState = {
@@ -52,6 +53,7 @@ let loopState: LoopState = {
   maxFPS: 0, // 0 = maxFPS limiter is off and is not used
   maxFPSInterval: 0, // if maxFPS = 60, then this would be 1000 / 60
   isWindowHidden: false,
+  isUnloading: false,
 };
 
 /**
@@ -370,7 +372,6 @@ export const deleteResizer = (id: string) => {
 };
 
 // Debug GUI for loop
-let masterPlayBinding: BindingApi | null = null;
 let appPlayBinding: BindingApi | null = null;
 const createLoopDebugControls = () => {
   // Init On Screen Tools
@@ -387,16 +388,14 @@ const createLoopDebugControls = () => {
     orderNr: 4,
     container: () => {
       const { container, debugGUI } = createNewDebuggerPane('loop', `${icon} Loop Controls`);
-      masterPlayBinding = debugGUI
-        .addBinding(loopState, 'masterPlay', { label: 'Master loop' })
-        .on('change', (e) => {
-          if (e.value) {
-            requestAnimationFrame(mainLoop);
-            requestAnimationFrame(() => stepPhysicsWorld(loopState));
-          }
-          lsSetItem(LS_KEY, loopState);
-          updateOnScreenTools('PLAY');
-        });
+      debugGUI.addBinding(loopState, 'masterPlay', { label: 'Master loop' }).on('change', (e) => {
+        if (e.value) {
+          requestAnimationFrame(mainLoop);
+          requestAnimationFrame(() => stepPhysicsWorld(loopState));
+        }
+        lsSetItem(LS_KEY, loopState);
+        updateOnScreenTools('PLAY');
+      });
       appPlayBinding = debugGUI
         .addBinding(loopState, 'appPlay', { label: 'App loop' })
         .on('change', () => {
@@ -434,8 +433,10 @@ export const addVisibilityChangeFn = (id: string, fn: (isHidden: boolean) => voi
 
 export const deleteVisibilityChangeFn = (id: string) => delete visibilityChangeFns[id];
 
+window.addEventListener('beforeunload', () => (loopState.isUnloading = true));
 const initWinVisibilityListener = () => {
   document.addEventListener('visibilitychange', () => {
+    if (loopState.isUnloading) return;
     const isHidden = document.hidden;
     loopState.isWindowHidden = isHidden;
     const keys = Object.keys(visibilityChangeFns);
@@ -455,8 +456,10 @@ export const toggleMainPlay = (value?: boolean) => {
   } else {
     loopState.masterPlay = !loopState.masterPlay;
   }
-  if (loopState.masterPlay && !loopState.isMasterPlaying) requestAnimationFrame(mainLoop);
-  masterPlayBinding?.refresh();
+  if (loopState.masterPlay && !loopState.isMasterPlaying) {
+    loopState.isMasterPlaying = true;
+    requestAnimationFrame(mainLoop);
+  }
 };
 
 /**

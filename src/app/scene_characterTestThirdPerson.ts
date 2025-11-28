@@ -10,10 +10,12 @@ import { createPhysicsObjectWithMesh, getPhysicsObject } from '../_engine/core/P
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createThirdPersonCharacter } from './character_thirdPerson';
-import { characterTestObstacles, createMovingPlatform } from './character_test_objects';
+import { characterTestObstacles } from './character_test_objects';
 import { importModelAsync } from '../_engine/core/ImportModel';
 import { addCheckerboardMaterialToMesh } from '../public/debugger/assets/materials/checkerBoardPattern';
 import { getTestObstacle } from '../public/debugger/assets/obstacles/characterTestObstacles';
+import { getQuatFromAngle } from '../_engine/utils/helpers';
+import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 
 export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
@@ -355,16 +357,65 @@ export const sceneCharacterTest = async () =>
       scene.add(slides.mesh);
     }
 
-    createMovingPlatform('platform1', scene, { x: 2, y: 0.2, z: 4 }, [
+    createMovingPlatform('sideWaysPlatform', scene, { x: 2, y: 0.2, z: 4 }, [
       { pos: { x: -15, y: -1, z: -7 }, dur: 10000 },
       { pos: { x: 5, y: -1, z: -7 }, dur: 5000 },
     ]);
 
-    createMovingPlatform('platform2', scene, { x: 2, y: 0.2, z: 4 }, [
-      { pos: { x: -12, y: -2, z: -12 }, dur: 2000 },
-      { pos: { x: -12, y: -2, z: -12 }, dur: 3000 },
-      { pos: { x: -12, y: 8, z: -12 }, dur: 3000 },
+    createMovingPlatform('elevatorPlatform', scene, { x: 4, y: 0.2, z: 4 }, [
+      { pos: { x: -12, y: -1.8, z: -12 }, dur: 2000 },
+      { pos: { x: -12, y: -1.8, z: -12 }, dur: 3000 },
       { pos: { x: -12, y: 8, z: -12 }, dur: 2000 },
+      { pos: { x: -12, y: 8, z: -12 }, dur: 2000 },
+      { pos: { x: -12, y: 2, z: -12 }, dur: 2000 },
+    ]);
+
+    const carouselPos = { x: 14, y: -1.9, z: -4 };
+    const oneLapDuration = 4000; // Total time for 360 degrees (ms)
+    const segmentDur = oneLapDuration / 4; // Time per 90 degrees
+    createMovingPlatform('carouselPlatform', scene, { x: 5, y: 0.2, z: 5 }, [
+      { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(0) },
+      { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(90) },
+      { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(180) },
+      { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(270) },
+    ]);
+    const carouselPos2 = { x: 25, y: -1.9, z: -4 };
+    const oneLapDuration2 = 8000; // Total time for 360 degrees (ms)
+    const segmentDur2 = oneLapDuration2 / 4; // Time per 90 degrees
+    createMovingPlatform('carouselPlatform2', scene, { x: 5, y: 0.2, z: 5 }, [
+      { pos: carouselPos2, dur: segmentDur2, rot: getQuatFromAngle(0) },
+      { pos: { ...carouselPos2, z: 0 }, dur: segmentDur2, rot: getQuatFromAngle(-90) },
+      { pos: { ...carouselPos2, z: 4 }, dur: segmentDur2, rot: getQuatFromAngle(-180) },
+      { pos: { ...carouselPos2, z: 0 }, dur: segmentDur2, rot: getQuatFromAngle(-270) },
+    ]);
+    const carouselPos3 = { x: 25, y: -1.9, z: 12 };
+    const oneLapDuration3 = 8000; // Total time for 360 degrees (ms)
+    const segmentDur3 = oneLapDuration3 / 4; // Time per 90 degrees
+    createMovingPlatform('carouselPlatform3', scene, { x: 5, y: 0.2, z: 5 }, [
+      { pos: carouselPos3, dur: segmentDur3, rot: getQuatFromAngle(0) },
+      { pos: { ...carouselPos3, x: 21 }, dur: segmentDur3, rot: getQuatFromAngle(90) },
+      { pos: { ...carouselPos3, x: 17 }, dur: segmentDur3, rot: getQuatFromAngle(180) },
+      { pos: { ...carouselPos3, x: 21 }, dur: segmentDur3, rot: getQuatFromAngle(270) },
+    ]);
+
+    const carouselOneSegDur = 1500;
+    createMovingPlatform('ferrisWheelPlatform', scene, { x: 2, y: 0.2, z: 4 }, [
+      { pos: { x: 5, y: -1.9, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(0) },
+      { pos: { x: 7.5, y: -1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(45) },
+      { pos: { x: 10, y: 0, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(90) },
+      { pos: { x: 12.5, y: 1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(135) },
+      { pos: { x: 15, y: 2, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(180) },
+      { pos: { x: 12.5, y: 3, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(225) },
+      { pos: { x: 10, y: 4, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(270) },
+      { pos: { x: 7.5, y: 5, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(315) },
+      { pos: { x: 5, y: 6, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(0) },
+      { pos: { x: 2.5, y: 5, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(45) },
+      { pos: { x: 0, y: 4, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(90) },
+      { pos: { x: -2.5, y: 3, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(135) },
+      { pos: { x: -5, y: 2, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(180) },
+      { pos: { x: -2.5, y: 1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(225) },
+      { pos: { x: 0, y: 0, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(270) },
+      { pos: { x: 2.5, y: -1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(315) },
     ]);
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });

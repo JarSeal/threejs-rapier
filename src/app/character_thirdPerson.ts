@@ -14,6 +14,7 @@ import {
   addScenePhysicsLooper,
   getPhysGameTime,
   getPhysicsObject,
+  getPhysicsState,
   getPhysicsWorld,
   PhysicsObject,
   switchPhysicsCollider,
@@ -32,7 +33,6 @@ export type CharacterData = {
   velocity: { x: number; y: number; z: number; length: number };
   relVelocity: { x: number; y: number; z: number; length: number };
   angularVelocity: { x: number; y: number; z: number; length: number };
-  relAngularVelocity: { x: number; y: number; z: number; length: number };
   charRotation: number;
   isAwake: boolean;
   hasMoveInput: boolean;
@@ -88,6 +88,7 @@ export type CharacterData = {
   __isGettingUpStartTime: number;
   __wasOnMovingPlatformLastFrame: boolean; // @TODO: remove
   __lastAppliedPlatformVelocity: { x: number; y: number; z: number };
+  __currentPlatformVelocity: { x: number; y: number; z: number };
 };
 
 export type ThirdPersonCharacter = {
@@ -107,7 +108,6 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   velocity: { x: 0, y: 0, z: 0, length: 0 },
   relVelocity: { x: 0, y: 0, z: 0, length: 0 },
   angularVelocity: { x: 0, y: 0, z: 0, length: 0 },
-  relAngularVelocity: { x: 0, y: 0, z: 0, length: 0 },
   charRotation: 0,
   isAwake: false,
   hasMoveInput: false,
@@ -162,6 +162,7 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   __isGettingUpStartTime: 0,
   __wasOnMovingPlatformLastFrame: false,
   __lastAppliedPlatformVelocity: { x: 0, y: 0, z: 0 },
+  __currentPlatformVelocity: { x: 0, y: 0, z: 0 },
 };
 const getDefaultCharacterData = () => {
   // We need to copy all object and arrays
@@ -169,7 +170,6 @@ const getDefaultCharacterData = () => {
   const velocity = { ...DEFAULT_CHARACTER_DATA.velocity };
   const relVelocity = { ...DEFAULT_CHARACTER_DATA.relVelocity };
   const angularVelocity = { ...DEFAULT_CHARACTER_DATA.angularVelocity };
-  const relAngularVelocity = { ...DEFAULT_CHARACTER_DATA.relAngularVelocity };
   const groundNormal = { ...DEFAULT_CHARACTER_DATA.groundNormal };
   const __touchingWallColliders = [...DEFAULT_CHARACTER_DATA.__touchingWallColliders];
   const __touchingGroundColliders = [...DEFAULT_CHARACTER_DATA.__touchingGroundColliders];
@@ -179,7 +179,6 @@ const getDefaultCharacterData = () => {
     velocity,
     relVelocity,
     angularVelocity,
-    relAngularVelocity,
     groundNormal,
     __touchingWallColliders,
     __touchingGroundColliders,
@@ -187,6 +186,14 @@ const getDefaultCharacterData = () => {
 };
 
 const eulerForCharRotation = new THREE.Euler();
+const vectors = {
+  r: new THREE.Vector3(),
+  omega: new THREE.Vector3(),
+  vTan: new THREE.Vector3(),
+  currentRelVelo: new THREE.Vector3(),
+  angularVelocity: new THREE.Vector3(),
+  groundDot: new THREE.Vector3(),
+};
 let thirdPersonCamera: THREE.PerspectiveCamera | null = null;
 
 const characters: { [id: string]: ThirdPersonCharacter } = {};
@@ -1038,7 +1045,8 @@ export const createThirdPersonCharacter = (opts: {
       z: roundToDecimal(angVelo.z, characterData._roundVelocitiesScalingFactor),
       length: roundToDecimal(angVelo.length(), characterData._roundVelocitiesScalingFactor),
     };
-    characterData.relAngularVelocity = characterData.angularVelocity;
+
+    characterData.__currentPlatformVelocity = { x: 0, y: 0, z: 0 };
 
     // Handle character on moving platform
     if (characterData.isOnMovingPlatform) {
@@ -1055,20 +1063,103 @@ export const createThirdPersonCharacter = (opts: {
           currentPos: THREE.Vector3;
           prevPos: THREE.Vector3;
           velo: THREE.Vector3;
+          angVelo: THREE.Vector3;
+          friction: number;
         };
         if (ud?.isMovingPlatform) {
-          const velo = body.linvel();
-          const platformVelo = {
-            x: ud.velo.x - characterData.__lastAppliedPlatformVelocity.x,
-            y: ud.velo.y - characterData.__lastAppliedPlatformVelocity.y,
-            z: ud.velo.z - characterData.__lastAppliedPlatformVelocity.z,
-          };
-          const newVelX = velo.x + platformVelo.x;
-          const newVelY = velo.y + platformVelo.y;
-          const newVelZ = velo.z + platformVelo.z;
+          // 1. GET CORRECT ANGULAR VELOCITY
+          // Rapier's angvel() is often 0 for kinematic bodies. We MUST use the one we calculated.
+          const physicsAngVel = pb.angvel();
+          const udAngVel = ud.angVelo;
 
+          // Fallback to physics engine if userData is missing, but prefer userData
+          const angVelo = {
+            x: udAngVel ? udAngVel.x : physicsAngVel.x,
+            y: udAngVel ? udAngVel.y : physicsAngVel.y,
+            z: udAngVel ? udAngVel.z : physicsAngVel.z,
+          };
+
+          // 2. CALCULATE VECTORS
+          const platformPos = pb.translation();
+          const charPos = body.translation();
+
+          // Flatten Y to prevent "wobble" errors in the radius
+          const r = vectors.r.set(charPos.x - platformPos.x, 0, charPos.z - platformPos.z);
+
+          const omega = vectors.omega.set(angVelo.x, angVelo.y, angVelo.z);
+          const vTan = vectors.vTan.crossVectors(omega, r);
+
+          // 3. CALCULATE TOTAL FLOOR VELOCITY
+          // This is the absolute world speed of the floor under the player's feet.
+          const totalPlatformVeloAtPoint = {
+            x: ud.velo.x + vTan.x,
+            y: ud.velo.y + vTan.y,
+            z: ud.velo.z + vTan.z,
+          };
+
+          // 4. ROTATION (Visuals)
+          if (Math.abs(angVelo.y) > 0.001) {
+            const rotationAmount = angVelo.y * getPhysicsState().timestepRatio;
+            charMesh.rotateY(rotationAmount);
+            characterData.charRotation = eulerForCharRotation.setFromQuaternion(
+              charMesh.quaternion,
+              'XZY'
+            ).y;
+
+            // Optional: Sync physics body rotation if you want (doesn't affect slinging)
+            // body.setRotation(charMesh.quaternion, true);
+          }
+
+          // 5. VELOCITY RECONSTRUCTION (The Sling Fix)
+
+          // A. Get Current World Velocity
+          const currentWorldVelo = body.linvel();
+
+          // B. Extract Relative Velocity
+          // We subtract the TOTAL platform velocity we applied last frame.
+          const currentRelVelo = vectors.currentRelVelo.set(
+            currentWorldVelo.x - characterData.__lastAppliedPlatformVelocity.x,
+            currentWorldVelo.y - characterData.__lastAppliedPlatformVelocity.y,
+            currentWorldVelo.z - characterData.__lastAppliedPlatformVelocity.z
+          );
+
+          if (Math.abs(angVelo.y) > 0.001) {
+            const rotationStep = angVelo.y * getPhysicsState().timestepRatio;
+            // Rotate the vector around the Y axis
+            currentRelVelo.applyAxisAngle(LEVEL_GROUND_NORMAL, rotationStep);
+          }
+
+          // C. STABILIZATION (Critical)
+          // If the player is not trying to move, Force Relative X/Z to 0.
+          // This kills the "Centrifugal Drift" that causes the slinging.
+          if (!characterData.hasMoveInput && !characterData.isTumbling) {
+            // Apply Friction (Decay the relative velocity)
+            // 0.8 = slippery, 0.95 = icy, 0.5 = sticky
+            currentRelVelo.x *= ud.friction;
+            currentRelVelo.z *= ud.friction;
+
+            // Snap to zero if very slow to prevent micro-sliding forever
+            if (Math.abs(currentRelVelo.x) < 0.01) currentRelVelo.x = 0;
+            if (Math.abs(currentRelVelo.z) < 0.01) currentRelVelo.z = 0;
+          }
+
+          // D. Reconstruct New World Velocity
+          // New World = Clean Relative + New Platform Total
+          const newVelX = currentRelVelo.x + totalPlatformVeloAtPoint.x;
+          const newVelY = currentRelVelo.y + totalPlatformVeloAtPoint.y;
+          const newVelZ = currentRelVelo.z + totalPlatformVeloAtPoint.z;
+
+          // 6. APPLY AND STORE
           body.setLinvel({ x: newVelX, y: newVelY, z: newVelZ }, true);
 
+          characterData.__lastAppliedPlatformVelocity = {
+            x: totalPlatformVeloAtPoint.x,
+            y: totalPlatformVeloAtPoint.y,
+            z: totalPlatformVeloAtPoint.z,
+          };
+          characterData.__currentPlatformVelocity = totalPlatformVeloAtPoint;
+
+          // 7. UPDATE STATUS
           // Set new character velocity
           const v = usableVec.set(newVelX, newVelY, newVelZ);
           characterData.velocity.x = roundToDecimal(
@@ -1089,9 +1180,9 @@ export const createThirdPersonCharacter = (opts: {
           );
 
           // Set new character relative velocity
-          const newRelVelX = newVelX - ud.velo.x;
-          const newRelVelY = newVelY - ud.velo.y;
-          const newRelVelZ = newVelZ - ud.velo.z;
+          const newRelVelX = newVelX - ud.velo.x - vTan.x;
+          const newRelVelY = newVelY - ud.velo.y - vTan.y;
+          const newRelVelZ = newVelZ - ud.velo.z - vTan.z;
           const vRel = usableVec.set(newRelVelX, newRelVelY, newRelVelZ);
           const vRelLength = vRel.length();
           characterData.relVelocity.x = roundToDecimal(
@@ -1110,29 +1201,29 @@ export const createThirdPersonCharacter = (opts: {
             vRelLength,
             characterData._roundVelocitiesScalingFactor
           );
-
           characterData.__lastAppliedPlatformVelocity = {
-            x: ud.velo.x,
-            y: ud.velo.y,
-            z: ud.velo.z,
+            x: totalPlatformVeloAtPoint.x,
+            y: totalPlatformVeloAtPoint.y,
+            z: totalPlatformVeloAtPoint.z,
           };
 
-          // @TODO: we need to next set the correct angular and relative angular velocities
           // Set character angular velocity
-          // const angVelo = usableVec.set(
-          //   physObj.rigidBody?.angvel().x || 0,
-          //   physObj.rigidBody?.angvel().y || 0,
-          //   physObj.rigidBody?.angvel().z || 0
-          // );
-          // characterData.angularVelocity = {
-          //   x: roundToDecimal(angVelo.x, characterData._roundVelocitiesScalingFactor),
-          //   y: roundToDecimal(angVelo.y, characterData._roundVelocitiesScalingFactor),
-          //   z: roundToDecimal(angVelo.z, characterData._roundVelocitiesScalingFactor),
-          //   length: roundToDecimal(angVelo.length(), characterData._roundVelocitiesScalingFactor),
-          // };
-          // characterData.relAngularVelocity = characterData.angularVelocity;
+          characterData.angularVelocity = {
+            x: roundToDecimal(angVelo.x, characterData._roundVelocitiesScalingFactor),
+            y: roundToDecimal(angVelo.y, characterData._roundVelocitiesScalingFactor),
+            z: roundToDecimal(angVelo.z, characterData._roundVelocitiesScalingFactor),
+            length: roundToDecimal(
+              vectors.angularVelocity.set(angVelo.x, angVelo.y, angVelo.z).length(),
+              characterData._roundVelocitiesScalingFactor
+            ),
+          };
+
+          // Stop processing other platforms
+          break;
         }
       }
+    } else {
+      characterData.__lastAppliedPlatformVelocity = { x: 0, y: 0, z: 0 };
     }
 
     // Set isSliding
@@ -1294,9 +1385,9 @@ const getFloorNormal = (
 
   const groundNormal = hit?.normal || { x: 0, y: 1, z: 0 };
   characterData.groundNormal = { x: groundNormal.x, y: groundNormal.y, z: groundNormal.z };
-  const groundDot = new THREE.Vector3(groundNormal.x, groundNormal.y, groundNormal.z).dot(
-    LEVEL_GROUND_NORMAL
-  );
+  const groundDot = vectors.groundDot
+    .set(groundNormal.x, groundNormal.y, groundNormal.z)
+    .dot(LEVEL_GROUND_NORMAL);
 
   // Set groundIsWalkable
   characterData.groundIsWalkable = true;
