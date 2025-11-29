@@ -2,8 +2,43 @@ import * as THREE from 'three/webgpu';
 import { createGeometry } from '../../core/Geometry';
 import { createMaterial } from '../../core/Material';
 import { createMesh } from '../../core/Mesh';
-import { addScenePhysicsLooper, createPhysicsObjectWithMesh } from '../../core/PhysicsRapier';
+import {
+  addScenePhysicsLooper,
+  createPhysicsObjectWithMesh,
+  deletePhysicsObject,
+  deleteScenePhysicsLooper,
+  PhysicsObject,
+} from '../../core/PhysicsRapier';
 import { existsOrThrow } from '../helpers';
+
+export type MovingPlatformControls = {
+  play: (fromSegmentIndex?: number) => void;
+  pause: () => void;
+  playSegment: (segmentIndex: number) => void;
+  stop: () => void; // Resets to start
+  delete: () => void;
+  setOptions: (options: {
+    loopTimes?: number;
+    direction?: 'FORWARD' | 'BACKWARD';
+    speedMultiplier?: number;
+  }) => void;
+  getState: () => {
+    isPlaying: boolean;
+    currentLoopCount: number;
+    targetSegmentIndex: number | null;
+    speedMultiplier: number;
+    curIndex: number;
+    nextIndex: number;
+    t: number;
+    segmentDuration: number;
+  };
+};
+
+export type MovingPlatformReturn = {
+  physicsObject: PhysicsObject;
+  mesh: THREE.Mesh;
+  controls: MovingPlatformControls;
+};
 
 const DEFAULT_SEGMENT_DURATION = 3000;
 export const createMovingPlatform = (
@@ -15,7 +50,11 @@ export const createMovingPlatform = (
     rot?: { x: number; y: number; z: number; w: number };
     dur?: number;
   }[]
-) => {
+): MovingPlatformReturn => {
+  // ... [Geometry, Material, Mesh, Physics Object creation remains the same] ...
+  // Ensure userData is initialized:
+  // (body.userData as any).velo = new THREE.Vector3();
+  // (body.userData as any).angVelo = new THREE.Vector3();
   const movingPlatformGeo = createGeometry({
     id: `movingPlatform-geo-${id}`,
     type: 'BOX',
@@ -85,86 +124,84 @@ export const createMovingPlatform = (
     meshOrMeshId: movingPlatformMesh,
   });
 
-  const body = existsOrThrow(
-    movingPlatformPhysicsObject?.rigidBody,
-    'Moving platform body not found'
-  );
+  const body = existsOrThrow(movingPlatformPhysicsObject?.rigidBody, 'No Body');
 
-  // Initial Position
-  movingPlatformPhysicsObject?.setTranslation({
-    x: points[0].pos.x,
-    y: points[0].pos.y,
-    z: points[0].pos.z,
-  });
-
-  // Initial Rotation
-  if (points[0].rot) {
-    body.setRotation(
-      new THREE.Quaternion(
-        points[0].rot.x,
-        points[0].rot.y,
-        points[0].rot.z,
-        points[0].rot.w
-      ).normalize(),
-      true
-    );
-  }
+  // --- STATE VARIABLES ---
+  let isPlaying = true;
+  let playDirection: 1 | -1 = 1; // 1 = Forward, -1 = Backward
+  let loopTimes = -1; // -1 = Infinite, 0 = Run once then stop, 1 = Run twice...
+  let currentLoopCount = 0;
+  let targetSegmentIndex: number | null = null; // If set, stops after this segment
+  let speedMultiplier = 1;
 
   let curIndex = 0;
+  let nextIndex = 1; // Calculated based on direction
+  let t = 0;
+  let segmentDuration = (points[curIndex].dur ?? DEFAULT_SEGMENT_DURATION) / 1000;
 
+  // reusable vectors
   const fromPos = new THREE.Vector3();
   const toPos = new THREE.Vector3();
   const curPos = new THREE.Vector3();
-
   const fromRot = new THREE.Quaternion();
   const toRot = new THREE.Quaternion();
   const curRot = new THREE.Quaternion();
 
-  let t = 0;
-  let segmentDuration = (points[curIndex].dur ?? 3000) / 1000;
-  let nextIndex = (curIndex + 1) % points.length;
+  // --- INTERNAL HELPER: UPDATE TARGETS ---
+  const updateSegmentTargets = () => {
+    // Calculate Next Index based on Direction
+    const len = points.length;
+    if (playDirection === 1) {
+      nextIndex = (curIndex + 1) % len;
+    } else {
+      // Wrap around backwards: (0 - 1 + 4) % 4 = 3
+      nextIndex = (curIndex - 1 + len) % len;
+    }
 
-  // --- HELPER: SET FROM/TO STATE ---
-  const updateSegmentState = (idx: number, nIdx: number) => {
-    // Position
-    fromPos.set(points[idx].pos.x, points[idx].pos.y, points[idx].pos.z);
-    toPos.set(points[nIdx].pos.x, points[nIdx].pos.y, points[nIdx].pos.z);
+    // Set Pos
+    fromPos.set(points[curIndex].pos.x, points[curIndex].pos.y, points[curIndex].pos.z);
+    toPos.set(points[nextIndex].pos.x, points[nextIndex].pos.y, points[nextIndex].pos.z);
 
-    // Rotation
-    if (points[idx].rot) {
+    // Set Rot (with Normalize fix)
+    if (points[curIndex].rot) {
       fromRot
-        .set(points[idx].rot!.x, points[idx].rot!.y, points[idx].rot!.z, points[idx].rot!.w)
+        .set(
+          points[curIndex].rot!.x,
+          points[curIndex].rot!.y,
+          points[curIndex].rot!.z,
+          points[curIndex].rot!.w
+        )
         .normalize();
-    } else {
-      fromRot.identity();
-    }
+    } else fromRot.identity();
 
-    if (points[nIdx].rot) {
+    if (points[nextIndex].rot) {
       toRot
-        .set(points[nIdx].rot!.x, points[nIdx].rot!.y, points[nIdx].rot!.z, points[nIdx].rot!.w)
+        .set(
+          points[nextIndex].rot!.x,
+          points[nextIndex].rot!.y,
+          points[nextIndex].rot!.z,
+          points[nextIndex].rot!.w
+        )
         .normalize();
-    } else {
-      toRot.copy(fromRot);
-    }
+    } else toRot.copy(fromRot);
+
+    segmentDuration = (points[curIndex].dur ?? 3000) / 1000;
   };
 
-  // --- HELPER: CALCULATE VELOCITIES ---
+  // --- INTERNAL HELPER: CALCULATE VELOCITIES ---
   const updateUserDataVelocities = () => {
     const ud = body.userData as { velo: THREE.Vector3; angVelo: THREE.Vector3 };
 
-    // 1. Linear Velocity (Same as before)
-    ud.velo.set(
-      (toPos.x - fromPos.x) / segmentDuration,
-      (toPos.y - fromPos.y) / segmentDuration,
-      (toPos.z - fromPos.z) / segmentDuration
-    );
+    // Calculate Linear Velocity
+    ud.velo
+      .copy(toPos)
+      .sub(fromPos)
+      .divideScalar(segmentDuration / speedMultiplier);
 
-    // 2. Angular Velocity
+    // Calculate Angular Velocity (Shortest Path)
     const q1 = fromRot.clone();
     const q2 = toRot.clone();
-
-    // If the dot product is negative, q2 is on the "opposite side" of the sphere.
-    // We negate q2 so it represents the same rotation but is mathematically closer to q1.
+    if (q1.dot(q2) < 0) q2.x = -q2.x; // Double cover fix (copy rest of components too or negate logic)
     if (q1.dot(q2) < 0) {
       q2.x = -q2.x;
       q2.y = -q2.y;
@@ -172,7 +209,6 @@ export const createMovingPlatform = (
       q2.w = -q2.w;
     }
 
-    // Now calculate the difference as normal
     const qDiff = q2.multiply(q1.invert());
     const angle = 2 * Math.acos(Math.max(-1, Math.min(1, qDiff.w)));
 
@@ -182,46 +218,156 @@ export const createMovingPlatform = (
       const sinHalfAngle = Math.sqrt(1 - qDiff.w * qDiff.w);
       if (sinHalfAngle > 0.001) {
         const axis = new THREE.Vector3(qDiff.x, qDiff.y, qDiff.z).divideScalar(sinHalfAngle);
-        const angularSpeed = angle / segmentDuration;
+        const angularSpeed = angle / (segmentDuration / speedMultiplier);
         ud.angVelo.copy(axis).multiplyScalar(angularSpeed);
-      } else {
-        ud.angVelo.set(0, 0, 0);
-      }
+      } else ud.angVelo.set(0, 0, 0);
     }
   };
 
-  updateSegmentState(curIndex, nextIndex);
+  // --- INITIAL SETUP ---
+  updateSegmentTargets();
   updateUserDataVelocities();
 
-  addScenePhysicsLooper(id, (dt) => {
-    t += dt / segmentDuration;
+  // Initialize Body Position immediately
+  body.setTranslation(fromPos, true);
+  body.setRotation(fromRot, true);
 
+  // --- CONTROL FUNCTIONS ---
+  const controls: MovingPlatformControls = {
+    play: (fromIdx) => {
+      if (fromIdx !== undefined && points[fromIdx]) {
+        curIndex = fromIdx;
+        t = 0;
+        updateSegmentTargets();
+        updateUserDataVelocities();
+        // Snap to start of this segment
+        body.setNextKinematicTranslation(fromPos);
+        body.setNextKinematicRotation(fromRot);
+      }
+      isPlaying = true;
+    },
+    pause: () => {
+      isPlaying = false;
+      // Zero out velocity in userData so character stops sliding
+      (body.userData as { velo: THREE.Vector3 }).velo.set(0, 0, 0);
+      (body.userData as { angVelo: THREE.Vector3 }).angVelo.set(0, 0, 0);
+    },
+    playSegment: (idx) => {
+      if (!points[idx]) return;
+      // Reset to start of this segment
+      curIndex = idx;
+      t = 0;
+      targetSegmentIndex = idx; // Stop when this segment finishes
+      isPlaying = true;
+      updateSegmentTargets();
+      updateUserDataVelocities();
+      // Snap physics immediately
+      body.setTranslation(fromPos, true);
+      body.setRotation(fromRot, true);
+    },
+    stop: () => {
+      isPlaying = false;
+      curIndex = 0;
+      t = 0;
+      updateSegmentTargets();
+      body.setTranslation(fromPos, true); // Reset to start
+      body.setRotation(fromRot, true);
+    },
+    delete: () => {
+      // 1. Remove Mesh
+      if (movingPlatformMesh.parent) movingPlatformMesh.parent.remove(movingPlatformMesh);
+      movingPlatformMesh.geometry.dispose();
+      if (Array.isArray(movingPlatformMesh.material)) {
+        movingPlatformMesh.material.forEach((m) => m.dispose());
+      } else {
+        movingPlatformMesh.material.dispose();
+      }
+
+      deletePhysicsObject(`movingPlatform-${id}`);
+      deleteScenePhysicsLooper(`platformLoop-${id}`);
+    },
+    setOptions: (opts) => {
+      if (opts.loopTimes !== undefined) loopTimes = opts.loopTimes;
+      if (opts.direction) playDirection = opts.direction === 'FORWARD' ? 1 : -1;
+      if (opts.speedMultiplier !== undefined) speedMultiplier = opts.speedMultiplier;
+
+      // Recalculate targets immediately in case direction changed
+      updateSegmentTargets();
+      updateUserDataVelocities();
+    },
+    getState: () => ({
+      isPlaying,
+      currentLoopCount,
+      targetSegmentIndex,
+      speedMultiplier,
+      curIndex,
+      nextIndex,
+      t,
+      segmentDuration,
+    }),
+  };
+
+  // --- PHYSICS LOOPER ---
+  addScenePhysicsLooper(`platformLoop-${id}`, (dt) => {
+    if (!isPlaying) return;
+
+    // Increment T
+    t += dt / (segmentDuration / speedMultiplier);
+
+    // Clamp
     if (t > 1) t = 1;
 
-    // Lerp Position
+    // Lerp/Slerp
     curPos.lerpVectors(fromPos, toPos, t);
-    // Slerp Rotation
     curRot.slerpQuaternions(fromRot, toRot, t);
 
+    // Apply Physics
     body.setNextKinematicTranslation(curPos);
     body.setNextKinematicRotation(curRot);
 
+    // Segment Complete Logic
     if (t === 1) {
-      let nextIndexLocal = (curIndex + 1) % points.length;
-      curIndex = nextIndexLocal;
-      nextIndexLocal = (curIndex + 1) % points.length;
-      nextIndex = nextIndexLocal;
+      // Check for specific segment play mode
+      if (targetSegmentIndex !== null && curIndex === targetSegmentIndex) {
+        isPlaying = false;
+        targetSegmentIndex = null;
+        // Zero velocities
+        (body.userData as { velo: THREE.Vector3 }).velo.set(0, 0, 0);
+        (body.userData as { angVelo: THREE.Vector3 }).angVelo.set(0, 0, 0);
+        return;
+      }
 
-      segmentDuration = (points[curIndex].dur ?? DEFAULT_SEGMENT_DURATION) / 1000;
+      // Loop Logic
+      const len = points.length;
+      // If we just finished the last segment (forward) or first segment (backward)
+      const isLoopComplete =
+        (playDirection === 1 && curIndex === len - 1) || (playDirection === -1 && curIndex === 0);
 
-      updateSegmentState(curIndex, nextIndex);
-      updateUserDataVelocities();
+      if (isLoopComplete) {
+        if (loopTimes !== -1) {
+          currentLoopCount++;
+          if (currentLoopCount > loopTimes) {
+            isPlaying = false;
+            return;
+          }
+        }
+      }
 
+      // Advance Index
+      curIndex = nextIndex;
       t = 0;
+
+      // Prepare Next Segment
+      updateSegmentTargets();
+      updateUserDataVelocities();
     }
   });
 
   scene.add(movingPlatformMesh);
 
-  return { movingPlatformPhysicsObject, movingPlatformMesh };
+  return {
+    physicsObject: movingPlatformPhysicsObject as PhysicsObject,
+    mesh: movingPlatformMesh,
+    controls,
+  };
 };
