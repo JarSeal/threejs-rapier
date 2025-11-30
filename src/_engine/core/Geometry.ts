@@ -51,7 +51,11 @@ export type GeoProps = { id?: string } & (
     }
 );
 
-export type GeoTypes = THREE.BoxGeometry | THREE.SphereGeometry;
+export type GeoTypes =
+  | THREE.BoxGeometry
+  | THREE.SphereGeometry
+  | THREE.CylinderGeometry
+  | THREE.CapsuleGeometry;
 
 /**
  * Creates a Three.js geometry.

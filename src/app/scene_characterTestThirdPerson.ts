@@ -357,66 +357,199 @@ export const sceneCharacterTest = async () =>
       scene.add(slides.mesh);
     }
 
-    createMovingPlatform('sideWaysPlatform', scene, { x: 2, y: 0.2, z: 4 }, [
-      { pos: { x: -15, y: -1, z: -7 }, dur: 10000 },
-      { pos: { x: 5, y: -1, z: -7 }, dur: 5000 },
-    ]);
+    const movingPlatformMat = createMaterial({
+      id: 'movingPlatform1-mat',
+      type: 'PHONG',
+      params: { color: '#999' },
+    });
 
-    createMovingPlatform('elevatorPlatform', scene, { x: 4, y: 0.2, z: 4 }, [
-      { pos: { x: -12, y: -1.8, z: -12 }, dur: 2000 },
-      { pos: { x: -12, y: -1.8, z: -12 }, dur: 3000 },
-      { pos: { x: -12, y: 8, z: -12 }, dur: 2000 },
-      { pos: { x: -12, y: 8, z: -12 }, dur: 2000 },
-      { pos: { x: -12, y: 2, z: -12 }, dur: 2000 },
-    ]);
+    createMovingPlatform({
+      id: 'sideWaysPlatform',
+      scene,
+      shape: {
+        mesh: createMesh({
+          id: 'sideWaysPlatformMesh',
+          geo: createGeometry({
+            id: 'movingPlatform1-geo',
+            type: 'BOX',
+            params: { width: 2, height: 0.2, depth: 4 },
+          }),
+          mat: movingPlatformMat,
+        }),
+      },
+      physicsParams: [
+        {
+          collider: { type: 'BOX', friction: 0 },
+          rigidBody: { rigidType: 'POS_BASED' },
+        },
+      ],
+      points: [
+        { pos: { x: -15, y: -1, z: -7 }, dur: 10000 },
+        { pos: { x: 5, y: -1, z: -7 }, dur: 5000 },
+      ],
+    });
+
+    // @TODO: the first point starts at the center (0, 0, 0) and then actually starts from point[1], fix this!
+    createMovingPlatform({
+      id: 'elevatorPlatform',
+      scene,
+      shape: {
+        mesh: createMesh({
+          id: 'elevatorPlatformMesh',
+          geo: createGeometry({
+            id: 'movingPlatform2-geo',
+            type: 'BOX',
+            params: { width: 4, height: 0.2, depth: 4 },
+          }),
+          mat: movingPlatformMat,
+        }),
+      },
+      physicsParams: [
+        {
+          collider: { type: 'BOX', friction: 0 },
+          rigidBody: { rigidType: 'POS_BASED' },
+        },
+      ],
+      points: [
+        { pos: { x: -12, y: -1.8, z: -12 }, dur: 2000 },
+        { pos: { x: -12, y: -1.8, z: -12 }, dur: 3000 },
+        { pos: { x: -12, y: 8, z: -12 }, dur: 2000 },
+        { pos: { x: -12, y: 8, z: -12 }, dur: 2000 },
+        { pos: { x: -12, y: 2, z: -12 }, dur: 2000 },
+      ],
+    });
 
     const carouselPos = { x: 14, y: -1.9, z: -4 };
     const oneLapDuration = 4000; // Total time for 360 degrees (ms)
     const segmentDur = oneLapDuration / 4; // Time per 90 degrees
-    createMovingPlatform('carouselPlatform', scene, { x: 5, y: 0.2, z: 5 }, [
-      { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(0) },
-      { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(90) },
-      { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(180) },
-      { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(270) },
-    ]);
+    createMovingPlatform({
+      id: 'carouselPlatform',
+      scene,
+      shape: {
+        mesh: createMesh({
+          id: 'carouselPlatformMesh1',
+          geo: createGeometry({
+            id: 'movingPlatform3-geo',
+            type: 'CYLINDER',
+            params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
+          }),
+          mat: movingPlatformMat,
+        }),
+      },
+      physicsParams: [
+        {
+          collider: { type: 'CYLINDER', friction: 0 },
+          rigidBody: { rigidType: 'POS_BASED' },
+        },
+      ],
+      points: [
+        { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(0) },
+        { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(90) },
+        { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(180) },
+        { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(270) },
+      ],
+    });
     const carouselPos2 = { x: 25, y: -1.9, z: -4 };
     const oneLapDuration2 = 8000; // Total time for 360 degrees (ms)
     const segmentDur2 = oneLapDuration2 / 4; // Time per 90 degrees
-    createMovingPlatform('carouselPlatform2', scene, { x: 5, y: 0.2, z: 5 }, [
-      { pos: carouselPos2, dur: segmentDur2, rot: getQuatFromAngle(0) },
-      { pos: { ...carouselPos2, z: 0 }, dur: segmentDur2, rot: getQuatFromAngle(-90) },
-      { pos: { ...carouselPos2, z: 4 }, dur: segmentDur2, rot: getQuatFromAngle(-180) },
-      { pos: { ...carouselPos2, z: 0 }, dur: segmentDur2, rot: getQuatFromAngle(-270) },
-    ]);
+    createMovingPlatform({
+      id: 'carouselPlatform2',
+      scene,
+      shape: {
+        mesh: createMesh({
+          id: 'carouselPlatformMesh2',
+          geo: createGeometry({
+            id: 'movingPlatform4-geo',
+            type: 'BOX',
+            params: { width: 4, height: 0.2, depth: 4 },
+          }),
+          mat: movingPlatformMat,
+        }),
+      },
+      physicsParams: [
+        {
+          collider: { type: 'BOX', friction: 0 },
+          rigidBody: { rigidType: 'POS_BASED' },
+        },
+      ],
+      points: [
+        { pos: carouselPos2, dur: segmentDur2, rot: getQuatFromAngle(0) },
+        { pos: { ...carouselPos2, z: 0 }, dur: segmentDur2, rot: getQuatFromAngle(-90) },
+        { pos: { ...carouselPos2, z: 4 }, dur: segmentDur2, rot: getQuatFromAngle(-180) },
+        { pos: { ...carouselPos2, z: 0 }, dur: segmentDur2, rot: getQuatFromAngle(-270) },
+      ],
+    });
     const carouselPos3 = { x: 25, y: -1.9, z: 12 };
     const oneLapDuration3 = 8000; // Total time for 360 degrees (ms)
     const segmentDur3 = oneLapDuration3 / 4; // Time per 90 degrees
-    createMovingPlatform('carouselPlatform3', scene, { x: 5, y: 0.2, z: 5 }, [
-      { pos: carouselPos3, dur: segmentDur3, rot: getQuatFromAngle(0) },
-      { pos: { ...carouselPos3, x: 21 }, dur: segmentDur3, rot: getQuatFromAngle(90) },
-      { pos: { ...carouselPos3, x: 17 }, dur: segmentDur3, rot: getQuatFromAngle(180) },
-      { pos: { ...carouselPos3, x: 21 }, dur: segmentDur3, rot: getQuatFromAngle(270) },
-    ]);
+    createMovingPlatform({
+      id: 'carouselPlatform3',
+      scene,
+      shape: {
+        mesh: createMesh({
+          id: 'carouselPlatformMesh3',
+          geo: createGeometry({
+            id: 'movingPlatform5-geo',
+            type: 'CYLINDER',
+            params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
+          }),
+          mat: movingPlatformMat,
+        }),
+      },
+      physicsParams: [
+        {
+          collider: { type: 'CYLINDER', friction: 0 },
+          rigidBody: { rigidType: 'POS_BASED' },
+        },
+      ],
+      points: [
+        { pos: carouselPos3, dur: segmentDur3, rot: getQuatFromAngle(0) },
+        { pos: { ...carouselPos3, x: 21 }, dur: segmentDur3, rot: getQuatFromAngle(90) },
+        { pos: { ...carouselPos3, x: 17 }, dur: segmentDur3, rot: getQuatFromAngle(180) },
+        { pos: { ...carouselPos3, x: 21 }, dur: segmentDur3, rot: getQuatFromAngle(270) },
+      ],
+    });
 
     const carouselOneSegDur = 1500;
-    createMovingPlatform('ferrisWheelPlatform', scene, { x: 2, y: 0.2, z: 4 }, [
-      { pos: { x: 5, y: -1.9, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(0) },
-      { pos: { x: 7.5, y: -1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(45) },
-      { pos: { x: 10, y: 0, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(90) },
-      { pos: { x: 12.5, y: 1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(135) },
-      { pos: { x: 15, y: 2, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(180) },
-      { pos: { x: 12.5, y: 3, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(225) },
-      { pos: { x: 10, y: 4, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(270) },
-      { pos: { x: 7.5, y: 5, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(315) },
-      { pos: { x: 5, y: 6, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(0) },
-      { pos: { x: 2.5, y: 5, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(45) },
-      { pos: { x: 0, y: 4, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(90) },
-      { pos: { x: -2.5, y: 3, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(135) },
-      { pos: { x: -5, y: 2, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(180) },
-      { pos: { x: -2.5, y: 1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(225) },
-      { pos: { x: 0, y: 0, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(270) },
-      { pos: { x: 2.5, y: -1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(315) },
-    ]);
+    createMovingPlatform({
+      id: 'ferrisWheelPlatform',
+      scene,
+      shape: {
+        mesh: createMesh({
+          id: 'ferrisWheelPlatformMesh',
+          geo: createGeometry({
+            id: 'movingPlatform6-geo',
+            type: 'BOX',
+            params: { width: 2, height: 0.2, depth: 4 },
+          }),
+          mat: movingPlatformMat,
+        }),
+      },
+      physicsParams: [
+        {
+          collider: { type: 'BOX', friction: 0 },
+          rigidBody: { rigidType: 'POS_BASED' },
+        },
+      ],
+      points: [
+        { pos: { x: 5, y: -1.9, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(0) },
+        { pos: { x: 7.5, y: -1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(45) },
+        { pos: { x: 10, y: 0, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(90) },
+        { pos: { x: 12.5, y: 1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(135) },
+        { pos: { x: 15, y: 2, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(180) },
+        { pos: { x: 12.5, y: 3, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(225) },
+        { pos: { x: 10, y: 4, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(270) },
+        { pos: { x: 7.5, y: 5, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(315) },
+        { pos: { x: 5, y: 6, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(0) },
+        { pos: { x: 2.5, y: 5, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(45) },
+        { pos: { x: 0, y: 4, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(90) },
+        { pos: { x: -2.5, y: 3, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(135) },
+        { pos: { x: -5, y: 2, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(180) },
+        { pos: { x: -2.5, y: 1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(225) },
+        { pos: { x: 0, y: 0, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(270) },
+        { pos: { x: 2.5, y: -1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(315) },
+      ],
+    });
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 
