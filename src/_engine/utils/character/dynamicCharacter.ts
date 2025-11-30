@@ -1,15 +1,11 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry } from '../_engine/core/Geometry';
-import { createMaterial } from '../_engine/core/Material';
-import { loadTexture } from '../_engine/core/Texture';
-import { createMesh } from '../_engine/core/Mesh';
-import { createCamera, deleteCamera } from '../_engine/core/Camera';
-import {
-  CharacterObject,
-  createCharacter,
-  registerOnDeleteCharacter,
-} from '../_engine/core/Character';
-import { transformAppSpeedValue } from '../_engine/core/MainLoop';
+import { createGeometry } from '../../core/Geometry';
+import { createMaterial } from '../../core/Material';
+import { loadTexture } from '../../core/Texture';
+import { createMesh } from '../../core/Mesh';
+import { createCamera, deleteCamera } from '../../core/Camera';
+import { CharacterObject, createCharacter, registerOnDeleteCharacter } from '../../core/Character';
+import { transformAppSpeedValue } from '../../core/MainLoop';
 import {
   addScenePhysicsLooper,
   getPhysGameTime,
@@ -18,12 +14,12 @@ import {
   getPhysicsWorld,
   PhysicsObject,
   switchPhysicsCollider,
-} from '../_engine/core/PhysicsRapier';
-import { getRootScene } from '../_engine/core/Scene';
-import { castRayFromPoints } from '../_engine/core/Raycast';
+} from '../../core/PhysicsRapier';
+import { getRootScene } from '../../core/Scene';
+import { castRayFromPoints } from '../../core/Raycast';
 import RAPIER, { type Collider } from '@dimforge/rapier3d-compat';
-import { existsOrThrow, roundToDecimal } from '../_engine/utils/helpers';
-import { LEVEL_GROUND_NORMAL } from '../_engine/utils/constants';
+import { existsOrThrow, roundToDecimal } from '../helpers';
+import { LEVEL_GROUND_NORMAL } from '../constants';
 
 // @TODO: add comments for each
 // If a prop has one underscore (_) then it means it is a configuration,
@@ -91,8 +87,8 @@ export type CharacterData = {
   __currentPlatformVelocity: { x: number; y: number; z: number };
 };
 
-export type ThirdPersonCharacter = {
-  thirdPersonCharacterObject: CharacterObject;
+export type DynamicCharacter = {
+  dynamicCharacterObject: CharacterObject;
   charMesh: THREE.Mesh;
   charData: CharacterData;
   controlFns: {
@@ -194,11 +190,12 @@ const vectors = {
   angularVelocity: new THREE.Vector3(),
   groundDot: new THREE.Vector3(),
 };
+// @TODO: remove this and add camera functionality from outside the creation of the character
 let thirdPersonCamera: THREE.PerspectiveCamera | null = null;
 
-const characters: { [id: string]: ThirdPersonCharacter } = {};
+const characters: { [id: string]: DynamicCharacter } = {};
 
-export const createThirdPersonCharacter = (opts: {
+export const createDynamicCharacter = (opts: {
   id: string;
   charData?: Partial<CharacterData>;
   sceneId?: string;
@@ -216,12 +213,13 @@ export const createThirdPersonCharacter = (opts: {
 
   // Combine character data
   const characterData = { ...getDefaultCharacterData(), ...charData };
-  const character: Partial<ThirdPersonCharacter> = { charData: characterData };
+  const character: Partial<DynamicCharacter> = { charData: characterData };
 
   // Set __maxWalkableAngleCos
   characterData.__maxWalkableAngleCos = Math.cos(characterData._maxWalkableAngle);
 
   // Create third person camera
+  // @TODO: remove this and add camera functionality from outside the creation of the character
   thirdPersonCamera = createCamera(`thirdPersonCam-${id}`, {
     name: '3rd Person Cam',
     isCurrentCamera: true,
@@ -230,8 +228,9 @@ export const createThirdPersonCharacter = (opts: {
     far: 1000,
   });
 
+  // @TODO: add the mesh as a parameter
   const charCapsule = createGeometry({
-    id: `charCapsuleThirdPerson1-${id}`,
+    id: `capsuleDynamicChar-${id}`,
     type: 'CAPSULE',
     params: {
       radius: characterData._radius,
@@ -239,7 +238,7 @@ export const createThirdPersonCharacter = (opts: {
     },
   });
   const charMaterial = createMaterial({
-    id: `box1MaterialThirdPerson-${id}`,
+    id: `box1MaterialDynamicChar-${id}`,
     type: 'PHONG',
     params: {
       map: loadTexture({
@@ -249,30 +248,35 @@ export const createThirdPersonCharacter = (opts: {
     },
   });
   const charMesh = createMesh({
-    id: `charMeshThirdPerson1-${id}`,
+    id: `meshDynamicChar-${id}`,
     geo: charCapsule,
     mat: charMaterial,
   });
   charMesh.position.set(0, 0, 0);
   charMesh.rotation.set(0, 0, 0);
+  // @TODO: remove this and add camera functionality from outside the creation of the character
   thirdPersonCamera.position.set(
     charMesh.position.x - 8,
     charMesh.position.y + 5,
     charMesh.position.z
   );
+  // @TODO: remove this and add camera functionality from outside the creation of the character
   thirdPersonCamera.rotation.set(0, 0, 0);
+  // @TODO: remove this and add camera functionality from outside the creation of the character
   thirdPersonCamera.lookAt(charMesh.position.x, charMesh.position.y + 2, charMesh.position.z);
+  // @TODO: remove this and add camera functionality from outside the creation of the character
   charMesh.add(thirdPersonCamera);
 
+  // @TODO: add the mesh as parameter
   const directionBeakMesh = createMesh({
-    id: `directionBeakMeshThirdPerson-${id}`,
+    id: `directionBeakMeshDynamicChar-${id}`,
     geo: createGeometry({
-      id: 'directionBeakGeoThirdPerson',
+      id: 'directionBeakGeoDynamicChar',
       type: 'BOX',
       params: { width: 0.25, height: 0.25, depth: 0.7 },
     }),
     mat: createMaterial({
-      id: 'directionBeakMatThirdPerson',
+      id: 'directionBeakMatDynamicChar',
       type: 'BASIC',
       params: { color: '#333' },
     }),
@@ -461,7 +465,7 @@ export const createThirdPersonCharacter = (opts: {
     ...(inputMappings?.moveBackward || []),
   ];
 
-  const thirdPersonCharacterObject = createCharacter({
+  const dynamicCharacterObject = createCharacter({
     id,
     physicsParams: [
       {
@@ -572,7 +576,7 @@ export const createThirdPersonCharacter = (opts: {
               characterData.isGrounded = true;
               getFloorNormal(getPhysicsWorld(), characterBody, characterData);
 
-              const physObj = getPhysicsObject(thirdPersonCharacterObject.physObjectId);
+              const physObj = getPhysicsObject(dynamicCharacterObject.physObjectId);
 
               // Check if speed too fast to land, then tumble
               if (
@@ -778,7 +782,7 @@ export const createThirdPersonCharacter = (opts: {
         ]
       : undefined,
   });
-  const characterPhysObj = getPhysicsObject(thirdPersonCharacterObject.physObjectId);
+  const characterPhysObj = getPhysicsObject(dynamicCharacterObject.physObjectId);
   const wallSensorHandle = characterPhysObj?.rigidBody?.collider(2).handle;
   const groundSensorHandle = characterPhysObj?.rigidBody?.collider(3).handle;
 
@@ -911,7 +915,7 @@ export const createThirdPersonCharacter = (opts: {
   };
 
   addScenePhysicsLooper(`characterLooper-${id}`, () => {
-    const physObj = getPhysicsObject(thirdPersonCharacterObject?.physObjectId || '');
+    const physObj = getPhysicsObject(dynamicCharacterObject?.physObjectId || '');
     const mesh = physObj?.mesh;
     const body = physObj?.rigidBody;
     if (!mesh || !body) return;
@@ -1249,16 +1253,16 @@ export const createThirdPersonCharacter = (opts: {
   });
 
   const characterBody = existsOrThrow(
-    getPhysicsObject(thirdPersonCharacterObject.physObjectId)?.rigidBody,
-    `Could not find character physics object rigid body with id: '${thirdPersonCharacterObject.physObjectId}'.`
+    getPhysicsObject(dynamicCharacterObject.physObjectId)?.rigidBody,
+    `Could not find character physics object rigid body with id: '${dynamicCharacterObject.physObjectId}'.`
   );
 
   character.camera = thirdPersonCamera;
   character.charMesh = charMesh;
-  character.thirdPersonCharacterObject = thirdPersonCharacterObject;
+  character.dynamicCharacterObject = dynamicCharacterObject;
   character.controlFns = controlFns;
 
-  characters[id] = character as ThirdPersonCharacter;
+  characters[id] = character as DynamicCharacter;
 
   return characters[id];
 };

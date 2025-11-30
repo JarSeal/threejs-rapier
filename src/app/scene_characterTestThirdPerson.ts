@@ -9,8 +9,8 @@ import { getCurrentCamera } from '../_engine/core/Camera';
 import { createPhysicsObjectWithMesh, getPhysicsObject } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
-import { createThirdPersonCharacter } from './character_thirdPerson';
-import { characterTestObstacles } from './character_test_objects';
+import { createDynamicCharacter } from '../_engine/utils/character/dynamicCharacter';
+import { characterTestObstacles } from '../_engine/utils/world/characterTestObjects';
 import { importModelAsync } from '../_engine/core/ImportModel';
 import { addCheckerboardMaterialToMesh } from '../public/debugger/assets/materials/checkerBoardPattern';
 import { getTestObstacle } from '../public/debugger/assets/obstacles/characterTestObstacles';
@@ -202,7 +202,7 @@ export const sceneCharacterTest = async () =>
     scene.add(box);
 
     // CHARACTER
-    const { charMesh, thirdPersonCharacterObject } = createThirdPersonCharacter({
+    const { charMesh, dynamicCharacterObject } = createDynamicCharacter({
       id: 'thirdPersonChar',
       inputMappings: {
         rotateLeft: ['a', 'A'],
@@ -214,16 +214,16 @@ export const sceneCharacterTest = async () =>
         crouch: ['Control'],
       },
     });
-    const charPhysObj = getPhysicsObject(thirdPersonCharacterObject.physObjectId);
+    const charPhysObj = getPhysicsObject(dynamicCharacterObject.physObjectId);
     charPhysObj?.setTranslation({ x: 5, y: 5, z: -5 });
     scene.add(charMesh);
 
     // Another character without input
     const {
       controlFns,
-      thirdPersonCharacterObject: dummyCharacterObject,
+      dynamicCharacterObject: dummyCharacterObject,
       charMesh: dummyCharMesh,
-    } = createThirdPersonCharacter({ id: 'testDummyChar' });
+    } = createDynamicCharacter({ id: 'testDummyChar' });
     const dummyCharPhysObj = getPhysicsObject(dummyCharacterObject.physObjectId);
     dummyCharPhysObj?.setTranslation({ x: -2, y: 5, z: -2 });
     scene.add(dummyCharMesh);
@@ -375,6 +375,8 @@ export const sceneCharacterTest = async () =>
             params: { width: 2, height: 0.2, depth: 4 },
           }),
           mat: movingPlatformMat,
+          castShadow: true,
+          receiveShadow: true,
         }),
       },
       physicsParams: [
@@ -402,6 +404,8 @@ export const sceneCharacterTest = async () =>
             params: { width: 4, height: 0.2, depth: 4 },
           }),
           mat: movingPlatformMat,
+          castShadow: true,
+          receiveShadow: true,
         }),
       },
       physicsParams: [
@@ -434,6 +438,8 @@ export const sceneCharacterTest = async () =>
             params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
           }),
           mat: movingPlatformMat,
+          castShadow: true,
+          receiveShadow: true,
         }),
       },
       physicsParams: [
@@ -464,6 +470,8 @@ export const sceneCharacterTest = async () =>
             params: { width: 4, height: 0.2, depth: 4 },
           }),
           mat: movingPlatformMat,
+          castShadow: true,
+          receiveShadow: true,
         }),
       },
       physicsParams: [
@@ -494,6 +502,8 @@ export const sceneCharacterTest = async () =>
             params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
           }),
           mat: movingPlatformMat,
+          castShadow: true,
+          receiveShadow: true,
         }),
       },
       physicsParams: [
@@ -523,6 +533,8 @@ export const sceneCharacterTest = async () =>
             params: { width: 2, height: 0.2, depth: 4 },
           }),
           mat: movingPlatformMat,
+          castShadow: true,
+          receiveShadow: true,
         }),
       },
       physicsParams: [

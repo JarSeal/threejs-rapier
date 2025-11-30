@@ -1709,6 +1709,7 @@ const createDebugControls = () => {
   physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
   physicsState.isPaused = false;
   physicsState.pauseReason = null;
+  physicsState.pauseDurationTotal = 0;
 
   addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
   initDebuggerScenePhysState();
