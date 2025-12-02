@@ -1390,13 +1390,19 @@ const baseStepper = (loopState: LoopState) => {
       const handle = rb.handle;
       const t = rb.translation();
       const r = rb.rotation();
-      const curr = new THREE.Vector3(t.x, t.y, t.z);
-      const quat = new THREE.Quaternion(r.x, r.y, r.z, r.w);
-      prevTransforms.set(
-        handle,
-        currTransforms.get(handle) ?? { pos: curr.clone(), rot: quat.clone() }
-      );
-      currTransforms.set(handle, { pos: curr, rot: quat });
+      // 1. Ensure storage exists (allocate once)
+      if (!prevTransforms.has(handle)) {
+        prevTransforms.set(handle, { pos: new THREE.Vector3(), rot: new THREE.Quaternion() });
+        currTransforms.set(handle, { pos: new THREE.Vector3(), rot: new THREE.Quaternion() });
+      }
+      const prev = prevTransforms.get(handle)!;
+      const curr = currTransforms.get(handle)!;
+      // 2. Cycle the data: Current becomes Previous
+      prev.pos.copy(curr.pos);
+      prev.rot.copy(curr.rot);
+      // 3. Update Current from Rapier (Zero Allocation)
+      curr.pos.set(t.x, t.y, t.z);
+      curr.rot.set(r.x, r.y, r.z, r.w);
     }
 
     if (collisionEventFnCount) {
@@ -1527,6 +1533,7 @@ const stepperFnDebug = (loopState: LoopState) => {
   if (!loopState.masterPlay || !loopState.appPlay) return;
 
   if (physicsWorldEnabled && curSceneParams?.visualizerEnabled) {
+    // Physics debug visualizer
     const { vertices, colors } = physicsWorld.debugRender();
     if (!vertices.length) return;
     if (!debugMeshAdded) {
@@ -1567,6 +1574,7 @@ export const stepPhysicsWorld = (loopState: LoopState) => stepperFn(loopState);
 const isDynamicPhysicsObjectValid = (po: PhysicsObject) =>
   po.mesh &&
   po.rigidBody &&
+  !po.rigidBody?.isSleeping() &&
   po.rigidBody?.isMoving() &&
   !po.rigidBody.isFixed() &&
   po.rigidBody.isEnabled();

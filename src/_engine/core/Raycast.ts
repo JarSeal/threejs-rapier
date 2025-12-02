@@ -7,7 +7,7 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerPane, getDrawerState } from '../debug/DebuggerGUI';
 import { TCMP } from '../utils/CMP';
-import { PercentagePieHtml } from '../utils/PercentagePieHtml';
+import { PercentagePieHtml } from '../utils/UI/PercentagePieHtml';
 
 type Opts<TIntersected extends THREE.Object3D = THREE.Object3D> = {
   startLength?: number;

@@ -284,6 +284,18 @@ export const createDynamicCharacter = (opts: {
   directionBeakMesh.position.set(0.35, 0.43, 0);
   charMesh.add(directionBeakMesh);
 
+  const moveVector3 = new THREE.Vector3();
+  const groundVector3 = new THREE.Vector3();
+  const gravity1Vector3 = new THREE.Vector3(0, -1, 0);
+  const gravity2Vector3 = new THREE.Vector3(0, -1, 0);
+  const gravity3Vector3 = new THREE.Vector3(0, -1, 0);
+  const unwalkableNVector3 = new THREE.Vector3();
+  const unwalkableMoveDirVector3 = new THREE.Vector3();
+  const unwalkableCharVelVector3 = new THREE.Vector3();
+  const jumpAmountVector3 = new THREE.Vector3();
+  const justLandedVector3 = new THREE.Vector3();
+  const charVelVector3 = new THREE.Vector3();
+  const horizVector3 = new THREE.Vector3();
   const controlFns = {
     rotate: (direction: 'LEFT' | 'RIGHT') => {
       if (characterData.isTumbling) return;
@@ -299,7 +311,7 @@ export const createDynamicCharacter = (opts: {
       if (characterData.isTumbling) return;
       const rigidBody = characterPhysObj?.rigidBody;
       if (rigidBody) {
-        const vel = new THREE.Vector3(
+        const vel = moveVector3.set(
           characterBody.linvel().x,
           characterBody.linvel().y,
           characterBody.linvel().z
@@ -395,33 +407,35 @@ export const createDynamicCharacter = (opts: {
         // Unwalkable slope check (and possible cancelation)
         if (!characterData.groundIsWalkable) {
           // 1. Normal
-          const n = new THREE.Vector3(
-            characterData.groundNormal.x,
-            characterData.groundNormal.y,
-            characterData.groundNormal.z
-          ).normalize();
-
-          const gravity = new THREE.Vector3(0, -1, 0);
+          const n = groundVector3
+            .set(
+              characterData.groundNormal.x,
+              characterData.groundNormal.y,
+              characterData.groundNormal.z
+            )
+            .normalize();
 
           // 2. Correct downhill direction = gravity projected onto surface
-          const downhill = gravity
-            .clone()
-            .sub(n.clone().multiplyScalar(gravity.dot(n)))
+          const downhill = gravity2Vector3
+            .copy(gravity1Vector3)
+            .sub(unwalkableNVector3.copy(n).multiplyScalar(gravity1Vector3.dot(n)))
             .normalize();
 
           // 3. Movement direction from input (NOT velocity!)
-          const moveDir = new THREE.Vector3(xVelo > 0 ? 1 : -1, 0, zVelo > 0 ? 1 : -1).normalize();
+          const moveDir = unwalkableMoveDirVector3
+            .set(xVelo > 0 ? 1 : -1, 0, zVelo > 0 ? 1 : -1)
+            .normalize();
           const uphillDot = moveDir.dot(downhill);
           const movingDownHill = uphillDot > 0;
 
-          const downhill2 = gravity.clone().projectOnPlane(n).normalize();
-          const charVel = new THREE.Vector3(
+          const downhill2 = gravity3Vector3.copy(gravity1Vector3).projectOnPlane(n).normalize();
+          const charVel = unwalkableCharVelVector3.set(
             rigidBody.linvel().x,
             rigidBody.linvel().y,
             rigidBody.linvel().z
           );
-          const horiz = charVel.clone().projectOnPlane(n);
-          const horizDir = horiz.clone().normalize();
+          const horiz = charVelVector3.copy(charVel).projectOnPlane(n);
+          const horizDir = horizVector3.copy(horiz).normalize();
           const dot = horizDir.dot(downhill2);
           const isSideways = dot < 0.643 && dot > -0.342; // between 50 and 110 degrees
 
@@ -444,7 +458,7 @@ export const createDynamicCharacter = (opts: {
         charData.__jumpTime + 100 < getPhysGameTime();
       if (jumpCheckOk) {
         const physObj = characterPhysObj;
-        physObj?.rigidBody?.applyImpulse(new THREE.Vector3(0, charData._jumpAmount, 0), true);
+        physObj?.rigidBody?.applyImpulse(jumpAmountVector3.set(0, charData._jumpAmount, 0), true);
         charData.__jumpTime = getPhysGameTime();
       }
     },
@@ -596,7 +610,7 @@ export const createDynamicCharacter = (opts: {
               ) {
                 // Just landed, then apply Y linvel to the rigidBody
                 physObj?.rigidBody?.setLinvel(
-                  new THREE.Vector3(
+                  justLandedVector3.set(
                     physObj?.rigidBody.linvel().x,
                     0,
                     physObj?.rigidBody.linvel().z
@@ -914,6 +928,13 @@ export const createDynamicCharacter = (opts: {
     );
   };
 
+  const getUpQuat = new THREE.Quaternion();
+  const getUpVector3 = new THREE.Vector3();
+  const getUpBodyUpVector3 = new THREE.Vector3();
+  const getUpAngVelVector3 = new THREE.Vector3();
+  const getUpYawEuler = new THREE.Euler();
+  const getUpUprightQuat = new THREE.Quaternion();
+  const getUpUprightEuler = new THREE.Euler();
   addScenePhysicsLooper(`characterLooper-${id}`, () => {
     const physObj = getPhysicsObject(dynamicCharacterObject?.physObjectId || '');
     const mesh = physObj?.mesh;
@@ -952,15 +973,15 @@ export const createDynamicCharacter = (opts: {
         1
       );
       const rot = body.rotation();
-      const q = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
+      const q = getUpQuat.set(rot.x, rot.y, rot.z, rot.w);
       // Compute body's current up direction
-      const bodyUp = new THREE.Vector3(0, 1, 0).applyQuaternion(q).normalize();
+      const bodyUp = getUpVector3.set(0, 1, 0).applyQuaternion(q).normalize();
       // Axis of rotation required to align bodyUp → worldUp
-      const axis = bodyUp.clone().cross(LEVEL_GROUND_NORMAL);
+      const axis = getUpBodyUpVector3.copy(bodyUp).cross(LEVEL_GROUND_NORMAL);
       const dot = bodyUp.dot(LEVEL_GROUND_NORMAL);
       const angle = Math.acos(Math.min(Math.max(dot, -1), 1)); // clamp to valid range
       const ang = body.angvel();
-      const angVel = new THREE.Vector3(ang.x, ang.y, ang.z);
+      const angVel = getUpAngVelVector3.set(ang.x, ang.y, ang.z);
       const maxAngVel = 2.0;
       if (angVel.length() > maxAngVel) {
         angVel.setLength(maxAngVel);
@@ -982,8 +1003,8 @@ export const createDynamicCharacter = (opts: {
       }
       if (ratio >= 1) {
         // Fully upright the player, preserving yaw
-        const yaw = new THREE.Euler().setFromQuaternion(q.clone(), 'YXZ').y;
-        const uprightQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0));
+        const yaw = getUpYawEuler.setFromQuaternion(q, 'YXZ').y;
+        const uprightQuat = getUpUprightQuat.setFromEuler(getUpUprightEuler.set(0, yaw, 0));
         body.setRotation(uprightQuat, true);
 
         // Clear any leftover rotational velocity
@@ -1402,6 +1423,7 @@ const getFloorNormal = (
   }
 };
 
+const tumbleStartImpulseVector3 = new THREE.Vector3();
 const startCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsObject) => {
   characterData.isGettingUp = false;
   characterData.isTumbling = true;
@@ -1413,7 +1435,7 @@ const startCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsO
   const rando1 = Math.random() > 0.5 ? 1 : -1;
   const rando2 = Math.random() > 0.5 ? 1 : -1;
   physObj?.rigidBody?.applyImpulse(
-    new THREE.Vector3(Math.random() * rando1, 0, Math.random() * rando2),
+    tumbleStartImpulseVector3.set(Math.random() * rando1, 0, Math.random() * rando2),
     true
   );
   (physObj?.rigidBody?.userData as { [key: string]: unknown }).lockRotationsX = false;
@@ -1421,6 +1443,8 @@ const startCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsO
   (physObj?.rigidBody?.userData as { [key: string]: unknown }).lockRotationsZ = false;
 };
 
+const tumbleStopRotationVector4 = new THREE.Vector4();
+const tumbleStopRotationQuat = new THREE.Quaternion(0, 0, 0, 1);
 const stopCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsObject) => {
   const body = physObj?.rigidBody;
   if (body) {
@@ -1431,7 +1455,7 @@ const stopCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsOb
     body.setAngularDamping(0);
     body.setEnabledRotations(false, false, false, true);
     body.lockRotations(true, true);
-    body.setRotation(new THREE.Vector4(0, 0, 0, 1), true);
+    body.setRotation(tumbleStopRotationVector4.set(0, 0, 0, 1), true);
     body.setAngularDamping(characterData.__charAngDamping);
     if (physObj.meshes) {
       const mesh = physObj.meshes[physObj.currentMeshIndex || 0];
@@ -1440,7 +1464,7 @@ const stopCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsOb
           mesh.quaternion,
           'XZY'
         ).y;
-        mesh.setRotationFromQuaternion(new THREE.Quaternion(0, 0, 0, 1));
+        mesh.setRotationFromQuaternion(tumbleStopRotationQuat);
         mesh.rotation.y = characterData.charRotation;
       }
     } else {
@@ -1450,7 +1474,7 @@ const stopCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsOb
           mesh.quaternion,
           'XZY'
         ).y;
-        mesh.setRotationFromQuaternion(new THREE.Quaternion(0, 0, 0, 1));
+        mesh.setRotationFromQuaternion(tumbleStopRotationQuat);
         mesh.rotation.y = characterData.charRotation;
       }
     }

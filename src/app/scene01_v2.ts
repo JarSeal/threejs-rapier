@@ -337,11 +337,6 @@ export const scene01 = async () =>
       },
     });
 
-    // createSceneMainLooper(() => {
-    //   sphere.rotation.z -= transformMainSpeedValue(5.1);
-    //   sphere.rotation.y += transformMainSpeedValue(3.1);
-    // });
-
     createSceneAppLooper(() => {
       sphere.rotation.y -= transformAppSpeedValue(2);
       sphere.rotation.z -= transformAppSpeedValue(2);

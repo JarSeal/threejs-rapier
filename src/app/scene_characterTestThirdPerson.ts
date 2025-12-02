@@ -16,6 +16,7 @@ import { addCheckerboardMaterialToMesh } from '../public/debugger/assets/materia
 import { getTestObstacle } from '../public/debugger/assets/obstacles/characterTestObstacles';
 import { getQuatFromAngle } from '../_engine/utils/helpers';
 import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
+import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 
 export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
@@ -562,6 +563,8 @@ export const sceneCharacterTest = async () =>
         { pos: { x: 2.5, y: -1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(315) },
       ],
     });
+
+    initPhysicsStressTest(scene);
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 
