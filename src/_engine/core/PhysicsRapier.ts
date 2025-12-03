@@ -1585,6 +1585,8 @@ const stepperFnDebug = (loopState: LoopState) => {
         'color',
         new THREE.BufferAttribute(new Float32Array((newSize / 3) * 4), 4)
       );
+      newGeo.boundingSphere = new THREE.Sphere();
+      newGeo.boundingSphere.radius = Infinity;
 
       // 4. Assign the new geometry to the mesh
       // This forces the renderer to bind the new, larger buffer immediately
