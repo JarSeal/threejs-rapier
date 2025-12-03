@@ -304,9 +304,7 @@ const physicsObjects: { [sceneId: string]: { [id: string]: PhysicsObject } } = {
 // which is not optimal.
 let currentScenePhysicsObjects: PhysicsObject[] = [];
 let debugMesh: THREE.LineSegments;
-let debugMeshGeo: THREE.BufferGeometry;
-let debugMeshMat: THREE.LineBasicMaterial;
-let debugMeshAdded = false;
+const INITIAL_DEBUG_MESH_SIZE = 10000;
 let physicsDebugGUI: Pane | null = null;
 let physicsObjectsDebugList: TCMP | null = null;
 let curScenePhysParams = { ...DEFAULT_SCENE_PHYS_STATE };
@@ -1270,22 +1268,53 @@ export const getPhysicsWorld = () => {
  * Creates physics debug mesh (only in debug mode)
  */
 export const createPhysicsDebugMesh = () => {
-  if (debugMesh) {
-    debugMesh.removeFromParent();
-    debugMeshAdded = false;
+  const debugGeo = new THREE.BufferGeometry();
+  const debugMat = new THREE.LineBasicMaterial({
+    color: 0xffffff,
+    vertexColors: true, // Important for Rapier's debug colors
+  });
+
+  // Pre-allocate buffers
+  debugGeo.setAttribute(
+    'position',
+    new THREE.BufferAttribute(new Float32Array(INITIAL_DEBUG_MESH_SIZE * 3), 3)
+  );
+  debugGeo.setAttribute(
+    'color',
+    new THREE.BufferAttribute(new Float32Array(INITIAL_DEBUG_MESH_SIZE * 4), 4)
+  );
+
+  debugMesh = new THREE.LineSegments(debugGeo, debugMat);
+  debugMesh.frustumCulled = false; // Physics lines span the whole world, don't cull them!
+  if (!debugMesh.geometry.boundingSphere) {
+    debugMesh.geometry.boundingSphere = new THREE.Sphere();
   }
-  if (debugMeshGeo) {
-    debugMeshGeo.dispose();
-    debugMeshGeo = new THREE.BufferGeometry();
+  // Set to infinity so it's always visible and never recomputed
+  debugMesh.geometry.boundingSphere.radius = Infinity;
+  debugMesh.geometry.boundingSphere.center.set(0, 0, 0);
+  const scene = getRootScene();
+  if (scene) {
+    // 1. Assign a unique name to your debug mesh
+    debugMesh.name = 'PHYSICS_DEBUG_VISUALIZER';
+
+    // 2. Check if it's actually in the scene
+    const existingMesh = scene.getObjectByName('PHYSICS_DEBUG_VISUALIZER');
+
+    if (!existingMesh) {
+      // It's missing, add it.
+      scene.add(debugMesh);
+    } else if (existingMesh !== debugMesh) {
+      // CRITICAL: A ghost exists!
+      // We found a mesh with the same name, but it's not THIS instance.
+      // This happens on Hot Reload or Scene Switch.
+
+      // Remove the old ghost
+      scene.remove(existingMesh);
+
+      // Add the new one
+      scene.add(debugMesh);
+    }
   }
-  if (!debugMeshMat) {
-    debugMeshMat = new THREE.LineBasicMaterial({
-      color: 0xffffff,
-      vertexColors: true,
-    });
-  }
-  debugMesh = new THREE.LineSegments(debugMeshGeo, debugMeshMat);
-  debugMesh.frustumCulled = false;
 };
 
 const setPhysicsPauseTime = () => {
@@ -1532,31 +1561,57 @@ const stepperFnDebug = (loopState: LoopState) => {
 
   if (!loopState.masterPlay || !loopState.appPlay) return;
 
-  if (physicsWorldEnabled && curSceneParams?.visualizerEnabled) {
+  if (physicsWorldEnabled && debugMesh && curSceneParams?.visualizerEnabled) {
     // Physics debug visualizer
     const { vertices, colors } = physicsWorld.debugRender();
-    if (!vertices.length) return;
-    if (!debugMeshAdded) {
-      getRootScene()?.add(debugMesh);
-      debugMeshAdded = true;
-    }
+
     debugMesh.visible = true;
-    const posAttr = debugMesh.geometry.attributes.position;
-    const colorAttr = debugMesh.geometry.attributes.color;
-    if (vertices.length !== posAttr?.array.length) {
-      debugMeshGeo = new THREE.BufferGeometry();
-      debugMesh.geometry = debugMeshGeo;
-      debugMesh.geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-      debugMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4));
-      debugMesh.geometry.getAttribute('position').needsUpdate = true;
-      debugMesh.geometry.getAttribute('color').needsUpdate = true;
+
+    let currentGeo = debugMesh.geometry;
+    const posAttr = currentGeo.attributes.position;
+
+    // Check if we need to resize (Grow the buffer)
+    if (vertices.length > posAttr.array.length) {
+      // 1. Dispose of the old geometry to free GPU memory
+      currentGeo.dispose();
+
+      // 2. Create a BRAND NEW Geometry
+      const newGeo = new THREE.BufferGeometry();
+
+      // 3. Allocate LARGER buffers
+      const newSize = vertices.length + 5000; // Add generous padding to avoid frequent resizing
+      newGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(newSize), 3));
+      newGeo.setAttribute(
+        'color',
+        new THREE.BufferAttribute(new Float32Array((newSize / 3) * 4), 4)
+      );
+
+      // 4. Assign the new geometry to the mesh
+      // This forces the renderer to bind the new, larger buffer immediately
+      debugMesh.geometry = newGeo;
+
+      // Update local reference
+      currentGeo = newGeo;
     }
-    if (posAttr) {
-      posAttr.array.set(vertices);
-      colorAttr.array.set(colors);
-      posAttr.needsUpdate = true;
-      colorAttr.needsUpdate = true;
-    }
+
+    // Update Data
+    // We get the *latest* attribute reference in case we just resized it
+    const finalPosAttr = currentGeo.attributes.position as THREE.BufferAttribute;
+    const finalColAttr = currentGeo.attributes.color as THREE.BufferAttribute;
+
+    // Copy data into the existing typed arrays
+    // .set is very fast for Float32Array
+    finalPosAttr.array.set(vertices);
+    finalColAttr.array.set(colors);
+
+    // Mark as needing upload to GPU
+    finalPosAttr.needsUpdate = true;
+    finalColAttr.needsUpdate = true;
+
+    // CRITICAL: Tell GPU how many vertices to actually draw
+    // If buffer has 10,000 spots but we only have 50 vertices, draw only 50.
+    // vertices is a Float32Array (x,y,z), so vertex count is length / 3
+    currentGeo.setDrawRange(0, vertices.length / 3);
   } else {
     debugMesh.visible = false;
   }
@@ -1654,10 +1709,7 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
   if (!sceneId) return;
 
   const allNewPhysicsObjects = physicsObjects[sceneId];
-  if (!allNewPhysicsObjects) {
-    createPhysicsDebugMesh();
-    return;
-  }
+  if (!allNewPhysicsObjects) return;
 
   const keys = Object.keys(allNewPhysicsObjects);
   for (let i = 0; i < keys.length; i++) {
@@ -1676,8 +1728,6 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
     if (obj.collisionEventFn) collisionEventFnCount++;
     if (obj.contactForceEventFn) contactForceEventFnCount++;
   }
-
-  createPhysicsDebugMesh();
 };
 
 /**
@@ -2187,6 +2237,7 @@ export const InitRapierPhysics = async (
         RAPIER = rapier;
         if (isDebugEnvironment()) {
           createDebugControls();
+          createPhysicsDebugMesh();
           stepperFn = stepperFnDebug;
         } else {
           stepperFn = stepperFnProduction;
