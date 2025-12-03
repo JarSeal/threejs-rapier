@@ -12,11 +12,11 @@ import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createDynamicCharacter } from '../_engine/utils/character/dynamicCharacter';
 import { characterTestObstacles } from '../_engine/utils/world/characterTestObjects';
 import { importModelAsync } from '../_engine/core/ImportModel';
-import { addCheckerboardMaterialToMesh } from '../public/debugger/assets/materials/checkerBoardPattern';
-import { getTestObstacle } from '../public/debugger/assets/obstacles/characterTestObstacles';
+import { addCheckerboardMaterialToMesh } from '../_engine/utils/materials/checkerBoardPattern';
 import { getQuatFromAngle } from '../_engine/utils/helpers';
 import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
+import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
 
 export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
