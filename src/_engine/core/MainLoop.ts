@@ -427,13 +427,11 @@ const createLoopDebugControls = () => {
   });
 };
 
-const visibilityChangeFns: { [id: string]: (isHidden: boolean) => void } = {};
+let visibilityChangeFns: { [id: string]: (isHidden: boolean) => void } = {};
 export const addVisibilityChangeFn = (id: string, fn: (isHidden: boolean) => void) =>
   (visibilityChangeFns[id] = fn);
-
 export const deleteVisibilityChangeFn = (id: string) => delete visibilityChangeFns[id];
-
-window.addEventListener('beforeunload', () => (loopState.isUnloading = true));
+export const deleteAllVisibilityChangeFns = () => (visibilityChangeFns = {});
 const initWinVisibilityListener = () => {
   document.addEventListener('visibilitychange', () => {
     if (loopState.isUnloading) return;
@@ -445,6 +443,29 @@ const initWinVisibilityListener = () => {
     }
   });
 };
+
+let beforeUnloadFns: { [id: string]: () => void } = {};
+export const addBeforeUnloadFn = (id: string, fn: () => void) => (beforeUnloadFns[id] = fn);
+export const deleteBeforeUnloadFn = (id: string) => delete beforeUnloadFns[id];
+export const deleteAllBeforeUnloadFns = () => (beforeUnloadFns = {});
+window.addEventListener('beforeunload', () => {
+  loopState.isUnloading = true;
+  const keys = Object.keys(beforeUnloadFns);
+  for (let i = 0; i < keys.length; i++) {
+    beforeUnloadFns[keys[i]]();
+  }
+});
+
+let onWindowBlurFns: { [id: string]: () => void } = {};
+export const addOnWindowBlurFn = (id: string, fn: () => void) => (onWindowBlurFns[id] = fn);
+export const deleteAddOnWindowBlurFn = (id: string) => delete onWindowBlurFns[id];
+export const deleteAllOnWindowBlurFns = () => (onWindowBlurFns = {});
+window.addEventListener('blur', () => {
+  const keys = Object.keys(onWindowBlurFns);
+  for (let i = 0; i < keys.length; i++) {
+    onWindowBlurFns[keys[i]]();
+  }
+});
 
 /**
  * Toggles the main loop player state (play / pause)
