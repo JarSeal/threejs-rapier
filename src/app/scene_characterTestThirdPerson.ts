@@ -5,7 +5,7 @@ import { createMaterial } from '../_engine/core/Material';
 import { createLight } from '../_engine/core/Light';
 import { createMesh } from '../_engine/core/Mesh';
 import { createSkyBox } from '../_engine/core/SkyBox';
-import { getCurrentCamera } from '../_engine/core/Camera';
+import { createCamera, getCurrentCamera } from '../_engine/core/Camera';
 import { createPhysicsObjectWithMesh, getPhysicsObject } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
@@ -17,6 +17,7 @@ import { getQuatFromAngle } from '../_engine/utils/helpers';
 import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
+import { createFollowObjectCameraRig } from '../_engine/utils/cameras/followObjectCameraRig';
 
 export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
 
@@ -203,8 +204,52 @@ export const sceneCharacterTest = async () =>
     scene.add(box);
 
     // CHARACTER
+    const characterData = {
+      _height: 1.6,
+      _radius: 0.5,
+    };
+    const charCapsule = createGeometry({
+      id: 'capsuleDynamicChar',
+      type: 'CAPSULE',
+      params: {
+        radius: characterData._radius,
+        height: characterData._height - characterData._radius * 2,
+      },
+    });
+    const charMaterial = createMaterial({
+      id: 'materialDynamicChar',
+      type: 'PHONG',
+      params: {
+        map: loadTexture({
+          id: 'box1Texture',
+          fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
+        }),
+      },
+    });
+    const directionBeakMesh = createMesh({
+      id: 'directionBeakMeshDynamicChar-1',
+      geo: createGeometry({
+        id: 'directionBeakGeoDynamicChar',
+        type: 'BOX',
+        params: { width: 0.25, height: 0.25, depth: 0.7 },
+      }),
+      mat: createMaterial({
+        id: 'directionBeakMatDynamicChar',
+        type: 'BASIC',
+        params: { color: '#333' },
+      }),
+    });
+    const characterMesh = createMesh({
+      id: 'meshDynamicChar-1',
+      geo: charCapsule,
+      mat: charMaterial,
+    });
+    directionBeakMesh.position.set(0.35, 0.43, 0);
+    characterMesh.add(directionBeakMesh);
     const { charMesh, dynamicCharacterObject } = createDynamicCharacter({
-      id: 'thirdPersonChar',
+      id: 'topDownChar',
+      charMesh: characterMesh,
+      charData: characterData,
       inputMappings: {
         rotateLeft: ['a', 'A'],
         rotateRight: ['d', 'D'],
@@ -216,15 +261,61 @@ export const sceneCharacterTest = async () =>
       },
     });
     const charPhysObj = getPhysicsObject(dynamicCharacterObject.physObjectId);
-    charPhysObj?.setTranslation({ x: 5, y: 5, z: -5 });
+    charPhysObj?.setTranslation({ x: 5, y: 3, z: -5 });
     scene.add(charMesh);
 
+    // const mouseInput = { x: 0, y: 0 };
+    // document.addEventListener('mousemove', (e) => {
+    //   mouseInput.x = e.movementX;
+    //   mouseInput.y = e.movementY;
+    // });
+
+    // Add top down camera
+    createFollowObjectCameraRig({
+      id: 'playerFollowCamRig',
+      camera: createCamera('playerFollowCam', {
+        name: 'Player camera',
+        isCurrentCamera: true,
+        fov: 60,
+        near: 2,
+        far: 1000,
+      }),
+      targetMesh: charMesh,
+      offset: { x: 7, y: 20, z: 7 },
+      smoothingTime: 0.2,
+      // getMouseMoveInput: () => mouseInput,
+    });
+
     // Another character without input
+    const directionBeakMesh2 = createMesh({
+      id: 'directionBeakMeshDynamicChar-2',
+      geo: createGeometry({
+        id: 'directionBeakGeoDynamicChar2',
+        type: 'BOX',
+        params: { width: 0.25, height: 0.25, depth: 0.7 },
+      }),
+      mat: createMaterial({
+        id: 'directionBeakMatDynamicChar',
+        type: 'BASIC',
+        params: { color: '#333' },
+      }),
+    });
+    const characterMesh2 = createMesh({
+      id: 'meshDynamicChar-2',
+      geo: charCapsule,
+      mat: charMaterial,
+    });
+    directionBeakMesh2.position.set(0.35, 0.43, 0);
+    characterMesh2.add(directionBeakMesh2);
     const {
       controlFns,
       dynamicCharacterObject: dummyCharacterObject,
       charMesh: dummyCharMesh,
-    } = createDynamicCharacter({ id: 'testDummyChar' });
+    } = createDynamicCharacter({
+      id: 'testDummyChar',
+      charMesh: characterMesh2,
+      charData: characterData,
+    });
     const dummyCharPhysObj = getPhysicsObject(dummyCharacterObject.physObjectId);
     dummyCharPhysObj?.setTranslation({ x: -2, y: 5, z: -2 });
     scene.add(dummyCharMesh);

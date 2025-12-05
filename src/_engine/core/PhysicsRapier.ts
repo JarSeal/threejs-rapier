@@ -1536,14 +1536,14 @@ const baseStepper = (loopState: LoopState) => {
     // Step the world
     physicsWorld.step(eventQueue);
 
-    // Run scenePhysicsAfterStepLoopers
-    const afterStepLooperKeys = Object.keys(scenePhysicsAfterStepLoopers);
-    for (let i = 0; i < afterStepLooperKeys.length; i++) {
-      scenePhysicsAfterStepLoopers[afterStepLooperKeys[i]](physicsState.timestepRatio);
-    }
-
     accDelta -= physicsState.timestepRatio;
     stepsTaken++;
+  }
+
+  // Run scenePhysicsAfterStepLoopers
+  const afterStepLooperKeys = Object.keys(scenePhysicsAfterStepLoopers);
+  for (let i = 0; i < afterStepLooperKeys.length; i++) {
+    scenePhysicsAfterStepLoopers[afterStepLooperKeys[i]](physicsState.timestepRatio);
   }
 };
 

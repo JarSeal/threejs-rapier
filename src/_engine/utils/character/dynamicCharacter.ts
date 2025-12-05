@@ -1,10 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry } from '../../core/Geometry';
-import { createMaterial } from '../../core/Material';
-import { loadTexture } from '../../core/Texture';
-import { createMesh } from '../../core/Mesh';
-import { createCamera, deleteCamera } from '../../core/Camera';
-import { CharacterObject, createCharacter, registerOnDeleteCharacter } from '../../core/Character';
+import { CharacterObject, createCharacter } from '../../core/Character';
 import { transformAppSpeedValue } from '../../core/MainLoop';
 import {
   addScenePhysicsLooper,
@@ -190,13 +185,12 @@ const vectors = {
   angularVelocity: new THREE.Vector3(),
   groundDot: new THREE.Vector3(),
 };
-// @TODO: remove this and add camera functionality from outside the creation of the character
-let thirdPersonCamera: THREE.PerspectiveCamera | null = null;
 
 const characters: { [id: string]: DynamicCharacter } = {};
 
 export const createDynamicCharacter = (opts: {
   id: string;
+  charMesh: THREE.Mesh;
   charData?: Partial<CharacterData>;
   sceneId?: string;
   inputMappings?: {
@@ -209,7 +203,7 @@ export const createDynamicCharacter = (opts: {
     crouch: string[];
   };
 }) => {
-  const { id, charData, inputMappings } = opts;
+  const { id, charMesh, charData, inputMappings } = opts;
 
   // Combine character data
   const characterData = { ...getDefaultCharacterData(), ...charData };
@@ -217,72 +211,6 @@ export const createDynamicCharacter = (opts: {
 
   // Set __maxWalkableAngleCos
   characterData.__maxWalkableAngleCos = Math.cos(characterData._maxWalkableAngle);
-
-  // Create third person camera
-  // @TODO: remove this and add camera functionality from outside the creation of the character
-  thirdPersonCamera = createCamera(`thirdPersonCam-${id}`, {
-    name: '3rd Person Cam',
-    isCurrentCamera: true,
-    fov: 80,
-    near: 0.5,
-    far: 1000,
-  });
-
-  // @TODO: add the mesh as a parameter
-  const charCapsule = createGeometry({
-    id: `capsuleDynamicChar-${id}`,
-    type: 'CAPSULE',
-    params: {
-      radius: characterData._radius,
-      height: characterData._height - characterData._radius * 2,
-    },
-  });
-  const charMaterial = createMaterial({
-    id: `box1MaterialDynamicChar-${id}`,
-    type: 'PHONG',
-    params: {
-      map: loadTexture({
-        id: 'box1Texture',
-        fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
-      }),
-    },
-  });
-  const charMesh = createMesh({
-    id: `meshDynamicChar-${id}`,
-    geo: charCapsule,
-    mat: charMaterial,
-  });
-  charMesh.position.set(0, 0, 0);
-  charMesh.rotation.set(0, 0, 0);
-  // @TODO: remove this and add camera functionality from outside the creation of the character
-  thirdPersonCamera.position.set(
-    charMesh.position.x - 8,
-    charMesh.position.y + 5,
-    charMesh.position.z
-  );
-  // @TODO: remove this and add camera functionality from outside the creation of the character
-  thirdPersonCamera.rotation.set(0, 0, 0);
-  // @TODO: remove this and add camera functionality from outside the creation of the character
-  thirdPersonCamera.lookAt(charMesh.position.x, charMesh.position.y + 2, charMesh.position.z);
-  // @TODO: remove this and add camera functionality from outside the creation of the character
-  charMesh.add(thirdPersonCamera);
-
-  // @TODO: add the mesh as parameter
-  const directionBeakMesh = createMesh({
-    id: `directionBeakMeshDynamicChar-${id}`,
-    geo: createGeometry({
-      id: 'directionBeakGeoDynamicChar',
-      type: 'BOX',
-      params: { width: 0.25, height: 0.25, depth: 0.7 },
-    }),
-    mat: createMaterial({
-      id: 'directionBeakMatDynamicChar',
-      type: 'BASIC',
-      params: { color: '#333' },
-    }),
-  });
-  directionBeakMesh.position.set(0.35, 0.43, 0);
-  charMesh.add(directionBeakMesh);
 
   const moveVector3 = new THREE.Vector3();
   const groundVector3 = new THREE.Vector3();
@@ -306,6 +234,7 @@ export const createDynamicCharacter = (opts: {
         charMesh.quaternion,
         'XZY'
       ).y;
+      characterPhysObj?.rigidBody?.setRotation(charMesh.quaternion, true);
     },
     move: (direction: 'FORWARD' | 'BACKWARD') => {
       if (characterData.isTumbling) return;
@@ -483,9 +412,10 @@ export const createDynamicCharacter = (opts: {
     id,
     physicsParams: [
       {
-        // Main character collider (walk / run)
+        // Main character collider (walk / run) [INDEX: 0]
         collider: {
           type: 'CAPSULE',
+          halfHeight: characterData._height / 5,
           // friction: 0.7,
           // frictionCombineRule: 'MULTIPLY',
         },
@@ -496,25 +426,24 @@ export const createDynamicCharacter = (opts: {
         },
       },
       {
-        // Crouch collider
+        // Crouch collider [INDEX: 1]
         collider: {
           type: 'CAPSULE',
           friction: 0.9,
-          halfHeight: charCapsule.userData.props?.params.height / 4,
+          halfHeight: characterData._height / 10,
           translation: {
             x: charMesh.position.x,
-            y: charMesh.position.y - charCapsule.userData.props?.params.height / 4,
+            y: charMesh.position.y - characterData._height / 10,
             z: charMesh.position.z,
           },
         },
       },
       {
-        // Wall sensor
+        // Wall sensor [INDEX: 2]
         collider: {
           type: 'CAPSULE',
-          halfHeight:
-            (charCapsule.userData.props?.params.height / 2.5) * (characterData._skinThickness + 1),
-          radius: charCapsule.userData.props?.params.radius * (characterData._skinThickness + 1),
+          halfHeight: characterData._height / 5.5,
+          radius: characterData._radius * (characterData._skinThickness + 1),
           isSensor: true,
           density: 0,
           translation: { x: 0, y: 0.05, z: 0 },
@@ -560,10 +489,10 @@ export const createDynamicCharacter = (opts: {
         },
       },
       {
-        // Floor sensor
+        // Floor sensor [INDEX: 3]
         collider: {
           type: 'BALL',
-          radius: charCapsule.userData.props?.params.radius * characterData._groundDetectorRadius,
+          radius: characterData._radius * characterData._groundDetectorRadius,
           isSensor: true,
           density: 0,
           translation: {
@@ -1266,19 +1195,11 @@ export const createDynamicCharacter = (opts: {
     characterData.position = physObj.rigidBody?.translation() || { x: 0, y: 0, z: 0 };
   });
 
-  charMesh.castShadow = true;
-  charMesh.receiveShadow = true;
-
-  registerOnDeleteCharacter(id, () => {
-    deleteCamera(thirdPersonCamera?.userData.id);
-  });
-
   const characterBody = existsOrThrow(
     getPhysicsObject(dynamicCharacterObject.physObjectId)?.rigidBody,
     `Could not find character physics object rigid body with id: '${dynamicCharacterObject.physObjectId}'.`
   );
 
-  character.camera = thirdPersonCamera;
   character.charMesh = charMesh;
   character.dynamicCharacterObject = dynamicCharacterObject;
   character.controlFns = controlFns;
