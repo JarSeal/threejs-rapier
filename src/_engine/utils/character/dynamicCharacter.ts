@@ -1290,7 +1290,7 @@ export const getWallHitFromRaycasts = (
         // If the normal points UP significantly, it's a floor/slope, not a wall.
         // We only want to slide against things that are mostly vertical.
         // normal.y = 1 is floor. normal.y = 0 is wall.
-        const isWall = Math.abs(hit.normal.y) < 0.5; // Threshold for "Wall-ness"
+        const isWall = Math.abs(hit.normal.y) < characterData.__maxWalkableAngleCos; // Threshold for "Wall-ness"
 
         if (isTouching && isStatic && !isSensor && isWall) {
           // E. Prioritize the Closest Hit
