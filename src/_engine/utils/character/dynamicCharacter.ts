@@ -1209,101 +1209,198 @@ export const createDynamicCharacter = (opts: {
   return characters[id];
 };
 
-const getWallHitFromRaycasts = (
+type RapierRayHit = {
+  collider: RAPIER.Collider;
+  toi: number;
+  normal: { x: number; y: number; z: number };
+};
+
+const _moveDir = new THREE.Vector3();
+const _origin = new THREE.Vector3();
+const _rayDir = new THREE.Vector3();
+const _axisY = new THREE.Vector3(0, 1, 0);
+export const getWallHitFromRaycasts = (
   world: RAPIER.World,
   characterBody: RAPIER.RigidBody,
   characterData: CharacterData
-) => {
+): RapierRayHit | null => {
   const vel = characterBody.linvel();
-  let dir = { x: vel.x, y: 0, z: vel.z };
-  const len = Math.hypot(dir.x, dir.z);
 
-  if (len > 1e-5) {
-    dir.x /= len;
-    dir.z /= len;
-  } else {
-    dir = { x: 0, y: 0, z: 1 }; // fallback forward
-  }
+  // 1. Calculate Base Direction (Velocity based)
+  _moveDir.set(vel.x, 0, vel.z);
 
+  // Optimization: If standing still, wall sliding is irrelevant.
+  // Return null to prevent jitter/sticking while idle.
+  if (_moveDir.lengthSq() < 0.001) return null;
+
+  _moveDir.normalize();
+
+  // 2. Setup Dimensions
   let collider = characterBody.collider(0);
-  if (!collider?.isEnabled()) {
-    collider = characterBody.collider(1);
-  }
-  const capsuleRadius = (collider.shape as RAPIER.Capsule).radius;
-  const capsuleHeight = (collider.shape as RAPIER.Capsule).halfHeight * 2 + capsuleRadius * 2;
+  if (!collider?.isEnabled()) collider = characterBody.collider(1);
 
-  const maxToi = capsuleRadius * 4 + 0.5;
+  const capsuleShape = collider.shape as RAPIER.Capsule;
+  const radius = capsuleShape.radius;
+  // Total height of the capsule
+  const totalHeight = capsuleShape.halfHeight * 2 + radius * 2;
 
-  // Center of the character
-  let origin = characterBody.translation();
-  let ray = new RAPIER.Ray(characterBody.translation(), dir);
-  let hit = world.castRayAndGetNormal(
-    ray,
-    maxToi,
-    true,
-    undefined,
-    undefined,
-    undefined,
-    characterBody
-  );
-  if (hit && characterData.__touchingWallColliders?.includes(hit.collider.handle)) {
-    const bodyType = hit?.collider.parent()?.bodyType();
-    if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
-      return hit;
-    }
-  }
+  // Ray length: Radius + tiny buffer.
+  // Too long = you slide too early. Too short = you get stuck.
+  const rayLength = radius + 0.1;
 
-  // No hit, try more rays from different origin (top and bottom of the character)
-  const vertOffset = capsuleHeight * 0.499;
-  const horiOffset = capsuleRadius * 0.999;
-  const positions = [
-    { x: 0, y: -vertOffset, z: 0 },
-    { x: 0, y: vertOffset, z: 0 },
-    { x: -horiOffset, y: 0, z: 0 },
-    { x: horiOffset, y: 0, z: 0 },
-    { x: -horiOffset, y: -vertOffset, z: 0 },
-    { x: horiOffset, y: -vertOffset, z: 0 },
-    { x: -horiOffset, y: vertOffset, z: 0 },
-    { x: horiOffset, y: vertOffset, z: 0 },
-    { x: 0, y: 0, z: -horiOffset },
-    { x: 0, y: 0, z: horiOffset },
-    { x: 0, y: -vertOffset, z: -horiOffset },
-    { x: 0, y: -vertOffset, z: horiOffset },
-    { x: 0, y: vertOffset, z: -horiOffset },
-    { x: 0, y: vertOffset, z: horiOffset },
-    { x: -horiOffset, y: 0, z: -horiOffset },
-    { x: horiOffset, y: 0, z: horiOffset },
-    { x: -horiOffset, y: -vertOffset, z: -horiOffset },
-    { x: horiOffset, y: -vertOffset, z: horiOffset },
-    { x: -horiOffset, y: vertOffset, z: -horiOffset },
-    { x: horiOffset, y: vertOffset, z: horiOffset },
-  ];
+  const bodyPos = characterBody.translation();
 
-  for (let i = 0; i < positions.length; i++) {
-    origin = characterBody.translation();
-    origin.x = origin.x + positions[i].x;
-    origin.y = origin.y + positions[i].y;
-    origin.z = origin.z + positions[i].z;
-    ray = new RAPIER.Ray(origin, dir);
-    hit = world.castRayAndGetNormal(
-      ray,
-      maxToi,
-      true,
-      undefined,
-      undefined,
-      undefined,
-      characterBody
-    );
-    if (hit && characterData.__touchingWallColliders?.includes(hit.collider.handle)) {
-      const bodyType = hit?.collider.parent()?.bodyType();
-      if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
-        return hit;
+  // 3. Define the Grid: 2 Heights x 3 Angles
+  // Knee: ~25% up from bottom (catches thin platforms)
+  // Chest: ~75% up from bottom (catches walls/overhangs)
+  const yOffsets = [-(totalHeight * 0.25), totalHeight * 0.25];
+
+  // Fan angles: Center, Left 35deg, Right 35deg
+  // 35 degrees is wide enough to catch strafing, narrow enough to be forward-looking
+  const angles = [0, Math.PI / 5, -Math.PI / 5];
+
+  let closestHit: RapierRayHit | null = null;
+
+  // 4. Cast the Rays
+  for (const yOff of yOffsets) {
+    for (const angle of angles) {
+      // A. Setup Origin (Center of body + Y offset)
+      _origin.set(bodyPos.x, bodyPos.y + yOff, bodyPos.z);
+
+      // B. Setup Direction (Rotate moveDir by angle)
+      _rayDir.copy(_moveDir).applyAxisAngle(_axisY, angle);
+
+      // C. Cast
+      const ray = new RAPIER.Ray(_origin, _rayDir);
+
+      // castRayAndGetNormal is required for sliding math
+      const hit = world.castRayAndGetNormal(ray, rayLength, true) as unknown as RapierRayHit;
+
+      if (hit) {
+        // D. Filter Logic
+        // 1. Must be a wall we are actually touching (optimization)
+        const isTouching = characterData.__touchingWallColliders?.includes(hit.collider.handle);
+
+        // 2. Must NOT be a Dynamic body (other characters) or Sensor
+        const parent = hit.collider.parent();
+        const isStatic = parent && parent.bodyType() !== RAPIER.RigidBodyType.Dynamic;
+        const isSensor = hit.collider.isSensor();
+
+        // 3. Slope Check (The "Stuck between slopes" Fix)
+        // If the normal points UP significantly, it's a floor/slope, not a wall.
+        // We only want to slide against things that are mostly vertical.
+        // normal.y = 1 is floor. normal.y = 0 is wall.
+        const isWall = Math.abs(hit.normal.y) < 0.5; // Threshold for "Wall-ness"
+
+        if (isTouching && isStatic && !isSensor && isWall) {
+          // E. Prioritize the Closest Hit
+          // We want the wall that is physically closest to blocking us
+          if (!closestHit || hit.toi < closestHit.toi) {
+            closestHit = hit;
+          }
+        }
       }
     }
   }
 
-  return;
+  return closestHit;
 };
+
+// const getWallHitFromRaycasts = (
+//   world: RAPIER.World,
+//   characterBody: RAPIER.RigidBody,
+//   characterData: CharacterData
+// ) => {
+//   const vel = characterBody.linvel();
+//   let dir = { x: vel.x, y: 0, z: vel.z };
+//   const len = Math.hypot(dir.x, dir.z);
+
+//   if (len > 1e-5) {
+//     dir.x /= len;
+//     dir.z /= len;
+//   } else {
+//     dir = { x: 0, y: 0, z: 1 }; // fallback forward
+//   }
+
+//   let collider = characterBody.collider(0);
+//   if (!collider?.isEnabled()) {
+//     collider = characterBody.collider(1);
+//   }
+//   const capsuleRadius = (collider.shape as RAPIER.Capsule).radius;
+//   const capsuleHeight = (collider.shape as RAPIER.Capsule).halfHeight * 2 + capsuleRadius * 2;
+
+//   const maxToi = capsuleRadius * 4 + 0.5;
+
+//   // Center of the character
+//   let origin = characterBody.translation();
+//   let ray = new RAPIER.Ray(characterBody.translation(), dir);
+//   let hit = world.castRayAndGetNormal(
+//     ray,
+//     maxToi,
+//     true,
+//     undefined,
+//     undefined,
+//     undefined,
+//     characterBody
+//   );
+//   if (hit && characterData.__touchingWallColliders?.includes(hit.collider.handle)) {
+//     const bodyType = hit?.collider.parent()?.bodyType();
+//     if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
+//       return hit;
+//     }
+//   }
+
+//   // No hit, try more rays from different origin (top and bottom of the character)
+//   const vertOffset = capsuleHeight * 0.499;
+//   const horiOffset = capsuleRadius * 0.999;
+//   const positions = [
+//     { x: 0, y: -vertOffset, z: 0 },
+//     { x: 0, y: vertOffset, z: 0 },
+//     { x: -horiOffset, y: 0, z: 0 },
+//     { x: horiOffset, y: 0, z: 0 },
+//     { x: -horiOffset, y: -vertOffset, z: 0 },
+//     { x: horiOffset, y: -vertOffset, z: 0 },
+//     { x: -horiOffset, y: vertOffset, z: 0 },
+//     { x: horiOffset, y: vertOffset, z: 0 },
+//     { x: 0, y: 0, z: -horiOffset },
+//     { x: 0, y: 0, z: horiOffset },
+//     { x: 0, y: -vertOffset, z: -horiOffset },
+//     { x: 0, y: -vertOffset, z: horiOffset },
+//     { x: 0, y: vertOffset, z: -horiOffset },
+//     { x: 0, y: vertOffset, z: horiOffset },
+//     { x: -horiOffset, y: 0, z: -horiOffset },
+//     { x: horiOffset, y: 0, z: horiOffset },
+//     { x: -horiOffset, y: -vertOffset, z: -horiOffset },
+//     { x: horiOffset, y: -vertOffset, z: horiOffset },
+//     { x: -horiOffset, y: vertOffset, z: -horiOffset },
+//     { x: horiOffset, y: vertOffset, z: horiOffset },
+//   ];
+
+//   for (let i = 0; i < positions.length; i++) {
+//     origin = characterBody.translation();
+//     origin.x = origin.x + positions[i].x;
+//     origin.y = origin.y + positions[i].y;
+//     origin.z = origin.z + positions[i].z;
+//     ray = new RAPIER.Ray(origin, dir);
+//     hit = world.castRayAndGetNormal(
+//       ray,
+//       maxToi,
+//       true,
+//       undefined,
+//       undefined,
+//       undefined,
+//       characterBody
+//     );
+//     if (hit && characterData.__touchingWallColliders?.includes(hit.collider.handle)) {
+//       const bodyType = hit?.collider.parent()?.bodyType();
+//       if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
+//         return hit;
+//       }
+//     }
+//   }
+
+//   return;
+// };
 
 const getFloorNormal = (
   world: RAPIER.World,
