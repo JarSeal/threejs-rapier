@@ -1,12 +1,16 @@
 import * as THREE from 'three/webgpu';
-import { createScene, createSceneAppLooper } from '../_engine/core/Scene';
+import { createScene } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { createLight } from '../_engine/core/Light';
 import { createMesh } from '../_engine/core/Mesh';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import { createCamera, getCurrentCamera } from '../_engine/core/Camera';
-import { createPhysicsObjectWithMesh, getPhysicsObject } from '../_engine/core/PhysicsRapier';
+import {
+  addScenePhysicsLooper,
+  createPhysicsObjectWithMesh,
+  getPhysicsObject,
+} from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createDynamicCharacter } from '../_engine/utils/character/dynamicCharacter';
@@ -246,6 +250,8 @@ export const sceneCharacterTest = async () =>
     });
     directionBeakMesh.position.set(0.35, 0.43, 0);
     characterMesh.add(directionBeakMesh);
+    characterMesh.receiveShadow = true;
+    characterMesh.castShadow = true;
     const { charMesh, dynamicCharacterObject } = createDynamicCharacter({
       id: 'topDownChar',
       charMesh: characterMesh,
@@ -307,6 +313,8 @@ export const sceneCharacterTest = async () =>
     });
     directionBeakMesh2.position.set(0.35, 0.43, 0);
     characterMesh2.add(directionBeakMesh2);
+    characterMesh2.receiveShadow = true;
+    characterMesh2.castShadow = true;
     const {
       controlFns,
       dynamicCharacterObject: dummyCharacterObject,
@@ -323,8 +331,8 @@ export const sceneCharacterTest = async () =>
     // @TEMP: Set an interval to move the dummy
     let action: 'F' | 'T' | null = null;
     let accDelta = 0;
-    createSceneAppLooper((delta) => {
-      if (accDelta > 1.5) {
+    addScenePhysicsLooper('dummyCharLooper', (delta) => {
+      if (accDelta > 1) {
         if (action !== 'F') {
           action = 'F';
           controlFns.jump();

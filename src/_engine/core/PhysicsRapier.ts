@@ -173,6 +173,9 @@ export type RigidBodyParams = {
     point: { x: number; y: number; z: number };
   };
 
+  /** Additional mass of the object. Rapier calculates mass = (Volume * Density) + AdditionalMass. Density is set for the collider. */
+  additionalMass?: number;
+
   /** Translation locks */
   lockTranslations?: { x: boolean; y: boolean; z: boolean };
 
@@ -387,6 +390,8 @@ export const createRigidBody = (physicsParams: PhysicsParams) => {
       rigidBodyParams.impulseAtPoint.point,
       wakeUp
     );
+  if (rigidBodyParams.additionalMass !== undefined)
+    rigidBody.setAdditionalMass(rigidBodyParams.additionalMass, wakeUp);
   if (rigidBodyParams.lockTranslations) {
     rigidBody.lockTranslations(true, wakeUp);
     rigidBody.setEnabledTranslations(
@@ -1402,15 +1407,16 @@ const baseStepper = (loopState: LoopState) => {
   accDelta += scaledDelta;
   if (physicsState.maxDeltaTime > 0) delta = Math.min(delta, physicsState.maxDeltaTime);
 
-  // Update loop action inputs
-  updateInputControllerLoopActions(scaledDelta);
-
   while (
     accDelta >= physicsState.timestepRatio &&
     (physicsState.minSubSteps === 0 || stepsTaken <= physicsState.minSubSteps) &&
     (physicsState.maxSubSteps === 0 || stepsTaken < physicsState.maxSubSteps)
   ) {
     if (physicsState.isPaused) break;
+
+    // Update loop action inputs
+    updateInputControllerLoopActions(physicsState.timestepRatio);
+
     // Store previous transforms
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
       const po = currentScenePhysicsObjects[i];
@@ -1543,7 +1549,7 @@ const baseStepper = (loopState: LoopState) => {
   // Run scenePhysicsAfterStepLoopers
   const afterStepLooperKeys = Object.keys(scenePhysicsAfterStepLoopers);
   for (let i = 0; i < afterStepLooperKeys.length; i++) {
-    scenePhysicsAfterStepLoopers[afterStepLooperKeys[i]](physicsState.timestepRatio);
+    scenePhysicsAfterStepLoopers[afterStepLooperKeys[i]](scaledDelta);
   }
 };
 
@@ -1636,6 +1642,12 @@ const isDynamicPhysicsObjectValid = (po: PhysicsObject) =>
   !po.rigidBody.isFixed() &&
   po.rigidBody.isEnabled();
 
+// Reuse scratch objects to avoid GC
+const _interpPos = new THREE.Vector3();
+const _interpRot = new THREE.Quaternion();
+const _prevRot = new THREE.Quaternion();
+const _currRot = new THREE.Quaternion();
+
 export const renderPhysicsObjects = () => {
   if (getCurrentScenePhysParams().interpolationEnabled) {
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
@@ -1644,39 +1656,60 @@ export const renderPhysicsObjects = () => {
       if (!isDynamicPhysicsObjectValid(po)) continue;
       const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
       const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
+      const handle = rb.handle;
       const prev = prevTransforms.get(rb.handle);
       const curr = currTransforms.get(rb.handle);
-      if (!prev || !curr) continue;
+      // Safety Check: If data is missing (new object), Snap and Init.
+      if (!prev || !curr) {
+        const t = rb.translation();
+        const r = rb.rotation();
+        mesh.position.set(t.x, t.y, t.z);
+        mesh.quaternion.set(r.x, r.y, r.z, r.w);
 
-      const alpha = Math.min(accDelta / physicsState.timestepRatio, 1);
+        // Initialize the buffers so next frame interpolates correctly
+        if (!prevTransforms.has(handle)) {
+          const p = new THREE.Vector3(t.x, t.y, t.z);
+          const q = new THREE.Quaternion(r.x, r.y, r.z, r.w);
+          prevTransforms.set(handle, { pos: p, rot: q });
+          currTransforms.set(handle, { pos: p.clone(), rot: q.clone() });
+        }
+        continue;
+      }
 
-      // Interpolated position
-      const interpPos = prev.pos.clone().lerp(curr.pos, alpha);
+      const alpha = Math.max(0, Math.min(1, accDelta / physicsState.timestepRatio));
 
-      // Interpolated rotation
-      const interpRot = slerp(prev.rot, curr.rot, alpha);
+      // 2. Interpolate Position
+      _interpPos.copy(prev.pos).lerp(curr.pos, alpha);
+      mesh.position.copy(_interpPos);
 
-      mesh.position.copy(interpPos);
+      // 3. Interpolate Rotation (SAFE MODE)
+      // We copy to scratch variables to ensure we don't mutate the storage
+      _prevRot.copy(prev.rot).normalize();
+      _currRot.copy(curr.rot).normalize();
+
+      _interpRot.copy(_prevRot).slerp(_currRot, alpha);
+      _interpRot.normalize();
+
       const userData = po.rigidBody?.userData as { [key: string]: unknown };
       if (!userData?.lockRotationsX && !userData?.lockRotationsX && !userData?.lockRotationsX) {
-        mesh.quaternion.copy(interpRot);
+        mesh.quaternion.copy(_interpRot);
       } else {
         mesh.quaternion.copy({
-          x: userData.lockRotationsX ? mesh.quaternion.x : interpRot.x,
-          y: userData.lockRotationsY ? mesh.quaternion.y : interpRot.y,
-          z: userData.lockRotationsZ ? mesh.quaternion.z : interpRot.z,
+          x: userData.lockRotationsX ? mesh.quaternion.x : _interpRot.x,
+          y: userData.lockRotationsY ? mesh.quaternion.y : _interpRot.y,
+          z: userData.lockRotationsZ ? mesh.quaternion.z : _interpRot.z,
           w: mesh.quaternion.w,
         });
       }
     }
   } else {
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+      // --- SNAP, NO INTERPOLATION
       const po = currentScenePhysicsObjects[i];
       // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
       if (!isDynamicPhysicsObjectValid(po)) continue;
       const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
       const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
-
       mesh.position.copy(rb.translation());
       const userData = rb.userData as { [key: string]: unknown };
       if (!userData?.lockRotationsX && !userData?.lockRotationsX && !userData?.lockRotationsX) {
