@@ -1402,15 +1402,16 @@ const baseStepper = (loopState: LoopState) => {
   accDelta += scaledDelta;
   if (physicsState.maxDeltaTime > 0) delta = Math.min(delta, physicsState.maxDeltaTime);
 
-  // Update loop action inputs
-  updateInputControllerLoopActions(scaledDelta);
-
   while (
     accDelta >= physicsState.timestepRatio &&
     (physicsState.minSubSteps === 0 || stepsTaken <= physicsState.minSubSteps) &&
     (physicsState.maxSubSteps === 0 || stepsTaken < physicsState.maxSubSteps)
   ) {
     if (physicsState.isPaused) break;
+
+    // Update loop action inputs
+    updateInputControllerLoopActions(physicsState.timestepRatio);
+
     // Store previous transforms
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
       const po = currentScenePhysicsObjects[i];
@@ -1536,14 +1537,14 @@ const baseStepper = (loopState: LoopState) => {
     // Step the world
     physicsWorld.step(eventQueue);
 
+    // Run scenePhysicsAfterStepLoopers
+    const afterStepLooperKeys = Object.keys(scenePhysicsAfterStepLoopers);
+    for (let i = 0; i < afterStepLooperKeys.length; i++) {
+      scenePhysicsAfterStepLoopers[afterStepLooperKeys[i]](physicsState.timestepRatio);
+    }
+
     accDelta -= physicsState.timestepRatio;
     stepsTaken++;
-  }
-
-  // Run scenePhysicsAfterStepLoopers
-  const afterStepLooperKeys = Object.keys(scenePhysicsAfterStepLoopers);
-  for (let i = 0; i < afterStepLooperKeys.length; i++) {
-    scenePhysicsAfterStepLoopers[afterStepLooperKeys[i]](physicsState.timestepRatio);
   }
 };
 

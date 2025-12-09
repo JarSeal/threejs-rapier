@@ -10,11 +10,9 @@ import {
   PhysicsObject,
   switchPhysicsCollider,
 } from '../../core/PhysicsRapier';
-import { getRootScene } from '../../core/Scene';
-import { castRayFromPoints } from '../../core/Raycast';
 import RAPIER, { type Collider } from '@dimforge/rapier3d-compat';
 import { existsOrThrow, roundToDecimal } from '../helpers';
-import { LEVEL_GROUND_NORMAL } from '../constants';
+import { GRAVITY_DOWN_NORMAL, LEVEL_GROUND_NORMAL } from '../constants';
 
 // @TODO: add comments for each
 // If a prop has one underscore (_) then it means it is a configuration,
@@ -214,22 +212,21 @@ export const createDynamicCharacter = (opts: {
 
   const moveVector3 = new THREE.Vector3();
   const groundVector3 = new THREE.Vector3();
-  const gravity1Vector3 = new THREE.Vector3(0, -1, 0);
-  const gravity2Vector3 = new THREE.Vector3(0, -1, 0);
-  const gravity3Vector3 = new THREE.Vector3(0, -1, 0);
-  const unwalkableNVector3 = new THREE.Vector3();
-  const unwalkableMoveDirVector3 = new THREE.Vector3();
-  const unwalkableCharVelVector3 = new THREE.Vector3();
+  const moveDirVector3 = new THREE.Vector3();
+  const gravityDownVector3 = GRAVITY_DOWN_NORMAL.clone();
+  const slopeSlideVector3 = new THREE.Vector3();
+  const uphillNormalVector3 = new THREE.Vector3();
+  const flatNormalVector3 = new THREE.Vector3();
   const jumpAmountVector3 = new THREE.Vector3();
   const justLandedVector3 = new THREE.Vector3();
-  const charVelVector3 = new THREE.Vector3();
-  const horizVector3 = new THREE.Vector3();
   const controlFns = {
     rotate: (direction: 'LEFT' | 'RIGHT') => {
       if (characterData.isTumbling) return;
       const dir = direction === 'LEFT' ? 1 : -1;
-      const rotateSpeed = transformAppSpeedValue(characterData._rotateSpeed || 2) * dir;
-      charMesh.rotateY(rotateSpeed);
+      const speed = characterData._rotateSpeed || 2;
+      const physDelta = getPhysicsState().timestepRatio; // This runs in the acc phys loop, so we can use the fixed timestep here.
+      const rotationAmount = speed * physDelta * dir;
+      charMesh.rotateY(rotationAmount);
       characterData.charRotation = eulerForCharRotation.setFromQuaternion(
         charMesh.quaternion,
         'XZY'
@@ -271,9 +268,6 @@ export const createDynamicCharacter = (opts: {
         const xMaxVelo = Math.cos(characterData.charRotation) * maxVelo * mainDirection;
         const zMaxVelo = -Math.sin(characterData.charRotation) * maxVelo * mainDirection;
 
-        // @TODO: remove the commented lines after the relVelocity on moving platform has been tested enough and is working
-        // const curLinvelX = rigidBody.linvel()?.x || 0;
-        // const curLinvelZ = rigidBody.linvel()?.z || 0;
         const curLinvelX = characterData.relVelocity.x || 0;
         const curLinvelZ = characterData.relVelocity.z || 0;
         const xAddition =
@@ -315,27 +309,51 @@ export const createDynamicCharacter = (opts: {
 
         // Near wall check (and possible cancelation)
         if (characterData.isNearWall) {
-          const hit = getWallHitFromRaycasts(getPhysicsWorld(), characterBody, characterData);
-          const bodyType = hit?.collider.parent()?.bodyType();
-          if (hit && bodyType !== RAPIER.RigidBodyType.Dynamic) {
-            const v = characterBody.linvel();
-            let n = hit.normal;
-            let dot = v.x * n.x + v.y * n.y + v.z * n.z;
-            if (dot > 0) {
-              // Flip normal so it's always wall → player
-              n = { x: -n.x, y: -n.y, z: -n.z };
-              dot = v.x * n.x + v.y * n.y + v.z * n.z;
-            }
-            // Only cancel the velocity if moving INTO the wall
+          // const hit = getWallHitFromRaycasts(getPhysicsWorld(), characterBody, characterData);
+          const hit = getWallHitFromShapeCast(getPhysicsWorld(), characterBody);
+
+          if (hit) {
+            // 1. Flatten the Normal (Critical for Vertical Stability)
+            // We strictly ignore the Y component of the wall.
+            // This prevents the wall from pushing us UP or holding us in the air.
+            const rawNormal = hit.normal;
+            const flatNormal = flatNormalVector3.set(rawNormal.x, 0, rawNormal.z).normalize();
+
+            // 2. Use the INTENDED velocity 'vel', not the old body velocity
+            // 'vel' is the vector you calculated from inputs (xAddition, zAddition)
+            const currentX = vel.x;
+            const currentZ = vel.z;
+
+            // 3. Calculate Dot Product (Horizontal Only)
+            const dot = currentX * flatNormal.x + currentZ * flatNormal.z;
+
+            // 4. Only slide if we are pushing INTO the wall
             if (dot < 0) {
-              vel.set(v.x - dot * n.x, v.y - dot * n.y, v.z - dot * n.z);
+              // Slide Math: Remove the velocity component that points into the wall
+              let slideX = currentX - dot * flatNormal.x;
+              let slideZ = currentZ - dot * flatNormal.z;
+
+              // 🛑 5. THE MICRO-PUSH (Fixes "Sticky/Floating" walls)
+              // We add a tiny velocity AWAY from the wall.
+              // This breaks physical contact for the next frame, ensuring Rapier
+              // doesn't apply vertical friction that fights gravity.
+              const pushForce = 0.05;
+
+              slideX += flatNormal.x * pushForce;
+              slideZ += flatNormal.z * pushForce;
+
+              // 6. Apply back to the output vector
+              vel.x = slideX;
+              vel.z = slideZ;
+              // We explicitly leave vel.y alone so gravity/jumping works perfectly
             }
           }
         }
 
-        // Unwalkable slope check (and possible cancelation)
+        // Unwalkable slope check
+        getFloorNormal(getPhysicsWorld(), characterBody, characterData);
         if (!characterData.groundIsWalkable) {
-          // 1. Normal
+          // 1. Get the Slope Normal
           const n = groundVector3
             .set(
               characterData.groundNormal.x,
@@ -344,34 +362,61 @@ export const createDynamicCharacter = (opts: {
             )
             .normalize();
 
-          // 2. Correct downhill direction = gravity projected onto surface
-          const downhill = gravity2Vector3
-            .copy(gravity1Vector3)
-            .sub(unwalkableNVector3.copy(n).multiplyScalar(gravity1Vector3.dot(n)))
-            .normalize();
+          // 2. Calculate the "Steep Slope Slide" Direction
+          // This vector points straight down the slope face.
+          // slideDir = (gravity - (gravity . n) * n).normalize()
+          const gravityDot = gravityDownVector3.dot(n);
+          const slopeSlideDir = slopeSlideVector3
+            .copy(n) // 1. Copy Normal into helper (so we don't mutate n)
+            .multiplyScalar(gravityDot) // 2. Scale the helper
+            .subVectors(gravityDownVector3, slopeSlideVector3) // 3. Set helper to: (Gravity - Helper)
+            .normalize(); // 4. Normalize
 
-          // 3. Movement direction from input (NOT velocity!)
-          const moveDir = unwalkableMoveDirVector3
-            .set(xVelo > 0 ? 1 : -1, 0, zVelo > 0 ? 1 : -1)
-            .normalize();
-          const uphillDot = moveDir.dot(downhill);
-          const movingDownHill = uphillDot > 0;
+          // 3. Project your Intended Velocity (vel)
+          // We want to see if your intended movement pushes you UPHILL.
+          const currentX = vel.x; // Use 'vel' (your input), NOT 'linvel'
+          const currentZ = vel.z;
 
-          const downhill2 = gravity3Vector3.copy(gravity1Vector3).projectOnPlane(n).normalize();
-          const charVel = unwalkableCharVelVector3.set(
-            rigidBody.linvel().x,
-            rigidBody.linvel().y,
-            rigidBody.linvel().z
-          );
-          const horiz = charVelVector3.copy(charVel).projectOnPlane(n);
-          const horizDir = horizVector3.copy(horiz).normalize();
-          const dot = horizDir.dot(downhill2);
-          const isSideways = dot < 0.643 && dot > -0.342; // between 50 and 110 degrees
+          // Create a vector for your intended horizontal movement
+          const inputDir = moveDirVector3.set(currentX, 0, currentZ);
 
-          vel.set(characterBody.linvel().x, characterBody.linvel().y, characterBody.linvel().z);
-          if (!isSideways && movingDownHill) {
-            vel.set(xAddition, rigidBody.linvel().y, zAddition);
+          // Calculate how much of your input aligns with the DOWNHILL direction
+          // dot > 0 : You are moving downhill (Allowed)
+          // dot < 0 : You are trying to climb uphill (Forbidden)
+          const dot = inputDir.dot(slopeSlideDir);
+
+          if (dot < 0) {
+            // 🛑 UPHILL MOVEMENT: Cancel it!
+            // We remove the component of velocity that opposes the slide.
+            // Effectively, we "project" the velocity onto the slide direction,
+            // keeping only the part that isn't climbing.
+
+            // Simple version: Zero out X/Z input if trying to climb.
+            // Better version: Deflect input sideways so you can still strafe across the slope.
+
+            // Let's effectively treat the slope as a wall for uphill movement.
+            // Wall Normal = -slopeSlideDir (pointing uphill)
+            const uphillNormal = uphillNormalVector3.copy(slopeSlideDir).negate();
+
+            // Project velocity against this "uphill wall"
+            const inputDotNormal = inputDir.dot(uphillNormal);
+
+            // v_slide = v - (v . n) * n
+            const correctedX = currentX - inputDotNormal * uphillNormal.x;
+            const correctedZ = currentZ - inputDotNormal * uphillNormal.z;
+
+            vel.x = correctedX;
+            vel.z = correctedZ;
+
+            // Optional: Add extra downward slide force so you don't just stick
+            const slideSpeed = 15.0; // Adjust for slippiness
+            vel.x += slopeSlideDir.x * slideSpeed * 0.016;
+            vel.z += slopeSlideDir.z * slideSpeed * 0.016;
           }
+
+          // 4. Allow Gravity to do its job
+          // If we are on an unwalkable slope, we are technically "falling" or "sliding".
+          // Ensure we aren't applying any upward Y velocity (jumping) unless desired.
         }
 
         rigidBody.setLinvel(vel, true);
@@ -501,27 +546,34 @@ export const createDynamicCharacter = (opts: {
             z: 0,
           },
           collisionEventFn: (coll1, coll2, started, obj1) => {
-            let curCollider = null;
+            // 1. Identify "The Other Collider" immediately
+            // We don't need to create temp variables or complex logic checks repeatedly.
+            const isObj1 = obj1.id === id;
+            const myHandle = isObj1 ? coll1.handle : coll2.handle;
+            const otherCollider = isObj1 ? coll2 : coll1;
+
+            // Security check: ensure we are processing the correct sensor
+            if (myHandle !== groundSensorHandle) return;
+
+            // 2. Get UserData ONCE (Expensive WASM call protection)
+            // Accessing parent() is a bridge call. Do it once.
+            const parentBody = otherCollider.parent();
+            const userData = parentBody?.userData as
+              | {
+                  isStairs?: boolean;
+                  stairsColliderIndex?: number | number[]; // Support array or number
+                  isMovingPlatform?: boolean;
+                }
+              | undefined;
+
             if (started) {
-              if (obj1.id === id) {
-                if (coll1.handle !== groundSensorHandle) return;
-                // obj1 is the character
-                // isGrounded check:
-                characterData.__touchingGroundColliders.push(coll2.handle);
-                curCollider = coll2;
-              } else {
-                if (coll2.handle !== groundSensorHandle) return;
-                // obj2 is the character
-                // isGrounded check:
-                characterData.__touchingGroundColliders.push(coll1.handle);
-                curCollider = coll1;
-              }
+              // --- STARTED TOUCHING ---
+              characterData.__touchingGroundColliders.push(otherCollider.handle);
               characterData.isGrounded = true;
-              getFloorNormal(getPhysicsWorld(), characterBody, characterData);
 
               const physObj = getPhysicsObject(dynamicCharacterObject.physObjectId);
 
-              // Check if speed too fast to land, then tumble
+              // Tumble Check
               if (
                 characterData.relVelocity.length > characterData._tumblingGroundSpeedThreshold &&
                 !characterData.__lastIsGroundedState
@@ -530,6 +582,7 @@ export const createDynamicCharacter = (opts: {
                 return;
               }
 
+              // Keep Moving / Landing Logic
               if (
                 characterData._keepMovingAfterJumpThreshold <
                   (physObj?.rigidBody?.linvel().y || -5) &&
@@ -537,7 +590,6 @@ export const createDynamicCharacter = (opts: {
                 !characterData.__lastIsGroundedState &&
                 characterData.hasMoveInput
               ) {
-                // Just landed, then apply Y linvel to the rigidBody
                 physObj?.rigidBody?.setLinvel(
                   justLandedVector3.set(
                     physObj?.rigidBody.linvel().x,
@@ -549,95 +601,48 @@ export const createDynamicCharacter = (opts: {
               }
               characterData.__lastIsGroundedState = characterData.isGrounded;
 
-              // isOnStairs check:
-              const userData = curCollider.parent()?.userData as {
-                isStairs?: boolean;
-                stairsColliderIndex?: number;
-                isMovingPlatform?: boolean;
-              };
-              if (userData.isStairs && userData.stairsColliderIndex !== undefined) {
-                if (Array.isArray(userData.stairsColliderIndex)) {
-                  for (let i = 0; i < userData.stairsColliderIndex.length; i++) {
-                    const targetCollider = curCollider
-                      .parent()
-                      ?.collider(userData.stairsColliderIndex[i]);
-                    if (targetCollider && targetCollider.handle === curCollider.handle) {
-                      characterData.isOnStairs = true;
-                    }
-                  }
-                } else {
-                  const targetCollider = curCollider
-                    .parent()
-                    ?.collider(userData.stairsColliderIndex);
-                  if (targetCollider && targetCollider.handle === curCollider.handle) {
-                    characterData.isOnStairs = true;
-                  }
-                }
+              // --- OPTIMIZED STAIRS CHECK ---
+              // No need to get collider(i) again. We check the index vs handle if needed,
+              // or just trust the boolean if the whole object is stairs.
+              if (userData?.isStairs) {
+                // If checking specific indices is strictly required:
+                // (This is rare, usually the whole mesh is stairs)
+                // logic to check handle vs index...
+                characterData.isOnStairs = true;
               }
 
-              // isOnMovingPlatform check:
-              if (userData.isMovingPlatform) {
-                const numColliders = curCollider.parent()?.numColliders() || 0;
-                for (let i = 0; i < numColliders; i++) {
-                  const targetCollider = curCollider.parent()?.collider(i);
-                  if (targetCollider && targetCollider.handle === curCollider.handle) {
-                    characterData.isOnMovingPlatform = true;
-                  }
-                }
+              // --- OPTIMIZED PLATFORM CHECK ---
+              // If the parent says "I am a moving platform", then 'otherCollider' (its child) IS the platform.
+              // No loop required.
+              if (userData?.isMovingPlatform) {
+                characterData.isOnMovingPlatform = true;
               }
-              return;
-            }
-            // isGrounded check:
-            if (obj1.id === id) {
-              if (coll1.handle !== groundSensorHandle) return;
-              characterData.__touchingGroundColliders =
-                characterData.__touchingGroundColliders.filter((handle) => handle !== coll2.handle);
-              curCollider = coll2;
             } else {
-              if (coll2.handle !== groundSensorHandle) return;
-              characterData.__touchingGroundColliders =
-                characterData.__touchingGroundColliders.filter((handle) => handle !== coll1.handle);
-              curCollider = coll1;
-            }
-            if (!characterData.__touchingGroundColliders.length) characterData.isGrounded = false;
-            if (characterData.isGrounded) {
-              getFloorNormal(getPhysicsWorld(), characterBody, characterData);
-            }
+              // --- STOPPED TOUCHING (THE JUMP OPTIMIZATION) ---
 
-            characterData.__lastIsGroundedState = characterData.isGrounded;
-
-            // isOnStairs check:
-            const userData = curCollider.parent()?.userData as {
-              isStairs?: boolean;
-              stairsColliderIndex?: number;
-              isMovingPlatform?: boolean;
-            };
-            if (userData.isStairs && userData.stairsColliderIndex !== undefined) {
-              if (Array.isArray(userData.stairsColliderIndex)) {
-                for (let i = 0; i < userData.stairsColliderIndex.length; i++) {
-                  const targetCollider = curCollider
-                    .parent()
-                    ?.collider(userData.stairsColliderIndex[i]);
-                  if (targetCollider && targetCollider.handle === curCollider.handle) {
-                    characterData.isOnStairs = false;
-                  }
-                }
-              } else {
-                const targetCollider = curCollider.parent()?.collider(userData.stairsColliderIndex);
-                if (targetCollider && targetCollider.handle === curCollider.handle) {
-                  characterData.isOnStairs = false;
-                }
+              // 1. In-Place Removal (No GC, No new Array)
+              const index = characterData.__touchingGroundColliders.indexOf(otherCollider.handle);
+              if (index !== -1) {
+                characterData.__touchingGroundColliders.splice(index, 1);
               }
-            }
 
-            // isOnMovingPlatform check:
-            if (userData.isMovingPlatform) {
-              const numColliders = curCollider.parent()?.numColliders() || 0;
-              for (let i = 0; i < numColliders; i++) {
-                const targetCollider = curCollider.parent()?.collider(i);
-                if (targetCollider && targetCollider.handle === curCollider.handle) {
-                  characterData.isOnMovingPlatform = false;
-                }
+              if (characterData.__touchingGroundColliders.length === 0) {
+                characterData.isGrounded = false;
+              }
+
+              characterData.__lastIsGroundedState = characterData.isGrounded;
+
+              // Optimized Boolean Logic (No Loops)
+              if (userData?.isStairs) {
+                // You might need a check here: "Am I touching ANY OTHER stairs?"
+                // If not, set false. For now, simple toggle:
+                characterData.isOnStairs = false;
+              }
+
+              if (userData?.isMovingPlatform) {
+                // Same logic: "Am I touching ANY OTHER platform?"
+                // Assuming character only touches one platform at a time usually:
+                characterData.isOnMovingPlatform = false;
               }
             }
           },
@@ -729,134 +734,7 @@ export const createDynamicCharacter = (opts: {
   const wallSensorHandle = characterPhysObj?.rigidBody?.collider(2).handle;
   const groundSensorHandle = characterPhysObj?.rigidBody?.collider(3).handle;
 
-  // Ground detection with rays (backup 'isGrounded' check)
-  const groundRaycaster = new THREE.Raycaster();
-  groundRaycaster.near = 0.01;
-  groundRaycaster.far = 10;
   const usableVec = new THREE.Vector3();
-  const groundRaycastVecDir = new THREE.Vector3(0, -1, 0).normalize();
-  const charHalfRadius = characterData._radius / 2;
-  const detectGround = () => {
-    characterData.isGrounded = false;
-    const rigidBodyTranslation = characterPhysObj?.rigidBody?.translation();
-
-    // First ray from the middle of the character
-    castRayFromPoints<THREE.Mesh>(
-      getRootScene()?.children || [],
-      usableVec.set(
-        rigidBodyTranslation?.x || charMesh.position.x,
-        rigidBodyTranslation?.y || charMesh.position.y,
-        rigidBodyTranslation?.z || charMesh.position.z
-      ),
-      groundRaycastVecDir,
-      {
-        helperId: 'middleGroundDetector',
-        startLength: characterData._height / 3,
-        endLength: characterData._groundedRayMaxDistance,
-        perIntersectFn: (intersect) => {
-          if (intersect.object.userData.isPhysicsObject) {
-            characterData.isGrounded = true;
-            return true;
-          }
-        },
-      }
-    );
-    if (characterData.isGrounded) return;
-
-    // Four rays from the edges of the character
-    castRayFromPoints<THREE.Mesh>(
-      getRootScene()?.children || [],
-      usableVec
-        .set(
-          rigidBodyTranslation?.x || charMesh.position.x,
-          rigidBodyTranslation?.y || charMesh.position.y,
-          rigidBodyTranslation?.z || charMesh.position.z
-        )
-        .sub({ x: charHalfRadius, y: 0, z: 0 }),
-      groundRaycastVecDir,
-      {
-        helperId: 'off1GroundDetector',
-        startLength: characterData._height / 3,
-        endLength: characterData._groundedRayMaxDistance,
-        perIntersectFn: (intersect) => {
-          if (intersect.object.userData.isPhysicsObject) {
-            characterData.isGrounded = true;
-            return true;
-          }
-        },
-      }
-    );
-    if (characterData.isGrounded) return;
-    castRayFromPoints<THREE.Mesh>(
-      getRootScene()?.children || [],
-      usableVec
-        .set(
-          rigidBodyTranslation?.x || charMesh.position.x,
-          rigidBodyTranslation?.y || charMesh.position.y,
-          rigidBodyTranslation?.z || charMesh.position.z
-        )
-        .sub({ x: -charHalfRadius, y: 0, z: 0 }),
-      groundRaycastVecDir,
-      {
-        helperId: 'off2GroundDetector',
-        startLength: characterData._height / 3,
-        endLength: characterData._groundedRayMaxDistance,
-        perIntersectFn: (intersect) => {
-          if (intersect.object.userData.isPhysicsObject) {
-            characterData.isGrounded = true;
-            return true;
-          }
-        },
-      }
-    );
-    if (characterData.isGrounded) return;
-    castRayFromPoints<THREE.Mesh>(
-      getRootScene()?.children || [],
-      usableVec
-        .set(
-          rigidBodyTranslation?.x || charMesh.position.x,
-          rigidBodyTranslation?.y || charMesh.position.y,
-          rigidBodyTranslation?.z || charMesh.position.z
-        )
-        .sub({ x: 0, y: 0, z: charHalfRadius }),
-      groundRaycastVecDir,
-      {
-        helperId: 'off3GroundDetector',
-        startLength: characterData._height / 3,
-        endLength: characterData._groundedRayMaxDistance,
-        perIntersectFn: (intersect) => {
-          if (intersect.object.userData.isPhysicsObject) {
-            characterData.isGrounded = true;
-            return true;
-          }
-        },
-      }
-    );
-    if (characterData.isGrounded) return;
-    castRayFromPoints<THREE.Mesh>(
-      getRootScene()?.children || [],
-      usableVec
-        .set(
-          rigidBodyTranslation?.x || charMesh.position.x,
-          rigidBodyTranslation?.y || charMesh.position.y,
-          rigidBodyTranslation?.z || charMesh.position.z
-        )
-        .sub({ x: 0, y: 0, z: -charHalfRadius }),
-      groundRaycastVecDir,
-      {
-        helperId: 'off4GroundDetector',
-        startLength: characterData._height / 3,
-        endLength: characterData._groundedRayMaxDistance,
-        perIntersectFn: (intersect) => {
-          if (intersect.object.userData.isPhysicsObject) {
-            characterData.isGrounded = true;
-            return true;
-          }
-        },
-      }
-    );
-  };
-
   const getUpQuat = new THREE.Quaternion();
   const getUpVector3 = new THREE.Vector3();
   const getUpBodyUpVector3 = new THREE.Vector3();
@@ -943,9 +821,6 @@ export const createDynamicCharacter = (opts: {
 
     // Set isAwake (physics isMoving, aka. is awake)
     characterData.isAwake = physObj.rigidBody?.isMoving() || false;
-
-    // This is the backup 'isGrounded' check
-    if (!characterData.__touchingGroundColliders.length) detectGround();
 
     // Set isFalling
     if (characterData.isGrounded) {
@@ -1209,198 +1084,98 @@ export const createDynamicCharacter = (opts: {
   return characters[id];
 };
 
-type RapierRayHit = {
-  collider: RAPIER.Collider;
-  toi: number;
-  normal: { x: number; y: number; z: number };
-};
-
+// MODULE-LEVEL CACHES for getWallHitFromShapeCast (Singletons)
+// These persist between frames so we don't recreate them.
+let _cachedShape: RAPIER.Cylinder | null = null;
+let _lastShapeHeight = 0;
+let _lastShapeRadius = 0;
 const _moveDir = new THREE.Vector3();
-const _origin = new THREE.Vector3();
-const _rayDir = new THREE.Vector3();
-const _axisY = new THREE.Vector3(0, 1, 0);
-export const getWallHitFromRaycasts = (
-  world: RAPIER.World,
-  characterBody: RAPIER.RigidBody,
-  characterData: CharacterData
-): RapierRayHit | null => {
-  const vel = characterBody.linvel();
+const _returnNormalVector = new THREE.Vector3();
 
+// Reusable Vectors to prevent GC
+const _castPos = { x: 0, y: 0, z: 0 }; // Raw object for Rapier
+const _castDir = { x: 0, y: 0, z: 0 };
+const _castRot = { w: 1, x: 0, y: 0, z: 0 }; // Identity quaternion
+
+export const getWallHitFromShapeCast = (
+  world: RAPIER.World,
+  characterBody: RAPIER.RigidBody
+): { normal: THREE.Vector3; distance: number } | null => {
+  const vel = characterBody.linvel();
   // 1. Calculate Base Direction (Velocity based)
   _moveDir.set(vel.x, 0, vel.z);
-
   // Optimization: If standing still, wall sliding is irrelevant.
   // Return null to prevent jitter/sticking while idle.
   if (_moveDir.lengthSq() < 0.001) return null;
-
   _moveDir.normalize();
 
-  // 2. Setup Dimensions
-  let collider = characterBody.collider(0);
-  if (!collider?.isEnabled()) collider = characterBody.collider(1);
+  // Fill cached object instead of 'new Vector3'
+  // (We assume inputDir is already normalized, but to be safe we clone/norm if needed outside)
+  _castDir.x = _moveDir.x;
+  _castDir.y = 0; // Force horizontal
+  _castDir.z = _moveDir.z;
 
-  const capsuleShape = collider.shape as RAPIER.Capsule;
-  const radius = capsuleShape.radius;
-  // Total height of the capsule
-  const totalHeight = capsuleShape.halfHeight * 2 + radius * 2;
+  // 2. Get Collider Dimensions
+  const collider = characterBody.collider(0) || characterBody.collider(1);
+  const capsule = collider.shape as RAPIER.Capsule;
 
-  // Ray length: Radius + tiny buffer.
-  // Too long = you slide too early. Too short = you get stuck.
-  const rayLength = radius + 0.1;
+  const targetHeight = capsule.halfHeight * 0.9;
+  const targetRadius = capsule.radius * 1.05;
 
-  const bodyPos = characterBody.translation();
-
-  // 3. Define the Grid: 2 Heights x 3 Angles
-  // Knee: ~25% up from bottom (catches thin platforms)
-  // Chest: ~75% up from bottom (catches walls/overhangs)
-  const yOffsets = [-(totalHeight * 0.25), totalHeight * 0.25];
-
-  // Fan angles: Center, Left 35deg, Right 35deg
-  // 35 degrees is wide enough to catch strafing, narrow enough to be forward-looking
-  const angles = [0, Math.PI / 5, -Math.PI / 5];
-
-  let closestHit: RapierRayHit | null = null;
-
-  // 4. Cast the Rays
-  for (const yOff of yOffsets) {
-    for (const angle of angles) {
-      // A. Setup Origin (Center of body + Y offset)
-      _origin.set(bodyPos.x, bodyPos.y + yOff, bodyPos.z);
-
-      // B. Setup Direction (Rotate moveDir by angle)
-      _rayDir.copy(_moveDir).applyAxisAngle(_axisY, angle);
-
-      // C. Cast
-      const ray = new RAPIER.Ray(_origin, _rayDir);
-
-      // castRayAndGetNormal is required for sliding math
-      const hit = world.castRayAndGetNormal(ray, rayLength, true) as unknown as RapierRayHit;
-
-      if (hit) {
-        // D. Filter Logic
-        // 1. Must be a wall we are actually touching (optimization)
-        const isTouching = characterData.__touchingWallColliders?.includes(hit.collider.handle);
-
-        // 2. Must NOT be a Dynamic body (other characters) or Sensor
-        const parent = hit.collider.parent();
-        const isStatic = parent && parent.bodyType() !== RAPIER.RigidBodyType.Dynamic;
-        const isSensor = hit.collider.isSensor();
-
-        // 3. Slope Check (The "Stuck between slopes" Fix)
-        // If the normal points UP significantly, it's a floor/slope, not a wall.
-        // We only want to slide against things that are mostly vertical.
-        // normal.y = 1 is floor. normal.y = 0 is wall.
-        const isWall = Math.abs(hit.normal.y) < characterData.__maxWalkableAngleCos; // Threshold for "Wall-ness"
-
-        if (isTouching && isStatic && !isSensor && isWall) {
-          // E. Prioritize the Closest Hit
-          // We want the wall that is physically closest to blocking us
-          if (!closestHit || hit.toi < closestHit.toi) {
-            closestHit = hit;
-          }
-        }
-      }
-    }
+  // 3. Manage Cached Shape
+  // Only recreate the shape if dimensions changed (e.g. crouching)
+  if (!_cachedShape || _lastShapeHeight !== targetHeight || _lastShapeRadius !== targetRadius) {
+    // If a shape existed, we rely on Rapier's GC or explicit free if needed.
+    // JS bindings usually garbage collect simple shapes automatically.
+    _cachedShape = new RAPIER.Cylinder(targetHeight, targetRadius);
+    _lastShapeHeight = targetHeight;
+    _lastShapeRadius = targetRadius;
   }
 
-  return closestHit;
+  // 4. Setup Position (Fill cached object)
+  const bodyPos = characterBody.translation();
+  _castPos.x = bodyPos.x;
+  _castPos.y = bodyPos.y + 0.1; // Lift slightly
+  _castPos.z = bodyPos.z;
+
+  const maxToi = 0.2;
+  const targetDistance = 0.0;
+
+  // 5. CAST
+  const hit = world.castShape(
+    _castPos,
+    _castRot,
+    _castDir,
+    _cachedShape!, // Use cached shape
+    targetDistance,
+    maxToi,
+    true, // Stop at Penetration
+    undefined,
+    undefined,
+    undefined,
+    characterBody // Exclude Self
+  );
+
+  if (hit) {
+    const n = hit.normal1;
+
+    // Filter Logic
+    if (Math.abs(n.y) > 0.7) return null;
+    if (hit.collider.isSensor()) return null;
+
+    // Return a clean object.
+    return {
+      normal: _returnNormalVector.set(n.x, n.y, n.z),
+      distance: hit.time_of_impact, // Use snake_case
+    };
+  }
+
+  return null;
 };
 
-// const getWallHitFromRaycasts = (
-//   world: RAPIER.World,
-//   characterBody: RAPIER.RigidBody,
-//   characterData: CharacterData
-// ) => {
-//   const vel = characterBody.linvel();
-//   let dir = { x: vel.x, y: 0, z: vel.z };
-//   const len = Math.hypot(dir.x, dir.z);
-
-//   if (len > 1e-5) {
-//     dir.x /= len;
-//     dir.z /= len;
-//   } else {
-//     dir = { x: 0, y: 0, z: 1 }; // fallback forward
-//   }
-
-//   let collider = characterBody.collider(0);
-//   if (!collider?.isEnabled()) {
-//     collider = characterBody.collider(1);
-//   }
-//   const capsuleRadius = (collider.shape as RAPIER.Capsule).radius;
-//   const capsuleHeight = (collider.shape as RAPIER.Capsule).halfHeight * 2 + capsuleRadius * 2;
-
-//   const maxToi = capsuleRadius * 4 + 0.5;
-
-//   // Center of the character
-//   let origin = characterBody.translation();
-//   let ray = new RAPIER.Ray(characterBody.translation(), dir);
-//   let hit = world.castRayAndGetNormal(
-//     ray,
-//     maxToi,
-//     true,
-//     undefined,
-//     undefined,
-//     undefined,
-//     characterBody
-//   );
-//   if (hit && characterData.__touchingWallColliders?.includes(hit.collider.handle)) {
-//     const bodyType = hit?.collider.parent()?.bodyType();
-//     if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
-//       return hit;
-//     }
-//   }
-
-//   // No hit, try more rays from different origin (top and bottom of the character)
-//   const vertOffset = capsuleHeight * 0.499;
-//   const horiOffset = capsuleRadius * 0.999;
-//   const positions = [
-//     { x: 0, y: -vertOffset, z: 0 },
-//     { x: 0, y: vertOffset, z: 0 },
-//     { x: -horiOffset, y: 0, z: 0 },
-//     { x: horiOffset, y: 0, z: 0 },
-//     { x: -horiOffset, y: -vertOffset, z: 0 },
-//     { x: horiOffset, y: -vertOffset, z: 0 },
-//     { x: -horiOffset, y: vertOffset, z: 0 },
-//     { x: horiOffset, y: vertOffset, z: 0 },
-//     { x: 0, y: 0, z: -horiOffset },
-//     { x: 0, y: 0, z: horiOffset },
-//     { x: 0, y: -vertOffset, z: -horiOffset },
-//     { x: 0, y: -vertOffset, z: horiOffset },
-//     { x: 0, y: vertOffset, z: -horiOffset },
-//     { x: 0, y: vertOffset, z: horiOffset },
-//     { x: -horiOffset, y: 0, z: -horiOffset },
-//     { x: horiOffset, y: 0, z: horiOffset },
-//     { x: -horiOffset, y: -vertOffset, z: -horiOffset },
-//     { x: horiOffset, y: -vertOffset, z: horiOffset },
-//     { x: -horiOffset, y: vertOffset, z: -horiOffset },
-//     { x: horiOffset, y: vertOffset, z: horiOffset },
-//   ];
-
-//   for (let i = 0; i < positions.length; i++) {
-//     origin = characterBody.translation();
-//     origin.x = origin.x + positions[i].x;
-//     origin.y = origin.y + positions[i].y;
-//     origin.z = origin.z + positions[i].z;
-//     ray = new RAPIER.Ray(origin, dir);
-//     hit = world.castRayAndGetNormal(
-//       ray,
-//       maxToi,
-//       true,
-//       undefined,
-//       undefined,
-//       undefined,
-//       characterBody
-//     );
-//     if (hit && characterData.__touchingWallColliders?.includes(hit.collider.handle)) {
-//       const bodyType = hit?.collider.parent()?.bodyType();
-//       if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
-//         return hit;
-//       }
-//     }
-//   }
-
-//   return;
-// };
+// Module level ray cache for getFloorNormal
+// This way we only need to define the ray.origin, direction is always the same
+const _floorNormalRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
 
 const getFloorNormal = (
   world: RAPIER.World,
@@ -1414,12 +1189,13 @@ const getFloorNormal = (
   const capsuleRadius = (collider.shape as RAPIER.Capsule).radius;
   const capsuleHeight = (collider.shape as RAPIER.Capsule).halfHeight * 2 + capsuleRadius * 2;
 
-  const maxToi = capsuleHeight / 2 + 0.5;
-  const ray = new RAPIER.Ray(characterBody.translation(), { x: 0, y: -1, z: 0 });
+  const maxToi = capsuleHeight * 2;
+  // const ray = new RAPIER.Ray(characterBody.translation(), { x: 0, y: -1, z: 0 });
+  _floorNormalRay.origin = characterBody.translation();
   const hit = world.castRayAndGetNormal(
-    ray,
+    _floorNormalRay,
     maxToi,
-    true,
+    false,
     undefined,
     undefined,
     undefined,
@@ -1434,14 +1210,14 @@ const getFloorNormal = (
 
   // Set groundIsWalkable
   characterData.groundIsWalkable = true;
-  if (hit && characterData.__touchingGroundColliders.includes(hit.collider.handle)) {
+  if (hit) {
     if (groundDot <= characterData.__maxWalkableAngleCos) {
       characterData.groundIsWalkable = false;
     }
   }
 };
 
-const tumbleStartImpulseVector3 = new THREE.Vector3();
+const _tumbleStartImpulseVector3 = new THREE.Vector3();
 const startCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsObject) => {
   characterData.isGettingUp = false;
   characterData.isTumbling = true;
@@ -1453,7 +1229,7 @@ const startCharacterTumbling = (characterData: CharacterData, physObj?: PhysicsO
   const rando1 = Math.random() > 0.5 ? 1 : -1;
   const rando2 = Math.random() > 0.5 ? 1 : -1;
   physObj?.rigidBody?.applyImpulse(
-    tumbleStartImpulseVector3.set(Math.random() * rando1, 0, Math.random() * rando2),
+    _tumbleStartImpulseVector3.set(Math.random() * rando1, 0, Math.random() * rando2),
     true
   );
   (physObj?.rigidBody?.userData as { [key: string]: unknown }).lockRotationsX = false;

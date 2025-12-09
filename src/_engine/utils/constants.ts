@@ -36,3 +36,4 @@ export const DIRECTIONS = {
 };
 
 export const LEVEL_GROUND_NORMAL = new THREE.Vector3(0, 1, 0);
+export const GRAVITY_DOWN_NORMAL = new THREE.Vector3(0, -1, 0);
