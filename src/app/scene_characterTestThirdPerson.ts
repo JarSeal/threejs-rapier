@@ -335,7 +335,6 @@ export const sceneCharacterTest = async () =>
       if (accDelta > 1) {
         if (action !== 'F') {
           action = 'F';
-          controlFns.move('FORWARD');
           controlFns.jump();
         } else {
           action = 'T';

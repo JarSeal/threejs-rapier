@@ -502,6 +502,7 @@ export const createDynamicCharacter = (opts: {
                 const bodyType = coll2.parent()?.bodyType();
                 if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
                   characterData.__touchingWallColliders.push(coll2.handle);
+                  characterData.isNearWall = true;
                 }
               } else {
                 if (coll2.handle !== wallSensorHandle) return;
@@ -510,9 +511,9 @@ export const createDynamicCharacter = (opts: {
                 const bodyType = coll1.parent()?.bodyType();
                 if (bodyType !== RAPIER.RigidBodyType.Dynamic) {
                   characterData.__touchingWallColliders.push(coll1.handle);
+                  characterData.isNearWall = true;
                 }
               }
-              characterData.isNearWall = true;
               if (characterData.relVelocity.length > characterData._tumblingWallSpeedThreshold) {
                 startCharacterTumbling(characterData, physObj);
               }
@@ -520,14 +521,16 @@ export const createDynamicCharacter = (opts: {
             }
             if (obj1.id === id) {
               if (coll1.handle !== wallSensorHandle) return;
-              characterData.__touchingWallColliders =
-                characterData.__touchingWallColliders.filter((handle) => handle !== coll2.handle) ||
-                [];
+              const indexToRemove = characterData.__touchingWallColliders.indexOf(coll2.handle);
+              if (indexToRemove !== -1) {
+                characterData.__touchingWallColliders.splice(indexToRemove, 1);
+              }
             } else {
               if (coll2.handle !== wallSensorHandle) return;
-              characterData.__touchingWallColliders =
-                characterData.__touchingWallColliders.filter((handle) => handle !== coll1.handle) ||
-                [];
+              const indexToRemove = characterData.__touchingWallColliders.indexOf(coll1.handle);
+              if (indexToRemove !== -1) {
+                characterData.__touchingWallColliders.splice(indexToRemove, 1);
+              }
             }
             if (!characterData.__touchingWallColliders.length) characterData.isNearWall = false;
           },
