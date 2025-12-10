@@ -10,7 +10,7 @@ import { ListBladeApi, Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { existsOrThrow, existsOrWarn, slerp, ThreeVector3 } from '../utils/helpers';
+import { existsOrThrow, existsOrWarn, ThreeVector3 } from '../utils/helpers';
 import { CMP, TCMP } from '../utils/CMP';
 import {
   addOnCloseToWindow,

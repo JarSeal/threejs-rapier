@@ -68,40 +68,40 @@ export const sceneCharacterTest = async () =>
     //     cubeTextRotate: 0.625,
     //   },
     // });
-    await createSkyBox({
-      id: 'partly-cloudy',
-      type: 'EQUIRECTANGULAR',
-      params: {
-        // file: envTexture,
-        // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
-        file: '/debugger/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
-        // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
-        // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
-        // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
-        textureId: 'equiRectId',
-        // colorSpace: THREE.SRGBColorSpace,
-        colorSpace: THREE.LinearSRGBColorSpace,
-        // colorSpace: THREE.NoColorSpace,
-      },
-    });
-    const map02 = [
-      '/cubemap02_positive_x.png',
-      '/cubemap02_negative_x.png',
-      '/cubemap02_negative_y.png',
-      '/cubemap02_positive_y.png',
-      '/cubemap02_positive_z.png',
-      '/cubemap02_negative_z.png',
-    ];
-    await createSkyBox({
-      id: 'desert-dunes',
-      type: 'CUBETEXTURE',
-      params: {
-        fileNames: map02,
-        path: '/debugger/assets/testTextures',
-        textureId: 'cubeTextureId',
-        flipY: true,
-      },
-    });
+    // await createSkyBox({
+    //   id: 'partly-cloudy',
+    //   type: 'EQUIRECTANGULAR',
+    //   params: {
+    //     // file: envTexture,
+    //     // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
+    //     file: '/debugger/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
+    //     // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
+    //     // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
+    //     // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
+    //     textureId: 'equiRectId',
+    //     // colorSpace: THREE.SRGBColorSpace,
+    //     colorSpace: THREE.LinearSRGBColorSpace,
+    //     // colorSpace: THREE.NoColorSpace,
+    //   },
+    // });
+    // const map02 = [
+    //   '/cubemap02_positive_x.png',
+    //   '/cubemap02_negative_x.png',
+    //   '/cubemap02_negative_y.png',
+    //   '/cubemap02_positive_y.png',
+    //   '/cubemap02_positive_z.png',
+    //   '/cubemap02_negative_z.png',
+    // ];
+    // await createSkyBox({
+    //   id: 'desert-dunes',
+    //   type: 'CUBETEXTURE',
+    //   params: {
+    //     fileNames: map02,
+    //     path: '/debugger/assets/testTextures',
+    //     textureId: 'cubeTextureId',
+    //     flipY: true,
+    //   },
+    // });
     await createSkyBox({
       id: 'emptyBlueSkyEquiRect',
       name: 'Empty Blue Sky EquiRect',
@@ -662,6 +662,27 @@ export const sceneCharacterTest = async () =>
         { pos: { x: 2.5, y: -1, z: 15 }, dur: carouselOneSegDur, rot: getQuatFromAngle(315) },
       ],
     });
+
+    const result3 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/test_multi_box.glb',
+      id: 'customPropTest3',
+      importGroup: true,
+      // physicsParams: {
+      //   isPhysObj: true,
+      //   keepMesh: true,
+      //   rigidBody: { rigidType: 'DYNAMIC' },
+      //   collider: { type: 'BOX', density: 2 },
+      // },
+    });
+    if (result3.mesh && !Array.isArray(result3.mesh)) {
+      result3.mesh?.position.set(2, 2, 2);
+      if (!Array.isArray(result.physObj))
+        result.physObj?.rigidBody?.setTranslation(new THREE.Vector3(2, 2, 2), true);
+      addCheckerboardMaterialToMesh('checkerMaterial', result3.mesh);
+      result3.mesh.castShadow = true;
+      result3.mesh.receiveShadow = true;
+      scene.add(result3.mesh);
+    }
 
     initPhysicsStressTest(scene);
 
