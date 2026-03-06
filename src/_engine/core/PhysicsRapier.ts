@@ -54,6 +54,7 @@ export type PhysicsObject = {
 
 export type ColliderParams = (
   | {
+      /** Means the same thing (alias) */
       type: 'CUBOID' | 'BOX';
       hx?: number;
       hy?: number;
@@ -61,10 +62,12 @@ export type ColliderParams = (
       borderRadius?: number;
     }
   | {
+      /** Means the same thing (alias) */
       type: 'BALL' | 'SPHERE';
       radius?: number;
     }
   | {
+      /** Three different shapes (they just have the same props) */
       type: 'CAPSULE' | 'CONE' | 'CYLINDER';
       halfHeight?: number;
       radius?: number;
@@ -457,7 +460,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
     case 'BOX':
       size = { hx: 0.5, hy: 0.5, hz: 0.5 }; // Default size
       geo = mesh?.geometry;
-      if (geo?.type === 'BoxGeometry') {
+      if (geo?.type === 'BoxGeometry' || geo?.type === 'BufferGeometry') {
         size.hx = geo.userData.props?.params?.width / 2 || size.hx;
         size.hy = geo.userData.props?.params?.height / 2 || size.hy;
         size.hz = geo.userData.props?.params?.depth / 2 || size.hz;
@@ -479,7 +482,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
     case 'SPHERE':
       let radius = 0.5; // Default radius
       geo = mesh?.geometry;
-      if (geo?.type === 'SphereGeometry') {
+      if (geo?.type === 'SphereGeometry' || geo?.type === 'BufferGeometry') {
         radius = geo.userData.props?.params?.radius || radius;
       }
       shape = new RAPIER.Ball(colliderParams.radius || radius);
@@ -488,7 +491,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       {
         size = { halfHeight: 0.25, radius: 0.25 }; // Default values
         geo = mesh?.geometry;
-        if (geo?.type === 'CapsuleGeometry') {
+        if (geo?.type === 'CapsuleGeometry' || geo?.type === 'BufferGeometry') {
           size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
           size.radius = geo.userData.props?.params?.radius || size.radius;
         }
@@ -500,25 +503,29 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       break;
     case 'CONE':
       {
-        // @TODO: try to get the values straight from a Three.js Mesh
-        const defaultHalfHeight = 0.25; // Default half height
-        const defaultRadius = 0.25; // Default radius
+        // @TODO: add logic helpers.ts setMeshCreatePropsToUserData to set the mesh dimensions props
+        size = { halfHeight: 0.25, radius: 0.25 }; // Default values
+        geo = mesh?.geometry;
+        if (geo?.type === 'ConeGeometry' || geo?.type === 'BufferGeometry') {
+          size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
+          size.radius = geo.userData.props?.params?.radius || size.radius;
+        }
         shape = colliderParams.borderRadius
           ? new RAPIER.RoundCone(
-              colliderParams.halfHeight || defaultHalfHeight,
-              colliderParams.radius || defaultRadius,
+              colliderParams.halfHeight || size.halfHeight,
+              colliderParams.radius || size.radius,
               colliderParams.borderRadius
             )
           : new RAPIER.Cone(
-              colliderParams.halfHeight || defaultHalfHeight,
-              colliderParams.radius || defaultRadius
+              colliderParams.halfHeight || size.halfHeight,
+              colliderParams.radius || size.radius
             );
       }
       break;
     case 'CYLINDER':
       size = { halfHeight: 0.5, radius: 1 }; // Default values
       geo = mesh?.geometry;
-      if (geo?.type === 'CylinderGeometry') {
+      if (geo?.type === 'CylinderGeometry' || geo?.type === 'BufferGeometry') {
         size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
         size.radius =
           geo.userData.props?.params?.radiusBottom ||
@@ -572,7 +579,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       throw new Error(message);
 
     // @TODO: Add HEIGHTFIELD type [ColliderDesc.heightfield(heights: matrix, scale)]
-    // @TODO: Add COMPOUND type (compound objects)
+    // @TODO: Add CONVEX HULL type
   }
 
   if (!shape) {
@@ -582,6 +589,17 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
   }
 
   const colliderDesc = new RAPIER.ColliderDesc(shape);
+
+  // Since Rapier shapes start on Y, we rotate them if the Blender spine was X or Z (for CYLINDER and CAPSULE)
+  if (geo?.userData.props?.params.orientation === 'x') {
+    // Rotate 90 degrees around Z to lay the cylinder along the X-axis
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+    colliderDesc.setRotation(q);
+  } else if (geo?.userData.props?.params.orientation === 'z') {
+    // Rotate 90 degrees around X to lay the cylinder along the Z-axis
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+    colliderDesc.setRotation(q);
+  }
 
   if (colliderParams.density !== undefined) colliderDesc.setDensity(colliderParams.density);
   if (colliderParams.translation)
@@ -895,7 +913,7 @@ export const createPhysicsObjectWithMesh = ({
     rigidBody = createRigidBody(physicsParams[0]);
     let colliderEnabled = false;
     for (let i = 0; i < physicsParams.length; i++) {
-      const colliderDesc = createCollider(physicsParams[i], mesh);
+      const colliderDesc = createCollider(physicsParams[i], meshes[i] || mesh);
       const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
       if (physicsParams[i].collider.collisionEventFn) {
         collisionEventFn.push(physicsParams[i].collider.collisionEventFn as CollisionEventFn);

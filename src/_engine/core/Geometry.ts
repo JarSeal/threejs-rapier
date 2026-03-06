@@ -49,13 +49,26 @@ export type GeoProps = { id?: string } & (
         heightSegments?: number;
       };
     }
+  | {
+      type: 'CONE';
+      params?: {
+        radius?: number;
+        height?: number;
+        radialSegments?: number;
+        heightSegments?: number;
+        openEnded?: boolean;
+        thetaStart?: number;
+        thetaLength?: number;
+      };
+    }
 );
 
 export type GeoTypes =
   | THREE.BoxGeometry
   | THREE.SphereGeometry
   | THREE.CylinderGeometry
-  | THREE.CapsuleGeometry;
+  | THREE.CapsuleGeometry
+  | THREE.ConeGeometry;
 
 /**
  * Creates a Three.js geometry.
@@ -109,6 +122,16 @@ export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
         props.params?.heightSegments
       );
       break;
+    case 'CONE':
+      geo = new THREE.ConeGeometry(
+        props.params?.radius,
+        props.params?.height,
+        props.params?.radialSegments,
+        props.params?.heightSegments,
+        props.params?.openEnded,
+        props.params?.thetaStart,
+        props.params?.thetaLength
+      );
     // @TODO: add all geometry types
   }
 

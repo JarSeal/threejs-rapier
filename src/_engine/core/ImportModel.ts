@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { GLTF, GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/Addons.js';
 import { lerror } from '../utils/Logger';
-import { getMesh, saveMesh } from './Mesh';
+import { deleteMesh, getMesh, saveMesh } from './Mesh';
 import { createGroup, getGroup } from './Group';
 import {
   ColliderParams,
@@ -13,6 +13,7 @@ import {
   RigidBodyParams,
 } from './PhysicsRapier';
 import { generateUUID } from 'three/src/math/MathUtils.js';
+import { isOnlyObject3D, setMeshCreatePropsToUserData } from '../utils/helpers';
 
 export type AdditionalImportPhysicsParams = {
   isPhysObj?: boolean;
@@ -122,6 +123,8 @@ const parseImportResult = (
         physObj.length === 1 && physObj[0] ? physObj[0] : (physObj as PhysicsObject[]);
     }
 
+    deleteUnwantedImportedMeshes(returnObj);
+
     return returnObj;
   }
 
@@ -223,6 +226,8 @@ const parseImportResult = (
     if (m) returnObj.mesh = m;
   }
 
+  deleteUnwantedImportedMeshes(returnObj);
+
   return returnObj;
 };
 
@@ -262,8 +267,13 @@ export const importModelAsync = async (params: ImportModelParams): Promise<Impor
   let modelGroup: THREE.Group | null = null;
   try {
     const gltf = await loader.loadAsync(fileName);
+    // @TODO: add a debugger rule here to console.log the gltf
     modelGroup = createGroup({ id: params.groupId });
-    modelGroup.children = gltf?.scene?.children || [];
+    modelGroup.children =
+      // Check if the first and only child is an empty object and add that if found
+      gltf?.scene?.children.length === 1 && isOnlyObject3D(gltf.scene.children[0])
+        ? gltf.scene.children[0].children
+        : gltf?.scene?.children || [];
   } catch (err) {
     const errorMsg = `Could not import ${importGroup ? 'group' : 'model'} in importModelAsync (id: "${id}", fileName: "${fileName}")`;
     lerror(errorMsg, err);
@@ -321,6 +331,7 @@ export const importModels = (
     loader.load(
       fileName,
       (gltf: GLTF) => {
+        // @TODO: add a debugger rule here to console.log the gltf
         const modelGroup = createGroup({ id: modelsParams[i].groupId });
         modelGroup.children = gltf?.scene?.children || [];
         const meshOrGroup = parseImportResult(modelGroup, modelsParams[i]);
@@ -591,8 +602,6 @@ const cleanUpCustomProps = (
   };
 };
 
-// @TODO: importing multiple colliders for the same rigid body (with the index prop)
-// does not work currently. Fix at some point.. or don't, who cares :)
 const importMultiplePhysicsObjects = (
   customProps: CleanUpCustomPropsResult[],
   groupOrMesh: THREE.Group | THREE.Mesh
@@ -623,11 +632,11 @@ const importMultiplePhysicsObjects = (
     const rigidAndChildParamsResult = getRigidParamsAndChildColliders(props);
     if (!rigidAndChildParamsResult) return [];
     const { rigidMeshId, rigidParams, physParamsObj } = rigidAndChildParamsResult;
+    if (props.length > 1) physParamsObj.isCompoundObject = true;
 
     for (let i = 0; i < props.length; i++) {
-      const mesh = groupOrMesh.children.find(
-        (m) => m.uuid === props[i].id || rigidMeshId
-      ) as THREE.Mesh;
+      let mesh = groupOrMesh.children.find((m) => m.userData.id === props[i].id) as THREE.Mesh;
+      if (!mesh) mesh = groupOrMesh.children.find((m) => m.uuid === rigidMeshId) as THREE.Mesh;
       if (mesh) {
         if (physParamsObj.physicsParams.length > 1) {
           if (!physParamsObj.meshOrMeshId) physParamsObj.meshOrMeshId = [];
@@ -641,9 +650,13 @@ const importMultiplePhysicsObjects = (
     }
 
     if (physParamsObj) {
+      // Set dimensions of primitive shapes to the mesh userData
+      setPhysParamsObjMeshesWithDimensions(physParamsObj);
+
       if (
         rigidParams.keepMesh &&
-        (physParamsObj.meshOrMeshId || physParamsObj.meshOrMeshId.length)
+        (physParamsObj.meshOrMeshId ||
+          (Array.isArray(physParamsObj.meshOrMeshId) && physParamsObj.meshOrMeshId.length))
       ) {
         const newPhysObj = createPhysicsObjectWithMesh(physParamsObj);
         if (newPhysObj) physObj.push(newPhysObj);
@@ -659,6 +672,18 @@ const importMultiplePhysicsObjects = (
           physParamsWithoutMesh as typeof physParamsObj & { id: string }
         );
         if (newPhysObj) physObj.push(newPhysObj);
+      }
+
+      // Set positions
+      for (let i = 0; i < physObj.length; i++) {
+        const obj = physObj[i];
+        if (!obj?.meshes?.length) continue;
+        for (let j = 0; j < obj.meshes.length; j++) {
+          const collider = Array.isArray(obj.collider) ? obj.collider[j] : obj.collider;
+          if (!collider || (j > 0 && !Array.isArray(obj.collider))) continue;
+          const mesh = obj.meshes[j];
+          collider.setTranslationWrtParent(mesh.position);
+        }
       }
     }
   }
@@ -723,4 +748,144 @@ const getRigidParamsAndChildColliders = (
     rigidParams,
     physParamsObj,
   };
+};
+
+const setPhysParamsObjMeshesWithDimensions = (physParamsObj: {
+  physicsParams: PhysicsParams[];
+  meshOrMeshId: (THREE.Mesh | string) | (THREE.Mesh | string)[];
+  id: string;
+  name?: string;
+  isCompoundObject: boolean;
+}) => {
+  const { physicsParams, meshOrMeshId } = physParamsObj;
+  if (
+    !meshOrMeshId ||
+    (Array.isArray(meshOrMeshId) && !meshOrMeshId.length) ||
+    !physicsParams?.length
+  ) {
+    return;
+  }
+
+  if (Array.isArray(meshOrMeshId)) {
+    for (let i = 0; i < meshOrMeshId.length; i++) {
+      const colliderParams = physicsParams[i]?.collider;
+      if (!colliderParams) continue;
+      let mesh = meshOrMeshId[i];
+      if (typeof mesh === 'string') {
+        const m = getMesh(mesh);
+        mesh = m;
+      }
+      setMeshCreatePropsToUserData(colliderParams.type, mesh);
+    }
+  } else {
+    let mesh = meshOrMeshId;
+    if (typeof mesh === 'string') {
+      const m = getMesh(mesh);
+      mesh = m;
+    }
+    setMeshCreatePropsToUserData(physicsParams[0].collider.type, mesh);
+  }
+};
+
+const deleteUnwantedImportedMeshes = (obj: ImportReturnObj) => {
+  const removeUUIDs: string[] = [];
+  const removeMeshes: THREE.Mesh[] = [];
+
+  // obj.group
+  if (obj.group) {
+    const group = obj.group;
+    for (let i = 0; i < group.children.length; i++) {
+      const mesh = group.children[i] as THREE.Mesh;
+      if (mesh?.userData.keepMesh === false && !removeUUIDs.includes(mesh.uuid)) {
+        removeUUIDs.push(mesh.uuid);
+        removeMeshes.push(mesh);
+      }
+    }
+    if (group.children.length && removeMeshes.length) {
+      group.remove(...removeMeshes);
+    }
+  }
+
+  // obj.mesh
+  if (Array.isArray(obj.mesh)) {
+    for (let i = 0; i < obj.mesh.length; i++) {
+      const mesh = obj.mesh[i];
+      if (mesh?.userData.keepMesh === false && !removeUUIDs.includes(mesh.uuid)) {
+        removeUUIDs.push(mesh.uuid);
+        removeMeshes.push(mesh);
+      }
+    }
+    if (obj.mesh?.length) {
+      const newMeshes = obj.mesh.filter((m) => !removeUUIDs.includes(m.uuid));
+      obj.mesh = newMeshes;
+    }
+  } else {
+    const mesh = obj.mesh;
+    if (mesh?.userData.keepMesh === false && !removeUUIDs.includes(mesh.uuid)) {
+      removeUUIDs.push(mesh.uuid);
+      removeMeshes.push(mesh);
+    }
+    if (obj.mesh && removeUUIDs.includes(obj.mesh.uuid)) {
+      obj.mesh = undefined;
+    }
+  }
+
+  // obj.physObj
+  const physObj = obj.physObj;
+  if (!physObj) return;
+  if (Array.isArray(physObj)) {
+    for (let i = 0; i < physObj.length; i++) {
+      const mesh = physObj[i].mesh;
+      if (mesh?.userData.keepMesh === false && !removeUUIDs.includes(mesh.uuid)) {
+        removeUUIDs.push(mesh.uuid);
+        removeMeshes.push(mesh);
+      }
+      const meshes = physObj[i].meshes;
+      if (meshes) {
+        for (let j = 0; j < meshes.length; j++) {
+          const mesh = meshes[j];
+          if (mesh?.userData.keepMesh === false && !removeUUIDs.includes(mesh.uuid)) {
+            removeUUIDs.push(mesh.uuid);
+            removeMeshes.push(mesh);
+          }
+        }
+      }
+      const curPhysObj = physObj[i];
+      if (curPhysObj.mesh && removeUUIDs.includes(curPhysObj.mesh.uuid)) {
+        curPhysObj.mesh = undefined;
+      }
+      if (curPhysObj.meshes?.length) {
+        const newMeshes = curPhysObj.meshes.filter((m) => !removeUUIDs.includes(m.uuid));
+        curPhysObj.meshes = newMeshes;
+      }
+    }
+  } else {
+    const mesh = physObj.mesh;
+    if (mesh?.userData.keepMesh === false && !removeUUIDs.includes(mesh.uuid)) {
+      removeUUIDs.push(mesh.uuid);
+      removeMeshes.push(mesh);
+    }
+    const meshes = physObj.meshes;
+    if (meshes) {
+      for (let j = 0; j < meshes.length; j++) {
+        const mesh = meshes[j];
+        if (mesh?.userData.keepMesh === false && !removeUUIDs.includes(mesh.uuid)) {
+          removeUUIDs.push(mesh.uuid);
+          removeMeshes.push(mesh);
+        }
+      }
+    }
+    if (physObj.mesh && removeUUIDs.includes(physObj.mesh.uuid)) {
+      physObj.mesh = undefined;
+    }
+    if (physObj.meshes?.length) {
+      const newMeshes = physObj.meshes.filter((m) => !removeUUIDs.includes(m.uuid));
+      physObj.meshes = newMeshes;
+    }
+  }
+
+  const ids = removeMeshes.map((m) => (m.userData.id !== undefined ? m.userData.id : m.uuid));
+  if (ids.length) {
+    deleteMesh(ids, { deleteAll: true });
+  }
 };
