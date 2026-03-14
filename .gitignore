@@ -5,4 +5,4 @@
 **/coverage
 yarn-error.log
 **/dist
-.blend1
+*.blend[0-9]

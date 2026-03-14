@@ -7,7 +7,10 @@ import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 import { CMP } from './_engine/utils/CMP';
 import { isDebugEnvironment } from './_engine/core/Config';
 import { addScenesToSceneListing } from './_engine/debug/DebugTools';
-import { SCENE_TEST_CHARACTER_ID, sceneCharacterTest } from './app/scene_characterTestThirdPerson';
+import {
+  SCENE_THIRD_PERSON_GYM_META,
+  sceneThirdPersonGym,
+} from './app/scene_characterTestThirdPerson';
 import { MAIN_APP_CAM_ID } from './CONFIG';
 
 InitEngine(async () => {
@@ -77,14 +80,14 @@ InitEngine(async () => {
   if (isDebugEnvironment()) {
     addScenesToSceneListing([
       {
-        id: SCENE_TEST_CHARACTER_ID,
-        text: `[Debug] ${SCENE_TEST_CHARACTER_ID}`,
-        fn: sceneCharacterTest,
+        id: SCENE_THIRD_PERSON_GYM_META.id,
+        text: SCENE_THIRD_PERSON_GYM_META.text,
+        fn: sceneThirdPersonGym,
       },
-      { id: SCENE01_ID, text: `[App] ${SCENE01_ID}`, fn: scene01 },
+      { id: SCENE01_ID, text: SCENE01_ID, fn: scene01 },
     ]);
   }
 
   // Load scene
-  await loadScene({ nextSceneFn: sceneCharacterTest });
+  await loadScene({ nextSceneFn: sceneThirdPersonGym });
 });

@@ -23,9 +23,12 @@ import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
 import { createFollowObjectCameraRig } from '../_engine/utils/cameras/followObjectCameraRig';
 
-export const SCENE_TEST_CHARACTER_ID = 'charThirdPerson1';
+export const SCENE_THIRD_PERSON_GYM_META = {
+  id: 'thirdPersonGymScene',
+  text: '* GYM (3rd person)',
+};
 
-export const sceneCharacterTest = async () =>
+export const sceneThirdPersonGym = async () =>
   new Promise<string>(async (resolve) => {
     const updateLoaderFn = getLoaderStatusUpdater();
     updateLoaderFn({ loadedCount: 0, totalCount: 2 });
@@ -37,7 +40,7 @@ export const sceneCharacterTest = async () =>
     camera.position.y = 1;
     camera.lookAt(new THREE.Vector3(0, 0, 0));
 
-    const scene = createScene(SCENE_TEST_CHARACTER_ID, {
+    const scene = createScene(SCENE_THIRD_PERSON_GYM_META.id, {
       name: 'Test scene 1',
       isCurrentScene: true,
     });
@@ -728,7 +731,6 @@ export const sceneCharacterTest = async () =>
         type: 'PHONG',
         params: { color: '#999' },
       });
-      console.log('HERE');
       scene.add(result5.mesh);
     }
 
@@ -736,5 +738,5 @@ export const sceneCharacterTest = async () =>
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 
-    resolve(SCENE_TEST_CHARACTER_ID);
+    resolve(SCENE_THIRD_PERSON_GYM_META.id);
   });
