@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { GLTF, GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/Addons.js';
-import { lerror } from '../utils/Logger';
+import { lerror, lwarn } from '../utils/Logger';
 import { deleteMesh, getMesh, saveMesh } from './Mesh';
 import { createGroup, getGroup } from './Group';
 import {
@@ -97,7 +97,7 @@ const parseImportResult = (
 
     for (let i = 0; i < physObj.length; i++) {
       const obj = physObj[i];
-      if (obj.mesh) {
+      if (obj.mesh?.userData.keepMesh) {
         if (Array.isArray(returnObj.mesh)) {
           returnObj.mesh.push(obj.mesh);
         } else {
@@ -108,6 +108,17 @@ const parseImportResult = (
           returnObj.mesh.concat(obj.meshes);
         } else {
           returnObj.mesh = obj.meshes;
+        }
+      }
+
+      if (
+        (!returnObj.mesh || (Array.isArray(returnObj.mesh) && !returnObj.mesh.length)) &&
+        obj.meshes?.length
+      ) {
+        const firstMesh = obj.meshes.find((m) => m.userData.keepMesh);
+        if (firstMesh) {
+          firstMesh.visible = true;
+          returnObj.mesh = [firstMesh];
         }
       }
     }
@@ -485,18 +496,20 @@ const cleanUpCustomProps = (
       : userData.rigidType
   ) as RigidBodyParams['rigidType'];
   if (userData.rigidType) delete userData.rigidType;
-  const colliderType = (
-    userData.colliderType !== 'CUBOID' &&
-    userData.colliderType !== 'BOX' &&
-    userData.colliderType !== 'BALL' &&
-    userData.colliderType !== 'SPHERE' &&
-    userData.colliderType !== 'CAPSULE' &&
-    userData.colliderType !== 'CONE' &&
-    userData.colliderType !== 'CYLINDER' &&
-    userData.colliderType !== 'TRIANGLE'
-      ? 'TRIMESH'
-      : userData.colliderType
-  ) as ColliderParams['type'];
+  const colliderType = userData.colliderType;
+  // @TODO: Remove this after the multi import is working
+  // const colliderType = (
+  //   userData.colliderType !== 'CUBOID' &&
+  //   userData.colliderType !== 'BOX' &&
+  //   userData.colliderType !== 'BALL' &&
+  //   userData.colliderType !== 'SPHERE' &&
+  //   userData.colliderType !== 'CAPSULE' &&
+  //   userData.colliderType !== 'CONE' &&
+  //   userData.colliderType !== 'CYLINDER' &&
+  //   userData.colliderType !== 'TRIANGLE'
+  //     ? 'TRIMESH'
+  //     : userData.colliderType
+  // ) as ColliderParams['type'];
   if (userData.colliderType) delete userData.colliderType;
   const density = typeof userData.density === 'number' ? userData.density : 0.2;
   if (userData.density) delete userData.density;
@@ -519,7 +532,7 @@ const cleanUpCustomProps = (
       : userData.restitutionCombineRule;
   if (userData.restitutionCombineRule) delete userData.restitutionCombineRule;
 
-  let colliderParams: ColliderParams;
+  let colliderParams: ColliderParams | null = null;
   switch (colliderType) {
     case 'CUBOID':
     case 'BOX':
@@ -560,20 +573,11 @@ const cleanUpCustomProps = (
       if (userData.radius !== undefined) delete userData.radius;
       if (userData.borderRadius !== undefined) delete userData.borderRadius;
       break;
-    default:
+    case 'TRIMESH':
       // TRIMESH (vertices and indices will come from the mesh)
       colliderParams = { type: 'TRIMESH' };
       break;
   }
-
-  colliderParams = {
-    ...colliderParams,
-    density,
-    friction,
-    frictionCombineRule,
-    restitution,
-    restitutionCombineRule,
-  };
 
   const isPhysObj = Boolean(userData.isPhysObj);
 
@@ -588,6 +592,28 @@ const cleanUpCustomProps = (
       }
     }
   }
+
+  if (!colliderParams) {
+    return {
+      isPhysObj,
+      ...(isPhysObj ? { keepMesh } : {}),
+      ...(rigidType ? { rigidType } : {}),
+      ...(Object.keys(rigidBodyUserData) ? { rigidBodyUserData: rigidBodyUserData } : {}),
+      ...(typeof userData.index === 'number' ? { index: userData.index } : {}),
+      meshId: meshId || generateUUID(),
+      id,
+      name,
+    };
+  }
+
+  colliderParams = {
+    ...colliderParams,
+    density,
+    friction,
+    frictionCombineRule,
+    restitution,
+    restitutionCombineRule,
+  };
 
   return {
     isPhysObj,
@@ -628,10 +654,18 @@ const importMultiplePhysicsObjects = (
     customPropsByIndex.push(items);
   }
   for (let j = 0; j < customPropsByIndex.length; j++) {
-    const props = customPropsByIndex[j];
+    const allProps = customPropsByIndex[j];
+    const propsWithRigidParams = allProps.find((p) => p.rigidType);
+    const propsWithoutColliders = allProps.filter((p) => !p.colliderParams && !p.rigidType);
+    const propsWithColliders = allProps.filter((p) => p.colliderParams && !p.rigidType);
+    const props = [
+      ...(propsWithRigidParams ? [propsWithRigidParams] : []),
+      ...propsWithColliders,
+      ...propsWithoutColliders,
+    ];
     const rigidAndChildParamsResult = getRigidParamsAndChildColliders(props);
     if (!rigidAndChildParamsResult) return [];
-    const { rigidMeshId, rigidParams, physParamsObj } = rigidAndChildParamsResult;
+    const { rigidMeshId, physParamsObj } = rigidAndChildParamsResult;
     if (props.length > 1) physParamsObj.isCompoundObject = true;
 
     for (let i = 0; i < props.length; i++) {
@@ -646,6 +680,8 @@ const importMultiplePhysicsObjects = (
         } else {
           physParamsObj.meshOrMeshId = mesh;
         }
+      } else {
+        lwarn('Could not find a mesh from groupOrMesh in importMultiplePhysicsObjects');
       }
     }
 
@@ -654,13 +690,13 @@ const importMultiplePhysicsObjects = (
       setPhysParamsObjMeshesWithDimensions(physParamsObj);
 
       if (
-        rigidParams.keepMesh &&
-        (physParamsObj.meshOrMeshId ||
-          (Array.isArray(physParamsObj.meshOrMeshId) && physParamsObj.meshOrMeshId.length))
+        physParamsObj.meshOrMeshId ||
+        (Array.isArray(physParamsObj.meshOrMeshId) && physParamsObj.meshOrMeshId.length)
       ) {
         const newPhysObj = createPhysicsObjectWithMesh(physParamsObj);
         if (newPhysObj) physObj.push(newPhysObj);
       } else {
+        // @CONSIDER: This branch might be unnecessary because we need the data from the meshes to create physics objects and there cannot be any physics objects without the mesh.
         const allKeys = Object.keys(physParamsObj);
         const keys = allKeys.filter((key) => key !== 'meshOrMeshId');
         const physParamsWithoutMesh: { [key: string]: unknown } = {};
@@ -714,7 +750,7 @@ const getRigidParamsAndChildColliders = (
     }
     return false;
   });
-  if (!rigidParams?.isPhysObj || !rigidParams?.colliderParams) return null;
+  if (!rigidParams?.isPhysObj) return null;
   const restOfColliderParams = props.filter((_, index) => index !== rigidIndex);
   const physParamsObj = {
     physicsParams: [

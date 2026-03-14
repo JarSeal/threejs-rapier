@@ -218,6 +218,9 @@ export type PhysicsParams = {
 
   /** Rigid body type and params {@link RigidBodyParams} */
   rigidBody?: RigidBodyParams;
+
+  /** Mesh id to be used in multi object importing */
+  meshId?: string;
 };
 
 type ScenePhysicsState = {
@@ -848,16 +851,16 @@ export const createPhysicsObjectWithMesh = ({
       if (typeof momid === 'string') {
         const mId = momid;
         const m = getMesh(mId);
+        if (!m) {
+          lwarn(meshWarnMsg, `Mesh id: ${mId}`);
+          return;
+        }
         m.visible = false;
         if (currentMeshIndex !== undefined && i === currentMeshIndex) {
           meshId = mId;
           mesh = m;
           m.visible = true;
           visibleMeshIsSet = true;
-        }
-        if (!m) {
-          lwarn(meshWarnMsg, `Mesh id: ${meshId}`);
-          return;
         }
         m.userData.isPhysicsObject = true;
         meshes.push(m);
@@ -913,7 +916,11 @@ export const createPhysicsObjectWithMesh = ({
     rigidBody = createRigidBody(physicsParams[0]);
     let colliderEnabled = false;
     for (let i = 0; i < physicsParams.length; i++) {
-      const colliderDesc = createCollider(physicsParams[i], meshes[i] || mesh);
+      const foundMesh =
+        physicsParams[i].meshId && Array.isArray(meshes) && meshes.length
+          ? meshes.find((m) => m.userData.id === physicsParams[i].meshId)
+          : meshes[i] || mesh;
+      const colliderDesc = createCollider(physicsParams[i], foundMesh);
       const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
       if (physicsParams[i].collider.collisionEventFn) {
         collisionEventFn.push(physicsParams[i].collider.collisionEventFn as CollisionEventFn);

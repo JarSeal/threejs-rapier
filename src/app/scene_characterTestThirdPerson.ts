@@ -491,7 +491,6 @@ export const sceneCharacterTest = async () =>
       ],
     });
 
-    // @TODO: the first point starts at the center (0, 0, 0) and then actually starts from point[1], fix this!
     createMovingPlatform({
       id: 'elevatorPlatform',
       scene,
@@ -676,12 +675,61 @@ export const sceneCharacterTest = async () =>
     });
     if (result3.mesh && !Array.isArray(result3.mesh)) {
       result3.mesh?.position.set(2, 2, 2);
-      if (!Array.isArray(result.physObj))
-        result.physObj?.rigidBody?.setTranslation(new THREE.Vector3(2, 2, 2), true);
+      if (!Array.isArray(result3.physObj))
+        result3.physObj?.rigidBody?.setTranslation(new THREE.Vector3(2, 2, 2), true);
       addCheckerboardMaterialToMesh('checkerMaterial', result3.mesh);
       result3.mesh.castShadow = true;
       result3.mesh.receiveShadow = true;
       scene.add(result3.mesh);
+    }
+
+    // Straight stairs (TRIMESH)
+    const result4 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/stairsStraightTrimesh.glb',
+      id: 'customPropTest4',
+      importGroup: true,
+    });
+    if (result4.mesh && !Array.isArray(result4.mesh)) {
+      const result4Position = [-13, -0.4, 5];
+      result4.mesh?.position.set(result4Position[0], result4Position[1], result4Position[2]);
+      if (!Array.isArray(result4.physObj))
+        result4.physObj?.rigidBody?.setTranslation(
+          new THREE.Vector3(result4Position[0], result4Position[1], result4Position[2]),
+          true
+        );
+      result4.mesh.castShadow = true;
+      result4.mesh.receiveShadow = true;
+      result4.mesh.material = createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      });
+      scene.add(result4.mesh);
+    }
+
+    // Straight stairs (COMPOUND)
+    const result5 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/stairsStraightCompound.glb',
+      id: 'customPropTest5',
+      importGroup: true,
+    });
+    if (result5.mesh && !Array.isArray(result5.mesh)) {
+      const result5Position = [-21, -0.4, 5];
+      result5.mesh.position.set(result5Position[0], result5Position[1], result5Position[2]);
+      if (!Array.isArray(result5.physObj))
+        result5.physObj?.rigidBody?.setTranslation(
+          new THREE.Vector3(result5Position[0], result5Position[1], result5Position[2]),
+          true
+        );
+      result5.mesh.castShadow = true;
+      result5.mesh.receiveShadow = true;
+      result5.mesh.material = createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      });
+      console.log('HERE');
+      scene.add(result5.mesh);
     }
 
     initPhysicsStressTest(scene);
