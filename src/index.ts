@@ -7,10 +7,7 @@ import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 import { CMP } from './_engine/utils/CMP';
 import { isDebugEnvironment } from './_engine/core/Config';
 import { addScenesToSceneListing } from './_engine/debug/DebugTools';
-import {
-  SCENE_THIRD_PERSON_GYM_META,
-  sceneThirdPersonGym,
-} from './app/scene_characterTestThirdPerson';
+import { SCENE_THIRD_PERSON_GYM_META, sceneThirdPersonGym } from './app/scene_thirdPersonGym';
 import { MAIN_APP_CAM_ID } from './CONFIG';
 
 InitEngine(async () => {

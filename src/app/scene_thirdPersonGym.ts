@@ -689,11 +689,11 @@ export const sceneThirdPersonGym = async () =>
     // Straight stairs (TRIMESH)
     const result4 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsStraightTrimesh.glb',
-      id: 'customPropTest4',
+      id: 'customPropTest4', // @TODO: this is ignored for multi object importing, FIX!
       importGroup: true,
     });
     if (result4.mesh && !Array.isArray(result4.mesh)) {
-      const result4Position = [-13, -0.4, 5];
+      const result4Position = [37, -0.4, 5];
       result4.mesh?.position.set(result4Position[0], result4Position[1], result4Position[2]);
       if (!Array.isArray(result4.physObj))
         result4.physObj?.rigidBody?.setTranslation(
@@ -717,7 +717,7 @@ export const sceneThirdPersonGym = async () =>
       importGroup: true,
     });
     if (result5.mesh && !Array.isArray(result5.mesh)) {
-      const result5Position = [-21, -0.4, 5];
+      const result5Position = [45, -0.4, 5];
       result5.mesh.position.set(result5Position[0], result5Position[1], result5Position[2]);
       if (!Array.isArray(result5.physObj))
         result5.physObj?.rigidBody?.setTranslation(
@@ -732,6 +732,102 @@ export const sceneThirdPersonGym = async () =>
         params: { color: '#999' },
       });
       scene.add(result5.mesh);
+    }
+
+    // Straight stairs 2 (TRIMESH)
+    const result6 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/stairsStraight2Trimesh.glb',
+      id: 'customPropTest6',
+      importGroup: true,
+    });
+    if (result6.mesh && !Array.isArray(result6.mesh)) {
+      const result6Position = [53, -0.4, 5];
+      result6.mesh?.position.set(result6Position[0], result6Position[1], result6Position[2]);
+      if (!Array.isArray(result6.physObj))
+        result6.physObj?.rigidBody?.setTranslation(
+          new THREE.Vector3(result6Position[0], result6Position[1], result6Position[2]),
+          true
+        );
+      result6.mesh.castShadow = true;
+      result6.mesh.receiveShadow = true;
+      result6.mesh.material = createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      });
+      scene.add(result6.mesh);
+    }
+
+    // Straight stairs 2 (COMPOUND)
+    const result7 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/stairsStraight2Compound.glb',
+      id: 'customPropTest7',
+      importGroup: true,
+    });
+    if (result7.mesh && !Array.isArray(result7.mesh)) {
+      const result7Position = [61, -0.4, 5];
+      result7.mesh.position.set(result7Position[0], result7Position[1], result7Position[2]);
+      if (!Array.isArray(result7.physObj))
+        result7.physObj?.rigidBody?.setTranslation(
+          new THREE.Vector3(result7Position[0], result7Position[1], result7Position[2]),
+          true
+        );
+      result7.mesh.castShadow = true;
+      result7.mesh.receiveShadow = true;
+      result7.mesh.material = createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      });
+      scene.add(result7.mesh);
+    }
+
+    // Straight stairs 3 (TRIMESH)
+    const result8 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/stairsStraight3Trimesh.glb',
+      id: 'customPropTest8',
+      importGroup: true,
+    });
+    if (result8.mesh && !Array.isArray(result8.mesh)) {
+      const result8Position = [69, -0.4, 5];
+      result8.mesh?.position.set(result8Position[0], result8Position[1], result8Position[2]);
+      if (!Array.isArray(result8.physObj))
+        result8.physObj?.rigidBody?.setTranslation(
+          new THREE.Vector3(result8Position[0], result8Position[1], result8Position[2]),
+          true
+        );
+      result8.mesh.castShadow = true;
+      result8.mesh.receiveShadow = true;
+      result8.mesh.material = createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      });
+      scene.add(result8.mesh);
+    }
+
+    // Straight stairs 3 (COMPOUND)
+    const result9 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/stairsStraight3Compound.glb',
+      id: 'customPropTest9',
+      importGroup: true,
+    });
+    if (result9.mesh && !Array.isArray(result9.mesh)) {
+      const result9Position = [77, -0.4, 5];
+      result9.mesh.position.set(result9Position[0], result9Position[1], result9Position[2]);
+      if (!Array.isArray(result9.physObj))
+        result9.physObj?.rigidBody?.setTranslation(
+          new THREE.Vector3(result9Position[0], result9Position[1], result9Position[2]),
+          true
+        );
+      result9.mesh.castShadow = true;
+      result9.mesh.receiveShadow = true;
+      result9.mesh.material = createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      });
+      scene.add(result9.mesh);
     }
 
     initPhysicsStressTest(scene);
