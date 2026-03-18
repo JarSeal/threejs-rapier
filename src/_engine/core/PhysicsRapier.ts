@@ -461,6 +461,8 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
   let geo: THREE.BufferGeometry | undefined;
   let size: { [key: string]: number };
 
+  console.log('HERE123456', colliderParams.type);
+
   if (!physicsWorldEnabled) createPhysicsWorld();
 
   switch (colliderParams.type) {
@@ -596,12 +598,23 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       const nCols = colliderParams.ncols || 0;
       const posAttr = geo.getAttribute('position');
       const heights = [];
+
+      // 1. Get the bounding box of your imported terrain mesh
+      const bbox = new THREE.Box3().setFromObject(mesh as THREE.Object3D);
+      // 2. Calculate the size
+      const meshSize = new THREE.Vector3();
+      bbox.getSize(meshSize);
+      const scale = new RAPIER.Vector3(meshSize.x, 1, meshSize.z);
+      console.log('HERE', scale);
+
       for (let i = 0; i < posAttr.count; i++) {
         // In Blender/Three.js, 'y' is usually the height
         heights.push(posAttr.getY(i));
       }
       if (nRows > 0 && nCols > 0) {
         // Both nRows and nCols provided
+        console.log('HUUT');
+        shape = new RAPIER.Heightfield(nRows, nCols, new Float32Array(heights), scale);
       } else if (nRows > 0) {
         // Only nRows provided, count the ncols from vertices
       } else if (nCols > 0) {
@@ -609,9 +622,8 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       } else {
         // No nRows or nCols provided, count them as square (if uneven, then nRows will be +1)
       }
-      throw new Error('THIS FEATURE IS STILL WIP');
+      lwarn('THE HEIGHTFIELD FEATURE IS STILL WIP');
       break;
-    // @TODO: Add HEIGHTFIELD type [ColliderDesc.heightfield(heights: matrix, scale)]
     // @TODO: Add CONVEX HULL type
   }
 

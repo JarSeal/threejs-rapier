@@ -909,8 +909,12 @@ export const sceneThirdPersonGym = async () =>
     const result13 = await importModelAsync({
       fileName: '/debugger/assets/testModels/terrainSpiked.glb',
       id: 'customPropTest13',
-      importGroup: true,
+      importGroup: false,
+      // physicsParams: {
+      //   collider: { type: 'TRIMESH' },
+      // },
     });
+    console.log('RESULT', result13);
     if (result13.mesh && !Array.isArray(result13.mesh)) {
       const result13Position = [0, 1.8, 33];
       if (!Array.isArray(result13.physObj)) {

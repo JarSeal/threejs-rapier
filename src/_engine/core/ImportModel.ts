@@ -176,6 +176,7 @@ const parseImportResult = (
     modelMesh.userData.id
   );
   const rigidAndChildParamsResult = getRigidParamsAndChildColliders([userData]);
+  console.log('PHYSPARAMS', fileName, userData, rigidAndChildParamsResult, modelMesh?.userData);
   if (rigidAndChildParamsResult) {
     const { physParamsObj, rigidMeshId } = rigidAndChildParamsResult;
     if (userData.keepMesh) {
@@ -233,6 +234,7 @@ const parseImportResult = (
       modelMesh.remove();
     }
   } else {
+    console.log('NO RIGID PARAMS', fileName);
     const m = saveMesh(modelMesh as THREE.Mesh, id, !saveMaterial);
     if (m) returnObj.mesh = m;
   }
@@ -510,6 +512,7 @@ const cleanUpCustomProps = (
   //     ? 'TRIMESH'
   //     : userData.colliderType
   // ) as ColliderParams['type'];
+  console.log('COLLIDER_TYPE', colliderType);
   if (userData.colliderType) delete userData.colliderType;
   const density = typeof userData.density === 'number' ? userData.density : 0.2;
   if (userData.density) delete userData.density;
@@ -576,6 +579,10 @@ const cleanUpCustomProps = (
     case 'TRIMESH':
       // TRIMESH (vertices and indices will come from the mesh)
       colliderParams = { type: 'TRIMESH' };
+      break;
+    case 'HEIGHTFIELD':
+      // @TODO: add possible nrows and ncols from custom props
+      colliderParams = { type: 'HEIGHTFIELD' };
       break;
   }
 
@@ -767,6 +774,7 @@ const getRigidParamsAndChildColliders = (
     name: rigidParams.name,
     isCompoundObject: Boolean(restOfColliderParams.length),
   };
+  console.log('TADAA', physParamsObj.physicsParams[0].collider);
   if (!physParamsObj.physicsParams[0].collider) return null;
 
   for (let i = 0; i < restOfColliderParams.length; i++) {
