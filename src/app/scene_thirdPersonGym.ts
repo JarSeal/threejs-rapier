@@ -830,6 +830,106 @@ export const sceneThirdPersonGym = async () =>
       scene.add(result9.mesh);
     }
 
+    // Cornered stairs with thick railings (COMPOUND)
+    const result10 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/stairsCorneredWithThickRailingsCompound.glb',
+      id: 'customPropTest10',
+      importGroup: true,
+    });
+    if (result10.mesh && !Array.isArray(result10.mesh)) {
+      const result10Position = [45, -0.4, 35];
+      if (!Array.isArray(result10.physObj)) {
+        result10.physObj?.setTranslation({
+          x: result10Position[0],
+          y: result10Position[1],
+          z: result10Position[2],
+        });
+      }
+      result10.mesh.castShadow = true;
+      result10.mesh.receiveShadow = true;
+      result10.mesh.material = createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      });
+      scene.add(result10.mesh);
+    }
+
+    // Cornered stairs with thick railings (TRIMESH)
+    const result11 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/stairsCorneredWithThickRailingsTrimesh.glb',
+      id: 'customPropTest11',
+      importGroup: true,
+    });
+    if (result11.mesh && !Array.isArray(result11.mesh)) {
+      const result11Position = [60, -0.4, 35];
+      if (!Array.isArray(result11.physObj)) {
+        result11.physObj?.setTranslation({
+          x: result11Position[0],
+          y: result11Position[1],
+          z: result11Position[2],
+        });
+      }
+      result11.mesh.castShadow = true;
+      result11.mesh.receiveShadow = true;
+      result11.mesh.material = createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      });
+      scene.add(result11.mesh);
+    }
+
+    // Spiral stairs (TRIMESH)
+    const result12 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/stairsSpiralTrimesh.glb',
+      id: 'customPropTest12',
+      importGroup: true,
+    });
+    if (result12.mesh && !Array.isArray(result12.mesh)) {
+      const result12Position = [20, 1.8, 33];
+      if (!Array.isArray(result12.physObj)) {
+        result12.physObj?.setTranslation({
+          x: result12Position[0],
+          y: result12Position[1],
+          z: result12Position[2],
+        });
+      }
+      result12.mesh.castShadow = true;
+      result12.mesh.receiveShadow = true;
+      result12.mesh.material = createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      });
+      scene.add(result12.mesh);
+    }
+
+    // Spiked terrain
+    const result13 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/terrainSpiked.glb',
+      id: 'customPropTest13',
+      importGroup: true,
+    });
+    if (result13.mesh && !Array.isArray(result13.mesh)) {
+      const result13Position = [0, 1.8, 33];
+      if (!Array.isArray(result13.physObj)) {
+        result13.physObj?.setTranslation({
+          x: result13Position[0],
+          y: result13Position[1],
+          z: result13Position[2],
+        });
+      }
+      result13.mesh.castShadow = true;
+      result13.mesh.receiveShadow = true;
+      result13.mesh.material = createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      });
+      scene.add(result13.mesh);
+    }
+
     initPhysicsStressTest(scene);
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });

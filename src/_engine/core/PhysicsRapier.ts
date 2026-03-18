@@ -85,6 +85,11 @@ export type ColliderParams = (
       vertices?: Float32Array;
       indices?: Uint32Array;
     }
+  | {
+      type: 'HEIGHTFIELD';
+      nrows?: number;
+      ncols?: number;
+    }
 ) & {
   /** Mass (default 1.0) */
   density?: number;
@@ -577,10 +582,35 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
           break;
         }
       }
-      const message = `Could not find vertices and indices in the collider params for trimesh, nor was there mesh with vertices present. Could not create trimesh physics shape in createCollider.`;
+      const message =
+        'Could not find vertices and indices in the collider params for trimesh, nor was there mesh with vertices present. Could not create trimesh physics shape in createCollider.';
       lerror(message);
       throw new Error(message);
-
+    case 'HEIGHTFIELD':
+      // TODO: finish this
+      geo = existsOrThrow(
+        mesh?.geometry,
+        'Could not find geometry in the mesh for heightfield. Could not create height field physics shape in createCollider.'
+      );
+      const nRows = colliderParams.nrows || 0;
+      const nCols = colliderParams.ncols || 0;
+      const posAttr = geo.getAttribute('position');
+      const heights = [];
+      for (let i = 0; i < posAttr.count; i++) {
+        // In Blender/Three.js, 'y' is usually the height
+        heights.push(posAttr.getY(i));
+      }
+      if (nRows > 0 && nCols > 0) {
+        // Both nRows and nCols provided
+      } else if (nRows > 0) {
+        // Only nRows provided, count the ncols from vertices
+      } else if (nCols > 0) {
+        // Only nCols provided, count the nrows from vertices
+      } else {
+        // No nRows or nCols provided, count them as square (if uneven, then nRows will be +1)
+      }
+      throw new Error('THIS FEATURE IS STILL WIP');
+      break;
     // @TODO: Add HEIGHTFIELD type [ColliderDesc.heightfield(heights: matrix, scale)]
     // @TODO: Add CONVEX HULL type
   }
@@ -749,7 +779,7 @@ export const createPhysicsObjectWithoutMesh = ({
     ...(collisionEventFn ? { collisionEventFn } : {}),
     ...(contactForceEventFn ? { contactForceEventFn } : {}),
     ...(currentObjectIndex !== undefined ? { currentObjectIndex } : {}),
-    setTranslation: (translation: { x?: number; y?: number; z?: number }) => {
+    setTranslation: (translation: { x?: number; y?: number; z?: number; wakeUp?: boolean }) => {
       if (rigidBody) {
         rigidBody.setTranslation(
           ThreeVector3.set(
@@ -757,7 +787,7 @@ export const createPhysicsObjectWithoutMesh = ({
             translation.y || rigidBody.translation().y || 0,
             translation.z || rigidBody.translation().z || 0
           ),
-          true
+          translation.wakeUp === false ? false : true
         );
         return;
       }
@@ -772,7 +802,9 @@ export const createPhysicsObjectWithoutMesh = ({
         );
       }
     },
+    // @TODO: add setRotation
   };
+
   if (!physicsObjects[sId]) physicsObjects[sId] = {};
   physicsObjects[sId][id] = physObj;
 
@@ -981,7 +1013,7 @@ export const createPhysicsObjectWithMesh = ({
       : {}),
     ...(currentObjectIndex !== undefined ? { currentObjectIndex } : {}),
     ...(currentMeshIndex !== undefined ? { currentMeshIndex } : {}),
-    setTranslation: (translation: { x?: number; y?: number; z?: number }) => {
+    setTranslation: (translation: { x?: number; y?: number; z?: number; wakeUp?: boolean }) => {
       if (rigidBody) {
         rigidBody.setTranslation(
           ThreeVector3.set(
@@ -989,7 +1021,7 @@ export const createPhysicsObjectWithMesh = ({
             translation.y || rigidBody.translation().y,
             translation.z || rigidBody.translation().z
           ),
-          true
+          translation.wakeUp === false ? false : true
         );
       } else {
         for (let i = 0; i < colliders.length; i++) {
@@ -1008,9 +1040,18 @@ export const createPhysicsObjectWithMesh = ({
         translation.y || mesh.position.y,
         translation.z || mesh.position.z
       );
+      for (let i = 0; i < meshes.length; i++) {
+        const curMesh = meshes[i];
+        curMesh.position.set(
+          translation.x || mesh.position.x,
+          translation.y || mesh.position.y,
+          translation.z || mesh.position.z
+        );
+      }
     },
     // @TODO: add setRotation
   };
+
   if (!physicsObjects[sId]) physicsObjects[sId] = {};
   physicsObjects[sId][id] = physObj;
 
