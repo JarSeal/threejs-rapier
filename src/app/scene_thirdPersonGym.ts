@@ -25,7 +25,7 @@ import { createFollowObjectCameraRig } from '../_engine/utils/cameras/followObje
 
 export const SCENE_THIRD_PERSON_GYM_META = {
   id: 'thirdPersonGymScene',
-  text: '* GYM (3rd person)',
+  text: 'GYM (3rd person)',
 };
 
 export const sceneThirdPersonGym = async () =>

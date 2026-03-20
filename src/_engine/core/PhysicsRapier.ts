@@ -23,6 +23,7 @@ import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay 
 import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
 import { updateInputControllerLoopActions } from './InputControls';
 import { BladeController, View } from '@tweakpane/core';
+import { BufferGeometryUtils } from 'three/examples/jsm/Addons.js';
 
 type CollisionEventFn = (
   collider1: Collider,
@@ -461,8 +462,6 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
   let geo: THREE.BufferGeometry | undefined;
   let size: { [key: string]: number };
 
-  console.log('HERE123456', colliderParams.type);
-
   if (!physicsWorldEnabled) createPhysicsWorld();
 
   switch (colliderParams.type) {
@@ -589,15 +588,16 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       lerror(message);
       throw new Error(message);
     case 'HEIGHTFIELD':
-      // TODO: finish this
       geo = existsOrThrow(
         mesh?.geometry,
         'Could not find geometry in the mesh for heightfield. Could not create height field physics shape in createCollider.'
       );
-      const nRows = colliderParams.nrows || 0;
-      const nCols = colliderParams.ncols || 0;
-      const posAttr = geo.getAttribute('position');
-      const heights = [];
+      // Merge all vertices that share a position
+      geo = BufferGeometryUtils.mergeVertices(geo);
+      (mesh as THREE.Mesh).geometry = geo;
+
+      let nRows = colliderParams.nrows || 0;
+      let nCols = colliderParams.ncols || 0;
 
       // 1. Get the bounding box of your imported terrain mesh
       const bbox = new THREE.Box3().setFromObject(mesh as THREE.Object3D);
@@ -605,24 +605,57 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       const meshSize = new THREE.Vector3();
       bbox.getSize(meshSize);
       const scale = new RAPIER.Vector3(meshSize.x, 1, meshSize.z);
-      console.log('HERE', scale);
 
-      for (let i = 0; i < posAttr.count; i++) {
-        // In Blender/Three.js, 'y' is usually the height
-        heights.push(posAttr.getY(i));
-      }
-      if (nRows > 0 && nCols > 0) {
-        // Both nRows and nCols provided
-        console.log('HUUT');
-        shape = new RAPIER.Heightfield(nRows, nCols, new Float32Array(heights), scale);
-      } else if (nRows > 0) {
+      const totalVertices = geo.attributes.position.count;
+
+      if (!nCols && nRows > 0) {
         // Only nRows provided, count the ncols from vertices
-      } else if (nCols > 0) {
+        nCols = totalVertices / nRows;
+      } else if (!nRows && nCols > 0) {
         // Only nCols provided, count the nrows from vertices
-      } else {
-        // No nRows or nCols provided, count them as square (if uneven, then nRows will be +1)
+        nRows = totalVertices / nCols;
+      } else if (!nRows && !nCols) {
+        // No nRows or nCols provided, count them as a square (nRows === nCols)
+        nRows = Math.sqrt(totalVertices) - 1;
+        nCols = nRows;
+        if (!Number.isInteger(nRows)) {
+          lerror(
+            `The HEIGHTFIELD importing failed because the squareroot of the totalVertices count (${totalVertices}) is not an integer (${nRows}). The vertices are either unindexed or the grid's number of columns does not match the number of rows. Index the vertices, use shade smooth, or provide the ncols and nrows as custom properties.`
+          );
+          break;
+        }
       }
-      lwarn('THE HEIGHTFIELD FEATURE IS STILL WIP');
+      const sizeX = nRows + 1;
+      const sizeZ = nCols + 1;
+      const heights = new Float32Array(sizeX * sizeZ);
+      const posAttr = mesh?.geometry.attributes.position;
+      for (let i = 0; i < sizeX; i++) {
+        // Outer loop: X-axis (Rapier Rows)
+        for (let j = 0; j < sizeZ; j++) {
+          // Inner loop: Z-axis (Rapier Columns)
+          // Rapier Index: i is row, j is column
+          const rapierIndex = i * sizeZ + j;
+
+          /**
+           * THREE.JS INDEXING
+           * Usually, Three.js stores grids Z-first, then X.
+           * index = (z_index * total_vertices_in_x) + x_index
+           */
+          const flippedZ = sizeZ - 1 - j; // We need to flip the z-axis
+          const threeIndex = flippedZ * sizeX + i;
+
+          // Pull the Y height
+          if (posAttr) {
+            heights[rapierIndex] = posAttr.getY(threeIndex);
+          }
+        }
+      }
+      shape = new RAPIER.Heightfield(
+        Math.round(nRows),
+        Math.round(nCols),
+        new Float32Array(heights),
+        scale
+      );
       break;
     // @TODO: Add CONVEX HULL type
   }
@@ -795,9 +828,9 @@ export const createPhysicsObjectWithoutMesh = ({
       if (rigidBody) {
         rigidBody.setTranslation(
           ThreeVector3.set(
-            translation.x || rigidBody.translation().x || 0,
-            translation.y || rigidBody.translation().y || 0,
-            translation.z || rigidBody.translation().z || 0
+            translation.x !== undefined ? translation.x : rigidBody.translation().x || 0,
+            translation.y !== undefined ? translation.y : rigidBody.translation().y || 0,
+            translation.z !== undefined ? translation.z : rigidBody.translation().z || 0
           ),
           translation.wakeUp === false ? false : true
         );
@@ -807,9 +840,9 @@ export const createPhysicsObjectWithoutMesh = ({
         const collider = colliders[i];
         collider.setTranslation(
           ThreeVector3.set(
-            translation.x || collider.translation().x || 0,
-            translation.y || collider.translation().y || 0,
-            translation.z || collider.translation().z || 0
+            translation.x !== undefined ? translation.x : collider.translation().x || 0,
+            translation.y !== undefined ? translation.y : collider.translation().y || 0,
+            translation.z !== undefined ? translation.z : collider.translation().z || 0
           )
         );
       }
@@ -1029,9 +1062,9 @@ export const createPhysicsObjectWithMesh = ({
       if (rigidBody) {
         rigidBody.setTranslation(
           ThreeVector3.set(
-            translation.x || rigidBody.translation().x,
-            translation.y || rigidBody.translation().y,
-            translation.z || rigidBody.translation().z
+            translation.x !== undefined ? translation.x : rigidBody.translation().x,
+            translation.y !== undefined ? translation.y : rigidBody.translation().y,
+            translation.z !== undefined ? translation.z : rigidBody.translation().z
           ),
           translation.wakeUp === false ? false : true
         );
@@ -1040,24 +1073,24 @@ export const createPhysicsObjectWithMesh = ({
           const collider = colliders[i];
           collider.setTranslation(
             ThreeVector3.set(
-              translation.x || collider.translation().x,
-              translation.y || collider.translation().y,
-              translation.z || collider.translation().z
+              translation.x !== undefined ? translation.x : collider.translation().x,
+              translation.y !== undefined ? translation.y : collider.translation().y,
+              translation.z !== undefined ? translation.z : collider.translation().z
             )
           );
         }
       }
       mesh.position.set(
-        translation.x || mesh.position.x,
-        translation.y || mesh.position.y,
-        translation.z || mesh.position.z
+        translation.x !== undefined ? translation.x : mesh.position.x,
+        translation.y !== undefined ? translation.y : mesh.position.y,
+        translation.z !== undefined ? translation.z : mesh.position.z
       );
       for (let i = 0; i < meshes.length; i++) {
         const curMesh = meshes[i];
         curMesh.position.set(
-          translation.x || mesh.position.x,
-          translation.y || mesh.position.y,
-          translation.z || mesh.position.z
+          translation.x !== undefined ? translation.x : mesh.position.x,
+          translation.y !== undefined ? translation.y : mesh.position.y,
+          translation.z !== undefined ? translation.z : mesh.position.z
         );
       }
     },

@@ -176,7 +176,6 @@ const parseImportResult = (
     modelMesh.userData.id
   );
   const rigidAndChildParamsResult = getRigidParamsAndChildColliders([userData]);
-  console.log('PHYSPARAMS', fileName, userData, rigidAndChildParamsResult, modelMesh?.userData);
   if (rigidAndChildParamsResult) {
     const { physParamsObj, rigidMeshId } = rigidAndChildParamsResult;
     if (userData.keepMesh) {
@@ -234,7 +233,6 @@ const parseImportResult = (
       modelMesh.remove();
     }
   } else {
-    console.log('NO RIGID PARAMS', fileName);
     const m = saveMesh(modelMesh as THREE.Mesh, id, !saveMaterial);
     if (m) returnObj.mesh = m;
   }
@@ -408,6 +406,14 @@ type CustomPropsUserData = {
   index?: number;
   id?: string;
   name?: string;
+  nCols?: number;
+  nRows?: number;
+  hx?: number;
+  hy?: number;
+  hz?: number;
+  radius?: number;
+  borderRadius?: number;
+  halfHeight?: number;
 } & { [userDataKey: string]: unknown };
 
 type CleanUpCustomPropsResult = {
@@ -499,24 +505,10 @@ const cleanUpCustomProps = (
   ) as RigidBodyParams['rigidType'];
   if (userData.rigidType) delete userData.rigidType;
   const colliderType = userData.colliderType;
-  // @TODO: Remove this after the multi import is working
-  // const colliderType = (
-  //   userData.colliderType !== 'CUBOID' &&
-  //   userData.colliderType !== 'BOX' &&
-  //   userData.colliderType !== 'BALL' &&
-  //   userData.colliderType !== 'SPHERE' &&
-  //   userData.colliderType !== 'CAPSULE' &&
-  //   userData.colliderType !== 'CONE' &&
-  //   userData.colliderType !== 'CYLINDER' &&
-  //   userData.colliderType !== 'TRIANGLE'
-  //     ? 'TRIMESH'
-  //     : userData.colliderType
-  // ) as ColliderParams['type'];
-  console.log('COLLIDER_TYPE', colliderType);
   if (userData.colliderType) delete userData.colliderType;
-  const density = typeof userData.density === 'number' ? userData.density : 0.2;
+  const density = userData.density !== undefined ? userData.density : 0.2;
   if (userData.density) delete userData.density;
-  const friction = typeof userData.friction === 'number' ? userData.friction : 0.2;
+  const friction = userData.friction !== undefined ? userData.friction : 0.2;
   if (userData.friction !== undefined) delete userData.friction;
   const frictionCombineRule =
     userData.frictionCombineRule !== 'MAX' &&
@@ -525,7 +517,7 @@ const cleanUpCustomProps = (
       ? 'AVERAGE'
       : userData.frictionCombineRule;
   if (userData.frictionCombineRule) delete userData.frictionCombineRule;
-  const restitution = typeof userData.restitution === 'number' ? userData.restitution : 0.2;
+  const restitution = userData.restitution !== undefined ? userData.restitution : 0.2;
   if (userData.restitution !== undefined) delete userData.restitution;
   const restitutionCombineRule =
     userData.restitutionCombineRule !== 'MAX' &&
@@ -541,12 +533,10 @@ const cleanUpCustomProps = (
     case 'BOX':
       colliderParams = {
         type: colliderType,
-        ...(typeof userData.hx === 'number' ? { hx: userData.hx } : {}),
-        ...(typeof userData.hy === 'number' ? { hy: userData.hy } : {}),
-        ...(typeof userData.hz === 'number' ? { hz: userData.hz } : {}),
-        ...(typeof userData.borderRadius === 'number'
-          ? { borderRadius: userData.borderRadius }
-          : {}),
+        ...(userData.hx !== undefined ? { hx: userData.hx } : {}),
+        ...(userData.hy !== undefined ? { hy: userData.hy } : {}),
+        ...(userData.hz !== undefined ? { hz: userData.hz } : {}),
+        ...(userData.borderRadius !== undefined ? { borderRadius: userData.borderRadius } : {}),
       };
       if (userData.hx !== undefined) delete userData.hx;
       if (userData.hy !== undefined) delete userData.hy;
@@ -557,7 +547,7 @@ const cleanUpCustomProps = (
     case 'SPHERE':
       colliderParams = {
         type: colliderType,
-        ...(typeof userData.radius === 'number' ? { radius: userData.radius } : {}),
+        ...(userData.radius !== undefined ? { radius: userData.radius } : {}),
       };
       if (userData.radius !== undefined) delete userData.radius;
       break;
@@ -566,11 +556,9 @@ const cleanUpCustomProps = (
     case 'CYLINDER':
       colliderParams = {
         type: colliderType,
-        ...(typeof userData.halfHeight === 'number' ? { halfHeight: userData.halfHeight } : {}),
-        ...(typeof userData.radius === 'number' ? { radius: userData.radius } : {}),
-        ...(typeof userData.borderRadius === 'number'
-          ? { borderRadius: userData.borderRadius }
-          : {}),
+        ...(userData.halfHeight !== undefined ? { halfHeight: userData.halfHeight } : {}),
+        ...(userData.radius !== undefined ? { radius: userData.radius } : {}),
+        ...(userData.borderRadius !== undefined ? { borderRadius: userData.borderRadius } : {}),
       };
       if (userData.halfHeight !== undefined) delete userData.halfHeight;
       if (userData.radius !== undefined) delete userData.radius;
@@ -578,11 +566,16 @@ const cleanUpCustomProps = (
       break;
     case 'TRIMESH':
       // TRIMESH (vertices and indices will come from the mesh)
-      colliderParams = { type: 'TRIMESH' };
+      colliderParams = { type: colliderType };
       break;
     case 'HEIGHTFIELD':
-      // @TODO: add possible nrows and ncols from custom props
-      colliderParams = { type: 'HEIGHTFIELD' };
+      colliderParams = {
+        type: colliderType,
+        ...(userData.nCols !== undefined ? { ncols: userData.nCols } : {}),
+        ...(userData.nRows !== undefined ? { nrows: userData.nRows } : {}),
+      };
+      if (userData.nCols !== undefined) delete userData.nCols;
+      if (userData.nRows !== undefined) delete userData.nRows;
       break;
   }
 
@@ -774,7 +767,6 @@ const getRigidParamsAndChildColliders = (
     name: rigidParams.name,
     isCompoundObject: Boolean(restOfColliderParams.length),
   };
-  console.log('TADAA', physParamsObj.physicsParams[0].collider);
   if (!physParamsObj.physicsParams[0].collider) return null;
 
   for (let i = 0; i < restOfColliderParams.length; i++) {
