@@ -50,7 +50,10 @@ export type PhysicsObject = {
   contactForceEventFn?: ContactForceEventFn | ContactForceEventFn[];
   currentObjectIndex?: number;
   currentMeshIndex?: number;
-  setTranslation: (translation: { x?: number; y?: number; z?: number }) => void;
+  setTranslation: (
+    translation: { x?: number; y?: number; z?: number; wakeUp?: boolean },
+    meshGroup?: THREE.Group
+  ) => void;
 };
 
 export type ColliderParams = (
@@ -1058,7 +1061,10 @@ export const createPhysicsObjectWithMesh = ({
       : {}),
     ...(currentObjectIndex !== undefined ? { currentObjectIndex } : {}),
     ...(currentMeshIndex !== undefined ? { currentMeshIndex } : {}),
-    setTranslation: (translation: { x?: number; y?: number; z?: number; wakeUp?: boolean }) => {
+    setTranslation: (
+      translation: { x?: number; y?: number; z?: number; wakeUp?: boolean },
+      meshGroup?: THREE.Group
+    ) => {
       if (rigidBody) {
         rigidBody.setTranslation(
           ThreeVector3.set(
@@ -1080,18 +1086,27 @@ export const createPhysicsObjectWithMesh = ({
           );
         }
       }
-      mesh.position.set(
-        translation.x !== undefined ? translation.x : mesh.position.x,
-        translation.y !== undefined ? translation.y : mesh.position.y,
-        translation.z !== undefined ? translation.z : mesh.position.z
-      );
-      for (let i = 0; i < meshes.length; i++) {
-        const curMesh = meshes[i];
-        curMesh.position.set(
+      if (meshGroup) {
+        // If a meshGroup is provided, then translate that instead of individual meshes
+        meshGroup.position.set(
+          translation.x !== undefined ? translation.x : meshGroup.position.x,
+          translation.y !== undefined ? translation.y : meshGroup.position.y,
+          translation.z !== undefined ? translation.z : meshGroup.position.z
+        );
+      } else {
+        mesh.position.set(
           translation.x !== undefined ? translation.x : mesh.position.x,
           translation.y !== undefined ? translation.y : mesh.position.y,
           translation.z !== undefined ? translation.z : mesh.position.z
         );
+        for (let i = 0; i < meshes.length; i++) {
+          const curMesh = meshes[i];
+          curMesh.position.set(
+            translation.x !== undefined ? translation.x : mesh.position.x,
+            translation.y !== undefined ? translation.y : mesh.position.y,
+            translation.z !== undefined ? translation.z : mesh.position.z
+          );
+        }
       }
     },
     // @TODO: add setRotation

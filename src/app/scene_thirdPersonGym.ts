@@ -909,30 +909,58 @@ export const sceneThirdPersonGym = async () =>
     const result13 = await importModelAsync({
       fileName: '/debugger/assets/testModels/terrainSpiked.glb',
       id: 'customPropTest13',
-      importGroup: false,
+      importGroup: true,
+      allMeshesVisible: true,
       // physicsParams: {
       //   collider: { type: 'TRIMESH' },
       // },
     });
-    console.log('RESULT', result13);
-    if (result13.mesh && !Array.isArray(result13.mesh)) {
+    if (result13.group) {
       const result13Position = [0, 1.8, 33];
-      if (!Array.isArray(result13.physObj)) {
-        result13.physObj?.setTranslation({
-          x: result13Position[0],
-          y: result13Position[1],
-          z: result13Position[2],
+      for (let i = 0; i < result13.group.children.length; i++) {
+        const child = result13.group.children[i] as THREE.Mesh;
+        child.castShadow = true;
+        child.receiveShadow = true;
+        child.material = createMaterial({
+          id: 'stairsStraightTrimeshMaterial',
+          type: 'PHONG',
+          params: { color: '#999' },
         });
       }
-      result13.mesh.castShadow = true;
-      result13.mesh.receiveShadow = true;
-      result13.mesh.material = createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      });
-      scene.add(result13.mesh);
+      if (!Array.isArray(result13.physObj)) {
+        result13.physObj?.setTranslation(
+          {
+            x: result13Position[0],
+            y: result13Position[1],
+            z: result13Position[2],
+          },
+          result13.group
+        );
+      }
+      scene.add(result13.group);
     }
+    // if (result13.mesh && !Array.isArray(result13.mesh)) {
+    //   const result13Position = [0, 1.8, 33];
+    //   if (!Array.isArray(result13.physObj)) {
+    //     result13.physObj?.setTranslation(
+    //       {
+    //         x: result13Position[0],
+    //         y: result13Position[1],
+    //         z: result13Position[2],
+    //       },
+    //       result13.group
+    //     );
+    //     console.log('MESH_GROUP', result13.group?.position);
+    //   }
+    //   result13.mesh.castShadow = true;
+    //   result13.mesh.receiveShadow = true;
+    //   result13.mesh.material = createMaterial({
+    //     id: 'stairsStraightTrimeshMaterial',
+    //     type: 'PHONG',
+    //     params: { color: '#999' },
+    //   });
+    //   //scene.add(result13.mesh);
+    // }
 
     initPhysicsStressTest(scene);
 

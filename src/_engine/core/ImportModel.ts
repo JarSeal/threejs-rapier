@@ -27,6 +27,7 @@ export type ImportModelParams = {
   fileName: string;
   id?: string;
   importGroup?: boolean;
+  allMeshesVisible?: boolean;
   groupId?: string;
   meshIndex?: number | number[];
   throwOnError?: boolean;
@@ -119,6 +120,12 @@ const parseImportResult = (
         if (firstMesh) {
           firstMesh.visible = true;
           returnObj.mesh = [firstMesh];
+        }
+      }
+
+      if (params.allMeshesVisible && obj.meshes) {
+        for (let i = 0; i < obj.meshes.length; i++) {
+          obj.meshes[i].visible = true;
         }
       }
     }
@@ -280,11 +287,23 @@ export const importModelAsync = async (params: ImportModelParams): Promise<Impor
     const gltf = await loader.loadAsync(fileName);
     // @TODO: add a debugger rule here to console.log the gltf
     modelGroup = createGroup({ id: params.groupId });
-    modelGroup.children =
-      // Check if the first and only child is an empty object and add that if found
-      gltf?.scene?.children.length === 1 && isOnlyObject3D(gltf.scene.children[0])
-        ? gltf.scene.children[0].children
-        : gltf?.scene?.children || [];
+    // Check if the first and only child is an empty object and import the children
+    if (gltf?.scene?.children.length === 1 && isOnlyObject3D(gltf.scene.children[0])) {
+      const children = [...gltf.scene.children[0].children];
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        modelGroup.add(child);
+      }
+      modelGroup.position.copy(gltf.scene.children[0].position);
+      modelGroup.rotation.copy(gltf.scene.children[0].rotation);
+      modelGroup.scale.copy(gltf.scene.children[0].scale);
+    } else {
+      const children = [...gltf?.scene?.children];
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        modelGroup.add(child);
+      }
+    }
   } catch (err) {
     const errorMsg = `Could not import ${importGroup ? 'group' : 'model'} in importModelAsync (id: "${id}", fileName: "${fileName}")`;
     lerror(errorMsg, err);
