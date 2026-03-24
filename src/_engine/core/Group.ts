@@ -131,9 +131,11 @@ export const removeFromGroup = (
  */
 export const createGroup = ({
   id,
+  name,
   obj,
 }: {
   id?: string;
+  name?: string;
   obj?: THREE.Object3D | THREE.Object3D[];
 }) => {
   if (id && groups[id]) return groups[id];
@@ -142,6 +144,7 @@ export const createGroup = ({
 
   group.userData.id = id || group.uuid;
   groups[id || group.uuid] = group;
+  if (name) group.name = name;
 
   if (obj) addToGroup(group, obj);
 

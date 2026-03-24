@@ -2,7 +2,7 @@ import { type Scene } from 'three/webgpu';
 import { isDebugEnvironment, loadConfig } from './core/Config';
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
 import { initMainLoop } from './core/MainLoop';
-import { createPhysicsDebugMesh, InitRapierPhysics } from './core/PhysicsRapier';
+import { InitRapierPhysics } from './core/PhysicsRapier';
 import { createRootScene, getRootScene } from './core/Scene';
 import './styles/index.scss';
 import { lerror } from './utils/Logger';
@@ -48,7 +48,6 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
       createDebuggerSceneLoader();
-      createPhysicsDebugMesh();
 
       // Make the debug toaster appear above the stats cmp
       const statsCmp = getStatsCmp();

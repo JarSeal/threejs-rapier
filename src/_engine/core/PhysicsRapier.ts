@@ -6,11 +6,11 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getConfig, isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
 import { getMesh } from './Mesh';
-import { Pane } from 'tweakpane';
+import { ListBladeApi, Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { existsOrThrow, existsOrWarn, slerp, ThreeVector3 } from '../utils/helpers';
+import { existsOrThrow, existsOrWarn, ThreeVector3 } from '../utils/helpers';
 import { CMP, TCMP } from '../utils/CMP';
 import {
   addOnCloseToWindow,
@@ -19,9 +19,11 @@ import {
   openDraggableWindow,
   updateDraggableWindow,
 } from './UI/DraggableWindow';
-import { LoopState } from './MainLoop';
+import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay } from './MainLoop';
 import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
 import { updateInputControllerLoopActions } from './InputControls';
+import { BladeController, View } from '@tweakpane/core';
+import { BufferGeometryUtils } from 'three/examples/jsm/Addons.js';
 
 type CollisionEventFn = (
   collider1: Collider,
@@ -48,11 +50,15 @@ export type PhysicsObject = {
   contactForceEventFn?: ContactForceEventFn | ContactForceEventFn[];
   currentObjectIndex?: number;
   currentMeshIndex?: number;
-  setTranslation: (translation: { x?: number; y?: number; z?: number }) => void;
+  setTranslation: (
+    translation: { x?: number; y?: number; z?: number; wakeUp?: boolean },
+    meshGroup?: THREE.Group
+  ) => void;
 };
 
 export type ColliderParams = (
   | {
+      /** Means the same thing (alias) */
       type: 'CUBOID' | 'BOX';
       hx?: number;
       hy?: number;
@@ -60,10 +66,12 @@ export type ColliderParams = (
       borderRadius?: number;
     }
   | {
+      /** Means the same thing (alias) */
       type: 'BALL' | 'SPHERE';
       radius?: number;
     }
   | {
+      /** Three different shapes (they just have the same props) */
       type: 'CAPSULE' | 'CONE' | 'CYLINDER';
       halfHeight?: number;
       radius?: number;
@@ -80,6 +88,15 @@ export type ColliderParams = (
       type: 'TRIMESH';
       vertices?: Float32Array;
       indices?: Uint32Array;
+    }
+  | {
+      type: 'HEIGHTFIELD';
+      nrows?: number;
+      ncols?: number;
+    }
+  | {
+      type: 'CONVEXHULL';
+      vertices?: Float32Array;
     }
 ) & {
   /** Mass (default 1.0) */
@@ -172,6 +189,9 @@ export type RigidBodyParams = {
     point: { x: number; y: number; z: number };
   };
 
+  /** Additional mass of the object. Rapier calculates mass = (Volume * Density) + AdditionalMass. Density is set for the collider. */
+  additionalMass?: number;
+
   /** Translation locks */
   lockTranslations?: { x: boolean; y: boolean; z: boolean };
 
@@ -203,6 +223,7 @@ export type RigidBodyParams = {
 type ScenePhysicsLooper = (delta: number) => void;
 
 const scenePhysicsLoopers: { [id: string]: ScenePhysicsLooper } = {};
+const scenePhysicsAfterStepLoopers: { [id: string]: ScenePhysicsLooper } = {};
 
 export type PhysicsParams = {
   /** Collider type and params {@link ColliderParams} */
@@ -210,6 +231,9 @@ export type PhysicsParams = {
 
   /** Rigid body type and params {@link RigidBodyParams} */
   rigidBody?: RigidBodyParams;
+
+  /** Mesh id to be used in multi object importing */
+  meshId?: string;
 };
 
 type ScenePhysicsState = {
@@ -226,6 +250,37 @@ type PhysicsState = {
   enabled: boolean;
   timestep: number;
   timestepRatio: number;
+  /** What to do with physics loop if the app window is hidden (under another window, in another tab, minified).
+   * 'KEEP_RUNNIN' = Keeps the physics running in the background.
+   * 'KEEP_RUNNING_USE_MIN_DELTA' = If for some reason the physics cannot run in the background, the minDeltaTime will be set as new delta time. Requires: minDelta > 0.
+   * 'PAUSE' = Pauses the physics when the window is hidden and then uses the minDeltaTime to continue. Requires: minDelta > 0.
+   */
+  backgroundBehavior: 'KEEP_RUNNING' | 'KEEP_RUNNING_USE_MIN_DELTA' | 'PAUSE';
+  isPaused: boolean;
+  /** When the physics loop is on pause (backgroundBehavior = 'PAUSE', loopState.masterPlay = false, or loopState.appPlay = false)
+   * the time it was paused (performance.now()). 0 = not paused.
+   */
+  pausedTime: number;
+  /** Total pause duration, used for the getPhysGameTime helper (in the helpers.ts) */
+  pauseDurationTotal: number;
+  /** Keeps track whether the pause reason is the background behavior (if the app window is hidden) */
+  pauseReason: 'BACKGROUND_BEHAVIOR' | null;
+  /** The minimum delta time to be used for backgroundBehaviors 'USE_MIN_DELTA' and 'PAUSE'.
+   * 0 = not in use
+   */
+  minDeltaTime: number;
+  /** Clamping protects against large delta times even in the foreground (e.g., if rendering stalls).
+   * 0 = not in use
+   */
+  maxDeltaTime: number;
+  /** This ensures stability by forcing the engine to run at least 'minSubsteps'
+   * per frame even if the frame rate is extremely high and deltaTime is tiny.
+   * 0 = not in use
+   */
+  /**  */
+  minSubSteps: number;
+  /** Prevent the spiral of death (should usually be the same as timestep) */
+  maxSubSteps: number;
   scenes: { [sceneId: string]: ScenePhysicsState };
 };
 
@@ -233,6 +288,15 @@ let physicsState: PhysicsState = {
   enabled: false,
   timestep: 60,
   timestepRatio: 1 / 60,
+  backgroundBehavior: 'PAUSE',
+  isPaused: false,
+  pausedTime: 0,
+  pauseDurationTotal: 0,
+  pauseReason: null,
+  minDeltaTime: 1 / 30,
+  maxDeltaTime: 1 / 10,
+  minSubSteps: 0,
+  maxSubSteps: 60,
   scenes: {},
 };
 
@@ -262,9 +326,7 @@ const physicsObjects: { [sceneId: string]: { [id: string]: PhysicsObject } } = {
 // which is not optimal.
 let currentScenePhysicsObjects: PhysicsObject[] = [];
 let debugMesh: THREE.LineSegments;
-let debugMeshGeo: THREE.BufferGeometry;
-let debugMeshMat: THREE.LineBasicMaterial;
-let debugMeshAdded = false;
+const INITIAL_DEBUG_MESH_SIZE = 10000;
 let physicsDebugGUI: Pane | null = null;
 let physicsObjectsDebugList: TCMP | null = null;
 let curScenePhysParams = { ...DEFAULT_SCENE_PHYS_STATE };
@@ -347,6 +409,8 @@ export const createRigidBody = (physicsParams: PhysicsParams) => {
       rigidBodyParams.impulseAtPoint.point,
       wakeUp
     );
+  if (rigidBodyParams.additionalMass !== undefined)
+    rigidBody.setAdditionalMass(rigidBodyParams.additionalMass, wakeUp);
   if (rigidBodyParams.lockTranslations) {
     rigidBody.lockTranslations(true, wakeUp);
     rigidBody.setEnabledTranslations(
@@ -412,7 +476,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
     case 'BOX':
       size = { hx: 0.5, hy: 0.5, hz: 0.5 }; // Default size
       geo = mesh?.geometry;
-      if (geo?.type === 'BoxGeometry') {
+      if (geo?.type === 'BoxGeometry' || geo?.type === 'BufferGeometry') {
         size.hx = geo.userData.props?.params?.width / 2 || size.hx;
         size.hy = geo.userData.props?.params?.height / 2 || size.hy;
         size.hz = geo.userData.props?.params?.depth / 2 || size.hz;
@@ -434,7 +498,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
     case 'SPHERE':
       let radius = 0.5; // Default radius
       geo = mesh?.geometry;
-      if (geo?.type === 'SphereGeometry') {
+      if (geo?.type === 'SphereGeometry' || geo?.type === 'BufferGeometry') {
         radius = geo.userData.props?.params?.radius || radius;
       }
       shape = new RAPIER.Ball(colliderParams.radius || radius);
@@ -443,7 +507,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       {
         size = { halfHeight: 0.25, radius: 0.25 }; // Default values
         geo = mesh?.geometry;
-        if (geo?.type === 'CapsuleGeometry') {
+        if (geo?.type === 'CapsuleGeometry' || geo?.type === 'BufferGeometry') {
           size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
           size.radius = geo.userData.props?.params?.radius || size.radius;
         }
@@ -455,25 +519,29 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       break;
     case 'CONE':
       {
-        // @TODO: try to get the values straight from a Three.js Mesh
-        const defaultHalfHeight = 0.25; // Default half height
-        const defaultRadius = 0.25; // Default radius
+        // @TODO: add logic helpers.ts setMeshCreatePropsToUserData to set the mesh dimensions props
+        size = { halfHeight: 0.25, radius: 0.25 }; // Default values
+        geo = mesh?.geometry;
+        if (geo?.type === 'ConeGeometry' || geo?.type === 'BufferGeometry') {
+          size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
+          size.radius = geo.userData.props?.params?.radius || size.radius;
+        }
         shape = colliderParams.borderRadius
           ? new RAPIER.RoundCone(
-              colliderParams.halfHeight || defaultHalfHeight,
-              colliderParams.radius || defaultRadius,
+              colliderParams.halfHeight || size.halfHeight,
+              colliderParams.radius || size.radius,
               colliderParams.borderRadius
             )
           : new RAPIER.Cone(
-              colliderParams.halfHeight || defaultHalfHeight,
-              colliderParams.radius || defaultRadius
+              colliderParams.halfHeight || size.halfHeight,
+              colliderParams.radius || size.radius
             );
       }
       break;
     case 'CYLINDER':
       size = { halfHeight: 0.5, radius: 1 }; // Default values
       geo = mesh?.geometry;
-      if (geo?.type === 'CylinderGeometry') {
+      if (geo?.type === 'CylinderGeometry' || geo?.type === 'BufferGeometry') {
         size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
         size.radius =
           geo.userData.props?.params?.radiusBottom ||
@@ -522,12 +590,104 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
           break;
         }
       }
-      const message = `Could not find vertices and indices in the collider params for trimesh, nor was there mesh with vertices present. Could not create trimesh physics shape in createCollider.`;
+      const message =
+        'Could not find vertices and indices in the collider params for trimesh, nor was there mesh with vertices present. Could not create trimesh physics shape in createCollider.';
       lerror(message);
       throw new Error(message);
+    case 'HEIGHTFIELD':
+      geo = existsOrThrow(
+        mesh?.geometry,
+        'Could not find mesh or geometry in the mesh for heightfield. Could not create height field physics shape in createCollider.'
+      );
+      // Merge all vertices that share a position
+      geo = BufferGeometryUtils.mergeVertices(geo);
+      (mesh as THREE.Mesh).geometry = geo;
 
-    // @TODO: Add HEIGHTFIELD type [ColliderDesc.heightfield(heights: matrix, scale)]
-    // @TODO: Add COMPOUND type (compound objects)
+      let nRows = colliderParams.nrows || 0;
+      let nCols = colliderParams.ncols || 0;
+
+      // 1. Get the bounding box of your imported terrain mesh
+      const bbox = new THREE.Box3().setFromObject(mesh as THREE.Object3D);
+      // 2. Calculate the size
+      const meshSize = new THREE.Vector3();
+      bbox.getSize(meshSize);
+      const scale = new RAPIER.Vector3(meshSize.x, 1, meshSize.z);
+
+      const totalVertices = geo.attributes.position.count;
+
+      if (!nCols && nRows > 0) {
+        // Only nRows provided, count the ncols from vertices
+        nCols = totalVertices / nRows;
+      } else if (!nRows && nCols > 0) {
+        // Only nCols provided, count the nrows from vertices
+        nRows = totalVertices / nCols;
+      } else if (!nRows && !nCols) {
+        // No nRows or nCols provided, count them as a square (nRows === nCols)
+        nRows = Math.sqrt(totalVertices) - 1;
+        nCols = nRows;
+        if (!Number.isInteger(nRows)) {
+          lerror(
+            `The HEIGHTFIELD importing failed because the squareroot of the totalVertices count (${totalVertices}) is not an integer (${nRows}). The vertices are either unindexed or the grid's number of columns does not match the number of rows. Index the vertices, use shade smooth, or provide the ncols and nrows as custom properties.`
+          );
+          break;
+        }
+      }
+      const sizeX = nRows + 1;
+      const sizeZ = nCols + 1;
+      const heights = new Float32Array(sizeX * sizeZ);
+      const posAttr = mesh?.geometry.attributes.position;
+      for (let i = 0; i < sizeX; i++) {
+        // Outer loop: X-axis (Rapier Rows)
+        for (let j = 0; j < sizeZ; j++) {
+          // Inner loop: Z-axis (Rapier Columns)
+          // Rapier Index: i is row, j is column
+          const rapierIndex = i * sizeZ + j;
+
+          /**
+           * THREE.JS INDEXING
+           * Usually, Three.js stores grids Z-first, then X.
+           * index = (z_index * total_vertices_in_x) + x_index
+           */
+          const flippedZ = sizeZ - 1 - j; // We need to flip the z-axis
+          const threeIndex = flippedZ * sizeX + i;
+
+          // Pull the Y height
+          if (posAttr) {
+            heights[rapierIndex] = posAttr.getY(threeIndex);
+          }
+        }
+      }
+      shape = new RAPIER.Heightfield(
+        Math.round(nRows),
+        Math.round(nCols),
+        new Float32Array(heights),
+        scale
+      );
+      break;
+    case 'CONVEXHULL':
+      const vertParams = colliderParams.vertices;
+      if (vertParams) {
+        shape = new RAPIER.ConvexPolyhedron(new Float32Array(vertParams));
+      } else {
+        geo = existsOrThrow(
+          mesh?.geometry,
+          'Could not find mesh or geometry in the mesh for convex hull. Could not create convex hull physics shape in createCollider.'
+        );
+        // 1. Get a copy of the geometry
+        const geoClone = geo.clone();
+        // 2. (Optional) If you haven't applied transforms in Blender,
+        // Apply the mesh's local scale to the vertices here.
+        geoClone.applyMatrix4(
+          new THREE.Matrix4().makeScale(mesh?.scale.x || 1, mesh?.scale.y || 1, mesh?.scale.z || 1)
+        );
+        // 3. Center it so the physics hull is balanced on the Body's origin
+        geoClone.center();
+        // 4. Extract the clean, centered, scaled vertices, and create shape
+        const vertices = geoClone.attributes.position.array;
+        shape = new RAPIER.ConvexPolyhedron(new Float32Array(vertices));
+        geoClone.dispose();
+      }
+      break;
   }
 
   if (!shape) {
@@ -537,6 +697,17 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
   }
 
   const colliderDesc = new RAPIER.ColliderDesc(shape);
+
+  // Since Rapier shapes start on Y, we rotate them if the Blender spine was X or Z (for CYLINDER and CAPSULE)
+  if (geo?.userData.props?.params.orientation === 'x') {
+    // Rotate 90 degrees around Z to lay the cylinder along the X-axis
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+    colliderDesc.setRotation(q);
+  } else if (geo?.userData.props?.params.orientation === 'z') {
+    // Rotate 90 degrees around X to lay the cylinder along the Z-axis
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+    colliderDesc.setRotation(q);
+  }
 
   if (colliderParams.density !== undefined) colliderDesc.setDensity(colliderParams.density);
   if (colliderParams.translation)
@@ -683,15 +854,15 @@ export const createPhysicsObjectWithoutMesh = ({
     ...(collisionEventFn ? { collisionEventFn } : {}),
     ...(contactForceEventFn ? { contactForceEventFn } : {}),
     ...(currentObjectIndex !== undefined ? { currentObjectIndex } : {}),
-    setTranslation: (translation: { x?: number; y?: number; z?: number }) => {
+    setTranslation: (translation: { x?: number; y?: number; z?: number; wakeUp?: boolean }) => {
       if (rigidBody) {
         rigidBody.setTranslation(
           ThreeVector3.set(
-            translation.x || rigidBody.translation().x || 0,
-            translation.y || rigidBody.translation().y || 0,
-            translation.z || rigidBody.translation().z || 0
+            translation.x !== undefined ? translation.x : rigidBody.translation().x || 0,
+            translation.y !== undefined ? translation.y : rigidBody.translation().y || 0,
+            translation.z !== undefined ? translation.z : rigidBody.translation().z || 0
           ),
-          true
+          translation.wakeUp === false ? false : true
         );
         return;
       }
@@ -699,14 +870,16 @@ export const createPhysicsObjectWithoutMesh = ({
         const collider = colliders[i];
         collider.setTranslation(
           ThreeVector3.set(
-            translation.x || collider.translation().x || 0,
-            translation.y || collider.translation().y || 0,
-            translation.z || collider.translation().z || 0
+            translation.x !== undefined ? translation.x : collider.translation().x || 0,
+            translation.y !== undefined ? translation.y : collider.translation().y || 0,
+            translation.z !== undefined ? translation.z : collider.translation().z || 0
           )
         );
       }
     },
+    // @TODO: add setRotation
   };
+
   if (!physicsObjects[sId]) physicsObjects[sId] = {};
   physicsObjects[sId][id] = physObj;
 
@@ -785,16 +958,16 @@ export const createPhysicsObjectWithMesh = ({
       if (typeof momid === 'string') {
         const mId = momid;
         const m = getMesh(mId);
+        if (!m) {
+          lwarn(meshWarnMsg, `Mesh id: ${mId}`);
+          return;
+        }
         m.visible = false;
         if (currentMeshIndex !== undefined && i === currentMeshIndex) {
           meshId = mId;
           mesh = m;
           m.visible = true;
           visibleMeshIsSet = true;
-        }
-        if (!m) {
-          lwarn(meshWarnMsg, `Mesh id: ${meshId}`);
-          return;
         }
         m.userData.isPhysicsObject = true;
         meshes.push(m);
@@ -850,7 +1023,11 @@ export const createPhysicsObjectWithMesh = ({
     rigidBody = createRigidBody(physicsParams[0]);
     let colliderEnabled = false;
     for (let i = 0; i < physicsParams.length; i++) {
-      const colliderDesc = createCollider(physicsParams[i], mesh);
+      const foundMesh =
+        physicsParams[i].meshId && Array.isArray(meshes) && meshes.length
+          ? meshes.find((m) => m.userData.id === physicsParams[i].meshId)
+          : meshes[i] || mesh;
+      const colliderDesc = createCollider(physicsParams[i], foundMesh);
       const collider = physicsWorld.createCollider(colliderDesc, rigidBody);
       if (physicsParams[i].collider.collisionEventFn) {
         collisionEventFn.push(physicsParams[i].collider.collisionEventFn as CollisionEventFn);
@@ -911,36 +1088,57 @@ export const createPhysicsObjectWithMesh = ({
       : {}),
     ...(currentObjectIndex !== undefined ? { currentObjectIndex } : {}),
     ...(currentMeshIndex !== undefined ? { currentMeshIndex } : {}),
-    setTranslation: (translation: { x?: number; y?: number; z?: number }) => {
+    setTranslation: (
+      translation: { x?: number; y?: number; z?: number; wakeUp?: boolean },
+      meshGroup?: THREE.Group
+    ) => {
       if (rigidBody) {
         rigidBody.setTranslation(
           ThreeVector3.set(
-            translation.x || rigidBody.translation().x,
-            translation.y || rigidBody.translation().y,
-            translation.z || rigidBody.translation().z
+            translation.x !== undefined ? translation.x : rigidBody.translation().x,
+            translation.y !== undefined ? translation.y : rigidBody.translation().y,
+            translation.z !== undefined ? translation.z : rigidBody.translation().z
           ),
-          true
+          translation.wakeUp === false ? false : true
         );
       } else {
         for (let i = 0; i < colliders.length; i++) {
           const collider = colliders[i];
           collider.setTranslation(
             ThreeVector3.set(
-              translation.x || collider.translation().x,
-              translation.y || collider.translation().y,
-              translation.z || collider.translation().z
+              translation.x !== undefined ? translation.x : collider.translation().x,
+              translation.y !== undefined ? translation.y : collider.translation().y,
+              translation.z !== undefined ? translation.z : collider.translation().z
             )
           );
         }
       }
-      mesh.position.set(
-        translation.x || mesh.position.x,
-        translation.y || mesh.position.y,
-        translation.z || mesh.position.z
-      );
+      if (meshGroup) {
+        // If a meshGroup is provided, then translate that instead of individual meshes
+        meshGroup.position.set(
+          translation.x !== undefined ? translation.x : meshGroup.position.x,
+          translation.y !== undefined ? translation.y : meshGroup.position.y,
+          translation.z !== undefined ? translation.z : meshGroup.position.z
+        );
+      } else {
+        mesh.position.set(
+          translation.x !== undefined ? translation.x : mesh.position.x,
+          translation.y !== undefined ? translation.y : mesh.position.y,
+          translation.z !== undefined ? translation.z : mesh.position.z
+        );
+        for (let i = 0; i < meshes.length; i++) {
+          const curMesh = meshes[i];
+          curMesh.position.set(
+            translation.x !== undefined ? translation.x : mesh.position.x,
+            translation.y !== undefined ? translation.y : mesh.position.y,
+            translation.z !== undefined ? translation.z : mesh.position.z
+          );
+        }
+      }
     },
     // @TODO: add setRotation
   };
+
   if (!physicsObjects[sId]) physicsObjects[sId] = {};
   physicsObjects[sId][id] = physObj;
 
@@ -1228,22 +1426,97 @@ export const getPhysicsWorld = () => {
  * Creates physics debug mesh (only in debug mode)
  */
 export const createPhysicsDebugMesh = () => {
-  if (debugMesh) {
-    debugMesh.removeFromParent();
-    debugMeshAdded = false;
+  const debugGeo = new THREE.BufferGeometry();
+  const debugMat = new THREE.LineBasicMaterial({
+    color: 0xffffff,
+    vertexColors: true, // Important for Rapier's debug colors
+  });
+
+  // Pre-allocate buffers
+  debugGeo.setAttribute(
+    'position',
+    new THREE.BufferAttribute(new Float32Array(INITIAL_DEBUG_MESH_SIZE * 3), 3)
+  );
+  debugGeo.setAttribute(
+    'color',
+    new THREE.BufferAttribute(new Float32Array(INITIAL_DEBUG_MESH_SIZE * 4), 4)
+  );
+
+  debugMesh = new THREE.LineSegments(debugGeo, debugMat);
+  debugMesh.frustumCulled = false; // Physics lines span the whole world, don't cull them!
+  if (!debugMesh.geometry.boundingSphere) {
+    debugMesh.geometry.boundingSphere = new THREE.Sphere();
   }
-  if (debugMeshGeo) {
-    debugMeshGeo.dispose();
-    debugMeshGeo = new THREE.BufferGeometry();
+  // Set to infinity so it's always visible and never recomputed
+  debugMesh.geometry.boundingSphere.radius = Infinity;
+  debugMesh.geometry.boundingSphere.center.set(0, 0, 0);
+  const scene = getRootScene();
+  if (scene) {
+    // 1. Assign a unique name to your debug mesh
+    debugMesh.name = 'PHYSICS_DEBUG_VISUALIZER';
+
+    // 2. Check if it's actually in the scene
+    const existingMesh = scene.getObjectByName('PHYSICS_DEBUG_VISUALIZER');
+
+    if (!existingMesh) {
+      // It's missing, add it.
+      scene.add(debugMesh);
+    } else if (existingMesh !== debugMesh) {
+      // CRITICAL: A ghost exists!
+      // We found a mesh with the same name, but it's not THIS instance.
+      // This happens on Hot Reload or Scene Switch.
+
+      // Remove the old ghost
+      scene.remove(existingMesh);
+
+      // Add the new one
+      scene.add(debugMesh);
+    }
   }
-  if (!debugMeshMat) {
-    debugMeshMat = new THREE.LineBasicMaterial({
-      color: 0xffffff,
-      vertexColors: true,
-    });
+};
+
+const setPhysicsPauseTime = () => {
+  const now = performance.now();
+  if (physicsState.pausedTime > 0) {
+    physicsState.pauseDurationTotal += now - physicsState.pausedTime;
   }
-  debugMesh = new THREE.LineSegments(debugMeshGeo, debugMeshMat);
-  debugMesh.frustumCulled = false;
+  physicsState.pausedTime = now;
+};
+
+/** Get the current phys game time, that is the performance.now()
+ * adjusted with the total pause time.
+ */
+export const getPhysGameTime = () => {
+  const now = performance.now();
+  let currentTotalPauseDuration = physicsState.pauseDurationTotal;
+
+  // If currently paused, add the time since the last pause began
+  if (physicsState.pausedTime > 0) {
+    currentTotalPauseDuration += now - physicsState.pausedTime;
+  }
+
+  return now - currentTotalPauseDuration;
+};
+
+const physicsVisibilityChange = (isHidden: boolean) => {
+  const loopState = getReadOnlyLoopState();
+  if (isHidden) {
+    if (loopState.masterPlay && physicsState.backgroundBehavior === 'PAUSE') {
+      setPhysicsPauseTime();
+      physicsState.isPaused = true;
+      clock.stop();
+      physicsState.pauseReason = 'BACKGROUND_BEHAVIOR';
+      toggleMainPlay(false);
+    }
+  } else {
+    if (physicsState.pauseReason === 'BACKGROUND_BEHAVIOR') {
+      physicsState.pauseReason = null;
+      clock.start();
+      clock.getDelta();
+      accDelta = 0;
+      toggleMainPlay(true);
+    }
+  }
 };
 
 let accDelta = 0;
@@ -1254,29 +1527,70 @@ const currTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaterni
 
 // Different stepper functions to use for debug and production.
 // baseStepper is used for both.
-const baseStepper = () => {
-  const delta = clock.getDelta();
-  accDelta += delta;
+const baseStepper = (loopState: LoopState) => {
+  let delta = clock.getDelta();
+  let stepsTaken = 0;
+  if (loopState.isWindowHidden || !loopState.masterPlay || !loopState.appPlay) {
+    if (
+      physicsState.backgroundBehavior === 'KEEP_RUNNING_USE_MIN_DELTA' &&
+      physicsState.minDeltaTime > 0
+    ) {
+      delta = physicsState.minDeltaTime;
+    } else if (
+      physicsState.backgroundBehavior === 'PAUSE' ||
+      !loopState.masterPlay ||
+      !loopState.appPlay
+    ) {
+      setPhysicsPauseTime();
+      physicsState.isPaused = true;
+      clock.stop();
+      return;
+    }
+  } else if (physicsState.isPaused) {
+    clock.start();
+    delta = clock.getDelta();
+    delta = 0;
+    accDelta = 0;
+    if (physicsState.minDeltaTime > 0) delta = physicsState.minDeltaTime;
+    physicsState.isPaused = false;
+    physicsState.pauseDurationTotal += performance.now() - physicsState.pausedTime;
+    physicsState.pausedTime = 0;
+  }
+  const scaledDelta = delta * loopState.playSpeedMultiplier;
+  accDelta += scaledDelta;
+  if (physicsState.maxDeltaTime > 0) delta = Math.min(delta, physicsState.maxDeltaTime);
 
-  while (accDelta >= physicsState.timestepRatio) {
+  while (
+    accDelta >= physicsState.timestepRatio &&
+    (physicsState.minSubSteps === 0 || stepsTaken <= physicsState.minSubSteps) &&
+    (physicsState.maxSubSteps === 0 || stepsTaken < physicsState.maxSubSteps)
+  ) {
+    if (physicsState.isPaused) break;
+
     // Update loop action inputs
-    updateInputControllerLoopActions(delta);
+    updateInputControllerLoopActions(physicsState.timestepRatio);
 
     // Store previous transforms
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
       const po = currentScenePhysicsObjects[i];
-      if (checkDynamicPhysicsObjectInvalidity(po)) continue;
+      if (!isDynamicPhysicsObjectValid(po)) continue;
       const rb = po.rigidBody as RigidBody;
       const handle = rb.handle;
       const t = rb.translation();
       const r = rb.rotation();
-      const curr = new THREE.Vector3(t.x, t.y, t.z);
-      const quat = new THREE.Quaternion(r.x, r.y, r.z, r.w);
-      prevTransforms.set(
-        handle,
-        currTransforms.get(handle) ?? { pos: curr.clone(), rot: quat.clone() }
-      );
-      currTransforms.set(handle, { pos: curr, rot: quat });
+      // 1. Ensure storage exists (allocate once)
+      if (!prevTransforms.has(handle)) {
+        prevTransforms.set(handle, { pos: new THREE.Vector3(), rot: new THREE.Quaternion() });
+        currTransforms.set(handle, { pos: new THREE.Vector3(), rot: new THREE.Quaternion() });
+      }
+      const prev = prevTransforms.get(handle)!;
+      const curr = currTransforms.get(handle)!;
+      // 2. Cycle the data: Current becomes Previous
+      prev.pos.copy(curr.pos);
+      prev.rot.copy(curr.rot);
+      // 3. Update Current from Rapier (Zero Allocation)
+      curr.pos.set(t.x, t.y, t.z);
+      curr.rot.set(r.x, r.y, r.z, r.w);
     }
 
     if (collisionEventFnCount) {
@@ -1375,56 +1689,90 @@ const baseStepper = () => {
     // Run scenePhysicsLoopers
     const looperKeys = Object.keys(scenePhysicsLoopers);
     for (let i = 0; i < looperKeys.length; i++) {
-      scenePhysicsLoopers[looperKeys[i]](delta);
+      scenePhysicsLoopers[looperKeys[i]](physicsState.timestepRatio);
     }
 
     // Step the world
     physicsWorld.step(eventQueue);
+
     accDelta -= physicsState.timestepRatio;
+    stepsTaken++;
+  }
+
+  // Run scenePhysicsAfterStepLoopers
+  const afterStepLooperKeys = Object.keys(scenePhysicsAfterStepLoopers);
+  for (let i = 0; i < afterStepLooperKeys.length; i++) {
+    scenePhysicsAfterStepLoopers[afterStepLooperKeys[i]](scaledDelta);
   }
 };
 
 // PRODUCTION STEPPER
-const stepperFnProduction = (loopState: LoopState) => {
-  if (!loopState.masterPlay || !loopState.appPlay) return;
-  baseStepper();
-};
+const stepperFnProduction = (loopState: LoopState) => baseStepper(loopState);
 
 // DEBUG STEPPER
 const stepperFnDebug = (loopState: LoopState) => {
   const startMeasuring = performance.now();
 
-  if (!loopState.masterPlay || !loopState.appPlay) return;
-
   const curSceneParams = physicsState.scenes[getCurrentSceneId() || ''];
   if (!curSceneParams?.worldStepEnabled) return;
 
-  baseStepper();
+  baseStepper(loopState);
 
-  if (physicsWorldEnabled && curSceneParams?.visualizerEnabled) {
+  if (!loopState.masterPlay || !loopState.appPlay) return;
+
+  if (physicsWorldEnabled && debugMesh && curSceneParams?.visualizerEnabled) {
+    // Physics debug visualizer
     const { vertices, colors } = physicsWorld.debugRender();
-    if (!vertices.length) return;
-    if (!debugMeshAdded) {
-      getRootScene()?.add(debugMesh);
-      debugMeshAdded = true;
-    }
+
     debugMesh.visible = true;
-    const posAttr = debugMesh.geometry.attributes.position;
-    const colorAttr = debugMesh.geometry.attributes.color;
-    if (vertices.length !== posAttr?.array.length) {
-      debugMeshGeo = new THREE.BufferGeometry();
-      debugMesh.geometry = debugMeshGeo;
-      debugMesh.geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-      debugMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4));
-      debugMesh.geometry.getAttribute('position').needsUpdate = true;
-      debugMesh.geometry.getAttribute('color').needsUpdate = true;
+
+    let currentGeo = debugMesh.geometry;
+    const posAttr = currentGeo.attributes.position;
+
+    // Check if we need to resize (Grow the buffer)
+    if (vertices.length > posAttr.array.length) {
+      // 1. Dispose of the old geometry to free GPU memory
+      currentGeo.dispose();
+
+      // 2. Create a BRAND NEW Geometry
+      const newGeo = new THREE.BufferGeometry();
+
+      // 3. Allocate LARGER buffers
+      const newSize = vertices.length + 5000; // Add generous padding to avoid frequent resizing
+      newGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(newSize), 3));
+      newGeo.setAttribute(
+        'color',
+        new THREE.BufferAttribute(new Float32Array((newSize / 3) * 4), 4)
+      );
+      newGeo.boundingSphere = new THREE.Sphere();
+      newGeo.boundingSphere.radius = Infinity;
+
+      // 4. Assign the new geometry to the mesh
+      // This forces the renderer to bind the new, larger buffer immediately
+      debugMesh.geometry = newGeo;
+
+      // Update local reference
+      currentGeo = newGeo;
     }
-    if (posAttr) {
-      posAttr.array.set(vertices);
-      colorAttr.array.set(colors);
-      posAttr.needsUpdate = true;
-      colorAttr.needsUpdate = true;
-    }
+
+    // Update Data
+    // We get the *latest* attribute reference in case we just resized it
+    const finalPosAttr = currentGeo.attributes.position as THREE.BufferAttribute;
+    const finalColAttr = currentGeo.attributes.color as THREE.BufferAttribute;
+
+    // Copy data into the existing typed arrays
+    // .set is very fast for Float32Array
+    finalPosAttr.array.set(vertices);
+    finalColAttr.array.set(colors);
+
+    // Mark as needing upload to GPU
+    finalPosAttr.needsUpdate = true;
+    finalColAttr.needsUpdate = true;
+
+    // CRITICAL: Tell GPU how many vertices to actually draw
+    // If buffer has 10,000 spots but we only have 50 vertices, draw only 50.
+    // vertices is a Float32Array (x,y,z), so vertex count is length / 3
+    currentGeo.setDrawRange(0, vertices.length / 3);
   } else {
     debugMesh.visible = false;
   }
@@ -1438,52 +1786,83 @@ const stepperFnDebug = (loopState: LoopState) => {
  */
 export const stepPhysicsWorld = (loopState: LoopState) => stepperFn(loopState);
 
-const checkDynamicPhysicsObjectInvalidity = (po: PhysicsObject) =>
-  !po.mesh ||
-  (po.rigidBody &&
-    (!po.rigidBody?.isMoving() || po.rigidBody.isFixed() || !po.rigidBody.isEnabled()));
+// @TODO: rename this to isDynamicPhysicsObjectValid and flip the checks to be !isDynamicPhysicsObjectValida(po)
+const isDynamicPhysicsObjectValid = (po: PhysicsObject) =>
+  po.mesh &&
+  po.rigidBody &&
+  !po.rigidBody?.isSleeping() &&
+  po.rigidBody?.isMoving() &&
+  !po.rigidBody.isFixed() &&
+  po.rigidBody.isEnabled();
+
+// Reuse scratch objects to avoid GC
+const _interpPos = new THREE.Vector3();
+const _interpRot = new THREE.Quaternion();
+const _prevRot = new THREE.Quaternion();
+const _currRot = new THREE.Quaternion();
 
 export const renderPhysicsObjects = () => {
   if (getCurrentScenePhysParams().interpolationEnabled) {
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
       const po = currentScenePhysicsObjects[i];
       // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
-      if (checkDynamicPhysicsObjectInvalidity(po)) continue;
-      const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
-      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
+      if (!isDynamicPhysicsObjectValid(po)) continue;
+      const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
+      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
+      const handle = rb.handle;
       const prev = prevTransforms.get(rb.handle);
       const curr = currTransforms.get(rb.handle);
-      if (!prev || !curr) continue;
+      // Safety Check: If data is missing (new object), Snap and Init.
+      if (!prev || !curr) {
+        const t = rb.translation();
+        const r = rb.rotation();
+        mesh.position.set(t.x, t.y, t.z);
+        mesh.quaternion.set(r.x, r.y, r.z, r.w);
 
-      const alpha = Math.min(accDelta / physicsState.timestepRatio, 1);
+        // Initialize the buffers so next frame interpolates correctly
+        if (!prevTransforms.has(handle)) {
+          const p = new THREE.Vector3(t.x, t.y, t.z);
+          const q = new THREE.Quaternion(r.x, r.y, r.z, r.w);
+          prevTransforms.set(handle, { pos: p, rot: q });
+          currTransforms.set(handle, { pos: p.clone(), rot: q.clone() });
+        }
+        continue;
+      }
 
-      // Interpolated position
-      const interpPos = prev.pos.clone().lerp(curr.pos, alpha);
+      const alpha = Math.max(0, Math.min(1, accDelta / physicsState.timestepRatio));
 
-      // Interpolated rotation
-      const interpRot = slerp(prev.rot, curr.rot, alpha);
+      // 2. Interpolate Position
+      _interpPos.copy(prev.pos).lerp(curr.pos, alpha);
+      mesh.position.copy(_interpPos);
 
-      mesh.position.copy(interpPos);
+      // 3. Interpolate Rotation (SAFE MODE)
+      // We copy to scratch variables to ensure we don't mutate the storage
+      _prevRot.copy(prev.rot).normalize();
+      _currRot.copy(curr.rot).normalize();
+
+      _interpRot.copy(_prevRot).slerp(_currRot, alpha);
+      _interpRot.normalize();
+
       const userData = po.rigidBody?.userData as { [key: string]: unknown };
       if (!userData?.lockRotationsX && !userData?.lockRotationsX && !userData?.lockRotationsX) {
-        mesh.quaternion.copy(interpRot);
+        mesh.quaternion.copy(_interpRot);
       } else {
         mesh.quaternion.copy({
-          x: userData.lockRotationsX ? mesh.quaternion.x : interpRot.x,
-          y: userData.lockRotationsY ? mesh.quaternion.y : interpRot.y,
-          z: userData.lockRotationsZ ? mesh.quaternion.z : interpRot.z,
+          x: userData.lockRotationsX ? mesh.quaternion.x : _interpRot.x,
+          y: userData.lockRotationsY ? mesh.quaternion.y : _interpRot.y,
+          z: userData.lockRotationsZ ? mesh.quaternion.z : _interpRot.z,
           w: mesh.quaternion.w,
         });
       }
     }
   } else {
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
+      // --- SNAP, NO INTERPOLATION
       const po = currentScenePhysicsObjects[i];
       // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
-      if (checkDynamicPhysicsObjectInvalidity(po)) continue;
-      const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
-      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (checkDynamicPhysicsObjectInvalidity)
-
+      if (!isDynamicPhysicsObjectValid(po)) continue;
+      const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
+      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
       mesh.position.copy(rb.translation());
       const userData = rb.userData as { [key: string]: unknown };
       if (!userData?.lockRotationsX && !userData?.lockRotationsX && !userData?.lockRotationsX) {
@@ -1518,10 +1897,7 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
   if (!sceneId) return;
 
   const allNewPhysicsObjects = physicsObjects[sceneId];
-  if (!allNewPhysicsObjects) {
-    createPhysicsDebugMesh();
-    return;
-  }
+  if (!allNewPhysicsObjects) return;
 
   const keys = Object.keys(allNewPhysicsObjects);
   for (let i = 0; i < keys.length; i++) {
@@ -1540,8 +1916,6 @@ export const setCurrentScenePhysicsObjects = (sceneId: string | null) => {
     if (obj.collisionEventFn) collisionEventFnCount++;
     if (obj.contactForceEventFn) contactForceEventFnCount++;
   }
-
-  createPhysicsDebugMesh();
 };
 
 /**
@@ -1579,7 +1953,11 @@ const createDebugControls = () => {
     ...savedValues,
   };
   physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
+  physicsState.isPaused = false;
+  physicsState.pauseReason = null;
+  physicsState.pauseDurationTotal = 0;
 
+  addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
   initDebuggerScenePhysState();
 
   const icon = getSvgIcon('rocketTakeoff');
@@ -1711,6 +2089,63 @@ export const buildPhysicsDebugGUI = () => {
   debugGUI
     .addBinding(curScenePhysParams, 'interpolationEnabled', { label: 'Enable interpolation' })
     .on('change', () => {
+      lsSetItem(LS_KEY, physicsState);
+    });
+  const bgBehaviorDropDown = debugGUI.addBlade({
+    view: 'list',
+    label:
+      'Background behavior (when the loop is not running or the window is hidden, not in view, another tab, or minimized)',
+    options: [
+      { value: 'KEEP_RUNNING', text: 'Keep running' },
+      { value: 'KEEP_RUNNING_USE_MIN_DELTA', text: 'Keep running and use Minimum delta time' },
+      { value: 'PAUSE', text: 'Pause' },
+    ],
+    value: physicsState.backgroundBehavior,
+  }) as ListBladeApi<BladeController<View>>;
+  bgBehaviorDropDown.on('change', (e) => {
+    const value = e.value;
+    physicsState.backgroundBehavior = value as unknown as PhysicsState['backgroundBehavior'];
+    lsSetItem(LS_KEY, physicsState);
+  });
+  debugGUI
+    .addBinding(physicsState, 'minDeltaTime', {
+      label: 'Minimum delta time (eg. 1 / 30fps), 0 = not in use',
+      step: 0.0000000001,
+      min: 0,
+    })
+    .on('change', (e) => {
+      physicsState.minDeltaTime = 1 / e.value;
+      lsSetItem(LS_KEY, physicsState);
+    });
+  debugGUI
+    .addBinding(physicsState, 'maxDeltaTime', {
+      label: 'Maximum delta time (clamping to an fps, 1 / 10fps = 0.1), 0 = not in use',
+      step: 0.0000000001,
+      min: 0,
+    })
+    .on('change', (e) => {
+      physicsState.maxDeltaTime = 1 / e.value;
+      lsSetItem(LS_KEY, physicsState);
+    });
+  debugGUI
+    .addBinding(physicsState, 'minSubSteps', {
+      label: 'Minimum steps per render frame, 0 = not in use',
+      step: 1,
+      min: 0,
+    })
+    .on('change', (e) => {
+      physicsState.minSubSteps = e.value;
+      lsSetItem(LS_KEY, physicsState);
+    });
+  debugGUI
+    .addBinding(physicsState, 'maxSubSteps', {
+      label:
+        'Maximum steps per render frame (Prevents the spiral of death, should usually be the same as timestep), 0 = not in use',
+      step: 1,
+      min: 0,
+    })
+    .on('change', (e) => {
+      physicsState.maxSubSteps = e.value;
       lsSetItem(LS_KEY, physicsState);
     });
 };
@@ -1990,6 +2425,7 @@ export const InitRapierPhysics = async (
         RAPIER = rapier;
         if (isDebugEnvironment()) {
           createDebugControls();
+          createPhysicsDebugMesh();
           stepperFn = stepperFnDebug;
         } else {
           stepperFn = stepperFnProduction;
@@ -2001,15 +2437,28 @@ export const InitRapierPhysics = async (
     : null;
 };
 
-export const addScenePhysicsLooper = (id: string, looper: ScenePhysicsLooper) =>
-  (scenePhysicsLoopers[id] = looper);
+export const addScenePhysicsLooper = (
+  id: string,
+  looper?: ScenePhysicsLooper,
+  afterStepLooper?: ScenePhysicsLooper
+) => {
+  if (looper) scenePhysicsLoopers[id] = looper;
+  if (afterStepLooper) scenePhysicsAfterStepLoopers[id] = afterStepLooper;
+};
 
-export const deleteScenePhysicsLooper = (id: string) => delete scenePhysicsLoopers[id];
+export const deleteScenePhysicsLooper = (id: string) => {
+  delete scenePhysicsLoopers[id];
+  delete scenePhysicsAfterStepLoopers[id];
+};
 
 export const deleteAllScenePhysicsLoopers = () => {
   const looperKeys = Object.keys(scenePhysicsLoopers);
   for (let i = 0; i < looperKeys.length; i++) {
     deleteScenePhysicsLooper(looperKeys[i]);
+  }
+  const afterStepLooperKeys = Object.keys(scenePhysicsAfterStepLoopers);
+  for (let i = 0; i < afterStepLooperKeys.length; i++) {
+    deleteScenePhysicsLooper(afterStepLooperKeys[i]);
   }
 };
 

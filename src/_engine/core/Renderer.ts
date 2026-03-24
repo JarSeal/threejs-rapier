@@ -15,7 +15,7 @@ let r: THREE.WebGPURenderer | null = null;
 const ELEM_ID = 'mainCanvas';
 const LS_KEY = 'debugRenderer';
 let options: RendererOptions = {
-  antialias: undefined,
+  antialias: true,
   forceWebGL: false,
   devicePixelRatio: 1,
   currentApi: 'WebGL',
@@ -49,7 +49,7 @@ type RendererOptions = {
  * @param opts (object) optional render options object {@link RendererOptions}
  * @returns THREE.WebGPURenderer
  */
-export const createRenderer = (opts?: Partial<RendererOptions>) => {
+export const createRenderer = async (opts?: Partial<RendererOptions>) => {
   if (r) return r;
 
   const windowSize = getWindowSize();
@@ -76,6 +76,8 @@ export const createRenderer = (opts?: Partial<RendererOptions>) => {
   canvasParentElem.appendChild(renderer.domElement);
 
   r = renderer;
+
+  await renderer.init();
 
   return renderer;
 };

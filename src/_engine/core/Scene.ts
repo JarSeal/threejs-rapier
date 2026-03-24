@@ -485,7 +485,8 @@ export const deleteAllSceneLoopers = (sceneId: string) => {
   deleteSceneAppLoopers(sceneId);
 };
 
-export const runSceneMainLoopers = (delta: number) => {
+export const runSceneMainLoopers = (delta: number, skipFrame: boolean) => {
+  if (skipFrame) return;
   for (let i = 0; i < curSceneMainLoopers.length; i++) {
     curSceneMainLoopers[i](delta);
   }

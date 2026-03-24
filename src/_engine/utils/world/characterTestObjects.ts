@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry, deleteGeometry } from '../_engine/core/Geometry';
-import { createMaterial } from '../_engine/core/Material';
+import { createGeometry, deleteGeometry } from '../../core/Geometry';
+import { createMaterial } from '../../core/Material';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { createMesh } from '../_engine/core/Mesh';
-import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
+import { createMesh } from '../../core/Mesh';
+import { createPhysicsObjectWithMesh } from '../../core/PhysicsRapier';
 
 // @TODO: refactor this to produce only the needed objects (not all like it is now)
 

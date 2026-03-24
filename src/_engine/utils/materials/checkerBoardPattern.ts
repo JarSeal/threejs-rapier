@@ -5,8 +5,8 @@ import {
   uv, // Standard UV coordinates
   attribute,
 } from 'three/tsl';
-import { existsOrThrow } from '../../../../_engine/utils/helpers';
-import { createMaterial } from '../../../../_engine/core/Material';
+import { existsOrThrow } from '../helpers';
+import { createMaterial } from '../../core/Material';
 
 export const getUVRepeatFactor = (mesh: THREE.Mesh, metersPerTile: number) => {
   const geometry = mesh.geometry;

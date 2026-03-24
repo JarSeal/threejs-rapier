@@ -228,10 +228,11 @@ export const createDebugGui = (opts?: DebugGUIOpts) => {
   const setWrapperHeightOnResize = () => {
     tabsContainerWrapper?.updateAttr({ style: `height: ${getWrapperHeight()}px` });
   };
+  window.removeEventListener('resize', setWrapperHeightOnResize, true);
   window.addEventListener('resize', setWrapperHeightOnResize, true);
   tabsContainerWrapper.update({
     onRemoveCmp: () => {
-      window.removeEventListener('resize', setWrapperHeightOnResize);
+      window.removeEventListener('resize', setWrapperHeightOnResize, true);
     },
   });
 
