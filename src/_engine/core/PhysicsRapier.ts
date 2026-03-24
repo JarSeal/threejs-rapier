@@ -94,6 +94,10 @@ export type ColliderParams = (
       nrows?: number;
       ncols?: number;
     }
+  | {
+      type: 'CONVEXHULL';
+      vertices?: Float32Array;
+    }
 ) & {
   /** Mass (default 1.0) */
   density?: number;
@@ -593,7 +597,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
     case 'HEIGHTFIELD':
       geo = existsOrThrow(
         mesh?.geometry,
-        'Could not find geometry in the mesh for heightfield. Could not create height field physics shape in createCollider.'
+        'Could not find mesh or geometry in the mesh for heightfield. Could not create height field physics shape in createCollider.'
       );
       // Merge all vertices that share a position
       geo = BufferGeometryUtils.mergeVertices(geo);
@@ -660,7 +664,30 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
         scale
       );
       break;
-    // @TODO: Add CONVEX HULL type
+    case 'CONVEXHULL':
+      const vertParams = colliderParams.vertices;
+      if (vertParams) {
+        shape = new RAPIER.ConvexPolyhedron(new Float32Array(vertParams));
+      } else {
+        geo = existsOrThrow(
+          mesh?.geometry,
+          'Could not find mesh or geometry in the mesh for convex hull. Could not create convex hull physics shape in createCollider.'
+        );
+        // 1. Get a copy of the geometry
+        const geoClone = geo.clone();
+        // 2. (Optional) If you haven't applied transforms in Blender,
+        // Apply the mesh's local scale to the vertices here.
+        geoClone.applyMatrix4(
+          new THREE.Matrix4().makeScale(mesh?.scale.x || 1, mesh?.scale.y || 1, mesh?.scale.z || 1)
+        );
+        // 3. Center it so the physics hull is balanced on the Body's origin
+        geoClone.center();
+        // 4. Extract the clean, centered, scaled vertices, and create shape
+        const vertices = geoClone.attributes.position.array;
+        shape = new RAPIER.ConvexPolyhedron(new Float32Array(vertices));
+        geoClone.dispose();
+      }
+      break;
   }
 
   if (!shape) {

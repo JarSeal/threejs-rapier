@@ -26,9 +26,11 @@ export type AdditionalImportPhysicsParams = {
 export type ImportModelParams = {
   fileName: string;
   id?: string;
+  name?: string;
   importGroup?: boolean;
   allMeshesVisible?: boolean;
   groupId?: string;
+  groupName?: string;
   meshIndex?: number | number[];
   throwOnError?: boolean;
   saveMaterial?: boolean;
@@ -92,7 +94,7 @@ const parseImportResult = (
       }
     }
 
-    const physObj = importMultiplePhysicsObjects(customProps, groupOrMesh).filter(
+    const physObj = importMultiplePhysicsObjects(customProps, groupOrMesh, params).filter(
       Boolean
     ) as PhysicsObject[];
 
@@ -182,7 +184,7 @@ const parseImportResult = (
     overridePhysParams[0],
     modelMesh.userData.id
   );
-  const rigidAndChildParamsResult = getRigidParamsAndChildColliders([userData]);
+  const rigidAndChildParamsResult = getRigidParamsAndChildColliders([userData], params);
   if (rigidAndChildParamsResult) {
     const { physParamsObj, rigidMeshId } = rigidAndChildParamsResult;
     if (userData.keepMesh) {
@@ -286,7 +288,10 @@ export const importModelAsync = async (params: ImportModelParams): Promise<Impor
   try {
     const gltf = await loader.loadAsync(fileName);
     // @TODO: add a debugger rule here to console.log the gltf
-    modelGroup = createGroup({ id: params.groupId });
+    modelGroup = createGroup({
+      id: params.groupId || params.id,
+      name: params.groupName || params.name,
+    });
     // Check if the first and only child is an empty object and import the children
     if (gltf?.scene?.children.length === 1 && isOnlyObject3D(gltf.scene.children[0])) {
       const children = [...gltf.scene.children[0].children];
@@ -596,6 +601,9 @@ const cleanUpCustomProps = (
       if (userData.nCols !== undefined) delete userData.nCols;
       if (userData.nRows !== undefined) delete userData.nRows;
       break;
+    case 'CONVEXHULL':
+      colliderParams = { type: colliderType };
+      break;
   }
 
   const isPhysObj = Boolean(userData.isPhysObj);
@@ -649,14 +657,15 @@ const cleanUpCustomProps = (
 
 const importMultiplePhysicsObjects = (
   customProps: CleanUpCustomPropsResult[],
-  groupOrMesh: THREE.Group | THREE.Mesh
+  groupOrMesh: THREE.Group | THREE.Mesh,
+  params: ImportModelParams
 ): (PhysicsObject | undefined)[] => {
   const physObj: (PhysicsObject | undefined)[] = [];
   if (!customProps.length) return [];
   const customPropsWithoutIndex: CleanUpCustomPropsResult[] = [];
   // Collect all the different indexes to an array
   const indexes = customProps.reduce((prev, cur) => {
-    if (cur.index === undefined) {
+    if (cur.index === undefined || typeof cur.index !== 'number') {
       // meshes with no index
       customPropsWithoutIndex.push(cur);
     } else if (cur.index !== undefined && !prev.includes(cur.index)) {
@@ -682,7 +691,7 @@ const importMultiplePhysicsObjects = (
       ...propsWithColliders,
       ...propsWithoutColliders,
     ];
-    const rigidAndChildParamsResult = getRigidParamsAndChildColliders(props);
+    const rigidAndChildParamsResult = getRigidParamsAndChildColliders(props, params);
     if (!rigidAndChildParamsResult) return [];
     const { rigidMeshId, physParamsObj } = rigidAndChildParamsResult;
     if (props.length > 1) physParamsObj.isCompoundObject = true;
@@ -747,7 +756,8 @@ const importMultiplePhysicsObjects = (
 };
 
 const getRigidParamsAndChildColliders = (
-  props: CleanUpCustomPropsResult[]
+  props: CleanUpCustomPropsResult[],
+  params: ImportModelParams
 ): {
   rigidMeshId: string;
   rigidParams: CleanUpCustomPropsResult;
@@ -782,8 +792,8 @@ const getRigidParamsAndChildColliders = (
       },
     ] as PhysicsParams[],
     meshOrMeshId: [] as (THREE.Mesh | string) | (THREE.Mesh | string)[],
-    id: rigidParams.id || rigidMeshId,
-    name: rigidParams.name,
+    id: params.id || rigidParams.id || rigidMeshId,
+    name: params.name || rigidParams.name,
     isCompoundObject: Boolean(restOfColliderParams.length),
   };
   if (!physParamsObj.physicsParams[0].collider) return null;

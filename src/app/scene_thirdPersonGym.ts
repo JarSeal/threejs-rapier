@@ -411,9 +411,11 @@ export const sceneThirdPersonGym = async () =>
       result.mesh.receiveShadow = true;
       scene.add(result.mesh);
     }
+
+    // Suzanne (monkey TRIMESH)
     const result2 = await importModelAsync({
       fileName: '/debugger/assets/testModels/customPropTestMonkey.glb',
-      id: 'customPropTest',
+      id: 'customPropTest2',
       importGroup: true,
       physicsParams: {
         isPhysObj: true,
@@ -430,6 +432,33 @@ export const sceneThirdPersonGym = async () =>
       result2.mesh.castShadow = true;
       result2.mesh.receiveShadow = true;
       scene.add(result2.mesh);
+    }
+
+    // Suzanne (monkey TRIMESH)
+    const result2convex = await importModelAsync({
+      fileName: '/debugger/assets/testModels/customPropTestMonkey.glb',
+      id: 'customPropTest2_2',
+      importGroup: true,
+      physicsParams: {
+        isPhysObj: true,
+        keepMesh: true,
+        rigidBody: { rigidType: 'DYNAMIC' },
+        collider: { type: 'CONVEXHULL', density: 2 },
+      },
+    });
+    if (result2convex.mesh && !Array.isArray(result2convex.mesh)) {
+      const result2convexPos = [4, 6, 3];
+      if (!Array.isArray(result2convex.physObj) && result2convex.physObj) {
+        result2convex.physObj.setTranslation({
+          x: result2convexPos[0],
+          y: result2convexPos[1],
+          z: result2convexPos[2],
+        });
+      }
+      addCheckerboardMaterialToMesh('checkerMaterial', result2convex.mesh);
+      result2convex.mesh.castShadow = true;
+      result2convex.mesh.receiveShadow = true;
+      scene.add(result2convex.mesh);
     }
 
     const slides = await getTestObstacle('slideAngles', {
@@ -911,12 +940,9 @@ export const sceneThirdPersonGym = async () =>
       id: 'customPropTest13',
       importGroup: true,
       allMeshesVisible: true,
-      // physicsParams: {
-      //   collider: { type: 'TRIMESH' },
-      // },
     });
     if (result13.group) {
-      const result13Position = [0, 1.8, 33];
+      const result13Position = [-25, -1.8, 126.336];
       for (let i = 0; i < result13.group.children.length; i++) {
         const child = result13.group.children[i] as THREE.Mesh;
         child.castShadow = true;
@@ -939,28 +965,70 @@ export const sceneThirdPersonGym = async () =>
       }
       scene.add(result13.group);
     }
-    // if (result13.mesh && !Array.isArray(result13.mesh)) {
-    //   const result13Position = [0, 1.8, 33];
-    //   if (!Array.isArray(result13.physObj)) {
-    //     result13.physObj?.setTranslation(
-    //       {
-    //         x: result13Position[0],
-    //         y: result13Position[1],
-    //         z: result13Position[2],
-    //       },
-    //       result13.group
-    //     );
-    //     console.log('MESH_GROUP', result13.group?.position);
-    //   }
-    //   result13.mesh.castShadow = true;
-    //   result13.mesh.receiveShadow = true;
-    //   result13.mesh.material = createMaterial({
-    //     id: 'stairsStraightTrimeshMaterial',
-    //     type: 'PHONG',
-    //     params: { color: '#999' },
-    //   });
-    //   //scene.add(result13.mesh);
-    // }
+
+    // Smooth terrain
+    const result14 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/terrainSmooth.glb',
+      id: 'customPropTest14',
+      importGroup: true,
+      allMeshesVisible: true,
+    });
+    if (result14.group) {
+      const result14Position = [52.635, -1.8, 150.833];
+      for (let i = 0; i < result14.group.children.length; i++) {
+        const child = result14.group.children[i] as THREE.Mesh;
+        child.castShadow = true;
+        child.receiveShadow = true;
+        child.material = createMaterial({
+          id: 'stairsStraightTrimeshMaterial',
+          type: 'PHONG',
+          params: { color: '#999' },
+        });
+      }
+      if (!Array.isArray(result14.physObj)) {
+        result14.physObj?.setTranslation(
+          {
+            x: result14Position[0],
+            y: result14Position[1],
+            z: result14Position[2],
+          },
+          result14.group
+        );
+      }
+      scene.add(result14.group);
+    }
+
+    // Obstacles
+    const result15 = await importModelAsync({
+      fileName: '/debugger/assets/testModels/obstacles.glb',
+      id: 'customPropTest15',
+      importGroup: true,
+      allMeshesVisible: true,
+    });
+    if (result15.group) {
+      const result15Position = [-30, -1, 30];
+      for (let i = 0; i < result15.group.children.length; i++) {
+        const child = result15.group.children[i] as THREE.Mesh;
+        child.castShadow = true;
+        child.receiveShadow = true;
+        child.material = createMaterial({
+          id: 'stairsStraightTrimeshMaterial',
+          type: 'PHONG',
+          params: { color: '#999' },
+        });
+      }
+      if (!Array.isArray(result15.physObj)) {
+        result15.physObj?.setTranslation(
+          {
+            x: result15Position[0],
+            y: result15Position[1],
+            z: result15Position[2],
+          },
+          result15.group
+        );
+      }
+      scene.add(result15.group);
+    }
 
     initPhysicsStressTest(scene);
 
