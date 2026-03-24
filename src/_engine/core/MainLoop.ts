@@ -315,6 +315,8 @@ export const initMainLoop = async () => {
     if (maxFPS > 0) loopState.maxFPSInterval = 1 / maxFPS;
   }
 
+  initWinVisibilityListener();
+
   if (isDebugEnvironment() || isProdTestMode()) {
     const savedValues = lsGetItem(LS_KEY, loopState);
     loopState = {
@@ -376,7 +378,6 @@ let appPlayBinding: BindingApi | null = null;
 const createLoopDebugControls = () => {
   // Init On Screen Tools
   InitOnScreenTools();
-  initWinVisibilityListener();
 
   if (!isProdTestMode) return;
 
