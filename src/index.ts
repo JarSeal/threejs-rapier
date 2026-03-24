@@ -15,7 +15,7 @@ InitEngine(async () => {
   createCamera(MAIN_APP_CAM_ID, { name: 'Main Camera', isCurrentCamera: true, fov: 90 });
 
   // Init renderer
-  createRenderer({
+  await createRenderer({
     antialias: true,
     forceWebGL: false,
     toneMapping: THREE.ACESFilmicToneMapping,

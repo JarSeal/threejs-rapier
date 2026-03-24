@@ -49,7 +49,7 @@ type RendererOptions = {
  * @param opts (object) optional render options object {@link RendererOptions}
  * @returns THREE.WebGPURenderer
  */
-export const createRenderer = (opts?: Partial<RendererOptions>) => {
+export const createRenderer = async (opts?: Partial<RendererOptions>) => {
   if (r) return r;
 
   const windowSize = getWindowSize();
@@ -76,6 +76,8 @@ export const createRenderer = (opts?: Partial<RendererOptions>) => {
   canvasParentElem.appendChild(renderer.domElement);
 
   r = renderer;
+
+  await renderer.init();
 
   return renderer;
 };
