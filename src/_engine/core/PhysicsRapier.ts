@@ -24,6 +24,7 @@ import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
 import { updateInputControllerLoopActions } from './InputControls';
 import { BladeController, View } from '@tweakpane/core';
 import { BufferGeometryUtils } from 'three/examples/jsm/Addons.js';
+import { isCurrentlyLoading } from './SceneLoader';
 
 type CollisionEventFn = (
   collider1: Collider,
@@ -699,11 +700,11 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
   const colliderDesc = new RAPIER.ColliderDesc(shape);
 
   // Since Rapier shapes start on Y, we rotate them if the Blender spine was X or Z (for CYLINDER and CAPSULE)
-  if (geo?.userData.props?.params.orientation === 'x') {
+  if (geo?.userData.props?.params?.orientation === 'x') {
     // Rotate 90 degrees around Z to lay the cylinder along the X-axis
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
     colliderDesc.setRotation(q);
-  } else if (geo?.userData.props?.params.orientation === 'z') {
+  } else if (geo?.userData.props?.params?.orientation === 'z') {
     // Rotate 90 degrees around X to lay the cylinder along the Z-axis
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
     colliderDesc.setRotation(q);
@@ -1504,15 +1505,16 @@ const physicsVisibilityChange = (isHidden: boolean) => {
     if (loopState.masterPlay && physicsState.backgroundBehavior === 'PAUSE') {
       setPhysicsPauseTime();
       physicsState.isPaused = true;
-      clock.stop();
+      timerRunning = false;
       physicsState.pauseReason = 'BACKGROUND_BEHAVIOR';
       toggleMainPlay(false);
     }
   } else {
     if (physicsState.pauseReason === 'BACKGROUND_BEHAVIOR') {
       physicsState.pauseReason = null;
-      clock.start();
-      clock.getDelta();
+      timerRunning = true;
+      updateTimer();
+      timer.getDelta();
       accDelta = 0;
       toggleMainPlay(true);
     }
@@ -1520,7 +1522,13 @@ const physicsVisibilityChange = (isHidden: boolean) => {
 };
 
 let accDelta = 0;
-const clock = new THREE.Clock();
+let timerRunning = true;
+const timer = new THREE.Timer();
+const updateTimer = () => {
+  if (timerRunning) {
+    timer.update();
+  }
+};
 
 const prevTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaternion }>();
 const currTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaternion }>();
@@ -1528,8 +1536,9 @@ const currTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaterni
 // Different stepper functions to use for debug and production.
 // baseStepper is used for both.
 const baseStepper = (loopState: LoopState) => {
-  let delta = clock.getDelta();
-  let stepsTaken = 0;
+  if (isCurrentlyLoading()) return;
+  updateTimer();
+  let delta = timer.getDelta();
   if (loopState.isWindowHidden || !loopState.masterPlay || !loopState.appPlay) {
     if (
       physicsState.backgroundBehavior === 'KEEP_RUNNING_USE_MIN_DELTA' &&
@@ -1543,12 +1552,13 @@ const baseStepper = (loopState: LoopState) => {
     ) {
       setPhysicsPauseTime();
       physicsState.isPaused = true;
-      clock.stop();
+      timerRunning = false;
       return;
     }
   } else if (physicsState.isPaused) {
-    clock.start();
-    delta = clock.getDelta();
+    timerRunning = true;
+    updateTimer();
+    delta = timer.getDelta();
     delta = 0;
     accDelta = 0;
     if (physicsState.minDeltaTime > 0) delta = physicsState.minDeltaTime;
@@ -1556,6 +1566,7 @@ const baseStepper = (loopState: LoopState) => {
     physicsState.pauseDurationTotal += performance.now() - physicsState.pausedTime;
     physicsState.pausedTime = 0;
   }
+  let stepsTaken = 0;
   const scaledDelta = delta * loopState.playSpeedMultiplier;
   accDelta += scaledDelta;
   if (physicsState.maxDeltaTime > 0) delta = Math.min(delta, physicsState.maxDeltaTime);

@@ -1,6 +1,6 @@
-import { Clock, type Renderer, type Scene } from 'three/webgpu';
+import { Timer, type Renderer, type Scene } from 'three/webgpu';
 import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
-import { getStats, initStats, startCustomMeasurments, updateRestOfStats } from '../debug/Stats';
+import { getStats, initStats, startCustomMeasurements, updateRestOfStats } from '../debug/Stats';
 import { getAllCamerasAsArray, getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
 import {
@@ -25,7 +25,7 @@ import { updateInputControllerLoopActions } from './InputControls';
 import { countRayCastFrames, initRayCasting } from './Raycast';
 
 const LS_KEY = 'debugLoop';
-const clock = new Clock();
+const timer = new Timer();
 let delta = 0;
 let deltaApp = 0;
 let mainLoopInitiated = false;
@@ -95,9 +95,10 @@ let mainLoop: () => void = () => {};
 // LOOP (for debug)
 // **************************************
 const mainLoopForDebug = async () => {
-  startCustomMeasurments();
+  startCustomMeasurements();
 
-  const dt = clock.getDelta();
+  timer.update();
+  const dt = timer.getDelta();
 
   if (loopState.masterPlay) {
     delta = dt * loopState.playSpeedMultiplier;
@@ -168,7 +169,8 @@ const mainLoopForDebug = async () => {
 // LOOP (for production)
 // **************************************
 const mainLoopForProduction = async () => {
-  const dt = clock.getDelta();
+  timer.update();
+  const dt = timer.getDelta();
   if (loopState.masterPlay) {
     delta = dt * loopState.playSpeedMultiplier;
     requestAnimationFrame(mainLoop);
@@ -204,7 +206,8 @@ const mainLoopForProduction = async () => {
 // LOOP (for production with FPS limiter)
 // **************************************
 const mainLoopForProductionWithFPSLimiter = async () => {
-  const dt = clock.getDelta();
+  timer.update();
+  const dt = timer.getDelta();
 
   if (loopState.masterPlay) {
     delta = dt * loopState.playSpeedMultiplier;
@@ -339,7 +342,7 @@ export const initMainLoop = async () => {
     mainLoop = mainLoopForProduction;
   }
 
-  await renderer.renderAsync(getRootScene() as Scene, currentCamera);
+  await renderer.render(getRootScene() as Scene, currentCamera);
   if (loopState.masterPlay) {
     // Wait for a few loops and start the main loop and physics loop
     setTimeout(() => requestAnimationFrame(mainLoop), 100);
