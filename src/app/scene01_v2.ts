@@ -105,7 +105,6 @@ export const scene01 = async () =>
         fileNames: map02,
         path: '/debugger/assets/testTextures',
         textureId: 'cubeTextureId',
-        flipY: true,
       },
     });
 

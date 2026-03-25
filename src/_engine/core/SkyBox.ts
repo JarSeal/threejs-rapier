@@ -6,7 +6,7 @@ import {
   positionViewDirection,
   cameraViewMatrix,
   pmremTexture,
-  reflectVector,
+  vec3,
 } from 'three/tsl';
 import { lerror, lwarn } from '../utils/Logger';
 import {
@@ -272,6 +272,11 @@ export const createSkyBox = async (
       }
     }
 
+    if (equirectTexture) {
+      equirectTexture.flipY = false;
+      equirectTexture.needsUpdate = true;
+    }
+
     // Add to skyBoxStateToBeAdded
     skyBoxStateToBeAdded.equiRectFile = typeof file === 'string' ? file : '';
     skyBoxStateToBeAdded.equiRectTextureId = textureId
@@ -296,9 +301,16 @@ export const createSkyBox = async (
       cubeTexture.colorSpace = params.colorSpace || defaultSkyBoxState.cubeTextColorSpace;
 
       pmremRoughnessBg.value = skyBoxStateToBeAdded.cubeTextRoughness;
+      let backgroundUV = normalWorld;
       const rotateYMatrix = new THREE.Matrix4();
       rotateYMatrix.makeRotationY(Math.PI * skyBoxStateToBeAdded.cubeTextRotate);
-      const backgroundUV = reflectVector.xyz.mul(uniform(rotateYMatrix)).mul(flipY ? 1 : -1);
+      backgroundUV = backgroundUV.transformDirection(uniform(rotateYMatrix));
+      // If it's upside down, flip the Y. If mirrored, flip Z.
+      if (flipY) {
+        backgroundUV = vec3(backgroundUV.x.negate(), backgroundUV.y.negate(), backgroundUV.z);
+      } else {
+        backgroundUV = vec3(backgroundUV.x.negate(), backgroundUV.y, backgroundUV.z);
+      }
       if (isCurScene && isCurrent !== false) {
         const rootScene = getRootScene() as THREE.Scene;
         rootScene.backgroundNode = pmremTexture(cubeTexture, backgroundUV, pmremRoughnessBg);

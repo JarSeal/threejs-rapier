@@ -248,18 +248,13 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       if (loadSceneProps.deletePrevScene && prevScene) {
         // Delete the whole previous scene and assets
         // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps (like deleteMeshes, deleteTextures, etc.)
-        console.log('STASS1');
         deleteScene(prevSceneId, { deleteAll: true });
-        console.log('STASS2');
       } else if (prevScene) {
-        console.log('STASS0');
         deleteAllSceneLoopers(prevSceneId);
       }
 
       clearSkyBox();
       handleDraggableWindowsOnSceneChangeStart();
-
-      console.log('STASS3');
 
       runOnSceneExit(prevSceneId);
       deleteOnCameraSetsAndUnsets();
