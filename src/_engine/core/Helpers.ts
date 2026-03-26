@@ -203,7 +203,7 @@ export const toggleLightHelper = (id: string, show: boolean, doNotUpdateDebugger
   } else if (show) {
     // Create helper and then show helper
     const type = light.userData.type;
-    if (type === 'DIRECTIONAL') {
+    if (type === 'DIRECTIONAL' && 'isDirectionalLight' in light && light.isDirectionalLight) {
       if (light.castShadow && light.shadow?.camera) {
         const cameraHelper = new THREE.CameraHelper(light.shadow.camera);
         addToCameraHelpers(cameraHelper, true);

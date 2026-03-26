@@ -218,7 +218,7 @@ export const createSkyBox = async (
             id: textureId,
             fileName: file as string,
             path: params.path,
-            useRGBELoader: true,
+            useHDRLoader: true,
             throwOnError: isDebugEnvironment(),
           });
           // equirectTexture.magFilter = THREE.LinearFilter;

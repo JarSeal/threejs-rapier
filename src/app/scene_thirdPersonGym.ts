@@ -705,7 +705,9 @@ export const sceneThirdPersonGym = async () =>
       result3.mesh?.position.set(2, 2, 2);
       if (!Array.isArray(result3.physObj))
         result3.physObj?.rigidBody?.setTranslation(new THREE.Vector3(2, 2, 2), true);
-      addCheckerboardMaterialToMesh('checkerMaterial', result3.mesh);
+      addCheckerboardMaterialToMesh('checkerMaterial', result3.mesh, {
+        useConstantCheckerSize: true, // @TODO: check how to make this work (currently there is no change)
+      });
       result3.mesh.castShadow = true;
       result3.mesh.receiveShadow = true;
       scene.add(result3.mesh);

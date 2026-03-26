@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { ShaderNodeObject, uniform } from 'three/tsl';
+import { uniform } from 'three/tsl';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, FolderApi, View } from '@tweakpane/core';
@@ -56,8 +56,8 @@ const DEFAULT_DEBUG_CAM_PARAMS: DebugCameraState = {
 };
 const getDefaultDebugCamParams = () => ({ ...DEFAULT_DEBUG_CAM_PARAMS }) as DebugCameraState;
 let envBallMesh: THREE.Mesh | null = null;
-let envBallColorNode: ShaderNodeObject<THREE.PMREMNode> | null = null;
-let envBallRoughnessNode: ShaderNodeObject<THREE.UniformNode<number>> = uniform(0);
+let envBallColorNode: THREE.PMREMNode | null = null;
+let envBallRoughnessNode: THREE.UniformNode<'float', number> = uniform(0);
 let envBallFolder: FolderApi | null = null;
 let debugCamera: THREE.PerspectiveCamera | null = null;
 let curSceneDebugCamParams = getDefaultDebugCamParams();
@@ -386,12 +386,12 @@ export const setDebugToolsVisibility = (
 
 /**
  * Adds a new colorNode to the environment debug ball (in the bottom left corner when using the debug camera).
- * @param colorNode ShaderNodeObject<THREE.PMREMNode> to use in the env ball material
- * @param ballRough ShaderNodeObject<THREE.UniformNode<number>> to control the env ball roughness
+ * @param colorNode THREE.PMREMNode to use in the env ball material
+ * @param ballRough THREE.UniformNode<'float', number> to control the env ball roughness
  */
 export const setDebugEnvBallMaterial = (
-  colorNode?: ShaderNodeObject<THREE.PMREMNode>,
-  ballRoughness?: ShaderNodeObject<THREE.UniformNode<number>>
+  colorNode?: THREE.PMREMNode,
+  ballRoughness?: THREE.UniformNode<'float', number>
 ) => {
   if (!isDebugEnvironment()) return;
   envBallColorNode = colorNode || null;
