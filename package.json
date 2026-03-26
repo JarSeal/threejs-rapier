@@ -18,7 +18,7 @@
     "docs": "typedoc"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "0.17.1",
+    "@dimforge/rapier3d-compat": "0.19.3",
     "stats-gl": "3.6.0",
     "three": "0.183.2",
     "tweakpane": "4.0.5"

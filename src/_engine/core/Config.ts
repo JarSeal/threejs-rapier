@@ -23,7 +23,6 @@ export type AppConfig = {
     timestep?: number;
     solverIterations?: number;
     internalPgsIterations?: number;
-    additionalFrictionIterations?: number;
     interpolationEnabled?: boolean;
   };
   draggableWindows?: {

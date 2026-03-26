@@ -243,7 +243,6 @@ type ScenePhysicsState = {
   gravity: { x: number; y: number; z: number };
   solverIterations: number;
   internalPgsIterations: number;
-  additionalFrictionIterations: number;
   interpolationEnabled: boolean;
 };
 
@@ -308,7 +307,6 @@ const DEFAULT_SCENE_PHYS_STATE: ScenePhysicsState = {
   gravity: { x: 0, y: -9.81, z: 0 },
   solverIterations: 10,
   internalPgsIterations: 1,
-  additionalFrictionIterations: 4,
   interpolationEnabled: true,
 };
 const getDefaultScenePhysParams = () =>
@@ -1347,16 +1345,11 @@ export const createPhysicsWorld = () => {
   const internalPgsIterations =
     physicsState.scenes[currentSceneId]?.internalPgsIterations ||
     defaultParams.internalPgsIterations;
-  const additionalFrictionIterations =
-    physicsState.scenes[currentSceneId]?.additionalFrictionIterations ||
-    defaultParams.additionalFrictionIterations;
   physicsWorld = new RAPIER.World(new RAPIER.Vector3(gravity.x, gravity.y, gravity.z));
   physicsWorld.timestep = physicsState.timestepRatio;
   physicsWorldEnabled = true;
   if (solverIterations) physicsWorld.numSolverIterations = solverIterations;
   if (internalPgsIterations) physicsWorld.numInternalPgsIterations = internalPgsIterations;
-  if (additionalFrictionIterations)
-    physicsWorld.numAdditionalFrictionIterations = additionalFrictionIterations;
 
   if (isDebugEnvironment()) initDebuggerScenePhysState();
 };
@@ -2087,26 +2080,6 @@ export const buildPhysicsDebugGUI = () => {
       }
       lsSetItem(LS_KEY, physicsState);
       physicsWorld.numInternalPgsIterations = e.value;
-    });
-  debugGUI
-    .addBinding(curScenePhysParams, 'additionalFrictionIterations', {
-      label: 'Additional friction iterations',
-      min: 1,
-      step: 1,
-    })
-    .on('change', (e) => {
-      const currentSceneId = getCurrentSceneId();
-      if (!currentSceneId) return;
-      if (!physicsState.scenes[currentSceneId]) {
-        physicsState.scenes[currentSceneId] = getDefaultScenePhysParams();
-      }
-      physicsState.scenes[currentSceneId].additionalFrictionIterations = e.value;
-      curScenePhysParams = physicsState.scenes[currentSceneId];
-      for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
-        currentScenePhysicsObjects[i].rigidBody?.wakeUp();
-      }
-      lsSetItem(LS_KEY, physicsState);
-      physicsWorld.numAdditionalFrictionIterations = e.value;
     });
   debugGUI
     .addBinding(curScenePhysParams, 'interpolationEnabled', { label: 'Enable interpolation' })
