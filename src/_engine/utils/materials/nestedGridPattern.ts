@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import * as THREE from 'three/webgpu';
 import {
   uniform, // Uniforms
@@ -13,8 +11,8 @@ import {
   mod,
   min,
 } from 'three/tsl';
-import { existsOrThrow } from '../../../../_engine/utils/helpers';
-import { createMaterial } from '../../../../_engine/core/Material';
+import { existsOrThrow } from '../helpers';
+import { createMaterial } from '../../core/Material';
 
 export const getUVRepeatFactor = (mesh: THREE.Mesh, metersPerTile: number) => {
   const geometry = mesh.geometry;
@@ -44,7 +42,7 @@ const METERS_PER_CHECKER_TILE = 0.05;
 
 // A TSL function that takes a vec2 coordinate and returns the checkerboard color.
 // The typings are still lagging behind (my current version is "three": "0.176.0"), hence the "any" type.
-const nestedGridPattern = (uv: any) => {
+const nestedGridPattern = (uv: THREE.Node<'vec2'>) => {
   const majorSpacing = float(0.2);
   const minorSpacing = float(0.32);
   const majorThickness = float(0.002);
@@ -206,7 +204,7 @@ export const addNestedGridMaterialToMesh = (
 
   // --- Coordinate Definitions ---
   const uvRepeatAttribute = attribute('uvRepeatFactor', 'vec2');
-  const uvCoords = uv().mul(opts.useConstantCheckerSize ? uvRepeatAttribute : uvRepeat);
+  const uvCoords = uv().mul(opts.useConstantCheckerSize ? vec2(uvRepeatAttribute) : uvRepeat);
 
   // Call the corrected function node
   // const fragmentColor = nestedGridPattern(uvCoords);

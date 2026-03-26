@@ -16,26 +16,21 @@ import {
 
 const meshes: { [id: string]: THREE.Mesh } = {};
 
-/**
- * Creates a Three.js mesh
- * @param params (object) mesh params, { id: string (optional), geo: THREE.BufferGeometry | {@link GeoPropsB}, mat: THREE.Material | {@link MatProps}, phy?: {@link PhysicsParams} & { sceneId?: string, noWarnForUnitializedScene?: boolean } }
- * @returns THREE.Mesh
- */
-export const createMesh = ({
-  id,
-  geo,
-  mat,
-  phy,
-  castShadow,
-  receiveShadow,
-}: {
+export type MeshProps = {
   id?: string;
   geo: THREE.BufferGeometry | GeoProps;
   mat: THREE.Material | MatProps;
   phy?: PhysicsParams & { sceneId?: string; noWarnForUnitializedScene?: boolean };
   castShadow?: boolean;
   receiveShadow?: boolean;
-}) => {
+};
+
+/**
+ * Creates a Three.js mesh
+ * @param params (object) mesh params, { id: string (optional), geo: THREE.BufferGeometry | {@link GeoPropsB}, mat: THREE.Material | {@link MatProps}, phy?: {@link PhysicsParams} & { sceneId?: string, noWarnForUnitializedScene?: boolean } }
+ * @returns THREE.Mesh
+ */
+export const createMesh = ({ id, geo, mat, phy, castShadow, receiveShadow }: MeshProps) => {
   if (id && meshes[id] && !phy) return meshes[id];
 
   let mesh: THREE.Mesh | null = null;
@@ -87,17 +82,20 @@ export const getMeshes = (id: string[]) => id.map((meshId) => meshes[meshId]);
  */
 export const getAllMeshes = () => meshes;
 
-const deleteOneMesh = (
-  id: string,
-  opts?: {
-    deleteGeometries?: boolean;
-    deleteMaterials?: boolean;
-    deleteTextures?: boolean;
-    deleteAll?: boolean;
-  }
-) => {
+export type DeleteMeshOptions = {
+  deleteGeometries?: boolean;
+  deleteMaterials?: boolean;
+  deleteTextures?: boolean;
+  deleteAll?: boolean;
+};
+
+const deleteOneMesh = (id: string, opts?: DeleteMeshOptions) => {
   const mesh = meshes[id];
   if (!mesh) return;
+  mesh.removeFromParent();
+  if (mesh.userData.isPhysicsObject || doesPOExist(id)) {
+    deletePhysicsObject(id);
+  }
   if (opts?.deleteGeometries || opts?.deleteAll) {
     const geoId = mesh.geometry.userData.id;
     if (geoId) deleteGeometry(geoId);
@@ -117,12 +115,6 @@ const deleteOneMesh = (
       if (matId) deleteMaterial(matId, deleteTextures);
     }
   }
-
-  if (mesh.userData.isPhysicsObject || doesPOExist(id)) {
-    deletePhysicsObject(id);
-  }
-
-  mesh.removeFromParent();
 
   delete meshes[id];
 };

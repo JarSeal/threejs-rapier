@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { deleteMesh } from './Mesh';
 import { lwarn } from '../utils/Logger';
 
-const groups: { [id: string]: THREE.Group } = {};
+let groups: { [id: string]: THREE.Group } = {};
 
 /**
  * Adds a Three.js object to a group
@@ -131,9 +131,11 @@ export const removeFromGroup = (
  */
 export const createGroup = ({
   id,
+  name,
   obj,
 }: {
   id?: string;
+  name?: string;
   obj?: THREE.Object3D | THREE.Object3D[];
 }) => {
   if (id && groups[id]) return groups[id];
@@ -142,6 +144,7 @@ export const createGroup = ({
 
   group.userData.id = id || group.uuid;
   groups[id || group.uuid] = group;
+  if (name) group.name = name;
 
   if (obj) addToGroup(group, obj);
 
@@ -251,6 +254,20 @@ export const deleteGroup = (
       deleteOneGroup(id, opts);
     }
   }
+};
+
+export const deleteAllGroups = (opts?: {
+  deleteMeshes?: boolean;
+  deleteGeometries?: boolean;
+  deleteMaterials?: boolean;
+  deleteTextures?: boolean;
+  deleteAll?: boolean;
+}) => {
+  const keys = Object.keys(groups);
+  for (let i = 0; i < keys.length; i++) {
+    deleteGroup(keys[i], opts);
+  }
+  groups = {};
 };
 
 /**

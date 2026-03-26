@@ -1,6 +1,7 @@
 import { isUsingDebugCamera } from '../debug/DebugTools';
 import { lerror, lwarn } from '../utils/Logger';
 import { isDebugEnvironment } from './Config';
+import { addOnWindowBlurFn, addVisibilityChangeFn } from './MainLoop';
 import { getCurrentSceneId } from './Scene';
 
 export type KeyInputControlType = 'KEY_UP' | 'KEY_DOWN' | 'KEY_LOOP_ACTION';
@@ -254,6 +255,8 @@ const initKeyDownControls = () => {
     }
   };
   window.addEventListener('keydown', controlListenerFns.keyDown);
+  addVisibilityChangeFn('keysPressedCancelation', () => clearAllInputLoopKeysPresses());
+  addOnWindowBlurFn('keysPressedCancelation', () => clearAllInputLoopKeysPresses());
 };
 
 const initMouseUpControls = () => {
@@ -1069,6 +1072,19 @@ export const updateInputControllerLoopActions = (delta: number) => {
       mapping.data.delta = delta;
       // Force casting the types here, but these should be ok
       mapping.fn(mapping.event as KeyboardEvent, mapping.time as number);
+    }
+  }
+};
+
+export const clearAllInputLoopKeysPresses = () => {
+  for (let i = 0; i < keyLoopActionMappings.length; i++) {
+    if (keyLoopActionMappings[i]?.keysPressed?.length) keyLoopActionMappings[i].keysPressed = [];
+  }
+  const sceneIds = Object.keys(keyLoopActionSceneMappings);
+  for (let i = 0; sceneIds.length; i++) {
+    const a = keyLoopActionSceneMappings[sceneIds[i]];
+    for (let j = 0; j < a.length; j++) {
+      if (a[j]?.keysPressed) a[j].keysPressed = [];
     }
   }
 };

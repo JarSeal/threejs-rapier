@@ -331,7 +331,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     groundColor: '#${(light as THREE.HemisphereLight).groundColor.getHexString()}',
     intensity: ${light.intensity},
   },`;
-      } else if (type === 'POINT') {
+      } else if (type === 'POINT' && 'isPointLight' in light && light.isPointLight) {
         paramsString = `params: {
     color: '#${light.color.getHexString()}',
     intensity: ${light.intensity},
@@ -361,7 +361,11 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
             ? `\n    shadowIntensity: ${light.shadow?.intensity},`
             : '';
         paramsString += '\n  },';
-      } else if (type === 'DIRECTIONAL') {
+      } else if (
+        type === 'DIRECTIONAL' &&
+        'isDirectionalLight' in light &&
+        light.isDirectionalLight
+      ) {
         paramsString = `params: {
     color: '#${light.color.getHexString()}',
     intensity: ${light.intensity},

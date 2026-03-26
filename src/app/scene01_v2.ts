@@ -105,7 +105,6 @@ export const scene01 = async () =>
         fileNames: map02,
         path: '/debugger/assets/testTextures',
         textureId: 'cubeTextureId',
-        flipY: true,
       },
     });
 
@@ -336,11 +335,6 @@ export const scene01 = async () =>
         // rigidBody: { rigidType: 'FIXED', translation: { x: 0, y: -1.5, z: 0 } },
       },
     });
-
-    // createSceneMainLooper(() => {
-    //   sphere.rotation.z -= transformMainSpeedValue(5.1);
-    //   sphere.rotation.y += transformMainSpeedValue(3.1);
-    // });
 
     createSceneAppLooper(() => {
       sphere.rotation.y -= transformAppSpeedValue(2);

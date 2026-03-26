@@ -1,6 +1,6 @@
-import { Clock, type Renderer, type Scene } from 'three/webgpu';
+import { Timer, type Renderer, type Scene } from 'three/webgpu';
 import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
-import { getStats, initStats, startCustomMeasurments, updateRestOfStats } from '../debug/Stats';
+import { getStats, initStats, startCustomMeasurements, updateRestOfStats } from '../debug/Stats';
 import { getAllCamerasAsArray, getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
 import {
@@ -25,7 +25,7 @@ import { updateInputControllerLoopActions } from './InputControls';
 import { countRayCastFrames, initRayCasting } from './Raycast';
 
 const LS_KEY = 'debugLoop';
-const clock = new Clock();
+const timer = new Timer();
 let delta = 0;
 let deltaApp = 0;
 let mainLoopInitiated = false;
@@ -41,6 +41,7 @@ export type LoopState = {
   maxFPS: number;
   maxFPSInterval: number;
   isWindowHidden: boolean;
+  isUnloading: boolean;
 };
 
 let loopState: LoopState = {
@@ -52,6 +53,7 @@ let loopState: LoopState = {
   maxFPS: 0, // 0 = maxFPS limiter is off and is not used
   maxFPSInterval: 0, // if maxFPS = 60, then this would be 1000 / 60
   isWindowHidden: false,
+  isUnloading: false,
 };
 
 /**
@@ -93,9 +95,10 @@ let mainLoop: () => void = () => {};
 // LOOP (for debug)
 // **************************************
 const mainLoopForDebug = async () => {
-  startCustomMeasurments();
+  startCustomMeasurements();
 
-  const dt = clock.getDelta();
+  timer.update();
+  const dt = timer.getDelta();
 
   if (loopState.masterPlay) {
     delta = dt * loopState.playSpeedMultiplier;
@@ -166,7 +169,8 @@ const mainLoopForDebug = async () => {
 // LOOP (for production)
 // **************************************
 const mainLoopForProduction = async () => {
-  const dt = clock.getDelta();
+  timer.update();
+  const dt = timer.getDelta();
   if (loopState.masterPlay) {
     delta = dt * loopState.playSpeedMultiplier;
     requestAnimationFrame(mainLoop);
@@ -180,6 +184,7 @@ const mainLoopForProduction = async () => {
 
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
+    deltaApp = dt * loopState.playSpeedMultiplier;
 
     // Step the physics
     stepPhysicsWorld(loopState);
@@ -202,7 +207,8 @@ const mainLoopForProduction = async () => {
 // LOOP (for production with FPS limiter)
 // **************************************
 const mainLoopForProductionWithFPSLimiter = async () => {
-  const dt = clock.getDelta();
+  timer.update();
+  const dt = timer.getDelta();
 
   if (loopState.masterPlay) {
     delta = dt * loopState.playSpeedMultiplier;
@@ -313,6 +319,8 @@ export const initMainLoop = async () => {
     if (maxFPS > 0) loopState.maxFPSInterval = 1 / maxFPS;
   }
 
+  initWinVisibilityListener();
+
   if (isDebugEnvironment() || isProdTestMode()) {
     const savedValues = lsGetItem(LS_KEY, loopState);
     loopState = {
@@ -335,7 +343,7 @@ export const initMainLoop = async () => {
     mainLoop = mainLoopForProduction;
   }
 
-  await renderer.renderAsync(getRootScene() as Scene, currentCamera);
+  await renderer.render(getRootScene() as Scene, currentCamera);
   if (loopState.masterPlay) {
     // Wait for a few loops and start the main loop and physics loop
     setTimeout(() => requestAnimationFrame(mainLoop), 100);
@@ -370,12 +378,10 @@ export const deleteResizer = (id: string) => {
 };
 
 // Debug GUI for loop
-let masterPlayBinding: BindingApi | null = null;
 let appPlayBinding: BindingApi | null = null;
 const createLoopDebugControls = () => {
   // Init On Screen Tools
   InitOnScreenTools();
-  initWinVisibilityListener();
 
   if (!isProdTestMode) return;
 
@@ -387,16 +393,14 @@ const createLoopDebugControls = () => {
     orderNr: 4,
     container: () => {
       const { container, debugGUI } = createNewDebuggerPane('loop', `${icon} Loop Controls`);
-      masterPlayBinding = debugGUI
-        .addBinding(loopState, 'masterPlay', { label: 'Master loop' })
-        .on('change', (e) => {
-          if (e.value) {
-            requestAnimationFrame(mainLoop);
-            requestAnimationFrame(() => stepPhysicsWorld(loopState));
-          }
-          lsSetItem(LS_KEY, loopState);
-          updateOnScreenTools('PLAY');
-        });
+      debugGUI.addBinding(loopState, 'masterPlay', { label: 'Master loop' }).on('change', (e) => {
+        if (e.value) {
+          requestAnimationFrame(mainLoop);
+          requestAnimationFrame(() => stepPhysicsWorld(loopState));
+        }
+        lsSetItem(LS_KEY, loopState);
+        updateOnScreenTools('PLAY');
+      });
       appPlayBinding = debugGUI
         .addBinding(loopState, 'appPlay', { label: 'App loop' })
         .on('change', () => {
@@ -428,14 +432,14 @@ const createLoopDebugControls = () => {
   });
 };
 
-const visibilityChangeFns: { [id: string]: (isHidden: boolean) => void } = {};
+let visibilityChangeFns: { [id: string]: (isHidden: boolean) => void } = {};
 export const addVisibilityChangeFn = (id: string, fn: (isHidden: boolean) => void) =>
   (visibilityChangeFns[id] = fn);
-
 export const deleteVisibilityChangeFn = (id: string) => delete visibilityChangeFns[id];
-
+export const deleteAllVisibilityChangeFns = () => (visibilityChangeFns = {});
 const initWinVisibilityListener = () => {
   document.addEventListener('visibilitychange', () => {
+    if (loopState.isUnloading) return;
     const isHidden = document.hidden;
     loopState.isWindowHidden = isHidden;
     const keys = Object.keys(visibilityChangeFns);
@@ -444,6 +448,29 @@ const initWinVisibilityListener = () => {
     }
   });
 };
+
+let beforeUnloadFns: { [id: string]: () => void } = {};
+export const addBeforeUnloadFn = (id: string, fn: () => void) => (beforeUnloadFns[id] = fn);
+export const deleteBeforeUnloadFn = (id: string) => delete beforeUnloadFns[id];
+export const deleteAllBeforeUnloadFns = () => (beforeUnloadFns = {});
+window.addEventListener('beforeunload', () => {
+  loopState.isUnloading = true;
+  const keys = Object.keys(beforeUnloadFns);
+  for (let i = 0; i < keys.length; i++) {
+    beforeUnloadFns[keys[i]]();
+  }
+});
+
+let onWindowBlurFns: { [id: string]: () => void } = {};
+export const addOnWindowBlurFn = (id: string, fn: () => void) => (onWindowBlurFns[id] = fn);
+export const deleteAddOnWindowBlurFn = (id: string) => delete onWindowBlurFns[id];
+export const deleteAllOnWindowBlurFns = () => (onWindowBlurFns = {});
+window.addEventListener('blur', () => {
+  const keys = Object.keys(onWindowBlurFns);
+  for (let i = 0; i < keys.length; i++) {
+    onWindowBlurFns[keys[i]]();
+  }
+});
 
 /**
  * Toggles the main loop player state (play / pause)
@@ -455,8 +482,10 @@ export const toggleMainPlay = (value?: boolean) => {
   } else {
     loopState.masterPlay = !loopState.masterPlay;
   }
-  if (loopState.masterPlay && !loopState.isMasterPlaying) requestAnimationFrame(mainLoop);
-  masterPlayBinding?.refresh();
+  if (loopState.masterPlay && !loopState.isMasterPlaying) {
+    loopState.isMasterPlaying = true;
+    requestAnimationFrame(mainLoop);
+  }
 };
 
 /**

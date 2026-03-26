@@ -131,7 +131,7 @@ export const updatePhysicsPanel = (value: number) => {
 let logicStartTime = 0;
 let logicEndTime = 0;
 let logicDuration = 0;
-export const startCustomMeasurments = () => {
+export const startCustomMeasurements = () => {
   logicStartTime = performance.now();
 };
 
