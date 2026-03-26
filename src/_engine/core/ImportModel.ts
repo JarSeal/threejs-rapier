@@ -82,6 +82,9 @@ const parseImportResult = (
       if ('isMesh' in kid && kid.isMesh) {
         const newId = id ? `${id}-${index}-${i}` : kid.uuid;
         const userData = kid.userData;
+        if (userData.keepMesh) {
+          saveMesh(kid as THREE.Mesh, newId, !saveMaterial);
+        }
         customProps.push(
           cleanUpCustomProps(userData as CustomPropsUserData, overridePhysParams[i], kid.uuid)
         );
@@ -189,9 +192,11 @@ const parseImportResult = (
     const { physParamsObj, rigidMeshId } = rigidAndChildParamsResult;
     if (userData.keepMesh) {
       // Keep mesh
+      const meshId = modelMesh.userData.id || modelMesh.uuid;
+      const savedMesh = saveMesh(modelMesh, meshId, !saveMaterial);
       returnObj.physObj = createPhysicsObjectWithMesh({
         ...physParamsObj,
-        meshOrMeshId: modelMesh,
+        meshOrMeshId: savedMesh || meshId,
         id: rigidMeshId,
       });
       if (returnObj.physObj && Array.isArray(returnObj.physObj)) {

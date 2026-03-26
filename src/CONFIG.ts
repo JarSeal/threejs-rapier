@@ -27,7 +27,6 @@ const config: AppConfig = {
     timestep: 60,
     solverIterations: 10,
     internalPgsIterations: 1,
-    additionalFrictionIterations: 4,
     interpolationEnabled: true,
   },
   draggableWindows: {

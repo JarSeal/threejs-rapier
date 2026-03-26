@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { lerror, lwarn } from '../utils/Logger';
-import { RGBELoader } from 'three/examples/jsm/Addons.js';
+import { HDRLoader } from 'three/examples/jsm/Addons.js';
 import { isHDR } from '../utils/helpers';
 
 type TexOpts = {
@@ -13,7 +13,7 @@ type TexOpts = {
   format?: THREE.PixelFormat;
   type?: THREE.TextureDataType;
   anisotropy?: number;
-  colorSpace?: string;
+  colorSpace?: THREE.ColorSpace;
 };
 
 const textures: { [id: string]: THREE.Texture } = {};
@@ -72,7 +72,7 @@ const createTexture = (
   if (!fileName) return getNoFileTexture(texOpts);
 
   if (isHDR(fileName)) {
-    const loader = new RGBELoader();
+    const loader = new HDRLoader();
     const texture = setTextureOpts(
       loader.setDataType(THREE.HalfFloatType).load(
         fileName,
@@ -231,14 +231,14 @@ export const loadTextureAsync = async ({
   id,
   fileName,
   path,
-  useRGBELoader,
+  useHDRLoader,
   texOpts,
   throwOnError,
 }: {
   id?: string;
   fileName?: string | string[];
   path?: string;
-  useRGBELoader?: boolean;
+  useHDRLoader?: boolean;
   texOpts?: TexOpts;
   throwOnError?: boolean;
 }) => {
@@ -250,10 +250,10 @@ export const loadTextureAsync = async ({
 
   try {
     if (typeof fileName === 'string') {
-      if (useRGBELoader) {
+      if (useHDRLoader) {
         // Data texture
-        loaderType = 'RGBELoader';
-        const loader = new RGBELoader();
+        loaderType = 'HDRLoader';
+        const loader = new HDRLoader();
         const loadedTexture = setTextureOpts(
           await loader.setPath(path || './').loadAsync(fileName),
           texOpts

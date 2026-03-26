@@ -33,6 +33,7 @@ import { deleteAllCharacters } from './Character';
 import { existsOrThrow } from '../utils/helpers';
 import { deregisterAllLightAndCameraHelpers } from './Helpers';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
+import { deleteAllGroups } from './Group';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -238,6 +239,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   deleteAllPhysicsObjects();
   deleteAllInSceneCameras();
   deleteAllInSceneLights();
+  deleteAllGroups({ deleteAll: true });
   if (isDebugEnvironment()) {
     deregisterAllLightAndCameraHelpers();
   }

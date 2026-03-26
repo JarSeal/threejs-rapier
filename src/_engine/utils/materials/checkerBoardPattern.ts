@@ -4,6 +4,8 @@ import {
   color, // Vectors and colors
   uv, // Standard UV coordinates
   attribute,
+  mix,
+  vec2,
 } from 'three/tsl';
 import { existsOrThrow } from '../helpers';
 import { createMaterial } from '../../core/Material';
@@ -38,7 +40,7 @@ const METERS_PER_CHECKER_TILE = 0.05;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const createCheckerboardNode = (p: any) => {
   const colorA = color(0.5, 0.5, 0.5); // Light Gray
-  const colorB = color(0.1, 0.1, 0.1); // Dark Gray
+  const colorB = color(0.3, 0.3, 0.3); // Dark Gray
 
   // floor(p.x) + floor(p.y)
   const blocks = p.x.floor().add(p.y.floor());
@@ -47,7 +49,7 @@ const createCheckerboardNode = (p: any) => {
   const checker = blocks.mod(2.0);
 
   // mix(colorB, colorA, checker)
-  return colorB.mix(colorA, checker);
+  return mix(colorA, colorB, checker);
 };
 
 const applyRepeatFactorAsAttribute = (mesh: THREE.Mesh, repeatFactor: THREE.Vector2) => {
@@ -98,7 +100,7 @@ export const addCheckerboardMaterialToMesh = (
 
   // --- Coordinate Definitions ---
   const uvRepeatAttribute = attribute('uvRepeatFactor', 'vec2');
-  const uvCoords = uv().mul(opts.useConstantCheckerSize ? uvRepeatAttribute : uvRepeat);
+  const uvCoords = uv().mul(opts.useConstantCheckerSize ? vec2(uvRepeatAttribute) : uvRepeat);
 
   // Call the corrected function node
   const fragmentColor = createCheckerboardNode(uvCoords);

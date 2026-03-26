@@ -5,7 +5,7 @@ import { initMainLoop } from './core/MainLoop';
 import { InitRapierPhysics } from './core/PhysicsRapier';
 import { createRootScene, getRootScene } from './core/Scene';
 import './styles/index.scss';
-import { lerror } from './utils/Logger';
+import { lerror, llog } from './utils/Logger';
 import { createSkyBoxDebugGUI } from './core/SkyBox';
 import { createDebuggerSceneLoader } from './debug/DebuggerSceneLoader';
 import { createRendererDebugGUI } from './core/Renderer';
@@ -26,6 +26,9 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
   try {
     // Load env variables and other configurations
     loadConfig();
+
+    // Sets the engine version to the HTML
+    setEngineVersion();
 
     // Create base scene
     createRootScene();
@@ -81,4 +84,11 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     lerror(msg, err);
     throw new Error(msg);
   }
+};
+
+const setEngineVersion = () => {
+  if (isDebugEnvironment()) llog(`Engine starting, running version ${__ENGINE_VERSION__}`);
+  const elem = document.getElementById('engineVersion');
+  if (elem) elem.textContent = __ENGINE_VERSION__;
+  // @TODO: add append element to body if not found (and set inline style to "display: none;")
 };

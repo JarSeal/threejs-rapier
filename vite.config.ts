@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import wasm from 'vite-plugin-wasm';
+import pkg from './package.json';
 
 export default defineConfig({
   root: './src',
@@ -19,4 +20,7 @@ export default defineConfig({
     },
   },
   plugins: [wasm()],
+  define: {
+    __ENGINE_VERSION__: JSON.stringify(pkg.version),
+  },
 });
