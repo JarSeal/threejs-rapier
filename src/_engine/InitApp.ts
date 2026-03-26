@@ -16,6 +16,7 @@ import { createCharactersDebuggerGUI } from './core/Character';
 import { createToaster } from './core/UI/Toaster';
 import { getStatsCmp } from './debug/Stats';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
+import { initPhysicsWorker } from './core/PhysicsAPI';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine

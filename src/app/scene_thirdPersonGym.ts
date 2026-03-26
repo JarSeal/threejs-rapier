@@ -22,6 +22,7 @@ import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
 import { createFollowObjectCameraRig } from '../_engine/utils/cameras/followObjectCameraRig';
+import { messageWorker } from '../_engine/core/PhysicsAPI';
 
 export const SCENE_THIRD_PERSON_GYM_META = {
   id: 'thirdPersonGymScene',
@@ -1033,4 +1034,6 @@ export const sceneThirdPersonGym = async () =>
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 
     resolve(SCENE_THIRD_PERSON_GYM_META.id);
+
+    messageWorker('Hello physics world!');
   });

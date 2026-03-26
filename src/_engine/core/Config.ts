@@ -1,6 +1,7 @@
 import configFile from '../../CONFIG';
 import { type DebugScene } from '../debug/debugScenes/debuggerSceneListing';
 import { TCMP } from '../utils/CMP';
+import { PhysicsEngine, WorkerTarget } from './PhysicsTypes';
 import { DraggableWindow } from './UI/DraggableWindow';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
@@ -17,6 +18,8 @@ export type AppConfig = {
   debugScenes?: DebugScene[];
   physics?: {
     enabled?: boolean;
+    physicsEngine?: PhysicsEngine;
+    workerTarget?: WorkerTarget;
     worldStepEnabled?: boolean;
     visualizerEnabled?: boolean;
     gravity?: { x: number; y: number; z: number };
@@ -41,6 +44,8 @@ let config: AppConfig = {
   debugKeys: [],
   physics: {
     enabled: false,
+    physicsEngine: 'RAPIER',
+    workerTarget: 'MAIN_THREAD',
     worldStepEnabled: true,
     gravity: { x: 0, y: 0, z: 0 },
     timestep: 60,
