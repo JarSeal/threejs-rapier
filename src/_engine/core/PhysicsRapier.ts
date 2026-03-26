@@ -1352,6 +1352,8 @@ export const createPhysicsWorld = () => {
   if (internalPgsIterations) physicsWorld.numInternalPgsIterations = internalPgsIterations;
 
   if (isDebugEnvironment()) initDebuggerScenePhysState();
+
+  addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
 };
 
 /**
@@ -1972,7 +1974,6 @@ const createDebugControls = () => {
   physicsState.pauseReason = null;
   physicsState.pauseDurationTotal = 0;
 
-  addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
   initDebuggerScenePhysState();
 
   const icon = getSvgIcon('rocketTakeoff');

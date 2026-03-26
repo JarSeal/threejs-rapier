@@ -184,6 +184,7 @@ const mainLoopForProduction = async () => {
 
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
+    deltaApp = dt * loopState.playSpeedMultiplier;
 
     // Step the physics
     stepPhysicsWorld(loopState);

@@ -5,10 +5,13 @@ import { createPhysicsObjectWithMesh } from '../core/PhysicsRapier';
 import { createGeometry } from '../core/Geometry';
 import { createMaterial } from '../core/Material';
 import { createMesh } from '../core/Mesh';
+import { isDebugEnvironment } from '../core/Config';
 
 let stressTestCount = 0;
 
 export const initPhysicsStressTest = (scene: THREE.Scene | THREE.Group, batchSize: number = 50) => {
+  if (!isDebugEnvironment()) return;
+
   // 1. Pre-create assets to minimize GC during the test
   // We want to test Physics CPU load, not Three.js Geometry creation load.
   const geoBox = createGeometry({
