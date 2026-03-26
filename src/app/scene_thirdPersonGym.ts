@@ -397,10 +397,6 @@ export const sceneThirdPersonGym = async () =>
     const result = await importModelAsync({
       fileName: '/debugger/assets/testModels/customPropTestCube.glb',
       id: 'customPropTest',
-      importGroup: true,
-      // physicsParams: {
-      //   rigidBody: { rigidType: 'FIXED' },
-      // },
     });
     if (result.mesh && !Array.isArray(result.mesh)) {
       result.mesh?.position.set(2, 2, 2);

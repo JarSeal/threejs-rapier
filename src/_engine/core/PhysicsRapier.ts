@@ -5,7 +5,7 @@ import { getCurrentSceneId, getRootScene, getScene, isCurrentScene } from './Sce
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getConfig, isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
-import { getMesh } from './Mesh';
+import { deleteMesh, getMesh } from './Mesh';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
@@ -1220,8 +1220,10 @@ export const deletePhysicsObject = (id: string, sceneId?: string) => {
   const obj = scenePhysicsObjects[id];
   if (!obj) return;
   if (obj.rigidBody) {
+    // Delete rigidBody (also deletes all child colliders)
     physicsWorld.removeRigidBody(obj.rigidBody);
   } else {
+    // If the object does not have a rigidBody then delete the individual colliders
     if (Array.isArray(obj.collider)) {
       for (let i = 0; i < obj.collider.length; i++) {
         physicsWorld.removeCollider(obj.collider[i], false);
@@ -1244,6 +1246,15 @@ export const deletePhysicsObject = (id: string, sceneId?: string) => {
       return obj.id !== id;
     });
   }
+
+  // Delete possible meshes
+  if (obj.meshes?.length) {
+    for (let i = 0; i < obj.meshes.length; i++) {
+      const mesh = obj.meshes[i];
+      if (mesh?.userData.id) deleteMesh(mesh.userData.id, { deleteAll: true });
+    }
+  }
+  if (obj.mesh?.userData.id) deleteMesh(obj.mesh.userData.id, { deleteAll: true });
 
   updatePhysObjectDebuggerGUI('LIST');
 };

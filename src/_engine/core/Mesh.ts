@@ -92,6 +92,10 @@ export type DeleteMeshOptions = {
 const deleteOneMesh = (id: string, opts?: DeleteMeshOptions) => {
   const mesh = meshes[id];
   if (!mesh) return;
+  mesh.removeFromParent();
+  if (mesh.userData.isPhysicsObject || doesPOExist(id)) {
+    deletePhysicsObject(id);
+  }
   if (opts?.deleteGeometries || opts?.deleteAll) {
     const geoId = mesh.geometry.userData.id;
     if (geoId) deleteGeometry(geoId);
@@ -111,12 +115,6 @@ const deleteOneMesh = (id: string, opts?: DeleteMeshOptions) => {
       if (matId) deleteMaterial(matId, deleteTextures);
     }
   }
-
-  if (mesh.userData.isPhysicsObject || doesPOExist(id)) {
-    deletePhysicsObject(id);
-  }
-
-  mesh.removeFromParent();
 
   delete meshes[id];
 };
