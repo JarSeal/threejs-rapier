@@ -24,8 +24,7 @@ import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
 import { updateInputControllerLoopActions } from './InputControls';
 import { BladeController, View } from '@tweakpane/core';
 import { BufferGeometryUtils } from 'three/examples/jsm/Addons.js';
-import { isCurrentlyLoading } from './SceneLoader';
-import { PhysicsState, ScenePhysicsState } from './PhysicsTypes';
+import { PhysicsState, ScenePhysicsState } from './Physics/PhysicsUtils';
 
 type CollisionEventFn = (
   collider1: Collider,
@@ -1498,8 +1497,9 @@ const currTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaterni
 // Different stepper functions to use for debug and production.
 // baseStepper is used for both.
 const baseStepper = (loopState: LoopState) => {
-  if (isCurrentlyLoading()) return;
   updateTimer();
+  if (loopState.isLoadingScene) return;
+
   let delta = timer.getDelta();
   if (loopState.isWindowHidden || !loopState.masterPlay || !loopState.appPlay) {
     if (
@@ -1759,7 +1759,6 @@ const stepperFnDebug = (loopState: LoopState) => {
  */
 export const stepPhysicsWorld = (loopState: LoopState) => stepperFn(loopState);
 
-// @TODO: rename this to isDynamicPhysicsObjectValid and flip the checks to be !isDynamicPhysicsObjectValida(po)
 const isDynamicPhysicsObjectValid = (po: PhysicsObject) =>
   po.mesh &&
   po.rigidBody &&
@@ -2195,8 +2194,6 @@ export const createEditPhysObjContent = (data?: { [key: string]: unknown }) => {
       closeDraggableWindow(EDIT_PHY_OBJ_WIN_ID);
     },
   });
-
-  // const colliders = Array.isArray(obj.collider) ?
 
   debuggerWindowCmp.add({
     prepend: true,

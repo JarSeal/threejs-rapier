@@ -42,6 +42,7 @@ export type LoopState = {
   maxFPSInterval: number;
   isWindowHidden: boolean;
   isUnloading: boolean;
+  isLoadingScene: boolean;
 };
 
 let loopState: LoopState = {
@@ -54,6 +55,7 @@ let loopState: LoopState = {
   maxFPSInterval: 0, // if maxFPS = 60, then this would be 1000 / 60
   isWindowHidden: false,
   isUnloading: false,
+  isLoadingScene: false,
 };
 
 /**
@@ -263,7 +265,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
 /**
  * Initializes the main loop. Requires that the renderer, camera, and scene have been created.
  */
-export const initMainLoop = async () => {
+export const initMainLoop = () => {
   // Make sure initMainLoop is only initiated once
   if (mainLoopInitiated) return;
   mainLoopInitiated = true;
@@ -343,7 +345,7 @@ export const initMainLoop = async () => {
     mainLoop = mainLoopForProduction;
   }
 
-  await renderer.render(getRootScene() as Scene, currentCamera);
+  renderer.render(getRootScene() as Scene, currentCamera);
   if (loopState.masterPlay) {
     // Wait for a few loops and start the main loop and physics loop
     setTimeout(() => requestAnimationFrame(mainLoop), 100);
@@ -501,6 +503,12 @@ export const toggleAppPlay = (value?: boolean) => {
   loopState.appPlay = !loopState.appPlay;
   appPlayBinding?.refresh();
 };
+
+/**
+ * Sets the loopState.isLoadingScene boolean.
+ * @param isLoading (boolean) value for whether the scene is loading or not.
+ */
+export const setIsLoadingScene = (isLoading: boolean) => (loopState.isLoadingScene = isLoading);
 
 /**
  * Returns the read-only loop state object

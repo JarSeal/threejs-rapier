@@ -34,6 +34,7 @@ import { existsOrThrow } from '../utils/helpers';
 import { deregisterAllLightAndCameraHelpers } from './Helpers';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
 import { deleteAllGroups } from './Group';
+import { setIsLoadingScene } from './MainLoop';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -234,19 +235,21 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   const canvasParentElem = getCanvasParentElem();
   canvasParentElem?.style.setProperty('pointer-events', 'none');
 
-  // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
-  deleteAllCharacters();
-  deleteAllPhysicsObjects();
-  deleteAllInSceneCameras();
-  deleteAllInSceneLights();
-  deleteAllGroups({ deleteAll: true });
-  if (isDebugEnvironment()) {
-    deregisterAllLightAndCameraHelpers();
-  }
-
   loader.phase = 'START';
   await loadStartFn(loader)
     .then(async () => {
+      setIsLoadingScene(true);
+
+      // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
+      deleteAllCharacters();
+      deleteAllPhysicsObjects();
+      deleteAllInSceneCameras();
+      deleteAllInSceneLights();
+      deleteAllGroups({ deleteAll: true });
+
+      if (isDebugEnvironment()) {
+        deregisterAllLightAndCameraHelpers();
+      }
       if (loadSceneProps.deletePrevScene && prevScene) {
         // Delete the whole previous scene and assets
         // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps (like deleteMeshes, deleteTextures, etc.)
@@ -305,6 +308,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
           loader.phase = undefined;
           currentlyLoading = false;
+          setIsLoadingScene(currentlyLoading);
         });
       });
     })
@@ -356,6 +360,14 @@ export const getLoaderStatusUpdater = (loaderId?: string) => {
   return (params?: { [key: string]: unknown }) => updateLoaderStatusFn(loader, params);
 };
 
+/**
+ * This tells whether the scene loader has started/ended the loading animation sequence.
+ *
+ * This does NOT tell whether the loading has started or ended, but just that loading
+ * sequence has started or ended. For more accurate loading phase check, use
+ * loopState.isLoading as it tells when the actual loading starts and ends.
+ * @returns boolean
+ */
 export const isCurrentlyLoading = () => currentlyLoading;
 
 export const hasFirstSceneBeenLoaded = () => firstSceneLoaded;

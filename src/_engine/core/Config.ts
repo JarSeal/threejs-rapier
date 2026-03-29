@@ -1,7 +1,11 @@
 import configFile from '../../CONFIG';
 import { type DebugScene } from '../debug/debugScenes/debuggerSceneListing';
 import { TCMP } from '../utils/CMP';
-import { PhysicsEngine, WorkerTarget } from './PhysicsTypes';
+import {
+  PhysicsBackgroundBehavior,
+  PhysicsEngine,
+  PhysicsWorkerTarget,
+} from './Physics/PhysicsUtils';
 import { DraggableWindow } from './UI/DraggableWindow';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
@@ -19,11 +23,12 @@ export type AppConfig = {
   physics?: {
     enabled?: boolean;
     physicsEngine?: PhysicsEngine;
-    workerTarget?: WorkerTarget;
+    workerTarget?: PhysicsWorkerTarget;
     worldStepEnabled?: boolean;
     visualizerEnabled?: boolean;
     gravity?: { x: number; y: number; z: number };
     timestep?: number;
+    backgroundBehavior?: PhysicsBackgroundBehavior;
     solverIterations?: number;
     internalPgsIterations?: number;
     interpolationEnabled?: boolean;
@@ -49,6 +54,7 @@ let config: AppConfig = {
     worldStepEnabled: true,
     gravity: { x: 0, y: 0, z: 0 },
     timestep: 60,
+    backgroundBehavior: 'PAUSE',
   },
 };
 

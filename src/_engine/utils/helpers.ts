@@ -466,3 +466,19 @@ export const setMeshCreatePropsToUserData = (shape: string, mesh: THREE.Mesh) =>
       break;
   }
 };
+
+/**
+ * Checks whether the current function is running in the main thread or in a worker.
+ * There is also a faster (simpler) version for this check: {@link isMainThreadSimple}().
+ * @returns boolean
+ */
+export const isMainThread = () =>
+  typeof window === 'object' && typeof document === 'object' && window.document === document;
+
+/**
+ * Checks whether the current function is running in the main thread or in a worker.
+ * This is the faster (simpler version for this check). There is also a more
+ * comprehensive version for this check: {@link isMainThread}().
+ * @returns boolean
+ */
+export const isMainThreadSimple = () => typeof window !== 'undefined';
