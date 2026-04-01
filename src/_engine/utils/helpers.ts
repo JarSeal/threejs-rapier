@@ -468,7 +468,14 @@ export const setMeshCreatePropsToUserData = (shape: string, mesh: THREE.Mesh) =>
 };
 
 /**
- * Initializes and returns a new worker with a validated handshake.
+ * Initializes and returns a new worker with a validated handshake. The handshake
+ * is expecting a top-level message from the worker on script initialization:
+ *
+ * `self.postMessage({ status: 'INIT_READY' });` or `self.postMessage('INIT_READY');`
+ *
+ * The default status message is 'INIT_READY', but it can be overwritten with
+ * `statusReadyString` in the initWorker call. Make sure the worker top-level message
+ * then matches the `statusReadyString`.
  */
 export const initWorker = async <T>(
   WorkerClass: new (options?: { name?: string }) => Worker,
