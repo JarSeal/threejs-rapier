@@ -1,3 +1,74 @@
+import { ENGINES } from './ENGINES';
+import { ColliderParams, RigidBodyParams } from './PhysicsUtils';
+
+export type PhysicsEngine = keyof typeof ENGINES;
+export type PhysicsWorkerTarget = 'MAIN_THREAD' | 'WORKER_THREAD'; // + possible 'SERVER_AND_MAIN' | 'SERVER_AND_WORKER' if implemented
+export type PhysicsBackgroundBehavior = 'KEEP_RUNNING' | 'KEEP_RUNNING_USE_MIN_DELTA' | 'PAUSE';
+
+/**
+ * Physics Engine API, which handles the communication between
+ * PhysicsAPI and EngineAPI. Each physics engine file (eg. EngineRapier.ts)
+ * needs to have this signature.
+ */
+export type EngineAPIType = {
+  init: (physicsState: PhysicsState, doNotCreateWorld?: boolean) => void;
+  createWorld: (
+    gravity: PhysVector,
+    opts?: {
+      timestep?: number;
+      numSolverIterations?: number;
+      numInternalPgsIterations?: number;
+    }
+  ) => WorldAPI;
+  createRigidBody: (params: RigidBodyParams) => number;
+  createCollider: (params: ColliderParams) => number;
+};
+
+export type PhysicsState = {
+  enabled: boolean;
+  physicsEngine: PhysicsEngine;
+  workerTarget: PhysicsWorkerTarget;
+  timestep: number;
+  timestepRatio: number;
+  /** What to do with physics loop if the app window is hidden (under another window, in another tab, minified).
+   * 'KEEP_RUNNIN' = Keeps the physics running in the background.
+   * 'KEEP_RUNNING_USE_MIN_DELTA' = If for some reason the physics cannot run in the background, the minDeltaTime will be set as new delta time. Requires: minDelta > 0.
+   * 'PAUSE' = Pauses the physics when the window is hidden and then uses the minDeltaTime to continue. Requires: minDelta > 0.
+   */
+  backgroundBehavior: PhysicsBackgroundBehavior;
+  isPaused: boolean;
+  /** When the physics loop is on pause (backgroundBehavior = 'PAUSE', loopState.masterPlay = false, or loopState.appPlay = false)
+   * the time it was paused (performance.now()). 0 = not paused.
+   */
+  pausedTime: number;
+  /** Total pause duration, used for the getPhysGameTime helper (in the helpers.ts) */
+  pauseDurationTotal: number;
+  /** Keeps track whether the pause reason is the background behavior (if the app window is hidden) */
+  pauseReason: 'BACKGROUND_BEHAVIOR' | null;
+  /** The minimum delta time to be used for backgroundBehaviors 'USE_MIN_DELTA' and 'PAUSE'.
+   * 0 = not in use
+   */
+  minDeltaTime: number;
+  /** Clamping protects against large delta times even in the foreground (e.g., if rendering stalls).
+   * 0 = not in use
+   */
+  maxDeltaTime: number;
+  /** This ensures stability by forcing the engine to run at least 'minSubsteps'
+   * per frame even if the frame rate is extremely high and deltaTime is tiny.
+   * 0 = not in use
+   */
+  /**  */
+  minSubSteps: number;
+  /** Prevent the spiral of death (should usually be the same as timestep) */
+  maxSubSteps: number;
+  worldStepEnabled: boolean;
+  visualizerEnabled: boolean;
+  gravity: { x: number; y: number; z: number };
+  solverIterations: number;
+  internalPgsIterations: number;
+  interpolationEnabled: boolean;
+};
+
 export interface PhysVector {
   x: number;
   y: number;
@@ -13,7 +84,7 @@ export interface PhysRotation {
 /**
  * A ray. This is a directed half-line.
  */
-export declare type PhysRay = {
+export type PhysRay = {
   /**
    * The starting point of the ray.
    */
@@ -25,9 +96,50 @@ export declare type PhysRay = {
 };
 
 /**
+ * The intersection between a ray and a collider (includes the collider handle).
+ */
+export type RayColliderIntersectionAPI = {
+  /**
+   * The collider hit by the ray.
+   */
+  collider: ColliderAPI;
+  /**
+   * The time-of-impact of the ray with the collider.
+   *
+   * The hit point is obtained from the ray's origin and direction: `origin + dir * timeOfImpact`.
+   */
+  timeOfImpact: number;
+  /**
+   * The normal of the collider at the hit point.
+   */
+  normal: PhysVector;
+  /**
+   * The type of the geometric feature the point was projected on.
+   */
+  featureType: FeatureType;
+  /**
+   * The id of the geometric feature the point was projected on.
+   */
+  featureId: number | undefined;
+};
+
+export type RayColliderHitAPI = {
+  /**
+   * The handle of the collider hit by the ray.
+   */
+  collider: ColliderAPI;
+  /**
+   * The time-of-impact of the ray with the collider.
+   *
+   * The hit point is obtained from the ray's origin and direction: `origin + dir * timeOfImpact`.
+   */
+  timeOfImpact: number;
+};
+
+/**
  * The simulation status of a rigid-body.
  */
-export declare enum RigidBodyType {
+export declare enum RigidBodyTypeAPI {
   /**
    * A `RigidBodyType::Dynamic` body can be affected by all external forces.
    */
@@ -59,13 +171,13 @@ export declare enum RigidBodyType {
 /**
  * A rigid-body.
  */
-export type RigidBody = {
-  userData: { [key: string]: unknown };
-  setUserData(userData: { [key: string]: unknown }): void;
+export type RigidBodyAPI = {
   /**
-   * Rigid body handle.
+   * Rigid body id (a running integer id).
    */
-  readonly handle: number;
+  readonly id: number;
+  /** Get or set the rigid body userData. Leave argument empty to get. */
+  userData(userData?: { [key: string]: unknown }): { [key: string]: unknown } | void;
   /**
    * Checks if this rigid-body is still valid (i.e. that it has
    * not been deleted from the rigid-body set yet.
@@ -350,7 +462,7 @@ export type RigidBody = {
    * @param i - The index of the collider to retrieve. Must be a number in `[0, this.numColliders()[`.
    *         This index is **not** the same as the unique identifier of the collider.
    */
-  collider(i: number): Collider;
+  collider(i: number): ColliderAPI;
   /**
    * Sets whether this rigid-body is enabled or not.
    *
@@ -364,11 +476,11 @@ export type RigidBody = {
   /**
    * The status of this rigid-body: static, dynamic, or kinematic.
    */
-  bodyType(): RigidBodyType;
+  bodyType(): RigidBodyTypeAPI;
   /**
    * Set a new status for this rigid-body: static, dynamic, or kinematic.
    */
-  setBodyType(type: RigidBodyType, wakeUp: boolean): void;
+  setBodyType(type: RigidBodyTypeAPI, wakeUp: boolean): void;
   /**
    * Is this rigid-body sleeping?
    */
@@ -552,11 +664,11 @@ export declare enum ShapeType {
  * A geometric entity that can be attached to a body so it can be affected
  * by contacts and proximity queries.
  */
-export type Collider = {
+export type ColliderAPI = {
   /**
-   * Collider handle.
+   * Rigid body id (a running integer id).
    */
-  readonly handle: number;
+  readonly id: number;
   /**
    * Set the internal cached JS shape to null.
    *
@@ -658,7 +770,7 @@ export type Collider = {
    *
    * @param groups - The collision groups used for the collider being built.
    */
-  setCollisionGroups(groups: InteractionGroups): void;
+  setCollisionGroups(groups: InteractionGroupsAPI): void;
   /**
    * Sets the solver groups used by this collider.
    *
@@ -668,7 +780,7 @@ export type Collider = {
    *
    * @param groups - The solver groups used for the collider being built.
    */
-  setSolverGroups(groups: InteractionGroups): void;
+  setSolverGroups(groups: InteractionGroupsAPI): void;
   /**
    * Sets the contact skin for this collider.
    *
@@ -868,7 +980,7 @@ export type Collider = {
    * `combineVoxelStates`.
    */
   propagateVoxelChange(
-    voxels2: Collider,
+    voxels2: ColliderAPI,
     ix: number,
     iy: number,
     iz: number,
@@ -892,7 +1004,7 @@ export type Collider = {
    * `propagateVoxelChange` method must be called to maintain the coupling
    * between the voxels shapes after the modification.
    */
-  combineVoxelStates(voxels2: Collider, shift_x: number, shift_y: number, shift_z: number): void;
+  combineVoxelStates(voxels2: ColliderAPI, shift_x: number, shift_y: number, shift_z: number): void;
   /**
    * If this collider has a triangle mesh, polyline, convex polygon, or convex polyhedron shape,
    * this returns the vertex buffer of said shape.
@@ -927,7 +1039,7 @@ export type Collider = {
   /**
    * The rigid-body this collider is attached to.
    */
-  parent(): RigidBody | null;
+  parent(): RigidBodyAPI | null;
   /**
    * The friction coefficient of this collider.
    */
@@ -951,11 +1063,11 @@ export type Collider = {
   /**
    * The collision groups of this collider.
    */
-  collisionGroups(): InteractionGroups;
+  collisionGroups(): InteractionGroupsAPI;
   /**
    * The solver groups of this collider.
    */
-  solverGroups(): InteractionGroups;
+  solverGroups(): InteractionGroupsAPI;
   /**
    * Tests if this collider contains a point.
    *
@@ -1025,7 +1137,7 @@ export type Collider = {
  * ((a >> 16) & b) != 0 && ((b >> 16) & a) != 0
  * ```
  */
-export declare type InteractionGroups = number;
+export declare type InteractionGroupsAPI = number;
 
 /**
  * A rule applied to combine coefficients.
@@ -1226,4 +1338,751 @@ export declare type EventQueue = {
    * Removes all events contained by this collector
    */
   clear(): void;
+};
+
+/**
+ * Flags for excluding whole sets of colliders from a scene query.
+ */
+export declare enum QueryFilterFlags {
+  /**
+   * Exclude from the query any collider attached to a fixed rigid-body and colliders with no rigid-body attached.
+   */
+  EXCLUDE_FIXED = 1,
+  /**
+   * Exclude from the query any collider attached to a dynamic rigid-body.
+   */
+  EXCLUDE_KINEMATIC = 2,
+  /**
+   * Exclude from the query any collider attached to a kinematic rigid-body.
+   */
+  EXCLUDE_DYNAMIC = 4,
+  /**
+   * Exclude from the query any collider that is a sensor.
+   */
+  EXCLUDE_SENSORS = 8,
+  /**
+   * Exclude from the query any collider that is not a sensor.
+   */
+  EXCLUDE_SOLIDS = 16,
+  /**
+   * Excludes all colliders not attached to a dynamic rigid-body.
+   */
+  ONLY_DYNAMIC = 3,
+  /**
+   * Excludes all colliders not attached to a kinematic rigid-body.
+   */
+  ONLY_KINEMATIC = 5,
+  /**
+   * Exclude all colliders attached to a non-fixed rigid-body
+   * (this will not exclude colliders not attached to any rigid-body).
+   */
+  ONLY_FIXED = 6,
+}
+
+export declare enum SolverFlags {
+  EMPTY = 0,
+  COMPUTE_IMPULSE = 1,
+}
+
+export interface PhysicsHooks {
+  /**
+   * Function that determines if contacts computation should happen between two colliders, and how the
+   * constraints solver should behave for these contacts.
+   *
+   * This will only be executed and taken into account if at least one of the involved colliders contains the
+   * `ActiveHooks.FILTER_CONTACT_PAIR` flag in its active hooks.
+   *
+   * @param collider1 − Handle of the first collider involved in the potential contact.
+   * @param collider2 − Handle of the second collider involved in the potential contact.
+   * @param body1 − Handle of the first body involved in the potential contact.
+   * @param body2 − Handle of the second body involved in the potential contact.
+   */
+  filterContactPair(
+    collider1: number,
+    collider2: number,
+    body1: number,
+    body2: number
+  ): SolverFlags | null;
+  /**
+   * Function that determines if intersection computation should happen between two colliders (where at least
+   * one is a sensor).
+   *
+   * This will only be executed and taken into account if `one of the involved colliders contains the
+   * `ActiveHooks.FILTER_INTERSECTION_PAIR` flag in its active hooks.
+   *
+   * @param collider1 − Handle of the first collider involved in the potential contact.
+   * @param collider2 − Handle of the second collider involved in the potential contact.
+   * @param body1 − Handle of the first body involved in the potential contact.
+   * @param body2 − Handle of the second body involved in the potential contact.
+   */
+  filterIntersectionPair(
+    collider1: number,
+    collider2: number,
+    body1: number,
+    body2: number
+  ): boolean;
+}
+
+/**
+ * The physics world.
+ *
+ * This contains all the data-structures necessary for creating and simulating
+ * bodies with contacts, joints, and external forces.
+ */
+export type WorldAPI = {
+  /** Get or set the gravity. Leave argument empty to get. */
+  gravity: (gravity?: PhysVector) => PhysVector | undefined;
+  /**
+   * Release the WASM memory occupied by this physics world.
+   *
+   * All the fields of this physics world will be freed as well,
+   * so there is no need to call their `.free()` methods individually.
+   */
+  free: () => void;
+  /**
+   * Takes a snapshot of this world.
+   *
+   * Use `World.restoreSnapshot` to create a new physics world with a state identical to
+   * the state when `.takeSnapshot()` is called.
+   */
+  takeSnapshot: () => Uint8Array;
+  /**
+   * Creates a new physics world from a snapshot.
+   *
+   * This new physics world will be an identical copy of the snapshoted physics world.
+   */
+  restoreSnapshot: (data: Uint8Array) => WorldAPI;
+  /**
+   * Computes all the lines (and their colors) needed to render the scene.
+   *
+   * @param filterFlags - Flags for excluding whole subsets of colliders from rendering.
+   * @param filterPredicate - Any collider for which this closure returns `false` will be excluded from the
+   *                          debug rendering.
+   */
+  // debugRender(
+  //   filterFlags?: QueryFilterFlags,
+  //   filterPredicate?: (collider: Collider) => boolean
+  // ): {
+  //   /**
+  //    * The lines to render. This is a flat array containing all the lines
+  //    * to render. Each line is described as two consecutive point. Each
+  //    * point is described as two (in 2D) or three (in 3D) consecutive
+  //    * floats. For example, in 2D, the array: `[1, 2, 3, 4, 5, 6, 7, 8]`
+  //    * describes the two segments `[[1, 2], [3, 4]]` and `[[5, 6], [7, 8]]`.
+  //    */
+  //   vertices: Float32Array;
+  //   /**
+  //    * The color buffer. There is one color per vertex, and each color
+  //    * has four consecutive components (in RGBA format).
+  //    */
+  //   colors: Float32Array;
+  // };
+  /**
+   * Advance the simulation by one time step.
+   *
+   * All events generated by the physics engine are ignored.
+   *
+   * @param EventQueue - (optional) structure responsible for collecting
+   *   events generated by the physics engine.
+   */
+  // step(eventQueue?: EventQueue, hooks?: PhysicsHooks): void;
+  /**
+   * Update colliders positions after rigid-bodies moved.
+   *
+   * When a rigid-body moves, the positions of the colliders attached to it need to be updated. This update is
+   * generally automatically done at the beginning and the end of each simulation step with World.step.
+   * If the positions need to be updated without running a simulation step this method can be called manually.
+   */
+  propagateModifiedBodyPositionsToColliders: () => void;
+  /**
+   * Get or set the timestep. Leave argument empty to get.
+   *
+   * The simulation timestep governs by how much the physics state of the world will
+   * be integrated. A simulation timestep should:
+   * - be as small as possible. Typical values evolve around 0.016 (assuming the chosen unit is milliseconds,
+   * corresponds to the time between two frames of a game running at 60FPS).
+   * - not vary too much during the course of the simulation. A timestep with large variations may
+   * cause instabilities in the simulation.
+   *
+   * @param dt - The timestep length, in seconds.
+   */
+  timestep: (dt?: number) => number | void;
+  /**
+   * Get or set the lengthUnit. Leave argument empty to get.
+   *
+   * The approximate size of most dynamic objects in the scene.
+   *
+   * This value is used internally to estimate some length-based tolerance. In particular, the
+   * values `IntegrationParameters.allowedLinearError`,
+   * `IntegrationParameters.maxPenetrationCorrection`,
+   * `IntegrationParameters.predictionDistance`, `RigidBodyActivation.linearThreshold`
+   * are scaled by this value implicitly.
+   *
+   * This value can be understood as the number of units-per-meter in your physical world compared
+   * to a human-sized world in meter. For example, in a 2d game, if your typical object size is 100
+   * pixels, set the `[`Self::length_unit`]` parameter to 100.0. The physics engine will interpret
+   * it as if 100 pixels is equivalent to 1 meter in its various internal threshold.
+   * (default `1.0`).
+   */
+  lengthUnit: (unitsPerMeter?: number) => number | void;
+  /**
+   * Get or set the numSolverIterations. Leave argument empty to get. Sets the number of solver iterations
+   * run by the constraints solver for calculating forces (default: `4`).
+   *
+   * The greater this value is, the most rigid and realistic the physics simulation will be.
+   * However a greater number of iterations is more computationally intensive.
+   *
+   * @param niter - The new number of solver iterations.
+   */
+  numSolverIterations: (niter?: number) => number | void;
+  /**
+   * Get or set the numSolverIterations. Leave argument empty to get. Sets the Number of internal
+   * Project Gauss Seidel (PGS) iterations run at each solver iteration (default: `1`).
+   *
+   * Increasing this parameter will improve stability of the simulation. It will have a lesser effect than
+   * increasing `numSolverIterations` but is also less computationally expensive.
+   *
+   * @param niter - The new number of internal PGS iterations.
+   */
+  numInternalPgsIterations: (niter?: number) => number | void;
+  /**
+   * Get or set the numSolverIterations. Leave argument empty to get. Sets the number of substeps
+   * continuous collision-detection can run (default: `1`).
+   *
+   * CCD operates using a "motion clamping" mechanism where all fast-moving object trajectories will
+   * be truncated to their first impact on their path. The number of CCD substeps beyond 1 indicate how
+   * many times that trajectory will be updated and continued after a hit. This can results in smoother
+   * paths, but at a significant computational cost.
+   *
+   * @param substeps - The new maximum number of CCD substeps. Setting to `0` disables CCD entirely.
+   */
+  maxCcdSubsteps: (substeps?: number) => number | void;
+  /**
+   * Creates a new rigid-body from the given rigid-body descriptor.
+   *
+   * @param params - The parameters of the rigid-body.
+   */
+  createRigidBody: (params: RigidBodyParams) => RigidBodyAPI;
+  /**
+   * Creates a new collider.
+   *
+   * @param params - The parameters of the collider.
+   * @param parent - The rigid-body this collider is attached to.
+   */
+  createCollider: (params: ColliderParams, parent?: RigidBodyAPI) => ColliderAPI;
+  /**
+   * Retrieves a rigid-body from its handle.
+   *
+   * @param id - The integer handle of the rigid-body to retrieve.
+   */
+  getRigidBody: (id: number) => RigidBodyAPI | undefined;
+  /**
+   * Retrieves a collider from its handle.
+   *
+   * @param id - The integer handle of the collider to retrieve.
+   */
+  getCollider: (id: number) => ColliderAPI | undefined;
+  /**
+   * Removes the given rigid-body from this physics world.
+   *
+   * This will remove this rigid-body as well as all its attached colliders and joints.
+   * Every other bodies touching or attached by joints to this rigid-body will be woken-up.
+   *
+   * @param bodyOrId - The rigid-body or id to remove.
+   */
+  removeRigidBody: (bodyOrId: RigidBodyAPI | number) => void;
+  /**
+   * Removes the given collider from this physics world.
+   *
+   * @param colliderOrId - The collider or id to remove.
+   * @param wakeUp - If set to `true`, the rigid-body this collider is attached to will be awaken.
+   */
+  removeCollider: (colliderOrId: ColliderAPI | number, wakeUp: boolean) => void;
+  /**
+   * Find the closest intersection between a ray and the physics world.
+   *
+   * @param ray - The ray to cast.
+   * @param maxToi - The maximum time-of-impact that can be reported by this cast. This effectively
+   *   limits the length of the ray to `ray.dir.norm() * maxToi`.
+   * @param solid - If `false` then the ray will attempt to hit the boundary of a shape, even if its
+   *   origin already lies inside of a shape. In other terms, `true` implies that all shapes are plain,
+   *   whereas `false` implies that all shapes are hollow for this ray-cast.
+   * @param groups - Used to filter the colliders that can or cannot be hit by the ray.
+   * @param filter - The callback to filter out which collider will be hit.
+   */
+  castRay: (
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean
+  ) => RayColliderHitAPI | null;
+  /**
+   * Find the closest intersection between a ray and the physics world.
+   *
+   * This also computes the normal at the hit point.
+   * @param ray - The ray to cast.
+   * @param maxToi - The maximum time-of-impact that can be reported by this cast. This effectively
+   *   limits the length of the ray to `ray.dir.norm() * maxToi`.
+   * @param solid - If `false` then the ray will attempt to hit the boundary of a shape, even if its
+   *   origin already lies inside of a shape. In other terms, `true` implies that all shapes are plain,
+   *   whereas `false` implies that all shapes are hollow for this ray-cast.
+   * @param groups - Used to filter the colliders that can or cannot be hit by the ray.
+   */
+  castRayAndGetNormal: (
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+    // filterPredicate?: (collider: ColliderAPI) => boolean
+  ) => RayColliderIntersectionAPI | null;
+  /**
+   * Cast a ray and collects all the intersections between a ray and the scene.
+   *
+   * @param ray - The ray to cast.
+   * @param maxToi - The maximum time-of-impact that can be reported by this cast. This effectively
+   *   limits the length of the ray to `ray.dir.norm() * maxToi`.
+   * @param solid - If `false` then the ray will attempt to hit the boundary of a shape, even if its
+   *   origin already lies inside of a shape. In other terms, `true` implies that all shapes are plain,
+   *   whereas `false` implies that all shapes are hollow for this ray-cast.
+   * @param groups - Used to filter the colliders that can or cannot be hit by the ray.
+   * @param callback - The callback called once per hit (in no particular order) between a ray and a collider.
+   *   If this callback returns `false`, then the cast will stop and no further hits will be detected/reported.
+   */
+  intersectionsWithRay: (
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    callback: (intersect: RayColliderIntersectionAPI) => boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI,
+    filterExcludeRigidBody?: RigidBodyAPI
+    // filterPredicate?: (collider: ColliderAPI) => boolean
+  ) => void;
+  /**
+   * Enumerates all the colliders potentially in contact with the given collider.
+   *
+   * @param collider1 - The second collider involved in the contact.
+   * @param f - Closure that will be called on each collider that is in contact with `collider1`.
+   */
+  contactPairsWith: (collider1: ColliderAPI, f: (collider2: ColliderAPI) => void) => void;
+  /**
+   * Enumerates all the colliders intersecting the given colliders, assuming one of them
+   * is a sensor.
+   */
+  intersectionPairsWith: (collider1: ColliderAPI, f: (collider2: ColliderAPI) => void) => void;
+  /**
+   * Returns `true` if `collider1` and `collider2` intersect and at least one of them is a sensor.
+   * @param collider1 − The first collider involved in the intersection.
+   * @param collider2 − The second collider involved in the intersection.
+   */
+  intersectionPair: (collider1: ColliderAPI, collider2: ColliderAPI) => boolean;
+  /**
+   * Creates a new character controller.
+   *
+   * @param offset - The artificial gap added between the character’s chape and its environment.
+   */
+  // createCharacterController(offset: number): KinematicCharacterController;
+  /**
+   * Removes a character controller from this world.
+   *
+   * @param controller - The character controller to remove.
+   */
+  // removeCharacterController(controller: KinematicCharacterController): void;
+  /**
+   * Creates a new PID (Proportional-Integral-Derivative) controller.
+   *
+   * @param kp - The Proportional gain applied to the instantaneous linear position errors.
+   *             This is usually set to a multiple of the inverse of simulation step time
+   *             (e.g. `60` if the delta-time is `1.0 / 60.0`).
+   * @param ki - The linear gain applied to the Integral part of the PID controller.
+   * @param kd - The Derivative gain applied to the instantaneous linear velocity errors.
+   *             This is usually set to a value in `[0.0, 1.0]` where `0.0` implies no damping
+   *             (no correction of velocity errors) and `1.0` implies complete damping (velocity errors
+   *             are corrected in a single simulation step).
+   * @param axes - The axes affected by this controller.
+   *               Only coordinate axes with a bit flags set to `true` will be taken into
+   *               account when calculating the errors and corrections.
+   */
+  // createPidController(kp: number, ki: number, kd: number, axes: PidAxesMask): PidController;
+  /**
+   * Removes a PID controller from this world.
+   *
+   * @param controller - The PID controller to remove.
+   */
+  // removePidController(controller: PidController): void;
+  /**
+   * Creates a new vehicle controller.
+   *
+   * @param chassis - The rigid-body used as the chassis of the vehicle controller. When the vehicle
+   *                  controller is updated, it will change directly the rigid-body’s velocity. This
+   *                  rigid-body must be a dynamic or kinematic-velocity-based rigid-body.
+   */
+  // createVehicleController(chassis: RigidBody): DynamicRayCastVehicleController;
+  /**
+   * Removes a vehicle controller from this world.
+   *
+   * @param controller - The vehicle controller to remove.
+   */
+  // removeVehicleController(controller: DynamicRayCastVehicleController): void;
+  /**
+   * Creates a new impulse joint from the given joint descriptor.
+   *
+   * @param params - The description of the joint to create.
+   * @param parent1 - The first rigid-body attached to this joint.
+   * @param parent2 - The second rigid-body attached to this joint.
+   * @param wakeUp - Should the attached rigid-bodies be awakened?
+   */
+  // createImpulseJoint(
+  //   params: JointData,
+  //   parent1: RigidBody,
+  //   parent2: RigidBody,
+  //   wakeUp: boolean
+  // ): ImpulseJoint;
+  /**
+   * Creates a new multibody joint from the given joint descriptor.
+   *
+   * @param params - The description of the joint to create.
+   * @param parent1 - The first rigid-body attached to this joint.
+   * @param parent2 - The second rigid-body attached to this joint.
+   * @param wakeUp - Should the attached rigid-bodies be awakened?
+   */
+  // createMultibodyJoint(
+  //   params: JointData,
+  //   parent1: RigidBody,
+  //   parent2: RigidBody,
+  //   wakeUp: boolean
+  // ): MultibodyJoint;
+  /**
+   * Retrieves an impulse joint from its handle.
+   *
+   * @param handle - The integer handle of the impulse joint to retrieve.
+   */
+  // getImpulseJoint(handle: ImpulseJointHandle): ImpulseJoint;
+  /**
+   * Retrieves an multibody joint from its handle.
+   *
+   * @param handle - The integer handle of the multibody joint to retrieve.
+   */
+  // getMultibodyJoint(handle: MultibodyJointHandle): MultibodyJoint;
+  /**
+   * Removes the given impulse joint from this physics world.
+   *
+   * @param joint - The impulse joint to remove.
+   * @param wakeUp - If set to `true`, the rigid-bodies attached by this joint will be awaken.
+   */
+  // removeImpulseJoint(joint: ImpulseJoint, wakeUp: boolean): void;
+  /**
+   * Removes the given multibody joint from this physics world.
+   *
+   * @param joint - The multibody joint to remove.
+   * @param wakeUp - If set to `true`, the rigid-bodies attached by this joint will be awaken.
+   */
+  // removeMultibodyJoint(joint: MultibodyJoint, wakeUp: boolean): void;
+  /**
+   * Applies the given closure to each collider managed by this physics world.
+   *
+   * @param f(collider) - The function to apply to each collider managed by this physics world. Called as `f(collider)`.
+   */
+  // forEachCollider(f: (collider: Collider) => void): void;
+  /**
+   * Applies the given closure to each rigid-body managed by this physics world.
+   *
+   * @param f(body) - The function to apply to each rigid-body managed by this physics world. Called as `f(collider)`.
+   */
+  // forEachRigidBody(f: (body: RigidBody) => void): void;
+  /**
+   * Applies the given closure to each active rigid-body managed by this physics world.
+   *
+   * After a short time of inactivity, a rigid-body is automatically deactivated ("asleep") by
+   * the physics engine in order to save computational power. A sleeping rigid-body never moves
+   * unless it is moved manually by the user.
+   *
+   * @param f - The function to apply to each active rigid-body managed by this physics world. Called as `f(collider)`.
+   */
+  // forEachActiveRigidBody(f: (body: RigidBody) => void): void;
+  /**
+   * Gets the handle of up to one collider intersecting the given shape.
+   *
+   * @param shapePos - The position of the shape used for the intersection test.
+   * @param shapeRot - The orientation of the shape used for the intersection test.
+   * @param shape - The shape used for the intersection test.
+   * @param groups - The bit groups and filter associated to the ray, in order to only
+   *   hit the colliders with collision groups compatible with the ray's group.
+   */
+  // intersectionWithShape(
+  //   shapePos: PhysVector,
+  //   shapeRot: PhysRotation,
+  //   shape: Shape,
+  //   filterFlags?: QueryFilterFlags,
+  //   filterGroups?: InteractionGroups,
+  //   filterExcludeCollider?: Collider,
+  //   filterExcludeRigidBody?: RigidBody,
+  //   filterPredicate?: (collider: Collider) => boolean
+  // ): Collider | null;
+  /**
+   * Find the projection of a point on the closest collider.
+   *
+   * @param point - The point to project.
+   * @param solid - If this is set to `true` then the collider shapes are considered to
+   *   be plain (if the point is located inside of a plain shape, its projection is the point
+   *   itself). If it is set to `false` the collider shapes are considered to be hollow
+   *   (if the point is located inside of an hollow shape, it is projected on the shape's
+   *   boundary).
+   * @param groups - The bit groups and filter associated to the point to project, in order to only
+   *   project on colliders with collision groups compatible with the ray's group.
+   */
+  // projectPoint(
+  //   point: Vector,
+  //   solid: boolean,
+  //   filterFlags?: QueryFilterFlags,
+  //   filterGroups?: InteractionGroups,
+  //   filterExcludeCollider?: Collider,
+  //   filterExcludeRigidBody?: RigidBody,
+  //   filterPredicate?: (collider: Collider) => boolean
+  // ): PointColliderProjection | null;
+  /**
+   * Find the projection of a point on the closest collider.
+   *
+   * @param point - The point to project.
+   * @param groups - The bit groups and filter associated to the point to project, in order to only
+   *   project on colliders with collision groups compatible with the ray's group.
+   */
+  // projectPointAndGetFeature(
+  //   point: Vector,
+  //   filterFlags?: QueryFilterFlags,
+  //   filterGroups?: InteractionGroups,
+  //   filterExcludeCollider?: Collider,
+  //   filterExcludeRigidBody?: RigidBody,
+  //   filterPredicate?: (collider: Collider) => boolean
+  // ): PointColliderProjection | null;
+  /**
+   * Find all the colliders containing the given point.
+   *
+   * @param point - The point used for the containment test.
+   * @param groups - The bit groups and filter associated to the point to test, in order to only
+   *   test on colliders with collision groups compatible with the ray's group.
+   * @param callback - A function called with the handles of each collider with a shape
+   *   containing the `point`.
+   */
+  // intersectionsWithPoint(
+  //   point: Vector,
+  //   callback: (handle: Collider) => boolean,
+  //   filterFlags?: QueryFilterFlags,
+  //   filterGroups?: InteractionGroups,
+  //   filterExcludeCollider?: Collider,
+  //   filterExcludeRigidBody?: RigidBody,
+  //   filterPredicate?: (collider: Collider) => boolean
+  // ): void;
+  /**
+   * Casts a shape at a constant linear velocity and retrieve the first collider it hits.
+   * This is similar to ray-casting except that we are casting a whole shape instead of
+   * just a point (the ray origin).
+   *
+   * @param shapePos - The initial position of the shape to cast.
+   * @param shapeRot - The initial rotation of the shape to cast.
+   * @param shapeVel - The constant velocity of the shape to cast (i.e. the cast direction).
+   * @param shape - The shape to cast.
+   * @param targetDistance − If the shape moves closer to this distance from a collider, a hit
+   *                         will be returned.
+   * @param maxToi - The maximum time-of-impact that can be reported by this cast. This effectively
+   *   limits the distance traveled by the shape to `shapeVel.norm() * maxToi`.
+   * @param stopAtPenetration - If set to `false`, the linear shape-cast won’t immediately stop if
+   *   the shape is penetrating another shape at its starting point **and** its trajectory is such
+   *   that it’s on a path to exit that penetration state.
+   * @param groups - The bit groups and filter associated to the shape to cast, in order to only
+   *   test on colliders with collision groups compatible with this group.
+   */
+  // castShape(
+  //   shapePos: Vector,
+  //   shapeRot: Rotation,
+  //   shapeVel: Vector,
+  //   shape: Shape,
+  //   targetDistance: number,
+  //   maxToi: number,
+  //   stopAtPenetration: boolean,
+  //   filterFlags?: QueryFilterFlags,
+  //   filterGroups?: InteractionGroups,
+  //   filterExcludeCollider?: Collider,
+  //   filterExcludeRigidBody?: RigidBody,
+  //   filterPredicate?: (collider: Collider) => boolean
+  // ): ColliderShapeCastHit | null;
+  /**
+   * Retrieve all the colliders intersecting the given shape.
+   *
+   * @param shapePos - The position of the shape to test.
+   * @param shapeRot - The orientation of the shape to test.
+   * @param shape - The shape to test.
+   * @param groups - The bit groups and filter associated to the shape to test, in order to only
+   *   test on colliders with collision groups compatible with this group.
+   * @param callback - A function called with the handles of each collider intersecting the `shape`.
+   */
+  // intersectionsWithShape(
+  //   shapePos: Vector,
+  //   shapeRot: Rotation,
+  //   shape: Shape,
+  //   callback: (collider: Collider) => boolean,
+  //   filterFlags?: QueryFilterFlags,
+  //   filterGroups?: InteractionGroups,
+  //   filterExcludeCollider?: Collider,
+  //   filterExcludeRigidBody?: RigidBody,
+  //   filterPredicate?: (collider: Collider) => boolean
+  // ): void;
+  /**
+   * Finds the handles of all the colliders with an AABB intersecting the given AABB.
+   *
+   * @param aabbCenter - The center of the AABB to test.
+   * @param aabbHalfExtents - The half-extents of the AABB to test.
+   * @param callback - The callback that will be called with the handles of all the colliders
+   *                   currently intersecting the given AABB.
+   */
+  // collidersWithAabbIntersectingAabb(
+  //   aabbCenter: Vector,
+  //   aabbHalfExtents: Vector,
+  //   callback: (handle: Collider) => boolean
+  // ): void;
+  /**
+   * Iterates through all the contact manifolds between the given pair of colliders.
+   *
+   * @param collider1 - The first collider involved in the contact.
+   * @param collider2 - The second collider involved in the contact.
+   * @param f - Closure that will be called on each contact manifold between the two colliders. If the second argument
+   *            passed to this closure is `true`, then the contact manifold data is flipped, i.e., methods like `localNormal1`
+   *            actually apply to the `collider2` and fields like `localNormal2` apply to the `collider1`.
+   */
+  // contactPair(
+  //   collider1: Collider,
+  //   collider2: Collider,
+  //   f: (manifold: TempContactManifold, flipped: boolean) => void
+  // ): void;
+  /**
+   * Sets whether internal performance profiling is enabled (default: false).
+   *
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // set profilerEnabled(enabled: boolean);
+  /**
+   * Indicates if the internal performance profiling is enabled.
+   *
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // get profilerEnabled(): boolean;
+  /**
+   * The time spent in milliseconds by the last step to run the entire simulation step.
+   *
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingStep(): number;
+  /**
+   * The time spent in milliseconds by the last step to run the collision-detection
+   * (broad-phase + narrow-phase).
+   *
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingCollisionDetection(): number;
+  /**
+   * The time spent in milliseconds by the last step to run the broad-phase.
+   *
+   * This timing is included in `timingCollisionDetection`.
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingBroadPhase(): number;
+  /**
+   * The time spent in milliseconds by the last step to run the narrow-phase.
+   *
+   * This timing is included in `timingCollisionDetection`.
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingNarrowPhase(): number;
+  /**
+   * The time spent in milliseconds by the last step to run the constraint solver.
+   *
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingSolver(): number;
+  /**
+   * The time spent in milliseconds by the last step to run the constraint
+   * initialization.
+   *
+   * This timing is included in `timingSolver`.
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingVelocityAssembly(): number;
+  /**
+   * The time spent in milliseconds by the last step to run the constraint
+   * resolution.
+   *
+   * This timing is included in `timingSolver`.
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingVelocityResolution(): number;
+  /**
+   * The time spent in milliseconds by the last step to run the rigid-body
+   * velocity update.
+   *
+   * This timing is included in `timingSolver`.
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingVelocityUpdate(): number;
+  /**
+   * The time spent in milliseconds by writing rigid-body velocities
+   * calculated by the solver back into the rigid-bodies.
+   *
+   * This timing is included in `timingSolver`.
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingVelocityWriteback(): number;
+  /**
+   * The total time spent in CCD detection and resolution.
+   *
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingCcd(): number;
+  /**
+   * The total time spent searching for the continuous hits during CCD.
+   *
+   * This timing is included in `timingCcd`.
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingCcdToiComputation(): number;
+  /**
+   * The total time spent in the broad-phase during CCD.
+   *
+   * This timing is included in `timingCcd`.
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingCcdBroadPhase(): number;
+  /**
+   * The total time spent in the narrow-phase during CCD.
+   *
+   * This timing is included in `timingCcd`.
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingCcdNarrowPhase(): number;
+  /**
+   * The total time spent in the constraints resolution during CCD.
+   *
+   * This timing is included in `timingCcd`.
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingCcdSolver(): number;
+  /**
+   * The total time spent in the islands calculation during CCD.
+   *
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingIslandConstruction(): number;
+  /**
+   * The total time spent propagating detected user changes.
+   *
+   * Only works if the internal profiler is enabled with `World.profilerEnabled = true`.
+   */
+  // timingUserChanges(): number;
 };

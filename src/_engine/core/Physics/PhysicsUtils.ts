@@ -1,40 +1,31 @@
 import * as THREE from 'three/webgpu';
-import type Rapier from '@dimforge/rapier3d-compat';
 
-import * as RapierAPI from './EngineRapier';
-import { Collider, PhysVector, RigidBody, TempContactForceEvent } from './PhysicsAPITypes';
-import { Collider, Collider } from '@dimforge/rapier3d-compat';
-import { LoopState } from '../MainLoop';
+import {
+  ColliderAPI,
+  EngineAPIType,
+  PhysicsBackgroundBehavior,
+  PhysicsEngine,
+  PhysicsWorkerTarget,
+  PhysVector,
+  RigidBodyAPI,
+  TempContactForceEvent,
+} from './PhysicsAPITypes';
+import { ENGINES } from './ENGINES';
 
 let curEngineObj: unknown = null;
 let curEngineKey: string | null = null;
-
-// Define the engines (key) and their init functions
-const engines = {
-  RAPIER: {
-    init: async () => {
-      const mod = await import('@dimforge/rapier3d-compat');
-      const RAPIER = mod.default;
-      await RAPIER.init();
-      return RAPIER as typeof Rapier;
-    },
-    forceTypeEngine: (engineObj: unknown) => engineObj as typeof Rapier,
-    engineAPI: RapierAPI,
-  },
-};
-
 let curEngineAPI: EngineAPIType | null = null;
 
 export const initPhysicsEngine = async (engineKey: PhysicsEngine) => {
-  const engineFns = engines[engineKey];
+  const engineFns = ENGINES[engineKey];
   curEngineObj = await engineFns.init();
   curEngineKey = engineKey;
   curEngineAPI = engineFns.engineAPI;
   return { engine: engineFns.forceTypeEngine(curEngineObj), engineAPI: engineFns.engineAPI };
 };
 
-export const getPhysicsEngine = () => curEngineObj;
 export const getPhysicsEngineKey = () => curEngineKey;
+export const getPhysicsEngine = () => curEngineObj;
 export const getEngineAPI = () => curEngineAPI;
 
 export const getColliderShapeName = (enumNumber: number) => {
@@ -94,10 +85,6 @@ export const setPhysicsPauseTime = (physicsState: PhysicsState) => {
 };
 
 // TYPES: ---------------------------------------------------------------
-
-export type PhysicsEngine = keyof typeof engines; // + possible other engines if implemented
-export type PhysicsWorkerTarget = 'MAIN_THREAD' | 'WORKER_THREAD'; // + possible 'SERVER_AND_MAIN' | 'SERVER_AND_WORKER' if implemented
-export type PhysicsBackgroundBehavior = 'KEEP_RUNNING' | 'KEEP_RUNNING_USE_MIN_DELTA' | 'PAUSE';
 
 export type PhysicsState = {
   enabled: boolean;
@@ -169,8 +156,8 @@ export type PhysicsWorld = {
 };
 
 type CollisionEventFn = (
-  collider1: Collider,
-  collider2: Collider,
+  collider1: ColliderAPI,
+  collider2: ColliderAPI,
   started: boolean,
   physObj1: PhysicsObject,
   physObj2: PhysicsObject
@@ -187,8 +174,8 @@ export type PhysicsObject = {
   name?: string;
   mesh?: THREE.Mesh;
   meshes?: THREE.Mesh[];
-  collider: Collider | Collider[];
-  rigidBody?: RigidBody;
+  collider: ColliderAPI | ColliderAPI[];
+  rigidBody?: RigidBodyAPI;
   hasCollisionEventFn?: boolean | boolean[];
   collisionEventFn?: CollisionEventFn | CollisionEventFn[];
   hasContactForceEventFn?: boolean | boolean[];
@@ -315,9 +302,9 @@ export type ColliderParams = (
     }
   | {
       type: 'TRIANGLE';
-      a: Rapier.Vector3; // @CHORE: change these to not use Rapier
-      b: Rapier.Vector3;
-      c: Rapier.Vector3;
+      a: PhysVector; // @CHORE: change these to not use Rapier
+      b: PhysVector;
+      c: PhysVector;
       borderRadius?: number;
     }
   | {
@@ -370,8 +357,8 @@ export type ColliderParams = (
 
   /** Creates a collision event callback, automatically sets enableCollisionActiveEvents to true for the collider */
   collisionEventFn?: (
-    collider1: Collider,
-    collider2: Collider,
+    collider1: ColliderAPI,
+    collider2: ColliderAPI,
     started: boolean,
     physObj1: PhysicsObject,
     physObj2: PhysicsObject
@@ -386,26 +373,4 @@ export type ColliderParams = (
     physObj1: PhysicsObject,
     physObj2: PhysicsObject
   ) => void;
-};
-
-/**
- * Physics Engine API, which handles the communication between
- * PhysicsAPI and EngineAPI. Each physics engine file (eg. EngineRapier.ts)
- * needs to have this signature.
- */
-export type EngineAPIType = {
-  createPhysicsObject: (params: {
-    id: string;
-    name?: string;
-    physicsParams: PhysicsParams | PhysicsParams[];
-    sceneId?: string;
-    noWarnForUnitializedScene?: boolean;
-    currentObjectIndex?: number;
-    isCompoundObject?: boolean;
-  }) => PhysicsObject; // @TODO: this needs to return a reduced version of PhysicsObject (no meshes or functions)
-  deletePhysicsObject: (id: string) => void;
-  getPhysicsObject: (id: string) => PhysicsObject;
-  createPhysicsWorld: (physicsState: PhysicsState) => void;
-  deletePhysicsWorld: () => void;
-  stepPhysicsWorld: (loopState: LoopState) => void;
 };

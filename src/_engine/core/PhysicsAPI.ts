@@ -39,13 +39,11 @@ import { PhysicsMessageDownEvent, PhysicsMessageUpEvent } from '../workers/physi
 import { getConfig, isDebugEnvironment } from './Config';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import {
-  EngineAPIType,
   getColliderShapeName,
+  getEngineAPI,
   initPhysicsEngine,
   isDynamicPhysicsObjectValid,
   PhysicsObject,
-  PhysicsState,
-  PhysicsWorld,
   ScenePhysicsLooper,
   ScenePhysicsState,
 } from './Physics/PhysicsUtils';
@@ -61,16 +59,23 @@ import {
   updateDraggableWindow,
 } from './UI/DraggableWindow';
 import { CMP, TCMP } from '../utils/CMP';
-import { getReadOnlyLoopState, LoopState, toggleMainPlay } from './MainLoop';
+import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay } from './MainLoop';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { updatePhysicsPanel } from '../debug/Stats';
 import { isCurrentlyLoading } from './SceneLoader';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { BladeController, View } from '@tweakpane/core';
 import { updateInputControllerLoopActions } from './InputControls';
-import { existsOrThrow } from '../utils/helpers';
+import { existsOrThrow, existsOrWarn, initWorker } from '../utils/helpers';
 import { deleteMesh } from './Mesh';
-import { Collider, EventQueue, RigidBody } from './Physics/PhysicsAPITypes';
+import {
+  ColliderAPI,
+  EngineAPIType,
+  EventQueue,
+  PhysicsState,
+  RigidBodyAPI,
+  WorldAPI,
+} from './Physics/PhysicsAPITypes';
 
 // @TODO: refactor the current PhysicsRapier.ts to not return any actual Rapier physics entities (RigidBody, Collider, World etc.).
 // Replace the current physics entities as APIs: eg. physObj = { rigidBody: setLinvel = (Vec3, wakeUp) => { // Custom function here that checks whether we are using threaded version or not and also if we are in the worker or in the main thread. } }
@@ -98,7 +103,12 @@ let physicsState: PhysicsState = {
   maxDeltaTime: 1 / 10,
   minSubSteps: 0,
   maxSubSteps: 60,
-  scenes: {},
+  worldStepEnabled: true,
+  visualizerEnabled: false,
+  gravity: { x: 0, y: -9.81, z: 0 },
+  solverIterations: 10,
+  internalPgsIterations: 1,
+  interpolationEnabled: true,
 };
 let worker: Worker | null = null;
 const LS_KEY = 'debugPhysics';
@@ -113,7 +123,7 @@ const DEFAULT_SCENE_PHYS_STATE: ScenePhysicsState = {
 const getDefaultScenePhysParams = () =>
   ({ ...DEFAULT_SCENE_PHYS_STATE, ...getConfig().physics }) as ScenePhysicsState;
 let stepperFn: (loopState: LoopState) => void = () => {};
-let physicsWorld: PhysicsWorld = { step: () => {} } as PhysicsWorld;
+let physicsWorld: WorldAPI = { step: () => {} } as unknown as WorldAPI; // Maybe refactor this
 let physicsWorldEnabled = false;
 let eventQueue: EventQueue | undefined = undefined;
 let collisionEventFnCount = 0;
@@ -131,7 +141,7 @@ let engineInitiated = false;
 let engAPI: EngineAPIType | null = null;
 
 /**
- * Initializes the physics if enabled
+ * Initializes the physics
  */
 export const InitPhysics = async () => {
   const physicsConfig = getConfig().physics;
@@ -157,7 +167,8 @@ export const InitPhysics = async () => {
     // Main thread
     return initPhysicsEngine(curEngineKey).then(({ engine, engineAPI }) => {
       engineInitiated = Boolean(engine);
-      engAPI = engineAPI;
+      engAPI = engineAPI as EngineAPIType;
+      engAPI.init(physicsState);
       if (isDebugEnvironment()) {
         createDebugControls();
         createPhysicsDebugMesh();
@@ -168,25 +179,54 @@ export const InitPhysics = async () => {
     });
   } else {
     // Worker thread
-    initPhysicsWorker();
+    worker = await initWorker<MessageEvent<PhysicsMessageDownEvent>>(
+      PhysicsWorker,
+      'Physics Worker',
+      onWorkerMessage,
+      onWorkerError
+    );
     // @TODO...
     // messageWorker(message.........)
   }
 };
 
-export const messageWorker = (message: PhysicsMessageUpEvent) => {
+// WORKER LOGIC -- [ START ] -----------------------
+
+// @CHORE: remove this at some point
+// const initPhysicsWorker = async (): Promise<Worker> => {
+//   const initializedWorker = new PhysicsWorker({ name: 'physicsWorker' });
+//   return new Promise((resolve, reject) => {
+//     // Error handler
+//     initializedWorker.onerror = (err) => {
+//       reject(new Error(`Physics worker failed to initialize: ${err.message}`));
+//     };
+//     initializedWorker.onmessage = (event) => {
+//       if (event.data.type === 'INIT_READY') {
+//         // Success
+//         initializedWorker.onmessage = onWorkerMessage;
+//         initializedWorker.onerror = (err) => {
+//           lerror(`Physics worker error: ${err.message}`);
+//         };
+//         resolve(initializedWorker);
+//       }
+//     };
+//   });
+// };
+
+const onWorkerMessage = (event: MessageEvent<PhysicsMessageDownEvent>) => {
+  console.log('Main thread received:', event.data);
+};
+
+const messageWorker = (message: PhysicsMessageUpEvent) => {
   if (!worker) return;
   worker.postMessage(message);
 };
 
-export const initPhysicsWorker = () => {
-  worker = new PhysicsWorker();
-  worker.onmessage = onWorkerMessage;
+const onWorkerError = (err: ErrorEvent) => {
+  lerror(`Physics worker error: ${err.message}`);
 };
 
-export const onWorkerMessage = (event: MessageEvent<PhysicsMessageDownEvent>) => {
-  console.log('Main thread received:', event.data);
-};
+// WORKER LOGIC -- [ END ] -----------------------
 
 const setPhysicsPauseTime = () => {
   const now = performance.now();
@@ -299,7 +339,7 @@ const baseStepper = (loopState: LoopState) => {
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
       const po = currentScenePhysicsObjects[i];
       if (!isDynamicPhysicsObjectValid(po)) continue;
-      const rb = po.rigidBody as RigidBody;
+      const rb = po.rigidBody as RigidBodyAPI;
       const handle = rb.handle;
       const t = rb.translation();
       const r = rb.rotation();
@@ -320,8 +360,8 @@ const baseStepper = (loopState: LoopState) => {
 
     if (collisionEventFnCount) {
       eventQueue?.drainCollisionEvents((handle1, handle2, started) => {
-        let collider1: Collider | null = null;
-        let collider2: Collider | null = null;
+        let collider1: ColliderAPI | null = null;
+        let collider2: ColliderAPI | null = null;
         const physObj1 = currentScenePhysicsObjects.find((obj) => {
           if (Array.isArray(obj.collider)) {
             const foundCollider = obj.collider.find((collider) => collider.handle === handle1);
@@ -525,7 +565,7 @@ export const renderPhysicsObjects = () => {
       // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
       if (!isDynamicPhysicsObjectValid(po)) continue;
       const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
-      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
+      const rb = po.rigidBody as RigidBodyAPI; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
       const handle = rb.handle;
       const prev = prevTransforms.get(rb.handle);
       const curr = currTransforms.get(rb.handle);
@@ -579,7 +619,7 @@ export const renderPhysicsObjects = () => {
       // @OPTIMIZATION: check currentScenePhysicsObjects type at the top of the file for more info
       if (!isDynamicPhysicsObjectValid(po)) continue;
       const mesh = po.mesh as THREE.Mesh; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
-      const rb = po.rigidBody as RigidBody; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
+      const rb = po.rigidBody as RigidBodyAPI; // Casting is safe here because we check the validity (isDynamicPhysicsObjectValid)
       mesh.position.copy(rb.translation());
       const userData = rb.userData as { [key: string]: unknown };
       if (!userData?.lockRotationsX && !userData?.lockRotationsX && !userData?.lockRotationsX) {
@@ -1375,4 +1415,41 @@ export const switchPhysicsCollider = (id: string, newIndex: number) => {
   obj.currentObjectIndex = newIndex;
 
   updatePhysObjectDebuggerGUI('WINDOW');
+};
+
+/** NEW STUFF (@CHORE: delete this line when everything is diamonds!!!) */
+
+export const createPhysicsWorld = () => {
+  const currentSceneId = getCurrentSceneId();
+  if (!engineInitiated || !currentSceneId || physicsWorld) return;
+
+  const defaultParams = getDefaultScenePhysParams();
+
+  const gravity = physicsState.scenes[currentSceneId]?.gravity || defaultParams.gravity;
+  const solverIterations =
+    physicsState.scenes[currentSceneId]?.solverIterations || defaultParams.solverIterations;
+  const internalPgsIterations =
+    physicsState.scenes[currentSceneId]?.internalPgsIterations ||
+    defaultParams.internalPgsIterations;
+
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    physicsWorld = existsOrThrow(
+      engAPI?.createWorld(gravity, {
+        timestep: physicsState.timestepRatio,
+        numSolverIterations: solverIterations,
+        numInternalPgsIterations: internalPgsIterations,
+      }),
+      `Could not create physics world (main thread), engineAPI: ${JSON.stringify(getEngineAPI())}`
+    );
+    physicsWorldEnabled = true;
+    if (isDebugEnvironment()) initDebuggerScenePhysState();
+    addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
+    return;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    // @CHORE: Create the world in a worker
+    physicsWorldEnabled = true;
+    if (isDebugEnvironment()) initDebuggerScenePhysState();
+    addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
+    return;
+  }
 };

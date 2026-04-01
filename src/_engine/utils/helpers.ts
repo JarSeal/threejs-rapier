@@ -468,6 +468,36 @@ export const setMeshCreatePropsToUserData = (shape: string, mesh: THREE.Mesh) =>
 };
 
 /**
+ * Initializes and returns a new worker with a validated handshake.
+ */
+export const initWorker = async <T>(
+  WorkerClass: new (options?: { name?: string }) => Worker,
+  name: string,
+  onMessage: (event: MessageEvent<T>) => void,
+  onError: (err: ErrorEvent) => void,
+  statusReadyString: string = 'INIT_READY'
+): Promise<Worker> => {
+  const worker = new WorkerClass({ name });
+  return new Promise((resolve, reject) => {
+    // Setup temporary error handler for boot-up failures
+    worker.onerror = (err) => {
+      reject(new Error(`[${name}] Setup Error: ${err.message}`));
+    };
+    // Setup temporary message handler for the handshake
+    worker.onmessage = (event: MessageEvent<string | { status: string }>) => {
+      // Check for both object-style and string-style messages for flexibility
+      const status = typeof event.data === 'string' ? event.data : event.data.status;
+      if (status === statusReadyString) {
+        // Setup long-term message and error handlers
+        worker.onmessage = onMessage;
+        worker.onerror = onError;
+        resolve(worker);
+      }
+    };
+  });
+};
+
+/**
  * Checks whether the current function is running in the main thread or in a worker.
  * There is also a faster (simpler) version for this check: {@link isMainThreadSimple}().
  * @returns boolean

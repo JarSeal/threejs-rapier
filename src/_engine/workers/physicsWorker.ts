@@ -1,12 +1,15 @@
 /// <reference lib="webworker" />
 
-export type PhysicsMessageUpEvent = string;
-export type PhysicsMessageDownEvent = string;
+export type PhysicsMessageUpEvent = { type: string };
+export type PhysicsMessageDownEvent = { type: string };
 
-self.onmessage = (event: MessageEvent<PhysicsMessageUpEvent>) => {
+// Automatically send 'INIT_READY' when this file is executed
+self.postMessage({ status: 'INIT_READY' });
+
+self.addEventListener('message', (event: MessageEvent<PhysicsMessageUpEvent>) => {
   console.log('Worker received:', event.data);
 
-  const result = `Processed: ${event.data}`;
+  const result = `Processed: ${event.data.type}`;
 
   self.postMessage(result);
-};
+});
