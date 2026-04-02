@@ -1,41 +1,6 @@
-// import {
-//   type PhysicsObject,
-//   type ColliderParams,
-//   type RigidBodyParams,
-//   type PhysicsParams,
-//   createRigidBody,
-//   createCollider,
-//   createPhysicsObjectWithoutMesh,
-//   createPhysicsObjectWithMesh,
-//   switchPhysicsCollider,
-//   switchPhysicsMesh,
-//   deletePhysicsObject,
-//   deletePhysicsObjectsBySceneId,
-//   deleteCurrentScenePhysicsObjects,
-//   deleteAllPhysicsObjects,
-//   doesPOExist,
-//   createPhysicsWorld,
-//   deletePhysicsWorld,
-//   getPhysicsObject,
-//   getPhysicsObjects,
-//   getRAPIER,
-//   getPhysicsWorld,
-//   createPhysicsDebugMesh,
-//   stepPhysicsWorld,
-//   setCurrentScenePhysicsObjects,
-//   getCurrentScenePhysicsObjects,
-//   togglePhysicsVisualizer,
-//   InitRapierPhysics,
-//   addScenePhysicsLooper,
-//   deleteScenePhysicsLooper,
-//   deleteAllScenePhysicsLoopers,
-//   getCurrentScenePhysParams,
-// } from './PhysicsRapier';
-
 import * as THREE from 'three/webgpu';
 
 import PhysicsWorker from '../workers/physicsWorker?worker';
-import { PhysicsMessageDownEvent, PhysicsMessageUpEvent } from '../workers/physicsWorker';
 import { getConfig, isDebugEnvironment } from './Config';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import {
@@ -44,6 +9,7 @@ import {
   initPhysicsEngine,
   isDynamicPhysicsObjectValid,
   PhysicsObject,
+  RigidBodyParams,
   ScenePhysicsLooper,
   ScenePhysicsState,
 } from './Physics/PhysicsUtils';
@@ -71,22 +37,29 @@ import { deleteMesh } from './Mesh';
 import {
   ColliderAPI,
   EngineAPIType,
-  EventQueue,
+  InteractionGroupsAPI,
   PhysicsState,
+  PhysicsDownProtocol,
+  PhysicsProtocolType,
+  PhysicsUpProtocol,
+  PhysRay,
+  PhysVector,
+  RayColliderIntersectionAPI,
   RigidBodyAPI,
   WorldAPI,
+  PhysRotation,
+  RigidBodyTypeAPI,
 } from './Physics/PhysicsAPITypes';
-
-// @TODO: refactor the current PhysicsRapier.ts to not return any actual Rapier physics entities (RigidBody, Collider, World etc.).
-// Replace the current physics entities as APIs: eg. physObj = { rigidBody: setLinvel = (Vec3, wakeUp) => { // Custom function here that checks whether we are using threaded version or not and also if we are in the worker or in the main thread. } }
-// Also eg. getPhysicsWorld = () => { // Same check here... }
+import { QueryFilterFlags } from '@dimforge/rapier3d-compat';
+import { ColliderParams } from './PhysicsRapier';
+import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 
 // This API is a wrapper to call the actual physics engine.
-// It has been created based on the RAPIER model. Other engines
-// may not share the same methods and call signatures (some
+// It has been created based on the RAPIER API model. Other engines
+// may not share the same methods and call signatures (and some
 // refactoring might be needed to make others work). The API
 // handles the differentiation between different engines
-// and possible threading.
+// and threading.
 
 let physicsState: PhysicsState = {
   enabled: false,
@@ -123,12 +96,11 @@ const DEFAULT_SCENE_PHYS_STATE: ScenePhysicsState = {
 const getDefaultScenePhysParams = () =>
   ({ ...DEFAULT_SCENE_PHYS_STATE, ...getConfig().physics }) as ScenePhysicsState;
 let stepperFn: (loopState: LoopState) => void = () => {};
-let physicsWorld: WorldAPI = { step: () => {} } as unknown as WorldAPI; // Maybe refactor this
+let physicsWorld: WorldAPI = { step: () => {} } as unknown as WorldAPI;
 let physicsWorldEnabled = false;
-let eventQueue: EventQueue | undefined = undefined;
 let collisionEventFnCount = 0;
 let contactForceEventFnCount = 0;
-const physicsObjects: { [sceneId: string]: { [id: string]: PhysicsObject } } = {};
+const physicsObjects: { [id: string]: PhysicsObject } = {};
 let currentScenePhysicsObjects: PhysicsObject[] = [];
 let debugMesh: THREE.LineSegments;
 const INITIAL_DEBUG_MESH_SIZE = 10000;
@@ -143,10 +115,13 @@ let engAPI: EngineAPIType | null = null;
 /**
  * Initializes the physics
  */
-export const InitPhysics = async () => {
+export const initPhysics = async () => {
   const physicsConfig = getConfig().physics;
   const enabled = physicsConfig?.enabled || false;
-  if (!enabled) return;
+  if (!enabled) {
+    // @CONSIDER: maybe add the icon and button for the physics here for the debug drawer but make it disabled.
+    return;
+  }
 
   if (isDebugEnvironment()) {
     const savedValues = lsGetItem(LS_KEY, physicsState);
@@ -165,65 +140,78 @@ export const InitPhysics = async () => {
 
   if (target === 'MAIN_THREAD') {
     // Main thread
-    return initPhysicsEngine(curEngineKey).then(({ engine, engineAPI }) => {
-      engineInitiated = Boolean(engine);
-      engAPI = engineAPI as EngineAPIType;
-      engAPI.init(physicsState);
-      if (isDebugEnvironment()) {
-        createDebugControls();
-        createPhysicsDebugMesh();
-        stepperFn = stepperFnDebug;
-      } else {
-        stepperFn = stepperFnProduction;
-      }
-    });
-  } else {
+    const { engine, engineAPI } = await initPhysicsEngine(curEngineKey);
+    engineInitiated = Boolean(engine);
+    engAPI = engineAPI as EngineAPIType;
+    const worldOrUndefined = engAPI.init(physicsState);
+    if (worldOrUndefined) physicsWorld = worldOrUndefined;
+    if (isDebugEnvironment()) {
+      createDebugControls();
+      createPhysicsDebugMesh();
+      stepperFn = stepperFnDebug;
+    } else {
+      stepperFn = stepperFnProduction;
+    }
+  } else if (target === 'WORKER_THREAD') {
     // Worker thread
-    worker = await initWorker<MessageEvent<PhysicsMessageDownEvent>>(
+    stepperFn = () => null;
+    worker = await initWorker<PhysicsDownProtocol>(
       PhysicsWorker,
       'Physics Worker',
       onWorkerMessage,
       onWorkerError
     );
-    // @TODO...
-    // messageWorker(message.........)
+    const worldCreated = await messageWorkerAsync<boolean>({
+      type: PhysicsProtocolType.INIT_PHYSICS,
+      physicsState,
+    });
+    if (worldCreated) physicsWorld = createWorkerPhysicsWorldAPI();
   }
 };
 
 // WORKER LOGIC -- [ START ] -----------------------
 
-// @CHORE: remove this at some point
-// const initPhysicsWorker = async (): Promise<Worker> => {
-//   const initializedWorker = new PhysicsWorker({ name: 'physicsWorker' });
-//   return new Promise((resolve, reject) => {
-//     // Error handler
-//     initializedWorker.onerror = (err) => {
-//       reject(new Error(`Physics worker failed to initialize: ${err.message}`));
-//     };
-//     initializedWorker.onmessage = (event) => {
-//       if (event.data.type === 'INIT_READY') {
-//         // Success
-//         initializedWorker.onmessage = onWorkerMessage;
-//         initializedWorker.onerror = (err) => {
-//           lerror(`Physics worker error: ${err.message}`);
-//         };
-//         resolve(initializedWorker);
-//       }
-//     };
-//   });
-// };
-
-const onWorkerMessage = (event: MessageEvent<PhysicsMessageDownEvent>) => {
-  console.log('Main thread received:', event.data);
-};
-
-const messageWorker = (message: PhysicsMessageUpEvent) => {
+const messageWorker = (message: PhysicsUpProtocol) => {
   if (!worker) return;
   worker.postMessage(message);
 };
 
+const messageWorkerAsync = async <T>(message: PhysicsUpProtocol) =>
+  new Promise<T>((resolve, reject) => {
+    if (!worker) {
+      return reject(
+        `Worker not found in messageWorkerAsync. Make sure you have initialized the worker before using messageWorkerAsync.`
+      );
+    }
+    const requestId = createNewResolver(resolve);
+    worker.postMessage({ ...message, requestId });
+  });
+
 const onWorkerError = (err: ErrorEvent) => {
   lerror(`Physics worker error: ${err.message}`);
+};
+
+const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
+  const data = event.data;
+  const type = data.type;
+  const requestId = data.requestId;
+
+  switch (type) {
+    case PhysicsProtocolType.WORLD_GRAVITY:
+      // WORLD_GRAVITY
+      return resolveRequest(data.gravity, requestId, type);
+    case PhysicsProtocolType.INIT_PHYSICS:
+      // INIT_PHYSICS
+      return resolveRequest(data.worldCreated, requestId, type);
+    case PhysicsProtocolType.ERROR:
+      // ERROR (from worker)
+      lerror(`Error in physics worker, message: ${data.message}`);
+      return;
+    default:
+      // Error if type not found
+      lerror(`Error in physics onWorkerMessage, unknown protocol type: ${type}`);
+      return;
+  }
 };
 
 // WORKER LOGIC -- [ END ] -----------------------
@@ -251,7 +239,8 @@ export const getPhysGameTime = () => {
   return now - currentTotalPauseDuration;
 };
 
-const physicsVisibilityChange = (isHidden: boolean) => {
+/** Window visibility change handler */
+const physicsVisibilityChangeHandler = (isHidden: boolean) => {
   const loopState = getReadOnlyLoopState();
   if (isHidden) {
     if (loopState.masterPlay && physicsState.backgroundBehavior === 'PAUSE') {
@@ -273,6 +262,7 @@ const physicsVisibilityChange = (isHidden: boolean) => {
   }
 };
 
+// Physics step accumulator variables
 let accDelta = 0;
 let timerRunning = true;
 const timer = new THREE.Timer();
@@ -282,12 +272,13 @@ const updateTimer = () => {
   }
 };
 
+// Interpolation transforms maps
 const prevTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaternion }>();
 const currTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaternion }>();
 
 // Different stepper functions to use for debug and production.
-// baseStepper is used for both.
-const baseStepper = (loopState: LoopState) => {
+// baseStepper is used for both (only for MAIN_THREAD target).
+const mainThreadBaseStepper = (loopState: LoopState) => {
   // @TODO: we need to really carefully think where this is and how to call this
   if (isCurrentlyLoading()) return;
 
@@ -358,97 +349,99 @@ const baseStepper = (loopState: LoopState) => {
       curr.rot.set(r.x, r.y, r.z, r.w);
     }
 
+    // @CHORE: eventQueue (Rapier) does not exist anymore in this context, make an agnostic events handler.
     if (collisionEventFnCount) {
-      eventQueue?.drainCollisionEvents((handle1, handle2, started) => {
-        let collider1: ColliderAPI | null = null;
-        let collider2: ColliderAPI | null = null;
-        const physObj1 = currentScenePhysicsObjects.find((obj) => {
-          if (Array.isArray(obj.collider)) {
-            const foundCollider = obj.collider.find((collider) => collider.handle === handle1);
-            if (foundCollider) {
-              collider1 = foundCollider;
-              return true;
-            }
-            return false;
-          }
-          if (obj.collider.handle === handle1) {
-            collider1 = obj.collider;
-            return true;
-          }
-          return false;
-        });
-        const physObj2 = currentScenePhysicsObjects.find((obj) => {
-          if (Array.isArray(obj.collider)) {
-            const foundCollider = obj.collider.find((collider) => collider.handle === handle2);
-            if (foundCollider) {
-              collider2 = foundCollider;
-              return true;
-            }
-            return false;
-          }
-          if (obj.collider.handle === handle2) {
-            collider2 = obj.collider;
-            return true;
-          }
-          return false;
-        });
-        if (!collider1 || !collider2) return;
-        if (physObj1?.collisionEventFn && physObj2) {
-          if (Array.isArray(physObj1.collisionEventFn)) {
-            for (let i = 0; i < physObj1.collisionEventFn.length; i++) {
-              physObj1.collisionEventFn[i](collider1, collider2, started, physObj1, physObj2);
-            }
-          } else {
-            physObj1.collisionEventFn(collider1, collider2, started, physObj1, physObj2);
-          }
-        }
-        if (physObj2?.collisionEventFn && physObj1) {
-          if (Array.isArray(physObj2.collisionEventFn)) {
-            for (let i = 0; i < physObj2.collisionEventFn.length; i++) {
-              physObj2.collisionEventFn[i](collider1, collider2, started, physObj1, physObj2);
-            }
-          } else {
-            physObj2.collisionEventFn(collider1, collider2, started, physObj1, physObj2);
-          }
-        }
-      });
+      // eventQueue?.drainCollisionEvents((handle1, handle2, started) => {
+      //   let collider1: ColliderAPI | null = null;
+      //   let collider2: ColliderAPI | null = null;
+      //   const physObj1 = currentScenePhysicsObjects.find((obj) => {
+      //     if (Array.isArray(obj.collider)) {
+      //       const foundCollider = obj.collider.find((collider) => collider.handle === handle1);
+      //       if (foundCollider) {
+      //         collider1 = foundCollider;
+      //         return true;
+      //       }
+      //       return false;
+      //     }
+      //     if (obj.collider.handle === handle1) {
+      //       collider1 = obj.collider;
+      //       return true;
+      //     }
+      //     return false;
+      //   });
+      //   const physObj2 = currentScenePhysicsObjects.find((obj) => {
+      //     if (Array.isArray(obj.collider)) {
+      //       const foundCollider = obj.collider.find((collider) => collider.handle === handle2);
+      //       if (foundCollider) {
+      //         collider2 = foundCollider;
+      //         return true;
+      //       }
+      //       return false;
+      //     }
+      //     if (obj.collider.handle === handle2) {
+      //       collider2 = obj.collider;
+      //       return true;
+      //     }
+      //     return false;
+      //   });
+      //   if (!collider1 || !collider2) return;
+      //   if (physObj1?.collisionEventFn && physObj2) {
+      //     if (Array.isArray(physObj1.collisionEventFn)) {
+      //       for (let i = 0; i < physObj1.collisionEventFn.length; i++) {
+      //         physObj1.collisionEventFn[i](collider1, collider2, started, physObj1, physObj2);
+      //       }
+      //     } else {
+      //       physObj1.collisionEventFn(collider1, collider2, started, physObj1, physObj2);
+      //     }
+      //   }
+      //   if (physObj2?.collisionEventFn && physObj1) {
+      //     if (Array.isArray(physObj2.collisionEventFn)) {
+      //       for (let i = 0; i < physObj2.collisionEventFn.length; i++) {
+      //         physObj2.collisionEventFn[i](collider1, collider2, started, physObj1, physObj2);
+      //       }
+      //     } else {
+      //       physObj2.collisionEventFn(collider1, collider2, started, physObj1, physObj2);
+      //     }
+      //   }
+      // });
     }
 
+    // @CHORE: eventQueue (Rapier) does not exist anymore in this context, make an agnostic events handler.
     if (contactForceEventFnCount) {
-      eventQueue?.drainContactForceEvents((event) => {
-        const handle1 = event.collider1();
-        const handle2 = event.collider2();
-        const physObj1 = currentScenePhysicsObjects.find((obj) => {
-          if (Array.isArray(obj.collider)) {
-            return Boolean(obj.collider.find((collider) => collider.handle === handle1));
-          }
-          return obj.collider.handle === handle1;
-        });
-        const physObj2 = currentScenePhysicsObjects.find((obj) => {
-          if (Array.isArray(obj.collider)) {
-            return Boolean(obj.collider.find((collider) => collider.handle === handle2));
-          }
-          return obj.collider.handle === handle2;
-        });
-        if (physObj1?.contactForceEventFn && physObj2) {
-          if (Array.isArray(physObj1.contactForceEventFn)) {
-            for (let i = 0; i < physObj1.contactForceEventFn.length; i++) {
-              physObj1.contactForceEventFn[i](event, physObj1, physObj2);
-            }
-          } else {
-            physObj1.contactForceEventFn(event, physObj1, physObj2);
-          }
-        }
-        if (physObj2?.contactForceEventFn && physObj1) {
-          if (Array.isArray(physObj2.contactForceEventFn)) {
-            for (let i = 0; i < physObj2.contactForceEventFn.length; i++) {
-              physObj2.contactForceEventFn[i](event, physObj1, physObj2);
-            }
-          } else {
-            physObj2.contactForceEventFn(event, physObj1, physObj2);
-          }
-        }
-      });
+      // eventQueue?.drainContactForceEvents((event) => {
+      //   const handle1 = event.collider1();
+      //   const handle2 = event.collider2();
+      //   const physObj1 = currentScenePhysicsObjects.find((obj) => {
+      //     if (Array.isArray(obj.collider)) {
+      //       return Boolean(obj.collider.find((collider) => collider.handle === handle1));
+      //     }
+      //     return obj.collider.handle === handle1;
+      //   });
+      //   const physObj2 = currentScenePhysicsObjects.find((obj) => {
+      //     if (Array.isArray(obj.collider)) {
+      //       return Boolean(obj.collider.find((collider) => collider.handle === handle2));
+      //     }
+      //     return obj.collider.handle === handle2;
+      //   });
+      //   if (physObj1?.contactForceEventFn && physObj2) {
+      //     if (Array.isArray(physObj1.contactForceEventFn)) {
+      //       for (let i = 0; i < physObj1.contactForceEventFn.length; i++) {
+      //         physObj1.contactForceEventFn[i](event, physObj1, physObj2);
+      //       }
+      //     } else {
+      //       physObj1.contactForceEventFn(event, physObj1, physObj2);
+      //     }
+      //   }
+      //   if (physObj2?.contactForceEventFn && physObj1) {
+      //     if (Array.isArray(physObj2.contactForceEventFn)) {
+      //       for (let i = 0; i < physObj2.contactForceEventFn.length; i++) {
+      //         physObj2.contactForceEventFn[i](event, physObj1, physObj2);
+      //       }
+      //     } else {
+      //       physObj2.contactForceEventFn(event, physObj1, physObj2);
+      //     }
+      //   }
+      // });
     }
 
     // Run scenePhysicsLoopers
@@ -458,7 +451,7 @@ const baseStepper = (loopState: LoopState) => {
     }
 
     // Step the world
-    physicsWorld.step();
+    const data = (engAPI as EngineAPIType).step();
 
     accDelta -= physicsState.timestepRatio;
     stepsTaken++;
@@ -472,20 +465,17 @@ const baseStepper = (loopState: LoopState) => {
 };
 
 // PRODUCTION STEPPER
-const stepperFnProduction = (loopState: LoopState) => baseStepper(loopState);
+const stepperFnProduction = (loopState: LoopState) => mainThreadBaseStepper(loopState);
 
 // DEBUG STEPPER
 const stepperFnDebug = (loopState: LoopState) => {
   const startMeasuring = performance.now();
 
-  const curSceneParams = physicsState.scenes[getCurrentSceneId() || ''];
-  if (!curSceneParams?.worldStepEnabled) return;
-
-  baseStepper(loopState);
+  mainThreadBaseStepper(loopState);
 
   if (!loopState.masterPlay || !loopState.appPlay) return;
 
-  if (physicsWorldEnabled && debugMesh && curSceneParams?.visualizerEnabled) {
+  if (physicsWorldEnabled && debugMesh && physicsState.visualizerEnabled) {
     // Physics debug visualizer
     const { vertices, colors } = physicsWorld.debugRender();
 
@@ -1419,37 +1409,408 @@ export const switchPhysicsCollider = (id: string, newIndex: number) => {
 
 /** NEW STUFF (@CHORE: delete this line when everything is diamonds!!!) */
 
-export const createPhysicsWorld = () => {
-  const currentSceneId = getCurrentSceneId();
-  if (!engineInitiated || !currentSceneId || physicsWorld) return;
+export const createPhysicsWorld = async (
+  gravity?: PhysVector,
+  opts?: {
+    /** Timestep as delta time (eg. 1/60 = 0,0166666666667) */
+    timestep?: number;
+    /** Integer */
+    solverIterations?: number;
+    /** Integer */
+    internalPgsIterations?: number;
+  }
+) => {
+  if (!engineInitiated || physicsWorld) return;
 
-  const defaultParams = getDefaultScenePhysParams();
-
-  const gravity = physicsState.scenes[currentSceneId]?.gravity || defaultParams.gravity;
-  const solverIterations =
-    physicsState.scenes[currentSceneId]?.solverIterations || defaultParams.solverIterations;
-  const internalPgsIterations =
-    physicsState.scenes[currentSceneId]?.internalPgsIterations ||
-    defaultParams.internalPgsIterations;
+  const gravityArg = gravity || physicsState.gravity;
+  const timestep = opts?.timestep || physicsState.timestepRatio;
+  const solverIterations = opts?.solverIterations || physicsState.solverIterations;
+  const internalPgsIterations = opts?.internalPgsIterations || physicsState.internalPgsIterations;
+  const optsArg = {
+    timestep,
+    numSolverIterations: solverIterations,
+    numInternalPgsIterations: internalPgsIterations,
+  };
 
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     physicsWorld = existsOrThrow(
-      engAPI?.createWorld(gravity, {
-        timestep: physicsState.timestepRatio,
-        numSolverIterations: solverIterations,
-        numInternalPgsIterations: internalPgsIterations,
-      }),
+      engAPI?.createWorld(gravityArg, optsArg),
       `Could not create physics world (main thread), engineAPI: ${JSON.stringify(getEngineAPI())}`
     );
     physicsWorldEnabled = true;
     if (isDebugEnvironment()) initDebuggerScenePhysState();
-    addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
-    return;
+    addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChangeHandler);
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
-    // @CHORE: Create the world in a worker
-    physicsWorldEnabled = true;
-    if (isDebugEnvironment()) initDebuggerScenePhysState();
-    addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
-    return;
+    const response = await messageWorkerAsync<{ worldCreated: boolean }>({
+      type: PhysicsProtocolType.CREATE_WORLD,
+      gravity: gravityArg,
+      opts: optsArg,
+    });
+    if (response.worldCreated) {
+      physicsWorld = createWorkerPhysicsWorldAPI();
+      physicsWorldEnabled = true;
+      if (isDebugEnvironment()) initDebuggerScenePhysState(); // @CHORE: this needs to change (no scene stuff)
+      addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChangeHandler);
+    }
+  }
+
+  return physicsWorld;
+};
+
+export const deletePhysicsWorld = async () => {
+  let worldDeleted = false;
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const response = engAPI?.deleteWorld();
+    worldDeleted = Boolean(response?.worldDeleted);
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const response = await messageWorkerAsync<{ worldDeleted: boolean }>({
+      type: PhysicsProtocolType.DELETE_WORLD,
+    });
+    worldDeleted = Boolean(response.worldDeleted);
+  }
+
+  if (worldDeleted) {
+    // Reset
+    physicsWorldEnabled = false;
+    physicsWorld = { step: () => {} } as unknown as WorldAPI;
+    collisionEventFnCount = 0;
+    contactForceEventFnCount = 0;
+  } else {
+    lerror('Could not delete physics world.');
   }
 };
+
+export const takePhysicsSnapshot = async () => {
+  let snapshot;
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    snapshot = engAPI?.takeSnapshot();
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const response = await messageWorkerAsync<{ snapshot: Uint8Array | undefined }>({
+      type: PhysicsProtocolType.TAKE_SNAPSHOT,
+    });
+    snapshot = response.snapshot;
+  }
+  return snapshot;
+};
+
+/** World, RigidBody, and Collider API definitions -----[ START ]----- */
+
+const createWorkerPhysicsWorldAPI = (): WorldAPI => ({
+  gravity: async (gravity?: PhysVector) =>
+    await messageWorkerAsync<void | PhysVector>({
+      type: PhysicsProtocolType.WORLD_GRAVITY,
+      gravity,
+    }),
+  free: () => messageWorker({ type: PhysicsProtocolType.WORLD_FREE }),
+  takeSnapshot: async () => await takePhysicsSnapshot(),
+  restoreSnapshot: async (data: Uint8Array) => {
+    // @CHORE
+  },
+  propagateModifiedBodyPositionsToColliders: () => {
+    // @CHORE
+  },
+  /** Get or set the timestep. Leave argument empty to get. */
+  timestep: async (dt?: number) => {
+    // @CHORE
+  },
+  /** Get or set the lengthUnit. Leave argument empty to get. */
+  lengthUnit: async (unitsPerMeter?: number) => {
+    // @CHORE
+  },
+  numSolverIterations: async (niter?: number) => {
+    // @CHORE
+  },
+  numInternalPgsIterations: async (niter?: number) => {
+    // @CHORE
+  },
+  maxCcdSubsteps: async (substeps?: number) => {
+    // @CHORE
+  },
+  createRigidBody: async (params: RigidBodyParams) => {
+    // @CHORE
+  },
+  createCollider: async (params: ColliderParams) => {
+    // @CHORE
+  },
+  getRigidBody: async (id: number) => {
+    // @CHORE
+  },
+  getCollider: async (id: number) => {
+    // @CHORE
+  },
+  removeRigidBody: async (bodyOrId: RigidBodyAPI | number) => {
+    // @CHORE
+  },
+  removeCollider: async (bodyOrId: ColliderAPI | number, wakeUp?: boolean) => {
+    // @CHORE
+  },
+  castRay: async (
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+    // filterPredicate?: (collider: ColliderAPI) => boolean
+  ) => {
+    // @CHORE
+  },
+  castRayAndGetNormal: async (
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+    // filterPredicate?: (collider: ColliderAPI) => boolean
+  ) => {
+    // @CHORE
+  },
+  intersectionsWithRay: (
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    callback: (intersect: RayColliderIntersectionAPI) => boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+    // filterPredicate?: (collider: ColliderAPI) => boolean
+  ) => {
+    // @CHORE
+  },
+  contactPairsWith: (collider1: ColliderAPI, f: (collider2: ColliderAPI) => void) => {
+    // @CHORE
+  },
+  intersectionPairsWith: (collider1: ColliderAPI, f: (collider2: ColliderAPI) => void) => {
+    // @CHORE
+  },
+  intersectionPair: async (collider1: ColliderAPI, collider2: ColliderAPI) => {
+    // @CHORE
+  },
+});
+
+const createWorkerPhysicsRigidBodyAPI = (id: number) => ({
+  id,
+  userData: function (userData?: { [key: string]: unknown }) {
+    // returns { [key: string]: unknown } | void;
+  },
+  isValid: function () {
+    // returns boolean;
+  },
+  lockTranslations: function (locked: boolean, wakeUp: boolean) {
+    // returns void;
+  },
+  lockRotations: function (locked: boolean, wakeUp: boolean) {
+    // returns void;
+  },
+  setEnabledTranslations: function (
+    enableX: boolean,
+    enableY: boolean,
+    enableZ: boolean,
+    wakeUp: boolean
+  ) {
+    // returns void;
+  },
+  setEnabledRotations: function (
+    enableX: boolean,
+    enableY: boolean,
+    enableZ: boolean,
+    wakeUp: boolean
+  ) {
+    // returns void;
+  },
+  dominanceGroup: function () {
+    // returns number;
+  },
+  setDominanceGroup: function (group: number) {
+    // returns void;
+  },
+  additionalSolverIterations: function () {
+    // returns number;
+  },
+  setAdditionalSolverIterations: function (iters: number) {
+    // returns void;
+  },
+  enableCcd: function (enabled: boolean) {
+    // returns void;
+  },
+  setSoftCcdPrediction: function (distance: number) {
+    // returns void;
+  },
+  softCcdPrediction: function () {
+    // returns number;
+  },
+  translation: function () {
+    // returns PhysVector;
+  },
+  rotation: function () {
+    // returns PhysRotation;
+  },
+  nextTranslation: function () {
+    // returns PhysVector;
+  },
+  nextRotation: function () {
+    // returns PhysRotation;
+  },
+  setTranslation: function (tra: PhysVector, wakeUp: boolean) {
+    // returns void;
+  },
+  setLinvel: function (vel: PhysVector, wakeUp: boolean) {
+    // returns void;
+  },
+  gravityScale: function () {
+    // returns number;
+  },
+  setGravityScale: function (factor: number, wakeUp: boolean) {
+    // returns void;
+  },
+  setRotation: function (rot: PhysRotation, wakeUp: boolean) {
+    // returns void;
+  },
+  setAngvel: function (vel: PhysVector, wakeUp: boolean) {
+    // returns void;
+  },
+  setNextKinematicTranslation: function (t: PhysVector) {
+    // returns void;
+  },
+  setNextKinematicRotation: function (rot: PhysRotation) {
+    // returns void;
+  },
+  linvel: function () {
+    // returns PhysVector;
+  },
+  velocityAtPoint: function (point: PhysVector) {
+    // returns PhysVector;
+  },
+  angvel: function () {
+    // returns PhysVector;
+  },
+  mass: function () {
+    // returns number;
+  },
+  effectiveInvMass: function () {
+    // returns PhysVector;
+  },
+  invMass: function () {
+    // returns number;
+  },
+  localCom: function () {
+    // returns PhysVector;
+  },
+  worldCom: function () {
+    // returns PhysVector;
+  },
+  invPrincipalInertia: function () {
+    // returns PhysVector;
+  },
+  principalInertia: function () {
+    // returns PhysVector;
+  },
+  principalInertiaLocalFrame: function () {
+    // returns PhysRotation;
+  },
+  sleep: function () {
+    // returns void;
+  },
+  wakeUp: function () {
+    // returns void;
+  },
+  isCcdEnabled: function () {
+    // returns boolean;
+  },
+  numColliders: function () {
+    // returns number;
+  },
+  collider: function (i: number) {
+    // returns ColliderAPI;
+  },
+  setEnabled: function (enabled: boolean) {
+    // returns void;
+  },
+  isEnabled: function () {
+    // returns boolean;
+  },
+  bodyType: function () {
+    // returns RigidBodyTypeAPI;
+  },
+  setBodyType: function (type: RigidBodyTypeAPI, wakeUp: boolean) {
+    // returns void;
+  },
+  isSleeping: function () {
+    // returns boolean;
+  },
+  isMoving: function () {
+    // returns boolean;
+  },
+  isFixed: function () {
+    // returns boolean;
+  },
+  isKinematic: function () {
+    // returns boolean;
+  },
+  isDynamic: function () {
+    // returns boolean;
+  },
+  linearDamping: function () {
+    // returns number;
+  },
+  angularDamping: function () {
+    // returns number;
+  },
+  setLinearDamping: function (factor: number) {
+    // returns void;
+  },
+  recomputeMassPropertiesFromColliders: function () {
+    // returns void;
+  },
+  setAdditionalMass: function (mass: number, wakeUp: boolean) {
+    // returns void;
+  },
+  setAdditionalMassProperties: function (
+    mass: number,
+    centerOfMass: PhysVector,
+    principalAngularInertia: PhysVector,
+    angularInertiaLocalFrame: PhysRotation,
+    wakeUp: boolean
+  ) {
+    // returns void;
+  },
+  setAngularDamping: function (factor: number) {
+    // returns void;
+  },
+  resetForces: function (wakeUp: boolean) {
+    // returns void;
+  },
+  resetTorques: function (wakeUp: boolean) {
+    // returns void;
+  },
+  addForce: function (force: PhysVector, wakeUp: boolean) {
+    // returns void;
+  },
+  applyImpulse: function (impulse: PhysVector, wakeUp: boolean) {
+    // returns void;
+  },
+  addTorque: function (torque: PhysVector, wakeUp: boolean) {
+    // returns void;
+  },
+  applyTorqueImpulse: function (torqueImpulse: PhysVector, wakeUp: boolean) {
+    // returns void;
+  },
+  addForceAtPoint: function (force: PhysVector, point: PhysVector, wakeUp: boolean) {
+    // return void;
+  },
+  applyImpulseAtPoint: function (impulse: PhysVector, point: PhysVector, wakeUp: boolean) {
+    // returns void;
+  },
+  userForce: function () {
+    // returns PhysVector;
+  },
+  userTorque: function () {
+    // returns PhysVector;
+  },
+});
+
+/** World, RigidBody, and Collider API definitions -----[ END ]----- */

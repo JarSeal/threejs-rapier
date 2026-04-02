@@ -1,5 +1,6 @@
+import type * as THREE from 'three/webgpu';
+
 import { ENGINES } from './ENGINES';
-import { ColliderParams, RigidBodyParams } from './PhysicsUtils';
 
 export type PhysicsEngine = keyof typeof ENGINES;
 export type PhysicsWorkerTarget = 'MAIN_THREAD' | 'WORKER_THREAD'; // + possible 'SERVER_AND_MAIN' | 'SERVER_AND_WORKER' if implemented
@@ -11,7 +12,7 @@ export type PhysicsBackgroundBehavior = 'KEEP_RUNNING' | 'KEEP_RUNNING_USE_MIN_D
  * needs to have this signature.
  */
 export type EngineAPIType = {
-  init: (physicsState: PhysicsState, doNotCreateWorld?: boolean) => void;
+  init: (physicsState: PhysicsState, doNotCreateWorld?: boolean) => WorldAPI | undefined;
   createWorld: (
     gravity: PhysVector,
     opts?: {
@@ -20,8 +21,12 @@ export type EngineAPIType = {
       numInternalPgsIterations?: number;
     }
   ) => WorldAPI;
-  createRigidBody: (params: RigidBodyParams) => number;
-  createCollider: (params: ColliderParams) => number;
+  createRigidBody: (params: RigidBodyParams) => RigidBodyAPI;
+  createCollider: (params: ColliderParams) => ColliderAPI;
+  createRigidBodys: (params: RigidBodyParams[]) => RigidBodyAPI[];
+  createColliders: (params: ColliderParams[]) => ColliderAPI[];
+  deleteWorld: () => { worldDeleted: boolean };
+  takeSnapshot: () => Uint8Array | undefined;
 };
 
 export type PhysicsState = {
@@ -212,16 +217,6 @@ export type RigidBodyAPI = {
     wakeUp: boolean
   ): void;
   /**
-   * Locks or unlocks the ability of this rigid-body to translate along individual coordinate axes.
-   *
-   * @param enableX - If `false`, this rigid-body will no longer translate due to torques and impulses, along the X coordinate axis.
-   * @param enableY - If `false`, this rigid-body will no longer translate due to torques and impulses, along the Y coordinate axis.
-   * @param enableZ - If `false`, this rigid-body will no longer translate due to torques and impulses, along the Z coordinate axis.
-   * @param wakeUp - If `true`, this rigid-body will be automatically awaken if it is currently asleep.
-   * @deprecated use `this.setEnabledTranslations` with the same arguments instead.
-   */
-  restrictTranslations(enableX: boolean, enableY: boolean, enableZ: boolean, wakeUp: boolean): void;
-  /**
    * Locks or unlocks the ability of this rigid-body to rotate along individual coordinate axes.
    *
    * @param enableX - If `false`, this rigid-body will no longer rotate due to torques and impulses, along the X coordinate axis.
@@ -230,16 +225,6 @@ export type RigidBodyAPI = {
    * @param wakeUp - If `true`, this rigid-body will be automatically awaken if it is currently asleep.
    */
   setEnabledRotations(enableX: boolean, enableY: boolean, enableZ: boolean, wakeUp: boolean): void;
-  /**
-   * Locks or unlocks the ability of this rigid-body to rotate along individual coordinate axes.
-   *
-   * @param enableX - If `false`, this rigid-body will no longer rotate due to torques and impulses, along the X coordinate axis.
-   * @param enableY - If `false`, this rigid-body will no longer rotate due to torques and impulses, along the Y coordinate axis.
-   * @param enableZ - If `false`, this rigid-body will no longer rotate due to torques and impulses, along the Z coordinate axis.
-   * @param wakeUp - If `true`, this rigid-body will be automatically awaken if it is currently asleep.
-   * @deprecated use `this.setEnabledRotations` with the same arguments instead.
-   */
-  restrictRotations(enableX: boolean, enableY: boolean, enableZ: boolean, wakeUp: boolean): void;
   /**
    * The dominance group, in [-127, +127] this rigid-body is part of.
    */
@@ -1423,6 +1408,233 @@ export interface PhysicsHooks {
   ): boolean;
 }
 
+type CollisionEventFn = (
+  collider1: ColliderAPI,
+  collider2: ColliderAPI,
+  started: boolean,
+  physObj1: PhysicsObject,
+  physObj2: PhysicsObject
+) => void;
+
+type ContactForceEventFn = (
+  event: TempContactForceEvent,
+  physObj1: PhysicsObject,
+  physObj2: PhysicsObject
+) => void;
+
+export type PhysicsObject = {
+  id: string;
+  name?: string;
+  mesh?: THREE.Mesh;
+  meshes?: THREE.Mesh[];
+  collider: ColliderAPI | ColliderAPI[];
+  rigidBody?: RigidBodyAPI;
+  hasCollisionEventFn?: boolean | boolean[];
+  collisionEventFn?: CollisionEventFn | CollisionEventFn[];
+  hasContactForceEventFn?: boolean | boolean[];
+  contactForceEventFn?: ContactForceEventFn | ContactForceEventFn[];
+  currentObjectIndex?: number;
+  currentMeshIndex?: number;
+  setTranslation: (
+    translation: { x?: number; y?: number; z?: number; wakeUp?: boolean },
+    meshGroup?: THREE.Group
+  ) => void;
+  setRotation: (
+    rotation: { x?: number; y?: number; z?: number; w?: number; wakeUp?: boolean },
+    meshGroup?: THREE.Group
+  ) => void;
+};
+
+export type RigidBodyParams = {
+  /** Type of rigid body */
+  rigidType: 'FIXED' | 'DYNAMIC' | 'POS_BASED' | 'VELO_BASED';
+
+  /** Enabled */
+  enabled?: boolean;
+
+  /** Translation (position) */
+  translation?: { x: number; y: number; z: number };
+
+  /** Rotation (position) in quaternion */
+  rotation?: { x: number; y: number; z: number; w: number };
+
+  /** Linear (translation) velocity */
+  linvel?: { x: number; y: number; z: number };
+
+  /** Angular (rotation) velocity */
+  angvel?: { x: number; y: number; z: number };
+
+  /** Gravity scale */
+  gravityScale?: number;
+
+  /** Force to be applied (constant force) */
+  force?: { x: number; y: number; z: number };
+
+  /** Torque force to be applied (constant force) */
+  torqueForce?: { x: number; y: number; z: number };
+
+  /** Force at point to be applied (constant force) */
+  forceAtPoint?: {
+    force: { x: number; y: number; z: number };
+    point: { x: number; y: number; z: number };
+  };
+
+  /** Impulse force to be applied */
+  impulse?: { x: number; y: number; z: number };
+
+  /** Impulse torque force to be applied */
+  torqueImpulse?: { x: number; y: number; z: number };
+
+  /** Impulse at point to be applied (constant force) */
+  impulseAtPoint?: {
+    force: { x: number; y: number; z: number };
+    point: { x: number; y: number; z: number };
+  };
+
+  /** Additional mass of the object. Rapier calculates mass = (Volume * Density) + AdditionalMass. Density is set for the collider. */
+  additionalMass?: number;
+
+  /** Translation locks */
+  lockTranslations?: { x: boolean; y: boolean; z: boolean };
+
+  /** Rotation locks */
+  lockRotations?: { x: boolean; y: boolean; z: boolean };
+
+  /** Linear damping (slowing down of movement, eg. air friction) */
+  linearDamping?: number;
+
+  /** Angular damping (slowing down of rotation, eg. air friction) */
+  angularDamping?: number;
+
+  /** Dominance group, from -127 to 127 (default 0) */
+  dominance?: number;
+
+  /** Continuous Collision Detection (CCD) enabled (default false) */
+  ccdEnabled?: boolean;
+
+  /** Soft CCD prediction distance */
+  softCcdDistance?: number;
+
+  /** Whether the body should be waken up or not (default true) */
+  wakeUp?: boolean;
+
+  /** User data to be added to the rigid body */
+  userData?: { [key: string]: unknown };
+
+  /** Do not set manually! Rigid body running id which set automatically in PhysicsAPI. */
+  id?: number;
+};
+
+export type ColliderParams = (
+  | {
+      /** Means the same thing (alias) */
+      type: 'CUBOID' | 'BOX';
+      hx?: number;
+      hy?: number;
+      hz?: number;
+      borderRadius?: number;
+    }
+  | {
+      /** Means the same thing (alias) */
+      type: 'BALL' | 'SPHERE';
+      radius?: number;
+    }
+  | {
+      /** Three different shapes (they just have the same props) */
+      type: 'CAPSULE' | 'CONE' | 'CYLINDER';
+      halfHeight?: number;
+      radius?: number;
+      borderRadius?: number;
+    }
+  | {
+      type: 'TRIANGLE';
+      a: PhysVector;
+      b: PhysVector;
+      c: PhysVector;
+      borderRadius?: number;
+    }
+  | {
+      type: 'TRIMESH';
+      vertices?: Float32Array;
+      indices?: Uint32Array;
+    }
+  | {
+      type: 'HEIGHTFIELD';
+      nrows?: number;
+      ncols?: number;
+      scale?: PhysVector;
+      heights?: Float32Array;
+    }
+  | {
+      type: 'CONVEXHULL';
+      vertices?: Float32Array;
+    }
+) & {
+  /** Enabled (default true)  */
+  enabled?: boolean;
+
+  /** Mass (default 1.0) */
+  density?: number;
+
+  /** Translation (position), only has affect if there is no rigid body */
+  translation?: { x: number; y: number; z: number };
+
+  /** Rotation (position) in quaternion, only has affect if there is no rigid body */
+  rotation?: { x: number; y: number; z: number; w: number };
+
+  /** Object's friction value, usually between 0 to 1 but can me more (default is @TODO: find out default) */
+  friction?: number;
+
+  /** How two colliding objects apply friction (default AVERAGE). The following precedence is used: MAX > MULTIPLY > MIN > AVERAGE. */
+  frictionCombineRule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE';
+
+  /** Object restitution (bounce) value, usually between 0 to 1 but can me more (default is @TODO: find out default) */
+  restitution?: number;
+
+  /** How two colliding objects apply restitution (default AVERAGE). The following precedence is used: MAX > MULTIPLY > MIN > AVERAGE. */
+  restitutionCombineRule?: 'MAX' | 'MULTIPLY' | 'MIN' | 'AVERAGE';
+
+  /** Whether the collider is a sensor or not */
+  isSensor?: boolean;
+
+  /** Enables collision events, if collisionEventFn is defined this is enabled automatically */
+  enableCollisionActiveEvents?: boolean;
+
+  /** Enables collision events, if collisionEventFn is defined this is enabled automatically */
+  enableContactForceActiveEvents?: boolean;
+
+  /** Do not set manually! Whether the collider has a collision event function or not */
+  hasCollisionEventFn?: boolean;
+
+  /** Creates a collision event callback, automatically sets enableCollisionActiveEvents to true for the collider */
+  collisionEventFn?: (
+    collider1: ColliderAPI,
+    collider2: ColliderAPI,
+    started: boolean,
+    physObj1: PhysicsObject,
+    physObj2: PhysicsObject
+  ) => void;
+
+  /** Do not set manually! Whether the collider has a contact force event function or not */
+  hasContactForceEventFn?: boolean;
+
+  /** Creates a contact force event callback, automatically sets enableContactForceActiveEvents to true for the collider */
+  contactForceEventFn?: (
+    e: TempContactForceEvent,
+    physObj1: PhysicsObject,
+    physObj2: PhysicsObject
+  ) => void;
+
+  /** Possible parent id (rigid body) to attach the collider to */
+  parentId?: number;
+
+  /** Do not set manually! Collider running id which set automatically in PhysicsAPI. */
+  id?: number;
+
+  /** Do not set manually! Orientation to set for imported models (custom property "orientation: 'x' | 'z'" defines this). */
+  orientation?: PhysRotation;
+};
+
 /**
  * The physics world.
  *
@@ -1431,7 +1643,7 @@ export interface PhysicsHooks {
  */
 export type WorldAPI = {
   /** Get or set the gravity. Leave argument empty to get. */
-  gravity: (gravity?: PhysVector) => PhysVector | undefined;
+  gravity: (gravity?: PhysVector) => Promise<PhysVector | void>;
   /**
    * Release the WASM memory occupied by this physics world.
    *
@@ -1445,13 +1657,13 @@ export type WorldAPI = {
    * Use `World.restoreSnapshot` to create a new physics world with a state identical to
    * the state when `.takeSnapshot()` is called.
    */
-  takeSnapshot: () => Uint8Array;
+  takeSnapshot: () => Promise<Uint8Array | undefined>;
   /**
    * Creates a new physics world from a snapshot.
    *
    * This new physics world will be an identical copy of the snapshoted physics world.
    */
-  restoreSnapshot: (data: Uint8Array) => WorldAPI;
+  restoreSnapshot: (data: Uint8Array) => Promise<WorldAPI>;
   /**
    * Computes all the lines (and their colors) needed to render the scene.
    *
@@ -1506,7 +1718,7 @@ export type WorldAPI = {
    *
    * @param dt - The timestep length, in seconds.
    */
-  timestep: (dt?: number) => number | void;
+  timestep: (dt?: number) => Promise<number | void>;
   /**
    * Get or set the lengthUnit. Leave argument empty to get.
    *
@@ -1524,7 +1736,7 @@ export type WorldAPI = {
    * it as if 100 pixels is equivalent to 1 meter in its various internal threshold.
    * (default `1.0`).
    */
-  lengthUnit: (unitsPerMeter?: number) => number | void;
+  lengthUnit: (unitsPerMeter?: number) => Promise<number | void>;
   /**
    * Get or set the numSolverIterations. Leave argument empty to get. Sets the number of solver iterations
    * run by the constraints solver for calculating forces (default: `4`).
@@ -1534,7 +1746,7 @@ export type WorldAPI = {
    *
    * @param niter - The new number of solver iterations.
    */
-  numSolverIterations: (niter?: number) => number | void;
+  numSolverIterations: (niter?: number) => Promise<number | void>;
   /**
    * Get or set the numSolverIterations. Leave argument empty to get. Sets the Number of internal
    * Project Gauss Seidel (PGS) iterations run at each solver iteration (default: `1`).
@@ -1544,7 +1756,7 @@ export type WorldAPI = {
    *
    * @param niter - The new number of internal PGS iterations.
    */
-  numInternalPgsIterations: (niter?: number) => number | void;
+  numInternalPgsIterations: (niter?: number) => Promise<number | void>;
   /**
    * Get or set the numSolverIterations. Leave argument empty to get. Sets the number of substeps
    * continuous collision-detection can run (default: `1`).
@@ -1556,32 +1768,32 @@ export type WorldAPI = {
    *
    * @param substeps - The new maximum number of CCD substeps. Setting to `0` disables CCD entirely.
    */
-  maxCcdSubsteps: (substeps?: number) => number | void;
+  maxCcdSubsteps: (substeps?: number) => Promise<number | void>;
   /**
    * Creates a new rigid-body from the given rigid-body descriptor.
    *
    * @param params - The parameters of the rigid-body.
    */
-  createRigidBody: (params: RigidBodyParams) => RigidBodyAPI;
+  createRigidBody: (params: RigidBodyParams) => Promise<RigidBodyAPI>;
   /**
    * Creates a new collider.
    *
    * @param params - The parameters of the collider.
    * @param parent - The rigid-body this collider is attached to.
    */
-  createCollider: (params: ColliderParams, parent?: RigidBodyAPI) => ColliderAPI;
+  createCollider: (params: ColliderParams, parent?: RigidBodyAPI) => Promise<ColliderAPI>;
   /**
    * Retrieves a rigid-body from its handle.
    *
    * @param id - The integer handle of the rigid-body to retrieve.
    */
-  getRigidBody: (id: number) => RigidBodyAPI | undefined;
+  getRigidBody: (id: number) => Promise<RigidBodyAPI | undefined>;
   /**
    * Retrieves a collider from its handle.
    *
    * @param id - The integer handle of the collider to retrieve.
    */
-  getCollider: (id: number) => ColliderAPI | undefined;
+  getCollider: (id: number) => Promise<ColliderAPI | undefined>;
   /**
    * Removes the given rigid-body from this physics world.
    *
@@ -1619,7 +1831,7 @@ export type WorldAPI = {
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
     filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => RayColliderHitAPI | null;
+  ) => Promise<RayColliderHitAPI | null>;
   /**
    * Find the closest intersection between a ray and the physics world.
    *
@@ -1639,9 +1851,9 @@ export type WorldAPI = {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
-    // filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => RayColliderIntersectionAPI | null;
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean
+  ) => Promise<RayColliderIntersectionAPI | null>;
   /**
    * Cast a ray and collects all the intersections between a ray and the scene.
    *
@@ -1663,8 +1875,8 @@ export type WorldAPI = {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI,
-    filterExcludeRigidBody?: RigidBodyAPI
-    // filterPredicate?: (collider: ColliderAPI) => boolean
+    filterExcludeRigidBody?: RigidBodyAPI,
+    filterPredicate?: (collider: ColliderAPI) => boolean
   ) => void;
   /**
    * Enumerates all the colliders potentially in contact with the given collider.
@@ -1683,7 +1895,7 @@ export type WorldAPI = {
    * @param collider1 − The first collider involved in the intersection.
    * @param collider2 − The second collider involved in the intersection.
    */
-  intersectionPair: (collider1: ColliderAPI, collider2: ColliderAPI) => boolean;
+  intersectionPair: (collider1: ColliderAPI, collider2: ColliderAPI) => Promise<boolean>;
   /**
    * Creates a new character controller.
    *
@@ -2086,3 +2298,65 @@ export type WorldAPI = {
    */
   // timingUserChanges(): number;
 };
+
+/** Physics worker UP protocol (from main thread to worker) */
+export type PhysicsUpProtocol = (
+  | {
+      type: PhysicsProtocolType.INIT_PHYSICS;
+      physicsState: PhysicsState;
+      doNotCreateWorld?: boolean;
+    }
+  | {
+      type: PhysicsProtocolType.TAKE_SNAPSHOT;
+    }
+  | {
+      type: PhysicsProtocolType.CREATE_WORLD;
+      gravity: PhysVector;
+      opts?: {
+        timestep?: number;
+        numSolverIterations?: number;
+        numInternalPgsIterations?: number;
+      };
+    }
+  | { type: PhysicsProtocolType.DELETE_WORLD }
+  | {
+      type: PhysicsProtocolType.WORLD_GRAVITY;
+      gravity?: PhysVector;
+    }
+  | {
+      type: PhysicsProtocolType.WORLD_FREE;
+    }
+) & { requestId?: number };
+
+/** Physics worker DOWN protocol (from worker to main thread) */
+export type PhysicsDownProtocol = (
+  | {
+      type: PhysicsProtocolType.INIT_PHYSICS;
+      worldCreated: boolean;
+    }
+  | {
+      type: PhysicsProtocolType.TAKE_SNAPSHOT;
+      snapshot: Uint8Array | undefined;
+    }
+  | {
+      type: PhysicsProtocolType.ERROR;
+      message: string;
+    }
+  | { type: PhysicsProtocolType.CREATE_WORLD; worldCreated: boolean }
+  | { type: PhysicsProtocolType.DELETE_WORLD; worldDeleted: boolean }
+  | {
+      type: PhysicsProtocolType.WORLD_GRAVITY;
+      gravity?: PhysVector;
+    }
+) & { requestId?: number };
+
+export declare enum PhysicsProtocolType {
+  ERROR = 0,
+  INIT_PHYSICS = 1,
+  TAKE_SNAPSHOT = 2,
+  RESTORE_SNAPSHOT = 3,
+  CREATE_WORLD = 100,
+  DELETE_WORLD = 101,
+  WORLD_GRAVITY = 200,
+  WORLD_FREE = 201,
+}

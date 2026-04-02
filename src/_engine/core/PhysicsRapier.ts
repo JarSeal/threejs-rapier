@@ -24,7 +24,7 @@ import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
 import { updateInputControllerLoopActions } from './InputControls';
 import { BladeController, View } from '@tweakpane/core';
 import { BufferGeometryUtils } from 'three/examples/jsm/Addons.js';
-import { PhysicsState, ScenePhysicsState } from './Physics/PhysicsUtils';
+import { isCurrentlyLoading } from './SceneLoader';
 
 type CollisionEventFn = (
   collider1: Collider,
@@ -237,10 +237,55 @@ export type PhysicsParams = {
   meshId?: string;
 };
 
+type ScenePhysicsState = {
+  worldStepEnabled: boolean;
+  visualizerEnabled: boolean;
+  gravity: { x: number; y: number; z: number };
+  solverIterations: number;
+  internalPgsIterations: number;
+  interpolationEnabled: boolean;
+};
+
+type PhysicsState = {
+  enabled: boolean;
+  timestep: number;
+  timestepRatio: number;
+  /** What to do with physics loop if the app window is hidden (under another window, in another tab, minified).
+   * 'KEEP_RUNNIN' = Keeps the physics running in the background.
+   * 'KEEP_RUNNING_USE_MIN_DELTA' = If for some reason the physics cannot run in the background, the minDeltaTime will be set as new delta time. Requires: minDelta > 0.
+   * 'PAUSE' = Pauses the physics when the window is hidden and then uses the minDeltaTime to continue. Requires: minDelta > 0.
+   */
+  backgroundBehavior: 'KEEP_RUNNING' | 'KEEP_RUNNING_USE_MIN_DELTA' | 'PAUSE';
+  isPaused: boolean;
+  /** When the physics loop is on pause (backgroundBehavior = 'PAUSE', loopState.masterPlay = false, or loopState.appPlay = false)
+   * the time it was paused (performance.now()). 0 = not paused.
+   */
+  pausedTime: number;
+  /** Total pause duration, used for the getPhysGameTime helper (in the helpers.ts) */
+  pauseDurationTotal: number;
+  /** Keeps track whether the pause reason is the background behavior (if the app window is hidden) */
+  pauseReason: 'BACKGROUND_BEHAVIOR' | null;
+  /** The minimum delta time to be used for backgroundBehaviors 'USE_MIN_DELTA' and 'PAUSE'.
+   * 0 = not in use
+   */
+  minDeltaTime: number;
+  /** Clamping protects against large delta times even in the foreground (e.g., if rendering stalls).
+   * 0 = not in use
+   */
+  maxDeltaTime: number;
+  /** This ensures stability by forcing the engine to run at least 'minSubsteps'
+   * per frame even if the frame rate is extremely high and deltaTime is tiny.
+   * 0 = not in use
+   */
+  /**  */
+  minSubSteps: number;
+  /** Prevent the spiral of death (should usually be the same as timestep) */
+  maxSubSteps: number;
+  scenes: { [sceneId: string]: ScenePhysicsState };
+};
+
 let physicsState: PhysicsState = {
   enabled: false,
-  physicsEngine: 'RAPIER',
-  workerTarget: 'MAIN_THREAD',
   timestep: 60,
   timestepRatio: 1 / 60,
   backgroundBehavior: 'PAUSE',
@@ -1497,9 +1542,8 @@ const currTransforms = new Map<number, { pos: THREE.Vector3; rot: THREE.Quaterni
 // Different stepper functions to use for debug and production.
 // baseStepper is used for both.
 const baseStepper = (loopState: LoopState) => {
+  if (isCurrentlyLoading()) return;
   updateTimer();
-  if (loopState.isLoadingScene) return;
-
   let delta = timer.getDelta();
   if (loopState.isWindowHidden || !loopState.masterPlay || !loopState.appPlay) {
     if (
@@ -1759,6 +1803,7 @@ const stepperFnDebug = (loopState: LoopState) => {
  */
 export const stepPhysicsWorld = (loopState: LoopState) => stepperFn(loopState);
 
+// @TODO: rename this to isDynamicPhysicsObjectValid and flip the checks to be !isDynamicPhysicsObjectValida(po)
 const isDynamicPhysicsObjectValid = (po: PhysicsObject) =>
   po.mesh &&
   po.rigidBody &&
@@ -2194,6 +2239,8 @@ export const createEditPhysObjContent = (data?: { [key: string]: unknown }) => {
       closeDraggableWindow(EDIT_PHY_OBJ_WIN_ID);
     },
   });
+
+  // const colliders = Array.isArray(obj.collider) ?
 
   debuggerWindowCmp.add({
     prepend: true,
