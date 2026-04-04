@@ -8,10 +8,7 @@ import {
   getEngineAPI,
   initPhysicsEngine,
   isDynamicPhysicsObjectValid,
-  PhysicsObject,
-  RigidBodyParams,
-  ScenePhysicsLooper,
-  ScenePhysicsState,
+  ValidProtocolTypes,
 } from './Physics/PhysicsUtils';
 import { getCurrentSceneId, getRootScene, getScene, isCurrentScene } from './Scene';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
@@ -49,9 +46,23 @@ import {
   WorldAPI,
   PhysRotation,
   RigidBodyTypeAPI,
+  TakeSnapshotResponse,
+  CreateWorldResponse,
+  DeleteWorldResponse,
+  RestoreSnapshotResponse,
+  WorldGravityResponse,
+  WorldTimestepResponse,
+  WorldLengthUnitResponse,
+  WorldNumSolverIterationsResponse,
+  WorldNumInternalPgsIterationsResponse,
+  WorldMaxCcdSubstepsResponse,
+  PhysicsObject,
+  RigidBodyParams,
+  CreateRigidBodyResponse,
+  CreateColliderResponse,
+  QueryFilterFlags,
+  ColliderParams,
 } from './Physics/PhysicsAPITypes';
-import { QueryFilterFlags } from '@dimforge/rapier3d-compat';
-import { ColliderParams } from './PhysicsRapier';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 
 // This API is a wrapper to call the actual physics engine.
@@ -115,7 +126,7 @@ let engAPI: EngineAPIType | null = null;
 /**
  * Initializes the physics
  */
-export const initPhysics = async () => {
+export const initPhysics = async (doNotCreateWorld?: boolean) => {
   const physicsConfig = getConfig().physics;
   const enabled = physicsConfig?.enabled || false;
   if (!enabled) {
@@ -164,6 +175,9 @@ export const initPhysics = async () => {
     const worldCreated = await messageWorkerAsync<boolean>({
       type: PhysicsProtocolType.INIT_PHYSICS,
       physicsState,
+      isDebugEnvironment: isDebugEnvironment(),
+      loopState: getReadOnlyLoopState(),
+      doNotCreateWorld,
     });
     if (worldCreated) physicsWorld = createWorkerPhysicsWorldAPI();
   }
@@ -196,22 +210,42 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
   const type = data.type;
   const requestId = data.requestId;
 
-  switch (type) {
-    case PhysicsProtocolType.WORLD_GRAVITY:
-      // WORLD_GRAVITY
-      return resolveRequest(data.gravity, requestId, type);
-    case PhysicsProtocolType.INIT_PHYSICS:
-      // INIT_PHYSICS
-      return resolveRequest(data.worldCreated, requestId, type);
-    case PhysicsProtocolType.ERROR:
-      // ERROR (from worker)
-      lerror(`Error in physics worker, message: ${data.message}`);
-      return;
-    default:
-      // Error if type not found
-      lerror(`Error in physics onWorkerMessage, unknown protocol type: ${type}`);
-      return;
+  // @CHORE: finish this
+  // if (type === PhysicsProtocolType.STEP) {}
+
+  if (type === PhysicsProtocolType.ERROR) {
+    lerror(`Error in physics worker, message: ${data.message}`);
+    return;
+  } else if (!ValidProtocolTypes.has(type)) {
+    lerror(`Error in physics onWorkerMessage, unknown protocol type: ${type}`);
+    return;
   }
+
+  return resolveRequest(data, requestId, type);
+
+  // @CHORE remove
+  // switch (type) {
+  //   case PhysicsProtocolType.TAKE_SNAPSHOT:
+  //     // TAKE_SNAPSHOT
+  //     return resolveRequest(data.snapshot, requestId, type);
+  //   case PhysicsProtocolType.RESTORE_SNAPSHOT:
+  //     // RESTORE_SNAPSHOT
+  //     return resolveRequest(data.worldCreated, requestId, type);
+  //   case PhysicsProtocolType.WORLD_GRAVITY:
+  //     // WORLD_GRAVITY
+  //     return resolveRequest(data.gravity, requestId, type);
+  //   case PhysicsProtocolType.INIT_PHYSICS:
+  //     // INIT_PHYSICS
+  //     return resolveRequest(data.worldCreated, requestId, type);
+  //   case PhysicsProtocolType.ERROR:
+  //     // ERROR (from worker)
+  //     lerror(`Error in physics worker, message: ${data.message}`);
+  //     return;
+  //   default:
+  //     // Error if type not found
+  //     lerror(`Error in physics onWorkerMessage, unknown protocol type: ${type}`);
+  //     return;
+  // }
 };
 
 // WORKER LOGIC -- [ END ] -----------------------
@@ -1420,7 +1454,17 @@ export const createPhysicsWorld = async (
     internalPgsIterations?: number;
   }
 ) => {
-  if (!engineInitiated || physicsWorld) return;
+  existsOrThrow(
+    engineInitiated,
+    'Physics engine not initiated. Initiate the engine (initPhysics) before creating the world'
+  );
+  if (physicsWorld) {
+    if (isDebugEnvironment())
+      lwarn(
+        'Trying to create another physics world even though the physics world has been already created.'
+      );
+    return;
+  }
 
   const gravityArg = gravity || physicsState.gravity;
   const timestep = opts?.timestep || physicsState.timestepRatio;
@@ -1441,7 +1485,7 @@ export const createPhysicsWorld = async (
     if (isDebugEnvironment()) initDebuggerScenePhysState();
     addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChangeHandler);
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
-    const response = await messageWorkerAsync<{ worldCreated: boolean }>({
+    const response = await messageWorkerAsync<CreateWorldResponse>({
       type: PhysicsProtocolType.CREATE_WORLD,
       gravity: gravityArg,
       opts: optsArg,
@@ -1463,7 +1507,7 @@ export const deletePhysicsWorld = async () => {
     const response = engAPI?.deleteWorld();
     worldDeleted = Boolean(response?.worldDeleted);
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
-    const response = await messageWorkerAsync<{ worldDeleted: boolean }>({
+    const response = await messageWorkerAsync<DeleteWorldResponse>({
       type: PhysicsProtocolType.DELETE_WORLD,
     });
     worldDeleted = Boolean(response.worldDeleted);
@@ -1485,7 +1529,7 @@ export const takePhysicsSnapshot = async () => {
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     snapshot = engAPI?.takeSnapshot();
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
-    const response = await messageWorkerAsync<{ snapshot: Uint8Array | undefined }>({
+    const response = await messageWorkerAsync<TakeSnapshotResponse>({
       type: PhysicsProtocolType.TAKE_SNAPSHOT,
     });
     snapshot = response.snapshot;
@@ -1493,45 +1537,139 @@ export const takePhysicsSnapshot = async () => {
   return snapshot;
 };
 
+export const restorePhysicsSnapshot = async (snapshot: Uint8Array) => {
+  existsOrThrow(
+    engineInitiated,
+    'Physics engine not initiated. Initiate the physics engine (initPhysics) before restoring a snapshot.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const response = engAPI?.restoreSnapshot(snapshot);
+    if (response) physicsWorld = response;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    // @TODO: we maybe need check all the rigidBodies and colliders
+    // and recreate all the maps here (maybe the new bodies and colliders can come in the response if we also send the next running ids).
+    const response = await messageWorkerAsync<RestoreSnapshotResponse>({
+      type: PhysicsProtocolType.RESTORE_SNAPSHOT,
+      snapshot,
+    });
+    physicsWorld = createWorkerPhysicsWorldAPI(); // Not sure if we need to recreate the WorldAPI?
+    if (response.worldCreated) physicsWorld = createWorkerPhysicsWorldAPI();
+  }
+  return physicsWorld;
+};
+
+export const createRigidBody = async (params: RigidBodyParams) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a rigid body.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    return existsOrThrow(
+      engAPI?.createRigidBody(params),
+      `Could not create a rigid body ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const rbId = (
+      await messageWorkerAsync<CreateRigidBodyResponse>({
+        type: PhysicsProtocolType.CREATE_RIGID_BODY,
+        params,
+      })
+    ).id;
+    return existsOrThrow(
+      createWorkerPhysicsRigidBodyAPI(rbId),
+      `Could not create a rigid body ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create a rigid body (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD') Params: ${JSON.stringify(params)}`
+  );
+};
+
+export const createCollider = async (params: ColliderParams) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a collider.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    return existsOrThrow(
+      engAPI?.createCollider(params),
+      `Could not create a collider ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const collId = (
+      await messageWorkerAsync<CreateColliderResponse>({
+        type: PhysicsProtocolType.CREATE_COLLIDER,
+        params,
+      })
+    ).id;
+    return existsOrThrow(
+      createEnginePhysicsColliderAPI(collId),
+      `Could not create a collider ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create a collider (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD') Params: ${JSON.stringify(params)}`
+  );
+};
+
 /** World, RigidBody, and Collider API definitions -----[ START ]----- */
 
 const createWorkerPhysicsWorldAPI = (): WorldAPI => ({
+  restoringWorld: false,
   gravity: async (gravity?: PhysVector) =>
-    await messageWorkerAsync<void | PhysVector>({
-      type: PhysicsProtocolType.WORLD_GRAVITY,
-      gravity,
-    }),
-  free: () => messageWorker({ type: PhysicsProtocolType.WORLD_FREE }),
+    (
+      await messageWorkerAsync<WorldGravityResponse>({
+        type: PhysicsProtocolType.WORLD_GRAVITY,
+        gravity,
+      })
+    )?.gravity,
+  free: () => messageWorker({ type: PhysicsProtocolType.WORLD_FREE, isOneWay: true }),
   takeSnapshot: async () => await takePhysicsSnapshot(),
-  restoreSnapshot: async (data: Uint8Array) => {
-    // @CHORE
-  },
-  propagateModifiedBodyPositionsToColliders: () => {
-    // @CHORE
-  },
-  /** Get or set the timestep. Leave argument empty to get. */
-  timestep: async (dt?: number) => {
-    // @CHORE
-  },
-  /** Get or set the lengthUnit. Leave argument empty to get. */
-  lengthUnit: async (unitsPerMeter?: number) => {
-    // @CHORE
-  },
-  numSolverIterations: async (niter?: number) => {
-    // @CHORE
-  },
-  numInternalPgsIterations: async (niter?: number) => {
-    // @CHORE
-  },
-  maxCcdSubsteps: async (substeps?: number) => {
-    // @CHORE
-  },
-  createRigidBody: async (params: RigidBodyParams) => {
-    // @CHORE
-  },
-  createCollider: async (params: ColliderParams) => {
-    // @CHORE
-  },
+  restoreSnapshot: async (snapshot: Uint8Array) => await restorePhysicsSnapshot(snapshot),
+  propagateModifiedBodyPositionsToColliders: () =>
+    messageWorker({
+      type: PhysicsProtocolType.WORLD_PROPAGATE_MODIFIED_BODY_POSITIONS_TO_COLLIDERS,
+      isOneWay: true,
+    }),
+  timestep: async (dt?: number) =>
+    (
+      await messageWorkerAsync<WorldTimestepResponse>({
+        type: PhysicsProtocolType.WORLD_TIMESTEP,
+        dt,
+      })
+    )?.dt,
+  lengthUnit: async (unitsPerMeter?: number) =>
+    (
+      await messageWorkerAsync<WorldLengthUnitResponse>({
+        type: PhysicsProtocolType.WORLD_LENGTH_UNIT,
+        unitsPerMeter,
+      })
+    )?.unitsPerMeter,
+  numSolverIterations: async (niter?: number) =>
+    (
+      await messageWorkerAsync<WorldNumSolverIterationsResponse>({
+        type: PhysicsProtocolType.WORLD_NUM_SOLVER_ITERATIONS,
+        niter,
+      })
+    )?.solverIterations,
+  numInternalPgsIterations: async (niter?: number) =>
+    (
+      await messageWorkerAsync<WorldNumInternalPgsIterationsResponse>({
+        type: PhysicsProtocolType.WORLD_NUM_INTERNAL_PGS_ITERATIONS,
+        niter,
+      })
+    )?.internalPgsIterations,
+  maxCcdSubsteps: async (substeps?: number) =>
+    (
+      await messageWorkerAsync<WorldMaxCcdSubstepsResponse>({
+        type: PhysicsProtocolType.WORLD_MAX_CCD_SUBSTEPS,
+        substeps,
+      })
+    )?.substeps,
+  createRigidBody: async (params: RigidBodyParams) => await createRigidBody(params),
+  createCollider: async (params: ColliderParams) => await createCollider(params),
   getRigidBody: async (id: number) => {
     // @CHORE
   },
@@ -1592,7 +1730,7 @@ const createWorkerPhysicsWorldAPI = (): WorldAPI => ({
   },
 });
 
-const createWorkerPhysicsRigidBodyAPI = (id: number) => ({
+const createWorkerPhysicsRigidBodyAPI = (id: number): RigidBodyAPI => ({
   id,
   userData: function (userData?: { [key: string]: unknown }) {
     // returns { [key: string]: unknown } | void;
@@ -1810,6 +1948,226 @@ const createWorkerPhysicsRigidBodyAPI = (id: number) => ({
   },
   userTorque: function () {
     // returns PhysVector;
+  },
+});
+
+export const createEnginePhysicsColliderAPI = (id: number): ColliderAPI => ({
+  id,
+  clearShapeCache: function () {
+    // returns void;
+  },
+  isValid: function () {
+    // returns boolean;
+  },
+  translation: function () {
+    // returns PhysVector;
+  },
+  translationWrtParent: function () {
+    // returns PhysVector | null;
+  },
+  rotation: function () {
+    // returns PhysRotation;
+  },
+  rotationWrtParent: function () {
+    // returns PhysRotation | null;
+  },
+  isSensor: function () {
+    // returns boolean;
+  },
+  setSensor: function (isSensor: boolean) {
+    // returns void;
+  },
+  setEnabled: function (enabled: boolean) {
+    // returns void;
+  },
+  isEnabled: function () {
+    // returns boolean;
+  },
+  setRestitution: function (restitution: number) {
+    // returns
+  },
+  setFriction: function (friction: number) {
+    // returns void;
+  },
+  frictionCombineRule: function () {
+    // returns CoefficientCombineRule;
+  },
+  setFrictionCombineRule: function (rule: CoefficientCombineRule) {
+    // returns void;
+  },
+  restitutionCombineRule: function () {
+    // returns CoefficientCombineRule;
+  },
+  setRestitutionCombineRule: function (rule: CoefficientCombineRule) {
+    // returns void;
+  },
+  setCollisionGroups: function (groups: InteractionGroupsAPI) {
+    // returns void;
+  },
+  setSolverGroups: function (groups: InteractionGroupsAPI) {
+    // returns void;
+  },
+  contactSkin: function () {
+    // returns number;
+  },
+  setContactSkin: function (thickness: number) {
+    // returns void;
+  },
+  activeHooks: function () {
+    // returns ActiveHooks;
+  },
+  setActiveHooks: function (activeHooks: ActiveHooks) {
+    // returns void;
+  },
+  activeEvents: function () {
+    // returns ActiveEvents;
+  },
+  setActiveEvents: function (activeEvents: ActiveEvents) {
+    // returns void;
+  },
+  activeCollisionTypes: function () {
+    // returns ActiveCollisionTypes;
+  },
+  setContactForceEventThreshold: function (threshold: number) {
+    // returns void;
+  },
+  contactForceEventThreshold: function () {
+    // returns number;
+  },
+  setActiveCollisionTypes: function (activeCollisionTypes: ActiveCollisionTypes) {
+    // returns void;
+  },
+  setDensity: function (density: number) {
+    // returns void;
+  },
+  setMass: function (mass: number) {
+    // returns void;
+  },
+  setMassProperties: function (
+    mass: number,
+    centerOfMass: PhysVector,
+    principalAngularInertia: PhysVector,
+    angularInertiaLocalFrame: PhysRotation
+  ) {
+    // returns void;
+  },
+  setTranslation: function (tra: PhysVector) {
+    // returns void;
+  },
+  setTranslationWrtParent: function (tra: PhysVector) {
+    // returns void;
+  },
+  setRotation: function (rot: PhysRotation) {
+    // returns void;
+  },
+  setRotationWrtParent: function (rot: PhysRotation) {
+    // returns void;
+  },
+  shapeType: function () {
+    // returns ShapeType;
+  },
+  halfExtents: function () {
+    // returns PhysVector;
+  },
+  setHalfExtents: function (newHalfExtents: PhysVector) {
+    // returns void;
+  },
+  radius: function () {
+    // returns number;
+  },
+  setRadius: function (newRadius: number) {
+    // returns void;
+  },
+  roundRadius: function () {
+    // returns number;
+  },
+  setRoundRadius: function (newBorderRadius: number) {
+    // returns void;
+  },
+  halfHeight: function () {
+    // returns number;
+  },
+  setHalfHeight: function (newHalfheight: number) {
+    // returns void;
+  },
+  setVoxel: function (ix: number, iy: number, iz: number, filled: boolean) {
+    // returns void;
+  },
+  propagateVoxelChange: function (
+    voxels2: ColliderAPI,
+    ix: number,
+    iy: number,
+    iz: number,
+    shift_x: number,
+    shift_y: number,
+    shift_z: number
+  ) {
+    // returns void;
+  },
+  combineVoxelStates: function (
+    voxels2: ColliderAPI,
+    shift_x: number,
+    shift_y: number,
+    shift_z: number
+  ) {
+    // returns void;
+  },
+  vertices: function () {
+    // returns Float32Array;
+  },
+  indices: function () {
+    // returns Uint32Array | undefined;
+  },
+  heightfieldHeights: function () {
+    // returns Float32Array;
+  },
+  heightfieldScale: function () {
+    // returns PhysVector;
+  },
+  heightfieldNRows: function () {
+    // returns number;
+  },
+  heightfieldNCols: function () {
+    // returns number;
+  },
+  parent: function () {
+    // returns RigidBodyAPI | null;
+  },
+  friction: function () {
+    // returns number;
+  },
+  restitution: function () {
+    // returns number;
+  },
+  density: function () {
+    // returns number;
+  },
+  mass: function () {
+    // returns number;
+  },
+  volume: function () {
+    // returns number;
+  },
+  collisionGroups: function () {
+    // returns InteractionGroupsAPI;
+  },
+  solverGroups: function () {
+    // returns InteractionGroupsAPI;
+  },
+  containsPoint: function (point: PhysVector) {
+    // returns boolean;
+  },
+  projectPoint: function (point: PhysVector, solid: boolean) {
+    // returns PointProjection | null;
+  },
+  intersectsRay: function (ray: PhysRay, maxToi: number) {
+    // returns boolean;
+  },
+  castRay: function (ray: PhysRay, maxToi: number, solid: boolean) {
+    // returns number;
+  },
+  castRayAndGetNormal: function (ray: PhysRay, maxToi: number, solid: boolean) {
+    // returns RayIntersection | null;
   },
 });
 

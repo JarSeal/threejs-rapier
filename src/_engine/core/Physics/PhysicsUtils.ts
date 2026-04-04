@@ -1,4 +1,10 @@
-import { EngineAPIType, PhysicsEngine, PhysicsObject, PhysicsState } from './PhysicsAPITypes';
+import {
+  EngineAPIType,
+  PhysicsEngine,
+  PhysicsObject,
+  PhysicsProtocolType,
+  PhysicsState,
+} from './PhysicsAPITypes';
 import { ENGINES } from './ENGINES';
 
 let curEngineObj: unknown = null;
@@ -72,3 +78,7 @@ export const setPhysicsPauseTime = (physicsState: PhysicsState) => {
   }
   physicsState.pausedTime = now;
 };
+
+export const ValidProtocolTypes = new Set(
+  Object.values(PhysicsProtocolType).filter((v) => typeof v === 'number')
+);

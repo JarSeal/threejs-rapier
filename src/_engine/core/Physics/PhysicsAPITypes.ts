@@ -1,6 +1,7 @@
 import type * as THREE from 'three/webgpu';
 
 import { ENGINES } from './ENGINES';
+import { LoopState } from '../MainLoop';
 
 export type PhysicsEngine = keyof typeof ENGINES;
 export type PhysicsWorkerTarget = 'MAIN_THREAD' | 'WORKER_THREAD'; // + possible 'SERVER_AND_MAIN' | 'SERVER_AND_WORKER' if implemented
@@ -12,7 +13,12 @@ export type PhysicsBackgroundBehavior = 'KEEP_RUNNING' | 'KEEP_RUNNING_USE_MIN_D
  * needs to have this signature.
  */
 export type EngineAPIType = {
-  init: (physicsState: PhysicsState, doNotCreateWorld?: boolean) => WorldAPI | undefined;
+  init: (
+    physicsState: PhysicsState,
+    isDebugEnvironment: boolean,
+    loopState: LoopState,
+    doNotCreateWorld?: boolean
+  ) => WorldAPI | undefined;
   createWorld: (
     gravity: PhysVector,
     opts?: {
@@ -27,6 +33,7 @@ export type EngineAPIType = {
   createColliders: (params: ColliderParams[]) => ColliderAPI[];
   deleteWorld: () => { worldDeleted: boolean };
   takeSnapshot: () => Uint8Array | undefined;
+  restoreSnapshot: (snapshot: Uint8Array) => WorldAPI;
 };
 
 export type PhysicsState = {
@@ -181,8 +188,8 @@ export type RigidBodyAPI = {
    * Rigid body id (a running integer id).
    */
   readonly id: number;
-  /** Get or set the rigid body userData. Leave argument empty to get. */
-  userData(userData?: { [key: string]: unknown }): { [key: string]: unknown } | void;
+  /** Get or set the userData. Leave argument empty to get. */
+  userData: (userData?: Record<string, unknown>) => Promise<Record<string, unknown> | void>;
   /**
    * Checks if this rigid-body is still valid (i.e. that it has
    * not been deleted from the rigid-body set yet.
@@ -654,6 +661,12 @@ export type ColliderAPI = {
    * Rigid body id (a running integer id).
    */
   readonly id: number;
+  /** Get or set the userData. Leave argument empty to get. */
+  userData: (userData?: Record<string, unknown>) => Promise<Record<string, unknown> | void>;
+  /**
+   * Possible parent rigid body id
+   */
+  readonly parentId?: number;
   /**
    * Set the internal cached JS shape to null.
    *
@@ -1520,9 +1533,6 @@ export type RigidBodyParams = {
 
   /** User data to be added to the rigid body */
   userData?: { [key: string]: unknown };
-
-  /** Do not set manually! Rigid body running id which set automatically in PhysicsAPI. */
-  id?: number;
 };
 
 export type ColliderParams = (
@@ -1625,11 +1635,11 @@ export type ColliderParams = (
     physObj2: PhysicsObject
   ) => void;
 
+  /** User data to be added to the collider */
+  userData?: { [key: string]: unknown };
+
   /** Possible parent id (rigid body) to attach the collider to */
   parentId?: number;
-
-  /** Do not set manually! Collider running id which set automatically in PhysicsAPI. */
-  id?: number;
 
   /** Do not set manually! Orientation to set for imported models (custom property "orientation: 'x' | 'z'" defines this). */
   orientation?: PhysRotation;
@@ -1642,6 +1652,8 @@ export type ColliderParams = (
  * bodies with contacts, joints, and external forces.
  */
 export type WorldAPI = {
+  /** Whether the world is being restored from a snaphot or not. */
+  restoringWorld: boolean;
   /** Get or set the gravity. Leave argument empty to get. */
   gravity: (gravity?: PhysVector) => Promise<PhysVector | void>;
   /**
@@ -2300,63 +2312,242 @@ export type WorldAPI = {
 };
 
 /** Physics worker UP protocol (from main thread to worker) */
-export type PhysicsUpProtocol = (
-  | {
-      type: PhysicsProtocolType.INIT_PHYSICS;
-      physicsState: PhysicsState;
-      doNotCreateWorld?: boolean;
-    }
-  | {
-      type: PhysicsProtocolType.TAKE_SNAPSHOT;
-    }
-  | {
-      type: PhysicsProtocolType.CREATE_WORLD;
-      gravity: PhysVector;
-      opts?: {
-        timestep?: number;
-        numSolverIterations?: number;
-        numInternalPgsIterations?: number;
-      };
-    }
-  | { type: PhysicsProtocolType.DELETE_WORLD }
-  | {
-      type: PhysicsProtocolType.WORLD_GRAVITY;
-      gravity?: PhysVector;
-    }
-  | {
-      type: PhysicsProtocolType.WORLD_FREE;
-    }
-) & { requestId?: number };
+export type PhysicsUpProtocol = // Engine
+  (
+    | {
+        type: PhysicsProtocolType.TAKE_SNAPSHOT;
+      }
+    | {
+        type: PhysicsProtocolType.RESTORE_SNAPSHOT;
+        snapshot: Uint8Array;
+      }
+    | {
+        type: PhysicsProtocolType.INIT_PHYSICS;
+        physicsState: PhysicsState;
+        isDebugEnvironment: boolean;
+        loopState: LoopState;
+        doNotCreateWorld?: boolean;
+      }
+    // World
+    | {
+        type: PhysicsProtocolType.CREATE_WORLD;
+        gravity: PhysVector;
+        opts?: {
+          timestep?: number;
+          numSolverIterations?: number;
+          numInternalPgsIterations?: number;
+        };
+      }
+    | { type: PhysicsProtocolType.DELETE_WORLD }
+    | {
+        type: PhysicsProtocolType.WORLD_GRAVITY;
+        gravity?: PhysVector;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_FREE;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_PROPAGATE_MODIFIED_BODY_POSITIONS_TO_COLLIDERS;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_TIMESTEP;
+        dt?: number;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_LENGTH_UNIT;
+        unitsPerMeter?: number;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_NUM_SOLVER_ITERATIONS;
+        niter?: number;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_NUM_INTERNAL_PGS_ITERATIONS;
+        niter?: number;
+      }
+    | { type: PhysicsProtocolType.WORLD_MAX_CCD_SUBSTEPS; substeps?: number }
+    // World queries
+    | {
+        type: PhysicsProtocolType.WORLD_CAST_RAY;
+        ray: PhysRay;
+        maxToi: number;
+        solid: boolean;
+        filterFlags?: QueryFilterFlags;
+        filterGroups?: InteractionGroupsAPI;
+        filterExcludeCollider?: number;
+        filterExcludeRigidBody?: number;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL;
+        ray: PhysRay;
+        maxToi: number;
+        solid: boolean;
+        filterFlags?: QueryFilterFlags;
+        filterGroups?: InteractionGroupsAPI;
+        filterExcludeCollider?: number;
+        filterExcludeRigidBody?: number;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_INTERSECTIONS_WITH_RAY;
+        ray: PhysRay;
+        maxToi: number;
+        solid: boolean;
+      }
+    | { type: PhysicsProtocolType.WORLD_CONTACT_PAIRS_WITH; colliderId: number }
+    | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH; colliderId: number }
+    | {
+        type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR;
+        colliderId1: number;
+        colliderId2: number;
+      }
+    // RigidBody
+    | { type: PhysicsProtocolType.CREATE_RIGID_BODY; params: RigidBodyParams }
+    | { type: PhysicsProtocolType.GET_RIGID_BODY; id: number }
+    | { type: PhysicsProtocolType.REMOVE_RIGID_BODY; id: number }
+    // Collider
+    | { type: PhysicsProtocolType.CREATE_COLLIDER; params: ColliderParams; parentId?: number }
+    | { type: PhysicsProtocolType.GET_COLLIDER; id: number }
+    | { type: PhysicsProtocolType.REMOVE_COLLIDER; id: number; wakeUp: boolean }
+  ) & { requestId?: number; isOneWay?: boolean };
 
 /** Physics worker DOWN protocol (from worker to main thread) */
-export type PhysicsDownProtocol = (
-  | {
-      type: PhysicsProtocolType.INIT_PHYSICS;
-      worldCreated: boolean;
-    }
-  | {
-      type: PhysicsProtocolType.TAKE_SNAPSHOT;
-      snapshot: Uint8Array | undefined;
-    }
-  | {
-      type: PhysicsProtocolType.ERROR;
-      message: string;
-    }
-  | { type: PhysicsProtocolType.CREATE_WORLD; worldCreated: boolean }
-  | { type: PhysicsProtocolType.DELETE_WORLD; worldDeleted: boolean }
-  | {
-      type: PhysicsProtocolType.WORLD_GRAVITY;
-      gravity?: PhysVector;
-    }
-) & { requestId?: number };
+export type PhysicsDownProtocol = // Engine
+  (
+    | {
+        type: PhysicsProtocolType.TAKE_SNAPSHOT;
+        snapshot: Uint8Array | undefined;
+      }
+    | {
+        type: PhysicsProtocolType.RESTORE_SNAPSHOT;
+        worldCreated: boolean;
+      }
+    | {
+        type: PhysicsProtocolType.INIT_PHYSICS;
+        worldCreated: boolean;
+      }
+    // World
+    | { type: PhysicsProtocolType.CREATE_WORLD; worldCreated: boolean }
+    | { type: PhysicsProtocolType.DELETE_WORLD; worldDeleted: boolean }
+    | {
+        type: PhysicsProtocolType.WORLD_GRAVITY;
+        gravity?: PhysVector;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_TIMESTEP;
+        dt?: number;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_LENGTH_UNIT;
+        unitsPerMeter?: number;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_NUM_SOLVER_ITERATIONS;
+        solverIterations?: number;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_NUM_INTERNAL_PGS_ITERATIONS;
+        internalPgsIterations?: number;
+      }
+    | { type: PhysicsProtocolType.WORLD_MAX_CCD_SUBSTEPS; substeps?: number }
+    // World query Results
+    | { type: PhysicsProtocolType.WORLD_CAST_RAY; hit: RayColliderHitAPI | null }
+    | {
+        type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL;
+        intersection: RayColliderIntersectionAPI | null;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_INTERSECTIONS_WITH_RAY;
+        intersections: RayColliderIntersectionAPI[];
+      }
+    | { type: PhysicsProtocolType.WORLD_CONTACT_PAIRS_WITH; otherIds: number[] }
+    | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH; otherIds: number[] }
+    | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR; isIntersecting: boolean }
+    // Rigid body
+    | { type: PhysicsProtocolType.CREATE_RIGID_BODY; id: number }
+    | { type: PhysicsProtocolType.GET_RIGID_BODY; exists: boolean }
+    // Collider
+    | { type: PhysicsProtocolType.CREATE_COLLIDER; id: number }
+    | { type: PhysicsProtocolType.GET_COLLIDER; exists: boolean }
+    // Error
+    | {
+        type: PhysicsProtocolType.ERROR;
+        message: string;
+      }
+  ) & { requestId?: number };
+
+/**
+ * Helper utility to extract a specific sub-type from the protocol union
+ */
+type PhysicsResponse<T extends PhysicsProtocolType> = Extract<PhysicsDownProtocol, { type: T }>;
+
+// --- Extracted Sub-types ---
+// Engine
+export type InitPhysicsResponse = PhysicsResponse<PhysicsProtocolType.INIT_PHYSICS>;
+export type TakeSnapshotResponse = PhysicsResponse<PhysicsProtocolType.TAKE_SNAPSHOT>;
+export type RestoreSnapshotResponse = PhysicsResponse<PhysicsProtocolType.RESTORE_SNAPSHOT>;
+export type ErrorResponse = PhysicsResponse<PhysicsProtocolType.ERROR>;
+// World
+export type CreateWorldResponse = PhysicsResponse<PhysicsProtocolType.CREATE_WORLD>;
+export type DeleteWorldResponse = PhysicsResponse<PhysicsProtocolType.DELETE_WORLD>;
+export type WorldGravityResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GRAVITY>;
+export type WorldTimestepResponse = PhysicsResponse<PhysicsProtocolType.WORLD_TIMESTEP>;
+export type WorldLengthUnitResponse = PhysicsResponse<PhysicsProtocolType.WORLD_LENGTH_UNIT>;
+export type WorldNumSolverIterationsResponse =
+  PhysicsResponse<PhysicsProtocolType.WORLD_NUM_SOLVER_ITERATIONS>;
+export type WorldNumInternalPgsIterationsResponse =
+  PhysicsResponse<PhysicsProtocolType.WORLD_NUM_INTERNAL_PGS_ITERATIONS>;
+export type WorldMaxCcdSubstepsResponse =
+  PhysicsResponse<PhysicsProtocolType.WORLD_MAX_CCD_SUBSTEPS>;
+// World query
+export type WorldCastRayResponse = PhysicsResponse<PhysicsProtocolType.WORLD_CAST_RAY>;
+export type WorldCastRayAndNormalResponse =
+  PhysicsResponse<PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL>;
+export type WorldIntersectionsWithRayResponse =
+  PhysicsResponse<PhysicsProtocolType.WORLD_INTERSECTIONS_WITH_RAY>;
+export type WorldContactPairsResponse =
+  PhysicsResponse<PhysicsProtocolType.WORLD_CONTACT_PAIRS_WITH>;
+export type WorldIntersectionPairResponse =
+  PhysicsResponse<PhysicsProtocolType.WORLD_INTERSECTION_PAIR>;
+// Rigid body
+export type CreateRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.CREATE_RIGID_BODY>;
+// Collider
+export type CreateColliderResponse = PhysicsResponse<PhysicsProtocolType.CREATE_COLLIDER>;
 
 export declare enum PhysicsProtocolType {
   ERROR = 0,
+
+  // ENGINE
   INIT_PHYSICS = 1,
   TAKE_SNAPSHOT = 2,
   RESTORE_SNAPSHOT = 3,
+  STEP = 4,
   CREATE_WORLD = 100,
   DELETE_WORLD = 101,
+
+  // WORLD >= 200 && WORLD < 400
   WORLD_GRAVITY = 200,
   WORLD_FREE = 201,
+  WORLD_PROPAGATE_MODIFIED_BODY_POSITIONS_TO_COLLIDERS = 202,
+  WORLD_TIMESTEP = 203,
+  WORLD_LENGTH_UNIT = 204,
+  WORLD_NUM_SOLVER_ITERATIONS = 205,
+  WORLD_NUM_INTERNAL_PGS_ITERATIONS = 206,
+  WORLD_MAX_CCD_SUBSTEPS = 207,
+  // WORLD QUERIES
+  WORLD_CAST_RAY = 300,
+  WORLD_CAST_RAY_AND_GET_NORMAL = 301,
+  WORLD_INTERSECTIONS_WITH_RAY = 302,
+  WORLD_CONTACT_PAIRS_WITH = 303,
+  WORLD_INTERSECTION_PAIRS_WITH = 304,
+  WORLD_INTERSECTION_PAIR = 305,
+
+  // RIGID >= 400 && RIGID < 600
+  CREATE_RIGID_BODY = 400,
+  GET_RIGID_BODY = 401,
+  REMOVE_RIGID_BODY = 402,
+
+  // COLLIDER >= 600 && COLLIDER < 800
+  CREATE_COLLIDER = 600,
+  GET_COLLIDER = 601,
+  REMOVE_COLLIDER = 602,
 }
