@@ -22,6 +22,7 @@ import {
   WorldAPI,
 } from './PhysicsAPITypes';
 import { LoopState } from '../MainLoop';
+import { lwarn } from '../../utils/Logger';
 
 // @CHORE: needs a setter function
 let physicsState: PhysicsState = {
@@ -232,6 +233,7 @@ export const createRigidBody = (params: RigidBodyParams) => {
   nextRigidBodyId += 1;
   rigidBodies.set(id, rigidBody.handle);
   const rigidBodyAPI = createEnginePhysicsRigidBodyAPI(id);
+  rigidBodyAPI.userData(params.userData);
   rigidBodyAPIs.set(id, rigidBodyAPI);
 
   return rigidBodyAPI;
@@ -402,6 +404,7 @@ export const createCollider = (params: ColliderParams) => {
   nextColliderId += 1;
   colliders.set(id, collider.handle);
   const colliderAPI = createEnginePhysicsColliderAPI(id);
+  colliderAPI.userData(params.userData);
   colliderAPIs.set(id, colliderAPI);
 
   return colliderAPI;
@@ -412,6 +415,104 @@ export const createRigidBodies = (paramsArray: RigidBodyParams[]) =>
 
 export const createColliders = (paramsArray: ColliderParams[]) =>
   paramsArray.map((params) => createCollider(params));
+
+export const deleteRigidBody = (id: number) => {
+  const rbHandle = rigidBodies.get(id);
+  if (!rbHandle) {
+    if (isDebugEnvironment) {
+      lwarn(`Trying to remove a non existing rigid body (no handle found), handle: ${rbHandle}`);
+    }
+    return { rigidBodyDeleted: true };
+  }
+  const rb = physicsWorld.getRigidBody(rbHandle);
+  if (!rb) {
+    if (!isDebugEnvironment) {
+      lwarn(
+        `Trying to remove a non existing rigid body (no rigid body found), handle: ${rbHandle}`
+      );
+    }
+    rigidBodies.delete(id);
+    return { rigidBodyDeleted: true };
+  }
+  physicsWorld.removeRigidBody(rb);
+  rigidBodies.delete(id);
+  return { rigidBodyDeleted: true };
+};
+
+export const deleteRigidBodies = (ids: number[]) => {
+  for (let i = 0; i < ids.length; i++) {
+    const rbHandle = rigidBodies.get(ids[i]);
+    if (!rbHandle) {
+      if (isDebugEnvironment) {
+        lwarn(`Trying to remove a non existing rigid body (no handle found), id: ${ids[i]}`);
+      }
+      continue;
+    }
+    const rb = physicsWorld.getRigidBody(rbHandle);
+    if (!rb) {
+      if (!isDebugEnvironment) {
+        lwarn(
+          `Trying to remove a non existing rigid body (no rigid body found), handle: ${rbHandle}`
+        );
+      }
+      rigidBodies.delete(ids[i]);
+      continue;
+    }
+    physicsWorld.removeRigidBody(rb);
+    rigidBodies.delete(ids[i]);
+    continue;
+  }
+  return { rigidBodiesDeleted: true };
+};
+
+export const deleteCollider = (id: number) => {
+  const collHandle = colliders.get(id);
+  if (!collHandle) {
+    if (isDebugEnvironment) {
+      lwarn(`Trying to remove a non existing collider (no handle found), handle: ${collHandle}`);
+    }
+    return { rigidBodyDeleted: true };
+  }
+  const rb = physicsWorld.getRigidBody(collHandle);
+  if (!rb) {
+    if (!isDebugEnvironment) {
+      lwarn(
+        `Trying to remove a non existing rigid body (no rigid body found), handle: ${rbHandle}`
+      );
+    }
+    rigidBodies.delete(id);
+    return { rigidBodyDeleted: true };
+  }
+  physicsWorld.removeRigidBody(rb);
+  rigidBodies.delete(id);
+  return { rigidBodyDeleted: true };
+};
+
+export const deleteColliders = (ids: number[]) => {
+  for (let i = 0; i < ids.length; i++) {
+    const collHandle = colliders.get(ids[i]);
+    if (!collHandle) {
+      if (isDebugEnvironment) {
+        lwarn(`Trying to remove a non existing collider (no handle found), id: ${ids[i]}`);
+      }
+      continue;
+    }
+    const coll = physicsWorld.getCollider(collHandle);
+    if (!coll) {
+      if (!isDebugEnvironment) {
+        lwarn(
+          `Trying to remove a non existing collider (no collider found), handle: ${collHandle}`
+        );
+      }
+      colliders.delete(ids[i]);
+      continue;
+    }
+    physicsWorld.removeCollider(coll, true);
+    colliders.delete(ids[i]);
+    continue;
+  }
+  return { rigidBodiesDeleted: true };
+};
 
 export const deleteWorld = () => {
   // Clear the maps
@@ -647,8 +748,16 @@ const createEnginePhysicsWorldAPI = (): WorldAPI => ({
 
 const createEnginePhysicsRigidBodyAPI = (id: number): RigidBodyAPI => ({
   id,
-  userData: function (userData?: { [key: string]: unknown }) {
-    // returns { [key: string]: unknown } | void;
+  uData: {},
+  userData: async function (userData?: { [key: string]: unknown }, addToExisting?: boolean) {
+    if (userData !== undefined) {
+      if (addToExisting) {
+        this.uData = { ...this.uData, ...userData };
+      } else {
+        this.uData = userData;
+      }
+    }
+    return this.uData;
   },
   isValid: function () {
     // returns boolean;
@@ -868,6 +977,16 @@ const createEnginePhysicsRigidBodyAPI = (id: number): RigidBodyAPI => ({
 
 export const createEnginePhysicsColliderAPI = (id: number): ColliderAPI => ({
   id,
+  userData: async function (userData?: { [key: string]: unknown }, addToExisting?: boolean) {
+    if (userData !== undefined) {
+      if (addToExisting) {
+        this.uData = { ...this.uData, ...userData };
+      } else {
+        this.uData = userData;
+      }
+    }
+    return this.uData;
+  },
   clearShapeCache: function () {
     // returns void;
   },

@@ -31,7 +31,7 @@ self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) 
       case 'WORLD':
         return await physicsSwitchWorld(data, physicsWorldAPI, sendMessage);
       case 'RIGID':
-        return physicsSwitchRigid(data, physicsWorldAPI, sendMessage);
+        return physicsSwitchRigid(data, physicsWorldAPI, engAPI, sendMessage);
       case 'COLL':
       // return collSwitch(data, sendMessage)
     }

@@ -29,9 +29,11 @@ export type EngineAPIType = {
   ) => WorldAPI;
   createRigidBody: (params: RigidBodyParams) => RigidBodyAPI;
   createCollider: (params: ColliderParams) => ColliderAPI;
-  createRigidBodys: (params: RigidBodyParams[]) => RigidBodyAPI[];
+  createRigidBodies: (params: RigidBodyParams[]) => RigidBodyAPI[];
   createColliders: (params: ColliderParams[]) => ColliderAPI[];
   deleteWorld: () => { worldDeleted: boolean };
+  deleteRigidBody: (id: number) => { rigidBodyRemoved: boolean };
+  deleteCollider: (id: number) => { rigidBodyRemoved: boolean; removeParent?: boolean };
   takeSnapshot: () => Uint8Array | undefined;
   restoreSnapshot: (snapshot: Uint8Array) => WorldAPI;
 };
@@ -188,8 +190,13 @@ export type RigidBodyAPI = {
    * Rigid body id (a running integer id).
    */
   readonly id: number;
-  /** Get or set the userData. Leave argument empty to get. */
-  userData: (userData?: Record<string, unknown>) => Promise<Record<string, unknown> | void>;
+  /** userData memory. Do not read or set this directly! Access this with userData() method. */
+  uData: Record<string, unknown>;
+  /** Get or set the userData. Leave argument empty to get. Do not store functions in this record. If there is a need to only add key-value pairs to the existing userData, then set the "addToExisting" to true. */
+  userData: (
+    userData?: Record<string, unknown>,
+    addToExisting?: boolean
+  ) => Promise<Record<string, unknown>>;
   /**
    * Checks if this rigid-body is still valid (i.e. that it has
    * not been deleted from the rigid-body set yet.
@@ -661,8 +668,13 @@ export type ColliderAPI = {
    * Rigid body id (a running integer id).
    */
   readonly id: number;
-  /** Get or set the userData. Leave argument empty to get. */
-  userData: (userData?: Record<string, unknown>) => Promise<Record<string, unknown> | void>;
+  /** userData memory. Do not read or set this directly! Access this with userData() method. On the PhysicsAPI side this is always empty. */
+  uData: Record<string, unknown>;
+  /** Get or set the userData. Leave argument empty to get. Do not store functions in this record. If there is a need to only add key-value pairs to the existing userData, then set the "addToExisting" to true. */
+  userData: (
+    userData?: Record<string, unknown>,
+    addToExisting?: boolean
+  ) => Promise<Record<string, unknown>>;
   /**
    * Possible parent rigid body id
    */
@@ -1532,7 +1544,7 @@ export type RigidBodyParams = {
   wakeUp?: boolean;
 
   /** User data to be added to the rigid body */
-  userData?: { [key: string]: unknown };
+  userData?: Record<string, unknown>;
 };
 
 export type ColliderParams = (
@@ -1636,7 +1648,7 @@ export type ColliderParams = (
   ) => void;
 
   /** User data to be added to the collider */
-  userData?: { [key: string]: unknown };
+  userData?: Record<string, unknown>;
 
   /** Possible parent id (rigid body) to attach the collider to */
   parentId?: number;
@@ -2402,12 +2414,22 @@ export type PhysicsUpProtocol = // Engine
       }
     // RigidBody
     | { type: PhysicsProtocolType.CREATE_RIGID_BODY; params: RigidBodyParams }
-    | { type: PhysicsProtocolType.GET_RIGID_BODY; id: number }
-    | { type: PhysicsProtocolType.REMOVE_RIGID_BODY; id: number }
+    | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; params: RigidBodyParams[] }
+    | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number }
+    | {
+        type: PhysicsProtocolType.RIGID_USERDATA;
+        userData?: Record<string, unknown>;
+        addToExisting?: boolean;
+      }
     // Collider
     | { type: PhysicsProtocolType.CREATE_COLLIDER; params: ColliderParams; parentId?: number }
-    | { type: PhysicsProtocolType.GET_COLLIDER; id: number }
-    | { type: PhysicsProtocolType.REMOVE_COLLIDER; id: number; wakeUp: boolean }
+    | { type: PhysicsProtocolType.CREATE_COLLIDERS; params: ColliderParams[]; parentIds?: number[] }
+    | { type: PhysicsProtocolType.DELETE_COLLIDER; id: number; wakeUp: boolean }
+    | {
+        type: PhysicsProtocolType.COLL_USERDATA;
+        userData?: Record<string, unknown>;
+        addToExisting?: boolean;
+      }
   ) & { requestId?: number; isOneWay?: boolean };
 
 /** Physics worker DOWN protocol (from worker to main thread) */
@@ -2464,10 +2486,14 @@ export type PhysicsDownProtocol = // Engine
     | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR; isIntersecting: boolean }
     // Rigid body
     | { type: PhysicsProtocolType.CREATE_RIGID_BODY; id: number }
-    | { type: PhysicsProtocolType.GET_RIGID_BODY; exists: boolean }
+    | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; ids: number[] }
+    | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number; rigidBodyRemoved: boolean }
+    | { type: PhysicsProtocolType.RIGID_USERDATA; userData: boolean }
     // Collider
-    | { type: PhysicsProtocolType.CREATE_COLLIDER; id: number }
-    | { type: PhysicsProtocolType.GET_COLLIDER; exists: boolean }
+    | { type: PhysicsProtocolType.CREATE_COLLIDER; id: number; parentId: number }
+    | { type: PhysicsProtocolType.CREATE_COLLIDERS; ids: number[]; parenIds: number[] }
+    | { type: PhysicsProtocolType.DELETE_COLLIDER; id: number; colliderRemoved: boolean }
+    | { type: PhysicsProtocolType.COLL_USERDATA; userData: boolean }
     // Error
     | {
         type: PhysicsProtocolType.ERROR;
@@ -2510,8 +2536,14 @@ export type WorldIntersectionPairResponse =
   PhysicsResponse<PhysicsProtocolType.WORLD_INTERSECTION_PAIR>;
 // Rigid body
 export type CreateRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.CREATE_RIGID_BODY>;
+export type CreateRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.CREATE_RIGID_BODIES>;
+export type RemoveRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODY>;
+export type RigidUserDataResponse = PhysicsResponse<PhysicsProtocolType.RIGID_USERDATA>;
 // Collider
 export type CreateColliderResponse = PhysicsResponse<PhysicsProtocolType.CREATE_COLLIDER>;
+export type CreateCollidersResponse = PhysicsResponse<PhysicsProtocolType.CREATE_COLLIDERS>;
+export type RemoveColliderResponse = PhysicsResponse<PhysicsProtocolType.DELETE_COLLIDER>;
+export type CollUserDataResponse = PhysicsResponse<PhysicsProtocolType.COLL_USERDATA>;
 
 export declare enum PhysicsProtocolType {
   ERROR = 0,
@@ -2543,11 +2575,13 @@ export declare enum PhysicsProtocolType {
 
   // RIGID >= 400 && RIGID < 600
   CREATE_RIGID_BODY = 400,
-  GET_RIGID_BODY = 401,
-  REMOVE_RIGID_BODY = 402,
+  CREATE_RIGID_BODIES = 401,
+  DELETE_RIGID_BODY = 402,
+  RIGID_USERDATA = 403,
 
   // COLLIDER >= 600 && COLLIDER < 800
   CREATE_COLLIDER = 600,
-  GET_COLLIDER = 601,
-  REMOVE_COLLIDER = 602,
+  CREATE_COLLIDERS = 601,
+  DELETE_COLLIDER = 602,
+  COLL_USERDATA = 603,
 }

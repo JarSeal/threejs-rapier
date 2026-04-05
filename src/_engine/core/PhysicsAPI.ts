@@ -62,6 +62,8 @@ import {
   CreateColliderResponse,
   QueryFilterFlags,
   ColliderParams,
+  CreateRigidBodiesResponse,
+  CreateCollidersResponse,
 } from './Physics/PhysicsAPITypes';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 
@@ -122,6 +124,8 @@ const scenePhysicsLoopers: { [id: string]: ScenePhysicsLooper } = {};
 const scenePhysicsAfterStepLoopers: { [id: string]: ScenePhysicsLooper } = {};
 let engineInitiated = false;
 let engAPI: EngineAPIType | null = null;
+const rigidBodies = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
+const colliders = new Map<number, ColliderAPI>(); // { "Running id", ColliderAPI }
 
 /**
  * Initializes the physics
@@ -1558,6 +1562,7 @@ export const restorePhysicsSnapshot = async (snapshot: Uint8Array) => {
   return physicsWorld;
 };
 
+/** Create a rigid body. */
 export const createRigidBody = async (params: RigidBodyParams) => {
   existsOrThrow(
     physicsWorldEnabled,
@@ -1575,10 +1580,17 @@ export const createRigidBody = async (params: RigidBodyParams) => {
         params,
       })
     ).id;
-    return existsOrThrow(
+    const rbAPI = existsOrThrow(
       createWorkerPhysicsRigidBodyAPI(rbId),
       `Could not create a rigid body ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
     );
+    if (params.userData) {
+      // This is okay when creating these, since we know we have the
+      // same userData state in the engine
+      rbAPI.uData = params.userData;
+    }
+    rigidBodies.set(rbId, rbAPI);
+    return rbAPI;
   }
   // Should not get here..
   throw new Error(
@@ -1586,6 +1598,64 @@ export const createRigidBody = async (params: RigidBodyParams) => {
   );
 };
 
+/** Create multiple rigid bodies at once. */
+export const createRigidBodies = async (params: RigidBodyParams[]) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a rigid body.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    return existsOrThrow(
+      engAPI?.createRigidBodies(params),
+      `Could not create a rigid bodies ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const rbIds = (
+      await messageWorkerAsync<CreateRigidBodiesResponse>({
+        type: PhysicsProtocolType.CREATE_RIGID_BODIES,
+        params,
+      })
+    ).ids;
+    existsOrThrow(
+      rbIds.length,
+      `Could not create a rigid bodies ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+    const rbAPIs = [];
+    for (let i = 0; i < rbIds.length; i++) {
+      const id = rbIds[i];
+      const rbAPI = createWorkerPhysicsRigidBodyAPI(id);
+      const userData = params[i].userData;
+      if (userData) {
+        // This is okay when creating these, since we know we have the
+        // same userData state in the engine
+        rbAPI.uData = userData;
+      }
+      rbAPIs.push(rbAPI);
+      rigidBodies.set(id, rbAPI);
+    }
+    return rbAPIs;
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create rigid bodies (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD') Params: ${JSON.stringify(params)}`
+  );
+};
+
+/** Deletes a rigid body. */
+export const deleteRigidBody = (id: number /*, deletePhysicsObject?: boolean */) => {
+  if (rigidBodies.has(id)) rigidBodies.delete(id);
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    return existsOrThrow(
+      engAPI?.deleteRigidBody(id),
+      `Could not delete a rigid object ("MAIN_THREAD"), id: ${id}`
+    );
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    // @TODO
+  }
+  // @CHORE: add deletePhysicsObject flag
+};
+
+/** Create a collider. */
 export const createCollider = async (params: ColliderParams) => {
   existsOrThrow(
     physicsWorldEnabled,
@@ -1603,16 +1673,69 @@ export const createCollider = async (params: ColliderParams) => {
         params,
       })
     ).id;
-    return existsOrThrow(
+    const collAPI = existsOrThrow(
       createEnginePhysicsColliderAPI(collId),
       `Could not create a collider ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
     );
+    if (params.userData) {
+      // This is okay when creating these, since we know we have the
+      // same userData state in the engine
+      collAPI.uData = params.userData;
+    }
+    colliders.set(collId, collAPI);
+    return collAPI;
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create colliders (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD') Params: ${JSON.stringify(params)}`
+  );
+};
+
+/** Create multiple colliders at once. */
+export const createColliders = async (params: ColliderParams[]) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a collider.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    return existsOrThrow(
+      engAPI?.createColliders(params),
+      `Could not create colliders ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const collIds = (
+      await messageWorkerAsync<CreateCollidersResponse>({
+        type: PhysicsProtocolType.CREATE_COLLIDERS,
+        params,
+      })
+    ).ids;
+    existsOrThrow(
+      collIds.length,
+      `Could not create colliders ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+    const collAPIs = [];
+    for (let i = 0; i < collIds.length; i++) {
+      const id = collIds[i];
+      const collAPI = createEnginePhysicsColliderAPI(id);
+      const userData = params[i].userData;
+      if (userData) {
+        // This is okay when creating these, since we know we have the
+        // same userData state in the engine
+        collAPI.uData = userData;
+      }
+      collAPIs.push(collAPI);
+      colliders.set(id, collAPI);
+    }
+    return collAPIs;
   }
   // Should not get here..
   throw new Error(
     `Could not create a collider (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD') Params: ${JSON.stringify(params)}`
   );
 };
+
+export const getRigidBody = (id: number) => rigidBodies.get(id);
+export const getCollider = (id: number) => colliders.get(id);
 
 /** World, RigidBody, and Collider API definitions -----[ START ]----- */
 
