@@ -422,7 +422,7 @@ export const deleteRigidBody = (id: number) => {
     if (isDebugEnvironment) {
       lwarn(`Trying to remove a non existing rigid body (no handle found), handle: ${rbHandle}`);
     }
-    return { rigidBodyDeleted: true };
+    return { id };
   }
   const rb = physicsWorld.getRigidBody(rbHandle);
   if (!rb) {
@@ -432,14 +432,15 @@ export const deleteRigidBody = (id: number) => {
       );
     }
     rigidBodies.delete(id);
-    return { rigidBodyDeleted: true };
+    return { id };
   }
   physicsWorld.removeRigidBody(rb);
   rigidBodies.delete(id);
-  return { rigidBodyDeleted: true };
+  return { id };
 };
 
 export const deleteRigidBodies = (ids: number[]) => {
+  const deletedIds = [];
   for (let i = 0; i < ids.length; i++) {
     const rbHandle = rigidBodies.get(ids[i]);
     if (!rbHandle) {
@@ -456,39 +457,39 @@ export const deleteRigidBodies = (ids: number[]) => {
         );
       }
       rigidBodies.delete(ids[i]);
+      deletedIds.push(ids[i]);
       continue;
     }
     physicsWorld.removeRigidBody(rb);
     rigidBodies.delete(ids[i]);
-    continue;
+    deletedIds.push(ids[i]);
   }
-  return { rigidBodiesDeleted: true };
+  return { ids: deletedIds };
 };
 
-export const deleteCollider = (id: number) => {
+export const deleteCollider = (id: number, wakeUp?: boolean) => {
   const collHandle = colliders.get(id);
   if (!collHandle) {
     if (isDebugEnvironment) {
       lwarn(`Trying to remove a non existing collider (no handle found), handle: ${collHandle}`);
     }
-    return { rigidBodyDeleted: true };
+    return { id };
   }
-  const rb = physicsWorld.getRigidBody(collHandle);
-  if (!rb) {
+  const coll = physicsWorld.getCollider(collHandle);
+  if (!coll) {
     if (!isDebugEnvironment) {
-      lwarn(
-        `Trying to remove a non existing rigid body (no rigid body found), handle: ${rbHandle}`
-      );
+      lwarn(`Trying to remove a non existing collider (no collider found), handle: ${collHandle}`);
     }
-    rigidBodies.delete(id);
-    return { rigidBodyDeleted: true };
+    colliders.delete(id);
+    return { id };
   }
-  physicsWorld.removeRigidBody(rb);
-  rigidBodies.delete(id);
-  return { rigidBodyDeleted: true };
+  physicsWorld.removeCollider(coll, Boolean(wakeUp));
+  colliders.delete(id);
+  return { id };
 };
 
-export const deleteColliders = (ids: number[]) => {
+export const deleteColliders = (ids: number[], wakeUp?: boolean[]) => {
+  const deletedIds = [];
   for (let i = 0; i < ids.length; i++) {
     const collHandle = colliders.get(ids[i]);
     if (!collHandle) {
@@ -505,13 +506,14 @@ export const deleteColliders = (ids: number[]) => {
         );
       }
       colliders.delete(ids[i]);
+      deletedIds.push(ids[i]);
       continue;
     }
-    physicsWorld.removeCollider(coll, true);
+    physicsWorld.removeCollider(coll, Boolean(wakeUp && wakeUp[i]));
     colliders.delete(ids[i]);
-    continue;
+    deletedIds.push(ids[i]);
   }
-  return { rigidBodiesDeleted: true };
+  return { ids: deletedIds };
 };
 
 export const deleteWorld = () => {

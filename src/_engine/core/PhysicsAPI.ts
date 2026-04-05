@@ -64,6 +64,7 @@ import {
   ColliderParams,
   CreateRigidBodiesResponse,
   CreateCollidersResponse,
+  WorldCastRayResponse,
 } from './Physics/PhysicsAPITypes';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 
@@ -1815,7 +1816,32 @@ const createWorkerPhysicsWorldAPI = (): WorldAPI => ({
     filterExcludeRigidBody?: RigidBodyAPI | number
     // filterPredicate?: (collider: ColliderAPI) => boolean
   ) => {
-    // @CHORE
+    let filtExclColl: number | undefined = undefined;
+    let filtExclRB: number | undefined = undefined;
+    if (filterExcludeCollider) {
+      filtExclColl =
+        typeof filterExcludeCollider === 'number'
+          ? filterExcludeCollider
+          : filterExcludeCollider.id;
+    }
+    if (filterExcludeRigidBody) {
+      filtExclRB =
+        typeof filterExcludeRigidBody === 'number'
+          ? filterExcludeRigidBody
+          : filterExcludeRigidBody.id;
+    }
+    return (
+      await messageWorkerAsync<WorldCastRayResponse>({
+        type: PhysicsProtocolType.WORLD_CAST_RAY,
+        ray,
+        maxToi,
+        solid,
+        filterFlags,
+        filterGroups,
+        filterExcludeCollider: filtExclColl,
+        filterExcludeRigidBody: filtExclRB,
+      })
+    ).hit;
   },
   castRayAndGetNormal: async (
     ray: PhysRay,

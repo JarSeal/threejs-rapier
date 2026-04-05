@@ -32,8 +32,10 @@ export type EngineAPIType = {
   createRigidBodies: (params: RigidBodyParams[]) => RigidBodyAPI[];
   createColliders: (params: ColliderParams[]) => ColliderAPI[];
   deleteWorld: () => { worldDeleted: boolean };
-  deleteRigidBody: (id: number) => { rigidBodyRemoved: boolean };
-  deleteCollider: (id: number) => { rigidBodyRemoved: boolean; removeParent?: boolean };
+  deleteRigidBody: (id: number) => { id: number };
+  deleteRigidBodies: (id: number) => { ids: number[] };
+  deleteCollider: (id: number, wakeUp?: boolean) => { id: number };
+  deleteColliders: (ids: number[], wakeUp?: boolean[]) => { ids: number[] };
   takeSnapshot: () => Uint8Array | undefined;
   restoreSnapshot: (snapshot: Uint8Array) => WorldAPI;
 };
@@ -2416,6 +2418,7 @@ export type PhysicsUpProtocol = // Engine
     | { type: PhysicsProtocolType.CREATE_RIGID_BODY; params: RigidBodyParams }
     | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; params: RigidBodyParams[] }
     | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number }
+    | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; ids: number }
     | {
         type: PhysicsProtocolType.RIGID_USERDATA;
         userData?: Record<string, unknown>;
@@ -2425,6 +2428,7 @@ export type PhysicsUpProtocol = // Engine
     | { type: PhysicsProtocolType.CREATE_COLLIDER; params: ColliderParams; parentId?: number }
     | { type: PhysicsProtocolType.CREATE_COLLIDERS; params: ColliderParams[]; parentIds?: number[] }
     | { type: PhysicsProtocolType.DELETE_COLLIDER; id: number; wakeUp: boolean }
+    | { type: PhysicsProtocolType.DELETE_COLLIDERS; ids: number[]; wakeUp: boolean[] }
     | {
         type: PhysicsProtocolType.COLL_USERDATA;
         userData?: Record<string, unknown>;
@@ -2487,12 +2491,14 @@ export type PhysicsDownProtocol = // Engine
     // Rigid body
     | { type: PhysicsProtocolType.CREATE_RIGID_BODY; id: number }
     | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; ids: number[] }
-    | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number; rigidBodyRemoved: boolean }
+    | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number }
+    | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; id: number }
     | { type: PhysicsProtocolType.RIGID_USERDATA; userData: boolean }
     // Collider
     | { type: PhysicsProtocolType.CREATE_COLLIDER; id: number; parentId: number }
     | { type: PhysicsProtocolType.CREATE_COLLIDERS; ids: number[]; parenIds: number[] }
-    | { type: PhysicsProtocolType.DELETE_COLLIDER; id: number; colliderRemoved: boolean }
+    | { type: PhysicsProtocolType.DELETE_COLLIDER; id: number; wakeUp?: boolean }
+    | { type: PhysicsProtocolType.DELETE_COLLIDERS; ids: number[]; wakeUp?: boolean[] }
     | { type: PhysicsProtocolType.COLL_USERDATA; userData: boolean }
     // Error
     | {
@@ -2537,12 +2543,14 @@ export type WorldIntersectionPairResponse =
 // Rigid body
 export type CreateRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.CREATE_RIGID_BODY>;
 export type CreateRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.CREATE_RIGID_BODIES>;
-export type RemoveRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODY>;
+export type DeleteRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODY>;
+export type DeleteRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODIES>;
 export type RigidUserDataResponse = PhysicsResponse<PhysicsProtocolType.RIGID_USERDATA>;
 // Collider
 export type CreateColliderResponse = PhysicsResponse<PhysicsProtocolType.CREATE_COLLIDER>;
 export type CreateCollidersResponse = PhysicsResponse<PhysicsProtocolType.CREATE_COLLIDERS>;
-export type RemoveColliderResponse = PhysicsResponse<PhysicsProtocolType.DELETE_COLLIDER>;
+export type DeleteColliderResponse = PhysicsResponse<PhysicsProtocolType.DELETE_COLLIDER>;
+export type DeleteCollidersResponse = PhysicsResponse<PhysicsProtocolType.DELETE_COLLIDERS>;
 export type CollUserDataResponse = PhysicsResponse<PhysicsProtocolType.COLL_USERDATA>;
 
 export declare enum PhysicsProtocolType {
@@ -2577,11 +2585,13 @@ export declare enum PhysicsProtocolType {
   CREATE_RIGID_BODY = 400,
   CREATE_RIGID_BODIES = 401,
   DELETE_RIGID_BODY = 402,
-  RIGID_USERDATA = 403,
+  DELETE_RIGID_BODIES = 403,
+  RIGID_USERDATA = 404,
 
   // COLLIDER >= 600 && COLLIDER < 800
   CREATE_COLLIDER = 600,
   CREATE_COLLIDERS = 601,
   DELETE_COLLIDER = 602,
-  COLL_USERDATA = 603,
+  DELETE_COLLIDERS = 603,
+  COLL_USERDATA = 604,
 }
