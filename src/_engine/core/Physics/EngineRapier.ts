@@ -1,6 +1,11 @@
 import Rapier from '@dimforge/rapier3d-compat';
 import { existsOrThrow } from '../../utils/helpers';
-import type { Collider, RayColliderIntersection, RigidBody } from '@dimforge/rapier3d-compat';
+import type {
+  Collider,
+  RayColliderIntersection,
+  RigidBody,
+  RigidBodyType,
+} from '@dimforge/rapier3d-compat';
 import { getPhysicsEngine } from './PhysicsUtils';
 import {
   ActiveCollisionTypes,
@@ -67,7 +72,7 @@ let collisionEventFnCount = 0;
 let contactForceEventFnCount = 0;
 
 /** Get Rapier.RigidBody with RigidBodyAPI or id */
-const _getRigidBody = (bodyOrId?: RigidBodyAPI | number): RigidBody | undefined => {
+const getRigidBody = (bodyOrId?: RigidBodyAPI | number): RigidBody | undefined => {
   if (bodyOrId === undefined) return undefined;
   const id = typeof bodyOrId === 'number' ? bodyOrId : bodyOrId.id;
   const handle = rigidBodies.get(id);
@@ -75,7 +80,7 @@ const _getRigidBody = (bodyOrId?: RigidBodyAPI | number): RigidBody | undefined 
 };
 
 /** Get Rapier.Collider with ColliderAPI or id */
-const _getCollider = (collOrId?: ColliderAPI | number): Collider | undefined => {
+const getCollider = (collOrId?: ColliderAPI | number): Collider | undefined => {
   if (collOrId === undefined) return undefined;
   const id = typeof collOrId === 'number' ? collOrId : collOrId.id;
   const handle = colliders.get(id);
@@ -83,18 +88,25 @@ const _getCollider = (collOrId?: ColliderAPI | number): Collider | undefined => 
 };
 
 /** Get rigidBodyAPI with a Rapier.RigidBody or a Rapier.RigidBody.handle */
-const _getRigidBodyAPI = (bodyOrHandle?: RigidBody | number): RigidBodyAPI | undefined => {
+const getRigidBodyAPI = (bodyOrHandle?: RigidBody | number): RigidBodyAPI | undefined => {
   if (bodyOrHandle === undefined) return undefined;
   const handle = typeof bodyOrHandle === 'number' ? bodyOrHandle : bodyOrHandle.handle;
   return rigidBodyAPIs.get(handle);
 };
 
 /** Get colliderAPI with a Rapier.Collider or a Rapier.Collider.handle */
-const _getColliderAPI = (collOrHandle?: Collider | number): ColliderAPI | undefined => {
+const getColliderAPI = (collOrHandle?: Collider | number): ColliderAPI | undefined => {
   if (collOrHandle === undefined) return undefined;
   const handle = typeof collOrHandle === 'number' ? collOrHandle : collOrHandle.handle;
   return colliderAPIs.get(handle);
 };
+
+/** Get rigidBodyAPI with an id (running id). */
+export const getRigidBodyAPIWithId = (id: number): RigidBodyAPI | undefined =>
+  rigidBodyAPIs.get(id);
+
+/** Get colliderAPI with an id (running id). */
+export const getColliderAPIWithId = (id: number): ColliderAPI | undefined => colliderAPIs.get(id);
 
 export const init = (
   physicsSt: PhysicsState,
@@ -102,20 +114,24 @@ export const init = (
   loopSt: LoopState,
   doNotCreateWorld?: boolean
 ) => {
-  RAPIER = existsOrThrow(
-    getPhysicsEngine() as typeof Rapier,
-    'Could not initialize RAPIER in EngineRapier.ts init().'
-  );
-  physicsState = physicsSt;
-  isDebugEnvironment = isDebugEnv || false;
-  loopState = loopSt;
-  if (doNotCreateWorld) return;
-  physicsWorldAPI = createWorld(physicsState.gravity, {
-    timestep: physicsState.timestepRatio,
-    numSolverIterations: physicsState.solverIterations,
-    numInternalPgsIterations: physicsState.internalPgsIterations,
-  });
-  return physicsWorldAPI;
+  try {
+    RAPIER = existsOrThrow(
+      getPhysicsEngine() as typeof Rapier,
+      'Could not initialize RAPIER in EngineRapier.ts init().'
+    );
+    physicsState = physicsSt;
+    isDebugEnvironment = isDebugEnv || false;
+    loopState = loopSt;
+    if (doNotCreateWorld) return;
+    physicsWorldAPI = createWorld(physicsState.gravity, {
+      timestep: physicsState.timestepRatio,
+      numSolverIterations: physicsState.solverIterations,
+      numInternalPgsIterations: physicsState.internalPgsIterations,
+    });
+    return physicsWorldAPI;
+  } catch (err) {
+    throw new Error('Failed to initialize Rapier physics.');
+  }
 };
 
 export const createWorld = (
@@ -232,8 +248,8 @@ export const createRigidBody = (params: RigidBodyParams) => {
   const id = nextRigidBodyId;
   nextRigidBodyId += 1;
   rigidBodies.set(id, rigidBody.handle);
-  const rigidBodyAPI = createEnginePhysicsRigidBodyAPI(id);
-  rigidBodyAPI.userData(params.userData);
+  const rigidBodyAPI = new EngineRigidBodyProxyAPI(id, params.userData);
+  if (params.userData) rigidBodyAPI.setUserData(params.userData);
   rigidBodyAPIs.set(id, rigidBodyAPI);
 
   return rigidBodyAPI;
@@ -399,12 +415,12 @@ export const createCollider = (params: ColliderParams) => {
     }
   }
 
-  const collider = physicsWorld.createCollider(colliderDesc, _getRigidBody(params.parentId));
+  const collider = physicsWorld.createCollider(colliderDesc, getRigidBody(params.parentId));
   const id = nextColliderId;
   nextColliderId += 1;
   colliders.set(id, collider.handle);
   const colliderAPI = createEnginePhysicsColliderAPI(id);
-  colliderAPI.userData(params.userData);
+  if (params.userData) colliderAPI.setUserData(params.userData);
   colliderAPIs.set(id, colliderAPI);
 
   return colliderAPI;
@@ -417,14 +433,16 @@ export const createColliders = (paramsArray: ColliderParams[]) =>
   paramsArray.map((params) => createCollider(params));
 
 export const deleteRigidBody = (id: number) => {
+  const colliderIds: number[] = [];
   const rbHandle = rigidBodies.get(id);
   if (!rbHandle) {
     if (isDebugEnvironment) {
       lwarn(`Trying to remove a non existing rigid body (no handle found), handle: ${rbHandle}`);
     }
-    return { id };
+    return { id, colliderIds };
   }
   const rb = physicsWorld.getRigidBody(rbHandle);
+  // @CHORE: we need to get the child collider ids and send them to the
   if (!rb) {
     if (!isDebugEnvironment) {
       lwarn(
@@ -432,39 +450,32 @@ export const deleteRigidBody = (id: number) => {
       );
     }
     rigidBodies.delete(id);
-    return { id };
+    return { id, colliderIds };
+  }
+  const colliderCount = rb.numColliders();
+  for (let i = 0; i < colliderCount; i++) {
+    const colliderId = getColliderAPI(rb.collider(i).handle)?.id;
+    if (colliderId !== undefined) {
+      colliders.delete(colliderId);
+      colliderAPIs.delete(colliderId);
+      colliderIds.push(colliderId);
+    }
   }
   physicsWorld.removeRigidBody(rb);
+  rigidBodyAPIs.delete(id);
   rigidBodies.delete(id);
-  return { id };
+  return { id, colliderIds };
 };
 
 export const deleteRigidBodies = (ids: number[]) => {
-  const deletedIds = [];
+  const deletedIds: number[] = [];
+  const deletedColliderIds: number[] = [];
   for (let i = 0; i < ids.length; i++) {
-    const rbHandle = rigidBodies.get(ids[i]);
-    if (!rbHandle) {
-      if (isDebugEnvironment) {
-        lwarn(`Trying to remove a non existing rigid body (no handle found), id: ${ids[i]}`);
-      }
-      continue;
-    }
-    const rb = physicsWorld.getRigidBody(rbHandle);
-    if (!rb) {
-      if (!isDebugEnvironment) {
-        lwarn(
-          `Trying to remove a non existing rigid body (no rigid body found), handle: ${rbHandle}`
-        );
-      }
-      rigidBodies.delete(ids[i]);
-      deletedIds.push(ids[i]);
-      continue;
-    }
-    physicsWorld.removeRigidBody(rb);
-    rigidBodies.delete(ids[i]);
-    deletedIds.push(ids[i]);
+    const { id, colliderIds } = deleteRigidBody(ids[i]);
+    deletedIds.push(id);
+    deletedColliderIds.push(...colliderIds);
   }
-  return { ids: deletedIds };
+  return { ids: deletedIds, colliderIds: deletedColliderIds };
 };
 
 export const deleteCollider = (id: number, wakeUp?: boolean) => {
@@ -484,34 +495,16 @@ export const deleteCollider = (id: number, wakeUp?: boolean) => {
     return { id };
   }
   physicsWorld.removeCollider(coll, Boolean(wakeUp));
+  colliderAPIs.delete(id);
   colliders.delete(id);
   return { id };
 };
 
-export const deleteColliders = (ids: number[], wakeUp?: boolean[]) => {
+export const deleteColliders = (ids: number[], wakeUps?: boolean[]) => {
   const deletedIds = [];
   for (let i = 0; i < ids.length; i++) {
-    const collHandle = colliders.get(ids[i]);
-    if (!collHandle) {
-      if (isDebugEnvironment) {
-        lwarn(`Trying to remove a non existing collider (no handle found), id: ${ids[i]}`);
-      }
-      continue;
-    }
-    const coll = physicsWorld.getCollider(collHandle);
-    if (!coll) {
-      if (!isDebugEnvironment) {
-        lwarn(
-          `Trying to remove a non existing collider (no collider found), handle: ${collHandle}`
-        );
-      }
-      colliders.delete(ids[i]);
-      deletedIds.push(ids[i]);
-      continue;
-    }
-    physicsWorld.removeCollider(coll, Boolean(wakeUp && wakeUp[i]));
-    colliders.delete(ids[i]);
-    deletedIds.push(ids[i]);
+    const { id } = deleteCollider(ids[i], Boolean(wakeUps && wakeUps[i]));
+    if (id !== undefined) deletedIds.push(id);
   }
   return { ids: deletedIds };
 };
@@ -541,7 +534,7 @@ export const takeSnapshot = () => physicsWorld?.takeSnapshot();
 
 export const restoreSnapshot = (snapshot: Uint8Array) => {
   // @TODO: we maybe need check all the rigidBodies and colliders
-  // and recreate all the maps here.
+  // and recreate all the maps (rigidBodies, rigidBodyAPIs, colliders, colliderAPIs) here.
   physicsWorld = Rapier.World.restoreSnapshot(snapshot);
   physicsWorldAPI = createEnginePhysicsWorldAPI(); // Not sure if we need to recreate the WorldAPI?
   return physicsWorldAPI;
@@ -637,8 +630,8 @@ const createEnginePhysicsWorldAPI = (): WorldAPI => ({
     filterExcludeRigidBody?: RigidBodyAPI | number
     // filterPredicate?: (collider: ColliderAPI) => boolean
   ) => {
-    const filterCollider = _getCollider(filterExcludeCollider);
-    const filterRigidBody = _getRigidBody(filterExcludeRigidBody);
+    const filterCollider = getCollider(filterExcludeCollider);
+    const filterRigidBody = getRigidBody(filterExcludeRigidBody);
     const hit = physicsWorld.castRay(
       new RAPIER.Ray(ray.origin, ray.dir),
       maxToi,
@@ -650,7 +643,7 @@ const createEnginePhysicsWorldAPI = (): WorldAPI => ({
       // filterPredicate
     );
     if (!hit) return null;
-    const colliderAPI = _getColliderAPI(hit.collider.handle);
+    const colliderAPI = getColliderAPI(hit.collider.handle);
     if (!colliderAPI) return null;
     return { collider: colliderAPI, timeOfImpact: hit.timeOfImpact };
   },
@@ -664,9 +657,9 @@ const createEnginePhysicsWorldAPI = (): WorldAPI => ({
     filterExcludeRigidBody?: RigidBodyAPI | number
     // filterPredicate?: (collider: ColliderAPI) => boolean
   ) => {
-    const filterCollider = _getCollider(filterExcludeCollider);
-    const filterRigidBody = _getRigidBody(filterExcludeRigidBody);
-    const hit = physicsWorld.castRayAndGetNormal(
+    const filterCollider = getCollider(filterExcludeCollider);
+    const filterRigidBody = getRigidBody(filterExcludeRigidBody);
+    const intersection = physicsWorld.castRayAndGetNormal(
       new RAPIER.Ray(ray.origin, ray.dir),
       maxToi,
       solid,
@@ -676,15 +669,15 @@ const createEnginePhysicsWorldAPI = (): WorldAPI => ({
       filterRigidBody
       // filterPredicate
     );
-    if (!hit) return null;
-    const colliderAPI = _getColliderAPI(hit.collider.handle);
+    if (!intersection) return null;
+    const colliderAPI = getColliderAPI(intersection.collider.handle);
     if (!colliderAPI) return null;
     return {
       collider: colliderAPI,
-      timeOfImpact: hit.timeOfImpact,
-      normal: hit.normal,
-      featureType: hit.featureType,
-      featureId: hit.featureId,
+      timeOfImpact: intersection.timeOfImpact,
+      normal: intersection.normal,
+      featureType: intersection.featureType,
+      featureId: intersection.featureId,
     };
   },
   intersectionsWithRay: (
@@ -698,14 +691,14 @@ const createEnginePhysicsWorldAPI = (): WorldAPI => ({
     filterExcludeRigidBody?: RigidBodyAPI | number
     // filterPredicate?: (collider: ColliderAPI) => boolean
   ) => {
-    const filterCollider = _getCollider(filterExcludeCollider);
-    const filterRigidBody = _getRigidBody(filterExcludeRigidBody);
+    const filterCollider = getCollider(filterExcludeCollider);
+    const filterRigidBody = getRigidBody(filterExcludeRigidBody);
     physicsWorld.intersectionsWithRay(
       new RAPIER.Ray(ray.origin, ray.dir),
       maxToi,
       solid,
       (intersect: RayColliderIntersection) => {
-        const intersectColliderAPI = _getColliderAPI(intersect.collider.handle);
+        const intersectColliderAPI = getColliderAPI(intersect.collider.handle);
         if (!intersectColliderAPI) return false;
         return callback({
           collider: intersectColliderAPI,
@@ -722,262 +715,439 @@ const createEnginePhysicsWorldAPI = (): WorldAPI => ({
       // filterPredicate
     );
   },
-  contactPairsWith: (collider1: ColliderAPI, f: (collider2: ColliderAPI) => void) => {
-    const coll1 = _getCollider(collider1);
+  contactPairsWith: (collider1: ColliderAPI | number, f: (collider2: ColliderAPI) => void) => {
+    const coll1 = getCollider(collider1);
     if (!coll1) return;
     const fn = (collider2: Collider) => {
-      const coll2 = _getColliderAPI(collider2.handle);
+      const coll2 = getColliderAPI(collider2.handle);
       if (coll2) f(coll2);
     };
     physicsWorld.contactPairsWith(coll1, fn);
   },
-  intersectionPairsWith: (collider1: ColliderAPI, f: (collider2: ColliderAPI) => void) => {
-    const coll1 = _getCollider(collider1);
+  intersectionPairsWith: (collider1: ColliderAPI | number, f: (collider2: ColliderAPI) => void) => {
+    const coll1 = getCollider(collider1);
     if (!coll1) return;
     const fn = (collider2: Collider) => {
-      const coll2 = _getColliderAPI(collider2.handle);
+      const coll2 = getColliderAPI(collider2.handle);
       if (coll2) f(coll2);
     };
     physicsWorld.intersectionPairsWith(coll1, fn);
   },
-  intersectionPair: async (collider1: ColliderAPI, collider2: ColliderAPI) => {
-    const coll1 = _getCollider(collider1);
-    const coll2 = _getCollider(collider2);
+  intersectionPair: async (collider1: ColliderAPI | number, collider2: ColliderAPI | number) => {
+    const coll1 = getCollider(collider1);
+    const coll2 = getCollider(collider2);
     if (!coll1 || !coll2) return false;
     return physicsWorld.intersectionPair(coll1, coll2);
   },
 });
 
-const createEnginePhysicsRigidBodyAPI = (id: number): RigidBodyAPI => ({
-  id,
-  uData: {},
-  userData: async function (userData?: { [key: string]: unknown }, addToExisting?: boolean) {
-    if (userData !== undefined) {
-      if (addToExisting) {
-        this.uData = { ...this.uData, ...userData };
-      } else {
-        this.uData = userData;
-      }
-    }
+class EngineWorldProxyAPI implements WorldAPI {}
+
+class EngineRigidBodyProxyAPI implements RigidBodyAPI {
+  private rb: Rapier.RigidBody;
+  uData: Record<string, unknown> = {};
+  pos: PhysVector = { x: 0, y: 0, z: 0 };
+  rot: PhysRotation = { x: 0, y: 0, z: 0, w: 0 };
+  lvel: PhysVector = { x: 0, y: 0, z: 0 };
+  avel: PhysVector = { x: 0, y: 0, z: 0 };
+
+  constructor(
+    public id: number,
+    userData?: Record<string, unknown>
+  ) {
+    if (userData) this.uData = userData;
+    const rb = existsOrThrow(
+      getRigidBody(id),
+      `Could not find rigid body in the engineAPI with id: ${id}`
+    );
+    this.rb = rb;
+  }
+
+  getUserDataSync() {
     return this.uData;
-  },
-  isValid: function () {
-    // returns boolean;
-  },
-  lockTranslations: function (locked: boolean, wakeUp: boolean) {
-    // returns void;
-  },
-  lockRotations: function (locked: boolean, wakeUp: boolean) {
-    // returns void;
-  },
-  setEnabledTranslations: function (
-    enableX: boolean,
-    enableY: boolean,
-    enableZ: boolean,
-    wakeUp: boolean
-  ) {
-    // returns void;
-  },
-  setEnabledRotations: function (
-    enableX: boolean,
-    enableY: boolean,
-    enableZ: boolean,
-    wakeUp: boolean
-  ) {
-    // returns void;
-  },
-  dominanceGroup: function () {
-    // returns number;
-  },
-  setDominanceGroup: function (group: number) {
-    // returns void;
-  },
-  additionalSolverIterations: function () {
-    // returns number;
-  },
-  setAdditionalSolverIterations: function (iters: number) {
-    // returns void;
-  },
-  enableCcd: function (enabled: boolean) {
-    // returns void;
-  },
-  setSoftCcdPrediction: function (distance: number) {
-    // returns void;
-  },
-  softCcdPrediction: function () {
-    // returns number;
-  },
-  translation: function () {
-    // returns PhysVector;
-  },
-  rotation: function () {
-    // returns PhysRotation;
-  },
-  nextTranslation: function () {
-    // returns PhysVector;
-  },
-  nextRotation: function () {
-    // returns PhysRotation;
-  },
-  setTranslation: function (tra: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  setLinvel: function (vel: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  gravityScale: function () {
-    // returns number;
-  },
-  setGravityScale: function (factor: number, wakeUp: boolean) {
-    // returns void;
-  },
-  setRotation: function (rot: PhysRotation, wakeUp: boolean) {
-    // returns void;
-  },
-  setAngvel: function (vel: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  setNextKinematicTranslation: function (t: PhysVector) {
-    // returns void;
-  },
-  setNextKinematicRotation: function (rot: PhysRotation) {
-    // returns void;
-  },
-  linvel: function () {
-    // returns PhysVector;
-  },
-  velocityAtPoint: function (point: PhysVector) {
-    // returns PhysVector;
-  },
-  angvel: function () {
-    // returns PhysVector;
-  },
-  mass: function () {
-    // returns number;
-  },
-  effectiveInvMass: function () {
-    // returns PhysVector;
-  },
-  invMass: function () {
-    // returns number;
-  },
-  localCom: function () {
-    // returns PhysVector;
-  },
-  worldCom: function () {
-    // returns PhysVector;
-  },
-  invPrincipalInertia: function () {
-    // returns PhysVector;
-  },
-  principalInertia: function () {
-    // returns PhysVector;
-  },
-  principalInertiaLocalFrame: function () {
-    // returns PhysRotation;
-  },
-  sleep: function () {
-    // returns void;
-  },
-  wakeUp: function () {
-    // returns void;
-  },
-  isCcdEnabled: function () {
-    // returns boolean;
-  },
-  numColliders: function () {
-    // returns number;
-  },
-  collider: function (i: number) {
-    // returns ColliderAPI;
-  },
-  setEnabled: function (enabled: boolean) {
-    // returns void;
-  },
-  isEnabled: function () {
-    // returns boolean;
-  },
-  bodyType: function () {
-    // returns RigidBodyTypeAPI;
-  },
-  setBodyType: function (type: RigidBodyTypeAPI, wakeUp: boolean) {
-    // returns void;
-  },
-  isSleeping: function () {
-    // returns boolean;
-  },
-  isMoving: function () {
-    // returns boolean;
-  },
-  isFixed: function () {
-    // returns boolean;
-  },
-  isKinematic: function () {
-    // returns boolean;
-  },
-  isDynamic: function () {
-    // returns boolean;
-  },
-  linearDamping: function () {
-    // returns number;
-  },
-  angularDamping: function () {
-    // returns number;
-  },
-  setLinearDamping: function (factor: number) {
-    // returns void;
-  },
-  recomputeMassPropertiesFromColliders: function () {
-    // returns void;
-  },
-  setAdditionalMass: function (mass: number, wakeUp: boolean) {
-    // returns void;
-  },
-  setAdditionalMassProperties: function (
+  }
+  async getUserData() {
+    return this.getUserDataSync();
+  }
+
+  setUserData(userData: Record<string, unknown>, addToExisting?: boolean) {
+    this.uData = addToExisting ? { ...this.uData, ...userData } : userData;
+  }
+
+  isValidSync() {
+    return this.rb.isValid();
+  }
+  async isValid() {
+    return this.isValidSync();
+  }
+
+  lockTranslations(locked: boolean, wakeUp: boolean) {
+    this.rb.lockTranslations(locked, wakeUp);
+  }
+
+  lockRotations(locked: boolean, wakeUp: boolean) {
+    this.rb.lockRotations(locked, wakeUp);
+  }
+
+  setEnabledTranslations(enableX: boolean, enableY: boolean, enableZ: boolean, wakeUp: boolean) {
+    this.rb.setEnabledTranslations(enableX, enableY, enableZ, wakeUp);
+  }
+
+  setEnabledRotations(enableX: boolean, enableY: boolean, enableZ: boolean, wakeUp: boolean) {
+    this.rb.setEnabledRotations(enableX, enableY, enableZ, wakeUp);
+  }
+
+  dominanceGroupSync() {
+    return this.rb.dominanceGroup();
+  }
+  async dominanceGroup() {
+    return this.dominanceGroupSync();
+  }
+
+  setDominanceGroup(group: number) {
+    this.rb.setDominanceGroup(group);
+  }
+
+  additionalSolverIterationsSync() {
+    return this.rb.additionalSolverIterations();
+  }
+  async additionalSolverIterations() {
+    return this.additionalSolverIterationsSync();
+  }
+
+  setAdditionalSolverIterations(iters: number) {
+    this.rb.setAdditionalSolverIterations(iters);
+  }
+
+  enableCcd(enabled: boolean) {
+    this.rb.enableCcd(enabled);
+  }
+
+  setSoftCcdPrediction(distance: number) {
+    this.rb.setSoftCcdPrediction(distance);
+  }
+
+  softCcdPredictionSync() {
+    return this.rb.softCcdPrediction();
+  }
+  async softCcdPrediction() {
+    return this.softCcdPredictionSync();
+  }
+
+  translation() {
+    return this.rb.translation();
+  }
+
+  rotation() {
+    return this.rb.rotation();
+  }
+
+  nextTranslationSync() {
+    return this.rb.nextTranslation();
+  }
+  async nextTranslation() {
+    return this.nextTranslationSync();
+  }
+
+  nextRotationSync() {
+    return this.rb.nextRotation();
+  }
+  async nextRotation() {
+    return this.nextRotationSync();
+  }
+
+  setTranslation(tra: PhysVector, wakeUp: boolean) {
+    this.rb.setTranslation(tra, wakeUp);
+  }
+
+  setLinvel(vel: PhysVector, wakeUp: boolean) {
+    this.rb.setLinvel(vel, wakeUp);
+  }
+
+  gravityScaleSync() {
+    return this.rb.gravityScale();
+  }
+  async gravityScale() {
+    return this.gravityScaleSync();
+  }
+
+  setGravityScale(factor: number, wakeUp: boolean) {
+    this.rb.setGravityScale(factor, wakeUp);
+  }
+
+  setRotation(rot: PhysRotation, wakeUp: boolean) {
+    this.rb.setRotation(rot, wakeUp);
+  }
+
+  setAngvel(vel: PhysVector, wakeUp: boolean) {
+    this.rb.setAngvel(vel, wakeUp);
+  }
+
+  setNextKinematicTranslation(t: PhysVector) {
+    this.rb.setNextKinematicTranslation(t);
+  }
+
+  setNextKinematicRotation(rot: PhysRotation) {
+    this.rb.setNextKinematicRotation(rot);
+  }
+
+  linvel() {
+    return this.rb.linvel();
+  }
+
+  velocityAtPointSync(point: PhysVector) {
+    return this.rb.velocityAtPoint(point);
+  }
+  async velocityAtPoint(point: PhysVector) {
+    return this.velocityAtPointSync(point);
+  }
+
+  angvel() {
+    return this.rb.angvel();
+  }
+
+  massSync() {
+    return this.rb.mass();
+  }
+  async mass() {
+    return this.massSync();
+  }
+
+  effectiveInvMassSync() {
+    return this.rb.effectiveInvMass();
+  }
+  async effectiveInvMass() {
+    return this.effectiveInvMassSync();
+  }
+
+  invMassSync() {
+    return this.rb.invMass();
+  }
+  async invMass() {
+    return this.invMassSync();
+  }
+
+  localComSync() {
+    return this.rb.localCom();
+  }
+  async localCom() {
+    return this.localComSync();
+  }
+
+  worldComSync() {
+    return this.rb.worldCom();
+  }
+  async worldCom() {
+    return this.worldComSync();
+  }
+
+  invPrincipalInertiaSync() {
+    return this.rb.invPrincipalInertia();
+  }
+  async invPrincipalInertia() {
+    return this.invPrincipalInertiaSync();
+  }
+
+  principalInertiaSync() {
+    return this.rb.principalInertia();
+  }
+  async principalInertia() {
+    return this.principalInertiaSync();
+  }
+
+  principalInertiaLocalFrameSync() {
+    return this.rb.principalInertiaLocalFrame();
+  }
+  async principalInertiaLocalFrame() {
+    return this.principalInertiaLocalFrameSync();
+  }
+
+  sleep() {
+    this.rb.sleep();
+  }
+
+  wakeUp() {
+    this.rb.wakeUp();
+  }
+
+  isCcdEnabledSync() {
+    return this.rb.isCcdEnabled();
+  }
+  async isCcdEnabled() {
+    return this.isCcdEnabledSync();
+  }
+
+  numCollidersSync() {
+    return this.rb.numColliders();
+  }
+  async numColliders() {
+    return this.numCollidersSync();
+  }
+
+  colliderSync(i: number) {
+    const coll = this.rb.collider(i);
+    const collAPI = existsOrThrow(
+      getColliderAPI(coll.handle),
+      `Could not find collider in ColliderAPI.collider(${i}).`
+    );
+    return collAPI;
+  }
+  async collider(i: number) {
+    return this.colliderSync(i);
+  }
+
+  setEnabled(enabled: boolean) {
+    this.rb.setEnabled(enabled);
+  }
+
+  isEnabledSync() {
+    return this.rb.isEnabled();
+  }
+  async isEnabled() {
+    return this.isEnabledSync();
+  }
+
+  bodyTypeSync() {
+    return this.rb.bodyType() as unknown as RigidBodyTypeAPI;
+  }
+  async bodyType() {
+    return this.bodyTypeSync();
+  }
+
+  setBodyType(type: RigidBodyTypeAPI, wakeUp: boolean) {
+    this.rb.setBodyType(type as unknown as RigidBodyType, wakeUp);
+  }
+
+  isSleepingSync() {
+    return this.rb.isSleeping();
+  }
+  async isSleeping() {
+    return this.isSleepingSync();
+  }
+
+  isMovingSync() {
+    return this.rb.isMoving();
+  }
+  async isMoving() {
+    return this.isMovingSync();
+  }
+
+  isFixedSync() {
+    return this.rb.isFixed();
+  }
+  async isFixed() {
+    return this.isFixedSync();
+  }
+
+  isKinematicSync() {
+    return this.rb.isKinematic();
+  }
+  async isKinematic() {
+    return this.isKinematicSync();
+  }
+
+  isDynamicSync() {
+    return this.rb.isDynamic();
+  }
+  async isDynamic() {
+    return this.isDynamicSync();
+  }
+
+  linearDampingSync() {
+    return this.rb.linearDamping();
+  }
+  async linearDamping() {
+    return this.linearDampingSync();
+  }
+
+  angularDampingSync() {
+    return this.rb.angularDamping();
+  }
+  async angularDamping() {
+    return this.angularDampingSync();
+  }
+
+  setLinearDamping(factor: number) {
+    this.rb.setLinearDamping(factor);
+  }
+
+  recomputeMassPropertiesFromColliders() {
+    this.rb.recomputeMassPropertiesFromColliders();
+  }
+
+  setAdditionalMass(mass: number, wakeUp: boolean) {
+    this.rb.setAdditionalMass(mass, wakeUp);
+  }
+
+  setAdditionalMassProperties(
     mass: number,
     centerOfMass: PhysVector,
     principalAngularInertia: PhysVector,
     angularInertiaLocalFrame: PhysRotation,
     wakeUp: boolean
   ) {
-    // returns void;
-  },
-  setAngularDamping: function (factor: number) {
-    // returns void;
-  },
-  resetForces: function (wakeUp: boolean) {
-    // returns void;
-  },
-  resetTorques: function (wakeUp: boolean) {
-    // returns void;
-  },
-  addForce: function (force: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  applyImpulse: function (impulse: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  addTorque: function (torque: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  applyTorqueImpulse: function (torqueImpulse: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  addForceAtPoint: function (force: PhysVector, point: PhysVector, wakeUp: boolean) {
-    // return void;
-  },
-  applyImpulseAtPoint: function (impulse: PhysVector, point: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  userForce: function () {
-    // returns PhysVector;
-  },
-  userTorque: function () {
-    // returns PhysVector;
-  },
-});
+    this.rb.setAdditionalMassProperties(
+      mass,
+      centerOfMass,
+      principalAngularInertia,
+      angularInertiaLocalFrame,
+      wakeUp
+    );
+  }
 
-export const createEnginePhysicsColliderAPI = (id: number): ColliderAPI => ({
+  setAngularDamping(factor: number) {
+    this.rb.setAngularDamping(factor);
+  }
+
+  resetForces(wakeUp: boolean) {
+    this.rb.resetForces(wakeUp);
+  }
+
+  resetTorques(wakeUp: boolean) {
+    this.rb.resetTorques(wakeUp);
+  }
+
+  addForce(force: PhysVector, wakeUp: boolean) {
+    this.rb.addForce(force, wakeUp);
+  }
+
+  applyImpulse(impulse: PhysVector, wakeUp: boolean) {
+    this.rb.applyImpulse(impulse, wakeUp);
+  }
+
+  addTorque(torque: PhysVector, wakeUp: boolean) {
+    this.rb.addTorque(torque, wakeUp);
+  }
+
+  applyTorqueImpulse(torqueImpulse: PhysVector, wakeUp: boolean) {
+    this.rb.applyTorqueImpulse(torqueImpulse, wakeUp);
+  }
+
+  addForceAtPoint(force: PhysVector, point: PhysVector, wakeUp: boolean) {
+    this.rb.addForceAtPoint(force, point, wakeUp);
+  }
+
+  applyImpulseAtPoint(impulse: PhysVector, point: PhysVector, wakeUp: boolean) {
+    this.rb.applyImpulseAtPoint(impulse, point, wakeUp);
+  }
+
+  userForceSync() {
+    return this.rb.userForce();
+  }
+  async userForce() {
+    return this.userForceSync();
+  }
+
+  userTorqueSync() {
+    return this.rb.userTorque();
+  }
+  async userTorque() {
+    return this.userTorqueSync();
+  }
+}
+
+// @CHORE: change to a class
+const createEnginePhysicsColliderAPI = (id: number): ColliderAPI => ({
   id,
   userData: async function (userData?: { [key: string]: unknown }, addToExisting?: boolean) {
     if (userData !== undefined) {

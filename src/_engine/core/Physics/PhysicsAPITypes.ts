@@ -32,12 +32,14 @@ export type EngineAPIType = {
   createRigidBodies: (params: RigidBodyParams[]) => RigidBodyAPI[];
   createColliders: (params: ColliderParams[]) => ColliderAPI[];
   deleteWorld: () => { worldDeleted: boolean };
-  deleteRigidBody: (id: number) => { id: number };
-  deleteRigidBodies: (id: number) => { ids: number[] };
+  deleteRigidBody: (id: number) => { id: number; colliderIds: number[] };
+  deleteRigidBodies: (id: number[]) => { ids: number[]; colliderIds: number[] };
   deleteCollider: (id: number, wakeUp?: boolean) => { id: number };
-  deleteColliders: (ids: number[], wakeUp?: boolean[]) => { ids: number[] };
+  deleteColliders: (ids: number[], wakeUps?: boolean[]) => { ids: number[] };
   takeSnapshot: () => Uint8Array | undefined;
   restoreSnapshot: (snapshot: Uint8Array) => WorldAPI;
+  getRigidBodyAPIWithId: (id: number) => RigidBodyAPI | undefined;
+  getColliderAPIWithId: (id: number) => ColliderAPI | undefined;
 };
 
 export type PhysicsState = {
@@ -185,377 +187,85 @@ export declare enum RigidBodyTypeAPI {
 }
 
 /**
+ * Transforms an engine interface into a Main Thread Proxy interface.
+ * - Methods returning 'void' stay 'void' (Fire-and-forget).
+ * - Methods returning a value become 'Promise<value>' (Request-Response).
+ */
+export type PhysicsBridge<T> = {
+  [K in keyof T]: T[K] extends (...args: infer A) => void
+    ? (...args: A) => void // Setters stay void
+    : T[K] extends (...args: infer A) => infer R
+      ? (...args: A) => Promise<Awaited<R>> // Getters become Promises
+      : T[K]; // Non-functions stay as-is
+};
+
+/**
+ * Removes all properties and methods that end with the suffix "Sync".
+ */
+export type OmitSync<T> = {
+  [K in keyof T as K extends `${string}Sync` ? never : K]: T[K];
+};
+
+/**
  * A rigid-body.
  */
 export type RigidBodyAPI = {
-  /**
-   * Rigid body id (a running integer id).
-   */
+  /** Rigid body id (a running integer id). */
   readonly id: number;
-  /** userData memory. Do not read or set this directly! Access this with userData() method. */
+
+  // --- Hot Path (Shared Memory / Sync Access) ---
+  pos: PhysVector;
+  rot: PhysRotation;
+  lvel: PhysVector;
+  avel: PhysVector;
+
+  // --- Metadata & Validity ---
   uData: Record<string, unknown>;
-  /** Get or set the userData. Leave argument empty to get. Do not store functions in this record. If there is a need to only add key-value pairs to the existing userData, then set the "addToExisting" to true. */
-  userData: (
-    userData?: Record<string, unknown>,
-    addToExisting?: boolean
-  ) => Promise<Record<string, unknown>>;
-  /**
-   * Checks if this rigid-body is still valid (i.e. that it has
-   * not been deleted from the rigid-body set yet.
-   */
-  isValid(): boolean;
-  /**
-   * Locks or unlocks the ability of this rigid-body to translate.
-   *
-   * @param locked - If `true`, this rigid-body will no longer translate due to forces and impulses.
-   * @param wakeUp - If `true`, this rigid-body will be automatically awaken if it is currently asleep.
-   */
-  lockTranslations(locked: boolean, wakeUp: boolean): void;
-  /**
-   * Locks or unlocks the ability of this rigid-body to rotate.
-   *
-   * @param locked - If `true`, this rigid-body will no longer rotate due to torques and impulses.
-   * @param wakeUp - If `true`, this rigid-body will be automatically awaken if it is currently asleep.
-   */
-  lockRotations(locked: boolean, wakeUp: boolean): void;
-  /**
-   * Locks or unlocks the ability of this rigid-body to translate along individual coordinate axes.
-   *
-   * @param enableX - If `false`, this rigid-body will no longer translate due to torques and impulses, along the X coordinate axis.
-   * @param enableY - If `false`, this rigid-body will no longer translate due to torques and impulses, along the Y coordinate axis.
-   * @param enableZ - If `false`, this rigid-body will no longer translate due to torques and impulses, along the Z coordinate axis.
-   * @param wakeUp - If `true`, this rigid-body will be automatically awaken if it is currently asleep.
-   */
-  setEnabledTranslations(
-    enableX: boolean,
-    enableY: boolean,
-    enableZ: boolean,
-    wakeUp: boolean
-  ): void;
-  /**
-   * Locks or unlocks the ability of this rigid-body to rotate along individual coordinate axes.
-   *
-   * @param enableX - If `false`, this rigid-body will no longer rotate due to torques and impulses, along the X coordinate axis.
-   * @param enableY - If `false`, this rigid-body will no longer rotate due to torques and impulses, along the Y coordinate axis.
-   * @param enableZ - If `false`, this rigid-body will no longer rotate due to torques and impulses, along the Z coordinate axis.
-   * @param wakeUp - If `true`, this rigid-body will be automatically awaken if it is currently asleep.
-   */
-  setEnabledRotations(enableX: boolean, enableY: boolean, enableZ: boolean, wakeUp: boolean): void;
-  /**
-   * The dominance group, in [-127, +127] this rigid-body is part of.
-   */
-  dominanceGroup(): number;
-  /**
-   * Sets the dominance group of this rigid-body.
-   *
-   * @param group - The dominance group of this rigid-body. Must be a signed integer in the range [-127, +127].
-   */
-  setDominanceGroup(group: number): void;
-  /**
-   * The number of additional solver iterations that will be run for this
-   * rigid-body and everything that interacts with it directly or indirectly
-   * through contacts or joints.
-   */
-  additionalSolverIterations(): number;
-  /**
-   * Sets the number of additional solver iterations that will be run for this
-   * rigid-body and everything that interacts with it directly or indirectly
-   * through contacts or joints.
-   *
-   * Compared to increasing the global `World.numSolverIteration`, setting this
-   * value lets you increase accuracy on only a subset of the scene, resulting in reduced
-   * performance loss.
-   *
-   * @param iters - The new number of additional solver iterations (default: 0).
-   */
-  setAdditionalSolverIterations(iters: number): void;
-  /**
-   * Enable or disable CCD (Continuous Collision Detection) for this rigid-body.
-   *
-   * @param enabled - If `true`, CCD will be enabled for this rigid-body.
-   */
-  enableCcd(enabled: boolean): void;
-  /**
-   * Sets the soft-CCD prediction distance for this rigid-body.
-   *
-   * See the documentation of `RigidBodyDesc.setSoftCcdPrediction` for
-   * additional details.
-   */
-  setSoftCcdPrediction(distance: number): void;
-  /**
-   * Gets the soft-CCD prediction distance for this rigid-body.
-   *
-   * See the documentation of `RigidBodyDesc.setSoftCcdPrediction` for
-   * additional details.
-   */
-  softCcdPrediction(): number;
-  /**
-   * The world-space translation of this rigid-body.
-   */
+  getUserData(): Promise<Record<string, unknown>>;
+  getUserDataSync(): Record<string, unknown>;
+  setUserData(userData?: Record<string, unknown>, addToExisting?: boolean): void;
+
+  isValid(): Promise<boolean>;
+  isValidSync(): boolean;
+
+  // --- Transformation & Prediction ---
   translation(): PhysVector;
-  /**
-   * The world-space orientation of this rigid-body.
-   */
   rotation(): PhysRotation;
-  /**
-   * The world-space next translation of this rigid-body.
-   *
-   * If this rigid-body is kinematic this value is set by the `setNextKinematicTranslation`
-   * method and is used for estimating the kinematic body velocity at the next timestep.
-   * For non-kinematic bodies, this value is currently unspecified.
-   */
-  nextTranslation(): PhysVector;
-  /**
-   * The world-space next orientation of this rigid-body.
-   *
-   * If this rigid-body is kinematic this value is set by the `setNextKinematicRotation`
-   * method and is used for estimating the kinematic body velocity at the next timestep.
-   * For non-kinematic bodies, this value is currently unspecified.
-   */
-  nextRotation(): PhysRotation;
-  /**
-   * Sets the translation of this rigid-body.
-   *
-   * @param tra - The world-space position of the rigid-body.
-   * @param wakeUp - Forces the rigid-body to wake-up so it is properly affected by forces if it
-   *                 wasn't moving before modifying its position.
-   */
+
+  nextTranslation(): Promise<PhysVector>;
+  nextTranslationSync(): PhysVector;
+  nextRotation(): Promise<PhysRotation>;
+  nextRotationSync(): PhysRotation;
+
   setTranslation(tra: PhysVector, wakeUp: boolean): void;
-  /**
-   * Sets the linear velocity of this rigid-body.
-   *
-   * @param vel - The linear velocity to set.
-   * @param wakeUp - Forces the rigid-body to wake-up if it was asleep.
-   */
-  setLinvel(vel: PhysVector, wakeUp: boolean): void;
-  /**
-   * The scale factor applied to the gravity affecting
-   * this rigid-body.
-   */
-  gravityScale(): number;
-  /**
-   * Sets the scale factor applied to the gravity affecting
-   * this rigid-body.
-   *
-   * @param factor - The scale factor to set. A value of 0.0 means
-   *   that this rigid-body will on longer be affected by gravity.
-   * @param wakeUp - Forces the rigid-body to wake-up if it was asleep.
-   */
-  setGravityScale(factor: number, wakeUp: boolean): void;
-  /**
-   * Sets the rotation quaternion of this rigid-body.
-   *
-   * This does nothing if a zero quaternion is provided.
-   *
-   * @param rotation - The rotation to set.
-   * @param wakeUp - Forces the rigid-body to wake-up so it is properly affected by forces if it
-   * wasn't moving before modifying its position.
-   */
   setRotation(rot: PhysRotation, wakeUp: boolean): void;
-  /**
-   * Sets the angular velocity fo this rigid-body.
-   *
-   * @param vel - The angular velocity to set.
-   * @param wakeUp - Forces the rigid-body to wake-up if it was asleep.
-   */
-  setAngvel(vel: PhysVector, wakeUp: boolean): void;
-  /**
-   * If this rigid body is kinematic, sets its future translation after the next timestep integration.
-   *
-   * This should be used instead of `rigidBody.setTranslation` to make the dynamic object
-   * interacting with this kinematic body behave as expected. Internally, Rapier will compute
-   * an artificial velocity for this rigid-body from its current position and its next kinematic
-   * position. This velocity will be used to compute forces on dynamic bodies interacting with
-   * this body.
-   *
-   * @param t - The kinematic translation to set.
-   */
+
+  /** For kinematic bodies: sets future transform for interpolation. */
   setNextKinematicTranslation(t: PhysVector): void;
-  /**
-   * If this rigid body is kinematic, sets its future rotation after the next timestep integration.
-   *
-   * This should be used instead of `rigidBody.setRotation` to make the dynamic object
-   * interacting with this kinematic body behave as expected. Internally, Rapier will compute
-   * an artificial velocity for this rigid-body from its current position and its next kinematic
-   * position. This velocity will be used to compute forces on dynamic bodies interacting with
-   * this body.
-   *
-   * @param rot - The kinematic rotation to set.
-   */
   setNextKinematicRotation(rot: PhysRotation): void;
-  /**
-   * The linear velocity of this rigid-body.
-   */
-  linvel(): PhysVector;
-  /**
-   * The velocity of the given world-space point on this rigid-body.
-   */
-  velocityAtPoint(point: PhysVector): PhysVector;
-  /**
-   * The angular velocity of this rigid-body.
-   */
-  angvel(): PhysVector;
-  /**
-   * The mass of this rigid-body.
-   */
-  mass(): number;
-  /**
-   * The inverse mass taking into account translation locking.
-   */
-  effectiveInvMass(): PhysVector;
-  /**
-   * The inverse of the mass of a rigid-body.
-   *
-   * If this is zero, the rigid-body is assumed to have infinite mass.
-   */
-  invMass(): number;
-  /**
-   * The center of mass of a rigid-body expressed in its local-space.
-   */
-  localCom(): PhysVector;
-  /**
-   * The world-space center of mass of the rigid-body.
-   */
-  worldCom(): PhysVector;
-  /**
-   * The inverse of the principal angular inertia of the rigid-body.
-   *
-   * Components set to zero are assumed to be infinite along the corresponding principal axis.
-   */
-  invPrincipalInertia(): PhysVector;
-  /**
-   * The angular inertia along the principal inertia axes of the rigid-body.
-   */
-  principalInertia(): PhysVector;
-  /**
-   * The principal vectors of the local angular inertia tensor of the rigid-body.
-   */
-  principalInertiaLocalFrame(): PhysRotation;
-  /**
-   * Put this rigid body to sleep.
-   *
-   * A sleeping body no longer moves and is no longer simulated by the physics engine unless
-   * it is waken up. It can be woken manually with `this.wakeUp()` or automatically due to
-   * external forces like contacts.
-   */
-  sleep(): void;
-  /**
-   * Wakes this rigid-body up.
-   *
-   * A dynamic rigid-body that does not move during several consecutive frames will
-   * be put to sleep by the physics engine, i.e., it will stop being simulated in order
-   * to avoid useless computations.
-   * This methods forces a sleeping rigid-body to wake-up. This is useful, e.g., before modifying
-   * the position of a dynamic body so that it is properly simulated afterwards.
-   */
-  wakeUp(): void;
-  /**
-   * Is CCD enabled for this rigid-body?
-   */
-  isCcdEnabled(): boolean;
-  /**
-   * The number of colliders attached to this rigid-body.
-   */
-  numColliders(): number;
-  /**
-   * Retrieves the `i-th` collider attached to this rigid-body.
-   *
-   * @param i - The index of the collider to retrieve. Must be a number in `[0, this.numColliders()[`.
-   *         This index is **not** the same as the unique identifier of the collider.
-   */
-  collider(i: number): ColliderAPI;
-  /**
-   * Sets whether this rigid-body is enabled or not.
-   *
-   * @param enabled - Set to `false` to disable this rigid-body and all its attached colliders.
-   */
-  setEnabled(enabled: boolean): void;
-  /**
-   * Is this rigid-body enabled?
-   */
-  isEnabled(): boolean;
-  /**
-   * The status of this rigid-body: static, dynamic, or kinematic.
-   */
-  bodyType(): RigidBodyTypeAPI;
-  /**
-   * Set a new status for this rigid-body: static, dynamic, or kinematic.
-   */
-  setBodyType(type: RigidBodyTypeAPI, wakeUp: boolean): void;
-  /**
-   * Is this rigid-body sleeping?
-   */
-  isSleeping(): boolean;
-  /**
-   * Is the velocity of this rigid-body not zero?
-   */
-  isMoving(): boolean;
-  /**
-   * Is this rigid-body static?
-   */
-  isFixed(): boolean;
-  /**
-   * Is this rigid-body kinematic?
-   */
-  isKinematic(): boolean;
-  /**
-   * Is this rigid-body dynamic?
-   */
-  isDynamic(): boolean;
-  /**
-   * The linear damping coefficient of this rigid-body.
-   */
-  linearDamping(): number;
-  /**
-   * The angular damping coefficient of this rigid-body.
-   */
-  angularDamping(): number;
-  /**
-   * Sets the linear damping factor applied to this rigid-body.
-   *
-   * @param factor - The damping factor to set.
-   */
-  setLinearDamping(factor: number): void;
-  /**
-   * Recompute the mass-properties of this rigid-bodies based on its currently attached colliders.
-   */
+
+  // --- Mass Properties ---
+  mass(): Promise<number>;
+  massSync(): number;
+  invMass(): Promise<number>;
+  invMassSync(): number;
+  effectiveInvMass(): Promise<PhysVector>;
+  effectiveInvMassSync(): PhysVector;
+
+  localCom(): Promise<PhysVector>;
+  localComSync(): PhysVector;
+  worldCom(): Promise<PhysVector>;
+  worldComSync(): PhysVector;
+
+  invPrincipalInertia(): Promise<PhysVector>;
+  invPrincipalInertiaSync(): PhysVector;
+  principalInertia(): Promise<PhysVector>;
+  principalInertiaSync(): PhysVector;
+  principalInertiaLocalFrame(): Promise<PhysRotation>;
+  principalInertiaLocalFrameSync(): PhysRotation;
+
   recomputeMassPropertiesFromColliders(): void;
-  /**
-   * Sets the rigid-body's additional mass.
-   *
-   * The total angular inertia of the rigid-body will be scaled automatically based on this additional mass. If this
-   * scaling effect isn’t desired, use Self::additional_mass_properties instead of this method.
-   *
-   * This is only the "additional" mass because the total mass of the rigid-body is equal to the sum of this
-   * additional mass and the mass computed from the colliders (with non-zero densities) attached to this rigid-body.
-   *
-   * That total mass (which includes the attached colliders’ contributions) will be updated at the name physics step,
-   * or can be updated manually with `this.recomputeMassPropertiesFromColliders`.
-   *
-   * This will override any previous additional mass-properties set by `this.setAdditionalMass`,
-   * `this.setAdditionalMassProperties`, `RigidBodyDesc::setAdditionalMass`, or
-   * `RigidBodyDesc.setAdditionalMassfProperties` for this rigid-body.
-   *
-   * @param mass - The additional mass to set.
-   * @param wakeUp - If `true` then the rigid-body will be woken up if it was put to sleep because it did not move for a while.
-   */
   setAdditionalMass(mass: number, wakeUp: boolean): void;
-  /**
-   * Sets the rigid-body's additional mass-properties.
-   *
-   * This is only the "additional" mass-properties because the total mass-properties of the rigid-body is equal to the
-   * sum of this additional mass-properties and the mass computed from the colliders (with non-zero densities) attached
-   * to this rigid-body.
-   *
-   * That total mass-properties (which include the attached colliders’ contributions) will be updated at the name
-   * physics step, or can be updated manually with `this.recomputeMassPropertiesFromColliders`.
-   *
-   * This will override any previous mass-properties set by `this.setAdditionalMass`,
-   * `this.setAdditionalMassProperties`, `RigidBodyDesc.setAdditionalMass`, or `RigidBodyDesc.setAdditionalMassProperties`
-   * for this rigid-body.
-   *
-   * If `wake_up` is true then the rigid-body will be woken up if it was put to sleep because it did not move for a while.
-   */
   setAdditionalMassProperties(
     mass: number,
     centerOfMass: PhysVector,
@@ -563,78 +273,91 @@ export type RigidBodyAPI = {
     angularInertiaLocalFrame: PhysRotation,
     wakeUp: boolean
   ): void;
-  /**
-   * Sets the linear damping factor applied to this rigid-body.
-   *
-   * @param factor - The damping factor to set.
-   */
+
+  // --- Dynamics & Velocity ---
+  linvel(): PhysVector;
+  angvel(): PhysVector;
+  velocityAtPoint(point: PhysVector): Promise<PhysVector>;
+  velocityAtPointSync(point: PhysVector): PhysVector;
+
+  setLinvel(vel: PhysVector, wakeUp: boolean): void;
+  setAngvel(vel: PhysVector, wakeUp: boolean): void;
+
+  gravityScale(): Promise<number>;
+  gravityScaleSync(): number;
+  setGravityScale(factor: number, wakeUp: boolean): void;
+
+  linearDamping(): Promise<number>;
+  linearDampingSync(): number;
+  setLinearDamping(factor: number): void;
+  angularDamping(): Promise<number>;
+  angularDampingSync(): number;
   setAngularDamping(factor: number): void;
-  /**
-   * Resets to zero the user forces (but not torques) applied to this rigid-body.
-   *
-   * @param wakeUp - should the rigid-body be automatically woken-up?
-   */
+
+  // --- Forces & Impulses (Fire-and-Forget) ---
   resetForces(wakeUp: boolean): void;
-  /**
-   * Resets to zero the user torques applied to this rigid-body.
-   *
-   * @param wakeUp - should the rigid-body be automatically woken-up?
-   */
   resetTorques(wakeUp: boolean): void;
-  /**
-   * Adds a force at the center-of-mass of this rigid-body.
-   *
-   * @param force - the world-space force to add to the rigid-body.
-   * @param wakeUp - should the rigid-body be automatically woken-up?
-   */
   addForce(force: PhysVector, wakeUp: boolean): void;
-  /**
-   * Applies an impulse at the center-of-mass of this rigid-body.
-   *
-   * @param impulse - the world-space impulse to apply on the rigid-body.
-   * @param wakeUp - should the rigid-body be automatically woken-up?
-   */
-  applyImpulse(impulse: PhysVector, wakeUp: boolean): void;
-  /**
-   * Adds a torque at the center-of-mass of this rigid-body.
-   *
-   * @param torque - the world-space torque to add to the rigid-body.
-   * @param wakeUp - should the rigid-body be automatically woken-up?
-   */
   addTorque(torque: PhysVector, wakeUp: boolean): void;
-  /**
-   * Applies an impulsive torque at the center-of-mass of this rigid-body.
-   *
-   * @param torqueImpulse - the world-space torque impulse to apply on the rigid-body.
-   * @param wakeUp - should the rigid-body be automatically woken-up?
-   */
+  applyImpulse(impulse: PhysVector, wakeUp: boolean): void;
   applyTorqueImpulse(torqueImpulse: PhysVector, wakeUp: boolean): void;
-  /**
-   * Adds a force at the given world-space point of this rigid-body.
-   *
-   * @param force - the world-space force to add to the rigid-body.
-   * @param point - the world-space point where the impulse is to be applied on the rigid-body.
-   * @param wakeUp - should the rigid-body be automatically woken-up?
-   */
   addForceAtPoint(force: PhysVector, point: PhysVector, wakeUp: boolean): void;
-  /**
-   * Applies an impulse at the given world-space point of this rigid-body.
-   *
-   * @param impulse - the world-space impulse to apply on the rigid-body.
-   * @param point - the world-space point where the impulse is to be applied on the rigid-body.
-   * @param wakeUp - should the rigid-body be automatically woken-up?
-   */
   applyImpulseAtPoint(impulse: PhysVector, point: PhysVector, wakeUp: boolean): void;
-  /**
-   * Retrieves the constant force(s) the user added to this rigid-body
-   * Returns zero if the rigid-body is not dynamic.
-   */
-  userForce(): PhysVector;
-  /**
-   * Retrieves the constant torque(s) the user added to this rigid-body
-   * Returns zero if the rigid-body is not dynamic.
-   */
-  userTorque(): PhysVector;
+
+  userForce(): Promise<PhysVector>;
+  userForceSync(): PhysVector;
+  userTorque(): Promise<PhysVector>;
+  userTorqueSync(): PhysVector;
+
+  // --- Constraints & Locking ---
+  lockTranslations(locked: boolean, wakeUp: boolean): void;
+  lockRotations(locked: boolean, wakeUp: boolean): void;
+  setEnabledTranslations(x: boolean, y: boolean, z: boolean, wakeUp: boolean): void;
+  setEnabledRotations(x: boolean, y: boolean, z: boolean, wakeUp: boolean): void;
+
+  // --- Simulation Configuration ---
+  dominanceGroup(): Promise<number>;
+  dominanceGroupSync(): number;
+  setDominanceGroup(group: number): void;
+
+  additionalSolverIterations(): Promise<number>;
+  additionalSolverIterationsSync(): number;
+  setAdditionalSolverIterations(iters: number): void;
+
+  enableCcd(enabled: boolean): void;
+  isCcdEnabled(): Promise<boolean>;
+  isCcdEnabledSync(): boolean;
+  setSoftCcdPrediction(distance: number): void;
+  softCcdPrediction(): Promise<number>;
+  softCcdPredictionSync(): number;
+
+  // --- State & Activation ---
+  sleep(): void;
+  wakeUp(): void;
+  isEnabled(): Promise<boolean>;
+  isEnabledSync(): boolean;
+  setEnabled(enabled: boolean): void;
+  isSleeping(): Promise<boolean>;
+  isSleepingSync(): boolean;
+  isMoving(): Promise<boolean>;
+  isMovingSync(): boolean;
+
+  bodyType(): Promise<RigidBodyTypeAPI>;
+  bodyTypeSync(): RigidBodyTypeAPI;
+  setBodyType(type: RigidBodyTypeAPI, wakeUp: boolean): void;
+  isFixed(): Promise<boolean>;
+  isFixedSync(): boolean;
+  isKinematic(): Promise<boolean>;
+  isKinematicSync(): boolean;
+  isDynamic(): Promise<boolean>;
+  isDynamicSync(): boolean;
+
+  // --- Colliders ---
+  numColliders(): Promise<number>;
+  numCollidersSync(): number;
+  /** Returns a ColliderAPI (Proxy on Main, Real on Worker) or an ID. */
+  collider(i: number): Promise<ColliderAPI | number>;
+  colliderSync(i: number): ColliderAPI | number;
 };
 
 /**
@@ -672,11 +395,10 @@ export type ColliderAPI = {
   readonly id: number;
   /** userData memory. Do not read or set this directly! Access this with userData() method. On the PhysicsAPI side this is always empty. */
   uData: Record<string, unknown>;
-  /** Get or set the userData. Leave argument empty to get. Do not store functions in this record. If there is a need to only add key-value pairs to the existing userData, then set the "addToExisting" to true. */
-  userData: (
-    userData?: Record<string, unknown>,
-    addToExisting?: boolean
-  ) => Promise<Record<string, unknown>>;
+  /** Get the rigid body userData (uData) */
+  getUserData: () => Record<string, unknown>;
+  /** Do not store functions in this record. If there is a need to only add key-value pairs to the existing userData, then set the "addToExisting" to true. */
+  setUserData: (userData?: Record<string, unknown>, addToExisting?: boolean) => void;
   /**
    * Possible parent rigid body id
    */
@@ -1668,28 +1390,32 @@ export type ColliderParams = (
 export type WorldAPI = {
   /** Whether the world is being restored from a snaphot or not. */
   restoringWorld: boolean;
-  /** Get or set the gravity. Leave argument empty to get. */
-  gravity: (gravity?: PhysVector) => Promise<PhysVector | void>;
+  /** Get gravity vector */
+  getGravity(): Promise<PhysVector>;
+  getGravitySync(): PhysVector;
+  /** Set gravity vector */
+  setGravity(gravity: PhysVector): void;
   /**
    * Release the WASM memory occupied by this physics world.
    *
    * All the fields of this physics world will be freed as well,
    * so there is no need to call their `.free()` methods individually.
    */
-  free: () => void;
+  free(): void;
   /**
    * Takes a snapshot of this world.
    *
    * Use `World.restoreSnapshot` to create a new physics world with a state identical to
    * the state when `.takeSnapshot()` is called.
    */
-  takeSnapshot: () => Promise<Uint8Array | undefined>;
+  takeSnapshot(): Promise<Uint8Array | undefined>;
   /**
    * Creates a new physics world from a snapshot.
    *
    * This new physics world will be an identical copy of the snapshoted physics world.
    */
-  restoreSnapshot: (data: Uint8Array) => Promise<WorldAPI>;
+  restoreSnapshot(data: Uint8Array): Promise<WorldAPI>;
+  restoreSnapshotSync(data: Uint8Array): WorldAPI;
   /**
    * Computes all the lines (and their colors) needed to render the scene.
    *
@@ -1731,7 +1457,7 @@ export type WorldAPI = {
    * generally automatically done at the beginning and the end of each simulation step with World.step.
    * If the positions need to be updated without running a simulation step this method can be called manually.
    */
-  propagateModifiedBodyPositionsToColliders: () => void;
+  propagateModifiedBodyPositionsToColliders(): void;
   /**
    * Get or set the timestep. Leave argument empty to get.
    *
@@ -1744,7 +1470,9 @@ export type WorldAPI = {
    *
    * @param dt - The timestep length, in seconds.
    */
-  timestep: (dt?: number) => Promise<number | void>;
+  getTimestep(): Promise<number>;
+  getTimestepSync(): number;
+  setTimestep(dt: number): void;
   /**
    * Get or set the lengthUnit. Leave argument empty to get.
    *
@@ -1762,7 +1490,9 @@ export type WorldAPI = {
    * it as if 100 pixels is equivalent to 1 meter in its various internal threshold.
    * (default `1.0`).
    */
-  lengthUnit: (unitsPerMeter?: number) => Promise<number | void>;
+  getLengthUnit(): Promise<number>;
+  getLengthUnitSync(): number;
+  setLengthUnit(unitsPerMeter: number): void;
   /**
    * Get or set the numSolverIterations. Leave argument empty to get. Sets the number of solver iterations
    * run by the constraints solver for calculating forces (default: `4`).
@@ -1772,7 +1502,9 @@ export type WorldAPI = {
    *
    * @param niter - The new number of solver iterations.
    */
-  numSolverIterations: (niter?: number) => Promise<number | void>;
+  getNumSolverIterations(): Promise<number>;
+  getNumSolverIterationsSync(): number;
+  setNumSolverIterations(niter: number): void;
   /**
    * Get or set the numSolverIterations. Leave argument empty to get. Sets the Number of internal
    * Project Gauss Seidel (PGS) iterations run at each solver iteration (default: `1`).
@@ -1782,7 +1514,9 @@ export type WorldAPI = {
    *
    * @param niter - The new number of internal PGS iterations.
    */
-  numInternalPgsIterations: (niter?: number) => Promise<number | void>;
+  getNumInternalPgsIterations(): Promise<number>;
+  getNumInternalPgsIterationsSync(): number;
+  setNumInternalPgsIterations(niter: number): void;
   /**
    * Get or set the numSolverIterations. Leave argument empty to get. Sets the number of substeps
    * continuous collision-detection can run (default: `1`).
@@ -1794,13 +1528,16 @@ export type WorldAPI = {
    *
    * @param substeps - The new maximum number of CCD substeps. Setting to `0` disables CCD entirely.
    */
-  maxCcdSubsteps: (substeps?: number) => Promise<number | void>;
+  getMaxCcdSubsteps(): Promise<number>;
+  getMaxCcdSubstepsSync(): number;
+  setMaxCcdSubstepsSync(substeps: number): void;
   /**
    * Creates a new rigid-body from the given rigid-body descriptor.
    *
    * @param params - The parameters of the rigid-body.
    */
   createRigidBody: (params: RigidBodyParams) => Promise<RigidBodyAPI>;
+  createRigidBodySync: (params: RigidBodyParams) => RigidBodyAPI;
   /**
    * Creates a new collider.
    *
@@ -1808,18 +1545,21 @@ export type WorldAPI = {
    * @param parent - The rigid-body this collider is attached to.
    */
   createCollider: (params: ColliderParams, parent?: RigidBodyAPI) => Promise<ColliderAPI>;
+  createColliderSync: (params: ColliderParams, parent?: RigidBodyAPI) => ColliderAPI;
   /**
    * Retrieves a rigid-body from its handle.
    *
    * @param id - The integer handle of the rigid-body to retrieve.
    */
   getRigidBody: (id: number) => Promise<RigidBodyAPI | undefined>;
+  getRigidBodySync: (id: number) => RigidBodyAPI | undefined;
   /**
    * Retrieves a collider from its handle.
    *
    * @param id - The integer handle of the collider to retrieve.
    */
   getCollider: (id: number) => Promise<ColliderAPI | undefined>;
+  getColliderSync: (id: number) => ColliderAPI | undefined;
   /**
    * Removes the given rigid-body from this physics world.
    *
@@ -1858,6 +1598,16 @@ export type WorldAPI = {
     filterExcludeRigidBody?: RigidBodyAPI | number,
     filterPredicate?: (collider: ColliderAPI) => boolean
   ) => Promise<RayColliderHitAPI | null>;
+  castRaySync: (
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean
+  ) => RayColliderHitAPI | null;
   /**
    * Find the closest intersection between a ray and the physics world.
    *
@@ -1880,6 +1630,16 @@ export type WorldAPI = {
     filterExcludeRigidBody?: RigidBodyAPI | number,
     filterPredicate?: (collider: ColliderAPI) => boolean
   ) => Promise<RayColliderIntersectionAPI | null>;
+  castRayAndGetNormalSync: (
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean
+  ) => RayColliderIntersectionAPI | null;
   /**
    * Cast a ray and collects all the intersections between a ray and the scene.
    *
@@ -1900,8 +1660,8 @@ export type WorldAPI = {
     callback: (intersect: RayColliderIntersectionAPI) => boolean,
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
-    filterExcludeCollider?: ColliderAPI,
-    filterExcludeRigidBody?: RigidBodyAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number,
     filterPredicate?: (collider: ColliderAPI) => boolean
   ) => void;
   /**
@@ -1910,18 +1670,28 @@ export type WorldAPI = {
    * @param collider1 - The second collider involved in the contact.
    * @param f - Closure that will be called on each collider that is in contact with `collider1`.
    */
-  contactPairsWith: (collider1: ColliderAPI, f: (collider2: ColliderAPI) => void) => void;
+  contactPairsWith: (collider1: ColliderAPI | number, f: (collider2: ColliderAPI) => void) => void;
   /**
    * Enumerates all the colliders intersecting the given colliders, assuming one of them
    * is a sensor.
    */
-  intersectionPairsWith: (collider1: ColliderAPI, f: (collider2: ColliderAPI) => void) => void;
+  intersectionPairsWith: (
+    collider1: ColliderAPI | number,
+    f: (collider2: ColliderAPI) => void
+  ) => void;
   /**
    * Returns `true` if `collider1` and `collider2` intersect and at least one of them is a sensor.
    * @param collider1 − The first collider involved in the intersection.
    * @param collider2 − The second collider involved in the intersection.
    */
-  intersectionPair: (collider1: ColliderAPI, collider2: ColliderAPI) => Promise<boolean>;
+  intersectionPair: (
+    collider1: ColliderAPI | number,
+    collider2: ColliderAPI | number
+  ) => Promise<boolean>;
+  intersectionPairSync: (
+    collider1: ColliderAPI | number,
+    collider2: ColliderAPI | number
+  ) => boolean;
   /**
    * Creates a new character controller.
    *
@@ -2325,8 +2095,13 @@ export type WorldAPI = {
   // timingUserChanges(): number;
 };
 
+export type WorldProxyAPIType = OmitSync<WorldAPI>;
+export type RigidBodyWorkerEngine = OmitSync<RigidBodyAPI>;
+export type ColliderProxyAPIType = PhysicsBridge<ColliderAPI>;
+
 /** Physics worker UP protocol (from main thread to worker) */
-export type PhysicsUpProtocol = // Engine
+export type PhysicsUpProtocol =
+  // Engine --------------------------------------
   (
     | {
         type: PhysicsProtocolType.TAKE_SNAPSHOT;
@@ -2342,7 +2117,7 @@ export type PhysicsUpProtocol = // Engine
         loopState: LoopState;
         doNotCreateWorld?: boolean;
       }
-    // World
+    // World --------------------------------------
     | {
         type: PhysicsProtocolType.CREATE_WORLD;
         gravity: PhysVector;
@@ -2353,34 +2128,37 @@ export type PhysicsUpProtocol = // Engine
         };
       }
     | { type: PhysicsProtocolType.DELETE_WORLD }
-    | {
-        type: PhysicsProtocolType.WORLD_GRAVITY;
-        gravity?: PhysVector;
-      }
+    | { type: PhysicsProtocolType.WORLD_GET_GRAVITY }
+    | { type: PhysicsProtocolType.WORLD_SET_GRAVITY; gravity: PhysVector }
     | {
         type: PhysicsProtocolType.WORLD_FREE;
       }
     | {
-        type: PhysicsProtocolType.WORLD_PROPAGATE_MODIFIED_BODY_POSITIONS_TO_COLLIDERS;
+        type: PhysicsProtocolType.WORLD_PROPAGATE_POSITIONS;
       }
+    | { type: PhysicsProtocolType.WORLD_GET_TIMESTEP }
     | {
-        type: PhysicsProtocolType.WORLD_TIMESTEP;
-        dt?: number;
+        type: PhysicsProtocolType.WORLD_SET_TIMESTEP;
+        dt: number;
       }
+    | { type: PhysicsProtocolType.WORLD_GET_LENGTH_UNIT }
     | {
-        type: PhysicsProtocolType.WORLD_LENGTH_UNIT;
-        unitsPerMeter?: number;
+        type: PhysicsProtocolType.WORLD_SET_LENGTH_UNIT;
+        unitsPerMeter: number;
       }
+    | { type: PhysicsProtocolType.WORLD_GET_SOLVER_ITERS }
     | {
-        type: PhysicsProtocolType.WORLD_NUM_SOLVER_ITERATIONS;
-        niter?: number;
+        type: PhysicsProtocolType.WORLD_SET_SOLVER_ITERS;
+        niter: number;
       }
+    | { type: PhysicsProtocolType.WORLD_GET_PGS_ITERS }
     | {
-        type: PhysicsProtocolType.WORLD_NUM_INTERNAL_PGS_ITERATIONS;
-        niter?: number;
+        type: PhysicsProtocolType.WORLD_SET_PGS_ITERS;
+        niter: number;
       }
-    | { type: PhysicsProtocolType.WORLD_MAX_CCD_SUBSTEPS; substeps?: number }
-    // World queries
+    | { type: PhysicsProtocolType.WORLD_GET_CCD_SUBSTEPS }
+    | { type: PhysicsProtocolType.WORLD_SET_CCD_SUBSTEPS; substeps: number }
+    // World queries --------------------------------------
     | {
         type: PhysicsProtocolType.WORLD_CAST_RAY;
         ray: PhysRay;
@@ -2406,6 +2184,10 @@ export type PhysicsUpProtocol = // Engine
         ray: PhysRay;
         maxToi: number;
         solid: boolean;
+        filterFlags?: QueryFilterFlags;
+        filterGroups?: InteractionGroupsAPI;
+        filterExcludeCollider?: number;
+        filterExcludeRigidBody?: number;
       }
     | { type: PhysicsProtocolType.WORLD_CONTACT_PAIRS_WITH; colliderId: number }
     | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH; colliderId: number }
@@ -2414,30 +2196,214 @@ export type PhysicsUpProtocol = // Engine
         colliderId1: number;
         colliderId2: number;
       }
-    // RigidBody
+    // RigidBody --------------------------------------
     | { type: PhysicsProtocolType.CREATE_RIGID_BODY; params: RigidBodyParams }
     | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; params: RigidBodyParams[] }
     | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number }
-    | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; ids: number }
+    | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; ids: number[] }
+    | { type: PhysicsProtocolType.RIGID_GET_USERDATA; rigidBodyId: number }
     | {
-        type: PhysicsProtocolType.RIGID_USERDATA;
-        userData?: Record<string, unknown>;
+        type: PhysicsProtocolType.RIGID_SET_USERDATA;
+        rigidBodyId: number;
+        userData: Record<string, unknown>;
         addToExisting?: boolean;
       }
-    // Collider
+    | { type: PhysicsProtocolType.RIGID_IS_VALID; rigidBodyId: number }
+    | {
+        type: PhysicsProtocolType.RIGID_LOCK_TRANSLATIONS;
+        rigidBodyId: number;
+        locked: boolean;
+        wakeUp: boolean;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_LOCK_ROTATIONS;
+        rigidBodyId: number;
+        locked: boolean;
+        wakeUp: boolean;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_ENABLED_TRANSLATIONS;
+        rigidBodyId: number;
+        enableX: boolean;
+        enableY: boolean;
+        enableZ: boolean;
+        wakeUp: boolean;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_ENABLED_ROTATIONS;
+        rigidBodyId: number;
+        enableX: boolean;
+        enableY: boolean;
+        enableZ: boolean;
+        wakeUp: boolean;
+      }
+    | { type: PhysicsProtocolType.RIGID_DOMINANCE_GROUP; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_SET_DOMINANCE_GROUP; group: number; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_ADDITIONAL_SOLVER_ITERATIONS; rigidBodyId: number }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_ADDITIONAL_SOLVER_ITERATIONS;
+        iters: number;
+        rigidBodyId: number;
+      }
+    | { type: PhysicsProtocolType.RIGID_ENABLE_CCD; enabled: boolean; rigidBodyId: number }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_SOFT_CCD_PREDICTION;
+        distance: number;
+        rigidBodyId: number;
+      }
+    | { type: PhysicsProtocolType.RIGID_SOFT_CCD_PREDICTION; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_TRANSLATION; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_ROTATION; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_NEXT_TRANSLATION; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_NEXT_ROTATION; rigidBodyId: number }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_TRANSLATION;
+        tra: PhysVector;
+        wakeUp: boolean;
+        rigidBodyId: number;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_LINVEL;
+        vel: PhysVector;
+        wakeUp: boolean;
+        rigidBodyId: number;
+      }
+    | { type: PhysicsProtocolType.RIGID_GRAVITY_SCALE; rigidBodyId: number }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_GRAVITY_SCALE;
+        factor: number;
+        wakeUp: boolean;
+        rigidBodyId: number;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_ROTATION;
+        rot: PhysRotation;
+        wakeUp: boolean;
+        rigidBodyId: number;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_ANGVEL;
+        vel: PhysVector;
+        wakeUp: boolean;
+        rigidBodyId: number;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_NEXT_KINEMATIC_TRANSLATION;
+        t: PhysVector;
+        rigidBodyId: number;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_NEXT_KINEMATIC_ROTATION;
+        rot: PhysRotation;
+        rigidBodyId: number;
+      }
+    | { type: PhysicsProtocolType.RIGID_LINVEL; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_VELOCITY_AT_POINT; point: PhysVector; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_ANGVEL; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_MASS; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_EFFECTIVE_INV_MASS; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_INV_MASS; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_LOCAL_COM; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_WORLD_COM; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_INV_PRINCIPAL_INERTIA; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_PRINCIPAL_INERTIA; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_PRINCIPAL_INERTIA_LOCAL_FRAME; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_SLEEP; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_WAKE_UP; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_IS_CCD_ENABLED; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_NUM_COLLIDERS; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_COLLIDER; rigidBodyId: number; index: number }
+    | { type: PhysicsProtocolType.RIGID_SET_ENABLED; rigidBodyId: number; enabled: boolean }
+    | { type: PhysicsProtocolType.RIGID_IS_ENABLED; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_BODY_TYPE; rigidBodyId: number }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_BODY_TYPE;
+        rigidBodyId: number;
+        bodyType: RigidBodyTypeAPI;
+        wakeUp: boolean;
+      }
+    | { type: PhysicsProtocolType.RIGID_IS_SLEEPING; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_IS_MOVING; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_IS_FIXED; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_IS_KINEMATIC; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_IS_DYNAMIC; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_LINEAR_DAMPING; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_ANGULAR_DAMPING; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_SET_LINEAR_DAMPING; rigidBodyId: number; factor: number }
+    | { type: PhysicsProtocolType.RIGID_SET_ANGULAR_DAMPING; rigidBodyId: number; factor: number }
+    | { type: PhysicsProtocolType.RIGID_RECOMPUTE_MASS_PROPERTIES; rigidBodyId: number }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_ADDITIONAL_MASS;
+        rigidBodyId: number;
+        mass: number;
+        wakeUp: boolean;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_SET_ADDITIONAL_MASS_PROPERTIES;
+        rigidBodyId: number;
+        mass: number;
+        centerOfMass: PhysVector;
+        principalAngularInertia: PhysVector;
+        angularInertiaLocalFrame: PhysRotation;
+        wakeUp: boolean;
+      }
+    | { type: PhysicsProtocolType.RIGID_RESET_FORCES; rigidBodyId: number; wakeUp: boolean }
+    | { type: PhysicsProtocolType.RIGID_RESET_TORQUES; rigidBodyId: number; wakeUp: boolean }
+    | {
+        type: PhysicsProtocolType.RIGID_ADD_FORCE;
+        rigidBodyId: number;
+        force: PhysVector;
+        wakeUp: boolean;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_APPLY_IMPULSE;
+        rigidBodyId: number;
+        impulse: PhysVector;
+        wakeUp: boolean;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_ADD_TORQUE;
+        rigidBodyId: number;
+        torque: PhysVector;
+        wakeUp: boolean;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_APPLY_TORQUE_IMPULSE;
+        rigidBodyId: number;
+        torqueImpulse: PhysVector;
+        wakeUp: boolean;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_ADD_FORCE_AT_POINT;
+        rigidBodyId: number;
+        force: PhysVector;
+        point: PhysVector;
+        wakeUp: boolean;
+      }
+    | {
+        type: PhysicsProtocolType.RIGID_APPLY_IMPULSE_AT_POINT;
+        rigidBodyId: number;
+        impulse: PhysVector;
+        point: PhysVector;
+        wakeUp: boolean;
+      }
+    | { type: PhysicsProtocolType.RIGID_USER_FORCE; rigidBodyId: number }
+    | { type: PhysicsProtocolType.RIGID_USER_TORQUE; rigidBodyId: number }
+    // Collider --------------------------------------
     | { type: PhysicsProtocolType.CREATE_COLLIDER; params: ColliderParams; parentId?: number }
     | { type: PhysicsProtocolType.CREATE_COLLIDERS; params: ColliderParams[]; parentIds?: number[] }
     | { type: PhysicsProtocolType.DELETE_COLLIDER; id: number; wakeUp: boolean }
-    | { type: PhysicsProtocolType.DELETE_COLLIDERS; ids: number[]; wakeUp: boolean[] }
+    | { type: PhysicsProtocolType.DELETE_COLLIDERS; ids: number[]; wakeUps: boolean[] }
     | {
-        type: PhysicsProtocolType.COLL_USERDATA;
-        userData?: Record<string, unknown>;
+        type: PhysicsProtocolType.COLL_SET_USERDATA;
+        userData: Record<string, unknown>;
         addToExisting?: boolean;
       }
   ) & { requestId?: number; isOneWay?: boolean };
 
 /** Physics worker DOWN protocol (from worker to main thread) */
-export type PhysicsDownProtocol = // Engine
+export type PhysicsDownProtocol =
+  // Engine --------------------------------------
   (
     | {
         type: PhysicsProtocolType.TAKE_SNAPSHOT;
@@ -2451,56 +2417,96 @@ export type PhysicsDownProtocol = // Engine
         type: PhysicsProtocolType.INIT_PHYSICS;
         worldCreated: boolean;
       }
-    // World
+    // World --------------------------------------
     | { type: PhysicsProtocolType.CREATE_WORLD; worldCreated: boolean }
     | { type: PhysicsProtocolType.DELETE_WORLD; worldDeleted: boolean }
     | {
-        type: PhysicsProtocolType.WORLD_GRAVITY;
-        gravity?: PhysVector;
+        type: PhysicsProtocolType.WORLD_GET_GRAVITY;
+        gravity: PhysVector;
       }
     | {
-        type: PhysicsProtocolType.WORLD_TIMESTEP;
+        type: PhysicsProtocolType.WORLD_GET_TIMESTEP;
         dt?: number;
       }
     | {
-        type: PhysicsProtocolType.WORLD_LENGTH_UNIT;
+        type: PhysicsProtocolType.WORLD_GET_LENGTH_UNIT;
         unitsPerMeter?: number;
       }
     | {
-        type: PhysicsProtocolType.WORLD_NUM_SOLVER_ITERATIONS;
+        type: PhysicsProtocolType.WORLD_GET_SOLVER_ITERS;
         solverIterations?: number;
       }
     | {
-        type: PhysicsProtocolType.WORLD_NUM_INTERNAL_PGS_ITERATIONS;
+        type: PhysicsProtocolType.WORLD_GET_PGS_ITERS;
         internalPgsIterations?: number;
       }
-    | { type: PhysicsProtocolType.WORLD_MAX_CCD_SUBSTEPS; substeps?: number }
-    // World query Results
-    | { type: PhysicsProtocolType.WORLD_CAST_RAY; hit: RayColliderHitAPI | null }
+    | { type: PhysicsProtocolType.WORLD_GET_CCD_SUBSTEPS; substeps?: number }
+    // World query Results --------------------------------------
+    | {
+        type: PhysicsProtocolType.WORLD_CAST_RAY;
+        hit: (Omit<RayColliderHitAPI, 'collider'> & { collider: number }) | null;
+      }
     | {
         type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL;
-        intersection: RayColliderIntersectionAPI | null;
+        intersection: (Omit<RayColliderIntersectionAPI, 'collider'> & { collider: number }) | null;
       }
     | {
         type: PhysicsProtocolType.WORLD_INTERSECTIONS_WITH_RAY;
-        intersections: RayColliderIntersectionAPI[];
+        intersections: (Omit<RayColliderIntersectionAPI, 'collider'> & { collider: number })[];
       }
-    | { type: PhysicsProtocolType.WORLD_CONTACT_PAIRS_WITH; otherIds: number[] }
-    | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH; otherIds: number[] }
+    | { type: PhysicsProtocolType.WORLD_CONTACT_PAIRS_WITH; colliderIds: number[] }
+    | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH; colliderIds: number[] }
     | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR; isIntersecting: boolean }
-    // Rigid body
+    // Rigid body --------------------------------------
     | { type: PhysicsProtocolType.CREATE_RIGID_BODY; id: number }
     | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; ids: number[] }
-    | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number }
-    | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; id: number }
-    | { type: PhysicsProtocolType.RIGID_USERDATA; userData: boolean }
-    // Collider
+    | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number; colliderIds: number[] }
+    | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; ids: number[]; colliderIds: number[] }
+    | { type: PhysicsProtocolType.RIGID_GET_USERDATA; userData: Record<string, unknown> }
+    | { type: PhysicsProtocolType.RIGID_IS_VALID; isValid: boolean }
+    | { type: PhysicsProtocolType.RIGID_DOMINANCE_GROUP; dominanceGroup: number }
+    | { type: PhysicsProtocolType.RIGID_ADDITIONAL_SOLVER_ITERATIONS; additionalIterations: number }
+    | { type: PhysicsProtocolType.RIGID_SOFT_CCD_PREDICTION; softCcdPrediction: number }
+    | { type: PhysicsProtocolType.RIGID_TRANSLATION; translation: PhysVector }
+    | { type: PhysicsProtocolType.RIGID_ROTATION; rotation: PhysRotation }
+    | { type: PhysicsProtocolType.RIGID_NEXT_TRANSLATION; nextTranslation: PhysVector }
+    | { type: PhysicsProtocolType.RIGID_NEXT_ROTATION; nextRotation: PhysRotation }
+    | { type: PhysicsProtocolType.RIGID_GRAVITY_SCALE; gravityScale: number }
+    | { type: PhysicsProtocolType.RIGID_LINVEL; linvel: PhysVector }
+    | { type: PhysicsProtocolType.RIGID_VELOCITY_AT_POINT; velocityAtPoint: PhysVector }
+    | { type: PhysicsProtocolType.RIGID_ANGVEL; angvel: PhysVector }
+    | { type: PhysicsProtocolType.RIGID_MASS; mass: number }
+    | { type: PhysicsProtocolType.RIGID_EFFECTIVE_INV_MASS; effectiveInvMass: PhysVector }
+    | { type: PhysicsProtocolType.RIGID_INV_MASS; invMass: number }
+    | { type: PhysicsProtocolType.RIGID_LOCAL_COM; localCom: PhysVector }
+    | { type: PhysicsProtocolType.RIGID_WORLD_COM; worldCom: PhysVector }
+    | { type: PhysicsProtocolType.RIGID_INV_PRINCIPAL_INERTIA; invPrincipalInertia: PhysVector }
+    | { type: PhysicsProtocolType.RIGID_PRINCIPAL_INERTIA; principalInertia: PhysVector }
+    | {
+        type: PhysicsProtocolType.RIGID_PRINCIPAL_INERTIA_LOCAL_FRAME;
+        principalInertiaLocalFrame: PhysRotation;
+      }
+    | { type: PhysicsProtocolType.RIGID_IS_CCD_ENABLED; isCcdEnabled: boolean }
+    | { type: PhysicsProtocolType.RIGID_NUM_COLLIDERS; numColliders: number }
+    | { type: PhysicsProtocolType.RIGID_COLLIDER; colliderId: number }
+    | { type: PhysicsProtocolType.RIGID_IS_ENABLED; isEnabled: boolean }
+    | { type: PhysicsProtocolType.RIGID_BODY_TYPE; bodyType: RigidBodyTypeAPI }
+    | { type: PhysicsProtocolType.RIGID_IS_SLEEPING; isSleeping: boolean }
+    | { type: PhysicsProtocolType.RIGID_IS_MOVING; isMoving: boolean }
+    | { type: PhysicsProtocolType.RIGID_IS_FIXED; isFixed: boolean }
+    | { type: PhysicsProtocolType.RIGID_IS_KINEMATIC; isKinematic: boolean }
+    | { type: PhysicsProtocolType.RIGID_IS_DYNAMIC; isDynamic: boolean }
+    | { type: PhysicsProtocolType.RIGID_LINEAR_DAMPING; linearDamping: number }
+    | { type: PhysicsProtocolType.RIGID_ANGULAR_DAMPING; angularDamping: number }
+    | { type: PhysicsProtocolType.RIGID_USER_FORCE; userForce: PhysVector }
+    | { type: PhysicsProtocolType.RIGID_USER_TORQUE; userTorque: PhysVector }
+    // Collider --------------------------------------
     | { type: PhysicsProtocolType.CREATE_COLLIDER; id: number; parentId: number }
     | { type: PhysicsProtocolType.CREATE_COLLIDERS; ids: number[]; parenIds: number[] }
     | { type: PhysicsProtocolType.DELETE_COLLIDER; id: number; wakeUp?: boolean }
     | { type: PhysicsProtocolType.DELETE_COLLIDERS; ids: number[]; wakeUp?: boolean[] }
-    | { type: PhysicsProtocolType.COLL_USERDATA; userData: boolean }
-    // Error
+    | { type: PhysicsProtocolType.COLL_GET_USERDATA; userData: boolean }
+    // Error --------------------------------------
     | {
         type: PhysicsProtocolType.ERROR;
         message: string;
@@ -2521,23 +2527,25 @@ export type ErrorResponse = PhysicsResponse<PhysicsProtocolType.ERROR>;
 // World
 export type CreateWorldResponse = PhysicsResponse<PhysicsProtocolType.CREATE_WORLD>;
 export type DeleteWorldResponse = PhysicsResponse<PhysicsProtocolType.DELETE_WORLD>;
-export type WorldGravityResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GRAVITY>;
-export type WorldTimestepResponse = PhysicsResponse<PhysicsProtocolType.WORLD_TIMESTEP>;
-export type WorldLengthUnitResponse = PhysicsResponse<PhysicsProtocolType.WORLD_LENGTH_UNIT>;
+export type WorldGravityResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GET_GRAVITY>;
+export type WorldTimestepResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GET_TIMESTEP>;
+export type WorldLengthUnitResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GET_LENGTH_UNIT>;
 export type WorldNumSolverIterationsResponse =
-  PhysicsResponse<PhysicsProtocolType.WORLD_NUM_SOLVER_ITERATIONS>;
+  PhysicsResponse<PhysicsProtocolType.WORLD_GET_SOLVER_ITERS>;
 export type WorldNumInternalPgsIterationsResponse =
-  PhysicsResponse<PhysicsProtocolType.WORLD_NUM_INTERNAL_PGS_ITERATIONS>;
+  PhysicsResponse<PhysicsProtocolType.WORLD_GET_PGS_ITERS>;
 export type WorldMaxCcdSubstepsResponse =
-  PhysicsResponse<PhysicsProtocolType.WORLD_MAX_CCD_SUBSTEPS>;
+  PhysicsResponse<PhysicsProtocolType.WORLD_GET_CCD_SUBSTEPS>;
 // World query
 export type WorldCastRayResponse = PhysicsResponse<PhysicsProtocolType.WORLD_CAST_RAY>;
-export type WorldCastRayAndNormalResponse =
+export type WorldCastRayAndGetNormalResponse =
   PhysicsResponse<PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL>;
 export type WorldIntersectionsWithRayResponse =
   PhysicsResponse<PhysicsProtocolType.WORLD_INTERSECTIONS_WITH_RAY>;
 export type WorldContactPairsResponse =
   PhysicsResponse<PhysicsProtocolType.WORLD_CONTACT_PAIRS_WITH>;
+export type WorldIntersectionPairsWithResponse =
+  PhysicsResponse<PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH>;
 export type WorldIntersectionPairResponse =
   PhysicsResponse<PhysicsProtocolType.WORLD_INTERSECTION_PAIR>;
 // Rigid body
@@ -2545,13 +2553,58 @@ export type CreateRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.CREATE
 export type CreateRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.CREATE_RIGID_BODIES>;
 export type DeleteRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODY>;
 export type DeleteRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODIES>;
-export type RigidUserDataResponse = PhysicsResponse<PhysicsProtocolType.RIGID_USERDATA>;
+export type RigidGetUserDataResponse = PhysicsResponse<PhysicsProtocolType.RIGID_GET_USERDATA>;
+export type RigidIsValidResponse = PhysicsResponse<PhysicsProtocolType.RIGID_IS_VALID>;
+export type RigidDominanceGroupResponse =
+  PhysicsResponse<PhysicsProtocolType.RIGID_DOMINANCE_GROUP>;
+export type RigidAdditionalSolverIterationsResponse =
+  PhysicsResponse<PhysicsProtocolType.RIGID_ADDITIONAL_SOLVER_ITERATIONS>;
+export type RigidSoftCcdPredictionResponse =
+  PhysicsResponse<PhysicsProtocolType.RIGID_SOFT_CCD_PREDICTION>;
+export type RigidTranslationResponse = PhysicsResponse<PhysicsProtocolType.RIGID_TRANSLATION>;
+export type RigidRotationResponse = PhysicsResponse<PhysicsProtocolType.RIGID_ROTATION>;
+export type RigidNextTranslationResponse =
+  PhysicsResponse<PhysicsProtocolType.RIGID_NEXT_TRANSLATION>;
+export type RigidNextRotationResponse = PhysicsResponse<PhysicsProtocolType.RIGID_NEXT_ROTATION>;
+export type RigidGravityScaleResponse = PhysicsResponse<PhysicsProtocolType.RIGID_GRAVITY_SCALE>;
+export type RigidLinvelResponse = PhysicsResponse<PhysicsProtocolType.RIGID_LINVEL>;
+export type RigidVelocityAtPointResponse =
+  PhysicsResponse<PhysicsProtocolType.RIGID_VELOCITY_AT_POINT>;
+export type RigidAngvelResponse = PhysicsResponse<PhysicsProtocolType.RIGID_ANGVEL>;
+export type RigidMassResponse = PhysicsResponse<PhysicsProtocolType.RIGID_MASS>;
+export type RigidEffectiveInvMassResponse =
+  PhysicsResponse<PhysicsProtocolType.RIGID_EFFECTIVE_INV_MASS>;
+export type RigidInvMassResponse = PhysicsResponse<PhysicsProtocolType.RIGID_INV_MASS>;
+export type RigidLocalComResponse = PhysicsResponse<PhysicsProtocolType.RIGID_LOCAL_COM>;
+export type RigidWorldComResponse = PhysicsResponse<PhysicsProtocolType.RIGID_WORLD_COM>;
+export type RigidInvPrincipalInertiaResponse =
+  PhysicsResponse<PhysicsProtocolType.RIGID_INV_PRINCIPAL_INERTIA>;
+export type RigidPrincipalInertiaResponse =
+  PhysicsResponse<PhysicsProtocolType.RIGID_PRINCIPAL_INERTIA>;
+export type RigidPrincipalInertiaLocalFrameResponse =
+  PhysicsResponse<PhysicsProtocolType.RIGID_PRINCIPAL_INERTIA_LOCAL_FRAME>;
+export type RigidIsCcdEnabledResponse = PhysicsResponse<PhysicsProtocolType.RIGID_IS_CCD_ENABLED>;
+export type RigidNumCollidersResponse = PhysicsResponse<PhysicsProtocolType.RIGID_NUM_COLLIDERS>;
+export type RigidColliderResponse = PhysicsResponse<PhysicsProtocolType.RIGID_COLLIDER>;
+export type RigidIsEnabledResponse = PhysicsResponse<PhysicsProtocolType.RIGID_IS_ENABLED>;
+export type RigidBodyTypeResponse = PhysicsResponse<PhysicsProtocolType.RIGID_BODY_TYPE>;
+export type RigidIsSleepingResponse = PhysicsResponse<PhysicsProtocolType.RIGID_IS_SLEEPING>;
+export type RigidIsMovingResponse = PhysicsResponse<PhysicsProtocolType.RIGID_IS_MOVING>;
+export type RigidIsFixedResponse = PhysicsResponse<PhysicsProtocolType.RIGID_IS_FIXED>;
+export type RigidIsKinematicResponse = PhysicsResponse<PhysicsProtocolType.RIGID_IS_KINEMATIC>;
+export type RigidIsDynamicResponse = PhysicsResponse<PhysicsProtocolType.RIGID_IS_DYNAMIC>;
+export type RigidLinearDampingResponse = PhysicsResponse<PhysicsProtocolType.RIGID_LINEAR_DAMPING>;
+export type RigidAngularDampingResponse =
+  PhysicsResponse<PhysicsProtocolType.RIGID_ANGULAR_DAMPING>;
+export type RigidUserForceResponse = PhysicsResponse<PhysicsProtocolType.RIGID_USER_FORCE>;
+export type RigidUserTorqueResponse = PhysicsResponse<PhysicsProtocolType.RIGID_USER_TORQUE>;
+
 // Collider
 export type CreateColliderResponse = PhysicsResponse<PhysicsProtocolType.CREATE_COLLIDER>;
 export type CreateCollidersResponse = PhysicsResponse<PhysicsProtocolType.CREATE_COLLIDERS>;
 export type DeleteColliderResponse = PhysicsResponse<PhysicsProtocolType.DELETE_COLLIDER>;
 export type DeleteCollidersResponse = PhysicsResponse<PhysicsProtocolType.DELETE_COLLIDERS>;
-export type CollUserDataResponse = PhysicsResponse<PhysicsProtocolType.COLL_USERDATA>;
+export type CollUserDataResponse = PhysicsResponse<PhysicsProtocolType.COLL_GET_USERDATA>;
 
 export declare enum PhysicsProtocolType {
   ERROR = 0,
@@ -2565,14 +2618,24 @@ export declare enum PhysicsProtocolType {
   DELETE_WORLD = 101,
 
   // WORLD >= 200 && WORLD < 400
-  WORLD_GRAVITY = 200,
-  WORLD_FREE = 201,
-  WORLD_PROPAGATE_MODIFIED_BODY_POSITIONS_TO_COLLIDERS = 202,
-  WORLD_TIMESTEP = 203,
-  WORLD_LENGTH_UNIT = 204,
-  WORLD_NUM_SOLVER_ITERATIONS = 205,
-  WORLD_NUM_INTERNAL_PGS_ITERATIONS = 206,
-  WORLD_MAX_CCD_SUBSTEPS = 207,
+  WORLD_GET_GRAVITY = 200,
+  WORLD_SET_GRAVITY = 201,
+  WORLD_FREE = 202,
+  WORLD_PROPAGATE_POSITIONS = 203,
+  WORLD_GET_TIMESTEP = 204,
+  WORLD_SET_TIMESTEP = 205,
+  WORLD_GET_LENGTH_UNIT = 206,
+  WORLD_SET_LENGTH_UNIT = 207,
+  WORLD_GET_SOLVER_ITERS = 208,
+  WORLD_SET_SOLVER_ITERS = 209,
+  WORLD_GET_PGS_ITERS = 210,
+  WORLD_SET_PGS_ITERS = 211,
+  WORLD_GET_CCD_SUBSTEPS = 212,
+  WORLD_SET_CCD_SUBSTEPS = 213,
+  WORLD_CREATE_RIGID_BODY = 214,
+  WORLD_CREATE_COLLIDER = 215,
+  WORLD_REMOVE_RIGID_BODY = 216,
+  WORLD_REMOVE_COLLIDER = 217,
   // WORLD QUERIES
   WORLD_CAST_RAY = 300,
   WORLD_CAST_RAY_AND_GET_NORMAL = 301,
@@ -2586,12 +2649,80 @@ export declare enum PhysicsProtocolType {
   CREATE_RIGID_BODIES = 401,
   DELETE_RIGID_BODY = 402,
   DELETE_RIGID_BODIES = 403,
-  RIGID_USERDATA = 404,
+  RIGID_GET_USERDATA = 404,
+  RIGID_SET_USERDATA = 405,
+  RIGID_IS_VALID = 406,
+  RIGID_LOCK_TRANSLATIONS = 407,
+  RIGID_LOCK_ROTATIONS = 408,
+  RIGID_SET_ENABLED_TRANSLATIONS = 409,
+  RIGID_SET_ENABLED_ROTATIONS = 410,
+  RIGID_DOMINANCE_GROUP = 411,
+  RIGID_SET_DOMINANCE_GROUP = 412,
+  RIGID_ADDITIONAL_SOLVER_ITERATIONS = 413,
+  RIGID_SET_ADDITIONAL_SOLVER_ITERATIONS = 414,
+  RIGID_ENABLE_CCD = 415,
+  RIGID_SET_SOFT_CCD_PREDICTION = 416,
+  RIGID_SOFT_CCD_PREDICTION = 417,
+  RIGID_TRANSLATION = 418,
+  RIGID_ROTATION = 419,
+  RIGID_NEXT_TRANSLATION = 420,
+  RIGID_NEXT_ROTATION = 421,
+  RIGID_SET_TRANSLATION = 422,
+  RIGID_SET_LINVEL = 423,
+  RIGID_GRAVITY_SCALE = 424,
+  RIGID_SET_GRAVITY_SCALE = 425,
+  RIGID_SET_ROTATION = 426,
+  RIGID_SET_ANGVEL = 427,
+  RIGID_SET_NEXT_KINEMATIC_TRANSLATION = 428,
+  RIGID_SET_NEXT_KINEMATIC_ROTATION = 429,
+  RIGID_LINVEL = 430,
+  RIGID_VELOCITY_AT_POINT = 431,
+  RIGID_ANGVEL = 432,
+  RIGID_MASS = 433,
+  RIGID_EFFECTIVE_INV_MASS = 434,
+  RIGID_INV_MASS = 435,
+  RIGID_LOCAL_COM = 436,
+  RIGID_WORLD_COM = 437,
+  RIGID_INV_PRINCIPAL_INERTIA = 438,
+  RIGID_PRINCIPAL_INERTIA = 439,
+  RIGID_PRINCIPAL_INERTIA_LOCAL_FRAME = 440,
+  RIGID_SLEEP = 441,
+  RIGID_WAKE_UP = 442,
+  RIGID_IS_CCD_ENABLED = 443,
+  RIGID_NUM_COLLIDERS = 444,
+  RIGID_COLLIDER = 445,
+  RIGID_SET_ENABLED = 446,
+  RIGID_IS_ENABLED = 447,
+  RIGID_BODY_TYPE = 448,
+  RIGID_SET_BODY_TYPE = 449,
+  RIGID_IS_SLEEPING = 450,
+  RIGID_IS_MOVING = 451,
+  RIGID_IS_FIXED = 452,
+  RIGID_IS_KINEMATIC = 453,
+  RIGID_IS_DYNAMIC = 454,
+  RIGID_LINEAR_DAMPING = 455,
+  RIGID_ANGULAR_DAMPING = 456,
+  RIGID_SET_LINEAR_DAMPING = 457,
+  RIGID_SET_ANGULAR_DAMPING = 458,
+  RIGID_RECOMPUTE_MASS_PROPERTIES = 459,
+  RIGID_SET_ADDITIONAL_MASS = 460,
+  RIGID_SET_ADDITIONAL_MASS_PROPERTIES = 461,
+  RIGID_RESET_FORCES = 462,
+  RIGID_RESET_TORQUES = 463,
+  RIGID_ADD_FORCE = 464,
+  RIGID_APPLY_IMPULSE = 465,
+  RIGID_ADD_TORQUE = 466,
+  RIGID_APPLY_TORQUE_IMPULSE = 467,
+  RIGID_ADD_FORCE_AT_POINT = 468,
+  RIGID_APPLY_IMPULSE_AT_POINT = 469,
+  RIGID_USER_FORCE = 470,
+  RIGID_USER_TORQUE = 471,
 
   // COLLIDER >= 600 && COLLIDER < 800
   CREATE_COLLIDER = 600,
   CREATE_COLLIDERS = 601,
   DELETE_COLLIDER = 602,
   DELETE_COLLIDERS = 603,
-  COLL_USERDATA = 604,
+  COLL_GET_USERDATA = 604,
+  COLL_SET_USERDATA = 605,
 }

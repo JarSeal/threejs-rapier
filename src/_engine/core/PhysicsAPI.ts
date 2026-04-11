@@ -1,3 +1,10 @@
+// This API is a wrapper to call the actual physics engine.
+// It has been created based on the RAPIER API model. Other engines
+// may not share the same methods and call signatures (and some
+// refactoring might be needed to make others work). The API
+// handles the differentiation between different engines
+// and threading.
+
 import * as THREE from 'three/webgpu';
 
 import PhysicsWorker from '../workers/physicsWorker?worker';
@@ -5,6 +12,7 @@ import { getConfig, isDebugEnvironment } from './Config';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import {
   getColliderShapeName,
+  getCollOrRigidId,
   getEngineAPI,
   initPhysicsEngine,
   isDynamicPhysicsObjectValid,
@@ -65,15 +73,56 @@ import {
   CreateRigidBodiesResponse,
   CreateCollidersResponse,
   WorldCastRayResponse,
+  WorldCastRayAndGetNormalResponse,
+  WorldIntersectionsWithRayResponse,
+  WorldContactPairsResponse,
+  WorldIntersectionPairResponse,
+  WorldIntersectionPairsWithResponse,
+  DeleteRigidBodyResponse,
+  DeleteRigidBodiesResponse,
+  DeleteColliderResponse,
+  DeleteCollidersResponse,
+  RigidIsValidResponse,
+  RigidDominanceGroupResponse,
+  RigidAdditionalSolverIterationsResponse,
+  RigidSoftCcdPredictionResponse,
+  RigidTranslationResponse,
+  RigidRotationResponse,
+  RigidNextTranslationResponse,
+  RigidNextRotationResponse,
+  RigidGravityScaleResponse,
+  RigidLinvelResponse,
+  RigidVelocityAtPointResponse,
+  RigidAngvelResponse,
+  RigidMassResponse,
+  RigidEffectiveInvMassResponse,
+  RigidInvMassResponse,
+  RigidLocalComResponse,
+  RigidWorldComResponse,
+  RigidInvPrincipalInertiaResponse,
+  RigidPrincipalInertiaResponse,
+  RigidPrincipalInertiaLocalFrameResponse,
+  RigidIsCcdEnabledResponse,
+  RigidNumCollidersResponse,
+  RigidColliderResponse,
+  RigidUserTorqueResponse,
+  RigidUserForceResponse,
+  RigidAngularDampingResponse,
+  RigidLinearDampingResponse,
+  RigidIsDynamicResponse,
+  RigidIsKinematicResponse,
+  RigidIsFixedResponse,
+  RigidIsMovingResponse,
+  RigidIsSleepingResponse,
+  RigidBodyTypeResponse,
+  RigidIsEnabledResponse,
+  WorldProxyAPIType,
+  RigidGetUserDataResponse,
+  RigidBodyProxyAPIType,
+  RigidBodyWorkerEngine,
+  RayColliderHitAPI,
 } from './Physics/PhysicsAPITypes';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
-
-// This API is a wrapper to call the actual physics engine.
-// It has been created based on the RAPIER API model. Other engines
-// may not share the same methods and call signatures (and some
-// refactoring might be needed to make others work). The API
-// handles the differentiation between different engines
-// and threading.
 
 let physicsState: PhysicsState = {
   enabled: false,
@@ -125,6 +174,7 @@ const scenePhysicsLoopers: { [id: string]: ScenePhysicsLooper } = {};
 const scenePhysicsAfterStepLoopers: { [id: string]: ScenePhysicsLooper } = {};
 let engineInitiated = false;
 let engAPI: EngineAPIType | null = null;
+
 const rigidBodies = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
 const colliders = new Map<number, ColliderAPI>(); // { "Running id", ColliderAPI }
 
@@ -158,8 +208,13 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
     // Main thread
     const { engine, engineAPI } = await initPhysicsEngine(curEngineKey);
     engineInitiated = Boolean(engine);
-    engAPI = engineAPI as EngineAPIType;
-    const worldOrUndefined = engAPI.init(physicsState);
+    engAPI = engineAPI;
+    const worldOrUndefined = engAPI.init(
+      physicsState,
+      isDebugEnvironment(),
+      getReadOnlyLoopState(),
+      doNotCreateWorld
+    );
     if (worldOrUndefined) physicsWorld = worldOrUndefined;
     if (isDebugEnvironment()) {
       createDebugControls();
@@ -216,9 +271,10 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
   const requestId = data.requestId;
 
   // @CHORE: finish this
-  // if (type === PhysicsProtocolType.STEP) {}
+  // if (type === PhysicsProtocolType.STEP) { return; }
 
   if (type === PhysicsProtocolType.ERROR) {
+    // @CONSIDER: should we throw an error here??? Maybe a physics setting whether to throw or not?
     lerror(`Error in physics worker, message: ${data.message}`);
     return;
   } else if (!ValidProtocolTypes.has(type)) {
@@ -227,30 +283,6 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
   }
 
   return resolveRequest(data, requestId, type);
-
-  // @CHORE remove
-  // switch (type) {
-  //   case PhysicsProtocolType.TAKE_SNAPSHOT:
-  //     // TAKE_SNAPSHOT
-  //     return resolveRequest(data.snapshot, requestId, type);
-  //   case PhysicsProtocolType.RESTORE_SNAPSHOT:
-  //     // RESTORE_SNAPSHOT
-  //     return resolveRequest(data.worldCreated, requestId, type);
-  //   case PhysicsProtocolType.WORLD_GRAVITY:
-  //     // WORLD_GRAVITY
-  //     return resolveRequest(data.gravity, requestId, type);
-  //   case PhysicsProtocolType.INIT_PHYSICS:
-  //     // INIT_PHYSICS
-  //     return resolveRequest(data.worldCreated, requestId, type);
-  //   case PhysicsProtocolType.ERROR:
-  //     // ERROR (from worker)
-  //     lerror(`Error in physics worker, message: ${data.message}`);
-  //     return;
-  //   default:
-  //     // Error if type not found
-  //     lerror(`Error in physics onWorkerMessage, unknown protocol type: ${type}`);
-  //     return;
-  // }
 };
 
 // WORKER LOGIC -- [ END ] -----------------------
@@ -1500,6 +1532,10 @@ export const createPhysicsWorld = async (
       physicsWorldEnabled = true;
       if (isDebugEnvironment()) initDebuggerScenePhysState(); // @CHORE: this needs to change (no scene stuff)
       addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChangeHandler);
+    } else {
+      lerror(
+        `Could not create physics world (WORKER_THREAD), gravity: ${JSON.stringify(gravity)}, opts: ${JSON.stringify(opts)}`
+      );
     }
   }
 
@@ -1507,6 +1543,10 @@ export const createPhysicsWorld = async (
 };
 
 export const deletePhysicsWorld = async () => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before deleting it.'
+  );
   let worldDeleted = false;
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     const response = engAPI?.deleteWorld();
@@ -1530,10 +1570,15 @@ export const deletePhysicsWorld = async () => {
 };
 
 export const takePhysicsSnapshot = async () => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before taking a snapshot.'
+  );
   let snapshot;
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     snapshot = engAPI?.takeSnapshot();
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    // @TODO: we probably also need to save the userData for the rigid bodies and colliders (separate object/map).
     const response = await messageWorkerAsync<TakeSnapshotResponse>({
       type: PhysicsProtocolType.TAKE_SNAPSHOT,
     });
@@ -1544,8 +1589,8 @@ export const takePhysicsSnapshot = async () => {
 
 export const restorePhysicsSnapshot = async (snapshot: Uint8Array) => {
   existsOrThrow(
-    engineInitiated,
-    'Physics engine not initiated. Initiate the physics engine (initPhysics) before restoring a snapshot.'
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before restoring a snapshot.'
   );
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     const response = engAPI?.restoreSnapshot(snapshot);
@@ -1553,6 +1598,7 @@ export const restorePhysicsSnapshot = async (snapshot: Uint8Array) => {
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     // @TODO: we maybe need check all the rigidBodies and colliders
     // and recreate all the maps here (maybe the new bodies and colliders can come in the response if we also send the next running ids).
+    // The problem is the userData. The snapshots do not have that data since the userData is on the rigidBodyAPI and colliderAPI.
     const response = await messageWorkerAsync<RestoreSnapshotResponse>({
       type: PhysicsProtocolType.RESTORE_SNAPSHOT,
       snapshot,
@@ -1582,20 +1628,14 @@ export const createRigidBody = async (params: RigidBodyParams) => {
       })
     ).id;
     const rbAPI = existsOrThrow(
-      createWorkerPhysicsRigidBodyAPI(rbId),
+      new RigidBodyProxyAPI(rbId, params.userData),
       `Could not create a rigid body ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
     );
-    if (params.userData) {
-      // This is okay when creating these, since we know we have the
-      // same userData state in the engine
-      rbAPI.uData = params.userData;
-    }
-    rigidBodies.set(rbId, rbAPI);
     return rbAPI;
   }
   // Should not get here..
   throw new Error(
-    `Could not create a rigid body (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD') Params: ${JSON.stringify(params)}`
+    `Could not create rigid bodies (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
   );
 };
 
@@ -1624,13 +1664,7 @@ export const createRigidBodies = async (params: RigidBodyParams[]) => {
     const rbAPIs = [];
     for (let i = 0; i < rbIds.length; i++) {
       const id = rbIds[i];
-      const rbAPI = createWorkerPhysicsRigidBodyAPI(id);
-      const userData = params[i].userData;
-      if (userData) {
-        // This is okay when creating these, since we know we have the
-        // same userData state in the engine
-        rbAPI.uData = userData;
-      }
+      const rbAPI = new RigidBodyProxyAPI(id, params[i].userData);
       rbAPIs.push(rbAPI);
       rigidBodies.set(id, rbAPI);
     }
@@ -1638,22 +1672,90 @@ export const createRigidBodies = async (params: RigidBodyParams[]) => {
   }
   // Should not get here..
   throw new Error(
-    `Could not create rigid bodies (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD') Params: ${JSON.stringify(params)}`
+    `Could not create rigid bodies (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
   );
 };
 
-/** Deletes a rigid body. */
-export const deleteRigidBody = (id: number /*, deletePhysicsObject?: boolean */) => {
+/** Deletes a rigid body (and all child colliders). Returns the id of the deleted rigidBodyAPI. */
+export const deleteRigidBody = async (id: number /*, deletePhysicsObject?: boolean */) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before deleting a rigid body.'
+  );
+  let deletedId: number | undefined = undefined;
+  let deletedColliderIds: number[] = [];
   if (rigidBodies.has(id)) rigidBodies.delete(id);
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    return existsOrThrow(
-      engAPI?.deleteRigidBody(id),
-      `Could not delete a rigid object ("MAIN_THREAD"), id: ${id}`
-    );
+    const response = engAPI?.deleteRigidBody(id);
+    deletedId = response?.id;
+    deletedColliderIds = response?.colliderIds || [];
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
-    // @TODO
+    const response = await messageWorkerAsync<DeleteRigidBodyResponse>({
+      type: PhysicsProtocolType.DELETE_RIGID_BODY,
+      id,
+    });
+    deletedId = response?.id;
+    deletedColliderIds = response?.colliderIds || [];
   }
+  if (deletedId !== id) {
+    throw new Error(
+      `Could not delete a rigid body, the returned id (${deletedId}) did not match the id: ${id}.`
+    );
+  }
+  // Delete all possible colliderAPIs that are children of the rigid body
+  for (let i = 0; i < deletedColliderIds.length; i++) {
+    const collId = deletedColliderIds[i];
+    if (colliders.has(collId)) colliders.delete(collId);
+  }
+
   // @CHORE: add deletePhysicsObject flag
+  return deletedId;
+};
+
+/** Deletes multiple rigid bodies (and all child colliders). Returns the ids of the deleted rigidBodyAPIs. */
+export const deleteRigidBodies = async (ids: number[] /*, deletePhysicsObject?: boolean */) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before deleting rigid bodies.'
+  );
+  if (!ids.length) return [];
+  let deletedIds: number[] | undefined = undefined;
+  let deletedColliderIds: number[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    if (rigidBodies.has(ids[i])) rigidBodies.delete(ids[i]);
+  }
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const response = engAPI?.deleteRigidBodies(ids);
+    deletedIds = response?.ids;
+    deletedColliderIds = response?.colliderIds || [];
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const response = await messageWorkerAsync<DeleteRigidBodiesResponse>({
+      type: PhysicsProtocolType.DELETE_RIGID_BODIES,
+      ids,
+    });
+    deletedIds = response?.ids;
+    deletedColliderIds = response?.colliderIds || [];
+  }
+  if (deletedIds === undefined) {
+    throw new Error(
+      `Could not delete rigid bodies, the returned ids was undefined for ids: ${ids.join(', ')}.`
+    );
+  }
+  for (let i = 0; i < ids.length; i++) {
+    if (deletedIds[i] !== ids[i]) {
+      lwarn(
+        `Could not delete all rigid bodies, the returned id (${deletedIds[i]}) did not match the id: ${ids[i]}.`
+      );
+    }
+  }
+  // Delete all possible colliderAPIs that are children of the rigid body
+  for (let i = 0; i < deletedColliderIds.length; i++) {
+    const collId = deletedColliderIds[i];
+    if (colliders.has(collId)) colliders.delete(collId);
+  }
+
+  // @CHORE: add deletePhysicsObject flag
+  return deletedIds;
 };
 
 /** Create a collider. */
@@ -1680,7 +1782,8 @@ export const createCollider = async (params: ColliderParams) => {
     );
     if (params.userData) {
       // This is okay when creating these, since we know we have the
-      // same userData state in the engine
+      // same userData state in the engine (uData should after this
+      // set with userData(data) method).
       collAPI.uData = params.userData;
     }
     colliders.set(collId, collAPI);
@@ -1688,7 +1791,7 @@ export const createCollider = async (params: ColliderParams) => {
   }
   // Should not get here..
   throw new Error(
-    `Could not create colliders (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD') Params: ${JSON.stringify(params)}`
+    `Could not create a collider (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
   );
 };
 
@@ -1721,7 +1824,8 @@ export const createColliders = async (params: ColliderParams[]) => {
       const userData = params[i].userData;
       if (userData) {
         // This is okay when creating these, since we know we have the
-        // same userData state in the engine
+        // same userData state in the engine (uData should after this
+        // set with userData(data) method).
         collAPI.uData = userData;
       }
       collAPIs.push(collAPI);
@@ -1731,8 +1835,72 @@ export const createColliders = async (params: ColliderParams[]) => {
   }
   // Should not get here..
   throw new Error(
-    `Could not create a collider (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD') Params: ${JSON.stringify(params)}`
+    `Could not create colliders (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
   );
+};
+
+/** Deletes a collider. Returns the id of the deleted colliderAPI. */
+export const deleteCollider = async (id: number, wakeUp?: boolean) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before deleting a collider.'
+  );
+  let deletedId: number | undefined = undefined;
+  if (colliders.has(id)) colliders.delete(id);
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const response = engAPI?.deleteCollider(id);
+    deletedId = response?.id;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const response = await messageWorkerAsync<DeleteColliderResponse>({
+      type: PhysicsProtocolType.DELETE_COLLIDER,
+      id,
+      wakeUp: wakeUp || false,
+    });
+    deletedId = response?.id;
+  }
+  if (deletedId !== id) {
+    throw new Error(
+      `Could not delete a collider, the returned id (${deletedId}) did not match the id: ${id}.`
+    );
+  }
+  return deletedId;
+};
+
+/** Deletes multiple colliders. Returns the ids of the deleted colliderAPIs. */
+export const deleteColliders = async (ids: number[], wakeUps?: boolean[]) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before deleting colliders.'
+  );
+  if (!ids.length) return [];
+  let deletedIds: number[] | undefined = undefined;
+  for (let i = 0; i < ids.length; i++) {
+    if (colliders.has(ids[i])) colliders.delete(ids[i]);
+  }
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const response = engAPI?.deleteColliders(ids);
+    deletedIds = response?.ids;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const response = await messageWorkerAsync<DeleteCollidersResponse>({
+      type: PhysicsProtocolType.DELETE_COLLIDERS,
+      ids,
+      wakeUps: ids.map((_, index) => Boolean(wakeUps && wakeUps[index])),
+    });
+    deletedIds = response?.ids;
+  }
+  if (deletedIds === undefined) {
+    throw new Error(
+      `Could not delete rigid bodies, the returned ids was undefined for ids: ${ids.join(', ')}.`
+    );
+  }
+  for (let i = 0; i < ids.length; i++) {
+    if (deletedIds[i] !== ids[i]) {
+      lwarn(
+        `Could not delete all colliders, the returned id (${deletedIds[i]}) did not match the id: ${ids[i]}.`
+      );
+    }
+  }
+  return deletedIds;
 };
 
 export const getRigidBody = (id: number) => rigidBodies.get(id);
@@ -1740,7 +1908,318 @@ export const getCollider = (id: number) => colliders.get(id);
 
 /** World, RigidBody, and Collider API definitions -----[ START ]----- */
 
-const createWorkerPhysicsWorldAPI = (): WorldAPI => ({
+class WorldProxyAPI implements WorldAPI {
+  restoringWorld: boolean;
+  // Local cache for sync getters (updated via worker messages or setters)
+  private _cache = {
+    gravity: physicsState.gravity,
+    timestep: 0.016,
+    lengthUnit: 1.0,
+    solverIters: 4,
+    pgsIters: 1,
+    ccdSubsteps: 1,
+  };
+
+  constructor() {
+    this.restoringWorld = false;
+  }
+
+  // --- Gravity ---
+  async getGravity(): Promise<PhysVector> {
+    const res = await messageWorkerAsync<WorldGravityResponse>({
+      type: PhysicsProtocolType.WORLD_GET_GRAVITY,
+    });
+    this._cache.gravity = res.gravity;
+    return res.gravity;
+  }
+
+  getGravitySync(): PhysVector {
+    return this._cache.gravity;
+  }
+
+  setGravity(gravity: PhysVector): void {
+    this._cache.gravity = gravity;
+    messageWorker({
+      type: PhysicsProtocolType.WORLD_SET_GRAVITY,
+      gravity,
+      isOneWay: true,
+    });
+  }
+
+  // --- Lifecycle & Snapshots ---
+  free(): void {
+    messageWorker({ type: PhysicsProtocolType.WORLD_FREE });
+  }
+
+  async takeSnapshot(): Promise<Uint8Array | undefined> {
+    return await takePhysicsSnapshot();
+  }
+
+  async restoreSnapshot(data: Uint8Array): Promise<WorldAPI> {
+    return restorePhysicsSnapshot(data);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  restoreSnapshotSync(_data: Uint8Array): WorldAPI {
+    const msg =
+      'restoreSnapshotSync is not supported in Worker thread mode. Use restoreSnapshot(data).';
+    lerror(msg);
+    throw new Error(msg);
+  }
+
+  propagateModifiedBodyPositionsToColliders(): void {
+    messageWorker({ type: PhysicsProtocolType.WORLD_PROPAGATE_POSITIONS });
+  }
+
+  // --- Parameters (Timestep, Units, Solver) ---
+  async getTimestep(): Promise<number> {
+    const res = await messageWorkerAsync<{ dt: number }>({
+      type: PhysicsProtocolType.WORLD_GET_TIMESTEP,
+    });
+    this._cache.timestep = res.dt;
+    return res.dt;
+  }
+  getTimestepSync(): number {
+    return this._cache.timestep;
+  }
+  setTimestep(dt: number): void {
+    this._cache.timestep = dt;
+    messageWorker({ type: PhysicsProtocolType.WORLD_SET_TIMESTEP, dt });
+  }
+
+  async getLengthUnit(): Promise<number> {
+    const res = await messageWorkerAsync<{ unit: number }>({
+      type: PhysicsProtocolType.WORLD_GET_LENGTH_UNIT,
+    });
+    this._cache.lengthUnit = res.unit;
+    return res.unit;
+  }
+  getLengthUnitSync(): number {
+    return this._cache.lengthUnit;
+  }
+  setLengthUnit(unitsPerMeter: number): void {
+    this._cache.lengthUnit = unitsPerMeter;
+    messageWorker({ type: PhysicsProtocolType.WORLD_SET_LENGTH_UNIT, unitsPerMeter });
+  }
+
+  async getNumSolverIterations(): Promise<number> {
+    const res = await messageWorkerAsync<{ iters: number }>({
+      type: PhysicsProtocolType.WORLD_GET_SOLVER_ITERS,
+    });
+    this._cache.solverIters = res.iters;
+    return res.iters;
+  }
+  getNumSolverIterationsSync(): number {
+    return this._cache.solverIters;
+  }
+  setNumSolverIterations(niter: number): void {
+    this._cache.solverIters = niter;
+    messageWorker({ type: PhysicsProtocolType.WORLD_SET_SOLVER_ITERS, niter });
+  }
+
+  async getNumInternalPgsIterations(): Promise<number> {
+    const res = await messageWorkerAsync<{ iters: number }>({
+      type: PhysicsProtocolType.WORLD_GET_PGS_ITERS,
+    });
+    this._cache.pgsIters = res.iters;
+    return res.iters;
+  }
+  getNumInternalPgsIterationsSync(): number {
+    return this._cache.pgsIters;
+  }
+  setNumInternalPgsIterations(niter: number): void {
+    this._cache.pgsIters = niter;
+    messageWorker({ type: PhysicsProtocolType.WORLD_SET_PGS_ITERS, niter });
+  }
+
+  async getMaxCcdSubsteps(): Promise<number> {
+    const res = await messageWorkerAsync<{ substeps: number }>({
+      type: PhysicsProtocolType.WORLD_GET_CCD_SUBSTEPS,
+    });
+    this._cache.ccdSubsteps = res.substeps;
+    return res.substeps;
+  }
+  getMaxCcdSubstepsSync(): number {
+    return this._cache.ccdSubsteps;
+  }
+  setMaxCcdSubstepsSync(substeps: number): void {
+    this._cache.ccdSubsteps = substeps;
+    messageWorker({ type: PhysicsProtocolType.WORLD_SET_CCD_SUBSTEPS, substeps });
+  }
+
+  // --- Factories ---
+  async createRigidBody(params: RigidBodyParams): Promise<RigidBodyAPI> {
+    const res = await messageWorkerAsync<{ id: number }>({
+      type: PhysicsProtocolType.WORLD_CREATE_RIGID_BODY,
+      params,
+    });
+    return createRigidBodyProxy(res.id); // Helper to instantiate the Proxy
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  createRigidBodySync(_params: RigidBodyParams): RigidBodyAPI {
+    const msg =
+      'Synchronous creation is not supported in Worker thread mode. Use createRigidBody(params).';
+    lerror(msg);
+    throw new Error(msg);
+  }
+
+  async createCollider(params: ColliderParams, parent?: RigidBodyAPI): Promise<ColliderAPI> {
+    const res = await messageWorkerAsync<{ id: number }>({
+      type: PhysicsProtocolType.WORLD_CREATE_COLLIDER,
+      params,
+      parentId: parent?.id,
+    });
+    return createColliderProxy(res.id);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  createColliderSync(_params: ColliderParams, _parent?: RigidBodyAPI): ColliderAPI {
+    const msg =
+      'Synchronous creation is not supported in Worker thread mode. Use createCollider(params, parent?).';
+    lerror(msg);
+    throw new Error(msg);
+  }
+
+  // --- Retrieval ---
+  /** Returns the main thread rigid body registry rigidBodyAPI promise.
+   * It is suggested to use getRigidBodySync(id) method instead of this
+   * as it is synchronous and faster.
+   */
+  async getRigidBody(id: number): Promise<RigidBodyAPI | undefined> {
+    // Usually checks a local registry Map<number, RigidBodyProxy>
+    return rigidBodies.get(id);
+  }
+
+  /** Returns the main thread rigid body registry rigidBodyAPI. */
+  getRigidBodySync(id: number): RigidBodyAPI | undefined {
+    return rigidBodies.get(id);
+  }
+
+  /** Returns the main thread collider registry colliderAPI as promise.
+   * It is suggested to use getColliderSync(id) method instead of this
+   * as it is synchronous and faster.
+   */
+  async getCollider(id: number): Promise<ColliderAPI | undefined> {
+    return colliders.get(id);
+  }
+
+  /** Returns the main thread collider registry colliderAPI. */
+  getColliderSync(id: number): ColliderAPI | undefined {
+    return colliders.get(id);
+  }
+
+  // --- Removal ---
+  removeRigidBody(bodyOrId: RigidBodyAPI | number): void {
+    const id = typeof bodyOrId === 'number' ? bodyOrId : bodyOrId.id;
+    messageWorker({ type: PhysicsProtocolType.WORLD_REMOVE_RIGID_BODY, id });
+    rigidBodies.delete(id);
+  }
+
+  removeCollider(colliderOrId: ColliderAPI | number, wakeUp: boolean): void {
+    const id = typeof colliderOrId === 'number' ? colliderOrId : colliderOrId.id;
+    messageWorker({ type: PhysicsProtocolType.WORLD_REMOVE_COLLIDER, id, wakeUp });
+    colliders.delete(id);
+  }
+
+  // --- Queries (Raycasting) ---
+  async castRay(
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+  ): Promise<RayColliderHitAPI | null> {
+    const response = (
+      await messageWorkerAsync<WorldCastRayResponse>({
+        type: PhysicsProtocolType.WORLD_CAST_RAY,
+        ray,
+        maxToi,
+        solid,
+        filterFlags,
+        filterGroups,
+        excludeCollider:
+          typeof filterExcludeCollider === 'number'
+            ? filterExcludeCollider
+            : filterExcludeCollider?.id,
+        excludeRigidBody:
+          typeof filterExcludeRigidBody === 'number'
+            ? filterExcludeRigidBody
+            : filterExcludeRigidBody?.id,
+      })
+    ).hit;
+    if (!response) return null;
+    const coll = colliders.get(response.collider);
+    if (!coll) return null;
+    return { ...response, collider: coll };
+  }
+
+  castRaySync(): RayColliderHitAPI | null {
+    throw new Error('Raycasting must be async in Worker mode.');
+  }
+
+  async castRayAndGetNormal(
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI
+  ): Promise<RayColliderIntersectionAPI | null> {
+    return await messageWorkerAsync<RayColliderIntersectionAPI | null>({
+      type: PhysicsProtocolType.WORLD_CAST_RAY_AND_NORMAL,
+      ray,
+      maxToi,
+      solid,
+      filterFlags,
+      filterGroups,
+    });
+  }
+
+  castRayAndGetNormalSync(): RayColliderIntersectionAPI | null {
+    throw new Error('Raycasting must be async in Worker mode.');
+  }
+
+  // --- Interaction Pairs ---
+  intersectionsWithRay(
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    callback: (intersect: RayColliderIntersectionAPI) => boolean
+  ): void {
+    // Implementation usually requires the worker to stream results back or return a batch
+    console.warn('Streamed ray intersections over workers require a custom batch implementation.');
+  }
+
+  contactPairsWith(collider1: ColliderAPI | number, f: (collider2: ColliderAPI) => void): void {
+    // logic to query worker and run f for each ID returned
+  }
+
+  intersectionPairsWith(
+    collider1: ColliderAPI | number,
+    f: (collider2: ColliderAPI) => void
+  ): void {
+    // logic to query worker
+  }
+
+  async intersectionPair(
+    collider1: ColliderAPI | number,
+    collider2: ColliderAPI | number
+  ): Promise<boolean> {
+    return await messageWorkerAsync<boolean>({
+      type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR,
+      id1: typeof collider1 === 'number' ? collider1 : collider1.id,
+      id2: typeof collider2 === 'number' ? collider2 : collider2.id,
+    });
+  }
+
+  intersectionPairSync(): boolean {
+    return false; // Or check a local "Intersection Cache" if you sync contact pairs every frame
+  }
+}
+
+const createWorkerPhysicsWorldAPI = (): WorldProxyAPIType => ({
   restoringWorld: false,
   gravity: async (gravity?: PhysVector) =>
     (
@@ -1794,12 +2273,8 @@ const createWorkerPhysicsWorldAPI = (): WorldAPI => ({
     )?.substeps,
   createRigidBody: async (params: RigidBodyParams) => await createRigidBody(params),
   createCollider: async (params: ColliderParams) => await createCollider(params),
-  getRigidBody: async (id: number) => {
-    // @CHORE
-  },
-  getCollider: async (id: number) => {
-    // @CHORE
-  },
+  getRigidBody: async (id: number) => rigidBodies.get(id),
+  getCollider: async (id: number) => colliders.get(id),
   removeRigidBody: async (bodyOrId: RigidBodyAPI | number) => {
     // @CHORE
   },
@@ -1816,21 +2291,9 @@ const createWorkerPhysicsWorldAPI = (): WorldAPI => ({
     filterExcludeRigidBody?: RigidBodyAPI | number
     // filterPredicate?: (collider: ColliderAPI) => boolean
   ) => {
-    let filtExclColl: number | undefined = undefined;
-    let filtExclRB: number | undefined = undefined;
-    if (filterExcludeCollider) {
-      filtExclColl =
-        typeof filterExcludeCollider === 'number'
-          ? filterExcludeCollider
-          : filterExcludeCollider.id;
-    }
-    if (filterExcludeRigidBody) {
-      filtExclRB =
-        typeof filterExcludeRigidBody === 'number'
-          ? filterExcludeRigidBody
-          : filterExcludeRigidBody.id;
-    }
-    return (
+    const filtExclColl = getCollOrRigidId(filterExcludeCollider);
+    const filtExclRB = getCollOrRigidId(filterExcludeRigidBody);
+    const hit = (
       await messageWorkerAsync<WorldCastRayResponse>({
         type: PhysicsProtocolType.WORLD_CAST_RAY,
         ray,
@@ -1842,6 +2305,11 @@ const createWorkerPhysicsWorldAPI = (): WorldAPI => ({
         filterExcludeRigidBody: filtExclRB,
       })
     ).hit;
+    if (hit) {
+      const collider = colliders.get(hit.collider);
+      if (collider) return { ...hit, collider };
+    }
+    return null;
   },
   castRayAndGetNormal: async (
     ray: PhysRay,
@@ -1853,9 +2321,27 @@ const createWorkerPhysicsWorldAPI = (): WorldAPI => ({
     filterExcludeRigidBody?: RigidBodyAPI | number
     // filterPredicate?: (collider: ColliderAPI) => boolean
   ) => {
-    // @CHORE
+    const filtExclColl = getCollOrRigidId(filterExcludeCollider);
+    const filtExclRB = getCollOrRigidId(filterExcludeRigidBody);
+    const intersection = (
+      await messageWorkerAsync<WorldCastRayAndGetNormalResponse>({
+        type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL,
+        ray,
+        maxToi,
+        solid,
+        filterFlags,
+        filterGroups,
+        filterExcludeCollider: filtExclColl,
+        filterExcludeRigidBody: filtExclRB,
+      })
+    ).intersection;
+    if (intersection) {
+      const collider = colliders.get(intersection.collider);
+      if (collider) return { ...intersection, collider };
+    }
+    return null;
   },
-  intersectionsWithRay: (
+  intersectionsWithRay: async (
     ray: PhysRay,
     maxToi: number,
     solid: boolean,
@@ -1866,18 +2352,700 @@ const createWorkerPhysicsWorldAPI = (): WorldAPI => ({
     filterExcludeRigidBody?: RigidBodyAPI | number
     // filterPredicate?: (collider: ColliderAPI) => boolean
   ) => {
-    // @CHORE
+    const filtExclColl = getCollOrRigidId(filterExcludeCollider);
+    const filtExclRB = getCollOrRigidId(filterExcludeRigidBody);
+    const intersections = (
+      await messageWorkerAsync<WorldIntersectionsWithRayResponse>({
+        type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL,
+        ray,
+        maxToi,
+        solid,
+        filterFlags,
+        filterGroups,
+        filterExcludeCollider: filtExclColl,
+        filterExcludeRigidBody: filtExclRB,
+      })
+    ).intersections;
+    for (let i = 0; i < intersections.length; i++) {
+      const intersectTransfer = intersections[i];
+      const collider = colliders.get(intersectTransfer.collider);
+      if (collider) callback({ ...intersectTransfer, collider });
+    }
   },
-  contactPairsWith: (collider1: ColliderAPI, f: (collider2: ColliderAPI) => void) => {
-    // @CHORE
+  contactPairsWith: async (
+    collider1: ColliderAPI | number,
+    f: (collider2: ColliderAPI) => void
+  ) => {
+    const coll1Id = getCollOrRigidId(collider1);
+    if (!coll1Id) return;
+    const colliderIds = (
+      await messageWorkerAsync<WorldContactPairsResponse>({
+        type: PhysicsProtocolType.WORLD_CONTACT_PAIRS_WITH,
+        colliderId: coll1Id,
+      })
+    ).colliderIds;
+    for (let i = 0; i < colliderIds.length; i++) {
+      const coll2 = colliders.get(colliderIds[i]);
+      if (coll2) f(coll2);
+    }
   },
-  intersectionPairsWith: (collider1: ColliderAPI, f: (collider2: ColliderAPI) => void) => {
-    // @CHORE
+  intersectionPairsWith: async (
+    collider1: ColliderAPI | number,
+    f: (collider2: ColliderAPI) => void
+  ) => {
+    const coll1Id = getCollOrRigidId(collider1);
+    if (coll1Id === undefined) return;
+    const colliderIds = (
+      await messageWorkerAsync<WorldIntersectionPairsWithResponse>({
+        type: PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH,
+        colliderId: coll1Id,
+      })
+    ).colliderIds;
+    for (let i = 0; i < colliderIds.length; i++) {
+      const coll2 = colliders.get(colliderIds[i]);
+      if (coll2) f(coll2);
+    }
   },
-  intersectionPair: async (collider1: ColliderAPI, collider2: ColliderAPI) => {
-    // @CHORE
+  intersectionPair: async (collider1: ColliderAPI | number, collider2: ColliderAPI | number) => {
+    const coll1Id = getCollOrRigidId(collider1);
+    const coll2Id = getCollOrRigidId(collider2);
+    if (coll1Id === undefined || coll2Id === undefined) return false;
+    const isIntersecting = (
+      await messageWorkerAsync<WorldIntersectionPairResponse>({
+        type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR,
+        colliderId1: coll1Id,
+        colliderId2: coll2Id,
+      })
+    ).isIntersecting;
+    return isIntersecting;
   },
 });
+
+class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
+  uData: Record<string, unknown> = {};
+  pos: PhysVector = { x: 0, y: 0, z: 0 };
+  rot: PhysRotation = { x: 0, y: 0, z: 0, w: 0 };
+  lvel: PhysVector = { x: 0, y: 0, z: 0 };
+  avel: PhysVector = { x: 0, y: 0, z: 0 };
+
+  constructor(
+    public id: number,
+    userData?: Record<string, unknown>
+  ) {
+    if (userData) this.uData = userData;
+  }
+
+  async getUserData() {
+    const fetchedUserData = (
+      await messageWorkerAsync<RigidGetUserDataResponse>({
+        type: PhysicsProtocolType.RIGID_GET_USERDATA,
+        rigidBodyId: this.id,
+      })
+    ).userData;
+    this.uData = fetchedUserData;
+    return fetchedUserData;
+  }
+
+  setUserData(userData: Record<string, unknown>, addToExisting?: boolean) {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_USERDATA,
+      rigidBodyId: this.id,
+      userData,
+      addToExisting,
+      isOneWay: true,
+    });
+    if (addToExisting) {
+      this.uData = { ...this.uData, ...userData };
+    } else {
+      this.uData = userData;
+    }
+  }
+
+  async isValid(): Promise<boolean> {
+    return (
+      await messageWorkerAsync<RigidIsValidResponse>({
+        type: PhysicsProtocolType.RIGID_IS_VALID,
+        rigidBodyId: this.id,
+      })
+    ).isValid;
+  }
+
+  lockTranslations(locked: boolean, wakeUp: boolean): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_LOCK_TRANSLATIONS,
+      rigidBodyId: this.id,
+      locked,
+      wakeUp,
+      isOneWay: true,
+    });
+  }
+
+  lockRotations(locked: boolean, wakeUp: boolean): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_LOCK_ROTATIONS,
+      rigidBodyId: this.id,
+      locked,
+      wakeUp,
+      isOneWay: true,
+    });
+  }
+
+  setEnabledTranslations(
+    enableX: boolean,
+    enableY: boolean,
+    enableZ: boolean,
+    wakeUp: boolean
+  ): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_ENABLED_TRANSLATIONS,
+      rigidBodyId: this.id,
+      enableX,
+      enableY,
+      enableZ,
+      wakeUp,
+      isOneWay: true,
+    });
+  }
+
+  setEnabledRotations(enableX: boolean, enableY: boolean, enableZ: boolean, wakeUp: boolean): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_ENABLED_ROTATIONS,
+      rigidBodyId: this.id,
+      enableX,
+      enableY,
+      enableZ,
+      wakeUp,
+      isOneWay: true,
+    });
+  }
+
+  async dominanceGroup(): Promise<number> {
+    return (
+      await messageWorkerAsync<RigidDominanceGroupResponse>({
+        type: PhysicsProtocolType.RIGID_DOMINANCE_GROUP,
+        rigidBodyId: this.id,
+      })
+    ).dominanceGroup;
+  }
+
+  setDominanceGroup(group: number): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_DOMINANCE_GROUP,
+      rigidBodyId: this.id,
+      group,
+    });
+  }
+
+  async additionalSolverIterations(): Promise<number> {
+    return (
+      await messageWorkerAsync<RigidAdditionalSolverIterationsResponse>({
+        type: PhysicsProtocolType.RIGID_ADDITIONAL_SOLVER_ITERATIONS,
+        rigidBodyId: this.id,
+      })
+    ).additionalIterations;
+  }
+
+  setAdditionalSolverIterations(iters: number): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_ADDITIONAL_SOLVER_ITERATIONS,
+      rigidBodyId: this.id,
+      iters,
+    });
+  }
+
+  enableCcd(enabled: boolean): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_ENABLE_CCD,
+      rigidBodyId: this.id,
+      enabled,
+    });
+  }
+
+  setSoftCcdPrediction(distance: number): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_SOFT_CCD_PREDICTION,
+      rigidBodyId: this.id,
+      distance,
+    });
+  }
+
+  async softCcdPrediction(): Promise<number> {
+    return (
+      await messageWorkerAsync<RigidSoftCcdPredictionResponse>({
+        type: PhysicsProtocolType.RIGID_SOFT_CCD_PREDICTION,
+        rigidBodyId: this.id,
+      })
+    ).softCcdPrediction;
+  }
+
+  translation(): PhysVector {
+    return this.pos;
+  }
+
+  rotation(): PhysRotation {
+    return this.rot;
+  }
+
+  async nextTranslation(): Promise<PhysVector> {
+    return (
+      await messageWorkerAsync<RigidNextTranslationResponse>({
+        type: PhysicsProtocolType.RIGID_NEXT_TRANSLATION,
+        rigidBodyId: this.id,
+      })
+    ).nextTranslation;
+  }
+
+  async nextRotation(): Promise<PhysRotation> {
+    return (
+      await messageWorkerAsync<RigidNextRotationResponse>({
+        type: PhysicsProtocolType.RIGID_NEXT_ROTATION,
+        rigidBodyId: this.id,
+      })
+    ).nextRotation;
+  }
+
+  setTranslation(tra: PhysVector, wakeUp: boolean): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_TRANSLATION,
+      rigidBodyId: this.id,
+      tra,
+      wakeUp,
+    });
+  }
+
+  setLinvel(vel: PhysVector, wakeUp: boolean): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_LINVEL,
+      rigidBodyId: this.id,
+      vel,
+      wakeUp,
+    });
+  }
+
+  async gravityScale(): Promise<number> {
+    return (
+      await messageWorkerAsync<RigidGravityScaleResponse>({
+        type: PhysicsProtocolType.RIGID_GRAVITY_SCALE,
+        rigidBodyId: this.id,
+      })
+    ).gravityScale;
+  }
+
+  setGravityScale(factor: number, wakeUp: boolean): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_GRAVITY_SCALE,
+      rigidBodyId: this.id,
+      factor,
+      wakeUp,
+    });
+  }
+
+  setRotation(rot: PhysRotation, wakeUp: boolean): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_ROTATION,
+      rigidBodyId: this.id,
+      rot,
+      wakeUp,
+    });
+  }
+
+  setAngvel(vel: PhysVector, wakeUp: boolean): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_ANGVEL,
+      rigidBodyId: this.id,
+      vel,
+      wakeUp,
+    });
+  }
+
+  setNextKinematicTranslation(t: PhysVector): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_NEXT_KINEMATIC_TRANSLATION,
+      rigidBodyId: this.id,
+      t,
+    });
+  }
+
+  setNextKinematicRotation(rot: PhysRotation): void {
+    return messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_NEXT_KINEMATIC_ROTATION,
+      rigidBodyId: this.id,
+      rot,
+    });
+  }
+
+  linvel(): PhysVector {
+    return this.lvel;
+  }
+
+  async velocityAtPoint(point: PhysVector): Promise<PhysVector> {
+    return (
+      await messageWorkerAsync<RigidVelocityAtPointResponse>({
+        type: PhysicsProtocolType.RIGID_VELOCITY_AT_POINT,
+        rigidBodyId: this.id,
+        point,
+      })
+    ).velocityAtPoint;
+  }
+
+  angvel(): PhysVector {
+    return this.avel;
+  }
+
+  async mass(): Promise<number> {
+    return (
+      await messageWorkerAsync<RigidMassResponse>({
+        type: PhysicsProtocolType.RIGID_MASS,
+        rigidBodyId: this.id,
+      })
+    ).mass;
+  }
+
+  async effectiveInvMass(): Promise<PhysVector> {
+    return (
+      await messageWorkerAsync<RigidEffectiveInvMassResponse>({
+        type: PhysicsProtocolType.RIGID_EFFECTIVE_INV_MASS,
+        rigidBodyId: this.id,
+      })
+    ).effectiveInvMass;
+  }
+
+  async invMass(): Promise<number> {
+    return (
+      await messageWorkerAsync<RigidInvMassResponse>({
+        type: PhysicsProtocolType.RIGID_INV_MASS,
+        rigidBodyId: this.id,
+      })
+    ).invMass;
+  }
+
+  async localCom(): Promise<PhysVector> {
+    return (
+      await messageWorkerAsync<RigidLocalComResponse>({
+        type: PhysicsProtocolType.RIGID_LOCAL_COM,
+        rigidBodyId: this.id,
+      })
+    ).localCom;
+  }
+
+  async worldCom(): Promise<PhysVector> {
+    return (
+      await messageWorkerAsync<RigidWorldComResponse>({
+        type: PhysicsProtocolType.RIGID_WORLD_COM,
+        rigidBodyId: this.id,
+      })
+    ).worldCom;
+  }
+
+  async invPrincipalInertia(): Promise<PhysVector> {
+    return (
+      await messageWorkerAsync<RigidInvPrincipalInertiaResponse>({
+        type: PhysicsProtocolType.RIGID_INV_PRINCIPAL_INERTIA,
+        rigidBodyId: this.id,
+      })
+    ).invPrincipalInertia;
+  }
+
+  async principalInertia(): Promise<PhysVector> {
+    return (
+      await messageWorkerAsync<RigidPrincipalInertiaResponse>({
+        type: PhysicsProtocolType.RIGID_PRINCIPAL_INERTIA,
+        rigidBodyId: this.id,
+      })
+    ).principalInertia;
+  }
+
+  async principalInertiaLocalFrame(): Promise<PhysRotation> {
+    return (
+      await messageWorkerAsync<RigidPrincipalInertiaLocalFrameResponse>({
+        type: PhysicsProtocolType.RIGID_PRINCIPAL_INERTIA_LOCAL_FRAME,
+        rigidBodyId: this.id,
+      })
+    ).principalInertiaLocalFrame;
+  }
+
+  sleep(): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_SLEEP,
+      rigidBodyId: this.id,
+    });
+  }
+
+  wakeUp(): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_WAKE_UP,
+      rigidBodyId: this.id,
+    });
+  }
+
+  async isCcdEnabled(): Promise<boolean> {
+    return (
+      await messageWorkerAsync<RigidIsCcdEnabledResponse>({
+        type: PhysicsProtocolType.RIGID_IS_CCD_ENABLED,
+        rigidBodyId: this.id,
+      })
+    ).isCcdEnabled;
+  }
+
+  async numColliders(): Promise<number> {
+    return (
+      await messageWorkerAsync<RigidNumCollidersResponse>({
+        type: PhysicsProtocolType.RIGID_NUM_COLLIDERS,
+        rigidBodyId: this.id,
+      })
+    ).numColliders;
+  }
+
+  async collider(i: number): Promise<ColliderAPI> {
+    const response = await messageWorkerAsync<RigidColliderResponse>({
+      type: PhysicsProtocolType.RIGID_COLLIDER,
+      rigidBodyId: this.id,
+      index: i,
+    });
+    return existsOrThrow(
+      colliders.get(response.colliderId),
+      `Could not find collider in ColliderAPI.collider(${i}).`
+    );
+  }
+
+  setEnabled(enabled: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_ENABLED,
+      rigidBodyId: this.id,
+      enabled,
+    });
+  }
+
+  async isEnabled(): Promise<boolean> {
+    return (
+      await messageWorkerAsync<RigidIsEnabledResponse>({
+        type: PhysicsProtocolType.RIGID_IS_ENABLED,
+        rigidBodyId: this.id,
+      })
+    ).isEnabled;
+  }
+
+  async bodyType(): Promise<RigidBodyTypeAPI> {
+    return (
+      await messageWorkerAsync<RigidBodyTypeResponse>({
+        type: PhysicsProtocolType.RIGID_BODY_TYPE,
+        rigidBodyId: this.id,
+      })
+    ).bodyType;
+  }
+
+  setBodyType(bodyType: RigidBodyTypeAPI, wakeUp: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_BODY_TYPE,
+      rigidBodyId: this.id,
+      bodyType,
+      wakeUp,
+    });
+  }
+
+  async isSleeping(): Promise<boolean> {
+    return (
+      await messageWorkerAsync<RigidIsSleepingResponse>({
+        type: PhysicsProtocolType.RIGID_IS_SLEEPING,
+        rigidBodyId: this.id,
+      })
+    ).isSleeping;
+  }
+
+  async isMoving(): Promise<boolean> {
+    return (
+      await messageWorkerAsync<RigidIsMovingResponse>({
+        type: PhysicsProtocolType.RIGID_IS_MOVING,
+        rigidBodyId: this.id,
+      })
+    ).isMoving;
+  }
+
+  async isFixed(): Promise<boolean> {
+    return (
+      await messageWorkerAsync<RigidIsFixedResponse>({
+        type: PhysicsProtocolType.RIGID_IS_FIXED,
+        rigidBodyId: this.id,
+      })
+    ).isFixed;
+  }
+
+  async isKinematic(): Promise<boolean> {
+    return (
+      await messageWorkerAsync<RigidIsKinematicResponse>({
+        type: PhysicsProtocolType.RIGID_IS_KINEMATIC,
+        rigidBodyId: this.id,
+      })
+    ).isKinematic;
+  }
+
+  async isDynamic(): Promise<boolean> {
+    return (
+      await messageWorkerAsync<RigidIsDynamicResponse>({
+        type: PhysicsProtocolType.RIGID_IS_DYNAMIC,
+        rigidBodyId: this.id,
+      })
+    ).isDynamic;
+  }
+
+  async linearDamping(): Promise<number> {
+    return (
+      await messageWorkerAsync<RigidLinearDampingResponse>({
+        type: PhysicsProtocolType.RIGID_LINEAR_DAMPING,
+        rigidBodyId: this.id,
+      })
+    ).linearDamping;
+  }
+
+  async angularDamping(): Promise<number> {
+    return (
+      await messageWorkerAsync<RigidAngularDampingResponse>({
+        type: PhysicsProtocolType.RIGID_ANGULAR_DAMPING,
+        rigidBodyId: this.id,
+      })
+    ).angularDamping;
+  }
+
+  setLinearDamping(factor: number): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_LINEAR_DAMPING,
+      rigidBodyId: this.id,
+      factor,
+    });
+  }
+
+  setAngularDamping(factor: number): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_ANGULAR_DAMPING,
+      rigidBodyId: this.id,
+      factor,
+    });
+  }
+
+  recomputeMassPropertiesFromColliders(): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_RECOMPUTE_MASS_PROPERTIES,
+      rigidBodyId: this.id,
+    });
+  }
+
+  setAdditionalMass(mass: number, wakeUp: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_ADDITIONAL_MASS,
+      rigidBodyId: this.id,
+      mass,
+      wakeUp,
+    });
+  }
+
+  setAdditionalMassProperties(
+    mass: number,
+    centerOfMass: PhysVector,
+    principalAngularInertia: PhysVector,
+    angularInertiaLocalFrame: PhysRotation,
+    wakeUp: boolean
+  ): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_SET_ADDITIONAL_MASS_PROPERTIES,
+      rigidBodyId: this.id,
+      mass,
+      centerOfMass,
+      principalAngularInertia,
+      angularInertiaLocalFrame,
+      wakeUp,
+    });
+  }
+
+  resetForces(wakeUp: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_RESET_FORCES,
+      rigidBodyId: this.id,
+      wakeUp,
+    });
+  }
+
+  resetTorques(wakeUp: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_RESET_TORQUES,
+      rigidBodyId: this.id,
+      wakeUp,
+    });
+  }
+
+  addForce(force: PhysVector, wakeUp: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_ADD_FORCE,
+      rigidBodyId: this.id,
+      force,
+      wakeUp,
+    });
+  }
+
+  applyImpulse(impulse: PhysVector, wakeUp: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_APPLY_IMPULSE,
+      rigidBodyId: this.id,
+      impulse,
+      wakeUp,
+    });
+  }
+
+  addTorque(torque: PhysVector, wakeUp: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_ADD_TORQUE,
+      rigidBodyId: this.id,
+      torque,
+      wakeUp,
+    });
+  }
+
+  applyTorqueImpulse(torqueImpulse: PhysVector, wakeUp: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_APPLY_TORQUE_IMPULSE,
+      rigidBodyId: this.id,
+      torqueImpulse,
+      wakeUp,
+    });
+  }
+
+  addForceAtPoint(force: PhysVector, point: PhysVector, wakeUp: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_ADD_FORCE_AT_POINT,
+      rigidBodyId: this.id,
+      force,
+      point,
+      wakeUp,
+    });
+  }
+
+  applyImpulseAtPoint(impulse: PhysVector, point: PhysVector, wakeUp: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.RIGID_APPLY_IMPULSE_AT_POINT,
+      rigidBodyId: this.id,
+      impulse,
+      point,
+      wakeUp,
+    });
+  }
+
+  async userForce(): Promise<PhysVector> {
+    return (
+      await messageWorkerAsync<RigidUserForceResponse>({
+        type: PhysicsProtocolType.RIGID_USER_FORCE,
+        rigidBodyId: this.id,
+      })
+    ).userForce;
+  }
+
+  async userTorque(): Promise<PhysVector> {
+    return (
+      await messageWorkerAsync<RigidUserTorqueResponse>({
+        type: PhysicsProtocolType.RIGID_USER_TORQUE,
+        rigidBodyId: this.id,
+      })
+    ).userTorque;
+  }
+}
 
 const createWorkerPhysicsRigidBodyAPI = (id: number): RigidBodyAPI => ({
   id,

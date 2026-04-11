@@ -6,7 +6,7 @@ import {
   WorldAPI,
 } from '../../core/Physics/PhysicsAPITypes';
 
-export const physicsSwitchRigid = async (
+export const physicsSwitchColl = async (
   data: PhysicsUpProtocol,
   physicsWorldAPI: WorldAPI,
   engAPI: EngineAPIType,
@@ -29,6 +29,16 @@ export const physicsSwitchRigid = async (
       return sendMessage({ type, ...engAPI.deleteCollider(data.id, data.wakeUp) }, data);
     case PhysicsProtocolType.DELETE_COLLIDERS:
       // DELETE_COLLIDERS
-      return sendMessage({ type, ...engAPI.deleteColliders(data.ids, data.wakeUp) }, data);
+      return sendMessage({ type, ...engAPI.deleteColliders(data.ids, data.wakeUps) }, data);
+
+    default:
+      // ERROR
+      sendMessage(
+        {
+          type: PhysicsProtocolType.ERROR,
+          message: `Unknown physics worker (up) protocol type: ${type} (in COLL sub type)`,
+        },
+        data
+      );
   }
 };

@@ -2,8 +2,13 @@
 import {
   PhysicsProtocolType,
   PhysicsUpProtocol,
+  RayColliderIntersectionAPI,
   WorldAPI,
+  WorldCastRayAndGetNormalResponse,
+  WorldCastRayResponse,
+  WorldIntersectionsWithRayResponse,
 } from '../../core/Physics/PhysicsAPITypes';
+import { getCollOrRigidId } from '../../core/Physics/PhysicsUtils';
 
 export const physicsSwitchWorld = async (
   data: PhysicsUpProtocol,
@@ -46,6 +51,7 @@ export const physicsSwitchWorld = async (
       return sendMessage({ type, substeps }, data);
     case PhysicsProtocolType.WORLD_CAST_RAY:
       // WORLD_CAST_RAY
+      let hitTransfer: WorldCastRayResponse['hit'] = null;
       const hit = await physicsWorldAPI.castRay(
         data.ray,
         data.maxToi,
@@ -55,6 +61,87 @@ export const physicsSwitchWorld = async (
         data.filterExcludeCollider,
         data.filterExcludeRigidBody
       );
-      return sendMessage({ type, hit }, data);
+      if (hit) {
+        const colliderId = getCollOrRigidId(hit.collider);
+        if (colliderId) {
+          hitTransfer = { ...hit, collider: colliderId };
+        }
+      }
+      return sendMessage({ type, hit: hitTransfer }, data);
+    case PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL: {
+      // WORLD_CAST_RAY_AND_GET_NORMAL
+      let intersectionTransfer: WorldCastRayAndGetNormalResponse['intersection'] = null;
+      const intersection = await physicsWorldAPI.castRayAndGetNormal(
+        data.ray,
+        data.maxToi,
+        data.solid,
+        data.filterFlags,
+        data.filterGroups,
+        data.filterExcludeCollider,
+        data.filterExcludeRigidBody
+      );
+      if (intersection) {
+        const colliderId = getCollOrRigidId(intersection.collider);
+        if (colliderId) {
+          intersectionTransfer = { ...intersection, collider: colliderId };
+        }
+      }
+      return sendMessage({ type, intersection: intersectionTransfer }, data);
+    }
+    case PhysicsProtocolType.WORLD_INTERSECTIONS_WITH_RAY: {
+      // WORLD_INTERSECTIONS_WITH_RAY
+      const hits: WorldIntersectionsWithRayResponse['intersections'] = [];
+      physicsWorldAPI.intersectionsWithRay(
+        data.ray,
+        data.maxToi,
+        data.solid,
+        (intersect: RayColliderIntersectionAPI) => {
+          const colliderId = getCollOrRigidId(intersect.collider);
+          if (colliderId) {
+            const hit = { ...intersect, collider: colliderId };
+            hits.push(hit);
+          }
+          return true;
+        },
+        data.filterFlags,
+        data.filterGroups,
+        data.filterExcludeCollider,
+        data.filterExcludeRigidBody
+      );
+      return sendMessage({ type, hits }, data);
+    }
+    case PhysicsProtocolType.WORLD_CONTACT_PAIRS_WITH: {
+      // WORLD_CONTACT_PAIRS_WITH
+      const colliderIds: number[] = [];
+      physicsWorldAPI.contactPairsWith(data.colliderId, (collider2) => {
+        const coll2Id = getCollOrRigidId(collider2);
+        if (coll2Id) colliderIds.push(coll2Id);
+      });
+      return sendMessage({ type, colliderIds }, data);
+    }
+    case PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH: {
+      // WORLD_INTERSECTION_PAIRS_WITH
+      const colliderIds: number[] = [];
+      physicsWorldAPI.intersectionPairsWith(data.colliderId, (collider2) => {
+        const coll2Id = getCollOrRigidId(collider2);
+        if (coll2Id) colliderIds.push(coll2Id);
+      });
+      return sendMessage({ type, colliderIds }, data);
+    }
+    case PhysicsProtocolType.WORLD_INTERSECTION_PAIR: {
+      // WORLD_INTERSECTION_PAIR
+      const isIntersecting = physicsWorldAPI.intersectionPair(data.colliderId1, data.colliderId2);
+      return sendMessage({ type, isIntersecting }, data);
+    }
+
+    default:
+      // ERROR
+      sendMessage(
+        {
+          type: PhysicsProtocolType.ERROR,
+          message: `Unknown physics worker (up) protocol type: ${type} (in WORLD sub type)`,
+        },
+        data
+      );
   }
 };

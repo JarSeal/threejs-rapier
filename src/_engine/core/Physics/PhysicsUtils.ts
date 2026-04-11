@@ -1,9 +1,11 @@
 import {
+  ColliderAPI,
   EngineAPIType,
   PhysicsEngine,
   PhysicsObject,
   PhysicsProtocolType,
   PhysicsState,
+  RigidBodyAPI,
 } from './PhysicsAPITypes';
 import { ENGINES } from './ENGINES';
 
@@ -82,3 +84,6 @@ export const setPhysicsPauseTime = (physicsState: PhysicsState) => {
 export const ValidProtocolTypes = new Set(
   Object.values(PhysicsProtocolType).filter((v) => typeof v === 'number')
 );
+
+export const getCollOrRigidId = (idOrAPI?: number | RigidBodyAPI | ColliderAPI) =>
+  typeof idOrAPI === 'number' ? idOrAPI : idOrAPI?.id;
