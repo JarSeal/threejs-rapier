@@ -28,6 +28,9 @@ export type EngineAPIType = {
     }
   ) => WorldAPI;
   createRigidBody: (params: RigidBodyParams) => RigidBodyAPI;
+  // @CHORE: change these to return a promise and add sync versions (for both PhysicsAPI.ts and EngineRapier.ts)
+  // createRigidBody: (params: RigidBodyParams) => Promise<RigidBodyAPI>;
+  // createRigidBodySync: (params: RigidBodyParams) => RigidBodyAPI;
   createCollider: (params: ColliderParams, parentId?: number) => ColliderAPI;
   createRigidBodies: (params: RigidBodyParams[]) => RigidBodyAPI[];
   createColliders: (params: ColliderParams[]) => ColliderAPI[];
@@ -40,6 +43,8 @@ export type EngineAPIType = {
   restoreSnapshot: (snapshot: Uint8Array) => WorldAPI;
   getRigidBody: (id: number) => RigidBodyAPI | undefined;
   getCollider: (id: number) => ColliderAPI | undefined;
+  getRigidBodyAPIWithId: (id: number) => RigidBodyAPI | undefined;
+  getColliderAPIWithId: (id: number) => ColliderAPI | undefined;
 };
 
 export type PhysicsState = {
@@ -391,469 +396,85 @@ export declare enum ShapeType {
  * by contacts and proximity queries.
  */
 export type ColliderAPI = {
-  /**
-   * Rigid body id (a running integer id).
-   */
   readonly id: number;
-  /** userData memory. Do not read or set this directly! Access this with userData() method. On the PhysicsAPI side this is always empty. */
+  parentId?: number;
+
+  isBeingDeleted: boolean;
+
+  // --- Metadata ---
   uData: Record<string, unknown>;
-  /** Get the rigid body userData (uData) */
-  getUserData: () => Record<string, unknown>;
-  /** Do not store functions in this record. If there is a need to only add key-value pairs to the existing userData, then set the "addToExisting" to true. */
-  setUserData: (userData?: Record<string, unknown>, addToExisting?: boolean) => void;
-  /**
-   * Possible parent rigid body id
-   */
-  readonly parentId?: number;
-  /**
-   * Set the internal cached JS shape to null.
-   *
-   * This can be useful if you want to free some memory (assuming you are not
-   * holding any other references to the shape object), or in order to force
-   * the recalculation of the JS shape (the next time the `shape` getter is
-   * accessed) from the WASM source of truth.
-   */
-  clearShapeCache(): void;
-  /**
-   * Checks if this collider is still valid (i.e. that it has
-   * not been deleted from the collider set yet).
-   */
-  isValid(): boolean;
-  /**
-   * The world-space translation of this collider.
-   */
-  translation(): PhysVector;
-  /**
-   * The translation of this collider relative to its parent rigid-body.
-   *
-   * Returns `null` if the collider doesn’t have a parent rigid-body.
-   */
-  translationWrtParent(): PhysVector | null;
-  /**
-   * The world-space orientation of this collider.
-   */
-  rotation(): PhysRotation;
-  /**
-   * The orientation of this collider relative to its parent rigid-body.
-   *
-   * Returns `null` if the collider doesn’t have a parent rigid-body.
-   */
-  rotationWrtParent(): PhysRotation | null;
-  /**
-   * Is this collider a sensor?
-   */
-  isSensor(): boolean;
-  /**
-   * Sets whether this collider is a sensor.
-   * @param isSensor - If `true`, the collider will be a sensor.
-   */
+  getUserData(): Promise<Record<string, unknown>>;
+  getUserDataSync(): Record<string, unknown>;
+  setUserData(userData?: Record<string, unknown>, addToExisting?: boolean): void;
+
+  isValid(): Promise<boolean>;
+  isValidSync(): boolean;
+
+  // --- Transformation ---
+  translation(): Promise<PhysVector>;
+  translationSync(): PhysVector;
+  translationWrtParent(): Promise<PhysVector | null>;
+  translationWrtParentSync(): PhysVector | null;
+  rotation(): Promise<PhysRotation>;
+  rotationSync(): PhysRotation;
+  rotationWrtParent(): Promise<PhysRotation | null>;
+  rotationWrtParentSync(): PhysRotation | null;
+
+  setTranslation(tra: PhysVector): void;
+  setTranslationWrtParent(tra: PhysVector): void;
+  setRotation(rot: PhysRotation): void;
+  setRotationWrtParent(rot: PhysRotation): void;
+
+  // --- Physical Properties ---
+  isSensor(): Promise<boolean>;
+  isSensorSync(): boolean;
   setSensor(isSensor: boolean): void;
-  /**
-   * Sets whether this collider is enabled or not.
-   *
-   * @param enabled - Set to `false` to disable this collider (its parent rigid-body won’t be disabled automatically by this).
-   */
+
+  isEnabled(): Promise<boolean>;
+  isEnabledSync(): boolean;
   setEnabled(enabled: boolean): void;
-  /**
-   * Is this collider enabled?
-   */
-  isEnabled(): boolean;
-  /**
-   * Sets the restitution coefficient of the collider to be created.
-   *
-   * @param restitution - The restitution coefficient in `[0, 1]`. A value of 0 (the default) means no bouncing behavior
-   *                   while 1 means perfect bouncing (though energy may still be lost due to numerical errors of the
-   *                   constraints solver).
-   */
-  setRestitution(restitution: number): void;
-  /**
-   * Sets the friction coefficient of the collider to be created.
-   *
-   * @param friction - The friction coefficient. Must be greater or equal to 0. This is generally smaller than 1. The
-   *                   higher the coefficient, the stronger friction forces will be for contacts with the collider
-   *                   being built.
-   */
+
+  friction(): Promise<number>;
+  frictionSync(): number;
   setFriction(friction: number): void;
-  /**
-   * Gets the rule used to combine the friction coefficients of two colliders
-   * colliders involved in a contact.
-   */
-  frictionCombineRule(): CoefficientCombineRule;
-  /**
-   * Sets the rule used to combine the friction coefficients of two colliders
-   * colliders involved in a contact.
-   *
-   * @param rule − The combine rule to apply.
-   */
-  setFrictionCombineRule(rule: CoefficientCombineRule): void;
-  /**
-   * Gets the rule used to combine the restitution coefficients of two colliders
-   * colliders involved in a contact.
-   */
-  restitutionCombineRule(): CoefficientCombineRule;
-  /**
-   * Sets the rule used to combine the restitution coefficients of two colliders
-   * colliders involved in a contact.
-   *
-   * @param rule − The combine rule to apply.
-   */
-  setRestitutionCombineRule(rule: CoefficientCombineRule): void;
-  /**
-   * Sets the collision groups used by this collider.
-   *
-   * Two colliders will interact iff. their collision groups are compatible.
-   * See the documentation of `InteractionGroups` for details on teh used bit pattern.
-   *
-   * @param groups - The collision groups used for the collider being built.
-   */
-  setCollisionGroups(groups: InteractionGroupsAPI): void;
-  /**
-   * Sets the solver groups used by this collider.
-   *
-   * Forces between two colliders in contact will be computed iff their solver
-   * groups are compatible.
-   * See the documentation of `InteractionGroups` for details on the used bit pattern.
-   *
-   * @param groups - The solver groups used for the collider being built.
-   */
-  setSolverGroups(groups: InteractionGroupsAPI): void;
-  /**
-   * Sets the contact skin for this collider.
-   *
-   * See the documentation of `ColliderDesc.setContactSkin` for additional details.
-   */
-  contactSkin(): number;
-  /**
-   * Sets the contact skin for this collider.
-   *
-   * See the documentation of `ColliderDesc.setContactSkin` for additional details.
-   *
-   * @param thickness - The contact skin thickness.
-   */
-  setContactSkin(thickness: number): void;
-  /**
-   * Get the physics hooks active for this collider.
-   */
-  activeHooks(): ActiveHooks;
-  /**
-   * Set the physics hooks active for this collider.
-   *
-   * Use this to enable custom filtering rules for contact/intersecstion pairs involving this collider.
-   *
-   * @param activeHooks - The hooks active for contact/intersection pairs involving this collider.
-   */
-  setActiveHooks(activeHooks: ActiveHooks): void;
-  /**
-   * The events active for this collider.
-   */
-  activeEvents(): ActiveEvents;
-  /**
-   * Set the events active for this collider.
-   *
-   * Use this to enable contact and/or intersection event reporting for this collider.
-   *
-   * @param activeEvents - The events active for contact/intersection pairs involving this collider.
-   */
-  setActiveEvents(activeEvents: ActiveEvents): void;
-  /**
-   * Gets the collision types active for this collider.
-   */
-  activeCollisionTypes(): ActiveCollisionTypes;
-  /**
-   * Sets the total force magnitude beyond which a contact force event can be emitted.
-   *
-   * @param threshold - The new force threshold.
-   */
-  setContactForceEventThreshold(threshold: number): void;
-  /**
-   * The total force magnitude beyond which a contact force event can be emitted.
-   */
-  contactForceEventThreshold(): number;
-  /**
-   * Set the collision types active for this collider.
-   *
-   * @param activeCollisionTypes - The hooks active for contact/intersection pairs involving this collider.
-   */
-  setActiveCollisionTypes(activeCollisionTypes: ActiveCollisionTypes): void;
-  /**
-   * Sets the uniform density of this collider.
-   *
-   * This will override any previous mass-properties set by `this.setDensity`,
-   * `this.setMass`, `this.setMassProperties`, `ColliderDesc.density`,
-   * `ColliderDesc.mass`, or `ColliderDesc.massProperties` for this collider.
-   *
-   * The mass and angular inertia of this collider will be computed automatically based on its
-   * shape.
-   */
+  restitution(): Promise<number>;
+  restitutionSync(): number;
+  setRestitution(restitution: number): void;
+
+  mass(): Promise<number>;
+  massSync(): number;
+  density(): Promise<number>;
+  densitySync(): number;
   setDensity(density: number): void;
-  /**
-   * Sets the mass of this collider.
-   *
-   * This will override any previous mass-properties set by `this.setDensity`,
-   * `this.setMass`, `this.setMassProperties`, `ColliderDesc.density`,
-   * `ColliderDesc.mass`, or `ColliderDesc.massProperties` for this collider.
-   *
-   * The angular inertia of this collider will be computed automatically based on its shape
-   * and this mass value.
-   */
   setMass(mass: number): void;
-  /**
-   * Sets the mass of this collider.
-   *
-   * This will override any previous mass-properties set by `this.setDensity`,
-   * `this.setMass`, `this.setMassProperties`, `ColliderDesc.density`,
-   * `ColliderDesc.mass`, or `ColliderDesc.massProperties` for this collider.
-   */
   setMassProperties(
     mass: number,
     centerOfMass: PhysVector,
     principalAngularInertia: PhysVector,
     angularInertiaLocalFrame: PhysRotation
   ): void;
-  /**
-   * Sets the translation of this collider.
-   *
-   * @param tra - The world-space position of the collider.
-   */
-  setTranslation(tra: PhysVector): void;
-  /**
-   * Sets the translation of this collider relative to its parent rigid-body.
-   *
-   * Does nothing if this collider isn't attached to a rigid-body.
-   *
-   * @param tra - The new translation of the collider relative to its parent.
-   */
-  setTranslationWrtParent(tra: PhysVector): void;
-  /**
-   * Sets the rotation quaternion of this collider.
-   *
-   * This does nothing if a zero quaternion is provided.
-   *
-   * @param rotation - The rotation to set.
-   */
-  setRotation(rot: PhysRotation): void;
-  /**
-   * Sets the rotation quaternion of this collider relative to its parent rigid-body.
-   *
-   * This does nothing if a zero quaternion is provided or if this collider isn't
-   * attached to a rigid-body.
-   *
-   * @param rotation - The rotation to set.
-   */
-  setRotationWrtParent(rot: PhysRotation): void;
-  /**
-   * The type of the shape of this collider.
-   */
-  shapeType(): ShapeType;
-  /**
-   * The half-extents of this collider if it is a cuboid shape.
-   */
-  halfExtents(): PhysVector;
-  /**
-   * Sets the half-extents of this collider if it is a cuboid shape.
-   *
-   * @param newHalfExtents - desired half extents.
-   */
-  setHalfExtents(newHalfExtents: PhysVector): void;
-  /**
-   * The radius of this collider if it is a ball, cylinder, capsule, or cone shape.
-   */
-  radius(): number;
-  /**
-   * Sets the radius of this collider if it is a ball, cylinder, capsule, or cone shape.
-   *
-   * @param newRadius - desired radius.
-   */
-  setRadius(newRadius: number): void;
-  /**
-   * The radius of the round edges of this collider if it is a round cylinder.
-   */
-  roundRadius(): number;
-  /**
-   * Sets the radius of the round edges of this collider if it has round edges.
-   *
-   * @param newBorderRadius - desired round edge radius.
-   */
-  setRoundRadius(newBorderRadius: number): void;
-  /**
-   * The half height of this collider if it is a cylinder, capsule, or cone shape.
-   */
-  halfHeight(): number;
-  /**
-   * Sets the half height of this collider if it is a cylinder, capsule, or cone shape.
-   *
-   * @param newHalfheight - desired half height.
-   */
-  setHalfHeight(newHalfheight: number): void;
-  /**
-   * If this collider has a Voxels shape, this will mark the voxel at the
-   * given grid coordinates as filled or empty (depending on the `filled`
-   * argument).
-   *
-   * Each input value is assumed to be an integer.
-   *
-   * The operation is O(1), unless the provided coordinates are out of the
-   * bounds of the currently allocated internal grid in which case the grid
-   * will be grown automatically.
-   */
-  setVoxel(ix: number, iy: number, iz: number, filled: boolean): void;
-  /**
-   * If this and `voxels2` are voxel colliders, and a voxel from `this` was
-   * modified with `setVoxel`, this will ensure that a
-   * moving object transitioning across the boundaries of these colliders
-   * won’t suffer from the "internal edges" artifact.
-   *
-   * The indices `ix, iy, iz` indicate the integer coordinates of the voxel in
-   * the local coordinate frame of `this`.
-   *
-   * If the voxels in `voxels2` live in a different coordinate space from `this`,
-   * then the `shift_*` argument indicate the distance, in voxel units, between
-   * the origin of `this` to the origin of `voxels2`.
-   *
-   * This method is intended to be called between `this` and all the other
-   * voxels colliders with a domain intersecting `this` or sharing a domain
-   * boundary. This is an incremental maintenance of the effect of
-   * `combineVoxelStates`.
-   */
-  propagateVoxelChange(
-    voxels2: ColliderAPI,
-    ix: number,
-    iy: number,
-    iz: number,
-    shift_x: number,
-    shift_y: number,
-    shift_z: number
-  ): void;
-  /**
-   * If this and `voxels2` are voxel colliders, this will ensure that a
-   * moving object transitioning across the boundaries of these colliders
-   * won’t suffer from the "internal edges" artifact.
-   *
-   * If the voxels in `voxels2` live in a different coordinate space from `this`,
-   * then the `shift_*` argument indicate the distance, in voxel units, between
-   * the origin of `this` to the origin of `voxels2`.
-   *
-   * This method is intended to be called once between all pairs of voxels
-   * colliders with intersecting domains or shared boundaries.
-   *
-   * If either voxels collider is then modified with `setVoxel`, the
-   * `propagateVoxelChange` method must be called to maintain the coupling
-   * between the voxels shapes after the modification.
-   */
-  combineVoxelStates(voxels2: ColliderAPI, shift_x: number, shift_y: number, shift_z: number): void;
-  /**
-   * If this collider has a triangle mesh, polyline, convex polygon, or convex polyhedron shape,
-   * this returns the vertex buffer of said shape.
-   */
-  vertices(): Float32Array;
-  /**
-   * If this collider has a triangle mesh, polyline, or convex polyhedron shape,
-   * this returns the index buffer of said shape.
-   */
-  indices(): Uint32Array | undefined;
-  /**
-   * If this collider has a heightfield shape, this returns the heights buffer of
-   * the heightfield.
-   * In 3D, the returned height matrix is provided in column-major order.
-   */
-  heightfieldHeights(): Float32Array;
-  /**
-   * If this collider has a heightfield shape, this returns the scale
-   * applied to it.
-   */
-  heightfieldScale(): PhysVector;
-  /**
-   * If this collider has a heightfield shape, this returns the number of
-   * rows of its height matrix.
-   */
-  heightfieldNRows(): number;
-  /**
-   * If this collider has a heightfield shape, this returns the number of
-   * columns of its height matrix.
-   */
-  heightfieldNCols(): number;
-  /**
-   * The rigid-body this collider is attached to.
-   */
-  parent(): RigidBodyAPI | null;
-  /**
-   * The friction coefficient of this collider.
-   */
-  friction(): number;
-  /**
-   * The restitution coefficient of this collider.
-   */
-  restitution(): number;
-  /**
-   * The density of this collider.
-   */
-  density(): number;
-  /**
-   * The mass of this collider.
-   */
-  mass(): number;
-  /**
-   * The volume of this collider.
-   */
-  volume(): number;
-  /**
-   * The collision groups of this collider.
-   */
-  collisionGroups(): InteractionGroupsAPI;
-  /**
-   * The solver groups of this collider.
-   */
-  solverGroups(): InteractionGroupsAPI;
-  /**
-   * Tests if this collider contains a point.
-   *
-   * @param point - The point to test.
-   */
-  containsPoint(point: PhysVector): boolean;
-  /**
-   * Find the projection of a point on this collider.
-   *
-   * @param point - The point to project.
-   * @param solid - If this is set to `true` then the collider shapes are considered to
-   *   be plain (if the point is located inside of a plain shape, its projection is the point
-   *   itself). If it is set to `false` the collider shapes are considered to be hollow
-   *   (if the point is located inside of an hollow shape, it is projected on the shape's
-   *   boundary).
-   */
-  projectPoint(point: PhysVector, solid: boolean): PointProjection | null;
-  /**
-   * Tests if this collider intersects the given ray.
-   *
-   * @param ray - The ray to cast.
-   * @param maxToi - The maximum time-of-impact that can be reported by this cast. This effectively
-   *   limits the length of the ray to `ray.dir.norm() * maxToi`.
-   */
-  intersectsRay(ray: PhysRay, maxToi: number): boolean;
-  /**
-   * Find the closest intersection between a ray and this collider.
-   *
-   * This also computes the normal at the hit point.
-   * @param ray - The ray to cast.
-   * @param maxToi - The maximum time-of-impact that can be reported by this cast. This effectively
-   *   limits the length of the ray to `ray.dir.norm() * maxToi`.
-   * @param solid - If `false` then the ray will attempt to hit the boundary of a shape, even if its
-   *   origin already lies inside of a shape. In other terms, `true` implies that all shapes are plain,
-   *   whereas `false` implies that all shapes are hollow for this ray-cast.
-   * @returns The time-of-impact between this collider and the ray, or `-1` if there is no intersection.
-   */
-  castRay(ray: PhysRay, maxToi: number, solid: boolean): number;
-  /**
-   * Find the closest intersection between a ray and this collider.
-   *
-   * This also computes the normal at the hit point.
-   * @param ray - The ray to cast.
-   * @param maxToi - The maximum time-of-impact that can be reported by this cast. This effectively
-   *   limits the length of the ray to `ray.dir.norm() * maxToi`.
-   * @param solid - If `false` then the ray will attempt to hit the boundary of a shape, even if its
-   *   origin already lies inside of a shape. In other terms, `true` implies that all shapes are plain,
-   *   whereas `false` implies that all shapes are hollow for this ray-cast.
-   */
-  castRayAndGetNormal(ray: PhysRay, maxToi: number, solid: boolean): RayIntersection | null;
+
+  // --- Geometry ---
+  shapeType(): Promise<ShapeType>;
+  shapeTypeSync(): ShapeType;
+  radius(): Promise<number>;
+  radiusSync(): number;
+  halfHeight(): Promise<number>;
+  halfHeightSync(): number;
+  halfExtents(): Promise<PhysVector>;
+  halfExtentsSync(): PhysVector;
+
+  // --- Collision Filtering ---
+  collisionGroups(): Promise<InteractionGroupsAPI>;
+  collisionGroupsSync(): InteractionGroupsAPI;
+  setCollisionGroups(groups: InteractionGroupsAPI): void;
+  solverGroups(): Promise<InteractionGroupsAPI>;
+  solverGroupsSync(): InteractionGroupsAPI;
+  setSolverGroups(groups: InteractionGroupsAPI): void;
+
+  // --- Spatial Queries ---
+  containsPoint(point: PhysVector): Promise<boolean>;
+  containsPointSync(point: PhysVector): boolean;
 };
 
 /**
@@ -1547,8 +1168,8 @@ export type WorldAPI = {
    * @param params - The parameters of the collider.
    * @param parent - The rigid-body this collider is attached to.
    */
-  createCollider: (params: ColliderParams, parent?: RigidBodyAPI) => Promise<ColliderAPI>;
-  createColliderSync: (params: ColliderParams, parent?: RigidBodyAPI) => ColliderAPI;
+  createCollider: (params: ColliderParams, parent?: number) => Promise<ColliderAPI>;
+  createColliderSync: (params: ColliderParams, parent?: number) => ColliderAPI;
   /**
    * Retrieves a rigid-body from its handle.
    *
@@ -2413,11 +2034,67 @@ export type PhysicsUpProtocol =
     | { type: PhysicsProtocolType.CREATE_COLLIDERS; params: ColliderParams[]; parentIds?: number[] }
     | { type: PhysicsProtocolType.DELETE_COLLIDER; id: number; wakeUp: boolean }
     | { type: PhysicsProtocolType.DELETE_COLLIDERS; ids: number[]; wakeUps: boolean[] }
+    | { type: PhysicsProtocolType.COLL_GET_USERDATA; colliderId: number }
     | {
         type: PhysicsProtocolType.COLL_SET_USERDATA;
+        colliderId: number;
         userData: Record<string, unknown>;
         addToExisting?: boolean;
       }
+    | { type: PhysicsProtocolType.COLL_IS_VALID; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_TRANSLATION; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_ROTATION; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_TRANSLATION_WRT_PARENT; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_ROTATION_WRT_PARENT; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_SET_TRANSLATION; colliderId: number; tra: PhysVector }
+    | { type: PhysicsProtocolType.COLL_SET_ROTATION; colliderId: number; rot: PhysRotation }
+    | {
+        type: PhysicsProtocolType.COLL_SET_TRANSLATION_WRT_PARENT;
+        colliderId: number;
+        tra: PhysVector;
+      }
+    | {
+        type: PhysicsProtocolType.COLL_SET_ROTATION_WRT_PARENT;
+        colliderId: number;
+        rot: PhysRotation;
+      }
+    | { type: PhysicsProtocolType.COLL_IS_SENSOR; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_SET_SENSOR; colliderId: number; isSensor: boolean }
+    | { type: PhysicsProtocolType.COLL_IS_ENABLED; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_SET_ENABLED; colliderId: number; enabled: boolean }
+    | { type: PhysicsProtocolType.COLL_FRICTION; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_SET_FRICTION; colliderId: number; friction: number }
+    | { type: PhysicsProtocolType.COLL_RESTITUTION; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_SET_RESTITUTION; colliderId: number; restitution: number }
+    | { type: PhysicsProtocolType.COLL_MASS; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_DENSITY; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_SET_DENSITY; colliderId: number; density: number }
+    | { type: PhysicsProtocolType.COLL_SET_MASS; colliderId: number; mass: number }
+    | {
+        type: PhysicsProtocolType.COLL_SET_MASS_PROPERTIES;
+        colliderId: number;
+        mass: number;
+        centerOfMass: PhysVector;
+        principalAngularInertia: PhysVector;
+        angularInertiaLocalFrame: PhysRotation;
+      }
+    | { type: PhysicsProtocolType.COLL_SHAPE_TYPE; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_RADIUS; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_HALF_HEIGHT; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_HALF_EXTENTS; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_COLLISION_GROUPS; colliderId: number }
+    | {
+        type: PhysicsProtocolType.COLL_SET_COLLISION_GROUPS;
+        colliderId: number;
+        groups: InteractionGroupsAPI;
+      }
+    | { type: PhysicsProtocolType.COLL_SOLVER_GROUPS; colliderId: number }
+    | {
+        type: PhysicsProtocolType.COLL_SET_SOLVER_GROUPS;
+        colliderId: number;
+        groups: InteractionGroupsAPI;
+      }
+    | { type: PhysicsProtocolType.COLL_CONTAINS_POINT; colliderId: number; point: PhysVector }
   ) & { requestId?: number; isOneWay?: boolean };
 
 /** Physics worker DOWN protocol (from worker to main thread) */
@@ -2520,11 +2197,29 @@ export type PhysicsDownProtocol =
     | { type: PhysicsProtocolType.RIGID_USER_FORCE; userForce: PhysVector }
     | { type: PhysicsProtocolType.RIGID_USER_TORQUE; userTorque: PhysVector }
     // Collider --------------------------------------
-    | { type: PhysicsProtocolType.CREATE_COLLIDER; id: number; parentId: number }
-    | { type: PhysicsProtocolType.CREATE_COLLIDERS; ids: number[]; parenIds: number[] }
-    | { type: PhysicsProtocolType.DELETE_COLLIDER; id: number; wakeUp?: boolean }
-    | { type: PhysicsProtocolType.DELETE_COLLIDERS; ids: number[]; wakeUp?: boolean[] }
-    | { type: PhysicsProtocolType.COLL_GET_USERDATA; userData: boolean }
+    | { type: PhysicsProtocolType.CREATE_COLLIDER; id: number; parentId?: number }
+    | { type: PhysicsProtocolType.CREATE_COLLIDERS; ids: number[]; parentIds?: number[] }
+    | { type: PhysicsProtocolType.DELETE_COLLIDER; id: number }
+    | { type: PhysicsProtocolType.DELETE_COLLIDERS; ids: number[] }
+    | { type: PhysicsProtocolType.COLL_GET_USERDATA; userData: Record<string, unknown> }
+    | { type: PhysicsProtocolType.COLL_IS_VALID; isValid: boolean }
+    | { type: PhysicsProtocolType.COLL_TRANSLATION; translation: PhysVector }
+    | { type: PhysicsProtocolType.COLL_ROTATION; rotation: PhysRotation }
+    | { type: PhysicsProtocolType.COLL_TRANSLATION_WRT_PARENT; translation: PhysVector | null }
+    | { type: PhysicsProtocolType.COLL_ROTATION_WRT_PARENT; rotation: PhysRotation | null }
+    | { type: PhysicsProtocolType.COLL_IS_SENSOR; isSensor: boolean }
+    | { type: PhysicsProtocolType.COLL_IS_ENABLED; isEnabled: boolean }
+    | { type: PhysicsProtocolType.COLL_FRICTION; friction: number }
+    | { type: PhysicsProtocolType.COLL_RESTITUTION; restitution: number }
+    | { type: PhysicsProtocolType.COLL_MASS; mass: number }
+    | { type: PhysicsProtocolType.COLL_DENSITY; density: number }
+    | { type: PhysicsProtocolType.COLL_SHAPE_TYPE; shapeType: ShapeType }
+    | { type: PhysicsProtocolType.COLL_RADIUS; radius: number }
+    | { type: PhysicsProtocolType.COLL_HALF_HEIGHT; halfHeight: number }
+    | { type: PhysicsProtocolType.COLL_HALF_EXTENTS; halfExtents: PhysVector }
+    | { type: PhysicsProtocolType.COLL_COLLISION_GROUPS; groups: InteractionGroupsAPI }
+    | { type: PhysicsProtocolType.COLL_SOLVER_GROUPS; groups: InteractionGroupsAPI }
+    | { type: PhysicsProtocolType.COLL_CONTAINS_POINT; isInside: boolean }
     // Error --------------------------------------
     | {
         type: PhysicsProtocolType.ERROR;
@@ -2624,6 +2319,27 @@ export type CreateCollidersResponse = PhysicsResponse<PhysicsProtocolType.CREATE
 export type DeleteColliderResponse = PhysicsResponse<PhysicsProtocolType.DELETE_COLLIDER>;
 export type DeleteCollidersResponse = PhysicsResponse<PhysicsProtocolType.DELETE_COLLIDERS>;
 export type CollUserDataResponse = PhysicsResponse<PhysicsProtocolType.COLL_GET_USERDATA>;
+export type CollIsValidResponse = PhysicsResponse<PhysicsProtocolType.COLL_IS_VALID>;
+export type CollTranslationResponse = PhysicsResponse<PhysicsProtocolType.COLL_TRANSLATION>;
+export type CollRotationResponse = PhysicsResponse<PhysicsProtocolType.COLL_ROTATION>;
+export type CollWrtParentTranslationResponse =
+  PhysicsResponse<PhysicsProtocolType.COLL_TRANSLATION_WRT_PARENT>;
+export type CollWrtParentRotationResponse =
+  PhysicsResponse<PhysicsProtocolType.COLL_ROTATION_WRT_PARENT>;
+export type CollIsSensorResponse = PhysicsResponse<PhysicsProtocolType.COLL_IS_SENSOR>;
+export type CollIsEnabledResponse = PhysicsResponse<PhysicsProtocolType.COLL_IS_ENABLED>;
+export type CollFrictionResponse = PhysicsResponse<PhysicsProtocolType.COLL_FRICTION>;
+export type CollRestitutionResponse = PhysicsResponse<PhysicsProtocolType.COLL_RESTITUTION>;
+export type CollMassResponse = PhysicsResponse<PhysicsProtocolType.COLL_MASS>;
+export type CollDensityResponse = PhysicsResponse<PhysicsProtocolType.COLL_DENSITY>;
+export type CollShapeTypeResponse = PhysicsResponse<PhysicsProtocolType.COLL_SHAPE_TYPE>;
+export type CollRadiusResponse = PhysicsResponse<PhysicsProtocolType.COLL_RADIUS>;
+export type CollHalfHeightResponse = PhysicsResponse<PhysicsProtocolType.COLL_HALF_HEIGHT>;
+export type CollHalfExtentsResponse = PhysicsResponse<PhysicsProtocolType.COLL_HALF_EXTENTS>;
+export type CollCollisionGroupsResponse =
+  PhysicsResponse<PhysicsProtocolType.COLL_COLLISION_GROUPS>;
+export type CollSolverGroupsResponse = PhysicsResponse<PhysicsProtocolType.COLL_SOLVER_GROUPS>;
+export type CollContainsPointResponse = PhysicsResponse<PhysicsProtocolType.COLL_CONTAINS_POINT>;
 
 export declare enum PhysicsProtocolType {
   ERROR = 0,
@@ -2740,4 +2456,35 @@ export declare enum PhysicsProtocolType {
   DELETE_COLLIDERS = 603,
   COLL_GET_USERDATA = 604,
   COLL_SET_USERDATA = 605,
+  COLL_IS_VALID = 606,
+  COLL_TRANSLATION = 607,
+  COLL_ROTATION = 608,
+  COLL_TRANSLATION_WRT_PARENT = 609,
+  COLL_ROTATION_WRT_PARENT = 610,
+  COLL_SET_TRANSLATION = 611,
+  COLL_SET_ROTATION = 612,
+  COLL_SET_TRANSLATION_WRT_PARENT = 613,
+  COLL_SET_ROTATION_WRT_PARENT = 614,
+  COLL_IS_SENSOR = 615,
+  COLL_SET_SENSOR = 616,
+  COLL_IS_ENABLED = 617,
+  COLL_SET_ENABLED = 618,
+  COLL_FRICTION = 619,
+  COLL_SET_FRICTION = 620,
+  COLL_RESTITUTION = 621,
+  COLL_SET_RESTITUTION = 622,
+  COLL_MASS = 623,
+  COLL_DENSITY = 624,
+  COLL_SET_DENSITY = 625,
+  COLL_SET_MASS = 626,
+  COLL_SET_MASS_PROPERTIES = 627,
+  COLL_SHAPE_TYPE = 628,
+  COLL_RADIUS = 629,
+  COLL_HALF_HEIGHT = 630,
+  COLL_HALF_EXTENTS = 631,
+  COLL_COLLISION_GROUPS = 632,
+  COLL_SET_COLLISION_GROUPS = 633,
+  COLL_SOLVER_GROUPS = 634,
+  COLL_SET_SOLVER_GROUPS = 635,
+  COLL_CONTAINS_POINT = 636,
 }

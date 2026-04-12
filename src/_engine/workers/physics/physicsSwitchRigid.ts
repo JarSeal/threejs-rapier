@@ -14,7 +14,7 @@ const sendNoRigidBodyErrorMessage = (
   sendMessage(
     {
       type: PhysicsProtocolType.ERROR,
-      message: `Could not find rigidBodyAPI (in ${data.type}).`,
+      message: `Could not find RigidBodyAPI in worker (physicsSwitchRigid) (in ${data.type}).`,
     },
     data
   );

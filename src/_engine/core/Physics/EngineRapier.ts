@@ -1,17 +1,8 @@
 import Rapier from '@dimforge/rapier3d-compat';
 import { existsOrThrow } from '../../utils/helpers';
-import type {
-  Collider,
-  RayColliderIntersection,
-  RigidBody,
-  RigidBodyType,
-} from '@dimforge/rapier3d-compat';
+import type { Collider, RigidBody, RigidBodyType } from '@dimforge/rapier3d-compat';
 import { getPhysicsEngine } from './PhysicsUtils';
 import {
-  ActiveCollisionTypes,
-  ActiveEvents,
-  ActiveHooks,
-  CoefficientCombineRule,
   ColliderAPI,
   ColliderParams,
   InteractionGroupsAPI,
@@ -20,10 +11,12 @@ import {
   PhysRotation,
   PhysVector,
   QueryFilterFlags,
+  RayColliderHitAPI,
   RayColliderIntersectionAPI,
   RigidBodyAPI,
   RigidBodyParams,
   RigidBodyTypeAPI,
+  ShapeType,
   WorldAPI,
 } from './PhysicsAPITypes';
 import { LoopState } from '../MainLoop';
@@ -155,7 +148,7 @@ export const createWorld = (
   if (opts?.numSolverIterations) physicsWorld.numSolverIterations = opts.numSolverIterations;
   if (opts?.numInternalPgsIterations)
     physicsWorld.numInternalPgsIterations = opts.numInternalPgsIterations;
-  physicsWorldAPI = createEnginePhysicsWorldAPI();
+  physicsWorldAPI = new EngineWorldProxyAPI();
   worldCreated = true;
   return physicsWorldAPI;
 };
@@ -249,7 +242,6 @@ export const createRigidBody = (params: RigidBodyParams) => {
   nextRigidBodyId += 1;
   rigidBodies.set(id, rigidBody.handle);
   const rigidBodyAPI = new EngineRigidBodyProxyAPI(id, params.userData);
-  if (params.userData) rigidBodyAPI.setUserData(params.userData);
   rigidBodyAPIs.set(id, rigidBodyAPI);
 
   return rigidBodyAPI;
@@ -421,8 +413,7 @@ export const createCollider = (params: ColliderParams, parentId?: number) => {
   const id = nextColliderId;
   nextColliderId += 1;
   colliders.set(id, collider.handle);
-  const colliderAPI = createEnginePhysicsColliderAPI(id);
-  if (params.userData) colliderAPI.setUserData(params.userData);
+  const colliderAPI = new EngineColliderProxyAPI(id, parentId, params.userData);
   colliderAPIs.set(id, colliderAPI);
 
   return colliderAPI;
@@ -538,7 +529,7 @@ export const restoreSnapshot = (snapshot: Uint8Array) => {
   // @TODO: we maybe need check all the rigidBodies and colliders
   // and recreate all the maps (rigidBodies, rigidBodyAPIs, colliders, colliderAPIs) here.
   physicsWorld = Rapier.World.restoreSnapshot(snapshot);
-  physicsWorldAPI = createEnginePhysicsWorldAPI(); // Not sure if we need to recreate the WorldAPI?
+  physicsWorldAPI = new EngineWorldProxyAPI();
   return physicsWorldAPI;
 };
 
@@ -550,79 +541,148 @@ export const stepAPI = () => {
   // @CHORE: FINISH THIS
 };
 
-/** World, RigidBody, and Collider API definitions -----[ START ]----- */
+/** World, RigidBody, and Collider proxy API definitions -----[ START ]----- */
 
-const createEnginePhysicsWorldAPI = (): WorldAPI => ({
-  restoringWorld: false,
-  gravity: async (gravity?: PhysVector) => {
-    if (gravity === undefined) return physicsWorld.gravity as PhysVector;
-    physicsWorld.gravity = gravity;
-  },
-  free: () => physicsWorld.free(),
-  takeSnapshot: async () => physicsWorld.takeSnapshot(),
-  restoreSnapshot: async (data: Uint8Array) => {
-    const newWorld = RAPIER.World.restoreSnapshot(data);
-    physicsWorld = newWorld;
-    physicsWorldAPI = createEnginePhysicsWorldAPI();
-    return physicsWorldAPI;
-  },
-  propagateModifiedBodyPositionsToColliders: () =>
-    physicsWorld.propagateModifiedBodyPositionsToColliders(),
-  /** Get or set the timestep. Leave argument empty to get. */
-  timestep: async (dt?: number) => {
-    if (dt === undefined) return physicsWorld.timestep;
+class EngineWorldProxyAPI implements WorldAPI {
+  restoringWorld: boolean = false;
+
+  constructor() {}
+
+  // --- Gravity ---
+  getGravitySync(): PhysVector {
+    return { x: physicsWorld.gravity.x, y: physicsWorld.gravity.y, z: physicsWorld.gravity.z };
+  }
+  async getGravity(): Promise<PhysVector> {
+    return this.getGravitySync();
+  }
+  setGravity(gravity: PhysVector): void {
+    physicsWorld.gravity = new RAPIER.Vector3(gravity.x, gravity.y, gravity.z);
+  }
+
+  // --- Lifecycle ---
+  free(): void {
+    physicsWorld.free();
+  }
+
+  // --- Snapshots ---
+  takeSnapshotSync(): Uint8Array | undefined {
+    return physicsWorld.takeSnapshot();
+  }
+  async takeSnapshot(): Promise<Uint8Array | undefined> {
+    return this.takeSnapshotSync();
+  }
+
+  restoreSnapshotSync(data: Uint8Array): WorldAPI {
+    this.restoringWorld = true;
+    physicsWorld = RAPIER.World.restoreSnapshot(data);
+    // Note: In Rapier, you usually need to re-initialize your local ID maps
+    // after a snapshot if the handles changed.
+    this.restoringWorld = false;
+    return this;
+  }
+  async restoreSnapshot(data: Uint8Array): Promise<WorldAPI> {
+    return this.restoreSnapshotSync(data);
+  }
+
+  // --- Stepping & Propagation ---
+  propagateModifiedBodyPositionsToColliders(): void {
+    physicsWorld.propagateModifiedBodyPositionsToColliders();
+  }
+
+  // --- Parameters ---
+  getTimestepSync(): number {
+    return physicsWorld.timestep;
+  }
+  async getTimestep(): Promise<number> {
+    return this.getTimestepSync();
+  }
+  setTimestep(dt: number): void {
     physicsWorld.timestep = dt;
-  },
-  /** Get or set the lengthUnit. Leave argument empty to get. */
-  lengthUnit: async (unitsPerMeter?: number) => {
-    if (unitsPerMeter === undefined) return physicsWorld.lengthUnit;
+  }
+
+  getLengthUnitSync(): number {
+    return physicsWorld.lengthUnit;
+  }
+  async getLengthUnit(): Promise<number> {
+    return this.getLengthUnitSync();
+  }
+  setLengthUnit(unitsPerMeter: number): void {
     physicsWorld.lengthUnit = unitsPerMeter;
-  },
-  numSolverIterations: async (niter?: number) => {
-    if (niter === undefined) return physicsWorld.numSolverIterations;
+  }
+
+  getNumSolverIterationsSync(): number {
+    return physicsWorld.numSolverIterations;
+  }
+  async getNumSolverIterations(): Promise<number> {
+    return this.getNumSolverIterationsSync();
+  }
+  setNumSolverIterations(niter: number): void {
     physicsWorld.numSolverIterations = niter;
-  },
-  numInternalPgsIterations: async (niter?: number) => {
-    if (niter === undefined) return physicsWorld.numInternalPgsIterations;
+  }
+
+  getNumInternalPgsIterationsSync(): number {
+    return physicsWorld.numInternalPgsIterations;
+  }
+  async getNumInternalPgsIterations(): Promise<number> {
+    return this.getNumInternalPgsIterationsSync();
+  }
+  setNumInternalPgsIterations(niter: number): void {
     physicsWorld.numInternalPgsIterations = niter;
-  },
-  maxCcdSubsteps: async (substeps?: number) => {
-    if (substeps === undefined) return physicsWorld.maxCcdSubsteps;
+  }
+
+  getMaxCcdSubstepsSync(): number {
+    return physicsWorld.maxCcdSubsteps;
+  }
+  async getMaxCcdSubsteps(): Promise<number> {
+    return this.getMaxCcdSubstepsSync();
+  }
+  setMaxCcdSubstepsSync(substeps: number): void {
     physicsWorld.maxCcdSubsteps = substeps;
-  },
-  createRigidBody: async (params: RigidBodyParams) => createRigidBody(params),
-  createCollider: async (params: ColliderParams) => createCollider(params),
-  getRigidBody: async (id: number) => {
-    const rbHandle = rigidBodies.get(id);
-    if (rbHandle) return rigidBodyAPIs.get(rbHandle);
-    return undefined;
-  },
-  getCollider: async (id: number) => {
-    const collHandle = colliders.get(id);
-    if (collHandle) return colliderAPIs.get(collHandle);
-    return undefined;
-  },
-  removeRigidBody: (bodyOrId: RigidBodyAPI | number) => {
+  }
+
+  // --- Factories (Calling top-level exports in EngineRapier.ts) ---
+  createRigidBodySync(params: RigidBodyParams): RigidBodyAPI {
+    return createRigidBody(params);
+  }
+  async createRigidBody(params: RigidBodyParams): Promise<RigidBodyAPI> {
+    return this.createRigidBodySync(params);
+  }
+
+  createColliderSync(params: ColliderParams, parentId?: number): ColliderAPI {
+    return createCollider(params, parentId);
+  }
+  async createCollider(params: ColliderParams, parentId?: number): Promise<ColliderAPI> {
+    return this.createColliderSync(params, parentId);
+  }
+
+  // --- Retrieval ---
+  getRigidBodySync(id: number): RigidBodyAPI | undefined {
+    return getRigidBodyAPIWithId(id);
+  }
+  async getRigidBody(id: number): Promise<RigidBodyAPI | undefined> {
+    return this.getRigidBodySync(id);
+  }
+
+  getColliderSync(id: number): ColliderAPI | undefined {
+    return getColliderAPIWithId(id);
+  }
+  async getCollider(id: number): Promise<ColliderAPI | undefined> {
+    return this.getColliderSync(id);
+  }
+
+  // --- Removal ---
+  removeRigidBody(bodyOrId: RigidBodyAPI | number): void {
     const id = typeof bodyOrId === 'number' ? bodyOrId : bodyOrId.id;
-    const rbHandle = rigidBodies.get(id);
-    if (rbHandle) {
-      rigidBodyAPIs.delete(rbHandle);
-      const rb = physicsWorld.getRigidBody(rbHandle);
-      if (rb) physicsWorld.removeRigidBody(rb);
-    }
-    rigidBodies.delete(id);
-  },
-  removeCollider: (bodyOrId: ColliderAPI | number, wakeUp?: boolean) => {
-    const id = typeof bodyOrId === 'number' ? bodyOrId : bodyOrId.id;
-    const collHandle = colliders.get(id);
-    if (collHandle) {
-      colliderAPIs.delete(collHandle);
-      const coll = physicsWorld.getCollider(collHandle);
-      if (coll) physicsWorld.removeCollider(coll, wakeUp || false);
-    }
-    rigidBodies.delete(id);
-  },
-  castRay: async (
+    deleteRigidBody(id);
+  }
+
+  removeCollider(colliderOrId: ColliderAPI | number, wakeUp: boolean): void {
+    const id = typeof colliderOrId === 'number' ? colliderOrId : colliderOrId.id;
+    deleteCollider(id, wakeUp);
+  }
+
+  // --- Queries ---
+  castRaySync(
     ray: PhysRay,
     maxToi: number,
     solid: boolean,
@@ -630,26 +690,23 @@ const createEnginePhysicsWorldAPI = (): WorldAPI => ({
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number
-    // filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => {
-    const filterCollider = getCollider(filterExcludeCollider);
-    const filterRigidBody = getRigidBody(filterExcludeRigidBody);
+  ): RayColliderHitAPI | null {
+    const rapierRay = new RAPIER.Ray(ray.origin, ray.dir);
     const hit = physicsWorld.castRay(
-      new RAPIER.Ray(ray.origin, ray.dir),
+      rapierRay,
       maxToi,
       solid,
       filterFlags,
       filterGroups,
-      filterCollider,
-      filterRigidBody
-      // filterPredicate
+      getCollider(filterExcludeCollider),
+      getRigidBody(filterExcludeRigidBody)
     );
+
     if (!hit) return null;
     const colliderAPI = getColliderAPI(hit.collider.handle);
-    if (!colliderAPI) return null;
-    return { collider: colliderAPI, timeOfImpact: hit.timeOfImpact };
-  },
-  castRayAndGetNormal: async (
+    return colliderAPI ? { collider: colliderAPI, timeOfImpact: hit.timeOfImpact } : null;
+  }
+  async castRay(
     ray: PhysRay,
     maxToi: number,
     solid: boolean,
@@ -657,32 +714,71 @@ const createEnginePhysicsWorldAPI = (): WorldAPI => ({
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number
-    // filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => {
-    const filterCollider = getCollider(filterExcludeCollider);
-    const filterRigidBody = getRigidBody(filterExcludeRigidBody);
-    const intersection = physicsWorld.castRayAndGetNormal(
-      new RAPIER.Ray(ray.origin, ray.dir),
+  ): Promise<RayColliderHitAPI | null> {
+    return this.castRaySync(
+      ray,
       maxToi,
       solid,
       filterFlags,
       filterGroups,
-      filterCollider,
-      filterRigidBody
-      // filterPredicate
+      filterExcludeCollider,
+      filterExcludeRigidBody
     );
-    if (!intersection) return null;
-    const colliderAPI = getColliderAPI(intersection.collider.handle);
-    if (!colliderAPI) return null;
-    return {
-      collider: colliderAPI,
-      timeOfImpact: intersection.timeOfImpact,
-      normal: intersection.normal,
-      featureType: intersection.featureType,
-      featureId: intersection.featureId,
-    };
-  },
-  intersectionsWithRay: (
+  }
+
+  castRayAndGetNormalSync(
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+  ): RayColliderIntersectionAPI | null {
+    const rapierRay = new RAPIER.Ray(ray.origin, ray.dir);
+    const inter = physicsWorld.castRayAndGetNormal(
+      rapierRay,
+      maxToi,
+      solid,
+      filterFlags,
+      filterGroups,
+      getCollider(filterExcludeCollider),
+      getRigidBody(filterExcludeRigidBody)
+    );
+
+    if (!inter) return null;
+    const colliderAPI = getColliderAPI(inter.collider.handle);
+    return colliderAPI
+      ? {
+          collider: colliderAPI,
+          timeOfImpact: inter.timeOfImpact,
+          normal: inter.normal,
+          featureType: inter.featureType,
+          featureId: inter.featureId,
+        }
+      : null;
+  }
+  async castRayAndGetNormal(
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+  ): Promise<RayColliderIntersectionAPI | null> {
+    return this.castRayAndGetNormalSync(
+      ray,
+      maxToi,
+      solid,
+      filterFlags,
+      filterGroups,
+      filterExcludeCollider,
+      filterExcludeRigidBody
+    );
+  }
+
+  intersectionsWithRaySync(
     ray: PhysRay,
     maxToi: number,
     solid: boolean,
@@ -691,59 +787,96 @@ const createEnginePhysicsWorldAPI = (): WorldAPI => ({
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number
-    // filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => {
-    const filterCollider = getCollider(filterExcludeCollider);
-    const filterRigidBody = getRigidBody(filterExcludeRigidBody);
+  ): void {
     physicsWorld.intersectionsWithRay(
       new RAPIER.Ray(ray.origin, ray.dir),
       maxToi,
       solid,
-      (intersect: RayColliderIntersection) => {
-        const intersectColliderAPI = getColliderAPI(intersect.collider.handle);
-        if (!intersectColliderAPI) return false;
+      (inter) => {
+        const colliderAPI = getColliderAPI(inter.collider.handle);
+        if (!colliderAPI) return true;
         return callback({
-          collider: intersectColliderAPI,
-          timeOfImpact: intersect.timeOfImpact,
-          normal: { x: intersect.normal.x, y: intersect.normal.y, z: intersect.normal.z },
-          featureType: intersect.featureType,
-          featureId: intersect.featureId,
+          collider: colliderAPI,
+          timeOfImpact: inter.timeOfImpact,
+          normal: inter.normal,
+          featureType: inter.featureType,
+          featureId: inter.featureId,
         });
       },
       filterFlags,
       filterGroups,
-      filterCollider,
-      filterRigidBody
-      // filterPredicate
+      getCollider(filterExcludeCollider),
+      getRigidBody(filterExcludeRigidBody)
     );
-  },
-  contactPairsWith: (collider1: ColliderAPI | number, f: (collider2: ColliderAPI) => void) => {
-    const coll1 = getCollider(collider1);
-    if (!coll1) return;
-    const fn = (collider2: Collider) => {
-      const coll2 = getColliderAPI(collider2.handle);
-      if (coll2) f(coll2);
-    };
-    physicsWorld.contactPairsWith(coll1, fn);
-  },
-  intersectionPairsWith: (collider1: ColliderAPI | number, f: (collider2: ColliderAPI) => void) => {
-    const coll1 = getCollider(collider1);
-    if (!coll1) return;
-    const fn = (collider2: Collider) => {
-      const coll2 = getColliderAPI(collider2.handle);
-      if (coll2) f(coll2);
-    };
-    physicsWorld.intersectionPairsWith(coll1, fn);
-  },
-  intersectionPair: async (collider1: ColliderAPI | number, collider2: ColliderAPI | number) => {
-    const coll1 = getCollider(collider1);
-    const coll2 = getCollider(collider2);
-    if (!coll1 || !coll2) return false;
-    return physicsWorld.intersectionPair(coll1, coll2);
-  },
-});
+  }
+  async intersectionsWithRay(
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    callback: (intersect: RayColliderIntersectionAPI) => boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+  ): Promise<void> {
+    this.intersectionsWithRaySync(
+      ray,
+      maxToi,
+      solid,
+      callback,
+      filterFlags,
+      filterGroups,
+      filterExcludeCollider,
+      filterExcludeRigidBody
+    );
+  }
 
-class EngineWorldProxyAPI implements WorldAPI {}
+  // --- Interaction Pairs ---
+  contactPairsWithSync(collider1: ColliderAPI | number, f: (collider2: ColliderAPI) => void): void {
+    const coll = getCollider(collider1);
+    if (!coll) return;
+    physicsWorld.contactPairsWith(coll, (otherColl) => {
+      const api = getColliderAPI(otherColl.handle);
+      if (api) f(api);
+    });
+  }
+  async contactPairsWith(
+    collider1: ColliderAPI | number,
+    f: (collider2: ColliderAPI) => void
+  ): Promise<void> {
+    this.contactPairsWithSync(collider1, f);
+  }
+
+  intersectionPairsWithSync(
+    collider1: ColliderAPI | number,
+    f: (collider2: ColliderAPI) => void
+  ): void {
+    const coll = getCollider(collider1);
+    if (!coll) return;
+    physicsWorld.intersectionPairsWith(coll, (otherColl) => {
+      const api = getColliderAPI(otherColl.handle);
+      if (api) f(api);
+    });
+  }
+  async intersectionPairsWith(
+    collider1: ColliderAPI | number,
+    f: (collider2: ColliderAPI) => void
+  ): Promise<void> {
+    this.intersectionPairsWithSync(collider1, f);
+  }
+
+  intersectionPairSync(collider1: ColliderAPI | number, collider2: ColliderAPI | number): boolean {
+    const c1 = getCollider(collider1);
+    const c2 = getCollider(collider2);
+    return c1 && c2 ? physicsWorld.intersectionPair(c1, c2) : false;
+  }
+  async intersectionPair(
+    collider1: ColliderAPI | number,
+    collider2: ColliderAPI | number
+  ): Promise<boolean> {
+    return this.intersectionPairSync(collider1, collider2);
+  }
+}
 
 class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   private rb: Rapier.RigidBody;
@@ -752,6 +885,8 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   rot: PhysRotation = { x: 0, y: 0, z: 0, w: 0 };
   lvel: PhysVector = { x: 0, y: 0, z: 0 };
   avel: PhysVector = { x: 0, y: 0, z: 0 };
+
+  isBeingDeleted: boolean = false;
 
   constructor(
     public id: number,
@@ -1148,235 +1283,234 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   }
 }
 
-// @CHORE: change to a class
-const createEnginePhysicsColliderAPI = (id: number): ColliderAPI => ({
-  id,
-  userData: async function (userData?: { [key: string]: unknown }, addToExisting?: boolean) {
-    if (userData !== undefined) {
-      if (addToExisting) {
-        this.uData = { ...this.uData, ...userData };
-      } else {
-        this.uData = userData;
-      }
-    }
+class EngineColliderProxyAPI implements ColliderAPI {
+  private coll: Rapier.Collider;
+  uData: Record<string, unknown> = {};
+
+  isBeingDeleted: boolean = false;
+
+  constructor(
+    public id: number,
+    public parentId?: number,
+    userData?: Record<string, unknown>
+  ) {
+    if (userData) this.uData = userData;
+    // Retrieve the raw Rapier collider using the helper in EngineRapier.ts
+    this.coll = existsOrThrow(
+      getCollider(id),
+      `Could not find collider in the engineAPI with id: ${id}`
+    );
+  }
+
+  // --- Metadata ---
+  getUserDataSync() {
     return this.uData;
-  },
-  clearShapeCache: function () {
-    // returns void;
-  },
-  isValid: function () {
-    // returns boolean;
-  },
-  translation: function () {
-    // returns PhysVector;
-  },
-  translationWrtParent: function () {
-    // returns PhysVector | null;
-  },
-  rotation: function () {
-    // returns PhysRotation;
-  },
-  rotationWrtParent: function () {
-    // returns PhysRotation | null;
-  },
-  isSensor: function () {
-    // returns boolean;
-  },
-  setSensor: function (isSensor: boolean) {
-    // returns void;
-  },
-  setEnabled: function (enabled: boolean) {
-    // returns void;
-  },
-  isEnabled: function () {
-    // returns boolean;
-  },
-  setRestitution: function (restitution: number) {
-    // returns
-  },
-  setFriction: function (friction: number) {
-    // returns void;
-  },
-  frictionCombineRule: function () {
-    // returns CoefficientCombineRule;
-  },
-  setFrictionCombineRule: function (rule: CoefficientCombineRule) {
-    // returns void;
-  },
-  restitutionCombineRule: function () {
-    // returns CoefficientCombineRule;
-  },
-  setRestitutionCombineRule: function (rule: CoefficientCombineRule) {
-    // returns void;
-  },
-  setCollisionGroups: function (groups: InteractionGroupsAPI) {
-    // returns void;
-  },
-  setSolverGroups: function (groups: InteractionGroupsAPI) {
-    // returns void;
-  },
-  contactSkin: function () {
-    // returns number;
-  },
-  setContactSkin: function (thickness: number) {
-    // returns void;
-  },
-  activeHooks: function () {
-    // returns ActiveHooks;
-  },
-  setActiveHooks: function (activeHooks: ActiveHooks) {
-    // returns void;
-  },
-  activeEvents: function () {
-    // returns ActiveEvents;
-  },
-  setActiveEvents: function (activeEvents: ActiveEvents) {
-    // returns void;
-  },
-  activeCollisionTypes: function () {
-    // returns ActiveCollisionTypes;
-  },
-  setContactForceEventThreshold: function (threshold: number) {
-    // returns void;
-  },
-  contactForceEventThreshold: function () {
-    // returns number;
-  },
-  setActiveCollisionTypes: function (activeCollisionTypes: ActiveCollisionTypes) {
-    // returns void;
-  },
-  setDensity: function (density: number) {
-    // returns void;
-  },
-  setMass: function (mass: number) {
-    // returns void;
-  },
-  setMassProperties: function (
+  }
+  async getUserData() {
+    return this.getUserDataSync();
+  }
+  setUserData(userData: Record<string, unknown>, addToExisting?: boolean) {
+    this.uData = addToExisting ? { ...this.uData, ...userData } : userData;
+  }
+
+  isValidSync() {
+    return this.coll.isValid();
+  }
+  async isValid() {
+    return this.isValidSync();
+  }
+
+  // --- Transformation ---
+  translationSync(): PhysVector {
+    const t = this.coll.translation();
+    return { x: t.x, y: t.y, z: t.z };
+  }
+  async translation() {
+    return this.translationSync();
+  }
+
+  translationWrtParentSync(): PhysVector | null {
+    const t = this.coll.translationWrtParent();
+    return t ? { x: t.x, y: t.y, z: t.z } : null;
+  }
+  async translationWrtParent() {
+    return this.translationWrtParentSync();
+  }
+
+  rotationSync(): PhysRotation {
+    const r = this.coll.rotation();
+    return { x: r.x, y: r.y, z: r.z, w: r.w };
+  }
+  async rotation() {
+    return this.rotationSync();
+  }
+
+  rotationWrtParentSync(): PhysRotation | null {
+    const r = this.coll.rotationWrtParent();
+    return r ? { x: r.x, y: r.y, z: r.z, w: r.w } : null;
+  }
+  async rotationWrtParent() {
+    return this.rotationWrtParentSync();
+  }
+
+  setTranslation(tra: PhysVector) {
+    this.coll.setTranslation(new RAPIER.Vector3(tra.x, tra.y, tra.z));
+  }
+  setTranslationWrtParent(tra: PhysVector) {
+    this.coll.setTranslationWrtParent(new RAPIER.Vector3(tra.x, tra.y, tra.z));
+  }
+  setRotation(rot: PhysRotation) {
+    this.coll.setRotation(new RAPIER.Quaternion(rot.x, rot.y, rot.z, rot.w));
+  }
+  setRotationWrtParent(rot: PhysRotation) {
+    this.coll.setRotationWrtParent(new RAPIER.Quaternion(rot.x, rot.y, rot.z, rot.w));
+  }
+
+  // --- Physical Properties ---
+  isSensorSync() {
+    return this.coll.isSensor();
+  }
+  async isSensor() {
+    return this.isSensorSync();
+  }
+  setSensor(isSensor: boolean) {
+    this.coll.setSensor(isSensor);
+  }
+
+  isEnabledSync() {
+    return this.coll.isEnabled();
+  }
+  async isEnabled() {
+    return this.isEnabledSync();
+  }
+  setEnabled(enabled: boolean) {
+    this.coll.setEnabled(enabled);
+  }
+
+  frictionSync() {
+    return this.coll.friction();
+  }
+  async friction() {
+    return this.frictionSync();
+  }
+  setFriction(friction: number) {
+    this.coll.setFriction(friction);
+  }
+
+  restitutionSync() {
+    return this.coll.restitution();
+  }
+  async restitution() {
+    return this.restitutionSync();
+  }
+  setRestitution(restitution: number) {
+    this.coll.setRestitution(restitution);
+  }
+
+  massSync() {
+    return this.coll.mass();
+  }
+  async mass() {
+    return this.massSync();
+  }
+
+  setMassProperties(
     mass: number,
     centerOfMass: PhysVector,
     principalAngularInertia: PhysVector,
     angularInertiaLocalFrame: PhysRotation
-  ) {
-    // returns void;
-  },
-  setTranslation: function (tra: PhysVector) {
-    // returns void;
-  },
-  setTranslationWrtParent: function (tra: PhysVector) {
-    // returns void;
-  },
-  setRotation: function (rot: PhysRotation) {
-    // returns void;
-  },
-  setRotationWrtParent: function (rot: PhysRotation) {
-    // returns void;
-  },
-  shapeType: function () {
-    // returns ShapeType;
-  },
-  halfExtents: function () {
-    // returns PhysVector;
-  },
-  setHalfExtents: function (newHalfExtents: PhysVector) {
-    // returns void;
-  },
-  radius: function () {
-    // returns number;
-  },
-  setRadius: function (newRadius: number) {
-    // returns void;
-  },
-  roundRadius: function () {
-    // returns number;
-  },
-  setRoundRadius: function (newBorderRadius: number) {
-    // returns void;
-  },
-  halfHeight: function () {
-    // returns number;
-  },
-  setHalfHeight: function (newHalfheight: number) {
-    // returns void;
-  },
-  setVoxel: function (ix: number, iy: number, iz: number, filled: boolean) {
-    // returns void;
-  },
-  propagateVoxelChange: function (
-    voxels2: ColliderAPI,
-    ix: number,
-    iy: number,
-    iz: number,
-    shift_x: number,
-    shift_y: number,
-    shift_z: number
-  ) {
-    // returns void;
-  },
-  combineVoxelStates: function (
-    voxels2: ColliderAPI,
-    shift_x: number,
-    shift_y: number,
-    shift_z: number
-  ) {
-    // returns void;
-  },
-  vertices: function () {
-    // returns Float32Array;
-  },
-  indices: function () {
-    // returns Uint32Array | undefined;
-  },
-  heightfieldHeights: function () {
-    // returns Float32Array;
-  },
-  heightfieldScale: function () {
-    // returns PhysVector;
-  },
-  heightfieldNRows: function () {
-    // returns number;
-  },
-  heightfieldNCols: function () {
-    // returns number;
-  },
-  parent: function () {
-    // returns RigidBodyAPI | null;
-  },
-  friction: function () {
-    // returns number;
-  },
-  restitution: function () {
-    // returns number;
-  },
-  density: function () {
-    // returns number;
-  },
-  mass: function () {
-    // returns number;
-  },
-  volume: function () {
-    // returns number;
-  },
-  collisionGroups: function () {
-    // returns InteractionGroupsAPI;
-  },
-  solverGroups: function () {
-    // returns InteractionGroupsAPI;
-  },
-  containsPoint: function (point: PhysVector) {
-    // returns boolean;
-  },
-  projectPoint: function (point: PhysVector, solid: boolean) {
-    // returns PointProjection | null;
-  },
-  intersectsRay: function (ray: PhysRay, maxToi: number) {
-    // returns boolean;
-  },
-  castRay: function (ray: PhysRay, maxToi: number, solid: boolean) {
-    // returns number;
-  },
-  castRayAndGetNormal: function (ray: PhysRay, maxToi: number, solid: boolean) {
-    // returns RayIntersection | null;
-  },
-});
+  ): void {
+    this.coll.setMassProperties(
+      mass,
+      new RAPIER.Vector3(centerOfMass.x, centerOfMass.y, centerOfMass.z),
+      new RAPIER.Vector3(
+        principalAngularInertia.x,
+        principalAngularInertia.y,
+        principalAngularInertia.z
+      ),
+      new RAPIER.Quaternion(
+        angularInertiaLocalFrame.x,
+        angularInertiaLocalFrame.y,
+        angularInertiaLocalFrame.z,
+        angularInertiaLocalFrame.w
+      )
+    );
+  }
 
-/** World, RigidBody, and Collider API definitions -----[ END ]----- */
+  densitySync() {
+    return this.coll.density();
+  }
+  async density() {
+    return this.densitySync();
+  }
+  setDensity(density: number) {
+    this.coll.setDensity(density);
+  }
+  setMass(mass: number) {
+    this.coll.setMass(mass);
+  }
+
+  // --- Geometry Details ---
+  shapeTypeSync(): ShapeType {
+    return this.coll.shapeType() as unknown as ShapeType;
+  }
+  async shapeType() {
+    return this.shapeTypeSync();
+  }
+
+  radiusSync(): number {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (this.coll.shape as any).radius || 0;
+  }
+  async radius() {
+    return this.radiusSync();
+  }
+
+  halfHeightSync(): number {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (this.coll.shape as any).halfHeight || 0;
+  }
+  async halfHeight() {
+    return this.halfHeightSync();
+  }
+
+  halfExtentsSync(): PhysVector {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const he = (this.coll.shape as any).halfExtents;
+    return he ? { x: he.x, y: he.y, z: he.z } : { x: 0, y: 0, z: 0 };
+  }
+  async halfExtents() {
+    return this.halfExtentsSync();
+  }
+
+  // --- Groups ---
+  collisionGroupsSync(): InteractionGroupsAPI {
+    return this.coll.collisionGroups();
+  }
+  async collisionGroups() {
+    return this.collisionGroupsSync();
+  }
+  setCollisionGroups(groups: InteractionGroupsAPI) {
+    this.coll.setCollisionGroups(groups);
+  }
+
+  solverGroupsSync(): InteractionGroupsAPI {
+    return this.coll.solverGroups();
+  }
+  async solverGroups() {
+    return this.solverGroupsSync();
+  }
+  setSolverGroups(groups: InteractionGroupsAPI) {
+    this.coll.setSolverGroups(groups);
+  }
+
+  // --- Queries ---
+  containsPointSync(point: PhysVector): boolean {
+    return this.coll.containsPoint(new RAPIER.Vector3(point.x, point.y, point.z));
+  }
+  async containsPoint(point: PhysVector) {
+    return this.containsPointSync(point);
+  }
+}
+
+/** World, RigidBody, and Collider proxy API definitions -----[ END ]----- */
