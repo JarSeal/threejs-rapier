@@ -65,6 +65,8 @@ export const getColliderShapeName = (enumNumber: number) => {
   return '[UNKNOWN]';
 };
 
+// @CHORE: We need to rewrite this, because these rb methods are now promises.
+// Check all of these at once in the worker.
 export const isDynamicPhysicsObjectValid = (po: PhysicsObject) =>
   po.mesh &&
   po.rigidBody &&

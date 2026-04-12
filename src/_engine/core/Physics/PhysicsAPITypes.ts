@@ -28,7 +28,7 @@ export type EngineAPIType = {
     }
   ) => WorldAPI;
   createRigidBody: (params: RigidBodyParams) => RigidBodyAPI;
-  createCollider: (params: ColliderParams) => ColliderAPI;
+  createCollider: (params: ColliderParams, parentId?: number) => ColliderAPI;
   createRigidBodies: (params: RigidBodyParams[]) => RigidBodyAPI[];
   createColliders: (params: ColliderParams[]) => ColliderAPI[];
   deleteWorld: () => { worldDeleted: boolean };
@@ -38,8 +38,8 @@ export type EngineAPIType = {
   deleteColliders: (ids: number[], wakeUps?: boolean[]) => { ids: number[] };
   takeSnapshot: () => Uint8Array | undefined;
   restoreSnapshot: (snapshot: Uint8Array) => WorldAPI;
-  getRigidBodyAPIWithId: (id: number) => RigidBodyAPI | undefined;
-  getColliderAPIWithId: (id: number) => ColliderAPI | undefined;
+  getRigidBody: (id: number) => RigidBodyAPI | undefined;
+  getCollider: (id: number) => ColliderAPI | undefined;
 };
 
 export type PhysicsState = {
@@ -218,6 +218,8 @@ export type RigidBodyAPI = {
   rot: PhysRotation;
   lvel: PhysVector;
   avel: PhysVector;
+
+  isBeingDeleted: boolean;
 
   // --- Metadata & Validity ---
   uData: Record<string, unknown>;
@@ -1408,14 +1410,15 @@ export type WorldAPI = {
    * Use `World.restoreSnapshot` to create a new physics world with a state identical to
    * the state when `.takeSnapshot()` is called.
    */
-  takeSnapshot(): Promise<Uint8Array | undefined>;
+  takeSnapshot(): Promise<Uint8Array | undefined>; // @CHORE: change the type to have the rb and coll data
+  takeSnapshotSync(): Uint8Array | undefined; // @CHORE: change the type to have the rb and coll data
   /**
    * Creates a new physics world from a snapshot.
    *
    * This new physics world will be an identical copy of the snapshoted physics world.
    */
-  restoreSnapshot(data: Uint8Array): Promise<WorldAPI>;
-  restoreSnapshotSync(data: Uint8Array): WorldAPI;
+  restoreSnapshot(data: Uint8Array): Promise<WorldAPI>; // @CHORE: change the type to have the rb and coll data
+  restoreSnapshotSync(data: Uint8Array): WorldAPI; // @CHORE: change the type to have the rb and coll data
   /**
    * Computes all the lines (and their colors) needed to render the scene.
    *
@@ -1551,15 +1554,15 @@ export type WorldAPI = {
    *
    * @param id - The integer handle of the rigid-body to retrieve.
    */
-  getRigidBody: (id: number) => Promise<RigidBodyAPI | undefined>;
-  getRigidBodySync: (id: number) => RigidBodyAPI | undefined;
+  getRigidBody(id: number): Promise<RigidBodyAPI | undefined>;
+  getRigidBodySync(id: number): RigidBodyAPI | undefined;
   /**
    * Retrieves a collider from its handle.
    *
    * @param id - The integer handle of the collider to retrieve.
    */
-  getCollider: (id: number) => Promise<ColliderAPI | undefined>;
-  getColliderSync: (id: number) => ColliderAPI | undefined;
+  getCollider(id: number): Promise<ColliderAPI | undefined>;
+  getColliderSync(id: number): ColliderAPI | undefined;
   /**
    * Removes the given rigid-body from this physics world.
    *
@@ -1568,14 +1571,14 @@ export type WorldAPI = {
    *
    * @param bodyOrId - The rigid-body or id to remove.
    */
-  removeRigidBody: (bodyOrId: RigidBodyAPI | number) => void;
+  removeRigidBody(bodyOrId: RigidBodyAPI | number): void;
   /**
    * Removes the given collider from this physics world.
    *
    * @param colliderOrId - The collider or id to remove.
    * @param wakeUp - If set to `true`, the rigid-body this collider is attached to will be awaken.
    */
-  removeCollider: (colliderOrId: ColliderAPI | number, wakeUp: boolean) => void;
+  removeCollider(colliderOrId: ColliderAPI | number, wakeUp: boolean): void;
   /**
    * Find the closest intersection between a ray and the physics world.
    *
@@ -1588,7 +1591,7 @@ export type WorldAPI = {
    * @param groups - Used to filter the colliders that can or cannot be hit by the ray.
    * @param filter - The callback to filter out which collider will be hit.
    */
-  castRay: (
+  castRay(
     ray: PhysRay,
     maxToi: number,
     solid: boolean,
@@ -1597,8 +1600,8 @@ export type WorldAPI = {
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
     filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => Promise<RayColliderHitAPI | null>;
-  castRaySync: (
+  ): Promise<RayColliderHitAPI | null>;
+  castRaySync(
     ray: PhysRay,
     maxToi: number,
     solid: boolean,
@@ -1607,7 +1610,7 @@ export type WorldAPI = {
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
     filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => RayColliderHitAPI | null;
+  ): RayColliderHitAPI | null;
   /**
    * Find the closest intersection between a ray and the physics world.
    *
@@ -1620,7 +1623,7 @@ export type WorldAPI = {
    *   whereas `false` implies that all shapes are hollow for this ray-cast.
    * @param groups - Used to filter the colliders that can or cannot be hit by the ray.
    */
-  castRayAndGetNormal: (
+  castRayAndGetNormal(
     ray: PhysRay,
     maxToi: number,
     solid: boolean,
@@ -1629,8 +1632,8 @@ export type WorldAPI = {
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
     filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => Promise<RayColliderIntersectionAPI | null>;
-  castRayAndGetNormalSync: (
+  ): Promise<RayColliderIntersectionAPI | null>;
+  castRayAndGetNormalSync(
     ray: PhysRay,
     maxToi: number,
     solid: boolean,
@@ -1639,7 +1642,7 @@ export type WorldAPI = {
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
     filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => RayColliderIntersectionAPI | null;
+  ): RayColliderIntersectionAPI | null;
   /**
    * Cast a ray and collects all the intersections between a ray and the scene.
    *
@@ -1653,7 +1656,7 @@ export type WorldAPI = {
    * @param callback - The callback called once per hit (in no particular order) between a ray and a collider.
    *   If this callback returns `false`, then the cast will stop and no further hits will be detected/reported.
    */
-  intersectionsWithRay: (
+  intersectionsWithRay(
     ray: PhysRay,
     maxToi: number,
     solid: boolean,
@@ -1663,35 +1666,51 @@ export type WorldAPI = {
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
     filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => void;
+  ): Promise<void>;
+  intersectionsWithRaySync(
+    ray: PhysRay,
+    maxToi: number,
+    solid: boolean,
+    callback: (intersect: RayColliderIntersectionAPI) => boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean
+  ): void;
   /**
    * Enumerates all the colliders potentially in contact with the given collider.
    *
    * @param collider1 - The second collider involved in the contact.
    * @param f - Closure that will be called on each collider that is in contact with `collider1`.
    */
-  contactPairsWith: (collider1: ColliderAPI | number, f: (collider2: ColliderAPI) => void) => void;
+  contactPairsWith(
+    collider1: ColliderAPI | number,
+    f: (collider2: ColliderAPI) => void
+  ): Promise<void>;
+  contactPairsWithSync(collider1: ColliderAPI | number, f: (collider2: ColliderAPI) => void): void;
   /**
    * Enumerates all the colliders intersecting the given colliders, assuming one of them
    * is a sensor.
    */
-  intersectionPairsWith: (
+  intersectionPairsWith(
     collider1: ColliderAPI | number,
     f: (collider2: ColliderAPI) => void
-  ) => void;
+  ): Promise<void>;
+  intersectionPairsWithSync(
+    collider1: ColliderAPI | number,
+    f: (collider2: ColliderAPI) => void
+  ): void;
   /**
    * Returns `true` if `collider1` and `collider2` intersect and at least one of them is a sensor.
    * @param collider1 − The first collider involved in the intersection.
    * @param collider2 − The second collider involved in the intersection.
    */
-  intersectionPair: (
+  intersectionPair(
     collider1: ColliderAPI | number,
     collider2: ColliderAPI | number
-  ) => Promise<boolean>;
-  intersectionPairSync: (
-    collider1: ColliderAPI | number,
-    collider2: ColliderAPI | number
-  ) => boolean;
+  ): Promise<boolean>;
+  intersectionPairSync(collider1: ColliderAPI | number, collider2: ColliderAPI | number): boolean;
   /**
    * Creates a new character controller.
    *
@@ -2426,21 +2445,21 @@ export type PhysicsDownProtocol =
       }
     | {
         type: PhysicsProtocolType.WORLD_GET_TIMESTEP;
-        dt?: number;
+        dt: number;
       }
     | {
         type: PhysicsProtocolType.WORLD_GET_LENGTH_UNIT;
-        unitsPerMeter?: number;
+        unitsPerMeter: number;
       }
     | {
         type: PhysicsProtocolType.WORLD_GET_SOLVER_ITERS;
-        solverIterations?: number;
+        solverIterations: number;
       }
     | {
         type: PhysicsProtocolType.WORLD_GET_PGS_ITERS;
-        internalPgsIterations?: number;
+        internalPgsIterations: number;
       }
-    | { type: PhysicsProtocolType.WORLD_GET_CCD_SUBSTEPS; substeps?: number }
+    | { type: PhysicsProtocolType.WORLD_GET_CCD_SUBSTEPS; substeps: number }
     // World query Results --------------------------------------
     | {
         type: PhysicsProtocolType.WORLD_CAST_RAY;
@@ -2632,10 +2651,6 @@ export declare enum PhysicsProtocolType {
   WORLD_SET_PGS_ITERS = 211,
   WORLD_GET_CCD_SUBSTEPS = 212,
   WORLD_SET_CCD_SUBSTEPS = 213,
-  WORLD_CREATE_RIGID_BODY = 214,
-  WORLD_CREATE_COLLIDER = 215,
-  WORLD_REMOVE_RIGID_BODY = 216,
-  WORLD_REMOVE_COLLIDER = 217,
   // WORLD QUERIES
   WORLD_CAST_RAY = 300,
   WORLD_CAST_RAY_AND_GET_NORMAL = 301,

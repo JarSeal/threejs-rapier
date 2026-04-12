@@ -19,40 +19,58 @@ export const physicsSwitchWorld = async (
 
   switch (data.type) {
     // WorldAPI ---------------------------
-    case PhysicsProtocolType.WORLD_GRAVITY:
-      // WORLD_GRAVITY
-      const gravity = await physicsWorldAPI.gravity(data.gravity);
+    case PhysicsProtocolType.WORLD_GET_GRAVITY:
+      // WORLD_GET_GRAVITY
+      const gravity = physicsWorldAPI.getGravitySync();
       return sendMessage({ type, gravity }, data);
+    case PhysicsProtocolType.WORLD_SET_GRAVITY:
+      // WORLD_SET_GRAVITY
+      return physicsWorldAPI.setGravity(data.gravity);
     case PhysicsProtocolType.WORLD_FREE:
       // WORLD_FREE
       return physicsWorldAPI.free();
-    case PhysicsProtocolType.WORLD_PROPAGATE_MODIFIED_BODY_POSITIONS_TO_COLLIDERS:
+    case PhysicsProtocolType.WORLD_PROPAGATE_POSITIONS:
       // WORLD_PROPAGATE_MODIFIED_BODY_POSITIONS_TO_COLLIDERS
       return physicsWorldAPI.propagateModifiedBodyPositionsToColliders();
-    case PhysicsProtocolType.WORLD_TIMESTEP:
-      // WORLD_TIMESTEP
-      const dt = await physicsWorldAPI.timestep(data.dt);
+    case PhysicsProtocolType.WORLD_GET_TIMESTEP:
+      // WORLD_GET_TIMESTEP
+      const dt = physicsWorldAPI.getTimestepSync();
       return sendMessage({ type, dt }, data);
-    case PhysicsProtocolType.WORLD_LENGTH_UNIT:
-      // WORLD_LENGTH_UNIT
-      const unitsPerMeter = await physicsWorldAPI.lengthUnit(data.unitsPerMeter);
+    case PhysicsProtocolType.WORLD_SET_TIMESTEP:
+      // WORLD_SET_TIMESTEP
+      return physicsWorldAPI.setTimestep(data.dt);
+    case PhysicsProtocolType.WORLD_GET_LENGTH_UNIT:
+      // WORLD_GET_LENGTH_UNIT
+      const unitsPerMeter = physicsWorldAPI.getLengthUnitSync();
       return sendMessage({ type, unitsPerMeter }, data);
-    case PhysicsProtocolType.WORLD_NUM_SOLVER_ITERATIONS:
-      // WORLD_NUM_SOLVER_ITERATIONS
-      const solverIterations = await physicsWorldAPI.numSolverIterations(data.niter);
+    case PhysicsProtocolType.WORLD_SET_LENGTH_UNIT:
+      // WORLD_SET_LENGTH_UNIT
+      return physicsWorldAPI.setLengthUnit(data.unitsPerMeter);
+    case PhysicsProtocolType.WORLD_GET_SOLVER_ITERS:
+      // WORLD_GET_SOLVER_ITERS
+      const solverIterations = physicsWorldAPI.getNumSolverIterationsSync();
       return sendMessage({ type, solverIterations }, data);
-    case PhysicsProtocolType.WORLD_NUM_INTERNAL_PGS_ITERATIONS:
-      // WORLD_NUM_INTERNAL_PGS_ITERATIONS
-      const internalPgsIterations = await physicsWorldAPI.numSolverIterations(data.niter);
+    case PhysicsProtocolType.WORLD_SET_SOLVER_ITERS:
+      // WORLD_SET_SOLVER_ITERS
+      return physicsWorldAPI.setNumSolverIterations(data.niter);
+    case PhysicsProtocolType.WORLD_GET_PGS_ITERS:
+      // WORLD_GET_PGS_ITERS
+      const internalPgsIterations = physicsWorldAPI.getNumInternalPgsIterationsSync();
       return sendMessage({ type, internalPgsIterations }, data);
-    case PhysicsProtocolType.WORLD_MAX_CCD_SUBSTEPS:
-      // WORLD_MAX_CCD_SUBSTEPS
-      const substeps = await physicsWorldAPI.maxCcdSubsteps(data.substeps);
+    case PhysicsProtocolType.WORLD_SET_PGS_ITERS:
+      // WORLD_SET_PGS_ITERS
+      return physicsWorldAPI.setNumInternalPgsIterations(data.niter);
+    case PhysicsProtocolType.WORLD_GET_CCD_SUBSTEPS:
+      // WORLD_GET_CCD_SUBSTEPS
+      const substeps = physicsWorldAPI.getMaxCcdSubstepsSync();
       return sendMessage({ type, substeps }, data);
+    case PhysicsProtocolType.WORLD_SET_CCD_SUBSTEPS:
+      // WORLD_SET_CCD_SUBSTEPS
+      return physicsWorldAPI.setMaxCcdSubstepsSync(data.substeps);
     case PhysicsProtocolType.WORLD_CAST_RAY:
       // WORLD_CAST_RAY
       let hitTransfer: WorldCastRayResponse['hit'] = null;
-      const hit = await physicsWorldAPI.castRay(
+      const hit = physicsWorldAPI.castRaySync(
         data.ray,
         data.maxToi,
         data.solid,
@@ -71,7 +89,7 @@ export const physicsSwitchWorld = async (
     case PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL: {
       // WORLD_CAST_RAY_AND_GET_NORMAL
       let intersectionTransfer: WorldCastRayAndGetNormalResponse['intersection'] = null;
-      const intersection = await physicsWorldAPI.castRayAndGetNormal(
+      const intersection = physicsWorldAPI.castRayAndGetNormalSync(
         data.ray,
         data.maxToi,
         data.solid,
@@ -91,7 +109,7 @@ export const physicsSwitchWorld = async (
     case PhysicsProtocolType.WORLD_INTERSECTIONS_WITH_RAY: {
       // WORLD_INTERSECTIONS_WITH_RAY
       const hits: WorldIntersectionsWithRayResponse['intersections'] = [];
-      physicsWorldAPI.intersectionsWithRay(
+      physicsWorldAPI.intersectionsWithRaySync(
         data.ray,
         data.maxToi,
         data.solid,
@@ -113,7 +131,7 @@ export const physicsSwitchWorld = async (
     case PhysicsProtocolType.WORLD_CONTACT_PAIRS_WITH: {
       // WORLD_CONTACT_PAIRS_WITH
       const colliderIds: number[] = [];
-      physicsWorldAPI.contactPairsWith(data.colliderId, (collider2) => {
+      physicsWorldAPI.contactPairsWithSync(data.colliderId, (collider2) => {
         const coll2Id = getCollOrRigidId(collider2);
         if (coll2Id) colliderIds.push(coll2Id);
       });
@@ -122,7 +140,7 @@ export const physicsSwitchWorld = async (
     case PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH: {
       // WORLD_INTERSECTION_PAIRS_WITH
       const colliderIds: number[] = [];
-      physicsWorldAPI.intersectionPairsWith(data.colliderId, (collider2) => {
+      physicsWorldAPI.intersectionPairsWithSync(data.colliderId, (collider2) => {
         const coll2Id = getCollOrRigidId(collider2);
         if (coll2Id) colliderIds.push(coll2Id);
       });
@@ -130,7 +148,10 @@ export const physicsSwitchWorld = async (
     }
     case PhysicsProtocolType.WORLD_INTERSECTION_PAIR: {
       // WORLD_INTERSECTION_PAIR
-      const isIntersecting = physicsWorldAPI.intersectionPair(data.colliderId1, data.colliderId2);
+      const isIntersecting = physicsWorldAPI.intersectionPairSync(
+        data.colliderId1,
+        data.colliderId2
+      );
       return sendMessage({ type, isIntersecting }, data);
     }
 

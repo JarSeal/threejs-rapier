@@ -255,9 +255,11 @@ export const createRigidBody = (params: RigidBodyParams) => {
   return rigidBodyAPI;
 };
 
-export const createCollider = (params: ColliderParams) => {
+export const createCollider = (params: ColliderParams, parentId?: number) => {
   let shape: Rapier.Shape | null = null;
   let size: { [key: string]: number };
+
+  if (parentId) params.parentId = parentId;
 
   switch (params.type) {
     case 'CUBOID':

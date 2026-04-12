@@ -116,9 +116,7 @@ import {
   RigidIsSleepingResponse,
   RigidBodyTypeResponse,
   RigidIsEnabledResponse,
-  WorldProxyAPIType,
   RigidGetUserDataResponse,
-  RigidBodyProxyAPIType,
   RigidBodyWorkerEngine,
   RayColliderHitAPI,
 } from './Physics/PhysicsAPITypes';
@@ -239,7 +237,7 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
       loopState: getReadOnlyLoopState(),
       doNotCreateWorld,
     });
-    if (worldCreated) physicsWorld = createWorkerPhysicsWorldAPI();
+    if (worldCreated) physicsWorld = new WorldProxyAPI();
   }
 };
 
@@ -1528,7 +1526,7 @@ export const createPhysicsWorld = async (
       opts: optsArg,
     });
     if (response.worldCreated) {
-      physicsWorld = createWorkerPhysicsWorldAPI();
+      physicsWorld = new WorldProxyAPI();
       physicsWorldEnabled = true;
       if (isDebugEnvironment()) initDebuggerScenePhysState(); // @CHORE: this needs to change (no scene stuff)
       addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChangeHandler);
@@ -1603,8 +1601,7 @@ export const restorePhysicsSnapshot = async (snapshot: Uint8Array) => {
       type: PhysicsProtocolType.RESTORE_SNAPSHOT,
       snapshot,
     });
-    physicsWorld = createWorkerPhysicsWorldAPI(); // Not sure if we need to recreate the WorldAPI?
-    if (response.worldCreated) physicsWorld = createWorkerPhysicsWorldAPI();
+    if (response.worldCreated) physicsWorld = new WorldProxyAPI();
   }
   return physicsWorld;
 };
@@ -1631,7 +1628,7 @@ export const createRigidBody = async (params: RigidBodyParams) => {
       new RigidBodyProxyAPI(rbId, params.userData),
       `Could not create a rigid body ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
     );
-    return rbAPI;
+    return rbAPI as RigidBodyAPI;
   }
   // Should not get here..
   throw new Error(
@@ -1759,14 +1756,14 @@ export const deleteRigidBodies = async (ids: number[] /*, deletePhysicsObject?: 
 };
 
 /** Create a collider. */
-export const createCollider = async (params: ColliderParams) => {
+export const createCollider = async (params: ColliderParams, parentId?: number) => {
   existsOrThrow(
     physicsWorldEnabled,
     'Physics world is not created. Create the world before creating a collider.'
   );
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     return existsOrThrow(
-      engAPI?.createCollider(params),
+      engAPI?.createCollider(params, parentId),
       `Could not create a collider ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
     );
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
@@ -1774,18 +1771,13 @@ export const createCollider = async (params: ColliderParams) => {
       await messageWorkerAsync<CreateColliderResponse>({
         type: PhysicsProtocolType.CREATE_COLLIDER,
         params,
+        parentId,
       })
     ).id;
     const collAPI = existsOrThrow(
       createEnginePhysicsColliderAPI(collId),
-      `Could not create a collider ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
+      `Could not create a colliderAPI in the PhysicsAPI ("WORKER_THREAD"). Params: ${JSON.stringify(params)}, parentId?: ${parentId}`
     );
-    if (params.userData) {
-      // This is okay when creating these, since we know we have the
-      // same userData state in the engine (uData should after this
-      // set with userData(data) method).
-      collAPI.uData = params.userData;
-    }
     colliders.set(collId, collAPI);
     return collAPI;
   }
@@ -1906,18 +1898,18 @@ export const deleteColliders = async (ids: number[], wakeUps?: boolean[]) => {
 export const getRigidBody = (id: number) => rigidBodies.get(id);
 export const getCollider = (id: number) => colliders.get(id);
 
-/** World, RigidBody, and Collider API definitions -----[ START ]----- */
+/** World, RigidBody, and Collider API classes -----[ START ]----- */
 
 class WorldProxyAPI implements WorldAPI {
   restoringWorld: boolean;
   // Local cache for sync getters (updated via worker messages or setters)
   private _cache = {
     gravity: physicsState.gravity,
-    timestep: 0.016,
+    timestep: physicsState.timestepRatio,
     lengthUnit: 1.0,
-    solverIters: 4,
-    pgsIters: 1,
-    ccdSubsteps: 1,
+    solverIters: physicsState.solverIterations,
+    pgsIters: physicsState.internalPgsIterations,
+    ccdSubsteps: 1, // TODO: add this as physicsState value, CONFIG value, and physics debugger tab value
   };
 
   constructor() {
@@ -1955,16 +1947,21 @@ class WorldProxyAPI implements WorldAPI {
     return await takePhysicsSnapshot();
   }
 
+  takeSnapshotSync(): Uint8Array | undefined {
+    throw new Error(
+      'takeSnapshotSync is not supported in Worker thread mode. Use takeSnapshot(data).'
+    );
+  }
+
   async restoreSnapshot(data: Uint8Array): Promise<WorldAPI> {
     return restorePhysicsSnapshot(data);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   restoreSnapshotSync(_data: Uint8Array): WorldAPI {
-    const msg =
-      'restoreSnapshotSync is not supported in Worker thread mode. Use restoreSnapshot(data).';
-    lerror(msg);
-    throw new Error(msg);
+    throw new Error(
+      'restoreSnapshotSync is not supported in Worker thread mode. Use restoreSnapshot(data).'
+    );
   }
 
   propagateModifiedBodyPositionsToColliders(): void {
@@ -1973,7 +1970,7 @@ class WorldProxyAPI implements WorldAPI {
 
   // --- Parameters (Timestep, Units, Solver) ---
   async getTimestep(): Promise<number> {
-    const res = await messageWorkerAsync<{ dt: number }>({
+    const res = await messageWorkerAsync<WorldTimestepResponse>({
       type: PhysicsProtocolType.WORLD_GET_TIMESTEP,
     });
     this._cache.timestep = res.dt;
@@ -1988,11 +1985,11 @@ class WorldProxyAPI implements WorldAPI {
   }
 
   async getLengthUnit(): Promise<number> {
-    const res = await messageWorkerAsync<{ unit: number }>({
+    const res = await messageWorkerAsync<WorldLengthUnitResponse>({
       type: PhysicsProtocolType.WORLD_GET_LENGTH_UNIT,
     });
-    this._cache.lengthUnit = res.unit;
-    return res.unit;
+    this._cache.lengthUnit = res.unitsPerMeter;
+    return res.unitsPerMeter;
   }
   getLengthUnitSync(): number {
     return this._cache.lengthUnit;
@@ -2003,11 +2000,11 @@ class WorldProxyAPI implements WorldAPI {
   }
 
   async getNumSolverIterations(): Promise<number> {
-    const res = await messageWorkerAsync<{ iters: number }>({
+    const res = await messageWorkerAsync<WorldNumSolverIterationsResponse>({
       type: PhysicsProtocolType.WORLD_GET_SOLVER_ITERS,
     });
-    this._cache.solverIters = res.iters;
-    return res.iters;
+    this._cache.solverIters = res.solverIterations;
+    return res.solverIterations;
   }
   getNumSolverIterationsSync(): number {
     return this._cache.solverIters;
@@ -2018,11 +2015,11 @@ class WorldProxyAPI implements WorldAPI {
   }
 
   async getNumInternalPgsIterations(): Promise<number> {
-    const res = await messageWorkerAsync<{ iters: number }>({
+    const res = await messageWorkerAsync<WorldNumInternalPgsIterationsResponse>({
       type: PhysicsProtocolType.WORLD_GET_PGS_ITERS,
     });
-    this._cache.pgsIters = res.iters;
-    return res.iters;
+    this._cache.pgsIters = res.internalPgsIterations;
+    return res.internalPgsIterations;
   }
   getNumInternalPgsIterationsSync(): number {
     return this._cache.pgsIters;
@@ -2049,34 +2046,50 @@ class WorldProxyAPI implements WorldAPI {
 
   // --- Factories ---
   async createRigidBody(params: RigidBodyParams): Promise<RigidBodyAPI> {
-    const res = await messageWorkerAsync<{ id: number }>({
-      type: PhysicsProtocolType.WORLD_CREATE_RIGID_BODY,
-      params,
-    });
-    return createRigidBodyProxy(res.id); // Helper to instantiate the Proxy
+    return await createRigidBody(params);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  createRigidBodySync(_params: RigidBodyParams): RigidBodyAPI {
-    const msg =
-      'Synchronous creation is not supported in Worker thread mode. Use createRigidBody(params).';
+  createRigidBodySync(params: RigidBodyParams): RigidBodyAPI {
+    if (physicsState.workerTarget === 'MAIN_THREAD') {
+      return existsOrThrow(
+        engAPI?.createRigidBody(params),
+        `Could not create a rigid body ("MAIN_THREAD"). Params: ${JSON.stringify(params)}. Has engineAPI: ${Boolean(engAPI)}`
+      );
+    } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+      const msg =
+        'Synchronous creation is not supported in Worker thread mode. Use createRigidBody(params).';
+      lerror(msg);
+      throw new Error(msg);
+    }
+    // Should not get here
+    const msg = `Unknown physicsState.workerTarget: "${physicsState.workerTarget}".`;
     lerror(msg);
     throw new Error(msg);
   }
 
-  async createCollider(params: ColliderParams, parent?: RigidBodyAPI): Promise<ColliderAPI> {
-    const res = await messageWorkerAsync<{ id: number }>({
-      type: PhysicsProtocolType.WORLD_CREATE_COLLIDER,
-      params,
-      parentId: parent?.id,
-    });
-    return createColliderProxy(res.id);
+  async createCollider(
+    params: ColliderParams,
+    parent?: RigidBodyAPI | number
+  ): Promise<ColliderAPI> {
+    const parentId = typeof parent === 'number' ? parent : parent?.id;
+    return await createCollider(params, parentId);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  createColliderSync(_params: ColliderParams, _parent?: RigidBodyAPI): ColliderAPI {
-    const msg =
-      'Synchronous creation is not supported in Worker thread mode. Use createCollider(params, parent?).';
+  createColliderSync(params: ColliderParams, parent?: RigidBodyAPI | number): ColliderAPI {
+    const parentId = typeof parent === 'number' ? parent : parent?.id;
+    if (physicsState.workerTarget === 'MAIN_THREAD') {
+      return existsOrThrow(
+        engAPI?.createCollider(params, parentId),
+        `Could not create a collider ("MAIN_THREAD"). Params: ${JSON.stringify(params)}. Has engineAPI: ${Boolean(engAPI)}`
+      );
+    } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+      const msg =
+        'Synchronous creation is not supported in Worker thread mode. Use createCollider(params, parent?).';
+      lerror(msg);
+      throw new Error(msg);
+    }
+    // Should not get here
+    const msg = `Unknown physicsState.workerTarget: "${physicsState.workerTarget}".`;
     lerror(msg);
     throw new Error(msg);
   }
@@ -2087,7 +2100,7 @@ class WorldProxyAPI implements WorldAPI {
    * as it is synchronous and faster.
    */
   async getRigidBody(id: number): Promise<RigidBodyAPI | undefined> {
-    // Usually checks a local registry Map<number, RigidBodyProxy>
+    // Checks a local registry Map<number, RigidBodyProxy>
     return rigidBodies.get(id);
   }
 
@@ -2112,14 +2125,12 @@ class WorldProxyAPI implements WorldAPI {
   // --- Removal ---
   removeRigidBody(bodyOrId: RigidBodyAPI | number): void {
     const id = typeof bodyOrId === 'number' ? bodyOrId : bodyOrId.id;
-    messageWorker({ type: PhysicsProtocolType.WORLD_REMOVE_RIGID_BODY, id });
-    rigidBodies.delete(id);
+    deleteRigidBody(id);
   }
 
   removeCollider(colliderOrId: ColliderAPI | number, wakeUp: boolean): void {
     const id = typeof colliderOrId === 'number' ? colliderOrId : colliderOrId.id;
-    messageWorker({ type: PhysicsProtocolType.WORLD_REMOVE_COLLIDER, id, wakeUp });
-    colliders.delete(id);
+    deleteCollider(id, wakeUp);
   }
 
   // --- Queries (Raycasting) ---
@@ -2140,11 +2151,11 @@ class WorldProxyAPI implements WorldAPI {
         solid,
         filterFlags,
         filterGroups,
-        excludeCollider:
+        filterExcludeCollider:
           typeof filterExcludeCollider === 'number'
             ? filterExcludeCollider
             : filterExcludeCollider?.id,
-        excludeRigidBody:
+        filterExcludeRigidBody:
           typeof filterExcludeRigidBody === 'number'
             ? filterExcludeRigidBody
             : filterExcludeRigidBody?.id,
@@ -2168,7 +2179,7 @@ class WorldProxyAPI implements WorldAPI {
     filterGroups?: InteractionGroupsAPI
   ): Promise<RayColliderIntersectionAPI | null> {
     return await messageWorkerAsync<RayColliderIntersectionAPI | null>({
-      type: PhysicsProtocolType.WORLD_CAST_RAY_AND_NORMAL,
+      type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL,
       ray,
       maxToi,
       solid,
@@ -2182,166 +2193,7 @@ class WorldProxyAPI implements WorldAPI {
   }
 
   // --- Interaction Pairs ---
-  intersectionsWithRay(
-    ray: PhysRay,
-    maxToi: number,
-    solid: boolean,
-    callback: (intersect: RayColliderIntersectionAPI) => boolean
-  ): void {
-    // Implementation usually requires the worker to stream results back or return a batch
-    console.warn('Streamed ray intersections over workers require a custom batch implementation.');
-  }
-
-  contactPairsWith(collider1: ColliderAPI | number, f: (collider2: ColliderAPI) => void): void {
-    // logic to query worker and run f for each ID returned
-  }
-
-  intersectionPairsWith(
-    collider1: ColliderAPI | number,
-    f: (collider2: ColliderAPI) => void
-  ): void {
-    // logic to query worker
-  }
-
-  async intersectionPair(
-    collider1: ColliderAPI | number,
-    collider2: ColliderAPI | number
-  ): Promise<boolean> {
-    return await messageWorkerAsync<boolean>({
-      type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR,
-      id1: typeof collider1 === 'number' ? collider1 : collider1.id,
-      id2: typeof collider2 === 'number' ? collider2 : collider2.id,
-    });
-  }
-
-  intersectionPairSync(): boolean {
-    return false; // Or check a local "Intersection Cache" if you sync contact pairs every frame
-  }
-}
-
-const createWorkerPhysicsWorldAPI = (): WorldProxyAPIType => ({
-  restoringWorld: false,
-  gravity: async (gravity?: PhysVector) =>
-    (
-      await messageWorkerAsync<WorldGravityResponse>({
-        type: PhysicsProtocolType.WORLD_GRAVITY,
-        gravity,
-      })
-    )?.gravity,
-  free: () => messageWorker({ type: PhysicsProtocolType.WORLD_FREE, isOneWay: true }),
-  takeSnapshot: async () => await takePhysicsSnapshot(),
-  restoreSnapshot: async (snapshot: Uint8Array) => await restorePhysicsSnapshot(snapshot),
-  propagateModifiedBodyPositionsToColliders: () =>
-    messageWorker({
-      type: PhysicsProtocolType.WORLD_PROPAGATE_MODIFIED_BODY_POSITIONS_TO_COLLIDERS,
-      isOneWay: true,
-    }),
-  timestep: async (dt?: number) =>
-    (
-      await messageWorkerAsync<WorldTimestepResponse>({
-        type: PhysicsProtocolType.WORLD_TIMESTEP,
-        dt,
-      })
-    )?.dt,
-  lengthUnit: async (unitsPerMeter?: number) =>
-    (
-      await messageWorkerAsync<WorldLengthUnitResponse>({
-        type: PhysicsProtocolType.WORLD_LENGTH_UNIT,
-        unitsPerMeter,
-      })
-    )?.unitsPerMeter,
-  numSolverIterations: async (niter?: number) =>
-    (
-      await messageWorkerAsync<WorldNumSolverIterationsResponse>({
-        type: PhysicsProtocolType.WORLD_NUM_SOLVER_ITERATIONS,
-        niter,
-      })
-    )?.solverIterations,
-  numInternalPgsIterations: async (niter?: number) =>
-    (
-      await messageWorkerAsync<WorldNumInternalPgsIterationsResponse>({
-        type: PhysicsProtocolType.WORLD_NUM_INTERNAL_PGS_ITERATIONS,
-        niter,
-      })
-    )?.internalPgsIterations,
-  maxCcdSubsteps: async (substeps?: number) =>
-    (
-      await messageWorkerAsync<WorldMaxCcdSubstepsResponse>({
-        type: PhysicsProtocolType.WORLD_MAX_CCD_SUBSTEPS,
-        substeps,
-      })
-    )?.substeps,
-  createRigidBody: async (params: RigidBodyParams) => await createRigidBody(params),
-  createCollider: async (params: ColliderParams) => await createCollider(params),
-  getRigidBody: async (id: number) => rigidBodies.get(id),
-  getCollider: async (id: number) => colliders.get(id),
-  removeRigidBody: async (bodyOrId: RigidBodyAPI | number) => {
-    // @CHORE
-  },
-  removeCollider: async (bodyOrId: ColliderAPI | number, wakeUp?: boolean) => {
-    // @CHORE
-  },
-  castRay: async (
-    ray: PhysRay,
-    maxToi: number,
-    solid: boolean,
-    filterFlags?: QueryFilterFlags,
-    filterGroups?: InteractionGroupsAPI,
-    filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
-    // filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => {
-    const filtExclColl = getCollOrRigidId(filterExcludeCollider);
-    const filtExclRB = getCollOrRigidId(filterExcludeRigidBody);
-    const hit = (
-      await messageWorkerAsync<WorldCastRayResponse>({
-        type: PhysicsProtocolType.WORLD_CAST_RAY,
-        ray,
-        maxToi,
-        solid,
-        filterFlags,
-        filterGroups,
-        filterExcludeCollider: filtExclColl,
-        filterExcludeRigidBody: filtExclRB,
-      })
-    ).hit;
-    if (hit) {
-      const collider = colliders.get(hit.collider);
-      if (collider) return { ...hit, collider };
-    }
-    return null;
-  },
-  castRayAndGetNormal: async (
-    ray: PhysRay,
-    maxToi: number,
-    solid: boolean,
-    filterFlags?: QueryFilterFlags,
-    filterGroups?: InteractionGroupsAPI,
-    filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
-    // filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => {
-    const filtExclColl = getCollOrRigidId(filterExcludeCollider);
-    const filtExclRB = getCollOrRigidId(filterExcludeRigidBody);
-    const intersection = (
-      await messageWorkerAsync<WorldCastRayAndGetNormalResponse>({
-        type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL,
-        ray,
-        maxToi,
-        solid,
-        filterFlags,
-        filterGroups,
-        filterExcludeCollider: filtExclColl,
-        filterExcludeRigidBody: filtExclRB,
-      })
-    ).intersection;
-    if (intersection) {
-      const collider = colliders.get(intersection.collider);
-      if (collider) return { ...intersection, collider };
-    }
-    return null;
-  },
-  intersectionsWithRay: async (
+  async intersectionsWithRay(
     ray: PhysRay,
     maxToi: number,
     solid: boolean,
@@ -2350,13 +2202,12 @@ const createWorkerPhysicsWorldAPI = (): WorldProxyAPIType => ({
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number
-    // filterPredicate?: (collider: ColliderAPI) => boolean
-  ) => {
+  ): Promise<void> {
     const filtExclColl = getCollOrRigidId(filterExcludeCollider);
     const filtExclRB = getCollOrRigidId(filterExcludeRigidBody);
     const intersections = (
       await messageWorkerAsync<WorldIntersectionsWithRayResponse>({
-        type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL,
+        type: PhysicsProtocolType.WORLD_INTERSECTIONS_WITH_RAY,
         ray,
         maxToi,
         solid,
@@ -2371,11 +2222,35 @@ const createWorkerPhysicsWorldAPI = (): WorldProxyAPIType => ({
       const collider = colliders.get(intersectTransfer.collider);
       if (collider) callback({ ...intersectTransfer, collider });
     }
-  },
-  contactPairsWith: async (
+  }
+
+  intersectionsWithRaySync(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _ray: PhysRay,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _maxToi: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _solid: boolean,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _callback: (intersect: RayColliderIntersectionAPI) => boolean,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _filterFlags?: QueryFilterFlags,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _filterGroups?: InteractionGroupsAPI,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _filterExcludeCollider?: ColliderAPI | number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _filterExcludeRigidBody?: RigidBodyAPI | number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _filterPredicate?: (collider: ColliderAPI) => boolean
+  ): void {
+    throw new Error('Raycasting must be async in Worker mode.');
+  }
+
+  async contactPairsWith(
     collider1: ColliderAPI | number,
     f: (collider2: ColliderAPI) => void
-  ) => {
+  ): Promise<void> {
     const coll1Id = getCollOrRigidId(collider1);
     if (!coll1Id) return;
     const colliderIds = (
@@ -2388,11 +2263,21 @@ const createWorkerPhysicsWorldAPI = (): WorldProxyAPIType => ({
       const coll2 = colliders.get(colliderIds[i]);
       if (coll2) f(coll2);
     }
-  },
-  intersectionPairsWith: async (
+  }
+
+  contactPairsWithSync(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _collider1: ColliderAPI | number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _f: (collider2: ColliderAPI) => void
+  ): void {
+    throw new Error('Contact pairing must be async in Worker mode.');
+  }
+
+  async intersectionPairsWith(
     collider1: ColliderAPI | number,
     f: (collider2: ColliderAPI) => void
-  ) => {
+  ): Promise<void> {
     const coll1Id = getCollOrRigidId(collider1);
     if (coll1Id === undefined) return;
     const colliderIds = (
@@ -2405,21 +2290,34 @@ const createWorkerPhysicsWorldAPI = (): WorldProxyAPIType => ({
       const coll2 = colliders.get(colliderIds[i]);
       if (coll2) f(coll2);
     }
-  },
-  intersectionPair: async (collider1: ColliderAPI | number, collider2: ColliderAPI | number) => {
-    const coll1Id = getCollOrRigidId(collider1);
-    const coll2Id = getCollOrRigidId(collider2);
-    if (coll1Id === undefined || coll2Id === undefined) return false;
-    const isIntersecting = (
+  }
+
+  intersectionPairsWithSync(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _collider1: ColliderAPI | number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _f: (collider2: ColliderAPI) => void
+  ): void {
+    throw new Error('Intersection pairing must be async in Worker mode.');
+  }
+
+  async intersectionPair(
+    collider1: ColliderAPI | number,
+    collider2: ColliderAPI | number
+  ): Promise<boolean> {
+    return (
       await messageWorkerAsync<WorldIntersectionPairResponse>({
         type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR,
-        colliderId1: coll1Id,
-        colliderId2: coll2Id,
+        colliderId1: typeof collider1 === 'number' ? collider1 : collider1.id,
+        colliderId2: typeof collider2 === 'number' ? collider2 : collider2.id,
       })
     ).isIntersecting;
-    return isIntersecting;
-  },
-});
+  }
+
+  intersectionPairSync(): boolean {
+    throw new Error('Intersection pairing must be async in Worker mode.');
+  }
+}
 
 class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   uData: Record<string, unknown> = {};
@@ -2427,6 +2325,7 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   rot: PhysRotation = { x: 0, y: 0, z: 0, w: 0 };
   lvel: PhysVector = { x: 0, y: 0, z: 0 };
   avel: PhysVector = { x: 0, y: 0, z: 0 };
+  isBeingDeleted: boolean = false;
 
   constructor(
     public id: number,
@@ -2435,7 +2334,7 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     if (userData) this.uData = userData;
   }
 
-  async getUserData() {
+  async getUserData(): Promise<Record<string, unknown>> {
     const fetchedUserData = (
       await messageWorkerAsync<RigidGetUserDataResponse>({
         type: PhysicsProtocolType.RIGID_GET_USERDATA,
@@ -2445,8 +2344,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     this.uData = fetchedUserData;
     return fetchedUserData;
   }
+  getUserDataSync(): Record<string, unknown> {
+    return this.uData;
+  }
 
-  setUserData(userData: Record<string, unknown>, addToExisting?: boolean) {
+  setUserData(userData: Record<string, unknown>, addToExisting?: boolean): void {
     messageWorker({
       type: PhysicsProtocolType.RIGID_SET_USERDATA,
       rigidBodyId: this.id,
@@ -2468,6 +2370,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).isValid;
+  }
+  isValidSync(): boolean {
+    throw new Error(
+      'Checking the validity of a rigid body (isValid) cannot be synchronous in the worker mode.'
+    );
   }
 
   lockTranslations(locked: boolean, wakeUp: boolean): void {
@@ -2527,6 +2434,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).dominanceGroup;
   }
+  dominanceGroupSync(): number {
+    throw new Error(
+      'Getting the dominance group of a rigid body (dominanceGroup) cannot be synchronous in the worker mode.'
+    );
+  }
 
   setDominanceGroup(group: number): void {
     return messageWorker({
@@ -2543,6 +2455,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).additionalIterations;
+  }
+  additionalSolverIterationsSync(): number {
+    throw new Error(
+      'Checking the additional solver iteration of a rigid body (additionalSolverIterations) cannot be synchronous in the worker mode.'
+    );
   }
 
   setAdditionalSolverIterations(iters: number): void {
@@ -2577,6 +2494,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).softCcdPrediction;
   }
+  softCcdPredictionSync(): number {
+    throw new Error(
+      'Checking the soft CCD prediction number of a rigid body (softCcdPrediction) cannot be synchronous in the worker mode.'
+    );
+  }
 
   translation(): PhysVector {
     return this.pos;
@@ -2594,6 +2516,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).nextTranslation;
   }
+  nextTranslationSync(): PhysVector {
+    throw new Error(
+      'Checking the next translation of a rigid body (nextTranslation) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async nextRotation(): Promise<PhysRotation> {
     return (
@@ -2602,6 +2529,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).nextRotation;
+  }
+  nextRotationSync(): PhysRotation {
+    throw new Error(
+      'Checking the next rotation of a rigid body (nextRotation) cannot be synchronous in the worker mode.'
+    );
   }
 
   setTranslation(tra: PhysVector, wakeUp: boolean): void {
@@ -2629,6 +2561,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).gravityScale;
+  }
+  gravityScaleSync(): number {
+    throw new Error(
+      'Checking the gravity scale of a rigid body (gravityScale) cannot be synchronous in the worker mode.'
+    );
   }
 
   setGravityScale(factor: number, wakeUp: boolean): void {
@@ -2687,6 +2624,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).velocityAtPoint;
   }
+  velocityAtPointSync(): PhysVector {
+    throw new Error(
+      'Checking the velocity at point of a rigid body (velocityAtPoint) cannot be synchronous in the worker mode.'
+    );
+  }
 
   angvel(): PhysVector {
     return this.avel;
@@ -2700,6 +2642,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).mass;
   }
+  massSync(): number {
+    throw new Error(
+      'Checking the mass of a rigid body (mass) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async effectiveInvMass(): Promise<PhysVector> {
     return (
@@ -2708,6 +2655,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).effectiveInvMass;
+  }
+  effectiveInvMassSync(): PhysVector {
+    throw new Error(
+      'Checking the mass of a rigid body (effectiveInvMass) cannot be synchronous in the worker mode.'
+    );
   }
 
   async invMass(): Promise<number> {
@@ -2718,6 +2670,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).invMass;
   }
+  invMassSync(): number {
+    throw new Error(
+      'Checking the mass of a rigid body (invMass) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async localCom(): Promise<PhysVector> {
     return (
@@ -2726,6 +2683,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).localCom;
+  }
+  localComSync(): PhysVector {
+    throw new Error(
+      'Checking the local com of a rigid body (localCom) cannot be synchronous in the worker mode.'
+    );
   }
 
   async worldCom(): Promise<PhysVector> {
@@ -2736,6 +2698,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).worldCom;
   }
+  worldComSync(): PhysVector {
+    throw new Error(
+      'Checking the world com of a rigid body (worldCom) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async invPrincipalInertia(): Promise<PhysVector> {
     return (
@@ -2744,6 +2711,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).invPrincipalInertia;
+  }
+  invPrincipalInertiaSync(): PhysVector {
+    throw new Error(
+      'Checking the inertia of a rigid body (invPrincipalInertia) cannot be synchronous in the worker mode.'
+    );
   }
 
   async principalInertia(): Promise<PhysVector> {
@@ -2754,6 +2726,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).principalInertia;
   }
+  principalInertiaSync(): PhysVector {
+    throw new Error(
+      'Checking the inertia of a rigid body (principalInertia) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async principalInertiaLocalFrame(): Promise<PhysRotation> {
     return (
@@ -2762,6 +2739,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).principalInertiaLocalFrame;
+  }
+  principalInertiaLocalFrameSync(): PhysRotation {
+    throw new Error(
+      'Checking the inertia of a rigid body (principalInertiaLocalFrame) cannot be synchronous in the worker mode.'
+    );
   }
 
   sleep(): void {
@@ -2786,6 +2768,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).isCcdEnabled;
   }
+  isCcdEnabledSync(): boolean {
+    throw new Error(
+      'Checking the CCD of a rigid body (isCcdEnabled) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async numColliders(): Promise<number> {
     return (
@@ -2794,6 +2781,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).numColliders;
+  }
+  numCollidersSync(): number {
+    throw new Error(
+      'Checking the number of colliders of a rigid body (numColliders) cannot be synchronous in the worker mode.'
+    );
   }
 
   async collider(i: number): Promise<ColliderAPI> {
@@ -2805,6 +2797,12 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     return existsOrThrow(
       colliders.get(response.colliderId),
       `Could not find collider in ColliderAPI.collider(${i}).`
+    );
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  colliderSync(_i: number): ColliderAPI {
+    throw new Error(
+      'Getting a collider of a rigid body (colllider) cannot be synchronous in the worker mode.'
     );
   }
 
@@ -2824,6 +2822,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).isEnabled;
   }
+  isEnabledSync(): boolean {
+    throw new Error(
+      'Checking the enabled state of a rigid body (isEnabled) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async bodyType(): Promise<RigidBodyTypeAPI> {
     return (
@@ -2832,6 +2835,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).bodyType;
+  }
+  bodyTypeSync(): RigidBodyTypeAPI {
+    throw new Error(
+      'Checking the body type of a rigid body (bodyType) cannot be synchronous in the worker mode.'
+    );
   }
 
   setBodyType(bodyType: RigidBodyTypeAPI, wakeUp: boolean): void {
@@ -2851,6 +2859,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).isSleeping;
   }
+  isSleepingSync(): boolean {
+    throw new Error(
+      'Checking the sleeping state of a rigid body (isSleeping) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async isMoving(): Promise<boolean> {
     return (
@@ -2859,6 +2872,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).isMoving;
+  }
+  isMovingSync(): boolean {
+    throw new Error(
+      'Checking the moving state of a rigid body (isMoving) cannot be synchronous in the worker mode.'
+    );
   }
 
   async isFixed(): Promise<boolean> {
@@ -2869,6 +2887,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).isFixed;
   }
+  isFixedSync(): boolean {
+    throw new Error(
+      'Checking the fixed state of a rigid body (isFixed) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async isKinematic(): Promise<boolean> {
     return (
@@ -2877,6 +2900,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).isKinematic;
+  }
+  isKinematicSync(): boolean {
+    throw new Error(
+      'Checking the kinematic state of a rigid body (isKinematic) cannot be synchronous in the worker mode.'
+    );
   }
 
   async isDynamic(): Promise<boolean> {
@@ -2887,6 +2915,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).isDynamic;
   }
+  isDynamicSync(): boolean {
+    throw new Error(
+      'Checking the dynamic state of a rigid body (isDynamic) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async linearDamping(): Promise<number> {
     return (
@@ -2896,6 +2929,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).linearDamping;
   }
+  linearDampingSync(): number {
+    throw new Error(
+      'Getting the linear damping of a rigid body (linearDamping) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async angularDamping(): Promise<number> {
     return (
@@ -2904,6 +2942,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
         rigidBodyId: this.id,
       })
     ).angularDamping;
+  }
+  angularDampingSync(): number {
+    throw new Error(
+      'Getting the angular damping of a rigid body (angularDamping) cannot be synchronous in the worker mode.'
+    );
   }
 
   setLinearDamping(factor: number): void {
@@ -3036,6 +3079,11 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).userForce;
   }
+  userForceSync(): PhysVector {
+    throw new Error(
+      'Getting the user force of a rigid body (userForce) cannot be synchronous in the worker mode.'
+    );
+  }
 
   async userTorque(): Promise<PhysVector> {
     return (
@@ -3045,228 +3093,12 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       })
     ).userTorque;
   }
+  userTorqueSync(): PhysVector {
+    throw new Error(
+      'Getting the user torque of a rigid body (userTorque) cannot be synchronous in the worker mode.'
+    );
+  }
 }
-
-const createWorkerPhysicsRigidBodyAPI = (id: number): RigidBodyAPI => ({
-  id,
-  userData: function (userData?: { [key: string]: unknown }) {
-    // returns { [key: string]: unknown } | void;
-  },
-  isValid: function () {
-    // returns boolean;
-  },
-  lockTranslations: function (locked: boolean, wakeUp: boolean) {
-    // returns void;
-  },
-  lockRotations: function (locked: boolean, wakeUp: boolean) {
-    // returns void;
-  },
-  setEnabledTranslations: function (
-    enableX: boolean,
-    enableY: boolean,
-    enableZ: boolean,
-    wakeUp: boolean
-  ) {
-    // returns void;
-  },
-  setEnabledRotations: function (
-    enableX: boolean,
-    enableY: boolean,
-    enableZ: boolean,
-    wakeUp: boolean
-  ) {
-    // returns void;
-  },
-  dominanceGroup: function () {
-    // returns number;
-  },
-  setDominanceGroup: function (group: number) {
-    // returns void;
-  },
-  additionalSolverIterations: function () {
-    // returns number;
-  },
-  setAdditionalSolverIterations: function (iters: number) {
-    // returns void;
-  },
-  enableCcd: function (enabled: boolean) {
-    // returns void;
-  },
-  setSoftCcdPrediction: function (distance: number) {
-    // returns void;
-  },
-  softCcdPrediction: function () {
-    // returns number;
-  },
-  translation: function () {
-    // returns PhysVector;
-  },
-  rotation: function () {
-    // returns PhysRotation;
-  },
-  nextTranslation: function () {
-    // returns PhysVector;
-  },
-  nextRotation: function () {
-    // returns PhysRotation;
-  },
-  setTranslation: function (tra: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  setLinvel: function (vel: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  gravityScale: function () {
-    // returns number;
-  },
-  setGravityScale: function (factor: number, wakeUp: boolean) {
-    // returns void;
-  },
-  setRotation: function (rot: PhysRotation, wakeUp: boolean) {
-    // returns void;
-  },
-  setAngvel: function (vel: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  setNextKinematicTranslation: function (t: PhysVector) {
-    // returns void;
-  },
-  setNextKinematicRotation: function (rot: PhysRotation) {
-    // returns void;
-  },
-  linvel: function () {
-    // returns PhysVector;
-  },
-  velocityAtPoint: function (point: PhysVector) {
-    // returns PhysVector;
-  },
-  angvel: function () {
-    // returns PhysVector;
-  },
-  mass: function () {
-    // returns number;
-  },
-  effectiveInvMass: function () {
-    // returns PhysVector;
-  },
-  invMass: function () {
-    // returns number;
-  },
-  localCom: function () {
-    // returns PhysVector;
-  },
-  worldCom: function () {
-    // returns PhysVector;
-  },
-  invPrincipalInertia: function () {
-    // returns PhysVector;
-  },
-  principalInertia: function () {
-    // returns PhysVector;
-  },
-  principalInertiaLocalFrame: function () {
-    // returns PhysRotation;
-  },
-  sleep: function () {
-    // returns void;
-  },
-  wakeUp: function () {
-    // returns void;
-  },
-  isCcdEnabled: function () {
-    // returns boolean;
-  },
-  numColliders: function () {
-    // returns number;
-  },
-  collider: function (i: number) {
-    // returns ColliderAPI;
-  },
-  setEnabled: function (enabled: boolean) {
-    // returns void;
-  },
-  isEnabled: function () {
-    // returns boolean;
-  },
-  bodyType: function () {
-    // returns RigidBodyTypeAPI;
-  },
-  setBodyType: function (type: RigidBodyTypeAPI, wakeUp: boolean) {
-    // returns void;
-  },
-  isSleeping: function () {
-    // returns boolean;
-  },
-  isMoving: function () {
-    // returns boolean;
-  },
-  isFixed: function () {
-    // returns boolean;
-  },
-  isKinematic: function () {
-    // returns boolean;
-  },
-  isDynamic: function () {
-    // returns boolean;
-  },
-  linearDamping: function () {
-    // returns number;
-  },
-  angularDamping: function () {
-    // returns number;
-  },
-  setLinearDamping: function (factor: number) {
-    // returns void;
-  },
-  recomputeMassPropertiesFromColliders: function () {
-    // returns void;
-  },
-  setAdditionalMass: function (mass: number, wakeUp: boolean) {
-    // returns void;
-  },
-  setAdditionalMassProperties: function (
-    mass: number,
-    centerOfMass: PhysVector,
-    principalAngularInertia: PhysVector,
-    angularInertiaLocalFrame: PhysRotation,
-    wakeUp: boolean
-  ) {
-    // returns void;
-  },
-  setAngularDamping: function (factor: number) {
-    // returns void;
-  },
-  resetForces: function (wakeUp: boolean) {
-    // returns void;
-  },
-  resetTorques: function (wakeUp: boolean) {
-    // returns void;
-  },
-  addForce: function (force: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  applyImpulse: function (impulse: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  addTorque: function (torque: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  applyTorqueImpulse: function (torqueImpulse: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  addForceAtPoint: function (force: PhysVector, point: PhysVector, wakeUp: boolean) {
-    // return void;
-  },
-  applyImpulseAtPoint: function (impulse: PhysVector, point: PhysVector, wakeUp: boolean) {
-    // returns void;
-  },
-  userForce: function () {
-    // returns PhysVector;
-  },
-  userTorque: function () {
-    // returns PhysVector;
-  },
-});
 
 export const createEnginePhysicsColliderAPI = (id: number): ColliderAPI => ({
   id,
@@ -3488,4 +3320,4 @@ export const createEnginePhysicsColliderAPI = (id: number): ColliderAPI => ({
   },
 });
 
-/** World, RigidBody, and Collider API definitions -----[ END ]----- */
+/** World, RigidBody, and Collider API classes -----[ END ]----- */
