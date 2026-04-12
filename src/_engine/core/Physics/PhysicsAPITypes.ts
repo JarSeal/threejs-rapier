@@ -28,9 +28,6 @@ export type EngineAPIType = {
     }
   ) => WorldAPI;
   createRigidBody: (params: RigidBodyParams) => RigidBodyAPI;
-  // @CHORE: change these to return a promise and add sync versions (for both PhysicsAPI.ts and EngineRapier.ts)
-  // createRigidBody: (params: RigidBodyParams) => Promise<RigidBodyAPI>;
-  // createRigidBodySync: (params: RigidBodyParams) => RigidBodyAPI;
   createCollider: (params: ColliderParams, parentId?: number) => ColliderAPI;
   createRigidBodies: (params: RigidBodyParams[]) => RigidBodyAPI[];
   createColliders: (params: ColliderParams[]) => ColliderAPI[];
@@ -41,8 +38,6 @@ export type EngineAPIType = {
   deleteColliders: (ids: number[], wakeUps?: boolean[]) => { ids: number[] };
   takeSnapshot: () => Uint8Array | undefined;
   restoreSnapshot: (snapshot: Uint8Array) => WorldAPI;
-  getRigidBody: (id: number) => RigidBodyAPI | undefined;
-  getCollider: (id: number) => ColliderAPI | undefined;
   getRigidBodyAPIWithId: (id: number) => RigidBodyAPI | undefined;
   getColliderAPIWithId: (id: number) => ColliderAPI | undefined;
 };

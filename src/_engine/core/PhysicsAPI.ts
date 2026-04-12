@@ -1623,7 +1623,7 @@ export const restorePhysicsSnapshot = async (snapshot: Uint8Array) => {
   return physicsWorld;
 };
 
-/** Create a rigid body. */
+/** Create a rigid body (async). */
 export const createRigidBody = async (params: RigidBodyParams) => {
   existsOrThrow(
     physicsWorldEnabled,
@@ -1653,7 +1653,29 @@ export const createRigidBody = async (params: RigidBodyParams) => {
   );
 };
 
-/** Create multiple rigid bodies at once. */
+/** Create a rigid body (sync). Only for main thread mode. */
+export const createRigidBodySync = (params: RigidBodyParams) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a rigid body.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const rbAPI = existsOrThrow(
+      engAPI?.createRigidBody(params),
+      `Could not create a rigid body ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+    rigidBodies.set(rbAPI.id, rbAPI);
+    return rbAPI;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    throw new Error('Cannot use createRigidBodySync in worker mode. Use createRigidBody instead.');
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create rigid bodies (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
+  );
+};
+
+/** Create multiple rigid bodies at once (async). */
 export const createRigidBodies = async (params: RigidBodyParams[]) => {
   existsOrThrow(
     physicsWorldEnabled,
@@ -1690,8 +1712,30 @@ export const createRigidBodies = async (params: RigidBodyParams[]) => {
   );
 };
 
+/** Create multiple rigid bodies at once (sync). Only for main thread mode. */
+export const createRigidBodiesSync = (params: RigidBodyParams[]) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a rigid body.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    return existsOrThrow(
+      engAPI?.createRigidBodies(params),
+      `Could not create a rigid bodies ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    throw new Error(
+      'Cannot use createRigidBodiesSync in worker mode. Use createRigidBodies instead.'
+    );
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create rigid bodies (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
+  );
+};
+
 /** Deletes a rigid body (and all child colliders). Returns the id of the deleted rigidBodyAPI. */
-export const deleteRigidBody = async (id: number /*, deletePhysicsObject?: boolean */) => {
+export const deleteRigidBody = async (id: number) => {
   existsOrThrow(
     physicsWorldEnabled,
     'Physics world is not created. Create the world before deleting a rigid body.'
@@ -1722,12 +1766,41 @@ export const deleteRigidBody = async (id: number /*, deletePhysicsObject?: boole
     if (colliders.has(collId)) colliders.delete(collId);
   }
 
-  // @CHORE: add deletePhysicsObject flag
+  return deletedId;
+};
+
+/** Deletes a rigid body (and all child colliders). Returns the id of the deleted rigidBodyAPI (sync). Only for main thread mode. */
+export const deleteRigidBodySync = (id: number) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before deleting a rigid body.'
+  );
+  let deletedId: number | undefined = undefined;
+  let deletedColliderIds: number[] = [];
+  if (rigidBodies.has(id)) rigidBodies.delete(id);
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const response = engAPI?.deleteRigidBody(id);
+    deletedId = response?.id;
+    deletedColliderIds = response?.colliderIds || [];
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    throw new Error('Cannot use deleteRigidBodySync in worker mode. Use deleteRigidBody instead.');
+  }
+  if (deletedId !== id) {
+    throw new Error(
+      `Could not delete a rigid body, the returned id (${deletedId}) did not match the id: ${id}.`
+    );
+  }
+  // Delete all possible colliderAPIs that are children of the rigid body
+  for (let i = 0; i < deletedColliderIds.length; i++) {
+    const collId = deletedColliderIds[i];
+    if (colliders.has(collId)) colliders.delete(collId);
+  }
+
   return deletedId;
 };
 
 /** Deletes multiple rigid bodies (and all child colliders). Returns the ids of the deleted rigidBodyAPIs. */
-export const deleteRigidBodies = async (ids: number[] /*, deletePhysicsObject?: boolean */) => {
+export const deleteRigidBodies = async (ids: number[]) => {
   existsOrThrow(
     physicsWorldEnabled,
     'Physics world is not created. Create the world before deleting rigid bodies.'
@@ -1768,7 +1841,48 @@ export const deleteRigidBodies = async (ids: number[] /*, deletePhysicsObject?: 
     if (colliders.has(collId)) colliders.delete(collId);
   }
 
-  // @CHORE: add deletePhysicsObject flag
+  return deletedIds;
+};
+
+/** Deletes multiple rigid bodies (and all child colliders). Returns the ids of the deleted rigidBodyAPIs (sync). Only for main thread mode. */
+export const deleteRigidBodiesSync = (ids: number[]) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before deleting rigid bodies.'
+  );
+  if (!ids.length) return [];
+  let deletedIds: number[] | undefined = undefined;
+  let deletedColliderIds: number[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    if (rigidBodies.has(ids[i])) rigidBodies.delete(ids[i]);
+  }
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const response = engAPI?.deleteRigidBodies(ids);
+    deletedIds = response?.ids;
+    deletedColliderIds = response?.colliderIds || [];
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    throw new Error(
+      'Cannot use deleteRigidBodiesSync in worker mode. Use deleteRigidBodies instead.'
+    );
+  }
+  if (deletedIds === undefined) {
+    throw new Error(
+      `Could not delete rigid bodies, the returned ids was undefined for ids: ${ids.join(', ')}.`
+    );
+  }
+  for (let i = 0; i < ids.length; i++) {
+    if (deletedIds[i] !== ids[i]) {
+      lwarn(
+        `Could not delete all rigid bodies, the returned id (${deletedIds[i]}) did not match the id: ${ids[i]}.`
+      );
+    }
+  }
+  // Delete all possible colliderAPIs that are children of the rigid body
+  for (let i = 0; i < deletedColliderIds.length; i++) {
+    const collId = deletedColliderIds[i];
+    if (colliders.has(collId)) colliders.delete(collId);
+  }
+
   return deletedIds;
 };
 
@@ -1794,6 +1908,28 @@ export const createCollider = async (params: ColliderParams, parentId?: number) 
     const collProxy = new ColliderProxyAPI(res.id, res.parentId, params.userData) as ColliderAPI;
     colliders.set(res.id, collProxy); // register locally
     return collProxy;
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create a collider (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
+  );
+};
+
+/** Create a collider (sync). Only for main thread mode. */
+export const createColliderSync = (params: ColliderParams, parentId?: number) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a collider.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const coll = existsOrThrow(
+      engAPI?.createCollider(params, parentId),
+      `Could not create a collider ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+    colliders.set(coll.id, coll);
+    return coll;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    throw new Error('Cannot use createColliderSync in worker mode. Use createCollider instead.');
   }
   // Should not get here..
   throw new Error(
@@ -1838,6 +1974,26 @@ export const createColliders = async (params: ColliderParams[]) => {
   );
 };
 
+/** Create multiple colliders at once (sync). Only for main thread mode. */
+export const createCollidersSync = (params: ColliderParams[]) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a collider.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    return existsOrThrow(
+      engAPI?.createColliders(params),
+      `Could not create colliders ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    throw new Error('Cannot use createCollidersSync in worker mode. Use createColliders instead.');
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create colliders (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
+  );
+};
+
 /** Deletes a collider. Returns the id of the deleted colliderAPI. */
 export const deleteCollider = async (id: number, wakeUp?: boolean) => {
   existsOrThrow(
@@ -1847,7 +2003,7 @@ export const deleteCollider = async (id: number, wakeUp?: boolean) => {
   let deletedId: number | undefined = undefined;
   if (colliders.has(id)) colliders.delete(id);
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    const response = engAPI?.deleteCollider(id);
+    const response = engAPI?.deleteCollider(id, wakeUp);
     deletedId = response?.id;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const response = await messageWorkerAsync<DeleteColliderResponse>({
@@ -1856,6 +2012,28 @@ export const deleteCollider = async (id: number, wakeUp?: boolean) => {
       wakeUp: wakeUp || false,
     });
     deletedId = response?.id;
+  }
+  if (deletedId !== id) {
+    throw new Error(
+      `Could not delete a collider, the returned id (${deletedId}) did not match the id: ${id}.`
+    );
+  }
+  return deletedId;
+};
+
+/** Deletes a collider. Returns the id of the deleted colliderAPI (sync). Only for main thread mode. */
+export const deleteColliderSync = (id: number, wakeUp?: boolean) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before deleting a collider.'
+  );
+  let deletedId: number | undefined = undefined;
+  if (colliders.has(id)) colliders.delete(id);
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const response = engAPI?.deleteCollider(id, wakeUp);
+    deletedId = response?.id;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    throw new Error('Cannot use deleteColliderSync in worker mode. Use deleteCollider instead.');
   }
   if (deletedId !== id) {
     throw new Error(
@@ -1877,7 +2055,7 @@ export const deleteColliders = async (ids: number[], wakeUps?: boolean[]) => {
     if (colliders.has(ids[i])) colliders.delete(ids[i]);
   }
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    const response = engAPI?.deleteColliders(ids);
+    const response = engAPI?.deleteColliders(ids, wakeUps);
     deletedIds = response?.ids;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const response = await messageWorkerAsync<DeleteCollidersResponse>({
@@ -1886,6 +2064,38 @@ export const deleteColliders = async (ids: number[], wakeUps?: boolean[]) => {
       wakeUps: ids.map((_, index) => Boolean(wakeUps && wakeUps[index])),
     });
     deletedIds = response?.ids;
+  }
+  if (deletedIds === undefined) {
+    throw new Error(
+      `Could not delete rigid bodies, the returned ids was undefined for ids: ${ids.join(', ')}.`
+    );
+  }
+  for (let i = 0; i < ids.length; i++) {
+    if (deletedIds[i] !== ids[i]) {
+      lwarn(
+        `Could not delete all colliders, the returned id (${deletedIds[i]}) did not match the id: ${ids[i]}.`
+      );
+    }
+  }
+  return deletedIds;
+};
+
+/** Deletes multiple colliders. Returns the ids of the deleted colliderAPIs (sync). Only for main thread mode. */
+export const deleteCollidersSync = (ids: number[], wakeUps?: boolean[]) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before deleting colliders.'
+  );
+  if (!ids.length) return [];
+  let deletedIds: number[] | undefined = undefined;
+  for (let i = 0; i < ids.length; i++) {
+    if (colliders.has(ids[i])) colliders.delete(ids[i]);
+  }
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const response = engAPI?.deleteColliders(ids, wakeUps);
+    deletedIds = response?.ids;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    throw new Error('Cannot use deleteCollidersSync in worker mode. Use deleteColliders instead.');
   }
   if (deletedIds === undefined) {
     throw new Error(
