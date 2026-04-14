@@ -37,4 +37,15 @@ const config: AppConfig = {
   },
 };
 
+/**
+ * App Specific ECS Components.
+ */
+export interface AppComponentData {
+  [AppComponentType.HEALTH]: { current: number; max: number }; // Example
+}
+
+export enum AppComponentType {
+  HEALTH = 'HEALTH', // Example
+}
+
 export default config;
