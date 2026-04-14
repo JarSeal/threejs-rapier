@@ -4,16 +4,31 @@ import {
   CoreComponentData,
   CoreComponentType,
   createPhysicsEntity,
+  DebugComponentData,
+  DebugComponentType,
   ECSPosition,
   ECSRotation,
+  EntityDebugData,
+  Transform,
 } from './ECS/ECSCoreEntities';
 import { existsOrThrow } from '../utils/helpers';
 import { ColliderParams, RigidBodyAPI, RigidBodyParams } from './Physics/PhysicsAPITypes';
 
 // --- Union Types of the core components and app components for the World ---
-export type ComponentType = CoreComponentType | AppComponentType;
-export const ComponentType = { ...CoreComponentType, ...AppComponentType };
-export type ComponentData = CoreComponentData & AppComponentData;
+export type ComponentType = CoreComponentType | DebugComponentType | AppComponentType;
+export const ComponentType = {
+  ...CoreComponentType,
+  ...DebugComponentType,
+  ...AppComponentType,
+};
+export type ComponentData = CoreComponentData & DebugComponentData & AppComponentData;
+
+export type CreateEntityOpts = {
+  appId?: string;
+  enabled?: boolean;
+  userData?: Record<string, unknown>;
+  debugData?: EntityDebugData;
+};
 
 let ecsWorld: ECSWorld;
 
@@ -42,18 +57,34 @@ export class ECSWorld {
     });
   }
 
-  createEntity(): number {
+  createRawEntity() {
     const id = this.nextEntityId++;
     this.entities.add(id);
+    return id;
+  }
+
+  createEntity(opts?: CreateEntityOpts): number {
+    const id = this.nextEntityId++;
+    this.entities.add(id);
+    this.addComponent(id, CoreComponentType.APP_ID, opts?.appId || THREE.MathUtils.generateUUID());
+    this.addComponent(id, CoreComponentType.TRANSFORM, new Transform());
+    this.addComponent(
+      id,
+      CoreComponentType.ENABLED,
+      opts?.enabled !== undefined ? opts.enabled : true
+    );
+    this.addComponent(id, CoreComponentType.USER_DATA, opts?.userData || {});
+    this.addComponent(id, DebugComponentType.DEBUG_DATA, opts?.debugData || {});
     return id;
   }
 
   createPhysicsEntity(
     colliderParams: ColliderParams | ColliderParams[],
     rigidBodyParams?: RigidBodyParams,
-    mesh?: THREE.Object3D
+    mesh?: THREE.Object3D,
+    entityOpts?: CreateEntityOpts
   ) {
-    return createPhysicsEntity(this, colliderParams, rigidBodyParams, mesh);
+    return createPhysicsEntity(this, colliderParams, rigidBodyParams, mesh, entityOpts);
   }
 
   /** Delete an entity. */
@@ -272,8 +303,17 @@ export class ECSWorld {
     );
   }
 
-  // Debuggers
-  getAllComponentTypes = () => {};
+  /**
+   * Returns an iterator for entity IDs. Usage:
+   * ```
+   * for (const entityId of world.getEntitiesWith(ComponentType.TAG_IS_PLAYER)) {
+   *   // Do stuff with entityId
+   * }
+   * ```
+   */
+  public getEntitiesWith(type: ComponentType): IterableIterator<number> {
+    return this.storages.get(type)!.keys();
+  }
 }
 
 /**
@@ -309,12 +349,12 @@ export const transformToMeshSystem = (world: ECSWorld) => {
 
     // Optimization: Only copy if the transform has actually changed
     // We use THREE.Object3D.userData to track the last synced version
-    if (mesh.userData.lastVersion !== transform.version) {
+    if (mesh.userData._lastVersion !== transform.version) {
       mesh.position.copy(transform.position);
       mesh.quaternion.copy(transform.quaternion);
       mesh.scale.copy(transform.scale);
 
-      mesh.userData.lastVersion = transform.version;
+      mesh.userData._lastVersion = transform.version;
     }
   });
 };
