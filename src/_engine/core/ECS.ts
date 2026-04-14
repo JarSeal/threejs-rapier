@@ -13,6 +13,28 @@ import {
 } from './ECS/ECSCoreEntities';
 import { existsOrThrow } from '../utils/helpers';
 import { ColliderParams, RigidBodyAPI, RigidBodyParams } from './Physics/PhysicsAPITypes';
+import {
+  entityLifetimeSystem,
+  physicsToTransformSystem,
+  transformToMeshSystem,
+} from './ECS/ECSCoreSystems';
+
+/** Stages of ECS system invocation */
+export enum ECSSystemStage {
+  // --- Runs in updateMainLoop (Always runs if MasterPlay is true) ---
+  MAIN = 'MAIN',
+
+  // --- Runs in updateAppLoop (Only if AppPlay is true) ---
+  APP_PRE_PHYSICS = 'APP_PRE_PHYSICS', // Input handling, logic before physics
+  APP_POST_PHYSICS = 'APP_POST_PHYSICS', // physicsToTransform (Syncing SAB to ECS)
+  APP_LOGIC = 'APP_LOGIC', // Standard gameplay systems
+  APP_RENDER_SYNC = 'APP_RENDER_SYNC', // transformToMesh (Syncing ECS to Three.js)
+
+  // --- Runs in updateLateMainLoop (After rendering) ---
+  LATE_MAIN = 'LATE_MAIN',
+}
+
+export type ECSSystem = (world: ECSWorld, dt: number) => void;
 
 // --- Union Types of the core components and app components for the World ---
 export type ComponentType = CoreComponentType | DebugComponentType | AppComponentType;
@@ -50,10 +72,37 @@ export class ECSWorld {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private storages: Map<ComponentType, Map<number, any>> = new Map();
 
+  private systems: Map<ECSSystemStage, { id: string; fn: ECSSystem }[]> = new Map();
+
   constructor() {
+    // Pre-allocate system stage orders
+    Object.values(ECSSystemStage).forEach((s) => this.systems.set(s, []));
+
+    // Add core systems
+    this.addSystem(
+      ECSSystemStage.APP_POST_PHYSICS,
+      'physicsToTransformSystem',
+      physicsToTransformSystem
+    );
+    this.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'transformToMeshSystem', transformToMeshSystem);
+    this.addSystem(ECSSystemStage.LATE_MAIN, 'entityLifetimeSystem', entityLifetimeSystem);
+
     // Pre-allocate maps for all defined components
     Object.values(ComponentType).forEach((type) => {
-      this.storages.set(type as ComponentType, new Map());
+      this.storages.set(type, new Map());
+    });
+  }
+
+  public addSystem(stage: ECSSystemStage, id: string, fn: ECSSystem) {
+    this.systems.get(stage)?.push({ id, fn });
+  }
+
+  public removeSystem(id: string) {
+    this.systems.forEach((list, stage) => {
+      this.systems.set(
+        stage,
+        list.filter((s) => s.id !== id)
+      );
     });
   }
 
@@ -329,47 +378,29 @@ export class ECSWorld {
   public getEntitiesWith(type: ComponentType): IterableIterator<number> {
     return this.storages.get(type)!.keys();
   }
-}
 
-/**
- * Update transform from physics
- */
-export const physicsToTransformSystem = (world: ECSWorld) => {
-  // We ONLY iterate over entities that are dynamic and have visuals
-  const dynamicVisuals = world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL);
+  /** Runs in the "Main" part of the loop (UI, Engine maintenance, Pre-Physics) */
+  public updateMainLoop(dt: number) {
+    this._runStage(ECSSystemStage.MAIN, dt);
+    this._runStage(ECSSystemStage.APP_PRE_PHYSICS, dt);
+  }
 
-  dynamicVisuals.forEach((rb, entityId) => {
-    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
-    if (!transform) return;
+  /** Runs the Simulation/App logic (Physics, Gameplay, Render Sync) */
+  public updateAppLoop(dt: number) {
+    this._runStage(ECSSystemStage.APP_POST_PHYSICS, dt);
+    this._runStage(ECSSystemStage.APP_LOGIC, dt);
+    this._runStage(ECSSystemStage.APP_RENDER_SYNC, dt);
+  }
 
-    // Direct SAB access from your Physics Proxy
-    transform.position.set(rb.pos.x, rb.pos.y, rb.pos.z);
-    transform.quaternion.set(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w);
+  /** Runs after the Three.js renderer.render() call */
+  public updateLateMainLoop(dt: number) {
+    this._runStage(ECSSystemStage.LATE_MAIN, dt);
+  }
 
-    // Mark as changed so the Render System knows to update the Mesh
-    transform.setDirty();
-  });
-};
-
-/**
- * Update Mesh from Transform.
- * Optimized with version check (dirty flags).
- */
-export const transformToMeshSystem = (world: ECSWorld) => {
-  const meshes = world.getStorage(ComponentType.OBJECT3D);
-
-  meshes.forEach((mesh, entityId) => {
-    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
-    if (!transform) return;
-
-    // Optimization: Only copy if the transform has actually changed
-    // We use THREE.Object3D.userData to track the last synced version
-    if (mesh.userData._lastVersion !== transform.version) {
-      mesh.position.copy(transform.position);
-      mesh.quaternion.copy(transform.quaternion);
-      mesh.scale.copy(transform.scale);
-
-      mesh.userData._lastVersion = transform.version;
+  private _runStage(stage: ECSSystemStage, dt: number) {
+    const list = this.systems.get(stage)!;
+    for (let i = 0; i < list.length; i++) {
+      list[i].fn(this, dt);
     }
-  });
-};
+  }
+}

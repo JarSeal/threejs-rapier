@@ -11,6 +11,10 @@ import { createColliders, createRigidBody } from '../PhysicsAPI';
 
 export type ECSPosition = { x: number; y: number; z: number };
 export type ECSRotation = { x: number; y: number; z: number; w: number };
+export interface LifetimeData {
+  remaining: number; // Seconds until death
+  total: number; // Starting duration
+}
 
 /** Engine Core Components */
 export enum CoreComponentType {
@@ -18,6 +22,7 @@ export enum CoreComponentType {
   TRANSFORM = 'CORE_TRANSFORM',
   ENABLED = 'CORE_ENABLED',
   USER_DATA = 'CORE_USER_DATA',
+  LIFETIME = 'CORE_LIFETIME',
   OBJECT3D = 'CORE_MESH',
   COLLIDER = 'CORE_COLLIDER',
   // Movement Buckets
@@ -38,6 +43,7 @@ export interface CoreComponentData {
   [CoreComponentType.TRANSFORM]: Transform;
   [CoreComponentType.ENABLED]: boolean;
   [CoreComponentType.USER_DATA]: Record<string, unknown>;
+  [CoreComponentType.LIFETIME]: LifetimeData;
   [CoreComponentType.OBJECT3D]: THREE.Object3D;
   [CoreComponentType.COLLIDER]: ColliderAPI[];
   // Movement Buckets (rigid bodies)
