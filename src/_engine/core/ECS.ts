@@ -96,6 +96,21 @@ export class ECSWorld {
 
   addComponent<K extends ComponentType>(entityId: number, type: K, data: ComponentData[K]): void {
     this.storages.get(type)?.set(entityId, data);
+    if (type === ComponentType.OBJECT3D) {
+      // Add tags for Object3D sub type (mesh, group, light, camera)
+      if ('isMesh' in (data as THREE.Object3D)) {
+        this.addComponent(entityId, ComponentType.TAG_IS_MESH, true);
+      }
+      if ('isGroup' in (data as THREE.Object3D)) {
+        this.addComponent(entityId, ComponentType.TAG_IS_GROUP, true);
+      }
+      if ('isLight' in (data as THREE.Object3D)) {
+        this.addComponent(entityId, ComponentType.TAG_IS_LIGHT, true);
+      }
+      if ('isCamera' in (data as THREE.Object3D)) {
+        this.addComponent(entityId, ComponentType.TAG_IS_CAMERA, true);
+      }
+    }
   }
 
   getComponent<K extends ComponentType>(entityId: number, type: K): ComponentData[K] | undefined {
@@ -277,8 +292,8 @@ export class ECSWorld {
       }
     }
 
-    // Handle Mesh Visibility
-    const mesh = this.getComponent(entityId, ComponentType.MESH);
+    // Handle Object3D Visibility
+    const mesh = this.getComponent(entityId, ComponentType.OBJECT3D);
     if (mesh && !onlyPhysics) {
       mesh.visible = enabled;
     }
@@ -341,7 +356,7 @@ export const physicsToTransformSystem = (world: ECSWorld) => {
  * Optimized with version check (dirty flags).
  */
 export const transformToMeshSystem = (world: ECSWorld) => {
-  const meshes = world.getStorage(ComponentType.MESH);
+  const meshes = world.getStorage(ComponentType.OBJECT3D);
 
   meshes.forEach((mesh, entityId) => {
     const transform = world.getComponent(entityId, ComponentType.TRANSFORM);

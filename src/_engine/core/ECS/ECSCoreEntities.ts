@@ -18,21 +18,19 @@ export enum CoreComponentType {
   TRANSFORM = 'CORE_TRANSFORM',
   ENABLED = 'CORE_ENABLED',
   USER_DATA = 'CORE_USER_DATA',
-  MESH = 'CORE_MESH',
+  OBJECT3D = 'CORE_MESH',
   COLLIDER = 'CORE_COLLIDER',
   // Movement Buckets
   BODY_DYNAMIC_VISUAL = 'CORE_BODY_DYNAMIC_VISUAL', // Moving + Has Mesh
   BODY_DYNAMIC_HEADLESS = 'CORE_BODY_DYNAMIC_HEADLESS', // Moving + No Mesh
   BODY_STATIC = 'CORE_BODY_STATIC', // Never moves
   // Tags
-  TAG_IS_OBJECT3D = 'CORE_TAG_IS_OBJECT3D',
   TAG_IS_MESH = 'CORE_TAG_IS_MESH',
   TAG_IS_GROUP = 'CORE_TAG_IS_GROUP',
   TAG_IS_LIGHT = 'CORE_TAG_IS_LIGHT',
   TAG_IS_CAMERA = 'CORE_TAG_IS_CAMERA',
   TAG_IS_CHARACTER = 'CORE_TAG_IS_CHARACTER',
   TAG_IS_PHYSICS_OBJECT = 'CORE_TAG_IS_PHYSICS_OBJECT',
-  TAG_IS_PLAYER = 'CORE_TAG_IS_PLAYER',
 }
 
 export interface CoreComponentData {
@@ -40,21 +38,19 @@ export interface CoreComponentData {
   [CoreComponentType.TRANSFORM]: Transform;
   [CoreComponentType.ENABLED]: boolean;
   [CoreComponentType.USER_DATA]: Record<string, unknown>;
-  [CoreComponentType.MESH]: THREE.Object3D;
+  [CoreComponentType.OBJECT3D]: THREE.Object3D;
   [CoreComponentType.COLLIDER]: ColliderAPI[];
   // Movement Buckets (rigid bodies)
   [CoreComponentType.BODY_DYNAMIC_VISUAL]: RigidBodyAPI;
   [CoreComponentType.BODY_DYNAMIC_HEADLESS]: RigidBodyAPI;
   [CoreComponentType.BODY_STATIC]: RigidBodyAPI;
   // Tags
-  [CoreComponentType.TAG_IS_OBJECT3D]: boolean;
   [CoreComponentType.TAG_IS_MESH]: boolean;
   [CoreComponentType.TAG_IS_GROUP]: boolean;
   [CoreComponentType.TAG_IS_LIGHT]: boolean;
   [CoreComponentType.TAG_IS_CAMERA]: boolean;
   [CoreComponentType.TAG_IS_CHARACTER]: boolean;
   [CoreComponentType.TAG_IS_PHYSICS_OBJECT]: boolean;
-  [CoreComponentType.TAG_IS_PLAYER]: boolean;
 }
 
 /** Engine Debug Components */
@@ -110,10 +106,11 @@ export const createPhysicsEntity = async (
   world: ECSWorld,
   colliderParams: ColliderParams | ColliderParams[],
   rigidBodyParams?: RigidBodyParams,
-  mesh?: THREE.Object3D,
+  object3D?: THREE.Object3D,
   entityOpts?: CreateEntityOpts
 ): Promise<number> => {
   const entityId = world.createEntity(entityOpts);
+  world.addComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT, true);
 
   // Create Physics (Master Source of Truth)
   let rb: RigidBodyAPI | undefined = undefined;
@@ -136,23 +133,24 @@ export const createPhysicsEntity = async (
     // Sync Transform to initial Physics state
     transform?.position.set(rb.pos.x, rb.pos.y, rb.pos.z);
     transform?.quaternion.set(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w);
-  } else if (mesh) {
+  } else if (object3D) {
     // If no physics, use where the app developer placed the mesh
-    transform?.position.copy(mesh.position);
-    transform?.quaternion.copy(mesh.quaternion);
-    transform?.scale.copy(mesh.scale);
+    transform?.position.copy(object3D.position);
+    transform?.quaternion.copy(object3D.quaternion);
+    transform?.scale.copy(object3D.scale);
   }
 
   // We align the mesh to the transform NOW, before the loop starts.
-  if (mesh && transform) {
-    mesh.position.copy(transform.position);
-    mesh.quaternion.copy(transform.quaternion);
-    mesh.scale.copy(transform.scale);
+  if (object3D) {
+    if (transform) {
+      object3D.position.copy(transform.position);
+      object3D.quaternion.copy(transform.quaternion);
+      object3D.scale.copy(transform.scale);
 
-    // Also set the 'version' so the first loop iteration knows it's already synced
-    mesh.userData._lastVersion = transform.version;
-
-    world.addComponent(entityId, ComponentType.MESH, mesh);
+      // Also set the 'version' so the first loop iteration knows it's already synced
+      object3D.userData._lastVersion = transform.version;
+    }
+    world.addComponent(entityId, ComponentType.OBJECT3D, object3D);
   }
 
   world.addComponent(entityId, ComponentType.COLLIDER, colls);
@@ -162,7 +160,9 @@ export const createPhysicsEntity = async (
   if (isStatic) {
     if (rb) world.addComponent(entityId, ComponentType.BODY_STATIC, rb);
   } else {
-    const bucket = mesh ? ComponentType.BODY_DYNAMIC_VISUAL : ComponentType.BODY_DYNAMIC_HEADLESS;
+    const bucket = object3D
+      ? ComponentType.BODY_DYNAMIC_VISUAL
+      : ComponentType.BODY_DYNAMIC_HEADLESS;
     world.addComponent(entityId, bucket, rb!);
   }
 
