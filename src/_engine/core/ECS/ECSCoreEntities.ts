@@ -62,6 +62,21 @@ export interface CoreComponentData {
   [CoreComponentType.TAG_IS_PHYSICS_OBJECT]: boolean;
 }
 
+/** This just makes shit faster... */
+export const OBJECT3D_TAGS = [
+  { prop: 'isMesh', tag: ComponentType.TAG_IS_MESH },
+  { prop: 'isGroup', tag: ComponentType.TAG_IS_GROUP },
+  { prop: 'isLight', tag: ComponentType.TAG_IS_LIGHT },
+  { prop: 'isCamera', tag: ComponentType.TAG_IS_CAMERA },
+  // @QUESTION: What other type of Three.js Object3Ds should we tag? Points/Particles?
+  // From GEMINI (ask more about the SKINNED and BONE when you get there):
+  // TAG_IS_POINTS
+  // TAG_IS_LINE
+  // TAG_IS_SPRITE
+  // TAG_IS_SKINNED
+  // TAG_IS_BONE
+] as const;
+
 /** Engine Debug Components */
 export enum DebugComponentType {
   DEBUG_DATA = 'DEBUG_DATA',

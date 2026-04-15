@@ -14,7 +14,6 @@ import { existsOrThrow } from '../utils/helpers';
 import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
 import { entityLifetimeSystem, physicsToTransformSystem } from './ECS/ECSCoreSystems';
 import { isDebugEnvironment } from './Config';
-import { initMeshSystem } from './_Mesh';
 
 /** Stages of ECS system invocation */
 export enum ECSSystemStage {
@@ -49,6 +48,9 @@ export type CoreEntityOpts = {
   debugData?: EntityDebugData;
 };
 
+export type WorldPlugin = (world: ECSWorld) => void;
+export type ComponentHook = (entityId: number, world: ECSWorld) => void;
+
 let ecsWorld: ECSWorld;
 
 /** Initializes the ECS World. */
@@ -59,9 +61,51 @@ export const initECSWorld = (): ECSWorld => {
 
 /** Returns the ECS World or throws an error. */
 export const getECSWorld = () =>
-  existsOrThrow(ecsWorld, 'ECS World not initialized. Could not get ESC.');
+  existsOrThrow(ecsWorld, 'ECS World not initialized. Could not get ECS World.');
 
 export class ECSWorld {
+  // INSTANCE TRACKING
+  private static activeWorlds = new Set<ECSWorld>();
+  // STATIC REGISTRIES (External core managers write to these)
+  private static plugins: WorldPlugin[] = [];
+  private static onAddComponentHooks: Map<ComponentType, ComponentHook[]> = new Map();
+  private static onDeleteEntityHooks: Map<ComponentType, ComponentHook[]> = new Map();
+
+  /** * Global registration methods.
+   * Managers call these once at app startup.
+   */
+  public static registerPlugin(plugin: WorldPlugin) {
+    // Save for future worlds (Cold Loading, if the world has not been initiated yet)
+    this.plugins.push(plugin);
+
+    // Apply to existing worlds immediately (Hot Loading, if the world is already initiated)
+    this.activeWorlds.forEach((world) => {
+      plugin(world);
+    });
+  }
+
+  public static registerComponentHooks(
+    type: ComponentType,
+    hooks: { onAddComponent?: ComponentHook; onDeleteEntity?: ComponentHook }
+  ) {
+    if (hooks.onAddComponent) {
+      if (!this.onAddComponentHooks.has(type)) this.onAddComponentHooks.set(type, []);
+      this.onAddComponentHooks.get(type)!.push(hooks.onAddComponent);
+    }
+    if (hooks.onDeleteEntity) {
+      if (!this.onDeleteEntityHooks.has(type)) this.onDeleteEntityHooks.set(type, []);
+      this.onDeleteEntityHooks.get(type)!.push(hooks.onDeleteEntity);
+    }
+  }
+
+  // Bitwise constants for generation usage:
+  // We use 20 bits for the index (~1 million entities)
+  // and 12 bits for the generation (4096 reuses per slot)
+  private readonly INDEX_MASK = 0xfffff;
+  private readonly GEN_SHIFT = 20; // @CONSIDER: This could be a CONFIG value (optional, defaults to 20)
+  // Tracks the current 'version' of every index ever created
+  private generations = new Uint32Array(1048576);
+
   private nextEntityId = 0;
   private freeIds: number[] = [];
   private entities = new Set<number>();
@@ -73,27 +117,24 @@ export class ECSWorld {
   private systems: Map<ECSSystemStage, { id: string; fn: ECSSystem }[]> = new Map();
 
   constructor() {
-    // Pre-allocate system stage orders
+    // Pre-allocate system stages and storages
     Object.values(ECSSystemStage).forEach((s) => this.systems.set(s, []));
-
-    // Add core systems
-    initMeshSystem(this);
-    this.addSystem(ECSSystemStage.LATE_MAIN, 'entityLifetimeSystem', entityLifetimeSystem);
-    // @CHORE: follow mesh system pattern
-    this.addSystem(
-      ECSSystemStage.APP_POST_PHYSICS,
-      'physicsToTransformSystem',
-      physicsToTransformSystem
-    );
-
-    // Pre-allocate maps for all defined components
     Object.values(ComponentType).forEach((type) => {
       this.storages.set(type, new Map());
     });
+
+    // REGISTER THIS INSTANCE
+    ECSWorld.activeWorlds.add(this);
+
+    // BOOTSTRAP: Run all globally registered plugins (systems and other initiation logic)
+    ECSWorld.plugins.forEach((plugin) => plugin(this));
   }
 
   public addSystem(stage: ECSSystemStage, id: string, fn: ECSSystem) {
-    this.systems.get(stage)?.push({ id, fn });
+    const stageSystems = this.systems.get(stage);
+    // Prevent duplicate systems if a plugin is re-run
+    if (stageSystems?.some((s) => s.id === id)) return;
+    stageSystems?.push({ id, fn });
   }
 
   public removeSystem(id: string) {
@@ -105,8 +146,38 @@ export class ECSWorld {
     });
   }
 
+  /** Extracts the storage index from a packed ID */
+  private _getIndex(id: number): number {
+    return id & this.INDEX_MASK;
+  }
+
+  /** Extracts the generation version from a packed ID */
+  private _getGeneration(id: number): number {
+    return id >>> this.GEN_SHIFT;
+  }
+
+  /** Combines an index and a generation into a single number */
+  private _pack(index: number, gen: number): number {
+    // Mask gen to 12 bits (0xfff) before shifting to ensure it never
+    // interferes with bits outside the 32-bit signed integer range.
+    return ((gen & 0xfff) << this.GEN_SHIFT) | (index & this.INDEX_MASK);
+  }
+
+  /**
+   * Prevents "Ghost ID" bugs where a system tries to act on a deleted entity
+   * that has been replaced by a new one in the same storage slot.
+   */
+  public isAlive(entityId: number): boolean {
+    const index = this._getIndex(entityId);
+    const gen = this._getGeneration(entityId);
+    return this.generations[index] === gen && this.entities.has(entityId);
+  }
+
   private _getNewEntityId() {
-    return this.freeIds.length > 0 ? this.freeIds.pop()! : this.nextEntityId++;
+    const index = this.freeIds.length > 0 ? this.freeIds.pop()! : this.nextEntityId++;
+    // Use the current generation for this specific slot
+    const gen = this.generations[index];
+    return this._pack(index, gen);
   }
 
   createRawEntity() {
@@ -129,18 +200,40 @@ export class ECSWorld {
     return id;
   }
 
-  /** Delete an entity. */
+  /**
+   * Removes an entity and cleans up all associated resources.
+   */
   deleteEntity(entityId: number): void {
-    // @CHORE: Add option to NOT delete physics object, mesh, geometry, material, textures, and maps
-    this.storages.forEach((s) => s.delete(entityId));
+    // Safety: Ignore if entity is already dead
+    if (!this.isAlive(entityId)) return;
+
+    // Trigger Destruction Hooks (onDeleteEntity)
+    // We check every storage to see if this entity has it
+    this.storages.forEach((storage, type) => {
+      if (storage.has(entityId)) {
+        const hooks = ECSWorld.onDeleteEntityHooks.get(type);
+        hooks?.forEach((hook) => hook(entityId, this));
+      }
+    });
+
+    const index = this._getIndex(entityId);
+
+    // Incrementing the generation at this index means any OLD IDs
+    // floating around will fail the isAlive() check immediately.
+    this.generations[index]++;
+
+    // Clear ECS data using the packed ID as the key for Map consistency
+    this.storages.forEach((storage) => storage.delete(entityId));
     this.entities.delete(entityId);
 
-    this.freeIds.push(entityId);
+    // Recycle the index for future use
+    this.freeIds.push(index);
 
-    // Reset nextEntityId if entities set is empty
+    // Finally, check if the entities size if 0 then reset everything to 0
     if (this.entities.size === 0) {
       this.nextEntityId = 0;
       this.freeIds = [];
+      this.generations.fill(0);
     }
   }
 
@@ -149,22 +242,9 @@ export class ECSWorld {
 
     this.storages.get(type)?.set(entityId, data);
 
-    if (type === ComponentType.OBJECT3D) {
-      // Add tags for Object3D sub type (mesh, group, light, camera)
-      if ('isMesh' in (data as THREE.Object3D)) {
-        this.addComponent(entityId, ComponentType.TAG_IS_MESH, true);
-      }
-      if ('isGroup' in (data as THREE.Object3D)) {
-        this.addComponent(entityId, ComponentType.TAG_IS_GROUP, true);
-      }
-      if ('isLight' in (data as THREE.Object3D)) {
-        this.addComponent(entityId, ComponentType.TAG_IS_LIGHT, true);
-      }
-      if ('isCamera' in (data as THREE.Object3D)) {
-        this.addComponent(entityId, ComponentType.TAG_IS_CAMERA, true);
-      }
-      // @QUESTION: What other type of Three.js Object3Ds should we tag? Points/Particles?
-    }
+    // Trigger Initialization Hooks (onAddComponent)
+    const hooks = ECSWorld.onAddComponentHooks.get(type);
+    hooks?.forEach((hook) => hook(entityId, this));
   }
 
   /**
@@ -177,7 +257,10 @@ export class ECSWorld {
     if (storage) storage.delete(entityId);
   }
 
-  getComponent<K extends ComponentType>(entityId: number, type: K): ComponentData[K] | undefined {
+  public getComponent<K extends ComponentType>(
+    entityId: number,
+    type: K
+  ): ComponentData[K] | undefined {
     return this.storages.get(type)?.get(entityId);
   }
 
@@ -187,8 +270,43 @@ export class ECSWorld {
   }
 
   /** Direct access to a storage map for high-speed iteration */
-  getStorage<K extends ComponentType>(type: K): Map<number, ComponentData[K]> {
+  public getStorage<K extends ComponentType>(type: K): Map<number, ComponentData[K]> {
     return this.storages.get(type)!;
+  }
+
+  /** * Hard reset of the entire engine state.
+   * Everything is wiped, and ID counters start over.
+   */
+  public clearWorld(): void {
+    // 1. Clear all component data
+    this.storages.forEach((storage) => storage.clear());
+
+    // 2. Clear entity tracking
+    this.entities.clear();
+
+    // 3. Reset ID pool and counter
+    this.freeIds = [];
+    this.nextEntityId = 0;
+  }
+
+  /**
+   * Wipes all entities EXCEPT those marked as persistent (PERSISTENT).
+   * Used for switching scenes while keeping loaders/global state alive
+   * and any other entity needed to be shared between scenes.
+   */
+  public clearNonPersistent(): void {
+    const persistentEntities = new Set<number>();
+    const persistentStorage = this.getStorage(ComponentType.PERSISTENT);
+    if (persistentStorage) {
+      for (const [entityId] of persistentStorage) {
+        persistentEntities.add(entityId);
+      }
+    }
+    const allEntities = Array.from(this.entities);
+    for (const entityId of allEntities) {
+      if (persistentEntities.has(entityId)) continue;
+      this.deleteEntity(entityId);
+    }
   }
 
   /**

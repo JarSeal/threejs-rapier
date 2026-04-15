@@ -17,6 +17,10 @@ import { createToaster } from './core/UI/Toaster';
 import { getStatsCmp } from './debug/Stats';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
 
+// ECS
+import './core/_Mesh';
+import { initECSWorld } from './core/ECS';
+
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
  * @param appStartFn (function) app start function, () => Promise<undefined>
@@ -32,6 +36,9 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     // Create base scene
     createRootScene();
+
+    // Init ECS
+    initECSWorld();
 
     // HUD container
     createHudContainer();

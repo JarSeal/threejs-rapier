@@ -6,6 +6,39 @@ import { getRootScene } from './Scene';
 import { existsOrThrow } from '../utils/helpers';
 import { getRenderer } from './Renderer';
 import { getCurrentCamera } from './Camera';
+import { OBJECT3D_TAGS } from './ECS/ECSCoreEntities';
+
+// Register the meshSyncSystem
+ECSWorld.registerPlugin((world) => {
+  world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'meshSyncSystem', meshSyncSystem);
+});
+
+// Register onDeleteEntity hook for TAG_IS_MESH
+ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
+  onDeleteEntity: (entityId, world) => disposeMesh(entityId, world),
+});
+
+// Register onAddComponent hook for OBJECT3D
+ECSWorld.registerComponentHooks(ComponentType.OBJECT3D, {
+  onAddComponent: (entityId, world) => {
+    const meshComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+    if (!meshComp) return;
+    const obj = meshComp.value;
+    if (obj) {
+      for (const detector of OBJECT3D_TAGS) {
+        if (detector.prop in obj) {
+          world.addComponent(entityId, detector.tag, true);
+        }
+      }
+      if (obj.userData.isCharacter) {
+        world.addComponent(entityId, ComponentType.TAG_IS_CHARACTER, true);
+      }
+      if (obj.userData.isPhysicsObject) {
+        world.addComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT, true);
+      }
+    }
+  },
+});
 
 export type MeshProps = {
   geo: THREE.BufferGeometry | GeoProps;
@@ -21,7 +54,7 @@ export const createMeshEntity = (
   ecsWorld?: ECSWorld
 ): number => {
   const world =
-    ecsWorld || existsOrThrow(getECSWorld(), 'Could no get ECS world in createMeshEntity.');
+    ecsWorld || existsOrThrow(getECSWorld(), 'Could not get ECS world in createMeshEntity.');
 
   const geo = props.geo instanceof THREE.BufferGeometry ? props.geo : createGeometry(props.geo);
   const mat = props.mat instanceof THREE.Material ? props.mat : createMaterial(props.mat);
@@ -43,6 +76,7 @@ export const createMeshEntity = (
     const camera = getCurrentCamera();
 
     if (renderer && camera && rootScene) {
+      // This is done without await in the background
       renderer.compileAsync(mesh, camera, rootScene);
     }
   }
@@ -91,7 +125,6 @@ export const meshSyncSystem = (world: ECSWorld) => {
 
     // Only update Three.js if the ECS Transform has changed
     if (meshComp._lastVersion !== transform.version) {
-      meshComp.value.visible = true;
       meshComp.value.position.copy(transform.position);
       meshComp.value.quaternion.copy(transform.quaternion);
       meshComp.value.scale.copy(transform.scale);
@@ -99,8 +132,4 @@ export const meshSyncSystem = (world: ECSWorld) => {
       meshComp._lastVersion = transform.version;
     }
   }
-};
-
-export const initMeshSystem = (world: ECSWorld) => {
-  world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'meshSyncSystem', meshSyncSystem);
 };

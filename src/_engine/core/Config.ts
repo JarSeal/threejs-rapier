@@ -5,7 +5,7 @@ import {
   PhysicsBackgroundBehavior,
   PhysicsEngine,
   PhysicsWorkerTarget,
-} from './Physics/PhysicsUtils';
+} from './Physics/PhysicsAPITypes';
 import { DraggableWindow } from './UI/DraggableWindow';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
