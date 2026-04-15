@@ -3,7 +3,6 @@ import { AppComponentData, AppComponentType } from '../../CONFIG';
 import {
   CoreComponentData,
   CoreComponentType,
-  createPhysicsEntity,
   DebugComponentData,
   DebugComponentType,
   ECSPosition,
@@ -12,12 +11,10 @@ import {
   Transform,
 } from './ECS/ECSCoreEntities';
 import { existsOrThrow } from '../utils/helpers';
-import { ColliderParams, RigidBodyAPI, RigidBodyParams } from './Physics/PhysicsAPITypes';
-import {
-  entityLifetimeSystem,
-  physicsToTransformSystem,
-  transformToMeshSystem,
-} from './ECS/ECSCoreSystems';
+import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
+import { entityLifetimeSystem, physicsToTransformSystem } from './ECS/ECSCoreSystems';
+import { isDebugEnvironment } from './Config';
+import { initMeshSystem } from './_Mesh';
 
 /** Stages of ECS system invocation */
 export enum ECSSystemStage {
@@ -45,9 +42,9 @@ export const ComponentType = {
 };
 export type ComponentData = CoreComponentData & DebugComponentData & AppComponentData;
 
-export type CreateEntityOpts = {
+export type CoreEntityOpts = {
   appId?: string;
-  enabled?: boolean;
+  disabled?: boolean;
   userData?: Record<string, unknown>;
   debugData?: EntityDebugData;
 };
@@ -79,13 +76,14 @@ export class ECSWorld {
     Object.values(ECSSystemStage).forEach((s) => this.systems.set(s, []));
 
     // Add core systems
+    initMeshSystem(this);
+    this.addSystem(ECSSystemStage.LATE_MAIN, 'entityLifetimeSystem', entityLifetimeSystem);
+    // @CHORE: follow mesh system pattern
     this.addSystem(
       ECSSystemStage.APP_POST_PHYSICS,
       'physicsToTransformSystem',
       physicsToTransformSystem
     );
-    this.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'transformToMeshSystem', transformToMeshSystem);
-    this.addSystem(ECSSystemStage.LATE_MAIN, 'entityLifetimeSystem', entityLifetimeSystem);
 
     // Pre-allocate maps for all defined components
     Object.values(ComponentType).forEach((type) => {
@@ -112,28 +110,18 @@ export class ECSWorld {
     return id;
   }
 
-  createEntity(opts?: CreateEntityOpts): number {
+  createEntity(opts?: CoreEntityOpts): number {
     const id = this.nextEntityId++;
     this.entities.add(id);
-    this.addComponent(id, CoreComponentType.APP_ID, opts?.appId || THREE.MathUtils.generateUUID());
+    this.addComponent(id, CoreComponentType.APP_ID, {
+      id: opts?.appId || THREE.MathUtils.generateUUID(),
+      isFixed: Boolean(opts?.appId),
+    });
     this.addComponent(id, CoreComponentType.TRANSFORM, new Transform());
-    this.addComponent(
-      id,
-      CoreComponentType.ENABLED,
-      opts?.enabled !== undefined ? opts.enabled : true
-    );
     this.addComponent(id, CoreComponentType.USER_DATA, opts?.userData || {});
     this.addComponent(id, DebugComponentType.DEBUG_DATA, opts?.debugData || {});
+    this.setDisabled(id, Boolean(opts?.disabled));
     return id;
-  }
-
-  createPhysicsEntity(
-    colliderParams: ColliderParams | ColliderParams[],
-    rigidBodyParams?: RigidBodyParams,
-    mesh?: THREE.Object3D,
-    entityOpts?: CreateEntityOpts
-  ) {
-    return createPhysicsEntity(this, colliderParams, rigidBodyParams, mesh, entityOpts);
   }
 
   /** Delete an entity. */
@@ -141,10 +129,16 @@ export class ECSWorld {
     // @CHORE: Add option to NOT delete physics object, mesh, geometry, material, textures, and maps
     this.storages.forEach((s) => s.delete(entityId));
     this.entities.delete(entityId);
+
+    // Reset nextEntityId if entities set is empty
+    if (this.entities.size === 0) this.nextEntityId = 0;
   }
 
   addComponent<K extends ComponentType>(entityId: number, type: K, data: ComponentData[K]): void {
+    if (type === ComponentType.DEBUG_DATA && !isDebugEnvironment) return;
+
     this.storages.get(type)?.set(entityId, data);
+
     if (type === ComponentType.OBJECT3D) {
       // Add tags for Object3D sub type (mesh, group, light, camera)
       if ('isMesh' in (data as THREE.Object3D)) {
@@ -159,7 +153,18 @@ export class ECSWorld {
       if ('isCamera' in (data as THREE.Object3D)) {
         this.addComponent(entityId, ComponentType.TAG_IS_CAMERA, true);
       }
+      // @QUESTION: What other type of Three.js Object3Ds should we tag? Points/Particles?
     }
+  }
+
+  /**
+   * Removes a component from an entity.
+   * @param entityId The ID of the entity.
+   * @param type The type of component to remove.
+   */
+  public removeComponent(entityId: number, type: ComponentType): void {
+    const storage = this.storages.get(type);
+    if (storage) storage.delete(entityId);
   }
 
   getComponent<K extends ComponentType>(entityId: number, type: K): ComponentData[K] | undefined {
@@ -243,13 +248,14 @@ export class ECSWorld {
 
   /**
    * Teleports an entity to a specific location and rotation.
-   * Unlike setTransform, this optionally resets velocities to ensure
+   * Unlike setTransform, this resets velocities to ensure
    * the object doesn't carry old momentum to the new spot.
    */
   public teleport(
     entityId: number,
     tra: { pos: ECSPosition; rot?: ECSRotation } | { pos?: ECSPosition; rot: ECSRotation }
   ): void {
+    // @CHORE: We probably need to take interpolation into consideration (set the prev transform to the new position)
     this.setTransform(entityId, { ...tra, resetVelocity: true, resetForces: true });
   }
 
@@ -307,34 +313,37 @@ export class ECSWorld {
   }
 
   /**
-   * Master Switch for an Entity.
-   * Coordinates visibility, physics simulation, and future components.
+   * Returns true if the entity is disabled.
+   * If the DISABLED component is missing, we assume it's enabled by default.
    */
-  public setEnabled(
+  public isDisabled(entityId: number): boolean {
+    return this.hasComponent(entityId, ComponentType.DISABLED);
+  }
+
+  /**
+   * Master Disabled Switch for an Entity.
+   * Coordinates visibility, physics disabling, etc.
+   */
+  public setDisabled(
     entityId: number,
-    enabled: boolean,
+    disabled: boolean,
     opts?: {
-      onlyPhysics?: boolean;
-      onlyMesh?: boolean;
-      doNotResetVelocity?: boolean;
-      doNotResetForces?: boolean;
-      doNotWakeUp?: boolean;
+      /** Default is true */
+      resetVelocity?: boolean;
+      /** Default is true */
+      resetForces?: boolean;
+      /** Default is true */
+      wakeUp?: boolean;
     }
   ): void {
-    const onlyPhysics = opts?.onlyPhysics;
-    const onlyMesh = opts?.onlyMesh;
-
-    // Update the state component
-    this.addComponent(entityId, CoreComponentType.ENABLED, enabled);
-
     // Handle Physics
     const rb = this.getRigidBody(entityId);
-    if (rb && !onlyMesh) {
-      const resetVelocity = !Boolean(opts?.doNotResetVelocity);
-      const resetForces = !Boolean(opts?.doNotResetForces);
-      const wakeUp = !Boolean(opts?.doNotWakeUp);
+    if (rb) {
+      const resetVelocity = opts?.resetVelocity === undefined ? true : opts.resetVelocity;
+      const resetForces = opts?.resetForces === undefined ? true : opts.resetForces;
+      const wakeUp = opts?.wakeUp === undefined ? true : opts.wakeUp;
 
-      rb.setEnabled(enabled);
+      rb.setEnabled(!disabled);
 
       if (this.isEntityDynamic(entityId)) {
         this._resetBodyState(rb, Boolean(resetVelocity), Boolean(resetForces), wakeUp);
@@ -342,14 +351,23 @@ export class ECSWorld {
     }
 
     // Handle Object3D Visibility
-    const mesh = this.getComponent(entityId, ComponentType.OBJECT3D);
-    if (mesh && !onlyPhysics) {
-      mesh.visible = enabled;
+    const object3D = this.getComponent(entityId, ComponentType.OBJECT3D);
+    if (object3D) {
+      object3D.value.visible = !disabled;
     }
 
     // Handle Future Components (e.g., Sounds)
     // const sound = this.getComponent(entityId, ComponentType.SOUND_EMITTER);
     // if (sound) { sound.stop(); }
+
+    // Update the state component
+    if (disabled) {
+      // Disabled
+      this.addComponent(entityId, CoreComponentType.DISABLED, disabled);
+      return;
+    }
+    // Enabled
+    this.removeComponent(entityId, CoreComponentType.DISABLED);
   }
 
   getRigidBody(entityId: number): RigidBodyAPI | undefined {

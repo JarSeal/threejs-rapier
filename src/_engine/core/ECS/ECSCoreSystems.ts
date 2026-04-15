@@ -1,6 +1,7 @@
 import { ComponentType, ECSWorld } from '../ECS';
 import { CoreComponentType } from './ECSCoreEntities';
 
+// @CHORE: Move this to PhysicsAPI and create initPhysicsToTransformSystem (follow mesh system pattern)
 /**
  * Update transform from physics
  */
@@ -18,29 +19,6 @@ export const physicsToTransformSystem = (world: ECSWorld) => {
 
     // Mark as changed so the Render System knows to update the Mesh
     transform.setDirty();
-  });
-};
-
-/**
- * Update Mesh from Transform.
- * Optimized with version check (dirty flags).
- */
-export const transformToMeshSystem = (world: ECSWorld) => {
-  const meshes = world.getStorage(ComponentType.OBJECT3D);
-
-  meshes.forEach((mesh, entityId) => {
-    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
-    if (!transform) return;
-
-    // Optimization: Only copy if the transform has actually changed
-    // We use THREE.Object3D.userData to track the last synced version
-    if (mesh.userData._lastVersion !== transform.version) {
-      mesh.position.copy(transform.position);
-      mesh.quaternion.copy(transform.quaternion);
-      mesh.scale.copy(transform.scale);
-
-      mesh.userData._lastVersion = transform.version;
-    }
   });
 };
 

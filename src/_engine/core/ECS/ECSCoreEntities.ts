@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { ComponentType, CreateEntityOpts, ECSWorld } from '../ECS';
+import { ComponentType, CoreEntityOpts, ECSWorld, getECSWorld } from '../ECS';
 import {
   ColliderAPI,
   ColliderParams,
@@ -8,6 +8,7 @@ import {
   RigidBodyParams,
 } from '../Physics/PhysicsAPITypes';
 import { createColliders, createRigidBody } from '../PhysicsAPI';
+import { existsOrThrow } from '../../utils/helpers';
 
 export type ECSPosition = { x: number; y: number; z: number };
 export type ECSRotation = { x: number; y: number; z: number; w: number };
@@ -20,7 +21,8 @@ export interface LifetimeData {
 export enum CoreComponentType {
   APP_ID = 'CORE_APP_ID',
   TRANSFORM = 'CORE_TRANSFORM',
-  ENABLED = 'CORE_ENABLED',
+  DISABLED = 'CORE_DISABLED',
+  PERSISTENT = 'CORE_PERSISTENT',
   USER_DATA = 'CORE_USER_DATA',
   LIFETIME = 'CORE_LIFETIME',
   OBJECT3D = 'CORE_MESH',
@@ -39,12 +41,13 @@ export enum CoreComponentType {
 }
 
 export interface CoreComponentData {
-  [CoreComponentType.APP_ID]: string;
+  [CoreComponentType.APP_ID]: { id: string; isFixed: boolean };
   [CoreComponentType.TRANSFORM]: Transform;
-  [CoreComponentType.ENABLED]: boolean;
+  [CoreComponentType.DISABLED]: boolean;
+  [CoreComponentType.PERSISTENT]: boolean;
   [CoreComponentType.USER_DATA]: Record<string, unknown>;
   [CoreComponentType.LIFETIME]: LifetimeData;
-  [CoreComponentType.OBJECT3D]: THREE.Object3D;
+  [CoreComponentType.OBJECT3D]: { value: THREE.Object3D; _lastVersion: number };
   [CoreComponentType.COLLIDER]: ColliderAPI[];
   // Movement Buckets (rigid bodies)
   [CoreComponentType.BODY_DYNAMIC_VISUAL]: RigidBodyAPI;
@@ -108,13 +111,18 @@ export class Transform {
   }
 }
 
+// @CHORE: move this to PhysicsAPI
+// @CHORE: refactor the object3D to just use an entityId
 export const createPhysicsEntity = async (
-  world: ECSWorld,
   colliderParams: ColliderParams | ColliderParams[],
   rigidBodyParams?: RigidBodyParams,
   object3D?: THREE.Object3D,
-  entityOpts?: CreateEntityOpts
+  entityOpts?: CoreEntityOpts,
+  ecsWorld?: ECSWorld
 ): Promise<number> => {
+  const world =
+    ecsWorld || existsOrThrow(getECSWorld(), 'Could no get ECS world in createPhysicsEntity.');
+
   const entityId = world.createEntity(entityOpts);
   world.addComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT, true);
 
@@ -156,7 +164,7 @@ export const createPhysicsEntity = async (
       // Also set the 'version' so the first loop iteration knows it's already synced
       object3D.userData._lastVersion = transform.version;
     }
-    world.addComponent(entityId, ComponentType.OBJECT3D, object3D);
+    world.addComponent(entityId, ComponentType.OBJECT3D, { value: object3D, _lastVersion: -1 });
   }
 
   world.addComponent(entityId, ComponentType.COLLIDER, colls);

@@ -2538,6 +2538,7 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   lvel: PhysVector = { x: 0, y: 0, z: 0 };
   avel: PhysVector = { x: 0, y: 0, z: 0 };
   isBeingDeleted: boolean = false;
+  // @CHORE: add isEnabled cache
 
   constructor(
     public id: number,

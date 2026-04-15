@@ -148,6 +148,9 @@ const setRendererOptions = async (opts?: Partial<RendererOptions>) => {
  */
 export const getRendererOptions = () => options;
 
+export const isWebGPURenderer = () => options.currentApiIsWebGPU;
+export const isWebGLRenderer = () => options.currentApiIsWebGL;
+
 export const createRendererDebugGUI = () => {
   const savedOptions = lsGetItem(LS_KEY, options);
   options = { ...options, ...savedOptions };
