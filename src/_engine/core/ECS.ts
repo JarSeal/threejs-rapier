@@ -63,6 +63,7 @@ export const getECSWorld = () =>
 
 export class ECSWorld {
   private nextEntityId = 0;
+  private freeIds: number[] = [];
   private entities = new Set<number>();
 
   // Storage: Map<Type, Map<EntityID, Data>>
@@ -104,14 +105,18 @@ export class ECSWorld {
     });
   }
 
+  private _getNewEntityId() {
+    return this.freeIds.length > 0 ? this.freeIds.pop()! : this.nextEntityId++;
+  }
+
   createRawEntity() {
-    const id = this.nextEntityId++;
+    const id = this._getNewEntityId();
     this.entities.add(id);
     return id;
   }
 
   createEntity(opts?: CoreEntityOpts): number {
-    const id = this.nextEntityId++;
+    const id = this._getNewEntityId();
     this.entities.add(id);
     this.addComponent(id, CoreComponentType.APP_ID, {
       id: opts?.appId || THREE.MathUtils.generateUUID(),
@@ -130,8 +135,13 @@ export class ECSWorld {
     this.storages.forEach((s) => s.delete(entityId));
     this.entities.delete(entityId);
 
+    this.freeIds.push(entityId);
+
     // Reset nextEntityId if entities set is empty
-    if (this.entities.size === 0) this.nextEntityId = 0;
+    if (this.entities.size === 0) {
+      this.nextEntityId = 0;
+      this.freeIds = [];
+    }
   }
 
   addComponent<K extends ComponentType>(entityId: number, type: K, data: ComponentData[K]): void {
