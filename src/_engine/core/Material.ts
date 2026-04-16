@@ -89,6 +89,14 @@ export type MatProps = { id?: string } & (
   | { type: 'TOONNODEMATERIAL'; params: THREE.MeshToonNodeMaterialParameters }
 );
 
+// TEMP definitions
+export const incMaterialRef = (id: string) => {
+  // TEMP
+};
+export const decMaterialRef = (id: string) => {
+  // TEMP
+};
+
 /**
  * Creates a Three.js Material
  * @param id (string) optional id for the material, if id is not provided the uuid of the material is used as id.

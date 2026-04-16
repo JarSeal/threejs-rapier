@@ -17,8 +17,13 @@ import { createToaster } from './core/UI/Toaster';
 import { getStatsCmp } from './debug/Stats';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
 
-// ECS
-import './core/_Mesh';
+// ECS Core Plugins
+import './core/ECS/ECSCoreSystems';
+import './core/_MeshManager';
+
+// App Plugins
+import '../AppECSPlugins';
+
 import { initECSWorld } from './core/ECS';
 
 /**

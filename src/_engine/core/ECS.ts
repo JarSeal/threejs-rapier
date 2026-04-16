@@ -1,19 +1,9 @@
 import * as THREE from 'three/webgpu';
-import { AppComponentData, AppComponentType } from '../../CONFIG';
-import {
-  CoreComponentData,
-  CoreComponentType,
-  DebugComponentData,
-  DebugComponentType,
-  ECSPosition,
-  ECSRotation,
-  EntityDebugData,
-  Transform,
-} from './ECS/ECSCoreEntities';
+import { ComponentData, ECSPosition, ECSRotation, Transform } from './ECS/ECSCoreEntities';
 import { existsOrThrow } from '../utils/helpers';
 import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
-import { entityLifetimeSystem, physicsToTransformSystem } from './ECS/ECSCoreSystems';
 import { isDebugEnvironment } from './Config';
+import { ComponentType, CoreComponentType, EntityDebugData } from './ECS/ECSRegistry';
 
 /** Stages of ECS system invocation */
 export enum ECSSystemStage {
@@ -31,15 +21,6 @@ export enum ECSSystemStage {
 }
 
 export type ECSSystem = (world: ECSWorld, dt: number) => void;
-
-// --- Union Types of the core components and app components for the World ---
-export type ComponentType = CoreComponentType | DebugComponentType | AppComponentType;
-export const ComponentType = {
-  ...CoreComponentType,
-  ...DebugComponentType,
-  ...AppComponentType,
-};
-export type ComponentData = CoreComponentData & DebugComponentData & AppComponentData;
 
 export type CoreEntityOpts = {
   appId?: string;
@@ -195,7 +176,7 @@ export class ECSWorld {
     });
     this.addComponent(id, CoreComponentType.TRANSFORM, new Transform());
     this.addComponent(id, CoreComponentType.USER_DATA, opts?.userData || {});
-    this.addComponent(id, DebugComponentType.DEBUG_DATA, opts?.debugData || {});
+    this.addComponent(id, CoreComponentType.DEBUG_DATA, opts?.debugData || {});
     this.setDisabled(id, Boolean(opts?.disabled));
     return id;
   }
@@ -240,7 +221,13 @@ export class ECSWorld {
   addComponent<K extends ComponentType>(entityId: number, type: K, data: ComponentData[K]): void {
     if (type === ComponentType.DEBUG_DATA && !isDebugEnvironment) return;
 
-    this.storages.get(type)?.set(entityId, data);
+    let storage = this.storages.get(type);
+    if (!storage) {
+      storage = new Map();
+      this.storages.set(type, storage);
+    }
+
+    storage.set(entityId, data);
 
     // Trigger Initialization Hooks (onAddComponent)
     const hooks = ECSWorld.onAddComponentHooks.get(type);
@@ -271,7 +258,16 @@ export class ECSWorld {
 
   /** Direct access to a storage map for high-speed iteration */
   public getStorage<K extends ComponentType>(type: K): Map<number, ComponentData[K]> {
-    return this.storages.get(type)!;
+    let storage = this.storages.get(type);
+
+    // --- PREVENT ITERABLE ERROR ---
+    if (!storage) {
+      // If it doesn't exist, create an empty one so systems don't crash
+      storage = new Map();
+      this.storages.set(type, storage);
+    }
+
+    return storage;
   }
 
   /** * Hard reset of the entire engine state.

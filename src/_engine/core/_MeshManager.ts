@@ -1,12 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { createGeometry, incGeometryRef, decGeometryRef, GeoProps } from './_Geometry';
 import { createMaterial, incMaterialRef, decMaterialRef, MatProps } from './Material';
-import { ComponentType, CoreEntityOpts, ECSSystemStage, ECSWorld, getECSWorld } from './ECS';
+import { CoreEntityOpts, ECSSystemStage, ECSWorld, getECSWorld } from './ECS';
 import { getRootScene } from './Scene';
 import { existsOrThrow } from '../utils/helpers';
 import { getRenderer } from './Renderer';
 import { getCurrentCamera } from './Camera';
-import { OBJECT3D_TAGS } from './ECS/ECSCoreEntities';
+import { ComponentType, OBJECT3D_TAGS } from './ECS/ECSCoreEntities';
 
 // Register the meshSyncSystem
 ECSWorld.registerPlugin((world) => {
@@ -87,7 +87,6 @@ export const createMeshEntity = (
     value: mesh,
     _lastVersion: -1,
   });
-  world.addComponent(entityId, ComponentType.TAG_IS_MESH, true);
 
   rootScene.add(mesh);
 

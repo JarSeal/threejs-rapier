@@ -1,5 +1,24 @@
-import { ComponentType, ECSWorld } from '../ECS';
-import { CoreComponentType } from './ECSCoreEntities';
+import { ECSSystemStage, ECSWorld } from '../ECS';
+import { ComponentType } from './ECSCoreEntities';
+import { CoreComponentType } from './ECSRegistry';
+
+// --- PLUGIN REGISTRATION ---
+
+ECSWorld.registerPlugin((world) => {
+  // Lifetime system usually runs at the end of the frame to clean up
+  // entities that expired during the logic step (hence stage is LATE_MAIN).
+  world.addSystem(ECSSystemStage.LATE_MAIN, 'entityLifetimeSystem', entityLifetimeSystem);
+
+  world.addSystem(
+    ECSSystemStage.APP_POST_PHYSICS,
+    'physicsToTransformSystem',
+    physicsToTransformSystem
+  );
+
+  return world;
+});
+
+// --- SYSTEMS ---
 
 // @CHORE: Move this to PhysicsAPI and create initPhysicsToTransformSystem (follow mesh system pattern)
 /**

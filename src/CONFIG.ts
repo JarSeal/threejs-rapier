@@ -1,3 +1,5 @@
+import * as THREE from 'three/webgpu';
+
 import { AppConfig } from './_engine/core/Config';
 import { editObjectPropsContentFn } from './_engine/core/UI/DragWinContents/EditObjectProps';
 import { toggleDrawer } from './_engine/debug/DebuggerGUI';
@@ -36,16 +38,5 @@ const config: AppConfig = {
     myFirstDraggableTest: { contentFn: editObjectPropsContentFn }, // @TODO: remove this
   },
 };
-
-/**
- * App Specific ECS Components.
- */
-export interface AppComponentData {
-  [AppComponentType.HEALTH]: { current: number; max: number }; // Example
-}
-
-export enum AppComponentType {
-  HEALTH = 'HEALTH', // Example
-}
 
 export default config;

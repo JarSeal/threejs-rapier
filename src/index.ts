@@ -9,6 +9,7 @@ import { isDebugEnvironment } from './_engine/core/Config';
 import { addScenesToSceneListing } from './_engine/debug/DebugTools';
 import { SCENE_THIRD_PERSON_GYM_META, sceneThirdPersonGym } from './app/scene_thirdPersonGym';
 import { MAIN_APP_CAM_ID } from './CONFIG';
+import { SCENE_TEST_ECS_ID, sceneTestECS } from './app/scene_testECS';
 
 InitEngine(async () => {
   // Init camera
@@ -82,9 +83,10 @@ InitEngine(async () => {
         fn: sceneThirdPersonGym,
       },
       { id: SCENE01_ID, text: SCENE01_ID, fn: scene01 },
+      { id: SCENE_TEST_ECS_ID, text: 'Test ECS', fn: sceneTestECS },
     ]);
   }
 
   // Load scene
-  await loadScene({ nextSceneFn: sceneThirdPersonGym });
+  await loadScene({ nextSceneFn: sceneTestECS });
 });

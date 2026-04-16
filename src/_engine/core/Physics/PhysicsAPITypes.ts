@@ -157,7 +157,7 @@ export type RayColliderHitAPI = {
 /**
  * The simulation status of a rigid-body.
  */
-export declare enum RigidBodyTypeAPI {
+export enum RigidBodyTypeAPI {
   /**
    * A `RigidBodyType::Dynamic` body can be affected by all external forces.
    */
@@ -365,7 +365,7 @@ export type RigidBodyAPI = {
 /**
  * An enumeration representing the type of a shape.
  */
-export declare enum ShapeType {
+export enum ShapeType {
   Ball = 0,
   Cuboid = 1,
   Capsule = 2,
@@ -489,7 +489,7 @@ export type ColliderAPI = {
  * ((a >> 16) & b) != 0 && ((b >> 16) & a) != 0
  * ```
  */
-export declare type InteractionGroupsAPI = number;
+export type InteractionGroupsAPI = number;
 
 /**
  * A rule applied to combine coefficients.
@@ -498,14 +498,14 @@ export declare type InteractionGroupsAPI = number;
  * how friction and restitution coefficient should be combined
  * in a contact.
  */
-export declare enum CoefficientCombineRule {
+export enum CoefficientCombineRule {
   Average = 0,
   Min = 1,
   Multiply = 2,
   Max = 3,
 }
 
-export declare enum ActiveHooks {
+export enum ActiveHooks {
   NONE = 0,
   FILTER_CONTACT_PAIRS = 1,
   FILTER_INTERSECTION_PAIRS = 2,
@@ -514,7 +514,7 @@ export declare enum ActiveHooks {
 /**
  * Flags indicating what events are enabled for colliders.
  */
-export declare enum ActiveEvents {
+export enum ActiveEvents {
   NONE = 0,
   /**
    * Enable collision events.
@@ -530,7 +530,7 @@ export declare enum ActiveEvents {
  * Flags affecting whether collision-detection happens between two colliders
  * depending on the type of rigid-bodies they are attached to.
  */
-export declare enum ActiveCollisionTypes {
+export enum ActiveCollisionTypes {
   /**
    * Enable collision-detection between a collider attached to a dynamic body
    * and another collider attached to a dynamic body.
@@ -576,7 +576,7 @@ export declare enum ActiveCollisionTypes {
 /**
  * The projection of a point on a collider.
  */
-export declare type PointProjection = {
+export type PointProjection = {
   /**
    * The projection of the point on the collider.
    */
@@ -587,7 +587,7 @@ export declare type PointProjection = {
   isInside: boolean;
 };
 
-export declare enum FeatureType {
+export enum FeatureType {
   Vertex = 0,
   Edge = 1,
   Face = 2,
@@ -597,7 +597,7 @@ export declare enum FeatureType {
 /**
  * The intersection between a ray and a collider.
  */
-export declare type RayIntersection = {
+export type RayIntersection = {
   /**
    * The time-of-impact of the ray with the collider.
    *
@@ -625,7 +625,8 @@ export declare type RayIntersection = {
  * This object should **not** be stored anywhere. Its properties can only be
  * read from within the closure given to `EventHandler.drainContactForceEvents`.
  */
-export declare class TempContactForceEvent {
+// USED TO BE (@TODO: remove this line at some point): export declare class TempContactForceEvent {
+export interface TempContactForceEvent {
   /**
    * The first collider handle involved in the contact.
    */
@@ -663,7 +664,7 @@ export declare class TempContactForceEvent {
  * To avoid leaking WASM resources, this MUST be freed manually with `eventQueue.free()`
  * once you are done using it.
  */
-export declare type EventQueue = {
+export type EventQueue = {
   /**
    * Release the WASM memory occupied by this event-queue.
    */
@@ -695,7 +696,7 @@ export declare type EventQueue = {
 /**
  * Flags for excluding whole sets of colliders from a scene query.
  */
-export declare enum QueryFilterFlags {
+export enum QueryFilterFlags {
   /**
    * Exclude from the query any collider attached to a fixed rigid-body and colliders with no rigid-body attached.
    */
@@ -731,7 +732,7 @@ export declare enum QueryFilterFlags {
   ONLY_FIXED = 6,
 }
 
-export declare enum SolverFlags {
+export enum SolverFlags {
   EMPTY = 0,
   COMPUTE_IMPULSE = 1,
 }
@@ -2336,7 +2337,7 @@ export type CollCollisionGroupsResponse =
 export type CollSolverGroupsResponse = PhysicsResponse<PhysicsProtocolType.COLL_SOLVER_GROUPS>;
 export type CollContainsPointResponse = PhysicsResponse<PhysicsProtocolType.COLL_CONTAINS_POINT>;
 
-export declare enum PhysicsProtocolType {
+export enum PhysicsProtocolType {
   ERROR = 0,
 
   // ENGINE

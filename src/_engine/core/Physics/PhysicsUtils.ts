@@ -67,13 +67,11 @@ export const getColliderShapeName = (enumNumber: number) => {
 
 // @CHORE: We need to rewrite this, because these rb methods are now promises.
 // Check all of these at once in the worker.
-export const isDynamicPhysicsObjectValid = (po: PhysicsObject) =>
-  po.mesh &&
-  po.rigidBody &&
-  !po.rigidBody?.isSleeping() &&
-  po.rigidBody?.isMoving() &&
-  !po.rigidBody.isFixed() &&
-  po.rigidBody.isEnabled();
+export const isDynamicPhysicsObjectValid = (po: PhysicsObject) => po.mesh && po.rigidBody; // &&
+// !po.rigidBody?.isSleeping() &&
+// po.rigidBody?.isMoving() &&
+// !po.rigidBody.isFixed() &&
+// po.rigidBody.isEnabled();
 
 export const setPhysicsPauseTime = (physicsState: PhysicsState) => {
   const now = performance.now();

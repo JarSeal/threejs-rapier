@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { ComponentType, CoreEntityOpts, ECSWorld, getECSWorld } from '../ECS';
+import { CoreEntityOpts, ECSWorld, getECSWorld } from '../ECS';
 import {
   ColliderAPI,
   ColliderParams,
@@ -9,35 +9,14 @@ import {
 } from '../Physics/PhysicsAPITypes';
 import { createColliders, createRigidBody } from '../PhysicsAPI';
 import { existsOrThrow } from '../../utils/helpers';
+import { CoreComponentType, EntityDebugData } from './ECSRegistry';
+import { AppComponentData, AppComponentType } from '../../../AppECSRegistry';
 
 export type ECSPosition = { x: number; y: number; z: number };
 export type ECSRotation = { x: number; y: number; z: number; w: number };
 export interface LifetimeData {
   remaining: number; // Seconds until death
   total: number; // Starting duration
-}
-
-/** Engine Core Components */
-export enum CoreComponentType {
-  APP_ID = 'CORE_APP_ID',
-  TRANSFORM = 'CORE_TRANSFORM',
-  DISABLED = 'CORE_DISABLED',
-  PERSISTENT = 'CORE_PERSISTENT',
-  USER_DATA = 'CORE_USER_DATA',
-  LIFETIME = 'CORE_LIFETIME',
-  OBJECT3D = 'CORE_MESH',
-  COLLIDER = 'CORE_COLLIDER',
-  // Movement Buckets
-  BODY_DYNAMIC_VISUAL = 'CORE_BODY_DYNAMIC_VISUAL', // Moving + Has Mesh
-  BODY_DYNAMIC_HEADLESS = 'CORE_BODY_DYNAMIC_HEADLESS', // Moving + No Mesh
-  BODY_STATIC = 'CORE_BODY_STATIC', // Never moves
-  // Tags
-  TAG_IS_MESH = 'CORE_TAG_IS_MESH',
-  TAG_IS_GROUP = 'CORE_TAG_IS_GROUP',
-  TAG_IS_LIGHT = 'CORE_TAG_IS_LIGHT',
-  TAG_IS_CAMERA = 'CORE_TAG_IS_CAMERA',
-  TAG_IS_CHARACTER = 'CORE_TAG_IS_CHARACTER',
-  TAG_IS_PHYSICS_OBJECT = 'CORE_TAG_IS_PHYSICS_OBJECT',
 }
 
 export interface CoreComponentData {
@@ -60,7 +39,16 @@ export interface CoreComponentData {
   [CoreComponentType.TAG_IS_CAMERA]: boolean;
   [CoreComponentType.TAG_IS_CHARACTER]: boolean;
   [CoreComponentType.TAG_IS_PHYSICS_OBJECT]: boolean;
+  // Debug
+  [CoreComponentType.DEBUG_DATA]: EntityDebugData;
 }
+
+// --- Union Types of the core components and app components for the World ---
+export const ComponentType = {
+  ...CoreComponentType,
+  ...AppComponentType,
+};
+export type ComponentData = CoreComponentData & AppComponentData;
 
 /** This just makes shit faster... */
 export const OBJECT3D_TAGS = [
@@ -76,22 +64,6 @@ export const OBJECT3D_TAGS = [
   // TAG_IS_SKINNED
   // TAG_IS_BONE
 ] as const;
-
-/** Engine Debug Components */
-export enum DebugComponentType {
-  DEBUG_DATA = 'DEBUG_DATA',
-}
-
-export type EntityDebugData = {
-  name?: string;
-  description?: string;
-  comments?: { timestamp: number; comment: string }[];
-  debugObj?: Record<string, unknown>;
-};
-
-export interface DebugComponentData {
-  [DebugComponentType.DEBUG_DATA]: EntityDebugData;
-}
 
 /**
  * Custom Transform Class for ECS.
