@@ -32,7 +32,7 @@ export const initECSStressTest = (batchSize: number = 100, targetId?: number) =>
     // 1. Setup the Instancing Container if needed
     if (isInstanced && !instancedMesh) {
       const geo = new THREE.SphereGeometry(0.2, 8, 8);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const mat = new THREE.MeshPhongMaterial({ color: 0xffffff });
       instancedMesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES);
       // Initialize everything to scale 0 so they are invisible by default
       const s0 = new THREE.Matrix4().makeScale(0, 0, 0);
