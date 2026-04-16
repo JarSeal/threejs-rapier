@@ -4,21 +4,7 @@ import { existsOrThrow } from '../utils/helpers';
 import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
 import { isDebugEnvironment } from './Config';
 import { ComponentType, CoreComponentType, EntityDebugData } from './ECS/ECSRegistry';
-
-/** Stages of ECS system invocation */
-export enum ECSSystemStage {
-  // --- Runs in updateMainLoop (Always runs if MasterPlay is true) ---
-  MAIN = 'MAIN',
-
-  // --- Runs in updateAppLoop (Only if AppPlay is true) ---
-  APP_PRE_PHYSICS = 'APP_PRE_PHYSICS', // Input handling, logic before physics
-  APP_POST_PHYSICS = 'APP_POST_PHYSICS', // physicsToTransform (Syncing SAB to ECS)
-  APP_LOGIC = 'APP_LOGIC', // Standard gameplay systems
-  APP_RENDER_SYNC = 'APP_RENDER_SYNC', // transformToMesh (Syncing ECS to Three.js)
-
-  // --- Runs in updateLateMainLoop (After rendering) ---
-  LATE_MAIN = 'LATE_MAIN',
-}
+import { ECSSystemStage } from '../../AppECSRegistry';
 
 export type ECSSystem = (world: ECSWorld, dt: number) => void;
 
@@ -87,7 +73,7 @@ export class ECSWorld {
   // Tracks the current 'version' of every index ever created
   private generations = new Uint32Array(1048576);
 
-  private nextEntityId = 0;
+  private nextEntityId = 1;
   private freeIds: number[] = [];
   private entities = new Set<number>();
 
@@ -209,13 +195,6 @@ export class ECSWorld {
 
     // Recycle the index for future use
     this.freeIds.push(index);
-
-    // Finally, check if the entities size if 0 then reset everything to 0
-    if (this.entities.size === 0) {
-      this.nextEntityId = 0;
-      this.freeIds = [];
-      this.generations.fill(0);
-    }
   }
 
   addComponent<K extends ComponentType>(entityId: number, type: K, data: ComponentData[K]): void {

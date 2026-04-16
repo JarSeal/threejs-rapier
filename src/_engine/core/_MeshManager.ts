@@ -1,12 +1,13 @@
 import * as THREE from 'three/webgpu';
 import { createGeometry, incGeometryRef, decGeometryRef, GeoProps } from './_Geometry';
 import { createMaterial, incMaterialRef, decMaterialRef, MatProps } from './Material';
-import { CoreEntityOpts, ECSSystemStage, ECSWorld, getECSWorld } from './ECS';
+import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
 import { getRootScene } from './Scene';
 import { existsOrThrow } from '../utils/helpers';
 import { getRenderer } from './Renderer';
 import { getCurrentCamera } from './Camera';
 import { ComponentType, OBJECT3D_TAGS } from './ECS/ECSCoreEntities';
+import { ECSSystemStage } from '../../AppECSRegistry';
 
 // Register the meshSyncSystem
 ECSWorld.registerPlugin((world) => {

@@ -1,4 +1,5 @@
-import { ECSSystemStage, ECSWorld } from '../ECS';
+import { ECSSystemStage } from '../../../AppECSRegistry';
+import { ECSWorld } from '../ECS';
 import { ComponentType } from './ECSCoreEntities';
 import { CoreComponentType } from './ECSRegistry';
 

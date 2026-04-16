@@ -138,7 +138,7 @@ export const sceneTestECS = async () =>
     ecsWorld.setTransform(ballId, { pos: { x: 0, y: 1, z: 0 } });
 
     // Stress test ECS
-    initECSStressTest();
+    initECSStressTest(undefined, ballId);
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 

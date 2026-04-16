@@ -12,10 +12,7 @@ import { registerHoverToolEffect } from './toolkit/ecs/effects/HoverEffect';
  * and/or
  *
  * ECSWorld.registerPlugin((world) => {
- *   world
- *    .registerHoverEffect()
- *    .registerInputSystem()
- *    .registerSoundSystem();
+ *   registerHoverToolEffect()
  * });
  *
  */

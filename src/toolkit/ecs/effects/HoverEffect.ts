@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ECSSystemStage, ECSWorld } from '../../../_engine/core/ECS';
+import type { ECSWorld } from '../../../_engine/core/ECS';
 import { CoreComponentType } from '../../../_engine/core/ECS/ECSRegistry';
+import { ECSSystemStage } from '../../../AppECSRegistry';
 
 // --- src/toolkit/ecs/systems/HoverEffect.ts ---
 

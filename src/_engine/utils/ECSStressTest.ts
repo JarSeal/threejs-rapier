@@ -3,16 +3,17 @@ import * as THREE from 'three/webgpu';
 import { createKeyInputControl } from '../core/InputControls';
 import { getLogger } from './Logger';
 import { createMeshEntity } from '../core/_MeshManager'; // Assuming this is the path
-import { ECSSystemStage, ECSWorld, getECSWorld } from '../core/ECS';
+import { ECSWorld, getECSWorld } from '../core/ECS';
 import { ComponentType } from '../core/ECS/ECSCoreEntities';
 import { isDebugEnvironment } from '../core/Config';
 import { getRootScene } from '../core/Scene';
+import { ECSSystemStage } from '../../AppECSRegistry';
 
 let instancedMesh: THREE.InstancedMesh | null = null;
 const MAX_INSTANCES = 50000; // High ceiling for the stress test
 let totalCount = 0;
 
-export const initECSStressTest = (batchSize: number = 100) => {
+export const initECSStressTest = (batchSize: number = 100, targetId?: number) => {
   if (!isDebugEnvironment()) return;
 
   const world = getECSWorld();
@@ -25,13 +26,36 @@ export const initECSStressTest = (batchSize: number = 100) => {
   };
   const matProps = { type: 'BASIC' as const, params: { color: 0x00ff88 } };
 
+  let currentInstanceCount = 0;
+
   const spawnBatch = (isInstanced: boolean) => {
     // 1. Setup the Instancing Container if needed
     if (isInstanced && !instancedMesh) {
       const geo = new THREE.SphereGeometry(0.2, 8, 8);
-      const mat = new THREE.MeshBasicMaterial({ color: 0x00ff88 });
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
       instancedMesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES);
+      // Initialize everything to scale 0 so they are invisible by default
+      const s0 = new THREE.Matrix4().makeScale(0, 0, 0);
+      for (let i = 0; i < MAX_INSTANCES; i++) {
+        instancedMesh.setMatrixAt(i, s0);
+      }
+      instancedMesh.instanceMatrix.needsUpdate = true;
+      instancedMesh.count = 0; // Start at zero!
+
+      // Initialize colors to green
+      const defaultColor = new THREE.Color(0x00ff88);
+      for (let i = 0; i < MAX_INSTANCES; i++) {
+        instancedMesh.setColorAt(i, defaultColor);
+      }
+
       scene.add(instancedMesh);
+
+      if (targetId !== undefined) {
+        world.addSystem(ECSSystemStage.APP_LOGIC, 'proximitySystem', (w, dt) => {
+          // We pass the global ballId (your red ball) here
+          proximitySystem(w, targetId);
+        });
+      }
 
       // Inject the specialized sync system for instancing
       world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'instancedSync', instancedSyncSystem);
@@ -49,10 +73,12 @@ export const initECSStressTest = (batchSize: number = 100) => {
       if (isInstanced) {
         // --- MODE A: LIGHT ENTITY (INSTANCED) ---
         entityId = world.createEntity(); // Just a raw ID
+        const index = currentInstanceCount++;
         world.addComponent(entityId, ComponentType.INSTANCED_STRESS_TEST_DATA, {
           mesh: instancedMesh!,
-          index: totalCount % MAX_INSTANCES, // Simple index allocation
+          index, // Simple index allocation
         });
+        instancedMesh!.count = currentInstanceCount;
       } else {
         // --- MODE B: HEAVY ENTITY (UNIQUE MESH) ---
         entityId = createMeshEntity({ geo: geoProps, mat: matProps });
@@ -117,5 +143,47 @@ export const instancedSyncSystem = (world: ECSWorld) => {
 
   if (needsUpdate && masterMesh) {
     masterMesh.instanceMatrix.needsUpdate = true;
+  }
+};
+
+// PROXIMITY COLOR SYSTEM
+const _colorNear = new THREE.Color(0xff0000); // Red when close
+const _colorFar = new THREE.Color(0x00ff88); // Original Green
+const PROXIMITY_THRESHOLD_SQ = 5 * 5; // Use squared distance to avoid Math.sqrt()
+
+export const proximitySystem = (world: ECSWorld, targetId: number) => {
+  // 1. Get the Player/Target Position
+  const targetTransform = world.getComponent(targetId, ComponentType.TRANSFORM);
+  if (!targetTransform) return;
+  const targetPos = targetTransform.position;
+
+  // 2. Get the entities we want to check
+  const storage = world.getStorage(ComponentType.INSTANCED_STRESS_TEST_DATA);
+
+  let needsColorUpdate = false;
+  let masterMesh: THREE.InstancedMesh | null = null;
+
+  for (const [entityId, data] of storage) {
+    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+    if (!transform) continue;
+
+    // 3. Brute Force Distance Check (Squared)
+    // Distance formula: $d^2 = (x_2 - x_1)^2 + (y_2 - y_1)^2 + (z_2 - z_1)^2$
+    const distSq = targetPos.distanceToSquared(transform.position);
+
+    // 4. Update InstancedMesh Color
+    if (distSq < PROXIMITY_THRESHOLD_SQ) {
+      data.mesh.setColorAt(data.index, _colorNear);
+    } else {
+      data.mesh.setColorAt(data.index, _colorFar);
+    }
+
+    masterMesh = data.mesh;
+    needsColorUpdate = true;
+  }
+
+  // 5. Tell the GPU the color buffer has changed
+  if (needsColorUpdate && masterMesh && masterMesh.instanceColor) {
+    masterMesh.instanceColor.needsUpdate = true;
   }
 };

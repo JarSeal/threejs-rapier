@@ -31,7 +31,7 @@ export const ComponentType = {
   ...AppComponentType,
 } as const;
 
-export type ComponentType = CoreComponentType | AppComponentType;
+export type ComponentType = (typeof ComponentType)[keyof typeof ComponentType];
 
 export type EntityDebugData = {
   name?: string;
