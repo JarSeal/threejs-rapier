@@ -31,9 +31,6 @@ ECSWorld.registerComponentHooks(ComponentType.OBJECT3D, {
           world.addComponent(entityId, detector.tag, true);
         }
       }
-      if (obj.userData.isCharacter) {
-        world.addComponent(entityId, ComponentType.TAG_IS_CHARACTER, true);
-      }
       if (obj.userData.isPhysicsObject) {
         world.addComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT, true);
       }

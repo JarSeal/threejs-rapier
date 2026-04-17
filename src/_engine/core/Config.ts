@@ -191,3 +191,63 @@ export const getDebuggerQueryParams = () => ({
  * @returns config ({@link AppConfig})
  */
 export const getConfig = () => config;
+
+// PROJECT METADATA
+export const PROJECT_METADATA: {
+  /** App specific metadata */
+  app: {
+    /** App version */
+    version: string;
+    /** App version codename */
+    codename: string;
+    /** App name */
+    name: string;
+    /** App full name */
+    fullName: string;
+    /** App description */
+    description: string;
+    /** App URL */
+    url: string;
+    /** App repository URL */
+    repoUrl: string;
+    /** App author */
+    author: string;
+  };
+  /** Engine specific metadata */
+  engine: {
+    /** Engine version */
+    version: string;
+    /** Engine codename */
+    codename: string;
+    /** Engine name */
+    name: string;
+    /** Engine full name */
+    fullName: string;
+    /** Engine description */
+    description: string;
+    /** Engine URL */
+    url: string;
+    /** Engine repository URL */
+    repoUrl: string;
+    /** Engine author */
+    author: string;
+  };
+  /** Merged version number. This is a sum of each SemVar number (major.minor.patch). Example of calculation:
+   *
+   * App version: 1.3.23
+   *
+   * Engine version: 0.1.12
+   *
+   * Merge version: 1.3.23 + 0.1.12 = 1.4.37
+   * */
+  mergeVersion: string;
+  /** package.json version number */
+  pkgVersion: string;
+  /** Version hash created from versionChecksumString. */
+  versionChecksum: string;
+  /** Version string created from all version data:
+   *
+   * "mergeVersion_appVersion-appCodename_engVersion-engCodename_pkgVersion"
+   */
+  versionChecksumString: string;
+} = __PROJECT_METADATA__;

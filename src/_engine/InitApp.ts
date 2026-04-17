@@ -1,5 +1,5 @@
 import { type Scene } from 'three/webgpu';
-import { isDebugEnvironment, loadConfig } from './core/Config';
+import { isDebugEnvironment, loadConfig, PROJECT_METADATA } from './core/Config';
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
 import { initMainLoop } from './core/MainLoop';
 import { InitRapierPhysics } from './core/PhysicsRapier';
@@ -37,7 +37,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     loadConfig();
 
     // Sets the engine version to the HTML
-    setEngineVersion();
+    setEngineVersionToDOM();
 
     // Create base scene
     createRootScene();
@@ -98,9 +98,43 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
   }
 };
 
-const setEngineVersion = () => {
-  if (isDebugEnvironment()) llog(`Engine starting, running version ${__ENGINE_VERSION__}`);
-  const elem = document.getElementById('engineVersion');
-  if (elem) elem.textContent = __ENGINE_VERSION__;
-  // @TODO: add append element to body if not found (and set inline style to "display: none;")
+const consoleBootText = () => {
+  const meta = PROJECT_METADATA;
+
+  // Define styles
+  const sBrand = 'color: #00d4ff; font-weight: bold; font-size: 1.2em;';
+  const sInfo = 'color: #888;';
+  const sBlue = 'color: #00d2ff; font-weight: bold;';
+  const sEng = 'color: #ff9955; font-style: italic;';
+  const sApp = 'color: #ff9955; font-style: italic;';
+
+  llog(
+    `%c${meta.engine.name}%c starting...\n` +
+      `%cEngine version: %c${meta.engine.version} %c${meta.engine.codename}\n` +
+      `%cApp version: %c${meta.app.version} %c${meta.app.codename}\n` +
+      `%cVersion checksum: %c${meta.versionChecksum}`,
+    // Line 1 styles
+    sBrand,
+    sInfo,
+    // Line 2 styles
+    sInfo,
+    sBlue,
+    sEng,
+    // Line 3 styles
+    sInfo,
+    sBlue,
+    sApp,
+    // Line 4 styles
+    sInfo,
+    sBlue
+  );
+};
+
+const setEngineVersionToDOM = () => {
+  consoleBootText();
+  // @CHORE: add metadata as header metadata tag (remove these below)
+  const elemEng = document.getElementById('engineVersion');
+  if (elemEng) elemEng.textContent = PROJECT_METADATA.engine.version;
+  const elemApp = document.getElementById('appVersion');
+  if (elemApp) elemApp.textContent = PROJECT_METADATA.app.version;
 };

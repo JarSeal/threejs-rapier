@@ -1,16 +1,25 @@
 <!doctype html>
 <html lang="en">
+  <!-- Æ -->
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="x-ua-compatible" content="ie=edge" />
-    <title>Three.js Rapier GPU Template</title>
+    <title>%APP_NAME%</title>
+    <meta name="title" content="%APP_FULL_NAME%" />
+    <meta name="version" content="%APP_VERSION%" />
+    <meta name="codename" content="%APP_CODENAME%" />
+    <meta name="description" content="%APP_DESCRIPTION%" />
+    <meta name="author" content="%APP_AUTHOR%" />
+
+    <meta name="generator" content="%ENGINE_NAME% %ENGINE_VERSION% (%ENGINE_CODENAME%)" />
+    <meta name="x-build-id" content="%VERSION_CHECKSUM%" />
+    <meta name="x-merge-version" content="%MERGE_VERSION%" />
   </head>
 
   <body>
     <div id="mainCanvas"></div>
     <div id="guiContainer"></div>
     <script type="module" src="./index.ts"></script>
-    <div id="engineVersion"></div>
   </body>
 </html>

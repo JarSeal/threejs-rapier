@@ -1,10 +1,39 @@
 {
-  "name": "threejs-rapier",
+  "name": "aekasha-js",
   "version": "0.0.2",
-  "description": "Project template for Three.js and Rapier",
-  "main": "dist/index.html",
+  "description": "High-performance WebGPU application powered by the Ækasha framework.",
   "repository": "https://github.com/JarSeal/threerapier.git",
   "author": "JarSeal",
+  "app_metadata": {
+    "version": "0.0.0",
+    "codename": "Infant",
+    "name": "Example App",
+    "fullName": "Example App for Ækasha",
+    "description": "Project template utilizing the Ækasha modular toolkit.",
+    "url": ""
+  },
+  "engine_metadata": {
+    "version": "0.0.2",
+    "codename": "Genesis",
+    "name": "Ækasha",
+    "fullName": "Ækasha Framework",
+    "description": "The 'fifth element' of web development: a modular, high-performance WebGPU framework built on Three.js and the Ækasha ECS.",
+    "url": "",
+    "repository": "https://github.com/JarSeal/threerapier.git",
+    "author": "JarSeal"
+  },
+  "keywords": [
+    "aekasha",
+    "aekasha-js",
+    "ecs",
+    "webgpu",
+    "three.js",
+    "rapier",
+    "physics",
+    "high-performance",
+    "game-engine"
+  ],
+  "main": "dist/index.html",
   "license": "MIT",
   "private": false,
   "type": "module",
