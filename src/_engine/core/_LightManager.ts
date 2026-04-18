@@ -1,9 +1,20 @@
 import * as THREE from 'three/webgpu';
 import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
 import { getRootScene } from './Scene';
-import { existsOrThrow } from '../utils/helpers';
+import { existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
 import { ComponentType } from './ECS/ECSRegistry';
 import { Transform } from './ECS/ECSCoreEntities';
+import { ECSSystemStage } from '../../AppECSRegistry';
+
+// Register the lightSyncSystem
+ECSWorld.registerPlugin((world) => {
+  world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'lightSyncSystem', lightSyncSystem);
+});
+
+// Register onDeleteEntity hook for TAG_IS_LIGHT
+ECSWorld.registerComponentHooks(ComponentType.TAG_IS_LIGHT, {
+  onDeleteEntity: (entityId, world) => disposeLight(entityId, world),
+});
 
 export enum ShadowQuality {
   LOW = 'LOW', // Mobile / Integrated Graphics
@@ -116,7 +127,12 @@ export const createLightEntity = (
     ecsWorld || existsOrThrow(getECSWorld(), 'Could not get ECS world in createLightEntity.');
   const rootScene = existsOrThrow(getRootScene(), 'Could not find root scene.');
 
-  let light: THREE.Light;
+  let light:
+    | THREE.AmbientLight
+    | THREE.HemisphereLight
+    | THREE.PointLight
+    | THREE.DirectionalLight
+    | THREE.SpotLight;
 
   switch (props.type) {
     case 'AMBIENT':
@@ -234,6 +250,10 @@ export const createLightEntity = (
   }
 
   rootScene.add(light);
+
+  // Debug light helpers attachment
+  useDebug(debugHelpers)?.attachLightHelpers(entityId, light, world, rootScene);
+
   return entityId;
 };
 
@@ -309,7 +329,6 @@ export const setLightEnabled = (lightId: number, enabled: boolean, world: ECSWor
  * Cleanup Light Resources and its linked Target
  */
 export const disposeLight = (entityId: number, world: ECSWorld) => {
-  // 1. Clean up the linked target entity first
   const targetLink = world.getComponent(entityId, ComponentType.TARGET_LINK);
   if (targetLink) {
     world.deleteEntity(targetLink.targetId);
@@ -320,13 +339,10 @@ export const disposeLight = (entityId: number, world: ECSWorld) => {
 
   const light = objComp.value as THREE.Light;
 
-  // 2. Remove Three.js objects from scene
   if (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight) {
     light.target.removeFromParent();
   }
   light.removeFromParent();
-
-  // 3. Dispose of GPU resources (Shadow maps, etc)
   light.dispose();
 };
 
@@ -353,3 +369,6 @@ export const lightSyncSystem = (world: ECSWorld) => {
     }
   }
 };
+
+// Debugger loading
+const debugHelpers = loadDebugModule(() => import('./Debug/Light/LightHelpers'));

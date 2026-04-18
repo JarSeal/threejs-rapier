@@ -30,6 +30,7 @@ export enum CoreComponentType {
   TAG_IS_PHYSICS_OBJECT = 'CORE_TAG_IS_PHYSICS_OBJECT',
   // Debug
   DEBUG_DATA = 'CORE_DEBUG_DATA',
+  DEBUG_LIGHT_HELPER = 'CORE_DEBUG_LIGHT_HELPER',
 }
 
 export const ComponentType = {

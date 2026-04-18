@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { Materials, textureMapKeys } from '../core/Material';
 import { lerror, lwarn } from './Logger';
+import { IS_DEBUG_ENV } from '../core/Config';
 
 /**
  * Returns the file name extension from a string
@@ -519,3 +520,45 @@ export const isMainThread = () =>
  * @returns boolean
  */
 export const isMainThreadSimple = () => typeof window !== 'undefined';
+
+/** * A container for a module that will be loaded asynchronously.
+ */
+export interface DebugModuleRef<T> {
+  current: T | null;
+}
+
+/**
+ * Loads a lazy debug module.
+ * TypeScript infers the module shape 'T' directly from the importer.
+ */
+export function loadDebugModule<T>(importer: () => Promise<T>): DebugModuleRef<T> | null {
+  if (!IS_DEBUG_ENV) return null;
+  const ref: DebugModuleRef<T> = { current: null };
+  importer()
+    .then((module) => {
+      ref.current = module;
+    })
+    .catch((err) => {
+      const msg = `Debug module loading failed.`;
+      lerror(msg);
+      throw new Error(`${msg} ${err.message}`);
+    });
+  return ref;
+}
+
+/**
+ * Type Guard: Checks if we are in Debug mode AND the module is loaded.
+ *
+ * Usage: if (isDebugReady(debugHelpers)) {
+ *   const { current } = debugHelpers;
+ * }
+ */
+export const isDebugReady = <T>(ref: DebugModuleRef<T>): ref is { current: T } =>
+  !!(IS_DEBUG_ENV && ref?.current);
+
+/**
+ * Accessor: Returns the module if debug is active and loaded, otherwise undefined.
+ * Usage: useDebug(debugHelpers)?.attach(...)
+ */
+export const useDebug = <T>(ref: DebugModuleRef<T> | null): T | undefined =>
+  IS_DEBUG_ENV && ref?.current ? ref.current : undefined;

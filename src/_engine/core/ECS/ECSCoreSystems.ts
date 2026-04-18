@@ -1,6 +1,7 @@
 import { ECSSystemStage } from '../../../AppECSRegistry';
+import { IS_DEBUG_ENV } from '../Config';
 import { ECSWorld } from '../ECS';
-import { ComponentType } from './ECSCoreEntities';
+import { ComponentType, OBJECT3D_TAGS } from './ECSCoreEntities';
 import { CoreComponentType } from './ECSRegistry';
 
 // --- UNIVERSAL VISIBILITY HOOKS ---
@@ -10,6 +11,12 @@ ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
     // Hide Object3Ds
     const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
     if (objComp) objComp.value.visible = false;
+
+    // Hide Debug Helpers (Gizmos)
+    if (IS_DEBUG_ENV) {
+      const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+      if (helper) helper.value.visible = false;
+    }
 
     // Recursively disable possible targets
     const targetLink = world.getComponent(entityId, ComponentType.TARGET_LINK);
@@ -25,6 +32,12 @@ ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
     const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
     if (objComp) objComp.value.visible = true;
 
+    // Show helpers
+    if (IS_DEBUG_ENV) {
+      const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+      if (helper) helper.value.visible = true;
+    }
+
     // Recursively enable possible targets
     const targetLink = world.getComponent(entityId, ComponentType.TARGET_LINK);
     if (targetLink) {
@@ -32,6 +45,25 @@ ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
     }
 
     // @TODO: for physics, you need to take these into account as well
+  },
+});
+
+// Register onAddComponent hook for OBJECT3D
+ECSWorld.registerComponentHooks(ComponentType.OBJECT3D, {
+  onAddComponent: (entityId, world) => {
+    const obj3DComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+    if (!obj3DComp) return;
+    const obj = obj3DComp.value;
+    if (obj) {
+      for (const detector of OBJECT3D_TAGS) {
+        if (detector.prop in obj) {
+          world.addComponent(entityId, detector.tag, true);
+        }
+      }
+      if (obj.userData.isPhysicsObject) {
+        world.addComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT, true);
+      }
+    }
   },
 });
 
@@ -98,7 +130,7 @@ export const entityLifetimeSystem = (world: ECSWorld, dt: number) => {
 };
 
 /**
- * Global Law: Any entity with a TARGET_LINK and an OBJECT3D will
+ * Any entity with a TARGET_LINK and an OBJECT3D will
  * orient itself to face its target's current world position.
  */
 export const lookAtSystem = (world: ECSWorld) => {

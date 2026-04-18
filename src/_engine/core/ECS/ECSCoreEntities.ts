@@ -47,6 +47,9 @@ export interface CoreComponentData {
   [CoreComponentType.TAG_IS_PHYSICS_OBJECT]: boolean;
   // Debug
   [CoreComponentType.DEBUG_DATA]: EntityDebugData;
+  [CoreComponentType.DEBUG_LIGHT_HELPER]: {
+    value: THREE.PointLightHelper | THREE.DirectionalLightHelper | THREE.SpotLightHelper;
+  };
 }
 
 // --- Union Types of the core components and app components for the World ---

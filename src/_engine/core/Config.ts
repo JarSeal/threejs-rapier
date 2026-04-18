@@ -58,28 +58,32 @@ let config: AppConfig = {
   },
 };
 
+// Load url params
+const urlParams = new URLSearchParams(window.location.search);
+isProdTestQueryParam = urlParams.get('isProdTest') === 'true';
+isDebugQueryParam = urlParams.get('isDebug') === 'true';
+
+// Load ENV variables and get curEnvironment
+envVars = import.meta.env;
+if (
+  envVars.VITE_APP_ENV === 'development' ||
+  envVars.VITE_APP_ENV === 'test' ||
+  envVars.VITE_APP_ENV === 'unitTest'
+) {
+  curEnvironment = envVars.VITE_APP_ENV;
+} else {
+  curEnvironment = 'production';
+}
+
 /**
  * Loads all environment variables and configurations. This should be the first thing called in a project.
  */
 export const loadConfig = () => {
-  // Load ENV variables
-  envVars = import.meta.env;
-
   // Load CONFIG file
   config = {
     ...config,
     ...configFile,
   };
-
-  if (
-    envVars.VITE_APP_ENV === 'development' ||
-    envVars.VITE_APP_ENV === 'test' ||
-    envVars.VITE_APP_ENV === 'unitTest'
-  ) {
-    curEnvironment = envVars.VITE_APP_ENV;
-  } else {
-    curEnvironment = 'production';
-  }
 
   // Setup physics ENV configs
   if (!config.physics) config.physics = {};
@@ -111,11 +115,6 @@ export const loadConfig = () => {
       envVars.VITE_PHYS_TIMESTEP = undefined;
     }
   }
-
-  // Load url params
-  const urlParams = new URLSearchParams(window.location.search);
-  isProdTestQueryParam = urlParams.get('isProdTest') === 'true';
-  isDebugQueryParam = urlParams.get('isDebug') === 'true';
 };
 
 /**
@@ -152,12 +151,21 @@ export const isNotCurrentEnvironment = (environment: Environments) =>
 export const isDebugEnvironment = () =>
   (curEnvironment === 'development' || curEnvironment === 'test') && isDebugQueryParam;
 
+/** Whether the current environment is a debug environment or not. */
+// @TODO: Replace the isDebugEnvironment with this
+export const IS_DEBUG_ENV =
+  (curEnvironment === 'development' || curEnvironment === 'test') && isDebugQueryParam;
+
 /**
  * Checks whether the current environment is a production environment.
  * @returns boolean
  */
 export const isProductionEnvironment = () =>
   curEnvironment === 'production' || isProdTestQueryParam;
+
+/** Whether the current environment is a production environment or not. */
+// @TODO: Replace the isProductionEnvironment with this
+export const IS_PROD_ENV = curEnvironment === 'production' || isProdTestQueryParam;
 
 /**
  * Checks whether the app is in production test mode or not.
@@ -172,19 +180,27 @@ export const isProdTestMode = () =>
   (curEnvironment === 'development' || curEnvironment === 'test') && isProdTestQueryParam;
 
 /**
+ * Checks whether the app is in production test mode or not.
+ * This works only in 'development' and
+ * 'test' (?isProdTest=true) environments.
+ * Note: this is not the same as isProdEnvironment(),
+ * the purpose of this is to leave some debug UI elems
+ * on the screen when testing production.
+ * @returns boolean
+ */
+// @TODO: Replace the isProdTestMode with this
+export const IS_PROD_TEST_ENV =
+  (curEnvironment === 'development' || curEnvironment === 'test') && isProdTestQueryParam;
+
+/**
  * Returns the current environment.
  * @returns one of the environments ({@link Environments})
  */
 export const getCurrentEnvironment = () => curEnvironment;
 
-/**
- * Returns the engine related system query params.
- * @returns object
- */
-export const getDebuggerQueryParams = () => ({
-  isDebug: isDebugQueryParam,
-  isProdTest: isProdTestQueryParam,
-});
+/** Current environment */
+// @TODO: Replace the getCurrentEnvironment with this
+export const CUR_ENV = curEnvironment;
 
 /**
  * Return app config
@@ -192,7 +208,11 @@ export const getDebuggerQueryParams = () => ({
  */
 export const getConfig = () => config;
 
-// PROJECT METADATA
+/** App configurations. */
+// @TODO: Replace the getConfig with this
+export const APP_CONFIG = config;
+
+/** Project metadata. */
 export const PROJECT_METADATA: {
   /** App specific metadata */
   app: {

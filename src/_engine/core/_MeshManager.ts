@@ -6,7 +6,7 @@ import { getRootScene } from './Scene';
 import { existsOrThrow } from '../utils/helpers';
 import { getRenderer } from './Renderer';
 import { getCurrentCamera } from './Camera';
-import { ComponentType, OBJECT3D_TAGS } from './ECS/ECSCoreEntities';
+import { ComponentType } from './ECS/ECSCoreEntities';
 import { ECSSystemStage } from '../../AppECSRegistry';
 
 // Register the meshSyncSystem
@@ -17,26 +17,6 @@ ECSWorld.registerPlugin((world) => {
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
   onDeleteEntity: (entityId, world) => disposeMesh(entityId, world),
-});
-
-// Register onAddComponent hook for OBJECT3D
-// @CHORE: Move this to ECSCoreSystems and refactor the word mesh to obj3D
-ECSWorld.registerComponentHooks(ComponentType.OBJECT3D, {
-  onAddComponent: (entityId, world) => {
-    const meshComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-    if (!meshComp) return;
-    const obj = meshComp.value;
-    if (obj) {
-      for (const detector of OBJECT3D_TAGS) {
-        if (detector.prop in obj) {
-          world.addComponent(entityId, detector.tag, true);
-        }
-      }
-      if (obj.userData.isPhysicsObject) {
-        world.addComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT, true);
-      }
-    }
-  },
 });
 
 export type MeshProps = {
