@@ -27,6 +27,7 @@ export interface CoreComponentData {
   [CoreComponentType.USER_DATA]: Record<string, unknown>;
   [CoreComponentType.LIFETIME]: LifetimeData;
   [CoreComponentType.OBJECT3D]: { value: THREE.Object3D; _lastVersion: number };
+  [CoreComponentType.TARGET_LINK]: { targetId: number };
   [CoreComponentType.COLLIDER]: ColliderAPI[];
   // Movement Buckets (rigid bodies)
   [CoreComponentType.BODY_DYNAMIC_VISUAL]: RigidBodyAPI;

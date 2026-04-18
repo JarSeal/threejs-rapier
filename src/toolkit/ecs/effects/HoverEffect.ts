@@ -37,7 +37,7 @@ export const hoverToolSystem = (world: ECSWorld, dt: number) => {
   }
 };
 
-/** The Registration Helper (chainable) */
+/** The Registration Helper */
 export const registerHoverToolEffect = (world: ECSWorld) => {
   world.addSystem(ECSSystemStage.APP_LOGIC, 'hoverToolSystem', hoverToolSystem);
   return world;

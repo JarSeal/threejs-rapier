@@ -36,6 +36,7 @@ export class ECSWorld {
   // STATIC REGISTRIES (External core managers write to these)
   private static plugins: WorldPlugin[] = [];
   private static onAddComponentHooks: Map<ComponentType, ComponentHook[]> = new Map();
+  private static onRemoveComponentHooks: Map<ComponentType, ComponentHook[]> = new Map();
   private static onDeleteEntityHooks: Map<ComponentType, ComponentHook[]> = new Map();
 
   /** * Global registration methods.
@@ -53,11 +54,19 @@ export class ECSWorld {
 
   public static registerComponentHooks(
     type: ComponentType,
-    hooks: { onAddComponent?: ComponentHook; onDeleteEntity?: ComponentHook }
+    hooks: {
+      onAddComponent?: ComponentHook;
+      onRemoveComponent?: ComponentHook;
+      onDeleteEntity?: ComponentHook;
+    }
   ) {
     if (hooks.onAddComponent) {
       if (!this.onAddComponentHooks.has(type)) this.onAddComponentHooks.set(type, []);
       this.onAddComponentHooks.get(type)!.push(hooks.onAddComponent);
+    }
+    if (hooks.onRemoveComponent) {
+      if (!this.onRemoveComponentHooks.has(type)) this.onRemoveComponentHooks.set(type, []);
+      this.onRemoveComponentHooks.get(type)!.push(hooks.onRemoveComponent);
     }
     if (hooks.onDeleteEntity) {
       if (!this.onDeleteEntityHooks.has(type)) this.onDeleteEntityHooks.set(type, []);
@@ -221,6 +230,12 @@ export class ECSWorld {
   public removeComponent(entityId: number, type: ComponentType): void {
     const storage = this.storages.get(type);
     if (storage) storage.delete(entityId);
+    const hooks = ECSWorld.onRemoveComponentHooks.get(type);
+
+    // Fire hooks BEFORE the data is actually gone from storage
+    // so the hook can still read the component values if needed.
+    hooks?.forEach((hook) => hook(entityId, this));
+    this.storages.get(type)?.delete(entityId);
   }
 
   public getComponent<K extends ComponentType>(
@@ -451,12 +466,6 @@ export class ECSWorld {
       if (this.isEntityDynamic(entityId)) {
         this._resetBodyState(rb, Boolean(resetVelocity), Boolean(resetForces), wakeUp);
       }
-    }
-
-    // Handle Object3D Visibility
-    const object3D = this.getComponent(entityId, ComponentType.OBJECT3D);
-    if (object3D) {
-      object3D.value.visible = !disabled;
     }
 
     // Handle Future Components (e.g., Sounds)

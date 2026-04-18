@@ -19,6 +19,38 @@ ECSWorld.registerPlugin((world) => {
   return world;
 });
 
+// --- UNIVERSAL VISIBILITY HOOKS ---
+
+ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
+  onAddComponent: (entityId, world) => {
+    // Hide Object3Ds
+    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+    if (objComp) objComp.value.visible = false;
+
+    // Recursively disable possible targets
+    const targetLink = world.getComponent(entityId, ComponentType.TARGET_LINK);
+    if (targetLink) {
+      world.addComponent(targetLink.targetId, ComponentType.DISABLED, true);
+    }
+
+    // @TODO: for physics, you need to take these into account as well
+  },
+
+  onRemoveComponent: (entityId, world) => {
+    // Show Object3Ds
+    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+    if (objComp) objComp.value.visible = true;
+
+    // Recursively enable possible targets
+    const targetLink = world.getComponent(entityId, ComponentType.TARGET_LINK);
+    if (targetLink) {
+      world.removeComponent(targetLink.targetId, ComponentType.DISABLED);
+    }
+
+    // @TODO: for physics, you need to take these into account as well
+  },
+});
+
 // --- SYSTEMS ---
 
 // @CHORE: Move this to PhysicsAPI and create initPhysicsToTransformSystem (follow mesh system pattern)

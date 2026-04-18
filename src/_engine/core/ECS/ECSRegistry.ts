@@ -10,6 +10,7 @@ export enum CoreComponentType {
   USER_DATA = 'CORE_USER_DATA',
   LIFETIME = 'CORE_LIFETIME',
   OBJECT3D = 'CORE_MESH',
+  TARGET_LINK = 'CORE_TARGET_LINK',
   COLLIDER = 'CORE_COLLIDER',
   // Movement Buckets
   BODY_DYNAMIC_VISUAL = 'CORE_BODY_DYNAMIC_VISUAL', // Moving + Has Mesh
