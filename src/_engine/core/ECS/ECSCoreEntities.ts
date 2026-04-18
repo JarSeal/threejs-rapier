@@ -37,6 +37,11 @@ export interface CoreComponentData {
   [CoreComponentType.TAG_IS_MESH]: boolean;
   [CoreComponentType.TAG_IS_GROUP]: boolean;
   [CoreComponentType.TAG_IS_LIGHT]: boolean;
+  [CoreComponentType.TAG_IS_AMBIENT_LIGHT]: boolean;
+  [CoreComponentType.TAG_IS_HEMISPHERE_LIGHT]: boolean;
+  [CoreComponentType.TAG_IS_POINT_LIGHT]: boolean;
+  [CoreComponentType.TAG_IS_DIRECTIONAL_LIGHT]: boolean;
+  [CoreComponentType.TAG_IS_SPOT_LIGHT]: boolean;
   [CoreComponentType.TAG_IS_CAMERA]: boolean;
   [CoreComponentType.TAG_IS_CHARACTER]: boolean;
   [CoreComponentType.TAG_IS_PHYSICS_OBJECT]: boolean;
@@ -57,6 +62,12 @@ export const OBJECT3D_TAGS = [
   { prop: 'isGroup', tag: ComponentType.TAG_IS_GROUP },
   { prop: 'isLight', tag: ComponentType.TAG_IS_LIGHT },
   { prop: 'isCamera', tag: ComponentType.TAG_IS_CAMERA },
+  { prop: 'isAmbientLight', tag: ComponentType.TAG_IS_AMBIENT_LIGHT },
+  { prop: 'isHemisphereLight', tag: ComponentType.TAG_IS_HEMISPHERE_LIGHT },
+  { prop: 'isPointLight', tag: ComponentType.TAG_IS_POINT_LIGHT },
+  { prop: 'isDirectionalLight', tag: ComponentType.TAG_IS_DIRECTIONAL_LIGHT },
+  { prop: 'isSpotLight', tag: ComponentType.TAG_IS_SPOT_LIGHT },
+
   // @QUESTION: What other type of Three.js Object3Ds should we tag? Points/Particles?
   // From GEMINI (ask more about the SKINNED and BONE when you get there):
   // TAG_IS_POINTS

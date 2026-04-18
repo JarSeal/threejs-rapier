@@ -3,22 +3,6 @@ import { ECSWorld } from '../ECS';
 import { ComponentType } from './ECSCoreEntities';
 import { CoreComponentType } from './ECSRegistry';
 
-// --- PLUGIN REGISTRATION ---
-
-ECSWorld.registerPlugin((world) => {
-  // Lifetime system usually runs at the end of the frame to clean up
-  // entities that expired during the logic step (hence stage is LATE_MAIN).
-  world.addSystem(ECSSystemStage.LATE_MAIN, 'entityLifetimeSystem', entityLifetimeSystem);
-
-  world.addSystem(
-    ECSSystemStage.APP_POST_PHYSICS,
-    'physicsToTransformSystem',
-    physicsToTransformSystem
-  );
-
-  return world;
-});
-
 // --- UNIVERSAL VISIBILITY HOOKS ---
 
 ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
@@ -49,6 +33,25 @@ ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
 
     // @TODO: for physics, you need to take these into account as well
   },
+});
+
+// --- PLUGIN REGISTRATION ---
+
+ECSWorld.registerPlugin((world) => {
+  // Lifetime system usually runs at the end of the frame to clean up
+  // entities that expired during the logic step (hence stage is LATE_MAIN).
+  world.addSystem(ECSSystemStage.LATE_MAIN, 'entityLifetimeSystem', entityLifetimeSystem);
+
+  world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'lookAtSystem', lookAtSystem);
+
+  // @CHORE: register this system in the PhysicsAPI
+  world.addSystem(
+    ECSSystemStage.APP_POST_PHYSICS,
+    'physicsToTransformSystem',
+    physicsToTransformSystem
+  );
+
+  return world;
 });
 
 // --- SYSTEMS ---
@@ -90,6 +93,29 @@ export const entityLifetimeSystem = (world: ECSWorld, dt: number) => {
     if (data.remaining <= 0) {
       // Delete the entity
       world.deleteEntity(entityId);
+    }
+  }
+};
+
+/**
+ * Global Law: Any entity with a TARGET_LINK and an OBJECT3D will
+ * orient itself to face its target's current world position.
+ */
+export const lookAtSystem = (world: ECSWorld) => {
+  const storage = world.getStorage(ComponentType.TARGET_LINK);
+
+  for (const [entityId, link] of storage) {
+    if (world.isDisabled(entityId)) continue;
+
+    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+    const targetTransform = world.getComponent(link.targetId, ComponentType.TRANSFORM);
+
+    if (objComp && targetTransform) {
+      // Three.js Objects (Meshes, Cameras, Groups)
+      // We use the raw .lookAt method.
+      // Note: DirectionalLights usually use their internal .target property,
+      // but calling .lookAt on the light source itself doesn't hurt.
+      objComp.value.lookAt(targetTransform.position);
     }
   }
 };

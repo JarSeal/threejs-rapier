@@ -20,6 +20,7 @@ ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
 });
 
 // Register onAddComponent hook for OBJECT3D
+// @CHORE: Move this to ECSCoreSystems and refactor the word mesh to obj3D
 ECSWorld.registerComponentHooks(ComponentType.OBJECT3D, {
   onAddComponent: (entityId, world) => {
     const meshComp = world.getComponent(entityId, ComponentType.OBJECT3D);

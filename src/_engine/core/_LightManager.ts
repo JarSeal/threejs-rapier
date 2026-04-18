@@ -197,7 +197,6 @@ export const createLightEntity = (
 
   const entityId = world.createEntity(entityOpts);
   world.addComponent(entityId, ComponentType.OBJECT3D, { value: light, _lastVersion: -1 });
-  world.addComponent(entityId, ComponentType.TAG_IS_LIGHT, true);
 
   // --- Target Logic ---
   if (
