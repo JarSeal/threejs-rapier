@@ -3,7 +3,7 @@ import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
 import { getRootScene } from './Scene';
 import { existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
 import { ComponentType } from './ECS/ECSRegistry';
-import { Transform } from './ECS/ECSCoreEntities';
+import { Transform } from './ECS/ECSCoreComponents';
 import { ECSSystemStage } from '../../AppECSRegistry';
 
 // Register the lightSyncSystem

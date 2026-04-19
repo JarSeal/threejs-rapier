@@ -6,7 +6,7 @@ import { getRootScene } from './Scene';
 import { existsOrThrow } from '../utils/helpers';
 import { getRenderer } from './Renderer';
 import { getCurrentCamera } from './Camera';
-import { ComponentType } from './ECS/ECSCoreEntities';
+import { ComponentType } from './ECS/ECSCoreComponents';
 import { ECSSystemStage } from '../../AppECSRegistry';
 
 // Register the meshSyncSystem

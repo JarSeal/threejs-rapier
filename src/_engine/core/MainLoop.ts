@@ -96,6 +96,17 @@ export const transformTimeValue = (durationInMs: number) =>
 let mainLoop: () => void = () => {};
 let ecsWorld: ECSWorld;
 
+const renderScene = () => {
+  // New ECS Implementation
+  // const activeCam = getActiveCamera();
+  // if (activeCam) {
+  //   (getRenderer() as Renderer).render(getRootScene() as Scene, activeCam);
+  // }
+
+  // Old implementation
+  (getRenderer() as Renderer).render(getRootScene() as Scene, getCurrentCamera());
+};
+
 // LOOP (for debug)
 // **************************************
 const mainLoopForDebug = async () => {
@@ -123,15 +134,12 @@ const mainLoopForDebug = async () => {
     }
   }
 
-  // Update helpers (only in debug)
-  updateHelpers(skipFrame);
-
   // main loopers
   ecsWorld.updateMainLoop(delta);
+  // Update helpers (only in debug)
+  updateHelpers(skipFrame);
   runSceneMainLoopers(delta, skipFrame);
 
-  const renderer = getRenderer() as Renderer;
-  const rootScene = getRootScene() as Scene;
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
@@ -165,12 +173,12 @@ const mainLoopForDebug = async () => {
   // Update stats-gl
   getStats()?.update();
 
-  renderer.render(rootScene, getCurrentCamera());
+  renderScene();
 
   ecsWorld.updateLateMainLoop(delta);
   runSceneMainLateLoopers(delta);
 
-  updateRestOfStats(renderer);
+  updateRestOfStats(getRenderer() as Renderer);
 };
 
 // LOOP (for production)
@@ -209,7 +217,9 @@ const mainLoopForProduction = async () => {
       !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
     if (physDisabled) updateInputControllerLoopActions(delta);
   }
-  (getRenderer() as Renderer).render(getRootScene() as Scene, getCurrentCamera());
+
+  renderScene();
+
   ecsWorld.updateLateMainLoop(delta);
   runSceneMainLateLoopers(delta);
 };
@@ -243,9 +253,6 @@ const mainLoopForProductionWithFPSLimiter = async () => {
   ecsWorld.updateMainLoop(delta);
   runSceneMainLoopers(delta, skipFrame);
 
-  const renderer = getRenderer() as Renderer;
-  const rootScene = getRootScene() as Scene;
-
   if (loopState.appPlay) {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
@@ -269,7 +276,9 @@ const mainLoopForProductionWithFPSLimiter = async () => {
   } else {
     if (skipFrame) return;
   }
-  renderer.render(rootScene, getCurrentCamera());
+
+  renderScene();
+
   ecsWorld.updateLateMainLoop(delta);
   runSceneMainLateLoopers(delta);
 };
@@ -299,17 +308,12 @@ export const initMainLoop = () => {
   }
 
   // Add three.js global resizer
-  resizers['canvasResizer'] = () => {
+  addResizer('canvasResizer', () => {
     const renderer = getRenderer();
     if (!renderer) throw new Error('Could not find current renderer in canvas resizer.');
-    const windowSize = getWindowSize();
-    const cameras = getAllCamerasAsArray();
-    for (let i = 0; i < cameras.length; i++) {
-      cameras[i].aspect = windowSize.aspect;
-      cameras[i].updateProjectionMatrix();
-    }
-    renderer.setSize(windowSize.width, windowSize.height);
-  };
+    const { width, height } = getWindowSize();
+    renderer.setSize(width, height);
+  });
   window.addEventListener(
     'resize',
     () => {
@@ -360,7 +364,8 @@ export const initMainLoop = () => {
     mainLoop = mainLoopForProduction;
   }
 
-  renderer.render(getRootScene() as Scene, currentCamera);
+  renderScene();
+
   if (loopState.masterPlay) {
     // Wait for a few loops and start the main loop and physics loop
     setTimeout(() => requestAnimationFrame(mainLoop), 100);
