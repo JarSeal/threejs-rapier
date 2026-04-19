@@ -11,6 +11,7 @@ export enum CoreComponentType {
   LIFETIME = 'CORE_LIFETIME',
   OBJECT3D = 'CORE_MESH',
   TARGET_LINK = 'CORE_TARGET_LINK',
+  CAMERA_SETTINGS = 'CORE_CAMERA_SETTINGS',
   COLLIDER = 'CORE_COLLIDER',
   // Movement Buckets
   BODY_DYNAMIC_VISUAL = 'CORE_BODY_DYNAMIC_VISUAL', // Moving + Has Mesh
@@ -31,6 +32,7 @@ export enum CoreComponentType {
   // Debug
   DEBUG_DATA = 'CORE_DEBUG_DATA',
   DEBUG_LIGHT_HELPER = 'CORE_DEBUG_LIGHT_HELPER',
+  DEBUG_CAMERA_HELPER = 'CORE_DEBUG_CAMERA_HELPER',
 }
 
 export const ComponentType = {

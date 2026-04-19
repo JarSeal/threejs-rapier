@@ -4,7 +4,7 @@ import { createKeyInputControl } from '../core/InputControls';
 import { getLogger } from './Logger';
 import { createMeshEntity } from '../core/_MeshManager'; // Assuming this is the path
 import { ECSWorld, getECSWorld } from '../core/ECS';
-import { ComponentType } from '../core/ECS/ECSCoreEntities';
+import { ComponentType } from '../core/ECS/ECSCoreComponents';
 import { isDebugEnvironment } from '../core/Config';
 import { getRootScene } from '../core/Scene';
 import { ECSSystemStage } from '../../AppECSRegistry';

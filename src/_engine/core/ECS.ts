@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { ComponentData, ECSPosition, ECSRotation, Transform } from './ECS/ECSCoreEntities';
+import { ComponentData, ECSPosition, ECSRotation, Transform } from './ECS/ECSCoreComponents';
 import { existsOrThrow } from '../utils/helpers';
 import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
 import { isDebugEnvironment } from './Config';

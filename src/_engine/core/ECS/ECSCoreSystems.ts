@@ -1,7 +1,7 @@
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import { IS_DEBUG_ENV } from '../Config';
 import { ECSWorld } from '../ECS';
-import { ComponentType, OBJECT3D_TAGS } from './ECSCoreEntities';
+import { ComponentType, OBJECT3D_TAGS } from './ECSCoreComponents';
 import { CoreComponentType } from './ECSRegistry';
 
 // --- UNIVERSAL VISIBILITY HOOKS ---

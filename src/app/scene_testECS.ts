@@ -7,7 +7,7 @@ import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { MAIN_APP_CAM_ID } from '../CONFIG';
 import { createMeshEntity, MeshProps } from '../_engine/core/_MeshManager';
 import { ECSSystemStage, ECSWorld, getECSWorld } from '../_engine/core/ECS';
-import { ComponentType } from '../_engine/core/ECS/ECSCoreEntities';
+import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
 
 export const SCENE_TEST_ECS_ID = 'sceneTestECS';

@@ -28,6 +28,14 @@ export interface CoreComponentData {
   [CoreComponentType.LIFETIME]: LifetimeData;
   [CoreComponentType.OBJECT3D]: { value: THREE.Object3D; _lastVersion: number };
   [CoreComponentType.TARGET_LINK]: { targetId: number };
+  [CoreComponentType.CAMERA_SETTINGS]: {
+    type: 'PERSPECTIVE' | 'ORTHOGRAPHIC';
+    fov: number; // Only for Perspective
+    near: number;
+    far: number;
+    zoom: number;
+    frustumSize: number; // Only for Orthographic (Standard vertical size)
+  };
   [CoreComponentType.COLLIDER]: ColliderAPI[];
   // Movement Buckets (rigid bodies)
   [CoreComponentType.BODY_DYNAMIC_VISUAL]: RigidBodyAPI;
@@ -50,6 +58,7 @@ export interface CoreComponentData {
   [CoreComponentType.DEBUG_LIGHT_HELPER]: {
     value: THREE.PointLightHelper | THREE.DirectionalLightHelper | THREE.SpotLightHelper;
   };
+  [CoreComponentType.DEBUG_CAMERA_HELPER]: { value: THREE.CameraHelper };
 }
 
 // --- Union Types of the core components and app components for the World ---
