@@ -44,7 +44,10 @@
     "lint": "eslint",
     "build": "tsc && vite build",
     "build:test": "tsc && VITE_APP_ENV=test vite build",
-    "docs": "typedoc"
+    "docs": "typedoc",
+    "codecat": "./devTools/codecat.sh",
+    "cc": "bash ./devTools/codecat.sh",
+    "codecatAsExecutable": "chmod +x ./devTools/codecat.sh"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",
