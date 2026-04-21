@@ -51,7 +51,7 @@ export const initECSStressTest = (batchSize: number = 100, targetId?: number) =>
       scene.add(instancedMesh);
 
       if (targetId !== undefined) {
-        world.addSystem(ECSSystemStage.APP_LOGIC, 'proximitySystem', (w, dt) => {
+        world.addSystem(ECSSystemStage.APP_LOGIC, 'proximitySystem', (w) => {
           // We pass the global ballId (your red ball) here
           proximitySystem(w, targetId);
         });

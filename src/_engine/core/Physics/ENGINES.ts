@@ -1,7 +1,7 @@
 import type Rapier from '@dimforge/rapier3d-compat';
 
-import * as RapierAPI from './EngineRapier';
-import { EngineAPIType } from './PhysicsAPITypes';
+// import * as RapierAPI from './EngineRapier';
+// import { EngineAPIType } from './PhysicsAPITypes';
 
 // Define the engines (key) and their init functions
 export const ENGINES: Record<
@@ -9,7 +9,7 @@ export const ENGINES: Record<
   {
     init: () => Promise<unknown>;
     forceTypeEngine: (engineObj: unknown) => unknown;
-    engineAPI: EngineAPIType;
+    // engineAPI: EngineAPIType;
   }
 > = {
   RAPIER: {
@@ -20,6 +20,6 @@ export const ENGINES: Record<
       return RAPIER as typeof Rapier;
     },
     forceTypeEngine: (engineObj: unknown) => engineObj as typeof Rapier,
-    engineAPI: RapierAPI,
+    // engineAPI: RapierAPI,
   },
 };

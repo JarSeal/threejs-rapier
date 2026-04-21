@@ -19,7 +19,7 @@ import { disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
 import { DEBUG_CAMERA_ID, getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
-import { isDebugEnvironment } from './Config';
+import { IS_DEBUG_ENV, isDebugEnvironment } from './Config';
 import { clearSkyBox } from './SkyBox';
 import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
@@ -37,6 +37,8 @@ import { deregisterAllLightAndCameraHelpers } from './Helpers';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
 import { deleteAllGroups } from './Group';
 import { setIsLoadingScene } from './MainLoop';
+import { ComponentType } from './ECS/ECSRegistry';
+import { getECSWorld } from './ECS';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -267,6 +269,14 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       runOnAllSceneExits();
       deleteOnCameraSetsAndUnsets();
       deleteAllRayHelpers();
+
+      const ecsWorld = existsOrThrow(getECSWorld(), 'Could not find ECS World in loadScene');
+      if (IS_DEBUG_ENV) {
+        // We Give the Debug Camera a chance to save its final state for the current scene.
+        // This triggers the 'end' logic manually if needed, or simply ensures LS is up to date.
+        ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
+      }
+      ecsWorld.clearNonPersistent();
 
       loader.phase = 'LOAD';
       await loadFn(loader, initNextSceneFn).then(async (newSceneId) => {

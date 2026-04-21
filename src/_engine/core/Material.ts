@@ -92,9 +92,11 @@ export type MatProps = { id?: string } & (
 // TEMP definitions
 export const incMaterialRef = (id: string) => {
   // TEMP
+  id;
 };
 export const decMaterialRef = (id: string) => {
   // TEMP
+  id;
 };
 
 /**

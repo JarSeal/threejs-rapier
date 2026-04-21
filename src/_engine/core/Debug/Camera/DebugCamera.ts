@@ -7,8 +7,10 @@ import { getCanvasElem } from '../../Renderer';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
 import { ECSSystemStage } from '../../../../AppECSRegistry';
 
+export type DebugCamState = typeof DEFAULT_DEBUG_CAM_PROPS;
+
 type DebugCamLSData = {
-  [sceneId: string]: typeof DEFAULT_DEBUG_CAM_PROPS;
+  [sceneId: string]: DebugCamState;
 };
 
 const DEFAULT_DEBUG_CAM_PROPS = {
@@ -109,11 +111,18 @@ export const toggleDebugCamera = (
   }
 };
 
+export const toggleOrbitControls = (world: ECSWorld, debugCamId: number, enabled: boolean) => {
+  const orbitComp = world.getComponent(debugCamId, ComponentType.ORBIT_CONTROLS);
+  const controls = orbitComp?.controls;
+  if (!controls) return;
+  controls.enabled = enabled;
+};
+
 export const getDebugCamProps = (sceneId: string) => {
   const saved = lsGetItem(LS_KEY, {}) as DebugCamLSData;
   const keys = Object.keys(saved);
   if (!keys.includes(sceneId)) saved[sceneId] = DEFAULT_DEBUG_CAM_PROPS;
-  return saved[sceneId] as typeof DEFAULT_DEBUG_CAM_PROPS;
+  return saved[sceneId] as DebugCamState;
 };
 
 export const debugCamSceneChange = (newSceneId: string, world: ECSWorld) => {

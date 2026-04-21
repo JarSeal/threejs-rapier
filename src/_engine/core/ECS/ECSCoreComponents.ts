@@ -1,15 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 
-import { CoreEntityOpts, ECSWorld, getECSWorld } from '../ECS';
-import {
-  ColliderAPI,
-  ColliderParams,
-  RigidBodyAPI,
-  RigidBodyParams,
-} from '../Physics/PhysicsAPITypes';
-import { createColliders, createRigidBody } from '../PhysicsAPI';
-import { existsOrThrow } from '../../utils/helpers';
+import { ColliderAPI, RigidBodyAPI } from '../Physics/PhysicsAPITypes';
 import { CoreComponentType, EntityDebugData } from './ECSRegistry';
 import { AppComponentData, AppComponentType } from '../../../AppECSRegistry';
 
@@ -131,72 +123,73 @@ export class Transform {
 
 // @CHORE: move this to PhysicsAPI
 // @CHORE: refactor the object3D to just use an entityId
-export const createPhysicsEntity = async (
-  colliderParams: ColliderParams | ColliderParams[],
-  rigidBodyParams?: RigidBodyParams,
-  object3D?: THREE.Object3D,
-  entityOpts?: CoreEntityOpts,
-  ecsWorld?: ECSWorld
-): Promise<number> => {
-  const world =
-    ecsWorld || existsOrThrow(getECSWorld(), 'Could no get ECS world in createPhysicsEntity.');
+// export const createPhysicsEntity = async (
+//   colliderParams: ColliderParams | ColliderParams[],
+//   rigidBodyParams?: RigidBodyParams,
+//   object3D?: THREE.Object3D,
+//   entityOpts?: CoreEntityOpts,
+//   ecsWorld?: ECSWorld
+// ): Promise<number> => {
+//   const world =
+//     ecsWorld || existsOrThrow(getECSWorld(), 'Could no get ECS world in createPhysicsEntity.');
 
-  const entityId = world.createEntity(entityOpts);
-  world.addComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT, true);
+//   const entityId = world.createEntity(entityOpts);
+//   world.addComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT, true);
 
-  // Create Physics (Master Source of Truth)
-  let rb: RigidBodyAPI | undefined = undefined;
-  if (rigidBodyParams) {
-    rb = await createRigidBody(rigidBodyParams);
-  }
+//   // Create Physics (Master Source of Truth)
+//   let rb: RigidBodyAPI | undefined = undefined;
+//   if (rigidBodyParams) {
+//     rb = await createRigidBody(rigidBodyParams);
+//   }
 
-  const paramsArray = Array.isArray(colliderParams) ? colliderParams : [colliderParams];
-  if (rb) {
-    for (let i = 0; i < paramsArray.length; i++) {
-      paramsArray[i].parentId = rb.id;
-    }
-  }
-  const colls: ColliderAPI[] = paramsArray.length ? await createColliders(paramsArray) : [];
+//   const paramsArray = Array.isArray(colliderParams) ? colliderParams : [colliderParams];
+//   if (rb) {
+//     for (let i = 0; i < paramsArray.length; i++) {
+//       paramsArray[i].parentId = rb.id;
+//     }
+//   }
 
-  // Create ECS Transform (Local Cache)
-  const transform = world.getComponent(entityId, CoreComponentType.TRANSFORM);
+//   const colls: ColliderAPI[] = paramsArray.length ? await createColliders(paramsArray) : [];
 
-  if (rb) {
-    // Sync Transform to initial Physics state
-    transform?.position.set(rb.pos.x, rb.pos.y, rb.pos.z);
-    transform?.quaternion.set(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w);
-  } else if (object3D) {
-    // If no physics, use where the app developer placed the mesh
-    transform?.position.copy(object3D.position);
-    transform?.quaternion.copy(object3D.quaternion);
-    transform?.scale.copy(object3D.scale);
-  }
+//   // Create ECS Transform (Local Cache)
+//   const transform = world.getComponent(entityId, CoreComponentType.TRANSFORM);
 
-  // We align the mesh to the transform NOW, before the loop starts.
-  if (object3D) {
-    if (transform) {
-      object3D.position.copy(transform.position);
-      object3D.quaternion.copy(transform.quaternion);
-      object3D.scale.copy(transform.scale);
+//   if (rb) {
+//     // Sync Transform to initial Physics state
+//     transform?.position.set(rb.pos.x, rb.pos.y, rb.pos.z);
+//     transform?.quaternion.set(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w);
+//   } else if (object3D) {
+//     // If no physics, use where the app developer placed the mesh
+//     transform?.position.copy(object3D.position);
+//     transform?.quaternion.copy(object3D.quaternion);
+//     transform?.scale.copy(object3D.scale);
+//   }
 
-      // Also set the 'version' so the first loop iteration knows it's already synced
-      object3D.userData._lastVersion = transform.version;
-    }
-    world.addComponent(entityId, ComponentType.OBJECT3D, { value: object3D, _lastVersion: -1 });
-  }
+//   // We align the mesh to the transform NOW, before the loop starts.
+//   if (object3D) {
+//     if (transform) {
+//       object3D.position.copy(transform.position);
+//       object3D.quaternion.copy(transform.quaternion);
+//       object3D.scale.copy(transform.scale);
 
-  world.addComponent(entityId, ComponentType.COLLIDER, colls);
+//       // Also set the 'version' so the first loop iteration knows it's already synced
+//       object3D.userData._lastVersion = transform.version;
+//     }
+//     world.addComponent(entityId, ComponentType.OBJECT3D, { value: object3D, _lastVersion: -1 });
+//   }
 
-  // Bucket Sorting
-  const isStatic = !rb || rigidBodyParams?.rigidType === 'FIXED';
-  if (isStatic) {
-    if (rb) world.addComponent(entityId, ComponentType.BODY_STATIC, rb);
-  } else {
-    const bucket = object3D
-      ? ComponentType.BODY_DYNAMIC_VISUAL
-      : ComponentType.BODY_DYNAMIC_HEADLESS;
-    world.addComponent(entityId, bucket, rb!);
-  }
+//   world.addComponent(entityId, ComponentType.COLLIDER, colls);
 
-  return entityId;
-};
+//   // Bucket Sorting
+//   const isStatic = !rb || rigidBodyParams?.rigidType === 'FIXED';
+//   if (isStatic) {
+//     if (rb) world.addComponent(entityId, ComponentType.BODY_STATIC, rb);
+//   } else {
+//     const bucket = object3D
+//       ? ComponentType.BODY_DYNAMIC_VISUAL
+//       : ComponentType.BODY_DYNAMIC_HEADLESS;
+//     world.addComponent(entityId, bucket, rb!);
+//   }
+
+//   return entityId;
+// };

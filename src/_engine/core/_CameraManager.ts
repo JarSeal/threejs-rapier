@@ -1,6 +1,11 @@
 import * as THREE from 'three/webgpu';
 import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
-import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
+import {
+  getCurrentSceneId,
+  getRootScene,
+  registerOnAllSceneEnterings,
+  registerOnAllSceneExits,
+} from './Scene';
 import { DebugModuleRef, existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
 import { ComponentType } from './ECS/ECSRegistry';
 import { ECSSystemStage } from '../../AppECSRegistry';
@@ -146,11 +151,20 @@ export const initDebugCamera = (world: ECSWorld, sceneId: string) => {
   if (IS_DEBUG_ENV) {
     if (debugCameraEntityId) return;
 
-    registerOnAllSceneEnterings('debugCamSceneChangeLogic', () => {
+    registerOnAllSceneExits('debugCamExitSceneLogic', () => {
+      if (debugCameraEntityId) {
+        useDebug(debugCamera)?.toggleOrbitControls(world, debugCameraEntityId, false);
+      }
+    });
+
+    registerOnAllSceneEnterings('debugCamEnterSceneLogic', () => {
       const newSceneId = getCurrentSceneId();
       if (newSceneId) useDebug(debugCamera)?.debugCamSceneChange(newSceneId, world);
       const props = useDebug(debugCamera)?.getDebugCamProps(newSceneId);
       const isEnabled = Boolean(props?.enabled) || true;
+      if (debugCameraEntityId) {
+        useDebug(debugCamera)?.toggleOrbitControls(world, debugCameraEntityId, isEnabled);
+      }
       toggleDebugCamera(world, isEnabled);
     });
 
@@ -170,7 +184,7 @@ export const initDebugCamera = (world: ECSWorld, sceneId: string) => {
     );
 
     world.addComponent(debugCameraEntityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA, true);
-    world.setDisabled(debugCameraEntityId, true);
+    world.addComponent(debugCameraEntityId, ComponentType.PERSISTENT, true);
     useDebug(debugCamera)?.attachOrbitControls(debugCameraEntityId, world, sceneId);
   }
 };

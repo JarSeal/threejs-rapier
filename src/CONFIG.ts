@@ -1,5 +1,3 @@
-import * as THREE from 'three/webgpu';
-
 import { AppConfig } from './_engine/core/Config';
 import { editObjectPropsContentFn } from './_engine/core/UI/DragWinContents/EditObjectProps';
 import { toggleDrawer } from './_engine/debug/DebuggerGUI';

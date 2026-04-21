@@ -3,7 +3,6 @@ import {
   EngineAPIType,
   PhysicsProtocolType,
   PhysicsUpProtocol,
-  RigidBodyAPI,
   WorldAPI,
 } from '../../core/Physics/PhysicsAPITypes';
 
@@ -240,7 +239,7 @@ export const physicsSwitchRigid = async (
       // RIGID_COLLIDER
       if (!rigidBodyAPI) return sendNoRigidBodyErrorMessage(sendMessage, data);
       // Returns the colliderAPI id
-      const colliderAPI = rigidBodyAPI.collider(data.index);
+      const colliderAPI = rigidBodyAPI.colliderSync(data.index);
       return sendMessage(
         { type, colliderId: typeof colliderAPI === 'number' ? colliderAPI : colliderAPI.id },
         data
