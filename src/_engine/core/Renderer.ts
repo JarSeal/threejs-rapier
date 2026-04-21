@@ -10,9 +10,11 @@ import { BladeController, View } from '@tweakpane/core';
 import { updateLightsDebuggerGUI } from './Light';
 import { RENDERER_SHADOW_OPTIONS } from '../utils/constants';
 import { getSvgIcon } from './UI/icons/SvgIcon';
+import { existsOrThrow } from '../utils/helpers';
 
 let r: THREE.WebGPURenderer | null = null;
 const ELEM_ID = 'mainCanvas';
+const CANVAS_ID = 'AEK_CANVAS_ELEM';
 const LS_KEY = 'debugRenderer';
 let options: RendererOptions = {
   antialias: true,
@@ -61,6 +63,7 @@ export const createRenderer = async (opts?: Partial<RendererOptions>) => {
     forceWebGL: options.currentApiIsWebGL || options.forceWebGL,
     alpha: options.alpha,
   });
+  renderer.domElement.id = CANVAS_ID;
   renderer.toneMapping = options.toneMapping;
   renderer.toneMappingExposure = options.toneMappingExposure;
   renderer.outputColorSpace = options.outputColorSpace;
@@ -93,6 +96,12 @@ export const getCanvasParentElem = () => {
   }
   return canvasParentElem;
 };
+
+export const getCanvasElem = () =>
+  existsOrThrow(
+    document.getElementById(CANVAS_ID),
+    `Could not find a canvas element with id "${CANVAS_ID}".`
+  );
 
 /**
  * Returns the initialized renderer or null

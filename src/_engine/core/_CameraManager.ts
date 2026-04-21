@@ -1,20 +1,26 @@
 import * as THREE from 'three/webgpu';
 import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
-import { getRootScene } from './Scene';
-import { existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
+import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
+import { DebugModuleRef, existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
 import { ComponentType } from './ECS/ECSRegistry';
 import { ECSSystemStage } from '../../AppECSRegistry';
 import { getWindowSize } from '../utils/Window';
+import { IS_DEBUG_ENV } from './Config';
 
 // --- STATE ---
 let activeCameraEntityId: number | null = null;
 let activeCameraObject: THREE.Camera | null = null;
-const debugHelpers = loadDebugModule(() => import('./Debug/Camera/CameraHelpers'));
+let debugCameraEntityId: number | null = null;
+
+// We load these at initDebugCamera, because loading them would break the app (these load before loadConfig() in InitApp)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let debugHelpers: DebugModuleRef<any> | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let debugCamera: DebugModuleRef<any> | null = null;
 
 // --- PLUGIN ---
 ECSWorld.registerPlugin((world) => {
   world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'cameraSyncSystem', cameraSyncSystem);
-  // Resize runs in MAIN because it modifies camera matrices before the frame starts
   world.addSystem(ECSSystemStage.MAIN, 'cameraResizeSystem', cameraResizeSystem);
 });
 
@@ -75,7 +81,6 @@ export const createCameraEntity = (
 
   const entityId = world.createEntity(entityOpts);
 
-  // 1. Add Components
   world.addComponent(entityId, ComponentType.TAG_IS_CAMERA, true);
   world.addComponent(entityId, ComponentType.OBJECT3D, { value: camera, _lastVersion: -1 });
   world.addComponent(entityId, ComponentType.CAMERA_SETTINGS, {
@@ -87,12 +92,10 @@ export const createCameraEntity = (
     frustumSize: props.type === 'ORTHOGRAPHIC' ? props.frustumSize ?? 10 : 0,
   });
 
-  // 2. Handle Active State
   if (props.active || activeCameraEntityId === null) {
     setActiveCamera(entityId);
   }
 
-  // 3. Debug Helpers
   useDebug(debugHelpers)?.attachCameraHelpers(entityId, camera, world, rootScene);
 
   return entityId;
@@ -116,6 +119,69 @@ export const disposeCamera = (camera: THREE.Camera) => {
   camera.removeFromParent();
   // Note: PerspectiveCamera/OrthographicCamera don't have a .dispose()
   // but if we had custom RenderTargets, we'd kill them here.
+};
+
+export const setMainCamera = (world: ECSWorld, newMainId: number) => {
+  const mainCams = world.getEntitiesWith(ComponentType.TAG_IS_MAIN_CAMERA);
+  for (const oldId of mainCams) {
+    world.removeComponent(oldId, ComponentType.TAG_IS_MAIN_CAMERA);
+    if (!isDebugCameraActive()) {
+      world.setDisabled(oldId, true);
+    }
+  }
+  world.addComponent(newMainId, ComponentType.TAG_IS_MAIN_CAMERA, true);
+  if (!isDebugCameraActive()) {
+    world.setDisabled(newMainId, false);
+    setActiveCamera(newMainId);
+  }
+};
+
+// --- DEBUG CAMERA ---
+
+export const initDebugCamera = (world: ECSWorld, sceneId: string) => {
+  if (debugHelpers) return; // Prevent double init
+  // Now we are safe because loadConfig() has definitely run
+  debugHelpers = loadDebugModule(() => import('./Debug/Camera/CameraHelpers'));
+  debugCamera = loadDebugModule(() => import('./Debug/Camera/DebugCamera'));
+  if (IS_DEBUG_ENV) {
+    if (debugCameraEntityId) return;
+
+    registerOnAllSceneEnterings('debugCamSceneChangeLogic', () => {
+      const newSceneId = getCurrentSceneId();
+      if (newSceneId) useDebug(debugCamera)?.debugCamSceneChange(newSceneId, world);
+      const props = useDebug(debugCamera)?.getDebugCamProps(newSceneId);
+      const isEnabled = Boolean(props?.enabled) || true;
+      toggleDebugCamera(world, isEnabled);
+    });
+
+    const props = useDebug(debugCamera)?.getDebugCamProps(sceneId);
+    if (!props) return;
+    debugCameraEntityId = createCameraEntity(
+      {
+        type: 'PERSPECTIVE',
+        active: props.enabled,
+        fov: props.fov,
+        near: props.near,
+        far: props.far,
+        zoom: props.zoom,
+      },
+      { userData: { name: 'DebugOrbitCamera' } },
+      world
+    );
+
+    world.addComponent(debugCameraEntityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA, true);
+    world.setDisabled(debugCameraEntityId, true);
+    useDebug(debugCamera)?.attachOrbitControls(debugCameraEntityId, world, sceneId);
+  }
+};
+
+export const toggleDebugCamera = (world: ECSWorld, useDebugCam: boolean) =>
+  useDebug(debugCamera)?.toggleDebugCamera(world, useDebugCam, setActiveCamera);
+
+export const isDebugCameraActive = (): boolean => {
+  if (activeCameraEntityId === null) return false;
+  const world = getECSWorld();
+  return world.hasComponent(activeCameraEntityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA);
 };
 
 // --- SYSTEMS ---

@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { OrbitControls } from 'three/examples/jsm/Addons.js';
 
 import { CoreEntityOpts, ECSWorld, getECSWorld } from '../ECS';
 import {
@@ -36,8 +37,12 @@ export interface CoreComponentData {
     zoom: number;
     frustumSize: number; // Only for Orthographic (Standard vertical size)
   };
+  [CoreComponentType.ORBIT_CONTROLS]: {
+    controls: OrbitControls;
+    sceneId: string;
+  };
+  // Physics
   [CoreComponentType.COLLIDER]: ColliderAPI[];
-  // Movement Buckets (rigid bodies)
   [CoreComponentType.BODY_DYNAMIC_VISUAL]: RigidBodyAPI;
   [CoreComponentType.BODY_DYNAMIC_HEADLESS]: RigidBodyAPI;
   [CoreComponentType.BODY_STATIC]: RigidBodyAPI;
@@ -51,6 +56,7 @@ export interface CoreComponentData {
   [CoreComponentType.TAG_IS_DIRECTIONAL_LIGHT]: boolean;
   [CoreComponentType.TAG_IS_SPOT_LIGHT]: boolean;
   [CoreComponentType.TAG_IS_CAMERA]: boolean;
+  [CoreComponentType.TAG_IS_MAIN_CAMERA]: boolean;
   [CoreComponentType.TAG_IS_CHARACTER]: boolean;
   [CoreComponentType.TAG_IS_PHYSICS_OBJECT]: boolean;
   // Debug
@@ -59,6 +65,7 @@ export interface CoreComponentData {
     value: THREE.PointLightHelper | THREE.DirectionalLightHelper | THREE.SpotLightHelper;
   };
   [CoreComponentType.DEBUG_CAMERA_HELPER]: { value: THREE.CameraHelper };
+  [CoreComponentType.DEBUG_TAG_IS_DEBUG_CAMERA]: boolean;
 }
 
 // --- Union Types of the core components and app components for the World ---

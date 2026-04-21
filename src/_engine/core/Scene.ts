@@ -39,6 +39,8 @@ let curSceneMainLateLoopers: Looper[] = [];
 const sceneResizers: { [sceneId: string]: (() => void)[] } = {};
 const onSceneExit: { [sceneId: string]: () => void } = {};
 const onSceneEnter: { [sceneId: string]: () => void } = {};
+const onAllSceneExits: { [id: string]: () => void } = {};
+const onAllSceneEnters: { [id: string]: () => void } = {};
 
 export type SceneOptions = {
   name?: string;
@@ -662,8 +664,6 @@ export const registerOnSceneEnter = (sceneId: string, fn: () => void) =>
 
 export const registerOnSceneExit = (sceneId: string, fn: () => void) => (onSceneExit[sceneId] = fn);
 
-// @CONSIDER: maybe add general 'registerOnAllSceneEnterings' and 'registerOnAllSceneExits' that run on all scene enterings / exits (not just specific ones)
-
 export const runOnSceneEnter = (sceneId: string) => {
   if (onSceneEnter[sceneId]) onSceneEnter[sceneId]();
 };
@@ -671,3 +671,26 @@ export const runOnSceneEnter = (sceneId: string) => {
 export const runOnSceneExit = (sceneId?: string) => {
   if (sceneId && onSceneExit[sceneId]) onSceneExit[sceneId]();
 };
+
+export const registerOnAllSceneEnterings = (id: string, fn: () => void) =>
+  (onAllSceneEnters[id] = fn);
+
+export const registerOnAllSceneExits = (id: string, fn: () => void) => (onAllSceneEnters[id] = fn);
+
+export const runOnAllSceneEnters = () => {
+  const keys = Object.keys(onAllSceneEnters);
+  for (let i = 0; i < keys.length; i++) {
+    const fn = onAllSceneEnters[keys[i]];
+    if (fn) fn();
+  }
+};
+
+export const runOnAllSceneExits = () => {
+  const keys = Object.keys(onAllSceneExits);
+  for (let i = 0; i < keys.length; i++) {
+    const fn = onAllSceneExits[keys[i]];
+    if (fn) fn();
+  }
+};
+
+// @TODO: add deletion methods for all these registers

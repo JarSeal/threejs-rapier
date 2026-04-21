@@ -1,7 +1,7 @@
 import { Timer, type Renderer, type Scene } from 'three/webgpu';
 import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
 import { getStats, initStats, startCustomMeasurements, updateRestOfStats } from '../debug/Stats';
-import { getAllCamerasAsArray, getCurrentCamera } from './Camera';
+import { getCurrentCamera } from './Camera';
 import { getRenderer } from './Renderer';
 import {
   getCurrentSceneId,
@@ -24,6 +24,7 @@ import { BindingApi } from '@tweakpane/core';
 import { updateInputControllerLoopActions } from './InputControls';
 import { countRayCastFrames, initRayCasting } from './Raycast';
 import { ECSWorld, initECSWorld } from './ECS';
+import { initDebugCamera } from './_CameraManager';
 
 const LS_KEY = 'debugLoop';
 const timer = new Timer();
@@ -356,6 +357,8 @@ export const initMainLoop = () => {
   if (isDebugEnvironment()) {
     initStats();
     initDebugTools();
+    const sceneId = getCurrentSceneId();
+    if (sceneId) initDebugCamera(ecsWorld, sceneId);
 
     mainLoop = mainLoopForDebug;
   } else if (isProductionEnvironment() && loopState.maxFPS > 0) {

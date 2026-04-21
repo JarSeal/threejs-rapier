@@ -6,6 +6,8 @@ import {
   getCurrentScene,
   getRootScene,
   getScene,
+  runOnAllSceneEnters,
+  runOnAllSceneExits,
   runOnSceneEnter,
   runOnSceneExit,
   setCurrentScene,
@@ -262,6 +264,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       handleDraggableWindowsOnSceneChangeStart();
 
       runOnSceneExit(prevSceneId);
+      runOnAllSceneExits();
       deleteOnCameraSetsAndUnsets();
       deleteAllRayHelpers();
 
@@ -300,6 +303,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         firstSceneLoaded = true;
 
         runOnSceneEnter(newSceneId);
+        runOnAllSceneEnters();
 
         loader.phase = 'END';
         await loadEndFn(loader).then(() => {
