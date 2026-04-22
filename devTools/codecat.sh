@@ -34,9 +34,11 @@ search_path="."
 copy_to_clipboard=false
 use_color=true
 max_lines=0
+include_all=false
 
 # Default excludes
 default_excludes=("node_modules" ".git" "dist")
+exclude_files=("*.log" "*.lock")
 exclude_dirs=("${default_excludes[@]}")
 
 # Colors
@@ -50,6 +52,7 @@ usage() {
 codecat v$VERSION
 
 Usage: codecat [options] <filename> [more filenames...]
+       codecat [options] --all
 
 Description:
   Recursively finds files matching patterns and prints their contents
@@ -64,6 +67,7 @@ Options:
       --no-default-excludes    Disable default excludes (node_modules, .git, dist)
       --max-lines <n>          Limit lines per file (0 = no limit)
       --no-color, --no-colors  Disable colored output
+      --all                    Include all files (no pattern needed)
 
 Examples:
   codecat "*.ts"
@@ -119,6 +123,10 @@ while [[ $# -gt 0 ]]; do
       use_color=false
       shift
       ;;
+    --all)
+      include_all=true
+      shift
+      ;;
     -*)
       echo "Unknown option: $1"
       usage
@@ -130,6 +138,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [ "$include_all" = true ] && [ "${#patterns[@]}" -gt 0 ]; then
+  echo "Warning: --all ignores provided patterns"
+fi
 
 # Disable color if not running in a terminal
 if [ ! -t 1 ]; then
@@ -144,7 +156,9 @@ if [ ! -d "$search_path" ]; then
   exit 1
 fi
 
-if [ "${#patterns[@]}" -eq 0 ]; then
+if [ "$include_all" = true ]; then
+  patterns=("*")
+elif [ "${#patterns[@]}" -eq 0 ]; then
   echo "No patterns provided."
   echo
   usage
@@ -167,6 +181,12 @@ if [ "${#exclude_dirs[@]}" -gt 0 ]; then
   prune_args+=( \) -prune \) -o )
 fi
 
+file_exclude_args=()
+
+for f in "${exclude_files[@]}"; do
+  file_exclude_args+=( ! -name "$f" )
+done
+
 # -------------------------
 # Output buffers
 # -------------------------
@@ -178,7 +198,12 @@ declare -a files=()
 # Main loop
 # -------------------------
 for pattern in "${patterns[@]}"; do
-  while read -r file; do
+  while IFS= read -r file; do
+    # Skip binary files
+    if ! grep -Iq . "$file"; then
+      continue
+    fi
+
     files+=("$file")
 
     header="\n\n$file\n-------------------------------\n"
@@ -201,7 +226,9 @@ for pattern in "${patterns[@]}"; do
   done < <(
     find "$search_path" \
       "${prune_args[@]}" \
-      -type f -name "$pattern" -print
+      -type f -name "$pattern" \
+      "${file_exclude_args[@]}" \
+      -print
   )
 done
 
