@@ -531,7 +531,10 @@ export interface DebugModuleRef<T> {
  * Loads a lazy debug module.
  * TypeScript infers the module shape 'T' directly from the importer.
  */
-export function loadDebugModule<T>(importer: () => Promise<T>): DebugModuleRef<T> | null {
+export function loadDebugModule<T>(
+  importer: () => Promise<T>,
+  debugId?: string
+): DebugModuleRef<T> | null {
   if (!IS_DEBUG_ENV) return null;
   const ref: DebugModuleRef<T> = { current: null };
   importer()
@@ -539,7 +542,7 @@ export function loadDebugModule<T>(importer: () => Promise<T>): DebugModuleRef<T
       ref.current = module;
     })
     .catch((err) => {
-      const msg = `Debug module loading failed.`;
+      const msg = `Debug module loading failed${debugId ? `: ${debugId}` : ''}.`;
       lerror(msg);
       throw new Error(`${msg} ${err.message}`);
     });

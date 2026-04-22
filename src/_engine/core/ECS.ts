@@ -1,9 +1,16 @@
 import * as THREE from 'three/webgpu';
-import { ComponentData, ECSPosition, ECSRotation, Transform } from './ECS/ECSCoreComponents';
+import {
+  ComponentData,
+  ComponentType,
+  ECSPosition,
+  ECSRotation,
+  ECSTransformProp,
+  Transform,
+} from './ECS/ECSCoreComponents';
 import { existsOrThrow } from '../utils/helpers';
 import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
 import { isDebugEnvironment } from './Config';
-import { ComponentType, CoreComponentType, EntityDebugData } from './ECS/ECSRegistry';
+import { CoreComponentType, EntityDebugData } from './ECS/ECSRegistry';
 import { ECSSystemStage } from '../../AppECSRegistry';
 
 export type ECSSystem = (world: ECSWorld, dt: number) => void;
@@ -11,6 +18,7 @@ export type ECSSystem = (world: ECSWorld, dt: number) => void;
 export type CoreEntityOpts = {
   appId?: string;
   disabled?: boolean;
+  persistent?: boolean;
   userData?: Record<string, unknown>;
   debugData?: EntityDebugData;
 };
@@ -369,23 +377,9 @@ export class ECSWorld {
    * Unlike setTransform, this resets velocities to ensure
    * the object doesn't carry old momentum to the new spot.
    */
-  public teleport(
-    entityId: number,
-    tra: { pos: ECSPosition; rot?: ECSRotation } | { pos?: ECSPosition; rot: ECSRotation }
-  ): void {
+  public teleport(entityId: number, tra: ECSTransformProp): void {
     // @CHORE: We probably need to take interpolation into consideration (set the prev transform to the new position)
     this.setTransform(entityId, { ...tra, resetVelocity: true, resetForces: true });
-  }
-
-  /**
-   * Sets the scale of the entity (Visual/mesh only).
-   */
-  setScale(entityId: number, scale: { x: number; y: number; z: number }): void {
-    const transform = this.getComponent(entityId, ComponentType.TRANSFORM);
-    if (transform) {
-      transform.scale.set(scale.x, scale.y, scale.z);
-      transform.setDirty();
-    }
   }
 
   /**

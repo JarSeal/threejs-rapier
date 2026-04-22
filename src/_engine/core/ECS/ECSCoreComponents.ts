@@ -2,26 +2,29 @@ import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 
 import { ColliderAPI, RigidBodyAPI } from '../Physics/PhysicsAPITypes';
-import { CoreComponentType, EntityDebugData } from './ECSRegistry';
-import { AppComponentData, AppComponentType } from '../../../AppECSRegistry';
+import { CoreComponentType as CoreType, EntityDebugData } from './ECSRegistry';
+import { AppComponentData, AppComponentType as AppType } from '../../../AppECSRegistry';
 
 export type ECSPosition = { x: number; y: number; z: number };
 export type ECSRotation = { x: number; y: number; z: number; w: number };
+export type ECSTransformProp =
+  | { pos: ECSPosition; rot?: ECSRotation }
+  | { pos?: ECSPosition; rot: ECSRotation };
 export interface LifetimeData {
   remaining: number; // Seconds until death
   total: number; // Starting duration
 }
 
 export interface CoreComponentData {
-  [CoreComponentType.APP_ID]: { id: string; isFixed: boolean };
-  [CoreComponentType.TRANSFORM]: Transform;
-  [CoreComponentType.DISABLED]: boolean;
-  [CoreComponentType.PERSISTENT]: boolean;
-  [CoreComponentType.USER_DATA]: Record<string, unknown>;
-  [CoreComponentType.LIFETIME]: LifetimeData;
-  [CoreComponentType.OBJECT3D]: { value: THREE.Object3D; _lastVersion: number };
-  [CoreComponentType.TARGET_LINK]: { targetId: number };
-  [CoreComponentType.CAMERA_SETTINGS]: {
+  [CoreType.APP_ID]: { id: string; isFixed: boolean };
+  [CoreType.TRANSFORM]: Transform;
+  [CoreType.DISABLED]: boolean;
+  [CoreType.PERSISTENT]: boolean;
+  [CoreType.USER_DATA]: Record<string, unknown>;
+  [CoreType.LIFETIME]: LifetimeData;
+  [CoreType.OBJECT3D]: { value: THREE.Object3D; _lastVersion: number };
+  [CoreType.TARGET_LINK]: { targetId: number };
+  [CoreType.CAMERA_SETTINGS]: {
     type: 'PERSPECTIVE' | 'ORTHOGRAPHIC';
     fov: number; // Only for Perspective
     near: number;
@@ -29,42 +32,43 @@ export interface CoreComponentData {
     zoom: number;
     frustumSize: number; // Only for Orthographic (Standard vertical size)
   };
-  [CoreComponentType.ORBIT_CONTROLS]: {
+  [CoreType.ORBIT_CONTROLS]: {
     controls: OrbitControls;
     sceneId: string;
   };
   // Physics
-  [CoreComponentType.COLLIDER]: ColliderAPI[];
-  [CoreComponentType.BODY_DYNAMIC_VISUAL]: RigidBodyAPI;
-  [CoreComponentType.BODY_DYNAMIC_HEADLESS]: RigidBodyAPI;
-  [CoreComponentType.BODY_STATIC]: RigidBodyAPI;
+  [CoreType.COLLIDER]: ColliderAPI[];
+  [CoreType.BODY_DYNAMIC_VISUAL]: RigidBodyAPI;
+  [CoreType.BODY_DYNAMIC_HEADLESS]: RigidBodyAPI;
+  [CoreType.BODY_STATIC]: RigidBodyAPI;
   // Tags
-  [CoreComponentType.TAG_IS_MESH]: boolean;
-  [CoreComponentType.TAG_IS_GROUP]: boolean;
-  [CoreComponentType.TAG_IS_LIGHT]: boolean;
-  [CoreComponentType.TAG_IS_AMBIENT_LIGHT]: boolean;
-  [CoreComponentType.TAG_IS_HEMISPHERE_LIGHT]: boolean;
-  [CoreComponentType.TAG_IS_POINT_LIGHT]: boolean;
-  [CoreComponentType.TAG_IS_DIRECTIONAL_LIGHT]: boolean;
-  [CoreComponentType.TAG_IS_SPOT_LIGHT]: boolean;
-  [CoreComponentType.TAG_IS_CAMERA]: boolean;
-  [CoreComponentType.TAG_IS_MAIN_CAMERA]: boolean;
-  [CoreComponentType.TAG_IS_CHARACTER]: boolean;
-  [CoreComponentType.TAG_IS_PHYSICS_OBJECT]: boolean;
+  [CoreType.TAG_IS_MESH]: boolean;
+  [CoreType.TAG_IS_GROUP]: boolean;
+  [CoreType.TAG_IS_LIGHT]: boolean;
+  [CoreType.TAG_IS_AMBIENT_LIGHT]: boolean;
+  [CoreType.TAG_IS_HEMISPHERE_LIGHT]: boolean;
+  [CoreType.TAG_IS_POINT_LIGHT]: boolean;
+  [CoreType.TAG_IS_DIRECTIONAL_LIGHT]: boolean;
+  [CoreType.TAG_IS_SPOT_LIGHT]: boolean;
+  [CoreType.TAG_IS_CAMERA]: boolean;
+  [CoreType.TAG_IS_MAIN_CAMERA]: boolean;
+  [CoreType.TAG_IS_CHARACTER]: boolean;
+  [CoreType.TAG_IS_PHYSICS_OBJECT]: boolean;
   // Debug
-  [CoreComponentType.DEBUG_DATA]: EntityDebugData;
-  [CoreComponentType.DEBUG_LIGHT_HELPER]: {
+  [CoreType.DEBUG_DATA]: EntityDebugData;
+  [CoreType.DEBUG_LIGHT_HELPER]: {
     value: THREE.PointLightHelper | THREE.DirectionalLightHelper | THREE.SpotLightHelper;
   };
-  [CoreComponentType.DEBUG_CAMERA_HELPER]: { value: THREE.CameraHelper };
-  [CoreComponentType.DEBUG_TAG_IS_DEBUG_CAMERA]: boolean;
+  [CoreType.DEBUG_CAMERA_HELPER]: { value: THREE.CameraHelper };
+  [CoreType.DEBUG_TAG_IS_DEBUG_CAMERA]: boolean;
 }
 
 // --- Union Types of the core components and app components for the World ---
 export const ComponentType = {
-  ...CoreComponentType,
-  ...AppComponentType,
-};
+  ...CoreType,
+  ...AppType,
+} as const;
+export type ComponentType = (typeof ComponentType)[keyof typeof ComponentType];
 export type ComponentData = CoreComponentData & AppComponentData;
 
 /** This just makes shit faster... */
@@ -152,7 +156,7 @@ export class Transform {
 //   const colls: ColliderAPI[] = paramsArray.length ? await createColliders(paramsArray) : [];
 
 //   // Create ECS Transform (Local Cache)
-//   const transform = world.getComponent(entityId, CoreComponentType.TRANSFORM);
+//   const transform = world.getComponent(entityId, CoreType.TRANSFORM);
 
 //   if (rb) {
 //     // Sync Transform to initial Physics state

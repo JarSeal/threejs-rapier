@@ -2,13 +2,17 @@ import * as THREE from 'three/webgpu';
 import { createScene } from '../_engine/core/Scene';
 import { createLight } from '../_engine/core/Light';
 import { createSkyBox } from '../_engine/core/SkyBox';
-import { getCamera, setCurrentCamera } from '../_engine/core/Camera';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
-import { MAIN_APP_CAM_ID } from '../CONFIG';
 import { createMeshEntity, MeshProps } from '../_engine/core/_MeshManager';
 import { getECSWorld } from '../_engine/core/ECS';
-import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
+import {
+  createCameraEntity,
+  setMainCamera,
+  toggleDebugCamera,
+} from '../_engine/core/_CameraManager';
+import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
+import { inspectEntity, lookAtPoint } from '../_engine/utils/ECSHelpers';
 
 export const SCENE_TEST_ECS_ID = 'sceneTestECS';
 
@@ -17,12 +21,23 @@ export const sceneTestECS = async () =>
     const updateLoaderFn = getLoaderStatusUpdater();
     updateLoaderFn({ loadedCount: 0, totalCount: 2 });
 
-    // Set current camera and position it
-    const camera = getCamera(MAIN_APP_CAM_ID);
-    setCurrentCamera(MAIN_APP_CAM_ID);
-    camera.position.z = 3;
-    camera.position.x = 2.5;
-    camera.position.y = 1;
+    const ecsWorld = getECSWorld();
+
+    const camId = createCameraEntity(
+      { type: 'PERSPECTIVE', fov: 90, active: true },
+      {
+        appId: 'Main camera',
+        debugData: { name: 'Main camera', description: 'Main application camera' },
+      }
+    );
+    setMainCamera(ecsWorld, camId);
+    toggleDebugCamera(ecsWorld, false);
+    ecsWorld.setTransform(camId, {
+      pos: { x: 10, y: 5, z: 20 },
+    });
+    lookAtPoint(camId, { x: 0, y: 0, z: 0 });
+
+    inspectEntity(camId);
 
     const scene = createScene(SCENE_TEST_ECS_ID, {
       name: 'Test scene 1',
@@ -97,8 +112,6 @@ export const sceneTestECS = async () =>
       },
     });
     scene.add(directionalLight);
-
-    const ecsWorld = getECSWorld();
 
     const redBallProps: MeshProps = {
       geo: {

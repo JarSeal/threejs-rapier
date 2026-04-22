@@ -1,5 +1,5 @@
 // NO OTHER LOCAL IMPORTS ALLOWED HERE
-import { AppComponentType } from '../../../AppECSRegistry';
+// import { AppComponentType } from '../../../AppECSRegistry';
 
 /** Engine Core Components */
 export enum CoreComponentType {
@@ -9,7 +9,7 @@ export enum CoreComponentType {
   PERSISTENT = 'CORE_PERSISTENT',
   USER_DATA = 'CORE_USER_DATA',
   LIFETIME = 'CORE_LIFETIME',
-  OBJECT3D = 'CORE_MESH',
+  OBJECT3D = 'CORE_OBJECT3D',
   TARGET_LINK = 'CORE_TARGET_LINK',
   CAMERA_SETTINGS = 'CORE_CAMERA_SETTINGS',
   ORBIT_CONTROLS = 'CORE_ORBIT_CONTROLS',
@@ -38,16 +38,17 @@ export enum CoreComponentType {
   DEBUG_TAG_IS_DEBUG_CAMERA = 'CORE_DEBUG_IS_DEBUG_CAMERA',
 }
 
-export const ComponentType = {
-  ...CoreComponentType,
-  ...AppComponentType,
-} as const;
+// export const ComponentType = {
+//   ...CoreComponentType,
+//   ...AppComponentType,
+// } as const;
 
-export type ComponentType = (typeof ComponentType)[keyof typeof ComponentType];
+// export type ComponentType = (typeof ComponentType)[keyof typeof ComponentType];
 
 export type EntityDebugData = {
   name?: string;
   description?: string;
   comments?: { timestamp: number; comment: string }[];
+  todo?: { [key: string]: unknown };
   debugObj?: Record<string, unknown>;
 };

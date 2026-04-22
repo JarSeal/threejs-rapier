@@ -37,8 +37,8 @@ import { deregisterAllLightAndCameraHelpers } from './Helpers';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
 import { deleteAllGroups } from './Group';
 import { setIsLoadingScene } from './MainLoop';
-import { ComponentType } from './ECS/ECSRegistry';
 import { getECSWorld } from './ECS';
+import { ComponentType } from './ECS/ECSCoreComponents';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,

@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 
 import { ECSWorld } from '../../ECS';
-import { ComponentType } from '../../ECS/ECSRegistry';
+import { ComponentType } from '../../ECS/ECSCoreComponents';
 
 ECSWorld.registerComponentHooks(ComponentType.DEBUG_LIGHT_HELPER, {
   onDeleteEntity: (entityId, world) => {

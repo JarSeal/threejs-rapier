@@ -2,14 +2,7 @@ import * as THREE from 'three/webgpu';
 import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
 import { getRootScene } from './Scene';
 import { existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
-import { ComponentType } from './ECS/ECSRegistry';
-import { Transform } from './ECS/ECSCoreComponents';
-import { ECSSystemStage } from '../../AppECSRegistry';
-
-// Register the lightSyncSystem
-ECSWorld.registerPlugin((world) => {
-  world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'lightSyncSystem', lightSyncSystem);
-});
+import { ComponentType, Transform } from './ECS/ECSCoreComponents';
 
 // Register onDeleteEntity hook for TAG_IS_LIGHT
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_LIGHT, {
@@ -220,6 +213,9 @@ export const createLightEntity = (
     (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight)
   ) {
     const targetId = world.createEntity({ userData: { name: 'LightTarget' } });
+    if (entityOpts?.persistent) {
+      world.addComponent(targetId, ComponentType.PERSISTENT, true);
+    }
     const tPos = props.targetPos || { x: 0, y: 0, z: 0 };
 
     world.addComponent(targetId, ComponentType.TRANSFORM, new Transform({ pos: tPos }));
@@ -344,30 +340,6 @@ export const disposeLight = (entityId: number, world: ECSWorld) => {
   }
   light.removeFromParent();
   light.dispose();
-};
-
-/**
- * Sync System for Lights
- */
-export const lightSyncSystem = (world: ECSWorld) => {
-  const storage = world.getStorage(ComponentType.OBJECT3D);
-
-  for (const [entityId, objComp] of storage) {
-    if (world.isDisabled(entityId)) continue;
-
-    // Only process lights that have a Transform (skips Ambient/Hemi)
-    if (!world.hasComponent(entityId, ComponentType.TAG_IS_LIGHT)) continue;
-
-    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
-    if (!transform) continue;
-
-    if (objComp._lastVersion !== transform.version) {
-      objComp.value.position.copy(transform.position);
-      objComp.value.quaternion.copy(transform.quaternion);
-      objComp.value.scale.copy(transform.scale);
-      objComp._lastVersion = transform.version;
-    }
-  }
 };
 
 // Debugger loading

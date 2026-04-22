@@ -23,8 +23,8 @@ import { InitOnScreenTools, updateOnScreenTools } from '../debug/OnScreenTools';
 import { BindingApi } from '@tweakpane/core';
 import { updateInputControllerLoopActions } from './InputControls';
 import { countRayCastFrames, initRayCasting } from './Raycast';
-import { ECSWorld, initECSWorld } from './ECS';
-import { initDebugCamera } from './_CameraManager';
+import { ECSWorld, getECSWorld, initECSWorld } from './ECS';
+import { getActiveCamera, initDebugCamera } from './_CameraManager';
 
 const LS_KEY = 'debugLoop';
 const timer = new Timer();
@@ -97,15 +97,30 @@ export const transformTimeValue = (durationInMs: number) =>
 let mainLoop: () => void = () => {};
 let ecsWorld: ECSWorld;
 
+// @TODO: Once the ECS refactoring (including all current scenes) is done,
+// switch to only use the ECS camera.
 const renderScene = () => {
-  // New ECS Implementation
-  // const activeCam = getActiveCamera();
-  // if (activeCam) {
-  //   (getRenderer() as Renderer).render(getRootScene() as Scene, activeCam);
-  // }
+  const renderer = getRenderer() as Renderer;
+  const rootScene = getRootScene() as Scene;
 
-  // Old implementation
-  (getRenderer() as Renderer).render(getRootScene() as Scene, getCurrentCamera());
+  if (!renderer || !rootScene) return;
+
+  const ecsCamera = getActiveCamera();
+
+  if (ecsCamera) {
+    // Use the new ECS camera if found.
+    renderer.render(rootScene, ecsCamera);
+  } else {
+    // Fallback to the legacy camera system if ECS camera is null.
+    const legacyCamera = getCurrentCamera();
+
+    if (legacyCamera) {
+      renderer.render(rootScene, legacyCamera);
+    } else {
+      // Log error only if both systems fail.
+      console.error('Render Scene Failed: No active camera found in ECS or Legacy systems.');
+    }
+  }
 };
 
 // LOOP (for debug)
@@ -292,8 +307,8 @@ export const initMainLoop = () => {
   if (mainLoopInitiated) return;
   mainLoopInitiated = true;
 
-  // Initiate ECS
-  ecsWorld = initECSWorld();
+  // Get ecsWorld
+  ecsWorld = getECSWorld();
 
   const renderer = getRenderer();
   const currentCamera = getCurrentCamera();

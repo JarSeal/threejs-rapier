@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../../_engine/core/ECS';
 import { CoreComponentType } from '../../../_engine/core/ECS/ECSRegistry';
 import { ECSSystemStage } from '../../../AppECSRegistry';
-import { ComponentType } from '../../../_engine/core/ECS/ECSRegistry';
+import { ComponentType } from '../../../_engine/core/ECS/ECSCoreComponents';
 
 /** Internal Key (Values) */
 export enum FollowToolComponentType {

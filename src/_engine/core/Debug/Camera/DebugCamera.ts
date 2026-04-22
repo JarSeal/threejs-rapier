@@ -2,10 +2,10 @@ import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 import { ECSWorld } from '../../ECS';
-import { ComponentType } from '../../ECS/ECSRegistry';
 import { getCanvasElem } from '../../Renderer';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
 import { ECSSystemStage } from '../../../../AppECSRegistry';
+import { ComponentType } from '../../ECS/ECSCoreComponents';
 
 export type DebugCamState = typeof DEFAULT_DEBUG_CAM_PROPS;
 
@@ -16,7 +16,7 @@ type DebugCamLSData = {
 const DEFAULT_DEBUG_CAM_PROPS = {
   position: { x: 3, y: 3, z: 1.5 },
   target: { x: 0, y: 0, z: 0 },
-  enabled: true,
+  enabled: false,
   fov: 60,
   near: 0.001,
   far: 10000,
@@ -67,7 +67,7 @@ export const attachOrbitControls = (entityId: number, world: ECSWorld, sceneId: 
 /**
  * System to sync OrbitControls back to ECS Transform
  */
-export const debugCameraSystem = (world: ECSWorld) => {
+export function debugCameraSystem(world: ECSWorld) {
   const storage = world.getStorage(ComponentType.ORBIT_CONTROLS);
 
   for (const [entityId, data] of storage) {
@@ -86,7 +86,7 @@ export const debugCameraSystem = (world: ECSWorld) => {
       transform.setDirty();
     }
   }
-};
+}
 
 export const toggleDebugCamera = (
   world: ECSWorld,

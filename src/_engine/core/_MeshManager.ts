@@ -7,12 +7,6 @@ import { existsOrThrow } from '../utils/helpers';
 import { getRenderer } from './Renderer';
 import { getCurrentCamera } from './Camera';
 import { ComponentType } from './ECS/ECSCoreComponents';
-import { ECSSystemStage } from '../../AppECSRegistry';
-
-// Register the meshSyncSystem
-ECSWorld.registerPlugin((world) => {
-  world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'meshSyncSystem', meshSyncSystem);
-});
 
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
@@ -89,25 +83,5 @@ export const disposeMesh = (entityId: number, world: ECSWorld) => {
     });
   } else if (mesh.material.userData.id) {
     decMaterialRef(mesh.material.userData.id);
-  }
-};
-
-export const meshSyncSystem = (world: ECSWorld) => {
-  const meshStorage = world.getStorage(ComponentType.OBJECT3D);
-
-  for (const [entityId, meshComp] of meshStorage) {
-    if (world.isDisabled(entityId)) continue;
-
-    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
-    if (!transform) continue;
-
-    // Only update Three.js if the ECS Transform has changed
-    if (meshComp._lastVersion !== transform.version) {
-      meshComp.value.position.copy(transform.position);
-      meshComp.value.quaternion.copy(transform.quaternion);
-      meshComp.value.scale.copy(transform.scale);
-
-      meshComp._lastVersion = transform.version;
-    }
   }
 };

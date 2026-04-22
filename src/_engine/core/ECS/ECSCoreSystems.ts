@@ -67,9 +67,40 @@ ECSWorld.registerComponentHooks(ComponentType.OBJECT3D, {
   },
 });
 
+// Register PERSISTENT onAddComponent and onRemoveComponent logic for TARGET_LINKs
+ECSWorld.registerComponentHooks(ComponentType.PERSISTENT, {
+  /** When an entity is marked persistent, ensure its linked target survives as well. */
+  onAddComponent: (entityId, world) => {
+    const targetLink = world.getComponent(entityId, ComponentType.TARGET_LINK);
+    if (targetLink && world.isAlive(targetLink.targetId)) {
+      world.addComponent(targetLink.targetId, ComponentType.PERSISTENT, true);
+    }
+  },
+  /** If persistence is removed, the linked target is no longer protected by this parent. */
+  onRemoveComponent: (entityId, world) => {
+    const targetLink = world.getComponent(entityId, ComponentType.TARGET_LINK);
+    if (targetLink && world.isAlive(targetLink.targetId)) {
+      world.removeComponent(targetLink.targetId, ComponentType.PERSISTENT);
+    }
+  },
+});
+ECSWorld.registerComponentHooks(ComponentType.TARGET_LINK, {
+  /** When the TARGET_LINK is added, and if the parent entity is PERSISTENT, ensure the target entity is also. */
+  onAddComponent: (entityId, world) => {
+    // If the looker is already persistent, make the new target persistent immediately
+    if (world.hasComponent(entityId, ComponentType.PERSISTENT)) {
+      const link = world.getComponent(entityId, ComponentType.TARGET_LINK);
+      if (link) world.addComponent(link.targetId, ComponentType.PERSISTENT, true);
+    }
+  },
+});
+
 // --- PLUGIN REGISTRATION ---
 
 ECSWorld.registerPlugin((world) => {
+  // This is the object3D (meshes, lights, cameras, groups) syncSystem
+  world.addSystem(ECSSystemStage.MAIN, 'object3DSyncSystem', object3DSyncSystem);
+
   // Lifetime system usually runs at the end of the frame to clean up
   // entities that expired during the logic step (hence stage is LATE_MAIN).
   world.addSystem(ECSSystemStage.LATE_MAIN, 'entityLifetimeSystem', entityLifetimeSystem);
@@ -87,6 +118,32 @@ ECSWorld.registerPlugin((world) => {
 });
 
 // --- SYSTEMS ---
+
+/**
+ * Unified system that syncs ECS Transforms to Three.js Object3Ds.
+ * Handles Meshes, Cameras, Groups, and Lights automatically.
+ */
+export function object3DSyncSystem(world: ECSWorld) {
+  const storage = world.getStorage(ComponentType.OBJECT3D);
+
+  for (const [entityId, objComp] of storage) {
+    // Skip if disabled
+    if (world.isDisabled(entityId)) continue;
+
+    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+    if (!transform) continue;
+
+    // Only update if the Transform version has changed
+    if (objComp._lastVersion !== transform.version) {
+      objComp.value.position.copy(transform.position);
+      objComp.value.quaternion.copy(transform.quaternion);
+      objComp.value.scale.copy(transform.scale);
+
+      // Cache the version we just synced
+      objComp._lastVersion = transform.version;
+    }
+  }
+}
 
 // @CHORE: Move this to PhysicsAPI and create initPhysicsToTransformSystem (follow mesh system pattern)
 /**
@@ -137,17 +194,20 @@ export const lookAtSystem = (world: ECSWorld) => {
   const storage = world.getStorage(ComponentType.TARGET_LINK);
 
   for (const [entityId, link] of storage) {
+    // Check if the target entity still exists
+    if (!world.isAlive(link.targetId)) continue;
+    // Check if the entity is disabled
     if (world.isDisabled(entityId)) continue;
 
     const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
     const targetTransform = world.getComponent(link.targetId, ComponentType.TRANSFORM);
 
-    if (objComp && targetTransform) {
-      // Three.js Objects (Meshes, Cameras, Groups)
-      // We use the raw .lookAt method.
-      // Note: DirectionalLights usually use their internal .target property,
-      // but calling .lookAt on the light source itself doesn't hurt.
+    if (objComp && transform && targetTransform) {
       objComp.value.lookAt(targetTransform.position);
+      transform.quaternion.copy(objComp.value.quaternion);
+      transform.setDirty();
+      objComp._lastVersion = transform.version;
     }
   }
 };

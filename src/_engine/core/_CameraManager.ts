@@ -7,10 +7,10 @@ import {
   registerOnAllSceneExits,
 } from './Scene';
 import { DebugModuleRef, existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
-import { ComponentType } from './ECS/ECSRegistry';
 import { ECSSystemStage } from '../../AppECSRegistry';
 import { getWindowSize } from '../utils/Window';
 import { IS_DEBUG_ENV } from './Config';
+import { ComponentType } from './ECS/ECSCoreComponents';
 
 // --- STATE ---
 let activeCameraEntityId: number | null = null;
@@ -23,9 +23,11 @@ let debugHelpers: DebugModuleRef<any> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let debugCamera: DebugModuleRef<any> | null = null;
 
+const _m1 = new THREE.Matrix4();
+const _v1 = new THREE.Vector3();
+
 // --- PLUGIN ---
 ECSWorld.registerPlugin((world) => {
-  world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'cameraSyncSystem', cameraSyncSystem);
   world.addSystem(ECSSystemStage.MAIN, 'cameraResizeSystem', cameraResizeSystem);
 });
 
@@ -55,7 +57,7 @@ export const createCameraEntity = (
   entityOpts?: CoreEntityOpts,
   ecsWorld?: ECSWorld
 ): number => {
-  const world = ecsWorld || existsOrThrow(getECSWorld(), 'No ECS World for Camera.');
+  const world = ecsWorld || getECSWorld();
   const rootScene = existsOrThrow(getRootScene(), 'No Scene for Camera.');
   const { aspect } = getWindowSize();
 
@@ -161,7 +163,7 @@ export const initDebugCamera = (world: ECSWorld, sceneId: string) => {
       const newSceneId = getCurrentSceneId();
       if (newSceneId) useDebug(debugCamera)?.debugCamSceneChange(newSceneId, world);
       const props = useDebug(debugCamera)?.getDebugCamProps(newSceneId);
-      const isEnabled = Boolean(props?.enabled) || true;
+      const isEnabled = props ? Boolean(props.enabled) : false;
       if (debugCameraEntityId) {
         useDebug(debugCamera)?.toggleOrbitControls(world, debugCameraEntityId, isEnabled);
       }
@@ -198,11 +200,29 @@ export const isDebugCameraActive = (): boolean => {
   return world.hasComponent(activeCameraEntityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA);
 };
 
+/**
+ * Performs a one-time rotation update to make the camera face a specific point.
+ */
+export const cameraLookAtPoint = (
+  entityId: number,
+  point: { x: number; y: number; z: number },
+  ecsWorld?: ECSWorld
+) => {
+  const world = ecsWorld || getECSWorld();
+  const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+  if (!transform) return;
+  _v1.set(point.x, point.y, point.z);
+  _m1.lookAt(transform.position, _v1, THREE.Object3D.DEFAULT_UP);
+  transform.quaternion.setFromRotationMatrix(_m1);
+  transform.setDirty();
+};
+
 // --- SYSTEMS ---
 
 /**
  * Updates all cameras to match the current window dimensions.
  */
+// @TODO: Check if this is really needed. This runs unnecessarily on every frame and we could handle this in the resize event.
 export const cameraResizeSystem = (world: ECSWorld) => {
   const { aspect } = getWindowSize();
   const storage = world.getStorage(ComponentType.CAMERA_SETTINGS);
@@ -225,25 +245,6 @@ export const cameraResizeSystem = (world: ECSWorld) => {
       cam.top = s / 2;
       cam.bottom = -s / 2;
       cam.updateProjectionMatrix();
-    }
-  }
-};
-
-/**
- * Syncs the Three.js Camera position/rotation with the ECS Transform.
- */
-export const cameraSyncSystem = (world: ECSWorld) => {
-  const storage = world.getStorage(ComponentType.OBJECT3D);
-  for (const [entityId, objComp] of storage) {
-    if (!world.hasComponent(entityId, ComponentType.TAG_IS_CAMERA)) continue;
-    if (world.isDisabled(entityId)) continue;
-
-    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
-    if (transform && objComp._lastVersion !== transform.version) {
-      objComp.value.position.copy(transform.position);
-      objComp.value.quaternion.copy(transform.quaternion);
-      objComp.value.scale.copy(transform.scale);
-      objComp._lastVersion = transform.version;
     }
   }
 };
