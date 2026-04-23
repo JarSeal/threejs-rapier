@@ -372,9 +372,6 @@ export const initMainLoop = () => {
   if (isDebugEnvironment()) {
     initStats();
     initDebugTools();
-    const sceneId = getCurrentSceneId();
-    if (sceneId) initDebugCamera(ecsWorld, sceneId);
-
     mainLoop = mainLoopForDebug;
   } else if (isProductionEnvironment() && loopState.maxFPS > 0) {
     mainLoop = mainLoopForProductionWithFPSLimiter;

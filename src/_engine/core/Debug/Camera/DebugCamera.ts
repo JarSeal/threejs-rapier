@@ -62,6 +62,7 @@ export const attachOrbitControls = (entityId: number, world: ECSWorld, sceneId: 
     controls,
     sceneId,
   });
+  console.log('ATTACH', controls);
 };
 
 /**
@@ -71,12 +72,14 @@ export function debugCameraSystem(world: ECSWorld) {
   const storage = world.getStorage(ComponentType.ORBIT_CONTROLS);
 
   for (const [entityId, data] of storage) {
-    if (world.isDisabled(entityId)) {
-      data.controls.enabled = false;
-      continue;
-    }
+    const isDisabled = world.isDisabled(entityId);
 
-    data.controls.enabled = true;
+    data.controls.enabled = !isDisabled;
+
+    if (isDisabled) continue;
+
+    data.controls.update();
+
     const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
     const obj = world.getComponent(entityId, ComponentType.OBJECT3D)!.value;
 
@@ -134,6 +137,8 @@ export const debugCamSceneChange = (newSceneId: string, world: ECSWorld) => {
   if (!objComp || !orbitComp) return;
   const obj = objComp.value as THREE.Camera;
   const controls = orbitComp.controls;
+
+  scene.id = newSceneId;
 
   const { position, target, enabled } = getDebugCamProps(newSceneId);
 

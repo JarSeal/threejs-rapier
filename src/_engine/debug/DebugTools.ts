@@ -41,6 +41,9 @@ import {
 import { getAllLights } from '../core/Light';
 import { updateOnScreenTools } from './OnScreenTools';
 import { addToast } from '../core/UI/Toaster';
+import { toggleDebugCamera } from '../core/_CameraManager';
+import { getECSWorld } from '../core/ECS';
+import { ComponentType } from '../core/ECS/ECSCoreComponents';
 
 const LS_KEY = 'debugTools';
 const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
@@ -191,6 +194,9 @@ const createDebugToolsDebugGUI = () => {
     lerror(msg);
     throw new Error(msg);
   }
+  const ecsWorld = getECSWorld();
+  const hasECSDebugCam =
+    ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value !== undefined;
   orbitControls = new OrbitControls(debugCamera, renderer.domElement);
   orbitControls.addEventListener('end', () => {
     const position = [
@@ -207,7 +213,7 @@ const createDebugToolsDebugGUI = () => {
     curSceneDebugCamParams.target = target;
     lsSetItem(LS_KEY, debugToolsState);
   });
-  orbitControls.enabled = curSceneDebugCamParams.enabled;
+  orbitControls.enabled = hasECSDebugCam ? false : curSceneDebugCamParams.enabled;
 
   createOnScreenTools(debugCamera);
 
@@ -346,7 +352,11 @@ export const setDebugToolsVisibility = (
   }
 
   if (show) {
-    if (orbitControls) orbitControls.enabled = true;
+    const ecsWorld = getECSWorld();
+    const hasECSDebugCam =
+      ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value !== undefined;
+
+    if (orbitControls) orbitControls.enabled = !hasECSDebugCam;
     if (debugCamera) {
       if (debugCamera.children[0]) debugCamera.children[0].visible = true;
       debugCamera.position.set(
@@ -362,7 +372,10 @@ export const setDebugToolsVisibility = (
         )
       );
     }
-    if (!doNotSetCamera) setCurrentCamera(DEBUG_CAMERA_ID, true);
+
+    // Only set legacy active camera if there is NO ECS camera
+    if (!doNotSetCamera && !hasECSDebugCam) setCurrentCamera(DEBUG_CAMERA_ID, true);
+
     if (refreshPane) buildDebugToolsGUI();
     updateCamerasDebuggerGUI();
     return;
@@ -557,6 +570,8 @@ export const handleDebugCameraSwitch = (
     debugToolsState.debugCamera[currentSceneId].enabled = isDebugCamera;
     curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
     if (envBallFolder) envBallFolder.hidden = !isDebugCamera;
+
+    toggleDebugCamera(getECSWorld(), isDebugCamera);
   }
   lsSetItem(LS_KEY, debugToolsState);
   setDebugToolsVisibility(isDebugCamera, Boolean(cameraId), doNotSetCamera, cameraId);

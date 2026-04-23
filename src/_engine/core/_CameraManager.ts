@@ -145,49 +145,43 @@ export const setMainCamera = (world: ECSWorld, newMainId: number) => {
 
 // --- DEBUG CAMERA ---
 
-export const initDebugCamera = (world: ECSWorld, sceneId: string) => {
-  if (debugHelpers) return; // Prevent double init
-  // Now we are safe because loadConfig() has definitely run
+export const initDebugCamera = async (world: ECSWorld) => {
+  if (debugHelpers) return;
+
+  const camImporter = () => import('./Debug/Camera/DebugCamera');
   debugHelpers = loadDebugModule(() => import('./Debug/Camera/CameraHelpers'));
-  debugCamera = loadDebugModule(() => import('./Debug/Camera/DebugCamera'));
+  debugCamera = loadDebugModule(camImporter);
+
   if (IS_DEBUG_ENV) {
-    if (debugCameraEntityId) return;
-
-    registerOnAllSceneExits('debugCamExitSceneLogic', () => {
-      if (debugCameraEntityId) {
-        useDebug(debugCamera)?.toggleOrbitControls(world, debugCameraEntityId, false);
-      }
-    });
-
     registerOnAllSceneEnterings('debugCamEnterSceneLogic', () => {
       const newSceneId = getCurrentSceneId();
-      if (newSceneId) useDebug(debugCamera)?.debugCamSceneChange(newSceneId, world);
-      const props = useDebug(debugCamera)?.getDebugCamProps(newSceneId);
-      const isEnabled = props ? Boolean(props.enabled) : false;
-      if (debugCameraEntityId) {
-        useDebug(debugCamera)?.toggleOrbitControls(world, debugCameraEntityId, isEnabled);
+      const module = useDebug(debugCamera);
+      if (!module || !newSceneId) return;
+
+      // If controls aren't attached yet (e.g. initial boot), attach them now.
+      // This ensures the Canvas is ready and the correct Scene ID is used.
+      if (
+        debugCameraEntityId &&
+        !world.hasComponent(debugCameraEntityId, ComponentType.ORBIT_CONTROLS)
+      ) {
+        module.attachOrbitControls(debugCameraEntityId, world, newSceneId);
       }
-      toggleDebugCamera(world, isEnabled);
+
+      module.debugCamSceneChange(newSceneId, world);
+      const props = module.getDebugCamProps(newSceneId);
+      toggleDebugCamera(world, props.enabled);
     });
 
-    const props = useDebug(debugCamera)?.getDebugCamProps(sceneId);
-    if (!props) return;
+    const module = await camImporter();
+
     debugCameraEntityId = createCameraEntity(
-      {
-        type: 'PERSPECTIVE',
-        active: props.enabled,
-        fov: props.fov,
-        near: props.near,
-        far: props.far,
-        zoom: props.zoom,
-      },
+      { type: 'PERSPECTIVE', active: false, fov: 60, near: 0.1, far: 2000 },
       { userData: { name: 'DebugOrbitCamera' } },
       world
     );
 
     world.addComponent(debugCameraEntityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA, true);
     world.addComponent(debugCameraEntityId, ComponentType.PERSISTENT, true);
-    useDebug(debugCamera)?.attachOrbitControls(debugCameraEntityId, world, sceneId);
   }
 };
 

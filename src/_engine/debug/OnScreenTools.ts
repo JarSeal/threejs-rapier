@@ -138,13 +138,15 @@ const switchTools = () => {
   // Use debug cam button
   const useDebugCamBtnClasses = [styles.onScreenTool, 'onScreenTool'];
   if (isUsingDebugCamera()) useDebugCamBtnClasses.push(styles.active, 'onScreenToolActive');
+
   const useDebugCamBtn = CMP({
     class: useDebugCamBtnClasses,
     html: () => `<button>${getSvgIcon('aspectRatio')}</button>`,
     attr: { title: 'Toggle between debug camera and app camera' },
     onClick: (e) => {
       e.stopPropagation();
-      handleDebugCameraSwitch(undefined, !isUsingDebugCamera());
+      const nextState = !isUsingDebugCamera();
+      handleDebugCameraSwitch(undefined, nextState);
       buildDebugToolsGUI();
     },
   });

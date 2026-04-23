@@ -31,11 +31,18 @@ export const sceneTestECS = async () =>
       }
     );
     setMainCamera(ecsWorld, camId);
-    toggleDebugCamera(ecsWorld, false);
     ecsWorld.setTransform(camId, {
       pos: { x: 10, y: 5, z: 20 },
     });
     lookAtPoint(camId, { x: 0, y: 0, z: 0 });
+
+    const debugCam = ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
+    console.log('POOP', debugCam);
+    if (debugCam !== undefined) {
+      // Removing the DISABLED component will cause debugCameraSystem
+      // to set controls.enabled = true automatically on the next frame.
+      ecsWorld.setDisabled(debugCam, false);
+    }
 
     inspectEntity(camId);
 

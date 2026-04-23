@@ -25,6 +25,7 @@ import './core/_MeshManager';
 import '../AppECSPlugins';
 
 import { initECSWorld } from './core/ECS';
+import { initDebugCamera } from './core/_CameraManager';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -43,7 +44,10 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     createRootScene();
 
     // Init ECS
-    initECSWorld();
+    const ecsWorld = initECSWorld();
+
+    // Initializes the debug camera (if in debug mode)
+    await initDebugCamera(ecsWorld);
 
     // HUD container
     createHudContainer();
