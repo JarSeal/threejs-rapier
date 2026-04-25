@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { getWindowSize } from '../utils/Window';
 import { llog, lwarn } from '../utils/Logger';
-import { DEBUG_CAMERA_ID, handleDebugCameraSwitch, isUsingDebugCamera } from '../debug/DebugTools';
+import { DEBUG_CAMERA_ID, handleDebugCameraSwitch } from '../debug/DebugTools';
 import { CMP, TCMP } from '../utils/CMP';
 import { Pane } from 'tweakpane';
 import {
@@ -14,7 +14,6 @@ import {
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerContainer } from '../debug/DebuggerGUI';
 import { isDebugEnvironment } from './Config';
-import { deleteCameraHelperByCamId, toggleCameraHelper } from './legacy_Helpers';
 import { getCurrentScene, getRootScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
@@ -46,11 +45,8 @@ export const createCamera = (
     if (opts?.fov) c.fov = opts.fov;
     if (opts?.near) c.near = opts.near;
     if (opts?.far) c.far = opts.far;
-    if (opts?.isCurrentCamera && !isUsingDebugCamera()) {
-      setCurrentCamera(id);
-    }
     mergeCameraDataFromLS(id);
-    toggleCameraHelper(id, Boolean(c.userData.showHelper));
+    // toggleCameraHelper(id, Boolean(c.userData.showHelper));
     c.updateProjectionMatrix();
     return c;
   }
@@ -70,12 +66,8 @@ export const createCamera = (
   const rootScene = getRootScene();
   if (rootScene) rootScene.add(camera);
 
-  if (opts?.isCurrentCamera && !isUsingDebugCamera()) {
-    setCurrentCamera(id);
-  }
-
   mergeCameraDataFromLS(id);
-  toggleCameraHelper(id, Boolean(camera.userData.showHelper));
+  // toggleCameraHelper(id, Boolean(camera.userData.showHelper));
   camera.updateProjectionMatrix();
 
   return camera;
@@ -104,7 +96,7 @@ export const deleteCamera = (id: string) => {
   }
 
   if (camera.userData.helperCreated) {
-    deleteCameraHelperByCamId(camera.userData.id);
+    // deleteCameraHelperByCamId(camera.userData.id);
   }
 
   camera.removeFromParent();
@@ -153,7 +145,7 @@ export const setCurrentCamera = (id: string, doNotHandleDebugCameraSwitch?: bool
   if (onCameraSet[currentCameraId]) onCameraSet[currentCameraId]();
 
   if (isDebugEnvironment() && !doNotHandleDebugCameraSwitch) {
-    handleDebugCameraSwitch(nextCamera.userData.id, undefined, true);
+    handleDebugCameraSwitch();
   }
 
   return nextCamera;
@@ -303,7 +295,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     html: () =>
       `<button title="${isCurCam ? 'This is the current camera being used' : 'Switch to use this camera'}">${getSvgIcon('camera')}</button>`,
     attr: isCurCam ? { disabled: 'true' } : {},
-    onClick: () => handleDebugCameraSwitch(camera.userData.id),
+    onClick: () => handleDebugCameraSwitch(),
   });
   const copyCodeButton = CMP({
     class: 'winSmallIconButton',
@@ -394,8 +386,8 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   if (camera.userData.showHelper === undefined) camera.userData.showHelper = false;
   debuggerWindowPane
     .addBinding(camera.userData, 'showHelper', { label: 'Show helper' })
-    .on('change', (e) => {
-      toggleCameraHelper(camera.userData.id, e.value);
+    .on('change', () => {
+      // toggleCameraHelper(camera.userData.id, e.value);
       saveCameraToLS(camera.userData.id);
       updateOnScreenTools('SWITCH');
     });

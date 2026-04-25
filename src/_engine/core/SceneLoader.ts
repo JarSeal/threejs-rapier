@@ -18,7 +18,7 @@ import { deleteAllPhysicsObjects } from './PhysicsRapier';
 import { disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
-import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
+import { getDebugToolsState } from '../debug/DebugTools';
 import { IS_DEBUG_ENV, isDebugEnvironment } from './Config';
 import { clearSkyBox } from './SkyBox';
 import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
@@ -284,10 +284,6 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         if (isDebugEnvironment()) {
           // Enable debuggers
           disableDebugger(false);
-          const debugCamEnabled = Boolean(
-            getDebugToolsState(true).debugCamera[newSceneId]?.enabled
-          );
-          setDebugToolsVisibility(debugCamEnabled, true);
           updateLightsDebuggerGUI();
 
           updateOnScreenTools();

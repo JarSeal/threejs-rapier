@@ -1,13 +1,5 @@
 import * as THREE from 'three/webgpu';
-import {
-  normalWorld,
-  uniform,
-  normalView,
-  positionViewDirection,
-  cameraViewMatrix,
-  pmremTexture,
-  vec3,
-} from 'three/tsl';
+import { normalWorld, uniform, pmremTexture, vec3 } from 'three/tsl';
 import { lerror, lwarn } from '../utils/Logger';
 import {
   getCurrentScene,
@@ -21,11 +13,6 @@ import { getTexture, loadTextureAsync } from './Texture';
 import { isDebugEnvironment } from './Config';
 import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
-import {
-  changeDebugEnvBallRoughness,
-  getDebugToolsState,
-  setDebugEnvBallMaterial,
-} from '../debug/DebugTools';
 import { isHDR } from '../utils/helpers';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
@@ -254,10 +241,10 @@ export const createSkyBox = async (
         throw new Error(msg);
       }
       envTexture.mapping = THREE.EquirectangularReflectionMapping;
-      const reflectVec = positionViewDirection
-        .negate()
-        .reflect(normalView)
-        .transformDirection(cameraViewMatrix);
+      // const reflectVec = positionViewDirection
+      //   .negate()
+      //   .reflect(normalView)
+      //   .transformDirection(cameraViewMatrix);
       pmremRoughnessBg.value = skyBoxStateToBeAdded.equiRectRoughness;
       const backgroundEnvNode = pmremTexture(envTexture, normalWorld, pmremRoughnessBg);
 
@@ -266,9 +253,9 @@ export const createSkyBox = async (
       rootScene.environmentNode = backgroundEnvNode;
       scene.userData.backgroundNodeTextureId = textureId || envTexture.userData.id;
       if (isDebugEnvironment()) {
-        const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.equiRectRoughness);
-        const pmremNodeBall = pmremTexture(envTexture, reflectVec, pmremRoughnessBall);
-        setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
+        // const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.equiRectRoughness);
+        // const pmremNodeBall = pmremTexture(envTexture, reflectVec, pmremRoughnessBall);
+        // setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
       }
     }
 
@@ -317,9 +304,9 @@ export const createSkyBox = async (
       }
       scene.userData.backgroundNodeTextureId = textureId || cubeTexture.userData.id;
       if (isDebugEnvironment()) {
-        const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.cubeTextRoughness);
-        const pmremNodeBall = pmremTexture(cubeTexture, backgroundUV.mul(-1), pmremRoughnessBall);
-        setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
+        // const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.cubeTextRoughness);
+        // const pmremNodeBall = pmremTexture(cubeTexture, backgroundUV.mul(-1), pmremRoughnessBall);
+        // setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
       }
     }
 
@@ -462,8 +449,8 @@ export const createSkyBoxDebugGUI = () => {
     })
     .on('change', (e) => {
       pmremRoughnessBg.value = e.value;
-      const debugToolsState = getDebugToolsState();
-      if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(e.value);
+      // const debugToolsState = getDebugToolsState();
+      // if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(e.value);
       const sceneId = getCurSceneSkyBoxSceneId();
       const curSceneState = allSkyBoxStates[sceneId][skyBoxState.id];
       if (curSceneState) {
@@ -479,8 +466,8 @@ export const createSkyBoxDebugGUI = () => {
   equiRectFolder.addButton({ title: 'Reset' }).on('click', () => {
     skyBoxState.equiRectRoughness = defaultRoughness;
     pmremRoughnessBg.value = defaultRoughness;
-    const debugToolsState = getDebugToolsState();
-    if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(defaultRoughness);
+    // const debugToolsState = getDebugToolsState();
+    // if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(defaultRoughness);
     const sceneId = getCurSceneSkyBoxSceneId();
     allSkyBoxStates[sceneId][skyBoxState.id].equiRectRoughness = defaultRoughness;
     lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
@@ -532,8 +519,8 @@ export const createSkyBoxDebugGUI = () => {
     })
     .on('change', (e) => {
       pmremRoughnessBg.value = e.value;
-      const debugToolsState = getDebugToolsState();
-      if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(e.value);
+      // const debugToolsState = getDebugToolsState();
+      // if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(e.value);
       const sceneId = getCurSceneSkyBoxSceneId();
       const curSceneState = allSkyBoxStates[sceneId][skyBoxState.id];
       if (curSceneState) {
@@ -558,8 +545,8 @@ export const createSkyBoxDebugGUI = () => {
   cubeTextureFolder.addButton({ title: 'Reset' }).on('click', () => {
     skyBoxState.cubeTextRoughness = defaultRoughness;
     pmremRoughnessBg.value = defaultRoughness;
-    const debugToolsState = getDebugToolsState();
-    if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(defaultRoughness);
+    // const debugToolsState = getDebugToolsState();
+    // if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(defaultRoughness);
     const sceneId = getCurSceneSkyBoxSceneId();
     allSkyBoxStates[sceneId][skyBoxState.id].cubeTextRoughness = defaultRoughness;
     lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);

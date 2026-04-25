@@ -16,7 +16,6 @@ import { getRenderer, getRendererOptions } from './Renderer';
 import { BladeController, View } from '@tweakpane/core';
 import { FOUR_PX_TO_8K_LIST, RENDERER_SHADOW_OPTIONS } from '../utils/constants';
 import { getSvgIcon } from './UI/icons/SvgIcon';
-import { toggleLightHelper } from './legacy_Helpers';
 import { removeObjectAndChildrenFromMemory } from '../utils/helpers';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
@@ -95,7 +94,7 @@ export const createLight = ({ id, name, enabled, type, params }: LightProps) => 
 
   if (id && lights[id]) {
     mergeLightDataFromLS(id);
-    toggleLightHelper(lights[id].userData.id, Boolean(lights[id].userData.showHelper));
+    // toggleLightHelper(lights[id].userData.id, Boolean(lights[id].userData.showHelper));
     return lights[id];
   }
 
@@ -205,7 +204,7 @@ export const createLight = ({ id, name, enabled, type, params }: LightProps) => 
   lights[id || light.uuid] = light;
 
   mergeLightDataFromLS(id);
-  toggleLightHelper(light.userData.id, Boolean(light.userData.showHelper));
+  // toggleLightHelper(light.userData.id, Boolean(light.userData.showHelper));
 
   return light;
 };
@@ -479,7 +478,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     debuggerWindowPane
       .addBinding(light.userData, 'showHelper', { label: 'Show helper' })
       .on('change', (e) => {
-        toggleLightHelper(light.userData.id, e.value);
+        // toggleLightHelper(light.userData.id, e.value);
         light.userData.showHelper = e.value;
         saveLightToLS(light.userData.id);
         updateOnScreenTools('SWITCH');
@@ -559,7 +558,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Hide helper temporarily
         if (l.userData.helperCreated) {
-          toggleLightHelper(l.userData.id, false);
+          // toggleLightHelper(l.userData.id, false);
           const lightHelper = light.children.find(
             (child) => child.type === 'PointLightHelper'
           ) as THREE.PointLightHelper;
@@ -593,7 +592,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Show camera helper for new light
         if (l.userData.showHelper) {
-          toggleLightHelper(l.userData.id, true);
+          // toggleLightHelper(l.userData.id, true);
         }
 
         saveLightToLS(l.userData.id);
@@ -614,7 +613,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Hide helper temporarily
         if (l.userData.helperCreated) {
-          toggleLightHelper(l.userData.id, false);
+          // toggleLightHelper(l.userData.id, false);
           const lightHelper = light.children.find(
             (child) => child.type === 'PointLightHelper'
           ) as THREE.PointLightHelper;
@@ -648,7 +647,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Show camera helper for new light
         if (l.userData.showHelper) {
-          toggleLightHelper(l.userData.id, true);
+          // toggleLightHelper(l.userData.id, true);
         }
 
         saveLightToLS(l.userData.id);
@@ -667,7 +666,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Hide helper temporarily
         if (l.userData.helperCreated) {
-          toggleLightHelper(l.userData.id, false);
+          // toggleLightHelper(l.userData.id, false);
           const lightHelper = light.children.find(
             (child) => child.type === 'PointLightHelper'
           ) as THREE.PointLightHelper;
@@ -701,7 +700,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Show camera helper for new light
         if (l.userData.showHelper) {
-          toggleLightHelper(l.userData.id, true);
+          // toggleLightHelper(l.userData.id, true);
         }
 
         saveLightToLS(l.userData.id);
@@ -804,7 +803,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Hide helpers temporarily
         if (l.userData.helperCreated) {
-          toggleLightHelper(l.userData.id, false);
+          // toggleLightHelper(l.userData.id, false);
           const lightHelper = light.children.find(
             (child) => child.type === 'DirectionalLightHelper'
           ) as THREE.DirectionalLightHelper;
@@ -844,7 +843,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Show camera helper for new light
         if (l.userData.showHelper) {
-          toggleLightHelper(l.userData.id, true);
+          // toggleLightHelper(l.userData.id, true);
         }
 
         saveLightToLS(l.userData.id);
@@ -865,7 +864,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Hide helpers temporarily
         if (l.userData.helperCreated) {
-          toggleLightHelper(l.userData.id, false);
+          // toggleLightHelper(l.userData.id, false);
           const lightHelper = light.children.find(
             (child) => child.type === 'DirectionalLightHelper'
           ) as THREE.DirectionalLightHelper;
@@ -905,7 +904,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Show camera helper for new light
         if (l.userData.showHelper) {
-          toggleLightHelper(l.userData.id, true);
+          // toggleLightHelper(l.userData.id, true);
         }
 
         saveLightToLS(l.userData.id);
@@ -924,7 +923,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Hide helpers temporarily
         if (l.userData.helperCreated) {
-          toggleLightHelper(l.userData.id, false);
+          // toggleLightHelper(l.userData.id, false);
           const lightHelper = light.children.find(
             (child) => child.type === 'DirectionalLightHelper'
           ) as THREE.DirectionalLightHelper;
@@ -964,7 +963,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
         // Show camera helper for new light
         if (l.userData.showHelper) {
-          toggleLightHelper(l.userData.id, true);
+          // toggleLightHelper(l.userData.id, true);
         }
 
         saveLightToLS(l.userData.id);

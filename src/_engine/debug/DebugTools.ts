@@ -1,23 +1,9 @@
-import * as THREE from 'three/webgpu';
-import { uniform } from 'three/tsl';
-import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import { ListBladeApi, Pane } from 'tweakpane';
-import { BladeController, FolderApi, View } from '@tweakpane/core';
-import {
-  createCamera,
-  getAllCameras,
-  getCurrentCameraId,
-  setCurrentCamera,
-  updateCamerasDebuggerGUI,
-} from '../core/Camera';
+import { BladeController, View } from '@tweakpane/core';
 import { getRenderer, getRendererOptions } from '../core/Renderer';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
-import { createMesh } from '../core/Mesh';
-import { createGeometry } from '../core/Geometry';
-import { createMaterial, deleteMaterial } from '../core/Material';
 import { getCurrentSceneId, getRootScene, getScene } from '../core/Scene';
-import { getEnvMapRoughnessBg } from '../core/SkyBox';
 import { getConfig, getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../core/Config';
 import { debuggerSceneListing, type DebugScene } from './debugScenes/debuggerSceneListing';
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
@@ -30,23 +16,14 @@ import {
   createAxesHelper,
   createGridHelper,
   createPolarGridHelper,
-  getAllCurSceneCameraHelpers,
-  getAllCurSceneLightHelpers,
   toggleAxesHelperVisibility,
-  toggleCameraHelper,
   toggleGridHelperVisibility,
-  toggleLightHelper,
   togglePolarGridHelperVisibility,
-} from '../core/Helpers';
-import { getAllLights } from '../core/Light';
+} from '../core/legacy_Helpers';
 import { updateOnScreenTools } from './OnScreenTools';
 import { addToast } from '../core/UI/Toaster';
-import { toggleDebugCamera } from '../core/_CameraManager';
-import { getECSWorld } from '../core/ECS';
-import { ComponentType } from '../core/ECS/ECSCoreComponents';
 
 const LS_KEY = 'debugTools';
-const ENV_MIRROR_BALL_MESH_ID = 'envMirrorBallMesh';
 export const DEBUG_CAMERA_ID = '_debugCamera';
 const DEFAULT_DEBUG_CAM_PARAMS: DebugCameraState = {
   enabled: false,
@@ -58,13 +35,6 @@ const DEFAULT_DEBUG_CAM_PARAMS: DebugCameraState = {
   target: [0, 0, 0],
 };
 const getDefaultDebugCamParams = () => ({ ...DEFAULT_DEBUG_CAM_PARAMS }) as DebugCameraState;
-let envBallMesh: THREE.Mesh | null = null;
-let envBallColorNode: THREE.PMREMNode | null = null;
-let envBallRoughnessNode: THREE.UniformNode<'float', number> = uniform(0);
-let envBallFolder: FolderApi | null = null;
-let debugCamera: THREE.PerspectiveCamera | null = null;
-let curSceneDebugCamParams = getDefaultDebugCamParams();
-let orbitControls: OrbitControls | null = null;
 let scenesDropDown: ListBladeApi<BladeController<View>>;
 let sceneStarterDropDown: ListBladeApi<BladeController<View>>;
 let toolsDebugGUI: Pane | null = null;
@@ -170,52 +140,12 @@ const createDebugToolsDebugGUI = () => {
   debugToolsState = { ...debugToolsState, ...savedDebugToolsState };
   firstDebugToolsStateLoaded = true;
 
-  const currentSceneId = getCurrentSceneId();
-  if (currentSceneId) {
-    curSceneDebugCamParams =
-      debugToolsState.debugCamera[currentSceneId] || getDefaultDebugCamParams();
-  }
-
-  debugCamera = createCamera(DEBUG_CAMERA_ID, {
-    isCurrentCamera: curSceneDebugCamParams.enabled,
-    fov: curSceneDebugCamParams.fov,
-    near: curSceneDebugCamParams.near,
-    far: curSceneDebugCamParams.far,
-  });
-  if (!debugCamera) {
-    const msg = 'Error while creating debug camera in createDebugToolsDebugGUI';
-    lerror(msg);
-    throw new Error(msg);
-  }
-
   const renderer = getRenderer();
   if (!renderer) {
     const msg = 'Renderer not found in createDebugToolsDebugGUI';
     lerror(msg);
     throw new Error(msg);
   }
-  const ecsWorld = getECSWorld();
-  const hasECSDebugCam =
-    ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value !== undefined;
-  orbitControls = new OrbitControls(debugCamera, renderer.domElement);
-  orbitControls.addEventListener('end', () => {
-    const position = [
-      debugCamera?.position.x || 0,
-      debugCamera?.position.y || 0,
-      debugCamera?.position.z || 0,
-    ];
-    const target = [
-      orbitControls?.target.x || 0,
-      orbitControls?.target.y || 0,
-      orbitControls?.target.z || 0,
-    ];
-    curSceneDebugCamParams.position = position;
-    curSceneDebugCamParams.target = target;
-    lsSetItem(LS_KEY, debugToolsState);
-  });
-  orbitControls.enabled = hasECSDebugCam ? false : curSceneDebugCamParams.enabled;
-
-  createOnScreenTools(debugCamera);
 
   toggleAxesHelperVisibility(debugToolsState.helpers.showAxesHelper);
   toggleGridHelperVisibility(debugToolsState.helpers.showGridHelper);
@@ -238,217 +168,6 @@ const createDebugToolsDebugGUI = () => {
       return container;
     },
   });
-};
-
-// On screen tools (eg. env ball)
-const createOnScreenTools = (debugCamera: THREE.PerspectiveCamera) => {
-  debugCamera.position.set(
-    curSceneDebugCamParams.position[0],
-    curSceneDebugCamParams.position[1],
-    curSceneDebugCamParams.position[2]
-  );
-  const target = new THREE.Vector3(
-    curSceneDebugCamParams.target[0],
-    curSceneDebugCamParams.target[1],
-    curSceneDebugCamParams.target[2]
-  );
-  debugCamera.lookAt(target);
-  if (orbitControls) {
-    orbitControls.target = target;
-    orbitControls.update();
-  }
-
-  const viewBoundsMin = new THREE.Vector2();
-  const viewBoundsMax = new THREE.Vector2();
-  debugCamera.getViewBounds(1, viewBoundsMin, viewBoundsMax);
-
-  // Tool group
-  // const toolGroup = createGroup({ id: 'debugToolsGroup' });
-  const toolGroup = createMesh({
-    id: 'debugToolsGroup',
-    geo: createGeometry({
-      id: 'debugToolsGroupGep',
-      type: 'BOX',
-      params: {
-        width: viewBoundsMax.x - viewBoundsMin.x,
-        height: viewBoundsMax.y - viewBoundsMin.y,
-        depth: 2,
-      },
-    }),
-    mat: createMaterial({
-      id: 'debugToolsGroupMat',
-      type: 'BASIC',
-      params: {
-        transparent: true,
-        opacity: 0,
-      },
-    }),
-  });
-
-  // Environment mirror ball
-  envBallRoughnessNode.value = debugToolsState.env.separateBallValues
-    ? debugToolsState.env.ballRoughness
-    : getEnvMapRoughnessBg()?.value || debugToolsState.env.ballDefaultRoughness;
-  envBallMesh = createMesh({
-    id: ENV_MIRROR_BALL_MESH_ID,
-    geo: createGeometry({
-      id: 'envMirrorBallGeo',
-      type: 'SPHERE',
-      params: { radius: 0.13, widthSegments: 64, heightSegments: 64 },
-    }),
-    mat: createMaterial({
-      id: 'envMirrorBallMat',
-      type: 'BASICNODEMATERIAL',
-      params: {
-        depthTest: false,
-        ...(envBallColorNode ? { colorNode: envBallColorNode } : {}),
-      },
-    }),
-  });
-  toolGroup.add(envBallMesh);
-  envBallMesh.visible = Boolean(envBallColorNode && debugToolsState.env.envBallVisible);
-
-  envBallMesh.position.x = 0;
-  envBallMesh.position.y = 0;
-  envBallMesh.position.z = 1;
-  envBallMesh.renderOrder = 999999;
-
-  // Add toolgroup to mesh and debugCamera to scene
-  debugCamera.add(toolGroup);
-  toolGroup.position.set(0, 0, -2.5);
-  toolGroup.lookAt(debugCamera.position);
-
-  getRootScene()?.add(debugCamera);
-};
-
-/**
- * Sets the debug tools visibility (on screen tools and debug tools)
- * @param show (boolean) whether to show the debug tools (and use debug camera) or not
- * @param refreshPane (boolean) optional value to determine whether the debug pane should be refreshed or not
- * @returns
- */
-export const setDebugToolsVisibility = (
-  show: boolean,
-  refreshPane?: boolean,
-  doNotSetCamera?: boolean,
-  nextCameraId?: string
-) => {
-  const currentSceneId = getCurrentSceneId();
-  if (!currentSceneId) {
-    const msg = 'Could not find current scene id in setDebugToolsVisibility';
-    lerror(msg);
-    throw new Error(msg);
-  }
-  if (currentSceneId) {
-    curSceneDebugCamParams =
-      debugToolsState.debugCamera[currentSceneId] || getDefaultDebugCamParams();
-  }
-
-  const currentCameraId = getCurrentCameraId();
-  if (currentCameraId !== DEBUG_CAMERA_ID) {
-    const currentOrNextCamId = !doNotSetCamera && nextCameraId ? nextCameraId : currentCameraId;
-    curSceneDebugCamParams.latestAppCameraId = currentOrNextCamId;
-    debugToolsState.debugCamera[currentSceneId].latestAppCameraId = currentOrNextCamId;
-  }
-
-  if (show) {
-    const ecsWorld = getECSWorld();
-    const hasECSDebugCam =
-      ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value !== undefined;
-
-    if (orbitControls) orbitControls.enabled = !hasECSDebugCam;
-    if (debugCamera) {
-      if (debugCamera.children[0]) debugCamera.children[0].visible = true;
-      debugCamera.position.set(
-        curSceneDebugCamParams.position[0],
-        curSceneDebugCamParams.position[1],
-        curSceneDebugCamParams.position[2]
-      );
-      debugCamera.lookAt(
-        new THREE.Vector3(
-          curSceneDebugCamParams.target[0],
-          curSceneDebugCamParams.target[1],
-          curSceneDebugCamParams.target[2]
-        )
-      );
-    }
-
-    // Only set legacy active camera if there is NO ECS camera
-    if (!doNotSetCamera && !hasECSDebugCam) setCurrentCamera(DEBUG_CAMERA_ID, true);
-
-    if (refreshPane) buildDebugToolsGUI();
-    updateCamerasDebuggerGUI();
-    return;
-  }
-
-  if (orbitControls) orbitControls.enabled = false;
-  if (debugCamera?.children[0]) debugCamera.children[0].visible = false;
-  if (!doNotSetCamera) {
-    setCurrentCamera(
-      nextCameraId && nextCameraId !== DEBUG_CAMERA_ID
-        ? nextCameraId
-        : debugToolsState.debugCamera[currentSceneId].latestAppCameraId ||
-            getCurrentCameraId() ||
-            Object.keys(getAllCameras())[0],
-      true
-    );
-  }
-  if (refreshPane) buildDebugToolsGUI();
-  updateCamerasDebuggerGUI();
-};
-
-/**
- * Adds a new colorNode to the environment debug ball (in the bottom left corner when using the debug camera).
- * @param colorNode THREE.PMREMNode to use in the env ball material
- * @param ballRough THREE.UniformNode<'float', number> to control the env ball roughness
- */
-export const setDebugEnvBallMaterial = (
-  colorNode?: THREE.PMREMNode,
-  ballRoughness?: THREE.UniformNode<'float', number>
-) => {
-  if (!isDebugEnvironment()) return;
-  envBallColorNode = colorNode || null;
-  envBallRoughnessNode = ballRoughness !== undefined ? ballRoughness : uniform(0);
-  if (debugToolsState.env.separateBallValues) {
-    envBallRoughnessNode.value = debugToolsState.env.ballRoughness;
-  }
-
-  if (debugToolsState.env.envBallVisible) {
-    if (envBallMesh) envBallMesh.visible = true;
-  } else {
-    if (envBallMesh) envBallMesh.visible = false;
-  }
-
-  if (colorNode && envBallFolder) envBallFolder.hidden = false;
-  if (!colorNode && envBallFolder) envBallFolder.hidden = true;
-
-  if (!colorNode && !ballRoughness) {
-    // Disable the env ball and env ball tools
-    if (envBallMesh) envBallMesh.visible = false;
-    debugToolsState.env.envBallVisible = false;
-    return;
-  }
-
-  if (!envBallMesh || !debugCamera) return;
-  const matId = `${ENV_MIRROR_BALL_MESH_ID}-material`;
-  deleteMaterial(matId);
-  envBallMesh.material = createMaterial({
-    id: matId,
-    type: 'BASICNODEMATERIAL',
-    params: { colorNode },
-  });
-};
-
-/**
- * Change the env map ball roughness
- * @param value roughness value (0.0 - 1.0)
- */
-export const changeDebugEnvBallRoughness = (value: number) => {
-  if (!debugToolsState.env.separateBallValues) {
-    envBallRoughnessNode.value = value;
-    debugToolsState.env.ballRoughness = value;
-    lsSetItem(LS_KEY, debugToolsState);
-  }
 };
 
 /**
@@ -532,12 +251,6 @@ const reloadSceneListingBlade = () => {
 };
 
 /**
- * TODO jsDoc
- * @returns boolean
- */
-export const isUsingDebugCamera = () => isDebugEnvironment() && curSceneDebugCamParams.enabled;
-
-/**
  * Add scene to debug tools states
  * @param sceneId (string)
  */
@@ -549,32 +262,11 @@ export const addSceneToDebugtools = (sceneId: string) => {
   debugToolsState.debugCamera[sceneId] = getDefaultDebugCamParams();
 };
 
-export const handleDebugCameraSwitch = (
-  cameraId?: string,
-  useDebugCamera?: boolean,
-  doNotSetCamera?: boolean
-) => {
+export const handleDebugCameraSwitch = () => {
   const currentSceneId = getCurrentSceneId();
-  if (!cameraId && useDebugCamera === undefined) {
-    lerror(
-      'handleDebugCameraSwitch was called without cameraId and without useDebugCamera, one of them is required (in DebugTools).'
-    );
-    return;
-  }
   if (!currentSceneId) return;
-  if (!debugToolsState.debugCamera[currentSceneId]) {
-    debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
-  }
-  const isDebugCamera = cameraId ? cameraId === DEBUG_CAMERA_ID : Boolean(useDebugCamera);
-  if (!isCurrentlyLoading()) {
-    debugToolsState.debugCamera[currentSceneId].enabled = isDebugCamera;
-    curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-    if (envBallFolder) envBallFolder.hidden = !isDebugCamera;
-
-    toggleDebugCamera(getECSWorld(), isDebugCamera);
-  }
+  // @CHORE: set the new camera here
   lsSetItem(LS_KEY, debugToolsState);
-  setDebugToolsVisibility(isDebugCamera, Boolean(cameraId), doNotSetCamera, cameraId);
   setTimeout(() => {
     updateOnScreenTools('SWITCH');
   }, 0);
@@ -584,159 +276,11 @@ export const buildDebugToolsGUI = () => {
   const debugGUI = toolsDebugGUI;
   const currentSceneId = getCurrentSceneId();
   if (!debugGUI || !currentSceneId) return;
-  if (!debugToolsState.debugCamera[currentSceneId]) {
-    debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
-  }
-  curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
 
   const blades = debugGUI?.children || [];
   for (let i = 0; i < blades.length; i++) {
     blades[i].dispose();
   }
-
-  // Debug camera
-  const debugCameraFolder = debugGUI
-    .addFolder({
-      title: 'Debug camera',
-      expanded: debugToolsState.debugCameraFolderExpanded,
-    })
-    .on('fold', (state) => {
-      debugToolsState.debugCameraFolderExpanded = state.expanded;
-      lsSetItem(LS_KEY, debugToolsState);
-    });
-  debugCameraFolder
-    .addBinding(curSceneDebugCamParams, 'enabled', {
-      label: 'Use debug camera',
-    })
-    .on('change', (e) => {
-      handleDebugCameraSwitch(undefined, Boolean(e.value));
-    });
-  debugCameraFolder
-    .addBinding(curSceneDebugCamParams, 'fov', {
-      label: 'Debug camera FOV',
-      step: 1,
-      min: 1,
-      max: 180,
-    })
-    .on('change', (e) => {
-      if (!debugCamera) return;
-      debugCamera.fov = e.value;
-      debugCamera.updateProjectionMatrix();
-      const currentSceneId = getCurrentSceneId();
-      if (!currentSceneId) return;
-      if (!debugToolsState.debugCamera[currentSceneId]) {
-        debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
-      }
-      debugToolsState.debugCamera[currentSceneId].fov = e.value;
-      curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-      lsSetItem(LS_KEY, debugToolsState);
-    });
-  debugCameraFolder
-    .addBinding(curSceneDebugCamParams, 'near', {
-      label: 'Debug camera near',
-      step: 0.01,
-      min: 0.01,
-    })
-    .on('change', (e) => {
-      if (!debugCamera) return;
-      debugCamera.near = e.value;
-      debugCamera.updateProjectionMatrix();
-      const currentSceneId = getCurrentSceneId();
-      if (!currentSceneId) return;
-      if (!debugToolsState.debugCamera[currentSceneId]) {
-        debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
-      }
-      debugToolsState.debugCamera[currentSceneId].near = e.value;
-      curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-      lsSetItem(LS_KEY, debugToolsState);
-    });
-  debugCameraFolder
-    .addBinding(curSceneDebugCamParams, 'far', {
-      label: 'Debug camera far',
-      step: 0.01,
-      min: 0.02,
-    })
-    .on('change', (e) => {
-      if (!debugCamera) return;
-      debugCamera.far = e.value;
-      debugCamera.updateProjectionMatrix();
-      const currentSceneId = getCurrentSceneId();
-      if (!currentSceneId) return;
-      if (!debugToolsState.debugCamera[currentSceneId]) {
-        debugToolsState.debugCamera[currentSceneId] = getDefaultDebugCamParams();
-      }
-      debugToolsState.debugCamera[currentSceneId].far = e.value;
-      curSceneDebugCamParams = debugToolsState.debugCamera[currentSceneId];
-      lsSetItem(LS_KEY, debugToolsState);
-    });
-  debugCameraFolder.addButton({ title: 'Reset position' }).on('click', () => {
-    const target = new THREE.Vector3(
-      DEFAULT_DEBUG_CAM_PARAMS.target[0],
-      DEFAULT_DEBUG_CAM_PARAMS.target[1],
-      DEFAULT_DEBUG_CAM_PARAMS.target[2]
-    );
-    debugCamera?.position.set(
-      DEFAULT_DEBUG_CAM_PARAMS.position[0],
-      DEFAULT_DEBUG_CAM_PARAMS.position[1],
-      DEFAULT_DEBUG_CAM_PARAMS.position[2]
-    );
-    debugCamera?.lookAt(target);
-    if (orbitControls) {
-      orbitControls.target = target;
-      orbitControls.update();
-    }
-    curSceneDebugCamParams.position = DEFAULT_DEBUG_CAM_PARAMS.position;
-    curSceneDebugCamParams.target = DEFAULT_DEBUG_CAM_PARAMS.target;
-    lsSetItem(LS_KEY, debugToolsState);
-  });
-
-  // Env ball
-  envBallFolder = debugGUI
-    .addFolder({
-      title: 'Environment ball',
-      expanded: debugToolsState.env.envBallFolderExpanded,
-      hidden:
-        !Boolean(envBallColorNode) ||
-        !debugToolsState.debugCamera[getCurrentSceneId() || '']?.enabled,
-    })
-    .on('fold', (state) => {
-      debugToolsState.env.envBallFolderExpanded = state.expanded;
-      lsSetItem(LS_KEY, debugToolsState);
-    });
-  envBallFolder
-    .addBinding(debugToolsState.env, 'envBallVisible', {
-      label: 'Show env ball',
-    })
-    .on('change', (e) => {
-      lsSetItem(LS_KEY, debugToolsState);
-      if (!Boolean(envBallColorNode)) return;
-      if (envBallMesh) envBallMesh.visible = e.value;
-    });
-  envBallFolder
-    .addBinding(debugToolsState.env, 'separateBallValues', {
-      label: 'Separate env ball values',
-    })
-    .on('change', (e) => {
-      envBallRoughnessNode.value = e.value
-        ? debugToolsState.env.ballRoughness
-        : getEnvMapRoughnessBg()?.value !== undefined
-          ? getEnvMapRoughnessBg().value
-          : debugToolsState.env.ballDefaultRoughness;
-      ballRoughnesGUI.disabled = !e.value;
-      lsSetItem(LS_KEY, debugToolsState);
-    });
-  const ballRoughnesGUI = envBallFolder
-    .addBinding(debugToolsState.env, 'ballRoughness', {
-      label: 'Env ball roughness',
-      step: 0.001,
-      min: 0,
-      max: 1,
-      disabled: !debugToolsState.env.separateBallValues,
-    })
-    .on('change', (e) => {
-      envBallRoughnessNode.value = e.value;
-      lsSetItem(LS_KEY, debugToolsState);
-    });
 
   // Scene listing
   const scenesFolder = debugGUI
@@ -949,45 +493,6 @@ export const buildDebugToolsGUI = () => {
       );
       lsSetItem(LS_KEY, debugToolsState);
     });
-  helpersFolder.addBlade({ view: 'separator' });
-  helpersFolder.addButton({ title: 'Hide / show all light helpers' }).on('click', () => {
-    const lightHelpers = getAllCurSceneLightHelpers();
-    let allNotVisible = true;
-    for (let i = 0; i < lightHelpers.length; i++) {
-      if (lightHelpers[i].visible) {
-        allNotVisible = false;
-        break;
-      }
-    }
-    const allLights = getAllLights();
-    const allLightKeys = Object.keys(allLights);
-    for (let i = 0; i < allLightKeys.length; i++) {
-      const l = allLights[allLightKeys[i]];
-      const id = l.userData.id;
-      if (!id) continue;
-      toggleLightHelper(id, allNotVisible);
-    }
-    updateOnScreenTools('SWITCH');
-  });
-  helpersFolder.addButton({ title: 'Hide / show all camera helpers' }).on('click', () => {
-    const cameraHelpers = getAllCurSceneCameraHelpers();
-    let allNotVisible = true;
-    for (let i = 0; i < cameraHelpers.length; i++) {
-      if (cameraHelpers[i].visible && !cameraHelpers[i].userData.isLightHelper) {
-        allNotVisible = false;
-        break;
-      }
-    }
-    const allCameras = getAllCameras();
-    const allCameraKeys = Object.keys(allCameras);
-    for (let i = 0; i < allCameraKeys.length; i++) {
-      const l = allCameras[allCameraKeys[i]];
-      const id = l.userData.id;
-      if (!id) continue;
-      toggleCameraHelper(id, allNotVisible);
-    }
-    updateOnScreenTools('SWITCH');
-  });
 
   // Logging actions
   const loggingFolder = debugGUI
@@ -1015,12 +520,6 @@ export const buildDebugToolsGUI = () => {
       '**********************',
     ],
     rootScene: ['ROOT SCENE:***********', getRootScene(), '**********************'],
-    cameras: [
-      'CAMERAS***************\n',
-      `current camera id: ${getCurrentCameraId()}`,
-      getAllCameras(),
-      '**********************',
-    ],
   });
   const getLogActionListItem = (key: string) => {
     const logActionList = getLogActionList();

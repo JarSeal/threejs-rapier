@@ -1,11 +1,10 @@
-import { getAllCameras, getAllCamerasAsArray, getCurrentCameraId } from '../core/Camera';
+import { isDebugCameraActive } from '../core/_CameraManager';
 import { isDebugEnvironment, isProdTestMode } from '../core/Config';
 import {
   getAllCurSceneCameraHelpers,
   getAllCurSceneLightHelpers,
-  toggleCameraHelper,
   toggleLightHelper,
-} from '../core/Helpers';
+} from '../core/legacy_Helpers';
 import { getHUDRootCMP } from '../core/HUD';
 import { getAllLights } from '../core/Light';
 import { getReadOnlyLoopState, toggleAppPlay, toggleMainPlay } from '../core/MainLoop';
@@ -21,13 +20,7 @@ import { CMP, TCMP } from '../utils/CMP';
 import { lerror } from '../utils/Logger';
 import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
 import { debuggerSceneListing } from './debugScenes/debuggerSceneListing';
-import {
-  buildDebugToolsGUI,
-  DEBUG_CAMERA_ID,
-  getDebugToolsState,
-  handleDebugCameraSwitch,
-  isUsingDebugCamera,
-} from './DebugTools';
+import { buildDebugToolsGUI, handleDebugCameraSwitch } from './DebugTools';
 import styles from './OnScreenTools.module.scss';
 
 let playToolsCMP: TCMP | null = null;
@@ -137,7 +130,7 @@ const switchTools = () => {
 
   // Use debug cam button
   const useDebugCamBtnClasses = [styles.onScreenTool, 'onScreenTool'];
-  if (isUsingDebugCamera()) useDebugCamBtnClasses.push(styles.active, 'onScreenToolActive');
+  if (isDebugCameraActive()) useDebugCamBtnClasses.push(styles.active, 'onScreenToolActive');
 
   const useDebugCamBtn = CMP({
     class: useDebugCamBtnClasses,
@@ -145,8 +138,7 @@ const switchTools = () => {
     attr: { title: 'Toggle between debug camera and app camera' },
     onClick: (e) => {
       e.stopPropagation();
-      const nextState = !isUsingDebugCamera();
-      handleDebugCameraSwitch(undefined, nextState);
+      handleDebugCameraSwitch();
       buildDebugToolsGUI();
     },
   });
@@ -159,33 +151,27 @@ const switchTools = () => {
     'onScreenDropDown',
   ];
   const camSelectorId = 'onScreenSelectCamDropDown';
-  const debugToolsState = getDebugToolsState();
-  const latestAppCamId = debugToolsState.debugCamera[currentSceneId]?.latestAppCameraId;
-  const camOptions = getAllCamerasAsArray(true)
-    .filter((cam) => cam.userData.id !== DEBUG_CAMERA_ID)
-    .map(
-      (cam) =>
-        `<option value="${cam.userData.id}"${latestAppCamId === cam.userData.id || getCurrentCameraId() === cam.userData.id ? ' selected="true"' : ''}>${cam.userData.name || `[${cam.userData.id}]`}</option>`
-    );
+  // const debugToolsState = getDebugToolsState();
+  // const latestAppCamId = debugToolsState.debugCamera[currentSceneId]?.latestAppCameraId;
+  // const camOptions = getAllCamerasAsArray(true)
+  //   .filter((cam) => cam.userData.id !== DEBUG_CAMERA_ID)
+  //   .map(
+  //     (cam) =>
+  //       `<option value="${cam.userData.id}"${latestAppCamId === cam.userData.id || getCurrentCameraId() === cam.userData.id ? ' selected="true"' : ''}>${cam.userData.name || `[${cam.userData.id}]`}</option>`
+  //   );
+  const camOptions = '';
   const camSelectCMP = CMP({
     id: camSelectorId,
     idAttr: true,
     html: () => `<select title="Change camera">
   ${camOptions}
 </select>`,
-    onInput: (e) => {
-      const target = e.target as HTMLSelectElement;
-      const value = target.options[target.options.selectedIndex].value;
-      // If we are using the debug camera, then we need to do this small hack (call handleDebugCameraSwitch twice) to set the
-      // latest app camera id again, so that the on screen tools show the right camera on the dropdown (this could be improved).
-      if (isUsingDebugCamera()) handleDebugCameraSwitch(value);
-      handleDebugCameraSwitch(value);
-    },
+    onInput: () => handleDebugCameraSwitch(),
   });
   const selectCamDropDown = CMP({
     class: [
       ...selectDropdownClasses,
-      ...(!isUsingDebugCamera() ? [styles.active, 'onScreenToolActive'] : []),
+      ...(!isDebugCameraActive() ? [styles.active, 'onScreenToolActive'] : []),
     ],
     html: () => `<label for="${camSelectorId}">
   ${getSvgIcon('camera', 'small')}
@@ -272,22 +258,22 @@ const switchTools = () => {
     attr: { title: 'Hide / show all camera helpers' },
     onClick: (e) => {
       e.stopPropagation();
-      const cameraHelpers = getAllCurSceneCameraHelpers();
-      let allNotVisible = true;
-      for (let i = 0; i < cameraHelpers.length; i++) {
-        if (cameraHelpers[i].visible && !cameraHelpers[i].userData.isLightHelper) {
-          allNotVisible = false;
-          break;
-        }
-      }
-      const allCameras = getAllCameras();
-      const allCameraKeys = Object.keys(allCameras);
-      for (let i = 0; i < allCameraKeys.length; i++) {
-        const l = allCameras[allCameraKeys[i]];
-        const id = l.userData.id;
-        if (!id) continue;
-        toggleCameraHelper(id, allNotVisible);
-      }
+      // const cameraHelpers = getAllCurSceneCameraHelpers();
+      // let allNotVisible = true;
+      // for (let i = 0; i < cameraHelpers.length; i++) {
+      //   if (cameraHelpers[i].visible && !cameraHelpers[i].userData.isLightHelper) {
+      //     allNotVisible = false;
+      //     break;
+      //   }
+      // }
+      // const allCameras = getAllCameras();
+      // const allCameraKeys = Object.keys(allCameras);
+      // for (let i = 0; i < allCameraKeys.length; i++) {
+      //   const l = allCameras[allCameraKeys[i]];
+      //   const id = l.userData.id;
+      //   if (!id) continue;
+      //   toggleCameraHelper(id, allNotVisible);
+      // }
       updateOnScreenTools('SWITCH');
     },
   });

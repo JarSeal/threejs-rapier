@@ -17,7 +17,6 @@ import {
   addSceneToDebugtools,
   getDebugToolsState,
   removeScenesFromSceneListing,
-  setDebugEnvBallMaterial,
 } from '../debug/DebugTools';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
@@ -249,8 +248,6 @@ export const setCurrentScene = (id: string | null) => {
     lwarn(`Could not find scene with id "${id}" in setCurrentScene(id).`);
     return currentScene;
   }
-
-  setDebugEnvBallMaterial();
 
   const rootScene = getRootScene() as THREE.Scene;
 

@@ -1,5 +1,4 @@
 // NO OTHER LOCAL IMPORTS ALLOWED HERE
-// import { AppComponentType } from '../../../AppECSRegistry';
 
 /** Engine Core Components */
 export enum CoreComponentType {
@@ -37,13 +36,6 @@ export enum CoreComponentType {
   DEBUG_CAMERA_HELPER = 'CORE_DEBUG_CAMERA_HELPER',
   DEBUG_TAG_IS_DEBUG_CAMERA = 'CORE_DEBUG_IS_DEBUG_CAMERA',
 }
-
-// export const ComponentType = {
-//   ...CoreComponentType,
-//   ...AppComponentType,
-// } as const;
-
-// export type ComponentType = (typeof ComponentType)[keyof typeof ComponentType];
 
 export type EntityDebugData = {
   name?: string;
