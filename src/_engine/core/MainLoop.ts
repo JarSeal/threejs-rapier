@@ -1,7 +1,7 @@
-import { Timer, type Renderer, type Scene } from 'three/webgpu';
+import { Timer, type Renderer, type Scene, type Camera } from 'three/webgpu';
 import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
 import { getStats, initStats, startCustomMeasurements, updateRestOfStats } from '../debug/Stats';
-import { getCurrentCamera } from './Camera';
+import { getCurrentCamera } from './_CameraManager';
 import { getRenderer } from './Renderer';
 import {
   getCurrentSceneId,
@@ -18,13 +18,13 @@ import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } f
 import { initDebugTools } from '../debug/DebugTools';
 import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './PhysicsRapier';
 import { getSvgIcon } from './UI/icons/SvgIcon';
-import { updateHelpers } from './Helpers';
 import { InitOnScreenTools, updateOnScreenTools } from '../debug/OnScreenTools';
 import { BindingApi } from '@tweakpane/core';
 import { updateInputControllerLoopActions } from './InputControls';
 import { countRayCastFrames, initRayCasting } from './Raycast';
-import { ECSWorld, getECSWorld, initECSWorld } from './ECS';
-import { getActiveCamera, initDebugCamera } from './_CameraManager';
+import { ECSWorld, getECSWorld } from './ECS';
+import { getActiveCamera } from './_CameraManager';
+import { existsOrThrow } from '../utils/helpers';
 
 const LS_KEY = 'debugLoop';
 const timer = new Timer();
@@ -97,30 +97,17 @@ export const transformTimeValue = (durationInMs: number) =>
 let mainLoop: () => void = () => {};
 let ecsWorld: ECSWorld;
 
-// @TODO: Once the ECS refactoring (including all current scenes) is done,
-// switch to only use the ECS camera.
 const renderScene = () => {
   const renderer = getRenderer() as Renderer;
   const rootScene = getRootScene() as Scene;
+  const camera = getActiveCamera() as Camera;
 
-  if (!renderer || !rootScene) return;
+  existsOrThrow(
+    renderer && rootScene && camera,
+    `Error in renderScene, missing renderer, rootScene, and/or camera. Status:\nrenderer: ${Boolean(renderer)}\nrootScene: ${Boolean(rootScene)}\ncamera: ${Boolean(camera)}`
+  );
 
-  const ecsCamera = getActiveCamera();
-
-  if (ecsCamera) {
-    // Use the new ECS camera if found.
-    renderer.render(rootScene, ecsCamera);
-  } else {
-    // Fallback to the legacy camera system if ECS camera is null.
-    const legacyCamera = getCurrentCamera();
-
-    if (legacyCamera) {
-      renderer.render(rootScene, legacyCamera);
-    } else {
-      // Log error only if both systems fail.
-      console.error('Render Scene Failed: No active camera found in ECS or Legacy systems.');
-    }
-  }
+  renderer.render(rootScene, camera);
 };
 
 // LOOP (for debug)
@@ -152,8 +139,6 @@ const mainLoopForDebug = async () => {
 
   // main loopers
   ecsWorld.updateMainLoop(delta);
-  // Update helpers (only in debug)
-  updateHelpers(skipFrame);
   runSceneMainLoopers(delta, skipFrame);
 
   if (loopState.appPlay) {

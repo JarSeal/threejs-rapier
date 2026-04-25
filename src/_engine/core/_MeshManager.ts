@@ -5,7 +5,6 @@ import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
 import { getRootScene } from './Scene';
 import { existsOrThrow } from '../utils/helpers';
 import { getRenderer } from './Renderer';
-import { getCurrentCamera } from './Camera';
 import { ComponentType } from './ECS/ECSCoreComponents';
 
 // Register onDeleteEntity hook for TAG_IS_MESH
@@ -46,7 +45,7 @@ export const createMeshEntity = (
     // with throttled amounts (like 3-5 preWarms per frame). Otherwise the
     // framerate could drop and/or jank could appear.
     const renderer = getRenderer();
-    const camera = getCurrentCamera();
+    const camera = new THREE.PerspectiveCamera();
 
     if (renderer && camera && rootScene) {
       // This is done without await in the background

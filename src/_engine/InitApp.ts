@@ -11,7 +11,6 @@ import { createDebuggerSceneLoader } from './debug/DebuggerSceneLoader';
 import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
 import { createLightsDebuggerGUI } from './core/Light';
-import { createCamerasDebuggerGUI } from './core/Camera';
 import { createCharactersDebuggerGUI } from './core/Character';
 import { createToaster } from './core/UI/Toaster';
 import { getStatsCmp } from './debug/Stats';
@@ -63,7 +62,6 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     if (isDebugEnvironment()) {
       createRendererDebugGUI();
       createLightsDebuggerGUI();
-      createCamerasDebuggerGUI();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
       createDebuggerSceneLoader();

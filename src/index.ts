@@ -1,6 +1,5 @@
 import * as THREE from 'three/webgpu';
 import { createRenderer } from './_engine/core/Renderer';
-import { createCamera } from './_engine/core/Camera';
 import { InitEngine } from './_engine/InitApp';
 import { scene01, SCENE01_ID } from './app/scene01_v2';
 import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
@@ -10,10 +9,14 @@ import { addScenesToSceneListing } from './_engine/debug/DebugTools';
 import { SCENE_THIRD_PERSON_GYM_META, sceneThirdPersonGym } from './app/scene_thirdPersonGym';
 import { MAIN_APP_CAM_ID } from './CONFIG';
 import { SCENE_TEST_ECS_ID, sceneTestECS } from './app/scene_testECS';
+import { createCameraEntity } from './_engine/core/_CameraManager';
 
 InitEngine(async () => {
-  // Init camera
-  createCamera(MAIN_APP_CAM_ID, { name: 'Main Camera', isCurrentCamera: true, fov: 90 });
+  // Init main camera
+  createCameraEntity(
+    { type: 'PERSPECTIVE', fov: 90, active: true, near: 0.1, far: 100 },
+    { appId: MAIN_APP_CAM_ID }
+  );
 
   // Init renderer
   await createRenderer({

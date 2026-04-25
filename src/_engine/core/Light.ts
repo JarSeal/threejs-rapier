@@ -16,7 +16,7 @@ import { getRenderer, getRendererOptions } from './Renderer';
 import { BladeController, View } from '@tweakpane/core';
 import { FOUR_PX_TO_8K_LIST, RENDERER_SHADOW_OPTIONS } from '../utils/constants';
 import { getSvgIcon } from './UI/icons/SvgIcon';
-import { toggleLightHelper } from './Helpers';
+import { toggleLightHelper } from './legacy_Helpers';
 import { removeObjectAndChildrenFromMemory } from '../utils/helpers';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { updateOnScreenTools } from '../debug/OnScreenTools';

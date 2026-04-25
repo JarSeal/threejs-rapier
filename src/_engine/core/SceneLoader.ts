@@ -18,22 +18,15 @@ import { deleteAllPhysicsObjects } from './PhysicsRapier';
 import { disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
-import { DEBUG_CAMERA_ID, getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
+import { getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
 import { IS_DEBUG_ENV, isDebugEnvironment } from './Config';
 import { clearSkyBox } from './SkyBox';
 import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { deleteAllInSceneLights, updateLightsDebuggerGUI } from './Light';
-import {
-  deleteAllInSceneCameras,
-  deleteOnCameraSetsAndUnsets,
-  setCurrentCamera,
-  updateCamerasDebuggerGUI,
-} from './Camera';
 import { deleteAllCharacters } from './Character';
 import { existsOrThrow } from '../utils/helpers';
-import { deregisterAllLightAndCameraHelpers } from './Helpers';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
 import { deleteAllGroups } from './Group';
 import { setIsLoadingScene } from './MainLoop';
@@ -247,13 +240,9 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
       deleteAllCharacters();
       deleteAllPhysicsObjects();
-      deleteAllInSceneCameras();
       deleteAllInSceneLights();
       deleteAllGroups({ deleteAll: true });
 
-      if (isDebugEnvironment()) {
-        deregisterAllLightAndCameraHelpers();
-      }
       if (loadSceneProps.deletePrevScene && prevScene) {
         // Delete the whole previous scene and assets
         // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps (like deleteMeshes, deleteTextures, etc.)
@@ -267,7 +256,6 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
       runOnSceneExit(prevSceneId);
       runOnAllSceneExits();
-      deleteOnCameraSetsAndUnsets();
       deleteAllRayHelpers();
 
       const ecsWorld = existsOrThrow(getECSWorld(), 'Could not find ECS World in loadScene');
@@ -300,11 +288,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
             getDebugToolsState(true).debugCamera[newSceneId]?.enabled
           );
           setDebugToolsVisibility(debugCamEnabled, true);
-          updateCamerasDebuggerGUI();
           updateLightsDebuggerGUI();
-
-          // Set possible debug camera
-          if (debugCamEnabled) setCurrentCamera(DEBUG_CAMERA_ID);
 
           updateOnScreenTools();
           resetRayCastStats();

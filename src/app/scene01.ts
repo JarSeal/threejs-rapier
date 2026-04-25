@@ -10,7 +10,6 @@ import { createMesh } from '../_engine/core/Mesh';
 import { addToGroup, createGroup } from '../_engine/core/Group';
 import { transformMainSpeedValue } from '../_engine/core/MainLoop';
 import { createSkyBox } from '../_engine/core/SkyBox';
-import { getCurrentCamera } from '../_engine/core/Camera';
 import { createKeyInputControl } from '../_engine/core/InputControls';
 import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
 
@@ -20,11 +19,12 @@ export const assets = {};
 
 export const scene01 = async () =>
   new Promise(async (resolve) => {
+    // @TODO: fix this (or delete the scene)
     // Position camera
-    const camera = getCurrentCamera();
-    camera.position.z = 5;
-    camera.position.x = 2.5;
-    camera.position.y = 1;
+    // const camera = getCurrentCamera();
+    // camera.position.z = 5;
+    // camera.position.x = 2.5;
+    // camera.position.y = 1;
 
     // Init scene
     const scene = createScene('testScene1', {
@@ -114,8 +114,6 @@ export const scene01 = async () =>
     });
     const sphere = createMesh({ id: 'sphereMesh1', geo: geometry1, mat: material1 });
     scene.add(sphere);
-
-    getCurrentCamera().lookAt(sphere.position);
 
     const geometry2 = createGeometry({ id: 'box1', type: 'BOX' });
     const material2 = createMaterial({

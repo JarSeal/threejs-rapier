@@ -3,7 +3,6 @@ import { editObjectPropsContentFn } from './_engine/core/UI/DragWinContents/Edit
 import { toggleDrawer } from './_engine/debug/DebuggerGUI';
 import { debuggerSceneListing } from './_engine/debug/debugScenes/debuggerSceneListing';
 import { createEditLightContent, EDIT_LIGHT_WIN_ID } from './_engine/core/Light';
-import { createEditCameraContent, EDIT_CAMERA_WIN_ID } from './_engine/core/Camera';
 import { createEditPhysObjContent, EDIT_PHY_OBJ_WIN_ID } from './_engine/core/PhysicsRapier';
 
 export const MAIN_APP_CAM_ID = 'mainAppCam';
@@ -31,7 +30,6 @@ const config: AppConfig = {
   },
   draggableWindows: {
     [EDIT_LIGHT_WIN_ID]: { contentFn: createEditLightContent },
-    [EDIT_CAMERA_WIN_ID]: { contentFn: createEditCameraContent },
     [EDIT_PHY_OBJ_WIN_ID]: { contentFn: createEditPhysObjContent },
     myFirstDraggableTest: { contentFn: editObjectPropsContentFn }, // @TODO: remove this
   },

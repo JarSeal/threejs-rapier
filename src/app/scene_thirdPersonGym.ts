@@ -5,7 +5,6 @@ import { createMaterial } from '../_engine/core/Material';
 import { createLight } from '../_engine/core/Light';
 import { createMesh } from '../_engine/core/Mesh';
 import { createSkyBox } from '../_engine/core/SkyBox';
-import { createCamera, getCurrentCamera } from '../_engine/core/Camera';
 import {
   addScenePhysicsLooper,
   createPhysicsObjectWithMesh,
@@ -21,7 +20,6 @@ import { getQuatFromAngle } from '../_engine/utils/helpers';
 import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
-import { createFollowObjectCameraRig } from '../_engine/utils/cameras/followObjectCameraRig';
 
 export const SCENE_THIRD_PERSON_GYM_META = {
   id: 'thirdPersonGymScene',
@@ -33,12 +31,14 @@ export const sceneThirdPersonGym = async () =>
     const updateLoaderFn = getLoaderStatusUpdater();
     updateLoaderFn({ loadedCount: 0, totalCount: 2 });
 
+    // @TODO: fix this whole scene to use ECS
+
     // Position camera
-    const camera = getCurrentCamera();
-    camera.position.z = 5;
-    camera.position.x = 2.5;
-    camera.position.y = 1;
-    camera.lookAt(new THREE.Vector3(0, 0, 0));
+    // const camera = getCurrentCamera();
+    // camera.position.z = 5;
+    // camera.position.x = 2.5;
+    // camera.position.y = 1;
+    // camera.lookAt(new THREE.Vector3(0, 0, 0));
 
     const scene = createScene(SCENE_THIRD_PERSON_GYM_META.id, {
       name: 'Test scene 1',
@@ -280,20 +280,20 @@ export const sceneThirdPersonGym = async () =>
     // });
 
     // Add top down camera
-    createFollowObjectCameraRig({
-      id: 'playerFollowCamRig',
-      camera: createCamera('playerFollowCam', {
-        name: 'Player camera',
-        isCurrentCamera: true,
-        fov: 60,
-        near: 2,
-        far: 1000,
-      }),
-      targetMesh: charMesh,
-      offset: { x: 7, y: 20, z: 7 },
-      smoothingTime: 0.2,
-      // getMouseMoveInput: () => mouseInput,
-    });
+    // createFollowObjectCameraRig({
+    //   id: 'playerFollowCamRig',
+    //   camera: createCamera('playerFollowCam', {
+    //     name: 'Player camera',
+    //     isCurrentCamera: true,
+    //     fov: 60,
+    //     near: 2,
+    //     far: 1000,
+    //   }),
+    //   targetMesh: charMesh,
+    //   offset: { x: 7, y: 20, z: 7 },
+    //   smoothingTime: 0.2,
+    //   // getMouseMoveInput: () => mouseInput,
+    // });
 
     // Another character without input
     const directionBeakMesh2 = createMesh({

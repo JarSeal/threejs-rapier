@@ -9,13 +9,11 @@ import { createMesh } from '../_engine/core/Mesh';
 import { addToGroup, createGroup } from '../_engine/core/Group';
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import { createSkyBox } from '../_engine/core/SkyBox';
-import { getCamera, setCurrentCamera } from '../_engine/core/Camera';
 import {
   createPhysicsObjectWithMesh,
   createPhysicsObjectWithoutMesh,
 } from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
-import { MAIN_APP_CAM_ID } from '../CONFIG';
 
 export const SCENE01_ID = 'testScene1';
 
@@ -24,12 +22,13 @@ export const scene01 = async () =>
     const updateLoaderFn = getLoaderStatusUpdater();
     updateLoaderFn({ loadedCount: 0, totalCount: 2 });
 
+    // @TODO: fix this (or delete the scene)
     // Set current camera and position it
-    const camera = getCamera(MAIN_APP_CAM_ID);
-    setCurrentCamera(MAIN_APP_CAM_ID);
-    camera.position.z = 5;
-    camera.position.x = 2.5;
-    camera.position.y = 1;
+    // const camera = getCamera(MAIN_APP_CAM_ID);
+    // setCurrentCamera(MAIN_APP_CAM_ID);
+    // camera.position.z = 5;
+    // camera.position.x = 2.5;
+    // camera.position.y = 1;
 
     const scene = createScene(SCENE01_ID, {
       name: 'Test scene 1',
@@ -162,8 +161,6 @@ export const scene01 = async () =>
     });
     const sphere = createMesh({ id: 'sphereMesh1', geo: geometry1, mat: material1 });
     scene.add(sphere);
-
-    camera.lookAt(sphere.position);
 
     const geometry2 = createGeometry({ id: 'box1', type: 'BOX' });
     const material2 = createMaterial({

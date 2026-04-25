@@ -1,7 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { getRenderer, isWebGPURenderer } from './Renderer';
 import { getRootScene } from './Scene';
-import { getCurrentCamera } from './Camera';
 
 const geometries: {
   [id: string]: {
@@ -120,7 +119,8 @@ export const prewarmGeometry = async (id: string) => {
     // This triggers the creation of GPU buffers without rendering a single pixel.
     const tempMat = new THREE.MeshBasicNodeMaterial();
     const stagingMesh = new THREE.Mesh(entry.resource, tempMat);
-    const camera = getCurrentCamera() || new THREE.PerspectiveCamera();
+    // @TODO: Ask about if this is okay
+    const camera = new THREE.PerspectiveCamera();
     await getRenderer()?.compileAsync(stagingMesh, camera, rootScene);
     stagingMesh.geometry = null as unknown as THREE.BufferGeometry;
     stagingMesh.material = null as unknown as THREE.MeshBasicNodeMaterial;

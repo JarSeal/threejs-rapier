@@ -14,7 +14,7 @@ import {
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerContainer } from '../debug/DebuggerGUI';
 import { isDebugEnvironment } from './Config';
-import { deleteCameraHelperByCamId, toggleCameraHelper } from './Helpers';
+import { deleteCameraHelperByCamId, toggleCameraHelper } from './legacy_Helpers';
 import { getCurrentScene, getRootScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
