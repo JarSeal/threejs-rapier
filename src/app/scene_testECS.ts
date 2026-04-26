@@ -6,7 +6,11 @@ import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { createMeshEntity, MeshProps } from '../_engine/core/_MeshManager';
 import { getECSWorld } from '../_engine/core/ECS';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
-import { createCameraEntity, setMainCamera } from '../_engine/core/_CameraManager';
+import {
+  createCameraEntity,
+  setMainCamera,
+  toggleDebugCamera,
+} from '../_engine/core/_CameraManager';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { inspectEntity, lookAtPoint } from '../_engine/utils/ECSHelpers';
 
@@ -37,7 +41,8 @@ export const sceneTestECS = async () =>
       // Removing the DISABLED component will cause debugCameraSystem
       // to set controls.enabled = true automatically on the next frame.
       setTimeout(() => {
-        ecsWorld.setDisabled(debugCam, false);
+        // ecsWorld.setDisabled(debugCam, false);
+        toggleDebugCamera(ecsWorld, true);
       }, 2000);
     }
 

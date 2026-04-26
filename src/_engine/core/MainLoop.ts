@@ -101,7 +101,6 @@ const renderScene = () => {
   const renderer = getRenderer() as Renderer;
   const rootScene = getRootScene() as Scene;
   const camera = getActiveCamera() as Camera;
-  console.log('CAMERA', camera.userData);
 
   existsOrThrow(
     renderer && rootScene && camera,

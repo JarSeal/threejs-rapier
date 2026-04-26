@@ -27,7 +27,7 @@ const LS_KEY = 'AEK_debugCams';
 const scene = { id: '' };
 
 ECSWorld.registerPlugin((world) => {
-  world.addSystem(ECSSystemStage.LATE_MAIN, 'debugCameraSystem', debugCameraSystem);
+  world.addSystem(ECSSystemStage.MAIN, 'debugCameraSystem', debugCameraSystem);
 });
 
 export const attachOrbitControls = (entityId: number, world: ECSWorld, sceneId: string) => {
@@ -62,7 +62,6 @@ export const attachOrbitControls = (entityId: number, world: ECSWorld, sceneId: 
     controls,
     sceneId,
   });
-  console.log('ATTACH', controls);
 };
 
 /**
@@ -73,7 +72,6 @@ export function debugCameraSystem(world: ECSWorld) {
 
   for (const [entityId, data] of storage) {
     const isDisabled = world.isDisabled(entityId);
-
     data.controls.enabled = !isDisabled;
 
     if (isDisabled) continue;
@@ -81,12 +79,13 @@ export function debugCameraSystem(world: ECSWorld) {
     data.controls.update();
 
     const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
-    const obj = world.getComponent(entityId, ComponentType.OBJECT3D)!.value;
+    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
 
-    if (transform) {
-      transform.position.copy(obj.position);
-      transform.quaternion.copy(obj.quaternion);
+    if (transform && objComp) {
+      transform.position.copy(objComp.value.position);
+      transform.quaternion.copy(objComp.value.quaternion);
       transform.setDirty();
+      objComp._lastVersion = transform.version;
     }
   }
 }
@@ -107,6 +106,7 @@ export const toggleDebugCamera = (
     if (orbitData) orbitData.controls.update();
 
     setActiveCamera(debugCam);
+    if (orbitData) orbitData.controls.update();
   } else if (!useDebug && gameCam !== undefined) {
     if (debugCam !== undefined) world.setDisabled(debugCam, true);
     world.setDisabled(gameCam, false);
