@@ -288,7 +288,10 @@ fi
 # Clipboard (plain only)
 # -------------------------
 if [ "$copy_to_clipboard" = true ]; then
-  if command -v clip.exe >/dev/null 2>&1; then
+  if command -v pbcopy >/dev/null 2>&1; then
+    printf "%b" "$output_plain" | pbcopy
+    echo "Copied to clipboard (plain text)"
+  elif command -v clip.exe >/dev/null 2>&1; then
     printf "%b" "$output_plain" | clip.exe
     echo "Copied to clipboard (plain text)"
   elif command -v xclip >/dev/null 2>&1; then
@@ -299,6 +302,5 @@ if [ "$copy_to_clipboard" = true ]; then
     echo "Copied to clipboard (plain text)"
   else
     echo "No clipboard tool found"
-    exit 1
   fi
 fi
