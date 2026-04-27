@@ -28,6 +28,7 @@ export const sceneTestECS = async () =>
       {
         appId: 'Main camera',
         debugData: { name: 'Main camera', description: 'Main application camera' },
+        persistent: true,
       }
     );
     setMainCamera(ecsWorld, camId);
@@ -38,10 +39,7 @@ export const sceneTestECS = async () =>
 
     const debugCam = ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
     if (debugCam !== undefined) {
-      // Removing the DISABLED component will cause debugCameraSystem
-      // to set controls.enabled = true automatically on the next frame.
       setTimeout(() => {
-        // ecsWorld.setDisabled(debugCam, false);
         toggleDebugCamera(ecsWorld, true);
       }, 2000);
     }
@@ -146,7 +144,6 @@ export const sceneTestECS = async () =>
 
     // To spawn it:
     const ballId = createMeshEntity(redBallProps);
-    console.log('BALL IS ALIVE', ballId);
 
     // Add the Hover behavior
     ecsWorld.addComponent(ballId, ComponentType.HOVER, {
