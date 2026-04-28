@@ -343,4 +343,4 @@ export const disposeLight = (entityId: number, world: ECSWorld) => {
 };
 
 // Debugger loading
-const debugHelpers = loadDebugModule(() => import('./Debug/Light/LightHelpers'));
+const debugHelpers = loadDebugModule(() => import('./Debug/Light/_dbg__LightHelpers'));

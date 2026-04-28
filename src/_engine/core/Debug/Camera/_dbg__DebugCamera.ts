@@ -17,10 +17,12 @@ const DEFAULT_DEBUG_CAM_PROPS = {
   position: { x: 3, y: 3, z: 1.5 },
   target: { x: 0, y: 0, z: 0 },
   enabled: false,
+  latestAppCameraId: null as string | null,
   fov: 60,
   near: 0.001,
-  far: 10000,
+  far: 100000,
   zoom: 1,
+  cameraHelpers: {} as Record<string, boolean>,
 };
 
 const LS_KEY = 'AEK_debugCams';
@@ -97,20 +99,29 @@ export const toggleDebugCamera = (
 ) => {
   const gameCam = world.getEntitiesWith(ComponentType.TAG_IS_MAIN_CAMERA).next().value;
   const debugCam = world.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
+
   if (useDebug && debugCam !== undefined) {
     if (gameCam !== undefined) world.setDisabled(gameCam, true);
     world.setDisabled(debugCam, false);
 
-    // Fixes the first frame jump
     const orbitData = world.getComponent(debugCam, ComponentType.ORBIT_CONTROLS);
     if (orbitData) orbitData.controls.update();
 
     setActiveCamera(debugCam);
-    if (orbitData) orbitData.controls.update();
   } else if (!useDebug && gameCam !== undefined) {
     if (debugCam !== undefined) world.setDisabled(debugCam, true);
     world.setDisabled(gameCam, false);
     setActiveCamera(gameCam);
+  }
+
+  // --- Save active state to LocalStorage ---
+  if (scene.id) {
+    const currentData = lsGetItem(LS_KEY, {}) as DebugCamLSData;
+    if (!currentData[scene.id]) {
+      currentData[scene.id] = { ...DEFAULT_DEBUG_CAM_PROPS };
+    }
+    currentData[scene.id].enabled = useDebug;
+    lsSetItem(LS_KEY, currentData);
   }
 };
 
@@ -125,7 +136,7 @@ export const getDebugCamProps = (sceneId: string) => {
   const saved = lsGetItem(LS_KEY, {}) as DebugCamLSData;
   const keys = Object.keys(saved);
   if (!keys.includes(sceneId)) saved[sceneId] = DEFAULT_DEBUG_CAM_PROPS;
-  return saved[sceneId] as DebugCamState;
+  return { ...DEFAULT_DEBUG_CAM_PROPS, ...saved[sceneId] } as DebugCamState;
 };
 
 export const debugCamSceneChange = (newSceneId: string, world: ECSWorld) => {
@@ -135,22 +146,49 @@ export const debugCamSceneChange = (newSceneId: string, world: ECSWorld) => {
   const objComp = world.getComponent(debugCamId, ComponentType.OBJECT3D);
   const orbitComp = world.getComponent(debugCamId, ComponentType.ORBIT_CONTROLS);
   if (!objComp || !orbitComp) return;
-  const obj = objComp.value as THREE.Camera;
+
+  const obj = objComp.value as THREE.PerspectiveCamera; // Type cast for lens access
   const controls = orbitComp.controls;
 
   scene.id = newSceneId;
 
-  const { position, target, enabled } = getDebugCamProps(newSceneId);
+  // Fetch props (returns DEFAULT_DEBUG_CAM_PROPS if no LS data exists)
+  const { position, target, enabled, fov, near, far, zoom } = getDebugCamProps(newSceneId);
 
+  // Update Three.js Lens Properties
   obj.position.set(position.x, position.y, position.z);
+  obj.fov = fov;
+  obj.near = near;
+  obj.far = far;
+  obj.zoom = zoom;
+  obj.updateProjectionMatrix();
+
+  // Update OrbitControls
   controls.target.set(target.x, target.y, target.z);
   controls.enabled = enabled;
   controls.update();
 
+  // Sync ECS Transform
   const transform = world.getComponent(debugCamId, ComponentType.TRANSFORM);
   if (transform) {
     transform.position.copy(obj.position);
     transform.quaternion.copy(obj.quaternion);
     transform.setDirty();
   }
+
+  // Sync ECS Camera Settings (Source of Truth)
+  const settings = world.getComponent(debugCamId, ComponentType.CAMERA_SETTINGS);
+  if (settings) {
+    settings.fov = fov;
+    settings.near = near;
+    settings.far = far;
+    settings.zoom = zoom;
+  }
+};
+
+export const setLatestAppCameraId = (sceneId: string, appId: string) => {
+  const currentData = lsGetItem(LS_KEY, {}) as DebugCamLSData;
+  if (!currentData[sceneId]) currentData[sceneId] = DEFAULT_DEBUG_CAM_PROPS;
+  currentData[sceneId].latestAppCameraId = appId;
+  lsSetItem(LS_KEY, currentData);
 };

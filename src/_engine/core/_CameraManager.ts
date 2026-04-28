@@ -6,6 +6,9 @@ import { ECSSystemStage } from '../../AppECSRegistry';
 import { getWindowSize } from '../utils/Window';
 import { IS_DEBUG_ENV } from './Config';
 import { ComponentType } from './ECS/ECSCoreComponents';
+import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
+import { addResizer } from './MainLoop';
+import { inspectEntity } from '../utils/ECSHelpers';
 
 // --- STATE ---
 let activeCameraEntityId: number | null = null;
@@ -22,8 +25,8 @@ const _m1 = new THREE.Matrix4();
 const _v1 = new THREE.Vector3();
 
 // --- PLUGIN ---
-ECSWorld.registerPlugin((world) => {
-  world.addSystem(ECSSystemStage.MAIN, 'cameraResizeSystem', cameraResizeSystem);
+ECSWorld.registerPlugin(() => {
+  addResizer('cameraAspectResizer', updateAllCameraAspectRatios);
 });
 
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_CAMERA, {
@@ -138,13 +141,128 @@ export const setMainCamera = (world: ECSWorld, newMainId: number) => {
   }
 };
 
+/**
+ * Performs a one-time rotation update to make the camera face a specific point.
+ */
+export const cameraLookAtPoint = (
+  entityId: number,
+  point: { x: number; y: number; z: number },
+  ecsWorld?: ECSWorld
+) => {
+  const world = ecsWorld || getECSWorld();
+  const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+  if (!transform) return;
+  _v1.set(point.x, point.y, point.z);
+  _m1.lookAt(transform.position, _v1, THREE.Object3D.DEFAULT_UP);
+  transform.quaternion.setFromRotationMatrix(_m1);
+  transform.setDirty();
+};
+
+/**
+ * Updates all cameras in the ECS storage to match current window dimensions.
+ */
+export const updateAllCameraAspectRatios = () => {
+  const world = getECSWorld();
+  const { aspect } = getWindowSize();
+  const storage = world.getStorage(ComponentType.CAMERA_SETTINGS);
+
+  for (const [entityId, settings] of storage) {
+    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+    if (!objComp) continue;
+
+    const cam = objComp.value;
+
+    if (settings.type === 'PERSPECTIVE' && cam instanceof THREE.PerspectiveCamera) {
+      cam.aspect = aspect;
+      cam.updateProjectionMatrix();
+    } else if (settings.type === 'ORTHOGRAPHIC' && cam instanceof THREE.OrthographicCamera) {
+      const s = settings.frustumSize;
+      cam.left = (-s * aspect) / 2;
+      cam.right = (s * aspect) / 2;
+      cam.top = s / 2;
+      cam.bottom = -s / 2;
+      cam.updateProjectionMatrix();
+    }
+  }
+};
+
+export const getAllCamerasAsArray = () => {
+  const world = getECSWorld();
+  const storage = world.getStorage(ComponentType.TAG_IS_CAMERA);
+  const result: { appId: string; name: string; entityId: number }[] = [];
+
+  for (const [entityId] of storage) {
+    // Exclude the debug camera from the list
+    if (world.hasComponent(entityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA)) continue;
+
+    const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
+    const debugData = world.getComponent(entityId, ComponentType.DEBUG_DATA);
+
+    if (appIdComp) {
+      // Use the Human Readable name, or fallback to the formatted appId
+      const name = debugData?.name ? debugData.name : `[appId: ${appIdComp.id}]`;
+
+      result.push({
+        appId: appIdComp.id,
+        name,
+        entityId,
+      });
+    }
+  }
+  return result;
+};
+
+export const getMainAppCameraId = () => {
+  const world = getECSWorld();
+  const mainCamEntityId = world.getEntitiesWith(ComponentType.TAG_IS_MAIN_CAMERA).next().value;
+
+  if (mainCamEntityId !== undefined) {
+    return world.getComponent(mainCamEntityId, ComponentType.APP_ID)?.id || null;
+  }
+  return null;
+};
+
+export const getCurrentCamera = () => {
+  if (activeCameraEntityId === null) return null;
+  return (
+    (getECSWorld().getComponent(activeCameraEntityId, ComponentType.OBJECT3D)
+      ?.value as THREE.Camera) || null
+  );
+};
+
+export const getCurrentCameraId = () => {
+  if (activeCameraEntityId === null) return null;
+  return getECSWorld().getComponent(activeCameraEntityId, ComponentType.APP_ID)?.id || null;
+};
+
+export const setCurrentCamera = (appId: string) => {
+  const world = getECSWorld();
+  const ids = world.getStorage(ComponentType.APP_ID);
+
+  for (const [entityId, data] of ids) {
+    if (data.id === appId) {
+      // Physically disable old cameras and enable the new one
+      setMainCamera(world, entityId);
+
+      if (IS_DEBUG_ENV) {
+        const sceneId = getCurrentSceneId();
+        if (sceneId) {
+          useDebug(debugCamera)?.setLatestAppCameraId(sceneId, appId);
+        }
+      }
+
+      break;
+    }
+  }
+};
+
 // --- DEBUG CAMERA ---
 
 export const initDebugCamera = async (world: ECSWorld) => {
   if (debugHelpers) return;
 
-  const camImporter = () => import('./Debug/Camera/DebugCamera');
-  debugHelpers = loadDebugModule(() => import('./Debug/Camera/CameraHelpers'));
+  const camImporter = () => import('./Debug/Camera/_dbg__DebugCamera');
+  debugHelpers = loadDebugModule(() => import('./Debug/Camera/_dbg__CameraHelpers'));
   debugCamera = loadDebugModule(camImporter);
 
   if (IS_DEBUG_ENV) {
@@ -164,17 +282,26 @@ export const initDebugCamera = async (world: ECSWorld) => {
 
       module.debugCamSceneChange(newSceneId, world);
       const props = module.getDebugCamProps(newSceneId);
+
+      if (props.latestAppCameraId) {
+        setCurrentCamera(props.latestAppCameraId);
+      }
+
+      syncCameraHelpersFromLS(newSceneId, world);
+
       toggleDebugCamera(world, props.enabled);
     });
 
     debugCameraEntityId = createCameraEntity(
       { type: 'PERSPECTIVE', active: false, fov: 60, near: 0.1, far: 2000 },
-      { userData: { name: 'DebugOrbitCamera' } },
+      { userData: { name: 'DebugOrbitCamera' }, persistent: true },
       world
     );
 
     world.addComponent(debugCameraEntityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA, true);
     world.addComponent(debugCameraEntityId, ComponentType.PERSISTENT, true);
+
+    inspectEntity(debugCameraEntityId);
   }
 };
 
@@ -187,103 +314,75 @@ export const isDebugCameraActive = (): boolean => {
   return world.hasComponent(activeCameraEntityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA);
 };
 
-/**
- * Performs a one-time rotation update to make the camera face a specific point.
- */
-export const cameraLookAtPoint = (
-  entityId: number,
-  point: { x: number; y: number; z: number },
-  ecsWorld?: ECSWorld
-) => {
-  const world = ecsWorld || getECSWorld();
-  const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
-  if (!transform) return;
-  _v1.set(point.x, point.y, point.z);
-  _m1.lookAt(transform.position, _v1, THREE.Object3D.DEFAULT_UP);
-  transform.quaternion.setFromRotationMatrix(_m1);
-  transform.setDirty();
-};
-
-// --- SYSTEMS ---
-
-/**
- * Updates all cameras to match the current window dimensions.
- */
-// @TODO: Check if this is really needed. This runs unnecessarily on every frame and we could handle this in the resize event.
-export const cameraResizeSystem = (world: ECSWorld) => {
-  const { aspect } = getWindowSize();
-  const storage = world.getStorage(ComponentType.CAMERA_SETTINGS);
-
-  for (const [entityId, settings] of storage) {
-    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-    if (!objComp) continue;
-
-    const cam = objComp.value;
-
-    if (settings.type === 'PERSPECTIVE' && cam instanceof THREE.PerspectiveCamera) {
-      if (cam.aspect !== aspect) {
-        cam.aspect = aspect;
-        cam.updateProjectionMatrix();
-      }
-    } else if (settings.type === 'ORTHOGRAPHIC' && cam instanceof THREE.OrthographicCamera) {
-      const s = settings.frustumSize;
-      cam.left = (-s * aspect) / 2;
-      cam.right = (s * aspect) / 2;
-      cam.top = s / 2;
-      cam.bottom = -s / 2;
-      cam.updateProjectionMatrix();
-    }
-  }
-};
-
-// --- LEGACY CODE --- (@TODO: remove or refactor at some point)
-
-/** * UI BRIDGE: Replaces legacy Camera.ts getAllCameras
- * Queries ECS storage instead of a manual map.
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export const getAllCameras = (_onlyInScene: boolean = false) => {
+export const isAnyCameraHelperVisible = (): boolean => {
   const world = getECSWorld();
+  const storage = world.getStorage(ComponentType.DEBUG_CAMERA_HELPER);
+  for (const [entityId, helper] of storage) {
+    if (world.hasComponent(entityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA)) continue;
+    if (helper.value.visible) return true;
+  }
+  return false;
+};
+
+export const toggleAllCameraHelpers = (show?: boolean) => {
+  const world = getECSWorld();
+  const sceneId = getCurrentSceneId();
+  if (!sceneId) return;
+
   const storage = world.getStorage(ComponentType.TAG_IS_CAMERA);
-  const result: { [id: string]: THREE.PerspectiveCamera } = {};
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const currentData = lsGetItem('AEK_debugCams', {}) as any;
+  if (!currentData[sceneId]) currentData[sceneId] = {};
+  if (!currentData[sceneId].cameraHelpers) currentData[sceneId].cameraHelpers = {};
+
+  const targetState = show !== undefined ? show : !isAnyCameraHelperVisible();
 
   for (const [entityId] of storage) {
-    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-    const appId = world.getComponent(entityId, ComponentType.APP_ID);
+    if (world.hasComponent(entityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA)) continue;
 
-    if (objComp && appId) {
-      const cam = objComp.value as THREE.PerspectiveCamera;
-      // The UI uses the appId.id as the unique key
-      result[appId.id] = cam;
+    const helper = world.getComponent(entityId, ComponentType.DEBUG_CAMERA_HELPER);
+    const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
+
+    if (helper && appIdComp) {
+      helper.value.visible = targetState;
+      currentData[sceneId].cameraHelpers[appIdComp.id] = targetState;
+
+      if (targetState) {
+        const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+        if (objComp) objComp.value.updateMatrixWorld(true);
+        helper.value.update();
+      }
     }
   }
-  return result;
+
+  lsSetItem('AEK_debugCams', currentData);
 };
 
-/** UI BRIDGE: Returns the current camera THREE.js object */
-export const getCurrentCamera = () => {
-  if (activeCameraEntityId === null) return null;
-  return (
-    (getECSWorld().getComponent(activeCameraEntityId, ComponentType.OBJECT3D)
-      ?.value as THREE.Camera) || null
-  );
-};
+export const syncCameraHelpersFromLS = (sceneId: string, world: ECSWorld) => {
+  const storage = world.getStorage(ComponentType.DEBUG_CAMERA_HELPER);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const currentData = lsGetItem('AEK_debugCams', {}) as any;
 
-/** UI BRIDGE: Returns the appId of the active camera */
-export const getCurrentCameraId = () => {
-  if (activeCameraEntityId === null) return null;
-  return getECSWorld().getComponent(activeCameraEntityId, ComponentType.APP_ID)?.id || null;
-};
+  for (const [entityId, helper] of storage) {
+    if (world.hasComponent(entityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA)) continue;
 
-/** UI BRIDGE: Sets active camera via appId string */
-export const setCurrentCamera = (appId: string) => {
-  const world = getECSWorld();
-  const ids = world.getStorage(ComponentType.APP_ID);
+    const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
+    if (appIdComp) {
+      const isVisible = Boolean(currentData[sceneId]?.cameraHelpers?.[appIdComp.id]);
+      helper.value.visible = isVisible;
 
-  for (const [entityId, data] of ids) {
-    if (data.id === appId) {
-      setActiveCamera(entityId);
-      break;
+      // Force an immediate matrix update so the helper isn't collapsed on the first frame
+      if (isVisible) {
+        const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+        const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+        if (objComp && transform) {
+          objComp.value.position.copy(transform.position);
+          objComp.value.quaternion.copy(transform.quaternion);
+          objComp.value.updateMatrixWorld(true);
+          helper.value.update();
+        }
+      }
     }
   }
 };

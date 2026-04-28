@@ -6,11 +6,7 @@ import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { createMeshEntity, MeshProps } from '../_engine/core/_MeshManager';
 import { getECSWorld } from '../_engine/core/ECS';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
-import {
-  createCameraEntity,
-  setMainCamera,
-  toggleDebugCamera,
-} from '../_engine/core/_CameraManager';
+import { createCameraEntity, setMainCamera } from '../_engine/core/_CameraManager';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { inspectEntity, lookAtPoint } from '../_engine/utils/ECSHelpers';
 
@@ -26,9 +22,16 @@ export const sceneTestECS = async () =>
     const camId = createCameraEntity(
       { type: 'PERSPECTIVE', fov: 90, active: true },
       {
-        appId: 'Main camera',
+        appId: 'mainCamera',
         debugData: { name: 'Main camera', description: 'Main application camera' },
         persistent: true,
+      }
+    );
+    createCameraEntity(
+      { type: 'PERSPECTIVE', fov: 90, active: false },
+      {
+        appId: 'testing',
+        debugData: { description: 'Main application camera 2' },
       }
     );
     setMainCamera(ecsWorld, camId);
@@ -36,13 +39,6 @@ export const sceneTestECS = async () =>
       pos: { x: 10, y: 5, z: 20 },
     });
     lookAtPoint(camId, { x: 0, y: 0, z: 0 });
-
-    const debugCam = ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
-    if (debugCam !== undefined) {
-      setTimeout(() => {
-        toggleDebugCamera(ecsWorld, true);
-      }, 2000);
-    }
 
     inspectEntity(camId);
 

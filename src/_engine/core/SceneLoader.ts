@@ -281,6 +281,11 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         // Enable input controls
         setAllInputsEnabled(true);
 
+        firstSceneLoaded = true;
+
+        runOnSceneEnter(newSceneId);
+        runOnAllSceneEnters();
+
         if (isDebugEnvironment()) {
           // Enable debuggers
           disableDebugger(false);
@@ -289,11 +294,6 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
           updateOnScreenTools();
           resetRayCastStats();
         }
-
-        firstSceneLoaded = true;
-
-        runOnSceneEnter(newSceneId);
-        runOnAllSceneEnters();
 
         loader.phase = 'END';
         await loadEndFn(loader).then(() => {
