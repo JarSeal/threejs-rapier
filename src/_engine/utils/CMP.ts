@@ -441,13 +441,17 @@ const createElem = (cmp: TCMP, props?: TProps) => {
 const createListeners = (cmp: TCMP, props?: TProps) => {
   // Remove possiple listeners
   removeListeners(cmp, true);
-
   const listeners = cmp.listeners;
+
+  const cmpId = cmp.id;
 
   if (props?.onClick) {
     // Add "click" listener
     const onClick = props.onClick;
-    const fn = (e: Event) => onClick(e, cmp);
+    const fn = (e: Event) => {
+      const activeCmp = getCmpById(cmpId);
+      if (activeCmp) onClick(e, cmp);
+    };
     listeners.click = { fn, type: 'click' };
     cmp.elem.addEventListener('click', fn, true);
   } else {
@@ -458,7 +462,10 @@ const createListeners = (cmp: TCMP, props?: TProps) => {
   if (props?.onHover) {
     // Add "mousemove" listener
     const onHover = props.onHover;
-    const fn = (e: Event) => onHover(e, cmp);
+    const fn = (e: Event) => {
+      const activeCmp = getCmpById(cmpId);
+      if (activeCmp) onHover(e, cmp);
+    };
     listeners.mousemove = { fn, type: 'mousemove' };
     cmp.elem.addEventListener('mousemove', fn, true);
   } else {
@@ -467,7 +474,10 @@ const createListeners = (cmp: TCMP, props?: TProps) => {
   if (props?.onHoverOutside) {
     // Add "mouseleave" listener
     const onHoverOutside = props.onHoverOutside;
-    const fn = (e: Event) => onHoverOutside(e, cmp);
+    const fn = (e: Event) => {
+      const activeCmp = getCmpById(cmpId);
+      if (activeCmp) onHoverOutside(e, cmp);
+    };
     listeners.mouseleave = { fn, type: 'mouseleave' };
     cmp.elem.addEventListener('mouseleave', fn, true);
   } else {
@@ -476,7 +486,10 @@ const createListeners = (cmp: TCMP, props?: TProps) => {
   if (props?.onFocus) {
     // Add "focus" listener
     const onFocus = props.onFocus;
-    const fn = (e: Event) => onFocus(e, cmp);
+    const fn = (e: Event) => {
+      const activeCmp = getCmpById(cmpId);
+      if (activeCmp) onFocus(e, cmp);
+    };
     listeners.focus = { fn, type: 'focus' };
     cmp.elem.addEventListener('focus', fn, true);
   } else {
@@ -485,7 +498,10 @@ const createListeners = (cmp: TCMP, props?: TProps) => {
   if (props?.onBlur) {
     // Add "blur" listener
     const onBlur = props.onBlur;
-    const fn = (e: Event) => onBlur(e, cmp);
+    const fn = (e: Event) => {
+      const activeCmp = getCmpById(cmpId);
+      if (activeCmp) onBlur(e, cmp);
+    };
     listeners.blur = { fn, type: 'blur' };
     cmp.elem.addEventListener('blur', fn, true);
   } else {
@@ -494,7 +510,10 @@ const createListeners = (cmp: TCMP, props?: TProps) => {
   if (props?.onInput) {
     // Add "input" listener
     const onInput = props.onInput;
-    const fn = (e: Event) => onInput(e, cmp);
+    const fn = (e: Event) => {
+      const activeCmp = getCmpById(cmpId);
+      if (activeCmp) onInput(e, cmp);
+    };
     listeners.input = { fn, type: 'input' };
     cmp.elem.addEventListener('input', fn, true);
   } else {
@@ -503,7 +522,10 @@ const createListeners = (cmp: TCMP, props?: TProps) => {
   if (props?.onChange) {
     // Add "change" listener
     const onChange = props.onChange;
-    const fn = (e: Event) => onChange(e, cmp);
+    const fn = (e: Event) => {
+      const activeCmp = getCmpById(cmpId);
+      if (activeCmp) onChange(e, cmp);
+    };
     listeners.change = { fn, type: 'change' };
     cmp.elem.addEventListener('change', fn, true);
   } else {
@@ -514,7 +536,10 @@ const createListeners = (cmp: TCMP, props?: TProps) => {
     for (let i = 0; i < props.listeners.length; i++) {
       const listenerFn = props.listeners[i].fn;
       if (!listenerFn) continue;
-      const fn = (e: Event) => listenerFn(e, cmp);
+      const fn = (e: Event) => {
+        const activeCmp = getCmpById(cmpId);
+        if (activeCmp) listenerFn(e, cmp);
+      };
       const type = props.listeners[i].type;
       listeners[type] = {
         fn,
@@ -557,15 +582,34 @@ const removeCmp = (cmp: TCMP, doNotRemoveElem?: boolean) => {
   // Remove possible wrapper
   removeWrapper(cmp.id);
 
-  // Remove elem from dom and cmps
   removeListeners(cmp, true);
+
+  // Remove elem from dom and cmps
   removeAnims(cmp);
   if (!doNotRemoveElem) {
     cmp.elem.remove();
   }
+
+  const originalProps = cmp.props;
+  if (originalProps?.onRemoveCmp) originalProps.onRemoveCmp(cmp);
+
   delete cmps[cmp.id];
 
-  if (cmp.props?.onRemoveCmp) cmp.props.onRemoveCmp(cmp);
+  // Clear every internal property to ensure GC can claim them independently
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (cmp as any).props = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (cmp as any).elem = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (cmp as any).children = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (cmp as any).parent = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (cmp as any).parentElem = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (cmp as any).listeners = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (cmp as any).timers = {};
 
   return cmp;
 };
@@ -612,15 +656,24 @@ const updateCmp = <WrapP extends TProps>(
     cmp.elem = elem;
     // Remove old templateCmp children and added children
     const keepAddedChildren = [];
-    for (let i = 0; i < cmp.children.length; i++) {
-      const child = cmp.children[i];
+
+    const currentChildren = [...cmp.children];
+    for (let i = 0; i < currentChildren.length; i++) {
+      const child = currentChildren[i];
       if (!child.isTemplateCmp) {
+        // DETACH instead of REMOVE
+        // This preserves the object and its .elem for re-use
+        child.elem.remove();
+        child.parent = null;
+        child.parentElem = null;
         keepAddedChildren.push(child);
+      } else {
+        child.remove();
       }
-      child.remove();
     }
+
+    // Clear the array and re-add the migrated children
     cmp.children = [];
-    // Add added children
     for (let i = 0; i < keepAddedChildren.length; i++) {
       cmp.add(keepAddedChildren[i]);
     }
@@ -914,7 +967,16 @@ const runAnims = (cmp: TCMP) => {
 };
 
 const removeAnim = (cmp: TCMP, animKey: string) => {
-  clearTimeout(cmp.timers[animKey]?.fn as SetTimeout | undefined);
+  const timerData = cmp.timers[animKey];
+  if (timerData) {
+    clearTimeout(timerData.fn as SetTimeout);
+    // Explicitly nullify the animState to break closure bonds
+    if (timerData.animState) {
+      timerData.animState.state = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (timerData as any).animState = null;
+    }
+  }
   delete cmp.timers[animKey];
 };
 

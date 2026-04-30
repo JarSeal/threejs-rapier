@@ -24,7 +24,6 @@ import { clearSkyBox } from './SkyBox';
 import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { deleteAllInSceneLights, updateLightsDebuggerGUI } from './Light';
 import { deleteAllCharacters } from './Character';
 import { existsOrThrow } from '../utils/helpers';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
@@ -240,7 +239,6 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
       deleteAllCharacters();
       deleteAllPhysicsObjects();
-      deleteAllInSceneLights();
       deleteAllGroups({ deleteAll: true });
 
       if (loadSceneProps.deletePrevScene && prevScene) {
@@ -289,7 +287,6 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         if (isDebugEnvironment()) {
           // Enable debuggers
           disableDebugger(false);
-          updateLightsDebuggerGUI();
 
           updateOnScreenTools();
           resetRayCastStats();

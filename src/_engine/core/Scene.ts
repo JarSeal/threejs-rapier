@@ -4,7 +4,6 @@ import { deleteGeometry } from './Geometry';
 import { deleteMaterial } from './Material';
 import { deleteGroup } from './Group';
 import { lerror, lwarn } from '../utils/Logger';
-import { deleteLight } from './Light';
 import { deleteTexture } from './Texture';
 import {
   deleteAllScenePhysicsLoopers,
@@ -186,16 +185,6 @@ export const deleteScene = (
           }
         }
       }
-    }
-
-    if ('isLight' in obj && (opts?.deleteLights || opts?.deleteAll)) {
-      const lightId = obj.userData.id;
-      let allGood = true;
-      if (!lightId) {
-        lwarn(`Could not find light id in deleteScene (scene id: ${id})`);
-        allGood = false;
-      }
-      if (allGood) deleteLight(lightId);
     }
 
     if ('isGroup' in obj && (opts?.deleteGroups || opts?.deleteAll)) {

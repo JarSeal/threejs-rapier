@@ -7,7 +7,6 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
 import { ListBladeApi } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
-import { updateLightsDebuggerGUI } from './Light';
 import { RENDERER_SHADOW_OPTIONS } from '../utils/constants';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { existsOrThrow } from '../utils/helpers';
@@ -263,7 +262,6 @@ export const createRendererDebugGUI = () => {
         .addBinding(options, 'enableShadows', { label: 'Enable shadows' })
         .on('change', () => {
           if (r) r.shadowMap.enabled = Boolean(options.enableShadows);
-          updateLightsDebuggerGUI();
           lsSetItem(LS_KEY, options);
         });
       // Shadow map type

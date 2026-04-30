@@ -3,7 +3,6 @@ import { createScene, createSceneAppLooper } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { getTexture, loadTexture } from '../_engine/core/Texture';
-import { createLight } from '../_engine/core/Light';
 import { importModelAsync } from '../_engine/core/ImportModel';
 import { createMesh } from '../_engine/core/Mesh';
 import { addToGroup, createGroup } from '../_engine/core/Group';
@@ -339,58 +338,58 @@ export const scene01 = async () =>
     });
 
     // Lights
-    const ambient = createLight({
-      id: 'ambientLight',
-      name: 'Ambient light',
-      type: 'AMBIENT',
-      params: { color: '#ffffff', intensity: 0.5 },
-    });
-    scene.add(ambient);
+    // const ambient = createLight({
+    //   id: 'ambientLight',
+    //   name: 'Ambient light',
+    //   type: 'AMBIENT',
+    //   params: { color: '#ffffff', intensity: 0.5 },
+    // });
+    // scene.add(ambient);
 
-    const hemisphere = createLight({
-      id: 'hemisphereLight',
-      type: 'HEMISPHERE',
-      params: {
-        skyColor: 0x220000,
-        groundColor: 0x225599,
-        intensity: 1.5,
-      },
-    });
-    scene.add(hemisphere);
+    // const hemisphere = createLight({
+    //   id: 'hemisphereLight',
+    //   type: 'HEMISPHERE',
+    //   params: {
+    //     skyColor: 0x220000,
+    //     groundColor: 0x225599,
+    //     intensity: 1.5,
+    //   },
+    // });
+    // scene.add(hemisphere);
 
-    const point = createLight({
-      id: 'pointLight',
-      type: 'POINT',
-      params: {
-        color: 0xffffff,
-        intensity: 7,
-        distance: 10,
-      },
-    });
-    point.position.set(2, 1, 1);
-    scene.add(point);
+    // const point = createLight({
+    //   id: 'pointLight',
+    //   type: 'POINT',
+    //   params: {
+    //     color: 0xffffff,
+    //     intensity: 7,
+    //     distance: 10,
+    //   },
+    // });
+    // point.position.set(2, 1, 1);
+    // scene.add(point);
 
-    const directionalLight = createLight({
-      id: 'directionalLight',
-      type: 'DIRECTIONAL',
-      params: {
-        position: { x: -5, y: 2.5, z: 2.5 },
-        color: 0xffe5c7,
-        // intensity: Math.PI,
-        intensity: 5,
-        castShadow: true,
-        // shadowMapSize: [2048, 2048],
-        shadowMapSize: [512, 512],
-        shadowCamNearFar: [1, 15],
-        shadowCamLeftRightTopBottom: [-10, 10, 10, -10],
-        shadowBias: -0.01,
-        shadowNormalBias: -0.01,
-        shadowRadius: 5, // Not for PCFSoftShadowMap type
-        shadowBlurSamples: 10, // Only for VSM shadowmap types
-        shadowIntensity: 0.75,
-      },
-    });
-    scene.add(directionalLight);
+    // const directionalLight = createLight({
+    //   id: 'directionalLight',
+    //   type: 'DIRECTIONAL',
+    //   params: {
+    //     position: { x: -5, y: 2.5, z: 2.5 },
+    //     color: 0xffe5c7,
+    //     // intensity: Math.PI,
+    //     intensity: 5,
+    //     castShadow: true,
+    //     // shadowMapSize: [2048, 2048],
+    //     shadowMapSize: [512, 512],
+    //     shadowCamNearFar: [1, 15],
+    //     shadowCamLeftRightTopBottom: [-10, 10, 10, -10],
+    //     shadowBias: -0.01,
+    //     shadowNormalBias: -0.01,
+    //     shadowRadius: 5, // Not for PCFSoftShadowMap type
+    //     shadowBlurSamples: 10, // Only for VSM shadowmap types
+    //     shadowIntensity: 0.75,
+    //   },
+    // });
+    // scene.add(directionalLight);
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 

@@ -6,3 +6,4 @@
 yarn-error.log
 **/dist
 *.blend[0-9]
+*.kra~

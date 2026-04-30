@@ -2,7 +2,6 @@ import * as THREE from 'three/webgpu';
 import { createScene } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
-import { createLight } from '../_engine/core/Light';
 import { createMesh } from '../_engine/core/Mesh';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import {
@@ -354,44 +353,44 @@ export const sceneThirdPersonGym = async () =>
     });
 
     // Lights
-    const ambient = createLight({
-      id: 'charSceneAmbiLight',
-      name: 'Ambient light',
-      type: 'AMBIENT',
-      params: { color: '#ffffff', intensity: 0.5 },
-    });
-    scene.add(ambient);
+    // const ambient = createLight({
+    //   id: 'charSceneAmbiLight',
+    //   name: 'Ambient light',
+    //   type: 'AMBIENT',
+    //   params: { color: '#ffffff', intensity: 0.5 },
+    // });
+    // scene.add(ambient);
 
-    const hemisphere = createLight({
-      id: 'charScHemisLight',
-      type: 'HEMISPHERE',
-      params: {
-        skyColor: 0x220000,
-        groundColor: 0x225599,
-        intensity: 1.5,
-      },
-    });
-    scene.add(hemisphere);
+    // const hemisphere = createLight({
+    //   id: 'charScHemisLight',
+    //   type: 'HEMISPHERE',
+    //   params: {
+    //     skyColor: 0x220000,
+    //     groundColor: 0x225599,
+    //     intensity: 1.5,
+    //   },
+    // });
+    // scene.add(hemisphere);
 
-    const directionalLight = createLight({
-      id: 'charSceneDirLight',
-      type: 'DIRECTIONAL',
-      params: {
-        position: { x: -40, y: 12.5, z: 30 },
-        color: 0xffe5c7,
-        intensity: 5,
-        castShadow: true,
-        shadowMapSize: [2048, 2048],
-        shadowCamNearFar: [10, 250],
-        shadowCamLeftRightTopBottom: [-80, 80, 80, -80],
-        shadowBias: -0.0009,
-        shadowNormalBias: 0.1184,
-        shadowRadius: 5, // Not for PCFSoftShadowMap type
-        shadowBlurSamples: 10, // Only for VSM shadowmap types
-        shadowIntensity: 0.75,
-      },
-    });
-    scene.add(directionalLight);
+    // const directionalLight = createLight({
+    //   id: 'charSceneDirLight',
+    //   type: 'DIRECTIONAL',
+    //   params: {
+    //     position: { x: -40, y: 12.5, z: 30 },
+    //     color: 0xffe5c7,
+    //     intensity: 5,
+    //     castShadow: true,
+    //     shadowMapSize: [2048, 2048],
+    //     shadowCamNearFar: [10, 250],
+    //     shadowCamLeftRightTopBottom: [-80, 80, 80, -80],
+    //     shadowBias: -0.0009,
+    //     shadowNormalBias: 0.1184,
+    //     shadowRadius: 5, // Not for PCFSoftShadowMap type
+    //     shadowBlurSamples: 10, // Only for VSM shadowmap types
+    //     shadowIntensity: 0.75,
+    //   },
+    // });
+    // scene.add(directionalLight);
 
     // @TODO: remove this test when custom prop importing is done
     const result = await importModelAsync({

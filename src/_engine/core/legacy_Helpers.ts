@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import { getLight, saveLightToLS, updateLightsDebuggerGUI } from './Light';
 import { isDebugEnvironment } from './Config';
 import { getDebugMeshIcon } from './UI/icons/DebugMeshIcons';
 import { getCurrentSceneId, getRootScene } from './Scene';
@@ -150,94 +149,6 @@ export const getAllCurSceneCameraHelpers = () => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) return [];
   return cameraHelpers[currentSceneId] || [];
-};
-
-export const toggleLightHelper = (id: string, show: boolean, doNotUpdateDebuggerGUI?: boolean) => {
-  const light = getLight(id);
-  if (
-    !light ||
-    !isDebugEnvironment() ||
-    light.userData.type === 'AMBIENT' ||
-    light.userData.type === 'HEMISPHERE'
-  ) {
-    return;
-  }
-
-  // Light found in scene
-  if (!show && light.userData.helperCreated) {
-    // Hide helper
-    const cameraHelper = light.children.find(
-      (child) => child.type === 'CameraHelper'
-    ) as THREE.CameraHelper;
-    if (cameraHelper) {
-      cameraHelper.visible = false;
-      removeFromCameraHelpers(cameraHelper);
-    }
-    const lightHelper = light.children.find(
-      (child) => child.type === 'DirectionalLightHelper' || child.type === 'PointLightHelper'
-    ) as LightHelper;
-    if (lightHelper) {
-      lightHelper.visible = false;
-      removeFromLightHelpers(lightHelper);
-    }
-    light.userData.showHelper = false;
-  } else if (show && light.userData.helperCreated) {
-    // Show helper
-    if (light.castShadow) {
-      const cameraHelper = light.children.find(
-        (child) => child.type === 'CameraHelper'
-      ) as THREE.CameraHelper;
-      if (cameraHelper) {
-        cameraHelper.visible = true;
-        addToCameraHelpers(cameraHelper, true);
-      }
-    }
-    const lightHelper = light.children.find(
-      (child) => child.type === 'DirectionalLightHelper' || child.type === 'PointLightHelper'
-    ) as LightHelper;
-    if (lightHelper) {
-      lightHelper.visible = true;
-      addToLightHelpers(lightHelper);
-    }
-    light.userData.showHelper = true;
-  } else if (show) {
-    // Create helper and then show helper
-    const type = light.userData.type;
-    if (type === 'DIRECTIONAL' && 'isDirectionalLight' in light && light.isDirectionalLight) {
-      if (light.castShadow && light.shadow?.camera) {
-        const cameraHelper = new THREE.CameraHelper(light.shadow.camera);
-        addToCameraHelpers(cameraHelper, true);
-        light.add(cameraHelper);
-        cameraHelper.update();
-      }
-
-      const l = light as THREE.DirectionalLight;
-      const lightHelper = new THREE.DirectionalLightHelper(l);
-      const iconMesh = getDebugMeshIcon('DIRECTIONAL');
-      lightHelper.add(iconMesh);
-      lightHelper.userData.id = `${l.userData.id}__helper`;
-      addToLightHelpers(lightHelper);
-      l.add(lightHelper);
-      lightHelper.update();
-      iconMesh.lookAt(l.target.position);
-      l.target.userData.id = `${l.userData.id}__helperTarget`;
-      lightHelper.update();
-    } else if (type === 'POINT') {
-      const lightHelper = new THREE.PointLightHelper(light as THREE.PointLight);
-      lightHelper.userData.id = `${light.userData.id}__helper`;
-      const iconMesh = getDebugMeshIcon('POINT');
-      lightHelper.add(iconMesh);
-      addToLightHelpers(lightHelper);
-      light.add(lightHelper);
-      lightHelper.update();
-    } else if (type === 'SPOT') {
-      // @TODO: add spotlight helper
-    }
-    light.userData.showHelper = true;
-    light.userData.helperCreated = true;
-  }
-  saveLightToLS(id);
-  if (!doNotUpdateDebuggerGUI) updateLightsDebuggerGUI();
 };
 
 export const toggleCameraHelper = (id: string, show: boolean) => {

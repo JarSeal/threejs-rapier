@@ -4,7 +4,6 @@ import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { getTexture, loadTexture, loadTextures } from '../_engine/core/Texture';
 import { llog } from '../_engine/utils/Logger';
-import { createLight } from '../_engine/core/Light';
 import { importModelAsync } from '../_engine/core/ImportModel';
 import { createMesh } from '../_engine/core/Mesh';
 import { addToGroup, createGroup } from '../_engine/core/Group';
@@ -274,31 +273,31 @@ export const scene01 = async () =>
     //   box.rotation.z -= transformMainSpeedValue(2);
     // });
 
-    const point = createLight({
-      id: 'pointLight',
-      type: 'POINT',
-      params: { color: 0xffffff, intensity: 7, distance: 10 },
-    });
-    point.position.set(2, 1, 1);
-    scene.add(point);
+    // const point = createLight({
+    //   id: 'pointLight',
+    //   type: 'POINT',
+    //   params: { color: 0xffffff, intensity: 7, distance: 10 },
+    // });
+    // point.position.set(2, 1, 1);
+    // scene.add(point);
 
-    const ambient = createLight({
-      id: 'ambientLight',
-      type: 'AMBIENT',
-      params: { color: '#ffffff', intensity: 0.8 },
-    });
-    scene.add(ambient);
+    // const ambient = createLight({
+    //   id: 'ambientLight',
+    //   type: 'AMBIENT',
+    //   params: { color: '#ffffff', intensity: 0.8 },
+    // });
+    // scene.add(ambient);
 
-    const hemisphere = createLight({
-      id: 'hemisphereLight',
-      type: 'HEMISPHERE',
-      params: {
-        skyColor: 0x220000,
-        groundColor: 0x225599,
-        intensity: 1.5,
-      },
-    });
-    scene.add(hemisphere);
+    // const hemisphere = createLight({
+    //   id: 'hemisphereLight',
+    //   type: 'HEMISPHERE',
+    //   params: {
+    //     skyColor: 0x220000,
+    //     groundColor: 0x225599,
+    //     intensity: 1.5,
+    //   },
+    // });
+    // scene.add(hemisphere);
 
     resolve('testScene1');
   });

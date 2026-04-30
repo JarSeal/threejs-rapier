@@ -1,13 +1,35 @@
 import * as THREE from 'three/webgpu';
 import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
-import { getRootScene } from './Scene';
-import { existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
+import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
+import { DebugModuleRef, existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
 import { ComponentType, Transform } from './ECS/ECSCoreComponents';
+import { IS_DEBUG_ENV } from './Config';
+import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 
-// Register onDeleteEntity hook for TAG_IS_LIGHT
-ECSWorld.registerComponentHooks(ComponentType.TAG_IS_LIGHT, {
-  onDeleteEntity: (entityId, world) => disposeLight(entityId, world),
-});
+export const registerLightManager = (world: ECSWorld) => {
+  if (IS_DEBUG_ENV) {
+    debugGUI = loadDebugModule(() => import('./Debug/Light/_dbg__LightGUI'));
+    debugHelpers = loadDebugModule(() => import('./Debug/Light/_dbg__LightHelpers'));
+
+    registerOnAllSceneEnterings('lightHelpersSceneSync', () => {
+      const sceneId = getCurrentSceneId();
+      if (sceneId) syncLightHelpersFromLS(sceneId, world);
+
+      useDebug(debugGUI)?.initLightDebuggerGUI();
+    });
+    ECSWorld.registerComponentHooks(ComponentType.TAG_IS_LIGHT, {
+      onAddComponent: () => useDebug(debugGUI)?.updateLightsDebuggerGUI(),
+      onDeleteEntity: (entityId, w) => {
+        disposeLight(entityId, w);
+        useDebug(debugGUI)?.updateLightsDebuggerGUI();
+      },
+    });
+  } else {
+    ECSWorld.registerComponentHooks(ComponentType.TAG_IS_LIGHT, {
+      onDeleteEntity: (entityId, w) => disposeLight(entityId, w),
+    });
+  }
+};
 
 export enum ShadowQuality {
   LOW = 'LOW', // Mobile / Integrated Graphics
@@ -116,8 +138,7 @@ export const createLightEntity = (
   entityOpts?: CoreEntityOpts,
   ecsWorld?: ECSWorld
 ): number => {
-  const world =
-    ecsWorld || existsOrThrow(getECSWorld(), 'Could not get ECS world in createLightEntity.');
+  const world = ecsWorld || getECSWorld();
   const rootScene = existsOrThrow(getRootScene(), 'Could not find root scene.');
 
   let light:
@@ -229,21 +250,19 @@ export const createLightEntity = (
   }
 
   // --- Transform Logic ---
-  if (props.type !== 'AMBIENT' && props.type !== 'HEMISPHERE') {
-    world.addComponent(
-      entityId,
-      ComponentType.TRANSFORM,
-      new Transform({
-        pos: { x: light.position.x, y: light.position.y, z: light.position.z },
-        rot: {
-          x: light.quaternion.x,
-          y: light.quaternion.y,
-          z: light.quaternion.z,
-          w: light.quaternion.w,
-        },
-      })
-    );
-  }
+  world.addComponent(
+    entityId,
+    ComponentType.TRANSFORM,
+    new Transform({
+      pos: { x: light.position.x, y: light.position.y, z: light.position.z },
+      rot: {
+        x: light.quaternion.x,
+        y: light.quaternion.y,
+        z: light.quaternion.z,
+        w: light.quaternion.w,
+      },
+    })
+  );
 
   rootScene.add(light);
 
@@ -342,5 +361,93 @@ export const disposeLight = (entityId: number, world: ECSWorld) => {
   light.dispose();
 };
 
-// Debugger loading
-const debugHelpers = loadDebugModule(() => import('./Debug/Light/_dbg__LightHelpers'));
+// --- DEBUG LIGHT HELPERS ---
+
+type LightGUIModule = typeof import('./Debug/Light/_dbg__LightGUI');
+type LightHelperModule = typeof import('./Debug/Light/_dbg__LightHelpers');
+
+export interface LightEntityDebugState {
+  helperVisible: boolean;
+  intensity?: number;
+  color?: number;
+}
+
+export interface LightSceneDebugState {
+  globalHelpersVisible: boolean;
+  /** Map of fixed appId to light-specific debug state */
+  lights: Record<string, LightEntityDebugState>;
+}
+
+/** The structure of 'AEK_debugLights' in LocalStorage */
+export interface LightDebugLSData {
+  [sceneId: string]: LightSceneDebugState;
+}
+
+const LS_LIGHTS_KEY = 'AEK_debugLights';
+let debugHelpers: DebugModuleRef<LightHelperModule> | null = null;
+let globalHelpersVisible = false;
+let debugGUI: DebugModuleRef<LightGUIModule> | null = null;
+
+export const isAnyLightHelperVisible = (): boolean => globalHelpersVisible;
+
+export const toggleAllLightHelpers = (show?: boolean) => {
+  const world = getECSWorld();
+  const sceneId = getCurrentSceneId();
+  if (!sceneId) return;
+
+  const storage = world.getStorage(ComponentType.TAG_IS_LIGHT);
+  const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
+  if (!currentData[sceneId]) {
+    currentData[sceneId] = { lights: {}, globalHelpersVisible: false };
+  }
+
+  const targetState = show !== undefined ? show : !globalHelpersVisible;
+
+  globalHelpersVisible = targetState;
+  currentData[sceneId].globalHelpersVisible = globalHelpersVisible;
+
+  for (const [entityId] of storage) {
+    const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+    const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
+    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+
+    if (helper && appIdComp) {
+      helper.value.visible = targetState;
+
+      if (appIdComp.isFixed) {
+        if (!currentData[sceneId].lights[appIdComp.id]) {
+          currentData[sceneId].lights[appIdComp.id] = { helperVisible: false };
+        }
+        currentData[sceneId].lights[appIdComp.id].helperVisible = targetState;
+
+        // Save state for future features
+        if (objComp?.value && 'intensity' in objComp.value) {
+          const lightObj = objComp.value as THREE.Light;
+          currentData[sceneId].lights[appIdComp.id].intensity = lightObj.intensity;
+          currentData[sceneId].lights[appIdComp.id].color = lightObj.color.getHex();
+        }
+      }
+    }
+  }
+  lsSetItem(LS_LIGHTS_KEY, currentData);
+};
+
+export const syncLightHelpersFromLS = (sceneId: string, world: ECSWorld) => {
+  const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
+
+  // Restore global visibility preference
+  globalHelpersVisible = Boolean(currentData[sceneId]?.globalHelpersVisible);
+
+  const storage = world.getStorage(ComponentType.DEBUG_LIGHT_HELPER);
+  for (const [entityId, helper] of storage) {
+    const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
+    if (appIdComp?.isFixed) {
+      const saved = currentData[sceneId]?.lights?.[appIdComp.id];
+      // Fallback to global setting if no per-light setting exists
+      helper.value.visible =
+        saved !== undefined ? Boolean(saved.helperVisible) : globalHelpersVisible;
+    } else {
+      helper.value.visible = globalHelpersVisible;
+    }
+  }
+};

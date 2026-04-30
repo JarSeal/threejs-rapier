@@ -8,9 +8,8 @@ import {
   toggleDebugCamera,
 } from '../core/_CameraManager';
 import { isDebugEnvironment, isProdTestMode } from '../core/Config';
-import { getAllCurSceneLightHelpers, toggleLightHelper } from '../core/legacy_Helpers';
 import { getHUDRootCMP } from '../core/HUD';
-import { getAllLights } from '../core/Light';
+import { isAnyLightHelperVisible, toggleAllLightHelpers } from '../core/_LightManager';
 import { getReadOnlyLoopState, toggleAppPlay, toggleMainPlay } from '../core/MainLoop';
 import {
   buildPhysicsDebugGUI,
@@ -248,8 +247,7 @@ const switchTools = () => {
 
   // Light helpers toggle
   const toggleLightHelpersBtnClasses = [styles.onScreenTool, 'onScreenTool'];
-  const lightHelpers = getAllCurSceneLightHelpers();
-  if (lightHelpers.find((h) => h.visible)) {
+  if (isAnyLightHelperVisible()) {
     toggleLightHelpersBtnClasses.push(styles.active, 'onScreenToolActive');
   }
   const toggleLightHelpersBtn = CMP({
@@ -258,22 +256,7 @@ const switchTools = () => {
     attr: { title: 'Hide / show all light helpers' },
     onClick: (e) => {
       e.stopPropagation();
-      const lightHelpers = getAllCurSceneLightHelpers();
-      let allNotVisible = true;
-      for (let i = 0; i < lightHelpers.length; i++) {
-        if (lightHelpers[i].visible) {
-          allNotVisible = false;
-          break;
-        }
-      }
-      const allLights = getAllLights();
-      const allLightKeys = Object.keys(allLights);
-      for (let i = 0; i < allLightKeys.length; i++) {
-        const l = allLights[allLightKeys[i]];
-        const id = l.userData.id;
-        if (!id) continue;
-        toggleLightHelper(id, allNotVisible);
-      }
+      toggleAllLightHelpers();
       updateOnScreenTools('SWITCH');
     },
   });

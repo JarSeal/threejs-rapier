@@ -2,46 +2,47 @@ import * as THREE from 'three/webgpu';
 import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
 import { DebugModuleRef, existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
-import { ECSSystemStage } from '../../AppECSRegistry';
 import { getWindowSize } from '../utils/Window';
 import { IS_DEBUG_ENV } from './Config';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { addResizer } from './MainLoop';
 import { inspectEntity } from '../utils/ECSHelpers';
+import { createNewCameraSymbol } from '../debug/3DSymbols';
 
 // --- STATE ---
 let activeCameraEntityId: number | null = null;
 let activeCameraObject: THREE.Camera | null = null;
 let debugCameraEntityId: number | null = null;
 
+const CAMERA_SYMBOL_NAME = 'CAMERA_3D_SYMBOL';
+
+type DebugCameraModule = typeof import('./Debug/Camera/_dbg__DebugCamera');
+type CameraHelpersModule = typeof import('./Debug/Camera/_dbg__CameraHelpers');
+
 // We load these at initDebugCamera, because loading them would break the app (these load before loadConfig() in InitApp)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let debugHelpers: DebugModuleRef<any> | null = null;
+let debugHelpers: DebugModuleRef<CameraHelpersModule> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let debugCamera: DebugModuleRef<any> | null = null;
+let debugCamera: DebugModuleRef<DebugCameraModule> | null = null;
 
 const _m1 = new THREE.Matrix4();
 const _v1 = new THREE.Vector3();
 
-// --- PLUGIN ---
-ECSWorld.registerPlugin(() => {
+export const registerCameraManager = () => {
   addResizer('cameraAspectResizer', updateAllCameraAspectRatios);
-});
 
-ECSWorld.registerComponentHooks(ComponentType.TAG_IS_CAMERA, {
-  onDeleteEntity: (entityId, world) => {
-    if (activeCameraEntityId === entityId) {
-      activeCameraEntityId = null;
-      activeCameraObject = null;
-    }
-
-    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-    if (objComp) {
-      disposeCamera(objComp.value as THREE.Camera);
-    }
-  },
-});
+  ECSWorld.registerComponentHooks(ComponentType.TAG_IS_CAMERA, {
+    onDeleteEntity: (entityId, world) => {
+      if (activeCameraEntityId === entityId) {
+        activeCameraEntityId = null;
+        activeCameraObject = null;
+      }
+      const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+      if (objComp) disposeCamera(objComp.value as THREE.Camera);
+    },
+  });
+};
 
 export type CameraProps = {
   active?: boolean;
@@ -97,6 +98,17 @@ export const createCameraEntity = (
     frustumSize: props.type === 'ORTHOGRAPHIC' ? props.frustumSize ?? 10 : 0,
   });
 
+  const isDebugCam = world.hasComponent(entityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA);
+  if (!isDebugCam) {
+    const symbol = createNewCameraSymbol();
+    if (symbol) {
+      symbol.name = CAMERA_SYMBOL_NAME;
+      // Hide initially if this camera is set to active immediately
+      symbol.visible = !(props.active || activeCameraEntityId === null);
+      camera.add(symbol);
+    }
+  }
+
   if (props.active || activeCameraEntityId === null) {
     setActiveCamera(entityId);
   }
@@ -108,10 +120,37 @@ export const createCameraEntity = (
 
 export const setActiveCamera = (entityId: number) => {
   const world = existsOrThrow(getECSWorld(), 'No ECS World for setActiveCamera.');
+  if (activeCameraEntityId !== null && activeCameraEntityId !== entityId) {
+    const prevObjComp = world.getComponent(activeCameraEntityId, ComponentType.OBJECT3D);
+    // If the previous camera was an app camera (not debug), show its symbol again
+    if (
+      prevObjComp &&
+      !world.hasComponent(activeCameraEntityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA)
+    ) {
+      const prevSymbol = prevObjComp.value.getObjectByName(CAMERA_SYMBOL_NAME);
+      if (prevSymbol) prevSymbol.visible = true;
+    }
+  }
   const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
   if (objComp && objComp.value instanceof THREE.Camera) {
     activeCameraEntityId = entityId;
     activeCameraObject = objComp.value; // Cache the direct pointer
+
+    const allCams = world.getStorage(ComponentType.TAG_IS_CAMERA);
+    for (const [camId] of allCams) {
+      const camObjComp = world.getComponent(camId, ComponentType.OBJECT3D);
+      if (!camObjComp) continue;
+
+      const symbol = camObjComp.value.getObjectByName(CAMERA_SYMBOL_NAME);
+      if (!symbol) continue;
+
+      // RULE 1: Hide if this is the currently active camera
+      // RULE 2: Hide if it's the Debug Camera (handled in creation, but safe to check here)
+      const isRenderingNow = camId === entityId;
+      const isDebugCam = world.hasComponent(camId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA);
+
+      symbol.visible = !isRenderingNow && !isDebugCam;
+    }
   }
 };
 
@@ -131,12 +170,12 @@ export const setMainCamera = (world: ECSWorld, newMainId: number) => {
   for (const oldId of mainCams) {
     world.removeComponent(oldId, ComponentType.TAG_IS_MAIN_CAMERA);
     if (!isDebugCameraActive()) {
-      world.setDisabled(oldId, true);
+      // world.setDisabled(oldId, true);
     }
   }
   world.addComponent(newMainId, ComponentType.TAG_IS_MAIN_CAMERA, true);
   if (!isDebugCameraActive()) {
-    world.setDisabled(newMainId, false);
+    // world.setDisabled(newMainId, false);
     setActiveCamera(newMainId);
   }
 };
@@ -258,6 +297,34 @@ export const setCurrentCamera = (appId: string) => {
 
 // --- DEBUG CAMERA ---
 
+export interface CameraEntityDebugState {
+  helperVisible: boolean;
+}
+
+/** State for the Debug Orbit Camera specifically */
+export interface DebugCamLSProps {
+  position: { x: number; y: number; z: number };
+  target: { x: number; y: number; z: number };
+  enabled: boolean;
+  latestAppCameraId: string | null;
+  fov: number;
+  near: number;
+  far: number;
+  zoom: number;
+}
+
+export interface CameraSceneDebugState {
+  debugCam: DebugCamLSProps;
+  /** Map of fixed appId to entity-specific debug data (replaces cameraHelpers) */
+  cams: Record<string, CameraEntityDebugState>;
+}
+
+export interface CameraDebugLSData {
+  [sceneId: string]: CameraSceneDebugState;
+}
+
+const LS_KEY = 'AEK_debugCams';
+
 export const initDebugCamera = async (world: ECSWorld) => {
   if (debugHelpers) return;
 
@@ -331,10 +398,22 @@ export const toggleAllCameraHelpers = (show?: boolean) => {
 
   const storage = world.getStorage(ComponentType.TAG_IS_CAMERA);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const currentData = lsGetItem('AEK_debugCams', {}) as any;
-  if (!currentData[sceneId]) currentData[sceneId] = {};
-  if (!currentData[sceneId].cameraHelpers) currentData[sceneId].cameraHelpers = {};
+  const currentData = lsGetItem(LS_KEY, {}) as CameraDebugLSData;
+  if (!currentData[sceneId]) {
+    const debugProps = useDebug(debugCamera)?.getDebugCamProps(sceneId) || {
+      enabled: false,
+      fov: 60,
+      near: 0.1,
+      far: 2000,
+      position: { x: 3, y: 3, z: 1.5 },
+      target: { x: 0, y: 0, z: 0 },
+      zoom: 1,
+      latestAppCameraId: null,
+    };
+    if (!debugProps) return;
+    currentData[sceneId] = { debugCam: debugProps, cams: {} };
+  }
+  if (!currentData[sceneId].cams) currentData[sceneId].cams = {};
 
   const targetState = show !== undefined ? show : !isAnyCameraHelperVisible();
 
@@ -346,7 +425,12 @@ export const toggleAllCameraHelpers = (show?: boolean) => {
 
     if (helper && appIdComp) {
       helper.value.visible = targetState;
-      currentData[sceneId].cameraHelpers[appIdComp.id] = targetState;
+      if (appIdComp.isFixed) {
+        currentData[sceneId].cams[appIdComp.id] = {
+          ...currentData[sceneId].cams[appIdComp.id],
+          helperVisible: targetState,
+        };
+      }
 
       if (targetState) {
         const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
@@ -361,15 +445,14 @@ export const toggleAllCameraHelpers = (show?: boolean) => {
 
 export const syncCameraHelpersFromLS = (sceneId: string, world: ECSWorld) => {
   const storage = world.getStorage(ComponentType.DEBUG_CAMERA_HELPER);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const currentData = lsGetItem('AEK_debugCams', {}) as any;
+  const currentData = lsGetItem(LS_KEY, {}) as CameraDebugLSData;
 
   for (const [entityId, helper] of storage) {
     if (world.hasComponent(entityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA)) continue;
 
     const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
-    if (appIdComp) {
-      const isVisible = Boolean(currentData[sceneId]?.cameraHelpers?.[appIdComp.id]);
+    if (appIdComp && appIdComp.isFixed) {
+      const isVisible = Boolean(currentData[sceneId]?.cams[appIdComp.id]?.helperVisible);
       helper.value.visible = isVisible;
 
       // Force an immediate matrix update so the helper isn't collapsed on the first frame

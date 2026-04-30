@@ -1,6 +1,5 @@
 import * as THREE from 'three/webgpu';
 import { createScene } from '../_engine/core/Scene';
-import { createLight } from '../_engine/core/Light';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { createMeshEntity, MeshProps } from '../_engine/core/_MeshManager';
@@ -9,6 +8,7 @@ import { initECSStressTest } from '../_engine/utils/ECSStressTest';
 import { createCameraEntity, setMainCamera } from '../_engine/core/_CameraManager';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { inspectEntity, lookAtPoint } from '../_engine/utils/ECSHelpers';
+import { createLightEntity } from '../_engine/core/_LightManager';
 
 export const SCENE_TEST_ECS_ID = 'sceneTestECS';
 
@@ -62,59 +62,85 @@ export const sceneTestECS = async () =>
       },
     });
 
-    // Lights
-    const ambient = createLight({
-      id: 'ambientLight',
-      name: 'Ambient light',
-      type: 'AMBIENT',
-      params: { color: '#ffffff', intensity: 0.5 },
-    });
-    scene.add(ambient);
+    // --- ECS LIGHTS ---
 
-    const hemisphere = createLight({
-      id: 'hemisphereLight',
-      type: 'HEMISPHERE',
-      params: {
+    // Ambient Light
+    createLightEntity(
+      {
+        type: 'AMBIENT',
+        color: '#ffffff',
+        intensity: 0.5,
+      },
+      {
+        appId: 'ambientLight',
+        debugData: { name: 'Ambient light' },
+      }
+    );
+
+    // Hemisphere Light
+    createLightEntity(
+      {
+        type: 'HEMISPHERE',
         skyColor: 0x220000,
         groundColor: 0x225599,
         intensity: 1.5,
       },
-    });
-    scene.add(hemisphere);
+      { appId: 'hemisphereLight' }
+    );
 
-    const point = createLight({
-      id: 'pointLight',
-      type: 'POINT',
-      params: {
+    // Point Light
+    const pointLightId = createLightEntity(
+      {
+        type: 'POINT',
         color: 0xffffff,
         intensity: 7,
         distance: 10,
       },
-    });
-    point.position.set(2, 1, 1);
-    scene.add(point);
+      { appId: 'pointLight' }
+    );
+    ecsWorld.setTransform(pointLightId, { pos: { x: 2, y: 1, z: 1 } });
 
-    const directionalLight = createLight({
-      id: 'directionalLight',
-      type: 'DIRECTIONAL',
-      params: {
-        position: { x: -5, y: 2.5, z: 2.5 },
+    // Directional Light
+    const dirLightId = createLightEntity(
+      {
+        type: 'DIRECTIONAL',
         color: 0xffe5c7,
-        // intensity: Math.PI,
         intensity: 5,
         castShadow: true,
-        // shadowMapSize: [2048, 2048],
         shadowMapSize: [512, 512],
-        shadowCamNearFar: [1, 15],
-        shadowCamLeftRightTopBottom: [-10, 10, 10, -10],
+        shadowCameraNearFar: [1, 15],
+        shadowCameraFrustum: [-10, 10, 10, -10], // Left, Right, Top, Bottom
         shadowBias: -0.01,
         shadowNormalBias: -0.01,
-        shadowRadius: 5, // Not for PCFSoftShadowMap type
-        shadowBlurSamples: 10, // Only for VSM shadowmap types
+        shadowRadius: 5,
+        shadowBlurSamples: 10,
         shadowIntensity: 0.75,
       },
-    });
-    scene.add(directionalLight);
+      { appId: 'directionalLight' }
+    );
+    ecsWorld.setTransform(dirLightId, { pos: { x: -5, y: 2.5, z: 2.5 } });
+
+    // Spot Light (From the top)
+    const spotLightId = createLightEntity(
+      {
+        type: 'SPOT',
+        color: '#ffffff',
+        intensity: 10, // Higher intensity for dramatic effect
+        distance: 50, // Range of the light
+        angle: Math.PI / 6, // The cone angle (30 degrees)
+        penumbra: 0.5, // Softness of the cone edges
+        decay: 0.5, // Light falloff
+        castShadow: true,
+        shadowMapSize: [1024, 1024],
+        shadowCameraNearFar: [1, 50],
+        targetPos: { x: 0, y: 0, z: 0 }, // Point at the center/ball
+      },
+      {
+        appId: 'topSpotLight',
+        debugData: { name: 'Top Spot Light' },
+      }
+    );
+    ecsWorld.setTransform(spotLightId, { pos: { x: 0, y: 15, z: 0 } });
 
     const redBallProps: MeshProps = {
       geo: {

@@ -10,7 +10,6 @@ import { createSkyBoxDebugGUI } from './core/SkyBox';
 import { createDebuggerSceneLoader } from './debug/DebuggerSceneLoader';
 import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
-import { createLightsDebuggerGUI } from './core/Light';
 import { createCharactersDebuggerGUI } from './core/Character';
 import { createToaster } from './core/UI/Toaster';
 import { getStatsCmp } from './debug/Stats';
@@ -24,7 +23,9 @@ import './core/_MeshManager';
 import '../AppECSPlugins';
 
 import { initECSWorld } from './core/ECS';
-import { initDebugCamera } from './core/_CameraManager';
+import { initDebugCamera, registerCameraManager } from './core/_CameraManager';
+import { registerLightManager } from './core/_LightManager';
+import { load3DSymbols } from './debug/3DSymbols';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -36,6 +37,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Load env variables and other configurations
     loadConfig();
 
+    await load3DSymbols();
+
     // Sets the engine version to the HTML
     setEngineVersionToDOM();
 
@@ -44,6 +47,10 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     // Init ECS
     const ecsWorld = initECSWorld();
+
+    // Register Managers
+    registerCameraManager();
+    registerLightManager(ecsWorld);
 
     // Initializes the debug camera (if in debug mode)
     await initDebugCamera(ecsWorld);
@@ -61,7 +68,6 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Create debug GUIs and utils
     if (isDebugEnvironment()) {
       createRendererDebugGUI();
-      createLightsDebuggerGUI();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
       createDebuggerSceneLoader();
