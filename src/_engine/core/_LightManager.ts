@@ -397,7 +397,6 @@ export const toggleAllLightHelpers = (show?: boolean) => {
   }
 
   const targetState = show !== undefined ? show : !globalHelpersVisible;
-
   globalHelpersVisible = targetState;
   currentData[sceneId].globalHelpersVisible = globalHelpersVisible;
 
@@ -407,15 +406,17 @@ export const toggleAllLightHelpers = (show?: boolean) => {
     const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
 
     if (helper && appIdComp) {
-      helper.value.visible = targetState;
+      const isEntityDisabled = world.isDisabled(entityId);
+      const shouldBeVisible = targetState && !isEntityDisabled;
+
+      helper.value.visible = shouldBeVisible;
 
       if (appIdComp.isFixed) {
         if (!currentData[sceneId].lights[appIdComp.id]) {
           currentData[sceneId].lights[appIdComp.id] = { helperVisible: false };
         }
-        currentData[sceneId].lights[appIdComp.id].helperVisible = targetState;
+        currentData[sceneId].lights[appIdComp.id].helperVisible = shouldBeVisible;
 
-        // Save state for future features
         if (objComp?.value && 'intensity' in objComp.value) {
           const lightObj = objComp.value as THREE.Light;
           currentData[sceneId].lights[appIdComp.id].intensity = lightObj.intensity;
@@ -429,20 +430,19 @@ export const toggleAllLightHelpers = (show?: boolean) => {
 
 export const syncLightHelpersFromLS = (sceneId: string, world: ECSWorld) => {
   const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
-
-  // Restore global visibility preference
   globalHelpersVisible = Boolean(currentData[sceneId]?.globalHelpersVisible);
 
   const storage = world.getStorage(ComponentType.DEBUG_LIGHT_HELPER);
   for (const [entityId, helper] of storage) {
+    const isEntityDisabled = world.isDisabled(entityId);
     const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
+
     if (appIdComp?.isFixed) {
       const saved = currentData[sceneId]?.lights?.[appIdComp.id];
-      // Fallback to global setting if no per-light setting exists
-      helper.value.visible =
-        saved !== undefined ? Boolean(saved.helperVisible) : globalHelpersVisible;
+      const pref = saved !== undefined ? Boolean(saved.helperVisible) : globalHelpersVisible;
+      helper.value.visible = pref && !isEntityDisabled;
     } else {
-      helper.value.visible = globalHelpersVisible;
+      helper.value.visible = globalHelpersVisible && !isEntityDisabled;
     }
   }
 };

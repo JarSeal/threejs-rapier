@@ -7,6 +7,7 @@ import { getSvgIcon } from '../../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerContainer } from '../../../debug/DebuggerGUI';
 import { openDraggableWindow } from '../../UI/DraggableWindow';
 import { setTransform } from '../../../utils/ECSHelpers';
+import { setLightEnabled } from '../../_LightManager';
 
 export const EDIT_LIGHT_WIN_ID = 'lightEditorWindow';
 let debuggerListCmp: TCMP | null = null;
@@ -49,7 +50,10 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   });
 
   // Tweakpane Bindings
-  pane.addBinding(light, 'visible', { label: 'Enabled' });
+  pane.addBinding(light, 'visible', { label: 'Enabled' }).on('change', (ev) => {
+    // ev.value will be true or false based on the checkbox
+    setLightEnabled(entityId, ev.value, world);
+  });
   pane.addBinding(light, 'intensity', { label: 'Intensity', min: 0, step: 0.1 });
 
   if ('color' in light) {

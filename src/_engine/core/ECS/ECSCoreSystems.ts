@@ -1,4 +1,5 @@
 import { ECSSystemStage } from '../../../AppECSRegistry';
+import { isAnyLightHelperVisible } from '../_LightManager';
 import { IS_DEBUG_ENV } from '../Config';
 import { ECSWorld } from '../ECS';
 import { ComponentType, OBJECT3D_TAGS } from './ECSCoreComponents';
@@ -32,10 +33,11 @@ ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
     const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
     if (objComp) objComp.value.visible = true;
 
-    // Show helpers
     if (IS_DEBUG_ENV) {
       const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
-      if (helper) helper.value.visible = true;
+      if (helper) {
+        helper.value.visible = isAnyLightHelperVisible();
+      }
     }
 
     // Recursively enable possible targets
