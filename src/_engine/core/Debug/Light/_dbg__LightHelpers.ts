@@ -6,11 +6,6 @@ import { ECSSystemStage } from '../../../../AppECSRegistry';
 import { existsOrThrow } from '../../../utils/helpers';
 import { getRootScene } from '../../Scene';
 import { isAnyLightHelperVisible } from '../../_LightManager';
-import {
-  createNewDirectionalLightSymbol,
-  createNewPointLightSymbol,
-  createNewSpotLightSymbol,
-} from '../../../debug/3DSymbols';
 
 ECSWorld.registerComponentHooks(ComponentType.DEBUG_LIGHT_HELPER, {
   onDeleteEntity: (entityId, world) => {
@@ -95,19 +90,14 @@ export const attachLightHelpers = (
     | THREE.DirectionalLightHelper
     | THREE.SpotLightHelper
     | undefined;
-  let symbol: THREE.Mesh | null = null;
 
   if (light instanceof THREE.DirectionalLight) {
     helper = new THREE.DirectionalLightHelper(light, 5);
-    symbol = createNewDirectionalLightSymbol();
   } else if (light instanceof THREE.PointLight) {
     helper = new THREE.PointLightHelper(light, 1);
-    symbol = createNewPointLightSymbol();
   } else if (light instanceof THREE.SpotLight) {
     helper = new THREE.SpotLightHelper(light);
-    symbol = createNewSpotLightSymbol();
   }
-  if (symbol) light.add(symbol);
 
   if (helper) {
     helper.visible = isAnyLightHelperVisible();

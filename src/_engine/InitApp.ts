@@ -37,8 +37,6 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Load env variables and other configurations
     loadConfig();
 
-    await load3DSymbols();
-
     // Sets the engine version to the HTML
     setEngineVersionToDOM();
 
@@ -47,6 +45,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     // Init ECS
     const ecsWorld = initECSWorld();
+
+    await load3DSymbols();
 
     // Register Managers
     registerCameraManager();

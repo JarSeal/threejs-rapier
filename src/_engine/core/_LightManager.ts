@@ -9,7 +9,7 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 export const registerLightManager = (world: ECSWorld) => {
   if (IS_DEBUG_ENV) {
     debugGUI = loadDebugModule(() => import('./Debug/Light/_dbg__LightGUI'));
-    debugHelpers = loadDebugModule(() => import('./Debug/Light/_dbg__LightHelpers'));
+    loadDebugModule(() => import('./Debug/Light/_dbg__LightHelpers'));
 
     registerOnAllSceneEnterings('lightHelpersSceneSync', () => {
       const sceneId = getCurrentSceneId();
@@ -266,9 +266,6 @@ export const createLightEntity = (
 
   rootScene.add(light);
 
-  // Debug light helpers attachment
-  useDebug(debugHelpers)?.attachLightHelpers(entityId, light, world, rootScene);
-
   return entityId;
 };
 
@@ -364,7 +361,6 @@ export const disposeLight = (entityId: number, world: ECSWorld) => {
 // --- DEBUG LIGHT HELPERS ---
 
 type LightGUIModule = typeof import('./Debug/Light/_dbg__LightGUI');
-type LightHelperModule = typeof import('./Debug/Light/_dbg__LightHelpers');
 
 export interface LightEntityDebugState {
   helperVisible: boolean;
@@ -384,7 +380,6 @@ export interface LightDebugLSData {
 }
 
 const LS_LIGHTS_KEY = 'AEK_debugLights';
-let debugHelpers: DebugModuleRef<LightHelperModule> | null = null;
 let globalHelpersVisible = false;
 let debugGUI: DebugModuleRef<LightGUIModule> | null = null;
 

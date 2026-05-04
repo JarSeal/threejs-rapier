@@ -3,17 +3,23 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { IS_DEBUG_ENV } from '../core/Config';
 import { lerror } from '../utils/Logger';
 import symbolsModelUrl from '../core/UI/3DSymbols/3DSymbols.glb?url';
-import symbolsTextureUrl from '../core/UI/3DSymbols/3DSymbolsTextures.jpg?url';
+import symbolsTextureUrl from '../core/UI/3DSymbols/3DSymbolsTextures.png?url';
+import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
+import { getECSWorld } from '../core/ECS';
 
 const symbols: {
-  camera?: THREE.Mesh;
-  point?: THREE.Mesh;
-  spot?: THREE.Mesh;
-  directional?: THREE.Mesh;
+  camera?: THREE.Group;
+  point?: THREE.Group;
+  spot?: THREE.Group;
+  directional?: THREE.Group;
 } = {};
+
+type SymbolsModule = DebugModuleRef<typeof import('../core/Debug/_dbg__Symbols')> | null;
 
 export const load3DSymbols = async () => {
   if (!IS_DEBUG_ENV) return;
+
+  const symbolsModule: SymbolsModule = loadDebugModule(() => import('../core/Debug/_dbg__Symbols'));
 
   const modelLoader = new GLTFLoader();
   const textureLoader = new THREE.TextureLoader();
@@ -23,80 +29,78 @@ export const load3DSymbols = async () => {
     symbolsTexture.colorSpace = THREE.SRGBColorSpace;
     symbolsTexture.flipY = false;
 
-    // Symbol material
     const symbolMaterial = new THREE.MeshBasicMaterial({
       map: symbolsTexture,
-      color: 0xffffff,
-      toneMapped: false,
-      transparent: true,
-      alphaTest: 0.5,
+      // alphaTest: 0.5,
     });
-    // Black outline material
+
     const outlineMaterial = new THREE.MeshBasicMaterial({
       color: 0x333333,
       side: THREE.BackSide,
-      toneMapped: false,
     });
 
     const gltf = await modelLoader.loadAsync(symbolsModelUrl);
 
-    const setup = (key: keyof typeof symbols) => {
-      const mesh = symbols[key];
-      if (!mesh) return;
-      mesh.position.set(0, 0, 0);
-      mesh.material = symbolMaterial;
+    // Create a helper to process a mesh into a double-mesh group
+    const processMeshIntoGroup = (mesh: THREE.Mesh, key: string): THREE.Group => {
+      const root = new THREE.Group();
+      root.name = `SymbolRoot_${key}`;
+
+      const inner = new THREE.Group();
+      inner.name = `SymbolInner_${key}`;
+      inner.userData.isLookAtHolder = true;
+      root.add(inner);
+
+      const icon = mesh.clone();
+      icon.material = symbolMaterial;
+      icon.position.set(0, 0, 0);
+      inner.add(icon);
 
       const outline = mesh.clone();
-      outline.position.set(mesh.position.x, mesh.position.y, mesh.position.z);
-      outline.quaternion.set(
-        mesh.quaternion.x,
-        mesh.quaternion.y,
-        mesh.quaternion.z,
-        mesh.quaternion.w
-      );
+      outline.position.set(0, 0, 0);
       outline.material = outlineMaterial;
-      mesh.add(outline);
+      outline.userData.isOutline = true;
+      inner.add(outline);
 
       if (key === 'camera') {
-        outline.rotateZ(-Math.PI / 2);
-        outline.position.set(-0.01, 0, -0.08);
+        outline.position.set(0.01, -0.02, -0.07);
         outline.scale.set(1.1, 1.05, 1.1);
+        root.userData.isCameraSymbol = true;
       } else if (key === 'point') {
+        outline.position.set(0, 0.01, 0);
         outline.scale.set(1.19, 1.12, 1.19);
-      } else if (key === 'directional') {
-        outline.rotateX(Math.PI / 2);
+        root.userData.isPointLightSymbol = true;
+      } else if (key === 'directional' || key === 'spot') {
         outline.scale.set(1.1, 1.1, 1.1);
-      } else if (key === 'spot') {
-        outline.rotateX(Math.PI / 2);
-        outline.scale.set(1.1, 1.1, 1.1);
+        if (key === 'directional') root.userData.isDirectionLightSymbol = true;
+        if (key === 'spot') root.userData.isSpotLightSymbol = true;
       }
+
+      return root;
     };
 
     gltf.scene.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
-
       if (child.userData.isCamera) {
-        symbols.camera = child;
-      } else if (child.userData.isPointLight && !symbols.point) {
-        symbols.point = child;
+        symbols.camera = processMeshIntoGroup(child, 'camera');
+      } else if (child.userData.isPointLight) {
+        symbols.point = processMeshIntoGroup(child, 'point');
       } else if (child.userData.isSpotLight) {
-        symbols.spot = child;
+        symbols.spot = processMeshIntoGroup(child, 'spot');
       } else if (child.userData.isDirectionalLight) {
-        symbols.directional = child;
+        symbols.directional = processMeshIntoGroup(child, 'directional');
       }
     });
 
-    const keys = Object.keys(symbols) as (keyof typeof symbols)[];
-    for (let i = 0; i < keys.length; i++) {
-      setup(keys[i]);
-    }
+    // This is just to auto attach the symbols in case there were some without them.
+    useDebug(symbolsModule)?.autoAttachSymbols(getECSWorld());
   } catch (err) {
     lerror('Failed to load engine 3D Symbol Icons GLB', err);
   }
 };
 
 // Generic internal helper for cloning symbols
-const createSymbolClone = (template?: THREE.Mesh): THREE.Mesh | null => {
+const createSymbolClone = (template?: THREE.Group): THREE.Group | null => {
   if (!template) return null;
   const clone = template.clone();
   clone.userData.isHelperSymbol = true;

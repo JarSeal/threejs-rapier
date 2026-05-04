@@ -5,16 +5,8 @@ import { ComponentType } from '../../ECS/ECSCoreComponents';
 import { CMP, TCMP } from '../../../utils/CMP';
 import { getSvgIcon } from '../../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerContainer } from '../../../debug/DebuggerGUI';
-import {
-  openDraggableWindow,
-  closeDraggableWindow,
-  updateDraggableWindow,
-  addOnCloseToWindow,
-  getDraggableWindow,
-} from '../../UI/DraggableWindow';
-import { llog } from '../../../utils/Logger';
-import { RENDERER_SHADOW_OPTIONS } from '../../../utils/constants';
-import { getRenderer } from '../../Renderer';
+import { openDraggableWindow } from '../../UI/DraggableWindow';
+import { setTransform } from '../../../utils/ECSHelpers';
 
 export const EDIT_LIGHT_WIN_ID = 'lightEditorWindow';
 let debuggerListCmp: TCMP | null = null;
@@ -66,10 +58,23 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
   // Sync Position to ECS Transform
   if (transform) {
-    pane.addBinding(light, 'position', { label: 'Position' }).on('change', () => {
-      transform.position.copy(light.position);
-      transform.setDirty();
-    });
+    pane
+      .addBinding(transform, 'position', {
+        label: 'Position',
+      })
+      .on('change', (e) => {
+        // Only trigger if the change came from the UI (manual dragging)
+        // to avoid the double-trigger from setTransform calls.
+        if (!e.last) return;
+
+        setTransform(entityId, { pos: transform.position });
+
+        const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+        if (helper && 'update' in helper.value) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (helper.value as any).update();
+        }
+      });
   }
 
   // Shadow Logic
@@ -106,6 +111,7 @@ const createLightsDebuggerList = (world: ECSWorld) => {
 
   for (const [entityId] of storage) {
     const appId = world.getComponent(entityId, ComponentType.APP_ID)?.id || entityId;
+    const debugData = world.getComponent(entityId, ComponentType.DEBUG_DATA);
     const typeShorthand = getLightTypeShorthand(world, entityId);
 
     const button = CMP({
@@ -120,9 +126,9 @@ const createLightsDebuggerList = (world: ECSWorld) => {
         });
       },
       html: `<button class="listItemWithId">
-        <span class="itemId">[${entityId}]</span>
+        <span class="itemId">[${appId}] [${entityId}]</span>
         <span>${typeShorthand}</span>
-        <h4>${appId}</h4>
+        <h4${!debugData?.name ? ` style="font-style:italic"` : ''}>${debugData?.name || appId}</h4>
       </button>`,
     });
 

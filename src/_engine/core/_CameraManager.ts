@@ -8,14 +8,11 @@ import { ComponentType } from './ECS/ECSCoreComponents';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { addResizer } from './MainLoop';
 import { inspectEntity } from '../utils/ECSHelpers';
-import { createNewCameraSymbol } from '../debug/3DSymbols';
 
 // --- STATE ---
 let activeCameraEntityId: number | null = null;
 let activeCameraObject: THREE.Camera | null = null;
 let debugCameraEntityId: number | null = null;
-
-const CAMERA_SYMBOL_NAME = 'CAMERA_3D_SYMBOL';
 
 type DebugCameraModule = typeof import('./Debug/Camera/_dbg__DebugCamera');
 type CameraHelpersModule = typeof import('./Debug/Camera/_dbg__CameraHelpers');
@@ -98,17 +95,6 @@ export const createCameraEntity = (
     frustumSize: props.type === 'ORTHOGRAPHIC' ? props.frustumSize ?? 10 : 0,
   });
 
-  const isDebugCam = world.hasComponent(entityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA);
-  if (!isDebugCam) {
-    const symbol = createNewCameraSymbol();
-    if (symbol) {
-      symbol.name = CAMERA_SYMBOL_NAME;
-      // Hide initially if this camera is set to active immediately
-      symbol.visible = !(props.active || activeCameraEntityId === null);
-      camera.add(symbol);
-    }
-  }
-
   if (props.active || activeCameraEntityId === null) {
     setActiveCamera(entityId);
   }
@@ -120,37 +106,10 @@ export const createCameraEntity = (
 
 export const setActiveCamera = (entityId: number) => {
   const world = existsOrThrow(getECSWorld(), 'No ECS World for setActiveCamera.');
-  if (activeCameraEntityId !== null && activeCameraEntityId !== entityId) {
-    const prevObjComp = world.getComponent(activeCameraEntityId, ComponentType.OBJECT3D);
-    // If the previous camera was an app camera (not debug), show its symbol again
-    if (
-      prevObjComp &&
-      !world.hasComponent(activeCameraEntityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA)
-    ) {
-      const prevSymbol = prevObjComp.value.getObjectByName(CAMERA_SYMBOL_NAME);
-      if (prevSymbol) prevSymbol.visible = true;
-    }
-  }
   const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
   if (objComp && objComp.value instanceof THREE.Camera) {
     activeCameraEntityId = entityId;
     activeCameraObject = objComp.value; // Cache the direct pointer
-
-    const allCams = world.getStorage(ComponentType.TAG_IS_CAMERA);
-    for (const [camId] of allCams) {
-      const camObjComp = world.getComponent(camId, ComponentType.OBJECT3D);
-      if (!camObjComp) continue;
-
-      const symbol = camObjComp.value.getObjectByName(CAMERA_SYMBOL_NAME);
-      if (!symbol) continue;
-
-      // RULE 1: Hide if this is the currently active camera
-      // RULE 2: Hide if it's the Debug Camera (handled in creation, but safe to check here)
-      const isRenderingNow = camId === entityId;
-      const isDebugCam = world.hasComponent(camId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA);
-
-      symbol.visible = !isRenderingNow && !isDebugCam;
-    }
   }
 };
 
