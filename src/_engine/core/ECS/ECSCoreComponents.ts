@@ -60,7 +60,7 @@ export interface CoreComponentData {
     value: THREE.PointLightHelper | THREE.DirectionalLightHelper | THREE.SpotLightHelper;
   };
   [CoreType.DEBUG_CAMERA_HELPER]: { value: THREE.CameraHelper };
-  [CoreType.DEBUG_SYMBOL]: { value: THREE.Group | THREE.Mesh };
+  [CoreType.DEBUG_SYMBOL]: { value: THREE.Group | THREE.Mesh; userVisible: boolean };
   [CoreType.DEBUG_TAG_IS_DEBUG_CAMERA]: boolean;
 }
 

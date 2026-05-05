@@ -40,7 +40,7 @@ const attachToEntity = (id: number, w: ECSWorld, scene: THREE.Scene) => {
       // matrixWorldAutoUpdate stays true (default) — scene traversal will compute matrixWorld
     }
     scene.add(symbol);
-    w.addComponent(id, ComponentType.DEBUG_SYMBOL, { value: symbol });
+    w.addComponent(id, ComponentType.DEBUG_SYMBOL, { value: symbol, userVisible: true });
   }
 };
 
@@ -76,7 +76,8 @@ ECSWorld.registerPlugin((world) => {
 
       // Visibility (only thing we set on the root)
       const isCurrentActiveCam = entityId === activeCamId;
-      symbol.visible = parent.visible && !w.isDisabled(entityId) && !isCurrentActiveCam;
+      const isEnabled = parent.visible && !w.isDisabled(entityId);
+      symbol.visible = isEnabled && !isCurrentActiveCam && symbolComp.userVisible;
 
       // Find the lookAt holder (first child)
       const inner = symbol.children.find((c) => c.userData.isLookAtHolder);

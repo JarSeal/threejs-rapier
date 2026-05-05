@@ -50,10 +50,23 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   });
 
   // Tweakpane Bindings
-  pane.addBinding(light, 'visible', { label: 'Enabled' }).on('change', (ev) => {
+  pane.addBinding(light, 'visible', { label: 'Enabled' }).on('change', (e) => {
     // ev.value will be true or false based on the checkbox
-    setLightEnabled(entityId, ev.value, world);
+    setLightEnabled(entityId, e.value, world);
   });
+
+  // Helper Toggle (Direct binding to the Three.js Helper object)
+  const helperComp = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+  if (helperComp) {
+    pane.addBinding(helperComp.value, 'visible', { label: 'Show Helper' });
+  }
+
+  // Symbol Toggle (Binding to the ECS userVisible flag)
+  const symbolComp = world.getComponent(entityId, ComponentType.DEBUG_SYMBOL);
+  if (symbolComp) {
+    pane.addBinding(symbolComp, 'userVisible', { label: 'Show Symbol' });
+  }
+
   pane.addBinding(light, 'intensity', { label: 'Intensity', min: 0, step: 0.1 });
 
   if ('color' in light) {
