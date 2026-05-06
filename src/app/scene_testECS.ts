@@ -73,7 +73,11 @@ export const sceneTestECS = async () =>
       },
       {
         appId: 'ambientLight',
-        debugData: { name: 'Ambient light' },
+        debugData: {
+          name: 'Ambient light',
+          description:
+            'The ambient light for the scene. It colors everything in the scene (except skyboxes and basic materials) whether you like it or not. This is what next gen games is all about.',
+        },
       }
     );
 

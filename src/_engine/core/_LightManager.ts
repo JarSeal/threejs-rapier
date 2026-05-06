@@ -4,7 +4,6 @@ import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './
 import { DebugModuleRef, existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
 import { ComponentType, Transform } from './ECS/ECSCoreComponents';
 import { IS_DEBUG_ENV } from './Config';
-import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 
 export const registerLightManager = (world: ECSWorld) => {
   if (IS_DEBUG_ENV) {
@@ -13,7 +12,7 @@ export const registerLightManager = (world: ECSWorld) => {
 
     registerOnAllSceneEnterings('lightHelpersSceneSync', () => {
       const sceneId = getCurrentSceneId();
-      if (sceneId) syncLightHelpersFromLS(sceneId, world);
+      if (sceneId) useDebug(debugGUI)?.syncDebugVisualsFromLS(sceneId, world);
 
       useDebug(debugGUI)?.initLightDebuggerGUI();
     });
@@ -362,87 +361,10 @@ export const disposeLight = (entityId: number, world: ECSWorld) => {
 
 type LightGUIModule = typeof import('./Debug/Light/_dbg__LightGUI');
 
-export interface LightEntityDebugState {
-  helperVisible: boolean;
-  intensity?: number;
-  color?: number;
-}
-
-export interface LightSceneDebugState {
-  globalHelpersVisible: boolean;
-  /** Map of fixed appId to light-specific debug state */
-  lights: Record<string, LightEntityDebugState>;
-}
-
-/** The structure of 'AEK_debugLights' in LocalStorage */
-export interface LightDebugLSData {
-  [sceneId: string]: LightSceneDebugState;
-}
-
-const LS_LIGHTS_KEY = 'AEK_debugLights';
-let globalHelpersVisible = false;
 let debugGUI: DebugModuleRef<LightGUIModule> | null = null;
 
-export const isAnyLightHelperVisible = (): boolean => globalHelpersVisible;
+export const isAnyLightHelperVisible = (): boolean =>
+  Boolean(useDebug(debugGUI)?.globalHelpersVisible);
 
-export const toggleAllLightHelpers = (show?: boolean) => {
-  const world = getECSWorld();
-  const sceneId = getCurrentSceneId();
-  if (!sceneId) return;
-
-  const storage = world.getStorage(ComponentType.TAG_IS_LIGHT);
-  const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
-  if (!currentData[sceneId]) {
-    currentData[sceneId] = { lights: {}, globalHelpersVisible: false };
-  }
-
-  const targetState = show !== undefined ? show : !globalHelpersVisible;
-  globalHelpersVisible = targetState;
-  currentData[sceneId].globalHelpersVisible = globalHelpersVisible;
-
-  for (const [entityId] of storage) {
-    const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
-    const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
-    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-
-    if (helper && appIdComp) {
-      const isEntityDisabled = world.isDisabled(entityId);
-      const shouldBeVisible = targetState && !isEntityDisabled;
-
-      helper.value.visible = shouldBeVisible;
-
-      if (appIdComp.isFixed) {
-        if (!currentData[sceneId].lights[appIdComp.id]) {
-          currentData[sceneId].lights[appIdComp.id] = { helperVisible: false };
-        }
-        currentData[sceneId].lights[appIdComp.id].helperVisible = shouldBeVisible;
-
-        if (objComp?.value && 'intensity' in objComp.value) {
-          const lightObj = objComp.value as THREE.Light;
-          currentData[sceneId].lights[appIdComp.id].intensity = lightObj.intensity;
-          currentData[sceneId].lights[appIdComp.id].color = lightObj.color.getHex();
-        }
-      }
-    }
-  }
-  lsSetItem(LS_LIGHTS_KEY, currentData);
-};
-
-export const syncLightHelpersFromLS = (sceneId: string, world: ECSWorld) => {
-  const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
-  globalHelpersVisible = Boolean(currentData[sceneId]?.globalHelpersVisible);
-
-  const storage = world.getStorage(ComponentType.DEBUG_LIGHT_HELPER);
-  for (const [entityId, helper] of storage) {
-    const isEntityDisabled = world.isDisabled(entityId);
-    const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
-
-    if (appIdComp?.isFixed) {
-      const saved = currentData[sceneId]?.lights?.[appIdComp.id];
-      const pref = saved !== undefined ? Boolean(saved.helperVisible) : globalHelpersVisible;
-      helper.value.visible = pref && !isEntityDisabled;
-    } else {
-      helper.value.visible = globalHelpersVisible && !isEntityDisabled;
-    }
-  }
-};
+export const toggleAllLightHelpers = (show?: boolean) =>
+  useDebug(debugGUI)?._toggleAllLightHelpers(show);

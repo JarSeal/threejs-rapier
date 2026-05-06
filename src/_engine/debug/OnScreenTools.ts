@@ -121,11 +121,6 @@ const switchTools = () => {
   const hudRootCMP = getHUDRootCMP();
   if (!hudRootCMP) return;
 
-  const currentSceneId = getCurrentSceneId();
-  if (!currentSceneId) {
-    /* ... existing error ... */
-  }
-
   if (switchToolsCMP) switchToolsCMP.remove();
   switchToolsCMP = CMP({ class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'switchTools'] });
 

@@ -1022,7 +1022,14 @@ export const loadDraggableWindowStatesFromLS = () => {
   }
 };
 
-export const getDraggableWindow = (id: string) => draggableWindows[id];
+export const getDraggableWindow = (id: string) => {
+  let dWindow = draggableWindows[id];
+  if (!dWindow) {
+    const allDWindows = lsGetItem(LS_KEY, draggableWindows) as { [id: string]: DraggableWindow };
+    if (allDWindows) dWindow = allDWindows[id];
+  }
+  return dWindow;
+};
 
 export const getDraggableWindowsStartingWith = (startingWithId: string) => {
   const allIds = Object.keys(draggableWindows);
