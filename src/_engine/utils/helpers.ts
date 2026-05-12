@@ -219,6 +219,7 @@ export const isNotUndefinedNorNullOrWarn = <T>(
 
 export const ThreeVector3 = new THREE.Vector3();
 export const ThreeQuoternion = new THREE.Quaternion();
+export const ThreeEuler = new THREE.Euler();
 
 export const getQuatFromAngle = (deg: number) => {
   ThreeQuoternion.setFromAxisAngle(ThreeVector3.set(0, 1, 0), THREE.MathUtils.degToRad(deg));
@@ -565,3 +566,57 @@ export const isDebugReady = <T>(ref: DebugModuleRef<T>): ref is { current: T } =
  */
 export const useDebug = <T>(ref: DebugModuleRef<T> | null): T | undefined =>
   IS_DEBUG_ENV && ref?.current ? ref.current : undefined;
+
+/** Determines and returns the light types */
+export const getLightCharacteristics = (light: THREE.Light) => {
+  const c = {
+    isAmbientLight: false,
+    isHemisphereLight: false,
+    isPointLight: false,
+    isSpotLight: false,
+    isDirectionalLight: false,
+    canCastShadows: false,
+    hasPosition: false,
+    hasDistance: false,
+    hasDecay: false,
+    hasHelper: false,
+    hasSymbol: false,
+    hasTarget: false,
+  };
+
+  // Type
+  c.isAmbientLight = light.type === 'AmbientLight';
+  c.isHemisphereLight = light.type === 'HemisphereLight';
+  c.isPointLight = light.type === 'PointLight';
+  c.isSpotLight = light.type === 'SpotLight';
+  c.isDirectionalLight = light.type === 'DirectionalLight';
+
+  // Shadow
+  if (!c.isAmbientLight && !c.isHemisphereLight) c.canCastShadows = true;
+
+  // Position
+  if (c.isPointLight || c.isSpotLight || c.isDirectionalLight) {
+    c.hasPosition = true;
+  }
+
+  // Distance and decay
+  if (c.isPointLight || c.isSpotLight) {
+    c.hasDistance = true;
+    c.hasDecay = true;
+  }
+
+  // Helper
+  if (c.isPointLight || c.isSpotLight || c.isDirectionalLight) {
+    c.hasHelper = true;
+  }
+
+  // Symbol
+  if (c.isPointLight || c.isSpotLight || c.isDirectionalLight) {
+    c.hasSymbol = true;
+  }
+
+  // Target
+  if ('target' in light) c.hasTarget = true;
+
+  return c;
+};

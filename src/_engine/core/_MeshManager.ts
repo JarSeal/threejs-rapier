@@ -3,9 +3,11 @@ import { createGeometry, incGeometryRef, decGeometryRef, GeoProps } from './_Geo
 import { createMaterial, incMaterialRef, decMaterialRef, MatProps } from './Material';
 import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
 import { getRootScene } from './Scene';
-import { existsOrThrow } from '../utils/helpers';
+import { existsOrThrow, ThreeEuler, ThreeQuoternion } from '../utils/helpers';
 import { getRenderer } from './Renderer';
 import { ComponentType } from './ECS/ECSCoreComponents';
+import { setTransform } from '../utils/ECSHelpers';
+import { lwarn } from '../utils/Logger';
 
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
@@ -18,6 +20,9 @@ export type MeshProps = {
   castShadow?: boolean;
   receiveShadow?: boolean;
   preWarm?: boolean;
+  position?: { x?: number; y?: number; z?: number };
+  rotation?: { x?: number; y?: number; z?: number };
+  quaternion?: THREE.Quaternion;
 };
 
 export const createMeshEntity = (
@@ -41,15 +46,33 @@ export const createMeshEntity = (
   const rootScene = existsOrThrow(getRootScene(), 'Could not find root scene in createMeshEntity.');
 
   if (props.preWarm) {
-    // @IMPROVEMENT: Create a queue system for these and preWarm large batches
-    // with throttled amounts (like 3-5 preWarms per frame). Otherwise the
-    // framerate could drop and/or jank could appear.
     const renderer = getRenderer();
-    const camera = new THREE.PerspectiveCamera();
+    const camera = new THREE.PerspectiveCamera(); // Consider using the actual active camera if available
 
     if (renderer && camera && rootScene) {
-      // This is done without await in the background
-      renderer.compileAsync(mesh, camera, rootScene);
+      // Check if this mesh is a "Shadow Receiver"
+      const isShadowReceiver = props.receiveShadow === true;
+
+      // Check if we have any valid shadow maps in the scene
+      // WebGPU TSL needs a valid texture instance to compile a shadow-receiving shader.
+      const hasInitializedShadows = rootScene.children.some(
+        (child) =>
+          child instanceof THREE.Light &&
+          child.castShadow &&
+          'shadow' in child &&
+          (child as { shadow: { map?: unknown } }).shadow?.map
+      );
+
+      // Only compile if it's "safe"
+      if (!isShadowReceiver || hasInitializedShadows) {
+        renderer.compileAsync(mesh, camera, rootScene);
+      } else {
+        // If we can't pre-warm now, the renderer will just compile it
+        // on the first actual draw call (standard behavior).
+        lwarn(
+          `[Engine] Skipping preWarm for ${entityOpts?.appId || 'mesh'} - ShadowMap not ready.`
+        );
+      }
     }
   }
 
@@ -61,6 +84,33 @@ export const createMeshEntity = (
   });
 
   rootScene.add(mesh);
+
+  const tra = {
+    pos: { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z },
+    rot: { x: mesh.quaternion.x, y: mesh.quaternion.y, z: mesh.quaternion.z, w: mesh.quaternion.w },
+  };
+  if (props.position) {
+    if (props.position.x !== undefined) tra.pos.x = props.position.x;
+    if (props.position.y !== undefined) tra.pos.y = props.position.y;
+    if (props.position.z !== undefined) tra.pos.z = props.position.z;
+  }
+  if (props.quaternion) {
+    tra.rot.x = props.quaternion.x;
+    tra.rot.y = props.quaternion.y;
+    tra.rot.z = props.quaternion.z;
+    tra.rot.w = props.quaternion.w;
+  } else if (props.rotation) {
+    const rot = ThreeEuler.set(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z);
+    if (props.rotation.x !== undefined) rot.x = props.rotation.x;
+    if (props.rotation.y !== undefined) rot.y = props.rotation.y;
+    if (props.rotation.z !== undefined) rot.z = props.rotation.z;
+    const quat = ThreeQuoternion.setFromEuler(rot);
+    tra.rot.x = quat.x;
+    tra.rot.y = quat.y;
+    tra.rot.z = quat.z;
+    tra.rot.w = quat.w;
+  }
+  setTransform(entityId, tra);
 
   return entityId;
 };

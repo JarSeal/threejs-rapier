@@ -100,15 +100,20 @@ export const attachLightHelpers = (
   }
 
   if (helper) {
-    helper.visible = isAnyLightHelperVisible();
+    const isEnabled = !ecsWorld.getComponent(entityId, ComponentType.DISABLED);
+    const obj = ecsWorld.getComponent(entityId, ComponentType.OBJECT3D)?.value;
+    const isVisible = !isEnabled && Boolean(obj?.visible);
+    helper.visible = isVisible && isAnyLightHelperVisible();
 
     rootScene.add(helper);
-    ecsWorld.addComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER, { value: helper });
 
-    if (light.castShadow) {
-      const camHelper = new THREE.CameraHelper(light.shadow.camera);
+    let camHelper: THREE.CameraHelper | undefined;
+    if ('castShadow' in light) {
+      camHelper = new THREE.CameraHelper(light.shadow.camera);
       rootScene.add(camHelper);
-      helper.add(camHelper);
+      if (!light.castShadow || !isEnabled) camHelper.visible = false;
     }
+
+    ecsWorld.addComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER, { value: helper, camHelper });
   }
 };

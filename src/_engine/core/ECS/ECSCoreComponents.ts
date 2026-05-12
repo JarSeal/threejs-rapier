@@ -58,6 +58,7 @@ export interface CoreComponentData {
   [CoreType.DEBUG_DATA]: EntityDebugData;
   [CoreType.DEBUG_LIGHT_HELPER]: {
     value: THREE.PointLightHelper | THREE.DirectionalLightHelper | THREE.SpotLightHelper;
+    camHelper?: THREE.CameraHelper;
   };
   [CoreType.DEBUG_CAMERA_HELPER]: { value: THREE.CameraHelper };
   [CoreType.DEBUG_SYMBOL]: { value: THREE.Group | THREE.Mesh; userVisible: boolean };

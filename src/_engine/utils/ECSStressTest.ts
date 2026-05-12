@@ -24,7 +24,7 @@ export const initECSStressTest = (batchSize: number = 100, targetId?: number) =>
     type: 'SPHERE' as const,
     params: { radius: 0.2, widthSegments: 8, heightSegments: 8 },
   };
-  const matProps = { type: 'BASIC' as const, params: { color: 0x00ff88 } };
+  const matProps = { type: 'PHONG' as const, params: { color: 0x00ff88 } };
 
   let currentInstanceCount = 0;
 
@@ -41,6 +41,10 @@ export const initECSStressTest = (batchSize: number = 100, targetId?: number) =>
       }
       instancedMesh.instanceMatrix.needsUpdate = true;
       instancedMesh.count = 0; // Start at zero!
+
+      // SHADOWS
+      instancedMesh.castShadow = true;
+      instancedMesh.receiveShadow = true;
 
       // Initialize colors to green
       const defaultColor = new THREE.Color(0x00ff88);
@@ -81,7 +85,13 @@ export const initECSStressTest = (batchSize: number = 100, targetId?: number) =>
         instancedMesh!.count = currentInstanceCount;
       } else {
         // --- MODE B: HEAVY ENTITY (UNIQUE MESH) ---
-        entityId = createMeshEntity({ geo: geoProps, mat: matProps });
+        entityId = createMeshEntity({
+          geo: geoProps,
+          mat: matProps,
+          // SHADOWS
+          // castShadow: true,
+          // receiveShadow: true,
+        });
       }
 
       // Both modes use the same Hover and Transform logic!

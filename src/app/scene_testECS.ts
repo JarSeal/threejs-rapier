@@ -159,13 +159,13 @@ export const sceneTestECS = async () =>
         type: 'LAMBERT',
         params: {
           color: 0xff0000,
-          roughness: 0.4,
-          metalness: 0.2,
+          // roughness: 0.4,
+          // metalness: 0.2,
         },
       },
-      castShadow: false,
-      receiveShadow: false,
-      preWarm: true,
+      castShadow: true,
+      receiveShadow: true,
+      preWarm: false,
     };
 
     // To spawn it:
@@ -181,6 +181,28 @@ export const sceneTestECS = async () =>
 
     // 3. (Optional) Set the initial position
     ecsWorld.setTransform(ballId, { pos: { x: 0, y: 1, z: 0 } });
+
+    // Ground
+    const groundProps: MeshProps = {
+      geo: {
+        type: 'BOX',
+        params: {
+          width: 30,
+          height: 30,
+          depth: 0.1,
+        },
+      },
+      mat: {
+        type: 'LAMBERT',
+        params: { color: 0x429925 },
+      },
+      castShadow: true,
+      receiveShadow: true,
+      preWarm: false,
+      position: { y: -1 },
+      rotation: { x: Math.PI / 2 },
+    };
+    createMeshEntity(groundProps, { appId: 'ground', debugData: { name: 'Ground' } }, ecsWorld);
 
     // Stress test ECS
     initECSStressTest(undefined, ballId);

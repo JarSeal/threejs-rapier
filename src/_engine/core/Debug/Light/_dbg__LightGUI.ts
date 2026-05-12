@@ -1,23 +1,28 @@
 import * as THREE from 'three/webgpu';
-import { Pane } from 'tweakpane';
+import { ListBladeApi, Pane } from 'tweakpane';
 import { getECSWorld, ECSWorld, getEntityIdByAppId } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
-import { CMP, TCMP } from '../../../utils/CMP';
+import { CMP, getCmpById, TCMP } from '../../../utils/CMP';
 import { getSvgIcon } from '../../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerContainer } from '../../../debug/DebuggerGUI';
 import {
   getDraggableWindow,
   openDraggableWindow,
-  registerDraggableWindowCmp,
+  registerDraggableWindowContentFn,
   updateDraggableWindow,
 } from '../../UI/DraggableWindow';
 import { setTransform } from '../../../utils/ECSHelpers';
 import { setLightEnabled } from '../../_LightManager';
-import { getCurrentSceneId } from '../../Scene';
+import { getCurrentSceneId, getRootScene } from '../../Scene';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
 import { getActiveCameraId } from '../../_CameraManager';
+import { getLightCharacteristics } from '../../../utils/helpers';
+import { BladeController, View } from '@tweakpane/core';
+import { FOUR_PX_TO_8K_LIST } from '../../../utils/constants';
+import { getRendererOptions } from '../../Renderer';
 
 export interface LightEntityDebugState {
+  enabled: boolean;
   helperVisible: boolean;
   symbolVisible: boolean;
   intensity?: number;
@@ -37,47 +42,50 @@ export interface LightDebugLSData {
 
 export const EDIT_LIGHT_WIN_ID = 'lightEditorWindow';
 const LS_LIGHTS_KEY = 'AEK_debugLights';
+const DEBUGGER_LIGHTS_LIST_ID = 'debuggerLightsList';
 export let globalHelpersVisible = false;
 let debuggerListCmp: TCMP | null = null;
-let initLoadDone = false;
 
 const reconcileDebugVisuals = (
   entityId: number,
   world: ECSWorld,
   dataOverride?: LightDebugLSData
 ) => {
-  const isEnabled = !world.isDisabled(entityId);
+  const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+  const light = objComp?.value as THREE.Light;
+
+  if (!light) return;
+
+  // Combine ECS status with the actual Three.js visibility property.
+  // This handles initialization and "first load" cases where components might not be synced yet.
+  const isEnabled = light.visible && !world.isDisabled(entityId);
+
   const isCurrentActiveCam = entityId === getActiveCameraId();
 
+  // 3. Get user preferences
   const { helper: helperPref, symbol: symbolPref } = getLightDebugVisibilityPref(
     entityId,
     world,
     dataOverride
   );
 
+  // Sync Helper
   const helperComp = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
   if (helperComp) {
+    // Helper only shows if: (Light is physically ON) AND (User wants to see helpers)
     helperComp.value.visible = isEnabled && helperPref;
+
+    if (helperComp.camHelper) {
+      // Shadow lines only show if: (Light is ON) AND (User wants helpers) AND (Casts Shadows)
+      helperComp.camHelper.visible = light.castShadow && isEnabled && helperPref;
+    }
   }
 
+  // Sync Symbol
   const symbolComp = world.getComponent(entityId, ComponentType.DEBUG_SYMBOL);
   if (symbolComp) {
-    // Keep the internal component flag in sync with the preference
     symbolComp.userVisible = symbolPref;
     symbolComp.value.visible = isEnabled && symbolPref && !isCurrentActiveCam;
-  }
-
-  if (!initLoadDone) {
-    const appId = world.getComponent(entityId, ComponentType.APP_ID)?.id;
-    if (!appId) return;
-    const data = getDraggableWindow(EDIT_LIGHT_WIN_ID)?.data;
-    if (data && data?.id === appId) {
-      console.log('DATA', data);
-      registerDraggableWindowCmp(EDIT_LIGHT_WIN_ID, {
-        content: () => createEditLightContent(data),
-      });
-      initLoadDone = true;
-    }
   }
 };
 
@@ -88,14 +96,16 @@ export const getLightDebugVisibilityPref = (
 ) => {
   const sceneId = getCurrentSceneId();
   const appId = world.getComponent(entityId, ComponentType.APP_ID)?.id;
-  if (!sceneId || !appId) return { helper: globalHelpersVisible, symbol: globalHelpersVisible };
+  const isDisabled = world.getComponent(entityId, ComponentType.DISABLED);
+  const showHelper = !isDisabled ? globalHelpersVisible : false;
+  if (!sceneId || !appId) return { helper: showHelper, symbol: true };
 
   const data = dataOverride || (lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData);
   const saved = data[sceneId]?.lights?.[appId];
 
   if (!saved) {
     return {
-      helper: globalHelpersVisible,
+      helper: showHelper,
       symbol: true,
     };
   }
@@ -120,8 +130,9 @@ export const setLightDebugPreference = async (
   if (!data[sceneId]) data[sceneId] = { lights: {}, globalHelpersVisible };
   if (!data[sceneId].lights[appId]) {
     data[sceneId].lights[appId] = {
+      enabled: true,
       helperVisible: globalHelpersVisible,
-      symbolVisible: globalHelpersVisible,
+      symbolVisible: true,
     };
   }
 
@@ -165,6 +176,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   const container = CMP({ onRemoveCmp: () => pane.dispose() });
   const pane = new Pane({ container: container.elem });
 
+  const lightChars = getLightCharacteristics(light);
+
   // Header Info
   container.add({
     class: ['winNotRightPaddedContent', 'winFlexContent'],
@@ -189,15 +202,31 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
   // Tweakpane Bindings
   pane.addBinding(light, 'visible', { label: 'Enabled' }).on('change', (e) => {
-    // ev.value will be true or false based on the checkbox
-    setLightEnabled(entityId, e.value, world);
+    const value = e.value;
+    setLightEnabled(entityId, value, world);
+    const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
+    const sceneId = getCurrentSceneId();
+    if (!sceneId || !appId) return;
+    if (!currentData[sceneId]) {
+      currentData[sceneId] = { lights: {}, globalHelpersVisible: false };
+    }
+    if (!currentData[sceneId].lights[appId]) {
+      currentData[sceneId].lights[appId] = {
+        enabled: value,
+        helperVisible: false,
+        symbolVisible: true,
+      };
+    } else {
+      currentData[sceneId].lights[appId].enabled = value;
+    }
+    lsSetItem(LS_LIGHTS_KEY, currentData);
   });
 
   // Helper Toggle (Direct binding to the Three.js Helper object)
   const helperComp = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
-  if (helperComp) {
-    helperComp.value.visible = prefs.helper;
-    pane.addBinding(helperComp.value, 'visible', { label: 'Show Helper' }).on('change', (e) => {
+  if (helperComp && lightChars.hasHelper) {
+    const helperProxy = { visible: prefs.helper };
+    pane.addBinding(helperProxy, 'visible', { label: 'Show Helper' }).on('change', (e) => {
       const show = e.value;
       const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
       const sceneId = getCurrentSceneId();
@@ -207,19 +236,21 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       }
       if (!currentData[sceneId].lights[appId]) {
         currentData[sceneId].lights[appId] = {
+          enabled: true,
           helperVisible: show,
           symbolVisible: true,
         };
       } else {
         currentData[sceneId].lights[appId].helperVisible = show;
       }
+      setLightDebugPreference(entityId, world, 'helperVisible', show);
       lsSetItem(LS_LIGHTS_KEY, currentData);
     });
   }
 
   // Symbol Toggle (Binding to the ECS userVisible flag)
   const symbolComp = world.getComponent(entityId, ComponentType.DEBUG_SYMBOL);
-  if (symbolComp) {
+  if (symbolComp && lightChars.hasSymbol) {
     symbolComp.value.visible = prefs.symbol;
     pane.addBinding(symbolComp, 'userVisible', { label: 'Show Symbol' }).on('change', (e) => {
       const show = e.value;
@@ -231,6 +262,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       }
       if (!currentData[sceneId].lights[appId]) {
         currentData[sceneId].lights[appId] = {
+          enabled: true,
           helperVisible: false,
           symbolVisible: show,
         };
@@ -241,14 +273,60 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     });
   }
 
-  pane.addBinding(light, 'intensity', { label: 'Intensity', min: 0, step: 0.1 });
-
+  // Color
   if ('color' in light) {
-    pane.addBinding(light, 'color', { label: 'Color', view: 'color' });
+    if (lightChars.isHemisphereLight) {
+      const hemi = light as THREE.HemisphereLight;
+      const colorProxy = {
+        sky: hemi.color.getHex(),
+        ground: hemi.groundColor.getHex(),
+      };
+      pane
+        .addBinding(colorProxy, 'sky', {
+          label: 'Sky Color',
+          view: 'color',
+        })
+        .on('change', (ev) => {
+          hemi.color.setHex(ev.value); // Update light immediately
+        });
+      pane
+        .addBinding(colorProxy, 'ground', {
+          label: 'Ground Color',
+          view: 'color',
+        })
+        .on('change', (ev) => {
+          hemi.groundColor.setHex(ev.value); // Update light immediately
+        });
+    } else {
+      const colorProxy = { hex: light.color.getHex() };
+      pane
+        .addBinding(colorProxy, 'hex', {
+          label: 'Color',
+          view: 'color',
+        })
+        .on('change', (ev) => {
+          light.color.setHex(ev.value);
+        });
+    }
+  }
+
+  // Intensity
+  pane.addBinding(light, 'intensity', { label: 'Intensity', min: 0, step: 0.01 });
+
+  // Distance
+  if (lightChars.hasDistance) {
+    const l = light as THREE.PointLight | THREE.SpotLight;
+    pane.addBinding(l, 'distance', { label: 'Distance', min: 0, step: 0.01 });
+  }
+
+  // Decay
+  if (lightChars.hasDecay) {
+    const l = light as THREE.PointLight | THREE.SpotLight;
+    pane.addBinding(l, 'decay', { label: 'Decay', min: 0, step: 0.01 });
   }
 
   // Sync Position to ECS Transform
-  if (transform) {
+  if (transform && lightChars.hasPosition) {
     pane
       .addBinding(transform, 'position', {
         label: 'Position',
@@ -268,10 +346,177 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       });
   }
 
-  // Shadow Logic
-  if (light.castShadow !== undefined) {
-    pane.addBinding(light, 'castShadow', { label: 'Cast Shadow' });
+  // Target position
+  const targetLink = world.getComponent(entityId, ComponentType.TARGET_LINK);
+  if (targetLink && lightChars.hasTarget) {
+    const targetEntityId = targetLink.targetId;
+    const targetTransform = world.getComponent(targetEntityId, ComponentType.TRANSFORM);
+    if (targetTransform) {
+      pane
+        .addBinding(targetTransform, 'position', {
+          label: 'Target Position',
+        })
+        .on('change', (e) => {
+          if (!e.last) return;
+          setTransform(targetEntityId, { pos: targetTransform.position });
+        });
+    }
   }
+
+  // Shadows
+  if (light.castShadow !== undefined && lightChars.canCastShadows) {
+    const l = light as THREE.PointLight | THREE.SpotLight | THREE.DirectionalLight;
+    const renderOptions = getRendererOptions();
+    const isVSM = renderOptions.shadowMapType === THREE.VSMShadowMap;
+
+    pane.addBinding(light, 'castShadow', { label: 'Cast Shadow' }).on('change', () => {
+      reconcileDebugVisuals(entityId, world);
+      // We need to wait a cycle for the pane to be updated
+      setTimeout(() => updateDraggableWindow(EDIT_LIGHT_WIN_ID), 0);
+    });
+
+    const shadowFolder = pane.addFolder({ title: 'Shadow', expanded: true });
+
+    shadowFolder.addBinding(l.shadow, 'bias', {
+      label: 'Shadow Bias',
+      step: 0.00001,
+      disabled: !l.castShadow,
+    });
+
+    shadowFolder.addBinding(l.shadow, 'normalBias', {
+      label: 'Normal Bias',
+      step: 0.00001,
+      disabled: !l.castShadow,
+    });
+
+    shadowFolder.addBinding(l.shadow, 'intensity', {
+      label: 'Shadow Intensity',
+      min: 0,
+      max: 10,
+      step: 0.001,
+      disabled: !l.castShadow,
+    });
+
+    // --- VSM SPECIFIC PARAMETERS ---
+    shadowFolder.addBinding(l.shadow, 'blurSamples', {
+      label: 'Blur Samples (VSM)',
+      min: 0,
+      max: 64,
+      step: 1,
+      disabled: !isVSM || !l.castShadow,
+    });
+
+    shadowFolder.addBinding(l.shadow, 'radius', {
+      label: 'Shadow Radius (VSM)',
+      min: 0,
+      disabled: !isVSM || !l.castShadow,
+    });
+
+    const widthBlade = shadowFolder.addBlade({
+      view: 'list',
+      label: 'Shadow map width',
+      value: l.shadow.mapSize.width || 512,
+      options: FOUR_PX_TO_8K_LIST,
+      disabled: !l.castShadow,
+    }) as ListBladeApi<BladeController<View>>;
+
+    const heightBlade = shadowFolder.addBlade({
+      view: 'list',
+      label: 'Shadow map height',
+      value: l.shadow.mapSize.height || 512,
+      options: FOUR_PX_TO_8K_LIST,
+      disabled: !l.castShadow,
+    }) as ListBladeApi<BladeController<View>>;
+
+    widthBlade.on('change', (e) => {
+      const value = Number(e.value);
+      // const height = l.shadow.mapSize.height || 512;
+      // l.shadow.mapSize.set(value, height);
+
+      l.shadow.mapSize.width = value;
+
+      // Sync the Perspective Camera aspect ratio to the texture resolution
+      if (l.shadow.camera instanceof THREE.PerspectiveCamera) {
+        const height = l.shadow.mapSize.height || 512;
+        l.shadow.camera.aspect = value / height;
+        l.shadow.camera.updateProjectionMatrix();
+      }
+
+      refreshLightShadows(l, entityId, world);
+    });
+
+    heightBlade.on('change', (e) => {
+      const value = Number(e.value);
+      // const width = l.shadow.mapSize.width || 512;
+      // l.shadow.mapSize.set(width, value);
+
+      l.shadow.mapSize.height = value;
+
+      // Sync the Perspective Camera aspect ratio to the texture resolution
+      if (l.shadow.camera instanceof THREE.PerspectiveCamera) {
+        const width = l.shadow.mapSize.width || 512;
+        l.shadow.camera.aspect = width / value;
+        l.shadow.camera.updateProjectionMatrix();
+      }
+
+      refreshLightShadows(l, entityId, world);
+    });
+
+    const camFolder = shadowFolder.addFolder({ title: 'Shadow Camera', expanded: false });
+
+    // Universal near/far
+    camFolder
+      .addBinding(l.shadow.camera, 'near', { label: 'Near', step: 0.01, disabled: !l.castShadow })
+      .on('change', () => {
+        l.shadow.camera.updateProjectionMatrix();
+        const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+        if (helper?.camHelper) helper.camHelper.update();
+      });
+    camFolder
+      .addBinding(l.shadow.camera, 'far', { label: 'Far', step: 1, disabled: !l.castShadow })
+      .on('change', () => {
+        l.shadow.camera.updateProjectionMatrix();
+        const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+        if (helper?.camHelper) helper.camHelper.update();
+      });
+
+    // Orthographic specific (Directional Light only)
+    if (l.shadow.camera instanceof THREE.OrthographicCamera) {
+      const ortho = l.shadow.camera;
+      const step = 0.01;
+
+      camFolder
+        .addBinding(ortho, 'left', { label: 'Left', step, disabled: !l.castShadow })
+        .on('change', () => {
+          ortho.updateProjectionMatrix();
+          const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+          if (helper?.camHelper) helper.camHelper.update();
+        });
+      camFolder
+        .addBinding(ortho, 'right', { label: 'Right', step, disabled: !l.castShadow })
+        .on('change', () => {
+          ortho.updateProjectionMatrix();
+          const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+          if (helper?.camHelper) helper.camHelper.update();
+        });
+      camFolder
+        .addBinding(ortho, 'top', { label: 'Top', step, disabled: !l.castShadow })
+        .on('change', () => {
+          ortho.updateProjectionMatrix();
+          const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+          if (helper?.camHelper) helper.camHelper.update();
+        });
+      camFolder
+        .addBinding(ortho, 'bottom', { label: 'Bottom', step, disabled: !l.castShadow })
+        .on('change', () => {
+          ortho.updateProjectionMatrix();
+          const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+          if (helper?.camHelper) helper.camHelper.update();
+        });
+    }
+  }
+
+  if (appId || entityId) updateDebuggerLightsListSelectedClass(appId || String(entityId));
 
   return container;
 };
@@ -287,14 +532,21 @@ export const initLightDebuggerGUI = () => {
     container: () => {
       const container = createNewDebuggerContainer('debuggerLights', `${icon} Light Controls`);
       debuggerListCmp = CMP({
-        id: 'debuggerLightsList',
+        id: DEBUGGER_LIGHTS_LIST_ID,
         html: () => createLightsDebuggerList(getECSWorld()),
       });
       container.add(debuggerListCmp);
+      const winState = getDraggableWindow(EDIT_LIGHT_WIN_ID);
+      if (winState?.isOpen && winState.data?.id) {
+        const id = (winState.data as { id: string }).id;
+        updateDebuggerLightsListSelectedClass(id);
+      }
       return container;
     },
   });
 };
+
+registerDraggableWindowContentFn(EDIT_LIGHT_WIN_ID, createEditLightContent);
 
 const createLightsDebuggerList = (world: ECSWorld) => {
   const storage = world.getStorage(ComponentType.TAG_IS_LIGHT);
@@ -316,16 +568,18 @@ const createLightsDebuggerList = (world: ECSWorld) => {
           data: { id: appId, winId: EDIT_LIGHT_WIN_ID },
           closeOnSceneChange: true,
           saveToLS: true,
+          onClose: () => updateDebuggerLightsListSelectedClass(null),
         });
+        updateDebuggerLightsListSelectedClass(String(appOrEntityId));
       },
       html: `<button class="listItemWithId">
         <span class="itemId">[${appId}] [${entityId}]</span>
         <span>${typeShorthand}</span>
-        <h4${!debugData?.name ? ` style="font-style:italic"` : ''}>${debugData?.name || appOrEntityId}</h4>
+        <h4${!debugData?.name ? ` style="font-style:italic"` : ''}>${debugData?.name || `[${appOrEntityId}]`}</h4>
       </button>`,
     });
 
-    html += `<li>${button}</li>`;
+    html += `<li data-id="${appOrEntityId}">${button}</li>`;
   }
 
   if (storage.size === 0) html += `<li class="emptyState">No ECS lights found.</li>`;
@@ -333,8 +587,27 @@ const createLightsDebuggerList = (world: ECSWorld) => {
   return html;
 };
 
-export const updateLightsDebuggerGUI = () => {
-  if (debuggerListCmp) debuggerListCmp.update();
+export const updateDebuggerLightsListSelectedClass = (id: string | null) => {
+  const debuggerListCmp = getCmpById(DEBUGGER_LIGHTS_LIST_ID);
+  const ulElem = debuggerListCmp?.elem;
+  if (!ulElem) return;
+  for (const child of ulElem.children) {
+    child.classList.remove('selected');
+    if (id === null) continue;
+    const elemId = child.getAttribute('data-id');
+    if (elemId === id) {
+      child.classList.add('selected');
+    }
+  }
+};
+
+export const updateLightsDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
+  if (only !== 'WINDOW') debuggerListCmp?.update();
+  const winState = getDraggableWindow(EDIT_LIGHT_WIN_ID);
+  const lightId = winState?.data?.id as string;
+  if (lightId) updateDebuggerLightsListSelectedClass(lightId);
+  if (only === 'LIST') return;
+  if (winState?.isOpen) updateDraggableWindow(EDIT_LIGHT_WIN_ID);
 };
 
 export const _toggleAllLightHelpers = (show?: boolean) => {
@@ -349,30 +622,33 @@ export const _toggleAllLightHelpers = (show?: boolean) => {
     currentData[sceneId] = { lights: {}, globalHelpersVisible: false };
   }
 
+  // Determine the target state
   const targetState = show !== undefined ? show : !globalHelpersVisible;
   globalHelpersVisible = targetState;
   currentData[sceneId].globalHelpersVisible = globalHelpersVisible;
 
+  // Update the in-memory data object (Ignoring Symbols)
   for (const [entityId] of storage) {
     const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
-
     if (appIdComp?.isFixed) {
       if (!currentData[sceneId].lights[appIdComp.id]) {
         currentData[sceneId].lights[appIdComp.id] = {
+          enabled: true, // Default is true
           helperVisible: targetState,
-          symbolVisible: true,
+          symbolVisible: true, // Default is true
         };
       } else {
         currentData[sceneId].lights[appIdComp.id].helperVisible = targetState;
       }
     }
 
+    // Reconcile the 3D scene using the updated data
     reconcileDebugVisuals(entityId, world, currentData);
   }
 
-  updateDraggableWindow(EDIT_LIGHT_WIN_ID);
-
   lsSetItem(LS_LIGHTS_KEY, currentData);
+
+  updateDraggableWindow(EDIT_LIGHT_WIN_ID);
 };
 
 export const syncDebugVisualsFromLS = (sceneId: string, world: ECSWorld) => {
@@ -390,6 +666,87 @@ export const syncDebugVisualsFromLS = (sceneId: string, world: ECSWorld) => {
   for (const [entityId] of symbolStorage) {
     reconcileDebugVisuals(entityId, world, currentData);
   }
+};
+
+const refreshLightShadows = async (light: THREE.Light, entityId: number, world: ECSWorld) => {
+  const rootScene = getRootScene();
+  if (!rootScene) return;
+
+  // Finalize Projection for the new Light
+  // We must ensure the shadow camera knows about the new MapSize aspect ratio
+  const l = light as THREE.SpotLight | THREE.DirectionalLight;
+  if (l.shadow) {
+    const { width, height } = l.shadow.mapSize;
+    const aspect = width / height;
+
+    if (l.shadow.camera instanceof THREE.PerspectiveCamera) {
+      // For SpotLights: Sync aspect ratio
+      l.shadow.camera.aspect = aspect;
+    } else if (l.shadow.camera instanceof THREE.OrthographicCamera) {
+      // For DirectionalLights: Ensure bounds match the resolution aspect
+      // If you don't do this, rectangular pixels stretch and look "bigger"
+      const halfW = (l.shadow.camera.right - l.shadow.camera.left) / 2;
+      const center = (l.shadow.camera.right + l.shadow.camera.left) / 2;
+      // Adjust horizontal bounds based on aspect if you want square shadow pixels
+      l.shadow.camera.left = center - halfW * aspect;
+      l.shadow.camera.right = center + halfW * aspect;
+    }
+    l.shadow.camera.updateProjectionMatrix();
+  }
+
+  // Clone the light with these finalized settings
+  const newLight = light.clone(true) as THREE.Light;
+
+  // Preserve references
+  if (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight) {
+    (newLight as THREE.DirectionalLight | THREE.SpotLight).target = light.target;
+  }
+
+  // Clean up old visuals and dispose
+  const oldHelperComp = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+  if (oldHelperComp) {
+    oldHelperComp.value.removeFromParent();
+    oldHelperComp.camHelper?.removeFromParent();
+  }
+
+  light.removeFromParent();
+  light.dispose();
+  rootScene.add(newLight);
+
+  // Update ECS
+  const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+  if (objComp) {
+    objComp.value = newLight;
+    objComp._lastVersion = -1; // Force immediate transform sync
+  }
+
+  // Re-link Symbol
+  const symbolComp = world.getComponent(entityId, ComponentType.DEBUG_SYMBOL);
+  if (symbolComp) {
+    symbolComp.value.matrix = newLight.matrixWorld;
+    symbolComp.value.matrixAutoUpdate = false;
+  }
+
+  // Re-attach Helpers
+  const { attachLightHelpers } = await import('./_dbg__LightHelpers');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  attachLightHelpers(entityId, newLight as any, world, rootScene);
+
+  // The helper geometry needs to be rebuilt based on the new projection
+  const newHelperComp = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+  if (newHelperComp?.camHelper) {
+    newHelperComp.camHelper.update(); // Sync lines to new camera bounds
+  }
+
+  reconcileDebugVisuals(entityId, world);
+  updateLightsDebuggerGUI();
+};
+
+export const loadLightDebugData = (appId: string) => {
+  const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
+  const sceneId = getCurrentSceneId();
+  if (!sceneId || !currentData || !currentData[sceneId].lights[appId]) return {};
+  return currentData[sceneId].lights[appId];
 };
 
 ECSWorld.registerComponentHooks(ComponentType.DISABLED, {

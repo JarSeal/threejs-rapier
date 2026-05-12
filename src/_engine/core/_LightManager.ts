@@ -4,6 +4,7 @@ import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './
 import { DebugModuleRef, existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
 import { ComponentType, Transform } from './ECS/ECSCoreComponents';
 import { IS_DEBUG_ENV } from './Config';
+import { loadPersistentProps } from './PropertyLoader';
 
 export const registerLightManager = (world: ECSWorld) => {
   if (IS_DEBUG_ENV) {
@@ -71,6 +72,8 @@ export const SHADOW_PRESETS = {
 export type LightProps = {
   enabled?: boolean;
   shadowPreset?: ShadowQuality;
+  appId?: string;
+  name?: string;
 } & (
   | { type: 'AMBIENT'; color?: THREE.ColorRepresentation; intensity?: number }
   | {
@@ -133,12 +136,16 @@ export type LightProps = {
 );
 
 export const createLightEntity = (
-  props: LightProps,
+  lightProps: LightProps,
   entityOpts?: CoreEntityOpts,
   ecsWorld?: ECSWorld
 ): number => {
   const world = ecsWorld || getECSWorld();
   const rootScene = existsOrThrow(getRootScene(), 'Could not find root scene.');
+
+  // Load light properties
+  const appId = lightProps.appId || entityOpts?.appId;
+  const props = loadPersistentProps<LightProps>({ ...lightProps, appId }, 'LIGHT');
 
   let light:
     | THREE.AmbientLight
@@ -185,7 +192,7 @@ export const createLightEntity = (
     light.castShadow = true;
     const s = light.shadow;
 
-    // 1. Apply Preset Defaults
+    // Apply Preset Defaults
     const preset = SHADOW_PRESETS[props.shadowPreset || ShadowQuality.MEDIUM];
     s.mapSize.set(preset.mapSize[0], preset.mapSize[1]);
     s.blurSamples = preset.blurSamples;
@@ -193,7 +200,7 @@ export const createLightEntity = (
     s.bias = preset.bias;
     s.normalBias = preset.normalBias;
 
-    // 2. Apply Developer Overrides (Fine-tuning)
+    // Apply Developer Overrides (Fine-tuning)
     if (props.shadowMapSize) s.mapSize.set(props.shadowMapSize[0], props.shadowMapSize[1]);
     if (props.shadowBias !== undefined) s.bias = props.shadowBias;
     if (props.shadowNormalBias !== undefined) s.normalBias = props.shadowNormalBias;
@@ -221,8 +228,6 @@ export const createLightEntity = (
 
     s.camera.updateProjectionMatrix();
   }
-
-  light.visible = props.enabled ?? true;
 
   const entityId = world.createEntity(entityOpts);
   world.addComponent(entityId, ComponentType.OBJECT3D, { value: light, _lastVersion: -1 });
@@ -264,6 +269,10 @@ export const createLightEntity = (
   );
 
   rootScene.add(light);
+
+  if (props.enabled === false) {
+    setLightEnabled(entityId, false, world);
+  }
 
   return entityId;
 };
@@ -361,7 +370,7 @@ export const disposeLight = (entityId: number, world: ECSWorld) => {
 
 type LightGUIModule = typeof import('./Debug/Light/_dbg__LightGUI');
 
-let debugGUI: DebugModuleRef<LightGUIModule> | null = null;
+export let debugGUI: DebugModuleRef<LightGUIModule> | null = null;
 
 export const isAnyLightHelperVisible = (): boolean =>
   Boolean(useDebug(debugGUI)?.globalHelpersVisible);

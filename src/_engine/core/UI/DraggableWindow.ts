@@ -1060,3 +1060,12 @@ export const registerDraggableWindowCmp = (
 
   draggableWindowCmpsToRegister[id] = fn;
 };
+
+export const registerDraggableWindowContentFn = (
+  id: string,
+  registerContentFn: (data?: { [key: string]: unknown }) => TCMP
+) => {
+  const config = getConfig();
+  if (!config.draggableWindows) config.draggableWindows = {};
+  config.draggableWindows[id] = { contentFn: registerContentFn };
+};
