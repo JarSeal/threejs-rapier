@@ -71,14 +71,12 @@ export const SHADOW_PRESETS = {
 
 export type LightProps = {
   enabled?: boolean;
-  shadowPreset?: ShadowQuality;
   appId?: string;
-  name?: string;
 } & (
   | { type: 'AMBIENT'; color?: THREE.ColorRepresentation; intensity?: number }
   | {
       type: 'HEMISPHERE';
-      skyColor?: THREE.ColorRepresentation;
+      color?: THREE.ColorRepresentation;
       groundColor?: THREE.ColorRepresentation;
       intensity?: number;
     }
@@ -88,8 +86,10 @@ export type LightProps = {
       intensity?: number;
       distance?: number;
       decay?: number;
+      position?: { x: number; y: number; z: number };
       castShadow?: boolean;
       // Shadow Tuning
+      shadowPreset?: ShadowQuality;
       shadowBias?: number;
       shadowNormalBias?: number;
       shadowMapSize?: [number, number];
@@ -102,9 +102,11 @@ export type LightProps = {
       type: 'DIRECTIONAL';
       color?: THREE.ColorRepresentation;
       intensity?: number;
-      castShadow?: boolean;
+      position?: { x: number; y: number; z: number };
       targetPos?: { x: number; y: number; z: number };
+      castShadow?: boolean;
       // Shadow Tuning
+      shadowPreset?: ShadowQuality;
       shadowBias?: number;
       shadowNormalBias?: number;
       shadowMapSize?: [number, number];
@@ -122,9 +124,11 @@ export type LightProps = {
       angle?: number;
       penumbra?: number;
       decay?: number;
-      castShadow?: boolean;
+      position?: { x: number; y: number; z: number };
       targetPos?: { x: number; y: number; z: number };
+      castShadow?: boolean;
       // Shadow Tuning
+      shadowPreset?: ShadowQuality;
       shadowBias?: number;
       shadowNormalBias?: number;
       shadowMapSize?: [number, number];
@@ -159,7 +163,7 @@ export const createLightEntity = (
       light = new THREE.AmbientLight(props.color, props.intensity);
       break;
     case 'HEMISPHERE':
-      light = new THREE.HemisphereLight(props.skyColor, props.groundColor, props.intensity);
+      light = new THREE.HemisphereLight(props.color, props.groundColor, props.intensity);
       break;
     case 'POINT':
       light = new THREE.PointLight(props.color, props.intensity, props.distance, props.decay);
@@ -183,17 +187,20 @@ export const createLightEntity = (
 
   // --- Shadow Logic (Full Tuning) ---
   if (
-    'castShadow' in props &&
-    props.castShadow &&
+    'castShadow' in light &&
     (light instanceof THREE.PointLight ||
       light instanceof THREE.DirectionalLight ||
       light instanceof THREE.SpotLight)
   ) {
-    light.castShadow = true;
+    light.castShadow =
+      'castShadow' in props && props.castShadow !== undefined ? props.castShadow : false;
     const s = light.shadow;
 
     // Apply Preset Defaults
-    const preset = SHADOW_PRESETS[props.shadowPreset || ShadowQuality.MEDIUM];
+    const preset =
+      'shadowPreset' in props && props.shadowPreset
+        ? SHADOW_PRESETS[props.shadowPreset]
+        : SHADOW_PRESETS[ShadowQuality.MEDIUM];
     s.mapSize.set(preset.mapSize[0], preset.mapSize[1]);
     s.blurSamples = preset.blurSamples;
     s.radius = preset.radius;
@@ -201,14 +208,18 @@ export const createLightEntity = (
     s.normalBias = preset.normalBias;
 
     // Apply Developer Overrides (Fine-tuning)
-    if (props.shadowMapSize) s.mapSize.set(props.shadowMapSize[0], props.shadowMapSize[1]);
-    if (props.shadowBias !== undefined) s.bias = props.shadowBias;
-    if (props.shadowNormalBias !== undefined) s.normalBias = props.shadowNormalBias;
-    if (props.shadowRadius !== undefined) s.radius = props.shadowRadius;
-    if (props.shadowBlurSamples !== undefined) s.blurSamples = props.shadowBlurSamples;
-    if (props.shadowIntensity !== undefined) s.intensity = props.shadowIntensity;
+    if ('shadowMapSize' in props && props.shadowMapSize)
+      s.mapSize.set(props.shadowMapSize[0], props.shadowMapSize[1]);
+    if ('shadowBias' in props && props.shadowBias !== undefined) s.bias = props.shadowBias;
+    if ('shadowNormalBias' in props && props.shadowNormalBias !== undefined)
+      s.normalBias = props.shadowNormalBias;
+    if ('shadowRadius' in props && props.shadowRadius !== undefined) s.radius = props.shadowRadius;
+    if ('shadowBlurSamples' in props && props.shadowBlurSamples !== undefined)
+      s.blurSamples = props.shadowBlurSamples;
+    if ('shadowIntensity' in props && props.shadowIntensity !== undefined)
+      s.intensity = props.shadowIntensity;
 
-    if (props.shadowCameraNearFar) {
+    if ('shadowCameraNearFar' in props && props.shadowCameraNearFar) {
       s.camera.near = props.shadowCameraNearFar[0];
       s.camera.far = props.shadowCameraNearFar[1];
     }
@@ -224,6 +235,16 @@ export const createLightEntity = (
       s.camera.right = r;
       s.camera.top = t;
       s.camera.bottom = b;
+    }
+
+    // Spot and point light specific aspect ratio (Perspective Camera)
+    if (
+      (props.type === 'SPOT' || props.type === 'POINT') &&
+      s.camera instanceof THREE.PerspectiveCamera
+    ) {
+      const width = s.mapSize.width || 512;
+      const height = s.mapSize.height || 512;
+      s.camera.aspect = width / height;
     }
 
     s.camera.updateProjectionMatrix();
@@ -253,12 +274,18 @@ export const createLightEntity = (
     world.addComponent(entityId, ComponentType.TARGET_LINK, { targetId });
   }
 
+  const pos =
+    'position' in props && props.position
+      ? props.position
+      : { x: light.position.x, y: light.position.y, z: light.position.z };
+  light.position.set(pos.x, pos.y, pos.z);
+
   // --- Transform Logic ---
   world.addComponent(
     entityId,
     ComponentType.TRANSFORM,
     new Transform({
-      pos: { x: light.position.x, y: light.position.y, z: light.position.z },
+      pos,
       rot: {
         x: light.quaternion.x,
         y: light.quaternion.y,
@@ -272,6 +299,10 @@ export const createLightEntity = (
 
   if (props.enabled === false) {
     setLightEnabled(entityId, false, world);
+  }
+
+  if ('position' in props && props.position) {
+    world.setTransform(entityId, { pos });
   }
 
   return entityId;

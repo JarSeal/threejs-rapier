@@ -42,7 +42,7 @@ export const sceneTestECS = async () =>
 
     inspectEntity(camId);
 
-    const scene = createScene(SCENE_TEST_ECS_ID, {
+    createScene(SCENE_TEST_ECS_ID, {
       name: 'Test scene 1',
       isCurrentScene: true,
     });
@@ -85,7 +85,7 @@ export const sceneTestECS = async () =>
     createLightEntity(
       {
         type: 'HEMISPHERE',
-        skyColor: 0x220000,
+        color: 0x220000,
         groundColor: 0x225599,
         intensity: 1.5,
       },
@@ -125,7 +125,7 @@ export const sceneTestECS = async () =>
     ecsWorld.setTransform(dirLightId, { pos: { x: -5, y: 2.5, z: 2.5 } });
 
     // Spot Light (From the top)
-    const spotLightId = createLightEntity(
+    createLightEntity(
       {
         type: 'SPOT',
         color: '#ffffff',
@@ -136,7 +136,8 @@ export const sceneTestECS = async () =>
         decay: 0.5, // Light falloff
         castShadow: true,
         shadowMapSize: [1024, 1024],
-        shadowCameraNearFar: [1, 50],
+        shadowCameraNearFar: [1, 48],
+        position: { x: 0, y: 15, z: 0 },
         targetPos: { x: 0, y: 0, z: 0 }, // Point at the center/ball
       },
       {
@@ -144,7 +145,6 @@ export const sceneTestECS = async () =>
         debugData: { name: 'Top Spot Light' },
       }
     );
-    ecsWorld.setTransform(spotLightId, { pos: { x: 0, y: 15, z: 0 } });
 
     const redBallProps: MeshProps = {
       geo: {

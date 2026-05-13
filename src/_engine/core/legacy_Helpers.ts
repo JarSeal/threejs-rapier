@@ -102,16 +102,16 @@ export const togglePolarGridHelperVisibility = (show: boolean) => {
 };
 
 // Light and camera helpers
-const addToLightHelpers = (helper: LightHelper) => {
-  const currentSceneId = getCurrentSceneId();
-  if (!currentSceneId) return;
-  const foundHelper = lightHelpers[currentSceneId]?.find(
-    (h) => h.userData.id === helper.userData.id
-  );
-  if (foundHelper) return;
-  if (!lightHelpers[currentSceneId]) lightHelpers[currentSceneId] = [];
-  lightHelpers[currentSceneId].push(helper);
-};
+// const addToLightHelpers = (helper: LightHelper) => {
+//   const currentSceneId = getCurrentSceneId();
+//   if (!currentSceneId) return;
+//   const foundHelper = lightHelpers[currentSceneId]?.find(
+//     (h) => h.userData.id === helper.userData.id
+//   );
+//   if (foundHelper) return;
+//   if (!lightHelpers[currentSceneId]) lightHelpers[currentSceneId] = [];
+//   lightHelpers[currentSceneId].push(helper);
+// };
 
 const removeFromLightHelpers = (helper: LightHelper) => {
   const currentSceneId = getCurrentSceneId();

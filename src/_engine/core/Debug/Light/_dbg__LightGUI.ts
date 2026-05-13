@@ -12,7 +12,7 @@ import {
   updateDraggableWindow,
 } from '../../UI/DraggableWindow';
 import { setTransform } from '../../../utils/ECSHelpers';
-import { setLightEnabled } from '../../_LightManager';
+import { setLightEnabled, ShadowQuality } from '../../_LightManager';
 import { getCurrentSceneId, getRootScene } from '../../Scene';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
 import { getActiveCameraId } from '../../_CameraManager';
@@ -25,8 +25,27 @@ export interface LightEntityDebugState {
   enabled: boolean;
   helperVisible: boolean;
   symbolVisible: boolean;
-  intensity?: number;
   color?: number;
+  groundColor?: number;
+  intensity?: number;
+  distance?: number;
+  angle?: number;
+  penumbra?: number;
+  decay?: number;
+  position?: { x: number; y: number; z: number };
+  targetPos?: { x: number; y: number; z: number };
+  castShadow?: boolean;
+  shadowPreset?: ShadowQuality;
+  shadowBias?: number;
+  shadowNormalBias?: number;
+  shadowMapSize?: [number, number];
+  shadowCameraNearFar?: [number, number];
+  shadowCameraFrustum?: [number, number, number, number]; // Left, Right, Top, Bottom
+  shadowBlurSamples?: number;
+  shadowRadius?: number;
+  shadowIntensity?: number;
+  _shadowFolderOpen?: boolean;
+  _shadowCameraFolderOpen?: boolean;
 }
 
 export interface LightSceneDebugState {
@@ -178,6 +197,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
   const lightChars = getLightCharacteristics(light);
 
+  const uiState = loadLightDebugData(appId);
+
   // Header Info
   container.add({
     class: ['winNotRightPaddedContent', 'winFlexContent'],
@@ -204,22 +225,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   pane.addBinding(light, 'visible', { label: 'Enabled' }).on('change', (e) => {
     const value = e.value;
     setLightEnabled(entityId, value, world);
-    const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
-    const sceneId = getCurrentSceneId();
-    if (!sceneId || !appId) return;
-    if (!currentData[sceneId]) {
-      currentData[sceneId] = { lights: {}, globalHelpersVisible: false };
-    }
-    if (!currentData[sceneId].lights[appId]) {
-      currentData[sceneId].lights[appId] = {
-        enabled: value,
-        helperVisible: false,
-        symbolVisible: true,
-      };
-    } else {
-      currentData[sceneId].lights[appId].enabled = value;
-    }
-    lsSetItem(LS_LIGHTS_KEY, currentData);
+    saveLightToLS(entityId, 'enabled', value);
   });
 
   // Helper Toggle (Direct binding to the Three.js Helper object)
@@ -228,23 +234,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     const helperProxy = { visible: prefs.helper };
     pane.addBinding(helperProxy, 'visible', { label: 'Show Helper' }).on('change', (e) => {
       const show = e.value;
-      const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
-      const sceneId = getCurrentSceneId();
-      if (!sceneId || !appId) return;
-      if (!currentData[sceneId]) {
-        currentData[sceneId] = { lights: {}, globalHelpersVisible: false };
-      }
-      if (!currentData[sceneId].lights[appId]) {
-        currentData[sceneId].lights[appId] = {
-          enabled: true,
-          helperVisible: show,
-          symbolVisible: true,
-        };
-      } else {
-        currentData[sceneId].lights[appId].helperVisible = show;
-      }
+      saveLightToLS(entityId, 'helperVisible', show);
       setLightDebugPreference(entityId, world, 'helperVisible', show);
-      lsSetItem(LS_LIGHTS_KEY, currentData);
     });
   }
 
@@ -254,22 +245,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     symbolComp.value.visible = prefs.symbol;
     pane.addBinding(symbolComp, 'userVisible', { label: 'Show Symbol' }).on('change', (e) => {
       const show = e.value;
-      const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
-      const sceneId = getCurrentSceneId();
-      if (!sceneId || !appId) return;
-      if (!currentData[sceneId]) {
-        currentData[sceneId] = { lights: {}, globalHelpersVisible: false };
-      }
-      if (!currentData[sceneId].lights[appId]) {
-        currentData[sceneId].lights[appId] = {
-          enabled: true,
-          helperVisible: false,
-          symbolVisible: show,
-        };
-      } else {
-        currentData[sceneId].lights[appId].symbolVisible = show;
-      }
-      lsSetItem(LS_LIGHTS_KEY, currentData);
+      saveLightToLS(entityId, 'symbolVisible', show);
     });
   }
 
@@ -287,7 +263,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           view: 'color',
         })
         .on('change', (ev) => {
-          hemi.color.setHex(ev.value); // Update light immediately
+          hemi.color.setHex(ev.value);
+          saveLightToLS(entityId, 'color', ev.value);
         });
       pane
         .addBinding(colorProxy, 'ground', {
@@ -295,7 +272,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           view: 'color',
         })
         .on('change', (ev) => {
-          hemi.groundColor.setHex(ev.value); // Update light immediately
+          hemi.groundColor.setHex(ev.value);
+          saveLightToLS(entityId, 'groundColor', ev.value);
         });
     } else {
       const colorProxy = { hex: light.color.getHex() };
@@ -306,23 +284,30 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', (ev) => {
           light.color.setHex(ev.value);
+          saveLightToLS(entityId, 'color', ev.value);
         });
     }
   }
 
   // Intensity
-  pane.addBinding(light, 'intensity', { label: 'Intensity', min: 0, step: 0.01 });
+  pane
+    .addBinding(light, 'intensity', { label: 'Intensity', min: 0, step: 0.01 })
+    .on('change', (ev) => saveLightToLS(entityId, 'intensity', ev.value));
 
   // Distance
   if (lightChars.hasDistance) {
     const l = light as THREE.PointLight | THREE.SpotLight;
-    pane.addBinding(l, 'distance', { label: 'Distance', min: 0, step: 0.01 });
+    pane
+      .addBinding(l, 'distance', { label: 'Distance', min: 0, step: 0.01 })
+      .on('change', (ev) => saveLightToLS(entityId, 'distance', ev.value));
   }
 
   // Decay
   if (lightChars.hasDecay) {
     const l = light as THREE.PointLight | THREE.SpotLight;
-    pane.addBinding(l, 'decay', { label: 'Decay', min: 0, step: 0.01 });
+    pane
+      .addBinding(l, 'decay', { label: 'Decay', min: 0, step: 0.01 })
+      .on('change', (ev) => saveLightToLS(entityId, 'decay', ev.value));
   }
 
   // Sync Position to ECS Transform
@@ -335,14 +320,13 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         // Only trigger if the change came from the UI (manual dragging)
         // to avoid the double-trigger from setTransform calls.
         if (!e.last) return;
-
-        setTransform(entityId, { pos: transform.position });
-
+        world.setTransform(entityId, { pos: transform.position });
         const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
         if (helper && 'update' in helper.value) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (helper.value as any).update();
         }
+        saveLightToLS(entityId, 'position', transform.position);
       });
   }
 
@@ -359,6 +343,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         .on('change', (e) => {
           if (!e.last) return;
           setTransform(targetEntityId, { pos: targetTransform.position });
+          saveLightToLS(entityId, 'targetPos', targetTransform.position);
         });
     }
   }
@@ -369,48 +354,61 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     const renderOptions = getRendererOptions();
     const isVSM = renderOptions.shadowMapType === THREE.VSMShadowMap;
 
-    pane.addBinding(light, 'castShadow', { label: 'Cast Shadow' }).on('change', () => {
+    pane.addBinding(light, 'castShadow', { label: 'Cast Shadow' }).on('change', (ev) => {
       reconcileDebugVisuals(entityId, world);
       // We need to wait a cycle for the pane to be updated
       setTimeout(() => updateDraggableWindow(EDIT_LIGHT_WIN_ID), 0);
+      saveLightToLS(entityId, 'castShadow', ev.value);
     });
 
-    const shadowFolder = pane.addFolder({ title: 'Shadow', expanded: true });
+    const shadowFolder = pane
+      .addFolder({ title: 'Shadow', expanded: uiState?._shadowFolderOpen })
+      .on('fold', (ev) => saveLightToLS(entityId, '_shadowFolderOpen', ev.expanded));
 
-    shadowFolder.addBinding(l.shadow, 'bias', {
-      label: 'Shadow Bias',
-      step: 0.00001,
-      disabled: !l.castShadow,
-    });
+    shadowFolder
+      .addBinding(l.shadow, 'bias', {
+        label: 'Shadow Bias',
+        step: 0.00001,
+        disabled: !l.castShadow,
+      })
+      .on('change', (ev) => saveLightToLS(entityId, 'shadowBias', ev.value));
 
-    shadowFolder.addBinding(l.shadow, 'normalBias', {
-      label: 'Normal Bias',
-      step: 0.00001,
-      disabled: !l.castShadow,
-    });
+    shadowFolder
+      .addBinding(l.shadow, 'normalBias', {
+        label: 'Normal Bias',
+        step: 0.00001,
+        disabled: !l.castShadow,
+      })
+      .on('change', (ev) => saveLightToLS(entityId, 'shadowNormalBias', ev.value));
 
-    shadowFolder.addBinding(l.shadow, 'intensity', {
-      label: 'Shadow Intensity',
-      min: 0,
-      max: 10,
-      step: 0.001,
-      disabled: !l.castShadow,
-    });
+    shadowFolder
+      .addBinding(l.shadow, 'intensity', {
+        label: 'Shadow Intensity',
+        min: 0,
+        max: 10,
+        step: 0.001,
+        disabled: !l.castShadow,
+      })
+      .on('change', (ev) => saveLightToLS(entityId, 'shadowIntensity', ev.value));
 
     // --- VSM SPECIFIC PARAMETERS ---
-    shadowFolder.addBinding(l.shadow, 'blurSamples', {
-      label: 'Blur Samples (VSM)',
-      min: 0,
-      max: 64,
-      step: 1,
-      disabled: !isVSM || !l.castShadow,
-    });
+    shadowFolder
+      .addBinding(l.shadow, 'blurSamples', {
+        label: 'Blur Samples (VSM only)',
+        min: 0,
+        max: 64,
+        step: 1,
+        disabled: !isVSM || !l.castShadow,
+      })
+      .on('change', (ev) => saveLightToLS(entityId, 'shadowBlurSamples', ev.value));
 
-    shadowFolder.addBinding(l.shadow, 'radius', {
-      label: 'Shadow Radius (VSM)',
-      min: 0,
-      disabled: !isVSM || !l.castShadow,
-    });
+    shadowFolder
+      .addBinding(l.shadow, 'radius', {
+        label: 'Shadow Radius (VSM only)',
+        min: 0,
+        disabled: !isVSM || !l.castShadow,
+      })
+      .on('change', (ev) => saveLightToLS(entityId, 'shadowRadius', ev.value));
 
     const widthBlade = shadowFolder.addBlade({
       view: 'list',
@@ -430,8 +428,6 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
     widthBlade.on('change', (e) => {
       const value = Number(e.value);
-      // const height = l.shadow.mapSize.height || 512;
-      // l.shadow.mapSize.set(value, height);
 
       l.shadow.mapSize.width = value;
 
@@ -443,12 +439,12 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       }
 
       refreshLightShadows(l, entityId, world);
+
+      saveLightToLS(entityId, 'shadowMapSize', [value, l.shadow.mapSize.height]);
     });
 
     heightBlade.on('change', (e) => {
       const value = Number(e.value);
-      // const width = l.shadow.mapSize.width || 512;
-      // l.shadow.mapSize.set(width, value);
 
       l.shadow.mapSize.height = value;
 
@@ -460,24 +456,37 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       }
 
       refreshLightShadows(l, entityId, world);
+
+      saveLightToLS(entityId, 'shadowMapSize', [l.shadow.mapSize.width, value]);
     });
 
-    const camFolder = shadowFolder.addFolder({ title: 'Shadow Camera', expanded: false });
+    const camFolder = shadowFolder
+      .addFolder({
+        title: 'Shadow Camera',
+        expanded: uiState?._shadowCameraFolderOpen,
+      })
+      .on('fold', (ev) => saveLightToLS(entityId, '_shadowCameraFolderOpen', ev.expanded));
 
     // Universal near/far
     camFolder
       .addBinding(l.shadow.camera, 'near', { label: 'Near', step: 0.01, disabled: !l.castShadow })
-      .on('change', () => {
+      .on('change', (ev) => {
         l.shadow.camera.updateProjectionMatrix();
         const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
         if (helper?.camHelper) helper.camHelper.update();
+        saveLightToLS(entityId, 'shadowCameraNearFar', [ev.value, l.shadow.camera.far]);
       });
     camFolder
-      .addBinding(l.shadow.camera, 'far', { label: 'Far', step: 1, disabled: !l.castShadow })
-      .on('change', () => {
+      .addBinding(l.shadow.camera, 'far', {
+        label: `Far${l.type === 'SpotLight' ? ` (tied to distance)` : ''}`,
+        step: 1,
+        disabled: !l.castShadow,
+      })
+      .on('change', (ev) => {
         l.shadow.camera.updateProjectionMatrix();
         const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
         if (helper?.camHelper) helper.camHelper.update();
+        saveLightToLS(entityId, 'shadowCameraNearFar', [l.shadow.camera.near, ev.value]);
       });
 
     // Orthographic specific (Directional Light only)
@@ -487,31 +496,49 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
       camFolder
         .addBinding(ortho, 'left', { label: 'Left', step, disabled: !l.castShadow })
-        .on('change', () => {
+        .on('change', (ev) => {
           ortho.updateProjectionMatrix();
           const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
           if (helper?.camHelper) helper.camHelper.update();
+          const cam = l.shadow.camera as THREE.OrthographicCamera;
+          saveLightToLS(entityId, 'shadowCameraFrustum', [
+            ev.value,
+            cam.right,
+            cam.top,
+            cam.bottom,
+          ]);
         });
       camFolder
         .addBinding(ortho, 'right', { label: 'Right', step, disabled: !l.castShadow })
-        .on('change', () => {
+        .on('change', (ev) => {
           ortho.updateProjectionMatrix();
           const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
           if (helper?.camHelper) helper.camHelper.update();
+          const cam = l.shadow.camera as THREE.OrthographicCamera;
+          saveLightToLS(entityId, 'shadowCameraFrustum', [cam.left, ev.value, cam.top, cam.bottom]);
         });
       camFolder
         .addBinding(ortho, 'top', { label: 'Top', step, disabled: !l.castShadow })
-        .on('change', () => {
+        .on('change', (ev) => {
           ortho.updateProjectionMatrix();
           const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
           if (helper?.camHelper) helper.camHelper.update();
+          const cam = l.shadow.camera as THREE.OrthographicCamera;
+          saveLightToLS(entityId, 'shadowCameraFrustum', [
+            cam.left,
+            cam.right,
+            ev.value,
+            cam.bottom,
+          ]);
         });
       camFolder
         .addBinding(ortho, 'bottom', { label: 'Bottom', step, disabled: !l.castShadow })
-        .on('change', () => {
+        .on('change', (ev) => {
           ortho.updateProjectionMatrix();
           const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
           if (helper?.camHelper) helper.camHelper.update();
+          const cam = l.shadow.camera as THREE.OrthographicCamera;
+          saveLightToLS(entityId, 'shadowCameraFrustum', [cam.left, cam.right, cam.top, ev.value]);
         });
     }
   }
@@ -742,11 +769,47 @@ const refreshLightShadows = async (light: THREE.Light, entityId: number, world: 
   updateLightsDebuggerGUI();
 };
 
-export const loadLightDebugData = (appId: string) => {
+export const loadLightDebugData = (appId?: string): LightEntityDebugState | undefined => {
+  if (!appId) return;
   const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
   const sceneId = getCurrentSceneId();
-  if (!sceneId || !currentData || !currentData[sceneId].lights[appId]) return {};
+  if (
+    !sceneId ||
+    !currentData ||
+    !currentData[sceneId] ||
+    !currentData[sceneId].lights ||
+    !currentData[sceneId].lights[appId]
+  ) {
+    return;
+  }
   return currentData[sceneId].lights[appId];
+};
+
+/** * Helper for saving specific light debug properties to LocalStorage.
+ * @param K - A generic extending the keys of the debug state.
+ * @param value - Automatically typed based on the key provided.
+ */
+const saveLightToLS = <K extends keyof LightEntityDebugState>(
+  entityId: number,
+  key: K,
+  value: LightEntityDebugState[K]
+) => {
+  const world = getECSWorld();
+  const sceneId = getCurrentSceneId();
+  const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
+  if (!sceneId || !appIdComp?.isFixed) return;
+  const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
+  if (!currentData[sceneId]) currentData[sceneId] = { lights: {}, globalHelpersVisible: false };
+  const appId = appIdComp.id;
+  if (!currentData[sceneId].lights[appId]) {
+    currentData[sceneId].lights[appId] = {
+      enabled: true,
+      helperVisible: false,
+      symbolVisible: true,
+    };
+  }
+  currentData[sceneId].lights[appId][key] = value;
+  lsSetItem(LS_LIGHTS_KEY, currentData);
 };
 
 ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
