@@ -3,12 +3,12 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 import { ECSWorld } from '../../ECS';
 import { getCanvasElem } from '../../Renderer';
-import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
 import { ECSSystemStage } from '../../../../AppECSRegistry';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
-import type { CameraDebugLSData, DebugCamLSProps } from '../../_CameraManager';
+import type { DebugCamLSProps } from '../../_CameraManager';
+import { getDebugCamProps, saveDebugCameraToLS, updateCamerasDebuggerGUI } from './_dbg__CameraGUI';
 
-const DEFAULT_DEBUG_CAM_PROPS: DebugCamLSProps = {
+export const DEFAULT_DEBUG_CAM_PROPS: DebugCamLSProps = {
   position: { x: 3, y: 3, z: 1.5 },
   target: { x: 0, y: 0, z: 0 },
   enabled: false,
@@ -18,9 +18,6 @@ const DEFAULT_DEBUG_CAM_PROPS: DebugCamLSProps = {
   far: 100000,
   zoom: 1,
 };
-
-const LS_KEY = 'AEK_debugCams';
-const scene = { id: '' };
 
 ECSWorld.registerPlugin((world) => {
   world.addSystem(ECSSystemStage.MAIN, 'debugCameraSystem', debugCameraSystem);
@@ -40,18 +37,11 @@ export const attachOrbitControls = (entityId: number, world: ECSWorld, sceneId: 
   controls.enabled = enabled;
   controls.update();
 
-  scene.id = sceneId;
-
   controls.addEventListener('end', () => {
-    const currentData = lsGetItem(LS_KEY, {});
-
-    currentData[scene.id].debugCam = {
-      ...currentData[scene.id].debugCam,
+    saveDebugCameraToLS({
       position: { x: obj.position.x, y: obj.position.y, z: obj.position.z },
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
-    };
-
-    lsSetItem(LS_KEY, currentData);
+    });
   });
 
   world.addComponent(entityId, ComponentType.ORBIT_CONTROLS, {
@@ -107,15 +97,9 @@ export const toggleDebugCamera = (
     setActiveCamera(gameCam);
   }
 
-  // --- Save active state to LocalStorage ---
-  if (scene.id) {
-    const currentData = lsGetItem(LS_KEY, {}) as CameraDebugLSData;
-    if (!currentData[scene.id]) {
-      currentData[scene.id] = { debugCam: { ...DEFAULT_DEBUG_CAM_PROPS }, cams: {} };
-    }
-    currentData[scene.id].debugCam.enabled = useDebug;
-    lsSetItem(LS_KEY, currentData);
-  }
+  saveDebugCameraToLS({ enabled: useDebug });
+
+  updateCamerasDebuggerGUI('LIST');
 };
 
 export const toggleOrbitControls = (world: ECSWorld, debugCamId: number, enabled: boolean) => {
@@ -123,15 +107,6 @@ export const toggleOrbitControls = (world: ECSWorld, debugCamId: number, enabled
   const controls = orbitComp?.controls;
   if (!controls) return;
   controls.enabled = enabled;
-};
-
-export const getDebugCamProps = (sceneId: string) => {
-  const saved = lsGetItem(LS_KEY, {}) as CameraDebugLSData;
-  const keys = Object.keys(saved);
-  if (!keys.includes(sceneId)) {
-    saved[sceneId] = { debugCam: { ...DEFAULT_DEBUG_CAM_PROPS }, cams: {} };
-  }
-  return saved[sceneId].debugCam || { ...DEFAULT_DEBUG_CAM_PROPS };
 };
 
 export const debugCamSceneChange = (newSceneId: string, world: ECSWorld) => {
@@ -144,8 +119,6 @@ export const debugCamSceneChange = (newSceneId: string, world: ECSWorld) => {
 
   const obj = objComp.value as THREE.PerspectiveCamera; // Type cast for lens access
   const controls = orbitComp.controls;
-
-  scene.id = newSceneId;
 
   // Fetch props (returns DEFAULT_DEBUG_CAM_PROPS if no LS data exists)
   const { position, target, enabled, fov, near, far, zoom } = getDebugCamProps(newSceneId);
@@ -181,11 +154,7 @@ export const debugCamSceneChange = (newSceneId: string, world: ECSWorld) => {
   }
 };
 
-export const setLatestAppCameraId = (sceneId: string, appId: string) => {
-  const currentData = lsGetItem(LS_KEY, {}) as CameraDebugLSData;
-  if (!currentData[sceneId]) {
-    currentData[sceneId] = { debugCam: { ...DEFAULT_DEBUG_CAM_PROPS }, cams: {} };
-  }
-  currentData[sceneId].debugCam.latestAppCameraId = appId;
-  lsSetItem(LS_KEY, currentData);
+export const setLatestAppCameraId = (appId: string) => {
+  saveDebugCameraToLS({ latestAppCameraId: appId });
+  updateCamerasDebuggerGUI('LIST');
 };

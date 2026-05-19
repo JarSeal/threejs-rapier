@@ -362,7 +362,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     });
 
     const shadowFolder = pane
-      .addFolder({ title: 'Shadow', expanded: uiState?._shadowFolderOpen })
+      .addFolder({ title: 'Shadow', expanded: uiState?._shadowFolderOpen || false })
       .on('fold', (ev) => saveLightToLS(entityId, '_shadowFolderOpen', ev.expanded));
 
     shadowFolder
@@ -463,7 +463,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     const camFolder = shadowFolder
       .addFolder({
         title: 'Shadow Camera',
-        expanded: uiState?._shadowCameraFolderOpen,
+        expanded: uiState?._shadowCameraFolderOpen || false,
       })
       .on('fold', (ev) => saveLightToLS(entityId, '_shadowCameraFolderOpen', ev.expanded));
 

@@ -40,12 +40,12 @@ export const sceneTestECS = async () =>
     });
     lookAtPoint(camId, { x: 0, y: 0, z: 0 });
 
-    inspectEntity(camId);
-
     createScene(SCENE_TEST_ECS_ID, {
       name: 'Test scene 1',
       isCurrentScene: true,
     });
+
+    // inspectEntity(camId);
 
     updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 

@@ -1,8 +1,9 @@
 import { useDebug } from '../utils/helpers';
+import { cameraDebugGUI } from './_CameraManager';
 import { debugGUI } from './_LightManager';
 import { IS_DEBUG_ENV } from './Config';
 
-type PropType = 'LIGHT';
+type PropType = 'LIGHT' | 'CAMERA';
 
 export interface LoadableProps {
   appId?: string;
@@ -39,5 +40,14 @@ const getSavedDebugProps = (appId: string, propType: PropType) => {
   switch (propType) {
     case 'LIGHT':
       return useDebug(debugGUI)?.loadLightDebugData(appId) || {};
+    case 'CAMERA':
+      // console.log(
+      //   'HERE',
+      //   appId,
+      //   cameraDebugGUI?.current,
+      //   Boolean(cameraDebugGUI?.current),
+      //   useDebug(cameraDebugGUI)?.loadCameraDebugData(appId)
+      // );
+      return useDebug(cameraDebugGUI)?.loadCameraDebugData(appId) || {};
   }
 };

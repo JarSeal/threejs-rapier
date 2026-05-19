@@ -8,6 +8,7 @@ import { ComponentType } from './ECS/ECSCoreComponents';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { addResizer } from './MainLoop';
 import { inspectEntity } from '../utils/ECSHelpers';
+import { loadPersistentProps } from './PropertyLoader';
 
 // --- STATE ---
 let activeCameraEntityId: number | null = null;
@@ -16,11 +17,11 @@ let debugCameraEntityId: number | null = null;
 
 type DebugCameraModule = typeof import('./Debug/Camera/_dbg__DebugCamera');
 type CameraHelpersModule = typeof import('./Debug/Camera/_dbg__CameraHelpers');
+type CameraGUIModule = typeof import('./Debug/Camera/_dbg__CameraGUI');
 
-// We load these at initDebugCamera, because loading them would break the app (these load before loadConfig() in InitApp)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export let cameraDebugGUI: DebugModuleRef<CameraGUIModule> | null = null;
+
 let debugHelpers: DebugModuleRef<CameraHelpersModule> | null = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let debugCamera: DebugModuleRef<DebugCameraModule> | null = null;
 
 const _m1 = new THREE.Matrix4();
@@ -29,7 +30,20 @@ const _v1 = new THREE.Vector3();
 export const registerCameraManager = () => {
   addResizer('cameraAspectResizer', updateAllCameraAspectRatios);
 
+  if (IS_DEBUG_ENV) {
+    cameraDebugGUI = loadDebugModule(() => import('./Debug/Camera/_dbg__CameraGUI'));
+
+    registerOnAllSceneEnterings('cameraDebugSync', () => {
+      const sceneId = getCurrentSceneId();
+      if (sceneId) {
+        syncCameraHelpersFromLS(sceneId, getECSWorld());
+        useDebug(cameraDebugGUI)?.initCameraDebuggerGUI();
+      }
+    });
+  }
+
   ECSWorld.registerComponentHooks(ComponentType.TAG_IS_CAMERA, {
+    onAddComponent: () => useDebug(cameraDebugGUI)?.updateCamerasDebuggerGUI('LIST'),
     onDeleteEntity: (entityId, world) => {
       if (activeCameraEntityId === entityId) {
         activeCameraEntityId = null;
@@ -46,16 +60,22 @@ export type CameraProps = {
   near?: number;
   far?: number;
   zoom?: number;
+  appId?: string;
+  position?: { x: number; y: number; z: number };
 } & ({ type: 'PERSPECTIVE'; fov?: number } | { type: 'ORTHOGRAPHIC'; frustumSize?: number });
 
 export const createCameraEntity = (
-  props: CameraProps,
+  camProps: CameraProps,
   entityOpts?: CoreEntityOpts,
   ecsWorld?: ECSWorld
 ): number => {
   const world = ecsWorld || getECSWorld();
   const rootScene = existsOrThrow(getRootScene(), 'No Scene for Camera.');
   const { aspect } = getWindowSize();
+
+  // Load light properties
+  const appId = camProps.appId || entityOpts?.appId;
+  const props = loadPersistentProps<CameraProps>({ ...camProps, appId }, 'CAMERA');
 
   let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
 
@@ -99,6 +119,16 @@ export const createCameraEntity = (
     setActiveCamera(entityId);
   }
 
+  const pos =
+    'position' in props && props.position
+      ? props.position
+      : { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+  camera.position.set(pos.x, pos.y, pos.z);
+
+  if ('position' in props && props.position) {
+    world.setTransform(entityId, { pos });
+  }
+
   useDebug(debugHelpers)?.attachCameraHelpers(entityId, camera, world, rootScene);
 
   return entityId;
@@ -128,13 +158,9 @@ export const setMainCamera = (world: ECSWorld, newMainId: number) => {
   const mainCams = world.getEntitiesWith(ComponentType.TAG_IS_MAIN_CAMERA);
   for (const oldId of mainCams) {
     world.removeComponent(oldId, ComponentType.TAG_IS_MAIN_CAMERA);
-    if (!isDebugCameraActive()) {
-      // world.setDisabled(oldId, true);
-    }
   }
   world.addComponent(newMainId, ComponentType.TAG_IS_MAIN_CAMERA, true);
   if (!isDebugCameraActive()) {
-    // world.setDisabled(newMainId, false);
     setActiveCamera(newMainId);
   }
 };
@@ -241,14 +267,7 @@ export const setCurrentCamera = (appId: string) => {
     if (data.id === appId) {
       // Physically disable old cameras and enable the new one
       setMainCamera(world, entityId);
-
-      if (IS_DEBUG_ENV) {
-        const sceneId = getCurrentSceneId();
-        if (sceneId) {
-          useDebug(debugCamera)?.setLatestAppCameraId(sceneId, appId);
-        }
-      }
-
+      useDebug(debugCamera)?.setLatestAppCameraId(appId);
       break;
     }
   }
@@ -294,8 +313,8 @@ export const initDebugCamera = async (world: ECSWorld) => {
   if (IS_DEBUG_ENV) {
     registerOnAllSceneEnterings('debugCamEnterSceneLogic', () => {
       const newSceneId = getCurrentSceneId();
-      const module = useDebug(debugCamera);
-      if (!module || !newSceneId) return;
+      const dubugCamModule = useDebug(debugCamera);
+      if (!dubugCamModule || !newSceneId) return;
 
       // If controls aren't attached yet (e.g. initial boot), attach them now.
       // This ensures the Canvas is ready and the correct Scene ID is used.
@@ -303,19 +322,19 @@ export const initDebugCamera = async (world: ECSWorld) => {
         debugCameraEntityId &&
         !world.hasComponent(debugCameraEntityId, ComponentType.ORBIT_CONTROLS)
       ) {
-        module.attachOrbitControls(debugCameraEntityId, world, newSceneId);
+        dubugCamModule.attachOrbitControls(debugCameraEntityId, world, newSceneId);
       }
 
-      module.debugCamSceneChange(newSceneId, world);
-      const props = module.getDebugCamProps(newSceneId);
+      dubugCamModule.debugCamSceneChange(newSceneId, world);
+      const props = useDebug(cameraDebugGUI)?.getDebugCamProps(newSceneId);
 
-      if (props.latestAppCameraId) {
+      if (props?.latestAppCameraId) {
         setCurrentCamera(props.latestAppCameraId);
       }
 
       syncCameraHelpersFromLS(newSceneId, world);
 
-      toggleDebugCamera(world, props.enabled);
+      toggleDebugCamera(world, props?.enabled || false);
     });
 
     debugCameraEntityId = createCameraEntity(
@@ -359,7 +378,7 @@ export const toggleAllCameraHelpers = (show?: boolean) => {
 
   const currentData = lsGetItem(LS_KEY, {}) as CameraDebugLSData;
   if (!currentData[sceneId]) {
-    const debugProps = useDebug(debugCamera)?.getDebugCamProps(sceneId) || {
+    const debugProps = useDebug(cameraDebugGUI)?.getDebugCamProps(sceneId) || {
       enabled: false,
       fov: 60,
       near: 0.1,
