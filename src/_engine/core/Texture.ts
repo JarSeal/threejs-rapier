@@ -3,7 +3,7 @@ import { lerror, lwarn } from '../utils/Logger';
 import { HDRLoader } from 'three/examples/jsm/Addons.js';
 import { isHDR } from '../utils/helpers';
 
-type TexOpts = {
+export type TexOpts = {
   image?: TexImageSource | OffscreenCanvas;
   mapping?: THREE.Mapping;
   wrapS?: THREE.Wrapping;
@@ -14,6 +14,16 @@ type TexOpts = {
   type?: THREE.TextureDataType;
   anisotropy?: number;
   colorSpace?: THREE.ColorSpace;
+};
+
+export type TextureProps = {
+  id?: string;
+  fileName?: string | string[];
+  path?: string;
+  useHDRLoader?: boolean;
+  texOpts?: TexOpts;
+  throwOnError?: boolean;
+  debugData?: { name?: string; description?: string };
 };
 
 const textures: { [id: string]: THREE.Texture } = {};
@@ -234,14 +244,7 @@ export const loadTextureAsync = async ({
   useHDRLoader,
   texOpts,
   throwOnError,
-}: {
-  id?: string;
-  fileName?: string | string[];
-  path?: string;
-  useHDRLoader?: boolean;
-  texOpts?: TexOpts;
-  throwOnError?: boolean;
-}) => {
+}: TextureProps) => {
   if (id && textures[id]) return textures[id];
 
   if (!fileName) return getNoFileTexture(texOpts);

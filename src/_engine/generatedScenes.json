@@ -1,0 +1,282 @@
+{
+  "scenes": {
+    "oneMoreScene": {
+      "id": "oneMoreScene",
+      "sceneFile": "./oneMoreScene",
+      "name": "One More Scene",
+      "cameras": {
+        "camProps": {
+          "type": "PERSPECTIVE",
+          "fov": 90,
+          "active": true
+        },
+        "entityOpts": {
+          "debugData": {
+            "name": "_camera",
+            "description": "Auto-generated camera for the scene"
+          }
+        }
+      }
+    },
+    "sceneTestECS": {
+      "id": "sceneTestECS",
+      "sceneFile": "./testECS.ts",
+      "isStartScene": true,
+      "name": "ECS test scene",
+      "description": "",
+      "cameras": [
+        {
+          "camProps": {
+            "type": "PERSPECTIVE",
+            "fov": 90,
+            "active": true,
+            "position": {
+              "x": 10,
+              "y": 5,
+              "z": 20
+            }
+          },
+          "entityOpts": {
+            "appId": "mainCamera",
+            "debugData": {
+              "name": "Main camera",
+              "description": "Main application camera"
+            },
+            "persistent": true
+          }
+        },
+        {
+          "camProps": {
+            "type": "PERSPECTIVE",
+            "fov": 90,
+            "active": false
+          },
+          "entityOpts": {
+            "appId": "testing",
+            "debugData": {
+              "description": "Main application camera 2"
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.567
+          },
+          "entityOpts": {
+            "appId": "ambientLight",
+            "debugData": {
+              "name": "Ambient light",
+              "description": "The ambient light for the scene. It colors everything in the scene (except skyboxes and basic materials) whether you like it or not. This is what next gen games is all about."
+            }
+          }
+        }
+      ],
+      "geometries": [
+        {
+          "id": "testSphere",
+          "type": "SPHERE",
+          "params": {
+            "radius": 0.6,
+            "widthSegments": 32,
+            "heightSegments": 32
+          }
+        },
+        {
+          "id": "otherTestBox",
+          "type": "BOX"
+        }
+      ],
+      "textures": [
+        {
+          "id": "testTexture",
+          "fileName": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
+          "useHDRLoader": true
+        }
+      ],
+      "materials": [
+        {
+          "id": "testMaterial",
+          "type": "PHONG",
+          "params": {
+            "map": "testTexture",
+            "wireframe": false
+          }
+        }
+      ],
+      "primitiveMeshes": [
+        {
+          "id": "testPrimitive",
+          "geo": "testGeometry",
+          "mat": "testMaterial",
+          "castShadow": false,
+          "receiveShadow": true
+        }
+      ],
+      "meshes": [],
+      "skyboxes": []
+    }
+  },
+  "cameras": {
+    "mainCamera": {
+      "camProps": {
+        "type": "PERSPECTIVE",
+        "fov": 90,
+        "active": true
+      },
+      "entityOpts": {
+        "appId": "mainCamera",
+        "debugData": {
+          "name": "Main camera",
+          "description": "Main application camera"
+        },
+        "persistent": true
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "position": {
+              "x": 10,
+              "y": 5,
+              "z": 20
+            }
+          }
+        ]
+      },
+      "__sourcePath": "src/app/cameras/mainCamera.camera.json"
+    },
+    "testing": {
+      "camProps": {
+        "type": "PERSPECTIVE",
+        "fov": 90,
+        "active": false
+      },
+      "entityOpts": {
+        "appId": "testing",
+        "debugData": {
+          "description": "Main application camera 2"
+        }
+      },
+      "__sourcePath": "src/app/cameras/testing.camera.json"
+    }
+  },
+  "lights": {
+    "ambientLight": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#ffffff",
+        "intensity": 0.5
+      },
+      "entityOpts": {
+        "appId": "ambientLight",
+        "debugData": {
+          "name": "Ambient light",
+          "description": "The ambient light for the scene. It colors everything in the scene (except skyboxes and basic materials) whether you like it or not. This is what next gen games is all about."
+        }
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "data": 1779449688109
+            },
+            "intensity": 0.567
+          }
+        ]
+      },
+      "__sourcePath": "src/app/lights/ambientLight.light.json"
+    }
+  },
+  "geometries": {
+    "testSphere": {
+      "id": "testSphere",
+      "type": "SPHERE",
+      "params": {
+        "radius": 0.5,
+        "widthSegments": 32,
+        "heightSegments": 32
+      },
+      "debugData": {
+        "name": "Test Sphere",
+        "description": "THis is a test sphere"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "radius": 0.6
+          }
+        ]
+      },
+      "__sourcePath": "src/app/geometries/testSphere.geometry.json"
+    }
+  },
+  "textures": {
+    "testTexture": {
+      "id": "testTexture",
+      "fileName": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
+      "useHDRLoader": false,
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "useHDRLoader": true
+          }
+        ]
+      },
+      "__sourcePath": "src/app/textures/testTexture.texture.json"
+    }
+  },
+  "materials": {
+    "testMaterial": {
+      "id": "testMaterial",
+      "type": "PHONG",
+      "params": {
+        "map": "testTexture"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "wireframe": false
+          }
+        ]
+      },
+      "__sourcePath": "src/app/materials/testMaterial.material.json"
+    }
+  },
+  "primitiveMeshes": {
+    "testPrimitive": {
+      "id": "testPrimitive",
+      "geo": "testGeometry",
+      "mat": "testMaterial",
+      "castShadow": true,
+      "receiveShadow": true,
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "castShadow": false
+          }
+        ]
+      },
+      "__sourcePath": "src/app/primitiveMeshes/testPrimitive.primitiveMesh.json"
+    }
+  },
+  "meshes": {},
+  "skyboxes": {}
+}

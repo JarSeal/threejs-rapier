@@ -1,6 +1,23 @@
 import { defineConfig } from 'vite';
 import wasm from 'vite-plugin-wasm';
 import pkg from './package.json';
+// @ts-expect-error - Standalone JS script lacks type declarations
+import { gatherSceneData, OUTPUT_FILE_DATA, OUTPUT_FILE_FN } from './devTools/gatherSceneData.js';
+
+// --- Custom Vite Plugin for gathering scene data ---
+const sceneGathererPlugin = () => ({
+  name: 'vite-plugin-scene-gatherer',
+
+  // Fires on dev mode whenever ANY file is saved
+  handleHotUpdate({ file }: { file: string }) {
+    // CRITICAL SAFEGUARD: Do not re-run if the file that changed is our own output file.
+    // Otherwise, writing the file will trigger an infinite compilation loop.
+    if (file === OUTPUT_FILE_DATA || file === OUTPUT_FILE_FN) return;
+
+    // Re-gather data on any file modification
+    gatherSceneData();
+  },
+});
 
 const createVersionHash = (inputString: string) => {
   let hash = 5381; // Starting seed
@@ -88,6 +105,7 @@ export default defineConfig({
   },
   plugins: [
     wasm(),
+    sceneGathererPlugin(),
     {
       name: 'html-transform',
       transformIndexHtml(html) {

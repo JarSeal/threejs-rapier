@@ -1,0 +1,15 @@
+{
+  "id": "testMaterial",
+  "type": "PHONG",
+  "params": {
+    "map": "testTexture"
+  },
+  "__saveData": {
+    "sceneTestECS": [
+      {
+        "__meta": { "date": 1779449688109 },
+        "wireframe": false
+      }
+    ]
+  }
+}

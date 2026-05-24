@@ -7,7 +7,7 @@ import { getECSWorld } from '../_engine/core/ECS';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
 import { createCameraEntity, setMainCamera } from '../_engine/core/_CameraManager';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
-import { inspectEntity, lookAtPoint } from '../_engine/utils/ECSHelpers';
+import { lookAtPoint } from '../_engine/utils/ECSHelpers';
 import { createLightEntity } from '../_engine/core/_LightManager';
 
 export const SCENE_TEST_ECS_ID = 'sceneTestECS';

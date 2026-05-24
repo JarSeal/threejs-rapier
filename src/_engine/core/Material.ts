@@ -61,7 +61,7 @@ export const textureMapKeys = [
   'transmissionMap',
 ];
 
-export type MatProps = { id?: string } & (
+export type MatProps = { id?: string; debugData?: { name?: string; description?: string } } & (
   | { type: 'LINEBASIC'; params: THREE.LineBasicMaterialParameters }
   | { type: 'LINEDASHED'; params: THREE.LineDashedMaterialParameters }
   | { type: 'BASIC'; params: THREE.MeshBasicMaterialParameters }

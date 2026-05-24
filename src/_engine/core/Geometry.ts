@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 
 const geometries: { [id: string]: THREE.BufferGeometry } = {};
 
-export type GeoProps = { id?: string } & (
+export type GeoProps = { id?: string; debugData?: { name?: string; description?: string } } & (
   | {
       type: 'BOX';
       params?: {

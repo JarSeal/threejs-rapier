@@ -23,6 +23,7 @@ export type MeshProps = {
   phy?: PhysicsParams & { sceneId?: string; noWarnForUnitializedScene?: boolean };
   castShadow?: boolean;
   receiveShadow?: boolean;
+  debugData?: { name?: string; description?: string };
 };
 
 /**

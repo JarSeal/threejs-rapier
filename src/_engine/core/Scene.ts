@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { deleteMesh } from './Mesh';
-import { deleteGeometry } from './Geometry';
-import { deleteMaterial } from './Material';
+import { deleteMesh, MeshProps } from './Mesh';
+import { deleteGeometry, GeoProps } from './Geometry';
+import { deleteMaterial, MatProps } from './Material';
 import { deleteGroup } from './Group';
 import { lerror, lwarn } from '../utils/Logger';
-import { deleteTexture } from './Texture';
+import { deleteTexture, TextureProps } from './Texture';
 import {
   deleteAllScenePhysicsLoopers,
   deletePhysicsObjectsBySceneId,
@@ -19,8 +19,36 @@ import {
 } from '../debug/DebugTools';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
+import { CameraProps } from './_CameraManager';
+import { CoreEntityOpts } from './ECS';
+import { LightProps } from './_LightManager';
+import { ImportModelParams } from './ImportModel';
+import { SkyBoxProps } from './SkyBox';
 
 export type Looper = (delta: number) => void;
+
+export type SceneData = {
+  id: string;
+  isStartScene?: boolean;
+  name?: string;
+  description?: string;
+  // comments?: Comment[];
+  // todo?: Todo[];
+  cameras: (
+    | {
+        camProps: CameraProps;
+        entityOpts?: CoreEntityOpts;
+      }
+    | string
+  )[];
+  lights?: ({ lightProps: LightProps; entityOpts?: CoreEntityOpts } | string)[];
+  geometries?: (GeoProps | string)[];
+  textures?: (TextureProps | string)[];
+  materials?: (MatProps | string)[];
+  meshes?: (MeshProps | string)[];
+  importMeshes?: (ImportModelParams | string)[];
+  skyboxes?: (SkyBoxProps | string)[];
+};
 
 const scenes: { [id: string]: THREE.Group } = {};
 const sceneOpts: { [id: string]: SceneOptions } = {};

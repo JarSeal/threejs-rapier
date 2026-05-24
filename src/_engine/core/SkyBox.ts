@@ -18,7 +18,7 @@ import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 
-type SkyBoxProps = {
+export type SkyBoxProps = {
   id: string;
   name?: string;
   isCurrent?: boolean; // Default is true

@@ -1,0 +1,15 @@
+{
+  "id": "sceneTestECS",
+  "sceneFile": "./testECS.ts",
+  "isStartScene": true,
+  "name": "ECS test scene",
+  "description": "",
+  "cameras": ["mainCamera", "testing"],
+  "lights": ["ambientLight"],
+  "geometries": ["testSphere", { "id": "otherTestBox", "type": "BOX" }],
+  "textures": ["testTexture"],
+  "materials": ["testMaterial"],
+  "primitiveMeshes": ["testPrimitive"],
+  "meshes": [],
+  "skyboxes": []
+}
