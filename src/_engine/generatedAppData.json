@@ -1,5 +1,22 @@
 {
   "scenes": {
+    "testDebugScene": {
+      "id": "testDebugScene",
+      "isDebugScene": true,
+      "cameras": {
+        "camProps": {
+          "type": "PERSPECTIVE",
+          "fov": 90,
+          "active": true
+        },
+        "entityOpts": {
+          "debugData": {
+            "name": "_camera",
+            "description": "Auto-generated camera for the scene"
+          }
+        }
+      }
+    },
     "oneMoreScene": {
       "id": "oneMoreScene",
       "sceneFile": "./oneMoreScene",
@@ -23,7 +40,7 @@
       "sceneFile": "./testECS.ts",
       "isStartScene": true,
       "name": "ECS test scene",
-      "description": "",
+      "description": "This is a ECS test scene.",
       "cameras": [
         {
           "camProps": {
@@ -43,19 +60,6 @@
               "description": "Main application camera"
             },
             "persistent": true
-          }
-        },
-        {
-          "camProps": {
-            "type": "PERSPECTIVE",
-            "fov": 90,
-            "active": false
-          },
-          "entityOpts": {
-            "appId": "testing",
-            "debugData": {
-              "description": "Main application camera 2"
-            }
           }
         }
       ],
@@ -116,8 +120,26 @@
           "receiveShadow": true
         }
       ],
-      "meshes": [],
-      "skyboxes": []
+      "meshes": [
+        {
+          "id": "testImportMesh",
+          "fileName": "/debugger/assets/testModels/box01.glb",
+          "importGroup": false,
+          "allMeshesVisible": true
+        }
+      ],
+      "skyboxes": [
+        {
+          "id": "basicSkybox",
+          "type": "EQUIRECTANGULAR",
+          "isCurrent": false,
+          "params": {
+            "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
+            "textureId": "equiRectEmptyId",
+            "colorSpace": ""
+          }
+        }
+      ]
     }
   },
   "cameras": {
@@ -255,6 +277,28 @@
         ]
       },
       "__sourcePath": "src/app/materials/testMaterial.material.json"
+    },
+    "testTslMat": {
+      "id": "testTslMat",
+      "tslFile": "materials/testTslMat.tsl.ts",
+      "uniforms": {
+        "color": "#8b2500",
+        "roughness": 0.6
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "uniforms": {
+              "color": "#ff0000",
+              "roughness": 0.6
+            }
+          }
+        ]
+      },
+      "__sourcePath": "src/app/materials/testTslMat.material.json"
     }
   },
   "primitiveMeshes": {
@@ -277,6 +321,45 @@
       "__sourcePath": "src/app/primitiveMeshes/testPrimitive.primitiveMesh.json"
     }
   },
-  "meshes": {},
-  "skyboxes": {}
+  "meshes": {
+    "testImportMesh": {
+      "id": "testImportMesh",
+      "fileName": "/debugger/assets/testModels/box01.glb",
+      "importGroup": true,
+      "allMeshesVisible": true,
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "importGroup": false
+          }
+        ]
+      },
+      "__sourcePath": "src/app/meshes/testImport.mesh.json"
+    }
+  },
+  "skyboxes": {
+    "basicSkybox": {
+      "id": "basicSkybox",
+      "type": "EQUIRECTANGULAR",
+      "params": {
+        "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
+        "textureId": "equiRectEmptyId",
+        "colorSpace": "srgb"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "colorSpace": ""
+          }
+        ]
+      },
+      "__sourcePath": "src/app/skyboxes/basicSkybox.skybox.json"
+    }
+  }
 }

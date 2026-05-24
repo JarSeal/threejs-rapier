@@ -51,7 +51,6 @@ export const sceneTestECS = async () =>
 
     await createSkyBox({
       id: 'stylizedSunsetEquiRect',
-      name: 'Stylized Sunset EquiRect 4K',
       type: 'EQUIRECTANGULAR',
       params: {
         file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_41_4k.png',

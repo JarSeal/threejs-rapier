@@ -1,0 +1,16 @@
+{
+  "id": "testImportMesh",
+  "fileName": "/debugger/assets/testModels/box01.glb",
+  "importGroup": true,
+  "allMeshesVisible": true,
+  "__saveData": {
+    "sceneTestECS": [
+      {
+        "__meta": {
+          "date": 1779449688109
+        },
+        "importGroup": false
+      }
+    ]
+  }
+}

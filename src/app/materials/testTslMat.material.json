@@ -1,0 +1,19 @@
+{
+  "id": "testTslMat",
+  "tslFile": "materials/testTslMat.tsl.ts",
+  "uniforms": {
+    "color": "#8b2500",
+    "roughness": 0.6
+  },
+  "__saveData": {
+    "sceneTestECS": [
+      {
+        "__meta": { "date": 1779449688109 },
+        "uniforms": {
+          "color": "#ff0000",
+          "roughness": 0.6
+        }
+      }
+    ]
+  }
+}

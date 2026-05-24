@@ -26,7 +26,6 @@ export type AdditionalImportPhysicsParams = {
 export type ImportModelParams = {
   fileName: string;
   id?: string;
-  name?: string;
   importGroup?: boolean;
   allMeshesVisible?: boolean;
   groupId?: string;
@@ -34,6 +33,7 @@ export type ImportModelParams = {
   meshIndex?: number | number[];
   throwOnError?: boolean;
   saveMaterial?: boolean;
+  debugData?: { name?: string; description?: string };
 
   /** These physics params will override the imported custom params or then just
    * create a physics object out of the object if no import custom params are
@@ -295,7 +295,7 @@ export const importModelAsync = async (params: ImportModelParams): Promise<Impor
     // @TODO: add a debugger rule here to console.log the gltf
     modelGroup = createGroup({
       id: params.groupId || params.id,
-      name: params.groupName || params.name,
+      name: params.groupName || params.debugData?.name,
     });
     // Check if the first and only child is an empty object and import the children
     if (gltf?.scene?.children.length === 1 && isOnlyObject3D(gltf.scene.children[0])) {
@@ -798,7 +798,7 @@ const getRigidParamsAndChildColliders = (
     ] as PhysicsParams[],
     meshOrMeshId: [] as (THREE.Mesh | string) | (THREE.Mesh | string)[],
     id: params.id || rigidParams.id || rigidMeshId,
-    name: params.name || rigidParams.name,
+    name: params.debugData?.name || rigidParams.name,
     isCompoundObject: Boolean(restOfColliderParams.length),
   };
   if (!physParamsObj.physicsParams[0].collider) return null;

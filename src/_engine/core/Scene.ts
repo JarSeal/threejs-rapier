@@ -30,6 +30,7 @@ export type Looper = (delta: number) => void;
 export type SceneData = {
   id: string;
   isStartScene?: boolean;
+  isDebugScene?: boolean;
   name?: string;
   description?: string;
   // comments?: Comment[];
@@ -45,8 +46,8 @@ export type SceneData = {
   geometries?: (GeoProps | string)[];
   textures?: (TextureProps | string)[];
   materials?: (MatProps | string)[];
-  meshes?: (MeshProps | string)[];
-  importMeshes?: (ImportModelParams | string)[];
+  primitiveMeshes?: (MeshProps | string)[];
+  meshes?: (ImportModelParams | string)[];
   skyboxes?: (SkyBoxProps | string)[];
 };
 

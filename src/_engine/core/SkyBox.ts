@@ -20,9 +20,9 @@ import { getSvgIcon } from './UI/icons/SvgIcon';
 
 export type SkyBoxProps = {
   id: string;
-  name?: string;
   isCurrent?: boolean; // Default is true
   sceneId?: string;
+  debugData?: { name?: string; description?: string };
 } & (
   | {
       type: '';
@@ -124,7 +124,7 @@ let debugSkyBoxUIState = {
  * @param doNotUpdateDebuggerSceneDefault (boolean) optional flag to be used only within the sky box debugger
  */
 export const createSkyBox = async (
-  { id, name, sceneId, isCurrent, type, params }: SkyBoxProps,
+  { id, sceneId, isCurrent, type, params, debugData }: SkyBoxProps,
   doNotUpdateDebuggerSceneDefault?: boolean // This is to keep the [*default] indicator in the debugger listings when the debugger changes the sky box
 ) => {
   const renderer = getRenderer();
@@ -346,7 +346,7 @@ export const createSkyBox = async (
   allSkyBoxStates[givenOrCurrentSceneId][id] = {
     ...defaultSkyBoxState,
     ...skyBoxStateToBeAdded,
-    name,
+    name: debugData?.name,
   };
 
   if (skyBoxStateToBeAdded.isCurrent) {
@@ -602,9 +602,9 @@ export const createSkyBoxDebugGUI = () => {
         {
           ...extractSkyBoxParamsFromState(sbState),
           id,
-          name: sbState.name,
           sceneId: getCurSceneSkyBoxSceneId(),
           isCurrent: true,
+          ...(sbState?.name ? { debugData: { name: sbState.name } } : {}),
         },
         true
       );

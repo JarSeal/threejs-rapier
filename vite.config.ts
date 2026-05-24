@@ -1,21 +1,29 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type ViteDevServer } from 'vite';
 import wasm from 'vite-plugin-wasm';
 import pkg from './package.json';
-// @ts-expect-error - Standalone JS script lacks type declarations
-import { gatherSceneData, OUTPUT_FILE_DATA, OUTPUT_FILE_FN } from './devTools/gatherSceneData.js';
+import {
+  gatherSceneData,
+  isFilePathValid,
+  OUTPUT_FILE_DATA,
+  OUTPUT_FILE_FN,
+  // @ts-expect-error - Standalone JS script lacks type declarations
+} from './devTools/gatherAppData.js';
 
 // --- Custom Vite Plugin for gathering scene data ---
 const sceneGathererPlugin = () => ({
   name: 'vite-plugin-scene-gatherer',
+  configureServer(server: ViteDevServer) {
+    const handleFileEvent = (filePath: string) => {
+      if (filePath === OUTPUT_FILE_DATA || filePath === OUTPUT_FILE_FN) return;
 
-  // Fires on dev mode whenever ANY file is saved
-  handleHotUpdate({ file }: { file: string }) {
-    // CRITICAL SAFEGUARD: Do not re-run if the file that changed is our own output file.
-    // Otherwise, writing the file will trigger an infinite compilation loop.
-    if (file === OUTPUT_FILE_DATA || file === OUTPUT_FILE_FN) return;
-
-    // Re-gather data on any file modification
-    gatherSceneData();
+      if (isFilePathValid(filePath)) {
+        gatherSceneData();
+        server.hot.send({ type: 'full-reload' });
+      }
+    };
+    server.watcher.on('add', handleFileEvent); // Catches: New files created or moved into src
+    server.watcher.on('change', handleFileEvent); // Catches: Standard manual file saves
+    server.watcher.on('unlink', handleFileEvent); // Catches: Files deleted or moved out/renamed
   },
 });
 

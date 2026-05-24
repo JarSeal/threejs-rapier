@@ -1,0 +1,19 @@
+{
+  "id": "basicSkybox",
+  "type": "EQUIRECTANGULAR",
+  "params": {
+    "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
+    "textureId": "equiRectEmptyId",
+    "colorSpace": "srgb"
+  },
+  "__saveData": {
+    "sceneTestECS": [
+      {
+        "__meta": {
+          "date": 1779449688109
+        },
+        "colorSpace": ""
+      }
+    ]
+  }
+}

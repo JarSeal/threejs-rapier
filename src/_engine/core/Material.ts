@@ -61,7 +61,11 @@ export const textureMapKeys = [
   'transmissionMap',
 ];
 
-export type MatProps = { id?: string; debugData?: { name?: string; description?: string } } & (
+export type MatProps = {
+  id?: string;
+  debugData?: { name?: string; description?: string };
+} & (
+  | { tslFile?: string; uniforms: { [key: string]: unknown } }
   | { type: 'LINEBASIC'; params: THREE.LineBasicMaterialParameters }
   | { type: 'LINEDASHED'; params: THREE.LineDashedMaterialParameters }
   | { type: 'BASIC'; params: THREE.MeshBasicMaterialParameters }
@@ -106,7 +110,18 @@ export const decMaterialRef = (id: string) => {
  * @param params ({@link MatProps.params}) optional material params, the params props depends on the type of the material.
  * @returns Three.js material {@link Materials}
  */
-export const createMaterial = ({ id, type, params }: MatProps) => {
+export const createMaterial = (props: MatProps) => {
+  if ('tslFile' in props && props.tslFile) {
+    // Throw temp error
+    throw new Error('Under construction');
+  }
+  if (!('type' in props)) throw new Error('No type found for material.');
+  if (!('params' in props)) throw new Error('No params found for material.');
+
+  const id = props.id;
+  const type = props.type;
+  const params = props.params;
+
   let mat: Materials | null = null;
 
   if (id && materials[id]) return materials[id];

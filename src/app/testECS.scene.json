@@ -3,13 +3,13 @@
   "sceneFile": "./testECS.ts",
   "isStartScene": true,
   "name": "ECS test scene",
-  "description": "",
-  "cameras": ["mainCamera", "testing"],
+  "description": "This is a ECS test scene.",
+  "cameras": ["mainCamera"],
   "lights": ["ambientLight"],
   "geometries": ["testSphere", { "id": "otherTestBox", "type": "BOX" }],
   "textures": ["testTexture"],
   "materials": ["testMaterial"],
   "primitiveMeshes": ["testPrimitive"],
-  "meshes": [],
-  "skyboxes": []
+  "meshes": ["testImportMesh"],
+  "skyboxes": ["basicSkybox"]
 }
