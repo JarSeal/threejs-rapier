@@ -37,7 +37,7 @@ export type SkyBoxProps = {
         /** Default is THREE.SRGBColorSpace */
         colorSpace?: THREE.ColorSpace;
         roughness?: number;
-        // @TODO: check if equiTextRotate can be added (just rotate)
+        // @TODO: check if equiTextRotate can be added (just use prop name rotate)
       };
     }
   | {
@@ -49,7 +49,7 @@ export type SkyBoxProps = {
         /** Default is THREE.SRGBColorSpace */
         colorSpace?: THREE.ColorSpace;
         roughness?: number;
-        cubeTextRotate?: number; // @TODO: change this to just rotate
+        cubeTextRotate?: number; // @TODO: change this to just prop name rotate
         flipY?: boolean;
       };
     }

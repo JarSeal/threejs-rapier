@@ -17,8 +17,19 @@ const sceneGathererPlugin = () => ({
       if (filePath === OUTPUT_FILE_DATA || filePath === OUTPUT_FILE_FN) return;
 
       if (isFilePathValid(filePath)) {
-        gatherSceneData();
-        server.hot.send({ type: 'full-reload' });
+        const isSuccess = gatherSceneData();
+        if (isSuccess) {
+          server.hot.send({ type: 'full-reload' });
+        } else {
+          server.ws.send({
+            type: 'error',
+            err: {
+              message: '[Scene Pipeline Error] Consolidation Failed',
+              stack: 'Check your backend terminal terminal console for tracking logs.',
+              plugin: 'vite-plugin-scene-gatherer',
+            },
+          });
+        }
       }
     };
     server.watcher.on('add', handleFileEvent); // Catches: New files created or moved into src

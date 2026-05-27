@@ -25,22 +25,21 @@ import { LightProps } from './_LightManager';
 import { ImportModelParams } from './ImportModel';
 import { SkyBoxProps } from './SkyBox';
 import generatedAppData from '../generatedAppData.json';
-import { getHUDRootCMP } from './HUD';
 
 export type Looper = (delta: number) => void;
 
 export type SceneData = {
   id: string;
-  isStartScene?: boolean;
+  sceneFile: string;
   isDebugScene?: boolean;
-  background?: string;
-  backgroundColor?: string | number;
-  backgroundTexture?: string;
+  background?: string; // @TODO
+  backgroundColor?: string | number; // @TODO
+  backgroundTexture?: string; // @TODO
   name?: string;
   description?: string;
   // comments?: Comment[];
   // todo?: Todo[];
-  cameras: (
+  cameras?: (
     | {
         camProps: CameraProps;
         entityOpts?: CoreEntityOpts;
@@ -51,7 +50,7 @@ export type SceneData = {
   geometries?: (GeoProps | string)[];
   textures?: (TextureProps | string)[];
   materials?: (MatProps | string)[];
-  primitiveMeshes?: (MeshProps | string)[];
+  primitiveMeshes?: (MeshProps | string)[]; // @CHORE: remove this (also from scene gatherer)!
   meshes?: (ImportModelParams | string)[];
   skyboxes?: (SkyBoxProps | string)[];
 };
@@ -106,7 +105,9 @@ export const createScene = (id: string, opts?: SceneOptions) => {
 
   addSceneToDebugtools(id);
 
-  if (opts?.isCurrentScene || !currentSceneId) setCurrentScene(id);
+  // @TODO: remove this old implementation that is kept for just in case...
+  // if (opts?.isCurrentScene || !currentSceneId) setCurrentScene(id);
+  if (opts?.isCurrentScene) setCurrentScene(id);
 
   if (opts?.mainLoopers) sceneMainLoopers[id] = opts.mainLoopers;
   if (opts?.mainLateLoopers) sceneMainLateLoopers[id] = opts.mainLateLoopers;
@@ -713,9 +714,13 @@ export const runOnAllSceneExits = () => {
     if (fn) fn();
   }
 };
-
 // @TODO: add deletion methods for all these registers
+
 export const getGeneratedAppData = () => generatedAppData;
+export const getGeneratedSceneData = (sceneId: string) =>
+  getGeneratedAppData().scenes[sceneId as keyof typeof generatedAppData.scenes] as unknown as
+    | SceneData
+    | undefined;
 
 /** Registers (creates) the scenes at initEngine (initApp). */
 export const registerScenesFromGeneratedData = () => {
@@ -728,11 +733,6 @@ export const registerScenesFromGeneratedData = () => {
     createScene(sceneId, {
       name: sceneData.name,
       description: sceneData.description,
-      isCurrentScene: sceneData.isStartScene || false,
     });
   }
-};
-
-export const getStartScene = () => {
-  // @TODO
 };

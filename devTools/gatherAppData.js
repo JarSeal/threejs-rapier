@@ -10,26 +10,28 @@ export const OUTPUT_FILE_DATA = path.resolve(
   `../src/_engine/${generatedAppDataJSONFilename}`
 );
 export const OUTPUT_FILE_FN = path.resolve(__dirname, `../src/_engine/${generatedAppFnsFilename}`);
-const SCENE_JSON_ENDING_SIGNATURE = '.scene.json';
-const CAMERA_JSON_ENDING_SIGNATURE = '.camera.json';
-const LIGHT_JSON_ENDING_SIGNATURE = '.light.json';
-const GEOMETRY_JSON_ENDING_SIGNATURE = '.geometry.json';
-const TEXTURE_JSON_ENDING_SIGNATURE = '.texture.json';
-const MATERIAL_JSON_ENDING_SIGNATURE = '.material.json';
-const PRIMITIVE_MESH_JSON_ENDING_SIGNATURE = '.primitiveMesh.json';
-const MESH_JSON_ENDING_SIGNATURE = '.mesh.json';
-const SKYBOX_JSON_ENDING_SIGNATURE = '.skybox.json';
 
-export const isFilePathValid = (filePath) =>
-  filePath.endsWith(SCENE_JSON_ENDING_SIGNATURE) ||
-  filePath.endsWith(CAMERA_JSON_ENDING_SIGNATURE) ||
-  filePath.endsWith(LIGHT_JSON_ENDING_SIGNATURE) ||
-  filePath.endsWith(GEOMETRY_JSON_ENDING_SIGNATURE) ||
-  filePath.endsWith(TEXTURE_JSON_ENDING_SIGNATURE) ||
-  filePath.endsWith(MATERIAL_JSON_ENDING_SIGNATURE) ||
-  filePath.endsWith(PRIMITIVE_MESH_JSON_ENDING_SIGNATURE) ||
-  filePath.endsWith(MESH_JSON_ENDING_SIGNATURE) ||
-  filePath.endsWith(SKYBOX_JSON_ENDING_SIGNATURE);
+const JSON_ENDING_SIGNATURES = {
+  scene: '.scene.json',
+  camera: '.camera.json',
+  light: '.light.json',
+  geometry: '.geometry.json',
+  texture: '.texture.json',
+  material: '.material.json',
+  primitiveMesh: '.primitiveMesh.json',
+  mesh: '.mesh.json',
+  skybox: '.skybox.json',
+  // physicsObjects: '.physObj.json',
+  // postFx: '.postFx.json',
+};
+
+export const isFilePathValid = (filePath) => {
+  const keys = Object.keys(JSON_ENDING_SIGNATURES);
+  for (let i = 0; i < keys.length; i++) {
+    if (filePath.endsWith(JSON_ENDING_SIGNATURES[keys[i]])) return true;
+  }
+  return false;
+};
 
 export const getBasePath = (fullPath) => {
   const splitPath = fullPath.split('/src/');
@@ -40,6 +42,7 @@ export const getBasePath = (fullPath) => {
 
 export const gatherSceneData = () => {
   const isProduction = process.env.NODE_ENV === 'production';
+  let hasError = false;
 
   const srcDir = path.resolve(__dirname, '../src');
   const combinedData = {
@@ -53,6 +56,7 @@ export const gatherSceneData = () => {
     meshes: {},
     skyboxes: {},
     // physicsObjects: {},
+    // postFx: {},
   };
   let sceneFileImports = `// THIS IS AN AUTO-GENERATED FILE, DO NOT MODIFY (ALSO, DO NOT MODIFY THE '${generatedAppFnsFilename}' FILE)!\n`;
   let addedFirstImport = false;
@@ -70,13 +74,13 @@ export const gatherSceneData = () => {
 
     // Gather scene files
     const sceneFilesArray = [];
-    const sceneFiles = files.filter((file) => file.endsWith(SCENE_JSON_ENDING_SIGNATURE));
+    const sceneFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.scene));
     for (const file of sceneFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
         const fileContentJSON = JSON.parse(fileContent);
-        sceneFilesArray.push(fileContentJSON);
+        if (fileContentJSON.sceneFile) sceneFilesArray.push(fileContentJSON);
       } catch (e) {
         logJSONError(file);
         throw new Error(e);
@@ -85,7 +89,7 @@ export const gatherSceneData = () => {
 
     // Cameras
     const cameraRegistry = {};
-    const cameraFiles = files.filter((file) => file.endsWith(CAMERA_JSON_ENDING_SIGNATURE));
+    const cameraFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.camera));
     for (const file of cameraFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
@@ -94,7 +98,8 @@ export const gatherSceneData = () => {
         const cameraId =
           cameraJSON.camProps?.appId ||
           cameraJSON.entityOpts?.appId ||
-          path.basename(file, CAMERA_JSON_ENDING_SIGNATURE);
+          path.basename(file, JSON_ENDING_SIGNATURES.camera);
+        cameraJSON.id = cameraId;
         cameraJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         cameraRegistry[cameraId] = cameraJSON;
       } catch (e) {
@@ -105,7 +110,7 @@ export const gatherSceneData = () => {
 
     // Lights
     const lightRegistry = {};
-    const lightFiles = files.filter((file) => file.endsWith(LIGHT_JSON_ENDING_SIGNATURE));
+    const lightFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.light));
     for (const file of lightFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
@@ -114,7 +119,8 @@ export const gatherSceneData = () => {
         const lightId =
           lightJSON.lightProps?.appId ||
           lightJSON.entityOpts?.appId ||
-          path.basename(file, LIGHT_JSON_ENDING_SIGNATURE);
+          path.basename(file, JSON_ENDING_SIGNATURES.light);
+        lightJSON.id = lightId;
         lightJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         lightRegistry[lightId] = lightJSON;
       } catch (e) {
@@ -125,13 +131,14 @@ export const gatherSceneData = () => {
 
     // Geometries
     const geoRegistry = {};
-    const geoFiles = files.filter((file) => file.endsWith(GEOMETRY_JSON_ENDING_SIGNATURE));
+    const geoFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.geometry));
     for (const file of geoFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
         const geoJSON = JSON.parse(fileContent);
-        const geoId = geoJSON.id || path.basename(file, GEOMETRY_JSON_ENDING_SIGNATURE);
+        const geoId = geoJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.geometry);
+        geoJSON.id = geoId;
         geoJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         geoRegistry[geoId] = geoJSON;
       } catch (e) {
@@ -142,14 +149,15 @@ export const gatherSceneData = () => {
 
     // Textures
     const texRegistry = {};
-    const texFiles = files.filter((file) => file.endsWith(TEXTURE_JSON_ENDING_SIGNATURE));
+    const texFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.texture));
     for (const file of texFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
         const texJSON = JSON.parse(fileContent);
-        const texId = texJSON.id || path.basename(file, TEXTURE_JSON_ENDING_SIGNATURE);
+        const texId = texJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.texture);
         texJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        texJSON.id = texId;
         texRegistry[texId] = texJSON;
       } catch (e) {
         logJSONError(file);
@@ -159,25 +167,43 @@ export const gatherSceneData = () => {
 
     // Materials
     const matRegistry = {};
-    const matFiles = files.filter((file) => file.endsWith(MATERIAL_JSON_ENDING_SIGNATURE));
+    const matFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.material));
     for (const file of matFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
         const matJSON = JSON.parse(fileContent);
-        const matId = matJSON.id || path.basename(file, MATERIAL_JSON_ENDING_SIGNATURE);
+        const matId = matJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.material);
+        matJSON.id = matId;
         matJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         matRegistry[matId] = matJSON;
         const isFoundInAScene = sceneFilesArray.find(
           (sceneFile) => sceneFile.materials?.includes(matId) || false
         );
-        // For production builds remove unused TSL materials and
-        // for development builds include unused TSL materials (to be shown in the library).
+        // For production builds remove unused TSL materials.
+        // For development builds include unused TSL materials (to be shown in the library).
         if (
           (isProduction && isFoundInAScene && 'tslFile' in matJSON && matJSON.tslFile) ||
           (!isProduction && 'tslFile' in matJSON && matJSON.tslFile)
         ) {
           const basePath = getBasePath(fullPath);
+
+          // Check that the scene file actually exists
+          let matTslFilePath = path.resolve(srcDir, basePath, matJSON.tslFile);
+          // Fallback Check: If the exact path isn't found and has no extension, test it with '.ts'
+          if (!fs.existsSync(matTslFilePath) && !path.extname(matTslFilePath)) {
+            if (fs.existsSync(matTslFilePath + '.ts')) {
+              matTslFilePath += '.ts';
+            }
+          }
+          if (!fs.existsSync(matTslFilePath)) {
+            console.error(
+              `\x1b[31m✗ [Scene Gatherer] Error gathering material data: the specified tslFile "${matJSON.tslFile}" does not exist on disk.\n  └─ Expected path: ${matTslFilePath}\x1b[0m`
+            );
+            hasError = true;
+            continue;
+          }
+
           sceneFileImports += `import { material as ${matId}Fn } from '../${basePath}/${matJSON.tslFile}';\n`;
           if (!tslMaterialFileObject) {
             tslMaterialFileObject += 'export const tslMaterialFileObjects = {\n';
@@ -193,7 +219,7 @@ export const gatherSceneData = () => {
     // Primitive meshes
     const primitiveMeshRegistry = {};
     const primitiveMeshFiles = files.filter((file) =>
-      file.endsWith(PRIMITIVE_MESH_JSON_ENDING_SIGNATURE)
+      file.endsWith(JSON_ENDING_SIGNATURES.primitiveMesh)
     );
     for (const file of primitiveMeshFiles) {
       const fullPath = path.resolve(srcDir, file);
@@ -201,7 +227,8 @@ export const gatherSceneData = () => {
       try {
         const primitiveMeshJSON = JSON.parse(fileContent);
         const primitiveMeshId =
-          primitiveMeshJSON.id || path.basename(file, PRIMITIVE_MESH_JSON_ENDING_SIGNATURE);
+          primitiveMeshJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.primitiveMesh);
+        primitiveMeshJSON.id = primitiveMeshId;
         primitiveMeshJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         primitiveMeshRegistry[primitiveMeshId] = primitiveMeshJSON;
       } catch (e) {
@@ -212,13 +239,14 @@ export const gatherSceneData = () => {
 
     // Meshes
     const meshRegistry = {};
-    const meshFiles = files.filter((file) => file.endsWith(MESH_JSON_ENDING_SIGNATURE));
+    const meshFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.mesh));
     for (const file of meshFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
         const meshJSON = JSON.parse(fileContent);
-        const meshId = meshJSON.id || path.basename(file, MESH_JSON_ENDING_SIGNATURE);
+        const meshId = meshJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.mesh);
+        meshJSON.id = meshId;
         meshJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         meshRegistry[meshId] = meshJSON;
       } catch (e) {
@@ -229,13 +257,14 @@ export const gatherSceneData = () => {
 
     // Skyboxes
     const skyRegistry = {};
-    const skyFiles = files.filter((file) => file.endsWith(SKYBOX_JSON_ENDING_SIGNATURE));
+    const skyFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.skybox));
     for (const file of skyFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
         const skyJSON = JSON.parse(fileContent);
-        const skyId = skyJSON.id || path.basename(file, SKYBOX_JSON_ENDING_SIGNATURE);
+        const skyId = skyJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.skybox);
+        skyJSON.id = skyId;
         skyJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         skyRegistry[skyId] = skyJSON;
       } catch (e) {
@@ -256,23 +285,47 @@ export const gatherSceneData = () => {
         'id' in fileContentJSON && fileContentJSON.id
           ? fileContentJSON.id
           : path.basename(file, SCENE_JSON_ENDING_SIGNATURE);
+      fileContentJSON.id = sceneId;
+
+      // Check if the file has a sceneFile property set
+      if (!fileContentJSON.sceneFile) {
+        console.error(
+          `\x1b[31m✗ [Scene Gatherer] Error gathering scene data (${isProduction ? 'production' : 'development'}): missing 'sceneFile' property and/or value (required) for scene file ${fullPath}.\x1b[0m`
+        );
+        hasError = true;
+        continue;
+      }
+
+      // Check that the scene file actually exists
+      let sceneFilePath = path.resolve(srcDir, 'app', fileContentJSON.sceneFile);
+      // Fallback Check: If the exact path isn't found and has no extension, test it with '.ts'
+      if (!fs.existsSync(sceneFilePath) && !path.extname(sceneFilePath)) {
+        if (fs.existsSync(sceneFilePath + '.ts')) {
+          sceneFilePath += '.ts';
+        }
+      }
+      if (!fs.existsSync(sceneFilePath)) {
+        console.error(
+          `\x1b[31m✗ [Scene Gatherer] Error gathering scene data: the specified sceneFile "${fileContentJSON.sceneFile}" does not exist on disk.\n  └─ Expected path: ${sceneFilePath}\x1b[0m`
+        );
+        hasError = true;
+        continue;
+      }
 
       // Remove debug scenes from production builds
       if (isProduction && fileContentJSON.isDebugScene) continue;
 
-      if ('sceneFile' in fileContentJSON && fileContentJSON.sceneFile) {
-        if (!addedFirstImport) {
-          sceneFileImports += "import { type SceneData } from './core/Scene.ts';\n";
-          addedFirstImport = true;
-        }
-        const basePath = getBasePath(fullPath);
-        sceneFileImports += `import { scene as ${sceneId}Fn } from '../${basePath}/${fileContentJSON.sceneFile}';\n`;
-        if (!sceneFileObject) {
-          sceneFileObject +=
-            'export const sceneFileObjects: { [sceneId: string]: (sceneData: SceneData) => void } = {\n';
-        }
-        sceneFileObject += `  ${sceneId}: ${sceneId}Fn,\n`;
+      if (!addedFirstImport) {
+        sceneFileImports += "import { type SceneData } from './core/Scene.ts';\n";
+        addedFirstImport = true;
       }
+      const basePath = getBasePath(fullPath);
+      sceneFileImports += `import { scene as ${sceneId}Fn } from '../${basePath}/${fileContentJSON.sceneFile}';\n`;
+      if (!sceneFileObject) {
+        sceneFileObject +=
+          'export const sceneFileObjects: { [sceneId: string]: (sceneData: SceneData) => void } = {\n';
+      }
+      sceneFileObject += `  ${sceneId}: ${sceneId}Fn,\n`;
 
       // --- CURRENT SCENE ASSETS per SCENE: ---
 
@@ -474,6 +527,8 @@ export const gatherSceneData = () => {
       combinedData.scenes[`${sceneId}`] = fileContentJSON;
     }
 
+    if (hasError) return false;
+
     // Create generatedScenes.json
     fs.mkdirSync(path.dirname(OUTPUT_FILE_DATA), { recursive: true });
     fs.writeFileSync(
@@ -503,10 +558,10 @@ export const gatherSceneData = () => {
     console.log(
       `\x1b[32m✓ [Scene Gatherer] Consolidated ${sceneFiles.length} scene configurations (${isProduction ? 'prod' : 'dev'}).\x1b[0m`
     );
-  } catch (error) {
+  } catch (err) {
     console.error(
       `\x1b[31m✗ [Scene Gatherer] Error gathering scene data (${isProduction ? 'production' : 'development'}):\x1b[0m`,
-      error
+      err
     );
   }
 };

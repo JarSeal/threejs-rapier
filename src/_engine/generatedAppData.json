@@ -3,6 +3,7 @@
     "testDebugScene": {
       "id": "testDebugScene",
       "isDebugScene": true,
+      "sceneFile": "debugScene.scene.ts",
       "cameras": {
         "camProps": {
           "type": "PERSPECTIVE",
@@ -38,7 +39,6 @@
     "sceneTestECS": {
       "id": "sceneTestECS",
       "sceneFile": "./testECS.ts",
-      "isStartScene": true,
       "name": "ECS test scene",
       "description": "This is a ECS test scene.",
       "cameras": [

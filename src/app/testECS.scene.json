@@ -1,7 +1,6 @@
 {
   "id": "sceneTestECS",
   "sceneFile": "./testECS.ts",
-  "isStartScene": true,
   "name": "ECS test scene",
   "description": "This is a ECS test scene.",
   "cameras": ["mainCamera"],

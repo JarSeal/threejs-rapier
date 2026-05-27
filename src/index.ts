@@ -11,7 +11,7 @@ InitEngine(async () => {
   // Init main camera
   createCameraEntity(
     { type: 'PERSPECTIVE', fov: 90, active: true, near: 0.1, far: 100 },
-    { appId: MAIN_APP_CAM_ID }
+    { appId: MAIN_APP_CAM_ID, persistent: true }
   );
 
   // Init renderer
@@ -87,5 +87,5 @@ InitEngine(async () => {
   // }
 
   // Load scene
-  await loadScene({ nextSceneFn: sceneTestECS });
+  await loadScene({ sceneId: 'sceneTestECS' });
 });
