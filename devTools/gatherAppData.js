@@ -31,6 +31,13 @@ export const isFilePathValid = (filePath) =>
   filePath.endsWith(MESH_JSON_ENDING_SIGNATURE) ||
   filePath.endsWith(SKYBOX_JSON_ENDING_SIGNATURE);
 
+export const getBasePath = (fullPath) => {
+  const splitPath = fullPath.split('/src/');
+  if (!splitPath.length) return '';
+  const splitFolders = splitPath[splitPath.length - 1].split('/');
+  return splitFolders[0];
+};
+
 export const gatherSceneData = () => {
   const isProduction = process.env.NODE_ENV === 'production';
 
@@ -165,12 +172,13 @@ export const gatherSceneData = () => {
           (sceneFile) => sceneFile.materials?.includes(matId) || false
         );
         // For production builds remove unused TSL materials and
-        // for development builds include unused TSL materials (in a library).
+        // for development builds include unused TSL materials (to be shown in the library).
         if (
           (isProduction && isFoundInAScene && 'tslFile' in matJSON && matJSON.tslFile) ||
           (!isProduction && 'tslFile' in matJSON && matJSON.tslFile)
         ) {
-          sceneFileImports += `import { material as ${matId}Fn } from '../app/${matJSON.tslFile}';\n`;
+          const basePath = getBasePath(fullPath);
+          sceneFileImports += `import { material as ${matId}Fn } from '../${basePath}/${matJSON.tslFile}';\n`;
           if (!tslMaterialFileObject) {
             tslMaterialFileObject += 'export const tslMaterialFileObjects = {\n';
           }
@@ -257,7 +265,8 @@ export const gatherSceneData = () => {
           sceneFileImports += "import { type SceneData } from './core/Scene.ts';\n";
           addedFirstImport = true;
         }
-        sceneFileImports += `import { scene as ${sceneId}Fn } from '../app/${fileContentJSON.sceneFile}';\n`;
+        const basePath = getBasePath(fullPath);
+        sceneFileImports += `import { scene as ${sceneId}Fn } from '../${basePath}/${fileContentJSON.sceneFile}';\n`;
         if (!sceneFileObject) {
           sceneFileObject +=
             'export const sceneFileObjects: { [sceneId: string]: (sceneData: SceneData) => void } = {\n';

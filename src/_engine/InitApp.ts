@@ -3,7 +3,7 @@ import { isDebugEnvironment, loadConfig, PROJECT_METADATA } from './core/Config'
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
 import { initMainLoop } from './core/MainLoop';
 import { InitRapierPhysics } from './core/PhysicsRapier';
-import { createRootScene, getRootScene } from './core/Scene';
+import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
 import { lerror, llog } from './utils/Logger';
 import { createSkyBoxDebugGUI } from './core/SkyBox';
@@ -46,6 +46,12 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Init ECS
     const ecsWorld = initECSWorld();
 
+    // HUD container
+    createHudContainer();
+
+    // Register scenes from generated data
+    // registerScenesFromGeneratedData();
+
     await load3DSymbols();
 
     // Register Managers
@@ -54,9 +60,6 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     // Initializes the debug camera (if in debug mode)
     await initDebugCamera(ecsWorld);
-
-    // HUD container
-    createHudContainer();
 
     await InitRapierPhysics();
     await appStartFn();

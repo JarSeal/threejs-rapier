@@ -24,6 +24,8 @@ import { CoreEntityOpts } from './ECS';
 import { LightProps } from './_LightManager';
 import { ImportModelParams } from './ImportModel';
 import { SkyBoxProps } from './SkyBox';
+import generatedAppData from '../generatedAppData.json';
+import { getHUDRootCMP } from './HUD';
 
 export type Looper = (delta: number) => void;
 
@@ -31,6 +33,9 @@ export type SceneData = {
   id: string;
   isStartScene?: boolean;
   isDebugScene?: boolean;
+  background?: string;
+  backgroundColor?: string | number;
+  backgroundTexture?: string;
   name?: string;
   description?: string;
   // comments?: Comment[];
@@ -71,6 +76,7 @@ const onAllSceneEnters: { [id: string]: () => void } = {};
 
 export type SceneOptions = {
   name?: string;
+  description?: string;
   isCurrentScene?: boolean;
   background?: THREE.Color | THREE.Texture | THREE.CubeTexture;
   backgroundColor?: THREE.Color;
@@ -709,3 +715,24 @@ export const runOnAllSceneExits = () => {
 };
 
 // @TODO: add deletion methods for all these registers
+export const getGeneratedAppData = () => generatedAppData;
+
+/** Registers (creates) the scenes at initEngine (initApp). */
+export const registerScenesFromGeneratedData = () => {
+  const data = getGeneratedAppData();
+  const sceneIds = Object.keys(data.scenes);
+  for (let i = 0; i < sceneIds.length; i++) {
+    const sceneId = sceneIds[i] as keyof typeof data.scenes;
+    const sceneData = data.scenes[sceneId] as unknown as SceneData;
+
+    createScene(sceneId, {
+      name: sceneData.name,
+      description: sceneData.description,
+      isCurrentScene: sceneData.isStartScene || false,
+    });
+  }
+};
+
+export const getStartScene = () => {
+  // @TODO
+};

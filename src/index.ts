@@ -1,14 +1,10 @@
 import * as THREE from 'three/webgpu';
 import { createRenderer } from './_engine/core/Renderer';
 import { InitEngine } from './_engine/InitApp';
-import { scene01, SCENE01_ID } from './app/scene01_v2';
 import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 import { CMP } from './_engine/utils/CMP';
-import { isDebugEnvironment } from './_engine/core/Config';
-import { addScenesToSceneListing } from './_engine/debug/DebugTools';
-import { SCENE_THIRD_PERSON_GYM_META, sceneThirdPersonGym } from './app/scene_thirdPersonGym';
 import { MAIN_APP_CAM_ID } from './CONFIG';
-import { SCENE_TEST_ECS_ID, sceneTestECS } from './app/scene_testECS';
+import { sceneTestECS } from './app/scene_testECS';
 import { createCameraEntity } from './_engine/core/_CameraManager';
 
 InitEngine(async () => {
@@ -78,17 +74,17 @@ InitEngine(async () => {
     },
   });
 
-  if (isDebugEnvironment()) {
-    addScenesToSceneListing([
-      {
-        id: SCENE_THIRD_PERSON_GYM_META.id,
-        text: SCENE_THIRD_PERSON_GYM_META.text,
-        fn: sceneThirdPersonGym,
-      },
-      { id: SCENE01_ID, text: SCENE01_ID, fn: scene01 },
-      { id: SCENE_TEST_ECS_ID, text: 'Test ECS', fn: sceneTestECS },
-    ]);
-  }
+  // if (isDebugEnvironment()) {
+  //   addScenesToSceneListing([
+  //     {
+  //       id: SCENE_THIRD_PERSON_GYM_META.id,
+  //       text: SCENE_THIRD_PERSON_GYM_META.text,
+  //       fn: sceneThirdPersonGym,
+  //     },
+  //     { id: SCENE01_ID, text: SCENE01_ID, fn: scene01 },
+  //     { id: SCENE_TEST_ECS_ID, text: 'Test ECS', fn: sceneTestECS },
+  //   ]);
+  // }
 
   // Load scene
   await loadScene({ nextSceneFn: sceneTestECS });
