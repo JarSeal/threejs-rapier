@@ -1,0 +1,17 @@
+{
+  "props": {
+    "id": "testMesh",
+    "geo": "testGeometry",
+    "mat": "testMaterial",
+    "castShadow": true,
+    "receiveShadow": true
+  },
+  "__saveData": {
+    "sceneTestECS": [
+      {
+        "__meta": { "date": 1779449688109 },
+        "castShadow": false
+      }
+    ]
+  }
+}

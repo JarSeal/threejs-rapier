@@ -4,7 +4,6 @@ import { InitEngine } from './_engine/InitApp';
 import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 import { CMP } from './_engine/utils/CMP';
 import { MAIN_APP_CAM_ID } from './CONFIG';
-import { sceneTestECS } from './app/scene_testECS';
 import { createCameraEntity } from './_engine/core/_CameraManager';
 
 InitEngine(async () => {

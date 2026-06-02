@@ -23,6 +23,7 @@ export type TextureProps = {
   useHDRLoader?: boolean;
   texOpts?: TexOpts;
   throwOnError?: boolean;
+  userData?: Record<string, unknown>;
   debugData?: { name?: string; description?: string };
 };
 
@@ -30,7 +31,9 @@ const textures: { [id: string]: THREE.Texture } = {};
 
 const setTextureOpts = (
   texture: THREE.Texture | THREE.DataTexture | THREE.CubeTexture,
-  texOpts?: TexOpts
+  texOpts?: TexOpts,
+  userData?: Record<string, unknown>,
+  debugData?: { name?: string; description?: string }
 ) => {
   if (texOpts?.mapping) texture.mapping = texOpts.mapping;
   if (texOpts?.wrapS) texture.wrapS = texOpts.wrapS;
@@ -41,6 +44,12 @@ const setTextureOpts = (
   if (texOpts?.type) texture.type = texOpts.type;
   if (texOpts?.anisotropy) texture.anisotropy = texOpts.anisotropy;
   if (texOpts?.colorSpace) texture.colorSpace = texOpts.colorSpace;
+  texture.userData = userData || {};
+  if (debugData) {
+    texture.name = debugData.name || texture.name;
+    texture.userData.name = debugData.name;
+    texture.userData.description = debugData.description;
+  }
   return texture;
 };
 
@@ -75,7 +84,9 @@ const createTexture = (
   id?: string,
   fileName?: string,
   texOpts?: TexOpts,
-  throwOnError?: boolean
+  throwOnError?: boolean,
+  userData?: Record<string, unknown>,
+  debugData?: { name?: string; description?: string }
 ) => {
   if (id && textures[id]) return textures[id];
 
@@ -115,6 +126,12 @@ const createTexture = (
     ),
     texOpts
   );
+  texture.userData = userData || {};
+  if (debugData) {
+    texture.name = debugData.name || texture.name;
+    texture.userData.name = debugData.name;
+    texture.userData.description = debugData.description;
+  }
   return texture;
 };
 
@@ -125,7 +142,13 @@ const createTexture = (
  * @param onErrorAction optional on error action: 'NO_TEXTURE' | 'EMPTY_TEXTURE' | 'THROW_ERROR'. This determines what happens when a texture load fails. 'NO_TEXTURE' does nothing (default), 'EMPTY_TEXTURE' creates an empty placeholder texture for the failed texture, and 'THROW_ERROR' throws an Error.
  */
 export const loadTextures = (
-  texData: { id?: string; fileName?: string; texOpts?: TexOpts }[],
+  texData: {
+    id?: string;
+    fileName?: string;
+    texOpts?: TexOpts;
+    userData?: Record<string, unknown>;
+    debugData?: { name?: string; description?: string };
+  }[],
   updateStatusFn?: (
     loadedTextures: { [id: string]: THREE.Texture },
     loadedCount: number,
@@ -142,7 +165,7 @@ export const loadTextures = (
   const batchTextures: { [id: string]: THREE.Texture } = {};
 
   const loadOneBatchTexture = (index: number) => {
-    const { id, fileName, texOpts } = texData[index];
+    const { id, fileName, texOpts, userData, debugData } = texData[index];
     const loader = new THREE.TextureLoader();
 
     if (id && textures[id]) return;
@@ -166,7 +189,7 @@ export const loadTextures = (
             throw new Error(errorMsg);
           }
           if (onErrorAction === 'EMPTY_TEXTURE') {
-            const texture = createTexture(id, undefined, texOpts);
+            const texture = createTexture(id, undefined, texOpts, false, userData, debugData);
             const texId = id || texture.uuid;
             texture.userData.id = texId;
             batchTextures[texId] = texture;
@@ -177,7 +200,7 @@ export const loadTextures = (
         }
       );
     } else {
-      const texture = createTexture(id, undefined, texOpts);
+      const texture = createTexture(id, undefined, texOpts, false, userData, debugData);
       const texId = id || texture.uuid;
       texture.userData.id = texId;
       batchTextures[texId] = texture;
@@ -208,11 +231,15 @@ export const loadTexture = ({
   fileName,
   texOpts,
   throwOnError,
+  userData,
+  debugData,
 }: {
   id?: string;
   fileName?: string;
   texOpts?: TexOpts;
   throwOnError?: boolean;
+  userData?: Record<string, unknown>;
+  debugData?: { name?: string; description?: string };
 }) => {
   if (id) {
     const texture = getTexture(id);
@@ -222,7 +249,7 @@ export const loadTexture = ({
     const texture = getTexture(fileName);
     if (texture) return texture;
   }
-  const texture = createTexture(id, fileName, texOpts, throwOnError);
+  const texture = createTexture(id, fileName, texOpts, throwOnError, userData, debugData);
   texture.userData.id = id || fileName || texture.uuid;
   textures[id || fileName || texture.uuid] = texture;
   return texture;
@@ -244,6 +271,8 @@ export const loadTextureAsync = async ({
   useHDRLoader,
   texOpts,
   throwOnError,
+  userData,
+  debugData,
 }: TextureProps) => {
   if (id && textures[id]) return textures[id];
 
@@ -259,7 +288,9 @@ export const loadTextureAsync = async ({
         const loader = new HDRLoader();
         const loadedTexture = setTextureOpts(
           await loader.setPath(path || './').loadAsync(fileName),
-          texOpts
+          texOpts,
+          userData,
+          debugData
         );
         loadedTexture.userData.id = id || loadedTexture.uuid;
         textures[id || loadedTexture.uuid] = loadedTexture;
@@ -270,7 +301,9 @@ export const loadTextureAsync = async ({
         const loader = new THREE.TextureLoader();
         const loadedTexture = setTextureOpts(
           await loader.setPath(path || './').loadAsync(fileName),
-          texOpts
+          texOpts,
+          userData,
+          debugData
         );
         loadedTexture.userData.id = id || loadedTexture.uuid;
         textures[id || loadedTexture.uuid] = loadedTexture;
@@ -287,7 +320,9 @@ export const loadTextureAsync = async ({
       const loader = new THREE.CubeTextureLoader();
       const loadedTexture = setTextureOpts(
         await loader.setPath(path || './').loadAsync(fileName),
-        texOpts
+        texOpts,
+        userData,
+        debugData
       );
       loadedTexture.userData.id = id || loadedTexture.uuid;
       textures[id || loadedTexture.uuid] = loadedTexture;

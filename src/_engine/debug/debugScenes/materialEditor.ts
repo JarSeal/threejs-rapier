@@ -6,12 +6,12 @@ import { createMesh } from '../../core/Mesh';
 export const DEBUG_MATERIAL_EDITOR_ID = '_debug-material-editor';
 
 export const initDebugMaterialEditorScene = async () =>
-  new Promise<string>(async (resolve) => {
+  new Promise<void>(async (resolve) => {
     // eslint-disable-next-line no-console
     console.log('INIT MATERIAL EDItoR');
     const debugScene = debuggerSceneListing.find((item) => item.id === DEBUG_MATERIAL_EDITOR_ID);
     if (!debugScene) {
-      resolve('');
+      resolve();
       return;
     }
     const scene = createScene(debugScene?.id, {
@@ -51,5 +51,5 @@ export const initDebugMaterialEditorScene = async () =>
 
     scene.add(mesh);
 
-    resolve(DEBUG_MATERIAL_EDITOR_ID);
+    resolve();
   });

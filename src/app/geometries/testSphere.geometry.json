@@ -1,17 +1,21 @@
 {
-  "id": "testSphere",
-  "type": "SPHERE",
-  "params": {
-    "radius": 0.5,
-    "widthSegments": 32,
-    "heightSegments": 32
+  "$schema": "../../../.schemas/geometry.schema.json",
+  "geoProps": {
+    "type": "SPHERE",
+    "params": {
+      "radius": 0.5,
+      "widthSegments": 32,
+      "heightSegments": 32
+    },
+    "debugData": { "name": "Test Sphere", "description": "This is a test sphere" }
   },
-  "debugData": { "name": "Test Sphere", "description": "THis is a test sphere" },
   "__saveData": {
     "sceneTestECS": [
       {
         "__meta": { "date": 1779449688109 },
-        "radius": 0.6
+        "params": {
+          "radius": 0.6
+        }
       }
     ]
   }

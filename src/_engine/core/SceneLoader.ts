@@ -31,11 +31,10 @@ import { existsOrThrow } from '../utils/helpers';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
 import { deleteAllGroups } from './Group';
 import { setIsLoadingScene } from './MainLoop';
-import { getECSWorld, getEntityIdByAppId } from './ECS';
+import { getECSWorld } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { sceneFileObjects } from '../generatedAppFns';
-import { getCamera } from './legacy_Camera';
-import { createCameraEntity } from './_CameraManager';
+import { loadTextureAsync } from './Texture';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -173,25 +172,58 @@ export const getCurrentSceneLoaderId = () => {
   return currentSceneLoaderId;
 };
 
-const loadNextSceneAssets = async (sceneData: SceneData) => {
-  // @CHORE: load and create textures
-  // @CHORE: create and compile materials
-  // @CHORE: load imported geometries (add possibility to only import geometries) and create primitive geometries
-  // THIS MIGHT NEED SOME MORE THINKING!
+type PrimitiveAssets = {
+  textures: { [id: string]: THREE.Texture };
+  materials: { [id: string]: THREE.Material };
+  geometries: { [id: string]: THREE.BufferGeometry };
 };
 
-const createNextSceneObject3Ds = (sceneData: SceneData) => {
-  // Create cameras
-  const cameras = sceneData.cameras || [];
-  for (let i = 0; i < cameras.length; i++) {
-    const props = cameras[i];
-    if (typeof props !== 'string') {
-      createCameraEntity(props.camProps, props.entityOpts);
-    }
+const loadNextSceneAssets = async (sceneData: SceneData): Promise<PrimitiveAssets> => {
+  const textures: { [id: string]: THREE.Texture } = {};
+  const materials: { [id: string]: THREE.Material } = {};
+  const geometries: { [id: string]: THREE.BufferGeometry } = {};
+
+  // Load and create textures
+  const sceneTextures = sceneData.textures || [];
+  const texturePromises: Promise<THREE.Texture>[] = [];
+  const textureIds: string[] = [];
+  for (let i = 0; i < sceneTextures.length; i++) {
+    const tex = sceneTextures[i];
+    if (typeof tex === 'string') continue;
+    const texId = tex.id;
+    if (!texId) continue;
+    textureIds.push(texId);
+    texturePromises.push(loadTextureAsync(tex));
+  }
+  const loadedTextures = await Promise.all(texturePromises);
+  for (let i = 0; i < loadedTextures.length; i++) {
+    textures[textureIds[i]] = loadedTextures[i];
   }
 
-  // @CHORE: finish these (first implement the loadNextSceneAssets)
+  // Create and compile materials
+  const sceneMaterials = sceneData.materials || [];
+  for (let i = 0; i < sceneMaterials.length; i++) {
+    // @CHORE
+  }
+
+  // @CHORE: load imported geometries (add possibility to only import geometries) and create primitive geometries
+  // THIS MIGHT NEED SOME MORE THINKING!
+
+  return { textures, materials, geometries };
 };
+
+// const createNextSceneObject3Ds = (sceneData: SceneData) => {
+//   // Create cameras
+//   const cameras = sceneData.cameras || [];
+//   for (let i = 0; i < cameras.length; i++) {
+//     const props = cameras[i];
+//     if (typeof props !== 'string') {
+//       createCameraEntity(props.camProps, props.entityOpts);
+//     }
+//   }
+
+//   // @CHORE: finish these (first implement the loadNextSceneAssets)
+// };
 
 /**
  * Loads a scene with a scene loader
@@ -319,7 +351,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       ecsWorld.clearNonPersistent();
 
       // Create all next scene assets
-      // @CHORE
+      loadNextSceneAssets(sceneData);
 
       loader.phase = 'LOAD';
       await loadFn(loader, initNextSceneFn).then(async () => {

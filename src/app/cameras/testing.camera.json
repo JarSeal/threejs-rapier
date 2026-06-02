@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../.schemas/camera.schema.json",
   "camProps": { "type": "PERSPECTIVE", "fov": 90, "active": false },
   "entityOpts": {
     "appId": "testing",

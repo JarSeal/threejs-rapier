@@ -38,7 +38,7 @@
   "private": false,
   "type": "module",
   "scripts": {
-    "gatherAppData": "node ./devTools/gatherAppData.js",
+    "gatherAppData": "tsx ./devTools/gatherAppData.ts",
     "dev": "yarn gatherAppData && VITE_APP_ENV=development vite serve --port 8080 --host",
     "dev:test": "yarn gatherAppData && VITE_APP_ENV=test vite serve --port 8080 --host",
     "dev:production": "yarn gatherAppData && vite serve --port 8080 --host",
@@ -68,11 +68,14 @@
     "eslint-plugin-import": "2.29.1",
     "eslint-plugin-prettier": "5.1.3",
     "prettier": "3.2.5",
+    "rollup-plugin-visualizer": "7.0.1",
     "sass": "1.82.0",
+    "tsx": "4.22.3",
     "typedoc": "0.28.14",
     "typescript": "5.4.5",
     "vite": "5.2.11",
-    "vite-plugin-wasm": "3.4.1"
+    "vite-plugin-wasm": "3.4.1",
+    "zod": "4.4.3"
   },
   "engines": {
     "node": ">=22.1.0",

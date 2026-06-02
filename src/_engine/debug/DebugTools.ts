@@ -303,7 +303,7 @@ export const buildDebugToolsGUI = () => {
     if (value === getCurrentSceneId()) return;
     const nextScene = debuggerSceneListing.find((s) => s.id === value);
     if (!isCurrentlyLoading() && nextScene) {
-      loadScene({ nextSceneFn: nextScene.fn, loaderId: DEBUGGER_SCENE_LOADER_ID });
+      loadScene({ sceneId: value, nextSceneFn: nextScene.fn, loaderId: DEBUGGER_SCENE_LOADER_ID });
       return;
     }
     if (!isCurrentlyLoading) {

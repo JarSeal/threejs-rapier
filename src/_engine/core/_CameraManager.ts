@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
+import { ECSWorld, getECSWorld } from './ECS';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
 import { DebugModuleRef, existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
 import { getWindowSize } from '../utils/Window';
@@ -9,6 +9,8 @@ import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { addResizer } from './MainLoop';
 import { inspectEntity } from '../utils/ECSHelpers';
 import { loadPersistentProps } from './PropertyLoader';
+import { CameraProps } from '../schemas/cameraSchema';
+import { CoreEntityOpts } from '../schemas/_helperSchemas';
 
 // --- STATE ---
 let activeCameraEntityId: number | null = null;
@@ -55,15 +57,6 @@ export const registerCameraManager = () => {
   });
 };
 
-export type CameraProps = {
-  active?: boolean;
-  near?: number;
-  far?: number;
-  zoom?: number;
-  appId?: string;
-  position?: { x: number; y: number; z: number };
-} & ({ type: 'PERSPECTIVE'; fov?: number } | { type: 'ORTHOGRAPHIC'; frustumSize?: number });
-
 export const createCameraEntity = (
   camProps: CameraProps,
   entityOpts?: CoreEntityOpts,
@@ -100,7 +93,10 @@ export const createCameraEntity = (
   }
 
   camera.zoom = props.zoom ?? 1;
-  rootScene.add(camera);
+
+  if (!entityOpts?.doNotAddToScene) {
+    rootScene.add(camera);
+  }
 
   const entityId = world.createEntity(entityOpts);
 

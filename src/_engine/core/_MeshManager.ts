@@ -1,13 +1,14 @@
 import * as THREE from 'three/webgpu';
 import { createGeometry, incGeometryRef, decGeometryRef, GeoProps } from './_Geometry';
 import { createMaterial, incMaterialRef, decMaterialRef, MatProps } from './Material';
-import { CoreEntityOpts, ECSWorld, getECSWorld } from './ECS';
+import { ECSWorld, getECSWorld } from './ECS';
 import { getRootScene } from './Scene';
 import { existsOrThrow, ThreeEuler, ThreeQuoternion } from '../utils/helpers';
 import { getRenderer } from './Renderer';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { setTransform } from '../utils/ECSHelpers';
 import { lwarn } from '../utils/Logger';
+import { type CoreEntityOpts } from '../schemas/_helperSchemas';
 
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
@@ -15,6 +16,7 @@ ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
 });
 
 export type MeshProps = {
+  // @CONSIDER: We could also allow passing an id for geo and mat (as strings), and then look them up in the asset manager.
   geo: THREE.BufferGeometry | GeoProps;
   mat: THREE.Material | MatProps;
   castShadow?: boolean;
@@ -23,6 +25,7 @@ export type MeshProps = {
   position?: { x?: number; y?: number; z?: number };
   rotation?: { x?: number; y?: number; z?: number };
   quaternion?: THREE.Quaternion;
+  appId?: string;
 };
 
 export const createMeshEntity = (
@@ -37,8 +40,10 @@ export const createMeshEntity = (
   const mat = props.mat instanceof THREE.Material ? props.mat : createMaterial(props.mat);
 
   const mesh = new THREE.Mesh(geo, mat);
+  const appId = props.appId || entityOpts?.appId || mesh.uuid;
   mesh.castShadow = props.castShadow ?? false;
   mesh.receiveShadow = props.receiveShadow ?? false;
+  mesh.userData.id = appId;
 
   if (geo.userData.id) incGeometryRef(geo.userData.id);
   if (mat.userData.id) incMaterialRef(mat.userData.id);
@@ -83,7 +88,7 @@ export const createMeshEntity = (
     _lastVersion: -1,
   });
 
-  rootScene.add(mesh);
+  if (!entityOpts?.doNotAddToScene) rootScene.add(mesh);
 
   const tra = {
     pos: { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z },

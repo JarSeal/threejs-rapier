@@ -1,0 +1,233 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "fileName": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "useHDRLoader": {
+      "type": "boolean"
+    },
+    "texOpts": {
+      "type": "object",
+      "properties": {
+        "image": {},
+        "mapping": {
+          "type": "number"
+        },
+        "wrapS": {
+          "type": "number"
+        },
+        "wrapT": {
+          "type": "number"
+        },
+        "magFilter": {
+          "type": "number"
+        },
+        "minFilter": {
+          "type": "number"
+        },
+        "type": {
+          "type": "number"
+        },
+        "anisotropy": {
+          "type": "number"
+        },
+        "colorSpace": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "throwOnError": {
+      "type": "boolean"
+    },
+    "userData": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    },
+    "debugData": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "comments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": "number"
+              },
+              "comment": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "timestamp",
+              "comment"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "todo": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "debugObj": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "__saveData": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "__meta": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "id": {
+              "type": "string"
+            },
+            "fileName": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "useHDRLoader": {
+              "type": "boolean"
+            },
+            "texOpts": {
+              "type": "object",
+              "properties": {
+                "image": {},
+                "mapping": {
+                  "type": "number"
+                },
+                "wrapS": {
+                  "type": "number"
+                },
+                "wrapT": {
+                  "type": "number"
+                },
+                "magFilter": {
+                  "type": "number"
+                },
+                "minFilter": {
+                  "type": "number"
+                },
+                "type": {
+                  "type": "number"
+                },
+                "anisotropy": {
+                  "type": "number"
+                },
+                "colorSpace": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "throwOnError": {
+              "type": "boolean"
+            },
+            "userData": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "debugData": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "comments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "comment": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "timestamp",
+                      "comment"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "todo": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "debugObj": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "__sourcePath": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

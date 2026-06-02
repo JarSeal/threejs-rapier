@@ -1,5 +1,6 @@
 {
-  "camProps": { "type": "PERSPECTIVE", "fov": 90, "active": true },
+  "$schema": "../../../.schemas/camera.schema.json",
+  "camProps": { "type": "PERSPECTIVE", "fov": 90 },
   "entityOpts": {
     "appId": "mainCamera",
     "debugData": { "name": "Main camera", "description": "Main application camera" },

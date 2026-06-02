@@ -1,17 +1,23 @@
 {
+  "$schema": "../../../.schemas/material.schema.json",
   "id": "testTslMat",
   "tslFile": "materials/testTslMat.tsl.ts",
-  "uniforms": {
-    "color": "#8b2500",
-    "roughness": 0.6
+  "type": "STANDARDNODEMATERIAL",
+  "nodes": {
+    "colorNode": {
+      "baseColor": "#1a233a",
+      "panelColor": "#ffaa00",
+      "gridScale": 4.0
+    }
   },
   "__saveData": {
     "sceneTestECS": [
       {
         "__meta": { "date": 1779449688109 },
-        "uniforms": {
-          "color": "#ff0000",
-          "roughness": 0.6
+        "nodes": {
+          "colorNode": {
+            "baseColor": "#1c233a"
+          }
         }
       }
     ]

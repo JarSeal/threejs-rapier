@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../.schemas/texture.schema.json",
   "id": "testTexture",
   "fileName": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
   "useHDRLoader": false,

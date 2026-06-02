@@ -1,14 +1,15 @@
 {
+  "$schema": "../../.schemas/scene.schema.json",
   "id": "sceneTestECS",
   "sceneFile": "./testECS.ts",
   "name": "ECS test scene",
   "description": "This is a ECS test scene.",
   "cameras": ["mainCamera"],
   "lights": ["ambientLight"],
-  "geometries": ["testSphere", { "id": "otherTestBox", "type": "BOX" }],
+  "geometries": ["testSphere", { "geoProps": { "id": "otherTestBox", "type": "BOX" } }],
   "textures": ["testTexture"],
-  "materials": ["testMaterial"],
-  "primitiveMeshes": ["testPrimitive"],
-  "meshes": ["testImportMesh"],
+  "materials": ["testMaterial", "checkerBoard"],
+  "meshes": ["testMesh"],
+  "importedMeshes": ["testImportedMesh"],
   "skyboxes": ["basicSkybox"]
 }

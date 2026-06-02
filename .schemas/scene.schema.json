@@ -1,0 +1,4922 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "isDebugScene": {
+      "type": "boolean"
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "comments": {},
+    "todo": {},
+    "cameras": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "$schema": {
+                "type": "string"
+              },
+              "camProps": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "active": {
+                        "type": "boolean"
+                      },
+                      "near": {
+                        "type": "number"
+                      },
+                      "far": {
+                        "type": "number"
+                      },
+                      "zoom": {
+                        "type": "number"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "PERSPECTIVE"
+                      },
+                      "fov": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "active": {
+                        "type": "boolean"
+                      },
+                      "near": {
+                        "type": "number"
+                      },
+                      "far": {
+                        "type": "number"
+                      },
+                      "zoom": {
+                        "type": "number"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "ORTHOGRAPHIC"
+                      },
+                      "frustumSize": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "entityOpts": {
+                "type": "object",
+                "properties": {
+                  "appId": {
+                    "type": "string"
+                  },
+                  "disabled": {
+                    "type": "boolean"
+                  },
+                  "persistent": {
+                    "type": "boolean"
+                  },
+                  "doNotAddToScene": {
+                    "type": "boolean"
+                  },
+                  "userData": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "debugData": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "comments": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "timestamp": {
+                              "type": "number"
+                            },
+                            "comment": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "timestamp",
+                            "comment"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "todo": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "debugObj": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "__sourcePath": {
+                "type": "string"
+              },
+              "__saveData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "__meta": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "PERSPECTIVE",
+                          "ORTHOGRAPHIC"
+                        ]
+                      },
+                      "active": {
+                        "type": "boolean"
+                      },
+                      "near": {
+                        "type": "number"
+                      },
+                      "far": {
+                        "type": "number"
+                      },
+                      "zoom": {
+                        "type": "number"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "position": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "fov": {
+                        "type": "number"
+                      },
+                      "frustumSize": {
+                        "type": "number"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              }
+            },
+            "required": [
+              "camProps"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "lights": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "$schema": {
+                "type": "string"
+              },
+              "lightProps": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "AMBIENT"
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "r": {
+                                "type": "number"
+                              },
+                              "g": {
+                                "type": "number"
+                              },
+                              "b": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "r",
+                              "g",
+                              "b"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "intensity": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "HEMISPHERE"
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "r": {
+                                "type": "number"
+                              },
+                              "g": {
+                                "type": "number"
+                              },
+                              "b": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "r",
+                              "g",
+                              "b"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "groundColor": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "r": {
+                                "type": "number"
+                              },
+                              "g": {
+                                "type": "number"
+                              },
+                              "b": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "r",
+                              "g",
+                              "b"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "intensity": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "POINT"
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "r": {
+                                "type": "number"
+                              },
+                              "g": {
+                                "type": "number"
+                              },
+                              "b": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "r",
+                              "g",
+                              "b"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "intensity": {
+                        "type": "number"
+                      },
+                      "distance": {
+                        "type": "number"
+                      },
+                      "decay": {
+                        "type": "number"
+                      },
+                      "position": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "castShadow": {
+                        "type": "boolean"
+                      },
+                      "shadowPreset": {
+                        "type": "string",
+                        "enum": [
+                          "LOW",
+                          "MEDIUM",
+                          "HIGH",
+                          "ULTRA"
+                        ]
+                      },
+                      "shadowBias": {
+                        "type": "number"
+                      },
+                      "shadowNormalBias": {
+                        "type": "number"
+                      },
+                      "shadowMapSize": {
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "shadowCameraNearFar": {
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "shadowBlurSamples": {
+                        "type": "number"
+                      },
+                      "shadowRadius": {
+                        "type": "number"
+                      },
+                      "shadowIntensity": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "DIRECTIONAL"
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "r": {
+                                "type": "number"
+                              },
+                              "g": {
+                                "type": "number"
+                              },
+                              "b": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "r",
+                              "g",
+                              "b"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "intensity": {
+                        "type": "number"
+                      },
+                      "position": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "targetPos": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "castShadow": {
+                        "type": "boolean"
+                      },
+                      "shadowPreset": {
+                        "type": "string",
+                        "enum": [
+                          "LOW",
+                          "MEDIUM",
+                          "HIGH",
+                          "ULTRA"
+                        ]
+                      },
+                      "shadowBias": {
+                        "type": "number"
+                      },
+                      "shadowNormalBias": {
+                        "type": "number"
+                      },
+                      "shadowMapSize": {
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "shadowCameraNearFar": {
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "shadowCameraFrustum": {
+                        "minItems": 4,
+                        "maxItems": 4,
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "shadowBlurSamples": {
+                        "type": "number"
+                      },
+                      "shadowRadius": {
+                        "type": "number"
+                      },
+                      "shadowIntensity": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "SPOT"
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "r": {
+                                "type": "number"
+                              },
+                              "g": {
+                                "type": "number"
+                              },
+                              "b": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "r",
+                              "g",
+                              "b"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "intensity": {
+                        "type": "number"
+                      },
+                      "distance": {
+                        "type": "number"
+                      },
+                      "angle": {
+                        "type": "number"
+                      },
+                      "penumbra": {
+                        "type": "number"
+                      },
+                      "decay": {
+                        "type": "number"
+                      },
+                      "position": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "targetPos": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "castShadow": {
+                        "type": "boolean"
+                      },
+                      "shadowPreset": {
+                        "type": "string",
+                        "enum": [
+                          "LOW",
+                          "MEDIUM",
+                          "HIGH",
+                          "ULTRA"
+                        ]
+                      },
+                      "shadowBias": {
+                        "type": "number"
+                      },
+                      "shadowNormalBias": {
+                        "type": "number"
+                      },
+                      "shadowMapSize": {
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "shadowCameraNearFar": {
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "shadowBlurSamples": {
+                        "type": "number"
+                      },
+                      "shadowRadius": {
+                        "type": "number"
+                      },
+                      "shadowIntensity": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "entityOpts": {
+                "type": "object",
+                "properties": {
+                  "appId": {
+                    "type": "string"
+                  },
+                  "disabled": {
+                    "type": "boolean"
+                  },
+                  "persistent": {
+                    "type": "boolean"
+                  },
+                  "doNotAddToScene": {
+                    "type": "boolean"
+                  },
+                  "userData": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "debugData": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "comments": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "timestamp": {
+                              "type": "number"
+                            },
+                            "comment": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "timestamp",
+                            "comment"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "todo": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "debugObj": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "__sourcePath": {
+                "type": "string"
+              },
+              "__saveData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "__meta": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "appId": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "AMBIENT",
+                          "HEMISPHERE",
+                          "POINT",
+                          "DIRECTIONAL",
+                          "SPOT"
+                        ]
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "r": {
+                                "type": "number"
+                              },
+                              "g": {
+                                "type": "number"
+                              },
+                              "b": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "r",
+                              "g",
+                              "b"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "intensity": {
+                        "type": "number"
+                      },
+                      "groundColor": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "r": {
+                                "type": "number"
+                              },
+                              "g": {
+                                "type": "number"
+                              },
+                              "b": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "r",
+                              "g",
+                              "b"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "distance": {
+                        "type": "number"
+                      },
+                      "decay": {
+                        "type": "number"
+                      },
+                      "position": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "castShadow": {
+                        "type": "boolean"
+                      },
+                      "shadowPreset": {
+                        "type": "string",
+                        "enum": [
+                          "LOW",
+                          "MEDIUM",
+                          "HIGH",
+                          "ULTRA"
+                        ]
+                      },
+                      "shadowBias": {
+                        "type": "number"
+                      },
+                      "shadowNormalBias": {
+                        "type": "number"
+                      },
+                      "shadowMapSize": {
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "shadowCameraNearFar": {
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "shadowBlurSamples": {
+                        "type": "number"
+                      },
+                      "shadowRadius": {
+                        "type": "number"
+                      },
+                      "shadowIntensity": {
+                        "type": "number"
+                      },
+                      "targetPos": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "z": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "shadowCameraFrustum": {
+                        "minItems": 4,
+                        "maxItems": 4,
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      },
+                      "angle": {
+                        "type": "number"
+                      },
+                      "penumbra": {
+                        "type": "number"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              }
+            },
+            "required": [
+              "lightProps"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "geometries": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "$schema": {
+                "type": "string"
+              },
+              "geoProps": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "debugData": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "comments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "timestamp": {
+                                  "type": "number"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timestamp",
+                                "comment"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "todo": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugObj": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "BOX"
+                      },
+                      "params": {
+                        "type": "object",
+                        "properties": {
+                          "width": {
+                            "type": "number"
+                          },
+                          "height": {
+                            "type": "number"
+                          },
+                          "depth": {
+                            "type": "number"
+                          },
+                          "widthSegments": {
+                            "type": "number"
+                          },
+                          "heightSegments": {
+                            "type": "number"
+                          },
+                          "depthSegments": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "debugData": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "comments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "timestamp": {
+                                  "type": "number"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timestamp",
+                                "comment"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "todo": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugObj": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "SPHERE"
+                      },
+                      "params": {
+                        "type": "object",
+                        "properties": {
+                          "radius": {
+                            "type": "number"
+                          },
+                          "widthSegments": {
+                            "type": "number"
+                          },
+                          "heightSegments": {
+                            "type": "number"
+                          },
+                          "phiStart": {
+                            "type": "number"
+                          },
+                          "phiLength": {
+                            "type": "number"
+                          },
+                          "thetaStart": {
+                            "type": "number"
+                          },
+                          "thetaLength": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "debugData": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "comments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "timestamp": {
+                                  "type": "number"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timestamp",
+                                "comment"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "todo": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugObj": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "CYLINDER"
+                      },
+                      "params": {
+                        "type": "object",
+                        "properties": {
+                          "radiusTop": {
+                            "type": "number"
+                          },
+                          "radiusBottom": {
+                            "type": "number"
+                          },
+                          "height": {
+                            "type": "number"
+                          },
+                          "radialSegments": {
+                            "type": "number"
+                          },
+                          "heightSegments": {
+                            "type": "number"
+                          },
+                          "openEnded": {
+                            "type": "boolean"
+                          },
+                          "thetaStart": {
+                            "type": "number"
+                          },
+                          "thetaLength": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "debugData": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "comments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "timestamp": {
+                                  "type": "number"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timestamp",
+                                "comment"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "todo": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugObj": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "CAPSULE"
+                      },
+                      "params": {
+                        "type": "object",
+                        "properties": {
+                          "radius": {
+                            "type": "number"
+                          },
+                          "height": {
+                            "type": "number"
+                          },
+                          "capSegments": {
+                            "type": "number"
+                          },
+                          "radialSegments": {
+                            "type": "number"
+                          },
+                          "heightSegments": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "debugData": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "comments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "timestamp": {
+                                  "type": "number"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timestamp",
+                                "comment"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "todo": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugObj": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "type": {
+                        "type": "string",
+                        "const": "CONE"
+                      },
+                      "params": {
+                        "type": "object",
+                        "properties": {
+                          "radius": {
+                            "type": "number"
+                          },
+                          "height": {
+                            "type": "number"
+                          },
+                          "radialSegments": {
+                            "type": "number"
+                          },
+                          "heightSegments": {
+                            "type": "number"
+                          },
+                          "openEnded": {
+                            "type": "boolean"
+                          },
+                          "thetaStart": {
+                            "type": "number"
+                          },
+                          "thetaLength": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "__sourcePath": {
+                "type": "string"
+              },
+              "__saveData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "__meta": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "debugData": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "comments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "timestamp": {
+                                  "type": "number"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timestamp",
+                                "comment"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "todo": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugObj": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "params": {
+                        "type": "object",
+                        "properties": {
+                          "width": {
+                            "type": "number"
+                          },
+                          "height": {
+                            "type": "number"
+                          },
+                          "depth": {
+                            "type": "number"
+                          },
+                          "widthSegments": {
+                            "type": "number"
+                          },
+                          "heightSegments": {
+                            "type": "number"
+                          },
+                          "depthSegments": {
+                            "type": "number"
+                          },
+                          "radius": {
+                            "type": "number"
+                          },
+                          "phiStart": {
+                            "type": "number"
+                          },
+                          "phiLength": {
+                            "type": "number"
+                          },
+                          "thetaStart": {
+                            "type": "number"
+                          },
+                          "thetaLength": {
+                            "type": "number"
+                          },
+                          "radiusTop": {
+                            "type": "number"
+                          },
+                          "radiusBottom": {
+                            "type": "number"
+                          },
+                          "radialSegments": {
+                            "type": "number"
+                          },
+                          "openEnded": {
+                            "type": "boolean"
+                          },
+                          "capSegments": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              }
+            },
+            "required": [
+              "geoProps"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "textures": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "$schema": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "useHDRLoader": {
+                "type": "boolean"
+              },
+              "texOpts": {
+                "type": "object",
+                "properties": {
+                  "image": {},
+                  "mapping": {
+                    "type": "number"
+                  },
+                  "wrapS": {
+                    "type": "number"
+                  },
+                  "wrapT": {
+                    "type": "number"
+                  },
+                  "magFilter": {
+                    "type": "number"
+                  },
+                  "minFilter": {
+                    "type": "number"
+                  },
+                  "type": {
+                    "type": "number"
+                  },
+                  "anisotropy": {
+                    "type": "number"
+                  },
+                  "colorSpace": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "throwOnError": {
+                "type": "boolean"
+              },
+              "userData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "debugData": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "comments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "timestamp": {
+                          "type": "number"
+                        },
+                        "comment": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "timestamp",
+                        "comment"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "todo": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "debugObj": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "additionalProperties": false
+              },
+              "__saveData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "__meta": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "fileName": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "useHDRLoader": {
+                        "type": "boolean"
+                      },
+                      "texOpts": {
+                        "type": "object",
+                        "properties": {
+                          "image": {},
+                          "mapping": {
+                            "type": "number"
+                          },
+                          "wrapS": {
+                            "type": "number"
+                          },
+                          "wrapT": {
+                            "type": "number"
+                          },
+                          "magFilter": {
+                            "type": "number"
+                          },
+                          "minFilter": {
+                            "type": "number"
+                          },
+                          "type": {
+                            "type": "number"
+                          },
+                          "anisotropy": {
+                            "type": "number"
+                          },
+                          "colorSpace": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "throwOnError": {
+                        "type": "boolean"
+                      },
+                      "userData": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "debugData": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "comments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "timestamp": {
+                                  "type": "number"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timestamp",
+                                "comment"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "todo": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugObj": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "__sourcePath": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "isPersistent": {
+                    "type": "boolean"
+                  },
+                  "debugData": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "comments": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "timestamp": {
+                              "type": "number"
+                            },
+                            "comment": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "timestamp",
+                            "comment"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "todo": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "debugObj": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "userData": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "params": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "$schema": {
+                    "type": "string"
+                  },
+                  "__sourcePath": {
+                    "type": "string"
+                  },
+                  "__saveData": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "__meta": {
+                            "type": "object",
+                            "properties": {
+                              "date": {
+                                "type": "number"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "params": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "staticDefines": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "nodes": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {}
+                            }
+                          },
+                          "debugData": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "comments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "timestamp": {
+                                      "type": "number"
+                                    },
+                                    "comment": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "timestamp",
+                                    "comment"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "todo": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "debugObj": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "userData": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "isPersistent": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "tslFile": {
+                    "type": "string"
+                  },
+                  "staticDefines": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "nodes": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "BASICNODEMATERIAL",
+                      "LAMBERTNODEMATERIAL",
+                      "PHONGNODEMATERIAL",
+                      "PHYSICALNODEMATERIAL",
+                      "STANDARDNODEMATERIAL",
+                      "MATCAPNODEMATERIAL",
+                      "NORMALNODEMATERIAL",
+                      "TOONNODEMATERIAL"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "tslFile",
+                  "type"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "isPersistent": {
+                    "type": "boolean"
+                  },
+                  "debugData": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "comments": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "timestamp": {
+                              "type": "number"
+                            },
+                            "comment": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "timestamp",
+                            "comment"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "todo": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "debugObj": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "userData": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "params": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "$schema": {
+                    "type": "string"
+                  },
+                  "__sourcePath": {
+                    "type": "string"
+                  },
+                  "__saveData": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "__meta": {
+                            "type": "object",
+                            "properties": {
+                              "date": {
+                                "type": "number"
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "params": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "staticDefines": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "nodes": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {}
+                            }
+                          },
+                          "debugData": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "comments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "timestamp": {
+                                      "type": "number"
+                                    },
+                                    "comment": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "timestamp",
+                                    "comment"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "todo": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "debugObj": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "userData": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "isPersistent": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "LINEBASIC",
+                      "LINEDASHED",
+                      "BASIC",
+                      "DEPTH",
+                      "DISTANCE",
+                      "LAMBERT",
+                      "MATCAP",
+                      "NORMAL",
+                      "PHONG",
+                      "PHYSICAL",
+                      "STANDARD",
+                      "TOON",
+                      "POINTS",
+                      "SHADERRAW",
+                      "SHADER",
+                      "SHADOW",
+                      "SPRITE"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "type"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "meshes": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        ]
+      }
+    },
+    "importedMeshes": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        ]
+      }
+    },
+    "skyboxes": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        ]
+      }
+    },
+    "id": {
+      "type": "string"
+    },
+    "sceneFile": {
+      "type": "string"
+    },
+    "__sourcePath": {
+      "type": "string"
+    },
+    "__saveData": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "$schema": {
+              "type": "string"
+            },
+            "__meta": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "isDebugScene": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "comments": {},
+            "todo": {},
+            "cameras": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "$schema": {
+                        "type": "string"
+                      },
+                      "camProps": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "active": {
+                                "type": "boolean"
+                              },
+                              "near": {
+                                "type": "number"
+                              },
+                              "far": {
+                                "type": "number"
+                              },
+                              "zoom": {
+                                "type": "number"
+                              },
+                              "appId": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "z": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "z"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "PERSPECTIVE"
+                              },
+                              "fov": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "active": {
+                                "type": "boolean"
+                              },
+                              "near": {
+                                "type": "number"
+                              },
+                              "far": {
+                                "type": "number"
+                              },
+                              "zoom": {
+                                "type": "number"
+                              },
+                              "appId": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "z": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "z"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "ORTHOGRAPHIC"
+                              },
+                              "frustumSize": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "entityOpts": {
+                        "type": "object",
+                        "properties": {
+                          "appId": {
+                            "type": "string"
+                          },
+                          "disabled": {
+                            "type": "boolean"
+                          },
+                          "persistent": {
+                            "type": "boolean"
+                          },
+                          "doNotAddToScene": {
+                            "type": "boolean"
+                          },
+                          "userData": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugData": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "comments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "timestamp": {
+                                      "type": "number"
+                                    },
+                                    "comment": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "timestamp",
+                                    "comment"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "todo": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "debugObj": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "__sourcePath": {
+                        "type": "string"
+                      },
+                      "__saveData": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "__meta": {
+                                "type": "object",
+                                "properties": {
+                                  "date": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "PERSPECTIVE",
+                                  "ORTHOGRAPHIC"
+                                ]
+                              },
+                              "active": {
+                                "type": "boolean"
+                              },
+                              "near": {
+                                "type": "number"
+                              },
+                              "far": {
+                                "type": "number"
+                              },
+                              "zoom": {
+                                "type": "number"
+                              },
+                              "appId": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "z": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "z"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "fov": {
+                                "type": "number"
+                              },
+                              "frustumSize": {
+                                "type": "number"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "camProps"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "lights": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "$schema": {
+                        "type": "string"
+                      },
+                      "lightProps": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "appId": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "AMBIENT"
+                              },
+                              "color": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "r": {
+                                        "type": "number"
+                                      },
+                                      "g": {
+                                        "type": "number"
+                                      },
+                                      "b": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "r",
+                                      "g",
+                                      "b"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "intensity": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "appId": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "HEMISPHERE"
+                              },
+                              "color": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "r": {
+                                        "type": "number"
+                                      },
+                                      "g": {
+                                        "type": "number"
+                                      },
+                                      "b": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "r",
+                                      "g",
+                                      "b"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "groundColor": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "r": {
+                                        "type": "number"
+                                      },
+                                      "g": {
+                                        "type": "number"
+                                      },
+                                      "b": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "r",
+                                      "g",
+                                      "b"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "intensity": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "appId": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "POINT"
+                              },
+                              "color": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "r": {
+                                        "type": "number"
+                                      },
+                                      "g": {
+                                        "type": "number"
+                                      },
+                                      "b": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "r",
+                                      "g",
+                                      "b"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "intensity": {
+                                "type": "number"
+                              },
+                              "distance": {
+                                "type": "number"
+                              },
+                              "decay": {
+                                "type": "number"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "z": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "z"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "castShadow": {
+                                "type": "boolean"
+                              },
+                              "shadowPreset": {
+                                "type": "string",
+                                "enum": [
+                                  "LOW",
+                                  "MEDIUM",
+                                  "HIGH",
+                                  "ULTRA"
+                                ]
+                              },
+                              "shadowBias": {
+                                "type": "number"
+                              },
+                              "shadowNormalBias": {
+                                "type": "number"
+                              },
+                              "shadowMapSize": {
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                }
+                              },
+                              "shadowCameraNearFar": {
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                }
+                              },
+                              "shadowBlurSamples": {
+                                "type": "number"
+                              },
+                              "shadowRadius": {
+                                "type": "number"
+                              },
+                              "shadowIntensity": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "appId": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "DIRECTIONAL"
+                              },
+                              "color": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "r": {
+                                        "type": "number"
+                                      },
+                                      "g": {
+                                        "type": "number"
+                                      },
+                                      "b": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "r",
+                                      "g",
+                                      "b"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "intensity": {
+                                "type": "number"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "z": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "z"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "targetPos": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "z": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "z"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "castShadow": {
+                                "type": "boolean"
+                              },
+                              "shadowPreset": {
+                                "type": "string",
+                                "enum": [
+                                  "LOW",
+                                  "MEDIUM",
+                                  "HIGH",
+                                  "ULTRA"
+                                ]
+                              },
+                              "shadowBias": {
+                                "type": "number"
+                              },
+                              "shadowNormalBias": {
+                                "type": "number"
+                              },
+                              "shadowMapSize": {
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                }
+                              },
+                              "shadowCameraNearFar": {
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                }
+                              },
+                              "shadowCameraFrustum": {
+                                "minItems": 4,
+                                "maxItems": 4,
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                }
+                              },
+                              "shadowBlurSamples": {
+                                "type": "number"
+                              },
+                              "shadowRadius": {
+                                "type": "number"
+                              },
+                              "shadowIntensity": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "appId": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "SPOT"
+                              },
+                              "color": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "r": {
+                                        "type": "number"
+                                      },
+                                      "g": {
+                                        "type": "number"
+                                      },
+                                      "b": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "r",
+                                      "g",
+                                      "b"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "intensity": {
+                                "type": "number"
+                              },
+                              "distance": {
+                                "type": "number"
+                              },
+                              "angle": {
+                                "type": "number"
+                              },
+                              "penumbra": {
+                                "type": "number"
+                              },
+                              "decay": {
+                                "type": "number"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "z": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "z"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "targetPos": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "z": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "z"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "castShadow": {
+                                "type": "boolean"
+                              },
+                              "shadowPreset": {
+                                "type": "string",
+                                "enum": [
+                                  "LOW",
+                                  "MEDIUM",
+                                  "HIGH",
+                                  "ULTRA"
+                                ]
+                              },
+                              "shadowBias": {
+                                "type": "number"
+                              },
+                              "shadowNormalBias": {
+                                "type": "number"
+                              },
+                              "shadowMapSize": {
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                }
+                              },
+                              "shadowCameraNearFar": {
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                }
+                              },
+                              "shadowBlurSamples": {
+                                "type": "number"
+                              },
+                              "shadowRadius": {
+                                "type": "number"
+                              },
+                              "shadowIntensity": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "entityOpts": {
+                        "type": "object",
+                        "properties": {
+                          "appId": {
+                            "type": "string"
+                          },
+                          "disabled": {
+                            "type": "boolean"
+                          },
+                          "persistent": {
+                            "type": "boolean"
+                          },
+                          "doNotAddToScene": {
+                            "type": "boolean"
+                          },
+                          "userData": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugData": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "comments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "timestamp": {
+                                      "type": "number"
+                                    },
+                                    "comment": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "timestamp",
+                                    "comment"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "todo": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "debugObj": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "__sourcePath": {
+                        "type": "string"
+                      },
+                      "__saveData": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "__meta": {
+                                "type": "object",
+                                "properties": {
+                                  "date": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "appId": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "AMBIENT",
+                                  "HEMISPHERE",
+                                  "POINT",
+                                  "DIRECTIONAL",
+                                  "SPOT"
+                                ]
+                              },
+                              "color": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "r": {
+                                        "type": "number"
+                                      },
+                                      "g": {
+                                        "type": "number"
+                                      },
+                                      "b": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "r",
+                                      "g",
+                                      "b"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "intensity": {
+                                "type": "number"
+                              },
+                              "groundColor": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "r": {
+                                        "type": "number"
+                                      },
+                                      "g": {
+                                        "type": "number"
+                                      },
+                                      "b": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "r",
+                                      "g",
+                                      "b"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "distance": {
+                                "type": "number"
+                              },
+                              "decay": {
+                                "type": "number"
+                              },
+                              "position": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "z": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "z"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "castShadow": {
+                                "type": "boolean"
+                              },
+                              "shadowPreset": {
+                                "type": "string",
+                                "enum": [
+                                  "LOW",
+                                  "MEDIUM",
+                                  "HIGH",
+                                  "ULTRA"
+                                ]
+                              },
+                              "shadowBias": {
+                                "type": "number"
+                              },
+                              "shadowNormalBias": {
+                                "type": "number"
+                              },
+                              "shadowMapSize": {
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                }
+                              },
+                              "shadowCameraNearFar": {
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                }
+                              },
+                              "shadowBlurSamples": {
+                                "type": "number"
+                              },
+                              "shadowRadius": {
+                                "type": "number"
+                              },
+                              "shadowIntensity": {
+                                "type": "number"
+                              },
+                              "targetPos": {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "z": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "z"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "shadowCameraFrustum": {
+                                "minItems": 4,
+                                "maxItems": 4,
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                }
+                              },
+                              "angle": {
+                                "type": "number"
+                              },
+                              "penumbra": {
+                                "type": "number"
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "lightProps"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "geometries": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "$schema": {
+                        "type": "string"
+                      },
+                      "geoProps": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "debugData": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "comments": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "timestamp": {
+                                          "type": "number"
+                                        },
+                                        "comment": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "timestamp",
+                                        "comment"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "todo": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "debugObj": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "BOX"
+                              },
+                              "params": {
+                                "type": "object",
+                                "properties": {
+                                  "width": {
+                                    "type": "number"
+                                  },
+                                  "height": {
+                                    "type": "number"
+                                  },
+                                  "depth": {
+                                    "type": "number"
+                                  },
+                                  "widthSegments": {
+                                    "type": "number"
+                                  },
+                                  "heightSegments": {
+                                    "type": "number"
+                                  },
+                                  "depthSegments": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "debugData": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "comments": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "timestamp": {
+                                          "type": "number"
+                                        },
+                                        "comment": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "timestamp",
+                                        "comment"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "todo": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "debugObj": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "SPHERE"
+                              },
+                              "params": {
+                                "type": "object",
+                                "properties": {
+                                  "radius": {
+                                    "type": "number"
+                                  },
+                                  "widthSegments": {
+                                    "type": "number"
+                                  },
+                                  "heightSegments": {
+                                    "type": "number"
+                                  },
+                                  "phiStart": {
+                                    "type": "number"
+                                  },
+                                  "phiLength": {
+                                    "type": "number"
+                                  },
+                                  "thetaStart": {
+                                    "type": "number"
+                                  },
+                                  "thetaLength": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "debugData": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "comments": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "timestamp": {
+                                          "type": "number"
+                                        },
+                                        "comment": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "timestamp",
+                                        "comment"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "todo": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "debugObj": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "CYLINDER"
+                              },
+                              "params": {
+                                "type": "object",
+                                "properties": {
+                                  "radiusTop": {
+                                    "type": "number"
+                                  },
+                                  "radiusBottom": {
+                                    "type": "number"
+                                  },
+                                  "height": {
+                                    "type": "number"
+                                  },
+                                  "radialSegments": {
+                                    "type": "number"
+                                  },
+                                  "heightSegments": {
+                                    "type": "number"
+                                  },
+                                  "openEnded": {
+                                    "type": "boolean"
+                                  },
+                                  "thetaStart": {
+                                    "type": "number"
+                                  },
+                                  "thetaLength": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "debugData": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "comments": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "timestamp": {
+                                          "type": "number"
+                                        },
+                                        "comment": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "timestamp",
+                                        "comment"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "todo": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "debugObj": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "CAPSULE"
+                              },
+                              "params": {
+                                "type": "object",
+                                "properties": {
+                                  "radius": {
+                                    "type": "number"
+                                  },
+                                  "height": {
+                                    "type": "number"
+                                  },
+                                  "capSegments": {
+                                    "type": "number"
+                                  },
+                                  "radialSegments": {
+                                    "type": "number"
+                                  },
+                                  "heightSegments": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "debugData": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "comments": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "timestamp": {
+                                          "type": "number"
+                                        },
+                                        "comment": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "timestamp",
+                                        "comment"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "todo": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "debugObj": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "CONE"
+                              },
+                              "params": {
+                                "type": "object",
+                                "properties": {
+                                  "radius": {
+                                    "type": "number"
+                                  },
+                                  "height": {
+                                    "type": "number"
+                                  },
+                                  "radialSegments": {
+                                    "type": "number"
+                                  },
+                                  "heightSegments": {
+                                    "type": "number"
+                                  },
+                                  "openEnded": {
+                                    "type": "boolean"
+                                  },
+                                  "thetaStart": {
+                                    "type": "number"
+                                  },
+                                  "thetaLength": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "__sourcePath": {
+                        "type": "string"
+                      },
+                      "__saveData": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "__meta": {
+                                "type": "object",
+                                "properties": {
+                                  "date": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "debugData": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "comments": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "timestamp": {
+                                          "type": "number"
+                                        },
+                                        "comment": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "timestamp",
+                                        "comment"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "todo": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "debugObj": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "params": {
+                                "type": "object",
+                                "properties": {
+                                  "width": {
+                                    "type": "number"
+                                  },
+                                  "height": {
+                                    "type": "number"
+                                  },
+                                  "depth": {
+                                    "type": "number"
+                                  },
+                                  "widthSegments": {
+                                    "type": "number"
+                                  },
+                                  "heightSegments": {
+                                    "type": "number"
+                                  },
+                                  "depthSegments": {
+                                    "type": "number"
+                                  },
+                                  "radius": {
+                                    "type": "number"
+                                  },
+                                  "phiStart": {
+                                    "type": "number"
+                                  },
+                                  "phiLength": {
+                                    "type": "number"
+                                  },
+                                  "thetaStart": {
+                                    "type": "number"
+                                  },
+                                  "thetaLength": {
+                                    "type": "number"
+                                  },
+                                  "radiusTop": {
+                                    "type": "number"
+                                  },
+                                  "radiusBottom": {
+                                    "type": "number"
+                                  },
+                                  "radialSegments": {
+                                    "type": "number"
+                                  },
+                                  "openEnded": {
+                                    "type": "boolean"
+                                  },
+                                  "capSegments": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "geoProps"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "textures": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "$schema": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "fileName": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "useHDRLoader": {
+                        "type": "boolean"
+                      },
+                      "texOpts": {
+                        "type": "object",
+                        "properties": {
+                          "image": {},
+                          "mapping": {
+                            "type": "number"
+                          },
+                          "wrapS": {
+                            "type": "number"
+                          },
+                          "wrapT": {
+                            "type": "number"
+                          },
+                          "magFilter": {
+                            "type": "number"
+                          },
+                          "minFilter": {
+                            "type": "number"
+                          },
+                          "type": {
+                            "type": "number"
+                          },
+                          "anisotropy": {
+                            "type": "number"
+                          },
+                          "colorSpace": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "throwOnError": {
+                        "type": "boolean"
+                      },
+                      "userData": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "debugData": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "comments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "timestamp": {
+                                  "type": "number"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timestamp",
+                                "comment"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "todo": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugObj": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "__saveData": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "__meta": {
+                                "type": "object",
+                                "properties": {
+                                  "date": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "fileName": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "useHDRLoader": {
+                                "type": "boolean"
+                              },
+                              "texOpts": {
+                                "type": "object",
+                                "properties": {
+                                  "image": {},
+                                  "mapping": {
+                                    "type": "number"
+                                  },
+                                  "wrapS": {
+                                    "type": "number"
+                                  },
+                                  "wrapT": {
+                                    "type": "number"
+                                  },
+                                  "magFilter": {
+                                    "type": "number"
+                                  },
+                                  "minFilter": {
+                                    "type": "number"
+                                  },
+                                  "type": {
+                                    "type": "number"
+                                  },
+                                  "anisotropy": {
+                                    "type": "number"
+                                  },
+                                  "colorSpace": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "throwOnError": {
+                                "type": "boolean"
+                              },
+                              "userData": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "debugData": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "comments": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "timestamp": {
+                                          "type": "number"
+                                        },
+                                        "comment": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "timestamp",
+                                        "comment"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "todo": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "debugObj": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "__sourcePath": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "materials": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "isPersistent": {
+                            "type": "boolean"
+                          },
+                          "debugData": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "comments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "timestamp": {
+                                      "type": "number"
+                                    },
+                                    "comment": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "timestamp",
+                                    "comment"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "todo": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "debugObj": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "userData": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "params": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "$schema": {
+                            "type": "string"
+                          },
+                          "__sourcePath": {
+                            "type": "string"
+                          },
+                          "__saveData": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "__meta": {
+                                    "type": "object",
+                                    "properties": {
+                                      "date": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "params": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "staticDefines": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "nodes": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {
+                                      "type": "object",
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "additionalProperties": {}
+                                    }
+                                  },
+                                  "debugData": {
+                                    "type": "object",
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "description": {
+                                        "type": "string"
+                                      },
+                                      "comments": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "timestamp": {
+                                              "type": "number"
+                                            },
+                                            "comment": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "timestamp",
+                                            "comment"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "todo": {
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string"
+                                        },
+                                        "additionalProperties": {}
+                                      },
+                                      "debugObj": {
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string"
+                                        },
+                                        "additionalProperties": {}
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "userData": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "isPersistent": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "tslFile": {
+                            "type": "string"
+                          },
+                          "staticDefines": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "nodes": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {}
+                            }
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "BASICNODEMATERIAL",
+                              "LAMBERTNODEMATERIAL",
+                              "PHONGNODEMATERIAL",
+                              "PHYSICALNODEMATERIAL",
+                              "STANDARDNODEMATERIAL",
+                              "MATCAPNODEMATERIAL",
+                              "NORMALNODEMATERIAL",
+                              "TOONNODEMATERIAL"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "tslFile",
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "isPersistent": {
+                            "type": "boolean"
+                          },
+                          "debugData": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "comments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "timestamp": {
+                                      "type": "number"
+                                    },
+                                    "comment": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "timestamp",
+                                    "comment"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "todo": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "debugObj": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "userData": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "params": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "$schema": {
+                            "type": "string"
+                          },
+                          "__sourcePath": {
+                            "type": "string"
+                          },
+                          "__saveData": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "__meta": {
+                                    "type": "object",
+                                    "properties": {
+                                      "date": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "params": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "staticDefines": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "nodes": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {
+                                      "type": "object",
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "additionalProperties": {}
+                                    }
+                                  },
+                                  "debugData": {
+                                    "type": "object",
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "description": {
+                                        "type": "string"
+                                      },
+                                      "comments": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "timestamp": {
+                                              "type": "number"
+                                            },
+                                            "comment": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "timestamp",
+                                            "comment"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "todo": {
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string"
+                                        },
+                                        "additionalProperties": {}
+                                      },
+                                      "debugObj": {
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string"
+                                        },
+                                        "additionalProperties": {}
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "userData": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "isPersistent": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "LINEBASIC",
+                              "LINEDASHED",
+                              "BASIC",
+                              "DEPTH",
+                              "DISTANCE",
+                              "LAMBERT",
+                              "MATCAP",
+                              "NORMAL",
+                              "PHONG",
+                              "PHYSICAL",
+                              "STANDARD",
+                              "TOON",
+                              "POINTS",
+                              "SHADERRAW",
+                              "SHADER",
+                              "SHADOW",
+                              "SPRITE"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "meshes": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                ]
+              }
+            },
+            "importedMeshes": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                ]
+              }
+            },
+            "skyboxes": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "required": [
+    "id",
+    "sceneFile"
+  ],
+  "additionalProperties": false
+}

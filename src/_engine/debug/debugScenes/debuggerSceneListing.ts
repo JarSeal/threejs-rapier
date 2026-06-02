@@ -1,6 +1,6 @@
 import { DEBUG_MATERIAL_EDITOR_ID, initDebugMaterialEditorScene } from './materialEditor';
 
-export type DebugScene = { id: string; fn: () => Promise<string>; text: string };
+export type DebugScene = { id: string; fn: () => Promise<void>; text: string };
 
 export const debuggerSceneListing: DebugScene[] = [
   {

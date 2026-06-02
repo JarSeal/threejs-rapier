@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../.schemas/material.schema.json",
   "id": "testMaterial",
   "type": "PHONG",
   "params": {
@@ -8,7 +9,7 @@
     "sceneTestECS": [
       {
         "__meta": { "date": 1779449688109 },
-        "wireframe": false
+        "params": { "wireframe": false }
       }
     ]
   }

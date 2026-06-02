@@ -14,18 +14,21 @@ import {
 } from './PhysicsRapier';
 import { generateUUID } from 'three/src/math/MathUtils.js';
 import { isOnlyObject3D, setMeshCreatePropsToUserData } from '../utils/helpers';
+import { type CoreEntityOpts } from '../schemas/_helperSchemas';
 
 export type AdditionalImportPhysicsParams = {
   isPhysObj?: boolean;
   keepMesh?: boolean;
-  id?: string;
+  appId?: string;
   name?: string;
   index?: number;
 };
 
 export type ImportModelParams = {
   fileName: string;
-  id?: string;
+  appId?: string;
+  /** Core entity options for all imported meshes and groups */
+  entityOpts?: CoreEntityOpts;
   importGroup?: boolean;
   allMeshesVisible?: boolean;
   groupId?: string;
@@ -63,8 +66,16 @@ const parseImportResult = (
   groupOrMesh: THREE.Group | THREE.Mesh,
   params: ImportModelParams
 ): ImportReturnObj => {
-  const { id, fileName, importGroup, meshIndex, throwOnError, saveMaterial, physicsParams } =
-    params;
+  const {
+    appId,
+    fileName,
+    entityOpts,
+    importGroup,
+    meshIndex,
+    throwOnError,
+    saveMaterial,
+    physicsParams,
+  } = params;
   const returnObj: ImportReturnObj = {};
   const overridePhysParams = Array.isArray(physicsParams)
     ? physicsParams
@@ -80,6 +91,7 @@ const parseImportResult = (
     for (let i = 0; i < kids.length; i++) {
       const kid = kids[i];
       if ('isMesh' in kid && kid.isMesh) {
+        const id = appId || entityOpts?.appId || kid.userData.id || kid.uuid;
         const newId = id ? `${id}-${index}-${i}` : kid.uuid;
         const userData = kid.userData;
         if (userData.keepMesh) {
@@ -169,6 +181,9 @@ const parseImportResult = (
 
   modelMesh = getIndexedChild(groupOrMesh.children);
 
+  const id =
+    appId || entityOpts?.appId || modelMesh?.userData.id || modelMesh?.uuid || generateUUID();
+
   if (!modelMesh) {
     const errorMsg = `Could not find a mesh in importModelAsync with index ${Array.isArray(index) ? JSON.stringify(index) : index} (id: "${id}", fileName: "${fileName}")`;
     lerror(errorMsg);
@@ -182,11 +197,7 @@ const parseImportResult = (
     return {};
   }
 
-  const userData = cleanUpCustomProps(
-    modelMesh?.userData,
-    overridePhysParams[0],
-    modelMesh.userData.id
-  );
+  const userData = cleanUpCustomProps(modelMesh?.userData, overridePhysParams[0], id);
   const rigidAndChildParamsResult = getRigidParamsAndChildColliders([userData], params);
   if (rigidAndChildParamsResult) {
     const { physParamsObj, rigidMeshId } = rigidAndChildParamsResult;
@@ -275,12 +286,15 @@ const checkImportFileName = (fileName: string) => {
  * @returns Promise<{@link ImportReturnObj}>
  */
 export const importModelAsync = async (params: ImportModelParams): Promise<ImportReturnObj> => {
-  const { id, fileName, importGroup, throwOnError } = params;
+  const { appId, fileName, importGroup, entityOpts, throwOnError } = params;
+  const id = appId || entityOpts?.appId;
   if (id && !importGroup) {
+    // @CHORE: change to use entity meshes
     const mesh = getMesh(id);
     if (mesh) return { mesh };
   }
   if (id && importGroup) {
+    // @CHORE: change to use entity groups
     const group = getGroup(id);
     if (group) return { group };
   }
@@ -294,7 +308,7 @@ export const importModelAsync = async (params: ImportModelParams): Promise<Impor
     const gltf = await loader.loadAsync(fileName);
     // @TODO: add a debugger rule here to console.log the gltf
     modelGroup = createGroup({
-      id: params.groupId || params.id,
+      id,
       name: params.groupName || params.debugData?.name,
     });
     // Check if the first and only child is an empty object and import the children
@@ -346,7 +360,8 @@ export const importModels = (
   setDracoLoader(loader);
 
   for (let i = 0; i < modelsParams.length; i++) {
-    const { id, fileName, importGroup, throwOnError } = modelsParams[i];
+    const { appId, fileName, entityOpts, importGroup, throwOnError } = modelsParams[i];
+    const id = appId || entityOpts?.appId;
     if (id && !importGroup) {
       const mesh = getMesh(id);
       if (mesh) {
@@ -467,7 +482,7 @@ const cleanUpCustomProps = (
     ...(overridePhysParams?.isPhysObj !== undefined
       ? { isPhysObj: overridePhysParams.isPhysObj }
       : {}),
-    ...(overridePhysParams?.id ? { id: overridePhysParams.id } : {}),
+    ...(overridePhysParams?.meshId ? { id: overridePhysParams.meshId } : {}),
     ...(overridePhysParams?.name ? { name: overridePhysParams.name } : {}),
     ...(overridePhysParams?.keepMesh !== undefined
       ? { keepMesh: overridePhysParams.keepMesh }
@@ -797,7 +812,7 @@ const getRigidParamsAndChildColliders = (
       },
     ] as PhysicsParams[],
     meshOrMeshId: [] as (THREE.Mesh | string) | (THREE.Mesh | string)[],
-    id: params.id || rigidParams.id || rigidMeshId,
+    id: params.appId || params.entityOpts?.appId || rigidParams.id || rigidMeshId,
     name: params.debugData?.name || rigidParams.name,
     isCompoundObject: Boolean(restOfColliderParams.length),
   };

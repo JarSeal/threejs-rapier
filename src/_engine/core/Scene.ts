@@ -19,12 +19,12 @@ import {
 } from '../debug/DebugTools';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
-import { CameraProps } from './_CameraManager';
 import { CoreEntityOpts } from './ECS';
 import { LightProps } from './_LightManager';
 import { ImportModelParams } from './ImportModel';
 import { SkyBoxProps } from './SkyBox';
 import generatedAppData from '../generatedAppData.json';
+import { CameraProps } from '../schemas/cameraSchema';
 
 export type Looper = (delta: number) => void;
 
@@ -50,8 +50,8 @@ export type SceneData = {
   geometries?: (GeoProps | string)[];
   textures?: (TextureProps | string)[];
   materials?: (MatProps | string)[];
-  primitiveMeshes?: (MeshProps | string)[]; // @CHORE: remove this (also from scene gatherer)!
-  meshes?: (ImportModelParams | string)[];
+  meshes?: (MeshProps | string)[]; // @CHORE: remove this (also from scene gatherer)!
+  importedMeshes?: (ImportModelParams | string)[];
   skyboxes?: (SkyBoxProps | string)[];
 };
 

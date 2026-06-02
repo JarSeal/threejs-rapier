@@ -1,13 +1,13 @@
 import { defineConfig, type ViteDevServer } from 'vite';
 import wasm from 'vite-plugin-wasm';
+import { visualizer } from 'rollup-plugin-visualizer';
 import pkg from './package.json';
 import {
   gatherSceneData,
   isFilePathValid,
   OUTPUT_FILE_DATA,
   OUTPUT_FILE_FN,
-  // @ts-expect-error - Standalone JS script lacks type declarations
-} from './devTools/gatherAppData.js';
+} from './devTools/gatherAppData.ts';
 
 // --- Custom Vite Plugin for gathering scene data ---
 const sceneGathererPlugin = () => ({
@@ -148,6 +148,18 @@ export default defineConfig({
         });
       },
     },
+    visualizer({
+      title: meta.app.name,
+      filename: './dist-stats/bundle-stats.html',
+      open: true,
+      gzipSize: true,
+      template: 'treemap',
+      // exclude: [
+      //   { file: '*/**/three.core.js' },
+      //   { file: '*/**/rapier.mjs' },
+      //   { file: '*/**/three.webgpu.js' },
+      // ],
+    }),
   ],
   define: {
     __PROJECT_METADATA__: meta,

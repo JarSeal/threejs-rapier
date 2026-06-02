@@ -1,8 +1,10 @@
 {
-  "id": "testImportMesh",
-  "fileName": "/debugger/assets/testModels/box01.glb",
-  "importGroup": true,
-  "allMeshesVisible": true,
+  "props": {
+    "appId": "testImportedMesh",
+    "fileName": "/debugger/assets/testModels/box01.glb",
+    "importGroup": true,
+    "allMeshesVisible": true
+  },
   "__saveData": {
     "sceneTestECS": [
       {

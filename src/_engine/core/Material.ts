@@ -1,6 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { deleteTexture } from './Texture';
+import { deleteTexture, getTexture } from './Texture';
 import { getRootScene } from './Scene';
+import { existsOrThrow } from '../utils/helpers';
+import { tslMaterialFileObjects } from '../generatedAppFns';
+import { lerror } from '../utils/Logger';
+import { color, Node, texture, uniform } from 'three/tsl';
 
 export type Materials =
   | THREE.LineBasicMaterial
@@ -33,7 +37,13 @@ export type Materials =
   | THREE.MeshNormalNodeMaterial
   | THREE.MeshToonNodeMaterial;
 
-const materials: { [id: string]: Materials } = {};
+const materials: {
+  [id: string]: {
+    resource: Materials;
+    count: number;
+    persistent?: boolean;
+  };
+} = {};
 
 export const textureMapKeys = [
   'map',
@@ -63,68 +73,131 @@ export const textureMapKeys = [
 
 export type MatProps = {
   id?: string;
+  isPersistent?: boolean;
   debugData?: { name?: string; description?: string };
+  userData?: Record<string, unknown>;
 } & (
-  | { tslFile?: string; uniforms: { [key: string]: unknown } }
-  | { type: 'LINEBASIC'; params: THREE.LineBasicMaterialParameters }
-  | { type: 'LINEDASHED'; params: THREE.LineDashedMaterialParameters }
-  | { type: 'BASIC'; params: THREE.MeshBasicMaterialParameters }
-  | { type: 'DEPTH'; params: THREE.MeshDepthMaterialParameters }
-  | { type: 'DISTANCE'; params: THREE.MeshDistanceMaterialParameters }
-  | { type: 'LAMBERT'; params: THREE.MeshLambertMaterialParameters }
-  | { type: 'MATCAP'; params: THREE.MeshMatcapMaterialParameters }
-  | { type: 'NORMAL'; params: THREE.MeshNormalMaterialParameters }
-  | { type: 'PHONG'; params: THREE.MeshPhongMaterialParameters }
-  | { type: 'PHYSICAL'; params: THREE.MeshPhysicalMaterialParameters }
-  | { type: 'STANDARD'; params: THREE.MeshStandardMaterialParameters }
-  | { type: 'TOON'; params: THREE.MeshToonMaterialParameters }
-  | { type: 'POINTS'; params: THREE.PointsMaterialParameters }
-  | { type: 'SHADERRAW'; params: THREE.ShaderMaterialParameters }
-  | { type: 'SHADER'; params: THREE.ShaderMaterialParameters }
-  | { type: 'SHADOW'; params: THREE.ShadowMaterialParameters }
-  | { type: 'SPRITE'; params: THREE.SpriteMaterialParameters }
-  | { type: 'BASICNODEMATERIAL'; params: THREE.MeshBasicNodeMaterialParameters }
-  | { type: 'LAMBERTNODEMATERIAL'; params: THREE.MeshLambertNodeMaterialParameters }
-  | { type: 'PHONGNODEMATERIAL'; params: THREE.MeshPhongNodeMaterialParameters }
-  | { type: 'PHYSICALNODEMATERIAL'; params: THREE.MeshPhysicalNodeMaterialParameters }
-  | { type: 'STANDARDNODEMATERIAL'; params: THREE.MeshStandardNodeMaterialParameters }
-  | { type: 'MATCAPNODEMATERIAL'; params: THREE.MeshMatcapNodeMaterialParameters }
-  | { type: 'NORMALNODEMATERIAL'; params: THREE.MeshNormalNodeMaterialParameters }
-  | { type: 'TOONNODEMATERIAL'; params: THREE.MeshToonNodeMaterialParameters }
+  | { type: 'LINEBASIC'; params?: THREE.LineBasicMaterialParameters }
+  | { type: 'LINEDASHED'; params?: THREE.LineDashedMaterialParameters }
+  | { type: 'BASIC'; params?: THREE.MeshBasicMaterialParameters }
+  | { type: 'DEPTH'; params?: THREE.MeshDepthMaterialParameters }
+  | { type: 'DISTANCE'; params?: THREE.MeshDistanceMaterialParameters }
+  | { type: 'LAMBERT'; params?: THREE.MeshLambertMaterialParameters }
+  | { type: 'MATCAP'; params?: THREE.MeshMatcapMaterialParameters }
+  | { type: 'NORMAL'; params?: THREE.MeshNormalMaterialParameters }
+  | { type: 'PHONG'; params?: THREE.MeshPhongMaterialParameters }
+  | { type: 'PHYSICAL'; params?: THREE.MeshPhysicalMaterialParameters }
+  | { type: 'STANDARD'; params?: THREE.MeshStandardMaterialParameters }
+  | { type: 'TOON'; params?: THREE.MeshToonMaterialParameters }
+  | { type: 'POINTS'; params?: THREE.PointsMaterialParameters }
+  | { type: 'SHADERRAW'; params?: THREE.ShaderMaterialParameters }
+  | { type: 'SHADER'; params?: THREE.ShaderMaterialParameters }
+  | { type: 'SHADOW'; params?: THREE.ShadowMaterialParameters }
+  | { type: 'SPRITE'; params?: THREE.SpriteMaterialParameters }
+  | {
+      type: 'BASICNODEMATERIAL';
+      params?: THREE.MeshBasicNodeMaterialParameters;
+      tslFile?: string;
+      nodes?: Record<string, Record<string, unknown>>;
+      staticDefines?: Record<string, unknown>;
+    }
+  | {
+      type: 'LAMBERTNODEMATERIAL';
+      params?: THREE.MeshLambertNodeMaterialParameters;
+      tslFile?: string;
+      nodes?: Record<string, Record<string, unknown>>;
+      staticDefines?: Record<string, unknown>;
+    }
+  | {
+      type: 'PHONGNODEMATERIAL';
+      params?: THREE.MeshPhongNodeMaterialParameters;
+      tslFile?: string;
+      nodes?: Record<string, Record<string, unknown>>;
+      staticDefines?: Record<string, unknown>;
+    }
+  | {
+      type: 'PHYSICALNODEMATERIAL';
+      params?: THREE.MeshPhysicalNodeMaterialParameters;
+      tslFile?: string;
+      nodes?: Record<string, Record<string, unknown>>;
+      staticDefines?: Record<string, unknown>;
+    }
+  | {
+      type: 'STANDARDNODEMATERIAL';
+      params?: THREE.MeshStandardNodeMaterialParameters;
+      tslFile?: string;
+      nodes?: Record<string, Record<string, unknown>>;
+      staticDefines?: Record<string, unknown>;
+    }
+  | {
+      type: 'MATCAPNODEMATERIAL';
+      params?: THREE.MeshMatcapNodeMaterialParameters;
+      tslFile?: string;
+      nodes?: Record<string, Record<string, unknown>>;
+      staticDefines?: Record<string, unknown>;
+    }
+  | {
+      type: 'NORMALNODEMATERIAL';
+      params?: THREE.MeshNormalNodeMaterialParameters;
+      tslFile?: string;
+      nodes?: Record<string, Record<string, unknown>>;
+      staticDefines?: Record<string, unknown>;
+    }
+  | {
+      type: 'TOONNODEMATERIAL';
+      params?: THREE.MeshToonNodeMaterialParameters;
+      tslFile?: string;
+      nodes?: Record<string, Record<string, unknown>>;
+      staticDefines?: Record<string, unknown>;
+    }
 );
 
-// TEMP definitions
 export const incMaterialRef = (id: string) => {
-  // TEMP
-  id;
+  if (materials[id]) {
+    materials[id].count++;
+  }
 };
+
 export const decMaterialRef = (id: string) => {
-  // TEMP
-  id;
+  const entry = materials[id];
+  if (!entry) return;
+
+  entry.count--;
+
+  if (entry.count <= 0 && !entry.persistent) {
+    deleteTexturesFromMaterial(entry.resource);
+    entry.resource.dispose();
+    delete materials[id];
+  }
+};
+
+export const setMaterialPersistence = (id: string, state: boolean) => {
+  const entry = materials[id];
+  if (!entry) return;
+  entry.persistent = state;
+
+  if (!state && entry.count === 0) {
+    deleteTexturesFromMaterial(entry.resource);
+    entry.resource.dispose();
+    delete materials[id];
+  }
 };
 
 /**
- * Creates a Three.js Material
- * @param id (string) optional id for the material, if id is not provided the uuid of the material is used as id.
- * @param type ({@link MatProps.type}) required enum string that defines the type of material.
- * @param params ({@link MatProps.params}) optional material params, the params props depends on the type of the material.
- * @returns Three.js material {@link Materials}
+ * Creates a Three.js Material supporting both standard descriptions and modern dynamic TSL graphs.
+ * @param props - Material configuration settings.
+ * @returns An instantiated, indexed Three.js material.
  */
 export const createMaterial = (props: MatProps) => {
-  if ('tslFile' in props && props.tslFile) {
-    // Throw temp error
-    throw new Error('Under construction');
-  }
-  if (!('type' in props)) throw new Error('No type found for material.');
-  if (!('params' in props)) throw new Error('No params found for material.');
-
   const id = props.id;
-  const type = props.type;
-  const params = props.params;
+
+  if (id && materials[id]) return materials[id].resource;
 
   let mat: Materials | null = null;
 
-  if (id && materials[id]) return materials[id];
+  // Standard Static Parameters Definitions
+  const type = props.type;
+  const params = props.params;
 
   switch (type) {
     case 'LINEBASIC':
@@ -202,39 +275,186 @@ export const createMaterial = (props: MatProps) => {
       break;
   }
 
-  if (!mat) {
-    throw new Error(`Could not create material (unknown type: '${type}').`);
+  if (mat) {
+    if (props.userData) mat.userData = props.userData;
+    mat.userData.type = type;
+  } else {
+    const msg = `[Material Manager] Incomplete properties for material (id: ${id}).`;
+    lerror(msg);
+    throw new Error(msg);
   }
 
-  mat.userData.type = type;
-  saveMaterial(mat, id);
+  // TSL file
+  if ('tslFile' in props && props.tslFile) {
+    const activeMaterialRegistry = existsOrThrow(
+      id && (tslMaterialFileObjects as Record<string, Record<string, unknown>>)[id],
+      `[Material Manager] Could not locate compiled TSL Master Graph registry entry for material ID: "${id}"`
+    );
+    if (activeMaterialRegistry === '') {
+      const msg = `[Material Manager] Empty TSL Master Graph function export for material entry ID: "${id}".`;
+      lerror(msg);
+      throw new Error(msg);
+    }
 
+    const staticDefines = props.staticDefines || {};
+
+    if (props.nodes) {
+      for (const nodeSocket of Object.keys(props.nodes)) {
+        const masterGraphFunction = activeMaterialRegistry[nodeSocket];
+
+        // If a named layout node function isn't explicitly exported, gracefully pass it
+        if (!masterGraphFunction) continue;
+
+        if (masterGraphFunction === ' ' || masterGraphFunction === '') {
+          const msg = `[Material Manager] Empty TSL function export caught at socket "${nodeSocket}" for material entry ID: "${id}".`;
+          lerror(msg);
+          throw new Error(msg);
+        }
+
+        const genericGraphFn = masterGraphFunction as (
+          inputs: Record<string, unknown>,
+          material: THREE.NodeMaterial,
+          defines?: Record<string, unknown>
+        ) => Node;
+
+        const rawInputs = props.nodes[nodeSocket];
+        const uniformNodesPayload: Record<string, unknown> = {};
+        let nodeStaticDefines: Record<string, unknown> | undefined = undefined;
+
+        for (const inputKey of Object.keys(rawInputs)) {
+          const value = rawInputs[inputKey];
+          let instantiatedNode;
+
+          // Handle Texture Asset References
+          if (inputKey === 'staticDefines' && typeof value === 'object' && value !== null) {
+            nodeStaticDefines = { ...staticDefines, ...(value as Record<string, unknown>) };
+          }
+          // Handle textures
+          else if (typeof value === 'string' && !value.startsWith('#')) {
+            const texResource = getTexture(value as string);
+            if (!texResource) continue;
+            // Convert directly into a sampler node, not a uniform buffer allocation
+            instantiatedNode = texture(texResource);
+          }
+          // Handle Hex Color Strings
+          else if (typeof value === 'string' && value.startsWith('#')) {
+            instantiatedNode = uniform(color(value));
+          }
+          // Handle Booleans (Flags / Switches)
+          else if (typeof value === 'boolean') {
+            instantiatedNode = uniform(value);
+          }
+          // Handle Arrays (Alternative Vector Format: [x, y] or [x, y, z])
+          else if (Array.isArray(value)) {
+            if (value.length === 4) {
+              instantiatedNode = uniform(new THREE.Vector4(value[0], value[1], value[2], value[3]));
+            } else if (value.length === 3) {
+              instantiatedNode = uniform(new THREE.Vector3(value[0], value[1], value[2]));
+            } else if (value.length === 2) {
+              instantiatedNode = uniform(new THREE.Vector2(value[0], value[1]));
+            } else {
+              const msg = `[Material Manager] Unsupported array length (${value.length}) for input "${inputKey}" in material "${id}".`;
+              lerror(msg);
+              throw new Error(msg);
+            }
+          }
+          // Handle Vector and Color Objects
+          else if (typeof value === 'object' && value !== null) {
+            const obj = value as Record<string, number>;
+
+            if ('w' in obj) {
+              instantiatedNode = uniform(
+                new THREE.Vector4(obj.x || 0, obj.y || 0, obj.z || 0, obj.w || 0)
+              );
+            } else if ('z' in obj) {
+              instantiatedNode = uniform(new THREE.Vector3(obj.x || 0, obj.y || 0, obj.z || 0));
+            } else if ('y' in obj) {
+              instantiatedNode = uniform(new THREE.Vector2(obj.x || 0, obj.y || 0));
+            } else if ('r' in obj && 'g' in obj && 'b' in obj && 'a' in obj) {
+              instantiatedNode = uniform(new THREE.Vector4(obj.r, obj.g, obj.b, obj.a));
+            } else if ('r' in obj && 'g' in obj && 'b' in obj) {
+              instantiatedNode = uniform(new THREE.Color(obj.r, obj.g, obj.b));
+            } else {
+              const msg = `[Material Manager] Unknown object footprint for input "${inputKey}" in material "${id}". Keys: ${Object.keys(obj).join(', ')}`;
+              lerror(msg);
+              throw new Error(msg);
+            }
+          }
+          // Handle Standard Float / Scalar Numbers
+          else if (typeof value === 'number') {
+            instantiatedNode = uniform(value);
+          }
+          // Everything else is forbidden
+          else {
+            const msg = `[Material Manager] Unsupported input value type at socket "${nodeSocket}" for input "${inputKey}" in material entry ID: "${id}". Value: ${JSON.stringify(value)}.`;
+            lerror(msg);
+            throw new Error(msg);
+          }
+
+          // Cache dynamically so runtime update scripts can pinpoint the uniform
+          mat.userData.uniforms[`${nodeSocket}_${inputKey}`] = instantiatedNode;
+          uniformNodesPayload[inputKey] = instantiatedNode;
+        }
+
+        // Execute graph function with its flat parameter values and assign directly to material socket
+        if (nodeSocket in mat)
+          mat[nodeSocket] = genericGraphFn(
+            uniformNodesPayload,
+            mat as THREE.NodeMaterial,
+            nodeStaticDefines
+          );
+      }
+    }
+
+    mat.userData.hasTslFile = true;
+  }
+
+  if (props.debugData) {
+    if (props.debugData.name) {
+      mat.name = props.debugData.name;
+      mat.userData.name = props.debugData.name;
+    }
+    if (props.debugData.description) {
+      mat.userData.description = props.debugData.description;
+    }
+  }
+
+  saveMaterial(mat, id, props.isPersistent);
   return mat;
 };
 
 /**
  * Returns a material or undefined based on the id
- * @param id (string) material id
+ * @param id material id
  * @returns Three.js material | undefined
  */
-export const getMaterial = (id: string) => materials[id];
+export const getMaterial = (id: string) => materials[id]?.resource;
 
 /**
  * Returns one or multiple materials based on the ids
- * @param id (array of strings) one or multiple material ids
+ * @param id one or multiple material ids
  * @returns Array of Three.js materials
  */
-export const getMaterials = (id: string[]) => id.map((matId) => materials[matId]);
+export const getMaterials = (id: string[]) =>
+  id.map((matId) => materials[matId]?.resource).filter(Boolean) as Materials[];
 
 /**
  * Returns all created materials that exist
- * @returns all materials ({ [id: string]: Material })
+ * @returns all materials map object
  */
-export const getAllMaterials = () => materials;
+export const getAllMaterials = () => {
+  const flatMap: { [id: string]: Materials } = {};
+  Object.keys(materials).forEach((key) => {
+    flatMap[key] = materials[key].resource;
+  });
+  return flatMap;
+};
+
+export const getMaterialRegistry = () => materials;
 
 /**
- * Deletes a materials textures
- * @param mat (Three.js material) {@link Materials}
+ * Deletes a materials textures from VRAM cache.
+ * @param mat Target material asset.
  */
 export const deleteTexturesFromMaterial = (mat: Materials) => {
   for (let i = 0; i < textureMapKeys.length; i++) {
@@ -247,75 +467,72 @@ export const deleteTexturesFromMaterial = (mat: Materials) => {
 };
 
 /**
- * Deletes a material based on an id
- * @param id (string) material id
- * @param deleteTextures (boolean) optional value to determine whether the textures in the material should be deleted or not
+ * Forcefully destroys one or multiple materials, running cleanup protocols.
+ * @param id material id or array of ids
+ * @param deleteTextures optionally purges texture samplers from GPU memory alongside material
  */
 export const deleteMaterial = (id: string | string[], deleteTextures?: boolean) => {
-  if (typeof id === 'string') {
-    const mat = materials[id];
-    if (!mat) return;
-    if (deleteTextures) deleteTexturesFromMaterial(mat);
-    mat.dispose();
-    delete materials[id];
-    return;
-  }
+  const targetIds = Array.isArray(id) ? id : [id];
 
-  for (let i = 0; i < id.length; i++) {
-    const matId = id[i];
-    const mat = materials[matId];
-    if (!mat) continue;
-    if (deleteTextures) deleteTexturesFromMaterial(mat);
-    mat.dispose();
+  for (const matId of targetIds) {
+    const entry = materials[matId];
+    if (!entry) continue;
+
+    if (deleteTextures) deleteTexturesFromMaterial(entry.resource);
+    entry.resource.dispose();
     delete materials[matId];
   }
 };
 
 /**
- * Saves a material to be easily accessed later
- * @param material (Three.js material or array of Three.js materials) {@link Materials}
- * @param givenId (string) optional id for the material, if no id is provided then the material's uuid is used as id. For arrays of materials, the givenId will be formed like this: `${givenId}-${i}`.
- * @returns Three.js material {@link Materials}
+ * Saves a material instance inside the engine tracking array mapping.
+ * @param material Target material or multi-material group array.
+ * @param givenId Identifiable registration appId.
+ * @param isPersistent Bypasses standard cross-scene cleanup loops when true.
  */
-export const saveMaterial = (material: Materials | Materials[], givenId?: string) => {
+export const saveMaterial = (
+  material: Materials | Materials[],
+  givenId?: string,
+  isPersistent?: boolean
+) => {
   if (!Array.isArray(material)) {
-    if (givenId && materials[givenId]) return materials[givenId];
-
     const id = givenId || material.uuid;
+    if (materials[id]) return materials[id].resource;
 
-    // Save material
     material.userData.id = id;
-    materials[id] = material;
-
+    materials[id] = {
+      resource: material,
+      count: 0,
+      ...(isPersistent ? { persistent: true } : {}),
+    };
     return material;
   }
 
-  const mats = material;
-  for (let i = 0; i < mats.length; i++) {
-    const mat = mats[i];
+  for (let i = 0; i < material.length; i++) {
+    const mat = material[i];
     if (!mat.isMaterial) continue;
-    const newId = `${givenId}-${i}`;
-    if (givenId && materials[newId]) continue;
+    const combinedId = givenId ? `${givenId}-${i}` : mat.uuid;
+    if (materials[combinedId]) continue;
 
-    const id = givenId || mat.uuid;
-
-    // Save material
-    mat.userData.id = id;
-    materials[id] = mat;
+    mat.userData.id = combinedId;
+    materials[combinedId] = {
+      resource: mat,
+      count: 0,
+      ...(isPersistent ? { persistent: true } : {}),
+    };
   }
 
   return material;
 };
 
 /**
- * Checks, with a material id, whether a material exists or not
- * @param id (string) material id
- * @returns boolean
+ * Checks with an identifier whether a matching material instance exists in memory.
+ * @param id target identifier string
  */
 export const doesMatExist = (id: string) => Boolean(materials[id]);
 
 /**
- * Update all materials (needsUpdate = true) in the scene
+ * Re-flags every material in the active display list to recompile on the next draw wave.
  */
 export const updateAllMaterials = () => {
   const rootScene = getRootScene();

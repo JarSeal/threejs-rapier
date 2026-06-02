@@ -10,18 +10,11 @@ import {
 import { existsOrThrow } from '../utils/helpers';
 import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
 import { isDebugEnvironment } from './Config';
-import { CoreComponentType, EntityDebugData } from './ECS/ECSRegistry';
+import { CoreComponentType } from './ECS/ECSRegistry';
 import { ECSSystemStage } from '../../AppECSRegistry';
+import { CoreEntityOpts } from '../schemas/_helperSchemas';
 
 export type ECSSystem = (world: ECSWorld, dt: number) => void;
-
-export type CoreEntityOpts = {
-  appId?: string;
-  disabled?: boolean;
-  persistent?: boolean;
-  userData?: Record<string, unknown>;
-  debugData?: EntityDebugData;
-};
 
 export type WorldPlugin = (world: ECSWorld) => void;
 export type ComponentHook = (entityId: number, world: ECSWorld) => void;

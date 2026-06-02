@@ -1,7 +1,19 @@
+/* eslint-disable no-console */
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { SceneAssetSchema } from '../src/_engine/schemas/sceneSchema';
+import z from 'zod';
+import { SceneAsset, SceneAssetSchema } from '../src/_engine/schemas/sceneSchema';
+import { CameraAsset, CameraAssetSchema } from '../src/_engine/schemas/cameraSchema';
+import { LightAsset, LightAssetSchema } from '../src/_engine/schemas/lightSchema';
+import { GeoAsset, GeoAssetSchema } from '../src/_engine/schemas/geometrySchema';
+import { TextureAsset, TextureAssetSchema } from '../src/_engine/schemas/textureSchema';
+import { MaterialAsset, MaterialAssetSchema } from '../src/_engine/schemas/materialSchema';
+import { MeshAsset, MeshAssetSchema } from '../src/_engine/schemas/meshSchema';
+import {
+  ImportedMeshAsset,
+  ImportedMeshAssetSchema,
+} from '../src/_engine/schemas/importedMeshSchema';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
@@ -19,42 +31,94 @@ const JSON_ENDING_SIGNATURES = {
   geometry: '.geometry.json',
   texture: '.texture.json',
   material: '.material.json',
-  primitiveMesh: '.primitiveMesh.json',
   mesh: '.mesh.json',
+  importedMesh: '.importedMesh.json',
   skybox: '.skybox.json',
   // physicsObjects: '.physObj.json',
   // postFx: '.postFx.json',
 };
 
-export const isFilePathValid = (filePath) => {
+const logValidationError = (msg: string, issues: z.ZodError['issues']) => {
+  const errorDetails = issues
+    .map((err) => ` └─ [${err.path.join('.')}]: ${err.message}`)
+    .join('\n');
+  console.error(`\x1b[31m✗ [Scene Gatherer] ${msg}:\n${errorDetails}\x1b[0m`);
+};
+
+export const isFilePathValid = (filePath: string) => {
   const keys = Object.keys(JSON_ENDING_SIGNATURES);
   for (let i = 0; i < keys.length; i++) {
-    if (filePath.endsWith(JSON_ENDING_SIGNATURES[keys[i]])) return true;
+    if (filePath.endsWith(JSON_ENDING_SIGNATURES[keys[i] as keyof typeof JSON_ENDING_SIGNATURES]))
+      return true;
   }
   return false;
 };
 
-export const getBasePath = (fullPath) => {
+export const getBasePath = (fullPath: string) => {
   const splitPath = fullPath.split('/src/');
   if (!splitPath.length) return '';
   const splitFolders = splitPath[splitPath.length - 1].split('/');
   return splitFolders[0];
 };
 
+// Helper to write JSON Schema definitions to a hidden workspace folder
+const compileJsonSchemas = () => {
+  const schemasDir = path.resolve(__dirname, '../.schemas');
+  fs.mkdirSync(schemasDir, { recursive: true });
+
+  const targets = [
+    { name: 'scene.schema.json', schema: SceneAssetSchema },
+    { name: 'camera.schema.json', schema: CameraAssetSchema },
+    { name: 'light.schema.json', schema: LightAssetSchema },
+    { name: 'geometry.schema.json', schema: GeoAssetSchema },
+    { name: 'texture.schema.json', schema: TextureAssetSchema },
+    { name: 'material.schema.json', schema: MaterialAssetSchema },
+    { name: 'mesh.schema.json', schema: MeshAssetSchema },
+  ];
+
+  for (const target of targets) {
+    const nativeSchema = z.toJSONSchema(target.schema, { target: 'draft-07' });
+    const finalSchema = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      ...nativeSchema,
+    };
+    fs.writeFileSync(
+      path.resolve(schemasDir, target.name),
+      JSON.stringify(finalSchema, null, 2),
+      'utf-8'
+    );
+  }
+  console.log(
+    '\x1b[32m✓ [Schema Compiler] Natively generated IDE autocompletion blueprints.\x1b[0m'
+  );
+};
+// Execute compilation immediately when the script spins up
+compileJsonSchemas();
+
 export const gatherSceneData = () => {
   const isProduction = process.env.NODE_ENV === 'production';
   let hasError = false;
 
   const srcDir = path.resolve(__dirname, '../src');
-  const combinedData = {
+  const combinedData: {
+    scenes: Record<string, SceneAsset>;
+    cameras: Record<string, CameraAsset>;
+    lights: Record<string, LightAsset>;
+    geometries: Record<string, GeoAsset>;
+    textures: Record<string, TextureAsset>;
+    materials: Record<string, MaterialAsset>;
+    meshes: Record<string, unknown>;
+    importedMeshes: Record<string, unknown>;
+    skyboxes: Record<string, unknown>;
+  } = {
     scenes: {},
     cameras: {},
     lights: {},
     geometries: {},
     textures: {},
     materials: {},
-    primitiveMeshes: {},
     meshes: {},
+    importedMeshes: {},
     skyboxes: {},
     // physicsObjects: {},
     // postFx: {},
@@ -64,7 +128,7 @@ export const gatherSceneData = () => {
   let sceneFileObject = '';
   let tslMaterialFileObject = '';
 
-  const logJSONError = (file) =>
+  const logJSONError = (file: string) =>
     console.error(
       `\x1b[31m✗ [Scene Gatherer] File content for file '${file}' is invalid or empty.\x1b[0m`
     );
@@ -75,7 +139,9 @@ export const gatherSceneData = () => {
 
     // Gather scene files
     const sceneFilesArray = [];
-    const sceneFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.scene));
+    const sceneFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.scene)
+    ) as string[];
     for (const file of sceneFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
@@ -85,39 +151,48 @@ export const gatherSceneData = () => {
         // Validate scene file content against schema
         const validation = SceneAssetSchema.safeParse(parsedData);
         if (!validation.success) {
-          const errorDetails = validation.error.issues
-            .map((err) => ` └─ [${err.path.join('.')}]: ${err.message}`)
-            .join('\n');
-          console.error(
-            `\x1b[31m✗ [Scene Gatherer] Validation error inside scene file ${file}:\n${errorDetails}\x1b[0m`
-          );
+          logValidationError(`Validation error inside scene file ${file}`, validation.error.issues);
           hasError = true;
           continue;
         }
 
-        const latestSave = validation.data.__saveData[validation.data.id]?.[0] || {};
+        const latestSave = validation.data.__saveData?.[validation.data.id]?.[0] || {};
         const fileContentJSON = { ...validation.data, ...latestSave };
+        fileContentJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         if (fileContentJSON.sceneFile) sceneFilesArray.push(fileContentJSON);
       } catch (e) {
         logJSONError(file);
-        throw new Error(e);
+        throw new Error((e as Error).message);
       }
     }
 
     // Cameras
-    const cameraRegistry = {};
-    const cameraFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.camera));
+    const cameraRegistry: Record<string, CameraAsset> = {};
+    const cameraFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.camera)
+    ) as string[];
     for (const file of cameraFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
-        const cameraJSON = JSON.parse(fileContent);
+        const parsedData = JSON.parse(fileContent);
+        const validation = CameraAssetSchema.safeParse(parsedData);
+        if (!validation.success) {
+          logValidationError(
+            `Validation error inside camera file ${file}`,
+            validation.error.issues
+          );
+          hasError = true;
+          continue;
+        }
+        const cameraJSON = validation.data;
         const cameraId =
           cameraJSON.camProps?.appId ||
           cameraJSON.entityOpts?.appId ||
           path.basename(file, JSON_ENDING_SIGNATURES.camera);
-        cameraJSON.id = cameraId;
+        cameraJSON.camProps.appId = cameraId;
         cameraJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        delete cameraJSON.$schema;
         cameraRegistry[cameraId] = cameraJSON;
       } catch (e) {
         logJSONError(file);
@@ -126,19 +201,29 @@ export const gatherSceneData = () => {
     combinedData.cameras = cameraRegistry;
 
     // Lights
-    const lightRegistry = {};
-    const lightFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.light));
+    const lightRegistry: Record<string, LightAsset> = {};
+    const lightFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.light)
+    ) as string[];
     for (const file of lightFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
-        const lightJSON = JSON.parse(fileContent);
+        const parsedData = JSON.parse(fileContent);
+        const validation = LightAssetSchema.safeParse(parsedData);
+        if (!validation.success) {
+          logValidationError(`Validation error inside light file ${file}`, validation.error.issues);
+          hasError = true;
+          continue;
+        }
+        const lightJSON = validation.data;
         const lightId =
           lightJSON.lightProps?.appId ||
           lightJSON.entityOpts?.appId ||
           path.basename(file, JSON_ENDING_SIGNATURES.light);
-        lightJSON.id = lightId;
+        lightJSON.lightProps.appId = lightId;
         lightJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        delete lightJSON.$schema;
         lightRegistry[lightId] = lightJSON;
       } catch (e) {
         logJSONError(file);
@@ -147,16 +232,29 @@ export const gatherSceneData = () => {
     combinedData.lights = lightRegistry;
 
     // Geometries
-    const geoRegistry = {};
-    const geoFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.geometry));
+    const geoRegistry: Record<string, GeoAsset> = {};
+    const geoFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.geometry)
+    ) as string[];
     for (const file of geoFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
-        const geoJSON = JSON.parse(fileContent);
-        const geoId = geoJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.geometry);
-        geoJSON.id = geoId;
+        const parsedData = JSON.parse(fileContent);
+        const validation = GeoAssetSchema.safeParse(parsedData);
+        if (!validation.success) {
+          logValidationError(
+            `Validation error inside geometry file ${file}`,
+            validation.error.issues
+          );
+          hasError = true;
+          continue;
+        }
+        const geoJSON = validation.data;
+        const geoId = geoJSON.geoProps.id || path.basename(file, JSON_ENDING_SIGNATURES.geometry);
+        geoJSON.geoProps.id = geoId;
         geoJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        delete geoJSON.$schema;
         geoRegistry[geoId] = geoJSON;
       } catch (e) {
         logJSONError(file);
@@ -165,16 +263,29 @@ export const gatherSceneData = () => {
     combinedData.geometries = geoRegistry;
 
     // Textures
-    const texRegistry = {};
-    const texFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.texture));
+    const texRegistry: Record<string, TextureAsset> = {};
+    const texFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.texture)
+    ) as string[];
     for (const file of texFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
-        const texJSON = JSON.parse(fileContent);
+        const parsedData = JSON.parse(fileContent);
+        const validation = TextureAssetSchema.safeParse(parsedData);
+        if (!validation.success) {
+          logValidationError(
+            `Validation error inside texture file ${file}`,
+            validation.error.issues
+          );
+          hasError = true;
+          continue;
+        }
+        const texJSON = validation.data;
         const texId = texJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.texture);
         texJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         texJSON.id = texId;
+        delete texJSON.$schema;
         texRegistry[texId] = texJSON;
       } catch (e) {
         logJSONError(file);
@@ -183,16 +294,29 @@ export const gatherSceneData = () => {
     combinedData.textures = texRegistry;
 
     // Materials
-    const matRegistry = {};
-    const matFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.material));
+    const matRegistry: Record<string, MaterialAsset> = {};
+    const matFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.material)
+    ) as string[];
     for (const file of matFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
-        const matJSON = JSON.parse(fileContent);
+        const parsedData = JSON.parse(fileContent);
+        const validation = MaterialAssetSchema.safeParse(parsedData);
+        if (!validation.success) {
+          logValidationError(
+            `Validation error inside material file ${file}`,
+            validation.error.issues
+          );
+          hasError = true;
+          continue;
+        }
+        const matJSON = validation.data;
         const matId = matJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.material);
         matJSON.id = matId;
         matJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        delete matJSON.$schema;
         matRegistry[matId] = matJSON;
         const isFoundInAScene = sceneFilesArray.find(
           (sceneFile) => sceneFile.materials?.includes(matId) || false
@@ -239,38 +363,30 @@ export const gatherSceneData = () => {
     }
     combinedData.materials = matRegistry;
 
-    // Primitive meshes
-    const primitiveMeshRegistry = {};
-    const primitiveMeshFiles = files.filter((file) =>
-      file.endsWith(JSON_ENDING_SIGNATURES.primitiveMesh)
-    );
-    for (const file of primitiveMeshFiles) {
-      const fullPath = path.resolve(srcDir, file);
-      const fileContent = fs.readFileSync(fullPath, 'utf-8');
-      try {
-        const primitiveMeshJSON = JSON.parse(fileContent);
-        const primitiveMeshId =
-          primitiveMeshJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.primitiveMesh);
-        primitiveMeshJSON.id = primitiveMeshId;
-        primitiveMeshJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
-        primitiveMeshRegistry[primitiveMeshId] = primitiveMeshJSON;
-      } catch (e) {
-        logJSONError(file);
-      }
-    }
-    combinedData.primitiveMeshes = primitiveMeshRegistry;
-
     // Meshes
-    const meshRegistry = {};
-    const meshFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.mesh));
+    const meshRegistry: Record<string, MeshAsset> = {};
+    const meshFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.mesh)
+    ) as string[];
     for (const file of meshFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
-        const meshJSON = JSON.parse(fileContent);
-        const meshId = meshJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.mesh);
-        meshJSON.id = meshId;
+        const parsedData = JSON.parse(fileContent);
+        const validation = MeshAssetSchema.safeParse(parsedData);
+        if (!validation.success) {
+          logValidationError(`Validation error inside mesh file ${file}`, validation.error.issues);
+          hasError = true;
+          continue;
+        }
+        const meshJSON = validation.data;
+        const meshId =
+          meshJSON.props.appId ||
+          meshJSON.entityOpts?.appId ||
+          path.basename(file, JSON_ENDING_SIGNATURES.mesh);
+        meshJSON.props.appId = meshId;
         meshJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        delete meshJSON.$schema;
         meshRegistry[meshId] = meshJSON;
       } catch (e) {
         logJSONError(file);
@@ -278,9 +394,45 @@ export const gatherSceneData = () => {
     }
     combinedData.meshes = meshRegistry;
 
+    // Imported meshes
+    const importedMeshRegistry: Record<string, ImportedMeshAsset> = {};
+    const importedMeshFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.importedMesh)
+    ) as string[];
+    for (const file of importedMeshFiles) {
+      const fullPath = path.resolve(srcDir, file);
+      const fileContent = fs.readFileSync(fullPath, 'utf-8');
+      try {
+        const parsedData = JSON.parse(fileContent);
+        const validation = ImportedMeshAssetSchema.safeParse(parsedData);
+        if (!validation.success) {
+          logValidationError(
+            `Validation error inside imported mesh file ${file}`,
+            validation.error.issues
+          );
+          hasError = true;
+          continue;
+        }
+        const importedMeshJSON = validation.data;
+        const id =
+          importedMeshJSON.props.appId ||
+          importedMeshJSON.entityOpts?.appId ||
+          path.basename(file, JSON_ENDING_SIGNATURES.importedMesh);
+        importedMeshJSON.props.appId = id;
+        importedMeshJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        delete importedMeshJSON.$schema;
+        importedMeshRegistry[id] = importedMeshJSON;
+      } catch (e) {
+        logJSONError(file);
+      }
+    }
+    combinedData.importedMeshes = importedMeshRegistry;
+
     // Skyboxes
-    const skyRegistry = {};
-    const skyFiles = files.filter((file) => file.endsWith(JSON_ENDING_SIGNATURES.skybox));
+    const skyRegistry: Record<string, unknown> = {};
+    const skyFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.skybox)
+    ) as string[];
     for (const file of skyFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
@@ -289,6 +441,7 @@ export const gatherSceneData = () => {
         const skyId = skyJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.skybox);
         skyJSON.id = skyId;
         skyJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        delete skyJSON.$schema;
         skyRegistry[skyId] = skyJSON;
       } catch (e) {
         logJSONError(file);
@@ -301,7 +454,11 @@ export const gatherSceneData = () => {
     for (const file of sceneFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
-      const fileContentJSON = JSON.parse(fileContent);
+      const parsedData = JSON.parse(fileContent);
+      const validation = SceneAssetSchema.safeParse(parsedData);
+      if (!validation.success) continue;
+      const fileContentJSON = validation.data;
+      delete fileContentJSON.$schema;
 
       // Use the scene id as a key or filename (minus extension) as the key
       const sceneId =
@@ -361,31 +518,33 @@ export const gatherSceneData = () => {
               ? cameraRegistry[camId].__saveData[sceneId][0]
               : {};
             const entityOpts = cameraRegistry[camId].entityOpts;
-            if (isProduction) delete entityOpts.debugData;
+            if (isProduction && entityOpts) delete entityOpts.debugData;
             const cameraData = {
               camProps: { ...cameraRegistry[camId].camProps, ...__saveData },
               entityOpts: entityOpts,
             };
-            if (cameraData.camProps?.__meta) delete cameraData.camProps.__meta;
+            if ('__meta' in cameraData.camProps) delete cameraData.camProps.__meta;
             return cameraData;
           }
           return camId; // Fallback to raw string ID if asset file doesn't exist yet
         });
-      } else if (!fileContentJSON.cameras?.length) {
+      } else if (!Object.keys(fileContentJSON.cameras || {}).length) {
         // If the scene does not have a camera, a temp camera is created (every scene needs a camera)
-        fileContentJSON.cameras = {
-          camProps: { type: 'PERSPECTIVE', fov: 90, active: true },
-          ...(isProduction
-            ? {}
-            : {
-                entityOpts: {
-                  debugData: {
-                    name: '_camera',
-                    description: 'Auto-generated camera for the scene',
+        fileContentJSON.cameras = [
+          {
+            camProps: { type: 'PERSPECTIVE', fov: 90, active: true },
+            ...(isProduction
+              ? {}
+              : {
+                  entityOpts: {
+                    debugData: {
+                      name: '_camera',
+                      description: 'Auto-generated camera for the scene',
+                    },
                   },
-                },
-              }),
-        };
+                }),
+          },
+        ];
       }
 
       // Add lights to scenes
@@ -397,12 +556,12 @@ export const gatherSceneData = () => {
               ? lightRegistry[lightId].__saveData[sceneId][0]
               : {};
             const entityOpts = lightRegistry[lightId].entityOpts;
-            if (isProduction) delete entityOpts.debugData;
+            if (isProduction && entityOpts) delete entityOpts.debugData;
             const lightData = {
               lightProps: { ...lightRegistry[lightId].lightProps, ...__saveData },
               entityOpts: entityOpts,
             };
-            if (lightData.lightProps?.__meta) delete lightData.lightProps.__meta;
+            if ('__meta' in lightData.lightProps) delete lightData.lightProps.__meta;
             return lightData;
           }
           return lightId; // Fallback to raw string ID if asset file doesn't exist yet
@@ -416,15 +575,23 @@ export const gatherSceneData = () => {
           if (geoRegistry[geoId]) {
             const __saveData = geoRegistry[geoId].__saveData?.[sceneId]?.length
               ? geoRegistry[geoId].__saveData[sceneId][0]
-              : {};
-            if (isProduction) delete geoRegistry[geoId].debugData;
+              : { debugData: {}, params: {} };
+            if (isProduction) delete geoRegistry[geoId].geoProps.debugData;
             const geoData = {
               id: geoId,
-              type: geoRegistry[geoId].type,
-              params: { ...geoRegistry[geoId].params, ...__saveData },
+              type: geoRegistry[geoId].geoProps.type,
+              params: { ...geoRegistry[geoId].geoProps.params, ...(__saveData.params || {}) },
+              ...(geoRegistry[geoId].geoProps.debugData
+                ? {
+                    debugData: {
+                      ...geoRegistry[geoId].geoProps.debugData,
+                      ...(__saveData.debugData || {}),
+                    },
+                  }
+                : {}),
             };
-            if (geoData.params?.__meta) delete geoData.params.__meta;
-            return geoData;
+            if ('__meta' in geoData.params && geoData.params.__meta) delete geoData.params.__meta;
+            return { geoProps: geoData };
           }
           return geoId; // Fallback to raw string ID if asset file doesn't exist yet
         });
@@ -440,7 +607,7 @@ export const gatherSceneData = () => {
               : {};
             if (isProduction) delete texRegistry[texId].debugData;
             const texData = { ...texRegistry[texId], ...__saveData };
-            delete texData.__meta;
+            if ('__meta' in texData) delete texData.__meta;
             delete texData.__sourcePath;
             delete texData.__saveData;
             return texData;
@@ -458,42 +625,18 @@ export const gatherSceneData = () => {
               ? matRegistry[matId].__saveData[sceneId][0]
               : {};
             if (isProduction) delete matRegistry[matId].debugData;
-            let matData = {};
-            if (matRegistry[matId].tslFile) {
-              matData = { ...matRegistry[matId], ...__saveData };
-              delete matData.__meta;
-              delete matData.__sourcePath;
-              delete matData.__saveData;
-            } else {
-              matData = {
-                id: matId,
-                type: matRegistry[matId].type,
-                params: { ...matRegistry[matId].params, ...__saveData },
-              };
-              if (matData.params?.__meta) delete matData.params.__meta;
-            }
-            return matData;
+            const matData = {
+              ...matRegistry[matId],
+              ...__saveData,
+              id: matId,
+              type: matRegistry[matId].type,
+            };
+            if ('__meta' in matData) delete matData.__meta;
+            if ('__sourcePath' in matData) delete matData.__sourcePath;
+            if ('__saveData' in matData) delete matData.__saveData;
+            return matData as MaterialAsset;
           }
           return matId; // Fallback to raw string ID if asset file doesn't exist yet
-        });
-      }
-
-      // Add primitive meshes to scenes
-      if (Array.isArray(fileContentJSON.primitiveMeshes)) {
-        fileContentJSON.primitiveMeshes = fileContentJSON.primitiveMeshes.map((primitiveMeshId) => {
-          if (typeof primitiveMeshId !== 'string') return primitiveMeshId;
-          if (primitiveMeshRegistry[primitiveMeshId]) {
-            const __saveData = primitiveMeshRegistry[primitiveMeshId].__saveData?.[sceneId]?.length
-              ? primitiveMeshRegistry[primitiveMeshId].__saveData[sceneId][0]
-              : {};
-            if (isProduction) delete primitiveMeshRegistry[primitiveMeshId].debugData;
-            const primitiveMeshData = { ...primitiveMeshRegistry[primitiveMeshId], ...__saveData };
-            delete primitiveMeshData.__meta;
-            delete primitiveMeshData.__sourcePath;
-            delete primitiveMeshData.__saveData;
-            return primitiveMeshData;
-          }
-          return primitiveMeshId; // Fallback to raw string ID if asset file doesn't exist yet
         });
       }
 
@@ -505,14 +648,41 @@ export const gatherSceneData = () => {
             const __saveData = meshRegistry[meshId].__saveData?.[sceneId]?.length
               ? meshRegistry[meshId].__saveData[sceneId][0]
               : {};
-            if (isProduction) delete meshRegistry[meshId].debugData;
-            const meshData = { ...meshRegistry[meshId], ...__saveData };
-            delete meshData.__meta;
+            if (isProduction && meshRegistry[meshId].entityOpts?.debugData) {
+              delete meshRegistry[meshId].entityOpts.debugData;
+            }
+            const meshData = {
+              ...meshRegistry[meshId],
+              props: { ...meshRegistry[meshId].props, ...__saveData },
+            };
+            if ('__meta' in meshData.props) delete meshData.props.__meta;
             delete meshData.__sourcePath;
             delete meshData.__saveData;
             return meshData;
           }
           return meshId; // Fallback to raw string ID if asset file doesn't exist yet
+        });
+      }
+
+      // Add imported meshes to scenes
+      if (Array.isArray(fileContentJSON.importedMeshes)) {
+        fileContentJSON.importedMeshes = fileContentJSON.importedMeshes.map((importedMeshId) => {
+          if (typeof importedMeshId !== 'string') return importedMeshId;
+          if (importedMeshRegistry[importedMeshId]) {
+            const __saveData = importedMeshRegistry[importedMeshId].__saveData?.[sceneId]?.length
+              ? importedMeshRegistry[importedMeshId].__saveData[sceneId][0]
+              : {};
+            if (isProduction) delete importedMeshRegistry[importedMeshId].entityOpts?.debugData;
+            const meshData = {
+              ...importedMeshRegistry[importedMeshId],
+              props: { ...importedMeshRegistry[importedMeshId].props, ...__saveData },
+            };
+            if ('__meta' in meshData.props) delete meshData.props.__meta;
+            delete meshData.__sourcePath;
+            delete meshData.__saveData;
+            return meshData;
+          }
+          return importedMeshId; // Fallback to raw string ID if asset file doesn't exist yet
         });
       }
 
@@ -540,14 +710,15 @@ export const gatherSceneData = () => {
 
       if (isProduction) {
         // Remove debug data from scene files for production build
-        delete fileContentJSON.sceneFile;
+        fileContentJSON.sceneFile = '';
         delete fileContentJSON.name;
         delete fileContentJSON.description;
         delete fileContentJSON.comments;
         delete fileContentJSON.todo;
+        delete fileContentJSON.__sourcePath;
       }
 
-      combinedData.scenes[`${sceneId}`] = fileContentJSON;
+      combinedData.scenes[sceneId] = fileContentJSON;
     }
 
     if (hasError) return false;

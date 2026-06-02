@@ -1,17 +1,28 @@
 {
+  "$schema": "../../../.schemas/material.schema.json",
   "id": "checkerBoard",
   "tslFile": "materials/checkerBoard.tsl.ts",
-  "uniforms": {
-    "color": "#8b2500",
-    "roughness": 0.6
+  "type": "STANDARDNODEMATERIAL",
+  "nodes": {
+    "colorNode": {
+      "baseColor": "#1a233a",
+      "panelColor": "#ffaa00",
+      "gridScale": 4.0
+    },
+    "roughnessNode": {
+      "baseRoughness": 0.2,
+      "scratchIntensity": 0.8
+    },
+    "normalNode": {
+      "bumpScale": 0.05
+    }
   },
   "__saveData": {
     "sceneTestECS": [
       {
         "__meta": { "date": 1779449688109 },
-        "uniforms": {
-          "color": "#ff0000",
-          "roughness": 0.6
+        "colorNode": {
+          "panelColor": "#ff0000"
         }
       }
     ]
