@@ -3,7 +3,6 @@ import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { DebugDataSchema, UserDataSchema } from './_helperSchemas';
 
 export const TexOptsSchema = z.object({
-  id: z.string().optional(),
   image: z.unknown().optional(), // Can't validate TexImageSource or OffscreenCanvas with zod, so using unknown
   mapping: z.number().optional(),
   wrapS: z.number().optional(),
@@ -20,6 +19,7 @@ export type TexOpts = z.infer<typeof TexOptsSchema>;
 export const TextureOverridesSchema = z.object({
   __meta: MetaSchema.optional(),
 
+  id: z.string().optional(),
   fileName: z.string().optional(),
   path: z.string().optional(),
   useHDRLoader: z.boolean().optional(),
