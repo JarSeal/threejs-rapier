@@ -16,6 +16,8 @@ const MaterialOverridesSchema = z.object({
   isPersistent: z.boolean().optional(),
 });
 
+export type MaterialOverrides = z.infer<typeof MaterialOverridesSchema>;
+
 const MaterailBaseProps = z.object({
   // Common props
   id: z.string({ error: "Material 'id' key is required." }),

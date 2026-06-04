@@ -393,7 +393,7 @@ export const sceneThirdPersonGym = async () =>
     // @TODO: remove this test when custom prop importing is done
     const result = await importModelAsync({
       fileName: '/debugger/assets/testModels/customPropTestCube.glb',
-      id: 'customPropTest',
+      appId: 'customPropTest',
     });
     if (result.mesh && !Array.isArray(result.mesh)) {
       result.mesh?.position.set(2, 2, 2);
@@ -408,7 +408,7 @@ export const sceneThirdPersonGym = async () =>
     // Suzanne (monkey TRIMESH)
     const result2 = await importModelAsync({
       fileName: '/debugger/assets/testModels/customPropTestMonkey.glb',
-      id: 'customPropTest2',
+      appId: 'customPropTest2',
       importGroup: true,
       physicsParams: {
         isPhysObj: true,
@@ -430,7 +430,7 @@ export const sceneThirdPersonGym = async () =>
     // Suzanne (monkey TRIMESH)
     const result2convex = await importModelAsync({
       fileName: '/debugger/assets/testModels/customPropTestMonkey.glb',
-      id: 'customPropTest2_2',
+      appId: 'customPropTest2_2',
       importGroup: true,
       physicsParams: {
         isPhysObj: true,
@@ -689,7 +689,7 @@ export const sceneThirdPersonGym = async () =>
 
     const result3 = await importModelAsync({
       fileName: '/debugger/assets/testModels/test_multi_box.glb',
-      id: 'customPropTest3',
+      appId: 'customPropTest3',
       importGroup: true,
       // physicsParams: {
       //   isPhysObj: true,
@@ -713,7 +713,7 @@ export const sceneThirdPersonGym = async () =>
     // Straight stairs (TRIMESH)
     const result4 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsStraightTrimesh.glb',
-      id: 'customPropTest4', // @TODO: this is ignored for multi object importing, FIX!
+      appId: 'customPropTest4', // @TODO: this is ignored for multi object importing, FIX!
       importGroup: true,
     });
     if (result4.mesh && !Array.isArray(result4.mesh)) {
@@ -737,7 +737,7 @@ export const sceneThirdPersonGym = async () =>
     // Straight stairs (COMPOUND)
     const result5 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsStraightCompound.glb',
-      id: 'customPropTest5',
+      appId: 'customPropTest5',
       importGroup: true,
     });
     if (result5.mesh && !Array.isArray(result5.mesh)) {
@@ -761,7 +761,7 @@ export const sceneThirdPersonGym = async () =>
     // Straight stairs 2 (TRIMESH)
     const result6 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsStraight2Trimesh.glb',
-      id: 'customPropTest6',
+      appId: 'customPropTest6',
       importGroup: true,
     });
     if (result6.mesh && !Array.isArray(result6.mesh)) {
@@ -785,7 +785,7 @@ export const sceneThirdPersonGym = async () =>
     // Straight stairs 2 (COMPOUND)
     const result7 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsStraight2Compound.glb',
-      id: 'customPropTest7',
+      appId: 'customPropTest7',
       importGroup: true,
     });
     if (result7.mesh && !Array.isArray(result7.mesh)) {
@@ -809,7 +809,7 @@ export const sceneThirdPersonGym = async () =>
     // Straight stairs 3 (TRIMESH)
     const result8 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsStraight3Trimesh.glb',
-      id: 'customPropTest8',
+      appId: 'customPropTest8',
       importGroup: true,
     });
     if (result8.mesh && !Array.isArray(result8.mesh)) {
@@ -833,7 +833,7 @@ export const sceneThirdPersonGym = async () =>
     // Straight stairs 3 (COMPOUND)
     const result9 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsStraight3Compound.glb',
-      id: 'customPropTest9',
+      appId: 'customPropTest9',
       importGroup: true,
     });
     if (result9.mesh && !Array.isArray(result9.mesh)) {
@@ -857,7 +857,7 @@ export const sceneThirdPersonGym = async () =>
     // Cornered stairs with thick railings (COMPOUND)
     const result10 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsCorneredWithThickRailingsCompound.glb',
-      id: 'customPropTest10',
+      appId: 'customPropTest10',
       importGroup: true,
     });
     if (result10.mesh && !Array.isArray(result10.mesh)) {
@@ -882,7 +882,7 @@ export const sceneThirdPersonGym = async () =>
     // Cornered stairs with thick railings (TRIMESH)
     const result11 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsCorneredWithThickRailingsTrimesh.glb',
-      id: 'customPropTest11',
+      appId: 'customPropTest11',
       importGroup: true,
     });
     if (result11.mesh && !Array.isArray(result11.mesh)) {
@@ -907,7 +907,7 @@ export const sceneThirdPersonGym = async () =>
     // Spiral stairs (TRIMESH)
     const result12 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsSpiralTrimesh.glb',
-      id: 'customPropTest12',
+      appId: 'customPropTest12',
       importGroup: true,
     });
     if (result12.mesh && !Array.isArray(result12.mesh)) {
@@ -932,7 +932,7 @@ export const sceneThirdPersonGym = async () =>
     // Spiked terrain
     const result13 = await importModelAsync({
       fileName: '/debugger/assets/testModels/terrainSpiked.glb',
-      id: 'customPropTest13',
+      appId: 'customPropTest13',
       importGroup: true,
       allMeshesVisible: true,
     });
@@ -964,7 +964,7 @@ export const sceneThirdPersonGym = async () =>
     // Smooth terrain
     const result14 = await importModelAsync({
       fileName: '/debugger/assets/testModels/terrainSmooth.glb',
-      id: 'customPropTest14',
+      appId: 'customPropTest14',
       importGroup: true,
       allMeshesVisible: true,
     });
@@ -996,7 +996,7 @@ export const sceneThirdPersonGym = async () =>
     // Obstacles
     const result15 = await importModelAsync({
       fileName: '/debugger/assets/testModels/obstacles.glb',
-      id: 'customPropTest15',
+      appId: 'customPropTest15',
       importGroup: true,
       allMeshesVisible: true,
     });

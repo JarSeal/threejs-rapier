@@ -1,4 +1,3 @@
-/* eslint-disable camelcase */
 import { z } from 'zod';
 import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { CameraAssetSchema } from './cameraSchema';
@@ -9,7 +8,7 @@ import { MaterialAssetSchema } from './materialSchema';
 
 const AssetReferenceOrInline = z.union([z.string(), z.record(z.string(), z.unknown())]);
 
-const SceneSavebleFieldsSchema = z.object({
+const SceneOverridesSchema = z.object({
   $schema: z.string().optional(),
   __meta: MetaSchema.optional(),
 
@@ -32,7 +31,9 @@ const SceneSavebleFieldsSchema = z.object({
   skyboxes: z.array(AssetReferenceOrInline).optional(),
 });
 
-export const SceneAssetSchema = SceneSavebleFieldsSchema.omit({ __meta: true }).extend({
+export type SceneOverrides = z.infer<typeof SceneOverridesSchema>;
+
+export const SceneAssetSchema = SceneOverridesSchema.omit({ __meta: true }).extend({
   id: z.string({
     error: "Scene 'id' is required for index parsing.",
   }),
@@ -40,7 +41,7 @@ export const SceneAssetSchema = SceneSavebleFieldsSchema.omit({ __meta: true }).
     error: "Property 'sceneFile' is required to route your stage execution script.",
   }),
   __sourcePath: z.string().optional(),
-  __saveData: createSaveDataSchema(SceneSavebleFieldsSchema),
+  __saveData: createSaveDataSchema(SceneOverridesSchema),
 });
 
 export type SceneAsset = z.infer<typeof SceneAssetSchema>;

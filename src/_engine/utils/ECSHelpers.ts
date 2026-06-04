@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { CoreEntityOpts, ECSWorld, getECSWorld } from '../core/ECS';
+import { ECSWorld, getECSWorld } from '../core/ECS';
 import {
   ComponentData,
   ComponentType,
@@ -10,6 +10,7 @@ import {
 import { llog } from './Logger';
 import { IS_DEBUG_ENV } from '../core/Config';
 import { EntityDebugData } from '../core/ECS/ECSRegistry';
+import { CoreEntityOpts } from '../schemas/_helperSchemas';
 
 // Reuse scratch objects to prevent GC pressure
 const _v1 = new THREE.Vector3();

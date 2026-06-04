@@ -90,7 +90,7 @@ export const GeoPropsSchema = z.union([
 
 export type GeoProps = z.infer<typeof GeoPropsSchema>;
 
-const GeoOverrides = z.object({
+const GeoOverridesSchema = z.object({
   __meta: MetaSchema.optional(),
   debugData: DebugDataSchema.optional(),
   params: z
@@ -115,11 +115,13 @@ const GeoOverrides = z.object({
     .optional(),
 });
 
+export type GeoOverrides = z.infer<typeof GeoOverridesSchema>;
+
 export const GeoAssetSchema = z.object({
   $schema: z.string().optional(),
   geoProps: GeoPropsSchema,
   __sourcePath: z.string().optional(),
-  __saveData: createSaveDataSchema(GeoOverrides),
+  __saveData: createSaveDataSchema(GeoOverridesSchema),
 });
 
 export type GeoAsset = z.infer<typeof GeoAssetSchema>;

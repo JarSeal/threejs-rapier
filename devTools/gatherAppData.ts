@@ -14,6 +14,7 @@ import {
   ImportedMeshAsset,
   ImportedMeshAssetSchema,
 } from '../src/_engine/schemas/importedMeshSchema';
+import { SkyBoxAsset } from '../src/_engine/schemas/skyBoxSchema';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
@@ -429,7 +430,7 @@ export const gatherSceneData = () => {
     combinedData.importedMeshes = importedMeshRegistry;
 
     // Skyboxes
-    const skyRegistry: Record<string, unknown> = {};
+    const skyRegistry: Record<string, SkyBoxAsset> = {};
     const skyFiles = files.filter(
       (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.skybox)
     ) as string[];
@@ -515,7 +516,7 @@ export const gatherSceneData = () => {
           if (typeof camId !== 'string') return camId;
           if (cameraRegistry[camId]) {
             const __saveData = cameraRegistry[camId].__saveData?.[sceneId]?.length
-              ? cameraRegistry[camId].__saveData[sceneId][0]
+              ? cameraRegistry[camId].__saveData?.[sceneId]?.[0] || {}
               : {};
             const entityOpts = cameraRegistry[camId].entityOpts;
             if (isProduction && entityOpts) delete entityOpts.debugData;
@@ -553,7 +554,7 @@ export const gatherSceneData = () => {
           if (typeof lightId !== 'string') return lightId;
           if (lightRegistry[lightId]) {
             const __saveData = lightRegistry[lightId].__saveData?.[sceneId]?.length
-              ? lightRegistry[lightId].__saveData[sceneId][0]
+              ? lightRegistry[lightId].__saveData?.[sceneId]?.[0] || {}
               : {};
             const entityOpts = lightRegistry[lightId].entityOpts;
             if (isProduction && entityOpts) delete entityOpts.debugData;
@@ -574,7 +575,7 @@ export const gatherSceneData = () => {
           if (typeof geoId !== 'string') return geoId;
           if (geoRegistry[geoId]) {
             const __saveData = geoRegistry[geoId].__saveData?.[sceneId]?.length
-              ? geoRegistry[geoId].__saveData[sceneId][0]
+              ? geoRegistry[geoId].__saveData?.[sceneId]?.[0] || {}
               : { debugData: {}, params: {} };
             if (isProduction) delete geoRegistry[geoId].geoProps.debugData;
             const geoData = {
@@ -603,7 +604,7 @@ export const gatherSceneData = () => {
           if (typeof texId !== 'string') return texId;
           if (texRegistry[texId]) {
             const __saveData = texRegistry[texId].__saveData?.[sceneId]?.length
-              ? texRegistry[texId].__saveData[sceneId][0]
+              ? texRegistry[texId].__saveData?.[sceneId]?.[0] || {}
               : {};
             if (isProduction) delete texRegistry[texId].debugData;
             const texData = { ...texRegistry[texId], ...__saveData };
@@ -622,7 +623,7 @@ export const gatherSceneData = () => {
           if (typeof matId !== 'string') return matId;
           if (matRegistry[matId]) {
             const __saveData = matRegistry[matId].__saveData?.[sceneId]?.length
-              ? matRegistry[matId].__saveData[sceneId][0]
+              ? matRegistry[matId].__saveData?.[sceneId]?.[0] || {}
               : {};
             if (isProduction) delete matRegistry[matId].debugData;
             const matData = {
@@ -646,10 +647,10 @@ export const gatherSceneData = () => {
           if (typeof meshId !== 'string') return meshId;
           if (meshRegistry[meshId]) {
             const __saveData = meshRegistry[meshId].__saveData?.[sceneId]?.length
-              ? meshRegistry[meshId].__saveData[sceneId][0]
+              ? meshRegistry[meshId].__saveData?.[sceneId]?.[0] || {}
               : {};
             if (isProduction && meshRegistry[meshId].entityOpts?.debugData) {
-              delete meshRegistry[meshId].entityOpts.debugData;
+              delete meshRegistry[meshId].entityOpts?.debugData;
             }
             const meshData = {
               ...meshRegistry[meshId],
@@ -670,7 +671,7 @@ export const gatherSceneData = () => {
           if (typeof importedMeshId !== 'string') return importedMeshId;
           if (importedMeshRegistry[importedMeshId]) {
             const __saveData = importedMeshRegistry[importedMeshId].__saveData?.[sceneId]?.length
-              ? importedMeshRegistry[importedMeshId].__saveData[sceneId][0]
+              ? importedMeshRegistry[importedMeshId].__saveData?.[sceneId]?.[0] || {}
               : {};
             if (isProduction) delete importedMeshRegistry[importedMeshId].entityOpts?.debugData;
             const meshData = {
@@ -692,7 +693,7 @@ export const gatherSceneData = () => {
           if (typeof skyId !== 'string') return skyId;
           if (skyRegistry[skyId]) {
             const __saveData = skyRegistry[skyId].__saveData?.[sceneId]?.length
-              ? skyRegistry[skyId].__saveData[sceneId][0]
+              ? skyRegistry[skyId].__saveData?.[sceneId]?.[0] || {}
               : {};
             if (isProduction) delete skyRegistry[skyId].debugData;
             const skyData = {
@@ -701,7 +702,7 @@ export const gatherSceneData = () => {
               isCurrent: Boolean(skyRegistry[skyId].isCurrent),
               params: { ...skyRegistry[skyId].params, ...__saveData },
             };
-            if (skyData.params?.__meta) delete skyData.params.__meta;
+            if ('__meta' in skyData.params) delete skyData.params.__meta;
             return skyData;
           }
           return skyId; // Fallback to raw string ID if asset file doesn't exist yet

@@ -280,7 +280,7 @@ export const scene01 = async () =>
     // );
 
     const result = await importModelAsync({
-      id: 'importedMesh1',
+      appId: 'importedMesh1',
       fileName: '/debugger/assets/testModels/box01.glb',
       throwOnError: true,
     });

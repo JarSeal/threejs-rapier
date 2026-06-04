@@ -86,7 +86,7 @@ const LightProps = z.union([Ambient, Hemisphere, Point, Directional, Spot]);
 
 export type LightProps = z.infer<typeof LightProps>;
 
-const LightOverridesShape = z.object({
+const LightOverridesSchema = z.object({
   __meta: MetaSchema.optional(),
   ...Ambient.shape,
   ...Hemisphere.shape,
@@ -97,12 +97,14 @@ const LightOverridesShape = z.object({
   type: z.enum(['AMBIENT', 'HEMISPHERE', 'POINT', 'DIRECTIONAL', 'SPOT']).optional(),
 });
 
+export type LightOverrides = z.infer<typeof LightOverridesSchema>;
+
 export const LightAssetSchema = z.object({
   $schema: z.string().optional(),
   lightProps: LightProps,
   entityOpts: CoreEntityOptsSchema.optional(),
   __sourcePath: z.string().optional(),
-  __saveData: createSaveDataSchema(LightOverridesShape),
+  __saveData: createSaveDataSchema(LightOverridesSchema),
 });
 
 export type LightAsset = z.infer<typeof LightAssetSchema>;

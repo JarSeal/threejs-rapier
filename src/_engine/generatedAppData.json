@@ -1,19 +1,48 @@
 {
   "scenes": {
-    "oneMoreScene": {
-      "id": "oneMoreScene",
-      "sceneFile": "",
+    "testDebugScene": {
+      "isDebugScene": true,
+      "id": "testDebugScene",
+      "sceneFile": "debugScene.scene.ts",
       "cameras": [
         {
           "camProps": {
             "type": "PERSPECTIVE",
             "fov": 90,
             "active": true
+          },
+          "entityOpts": {
+            "debugData": {
+              "name": "_camera",
+              "description": "Auto-generated camera for the scene"
+            }
+          }
+        }
+      ]
+    },
+    "oneMoreScene": {
+      "name": "One More Scene",
+      "id": "oneMoreScene",
+      "sceneFile": "./oneMoreScene",
+      "cameras": [
+        {
+          "camProps": {
+            "type": "PERSPECTIVE",
+            "fov": 90,
+            "active": true
+          },
+          "entityOpts": {
+            "debugData": {
+              "name": "_camera",
+              "description": "Auto-generated camera for the scene"
+            }
           }
         }
       ]
     },
     "sceneTestECS": {
+      "name": "ECS test scene",
+      "description": "This is a ECS test scene.",
       "cameras": [
         {
           "camProps": {
@@ -28,7 +57,11 @@
           },
           "entityOpts": {
             "appId": "mainCamera",
-            "persistent": true
+            "persistent": true,
+            "debugData": {
+              "name": "Main camera",
+              "description": "Main application camera"
+            }
           }
         }
       ],
@@ -41,7 +74,10 @@
             "appId": "ambientLight"
           },
           "entityOpts": {
-            "appId": "ambientLight"
+            "appId": "ambientLight",
+            "debugData": {
+              "name": "Ambient light"
+            }
           }
         }
       ],
@@ -54,6 +90,10 @@
               "radius": 0.6,
               "widthSegments": 32,
               "heightSegments": 32
+            },
+            "debugData": {
+              "name": "Test Sphere",
+              "description": "This is a test sphere"
             }
           }
         },
@@ -133,7 +173,273 @@
         }
       ],
       "id": "sceneTestECS",
-      "sceneFile": ""
+      "sceneFile": "./testECS.ts"
+    }
+  },
+  "cameras": {
+    "mainCamera": {
+      "camProps": {
+        "type": "PERSPECTIVE",
+        "fov": 90,
+        "appId": "mainCamera"
+      },
+      "entityOpts": {
+        "appId": "mainCamera",
+        "persistent": true,
+        "debugData": {
+          "name": "Main camera",
+          "description": "Main application camera"
+        }
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "position": {
+              "x": 10,
+              "y": 5,
+              "z": 20
+            }
+          }
+        ]
+      },
+      "__sourcePath": "src/app/cameras/mainCamera.camera.json"
+    },
+    "testing": {
+      "camProps": {
+        "active": false,
+        "type": "PERSPECTIVE",
+        "fov": 90,
+        "appId": "testing"
+      },
+      "entityOpts": {
+        "appId": "testing",
+        "debugData": {
+          "description": "Main application camera 2"
+        }
+      },
+      "__sourcePath": "src/app/cameras/testing.camera.json"
+    }
+  },
+  "lights": {
+    "ambientLight": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#ffffff",
+        "intensity": 0.5,
+        "appId": "ambientLight"
+      },
+      "entityOpts": {
+        "appId": "ambientLight",
+        "debugData": {
+          "name": "Ambient light"
+        }
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "type": "AMBIENT",
+            "intensity": 0.567
+          }
+        ]
+      },
+      "__sourcePath": "src/app/lights/ambientLight.light.json"
+    }
+  },
+  "geometries": {
+    "testSphere": {
+      "geoProps": {
+        "debugData": {
+          "name": "Test Sphere",
+          "description": "This is a test sphere"
+        },
+        "type": "SPHERE",
+        "params": {
+          "radius": 0.5,
+          "widthSegments": 32,
+          "heightSegments": 32
+        },
+        "id": "testSphere"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "params": {
+              "radius": 0.6
+            }
+          }
+        ]
+      },
+      "__sourcePath": "src/app/geometries/testSphere.geometry.json"
+    }
+  },
+  "textures": {
+    "testTexture": {
+      "id": "testTexture",
+      "fileName": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
+      "useHDRLoader": false,
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "useHDRLoader": true
+          }
+        ]
+      },
+      "__sourcePath": "src/app/textures/testTexture.texture.json"
+    }
+  },
+  "materials": {
+    "testMaterial": {
+      "id": "testMaterial",
+      "params": {
+        "map": "testTexture"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "params": {
+              "wireframe": false
+            }
+          }
+        ]
+      },
+      "type": "PHONG",
+      "__sourcePath": "src/app/materials/testMaterial.material.json"
+    },
+    "testTslMat": {
+      "id": "testTslMat",
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "nodes": {
+              "colorNode": {
+                "baseColor": "#1c233a"
+              }
+            }
+          }
+        ]
+      },
+      "tslFile": "materials/testTslMat.tsl.ts",
+      "nodes": {
+        "colorNode": {
+          "baseColor": "#1a233a",
+          "panelColor": "#ffaa00",
+          "gridScale": 4
+        }
+      },
+      "type": "STANDARDNODEMATERIAL",
+      "__sourcePath": "src/app/materials/testTslMat.material.json"
+    },
+    "checkerBoard": {
+      "id": "checkerBoard",
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            }
+          }
+        ]
+      },
+      "tslFile": "materials/checkerBoard.tsl.ts",
+      "nodes": {
+        "colorNode": {
+          "baseColor": "#1a233a",
+          "panelColor": "#ffaa00",
+          "gridScale": 4
+        },
+        "roughnessNode": {
+          "baseRoughness": 0.2,
+          "scratchIntensity": 0.8
+        },
+        "normalNode": {
+          "bumpScale": 0.05
+        }
+      },
+      "type": "STANDARDNODEMATERIAL",
+      "__sourcePath": "src/toolkit/materials/checkerBoard.material.json"
+    }
+  },
+  "meshes": {
+    "testMesh": {
+      "props": {
+        "geo": "testGeometry",
+        "mat": "testMaterial",
+        "castShadow": true,
+        "receiveShadow": true,
+        "appId": "testMesh"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "castShadow": false,
+            "__meta": {
+              "date": 1779449688109
+            }
+          }
+        ]
+      },
+      "__sourcePath": "src/app/meshes/testMesh.mesh.json"
+    }
+  },
+  "importedMeshes": {
+    "testImportedMesh": {
+      "props": {
+        "fileName": "/debugger/assets/testModels/box01.glb",
+        "appId": "testImportedMesh",
+        "importGroup": true,
+        "allMeshesVisible": true
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "importGroup": false,
+            "__meta": {
+              "date": 1779449688109
+            }
+          }
+        ]
+      },
+      "__sourcePath": "src/app/importedMeshes/testImport.importedMesh.json"
+    }
+  },
+  "skyboxes": {
+    "basicSkybox": {
+      "id": "basicSkybox",
+      "type": "EQUIRECTANGULAR",
+      "params": {
+        "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
+        "textureId": "equiRectEmptyId",
+        "colorSpace": "srgb"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "colorSpace": ""
+          }
+        ]
+      },
+      "__sourcePath": "src/app/skyboxes/basicSkybox.skybox.json"
     }
   }
 }

@@ -19,12 +19,12 @@ import {
 } from '../debug/DebugTools';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
-import { CoreEntityOpts } from './ECS';
 import { LightProps } from './_LightManager';
 import { ImportModelParams } from './ImportModel';
 import { SkyBoxProps } from './SkyBox';
 import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
+import { CoreEntityOpts } from '../schemas/_helperSchemas';
 
 export type Looper = (delta: number) => void;
 

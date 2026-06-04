@@ -19,7 +19,7 @@ const MeshPropsSchema = z.object({
 const PartialGeoProps = z.union(GeoPropsSchema.options.map((variant) => variant.partial()));
 const PartialMatProps = z.union(MaterialAssetSchema.options.map((variant) => variant.partial()));
 
-const MeshOverrides = z.object({
+const MeshOverridesSchema = z.object({
   geo: z.union([PartialGeoProps, z.string()]).optional(),
   mat: z.union([PartialMatProps, z.string()]).optional(),
   castShadow: z.boolean().optional(),
@@ -31,14 +31,14 @@ const MeshOverrides = z.object({
   __meta: MetaSchema.optional(),
 });
 
-export type MeshOverrides = z.infer<typeof MeshOverrides>;
+export type MeshOverrides = z.infer<typeof MeshOverridesSchema>;
 
 export const MeshAssetSchema = z.object({
   $schema: z.string().optional(),
   props: MeshPropsSchema,
   entityOpts: CoreEntityOptsSchema.optional(),
   __sourcePath: z.string().optional(),
-  __saveData: createSaveDataSchema(MeshOverrides),
+  __saveData: createSaveDataSchema(MeshOverridesSchema),
 });
 
 export type MeshAsset = z.infer<typeof MeshAssetSchema>;

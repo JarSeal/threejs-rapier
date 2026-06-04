@@ -151,7 +151,7 @@ export default defineConfig({
     visualizer({
       title: meta.app.name,
       filename: './dist-stats/bundle-stats.html',
-      open: true,
+      open: false,
       gzipSize: true,
       template: 'treemap',
       // exclude: [

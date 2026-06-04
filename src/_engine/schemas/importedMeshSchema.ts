@@ -15,17 +15,19 @@ const ImportedMeshPropsSchema = z.object({
   // physicsParams: z.union([]),
 });
 
-const ImportedMeshOverrides = z.object({
+const ImportedMeshOverridesSchema = z.object({
   ...ImportedMeshPropsSchema.partial().shape,
   __meta: MetaSchema.optional(),
 });
+
+export type ImportedMeshOverrides = z.infer<typeof ImportedMeshOverridesSchema>;
 
 export const ImportedMeshAssetSchema = z.object({
   $schema: z.string().optional(),
   props: ImportedMeshPropsSchema,
   entityOpts: CoreEntityOptsSchema.optional(),
   __sourcePath: z.string().optional(),
-  __saveData: createSaveDataSchema(ImportedMeshOverrides),
+  __saveData: createSaveDataSchema(ImportedMeshOverridesSchema),
 });
 
 export type ImportedMeshAsset = z.infer<typeof ImportedMeshAssetSchema>;

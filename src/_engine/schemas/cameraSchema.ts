@@ -24,7 +24,7 @@ const CameraOrthographic = CameraBaseProps.extend({
 export const CameraProps = z.union([CameraPerspective, CameraOrthographic]);
 export type CameraProps = z.infer<typeof CameraProps>;
 
-const CameraOverrides = z.object({
+export const CameraOverridesSchema = z.object({
   __meta: MetaSchema.optional(),
   type: z.enum(['PERSPECTIVE', 'ORTHOGRAPHIC']).optional(),
   active: z.boolean().optional(),
@@ -37,12 +37,14 @@ const CameraOverrides = z.object({
   frustumSize: z.number().optional(),
 });
 
+export type CameraOverrides = z.infer<typeof CameraOverridesSchema>;
+
 export const CameraAssetSchema = z.object({
   $schema: z.string().optional(),
   camProps: CameraProps,
   entityOpts: CoreEntityOptsSchema.optional(),
   __sourcePath: z.string().optional(),
-  __saveData: createSaveDataSchema(CameraOverrides),
+  __saveData: createSaveDataSchema(CameraOverridesSchema),
 });
 
 export type CameraAsset = z.infer<typeof CameraAssetSchema>;
