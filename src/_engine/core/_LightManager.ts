@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { ECSWorld, getECSWorld } from './ECS';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
-import { DebugModuleRef, existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
+import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
 import { ComponentType, Transform } from './ECS/ECSCoreComponents';
 import { IS_DEBUG_ENV } from './Config';
 import { loadPersistentProps } from './PropertyLoader';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import { existsOrThrow } from '../utils/assert';
 
 export const registerLightManager = (world: ECSWorld) => {
   if (IS_DEBUG_ENV) {

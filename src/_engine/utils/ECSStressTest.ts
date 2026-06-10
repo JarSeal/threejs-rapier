@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 
 import { createKeyInputControl } from '../core/InputControls';
 import { getLogger } from './Logger';
-import { createMeshEntity } from '../core/_MeshManager'; // Assuming this is the path
+import { createMeshEntity } from '../core/_MeshManager';
 import { ECSWorld, getECSWorld } from '../core/ECS';
 import { ComponentType } from '../core/ECS/ECSCoreComponents';
 import { isDebugEnvironment } from '../core/Config';

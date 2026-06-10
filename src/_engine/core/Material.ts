@@ -1,10 +1,11 @@
 import * as THREE from 'three/webgpu';
 import { deleteTexture, getTexture } from './Texture';
 import { getRootScene } from './Scene';
-import { existsOrThrow } from '../utils/helpers';
+import { existsOrThrow } from '../utils/assert';
 import { tslMaterialFileObjects } from '../generatedAppFns';
 import { lerror } from '../utils/Logger';
 import { color, Node, texture, uniform } from 'three/tsl';
+import { textureMapKeys } from '../utils/constants';
 
 export type Materials =
   | THREE.LineBasicMaterial
@@ -44,32 +45,6 @@ const materials: {
     persistent?: boolean;
   };
 } = {};
-
-export const textureMapKeys = [
-  'map',
-  'alphaMap',
-  'aoMap',
-  'bumpMap',
-  'envMap',
-  'emissiveMap',
-  'lightMap',
-  'matcap',
-  'normalMap',
-  'specularMap',
-  'displacementMap',
-  'anisotropyMap',
-  'clearcoatMap',
-  'clearcoatNormalMap',
-  'clearcoatRoughnessMap',
-  'iridescenceMap',
-  'iridescenceThicknessMap',
-  'sheenRoughnessMap',
-  'sheenColorMap',
-  'specularIntensityMap',
-  'specularColorMap',
-  'thicknessMap',
-  'transmissionMap',
-];
 
 export type MatProps = {
   id?: string;
@@ -302,8 +277,8 @@ export const createMaterial = (props: MatProps) => {
       for (const nodeSocket of Object.keys(props.nodes)) {
         const masterGraphFunction = activeMaterialRegistry[nodeSocket];
 
-        // If a named layout node function isn't explicitly exported, gracefully pass it
-        if (!masterGraphFunction) continue;
+        // If a named layout node function isn't explicitly exported or the node socket does not exist, gracefully pass it
+        if (!masterGraphFunction || !(nodeSocket in mat)) continue;
 
         if (masterGraphFunction === ' ' || masterGraphFunction === '') {
           const msg = `[Material Manager] Empty TSL function export caught at socket "${nodeSocket}" for material entry ID: "${id}".`;
@@ -397,12 +372,11 @@ export const createMaterial = (props: MatProps) => {
         }
 
         // Execute graph function with its flat parameter values and assign directly to material socket
-        if (nodeSocket in mat)
-          mat[nodeSocket] = genericGraphFn(
-            uniformNodesPayload,
-            mat as THREE.NodeMaterial,
-            nodeStaticDefines
-          );
+        mat[nodeSocket] = genericGraphFn(
+          uniformNodesPayload,
+          mat as THREE.NodeMaterial,
+          nodeStaticDefines
+        );
       }
     }
 

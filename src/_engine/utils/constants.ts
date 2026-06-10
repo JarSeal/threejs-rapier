@@ -37,3 +37,29 @@ export const DIRECTIONS = {
 
 export const LEVEL_GROUND_NORMAL = new THREE.Vector3(0, 1, 0);
 export const GRAVITY_DOWN_NORMAL = new THREE.Vector3(0, -1, 0);
+
+export const textureMapKeys = [
+  'map',
+  'alphaMap',
+  'aoMap',
+  'bumpMap',
+  'envMap',
+  'emissiveMap',
+  'lightMap',
+  'matcap',
+  'normalMap',
+  'specularMap',
+  'displacementMap',
+  'anisotropyMap',
+  'clearcoatMap',
+  'clearcoatNormalMap',
+  'clearcoatRoughnessMap',
+  'iridescenceMap',
+  'iridescenceThicknessMap',
+  'sheenRoughnessMap',
+  'sheenColorMap',
+  'specularIntensityMap',
+  'specularColorMap',
+  'thicknessMap',
+  'transmissionMap',
+];

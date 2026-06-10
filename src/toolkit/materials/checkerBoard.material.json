@@ -3,6 +3,9 @@
   "id": "checkerBoard",
   "tslFile": "materials/checkerBoard.tsl.ts",
   "type": "STANDARDNODEMATERIAL",
+  "params": {
+    "color": "#1a233a"
+  },
   "nodes": {
     "colorNode": {
       "baseColor": "#1a233a",
@@ -21,8 +24,13 @@
     "sceneTestECS": [
       {
         "__meta": { "date": 1779449688109 },
-        "colorNode": {
-          "panelColor": "#ff0000"
+        "nodes": {
+          "colorNode": {
+            "panelColor": "#ff0000"
+          }
+        },
+        "params": {
+          "color": "#ff00ff"
         }
       }
     ]

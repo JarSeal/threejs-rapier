@@ -11,8 +11,9 @@ import {
   switchPhysicsCollider,
 } from '../../core/PhysicsRapier';
 import RAPIER, { type Collider } from '@dimforge/rapier3d-compat';
-import { existsOrThrow, roundToDecimal } from '../helpers';
+import { roundToDecimal } from '../helpers';
 import { GRAVITY_DOWN_NORMAL, LEVEL_GROUND_NORMAL } from '../constants';
+import { existsOrThrow } from '../assert';
 
 // @TODO: add comments for each
 // If a prop has one underscore (_) then it means it is a configuration,

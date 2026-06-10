@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getRootScene } from './Scene';
-import { existsOrThrow, ThreeEuler, ThreeQuoternion } from '../utils/helpers';
+import { ThreeEuler, ThreeQuoternion } from '../utils/helpers';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { setTransform } from '../utils/ECSHelpers';
 import { lwarn } from '../utils/Logger';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import { existsOrThrow } from '../utils/assert';
 
 // Register onDeleteEntity hook for TAG_IS_GROUP
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_GROUP, {

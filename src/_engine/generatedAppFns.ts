@@ -3,14 +3,20 @@
 import * as testTslMatFn from '../app/materials/testTslMat.tsl.ts';
 import * as checkerBoardFn from '../toolkit/materials/checkerBoard.tsl.ts';
 import { type SceneData } from './core/Scene.ts';
-import { scene as testDebugSceneFn } from '../app/debugScene.scene.ts';
-import { scene as oneMoreSceneFn } from '../app/./oneMoreScene';
-import { scene as sceneTestECSFn } from '../app/./testECS.ts';
 
 export const sceneFileObjects: { [sceneId: string]: (sceneData: SceneData) => Promise<void> } = {
-  testDebugScene: testDebugSceneFn,
-  oneMoreScene: oneMoreSceneFn,
-  sceneTestECS: sceneTestECSFn,
+  testDebugScene: async (sceneData) => {
+    const module = await import('../app/debugScene.scene.ts');
+    await (module as { scene: (sceneData: SceneData) => Promise<void> }).scene(sceneData);
+  },
+  oneMoreScene: async (sceneData) => {
+    const module = await import('../app/./oneMoreScene');
+    await (module as { scene: (sceneData: SceneData) => Promise<void> }).scene(sceneData);
+  },
+  sceneTestECS: async (sceneData) => {
+    const module = await import('../app/./testECS.ts');
+    await (module as { scene: (sceneData: SceneData) => Promise<void> }).scene(sceneData);
+  },
 };
 
 export const tslMaterialFileObjects = {

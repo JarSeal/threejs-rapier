@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import { ECSWorld } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import { ECSSystemStage } from '../../../../AppECSRegistry';
-import { existsOrThrow } from '../../../utils/helpers';
+import { existsOrThrow } from '../../../utils/assert';
 import { getRootScene } from '../../Scene';
 import { isAnyLightHelperVisible } from '../../_LightManager';
 

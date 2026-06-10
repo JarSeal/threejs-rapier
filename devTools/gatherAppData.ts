@@ -501,12 +501,22 @@ export const gatherSceneData = () => {
         addedFirstImport = true;
       }
       const basePath = getBasePath(fullPath);
-      sceneFileImports += `import { scene as ${sceneId}Fn } from '../${basePath}/${fileContentJSON.sceneFile}';\n`;
+      // OLD IMPLEMENTATION
+      // sceneFileImports += `import { scene as ${sceneId}Fn } from '../${basePath}/${fileContentJSON.sceneFile}';\n`;
+      // if (!sceneFileObject) {
+      //   sceneFileObject +=
+      //     'export const sceneFileObjects: { [sceneId: string]: (sceneData: SceneData) => Promise<void> } = {\n';
+      // }
+      // sceneFileObject += `  ${sceneId}: ${sceneId}Fn,\n`;
+      // NEW IMPLEMENTATION
       if (!sceneFileObject) {
         sceneFileObject +=
           'export const sceneFileObjects: { [sceneId: string]: (sceneData: SceneData) => Promise<void> } = {\n';
       }
-      sceneFileObject += `  ${sceneId}: ${sceneId}Fn,\n`;
+      sceneFileObject += `  ${sceneId}: async (sceneData) => {\n`;
+      sceneFileObject += `    const module = await import('../${basePath}/${fileContentJSON.sceneFile}');\n`;
+      sceneFileObject += `    await (module as { scene: (sceneData: SceneData) => Promise<void> }).scene(sceneData);\n`;
+      sceneFileObject += `  },\n`;
 
       // --- CURRENT SCENE ASSETS per SCENE: ---
 
@@ -626,11 +636,35 @@ export const gatherSceneData = () => {
               ? matRegistry[matId].__saveData?.[sceneId]?.[0] || {}
               : {};
             if (isProduction) delete matRegistry[matId].debugData;
+            const registryData = matRegistry[matId];
+            const nodeKeys =
+              'nodes' in registryData && registryData.nodes ? Object.keys(registryData.nodes) : [];
+            let nodes = {};
+            if (nodeKeys.length && 'nodes' in registryData && registryData.nodes) {
+              nodes = nodeKeys.reduce(
+                (acc, key) => {
+                  const nodeData =
+                    'nodes' in registryData && registryData.nodes ? registryData.nodes[key] : {};
+                  const nodeSaveData = __saveData.nodes?.[key] || {};
+                  if ('__meta' in nodeData) delete nodeData.__meta;
+                  acc[key] = {
+                    ...nodeData,
+                    ...nodeSaveData,
+                  };
+                  return acc;
+                },
+                {} as Record<string, unknown>
+              );
+            }
             const matData = {
-              ...matRegistry[matId],
+              ...registryData,
               ...__saveData,
+              ...(nodes ? { nodes } : {}),
+              ...('params' in registryData
+                ? { params: { ...registryData.params, ...__saveData.params } }
+                : {}),
               id: matId,
-              type: matRegistry[matId].type,
+              type: registryData.type,
             };
             if ('__meta' in matData) delete matData.__meta;
             if ('__sourcePath' in matData) delete matData.__sourcePath;

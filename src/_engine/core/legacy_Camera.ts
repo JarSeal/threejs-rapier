@@ -17,7 +17,7 @@ import { isDebugEnvironment } from './Config';
 import { getCurrentScene, getRootScene } from './Scene';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { existsOrThrow } from '../utils/helpers';
+import { existsOrThrow } from '../utils/assert';
 
 const LS_KEY = 'debugCameras';
 const cameras: { [id: string]: THREE.PerspectiveCamera } = {};

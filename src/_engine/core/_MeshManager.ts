@@ -3,12 +3,13 @@ import { createGeometry, incGeometryRef, decGeometryRef, GeoProps } from './_Geo
 import { createMaterial, incMaterialRef, decMaterialRef, MatProps } from './Material';
 import { ECSWorld, getECSWorld } from './ECS';
 import { getRootScene } from './Scene';
-import { existsOrThrow, ThreeEuler, ThreeQuoternion } from '../utils/helpers';
+import { ThreeEuler, ThreeQuoternion } from '../utils/helpers';
 import { getRenderer } from './Renderer';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { setTransform } from '../utils/ECSHelpers';
 import { lwarn } from '../utils/Logger';
 import { type CoreEntityOpts } from '../schemas/_helperSchemas';
+import { existsOrThrow } from '../utils/assert';
 
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {

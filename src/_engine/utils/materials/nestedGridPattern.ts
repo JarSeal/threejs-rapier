@@ -11,7 +11,7 @@ import {
   mod,
   min,
 } from 'three/tsl';
-import { existsOrThrow } from '../helpers';
+import { existsOrThrow } from '../assert';
 import { createMaterial } from '../../core/Material';
 
 export const getUVRepeatFactor = (mesh: THREE.Mesh, metersPerTile: number) => {

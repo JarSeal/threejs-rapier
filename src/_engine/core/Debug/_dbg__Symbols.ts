@@ -4,7 +4,7 @@ import { ECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import { getRootScene } from '../Scene';
-import { existsOrThrow } from '../../utils/helpers';
+import { existsOrThrow } from '../../utils/assert';
 import { getActiveCameraId } from '../_CameraManager'; // ADD THIS IMPORT
 import {
   createNewCameraSymbol,

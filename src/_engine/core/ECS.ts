@@ -7,7 +7,7 @@ import {
   ECSTransformProp,
   Transform,
 } from './ECS/ECSCoreComponents';
-import { existsOrThrow } from '../utils/helpers';
+import { existsOrThrow } from '../utils/assert';
 import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
 import { isDebugEnvironment } from './Config';
 import { CoreComponentType } from './ECS/ECSRegistry';

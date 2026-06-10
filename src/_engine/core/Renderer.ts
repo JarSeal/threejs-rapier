@@ -9,7 +9,7 @@ import { ListBladeApi } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
 import { RENDERER_SHADOW_OPTIONS } from '../utils/constants';
 import { getSvgIcon } from './UI/icons/SvgIcon';
-import { existsOrThrow } from '../utils/helpers';
+import { existsOrThrow } from '../utils/assert';
 
 let r: THREE.WebGPURenderer | null = null;
 const ELEM_ID = 'mainCanvas';

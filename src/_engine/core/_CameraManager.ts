@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { ECSWorld, getECSWorld } from './ECS';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
-import { DebugModuleRef, existsOrThrow, loadDebugModule, useDebug } from '../utils/helpers';
+import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
 import { getWindowSize } from '../utils/Window';
 import { IS_DEBUG_ENV } from './Config';
 import { ComponentType } from './ECS/ECSCoreComponents';
@@ -11,6 +11,7 @@ import { inspectEntity } from '../utils/ECSHelpers';
 import { loadPersistentProps } from './PropertyLoader';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import { existsOrThrow } from '../utils/assert';
 
 // --- STATE ---
 let activeCameraEntityId: number | null = null;

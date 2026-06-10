@@ -17,7 +17,7 @@ import {
   MouseInputParams,
 } from './InputControls';
 import { getMesh } from './Mesh';
-import { existsOrThrow } from '../utils/helpers';
+import { existsOrThrow } from '../utils/assert';
 import { CMP, TCMP } from '../utils/CMP';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerContainer } from '../debug/DebuggerGUI';

@@ -11,7 +11,7 @@ import {
   PhysicsObject,
   PhysicsParams,
 } from '../../core/PhysicsRapier';
-import { existsOrThrow } from '../helpers';
+import { existsOrThrow } from '../assert';
 import { getLogger } from '../Logger';
 import { RigidBody } from '@dimforge/rapier3d-compat';
 

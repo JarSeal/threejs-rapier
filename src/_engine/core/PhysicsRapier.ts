@@ -10,7 +10,7 @@ import { ListBladeApi, Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { existsOrThrow, existsOrWarn, ThreeVector3 } from '../utils/helpers';
+import { ThreeVector3 } from '../utils/helpers';
 import { CMP, TCMP } from '../utils/CMP';
 import {
   addOnCloseToWindow,
@@ -25,6 +25,7 @@ import { updateInputControllerLoopActions } from './InputControls';
 import { BladeController, View } from '@tweakpane/core';
 import { BufferGeometryUtils } from 'three/examples/jsm/Addons.js';
 import { isCurrentlyLoading } from './SceneLoader';
+import { existsOrThrow, existsOrWarn } from '../utils/assert';
 
 type CollisionEventFn = (
   collider1: Collider,

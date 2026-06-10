@@ -27,14 +27,16 @@ import { clearSkyBox } from './SkyBox';
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { deleteAllCharacters } from './Character';
-import { existsOrThrow } from '../utils/helpers';
+import { existsOrThrow } from '../utils/assert';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
 import { deleteAllGroups } from './Group';
 import { setIsLoadingScene } from './MainLoop';
 import { getECSWorld } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { sceneFileObjects } from '../generatedAppFns';
-import { loadTextureAsync } from './Texture';
+import { getTexture, loadTextureAsync } from './Texture';
+import { createMaterial, getMaterial } from './Material';
+import { textureMapKeys } from '../utils/constants';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -200,10 +202,31 @@ const loadNextSceneAssets = async (sceneData: SceneData): Promise<PrimitiveAsset
     textures[textureIds[i]] = loadedTextures[i];
   }
 
-  // Create and compile materials
+  // Create materials
   const sceneMaterials = sceneData.materials || [];
   for (let i = 0; i < sceneMaterials.length; i++) {
-    // @CHORE
+    const material = sceneMaterials[i];
+    if (typeof material === 'string') {
+      const mat = getMaterial(material);
+      if (mat) materials[material] = mat;
+      continue;
+    }
+    for (let j = 0; j < textureMapKeys.length; j++) {
+      const texKey = textureMapKeys[j] as keyof THREE.TextureParameters;
+      const params = material.params;
+      if (params && texKey in params && typeof texKey === 'string') {
+        const texture = textures[texKey] || getTexture(texKey);
+        if (!texture) {
+          lwarn(`Could not find texture with id "${texKey}" in loadNextSceneAssets.`);
+          continue;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (params as any)[texKey] = texture;
+      }
+    }
+
+    const mat = createMaterial(material);
+    if (mat) materials[material.id || `material-${i}`] = mat;
   }
 
   // @CHORE: load imported geometries (add possibility to only import geometries) and create primitive geometries
@@ -351,7 +374,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       ecsWorld.clearNonPersistent();
 
       // Create all next scene assets
-      loadNextSceneAssets(sceneData);
+      await loadNextSceneAssets(sceneData);
 
       loader.phase = 'LOAD';
       await loadFn(loader, initNextSceneFn).then(async () => {

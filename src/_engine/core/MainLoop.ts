@@ -24,7 +24,7 @@ import { updateInputControllerLoopActions } from './InputControls';
 import { countRayCastFrames, initRayCasting } from './Raycast';
 import { ECSWorld, getECSWorld } from './ECS';
 import { getActiveCamera } from './_CameraManager';
-import { existsOrThrow } from '../utils/helpers';
+import { existsOrThrow } from '../utils/assert';
 
 const LS_KEY = 'debugLoop';
 const timer = new Timer();

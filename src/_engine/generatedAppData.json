@@ -115,17 +115,22 @@
         {
           "id": "testMaterial",
           "params": {
+            "map": "testTexture",
             "wireframe": false
           },
-          "type": "PHONG"
+          "type": "PHONG",
+          "nodes": {}
         },
         {
           "id": "checkerBoard",
+          "params": {
+            "color": "#ff00ff"
+          },
           "tslFile": "materials/checkerBoard.tsl.ts",
           "nodes": {
             "colorNode": {
               "baseColor": "#1a233a",
-              "panelColor": "#ffaa00",
+              "panelColor": "#ff0000",
               "gridScale": 4
             },
             "roughnessNode": {
@@ -349,11 +354,22 @@
     },
     "checkerBoard": {
       "id": "checkerBoard",
+      "params": {
+        "color": "#1a233a"
+      },
       "__saveData": {
         "sceneTestECS": [
           {
             "__meta": {
               "date": 1779449688109
+            },
+            "params": {
+              "color": "#ff00ff"
+            },
+            "nodes": {
+              "colorNode": {
+                "panelColor": "#ff0000"
+              }
             }
           }
         ]
