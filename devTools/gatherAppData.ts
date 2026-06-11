@@ -15,6 +15,7 @@ import {
   ImportedMeshAssetSchema,
 } from '../src/_engine/schemas/importedMeshSchema';
 import { SkyBoxAsset } from '../src/_engine/schemas/skyBoxSchema';
+import { toUniqueJsIdentifier } from '../src/_engine/utils/jsIdentifier';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
@@ -44,6 +45,12 @@ const logValidationError = (msg: string, issues: z.ZodError['issues']) => {
     .map((err) => ` └─ [${err.path.join('.')}]: ${err.message}`)
     .join('\n');
   console.error(`\x1b[31m✗ [Scene Gatherer] ${msg}:\n${errorDetails}\x1b[0m`);
+};
+
+const logDuplicateIdError = (type: string, id: string, file: string) => {
+  console.error(
+    `\x1b[31m✗ [Scene Gatherer] Duplicate ${type} ID found: ${id} in file: ${file}\x1b[0m`
+  );
 };
 
 export const isFilePathValid = (filePath: string) => {
@@ -128,6 +135,28 @@ export const gatherSceneData = () => {
   let addedFirstImport = false;
   let sceneFileObject = '';
   let tslMaterialFileObject = '';
+  const usedMaterialNamespaces = new Set<string>();
+  const ids: {
+    scenes: string[];
+    cameras: string[];
+    lights: string[];
+    geometries: string[];
+    textures: string[];
+    materials: string[];
+    meshes: string[];
+    importedMeshes: string[];
+    skyboxes: string[];
+  } = {
+    scenes: [],
+    cameras: [],
+    lights: [],
+    geometries: [],
+    textures: [],
+    materials: [],
+    meshes: [],
+    importedMeshes: [],
+    skyboxes: [],
+  };
 
   const logJSONError = (file: string) =>
     console.error(
@@ -157,7 +186,14 @@ export const gatherSceneData = () => {
           continue;
         }
 
-        const latestSave = validation.data.__saveData?.[validation.data.id]?.[0] || {};
+        const sceneId = validation.data.id || path.basename(file, JSON_ENDING_SIGNATURES.scene);
+        if (ids.scenes.includes(sceneId)) {
+          logDuplicateIdError('scene', sceneId, file);
+          continue;
+        }
+        ids.scenes.push(sceneId);
+
+        const latestSave = validation.data.__saveData?.[sceneId]?.[0] || {};
         const fileContentJSON = { ...validation.data, ...latestSave };
         fileContentJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         if (fileContentJSON.sceneFile) sceneFilesArray.push(fileContentJSON);
@@ -191,6 +227,11 @@ export const gatherSceneData = () => {
           cameraJSON.camProps?.appId ||
           cameraJSON.entityOpts?.appId ||
           path.basename(file, JSON_ENDING_SIGNATURES.camera);
+        if (ids.cameras.includes(cameraId)) {
+          logDuplicateIdError('camera', cameraId, file);
+          continue;
+        }
+        ids.cameras.push(cameraId);
         cameraJSON.camProps.appId = cameraId;
         cameraJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete cameraJSON.$schema;
@@ -222,6 +263,11 @@ export const gatherSceneData = () => {
           lightJSON.lightProps?.appId ||
           lightJSON.entityOpts?.appId ||
           path.basename(file, JSON_ENDING_SIGNATURES.light);
+        if (ids.lights.includes(lightId)) {
+          logDuplicateIdError('light', lightId, file);
+          continue;
+        }
+        ids.lights.push(lightId);
         lightJSON.lightProps.appId = lightId;
         lightJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete lightJSON.$schema;
@@ -253,6 +299,11 @@ export const gatherSceneData = () => {
         }
         const geoJSON = validation.data;
         const geoId = geoJSON.geoProps.id || path.basename(file, JSON_ENDING_SIGNATURES.geometry);
+        if (ids.geometries.includes(geoId)) {
+          logDuplicateIdError('geometry', geoId, file);
+          continue;
+        }
+        ids.geometries.push(geoId);
         geoJSON.geoProps.id = geoId;
         geoJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete geoJSON.$schema;
@@ -284,6 +335,11 @@ export const gatherSceneData = () => {
         }
         const texJSON = validation.data;
         const texId = texJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.texture);
+        if (ids.textures.includes(texId)) {
+          logDuplicateIdError('texture', texId, file);
+          continue;
+        }
+        ids.textures.push(texId);
         texJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         texJSON.id = texId;
         delete texJSON.$schema;
@@ -315,6 +371,11 @@ export const gatherSceneData = () => {
         }
         const matJSON = validation.data;
         const matId = matJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.material);
+        if (ids.materials.includes(matId)) {
+          logDuplicateIdError('material', matId, file);
+          continue;
+        }
+        ids.materials.push(matId);
         matJSON.id = matId;
         matJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete matJSON.$schema;
@@ -341,15 +402,19 @@ export const gatherSceneData = () => {
             continue;
           }
 
-          // Use wildcard namespace imports to automatically capture all named functions within the target file
-          const runtimeUniqueNamespace = `${matId}Fn`;
+          const runtimeUniqueNamespace = toUniqueJsIdentifier(
+            `${matId}Fn`,
+            usedMaterialNamespaces,
+            'mat'
+          );
           sceneFileImports += `import * as ${runtimeUniqueNamespace} from '../${basePath}/${matJSON.tslFile}';\n`;
 
           if (!tslMaterialFileObject) {
             tslMaterialFileObject += 'export const tslMaterialFileObjects = {\n';
           }
 
-          tslMaterialFileObject += `  ${matId}: {\n`;
+          // Use single quotes if the identifier starts with a number or contains characters that are not valid in JS identifiers, otherwise keep it unquoted to match lint rules
+          tslMaterialFileObject += `  ${matId.match(/^[0-9]/) ? `'${matId}'` : matId}: {\n`;
           if (matJSON.nodes) {
             for (const nodeSocket of Object.keys(matJSON.nodes)) {
               // Automatically match keys from the JSON configuration mapping straight to the typescript exports namespace
@@ -385,6 +450,11 @@ export const gatherSceneData = () => {
           meshJSON.props.appId ||
           meshJSON.entityOpts?.appId ||
           path.basename(file, JSON_ENDING_SIGNATURES.mesh);
+        if (ids.meshes.includes(meshId)) {
+          logDuplicateIdError('mesh', meshId, file);
+          continue;
+        }
+        ids.meshes.push(meshId);
         meshJSON.props.appId = meshId;
         meshJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete meshJSON.$schema;
@@ -419,6 +489,11 @@ export const gatherSceneData = () => {
           importedMeshJSON.props.appId ||
           importedMeshJSON.entityOpts?.appId ||
           path.basename(file, JSON_ENDING_SIGNATURES.importedMesh);
+        if (ids.importedMeshes.includes(id)) {
+          logDuplicateIdError('imported mesh', id, file);
+          continue;
+        }
+        ids.importedMeshes.push(id);
         importedMeshJSON.props.appId = id;
         importedMeshJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete importedMeshJSON.$schema;
@@ -440,6 +515,11 @@ export const gatherSceneData = () => {
       try {
         const skyJSON = JSON.parse(fileContent);
         const skyId = skyJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.skybox);
+        if (ids.skyboxes.includes(skyId)) {
+          logDuplicateIdError('skybox', skyId, file);
+          continue;
+        }
+        ids.skyboxes.push(skyId);
         skyJSON.id = skyId;
         skyJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete skyJSON.$schema;

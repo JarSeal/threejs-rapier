@@ -3,7 +3,7 @@ import { deleteTexture, getTexture } from './Texture';
 import { getRootScene } from './Scene';
 import { existsOrThrow } from '../utils/assert';
 import { tslMaterialFileObjects } from '../generatedAppFns';
-import { lerror } from '../utils/Logger';
+import { lerror, lwarn } from '../utils/Logger';
 import { color, Node, texture, uniform } from 'three/tsl';
 import { textureMapKeys } from '../utils/constants';
 
@@ -263,7 +263,7 @@ export const createMaterial = (props: MatProps) => {
   if ('tslFile' in props && props.tslFile) {
     const activeMaterialRegistry = existsOrThrow(
       id && (tslMaterialFileObjects as Record<string, Record<string, unknown>>)[id],
-      `[Material Manager] Could not locate compiled TSL Master Graph registry entry for material ID: "${id}"`
+      `[Material Manager] Could not locate compiled TSL Master Graph registry entry for material ID "${id}. Materials with a TSL file must have a *.material.json file."`
     );
     if (activeMaterialRegistry === '') {
       const msg = `[Material Manager] Empty TSL Master Graph function export for material entry ID: "${id}".`;
@@ -278,7 +278,16 @@ export const createMaterial = (props: MatProps) => {
         const masterGraphFunction = activeMaterialRegistry[nodeSocket];
 
         // If a named layout node function isn't explicitly exported or the node socket does not exist, gracefully pass it
-        if (!masterGraphFunction || !(nodeSocket in mat)) continue;
+        if (!masterGraphFunction || !(nodeSocket in mat)) {
+          if (mat.type.endsWith('NodeMaterial')) {
+            lwarn(`Could not locate node "${nodeSocket}" for material id "${id}".`);
+          } else {
+            lwarn(
+              `Material id "${id}" is not a node material, it does not have node sockets (in this case "${nodeSocket}").`
+            );
+          }
+          continue;
+        }
 
         if (masterGraphFunction === ' ' || masterGraphFunction === '') {
           const msg = `[Material Manager] Empty TSL function export caught at socket "${nodeSocket}" for material entry ID: "${id}".`;
@@ -307,7 +316,12 @@ export const createMaterial = (props: MatProps) => {
           // Handle textures
           else if (typeof value === 'string' && !value.startsWith('#')) {
             const texResource = getTexture(value as string);
-            if (!texResource) continue;
+            if (!texResource) {
+              lwarn(
+                `Could not locate texture resource for input "${inputKey}" in material "${id}" with value "${value}", setting a uniform value of 1.`
+              );
+              instantiatedNode = uniform(1);
+            }
             // Convert directly into a sampler node, not a uniform buffer allocation
             instantiatedNode = texture(texResource);
           }
@@ -367,6 +381,7 @@ export const createMaterial = (props: MatProps) => {
           }
 
           // Cache dynamically so runtime update scripts can pinpoint the uniform
+          if (!mat.userData.uniforms) mat.userData.uniforms = {};
           mat.userData.uniforms[`${nodeSocket}_${inputKey}`] = instantiatedNode;
           uniformNodesPayload[inputKey] = instantiatedNode;
         }

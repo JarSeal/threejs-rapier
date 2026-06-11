@@ -143,7 +143,7 @@ export const createSceneLoader = async (
 // export const deleteSceneLoader = (id: string) => {};
 
 export const setCurrentSceneLoader = (id: string) => {
-  const foundLoader = sceneLoaders.find((sl) => sl.id);
+  const foundLoader = sceneLoaders.find((sl) => sl.id === id);
   if (!foundLoader) {
     const msg = `Could not set current scene loader with loader id "${id}", because the loader was not found.`;
     lwarn(msg);
@@ -212,20 +212,22 @@ const loadNextSceneAssets = async (sceneData: SceneData): Promise<PrimitiveAsset
       continue;
     }
     for (let j = 0; j < textureMapKeys.length; j++) {
-      const texKey = textureMapKeys[j] as keyof THREE.TextureParameters;
-      const params = material.params;
-      if (params && texKey in params && typeof texKey === 'string') {
-        const texture = textures[texKey] || getTexture(texKey);
-        if (!texture) {
-          lwarn(`Could not find texture with id "${texKey}" in loadNextSceneAssets.`);
-          continue;
+      const params = material.params as Record<string, unknown> | undefined;
+      if (params) {
+        for (const texKey of textureMapKeys) {
+          const texRef = params[texKey];
+          if (typeof texRef !== 'string') continue; // not set, or already a Texture
+          const texture = textures[texRef] || getTexture(texRef);
+          if (!texture) {
+            lwarn(`Could not find texture with id "${texRef}" in loadNextSceneAssets.`);
+            continue;
+          }
+          params[texKey] = texture;
         }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (params as any)[texKey] = texture;
       }
     }
 
-    const mat = createMaterial(material);
+    const mat = createMaterial({ ...material, params: { ...material.params } });
     if (mat) materials[material.id || `material-${i}`] = mat;
   }
 
