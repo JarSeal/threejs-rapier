@@ -2,9 +2,7 @@
   "$schema": "../../../.schemas/material.schema.json",
   "id": "testMaterial",
   "type": "PHONG",
-  "params": {
-    "map": "testTexture"
-  },
+  "params": { "color": "#ff00ff" },
   "__saveData": {
     "sceneTestECS": [
       {

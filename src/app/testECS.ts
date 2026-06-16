@@ -16,14 +16,19 @@ export const scene = async () => {
 
   const ecsWorld = getECSWorld();
 
-  const camId = createCameraEntity(
-    { type: 'PERSPECTIVE', fov: 90, active: true },
-    {
-      appId: 'mainCamera',
-      debugData: { name: 'Main camera', description: 'Main application camera' },
-      persistent: true,
-    }
-  );
+  // const camId = createCameraEntity(
+  //   { type: 'PERSPECTIVE', fov: 90, active: true },
+  //   {
+  //     appId: 'mainCamera',
+  //     debugData: { name: 'Main camera', description: 'Main application camera' },
+  //     persistent: true,
+  //   }
+  // );
+  // setMainCamera(ecsWorld, camId);
+  // ecsWorld.setTransform(camId, {
+  //   pos: { x: 10, y: 5, z: 20 },
+  // });
+  // lookAtPoint(camId, { x: 0, y: 0, z: 0 });
   createCameraEntity(
     { type: 'PERSPECTIVE', fov: 90, active: false },
     {
@@ -31,18 +36,6 @@ export const scene = async () => {
       debugData: { description: 'Main application camera 2' },
     }
   );
-  setMainCamera(ecsWorld, camId);
-  ecsWorld.setTransform(camId, {
-    pos: { x: 10, y: 5, z: 20 },
-  });
-  lookAtPoint(camId, { x: 0, y: 0, z: 0 });
-
-  // createScene(SCENE_TEST_ECS_ID, {
-  //   name: 'Test scene 1',
-  //   isCurrentScene: true,
-  // });
-
-  // inspectEntity(camId);
 
   updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 
@@ -61,21 +54,22 @@ export const scene = async () => {
   // --- ECS LIGHTS ---
 
   // Ambient Light
-  createLightEntity(
-    {
-      type: 'AMBIENT',
-      color: '#ffffff',
-      intensity: 0.5,
-    },
-    {
-      appId: 'ambientLight',
-      debugData: {
-        name: 'Ambient light',
-        description:
-          'The ambient light for the scene. It colors everything in the scene (except skyboxes and basic materials) whether you like it or not. This is what next gen games is all about.',
-      },
-    }
-  );
+  // createLightEntity(
+  //   {
+  //     type: 'AMBIENT',
+  //     color: '#ffffff',
+  //     intensity: 0.5,
+  //   },
+  //   {
+  //     appId: 'ambientLight',
+  //     debugData: {
+  //       name: 'Ambient light',
+  //       description:
+  //         'The ambient light for the scene. It colors everything in the scene (except skyboxes and basic materials) whether you like it or not. This is what next gen games is all about.',
+  //     },
+  //   }
+  // );
+  // createLightEntity({ type: 'AMBIENT', appId: 'ambientLight' });
 
   // Hemisphere Light
   createLightEntity(

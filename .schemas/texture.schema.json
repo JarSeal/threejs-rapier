@@ -43,7 +43,20 @@
           "type": "number"
         },
         "colorSpace": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "string",
+              "const": ""
+            },
+            {
+              "type": "string",
+              "const": "srgb"
+            },
+            {
+              "type": "string",
+              "const": "srgb-linear"
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -160,7 +173,20 @@
                   "type": "number"
                 },
                 "colorSpace": {
-                  "type": "number"
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": ""
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb"
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb-linear"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false

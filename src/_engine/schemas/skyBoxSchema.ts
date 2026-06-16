@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
-import { DebugDataSchema } from './_helperSchemas';
+import { ColorSpaceSchema, DebugDataSchema } from './_helperSchemas';
 
 const SkyBoxOverridesSchema = z.object({
   file: z.string().optional(),
   path: z.string().optional(),
   textureId: z.string(),
-  colorSpace: z.number().optional(),
+  colorSpace: ColorSpaceSchema.optional(),
   roughness: z.number().optional(),
   cubeTextureRotate: z.number().optional(),
   flipY: z.boolean().optional(),
@@ -35,7 +35,7 @@ export const SkyBoxAssetSchema = z.union([
       file: z.string().optional(),
       path: z.string().optional(),
       textureId: z.string(),
-      colorSpace: z.number().optional(),
+      colorSpace: ColorSpaceSchema.optional(),
       roughness: z.number().optional(),
     }),
   }),
@@ -46,7 +46,7 @@ export const SkyBoxAssetSchema = z.union([
       fileName: z.string().optional(),
       path: z.string().optional(),
       textureId: z.string().optional(),
-      colorSpace: z.number().optional(),
+      colorSpace: ColorSpaceSchema.optional(),
       roughness: z.number().optional(),
       cubeTextureRotate: z.number().optional(),
       flipY: z.boolean().optional(),

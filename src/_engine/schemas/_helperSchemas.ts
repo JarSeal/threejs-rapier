@@ -26,6 +26,12 @@ export const ColorJSONSchema = z.union([
 
 export type ColorJSON = z.infer<typeof ColorJSONSchema>;
 
+export const ColorSpaceSchema = z.union([
+  z.literal(''),
+  z.literal('srgb'),
+  z.literal('srgb-linear'),
+]);
+
 export const DebugDataSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),

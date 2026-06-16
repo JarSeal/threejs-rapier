@@ -7,7 +7,7 @@ import { IS_DEBUG_ENV } from './Config';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { addResizer } from './MainLoop';
-import { inspectEntity } from '../utils/ECSHelpers';
+import { inspectEntity, lookAtPoint } from '../utils/ECSHelpers';
 import { loadPersistentProps } from './PropertyLoader';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
@@ -100,6 +100,7 @@ export const createCameraEntity = (
   }
 
   const entityId = world.createEntity(entityOpts);
+  camera.userData.entityId = entityId;
 
   world.addComponent(entityId, ComponentType.TAG_IS_CAMERA, true);
   world.addComponent(entityId, ComponentType.OBJECT3D, { value: camera, _lastVersion: -1 });
@@ -124,6 +125,10 @@ export const createCameraEntity = (
 
   if ('position' in props && props.position) {
     world.setTransform(entityId, { pos });
+  }
+
+  if ('lookAtPoint' in props && props.lookAtPoint) {
+    lookAtPoint(entityId, props.lookAtPoint);
   }
 
   useDebug(debugHelpers)?.attachCameraHelpers(entityId, camera, world, rootScene);

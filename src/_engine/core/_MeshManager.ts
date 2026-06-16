@@ -1,15 +1,17 @@
 import * as THREE from 'three/webgpu';
 import { createGeometry, incGeometryRef, decGeometryRef, GeoProps } from './_Geometry';
-import { createMaterial, incMaterialRef, decMaterialRef, MatProps } from './Material';
-import { ECSWorld, getECSWorld } from './ECS';
+import { createMaterial, incMaterialRef, decMaterialRef, MatProps, getMaterial } from './Material';
+import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getRootScene } from './Scene';
 import { ThreeEuler, ThreeQuoternion } from '../utils/helpers';
 import { getRenderer } from './Renderer';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { setTransform } from '../utils/ECSHelpers';
-import { lwarn } from '../utils/Logger';
+import { lerror, lwarn } from '../utils/Logger';
 import { type CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
+import { getGeometry } from './_Geometry';
+import { CoreComponentType } from './ECS/ECSRegistry';
 
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
@@ -18,7 +20,7 @@ ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
 
 export type MeshProps = {
   // @CONSIDER: We could also allow passing an id for geo and mat (as strings), and then look them up in the asset manager.
-  geo: THREE.BufferGeometry | GeoProps;
+  geo: THREE.BufferGeometry | GeoProps | string;
   mat: THREE.Material | MatProps;
   castShadow?: boolean;
   receiveShadow?: boolean;
@@ -37,8 +39,29 @@ export const createMeshEntity = (
   const world =
     ecsWorld || existsOrThrow(getECSWorld(), 'Could not get ECS world in createMeshEntity.');
 
-  const geo = props.geo instanceof THREE.BufferGeometry ? props.geo : createGeometry(props.geo);
-  const mat = props.mat instanceof THREE.Material ? props.mat : createMaterial(props.mat);
+  let geo;
+  if (props.geo instanceof THREE.BufferGeometry) {
+    geo = props.geo;
+  } else if (typeof props.geo === 'string') {
+    geo = existsOrThrow(
+      getGeometry(props.geo) as THREE.BufferGeometry,
+      `Could not find geometry with id "${props.geo}" in createMeshEntity (mesh appId "${props.appId || entityOpts?.appId}").`
+    );
+  } else {
+    geo = createGeometry(props.geo);
+  }
+
+  let mat;
+  if (props.mat instanceof THREE.Material) {
+    mat = props.mat;
+  } else if (typeof props.mat === 'string') {
+    mat = existsOrThrow(
+      getMaterial(props.mat),
+      `Could not find material with id "${props.mat}" in createMeshEntity (mesh appId "${props.appId || entityOpts?.appId}").`
+    );
+  } else {
+    mat = createMaterial(props.mat);
+  }
 
   const mesh = new THREE.Mesh(geo, mat);
   const appId = props.appId || entityOpts?.appId || mesh.uuid;
@@ -83,11 +106,13 @@ export const createMeshEntity = (
   }
 
   const entityId = world.createEntity(entityOpts);
+  mesh.userData.entityId = entityId;
 
   world.addComponent(entityId, ComponentType.OBJECT3D, {
     value: mesh,
     _lastVersion: -1,
   });
+  world.addComponent(entityId, ComponentType.TAG_IS_MESH, true);
 
   if (!entityOpts?.doNotAddToScene) rootScene.add(mesh);
 
@@ -139,4 +164,20 @@ export const disposeMesh = (entityId: number, world: ECSWorld) => {
   } else if (mesh.material.userData.id) {
     decMaterialRef(mesh.material.userData.id);
   }
+};
+
+export const getMeshByAppId = (appId: string) => {
+  const world = getECSWorld();
+  const entityId = getEntityIdByAppId(appId, world);
+  let mesh: THREE.Mesh | undefined = undefined;
+  if (entityId) {
+    const obj = world.getComponent(entityId, CoreComponentType.OBJECT3D)?.value;
+    if (obj && !(obj as THREE.Mesh).isMesh) {
+      const msg = `Found Object3D is not a mesh (type: ${obj.type}).`;
+      lerror(msg);
+      throw new Error(msg);
+    }
+    mesh = obj as THREE.Mesh | undefined;
+  }
+  return mesh;
 };

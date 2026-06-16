@@ -1,0 +1,490 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "isCurrent": {
+          "type": "boolean"
+        },
+        "sceneId": {
+          "type": "string"
+        },
+        "debugData": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "comments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "timestamp": {
+                    "type": "number"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "timestamp",
+                  "comment"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "todo": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "debugObj": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "additionalProperties": false
+        },
+        "$schema": {
+          "type": "string"
+        },
+        "__sourcePath": {
+          "type": "string"
+        },
+        "__saveData": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "textureId": {
+                  "type": "string"
+                },
+                "colorSpace": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": ""
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb"
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb-linear"
+                    }
+                  ]
+                },
+                "roughness": {
+                  "type": "number"
+                },
+                "cubeTextureRotate": {
+                  "type": "number"
+                },
+                "flipY": {
+                  "type": "boolean"
+                },
+                "__meta": {
+                  "type": "object",
+                  "properties": {
+                    "date": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "textureId"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "type": {
+          "type": "string",
+          "const": "EQUIRECTANGULAR"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "textureId": {
+              "type": "string"
+            },
+            "colorSpace": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": ""
+                },
+                {
+                  "type": "string",
+                  "const": "srgb"
+                },
+                {
+                  "type": "string",
+                  "const": "srgb-linear"
+                }
+              ]
+            },
+            "roughness": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "textureId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "isCurrent": {
+          "type": "boolean"
+        },
+        "sceneId": {
+          "type": "string"
+        },
+        "debugData": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "comments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "timestamp": {
+                    "type": "number"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "timestamp",
+                  "comment"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "todo": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "debugObj": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "additionalProperties": false
+        },
+        "$schema": {
+          "type": "string"
+        },
+        "__sourcePath": {
+          "type": "string"
+        },
+        "__saveData": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "textureId": {
+                  "type": "string"
+                },
+                "colorSpace": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": ""
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb"
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb-linear"
+                    }
+                  ]
+                },
+                "roughness": {
+                  "type": "number"
+                },
+                "cubeTextureRotate": {
+                  "type": "number"
+                },
+                "flipY": {
+                  "type": "boolean"
+                },
+                "__meta": {
+                  "type": "object",
+                  "properties": {
+                    "date": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "textureId"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "type": {
+          "type": "string",
+          "const": "CUBEMAP"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "fileName": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "textureId": {
+              "type": "string"
+            },
+            "colorSpace": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": ""
+                },
+                {
+                  "type": "string",
+                  "const": "srgb"
+                },
+                {
+                  "type": "string",
+                  "const": "srgb-linear"
+                }
+              ]
+            },
+            "roughness": {
+              "type": "number"
+            },
+            "cubeTextureRotate": {
+              "type": "number"
+            },
+            "flipY": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "isCurrent": {
+          "type": "boolean"
+        },
+        "sceneId": {
+          "type": "string"
+        },
+        "debugData": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "comments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "timestamp": {
+                    "type": "number"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "timestamp",
+                  "comment"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "todo": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "debugObj": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "additionalProperties": false
+        },
+        "$schema": {
+          "type": "string"
+        },
+        "__sourcePath": {
+          "type": "string"
+        },
+        "__saveData": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "textureId": {
+                  "type": "string"
+                },
+                "colorSpace": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": ""
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb"
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb-linear"
+                    }
+                  ]
+                },
+                "roughness": {
+                  "type": "number"
+                },
+                "cubeTextureRotate": {
+                  "type": "number"
+                },
+                "flipY": {
+                  "type": "boolean"
+                },
+                "__meta": {
+                  "type": "object",
+                  "properties": {
+                    "date": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "textureId"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "type": {
+          "type": "string",
+          "const": "SKYANDSUN"
+        },
+        "params": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "type",
+        "params"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

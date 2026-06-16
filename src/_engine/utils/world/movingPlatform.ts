@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry, GeoProps, GeoTypes } from '../../core/Geometry';
+import { createGeometry, GeoProps, GeoTypes } from '../../core/_Geometry';
 import { createMaterial, Materials, MatProps } from '../../core/Material';
 import { createMesh, deleteMesh, DeleteMeshOptions, MeshProps } from '../../core/Mesh';
 import {

@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { createScene } from '../_engine/core/Scene';
-import { createGeometry } from '../_engine/core/Geometry';
+import { createGeometry } from '../_engine/core/_Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { createMesh } from '../_engine/core/Mesh';
 import { createSkyBox } from '../_engine/core/SkyBox';

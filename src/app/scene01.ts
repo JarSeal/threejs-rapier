@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { createSceneMainLooper, createScene } from '../_engine/core/Scene';
-import { createGeometry } from '../_engine/core/Geometry';
+import { createGeometry } from '../_engine/core/_Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { getTexture, loadTexture, loadTextures } from '../_engine/core/Texture';
 import { llog } from '../_engine/utils/Logger';

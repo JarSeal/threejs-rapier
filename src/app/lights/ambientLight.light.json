@@ -3,13 +3,13 @@
   "lightProps": {
     "type": "AMBIENT",
     "color": "#ffffff",
-    "intensity": 0.5
+    "intensity": 0.8
   },
   "entityOpts": {
     "appId": "ambientLight",
     "debugData": {
       "name": "Ambient light",
-      "descriptions": "The ambient light for the scene. It colors everything in the scene (except skyboxes and basic materials) whether you like it or not. This is what next gen games is all about."
+      "description": "The ambient light for the scene. It colors everything in the scene (except skyboxes and basic materials) whether you like it or not. This is what next gen games is all about."
     }
   },
   "__saveData": {
@@ -17,7 +17,7 @@
       {
         "__meta": { "date": 1779449688109 },
         "type": "AMBIENT",
-        "intensity": 0.567
+        "intensity": 0.5
       }
     ]
   }

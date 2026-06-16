@@ -9,6 +9,7 @@ const CameraBaseProps = z.object({
   zoom: z.number().optional(),
   appId: z.string().optional(),
   position: Vector3Schema.optional(),
+  lookAtPoint: Vector3Schema.optional(),
 });
 
 const CameraPerspective = CameraBaseProps.extend({
@@ -33,6 +34,7 @@ export const CameraOverridesSchema = z.object({
   zoom: z.number().optional(),
   appId: z.string().optional(),
   position: Vector3Schema.optional(),
+  lookAtPoint: Vector3Schema.optional(),
   fov: z.number().optional(),
   frustumSize: z.number().optional(),
 });

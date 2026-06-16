@@ -522,8 +522,8 @@ export class ECSWorld {
   }
 }
 
-export const getEntityIdByAppId = (appId: string): number | undefined => {
-  const world = getECSWorld();
+export const getEntityIdByAppId = (appId: string, ecsWorld?: ECSWorld): number | undefined => {
+  const world = ecsWorld || getECSWorld();
   const appIdStorage = world.getStorage(ComponentType.APP_ID);
   for (const [entityId, data] of appIdStorage) {
     if (data.id === appId) {

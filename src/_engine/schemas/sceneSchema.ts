@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { CameraAssetSchema } from './cameraSchema';
 import { LightAssetSchema } from './lightSchema';
-import { GeoAssetSchema } from './geometrySchema';
+import { GeoPropsSchema } from './geometrySchema';
 import { TextureAssetSchema } from './textureSchema';
 import { MaterialAssetSchema } from './materialSchema';
 
@@ -23,7 +23,7 @@ const SceneOverridesSchema = z.object({
   // Scene Asset Registries Map arrays
   cameras: z.array(z.union([z.string(), CameraAssetSchema])).optional(),
   lights: z.array(z.union([z.string(), LightAssetSchema])).optional(),
-  geometries: z.array(z.union([z.string(), GeoAssetSchema])).optional(),
+  geometries: z.array(z.union([z.string(), GeoPropsSchema])).optional(),
   textures: z.array(z.union([z.string(), TextureAssetSchema])).optional(),
   materials: z.array(z.union([z.string(), MaterialAssetSchema])).optional(),
   meshes: z.array(AssetReferenceOrInline).optional(),

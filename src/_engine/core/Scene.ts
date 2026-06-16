@@ -1,6 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { deleteMesh, MeshProps } from './Mesh';
-import { deleteGeometry, GeoProps } from './Geometry';
+import { deleteGeometry, GeoProps } from './_Geometry';
 import { deleteMaterial, MatProps } from './Material';
 import { deleteGroup } from './Group';
 import { lerror, lwarn } from '../utils/Logger';
@@ -25,6 +24,8 @@ import { SkyBoxProps } from './SkyBox';
 import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import { MeshProps } from './_MeshManager';
+import { deleteEntity } from '../utils/ECSHelpers';
 
 export type Looper = (delta: number) => void;
 
@@ -50,8 +51,8 @@ export type SceneData = {
   geometries?: (GeoProps | string)[];
   textures?: (TextureProps | string)[];
   materials?: (MatProps | string)[];
-  meshes?: (MeshProps | string)[]; // @CHORE: remove this (also from scene gatherer)!
-  importedMeshes?: (ImportModelParams | string)[];
+  meshes?: ({ props: MeshProps; entityOpts?: CoreEntityOpts } | string)[];
+  importedMeshes?: { props: ImportModelParams }[];
   skyboxes?: (SkyBoxProps | string)[];
 };
 
@@ -170,12 +171,8 @@ export const deleteScene = (
   }
 
   scene.traverse((obj) => {
-    if ('isMesh' in obj && (opts?.deleteMeshes || opts?.deleteAll) && obj.userData.id) {
-      deleteMesh(obj.userData.id, {
-        deleteGeometries: opts?.deleteGeometries,
-        deleteMaterials: opts?.deleteMaterials,
-        deleteTextures: opts?.deleteTextures,
-      });
+    if ('isMesh' in obj && (opts?.deleteMeshes || opts?.deleteAll) && obj.userData.entityId) {
+      deleteEntity(obj.userData.entityId);
     } else if ('isMesh' in obj && !opts?.deleteMeshes) {
       const mesh = obj as THREE.Mesh;
       if (opts?.deleteGeometries || opts?.deleteAll) {

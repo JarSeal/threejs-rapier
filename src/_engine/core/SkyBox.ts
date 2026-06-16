@@ -17,6 +17,7 @@ import { isHDR } from '../utils/helpers';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
 import { getSvgIcon } from './UI/icons/SvgIcon';
+import { getNextSceneId, hasFirstSceneBeenLoaded } from './SceneLoader';
 
 export type SkyBoxProps = {
   id: string;
@@ -137,13 +138,13 @@ export const createSkyBox = async (
   let scene = getCurrentScene();
   if (sceneId) scene = getScene(sceneId);
   const isCurScene = isCurrentScene(scene?.userData.id);
-  if (!scene) {
+  if (!scene && hasFirstSceneBeenLoaded()) {
     const msg = `Could not find ${sceneId ? `scene with id "${sceneId}"` : 'current scene'} in createSkyBox (type: ${type}).`;
     lerror(msg);
     throw new Error(msg);
   }
 
-  const givenOrCurrentSceneId = scene.userData.id;
+  const givenOrCurrentSceneId = scene?.userData.id || getNextSceneId();
   if (!givenOrCurrentSceneId) {
     const msg = 'Could not find current scene id in createSkyBox.';
     lerror(msg);
@@ -251,7 +252,9 @@ export const createSkyBox = async (
       const rootScene = getRootScene() as THREE.Scene;
       rootScene.backgroundNode = backgroundEnvNode;
       rootScene.environmentNode = backgroundEnvNode;
-      scene.userData.backgroundNodeTextureId = textureId || envTexture.userData.id;
+      if (scene) {
+        scene.userData.backgroundNodeTextureId = textureId || envTexture.userData.id;
+      }
       if (isDebugEnvironment()) {
         // const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.equiRectRoughness);
         // const pmremNodeBall = pmremTexture(envTexture, reflectVec, pmremRoughnessBall);
@@ -302,7 +305,9 @@ export const createSkyBox = async (
         const rootScene = getRootScene() as THREE.Scene;
         rootScene.backgroundNode = pmremTexture(cubeTexture, backgroundUV, pmremRoughnessBg);
       }
-      scene.userData.backgroundNodeTextureId = textureId || cubeTexture.userData.id;
+      if (scene) {
+        scene.userData.backgroundNodeTextureId = textureId || cubeTexture.userData.id;
+      }
       if (isDebugEnvironment()) {
         // const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.cubeTextRoughness);
         // const pmremNodeBall = pmremTexture(cubeTexture, backgroundUV.mul(-1), pmremRoughnessBall);
@@ -694,3 +699,14 @@ export const clearSkyBox = () => {
  * @returns ShaderNodeObject<THREE.UniformNode<number>>
  */
 export const getEnvMapRoughnessBg = () => pmremRoughnessBg;
+
+export const applySkyBoxForScene = async (sceneId: string) => {
+  const states = allSkyBoxStates[sceneId];
+  if (!states) return;
+  const current = Object.values(states).find((s) => s.isCurrent);
+  if (!current || current.id === NO_SKYBOX_ID || !current.type) return;
+  await createSkyBox(
+    { ...extractSkyBoxParamsFromState(current), id: current.id, sceneId, isCurrent: true },
+    true
+  );
+};

@@ -3,19 +3,37 @@
 import * as testTslMatFn from '../app/materials/testTslMat.tsl.ts';
 import * as checkerBoardFn from '../toolkit/materials/checkerBoard.tsl.ts';
 import { type SceneData } from './core/Scene.ts';
+import { type ScenePrimitiveAssets } from './core/SceneLoader.ts';
 
-export const sceneFileObjects: { [sceneId: string]: (sceneData: SceneData) => Promise<void> } = {
-  testDebugScene: async (sceneData) => {
+export const sceneFileObjects: {
+  [sceneId: string]: (sceneData: {
+    sceneData: SceneData;
+    assets: ScenePrimitiveAssets;
+  }) => Promise<void>;
+} = {
+  testDebugScene: async ({ sceneData, assets }) => {
     const module = await import('../app/debugScene.scene.ts');
-    await (module as { scene: (sceneData: SceneData) => Promise<void> }).scene(sceneData);
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
   },
-  oneMoreScene: async (sceneData) => {
+  oneMoreScene: async ({ sceneData, assets }) => {
     const module = await import('../app/./oneMoreScene');
-    await (module as { scene: (sceneData: SceneData) => Promise<void> }).scene(sceneData);
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
   },
-  sceneTestECS: async (sceneData) => {
+  sceneTestECS: async ({ sceneData, assets }) => {
     const module = await import('../app/./testECS.ts');
-    await (module as { scene: (sceneData: SceneData) => Promise<void> }).scene(sceneData);
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
   },
 };
 

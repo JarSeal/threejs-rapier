@@ -1,10 +1,12 @@
 {
+  "$schema": "../../../.schemas/mesh.schema.json",
   "props": {
-    "id": "testMesh",
-    "geo": "testGeometry",
+    "appId": "testMesh",
+    "geo": "testSphere",
     "mat": "testMaterial",
     "castShadow": true,
-    "receiveShadow": true
+    "receiveShadow": true,
+    "position": { "x": 4, "y": 1, "z": 2 }
   },
   "__saveData": {
     "sceneTestECS": [

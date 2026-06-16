@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createKeyInputControl } from '../core/InputControls';
 import { getLogger } from './Logger';
 import { createPhysicsObjectWithMesh } from '../core/PhysicsRapier';
-import { createGeometry } from '../core/Geometry';
+import { createGeometry } from '../core/_Geometry';
 import { createMaterial } from '../core/Material';
 import { createMesh } from '../core/Mesh';
 import { isDebugEnvironment } from '../core/Config';

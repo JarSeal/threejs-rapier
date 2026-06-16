@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { createScene, createSceneAppLooper } from '../_engine/core/Scene';
-import { createGeometry } from '../_engine/core/Geometry';
+import { createGeometry } from '../_engine/core/_Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { getTexture, loadTexture } from '../_engine/core/Texture';
 import { importModelAsync } from '../_engine/core/ImportModel';

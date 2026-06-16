@@ -1,0 +1,193 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "props": {
+      "type": "object",
+      "properties": {
+        "fileName": {
+          "type": "string"
+        },
+        "appId": {
+          "type": "string"
+        },
+        "importGroup": {
+          "type": "boolean"
+        },
+        "allMeshesVisible": {
+          "type": "boolean"
+        },
+        "groupId": {
+          "type": "string"
+        },
+        "groupName": {
+          "type": "string"
+        },
+        "meshIndex": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          ]
+        },
+        "throwOnError": {
+          "type": "boolean"
+        },
+        "saveMaterial": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "fileName"
+      ],
+      "additionalProperties": false
+    },
+    "entityOpts": {
+      "type": "object",
+      "properties": {
+        "appId": {
+          "type": "string"
+        },
+        "disabled": {
+          "type": "boolean"
+        },
+        "persistent": {
+          "type": "boolean"
+        },
+        "doNotAddToScene": {
+          "type": "boolean"
+        },
+        "userData": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "debugData": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "comments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "timestamp": {
+                    "type": "number"
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "timestamp",
+                  "comment"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "todo": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "debugObj": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "__sourcePath": {
+      "type": "string"
+    },
+    "__saveData": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "fileName": {
+              "type": "string"
+            },
+            "appId": {
+              "type": "string"
+            },
+            "importGroup": {
+              "type": "boolean"
+            },
+            "allMeshesVisible": {
+              "type": "boolean"
+            },
+            "groupId": {
+              "type": "string"
+            },
+            "groupName": {
+              "type": "string"
+            },
+            "meshIndex": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              ]
+            },
+            "throwOnError": {
+              "type": "boolean"
+            },
+            "saveMaterial": {
+              "type": "boolean"
+            },
+            "__meta": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "required": [
+    "props"
+  ],
+  "additionalProperties": false
+}

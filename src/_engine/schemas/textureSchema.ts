@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
-import { DebugDataSchema, UserDataSchema } from './_helperSchemas';
+import { ColorSpaceSchema, DebugDataSchema, UserDataSchema } from './_helperSchemas';
 
 export const TexOptsSchema = z.object({
   image: z.unknown().optional(), // Can't validate TexImageSource or OffscreenCanvas with zod, so using unknown
@@ -11,7 +11,7 @@ export const TexOptsSchema = z.object({
   minFilter: z.number().optional(),
   type: z.number().optional(),
   anisotropy: z.number().optional(),
-  colorSpace: z.number().optional(),
+  colorSpace: ColorSpaceSchema.optional(),
 });
 
 export type TexOpts = z.infer<typeof TexOptsSchema>;

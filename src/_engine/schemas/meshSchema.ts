@@ -14,6 +14,7 @@ const MeshPropsSchema = z.object({
   rotation: Vector3Schema.optional(),
   quaternion: Vector4Schema.optional(),
   appId: z.string().optional(),
+  // physicsParams: z.union([]),
 });
 
 const PartialGeoProps = z.union(GeoPropsSchema.options.map((variant) => variant.partial()));

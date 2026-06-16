@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../.schemas/skyBox.schema.json",
   "id": "basicSkybox",
   "type": "EQUIRECTANGULAR",
   "params": {

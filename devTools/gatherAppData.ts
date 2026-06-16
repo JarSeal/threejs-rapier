@@ -14,7 +14,7 @@ import {
   ImportedMeshAsset,
   ImportedMeshAssetSchema,
 } from '../src/_engine/schemas/importedMeshSchema';
-import { SkyBoxAsset } from '../src/_engine/schemas/skyBoxSchema';
+import { SkyBoxAsset, SkyBoxAssetSchema } from '../src/_engine/schemas/skyBoxSchema';
 import { toUniqueJsIdentifier } from '../src/_engine/utils/jsIdentifier';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -82,6 +82,8 @@ const compileJsonSchemas = () => {
     { name: 'texture.schema.json', schema: TextureAssetSchema },
     { name: 'material.schema.json', schema: MaterialAssetSchema },
     { name: 'mesh.schema.json', schema: MeshAssetSchema },
+    { name: 'importedMesh.schema.json', schema: ImportedMeshAssetSchema },
+    { name: 'skyBox.schema.json', schema: SkyBoxAssetSchema },
   ];
 
   for (const target of targets) {
@@ -577,25 +579,26 @@ export const gatherSceneData = () => {
       if (isProduction && fileContentJSON.isDebugScene) continue;
 
       if (!addedFirstImport) {
-        sceneFileImports += "import { type SceneData } from './core/Scene.ts';\n";
+        sceneFileImports +=
+          "import { type SceneData } from './core/Scene.ts';\nimport { type ScenePrimitiveAssets } from './core/SceneLoader.ts';\n";
         addedFirstImport = true;
       }
       const basePath = getBasePath(fullPath);
-      // OLD IMPLEMENTATION
-      // sceneFileImports += `import { scene as ${sceneId}Fn } from '../${basePath}/${fileContentJSON.sceneFile}';\n`;
-      // if (!sceneFileObject) {
-      //   sceneFileObject +=
-      //     'export const sceneFileObjects: { [sceneId: string]: (sceneData: SceneData) => Promise<void> } = {\n';
-      // }
-      // sceneFileObject += `  ${sceneId}: ${sceneId}Fn,\n`;
-      // NEW IMPLEMENTATION
       if (!sceneFileObject) {
-        sceneFileObject +=
-          'export const sceneFileObjects: { [sceneId: string]: (sceneData: SceneData) => Promise<void> } = {\n';
+        sceneFileObject += 'export const sceneFileObjects: {\n';
+        sceneFileObject += `  [sceneId: string]: (sceneData: {\n`;
+        sceneFileObject += `    sceneData: SceneData;\n`;
+        sceneFileObject += `    assets: ScenePrimitiveAssets;\n`;
+        sceneFileObject += `  }) => Promise<void>;\n`;
+        sceneFileObject += `} = {\n`;
       }
-      sceneFileObject += `  ${sceneId}: async (sceneData) => {\n`;
+      sceneFileObject += `  ${sceneId}: async ({ sceneData, assets }) => {\n`;
       sceneFileObject += `    const module = await import('../${basePath}/${fileContentJSON.sceneFile}');\n`;
-      sceneFileObject += `    await (module as { scene: (sceneData: SceneData) => Promise<void> }).scene(sceneData);\n`;
+      sceneFileObject += `    await (\n`;
+      sceneFileObject += `      module as {\n`;
+      sceneFileObject += `        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;\n`;
+      sceneFileObject += `      }\n`;
+      sceneFileObject += `    ).scene({ sceneData, assets });\n`;
       sceneFileObject += `  },\n`;
 
       // --- CURRENT SCENE ASSETS per SCENE: ---
@@ -682,7 +685,7 @@ export const gatherSceneData = () => {
                 : {}),
             };
             if ('__meta' in geoData.params && geoData.params.__meta) delete geoData.params.__meta;
-            return { geoProps: geoData };
+            return geoData;
           }
           return geoId; // Fallback to raw string ID if asset file doesn't exist yet
         });

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry, deleteGeometry } from '../../core/Geometry';
+import { createGeometry, deleteGeometry } from '../../core/_Geometry';
 import { createMaterial } from '../../core/Material';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createMesh } from '../../core/Mesh';

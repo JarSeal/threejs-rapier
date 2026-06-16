@@ -46,6 +46,12 @@
       "cameras": [
         {
           "camProps": {
+            "active": true,
+            "lookAtPoint": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
             "type": "PERSPECTIVE",
             "fov": 90,
             "appId": "mainCamera",
@@ -70,52 +76,43 @@
           "lightProps": {
             "type": "AMBIENT",
             "color": "#ffffff",
-            "intensity": 0.567,
+            "intensity": 0.5,
             "appId": "ambientLight"
           },
           "entityOpts": {
             "appId": "ambientLight",
             "debugData": {
-              "name": "Ambient light"
+              "name": "Ambient light",
+              "description": "The ambient light for the scene. It colors everything in the scene (except skyboxes and basic materials) whether you like it or not. This is what next gen games is all about."
             }
           }
         }
       ],
       "geometries": [
         {
-          "geoProps": {
-            "id": "testSphere",
-            "type": "SPHERE",
-            "params": {
-              "radius": 0.6,
-              "widthSegments": 32,
-              "heightSegments": 32
-            },
-            "debugData": {
-              "name": "Test Sphere",
-              "description": "This is a test sphere"
-            }
+          "id": "testSphere",
+          "type": "SPHERE",
+          "params": {
+            "radius": 0.6,
+            "widthSegments": 32,
+            "heightSegments": 32
+          },
+          "debugData": {
+            "name": "Test Sphere",
+            "description": "This is a test sphere"
           }
         },
         {
-          "geoProps": {
-            "id": "otherTestBox",
-            "type": "BOX"
-          }
+          "id": "otherTestBox",
+          "type": "BOX"
         }
       ],
-      "textures": [
-        {
-          "id": "testTexture",
-          "fileName": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
-          "useHDRLoader": true
-        }
-      ],
+      "textures": [],
       "materials": [
         {
           "id": "testMaterial",
           "params": {
-            "map": "testTexture",
+            "color": "#ff00ff",
             "wireframe": false
           },
           "type": "PHONG",
@@ -147,10 +144,15 @@
       "meshes": [
         {
           "props": {
-            "geo": "testGeometry",
+            "geo": "testSphere",
             "mat": "testMaterial",
             "castShadow": false,
             "receiveShadow": true,
+            "position": {
+              "x": 4,
+              "y": 1,
+              "z": 2
+            },
             "appId": "testMesh"
           }
         }
@@ -184,6 +186,12 @@
   "cameras": {
     "mainCamera": {
       "camProps": {
+        "active": true,
+        "lookAtPoint": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
         "type": "PERSPECTIVE",
         "fov": 90,
         "appId": "mainCamera"
@@ -233,13 +241,14 @@
       "lightProps": {
         "type": "AMBIENT",
         "color": "#ffffff",
-        "intensity": 0.5,
+        "intensity": 0.8,
         "appId": "ambientLight"
       },
       "entityOpts": {
         "appId": "ambientLight",
         "debugData": {
-          "name": "Ambient light"
+          "name": "Ambient light",
+          "description": "The ambient light for the scene. It colors everything in the scene (except skyboxes and basic materials) whether you like it or not. This is what next gen games is all about."
         }
       },
       "__saveData": {
@@ -249,7 +258,7 @@
               "date": 1779449688109
             },
             "type": "AMBIENT",
-            "intensity": 0.567
+            "intensity": 0.5
           }
         ]
       },
@@ -308,7 +317,7 @@
     "testMaterial": {
       "id": "testMaterial",
       "params": {
-        "map": "testTexture"
+        "color": "#ff00ff"
       },
       "__saveData": {
         "sceneTestECS": [
@@ -396,10 +405,15 @@
   "meshes": {
     "testMesh": {
       "props": {
-        "geo": "testGeometry",
+        "geo": "testSphere",
         "mat": "testMaterial",
         "castShadow": true,
         "receiveShadow": true,
+        "position": {
+          "x": 4,
+          "y": 1,
+          "z": 2
+        },
         "appId": "testMesh"
       },
       "__saveData": {

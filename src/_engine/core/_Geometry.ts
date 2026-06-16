@@ -193,7 +193,9 @@ export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
   }
 
   if (!geo) {
-    throw new Error(`Could not create geometry (unknown type: ${props.type}).`);
+    throw new Error(
+      `Could not create geometry (unknown type: ${props.type}). Geometry id "${props?.id}".`
+    );
   }
 
   const id = props?.id || geo.uuid;

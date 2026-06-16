@@ -253,6 +253,7 @@ export const createLightEntity = (
   }
 
   const entityId = world.createEntity(entityOpts);
+  light.userData.entityId = entityId;
   world.addComponent(entityId, ComponentType.OBJECT3D, { value: light, _lastVersion: -1 });
 
   // --- Target Logic ---
@@ -269,6 +270,7 @@ export const createLightEntity = (
     world.addComponent(targetId, ComponentType.TRANSFORM, new Transform({ pos: tPos }));
 
     const targetObj = new THREE.Object3D();
+    targetObj.userData.entityId = targetId;
     world.addComponent(targetId, ComponentType.OBJECT3D, { value: targetObj, _lastVersion: -1 });
 
     light.target = targetObj;
@@ -297,7 +299,7 @@ export const createLightEntity = (
     })
   );
 
-  if (entityOpts?.doNotAddToScene) {
+  if (!entityOpts?.doNotAddToScene) {
     rootScene.add(light);
   }
 
