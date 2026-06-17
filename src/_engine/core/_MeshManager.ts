@@ -146,7 +146,9 @@ export const createMeshEntity = (
   return entityId;
 };
 
-export const disposeMesh = (entityId: number, world: ECSWorld) => {
+export const disposeMesh = (entityId: number, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+
   const meshComp = world.getComponent(entityId, ComponentType.OBJECT3D);
   if (!meshComp) return;
 
@@ -166,8 +168,8 @@ export const disposeMesh = (entityId: number, world: ECSWorld) => {
   }
 };
 
-export const getMeshByAppId = (appId: string) => {
-  const world = getECSWorld();
+export const getMeshByAppId = (appId: string, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
   const entityId = getEntityIdByAppId(appId, world);
   let mesh: THREE.Mesh | undefined = undefined;
   if (entityId) {

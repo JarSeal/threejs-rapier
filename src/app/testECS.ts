@@ -29,13 +29,13 @@ export const scene = async () => {
   //   pos: { x: 10, y: 5, z: 20 },
   // });
   // lookAtPoint(camId, { x: 0, y: 0, z: 0 });
-  createCameraEntity(
-    { type: 'PERSPECTIVE', fov: 90, active: false },
-    {
-      appId: 'testing',
-      debugData: { description: 'Main application camera 2' },
-    }
-  );
+  // createCameraEntity(
+  //   { type: 'PERSPECTIVE', fov: 90, active: false },
+  //   {
+  //     appId: 'testing',
+  //     debugData: { description: 'Main application camera 2' },
+  //   }
+  // );
 
   updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 

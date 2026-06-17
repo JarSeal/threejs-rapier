@@ -163,6 +163,17 @@
             "fileName": "/debugger/assets/testModels/box01.glb",
             "appId": "testImportedMesh",
             "importGroup": false,
+            "meshProps": [
+              {
+                "castShadow": true,
+                "receiveShadow": true,
+                "position": {
+                  "x": -4,
+                  "y": 1,
+                  "z": -1
+                }
+              }
+            ],
             "allMeshesVisible": true
           }
         }
@@ -435,6 +446,17 @@
         "fileName": "/debugger/assets/testModels/box01.glb",
         "appId": "testImportedMesh",
         "importGroup": true,
+        "meshProps": [
+          {
+            "castShadow": true,
+            "receiveShadow": true,
+            "position": {
+              "x": -4,
+              "y": 1,
+              "z": -1
+            }
+          }
+        ],
         "allMeshesVisible": true
       },
       "__saveData": {

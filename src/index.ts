@@ -8,10 +8,10 @@ import { createCameraEntity } from './_engine/core/_CameraManager';
 
 InitEngine(async () => {
   // Init main camera
-  createCameraEntity(
-    { type: 'PERSPECTIVE', fov: 90, active: true, near: 0.1, far: 100 },
-    { appId: MAIN_APP_CAM_ID, persistent: true }
-  );
+  // createCameraEntity(
+  //   { type: 'PERSPECTIVE', fov: 90, active: true, near: 0.1, far: 100 },
+  //   { appId: MAIN_APP_CAM_ID, persistent: true }
+  // );
 
   // Init renderer
   await createRenderer({

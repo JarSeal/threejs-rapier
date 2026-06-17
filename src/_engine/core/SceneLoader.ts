@@ -41,7 +41,7 @@ import { createGeometry, getGeometry } from './_Geometry';
 import { createLightEntity } from './_LightManager';
 import { createCameraEntity } from './_CameraManager';
 import { createMeshEntity } from './_MeshManager';
-import { importModelAsync, ImportReturnObj } from './ImportModel';
+import { importModelAsync, type ImportReturnObj } from './_ImportModel';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -288,7 +288,7 @@ const createNextSceneObject3Ds = async (
     }
     const cId = createCameraEntity(props.camProps, props.entityOpts);
     const appId = props.camProps.appId || props.entityOpts?.appId || `camera-${i}`;
-    lights[appId] = cId;
+    cameras[appId] = cId;
   }
 
   // Create lights
@@ -354,8 +354,7 @@ const createNextSceneObject3Ds = async (
     const props = importedMeshProps[i];
     promises.push(importModelAsync(props.props));
   }
-  const results = await Promise.all(promises);
-  console.log('RESULTS____', results);
+  await Promise.all(promises);
 };
 
 /**
@@ -491,6 +490,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
       // Create / load all next scene assets before the scene file
       const nextSceneAssets = await loadNextSceneAssets(sceneData);
+      // @CHORE: Check if !firstSceneLoaded, then find the active camera or the first camera
 
       await loadFn(loader, () => initNextSceneFn({ sceneData, assets: nextSceneAssets })).then(
         async () => {

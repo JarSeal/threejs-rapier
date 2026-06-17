@@ -4,7 +4,7 @@ import { CoreEntityOptsSchema, Vector3Schema, Vector4Schema } from './_helperSch
 import { GeoPropsSchema } from './geometrySchema';
 import { MaterialAssetSchema } from './materialSchema';
 
-const MeshPropsSchema = z.object({
+export const MeshPropsSchema = z.object({
   geo: z.union([GeoPropsSchema, z.string()]),
   mat: z.union([MaterialAssetSchema, z.string()]),
   castShadow: z.boolean().optional(),

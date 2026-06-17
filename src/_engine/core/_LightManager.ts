@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { ECSWorld, getECSWorld } from './ECS';
+import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
 import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
 import { ComponentType, Transform } from './ECS/ECSCoreComponents';
@@ -7,6 +7,8 @@ import { IS_DEBUG_ENV } from './Config';
 import { loadPersistentProps } from './PropertyLoader';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
+import { CoreComponentType } from './ECS/ECSRegistry';
+import { lerror } from '../utils/Logger';
 
 export const registerLightManager = (world: ECSWorld) => {
   if (IS_DEBUG_ENV) {
@@ -21,10 +23,7 @@ export const registerLightManager = (world: ECSWorld) => {
     });
     ECSWorld.registerComponentHooks(ComponentType.TAG_IS_LIGHT, {
       onAddComponent: () => useDebug(debugGUI)?.updateLightsDebuggerGUI(),
-      onDeleteEntity: (entityId, w) => {
-        disposeLight(entityId, w);
-        useDebug(debugGUI)?.updateLightsDebuggerGUI();
-      },
+      onDeleteEntity: (entityId, w) => disposeLight(entityId, w),
     });
   } else {
     ECSWorld.registerComponentHooks(ComponentType.TAG_IS_LIGHT, {
@@ -385,14 +384,19 @@ export const setLightEnabled = (lightId: number, enabled: boolean, world: ECSWor
 /**
  * Cleanup Light Resources and its linked Target
  */
-export const disposeLight = (entityId: number, world: ECSWorld) => {
+export const disposeLight = (entityId: number, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+
   const targetLink = world.getComponent(entityId, ComponentType.TARGET_LINK);
   if (targetLink) {
     world.deleteEntity(targetLink.targetId);
   }
 
   const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-  if (!objComp) return;
+  if (!objComp) {
+    useDebug(debugGUI)?.updateLightsDebuggerGUI();
+    return;
+  }
 
   const light = objComp.value as THREE.Light;
 
@@ -401,6 +405,8 @@ export const disposeLight = (entityId: number, world: ECSWorld) => {
   }
   light.removeFromParent();
   light.dispose();
+
+  useDebug(debugGUI)?.updateLightsDebuggerGUI();
 };
 
 // --- DEBUG LIGHT HELPERS ---
@@ -414,3 +420,19 @@ export const isAnyLightHelperVisible = (): boolean =>
 
 export const toggleAllLightHelpers = (show?: boolean) =>
   useDebug(debugGUI)?._toggleAllLightHelpers(show);
+
+export const getLightByAppId = (appId: string, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+  const entityId = getEntityIdByAppId(appId, world);
+  let light: THREE.Light | undefined = undefined;
+  if (entityId) {
+    const obj = world.getComponent(entityId, CoreComponentType.OBJECT3D)?.value;
+    if (obj && !(obj as THREE.Light).isLight) {
+      const msg = `Found Object3D is not a light (type: ${obj.type}).`;
+      lerror(msg);
+      throw new Error(msg);
+    }
+    light = obj as THREE.Light | undefined;
+  }
+  return light;
+};

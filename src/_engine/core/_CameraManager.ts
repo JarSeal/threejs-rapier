@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { ECSWorld, getECSWorld } from './ECS';
+import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
 import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
 import { getWindowSize } from '../utils/Window';
@@ -12,6 +12,8 @@ import { loadPersistentProps } from './PropertyLoader';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
+import { CoreComponentType } from './ECS/ECSRegistry';
+import { lerror } from '../utils/Logger';
 
 // --- STATE ---
 let activeCameraEntityId: number | null = null;
@@ -47,14 +49,7 @@ export const registerCameraManager = () => {
 
   ECSWorld.registerComponentHooks(ComponentType.TAG_IS_CAMERA, {
     onAddComponent: () => useDebug(cameraDebugGUI)?.updateCamerasDebuggerGUI('LIST'),
-    onDeleteEntity: (entityId, world) => {
-      if (activeCameraEntityId === entityId) {
-        activeCameraEntityId = null;
-        activeCameraObject = null;
-      }
-      const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-      if (objComp) disposeCamera(objComp.value as THREE.Camera);
-    },
+    onDeleteEntity: (entityId, world) => disposeCamera(entityId, world),
   });
 };
 
@@ -149,11 +144,26 @@ export const getActiveCameraId = () => activeCameraEntityId;
 
 export const getActiveCamera = (): THREE.Camera | undefined => activeCameraObject ?? undefined;
 
-export const disposeCamera = (camera: THREE.Camera) => {
+export const disposeCamera = (entityId: number, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+
+  if (activeCameraEntityId === entityId) {
+    activeCameraEntityId = null;
+    activeCameraObject = null;
+  }
+
+  const camera = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
+  if (!camera) {
+    useDebug(cameraDebugGUI)?.updateCamerasDebuggerGUI('LIST');
+    return;
+  }
+
   // Purely Three.js / Scene cleanup
   camera.removeFromParent();
   // Note: PerspectiveCamera/OrthographicCamera don't have a .dispose()
   // but if we had custom RenderTargets, we'd kill them here.
+
+  useDebug(cameraDebugGUI)?.updateCamerasDebuggerGUI('LIST');
 };
 
 export const setMainCamera = (world: ECSWorld, newMainId: number) => {
@@ -448,4 +458,20 @@ export const syncCameraHelpersFromLS = (sceneId: string, world: ECSWorld) => {
       }
     }
   }
+};
+
+export const getCameraByAppId = (appId: string, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+  const entityId = getEntityIdByAppId(appId, world);
+  let camera: THREE.Camera | undefined = undefined;
+  if (entityId) {
+    const obj = world.getComponent(entityId, CoreComponentType.OBJECT3D)?.value;
+    if (obj && !(obj as THREE.Camera).isCamera) {
+      const msg = `Found Object3D is not a camera (type: ${obj.type}).`;
+      lerror(msg);
+      throw new Error(msg);
+    }
+    camera = obj as THREE.Camera | undefined;
+  }
+  return camera;
 };

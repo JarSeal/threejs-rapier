@@ -4,9 +4,10 @@ import { getRootScene } from './Scene';
 import { ThreeEuler, ThreeQuoternion } from '../utils/helpers';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { setTransform } from '../utils/ECSHelpers';
-import { lwarn } from '../utils/Logger';
+import { lerror, lwarn } from '../utils/Logger';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
+import { CoreComponentType } from './ECS/ECSRegistry';
 
 // Register onDeleteEntity hook for TAG_IS_GROUP
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_GROUP, {
@@ -58,6 +59,7 @@ export const createGroupEntity = (
   }
 
   const entityId = world.createEntity(entityOpts);
+  group.userData.entityId = entityId;
 
   world.addComponent(entityId, ComponentType.OBJECT3D, {
     value: group,
@@ -212,7 +214,9 @@ export const removeFromGroupEntity = (
 /**
  * Sweeps and cleans up native Three.js allocations on entity deletion
  */
-export const disposeGroup = (entityId: number, world: ECSWorld) => {
+export const disposeGroup = (entityId: number, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+
   const groupComp = world.getComponent(entityId, ComponentType.OBJECT3D);
   if (!groupComp) return;
 
@@ -233,4 +237,20 @@ export const disposeGroup = (entityId: number, world: ECSWorld) => {
   }
 
   group.removeFromParent();
+};
+
+export const getGroupByAppId = (appId: string, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+  const entityId = getEntityIdByAppId(appId, world);
+  let group: THREE.Group | undefined = undefined;
+  if (entityId) {
+    const obj = world.getComponent(entityId, CoreComponentType.OBJECT3D)?.value;
+    if (obj && !(obj as THREE.Group).isGroup) {
+      const msg = `Found Object3D is not a group (type: ${obj.type}).`;
+      lerror(msg);
+      throw new Error(msg);
+    }
+    group = obj as THREE.Group | undefined;
+  }
+  return group;
 };

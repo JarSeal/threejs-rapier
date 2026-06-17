@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { CoreEntityOptsSchema } from './_helperSchemas';
+import { MeshPropsSchema } from './meshSchema';
 
 const ImportedMeshPropsSchema = z.object({
   fileName: z.string(),
   appId: z.string().optional(),
   importGroup: z.boolean().optional(),
+  meshProps: z.array(MeshPropsSchema.partial()).optional(),
   allMeshesVisible: z.boolean().optional(),
   groupId: z.string().optional(),
   groupName: z.string().optional(),

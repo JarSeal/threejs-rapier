@@ -1,9 +1,13 @@
 {
+  "$schemas": "../../../.schemas/importedMesh.schema.json",
   "props": {
     "appId": "testImportedMesh",
     "fileName": "/debugger/assets/testModels/box01.glb",
     "importGroup": true,
-    "allMeshesVisible": true
+    "allMeshesVisible": true,
+    "meshProps": [
+      { "position": { "x": -4, "y": 1, "z": -1 }, "castShadow": true, "receiveShadow": true }
+    ]
   },
   "__saveData": {
     "sceneTestECS": [
