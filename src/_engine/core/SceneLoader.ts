@@ -39,7 +39,7 @@ import { createMaterial, getMaterial } from './Material';
 import { textureMapKeys } from '../utils/constants';
 import { createGeometry, getGeometry } from './_Geometry';
 import { createLightEntity } from './_LightManager';
-import { createCameraEntity } from './_CameraManager';
+import { createCameraEntity, setActiveCamera } from './_CameraManager';
 import { createMeshEntity } from './_MeshManager';
 import { importModelAsync, type ImportReturnObj } from './_ImportModel';
 
@@ -186,16 +186,40 @@ export const getCurrentSceneLoaderId = () => {
   return currentSceneLoaderId;
 };
 
+export const createCameras = (sceneData: SceneData) => {
+  const cameraProps = sceneData.cameras || [];
+  let firstCamId;
+  let activeCamFound = false;
+  let oneCameraCreated = false;
+  if (!cameraProps?.length) {
+    const msg = 'Could not find any cameras for the scene in createCameras (SceneLoader).';
+    lerror(msg);
+    throw new Error(msg);
+  }
+  for (let i = 0; i < cameraProps.length; i++) {
+    const props = cameraProps[i];
+    if (typeof props === 'string') {
+      if (i === 0) firstCamId = getEntityIdByAppId(props);
+      continue;
+    }
+    createCameraEntity(props.camProps, props.entityOpts);
+    oneCameraCreated = true;
+    if (props.camProps.active) activeCamFound = true;
+  }
+  if (!oneCameraCreated) {
+    const msg = 'No camera was created in createCameras (SceneLoader).';
+    lerror(msg);
+    throw new Error(msg);
+  }
+  if (!activeCamFound && firstCamId) {
+    setActiveCamera(firstCamId);
+  }
+};
+
 export type ScenePrimitiveAssets = {
   textures: { [id: string]: THREE.Texture };
   materials: { [id: string]: THREE.Material };
   geometries: { [id: string]: THREE.BufferGeometry };
-};
-
-type SceneObject3Ds = {
-  cameras: { [appId: string]: number };
-  lights: { [appId: string]: number };
-  meshes: { [appId: string]: number };
 };
 
 const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitiveAssets> => {
@@ -265,63 +289,20 @@ const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitive
   return { textures, materials, geometries };
 };
 
-const createNextSceneObject3Ds = async (
-  sceneData: SceneData,
-  nextSceneAssets: ScenePrimitiveAssets
-): Promise<void> => {
-  const cameras: SceneObject3Ds['cameras'] = {};
-  const lights: SceneObject3Ds['lights'] = {};
-  const meshes: SceneObject3Ds['meshes'] = {};
-
-  // Create cameras
-  const cameraProps = sceneData.cameras || [];
-  for (let i = 0; i < cameraProps.length; i++) {
-    const props = cameraProps[i];
-    if (typeof props === 'string') {
-      const cId = getEntityIdByAppId(props);
-      if (cId) {
-        cameras[props] = cId;
-      } else {
-        lerror(`Could not find camera with appId "${props}" in createNextSceneObject3Ds.`);
-      }
-      continue;
-    }
-    const cId = createCameraEntity(props.camProps, props.entityOpts);
-    const appId = props.camProps.appId || props.entityOpts?.appId || `camera-${i}`;
-    cameras[appId] = cId;
-  }
-
+const createNextSceneObject3Ds = async (sceneData: SceneData): Promise<void> => {
   // Create lights
   const lightProps = sceneData.lights || [];
   for (let i = 0; i < lightProps.length; i++) {
     const props = lightProps[i];
-    if (typeof props === 'string') {
-      const lId = getEntityIdByAppId(props);
-      if (lId) {
-        lights[props] = lId;
-      } else {
-        lerror(`Could not find light with appId "${props}" in createNextSceneObject3Ds.`);
-      }
-      continue;
-    }
-    const lId = createLightEntity(props.lightProps, props.entityOpts);
-    const appId = props.lightProps.appId || props.entityOpts?.appId || `light-${i}`;
-    lights[appId] = lId;
+    if (typeof props === 'string') continue;
+    createLightEntity(props.lightProps, props.entityOpts);
   }
 
   // Create meshes
   const meshProps = sceneData.meshes || [];
   for (let i = 0; i < meshProps.length; i++) {
     const props = meshProps[i];
-    if (typeof props === 'string') {
-      const mId = getEntityIdByAppId(props);
-      if (mId) {
-        meshes[props] = mId;
-      } else {
-        lerror(`Could not find mesh with appId "${props}" in createNextSceneObject3Ds.`);
-      }
-      continue;
-    }
+    if (typeof props === 'string') continue;
     if (typeof props.props.geo === 'string') {
       const geo = getGeometry(props.props.geo);
       if (!geo) {
@@ -342,9 +323,7 @@ const createNextSceneObject3Ds = async (
       }
       props.props.mat = mat;
     }
-    const lId = createMeshEntity(props.props, props.entityOpts);
-    const appId = props.props.appId || props.entityOpts?.appId || `mesh-${i}`;
-    lights[appId] = lId;
+    createMeshEntity(props.props, props.entityOpts);
   }
 
   // Create imported meshes
@@ -488,9 +467,10 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
       loader.phase = 'LOAD';
 
+      createCameras(sceneData);
+
       // Create / load all next scene assets before the scene file
       const nextSceneAssets = await loadNextSceneAssets(sceneData);
-      // @CHORE: Check if !firstSceneLoaded, then find the active camera or the first camera
 
       await loadFn(loader, () => initNextSceneFn({ sceneData, assets: nextSceneAssets })).then(
         async () => {
@@ -501,7 +481,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
           );
           setCurrentScene(sceneId);
           await applySkyBoxForScene(sceneId);
-          await createNextSceneObject3Ds(sceneData, nextSceneAssets);
+          await createNextSceneObject3Ds(sceneData);
 
           const canvasParentElem = getCanvasParentElem();
           canvasParentElem?.style.setProperty('pointer-events', '');

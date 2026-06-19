@@ -108,7 +108,9 @@ export const createCameraEntity = (
     frustumSize: props.type === 'ORTHOGRAPHIC' ? props.frustumSize ?? 10 : 0,
   });
 
-  if (props.active || activeCameraEntityId === null) {
+  if (props.active) {
+    setMainCamera(world, entityId);
+  } else if (activeCameraEntityId === null) {
     setActiveCamera(entityId);
   }
 
@@ -132,12 +134,16 @@ export const createCameraEntity = (
 };
 
 export const setActiveCamera = (entityId: number) => {
-  const world = existsOrThrow(getECSWorld(), 'No ECS World for setActiveCamera.');
+  const world = getECSWorld();
   const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
   if (objComp && objComp.value instanceof THREE.Camera) {
     activeCameraEntityId = entityId;
     activeCameraObject = objComp.value; // Cache the direct pointer
+    return;
   }
+  const msg = `Could not find camera entity with id ${entityId} in setActiveCamera.`;
+  lerror(msg);
+  throw new Error(msg);
 };
 
 export const getActiveCameraId = () => activeCameraEntityId;
@@ -164,17 +170,6 @@ export const disposeCamera = (entityId: number, ecsWorld?: ECSWorld) => {
   // but if we had custom RenderTargets, we'd kill them here.
 
   useDebug(cameraDebugGUI)?.updateCamerasDebuggerGUI('LIST');
-};
-
-export const setMainCamera = (world: ECSWorld, newMainId: number) => {
-  const mainCams = world.getEntitiesWith(ComponentType.TAG_IS_MAIN_CAMERA);
-  for (const oldId of mainCams) {
-    world.removeComponent(oldId, ComponentType.TAG_IS_MAIN_CAMERA);
-  }
-  world.addComponent(newMainId, ComponentType.TAG_IS_MAIN_CAMERA, true);
-  if (!isDebugCameraActive()) {
-    setActiveCamera(newMainId);
-  }
 };
 
 /**
@@ -271,6 +266,17 @@ export const getCurrentCameraId = () => {
   return getECSWorld().getComponent(activeCameraEntityId, ComponentType.APP_ID)?.id || null;
 };
 
+export const setMainCamera = (world: ECSWorld, newMainId: number) => {
+  const mainCams = world.getEntitiesWith(ComponentType.TAG_IS_MAIN_CAMERA);
+  for (const oldId of mainCams) {
+    world.removeComponent(oldId, ComponentType.TAG_IS_MAIN_CAMERA);
+  }
+  world.addComponent(newMainId, ComponentType.TAG_IS_MAIN_CAMERA, true);
+  if (!isDebugCameraActive()) {
+    setActiveCamera(newMainId);
+  }
+};
+
 export const setCurrentCamera = (appId: string) => {
   const world = getECSWorld();
   const ids = world.getStorage(ComponentType.APP_ID);
@@ -325,8 +331,8 @@ export const initDebugCamera = async (world: ECSWorld) => {
   if (IS_DEBUG_ENV) {
     registerOnAllSceneEnterings('debugCamEnterSceneLogic', () => {
       const newSceneId = getCurrentSceneId();
-      const dubugCamModule = useDebug(debugCamera);
-      if (!dubugCamModule || !newSceneId) return;
+      const debugCamModule = useDebug(debugCamera);
+      if (!debugCamModule || !newSceneId) return;
 
       // If controls aren't attached yet (e.g. initial boot), attach them now.
       // This ensures the Canvas is ready and the correct Scene ID is used.
@@ -334,13 +340,14 @@ export const initDebugCamera = async (world: ECSWorld) => {
         debugCameraEntityId &&
         !world.hasComponent(debugCameraEntityId, ComponentType.ORBIT_CONTROLS)
       ) {
-        dubugCamModule.attachOrbitControls(debugCameraEntityId, world, newSceneId);
+        debugCamModule.attachOrbitControls(debugCameraEntityId, world, newSceneId);
       }
 
-      dubugCamModule.debugCamSceneChange(newSceneId, world);
+      debugCamModule.debugCamSceneChange(newSceneId, world);
       const props = useDebug(cameraDebugGUI)?.getDebugCamProps(newSceneId);
 
       if (props?.latestAppCameraId) {
+        console.log('GRUUT');
         setCurrentCamera(props.latestAppCameraId);
       }
 

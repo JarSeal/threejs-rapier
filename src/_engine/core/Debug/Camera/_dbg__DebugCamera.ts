@@ -92,7 +92,7 @@ export const toggleDebugCamera = (
     if (orbitData) orbitData.controls.update();
 
     setActiveCamera(debugCam);
-  } else if (!useDebug && gameCam !== undefined) {
+  } else if (!useDebug) {
     if (debugCam !== undefined) world.setDisabled(debugCam, true);
     setActiveCamera(gameCam);
   }
@@ -100,13 +100,6 @@ export const toggleDebugCamera = (
   saveDebugCameraToLS({ enabled: useDebug });
 
   updateCamerasDebuggerGUI('LIST');
-};
-
-export const toggleOrbitControls = (world: ECSWorld, debugCamId: number, enabled: boolean) => {
-  const orbitComp = world.getComponent(debugCamId, ComponentType.ORBIT_CONTROLS);
-  const controls = orbitComp?.controls;
-  if (!controls) return;
-  controls.enabled = enabled;
 };
 
 export const debugCamSceneChange = (newSceneId: string, world: ECSWorld) => {
