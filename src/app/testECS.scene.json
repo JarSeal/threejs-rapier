@@ -7,8 +7,8 @@
   "cameras": ["mainCamera"],
   "lights": ["ambientLight"],
   "geometries": ["testSphere", { "id": "otherTestBox", "type": "BOX" }],
-  "textures": [],
-  "materials": ["testMaterial", "checkerBoard"],
+  "textures": ["testTexture"],
+  "materials": ["testMaterial", "checkerBoard", "testTslMat"],
   "meshes": ["testMesh"],
   "importedMeshes": ["testImportedMesh"],
   "skyboxes": ["basicSkybox"]

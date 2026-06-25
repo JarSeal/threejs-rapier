@@ -3,7 +3,7 @@ import { deleteGeometry, GeoProps } from './_Geometry';
 import { deleteMaterial, MatProps } from './Material';
 import { deleteGroup } from './Group';
 import { lerror, lwarn } from '../utils/Logger';
-import { deleteTexture, TextureProps } from './Texture';
+import { deleteTexture, getTexture, TextureProps } from './Texture';
 import {
   deleteAllScenePhysicsLoopers,
   deletePhysicsObjectsBySceneId,
@@ -20,7 +20,7 @@ import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
 import { LightProps } from './_LightManager';
 import { ImportModelParams } from './ImportModel';
-import { SkyBoxProps } from './SkyBox';
+import { createSkyBox, SkyBoxProps } from './SkyBox';
 import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
@@ -33,13 +33,12 @@ export type SceneData = {
   id: string;
   sceneFile: string;
   isDebugScene?: boolean;
-  background?: string; // @TODO
-  backgroundColor?: string | number; // @TODO
-  backgroundTexture?: string; // @TODO
   name?: string;
   description?: string;
   // comments?: Comment[];
   // todo?: Todo[];
+  backgroundColor?: string | number;
+  backgroundTexture?: string;
   cameras?: (
     | {
         camProps: CameraProps;
@@ -78,9 +77,9 @@ export type SceneOptions = {
   name?: string;
   description?: string;
   isCurrentScene?: boolean;
-  background?: THREE.Color | THREE.Texture | THREE.CubeTexture;
-  backgroundColor?: THREE.Color;
-  backgroundTexture?: THREE.Texture;
+  backgroundColor?: THREE.Color | string | number;
+  backgroundTexture?: THREE.Texture | string;
+  skyBox?: string;
   mainLoopers?: Looper[];
   mainLateLoopers?: Looper[];
   appLoopers?: Looper[];
@@ -284,10 +283,23 @@ export const setCurrentScene = (id: string | null) => {
   if (nextScene) {
     rootScene.background = null;
     rootScene.backgroundNode = null;
-    if (currentSceneOpts?.background) rootScene.background = currentSceneOpts.background;
-    if (currentSceneOpts?.backgroundColor) rootScene.background = currentSceneOpts.backgroundColor;
-    if (currentSceneOpts?.backgroundTexture)
-      rootScene.background = currentSceneOpts.backgroundTexture;
+    if (currentSceneOpts?.backgroundColor) {
+      rootScene.background = new THREE.Color(currentSceneOpts.backgroundColor);
+    }
+    if (currentSceneOpts?.backgroundTexture) {
+      if (typeof currentSceneOpts.backgroundTexture === 'string') {
+        const tex = getTexture(currentSceneOpts.backgroundTexture);
+        if (tex) {
+          rootScene.background = tex;
+        } else {
+          lwarn(
+            `Could not find texture for scene background with id '${currentSceneOpts.backgroundTexture}'.`
+          );
+        }
+      } else {
+        rootScene.background = currentSceneOpts.backgroundTexture;
+      }
+    }
     rootScene.add(nextScene);
   }
 
@@ -720,7 +732,7 @@ export const getGeneratedSceneData = (sceneId: string) =>
     | undefined;
 
 /** Registers (creates) the scenes at initEngine (initApp). */
-export const registerScenesFromGeneratedData = () => {
+export const registerScenesFromGeneratedData = async () => {
   const data = getGeneratedAppData();
   const sceneIds = Object.keys(data.scenes);
   for (let i = 0; i < sceneIds.length; i++) {
@@ -728,8 +740,18 @@ export const registerScenesFromGeneratedData = () => {
     const sceneData = data.scenes[sceneId] as unknown as SceneData;
 
     createScene(sceneId, {
+      backgroundColor: sceneData.backgroundColor,
+      backgroundTexture: sceneData.backgroundTexture,
       name: sceneData.name,
       description: sceneData.description,
     });
+
+    if (sceneData.skyboxes?.length) {
+      for (let j = 0; j < sceneData.skyboxes.length; j++) {
+        const props = sceneData.skyboxes[j];
+        if (typeof props === 'string') continue;
+        await createSkyBox({ ...props, sceneId, isCurrent: false });
+      }
+    }
   }
 };

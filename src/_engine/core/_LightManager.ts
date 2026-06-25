@@ -8,7 +8,8 @@ import { loadPersistentProps } from './PropertyLoader';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { CoreComponentType } from './ECS/ECSRegistry';
-import { lerror } from '../utils/Logger';
+import { lerror, lwarn } from '../utils/Logger';
+import { getTexture } from './Texture';
 
 export const registerLightManager = (world: ECSWorld) => {
   if (IS_DEBUG_ENV) {
@@ -137,6 +138,7 @@ export type LightProps = {
       shadowBlurSamples?: number;
       shadowRadius?: number;
       shadowIntensity?: number;
+      map?: THREE.Texture | string;
     }
 );
 
@@ -181,6 +183,20 @@ export const createLightEntity = (
         props.penumbra,
         props.decay
       );
+      if ('map' in props && props.map) {
+        if (typeof props.map === 'string') {
+          const texResource = getTexture(props.map);
+          if (texResource) {
+            light.map = texResource;
+          } else {
+            lwarn(
+              `[Light Manager] Could not locate cookie texture resource "${props.map}" for SpotLight entity "${appId}". Leaving map unassigned.`
+            );
+          }
+        } else {
+          light.map = props.map;
+        }
+      }
       break;
     default:
       throw new Error('Unsupported light type');

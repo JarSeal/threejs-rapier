@@ -15,12 +15,53 @@ declare module 'three/tsl' {
    * A generic Node representing a shader expression of type T.
    */
   export interface Node<T = any> {
-    // methods commonly used chainable (swizzle, etc)
-    // you can expand if you use more node-features
-    add?(other: Node<T>): Node<T>;
-    mul?(other: Node<T>): Node<T>;
-    // … you may add more operators as needed
+    (uvNode: Node): Node;
+
+    add(other: Node | number): Node;
+    mul(other: Node<any, any> | number): Node;
+    div(other: Node | number): Node;
+    sub(other: Node | number): Node;
+
+    // Swizzles
+    readonly x: Node<number>;
+    readonly y: Node<number>;
+    readonly z: Node<number>;
+    readonly w: Node<number>;
+
+    // ─── CORE SWIZZLES ───
+    readonly x: Node<number>;
+    readonly y: Node<number>;
+    readonly z: Node<number>;
+    readonly w: Node<number>;
+
+    readonly r: Node<number>;
+    readonly g: Node<number>;
+    readonly b: Node<number>;
+    readonly a: Node<number>;
+
+    readonly rgb: Node<THREE.Vector3>;
+    readonly xyz: Node<THREE.Vector3>;
+    readonly rgba: Node<THREE.Vector4>;
+    readonly xyzw: Node<THREE.Vector4>;
+
+    //  parenting / swizzling chaining fallback
+    [key: string]: any;
   }
+
+  export const time: Node<number>;
+  export function uv(): Node<THREE.Vector2>;
+
+  /**
+   * Dedicated texture/sampler sampler node type for mapping coordinate shifts
+   */
+  export interface TextureNode extends Node {
+    uv(uvNode: Node): TextureNode;
+    // TSL texture nodes can chain swizzles or behave as functions
+    (uv: Node): Node;
+  }
+
+  // If your version of Three.js exports 'texture' as a graph builder:
+  export function texture(tex: THREE.Texture, uvNode?: Node): Node;
 
   /**
    * A vector2 node type alias

@@ -1,13 +1,8 @@
-import * as THREE from 'three/webgpu';
-// import { createScene } from '../_engine/core/Scene';
-import { createSkyBox } from '../_engine/core/SkyBox';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { createMeshEntity, MeshProps } from '../_engine/core/_MeshManager';
 import { getECSWorld } from '../_engine/core/ECS';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
-import { createCameraEntity, setMainCamera } from '../_engine/core/_CameraManager';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
-import { lookAtPoint } from '../_engine/utils/ECSHelpers';
 import { createLightEntity } from '../_engine/core/_LightManager';
 
 export const scene = async () => {
@@ -16,40 +11,7 @@ export const scene = async () => {
 
   const ecsWorld = getECSWorld();
 
-  // const camId = createCameraEntity(
-  //   { type: 'PERSPECTIVE', fov: 90, active: true },
-  //   {
-  //     appId: 'mainCamera',
-  //     debugData: { name: 'Main camera', description: 'Main application camera' },
-  //     persistent: true,
-  //   }
-  // );
-  // setMainCamera(ecsWorld, camId);
-  // ecsWorld.setTransform(camId, {
-  //   pos: { x: 10, y: 5, z: 20 },
-  // });
-  // lookAtPoint(camId, { x: 0, y: 0, z: 0 });
-  // createCameraEntity(
-  //   { type: 'PERSPECTIVE', fov: 90, active: false },
-  //   {
-  //     appId: 'testing',
-  //     debugData: { description: 'Main application camera 2' },
-  //   }
-  // );
-
   updateLoaderFn({ loadedCount: 1, totalCount: 2 });
-
-  await createSkyBox({
-    id: 'stylizedSunsetEquiRect',
-    type: 'EQUIRECTANGULAR',
-    params: {
-      file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_41_4k.png',
-      textureId: 'equiRectSunsetStylizedId',
-      colorSpace: THREE.SRGBColorSpace,
-      // colorSpace: THREE.LinearSRGBColorSpace,
-      // colorSpace: THREE.NoColorSpace,
-    },
-  });
 
   // --- ECS LIGHTS ---
 

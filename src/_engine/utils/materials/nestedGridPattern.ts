@@ -208,7 +208,7 @@ export const addNestedGridMaterialToMesh = (
 
   // Call the corrected function node
   // const fragmentColor = nestedGridPattern(uvCoords);
-  const fragmentColor = nestedGridPattern(uvCoords);
+  const fragmentColor = nestedGridPattern(uvCoords as unknown as THREE.Node<'vec2'>);
 
   const checkerboardMaterial = createMaterial({
     id,

@@ -93,7 +93,7 @@
           "id": "testSphere",
           "type": "SPHERE",
           "params": {
-            "radius": 0.6,
+            "radius": 2.6,
             "widthSegments": 32,
             "heightSegments": 32
           },
@@ -107,7 +107,17 @@
           "type": "BOX"
         }
       ],
-      "textures": [],
+      "textures": [
+        {
+          "id": "testTexture",
+          "fileName": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
+          "useHDRLoader": false,
+          "texOpts": {
+            "wrapS": 1000,
+            "wrapT": 1000
+          }
+        }
+      ],
       "materials": [
         {
           "id": "testMaterial",
@@ -139,13 +149,26 @@
             }
           },
           "type": "STANDARDNODEMATERIAL"
+        },
+        {
+          "id": "testTslMat",
+          "tslFile": "materials/testTslMat.tsl.ts",
+          "nodes": {
+            "colorNode": {
+              "baseColor": "#1c233a",
+              "panelColor": "#ffaa00",
+              "gridScale": 1,
+              "texture": "testTexture"
+            }
+          },
+          "type": "STANDARDNODEMATERIAL"
         }
       ],
       "meshes": [
         {
           "props": {
             "geo": "testSphere",
-            "mat": "testMaterial",
+            "mat": "testTslMat",
             "castShadow": false,
             "receiveShadow": true,
             "position": {
@@ -165,6 +188,13 @@
             "importGroup": false,
             "meshProps": [
               {
+                "mat": {
+                  "id": "importedMeshMat",
+                  "params": {
+                    "map": "testTexture"
+                  },
+                  "type": "PHONG"
+                },
                 "castShadow": true,
                 "receiveShadow": true,
                 "position": {
@@ -298,7 +328,7 @@
               "date": 1779449688109
             },
             "params": {
-              "radius": 0.6
+              "radius": 2.6
             }
           }
         ]
@@ -310,14 +340,18 @@
     "testTexture": {
       "id": "testTexture",
       "fileName": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
-      "useHDRLoader": false,
+      "useHDRLoader": true,
+      "texOpts": {
+        "wrapS": 1000,
+        "wrapT": 1000
+      },
       "__saveData": {
         "sceneTestECS": [
           {
             "__meta": {
               "date": 1779449688109
             },
-            "useHDRLoader": true
+            "useHDRLoader": false
           }
         ]
       },
@@ -366,7 +400,8 @@
         "colorNode": {
           "baseColor": "#1a233a",
           "panelColor": "#ffaa00",
-          "gridScale": 4
+          "gridScale": 1,
+          "texture": "testTexture"
         }
       },
       "type": "STANDARDNODEMATERIAL",
@@ -417,7 +452,7 @@
     "testMesh": {
       "props": {
         "geo": "testSphere",
-        "mat": "testMaterial",
+        "mat": "testTslMat",
         "castShadow": true,
         "receiveShadow": true,
         "position": {
@@ -448,6 +483,13 @@
         "importGroup": true,
         "meshProps": [
           {
+            "mat": {
+              "id": "importedMeshMat",
+              "params": {
+                "map": "testTexture"
+              },
+              "type": "PHONG"
+            },
             "castShadow": true,
             "receiveShadow": true,
             "position": {

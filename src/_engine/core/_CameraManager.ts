@@ -347,7 +347,6 @@ export const initDebugCamera = async (world: ECSWorld) => {
       const props = useDebug(cameraDebugGUI)?.getDebugCamProps(newSceneId);
 
       if (props?.latestAppCameraId) {
-        console.log('GRUUT');
         setCurrentCamera(props.latestAppCameraId);
       }
 

@@ -6,7 +6,16 @@
     "importGroup": true,
     "allMeshesVisible": true,
     "meshProps": [
-      { "position": { "x": -4, "y": 1, "z": -1 }, "castShadow": true, "receiveShadow": true }
+      {
+        "position": { "x": -4, "y": 1, "z": -1 },
+        "castShadow": true,
+        "receiveShadow": true,
+        "mat": {
+          "id": "importedMeshMat",
+          "type": "PHONG",
+          "params": { "map": "testTexture" }
+        }
+      }
     ]
   },
   "__saveData": {

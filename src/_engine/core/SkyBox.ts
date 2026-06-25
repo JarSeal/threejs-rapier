@@ -8,7 +8,6 @@ import {
   getScene,
   isCurrentScene,
 } from './Scene';
-import { getRenderer } from './Renderer';
 import { getTexture, loadTextureAsync } from './Texture';
 import { isDebugEnvironment } from './Config';
 import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
@@ -128,13 +127,6 @@ export const createSkyBox = async (
   { id, sceneId, isCurrent, type, params, debugData }: SkyBoxProps,
   doNotUpdateDebuggerSceneDefault?: boolean // This is to keep the [*default] indicator in the debugger listings when the debugger changes the sky box
 ) => {
-  const renderer = getRenderer();
-  if (!renderer) {
-    const msg = `Could not find renderer in createSkyBox (type: ${type}).`;
-    lerror(msg);
-    throw new Error(msg);
-  }
-
   let scene = getCurrentScene();
   if (sceneId) scene = getScene(sceneId);
   const isCurScene = isCurrentScene(scene?.userData.id);
@@ -171,7 +163,11 @@ export const createSkyBox = async (
     const savedAllSkyBoxStates = lsGetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
     allSkyBoxStates = { ...allSkyBoxStates, ...savedAllSkyBoxStates };
     const curSceneState = allSkyBoxStates[givenOrCurrentSceneId][id];
-    skyBoxStateToBeAdded = { ...skyBoxStateToBeAdded, ...(curSceneState || {}) };
+    skyBoxStateToBeAdded = {
+      ...skyBoxStateToBeAdded,
+      ...(curSceneState || {}),
+      isCurrent: isCurrent !== false,
+    };
 
     if (!doNotUpdateDebuggerSceneDefault) {
       const sceneSkyBoxes = allSkyBoxStates[givenOrCurrentSceneId];
@@ -702,9 +698,12 @@ export const getEnvMapRoughnessBg = () => pmremRoughnessBg;
 
 export const applySkyBoxForScene = async (sceneId: string) => {
   const states = allSkyBoxStates[sceneId];
-  if (!states) return;
-  const current = Object.values(states).find((s) => s.isCurrent);
-  if (!current || current.id === NO_SKYBOX_ID || !current.type) return;
+  if (!states || !Object.keys(states).length) return;
+  let current = Object.values(states).find((s) => s.isCurrent);
+  if (!current || current.id === NO_SKYBOX_ID || !current.type) {
+    current = states[Object.keys(states)[0]];
+    if (!current) return;
+  }
   await createSkyBox(
     { ...extractSkyBoxParamsFromState(current), id: current.id, sceneId, isCurrent: true },
     true

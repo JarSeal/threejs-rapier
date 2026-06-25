@@ -3,8 +3,9 @@ import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { CameraAssetSchema } from './cameraSchema';
 import { LightAssetSchema } from './lightSchema';
 import { GeoPropsSchema } from './geometrySchema';
-import { TextureAssetSchema } from './textureSchema';
+import { TextureAssetSchema, TextureOverridesSchema } from './textureSchema';
 import { MaterialAssetSchema } from './materialSchema';
+import { ColorJSONSchema } from './_helperSchemas';
 
 const AssetReferenceOrInline = z.union([z.string(), z.record(z.string(), z.unknown())]);
 
@@ -19,6 +20,11 @@ const SceneOverridesSchema = z.object({
   description: z.string().optional(),
   comments: z.any().optional(),
   todo: z.any().optional(),
+
+  backgroundColor: ColorJSONSchema.optional(),
+  backgroundTexture: z
+    .union([TextureOverridesSchema.omit({ __meta: true }), z.string()])
+    .optional(),
 
   // Scene Asset Registries Map arrays
   cameras: z.array(z.union([z.string(), CameraAssetSchema])).optional(),

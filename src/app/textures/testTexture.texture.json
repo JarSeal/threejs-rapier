@@ -2,12 +2,16 @@
   "$schema": "../../../.schemas/texture.schema.json",
   "id": "testTexture",
   "fileName": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
-  "useHDRLoader": false,
+  "useHDRLoader": true,
+  "texOpts": {
+    "wrapS": 1000,
+    "wrapT": 1000
+  },
   "__saveData": {
     "sceneTestECS": [
       {
         "__meta": { "date": 1779449688109 },
-        "useHDRLoader": true
+        "useHDRLoader": false
       }
     ]
   }

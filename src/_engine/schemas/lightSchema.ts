@@ -80,6 +80,7 @@ const Spot = LightBaseProps.extend({
   shadowBlurSamples: z.number().optional(),
   shadowRadius: z.number().optional(),
   shadowIntensity: z.number().optional(),
+  map: z.union([z.string(), z.unknown()]).optional(),
 });
 
 const LightProps = z.union([Ambient, Hemisphere, Point, Directional, Spot]);

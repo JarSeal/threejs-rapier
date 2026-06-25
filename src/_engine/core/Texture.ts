@@ -282,7 +282,7 @@ export const loadTextureAsync = async ({
 
   try {
     if (typeof fileName === 'string') {
-      if (useHDRLoader) {
+      if (useHDRLoader && isHDR(fileName)) {
         // Data texture
         loaderType = 'HDRLoader';
         const loader = new HDRLoader();
@@ -296,6 +296,13 @@ export const loadTextureAsync = async ({
         textures[id || loadedTexture.uuid] = loadedTexture;
         return loadedTexture as THREE.DataTexture;
       } else {
+        // Fallback to standard TextureLoader if useHDRLoader was erroneously set on a JPEG/PNG
+        if (useHDRLoader && !isHDR(fileName)) {
+          lwarn(
+            `[Aekasha Texture Pipeline] useHDRLoader override ignored for non-HDR file extension: ${fileName}`
+          );
+        }
+
         // Texture
         loaderType = 'TextureLoader';
         const loader = new THREE.TextureLoader();

@@ -50,7 +50,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     createHudContainer();
 
     // Register scenes from generated data
-    registerScenesFromGeneratedData();
+    await registerScenesFromGeneratedData();
 
     await load3DSymbols();
 

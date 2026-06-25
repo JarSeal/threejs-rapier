@@ -7,7 +7,8 @@
     "colorNode": {
       "baseColor": "#1a233a",
       "panelColor": "#ffaa00",
-      "gridScale": 4.0
+      "gridScale": 1.0,
+      "texture": "testTexture"
     }
   },
   "__saveData": {

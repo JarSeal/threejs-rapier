@@ -16,6 +16,157 @@
     },
     "comments": {},
     "todo": {},
+    "backgroundColor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "r": {
+              "type": "number"
+            },
+            "g": {
+              "type": "number"
+            },
+            "b": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "r",
+            "g",
+            "b"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "backgroundTexture": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "fileName": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "useHDRLoader": {
+              "type": "boolean"
+            },
+            "texOpts": {
+              "type": "object",
+              "properties": {
+                "image": {},
+                "mapping": {
+                  "type": "number"
+                },
+                "wrapS": {
+                  "type": "number"
+                },
+                "wrapT": {
+                  "type": "number"
+                },
+                "magFilter": {
+                  "type": "number"
+                },
+                "minFilter": {
+                  "type": "number"
+                },
+                "type": {
+                  "type": "number"
+                },
+                "anisotropy": {
+                  "type": "number"
+                },
+                "colorSpace": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": ""
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb"
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb-linear"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "throwOnError": {
+              "type": "boolean"
+            },
+            "userData": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "debugData": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "comments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "comment": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "timestamp",
+                      "comment"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "todo": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "debugObj": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
     "cameras": {
       "type": "array",
       "items": {
@@ -884,6 +1035,14 @@
                       },
                       "shadowIntensity": {
                         "type": "number"
+                      },
+                      "map": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {}
+                        ]
                       }
                     },
                     "required": [
@@ -1160,6 +1319,14 @@
                       },
                       "penumbra": {
                         "type": "number"
+                      },
+                      "map": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {}
+                        ]
                       }
                     },
                     "additionalProperties": false
@@ -2431,6 +2598,157 @@
             },
             "comments": {},
             "todo": {},
+            "backgroundColor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "r": {
+                      "type": "number"
+                    },
+                    "g": {
+                      "type": "number"
+                    },
+                    "b": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "r",
+                    "g",
+                    "b"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "backgroundTexture": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "useHDRLoader": {
+                      "type": "boolean"
+                    },
+                    "texOpts": {
+                      "type": "object",
+                      "properties": {
+                        "image": {},
+                        "mapping": {
+                          "type": "number"
+                        },
+                        "wrapS": {
+                          "type": "number"
+                        },
+                        "wrapT": {
+                          "type": "number"
+                        },
+                        "magFilter": {
+                          "type": "number"
+                        },
+                        "minFilter": {
+                          "type": "number"
+                        },
+                        "type": {
+                          "type": "number"
+                        },
+                        "anisotropy": {
+                          "type": "number"
+                        },
+                        "colorSpace": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "const": ""
+                            },
+                            {
+                              "type": "string",
+                              "const": "srgb"
+                            },
+                            {
+                              "type": "string",
+                              "const": "srgb-linear"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "throwOnError": {
+                      "type": "boolean"
+                    },
+                    "userData": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "debugData": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "comments": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "timestamp": {
+                                "type": "number"
+                              },
+                              "comment": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "timestamp",
+                              "comment"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "todo": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "debugObj": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
             "cameras": {
               "type": "array",
               "items": {
@@ -3299,6 +3617,14 @@
                               },
                               "shadowIntensity": {
                                 "type": "number"
+                              },
+                              "map": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {}
+                                ]
                               }
                             },
                             "required": [
@@ -3575,6 +3901,14 @@
                               },
                               "penumbra": {
                                 "type": "number"
+                              },
+                              "map": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {}
+                                ]
                               }
                             },
                             "additionalProperties": false

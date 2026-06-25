@@ -3,7 +3,7 @@
   "props": {
     "appId": "testMesh",
     "geo": "testSphere",
-    "mat": "testMaterial",
+    "mat": "testTslMat",
     "castShadow": true,
     "receiveShadow": true,
     "position": { "x": 4, "y": 1, "z": 2 }

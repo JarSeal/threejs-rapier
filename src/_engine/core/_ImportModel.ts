@@ -18,12 +18,7 @@ import { type CoreEntityOpts } from '../schemas/_helperSchemas';
 import { createMeshEntity, disposeMesh, getMeshByAppId, MeshProps } from './_MeshManager';
 import { existsOrThrow } from '../utils/assert';
 import { getECSWorld } from './ECS';
-import {
-  addToGroupEntity,
-  createGroupEntity,
-  disposeGroup,
-  getGroupByAppId,
-} from './_GroupManager';
+import { addToGroupEntity, createGroupEntity, getGroupByAppId } from './_GroupManager';
 import { ComponentType } from './ECS/ECSCoreComponents';
 
 export type AdditionalImportPhysicsParams = {

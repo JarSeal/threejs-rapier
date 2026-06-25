@@ -46,81 +46,110 @@ const materials: {
   };
 } = {};
 
+type TextureMapKeys =
+  | 'map'
+  | 'alphaMap'
+  | 'aoMap'
+  | 'bumpMap'
+  | 'envMap'
+  | 'emissiveMap'
+  | 'lightMap'
+  | 'matcap'
+  | 'normalMap'
+  | 'specularMap'
+  | 'displacementMap'
+  | 'anisotropyMap'
+  | 'clearcoatMap'
+  | 'clearcoatNormalMap'
+  | 'clearcoatRoughnessMap'
+  | 'iridescenceMap'
+  | 'iridescenceThicknessMap'
+  | 'sheenRoughnessMap'
+  | 'sheenColorMap'
+  | 'specularIntensityMap'
+  | 'specularColorMap'
+  | 'thicknessMap'
+  | 'transmissionMap';
+
+type AllowTextureStrings<T> = T extends unknown
+  ? { [K in keyof T]: K extends TextureMapKeys ? T[K] | string : T[K] }
+  : never;
+
 export type MatProps = {
   id?: string;
   isPersistent?: boolean;
   debugData?: { name?: string; description?: string };
   userData?: Record<string, unknown>;
 } & (
-  | { type: 'LINEBASIC'; params?: THREE.LineBasicMaterialParameters }
-  | { type: 'LINEDASHED'; params?: THREE.LineDashedMaterialParameters }
-  | { type: 'BASIC'; params?: THREE.MeshBasicMaterialParameters }
-  | { type: 'DEPTH'; params?: THREE.MeshDepthMaterialParameters }
-  | { type: 'DISTANCE'; params?: THREE.MeshDistanceMaterialParameters }
-  | { type: 'LAMBERT'; params?: THREE.MeshLambertMaterialParameters }
-  | { type: 'MATCAP'; params?: THREE.MeshMatcapMaterialParameters }
-  | { type: 'NORMAL'; params?: THREE.MeshNormalMaterialParameters }
-  | { type: 'PHONG'; params?: THREE.MeshPhongMaterialParameters }
-  | { type: 'PHYSICAL'; params?: THREE.MeshPhysicalMaterialParameters }
-  | { type: 'STANDARD'; params?: THREE.MeshStandardMaterialParameters }
-  | { type: 'TOON'; params?: THREE.MeshToonMaterialParameters }
-  | { type: 'POINTS'; params?: THREE.PointsMaterialParameters }
-  | { type: 'SHADERRAW'; params?: THREE.ShaderMaterialParameters }
-  | { type: 'SHADER'; params?: THREE.ShaderMaterialParameters }
-  | { type: 'SHADOW'; params?: THREE.ShadowMaterialParameters }
-  | { type: 'SPRITE'; params?: THREE.SpriteMaterialParameters }
+  | { type: 'LINEBASIC'; params?: AllowTextureStrings<THREE.LineBasicMaterialParameters> }
+  | { type: 'LINEDASHED'; params?: AllowTextureStrings<THREE.LineDashedMaterialParameters> }
+  | { type: 'BASIC'; params?: AllowTextureStrings<THREE.MeshBasicMaterialParameters> }
+  | { type: 'DEPTH'; params?: AllowTextureStrings<THREE.MeshDepthMaterialParameters> }
+  | { type: 'DISTANCE'; params?: AllowTextureStrings<THREE.MeshDistanceMaterialParameters> }
+  | { type: 'LAMBERT'; params?: AllowTextureStrings<THREE.MeshLambertMaterialParameters> }
+  | { type: 'MATCAP'; params?: AllowTextureStrings<THREE.MeshMatcapMaterialParameters> }
+  | { type: 'NORMAL'; params?: AllowTextureStrings<THREE.MeshNormalMaterialParameters> }
+  | { type: 'PHONG'; params?: AllowTextureStrings<THREE.MeshPhongMaterialParameters> }
+  | { type: 'PHYSICAL'; params?: AllowTextureStrings<THREE.MeshPhysicalMaterialParameters> }
+  | { type: 'STANDARD'; params?: AllowTextureStrings<THREE.MeshStandardMaterialParameters> }
+  | { type: 'TOON'; params?: AllowTextureStrings<THREE.MeshToonMaterialParameters> }
+  | { type: 'POINTS'; params?: AllowTextureStrings<THREE.PointsMaterialParameters> }
+  | { type: 'SHADERRAW'; params?: AllowTextureStrings<THREE.ShaderMaterialParameters> }
+  | { type: 'SHADER'; params?: AllowTextureStrings<THREE.ShaderMaterialParameters> }
+  | { type: 'SHADOW'; params?: AllowTextureStrings<THREE.ShadowMaterialParameters> }
+  | { type: 'SPRITE'; params?: AllowTextureStrings<THREE.SpriteMaterialParameters> }
   | {
       type: 'BASICNODEMATERIAL';
-      params?: THREE.MeshBasicNodeMaterialParameters;
+      params?: AllowTextureStrings<THREE.MeshBasicNodeMaterialParameters>;
       tslFile?: string;
       nodes?: Record<string, Record<string, unknown>>;
       staticDefines?: Record<string, unknown>;
     }
   | {
       type: 'LAMBERTNODEMATERIAL';
-      params?: THREE.MeshLambertNodeMaterialParameters;
+      params?: AllowTextureStrings<THREE.MeshLambertNodeMaterialParameters>;
       tslFile?: string;
       nodes?: Record<string, Record<string, unknown>>;
       staticDefines?: Record<string, unknown>;
     }
   | {
       type: 'PHONGNODEMATERIAL';
-      params?: THREE.MeshPhongNodeMaterialParameters;
+      params?: AllowTextureStrings<THREE.MeshPhongNodeMaterialParameters>;
       tslFile?: string;
       nodes?: Record<string, Record<string, unknown>>;
       staticDefines?: Record<string, unknown>;
     }
   | {
       type: 'PHYSICALNODEMATERIAL';
-      params?: THREE.MeshPhysicalNodeMaterialParameters;
+      params?: AllowTextureStrings<THREE.MeshPhysicalNodeMaterialParameters>;
       tslFile?: string;
       nodes?: Record<string, Record<string, unknown>>;
       staticDefines?: Record<string, unknown>;
     }
   | {
       type: 'STANDARDNODEMATERIAL';
-      params?: THREE.MeshStandardNodeMaterialParameters;
+      params?: AllowTextureStrings<THREE.MeshStandardNodeMaterialParameters>;
       tslFile?: string;
       nodes?: Record<string, Record<string, unknown>>;
       staticDefines?: Record<string, unknown>;
     }
   | {
       type: 'MATCAPNODEMATERIAL';
-      params?: THREE.MeshMatcapNodeMaterialParameters;
+      params?: AllowTextureStrings<THREE.MeshMatcapNodeMaterialParameters>;
       tslFile?: string;
       nodes?: Record<string, Record<string, unknown>>;
       staticDefines?: Record<string, unknown>;
     }
   | {
       type: 'NORMALNODEMATERIAL';
-      params?: THREE.MeshNormalNodeMaterialParameters;
+      params?: AllowTextureStrings<THREE.MeshNormalNodeMaterialParameters>;
       tslFile?: string;
       nodes?: Record<string, Record<string, unknown>>;
       staticDefines?: Record<string, unknown>;
     }
   | {
       type: 'TOONNODEMATERIAL';
-      params?: THREE.MeshToonNodeMaterialParameters;
+      params?: AllowTextureStrings<THREE.MeshToonNodeMaterialParameters>;
       tslFile?: string;
       nodes?: Record<string, Record<string, unknown>>;
       staticDefines?: Record<string, unknown>;
@@ -174,79 +203,101 @@ export const createMaterial = (props: MatProps) => {
   const type = props.type;
   const params = props.params;
 
+  let processedParams: Record<string, unknown> | undefined = undefined;
+
+  if (params) {
+    processedParams = { ...params };
+
+    for (const key of textureMapKeys) {
+      if (typeof processedParams[key] === 'string') {
+        const texId = processedParams[key] as string;
+        const texResource = getTexture(texId);
+
+        if (texResource) {
+          processedParams[key] = texResource;
+        } else {
+          lwarn(
+            `[Material Manager] Could not locate texture resource "${texId}" for parameter field "${key}" in material "${id}". Safely stripping field.`
+          );
+          delete processedParams[key];
+        }
+      }
+    }
+  }
+
   switch (type) {
     case 'LINEBASIC':
-      mat = new THREE.LineBasicMaterial(params);
+      mat = new THREE.LineBasicMaterial(processedParams);
       break;
     case 'LINEDASHED':
-      mat = new THREE.LineDashedMaterial(params);
+      mat = new THREE.LineDashedMaterial(processedParams);
       break;
     case 'BASIC':
-      mat = new THREE.MeshBasicMaterial(params);
+      mat = new THREE.MeshBasicMaterial(processedParams);
       break;
     case 'DEPTH':
-      mat = new THREE.MeshDepthMaterial(params);
+      mat = new THREE.MeshDepthMaterial(processedParams);
       break;
     case 'DISTANCE':
-      mat = new THREE.MeshDistanceMaterial(params);
+      mat = new THREE.MeshDistanceMaterial(processedParams);
       break;
     case 'LAMBERT':
-      mat = new THREE.MeshLambertMaterial(params);
+      mat = new THREE.MeshLambertMaterial(processedParams);
       break;
     case 'MATCAP':
-      mat = new THREE.MeshMatcapMaterial(params);
+      mat = new THREE.MeshMatcapMaterial(processedParams);
       break;
     case 'NORMAL':
-      mat = new THREE.MeshNormalMaterial(params);
+      mat = new THREE.MeshNormalMaterial(processedParams);
       break;
     case 'PHONG':
-      mat = new THREE.MeshPhongMaterial(params);
+      mat = new THREE.MeshPhongMaterial(processedParams);
       break;
     case 'PHYSICAL':
-      mat = new THREE.MeshPhysicalMaterial(params);
+      mat = new THREE.MeshPhysicalMaterial(processedParams);
       break;
     case 'STANDARD':
-      mat = new THREE.MeshStandardMaterial(params);
+      mat = new THREE.MeshStandardMaterial(processedParams);
       break;
     case 'TOON':
-      mat = new THREE.MeshToonMaterial(params);
+      mat = new THREE.MeshToonMaterial(processedParams);
       break;
     case 'POINTS':
-      mat = new THREE.PointsMaterial(params);
+      mat = new THREE.PointsMaterial(processedParams);
       break;
     case 'SHADERRAW':
     case 'SHADER':
-      mat = new THREE.ShaderMaterial(params);
+      mat = new THREE.ShaderMaterial(processedParams);
       break;
     case 'SHADOW':
-      mat = new THREE.ShadowMaterial(params);
+      mat = new THREE.ShadowMaterial(processedParams);
       break;
     case 'SPRITE':
-      mat = new THREE.SpriteMaterial(params);
+      mat = new THREE.SpriteMaterial(processedParams);
       break;
     case 'BASICNODEMATERIAL':
-      mat = new THREE.MeshBasicNodeMaterial(params);
+      mat = new THREE.MeshBasicNodeMaterial(processedParams);
       break;
     case 'LAMBERTNODEMATERIAL':
-      mat = new THREE.MeshLambertNodeMaterial(params);
+      mat = new THREE.MeshLambertNodeMaterial(processedParams);
       break;
     case 'PHONGNODEMATERIAL':
-      mat = new THREE.MeshPhongNodeMaterial(params);
+      mat = new THREE.MeshPhongNodeMaterial(processedParams);
       break;
     case 'PHYSICALNODEMATERIAL':
-      mat = new THREE.MeshPhysicalNodeMaterial(params);
+      mat = new THREE.MeshPhysicalNodeMaterial(processedParams);
       break;
     case 'STANDARDNODEMATERIAL':
-      mat = new THREE.MeshStandardNodeMaterial(params);
+      mat = new THREE.MeshStandardNodeMaterial(processedParams);
       break;
     case 'MATCAPNODEMATERIAL':
-      mat = new THREE.MeshMatcapNodeMaterial(params);
+      mat = new THREE.MeshMatcapNodeMaterial(processedParams);
       break;
     case 'NORMALNODEMATERIAL':
-      mat = new THREE.MeshNormalNodeMaterial(params);
+      mat = new THREE.MeshNormalNodeMaterial(processedParams);
       break;
     case 'TOONNODEMATERIAL':
-      mat = new THREE.MeshToonNodeMaterial(params);
+      mat = new THREE.MeshToonNodeMaterial(processedParams);
       break;
   }
 

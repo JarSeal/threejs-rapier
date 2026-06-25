@@ -41,13 +41,6 @@ const getSavedDebugProps = (appId: string, propType: PropType) => {
     case 'LIGHT':
       return useDebug(debugGUI)?.loadLightDebugData(appId) || {};
     case 'CAMERA':
-      // console.log(
-      //   'HERE',
-      //   appId,
-      //   cameraDebugGUI?.current,
-      //   Boolean(cameraDebugGUI?.current),
-      //   useDebug(cameraDebugGUI)?.loadCameraDebugData(appId)
-      // );
       return useDebug(cameraDebugGUI)?.loadCameraDebugData(appId) || {};
   }
 };
