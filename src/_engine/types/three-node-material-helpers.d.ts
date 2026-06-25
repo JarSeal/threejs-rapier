@@ -17,10 +17,10 @@ declare module 'three/tsl' {
   export interface Node<T = any> {
     (uvNode: Node): Node;
 
-    add(other: Node | number): Node;
+    add(other: Node<any, any> | number): Node;
     mul(other: Node<any, any> | number): Node;
-    div(other: Node | number): Node;
-    sub(other: Node | number): Node;
+    div(other: Node<any, any> | number): Node;
+    sub(other: Node<any, any> | number): Node;
 
     // Swizzles
     readonly x: Node<number>;
