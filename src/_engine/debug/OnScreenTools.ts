@@ -16,7 +16,7 @@ import {
   getPhysicsState,
   togglePhysicsVisualizer,
 } from '../core/PhysicsRapier';
-import { getCurrentSceneId } from '../core/Scene';
+import { getCurrentSceneId, getGeneratedAppData } from '../core/Scene';
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { getSvgIcon } from '../core/UI/icons/SvgIcon';
 import { CMP, TCMP } from '../utils/CMP';
@@ -25,6 +25,7 @@ import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
 import { debuggerSceneListing } from './debugScenes/debuggerSceneListing';
 import styles from './OnScreenTools.module.scss';
 import { getECSWorld } from '../core/ECS';
+import { type SceneAsset } from '../schemas/sceneSchema';
 
 let playToolsCMP: TCMP | null = null;
 let switchToolsCMP: TCMP | null = null;
@@ -207,41 +208,79 @@ const switchTools = () => {
 
   // Select scene dropdown
   const sceneSelectorId = 'onScreenSelectSceneDropDown';
-  const sceneOptions = debuggerSceneListing.map(
-    (s) =>
-      `<option value="${s.id}"${getCurrentSceneId() === s.id ? ' selected="true"' : ''}>${s.text || `[${s.id}]`}</option>`
-  );
+  const scenes = getGeneratedAppData().scenes as { [id: string]: SceneAsset };
+  const generatedSceneIds = Object.keys(scenes);
+  const currentActiveSceneId = getCurrentSceneId();
+  const sceneOptions = generatedSceneIds
+    .map((id) => {
+      const isSelected = currentActiveSceneId === id;
+      // Use the config name attribute if declared, otherwise fall back to raw key string ID
+      const label = scenes[id as keyof typeof scenes]?.name || `[${id}]`;
+      return `<option value="${id}"${isSelected ? ' selected="true"' : ''}>${label}</option>`;
+    })
+    .join('\n');
+  //   const sceneSelectCMP = CMP({
+  //     id: sceneSelectorId,
+  //     idAttr: true,
+  //     html: () => `<select title="Change scene">
+  //   ${sceneOptions}
+  // </select>`,
+  //     onInput: (e) => {
+  //       const target = e.target as HTMLSelectElement;
+  //       const value = target.options[target.options.selectedIndex].value;
+  //       const nextScene = debuggerSceneListing.find((s) => s.id === value);
+  //       if (!isCurrentlyLoading() && nextScene) {
+  //         loadScene({
+  //           sceneId: value,
+  //           nextSceneFn: nextScene.fn,
+  //           loaderId: DEBUGGER_SCENE_LOADER_ID,
+  //         });
+  //         return;
+  //       }
+  //       if (!isCurrentlyLoading) {
+  //         lerror(
+  //           `Could not find scene with id '${value}' in scenes on screen switcher tools dropdown.`
+  //         );
+  //       }
+  //     },
+  //   });
+  //   const selectSceneDropDown = CMP({
+  //     class: selectDropdownClasses,
+  //     html: () => `<label for="${sceneSelectorId}">
+  //   ${getSvgIcon('easel', 'small')}
+  //   ${sceneSelectCMP}
+  // </label>`,
+  //   });
   const sceneSelectCMP = CMP({
     id: sceneSelectorId,
     idAttr: true,
     html: () => `<select title="Change scene">
-  ${sceneOptions}
-</select>`,
+      ${sceneOptions}
+    </select>`,
     onInput: (e) => {
       const target = e.target as HTMLSelectElement;
       const value = target.options[target.options.selectedIndex].value;
-      const nextScene = debuggerSceneListing.find((s) => s.id === value);
-      if (!isCurrentlyLoading() && nextScene) {
-        loadScene({
-          sceneId: value,
-          nextSceneFn: nextScene.fn,
-          loaderId: DEBUGGER_SCENE_LOADER_ID,
-        });
-        return;
-      }
-      if (!isCurrentlyLoading) {
-        lerror(
-          `Could not find scene with id '${value}' in scenes on screen switcher tools dropdown.`
-        );
-      }
+
+      if (isCurrentlyLoading()) return; // Protection block
+
+      // Check if this option requires a unique execution function payload
+      const hardcodedSceneOverride = debuggerSceneListing.find((s) => s.id === value);
+
+      loadScene({
+        sceneId: value,
+        // If a classic panel matches, pass it. Otherwise, pass undefined so it reads sceneFileObjects natively
+        ...(hardcodedSceneOverride ? { nextSceneFn: hardcodedSceneOverride.fn } : {}),
+        loaderId: DEBUGGER_SCENE_LOADER_ID,
+      });
     },
   });
+
   const selectSceneDropDown = CMP({
     class: selectDropdownClasses,
     html: () => `<label for="${sceneSelectorId}">
-  ${getSvgIcon('easel', 'small')}
-  ${sceneSelectCMP}
-</label>`,
+      ${getSvgIcon('easel', 'small')}
+      ${sceneSelectCMP}
+    </label>`,
   });
 
   // Light helpers toggle
