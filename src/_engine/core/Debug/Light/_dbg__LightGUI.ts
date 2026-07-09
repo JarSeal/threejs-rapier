@@ -549,7 +549,9 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 };
 
 /** Creates the Tab in the Debug Drawer */
+let lightDebuggerGUIInitiated = false;
 export const initLightDebuggerGUI = () => {
+  if (lightDebuggerGUIInitiated) return;
   const icon = getSvgIcon('lightBulb');
   createDebuggerTab({
     id: 'lightsControls',
@@ -571,6 +573,7 @@ export const initLightDebuggerGUI = () => {
       return container;
     },
   });
+  lightDebuggerGUIInitiated = true;
 };
 
 registerDraggableWindowContentFn(EDIT_LIGHT_WIN_ID, createEditLightContent);

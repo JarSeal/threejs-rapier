@@ -42,7 +42,6 @@ export const registerCameraManager = () => {
       const sceneId = getCurrentSceneId();
       if (sceneId) {
         syncCameraHelpersFromLS(sceneId, getECSWorld());
-        useDebug(cameraDebugGUI)?.initCameraDebuggerGUI();
       }
     });
   }
@@ -330,6 +329,8 @@ export const initDebugCamera = async (world: ECSWorld) => {
 
   if (IS_DEBUG_ENV) {
     registerOnAllSceneEnterings('debugCamEnterSceneLogic', () => {
+      useDebug(cameraDebugGUI)?.initCameraDebuggerGUI();
+
       const newSceneId = getCurrentSceneId();
       const debugCamModule = useDebug(debugCamera);
       if (!debugCamModule || !newSceneId) return;

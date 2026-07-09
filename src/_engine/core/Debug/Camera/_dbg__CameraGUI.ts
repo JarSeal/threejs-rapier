@@ -152,7 +152,9 @@ const createCameraList = (world: ECSWorld) => {
   return html + '</ul>';
 };
 
+let cameraDebuggerGUIInitiated = false;
 export const initCameraDebuggerGUI = () => {
+  if (cameraDebuggerGUIInitiated) return;
   const icon = getSvgIcon('camera');
   createDebuggerTab({
     id: 'camerasControls',
@@ -169,6 +171,7 @@ export const initCameraDebuggerGUI = () => {
       return container;
     },
   });
+  cameraDebuggerGUIInitiated = true;
 };
 
 export const updateCamerasDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
