@@ -20,7 +20,6 @@ import { getCurrentSceneId, getGeneratedAppData } from '../core/Scene';
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { getSvgIcon } from '../core/UI/icons/SvgIcon';
 import { CMP, TCMP } from '../utils/CMP';
-import { lerror } from '../utils/Logger';
 import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
 import { debuggerSceneListing } from './debugScenes/debuggerSceneListing';
 import styles from './OnScreenTools.module.scss';

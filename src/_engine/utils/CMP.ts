@@ -599,8 +599,6 @@ const removeCmp = (cmp: TCMP, doNotRemoveElem?: boolean) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (cmp as any).props = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (cmp as any).elem = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (cmp as any).children = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (cmp as any).parent = null;
