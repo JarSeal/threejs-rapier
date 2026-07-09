@@ -231,13 +231,9 @@ const switchTools = () => {
 
       if (isCurrentlyLoading()) return; // Protection block
 
-      // Check if this option requires a unique execution function payload
-      const hardcodedSceneOverride = debuggerSceneListing.find((s) => s.id === value);
-
       loadScene({
         sceneId: value,
         // If a classic panel matches, pass it. Otherwise, pass undefined so it reads sceneFileObjects natively
-        ...(hardcodedSceneOverride ? { nextSceneFn: hardcodedSceneOverride.fn } : {}),
         loaderId: DEBUGGER_SCENE_LOADER_ID,
       });
     },

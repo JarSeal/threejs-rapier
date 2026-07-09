@@ -10,12 +10,7 @@ import {
   deletePhysicsWorld,
   setCurrentScenePhysicsObjects,
 } from './PhysicsRapier';
-import { isDebugEnvironment } from './Config';
-import {
-  addSceneToDebugtools,
-  getDebugToolsState,
-  removeScenesFromSceneListing,
-} from '../debug/DebugTools';
+import { addSceneToDebugtools, getDebugToolsState } from '../debug/DebugTools';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
 import { LightProps } from './_LightManager';
@@ -229,8 +224,6 @@ export const deleteScene = (
       });
     }
   });
-
-  if (isDebugEnvironment()) removeScenesFromSceneListing(id);
 
   // Delete loopers
   deleteAllSceneLoopers(id);

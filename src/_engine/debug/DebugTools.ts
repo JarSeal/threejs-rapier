@@ -3,9 +3,8 @@ import { BladeController, View } from '@tweakpane/core';
 import { getRenderer, getRendererOptions } from '../core/Renderer';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
-import { getCurrentSceneId, getRootScene, getScene } from '../core/Scene';
-import { getConfig, getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../core/Config';
-import { debuggerSceneListing, type DebugScene } from './debugScenes/debuggerSceneListing';
+import { getCurrentSceneId, getGeneratedAppData, getRootScene, getScene } from '../core/Scene';
+import { getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../core/Config';
 import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { lerror, llog } from '../utils/Logger';
 import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
@@ -22,8 +21,9 @@ import {
 } from '../core/legacy_Helpers';
 import { updateOnScreenTools } from './OnScreenTools';
 import { addToast } from '../core/UI/Toaster';
+import { type SceneAsset } from '../schemas/sceneSchema';
 
-const LS_KEY = 'debugTools';
+const LS_KEY = 'AEK_debugTools';
 export const DEBUG_CAMERA_ID = '_debugCamera';
 const DEFAULT_DEBUG_CAM_PARAMS: DebugCameraState = {
   enabled: false,
@@ -128,10 +128,6 @@ let debugToolsState: DebugToolsState = {
 export const initDebugTools = () => {
   if (!isDebugEnvironment()) return;
   createDebugToolsDebugGUI();
-  const debuggerSceneListingConfig = getConfig().debugScenes || [];
-  if (debuggerSceneListingConfig?.length) {
-    addScenesToSceneListing(debuggerSceneListingConfig);
-  }
 };
 
 // Debug GUI for sky box
@@ -183,71 +179,14 @@ export const getDebugToolsState = (loadFromLS?: boolean) => {
   return debugToolsState;
 };
 
-/**
- * Adds a scene or scenes to the debugToolsState scenes listing
- * @param scenes (SceneListing | SceneListing[]) either an object or an array of objects ({@link SceneListing})
- */
-export const addScenesToSceneListing = (scenes: DebugScene | DebugScene[]) => {
-  if (Array.isArray(scenes)) {
-    for (let i = 0; i < scenes.length; i++) {
-      const foundScene = debuggerSceneListing.find((scene) => scene.id === scenes[i].id);
-      if (!foundScene) debuggerSceneListing.push(scenes[i]);
-    }
-    reloadSceneListingBlade();
-    return;
-  }
-  const foundScene = debuggerSceneListing.find((scene) => scene.id === scenes.id);
-  if (!foundScene) debuggerSceneListing.push(scenes);
-  reloadSceneListingBlade();
-};
-
-/**
- * Removes a scene or scenes from the scene listing
- * @param sceneIds (string | string[]) a single or multiple sceneIds that need to be remove from scene listing
- */
-export const removeScenesFromSceneListing = (sceneIds: string | string[]) => {
-  if (Array.isArray(sceneIds)) {
-    const indexes: number[] = [];
-    for (let i = 0; i < debuggerSceneListing.length; i++) {
-      if (sceneIds.includes(debuggerSceneListing[i].id)) {
-        indexes.push(i);
-      }
-    }
-    for (let i = 0; i < indexes.length; i++) {
-      debuggerSceneListing.splice(indexes[i], 1);
-    }
-    reloadSceneListingBlade();
-    return;
-  }
-  let index: number | null = null;
-  for (let i = 0; i < debuggerSceneListing.length; i++) {
-    if (sceneIds.includes(debuggerSceneListing[i].id)) {
-      index = i;
-    }
-  }
-  if (index !== null) debuggerSceneListing.splice(index, 1);
-  reloadSceneListingBlade();
-};
-
-const getSceneStarterDropDownOptions = () => [
-  { value: '', text: '---NOT-SET---' },
-  ...debuggerSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
-];
-
-// For reloading the scenes listing in debugging
-const reloadSceneListingBlade = () => {
-  if (scenesDropDown) {
-    scenesDropDown.importState({
-      ...scenesDropDown.exportState(),
-      options: debuggerSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
-    });
-  }
-  if (sceneStarterDropDown) {
-    sceneStarterDropDown.importState({
-      ...sceneStarterDropDown.exportState(),
-      options: getSceneStarterDropDownOptions(),
-    });
-  }
+const getSceneStarterDropDownOptions = () => {
+  const scenesObj = getGeneratedAppData().scenes as { [id: string]: SceneAsset };
+  const sceneIds = Object.keys(scenesObj);
+  const scenes = sceneIds.map((id) => ({ id, name: scenesObj[id].name }));
+  return [
+    { value: '', text: '---NOT-SET---' },
+    ...scenes.map((s) => ({ value: s.id, text: s.name || `[${s.id}]` })),
+  ];
 };
 
 /**
@@ -282,6 +221,10 @@ export const buildDebugToolsGUI = () => {
     blades[i].dispose();
   }
 
+  const scenesObj = getGeneratedAppData().scenes as { [id: string]: SceneAsset };
+  const sceneIds = Object.keys(scenesObj);
+  const scenes = sceneIds.map((id) => ({ id, name: scenesObj[id].name }));
+
   // Scene listing
   const scenesFolder = debugGUI
     .addFolder({
@@ -295,15 +238,14 @@ export const buildDebugToolsGUI = () => {
   scenesDropDown = scenesFolder.addBlade({
     view: 'list',
     label: 'Change scene',
-    options: debuggerSceneListing.map((s) => ({ value: s.id, text: s.text || s.id })),
+    options: scenes.map((s) => ({ value: s.id, text: s.name || `[${s.id}]` })),
     value: getCurrentSceneId(),
   }) as ListBladeApi<BladeController<View>>;
   scenesDropDown.on('change', (e) => {
     const value = String(e.value);
     if (value === getCurrentSceneId()) return;
-    const nextScene = debuggerSceneListing.find((s) => s.id === value);
-    if (!isCurrentlyLoading() && nextScene) {
-      loadScene({ sceneId: value, nextSceneFn: nextScene.fn, loaderId: DEBUGGER_SCENE_LOADER_ID });
+    if (!isCurrentlyLoading()) {
+      loadScene({ sceneId: value, loaderId: DEBUGGER_SCENE_LOADER_ID });
       return;
     }
     if (!isCurrentlyLoading) {

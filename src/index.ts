@@ -67,18 +67,6 @@ InitEngine(async () => {
     },
   });
 
-  // if (isDebugEnvironment()) {
-  //   addScenesToSceneListing([
-  //     {
-  //       id: SCENE_THIRD_PERSON_GYM_META.id,
-  //       text: SCENE_THIRD_PERSON_GYM_META.text,
-  //       fn: sceneThirdPersonGym,
-  //     },
-  //     { id: SCENE01_ID, text: SCENE01_ID, fn: scene01 },
-  //     { id: SCENE_TEST_ECS_ID, text: 'Test ECS', fn: sceneTestECS },
-  //   ]);
-  // }
-
   // Load scene
   await loadScene({ sceneId: 'sceneTestECS' });
 });
