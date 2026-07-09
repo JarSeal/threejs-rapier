@@ -59,7 +59,9 @@ InitEngine(async () => {
     updateLoaderStatusFn: async (loader, params) => {
       if (!params) return true;
       if ('loadedCount' in params && 'totalCount' in params) {
-        loader.loaderContainer?.updateText(`Loading, ${params.loadedCount} / ${params.totalCount}`);
+        loader.loaderContainer?.update({
+          text: `Loading, ${params.loadedCount} / ${params.totalCount}`,
+        });
         if (params.loaded === params.totalCount) return true;
       }
     },

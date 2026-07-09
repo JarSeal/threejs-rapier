@@ -218,38 +218,7 @@ const switchTools = () => {
       return `<option value="${id}"${isSelected ? ' selected="true"' : ''}>${label}</option>`;
     })
     .join('\n');
-  //   const sceneSelectCMP = CMP({
-  //     id: sceneSelectorId,
-  //     idAttr: true,
-  //     html: () => `<select title="Change scene">
-  //   ${sceneOptions}
-  // </select>`,
-  //     onInput: (e) => {
-  //       const target = e.target as HTMLSelectElement;
-  //       const value = target.options[target.options.selectedIndex].value;
-  //       const nextScene = debuggerSceneListing.find((s) => s.id === value);
-  //       if (!isCurrentlyLoading() && nextScene) {
-  //         loadScene({
-  //           sceneId: value,
-  //           nextSceneFn: nextScene.fn,
-  //           loaderId: DEBUGGER_SCENE_LOADER_ID,
-  //         });
-  //         return;
-  //       }
-  //       if (!isCurrentlyLoading) {
-  //         lerror(
-  //           `Could not find scene with id '${value}' in scenes on screen switcher tools dropdown.`
-  //         );
-  //       }
-  //     },
-  //   });
-  //   const selectSceneDropDown = CMP({
-  //     class: selectDropdownClasses,
-  //     html: () => `<label for="${sceneSelectorId}">
-  //   ${getSvgIcon('easel', 'small')}
-  //   ${sceneSelectCMP}
-  // </label>`,
-  //   });
+
   const sceneSelectCMP = CMP({
     id: sceneSelectorId,
     idAttr: true,
