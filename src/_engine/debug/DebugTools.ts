@@ -274,7 +274,7 @@ export const buildDebugToolsGUI = () => {
   });
   const useDebuggerSceneLoader = scenesFolder
     .addBinding(debugToolsState.scenesListing, 'useDebuggerSceneLoader', {
-      label: 'Use debugger scene loader',
+      label: 'Use debugger scene loader for start scene',
       disabled: !debugToolsState.scenesListing.useDebugStartScene,
     })
     .on('change', () => {

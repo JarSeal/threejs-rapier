@@ -62,6 +62,11 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     await initDebugCamera(ecsWorld);
 
     await InitRapierPhysics();
+
+    if (isDebugEnvironment()) {
+      createDebuggerSceneLoader();
+    }
+
     await appStartFn();
 
     // Start engine/loop if root scene has children
@@ -73,7 +78,6 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       createRendererDebugGUI();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
-      createDebuggerSceneLoader();
 
       // Make the debug toaster appear above the stats cmp
       const statsCmp = getStatsCmp();
