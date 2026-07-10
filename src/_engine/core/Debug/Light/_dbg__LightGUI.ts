@@ -20,6 +20,7 @@ import { getLightCharacteristics } from '../../../utils/helpers';
 import { BladeController, View } from '@tweakpane/core';
 import { FOUR_PX_TO_8K_LIST } from '../../../utils/constants';
 import { getRendererOptions } from '../../Renderer';
+import { updateOnScreenTools } from '../../../debug/OnScreenTools';
 
 export interface LightEntityDebugState {
   enabled: boolean;
@@ -81,7 +82,7 @@ const reconcileDebugVisuals = (
 
   const isCurrentActiveCam = entityId === getActiveCameraId();
 
-  // 3. Get user preferences
+  // Get user preferences
   const { helper: helperPref, symbol: symbolPref } = getLightDebugVisibilityPref(
     entityId,
     world,
@@ -158,11 +159,7 @@ export const setLightDebugPreference = async (
   data[sceneId].lights[appId][key] = value;
   lsSetItem('AEK_debugLights', data);
 
-  if (key === 'symbolVisible') {
-    reconcileDebugVisuals(entityId, world);
-  } else {
-    reconcileDebugVisuals(entityId, world);
-  }
+  reconcileDebugVisuals(entityId, world);
 };
 
 const getLightTypeShorthand = (world: ECSWorld, entityId: number) => {
@@ -199,12 +196,12 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
   const uiState = loadLightDebugData(appId);
 
-  // Header Info
+  // Footer Info
   container.add({
     class: ['winNotRightPaddedContent', 'winFlexContent'],
     html: () => `<div>
-      <div><span class="winSmallLabel">ID:</span> ${entityId}</div>
-      <div><span class="winSmallLabel">AppID:</span> ${appId || 'None'}</div>
+      <div><span class="winSmallLabel">Ent. ID:</span> ${entityId}</div>
+      <div><span class="winSmallLabel">App ID:</span> ${appId || 'None'}</div>
       <div><span class="winSmallLabel">Type:</span> ${light.type}</div>
     </div>`,
   });
@@ -236,6 +233,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       const show = e.value;
       saveLightToLS(entityId, 'helperVisible', show);
       setLightDebugPreference(entityId, world, 'helperVisible', show);
+      updateOnScreenTools('SWITCH');
     });
   }
 
@@ -246,6 +244,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     pane.addBinding(symbolComp, 'userVisible', { label: 'Show Symbol' }).on('change', (e) => {
       const show = e.value;
       saveLightToLS(entityId, 'symbolVisible', show);
+      updateOnScreenTools('SWITCH');
     });
   }
 

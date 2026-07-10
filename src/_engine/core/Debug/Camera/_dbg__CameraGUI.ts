@@ -15,6 +15,7 @@ import { getCurrentSceneId } from '../../Scene';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
 import { getActiveCameraId, CameraDebugLSData, DebugCamLSProps } from '../../_CameraManager';
 import { DEFAULT_DEBUG_CAM_PROPS } from './_dbg__DebugCamera';
+import { updateOnScreenTools } from '../../../debug/OnScreenTools';
 
 export interface CamEntityDebugState {
   helperVisible?: boolean;
@@ -63,7 +64,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   const appId = world.getComponent(entityId, ComponentType.APP_ID)?.id;
   const debugData = world.getComponent(entityId, ComponentType.DEBUG_DATA);
 
-  if (!objComp || !settings) return CMP();
+  if (!objComp || !(objComp.value instanceof THREE.Camera) || !settings) return CMP();
 
   const camera = objComp.value as THREE.PerspectiveCamera | THREE.OrthographicCamera;
   const container = CMP({ onRemoveCmp: () => pane.dispose() });
@@ -71,13 +72,52 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
 
   const uiState = loadCameraDebugData(appId);
 
-  // Header
+  // Helper Toggle (Direct binding to the Three.js Helper object)
+  const helperComp = world.getComponent(entityId, ComponentType.DEBUG_CAMERA_HELPER);
+  if (helperComp) {
+    const helperProxy = { visible: helperComp.value.visible };
+    pane.addBinding(helperProxy, 'visible', { label: 'Show Helper' }).on('change', (e) => {
+      const show = e.value;
+      helperComp.value.visible = show;
+      if (show) {
+        const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+        if (objComp) objComp.value.updateMatrixWorld(true);
+        helperComp.value.update();
+      }
+      saveCameraToLS(entityId, 'helperVisible', show);
+      updateOnScreenTools('SWITCH');
+    });
+  }
+
+  // Symbol Toggle (Binding to the ECS userVisible flag)
+  // const symbolComp = world.getComponent(entityId, ComponentType.DEBUG_SYMBOL);
+  // if (symbolComp && lightChars.hasSymbol) {
+  //   symbolComp.value.visible = prefs.symbol;
+  //   pane.addBinding(symbolComp, 'userVisible', { label: 'Show Symbol' }).on('change', (e) => {
+  //     const show = e.value;
+  //     saveLightToLS(entityId, 'symbolVisible', show);
+  //   });
+  // }
+
+  // Footer Info
   container.add({
     class: ['winNotRightPaddedContent', 'winFlexContent'],
     html: () => `<div>
-      <div><span class="winSmallLabel">AppID:</span> ${d.id}</div>
+      <div><span class="winSmallLabel">Ent. ID:</span> ${entityId}</div>
+      <div><span class="winSmallLabel">App ID:</span> ${appId || 'None'}</div>
       <div><span class="winSmallLabel">Type:</span> ${settings.type}</div>
+    </div>`,
+  });
+  container.add({
+    class: ['winNotRightPaddedContent', 'winFlexContent'],
+    html: () => `<div>
       <div><span class="winSmallLabel">Name:</span> ${debugData?.name || ''}</div>
+    </div>`,
+  });
+  container.add({
+    class: ['winNotRightPaddedContent', 'winFlexContent'],
+    html: () => `<div>
+      <div><span class="winSmallLabel">Description:</span> ${debugData?.description || ''}</div>
     </div>`,
   });
 
@@ -139,6 +179,7 @@ const createCameraList = (world: ECSWorld) => {
           content: createEditCameraContent,
           data: { id: appId, winId: EDIT_CAMERA_WIN_ID },
           closeOnSceneChange: true,
+          saveToLS: true,
           onClose: () => updateDebuggerCamerasListSelectedClass(null),
         });
       },

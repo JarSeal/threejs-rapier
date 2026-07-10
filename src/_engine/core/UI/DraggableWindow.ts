@@ -113,7 +113,7 @@ const listeners: {
   onMouseMove: null,
   onMouseUp: null,
 };
-const LS_KEY = 'popupWindows';
+const LS_KEY = 'AEK_popupWindows';
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 320;
 const DEFAULT_MIN_WIDTH = 100;

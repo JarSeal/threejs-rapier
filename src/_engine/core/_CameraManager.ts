@@ -14,6 +14,7 @@ import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import { lerror } from '../utils/Logger';
+import { updateDraggableWindow } from './UI/DraggableWindow';
 
 // --- STATE ---
 let activeCameraEntityId: number | null = null;
@@ -437,7 +438,10 @@ export const toggleAllCameraHelpers = (show?: boolean) => {
     }
   }
 
-  lsSetItem('AEK_debugCams', currentData);
+  lsSetItem(LS_KEY, currentData);
+
+  const debugModule = useDebug(cameraDebugGUI);
+  if (debugModule) updateDraggableWindow(debugModule.EDIT_CAMERA_WIN_ID);
 };
 
 export const syncCameraHelpersFromLS = (sceneId: string, world: ECSWorld) => {

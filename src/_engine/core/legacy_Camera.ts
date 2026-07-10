@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { getWindowSize } from '../utils/Window';
 import { llog, lwarn } from '../utils/Logger';
-import { DEBUG_CAMERA_ID, handleDebugCameraSwitch } from '../debug/DebugTools';
+import { DEBUG_CAMERA_ID, handleDebugCameraSwitch } from '../debug/_DebugToolsManager';
 import { CMP, TCMP } from '../utils/CMP';
 import { Pane } from 'tweakpane';
 import {

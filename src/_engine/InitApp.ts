@@ -26,6 +26,7 @@ import { initECSWorld } from './core/ECS';
 import { initDebugCamera, registerCameraManager } from './core/_CameraManager';
 import { registerLightManager } from './core/_LightManager';
 import { load3DSymbols } from './debug/3DSymbols';
+import { registerDebugToolsModule } from './debug/_DebugToolsManager';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -65,6 +66,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     if (isDebugEnvironment()) {
       createDebuggerSceneLoader();
+      await registerDebugToolsModule();
     }
 
     await appStartFn();

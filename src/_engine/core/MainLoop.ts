@@ -15,7 +15,7 @@ import { lerror, lwarn } from '../utils/Logger';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } from './Config';
-import { initDebugTools } from '../debug/DebugTools';
+import { initDebugTools } from '../debug/_DebugToolsManager';
 import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './PhysicsRapier';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { InitOnScreenTools, updateOnScreenTools } from '../debug/OnScreenTools';

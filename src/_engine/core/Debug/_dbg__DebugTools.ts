@@ -1,16 +1,16 @@
 import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
-import { getRenderer, getRendererOptions } from '../core/Renderer';
-import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
-import { createNewDebuggerPane, createDebuggerTab } from './DebuggerGUI';
-import { getCurrentSceneId, getGeneratedAppData, getRootScene, getScene } from '../core/Scene';
-import { getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../core/Config';
-import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
-import { lerror, llog } from '../utils/Logger';
-import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
-import { openDraggableWindow } from '../core/UI/DraggableWindow';
-import { openDialog } from '../core/UI/DialogWindow';
-import { getSvgIcon } from '../core/UI/icons/SvgIcon';
+import { getRenderer, getRendererOptions } from '../../core/Renderer';
+import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { createNewDebuggerPane, createDebuggerTab } from '../../debug/DebuggerGUI';
+import { getCurrentSceneId, getGeneratedAppData, getRootScene, getScene } from '../../core/Scene';
+import { getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../../core/Config';
+import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
+import { lerror, llog } from '../../utils/Logger';
+import { DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerSceneLoader';
+import { openDraggableWindow } from '../../core/UI/DraggableWindow';
+import { openDialog } from '../../core/UI/DialogWindow';
+import { getSvgIcon } from '../../core/UI/icons/SvgIcon';
 import {
   createAxesHelper,
   createGridHelper,
@@ -18,10 +18,11 @@ import {
   toggleAxesHelperVisibility,
   toggleGridHelperVisibility,
   togglePolarGridHelperVisibility,
-} from '../core/legacy_Helpers';
-import { updateOnScreenTools } from './OnScreenTools';
-import { addToast } from '../core/UI/Toaster';
-import { type SceneAsset } from '../schemas/sceneSchema';
+} from '../../core/legacy_Helpers';
+import { updateOnScreenTools } from '../../debug/OnScreenTools';
+import { addToast } from '../../core/UI/Toaster';
+import { type SceneAsset } from '../../schemas/sceneSchema';
+import { DebugCameraState, DebugToolsState } from '../../debug/_DebugToolsManager';
 
 const LS_KEY = 'AEK_debugTools';
 export const DEBUG_CAMERA_ID = '_debugCamera';
@@ -38,52 +39,6 @@ const getDefaultDebugCamParams = () => ({ ...DEFAULT_DEBUG_CAM_PARAMS }) as Debu
 let scenesDropDown: ListBladeApi<BladeController<View>>;
 let sceneStarterDropDown: ListBladeApi<BladeController<View>>;
 let toolsDebugGUI: Pane | null = null;
-
-type DebugCameraState = {
-  enabled: boolean;
-  latestAppCameraId: null | string;
-  fov: number;
-  near: number;
-  far: number;
-  position: number[];
-  target: number[];
-};
-
-type DebugToolsState = {
-  env: {
-    envBallFolderExpanded: boolean;
-    envBallVisible: boolean;
-    separateBallValues: boolean;
-    ballRoughness: number;
-    ballDefaultRoughness: number;
-  };
-  scenesListing: {
-    scenesFolderExpanded: boolean;
-    useDebugStartScene: boolean;
-    debugStartScene: string;
-    useDebuggerSceneLoader: boolean;
-  };
-  loggingActions: {
-    loggingFolderExpanded: boolean;
-  };
-  debugCamera: { [sceneId: string]: DebugCameraState };
-  debugCameraFolderExpanded: boolean;
-  helpers: {
-    helpersFolderExpanded: boolean;
-    showAxesHelper: boolean;
-    axesHelperSize: number;
-    showGridHelper: boolean;
-    gridSize: number;
-    gridDivisionsSize: number;
-    gridColorCenterLine: number;
-    gridColorGrid: number;
-    showPolarGridHelper: boolean;
-    polarGridRadius: number;
-    polarGridSectors: number;
-    polarGridRings: number;
-    polarGridDivisions: number;
-  };
-};
 
 let firstDebugToolsStateLoaded = false;
 let debugToolsState: DebugToolsState = {
@@ -125,7 +80,7 @@ let debugToolsState: DebugToolsState = {
 /**
  * Initializes the debug tools (only for debug environments).
  */
-export const initDebugTools = () => {
+export const _initDebugTools = () => {
   if (!isDebugEnvironment()) return;
   createDebugToolsDebugGUI();
 };
@@ -171,7 +126,7 @@ const createDebugToolsDebugGUI = () => {
  * @param loadFromLS (boolean) optional flag to get the debugToolsState from the LS
  * @returns debugToolsState {@link debugToolsState}
  */
-export const getDebugToolsState = (loadFromLS?: boolean) => {
+export const _getDebugToolsState = (loadFromLS?: boolean) => {
   if (!firstDebugToolsStateLoaded && loadFromLS) {
     const savedDebugToolsState = lsGetItem(LS_KEY, debugToolsState);
     debugToolsState = { ...debugToolsState, ...savedDebugToolsState };
@@ -193,7 +148,7 @@ const getSceneStarterDropDownOptions = () => {
  * Add scene to debug tools states
  * @param sceneId (string)
  */
-export const addSceneToDebugtools = (sceneId: string) => {
+export const _addSceneToDebugtools = (sceneId: string) => {
   if (!isDebugEnvironment()) return;
   const foundScene = getScene(sceneId);
   if (!foundScene || debugToolsState.debugCamera[sceneId]) return;
@@ -201,7 +156,10 @@ export const addSceneToDebugtools = (sceneId: string) => {
   debugToolsState.debugCamera[sceneId] = getDefaultDebugCamParams();
 };
 
-export const handleDebugCameraSwitch = () => {
+/**
+ * Handles debug camera switching
+ */
+export const _handleDebugCameraSwitch = () => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) return;
   // @CHORE: set the new camera here
@@ -211,7 +169,7 @@ export const handleDebugCameraSwitch = () => {
   }, 0);
 };
 
-export const buildDebugToolsGUI = () => {
+const buildDebugToolsGUI = () => {
   const debugGUI = toolsDebugGUI;
   const currentSceneId = getCurrentSceneId();
   if (!debugGUI || !currentSceneId) return;

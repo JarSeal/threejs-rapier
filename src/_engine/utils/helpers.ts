@@ -469,6 +469,28 @@ export function loadDebugModule<T>(
 }
 
 /**
+ * Loads a lazy debug module.
+ * TypeScript infers the module shape 'T' directly from the importer.
+ */
+export async function loadDebugModuleAsync<T>(
+  importer: () => Promise<T>,
+  debugId?: string
+): Promise<DebugModuleRef<T> | null> {
+  if (!IS_DEBUG_ENV) return null;
+  const ref: DebugModuleRef<T> = { current: null };
+  return importer()
+    .then((module) => {
+      ref.current = module;
+      return ref;
+    })
+    .catch((err) => {
+      const msg = `Debug module async loading failed${debugId ? `: ${debugId}` : ''}.`;
+      lerror(msg);
+      throw new Error(`${msg} ${err.message}`);
+    });
+}
+
+/**
  * Type Guard: Checks if we are in Debug mode AND the module is loaded.
  *
  * Usage: if (isDebugReady(debugHelpers)) {

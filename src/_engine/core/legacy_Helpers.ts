@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { isDebugEnvironment } from './Config';
 import { getDebugMeshIcon } from './UI/icons/DebugMeshIcons';
 import { getCurrentSceneId, getRootScene } from './Scene';
-import { DEBUG_CAMERA_ID, getDebugToolsState } from '../debug/DebugTools';
+import { DEBUG_CAMERA_ID, getDebugToolsState } from '../debug/_DebugToolsManager';
 import { getCamera, saveCameraToLS, updateCamerasDebuggerGUI } from './legacy_Camera';
 import { existsOrThrow } from '../utils/assert';
 import { cleanUpRayHelpers } from './Raycast';
