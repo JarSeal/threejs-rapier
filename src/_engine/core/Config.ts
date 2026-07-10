@@ -1,5 +1,4 @@
 import configFile from '../../CONFIG';
-import { type DebugScene } from '../debug/debugScenes/debuggerSceneListing';
 import { TCMP } from '../utils/CMP';
 import {
   PhysicsBackgroundBehavior,
@@ -19,7 +18,6 @@ export type AppConfig = {
     sceneId?: string;
     fn: (e: KeyboardEvent, pressedTime: number) => void;
   }[];
-  debugScenes?: DebugScene[];
   physics?: {
     enabled?: boolean;
     physicsEngine?: PhysicsEngine;

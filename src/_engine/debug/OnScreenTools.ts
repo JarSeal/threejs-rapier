@@ -21,7 +21,6 @@ import { isCurrentlyLoading, loadScene } from '../core/SceneLoader';
 import { getSvgIcon } from '../core/UI/icons/SvgIcon';
 import { CMP, TCMP } from '../utils/CMP';
 import { DEBUGGER_SCENE_LOADER_ID } from './DebuggerSceneLoader';
-import { debuggerSceneListing } from './debugScenes/debuggerSceneListing';
 import styles from './OnScreenTools.module.scss';
 import { getECSWorld } from '../core/ECS';
 import { type SceneAsset } from '../schemas/sceneSchema';
