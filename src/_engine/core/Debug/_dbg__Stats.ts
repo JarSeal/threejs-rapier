@@ -1,0 +1,241 @@
+import Stats from 'stats-gl';
+import { Pane } from 'tweakpane';
+import { TimestampQuery, type Renderer } from 'three/webgpu';
+import { getRenderer } from '../../core/Renderer';
+import { createNewDebuggerPane, createDebuggerTab } from '../../debug/DebuggerGUI';
+import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { getHUDRootCMP } from '../../core/HUD';
+import { getSvgIcon } from '../../core/UI/icons/SvgIcon';
+import { CMP, type TCMP } from '../../utils/CMP';
+import { defaultStatsOptions, type StatsOptions } from '../../debug/Stats';
+
+type StatsPanel = {
+  update: (value: number, maxValue: number, decimals: number) => void;
+  updateGraph: (value: number, maxValue: number) => void;
+};
+
+let stats: Stats | null = null;
+let statsCmp: TCMP | null = null;
+let physicsPanel: StatsPanel | null = null;
+let tFpsPanel: StatsPanel | null = null;
+let savedConfig = {};
+const statsDebugGUIs: Pane[] = [];
+const LS_KEY = 'AEK_debugStats';
+
+let statsConfig: StatsOptions = {
+  performanceFolderExpanded: false,
+  trackGPU: false,
+  trackCPT: false,
+  trackHz: false,
+  logsPerSecond: undefined,
+  graphsPerSecond: undefined,
+  samplesLog: undefined,
+  samplesGraph: undefined,
+  precision: undefined,
+  outlookFolderExpanded: false,
+  minimal: true,
+  horizontal: false,
+  mode: undefined,
+  enabled: true,
+};
+
+/**
+ * Initializes statistics for debugging
+ * @param config ({@link StatsOptions}) optional configurations for stats
+ * @returns ({@link Stats} | null)
+ */
+export const _initStats = (config?: StatsOptions) => {
+  savedConfig = { ...defaultStatsOptions, ...lsGetItem(LS_KEY, config || {}) };
+  if ('enabled' in savedConfig && savedConfig.enabled) {
+    if (stats) stats.update();
+    stats = new Stats(savedConfig as Omit<StatsOptions, 'enabled'>);
+    physicsPanel = stats.addPanel(new Stats.Panel('PHY', '#fff', '#212121')) as StatsPanel;
+    tFpsPanel = stats.addPanel(new Stats.Panel('TFPS', '#fff', '#212121')) as StatsPanel;
+    statsCmp = CMP({
+      id: '_statsContainer',
+      class: ['statsContainer', ...(!(savedConfig as StatsOptions).horizontal ? ['vertical'] : [])],
+    });
+    statsCmp.elem.appendChild(stats.dom);
+    getHUDRootCMP().add(statsCmp);
+    stats.init(getRenderer());
+  }
+  statsConfig = savedConfig;
+  setDebuggerUI();
+  return stats;
+};
+
+export const _updateRestOfStats = (renderer: Renderer) => {
+  logicEndTime = performance.now();
+  logicDuration = logicEndTime - logicStartTime;
+  if (statsConfig.trackCPT) renderer.resolveTimestampsAsync(TimestampQuery.COMPUTE);
+  if (statsConfig.trackGPU) renderer.resolveTimestampsAsync(TimestampQuery.RENDER);
+  updateTFPSPanel(logicDuration);
+};
+
+let prevCurrentTime = 0;
+let prevCurrentGraphsTime = 0;
+let maxTime = 0;
+let maxTimeCheckCount = 0;
+let maxTimeGraphs = 0;
+let maxTimeGraphsCheckCount = 0;
+export const _updatePhysicsPanel = (value: number) => {
+  const currentTime = performance.now();
+  maxTime = Math.max(maxTime, value);
+  maxTimeGraphs = Math.max(maxTimeGraphs, value);
+  if (currentTime >= prevCurrentTime + 1000 / (stats?.logsPerSecond || 4)) {
+    physicsPanel?.update(value, maxTime, 1);
+    prevCurrentTime = currentTime;
+    maxTimeCheckCount++;
+    if (maxTimeCheckCount > 2 * (stats?.logsPerSecond || 4)) {
+      maxTime = 0;
+      maxTimeCheckCount = 0;
+    }
+  }
+  if (currentTime >= prevCurrentGraphsTime + 1000 / (stats?.graphsPerSecond || 30)) {
+    physicsPanel?.updateGraph(value, maxTimeGraphs * 1.5);
+    prevCurrentGraphsTime = currentTime;
+    maxTimeGraphsCheckCount++;
+    if (maxTimeGraphsCheckCount > 4 * (stats?.graphsPerSecond || 4)) {
+      maxTimeGraphs = 0;
+      maxTimeGraphsCheckCount = 0;
+    }
+  }
+};
+
+let logicStartTime = 0;
+let logicEndTime = 0;
+let logicDuration = 0;
+export const _startCustomMeasurements = () => {
+  logicStartTime = performance.now();
+};
+
+let tFpsPrevCurrentTime = 0;
+let tFpsPrevCurrentGraphsTime = 0;
+let tFpsMax = 0;
+const tFPSsamples: number[] = [];
+const updateTFPSPanel = (duration: number) => {
+  const currentTime = performance.now();
+  tFPSsamples.push(duration);
+  if (tFPSsamples.length > 60) tFPSsamples.shift();
+  if (currentTime >= tFpsPrevCurrentTime + 1000 / (stats?.logsPerSecond || 4)) {
+    const avgDuration = tFPSsamples.reduce((a, b) => a + b, 0) / tFPSsamples.length;
+    const tfps = 1000 / avgDuration;
+    tFpsPanel?.update(tfps, tFpsMax, 0);
+    tFpsPrevCurrentTime = currentTime;
+  }
+  if (currentTime >= tFpsPrevCurrentGraphsTime + 1000 / (stats?.graphsPerSecond || 30)) {
+    const avgDuration = tFPSsamples.reduce((a, b) => a + b, 0) / tFPSsamples.length;
+    const tfps = 1000 / avgDuration;
+    tFpsMax = Math.max(10, tFpsMax, tfps);
+    tFpsPanel?.updateGraph(tfps, tFpsMax * 1.25);
+    tFpsPrevCurrentGraphsTime = currentTime;
+  }
+};
+
+/**
+ * Returns the stats 'stats-gl' instance
+ * @returns ({@link Stats} | null)
+ */
+export const _getStats = () => stats;
+
+/**
+ * Returns the stats configurations
+ * @returns {@link StatsOptions}
+ */
+export const _getStatsConfig = () => statsConfig;
+
+const setDebuggerUI = () => {
+  const icon = getSvgIcon('speedometer');
+  return createDebuggerTab({
+    id: 'statsControls',
+    buttonText: icon,
+    title: 'Statistics',
+    orderNr: 3,
+    container: () => {
+      const { container, debugGUI } = createNewDebuggerPane('Stats', `${icon} Statistics`);
+
+      statsDebugGUIs.push(debugGUI);
+      _buildStatsDebugGUI(debugGUI);
+
+      return container;
+    },
+  });
+};
+
+export const _updateStatsDebugGUI = () => {
+  for (let i = 0; i < statsDebugGUIs.length; i++) {
+    statsDebugGUIs[i].refresh();
+  }
+};
+
+export const _buildStatsDebugGUI = (debugGUI: Pane) => {
+  const performanceFolder = debugGUI
+    .addFolder({
+      title: 'Performance Measuring (reloads the app)',
+      expanded: statsConfig.performanceFolderExpanded,
+    })
+    .on('fold', (state) => {
+      statsConfig.performanceFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, statsConfig || {});
+      _updateStatsDebugGUI();
+    });
+  const outlookFolder = debugGUI
+    .addFolder({
+      title: 'Measuring Outlook (reloads the app)',
+      expanded: statsConfig.outlookFolderExpanded,
+    })
+    .on('fold', (state) => {
+      statsConfig.outlookFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, statsConfig || {});
+      _updateStatsDebugGUI();
+    });
+
+  performanceFolder
+    .addBinding(statsConfig, 'enabled', { label: 'Enable measuring' })
+    .on('change', () => {
+      lsSetItem(LS_KEY, statsConfig);
+      location.reload();
+      _updateStatsDebugGUI();
+    });
+  performanceFolder.addBinding(statsConfig, 'trackGPU', { label: 'Track GPU' }).on('change', () => {
+    lsSetItem(LS_KEY, statsConfig);
+    location.reload();
+    _updateStatsDebugGUI();
+  });
+  performanceFolder.addBinding(statsConfig, 'trackHz', { label: 'Track Hz' }).on('change', () => {
+    lsSetItem(LS_KEY, statsConfig);
+    location.reload();
+    _updateStatsDebugGUI();
+  });
+  performanceFolder.addBinding(statsConfig, 'trackCPT', { label: 'Track CPT' }).on('change', () => {
+    lsSetItem(LS_KEY, statsConfig);
+    location.reload();
+    _updateStatsDebugGUI();
+  });
+
+  outlookFolder.addBinding(statsConfig, 'horizontal', { label: 'Horizontal' }).on('change', () => {
+    lsSetItem(LS_KEY, statsConfig);
+    location.reload();
+    _updateStatsDebugGUI();
+  });
+  outlookFolder.addBinding(statsConfig, 'minimal', { label: 'Minimal look' }).on('change', () => {
+    lsSetItem(LS_KEY, statsConfig);
+    location.reload();
+    _updateStatsDebugGUI();
+  });
+
+  // @TODO: add current scene and all loaded scene stats
+  // Current and all scenes stats:
+  // - drawcalls count
+  // - objects count (Object3D)
+  // - mesh count
+  // - face count
+  // - edge count
+  // - vertex count
+  // - imported objects count
+  // - list of imported objects (and sizes, face count, edge count, vertex count)
+  // - list of primitive objects (face count, edge count, vertex count)
+  // - texture count, texture sizes, list of textures (and type, sizes, dimensions)
+};
+
+export const _getStatsCmp = () => statsCmp;

@@ -12,7 +12,7 @@ import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
 import { createCharactersDebuggerGUI } from './core/Character';
 import { createToaster } from './core/UI/Toaster';
-import { getStatsCmp } from './debug/Stats';
+import { getStatsCmp, registerStatsModule } from './debug/Stats';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
 
 // ECS Core Plugins
@@ -67,6 +67,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     if (isDebugEnvironment()) {
       createDebuggerSceneLoader();
       await registerDebugToolsModule();
+      await registerStatsModule();
     }
 
     await appStartFn();
