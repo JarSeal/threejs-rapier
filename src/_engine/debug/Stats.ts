@@ -25,6 +25,7 @@ export const defaultStatsOptions = {
   trackGPU: false,
   trackHz: false,
   trackCPT: false,
+  // @TODO: add trackPHY, trackTFPS, and FPS
   outlookFolderExpanded: true,
   horizontal: false,
   minimal: true,
@@ -32,7 +33,7 @@ export const defaultStatsOptions = {
 };
 
 type StatsGUIModule = typeof import('../core/Debug/_dbg__Stats');
-export let debugGUI: DebugModuleRef<StatsGUIModule> | null = null;
+let debugGUI: DebugModuleRef<StatsGUIModule> | null = null;
 
 export const registerStatsModule = async () => {
   if (!IS_DEBUG_ENV) return;

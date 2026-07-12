@@ -2,7 +2,7 @@ import { IS_DEBUG_ENV } from '../core/Config';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
 type LightGUIModule = typeof import('../core/Debug/_dbg__DebugTools');
-export let debugGUI: DebugModuleRef<LightGUIModule> | null = null;
+let debugGUI: DebugModuleRef<LightGUIModule> | null = null;
 export const DEBUG_CAMERA_ID = '_debugCamera';
 
 export type DebugCameraState = {

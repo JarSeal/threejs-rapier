@@ -78,7 +78,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     // Create debug GUIs and utils
     if (isDebugEnvironment()) {
-      createRendererDebugGUI();
+      await createRendererDebugGUI();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
 
