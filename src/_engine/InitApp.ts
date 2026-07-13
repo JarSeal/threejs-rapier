@@ -6,7 +6,7 @@ import { InitRapierPhysics } from './core/PhysicsRapier';
 import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
 import { lerror, llog } from './utils/Logger';
-import { createSkyBoxDebugGUI } from './core/SkyBox';
+import { createSkyBoxDebugGUI, registerSkyBoxDebugGUI } from './core/SkyBox';
 import { createDebuggerSceneLoader } from './debug/DebuggerSceneLoader';
 import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
@@ -68,6 +68,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       createDebuggerSceneLoader();
       await registerDebugToolsModule();
       await registerStatsModule();
+      await registerSkyBoxDebugGUI();
     }
 
     await appStartFn();
