@@ -27,6 +27,7 @@ import { initDebugCamera, registerCameraManager } from './core/_CameraManager';
 import { registerLightManager } from './core/_LightManager';
 import { load3DSymbols } from './debug/3DSymbols';
 import { registerDebugToolsModule } from './debug/_DebugToolsManager';
+import { registerRaycastDebugGUI } from './core/Raycast';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -69,6 +70,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerDebugToolsModule();
       await registerStatsModule();
       await registerSkyBoxDebugGUI();
+      await registerRaycastDebugGUI();
     }
 
     await appStartFn();
