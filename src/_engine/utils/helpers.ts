@@ -474,9 +474,10 @@ export function loadDebugModule<T>(
  */
 export async function loadDebugModuleAsync<T>(
   importer: () => Promise<T>,
+  includeInProdTestMode: boolean = false,
   debugId?: string
 ): Promise<DebugModuleRef<T> | null> {
-  if (!IS_DEBUG_ENV) return null;
+  if (!IS_DEBUG_ENV && !includeInProdTestMode) return null;
   const ref: DebugModuleRef<T> = { current: null };
   return importer()
     .then((module) => {
@@ -504,8 +505,11 @@ export const isDebugReady = <T>(ref: DebugModuleRef<T>): ref is { current: T } =
  * Accessor: Returns the module if debug is active and loaded, otherwise undefined.
  * Usage: useDebug(debugHelpers)?.attach(...)
  */
-export const useDebug = <T>(ref: DebugModuleRef<T> | null): T | undefined =>
-  IS_DEBUG_ENV && ref?.current ? ref.current : undefined;
+export const useDebug = <T>(
+  ref: DebugModuleRef<T> | null,
+  includeInProdTestMode: boolean = false
+): T | undefined =>
+  (IS_DEBUG_ENV || includeInProdTestMode) && ref?.current ? ref.current : undefined;
 
 /** Determines and returns the light types */
 export const getLightCharacteristics = (light: THREE.Light) => {

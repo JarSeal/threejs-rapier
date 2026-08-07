@@ -1,7 +1,7 @@
 import { type Scene } from 'three/webgpu';
-import { isDebugEnvironment, loadConfig, PROJECT_METADATA } from './core/Config';
+import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, loadConfig, PROJECT_METADATA } from './core/Config';
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
-import { initMainLoop } from './core/MainLoop';
+import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
 import { InitRapierPhysics } from './core/PhysicsRapier';
 import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
@@ -28,6 +28,7 @@ import { registerLightManager } from './core/_LightManager';
 import { load3DSymbols } from './debug/3DSymbols';
 import { registerDebugToolsModule } from './debug/_DebugToolsManager';
 import { registerRaycastDebugGUI } from './core/Raycast';
+import { registerOnScreenTools } from './debug/OnScreenTools';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -65,12 +66,16 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     await InitRapierPhysics();
 
-    if (isDebugEnvironment()) {
+    if (IS_DEBUG_ENV) {
       createDebuggerSceneLoader();
       await registerDebugToolsModule();
       await registerStatsModule();
       await registerSkyBoxDebugGUI();
       await registerRaycastDebugGUI();
+    }
+    if (IS_DEBUG_ENV || IS_PROD_TEST_MODE) {
+      await registerMainLoopDebugGUI();
+      await registerOnScreenTools();
     }
 
     await appStartFn();
@@ -80,7 +85,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     if (rootScene.children.length) initMainLoop();
 
     // Create debug GUIs and utils
-    if (isDebugEnvironment()) {
+    if (IS_DEBUG_ENV) {
       await createRendererDebugGUI();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();

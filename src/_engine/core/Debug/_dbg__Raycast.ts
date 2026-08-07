@@ -59,14 +59,14 @@ let maxMinLongIntervalText = '';
 let averageIntervalText = '';
 let averageLongIntervalText = '';
 
-export const initRayCastingDebugger = () => {
+export const _initRayCastingDebugger = () => {
   if (IS_DEBUG_ENV) {
     helperLineGeom = new THREE.BufferGeometry();
     createDebugControls();
   }
 };
 
-export const drawRayHelper = ({
+export const _drawRayHelper = ({
   from,
   to,
   endLength,
@@ -111,7 +111,7 @@ export const drawRayHelper = ({
   drawnHelperIds.push(helperId);
 };
 
-export const cleanUpRayHelpers = () => {
+export const _cleanUpRayHelpers = () => {
   const lines = (getRootScene() as THREE.Scene).children.filter(
     (line) => line.userData.isRayHelper
   );
@@ -125,10 +125,10 @@ export const cleanUpRayHelpers = () => {
   }
   helperIds = [...drawnHelperIds];
   drawnHelperIds = [];
-  updateStats();
+  _updateStats();
 };
 
-export const deleteAllRayHelpers = () => {
+export const _deleteAllRayHelpers = () => {
   const lines = (getRootScene() as THREE.Scene).children.filter(
     (line) => line.userData.isRayHelper
   );
@@ -140,14 +140,14 @@ export const deleteAllRayHelpers = () => {
   helperIds = [];
 };
 
-export const toggleAllRayDebugHelpers = (show?: boolean) => {
+export const _toggleAllRayDebugHelpers = (show?: boolean) => {
   if (show === undefined) {
     rayCastState.showAllRayDebugHelpers = !rayCastState.showAllRayDebugHelpers;
-    buildRayCastDebugGUI();
+    _buildRayCastDebugGUI();
     return;
   }
   rayCastState.showAllRayDebugHelpers = show;
-  buildRayCastDebugGUI();
+  _buildRayCastDebugGUI();
 };
 
 const createDebugControls = () => {
@@ -167,7 +167,7 @@ const createDebugControls = () => {
     container: () => {
       const { container, debugGUI } = createNewDebuggerPane('rayCast', `${icon} Ray Cast Controls`);
       rayCastDebugGUI = debugGUI;
-      buildRayCastDebugGUI();
+      _buildRayCastDebugGUI();
       statsCMP = container.add({ class: 'rayCastStats' }).add();
       if (!rayCastState.enableRayStatistics) disableStats();
       return container;
@@ -175,7 +175,7 @@ const createDebugControls = () => {
   });
 };
 
-export const buildRayCastDebugGUI = () => {
+export const _buildRayCastDebugGUI = () => {
   const debugGUI = rayCastDebugGUI;
   if (!debugGUI) return;
 
@@ -214,13 +214,13 @@ const countStats = () => {
   stats.sceneLongAverageTotal++;
 };
 
-export const countRayCastFrames = () => {
+export const _countRayCastFrames = () => {
   if (!rayCastState.enableRayStatistics) return;
   stats._framesSceneAverage++;
   stats._framesSceneLongAverage++;
 };
 
-export const updateStats = () => {
+export const _updateStats = () => {
   if (rayCastState.enableRayStatistics) {
     const timeNow = performance.now();
     let targetTime = 0;
@@ -362,4 +362,4 @@ const createIntervalTexts = () => {
   averageLongIntervalText = `Last ${averageLong}s`;
 };
 
-export const resetRayCastStats = () => (stats = { ...DEFAULT_STATS });
+export const _resetRayCastStats = () => (stats = { ...DEFAULT_STATS });

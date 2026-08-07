@@ -18,7 +18,7 @@ const defaultDirectionForAngle = DIRECTIONS.FORWARD;
 
 export const initRayCasting = () => {
   ray = new THREE.Raycaster();
-  useDebug(debugGUI)?.initRayCastingDebugger();
+  useDebug(debugGUI)?._initRayCastingDebugger();
 };
 
 const getRayCastIntersects = <TIntersected extends THREE.Object3D = THREE.Object3D>({
@@ -83,7 +83,7 @@ export const castRayFromPoints = <TIntersected extends THREE.Object3D = THREE.Ob
     recursive,
   });
   // drawRayHelper({ from, to, endLength, helperId, helperColor });
-  useDebug(debugGUI)?.drawRayHelper({ from, to, endLength, helperId, helperColor });
+  useDebug(debugGUI)?._drawRayHelper({ from, to, endLength, helperId, helperColor });
   return intersects;
 };
 
@@ -132,7 +132,13 @@ export const castRayFromAngle = <TIntersected extends THREE.Object3D = THREE.Obj
     recursive,
   });
   // drawRayHelper({ from, to: angleDirection, endLength, helperId, helperColor });
-  useDebug(debugGUI)?.drawRayHelper({ from, to: angleDirection, endLength, helperId, helperColor });
+  useDebug(debugGUI)?._drawRayHelper({
+    from,
+    to: angleDirection,
+    endLength,
+    helperId,
+    helperColor,
+  });
   return intersects;
 };
 
@@ -145,17 +151,17 @@ export const registerRaycastDebugGUI = async () => {
 };
 
 export const countRayCastFrames = () => {
-  useDebug(debugGUI)?.countRayCastFrames();
+  useDebug(debugGUI)?._countRayCastFrames();
 };
 
 export const deleteAllRayHelpers = () => {
-  useDebug(debugGUI)?.deleteAllRayHelpers();
+  useDebug(debugGUI)?._deleteAllRayHelpers();
 };
 
 export const resetRayCastStats = () => {
-  useDebug(debugGUI)?.resetRayCastStats();
+  useDebug(debugGUI)?._resetRayCastStats();
 };
 
 export const cleanUpRayHelpers = () => {
-  useDebug(debugGUI)?.cleanUpRayHelpers();
+  useDebug(debugGUI)?._cleanUpRayHelpers();
 };

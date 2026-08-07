@@ -155,6 +155,18 @@ export const IS_DEBUG_ENV =
   (curEnvironment === 'development' || curEnvironment === 'test') && isDebugQueryParam;
 
 /**
+ * Checks whether the app is in production test mode or not.
+ * This works only in 'development' and
+ * 'test' (?isProdTest=true) environments.
+ * Note: this is not the same as isProdEnvironment(),
+ * the purpose of this is to leave some debug UI elems
+ * on the screen when testing production.
+ */
+// @TODO: Replace the isProdTestMode with this
+export const IS_PROD_TEST_MODE =
+  (curEnvironment === 'development' || curEnvironment === 'test') && isProdTestQueryParam;
+
+/**
  * Checks whether the current environment is a production environment.
  * @returns boolean
  */

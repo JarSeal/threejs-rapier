@@ -1,5 +1,4 @@
 import { Timer, type Renderer, type Scene, type Camera } from 'three/webgpu';
-import { createNewDebuggerPane, createDebuggerTab } from '../debug/DebuggerGUI';
 import { getStats, initStats, startCustomMeasurements, updateRestOfStats } from '../debug/Stats';
 import { getCurrentCamera } from './_CameraManager';
 import { getRenderer } from './Renderer';
@@ -12,21 +11,17 @@ import {
   runSceneMainLoopers,
 } from './Scene';
 import { lerror, lwarn } from '../utils/Logger';
-import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } from './Config';
 import { initDebugTools } from '../debug/_DebugToolsManager';
 import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './PhysicsRapier';
-import { getSvgIcon } from './UI/icons/SvgIcon';
-import { InitOnScreenTools, updateOnScreenTools } from '../debug/OnScreenTools';
-import { BindingApi } from '@tweakpane/core';
 import { updateInputControllerLoopActions } from './InputControls';
 import { countRayCastFrames, initRayCasting } from './Raycast';
 import { ECSWorld, getECSWorld } from './ECS';
 import { getActiveCamera } from './_CameraManager';
 import { existsOrThrow } from '../utils/assert';
+import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
-const LS_KEY = 'debugLoop';
 const timer = new Timer();
 let delta = 0;
 let deltaApp = 0;
@@ -94,7 +89,7 @@ export const transformAppSpeedValue = (unitsPerSecond: number) => deltaApp * uni
 export const transformTimeValue = (durationInMs: number) =>
   durationInMs * loopState.playSpeedMultiplier;
 
-let mainLoop: () => void = () => {};
+export let mainLoop: () => void = () => {};
 let ecsWorld: ECSWorld;
 
 const renderScene = () => {
@@ -344,12 +339,11 @@ export const initMainLoop = () => {
   initWinVisibilityListener();
 
   if (isDebugEnvironment() || isProdTestMode()) {
-    const savedValues = lsGetItem(LS_KEY, loopState);
-    loopState = {
-      ...loopState,
-      ...savedValues,
-    };
-    createLoopDebugControls();
+    const gui = useDebug(debugGUI, true);
+    if (gui) {
+      loopState = gui.getSavedLoopState(loopState);
+      gui.createLoopDebugControls(loopState);
+    }
   }
 
   initRayCasting();
@@ -399,60 +393,56 @@ export const deleteResizer = (id: string) => {
   delete resizers[id];
 };
 
-// Debug GUI for loop
-let appPlayBinding: BindingApi | null = null;
-const createLoopDebugControls = () => {
-  // Init On Screen Tools
-  InitOnScreenTools();
-
-  if (!isProdTestMode) return;
-
-  const icon = getSvgIcon('infinity');
-  createDebuggerTab({
-    id: 'loopControls',
-    buttonText: icon,
-    title: 'Loop controls',
-    orderNr: 4,
-    container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('loop', `${icon} Loop Controls`);
-      debugGUI.addBinding(loopState, 'masterPlay', { label: 'Master loop' }).on('change', (e) => {
-        if (e.value) {
-          requestAnimationFrame(mainLoop);
-          requestAnimationFrame(() => stepPhysicsWorld(loopState));
-        }
-        lsSetItem(LS_KEY, loopState);
-        updateOnScreenTools('PLAY');
-      });
-      appPlayBinding = debugGUI
-        .addBinding(loopState, 'appPlay', { label: 'App loop' })
-        .on('change', () => {
-          lsSetItem(LS_KEY, loopState);
-          requestAnimationFrame(() => stepPhysicsWorld(loopState));
-          updateOnScreenTools('PLAY');
-        });
-      debugGUI
-        .addBinding(loopState, 'maxFPS', { label: 'Forced max FPS (0 = off)', step: 1, min: 0 })
-        .on('change', (e) => {
-          const value = e.value;
-          if (value > 0) {
-            loopState.maxFPSInterval = 1000 / value;
-          }
-          lsSetItem(LS_KEY, loopState);
-        });
-      debugGUI
-        .addBinding(loopState, 'playSpeedMultiplier', {
-          label: 'Play speed multiplier',
-          step: 0.01,
-          min: 0,
-        })
-        .on('change', (e) => {
-          loopState.playSpeedMultiplier = e.value;
-          lsSetItem(LS_KEY, loopState);
-        });
-      return container;
-    },
-  });
+/**
+ * Toggles the main loop player state (play / pause)
+ * @param value (boolean) optional value whether the loop state in playing (true) or paused (false). If not provided then value is the opposite to the current value.
+ */
+export const toggleMainPlay = (value?: boolean) => {
+  if (value !== undefined) {
+    loopState.masterPlay = value;
+  } else {
+    loopState.masterPlay = !loopState.masterPlay;
+  }
+  if (loopState.masterPlay && !loopState.isMasterPlaying) {
+    loopState.isMasterPlaying = true;
+    requestAnimationFrame(mainLoop);
+  }
 };
+
+/**
+ * Toggles the app loop player state (play / pause)
+ * @param value (boolean) optional value whether the loop state in playing (true) or paused (false). If not provided then value is the opposite to the current value.
+ */
+export const toggleAppPlay = (value?: boolean) => {
+  if (value !== undefined) {
+    loopState.appPlay = value;
+    useDebug(debugGUI, true)?.refreshAppPlayBinding();
+    return;
+  }
+  loopState.appPlay = !loopState.appPlay;
+  useDebug(debugGUI, true)?.refreshAppPlayBinding();
+};
+
+/**
+ * Sets the loopState.isLoadingScene boolean.
+ * @param isLoading (boolean) value for whether the scene is loading or not.
+ */
+export const setIsLoadingScene = (isLoading: boolean) => (loopState.isLoadingScene = isLoading);
+
+/**
+ * Returns the read-only loop state object
+ * @returns ({@link LoopState}) copy of LoopState
+ */
+export const getReadOnlyLoopState = () => JSON.parse(JSON.stringify(loopState)) as LoopState;
+
+/**
+ * Returns the play speed multiplier
+ * @returns (number) loopState.playSpeedMultiplier
+ */
+export const getPlaySpeedMultiplier = () => loopState.playSpeedMultiplier;
+
+export const setPlaySpeedMultiplier = (multiplier: number) =>
+  (loopState.playSpeedMultiplier = multiplier < 0 ? 0 : multiplier);
 
 let visibilityChangeFns: { [id: string]: (isHidden: boolean) => void } = {};
 export const addVisibilityChangeFn = (id: string, fn: (isHidden: boolean) => void) =>
@@ -494,53 +484,10 @@ window.addEventListener('blur', () => {
   }
 });
 
-/**
- * Toggles the main loop player state (play / pause)
- * @param value (boolean) optional value whether the loop state in playing (true) or paused (false). If not provided then value is the opposite to the current value.
- */
-export const toggleMainPlay = (value?: boolean) => {
-  if (value !== undefined) {
-    loopState.masterPlay = value;
-  } else {
-    loopState.masterPlay = !loopState.masterPlay;
-  }
-  if (loopState.masterPlay && !loopState.isMasterPlaying) {
-    loopState.isMasterPlaying = true;
-    requestAnimationFrame(mainLoop);
-  }
+// Debug
+type MainLoopGUIModule = typeof import('../core/Debug/_dbg__MainLoop');
+let debugGUI: DebugModuleRef<MainLoopGUIModule> | null = null;
+
+export const registerMainLoopDebugGUI = async () => {
+  debugGUI = await loadDebugModuleAsync(() => import('../core/Debug/_dbg__MainLoop'), true);
 };
-
-/**
- * Toggles the app loop player state (play / pause)
- * @param value (boolean) optional value whether the loop state in playing (true) or paused (false). If not provided then value is the opposite to the current value.
- */
-export const toggleAppPlay = (value?: boolean) => {
-  if (value !== undefined) {
-    loopState.appPlay = value;
-    appPlayBinding?.refresh();
-    return;
-  }
-  loopState.appPlay = !loopState.appPlay;
-  appPlayBinding?.refresh();
-};
-
-/**
- * Sets the loopState.isLoadingScene boolean.
- * @param isLoading (boolean) value for whether the scene is loading or not.
- */
-export const setIsLoadingScene = (isLoading: boolean) => (loopState.isLoadingScene = isLoading);
-
-/**
- * Returns the read-only loop state object
- * @returns ({@link LoopState}) copy of LoopState
- */
-export const getReadOnlyLoopState = () => JSON.parse(JSON.stringify(loopState)) as LoopState;
-
-/**
- * Returns the play speed multiplier
- * @returns (number) loopState.playSpeedMultiplier
- */
-export const getPlaySpeedMultiplier = () => loopState.playSpeedMultiplier;
-
-export const setPlaySpeedMultiplier = (multiplier: number) =>
-  (loopState.playSpeedMultiplier = multiplier < 0 ? 0 : multiplier);
