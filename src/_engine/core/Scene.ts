@@ -10,7 +10,7 @@ import {
   deletePhysicsWorld,
   setCurrentScenePhysicsObjects,
 } from './PhysicsRapier';
-import { addSceneToDebugtools, getDebugToolsState } from '../debug/_DebugToolsManager';
+import { addSceneToDebugtools, getDebugToolsState } from '../debug/DebugToolsManager';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
 import { LightProps } from './_LightManager';

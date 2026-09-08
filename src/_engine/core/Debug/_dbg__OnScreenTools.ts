@@ -20,11 +20,11 @@ import { getCurrentSceneId, getGeneratedAppData } from '../../core/Scene';
 import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
 import { getSvgIcon } from '../../core/UI/icons/SvgIcon';
 import { CMP, TCMP } from '../../utils/CMP';
-import { DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerSceneLoader';
 import styles from './OnScreenTools.module.scss';
 import { getECSWorld } from '../../core/ECS';
 import { type SceneAsset } from '../../schemas/sceneSchema';
 import { type ToolTypes } from '../../debug/OnScreenTools';
+import { DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerGUI';
 
 let playToolsCMP: TCMP | null = null;
 let switchToolsCMP: TCMP | null = null;

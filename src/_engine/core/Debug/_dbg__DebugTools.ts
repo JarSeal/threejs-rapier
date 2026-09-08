@@ -2,12 +2,15 @@ import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
 import { getRenderer, getRendererOptions } from '../../core/Renderer';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
-import { createNewDebuggerPane, createDebuggerTab } from '../../debug/DebuggerGUI';
+import {
+  createNewDebuggerPane,
+  createDebuggerTab,
+  DEBUGGER_SCENE_LOADER_ID,
+} from '../../debug/DebuggerGUI';
 import { getCurrentSceneId, getGeneratedAppData, getRootScene, getScene } from '../../core/Scene';
 import { getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../../core/Config';
 import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
 import { lerror, llog } from '../../utils/Logger';
-import { DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerSceneLoader';
 import { openDraggableWindow } from '../../core/UI/DraggableWindow';
 import { openDialog } from '../../core/UI/DialogWindow';
 import { getSvgIcon } from '../../core/UI/icons/SvgIcon';
@@ -22,7 +25,7 @@ import {
 import { updateOnScreenTools } from '../../debug/OnScreenTools';
 import { addToast } from '../../core/UI/Toaster';
 import { type SceneAsset } from '../../schemas/sceneSchema';
-import { DebugCameraState, DebugToolsState } from '../../debug/_DebugToolsManager';
+import { DebugCameraState, DebugToolsState } from '../../debug/DebugToolsManager';
 
 const LS_KEY = 'AEK_debugTools';
 export const DEBUG_CAMERA_ID = '_debugCamera';

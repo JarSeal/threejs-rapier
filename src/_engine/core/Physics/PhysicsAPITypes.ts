@@ -49,7 +49,7 @@ export type PhysicsState = {
   timestep: number;
   timestepRatio: number;
   /** What to do with physics loop if the app window is hidden (under another window, in another tab, minified).
-   * 'KEEP_RUNNIN' = Keeps the physics running in the background.
+   * 'KEEP_RUNNING' = Keeps the physics running in the background.
    * 'KEEP_RUNNING_USE_MIN_DELTA' = If for some reason the physics cannot run in the background, the minDeltaTime will be set as new delta time. Requires: minDelta > 0.
    * 'PAUSE' = Pauses the physics when the window is hidden and then uses the minDeltaTime to continue. Requires: minDelta > 0.
    */

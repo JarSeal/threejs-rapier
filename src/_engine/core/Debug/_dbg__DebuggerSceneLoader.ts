@@ -1,8 +1,8 @@
-import { createSceneLoader } from '../core/SceneLoader';
-import { CMP } from '../utils/CMP';
+import { createSceneLoader } from '../../core/SceneLoader';
+import { DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerGUI';
+import { CMP } from '../../utils/CMP';
 import styles from './DebuggerSceneLoader.module.scss';
 
-export const DEBUGGER_SCENE_LOADER_ID = '__debugger-scene-loader';
 const START_ANIM_LENGTH_IN_MS = 150;
 const END_ANIM_LENGTH_IN_MS = 250;
 

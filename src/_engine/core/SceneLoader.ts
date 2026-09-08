@@ -18,10 +18,10 @@ import {
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
 import { deleteAllPhysicsObjects } from './PhysicsRapier';
-import { disableDebugger } from '../debug/DebuggerGUI';
+import { DEBUGGER_SCENE_LOADER_ID, disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
-import { getDebugToolsState } from '../debug/_DebugToolsManager';
+import { getDebugToolsState } from '../debug/DebugToolsManager';
 import { IS_DEBUG_ENV, isDebugEnvironment } from './Config';
 import { applySkyBoxForScene, clearSkyBox } from './SkyBox';
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
@@ -42,7 +42,6 @@ import { createLightEntity } from './_LightManager';
 import { createCameraEntity, setActiveCamera } from './_CameraManager';
 import { createMeshEntity } from './_MeshManager';
 import { importModelAsync, type ImportReturnObj } from './_ImportModel';
-import { DEBUGGER_SCENE_LOADER_ID } from '../debug/DebuggerSceneLoader';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,

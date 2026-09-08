@@ -13,7 +13,7 @@ import {
 import { lerror, lwarn } from '../utils/Logger';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } from './Config';
-import { initDebugTools } from '../debug/_DebugToolsManager';
+import { initDebugTools } from '../debug/DebugToolsManager';
 import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './PhysicsRapier';
 import { updateInputControllerLoopActions } from './InputControls';
 import { countRayCastFrames, initRayCasting } from './Raycast';

@@ -307,7 +307,7 @@ export const _updateStats = () => {
     // Update Ray Cast Controls drawer view
     const drawerState = getDrawerState();
     // @TODO: if stats window and total stats (with ray stats) are implemented, add checks for those as well here
-    if (drawerState.isOpen && drawerState.currentTabId === 'rayCastControls') {
+    if (drawerState?.isOpen && drawerState.currentTabId === 'rayCastControls') {
       statsCMP?.update({
         html: statsHtml(stats, 'active'),
       });

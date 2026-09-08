@@ -7,7 +7,6 @@ import { createRootScene, getRootScene, registerScenesFromGeneratedData } from '
 import './styles/index.scss';
 import { lerror, llog } from './utils/Logger';
 import { createSkyBoxDebugGUI, registerSkyBoxDebugGUI } from './core/SkyBox';
-import { createDebuggerSceneLoader } from './debug/DebuggerSceneLoader';
 import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
 import { createCharactersDebuggerGUI } from './core/Character';
@@ -26,9 +25,10 @@ import { initECSWorld } from './core/ECS';
 import { initDebugCamera, registerCameraManager } from './core/_CameraManager';
 import { registerLightManager } from './core/_LightManager';
 import { load3DSymbols } from './debug/3DSymbols';
-import { registerDebugToolsModule } from './debug/_DebugToolsManager';
+import { registerDebugToolsModule } from './debug/DebugToolsManager';
 import { registerRaycastDebugGUI } from './core/Raycast';
 import { registerOnScreenTools } from './debug/OnScreenTools';
+import { registerDebuggerGUI } from './debug/DebuggerGUI';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -67,11 +67,11 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     await InitRapierPhysics();
 
     if (IS_DEBUG_ENV) {
-      createDebuggerSceneLoader();
       await registerDebugToolsModule();
       await registerStatsModule();
       await registerSkyBoxDebugGUI();
       await registerRaycastDebugGUI();
+      await registerDebuggerGUI();
     }
     if (IS_DEBUG_ENV || IS_PROD_TEST_MODE) {
       await registerMainLoopDebugGUI();
