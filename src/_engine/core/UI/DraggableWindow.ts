@@ -607,6 +607,7 @@ export const updateDraggableWindow = (id: string) => {
   if (!state?.isOpen) return;
   removeDraggableWindow(id, true);
   openDraggableWindow(state);
+  // @TODO: This probably shouldn't be here. Refactor so that draggable window will update also the character list without referencing this here (there could be an implementation already, check this).
   updateDebuggerCharactersListSelectedClass();
 };
 
