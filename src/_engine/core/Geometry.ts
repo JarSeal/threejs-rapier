@@ -1,8 +1,19 @@
 import * as THREE from 'three/webgpu';
+import { lerror } from '../utils/Logger';
 
-const geometries: { [id: string]: THREE.BufferGeometry } = {};
+const geometries: {
+  [id: string]: {
+    resource: THREE.BufferGeometry;
+    count: number;
+    persistent?: boolean;
+  };
+} = {};
 
-export type GeoProps = { id?: string; debugData?: { name?: string; description?: string } } & (
+export type GeoProps = {
+  id?: string;
+  isPersistent?: boolean;
+  debugData?: { name?: string; description?: string };
+} & (
   | {
       type: 'BOX';
       params?: {
@@ -70,14 +81,46 @@ export type GeoTypes =
   | THREE.CapsuleGeometry
   | THREE.ConeGeometry;
 
+export const incGeoRef = (id: string) => {
+  if (geometries[id]) {
+    geometries[id].count++;
+  }
+};
+
+export const decGeoRef = (id: string) => {
+  const entry = geometries[id];
+  if (!entry) return;
+
+  entry.count--;
+
+  if (entry.count <= 0 && !entry.persistent) {
+    entry.resource.dispose();
+    delete geometries[id];
+  }
+};
+
+export const setGeoPersistence = (id: string, state: boolean) => {
+  const entry = geometries[id];
+  if (!entry) return;
+  entry.persistent = state;
+
+  if (!state && entry.count === 0) {
+    entry.resource.dispose();
+    delete geometries[id];
+  }
+};
+
 /**
- * Creates a Three.js geometry.
- * @param props geometry props: {@link GeoProps}
- * @returns geometry ({@link GeoTypes})
+ * Creates a Three.js geometry supporting cache retrieval and reference tracking.
+ * @param props - Geometry configuration settings.
+ * @returns An instantiated, indexed Three.js geometry.
  */
-export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
-  let geo;
-  if (props?.id && geometries[props.id]) return geometries[props.id] as T;
+export const createGeometry = <T extends GeoTypes = GeoTypes>(props: GeoProps): T => {
+  const id = props.id;
+
+  if (id && geometries[id]) return geometries[id].resource as T;
+
+  let geo: THREE.BufferGeometry | null = null;
 
   switch (props.type) {
     case 'BOX':
@@ -132,76 +175,96 @@ export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
         props.params?.thetaStart,
         props.params?.thetaLength
       );
-    // @TODO: add all geometry types
+      break;
   }
 
   if (!geo) {
-    throw new Error(`Could not create geometry (unknown type: ${props.type}).`);
+    const msg = `[Geometry Manager] Could not create geometry (unknown or incomplete type: ${props.type}).`;
+    lerror(msg);
+    throw new Error(msg);
   }
 
-  geo.userData.id = props?.id || geo.uuid;
+  const assignedId = id || geo.uuid;
+  geo.userData.id = assignedId;
   geo.userData.props = props;
-  geometries[props?.id || geo.uuid] = geo;
+
+  if (props.debugData?.name) {
+    geo.name = props.debugData.name;
+  }
+
+  saveGeometry(geo, assignedId, props.isPersistent);
 
   return geo as T;
 };
 
 /**
- * Returns one or many geometries.
- * @param id geometry id or array of ids
- * @returns one or many geometries (THREE.BufferGeometry)
+ * Returns a geometry instance or undefined based on the id.
+ * @param id - Geometry id
  */
-export const getGeometry = (id: string | string[]) => {
-  if (typeof id === 'string') return geometries[id];
-  return id.map((geoId) => geometries[geoId]);
-};
+export const getGeometry = (id: string) => geometries[id]?.resource;
 
 /**
- * Deletes one or many geometries.
- * @param id geometry id or array of ids
+ * Returns multiple geometries based on an array of ids.
+ * @param ids - Array of geometry ids
+ */
+export const getGeometries = (ids: string[]) =>
+  ids.map((geoId) => geometries[geoId]?.resource).filter(Boolean) as THREE.BufferGeometry[];
+
+/**
+ * Returns a flat map object of all existing geometry resources.
+ */
+export const getAllGeometries = () => {
+  const flatMap: { [id: string]: THREE.BufferGeometry } = {};
+  Object.keys(geometries).forEach((key) => {
+    flatMap[key] = geometries[key].resource;
+  });
+  return flatMap;
+};
+
+export const getGeometryRegistry = () => geometries;
+
+/**
+ * Forcefully disposes and removes one or multiple geometries from memory cache.
+ * @param id - Geometry id or array of ids
  */
 export const deleteGeometry = (id: string | string[]) => {
-  if (typeof id === 'string') {
-    const geo = geometries[id];
-    if (!geo) return;
-    geo.dispose();
-    delete geometries[id];
-    return;
-  }
+  const targetIds = Array.isArray(id) ? id : [id];
 
-  for (let i = 0; i < id.length; i++) {
-    const geoId = id[i];
-    const geo = geometries[geoId];
-    if (!geo) continue;
-    geo.dispose();
+  for (const geoId of targetIds) {
+    const entry = geometries[geoId];
+    if (!entry) continue;
+
+    entry.resource.dispose();
     delete geometries[geoId];
   }
 };
 
 /**
- * Returns all geometries.
- * @returns object: { [id: string]: THREE.BufferGeometry }
+ * Saves a geometry instance inside the engine tracking registry.
+ * @param geometry - Target THREE.BufferGeometry instance
+ * @param givenId - Optional string identifier
+ * @param isPersistent - Bypasses standard cleanup loops when true
  */
-export const getAllGeometries = () => geometries;
-
-/**
- * Saves a geometry to memory;
- * @param geometry THREE.BufferGeometry
- * @param givenId optional string for geometry id, if not provided, the geometry's UUID will be used as id
- * @returns THREE.BufferGeometry or undefined
- */
-export const saveGeometry = (geometry: THREE.BufferGeometry, givenId?: string) => {
+export const saveGeometry = (
+  geometry: THREE.BufferGeometry,
+  givenId?: string,
+  isPersistent?: boolean
+) => {
   if (!geometry.isBufferGeometry) return;
   const id = givenId || geometry.uuid;
-  if (geometries[id]) return geometries[id];
+  if (geometries[id]) return geometries[id].resource;
+
   geometry.userData.id = id;
-  geometries[id] = geometry;
+  geometries[id] = {
+    resource: geometry,
+    count: 0,
+    ...(isPersistent ? { persistent: true } : {}),
+  };
   return geometry;
 };
 
 /**
- * Checks, with a geometry id, whether a geometry exists or not
- * @param id (string) geometry id
- * @returns boolean
+ * Checks whether a geometry with a specific id exists in memory cache.
+ * @param id - Geometry id
  */
 export const doesGeoExist = (id: string) => Boolean(geometries[id]);
