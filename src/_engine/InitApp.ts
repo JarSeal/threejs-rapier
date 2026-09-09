@@ -9,7 +9,7 @@ import { lerror, llog } from './utils/Logger';
 import { createSkyBoxDebugGUI, registerSkyBoxDebugGUI } from './core/SkyBox';
 import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
-import { createCharactersDebuggerGUI } from './core/Character';
+import { createCharactersDebuggerGUI, registerCharacterTools } from './core/Character';
 import { createToaster } from './core/UI/Toaster';
 import { getStatsCmp, registerStatsModule } from './debug/Stats';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
@@ -72,6 +72,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerSkyBoxDebugGUI();
       await registerRaycastDebugGUI();
       await registerDebuggerGUI();
+      await registerCharacterTools();
     }
     if (IS_DEBUG_ENV || IS_PROD_TEST_MODE) {
       await registerMainLoopDebugGUI();
