@@ -1,9 +1,9 @@
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
-import { createMeshEntity, MeshProps } from '../_engine/core/_MeshManager';
+import { createMeshEntity, MeshProps } from '../_engine/core/MeshManager';
 import { getECSWorld } from '../_engine/core/ECS';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
-import { createLightEntity } from '../_engine/core/_LightManager';
+import { createLightEntity } from '../_engine/core/LightManager';
 
 export const scene = async () => {
   const updateLoaderFn = getLoaderStatusUpdater();

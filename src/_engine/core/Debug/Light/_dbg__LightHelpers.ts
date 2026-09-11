@@ -5,7 +5,7 @@ import { ComponentType } from '../../ECS/ECSCoreComponents';
 import { ECSSystemStage } from '../../../../AppECSRegistry';
 import { existsOrThrow } from '../../../utils/assert';
 import { getRootScene } from '../../Scene';
-import { isAnyLightHelperVisible } from '../../_LightManager';
+import { isAnyLightHelperVisible } from '../../LightManager';
 
 ECSWorld.registerComponentHooks(ComponentType.DEBUG_LIGHT_HELPER, {
   onDeleteEntity: (entityId, world) => {

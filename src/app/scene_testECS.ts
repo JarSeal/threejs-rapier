@@ -2,13 +2,13 @@ import * as THREE from 'three/webgpu';
 import { createScene } from '../_engine/core/Scene';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
-import { createMeshEntity, MeshProps } from '../_engine/core/_MeshManager';
+import { createMeshEntity, MeshProps } from '../_engine/core/MeshManager';
 import { getECSWorld } from '../_engine/core/ECS';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
-import { createCameraEntity, setMainCamera } from '../_engine/core/_CameraManager';
+import { createCameraEntity, setMainCamera } from '../_engine/core/CameraManager';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { lookAtPoint } from '../_engine/utils/ECSHelpers';
-import { createLightEntity } from '../_engine/core/_LightManager';
+import { createLightEntity } from '../_engine/core/LightManager';
 
 export const SCENE_TEST_ECS_ID = 'sceneTestECS';
 

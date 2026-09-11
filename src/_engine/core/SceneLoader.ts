@@ -29,7 +29,7 @@ import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { deleteAllCharacters } from './Character';
 import { existsOrThrow } from '../utils/assert';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
-import { deleteAllGroups } from './Group';
+import { deleteAllGroupEntities } from './GroupManager';
 import { setIsLoadingScene } from './MainLoop';
 import { getECSWorld, getEntityIdByAppId } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
@@ -37,11 +37,11 @@ import { sceneFileObjects } from '../generatedAppFns';
 import { getTexture, loadTextureAsync } from './Texture';
 import { createMaterial, getMaterial } from './Material';
 import { textureMapKeys } from '../utils/constants';
-import { createGeometry, getGeometry } from './_Geometry';
-import { createLightEntity } from './_LightManager';
-import { createCameraEntity, setActiveCamera } from './_CameraManager';
-import { createMeshEntity } from './_MeshManager';
-import { importModelAsync, type ImportReturnObj } from './_ImportModel';
+import { createGeometry, getGeometry } from './Geometry';
+import { createLightEntity } from './LightManager';
+import { createCameraEntity, setActiveCamera } from './CameraManager';
+import { createMeshEntity } from './MeshManager';
+import { importModelAsync, type ImportReturnObj } from './ImportModel';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -134,7 +134,6 @@ let nextSceneId: string | null = null;
 export const createSceneLoader = async (
   sceneLoader: Omit<SceneLoader, 'phase' | 'loaderContainer'>,
   isCurrent?: boolean // default is true
-  // createLoaderFn?: (sceneLoader: SceneLoader) => Promise<void>
 ) => {
   const foundSameId = sceneLoaders.find((sl) => sl.id === sceneLoader.id);
   if (foundSameId) {
@@ -145,7 +144,6 @@ export const createSceneLoader = async (
 
   sceneLoaders.push(sceneLoader);
 
-  // default value of isCurrent is true (even if undefined)
   if (isCurrent !== false) {
     setCurrentSceneLoader(sceneLoader.id);
   }
@@ -258,7 +256,7 @@ const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitive
       if (params) {
         for (const texKey of textureMapKeys) {
           const texRef = params[texKey];
-          if (typeof texRef !== 'string') continue; // not set, or already a Texture
+          if (typeof texRef !== 'string') continue;
           const texture = textures[texRef] || getTexture(texRef);
           if (!texture) {
             lwarn(`Could not find texture with id "${texRef}" in loadNextSceneAssets.`);
@@ -450,7 +448,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
       deleteAllCharacters();
       deleteAllPhysicsObjects();
-      deleteAllGroups({ deleteAll: true });
+      deleteAllGroupEntities();
 
       if (loadSceneProps.deletePrevScene && prevScene) {
         // Delete the whole previous scene and assets
@@ -471,7 +469,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       if (IS_DEBUG_ENV) {
         // We Give the Debug Camera a chance to save its final state for the current scene.
         // This triggers the 'end' logic manually if needed, or simply ensures LS is up to date.
-        ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
+        void ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
       }
       ecsWorld.clearNonPersistent();
 
@@ -504,7 +502,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
           runOnSceneEnter(sceneId);
           runOnAllSceneEnters();
 
-          if (isDebugEnvironment()) {
+          if (IS_DEBUG_ENV) {
             // Enable debuggers
             disableDebugger(false);
 

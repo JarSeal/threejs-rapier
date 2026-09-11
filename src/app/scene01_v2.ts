@@ -1,11 +1,11 @@
 import * as THREE from 'three/webgpu';
-import { createScene, createSceneAppLooper } from '../_engine/core/Scene';
-import { createGeometry } from '../_engine/core/_Geometry';
+import { createSceneAppLooper } from '../_engine/core/Scene';
+import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { getTexture, loadTexture } from '../_engine/core/Texture';
 import { importModelAsync } from '../_engine/core/ImportModel';
-import { createMesh } from '../_engine/core/Mesh';
-import { addToGroup, createGroup } from '../_engine/core/Group';
+import { createMeshEntity, getMeshByAppId } from '../_engine/core/MeshManager';
+import { createGroupEntity, addToGroupEntity } from '../_engine/core/GroupManager';
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import {
@@ -21,19 +21,6 @@ export const scene01 = async () =>
     const updateLoaderFn = getLoaderStatusUpdater();
     updateLoaderFn({ loadedCount: 0, totalCount: 2 });
 
-    // @TODO: fix this (or delete the scene)
-    // Set current camera and position it
-    // const camera = getCamera(MAIN_APP_CAM_ID);
-    // setCurrentCamera(MAIN_APP_CAM_ID);
-    // camera.position.z = 5;
-    // camera.position.x = 2.5;
-    // camera.position.y = 1;
-
-    const scene = createScene(SCENE01_ID, {
-      name: 'Test scene 1',
-      isCurrentScene: true,
-    });
-
     updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 
     await createSkyBox({
@@ -43,8 +30,6 @@ export const scene01 = async () =>
         file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png',
         textureId: 'equiRectEmptyId',
         colorSpace: THREE.SRGBColorSpace,
-        // colorSpace: THREE.LinearSRGBColorSpace,
-        // colorSpace: THREE.NoColorSpace,
       },
     });
     await createSkyBox({
@@ -54,36 +39,15 @@ export const scene01 = async () =>
         file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_41_4k.png',
         textureId: 'equiRectSunsetStylizedId',
         colorSpace: THREE.SRGBColorSpace,
-        // colorSpace: THREE.LinearSRGBColorSpace,
-        // colorSpace: THREE.NoColorSpace,
       },
     });
-    // const mapStylizedSunset = ['/px.png', '/nx.png', '/py.png', '/ny.png', '/pz.png', '/nz.png'];
-    // await createSkyBox({
-    //   id: 'stylizedSunsetCubemap',
-    //   name: 'Stylized Sunset Cubemap',
-    //   type: 'CUBETEXTURE',
-    //   params: {
-    //     fileNames: mapStylizedSunset,
-    //     path: '/assets/testTextures/skyboxes/sunset_stylized',
-    //     textureId: 'cubemapSunsetStylizedId',
-    //     cubeTextRotate: 0.625,
-    //   },
-    // });
     await createSkyBox({
       id: 'partly-cloudy',
       type: 'EQUIRECTANGULAR',
       params: {
-        // file: envTexture,
-        // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
         file: '/debugger/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
-        // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
-        // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
-        // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
         textureId: 'equiRectId',
-        // colorSpace: THREE.SRGBColorSpace,
         colorSpace: THREE.LinearSRGBColorSpace,
-        // colorSpace: THREE.NoColorSpace,
       },
     });
     const map02 = [
@@ -118,14 +82,15 @@ export const scene01 = async () =>
       type: 'LAMBERT',
       params: { color: 0x556334 },
     });
-    const groundMesh = createMesh({
-      id: 'groundMesh',
+    createMeshEntity({
+      appId: 'groundMesh',
       geo: groundGeo,
       mat: groundMat,
       receiveShadow: true,
       castShadow: true,
+      position: groundPos,
     });
-    groundMesh.position.set(groundPos.x, groundPos.y, groundPos.z);
+    const groundMesh = getMeshByAppId('groundMesh')!;
     createPhysicsObjectWithMesh({
       physicsParams: {
         collider: {
@@ -134,21 +99,11 @@ export const scene01 = async () =>
           hy: groundHeight / 2,
           hz: groundWidthAndDepth / 2,
           friction: 0,
-          // contactForceEventFn: (obj1, obj2, event) => {
-          //   // console.log('FORCE', obj1, obj2, event);
-          //   // const intersections = getPhysicsWorld().intersectionPair(obj1.collider, obj2.collider);
-          //   // console.log('INTERSECTIONS', intersections);
-          //   // getPhysicsWorld().contactPair(obj1.collider, obj2.collider, (manifold, flipped) => {
-          //   //   console.log('CONTACT', manifold, flipped);
-          //   // });
-          //   console.log('EVENT', event);
-          // },
         },
         rigidBody: { rigidType: 'FIXED', translation: groundPos },
       },
       meshOrMeshId: groundMesh,
     });
-    scene.add(groundMesh);
 
     const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });
     const material1 = createMaterial({
@@ -156,8 +111,8 @@ export const scene01 = async () =>
       type: 'LAMBERT',
       params: { color: 0xff0000, wireframe: true },
     });
-    const sphere = createMesh({ id: 'sphereMesh1', geo: geometry1, mat: material1 });
-    scene.add(sphere);
+    createMeshEntity({ appId: 'sphereMesh1', geo: geometry1, mat: material1 });
+    const sphere = getMeshByAppId('sphereMesh1')!;
 
     const geometry2 = createGeometry({ id: 'box1', type: 'BOX' });
     const material2 = createMaterial({
@@ -170,8 +125,15 @@ export const scene01 = async () =>
         }),
       },
     });
-    const box = createMesh({ id: 'boxMesh1', geo: geometry2, mat: material2 });
-    box.position.set(2, 0, 0);
+    createMeshEntity({
+      appId: 'boxMesh1',
+      geo: geometry2,
+      mat: material2,
+      position: { x: 2, y: 0, z: 0 },
+      castShadow: true,
+      receiveShadow: true,
+    });
+    const box = getMeshByAppId('boxMesh1')!;
     createPhysicsObjectWithMesh({
       physicsParams: {
         collider: {
@@ -190,22 +152,22 @@ export const scene01 = async () =>
       },
       meshOrMeshId: box,
     });
-    box.castShadow = true;
-    box.receiveShadow = true;
-    scene.add(box);
 
-    const physBall01 = createMesh({
-      id: 'physicsBall01',
+    createMeshEntity({
+      appId: 'physicsBall01',
       geo: { type: 'SPHERE', params: { radius: 1, widthSegments: 32, heightSegments: 32 } },
       mat: material2,
-      phy: {
-        collider: { type: 'SPHERE' },
-        rigidBody: { rigidType: 'DYNAMIC', translation: { x: 2, y: 3, z: -2 } },
-      },
       castShadow: true,
       receiveShadow: true,
     });
-    scene.add(physBall01);
+    const physBall01 = getMeshByAppId('physicsBall01')!;
+    createPhysicsObjectWithMesh({
+      physicsParams: {
+        collider: { type: 'SPHERE' },
+        rigidBody: { rigidType: 'DYNAMIC', translation: { x: 2, y: 3, z: -2 } },
+      },
+      meshOrMeshId: physBall01,
+    });
 
     const cylMat = createMaterial({
       id: 'cylinder01Material',
@@ -214,8 +176,8 @@ export const scene01 = async () =>
         map: getTexture('box1Texture'),
       },
     });
-    const physCyl01 = createMesh({
-      id: 'physicsCyl01',
+    createMeshEntity({
+      appId: 'physicsCyl01',
       geo: {
         type: 'CYLINDER',
         params: {
@@ -227,7 +189,12 @@ export const scene01 = async () =>
         },
       },
       mat: cylMat,
-      phy: {
+      castShadow: true,
+      receiveShadow: true,
+    });
+    const physCyl01 = getMeshByAppId('physicsCyl01')!;
+    createPhysicsObjectWithMesh({
+      physicsParams: {
         collider: { type: 'CYLINDER' },
         rigidBody: {
           rigidType: 'DYNAMIC',
@@ -235,49 +202,40 @@ export const scene01 = async () =>
           angvel: { x: 23, y: 1, z: 5 },
         },
       },
+      meshOrMeshId: physCyl01,
     });
-    physCyl01.castShadow = true;
-    physCyl01.receiveShadow = true;
-    scene.add(physCyl01);
 
     // Group example
-    const group = createGroup({ id: 'myGroup' });
-    const groupBox1 = createMesh({
-      geo: createGeometry<THREE.BoxGeometry>({
-        type: 'BOX',
-        params: { width: 0.2, height: 0.2, depth: 0.2 },
-      }),
-      mat: createMaterial({ type: 'BASIC', params: { color: '#f0cc00' } }),
-    });
-    groupBox1.position.set(-0.2, 0, 0);
-    const groupBox2 = createMesh({
-      geo: createGeometry<THREE.BoxGeometry>({
-        type: 'BOX',
-        params: { width: 0.2, height: 0.2, depth: 0.2 },
-      }),
-      mat: createMaterial({ type: 'BASIC', params: { color: '#ff00c0' } }),
-    });
-    groupBox2.position.set(0.2, 0, 0);
-    addToGroup(group, [groupBox1, groupBox2]);
-    group.position.y = 1.4;
-    scene.add(group);
+    const groupEntityId = createGroupEntity({ appId: 'myGroup', position: { x: 0, y: 1.4, z: 0 } });
+    createMeshEntity(
+      {
+        appId: 'groupBox1',
+        geo: createGeometry<THREE.BoxGeometry>({
+          type: 'BOX',
+          params: { width: 0.2, height: 0.2, depth: 0.2 },
+        }),
+        mat: createMaterial({ type: 'BASIC', params: { color: '#f0cc00' } }),
+        position: { x: -0.2, y: 0, z: 0 },
+      },
+      { doNotAddToScene: true }
+    );
+    const groupBox1 = getMeshByAppId('groupBox1')!;
 
-    // Batch load textures example
-    // const updateLoadStatusFn = (
-    //   loadedTextures: { [id: string]: THREE.Texture },
-    //   loadedCount: number,
-    //   totalCount: number
-    // ) => {
-    //   if (totalCount === 0) llog(`Loaded textures: ${loadedCount}/${totalCount}`, loadedTextures);
-    // };
-    // loadTextures(
-    //   [
-    //     { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg' },
-    //     { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_AmbientOcclusion.jpg' },
-    //     { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_Metallic.jpg' },
-    //   ],
-    //   updateLoadStatusFn
-    // );
+    createMeshEntity(
+      {
+        appId: 'groupBox2',
+        geo: createGeometry<THREE.BoxGeometry>({
+          type: 'BOX',
+          params: { width: 0.2, height: 0.2, depth: 0.2 },
+        }),
+        mat: createMaterial({ type: 'BASIC', params: { color: '#ff00c0' } }),
+        position: { x: 0.2, y: 0, z: 0 },
+      },
+      { doNotAddToScene: true }
+    );
+    const groupBox2 = getMeshByAppId('groupBox2')!;
+
+    addToGroupEntity(groupEntityId, [groupBox1, groupBox2]);
 
     const result = await importModelAsync({
       appId: 'importedMesh1',
@@ -309,7 +267,6 @@ export const scene01 = async () =>
       });
       importedBox.position.set(3, 3, 2);
       importedBox.material = material;
-      scene.add(importedBox);
     }
 
     createPhysicsObjectWithoutMesh({
@@ -326,7 +283,6 @@ export const scene01 = async () =>
           },
           translation: { x: 0, y: -1.5, z: 0 },
         },
-        // rigidBody: { rigidType: 'FIXED', translation: { x: 0, y: -1.5, z: 0 } },
       },
     });
 
@@ -334,60 +290,6 @@ export const scene01 = async () =>
       sphere.rotation.y -= transformAppSpeedValue(2);
       sphere.rotation.z -= transformAppSpeedValue(2);
     });
-
-    // Lights
-    // const ambient = createLight({
-    //   id: 'ambientLight',
-    //   name: 'Ambient light',
-    //   type: 'AMBIENT',
-    //   params: { color: '#ffffff', intensity: 0.5 },
-    // });
-    // scene.add(ambient);
-
-    // const hemisphere = createLight({
-    //   id: 'hemisphereLight',
-    //   type: 'HEMISPHERE',
-    //   params: {
-    //     skyColor: 0x220000,
-    //     groundColor: 0x225599,
-    //     intensity: 1.5,
-    //   },
-    // });
-    // scene.add(hemisphere);
-
-    // const point = createLight({
-    //   id: 'pointLight',
-    //   type: 'POINT',
-    //   params: {
-    //     color: 0xffffff,
-    //     intensity: 7,
-    //     distance: 10,
-    //   },
-    // });
-    // point.position.set(2, 1, 1);
-    // scene.add(point);
-
-    // const directionalLight = createLight({
-    //   id: 'directionalLight',
-    //   type: 'DIRECTIONAL',
-    //   params: {
-    //     position: { x: -5, y: 2.5, z: 2.5 },
-    //     color: 0xffe5c7,
-    //     // intensity: Math.PI,
-    //     intensity: 5,
-    //     castShadow: true,
-    //     // shadowMapSize: [2048, 2048],
-    //     shadowMapSize: [512, 512],
-    //     shadowCamNearFar: [1, 15],
-    //     shadowCamLeftRightTopBottom: [-10, 10, 10, -10],
-    //     shadowBias: -0.01,
-    //     shadowNormalBias: -0.01,
-    //     shadowRadius: 5, // Not for PCFSoftShadowMap type
-    //     shadowBlurSamples: 10, // Only for VSM shadowmap types
-    //     shadowIntensity: 0.75,
-    //   },
-    // });
-    // scene.add(directionalLight);
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 

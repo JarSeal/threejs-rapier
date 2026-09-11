@@ -12,10 +12,10 @@ import {
   updateDraggableWindow,
 } from '../../UI/DraggableWindow';
 import { setTransform } from '../../../utils/ECSHelpers';
-import { setLightEnabled, ShadowQuality } from '../../_LightManager';
+import { setLightEnabled, ShadowQuality } from '../../LightManager';
 import { getCurrentSceneId, getRootScene } from '../../Scene';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
-import { getActiveCameraId } from '../../_CameraManager';
+import { getActiveCameraId } from '../../CameraManager';
 import { getLightCharacteristics } from '../../../utils/helpers';
 import { BladeController, View } from '@tweakpane/core';
 import { FOUR_PX_TO_8K_LIST } from '../../../utils/constants';

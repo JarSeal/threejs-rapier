@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { createScene } from '../_engine/core/Scene';
-import { createGeometry } from '../_engine/core/_Geometry';
+import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
-import { createMesh } from '../_engine/core/Mesh';
+import { createMeshEntity, getMeshByAppId } from '../_engine/core/MeshManager';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import {
   addScenePhysicsLooper,
@@ -30,15 +30,6 @@ export const sceneThirdPersonGym = async () =>
     const updateLoaderFn = getLoaderStatusUpdater();
     updateLoaderFn({ loadedCount: 0, totalCount: 2 });
 
-    // @TODO: fix this whole scene to use ECS
-
-    // Position camera
-    // const camera = getCurrentCamera();
-    // camera.position.z = 5;
-    // camera.position.x = 2.5;
-    // camera.position.y = 1;
-    // camera.lookAt(new THREE.Vector3(0, 0, 0));
-
     const scene = createScene(SCENE_THIRD_PERSON_GYM_META.id, {
       name: 'Test scene 1',
       isCurrentScene: true,
@@ -53,56 +44,9 @@ export const sceneThirdPersonGym = async () =>
         file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_41_4k.png',
         textureId: 'equiRectSunsetStylizedId',
         colorSpace: THREE.SRGBColorSpace,
-        // colorSpace: THREE.LinearSRGBColorSpace,
-        // colorSpace: THREE.NoColorSpace,
       },
     });
-    // const mapStylizedSunset = ['/px.png', '/nx.png', '/py.png', '/ny.png', '/pz.png', '/nz.png'];
-    // await createSkyBox({
-    //   id: 'stylizedSunsetCubemap',
-    //   name: 'Stylized Sunset Cubemap',
-    //   type: 'CUBETEXTURE',
-    //   params: {
-    //     fileNames: mapStylizedSunset,
-    //     path: '/assets/testTextures/skyboxes/sunset_stylized',
-    //     textureId: 'cubemapSunsetStylizedId',
-    //     cubeTextRotate: 0.625,
-    //   },
-    // });
-    // await createSkyBox({
-    //   id: 'partly-cloudy',
-    //   type: 'EQUIRECTANGULAR',
-    //   params: {
-    //     // file: envTexture,
-    //     // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_skyandground_8k.png',
-    //     file: '/debugger/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
-    //     // file: '/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_2k.hdr',
-    //     // file: '/assets/testTextures/evening_road_01_puresky_8k.hdr',
-    //     // file: '/assets/testTextures/pizzo_pernice_puresky_8k.hdr',
-    //     textureId: 'equiRectId',
-    //     // colorSpace: THREE.SRGBColorSpace,
-    //     colorSpace: THREE.LinearSRGBColorSpace,
-    //     // colorSpace: THREE.NoColorSpace,
-    //   },
-    // });
-    // const map02 = [
-    //   '/cubemap02_positive_x.png',
-    //   '/cubemap02_negative_x.png',
-    //   '/cubemap02_negative_y.png',
-    //   '/cubemap02_positive_y.png',
-    //   '/cubemap02_positive_z.png',
-    //   '/cubemap02_negative_z.png',
-    // ];
-    // await createSkyBox({
-    //   id: 'desert-dunes',
-    //   type: 'CUBETEXTURE',
-    //   params: {
-    //     fileNames: map02,
-    //     path: '/debugger/assets/testTextures',
-    //     textureId: 'cubeTextureId',
-    //     flipY: true,
-    //   },
-    // });
+
     await createSkyBox({
       id: 'emptyBlueSkyEquiRect',
       type: 'EQUIRECTANGULAR',
@@ -137,13 +81,14 @@ export const sceneThirdPersonGym = async () =>
       type: 'PHONG',
       params: { map: groundTexture },
     });
-    const groundMesh = createMesh({
-      id: 'largeGroundMesh',
+    createMeshEntity({
+      appId: 'largeGroundMesh',
       geo: groundGeo,
       mat: groundMat,
       receiveShadow: true,
+      position: groundPos,
     });
-    groundMesh.position.set(groundPos.x, groundPos.y, groundPos.z);
+    const groundMesh = getMeshByAppId('largeGroundMesh')!;
     createPhysicsObjectWithMesh({
       physicsParams: {
         collider: {
@@ -154,13 +99,11 @@ export const sceneThirdPersonGym = async () =>
       },
       meshOrMeshId: groundMesh,
     });
-    scene.add(groundMesh);
 
     // OBSTACLES
     const { stairsMesh, stairsPhysicsObject, bigBoxWallMesh, bigBoxWallPhysicsObject } =
       characterTestObstacles();
     (stairsMesh.material as THREE.MeshPhongMaterial).map = uvTexture.clone();
-    scene.add(stairsMesh);
     stairsPhysicsObject?.setTranslation({ x: 5, y: -1.8 });
 
     const bigBoxWallMat = bigBoxWallMesh.material as THREE.MeshPhongMaterial;
@@ -169,7 +112,6 @@ export const sceneThirdPersonGym = async () =>
     bigBoxWallMat.map.wrapT = THREE.RepeatWrapping;
     bigBoxWallMat.map.repeat.set(2.5, 2.5);
     bigBoxWallPhysicsObject?.setTranslation({ x: -2, y: -5 + groundHeight / 2 });
-    scene.add(bigBoxWallMesh);
 
     // BOX
     const geometry2 = createGeometry({
@@ -187,7 +129,14 @@ export const sceneThirdPersonGym = async () =>
         }),
       },
     });
-    const box = createMesh({ id: 'testBox1Mesh', geo: geometry2, mat: material2 });
+    createMeshEntity({
+      appId: 'testBox1Mesh',
+      geo: geometry2,
+      mat: material2,
+      castShadow: true,
+      receiveShadow: true,
+    });
+    const box = getMeshByAppId('testBox1Mesh')!;
     createPhysicsObjectWithMesh({
       physicsParams: {
         collider: {
@@ -203,9 +152,6 @@ export const sceneThirdPersonGym = async () =>
       },
       meshOrMeshId: box,
     });
-    box.castShadow = true;
-    box.receiveShadow = true;
-    scene.add(box);
 
     // CHARACTER
     const characterData = {
@@ -230,29 +176,36 @@ export const sceneThirdPersonGym = async () =>
         }),
       },
     });
-    const directionBeakMesh = createMesh({
-      id: 'directionBeakMeshDynamicChar-1',
-      geo: createGeometry({
-        id: 'directionBeakGeoDynamicChar',
-        type: 'BOX',
-        params: { width: 0.25, height: 0.25, depth: 0.7 },
-      }),
-      mat: createMaterial({
-        id: 'directionBeakMatDynamicChar',
-        type: 'BASIC',
-        params: { color: '#333' },
-      }),
-    });
-    const characterMesh = createMesh({
-      id: 'meshDynamicChar-1',
+    createMeshEntity(
+      {
+        appId: 'directionBeakMeshDynamicChar-1',
+        geo: createGeometry({
+          id: 'directionBeakGeoDynamicChar',
+          type: 'BOX',
+          params: { width: 0.25, height: 0.25, depth: 0.7 },
+        }),
+        mat: createMaterial({
+          id: 'directionBeakMatDynamicChar',
+          type: 'BASIC',
+          params: { color: '#333' },
+        }),
+        position: { x: 0.35, y: 0.43, z: 0 },
+      },
+      { doNotAddToScene: true }
+    );
+    const directionBeakMesh = getMeshByAppId('directionBeakMeshDynamicChar-1')!;
+
+    createMeshEntity({
+      appId: 'meshDynamicChar-1',
       geo: charCapsule,
       mat: charMaterial,
+      receiveShadow: true,
+      castShadow: true,
     });
-    directionBeakMesh.position.set(0.35, 0.43, 0);
+    const characterMesh = getMeshByAppId('meshDynamicChar-1')!;
     characterMesh.add(directionBeakMesh);
-    characterMesh.receiveShadow = true;
-    characterMesh.castShadow = true;
-    const { charMesh, dynamicCharacterObject } = createDynamicCharacter({
+
+    const { dynamicCharacterObject } = createDynamicCharacter({
       id: 'topDownChar',
       charMesh: characterMesh,
       charData: characterData,
@@ -268,67 +221,45 @@ export const sceneThirdPersonGym = async () =>
     });
     const charPhysObj = getPhysicsObject(dynamicCharacterObject.physObjectId);
     charPhysObj?.setTranslation({ x: 5, y: 3, z: -5 });
-    scene.add(charMesh);
-
-    // const mouseInput = { x: 0, y: 0 };
-    // document.addEventListener('mousemove', (e) => {
-    //   mouseInput.x = e.movementX;
-    //   mouseInput.y = e.movementY;
-    // });
-
-    // Add top down camera
-    // createFollowObjectCameraRig({
-    //   id: 'playerFollowCamRig',
-    //   camera: createCamera('playerFollowCam', {
-    //     name: 'Player camera',
-    //     isCurrentCamera: true,
-    //     fov: 60,
-    //     near: 2,
-    //     far: 1000,
-    //   }),
-    //   targetMesh: charMesh,
-    //   offset: { x: 7, y: 20, z: 7 },
-    //   smoothingTime: 0.2,
-    //   // getMouseMoveInput: () => mouseInput,
-    // });
 
     // Another character without input
-    const directionBeakMesh2 = createMesh({
-      id: 'directionBeakMeshDynamicChar-2',
-      geo: createGeometry({
-        id: 'directionBeakGeoDynamicChar2',
-        type: 'BOX',
-        params: { width: 0.25, height: 0.25, depth: 0.7 },
-      }),
-      mat: createMaterial({
-        id: 'directionBeakMatDynamicChar',
-        type: 'BASIC',
-        params: { color: '#333' },
-      }),
-    });
-    const characterMesh2 = createMesh({
-      id: 'meshDynamicChar-2',
+    createMeshEntity(
+      {
+        appId: 'directionBeakMeshDynamicChar-2',
+        geo: createGeometry({
+          id: 'directionBeakGeoDynamicChar2',
+          type: 'BOX',
+          params: { width: 0.25, height: 0.25, depth: 0.7 },
+        }),
+        mat: createMaterial({
+          id: 'directionBeakMatDynamicChar',
+          type: 'BASIC',
+          params: { color: '#333' },
+        }),
+        position: { x: 0.35, y: 0.43, z: 0 },
+      },
+      { doNotAddToScene: true }
+    );
+    const directionBeakMesh2 = getMeshByAppId('directionBeakMeshDynamicChar-2')!;
+
+    createMeshEntity({
+      appId: 'meshDynamicChar-2',
       geo: charCapsule,
       mat: charMaterial,
+      receiveShadow: true,
+      castShadow: true,
     });
-    directionBeakMesh2.position.set(0.35, 0.43, 0);
+    const characterMesh2 = getMeshByAppId('meshDynamicChar-2')!;
     characterMesh2.add(directionBeakMesh2);
-    characterMesh2.receiveShadow = true;
-    characterMesh2.castShadow = true;
-    const {
-      controlFns,
-      dynamicCharacterObject: dummyCharacterObject,
-      charMesh: dummyCharMesh,
-    } = createDynamicCharacter({
+
+    const { controlFns, dynamicCharacterObject: dummyCharacterObject } = createDynamicCharacter({
       id: 'testDummyChar',
       charMesh: characterMesh2,
       charData: characterData,
     });
     const dummyCharPhysObj = getPhysicsObject(dummyCharacterObject.physObjectId);
     dummyCharPhysObj?.setTranslation({ x: -2, y: 5, z: -2 });
-    scene.add(dummyCharMesh);
 
-    // @TEMP: Set an interval to move the dummy
     let action: 'F' | 'T' | null = null;
     let accDelta = 0;
     addScenePhysicsLooper('dummyCharLooper', (delta) => {
@@ -350,47 +281,6 @@ export const sceneThirdPersonGym = async () =>
       accDelta += delta;
     });
 
-    // Lights
-    // const ambient = createLight({
-    //   id: 'charSceneAmbiLight',
-    //   name: 'Ambient light',
-    //   type: 'AMBIENT',
-    //   params: { color: '#ffffff', intensity: 0.5 },
-    // });
-    // scene.add(ambient);
-
-    // const hemisphere = createLight({
-    //   id: 'charScHemisLight',
-    //   type: 'HEMISPHERE',
-    //   params: {
-    //     skyColor: 0x220000,
-    //     groundColor: 0x225599,
-    //     intensity: 1.5,
-    //   },
-    // });
-    // scene.add(hemisphere);
-
-    // const directionalLight = createLight({
-    //   id: 'charSceneDirLight',
-    //   type: 'DIRECTIONAL',
-    //   params: {
-    //     position: { x: -40, y: 12.5, z: 30 },
-    //     color: 0xffe5c7,
-    //     intensity: 5,
-    //     castShadow: true,
-    //     shadowMapSize: [2048, 2048],
-    //     shadowCamNearFar: [10, 250],
-    //     shadowCamLeftRightTopBottom: [-80, 80, 80, -80],
-    //     shadowBias: -0.0009,
-    //     shadowNormalBias: 0.1184,
-    //     shadowRadius: 5, // Not for PCFSoftShadowMap type
-    //     shadowBlurSamples: 10, // Only for VSM shadowmap types
-    //     shadowIntensity: 0.75,
-    //   },
-    // });
-    // scene.add(directionalLight);
-
-    // @TODO: remove this test when custom prop importing is done
     const result = await importModelAsync({
       fileName: '/debugger/assets/testModels/customPropTestCube.glb',
       appId: 'customPropTest',
@@ -402,7 +292,6 @@ export const sceneThirdPersonGym = async () =>
       addCheckerboardMaterialToMesh('checkerMaterial', result.mesh);
       result.mesh.castShadow = true;
       result.mesh.receiveShadow = true;
-      scene.add(result.mesh);
     }
 
     // Suzanne (monkey TRIMESH)
@@ -424,7 +313,6 @@ export const sceneThirdPersonGym = async () =>
       addCheckerboardMaterialToMesh('checkerMaterial', result2.mesh);
       result2.mesh.castShadow = true;
       result2.mesh.receiveShadow = true;
-      scene.add(result2.mesh);
     }
 
     // Suzanne (monkey TRIMESH)
@@ -451,7 +339,6 @@ export const sceneThirdPersonGym = async () =>
       addCheckerboardMaterialToMesh('checkerMaterial', result2convex.mesh);
       result2convex.mesh.castShadow = true;
       result2convex.mesh.receiveShadow = true;
-      scene.add(result2convex.mesh);
     }
 
     const slides = await getTestObstacle('slideAngles', {
@@ -478,8 +365,6 @@ export const sceneThirdPersonGym = async () =>
       slideMat.map.wrapT = THREE.RepeatWrapping;
       slideMat.map.repeat.set(34, 34);
       slides.mesh.material = slideMat;
-
-      scene.add(slides.mesh);
     }
 
     const movingPlatformMat = createMaterial({
@@ -488,21 +373,24 @@ export const sceneThirdPersonGym = async () =>
       params: { color: '#999' },
     });
 
+    createMeshEntity({
+      appId: 'sideWaysPlatformMesh',
+      geo: createGeometry({
+        id: 'movingPlatform1-geo',
+        type: 'BOX',
+        params: { width: 2, height: 0.2, depth: 4 },
+      }),
+      mat: movingPlatformMat,
+      castShadow: true,
+      receiveShadow: true,
+    });
+    const sideWaysPlatformMesh = getMeshByAppId('sideWaysPlatformMesh')!;
+
     createMovingPlatform({
       id: 'sideWaysPlatform',
       scene,
       shape: {
-        mesh: createMesh({
-          id: 'sideWaysPlatformMesh',
-          geo: createGeometry({
-            id: 'movingPlatform1-geo',
-            type: 'BOX',
-            params: { width: 2, height: 0.2, depth: 4 },
-          }),
-          mat: movingPlatformMat,
-          castShadow: true,
-          receiveShadow: true,
-        }),
+        mesh: sideWaysPlatformMesh,
       },
       physicsParams: [
         {
@@ -516,21 +404,24 @@ export const sceneThirdPersonGym = async () =>
       ],
     });
 
+    createMeshEntity({
+      appId: 'elevatorPlatformMesh',
+      geo: createGeometry({
+        id: 'movingPlatform2-geo',
+        type: 'BOX',
+        params: { width: 4, height: 0.2, depth: 4 },
+      }),
+      mat: movingPlatformMat,
+      castShadow: true,
+      receiveShadow: true,
+    });
+    const elevatorPlatformMesh = getMeshByAppId('elevatorPlatformMesh')!;
+
     createMovingPlatform({
       id: 'elevatorPlatform',
       scene,
       shape: {
-        mesh: createMesh({
-          id: 'elevatorPlatformMesh',
-          geo: createGeometry({
-            id: 'movingPlatform2-geo',
-            type: 'BOX',
-            params: { width: 4, height: 0.2, depth: 4 },
-          }),
-          mat: movingPlatformMat,
-          castShadow: true,
-          receiveShadow: true,
-        }),
+        mesh: elevatorPlatformMesh,
       },
       physicsParams: [
         {
@@ -548,23 +439,27 @@ export const sceneThirdPersonGym = async () =>
     });
 
     const carouselPos = { x: 14, y: -1.9, z: -4 };
-    const oneLapDuration = 4000; // Total time for 360 degrees (ms)
-    const segmentDur = oneLapDuration / 4; // Time per 90 degrees
+    const oneLapDuration = 4000;
+    const segmentDur = oneLapDuration / 4;
+
+    createMeshEntity({
+      appId: 'carouselPlatformMesh1',
+      geo: createGeometry({
+        id: 'movingPlatform3-geo',
+        type: 'CYLINDER',
+        params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
+      }),
+      mat: movingPlatformMat,
+      castShadow: true,
+      receiveShadow: true,
+    });
+    const carouselPlatformMesh1 = getMeshByAppId('carouselPlatformMesh1')!;
+
     createMovingPlatform({
       id: 'carouselPlatform',
       scene,
       shape: {
-        mesh: createMesh({
-          id: 'carouselPlatformMesh1',
-          geo: createGeometry({
-            id: 'movingPlatform3-geo',
-            type: 'CYLINDER',
-            params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
-          }),
-          mat: movingPlatformMat,
-          castShadow: true,
-          receiveShadow: true,
-        }),
+        mesh: carouselPlatformMesh1,
       },
       physicsParams: [
         {
@@ -579,24 +474,29 @@ export const sceneThirdPersonGym = async () =>
         { pos: carouselPos, dur: segmentDur, rot: getQuatFromAngle(270) },
       ],
     });
+
     const carouselPos2 = { x: 25, y: -1.9, z: -4 };
-    const oneLapDuration2 = 8000; // Total time for 360 degrees (ms)
-    const segmentDur2 = oneLapDuration2 / 4; // Time per 90 degrees
+    const oneLapDuration2 = 8000;
+    const segmentDur2 = oneLapDuration2 / 4;
+
+    createMeshEntity({
+      appId: 'carouselPlatformMesh2',
+      geo: createGeometry({
+        id: 'movingPlatform4-geo',
+        type: 'BOX',
+        params: { width: 4, height: 0.2, depth: 4 },
+      }),
+      mat: movingPlatformMat,
+      castShadow: true,
+      receiveShadow: true,
+    });
+    const carouselPlatformMesh2 = getMeshByAppId('carouselPlatformMesh2')!;
+
     createMovingPlatform({
       id: 'carouselPlatform2',
       scene,
       shape: {
-        mesh: createMesh({
-          id: 'carouselPlatformMesh2',
-          geo: createGeometry({
-            id: 'movingPlatform4-geo',
-            type: 'BOX',
-            params: { width: 4, height: 0.2, depth: 4 },
-          }),
-          mat: movingPlatformMat,
-          castShadow: true,
-          receiveShadow: true,
-        }),
+        mesh: carouselPlatformMesh2,
       },
       physicsParams: [
         {
@@ -611,24 +511,29 @@ export const sceneThirdPersonGym = async () =>
         { pos: { ...carouselPos2, z: 0 }, dur: segmentDur2, rot: getQuatFromAngle(-270) },
       ],
     });
+
     const carouselPos3 = { x: 25, y: -1.9, z: 12 };
-    const oneLapDuration3 = 8000; // Total time for 360 degrees (ms)
-    const segmentDur3 = oneLapDuration3 / 4; // Time per 90 degrees
+    const oneLapDuration3 = 8000;
+    const segmentDur3 = oneLapDuration3 / 4;
+
+    createMeshEntity({
+      appId: 'carouselPlatformMesh3',
+      geo: createGeometry({
+        id: 'movingPlatform5-geo',
+        type: 'CYLINDER',
+        params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
+      }),
+      mat: movingPlatformMat,
+      castShadow: true,
+      receiveShadow: true,
+    });
+    const carouselPlatformMesh3 = getMeshByAppId('carouselPlatformMesh3')!;
+
     createMovingPlatform({
       id: 'carouselPlatform3',
       scene,
       shape: {
-        mesh: createMesh({
-          id: 'carouselPlatformMesh3',
-          geo: createGeometry({
-            id: 'movingPlatform5-geo',
-            type: 'CYLINDER',
-            params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
-          }),
-          mat: movingPlatformMat,
-          castShadow: true,
-          receiveShadow: true,
-        }),
+        mesh: carouselPlatformMesh3,
       },
       physicsParams: [
         {
@@ -645,21 +550,24 @@ export const sceneThirdPersonGym = async () =>
     });
 
     const carouselOneSegDur = 1500;
+    createMeshEntity({
+      appId: 'ferrisWheelPlatformMesh',
+      geo: createGeometry({
+        id: 'movingPlatform6-geo',
+        type: 'BOX',
+        params: { width: 2, height: 0.2, depth: 4 },
+      }),
+      mat: movingPlatformMat,
+      castShadow: true,
+      receiveShadow: true,
+    });
+    const ferrisWheelPlatformMesh = getMeshByAppId('ferrisWheelPlatformMesh')!;
+
     createMovingPlatform({
       id: 'ferrisWheelPlatform',
       scene,
       shape: {
-        mesh: createMesh({
-          id: 'ferrisWheelPlatformMesh',
-          geo: createGeometry({
-            id: 'movingPlatform6-geo',
-            type: 'BOX',
-            params: { width: 2, height: 0.2, depth: 4 },
-          }),
-          mat: movingPlatformMat,
-          castShadow: true,
-          receiveShadow: true,
-        }),
+        mesh: ferrisWheelPlatformMesh,
       },
       physicsParams: [
         {
@@ -691,29 +599,22 @@ export const sceneThirdPersonGym = async () =>
       fileName: '/debugger/assets/testModels/test_multi_box.glb',
       appId: 'customPropTest3',
       importGroup: true,
-      // physicsParams: {
-      //   isPhysObj: true,
-      //   keepMesh: true,
-      //   rigidBody: { rigidType: 'DYNAMIC' },
-      //   collider: { type: 'BOX', density: 2 },
-      // },
     });
     if (result3.mesh && !Array.isArray(result3.mesh)) {
       result3.mesh?.position.set(2, 2, 2);
       if (!Array.isArray(result3.physObj))
         result3.physObj?.rigidBody?.setTranslation(new THREE.Vector3(2, 2, 2), true);
       addCheckerboardMaterialToMesh('checkerMaterial', result3.mesh, {
-        useConstantCheckerSize: true, // @TODO: check how to make this work (currently there is no change)
+        useConstantCheckerSize: true,
       });
       result3.mesh.castShadow = true;
       result3.mesh.receiveShadow = true;
-      scene.add(result3.mesh);
     }
 
     // Straight stairs (TRIMESH)
     const result4 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsStraightTrimesh.glb',
-      appId: 'customPropTest4', // @TODO: this is ignored for multi object importing, FIX!
+      appId: 'customPropTest4',
       importGroup: true,
     });
     if (result4.mesh && !Array.isArray(result4.mesh)) {
@@ -731,7 +632,6 @@ export const sceneThirdPersonGym = async () =>
         type: 'PHONG',
         params: { color: '#999' },
       });
-      scene.add(result4.mesh);
     }
 
     // Straight stairs (COMPOUND)
@@ -755,7 +655,6 @@ export const sceneThirdPersonGym = async () =>
         type: 'PHONG',
         params: { color: '#999' },
       });
-      scene.add(result5.mesh);
     }
 
     // Straight stairs 2 (TRIMESH)
@@ -779,7 +678,6 @@ export const sceneThirdPersonGym = async () =>
         type: 'PHONG',
         params: { color: '#999' },
       });
-      scene.add(result6.mesh);
     }
 
     // Straight stairs 2 (COMPOUND)
@@ -803,7 +701,6 @@ export const sceneThirdPersonGym = async () =>
         type: 'PHONG',
         params: { color: '#999' },
       });
-      scene.add(result7.mesh);
     }
 
     // Straight stairs 3 (TRIMESH)
@@ -827,7 +724,6 @@ export const sceneThirdPersonGym = async () =>
         type: 'PHONG',
         params: { color: '#999' },
       });
-      scene.add(result8.mesh);
     }
 
     // Straight stairs 3 (COMPOUND)
@@ -851,7 +747,6 @@ export const sceneThirdPersonGym = async () =>
         type: 'PHONG',
         params: { color: '#999' },
       });
-      scene.add(result9.mesh);
     }
 
     // Cornered stairs with thick railings (COMPOUND)
@@ -876,7 +771,6 @@ export const sceneThirdPersonGym = async () =>
         type: 'PHONG',
         params: { color: '#999' },
       });
-      scene.add(result10.mesh);
     }
 
     // Cornered stairs with thick railings (TRIMESH)
@@ -901,7 +795,6 @@ export const sceneThirdPersonGym = async () =>
         type: 'PHONG',
         params: { color: '#999' },
       });
-      scene.add(result11.mesh);
     }
 
     // Spiral stairs (TRIMESH)
@@ -926,7 +819,6 @@ export const sceneThirdPersonGym = async () =>
         type: 'PHONG',
         params: { color: '#999' },
       });
-      scene.add(result12.mesh);
     }
 
     // Spiked terrain
@@ -958,7 +850,6 @@ export const sceneThirdPersonGym = async () =>
           result13.group
         );
       }
-      scene.add(result13.group);
     }
 
     // Smooth terrain
@@ -990,7 +881,6 @@ export const sceneThirdPersonGym = async () =>
           result14.group
         );
       }
-      scene.add(result14.group);
     }
 
     // Obstacles
@@ -1022,10 +912,9 @@ export const sceneThirdPersonGym = async () =>
           result15.group
         );
       }
-      scene.add(result15.group);
     }
 
-    initPhysicsStressTest(scene);
+    initPhysicsStressTest();
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 

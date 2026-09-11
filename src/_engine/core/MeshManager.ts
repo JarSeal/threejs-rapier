@@ -1,6 +1,19 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry, incGeometryRef, decGeometryRef, GeoProps } from './_Geometry';
-import { createMaterial, incMaterialRef, decMaterialRef, MatProps, getMaterial } from './Material';
+import {
+  createGeometry,
+  incGeometryRef,
+  decGeometryRef,
+  GeoProps,
+  saveBufferGeometry,
+} from './Geometry';
+import {
+  createMaterial,
+  incMaterialRef,
+  decMaterialRef,
+  MatProps,
+  getMaterial,
+  saveMaterial,
+} from './Material';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getRootScene } from './Scene';
 import { ThreeEuler, ThreeQuoternion } from '../utils/helpers';
@@ -10,7 +23,7 @@ import { setTransform } from '../utils/ECSHelpers';
 import { lerror, lwarn } from '../utils/Logger';
 import { type CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
-import { getGeometry } from './_Geometry';
+import { getGeometry } from './Geometry';
 import { CoreComponentType } from './ECS/ECSRegistry';
 
 // Register onDeleteEntity hook for TAG_IS_MESH

@@ -1,5 +1,5 @@
 import { ECSSystemStage } from '../../../AppECSRegistry';
-import { isAnyLightHelperVisible } from '../_LightManager';
+import { isAnyLightHelperVisible } from '../LightManager';
 import { IS_DEBUG_ENV } from '../Config';
 import { ECSWorld } from '../ECS';
 import { ComponentType, OBJECT3D_TAGS } from './ECSCoreComponents';

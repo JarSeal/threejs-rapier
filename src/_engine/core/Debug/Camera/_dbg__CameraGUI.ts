@@ -13,7 +13,7 @@ import {
 } from '../../UI/DraggableWindow';
 import { getCurrentSceneId } from '../../Scene';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
-import { getActiveCameraId, CameraDebugLSData, DebugCamLSProps } from '../../_CameraManager';
+import { getActiveCameraId, CameraDebugLSData, DebugCamLSProps } from '../../CameraManager';
 import { DEFAULT_DEBUG_CAM_PROPS } from './_dbg__DebugCamera';
 import { updateOnScreenTools } from '../../../debug/OnScreenTools';
 

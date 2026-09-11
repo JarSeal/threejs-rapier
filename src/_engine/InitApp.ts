@@ -16,14 +16,14 @@ import { getSvgIcon } from './core/UI/icons/SvgIcon';
 
 // ECS Core Plugins
 import './core/ECS/ECSCoreSystems';
-import './core/_MeshManager';
+import './core/MeshManager';
 
 // App Plugins
 import '../AppECSPlugins';
 
 import { initECSWorld } from './core/ECS';
-import { initDebugCamera, registerCameraManager } from './core/_CameraManager';
-import { registerLightManager } from './core/_LightManager';
+import { initDebugCamera, registerCameraManager } from './core/CameraManager';
+import { registerLightManager } from './core/LightManager';
 import { load3DSymbols } from './debug/3DSymbols';
 import { registerDebugToolsModule } from './debug/DebugToolsManager';
 import { registerRaycastDebugGUI } from './core/Raycast';

@@ -6,10 +6,10 @@ import {
   setCurrentCamera,
   toggleAllCameraHelpers,
   toggleDebugCamera,
-} from '../../core/_CameraManager';
+} from '../CameraManager';
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../../core/Config';
 import { getHUDRootCMP } from '../../core/HUD';
-import { isAnyLightHelperVisible, toggleAllLightHelpers } from '../../core/_LightManager';
+import { isAnyLightHelperVisible, toggleAllLightHelpers } from '../LightManager';
 import { getReadOnlyLoopState, toggleAppPlay, toggleMainPlay } from '../../core/MainLoop';
 import {
   buildPhysicsDebugGUI,

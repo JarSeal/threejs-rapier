@@ -10,7 +10,8 @@ import {
   MouseInputControlType,
   MouseInputParams,
 } from './InputControls';
-import { getMesh } from './Mesh';
+import { getMeshByAppId } from './MeshManager';
+import { getECSWorld, getEntityIdByAppId } from './ECS';
 import { existsOrThrow } from '../utils/assert';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
 
@@ -30,11 +31,11 @@ let onDeleteCharacter: { [characterId: string]: () => void } = {};
 /**
  * Creates a character with controls. The character can be either a player controllable
  * character or controlled by an agent (AI).
- * @param physicsParamas (PhysicsParams | PhysicsParams[]) ({@link PhysicsParams}) if array then the physics object is a multi object
+ * @param physicsParams (PhysicsParams | PhysicsParams[]) ({@link PhysicsParams}) if array then the physics object is a multi object
  * @param meshOrMeshId ((THREE.Mesh | string) | (THREE.Mesh | string)[]) mesh or mesh id (or array of either of them) of the representation of the physics object
  * @param controls (array of KeyInputParams and/or MouseInputParams) the input control params for this character
  * @param sceneId (string) optional scene id where the physics object should be mapped to, if not provided the current scene id will be used
- * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for unitialized scene (true = no warning, default = false)
+ * @param noWarnForUnitializedScene (boolean) optional value to suppress logger warning for uninitialized scene (true = no warning, default = false)
  * @returns CharacterObject ({@link CharacterObject})
  */
 export const createCharacter = ({
@@ -67,7 +68,7 @@ export const createCharacter = ({
       sceneId,
       noWarnForUnitializedScene,
     }),
-    `Could not create character with id "${id}" in CharacterController createCharacter. Physics params: ${JSON.stringify(physicsParams)} -- Mesh params: ${JSON.stringify(physicsParams)} -- Scene id: ${sceneId}`
+    `Could not create character with id "${id}" in CharacterController createCharacter. Physics params: ${JSON.stringify(physicsParams)} -- Scene id: ${sceneId}`
   );
   if (!physObj.id) physObj.id = id;
 
@@ -75,8 +76,10 @@ export const createCharacter = ({
   let mesh: THREE.Mesh | null = null;
   if (typeof meshOrMeshId === 'string') {
     meshIds = meshOrMeshId;
-    mesh = getMesh(meshIds);
-    existsOrThrow(mesh, `Mesh not found with id '${meshIds}' in createCharacter.`);
+    mesh = existsOrThrow(
+      getMeshByAppId(meshIds),
+      `Mesh not found with id '${meshIds}' in createCharacter.`
+    );
     mesh.userData.isCharacter = true;
   } else if (Array.isArray(meshOrMeshId)) {
     meshIds = [];
@@ -84,8 +87,10 @@ export const createCharacter = ({
       const m = meshOrMeshId[i];
       if (typeof m === 'string') {
         (meshIds as string[]).push(m);
-        mesh = getMesh(m);
-        existsOrThrow(mesh, `Mesh not found with id '${m}' in createCharacter.`);
+        mesh = existsOrThrow(
+          getMeshByAppId(m),
+          `Mesh not found with id '${m}' in createCharacter.`
+        );
         mesh.userData.isCharacter = true;
       } else {
         meshIds.push(m.userData.id);
@@ -162,20 +167,32 @@ export const deleteCharacter = (id: string) => {
     deleteMouseInputControl({ id: charObj.mouseControlIds[i] });
   }
 
-  // Delete physic objects
+  // Delete physics objects
   for (let i = 0; i < charObj.physObjectId.length; i++) {
     deletePhysicsObject(charObj.physObjectId[i]);
   }
 
-  // Remove mesh from the scene
+  // Remove mesh / delete ECS entity
+  const ecsWorld = getECSWorld();
+  const deleteCharacterMeshEntity = (mId: string) => {
+    const mesh = getMeshByAppId(mId, ecsWorld);
+    if (mesh) {
+      const entityId =
+        mesh.userData.entityId ?? (mId ? getEntityIdByAppId(mId, ecsWorld) : undefined);
+      if (entityId !== undefined) {
+        ecsWorld.deleteEntity(entityId);
+      } else {
+        mesh.removeFromParent();
+      }
+    }
+  };
+
   if (Array.isArray(charObj.meshId)) {
     for (let i = 0; i < charObj.meshId.length; i++) {
-      const mesh = getMesh(charObj.meshId[i]);
-      if (mesh) mesh.removeFromParent();
+      deleteCharacterMeshEntity(charObj.meshId[i]);
     }
-  } else {
-    const mesh = getMesh(charObj.meshId);
-    if (mesh) mesh.removeFromParent();
+  } else if (charObj.meshId) {
+    deleteCharacterMeshEntity(charObj.meshId);
   }
 
   // Delete character

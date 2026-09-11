@@ -254,3 +254,16 @@ export const getGroupByAppId = (appId: string, ecsWorld?: ECSWorld) => {
   }
   return group;
 };
+
+/**
+ * Deletes all registered group entities in the ECS world.
+ */
+export const deleteAllGroupEntities = (ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+  if (!world) return;
+  const storage = world.getStorage(ComponentType.TAG_IS_GROUP);
+  const entityIds = Array.from(storage.keys());
+  for (let i = 0; i < entityIds.length; i++) {
+    world.deleteEntity(entityIds[i]);
+  }
+};

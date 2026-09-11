@@ -21,7 +21,7 @@ import {
   toggleAxesHelperVisibility,
   toggleGridHelperVisibility,
   togglePolarGridHelperVisibility,
-} from '../../core/legacy_Helpers';
+} from '../Helpers';
 import { updateOnScreenTools } from '../../debug/OnScreenTools';
 import { addToast } from '../../core/UI/Toaster';
 import { type SceneAsset } from '../../schemas/sceneSchema';

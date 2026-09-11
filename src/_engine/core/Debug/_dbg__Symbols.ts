@@ -5,7 +5,7 @@ import { ComponentType } from '../ECS/ECSCoreComponents';
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import { getRootScene } from '../Scene';
 import { existsOrThrow } from '../../utils/assert';
-import { getActiveCameraId } from '../_CameraManager'; // ADD THIS IMPORT
+import { getActiveCameraId } from '../CameraManager'; // ADD THIS IMPORT
 import {
   createNewCameraSymbol,
   createNewDirectionalLightSymbol,

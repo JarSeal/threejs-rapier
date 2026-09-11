@@ -1,7 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { deleteGeometry, GeoProps } from './_Geometry';
+import { deleteGeometry, GeoProps } from './Geometry';
 import { deleteMaterial, MatProps } from './Material';
-import { deleteGroup } from './Group';
 import { lerror, lwarn } from '../utils/Logger';
 import { deleteTexture, getTexture, TextureProps } from './Texture';
 import {
@@ -13,14 +12,15 @@ import {
 import { addSceneToDebugtools, getDebugToolsState } from '../debug/DebugToolsManager';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
-import { LightProps } from './_LightManager';
+import { LightProps } from './LightManager';
 import { ImportModelParams } from './ImportModel';
 import { createSkyBox, SkyBoxProps } from './SkyBox';
 import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
-import { MeshProps } from './_MeshManager';
+import { MeshProps } from './MeshManager';
 import { deleteEntity } from '../utils/ECSHelpers';
+import { getECSWorld, getEntityIdByAppId } from './ECS';
 
 export type Looper = (delta: number) => void;
 
@@ -215,13 +215,16 @@ export const deleteScene = (
     }
 
     if ('isGroup' in obj && (opts?.deleteGroups || opts?.deleteAll)) {
-      deleteGroup(obj as THREE.Group, {
-        deleteMeshes: opts?.deleteMeshes,
-        deleteGeometries: opts?.deleteGeometries,
-        deleteMaterials: opts?.deleteMaterials,
-        deleteTextures: opts?.deleteTextures,
-        deleteAll: opts?.deleteAll,
-      });
+      const ecsWorld = getECSWorld();
+      const entityId =
+        obj.userData.entityId ??
+        (obj.userData.id ? getEntityIdByAppId(obj.userData.id, ecsWorld) : undefined);
+
+      if (entityId !== undefined) {
+        ecsWorld.deleteEntity(entityId);
+      } else {
+        obj.removeFromParent();
+      }
     }
   });
 
@@ -238,7 +241,6 @@ export const deleteScene = (
   // Delete physics
   deletePhysicsObjectsBySceneId(id);
   if (opts?.deletePhysicsWorld || opts?.deleteAll) {
-    // Delete physics world
     deletePhysicsWorld();
   }
 

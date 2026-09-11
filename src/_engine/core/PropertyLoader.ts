@@ -1,6 +1,6 @@
 import { useDebug } from '../utils/helpers';
-import { cameraDebugGUI } from './_CameraManager';
-import { debugGUI } from './_LightManager';
+import { cameraDebugGUI } from './CameraManager';
+import { debugGUI } from './LightManager';
 import { IS_DEBUG_ENV } from './Config';
 
 type PropType = 'LIGHT' | 'CAMERA';

@@ -1,19 +1,17 @@
-import * as THREE from 'three';
 import { createKeyInputControl } from '../core/InputControls';
 import { getLogger } from './Logger';
 import { createPhysicsObjectWithMesh } from '../core/PhysicsRapier';
-import { createGeometry } from '../core/_Geometry';
+import { createGeometry } from '../core/Geometry';
 import { createMaterial } from '../core/Material';
-import { createMesh } from '../core/Mesh';
-import { isDebugEnvironment } from '../core/Config';
+import { createMeshEntity, getMeshByAppId } from '../core/MeshManager';
+import { IS_DEBUG_ENV } from '../core/Config';
 
 let stressTestCount = 0;
 
-export const initPhysicsStressTest = (scene: THREE.Scene | THREE.Group, batchSize: number = 50) => {
-  if (!isDebugEnvironment()) return;
+export const initPhysicsStressTest = (batchSize: number = 50) => {
+  if (!IS_DEBUG_ENV) return;
 
   // 1. Pre-create assets to minimize GC during the test
-  // We want to test Physics CPU load, not Three.js Geometry creation load.
   const geoBox = createGeometry({
     id: 'stress-box-geo',
     type: 'BOX',
@@ -42,17 +40,18 @@ export const initPhysicsStressTest = (scene: THREE.Scene | THREE.Group, batchSiz
       const y = 10 + Math.random() * 20; // Height 10 to 30
       const z = (Math.random() - 0.5) * 20;
 
-      const mesh = createMesh({
-        id: `stress-mesh-${stressTestCount}`,
+      const appId = `stress-mesh-${stressTestCount}`;
+
+      createMeshEntity({
+        appId,
         geo: isBox ? geoBox : geoSphere,
         mat: mat,
         castShadow: true,
         receiveShadow: true,
+        position: { x, y, z },
       });
 
-      // Position mesh initially
-      mesh.position.set(x, y, z);
-      scene.add(mesh);
+      const mesh = getMeshByAppId(appId)!;
 
       createPhysicsObjectWithMesh({
         id: `stress-phys-${stressTestCount}`,

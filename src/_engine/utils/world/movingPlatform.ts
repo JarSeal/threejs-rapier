@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry, GeoProps, GeoTypes } from '../../core/_Geometry';
+import { createGeometry, GeoProps, GeoTypes } from '../../core/Geometry';
 import { createMaterial, Materials, MatProps } from '../../core/Material';
-import { createMesh, deleteMesh, DeleteMeshOptions, MeshProps } from '../../core/Mesh';
+import { createMeshEntity, getMeshByAppId, MeshProps } from '../../core/MeshManager';
+import { getECSWorld, getEntityIdByAppId } from '../../core/ECS';
 import {
   addScenePhysicsLooper,
   createPhysicsObjectWithMesh,
@@ -14,6 +15,13 @@ import {
 import { existsOrThrow } from '../assert';
 import { getLogger } from '../Logger';
 import { RigidBody } from '@dimforge/rapier3d-compat';
+
+export type DeleteMeshOptions = {
+  deleteGeometries?: boolean;
+  deleteMaterials?: boolean;
+  deleteTextures?: boolean;
+  deleteAll?: boolean;
+};
 
 export type MovingPlatformControls = {
   play: (fromSegmentIndex?: number) => void;
@@ -63,7 +71,7 @@ export const createMovingPlatform = (props: {
     dur?: number;
   }[];
   opts?: {
-    deleteMeshOptions: DeleteMeshOptions;
+    deleteMeshOptions?: DeleteMeshOptions;
     isPlayingFromStart?: boolean; // Default true
     loopTimes?: number;
     direction?: 'FORWARD' | 'BACKWARD';
@@ -96,13 +104,15 @@ export const createMovingPlatform = (props: {
     }
   }
 
-  // Create mesh
+  // Create mesh entity
   let movingPlatformMesh: THREE.Mesh | undefined = undefined;
   if (shape) {
     if (shape.mesh && 'isMesh' in shape.mesh) {
       movingPlatformMesh = shape.mesh;
     } else if (shape.mesh) {
-      movingPlatformMesh = createMesh(shape.mesh);
+      const meshAppId = shape.mesh.appId || `movingPlatformMesh-${id}`;
+      createMeshEntity({ ...shape.mesh, appId: meshAppId });
+      movingPlatformMesh = getMeshByAppId(meshAppId);
     } else if (shape.geo && shape.mat) {
       let movingPlatformGeo: GeoTypes;
       let movingPlatformMat: Materials;
@@ -116,13 +126,15 @@ export const createMovingPlatform = (props: {
       } else {
         movingPlatformMat = createMaterial(shape.mat);
       }
-      movingPlatformMesh = createMesh({
-        id: `movingPlatformMesh-${id}`,
+      const meshAppId = `movingPlatformMesh-${id}`;
+      createMeshEntity({
+        appId: meshAppId,
         geo: movingPlatformGeo,
         mat: movingPlatformMat,
         castShadow: Boolean(shape.castShadow),
         receiveShadow: Boolean(shape.receiveShadow),
       });
+      movingPlatformMesh = getMeshByAppId(meshAppId);
     }
   }
 
@@ -216,7 +228,7 @@ export const createMovingPlatform = (props: {
   let t = 0;
   let segmentDuration = (points[curIndex].dur ?? DEFAULT_SEGMENT_DURATION) / 1000;
 
-  // reusable vectors
+  // Reusable vectors
   const startP = points[0].pos;
   const startR = points[0].rot;
   const fromPos = new THREE.Vector3(startP.x, startP.y, startP.z);
@@ -237,11 +249,9 @@ export const createMovingPlatform = (props: {
       nextIndex = (curIndex - 1 + len) % len;
     }
 
-    // Set Pos
     fromPos.set(points[curIndex].pos.x, points[curIndex].pos.y, points[curIndex].pos.z);
     toPos.set(points[nextIndex].pos.x, points[nextIndex].pos.y, points[nextIndex].pos.z);
 
-    // Set Rot (with Normalize fix)
     if (points[curIndex].rot) {
       fromRot
         .set(
@@ -271,16 +281,13 @@ export const createMovingPlatform = (props: {
   const updateUserDataVelocities = () => {
     const ud = body.userData as { velo: THREE.Vector3; angVelo: THREE.Vector3 };
 
-    // Calculate Linear Velocity
     ud.velo
       .copy(toPos)
       .sub(fromPos)
       .divideScalar(segmentDuration / speedMultiplier);
 
-    // Calculate Angular Velocity (Shortest Path)
     const q1 = fromRot.clone();
     const q2 = toRot.clone();
-    if (q1.dot(q2) < 0) q2.x = -q2.x; // Double cover fix (copy rest of components too or negate logic)
     if (q1.dot(q2) < 0) {
       q2.x = -q2.x;
       q2.y = -q2.y;
@@ -307,7 +314,6 @@ export const createMovingPlatform = (props: {
   updateSegmentTargets();
   updateUserDataVelocities();
 
-  // Initialize Body Position immediately
   body.setTranslation(fromPos, true);
   body.setRotation(fromRot, true);
   body.setNextKinematicTranslation(fromPos);
@@ -315,7 +321,6 @@ export const createMovingPlatform = (props: {
   if (movingPlatformMesh) {
     movingPlatformMesh.position.copy(fromPos);
     movingPlatformMesh.quaternion.copy(fromRot);
-    // Update matrix immediately to prevent any single-frame glitches
     movingPlatformMesh.updateMatrix();
     movingPlatformMesh.updateMatrixWorld();
   }
@@ -328,7 +333,6 @@ export const createMovingPlatform = (props: {
         t = 0;
         updateSegmentTargets();
         updateUserDataVelocities();
-        // Snap to start of this segment
         body.setNextKinematicTranslation(fromPos);
         body.setNextKinematicRotation(fromRot);
       }
@@ -336,20 +340,17 @@ export const createMovingPlatform = (props: {
     },
     pause: () => {
       isPlaying = false;
-      // Zero out velocity in userData so character stops sliding
       (body.userData as { velo: THREE.Vector3 }).velo.set(0, 0, 0);
       (body.userData as { angVelo: THREE.Vector3 }).angVelo.set(0, 0, 0);
     },
     playSegment: (idx) => {
       if (!points[idx]) return;
-      // Reset to start of this segment
       curIndex = idx;
       t = 0;
-      targetSegmentIndex = idx; // Stop when this segment finishes
+      targetSegmentIndex = idx;
       isPlaying = true;
       updateSegmentTargets();
       updateUserDataVelocities();
-      // Snap physics immediately
       body.setTranslation(fromPos, true);
       body.setRotation(fromRot, true);
     },
@@ -358,13 +359,22 @@ export const createMovingPlatform = (props: {
       curIndex = 0;
       t = 0;
       updateSegmentTargets();
-      body.setTranslation(fromPos, true); // Reset to start
+      body.setTranslation(fromPos, true);
       body.setRotation(fromRot, true);
     },
     delete: () => {
-      // 1. Remove posiible mesh
       if (movingPlatformMesh) {
-        deleteMesh(movingPlatformMesh.userData.id, opts?.deleteMeshOptions);
+        const ecsWorld = getECSWorld();
+        const mAppId = movingPlatformMesh.userData.id || movingPlatformMesh.userData.appId;
+        const entityId =
+          movingPlatformMesh.userData.entityId ??
+          (mAppId ? getEntityIdByAppId(mAppId, ecsWorld) : undefined);
+
+        if (entityId !== undefined) {
+          ecsWorld.deleteEntity(entityId);
+        } else {
+          movingPlatformMesh.removeFromParent();
+        }
       }
 
       deletePhysicsObject(`movingPlatform-${id}`);
@@ -375,7 +385,6 @@ export const createMovingPlatform = (props: {
       if (opts.direction) playDirection = opts.direction === 'FORWARD' ? 1 : -1;
       if (opts.speedMultiplier !== undefined) speedMultiplier = opts.speedMultiplier;
 
-      // Recalculate targets immediately in case direction changed
       updateSegmentTargets();
       updateUserDataVelocities();
     },
@@ -395,35 +404,26 @@ export const createMovingPlatform = (props: {
   addScenePhysicsLooper(`platformLoop-${id}`, (dt) => {
     if (!isPlaying) return;
 
-    // Increment T
     t += dt / (segmentDuration / speedMultiplier);
 
-    // Clamp
     if (t > 1) t = 1;
 
-    // Lerp/Slerp
     curPos.lerpVectors(fromPos, toPos, t);
     curRot.slerpQuaternions(fromRot, toRot, t);
 
-    // Apply Physics
     body.setNextKinematicTranslation(curPos);
     body.setNextKinematicRotation(curRot);
 
-    // Segment Complete Logic
     if (t === 1) {
-      // Check for specific segment play mode
       if (targetSegmentIndex !== null && curIndex === targetSegmentIndex) {
         isPlaying = false;
         targetSegmentIndex = null;
-        // Zero velocities
         (body.userData as { velo: THREE.Vector3 }).velo.set(0, 0, 0);
         (body.userData as { angVelo: THREE.Vector3 }).angVelo.set(0, 0, 0);
         return;
       }
 
-      // Loop Logic
       const len = points.length;
-      // If we just finished the last segment (forward) or first segment (backward)
       const isLoopComplete =
         (playDirection === 1 && curIndex === len - 1) || (playDirection === -1 && curIndex === 0);
 
@@ -437,17 +437,15 @@ export const createMovingPlatform = (props: {
         }
       }
 
-      // Advance Index
       curIndex = nextIndex;
       t = 0;
 
-      // Prepare Next Segment
       updateSegmentTargets();
       updateUserDataVelocities();
     }
   });
 
-  if (movingPlatformMesh) scene.add(movingPlatformMesh);
+  if (movingPlatformMesh && !movingPlatformMesh.parent) scene.add(movingPlatformMesh);
 
   return {
     physicsObject: movingPlatformPhysicsObject as PhysicsObject,

@@ -5,7 +5,10 @@ import { getCurrentSceneId, getRootScene, getScene, isCurrentScene } from './Sce
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { getConfig, isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
-import { deleteMesh, getMesh } from './Mesh';
+import { getMeshByAppId } from './MeshManager';
+import { getECSWorld, getEntityIdByAppId } from './ECS';
+import { decGeometryRef } from './Geometry';
+import { decMaterialRef } from './Material';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
 import { updatePhysicsPanel } from '../debug/Stats';
@@ -474,7 +477,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
   switch (colliderParams.type) {
     case 'CUBOID':
     case 'BOX':
-      size = { hx: 0.5, hy: 0.5, hz: 0.5 }; // Default size
+      size = { hx: 0.5, hy: 0.5, hz: 0.5 };
       geo = mesh?.geometry;
       if (geo?.type === 'BoxGeometry' || geo?.type === 'BufferGeometry') {
         size.hx = geo.userData.props?.params?.width / 2 || size.hx;
@@ -496,7 +499,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       break;
     case 'BALL':
     case 'SPHERE':
-      let radius = 0.5; // Default radius
+      let radius = 0.5;
       geo = mesh?.geometry;
       if (geo?.type === 'SphereGeometry' || geo?.type === 'BufferGeometry') {
         radius = geo.userData.props?.params?.radius || radius;
@@ -505,7 +508,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       break;
     case 'CAPSULE':
       {
-        size = { halfHeight: 0.25, radius: 0.25 }; // Default values
+        size = { halfHeight: 0.25, radius: 0.25 };
         geo = mesh?.geometry;
         if (geo?.type === 'CapsuleGeometry' || geo?.type === 'BufferGeometry') {
           size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
@@ -520,7 +523,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
     case 'CONE':
       {
         // @TODO: add logic helpers.ts setMeshCreatePropsToUserData to set the mesh dimensions props
-        size = { halfHeight: 0.25, radius: 0.25 }; // Default values
+        size = { halfHeight: 0.25, radius: 0.25 };
         geo = mesh?.geometry;
         if (geo?.type === 'ConeGeometry' || geo?.type === 'BufferGeometry') {
           size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
@@ -539,7 +542,7 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       }
       break;
     case 'CYLINDER':
-      size = { halfHeight: 0.5, radius: 1 }; // Default values
+      size = { halfHeight: 0.5, radius: 1 };
       geo = mesh?.geometry;
       if (geo?.type === 'CylinderGeometry' || geo?.type === 'BufferGeometry') {
         size.halfHeight = geo.userData.props?.params.height / 2 || size.halfHeight;
@@ -599,16 +602,13 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
         mesh?.geometry,
         'Could not find mesh or geometry in the mesh for heightfield. Could not create height field physics shape in createCollider.'
       );
-      // Merge all vertices that share a position
       geo = BufferGeometryUtils.mergeVertices(geo);
       (mesh as THREE.Mesh).geometry = geo;
 
       let nRows = colliderParams.nrows || 0;
       let nCols = colliderParams.ncols || 0;
 
-      // 1. Get the bounding box of your imported terrain mesh
       const bbox = new THREE.Box3().setFromObject(mesh as THREE.Object3D);
-      // 2. Calculate the size
       const meshSize = new THREE.Vector3();
       bbox.getSize(meshSize);
       const scale = new RAPIER.Vector3(meshSize.x, 1, meshSize.z);
@@ -616,13 +616,10 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       const totalVertices = geo.attributes.position.count;
 
       if (!nCols && nRows > 0) {
-        // Only nRows provided, count the ncols from vertices
         nCols = totalVertices / nRows;
       } else if (!nRows && nCols > 0) {
-        // Only nCols provided, count the nrows from vertices
         nRows = totalVertices / nCols;
       } else if (!nRows && !nCols) {
-        // No nRows or nCols provided, count them as a square (nRows === nCols)
         nRows = Math.sqrt(totalVertices) - 1;
         nCols = nRows;
         if (!Number.isInteger(nRows)) {
@@ -637,21 +634,11 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
       const heights = new Float32Array(sizeX * sizeZ);
       const posAttr = mesh?.geometry.attributes.position;
       for (let i = 0; i < sizeX; i++) {
-        // Outer loop: X-axis (Rapier Rows)
         for (let j = 0; j < sizeZ; j++) {
-          // Inner loop: Z-axis (Rapier Columns)
-          // Rapier Index: i is row, j is column
           const rapierIndex = i * sizeZ + j;
-
-          /**
-           * THREE.JS INDEXING
-           * Usually, Three.js stores grids Z-first, then X.
-           * index = (z_index * total_vertices_in_x) + x_index
-           */
-          const flippedZ = sizeZ - 1 - j; // We need to flip the z-axis
+          const flippedZ = sizeZ - 1 - j;
           const threeIndex = flippedZ * sizeX + i;
 
-          // Pull the Y height
           if (posAttr) {
             heights[rapierIndex] = posAttr.getY(threeIndex);
           }
@@ -673,16 +660,11 @@ export const createCollider = (physicsParams: PhysicsParams, mesh?: THREE.Mesh) 
           mesh?.geometry,
           'Could not find mesh or geometry in the mesh for convex hull. Could not create convex hull physics shape in createCollider.'
         );
-        // 1. Get a copy of the geometry
         const geoClone = geo.clone();
-        // 2. (Optional) If you haven't applied transforms in Blender,
-        // Apply the mesh's local scale to the vertices here.
         geoClone.applyMatrix4(
           new THREE.Matrix4().makeScale(mesh?.scale.x || 1, mesh?.scale.y || 1, mesh?.scale.z || 1)
         );
-        // 3. Center it so the physics hull is balanced on the Body's origin
         geoClone.center();
-        // 4. Extract the clean, centered, scaled vertices, and create shape
         const vertices = geoClone.attributes.position.array;
         shape = new RAPIER.ConvexPolyhedron(new Float32Array(vertices));
         geoClone.dispose();
@@ -943,7 +925,7 @@ export const createPhysicsObjectWithMesh = ({
   if (typeof meshOrMeshId === 'string') {
     // Mesh id
     meshId = meshOrMeshId;
-    mesh = getMesh(meshId);
+    mesh = getMeshByAppId(meshId) || null;
     if (!mesh) {
       lwarn(meshWarnMsg, `Mesh id: ${meshId}`);
       return;
@@ -957,7 +939,7 @@ export const createPhysicsObjectWithMesh = ({
       const momid = meshOrMeshId[i];
       if (typeof momid === 'string') {
         const mId = momid;
-        const m = getMesh(mId);
+        const m = getMeshByAppId(mId) || null;
         if (!m) {
           lwarn(meshWarnMsg, `Mesh id: ${mId}`);
           return;
@@ -1046,7 +1028,6 @@ export const createPhysicsObjectWithMesh = ({
           collider.setEnabled(false);
         }
       }
-      // @TODO: refactor this to have the enabled param in the phys obj params
       if (physicsParams[i].collider.isSensor) collider.setEnabled(true);
       colliders.push(collider);
     }
@@ -1246,14 +1227,42 @@ export const deletePhysicsObject = (id: string, sceneId?: string) => {
     });
   }
 
-  // Delete possible meshes
+  // Delete possible mesh entities
+  const ecsWorld = getECSWorld();
+  const deletePhysicsMesh = (m?: THREE.Mesh) => {
+    if (!m) return;
+    const appId = m.userData.id || m.userData.appId;
+    const entityId =
+      m.userData.entityId ?? (appId ? getEntityIdByAppId(appId, ecsWorld) : undefined);
+
+    if (entityId !== undefined) {
+      ecsWorld.deleteEntity(entityId);
+    } else {
+      m.removeFromParent();
+      const geoId = m.geometry?.userData?.id;
+      if (geoId) decGeometryRef(geoId);
+      else m.geometry?.dispose();
+
+      if (Array.isArray(m.material)) {
+        m.material.forEach((mat) => {
+          if (mat.userData?.id) decMaterialRef(mat.userData.id);
+          else mat.dispose();
+        });
+      } else if (m.material) {
+        if (m.material.userData?.id) decMaterialRef(m.material.userData.id);
+        else m.material.dispose();
+      }
+    }
+  };
+
   if (obj.meshes?.length) {
     for (let i = 0; i < obj.meshes.length; i++) {
-      const mesh = obj.meshes[i];
-      if (mesh?.userData.id) deleteMesh(mesh.userData.id, { deleteAll: true });
+      deletePhysicsMesh(obj.meshes[i]);
     }
   }
-  if (obj.mesh?.userData.id) deleteMesh(obj.mesh.userData.id, { deleteAll: true });
+  if (obj.mesh) {
+    deletePhysicsMesh(obj.mesh);
+  }
 
   updatePhysObjectDebuggerGUI('LIST');
 };
@@ -1297,7 +1306,7 @@ export const deleteCurrentScenePhysicsObjects = () => {
   currentScenePhysicsObjects = [];
 
   const currentSceneId = getCurrentSceneId();
-  !existsOrWarn(
+  existsOrWarn(
     currentSceneId,
     `Could not find currentSceneId (id: ${currentSceneId}) in deleteCurrentScenePhysicsObjects`
   );
@@ -1460,24 +1469,18 @@ export const createPhysicsDebugMesh = () => {
   debugMesh.geometry.boundingSphere.center.set(0, 0, 0);
   const scene = getRootScene();
   if (scene) {
-    // 1. Assign a unique name to your debug mesh
     debugMesh.name = 'PHYSICS_DEBUG_VISUALIZER';
-
-    // 2. Check if it's actually in the scene
     const existingMesh = scene.getObjectByName('PHYSICS_DEBUG_VISUALIZER');
 
     if (!existingMesh) {
-      // It's missing, add it.
       scene.add(debugMesh);
     } else if (existingMesh !== debugMesh) {
       // CRITICAL: A ghost exists!
       // We found a mesh with the same name, but it's not THIS instance.
       // This happens on Hot Reload or Scene Switch.
 
-      // Remove the old ghost
+      // Remove the old ghost.
       scene.remove(existingMesh);
-
-      // Add the new one
       scene.add(debugMesh);
     }
   }
@@ -1596,17 +1599,14 @@ const baseStepper = (loopState: LoopState) => {
       const handle = rb.handle;
       const t = rb.translation();
       const r = rb.rotation();
-      // 1. Ensure storage exists (allocate once)
       if (!prevTransforms.has(handle)) {
         prevTransforms.set(handle, { pos: new THREE.Vector3(), rot: new THREE.Quaternion() });
         currTransforms.set(handle, { pos: new THREE.Vector3(), rot: new THREE.Quaternion() });
       }
       const prev = prevTransforms.get(handle)!;
       const curr = currTransforms.get(handle)!;
-      // 2. Cycle the data: Current becomes Previous
       prev.pos.copy(curr.pos);
       prev.rot.copy(curr.rot);
-      // 3. Update Current from Rapier (Zero Allocation)
       curr.pos.set(t.x, t.y, t.z);
       curr.rot.set(r.x, r.y, r.z, r.w);
     }
@@ -1704,20 +1704,17 @@ const baseStepper = (loopState: LoopState) => {
       });
     }
 
-    // Run scenePhysicsLoopers
     const looperKeys = Object.keys(scenePhysicsLoopers);
     for (let i = 0; i < looperKeys.length; i++) {
       scenePhysicsLoopers[looperKeys[i]](physicsState.timestepRatio);
     }
 
-    // Step the world
     physicsWorld.step(eventQueue);
 
     accDelta -= physicsState.timestepRatio;
     stepsTaken++;
   }
 
-  // Run scenePhysicsAfterStepLoopers
   const afterStepLooperKeys = Object.keys(scenePhysicsAfterStepLoopers);
   for (let i = 0; i < afterStepLooperKeys.length; i++) {
     scenePhysicsAfterStepLoopers[afterStepLooperKeys[i]](scaledDelta);
@@ -1739,7 +1736,6 @@ const stepperFnDebug = (loopState: LoopState) => {
   if (!loopState.masterPlay || !loopState.appPlay) return;
 
   if (physicsWorldEnabled && debugMesh && curSceneParams?.visualizerEnabled) {
-    // Physics debug visualizer
     const { vertices, colors } = physicsWorld.debugRender();
 
     debugMesh.visible = true;
@@ -1747,16 +1743,11 @@ const stepperFnDebug = (loopState: LoopState) => {
     let currentGeo = debugMesh.geometry;
     const posAttr = currentGeo.attributes.position;
 
-    // Check if we need to resize (Grow the buffer)
     if (vertices.length > posAttr.array.length) {
-      // 1. Dispose of the old geometry to free GPU memory
       currentGeo.dispose();
 
-      // 2. Create a BRAND NEW Geometry
       const newGeo = new THREE.BufferGeometry();
-
-      // 3. Allocate LARGER buffers
-      const newSize = vertices.length + 5000; // Add generous padding to avoid frequent resizing
+      const newSize = vertices.length + 5000;
       newGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(newSize), 3));
       newGeo.setAttribute(
         'color',
@@ -1765,31 +1756,19 @@ const stepperFnDebug = (loopState: LoopState) => {
       newGeo.boundingSphere = new THREE.Sphere();
       newGeo.boundingSphere.radius = Infinity;
 
-      // 4. Assign the new geometry to the mesh
-      // This forces the renderer to bind the new, larger buffer immediately
       debugMesh.geometry = newGeo;
-
-      // Update local reference
       currentGeo = newGeo;
     }
 
-    // Update Data
-    // We get the *latest* attribute reference in case we just resized it
     const finalPosAttr = currentGeo.attributes.position as THREE.BufferAttribute;
     const finalColAttr = currentGeo.attributes.color as THREE.BufferAttribute;
 
-    // Copy data into the existing typed arrays
-    // .set is very fast for Float32Array
     finalPosAttr.array.set(vertices);
     finalColAttr.array.set(colors);
 
-    // Mark as needing upload to GPU
     finalPosAttr.needsUpdate = true;
     finalColAttr.needsUpdate = true;
 
-    // CRITICAL: Tell GPU how many vertices to actually draw
-    // If buffer has 10,000 spots but we only have 50 vertices, draw only 50.
-    // vertices is a Float32Array (x,y,z), so vertex count is length / 3
     currentGeo.setDrawRange(0, vertices.length / 3);
   } else {
     debugMesh.visible = false;
@@ -1849,12 +1828,9 @@ export const renderPhysicsObjects = () => {
 
       const alpha = Math.max(0, Math.min(1, accDelta / physicsState.timestepRatio));
 
-      // 2. Interpolate Position
       _interpPos.copy(prev.pos).lerp(curr.pos, alpha);
       mesh.position.copy(_interpPos);
 
-      // 3. Interpolate Rotation (SAFE MODE)
-      // We copy to scratch variables to ensure we don't mutate the storage
       _prevRot.copy(prev.rot).normalize();
       _currRot.copy(curr.rot).normalize();
 
@@ -2241,8 +2217,6 @@ export const createEditPhysObjContent = (data?: { [key: string]: unknown }) => {
     },
   });
 
-  // const colliders = Array.isArray(obj.collider) ?
-
   debuggerWindowCmp.add({
     prepend: true,
     class: ['winNotRightPaddedContent', 'winFlexContent'],
@@ -2279,7 +2253,7 @@ export const createEditPhysObjContent = (data?: { [key: string]: unknown }) => {
         )
       ),
     };
-    // Position
+
     const positionInput = debuggerWindowPane.addBinding(rigidBody, 'position', {
       label: 'Position',
     });
@@ -2294,7 +2268,7 @@ export const createEditPhysObjContent = (data?: { [key: string]: unknown }) => {
       positionInput.refresh();
     });
     debuggerWindowPane.addBlade({ view: 'separator' });
-    // Rotation
+
     const rotationInput = debuggerWindowPane.addBinding(rigidBody, 'rotation', {
       label: 'Rotation',
       step: Math.PI / 8,

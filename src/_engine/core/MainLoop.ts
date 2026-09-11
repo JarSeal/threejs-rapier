@@ -1,6 +1,6 @@
 import { Timer, type Renderer, type Scene, type Camera } from 'three/webgpu';
 import { getStats, initStats, startCustomMeasurements, updateRestOfStats } from '../debug/Stats';
-import { getCurrentCamera } from './_CameraManager';
+import { getCurrentCamera } from './CameraManager';
 import { getRenderer } from './Renderer';
 import {
   getCurrentSceneId,
@@ -18,7 +18,7 @@ import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './Physi
 import { updateInputControllerLoopActions } from './InputControls';
 import { countRayCastFrames, initRayCasting } from './Raycast';
 import { ECSWorld, getECSWorld } from './ECS';
-import { getActiveCamera } from './_CameraManager';
+import { getActiveCamera } from './CameraManager';
 import { existsOrThrow } from '../utils/assert';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 

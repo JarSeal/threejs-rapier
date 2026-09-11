@@ -1,5 +1,5 @@
 import { lerror, lwarn } from '../utils/Logger';
-import { isDebugCameraActive } from './_CameraManager';
+import { isDebugCameraActive } from './CameraManager';
 import { isDebugEnvironment } from './Config';
 import { addOnWindowBlurFn, addVisibilityChangeFn } from './MainLoop';
 import { getCurrentSceneId } from './Scene';
