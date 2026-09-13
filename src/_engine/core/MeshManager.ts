@@ -1,19 +1,6 @@
 import * as THREE from 'three/webgpu';
-import {
-  createGeometry,
-  incGeometryRef,
-  decGeometryRef,
-  GeoProps,
-  saveBufferGeometry,
-} from './Geometry';
-import {
-  createMaterial,
-  incMaterialRef,
-  decMaterialRef,
-  MatProps,
-  getMaterial,
-  saveMaterial,
-} from './Material';
+import { createGeometry, incGeometryRef, decGeometryRef, GeoProps } from './Geometry';
+import { createMaterial, incMaterialRef, decMaterialRef, MatProps, getMaterial } from './Material';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getRootScene } from './Scene';
 import { ThreeEuler, ThreeQuoternion } from '../utils/helpers';
