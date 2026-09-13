@@ -77,3 +77,7 @@ The plan in the near future is to implement the commented code in the PhysicsAPI
 - Custom `sceneGathererPlugin` (see data pipeline above) and an `html-transform` plugin that injects `%APP_NAME%`/`%VERSION_CHECKSUM%`/etc. placeholders (sourced from `package.json`'s `app_metadata`/ `engine_metadata`) into `index.html`.
 - `rollup-plugin-visualizer` writes a bundle treemap to `dist-stats/bundle-stats.html`.
 - No TS path aliases are configured (`tsconfig.json` has no `paths`) — imports are relative.
+
+## Workflow
+
+- A Stop hook runs lint and build. Leave the tree compiling.
