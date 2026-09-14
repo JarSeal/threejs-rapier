@@ -134,6 +134,15 @@ export class ECSWorld {
     stageSystems?.sort((a, b) => b.order - a.order || a.seq - b.seq);
   }
 
+  /**
+   * Removes a system by `id` from every stage.
+   *
+   * `.filter()` never reorders, so a stage's already-sorted array stays
+   * correctly sorted after removal. If a removed `id` is later re-registered
+   * via `addSystem`, it gets a fresh `seq` (the counter never rewinds) and
+   * lands at the back of its `order` tier, not back in its original tie
+   * position — a new registration, not a resumed one.
+   */
   public removeSystem(id: string) {
     this.systems.forEach((list, stage) => {
       this.systems.set(
@@ -271,7 +280,22 @@ export class ECSWorld {
     return this.storages.get(type)?.has(entityId) ?? false;
   }
 
-  /** Direct access to a storage map for high-speed iteration */
+  /** Returns the resolved (already-sorted) system order for `stage`, for debugging/inspection. */
+  public getSystemOrder(stage: ECSSystemStage): { id: string; order: number; seq: number }[] {
+    return (this.systems.get(stage) ?? []).map(({ id, order, seq }) => ({ id, order, seq }));
+  }
+
+  /**
+   * Direct access to a storage map for high-speed iteration.
+   *
+   * Iteration order happens to match `Map` insertion order (the order
+   * entities first received this component) as a side effect of using `Map`
+   * internally. This is an implementation detail, not a guarantee — systems
+   * must not depend on it. It's expected to change for any component type
+   * that moves to a different storage backing (e.g. the TypedArray-backed
+   * sparse-set storage proposed in docs/plans/ecs-typed-arrays-feature.md,
+   * which reorders on removal by design).
+   */
   public getStorage<K extends ComponentType>(type: K): Map<number, ComponentData[K]> {
     let storage = this.storages.get(type);
 
@@ -511,6 +535,8 @@ export class ECSWorld {
    *   // Do stuff with entityId
    * }
    * ```
+   * Same iteration-order caveat as `getStorage` applies: insertion-order
+   * today, not guaranteed.
    */
   public getEntitiesWith(type: ComponentType): IterableIterator<number> {
     return this.storages.get(type)!.keys();
@@ -534,6 +560,15 @@ export class ECSWorld {
     this._runStage(ECSSystemStage.LATE_MAIN, dt);
   }
 
+  /**
+   * Runs every system registered for `stage`, in the order resolved once at
+   * registration time by `addSystem` — this function does no sorting and
+   * never reorders anything itself, so it has no ordering-related per-frame
+   * cost.
+   *
+   * Stage execution order itself is decided elsewhere: it's the fixed call
+   * sequence in `updateMainLoop` / `updateAppLoop` / `updateLateMainLoop`.
+   */
   private _runStage(stage: ECSSystemStage, dt: number) {
     const list = this.systems.get(stage)!;
     for (let i = 0; i < list.length; i++) {
