@@ -9,10 +9,11 @@ import {
 } from './ECS/ECSCoreComponents';
 import { existsOrThrow } from '../utils/assert';
 import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
-import { isDebugEnvironment } from './Config';
+import { IS_DEBUG_ENV, isDebugEnvironment } from './Config';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import { ECSSystemStage } from '../../AppECSRegistry';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
 
 export type ECSSystem = (world: ECSWorld, dt: number) => void;
 
@@ -531,4 +532,15 @@ export const getEntityIdByAppId = (appId: string, ecsWorld?: ECSWorld): number |
     }
   }
   return undefined;
+};
+
+// Debug stuff
+
+type ECSGUIModule = typeof import('../core/Debug/_dbg__ECS');
+let debugGUI: DebugModuleRef<ECSGUIModule> | null = null;
+
+export const registerECSModule = async () => {
+  if (!IS_DEBUG_ENV) return;
+  debugGUI = await loadDebugModuleAsync(() => import('./Debug/_dbg__ECS'));
+  useDebug(debugGUI)?._initECSDebugGUI();
 };

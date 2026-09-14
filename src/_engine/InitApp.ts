@@ -21,7 +21,7 @@ import './core/MeshManager';
 // App Plugins
 import '../AppECSPlugins';
 
-import { initECSWorld } from './core/ECS';
+import { initECSWorld, registerECSModule } from './core/ECS';
 import { initDebugCamera, registerCameraManager } from './core/CameraManager';
 import { registerLightManager } from './core/LightManager';
 import { load3DSymbols } from './debug/3DSymbols';
@@ -73,6 +73,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerRaycastDebugGUI();
       await registerDebuggerGUI();
       await registerCharacterTools();
+      await registerECSModule();
     }
     if (IS_DEBUG_ENV || IS_PROD_TEST_MODE) {
       await registerMainLoopDebugGUI();
