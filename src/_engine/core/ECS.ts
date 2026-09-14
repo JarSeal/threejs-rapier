@@ -17,6 +17,8 @@ import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/he
 
 export type ECSSystem = (world: ECSWorld, dt: number) => void;
 
+type SystemEntry = { id: string; fn: ECSSystem; order: number; seq: number };
+
 export type WorldPlugin = (world: ECSWorld) => void;
 export type ComponentHook = (entityId: number, world: ECSWorld) => void;
 
@@ -92,7 +94,8 @@ export class ECSWorld {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private storages: Map<ComponentType, Map<number, any>> = new Map();
 
-  private systems: Map<ECSSystemStage, { id: string; fn: ECSSystem }[]> = new Map();
+  private systems: Map<ECSSystemStage, SystemEntry[]> = new Map();
+  private systemSeq = 0;
 
   constructor() {
     // Pre-allocate system stages and storages
@@ -108,11 +111,27 @@ export class ECSWorld {
     ECSWorld.plugins.forEach((plugin) => plugin(this));
   }
 
-  public addSystem(stage: ECSSystemStage, id: string, fn: ECSSystem) {
+  /**
+   * Registers a system function to run every frame during `stage`.
+   *
+   * Ordering contract:
+   * - Within a stage, systems run in descending `order` — higher runs earlier.
+   * - Equal `order` (the default, 0) runs in registration order: the order
+   *   `addSystem` was actually called, not source-file position. A system
+   *   removed via `removeSystem` and re-registered later is treated as a new
+   *   registration and moves to the back of its `order` tier.
+   * - Resolved once, here, at registration time. `_runStage` never sorts.
+   *
+   * `order` is a plain number, not a fixed tier set — pick a value relative
+   * to the specific systems you need to run before/after, not as a point on
+   * some global priority scale.
+   */
+  public addSystem(stage: ECSSystemStage, id: string, fn: ECSSystem, order: number = 0) {
     const stageSystems = this.systems.get(stage);
     // Prevent duplicate systems if a plugin is re-run
     if (stageSystems?.some((s) => s.id === id)) return;
-    stageSystems?.push({ id, fn });
+    stageSystems?.push({ id, fn, order, seq: this.systemSeq++ });
+    stageSystems?.sort((a, b) => b.order - a.order || a.seq - b.seq);
   }
 
   public removeSystem(id: string) {
