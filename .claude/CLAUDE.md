@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Ækasha — a WebGPU/Three.js + Rapier physics game engine framework (package name `aekasha-js`). It's a "template" repo: an engine (`_engine`) plus one example app (`app`) built on top of it.
+Aekasha (Ækasha) — a WebGPU/Three.js + Rapier physics game engine framework (package name `aekasha-js`). It's a "template" repo: an engine (`_engine`) plus one example app (`app`) built on top of it.
 
 ## Commands
 
@@ -80,4 +80,4 @@ The plan in the near future is to implement the commented code in the PhysicsAPI
 
 ## Workflow
 
-- A Stop hook runs lint and build. Leave the tree compiling.
+- A Stop hook runs lint and type-check. Leave the tree compiling.
