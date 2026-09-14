@@ -355,10 +355,13 @@ export const setLightTargetPosition = (
   pos: { x: number; y: number; z: number },
   world: ECSWorld
 ): void => {
-  const transform = getLightTargetTransform(lightId, world);
+  const targetId = getLightTargetId(lightId, world);
+  if (targetId === undefined) return;
+  const transform = world.getComponent(targetId, ComponentType.TRANSFORM);
   if (transform) {
     transform.position.set(pos.x, pos.y, pos.z);
     transform.setDirty();
+    world.commitTransform(targetId, transform);
   }
 };
 
@@ -372,11 +375,16 @@ export const aimLightAtEntity = (
   world: ECSWorld
 ): void => {
   const targetTransform = world.getComponent(targetEntityId, ComponentType.TRANSFORM);
-  const lightTargetTransform = getLightTargetTransform(lightId, world);
+  const lightTargetId = getLightTargetId(lightId, world);
+  const lightTargetTransform =
+    lightTargetId !== undefined
+      ? world.getComponent(lightTargetId, ComponentType.TRANSFORM)
+      : undefined;
 
-  if (targetTransform && lightTargetTransform) {
+  if (targetTransform && lightTargetTransform && lightTargetId !== undefined) {
     lightTargetTransform.position.copy(targetTransform.position);
     lightTargetTransform.setDirty();
+    world.commitTransform(lightTargetId, lightTargetTransform);
   }
 };
 

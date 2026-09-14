@@ -6,6 +6,7 @@ import {
   PhysicsWorkerTarget,
 } from './Physics/PhysicsAPITypes';
 import { DraggableWindow } from './UI/DraggableWindow';
+import { ECSStorageMode } from './ECS/ECSComponentStorage';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 
@@ -31,6 +32,12 @@ export type AppConfig = {
     internalPgsIterations?: number;
     interpolationEnabled?: boolean;
   };
+  ecs?: {
+    /** Build-time-selectable ECS component storage backend. Default 'MAP'. */
+    storageMode?: ECSStorageMode;
+    /** Fixed capacity for TYPED_ARRAY storage. Default 100_000, only relevant when storageMode is 'TYPED_ARRAY'. */
+    maxEntities?: number;
+  };
   draggableWindows?: {
     [id: string]: Partial<DraggableWindow> & {
       contentFn?: (data?: { [key: string]: unknown }) => TCMP;
@@ -53,6 +60,10 @@ let config: AppConfig = {
     gravity: { x: 0, y: 0, z: 0 },
     timestep: 60,
     backgroundBehavior: 'PAUSE',
+  },
+  ecs: {
+    storageMode: 'MAP',
+    maxEntities: 100_000,
   },
 };
 
@@ -111,6 +122,27 @@ export const loadConfig = () => {
       envVars.VITE_PHYS_TIMESTEP = timestep;
     } else {
       envVars.VITE_PHYS_TIMESTEP = undefined;
+    }
+  }
+
+  // Setup ecs ENV configs
+  if (!config.ecs) config.ecs = {};
+
+  if (typeof envVars.VITE_ECS_STORAGE_MODE === 'string') {
+    const storageMode = envVars.VITE_ECS_STORAGE_MODE;
+    if (storageMode === 'MAP' || storageMode === 'TYPED_ARRAY') {
+      config.ecs.storageMode = storageMode;
+      envVars.VITE_ECS_STORAGE_MODE = storageMode;
+    }
+  }
+
+  if (typeof envVars.VITE_ECS_MAX_ENTITIES === 'string') {
+    const maxEntities = Number(envVars.VITE_ECS_MAX_ENTITIES);
+    if (!isNaN(maxEntities)) {
+      config.ecs.maxEntities = maxEntities;
+      envVars.VITE_ECS_MAX_ENTITIES = maxEntities;
+    } else {
+      envVars.VITE_ECS_MAX_ENTITIES = undefined;
     }
   }
 };

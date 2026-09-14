@@ -187,6 +187,7 @@ export const cameraLookAtPoint = (
   _m1.lookAt(transform.position, _v1, THREE.Object3D.DEFAULT_UP);
   transform.quaternion.setFromRotationMatrix(_m1);
   transform.setDirty();
+  world.commitTransform(entityId, transform);
 };
 
 /**

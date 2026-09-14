@@ -127,6 +127,22 @@ ECSWorld.registerPlugin((world) => {
  */
 export function object3DSyncSystem(world: ECSWorld) {
   const storage = world.getStorage(ComponentType.OBJECT3D);
+  const transformStore = world.getTypedTransformStore();
+
+  if (transformStore) {
+    for (const [entityId, objComp] of storage) {
+      if (world.isDisabled(entityId)) continue;
+
+      const slot = transformStore.getSlot(entityId);
+      if (slot === -1) continue;
+
+      if (transformStore.isDirty(slot)) {
+        transformStore.copyToObject3D(slot, objComp.value);
+        transformStore.clearDirty(slot);
+      }
+    }
+    return;
+  }
 
   for (const [entityId, objComp] of storage) {
     // Skip if disabled
@@ -154,10 +170,20 @@ export function object3DSyncSystem(world: ECSWorld) {
 export const physicsToTransformSystem = (world: ECSWorld) => {
   // We ONLY iterate over entities that are dynamic and have visuals
   const dynamicVisuals = world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL);
+  const transformStore = world.getTypedTransformStore();
 
-  dynamicVisuals.forEach((rb, entityId) => {
+  for (const [entityId, rb] of dynamicVisuals) {
+    if (transformStore) {
+      const slot = transformStore.getSlot(entityId);
+      if (slot === -1) continue;
+      // Direct SAB access from your Physics Proxy
+      transformStore.setPosition(slot, rb.pos.x, rb.pos.y, rb.pos.z);
+      transformStore.setQuaternion(slot, rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w);
+      continue;
+    }
+
     const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
-    if (!transform) return;
+    if (!transform) continue;
 
     // Direct SAB access from your Physics Proxy
     transform.position.set(rb.pos.x, rb.pos.y, rb.pos.z);
@@ -165,7 +191,7 @@ export const physicsToTransformSystem = (world: ECSWorld) => {
 
     // Mark as changed so the Render System knows to update the Mesh
     transform.setDirty();
-  });
+  }
 };
 
 /**
@@ -194,6 +220,7 @@ export const entityLifetimeSystem = (world: ECSWorld, dt: number) => {
  */
 export const lookAtSystem = (world: ECSWorld) => {
   const storage = world.getStorage(ComponentType.TARGET_LINK);
+  const transformStore = world.getTypedTransformStore();
 
   for (const [entityId, link] of storage) {
     // Check if the target entity still exists
@@ -202,10 +229,26 @@ export const lookAtSystem = (world: ECSWorld) => {
     if (world.isDisabled(entityId)) continue;
 
     const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+    if (!objComp) continue;
+
+    if (transformStore) {
+      const slot = transformStore.getSlot(entityId);
+      const targetSlot = transformStore.getSlot(link.targetId);
+      if (slot === -1 || targetSlot === -1) continue;
+
+      objComp.value.lookAt(
+        transformStore.posX[targetSlot],
+        transformStore.posY[targetSlot],
+        transformStore.posZ[targetSlot]
+      );
+      transformStore.setQuaternionFromObject3D(slot, objComp.value);
+      continue;
+    }
+
     const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
     const targetTransform = world.getComponent(link.targetId, ComponentType.TRANSFORM);
 
-    if (objComp && transform && targetTransform) {
+    if (transform && targetTransform) {
       objComp.value.lookAt(targetTransform.position);
       transform.quaternion.copy(objComp.value.quaternion);
       transform.setDirty();

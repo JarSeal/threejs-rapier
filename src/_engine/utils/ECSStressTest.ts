@@ -12,108 +12,145 @@ import { ECSSystemStage } from '../../AppECSRegistry';
 let instancedMesh: THREE.InstancedMesh | null = null;
 const MAX_INSTANCES = 50000; // High ceiling for the stress test
 let totalCount = 0;
+let currentInstanceCount = 0;
+let stressSystemsRegistered = false;
+const individualEntityIds: number[] = [];
+const instancedEntityIds: number[] = [];
+
+// Shared asset definitions
+const geoProps = {
+  type: 'SPHERE' as const,
+  params: { radius: 0.2, widthSegments: 8, heightSegments: 8 },
+};
+const matProps = { type: 'PHONG' as const, params: { color: 0x00ff88 } };
+
+/** Total number of entities spawned by the ECS stress test so far (survives across batches, reset by `resetECSStressTest`). */
+export const getECSStressTestCount = () => totalCount;
+
+const ensureInstancedMeshAndSystems = (world: ECSWorld, targetId?: number) => {
+  const scene = getRootScene()!;
+
+  if (!instancedMesh) {
+    const geo = new THREE.SphereGeometry(0.2, 8, 8);
+    const mat = new THREE.MeshPhongMaterial({ color: 0xffffff });
+    instancedMesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES);
+    // Initialize everything to scale 0 so they are invisible by default
+    const s0 = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (let i = 0; i < MAX_INSTANCES; i++) {
+      instancedMesh.setMatrixAt(i, s0);
+    }
+    instancedMesh.instanceMatrix.needsUpdate = true;
+    instancedMesh.count = 0; // Start at zero!
+
+    // SHADOWS
+    instancedMesh.castShadow = true;
+    instancedMesh.receiveShadow = true;
+
+    // Initialize colors to green
+    const defaultColor = new THREE.Color(0x00ff88);
+    for (let i = 0; i < MAX_INSTANCES; i++) {
+      instancedMesh.setColorAt(i, defaultColor);
+    }
+
+    scene.add(instancedMesh);
+    getLogger().log('ECS Stress: InstancedMesh Container Initialized.');
+  }
+
+  if (!stressSystemsRegistered) {
+    if (targetId !== undefined) {
+      world.addSystem(ECSSystemStage.APP_LOGIC, 'proximitySystem', (w) => {
+        // We pass the global ballId (your red ball) here
+        proximitySystem(w, targetId);
+      });
+    }
+
+    // Inject the specialized sync system for instancing
+    world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'instancedSync', instancedSyncSystem);
+    stressSystemsRegistered = true;
+  }
+};
+
+/**
+ * Spawns `count` hovering-sphere entities (individual unique meshes, or
+ * shared-InstancedMesh entities) directly, independent of the 'K'/'L' key
+ * bindings — used by the ECS debug tab's benchmark controls and by any
+ * other caller that wants a configurable, on-demand batch size.
+ */
+export const spawnECSStressTestBatch = (
+  world: ECSWorld,
+  count: number,
+  isInstanced: boolean,
+  targetId?: number
+) => {
+  if (isInstanced) ensureInstancedMeshAndSystems(world, targetId);
+
+  for (let i = 0; i < count; i++) {
+    totalCount++;
+    const x = (Math.random() - 0.5) * 50;
+    const y = Math.random() * 5;
+    const z = (Math.random() - 0.5) * 50;
+
+    let entityId: number;
+
+    if (isInstanced) {
+      // --- MODE A: LIGHT ENTITY (INSTANCED) ---
+      entityId = world.createEntity(); // Just a raw ID
+      const index = currentInstanceCount++;
+      world.addComponent(entityId, ComponentType.INSTANCED_STRESS_TEST_DATA, {
+        mesh: instancedMesh!,
+        index, // Simple index allocation
+      });
+      instancedMesh!.count = currentInstanceCount;
+      instancedEntityIds.push(entityId);
+    } else {
+      // --- MODE B: HEAVY ENTITY (UNIQUE MESH) ---
+      entityId = createMeshEntity({
+        geo: geoProps,
+        mat: matProps,
+        // SHADOWS
+        // castShadow: true,
+        // receiveShadow: true,
+      });
+      individualEntityIds.push(entityId);
+    }
+
+    // Both modes use the same Hover and Transform logic!
+    world.setTransform(entityId, { pos: { x, y, z } });
+    world.addComponent(entityId, ComponentType.HOVER, {
+      speed: 1.0 + Math.random() * 2.0,
+      amplitude: 0.5,
+      baseY: y,
+      time: Math.random() * 10,
+    });
+  }
+
+  const mode = isInstanced ? 'INSTANCED' : 'INDIVIDUAL';
+  getLogger().log(`ECS Stress: Spawned ${count} ${mode} entities. Total: ${totalCount}`);
+};
+
+/** Deletes every entity spawned by the ECS stress test so far and resets its counters. */
+export const resetECSStressTest = (world: ECSWorld) => {
+  for (const id of individualEntityIds) world.deleteEntity(id);
+  for (const id of instancedEntityIds) world.deleteEntity(id);
+  individualEntityIds.length = 0;
+  instancedEntityIds.length = 0;
+  currentInstanceCount = 0;
+  totalCount = 0;
+  if (instancedMesh) instancedMesh.count = 0;
+  getLogger().log('ECS Stress: Cleared all stress-test entities.');
+};
 
 export const initECSStressTest = (batchSize: number = 100, targetId?: number) => {
   if (!isDebugEnvironment()) return;
 
   const world = getECSWorld();
-  const scene = getRootScene()!;
-
-  // Shared asset definitions
-  const geoProps = {
-    type: 'SPHERE' as const,
-    params: { radius: 0.2, widthSegments: 8, heightSegments: 8 },
-  };
-  const matProps = { type: 'PHONG' as const, params: { color: 0x00ff88 } };
-
-  let currentInstanceCount = 0;
-
-  const spawnBatch = (isInstanced: boolean) => {
-    // 1. Setup the Instancing Container if needed
-    if (isInstanced && !instancedMesh) {
-      const geo = new THREE.SphereGeometry(0.2, 8, 8);
-      const mat = new THREE.MeshPhongMaterial({ color: 0xffffff });
-      instancedMesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES);
-      // Initialize everything to scale 0 so they are invisible by default
-      const s0 = new THREE.Matrix4().makeScale(0, 0, 0);
-      for (let i = 0; i < MAX_INSTANCES; i++) {
-        instancedMesh.setMatrixAt(i, s0);
-      }
-      instancedMesh.instanceMatrix.needsUpdate = true;
-      instancedMesh.count = 0; // Start at zero!
-
-      // SHADOWS
-      instancedMesh.castShadow = true;
-      instancedMesh.receiveShadow = true;
-
-      // Initialize colors to green
-      const defaultColor = new THREE.Color(0x00ff88);
-      for (let i = 0; i < MAX_INSTANCES; i++) {
-        instancedMesh.setColorAt(i, defaultColor);
-      }
-
-      scene.add(instancedMesh);
-
-      if (targetId !== undefined) {
-        world.addSystem(ECSSystemStage.APP_LOGIC, 'proximitySystem', (w) => {
-          // We pass the global ballId (your red ball) here
-          proximitySystem(w, targetId);
-        });
-      }
-
-      // Inject the specialized sync system for instancing
-      world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'instancedSync', instancedSyncSystem);
-      getLogger().log('ECS Stress: InstancedMesh Container Initialized.');
-    }
-
-    for (let i = 0; i < batchSize; i++) {
-      totalCount++;
-      const x = (Math.random() - 0.5) * 50;
-      const y = Math.random() * 5;
-      const z = (Math.random() - 0.5) * 50;
-
-      let entityId: number;
-
-      if (isInstanced) {
-        // --- MODE A: LIGHT ENTITY (INSTANCED) ---
-        entityId = world.createEntity(); // Just a raw ID
-        const index = currentInstanceCount++;
-        world.addComponent(entityId, ComponentType.INSTANCED_STRESS_TEST_DATA, {
-          mesh: instancedMesh!,
-          index, // Simple index allocation
-        });
-        instancedMesh!.count = currentInstanceCount;
-      } else {
-        // --- MODE B: HEAVY ENTITY (UNIQUE MESH) ---
-        entityId = createMeshEntity({
-          geo: geoProps,
-          mat: matProps,
-          // SHADOWS
-          // castShadow: true,
-          // receiveShadow: true,
-        });
-      }
-
-      // Both modes use the same Hover and Transform logic!
-      world.setTransform(entityId, { pos: { x, y, z } });
-      world.addComponent(entityId, ComponentType.HOVER, {
-        speed: 1.0 + Math.random() * 2.0,
-        amplitude: 0.5,
-        baseY: y,
-        time: Math.random() * 10,
-      });
-    }
-
-    const mode = isInstanced ? 'INSTANCED' : 'INDIVIDUAL';
-    getLogger().log(`ECS Stress: Spawned ${batchSize} ${mode} entities. Total: ${totalCount}`);
-  };
 
   // Bind 'K' for Individual Meshes (Draw Call stress)
   createKeyInputControl({
     id: 'spawn_individual',
     key: 'k',
     type: 'KEY_DOWN',
-    fn: () => spawnBatch(false),
+    fn: () => spawnECSStressTestBatch(world, batchSize, false, targetId),
   });
 
   // Bind 'L' for Instanced Meshes (Pure ECS stress)
@@ -121,7 +158,7 @@ export const initECSStressTest = (batchSize: number = 100, targetId?: number) =>
     id: 'spawn_instanced',
     key: 'l',
     type: 'KEY_DOWN',
-    fn: () => spawnBatch(true),
+    fn: () => spawnECSStressTestBatch(world, batchSize, true, targetId),
   });
 
   getLogger().log(

@@ -9,11 +9,19 @@ import {
 } from './ECS/ECSCoreComponents';
 import { existsOrThrow } from '../utils/assert';
 import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
-import { IS_DEBUG_ENV, isDebugEnvironment } from './Config';
+import { getConfig, IS_DEBUG_ENV, isDebugEnvironment } from './Config';
 import { CoreComponentType } from './ECS/ECSRegistry';
+import {
+  ECS_LS_KEY,
+  ECSStorageLSOverride,
+  ECSStorageMode,
+  IComponentStorage,
+} from './ECS/ECSComponentStorage';
+import { TypedArrayTransformStore } from './ECS/TypedArrayTransformStore';
 import { ECSSystemStage } from '../../AppECSRegistry';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
+import { lsGetItem } from '../utils/LocalAndSessionStorage';
 
 export type ECSSystem = (world: ECSWorld, dt: number) => void;
 
@@ -26,7 +34,15 @@ let ecsWorld: ECSWorld;
 
 /** Initializes the ECS World. */
 export const initECSWorld = (): ECSWorld => {
-  ecsWorld = new ECSWorld();
+  const ecsConfig = getConfig().ecs;
+  let storageMode: ECSStorageMode = ecsConfig?.storageMode ?? 'MAP';
+  let maxEntities = ecsConfig?.maxEntities ?? 100_000;
+  if (IS_DEBUG_ENV) {
+    const lsOverride = lsGetItem(ECS_LS_KEY, {}) as ECSStorageLSOverride;
+    if (lsOverride.storageMode) storageMode = lsOverride.storageMode;
+    if (lsOverride.maxEntities) maxEntities = lsOverride.maxEntities;
+  }
+  ecsWorld = new ECSWorld(storageMode, maxEntities);
   return ecsWorld;
 };
 
@@ -90,18 +106,34 @@ export class ECSWorld {
   private freeIds: number[] = [];
   private entities = new Set<number>();
 
-  // Storage: Map<Type, Map<EntityID, Data>>
+  // Storage: Map<Type, IComponentStorage<Data>>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private storages: Map<ComponentType, Map<number, any>> = new Map();
+  private storages: Map<ComponentType, IComponentStorage<any>> = new Map();
 
   private systems: Map<ECSSystemStage, SystemEntry[]> = new Map();
   private systemSeq = 0;
 
-  constructor() {
+  // Build-time-selectable storage backend (see docs/plans/ecs-typed-arrays-feature.md).
+  // TYPED_ARRAY currently only applies to TRANSFORM; every other component
+  // type stays Map-backed regardless of this setting.
+  private readonly storageMode: ECSStorageMode;
+  private readonly maxEntities: number;
+
+  constructor(storageMode: ECSStorageMode = 'MAP', maxEntities: number = 100_000) {
+    this.storageMode = storageMode;
+    this.maxEntities = maxEntities;
+
     // Pre-allocate system stages and storages
     Object.values(ECSSystemStage).forEach((s) => this.systems.set(s, []));
     Object.values(ComponentType).forEach((type) => {
-      this.storages.set(type, new Map());
+      if (type === ComponentType.TRANSFORM && this.storageMode === 'TYPED_ARRAY') {
+        this.storages.set(
+          type,
+          new TypedArrayTransformStore(this.maxEntities, (id) => this.getEntityIndex(id))
+        );
+      } else {
+        this.storages.set(type, new Map());
+      }
     });
 
     // REGISTER THIS INSTANCE
@@ -167,6 +199,41 @@ export class ECSWorld {
     // Mask gen to 12 bits (0xfff) before shifting to ensure it never
     // interferes with bits outside the 32-bit signed integer range.
     return ((gen & 0xfff) << this.GEN_SHIFT) | (index & this.INDEX_MASK);
+  }
+
+  /**
+   * Extracts the stable, dense entity-slot index from a packed entity id.
+   * Exposed (narrowly, alongside the still-private `_pack`/`_getGeneration`)
+   * for storage backends — e.g. the TypedArray-backed sparse set proposed in
+   * docs/plans/ecs-typed-arrays-feature.md — that need a numeric array
+   * offset; the packed id itself is not usable as one.
+   */
+  public getEntityIndex(entityId: number): number {
+    return this._getIndex(entityId);
+  }
+
+  /**
+   * Returns the TypedArray-backed Transform store when TRANSFORM storage is
+   * in `TYPED_ARRAY` mode, or `undefined` in the default `MAP` mode.
+   * Hot-path systems use this to branch once per call instead of paying the
+   * cold-path `getComponent()` materialization cost per entity.
+   */
+  public getTypedTransformStore(): TypedArrayTransformStore | undefined {
+    return this.storageMode === 'TYPED_ARRAY'
+      ? (this.storages.get(ComponentType.TRANSFORM) as TypedArrayTransformStore)
+      : undefined;
+  }
+
+  /**
+   * Writes a `Transform` object back into TRANSFORM storage after in-place
+   * mutation. Cold-path `getComponent(TRANSFORM)` may return a
+   * disconnected, freshly materialized copy (`TYPED_ARRAY` mode) rather
+   * than a live reference (`MAP` mode) — callers that fetch a Transform,
+   * mutate its position/quaternion/scale in place, and call `setDirty()`
+   * must call this afterward for the change to persist in both modes.
+   */
+  public commitTransform(entityId: number, transform: Transform): void {
+    this.storages.get(ComponentType.TRANSFORM)?.set(entityId, transform);
   }
 
   /**
@@ -296,7 +363,7 @@ export class ECSWorld {
    * sparse-set storage proposed in docs/plans/ecs-typed-arrays-feature.md,
    * which reorders on removal by design).
    */
-  public getStorage<K extends ComponentType>(type: K): Map<number, ComponentData[K]> {
+  public getStorage<K extends ComponentType>(type: K): IComponentStorage<ComponentData[K]> {
     let storage = this.storages.get(type);
 
     // --- PREVENT ITERABLE ERROR ---
@@ -406,6 +473,7 @@ export class ECSWorld {
       if (pos) transform.position.set(pos.x, pos.y, pos.z);
       if (rot) transform.quaternion.set(rot.x, rot.y, rot.z, rot.w);
       transform.setDirty();
+      this.commitTransform(entityId, transform);
     }
   }
 

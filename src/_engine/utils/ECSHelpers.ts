@@ -113,6 +113,7 @@ export const lookAtPoint = (
 
   transform.quaternion.setFromRotationMatrix(_m1);
   transform.setDirty();
+  world.commitTransform(entityId, transform);
 };
 
 export interface EntityDiagnosticData {

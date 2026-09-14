@@ -62,16 +62,17 @@ export function debugCameraSystem(world: ECSWorld) {
 
     if (isDisabled) continue;
 
-    data.controls.update();
+    const changed = data.controls.update();
 
     const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
     const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
 
-    if (transform && objComp) {
+    if (changed && transform && objComp) {
       transform.position.copy(objComp.value.position);
       transform.quaternion.copy(objComp.value.quaternion);
       transform.setDirty();
       objComp._lastVersion = transform.version;
+      world.commitTransform(entityId, transform);
     }
   }
 }
@@ -135,6 +136,7 @@ export const debugCamSceneChange = (newSceneId: string, world: ECSWorld) => {
     transform.position.copy(obj.position);
     transform.quaternion.copy(obj.quaternion);
     transform.setDirty();
+    world.commitTransform(debugCamId, transform);
   }
 
   // Sync ECS Camera Settings (Source of Truth)

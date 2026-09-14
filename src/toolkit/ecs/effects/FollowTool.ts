@@ -36,15 +36,69 @@ const _targetPos = new THREE.Vector3();
 export const followToolSystem = (world: ECSWorld, dt: number) => {
   const storage = world.getStorage(FollowToolComponentType.FOLLOW as any);
   if (!storage) return;
+  const transformStore = world.getTypedTransformStore();
 
   for (const [entityId, data] of storage) {
-    // 1. Get the Leader's position
-    const leaderTransform = world.getComponent(data.leaderId, CoreComponentType.TRANSFORM);
-    if (!leaderTransform) continue;
-
     // Framerate independent alpha calculation
     // If speed is 0, we treat it as an instant snap (alpha 1)
     const alpha = data.speed <= 0 ? 1 : 1 - Math.exp(-data.speed * dt);
+
+    if (transformStore) {
+      // 1. Get the Leader's position
+      const leaderSlot = transformStore.getSlot(data.leaderId);
+      if (leaderSlot === -1) continue;
+      const leaderX = transformStore.posX[leaderSlot];
+      const leaderY = transformStore.posY[leaderSlot];
+      const leaderZ = transformStore.posZ[leaderSlot];
+
+      // 2. Update the Light Source Entity
+      const lightSlot = transformStore.getSlot(entityId);
+      if (lightSlot !== -1) {
+        const targetX = leaderX + data.offset.x;
+        const targetY = leaderY + data.offset.y;
+        const targetZ = leaderZ + data.offset.z;
+
+        if (alpha >= 1) {
+          transformStore.setPosition(lightSlot, targetX, targetY, targetZ);
+        } else {
+          transformStore.setPosition(
+            lightSlot,
+            THREE.MathUtils.lerp(transformStore.posX[lightSlot], targetX, alpha),
+            THREE.MathUtils.lerp(transformStore.posY[lightSlot], targetY, alpha),
+            THREE.MathUtils.lerp(transformStore.posZ[lightSlot], targetZ, alpha)
+          );
+        }
+      }
+
+      // 3. Update the Light Target Entity (Only if it exists)
+      const targetLink = world.getComponent(entityId, ComponentType.TARGET_LINK);
+      if (targetLink) {
+        const targetSlot = transformStore.getSlot(targetLink.targetId);
+        if (targetSlot !== -1) {
+          const targetX = leaderX + data.targetOffset.x;
+          const targetY = leaderY + data.targetOffset.y;
+          const targetZ = leaderZ + data.targetOffset.z;
+
+          if (alpha >= 1) {
+            transformStore.setPosition(targetSlot, targetX, targetY, targetZ);
+          } else {
+            transformStore.setPosition(
+              targetSlot,
+              THREE.MathUtils.lerp(transformStore.posX[targetSlot], targetX, alpha),
+              THREE.MathUtils.lerp(transformStore.posY[targetSlot], targetY, alpha),
+              THREE.MathUtils.lerp(transformStore.posZ[targetSlot], targetZ, alpha)
+            );
+          }
+        }
+      }
+      continue;
+    }
+
+    // --- MAP mode: live Map references, existing behavior unchanged ---
+
+    // 1. Get the Leader's position
+    const leaderTransform = world.getComponent(data.leaderId, CoreComponentType.TRANSFORM);
+    if (!leaderTransform) continue;
 
     // 2. Update the Light Source Entity
     const lightTransform = world.getComponent(entityId, CoreComponentType.TRANSFORM);

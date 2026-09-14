@@ -26,13 +26,22 @@ export interface HoverComponentData {
 export const hoverToolSystem = (world: ECSWorld, dt: number) => {
   const storage = world.getStorage(HoverToolComponentType.HOVER as any);
   if (!storage) return;
+  const transformStore = world.getTypedTransformStore();
 
   for (const [entityId, data] of storage) {
+    data.time += dt;
+    const y = data.baseY + Math.sin(data.time * data.speed) * data.amplitude;
+
+    if (transformStore) {
+      const slot = transformStore.getSlot(entityId);
+      if (slot === -1) continue;
+      transformStore.setPosition(slot, transformStore.posX[slot], y, transformStore.posZ[slot]);
+      continue;
+    }
+
     const transform = world.getComponent(entityId, CoreComponentType.TRANSFORM);
     if (!transform) continue;
-
-    data.time += dt;
-    transform.position.y = data.baseY + Math.sin(data.time * data.speed) * data.amplitude;
+    transform.position.y = y;
     transform.setDirty();
   }
 };
