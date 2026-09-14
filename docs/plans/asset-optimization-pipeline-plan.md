@@ -1,3 +1,5 @@
+Status: draft | not-implemented
+
 # glTF Asset Optimization Pipeline — Plan
 
 A manifest-driven, build-time pipeline that converts source GLB/glTF assets into GPU-compressed, runtime-ready assets (KTX2 textures + compressed mesh data).

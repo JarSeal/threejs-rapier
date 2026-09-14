@@ -81,3 +81,4 @@ The plan in the near future is to implement the commented code in the PhysicsAPI
 ## Workflow
 
 - A Stop hook runs lint and type-check. Leave the tree compiling.
+- `docs/plans/` holds specs for unstarted work. Never treat one as current state or implement one unless I reference it explicitly.
