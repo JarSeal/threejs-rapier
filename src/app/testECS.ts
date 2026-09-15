@@ -54,7 +54,7 @@ export const scene = async () => {
     },
     { appId: 'pointLight' }
   );
-  ecsWorld.setTransform(pointLightId, { pos: { x: 2, y: 1, z: 1 } });
+  ecsWorld.setTransform(pointLightId, { pos: { x: 2, y: 4, z: 4 } });
 
   // Directional Light
   const dirLightId = createLightEntity(
