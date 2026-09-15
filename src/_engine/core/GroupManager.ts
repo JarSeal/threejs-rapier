@@ -100,7 +100,7 @@ export const createGroupEntity = (
     tra.rot.w = quat.w;
   }
 
-  setTransform(entityId, tra);
+  setTransform(entityId, tra, world);
 
   return entityId;
 };

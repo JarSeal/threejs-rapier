@@ -141,7 +141,7 @@ export const createMeshEntity = (
     tra.rot.z = quat.z;
     tra.rot.w = quat.w;
   }
-  setTransform(entityId, tra);
+  setTransform(entityId, tra, world);
 
   return entityId;
 };

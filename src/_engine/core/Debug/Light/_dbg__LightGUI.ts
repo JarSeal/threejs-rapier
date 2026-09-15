@@ -11,7 +11,6 @@ import {
   registerDraggableWindowContentFn,
   updateDraggableWindow,
 } from '../../UI/DraggableWindow';
-import { setTransform } from '../../../utils/ECSHelpers';
 import { setLightEnabled, setLightFrustumCullingEnabled, ShadowQuality } from '../../LightManager';
 import { getCurrentSceneId, getRootScene } from '../../Scene';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
@@ -353,7 +352,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', (e) => {
           if (!e.last) return;
-          setTransform(targetEntityId, { pos: targetTransform.position });
+          world.setTransform(targetEntityId, { pos: targetTransform.position });
           saveLightToLS(entityId, 'targetPos', targetTransform.position);
         });
     }

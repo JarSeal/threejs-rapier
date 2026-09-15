@@ -129,7 +129,7 @@ export const createCameraEntity = (
   }
 
   if ('lookAtPoint' in props && props.lookAtPoint) {
-    lookAtPoint(entityId, props.lookAtPoint);
+    lookAtPoint(entityId, props.lookAtPoint, world);
   }
 
   useDebug(debugHelpers)?.attachCameraHelpers(entityId, camera, world, rootScene);

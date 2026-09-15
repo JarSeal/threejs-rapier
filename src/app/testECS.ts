@@ -4,6 +4,7 @@ import { ECSWorld, getECSWorld } from '../_engine/core/ECS';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { createLightEntity } from '../_engine/core/LightManager';
+import { createCameraEntity } from '../_engine/core/CameraManager';
 import { registerHoverToolEffect } from '../toolkit/ecs/effects/HoverEffect';
 
 export const scene = async () => {
@@ -13,6 +14,21 @@ export const scene = async () => {
   const ecsWorld = getECSWorld();
 
   updateLoaderFn({ loadedCount: 1, totalCount: 2 });
+
+  // --- ECS CAMERA ---
+
+  // Orthographic Camera
+  createCameraEntity(
+    {
+      type: 'ORTHOGRAPHIC',
+      frustumSize: 20,
+      near: 0.1,
+      far: 2000,
+      position: { x: 10, y: 10, z: 10 },
+      lookAtPoint: { x: 0, y: 0, z: 0 },
+    },
+    { appId: 'orthoCamera', debugData: { name: 'Ortho camera' } }
+  );
 
   // --- ECS LIGHTS ---
 
