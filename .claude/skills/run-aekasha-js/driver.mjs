@@ -4,11 +4,12 @@
 // captures console/page errors, and takes a screenshot.
 //
 // Usage:
-//   node driver.mjs <baseUrl> [urlSuffix] [outFile] [waitMs]
+//   node driver.mjs <baseUrl> [urlSuffix] [outFile] [waitMs] [viewport WxH]
 //
 // Examples:
 //   node driver.mjs http://localhost:8080 "" out.png
 //   node driver.mjs http://localhost:8080 "?isDebug=true" debug.png
+//   node driver.mjs http://localhost:8080 "" portrait.png 6000 675x1200
 //
 // Exits non-zero and prints [DRIVER][FATAL] on launch/navigation failure.
 // Always prints captured console/page errors before exiting, even on success -
@@ -19,10 +20,10 @@ import { chromium } from 'playwright-core';
 import { existsSync } from 'node:fs';
 import { platform } from 'node:os';
 
-const [, , baseUrlArg, urlSuffixArg, outFileArg, waitMsArg] = process.argv;
+const [, , baseUrlArg, urlSuffixArg, outFileArg, waitMsArg, viewportArg] = process.argv;
 
 if (!baseUrlArg) {
-  console.error('Usage: node driver.mjs <baseUrl> [urlSuffix] [outFile] [waitMs]');
+  console.error('Usage: node driver.mjs <baseUrl> [urlSuffix] [outFile] [waitMs] [viewport WxH]');
   process.exit(1);
 }
 
@@ -30,6 +31,12 @@ const baseUrl = baseUrlArg.replace(/\/$/, '');
 const urlSuffix = urlSuffixArg ?? '';
 const outFile = outFileArg ?? 'screenshot.png';
 const waitMs = Number(waitMsArg ?? 6000);
+
+const [viewportWidth, viewportHeight] = (viewportArg ?? '1000x700').split('x').map(Number);
+if (!viewportWidth || !viewportHeight) {
+  console.error('[DRIVER][FATAL] invalid viewport, expected WxH (e.g. 1200x675):', viewportArg);
+  process.exit(1);
+}
 
 // --- Locate a system browser (system Chrome/Chromium/Edge is much
 // faster than downloading Playwright's own bundled Chromium, and avoids
@@ -100,7 +107,7 @@ const browser = await chromium
     process.exit(1);
   });
 
-const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+const page = await browser.newPage({ viewport: { width: viewportWidth, height: viewportHeight } });
 
 const consoleLogs = [];
 page.on('console', (msg) => consoleLogs.push(`[console:${msg.type()}] ${msg.text()}`));
