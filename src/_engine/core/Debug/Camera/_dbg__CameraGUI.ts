@@ -157,7 +157,10 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
       settings.responsiveAspect = ev.value;
       applyCameraProjection(camera, settings, getWindowSize().aspect);
       saveCameraToLS(entityId, 'responsiveAspect', ev.value);
-      updateCamerasDebuggerGUI('WINDOW'); // rebuild so the fov/frustumSize label reflects the new mode
+      // Without this one iteration timeout, Tweakpane will crash (maybe fix at one point)
+      setTimeout(() => {
+        updateCamerasDebuggerGUI('WINDOW'); // rebuild so the fov/frustumSize label reflects the new mode
+      }, 0);
     });
   lensFolder
     .addBinding(responsiveProxy, 'referenceAspect', {
