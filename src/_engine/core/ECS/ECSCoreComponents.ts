@@ -54,6 +54,9 @@ export interface CoreComponentData {
   [CoreType.TAG_IS_MAIN_CAMERA]: boolean;
   [CoreType.TAG_IS_CHARACTER]: boolean;
   [CoreType.TAG_IS_PHYSICS_OBJECT]: boolean;
+  // Frustum culling
+  [CoreType.FRUSTUM_CULLING_ENABLED]: boolean;
+  [CoreType.TAG_FRUSTUM_CULLED]: boolean;
   // Debug
   [CoreType.DEBUG_DATA]: EntityDebugData;
   [CoreType.DEBUG_LIGHT_HELPER]: {

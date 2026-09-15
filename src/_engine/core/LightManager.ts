@@ -90,6 +90,7 @@ export type LightProps = {
       decay?: number;
       position?: { x: number; y: number; z: number };
       castShadow?: boolean;
+      frustumCullingEnabled?: boolean;
       // Shadow Tuning
       shadowPreset?: ShadowQuality;
       shadowBias?: number;
@@ -129,6 +130,7 @@ export type LightProps = {
       position?: { x: number; y: number; z: number };
       targetPos?: { x: number; y: number; z: number };
       castShadow?: boolean;
+      frustumCullingEnabled?: boolean;
       // Shadow Tuning
       shadowPreset?: ShadowQuality;
       shadowBias?: number;
@@ -322,6 +324,10 @@ export const createLightEntity = (
     setLightEnabled(entityId, false, world);
   }
 
+  if ('frustumCullingEnabled' in props && props.frustumCullingEnabled) {
+    setLightFrustumCullingEnabled(entityId, true, world);
+  }
+
   if ('position' in props && props.position) {
     world.setTransform(entityId, { pos });
   }
@@ -402,6 +408,23 @@ export const setLightEnabled = (lightId: number, enabled: boolean, world: ECSWor
     world.removeComponent(lightId, ComponentType.DISABLED);
   } else {
     world.addComponent(lightId, ComponentType.DISABLED, true);
+  }
+};
+
+export const setLightFrustumCullingEnabled = (
+  lightId: number,
+  enabled: boolean,
+  world: ECSWorld
+) => {
+  if (enabled) {
+    world.addComponent(lightId, ComponentType.FRUSTUM_CULLING_ENABLED, true);
+  } else {
+    world.removeComponent(lightId, ComponentType.FRUSTUM_CULLING_ENABLED);
+    // Opting out must also clear any current culled state — otherwise a light
+    // that was invisible when culling was turned off would stay invisible forever.
+    if (world.hasComponent(lightId, ComponentType.TAG_FRUSTUM_CULLED)) {
+      world.removeComponent(lightId, ComponentType.TAG_FRUSTUM_CULLED);
+    }
   }
 };
 

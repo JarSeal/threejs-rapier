@@ -61,6 +61,28 @@ const _localTargetDir = new THREE.Vector3();
 const _invQ = new THREE.Quaternion();
 const _up = new THREE.Vector3(0, 1, 0);
 
+type SymbolTintState = 'normal' | 'culled' | 'disabled';
+
+/**
+ * Tints a light symbol instead of hiding it, so a light's gizmo stays visible and
+ * inspectable while flying around with the debug camera (docs/plans/light-culling.md §10).
+ * Disabled (red, full opacity) wins over culled (orange, half opacity) when both are true.
+ */
+const applySymbolTint = (symbol: THREE.Object3D, state: SymbolTintState) => {
+  if (symbol.userData.tintState === state) return; // skip redundant writes — runs every frame
+  symbol.userData.tintState = state;
+
+  const outlineColor = state === 'culled' ? 0xff9900 : state === 'disabled' ? 0xff3333 : 0x333333;
+  const opacity = state === 'culled' ? 0.5 : 1.0;
+
+  symbol.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const mat = child.material as THREE.MeshBasicMaterial;
+    if (child.userData.isOutline) mat.color.setHex(outlineColor);
+    mat.opacity = opacity; // applies to icon and outline alike
+  });
+};
+
 ECSWorld.registerPlugin((world) => {
   const rootScene = existsOrThrow(getRootScene(), 'No root scene for symbols');
 
@@ -76,8 +98,23 @@ ECSWorld.registerPlugin((world) => {
 
       // Visibility (only thing we set on the root)
       const isCurrentActiveCam = entityId === activeCamId;
-      const isEnabled = parent.visible && !w.isDisabled(entityId);
-      symbol.visible = isEnabled && !isCurrentActiveCam && symbolComp.userVisible;
+      const isLight = w.hasComponent(entityId, ComponentType.TAG_IS_LIGHT);
+
+      if (isLight) {
+        // Light symbols stay visible and are tinted instead of hidden, so every light
+        // can still be found while flying around with the debug camera (§10).
+        symbol.visible = symbolComp.userVisible;
+        const state: SymbolTintState = w.isDisabled(entityId)
+          ? 'disabled'
+          : w.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED)
+            ? 'culled'
+            : 'normal';
+        applySymbolTint(symbol, state);
+      } else {
+        // Cameras: unchanged — still hidden when disabled or when it's the active camera.
+        const isEnabled = parent.visible && !w.isDisabled(entityId);
+        symbol.visible = isEnabled && !isCurrentActiveCam && symbolComp.userVisible;
+      }
 
       // Find the lookAt holder (first child)
       const inner = symbol.children.find((c) => c.userData.isLookAtHolder);

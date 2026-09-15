@@ -111,7 +111,11 @@ export const createCameraEntity = (
   if (props.active) {
     setMainCamera(world, entityId);
   } else if (activeCameraEntityId === null) {
-    setActiveCamera(entityId);
+    // Route through setMainCamera (not setActiveCamera directly) so this camera is
+    // also tagged TAG_IS_MAIN_CAMERA — otherwise a scene whose designated camera relies
+    // on "first camera created" rather than an explicit `active: true` would never get
+    // that tag, and getMainCamera() below would find nothing for it.
+    setMainCamera(world, entityId);
   }
 
   const pos =
@@ -149,6 +153,21 @@ export const setActiveCamera = (entityId: number) => {
 export const getActiveCameraId = () => activeCameraEntityId;
 
 export const getActiveCamera = (): THREE.Camera | undefined => activeCameraObject ?? undefined;
+
+/**
+ * Returns the real gameplay camera's Three.js object, regardless of whether the debug
+ * fly-camera is currently active. Unlike `getActiveCamera()` (which resolves to the debug
+ * camera while it's toggled on — required for `renderScene()` to render through it), this
+ * always resolves via `TAG_IS_MAIN_CAMERA`, which `toggleDebugCamera` never touches.
+ * Use this, not `getActiveCamera()`, for any system whose behavior must track the actual
+ * gameplay camera's point of view (e.g. light frustum culling).
+ */
+export const getMainCamera = (): THREE.Camera | undefined => {
+  const world = getECSWorld();
+  const mainCamId = world.getEntitiesWith(ComponentType.TAG_IS_MAIN_CAMERA).next().value;
+  if (mainCamId === undefined) return undefined;
+  return world.getComponent(mainCamId, ComponentType.OBJECT3D)?.value as THREE.Camera | undefined;
+};
 
 export const disposeCamera = (entityId: number, ecsWorld?: ECSWorld) => {
   const world = ecsWorld || getECSWorld();

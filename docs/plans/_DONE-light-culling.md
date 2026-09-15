@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented (Phases 1–4 complete)
 
 # Point/Spot Light Frustum Culling — Plan
 
@@ -71,7 +71,7 @@ ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
 
 ### 2.3 No existing frustum infrastructure anywhere
 
-Confirmed by grep across `src/_engine` and `src/toolkit`: no `THREE.Frustum` is constructed anywhere in the engine, and no custom frustum-culling logic exists for meshes or lights. The only culling-adjacent code is `debugMesh.frustumCulled = false` in `PhysicsRapier.ts:1463` (opting *out* of Three's default per-mesh culling for physics debug lines, since they span the whole world). Nothing computes a bounding sphere/cone for a light today.
+Confirmed by grep across `src/_engine` and `src/toolkit`: no `THREE.Frustum` is constructed anywhere in the engine, and no custom frustum-culling logic exists for meshes or lights. The only culling-adjacent code is `debugMesh.frustumCulled = false` in `PhysicsRapier.ts:1463` (opting _out_ of Three's default per-mesh culling for physics debug lines, since they span the whole world). Nothing computes a bounding sphere/cone for a light today.
 
 ### 2.4 Camera access — `getActiveCamera()` is NOT safe to use here (verified)
 
@@ -103,7 +103,7 @@ const renderScene = () => {
 };
 ```
 
-— so `getActiveCamera()` returning the debug camera while it's active is *required* for the fly-camera feature to work at all (otherwise toggling it on would still render through the game camera). Changing what `getActiveCamera()` returns, or introducing a separate camera "type" that it never resolves to, would break rendering through the debug camera — **not** the right fix, and different from what this plan needs.
+— so `getActiveCamera()` returning the debug camera while it's active is _required_ for the fly-camera feature to work at all (otherwise toggling it on would still render through the game camera). Changing what `getActiveCamera()` returns, or introducing a separate camera "type" that it never resolves to, would break rendering through the debug camera — **not** the right fix, and different from what this plan needs.
 
 **What this plan actually needs**: a light-culling test that keeps testing against the real gameplay camera's frustum even while a developer is flying around with the debug camera, so that (a) toggling the debug camera on doesn't change which lights are culled from the player's actual point of view, and (b) the debug camera can be used to fly around and inspect every light's location/state (§10) without lights popping in and out based on the debug camera's own framing.
 
@@ -118,7 +118,7 @@ export const setMainCamera = (world: ECSWorld, newMainId: number) => {
 };
 ```
 
-**One real gap found, needs a small fix**: `createCameraEntity`'s fallback branch (`CameraManager.ts:111-115`) does *not* go through `setMainCamera`:
+**One real gap found, needs a small fix**: `createCameraEntity`'s fallback branch (`CameraManager.ts:111-115`) does _not_ go through `setMainCamera`:
 
 ```ts
 if (props.active) {
@@ -154,7 +154,11 @@ ECSWorld.registerPlugin((world) => {
   world.addSystem(ECSSystemStage.MAIN, 'object3DSyncSystem', object3DSyncSystem);
   world.addSystem(ECSSystemStage.LATE_MAIN, 'entityLifetimeSystem', entityLifetimeSystem);
   world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'lookAtSystem', lookAtSystem);
-  world.addSystem(ECSSystemStage.APP_POST_PHYSICS, 'physicsToTransformSystem', physicsToTransformSystem);
+  world.addSystem(
+    ECSSystemStage.APP_POST_PHYSICS,
+    'physicsToTransformSystem',
+    physicsToTransformSystem
+  );
   return world;
 });
 ```
@@ -208,7 +212,8 @@ Gating on light type uses `getLightCharacteristics(light)` (`src/_engine/utils/h
 ```ts
 if (lightChars.hasDistance) {
   const l = light as THREE.PointLight | THREE.SpotLight;
-  pane.addBinding(l, 'distance', { label: 'Distance', min: 0, step: 0.01 })
+  pane
+    .addBinding(l, 'distance', { label: 'Distance', min: 0, step: 0.01 })
     .on('change', (ev) => saveLightToLS(entityId, 'distance', ev.value));
 }
 ```
@@ -293,7 +298,7 @@ ECSWorld.registerComponentHooks(ComponentType.TAG_FRUSTUM_CULLED, {
 });
 ```
 
-**Required companion change to the existing `DISABLED` hook** (`ECSCoreSystems.ts:31-34`) — this is the one piece of *existing* shared code this plan must modify, and it's a genuine latent bug this feature would otherwise introduce: today, `DISABLED`'s `onRemoveComponent` unconditionally sets `.visible = true`. If a light is simultaneously frustum-culled and then the user calls `setLightEnabled(id, true, world)` (removing `DISABLED`) while the light is *still* out of frustum, this would incorrectly force it visible, fighting with the culling system's own state. Fix:
+**Required companion change to the existing `DISABLED` hook** (`ECSCoreSystems.ts:31-34`) — this is the one piece of _existing_ shared code this plan must modify, and it's a genuine latent bug this feature would otherwise introduce: today, `DISABLED`'s `onRemoveComponent` unconditionally sets `.visible = true`. If a light is simultaneously frustum-culled and then the user calls `setLightEnabled(id, true, world)` (removing `DISABLED`) while the light is _still_ out of frustum, this would incorrectly force it visible, fighting with the culling system's own state. Fix:
 
 ```ts
 onRemoveComponent: (entityId, world) => {
@@ -373,7 +378,11 @@ ECSWorld.registerPlugin((world) => {
 New exported helper in `LightManager.ts`, alongside `setLightEnabled`/`setLightShadowEnabled` (391-406):
 
 ```ts
-export const setLightFrustumCullingEnabled = (lightId: number, enabled: boolean, world: ECSWorld) => {
+export const setLightFrustumCullingEnabled = (
+  lightId: number,
+  enabled: boolean,
+  world: ECSWorld
+) => {
   if (enabled) {
     world.addComponent(lightId, ComponentType.FRUSTUM_CULLING_ENABLED, true);
   } else {
@@ -417,7 +426,9 @@ In `_dbg__LightGUI.ts`, immediately after the existing Distance/Decay bindings (
 
 ```ts
 if (lightChars.supportsFrustumCulling) {
-  const cullProxy = { enabled: world.hasComponent(entityId, ComponentType.FRUSTUM_CULLING_ENABLED) };
+  const cullProxy = {
+    enabled: world.hasComponent(entityId, ComponentType.FRUSTUM_CULLING_ENABLED),
+  };
   pane.addBinding(cullProxy, 'enabled', { label: 'Frustum Culling' }).on('change', (ev) => {
     setLightFrustumCullingEnabled(entityId, ev.value, world);
     saveLightToLS(entityId, 'frustumCullingEnabled', ev.value);
@@ -457,7 +468,7 @@ No changes needed to `loadLightDebugData`'s call site (197) or `saveLightToLS`'s
 
 **Phase 3 — Debug GUI.** Add the checkbox, `getLightCharacteristics.supportsFrustumCulling`, `LightEntityDebugState` field. Confirm the checkbox reflects live ECS state on window open, toggling it in both directions produces the correct immediate visual result (including un-hiding a currently-culled light when turned off, per §4.4), and the setting persists across a debug-pane close/reopen via `AEK_debugLights`.
 
-**Phase 4 — Camera resolution fix + debug symbol visualization (§2.4, §10).** Fix `createCameraEntity`'s fallback branch, add `getMainCamera()`, and switch `lightFrustumCullingSystem` to call it. Then implement the light-symbol visualization: per-instance material cloning (with `transparent = true`) in `3DSymbols.ts`, and the `debugSymbolSyncSystem` rewrite so light symbols stay visible with `applySymbolTint` driving an orange outline + 50% opacity for culled, or a red outline at full opacity for disabled, instead of disappearing. Verify by toggling the debug fly-camera on with a point/spot light opted into culling and panned out of the *game* camera's view: the light's own contribution should stay off (culled from the game camera's perspective, unaffected by where the debug camera looks), while its symbol should remain visible in the debug view with an orange, half-opacity outline; disabling the light (any type, including directional) should show a full-opacity red outline instead, whether or not the debug camera is active.
+**Phase 4 — Camera resolution fix + debug symbol visualization (§2.4, §10).** Fix `createCameraEntity`'s fallback branch, add `getMainCamera()`, and switch `lightFrustumCullingSystem` to call it. Then implement the light-symbol visualization: per-instance material cloning (with `transparent = true`) in `3DSymbols.ts`, and the `debugSymbolSyncSystem` rewrite so light symbols stay visible with `applySymbolTint` driving an orange outline + 50% opacity for culled, or a red outline at full opacity for disabled, instead of disappearing. Verify by toggling the debug fly-camera on with a point/spot light opted into culling and panned out of the _game_ camera's view: the light's own contribution should stay off (culled from the game camera's perspective, unaffected by where the debug camera looks), while its symbol should remain visible in the debug view with an orange, half-opacity outline; disabling the light (any type, including directional) should show a full-opacity red outline instead, whether or not the debug camera is active.
 
 **Exit criteria**: a scene with several point/spot lights, culling enabled on some, shows only the in-frustum ones' contribution while panning/rotating the camera, with no visible popping beyond what's expected at the exact frustum boundary (same as normal mesh culling); disabling a light via the existing "Enabled" checkbox always wins regardless of frustum state; toggling the debug fly-camera never changes which lights are culled from the game camera's perspective; and every light's symbol remains visible and correctly tinted (orange/red/untinted) while flying around with the debug camera, regardless of that camera's own framing.
 
@@ -465,18 +476,18 @@ No changes needed to `loadLightDebugData`'s call site (197) or `saveLightToLS`'s
 
 ## 9. Risks and open questions
 
-| Risk / question | Notes |
-| --- | --- |
-| Conservative spot-light sphere over-culls less than it could | A wide-angle spotlight's bounding sphere is much larger than its actual cone, so some spotlights that are geometrically out-of-frustum will still test as "visible." Acceptable for v1 (never wrongly hides a light); a tighter cone-vs-frustum test (e.g. sampling rim points, or a proper separating-axis test) is a valid future refinement if profiling shows it matters. |
-| Popping at the exact frustum boundary | Same behavior as Three.js's own default mesh frustum culling — a light very near the frustum edge can flicker visible/invisible across frames as the camera moves slightly. Not a bug, but a margin (e.g. inflate the test sphere radius by ~5-10%) is an easy opt-in refinement if it's visually distracting for a specific light (e.g. a bright point light popping its contribution off right at screen edge). Not built in v1. |
-| Interaction with shadow maps | Setting `.visible = false` on a culled light also means the renderer skips generating its shadow map that frame — a bonus perf win, but means a light's shadow can "pop" in/out at the same moment as the light itself. This is consistent with the light not contributing to the visible frame at all, so treated as expected, not a defect. |
-| Per-frame cost | O(1) frustum build (only when the opted-in storage is non-empty) + O(n) sphere test over only the lights that opted in — negligible next to the shading cost avoided. No spatial index needed since this tests the light's own bounding volume against one frustum, not against other objects (contrast with the object-culling plan, which is a different and more expensive problem — see `docs/plans/light-object-culling.md`). |
-| Nested/parented lights | §3.3's `updateWorldMatrix(true, false)` handles arbitrary nesting depth correctly and cheaply (walks only the ancestor chain), but every light/target pair pays that call each frame it's tested. For the common case (lights added directly to the root scene, per `createLightEntity`), this is a near-no-op since `matrixWorldNeedsUpdate` bookkeeping short-circuits unchanged branches — not separately benchmarked here, flagged as worth a quick check once implemented if a scene has very deep light nesting. |
-| Global kill-switch | No engine-wide "force disable all light culling" setting is proposed here (parity with the per-light opt-in the user asked for) — if useful for troubleshooting later, a `CONFIG.rendering?.disableLightCulling` flag (mirroring `CONFIG.physics`'s pattern, `Config.ts:22,55`) would be a small addition, checked once at the top of `lightFrustumCullingSystem`. Not built in v1 — open question whether it's worth the config surface. |
-| `getActiveCamera()` silently becomes the debug camera | Verified, not assumed (§2.4) — `toggleDebugCamera` routes the fly-camera through the same `setActiveCamera` every other camera uses, and `renderScene()` depends on that for rendering to work at all. Fixed by having the culling system resolve `getMainCamera()` (new, `TAG_IS_MAIN_CAMERA`-based) instead — not by changing `getActiveCamera()`/`setActiveCamera()` themselves, which would break the debug camera's actual purpose. |
-| `TAG_IS_MAIN_CAMERA` not always set | Found via code reading, not hypothetical: `createCameraEntity`'s no-explicit-`active`-prop fallback (`CameraManager.ts:113-114`) calls `setActiveCamera` directly, skipping the tag. Required fix included in this plan (§2.4) — route that branch through `setMainCamera` instead. Until fixed, `getMainCamera()` can return `undefined` for a scene whose main camera was never explicitly marked `active: true` and happened to be the first camera created. |
-| Symbol materials are shared across every gizmo instance | `3DSymbols.ts`'s `symbolMaterial`/`outlineMaterial` are two singletons reused by every cloned symbol of every type (`Object3D.clone()` copies material references, not values) — mutating a symbol's material color today would recolor every light/camera gizmo in the scene at once. §10.2's per-instance material clone is required before any per-light tinting is possible; without it, this feature cannot be built as described. |
-| Opacity has no effect without `transparent = true` | `THREE.Material.opacity` is ignored by the renderer while `transparent` is `false` — easy to implement the culled-state fade (§10.3) and see no visible change if the per-instance material clone (§10.2) doesn't also flip that flag. Called out explicitly as a required part of the material-clone step, not just the opacity assignment itself. |
+| Risk / question                                              | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Conservative spot-light sphere over-culls less than it could | A wide-angle spotlight's bounding sphere is much larger than its actual cone, so some spotlights that are geometrically out-of-frustum will still test as "visible." Acceptable for v1 (never wrongly hides a light); a tighter cone-vs-frustum test (e.g. sampling rim points, or a proper separating-axis test) is a valid future refinement if profiling shows it matters.                                                                                                                                          |
+| Popping at the exact frustum boundary                        | Same behavior as Three.js's own default mesh frustum culling — a light very near the frustum edge can flicker visible/invisible across frames as the camera moves slightly. Not a bug, but a margin (e.g. inflate the test sphere radius by ~5-10%) is an easy opt-in refinement if it's visually distracting for a specific light (e.g. a bright point light popping its contribution off right at screen edge). Not built in v1.                                                                                     |
+| Interaction with shadow maps                                 | Setting `.visible = false` on a culled light also means the renderer skips generating its shadow map that frame — a bonus perf win, but means a light's shadow can "pop" in/out at the same moment as the light itself. This is consistent with the light not contributing to the visible frame at all, so treated as expected, not a defect.                                                                                                                                                                          |
+| Per-frame cost                                               | O(1) frustum build (only when the opted-in storage is non-empty) + O(n) sphere test over only the lights that opted in — negligible next to the shading cost avoided. No spatial index needed since this tests the light's own bounding volume against one frustum, not against other objects (contrast with the object-culling plan, which is a different and more expensive problem — see `docs/plans/light-object-culling.md`).                                                                                     |
+| Nested/parented lights                                       | §3.3's `updateWorldMatrix(true, false)` handles arbitrary nesting depth correctly and cheaply (walks only the ancestor chain), but every light/target pair pays that call each frame it's tested. For the common case (lights added directly to the root scene, per `createLightEntity`), this is a near-no-op since `matrixWorldNeedsUpdate` bookkeeping short-circuits unchanged branches — not separately benchmarked here, flagged as worth a quick check once implemented if a scene has very deep light nesting. |
+| Global kill-switch                                           | No engine-wide "force disable all light culling" setting is proposed here (parity with the per-light opt-in the user asked for) — if useful for troubleshooting later, a `CONFIG.rendering?.disableLightCulling` flag (mirroring `CONFIG.physics`'s pattern, `Config.ts:22,55`) would be a small addition, checked once at the top of `lightFrustumCullingSystem`. Not built in v1 — open question whether it's worth the config surface.                                                                              |
+| `getActiveCamera()` silently becomes the debug camera        | Verified, not assumed (§2.4) — `toggleDebugCamera` routes the fly-camera through the same `setActiveCamera` every other camera uses, and `renderScene()` depends on that for rendering to work at all. Fixed by having the culling system resolve `getMainCamera()` (new, `TAG_IS_MAIN_CAMERA`-based) instead — not by changing `getActiveCamera()`/`setActiveCamera()` themselves, which would break the debug camera's actual purpose.                                                                               |
+| `TAG_IS_MAIN_CAMERA` not always set                          | Found via code reading, not hypothetical: `createCameraEntity`'s no-explicit-`active`-prop fallback (`CameraManager.ts:113-114`) calls `setActiveCamera` directly, skipping the tag. Required fix included in this plan (§2.4) — route that branch through `setMainCamera` instead. Until fixed, `getMainCamera()` can return `undefined` for a scene whose main camera was never explicitly marked `active: true` and happened to be the first camera created.                                                        |
+| Symbol materials are shared across every gizmo instance      | `3DSymbols.ts`'s `symbolMaterial`/`outlineMaterial` are two singletons reused by every cloned symbol of every type (`Object3D.clone()` copies material references, not values) — mutating a symbol's material color today would recolor every light/camera gizmo in the scene at once. §10.2's per-instance material clone is required before any per-light tinting is possible; without it, this feature cannot be built as described.                                                                                |
+| Opacity has no effect without `transparent = true`           | `THREE.Material.opacity` is ignored by the renderer while `transparent` is `false` — easy to implement the culled-state fade (§10.3) and see no visible change if the per-instance material clone (§10.2) doesn't also flip that flag. Called out explicitly as a required part of the material-clone step, not just the opacity assignment itself.                                                                                                                                                                    |
 
 ---
 
@@ -494,11 +505,11 @@ const isEnabled = parent.visible && !w.isDisabled(entityId);
 symbol.visible = isEnabled && !isCurrentActiveCam && symbolComp.userVisible;
 ```
 
-`parent` is the light's own `THREE.Light` object. **This reads `parent.visible` directly** — so once `lightFrustumCullingSystem` (§4.3) sets a culled light's `.visible = false`, this existing sync system will hide that light's *symbol* too, the moment the light is culled. That's the opposite of what's needed: the whole reason to fly around with the debug camera is to find and inspect lights, including ones currently invisible from the game camera's perspective — their symbols disappearing defeats that purpose entirely. The same is already true today for `DISABLED` lights (a disabled light's symbol is already fully hidden, not just tinted), which is the second half of the request: show state via color instead of hiding the gizmo, for both reasons a light can currently go invisible.
+`parent` is the light's own `THREE.Light` object. **This reads `parent.visible` directly** — so once `lightFrustumCullingSystem` (§4.3) sets a culled light's `.visible = false`, this existing sync system will hide that light's _symbol_ too, the moment the light is culled. That's the opposite of what's needed: the whole reason to fly around with the debug camera is to find and inspect lights, including ones currently invisible from the game camera's perspective — their symbols disappearing defeats that purpose entirely. The same is already true today for `DISABLED` lights (a disabled light's symbol is already fully hidden, not just tinted), which is the second half of the request: show state via color instead of hiding the gizmo, for both reasons a light can currently go invisible.
 
 ### 10.2 Prerequisite: symbols don't have per-instance materials today
 
-Symbols are built once as four shared templates in `src/_engine/debug/3DSymbols.ts` (`processMeshIntoGroup`, lines 45-80): each symbol is `root → inner (isLookAtHolder) → [icon, outline]`, where `icon.material = symbolMaterial` and `outline.material = outlineMaterial` are **two singleton `THREE.MeshBasicMaterial` instances shared by every symbol of every type** (lines 32-40). `createNewPointLightSymbol()` etc. (`createSymbolClone`, lines 103-108) call `template.clone()` — `Object3D.clone()`/`Mesh.clone()` copy the `.material` *reference*, not a copy — so today, **every light and camera gizmo in the entire scene points at the same two material objects**. Mutating `icon.material.color` to tint one light's symbol would recolor every symbol in the scene simultaneously.
+Symbols are built once as four shared templates in `src/_engine/debug/3DSymbols.ts` (`processMeshIntoGroup`, lines 45-80): each symbol is `root → inner (isLookAtHolder) → [icon, outline]`, where `icon.material = symbolMaterial` and `outline.material = outlineMaterial` are **two singleton `THREE.MeshBasicMaterial` instances shared by every symbol of every type** (lines 32-40). `createNewPointLightSymbol()` etc. (`createSymbolClone`, lines 103-108) call `template.clone()` — `Object3D.clone()`/`Mesh.clone()` copy the `.material` _reference_, not a copy — so today, **every light and camera gizmo in the entire scene points at the same two material objects**. Mutating `icon.material.color` to tint one light's symbol would recolor every symbol in the scene simultaneously.
 
 **Required fix, before any tinting is possible**: clone `icon.material`/`outline.material` per symbol instance right after `createSymbolClone` in `attachToEntity` (`_dbg__Symbols.ts:16-45`), e.g.:
 
@@ -508,7 +519,7 @@ symbol.traverse((child) => {
 });
 ```
 
-Also add `icon.userData.isIcon = true` in `processMeshIntoGroup` (`3DSymbols.ts`), symmetric with the existing `outline.userData.isOutline` flag, so the tint helper (§10.3) can find the icon mesh reliably without assuming child order — needed because the icon's *opacity* (not its color) is part of the culled treatment (§10.3). This is `IS_DEBUG_ENV`-only code (`_dbg__` dual-layer pattern, per CLAUDE.md) — the extra per-instance materials never ship in production and the small clone cost is irrelevant at debug-gizmo counts.
+Also add `icon.userData.isIcon = true` in `processMeshIntoGroup` (`3DSymbols.ts`), symmetric with the existing `outline.userData.isOutline` flag, so the tint helper (§10.3) can find the icon mesh reliably without assuming child order — needed because the icon's _opacity_ (not its color) is part of the culled treatment (§10.3). This is `IS_DEBUG_ENV`-only code (`_dbg__` dual-layer pattern, per CLAUDE.md) — the extra per-instance materials never ship in production and the small clone cost is irrelevant at debug-gizmo counts.
 
 **Also required**: both cloned materials need `transparent = true` set once, at clone time. `THREE.Material.opacity` has no visual effect while `transparent` is `false` (the renderer treats the object as fully opaque and ignores `opacity`) — since the culled state needs to actually fade the symbol (§10.3), the per-instance `icon.material`/`outline.material` clones must flip this flag, e.g. `clonedMat.transparent = true;` alongside the `.clone()` call above. Minor cost (transparent objects sort back-to-front and typically skip `depthWrite`), irrelevant at debug-gizmo counts and again `IS_DEBUG_ENV`-only.
 
@@ -539,11 +550,11 @@ Camera symbols are deliberately **not** changed — the request is specifically 
 
 **Design (updated per feedback): tint the outline, not the icon; add reduced opacity for the culled state.** The icon mesh's own texture/colors are left alone in every state (preserves each light type's glyph at a glance — a point/spot/directional icon still reads as itself even when flagged). State is instead communicated by (a) recoloring the outline rim, and (b) for culled specifically, additionally fading the whole symbol:
 
-| State | Outline color | Symbol opacity (icon + outline) |
-| --- | --- | --- |
-| Normal | `0x333333` (existing dark rim) | `1.0` |
-| Culled | orange, e.g. `0xff9900` | `0.5` |
-| Disabled | red, e.g. `0xff3333` | `1.0` |
+| State    | Outline color                  | Symbol opacity (icon + outline) |
+| -------- | ------------------------------ | ------------------------------- |
+| Normal   | `0x333333` (existing dark rim) | `1.0`                           |
+| Culled   | orange, e.g. `0xff9900`        | `0.5`                           |
+| Disabled | red, e.g. `0xff3333`           | `1.0`                           |
 
 ```ts
 const applySymbolTint = (symbol: THREE.Group, state: 'normal' | 'culled' | 'disabled') => {
@@ -577,4 +588,4 @@ Directional lights are explicitly out of scope for frustum culling (§1 — conc
 This plan is written so the mechanism (opt-in boolean component + runtime tag + paired hooks + a bounding-volume-vs-frustum test) generalizes cleanly:
 
 - `docs/plans/light-object-culling.md` studies a **different, harder** problem — culling a light based on whether anything is actually present to be lit within its volume, not just whether the volume overlaps the frustum — and is a separate opt-in on top of this one, not a replacement.
-- `docs/plans/object3d-frustum-culling.md` studies generalizing *this exact* frustum-vs-bounding-volume mechanism to any `Object3D` entity (meshes, groups), for exposing on/off-screen state to gameplay systems (AI, audio, LOD) rather than for rendering (which Three.js already culls for free). If that plan is approved, its shared system would supersede `LightFrustumCullingSystem.ts`'s system function (the component/hook shape stays the same); this plan does not need to wait for that one to ship value on its own.
+- `docs/plans/object3d-frustum-culling.md` studies generalizing _this exact_ frustum-vs-bounding-volume mechanism to any `Object3D` entity (meshes, groups), for exposing on/off-screen state to gameplay systems (AI, audio, LOD) rather than for rendering (which Three.js already culls for free). If that plan is approved, its shared system would supersede `LightFrustumCullingSystem.ts`'s system function (the component/hook shape stays the same); this plan does not need to wait for that one to ship value on its own.

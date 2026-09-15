@@ -29,9 +29,12 @@ ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
   },
 
   onRemoveComponent: (entityId, world) => {
-    // Show Object3Ds
+    // Show Object3Ds, unless frustum culling is still hiding this entity
+    // (avoid fighting with LightFrustumCullingSystem's own visibility state)
     const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-    if (objComp) objComp.value.visible = true;
+    if (objComp && !world.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED)) {
+      objComp.value.visible = true;
+    }
 
     if (IS_DEBUG_ENV) {
       const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);

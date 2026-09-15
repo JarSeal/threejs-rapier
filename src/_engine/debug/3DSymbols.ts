@@ -54,6 +54,7 @@ export const load3DSymbols = async () => {
       const icon = mesh.clone();
       icon.material = symbolMaterial;
       icon.position.set(0, 0, 0);
+      icon.userData.isIcon = true;
       inner.add(icon);
 
       const outline = mesh.clone();
@@ -104,6 +105,18 @@ const createSymbolClone = (template?: THREE.Group): THREE.Group | null => {
   if (!template) return null;
   const clone = template.clone();
   clone.userData.isHelperSymbol = true;
+
+  // Per-instance materials so tinting one light's gizmo (docs/plans/light-culling.md §10)
+  // never affects any other — Object3D.clone() copies material references, not values,
+  // so without this every symbol would share the same two template materials.
+  // `transparent = true` is required for the culled-state opacity fade to have any effect.
+  clone.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const mat = (child.material as THREE.Material).clone();
+    mat.transparent = true;
+    child.material = mat;
+  });
+
   return clone;
 };
 

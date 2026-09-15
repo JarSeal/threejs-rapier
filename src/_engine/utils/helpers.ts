@@ -526,6 +526,7 @@ export const getLightCharacteristics = (light: THREE.Light) => {
     hasHelper: false,
     hasSymbol: false,
     hasTarget: false,
+    supportsFrustumCulling: false,
   };
 
   // Type
@@ -548,6 +549,9 @@ export const getLightCharacteristics = (light: THREE.Light) => {
     c.hasDistance = true;
     c.hasDecay = true;
   }
+
+  // Frustum culling (point/spot only — see docs/plans/light-culling.md §1)
+  c.supportsFrustumCulling = c.isPointLight || c.isSpotLight;
 
   // Helper
   if (c.isPointLight || c.isSpotLight || c.isDirectionalLight) {

@@ -8,7 +8,7 @@ Generalizing `docs/plans/light-culling.md`'s mechanism (opt-in boolean + runtime
 
 ## 1. The key distinction this plan has to make honestly
 
-For **meshes**, Three.js already does per-object frustum culling for free, today, with zero engine code: `Object3D.frustumCulled` defaults to `true`, and the renderer's render-list build step tests each mesh's `geometry.boundingSphere` against the camera frustum before submitting a draw call. Confirmed by grep: the only place this flag is touched in the codebase is `PhysicsRapier.ts:1463` (`debugMesh.frustumCulled = false`, opting a physics-debug line mesh *out* of that default behavior because it intentionally spans the whole world). **There is no rendering-cost gap to close for meshes** — building an ECS-level system that re-tests mesh bounding spheres against the frustum purely to decide whether to render them would duplicate work the renderer already does, for no additional GPU/draw-call savings.
+For **meshes**, Three.js already does per-object frustum culling for free, today, with zero engine code: `Object3D.frustumCulled` defaults to `true`, and the renderer's render-list build step tests each mesh's `geometry.boundingSphere` against the camera frustum before submitting a draw call. Confirmed by grep: the only place this flag is touched in the codebase is `PhysicsRapier.ts:1463` (`debugMesh.frustumCulled = false`, opting a physics-debug line mesh _out_ of that default behavior because it intentionally spans the whole world). **There is no rendering-cost gap to close for meshes** — building an ECS-level system that re-tests mesh bounding spheres against the frustum purely to decide whether to render them would duplicate work the renderer already does, for no additional GPU/draw-call savings.
 
 So the real value of this plan isn't rendering performance — it's making "is this entity currently visible to the camera" a piece of **ECS-queryable state** that other systems can react to, which Three.js's internal render-list culling doesn't expose today. Concrete uses this would unlock, none of which exist in the engine yet but all of which are standard patterns in shipped games:
 
@@ -47,8 +47,8 @@ type BoundingVolumeProvider = (entityId: number, world: ECSWorld) => THREE.Spher
 
 const boundingVolumeProviders: Partial<Record<ComponentType, BoundingVolumeProvider>> = {
   [ComponentType.TAG_IS_MESH]: getMeshWorldBoundingSphere,
-  [ComponentType.TAG_IS_POINT_LIGHT]: getPointLightBoundingSphere,   // from light-culling.md §3.1
-  [ComponentType.TAG_IS_SPOT_LIGHT]: getSpotLightBoundingSphere,     // from light-culling.md §3.2
+  [ComponentType.TAG_IS_POINT_LIGHT]: getPointLightBoundingSphere, // from light-culling.md §3.1
+  [ComponentType.TAG_IS_SPOT_LIGHT]: getSpotLightBoundingSphere, // from light-culling.md §3.2
 };
 ```
 
@@ -90,13 +90,13 @@ Given the reframing in §1 (this is a gameplay-state feature, not a rendering op
 
 ## 5. Risks and open questions
 
-| Risk / question | Notes |
-| --- | --- |
-| Redundant-with-the-renderer confusion | Must be documented clearly (in code comments and any future docs) that this does **not** replace or improve on `Object3D.frustumCulled`'s rendering-time culling — it's parallel ECS-visible state for gameplay systems. Easy to misread as a performance feature otherwise. |
-| Non-uniform scale approximation | World-space bounding-sphere radius via "scale by max scale-axis component" over-estimates for non-uniformly-scaled meshes (a mesh stretched long on one axis gets a sphere sized to its longest axis in all directions). Acceptable conservative bound for a gameplay-state signal; not acceptable if ever repurposed for a tight rendering optimization. |
-| Group/composite bounding volumes | No good automatic answer (§2.2) — requires either restricting to leaf meshes or manual authoring. Whichever is chosen constrains which entities can realistically opt in. |
-| Mesh debug UI gap | A real, pre-existing gap in the engine (no mesh edit window at all), not something this plan should try to solve as a side effect. Keep scoped to JSON-authored opt-in until a mesh debug panel is separately justified. |
-| Value without a concrete consumer | The single biggest open question: is there an actual planned gameplay system (AI/audio/LOD) that would consume `TAG_FRUSTUM_CULLED` state for non-light entities? Without one, this plan has no forcing function and risks being built and never used — recommend treating it as blocked on that consumer existing, not as a standalone next step after `light-culling.md`. |
+| Risk / question                       | Notes                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Redundant-with-the-renderer confusion | Must be documented clearly (in code comments and any future docs) that this does **not** replace or improve on `Object3D.frustumCulled`'s rendering-time culling — it's parallel ECS-visible state for gameplay systems. Easy to misread as a performance feature otherwise.                                                                                                |
+| Non-uniform scale approximation       | World-space bounding-sphere radius via "scale by max scale-axis component" over-estimates for non-uniformly-scaled meshes (a mesh stretched long on one axis gets a sphere sized to its longest axis in all directions). Acceptable conservative bound for a gameplay-state signal; not acceptable if ever repurposed for a tight rendering optimization.                   |
+| Group/composite bounding volumes      | No good automatic answer (§2.2) — requires either restricting to leaf meshes or manual authoring. Whichever is chosen constrains which entities can realistically opt in.                                                                                                                                                                                                   |
+| Mesh debug UI gap                     | A real, pre-existing gap in the engine (no mesh edit window at all), not something this plan should try to solve as a side effect. Keep scoped to JSON-authored opt-in until a mesh debug panel is separately justified.                                                                                                                                                    |
+| Value without a concrete consumer     | The single biggest open question: is there an actual planned gameplay system (AI/audio/LOD) that would consume `TAG_FRUSTUM_CULLED` state for non-light entities? Without one, this plan has no forcing function and risks being built and never used — recommend treating it as blocked on that consumer existing, not as a standalone next step after `light-culling.md`. |
 
 ---
 

@@ -712,6 +712,9 @@
                       "castShadow": {
                         "type": "boolean"
                       },
+                      "frustumCullingEnabled": {
+                        "type": "boolean"
+                      },
                       "shadowPreset": {
                         "type": "string",
                         "enum": [
@@ -996,6 +999,9 @@
                       "castShadow": {
                         "type": "boolean"
                       },
+                      "frustumCullingEnabled": {
+                        "type": "boolean"
+                      },
                       "shadowPreset": {
                         "type": "string",
                         "enum": [
@@ -1244,6 +1250,9 @@
                         "additionalProperties": false
                       },
                       "castShadow": {
+                        "type": "boolean"
+                      },
+                      "frustumCullingEnabled": {
                         "type": "boolean"
                       },
                       "shadowPreset": {
@@ -3294,6 +3303,9 @@
                               "castShadow": {
                                 "type": "boolean"
                               },
+                              "frustumCullingEnabled": {
+                                "type": "boolean"
+                              },
                               "shadowPreset": {
                                 "type": "string",
                                 "enum": [
@@ -3578,6 +3590,9 @@
                               "castShadow": {
                                 "type": "boolean"
                               },
+                              "frustumCullingEnabled": {
+                                "type": "boolean"
+                              },
                               "shadowPreset": {
                                 "type": "string",
                                 "enum": [
@@ -3826,6 +3841,9 @@
                                 "additionalProperties": false
                               },
                               "castShadow": {
+                                "type": "boolean"
+                              },
+                              "frustumCullingEnabled": {
                                 "type": "boolean"
                               },
                               "shadowPreset": {

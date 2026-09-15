@@ -12,7 +12,7 @@ import {
   updateDraggableWindow,
 } from '../../UI/DraggableWindow';
 import { setTransform } from '../../../utils/ECSHelpers';
-import { setLightEnabled, ShadowQuality } from '../../LightManager';
+import { setLightEnabled, setLightFrustumCullingEnabled, ShadowQuality } from '../../LightManager';
 import { getCurrentSceneId, getRootScene } from '../../Scene';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
 import { getActiveCameraId } from '../../CameraManager';
@@ -36,6 +36,7 @@ export interface LightEntityDebugState {
   position?: { x: number; y: number; z: number };
   targetPos?: { x: number; y: number; z: number };
   castShadow?: boolean;
+  frustumCullingEnabled?: boolean;
   shadowPreset?: ShadowQuality;
   shadowBias?: number;
   shadowNormalBias?: number;
@@ -307,6 +308,17 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     pane
       .addBinding(l, 'decay', { label: 'Decay', min: 0, step: 0.01 })
       .on('change', (ev) => saveLightToLS(entityId, 'decay', ev.value));
+  }
+
+  // Frustum Culling (opt-in, ECS-only state — proxy binding)
+  if (lightChars.supportsFrustumCulling) {
+    const cullProxy = {
+      enabled: world.hasComponent(entityId, ComponentType.FRUSTUM_CULLING_ENABLED),
+    };
+    pane.addBinding(cullProxy, 'enabled', { label: 'Frustum Culling' }).on('change', (ev) => {
+      setLightFrustumCullingEnabled(entityId, ev.value, world);
+      saveLightToLS(entityId, 'frustumCullingEnabled', ev.value);
+    });
   }
 
   // Sync Position to ECS Transform

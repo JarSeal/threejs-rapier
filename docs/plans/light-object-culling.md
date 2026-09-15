@@ -1,4 +1,5 @@
 Status: draft | feasibility study — not-implemented
+Blocked by: /docs/plans/spatial-index.md
 
 # Light "Object Culling" (Contribution Culling) — Feasibility Study + Plan
 
@@ -15,7 +16,7 @@ An extension beyond `docs/plans/light-culling.md`'s camera-frustum test: cull a 
 - A point light placed inside a wall or far from any prop (illuminates nothing, ever, regardless of camera).
 - A light whose volume is in-frustum, but every mesh near it also happens to be off-screen or itself culled.
 
-This is sometimes called "contribution culling" or "light-object visibility culling" in graphics literature — distinct from (and easily confused with) **clustered/tiled light culling**, the common real-time-rendering technique for culling *lights per screen tile/object* in a forward+/deferred pipeline. That technique solves a different problem (which of many lights affect a given fragment/tile, computed on the GPU, at draw time) and isn't what's being asked here or what this document evaluates.
+This is sometimes called "contribution culling" or "light-object visibility culling" in graphics literature — distinct from (and easily confused with) **clustered/tiled light culling**, the common real-time-rendering technique for culling _lights per screen tile/object_ in a forward+/deferred pipeline. That technique solves a different problem (which of many lights affect a given fragment/tile, computed on the GPU, at draw time) and isn't what's being asked here or what this document evaluates.
 
 ---
 
@@ -33,7 +34,7 @@ The direct approach: once per frame, for each light with object-culling enabled,
 
 Naively this is **O(lights_with_object_culling × total_meshes)** per frame. That's the actual cost to be honest about — for a scene with, say, 20 such lights and 5,000 meshes, that's up to 100,000 sphere-vs-sphere + sphere-vs-frustum tests per frame just for this feature. Two mitigations that don't require a full spatial index:
 
-1. **Compute the frustum-visible mesh list once per frame, not once per light.** "Is this mesh in-frustum" doesn't depend on which light is asking. Build one array of `{ entityId, worldSphere }` for meshes currently intersecting the camera frustum (this is itself useful groundwork for `docs/plans/object3d-frustum-culling.md`), then each object-culling-enabled light only needs to test *that* (already frustum-filtered, presumably much smaller) list against its own volume. Cost becomes O(total_meshes) once + O(lights_with_object_culling × frustum_visible_mesh_count).
+1. **Compute the frustum-visible mesh list once per frame, not once per light.** "Is this mesh in-frustum" doesn't depend on which light is asking. Build one array of `{ entityId, worldSphere }` for meshes currently intersecting the camera frustum (this is itself useful groundwork for `docs/plans/object3d-frustum-culling.md`), then each object-culling-enabled light only needs to test _that_ (already frustum-filtered, presumably much smaller) list against its own volume. Cost becomes O(total_meshes) once + O(lights_with_object_culling × frustum_visible_mesh_count).
 2. **Throttle, don't run every frame.** Whether a static light has anything nearby rarely changes frame-to-frame for typical scenes (props don't teleport constantly). Re-testing every 5-10 frames (or on a per-light staggered schedule) instead of every frame is a straightforward way to amortize the cost, at the price of a small reaction-time lag when something does change. Reasonable default for a first implementation.
 
 Even with both mitigations, this remains fundamentally an O(n) or worse per-frame scan with no early-out better than "check everything relevant." It's a defensible, honest engineering tradeoff for an **opt-in, presumably-rare** feature (most lights won't need it), but it is categorically more expensive than `light-culling.md`'s O(opted-in lights) test, and its cost scales with total scene mesh count in a way the frustum-only plan does not.
@@ -58,7 +59,7 @@ Add a second, independent opt-in boolean, parallel to `frustumCullingEnabled` (`
 objectCullingEnabled?: boolean; // requires frustumCullingEnabled semantics for its volume math; independently toggleable
 ```
 
-Deliberately a **separate flag**, not a mode of the frustum-culling flag — a light can have frustum culling on with object culling off (cheap, camera-only test) or both on (expensive but more aggressive). Enforce in the debug GUI that the "Object Culling" checkbox is only meaningful/enabled once the light also has frustum culling on... **actually, reconsider**: object culling could stand alone (test volume-vs-meshes without also testing volume-vs-camera-frustum) if the intent is "cull whenever nothing is near this light, regardless of camera" — that's a legitimate, slightly different feature (removes lights illuminating permanently-empty space even when the camera could theoretically frame that space) at the cost of never re-enabling them if a mesh is added/moved into range... which the throttled re-check (§2.2.2) already handles correctly since it's a continuous test, not a one-time bake. **Decision for this plan**: object culling is independent and composes with frustum culling via AND — a light is visible only if it passes *every* culling test it has opted into. This keeps each flag's meaning simple and matches "opt-in/opt-out independently" from the request.
+Deliberately a **separate flag**, not a mode of the frustum-culling flag — a light can have frustum culling on with object culling off (cheap, camera-only test) or both on (expensive but more aggressive). Enforce in the debug GUI that the "Object Culling" checkbox is only meaningful/enabled once the light also has frustum culling on... **actually, reconsider**: object culling could stand alone (test volume-vs-meshes without also testing volume-vs-camera-frustum) if the intent is "cull whenever nothing is near this light, regardless of camera" — that's a legitimate, slightly different feature (removes lights illuminating permanently-empty space even when the camera could theoretically frame that space) at the cost of never re-enabling them if a mesh is added/moved into range... which the throttled re-check (§2.2.2) already handles correctly since it's a continuous test, not a one-time bake. **Decision for this plan**: object culling is independent and composes with frustum culling via AND — a light is visible only if it passes _every_ culling test it has opted into. This keeps each flag's meaning simple and matches "opt-in/opt-out independently" from the request.
 
 ### 3.2 Component/tag shape
 
@@ -114,7 +115,9 @@ Second checkbox in `_dbg__LightGUI.ts`, directly below the "Frustum Culling" one
 
 ```ts
 if (lightChars.supportsFrustumCulling) {
-  const objCullProxy = { enabled: world.hasComponent(entityId, ComponentType.OBJECT_CULLING_ENABLED) };
+  const objCullProxy = {
+    enabled: world.hasComponent(entityId, ComponentType.OBJECT_CULLING_ENABLED),
+  };
   pane.addBinding(objCullProxy, 'enabled', { label: 'Object Culling' }).on('change', (ev) => {
     setLightObjectCullingEnabled(entityId, ev.value, world); // mirrors setLightFrustumCullingEnabled
     saveLightToLS(entityId, 'objectCullingEnabled', ev.value);
@@ -136,13 +139,13 @@ Additive to every file `light-culling.md` §7 already lists, plus:
 
 ## 5. Risks and open questions
 
-| Risk / question | Notes |
-| --- | --- |
-| Cost scales with total mesh count, not light count | The core tradeoff of the brute-force approach (§2.2). Fine for an opt-in feature used sparingly; would need the spatial-index escalation (§2.3) if ever applied broadly across many lights in a mesh-heavy scene. Not solved here — explicitly deferred. |
-| Groups/instanced meshes have no single meaningful bounding sphere | An `InstancedMesh` represents many instances at once; testing its aggregate bounding sphere against a light's small volume could produce false "something is near" positives for lights nowhere near any individual instance. Out of scope for a first pass — restrict `buildFrustumVisibleMeshList` to non-instanced `TAG_IS_MESH` entities initially, revisit if instanced-heavy scenes need this feature. |
-| Reaction lag from throttling (§2.2.2) | A light re-enabled by a mesh moving into range won't visibly relight until the next throttled check — acceptable for ambient/decorative lights, possibly wrong for gameplay-critical lighting cues. Should be a per-light or global tunable check interval, not hardcoded, if built. |
-| Three-way (or more) visibility coordination | Concretely motivates the `reconcileLightVisibility` shared-helper refactor (§3.2) at implementation time rather than continuing to add pairwise hook guards — flagged so it isn't skipped under time pressure. |
-| Interaction with a future spatial index | If `docs/plans/object3d-frustum-culling.md` or some other initiative later adds a real spatial structure, `buildFrustumVisibleMeshList`'s brute-force scan should be swapped for a radius query against it — the system's external shape (`testLightAgainstMeshList` returning a boolean) doesn't need to change, only its internals. Worth keeping that boundary clean if this is built before a spatial index exists. |
+| Risk / question                                                   | Notes                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cost scales with total mesh count, not light count                | The core tradeoff of the brute-force approach (§2.2). Fine for an opt-in feature used sparingly; would need the spatial-index escalation (§2.3) if ever applied broadly across many lights in a mesh-heavy scene. Not solved here — explicitly deferred.                                                                                                                                                                |
+| Groups/instanced meshes have no single meaningful bounding sphere | An `InstancedMesh` represents many instances at once; testing its aggregate bounding sphere against a light's small volume could produce false "something is near" positives for lights nowhere near any individual instance. Out of scope for a first pass — restrict `buildFrustumVisibleMeshList` to non-instanced `TAG_IS_MESH` entities initially, revisit if instanced-heavy scenes need this feature.            |
+| Reaction lag from throttling (§2.2.2)                             | A light re-enabled by a mesh moving into range won't visibly relight until the next throttled check — acceptable for ambient/decorative lights, possibly wrong for gameplay-critical lighting cues. Should be a per-light or global tunable check interval, not hardcoded, if built.                                                                                                                                    |
+| Three-way (or more) visibility coordination                       | Concretely motivates the `reconcileLightVisibility` shared-helper refactor (§3.2) at implementation time rather than continuing to add pairwise hook guards — flagged so it isn't skipped under time pressure.                                                                                                                                                                                                          |
+| Interaction with a future spatial index                           | If `docs/plans/object3d-frustum-culling.md` or some other initiative later adds a real spatial structure, `buildFrustumVisibleMeshList`'s brute-force scan should be swapped for a radius query against it — the system's external shape (`testLightAgainstMeshList` returning a boolean) doesn't need to change, only its internals. Worth keeping that boundary clean if this is built before a spatial index exists. |
 
 ---
 
