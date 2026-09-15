@@ -82,7 +82,7 @@ export const load3DSymbols = async () => {
 
         const indicator = new THREE.Mesh(
           new THREE.SphereGeometry(radius, 12, 8),
-          new THREE.MeshBasicMaterial({ color: 0x009900 })
+          new THREE.MeshBasicMaterial({ color: 0x555555 })
         );
         indicator.name = 'mainCameraIndicator';
         // Position so the sphere's *bottom edge* sits just above the icon's base
