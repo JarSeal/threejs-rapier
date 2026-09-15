@@ -1,3 +1,5 @@
+import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+
 /**
  * Build-time-selectable backend for `ECSWorld`'s per-component-type
  * storages. `MAP` (the default) uses a plain `Map`; `TYPED_ARRAY` currently
@@ -12,8 +14,33 @@ export interface ECSStorageLSOverride {
   maxEntities?: number;
 }
 
-/** LocalStorage key for ECS debug-tab dev-only overrides (IS_DEBUG_ENV only, reload-on-change). */
+/**
+ * LocalStorage key for ECS debug-tab dev-only per-world storage overrides
+ * (IS_DEBUG_ENV only, reload-on-change). Stored as one `ECSStorageLSOverride`
+ * per world id (see docs/plans/_DONE-ecs-multiple-worlds.md) — read/write it
+ * through `getECSStorageLSOverride`/`setECSStorageLSOverride`, not directly.
+ */
 export const ECS_LS_KEY = 'AEK_ecs';
+
+type ECSStorageLSOverrides = Record<string, ECSStorageLSOverride>;
+
+/** Reads the debug-tab-saved storage override for one world id, if any. */
+export const getECSStorageLSOverride = (worldId: string): ECSStorageLSOverride | undefined => {
+  const all = lsGetItem(ECS_LS_KEY, {}) as ECSStorageLSOverrides;
+  return all[worldId];
+};
+
+/**
+ * Persists a debug-tab storage override for one world id. `ECSWorld`'s
+ * constructor reads this (debug env only) for any storageMode/maxEntities
+ * field the caller left unset, so it takes effect the next time a world
+ * with this id is constructed — nothing recreates a live world in place.
+ */
+export const setECSStorageLSOverride = (worldId: string, override: ECSStorageLSOverride): void => {
+  const all = lsGetItem(ECS_LS_KEY, {}) as ECSStorageLSOverrides;
+  all[worldId] = override;
+  lsSetItem(ECS_LS_KEY, all);
+};
 
 /**
  * Minimal storage-backend contract for `ECSWorld`'s per-component-type

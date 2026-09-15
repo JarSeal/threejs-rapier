@@ -12,8 +12,7 @@ import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
 import { getConfig, IS_DEBUG_ENV, isDebugEnvironment } from './Config';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import {
-  ECS_LS_KEY,
-  ECSStorageLSOverride,
+  getECSStorageLSOverride,
   ECSStorageMode,
   IComponentStorage,
 } from './ECS/ECSComponentStorage';
@@ -21,7 +20,7 @@ import { TypedArrayTransformStore } from './ECS/TypedArrayTransformStore';
 import { ECSSystemStage } from '../../AppECSRegistry';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
-import { lsGetItem } from '../utils/LocalAndSessionStorage';
+import { lerror } from '../utils/Logger';
 
 export type ECSSystem = (world: ECSWorld, dt: number) => void;
 
@@ -30,30 +29,90 @@ type SystemEntry = { id: string; fn: ECSSystem; order: number; seq: number };
 export type WorldPlugin = (world: ECSWorld) => void;
 export type ComponentHook = (entityId: number, world: ECSWorld) => void;
 
+export const DEFAULT_ECS_WORLD_ID = '[default]';
+
+export type ECSWorldOptions = {
+  /** Defaults to DEFAULT_ECS_WORLD_ID. Must be unique among live worlds — the identity/lookup key. */
+  id?: string;
+  /** Debug-only display name. Defaults to `id` if omitted. Not required to be unique. */
+  name?: string;
+  /** Debug-only free-text description, shown in the ECS debug tab's Worlds listing. */
+  description?: string;
+  storageMode?: ECSStorageMode;
+  maxEntities?: number;
+  /** Whether globally registered plugins (ECSWorld.registerPlugin) run on this world. Default true. */
+  applyGlobalPlugins?: boolean;
+};
+
 let ecsWorld: ECSWorld;
 
-/** Initializes the ECS World. */
+/** Initializes the default ECS World. */
 export const initECSWorld = (): ECSWorld => {
   const ecsConfig = getConfig().ecs;
   let storageMode: ECSStorageMode = ecsConfig?.storageMode ?? 'MAP';
   let maxEntities = ecsConfig?.maxEntities ?? 100_000;
   if (IS_DEBUG_ENV) {
-    const lsOverride = lsGetItem(ECS_LS_KEY, {}) as ECSStorageLSOverride;
-    if (lsOverride.storageMode) storageMode = lsOverride.storageMode;
-    if (lsOverride.maxEntities) maxEntities = lsOverride.maxEntities;
+    const lsOverride = getECSStorageLSOverride(DEFAULT_ECS_WORLD_ID);
+    if (lsOverride?.storageMode) storageMode = lsOverride.storageMode;
+    if (lsOverride?.maxEntities) maxEntities = lsOverride.maxEntities;
   }
-  ecsWorld = new ECSWorld(storageMode, maxEntities);
+  ecsWorld = new ECSWorld({ storageMode, maxEntities });
   return ecsWorld;
 };
 
-/** Returns the ECS World or throws an error. */
-export const getECSWorld = () =>
-  existsOrThrow(ecsWorld, 'ECS World not initialized. Could not get ECS World.');
+/** Returns the ECS World for `id` (defaults to the default world) or throws an error. */
+export const getECSWorld = (id: string = DEFAULT_ECS_WORLD_ID): ECSWorld =>
+  existsOrThrow(
+    ECSWorld.getWorld(id),
+    `ECS World '${id}' not initialized. Could not get ECS World.`
+  );
+
+/** Returns every currently registered ECS World. */
+export const getAllECSWorlds = (): ECSWorld[] => ECSWorld.getAllWorlds();
+
+/**
+ * Deletes an ECS World by id. Routes every live entity through deleteEntity
+ * so onDeleteEntity hooks still run (mesh/light/camera disposal, physics
+ * body cleanup, etc.) instead of a bulk wipe that would skip them.
+ * Returns false if no world with that id exists.
+ */
+export const deleteECSWorld = (id: string): boolean => ECSWorld.deleteWorld(id);
+
+/**
+ * Subscribes to world creation/deletion (not entity or component changes —
+ * see `onECSEntityCountChange` and `ECSWorld.registerComponentHooks` for
+ * those). Used by debug tooling (the ECS debug tab's live world list) to
+ * know when to refresh; nothing else in the engine needs this today.
+ */
+export const onECSWorldRegistryChange = (listener: () => void): void =>
+  ECSWorld.onWorldRegistryChange(listener);
+
+/**
+ * Subscribes to entity creation/deletion in ANY world (the listener
+ * receives which one). Fires from `createRawEntity`/`createEntity`/
+ * `deleteEntity` — note `createRawEntity` adds no components, so this is
+ * the only reliable way to observe "this world's entity count changed",
+ * `registerComponentHooks` would silently miss raw entities entirely.
+ * Debug-tooling-only today (the ECS debug tab's live entity counts); fires
+ * unconditionally regardless of `IS_DEBUG_ENV` (an empty listener array in
+ * production, so the cost is one no-op `.forEach()` per entity op) rather
+ * than adding a branch to every entity-creation/deletion call site.
+ */
+export const onECSEntityCountChange = (listener: (world: ECSWorld) => void): void =>
+  ECSWorld.onEntityCountChange(listener);
 
 export class ECSWorld {
-  // INSTANCE TRACKING
-  private static activeWorlds = new Set<ECSWorld>();
+  // INSTANCE TRACKING (keyed by world id — also the identity/lookup registry)
+  private static worldsById: Map<string, ECSWorld> = new Map();
+  private static worldRegistryListeners: (() => void)[] = [];
+  private static entityCountListeners: ((world: ECSWorld) => void)[] = [];
   // STATIC REGISTRIES (External core managers write to these)
+  // `corePlugins` are universal engine plumbing (e.g. the ECSCoreSystems.ts
+  // object3D/physics/lookAt sync) that every world needs regardless of
+  // `applyGlobalPlugins` — without them a world's entities never visually
+  // update. `plugins` are app/feature systems (light culling, hover/follow
+  // tool effects, etc.) that a bare world can legitimately opt out of.
+  private static corePlugins: WorldPlugin[] = [];
   private static plugins: WorldPlugin[] = [];
   private static onAddComponentHooks: Map<ComponentType, ComponentHook[]> = new Map();
   private static onRemoveComponentHooks: Map<ComponentType, ComponentHook[]> = new Map();
@@ -66,10 +125,69 @@ export class ECSWorld {
     // Save for future worlds (Cold Loading, if the world has not been initiated yet)
     this.plugins.push(plugin);
 
-    // Apply to existing worlds immediately (Hot Loading, if the world is already initiated)
-    this.activeWorlds.forEach((world) => {
+    // Apply to existing worlds immediately (Hot Loading, if the world is already initiated),
+    // skipping worlds that opted out via applyGlobalPlugins: false.
+    this.worldsById.forEach((world) => {
+      if (world.applyGlobalPlugins) plugin(world);
+    });
+  }
+
+  /**
+   * Like `registerPlugin`, but always applies to every world — current and
+   * future — regardless of `applyGlobalPlugins`. Reserved for universal
+   * engine plumbing (see ECSCoreSystems.ts) that every world needs to
+   * function correctly; app/feature systems should use `registerPlugin`.
+   */
+  public static registerCorePlugin(plugin: WorldPlugin) {
+    this.corePlugins.push(plugin);
+    this.worldsById.forEach((world) => {
       plugin(world);
     });
+  }
+
+  /** Returns the ECS World registered under `id`, or undefined if none exists. */
+  public static getWorld(id: string): ECSWorld | undefined {
+    return this.worldsById.get(id);
+  }
+
+  /** Returns every currently registered ECS World. */
+  public static getAllWorlds(): ECSWorld[] {
+    return Array.from(this.worldsById.values());
+  }
+
+  /**
+   * Deletes an ECS World by id. Routes every live entity through deleteEntity
+   * so onDeleteEntity hooks run (mesh/light/camera disposal, physics body
+   * cleanup, etc.) — a bulk clearWorld()-style wipe would skip them.
+   * Returns false if no world with that id exists.
+   */
+  public static deleteWorld(id: string): boolean {
+    const world = this.worldsById.get(id);
+    if (!world) return false;
+    for (const entityId of Array.from(world.entities)) {
+      world.deleteEntity(entityId);
+    }
+    this.worldsById.delete(id);
+    this.notifyWorldRegistryChange();
+    return true;
+  }
+
+  /** See the module-level `onECSWorldRegistryChange` export. */
+  public static onWorldRegistryChange(listener: () => void): void {
+    this.worldRegistryListeners.push(listener);
+  }
+
+  private static notifyWorldRegistryChange(): void {
+    this.worldRegistryListeners.forEach((listener) => listener());
+  }
+
+  /** See the module-level `onECSEntityCountChange` export. */
+  public static onEntityCountChange(listener: (world: ECSWorld) => void): void {
+    this.entityCountListeners.push(listener);
+  }
+
+  private static notifyEntityCountChange(world: ECSWorld): void {
+    this.entityCountListeners.forEach((listener) => listener(world));
   }
 
   public static registerComponentHooks(
@@ -99,8 +217,14 @@ export class ECSWorld {
   // and 12 bits for the generation (4096 reuses per slot)
   private readonly INDEX_MASK = 0xfffff;
   private readonly GEN_SHIFT = 20; // @CONSIDER: This could be a CONFIG value (optional, defaults to 20)
-  // Tracks the current 'version' of every index ever created
-  private generations = new Uint32Array(1048576);
+  // Tracks the current 'version' of every index ever created. Sized to
+  // `maxEntities` (capped at the full 20-bit index space), not the full
+  // 1,048,576-slot address space the packed-id scheme could support — a
+  // world with a small maxEntities (e.g. a bare secondary world) shouldn't
+  // pay for the ~4 MiB a full-size array would cost regardless of how many
+  // entities it actually ever holds (see docs/plans/ecs-multiple-worlds.md
+  // §5.3). Allocated in the constructor, after `maxEntities` is known.
+  private generations: Uint32Array;
 
   private nextEntityId = 1;
   private freeIds: number[] = [];
@@ -116,12 +240,42 @@ export class ECSWorld {
   // Build-time-selectable storage backend (see docs/plans/ecs-typed-arrays-feature.md).
   // TYPED_ARRAY currently only applies to TRANSFORM; every other component
   // type stays Map-backed regardless of this setting.
-  private readonly storageMode: ECSStorageMode;
-  private readonly maxEntities: number;
+  public readonly storageMode: ECSStorageMode;
+  public readonly maxEntities: number;
 
-  constructor(storageMode: ECSStorageMode = 'MAP', maxEntities: number = 100_000) {
-    this.storageMode = storageMode;
-    this.maxEntities = maxEntities;
+  public readonly id: string;
+  /** Debug-only — never used for lookup/equality, purely a nicer label in the debug tab. */
+  public readonly name: string;
+  /** Debug-only — shown alongside `name` in the debug tab, omitted if not given. */
+  public readonly description?: string;
+  private readonly applyGlobalPlugins: boolean;
+
+  constructor(opts?: ECSWorldOptions) {
+    const id = opts?.id ?? DEFAULT_ECS_WORLD_ID;
+    if (ECSWorld.worldsById.has(id)) {
+      const msg =
+        id === DEFAULT_ECS_WORLD_ID
+          ? 'Default ECS World already exists. Pass an explicit `id` to create an additional world.'
+          : `ECS World with id '${id}' already exists.`;
+      lerror(msg);
+      throw new Error(msg);
+    }
+
+    this.id = id;
+    this.name = opts?.name ?? id;
+    this.description = opts?.description;
+    this.applyGlobalPlugins = opts?.applyGlobalPlugins ?? true;
+
+    // Debug-tab storage overrides (per world id, see ECSComponentStorage.ts)
+    // only fill in a field the caller left unset — they never clobber an
+    // explicit opts.storageMode/opts.maxEntities. initECSWorld() already
+    // resolves its own Config+LS-override precedence for the default world
+    // before ever calling this constructor, so this only matters for
+    // secondary worlds that leave these fields unset.
+    const lsOverride = IS_DEBUG_ENV ? getECSStorageLSOverride(id) : undefined;
+    this.storageMode = opts?.storageMode ?? lsOverride?.storageMode ?? 'MAP';
+    this.maxEntities = opts?.maxEntities ?? lsOverride?.maxEntities ?? 100_000;
+    this.generations = new Uint32Array(Math.min(this.maxEntities, this.INDEX_MASK + 1));
 
     // Pre-allocate system stages and storages
     Object.values(ECSSystemStage).forEach((s) => this.systems.set(s, []));
@@ -137,10 +291,19 @@ export class ECSWorld {
     });
 
     // REGISTER THIS INSTANCE
-    ECSWorld.activeWorlds.add(this);
+    ECSWorld.worldsById.set(id, this);
 
-    // BOOTSTRAP: Run all globally registered plugins (systems and other initiation logic)
-    ECSWorld.plugins.forEach((plugin) => plugin(this));
+    // BOOTSTRAP: core plugins (universal engine plumbing) always run, first,
+    // regardless of applyGlobalPlugins — see the corePlugins field comment.
+    ECSWorld.corePlugins.forEach((plugin) => plugin(this));
+
+    // Then run app/feature plugins, unless this world opted out via
+    // applyGlobalPlugins: false.
+    if (this.applyGlobalPlugins) {
+      ECSWorld.plugins.forEach((plugin) => plugin(this));
+    }
+
+    ECSWorld.notifyWorldRegistryChange();
   }
 
   /**
@@ -212,6 +375,11 @@ export class ECSWorld {
     return this._getIndex(entityId);
   }
 
+  /** Returns the number of currently live entities in this world. */
+  public getEntityCount(): number {
+    return this.entities.size;
+  }
+
   /**
    * Returns the TypedArray-backed Transform store when TRANSFORM storage is
    * in `TYPED_ARRAY` mode, or `undefined` in the default `MAP` mode.
@@ -247,6 +415,17 @@ export class ECSWorld {
   }
 
   private _getNewEntityId() {
+    // Recycled slots were validly allocated before, so only a fresh
+    // (never-recycled) index needs the maxEntities bounds check — without
+    // it, index >= generations.length would silently no-op on write and
+    // always read back 0/undefined instead of throwing (Uint32Array access
+    // out of bounds doesn't throw), corrupting isAlive() for that slot.
+    if (this.freeIds.length === 0 && this.nextEntityId >= this.maxEntities) {
+      const msg = `ECS World '${this.id}' has reached its maxEntities cap (${this.maxEntities}). Increase maxEntities or free existing entities before creating more.`;
+      lerror(msg);
+      throw new Error(msg);
+    }
+
     const index = this.freeIds.length > 0 ? this.freeIds.pop()! : this.nextEntityId++;
     // Use the current generation for this specific slot
     const gen = this.generations[index];
@@ -256,6 +435,7 @@ export class ECSWorld {
   createRawEntity() {
     const id = this._getNewEntityId();
     this.entities.add(id);
+    ECSWorld.notifyEntityCountChange(this);
     return id;
   }
 
@@ -270,6 +450,7 @@ export class ECSWorld {
     this.addComponent(id, CoreComponentType.USER_DATA, opts?.userData || {});
     this.addComponent(id, CoreComponentType.DEBUG_DATA, opts?.debugData || {});
     this.setDisabled(id, Boolean(opts?.disabled));
+    ECSWorld.notifyEntityCountChange(this);
     return id;
   }
 
@@ -301,6 +482,8 @@ export class ECSWorld {
 
     // Recycle the index for future use
     this.freeIds.push(index);
+
+    ECSWorld.notifyEntityCountChange(this);
   }
 
   addComponent<K extends ComponentType>(entityId: number, type: K, data: ComponentData[K]): void {

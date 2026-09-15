@@ -101,8 +101,13 @@ ECSWorld.registerComponentHooks(ComponentType.TARGET_LINK, {
 });
 
 // --- PLUGIN REGISTRATION ---
+// registerCorePlugin (not registerPlugin): these are universal engine
+// plumbing every world needs to function — without object3DSyncSystem in
+// particular, a world's ECS Transform updates never reach its Object3Ds.
+// A world opting out via `applyGlobalPlugins: false` should only skip
+// app/feature systems (e.g. light frustum culling), not this.
 
-ECSWorld.registerPlugin((world) => {
+ECSWorld.registerCorePlugin((world) => {
   // This is the object3D (meshes, lights, cameras, groups) syncSystem
   world.addSystem(ECSSystemStage.MAIN, 'object3DSyncSystem', object3DSyncSystem);
 

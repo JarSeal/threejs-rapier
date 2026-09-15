@@ -1,9 +1,10 @@
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { createMeshEntity, MeshProps } from '../_engine/core/MeshManager';
-import { getECSWorld } from '../_engine/core/ECS';
+import { ECSWorld, getECSWorld } from '../_engine/core/ECS';
 import { initECSStressTest } from '../_engine/utils/ECSStressTest';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { createLightEntity } from '../_engine/core/LightManager';
+import { registerHoverToolEffect } from '../toolkit/ecs/effects/HoverEffect';
 
 export const scene = async () => {
   const updateLoaderFn = getLoaderStatusUpdater();
@@ -54,7 +55,7 @@ export const scene = async () => {
     },
     { appId: 'pointLight' }
   );
-  ecsWorld.setTransform(pointLightId, { pos: { x: 2, y: 80, z: 4 } });
+  ecsWorld.setTransform(pointLightId, { pos: { x: 4, y: 5, z: 4 } });
 
   // Directional Light
   const dirLightId = createLightEntity(
@@ -155,6 +156,22 @@ export const scene = async () => {
     rotation: { x: Math.PI / 2 },
   };
   createMeshEntity(groundProps, { appId: 'ground', debugData: { name: 'Ground' } }, ecsWorld);
+
+  // Second world
+  const uiWorld = new ECSWorld({ id: 'ui', applyGlobalPlugins: false });
+  registerHoverToolEffect(uiWorld);
+  const ball2Id = createMeshEntity(redBallProps, undefined, uiWorld);
+  uiWorld.setTransform(ball2Id, { pos: { x: 4, y: 6, z: -5 } });
+  uiWorld.addComponent(ball2Id, ComponentType.HOVER, {
+    speed: 3.14, // How fast it bobs
+    amplitude: 0.85, // How high it bobs
+    baseY: 6.0, // The center point of the hover
+    time: 0, // Start at 0
+  });
+
+  // setTimeout(() => {
+  //   deleteECSWorld(uiWorld.id);
+  // }, 4000);
 
   // Stress test ECS
   initECSStressTest(undefined, ballId);

@@ -17,7 +17,7 @@ import { initDebugTools } from '../debug/DebugToolsManager';
 import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './PhysicsRapier';
 import { updateInputControllerLoopActions } from './InputControls';
 import { countRayCastFrames, initRayCasting } from './Raycast';
-import { ECSWorld, getECSWorld } from './ECS';
+import { getAllECSWorlds } from './ECS';
 import { getActiveCamera } from './CameraManager';
 import { existsOrThrow } from '../utils/assert';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
@@ -90,7 +90,6 @@ export const transformTimeValue = (durationInMs: number) =>
   durationInMs * loopState.playSpeedMultiplier;
 
 export let mainLoop: () => void = () => {};
-let ecsWorld: ECSWorld;
 
 const renderScene = () => {
   const renderer = getRenderer() as Renderer;
@@ -133,7 +132,7 @@ const mainLoopForDebug = async () => {
   }
 
   // main loopers
-  ecsWorld.updateMainLoop(delta);
+  for (const world of getAllECSWorlds()) world.updateMainLoop(delta);
   runSceneMainLoopers(delta, skipFrame);
 
   if (loopState.appPlay) {
@@ -147,7 +146,7 @@ const mainLoopForDebug = async () => {
     renderPhysicsObjects();
 
     // app loopers
-    ecsWorld.updateAppLoop(deltaApp);
+    for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
 
     // Update loop action inputs if physics is disabled
@@ -171,7 +170,7 @@ const mainLoopForDebug = async () => {
 
   renderScene();
 
-  ecsWorld.updateLateMainLoop(delta);
+  for (const world of getAllECSWorlds()) world.updateLateMainLoop(delta);
   runSceneMainLateLoopers(delta);
 
   updateRestOfStats(getRenderer() as Renderer);
@@ -191,7 +190,7 @@ const mainLoopForProduction = async () => {
   }
 
   // main loopers
-  ecsWorld.updateMainLoop(delta);
+  for (const world of getAllECSWorlds()) world.updateMainLoop(delta);
   runSceneMainLoopers(delta, false);
 
   if (loopState.appPlay) {
@@ -204,7 +203,7 @@ const mainLoopForProduction = async () => {
     // Render physics objects
     renderPhysicsObjects();
     // app loopers
-    ecsWorld.updateAppLoop(deltaApp);
+    for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
     // Update loop action inputs if physics is disabled
     const physicsState = getPhysicsState();
@@ -216,7 +215,7 @@ const mainLoopForProduction = async () => {
 
   renderScene();
 
-  ecsWorld.updateLateMainLoop(delta);
+  for (const world of getAllECSWorlds()) world.updateLateMainLoop(delta);
   runSceneMainLateLoopers(delta);
 };
 
@@ -246,7 +245,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
   }
 
   // main loopers
-  ecsWorld.updateMainLoop(delta);
+  for (const world of getAllECSWorlds()) world.updateMainLoop(delta);
   runSceneMainLoopers(delta, skipFrame);
 
   if (loopState.appPlay) {
@@ -261,7 +260,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     // Render physics objects
     renderPhysicsObjects();
     // app loopers
-    ecsWorld.updateAppLoop(deltaApp);
+    for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
     // Update loop action inputs if physics is disabled
     const physicsState = getPhysicsState();
@@ -275,7 +274,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
 
   renderScene();
 
-  ecsWorld.updateLateMainLoop(delta);
+  for (const world of getAllECSWorlds()) world.updateLateMainLoop(delta);
   runSceneMainLateLoopers(delta);
 };
 
@@ -286,9 +285,6 @@ export const initMainLoop = () => {
   // Make sure initMainLoop is only initiated once
   if (mainLoopInitiated) return;
   mainLoopInitiated = true;
-
-  // Get ecsWorld
-  ecsWorld = getECSWorld();
 
   const renderer = getRenderer();
   const currentCamera = getCurrentCamera();
