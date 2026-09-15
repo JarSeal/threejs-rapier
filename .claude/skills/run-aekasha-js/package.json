@@ -1,0 +1,9 @@
+{
+  "name": "run-aekasha-js-driver",
+  "private": true,
+  "type": "module",
+  "description": "Headless-browser driver used by the run-aekasha-js skill. Not part of the app itself.",
+  "dependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}
