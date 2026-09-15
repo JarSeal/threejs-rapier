@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
+import { ECSWorld, getAllECSWorlds, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
 import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
 import { getWindowSize } from '../utils/Window';
@@ -210,29 +210,31 @@ export const cameraLookAtPoint = (
 };
 
 /**
- * Updates all cameras in the ECS storage to match current window dimensions.
+ * Updates all cameras, in every ECS world, to match current window dimensions.
  */
 export const updateAllCameraAspectRatios = () => {
-  const world = getECSWorld();
   const { aspect } = getWindowSize();
-  const storage = world.getStorage(ComponentType.CAMERA_SETTINGS);
 
-  for (const [entityId, settings] of storage) {
-    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-    if (!objComp) continue;
+  for (const world of getAllECSWorlds()) {
+    const storage = world.getStorage(ComponentType.CAMERA_SETTINGS);
 
-    const cam = objComp.value;
+    for (const [entityId, settings] of storage) {
+      const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+      if (!objComp) continue;
 
-    if (settings.type === 'PERSPECTIVE' && cam instanceof THREE.PerspectiveCamera) {
-      cam.aspect = aspect;
-      cam.updateProjectionMatrix();
-    } else if (settings.type === 'ORTHOGRAPHIC' && cam instanceof THREE.OrthographicCamera) {
-      const s = settings.frustumSize;
-      cam.left = (-s * aspect) / 2;
-      cam.right = (s * aspect) / 2;
-      cam.top = s / 2;
-      cam.bottom = -s / 2;
-      cam.updateProjectionMatrix();
+      const cam = objComp.value;
+
+      if (settings.type === 'PERSPECTIVE' && cam instanceof THREE.PerspectiveCamera) {
+        cam.aspect = aspect;
+        cam.updateProjectionMatrix();
+      } else if (settings.type === 'ORTHOGRAPHIC' && cam instanceof THREE.OrthographicCamera) {
+        const s = settings.frustumSize;
+        cam.left = (-s * aspect) / 2;
+        cam.right = (s * aspect) / 2;
+        cam.top = s / 2;
+        cam.bottom = -s / 2;
+        cam.updateProjectionMatrix();
+      }
     }
   }
 };
