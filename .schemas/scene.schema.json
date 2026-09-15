@@ -240,6 +240,12 @@
                         ],
                         "additionalProperties": false
                       },
+                      "responsiveAspect": {
+                        "type": "boolean"
+                      },
+                      "referenceAspect": {
+                        "type": "number"
+                      },
                       "type": {
                         "type": "string",
                         "const": "PERSPECTIVE"
@@ -310,6 +316,12 @@
                           "z"
                         ],
                         "additionalProperties": false
+                      },
+                      "responsiveAspect": {
+                        "type": "boolean"
+                      },
+                      "referenceAspect": {
+                        "type": "number"
                       },
                       "type": {
                         "type": "string",
@@ -484,6 +496,12 @@
                         "type": "number"
                       },
                       "frustumSize": {
+                        "type": "number"
+                      },
+                      "responsiveAspect": {
+                        "type": "boolean"
+                      },
+                      "referenceAspect": {
                         "type": "number"
                       }
                     },
@@ -2831,6 +2849,12 @@
                                 ],
                                 "additionalProperties": false
                               },
+                              "responsiveAspect": {
+                                "type": "boolean"
+                              },
+                              "referenceAspect": {
+                                "type": "number"
+                              },
                               "type": {
                                 "type": "string",
                                 "const": "PERSPECTIVE"
@@ -2901,6 +2925,12 @@
                                   "z"
                                 ],
                                 "additionalProperties": false
+                              },
+                              "responsiveAspect": {
+                                "type": "boolean"
+                              },
+                              "referenceAspect": {
+                                "type": "number"
                               },
                               "type": {
                                 "type": "string",
@@ -3075,6 +3105,12 @@
                                 "type": "number"
                               },
                               "frustumSize": {
+                                "type": "number"
+                              },
+                              "responsiveAspect": {
+                                "type": "boolean"
+                              },
+                              "referenceAspect": {
                                 "type": "number"
                               }
                             },

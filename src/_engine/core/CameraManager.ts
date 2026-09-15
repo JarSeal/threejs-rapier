@@ -4,7 +4,7 @@ import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './
 import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
 import { getWindowSize } from '../utils/Window';
 import { IS_DEBUG_ENV } from './Config';
-import { ComponentType } from './ECS/ECSCoreComponents';
+import { ComponentType, CoreComponentData } from './ECS/ECSCoreComponents';
 import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { addResizer } from './MainLoop';
 import { inspectEntity, lookAtPoint } from '../utils/ECSHelpers';
@@ -53,6 +53,74 @@ export const registerCameraManager = () => {
   });
 };
 
+/** Matches the debug GUI's fov slider bounds — keeps computed FOV out of degenerate territory. */
+const clampFov = (fov: number) => THREE.MathUtils.clamp(fov, 1, 170);
+
+/**
+ * "Hor+" aspect compensation: `baseFovDeg` is the vertical FOV authored for `referenceAspect`.
+ * Returns the vertical FOV that keeps the *horizontal* FOV constant at `currentAspect` instead —
+ * widens on narrow/portrait screens, narrows on wide/desktop screens.
+ */
+export const computeResponsiveFov = (
+  baseFovDeg: number,
+  referenceAspect: number,
+  currentAspect: number
+): number => {
+  if (!Number.isFinite(referenceAspect) || referenceAspect <= 0) referenceAspect = 16 / 9;
+  if (!Number.isFinite(currentAspect) || currentAspect <= 0) return clampFov(baseFovDeg);
+
+  const halfVFovRef = THREE.MathUtils.degToRad(baseFovDeg) / 2;
+  const halfHFovAtRef = Math.atan(Math.tan(halfVFovRef) * referenceAspect);
+  const newHalfVFov = Math.atan(Math.tan(halfHFovAtRef) / currentAspect);
+  return clampFov(THREE.MathUtils.radToDeg(newHalfVFov * 2));
+};
+
+/**
+ * Orthographic equivalent of {@link computeResponsiveFov}: `baseFrustumSize` is the vertical
+ * world-space extent authored for `referenceAspect`. Returns the vertical extent that keeps the
+ * horizontal world-space width constant at `currentAspect` instead.
+ */
+export const computeResponsiveFrustumSize = (
+  baseFrustumSize: number,
+  referenceAspect: number,
+  currentAspect: number
+): number => {
+  if (!Number.isFinite(referenceAspect) || referenceAspect <= 0) referenceAspect = 16 / 9;
+  if (!Number.isFinite(currentAspect) || currentAspect <= 0) return baseFrustumSize;
+
+  const targetWidth = baseFrustumSize * referenceAspect;
+  return targetWidth / currentAspect;
+};
+
+/**
+ * Applies `aspect` to a camera's projection, deriving the effective fov/frustumSize from
+ * `settings.responsiveAspect` when enabled. Single source of truth shared by camera creation
+ * and the window-resize system — `settings.fov`/`settings.frustumSize` are always treated as
+ * the immutable authored base value; only the live THREE.js object is ever mutated here.
+ */
+export const applyCameraProjection = (
+  cam: THREE.PerspectiveCamera | THREE.OrthographicCamera,
+  settings: CoreComponentData[CoreComponentType.CAMERA_SETTINGS],
+  aspect: number
+) => {
+  if (settings.type === 'PERSPECTIVE' && cam instanceof THREE.PerspectiveCamera) {
+    cam.aspect = aspect;
+    cam.fov = settings.responsiveAspect
+      ? computeResponsiveFov(settings.fov, settings.referenceAspect, aspect)
+      : settings.fov;
+    cam.updateProjectionMatrix();
+  } else if (settings.type === 'ORTHOGRAPHIC' && cam instanceof THREE.OrthographicCamera) {
+    const s = settings.responsiveAspect
+      ? computeResponsiveFrustumSize(settings.frustumSize, settings.referenceAspect, aspect)
+      : settings.frustumSize;
+    cam.left = (-s * aspect) / 2;
+    cam.right = (s * aspect) / 2;
+    cam.top = s / 2;
+    cam.bottom = -s / 2;
+    cam.updateProjectionMatrix();
+  }
+};
+
 export const createCameraEntity = (
   camProps: CameraProps,
   entityOpts?: CoreEntityOpts,
@@ -66,29 +134,28 @@ export const createCameraEntity = (
   const appId = camProps.appId || entityOpts?.appId;
   const props = loadPersistentProps<CameraProps>({ ...camProps, appId }, 'CAMERA');
 
+  const settings: CoreComponentData[CoreComponentType.CAMERA_SETTINGS] = {
+    type: props.type,
+    fov: props.type === 'PERSPECTIVE' ? props.fov ?? 45 : 0,
+    near: props.near ?? 0.1,
+    far: props.far ?? 2000,
+    zoom: props.zoom ?? 1,
+    frustumSize: props.type === 'ORTHOGRAPHIC' ? props.frustumSize ?? 10 : 0,
+    responsiveAspect: props.responsiveAspect ?? false,
+    referenceAspect: props.referenceAspect ?? 16 / 9,
+  };
+
   let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
 
-  if (props.type === 'PERSPECTIVE') {
-    camera = new THREE.PerspectiveCamera(
-      props.fov ?? 45,
-      aspect,
-      props.near ?? 0.1,
-      props.far ?? 2000
-    );
+  if (settings.type === 'PERSPECTIVE') {
+    camera = new THREE.PerspectiveCamera(settings.fov, aspect, settings.near, settings.far);
   } else {
-    // Ortho bounds are calculated based on aspect ratio in the resize system
-    const s = props.frustumSize ?? 10;
-    camera = new THREE.OrthographicCamera(
-      (-s * aspect) / 2,
-      (s * aspect) / 2,
-      s / 2,
-      -s / 2,
-      props.near ?? 0.1,
-      props.far ?? 2000
-    );
+    // Placeholder bounds — applyCameraProjection() below sets the real ones before first render.
+    camera = new THREE.OrthographicCamera(-1, 1, 1, -1, settings.near, settings.far);
   }
+  applyCameraProjection(camera, settings, aspect);
 
-  camera.zoom = props.zoom ?? 1;
+  camera.zoom = settings.zoom;
 
   if (!entityOpts?.doNotAddToScene) {
     rootScene.add(camera);
@@ -99,14 +166,7 @@ export const createCameraEntity = (
 
   world.addComponent(entityId, ComponentType.TAG_IS_CAMERA, true);
   world.addComponent(entityId, ComponentType.OBJECT3D, { value: camera, _lastVersion: -1 });
-  world.addComponent(entityId, ComponentType.CAMERA_SETTINGS, {
-    type: props.type,
-    fov: props.type === 'PERSPECTIVE' ? props.fov ?? 45 : 0,
-    near: props.near ?? 0.1,
-    far: props.far ?? 2000,
-    zoom: props.zoom ?? 1,
-    frustumSize: props.type === 'ORTHOGRAPHIC' ? props.frustumSize ?? 10 : 0,
-  });
+  world.addComponent(entityId, ComponentType.CAMERA_SETTINGS, settings);
 
   if (props.active) {
     setMainCamera(world, entityId);
@@ -222,19 +282,11 @@ export const updateAllCameraAspectRatios = () => {
       const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
       if (!objComp) continue;
 
-      const cam = objComp.value;
-
-      if (settings.type === 'PERSPECTIVE' && cam instanceof THREE.PerspectiveCamera) {
-        cam.aspect = aspect;
-        cam.updateProjectionMatrix();
-      } else if (settings.type === 'ORTHOGRAPHIC' && cam instanceof THREE.OrthographicCamera) {
-        const s = settings.frustumSize;
-        cam.left = (-s * aspect) / 2;
-        cam.right = (s * aspect) / 2;
-        cam.top = s / 2;
-        cam.bottom = -s / 2;
-        cam.updateProjectionMatrix();
-      }
+      applyCameraProjection(
+        objComp.value as THREE.PerspectiveCamera | THREE.OrthographicCamera,
+        settings,
+        aspect
+      );
     }
   }
 };

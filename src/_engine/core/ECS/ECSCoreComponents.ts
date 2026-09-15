@@ -31,6 +31,8 @@ export interface CoreComponentData {
     far: number;
     zoom: number;
     frustumSize: number; // Only for Orthographic (Standard vertical size)
+    responsiveAspect: boolean; // Hor+ aspect-ratio compensation (both camera types)
+    referenceAspect: number; // Aspect ratio the base fov/frustumSize were authored for
   };
   [CoreType.ORBIT_CONTROLS]: {
     controls: OrbitControls;

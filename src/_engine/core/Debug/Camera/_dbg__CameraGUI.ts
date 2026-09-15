@@ -13,7 +13,13 @@ import {
 } from '../../UI/DraggableWindow';
 import { getCurrentSceneId } from '../../Scene';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
-import { getActiveCameraId, CameraDebugLSData, DebugCamLSProps } from '../../CameraManager';
+import {
+  getActiveCameraId,
+  CameraDebugLSData,
+  DebugCamLSProps,
+  applyCameraProjection,
+} from '../../CameraManager';
+import { getWindowSize } from '../../../utils/Window';
 import { DEFAULT_DEBUG_CAM_PROPS } from './_dbg__DebugCamera';
 import { updateOnScreenTools } from '../../../debug/OnScreenTools';
 
@@ -23,6 +29,9 @@ export interface CamEntityDebugState {
   fov?: number;
   near?: number;
   far?: number;
+  frustumSize?: number;
+  responsiveAspect?: boolean;
+  referenceAspect?: number;
   _lensSettingsOpen?: boolean;
 }
 
@@ -134,12 +143,66 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   const lensFolder = pane
     .addFolder({ title: 'Lens Settings', expanded: uiState?._lensSettingsOpen || false })
     .on('fold', (ev) => saveCameraToLS(entityId, '_lensSettingsOpen', ev.expanded));
+
+  // Responsive aspect compensation (Hor+): keeps the horizontal FOV/world-width roughly
+  // constant across aspect ratios, at the cost of the base fov/frustumSize (below) becoming
+  // the "authored at referenceAspect" value rather than the literal live one.
+  const responsiveProxy = {
+    responsiveAspect: settings.responsiveAspect,
+    referenceAspect: settings.referenceAspect,
+  };
+  lensFolder
+    .addBinding(responsiveProxy, 'responsiveAspect', { label: 'Responsive Aspect' })
+    .on('change', (ev) => {
+      settings.responsiveAspect = ev.value;
+      applyCameraProjection(camera, settings, getWindowSize().aspect);
+      saveCameraToLS(entityId, 'responsiveAspect', ev.value);
+      updateCamerasDebuggerGUI('WINDOW'); // rebuild so the fov/frustumSize label reflects the new mode
+    });
+  lensFolder
+    .addBinding(responsiveProxy, 'referenceAspect', {
+      label: 'Reference Aspect',
+      min: 0.1,
+      step: 0.01,
+    })
+    .on('change', (ev) => {
+      settings.referenceAspect = ev.value;
+      applyCameraProjection(camera, settings, getWindowSize().aspect);
+      saveCameraToLS(entityId, 'referenceAspect', ev.value);
+    });
+
   if (settings.type === 'PERSPECTIVE') {
     lensFolder
-      .addBinding(camera as THREE.PerspectiveCamera, 'fov', { min: 1, max: 170, step: 1 })
+      .addBinding(camera as THREE.PerspectiveCamera, 'fov', {
+        min: 1,
+        max: 170,
+        step: 1,
+        label: settings.responsiveAspect ? 'Fov (base, @ ref aspect)' : 'Fov',
+      })
       .on('change', () => {
-        camera.updateProjectionMatrix();
-        saveCameraToLS(entityId, 'fov', (camera as THREE.PerspectiveCamera).fov);
+        const liveFov = (camera as THREE.PerspectiveCamera).fov;
+        if (settings.responsiveAspect) {
+          // The slider edits the authored base value; re-derive the live fov for the
+          // current aspect immediately so the edit doesn't silently revert on next resize.
+          settings.fov = liveFov;
+          applyCameraProjection(camera, settings, getWindowSize().aspect);
+        } else {
+          camera.updateProjectionMatrix();
+        }
+        saveCameraToLS(entityId, 'fov', settings.responsiveAspect ? settings.fov : liveFov);
+      });
+  } else {
+    const frustumProxy = { frustumSize: settings.frustumSize };
+    lensFolder
+      .addBinding(frustumProxy, 'frustumSize', {
+        min: 0.1,
+        step: 0.1,
+        label: settings.responsiveAspect ? 'Frustum Size (base, @ ref aspect)' : 'Frustum Size',
+      })
+      .on('change', (ev) => {
+        settings.frustumSize = ev.value;
+        applyCameraProjection(camera, settings, getWindowSize().aspect);
+        saveCameraToLS(entityId, 'frustumSize', settings.frustumSize);
       });
   }
 

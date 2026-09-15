@@ -10,6 +10,8 @@ const CameraBaseProps = z.object({
   appId: z.string().optional(),
   position: Vector3Schema.optional(),
   lookAtPoint: Vector3Schema.optional(),
+  responsiveAspect: z.boolean().optional(),
+  referenceAspect: z.number().optional(),
 });
 
 const CameraPerspective = CameraBaseProps.extend({
@@ -37,6 +39,8 @@ export const CameraOverridesSchema = z.object({
   lookAtPoint: Vector3Schema.optional(),
   fov: z.number().optional(),
   frustumSize: z.number().optional(),
+  responsiveAspect: z.boolean().optional(),
+  referenceAspect: z.number().optional(),
 });
 
 export type CameraOverrides = z.infer<typeof CameraOverridesSchema>;
