@@ -13,6 +13,7 @@ import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { CoreComponentType } from './ECS/ECSRegistry';
+import { DEBUG_CAMERA_ID } from '../debug/DebugToolsManager';
 import { lerror } from '../utils/Logger';
 import { updateDraggableWindow } from './UI/DraggableWindow';
 
@@ -433,7 +434,7 @@ export const initDebugCamera = async (world: ECSWorld) => {
 
     debugCameraEntityId = createCameraEntity(
       { type: 'PERSPECTIVE', active: false, fov: 60, near: 0.1, far: 2000 },
-      { userData: { name: 'DebugOrbitCamera' }, persistent: true },
+      { appId: DEBUG_CAMERA_ID, userData: { name: 'DebugOrbitCamera' }, persistent: true },
       world
     );
 

@@ -67,6 +67,29 @@ export const load3DSymbols = async () => {
         outline.position.set(0.01, -0.02, -0.07);
         outline.scale.set(1.1, 1.05, 1.1);
         root.userData.isCameraSymbol = true;
+
+        // Main-camera indicator: a sphere through the icon's thinnest local axis, sized
+        // and placed near the base of the icon so it clearly pokes out on both sides
+        // from any viewing angle without swallowing the whole icon. Computed from the
+        // icon's actual geometry so it stays correct if the GLB is ever re-exported
+        // with different proportions.
+        icon.updateMatrix();
+        if (!icon.geometry.boundingBox) icon.geometry.computeBoundingBox();
+        const box = icon.geometry.boundingBox!.clone().applyMatrix4(icon.matrix);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const radius = Math.min(size.x, size.y, size.z) * 0.8;
+
+        const indicator = new THREE.Mesh(
+          new THREE.SphereGeometry(radius, 12, 8),
+          new THREE.MeshBasicMaterial({ color: 0x009900 })
+        );
+        indicator.name = 'mainCameraIndicator';
+        // Position so the sphere's *bottom edge* sits just above the icon's base
+        // (not its center) — a small gap so it doesn't touch/clip past the base.
+        indicator.position.set(center.x, box.min.y + radius - size.y * 0.025, center.z * 0.88);
+        indicator.visible = false; // toggled per-instance in debugSymbolSyncSystem
+        inner.add(indicator); // same parent as icon/outline — sphere is rotation-invariant, no lookAt needed
       } else if (key === 'point') {
         outline.position.set(0, 0.01, 0);
         outline.scale.set(1.19, 1.12, 1.19);

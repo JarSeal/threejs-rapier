@@ -31,6 +31,10 @@ const attachToEntity = (id: number, w: ECSWorld, scene: THREE.Scene) => {
   else if (obj.type === 'SpotLight') symbol = createNewSpotLightSymbol();
   else if (w.hasComponent(id, ComponentType.TAG_IS_CAMERA) && !isDebugCam) {
     symbol = createNewCameraSymbol();
+    if (symbol) {
+      const indicator = symbol.getObjectByName('mainCameraIndicator');
+      if (indicator) symbol.userData.mainCameraIndicator = indicator;
+    }
   }
 
   if (symbol) {
@@ -114,6 +118,11 @@ ECSWorld.registerPlugin((world) => {
         // Cameras: unchanged — still hidden when disabled or when it's the active camera.
         const isEnabled = parent.visible && !w.isDisabled(entityId);
         symbol.visible = isEnabled && !isCurrentActiveCam && symbolComp.userVisible;
+
+        // Main-camera indicator: visible only on whichever camera currently holds TAG_IS_MAIN_CAMERA.
+        const indicator = symbol.userData.mainCameraIndicator as THREE.Object3D | undefined;
+        if (indicator)
+          indicator.visible = w.hasComponent(entityId, ComponentType.TAG_IS_MAIN_CAMERA);
       }
 
       // Find the lookAt holder (first child)
