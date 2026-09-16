@@ -3,11 +3,12 @@ import { Pane } from 'tweakpane';
 import { TimestampQuery, type Renderer } from 'three/webgpu';
 import { getRenderer } from '../../core/Renderer';
 import { createNewDebuggerPane, createDebuggerTab } from '../../debug/DebuggerGUI';
-import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { getHUDRootCMP } from '../../core/HUD';
 import { getSvgIcon } from '../../core/UI/icons/SvgIcon';
 import { CMP, type TCMP } from '../../utils/CMP';
 import { defaultStatsOptions, type StatsOptions } from '../../debug/Stats';
+import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 
 type StatsPanel = {
   update: (value: number, maxValue: number, decimals: number) => void;
@@ -152,7 +153,13 @@ const setDebuggerUI = () => {
     title: 'Statistics',
     orderNr: 3,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('Stats', `${icon} Statistics`);
+      const clearTabBtn = createClearTabLSButton({
+        hasData: () => lsKeyHasData(LS_KEY),
+        onClear: () => lsRemoveItem(LS_KEY),
+      });
+      const { container, debugGUI } = createNewDebuggerPane('Stats', `${icon} Statistics`, [
+        clearTabBtn,
+      ]);
 
       statsDebugGUIs.push(debugGUI);
       _buildStatsDebugGUI(debugGUI);

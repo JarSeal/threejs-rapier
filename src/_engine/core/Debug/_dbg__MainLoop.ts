@@ -4,8 +4,9 @@ import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
 import { stepPhysicsWorld } from '../PhysicsRapier';
 import { mainLoop, type LoopState } from '../MainLoop';
-import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { InitOnScreenTools, updateOnScreenTools } from '../../debug/OnScreenTools';
+import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 
 const LS_KEY = 'AEK_debugLoop';
 let appPlayBinding: BindingApi | null = null;
@@ -23,7 +24,13 @@ export const createLoopDebugControls = (loopState: LoopState) => {
     title: 'Loop controls',
     orderNr: 4,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('loop', `${icon} Loop Controls`);
+      const clearTabBtn = createClearTabLSButton({
+        hasData: () => lsKeyHasData(LS_KEY),
+        onClear: () => lsRemoveItem(LS_KEY),
+      });
+      const { container, debugGUI } = createNewDebuggerPane('loop', `${icon} Loop Controls`, [
+        clearTabBtn,
+      ]);
       debugGUI.addBinding(loopState, 'masterPlay', { label: 'Master loop' }).on('change', (e) => {
         if (e.value) {
           requestAnimationFrame(mainLoop);

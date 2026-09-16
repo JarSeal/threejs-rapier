@@ -328,8 +328,8 @@ export const _createNewDebuggerContainer = (
   return container;
 };
 
-export const _createNewDebuggerPane = (id: string, heading?: string) => {
-  const container = _createNewDebuggerContainer(id, heading);
+export const _createNewDebuggerPane = (id: string, heading?: string, headerButtons?: TCMP[]) => {
+  const container = _createNewDebuggerContainer(id, heading, headerButtons);
   container.update({ onRemoveCmp: () => debugGUI?.dispose() });
   const debugGUI = new Pane({ container: container.elem });
 

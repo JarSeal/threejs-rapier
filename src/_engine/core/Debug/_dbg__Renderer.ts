@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
-import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { RendererOptions } from '../Renderer';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { type ListBladeApi } from 'tweakpane';
 import type { BladeController, View } from '@tweakpane/core';
 import { RENDERER_SHADOW_OPTIONS } from '../../utils/constants';
+import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 
 export const _createRendererDebugGUI = async (
   options: RendererOptions,
@@ -22,9 +23,14 @@ export const _createRendererDebugGUI = async (
     title: 'Renderer controls',
     orderNr: 7,
     container: () => {
+      const clearTabBtn = createClearTabLSButton({
+        hasData: () => lsKeyHasData(LS_KEY),
+        onClear: () => lsRemoveItem(LS_KEY),
+      });
       const { container, debugGUI } = createNewDebuggerPane(
         'renderer',
-        `${icon} Renderer Controls`
+        `${icon} Renderer Controls`,
+        [clearTabBtn]
       );
 
       // Antialias

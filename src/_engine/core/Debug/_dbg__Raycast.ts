@@ -3,10 +3,11 @@ import { Pane } from 'tweakpane';
 import { TCMP } from '../../utils/CMP';
 import { IS_DEBUG_ENV } from '../Config';
 import { getRootScene } from '../Scene';
-import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerPane, getDrawerState } from '../../debug/DebuggerGUI';
 import { PercentagePieHtml } from '../../utils/UI/PercentagePieHtml';
+import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 
 const DEFAULT_HELPER_COLOR = '#ff0000';
 const DEFAULT_MAX_HELPER_LENGTH = 1000;
@@ -165,7 +166,15 @@ const createDebugControls = () => {
     title: 'Ray cast controls',
     orderNr: 10,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('rayCast', `${icon} Ray Cast Controls`);
+      const clearTabBtn = createClearTabLSButton({
+        hasData: () => lsKeyHasData(LS_KEY),
+        onClear: () => lsRemoveItem(LS_KEY),
+      });
+      const { container, debugGUI } = createNewDebuggerPane(
+        'rayCast',
+        `${icon} Ray Cast Controls`,
+        [clearTabBtn]
+      );
       rayCastDebugGUI = debugGUI;
       _buildRayCastDebugGUI();
       statsCMP = container.add({ class: 'rayCastStats' }).add();

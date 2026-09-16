@@ -82,8 +82,8 @@ export const createNewDebuggerContainer = (
  * @param heading (string) optional heading for the section
  * @returns (object: { container, debugGUI }) the container component and the debugGUI parent object
  */
-export const createNewDebuggerPane = (id: string, heading?: string) => {
-  const debugPane = useDebug(debugGUI)?._createNewDebuggerPane(id, heading);
+export const createNewDebuggerPane = (id: string, heading?: string, headerButtons?: TCMP[]) => {
+  const debugPane = useDebug(debugGUI)?._createNewDebuggerPane(id, heading, headerButtons);
   if (!debugPane) {
     const msg =
       'Failed to create a new debugger pane (in createNewDebuggerPane). It could be that the a new pane is being created in production mode.';

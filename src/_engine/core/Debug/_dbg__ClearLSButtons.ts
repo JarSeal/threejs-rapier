@@ -2,8 +2,14 @@ import { CMP, TCMP } from '../../utils/CMP';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { openDialog } from '../UI/DialogWindow';
 import { closeDraggableWindow } from '../UI/DraggableWindow';
+import { lsGetItem } from '../../utils/LocalAndSessionStorage';
 
 const CONFIRM_CLEAR_SCOPE_DIALOG_ID = 'clearLSScopeConfirmDialog';
+
+/**
+ * Whether a flat (non-scene-scoped) LocalStorage key currently has any data stored.
+ */
+export const lsKeyHasData = (key: string): boolean => lsGetItem(key, null) !== null;
 
 export const createClearTabLSButton = (opts: {
   hasData: () => boolean;
