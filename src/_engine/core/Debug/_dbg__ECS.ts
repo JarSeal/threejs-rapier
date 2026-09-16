@@ -10,7 +10,11 @@ import {
   onECSEntityCountChange,
   onECSWorldRegistryChange,
 } from '../ECS';
-import { setECSStorageLSOverride } from '../ECS/ECSComponentStorage';
+import {
+  clearECSStorageLSOverride,
+  getECSStorageLSOverride,
+  setECSStorageLSOverride,
+} from '../ECS/ECSComponentStorage';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { resetECSStressTest, spawnECSStressTestBatch } from '../../utils/ECSStressTest';
 import { CMP, getCmpById, type TCMP } from '../../utils/CMP';
@@ -126,6 +130,16 @@ export const createEditECSWorldContent = (data?: { [key: string]: unknown }) => 
     })
     .on('change', () => {
       setECSStorageLSOverride(world.id, storageConfig);
+      location.reload();
+    });
+
+  storageFolder
+    .addButton({
+      title: 'Clear local storage',
+      disabled: !getECSStorageLSOverride(world.id),
+    })
+    .on('click', () => {
+      clearECSStorageLSOverride(world.id);
       location.reload();
     });
 

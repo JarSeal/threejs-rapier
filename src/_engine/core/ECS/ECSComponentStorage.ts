@@ -42,6 +42,14 @@ export const setECSStorageLSOverride = (worldId: string, override: ECSStorageLSO
   lsSetItem(ECS_LS_KEY, all);
 };
 
+/** Removes the debug-tab-saved storage override for one world id, if any. */
+export const clearECSStorageLSOverride = (worldId: string): void => {
+  const all = lsGetItem(ECS_LS_KEY, {}) as ECSStorageLSOverrides;
+  if (!(worldId in all)) return;
+  delete all[worldId];
+  lsSetItem(ECS_LS_KEY, all);
+};
+
 /**
  * Minimal storage-backend contract for `ECSWorld`'s per-component-type
  * storages. A plain `Map<number, T>` already satisfies this shape natively

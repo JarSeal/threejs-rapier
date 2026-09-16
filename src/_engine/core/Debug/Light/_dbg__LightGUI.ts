@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
-import { ListBladeApi, Pane } from 'tweakpane';
+import { ButtonApi, ListBladeApi, Pane } from 'tweakpane';
 import { getECSWorld, ECSWorld, getEntityIdByAppId } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import { CMP, getCmpById, TCMP } from '../../../utils/CMP';
 import { getSvgIcon } from '../../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerContainer } from '../../../debug/DebuggerGUI';
 import {
+  closeDraggableWindow,
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowContentFn,
@@ -196,6 +197,15 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
   const uiState = loadLightDebugData(appId);
 
+  // Re-enables the Clear local storage button as soon as any field writes new
+  // LS data (see the equivalent camera-GUI wrapper for why `clearLSBtn` is a
+  // `let` assigned later, once the button itself is created).
+  let clearLSBtn: ButtonApi | undefined = undefined;
+  const save = <K extends keyof LightEntityDebugState>(key: K, value: LightEntityDebugState[K]) => {
+    saveLightToLS(entityId, key, value);
+    if (clearLSBtn) clearLSBtn.disabled = false;
+  };
+
   // Footer Info
   container.add({
     class: ['winNotRightPaddedContent', 'winFlexContent'],
@@ -222,7 +232,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   pane.addBinding(light, 'visible', { label: 'Enabled' }).on('change', (e) => {
     const value = e.value;
     setLightEnabled(entityId, value, world);
-    saveLightToLS(entityId, 'enabled', value);
+    save('enabled', value);
   });
 
   // Helper Toggle (Direct binding to the Three.js Helper object)
@@ -231,7 +241,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     const helperProxy = { visible: prefs.helper };
     pane.addBinding(helperProxy, 'visible', { label: 'Show Helper' }).on('change', (e) => {
       const show = e.value;
-      saveLightToLS(entityId, 'helperVisible', show);
+      save('helperVisible', show);
       setLightDebugPreference(entityId, world, 'helperVisible', show);
       updateOnScreenTools('SWITCH');
     });
@@ -243,7 +253,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     symbolComp.value.visible = prefs.symbol;
     pane.addBinding(symbolComp, 'userVisible', { label: 'Show Symbol' }).on('change', (e) => {
       const show = e.value;
-      saveLightToLS(entityId, 'symbolVisible', show);
+      save('symbolVisible', show);
       updateOnScreenTools('SWITCH');
     });
   }
@@ -263,7 +273,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', (ev) => {
           hemi.color.setHex(ev.value);
-          saveLightToLS(entityId, 'color', ev.value);
+          save('color', ev.value);
         });
       pane
         .addBinding(colorProxy, 'ground', {
@@ -272,7 +282,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', (ev) => {
           hemi.groundColor.setHex(ev.value);
-          saveLightToLS(entityId, 'groundColor', ev.value);
+          save('groundColor', ev.value);
         });
     } else {
       const colorProxy = { hex: light.color.getHex() };
@@ -283,7 +293,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         })
         .on('change', (ev) => {
           light.color.setHex(ev.value);
-          saveLightToLS(entityId, 'color', ev.value);
+          save('color', ev.value);
         });
     }
   }
@@ -291,14 +301,14 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   // Intensity
   pane
     .addBinding(light, 'intensity', { label: 'Intensity', min: 0, step: 0.01 })
-    .on('change', (ev) => saveLightToLS(entityId, 'intensity', ev.value));
+    .on('change', (ev) => save('intensity', ev.value));
 
   // Distance
   if (lightChars.hasDistance) {
     const l = light as THREE.PointLight | THREE.SpotLight;
     pane
       .addBinding(l, 'distance', { label: 'Distance', min: 0, step: 0.01 })
-      .on('change', (ev) => saveLightToLS(entityId, 'distance', ev.value));
+      .on('change', (ev) => save('distance', ev.value));
   }
 
   // Decay
@@ -306,7 +316,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     const l = light as THREE.PointLight | THREE.SpotLight;
     pane
       .addBinding(l, 'decay', { label: 'Decay', min: 0, step: 0.01 })
-      .on('change', (ev) => saveLightToLS(entityId, 'decay', ev.value));
+      .on('change', (ev) => save('decay', ev.value));
   }
 
   // Frustum Culling (opt-in, ECS-only state — proxy binding)
@@ -316,7 +326,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     };
     pane.addBinding(cullProxy, 'enabled', { label: 'Frustum Culling' }).on('change', (ev) => {
       setLightFrustumCullingEnabled(entityId, ev.value, world);
-      saveLightToLS(entityId, 'frustumCullingEnabled', ev.value);
+      save('frustumCullingEnabled', ev.value);
     });
   }
 
@@ -336,7 +346,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (helper.value as any).update();
         }
-        saveLightToLS(entityId, 'position', transform.position);
+        save('position', transform.position);
       });
   }
 
@@ -353,7 +363,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         .on('change', (e) => {
           if (!e.last) return;
           world.setTransform(targetEntityId, { pos: targetTransform.position });
-          saveLightToLS(entityId, 'targetPos', targetTransform.position);
+          save('targetPos', targetTransform.position);
         });
     }
   }
@@ -368,12 +378,12 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       reconcileDebugVisuals(entityId, world);
       // We need to wait a cycle for the pane to be updated
       setTimeout(() => updateDraggableWindow(EDIT_LIGHT_WIN_ID), 0);
-      saveLightToLS(entityId, 'castShadow', ev.value);
+      save('castShadow', ev.value);
     });
 
     const shadowFolder = pane
       .addFolder({ title: 'Shadow', expanded: uiState?._shadowFolderOpen || false })
-      .on('fold', (ev) => saveLightToLS(entityId, '_shadowFolderOpen', ev.expanded));
+      .on('fold', (ev) => save('_shadowFolderOpen', ev.expanded));
 
     shadowFolder
       .addBinding(l.shadow, 'bias', {
@@ -381,7 +391,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         step: 0.00001,
         disabled: !l.castShadow,
       })
-      .on('change', (ev) => saveLightToLS(entityId, 'shadowBias', ev.value));
+      .on('change', (ev) => save('shadowBias', ev.value));
 
     shadowFolder
       .addBinding(l.shadow, 'normalBias', {
@@ -389,7 +399,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         step: 0.00001,
         disabled: !l.castShadow,
       })
-      .on('change', (ev) => saveLightToLS(entityId, 'shadowNormalBias', ev.value));
+      .on('change', (ev) => save('shadowNormalBias', ev.value));
 
     shadowFolder
       .addBinding(l.shadow, 'intensity', {
@@ -399,7 +409,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         step: 0.001,
         disabled: !l.castShadow,
       })
-      .on('change', (ev) => saveLightToLS(entityId, 'shadowIntensity', ev.value));
+      .on('change', (ev) => save('shadowIntensity', ev.value));
 
     // --- VSM SPECIFIC PARAMETERS ---
     shadowFolder
@@ -410,7 +420,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         step: 1,
         disabled: !isVSM || !l.castShadow,
       })
-      .on('change', (ev) => saveLightToLS(entityId, 'shadowBlurSamples', ev.value));
+      .on('change', (ev) => save('shadowBlurSamples', ev.value));
 
     shadowFolder
       .addBinding(l.shadow, 'radius', {
@@ -418,7 +428,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         min: 0,
         disabled: !isVSM || !l.castShadow,
       })
-      .on('change', (ev) => saveLightToLS(entityId, 'shadowRadius', ev.value));
+      .on('change', (ev) => save('shadowRadius', ev.value));
 
     const widthBlade = shadowFolder.addBlade({
       view: 'list',
@@ -450,7 +460,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
       refreshLightShadows(l, entityId, world);
 
-      saveLightToLS(entityId, 'shadowMapSize', [value, l.shadow.mapSize.height]);
+      save('shadowMapSize', [value, l.shadow.mapSize.height]);
     });
 
     heightBlade.on('change', (e) => {
@@ -467,7 +477,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
 
       refreshLightShadows(l, entityId, world);
 
-      saveLightToLS(entityId, 'shadowMapSize', [l.shadow.mapSize.width, value]);
+      save('shadowMapSize', [l.shadow.mapSize.width, value]);
     });
 
     const camFolder = shadowFolder
@@ -475,7 +485,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         title: 'Shadow Camera',
         expanded: uiState?._shadowCameraFolderOpen || false,
       })
-      .on('fold', (ev) => saveLightToLS(entityId, '_shadowCameraFolderOpen', ev.expanded));
+      .on('fold', (ev) => save('_shadowCameraFolderOpen', ev.expanded));
 
     // Universal near/far
     camFolder
@@ -484,7 +494,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         l.shadow.camera.updateProjectionMatrix();
         const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
         if (helper?.camHelper) helper.camHelper.update();
-        saveLightToLS(entityId, 'shadowCameraNearFar', [ev.value, l.shadow.camera.far]);
+        save('shadowCameraNearFar', [ev.value, l.shadow.camera.far]);
       });
     camFolder
       .addBinding(l.shadow.camera, 'far', {
@@ -496,7 +506,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         l.shadow.camera.updateProjectionMatrix();
         const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
         if (helper?.camHelper) helper.camHelper.update();
-        saveLightToLS(entityId, 'shadowCameraNearFar', [l.shadow.camera.near, ev.value]);
+        save('shadowCameraNearFar', [l.shadow.camera.near, ev.value]);
       });
 
     // Orthographic specific (Directional Light only)
@@ -511,12 +521,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
           if (helper?.camHelper) helper.camHelper.update();
           const cam = l.shadow.camera as THREE.OrthographicCamera;
-          saveLightToLS(entityId, 'shadowCameraFrustum', [
-            ev.value,
-            cam.right,
-            cam.top,
-            cam.bottom,
-          ]);
+          save('shadowCameraFrustum', [ev.value, cam.right, cam.top, cam.bottom]);
         });
       camFolder
         .addBinding(ortho, 'right', { label: 'Right', step, disabled: !l.castShadow })
@@ -525,7 +530,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
           if (helper?.camHelper) helper.camHelper.update();
           const cam = l.shadow.camera as THREE.OrthographicCamera;
-          saveLightToLS(entityId, 'shadowCameraFrustum', [cam.left, ev.value, cam.top, cam.bottom]);
+          save('shadowCameraFrustum', [cam.left, ev.value, cam.top, cam.bottom]);
         });
       camFolder
         .addBinding(ortho, 'top', { label: 'Top', step, disabled: !l.castShadow })
@@ -534,12 +539,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
           if (helper?.camHelper) helper.camHelper.update();
           const cam = l.shadow.camera as THREE.OrthographicCamera;
-          saveLightToLS(entityId, 'shadowCameraFrustum', [
-            cam.left,
-            cam.right,
-            ev.value,
-            cam.bottom,
-          ]);
+          save('shadowCameraFrustum', [cam.left, cam.right, ev.value, cam.bottom]);
         });
       camFolder
         .addBinding(ortho, 'bottom', { label: 'Bottom', step, disabled: !l.castShadow })
@@ -548,10 +548,30 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
           if (helper?.camHelper) helper.camHelper.update();
           const cam = l.shadow.camera as THREE.OrthographicCamera;
-          saveLightToLS(entityId, 'shadowCameraFrustum', [cam.left, cam.right, cam.top, ev.value]);
+          save('shadowCameraFrustum', [cam.left, cam.right, cam.top, ev.value]);
         });
     }
   }
+
+  clearLSBtn = pane.addButton({
+    title: 'Clear local storage',
+    disabled: !loadLightDebugData(appId),
+  });
+  clearLSBtn.on('click', () => {
+    if (!appId) return;
+    clearLightFromLS(appId);
+    clearLSBtn.disabled = true;
+  });
+
+  pane.addButton({ title: 'Delete light' }).on('click', () => {
+    closeDraggableWindow(EDIT_LIGHT_WIN_ID);
+    world.deleteEntity(entityId);
+    // deleteEntity fires disposeLight's onDeleteEntity hook (which already
+    // refreshes this list) before clearing the entity's component storages,
+    // so that refresh still sees the entity in TAG_IS_LIGHT. Refresh again
+    // now that deletion has fully completed.
+    updateLightsDebuggerGUI('LIST');
+  });
 
   if (appId || entityId) updateDebuggerLightsListSelectedClass(appId || String(entityId));
 
@@ -796,6 +816,14 @@ export const loadLightDebugData = (appId?: string): LightEntityDebugState | unde
     return;
   }
   return currentData[sceneId].lights[appId];
+};
+
+export const clearLightFromLS = (appId: string) => {
+  const sceneId = getCurrentSceneId();
+  const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
+  if (!sceneId || !currentData[sceneId]?.lights?.[appId]) return;
+  delete currentData[sceneId].lights[appId];
+  lsSetItem(LS_LIGHTS_KEY, currentData);
 };
 
 /** * Helper for saving specific light debug properties to LocalStorage.

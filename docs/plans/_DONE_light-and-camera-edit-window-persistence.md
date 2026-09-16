@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Debugger
 
 # Light &amp; Camera Edit Window Persistence — Clear Local Storage + Session Delete — Plan

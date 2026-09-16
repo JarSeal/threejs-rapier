@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
-import { Pane } from 'tweakpane';
+import { Pane, type ButtonApi } from 'tweakpane';
 import { getECSWorld, ECSWorld, getEntityIdByAppId } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import { CMP, getCmpById, TCMP } from '../../../utils/CMP';
 import { getSvgIcon } from '../../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerContainer } from '../../../debug/DebuggerGUI';
 import {
+  closeDraggableWindow,
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowContentFn,
@@ -15,6 +16,7 @@ import { getCurrentSceneId } from '../../Scene';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
 import {
   getActiveCameraId,
+  getAllCamerasAsArray,
   CameraDebugLSData,
   DebugCamLSProps,
   applyCameraProjection,
@@ -81,6 +83,16 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
 
   const uiState = loadCameraDebugData(appId);
 
+  // Re-enables the Clear local storage button as soon as any field writes new
+  // LS data, since a single click earlier in this window's life should not
+  // permanently disable it (`clearLSBtn` is assigned once the button below is
+  // created; every earlier save just becomes a no-op until then).
+  let clearLSBtn: ButtonApi | undefined = undefined;
+  const save = <K extends keyof CamEntityDebugState>(key: K, value: CamEntityDebugState[K]) => {
+    saveCameraToLS(entityId, key, value);
+    if (clearLSBtn) clearLSBtn.disabled = false;
+  };
+
   // Helper Toggle (Direct binding to the Three.js Helper object)
   const helperComp = world.getComponent(entityId, ComponentType.DEBUG_CAMERA_HELPER);
   if (helperComp) {
@@ -93,7 +105,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
         if (objComp) objComp.value.updateMatrixWorld(true);
         helperComp.value.update();
       }
-      saveCameraToLS(entityId, 'helperVisible', show);
+      save('helperVisible', show);
       updateOnScreenTools('SWITCH');
     });
   }
@@ -135,14 +147,14 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     pane.addBinding(transform, 'position', { label: 'Position' }).on('change', (ev) => {
       if (!ev.last) return;
       world.setTransform(entityId, { pos: transform.position });
-      saveCameraToLS(entityId, 'position', { ...transform.position });
+      save('position', { ...transform.position });
     });
   }
 
   // Lens Settings
   const lensFolder = pane
     .addFolder({ title: 'Lens Settings', expanded: uiState?._lensSettingsOpen || false })
-    .on('fold', (ev) => saveCameraToLS(entityId, '_lensSettingsOpen', ev.expanded));
+    .on('fold', (ev) => save('_lensSettingsOpen', ev.expanded));
 
   // Responsive aspect compensation (Hor+): keeps the horizontal FOV/world-width roughly
   // constant across aspect ratios, at the cost of the base fov/frustumSize (below) becoming
@@ -156,7 +168,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     .on('change', (ev) => {
       settings.responsiveAspect = ev.value;
       applyCameraProjection(camera, settings, getWindowSize().aspect);
-      saveCameraToLS(entityId, 'responsiveAspect', ev.value);
+      save('responsiveAspect', ev.value);
       // Without this one iteration timeout, Tweakpane will crash (maybe fix at one point)
       setTimeout(() => {
         updateCamerasDebuggerGUI('WINDOW'); // rebuild so the fov/frustumSize label reflects the new mode
@@ -171,7 +183,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     .on('change', (ev) => {
       settings.referenceAspect = ev.value;
       applyCameraProjection(camera, settings, getWindowSize().aspect);
-      saveCameraToLS(entityId, 'referenceAspect', ev.value);
+      save('referenceAspect', ev.value);
     });
 
   if (settings.type === 'PERSPECTIVE') {
@@ -192,7 +204,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
         } else {
           camera.updateProjectionMatrix();
         }
-        saveCameraToLS(entityId, 'fov', settings.responsiveAspect ? settings.fov : liveFov);
+        save('fov', settings.responsiveAspect ? settings.fov : liveFov);
       });
   } else {
     const frustumProxy = { frustumSize: settings.frustumSize };
@@ -205,18 +217,43 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
       .on('change', (ev) => {
         settings.frustumSize = ev.value;
         applyCameraProjection(camera, settings, getWindowSize().aspect);
-        saveCameraToLS(entityId, 'frustumSize', settings.frustumSize);
+        save('frustumSize', settings.frustumSize);
       });
   }
 
   lensFolder.addBinding(camera, 'near', { min: 0.001, step: 0.01 }).on('change', () => {
     camera.updateProjectionMatrix();
-    saveCameraToLS(entityId, 'near', camera.near);
+    save('near', camera.near);
   });
   lensFolder.addBinding(camera, 'far', { min: 1, step: 1 }).on('change', () => {
     camera.updateProjectionMatrix();
-    saveCameraToLS(entityId, 'far', camera.far);
+    save('far', camera.far);
   });
+
+  clearLSBtn = pane.addButton({
+    title: 'Clear local storage',
+    disabled: !loadCameraDebugData(appId),
+  });
+  clearLSBtn.on('click', () => {
+    if (!appId) return;
+    clearCameraFromLS(appId);
+    clearLSBtn.disabled = true;
+  });
+
+  pane
+    .addButton({
+      title: 'Delete camera',
+      disabled: getAllCamerasAsArray().length <= 1,
+    })
+    .on('click', () => {
+      closeDraggableWindow(EDIT_CAMERA_WIN_ID);
+      world.deleteEntity(entityId);
+      // deleteEntity fires disposeCamera's onDeleteEntity hook (which already
+      // refreshes this list) before clearing the entity's component storages,
+      // so that refresh still sees the entity in TAG_IS_CAMERA. Refresh again
+      // now that deletion has fully completed.
+      updateCamerasDebuggerGUI('LIST');
+    });
 
   if (d.id) updateDebuggerCamerasListSelectedClass(d.id);
   return container;
@@ -336,6 +373,14 @@ export const saveCameraToLS = <K extends keyof CamEntityDebugState>(
     currentData[sceneId].cams[appId] = { helperVisible: false };
   }
   currentData[sceneId].cams[appId][key] = value;
+  lsSetItem(LS_KEY, currentData);
+};
+
+export const clearCameraFromLS = (appId: string) => {
+  const sceneId = getCurrentSceneId();
+  const currentData = lsGetItem(LS_KEY, {}) as CamDebugLSData;
+  if (!sceneId || !currentData[sceneId]?.cams?.[appId]) return;
+  delete currentData[sceneId].cams[appId];
   lsSetItem(LS_KEY, currentData);
 };
 
