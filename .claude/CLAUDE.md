@@ -6,6 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Aekasha (Ækasha) — a WebGPU/Three.js + Rapier physics game engine framework (package name `aekasha-js`). It's a "template" repo: an engine (`_engine`) plus one example app (`app`) built on top of it.
 
+### Aekasha brand, feeling, and core principles
+
+Ækasha is a high-performance WebGPU framework for the modern web. Driven by a modular ECS and a threaded physics core, it acts as the "fifth element" for developers — the invisible medium where complex data transforms into immersive reality.
+
+Primordial Performance: Engineered from the ground up for WebGPU, Ækasha treats the GPU not as a peripheral, but as the primary canvas for logic and rendering.
+
+Modular Infinity: Like the Akasha of myth, the framework is infinite and modular. You only bring into existence what you need, keeping the "memory space" clean and light.
+
+Threaded Reality: By offloading heavy physics calculations and asset loading to dedicated threads via the physics API and asset loading API, Ækasha ensures that the "flow" of the user experience remains uninterrupted.
+
+Maintain the brand, feeling, and core principles in creating the best UX for both, the developer and the end user!
+
 ## Commands
 
 - `yarn dev` — start the dev server (Vite, port 8080), development env.
@@ -39,7 +51,7 @@ This boundary is convention only — nothing in `eslint.config.js` enforces impo
 - Plans that have been implement (filename starts with "\_DONE\_") are kept if they provide useful information for another feature and when the whole larger concept/epic that consists of those plans is done those plans are removed.
 - Plan header has some required and optional information lines:
   - Status (required): describes a status of the plan. This is usually something like "draft | not-implemented", "draft | feasibility study — not-implemented", or "implemented".
-  - "Category" (optional): a general category that this particular plan falls into, usually one or two words like "ECS", "Assets", or "Physics".
+  - "Category" (optional): a general category that this particular plan falls into, usually one or two words like "ECS", "Assets", "Bug fix", "Refactoring", or "Physics".
   - "Blocked by" (optional): describes a plan file name that blocks this plan from implementation.
   - "Blocks" (optional): describes a plan file name that this plan is blocking the implementation.
   - "Epic" (optional): link to the epic (usually a Trello ticket).
