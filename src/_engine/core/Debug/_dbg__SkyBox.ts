@@ -3,7 +3,13 @@ import { ListBladeApi, Pane } from 'tweakpane';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
 import { IS_DEBUG_ENV } from '../Config';
-import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import {
+  confirmClearScope,
+  createClearListLSButton,
+  createClearTabLSButton,
+  lsKeyHasData,
+} from './_dbg__ClearLSButtons';
 import {
   clearSkyBox,
   createSkyBox,
@@ -46,7 +52,47 @@ const buildSkyBoxDebugGUI = (
     title: 'Sky box controls',
     orderNr: 5,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('skyBox', `${icon} Sky Box Controls`);
+      const clearTabBtn = createClearTabLSButton({
+        hasData: () => lsKeyHasData(LS_KEY_UI),
+        onClear: () => lsRemoveItem(LS_KEY_UI),
+      });
+      const clearListBtn = createClearListLSButton({
+        hasData: () => {
+          const current = lsGetItem(LS_KEY_ALL_STATES, {}) as {
+            [sceneId: string]: { [id: string]: SkyBoxState };
+          };
+          return Object.values(current).some((scene) => Object.keys(scene || {}).length > 0);
+        },
+        onClear: () => {
+          const current = lsGetItem(LS_KEY_ALL_STATES, {}) as {
+            [sceneId: string]: { [id: string]: SkyBoxState };
+          };
+          const sceneIdsWithData = Object.keys(current).filter(
+            (id) => Object.keys(current[id] || {}).length > 0
+          );
+          const applyClear = (sceneIds: string[]) => {
+            for (const sceneId of sceneIds) delete current[sceneId];
+            if (Object.keys(current).length === 0) lsRemoveItem(LS_KEY_ALL_STATES);
+            else lsSetItem(LS_KEY_ALL_STATES, current);
+            clearListBtn.update();
+          };
+          if (sceneIdsWithData.length > 1) {
+            confirmClearScope({
+              onClearAllScenes: () => applyClear(sceneIdsWithData),
+              onClearThisScene: () => {
+                const sceneId = getCurrentSceneId();
+                if (sceneId) applyClear([sceneId]);
+              },
+            });
+          } else {
+            applyClear(sceneIdsWithData);
+          }
+        },
+      });
+      const { container, debugGUI } = createNewDebuggerPane('skyBox', `${icon} Sky Box Controls`, [
+        clearTabBtn,
+        clearListBtn,
+      ]);
       skyBoxDebugGUI = debugGUI;
       _createSkyBoxDebugGUI(skyBoxState, allSkyBoxStates);
       return container;

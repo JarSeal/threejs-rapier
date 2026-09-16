@@ -17,6 +17,7 @@ import { createSceneAppLooper, deleteSceneAppLooper } from '../Scene';
 import { llog } from '../../utils/Logger';
 import { deleteCharacter, getCharacterById, getCharacters } from '../Character';
 import { getPhysicsObject } from '../PhysicsRapier';
+import { createClearListLSButton, createClearTabLSButton } from './_dbg__ClearLSButtons';
 
 let debuggerListCmp: TCMP | null = null;
 const debuggerWindowCmp: { [id: string]: TCMP } = {};
@@ -285,9 +286,15 @@ export const _createCharactersDebuggerGUI = () => {
     title: 'Character controls',
     orderNr: 14,
     container: () => {
+      // No LS key exists for character data today (see §2.1/§3.1 of the clear-LS-buttons
+      // plan) - both buttons exist for consistency with every other list tab, but stay
+      // permanently disabled until character data persistence is ever added.
+      const clearTabBtn = createClearTabLSButton({ hasData: () => false, onClear: () => {} });
+      const clearListBtn = createClearListLSButton({ hasData: () => false, onClear: () => {} });
       const container = createNewDebuggerContainer(
         'debuggerCharacters',
-        `${icon} Character Controls`
+        `${icon} Character Controls`,
+        [clearTabBtn, clearListBtn]
       );
       debuggerListCmp = CMP({ id: 'debuggerCharactersList', html: createCharactersDebuggerList });
       container.add(debuggerListCmp);

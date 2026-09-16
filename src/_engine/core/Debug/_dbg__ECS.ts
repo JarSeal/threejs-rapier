@@ -12,9 +12,16 @@ import {
 } from '../ECS';
 import {
   clearECSStorageLSOverride,
+  ECS_LS_KEY,
   getECSStorageLSOverride,
   setECSStorageLSOverride,
 } from '../ECS/ECSComponentStorage';
+import { lsRemoveItem } from '../../utils/LocalAndSessionStorage';
+import {
+  createClearListLSButton,
+  createClearTabLSButton,
+  lsKeyHasData,
+} from './_dbg__ClearLSButtons';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { resetECSStressTest, spawnECSStressTestBatch } from '../../utils/ECSStressTest';
 import { CMP, getCmpById, type TCMP } from '../../utils/CMP';
@@ -187,7 +194,21 @@ export const _initECSDebugGUI = () => {
     orderNr: 15,
     container: () => {
       let pane: Pane | undefined = undefined;
-      const container = createNewDebuggerContainer('ecs', `${icon} ECS`);
+      const clearTabBtn = createClearTabLSButton({
+        // The whole 'AEK_ecs' key IS the per-world-id list (see ECSComponentStorage.ts) -
+        // there is no separate tab-only field for this button to clear.
+        hasData: () => false,
+        onClear: () => {},
+      });
+      const clearListBtn = createClearListLSButton({
+        hasData: () => lsKeyHasData(ECS_LS_KEY),
+        // Keyed by world id, not scene id - no scope ambiguity, so no confirm dialog.
+        onClear: () => lsRemoveItem(ECS_LS_KEY),
+      });
+      const container = createNewDebuggerContainer('ecs', `${icon} ECS`, [
+        clearTabBtn,
+        clearListBtn,
+      ]);
       container.update({ onRemoveCmp: () => pane?.dispose() });
 
       debuggerListCmp = CMP({
