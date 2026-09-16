@@ -14,7 +14,12 @@ import {
 } from '../../UI/DraggableWindow';
 import { setLightEnabled, setLightFrustumCullingEnabled, ShadowQuality } from '../../LightManager';
 import { getCurrentSceneId, getRootScene } from '../../Scene';
-import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
+import {
+  confirmClearScope,
+  createClearListLSButton,
+  createClearTabLSButton,
+} from '../_dbg__ClearLSButtons';
 import { getActiveCameraId } from '../../CameraManager';
 import { getLightCharacteristics } from '../../../utils/helpers';
 import { BladeController, View } from '@tweakpane/core';
@@ -578,6 +583,21 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   return container;
 };
 
+/** Scene entries always carry both `lights` and `globalHelpersVisible` together;
+ * once neither holds anything meaningful, drop the entry so `hasData` checks
+ * (which only look at key/field presence) don't report stale data forever. */
+const pruneEmptyLightScene = (data: LightDebugLSData, sceneId: string) => {
+  const scene = data[sceneId];
+  if (!scene) return;
+  const lightsEmpty = !scene.lights || Object.keys(scene.lights).length === 0;
+  if (lightsEmpty && !scene.globalHelpersVisible) delete data[sceneId];
+};
+
+const writeLightLSOrRemove = (data: LightDebugLSData) => {
+  if (Object.keys(data).length === 0) lsRemoveItem(LS_LIGHTS_KEY);
+  else lsSetItem(LS_LIGHTS_KEY, data);
+};
+
 /** Creates the Tab in the Debug Drawer */
 let lightDebuggerGUIInitiated = false;
 export const initLightDebuggerGUI = () => {
@@ -589,7 +609,72 @@ export const initLightDebuggerGUI = () => {
     title: 'Light controls',
     orderNr: 10,
     container: () => {
-      const container = createNewDebuggerContainer('debuggerLights', `${icon} Light Controls`);
+      const clearTabBtn = createClearTabLSButton({
+        hasData: () => {
+          const current = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
+          return Object.values(current).some((s) => s.globalHelpersVisible);
+        },
+        onClear: () => {
+          const current = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
+          const sceneIdsWithData = Object.keys(current).filter(
+            (id) => current[id].globalHelpersVisible
+          );
+          const applyClear = (sceneIds: string[]) => {
+            for (const sceneId of sceneIds) {
+              current[sceneId].globalHelpersVisible = false;
+              pruneEmptyLightScene(current, sceneId);
+            }
+            writeLightLSOrRemove(current);
+            clearTabBtn.update();
+          };
+          if (sceneIdsWithData.length > 1) {
+            confirmClearScope({
+              onClearAllScenes: () => applyClear(sceneIdsWithData),
+              onClearThisScene: () => {
+                const sceneId = getCurrentSceneId();
+                if (sceneId) applyClear([sceneId]);
+              },
+            });
+          } else {
+            applyClear(sceneIdsWithData);
+          }
+        },
+      });
+      const clearListBtn = createClearListLSButton({
+        hasData: () => {
+          const current = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
+          return Object.values(current).some((s) => s.lights && Object.keys(s.lights).length > 0);
+        },
+        onClear: () => {
+          const current = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
+          const sceneIdsWithData = Object.keys(current).filter(
+            (id) => current[id].lights && Object.keys(current[id].lights).length > 0
+          );
+          const applyClear = (sceneIds: string[]) => {
+            for (const sceneId of sceneIds) {
+              current[sceneId].lights = {};
+              pruneEmptyLightScene(current, sceneId);
+            }
+            writeLightLSOrRemove(current);
+            clearListBtn.update();
+          };
+          if (sceneIdsWithData.length > 1) {
+            confirmClearScope({
+              onClearAllScenes: () => applyClear(sceneIdsWithData),
+              onClearThisScene: () => {
+                const sceneId = getCurrentSceneId();
+                if (sceneId) applyClear([sceneId]);
+              },
+            });
+          } else {
+            applyClear(sceneIdsWithData);
+          }
+        },
+      });
+      const container = createNewDebuggerContainer('debuggerLights', `${icon} Light Controls`, [
+        clearTabBtn,
+        clearListBtn,
+      ]);
       debuggerListCmp = CMP({
         id: DEBUGGER_LIGHTS_LIST_ID,
         html: () => createLightsDebuggerList(getECSWorld()),

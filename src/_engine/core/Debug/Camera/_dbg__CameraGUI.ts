@@ -13,7 +13,12 @@ import {
   updateDraggableWindow,
 } from '../../UI/DraggableWindow';
 import { getCurrentSceneId } from '../../Scene';
-import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
+import {
+  confirmClearScope,
+  createClearListLSButton,
+  createClearTabLSButton,
+} from '../_dbg__ClearLSButtons';
 import {
   getActiveCameraId,
   getAllCamerasAsArray,
@@ -296,6 +301,24 @@ const createCameraList = (world: ECSWorld) => {
   return html + '</ul>';
 };
 
+const isDefaultDebugCamProps = (props: CamSceneDebugState['debugCam']) =>
+  JSON.stringify(props) === JSON.stringify(DEFAULT_DEBUG_CAM_PROPS);
+
+/** Scene entries always carry both `cams` and `debugCam` together; once neither
+ * holds anything meaningful, drop the entry so `hasData` checks (which only look
+ * at key/field presence) don't report stale data forever. */
+const pruneEmptyCamScene = (data: CamDebugLSData, sceneId: string) => {
+  const scene = data[sceneId];
+  if (!scene) return;
+  const camsEmpty = !scene.cams || Object.keys(scene.cams).length === 0;
+  if (camsEmpty && isDefaultDebugCamProps(scene.debugCam)) delete data[sceneId];
+};
+
+const writeCamLSOrRemove = (data: CamDebugLSData) => {
+  if (Object.keys(data).length === 0) lsRemoveItem(LS_KEY);
+  else lsSetItem(LS_KEY, data);
+};
+
 let cameraDebuggerGUIInitiated = false;
 export const initCameraDebuggerGUI = () => {
   if (cameraDebuggerGUIInitiated) return;
@@ -306,7 +329,72 @@ export const initCameraDebuggerGUI = () => {
     title: 'Camera Controls',
     orderNr: 11,
     container: () => {
-      const container = createNewDebuggerContainer('debuggerCams', `${icon} Camera Controls`);
+      const clearTabBtn = createClearTabLSButton({
+        hasData: () => {
+          const current = lsGetItem(LS_KEY, {}) as CamDebugLSData;
+          return Object.values(current).some((s) => !isDefaultDebugCamProps(s.debugCam));
+        },
+        onClear: () => {
+          const current = lsGetItem(LS_KEY, {}) as CamDebugLSData;
+          const sceneIdsWithData = Object.keys(current).filter(
+            (id) => !isDefaultDebugCamProps(current[id].debugCam)
+          );
+          const applyClear = (sceneIds: string[]) => {
+            for (const sceneId of sceneIds) {
+              current[sceneId].debugCam = { ...DEFAULT_DEBUG_CAM_PROPS };
+              pruneEmptyCamScene(current, sceneId);
+            }
+            writeCamLSOrRemove(current);
+            clearTabBtn.update();
+          };
+          if (sceneIdsWithData.length > 1) {
+            confirmClearScope({
+              onClearAllScenes: () => applyClear(sceneIdsWithData),
+              onClearThisScene: () => {
+                const sceneId = getCurrentSceneId();
+                if (sceneId) applyClear([sceneId]);
+              },
+            });
+          } else {
+            applyClear(sceneIdsWithData);
+          }
+        },
+      });
+      const clearListBtn = createClearListLSButton({
+        hasData: () => {
+          const current = lsGetItem(LS_KEY, {}) as CamDebugLSData;
+          return Object.values(current).some((s) => s.cams && Object.keys(s.cams).length > 0);
+        },
+        onClear: () => {
+          const current = lsGetItem(LS_KEY, {}) as CamDebugLSData;
+          const sceneIdsWithData = Object.keys(current).filter(
+            (id) => current[id].cams && Object.keys(current[id].cams).length > 0
+          );
+          const applyClear = (sceneIds: string[]) => {
+            for (const sceneId of sceneIds) {
+              current[sceneId].cams = {};
+              pruneEmptyCamScene(current, sceneId);
+            }
+            writeCamLSOrRemove(current);
+            clearListBtn.update();
+          };
+          if (sceneIdsWithData.length > 1) {
+            confirmClearScope({
+              onClearAllScenes: () => applyClear(sceneIdsWithData),
+              onClearThisScene: () => {
+                const sceneId = getCurrentSceneId();
+                if (sceneId) applyClear([sceneId]);
+              },
+            });
+          } else {
+            applyClear(sceneIdsWithData);
+          }
+        },
+      });
+      const container = createNewDebuggerContainer('debuggerCams', `${icon} Camera Controls`, [
+        clearTabBtn,
+        clearListBtn,
+      ]);
       debuggerListCmp = CMP({
         id: DEBUGGER_CAMS_LIST_ID,
         html: () => createCameraList(getECSWorld()),
