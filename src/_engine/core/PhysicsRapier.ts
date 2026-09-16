@@ -2,7 +2,12 @@ import * as THREE from 'three/webgpu';
 import type Rapier from '@dimforge/rapier3d-compat';
 import { lerror, llog, lwarn } from '../utils/Logger';
 import { getCurrentSceneId, getRootScene, getScene, isCurrentScene } from './Scene';
-import { lsGetItem, lsSetItem } from '../utils/LocalAndSessionStorage';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../utils/LocalAndSessionStorage';
+import {
+  confirmClearScope,
+  createClearTabLSButton,
+  lsKeyHasData,
+} from './Debug/_dbg__ClearLSButtons';
 import { getConfig, isDebugEnvironment } from './Config';
 import { createDebuggerTab, createNewDebuggerPane } from '../debug/DebuggerGUI';
 import { getMeshByAppId } from './MeshManager';
@@ -305,6 +310,21 @@ let physicsState: PhysicsState = {
 };
 
 const LS_KEY = 'debugPhysics';
+const DEFAULT_PHYSICS_STATE: PhysicsState = {
+  enabled: false,
+  timestep: 60,
+  timestepRatio: 1 / 60,
+  backgroundBehavior: 'PAUSE',
+  isPaused: false,
+  pausedTime: 0,
+  pauseDurationTotal: 0,
+  pauseReason: null,
+  minDeltaTime: 1 / 30,
+  maxDeltaTime: 1 / 10,
+  minSubSteps: 0,
+  maxSubSteps: 60,
+  scenes: {},
+};
 const DEFAULT_SCENE_PHYS_STATE: ScenePhysicsState = {
   worldStepEnabled: true,
   visualizerEnabled: false,
@@ -1960,7 +1980,37 @@ const createDebugControls = () => {
     title: 'Physics controls',
     orderNr: 5,
     container: () => {
-      const { container, debugGUI } = createNewDebuggerPane('physics', `${icon} Physics Controls`);
+      const clearTabBtn = createClearTabLSButton({
+        hasData: () => lsKeyHasData(LS_KEY),
+        onClear: () => {
+          const current = lsGetItem(LS_KEY, physicsState) as PhysicsState;
+          const sceneIdsWithData = Object.keys(current.scenes || {});
+          const applyClear = (scenes: PhysicsState['scenes']) => {
+            if (Object.keys(scenes).length === 0) {
+              lsRemoveItem(LS_KEY);
+            } else {
+              lsSetItem(LS_KEY, { ...DEFAULT_PHYSICS_STATE, scenes });
+            }
+            clearTabBtn.update();
+          };
+          if (sceneIdsWithData.length > 1) {
+            confirmClearScope({
+              onClearAllScenes: () => applyClear({}),
+              onClearThisScene: () => {
+                const sceneId = getCurrentSceneId();
+                const keptScenes = { ...current.scenes };
+                if (sceneId) delete keptScenes[sceneId];
+                applyClear(keptScenes);
+              },
+            });
+          } else {
+            applyClear({});
+          }
+        },
+      });
+      const { container, debugGUI } = createNewDebuggerPane('physics', `${icon} Physics Controls`, [
+        clearTabBtn,
+      ]);
       physicsDebugGUI = debugGUI;
       buildPhysicsDebugGUI();
       container.add(buildPhysicsObjectsDebugList());

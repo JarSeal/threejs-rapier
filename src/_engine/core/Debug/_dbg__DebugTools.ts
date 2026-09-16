@@ -1,7 +1,7 @@
 import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
 import { getRenderer, getRendererOptions } from '../../core/Renderer';
-import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import {
   createNewDebuggerPane,
   createDebuggerTab,
@@ -26,6 +26,7 @@ import { updateOnScreenTools } from '../../debug/OnScreenTools';
 import { addToast } from '../../core/UI/Toaster';
 import { type SceneAsset } from '../../schemas/sceneSchema';
 import { DebugCameraState, DebugToolsState } from '../../debug/DebugToolsManager';
+import { confirmClearScope, createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 
 const LS_KEY = 'AEK_debugTools';
 export const DEBUG_CAMERA_ID = '_debugCamera';
@@ -39,6 +40,41 @@ const DEFAULT_DEBUG_CAM_PARAMS: DebugCameraState = {
   target: [0, 0, 0],
 };
 const getDefaultDebugCamParams = () => ({ ...DEFAULT_DEBUG_CAM_PARAMS }) as DebugCameraState;
+const DEFAULT_DEBUG_TOOLS_STATE: DebugToolsState = {
+  env: {
+    envBallFolderExpanded: false,
+    envBallVisible: false,
+    separateBallValues: false,
+    ballRoughness: 0,
+    ballDefaultRoughness: 0,
+  },
+  scenesListing: {
+    scenesFolderExpanded: false,
+    useDebugStartScene: false,
+    debugStartScene: '',
+    useDebuggerSceneLoader: false,
+  },
+  loggingActions: {
+    loggingFolderExpanded: false,
+  },
+  debugCamera: {},
+  debugCameraFolderExpanded: false,
+  helpers: {
+    helpersFolderExpanded: false,
+    showAxesHelper: false,
+    axesHelperSize: 1,
+    showGridHelper: false,
+    gridSize: 100,
+    gridDivisionsSize: 100,
+    gridColorCenterLine: 0x888888,
+    gridColorGrid: 0x444444,
+    showPolarGridHelper: false,
+    polarGridRadius: 10,
+    polarGridSectors: 16,
+    polarGridRings: 8,
+    polarGridDivisions: 16,
+  },
+};
 let scenesDropDown: ListBladeApi<BladeController<View>>;
 let sceneStarterDropDown: ListBladeApi<BladeController<View>>;
 let toolsDebugGUI: Pane | null = null;
@@ -112,9 +148,38 @@ const createDebugToolsDebugGUI = () => {
     title: 'Debug tools controls',
     orderNr: 6,
     container: () => {
+      const clearTabBtn = createClearTabLSButton({
+        hasData: () => lsKeyHasData(LS_KEY),
+        onClear: () => {
+          const current = lsGetItem(LS_KEY, debugToolsState) as DebugToolsState;
+          const sceneIdsWithDebugCamera = Object.keys(current.debugCamera || {});
+          const applyClear = (debugCamera: DebugToolsState['debugCamera']) => {
+            if (Object.keys(debugCamera).length === 0) {
+              lsRemoveItem(LS_KEY);
+            } else {
+              lsSetItem(LS_KEY, { ...DEFAULT_DEBUG_TOOLS_STATE, debugCamera });
+            }
+            clearTabBtn.update();
+          };
+          if (sceneIdsWithDebugCamera.length > 1) {
+            confirmClearScope({
+              onClearAllScenes: () => applyClear({}),
+              onClearThisScene: () => {
+                const sceneId = getCurrentSceneId();
+                const keptDebugCamera = { ...current.debugCamera };
+                if (sceneId) delete keptDebugCamera[sceneId];
+                applyClear(keptDebugCamera);
+              },
+            });
+          } else {
+            applyClear({});
+          }
+        },
+      });
       const { container, debugGUI } = createNewDebuggerPane(
         'debugTools',
-        `${icon} Debug Tools Controls`
+        `${icon} Debug Tools Controls`,
+        [clearTabBtn]
       );
       toolsDebugGUI = debugGUI;
       buildDebugToolsGUI();
