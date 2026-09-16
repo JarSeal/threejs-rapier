@@ -308,11 +308,22 @@ export const _removeDebuggerTab = (id: string) => {
   _createDebugGui(guiOpts);
 };
 
-export const _createNewDebuggerContainer = (id: string, heading?: string) => {
+export const _createNewDebuggerContainer = (
+  id: string,
+  heading?: string,
+  headerButtons?: TCMP[]
+) => {
   const container = CMP({
     id: `debuggerPane-${id}`,
   });
-  if (heading) container.add({ html: () => `<h3>${heading}</h3>`, class: 'debuggerTabHeading' });
+  if (heading) {
+    const headingRow = CMP({ class: 'debuggerTabHeadingRow' });
+    headingRow.add({ html: () => `<h3>${heading}</h3>`, class: 'debuggerTabHeading' });
+    if (headerButtons?.length) {
+      for (let i = 0; i < headerButtons.length; i++) headingRow.add(headerButtons[i]);
+    }
+    container.add(headingRow);
+  }
   container.controls.id = id;
   return container;
 };

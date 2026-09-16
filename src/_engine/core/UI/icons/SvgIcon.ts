@@ -8,6 +8,7 @@ import cloudSunIcon from './svg/cloud-sun-fill.svg?raw';
 import databaseXIcon from './svg/database-fill-x.svg?raw';
 import easelIcon from './svg/easel-fill.svg?raw';
 import ecsNodesIcon from './svg/ecs-nodes.svg?raw';
+import eraserIcon from './svg/eraser-fill.svg?raw';
 import fileAsterixIcon from './svg/file-earmark-medical-fill.svg?raw';
 import fileCodeIcon from './svg/file-earmark-code-fill.svg?raw';
 import gpuCardIcon from './svg/gpu-card.svg?raw';
@@ -39,6 +40,7 @@ const icons = {
   databaseX: databaseXIcon,
   easel: easelIcon,
   ecs: ecsNodesIcon,
+  eraser: eraserIcon,
   fileAsterix: fileAsterixIcon,
   fileCode: fileCodeIcon,
   gpuCard: gpuCardIcon,

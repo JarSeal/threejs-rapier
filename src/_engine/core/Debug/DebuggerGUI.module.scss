@@ -97,9 +97,16 @@
 }
 
 .childContainer {
-  :global(.debuggerTabHeading) {
+  :global(.debuggerTabHeadingRow) {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
     margin-top: 1rem;
     margin-bottom: 1rem;
+  }
+
+  :global(.debuggerTabHeading) {
+    margin: 0;
     font-size: 1.8rem;
 
     :global(.uiIcon) {
@@ -113,6 +120,63 @@
     :global(.debuggerHeading) {
       margin-top: 0 !important;
     }
+  }
+}
+
+:global(.debuggerClearLSButton) {
+  @include variables.nakedButton;
+  position: relative;
+  vertical-align: top;
+  overflow: hidden;
+  flex-shrink: 0;
+  border-radius: 0.4rem;
+  padding: 0.4rem;
+  background-color: transparent;
+  border: 0.1rem solid variables.$debugTextColorDark;
+  transition:
+    background-color 0.17s ease-in-out,
+    border-color 0.17s ease-in-out;
+  width: 2.2rem;
+  height: 2.2rem;
+
+  &:hover:not(:disabled) {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: variables.$debugTextColor;
+  }
+
+  svg path {
+    fill: variables.$debugTextColor;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.35;
+  }
+}
+
+:global(.debuggerClearLSDialogButtonRow) {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.6rem;
+}
+
+:global(.debuggerClearLSDialogButton) {
+  @include variables.nakedButton;
+  padding: 0.8rem 1.6rem;
+  margin: 0 0.4rem;
+  border-radius: 0.4rem;
+  background-color: variables.$debugTabButton;
+  border: 0.1rem solid variables.$debugTextColor;
+  color: variables.$debugTextColor;
+  transition: background-color 0.2s ease-in-out;
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.25);
+  }
+
+  &:global(.dangerColor) {
+    border-color: variables.$errorDark;
+    color: variables.$errorDark;
   }
 }
 

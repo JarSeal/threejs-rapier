@@ -57,8 +57,16 @@ export const removeDebuggerTab = (id: string) => {
   useDebug(debugGUI)?._removeDebuggerTab(id);
 };
 
-export const createNewDebuggerContainer = (id: string, heading?: string) => {
-  const debugContainer = useDebug(debugGUI)?._createNewDebuggerContainer(id, heading);
+export const createNewDebuggerContainer = (
+  id: string,
+  heading?: string,
+  headerButtons?: TCMP[]
+) => {
+  const debugContainer = useDebug(debugGUI)?._createNewDebuggerContainer(
+    id,
+    heading,
+    headerButtons
+  );
   if (!debugContainer) {
     const msg =
       'Failed to create a new debugger container (in createNewDebuggerContainer). It could be that the a new pane is being created in production mode.';
