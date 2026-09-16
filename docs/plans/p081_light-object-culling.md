@@ -1,5 +1,6 @@
 Status: draft | feasibility study — not-implemented
-Blocked by: /docs/plans/spatial-index.md
+Blocked by: /docs/plans/p050_spatial-index.md
+Category: Culling
 
 # Light "Object Culling" (Contribution Culling) — Feasibility Study + Plan
 

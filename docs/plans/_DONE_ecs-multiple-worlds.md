@@ -1,4 +1,5 @@
 Status: implemented (Phases 1–2 complete)
+Category: ECS
 
 # Multiple ECS Worlds — Plan
 
@@ -38,7 +39,7 @@ export const getECSWorld = () =>
   existsOrThrow(ecsWorld, 'ECS World not initialized. Could not get ECS World.');
 ```
 
-`ECSWorld` already has a `private static activeWorlds = new Set<ECSWorld>()`, populated in the constructor and consumed only by `registerPlugin`'s hot-load path (`this.activeWorlds.forEach((world) => plugin(world))`). It exists to support *future* multiple instances, but nothing keys it by id, and `getECSWorld()`/`initECSWorld()` ignore it entirely.
+`ECSWorld` already has a `private static activeWorlds = new Set<ECSWorld>()`, populated in the constructor and consumed only by `registerPlugin`'s hot-load path (`this.activeWorlds.forEach((world) => plugin(world))`). It exists to support _future_ multiple instances, but nothing keys it by id, and `getECSWorld()`/`initECSWorld()` ignore it entirely.
 
 Everything else that matters for multi-world support is **already instance-scoped**, not static — this is the load-bearing fact for this whole plan:
 
@@ -63,7 +64,7 @@ This means most of the ~73 `getECSWorld()` call sites across 34 files **do not n
 
 ### 2.3 Where `getECSWorld()` is hardcoded (and why that's fine to leave alone)
 
-A grep for *bare* `getECSWorld()` calls (no `ecsWorld ||` fallback) turns up ~25 sites, but they cluster in exactly the places that are inherently tied to **the one rendered scene**: `CameraManager.ts`, `Scene.ts`, `SceneLoader.ts`, `ImportModel.ts`, `Character.ts`, `movingPlatform.ts`, `3DSymbols.ts`, and `PhysicsRapier.ts` (`src/_engine/core/PhysicsRapier.ts:1231`).
+A grep for _bare_ `getECSWorld()` calls (no `ecsWorld ||` fallback) turns up ~25 sites, but they cluster in exactly the places that are inherently tied to **the one rendered scene**: `CameraManager.ts`, `Scene.ts`, `SceneLoader.ts`, `ImportModel.ts`, `Character.ts`, `movingPlatform.ts`, `3DSymbols.ts`, and `PhysicsRapier.ts` (`src/_engine/core/PhysicsRapier.ts:1231`).
 
 That's not an oversight — the scene/asset JSON pipeline (`registerScenesFromGeneratedData()`) only ever populates the default world, Rapier physics is a main-thread singleton hardwired to `getECSWorld()`, and the debug camera/scene loader machinery is scene-lifecycle code. None of this is in scope for a UI or standalone-simulation world per the stated use case (§6 makes this an explicit non-goal rather than a silent limitation).
 
@@ -191,7 +192,10 @@ public getEntityCount(): number {
 
 ```ts
 export const getECSWorld = (id: string = DEFAULT_ECS_WORLD_ID): ECSWorld =>
-  existsOrThrow(ECSWorld.getWorld(id), `ECS World '${id}' not initialized. Could not get ECS World.`);
+  existsOrThrow(
+    ECSWorld.getWorld(id),
+    `ECS World '${id}' not initialized. Could not get ECS World.`
+  );
 
 export const getAllECSWorlds = (): ECSWorld[] => ECSWorld.getAllWorlds();
 ```
@@ -228,7 +232,7 @@ Deleting `DEFAULT_ECS_WORLD_ID` is allowed by this helper (symmetry — no speci
 
 `registerComponentHooks` fires by `ComponentType`, not by "which plugin registered it," and hooks are cheap, generic housekeeping (e.g. `DISABLED` → hide `Object3D`, `OBJECT3D`/`PERSISTENT`/`TARGET_LINK` bookkeeping in `ECSCoreSystems.ts`). A bare UI world that never adds an `OBJECT3D` component to any entity simply never triggers the `OBJECT3D` hook — the scoping happens naturally through what component types a world's entities actually use, with no extra mechanism needed. Only **systems** (registered via `addSystem` inside a plugin's callback, which run unconditionally every frame per stage regardless of whether any matching entities exist) carry a real per-world cost, and that's exactly what `applyGlobalPlugins` gates.
 
-**Correction found during implementation:** the first cut of this plan gated *every* `registerPlugin` call site behind `applyGlobalPlugins`, including `ECSCoreSystems.ts`'s — which registers `object3DSyncSystem` (ECS `Transform` → `Object3D.position`/`quaternion`/`scale`), `lookAtSystem`, `entityLifetimeSystem`, and `physicsToTransformSystem`. A world created with `applyGlobalPlugins: false` that then adds a mesh entity via `createMeshEntity` gets a `TRANSFORM` component (always attached by `createEntity`) and a visual `Object3D`, but `setTransform()` never visibly moves it — nothing is left running in that world to copy the dirtied `Transform` into the `Object3D`. That's universal engine plumbing every world with visual entities needs, not an app/feature system a bare world should be able to skip.
+**Correction found during implementation:** the first cut of this plan gated _every_ `registerPlugin` call site behind `applyGlobalPlugins`, including `ECSCoreSystems.ts`'s — which registers `object3DSyncSystem` (ECS `Transform` → `Object3D.position`/`quaternion`/`scale`), `lookAtSystem`, `entityLifetimeSystem`, and `physicsToTransformSystem`. A world created with `applyGlobalPlugins: false` that then adds a mesh entity via `createMeshEntity` gets a `TRANSFORM` component (always attached by `createEntity`) and a visual `Object3D`, but `setTransform()` never visibly moves it — nothing is left running in that world to copy the dirtied `Transform` into the `Object3D`. That's universal engine plumbing every world with visual entities needs, not an app/feature system a bare world should be able to skip.
 
 Fixed by splitting the plugin registry in two:
 
@@ -246,7 +250,7 @@ The constructor runs `corePlugins` unconditionally (before the gated `plugins`, 
 
 ### 4.7 `MainLoop.ts`: auto-driving every registered world
 
-`src/_engine/core/MainLoop.ts` currently caches one module-level `ecsWorld: ECSWorld`, set once in `initMainLoop()`, and calls `ecsWorld.updateMainLoop(delta)` etc. directly in both `mainLoopForDebug` and `mainLoopForProduction`. Per decision §3.2, this becomes a live iteration each frame instead of a cached single reference — which also means a world created *after* `initMainLoop()` runs (e.g. a UI world spun up when a menu opens) is automatically picked up on the very next frame, with no extra wiring:
+`src/_engine/core/MainLoop.ts` currently caches one module-level `ecsWorld: ECSWorld`, set once in `initMainLoop()`, and calls `ecsWorld.updateMainLoop(delta)` etc. directly in both `mainLoopForDebug` and `mainLoopForProduction`. Per decision §3.2, this becomes a live iteration each frame instead of a cached single reference — which also means a world created _after_ `initMainLoop()` runs (e.g. a UI world spun up when a menu opens) is automatically picked up on the very next frame, with no extra wiring:
 
 ```ts
 // mainLoopForDebug / mainLoopForProduction, replacing each
@@ -296,13 +300,13 @@ getAllECSWorlds().forEach((world) => {
     sub.addButton({ title: 'Delete world' }).on('click', () => {
       deleteECSWorld(world.id);
       debugGUI.refresh(); // folder list itself needs the tab reopened, same
-                           // caveat as every other structural change in this pane
+      // caveat as every other structural change in this pane
     });
   }
 });
 ```
 
-Same caveat as the existing "reloads the app" storage-mode control: Tweakpane folders here are built once when the tab's `container()` runs, so a world created *while the tab is already open* won't appear until the tab is reopened. That's an existing limitation of this debug pane's pattern (see the "Component Storage (reloads the app)" folder title already acknowledging similar staleness), not a new one introduced by this plan — not worth solving here.
+Same caveat as the existing "reloads the app" storage-mode control: Tweakpane folders here are built once when the tab's `container()` runs, so a world created _while the tab is already open_ won't appear until the tab is reopened. That's an existing limitation of this debug pane's pattern (see the "Component Storage (reloads the app)" folder title already acknowledging similar staleness), not a new one introduced by this plan — not worth solving here.
 
 `storageMode` needs to go from `private readonly` to `public readonly` (or get a small getter) for the debug pane to read it; trivial, called out in §7.
 
@@ -310,7 +314,7 @@ Same caveat as the existing "reloads the app" storage-mode control: Tweakpane fo
 
 - **Live list, not static folders.** `ECSWorld` gained a world-registry-change notification: `ECSWorld.onWorldRegistryChange(listener)` / a private `notifyWorldRegistryChange()` called at the end of the constructor and inside `deleteWorld()`, exposed as `onECSWorldRegistryChange(listener)`. This is the world-lifecycle equivalent of `registerComponentHooks` — lights refresh their debug list via a `TAG_IS_LIGHT` `onAddComponent` hook; worlds aren't components, so they needed their own listener mechanism. `_dbg__ECS.ts` registers one listener, once (not per tab-open), that calls `debuggerListCmp?.update()` — a `CMP` whose `html` re-renders from `getAllECSWorlds()` — so the list now reflects a world created or deleted from anywhere in the app on the next render, no tab reopen required.
 - **Click opens a `DraggableWindow`**, exactly like `EDIT_LIGHT_WIN_ID`/`createEditLightContent`: `EDIT_ECS_WORLD_WIN_ID` + `createEditECSWorldContent(data: { id })`, registered via `registerDraggableWindowContentFn`. Looks up the world by id via `ECSWorld.getWorld(id)` (not the throwing `getECSWorld`) so a world deleted while its window is still open renders "ECS World no longer exists" instead of throwing.
-- **"Component Storage" moved into that window**, now genuinely per-world instead of one global control that only ever affected the default world. This exposed a real gap: `maxEntities`/`storageMode` are `readonly` on a live `ECSWorld` — there's no way to change a running world's storage backend, only to influence what a *future* construction of a world with the same `id` uses. So the LS-override mechanism (`ECSComponentStorage.ts`'s `ECS_LS_KEY`) was generalized from one flat `{storageMode, maxEntities}` object (implicitly default-world-only) to `Record<worldId, ECSStorageLSOverride>`, via new `getECSStorageLSOverride(worldId)`/`setECSStorageLSOverride(worldId, override)` helpers. The `ECSWorld` constructor now checks this (`IS_DEBUG_ENV` only) for **any field the caller's own `opts` left `undefined`** — never overriding an explicit value — so a secondary world whose creator doesn't hardcode `storageMode`/`maxEntities` (e.g. `new ECSWorld({ id: 'ui' })`) picks up its own saved debug override automatically next time that `id` is constructed, the same way the default world already did via `initECSWorld()`'s pre-existing Config+LS-override merge (left untouched, still resolved *before* the constructor runs, so the constructor's own gap-filling never fires for the default world — no behavior change there).
+- **"Component Storage" moved into that window**, now genuinely per-world instead of one global control that only ever affected the default world. This exposed a real gap: `maxEntities`/`storageMode` are `readonly` on a live `ECSWorld` — there's no way to change a running world's storage backend, only to influence what a _future_ construction of a world with the same `id` uses. So the LS-override mechanism (`ECSComponentStorage.ts`'s `ECS_LS_KEY`) was generalized from one flat `{storageMode, maxEntities}` object (implicitly default-world-only) to `Record<worldId, ECSStorageLSOverride>`, via new `getECSStorageLSOverride(worldId)`/`setECSStorageLSOverride(worldId, override)` helpers. The `ECSWorld` constructor now checks this (`IS_DEBUG_ENV` only) for **any field the caller's own `opts` left `undefined`** — never overriding an explicit value — so a secondary world whose creator doesn't hardcode `storageMode`/`maxEntities` (e.g. `new ECSWorld({ id: 'ui' })`) picks up its own saved debug override automatically next time that `id` is constructed, the same way the default world already did via `initECSWorld()`'s pre-existing Config+LS-override merge (left untouched, still resolved _before_ the constructor runs, so the constructor's own gap-filling never fires for the default world — no behavior change there).
 - **Delete-world button moved into the window** (still hidden for the default world), instead of living on the collapsed list-folder itself.
 - **The reported `maxEntities` bug is fixed** by deleting the `.disabled = storageMode === 'TYPED_ARRAY'` line entirely rather than inverting it: it now applies to both storage modes unconditionally, since §5.3 already made `maxEntities` a real enforced cap in `MAP` mode too — there's no longer a mode where it's inert.
 
@@ -319,7 +323,7 @@ The "Stress Test Benchmark" folder stays as it was: tab-level, default-world-onl
 **Follow-up — entity counts weren't live either.** The list and edit window read `world.getEntityCount()` at render time but had no way to know when it changed: `registerComponentHooks` doesn't cover it (fires per component type; `createRawEntity` attaches none, so a world's raw entities would be invisible to it), so a fourth notification mechanism was added alongside `onWorldRegistryChange`/`registerPlugin`/`registerComponentHooks`: `ECSWorld.onEntityCountChange(listener: (world: ECSWorld) => void)` (module export `onECSEntityCountChange`), fired from `createRawEntity`, `createEntity`, and `deleteEntity` (only on the actual-delete path, after the existing `isAlive` early-return). Unlike world creation/deletion, entity churn can be very high-frequency (`ECSStressTest.ts` spawns up to 20,000/click), so the debug tab's consumer side had to be careful, not the notification itself:
 
 - The list refresh is coalesced to at most once per animation frame (`scheduleListRefresh`, a dirty-flag + single `requestAnimationFrame` callback) rather than rebuilding the whole list's HTML synchronously per entity.
-- The open edit window's count is kept live via a cheap `pane.refresh()` on just that one binding (tracked in a module-level `openWorldEditRefresh { worldId, refresh }`, set in `createEditECSWorldContent` and cleared on window teardown) — deliberately *not* routed through `updateDraggableWindow`, which disposes and rebuilds the entire Tweakpane pane and would be the expensive path at stress-test frequency.
+- The open edit window's count is kept live via a cheap `pane.refresh()` on just that one binding (tracked in a module-level `openWorldEditRefresh { worldId, refresh }`, set in `createEditECSWorldContent` and cleared on window teardown) — deliberately _not_ routed through `updateDraggableWindow`, which disposes and rebuilds the entire Tweakpane pane and would be the expensive path at stress-test frequency.
 
 World creation/deletion stayed on `updateECSWorldsDebuggerGUI`'s original synchronous path (rare enough not to need coalescing); only the new entity-count listener goes through the throttled one.
 
@@ -346,22 +350,22 @@ Net: **N worlds ≈ N × 4 MiB fixed overhead**, dominated almost entirely by `g
 
 The two chosen defaults compound: every world (including a near-empty UI world) runs every globally-registered system, every frame, because plugins apply by default and `MainLoop.ts` drives every world unconditionally.
 
-Concretely, per extra world with `applyGlobalPlugins: true` (the default), each frame adds one call per registered system across `MAIN`/`APP_PRE_PHYSICS`/`APP_POST_PHYSICS`/`APP_LOGIC`/`APP_RENDER_SYNC`/`LATE_MAIN` — today that's `ECSCoreSystems.ts` (object3D sync, look-at, etc.), `LightFrustumCullingSystem.ts`, and whatever `AppECSPlugins.ts` registers (hover/follow tool effects). Each of those iterates a `getStorage(type)` `Map` that's empty for a world with no matching entities, so the *work* is effectively O(0) — but the **call** still happens: roughly half a dozen no-op function calls per extra world per frame. At the scale implied by "a UI world and maybe some simulation worlds" (2–4 total worlds), this is on the order of tens of extra no-op calls per frame — not measurable against a 60 FPS budget, and not worth pre-optimizing.
+Concretely, per extra world with `applyGlobalPlugins: true` (the default), each frame adds one call per registered system across `MAIN`/`APP_PRE_PHYSICS`/`APP_POST_PHYSICS`/`APP_LOGIC`/`APP_RENDER_SYNC`/`LATE_MAIN` — today that's `ECSCoreSystems.ts` (object3D sync, look-at, etc.), `LightFrustumCullingSystem.ts`, and whatever `AppECSPlugins.ts` registers (hover/follow tool effects). Each of those iterates a `getStorage(type)` `Map` that's empty for a world with no matching entities, so the _work_ is effectively O(0) — but the **call** still happens: roughly half a dozen no-op function calls per extra world per frame. At the scale implied by "a UI world and maybe some simulation worlds" (2–4 total worlds), this is on the order of tens of extra no-op calls per frame — not measurable against a 60 FPS budget, and not worth pre-optimizing.
 
-Where it *would* start to matter is if a system does non-entity-proportional work unconditionally before checking storage — e.g. `LightFrustumCullingSystem.ts` calls `getMainCamera()` and rebuilds a `THREE.Frustum` from the projection matrix before iterating lights. For a UI/simulation world with no lights, that's small fixed math done for no reason, repeated once per such world per frame. Worth a quick audit when implementing (or just set `applyGlobalPlugins: false` on any world that has no use for mesh/light/camera-adjacent systems, per the opt-out flag in §4.1) rather than auditing every system's early-exit behavior up front.
+Where it _would_ start to matter is if a system does non-entity-proportional work unconditionally before checking storage — e.g. `LightFrustumCullingSystem.ts` calls `getMainCamera()` and rebuilds a `THREE.Frustum` from the projection matrix before iterating lights. For a UI/simulation world with no lights, that's small fixed math done for no reason, repeated once per such world per frame. Worth a quick audit when implementing (or just set `applyGlobalPlugins: false` on any world that has no use for mesh/light/camera-adjacent systems, per the opt-out flag in §4.1) rather than auditing every system's early-exit behavior up front.
 
 ### 5.3 `generations` sized from `maxEntities` — implemented in Phase 2
 
-The real fix for §5.1 — `new Uint32Array(Math.min(maxEntities, 1_048_576))` — changes semantics, not just allocation size: `maxEntities` was **unenforced** in `MAP` storage mode (`_getNewEntityId()` never checked `nextEntityId` against it), so shrinking `generations` to `maxEntities` newly makes `maxEntities` a hard cap in `MAP` mode too. That's a real behavior change for the *existing* default world (`maxEntities` defaults to 100,000 in `Config.ts`), not just new secondary worlds — implemented as follows (§8 Phase 2):
+The real fix for §5.1 — `new Uint32Array(Math.min(maxEntities, 1_048_576))` — changes semantics, not just allocation size: `maxEntities` was **unenforced** in `MAP` storage mode (`_getNewEntityId()` never checked `nextEntityId` against it), so shrinking `generations` to `maxEntities` newly makes `maxEntities` a hard cap in `MAP` mode too. That's a real behavior change for the _existing_ default world (`maxEntities` defaults to 100,000 in `Config.ts`), not just new secondary worlds — implemented as follows (§8 Phase 2):
 
 - `generations`'s field initializer (`= new Uint32Array(1048576)`) moved out of the field declaration and into the constructor body, allocated as `new Uint32Array(Math.min(this.maxEntities, this.INDEX_MASK + 1))` right after `this.maxEntities` is assigned — it has to run after, since the field-initializer position runs before the constructor body's own assignments.
-- `_getNewEntityId()` now throws (`ECS World '<id>' has reached its maxEntities cap (<n>). Increase maxEntities or free existing entities before creating more.`) when a *fresh* index (not a recycled one from `freeIds`) would exceed `maxEntities` — recycled indices are always in-bounds since they were validly allocated before, so only the fresh-allocation path needs the check.
+- `_getNewEntityId()` now throws (`ECS World '<id>' has reached its maxEntities cap (<n>). Increase maxEntities or free existing entities before creating more.`) when a _fresh_ index (not a recycled one from `freeIds`) would exceed `maxEntities` — recycled indices are always in-bounds since they were validly allocated before, so only the fresh-allocation path needs the check.
 - **Overflow behavior: throw, not grow.** Matches the existing precedent one component-storage layer over — `TypedArrayTransformStore` already throws (`TransformStore capacity (<n>) exceeded — raise CONFIG.ecs.maxEntities`) when its own fixed-size `Float32Array`s fill up. Growing would mean reallocating and copying `generations` (and, if ever extended, live component data) mid-session, a much larger and riskier change than this plan's scope justifies; throwing surfaces the problem immediately instead of letting `Uint32Array` silently no-op out-of-bounds writes (which would corrupt `isAlive()` for that slot rather than fail loudly).
 - **This is live for the default world now**, not just new secondary worlds: it previously had silent headroom up to ~1,048,576 entities regardless of its configured `maxEntities: 100_000`; it's now capped at 100,000 for real. The ECS debug tab's stress-test batch spawner (up to 20,000 per click, `_dbg__ECS.ts`) can reach that cap with a few repeated clicks where it couldn't meaningfully before — worth knowing if stress-testing at that pane.
 
 ### 5.4 Bottom line
 
-Creating and destroying a *handful* of worlds (UI, a couple of simulation worlds) has negligible per-frame cost and a fixed ~4 MiB/world memory cost that's wasteful-but-affordable at that scale. It would **not** scale well to, say, dozens of short-lived worlds spun up/torn down repeatedly (e.g. one per some frequently-instantiated sub-scene) — that pattern should either reuse a pooled world or wait for §5.3's follow-up. Nothing here needs to block Phase 1.
+Creating and destroying a _handful_ of worlds (UI, a couple of simulation worlds) has negligible per-frame cost and a fixed ~4 MiB/world memory cost that's wasteful-but-affordable at that scale. It would **not** scale well to, say, dozens of short-lived worlds spun up/torn down repeatedly (e.g. one per some frequently-instantiated sub-scene) — that pattern should either reuse a pooled world or wait for §5.3's follow-up. Nothing here needs to block Phase 1.
 
 ---
 
@@ -389,12 +393,14 @@ Everything else (`ECSHelpers.ts`, `CameraManager.ts`, `GroupManager.ts`, `MeshMa
 ## 8. Phased rollout
 
 ### Phase 1 — Core multi-world support
+
 - §4.1–§4.6: registry, constructor options, duplicate-id guard, lookup/enumeration, `deleteECSWorld`.
 - §4.7: `MainLoop.ts` auto-drive.
 - §4.8: debug GUI worlds panel.
 - Manual test: create a second world (`new ECSWorld({ id: 'ui', applyGlobalPlugins: false })`), add/remove entities in it independently of the default world, confirm it appears/updates in the ECS debug tab, confirm `deleteECSWorld('ui')` fires disposal hooks and the world disappears from the tab on reopen, confirm a duplicate `new ECSWorld({ id: 'ui' })` (or a second `new ECSWorld()` with no id) throws.
 
 ### Phase 2 — `maxEntities` as a real cap — done
+
 - §5.3: `generations` sized from `maxEntities` (capped at the 20-bit index space); `_getNewEntityId()` throws on overflow instead of silently reusing the old ~1M-slot headroom. Documented as a live behavior change for the default world, not just new worlds — see §5.3's last bullet.
 
 ---
@@ -409,4 +415,4 @@ Everything else (`ECSHelpers.ts`, `CameraManager.ts`, `GroupManager.ts`, `MeshMa
 
 ## 10. Recommendation
 
-Both phases are implemented. Phase 1 turned out to be a small, well-contained change precisely because the codebase's existing optional-`ecsWorld`-param convention (§2.2) already did most of the plumbing work needed for multi-world support — it mainly closed the gap between "any function *can* target an explicit world" and "explicit worlds can actually be created, identified, listed, and torn down." One real gap surfaced only through actual usage and was fixed during implementation: `ECSCoreSystems.ts`'s visual/physics sync systems were initially gated by `applyGlobalPlugins` like any other plugin, silently breaking transform updates for any bare (`applyGlobalPlugins: false`) world with visual entities — fixed by splitting `registerPlugin` into always-on `registerCorePlugin` (§4.6) vs. opt-out-able `registerPlugin`. Phase 2 (§5.3) followed immediately after rather than waiting for observed memory pressure, since it was a small, self-contained change once Phase 1's registry existed.
+Both phases are implemented. Phase 1 turned out to be a small, well-contained change precisely because the codebase's existing optional-`ecsWorld`-param convention (§2.2) already did most of the plumbing work needed for multi-world support — it mainly closed the gap between "any function _can_ target an explicit world" and "explicit worlds can actually be created, identified, listed, and torn down." One real gap surfaced only through actual usage and was fixed during implementation: `ECSCoreSystems.ts`'s visual/physics sync systems were initially gated by `applyGlobalPlugins` like any other plugin, silently breaking transform updates for any bare (`applyGlobalPlugins: false`) world with visual entities — fixed by splitting `registerPlugin` into always-on `registerCorePlugin` (§4.6) vs. opt-out-able `registerPlugin`. Phase 2 (§5.3) followed immediately after rather than waiting for observed memory pressure, since it was a small, self-contained change once Phase 1's registry existed.

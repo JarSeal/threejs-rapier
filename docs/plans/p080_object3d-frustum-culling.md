@@ -1,4 +1,5 @@
 Status: draft | feasibility study — not-implemented
+Category: Culling
 
 # Generic Object3D Frustum Culling (ECS-Visible) — Feasibility Study + Plan
 

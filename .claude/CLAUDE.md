@@ -31,6 +31,20 @@ In the browser, append query params to toggle modes: `?isDebug=true` (full debug
 
 This boundary is convention only — nothing in `eslint.config.js` enforces import restrictions between the folders (the one exception is a manual comment, not a lint rule: `core/ECS/ECSRegistry.ts` says "NO OTHER LOCAL IMPORTS ALLOWED HERE").
 
+### Plans logic and structure
+
+- Agentic coding plans are located in `docs/plans/`.
+- The naming of the files has a special pattern: [priority number eg. "p520" or "_DONE"]\_[name-of-the-feature].md (eg. "p020_some-feature.md").
+- The lower the priority number the higher the priority.
+- Plans that have been implement (filename starts with "\_DONE\_") are kept if they provide useful information for another feature and when the whole larger concept/epic that consists of those plans is done those plans are removed.
+- Plan header has some required and optional information lines:
+  - Status (required): describes a status of the plan. This is usually something like "draft | not-implemented", "draft | feasibility study — not-implemented", or "implemented".
+  - "Category" (optional): a general category that this particular plan falls into, usually one or two words like "ECS", "Assets", or "Physics".
+  - "Blocked by" (optional): describes a plan file name that blocks this plan from implementation.
+  - "Blocks" (optional): describes a plan file name that this plan is blocking the implementation.
+  - "Epic" (optional): link to the epic (usually a Trello ticket).
+- Bigger plans should have non-breaking phases described so that the changes can be reviewed and committed in smaller chunks.
+
 ### ECS core
 
 `src/_engine/core/ECS.ts` defines `ECSWorld`, a bitwise-packed (index + generation) entity/component store. Key patterns:

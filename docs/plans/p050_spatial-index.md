@@ -1,4 +1,5 @@
 Status: draft | research — not-implemented
+Blocks: /docs/plans/p081_light-object-culling.md
 
 # Spatial Index (Sparse Grid) — Research & Recommendation
 

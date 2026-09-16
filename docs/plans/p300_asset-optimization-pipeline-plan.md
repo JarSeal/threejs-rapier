@@ -1,4 +1,5 @@
 Status: draft | not-implemented
+Category: Assets
 
 # glTF Asset Optimization Pipeline — Plan
 

@@ -1,4 +1,5 @@
 Status: implemented (Phases 1–4 complete)
+Category: Culling
 
 # Point/Spot Light Frustum Culling — Plan
 
