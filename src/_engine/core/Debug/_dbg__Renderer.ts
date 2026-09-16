@@ -26,6 +26,7 @@ export const _createRendererDebugGUI = async (
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),
         onClear: () => lsRemoveItem(LS_KEY),
+        watchKey: LS_KEY,
       });
       const { container, debugGUI } = createNewDebuggerPane(
         'renderer',

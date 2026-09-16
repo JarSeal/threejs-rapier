@@ -202,6 +202,7 @@ export const _initECSDebugGUI = () => {
       });
       const clearListBtn = createClearListLSButton({
         hasData: () => lsKeyHasData(ECS_LS_KEY),
+        watchKey: ECS_LS_KEY,
         // Keyed by world id, not scene id - no scope ambiguity, so no confirm dialog.
         onClear: () => lsRemoveItem(ECS_LS_KEY),
       });

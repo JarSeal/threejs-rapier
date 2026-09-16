@@ -169,6 +169,7 @@ const createDebugControls = () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),
         onClear: () => lsRemoveItem(LS_KEY),
+        watchKey: LS_KEY,
       });
       const { container, debugGUI } = createNewDebuggerPane(
         'rayCast',

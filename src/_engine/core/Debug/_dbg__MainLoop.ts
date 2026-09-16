@@ -27,6 +27,7 @@ export const createLoopDebugControls = (loopState: LoopState) => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),
         onClear: () => lsRemoveItem(LS_KEY),
+        watchKey: LS_KEY,
       });
       const { container, debugGUI } = createNewDebuggerPane('loop', `${icon} Loop Controls`, [
         clearTabBtn,

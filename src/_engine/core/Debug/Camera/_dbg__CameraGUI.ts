@@ -334,6 +334,7 @@ export const initCameraDebuggerGUI = () => {
           const current = lsGetItem(LS_KEY, {}) as CamDebugLSData;
           return Object.values(current).some((s) => !isDefaultDebugCamProps(s.debugCam));
         },
+        watchKey: LS_KEY,
         onClear: () => {
           const current = lsGetItem(LS_KEY, {}) as CamDebugLSData;
           const sceneIdsWithData = Object.keys(current).filter(
@@ -345,7 +346,6 @@ export const initCameraDebuggerGUI = () => {
               pruneEmptyCamScene(current, sceneId);
             }
             writeCamLSOrRemove(current);
-            clearTabBtn.update();
           };
           if (sceneIdsWithData.length > 1) {
             confirmClearScope({
@@ -365,6 +365,7 @@ export const initCameraDebuggerGUI = () => {
           const current = lsGetItem(LS_KEY, {}) as CamDebugLSData;
           return Object.values(current).some((s) => s.cams && Object.keys(s.cams).length > 0);
         },
+        watchKey: LS_KEY,
         onClear: () => {
           const current = lsGetItem(LS_KEY, {}) as CamDebugLSData;
           const sceneIdsWithData = Object.keys(current).filter(
@@ -376,7 +377,6 @@ export const initCameraDebuggerGUI = () => {
               pruneEmptyCamScene(current, sceneId);
             }
             writeCamLSOrRemove(current);
-            clearListBtn.update();
           };
           if (sceneIdsWithData.length > 1) {
             confirmClearScope({

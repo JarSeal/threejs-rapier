@@ -614,6 +614,7 @@ export const initLightDebuggerGUI = () => {
           const current = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
           return Object.values(current).some((s) => s.globalHelpersVisible);
         },
+        watchKey: LS_LIGHTS_KEY,
         onClear: () => {
           const current = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
           const sceneIdsWithData = Object.keys(current).filter(
@@ -625,7 +626,6 @@ export const initLightDebuggerGUI = () => {
               pruneEmptyLightScene(current, sceneId);
             }
             writeLightLSOrRemove(current);
-            clearTabBtn.update();
           };
           if (sceneIdsWithData.length > 1) {
             confirmClearScope({
@@ -645,6 +645,7 @@ export const initLightDebuggerGUI = () => {
           const current = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
           return Object.values(current).some((s) => s.lights && Object.keys(s.lights).length > 0);
         },
+        watchKey: LS_LIGHTS_KEY,
         onClear: () => {
           const current = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
           const sceneIdsWithData = Object.keys(current).filter(
@@ -656,7 +657,6 @@ export const initLightDebuggerGUI = () => {
               pruneEmptyLightScene(current, sceneId);
             }
             writeLightLSOrRemove(current);
-            clearListBtn.update();
           };
           if (sceneIdsWithData.length > 1) {
             confirmClearScope({

@@ -9,6 +9,25 @@ export type StorageValue =
 let lsAvailable: null | boolean = null;
 let ssAvailable: null | boolean = null;
 
+type LSKeyListener = () => void;
+const lsKeyListeners: { [key: string]: Set<LSKeyListener> } = {};
+
+/**
+ * Subscribes to writes/removals of a specific LocalStorage key made through
+ * `lsSetItem`/`lsRemoveItem` (writes made directly via `localStorage.setItem`
+ * are not observed). Returns an unsubscribe function.
+ */
+export const lsSubscribe = (key: string, listener: LSKeyListener): (() => void) => {
+  if (!lsKeyListeners[key]) lsKeyListeners[key] = new Set();
+  lsKeyListeners[key].add(listener);
+  return () => lsKeyListeners[key]?.delete(listener);
+};
+
+const notifyLSKeyListeners = (key: string) => {
+  if (!lsKeyListeners[key]) return;
+  for (const listener of lsKeyListeners[key]) listener();
+};
+
 const checkStorage = (type: 'local' | 'session' = 'local') => {
   if (type === 'local') {
     if (lsAvailable !== null) return;
@@ -77,6 +96,7 @@ export const lsSetItem = (key: string, value: StorageValue) => {
     value = JSON.stringify(value);
   }
   localStorage.setItem(key, String(value));
+  notifyLSKeyListeners(key);
 };
 
 /**
@@ -87,6 +107,7 @@ export const lsRemoveItem = (key: string) => {
   checkStorage('local');
   if (!lsAvailable) return;
   localStorage.removeItem(key);
+  notifyLSKeyListeners(key);
 };
 
 /**

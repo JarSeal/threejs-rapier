@@ -54,6 +54,7 @@ const buildSkyBoxDebugGUI = (
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY_UI),
+        watchKey: LS_KEY_UI,
         onClear: () => lsRemoveItem(LS_KEY_UI),
       });
       const clearListBtn = createClearListLSButton({
@@ -63,6 +64,7 @@ const buildSkyBoxDebugGUI = (
           };
           return Object.values(current).some((scene) => Object.keys(scene || {}).length > 0);
         },
+        watchKey: LS_KEY_ALL_STATES,
         onClear: () => {
           const current = lsGetItem(LS_KEY_ALL_STATES, {}) as {
             [sceneId: string]: { [id: string]: SkyBoxState };
@@ -74,7 +76,6 @@ const buildSkyBoxDebugGUI = (
             for (const sceneId of sceneIds) delete current[sceneId];
             if (Object.keys(current).length === 0) lsRemoveItem(LS_KEY_ALL_STATES);
             else lsSetItem(LS_KEY_ALL_STATES, current);
-            clearListBtn.update();
           };
           if (sceneIdsWithData.length > 1) {
             confirmClearScope({

@@ -150,6 +150,7 @@ const createDebugToolsDebugGUI = () => {
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),
+        watchKey: LS_KEY,
         onClear: () => {
           const current = lsGetItem(LS_KEY, debugToolsState) as DebugToolsState;
           const sceneIdsWithDebugCamera = Object.keys(current.debugCamera || {});
@@ -159,7 +160,6 @@ const createDebugToolsDebugGUI = () => {
             } else {
               lsSetItem(LS_KEY, { ...DEFAULT_DEBUG_TOOLS_STATE, debugCamera });
             }
-            clearTabBtn.update();
           };
           if (sceneIdsWithDebugCamera.length > 1) {
             confirmClearScope({

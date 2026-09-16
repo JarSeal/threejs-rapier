@@ -1982,6 +1982,7 @@ const createDebugControls = () => {
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),
+        watchKey: LS_KEY,
         onClear: () => {
           const current = lsGetItem(LS_KEY, physicsState) as PhysicsState;
           const sceneIdsWithData = Object.keys(current.scenes || {});
@@ -1991,7 +1992,6 @@ const createDebugControls = () => {
             } else {
               lsSetItem(LS_KEY, { ...DEFAULT_PHYSICS_STATE, scenes });
             }
-            clearTabBtn.update();
           };
           if (sceneIdsWithData.length > 1) {
             confirmClearScope({
