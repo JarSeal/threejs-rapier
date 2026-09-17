@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "DIRECTIONAL",
+    "color": "#fff2d9",
+    "intensity": 3,
+    "position": { "x": 30, "y": 40, "z": 20 },
+    "targetPos": { "x": 0, "y": 0, "z": 0 },
+    "castShadow": true,
+    "shadowPreset": "HIGH",
+    "shadowCameraNearFar": [1, 100],
+    "shadowCameraFrustum": [-25, 25, 25, -25],
+    "shadowIntensity": 0.8
+  },
+  "entityOpts": {
+    "appId": "largeWorldSun",
+    "debugData": {
+      "name": "Large world sun",
+      "description": "Directional shadow-casting sun. Its shadow frustum is intentionally scoped to a bounded play area around the origin, not the whole terrain — sizing it to the full terrain would blur shadow resolution everywhere instead (docs/plans/p090_large-ecs-test-world-scene.md §1.4)."
+    }
+  }
+}

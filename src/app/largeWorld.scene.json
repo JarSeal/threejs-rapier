@@ -1,0 +1,10 @@
+{
+  "$schema": "../../.schemas/scene.schema.json",
+  "id": "largeWorld",
+  "sceneFile": "./largeWorld.ts",
+  "name": "Large ECS test world",
+  "description": "Stress/soak test scene for large-world patterns (docs/plans/p090_large-ecs-test-world-scene.md). Phase 4: terrain + static overview camera + sun, no dynamics yet.",
+  "cameras": ["largeWorldOverview"],
+  "lights": ["largeWorldAmbient", "largeWorldSun"],
+  "skyboxes": ["basicSkybox"]
+}

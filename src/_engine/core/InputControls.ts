@@ -380,7 +380,7 @@ export const createKeyInputControl = ({
       idFound = Boolean(
         id &&
           (keyLoopActionMappings.find((mapping) => mapping.id === id) ||
-            (sceneId && keyLoopActionSceneMappings[sceneId].find((mapping) => mapping.id === id)))
+            (sceneId && keyLoopActionSceneMappings[sceneId]?.find((mapping) => mapping.id === id)))
       );
       if (idFound) return;
       initKeyUpControls();
@@ -420,7 +420,7 @@ export const createKeyInputControl = ({
       idFound = Boolean(
         id &&
           (keyDownMappings.find((mapping) => mapping.id === id) ||
-            (sceneId && keyDownSceneMappings[sceneId].find((mapping) => mapping.id === id)))
+            (sceneId && keyDownSceneMappings[sceneId]?.find((mapping) => mapping.id === id)))
       );
       if (idFound) return;
       initKeyDownControls();
@@ -454,7 +454,7 @@ export const createKeyInputControl = ({
       idFound = Boolean(
         id &&
           (keyUpMappings.find((mapping) => mapping.id === id) ||
-            (sceneId && keyUpSceneMappings[sceneId].find((mapping) => mapping.id === id)))
+            (sceneId && keyUpSceneMappings[sceneId]?.find((mapping) => mapping.id === id)))
       );
       if (idFound) return;
       initKeyUpControls();

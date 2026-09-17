@@ -22,7 +22,7 @@ import { DEBUGGER_SCENE_LOADER_ID, disableDebugger } from '../debug/DebuggerGUI'
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
 import { getDebugToolsState } from '../debug/DebugToolsManager';
-import { IS_DEBUG_ENV, isDebugEnvironment } from './Config';
+import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, isDebugEnvironment } from './Config';
 import { applySkyBoxForScene, clearSkyBox } from './SkyBox';
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
@@ -352,9 +352,14 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   let targetLoaderId = loadSceneProps.loaderId;
   let overrideNextSceneFn = loadSceneProps.nextSceneFn;
 
-  // Process Debug Start Scene Interception (First boot only)
+  // Process Debug Start Scene Interception (First boot only) — also respected under
+  // isProdTest (IS_PROD_TEST_MODE), not just real debug mode, so a "production build with a
+  // subset of debug features" run still honors a start-scene override left set in the debug
+  // tools tab (getDebugToolsState/registerDebugToolsModule are prod-test-aware for this).
   const debugToolsState =
-    isDebugEnvironment() && !firstSceneLoaded ? getDebugToolsState(true) : null;
+    (isDebugEnvironment() || IS_PROD_TEST_MODE) && !firstSceneLoaded
+      ? getDebugToolsState(true)
+      : null;
 
   if (
     debugToolsState?.scenesListing.useDebugStartScene &&
@@ -367,7 +372,10 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
     overrideNextSceneFn = undefined;
 
     // Resolve your loader @TODO: Override with the explicit debugger loader
-    if (debugToolsState.scenesListing.useDebuggerSceneLoader) {
+    // The debugger's own scene-loader UI is IS_DEBUG_ENV-only (never registered under
+    // isProdTest) — only honor this sub-option in real debug mode, or targetLoaderId would
+    // point at a loader that was never created.
+    if (isDebugEnvironment() && debugToolsState.scenesListing.useDebuggerSceneLoader) {
       targetLoaderId = DEBUGGER_SCENE_LOADER_ID;
     }
   }

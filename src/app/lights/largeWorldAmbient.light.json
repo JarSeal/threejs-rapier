@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "AMBIENT",
+    "color": "#dfe8ff",
+    "intensity": 0.3
+  },
+  "entityOpts": {
+    "appId": "largeWorldAmbient",
+    "debugData": {
+      "name": "Large world ambient fill",
+      "description": "Low-intensity baseline fill so shadowed terrain/foliage isn't pure black — the sun (largeWorldSun) is the dominant light."
+    }
+  }
+}

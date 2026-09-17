@@ -70,7 +70,6 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     await InitRapierPhysics();
 
     if (IS_DEBUG_ENV) {
-      await registerDebugToolsModule();
       await registerStatsModule();
       await registerSkyBoxDebugGUI();
       await registerRaycastDebugGUI();
@@ -80,6 +79,11 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerSpatialIndexDebugGUI();
     }
     if (IS_DEBUG_ENV || IS_PROD_TEST_MODE) {
+      // Loaded here (not the IS_DEBUG_ENV-only block above) so isProdTest mode can still read
+      // the persisted "debug start scene" setting via getDebugToolsState() in SceneLoader.ts —
+      // registerDebugToolsModule()/getDebugToolsState() are prod-test-aware themselves; the
+      // debug tools UI panel they back stays IS_DEBUG_ENV-only regardless (initDebugTools()).
+      await registerDebugToolsModule();
       await registerMainLoopDebugGUI();
       await registerOnScreenTools();
     }

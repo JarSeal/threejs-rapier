@@ -1,4 +1,4 @@
-Status: draft | not-implemented (two toolkit helpers pre-built — see §3 Phases 1–2)
+Status: implemented
 Category: ECS
 
 # Large ECS Test World Scene
@@ -47,31 +47,42 @@ Non-breaking, individually reviewable. Phases 1–3 are pure toolkit additions (
 **Phase 2 — Toolkit: object/entity surface scatterer. `[implemented]`**
 `src/toolkit/geometry/scatterOnSurface.ts`: `scatterOnSurface(opts)` samples `count` area-weighted random points across any `THREE.Mesh`'s surface (`MeshSurfaceSampler`, §1.6) — the terrain mesh or any other object — with optional minimum spacing (rejection-sampled, O(n²), fine at scene-build-time counts — see the module comment for the `SpatialGrid`-style bucketing follow-up if that ever matters), scale-range jitter, and either world-up or normal-aligned orientation. Two placement helpers consume its output: `bakeScatterToInstancedMesh` (bulk — writes instance matrices directly, sidestepping the fact that neither mesh JSON nor the ECS `Transform` helpers expose a per-entity scale today) and `spawnScatterAsMeshEntities` (individual ECS mesh entities, for small counts). Returns placement data only — no colliders, no ECS entities from `bakeScatterToInstancedMesh` — so it composes with whatever `PhysicsAPI.ts` ends up looking like without needing changes itself. Fully additive.
 
-**Phase 3 — Toolkit: low-poly foliage/tree geometries + instanced-entity pool.**
+**Phase 3 — Toolkit: low-poly foliage/tree geometries + instanced-entity pool. `[implemented]`**
 New procedural geometries (bush, tree — merged primitives, no GLTF, following `characterTestObjects.ts`'s `mergeGeometries` use) plus a small instancing helper modeled on `ECSStressTest.ts`: given a geometry/material and the transforms `scatterOnSurface` produced, creates one `THREE.InstancedMesh` and one ECS entity per instance (holding its slot index), keeping per-instance matrices in sync if an entity's transform changes later. This is the piece that turns Phase 2's placement data into ECS-visible, per-instance-addressable foliage rather than just baked-once matrices. Fully additive.
 
-**Phase 4 — Scene skeleton: terrain + static camera + sun, no dynamics yet.**
+**Phase 4 — Scene skeleton: terrain + static camera + sun, no dynamics yet. `[implemented]`**
 New `src/app/largeWorld.scene.json` + `largeWorld.ts`, following `testECS.scene.json`'s full-featured shape. Wires up: the Phase 1 terrain mesh, the directional sun with shadows (per §1.4), one static overview camera, and a skybox/ambient fill light for baseline lighting. Terrain physics (a real collider) is deferred to whichever scene-code convention exists once `PhysicsAPI.ts` lands (§1.3) — for this phase the terrain is render-only. Reviewable as "does the terrain render and shadow correctly" before anything else is added.
 
-**Phase 5 — Foliage scatter + static props + point-light accents.**
+**Phase 5 — Foliage scatter + static props + point-light accents. `[implemented]`**
 Scatter Phase 3's instanced foliage/trees across the terrain using Phase 2's `scatterOnSurface` (surface = the terrain mesh, `getHeightAt` not even needed once scattering directly off the mesh surface) plus a handful of static props (rocks/platforms/walls) — physics-less for now, per §1.3. Also place the scattered point lights from §2, each with `objectCullingEnabled: true`. This is the phase that actually produces the "large" entity count and is where `SPATIAL_INDEXED` membership (auto opt-in), `p081`'s per-light contribution culling, and `p080`'s ECS frustum-culling opt-in on a subset of static props (§1.7, §2) all start being exercised at scale.
 
-**Phase 6 — Dynamic objects + dynamic camera.**
+**Phase 6 — Dynamic objects + dynamic camera. `[implemented, render-only]`**
 Add the dynamic boxes/spheres and the 2 compound-shape objects, plus the dynamic camera via `FollowTool.ts` tracking one of them, and the camera-toggle key binding (§2). **Depends on the upcoming `PhysicsAPI.ts` plan** for actual rigid-body/collider creation (§1.3) — until that lands, this phase can proceed render-only (objects placed but not simulated) if it's reached first, and the physics wiring added once that API exists. This is the phase that, once physics lands, first exercises physics + spatial index together at volume (dynamic members rebuilding every frame, not just static ones).
 
-**Phase 7 — Validation and perf pass. `[revised]`**
+Implemented as the render-only fallback: `PhysicsAPI.ts` doesn't exist yet, so the dynamic objects (5 simple primitives + 2 compound-geometry objects via `mergeGeometries`, matching `characterTestObjects.ts`'s convention) have no colliders. The follow-tool leader (the crate stack) got a temporary `HoverEffect` sine-wave bob added (not in the original plan) purely so the `FollowTool`/camera-toggle behavior is visibly demonstrable before real physics exists — a placeholder, not a substitute for the eventual rigid body.
+
+**Phase 7 — Validation and perf pass. `[revised]` `[done, informal]`**
 No new code needed for validation itself — `_dbg__SpatialGrid.ts`'s "Spatial index" debug tab (occupancy histogram, live cell-size tuning, brute-force oracle mismatch counter, rebuild-time readout) and the per-light "Object Culling" checkbox already ship (§1.5). This phase is just: run the scene with `?isDebug=true`, watch that tab plus the existing `stats-gl` overlay while flying the dynamic camera around, and tune entity counts / terrain size / cell size / shadow map size against the measured numbers (rebuild time, occupancy distribution, oracle mismatches, frame time, draw calls). Also specifically validate `p080`'s ECS frustum-culling opt-in from Phase 5 (§1.7): pan/fly both cameras so the opted-in static props go in and out of the **main** camera's frustum (not the debug fly-camera's — `p080`'s system deliberately tracks `getMainCamera()`, so this is the one behavior worth double-checking by eye, since a prop that's ECS-frustum-culled stays invisible even while the debug camera is pointed straight at it, per `p080` §0/§1's mesh-debug-visualization gap), confirm via `inspectEntity` that `TAG_FRUSTUM_CULLED` tracks the pan correctly with no stuck/incorrect state, and note whether it's measurably cheap at this scene's prop count (it should be — O(opted-in entities), not O(total meshes)). Record the resulting numbers as a short note at the bottom of this plan for future reference, and flag to `_DONE_p050_spatial-index.md`'s Phase 4 backlog (§1.5) if the data actually justifies one of those deferred optimizations.
 
 ---
 
-## 4. Files touched (if implemented)
+## 4. Files touched (as implemented)
 
-- **New, done:** `src/toolkit/geometry/seededRandom.ts`, `generateTerrain.ts` (Phase 1)
-- **New, done:** `src/toolkit/geometry/scatterOnSurface.ts` (Phase 2)
-- **New:** `src/toolkit/geometry/generateFoliage.ts` (or similar), `src/toolkit/ecs/InstancedMeshPool.ts` (or similar) (Phase 3)
-- **New:** `src/app/largeWorld.scene.json`, `src/app/largeWorld.ts` (Phase 4+)
-- **New:** asset JSON entries under existing shared folders — `src/app/cameras/`, `src/app/lights/` (sun + the `objectCullingEnabled: true` point lights, §2), `src/app/materials/`, `src/app/textures/` (Phase 4/5)
-- `src/CONFIG.ts` — new key binding for the camera toggle (Phase 6)
+- `src/toolkit/geometry/seededRandom.ts`, `generateTerrain.ts` (Phase 1)
+- `src/toolkit/geometry/scatterOnSurface.ts` (Phase 2)
+- `src/toolkit/geometry/generateFoliage.ts`, `src/toolkit/ecs/InstancedMeshPool.ts` (Phase 3) — the latter required wiring `InstancedMeshPoolComponentType`/`InstancedMeshPoolComponentData` into `src/AppECSRegistry.ts` and `registerInstancedMeshPoolEffect` into `src/AppECSPlugins.ts` (the same seam `HoverToolComponentType` already uses), contrary to §3's original "no engine or app changes" framing for Phases 1–3 — introducing any genuinely new ECS component type needs that registration regardless of which folder declares it.
+- `src/app/largeWorld.scene.json`, `src/app/largeWorld.ts` (Phase 4–6)
+- `src/app/cameras/largeWorldOverview.camera.json`, `src/app/lights/largeWorldSun.light.json`, `src/app/lights/largeWorldAmbient.light.json` (Phase 4/5) — the skybox reuses the existing `basicSkybox` asset rather than adding a new one.
+- `src/toolkit/ecs/effects/FollowTool.ts` (Phase 6) — pre-existing toolkit module, had never been registered anywhere; wired into `AppECSRegistry.ts`/`AppECSPlugins.ts` the same way.
+- The camera-toggle key binding (Phase 6) is registered scene-scoped from `largeWorld.ts` itself via `createKeyInputControl({ sceneId: 'largeWorld', ... })`, not added to `src/CONFIG.ts`'s `debugKeys` — that array is wired up only inside the `IS_DEBUG_ENV`-only debug drawer (`_dbg__DebuggerGUI.ts`), so it isn't the right place for a key binding meant to work in a normal (non-debug) run of the scene.
+
+**Unplanned engine fixes made along the way** (real bugs found while implementing/testing this scene, not scope creep — each blocked something the plan asked for):
+
+- `src/toolkit/ecs/InstancedMeshPool.ts` didn't call `world.commitTransform()` after mutating a fetched `Transform`, and never called `mesh.computeBoundingSphere()`/`computeBoundingBox()` after baking placements — instances collapsed to the origin under `TYPED_ARRAY` ECS storage mode, and (once positioned correctly) the whole pool got frustum-culled based on a single un-instanced geometry's bounds instead of the real scatter extent.
+- `src/_engine/core/InputControls.ts`'s `createKeyInputControl` threw (`Cannot read properties of undefined (reading 'find')`) on the very first scene-scoped key binding ever registered for a given scene — a pre-existing latent bug, since no scene had used `sceneId`-scoped bindings before this one.
+- `src/_engine/core/CameraManager.ts`'s `setActiveCamera`/`setMainCamera` never refreshed the debug drawer's camera tab or the on-screen tools' camera dropdown when called from application code (only their own button handlers refreshed those) — both now call the existing debug-UI refresh functions directly, matching the pattern `disposeCamera` already used.
+- `?isProdTest=true` ignored the debug drawer's "start scene" override entirely (`src/_engine/InitApp.ts`, `src/_engine/debug/DebugToolsManager.ts`, `src/_engine/core/SceneLoader.ts`) — the debug-tools module was never loaded outside `IS_DEBUG_ENV`. Fixed to be prod-test-aware, matching the existing `useDebug(ref, true)` pattern `OnScreenTools.ts` already uses; the debug-tools UI panel itself stays `IS_DEBUG_ENV`-only.
+- `src/_engine/core/Debug/Camera/_dbg__DebugCamera.ts`'s debug fly-camera defaulted to `near: 0.001, far: 100000` (a 1e8:1 ratio), causing z-fighting/flicker on distant geometry as the camera moved — tightened to `near: 0.1, far: 1000`.
 
 ## 5. Out of scope
 
@@ -81,3 +92,9 @@ No new code needed for validation itself — `_dbg__SpatialGrid.ts`'s "Spatial i
 - Building any new spatial-index consumer, debug tooling, or optimization work — `_DONE_p050_spatial-index.md`/`_DONE_p081_light-object-culling.md`/`_DONE_p080_object3d-frustum-culling.md` are all fully implemented (§1.5, §1.7); this plan only exercises and validates what already exists, including `p050`'s explicitly-deferred Phase 4 optimizations.
 - Level streaming / chunked terrain / LOD — this is one large scene, not a streaming-world system.
 - Any actual rigid-body/collider creation (terrain heightfield, dynamic boxes/spheres, compound shapes) — intentionally deferred to the forthcoming `PhysicsAPI.ts` plan (§1.3); Phases 1–2's helpers are built physics-agnostic specifically so that plan can consume them without rework.
+
+## 6. Result
+
+Accepted as good enough for now — the scene works end to end (terrain, ~3500 scattered foliage instances, static props with a live `p080` frustum-culling exercise, lantern point lights with `p081` object culling, dynamic objects with a temporary hover stand-in, and a working camera toggle) and will be expanded further once more engine features (notably `PhysicsAPI.ts`) land.
+
+Phase 7's validation was done informally (manual smoke-testing in a real browser across the phases above, catching and fixing the real bugs listed in §4) rather than as a full recorded numeric pass — no rebuild-time/occupancy/frame-time numbers were captured against the spatial-index debug tab or `stats-gl`. That formal tuning pass (entity counts, terrain size, cell size, shadow map size) is left for whenever this scene is next revisited, per the note above.

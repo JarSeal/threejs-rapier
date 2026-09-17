@@ -1,6 +1,11 @@
 // NOTE! Import only types and everything with "import type ..."
 import type * as THREE from 'three/webgpu';
 import { HoverComponentData, HoverToolComponentType } from './toolkit/ecs/effects/HoverEffect';
+import { FollowComponentData, FollowToolComponentType } from './toolkit/ecs/effects/FollowTool';
+import {
+  InstancedMeshPoolComponentData,
+  InstancedMeshPoolComponentType,
+} from './toolkit/ecs/InstancedMeshPool';
 
 /**
  * App and toolkit components (app specific)
@@ -14,6 +19,8 @@ export const AppComponentType = {
   HEALTH: 'APP_HEALTH',
   INSTANCED_STRESS_TEST_DATA: 'APP_INSTANCED_STRESS_TEST_DATA',
   ...HoverToolComponentType,
+  ...FollowToolComponentType,
+  ...InstancedMeshPoolComponentType,
 } as const;
 
 /**
@@ -22,7 +29,7 @@ export const AppComponentType = {
  * type ToolKitComponentData = {};
  * type ToolKitComponentData = HoverComponentData & SomeOtherComponentData;
  */
-type ExtraComponentData = HoverComponentData;
+type ExtraComponentData = HoverComponentData & FollowComponentData & InstancedMeshPoolComponentData;
 
 /** App specific components (extended by ExtraComponentData) */
 export interface AppComponentData extends ExtraComponentData {

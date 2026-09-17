@@ -14,6 +14,7 @@ import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import { DEBUG_CAMERA_ID } from '../debug/DebugToolsManager';
+import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { lerror } from '../utils/Logger';
 import { updateDraggableWindow } from './UI/DraggableWindow';
 
@@ -204,6 +205,12 @@ export const setActiveCamera = (entityId: number) => {
   if (objComp && objComp.value instanceof THREE.Camera) {
     activeCameraEntityId = entityId;
     activeCameraObject = objComp.value; // Cache the direct pointer
+    // Keep the debug drawer's camera tab and the on-screen tools' camera dropdown in sync —
+    // both only ever refreshed reactively from their own button handlers before, so a switch
+    // triggered from application code (e.g. a scene's own camera-toggle key binding) never
+    // reached them.
+    useDebug(cameraDebugGUI)?.updateCamerasDebuggerGUI('LIST');
+    updateOnScreenTools('SWITCH');
     return;
   }
   const msg = `Could not find camera entity with id ${entityId} in setActiveCamera.`;
@@ -349,6 +356,12 @@ export const setMainCamera = (world: ECSWorld, newMainId: number) => {
   world.addComponent(newMainId, ComponentType.TAG_IS_MAIN_CAMERA, true);
   if (!isDebugCameraActive()) {
     setActiveCamera(newMainId);
+  } else {
+    // setActiveCamera (and its own debug-UI refresh) is skipped while the debug fly-camera is
+    // active — the render camera doesn't change — but the main-camera tag still moved, so the
+    // camera tab/on-screen tools must refresh independently to reflect that.
+    useDebug(cameraDebugGUI)?.updateCamerasDebuggerGUI('LIST');
+    updateOnScreenTools('SWITCH');
   }
 };
 

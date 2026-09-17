@@ -19,6 +19,14 @@ export const sceneFileObjects: {
       }
     ).scene({ sceneData, assets });
   },
+  largeWorld: async ({ sceneData, assets }) => {
+    const module = await import('../app/./largeWorld.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
   oneMoreScene: async ({ sceneData, assets }) => {
     const module = await import('../app/./oneMoreScene');
     await (

@@ -1,5 +1,7 @@
 import { ECSWorld } from './_engine/core/ECS';
 import { registerHoverToolEffect } from './toolkit/ecs/effects/HoverEffect';
+import { registerFollowToolEffect } from './toolkit/ecs/effects/FollowTool';
+import { registerInstancedMeshPoolEffect } from './toolkit/ecs/InstancedMeshPool';
 
 /**
  * IMPORT YOUR MANAGERS HERE
@@ -19,4 +21,6 @@ import { registerHoverToolEffect } from './toolkit/ecs/effects/HoverEffect';
 
 ECSWorld.registerPlugin((world) => {
   registerHoverToolEffect(world);
+  registerFollowToolEffect(world);
+  registerInstancedMeshPoolEffect(world);
 });

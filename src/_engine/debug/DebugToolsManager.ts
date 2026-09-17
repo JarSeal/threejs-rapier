@@ -1,4 +1,4 @@
-import { IS_DEBUG_ENV } from '../core/Config';
+import { IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../core/Config';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
 type LightGUIModule = typeof import('../core/Debug/_dbg__DebugTools');
@@ -88,8 +88,12 @@ const defaultDebugToolsState: DebugToolsState = {
 };
 
 export const registerDebugToolsModule = async () => {
-  if (!IS_DEBUG_ENV) return;
-  debugGUI = await loadDebugModuleAsync(() => import('../core/Debug/_dbg__DebugTools'));
+  if (!IS_DEBUG_ENV && !IS_PROD_TEST_MODE) return;
+  // includeInProdTestMode: true — so isProdTest mode can still read the persisted
+  // "debug start scene" setting via getDebugToolsState() below (SceneLoader.ts's
+  // scene-to-load decision), even though the debug tools UI panel itself
+  // (initDebugTools()/_initDebugTools) stays IS_DEBUG_ENV-only and never renders here.
+  debugGUI = await loadDebugModuleAsync(() => import('../core/Debug/_dbg__DebugTools'), true);
 };
 
 /**
@@ -106,7 +110,7 @@ export const initDebugTools = () => {
  * @returns debugToolsState {@link debugToolsState}
  */
 export const getDebugToolsState = (loadFromLS?: boolean) =>
-  useDebug(debugGUI)?._getDebugToolsState(loadFromLS) || defaultDebugToolsState;
+  useDebug(debugGUI, true)?._getDebugToolsState(loadFromLS) || defaultDebugToolsState;
 
 /**
  * Add scene to debug tools states

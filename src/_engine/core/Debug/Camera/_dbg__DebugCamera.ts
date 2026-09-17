@@ -14,8 +14,8 @@ export const DEFAULT_DEBUG_CAM_PROPS: DebugCamLSProps = {
   enabled: false,
   latestAppCameraId: null as string | null,
   fov: 60,
-  near: 0.001,
-  far: 100000,
+  near: 0.1,
+  far: 1000,
   zoom: 1,
 };
 

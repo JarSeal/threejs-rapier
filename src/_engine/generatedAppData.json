@@ -20,6 +20,108 @@
         }
       ]
     },
+    "largeWorld": {
+      "name": "Large ECS test world",
+      "description": "Stress/soak test scene for large-world patterns (docs/plans/p090_large-ecs-test-world-scene.md). Phase 4: terrain + static overview camera + sun, no dynamics yet.",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 1000,
+            "position": {
+              "x": 0,
+              "y": 60,
+              "z": 120
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 60,
+            "appId": "largeWorldOverview"
+          },
+          "entityOpts": {
+            "appId": "largeWorldOverview",
+            "debugData": {
+              "name": "Large world overview camera",
+              "description": "Static wide overview of the terrain (docs/plans/p090_large-ecs-test-world-scene.md §2)."
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#dfe8ff",
+            "intensity": 0.3,
+            "appId": "largeWorldAmbient"
+          },
+          "entityOpts": {
+            "appId": "largeWorldAmbient",
+            "debugData": {
+              "name": "Large world ambient fill",
+              "description": "Low-intensity baseline fill so shadowed terrain/foliage isn't pure black — the sun (largeWorldSun) is the dominant light."
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 30,
+              "y": 40,
+              "z": 20
+            },
+            "targetPos": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowPreset": "HIGH",
+            "shadowCameraNearFar": [
+              1,
+              100
+            ],
+            "shadowCameraFrustum": [
+              -25,
+              25,
+              25,
+              -25
+            ],
+            "shadowIntensity": 0.8,
+            "appId": "largeWorldSun"
+          },
+          "entityOpts": {
+            "appId": "largeWorldSun",
+            "debugData": {
+              "name": "Large world sun",
+              "description": "Directional shadow-casting sun. Its shadow frustum is intentionally scoped to a bounded play area around the origin, not the whole terrain — sizing it to the full terrain would blur shadow resolution everywhere instead (docs/plans/p090_large-ecs-test-world-scene.md §1.4)."
+            }
+          }
+        }
+      ],
+      "skyboxes": [
+        {
+          "id": "basicSkybox",
+          "type": "EQUIRECTANGULAR",
+          "isCurrent": false,
+          "params": {
+            "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
+            "textureId": "equiRectEmptyId",
+            "colorSpace": "srgb"
+          }
+        }
+      ],
+      "id": "largeWorld",
+      "sceneFile": "./largeWorld.ts"
+    },
     "oneMoreScene": {
       "name": "One More Scene",
       "id": "oneMoreScene",
@@ -225,6 +327,34 @@
     }
   },
   "cameras": {
+    "largeWorldOverview": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 1000,
+        "position": {
+          "x": 0,
+          "y": 60,
+          "z": 120
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 60,
+        "appId": "largeWorldOverview"
+      },
+      "entityOpts": {
+        "appId": "largeWorldOverview",
+        "debugData": {
+          "name": "Large world overview camera",
+          "description": "Static wide overview of the terrain (docs/plans/p090_large-ecs-test-world-scene.md §2)."
+        }
+      },
+      "__sourcePath": "src/app/cameras/largeWorldOverview.camera.json"
+    },
     "mainCamera": {
       "camProps": {
         "active": true,
@@ -304,6 +434,61 @@
         ]
       },
       "__sourcePath": "src/app/lights/ambientLight.light.json"
+    },
+    "largeWorldAmbient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#dfe8ff",
+        "intensity": 0.3,
+        "appId": "largeWorldAmbient"
+      },
+      "entityOpts": {
+        "appId": "largeWorldAmbient",
+        "debugData": {
+          "name": "Large world ambient fill",
+          "description": "Low-intensity baseline fill so shadowed terrain/foliage isn't pure black — the sun (largeWorldSun) is the dominant light."
+        }
+      },
+      "__sourcePath": "src/app/lights/largeWorldAmbient.light.json"
+    },
+    "largeWorldSun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 30,
+          "y": 40,
+          "z": 20
+        },
+        "targetPos": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowPreset": "HIGH",
+        "shadowCameraNearFar": [
+          1,
+          100
+        ],
+        "shadowCameraFrustum": [
+          -25,
+          25,
+          25,
+          -25
+        ],
+        "shadowIntensity": 0.8,
+        "appId": "largeWorldSun"
+      },
+      "entityOpts": {
+        "appId": "largeWorldSun",
+        "debugData": {
+          "name": "Large world sun",
+          "description": "Directional shadow-casting sun. Its shadow frustum is intentionally scoped to a bounded play area around the origin, not the whole terrain — sizing it to the full terrain would blur shadow resolution everywhere instead (docs/plans/p090_large-ecs-test-world-scene.md §1.4)."
+        }
+      },
+      "__sourcePath": "src/app/lights/largeWorldSun.light.json"
     }
   },
   "geometries": {

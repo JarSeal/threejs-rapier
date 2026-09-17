@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../.schemas/camera.schema.json",
+  "camProps": {
+    "type": "PERSPECTIVE",
+    "fov": 60,
+    "near": 0.1,
+    "far": 1000,
+    "position": { "x": 0, "y": 60, "z": 120 },
+    "lookAtPoint": { "x": 0, "y": 0, "z": 0 },
+    "active": true
+  },
+  "entityOpts": {
+    "appId": "largeWorldOverview",
+    "debugData": {
+      "name": "Large world overview camera",
+      "description": "Static wide overview of the terrain (docs/plans/p090_large-ecs-test-world-scene.md §2)."
+    }
+  }
+}
