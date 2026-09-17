@@ -77,6 +77,8 @@ export const CoreEntityOptsSchema = z.object({
   doNotAddToScene: z.boolean().optional(),
   userData: UserDataSchema.optional(),
   debugData: EntityDebugDataSchema.optional(),
+  /** Opt out of the spatial index (docs/plans/p050_spatial-index.md §3.1) for an entity kind whose manager opts in by default. */
+  spatialIndex: z.boolean().optional(),
 });
 
 export type CoreEntityOpts = z.infer<typeof CoreEntityOptsSchema>;

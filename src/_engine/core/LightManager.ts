@@ -1,7 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
-import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
+import {
+  DebugModuleRef,
+  getLightCharacteristics,
+  loadDebugModule,
+  useDebug,
+} from '../utils/helpers';
 import { ComponentType, Transform } from './ECS/ECSCoreComponents';
 import { IS_DEBUG_ENV } from './Config';
 import { loadPersistentProps } from './PropertyLoader';
@@ -326,6 +331,12 @@ export const createLightEntity = (
 
   if ('frustumCullingEnabled' in props && props.frustumCullingEnabled) {
     setLightFrustumCullingEnabled(entityId, true, world);
+  }
+
+  // Opt-in, not opt-out (docs/plans/p050_spatial-index.md §3): ambient/hemisphere lights are
+  // simply never opted in, by construction, rather than filtered out downstream.
+  if (entityOpts?.spatialIndex !== false && getLightCharacteristics(light).canBeSpatiallyIndexed) {
+    world.addComponent(entityId, ComponentType.SPATIAL_INDEXED, true);
   }
 
   if ('position' in props && props.position) {

@@ -1091,6 +1091,9 @@
             }
           },
           "additionalProperties": false
+        },
+        "spatialIndex": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

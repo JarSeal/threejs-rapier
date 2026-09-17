@@ -17,6 +17,7 @@ import { getSvgIcon } from './core/UI/icons/SvgIcon';
 // ECS Core Plugins
 import './core/ECS/ECSCoreSystems';
 import './core/ECS/LightFrustumCullingSystem';
+import './core/Spatial/SpatialIndexSystem';
 import './core/MeshManager';
 
 // App Plugins

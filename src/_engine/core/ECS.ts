@@ -508,12 +508,10 @@ export class ECSWorld {
    * @param type The type of component to remove.
    */
   public removeComponent(entityId: number, type: ComponentType): void {
-    const storage = this.storages.get(type);
-    if (storage) storage.delete(entityId);
+    // Fire hooks BEFORE the data is actually gone from storage so the hook
+    // can still read the component's last value (including via
+    // `hasComponent`/`getComponent` for `type` itself) if needed.
     const hooks = ECSWorld.onRemoveComponentHooks.get(type);
-
-    // Fire hooks BEFORE the data is actually gone from storage
-    // so the hook can still read the component values if needed.
     hooks?.forEach((hook) => hook(entityId, this));
     this.storages.get(type)?.delete(entityId);
   }

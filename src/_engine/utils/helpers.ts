@@ -527,6 +527,7 @@ export const getLightCharacteristics = (light: THREE.Light) => {
     hasSymbol: false,
     hasTarget: false,
     supportsFrustumCulling: false,
+    canBeSpatiallyIndexed: false,
   };
 
   // Type
@@ -552,6 +553,12 @@ export const getLightCharacteristics = (light: THREE.Light) => {
 
   // Frustum culling (point/spot only — see docs/plans/light-culling.md §1)
   c.supportsFrustumCulling = c.isPointLight || c.isSpotLight;
+
+  // Spatial index (point/spot only — see docs/plans/p050_spatial-index.md §3.1/§9.1). Same
+  // condition as supportsFrustumCulling today (a directional light has no bounded influence
+  // volume to place in a grid cell, same reason it's excluded from frustum culling), kept as
+  // its own flag since the two concepts could diverge for a future light type.
+  c.canBeSpatiallyIndexed = c.isPointLight || c.isSpotLight;
 
   // Helper
   if (c.isPointLight || c.isSpotLight || c.isDirectionalLight) {

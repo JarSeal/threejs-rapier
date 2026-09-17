@@ -69,10 +69,13 @@ function findBrowserExecutable() {
       '/usr/bin/google-chrome-stable',
       '/usr/bin/google-chrome',
       '/usr/bin/chromium-browser',
-      '/usr/bin/chromium',
-      '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe',
-      '/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-      '/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
+      '/usr/bin/chromium'
+      // The /mnt/c/... Windows-Chrome fallback that used to be listed here was
+      // tried and confirmed NOT to work under WSL2: playwright's
+      // --remote-debugging-pipe transport can't cross the WSL2/Windows process
+      // boundary ("Remote debugging pipe file descriptors are not open.",
+      // then "Target page, context or browser has been closed"). Removed so
+      // WSL2 falls through to the playwright-managed Chromium below instead.
     );
   }
 

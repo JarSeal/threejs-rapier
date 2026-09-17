@@ -404,6 +404,9 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "spatialIndex": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
@@ -1142,6 +1145,9 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "spatialIndex": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
@@ -3013,6 +3019,9 @@
                               }
                             },
                             "additionalProperties": false
+                          },
+                          "spatialIndex": {
+                            "type": "boolean"
                           }
                         },
                         "additionalProperties": false
@@ -3751,6 +3760,9 @@
                               }
                             },
                             "additionalProperties": false
+                          },
+                          "spatialIndex": {
+                            "type": "boolean"
                           }
                         },
                         "additionalProperties": false

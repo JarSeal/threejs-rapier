@@ -33,6 +33,8 @@ export enum CoreComponentType {
   // Frustum culling
   FRUSTUM_CULLING_ENABLED = 'CORE_FRUSTUM_CULLING_ENABLED', // opt-in, user-authored
   TAG_FRUSTUM_CULLED = 'CORE_TAG_FRUSTUM_CULLED', // runtime-only, current culled state
+  // Spatial index (docs/plans/p050_spatial-index.md)
+  SPATIAL_INDEXED = 'CORE_SPATIAL_INDEXED', // opt-in, membership in the spatial index
   // Debug
   DEBUG_DATA = 'CORE_DEBUG_DATA',
   DEBUG_LIGHT_HELPER = 'CORE_DEBUG_LIGHT_HELPER',

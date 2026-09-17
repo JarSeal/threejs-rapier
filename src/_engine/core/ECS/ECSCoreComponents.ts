@@ -59,6 +59,9 @@ export interface CoreComponentData {
   // Frustum culling
   [CoreType.FRUSTUM_CULLING_ENABLED]: boolean;
   [CoreType.TAG_FRUSTUM_CULLED]: boolean;
+  // Spatial index — a plain marker; the SpatialGrid instance (Spatial/SpatialIndexSystem.ts)
+  // owns position/radius data derived from it, not this component.
+  [CoreType.SPATIAL_INDEXED]: boolean;
   // Debug
   [CoreType.DEBUG_DATA]: EntityDebugData;
   [CoreType.DEBUG_LIGHT_HELPER]: {

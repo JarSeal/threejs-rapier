@@ -146,6 +146,7 @@ export class SpatialGrid {
     this.posZ[slot] = z;
     this.lastCell[slot] = NaN;
     this._setRadius(slot, radius);
+    this._recomputeMaxIndexedRadius();
   }
 
   removeMember(entityId: number): void {

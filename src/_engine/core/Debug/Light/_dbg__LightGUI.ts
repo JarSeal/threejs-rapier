@@ -75,7 +75,13 @@ let debuggerListCmp: TCMP | null = null;
 const reconcileDebugVisuals = (
   entityId: number,
   world: ECSWorld,
-  dataOverride?: LightDebugLSData
+  dataOverride?: LightDebugLSData,
+  // `removeComponent` fires onRemoveComponent hooks before the component is
+  // actually gone (ECS.ts), so `world.isDisabled()` still reads `true` here
+  // when this runs from DISABLED's own onRemoveComponent. That call site
+  // passes `false` explicitly since removal means "no longer disabled" by
+  // definition; every other caller lets this fall through to the live value.
+  isDisabledOverride?: boolean
 ) => {
   const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
   const light = objComp?.value as THREE.Light;
@@ -84,7 +90,7 @@ const reconcileDebugVisuals = (
 
   // Combine ECS status with the actual Three.js visibility property.
   // This handles initialization and "first load" cases where components might not be synced yet.
-  const isEnabled = light.visible && !world.isDisabled(entityId);
+  const isEnabled = light.visible && !(isDisabledOverride ?? world.isDisabled(entityId));
 
   const isCurrentActiveCam = entityId === getActiveCameraId();
 
@@ -940,7 +946,7 @@ const saveLightToLS = <K extends keyof LightEntityDebugState>(
 
 ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
   onAddComponent: (id, w) => reconcileDebugVisuals(id, w),
-  onRemoveComponent: (id, w) => reconcileDebugVisuals(id, w),
+  onRemoveComponent: (id, w) => reconcileDebugVisuals(id, w, undefined, false),
 });
 
 // Run reconciler when a debug component is first attached to an entity

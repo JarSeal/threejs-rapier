@@ -34,8 +34,10 @@ const _projScreenMatrix = new THREE.Matrix4();
 const _sphere = new THREE.Sphere();
 
 // Three.js clamps SpotLight.angle to < PI/2 internally; this is a defensive backstop against
-// cos(angle) blowing up toward infinity for a near-90-degree cone.
-const MAX_SPOT_ANGLE = (89.9 * Math.PI) / 180;
+// cos(angle) blowing up toward infinity for a near-90-degree cone. Exported so other consumers
+// of the same distance/cos(angle) influence-sphere formula (e.g. SpatialIndexSystem.ts) share
+// one cutoff instead of drifting.
+export const MAX_SPOT_ANGLE = (89.9 * Math.PI) / 180;
 
 const computeIsVisible = (light: THREE.PointLight | THREE.SpotLight): boolean => {
   // distance === 0 is Three.js's own convention for "never attenuate / infinite range" —
