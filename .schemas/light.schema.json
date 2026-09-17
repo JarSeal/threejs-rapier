@@ -207,6 +207,9 @@
             "frustumCullingEnabled": {
               "type": "boolean"
             },
+            "objectCullingEnabled": {
+              "type": "boolean"
+            },
             "shadowPreset": {
               "type": "string",
               "enum": [
@@ -494,6 +497,9 @@
             "frustumCullingEnabled": {
               "type": "boolean"
             },
+            "objectCullingEnabled": {
+              "type": "boolean"
+            },
             "shadowPreset": {
               "type": "string",
               "enum": [
@@ -748,6 +754,9 @@
               "type": "boolean"
             },
             "frustumCullingEnabled": {
+              "type": "boolean"
+            },
+            "objectCullingEnabled": {
               "type": "boolean"
             },
             "shadowPreset": {

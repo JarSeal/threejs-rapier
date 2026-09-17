@@ -10,8 +10,7 @@ import { SpatialGrid } from './SpatialGrid';
 /**
  * ECS wiring for SpatialGrid (docs/plans/p050_spatial-index.md §3, §8). One
  * dynamic grid per ECS world, lazily created on first SPATIAL_INDEXED
- * member. Phase 2 scope only: the grid is populated and kept current every
- * frame, but nothing queries it yet (that's §11 Phase 3).
+ * member, kept current every frame. First consumer: LightObjectCullingSystem.ts.
  */
 
 const gridsByWorld = new WeakMap<ECSWorld, SpatialGrid>();
@@ -31,11 +30,29 @@ function ensureGrid(world: ECSWorld): SpatialGrid {
 
 /**
  * The dynamic spatial index for `world`. Lazily created on first use so a
- * world that never opts anything in never pays for one. Not called by any
- * production system yet — reserved for §11 Phase 3's first consumer.
+ * world that never opts anything in never pays for one.
  */
 export function getSpatialGrid(world: ECSWorld): SpatialGrid {
   return ensureGrid(world);
+}
+
+/**
+ * A point/spot light's influence-sphere radius — shared with
+ * LightObjectCullingSystem.ts so both consumers agree on what "this light's
+ * volume" means. Kept separate from LightFrustumCullingSystem.ts's own
+ * `computeIsVisible` (which only ever needs a boolean, not the radius
+ * itself) rather than touching that already-shipped system.
+ */
+export function computeLightInfluenceRadius(light: THREE.PointLight | THREE.SpotLight): number {
+  // distance === 0 is Three.js's own convention for "never attenuate / infinite
+  // range" (see LightFrustumCullingSystem.ts) — Infinity forces this light into
+  // the grid's oversized tier, where it's always a candidate everywhere.
+  if (light.distance === 0) return Infinity;
+  if (light instanceof THREE.SpotLight) {
+    if (light.angle > MAX_SPOT_ANGLE) return Infinity;
+    return light.distance / Math.cos(light.angle);
+  }
+  return light.distance;
 }
 
 function computeSpatialRadius(entityId: number, world: ECSWorld): number {
@@ -50,15 +67,7 @@ function computeSpatialRadius(entityId: number, world: ECSWorld): number {
   }
 
   if (obj instanceof THREE.PointLight || obj instanceof THREE.SpotLight) {
-    // distance === 0 is Three.js's own convention for "never attenuate / infinite
-    // range" (see LightFrustumCullingSystem.ts) — Infinity forces this light into
-    // the grid's oversized tier, where it's always a candidate everywhere.
-    if (obj.distance === 0) return Infinity;
-    if (obj instanceof THREE.SpotLight) {
-      if (obj.angle > MAX_SPOT_ANGLE) return Infinity;
-      return obj.distance / Math.cos(obj.angle);
-    }
-    return obj.distance;
+    return computeLightInfluenceRadius(obj);
   }
 
   return 0;

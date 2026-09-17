@@ -96,6 +96,7 @@ export type LightProps = {
       position?: { x: number; y: number; z: number };
       castShadow?: boolean;
       frustumCullingEnabled?: boolean;
+      objectCullingEnabled?: boolean;
       // Shadow Tuning
       shadowPreset?: ShadowQuality;
       shadowBias?: number;
@@ -136,6 +137,7 @@ export type LightProps = {
       targetPos?: { x: number; y: number; z: number };
       castShadow?: boolean;
       frustumCullingEnabled?: boolean;
+      objectCullingEnabled?: boolean;
       // Shadow Tuning
       shadowPreset?: ShadowQuality;
       shadowBias?: number;
@@ -333,6 +335,10 @@ export const createLightEntity = (
     setLightFrustumCullingEnabled(entityId, true, world);
   }
 
+  if ('objectCullingEnabled' in props && props.objectCullingEnabled) {
+    setLightObjectCullingEnabled(entityId, true, world);
+  }
+
   // Opt-in, not opt-out (docs/plans/p050_spatial-index.md §3): ambient/hemisphere lights are
   // simply never opted in, by construction, rather than filtered out downstream.
   if (entityOpts?.spatialIndex !== false && getLightCharacteristics(light).canBeSpatiallyIndexed) {
@@ -435,6 +441,23 @@ export const setLightFrustumCullingEnabled = (
     // that was invisible when culling was turned off would stay invisible forever.
     if (world.hasComponent(lightId, ComponentType.TAG_FRUSTUM_CULLED)) {
       world.removeComponent(lightId, ComponentType.TAG_FRUSTUM_CULLED);
+    }
+  }
+};
+
+export const setLightObjectCullingEnabled = (
+  lightId: number,
+  enabled: boolean,
+  world: ECSWorld
+) => {
+  if (enabled) {
+    world.addComponent(lightId, ComponentType.OBJECT_CULLING_ENABLED, true);
+  } else {
+    world.removeComponent(lightId, ComponentType.OBJECT_CULLING_ENABLED);
+    // Opting out must also clear any current culled state — otherwise a light
+    // that was invisible when culling was turned off would stay invisible forever.
+    if (world.hasComponent(lightId, ComponentType.TAG_OBJECT_CULLED)) {
+      world.removeComponent(lightId, ComponentType.TAG_OBJECT_CULLED);
     }
   }
 };

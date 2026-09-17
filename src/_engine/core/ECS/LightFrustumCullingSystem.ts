@@ -3,6 +3,7 @@ import { ECSSystemStage } from '../../../AppECSRegistry';
 import { ECSWorld } from '../ECS';
 import { getMainCamera } from '../CameraManager';
 import { ComponentType } from './ECSCoreComponents';
+import { reconcileObject3DVisibility } from './ECSCoreSystems';
 
 // --- FRUSTUM CULLING VISIBILITY HOOK ---
 // Deliberately a separate component/hook from DISABLED (see docs/plans/light-culling.md §2.2,
@@ -11,15 +12,13 @@ import { ComponentType } from './ECSCoreComponents';
 
 ECSWorld.registerComponentHooks(ComponentType.TAG_FRUSTUM_CULLED, {
   onAddComponent: (entityId, world) => {
-    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-    if (objComp) objComp.value.visible = false;
+    reconcileObject3DVisibility(entityId, world, { isFrustumCulled: true });
   },
   onRemoveComponent: (entityId, world) => {
-    // Respect an explicit user-authored "off" — don't let re-entering the
-    // frustum resurrect a light the user (or game logic) deliberately disabled.
-    if (world.isDisabled(entityId)) return;
-    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-    if (objComp) objComp.value.visible = true;
+    // reconcileObject3DVisibility's own isDisabled/isObjectCulled checks already
+    // respect an explicit user-authored "off" or an active object-cull — don't
+    // let re-entering the frustum resurrect a light either of those is hiding.
+    reconcileObject3DVisibility(entityId, world, { isFrustumCulled: false });
   },
 });
 

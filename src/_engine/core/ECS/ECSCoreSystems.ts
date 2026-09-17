@@ -7,11 +7,38 @@ import { CoreComponentType } from './ECSRegistry';
 
 // --- UNIVERSAL VISIBILITY HOOKS ---
 
+/**
+ * Single source of truth for Object3D.visible, recomputed from the full
+ * three-way AND (docs/plans/_DONE_p081_light-object-culling.md §3.2)
+ * whenever any of DISABLED/TAG_FRUSTUM_CULLED/TAG_OBJECT_CULLED changes,
+ * instead of each hook fighting over the flag pairwise.
+ *
+ * `overrides` lets a hook state the value of the flag IT is toggling
+ * explicitly, rather than reading it live off `world` — `removeComponent`
+ * fires onRemoveComponent hooks before the component is actually deleted
+ * (ECS.ts), so e.g. TAG_FRUSTUM_CULLED's own onRemoveComponent would
+ * otherwise see `hasComponent(TAG_FRUSTUM_CULLED)` still return `true`.
+ */
+export function reconcileObject3DVisibility(
+  entityId: number,
+  world: ECSWorld,
+  overrides?: { isDisabled?: boolean; isFrustumCulled?: boolean; isObjectCulled?: boolean }
+): void {
+  const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+  if (!objComp) return;
+
+  const isDisabled = overrides?.isDisabled ?? world.isDisabled(entityId);
+  const isFrustumCulled =
+    overrides?.isFrustumCulled ?? world.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED);
+  const isObjectCulled =
+    overrides?.isObjectCulled ?? world.hasComponent(entityId, ComponentType.TAG_OBJECT_CULLED);
+
+  objComp.value.visible = !isDisabled && !isFrustumCulled && !isObjectCulled;
+}
+
 ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
   onAddComponent: (entityId, world) => {
-    // Hide Object3Ds
-    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-    if (objComp) objComp.value.visible = false;
+    reconcileObject3DVisibility(entityId, world, { isDisabled: true });
 
     // Hide Debug Helpers (Gizmos)
     if (IS_DEBUG_ENV) {
@@ -29,12 +56,7 @@ ECSWorld.registerComponentHooks(ComponentType.DISABLED, {
   },
 
   onRemoveComponent: (entityId, world) => {
-    // Show Object3Ds, unless frustum culling is still hiding this entity
-    // (avoid fighting with LightFrustumCullingSystem's own visibility state)
-    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-    if (objComp && !world.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED)) {
-      objComp.value.visible = true;
-    }
+    reconcileObject3DVisibility(entityId, world, { isDisabled: false });
 
     if (IS_DEBUG_ENV) {
       const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
