@@ -15,6 +15,7 @@ import { getWindowSize } from '../utils/Window';
 import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugToolsManager';
 import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './PhysicsRapier';
+import { stepPhysics } from './PhysicsAPI';
 import { updateInputControllerLoopActions } from './InputControls';
 import { countRayCastFrames, initRayCasting } from './Raycast';
 import { getAllECSWorlds } from './ECS';
@@ -141,6 +142,7 @@ const mainLoopForDebug = async () => {
 
     // Step the physics
     stepPhysicsWorld(loopState);
+    stepPhysics(loopState); // new engine-agnostic system — no-op until createPhysicsWorld() has been called (§3.4)
 
     // Render physics objects
     renderPhysicsObjects();
@@ -199,6 +201,7 @@ const mainLoopForProduction = async () => {
 
     // Step the physics
     stepPhysicsWorld(loopState);
+    stepPhysics(loopState); // new engine-agnostic system — no-op until createPhysicsWorld() has been called (§3.4)
 
     // Render physics objects
     renderPhysicsObjects();
@@ -254,6 +257,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
 
     // Step the physics
     stepPhysicsWorld(loopState);
+    stepPhysics(loopState); // new engine-agnostic system — no-op until createPhysicsWorld() has been called (§3.4)
 
     if (skipFrame) return;
 

@@ -3,6 +3,8 @@ import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, loadConfig, PROJECT_METADATA } from '.
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
 import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
 import { InitRapierPhysics } from './core/PhysicsRapier';
+import { initPhysics as initNewPhysics } from './core/PhysicsAPI';
+import { registerPhysicsManager } from './core/PhysicsManager';
 import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
 import { lerror, llog } from './utils/Logger';
@@ -68,6 +70,9 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     await initDebugCamera(ecsWorld);
 
     await InitRapierPhysics();
+
+    registerPhysicsManager(ecsWorld);
+    await initNewPhysics();
 
     if (IS_DEBUG_ENV) {
       await registerStatsModule();
