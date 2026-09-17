@@ -79,6 +79,13 @@ export const CoreEntityOptsSchema = z.object({
   debugData: EntityDebugDataSchema.optional(),
   /** Opt out of the spatial index (docs/plans/_DONE_p050_spatial-index.md §3.1) for an entity kind whose manager opts in by default. */
   spatialIndex: z.boolean().optional(),
+  /**
+   * Opt in to the ECS-queryable frustum-culling mechanism (docs/plans/_DONE_p080_object3d-frustum-culling.md §2.1/§2.4)
+   * — toggles CoreComponentType.TAG_FRUSTUM_CULLED as the camera frustum moves, for gameplay systems (AI
+   * throttling, audio culling, LOD) to react to. Distinct from a mesh's `frustumCullingEnabled` prop
+   * (meshSchema.ts), which controls Three's own native Object3D.frustumCulled render-time culling.
+   */
+  ecsFrustumCullingEnabled: z.boolean().optional(),
 });
 
 export type CoreEntityOpts = z.infer<typeof CoreEntityOptsSchema>;

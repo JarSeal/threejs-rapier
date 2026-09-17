@@ -4,6 +4,7 @@ import { ECSWorld } from '../ECS';
 import { getMainCamera } from '../CameraManager';
 import { ComponentType } from './ECSCoreComponents';
 import { reconcileObject3DVisibility } from './ECSCoreSystems';
+import { getMeshWorldBoundingSphere } from './ObjectFrustumCullingSystem';
 import {
   computeLightInfluenceRadius,
   getSpatialGrid,
@@ -32,24 +33,18 @@ ECSWorld.registerComponentHooks(ComponentType.TAG_OBJECT_CULLED, {
 const _frustum = new THREE.Frustum();
 const _projScreenMatrix = new THREE.Matrix4();
 const _lightSphere = new THREE.Sphere();
-const _meshSphere = new THREE.Sphere();
 
 function meshIsVisibleReceiver(entityId: number, world: ECSWorld): boolean {
-  const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
-  if (!(obj instanceof THREE.Mesh)) return false; // the index also holds lights, cameras, etc.
-
-  const geometry = obj.geometry;
-  if (!geometry.boundingSphere) geometry.computeBoundingSphere();
-  const localRadius = geometry.boundingSphere?.radius ?? 0;
-  const maxScale = Math.max(Math.abs(obj.scale.x), Math.abs(obj.scale.y), Math.abs(obj.scale.z));
-
-  obj.getWorldPosition(_meshSphere.center);
-  _meshSphere.radius = localRadius * maxScale;
+  // Shared with ObjectFrustumCullingSystem.ts's mesh bounding-volume provider
+  // (docs/plans/_DONE_p080_object3d-frustum-culling.md §2.2) — same world-space
+  // bounding-sphere approximation, one implementation.
+  const meshSphere = getMeshWorldBoundingSphere(entityId, world);
+  if (!meshSphere) return false; // the index also holds lights, cameras, etc.
 
   // A mesh only counts if it both receives this light AND would actually be
   // drawn — a mesh lit but itself off-screen contributes nothing to the
   // rendered frame either (§1).
-  return _lightSphere.intersectsSphere(_meshSphere) && _frustum.intersectsSphere(_meshSphere);
+  return _lightSphere.intersectsSphere(meshSphere) && _frustum.intersectsSphere(meshSphere);
 }
 
 /**
@@ -112,7 +107,7 @@ export const lightObjectCullingSystem = (world: ECSWorld) => {
 };
 
 ECSWorld.registerPlugin((world) => {
-  // order: -2, one below lightFrustumCullingSystem's -1 in the same stage —
+  // order: -2, one below objectFrustumCullingSystem's -1 in the same stage —
   // runs after frustum culling has updated TAG_FRUSTUM_CULLED for this
   // frame, so the skip above sees this frame's result, not last frame's.
   world.addSystem(

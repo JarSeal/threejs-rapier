@@ -12,6 +12,7 @@ import { type CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { getGeometry } from './Geometry';
 import { CoreComponentType } from './ECS/ECSRegistry';
+import { setFrustumCullingEnabled } from './ECS/ObjectFrustumCullingSystem';
 
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
@@ -29,6 +30,8 @@ export type MeshProps = {
   rotation?: { x?: number; y?: number; z?: number };
   quaternion?: THREE.Quaternion;
   appId?: string;
+  /** Native Object3D.frustumCulled (Three.js's own per-mesh render-list culling). Defaults to Three's own default (true). */
+  frustumCullingEnabled?: boolean;
 };
 
 export const createMeshEntity = (
@@ -67,6 +70,7 @@ export const createMeshEntity = (
   const appId = props.appId || entityOpts?.appId || mesh.uuid;
   mesh.castShadow = props.castShadow ?? false;
   mesh.receiveShadow = props.receiveShadow ?? false;
+  mesh.frustumCulled = props.frustumCullingEnabled ?? true;
   mesh.userData.id = appId;
 
   if (geo.userData.id) incGeometryRef(geo.userData.id);
@@ -148,6 +152,13 @@ export const createMeshEntity = (
   // not createEntity()'s default (0,0,0).
   if (entityOpts?.spatialIndex !== false) {
     world.addComponent(entityId, ComponentType.SPATIAL_INDEXED, true);
+  }
+
+  // ECS-queryable frustum culling (docs/plans/_DONE_p080_object3d-frustum-culling.md §2.1/§2.4) —
+  // opt-in, off by default, distinct from `props.frustumCullingEnabled` above (Three's native
+  // render-time culling, on by default).
+  if (entityOpts?.ecsFrustumCullingEnabled) {
+    setFrustumCullingEnabled(entityId, true, world);
   }
 
   return entityId;

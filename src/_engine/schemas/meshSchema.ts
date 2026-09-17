@@ -14,6 +14,8 @@ export const MeshPropsSchema = z.object({
   rotation: Vector3Schema.optional(),
   quaternion: Vector4Schema.optional(),
   appId: z.string().optional(),
+  /** Native Object3D.frustumCulled (Three.js's own per-mesh render-list culling). Defaults to Three's own default (true). */
+  frustumCullingEnabled: z.boolean().optional(),
   // physicsParams: z.union([]),
 });
 
@@ -29,6 +31,7 @@ const MeshOverridesSchema = z.object({
   position: Vector3Schema.optional(),
   rotation: Vector3Schema.optional(),
   quaternion: Vector4Schema.optional(),
+  frustumCullingEnabled: z.boolean().optional(),
   __meta: MetaSchema.optional(),
 });
 

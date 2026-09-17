@@ -972,6 +972,9 @@
         },
         "appId": {
           "type": "string"
+        },
+        "frustumCullingEnabled": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -1048,6 +1051,9 @@
           "additionalProperties": false
         },
         "spatialIndex": {
+          "type": "boolean"
+        },
+        "ecsFrustumCullingEnabled": {
           "type": "boolean"
         }
       },
@@ -2003,6 +2009,9 @@
                 "w"
               ],
               "additionalProperties": false
+            },
+            "frustumCullingEnabled": {
+              "type": "boolean"
             },
             "__meta": {
               "type": "object",

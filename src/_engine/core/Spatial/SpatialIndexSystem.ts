@@ -4,7 +4,7 @@ import { ECSSystemStage } from '../../../AppECSRegistry';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { IS_DEBUG_ENV } from '../Config';
 import { lwarn } from '../../utils/Logger';
-import { MAX_SPOT_ANGLE } from '../ECS/LightFrustumCullingSystem';
+import { MAX_SPOT_ANGLE } from '../ECS/ObjectFrustumCullingSystem';
 import { ReadonlyVec3, SpatialGrid } from './SpatialGrid';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
 
@@ -79,13 +79,13 @@ export function setSpatialGridCellSize(world: ECSWorld, cellSize: number): void 
 /**
  * A point/spot light's influence-sphere radius — shared with
  * LightObjectCullingSystem.ts so both consumers agree on what "this light's
- * volume" means. Kept separate from LightFrustumCullingSystem.ts's own
+ * volume" means. Kept separate from ObjectFrustumCullingSystem.ts's own
  * `computeIsVisible` (which only ever needs a boolean, not the radius
  * itself) rather than touching that already-shipped system.
  */
 export function computeLightInfluenceRadius(light: THREE.PointLight | THREE.SpotLight): number {
   // distance === 0 is Three.js's own convention for "never attenuate / infinite
-  // range" (see LightFrustumCullingSystem.ts) — Infinity forces this light into
+  // range" (see ObjectFrustumCullingSystem.ts) — Infinity forces this light into
   // the grid's oversized tier, where it's always a candidate everywhere.
   if (light.distance === 0) return Infinity;
   if (light instanceof THREE.SpotLight) {
@@ -225,7 +225,7 @@ export function validateSpatialGridQuery(world: ECSWorld, p: ReadonlyVec3, r: nu
 }
 
 ECSWorld.registerPlugin((world) => {
-  // order: -1, matching lightFrustumCullingSystem's precedent — runs after this
+  // order: -1, matching objectFrustumCullingSystem's precedent — runs after this
   // stage's default-order (0) systems, in particular physicsToTransformSystem,
   // so it rebuilds from this frame's final transforms, not last frame's.
   world.addSystem(

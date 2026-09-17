@@ -15,6 +15,7 @@ import { existsOrThrow } from '../utils/assert';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import { lerror, lwarn } from '../utils/Logger';
 import { getTexture } from './Texture';
+import { setFrustumCullingEnabled } from './ECS/ObjectFrustumCullingSystem';
 
 export const registerLightManager = (world: ECSWorld) => {
   if (IS_DEBUG_ENV) {
@@ -428,22 +429,26 @@ export const setLightEnabled = (lightId: number, enabled: boolean, world: ECSWor
   }
 };
 
+// Generic across entity types as of docs/plans/_DONE_p080_object3d-frustum-culling.md §2.1/§2.4 —
+// kept as a light-named export since `_dbg__LightGUI.ts` and `createLightEntity` already
+// call it by this name, but the actual FRUSTUM_CULLING_ENABLED/TAG_FRUSTUM_CULLED toggling
+// lives in ObjectFrustumCullingSystem.ts, shared with MeshManager.ts.
+//
+// Deliberately a wrapper function, not `export const setLightFrustumCullingEnabled =
+// setFrustumCullingEnabled;` — that direct alias reads the import eagerly at module-evaluation
+// time, and LightManager.ts <-> ObjectFrustumCullingSystem.ts <-> ECSCoreSystems.ts <->
+// LightManager.ts form a circular import (ECSCoreSystems.ts already imports
+// isAnyLightHelperVisible from here). Depending on which module the app happens to import
+// first, that eager read can land before ObjectFrustumCullingSystem.ts's own module body has
+// reached its `setFrustumCullingEnabled` declaration, throwing "Cannot access
+// 'setFrustumCullingEnabled' before initialization". Wrapping it in a function defers the
+// read to call time, by which point every module has finished loading — same reason
+// isAnyLightHelperVisible (used only inside hook closures) never hits this.
 export const setLightFrustumCullingEnabled = (
-  lightId: number,
+  entityId: number,
   enabled: boolean,
   world: ECSWorld
-) => {
-  if (enabled) {
-    world.addComponent(lightId, ComponentType.FRUSTUM_CULLING_ENABLED, true);
-  } else {
-    world.removeComponent(lightId, ComponentType.FRUSTUM_CULLING_ENABLED);
-    // Opting out must also clear any current culled state — otherwise a light
-    // that was invisible when culling was turned off would stay invisible forever.
-    if (world.hasComponent(lightId, ComponentType.TAG_FRUSTUM_CULLED)) {
-      world.removeComponent(lightId, ComponentType.TAG_FRUSTUM_CULLED);
-    }
-  }
-};
+) => setFrustumCullingEnabled(entityId, enabled, world);
 
 export const setLightObjectCullingEnabled = (
   lightId: number,

@@ -407,6 +407,9 @@
                   },
                   "spatialIndex": {
                     "type": "boolean"
+                  },
+                  "ecsFrustumCullingEnabled": {
+                    "type": "boolean"
                   }
                 },
                 "additionalProperties": false
@@ -1153,6 +1156,9 @@
                     "additionalProperties": false
                   },
                   "spatialIndex": {
+                    "type": "boolean"
+                  },
+                  "ecsFrustumCullingEnabled": {
                     "type": "boolean"
                   }
                 },
@@ -3031,6 +3037,9 @@
                           },
                           "spatialIndex": {
                             "type": "boolean"
+                          },
+                          "ecsFrustumCullingEnabled": {
+                            "type": "boolean"
                           }
                         },
                         "additionalProperties": false
@@ -3777,6 +3786,9 @@
                             "additionalProperties": false
                           },
                           "spatialIndex": {
+                            "type": "boolean"
+                          },
+                          "ecsFrustumCullingEnabled": {
                             "type": "boolean"
                           }
                         },

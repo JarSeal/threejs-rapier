@@ -625,6 +625,9 @@
         },
         "spatialIndex": {
           "type": "boolean"
+        },
+        "ecsFrustumCullingEnabled": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

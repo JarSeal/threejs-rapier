@@ -65,6 +65,7 @@ export const confirmClearScope = (opts: {
     id: CONFIRM_CLEAR_SCOPE_DIALOG_ID,
     closeIfOpen: true,
     title: 'Clear local storage data',
+    size: { w: 360, h: 200 },
     content: () => {
       const wrapper = CMP({
         html: () => `<p>Do you want to clear this from all scenes or just the current scene?</p>`,

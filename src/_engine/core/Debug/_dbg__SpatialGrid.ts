@@ -70,7 +70,7 @@ export const _createSpatialGridDebugGUI = () => {
       });
       const { container, debugGUI: pane } = createNewDebuggerPane(
         'spatialGrid',
-        `${icon} Spatial Index (docs/plans/_DONE_p050_spatial-index.md)`,
+        `${icon} Spatial Index`,
         [clearTabBtn]
       );
 

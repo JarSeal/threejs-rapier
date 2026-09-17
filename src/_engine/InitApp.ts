@@ -16,7 +16,7 @@ import { getSvgIcon } from './core/UI/icons/SvgIcon';
 
 // ECS Core Plugins
 import './core/ECS/ECSCoreSystems';
-import './core/ECS/LightFrustumCullingSystem';
+import './core/ECS/ObjectFrustumCullingSystem';
 import './core/ECS/LightObjectCullingSystem';
 import { registerSpatialIndexDebugGUI } from './core/Spatial/SpatialIndexSystem';
 import './core/MeshManager';
