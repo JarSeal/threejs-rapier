@@ -31,7 +31,13 @@ import { existsOrThrow } from '../utils/assert';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
 import { deleteAllGroupEntities } from './GroupManager';
 import { setIsLoadingScene } from './MainLoop';
-import { getECSWorld, getEntityIdByAppId } from './ECS';
+import {
+  DEFAULT_ECS_WORLD_ID,
+  deleteECSWorld,
+  getAllECSWorlds,
+  getECSWorld,
+  getEntityIdByAppId,
+} from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import { sceneFileObjects } from '../generatedAppFns';
 import { getTexture, loadTextureAsync } from './Texture';
@@ -464,6 +470,12 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       runOnSceneExit(prevSceneId);
       runOnAllSceneExits();
       deleteAllRayHelpers();
+
+      // Secondary ECS worlds (eg. created ad-hoc by a scene) are scene-scoped and
+      // never re-created if left alive, so wipe them all on every scene change.
+      for (const world of getAllECSWorlds()) {
+        if (world.id !== DEFAULT_ECS_WORLD_ID) deleteECSWorld(world.id);
+      }
 
       const ecsWorld = existsOrThrow(getECSWorld(), 'Could not find ECS World in loadScene');
       if (IS_DEBUG_ENV) {

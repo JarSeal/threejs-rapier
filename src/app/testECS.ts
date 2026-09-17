@@ -185,10 +185,6 @@ export const scene = async () => {
     time: 0, // Start at 0
   });
 
-  // setTimeout(() => {
-  //   deleteECSWorld(uiWorld.id);
-  // }, 4000);
-
   // Stress test ECS
   initECSStressTest(undefined, ballId);
 
