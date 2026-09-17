@@ -1,0 +1,31 @@
+{
+  "$schemas": "../../../.schemas/importedMesh.schema.json",
+  "props": {
+    "appId": "testImportedMesh",
+    "fileName": "/debugger/assets/testModels/box01.glb",
+    "importGroup": true,
+    "allMeshesVisible": true,
+    "meshProps": [
+      {
+        "position": { "x": -4, "y": 1, "z": -1 },
+        "castShadow": true,
+        "receiveShadow": true,
+        "mat": {
+          "id": "importedMeshMat",
+          "type": "PHONG",
+          "params": { "map": "testTexture" }
+        }
+      }
+    ]
+  },
+  "__saveData": {
+    "sceneTestECS": [
+      {
+        "__meta": {
+          "date": 1779449688109
+        },
+        "importGroup": false
+      }
+    ]
+  }
+}

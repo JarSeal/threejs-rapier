@@ -4,36 +4,50 @@ import {
   deleteAllSceneLoopers,
   deleteScene,
   getCurrentScene,
+  getGeneratedSceneData,
   getRootScene,
   getScene,
+  getSceneOpts,
+  runOnAllSceneEnters,
+  runOnAllSceneExits,
   runOnSceneEnter,
   runOnSceneExit,
+  SceneData,
   setCurrentScene,
 } from './Scene';
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
 import { deleteAllPhysicsObjects } from './PhysicsRapier';
-import { disableDebugger } from '../debug/DebuggerGUI';
+import { DEBUGGER_SCENE_LOADER_ID, disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './InputControls';
 import { getCanvasParentElem } from './Renderer';
-import { DEBUG_CAMERA_ID, getDebugToolsState, setDebugToolsVisibility } from '../debug/DebugTools';
-import { isDebugEnvironment } from './Config';
-import { clearSkyBox } from './SkyBox';
-import { debuggerSceneListing } from '../debug/debugScenes/debuggerSceneListing';
+import { getDebugToolsState } from '../debug/DebugToolsManager';
+import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, isDebugEnvironment } from './Config';
+import { applySkyBoxForScene, clearSkyBox } from './SkyBox';
 import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
-import { deleteAllInSceneLights, updateLightsDebuggerGUI } from './Light';
-import {
-  deleteAllInSceneCameras,
-  deleteOnCameraSetsAndUnsets,
-  setCurrentCamera,
-  updateCamerasDebuggerGUI,
-} from './Camera';
 import { deleteAllCharacters } from './Character';
-import { existsOrThrow } from '../utils/helpers';
-import { deregisterAllLightAndCameraHelpers } from './Helpers';
+import { existsOrThrow } from '../utils/assert';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
-import { deleteAllGroups } from './Group';
+import { deleteAllGroupEntities } from './GroupManager';
+import { setIsLoadingScene } from './MainLoop';
+import {
+  DEFAULT_ECS_WORLD_ID,
+  deleteECSWorld,
+  getAllECSWorlds,
+  getECSWorld,
+  getEntityIdByAppId,
+} from './ECS';
+import { ComponentType } from './ECS/ECSCoreComponents';
+import { sceneFileObjects } from '../generatedAppFns';
+import { getTexture, loadTextureAsync } from './Texture';
+import { createMaterial, getMaterial } from './Material';
+import { textureMapKeys } from '../utils/constants';
+import { createGeometry, getGeometry } from './Geometry';
+import { createLightEntity } from './LightManager';
+import { createCameraEntity, setActiveCamera } from './CameraManager';
+import { createMeshEntity } from './MeshManager';
+import { importModelAsync, type ImportReturnObj } from './ImportModel';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -52,7 +66,10 @@ export type SceneLoader = {
    * @param updateLoaderStatusFn UpdateLoaderStatusFn ({@link UpdateLoaderStatusFn})
    * @returns Promise<boolean>
    */
-  loadFn?: (loader: SceneLoader, nextSceneFn: () => Promise<string>) => Promise<string>;
+  loadFn?: (
+    loader: SceneLoader,
+    nextSceneFn: (sceneData: SceneData) => Promise<void>
+  ) => Promise<void>;
 
   /**
    * Load start function, returns true when done
@@ -98,7 +115,14 @@ export type SceneLoader = {
 };
 
 type LoadSceneProps = {
-  nextSceneFn: () => Promise<string>;
+  sceneId: string;
+  nextSceneFn?: ({
+    sceneData,
+    assets,
+  }: {
+    sceneData: SceneData;
+    assets: ScenePrimitiveAssets;
+  }) => Promise<void>;
   updateLoaderStatusFn?: UpdateLoaderStatusFn;
   loaderId?: string; // loaderId to use, if not provided then the currentSceneLoader will be used
   deletePrevScene?: boolean;
@@ -111,11 +135,11 @@ let currentSceneLoader: SceneLoader | null = null;
 let currentSceneLoaderId: string | null = null;
 let currentlyLoading = false;
 let firstSceneLoaded = false;
+let nextSceneId: string | null = null;
 
 export const createSceneLoader = async (
   sceneLoader: Omit<SceneLoader, 'phase' | 'loaderContainer'>,
   isCurrent?: boolean // default is true
-  // createLoaderFn?: (sceneLoader: SceneLoader) => Promise<void>
 ) => {
   const foundSameId = sceneLoaders.find((sl) => sl.id === sceneLoader.id);
   if (foundSameId) {
@@ -126,7 +150,6 @@ export const createSceneLoader = async (
 
   sceneLoaders.push(sceneLoader);
 
-  // default value of isCurrent is true (even if undefined)
   if (isCurrent !== false) {
     setCurrentSceneLoader(sceneLoader.id);
   }
@@ -136,7 +159,7 @@ export const createSceneLoader = async (
 // export const deleteSceneLoader = (id: string) => {};
 
 export const setCurrentSceneLoader = (id: string) => {
-  const foundLoader = sceneLoaders.find((sl) => sl.id);
+  const foundLoader = sceneLoaders.find((sl) => sl.id === id);
   if (!foundLoader) {
     const msg = `Could not set current scene loader with loader id "${id}", because the loader was not found.`;
     lwarn(msg);
@@ -167,37 +190,234 @@ export const getCurrentSceneLoaderId = () => {
   return currentSceneLoaderId;
 };
 
+export const createCameras = (sceneData: SceneData) => {
+  const cameraProps = sceneData.cameras || [];
+  let firstCamId;
+  let activeCamFound = false;
+  let oneCameraCreated = false;
+  if (!cameraProps?.length) {
+    const msg = 'Could not find any cameras for the scene in createCameras (SceneLoader).';
+    lerror(msg);
+    throw new Error(msg);
+  }
+  for (let i = 0; i < cameraProps.length; i++) {
+    const props = cameraProps[i];
+    if (typeof props === 'string') {
+      if (i === 0) firstCamId = getEntityIdByAppId(props);
+      continue;
+    }
+    createCameraEntity(props.camProps, props.entityOpts);
+    oneCameraCreated = true;
+    if (props.camProps.active) activeCamFound = true;
+  }
+  if (!oneCameraCreated) {
+    const msg = 'No camera was created in createCameras (SceneLoader).';
+    lerror(msg);
+    throw new Error(msg);
+  }
+  if (!activeCamFound && firstCamId) {
+    setActiveCamera(firstCamId);
+  }
+};
+
+export type ScenePrimitiveAssets = {
+  textures: { [id: string]: THREE.Texture };
+  materials: { [id: string]: THREE.Material };
+  geometries: { [id: string]: THREE.BufferGeometry };
+};
+
+const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitiveAssets> => {
+  const textures: ScenePrimitiveAssets['textures'] = {};
+  const materials: ScenePrimitiveAssets['materials'] = {};
+  const geometries: ScenePrimitiveAssets['geometries'] = {};
+
+  // Load and create textures
+  const sceneTextures = sceneData.textures || [];
+  const texturePromises: Promise<THREE.Texture>[] = [];
+  const textureIds: string[] = [];
+  for (let i = 0; i < sceneTextures.length; i++) {
+    const tex = sceneTextures[i];
+    if (typeof tex === 'string') continue;
+    const texId = tex.id;
+    if (!texId) continue;
+    textureIds.push(texId);
+    texturePromises.push(loadTextureAsync(tex));
+  }
+  const loadedTextures = await Promise.all(texturePromises);
+  for (let i = 0; i < loadedTextures.length; i++) {
+    textures[textureIds[i]] = loadedTextures[i];
+  }
+
+  // Create materials
+  const sceneMaterials = sceneData.materials || [];
+  for (let i = 0; i < sceneMaterials.length; i++) {
+    const material = sceneMaterials[i];
+    if (typeof material === 'string') {
+      const mat = getMaterial(material);
+      if (mat) materials[material] = mat;
+      continue;
+    }
+    for (let j = 0; j < textureMapKeys.length; j++) {
+      const params = material.params as Record<string, unknown> | undefined;
+      if (params) {
+        for (const texKey of textureMapKeys) {
+          const texRef = params[texKey];
+          if (typeof texRef !== 'string') continue;
+          const texture = textures[texRef] || getTexture(texRef);
+          if (!texture) {
+            lwarn(`Could not find texture with id "${texRef}" in loadNextSceneAssets.`);
+            continue;
+          }
+          params[texKey] = texture;
+        }
+      }
+    }
+
+    const mat = createMaterial({ ...material, params: { ...material.params } });
+    if (mat) materials[material.id || `material-${i}`] = mat;
+  }
+
+  // Create geometries
+  const sceneGeometries = sceneData.geometries || [];
+  for (let i = 0; i < sceneGeometries.length; i++) {
+    const geometry = sceneGeometries[i];
+    if (typeof geometry === 'string') {
+      const geo = getGeometry(geometry);
+      if (geo) geometries[geometry] = geo as THREE.BufferGeometry;
+      continue;
+    }
+    const geo = createGeometry({ ...geometry });
+    if (geo) geometries[geometry.id || `geometry-${i}`] = geo;
+  }
+
+  return { textures, materials, geometries };
+};
+
+const createNextSceneObject3Ds = async (sceneData: SceneData): Promise<void> => {
+  // Create lights
+  const lightProps = sceneData.lights || [];
+  for (let i = 0; i < lightProps.length; i++) {
+    const props = lightProps[i];
+    if (typeof props === 'string') continue;
+    createLightEntity(props.lightProps, props.entityOpts);
+  }
+
+  // Create meshes
+  const meshProps = sceneData.meshes || [];
+  for (let i = 0; i < meshProps.length; i++) {
+    const props = meshProps[i];
+    if (typeof props === 'string') continue;
+    if (typeof props.props.geo === 'string') {
+      const geo = getGeometry(props.props.geo);
+      if (!geo) {
+        lerror(
+          `Could not find geometry with id "${props.props.geo}" for mesh "${props.props.appId || props.entityOpts?.appId}" in createNextSceneObject3Ds. Mesh not created.`
+        );
+        continue;
+      }
+      props.props.geo = geo as THREE.BufferGeometry;
+    }
+    if (typeof props.props.mat === 'string') {
+      const mat = getMaterial(props.props.mat);
+      if (!mat) {
+        lerror(
+          `Could not find material with id "${props.props.mat}" for "${props.props.appId || props.entityOpts?.appId}" mesh in createNextSceneObject3Ds. Mesh not created.`
+        );
+        continue;
+      }
+      props.props.mat = mat;
+    }
+    createMeshEntity(props.props, props.entityOpts);
+  }
+
+  // Create imported meshes
+  const importedMeshProps = sceneData.importedMeshes || [];
+  const promises: Promise<ImportReturnObj>[] = [];
+  for (let i = 0; i < importedMeshProps.length; i++) {
+    const props = importedMeshProps[i];
+    promises.push(importModelAsync(props.props));
+  }
+  await Promise.all(promises);
+};
+
 /**
  * Loads a scene with a scene loader
  * @param loadSceneProps (object) {@link LoadSceneProps}
  */
 export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   currentlyLoading = true;
-  let loader: SceneLoader | undefined = getCurrentSceneLoader();
-  let initNextSceneFn: () => Promise<string> = loadSceneProps.nextSceneFn;
 
-  if (loadSceneProps.loaderId) {
-    loader = sceneLoaders.find((sl) => sl.id === loadSceneProps.loaderId);
-    if (!loader) {
-      const msg = `Could not find scene loader with loader id "${loadSceneProps.loaderId}" in loadScene. Next scene was not loaded.`;
+  // Convert variables to mutables so the debugger can intercept them
+  let sceneId = loadSceneProps.sceneId;
+  let targetLoaderId = loadSceneProps.loaderId;
+  let overrideNextSceneFn = loadSceneProps.nextSceneFn;
+
+  // Process Debug Start Scene Interception (First boot only) — also respected under
+  // isProdTest (IS_PROD_TEST_MODE), not just real debug mode, so a "production build with a
+  // subset of debug features" run still honors a start-scene override left set in the debug
+  // tools tab (getDebugToolsState/registerDebugToolsModule are prod-test-aware for this).
+  const debugToolsState =
+    (isDebugEnvironment() || IS_PROD_TEST_MODE) && !firstSceneLoaded
+      ? getDebugToolsState(true)
+      : null;
+
+  if (
+    debugToolsState?.scenesListing.useDebugStartScene &&
+    debugToolsState.scenesListing.debugStartScene
+  ) {
+    sceneId = debugToolsState.scenesListing.debugStartScene;
+
+    // Clear out any hardcoded start functions passed by index.ts
+    // to guarantee the lookup pulls dynamically from sceneFileObjects instead
+    overrideNextSceneFn = undefined;
+
+    // Resolve your loader @TODO: Override with the explicit debugger loader
+    // The debugger's own scene-loader UI is IS_DEBUG_ENV-only (never registered under
+    // isProdTest) — only honor this sub-option in real debug mode, or targetLoaderId would
+    // point at a loader that was never created.
+    if (isDebugEnvironment() && debugToolsState.scenesListing.useDebuggerSceneLoader) {
+      targetLoaderId = DEBUGGER_SCENE_LOADER_ID;
+    }
+  }
+
+  // Resolve Scene Data using the final resolved sceneId
+  nextSceneId = sceneId;
+  let sceneData = getGeneratedSceneData(sceneId);
+
+  if (!sceneData) {
+    const sceneOpts = getSceneOpts(sceneId);
+    if (sceneOpts) {
+      sceneData = {
+        id: sceneId,
+        sceneFile: '',
+        name: sceneOpts.name,
+        description: sceneOpts.description,
+      };
+    } else {
+      const msg = `Could not find sceneData / sceneOpts with scene id "${sceneId}" in loadScene.`;
       lerror(msg);
       throw new Error(msg);
     }
   }
 
-  // Debug start scene check
-  const debugToolsState =
-    isDebugEnvironment() && !firstSceneLoaded ? getDebugToolsState(true) : null;
-  if (debugToolsState?.scenesListing.useDebugStartScene) {
-    if (debugToolsState.scenesListing.useDebuggerSceneLoader) {
-      // @TODO: Use debugger sceneLoader
-    }
+  // Resolve the Stage Execution Function from your autogenerated registry module
+  const nextSceneFn = overrideNextSceneFn || sceneFileObjects[sceneId];
+  if (!nextSceneFn) {
+    const errorMsg = `Could not find nextSceneFn in loadScene for sceneId ${sceneId}`;
+    lerror(errorMsg);
+    throw new Error(errorMsg);
+  }
 
-    if (debugToolsState?.scenesListing.debugStartScene) {
-      const debugScene = debuggerSceneListing.find(
-        (scene) => scene.id === debugToolsState.scenesListing.debugStartScene
-      );
-      if (debugScene) initNextSceneFn = debugScene.fn;
+  const initNextSceneFn = nextSceneFn;
+
+  // Resolve the Scene Loader Component context
+  let loader: SceneLoader | undefined = getCurrentSceneLoader();
+  if (targetLoaderId) {
+    loader = sceneLoaders.find((sl) => sl.id === targetLoaderId);
+    if (!loader) {
+      const msg = `Could not find scene loader with loader id "${targetLoaderId}" in loadScene.`;
+      lerror(msg);
+      throw new Error(msg);
     }
   }
 
@@ -207,7 +427,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   }
   let loadFn = loader.loadFn;
   if (!loadFn) {
-    loadFn = async (_loader, nextSceneFn) => await nextSceneFn();
+    loadFn = async (_loader, nextSceneFn) => await nextSceneFn(sceneData);
   }
   let loadEndFn = loader.loadEndFn;
   if (!loadEndFn) {
@@ -234,19 +454,16 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   const canvasParentElem = getCanvasParentElem();
   canvasParentElem?.style.setProperty('pointer-events', 'none');
 
-  // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
-  deleteAllCharacters();
-  deleteAllPhysicsObjects();
-  deleteAllInSceneCameras();
-  deleteAllInSceneLights();
-  deleteAllGroups({ deleteAll: true });
-  if (isDebugEnvironment()) {
-    deregisterAllLightAndCameraHelpers();
-  }
-
   loader.phase = 'START';
   await loadStartFn(loader)
     .then(async () => {
+      setIsLoadingScene(true);
+
+      // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
+      deleteAllCharacters();
+      deleteAllPhysicsObjects();
+      deleteAllGroupEntities();
+
       if (loadSceneProps.deletePrevScene && prevScene) {
         // Delete the whole previous scene and assets
         // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps (like deleteMeshes, deleteTextures, etc.)
@@ -259,54 +476,72 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       handleDraggableWindowsOnSceneChangeStart();
 
       runOnSceneExit(prevSceneId);
-      deleteOnCameraSetsAndUnsets();
+      runOnAllSceneExits();
       deleteAllRayHelpers();
 
+      // Secondary ECS worlds (eg. created ad-hoc by a scene) are scene-scoped and
+      // never re-created if left alive, so wipe them all on every scene change.
+      for (const world of getAllECSWorlds()) {
+        if (world.id !== DEFAULT_ECS_WORLD_ID) deleteECSWorld(world.id);
+      }
+
+      const ecsWorld = existsOrThrow(getECSWorld(), 'Could not find ECS World in loadScene');
+      if (IS_DEBUG_ENV) {
+        // We Give the Debug Camera a chance to save its final state for the current scene.
+        // This triggers the 'end' logic manually if needed, or simply ensures LS is up to date.
+        void ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
+      }
+      ecsWorld.clearNonPersistent();
+
       loader.phase = 'LOAD';
-      await loadFn(loader, initNextSceneFn).then(async (newSceneId) => {
-        // Scene has been loaded and initialized
-        existsOrThrow(
-          getScene(newSceneId),
-          `Scene loader could not find scene with scene id '${newSceneId}'.`
-        );
-        setCurrentScene(newSceneId);
 
-        const canvasParentElem = getCanvasParentElem();
-        canvasParentElem?.style.setProperty('pointer-events', '');
+      createCameras(sceneData);
 
-        // Enable input controls
-        setAllInputsEnabled(true);
+      // Create / load all next scene assets before the scene file
+      const nextSceneAssets = await loadNextSceneAssets(sceneData);
 
-        if (isDebugEnvironment()) {
-          // Enable debuggers
-          disableDebugger(false);
-          const debugCamEnabled = Boolean(
-            getDebugToolsState(true).debugCamera[newSceneId]?.enabled
+      await loadFn(loader, () => initNextSceneFn({ sceneData, assets: nextSceneAssets })).then(
+        async () => {
+          // Scene has been loaded and initialized
+          existsOrThrow(
+            getScene(sceneId),
+            `Scene loader could not find scene with scene id '${sceneId}'.`
           );
-          setDebugToolsVisibility(debugCamEnabled, true);
-          updateCamerasDebuggerGUI();
-          updateLightsDebuggerGUI();
+          setCurrentScene(sceneId);
+          await applySkyBoxForScene(sceneId);
+          await createNextSceneObject3Ds(sceneData);
 
-          // Set possible debug camera
-          if (debugCamEnabled) setCurrentCamera(DEBUG_CAMERA_ID);
+          const canvasParentElem = getCanvasParentElem();
+          canvasParentElem?.style.setProperty('pointer-events', '');
 
-          updateOnScreenTools();
-          resetRayCastStats();
+          // Enable input controls
+          setAllInputsEnabled(true);
+
+          firstSceneLoaded = true;
+
+          runOnSceneEnter(sceneId);
+          runOnAllSceneEnters();
+
+          if (IS_DEBUG_ENV) {
+            // Enable debuggers
+            disableDebugger(false);
+
+            updateOnScreenTools();
+            resetRayCastStats();
+          }
+
+          loader.phase = 'END';
+          await loadEndFn(loader).then(() => {
+            if (loaderContainer) loaderContainer.remove();
+            if (loader.loaderGroup) rootScene.remove(loader.loaderGroup);
+
+            loader.phase = undefined;
+            currentlyLoading = false;
+            nextSceneId = null;
+            setIsLoadingScene(currentlyLoading);
+          });
         }
-
-        firstSceneLoaded = true;
-
-        runOnSceneEnter(newSceneId);
-
-        loader.phase = 'END';
-        await loadEndFn(loader).then(() => {
-          if (loaderContainer) loaderContainer.remove();
-          if (loader.loaderGroup) rootScene.remove(loader.loaderGroup);
-
-          loader.phase = undefined;
-          currentlyLoading = false;
-        });
-      });
+      );
     })
     .catch((reason) => {
       const msg = `Could not load scene (phase '${loader.phase}')`;
@@ -356,6 +591,16 @@ export const getLoaderStatusUpdater = (loaderId?: string) => {
   return (params?: { [key: string]: unknown }) => updateLoaderStatusFn(loader, params);
 };
 
+/**
+ * This tells whether the scene loader has started/ended the loading animation sequence.
+ *
+ * This does NOT tell whether the loading has started or ended, but just that loading
+ * sequence has started or ended. For more accurate loading phase check, use
+ * loopState.isLoading as it tells when the actual loading starts and ends.
+ * @returns boolean
+ */
 export const isCurrentlyLoading = () => currentlyLoading;
 
 export const hasFirstSceneBeenLoaded = () => firstSceneLoaded;
+
+export const getNextSceneId = () => nextSceneId;

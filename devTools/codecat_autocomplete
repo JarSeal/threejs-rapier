@@ -1,0 +1,49 @@
+_codecat_completions()
+{
+  local cur prev opts
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  # All options (short + long)
+  opts="
+    -p --path
+    -c --copy
+    -h --help
+    -v --version
+    --exclude
+    --no-default-excludes
+    --max-lines
+    --color
+  "
+
+  case "$prev" in
+    -p|--path)
+      COMPREPLY=( $(compgen -d -- "$cur") )
+      return 0
+      ;;
+    --exclude)
+      # Allow comma-separated directories
+      # Split on comma and complete last segment
+      IFS=',' read -ra parts <<< "$cur"
+      local last="${parts[-1]}"
+      COMPREPLY=( $(compgen -d -- "$last") )
+      return 0
+      ;;
+    --max-lines)
+      COMPREPLY=( $(compgen -W "10 20 50 100 200 500 1000" -- "$cur") )
+      return 0
+      ;;
+  esac
+
+  # Complete options
+  if [[ "$cur" == -* ]]; then
+    COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+    return 0
+  fi
+
+  # Default: file patterns / files
+  COMPREPLY=( $(compgen -f -- "$cur") )
+}
+
+complete -F _codecat_completions codecat

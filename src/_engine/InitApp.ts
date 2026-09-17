@@ -1,21 +1,37 @@
 import { type Scene } from 'three/webgpu';
-import { isDebugEnvironment, loadConfig } from './core/Config';
+import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, loadConfig, PROJECT_METADATA } from './core/Config';
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
-import { initMainLoop } from './core/MainLoop';
+import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
 import { InitRapierPhysics } from './core/PhysicsRapier';
-import { createRootScene, getRootScene } from './core/Scene';
+import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
 import { lerror, llog } from './utils/Logger';
-import { createSkyBoxDebugGUI } from './core/SkyBox';
-import { createDebuggerSceneLoader } from './debug/DebuggerSceneLoader';
+import { createSkyBoxDebugGUI, registerSkyBoxDebugGUI } from './core/SkyBox';
 import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
-import { createLightsDebuggerGUI } from './core/Light';
-import { createCamerasDebuggerGUI } from './core/Camera';
-import { createCharactersDebuggerGUI } from './core/Character';
+import { createCharactersDebuggerGUI, registerCharacterTools } from './core/Character';
 import { createToaster } from './core/UI/Toaster';
-import { getStatsCmp } from './debug/Stats';
+import { getStatsCmp, registerStatsModule } from './debug/Stats';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
+
+// ECS Core Plugins
+import './core/ECS/ECSCoreSystems';
+import './core/ECS/ObjectFrustumCullingSystem';
+import './core/ECS/LightObjectCullingSystem';
+import { registerSpatialIndexDebugGUI } from './core/Spatial/SpatialIndexSystem';
+import './core/MeshManager';
+
+// App Plugins
+import '../AppECSPlugins';
+
+import { initECSWorld, registerECSModule } from './core/ECS';
+import { initDebugCamera, registerCameraManager } from './core/CameraManager';
+import { registerLightManager } from './core/LightManager';
+import { load3DSymbols } from './debug/3DSymbols';
+import { registerDebugToolsModule } from './debug/DebugToolsManager';
+import { registerRaycastDebugGUI } from './core/Raycast';
+import { registerOnScreenTools } from './debug/OnScreenTools';
+import { registerDebuggerGUI } from './debug/DebuggerGUI';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -28,29 +44,61 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     loadConfig();
 
     // Sets the engine version to the HTML
-    setEngineVersion();
+    setEngineVersionToDOM();
 
     // Create base scene
     createRootScene();
 
+    // Init ECS
+    const ecsWorld = initECSWorld();
+
     // HUD container
     createHudContainer();
 
+    // Register scenes from generated data
+    await registerScenesFromGeneratedData();
+
+    await load3DSymbols();
+
+    // Register Managers
+    registerCameraManager();
+    registerLightManager(ecsWorld);
+
+    // Initializes the debug camera (if in debug mode)
+    await initDebugCamera(ecsWorld);
+
     await InitRapierPhysics();
+
+    if (IS_DEBUG_ENV) {
+      await registerStatsModule();
+      await registerSkyBoxDebugGUI();
+      await registerRaycastDebugGUI();
+      await registerDebuggerGUI();
+      await registerCharacterTools();
+      await registerECSModule();
+      await registerSpatialIndexDebugGUI();
+    }
+    if (IS_DEBUG_ENV || IS_PROD_TEST_MODE) {
+      // Loaded here (not the IS_DEBUG_ENV-only block above) so isProdTest mode can still read
+      // the persisted "debug start scene" setting via getDebugToolsState() in SceneLoader.ts —
+      // registerDebugToolsModule()/getDebugToolsState() are prod-test-aware themselves; the
+      // debug tools UI panel they back stays IS_DEBUG_ENV-only regardless (initDebugTools()).
+      await registerDebugToolsModule();
+      await registerMainLoopDebugGUI();
+      await registerOnScreenTools();
+    }
+
     await appStartFn();
 
     // Start engine/loop if root scene has children
     const rootScene = getRootScene() as Scene;
-    if (rootScene.children.length) await initMainLoop();
+    if (rootScene.children.length) initMainLoop();
 
     // Create debug GUIs and utils
-    if (isDebugEnvironment()) {
-      createRendererDebugGUI();
-      createLightsDebuggerGUI();
-      createCamerasDebuggerGUI();
+    if (IS_DEBUG_ENV) {
+      await createRendererDebugGUI();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
-      createDebuggerSceneLoader();
 
       // Make the debug toaster appear above the stats cmp
       const statsCmp = getStatsCmp();
@@ -86,9 +134,43 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
   }
 };
 
-const setEngineVersion = () => {
-  if (isDebugEnvironment()) llog(`Engine starting, running version ${__ENGINE_VERSION__}`);
-  const elem = document.getElementById('engineVersion');
-  if (elem) elem.textContent = __ENGINE_VERSION__;
-  // @TODO: add append element to body if not found (and set inline style to "display: none;")
+const consoleBootText = () => {
+  const meta = PROJECT_METADATA;
+
+  // Define styles
+  const sBrand = 'color: #00d4ff; font-weight: bold; font-size: 1.2em;';
+  const sInfo = 'color: #888;';
+  const sBlue = 'color: #00d2ff; font-weight: bold;';
+  const sEng = 'color: #ff9955; font-style: italic;';
+  const sApp = 'color: #ff9955; font-style: italic;';
+
+  llog(
+    `%c${meta.engine.name}%c starting...\n` +
+      `%cEngine version: %c${meta.engine.version} %c${meta.engine.codename}\n` +
+      `%cApp version: %c${meta.app.version} %c${meta.app.codename}\n` +
+      `%cVersion checksum: %c${meta.versionChecksum}`,
+    // Line 1 styles
+    sBrand,
+    sInfo,
+    // Line 2 styles
+    sInfo,
+    sBlue,
+    sEng,
+    // Line 3 styles
+    sInfo,
+    sBlue,
+    sApp,
+    // Line 4 styles
+    sInfo,
+    sBlue
+  );
+};
+
+const setEngineVersionToDOM = () => {
+  consoleBootText();
+  // @CHORE: add metadata as header metadata tag (remove these below)
+  const elemEng = document.getElementById('engineVersion');
+  if (elemEng) elemEng.textContent = PROJECT_METADATA.engine.version;
+  const elemApp = document.getElementById('appVersion');
+  if (elemApp) elemApp.textContent = PROJECT_METADATA.app.version;
 };

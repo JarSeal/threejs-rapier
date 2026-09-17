@@ -7,6 +7,8 @@ import cameraReelsIcon from './svg/camera-reels.svg?raw';
 import cloudSunIcon from './svg/cloud-sun-fill.svg?raw';
 import databaseXIcon from './svg/database-fill-x.svg?raw';
 import easelIcon from './svg/easel-fill.svg?raw';
+import ecsNodesIcon from './svg/ecs-nodes.svg?raw';
+import eraserIcon from './svg/eraser-fill.svg?raw';
 import fileAsterixIcon from './svg/file-earmark-medical-fill.svg?raw';
 import fileCodeIcon from './svg/file-earmark-code-fill.svg?raw';
 import gpuCardIcon from './svg/gpu-card.svg?raw';
@@ -20,6 +22,7 @@ import personArmsUpIcon from './svg/person-arms-up.svg?raw';
 import playFillIcon from './svg/play-fill.svg?raw';
 import rocketIcon from './svg/rocket.svg?raw';
 import rocketTakeoffIcon from './svg/rocket-takeoff-fill.svg?raw';
+import spatialGridIcon from './svg/spatial-grid.svg?raw';
 import speedometerIcon from './svg/speedometer.svg?raw';
 import stopIcon from './svg/stop-fill.svg?raw';
 import thrashIcon from './svg/trash3-fill.svg?raw';
@@ -37,6 +40,8 @@ const icons = {
   cloudSun: cloudSunIcon,
   databaseX: databaseXIcon,
   easel: easelIcon,
+  ecs: ecsNodesIcon,
+  eraser: eraserIcon,
   fileAsterix: fileAsterixIcon,
   fileCode: fileCodeIcon,
   gpuCard: gpuCardIcon,
@@ -50,6 +55,7 @@ const icons = {
   playFill: playFillIcon,
   rocket: rocketIcon,
   rocketTakeoff: rocketTakeoffIcon,
+  spatialGrid: spatialGridIcon,
   speedometer: speedometerIcon,
   stop: stopIcon,
   thrash: thrashIcon,

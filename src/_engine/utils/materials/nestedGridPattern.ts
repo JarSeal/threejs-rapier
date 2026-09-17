@@ -11,7 +11,7 @@ import {
   mod,
   min,
 } from 'three/tsl';
-import { existsOrThrow } from '../helpers';
+import { existsOrThrow } from '../assert';
 import { createMaterial } from '../../core/Material';
 
 export const getUVRepeatFactor = (mesh: THREE.Mesh, metersPerTile: number) => {
@@ -208,7 +208,7 @@ export const addNestedGridMaterialToMesh = (
 
   // Call the corrected function node
   // const fragmentColor = nestedGridPattern(uvCoords);
-  const fragmentColor = nestedGridPattern(uvCoords);
+  const fragmentColor = nestedGridPattern(uvCoords as unknown as THREE.Node<'vec2'>);
 
   const checkerboardMaterial = createMaterial({
     id,

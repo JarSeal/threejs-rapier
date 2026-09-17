@@ -1,0 +1,14 @@
+{
+  "$schema": "../../../.schemas/material.schema.json",
+  "id": "testMaterial",
+  "type": "PHONG",
+  "params": { "color": "#ff00ff" },
+  "__saveData": {
+    "sceneTestECS": [
+      {
+        "__meta": { "date": 1779449688109 },
+        "params": { "wireframe": false }
+      }
+    ]
+  }
+}

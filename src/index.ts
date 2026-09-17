@@ -1,19 +1,10 @@
 import * as THREE from 'three/webgpu';
 import { createRenderer } from './_engine/core/Renderer';
-import { createCamera } from './_engine/core/Camera';
 import { InitEngine } from './_engine/InitApp';
-import { scene01, SCENE01_ID } from './app/scene01_v2';
 import { createSceneLoader, loadScene } from './_engine/core/SceneLoader';
 import { CMP } from './_engine/utils/CMP';
-import { isDebugEnvironment } from './_engine/core/Config';
-import { addScenesToSceneListing } from './_engine/debug/DebugTools';
-import { SCENE_THIRD_PERSON_GYM_META, sceneThirdPersonGym } from './app/scene_thirdPersonGym';
-import { MAIN_APP_CAM_ID } from './CONFIG';
 
 InitEngine(async () => {
-  // Init camera
-  createCamera(MAIN_APP_CAM_ID, { name: 'Main Camera', isCurrentCamera: true, fov: 90 });
-
   // Init renderer
   await createRenderer({
     antialias: true,
@@ -68,23 +59,14 @@ InitEngine(async () => {
     updateLoaderStatusFn: async (loader, params) => {
       if (!params) return true;
       if ('loadedCount' in params && 'totalCount' in params) {
-        loader.loaderContainer?.updateText(`Loading, ${params.loadedCount} / ${params.totalCount}`);
+        loader.loaderContainer?.update({
+          text: `Loading, ${params.loadedCount} / ${params.totalCount}`,
+        });
         if (params.loaded === params.totalCount) return true;
       }
     },
   });
 
-  if (isDebugEnvironment()) {
-    addScenesToSceneListing([
-      {
-        id: SCENE_THIRD_PERSON_GYM_META.id,
-        text: SCENE_THIRD_PERSON_GYM_META.text,
-        fn: sceneThirdPersonGym,
-      },
-      { id: SCENE01_ID, text: SCENE01_ID, fn: scene01 },
-    ]);
-  }
-
   // Load scene
-  await loadScene({ nextSceneFn: sceneThirdPersonGym });
+  await loadScene({ sceneId: 'sceneTestECS' });
 });

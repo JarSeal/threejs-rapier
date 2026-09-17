@@ -1,28 +1,54 @@
 import * as THREE from 'three/webgpu';
-import { deleteMesh } from './Mesh';
-import { deleteGeometry } from './Geometry';
-import { deleteMaterial } from './Material';
-import { deleteGroup } from './Group';
+import { deleteGeometry, GeoProps } from './Geometry';
+import { deleteMaterial, MatProps } from './Material';
 import { lerror, lwarn } from '../utils/Logger';
-import { deleteLight } from './Light';
-import { deleteTexture } from './Texture';
+import { deleteTexture, getTexture, TextureProps } from './Texture';
 import {
   deleteAllScenePhysicsLoopers,
   deletePhysicsObjectsBySceneId,
   deletePhysicsWorld,
   setCurrentScenePhysicsObjects,
 } from './PhysicsRapier';
-import { isDebugEnvironment } from './Config';
-import {
-  addSceneToDebugtools,
-  getDebugToolsState,
-  removeScenesFromSceneListing,
-  setDebugEnvBallMaterial,
-} from '../debug/DebugTools';
+import { addSceneToDebugtools, getDebugToolsState } from '../debug/DebugToolsManager';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
+import { LightProps } from './LightManager';
+import { ImportModelParams } from './ImportModel';
+import { createSkyBox, SkyBoxProps } from './SkyBox';
+import generatedAppData from '../generatedAppData.json';
+import { CameraProps } from '../schemas/cameraSchema';
+import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import { MeshProps } from './MeshManager';
+import { deleteEntity } from '../utils/ECSHelpers';
+import { getECSWorld, getEntityIdByAppId } from './ECS';
 
 export type Looper = (delta: number) => void;
+
+export type SceneData = {
+  id: string;
+  sceneFile: string;
+  isDebugScene?: boolean;
+  name?: string;
+  description?: string;
+  // comments?: Comment[];
+  // todo?: Todo[];
+  backgroundColor?: string | number;
+  backgroundTexture?: string;
+  cameras?: (
+    | {
+        camProps: CameraProps;
+        entityOpts?: CoreEntityOpts;
+      }
+    | string
+  )[];
+  lights?: ({ lightProps: LightProps; entityOpts?: CoreEntityOpts } | string)[];
+  geometries?: (GeoProps | string)[];
+  textures?: (TextureProps | string)[];
+  materials?: (MatProps | string)[];
+  meshes?: ({ props: MeshProps; entityOpts?: CoreEntityOpts } | string)[];
+  importedMeshes?: { props: ImportModelParams }[];
+  skyboxes?: (SkyBoxProps | string)[];
+};
 
 const scenes: { [id: string]: THREE.Group } = {};
 const sceneOpts: { [id: string]: SceneOptions } = {};
@@ -39,13 +65,16 @@ let curSceneMainLateLoopers: Looper[] = [];
 const sceneResizers: { [sceneId: string]: (() => void)[] } = {};
 const onSceneExit: { [sceneId: string]: () => void } = {};
 const onSceneEnter: { [sceneId: string]: () => void } = {};
+const onAllSceneExits: { [id: string]: () => void } = {};
+const onAllSceneEnters: { [id: string]: () => void } = {};
 
 export type SceneOptions = {
   name?: string;
+  description?: string;
   isCurrentScene?: boolean;
-  background?: THREE.Color | THREE.Texture | THREE.CubeTexture;
-  backgroundColor?: THREE.Color;
-  backgroundTexture?: THREE.Texture;
+  backgroundColor?: THREE.Color | string | number;
+  backgroundTexture?: THREE.Texture | string;
+  skyBox?: string;
   mainLoopers?: Looper[];
   mainLateLoopers?: Looper[];
   appLoopers?: Looper[];
@@ -71,7 +100,9 @@ export const createScene = (id: string, opts?: SceneOptions) => {
 
   addSceneToDebugtools(id);
 
-  if (opts?.isCurrentScene || !currentSceneId) setCurrentScene(id);
+  // @TODO: remove this old implementation that is kept for just in case...
+  // if (opts?.isCurrentScene || !currentSceneId) setCurrentScene(id);
+  if (opts?.isCurrentScene) setCurrentScene(id);
 
   if (opts?.mainLoopers) sceneMainLoopers[id] = opts.mainLoopers;
   if (opts?.mainLateLoopers) sceneMainLateLoopers[id] = opts.mainLateLoopers;
@@ -134,12 +165,8 @@ export const deleteScene = (
   }
 
   scene.traverse((obj) => {
-    if ('isMesh' in obj && (opts?.deleteMeshes || opts?.deleteAll) && obj.userData.id) {
-      deleteMesh(obj.userData.id, {
-        deleteGeometries: opts?.deleteGeometries,
-        deleteMaterials: opts?.deleteMaterials,
-        deleteTextures: opts?.deleteTextures,
-      });
+    if ('isMesh' in obj && (opts?.deleteMeshes || opts?.deleteAll) && obj.userData.entityId) {
+      deleteEntity(obj.userData.entityId);
     } else if ('isMesh' in obj && !opts?.deleteMeshes) {
       const mesh = obj as THREE.Mesh;
       if (opts?.deleteGeometries || opts?.deleteAll) {
@@ -187,28 +214,19 @@ export const deleteScene = (
       }
     }
 
-    if ('isLight' in obj && (opts?.deleteLights || opts?.deleteAll)) {
-      const lightId = obj.userData.id;
-      let allGood = true;
-      if (!lightId) {
-        lwarn(`Could not find light id in deleteScene (scene id: ${id})`);
-        allGood = false;
-      }
-      if (allGood) deleteLight(lightId);
-    }
-
     if ('isGroup' in obj && (opts?.deleteGroups || opts?.deleteAll)) {
-      deleteGroup(obj as THREE.Group, {
-        deleteMeshes: opts?.deleteMeshes,
-        deleteGeometries: opts?.deleteGeometries,
-        deleteMaterials: opts?.deleteMaterials,
-        deleteTextures: opts?.deleteTextures,
-        deleteAll: opts?.deleteAll,
-      });
+      const ecsWorld = getECSWorld();
+      const entityId =
+        obj.userData.entityId ??
+        (obj.userData.id ? getEntityIdByAppId(obj.userData.id, ecsWorld) : undefined);
+
+      if (entityId !== undefined) {
+        ecsWorld.deleteEntity(entityId);
+      } else {
+        obj.removeFromParent();
+      }
     }
   });
-
-  if (isDebugEnvironment()) removeScenesFromSceneListing(id);
 
   // Delete loopers
   deleteAllSceneLoopers(id);
@@ -223,7 +241,6 @@ export const deleteScene = (
   // Delete physics
   deletePhysicsObjectsBySceneId(id);
   if (opts?.deletePhysicsWorld || opts?.deleteAll) {
-    // Delete physics world
     deletePhysicsWorld();
   }
 
@@ -248,8 +265,6 @@ export const setCurrentScene = (id: string | null) => {
     return currentScene;
   }
 
-  setDebugEnvBallMaterial();
-
   const rootScene = getRootScene() as THREE.Scene;
 
   deleteAllScenePhysicsLoopers();
@@ -263,10 +278,23 @@ export const setCurrentScene = (id: string | null) => {
   if (nextScene) {
     rootScene.background = null;
     rootScene.backgroundNode = null;
-    if (currentSceneOpts?.background) rootScene.background = currentSceneOpts.background;
-    if (currentSceneOpts?.backgroundColor) rootScene.background = currentSceneOpts.backgroundColor;
-    if (currentSceneOpts?.backgroundTexture)
-      rootScene.background = currentSceneOpts.backgroundTexture;
+    if (currentSceneOpts?.backgroundColor) {
+      rootScene.background = new THREE.Color(currentSceneOpts.backgroundColor);
+    }
+    if (currentSceneOpts?.backgroundTexture) {
+      if (typeof currentSceneOpts.backgroundTexture === 'string') {
+        const tex = getTexture(currentSceneOpts.backgroundTexture);
+        if (tex) {
+          rootScene.background = tex;
+        } else {
+          lwarn(
+            `Could not find texture for scene background with id '${currentSceneOpts.backgroundTexture}'.`
+          );
+        }
+      } else {
+        rootScene.background = currentSceneOpts.backgroundTexture;
+      }
+    }
     rootScene.add(nextScene);
   }
 
@@ -662,12 +690,63 @@ export const registerOnSceneEnter = (sceneId: string, fn: () => void) =>
 
 export const registerOnSceneExit = (sceneId: string, fn: () => void) => (onSceneExit[sceneId] = fn);
 
-// @CONSIDER: maybe add general 'registerOnAllSceneEnterings' and 'registerOnAllSceneExits' that run on all scene enterings / exits (not just specific ones)
-
 export const runOnSceneEnter = (sceneId: string) => {
   if (onSceneEnter[sceneId]) onSceneEnter[sceneId]();
 };
 
 export const runOnSceneExit = (sceneId?: string) => {
   if (sceneId && onSceneExit[sceneId]) onSceneExit[sceneId]();
+};
+
+export const registerOnAllSceneEnterings = (id: string, fn: () => void) =>
+  (onAllSceneEnters[id] = fn);
+
+export const registerOnAllSceneExits = (id: string, fn: () => void) => (onAllSceneEnters[id] = fn);
+
+export const runOnAllSceneEnters = () => {
+  const keys = Object.keys(onAllSceneEnters);
+  for (let i = 0; i < keys.length; i++) {
+    const fn = onAllSceneEnters[keys[i]];
+    if (fn) fn();
+  }
+};
+
+export const runOnAllSceneExits = () => {
+  const keys = Object.keys(onAllSceneExits);
+  for (let i = 0; i < keys.length; i++) {
+    const fn = onAllSceneExits[keys[i]];
+    if (fn) fn();
+  }
+};
+// @TODO: add deletion methods for all these registers
+
+export const getGeneratedAppData = () => generatedAppData;
+export const getGeneratedSceneData = (sceneId: string) =>
+  getGeneratedAppData().scenes[sceneId as keyof typeof generatedAppData.scenes] as unknown as
+    | SceneData
+    | undefined;
+
+/** Registers (creates) the scenes at initEngine (initApp). */
+export const registerScenesFromGeneratedData = async () => {
+  const data = getGeneratedAppData();
+  const sceneIds = Object.keys(data.scenes);
+  for (let i = 0; i < sceneIds.length; i++) {
+    const sceneId = sceneIds[i] as keyof typeof data.scenes;
+    const sceneData = data.scenes[sceneId] as unknown as SceneData;
+
+    createScene(sceneId, {
+      backgroundColor: sceneData.backgroundColor,
+      backgroundTexture: sceneData.backgroundTexture,
+      name: sceneData.name,
+      description: sceneData.description,
+    });
+
+    if (sceneData.skyboxes?.length) {
+      for (let j = 0; j < sceneData.skyboxes.length; j++) {
+        const props = sceneData.skyboxes[j];
+        if (typeof props === 'string') continue;
+        await createSkyBox({ ...props, sceneId, isCurrent: false });
+      }
+    }
+  }
 };

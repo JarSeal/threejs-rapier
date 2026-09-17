@@ -1,0 +1,5 @@
+{
+  "id": "testDebugScene",
+  "isDebugScene": true,
+  "sceneFile": "debugScene.scene.ts"
+}

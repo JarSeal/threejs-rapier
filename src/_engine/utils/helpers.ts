@@ -1,6 +1,8 @@
 import * as THREE from 'three/webgpu';
-import { Materials, textureMapKeys } from '../core/Material';
-import { lerror, lwarn } from './Logger';
+import type { Materials } from '../core/Material';
+import { lerror } from './Logger';
+import { IS_DEBUG_ENV } from '../core/Config';
+import { textureMapKeys } from './constants';
 
 /**
  * Returns the file name extension from a string
@@ -133,91 +135,9 @@ export const removeObjectAndChildrenFromMemory = (obj: RemovalTypes) => {
   removeObjectFromMemory(obj);
 };
 
-/**
- * Checks whether an item exists and if it doesn't, throws an error
- * @param item (any) item to check with !item
- * @param msg (string) error message
- * @returns item
- */
-export const existsOrThrow = <T>(item: T, msg: string) => {
-  if (!item) {
-    lerror(msg, `Item: '${item}'`);
-    throw new Error(msg);
-  }
-  return item;
-};
-
-/**
- * Checks whether an item is undefined and if it doesn't, throws an error
- * @param item (any) item to check with !item
- * @param msg (string) error message
- * @param checkSpecific ('undefined' | 'null') optional parameter to check only undefined or null, if not defined will check both
- * @returns item
- */
-export const isNotUndefinedNorNullOrThrow = <T>(
-  item: T,
-  msg: string,
-  checkSpecific?: 'undefined' | 'null'
-) => {
-  if (checkSpecific) {
-    if (
-      (checkSpecific === 'undefined' && item === undefined) ||
-      (checkSpecific === 'null' && item === null)
-    ) {
-      lerror(msg, `Item: '${item}'`);
-      throw new Error(msg);
-    }
-    return item;
-  }
-
-  if (item === undefined || item === null) {
-    lerror(msg, `Item: '${item}'`);
-    throw new Error(msg);
-  }
-  return item;
-};
-
-/**
- * Checks whether an item exists and if it doesn't, logs a warning
- * @param item (any) item to check with !item
- * @param msg (string) error message
- * @returns item
- */
-export const existsOrWarn = <T>(item: T, msg: string) => {
-  if (!item) lwarn(msg, `Item: '${item}'`);
-  return item;
-};
-
-/**
- * Checks whether an item is undefined and if it doesn't, logs a warning
- * @param item (any) item to check with !item
- * @param msg (string) error message
- * @param checkSpecific ('undefined' | 'null') optional parameter to check only undefined or null, if not defined will check both
- * @returns item
- */
-export const isNotUndefinedNorNullOrWarn = <T>(
-  item: T,
-  msg: string,
-  checkSpecific?: 'undefined' | 'null'
-) => {
-  if (checkSpecific) {
-    if (
-      (checkSpecific === 'undefined' && item === undefined) ||
-      (checkSpecific === 'null' && item === null)
-    ) {
-      lwarn(msg, `Item: '${item}'`);
-    }
-    return item;
-  }
-
-  if (item === undefined || item === null) {
-    lwarn(msg, `Item: '${item}'`);
-  }
-  return item;
-};
-
 export const ThreeVector3 = new THREE.Vector3();
 export const ThreeQuoternion = new THREE.Quaternion();
+export const ThreeEuler = new THREE.Euler();
 
 export const getQuatFromAngle = (deg: number) => {
   ThreeQuoternion.setFromAxisAngle(ThreeVector3.set(0, 1, 0), THREE.MathUtils.degToRad(deg));
@@ -465,4 +385,193 @@ export const setMeshCreatePropsToUserData = (shape: string, mesh: THREE.Mesh) =>
       mesh.geometry.userData.props.params.orientation = spine;
       break;
   }
+};
+
+/**
+ * Initializes and returns a new worker with a validated handshake. The handshake
+ * is expecting a top-level message from the worker on script initialization:
+ *
+ * `self.postMessage({ status: 'INIT_READY' });` or `self.postMessage('INIT_READY');`
+ *
+ * The default status message is 'INIT_READY', but it can be overwritten with
+ * `statusReadyString` in the initWorker call. Make sure the worker top-level message
+ * then matches the `statusReadyString`.
+ */
+export const initWorker = async <T>(
+  WorkerClass: new (options?: { name?: string }) => Worker,
+  name: string,
+  onMessage: (event: MessageEvent<T>) => void,
+  onError: (err: ErrorEvent) => void,
+  statusReadyString: string = 'INIT_READY'
+): Promise<Worker> => {
+  const worker = new WorkerClass({ name });
+  return new Promise((resolve, reject) => {
+    // Setup temporary error handler for boot-up failures
+    worker.onerror = (err) => {
+      reject(new Error(`[${name}] Setup Error: ${err.message}`));
+    };
+    // Setup temporary message handler for the handshake
+    worker.onmessage = (event: MessageEvent<string | { status: string }>) => {
+      // Check for both object-style and string-style messages for flexibility
+      const status = typeof event.data === 'string' ? event.data : event.data.status;
+      if (status === statusReadyString) {
+        // Setup long-term message and error handlers
+        worker.onmessage = onMessage;
+        worker.onerror = onError;
+        resolve(worker);
+      }
+    };
+  });
+};
+
+/**
+ * Checks whether the current function is running in the main thread or in a worker.
+ * There is also a faster (simpler) version for this check: {@link isMainThreadSimple}().
+ * @returns boolean
+ */
+export const isMainThread = () =>
+  typeof window === 'object' && typeof document === 'object' && window.document === document;
+
+/**
+ * Checks whether the current function is running in the main thread or in a worker.
+ * This is the faster (simpler version for this check). There is also a more
+ * comprehensive version for this check: {@link isMainThread}().
+ * @returns boolean
+ */
+export const isMainThreadSimple = () => typeof window !== 'undefined';
+
+/** * A container for a module that will be loaded asynchronously.
+ */
+export interface DebugModuleRef<T> {
+  current: T | null;
+}
+
+/**
+ * Loads a lazy debug module.
+ * TypeScript infers the module shape 'T' directly from the importer.
+ */
+export function loadDebugModule<T>(
+  importer: () => Promise<T>,
+  debugId?: string
+): DebugModuleRef<T> | null {
+  if (!IS_DEBUG_ENV) return null;
+  const ref: DebugModuleRef<T> = { current: null };
+  importer()
+    .then((module) => {
+      ref.current = module;
+    })
+    .catch((err) => {
+      const msg = `Debug module loading failed${debugId ? `: ${debugId}` : ''}.`;
+      lerror(msg);
+      throw new Error(`${msg} ${err.message}`);
+    });
+  return ref;
+}
+
+/**
+ * Loads a lazy debug module.
+ * TypeScript infers the module shape 'T' directly from the importer.
+ */
+export async function loadDebugModuleAsync<T>(
+  importer: () => Promise<T>,
+  includeInProdTestMode: boolean = false,
+  debugId?: string
+): Promise<DebugModuleRef<T> | null> {
+  if (!IS_DEBUG_ENV && !includeInProdTestMode) return null;
+  const ref: DebugModuleRef<T> = { current: null };
+  return importer()
+    .then((module) => {
+      ref.current = module;
+      return ref;
+    })
+    .catch((err) => {
+      const msg = `Debug module async loading failed${debugId ? `: ${debugId}` : ''}.`;
+      lerror(msg);
+      throw new Error(`${msg} ${err.message}`);
+    });
+}
+
+/**
+ * Type Guard: Checks if we are in Debug mode AND the module is loaded.
+ *
+ * Usage: if (isDebugReady(debugHelpers)) {
+ *   const { current } = debugHelpers;
+ * }
+ */
+export const isDebugReady = <T>(ref: DebugModuleRef<T>): ref is { current: T } =>
+  !!(IS_DEBUG_ENV && ref?.current);
+
+/**
+ * Accessor: Returns the module if debug is active and loaded, otherwise undefined.
+ * Usage: useDebug(debugHelpers)?.attach(...)
+ */
+export const useDebug = <T>(
+  ref: DebugModuleRef<T> | null,
+  includeInProdTestMode: boolean = false
+): T | undefined =>
+  (IS_DEBUG_ENV || includeInProdTestMode) && ref?.current ? ref.current : undefined;
+
+/** Determines and returns the light types */
+export const getLightCharacteristics = (light: THREE.Light) => {
+  const c = {
+    isAmbientLight: false,
+    isHemisphereLight: false,
+    isPointLight: false,
+    isSpotLight: false,
+    isDirectionalLight: false,
+    canCastShadows: false,
+    hasPosition: false,
+    hasDistance: false,
+    hasDecay: false,
+    hasHelper: false,
+    hasSymbol: false,
+    hasTarget: false,
+    supportsFrustumCulling: false,
+    canBeSpatiallyIndexed: false,
+  };
+
+  // Type
+  c.isAmbientLight = light.type === 'AmbientLight';
+  c.isHemisphereLight = light.type === 'HemisphereLight';
+  c.isPointLight = light.type === 'PointLight';
+  c.isSpotLight = light.type === 'SpotLight';
+  c.isDirectionalLight = light.type === 'DirectionalLight';
+
+  // Shadow
+  if (!c.isAmbientLight && !c.isHemisphereLight) c.canCastShadows = true;
+
+  // Position
+  if (c.isPointLight || c.isSpotLight || c.isDirectionalLight) {
+    c.hasPosition = true;
+  }
+
+  // Distance and decay
+  if (c.isPointLight || c.isSpotLight) {
+    c.hasDistance = true;
+    c.hasDecay = true;
+  }
+
+  // Frustum culling (point/spot only — see docs/plans/light-culling.md §1)
+  c.supportsFrustumCulling = c.isPointLight || c.isSpotLight;
+
+  // Spatial index (point/spot only — see docs/plans/_DONE_p050_spatial-index.md §3.1/§9.1). Same
+  // condition as supportsFrustumCulling today (a directional light has no bounded influence
+  // volume to place in a grid cell, same reason it's excluded from frustum culling), kept as
+  // its own flag since the two concepts could diverge for a future light type.
+  c.canBeSpatiallyIndexed = c.isPointLight || c.isSpotLight;
+
+  // Helper
+  if (c.isPointLight || c.isSpotLight || c.isDirectionalLight) {
+    c.hasHelper = true;
+  }
+
+  // Symbol
+  if (c.isPointLight || c.isSpotLight || c.isDirectionalLight) {
+    c.hasSymbol = true;
+  }
+
+  // Target
+  if ('target' in light) c.hasTarget = true;
+
+  return c;
 };

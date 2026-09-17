@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../.schemas/material.schema.json",
+  "id": "testTslMat",
+  "tslFile": "materials/testTslMat.tsl.ts",
+  "type": "STANDARDNODEMATERIAL",
+  "nodes": {
+    "colorNode": {
+      "baseColor": "#1a233a",
+      "panelColor": "#ffaa00",
+      "gridScale": 1.0,
+      "texture": "testTexture"
+    }
+  },
+  "__saveData": {
+    "sceneTestECS": [
+      {
+        "__meta": { "date": 1779449688109 },
+        "nodes": {
+          "colorNode": {
+            "baseColor": "#1c233a"
+          }
+        }
+      }
+    ]
+  }
+}

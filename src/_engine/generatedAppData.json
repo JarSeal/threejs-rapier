@@ -1,0 +1,724 @@
+{
+  "scenes": {
+    "testDebugScene": {
+      "isDebugScene": true,
+      "id": "testDebugScene",
+      "sceneFile": "debugScene.scene.ts",
+      "cameras": [
+        {
+          "camProps": {
+            "type": "PERSPECTIVE",
+            "fov": 90,
+            "active": true
+          },
+          "entityOpts": {
+            "debugData": {
+              "name": "_camera",
+              "description": "Auto-generated camera for the scene"
+            }
+          }
+        }
+      ]
+    },
+    "largeWorld": {
+      "name": "Large ECS test world",
+      "description": "Stress/soak test scene for large-world patterns (docs/plans/p090_large-ecs-test-world-scene.md). Phase 4: terrain + static overview camera + sun, no dynamics yet.",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 1000,
+            "position": {
+              "x": 0,
+              "y": 60,
+              "z": 120
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 60,
+            "appId": "largeWorldOverview"
+          },
+          "entityOpts": {
+            "appId": "largeWorldOverview",
+            "debugData": {
+              "name": "Large world overview camera",
+              "description": "Static wide overview of the terrain (docs/plans/p090_large-ecs-test-world-scene.md §2)."
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#dfe8ff",
+            "intensity": 0.3,
+            "appId": "largeWorldAmbient"
+          },
+          "entityOpts": {
+            "appId": "largeWorldAmbient",
+            "debugData": {
+              "name": "Large world ambient fill",
+              "description": "Low-intensity baseline fill so shadowed terrain/foliage isn't pure black — the sun (largeWorldSun) is the dominant light."
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 30,
+              "y": 40,
+              "z": 20
+            },
+            "targetPos": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowPreset": "HIGH",
+            "shadowCameraNearFar": [
+              1,
+              100
+            ],
+            "shadowCameraFrustum": [
+              -25,
+              25,
+              25,
+              -25
+            ],
+            "shadowIntensity": 0.8,
+            "appId": "largeWorldSun"
+          },
+          "entityOpts": {
+            "appId": "largeWorldSun",
+            "debugData": {
+              "name": "Large world sun",
+              "description": "Directional shadow-casting sun. Its shadow frustum is intentionally scoped to a bounded play area around the origin, not the whole terrain — sizing it to the full terrain would blur shadow resolution everywhere instead (docs/plans/p090_large-ecs-test-world-scene.md §1.4)."
+            }
+          }
+        }
+      ],
+      "skyboxes": [
+        {
+          "id": "basicSkybox",
+          "type": "EQUIRECTANGULAR",
+          "isCurrent": false,
+          "params": {
+            "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
+            "textureId": "equiRectEmptyId",
+            "colorSpace": "srgb"
+          }
+        }
+      ],
+      "id": "largeWorld",
+      "sceneFile": "./largeWorld.ts"
+    },
+    "oneMoreScene": {
+      "name": "One More Scene",
+      "id": "oneMoreScene",
+      "sceneFile": "./oneMoreScene",
+      "cameras": [
+        {
+          "camProps": {
+            "type": "PERSPECTIVE",
+            "fov": 90,
+            "active": true
+          },
+          "entityOpts": {
+            "debugData": {
+              "name": "_camera",
+              "description": "Auto-generated camera for the scene"
+            }
+          }
+        }
+      ]
+    },
+    "sceneTestECS": {
+      "name": "ECS test scene",
+      "description": "This is a ECS test scene.",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "lookAtPoint": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 90,
+            "appId": "mainCamera",
+            "position": {
+              "x": 10,
+              "y": 5,
+              "z": 20
+            }
+          },
+          "entityOpts": {
+            "appId": "mainCamera",
+            "persistent": true,
+            "debugData": {
+              "name": "Main camera",
+              "description": "Main application camera"
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.5,
+            "appId": "ambientLight"
+          },
+          "entityOpts": {
+            "appId": "ambientLight",
+            "debugData": {
+              "name": "Ambient light",
+              "description": "The ambient light for the scene. It colors everything in the scene (except skyboxes and basic materials) whether you like it or not. This is what next gen games is all about."
+            }
+          }
+        }
+      ],
+      "geometries": [
+        {
+          "id": "testSphere",
+          "type": "SPHERE",
+          "params": {
+            "radius": 2.6,
+            "widthSegments": 32,
+            "heightSegments": 32
+          },
+          "debugData": {
+            "name": "Test Sphere",
+            "description": "This is a test sphere"
+          }
+        },
+        {
+          "id": "otherTestBox",
+          "type": "BOX"
+        }
+      ],
+      "textures": [
+        {
+          "id": "testTexture",
+          "fileName": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
+          "useHDRLoader": false,
+          "texOpts": {
+            "wrapS": 1000,
+            "wrapT": 1000
+          }
+        }
+      ],
+      "materials": [
+        {
+          "id": "testMaterial",
+          "params": {
+            "color": "#ff00ff",
+            "wireframe": false
+          },
+          "type": "PHONG",
+          "nodes": {}
+        },
+        {
+          "id": "checkerBoard",
+          "params": {
+            "color": "#ff00ff"
+          },
+          "tslFile": "materials/checkerBoard.tsl.ts",
+          "nodes": {
+            "colorNode": {
+              "baseColor": "#1a233a",
+              "panelColor": "#ff0000",
+              "gridScale": 4
+            },
+            "roughnessNode": {
+              "baseRoughness": 0.2,
+              "scratchIntensity": 0.8
+            },
+            "normalNode": {
+              "bumpScale": 0.05
+            }
+          },
+          "type": "STANDARDNODEMATERIAL"
+        },
+        {
+          "id": "testTslMat",
+          "tslFile": "materials/testTslMat.tsl.ts",
+          "nodes": {
+            "colorNode": {
+              "baseColor": "#1c233a",
+              "panelColor": "#ffaa00",
+              "gridScale": 1,
+              "texture": "testTexture"
+            }
+          },
+          "type": "STANDARDNODEMATERIAL"
+        }
+      ],
+      "meshes": [
+        {
+          "props": {
+            "geo": "testSphere",
+            "mat": "testTslMat",
+            "castShadow": false,
+            "receiveShadow": true,
+            "position": {
+              "x": 4,
+              "y": 1,
+              "z": 2
+            },
+            "appId": "testMesh"
+          }
+        }
+      ],
+      "importedMeshes": [
+        {
+          "props": {
+            "fileName": "/debugger/assets/testModels/box01.glb",
+            "appId": "testImportedMesh",
+            "importGroup": false,
+            "meshProps": [
+              {
+                "mat": {
+                  "id": "importedMeshMat",
+                  "params": {
+                    "map": "testTexture"
+                  },
+                  "type": "PHONG"
+                },
+                "castShadow": true,
+                "receiveShadow": true,
+                "position": {
+                  "x": -4,
+                  "y": 1,
+                  "z": -1
+                }
+              }
+            ],
+            "allMeshesVisible": true
+          }
+        }
+      ],
+      "skyboxes": [
+        {
+          "id": "basicSkybox",
+          "type": "EQUIRECTANGULAR",
+          "isCurrent": false,
+          "params": {
+            "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
+            "textureId": "equiRectEmptyId",
+            "colorSpace": ""
+          }
+        }
+      ],
+      "id": "sceneTestECS",
+      "sceneFile": "./testECS.ts"
+    }
+  },
+  "cameras": {
+    "largeWorldOverview": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 1000,
+        "position": {
+          "x": 0,
+          "y": 60,
+          "z": 120
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 60,
+        "appId": "largeWorldOverview"
+      },
+      "entityOpts": {
+        "appId": "largeWorldOverview",
+        "debugData": {
+          "name": "Large world overview camera",
+          "description": "Static wide overview of the terrain (docs/plans/p090_large-ecs-test-world-scene.md §2)."
+        }
+      },
+      "__sourcePath": "src/app/cameras/largeWorldOverview.camera.json"
+    },
+    "mainCamera": {
+      "camProps": {
+        "active": true,
+        "lookAtPoint": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 90,
+        "appId": "mainCamera"
+      },
+      "entityOpts": {
+        "appId": "mainCamera",
+        "persistent": true,
+        "debugData": {
+          "name": "Main camera",
+          "description": "Main application camera"
+        }
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "position": {
+              "x": 10,
+              "y": 5,
+              "z": 20
+            }
+          }
+        ]
+      },
+      "__sourcePath": "src/app/cameras/mainCamera.camera.json"
+    },
+    "testing": {
+      "camProps": {
+        "active": false,
+        "type": "PERSPECTIVE",
+        "fov": 90,
+        "appId": "testing"
+      },
+      "entityOpts": {
+        "appId": "testing",
+        "debugData": {
+          "description": "Main application camera 2"
+        }
+      },
+      "__sourcePath": "src/app/cameras/testing.camera.json"
+    }
+  },
+  "lights": {
+    "ambientLight": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#ffffff",
+        "intensity": 0.8,
+        "appId": "ambientLight"
+      },
+      "entityOpts": {
+        "appId": "ambientLight",
+        "debugData": {
+          "name": "Ambient light",
+          "description": "The ambient light for the scene. It colors everything in the scene (except skyboxes and basic materials) whether you like it or not. This is what next gen games is all about."
+        }
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "type": "AMBIENT",
+            "intensity": 0.5
+          }
+        ]
+      },
+      "__sourcePath": "src/app/lights/ambientLight.light.json"
+    },
+    "largeWorldAmbient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#dfe8ff",
+        "intensity": 0.3,
+        "appId": "largeWorldAmbient"
+      },
+      "entityOpts": {
+        "appId": "largeWorldAmbient",
+        "debugData": {
+          "name": "Large world ambient fill",
+          "description": "Low-intensity baseline fill so shadowed terrain/foliage isn't pure black — the sun (largeWorldSun) is the dominant light."
+        }
+      },
+      "__sourcePath": "src/app/lights/largeWorldAmbient.light.json"
+    },
+    "largeWorldSun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 30,
+          "y": 40,
+          "z": 20
+        },
+        "targetPos": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowPreset": "HIGH",
+        "shadowCameraNearFar": [
+          1,
+          100
+        ],
+        "shadowCameraFrustum": [
+          -25,
+          25,
+          25,
+          -25
+        ],
+        "shadowIntensity": 0.8,
+        "appId": "largeWorldSun"
+      },
+      "entityOpts": {
+        "appId": "largeWorldSun",
+        "debugData": {
+          "name": "Large world sun",
+          "description": "Directional shadow-casting sun. Its shadow frustum is intentionally scoped to a bounded play area around the origin, not the whole terrain — sizing it to the full terrain would blur shadow resolution everywhere instead (docs/plans/p090_large-ecs-test-world-scene.md §1.4)."
+        }
+      },
+      "__sourcePath": "src/app/lights/largeWorldSun.light.json"
+    }
+  },
+  "geometries": {
+    "testSphere": {
+      "geoProps": {
+        "debugData": {
+          "name": "Test Sphere",
+          "description": "This is a test sphere"
+        },
+        "type": "SPHERE",
+        "params": {
+          "radius": 0.5,
+          "widthSegments": 32,
+          "heightSegments": 32
+        },
+        "id": "testSphere"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "params": {
+              "radius": 2.6
+            }
+          }
+        ]
+      },
+      "__sourcePath": "src/app/geometries/testSphere.geometry.json"
+    }
+  },
+  "textures": {
+    "testTexture": {
+      "id": "testTexture",
+      "fileName": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
+      "useHDRLoader": true,
+      "texOpts": {
+        "wrapS": 1000,
+        "wrapT": 1000
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "useHDRLoader": false
+          }
+        ]
+      },
+      "__sourcePath": "src/app/textures/testTexture.texture.json"
+    }
+  },
+  "materials": {
+    "testMaterial": {
+      "id": "testMaterial",
+      "params": {
+        "color": "#ff00ff"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "params": {
+              "wireframe": false
+            }
+          }
+        ]
+      },
+      "type": "PHONG",
+      "__sourcePath": "src/app/materials/testMaterial.material.json"
+    },
+    "testTslMat": {
+      "id": "testTslMat",
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "nodes": {
+              "colorNode": {
+                "baseColor": "#1c233a"
+              }
+            }
+          }
+        ]
+      },
+      "tslFile": "materials/testTslMat.tsl.ts",
+      "nodes": {
+        "colorNode": {
+          "baseColor": "#1a233a",
+          "panelColor": "#ffaa00",
+          "gridScale": 1,
+          "texture": "testTexture"
+        }
+      },
+      "type": "STANDARDNODEMATERIAL",
+      "__sourcePath": "src/app/materials/testTslMat.material.json"
+    },
+    "checkerBoard": {
+      "id": "checkerBoard",
+      "params": {
+        "color": "#1a233a"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "params": {
+              "color": "#ff00ff"
+            },
+            "nodes": {
+              "colorNode": {
+                "panelColor": "#ff0000"
+              }
+            }
+          }
+        ]
+      },
+      "tslFile": "materials/checkerBoard.tsl.ts",
+      "nodes": {
+        "colorNode": {
+          "baseColor": "#1a233a",
+          "panelColor": "#ffaa00",
+          "gridScale": 4
+        },
+        "roughnessNode": {
+          "baseRoughness": 0.2,
+          "scratchIntensity": 0.8
+        },
+        "normalNode": {
+          "bumpScale": 0.05
+        }
+      },
+      "type": "STANDARDNODEMATERIAL",
+      "__sourcePath": "src/toolkit/materials/checkerBoard.material.json"
+    }
+  },
+  "meshes": {
+    "testMesh": {
+      "props": {
+        "geo": "testSphere",
+        "mat": "testTslMat",
+        "castShadow": true,
+        "receiveShadow": true,
+        "position": {
+          "x": 4,
+          "y": 1,
+          "z": 2
+        },
+        "appId": "testMesh"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "castShadow": false,
+            "__meta": {
+              "date": 1779449688109
+            }
+          }
+        ]
+      },
+      "__sourcePath": "src/app/meshes/testMesh.mesh.json"
+    }
+  },
+  "importedMeshes": {
+    "testImportedMesh": {
+      "props": {
+        "fileName": "/debugger/assets/testModels/box01.glb",
+        "appId": "testImportedMesh",
+        "importGroup": true,
+        "meshProps": [
+          {
+            "mat": {
+              "id": "importedMeshMat",
+              "params": {
+                "map": "testTexture"
+              },
+              "type": "PHONG"
+            },
+            "castShadow": true,
+            "receiveShadow": true,
+            "position": {
+              "x": -4,
+              "y": 1,
+              "z": -1
+            }
+          }
+        ],
+        "allMeshesVisible": true
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "importGroup": false,
+            "__meta": {
+              "date": 1779449688109
+            }
+          }
+        ]
+      },
+      "__sourcePath": "src/app/importedMeshes/testImport.importedMesh.json"
+    }
+  },
+  "skyboxes": {
+    "basicSkybox": {
+      "id": "basicSkybox",
+      "type": "EQUIRECTANGULAR",
+      "params": {
+        "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
+        "textureId": "equiRectEmptyId",
+        "colorSpace": "srgb"
+      },
+      "__saveData": {
+        "sceneTestECS": [
+          {
+            "__meta": {
+              "date": 1779449688109
+            },
+            "colorSpace": ""
+          }
+        ]
+      },
+      "__sourcePath": "src/app/skyboxes/basicSkybox.skybox.json"
+    }
+  }
+}

@@ -2,8 +2,6 @@ import * as THREE from 'three/webgpu';
 import { GLTF, GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/Addons.js';
 import { lerror, lwarn } from '../utils/Logger';
-import { deleteMesh, getMesh, saveMesh } from './Mesh';
-import { createGroup, getGroup } from './Group';
 import {
   ColliderParams,
   createPhysicsObjectWithMesh,
@@ -14,26 +12,34 @@ import {
 } from './PhysicsRapier';
 import { generateUUID } from 'three/src/math/MathUtils.js';
 import { isOnlyObject3D, setMeshCreatePropsToUserData } from '../utils/helpers';
+import { type CoreEntityOpts } from '../schemas/_helperSchemas';
+import { createMeshEntity, disposeMesh, getMeshByAppId, MeshProps } from './MeshManager';
+import { existsOrThrow } from '../utils/assert';
+import { getECSWorld } from './ECS';
+import { addToGroupEntity, createGroupEntity, getGroupByAppId } from './GroupManager';
+import { ComponentType } from './ECS/ECSCoreComponents';
 
 export type AdditionalImportPhysicsParams = {
   isPhysObj?: boolean;
   keepMesh?: boolean;
-  id?: string;
+  appId?: string;
   name?: string;
   index?: number;
 };
 
 export type ImportModelParams = {
   fileName: string;
-  id?: string;
-  name?: string;
-  importGroup?: boolean;
+  appId?: string;
+  /** Mesh props to apply to the meshes */
+  meshProps?: Partial<MeshProps>[];
+  /** Core entity options for all imported meshes and groups */
+  entityOpts?: CoreEntityOpts;
   allMeshesVisible?: boolean;
+  importGroup?: boolean;
   groupId?: string;
   groupName?: string;
   meshIndex?: number | number[];
   throwOnError?: boolean;
-  saveMaterial?: boolean;
 
   /** These physics params will override the imported custom params or then just
    * create a physics object out of the object if no import custom params are
@@ -44,9 +50,11 @@ export type ImportModelParams = {
     | Partial<PhysicsParams & AdditionalImportPhysicsParams>[];
 };
 
-type ImportReturnObj = {
+export type ImportReturnObj = {
   group?: THREE.Group;
+  groupId?: number;
   mesh?: THREE.Mesh | THREE.Mesh[];
+  meshId?: number | number[];
   physObj?: PhysicsObject | PhysicsObject[];
 };
 
@@ -63,34 +71,69 @@ const parseImportResult = (
   groupOrMesh: THREE.Group | THREE.Mesh,
   params: ImportModelParams
 ): ImportReturnObj => {
-  const { id, fileName, importGroup, meshIndex, throwOnError, saveMaterial, physicsParams } =
+  const { appId, fileName, entityOpts, importGroup, meshIndex, throwOnError, physicsParams } =
     params;
   const returnObj: ImportReturnObj = {};
   const overridePhysParams = Array.isArray(physicsParams)
     ? physicsParams
     : [...(physicsParams ? [physicsParams] : [])];
+  const meshPropsArr = params.meshProps || [];
 
   if (importGroup) {
-    // Go through meshes and save them
+    // Go through meshes and create entities
     const kids = groupOrMesh.children;
     const customProps: CleanUpCustomPropsResult[] = [];
     let index = 0;
     returnObj.mesh = [];
+    returnObj.meshId = [];
     if ('isGroup' in groupOrMesh) returnObj.group = groupOrMesh;
     for (let i = 0; i < kids.length; i++) {
       const kid = kids[i];
       if ('isMesh' in kid && kid.isMesh) {
-        const newId = id ? `${id}-${index}-${i}` : kid.uuid;
-        const userData = kid.userData;
+        const m = kid as THREE.Mesh;
+        const id = appId || entityOpts?.appId || m.userData.id || m.uuid;
+        const newId = id ? `${id}-${index}-${i}` : m.uuid;
+        const userData = m.userData;
         if (userData.keepMesh) {
-          saveMesh(kid as THREE.Mesh, newId, !saveMaterial);
+          const mProps = meshPropsArr[i];
+          const entityId = createMeshEntity(
+            {
+              geo: mProps?.geo || m.geometry,
+              mat: mProps?.mat || (Array.isArray(m.material) ? m.material[0] : m.material),
+              castShadow: mProps?.castShadow || m.castShadow,
+              receiveShadow: mProps?.receiveShadow || m.receiveShadow,
+              frustumCullingEnabled: mProps?.frustumCullingEnabled ?? m.frustumCulled,
+              position: mProps?.position || m.position,
+              rotation: mProps?.rotation || m.rotation,
+              quaternion: mProps?.rotation ? undefined : mProps?.quaternion || m.quaternion,
+              appId: mProps?.appId || newId,
+            },
+            params.entityOpts
+          );
+          returnObj.meshId.push(entityId);
         }
         customProps.push(
-          cleanUpCustomProps(userData as CustomPropsUserData, overridePhysParams[i], kid.uuid)
+          cleanUpCustomProps(userData as CustomPropsUserData, overridePhysParams[i], m.uuid)
         );
-        if (!('isPhysObj' in userData) || !userData.isPhysObj) {
-          const m = saveMesh(kid as THREE.Mesh, newId, !saveMaterial);
-          if (m) returnObj.mesh.push(m);
+        if (!userData.keepMesh && (!('isPhysObj' in userData) || !userData.isPhysObj)) {
+          const m = kid as THREE.Mesh;
+          const mProps = meshPropsArr[i];
+          const entityId = createMeshEntity(
+            {
+              geo: mProps?.geo || m.geometry,
+              mat: mProps?.mat || (Array.isArray(m.material) ? m.material[0] : m.material),
+              castShadow: mProps?.castShadow || m.castShadow,
+              receiveShadow: mProps?.receiveShadow || m.receiveShadow,
+              frustumCullingEnabled: mProps?.frustumCullingEnabled ?? m.frustumCulled,
+              position: mProps?.position || m.position,
+              rotation: mProps?.rotation || m.position,
+              quaternion: mProps?.rotation ? undefined : mProps?.quaternion || m.quaternion,
+              appId: mProps?.appId || newId,
+            },
+            params.entityOpts
+          );
+          returnObj.mesh.push(m);
+          returnObj.meshId.push(entityId);
         }
         if (userData.isPhysObj !== undefined) delete userData.isPhysObj;
         index++;
@@ -125,6 +168,7 @@ const parseImportResult = (
         if (firstMesh) {
           firstMesh.visible = true;
           returnObj.mesh = [firstMesh];
+          returnObj.meshId = [firstMesh.userData.entityId];
         }
       }
 
@@ -135,11 +179,11 @@ const parseImportResult = (
       }
     }
 
-    if (Array.isArray(returnObj.group) && returnObj.group.length === 1) {
-      returnObj.group = returnObj.group[0];
-    }
     if (Array.isArray(returnObj.mesh) && returnObj.mesh.length === 1) {
       returnObj.mesh = returnObj.mesh[0];
+    }
+    if (Array.isArray(returnObj.meshId) && returnObj.meshId.length === 1) {
+      returnObj.meshId = returnObj.meshId[0];
     }
     if (physObj.length) {
       returnObj.physObj =
@@ -169,6 +213,9 @@ const parseImportResult = (
 
   modelMesh = getIndexedChild(groupOrMesh.children);
 
+  const id =
+    appId || entityOpts?.appId || modelMesh?.userData.id || modelMesh?.uuid || generateUUID();
+
   if (!modelMesh) {
     const errorMsg = `Could not find a mesh in importModelAsync with index ${Array.isArray(index) ? JSON.stringify(index) : index} (id: "${id}", fileName: "${fileName}")`;
     lerror(errorMsg);
@@ -182,18 +229,30 @@ const parseImportResult = (
     return {};
   }
 
-  const userData = cleanUpCustomProps(
-    modelMesh?.userData,
-    overridePhysParams[0],
-    modelMesh.userData.id
-  );
+  const userData = cleanUpCustomProps(modelMesh?.userData, overridePhysParams[0], id);
   const rigidAndChildParamsResult = getRigidParamsAndChildColliders([userData], params);
   if (rigidAndChildParamsResult) {
     const { physParamsObj, rigidMeshId } = rigidAndChildParamsResult;
     if (userData.keepMesh) {
       // Keep mesh
       const meshId = modelMesh.userData.id || modelMesh.uuid;
-      const savedMesh = saveMesh(modelMesh, meshId, !saveMaterial);
+      const m = modelMesh;
+      const savedMesh = m;
+      const mProps = meshPropsArr[0];
+      createMeshEntity(
+        {
+          geo: mProps?.geo || m.geometry,
+          mat: mProps?.mat || (Array.isArray(m.material) ? m.material[0] : m.material),
+          castShadow: mProps?.castShadow || m.castShadow,
+          receiveShadow: mProps?.receiveShadow || m.receiveShadow,
+          frustumCullingEnabled: mProps?.frustumCullingEnabled ?? m.frustumCulled,
+          position: mProps?.position || m.position,
+          rotation: mProps?.rotation || m.rotation,
+          quaternion: mProps?.rotation ? undefined : mProps?.quaternion || m.quaternion,
+          appId: mProps?.appId || meshId,
+        },
+        params.entityOpts
+      );
       returnObj.physObj = createPhysicsObjectWithMesh({
         ...physParamsObj,
         meshOrMeshId: savedMesh || meshId,
@@ -208,11 +267,21 @@ const parseImportResult = (
             } else {
               returnObj.mesh = obj.mesh;
             }
+            if (Array.isArray(returnObj.meshId)) {
+              returnObj.meshId.push(obj.mesh.userData.entityId);
+            } else {
+              returnObj.meshId = obj.mesh.userData.entityId;
+            }
           } else if (obj.meshes) {
             if (Array.isArray(returnObj.mesh)) {
               returnObj.mesh.concat(obj.meshes);
             } else {
               returnObj.mesh = obj.meshes;
+            }
+            if (Array.isArray(returnObj.meshId)) {
+              returnObj.meshId.concat(obj.meshes.map((m: THREE.Mesh) => m.userData.entityId));
+            } else {
+              returnObj.meshId = obj.meshes.map((m: THREE.Mesh) => m.userData.entityId);
             }
           }
         }
@@ -224,11 +293,21 @@ const parseImportResult = (
           } else {
             returnObj.mesh = obj.mesh;
           }
+          if (Array.isArray(returnObj.meshId)) {
+            returnObj.meshId.push(obj.mesh.userData.entityId);
+          } else {
+            returnObj.meshId = obj.mesh.userData.entityId;
+          }
         } else if (obj.meshes) {
           if (Array.isArray(returnObj.mesh)) {
             returnObj.mesh.concat(obj.meshes);
           } else {
             returnObj.mesh = obj.meshes;
+          }
+          if (Array.isArray(returnObj.meshId)) {
+            returnObj.meshId.concat(obj.meshes.map((m: THREE.Mesh) => m.userData.entityId));
+          } else {
+            returnObj.meshId = obj.meshes.map((m: THREE.Mesh) => m.userData.entityId);
           }
         }
       }
@@ -247,11 +326,31 @@ const parseImportResult = (
       modelMesh.remove();
     }
   } else {
-    const m = saveMesh(modelMesh as THREE.Mesh, id, !saveMaterial);
-    if (m) returnObj.mesh = m;
+    const m = modelMesh;
+    const mProps = meshPropsArr[0];
+    const entityId = createMeshEntity(
+      {
+        geo: mProps?.geo || m.geometry,
+        mat: mProps?.mat || (Array.isArray(m.material) ? m.material[0] : m.material),
+        castShadow: mProps?.castShadow || m.castShadow,
+        receiveShadow: mProps?.receiveShadow || m.receiveShadow,
+        frustumCullingEnabled: mProps?.frustumCullingEnabled ?? m.frustumCulled,
+        position: mProps?.position || m.position,
+        rotation: mProps?.rotation || m.rotation,
+        quaternion: mProps?.rotation ? undefined : mProps?.quaternion || m.quaternion,
+        appId: mProps?.appId || id,
+      },
+      params.entityOpts
+    );
+    returnObj.mesh = m;
+    returnObj.meshId = entityId;
   }
 
   deleteUnwantedImportedMeshes(returnObj);
+
+  if (returnObj.group?.userData.entityId) {
+    getECSWorld().deleteEntity(returnObj.group?.userData.entityId);
+  }
 
   return returnObj;
 };
@@ -275,13 +374,15 @@ const checkImportFileName = (fileName: string) => {
  * @returns Promise<{@link ImportReturnObj}>
  */
 export const importModelAsync = async (params: ImportModelParams): Promise<ImportReturnObj> => {
-  const { id, fileName, importGroup, throwOnError } = params;
+  const { appId, fileName, importGroup, entityOpts, throwOnError } = params;
+  const id = appId || entityOpts?.appId;
+  const world = getECSWorld();
   if (id && !importGroup) {
-    const mesh = getMesh(id);
-    if (mesh) return { mesh };
+    const mesh = getMeshByAppId(id, world);
+    if (mesh) return { mesh, meshId: mesh.userData.entityId };
   }
   if (id && importGroup) {
-    const group = getGroup(id);
+    const group = getGroupByAppId(id, world);
     if (group) return { group };
   }
   checkImportFileName(fileName);
@@ -289,29 +390,27 @@ export const importModelAsync = async (params: ImportModelParams): Promise<Impor
   const loader = new GLTFLoader();
   setDracoLoader(loader);
 
-  let modelGroup: THREE.Group | null = null;
+  let entityId;
   try {
     const gltf = await loader.loadAsync(fileName);
     // @TODO: add a debugger rule here to console.log the gltf
-    modelGroup = createGroup({
-      id: params.groupId || params.id,
-      name: params.groupName || params.name,
-    });
+    entityId = createGroupEntity({ appId: id }, params.entityOpts, world);
     // Check if the first and only child is an empty object and import the children
     if (gltf?.scene?.children.length === 1 && isOnlyObject3D(gltf.scene.children[0])) {
       const children = [...gltf.scene.children[0].children];
       for (let i = 0; i < children.length; i++) {
         const child = children[i];
-        modelGroup.add(child);
+        addToGroupEntity(entityId, child);
       }
-      modelGroup.position.copy(gltf.scene.children[0].position);
-      modelGroup.rotation.copy(gltf.scene.children[0].rotation);
-      modelGroup.scale.copy(gltf.scene.children[0].scale);
+      world.setTransform(entityId, {
+        pos: gltf.scene.children[0].position,
+        rot: gltf.scene.children[0].quaternion,
+      });
     } else {
       const children = [...gltf?.scene?.children];
       for (let i = 0; i < children.length; i++) {
         const child = children[i];
-        modelGroup.add(child);
+        addToGroupEntity(entityId, child);
       }
     }
   } catch (err) {
@@ -321,7 +420,16 @@ export const importModelAsync = async (params: ImportModelParams): Promise<Impor
     return {};
   }
 
-  return parseImportResult(modelGroup, params);
+  const modelGroup = existsOrThrow(
+    world.getComponent(entityId, ComponentType.OBJECT3D)?.value,
+    `Could not find group component in importModelAsync.`
+  ) as THREE.Group;
+
+  const parsedResult = parseImportResult(modelGroup, params);
+
+  if (!params.importGroup) world.deleteEntity(entityId);
+
+  return parsedResult;
 };
 
 /**
@@ -345,10 +453,13 @@ export const importModels = (
   const loader = new GLTFLoader();
   setDracoLoader(loader);
 
+  const world = getECSWorld();
+
   for (let i = 0; i < modelsParams.length; i++) {
-    const { id, fileName, importGroup, throwOnError } = modelsParams[i];
+    const { appId, fileName, entityOpts, importGroup, throwOnError } = modelsParams[i];
+    const id = appId || entityOpts?.appId;
     if (id && !importGroup) {
-      const mesh = getMesh(id);
+      const mesh = getMeshByAppId(id, world);
       if (mesh) {
         modelGroups.push(mesh);
         loadedCount++;
@@ -357,7 +468,7 @@ export const importModels = (
       }
     }
     if (id && importGroup) {
-      const group = getGroup(id);
+      const group = getGroupByAppId(id, world);
       if (group) {
         modelGroups.push(group);
         loadedCount++;
@@ -372,7 +483,16 @@ export const importModels = (
       fileName,
       (gltf: GLTF) => {
         // @TODO: add a debugger rule here to console.log the gltf
-        const modelGroup = createGroup({ id: modelsParams[i].groupId });
+        // const modelGroup = createGroup({ id: modelsParams[i].groupId });
+        const entityId = createGroupEntity(
+          { appId: modelsParams[i].groupId },
+          modelsParams[i].entityOpts,
+          world
+        );
+        const modelGroup = existsOrThrow(
+          world.getComponent(entityId, ComponentType.OBJECT3D)?.value,
+          'Could not find modelGroup in importModels.'
+        ) as THREE.Group;
         modelGroup.children = gltf?.scene?.children || [];
         const meshOrGroup = parseImportResult(modelGroup, modelsParams[i]);
         if (meshOrGroup.group && Array.isArray(meshOrGroup.group)) {
@@ -467,7 +587,7 @@ const cleanUpCustomProps = (
     ...(overridePhysParams?.isPhysObj !== undefined
       ? { isPhysObj: overridePhysParams.isPhysObj }
       : {}),
-    ...(overridePhysParams?.id ? { id: overridePhysParams.id } : {}),
+    ...(overridePhysParams?.meshId ? { id: overridePhysParams.meshId } : {}),
     ...(overridePhysParams?.name ? { name: overridePhysParams.name } : {}),
     ...(overridePhysParams?.keepMesh !== undefined
       ? { keepMesh: overridePhysParams.keepMesh }
@@ -797,8 +917,8 @@ const getRigidParamsAndChildColliders = (
       },
     ] as PhysicsParams[],
     meshOrMeshId: [] as (THREE.Mesh | string) | (THREE.Mesh | string)[],
-    id: params.id || rigidParams.id || rigidMeshId,
-    name: params.name || rigidParams.name,
+    id: params.appId || params.entityOpts?.appId || rigidParams.id || rigidMeshId,
+    name: params.entityOpts?.debugData?.name || rigidParams.name,
     isCompoundObject: Boolean(restOfColliderParams.length),
   };
   if (!physParamsObj.physicsParams[0].collider) return null;
@@ -842,16 +962,20 @@ const setPhysParamsObjMeshesWithDimensions = (physParamsObj: {
       if (!colliderParams) continue;
       let mesh = meshOrMeshId[i];
       if (typeof mesh === 'string') {
-        const m = getMesh(mesh);
-        mesh = m;
+        mesh = existsOrThrow(
+          getMeshByAppId(mesh),
+          `Could not find the mesh with appId "${mesh}" in setPhysParamsObjMeshesWithDimensions (meshOrMeshId is an array).`
+        );
       }
       setMeshCreatePropsToUserData(colliderParams.type, mesh);
     }
   } else {
     let mesh = meshOrMeshId;
     if (typeof mesh === 'string') {
-      const m = getMesh(mesh);
-      mesh = m;
+      mesh = existsOrThrow(
+        getMeshByAppId(mesh),
+        `Could not find the mesh with appId "${mesh}" in setPhysParamsObjMeshesWithDimensions (meshOrMeshId is a string).`
+      );
     }
     setMeshCreatePropsToUserData(physicsParams[0].collider.type, mesh);
   }
@@ -954,8 +1078,9 @@ const deleteUnwantedImportedMeshes = (obj: ImportReturnObj) => {
     }
   }
 
-  const ids = removeMeshes.map((m) => (m.userData.id !== undefined ? m.userData.id : m.uuid));
-  if (ids.length) {
-    deleteMesh(ids, { deleteAll: true });
+  const ids = removeMeshes.map((m) => m.userData.entityId).filter(Boolean);
+  const world = getECSWorld();
+  for (let i = 0; i < ids.length; i++) {
+    disposeMesh(ids[i], world);
   }
 };

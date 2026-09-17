@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../.schemas/mesh.schema.json",
+  "props": {
+    "appId": "testMesh",
+    "geo": "testSphere",
+    "mat": "testTslMat",
+    "castShadow": true,
+    "receiveShadow": true,
+    "position": { "x": 4, "y": 1, "z": 2 }
+  },
+  "__saveData": {
+    "sceneTestECS": [
+      {
+        "__meta": { "date": 1779449688109 },
+        "castShadow": false
+      }
+    ]
+  }
+}

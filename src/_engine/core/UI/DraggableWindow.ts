@@ -113,7 +113,7 @@ const listeners: {
   onMouseMove: null,
   onMouseUp: null,
 };
-const LS_KEY = 'popupWindows';
+const LS_KEY = 'AEK_popupWindows';
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 320;
 const DEFAULT_MIN_WIDTH = 100;
@@ -607,6 +607,7 @@ export const updateDraggableWindow = (id: string) => {
   if (!state?.isOpen) return;
   removeDraggableWindow(id, true);
   openDraggableWindow(state);
+  // @TODO: This probably shouldn't be here. Refactor so that draggable window will update also the character list without referencing this here (there could be an implementation already, check this).
   updateDebuggerCharactersListSelectedClass();
 };
 
@@ -1022,7 +1023,14 @@ export const loadDraggableWindowStatesFromLS = () => {
   }
 };
 
-export const getDraggableWindow = (id: string) => draggableWindows[id];
+export const getDraggableWindow = (id: string) => {
+  let dWindow = draggableWindows[id];
+  if (!dWindow) {
+    const allDWindows = lsGetItem(LS_KEY, draggableWindows) as { [id: string]: DraggableWindow };
+    if (allDWindows) dWindow = allDWindows[id];
+  }
+  return dWindow;
+};
 
 export const getDraggableWindowsStartingWith = (startingWithId: string) => {
   const allIds = Object.keys(draggableWindows);
@@ -1052,4 +1060,13 @@ export const registerDraggableWindowCmp = (
   }
 
   draggableWindowCmpsToRegister[id] = fn;
+};
+
+export const registerDraggableWindowContentFn = (
+  id: string,
+  registerContentFn: (data?: { [key: string]: unknown }) => TCMP
+) => {
+  const config = getConfig();
+  if (!config.draggableWindows) config.draggableWindows = {};
+  config.draggableWindows[id] = { contentFn: registerContentFn };
 };

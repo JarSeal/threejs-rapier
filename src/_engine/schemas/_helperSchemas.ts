@@ -1,0 +1,95 @@
+import { z } from 'zod';
+
+export const Vector3Schema = z.object({
+  x: z.number(),
+  y: z.number(),
+  z: z.number(),
+});
+
+export const Vector4Schema = z.object({
+  x: z.number(),
+  y: z.number(),
+  z: z.number(),
+  w: z.number(),
+});
+
+export type Vector3 = z.infer<typeof Vector3Schema>;
+
+export const ColorJSONSchema = z.union([
+  z.string(), // Hex string format, e.g., "#ff0000"
+  z.object({
+    r: z.number(),
+    g: z.number(),
+    b: z.number(),
+  }), // RGB object format, e.g., { r: 255, g: 0, b: 0 }
+]);
+
+export type ColorJSON = z.infer<typeof ColorJSONSchema>;
+
+export const ColorSpaceSchema = z.union([
+  z.literal(''),
+  z.literal('srgb'),
+  z.literal('srgb-linear'),
+]);
+
+export const DebugDataSchema = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+  comments: z
+    .array(
+      z.object({
+        timestamp: z.number(),
+        comment: z.string(),
+      })
+    )
+    .optional(),
+  todo: z.record(z.string(), z.unknown()).optional(),
+  debugObj: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type DebugData = z.infer<typeof DebugDataSchema>;
+
+export const UserDataSchema = z.record(z.string(), z.unknown());
+
+export type UserData = z.infer<typeof UserDataSchema>;
+
+export const EntityDebugDataSchema = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+  comments: z
+    .array(
+      z.object({
+        timestamp: z.number(),
+        comment: z.string(),
+      })
+    )
+    .optional(),
+  todo: z.record(z.string(), z.unknown()).optional(),
+  debugObj: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type EntityDebugData = z.infer<typeof EntityDebugDataSchema>;
+
+export const CoreEntityOptsSchema = z.object({
+  appId: z.string().optional(),
+  disabled: z.boolean().optional(),
+  persistent: z.boolean().optional(),
+  doNotAddToScene: z.boolean().optional(),
+  userData: UserDataSchema.optional(),
+  debugData: EntityDebugDataSchema.optional(),
+  /** Opt out of the spatial index (docs/plans/_DONE_p050_spatial-index.md §3.1) for an entity kind whose manager opts in by default. */
+  spatialIndex: z.boolean().optional(),
+  /**
+   * Opt in to the ECS-queryable frustum-culling mechanism (docs/plans/_DONE_p080_object3d-frustum-culling.md §2.1/§2.4)
+   * — toggles CoreComponentType.TAG_FRUSTUM_CULLED as the camera frustum moves, for gameplay systems (AI
+   * throttling, audio culling, LOD) to react to. Distinct from a mesh's `frustumCullingEnabled` prop
+   * (meshSchema.ts), which controls Three's own native Object3D.frustumCulled render-time culling.
+   */
+  ecsFrustumCullingEnabled: z.boolean().optional(),
+});
+
+export type CoreEntityOpts = z.infer<typeof CoreEntityOptsSchema>;
+
+export const ShadowQualitySchema = z.enum(['LOW', 'MEDIUM', 'HIGH', 'ULTRA']);
+
+export type ShadowQuality = z.infer<typeof ShadowQualitySchema>;

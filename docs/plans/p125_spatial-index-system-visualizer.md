@@ -1,0 +1,62 @@
+# Spatial index system visualizer
+
+Status: draft | not-implemented
+Category: Debugger
+Blocked by: [_DONE_p050_spatial-index.md](./_DONE_p050_spatial-index.md), [_DONE_p081_light-object-culling.md](./_DONE_p081_light-object-culling.md)
+
+## Goal
+
+Add a debug-mode toggle that visualizes the [spatial index grid](../../src/_engine/core/Spatial/SpatialGrid.ts)'s occupied cells as wireframe boxes in the 3D view, with a visibility checkbox and a color picker (default red), wired into the existing "Spatial index" debugger tab ([_dbg__SpatialGrid.ts](../../src/_engine/core/Debug/_dbg__SpatialGrid.ts)).
+
+## Context
+
+- The spatial index is a sparse, CSR-backed uniform grid (`SpatialGrid.ts`), one instance per `ECSWorld`, held in a `WeakMap` and rebuilt every frame from current member positions ([SpatialIndexSystem.ts](../../src/_engine/core/Spatial/SpatialIndexSystem.ts), registered as a plugin on `ECSSystemStage.APP_POST_PHYSICS`). It is **not bounded by a fixed world-space AABB** — cells are only allocated where members actually land, so there is no single fixed "grid boundary" to draw; the outer extent of the visualization is simply the union of currently-occupied cell wireframes.
+- Members whose radius exceeds `cellSize * oversizedRadiusMultiplier` bypass the grid entirely (the "oversized tier", tracked in a separate `Set`). They have no cell to draw and are **out of scope** for this plan (see Non-goals).
+- §9 of `_DONE_p050_spatial-index.md` planned an occupancy histogram, live cell-size tuning, and a brute-force oracle for debug tooling — all already implemented in `_dbg__SpatialGrid.ts`. A 3D wireframe visualizer was never part of that plan; this is new scope.
+- The engine's established pattern for a toggleable 3D debug wireframe is the physics collider debug mesh (`createPhysicsDebugMesh`/`stepperFnDebug` in [PhysicsRapier.ts:1465](../../src/_engine/core/PhysicsRapier.ts)): a single `LineSegments` is created **once**, added to the scene, and its `BufferGeometry` position/color attributes are **refilled every frame** while enabled; the toggle only flips a `visible` flag and an `enabled` state flag read by the per-frame refill — nothing is destroyed/recreated on toggle.
+
+## Design decisions
+
+1. **Create-once, not create/destroy-on-toggle.** The user's spec asks whether create/delete-per-toggle is necessary to avoid a memory footprint — it isn't, and it would be inconsistent with the codebase's own precedent. Since the grid rebuilds every frame, a wireframe that only existed while the checkbox was checked would still need per-frame geometry writes; recreating the `LineSegments`/`BufferGeometry`/`Material` object graph itself on every toggle only adds GC churn for no benefit. Instead: allocate the object once (hidden, `visible = false`) when the debug GUI module loads, toggle only `visible`, and gate the per-frame geometry refill on an `enabled` flag so it costs nothing while off.
+2. **No separate "grid boundary" line.** Because the grid is dynamically sparse and unbounded, "grid boundaries" is interpreted as *the boundaries of each occupied cell*, per the user's own second sentence ("visualize the boundaries of the grid and each cell"). The union of per-cell wireframe boxes already conveys the occupied extent; no additional bounding box is drawn.
+3. **Oversized members are not visualized** in this plan (no cell to draw for them). Flagged as a possible future extension, not required scope.
+4. **Per-frame update via an ECS system, not a poll.** The existing stats/histogram readout in `_dbg__SpatialGrid.ts` refreshes via `setInterval(refreshStats, 500)`, which is fine for text but would make a moving wireframe visibly lag/pop for anything crossing cell boundaries within that window. Since `SpatialIndexSystem.ts` already wires the grid into the ECS via `ECSWorld.registerPlugin`, the visualizer refill is added the same way: a debug-only system registered on `ECSSystemStage.LATE_MAIN` (after the grid's own `APP_POST_PHYSICS` rebuild), no-op unless the visualizer is enabled for the active world.
+
+## Engine-side gaps to close first
+
+`SpatialGrid.ts` currently has no way to enumerate occupied cells' world-space bounds — required, new, additive API:
+
+- A public getter for `cellSize` (currently a private field with no accessor).
+- A method to enumerate occupied cells as world-space AABBs, e.g. `getOccupiedCellBoundsInto(out: Float32Array): number` — unpacks each key in the private `cellKeyToIndex` map back to `(cx, cy, cz)` (inverse of the existing `_packCellKey`), converts to a min corner via `cellSize`, and writes 6 floats (min + max) per cell into a caller-provided/grown `Float32Array`, returning the cell count. Caller-provided buffer avoids per-frame allocation, matching the typed-array style already used throughout `SpatialGrid.ts`.
+
+## Phases
+
+### Phase 1 — Engine API (additive, non-breaking)
+
+- Add `SpatialGrid.cellSize` getter.
+- Add `SpatialGrid.getOccupiedCellBoundsInto(out: Float32Array): number` (grows/replaces the caller's buffer reference if too small, same convention as `PhysicsRapier.ts`'s debug-mesh buffer growth).
+- No behavior change to existing consumers. Verify manually via the existing "Live stats" panel (occupied cell count should match the number of AABBs returned).
+
+### Phase 2 — Wireframe object + per-frame refill
+
+- In `_dbg__SpatialGrid.ts`: create one `THREE.LineSegments` (12 edges × 2 vertices × 3 floats per cell, pre-allocated `BufferGeometry`, `frustumCulled = false`, named e.g. `'SPATIAL_GRID_DEBUG_VISUALIZER'` with a ghost-instance guard on the root scene, mirroring `createPhysicsDebugMesh`), created once and hidden by default.
+- Add a debug-only ECS system registered on `ECSSystemStage.LATE_MAIN` (gated by `IS_DEBUG_ENV`, and internally no-op unless the visualizer is enabled for that world) that calls `getSpatialGrid(world).getOccupiedCellBoundsInto(...)` and rewrites the line-segment vertex buffer from the returned AABBs, growing the buffer if occupied-cell count increased.
+- Material color driven by a mutable uniform/`color` property so the color picker (Phase 3) can update it live without rebuilding geometry.
+
+### Phase 3 — Tweakpane UI
+
+- In the existing "Spatial index" tab, add a "Visualizer" folder with:
+  - Checkbox "Show grid wireframe" (default off) → toggles `visible` + `enabled` state.
+  - Color picker "Wireframe color" (`view: 'color'`, default `0xff0000`) → updates the `LineSegments` material color live.
+- Persist both under the existing `AEK_debugSpatialGrid` local-storage key (extend `LSData` to `{ cellSize, visualizerEnabled, visualizerColor }`), following the same `lsGetItem`/`lsSetItem` pattern already used for `cellSize`.
+
+## Non-goals
+
+- Visualizing oversized (grid-bypassing) members.
+- Any change to grid rebuild behavior, cell sizing, or query semantics — this is read-only visualization of existing state.
+- Worker-threaded physics/spatial concerns (unrelated, tracked separately per `CLAUDE.md`'s physics section).
+
+## Risks / open questions
+
+- **Cell count spikes**: a very small `cellSize` over a large occupied area could produce a large number of boxes (12 line segments each). Since this is debug-only and gated behind an explicit opt-in checkbox, no additional guardrail is planned, but worth watching for GPU/CPU cost if occupied-cell counts run into the tens of thousands.
+- Confirm the correct place to source the "root scene" reference for adding the `LineSegments` (same target `createPhysicsDebugMesh` uses) when implementing Phase 2.

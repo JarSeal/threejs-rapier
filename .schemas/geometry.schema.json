@@ -1,0 +1,577 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "geoProps": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "debugData": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "comments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "comment": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "timestamp",
+                      "comment"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "todo": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "debugObj": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "const": "BOX"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "depth": {
+                  "type": "number"
+                },
+                "widthSegments": {
+                  "type": "number"
+                },
+                "heightSegments": {
+                  "type": "number"
+                },
+                "depthSegments": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "debugData": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "comments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "comment": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "timestamp",
+                      "comment"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "todo": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "debugObj": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "const": "SPHERE"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "radius": {
+                  "type": "number"
+                },
+                "widthSegments": {
+                  "type": "number"
+                },
+                "heightSegments": {
+                  "type": "number"
+                },
+                "phiStart": {
+                  "type": "number"
+                },
+                "phiLength": {
+                  "type": "number"
+                },
+                "thetaStart": {
+                  "type": "number"
+                },
+                "thetaLength": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "debugData": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "comments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "comment": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "timestamp",
+                      "comment"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "todo": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "debugObj": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "const": "CYLINDER"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "radiusTop": {
+                  "type": "number"
+                },
+                "radiusBottom": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "radialSegments": {
+                  "type": "number"
+                },
+                "heightSegments": {
+                  "type": "number"
+                },
+                "openEnded": {
+                  "type": "boolean"
+                },
+                "thetaStart": {
+                  "type": "number"
+                },
+                "thetaLength": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "debugData": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "comments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "comment": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "timestamp",
+                      "comment"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "todo": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "debugObj": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "const": "CAPSULE"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "radius": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "capSegments": {
+                  "type": "number"
+                },
+                "radialSegments": {
+                  "type": "number"
+                },
+                "heightSegments": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "debugData": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "comments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "comment": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "timestamp",
+                      "comment"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "todo": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "debugObj": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "const": "CONE"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "radius": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "radialSegments": {
+                  "type": "number"
+                },
+                "heightSegments": {
+                  "type": "number"
+                },
+                "openEnded": {
+                  "type": "boolean"
+                },
+                "thetaStart": {
+                  "type": "number"
+                },
+                "thetaLength": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "__sourcePath": {
+      "type": "string"
+    },
+    "__saveData": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "__meta": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "debugData": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "comments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "comment": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "timestamp",
+                      "comment"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "todo": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "debugObj": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "additionalProperties": false
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "depth": {
+                  "type": "number"
+                },
+                "widthSegments": {
+                  "type": "number"
+                },
+                "heightSegments": {
+                  "type": "number"
+                },
+                "depthSegments": {
+                  "type": "number"
+                },
+                "radius": {
+                  "type": "number"
+                },
+                "phiStart": {
+                  "type": "number"
+                },
+                "phiLength": {
+                  "type": "number"
+                },
+                "thetaStart": {
+                  "type": "number"
+                },
+                "thetaLength": {
+                  "type": "number"
+                },
+                "radiusTop": {
+                  "type": "number"
+                },
+                "radiusBottom": {
+                  "type": "number"
+                },
+                "radialSegments": {
+                  "type": "number"
+                },
+                "openEnded": {
+                  "type": "boolean"
+                },
+                "capSegments": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "required": [
+    "geoProps"
+  ],
+  "additionalProperties": false
+}

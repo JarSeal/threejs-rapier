@@ -3,7 +3,7 @@ import { lerror, lwarn } from '../utils/Logger';
 import { HDRLoader } from 'three/examples/jsm/Addons.js';
 import { isHDR } from '../utils/helpers';
 
-type TexOpts = {
+export type TexOpts = {
   image?: TexImageSource | OffscreenCanvas;
   mapping?: THREE.Mapping;
   wrapS?: THREE.Wrapping;
@@ -16,11 +16,60 @@ type TexOpts = {
   colorSpace?: THREE.ColorSpace;
 };
 
-const textures: { [id: string]: THREE.Texture } = {};
+export type TextureProps = {
+  id?: string;
+  fileName?: string | string[];
+  path?: string;
+  useHDRLoader?: boolean;
+  texOpts?: TexOpts;
+  throwOnError?: boolean;
+  isPersistent?: boolean;
+  userData?: Record<string, unknown>;
+  debugData?: { name?: string; description?: string };
+};
+
+const textures: {
+  [id: string]: {
+    resource: THREE.Texture;
+    count: number;
+    persistent?: boolean;
+  };
+} = {};
+
+export const incTextureRef = (id: string) => {
+  if (textures[id]) {
+    textures[id].count++;
+  }
+};
+
+export const decTextureRef = (id: string) => {
+  const entry = textures[id];
+  if (!entry) return;
+
+  entry.count--;
+
+  if (entry.count <= 0 && !entry.persistent) {
+    entry.resource.dispose();
+    delete textures[id];
+  }
+};
+
+export const setTexturePersistence = (id: string, state: boolean) => {
+  const entry = textures[id];
+  if (!entry) return;
+  entry.persistent = state;
+
+  if (!state && entry.count === 0) {
+    entry.resource.dispose();
+    delete textures[id];
+  }
+};
 
 const setTextureOpts = (
   texture: THREE.Texture | THREE.DataTexture | THREE.CubeTexture,
-  texOpts?: TexOpts
+  texOpts?: TexOpts,
+  userData?: Record<string, unknown>,
+  debugData?: { name?: string; description?: string }
 ) => {
   if (texOpts?.mapping) texture.mapping = texOpts.mapping;
   if (texOpts?.wrapS) texture.wrapS = texOpts.wrapS;
@@ -31,6 +80,12 @@ const setTextureOpts = (
   if (texOpts?.type) texture.type = texOpts.type;
   if (texOpts?.anisotropy) texture.anisotropy = texOpts.anisotropy;
   if (texOpts?.colorSpace) texture.colorSpace = texOpts.colorSpace;
+  texture.userData = userData || {};
+  if (debugData) {
+    texture.name = debugData.name || texture.name;
+    texture.userData.name = debugData.name;
+    texture.userData.description = debugData.description;
+  }
   return texture;
 };
 
@@ -65,9 +120,12 @@ const createTexture = (
   id?: string,
   fileName?: string,
   texOpts?: TexOpts,
-  throwOnError?: boolean
+  throwOnError?: boolean,
+  userData?: Record<string, unknown>,
+  debugData?: { name?: string; description?: string },
+  isPersistent?: boolean
 ) => {
-  if (id && textures[id]) return textures[id];
+  if (id && textures[id]) return textures[id].resource;
 
   if (!fileName) return getNoFileTexture(texOpts);
 
@@ -79,7 +137,7 @@ const createTexture = (
         (texture) => texture,
         undefined,
         (err) => {
-          const errorMsg = `Could not load HDR texture in createTexture (id: "${id}", "fileName: ${fileName}")`;
+          const errorMsg = `Could not load HDR texture in createTexture (id: "${id}", fileName: "${fileName}")`;
           lerror(errorMsg, err);
           if (throwOnError) throw new Error(errorMsg);
           return new THREE.Texture();
@@ -87,6 +145,7 @@ const createTexture = (
       ),
       texOpts
     );
+    saveTexture(texture, id, isPersistent);
     return texture;
   }
 
@@ -97,7 +156,7 @@ const createTexture = (
       (texture) => texture,
       undefined,
       (err) => {
-        const errorMsg = `Could not load texture in createTexture (id: "${id}", "fileName: ${fileName}")`;
+        const errorMsg = `Could not load texture in createTexture (id: "${id}", fileName: "${fileName}")`;
         lerror(errorMsg, err);
         if (throwOnError) throw new Error(errorMsg);
         return new THREE.Texture();
@@ -105,17 +164,31 @@ const createTexture = (
     ),
     texOpts
   );
+  texture.userData = userData || {};
+  if (debugData) {
+    texture.name = debugData.name || texture.name;
+    texture.userData.name = debugData.name;
+    texture.userData.description = debugData.description;
+  }
+  saveTexture(texture, id, isPersistent);
   return texture;
 };
 
 /**
  * Loads one or more textures in the background.
- * @param texData array of objects: { id?: string; fileName?: string; texOpts?: {@link TexOpts} }[]
- * @param updateStatusFn optional status update function: (loadedTextures: { [id: string]: THREE.Texture }, loadedCount: number, totalCount: number) => void
- * @param onErrorAction optional on error action: 'NO_TEXTURE' | 'EMPTY_TEXTURE' | 'THROW_ERROR'. This determines what happens when a texture load fails. 'NO_TEXTURE' does nothing (default), 'EMPTY_TEXTURE' creates an empty placeholder texture for the failed texture, and 'THROW_ERROR' throws an Error.
+ * @param texData - array of objects: { id?: string; fileName?: string; texOpts?: {@link TexOpts} }[]
+ * @param updateStatusFn - optional status update function
+ * @param onErrorAction - optional on error action
  */
 export const loadTextures = (
-  texData: { id?: string; fileName?: string; texOpts?: TexOpts }[],
+  texData: {
+    id?: string;
+    fileName?: string;
+    texOpts?: TexOpts;
+    isPersistent?: boolean;
+    userData?: Record<string, unknown>;
+    debugData?: { name?: string; description?: string };
+  }[],
   updateStatusFn?: (
     loadedTextures: { [id: string]: THREE.Texture },
     loadedCount: number,
@@ -132,21 +205,26 @@ export const loadTextures = (
   const batchTextures: { [id: string]: THREE.Texture } = {};
 
   const loadOneBatchTexture = (index: number) => {
-    const { id, fileName, texOpts } = texData[index];
+    const { id, fileName, texOpts, isPersistent, userData, debugData } = texData[index];
     const loader = new THREE.TextureLoader();
 
-    if (id && textures[id]) return;
+    if (id && textures[id]) {
+      batchTextures[id] = textures[id].resource;
+      loadedCount++;
+      if (updateStatusFn) updateStatusFn(batchTextures, loadedCount, totalCount);
+      return;
+    }
 
     if (fileName) {
       loader.load(
         fileName,
         (texture) => {
           const texId = id || texture.uuid;
-          texture.userData.id = texId;
+          setTextureOpts(texture, texOpts, userData, debugData);
+          saveTexture(texture, texId, isPersistent);
           batchTextures[texId] = texture;
-          textures[texId] = texture;
           loadedCount++;
-          updateStatusFn && updateStatusFn(batchTextures, loadedCount, totalCount);
+          if (updateStatusFn) updateStatusFn(batchTextures, loadedCount, totalCount);
         },
         undefined,
         (err) => {
@@ -156,29 +234,41 @@ export const loadTextures = (
             throw new Error(errorMsg);
           }
           if (onErrorAction === 'EMPTY_TEXTURE') {
-            const texture = createTexture(id, undefined, texOpts);
+            const texture = createTexture(
+              id,
+              undefined,
+              texOpts,
+              false,
+              userData,
+              debugData,
+              isPersistent
+            );
             const texId = id || texture.uuid;
-            texture.userData.id = texId;
             batchTextures[texId] = texture;
-            textures[texId] = texture;
           }
           loadedCount++;
-          updateStatusFn && updateStatusFn(batchTextures, loadedCount, totalCount);
+          if (updateStatusFn) updateStatusFn(batchTextures, loadedCount, totalCount);
         }
       );
     } else {
-      const texture = createTexture(id, undefined, texOpts);
+      const texture = createTexture(
+        id,
+        undefined,
+        texOpts,
+        false,
+        userData,
+        debugData,
+        isPersistent
+      );
       const texId = id || texture.uuid;
-      texture.userData.id = texId;
       batchTextures[texId] = texture;
-      textures[texId] = texture;
       loadedCount++;
-      updateStatusFn && updateStatusFn(batchTextures, loadedCount, totalCount);
+      if (updateStatusFn) updateStatusFn(batchTextures, loadedCount, totalCount);
     }
   };
 
   // Call once before loading
-  updateStatusFn && updateStatusFn(batchTextures, loadedCount, totalCount);
+  if (updateStatusFn) updateStatusFn(batchTextures, loadedCount, totalCount);
 
   for (let i = 0; i < totalCount; i++) {
     loadOneBatchTexture(i);
@@ -186,23 +276,24 @@ export const loadTextures = (
 };
 
 /**
- * Creates a texture to be used without loading logic. The texture is usable right away.
- * @param id optional id string, defaults to texture.uuid
- * @param fileName optional file path to be loaded. If no fileName is provided, an empty Texture is created.
- * @param texOpts optional {@link TexOpts}
- * @param throwOnError optional value whether loadTexture should throw on an error
- * @returns THREE.Texture | THREE.DataTexture
+ * Creates or retrieves a texture to be used without async loading logic.
  */
 export const loadTexture = ({
   id,
   fileName,
   texOpts,
   throwOnError,
+  isPersistent,
+  userData,
+  debugData,
 }: {
   id?: string;
   fileName?: string;
   texOpts?: TexOpts;
   throwOnError?: boolean;
+  isPersistent?: boolean;
+  userData?: Record<string, unknown>;
+  debugData?: { name?: string; description?: string };
 }) => {
   if (id) {
     const texture = getTexture(id);
@@ -212,20 +303,21 @@ export const loadTexture = ({
     const texture = getTexture(fileName);
     if (texture) return texture;
   }
-  const texture = createTexture(id, fileName, texOpts, throwOnError);
-  texture.userData.id = id || fileName || texture.uuid;
-  textures[id || fileName || texture.uuid] = texture;
+  const texture = createTexture(
+    id,
+    fileName,
+    texOpts,
+    throwOnError,
+    userData,
+    debugData,
+    isPersistent
+  );
+  saveTexture(texture, id || fileName || texture.uuid, isPersistent);
   return texture;
 };
 
 /**
- * Creates a texture to be used without loading logic. The texture is usable right away.
- * @param id optional id string, defaults to texture.uuid
- * @param fileName (string or array of strings) optional file name to be loaded. If no fileName is provided, an empty Texture is created. If the fileName is an array, the CubeTextureLoader will be used.
- * @param path optional file path, default is './'.
- * @param texOpts optional {@link TexOpts}
- * @param throwOnError optional value whether loadTextureAsync should throw on an error
- * @returns Promise<THREE.Texture | THREE.DataTexture | THREE.CubeTexture>
+ * Loads a texture asynchronously supporting standard textures, HDR data textures, and CubeTextures.
  */
 export const loadTextureAsync = async ({
   id,
@@ -234,15 +326,11 @@ export const loadTextureAsync = async ({
   useHDRLoader,
   texOpts,
   throwOnError,
-}: {
-  id?: string;
-  fileName?: string | string[];
-  path?: string;
-  useHDRLoader?: boolean;
-  texOpts?: TexOpts;
-  throwOnError?: boolean;
-}) => {
-  if (id && textures[id]) return textures[id];
+  isPersistent,
+  userData,
+  debugData,
+}: TextureProps) => {
+  if (id && textures[id]) return textures[id].resource;
 
   if (!fileName) return getNoFileTexture(texOpts);
 
@@ -250,32 +338,40 @@ export const loadTextureAsync = async ({
 
   try {
     if (typeof fileName === 'string') {
-      if (useHDRLoader) {
+      if (useHDRLoader && isHDR(fileName)) {
         // Data texture
         loaderType = 'HDRLoader';
         const loader = new HDRLoader();
         const loadedTexture = setTextureOpts(
           await loader.setPath(path || './').loadAsync(fileName),
-          texOpts
+          texOpts,
+          userData,
+          debugData
         );
-        loadedTexture.userData.id = id || loadedTexture.uuid;
-        textures[id || loadedTexture.uuid] = loadedTexture;
+        saveTexture(loadedTexture, id || loadedTexture.uuid, isPersistent);
         return loadedTexture as THREE.DataTexture;
       } else {
+        if (useHDRLoader && !isHDR(fileName)) {
+          lwarn(
+            `[Aekasha Texture Pipeline] useHDRLoader override ignored for non-HDR file extension: ${fileName}`
+          );
+        }
+
         // Texture
         loaderType = 'TextureLoader';
         const loader = new THREE.TextureLoader();
         const loadedTexture = setTextureOpts(
           await loader.setPath(path || './').loadAsync(fileName),
-          texOpts
+          texOpts,
+          userData,
+          debugData
         );
-        loadedTexture.userData.id = id || loadedTexture.uuid;
-        textures[id || loadedTexture.uuid] = loadedTexture;
+        saveTexture(loadedTexture, id || loadedTexture.uuid, isPersistent);
         return loadedTexture as THREE.Texture;
       }
     } else {
       // Cube texture
-      if (fileName.length < 6 || fileName.length > 6) {
+      if (fileName.length !== 6) {
         throw new Error(
           `Cube texture has to have exactly 6 images in an array (found ${fileName.length} images).`
         );
@@ -284,10 +380,11 @@ export const loadTextureAsync = async ({
       const loader = new THREE.CubeTextureLoader();
       const loadedTexture = setTextureOpts(
         await loader.setPath(path || './').loadAsync(fileName),
-        texOpts
+        texOpts,
+        userData,
+        debugData
       );
-      loadedTexture.userData.id = id || loadedTexture.uuid;
-      textures[id || loadedTexture.uuid] = loadedTexture;
+      saveTexture(loadedTexture, id || loadedTexture.uuid, isPersistent);
       return loadedTexture as THREE.CubeTexture;
     }
   } catch (err) {
@@ -300,71 +397,79 @@ export const loadTextureAsync = async ({
 };
 
 /**
- * Returns a texture or undefined based on the id
- * @param id (string) texture id
- * @returns Three.js texture | undefined
+ * Returns a texture or undefined based on the id.
  */
-export const getTexture = (id: string) => textures[id];
+export const getTexture = (id: string) => textures[id]?.resource;
 
 /**
- * Returns one or multiple textures based on the ids
- * @param id (array of strings) one or multiple texture ids
- * @returns Array of Three.js textures
+ * Returns multiple textures based on an array of ids.
  */
-export const getTextures = (ids: string[]) => ids.map((id) => textures[id]);
+export const getTextures = (ids: string[]) =>
+  ids.map((id) => textures[id]?.resource).filter(Boolean) as THREE.Texture[];
 
 /**
- * Returns all created textures that exist
- * @returns array of Three.js textures
+ * Returns a flat map object of all existing texture resources.
  */
-export const getAllTextures = () => textures;
+export const getAllTextures = () => {
+  const flatMap: { [id: string]: THREE.Texture } = {};
+  Object.keys(textures).forEach((key) => {
+    flatMap[key] = textures[key].resource;
+  });
+  return flatMap;
+};
+
+export const getTextureRegistry = () => textures;
 
 /**
- * Checks, with a texture id, whether a texture exists or not
- * @param id (string) texture id
- * @returns boolean
+ * Checks whether a texture with a specific id exists in memory cache.
  */
 export const doesTextureExist = (id: string) => Boolean(textures[id]);
 
 /**
- * Deletes a texture based on an id
- * @param id (string | string[]) texture id or array of texture ids
+ * Forcefully disposes and removes one or multiple textures from memory cache.
  */
 export const deleteTexture = (id: string | string[]) => {
-  if (typeof id === 'string') {
-    const texture = getTexture(id);
-    if (!texture) {
-      lwarn(
-        `Texture with id "${id}" could not be found and could not be deleted (single texture deletion).`
-      );
-      return;
-    }
-    texture.dispose();
-    delete textures[id];
-    return;
-  }
-
-  const textureArr = getTextures(id);
+  const targetIds = Array.isArray(id) ? id : [id];
   const idsDeleted: string[] = [];
-  for (let i = 0; i < textureArr.length; i++) {
-    const texture = textureArr[i];
-    if (!texture) continue;
-    texture.dispose();
-    delete textures[id[i]];
-    idsDeleted.push(id[i]);
+
+  for (const texId of targetIds) {
+    const entry = textures[texId];
+    if (!entry) continue;
+
+    entry.resource.dispose();
+    delete textures[texId];
+    idsDeleted.push(texId);
   }
 
-  if (!textureArr.length) {
+  if (!idsDeleted.length) {
     lwarn(
-      `None of the textures with ids "${id.join(', ')}" could be found and could not be deleted (multiple texture deletion).`
+      `None of the textures with ids "${targetIds.join(', ')}" could be found and could not be deleted.`
     );
     return;
   }
 
-  const idsNotDeleted = id.filter((texId) => !idsDeleted.includes(texId));
-  if (idsNotDeleted) {
-    lwarn(
-      `Textures with ids "${idsNotDeleted.join(', ')}" could be found and could not be deleted (multiple texture deletion) or textures did not have an userData.id set.`
-    );
+  const idsNotDeleted = targetIds.filter((texId) => !idsDeleted.includes(texId));
+  if (idsNotDeleted.length) {
+    lwarn(`Textures with ids "${idsNotDeleted.join(', ')}" could not be found or deleted.`);
   }
+};
+
+/**
+ * Saves a texture instance inside the engine tracking registry.
+ */
+export const saveTexture = <T extends THREE.Texture = THREE.Texture>(
+  texture: T,
+  givenId?: string,
+  isPersistent?: boolean
+): T => {
+  const id = givenId || texture.uuid;
+  if (textures[id]) return textures[id].resource as T;
+
+  texture.userData.id = id;
+  textures[id] = {
+    resource: texture,
+    count: 0,
+    ...(isPersistent ? { persistent: true } : {}),
+  };
+  return texture;
 };

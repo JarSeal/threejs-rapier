@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schemas/geometry.schema.json",
+  "geoProps": {
+    "type": "SPHERE",
+    "params": {
+      "radius": 0.5,
+      "widthSegments": 32,
+      "heightSegments": 32
+    },
+    "debugData": { "name": "Test Sphere", "description": "This is a test sphere" }
+  },
+  "__saveData": {
+    "sceneTestECS": [
+      {
+        "__meta": { "date": 1779449688109 },
+        "params": {
+          "radius": 2.6
+        }
+      }
+    ]
+  }
+}
