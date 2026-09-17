@@ -1,8 +1,19 @@
-Status: draft | feasibility study — not-implemented
-Blocked by: /docs/plans/p050_spatial-index.md
+Status: implemented
 Category: Culling
 
 # Light "Object Culling" (Contribution Culling) — Feasibility Study + Plan
+
+**Implemented as part of `docs/plans/p050_spatial-index.md` Phase 3**, against the spatial
+index from the start rather than the brute-force approach this document proposes below —
+`§2.3`'s "real solution" and `§5`'s "interaction with a future spatial index" row both landed
+directly: `LightObjectCullingSystem.ts`'s `testLightAgainstMeshList` queries `SpatialGrid`
+for candidates instead of scanning every mesh, so the mitigations in `§2.2` (a separately
+built frustum-visible mesh list, throttling) were unnecessary and were not built. The
+`reconcileLightVisibility` refactor `§3.2` flagged is built as `reconcileObject3DVisibility`
+in `ECSCoreSystems.ts`, shared with the (now-existing) frustum-culling hooks. Everything else
+below — the data model, component/tag shape, debug GUI checkbox, and the risk table —
+describes what was actually built; only the "how it finds nearby meshes" internals differ
+from what's written here.
 
 An extension beyond `docs/plans/light-culling.md`'s camera-frustum test: cull a point/spot light not just when its influence volume is outside the camera frustum, but also when its influence volume overlaps the frustum yet **nothing renderable actually sits inside it** — i.e. the light is technically "on screen" but illuminating empty space. Opt-in per light, independent of (and layered on top of) the frustum-culling opt-in.
 

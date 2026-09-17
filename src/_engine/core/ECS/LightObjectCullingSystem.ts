@@ -4,7 +4,11 @@ import { ECSWorld } from '../ECS';
 import { getMainCamera } from '../CameraManager';
 import { ComponentType } from './ECSCoreComponents';
 import { reconcileObject3DVisibility } from './ECSCoreSystems';
-import { computeLightInfluenceRadius, getSpatialGrid } from '../Spatial/SpatialIndexSystem';
+import {
+  computeLightInfluenceRadius,
+  getSpatialGrid,
+  validateSpatialGridQuery,
+} from '../Spatial/SpatialIndexSystem';
 
 // --- OBJECT (CONTRIBUTION) CULLING VISIBILITY HOOK ---
 // docs/plans/_DONE_p081_light-object-culling.md §3.2 — a third, independent
@@ -62,6 +66,8 @@ function testLightAgainstMeshList(
   const radius = computeLightInfluenceRadius(light);
   light.getWorldPosition(_lightSphere.center);
   _lightSphere.radius = radius;
+
+  validateSpatialGridQuery(world, _lightSphere.center, radius);
 
   let found = false;
   getSpatialGrid(world).queryVisit(_lightSphere.center, radius, (candidateId) => {

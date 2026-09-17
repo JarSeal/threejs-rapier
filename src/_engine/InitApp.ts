@@ -18,7 +18,7 @@ import { getSvgIcon } from './core/UI/icons/SvgIcon';
 import './core/ECS/ECSCoreSystems';
 import './core/ECS/LightFrustumCullingSystem';
 import './core/ECS/LightObjectCullingSystem';
-import './core/Spatial/SpatialIndexSystem';
+import { registerSpatialIndexDebugGUI } from './core/Spatial/SpatialIndexSystem';
 import './core/MeshManager';
 
 // App Plugins
@@ -77,6 +77,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerDebuggerGUI();
       await registerCharacterTools();
       await registerECSModule();
+      await registerSpatialIndexDebugGUI();
     }
     if (IS_DEBUG_ENV || IS_PROD_TEST_MODE) {
       await registerMainLoopDebugGUI();

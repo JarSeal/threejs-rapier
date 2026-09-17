@@ -213,6 +213,15 @@ export class SpatialGrid {
     };
   }
 
+  /** Debug tooling only (§9 of the plan) — per-occupied-cell member counts as of the last rebuild, for tuning cellSize against an occupancy histogram. */
+  getCellOccupancyCounts(): number[] {
+    const counts = new Array<number>(this.occupiedCellCount);
+    for (let c = 0; c < this.occupiedCellCount; c++) {
+      counts[c] = this.cellStart[c + 1] - this.cellStart[c];
+    }
+    return counts;
+  }
+
   private _setRadius(slot: number, radius: number): void {
     this.radius[slot] = radius;
     const oversized = radius > this.oversizedRadiusThreshold;

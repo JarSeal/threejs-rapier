@@ -1,18 +1,19 @@
-Status: draft | research — not-implemented
+Status: implemented (Phases 1–3); Phase 4 optional, not scheduled
 Category: ECS / Spatial
-Blocks: /docs/plans/p081_light-object-culling.md
 
 # Spatial Index (Sparse Grid) — Research & Recommendation
 
-A general-purpose "what's near this point/volume" primitive for the engine. Two consumers motivate it: near-term, unblocking `docs/plans/p081_light-object-culling.md` §2.3 (which explicitly deferred building this); longer-term, NPC spatial-awareness queries once AI/NPC systems exist.
+A general-purpose "what's near this point/volume" primitive for the engine. Two consumers motivate it: near-term, unblocking `docs/plans/_DONE_p081_light-object-culling.md` §2.3 (which explicitly deferred building this); longer-term, NPC spatial-awareness queries once AI/NPC systems exist.
 
-This document is research/recommendation plus an implementation shape — it is not itself an implementation. No NPC system exists yet (confirmed by grep across `src/app`/`src/toolkit`). Phases in §11 are written so the work can land in reviewable, non-breaking chunks.
+**Implemented**: `src/_engine/core/Spatial/SpatialGrid.ts` (the primitive, Phase 1), `Spatial/SpatialIndexSystem.ts` (ECS wiring — `SPATIAL_INDEXED` component, membership hooks, the rebuild system, Phase 2), `Debug/_dbg__SpatialGrid.ts` (occupancy histogram, live cell-size tuning, brute-force oracle, Phase 3), and `_DONE_p081_light-object-culling.md`'s light-object-culling system as the first real consumer (also Phase 3). §11 Phase 4 (static/dynamic split, AABB-overlap insert, incremental updates, per-domain grids) remains optional/deferred — nothing in the engine needs it yet.
+
+This document is research/recommendation plus an implementation shape. Phases in §11 are written so the work can land in reviewable, non-breaking chunks; §§1–10 and 12–13 below describe the design as reasoned about before implementation and remain accurate to what was actually built, except where a phase's own entry in §11 notes otherwise.
 
 ---
 
 ## 1. What exists today
 
-Confirmed via codebase research: **no spatial index exists anywhere in the engine** — no octree, BVH, grid, or spatial hash (the same finding `p081_light-object-culling.md` §2.1 already made). Two things that look like candidates on the surface, and why neither is sufficient:
+Confirmed via codebase research: **no spatial index exists anywhere in the engine** — no octree, BVH, grid, or spatial hash (the same finding `_DONE_p081_light-object-culling.md` §2.1 already made). Two things that look like candidates on the surface, and why neither is sufficient:
 
 - **Rapier's internal broadphase** (`src/_engine/core/PhysicsRapier.ts`): Rapier maintains a broadphase for collision detection, but (a) it's only reachable through CRUD + stepping today — no shape/point/ray query API (`castShape`, `intersectionsWithShape`, `castRay`) is exposed to app/toolkit code, and even the commented-out worker rewrite (`core/Physics/EngineRapier.ts` + `PhysicsAPITypes.ts`) declares only ray queries; (b) more fundamentally, it only knows about entities with colliders (`TAG_IS_PHYSICS_OBJECT`). Lights and purely decorative meshes — exactly what light-object-culling needs to query — commonly have no collider, so a Rapier-only solution can't cover them.
 
@@ -154,7 +155,7 @@ queryInto(p: ReadonlyVec3, r: number, out: Uint32Array): number // returns count
 
 plus AABB variants. This is an API-shape decision that is painful to change once consumers exist, so settle it in Phase 1.
 
-**Contract:** the index returns *candidates*, not results. The caller performs the exact test. This is already the shape `p081_light-object-culling.md` has — `testLightAgainstMeshList` is the exact test — so its external signature need not change, only its internals. Document the contract prominently; a caller that assumes results are exact will produce over-inclusion bugs that look like the index is broken.
+**Contract:** the index returns *candidates*, not results. The caller performs the exact test. This is already the shape `_DONE_p081_light-object-culling.md` has — `testLightAgainstMeshList` is the exact test — so its external signature need not change, only its internals. Document the contract prominently; a caller that assumes results are exact will produce over-inclusion bugs that look like the index is broken.
 
 ### 7.1 Dedup
 
@@ -195,7 +196,7 @@ Camera has no characteristics helper yet (`_dbg__CameraGUI.ts` — single camera
 
 ## 10. Relationship to existing plans, and out of scope
 
-`p081_light-object-culling.md` §2.3 deferred building a spatial index, calling it "the wrong order of operations" to build as a side effect of a culling nice-to-have and asking for it to be scoped as its own initiative — this document is that initiative. Once implemented, that plan's brute-force `buildFrustumVisibleMeshList` scan (§2.2/§3.3 there) becomes a radius query against this index.
+`_DONE_p081_light-object-culling.md` §2.3 deferred building a spatial index, calling it "the wrong order of operations" to build as a side effect of a culling nice-to-have and asking for it to be scoped as its own initiative — this document is that initiative. Once implemented, that plan's brute-force `buildFrustumVisibleMeshList` scan (§2.2/§3.3 there) becomes a radius query against this index.
 
 `object3d-frustum-culling.md` doesn't propose a spatial index and doesn't need one for per-entity bounding-sphere-vs-frustum tests — out of scope here.
 
@@ -212,14 +213,14 @@ Also explicitly out of scope:
 
 Non-breaking, individually reviewable and committable.
 
-**Phase 1 — core index, no consumer.**
-`SpatialGrid` module with CSR storage, origin insert, query expansion by `maxIndexedRadius`, oversized list, both query API shapes, dedup stamps, `lastCell` tracking. Dynamic index only, rebuilt per frame. Unit-exercised via a scratch scene. Nothing else in the engine references it — fully additive.
+**Phase 1 — core index, no consumer. Done.**
+`SpatialGrid` module with CSR storage, origin insert, query expansion by `maxIndexedRadius`, oversized list, both query API shapes, dedup stamps, `lastCell` tracking. Dynamic index only, rebuilt per frame. No test runner exists in this repo, so "unit-exercised" was a throwaway scratch script (correctness verified, not checked in), plus `tsc`/`eslint`. Nothing else in the engine referenced it at this point — fully additive.
 
-**Phase 2 — ECS wiring.**
-`SPATIAL_INDEXED` core component + `CoreComponentData` entry, membership hooks, `spatialIndex` opt in `CoreEntityOpts`, `MeshManager`/`LightManager` opting in their entities, debug tripwire (§3.1), rebuild system registered in `APP_POST_PHYSICS` ordered last. Index is populated and correct but still unqueried by production code.
+**Phase 2 — ECS wiring. Done.**
+`SPATIAL_INDEXED` core component + `CoreComponentData` entry, membership hooks, `spatialIndex` opt in `CoreEntityOpts`, `MeshManager`/`LightManager` opting in their entities (`LightManager` additionally gated on a new `canBeSpatiallyIndexed` light-characteristics flag — false for ambient/hemisphere/directional, not just the ambient/hemisphere §3.1 named), debug tripwire (§3.1), rebuild system registered in `APP_POST_PHYSICS` with `order: -1`. The `removeComponent` hook-ordering bug (§3.2) was fixed in `ECS.ts` at this point, not deferred. Verified live in the running app (not just `tsc`/`eslint`) via the `run-aekasha-js` skill, which also caught a real bug the scratch test had missed: `addMember` never recomputed `maxIndexedRadius`, only `removeMember`/`updateRadius` did.
 
-**Phase 3 — first consumer + validation.**
-Land `p081_light-object-culling.md` against the index, with the brute-force oracle (§9) running in debug builds and the occupancy histogram driving a first cell-size tuning pass. This is the phase that turns the guesses in §4 into measured numbers — hence the sequencing note below.
+**Phase 3 — first consumer + validation. Done.**
+Landed `_DONE_p081_light-object-culling.md` against the index (queried directly from the start, not brute-force-then-swapped), plus the brute-force oracle and occupancy histogram/live cell-size tuning in `Debug/_dbg__SpatialGrid.ts`. p081's own `reconcileLightVisibility` refactor ask landed as `reconcileObject3DVisibility` in `ECSCoreSystems.ts`, shared by `DISABLED`/`TAG_FRUSTUM_CULLED`/`TAG_OBJECT_CULLED`. Verified live: a light with nothing nearby gets culled and recovers correctly, the oracle reports zero mismatches, and cell-size changes rebuild live with consistent stats. Cell size is still a starting guess (`DEFAULT_CELL_SIZE = 20`) — the histogram tool now exists to tune it against a real scene, but that tuning pass itself hasn't been done.
 
 **Phase 4 — optimisation, only if measured.**
 Any of: static/dynamic split (§5), AABB-overlap insert replacing query expansion (§4), incremental update off `Transform.version` (§6), separate domain grids (§5.1). Each is independently justifiable and independently deferrable. Do not pre-build them.
@@ -236,7 +237,7 @@ Any of: static/dynamic split (§5), AABB-overlap insert replacing query expansio
 - `src/_engine/core/ECS/TypedArrayTransformStore.ts` (+ the object-backed store) — bulk position copy method.
 - `src/_engine/core/MeshManager.ts`, `LightManager.ts` — opt entities in.
 - `src/_engine/core/ECS.ts` — fix `removeComponent` hook ordering (§3.2), or document the workaround.
-- `docs/plans/p081_light-object-culling.md` — revise §2.2/§2.3/§3.3 to depend on this primitive.
+- `docs/plans/_DONE_p081_light-object-culling.md` — revise §2.2/§2.3/§3.3 to depend on this primitive.
 
 Registered as an ECS plugin via `ECSWorld.registerPlugin` / `registerComponentHooks`, matching the pattern other managers use. Kept engine-internal behind its first consumers; wired into `src/AppECSPlugins.ts` only when an app-level consumer needs direct access.
 
@@ -244,7 +245,7 @@ Registered as an ECS plugin via `ECSWorld.registerPlugin` / `registerComponentHo
 
 ## 13. Recommendation
 
-Build a **sparse, CSR-backed uniform grid over ECS `Transform` data** as a standalone, instantiable engine primitive — not physics-specific, not culling-specific — so it serves `p081_light-object-culling.md` first and NPC spatial-awareness queries later without redesign.
+Build a **sparse, CSR-backed uniform grid over ECS `Transform` data** as a standalone, instantiable engine primitive — not physics-specific, not culling-specific — so it serves `_DONE_p081_light-object-culling.md` first and NPC spatial-awareness queries later without redesign.
 
 Do not build an octree or BVH for the dynamic set. Do not use Rapier's broadphase as the primary index — it covers only collider-bearing entities, which excludes exactly the lights and decorative meshes culling needs, and its bounds and timing are both wrong for rendering; treat exposing Rapier's query pipeline as separate, later, complementary work for NPC line-of-sight specifically.
 
