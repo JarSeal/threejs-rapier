@@ -144,7 +144,7 @@ export const createMeshEntity = (
   setTransform(entityId, tra, world);
 
   // After the transform is finalized so the spatial index's initial insert
-  // (docs/plans/p050_spatial-index.md §3) uses this mesh's real position,
+  // (docs/plans/_DONE_p050_spatial-index.md §3) uses this mesh's real position,
   // not createEntity()'s default (0,0,0).
   if (entityOpts?.spatialIndex !== false) {
     world.addComponent(entityId, ComponentType.SPATIAL_INDEXED, true);

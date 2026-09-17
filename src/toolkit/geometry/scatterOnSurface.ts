@@ -39,7 +39,7 @@ export interface ScatterOptions {
    * approximation of blue-noise/Poisson-disc spacing, not exact, and O(n^2) in the number of
    * accepted points. Fine for a first pass at scene-build-time entity counts; if scatter
    * counts grow large enough for this to matter, bucket accepted points into a grid (the
-   * same idea as `docs/plans/p050_spatial-index.md`'s `SpatialGrid`) instead of scanning all
+   * same idea as `docs/plans/_DONE_p050_spatial-index.md`'s `SpatialGrid`) instead of scanning all
    * of them. 0 (default) disables spacing entirely (pure random, may cluster/overlap).
    */
   minSpacing?: number;

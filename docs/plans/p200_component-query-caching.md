@@ -139,7 +139,7 @@ need a multi-component compound-query cache:
   already-known entities via the existing single-component `BODY_DYNAMIC_VISUAL`
   bucket — never around deriving/caching which entities satisfy a component
   conjunction. `docs/plans/_DONE_ecs-multiple-worlds.md:374` and
-  `docs/plans/p050_spatial-index.md:14` (Rapier broadphase only knows entities with the
+  `docs/plans/_DONE_p050_spatial-index.md:20` (Rapier broadphase only knows entities with the
   single `TAG_IS_PHYSICS_OBJECT` tag) corroborate the same single-component-type
   pattern.
 

@@ -339,7 +339,7 @@ export const createLightEntity = (
     setLightObjectCullingEnabled(entityId, true, world);
   }
 
-  // Opt-in, not opt-out (docs/plans/p050_spatial-index.md §3): ambient/hemisphere lights are
+  // Opt-in, not opt-out (docs/plans/_DONE_p050_spatial-index.md §3): ambient/hemisphere lights are
   // simply never opted in, by construction, rather than filtered out downstream.
   if (entityOpts?.spatialIndex !== false && getLightCharacteristics(light).canBeSpatiallyIndexed) {
     world.addComponent(entityId, ComponentType.SPATIAL_INDEXED, true);

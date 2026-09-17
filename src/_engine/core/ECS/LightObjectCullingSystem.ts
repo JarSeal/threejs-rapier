@@ -25,7 +25,7 @@ ECSWorld.registerComponentHooks(ComponentType.TAG_OBJECT_CULLED, {
 });
 
 // --- NEARBY-MESH TEST ---
-// Candidates come from the spatial index (docs/plans/p050_spatial-index.md);
+// Candidates come from the spatial index (docs/plans/_DONE_p050_spatial-index.md);
 // this system does the exact test the index's own contract requires (§7 —
 // "candidates, not results").
 

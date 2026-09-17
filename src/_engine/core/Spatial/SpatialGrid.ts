@@ -3,7 +3,7 @@ import { lwarn } from '../../utils/Logger';
 
 /**
  * Standalone, instantiable "what's near this point/volume" primitive.
- * See docs/plans/p050_spatial-index.md for the full design rationale.
+ * See docs/plans/_DONE_p050_spatial-index.md for the full design rationale.
  *
  * Phase 1 scope (per that plan's §11): the grid itself only. It has no ECS
  * wiring, no membership hooks, and nothing else in the engine references it
@@ -36,7 +36,7 @@ export interface SpatialGridStats {
 
 // Packed with multiplication rather than bitwise ops, so the key stays a
 // JS safe integer (<= 2^53) instead of silently wrapping at 32 bits — see
-// docs/plans/p050_spatial-index.md §2.4. 17 bits/axis is the largest budget
+// docs/plans/_DONE_p050_spatial-index.md §2.4. 17 bits/axis is the largest budget
 // whose cube fits under 2^53.
 const CELL_AXIS_BITS = 17;
 const CELL_AXIS_SIZE = 1 << CELL_AXIS_BITS; // 131072 cells per axis

@@ -18,7 +18,7 @@ export const registerSpatialIndexDebugGUI = async () => {
 };
 
 /**
- * ECS wiring for SpatialGrid (docs/plans/p050_spatial-index.md §3, §8). One
+ * ECS wiring for SpatialGrid (docs/plans/_DONE_p050_spatial-index.md §3, §8). One
  * dynamic grid per ECS world, lazily created on first SPATIAL_INDEXED
  * member, kept current every frame. First consumer: LightObjectCullingSystem.ts.
  */
@@ -122,7 +122,7 @@ ECSWorld.registerComponentHooks(ComponentType.SPATIAL_INDEXED, {
         lwarn(
           `SpatialIndex: entity ${entityId} opted in but is an ` +
             `${isAmbient ? 'ambient' : 'hemisphere'} light — it has no meaningful position to ` +
-            `index (docs/plans/p050_spatial-index.md §3.1).`
+            `index (docs/plans/_DONE_p050_spatial-index.md §3.1).`
         );
       }
     }
@@ -218,7 +218,7 @@ export function validateSpatialGridQuery(world: ECSWorld, p: ReadonlyVec3, r: nu
       lwarn(
         `SpatialGrid oracle: entity ${id} is within range of query ` +
           `(${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}) r=${r.toFixed(2)} but the ` +
-          `grid's candidates missed it — see docs/plans/p050_spatial-index.md §9.`
+          `grid's candidates missed it — see docs/plans/_DONE_p050_spatial-index.md §9.`
       );
     }
   }

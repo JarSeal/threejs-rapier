@@ -22,6 +22,7 @@ import personArmsUpIcon from './svg/person-arms-up.svg?raw';
 import playFillIcon from './svg/play-fill.svg?raw';
 import rocketIcon from './svg/rocket.svg?raw';
 import rocketTakeoffIcon from './svg/rocket-takeoff-fill.svg?raw';
+import spatialGridIcon from './svg/spatial-grid.svg?raw';
 import speedometerIcon from './svg/speedometer.svg?raw';
 import stopIcon from './svg/stop-fill.svg?raw';
 import thrashIcon from './svg/trash3-fill.svg?raw';
@@ -54,6 +55,7 @@ const icons = {
   playFill: playFillIcon,
   rocket: rocketIcon,
   rocketTakeoff: rocketTakeoffIcon,
+  spatialGrid: spatialGridIcon,
   speedometer: speedometerIcon,
   stop: stopIcon,
   thrash: thrashIcon,

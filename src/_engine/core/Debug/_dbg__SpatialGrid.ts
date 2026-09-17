@@ -20,7 +20,7 @@ type LSData = { cellSize: number };
 /**
  * Debug-only occupancy histogram: how many members each occupied cell
  * holds, bucketed by exact count. Meant to guide cellSize tuning (§9 of
- * docs/plans/p050_spatial-index.md) — a handful of very full cells next to
+ * docs/plans/_DONE_p050_spatial-index.md) — a handful of very full cells next to
  * many single-member ones is the signal that cellSize is too large (or an
  * area is genuinely dense and belongs in the oversized tier instead).
  */
@@ -56,7 +56,7 @@ export const _createSpatialGridDebugGUI = () => {
     setSpatialGridCellSize(world, savedLSData.cellSize);
   }
 
-  const icon = getSvgIcon('aspectRatio');
+  const icon = getSvgIcon('spatialGrid');
   createDebuggerTab({
     id: 'spatialGridControls',
     buttonText: icon,
@@ -70,7 +70,7 @@ export const _createSpatialGridDebugGUI = () => {
       });
       const { container, debugGUI: pane } = createNewDebuggerPane(
         'spatialGrid',
-        `${icon} Spatial Index (docs/plans/p050_spatial-index.md)`,
+        `${icon} Spatial Index (docs/plans/_DONE_p050_spatial-index.md)`,
         [clearTabBtn]
       );
 

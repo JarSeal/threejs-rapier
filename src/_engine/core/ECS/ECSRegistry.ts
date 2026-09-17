@@ -36,7 +36,7 @@ export enum CoreComponentType {
   // Object (contribution) culling — docs/plans/_DONE_p081_light-object-culling.md
   OBJECT_CULLING_ENABLED = 'CORE_OBJECT_CULLING_ENABLED', // opt-in, user-authored
   TAG_OBJECT_CULLED = 'CORE_TAG_OBJECT_CULLED', // runtime-only, current culled state
-  // Spatial index (docs/plans/p050_spatial-index.md)
+  // Spatial index (docs/plans/_DONE_p050_spatial-index.md)
   SPATIAL_INDEXED = 'CORE_SPATIAL_INDEXED', // opt-in, membership in the spatial index
   // Debug
   DEBUG_DATA = 'CORE_DEBUG_DATA',

@@ -1,11 +1,13 @@
-Status: implemented (Phases 1–3); Phase 4 optional, not scheduled
+Status: implemented
 Category: ECS / Spatial
 
 # Spatial Index (Sparse Grid) — Research & Recommendation
 
 A general-purpose "what's near this point/volume" primitive for the engine. Two consumers motivate it: near-term, unblocking `docs/plans/_DONE_p081_light-object-culling.md` §2.3 (which explicitly deferred building this); longer-term, NPC spatial-awareness queries once AI/NPC systems exist.
 
-**Implemented**: `src/_engine/core/Spatial/SpatialGrid.ts` (the primitive, Phase 1), `Spatial/SpatialIndexSystem.ts` (ECS wiring — `SPATIAL_INDEXED` component, membership hooks, the rebuild system, Phase 2), `Debug/_dbg__SpatialGrid.ts` (occupancy histogram, live cell-size tuning, brute-force oracle, Phase 3), and `_DONE_p081_light-object-culling.md`'s light-object-culling system as the first real consumer (also Phase 3). §11 Phase 4 (static/dynamic split, AABB-overlap insert, incremental updates, per-domain grids) remains optional/deferred — nothing in the engine needs it yet.
+**Implemented**: `src/_engine/core/Spatial/SpatialGrid.ts` (the primitive, Phase 1), `Spatial/SpatialIndexSystem.ts` (ECS wiring — `SPATIAL_INDEXED` component, membership hooks, the rebuild system, Phase 2), `Debug/_dbg__SpatialGrid.ts` (occupancy histogram, live cell-size tuning, brute-force oracle, Phase 3), and `_DONE_p081_light-object-culling.md`'s light-object-culling system as the first real consumer (also Phase 3).
+
+**⚠ Future optimization reminder — kept intentionally, do not delete on a whim:** §11 Phase 4 (static/dynamic split §5, AABB-overlap insert replacing query expansion §4, incremental update off `Transform.version` §6, separate domain grids §5.1) was deliberately **not** built — it's optimization work with no measured justification yet, and the plan explicitly says not to pre-build it. Revisit Phase 4 if any of these show up later: a scene with a lot of *static* geometry making the per-frame full rebuild costly (→ static/dynamic split), the query-expansion conservatism pulling in visibly too many candidates for a light/other consumer (→ AABB-overlap insert), or a second consumer needing very different cell-size tuning than light-object-culling (→ per-domain grids, §5.1). Check the occupancy histogram and rebuild-time readout in the "Spatial index" debug tab first — that's what should decide whether any of this is actually warranted, not a guess.
 
 This document is research/recommendation plus an implementation shape. Phases in §11 are written so the work can land in reviewable, non-breaking chunks; §§1–10 and 12–13 below describe the design as reasoned about before implementation and remain accurate to what was actually built, except where a phase's own entry in §11 notes otherwise.
 
