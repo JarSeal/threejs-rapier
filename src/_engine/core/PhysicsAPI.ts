@@ -133,6 +133,8 @@ let physicsState: PhysicsState = {
   solverIterations: 10,
   internalPgsIterations: 1,
   interpolationEnabled: true,
+  useSAB: true,
+  maxBodies: 2048,
 };
 let worker: Worker | null = null;
 let physicsWorld: WorldAPI = { step: () => {} } as unknown as WorldAPI;

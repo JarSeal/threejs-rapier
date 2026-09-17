@@ -31,6 +31,13 @@ export type AppConfig = {
     solverIterations?: number;
     internalPgsIterations?: number;
     interpolationEnabled?: boolean;
+    /** Intent to use SharedArrayBuffer for the worker-thread hot-path transform buffer.
+     * Default true. Actual capability (cross-origin isolation) is resolved at runtime;
+     * unavailable environments automatically fall back to a batched-message transport.
+     */
+    useSAB?: boolean;
+    /** Fixed capacity for the worker-thread hot-path transform buffer. Default 2048. */
+    maxBodies?: number;
   };
   ecs?: {
     /** Build-time-selectable ECS component storage backend. Default 'MAP'. */
@@ -60,6 +67,8 @@ let config: AppConfig = {
     gravity: { x: 0, y: 0, z: 0 },
     timestep: 60,
     backgroundBehavior: 'PAUSE',
+    useSAB: true,
+    maxBodies: 2048,
   },
   ecs: {
     storageMode: 'MAP',
@@ -113,6 +122,12 @@ export const loadConfig = () => {
     }
     config.physics.gravity = { x: gr[0], y: gr[1], z: gr[2] };
     envVars.VITE_PHYS_GRAVITY = config.physics.gravity;
+  }
+
+  if (typeof envVars.VITE_PHYS_USE_SAB === 'string') {
+    const useSAB = Boolean(envVars.VITE_PHYS_USE_SAB);
+    config.physics.useSAB = useSAB;
+    envVars.VITE_PHYS_USE_SAB = useSAB;
   }
 
   if (typeof envVars.VITE_PHYS_TIMESTEP === 'string') {

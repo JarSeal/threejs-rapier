@@ -46,6 +46,8 @@ let physicsState: PhysicsState = {
   solverIterations: 10,
   internalPgsIterations: 1,
   interpolationEnabled: true,
+  useSAB: true,
+  maxBodies: 2048,
 };
 
 /** NEW STUFF (@CHORE: delete this line when everything is diamonds!!!) */

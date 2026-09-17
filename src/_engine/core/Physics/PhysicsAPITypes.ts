@@ -85,6 +85,13 @@ export type PhysicsState = {
   solverIterations: number;
   internalPgsIterations: number;
   interpolationEnabled: boolean;
+  /** Intent to use SharedArrayBuffer for the worker-thread hot-path transform buffer.
+   * Actual capability (cross-origin isolation) is resolved at initPhysics() time;
+   * this is the configured intent, not the resolved capability.
+   */
+  useSAB: boolean;
+  /** Fixed capacity for the worker-thread hot-path transform buffer (PhysicsTransformBuffer). */
+  maxBodies: number;
 };
 
 export interface PhysVector {
@@ -2300,6 +2307,8 @@ export enum PhysicsProtocolType {
   STEP = 4,
   CREATE_WORLD = 100,
   DELETE_WORLD = 101,
+  /** Worker -> main thread unsolicited push of the hot-path transform buffer (MESSAGE_BATCH fallback only). */
+  TRANSFORMS_PUSH = 102,
 
   // WORLD >= 200 && WORLD < 400
   WORLD_GET_GRAVITY = 200,
