@@ -56,7 +56,6 @@ const rigidBodyAPIs = new Map<number, RigidBodyAPI>(); // { "Rapier handle", Rig
 const colliderAPIs = new Map<number, ColliderAPI>(); // { "Running handle", ColliderAPI }
 let worldCreated = false;
 let isDebugEnvironment = false;
-let loopState: LoopState;
 let RAPIER: typeof Rapier;
 let physicsWorld: Rapier.World = { step: () => {} } as Rapier.World;
 let physicsWorldAPI: WorldAPI;
@@ -80,13 +79,6 @@ const getCollider = (collOrId?: ColliderAPI | number): Collider | undefined => {
   return handle !== undefined ? physicsWorld.getCollider(handle) : undefined;
 };
 
-/** Get rigidBodyAPI with a Rapier.RigidBody or a Rapier.RigidBody.handle */
-const getRigidBodyAPI = (bodyOrHandle?: RigidBody | number): RigidBodyAPI | undefined => {
-  if (bodyOrHandle === undefined) return undefined;
-  const handle = typeof bodyOrHandle === 'number' ? bodyOrHandle : bodyOrHandle.handle;
-  return rigidBodyAPIs.get(handle);
-};
-
 /** Get colliderAPI with a Rapier.Collider or a Rapier.Collider.handle */
 const getColliderAPI = (collOrHandle?: Collider | number): ColliderAPI | undefined => {
   if (collOrHandle === undefined) return undefined;
@@ -104,7 +96,7 @@ export const getColliderAPIWithId = (id: number): ColliderAPI | undefined => col
 export const init = (
   physicsSt: PhysicsState,
   isDebugEnv: boolean,
-  loopSt: LoopState,
+  _loopSt: LoopState,
   doNotCreateWorld?: boolean
 ) => {
   try {
@@ -114,7 +106,6 @@ export const init = (
     );
     physicsState = physicsSt;
     isDebugEnvironment = isDebugEnv || false;
-    loopState = loopSt;
     if (doNotCreateWorld) return;
     physicsWorldAPI = createWorld(physicsState.gravity, {
       timestep: physicsState.timestepRatio,

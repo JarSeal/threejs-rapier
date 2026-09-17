@@ -1,5 +1,3 @@
-import type * as THREE from 'three/webgpu';
-
 import { ENGINES } from './ENGINES';
 import { LoopState } from '../MainLoop';
 
@@ -776,43 +774,6 @@ export interface PhysicsHooks {
   ): boolean;
 }
 
-type CollisionEventFn = (
-  collider1: ColliderAPI,
-  collider2: ColliderAPI,
-  started: boolean,
-  physObj1: PhysicsObject,
-  physObj2: PhysicsObject
-) => void;
-
-type ContactForceEventFn = (
-  event: TempContactForceEvent,
-  physObj1: PhysicsObject,
-  physObj2: PhysicsObject
-) => void;
-
-export type PhysicsObject = {
-  id: string;
-  name?: string;
-  mesh?: THREE.Mesh;
-  meshes?: THREE.Mesh[];
-  collider: ColliderAPI | ColliderAPI[];
-  rigidBody?: RigidBodyAPI;
-  hasCollisionEventFn?: boolean | boolean[];
-  collisionEventFn?: CollisionEventFn | CollisionEventFn[];
-  hasContactForceEventFn?: boolean | boolean[];
-  contactForceEventFn?: ContactForceEventFn | ContactForceEventFn[];
-  currentObjectIndex?: number;
-  currentMeshIndex?: number;
-  setTranslation: (
-    translation: { x?: number; y?: number; z?: number; wakeUp?: boolean },
-    meshGroup?: THREE.Group
-  ) => void;
-  setRotation: (
-    rotation: { x?: number; y?: number; z?: number; w?: number; wakeUp?: boolean },
-    meshGroup?: THREE.Group
-  ) => void;
-};
-
 export type RigidBodyParams = {
   /** Type of rigid body */
   rigidType: 'FIXED' | 'DYNAMIC' | 'POS_BASED' | 'VELO_BASED';
@@ -972,23 +933,13 @@ export type ColliderParams = (
   hasCollisionEventFn?: boolean;
 
   /** Creates a collision event callback, automatically sets enableCollisionActiveEvents to true for the collider */
-  collisionEventFn?: (
-    collider1: ColliderAPI,
-    collider2: ColliderAPI,
-    started: boolean,
-    physObj1: PhysicsObject,
-    physObj2: PhysicsObject
-  ) => void;
+  collisionEventFn?: (collider1: ColliderAPI, collider2: ColliderAPI, started: boolean) => void;
 
   /** Do not set manually! Whether the collider has a contact force event function or not */
   hasContactForceEventFn?: boolean;
 
   /** Creates a contact force event callback, automatically sets enableContactForceActiveEvents to true for the collider */
-  contactForceEventFn?: (
-    e: TempContactForceEvent,
-    physObj1: PhysicsObject,
-    physObj2: PhysicsObject
-  ) => void;
+  contactForceEventFn?: (e: TempContactForceEvent) => void;
 
   /** User data to be added to the collider */
   userData?: Record<string, unknown>;
