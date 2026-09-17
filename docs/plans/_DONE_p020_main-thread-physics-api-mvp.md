@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Physics, ECS
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
 
@@ -29,6 +29,7 @@ Get a **main-thread-only**, engine-agnostic physics pipeline actually running: i
 - Lines 2119–3649: `WorldProxyAPI`/`RigidBodyProxyAPI`/`ColliderProxyAPI` — worker-thread-only proxy classes doing `messageWorkerAsync` round-trips. **Not legacy, leave entirely alone** — simply not exercised by main-thread mode.
 
 **`src/_engine/core/Physics/EngineRapier.ts`** (1516 lines): CRUD is complete and correct (`createRigidBody` 170, `createCollider` 250, `createRigidBodies`/`createColliders` ~422–426, delete variants 428–503, `getRigidBodyAPIWithId`/`getColliderAPIWithId` 98–102) — confirmed by reading in full, no changes needed there. Two empty, unwired stubs:
+
 ```ts
 // 536
 export const debugRenderAPI = () => {
@@ -39,17 +40,21 @@ export const stepAPI = () => {
   // @CHORE: FINISH THIS
 };
 ```
+
 `EngineRigidBodyProxyAPI` (881–1284) declares hot-path fields `pos`/`rot`/`lvel`/`avel` (884–887) but only zero-initializes them in the constructor; `translation()`/`rotation()`/`linvel()`/`angvel()` (974–1044) bypass them entirely and call `this.rb.translation()` etc. directly — the fields are dead weight today.
 
 `EngineRapier.ts` has **no explicit `EngineAPIType` object literal** — `Physics/ENGINES.ts:3,23` consumes it as a wildcard namespace import assigned directly to the `engineAPI` field:
+
 ```ts
 import * as RapierAPI from './EngineRapier';
 ...
 RAPIER: { init: async () => {...}, engineAPI: RapierAPI }
 ```
+
 This means `EngineAPIType`'s member names must match `EngineRapier.ts`'s **export names exactly** — there is no object-literal remap step. Since every other `EngineAPIType` member uses a plain verb name (`createRigidBody`, not `createRigidBodyAPI`; `deleteWorld`, not `deleteWorldAPI`), the two new interface members should be named `step`/`debugRender`, which means **`stepAPI`/`debugRenderAPI` must be renamed to `step`/`debugRender`** when implemented (not left as-is with new wrapper exports) — both for naming consistency and because the namespace-import structural typing requires the literal name match.
 
 **`src/_engine/core/Physics/PhysicsAPITypes.ts`** (2486 lines):
+
 - `EngineAPIType` (15–43): no `step`/`debugRender` member at all.
 - `WorldAPI` (1009–~1330): both present only as commented-out signatures (`debugRender` 1046–1063, `step` 1064–1072).
 - `RigidBodyAPI` (212–363): declares the hot-path fields (216–220) nothing populates yet.
@@ -66,11 +71,12 @@ This means `EngineAPIType`'s member names must match `EngineRapier.ts`'s **expor
 **Bootstrap** (`src/_engine/InitApp.ts`, verified by direct read): `registerCameraManager()`/`registerLightManager(ecsWorld)` at lines 64–65 (after `initECSWorld()` at 53), `initDebugCamera(ecsWorld)` at 68, `await InitRapierPhysics();` (old system) at line 70, then the `IS_DEBUG_ENV` block at 72.
 
 **Main loop** (`src/_engine/core/MainLoop.ts`, verified by direct read): import at line 17 — `import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './PhysicsRapier';`. Three call sites, always `stepPhysicsWorld(loopState)` immediately followed by `renderPhysicsObjects()`, immediately before `for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp)` (which runs `APP_POST_PHYSICS`, i.e. `physicsToTransformSystem`):
+
 - `mainLoopForDebug`: lines 143/146.
 - `mainLoopForProduction`: lines 201/204.
 - `mainLoopForProductionWithFPSLimiter`: lines 256/261, with an early `if (skipFrame) return;` inserted between step and render (258) to skip rendering-but-not-stepping on throttled frames.
 - A 4th, unrelated stray call exists at line 362 — a one-time warm-up `setTimeout(() => requestAnimationFrame(() => stepPhysicsWorld(loopState)), 100)` outside all three loop functions. **Left untouched** — a one-time warm-up has no equivalent need for the new system in this MVP.
-This file is otherwise unmodified — only the 3 loop-function call sites gain one additive, guarded line each.
+  This file is otherwise unmodified — only the 3 loop-function call sites gain one additive, guarded line each.
 
 **Double Rapier WASM-init — confirmed unguarded, real risk**: both `Physics/ENGINES.ts:16-21` (`init: async () => { const mod = await import('@dimforge/rapier3d-compat'); await mod.default.init(); ... }`) and `PhysicsRapier.ts`'s local `initRapier` (2420–2425) call `await RAPIER.init()` **unconditionally, with no cached promise or "already initialized" flag anywhere** in either file or in `PhysicsUtils.ts`. Once this MVP's bootstrap wiring (§3.6) makes both call paths execute in the same page session, whether calling `@dimforge/rapier3d-compat`'s `init()` twice is safe (idempotent/no-op) or throws/reinitializes is **unverified** — flagged as a must-check-manually risk in Phase 4, with a concrete fallback (§8) if it isn't safe.
 
@@ -89,6 +95,7 @@ This file is otherwise unmodified — only the 3 loop-function call sites gain o
 ### 3.3 What gets deleted vs. kept
 
 **`src/_engine/core/PhysicsAPI.ts`**:
+
 - Delete lines 142–1494 in full (legacy block described in §2).
 - Rewrite `initPhysics` as a small, main-thread-only init function (§3.4) — legitimate infrastructure, just currently entangled with the deleted block's state (`stepperFn`, debug-persistence keys, the `WORKER_THREAD` branch).
 - Keep lines 1497–3649 untouched except whatever type fixes fall out of adding `step`/`debugRender` to `EngineAPIType` (§3.4 — expected to be none, since this range doesn't call `.step()`/`.debugRender()`).
@@ -96,6 +103,7 @@ This file is otherwise unmodified — only the 3 loop-function call sites gain o
 - Add `export const stepPhysics = (loopState: LoopState) => { ... }` (§3.4), deliberately named differently from `PhysicsRapier.ts`'s `stepPhysicsWorld` so the two are never confused at a shared import site.
 
 **`src/_engine/core/Physics/PhysicsAPITypes.ts`**:
+
 - Delete `PhysicsObject`/`CollisionEventFn`/`ContactForceEventFn` (779–814).
 - In `ColliderParams` (~893–1001): change `collisionEventFn`/`contactForceEventFn` signatures (~975–991) to drop the `physObj1`/`physObj2: PhysicsObject` parameters, keeping `(collider1: ColliderAPI, collider2: ColliderAPI, started: boolean)` / `(e: TempContactForceEvent)`. The boolean config fields (`hasCollisionEventFn`, `enableCollisionActiveEvents`, etc.) are untouched — `EngineRapier.ts`'s `createCollider` already only reads the booleans to configure Rapier's `ActiveEvents`; the callback fields stay declared-but-undrained until events are implemented (§6), so this is a type-only fix, zero behavior change. Grep for any speculative caller of these two fields before deleting the params, in case something unexpectedly already relies on the old signature.
 - Uncomment `WorldAPI.step` (1064–1072) and `WorldAPI.debugRender` (1046–1063) as-is.
@@ -107,6 +115,7 @@ This file is otherwise unmodified — only the 3 loop-function call sites gain o
   Typed loosely here (not `Rapier.EventQueue`) to keep `EngineAPIType` itself engine-agnostic.
 
 **`src/_engine/core/Physics/EngineRapier.ts`**:
+
 - Rename `stepAPI` → `step` and implement: `physicsWorld.step(eventQueue)` — Rapier's own `step` already accepts an optional event queue; no other bookkeeping is needed since the hot-path fields are now getters (§3.1), so there's nothing to write back after stepping.
 - Rename `debugRenderAPI` → `debugRender` and implement: call Rapier's real `physicsWorld.debugRender()` and return `{ vertices, colors }`. Export it but **do not** wire it into any UI/visualizer (§6 — out of scope); this closes the "@CHORE: FINISH THIS" stub without inventing out-of-scope UI.
 - `EngineRigidBodyProxyAPI` (881–1284): replace the four field declarations (884–887) with getters per §3.1.
@@ -114,6 +123,7 @@ This file is otherwise unmodified — only the 3 loop-function call sites gain o
 - Because `Physics/ENGINES.ts` consumes this file via `import * as RapierAPI from './EngineRapier'` assigned directly as `engineAPI` (no object-literal remap — confirmed, §2), renaming to `step`/`debugRender` and having them satisfy the new `EngineAPIType` members is sufficient; no edits needed in `ENGINES.ts` itself.
 
 **`src/_engine/core/Physics/PhysicsUtils.ts`** (one unavoidable ripple outside the 3 named Physics API files, since it imports the type being deleted):
+
 - Remove `isDynamicPhysicsObjectValid` (line 70) and its `PhysicsObject` import (line 5) — confirmed dead, its only caller (`mainThreadBaseStepper`) is deleted in the same change. Pure deletion, no behavior change.
 
 ### 3.4 New `initPhysics`/`stepPhysics` in `PhysicsAPI.ts` (MVP-scoped, deliberately simple)
@@ -125,7 +135,12 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
   physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
   const { engineAPI } = await initPhysicsEngine(physicsState.physicsEngine);
   engAPI = engineAPI;
-  const worldOrUndefined = engAPI.init(physicsState, isDebugEnvironment(), getReadOnlyLoopState(), doNotCreateWorld);
+  const worldOrUndefined = engAPI.init(
+    physicsState,
+    isDebugEnvironment(),
+    getReadOnlyLoopState(),
+    doNotCreateWorld
+  );
   if (worldOrUndefined) physicsWorld = worldOrUndefined;
 };
 
@@ -134,6 +149,7 @@ export const stepPhysics = (loopState: LoopState) => {
   engAPI?.step();
 };
 ```
+
 No accumulator, no interpolation, no background-pause handling — Rapier's own fixed internal `timestep` (set once via `createWorld`) governs stepping. `PhysicsRapier.ts`'s accumulator/interpolation richness is intentionally **not** ported (§6) — "two objects fall and rest" is the MVP bar, not frame-perfect interpolation.
 
 `getConfig().physics.enabled` (`Config.ts:22-34`, default `false`, overridable via `VITE_PHYS_ENABLED`) is the **same** flag `InitRapierPhysics()` already reads. Both systems tolerate it being on harmlessly; the actual guard against two live `Rapier.World`s is that `createPhysicsWorld()` (the new system's world constructor) is **only called from the new test scene's own `.ts` file**, never at boot — so at boot only the WASM module gets initialized for the new system, no `World` is created, and `stepPhysics` is a true no-op everywhere except when the physics test scene is active.
@@ -147,7 +163,11 @@ export const registerPhysicsManager = (world: ECSWorld) => {
   ECSWorld.registerComponentHooks(ComponentType.TAG_IS_PHYSICS_OBJECT, {
     onDeleteEntity: (entityId, w) => disposePhysicsEntity(entityId, w),
   });
-  world.addSystem(ECSSystemStage.APP_POST_PHYSICS, 'physicsToTransformSystem', physicsToTransformSystem);
+  world.addSystem(
+    ECSSystemStage.APP_POST_PHYSICS,
+    'physicsToTransformSystem',
+    physicsToTransformSystem
+  );
 };
 
 export const createPhysicsEntity = (
@@ -157,7 +177,8 @@ export const createPhysicsEntity = (
   entityOpts?: CoreEntityOpts,
   ecsWorld?: ECSWorld
 ): number => {
-  const world = ecsWorld || existsOrThrow(getECSWorld(), 'Could not get ECS world in createPhysicsEntity.');
+  const world =
+    ecsWorld || existsOrThrow(getECSWorld(), 'Could not get ECS world in createPhysicsEntity.');
   const entityId = world.createEntity(entityOpts);
   world.addComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT, true);
 
@@ -194,7 +215,9 @@ export const createPhysicsEntity = (
   if (isStatic) {
     if (rb) world.addComponent(entityId, ComponentType.BODY_STATIC, rb);
   } else {
-    const bucket = object3D ? ComponentType.BODY_DYNAMIC_VISUAL : ComponentType.BODY_DYNAMIC_HEADLESS;
+    const bucket = object3D
+      ? ComponentType.BODY_DYNAMIC_VISUAL
+      : ComponentType.BODY_DYNAMIC_HEADLESS;
     world.addComponent(entityId, bucket, rb!);
   }
 
@@ -210,6 +233,7 @@ export const disposePhysicsEntity = (entityId: number, world: ECSWorld) => {
 
 export const getPhysicsEntityByAppId = (appId: string) => getEntityIdByAppId(appId);
 ```
+
 This is the "physics entity ecosystem" (create/delete, like Mesh/Camera/Light). Decision: the manager sets `TAG_IS_PHYSICS_OBJECT` explicitly itself, rather than relying on `ECSCoreSystems.ts`'s `obj.userData.isPhysicsObject`-sniffing hook (79–95) — simpler and explicit, doesn't require callers to remember to stamp `userData` beforehand.
 
 Also **move** `physicsToTransformSystem` (currently `ECSCoreSystems.ts:200-225`) into `PhysicsManager.ts` verbatim, and remove its registration from `ECSCoreSystems.ts`'s `registerCorePlugin` block (132-150) — `registerPhysicsManager(world)` now owns registering it, called per-world like `LightManager.ts`'s `registerLightManager(world)`. `ECSCoreSystems.ts` keeps its other two systems (`object3DSyncSystem`, `entityLifetimeSystem`, `lookAtSystem`) unchanged.
@@ -217,14 +241,18 @@ Also **move** `physicsToTransformSystem` (currently `ECSCoreSystems.ts:200-225`)
 ### 3.6 Bootstrap wiring — additive, guarded, non-breaking
 
 `InitApp.ts`: add, after line 70 (`await InitRapierPhysics();`):
+
 ```ts
 registerPhysicsManager(ecsWorld);
 await initNewPhysics(); // aliased import of PhysicsAPI.ts's initPhysics; no-op if getConfig().physics?.enabled is false
 ```
+
 `MainLoop.ts`: add one line at each of the three loop-function call sites (143/146, 201/204, 256/261 — not the stray warm-up at 362), alongside (not replacing) the existing calls:
+
 ```ts
 stepPhysics(loopState); // new engine-agnostic system — no-op until createPhysicsWorld() has been called (§3.4)
 ```
+
 No `renderPhysicsObjects()`-equivalent is needed for the new system — `physicsToTransformSystem` (now in `PhysicsManager.ts`, run via `ECSSystemStage.APP_POST_PHYSICS` inside `world.updateAppLoop(deltaApp)`, which already runs immediately after these lines) does that job.
 
 ### 3.7 Test scene: `src/app/physicsTest.scene.json` + companions + `src/app/physicsTest.ts`
@@ -235,13 +263,27 @@ Following `scene01.ts`'s real, confirmed convention (JSON for structural pieces,
 - `src/app/cameras/physicsTestCamera.camera.json` — perspective camera positioned to see the ground plane and drop zone, `active: true`.
 - `src/app/lights/physicsTestAmbient.light.json` — simple ambient light.
 - `src/app/physicsTest.ts` — mirrors `scene01.ts`'s real pattern (`createGeometry`/`createMaterial`/`createMeshEntity`/`getMeshByAppId`, confirmed real helper names and call shape):
+
   ```ts
   export const scene = async () => {
     createPhysicsWorld();
 
-    const groundGeo = createGeometry({ id: 'physicsTestGround', type: 'BOX', params: { width: 10, height: 0.5, depth: 10 } });
-    const groundMat = createMaterial({ id: 'physicsTestGround', type: 'BASIC', params: { color: 0x666666 } });
-    createMeshEntity({ appId: 'physicsTestGroundMesh', geo: groundGeo, mat: groundMat, position: { x: 0, y: 0, z: 0 } });
+    const groundGeo = createGeometry({
+      id: 'physicsTestGround',
+      type: 'BOX',
+      params: { width: 10, height: 0.5, depth: 10 },
+    });
+    const groundMat = createMaterial({
+      id: 'physicsTestGround',
+      type: 'BASIC',
+      params: { color: 0x666666 },
+    });
+    createMeshEntity({
+      appId: 'physicsTestGroundMesh',
+      geo: groundGeo,
+      mat: groundMat,
+      position: { x: 0, y: 0, z: 0 },
+    });
     const groundMesh = getMeshByAppId('physicsTestGroundMesh')!;
     createPhysicsEntity(
       { type: 'BOX', hx: 5, hy: 0.25, hz: 5 },
@@ -249,37 +291,72 @@ Following `scene01.ts`'s real, confirmed convention (JSON for structural pieces,
       groundMesh
     );
 
-    const ballGeo = createGeometry({ id: 'physicsTestBall', type: 'SPHERE', params: { radius: 0.5 } });
-    const ballMat = createMaterial({ id: 'physicsTestBall', type: 'BASIC', params: { color: 0xff4444 } });
-    createMeshEntity({ appId: 'physicsTestBallMesh', geo: ballGeo, mat: ballMat, position: { x: -1, y: 5, z: 0 } });
+    const ballGeo = createGeometry({
+      id: 'physicsTestBall',
+      type: 'SPHERE',
+      params: { radius: 0.5 },
+    });
+    const ballMat = createMaterial({
+      id: 'physicsTestBall',
+      type: 'BASIC',
+      params: { color: 0xff4444 },
+    });
+    createMeshEntity({
+      appId: 'physicsTestBallMesh',
+      geo: ballGeo,
+      mat: ballMat,
+      position: { x: -1, y: 5, z: 0 },
+    });
     const ballMesh = getMeshByAppId('physicsTestBallMesh')!;
-    createPhysicsEntity({ type: 'BALL', radius: 0.5 }, { rigidType: 'DYNAMIC', translation: { x: -1, y: 5, z: 0 } }, ballMesh);
+    createPhysicsEntity(
+      { type: 'BALL', radius: 0.5 },
+      { rigidType: 'DYNAMIC', translation: { x: -1, y: 5, z: 0 } },
+      ballMesh
+    );
 
-    const boxGeo = createGeometry({ id: 'physicsTestBox', type: 'BOX', params: { width: 1, height: 1, depth: 1 } });
-    const boxMat = createMaterial({ id: 'physicsTestBox', type: 'BASIC', params: { color: 0x4488ff } });
-    createMeshEntity({ appId: 'physicsTestBoxMesh', geo: boxGeo, mat: boxMat, position: { x: 1, y: 7, z: 0 } });
+    const boxGeo = createGeometry({
+      id: 'physicsTestBox',
+      type: 'BOX',
+      params: { width: 1, height: 1, depth: 1 },
+    });
+    const boxMat = createMaterial({
+      id: 'physicsTestBox',
+      type: 'BASIC',
+      params: { color: 0x4488ff },
+    });
+    createMeshEntity({
+      appId: 'physicsTestBoxMesh',
+      geo: boxGeo,
+      mat: boxMat,
+      position: { x: 1, y: 7, z: 0 },
+    });
     const boxMesh = getMeshByAppId('physicsTestBoxMesh')!;
-    createPhysicsEntity({ type: 'BOX', hx: 0.5, hy: 0.5, hz: 0.5 }, { rigidType: 'DYNAMIC', translation: { x: 1, y: 7, z: 0 } }, boxMesh);
+    createPhysicsEntity(
+      { type: 'BOX', hx: 0.5, hy: 0.5, hz: 0.5 },
+      { rigidType: 'DYNAMIC', translation: { x: 1, y: 7, z: 0 } },
+      boxMesh
+    );
   };
   ```
+
   Using `createMeshEntity`/`getMeshByAppId` (matching `scene01.ts` exactly) rather than raw `new THREE.Mesh`, so the test scene is a faithful precedent for how a real future scene would combine `MeshManager` + `PhysicsManager`. Exact `createGeometry`/`createMaterial`/`createMeshEntity` parameter shapes to be double-checked against their real signatures during implementation (they're confirmed real names and roughly this call shape per `scene01.ts:42-56`, but full param types weren't exhaustively re-verified here).
 
 ## 4. Files touched
 
-| File | Change |
-|---|---|
-| `src/_engine/core/PhysicsAPI.ts` | Delete legacy block 142–1494; rewrite `initPhysics`; add `stepPhysics`; remove dead imports |
-| `src/_engine/core/Physics/PhysicsAPITypes.ts` | Delete `PhysicsObject`/`CollisionEventFn`/`ContactForceEventFn` (779–814); fix `ColliderParams` callback signatures; uncomment + add `step`/`debugRender` to `WorldAPI` and `EngineAPIType` |
-| `src/_engine/core/Physics/EngineRapier.ts` | Rename+implement `stepAPI`→`step`, `debugRenderAPI`→`debugRender` (536–542); `pos`/`rot`/`lvel`/`avel` (884–887) → getters |
-| `src/_engine/core/Physics/PhysicsUtils.ts` | Remove dead `isDynamicPhysicsObjectValid` (line 70) + its `PhysicsObject` import (line 5) |
-| `src/_engine/core/PhysicsManager.ts` | **New file**: `createPhysicsEntity`, `disposePhysicsEntity`, `registerPhysicsManager`, `getPhysicsEntityByAppId`, moved `physicsToTransformSystem` |
-| `src/_engine/core/ECS/ECSCoreSystems.ts` | Remove `physicsToTransformSystem` body + its `registerCorePlugin` add-call (132–150, 196–225) — moved to `PhysicsManager.ts` |
-| `src/_engine/InitApp.ts` | Add `registerPhysicsManager(ecsWorld)` + `await initNewPhysics()` after line 70 |
-| `src/_engine/core/MainLoop.ts` | Add `stepPhysics(loopState)` at the 3 loop-function call sites (143/146, 201/204, 256/261) |
-| `src/app/physicsTest.scene.json` | **New** |
-| `src/app/cameras/physicsTestCamera.camera.json` | **New** |
-| `src/app/lights/physicsTestAmbient.light.json` | **New** |
-| `src/app/physicsTest.ts` | **New** |
+| File                                            | Change                                                                                                                                                                                      |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/_engine/core/PhysicsAPI.ts`                | Delete legacy block 142–1494; rewrite `initPhysics`; add `stepPhysics`; remove dead imports                                                                                                 |
+| `src/_engine/core/Physics/PhysicsAPITypes.ts`   | Delete `PhysicsObject`/`CollisionEventFn`/`ContactForceEventFn` (779–814); fix `ColliderParams` callback signatures; uncomment + add `step`/`debugRender` to `WorldAPI` and `EngineAPIType` |
+| `src/_engine/core/Physics/EngineRapier.ts`      | Rename+implement `stepAPI`→`step`, `debugRenderAPI`→`debugRender` (536–542); `pos`/`rot`/`lvel`/`avel` (884–887) → getters                                                                  |
+| `src/_engine/core/Physics/PhysicsUtils.ts`      | Remove dead `isDynamicPhysicsObjectValid` (line 70) + its `PhysicsObject` import (line 5)                                                                                                   |
+| `src/_engine/core/PhysicsManager.ts`            | **New file**: `createPhysicsEntity`, `disposePhysicsEntity`, `registerPhysicsManager`, `getPhysicsEntityByAppId`, moved `physicsToTransformSystem`                                          |
+| `src/_engine/core/ECS/ECSCoreSystems.ts`        | Remove `physicsToTransformSystem` body + its `registerCorePlugin` add-call (132–150, 196–225) — moved to `PhysicsManager.ts`                                                                |
+| `src/_engine/InitApp.ts`                        | Add `registerPhysicsManager(ecsWorld)` + `await initNewPhysics()` after line 70                                                                                                             |
+| `src/_engine/core/MainLoop.ts`                  | Add `stepPhysics(loopState)` at the 3 loop-function call sites (143/146, 201/204, 256/261)                                                                                                  |
+| `src/app/physicsTest.scene.json`                | **New**                                                                                                                                                                                     |
+| `src/app/cameras/physicsTestCamera.camera.json` | **New**                                                                                                                                                                                     |
+| `src/app/lights/physicsTestAmbient.light.json`  | **New**                                                                                                                                                                                     |
+| `src/app/physicsTest.ts`                        | **New**                                                                                                                                                                                     |
 
 ## 5. Explicitly out of scope / non-goals
 
@@ -323,20 +400,21 @@ Following `scene01.ts`'s real, confirmed convention (JSON for structural pieces,
 
 ## 8. Risks and open questions
 
-| Risk / question | Notes |
-|---|---|
+| Risk / question                                                                                                                                                                        | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Double Rapier WASM init — confirmed unguarded (§2): both `ENGINES.ts:16-21` and `PhysicsRapier.ts:2420-2425` call `await RAPIER.init()` unconditionally, no cache/flag exists anywhere | Must be checked manually in Phase 4 (first point both paths run together). If it throws or misbehaves, the fallback is a small shared init-promise cache (e.g. a new tiny module the new system's `ENGINES.ts` init routes through) so a second call awaits the same promise instead of calling `RAPIER.init()` again — do not modify `PhysicsRapier.ts` itself for this if avoidable, per the out-of-scope decision (§5), but a non-invasive shared-cache addition may be unavoidable if the risk materializes. |
-| Two live `Rapier.World` instances (old system's + new system's, once the test scene is active) both stepping every frame | By design (§3.6) the new world is only created when the physics test scene is entered; the old system's world keeps stepping regardless of which scene is active. Wasteful but should be harmless — confirm via Phase 6 manual check there's no visible cross-talk. |
-| Sync vs. async `createPhysicsEntity`/`createRigidBody` (§3.2) | Decided: synchronous for MVP, matching the real underlying implementation. Revisit only when worker-thread mode needs `PhysicsManager` to route through the async proxy classes. |
-| Moving `physicsToTransformSystem`'s registration out of `ECSCoreSystems.ts` | Confirmed no ordering dependency on the other systems in that `registerCorePlugin` block (§2). `registerPhysicsManager(world)` must be called for every `ECSWorld` that needs physics-driven transform sync (mirroring `LightManager.ts`'s per-world registration) — a future second `ECSWorld` created without this call would silently not sync physics transforms. Worth a code comment at the call site. |
-| `ColliderParams.collisionEventFn`/`contactForceEventFn` signature change | These fields are unused end-to-end both before and after this MVP (no drain exists either side, §6.3) — the signature change is type-only. Grep for any speculative/future usage before deleting the `PhysicsObject`-typed params, in case something already relies on the old shape. |
-| `PhysicsUtils.ts` touched despite being outside the named 3-file scope | Unavoidable — it imports the `PhysicsObject` type being deleted. Confirmed its one function (`isDynamicPhysicsObjectValid`) is dead once the legacy stepper is deleted; pure deletion, no behavior change. |
-| `createPhysicsEntity`'s `object3D` parameter vs. `MeshManager.createMeshEntity`'s entity-id return | `createMeshEntity` returns an entity id, not an `Object3D`; the test scene calls `getMeshByAppId(...)` after `createMeshEntity(...)` to get the actual mesh object to pass in (§3.7) — slightly more roundabout than ideal, noted as follow-up polish (§6.10). |
-| `getEngineAPI()`/`engAPI` module-state duplication between `PhysicsAPI.ts` and `PhysicsUtils.ts` | Both files maintain their own "current engine" reference. Not a bug (both get set from the same `initPhysicsEngine()` call), but a smell — not fixed in this MVP, not blocking. |
+| Two live `Rapier.World` instances (old system's + new system's, once the test scene is active) both stepping every frame                                                               | By design (§3.6) the new world is only created when the physics test scene is entered; the old system's world keeps stepping regardless of which scene is active. Wasteful but should be harmless — confirm via Phase 6 manual check there's no visible cross-talk.                                                                                                                                                                                                                                              |
+| Sync vs. async `createPhysicsEntity`/`createRigidBody` (§3.2)                                                                                                                          | Decided: synchronous for MVP, matching the real underlying implementation. Revisit only when worker-thread mode needs `PhysicsManager` to route through the async proxy classes.                                                                                                                                                                                                                                                                                                                                 |
+| Moving `physicsToTransformSystem`'s registration out of `ECSCoreSystems.ts`                                                                                                            | Confirmed no ordering dependency on the other systems in that `registerCorePlugin` block (§2). `registerPhysicsManager(world)` must be called for every `ECSWorld` that needs physics-driven transform sync (mirroring `LightManager.ts`'s per-world registration) — a future second `ECSWorld` created without this call would silently not sync physics transforms. Worth a code comment at the call site.                                                                                                     |
+| `ColliderParams.collisionEventFn`/`contactForceEventFn` signature change                                                                                                               | These fields are unused end-to-end both before and after this MVP (no drain exists either side, §6.3) — the signature change is type-only. Grep for any speculative/future usage before deleting the `PhysicsObject`-typed params, in case something already relies on the old shape.                                                                                                                                                                                                                            |
+| `PhysicsUtils.ts` touched despite being outside the named 3-file scope                                                                                                                 | Unavoidable — it imports the `PhysicsObject` type being deleted. Confirmed its one function (`isDynamicPhysicsObjectValid`) is dead once the legacy stepper is deleted; pure deletion, no behavior change.                                                                                                                                                                                                                                                                                                       |
+| `createPhysicsEntity`'s `object3D` parameter vs. `MeshManager.createMeshEntity`'s entity-id return                                                                                     | `createMeshEntity` returns an entity id, not an `Object3D`; the test scene calls `getMeshByAppId(...)` after `createMeshEntity(...)` to get the actual mesh object to pass in (§3.7) — slightly more roundabout than ideal, noted as follow-up polish (§6.10).                                                                                                                                                                                                                                                   |
+| `getEngineAPI()`/`engAPI` module-state duplication between `PhysicsAPI.ts` and `PhysicsUtils.ts`                                                                                       | Both files maintain their own "current engine" reference. Not a bug (both get set from the same `initPhysicsEngine()` call), but a smell — not fixed in this MVP, not blocking.                                                                                                                                                                                                                                                                                                                                  |
 
 ## 9. Verification
 
 Manual, since there is no test runner in this repo:
+
 1. `tsc --noEmit` — 0 errors, run after every phase.
 2. `yarn lint` — 0 errors/new warnings, run after every phase.
 3. Use the `run-aekasha-js` skill to start the dev server and drive the app in a real browser:
