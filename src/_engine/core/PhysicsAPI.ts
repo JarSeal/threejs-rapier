@@ -183,6 +183,9 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
       loopState: getReadOnlyLoopState(),
       doNotCreateWorld,
     });
+    // Resolving without throwing means the worker's own engAPI.init() already
+    // completed — mirrors the MAIN_THREAD branch's engineInitiated = Boolean(engine).
+    engineInitiated = true;
     if (worldCreated) physicsWorld = new WorldProxyAPI();
   }
 };
@@ -193,7 +196,13 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
  */
 export const stepPhysics = (loopState: LoopState) => {
   if (!physicsWorldEnabled || !loopState.appPlay) return;
-  engAPI?.step();
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    engAPI?.step();
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    // One-way, no response awaited — transform results arrive via the hot-path
+    // buffer (added in a later phase), not via a STEP reply.
+    messageWorker({ type: PhysicsProtocolType.STEP, isOneWay: true });
+  }
 };
 
 // WORKER LOGIC -- [ START ] -----------------------

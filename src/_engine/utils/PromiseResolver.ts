@@ -16,7 +16,7 @@ export const createNewResolver = (resolve: (value: any) => void) => {
 /** Resolves a pending promise. The resolver is fetched with a requestId and is given a value to resolve.
  * Also optional errInfo can be provided. */
 export const resolveRequest = <T>(resolveValue: T, requestId?: number, errInfo?: unknown) => {
-  if (!requestId) return resolveValue;
+  if (requestId === undefined) return resolveValue;
   const resolve = pendingRequests.get(requestId);
   if (resolve) {
     resolve(resolveValue);

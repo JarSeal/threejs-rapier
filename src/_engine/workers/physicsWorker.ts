@@ -21,11 +21,6 @@ self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) 
   const data = event.data;
   const type = data.type;
 
-  // @CHORE: implement stepping
-  // if (type === PhysicsProtocolType.STEP) {
-  //
-  // }
-
   try {
     const subType = getSubType(type);
     if (subType) {
@@ -53,22 +48,25 @@ self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) 
 
     switch (type) {
       // EngineAPI
+      case PhysicsProtocolType.STEP:
+        // STEP (one-way, no response — hot-path write-back added in a later phase)
+        return engAPI.step();
       case PhysicsProtocolType.TAKE_SNAPSHOT:
         // TAKE_SNAPSHOT
         const snapshot = engAPI.takeSnapshot();
-        return sendMessage({ snapshot }, data);
+        return sendMessage({ type, snapshot }, data);
       case PhysicsProtocolType.RESTORE_SNAPSHOT:
         // RESTORE_SNAPSHOT
         physicsWorldAPI = engAPI.restoreSnapshot(data.snapshot);
-        return sendMessage({ worldCreated: true }, data);
+        return sendMessage({ type, worldCreated: true }, data);
       case PhysicsProtocolType.CREATE_WORLD:
         // CREATE_WORLD
         physicsWorldAPI = engAPI.createWorld(data.gravity, data.opts);
-        return sendMessage({ worldCreated: true }, data);
+        return sendMessage({ type, worldCreated: true }, data);
       case PhysicsProtocolType.DELETE_WORLD:
         // DELETE_WORLD
         const createdStatus = engAPI.deleteWorld();
-        return sendMessage(createdStatus, data);
+        return sendMessage({ type, ...createdStatus }, data);
       case PhysicsProtocolType.INIT_PHYSICS:
         // INIT_PHYSICS
         const response = await initPhysics(
@@ -125,7 +123,7 @@ const sendMessage = (message: any, data: PhysicsUpProtocol, isError?: boolean) =
   // If the up message has 'isOneWay: true', don't reply
   if (data.isOneWay && isError) return;
   const requestId = data.requestId;
-  if (!requestId) return sendMessageSimple(message);
+  if (requestId === undefined) return sendMessageSimple(message);
   return self.postMessage({ ...message, requestId });
 };
 

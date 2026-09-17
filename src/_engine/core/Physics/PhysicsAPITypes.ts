@@ -1713,6 +1713,7 @@ export type PhysicsUpProtocol =
         loopState: LoopState;
         doNotCreateWorld?: boolean;
       }
+    | { type: PhysicsProtocolType.STEP }
     // World --------------------------------------
     | {
         type: PhysicsProtocolType.CREATE_WORLD;
