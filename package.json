@@ -1,20 +1,20 @@
 {
   "name": "aekasha-js",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "High-performance WebGPU application powered by the Ækasha framework.",
   "repository": "https://github.com/JarSeal/threerapier.git",
   "author": "JarSeal",
   "app_metadata": {
-    "version": "0.0.1",
-    "codename": "Infant",
+    "version": "0.1.0",
+    "codename": "Toddler",
     "name": "Example App",
     "fullName": "Example App for Ækasha",
     "description": "Project template utilizing the Ækasha modular toolkit.",
     "url": ""
   },
   "engine_metadata": {
-    "version": "0.0.2",
-    "codename": "Genesis",
+    "version": "0.1.0",
+    "codename": "Dawn",
     "name": "Ækasha",
     "fullName": "Ækasha Framework",
     "description": "The 'fifth element' of web development: a modular, high-performance WebGPU framework built on Three.js and the Ækasha ECS.",
