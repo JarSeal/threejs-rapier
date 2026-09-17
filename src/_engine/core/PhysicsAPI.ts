@@ -187,10 +187,10 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
 /**
  * Steps the physics world (called in the main loop). No-op until a physics world
  * has been created via createPhysicsWorld().
- * @TODO: wire this up to engAPI.step() once EngineAPIType gets a step() member (Phase 2).
  */
 export const stepPhysics = (loopState: LoopState) => {
   if (!physicsWorldEnabled || !loopState.appPlay) return;
+  engAPI?.step();
 };
 
 // WORKER LOGIC -- [ START ] -----------------------
@@ -306,7 +306,7 @@ export const createPhysicsWorld = async (
     engineInitiated,
     'Physics engine not initiated. Initiate the engine (initPhysics) before creating the world'
   );
-  if (physicsWorld) {
+  if (physicsWorldEnabled) {
     if (isDebugEnvironment())
       lwarn(
         'Trying to create another physics world even though the physics world has been already created.'
@@ -975,6 +975,15 @@ class WorldProxyAPI implements WorldAPI {
 
   propagateModifiedBodyPositionsToColliders(): void {
     messageWorker({ type: PhysicsProtocolType.WORLD_PROPAGATE_POSITIONS });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  step(_eventQueue?: unknown, _hooks?: unknown): void {
+    throw new Error('step is not yet implemented in Worker thread mode.');
+  }
+
+  debugRender(): { vertices: Float32Array; colors: Float32Array } {
+    throw new Error('debugRender is not yet implemented in Worker thread mode.');
   }
 
   // --- Parameters (Timestep, Units, Solver) ---

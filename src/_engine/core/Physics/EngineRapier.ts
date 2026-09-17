@@ -4,7 +4,9 @@ import { getPhysicsEngine } from './PhysicsUtils';
 import {
   ColliderAPI,
   ColliderParams,
+  EventQueue,
   InteractionGroupsAPI,
+  PhysicsHooks,
   PhysicsState,
   PhysRay,
   PhysRotation,
@@ -135,7 +137,7 @@ export const createWorld = (
     'Could not get physics engine. Make sure the physics is initialized before creating a world.'
   );
   physicsWorld = new RAPIER.World(new RAPIER.Vector3(gravity.x, gravity.y, gravity.z));
-  physicsWorld.timestep = physicsState.timestep;
+  physicsWorld.timestep = opts?.timestep ?? physicsState.timestepRatio;
   if (opts?.numSolverIterations) physicsWorld.numSolverIterations = opts.numSolverIterations;
   if (opts?.numInternalPgsIterations)
     physicsWorld.numInternalPgsIterations = opts.numInternalPgsIterations;
@@ -242,7 +244,7 @@ export const createCollider = (params: ColliderParams, parentId?: number) => {
   let shape: Rapier.Shape | null = null;
   let size: { [key: string]: number };
 
-  if (parentId) params.parentId = parentId;
+  if (parentId !== undefined) params.parentId = parentId;
 
   switch (params.type) {
     case 'CUBOID':
@@ -524,12 +526,16 @@ export const restoreSnapshot = (snapshot: Uint8Array) => {
   return physicsWorldAPI;
 };
 
-export const debugRenderAPI = () => {
-  // @CHORE: FINISH THIS
+export const debugRender = () => {
+  const buffers = physicsWorld.debugRender();
+  return { vertices: buffers.vertices, colors: buffers.colors };
 };
 
-export const stepAPI = () => {
-  // @CHORE: FINISH THIS
+export const step = (eventQueue?: unknown, hooks?: unknown) => {
+  physicsWorld.step(
+    eventQueue as Rapier.EventQueue | undefined,
+    hooks as Rapier.PhysicsHooks | undefined
+  );
 };
 
 /** World, RigidBody, and Collider proxy API definitions -----[ START ]----- */
@@ -576,6 +582,26 @@ class EngineWorldProxyAPI implements WorldAPI {
   }
 
   // --- Stepping & Propagation ---
+  step(eventQueue?: EventQueue, hooks?: PhysicsHooks): void {
+    physicsWorld.step(
+      eventQueue as Rapier.EventQueue | undefined,
+      hooks as Rapier.PhysicsHooks | undefined
+    );
+  }
+
+  debugRender(
+    filterFlags?: QueryFilterFlags,
+    filterPredicate?: (collider: ColliderAPI) => boolean
+  ): { vertices: Float32Array; colors: Float32Array } {
+    const rapierFilterPredicate = filterPredicate
+      ? (collider: Collider) => {
+          const colliderAPI = getColliderAPI(collider.handle);
+          return colliderAPI ? filterPredicate(colliderAPI) : false;
+        }
+      : undefined;
+    return physicsWorld.debugRender(filterFlags, rapierFilterPredicate);
+  }
+
   propagateModifiedBodyPositionsToColliders(): void {
     physicsWorld.propagateModifiedBodyPositionsToColliders();
   }
@@ -872,12 +898,23 @@ class EngineWorldProxyAPI implements WorldAPI {
 class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   private rb: Rapier.RigidBody;
   uData: Record<string, unknown> = {};
-  pos: PhysVector = { x: 0, y: 0, z: 0 };
-  rot: PhysRotation = { x: 0, y: 0, z: 0, w: 0 };
-  lvel: PhysVector = { x: 0, y: 0, z: 0 };
-  avel: PhysVector = { x: 0, y: 0, z: 0 };
 
   isBeingDeleted: boolean = false;
+
+  // Lazy getters (main-thread mode has no SharedArrayBuffer to write these back into,
+  // so there is no hot path to optimize yet; revisit for worker-thread mode).
+  get pos(): PhysVector {
+    return this.rb.translation();
+  }
+  get rot(): PhysRotation {
+    return this.rb.rotation();
+  }
+  get lvel(): PhysVector {
+    return this.rb.linvel();
+  }
+  get avel(): PhysVector {
+    return this.rb.angvel();
+  }
 
   constructor(
     public id: number,
