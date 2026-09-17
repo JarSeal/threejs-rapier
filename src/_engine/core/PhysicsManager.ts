@@ -27,13 +27,23 @@ export const registerPhysicsManager = (world: ECSWorld) => {
 export const createPhysicsEntity = (
   colliderParams: ColliderParams | ColliderParams[],
   rigidBodyParams?: RigidBodyParams,
-  object3D?: THREE.Object3D,
+  /**
+   * Either a raw Object3D (a new entity is created and this is attached to it as its
+   * OBJECT3D component, same as before), or the id of an existing entity to attach the
+   * physics components to directly (e.g. one already created by createMeshEntity) —
+   * no new entity is created, and its own OBJECT3D/other components (if any) already
+   * on it govern the BODY_DYNAMIC_VISUAL/HEADLESS bucket choice below.
+   */
+  target?: THREE.Object3D | number,
   entityOpts?: CoreEntityOpts,
   ecsWorld?: ECSWorld
 ): number => {
   const world =
     ecsWorld || existsOrThrow(getECSWorld(), 'Could not get ECS world in createPhysicsEntity.');
-  const entityId = world.createEntity(entityOpts);
+
+  const object3D = target instanceof THREE.Object3D ? target : undefined;
+  const entityId = typeof target === 'number' ? target : world.createEntity(entityOpts);
+
   world.addComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT, true);
 
   let rb: RigidBodyAPI | undefined;
@@ -69,11 +79,12 @@ export const createPhysicsEntity = (
 
   world.addComponent(entityId, ComponentType.COLLIDER, colls);
 
+  const hasVisual = world.hasComponent(entityId, ComponentType.OBJECT3D);
   const isStatic = !rb || rigidBodyParams?.rigidType === 'FIXED';
   if (isStatic) {
     if (rb) world.addComponent(entityId, ComponentType.BODY_STATIC, rb);
   } else {
-    const bucket = object3D
+    const bucket = hasVisual
       ? ComponentType.BODY_DYNAMIC_VISUAL
       : ComponentType.BODY_DYNAMIC_HEADLESS;
     world.addComponent(entityId, bucket, rb!);

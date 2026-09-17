@@ -142,6 +142,58 @@
         }
       ]
     },
+    "physicsTest": {
+      "name": "Physics API MVP test scene",
+      "description": "Main-thread physics API MVP verification scene (docs/plans/p020_main-thread-physics-api-mvp.md §3.7): a static ground box, a falling ball, and a falling box.",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 100,
+            "position": {
+              "x": 0,
+              "y": 6,
+              "z": 15
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 2,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 60,
+            "appId": "physicsTestCamera"
+          },
+          "entityOpts": {
+            "appId": "physicsTestCamera",
+            "debugData": {
+              "name": "Physics test camera",
+              "description": "Static camera framing the ground plane and drop zone for the physics API MVP test scene."
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.8,
+            "appId": "physicsTestAmbient"
+          },
+          "entityOpts": {
+            "appId": "physicsTestAmbient",
+            "debugData": {
+              "name": "Physics test ambient light",
+              "description": "Ambient light for the physics API MVP test scene."
+            }
+          }
+        }
+      ],
+      "id": "physicsTest",
+      "sceneFile": "./physicsTest.ts"
+    },
     "sceneTestECS": {
       "name": "ECS test scene",
       "description": "This is a ECS test scene.",
@@ -391,6 +443,34 @@
       },
       "__sourcePath": "src/app/cameras/mainCamera.camera.json"
     },
+    "physicsTestCamera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 100,
+        "position": {
+          "x": 0,
+          "y": 6,
+          "z": 15
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 2,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 60,
+        "appId": "physicsTestCamera"
+      },
+      "entityOpts": {
+        "appId": "physicsTestCamera",
+        "debugData": {
+          "name": "Physics test camera",
+          "description": "Static camera framing the ground plane and drop zone for the physics API MVP test scene."
+        }
+      },
+      "__sourcePath": "src/app/cameras/physicsTestCamera.camera.json"
+    },
     "testing": {
       "camProps": {
         "active": false,
@@ -489,6 +569,22 @@
         }
       },
       "__sourcePath": "src/app/lights/largeWorldSun.light.json"
+    },
+    "physicsTestAmbient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#ffffff",
+        "intensity": 0.8,
+        "appId": "physicsTestAmbient"
+      },
+      "entityOpts": {
+        "appId": "physicsTestAmbient",
+        "debugData": {
+          "name": "Physics test ambient light",
+          "description": "Ambient light for the physics API MVP test scene."
+        }
+      },
+      "__sourcePath": "src/app/lights/physicsTestAmbient.light.json"
     }
   },
   "geometries": {

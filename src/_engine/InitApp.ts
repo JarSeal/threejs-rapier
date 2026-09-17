@@ -1,9 +1,15 @@
 import { type Scene } from 'three/webgpu';
-import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, loadConfig, PROJECT_METADATA } from './core/Config';
+import {
+  getConfig,
+  IS_DEBUG_ENV,
+  IS_PROD_TEST_MODE,
+  loadConfig,
+  PROJECT_METADATA,
+} from './core/Config';
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
 import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
 import { InitRapierPhysics } from './core/PhysicsRapier';
-import { initPhysics as initNewPhysics } from './core/PhysicsAPI';
+import { createPhysicsWorld, initPhysics as initNewPhysics } from './core/PhysicsAPI';
 import { registerPhysicsManager } from './core/PhysicsManager';
 import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
@@ -72,7 +78,10 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     await InitRapierPhysics();
 
     registerPhysicsManager(ecsWorld);
-    await initNewPhysics();
+    await initNewPhysics(true); // doNotCreateWorld — createPhysicsWorld() below owns that + physicsWorldEnabled
+    if (getConfig().physics?.enabled) {
+      await createPhysicsWorld();
+    }
 
     if (IS_DEBUG_ENV) {
       await registerStatsModule();

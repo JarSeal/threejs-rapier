@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../.schemas/camera.schema.json",
+  "camProps": {
+    "type": "PERSPECTIVE",
+    "fov": 60,
+    "near": 0.1,
+    "far": 100,
+    "position": { "x": 0, "y": 6, "z": 15 },
+    "lookAtPoint": { "x": 0, "y": 2, "z": 0 },
+    "active": true
+  },
+  "entityOpts": {
+    "appId": "physicsTestCamera",
+    "debugData": {
+      "name": "Physics test camera",
+      "description": "Static camera framing the ground plane and drop zone for the physics API MVP test scene."
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "AMBIENT",
+    "color": "#ffffff",
+    "intensity": 0.8
+  },
+  "entityOpts": {
+    "appId": "physicsTestAmbient",
+    "debugData": {
+      "name": "Physics test ambient light",
+      "description": "Ambient light for the physics API MVP test scene."
+    }
+  }
+}
