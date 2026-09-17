@@ -112,7 +112,7 @@ import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 import { ShapeType } from '@dimforge/rapier3d-compat';
 import { existsOrThrow } from '../utils/assert';
 
-const physicsState: PhysicsState = {
+let physicsState: PhysicsState = {
   enabled: false,
   physicsEngine: 'RAPIER',
   workerTarget: 'MAIN_THREAD',
@@ -152,6 +152,7 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
   const physicsConfig = getConfig().physics;
   if (!physicsConfig?.enabled) return;
 
+  physicsState = { ...physicsState, ...physicsConfig };
   physicsState.timestepRatio = 1 / (physicsState.timestep || 60);
   const target = physicsState.workerTarget;
 
