@@ -25,6 +25,14 @@ const config: AppConfig = {
     workerTarget: 'WORKER_THREAD',
     useSAB: true,
   },
+  debugCamera: {
+    position: { x: 3, y: 3, z: 1.5 },
+    target: { x: 0, y: 0, z: 0 },
+    fov: 60,
+    near: 0.1,
+    far: 1000,
+    zoom: 1,
+  },
 };
 
 export default config;

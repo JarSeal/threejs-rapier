@@ -5,16 +5,6 @@ type LightGUIModule = typeof import('../core/Debug/_dbg__DebugTools');
 let debugGUI: DebugModuleRef<LightGUIModule> | null = null;
 export const DEBUG_CAMERA_ID = '_debugCamera';
 
-export type DebugCameraState = {
-  enabled: boolean;
-  latestAppCameraId: null | string;
-  fov: number;
-  near: number;
-  far: number;
-  position: number[];
-  target: number[];
-};
-
 export type DebugToolsState = {
   env: {
     envBallFolderExpanded: boolean;
@@ -32,7 +22,6 @@ export type DebugToolsState = {
   loggingActions: {
     loggingFolderExpanded: boolean;
   };
-  debugCamera: { [sceneId: string]: DebugCameraState };
   debugCameraFolderExpanded: boolean;
   helpers: {
     helpersFolderExpanded: boolean;
@@ -68,7 +57,6 @@ const defaultDebugToolsState: DebugToolsState = {
   loggingActions: {
     loggingFolderExpanded: false,
   },
-  debugCamera: {},
   debugCameraFolderExpanded: false,
   helpers: {
     helpersFolderExpanded: false,
@@ -111,14 +99,6 @@ export const initDebugTools = () => {
  */
 export const getDebugToolsState = (loadFromLS?: boolean) =>
   useDebug(debugGUI, true)?._getDebugToolsState(loadFromLS) || defaultDebugToolsState;
-
-/**
- * Add scene to debug tools states
- * @param sceneId (string)
- */
-export const addSceneToDebugtools = (sceneId: string) => {
-  useDebug(debugGUI)?._addSceneToDebugtools(sceneId);
-};
 
 /**
  * Handles debug camera switching

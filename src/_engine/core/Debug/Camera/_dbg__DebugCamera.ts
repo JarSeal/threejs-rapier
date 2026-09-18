@@ -7,16 +7,19 @@ import { ECSSystemStage } from '../../../../AppECSRegistry';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import type { DebugCamLSProps } from '../../CameraManager';
 import { getDebugCamProps, saveDebugCameraToLS, updateCamerasDebuggerGUI } from './_dbg__CameraGUI';
+import { getConfig } from '../../Config';
+
+const configDebugCamera = getConfig().debugCamera;
 
 export const DEFAULT_DEBUG_CAM_PROPS: DebugCamLSProps = {
-  position: { x: 3, y: 3, z: 1.5 },
-  target: { x: 0, y: 0, z: 0 },
+  position: configDebugCamera?.position ?? { x: 3, y: 3, z: 1.5 },
+  target: configDebugCamera?.target ?? { x: 0, y: 0, z: 0 },
   enabled: false,
   latestAppCameraId: null as string | null,
-  fov: 60,
-  near: 0.1,
-  far: 1000,
-  zoom: 1,
+  fov: configDebugCamera?.fov ?? 60,
+  near: configDebugCamera?.near ?? 0.1,
+  far: configDebugCamera?.far ?? 1000,
+  zoom: configDebugCamera?.zoom ?? 1,
 };
 
 ECSWorld.registerPlugin((world) => {

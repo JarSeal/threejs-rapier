@@ -1,3 +1,4 @@
+import * as THREE from 'three/webgpu';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
 import { getRenderer, getRendererOptions } from '../../core/Renderer';
@@ -7,7 +8,7 @@ import {
   createDebuggerTab,
   DEBUGGER_SCENE_LOADER_ID,
 } from '../../debug/DebuggerGUI';
-import { getCurrentSceneId, getGeneratedAppData, getRootScene, getScene } from '../../core/Scene';
+import { getCurrentSceneId, getGeneratedAppData, getRootScene } from '../../core/Scene';
 import { getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../../core/Config';
 import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
 import { lerror, llog } from '../../utils/Logger';
@@ -25,56 +26,14 @@ import {
 import { updateOnScreenTools } from '../../debug/OnScreenTools';
 import { addToast } from '../../core/UI/Toaster';
 import { type SceneAsset } from '../../schemas/sceneSchema';
-import { DebugCameraState, DebugToolsState } from '../../debug/DebugToolsManager';
-import { confirmClearScope, createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
+import { DEBUG_CAMERA_ID, DebugToolsState } from '../../debug/DebugToolsManager';
+import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
+import { getECSWorld, getEntityIdByAppId } from '../ECS';
+import { ComponentType } from '../ECS/ECSCoreComponents';
+import type { DebugCamLSProps } from '../CameraManager';
+import { getDebugCamProps, saveDebugCameraToLS } from './Camera/_dbg__CameraGUI';
 
 const LS_KEY = 'AEK_debugTools';
-export const DEBUG_CAMERA_ID = '_debugCamera';
-const DEFAULT_DEBUG_CAM_PARAMS: DebugCameraState = {
-  enabled: false,
-  latestAppCameraId: null,
-  fov: 60,
-  near: 0.001,
-  far: 1000,
-  position: [0, 0, 10],
-  target: [0, 0, 0],
-};
-const getDefaultDebugCamParams = () => ({ ...DEFAULT_DEBUG_CAM_PARAMS }) as DebugCameraState;
-const DEFAULT_DEBUG_TOOLS_STATE: DebugToolsState = {
-  env: {
-    envBallFolderExpanded: false,
-    envBallVisible: false,
-    separateBallValues: false,
-    ballRoughness: 0,
-    ballDefaultRoughness: 0,
-  },
-  scenesListing: {
-    scenesFolderExpanded: false,
-    useDebugStartScene: false,
-    debugStartScene: '',
-    useDebuggerSceneLoader: false,
-  },
-  loggingActions: {
-    loggingFolderExpanded: false,
-  },
-  debugCamera: {},
-  debugCameraFolderExpanded: false,
-  helpers: {
-    helpersFolderExpanded: false,
-    showAxesHelper: false,
-    axesHelperSize: 1,
-    showGridHelper: false,
-    gridSize: 100,
-    gridDivisionsSize: 100,
-    gridColorCenterLine: 0x888888,
-    gridColorGrid: 0x444444,
-    showPolarGridHelper: false,
-    polarGridRadius: 10,
-    polarGridSectors: 16,
-    polarGridRings: 8,
-    polarGridDivisions: 16,
-  },
-};
 let scenesDropDown: ListBladeApi<BladeController<View>>;
 let sceneStarterDropDown: ListBladeApi<BladeController<View>>;
 let toolsDebugGUI: Pane | null = null;
@@ -97,7 +56,6 @@ let debugToolsState: DebugToolsState = {
   loggingActions: {
     loggingFolderExpanded: false,
   },
-  debugCamera: {},
   debugCameraFolderExpanded: false,
   helpers: {
     helpersFolderExpanded: false,
@@ -151,30 +109,7 @@ const createDebugToolsDebugGUI = () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),
         watchKey: LS_KEY,
-        onClear: () => {
-          const current = lsGetItem(LS_KEY, debugToolsState) as DebugToolsState;
-          const sceneIdsWithDebugCamera = Object.keys(current.debugCamera || {});
-          const applyClear = (debugCamera: DebugToolsState['debugCamera']) => {
-            if (Object.keys(debugCamera).length === 0) {
-              lsRemoveItem(LS_KEY);
-            } else {
-              lsSetItem(LS_KEY, { ...DEFAULT_DEBUG_TOOLS_STATE, debugCamera });
-            }
-          };
-          if (sceneIdsWithDebugCamera.length > 1) {
-            confirmClearScope({
-              onClearAllScenes: () => applyClear({}),
-              onClearThisScene: () => {
-                const sceneId = getCurrentSceneId();
-                const keptDebugCamera = { ...current.debugCamera };
-                if (sceneId) delete keptDebugCamera[sceneId];
-                applyClear(keptDebugCamera);
-              },
-            });
-          } else {
-            applyClear({});
-          }
-        },
+        onClear: () => lsRemoveItem(LS_KEY),
       });
       const { container, debugGUI } = createNewDebuggerPane(
         'debugTools',
@@ -210,18 +145,6 @@ const getSceneStarterDropDownOptions = () => {
     { value: '', text: '---NOT-SET---' },
     ...scenes.map((s) => ({ value: s.id, text: s.name || `[${s.id}]` })),
   ];
-};
-
-/**
- * Add scene to debug tools states
- * @param sceneId (string)
- */
-export const _addSceneToDebugtools = (sceneId: string) => {
-  if (!isDebugEnvironment()) return;
-  const foundScene = getScene(sceneId);
-  if (!foundScene || debugToolsState.debugCamera[sceneId]) return;
-
-  debugToolsState.debugCamera[sceneId] = getDefaultDebugCamParams();
 };
 
 /**
@@ -306,6 +229,97 @@ const buildDebugToolsGUI = () => {
     .on('change', () => {
       lsSetItem(LS_KEY, debugToolsState);
     });
+
+  // Debug Camera
+  const debugCameraFolder = debugGUI
+    .addFolder({
+      title: 'Debug Camera',
+      expanded: debugToolsState.debugCameraFolderExpanded,
+    })
+    .on('fold', (state) => {
+      debugToolsState.debugCameraFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+
+  const debugCamProxy: DebugCamLSProps = { ...getDebugCamProps(currentSceneId) };
+
+  const applyDebugCameraProps = (partial: Partial<DebugCamLSProps>) => {
+    const entityId = getEntityIdByAppId(DEBUG_CAMERA_ID);
+    if (entityId === undefined) return;
+    const world = getECSWorld();
+    const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value as
+      | THREE.PerspectiveCamera
+      | undefined;
+    const controls = world.getComponent(entityId, ComponentType.ORBIT_CONTROLS)?.controls;
+    const settings = world.getComponent(entityId, ComponentType.CAMERA_SETTINGS);
+
+    if (partial.position && obj) {
+      obj.position.set(partial.position.x, partial.position.y, partial.position.z);
+    }
+    if (partial.target && controls) {
+      controls.target.set(partial.target.x, partial.target.y, partial.target.z);
+    }
+    const hasLensChange =
+      partial.fov !== undefined ||
+      partial.near !== undefined ||
+      partial.far !== undefined ||
+      partial.zoom !== undefined;
+    if (obj && hasLensChange) {
+      if (partial.fov !== undefined) obj.fov = partial.fov;
+      if (partial.near !== undefined) obj.near = partial.near;
+      if (partial.far !== undefined) obj.far = partial.far;
+      if (partial.zoom !== undefined) obj.zoom = partial.zoom;
+      obj.updateProjectionMatrix();
+    }
+    if (settings && hasLensChange) {
+      if (partial.fov !== undefined) settings.fov = partial.fov;
+      if (partial.near !== undefined) settings.near = partial.near;
+      if (partial.far !== undefined) settings.far = partial.far;
+      if (partial.zoom !== undefined) settings.zoom = partial.zoom;
+    }
+    controls?.update();
+    saveDebugCameraToLS(partial);
+  };
+
+  const debugCamPositionBinding = debugCameraFolder
+    .addBinding(debugCamProxy, 'position', { label: 'Position' })
+    .on('change', (e) => {
+      if (!e.last) return;
+      applyDebugCameraProps({ position: { ...e.value } });
+    });
+  debugCameraFolder.addBinding(debugCamProxy, 'target', { label: 'Target' }).on('change', (e) => {
+    if (!e.last) return;
+    applyDebugCameraProps({ target: { ...e.value } });
+  });
+  debugCameraFolder
+    .addBinding(debugCamProxy, 'fov', { label: 'FOV', min: 1, max: 170, step: 1 })
+    .on('change', (e) => {
+      if (!e.last) return;
+      applyDebugCameraProps({ fov: e.value });
+    });
+  debugCameraFolder
+    .addBinding(debugCamProxy, 'near', { label: 'Near', min: 0.001, step: 0.001 })
+    .on('change', (e) => {
+      if (!e.last) return;
+      applyDebugCameraProps({ near: e.value });
+    });
+  debugCameraFolder
+    .addBinding(debugCamProxy, 'far', { label: 'Far', min: 1, step: 1 })
+    .on('change', (e) => {
+      if (!e.last) return;
+      applyDebugCameraProps({ far: e.value });
+    });
+  debugCameraFolder
+    .addBinding(debugCamProxy, 'zoom', { label: 'Zoom', min: 0.01, step: 0.01 })
+    .on('change', (e) => {
+      if (!e.last) return;
+      applyDebugCameraProps({ zoom: e.value });
+    });
+  debugCameraFolder.addButton({ title: 'Reset to origin' }).on('click', () => {
+    debugCamProxy.position = { x: 0, y: 0, z: 0 };
+    applyDebugCameraProps({ position: { x: 0, y: 0, z: 0 } });
+    debugCamPositionBinding.refresh();
+  });
 
   // Helpers
   const helpersFolder = debugGUI

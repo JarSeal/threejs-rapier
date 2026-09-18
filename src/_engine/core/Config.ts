@@ -45,6 +45,16 @@ export type AppConfig = {
     /** Fixed capacity for TYPED_ARRAY storage. Default 100_000, only relevant when storageMode is 'TYPED_ARRAY'. */
     maxEntities?: number;
   };
+  /** Default params for the debug (orbit) camera, used the first time a scene is
+   * visited (before any per-scene LS override exists at `AEK_debugCams`). */
+  debugCamera?: {
+    position?: { x: number; y: number; z: number };
+    target?: { x: number; y: number; z: number };
+    fov?: number;
+    near?: number;
+    far?: number;
+    zoom?: number;
+  };
   draggableWindows?: {
     [id: string]: Partial<DraggableWindow> & {
       contentFn?: (data?: { [key: string]: unknown }) => TCMP;
@@ -73,6 +83,14 @@ let config: AppConfig = {
   ecs: {
     storageMode: 'MAP',
     maxEntities: 100_000,
+  },
+  debugCamera: {
+    position: { x: 3, y: 3, z: 1.5 },
+    target: { x: 0, y: 0, z: 0 },
+    fov: 60,
+    near: 0.1,
+    far: 1000,
+    zoom: 1,
   },
 };
 

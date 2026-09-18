@@ -9,7 +9,6 @@ import {
   deletePhysicsWorld,
   setCurrentScenePhysicsObjects,
 } from './PhysicsRapier';
-import { addSceneToDebugtools, getDebugToolsState } from '../debug/DebugToolsManager';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
 import { LightProps } from './LightManager';
@@ -97,8 +96,6 @@ export const createScene = (id: string, opts?: SceneOptions) => {
   if (opts) sceneOpts[id] = opts;
   scenes[id] = scene;
   scene.userData.id = id;
-
-  addSceneToDebugtools(id);
 
   // @TODO: remove this old implementation that is kept for just in case...
   // if (opts?.isCurrentScene || !currentSceneId) setCurrentScene(id);
@@ -245,11 +242,6 @@ export const deleteScene = (
   }
 
   if (opts?.deleteSavedScene) delete scenes[id];
-
-  const debugToolsState = getDebugToolsState();
-  if (debugToolsState.debugCamera[id]) {
-    delete debugToolsState.debugCamera[id];
-  }
 };
 
 /**
