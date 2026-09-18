@@ -23,7 +23,7 @@ export const scene = async () => {
     { geo: groundGeo, mat: groundMat, position: { x: 0, y: 0, z: 0 } },
     { appId: 'physicsTestGroundMesh' }
   );
-  createPhysicsEntity(
+  await createPhysicsEntity(
     { type: 'BOX', hx: 5, hy: 0.25, hz: 5 },
     { rigidType: 'FIXED', translation: { x: 0, y: 0, z: 0 } },
     groundEntityId
@@ -43,7 +43,7 @@ export const scene = async () => {
     { geo: ballGeo, mat: ballMat, position: { x: -1, y: 5, z: 0 } },
     { appId: 'physicsTestBallMesh' }
   );
-  createPhysicsEntity(
+  await createPhysicsEntity(
     { type: 'BALL', radius: 0.5 },
     { rigidType: 'DYNAMIC', translation: { x: -1, y: 5, z: 0 }, angvel: { x: 0, y: 0, z: -3 } },
     ballEntityId
@@ -63,7 +63,7 @@ export const scene = async () => {
     { geo: boxGeo, mat: boxMat, position: { x: 1, y: 7, z: 0 } },
     { appId: 'physicsTestBoxMesh' }
   );
-  createPhysicsEntity(
+  await createPhysicsEntity(
     { type: 'BOX', hx: 0.5, hy: 0.5, hz: 0.5 },
     { rigidType: 'DYNAMIC', translation: { x: 1, y: 7, z: 0 }, angvel: { x: 1, y: 7, z: 0 } },
     boxEntityId

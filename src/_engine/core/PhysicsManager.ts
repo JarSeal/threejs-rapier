@@ -6,10 +6,13 @@ import { existsOrThrow } from '../utils/assert';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import {
+  createColliders,
   createCollidersSync,
+  createRigidBody,
   createRigidBodySync,
   deleteCollidersSync,
   deleteRigidBodySync,
+  getPhysicsState,
 } from './PhysicsAPI';
 import { ColliderParams, RigidBodyAPI, RigidBodyParams } from './Physics/PhysicsAPITypes';
 
@@ -24,7 +27,7 @@ export const registerPhysicsManager = (world: ECSWorld) => {
   );
 };
 
-export const createPhysicsEntity = (
+export const createPhysicsEntity = async (
   colliderParams: ColliderParams | ColliderParams[],
   rigidBodyParams?: RigidBodyParams,
   /**
@@ -37,7 +40,7 @@ export const createPhysicsEntity = (
   target?: THREE.Object3D | number,
   entityOpts?: CoreEntityOpts,
   ecsWorld?: ECSWorld
-): number => {
+): Promise<number> => {
   const world =
     ecsWorld || existsOrThrow(getECSWorld(), 'Could not get ECS world in createPhysicsEntity.');
 
@@ -46,12 +49,22 @@ export const createPhysicsEntity = (
 
   world.addComponent(entityId, ComponentType.TAG_IS_PHYSICS_OBJECT, true);
 
+  const isWorkerThread = getPhysicsState().workerTarget === 'WORKER_THREAD';
+
   let rb: RigidBodyAPI | undefined;
-  if (rigidBodyParams) rb = createRigidBodySync(rigidBodyParams);
+  if (rigidBodyParams) {
+    rb = isWorkerThread
+      ? await createRigidBody(rigidBodyParams)
+      : createRigidBodySync(rigidBodyParams);
+  }
 
   const paramsArray = Array.isArray(colliderParams) ? colliderParams : [colliderParams];
   if (rb) for (const p of paramsArray) p.parentId = rb.id;
-  const colls = paramsArray.length ? createCollidersSync(paramsArray) : [];
+  const colls = paramsArray.length
+    ? isWorkerThread
+      ? await createColliders(paramsArray)
+      : createCollidersSync(paramsArray)
+    : [];
 
   const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
   if (rb) {
