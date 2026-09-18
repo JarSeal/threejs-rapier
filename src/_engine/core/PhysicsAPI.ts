@@ -147,6 +147,8 @@ let engAPI: EngineAPIType | null = null;
  * until the first TRANSFORMS_PUSH, then replaced on every subsequent push.
  */
 let transformBuffer: PhysicsTransformBuffer | undefined;
+/** Which hot-path transport createPhysicsWorld() resolved to for the current world (WORKER_THREAD only). */
+let resolvedTransportMode: 'SHARED_MEMORY' | 'MESSAGE_BATCH' | undefined;
 
 const rigidBodies = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
 const colliders = new Map<number, ColliderAPI>(); // { "Running id", ColliderAPI }
@@ -362,6 +364,7 @@ export const createPhysicsWorld = async (
     if (response.worldCreated) {
       physicsWorld = new WorldProxyAPI();
       physicsWorldEnabled = true;
+      resolvedTransportMode = response.transportMode;
       if (response.transportMode === 'SHARED_MEMORY' && response.buffer) {
         transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, response.buffer);
       }
@@ -928,6 +931,14 @@ export const deleteCollidersSync = (ids: number[], wakeUps?: boolean[]) => {
 
 export const getRigidBody = (id: number) => rigidBodies.get(id);
 export const getCollider = (id: number) => colliders.get(id);
+/** All currently tracked rigid bodies, keyed by their physics id (both thread modes). */
+export const getAllRigidBodyEntries = (): IterableIterator<[number, RigidBodyAPI]> =>
+  rigidBodies.entries();
+/** All currently tracked colliders, keyed by their physics id (both thread modes). */
+export const getAllColliderEntries = (): IterableIterator<[number, ColliderAPI]> =>
+  colliders.entries();
+/** Which hot-path transform transport the current world resolved to (WORKER_THREAD only). Undefined before a world is created or in MAIN_THREAD mode. */
+export const getResolvedTransportMode = () => resolvedTransportMode;
 
 /** World, RigidBody, and Collider API classes -----[ START ]----- */
 

@@ -7,6 +7,10 @@ import {
 } from './Physics/PhysicsAPITypes';
 import { DraggableWindow } from './UI/DraggableWindow';
 import { ECSStorageMode } from './ECS/ECSComponentStorage';
+import { lsGetItem } from '../utils/LocalAndSessionStorage';
+
+/** LS key for debug-only boot-time physics overrides (workerTarget/useSAB/maxBodies). Written by the Physics API debug tab, read once in loadConfig(). */
+export const DEBUG_PHYSICS_API_BOOT_LS_KEY = 'AEK_debugPhysicsApiBoot';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 
@@ -155,6 +159,24 @@ export const loadConfig = () => {
       envVars.VITE_PHYS_TIMESTEP = timestep;
     } else {
       envVars.VITE_PHYS_TIMESTEP = undefined;
+    }
+  }
+
+  // Debug-only boot-time physics overrides (set by the Physics API debug tab, applied on next reload)
+  if (isDebugEnvironment()) {
+    const debugPhysicsBoot = lsGetItem(DEBUG_PHYSICS_API_BOOT_LS_KEY, {}) as {
+      workerTarget?: PhysicsWorkerTarget;
+      useSAB?: boolean;
+      maxBodies?: number;
+    };
+    if (debugPhysicsBoot.workerTarget) {
+      config.physics.workerTarget = debugPhysicsBoot.workerTarget;
+    }
+    if (typeof debugPhysicsBoot.useSAB === 'boolean') {
+      config.physics.useSAB = debugPhysicsBoot.useSAB;
+    }
+    if (typeof debugPhysicsBoot.maxBodies === 'number') {
+      config.physics.maxBodies = debugPhysicsBoot.maxBodies;
     }
   }
 
