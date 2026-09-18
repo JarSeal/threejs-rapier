@@ -82,6 +82,7 @@ export const scene = async () => {
     params: { color: '#2f5d34', flatShading: true },
   });
   const treePool = createInstancedMeshPool({
+    world: ecsWorld,
     geometry: treeGeo.geometry,
     material: [treeTrunkMat, treeFoliageMat],
     maxInstances: treePlacements.length,
@@ -105,6 +106,7 @@ export const scene = async () => {
     params: { color: '#3c6e35', flatShading: true },
   });
   const bushPool = createInstancedMeshPool({
+    world: ecsWorld,
     geometry: bushGeo,
     material: bushMat,
     maxInstances: bushPlacements.length,
