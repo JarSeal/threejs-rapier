@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: draft | not-implemented | needs-replanning
 Category: Physics
 Blocked by: p026_physics-api-support-for-joints.md
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
@@ -15,7 +15,7 @@ cases don't need immediately.
 
 - Rapier (`@dimforge/rapier3d-compat@0.19.3`) exposes multibody joints as a fully separate API
   from impulse joints: `RAPIER.World.createMultibodyJoint(params: JointData, parent1, parent2,
-  wakeUp): MultibodyJoint`, `RAPIER.World.multibodyJoints: MultibodyJointSet` (`createJoint`,
+wakeUp): MultibodyJoint`, `RAPIER.World.multibodyJoints: MultibodyJointSet` (`createJoint`,
   `remove`, `get`, `contains`, `forEach`, `forEachJointHandleAttachedToRigidBody`), and joint
   classes `MultibodyJoint`/`UnitMultibodyJoint` plus concrete subclasses (`FixedMultibodyJoint`,
   `PrismaticMultibodyJoint`, `RevoluteMultibodyJoint`, `SphericalMultibodyJoint`). They reuse the
@@ -81,10 +81,10 @@ correct behavior in both `MAIN_THREAD`/`WORKER_THREAD` modes; `tsc --noEmit`/`ya
 
 ## Risks / open questions
 
-| Risk / question | Notes |
-| --- | --- |
-| p026's exact final `JointParams`/protocol shape isn't fixed yet | This plan's design decisions must be revisited once p026 is actually implemented, since they're written to extend it by analogy today. |
-| Whether a unified vs. separate API surface is the right call long-term | Worth a deliberate second look once both exist side by side and real usage patterns emerge — flagged here rather than decided. |
+| Risk / question                                                        | Notes                                                                                                                                  |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| p026's exact final `JointParams`/protocol shape isn't fixed yet        | This plan's design decisions must be revisited once p026 is actually implemented, since they're written to extend it by analogy today. |
+| Whether a unified vs. separate API surface is the right call long-term | Worth a deliberate second look once both exist side by side and real usage patterns emerge — flagged here rather than decided.         |
 
 ## Verification
 
