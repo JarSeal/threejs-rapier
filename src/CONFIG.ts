@@ -22,6 +22,7 @@ const config: AppConfig = {
     solverIterations: 10,
     internalPgsIterations: 1,
     interpolationEnabled: true,
+    workerTarget: 'WORKER_THREAD',
     useSAB: true,
   },
 };
