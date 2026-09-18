@@ -62,7 +62,7 @@ let config: AppConfig = {
   physics: {
     enabled: false,
     physicsEngine: 'RAPIER',
-    workerTarget: 'MAIN_THREAD',
+    workerTarget: 'WORKER_THREAD',
     worldStepEnabled: true,
     gravity: { x: 0, y: 0, z: 0 },
     timestep: 60,

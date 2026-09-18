@@ -1,10 +1,10 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Physics, ECS
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
 
 # Physics API Worker-Thread MVP — Plan
 
-Make the engine-agnostic Physics API (`PhysicsAPI.ts` / `EngineRapier.ts` / `PhysicsAPITypes.ts` / `workers/physicsWorker.ts` / `workers/physics/physicsSwitch{World,Rigid,Coll}.ts`) actually run its simulation inside a Web Worker, building on [_DONE_p020_main-thread-physics-api-mvp.md](./_DONE_p020_main-thread-physics-api-mvp.md), which proved out main-thread mode and explicitly scoped worker-thread mode out (§5/§6). Most of the worker-side infrastructure already exists (a complete RPC switchboard for world/rigid-body/collider CRUD and queries) — what's missing is the ability to actually advance the simulation off the main thread and get its results back every frame without per-body message overhead. This plan implements the `STEP` protocol end-to-end, a physics-owned per-frame transform hot path (`SharedArrayBuffer`-backed where available, with an automatic message-batch fallback where it isn't), and makes `src/app/physicsTest.ts` run under worker-thread mode as the MVP's proof. Rapier remains the only physics engine; no second backend is added here.
+Make the engine-agnostic Physics API (`PhysicsAPI.ts` / `EngineRapier.ts` / `PhysicsAPITypes.ts` / `workers/physicsWorker.ts` / `workers/physics/physicsSwitch{World,Rigid,Coll}.ts`) actually run its simulation inside a Web Worker, building on [\_DONE_p020_main-thread-physics-api-mvp.md](./_DONE_p020_main-thread-physics-api-mvp.md), which proved out main-thread mode and explicitly scoped worker-thread mode out (§5/§6). Most of the worker-side infrastructure already exists (a complete RPC switchboard for world/rigid-body/collider CRUD and queries) — what's missing is the ability to actually advance the simulation off the main thread and get its results back every frame without per-body message overhead. This plan implements the `STEP` protocol end-to-end, a physics-owned per-frame transform hot path (`SharedArrayBuffer`-backed where available, with an automatic message-batch fallback where it isn't), and makes `src/app/physicsTest.ts` run under worker-thread mode as the MVP's proof. Rapier remains the only physics engine; no second backend is added here.
 
 ## 1. Goal
 
@@ -30,10 +30,11 @@ Confirmed by direct read of the branch (`physics-api-finalization`, superseding 
 ### 3.1 Config surface: `useSAB` and `maxBodies` (the one new threading option)
 
 Add to `AppConfig.physics` (`Config.ts:22-34`) and `PhysicsState` (`PhysicsAPITypes.ts:45`+):
+
 - `useSAB?: boolean` — intent to use `SharedArrayBuffer` for the hot path. Engine default: `true` (matches the decision to make `WORKER_THREAD` the new default). At `initPhysics()` time, resolve actual capability defensively: `const resolvedUseSAB = physicsState.useSAB && typeof SharedArrayBuffer !== 'undefined' && self.crossOriginIsolated;` — if the config asked for SAB but the runtime isn't actually cross-origin-isolated (headers missing, unsupported browser, or someone reused the built app on a host that doesn't set them), log a warning once and silently use the message-batch fallback (§3.3) instead of throwing. This is what satisfies "SharedArrayBuffer might not work for all environments" — the config expresses intent, capability is verified at runtime, and the fallback exists unconditionally.
 - `maxBodies?: number` — fixed capacity for the physics-owned transform buffer (§3.3), analogous to the existing `AppConfig.ecs.maxEntities` (`Config.ts:66`) pattern. Engine default: `2048`. Exceeding it throws a clear error at rigid-body creation time (mirroring `TypedArrayTransformStore.set()`'s capacity-exceeded error, `TypedArrayTransformStore.ts:176-180`), not a silent slot collision.
 - Add a `VITE_PHYS_USE_SAB` env override, mirroring the existing `VITE_PHYS_ENABLED`/`VITE_PHYS_GRAVITY`/`VITE_PHYS_TIMESTEP` pattern already in `Config.ts`'s `loadConfig()`.
-- `useSAB` is explicitly the *only* configurable threading option for this MVP — no other physics behavior becomes configurable here.
+- `useSAB` is explicitly the _only_ configurable threading option for this MVP — no other physics behavior becomes configurable here.
 
 ### 3.2 `STEP` protocol, end-to-end
 
@@ -62,6 +63,7 @@ A small new module in `src/_engine/core/Physics/PhysicsTransformBuffer.ts`, inde
 ### 3.5 Vite dev-server COOP/COEP headers
 
 Add `server.headers` to `vite.config.ts`:
+
 ```ts
 server: {
   fs: { strict: false },
@@ -71,6 +73,7 @@ server: {
   },
 },
 ```
+
 These are required for `self.crossOriginIsolated`/`SharedArrayBuffer` to be available at all in dev. Since the confirmed decision is to make `WORKER_THREAD` (+ SAB) the new default, these are unconditional (not gated behind an env var) — matching the "threaded reality" default. **Production hosting is out of scope for this plan** (see §5) — whatever serves `dist/` in production must set the same two headers, or `useSAB`'s runtime capability check (§3.1) will correctly and automatically fall back to `MESSAGE_BATCH` there instead of breaking.
 
 ### 3.6 Switching the default (`src/CONFIG.ts`)
@@ -79,20 +82,20 @@ Once §3.2-3.5 are implemented and manually verified (Phase 5), flip `src/CONFIG
 
 ## 4. Files touched
 
-| File | Change |
-|---|---|
-| `src/_engine/core/Physics/PhysicsAPITypes.ts` | Add `useSAB`/`maxBodies` to `PhysicsState`; add `slot` to `CreateRigidBodyResponse`/`CreateRigidBodiesResponse`; add `PhysicsProtocolType.TRANSFORMS_PUSH`; uncomment/finalize `WorldAPI.step()`'s worker-facing message shape where needed |
-| `src/_engine/core/Physics/PhysicsTransformBuffer.ts` (new) | Buffer factory + slot allocator + typed views for the physics-owned hot path |
-| `src/_engine/core/Physics/EngineRapier.ts` | Add `getAllRigidBodyIds()` export for the worker's per-step write-back loop |
-| `src/_engine/workers/physicsWorker.ts` | Implement the `STEP` case: `engAPI.step()` + hot-path write-back + `TRANSFORMS_PUSH` in fallback mode |
-| `src/_engine/workers/physics/physicsSwitchRigid.ts` | `CREATE_RIGID_BODY(S)` allocate + return a buffer slot; `DELETE_RIGID_BODY(S)` free it |
-| `src/_engine/core/PhysicsAPI.ts` | `stepPhysics()` worker-mode branch; `createPhysicsWorld()` builds the main-thread `PhysicsTransformBuffer` wrapper in SAB mode; `onWorkerMessage` handles `TRANSFORMS_PUSH`; `RigidBodyProxyAPI.pos`/`.rot` become slot-indexed getters |
-| `src/_engine/core/PhysicsManager.ts` | `createPhysicsEntity` becomes `async` with a worker-mode branch |
-| `src/app/physicsTest.ts` | `await` the three `createPhysicsEntity(...)` calls |
-| `src/_engine/core/Config.ts` | Add `physics.useSAB`/`physics.maxBodies` to `AppConfig` + engine defaults; add `VITE_PHYS_USE_SAB` env override; default `workerTarget` becomes `'WORKER_THREAD'` (Phase 6) |
-| `src/CONFIG.ts` | Set `workerTarget: 'WORKER_THREAD'` explicitly (Phase 6) |
-| `vite.config.ts` | Add COOP/COEP dev-server headers |
-| `.claude/CLAUDE.md` | Update the stale "physics currently only runs on the main thread... worker file body is commented out" paragraph to reflect this MVP |
+| File                                                       | Change                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/_engine/core/Physics/PhysicsAPITypes.ts`              | Add `useSAB`/`maxBodies` to `PhysicsState`; add `slot` to `CreateRigidBodyResponse`/`CreateRigidBodiesResponse`; add `PhysicsProtocolType.TRANSFORMS_PUSH`; uncomment/finalize `WorldAPI.step()`'s worker-facing message shape where needed |
+| `src/_engine/core/Physics/PhysicsTransformBuffer.ts` (new) | Buffer factory + slot allocator + typed views for the physics-owned hot path                                                                                                                                                                |
+| `src/_engine/core/Physics/EngineRapier.ts`                 | Add `getAllRigidBodyIds()` export for the worker's per-step write-back loop                                                                                                                                                                 |
+| `src/_engine/workers/physicsWorker.ts`                     | Implement the `STEP` case: `engAPI.step()` + hot-path write-back + `TRANSFORMS_PUSH` in fallback mode                                                                                                                                       |
+| `src/_engine/workers/physics/physicsSwitchRigid.ts`        | `CREATE_RIGID_BODY(S)` allocate + return a buffer slot; `DELETE_RIGID_BODY(S)` free it                                                                                                                                                      |
+| `src/_engine/core/PhysicsAPI.ts`                           | `stepPhysics()` worker-mode branch; `createPhysicsWorld()` builds the main-thread `PhysicsTransformBuffer` wrapper in SAB mode; `onWorkerMessage` handles `TRANSFORMS_PUSH`; `RigidBodyProxyAPI.pos`/`.rot` become slot-indexed getters     |
+| `src/_engine/core/PhysicsManager.ts`                       | `createPhysicsEntity` becomes `async` with a worker-mode branch                                                                                                                                                                             |
+| `src/app/physicsTest.ts`                                   | `await` the three `createPhysicsEntity(...)` calls                                                                                                                                                                                          |
+| `src/_engine/core/Config.ts`                               | Add `physics.useSAB`/`physics.maxBodies` to `AppConfig` + engine defaults; add `VITE_PHYS_USE_SAB` env override; default `workerTarget` becomes `'WORKER_THREAD'` (Phase 6)                                                                 |
+| `src/CONFIG.ts`                                            | Set `workerTarget: 'WORKER_THREAD'` explicitly (Phase 6)                                                                                                                                                                                    |
+| `vite.config.ts`                                           | Add COOP/COEP dev-server headers                                                                                                                                                                                                            |
+| `.claude/CLAUDE.md`                                        | Update the stale "physics currently only runs on the main thread... worker file body is commented out" paragraph to reflect this MVP                                                                                                        |
 
 ## 5. Explicitly out of scope / non-goals
 
@@ -134,15 +137,15 @@ Once §3.2-3.5 are implemented and manually verified (Phase 5), flip `src/CONFIG
 
 ## 8. Risks and open questions
 
-| Risk / question | Notes |
-|---|---|
+| Risk / question                                                              | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Rapier's WASM has never been runtime-verified inside a Vite `?worker` module | The single biggest unknown in this plan — de-risked explicitly and early in Phase 2, before any hot-path work is built on top of it. If `vite-plugin-wasm` doesn't resolve correctly in the worker's separate module graph, the fallback is investigating `vite-plugin-wasm`'s worker-specific options or a manual `fetch()`+`WebAssembly.instantiate()` init path inside `physicsWorker.ts` — a materially bigger change than anything else in this plan, worth flagging to the user immediately if hit. |
-| COOP/COEP headers becoming the default dev-server behavior | These headers can break loading of any cross-origin resource that doesn't itself send CORP/CORS headers (external CDN fonts, iframes, some third-party embeds). No such cross-origin resource loading was found in this repo during research, but this is a standing constraint on future asset choices once Phase 6 lands — worth a one-line callout in `CLAUDE.md`. |
-| Torn reads on the `SharedArrayBuffer` hot path (no locking) | Accepted for MVP (§3.3/§5) — floats are small, and this matches how many real-time shared-memory designs start. Revisit (seqlock/double-buffer, §6 item 2) only if visibly jittery in Phase 5's manual check. |
-| `maxBodies` capacity exceeded | Must throw a clear, immediate error at creation time (mirroring `TypedArrayTransformStore`'s existing capacity-exceeded error), not silently corrupt another body's slot. Confirm this is actually implemented and tested (e.g. temporarily set `maxBodies: 1` and try creating 2 bodies) during Phase 3. |
-| Production hosting headers are outside this repo's control | This plan only configures `vite.config.ts`'s dev server (§3.5). Explicitly flagged as out of scope (§5) rather than silently assumed — the runtime capability check (§3.1) degrades gracefully to `MESSAGE_BATCH` wherever COOP/COEP aren't present, so this is a performance-only risk in production, not a correctness one. |
-| `MESSAGE_BATCH` fallback bit-rotting since `useSAB: true` is the new default | Both transport modes must be explicitly exercised in Phase 3 and Phase 5's manual verification (not just the default SAB path), since the whole point of this option is that some environments need the fallback. |
-| `EngineRigidBodyProxyAPI` (main-thread mode, p020 §3.1) | Untouched by this plan — confirm in Phase 4/5 manual checks that `MAIN_THREAD` mode's existing getter-based hot path still works exactly as before, since `CONFIG.ts`'s default flip (Phase 6) means `MAIN_THREAD` becomes the non-default-but-still-supported path going forward. |
+| COOP/COEP headers becoming the default dev-server behavior                   | These headers can break loading of any cross-origin resource that doesn't itself send CORP/CORS headers (external CDN fonts, iframes, some third-party embeds). No such cross-origin resource loading was found in this repo during research, but this is a standing constraint on future asset choices once Phase 6 lands — worth a one-line callout in `CLAUDE.md`.                                                                                                                                     |
+| Torn reads on the `SharedArrayBuffer` hot path (no locking)                  | Accepted for MVP (§3.3/§5) — floats are small, and this matches how many real-time shared-memory designs start. Revisit (seqlock/double-buffer, §6 item 2) only if visibly jittery in Phase 5's manual check.                                                                                                                                                                                                                                                                                             |
+| `maxBodies` capacity exceeded                                                | Must throw a clear, immediate error at creation time (mirroring `TypedArrayTransformStore`'s existing capacity-exceeded error), not silently corrupt another body's slot. Confirm this is actually implemented and tested (e.g. temporarily set `maxBodies: 1` and try creating 2 bodies) during Phase 3.                                                                                                                                                                                                 |
+| Production hosting headers are outside this repo's control                   | This plan only configures `vite.config.ts`'s dev server (§3.5). Explicitly flagged as out of scope (§5) rather than silently assumed — the runtime capability check (§3.1) degrades gracefully to `MESSAGE_BATCH` wherever COOP/COEP aren't present, so this is a performance-only risk in production, not a correctness one.                                                                                                                                                                             |
+| `MESSAGE_BATCH` fallback bit-rotting since `useSAB: true` is the new default | Both transport modes must be explicitly exercised in Phase 3 and Phase 5's manual verification (not just the default SAB path), since the whole point of this option is that some environments need the fallback.                                                                                                                                                                                                                                                                                         |
+| `EngineRigidBodyProxyAPI` (main-thread mode, p020 §3.1)                      | Untouched by this plan — confirm in Phase 4/5 manual checks that `MAIN_THREAD` mode's existing getter-based hot path still works exactly as before, since `CONFIG.ts`'s default flip (Phase 6) means `MAIN_THREAD` becomes the non-default-but-still-supported path going forward.                                                                                                                                                                                                                        |
 
 ## 9. Verification
 
