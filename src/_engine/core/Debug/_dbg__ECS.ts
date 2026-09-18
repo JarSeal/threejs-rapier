@@ -210,6 +210,10 @@ export const _initECSDebugGUI = () => {
         clearTabBtn,
         clearListBtn,
       ]);
+      // Must happen before anything else attaches to container.elem (Tweakpane below,
+      // in particular): CMP.update() replaces the CMP's own DOM element wholesale
+      // (cmp.elem.replaceWith(newElem)), which would orphan whatever Tweakpane already
+      // attached into the old element if this ran any later.
       container.update({ onRemoveCmp: () => pane?.dispose() });
 
       debuggerListCmp = CMP({
@@ -252,10 +256,17 @@ export const _initECSDebugGUI = () => {
         label: 'TRANSFORM entities',
         readonly: true,
       });
-      setInterval(() => {
+      // createDebuggerTab's container() re-runs on every tab click (it isn't built once
+      // and hidden/shown), so this must be cleared on teardown or revisiting the tab
+      // leaks a new interval each time. Added as its own child (via .add(), which is
+      // non-destructive) rather than folded into container's own onRemoveCmp above —
+      // that one has to run before Tweakpane attaches (see the comment on it), while
+      // this needs the interval id, which doesn't exist yet at that point.
+      const benchmarkIntervalId = setInterval(() => {
         updateReadout();
         pane.refresh();
       }, 1000);
+      container.add({ onRemoveCmp: () => clearInterval(benchmarkIntervalId) });
 
       const benchmarkConfig = { batchSize: 1000 };
       benchmarkFolder.addBinding(benchmarkConfig, 'batchSize', {

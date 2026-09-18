@@ -10,6 +10,7 @@ import {
   closeDraggableWindow,
   getDraggableWindow,
   openDraggableWindow,
+  registerDraggableWindowCmp,
 } from '../UI/DraggableWindow';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import { type ListBladeApi } from 'tweakpane';
@@ -25,7 +26,7 @@ import { ShapeType, type PhysicsState, type PhysicsWorkerTarget } from '../Physi
 import { getECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 
-const LS_KEY = 'debugPhysicsApi';
+const LS_KEY = 'AEK_debugPhysicsApi';
 const EDIT_PHYS_ENTITY_WIN_ID = 'physicsApiEntityEditorWindow';
 const PHYSICS_ENTITY_COMPONENT_TYPES = [
   ComponentType.BODY_STATIC,
@@ -34,6 +35,7 @@ const PHYSICS_ENTITY_COMPONENT_TYPES = [
 ] as const;
 
 let debuggerEntityListCmp: TCMP | null = null;
+let lastEntityListSignature = '';
 let entityWindowCmp: TCMP | null = null;
 let entityWindowPane: Pane | null = null;
 
@@ -47,6 +49,39 @@ const setBootOverride = (partial: DebugPhysicsApiBoot) => {
   const current = lsGetItem(DEBUG_PHYSICS_API_BOOT_LS_KEY, {}) as DebugPhysicsApiBoot;
   lsSetItem(DEBUG_PHYSICS_API_BOOT_LS_KEY, { ...current, ...partial });
   location.reload();
+};
+
+// Only these fields persist under LS_KEY. workerTarget/useSAB/maxBodies live under their
+// own boot-override key (DEBUG_PHYSICS_API_BOOT_LS_KEY, see setBootOverride) and applying
+// via config on the next reload — persisting the whole PhysicsState blob here would let a
+// stale in-memory copy of those three fields clobber the boot-override-derived values the
+// moment any live field changes.
+type LivePhysicsApiState = Pick<
+  PhysicsState,
+  'timestep' | 'worldStepEnabled' | 'gravity' | 'solverIterations' | 'internalPgsIterations'
+>;
+
+const getLiveState = (state: PhysicsState): LivePhysicsApiState => ({
+  timestep: state.timestep,
+  worldStepEnabled: state.worldStepEnabled,
+  gravity: state.gravity,
+  solverIterations: state.solverIterations,
+  internalPgsIterations: state.internalPgsIterations,
+});
+
+const persistLiveState = (state: PhysicsState) => lsSetItem(LS_KEY, getLiveState(state));
+
+/** gravity/solverIterations/internalPgsIterations/timestep are baked into the Rapier
+ * world once at createPhysicsWorld() time, which runs before this debug tab's LS
+ * restore — so a restored custom value has to be re-pushed into the already-running
+ * world explicitly, the same way each field's own live on('change') handler does. */
+const applyLiveStateToWorld = (state: PhysicsState) => {
+  if (!isPhysicsWorldEnabled()) return;
+  const world = getPhysicsWorld();
+  world.setGravity(state.gravity);
+  world.setNumSolverIterations(state.solverIterations);
+  world.setNumInternalPgsIterations(state.internalPgsIterations);
+  world.setTimestep(state.timestepRatio);
 };
 
 const getAllPhysicsEntityIds = (): number[] => {
@@ -261,8 +296,10 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
 
 export const _createPhysicsAPIDebugGUI = () => {
   const state = getPhysicsState();
-  const savedValues = lsGetItem(LS_KEY, state) as Partial<PhysicsState>;
+  const savedValues = lsGetItem(LS_KEY, {}) as Partial<LivePhysicsApiState>;
   Object.assign(state, savedValues);
+  state.timestepRatio = 1 / (state.timestep || 60);
+  applyLiveStateToWorld(state);
 
   const icon = getSvgIcon('rocketTakeoff');
   createDebuggerTab({
@@ -307,45 +344,45 @@ export const _createPhysicsAPIDebugGUI = () => {
           setBootOverride({ maxBodies: e.value });
         });
 
+      // Read once: createPhysicsWorld() (which resolves this) always runs before this
+      // tab is ever built (see InitApp.ts's boot order), and nothing in the app
+      // creates/destroys the physics world again afterward — the value cannot change
+      // for the remaining lifetime of this tab, so there's nothing to poll.
       const transportModeReadout = {
         transportMode: getResolvedTransportMode() ?? 'Not created yet',
       };
-      const transportModeBinding = debugGUI.addBinding(transportModeReadout, 'transportMode', {
+      debugGUI.addBinding(transportModeReadout, 'transportMode', {
         label: 'Resolved transport mode',
         readonly: true,
       });
-      // No create/delete-world hook to subscribe to — poll, same tradeoff as
-      // the spatial grid debug panel's live readout (never cleared, same precedent).
-      setInterval(() => {
-        transportModeReadout.transportMode = getResolvedTransportMode() ?? 'Not created yet';
-        transportModeBinding.refresh();
-      }, 500);
 
       debugGUI.addBlade({ view: 'separator' });
 
       // --- Live settings ---
+      // Enable visualizer / Enable interpolation / Background behavior / min-max delta
+      // time / min-max sub-steps are omitted: none of them are read anywhere in the new
+      // Physics API pipeline yet (stepPhysics() does one unconditional step per render
+      // frame, no accumulator). See docs/plans/p024_interpolation-in-the-physics-api.md,
+      // whose Phase 1 is exactly this accumulator work — add these controls back once
+      // that lands instead of shipping controls that silently do nothing.
 
       debugGUI
         .addBinding(state, 'timestep', { label: 'Global timestep (1 / ts)', step: 1, min: 1 })
         .on('change', (e) => {
           state.timestepRatio = 1 / e.value;
-          lsSetItem(LS_KEY, state);
+          persistLiveState(state);
+          if (isPhysicsWorldEnabled()) {
+            getPhysicsWorld().setTimestep(state.timestepRatio);
+          }
         });
       debugGUI
         .addBinding(state, 'worldStepEnabled', { label: 'Enable world step' })
         .on('change', () => {
-          lsSetItem(LS_KEY, state);
-        });
-      debugGUI
-        .addBinding(state, 'visualizerEnabled', {
-          label: 'Enable visualizer (not yet wired to a 3D visualizer)',
-        })
-        .on('change', () => {
-          lsSetItem(LS_KEY, state);
+          persistLiveState(state);
         });
       debugGUI.addBinding(state, 'gravity', { label: 'Gravity' }).on('change', (e) => {
         state.gravity = { ...e.value };
-        lsSetItem(LS_KEY, state);
+        persistLiveState(state);
         if (isPhysicsWorldEnabled()) {
           getPhysicsWorld().setGravity(state.gravity);
         }
@@ -358,7 +395,7 @@ export const _createPhysicsAPIDebugGUI = () => {
         })
         .on('change', (e) => {
           state.solverIterations = e.value;
-          lsSetItem(LS_KEY, state);
+          persistLiveState(state);
           if (isPhysicsWorldEnabled()) {
             getPhysicsWorld().setNumSolverIterations(e.value);
           }
@@ -371,81 +408,60 @@ export const _createPhysicsAPIDebugGUI = () => {
         })
         .on('change', (e) => {
           state.internalPgsIterations = e.value;
-          lsSetItem(LS_KEY, state);
+          persistLiveState(state);
           if (isPhysicsWorldEnabled()) {
             getPhysicsWorld().setNumInternalPgsIterations(e.value);
           }
         });
-      debugGUI
-        .addBinding(state, 'interpolationEnabled', { label: 'Enable interpolation' })
-        .on('change', () => {
-          lsSetItem(LS_KEY, state);
-        });
-      const bgBehaviorDropDown = debugGUI.addBlade({
-        view: 'list',
-        label:
-          'Background behavior (when the loop is not running or the window is hidden, not in view, another tab, or minimized)',
-        options: [
-          { value: 'KEEP_RUNNING', text: 'Keep running' },
-          { value: 'KEEP_RUNNING_USE_MIN_DELTA', text: 'Keep running and use Minimum delta time' },
-          { value: 'PAUSE', text: 'Pause' },
-        ],
-        value: state.backgroundBehavior,
-      }) as ListBladeApi<BladeController<View>>;
-      bgBehaviorDropDown.on('change', (e) => {
-        state.backgroundBehavior = e.value as unknown as PhysicsState['backgroundBehavior'];
-        lsSetItem(LS_KEY, state);
-      });
-      debugGUI
-        .addBinding(state, 'minDeltaTime', {
-          label: 'Minimum delta time (eg. 1 / 30fps), 0 = not in use',
-          step: 0.0000000001,
-          min: 0,
-        })
-        .on('change', () => {
-          lsSetItem(LS_KEY, state);
-        });
-      debugGUI
-        .addBinding(state, 'maxDeltaTime', {
-          label: 'Maximum delta time (clamping to an fps, 1 / 10fps = 0.1), 0 = not in use',
-          step: 0.0000000001,
-          min: 0,
-        })
-        .on('change', () => {
-          lsSetItem(LS_KEY, state);
-        });
-      debugGUI
-        .addBinding(state, 'minSubSteps', {
-          label: 'Minimum steps per render frame, 0 = not in use',
-          step: 1,
-          min: 0,
-        })
-        .on('change', () => {
-          lsSetItem(LS_KEY, state);
-        });
-      debugGUI
-        .addBinding(state, 'maxSubSteps', {
-          label:
-            'Maximum steps per render frame (Prevents the spiral of death, should usually be the same as timestep), 0 = not in use',
-          step: 1,
-          min: 0,
-        })
-        .on('change', () => {
-          lsSetItem(LS_KEY, state);
-        });
 
+      // Switching to another debugger tab rebuilds this container from scratch on
+      // return (createDebuggerTab's container() re-runs on every click, it isn't
+      // built once and hidden/shown) — an interval started here without teardown
+      // would leak a new one on every visit. Clear it in onRemoveCmp, which the CMP
+      // framework calls when this tab's content is torn down for the next one.
+      // No entity create/delete hook to subscribe to — poll, same tradeoff as the spatial
+      // grid debug panel's live readout. Skips the actual rebuild when the entity set
+      // hasn't changed, so an open edit window's list selection isn't wiped every tick
+      // for no reason.
+      const entityListIntervalId = setInterval(() => {
+        const signature = getAllPhysicsEntityIds().join(',');
+        if (signature === lastEntityListSignature) return;
+        lastEntityListSignature = signature;
+        debuggerEntityListCmp?.update({ html: createPhysicsEntitiesDebugList });
+        const winState = getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
+        if (winState?.isOpen && typeof winState.data?.entityId === 'number') {
+          updateDebuggerEntityListSelectedClass(winState.data.entityId);
+        }
+      }, 500);
+      // Switching to another debugger tab rebuilds this container from scratch on
+      // return (createDebuggerTab's container() re-runs on every click, it isn't built
+      // once and hidden/shown) — an interval started here without teardown would leak a
+      // new one on every visit. Clear it in onRemoveCmp, which the CMP framework calls
+      // when this tab's content is torn down for the next one.
       debuggerEntityListCmp = CMP({
         id: 'debuggerPhysicsApiEntityList',
         html: createPhysicsEntitiesDebugList,
+        onRemoveCmp: () => clearInterval(entityListIntervalId),
       });
       container.add(debuggerEntityListCmp);
-      // No entity create/delete hook to subscribe to — poll, same tradeoff as
-      // the spatial grid debug panel's live readout (never cleared, same precedent).
-      setInterval(() => {
-        debuggerEntityListCmp?.update({ html: createPhysicsEntitiesDebugList });
-      }, 500);
 
       return container;
     },
   });
+
+  // The edit window's `content` is a function, which can't survive the JSON
+  // serialization DraggableWindow uses to persist open/position state — after a reload,
+  // a previously-open window reopens with no content attached. Re-attach it, mirroring
+  // _dbg__Character.ts's identical restore pattern. This runs unconditionally at boot
+  // (not inside the tab's lazy `container` callback above) because the window can be
+  // open on reload whether or not this tab has ever been clicked open this session.
+  setTimeout(() => {
+    const winState = getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
+    if (winState && !winState.content) {
+      registerDraggableWindowCmp(EDIT_PHYS_ENTITY_WIN_ID, {
+        content: createEditPhysicsEntityContent,
+        onClose: () => updateDebuggerEntityListSelectedClass(null),
+      });
+    }
+  }, 0);
 };

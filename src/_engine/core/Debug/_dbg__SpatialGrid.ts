@@ -141,9 +141,15 @@ export const _createSpatialGridDebugGUI = () => {
       };
       // Debug-only polling — simplest way to keep a live readout current
       // without wiring a subscriber through the rebuild system for a panel
-      // that's only open some of the time anyway.
+      // that's only open some of the time anyway. createDebuggerTab's container()
+      // re-runs on every tab click (it isn't built once and hidden/shown), so this
+      // must be cleared on teardown or revisiting the tab leaks a new interval each
+      // time. container's own onRemoveCmp is already used internally (by
+      // createNewDebuggerPane) to dispose the Tweakpane instance, so this is added
+      // as its own child rather than overwriting that.
       refreshStats();
-      setInterval(refreshStats, 500);
+      const intervalId = setInterval(refreshStats, 500);
+      container.add({ onRemoveCmp: () => clearInterval(intervalId) });
 
       return container;
     },
