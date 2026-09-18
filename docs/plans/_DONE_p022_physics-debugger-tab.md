@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Physics, Debugger
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
 
@@ -56,13 +56,13 @@ Manual verification: from the browser console, after creating a few bodies under
 
 ## Risks / open questions
 
-| Risk / question | Notes |
-|---|---|
-| Reload-required UX for thread/SAB toggles may surprise users expecting a live switch | Mitigated with an explicit "Reload to apply" button/label, consistent with `_dbg__Renderer.ts`'s existing precedent for its own boot-time-only settings. |
-| Entity-list polling (Design Decision 7) means brief staleness after create/delete outside the tab | Acceptable for a debug tool; same tradeoff already accepted in `_dbg__SpatialGrid.ts`. |
-| `collider.shapeType()` is async (unlike legacy's fully-synchronous main-thread-only list) | List rows must tolerate a brief per-row loading state; confirm this reads cleanly during Phase 3's manual check. |
-| Same icon on two simultaneously-visible tabs | Per the user's explicit request; disambiguated by tooltip title only — worth a quick visual check in Phase 2's manual verification. |
-| `getResolvedTransportMode()` before any world exists | Should show an explicit "not created yet" state rather than blank/stale — confirm during Phase 2. |
+| Risk / question                                                                                   | Notes                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reload-required UX for thread/SAB toggles may surprise users expecting a live switch              | Mitigated with an explicit "Reload to apply" button/label, consistent with `_dbg__Renderer.ts`'s existing precedent for its own boot-time-only settings. |
+| Entity-list polling (Design Decision 7) means brief staleness after create/delete outside the tab | Acceptable for a debug tool; same tradeoff already accepted in `_dbg__SpatialGrid.ts`.                                                                   |
+| `collider.shapeType()` is async (unlike legacy's fully-synchronous main-thread-only list)         | List rows must tolerate a brief per-row loading state; confirm this reads cleanly during Phase 3's manual check.                                         |
+| Same icon on two simultaneously-visible tabs                                                      | Per the user's explicit request; disambiguated by tooltip title only — worth a quick visual check in Phase 2's manual verification.                      |
+| `getResolvedTransportMode()` before any world exists                                              | Should show an explicit "not created yet" state rather than blank/stale — confirm during Phase 2.                                                        |
 
 ## Verification
 
