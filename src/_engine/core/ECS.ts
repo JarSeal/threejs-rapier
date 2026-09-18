@@ -466,7 +466,18 @@ export class ECSWorld {
     this.storages.forEach((storage, type) => {
       if (storage.has(entityId)) {
         const hooks = ECSWorld.onDeleteEntityHooks.get(type);
-        hooks?.forEach((hook) => hook(entityId, this));
+        hooks?.forEach((hook) => {
+          // One hook throwing (e.g. a disposal error) must not block another
+          // hook's cleanup, or the entity-removal code below it in this method.
+          try {
+            hook(entityId, this);
+          } catch (err) {
+            lerror(
+              `onDeleteEntity hook for component type '${type}' threw for entity ${entityId}.`,
+              err
+            );
+          }
+        });
       }
     });
 

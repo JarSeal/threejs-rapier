@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { ECSSystemStage } from '../../AppECSRegistry';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
+import { lerror } from '../utils/Logger';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import {
@@ -10,15 +11,21 @@ import {
   createCollidersSync,
   createRigidBody,
   createRigidBodySync,
-  deleteCollidersSync,
-  deleteRigidBodySync,
+  deleteColliders,
+  deleteRigidBody,
   getPhysicsState,
 } from './PhysicsAPI';
 import { ColliderParams, RigidBodyAPI, RigidBodyParams } from './Physics/PhysicsAPITypes';
 
 export const registerPhysicsManager = (world: ECSWorld) => {
   ECSWorld.registerComponentHooks(ComponentType.TAG_IS_PHYSICS_OBJECT, {
-    onDeleteEntity: (entityId, w) => disposePhysicsEntity(entityId, w),
+    onDeleteEntity: (entityId, w) => {
+      // onDeleteEntity is synchronous; disposal is fire-and-forget (WORKER_THREAD mode
+      // has no synchronous delete path, see disposePhysicsEntity).
+      disposePhysicsEntity(entityId, w).catch((err) =>
+        lerror(`Failed to dispose physics entity ${entityId}.`, err)
+      );
+    },
   });
   world.addSystem(
     ECSSystemStage.APP_POST_PHYSICS,
@@ -106,11 +113,11 @@ export const createPhysicsEntity = async (
   return entityId;
 };
 
-export const disposePhysicsEntity = (entityId: number, world: ECSWorld) => {
+export const disposePhysicsEntity = async (entityId: number, world: ECSWorld) => {
   const rb = world.getRigidBody(entityId);
   const colls = world.getComponent(entityId, ComponentType.COLLIDER);
-  if (colls) deleteCollidersSync(colls.map((c) => c.id));
-  if (rb) deleteRigidBodySync(rb.id);
+  if (colls) await deleteColliders(colls.map((c) => c.id));
+  if (rb) await deleteRigidBody(rb.id);
 };
 
 export const getPhysicsEntityByAppId = (appId: string) => getEntityIdByAppId(appId);
