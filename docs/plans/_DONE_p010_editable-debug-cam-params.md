@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Debugger
 
 # Editable Debug Camera Params in Debug Tools Controls Tab — Plan
@@ -36,7 +36,7 @@ Also adds a "Reset to origin" button in the new folder that snaps the debug came
 
 Decision: this scaffolding (the `debugCamera`/`debugCameraFolderExpanded` fields, the matching `DebugCameraState`/`DEFAULT_DEBUG_CAM_PARAMS` types, and `_addSceneToDebugtools`'s population of them) is **dead code and is deleted outright**, not repurposed. Phase 1 builds the new "Debug Camera" folder fresh, wired to the real live state (`CameraManager`/`_dbg__DebugCamera`/`_dbg__CameraGUI`), with no dependency on or reuse of the old shape.
 
-### 1.4 Existing camera UI that does *not* cover this
+### 1.4 Existing camera UI that does _not_ cover this
 
 `_dbg__CameraGUI.ts:326-407` builds a separate **"Camera Controls"** tab (id `camerasControls`, orderNr 11) with a full position/fov/near/far editor per scene camera (`createEditCameraContent`, line 70) — but it explicitly skips the debug camera: `_dbg__CameraGUI.ts:272` `if (world.hasComponent(entityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA)) continue;`. No existing panel anywhere exposes the debug camera's own params for editing; today it's adjustable only by dragging it in the viewport, or via the on/off toggle in `_dbg__OnScreenTools.ts:125/138/187-188`.
 
@@ -77,11 +77,11 @@ Manual verification: with the Controls tab open on the Debug Camera folder, orbi
 
 ## 5. Risks and open questions
 
-| Risk / question | Notes |
-| --- | --- |
-| Per-frame `.refresh()` cost while orbiting | Must be gated on "OrbitControls actually changed this frame" (value already computed in `debugCameraSystem`), not called unconditionally every frame, and only when the Debug Camera folder is actually built/visible. |
-| Circular imports | `_dbg__CameraGUI.ts`/`_dbg__DebugCamera.ts`/`CameraManager.ts` currently have no imports from `_dbg__DebugTools.ts`, so `_dbg__DebugTools.ts` importing from them (new, one-directional) should be safe — worth a quick build check once wired up. |
-| Orphaned `debugToolsState.debugCamera` scaffolding | Confirmed unused (no folder/binding reads it). Deleted outright in Phase 1 and rebuilt fresh against the real source of truth (`DebugCamLSProps`/`AEK_debugCams`) rather than repurposed — double-check no other call sites reference the old fields before removing. |
-| "Reset to origin" scope | Per spec, the button only resets position to `(0, 0, 0)` — target/fov/near/far/zoom are left as-is. Confirm this matches intent before implementation if a full reset-to-defaults (using `DEFAULT_DEBUG_CAM_PROPS`, `_dbg__DebugCamera.ts:11`) is actually wanted instead. |
-| Target vs. rotation | Plan uses target per §"Target vs. rotation" above; flag before implementation in case rotation fields are actually preferred despite the extra derivation work. |
-| Binding reference lifecycle | Panel bindings must be safely reachable/nullable across tab rebuilds (tab can be destroyed/recreated, e.g. via the existing "clear tab" button at `_dbg__DebugTools.ts:151-178`) — the per-frame refresh call in Phase 2 must not throw if the folder/pane has been torn down. |
+| Risk / question                                    | Notes                                                                                                                                                                                                                                                                          |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Per-frame `.refresh()` cost while orbiting         | Must be gated on "OrbitControls actually changed this frame" (value already computed in `debugCameraSystem`), not called unconditionally every frame, and only when the Debug Camera folder is actually built/visible.                                                         |
+| Circular imports                                   | `_dbg__CameraGUI.ts`/`_dbg__DebugCamera.ts`/`CameraManager.ts` currently have no imports from `_dbg__DebugTools.ts`, so `_dbg__DebugTools.ts` importing from them (new, one-directional) should be safe — worth a quick build check once wired up.                             |
+| Orphaned `debugToolsState.debugCamera` scaffolding | Confirmed unused (no folder/binding reads it). Deleted outright in Phase 1 and rebuilt fresh against the real source of truth (`DebugCamLSProps`/`AEK_debugCams`) rather than repurposed — double-check no other call sites reference the old fields before removing.          |
+| "Reset to origin" scope                            | Per spec, the button only resets position to `(0, 0, 0)` — target/fov/near/far/zoom are left as-is. Confirm this matches intent before implementation if a full reset-to-defaults (using `DEFAULT_DEBUG_CAM_PROPS`, `_dbg__DebugCamera.ts:11`) is actually wanted instead.     |
+| Target vs. rotation                                | Plan uses target per §"Target vs. rotation" above; flag before implementation in case rotation fields are actually preferred despite the extra derivation work.                                                                                                                |
+| Binding reference lifecycle                        | Panel bindings must be safely reachable/nullable across tab rebuilds (tab can be destroyed/recreated, e.g. via the existing "clear tab" button at `_dbg__DebugTools.ts:151-178`) — the per-frame refresh call in Phase 2 must not throw if the folder/pane has been torn down. |
