@@ -18,7 +18,7 @@ import {
 } from './Physics/PhysicsUtils';
 import { lerror, lwarn } from '../utils/Logger';
 import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay } from './MainLoop';
-import { initWorker } from '../utils/helpers';
+import { DebugModuleRef, initWorker, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import {
   ColliderAPI,
   EngineAPIType,
@@ -203,7 +203,7 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
  * has been created via createPhysicsWorld().
  */
 export const stepPhysics = (loopState: LoopState) => {
-  if (!physicsWorldEnabled || !loopState.appPlay) return;
+  if (!physicsWorldEnabled || !loopState.appPlay || !physicsState.worldStepEnabled) return;
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     engAPI?.step();
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
@@ -314,6 +314,14 @@ const updateTimer = () => {
 
 /** Returns the current physicsState */
 export const getPhysicsState = () => physicsState;
+
+/** Returns the current WorldAPI instance (for live setGravity/setNumSolverIterations/etc.
+ * calls), or the no-op stub if no world has been created yet via createPhysicsWorld(). */
+export const getPhysicsWorld = () => physicsWorld;
+
+/** Whether a physics world currently exists (i.e. createPhysicsWorld() has resolved and
+ * deletePhysicsWorld() hasn't run since) — guards calls on the getPhysicsWorld() stub. */
+export const isPhysicsWorldEnabled = () => physicsWorldEnabled;
 
 export const createPhysicsWorld = async (
   gravity?: PhysVector,
@@ -2493,3 +2501,12 @@ class ColliderProxyAPI implements ColliderAPI {
 }
 
 /** World, RigidBody, and Collider API classes -----[ END ]----- */
+
+// Debug
+type PhysicsAPIGUIModule = typeof import('./Debug/_dbg__PhysicsAPI');
+let debugGUI: DebugModuleRef<PhysicsAPIGUIModule> | null = null;
+
+export const createPhysicsAPIDebugGUI = async () => {
+  debugGUI = await loadDebugModuleAsync(() => import('./Debug/_dbg__PhysicsAPI'));
+  useDebug(debugGUI)?._createPhysicsAPIDebugGUI();
+};

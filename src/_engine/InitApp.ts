@@ -9,7 +9,11 @@ import {
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
 import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
 import { InitRapierPhysics } from './core/PhysicsRapier';
-import { createPhysicsWorld, initPhysics as initNewPhysics } from './core/PhysicsAPI';
+import {
+  createPhysicsAPIDebugGUI,
+  createPhysicsWorld,
+  initPhysics as initNewPhysics,
+} from './core/PhysicsAPI';
 import { registerPhysicsManager } from './core/PhysicsManager';
 import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
@@ -111,6 +115,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Create debug GUIs and utils
     if (IS_DEBUG_ENV) {
       await createRendererDebugGUI();
+      await createPhysicsAPIDebugGUI();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
 
