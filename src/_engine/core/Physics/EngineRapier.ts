@@ -97,6 +97,9 @@ export const getRigidBodyAPIWithId = (id: number): RigidBodyAPI | undefined =>
 /** Get colliderAPI with an id (running id). */
 export const getColliderAPIWithId = (id: number): ColliderAPI | undefined => colliderAPIs.get(id);
 
+/** Enumerates the ids of all currently-live rigid bodies. */
+export const getAllRigidBodyIds = (): IterableIterator<number> => rigidBodyAPIs.keys();
+
 export const init = (
   physicsSt: PhysicsState,
   isDebugEnv: boolean,

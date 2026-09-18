@@ -9,6 +9,7 @@ import * as THREE from 'three/webgpu';
 
 import PhysicsWorker from '../workers/physicsWorker?worker';
 import { getConfig, isDebugEnvironment } from './Config';
+import { PhysicsTransformBuffer } from './Physics/PhysicsTransformBuffer';
 import {
   getCollOrRigidId,
   getEngineAPI,
@@ -141,6 +142,11 @@ let physicsWorld: WorldAPI = { step: () => {} } as unknown as WorldAPI;
 let physicsWorldEnabled = false;
 let engineInitiated = false;
 let engAPI: EngineAPIType | null = null;
+/** Main-thread wrapper for the worker's hot-path transform buffer (WORKER_THREAD mode only).
+ * SHARED_MEMORY: set once at createPhysicsWorld() and never replaced. MESSAGE_BATCH: undefined
+ * until the first TRANSFORMS_PUSH, then replaced on every subsequent push.
+ */
+let transformBuffer: PhysicsTransformBuffer | undefined;
 
 const rigidBodies = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
 const colliders = new Map<number, ColliderAPI>(); // { "Running id", ColliderAPI }
@@ -200,7 +206,7 @@ export const stepPhysics = (loopState: LoopState) => {
     engAPI?.step();
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     // One-way, no response awaited — transform results arrive via the hot-path
-    // buffer (added in a later phase), not via a STEP reply.
+    // buffer (transformBuffer), not via a STEP reply.
     messageWorker({ type: PhysicsProtocolType.STEP, isOneWay: true });
   }
 };
@@ -235,6 +241,10 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
   if (type === PhysicsProtocolType.ERROR) {
     // @CONSIDER: should we throw an error here??? Maybe a physics setting whether to throw or not?
     lerror(`Error in physics worker, message: ${data.message}`);
+    return;
+  } else if (type === PhysicsProtocolType.TRANSFORMS_PUSH) {
+    // Unsolicited push (MESSAGE_BATCH fallback) — no requestId, not a response to resolve.
+    transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, data.buffer);
     return;
   } else if (!ValidProtocolTypes.has(type)) {
     lerror(`Error in physics onWorkerMessage, unknown protocol type: ${type}`);
@@ -352,6 +362,10 @@ export const createPhysicsWorld = async (
     if (response.worldCreated) {
       physicsWorld = new WorldProxyAPI();
       physicsWorldEnabled = true;
+      if (response.transportMode === 'SHARED_MEMORY' && response.buffer) {
+        transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, response.buffer);
+      }
+      // MESSAGE_BATCH: transformBuffer stays undefined until the first TRANSFORMS_PUSH arrives.
       addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChangeHandler);
     } else {
       lerror(
@@ -441,14 +455,12 @@ export const createRigidBody = async (params: RigidBodyParams) => {
     rigidBodies.set(rbAPI.id, rbAPI);
     return rbAPI;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
-    const rbId = (
-      await messageWorkerAsync<CreateRigidBodyResponse>({
-        type: PhysicsProtocolType.CREATE_RIGID_BODY,
-        params,
-      })
-    ).id;
-    const rbAPI = new RigidBodyProxyAPI(rbId, params.userData) as RigidBodyAPI;
-    rigidBodies.set(rbId, rbAPI);
+    const res = await messageWorkerAsync<CreateRigidBodyResponse>({
+      type: PhysicsProtocolType.CREATE_RIGID_BODY,
+      params,
+    });
+    const rbAPI = new RigidBodyProxyAPI(res.id, res.slot, params.userData) as RigidBodyAPI;
+    rigidBodies.set(res.id, rbAPI);
     return rbAPI;
   }
   // Should not get here..
@@ -491,20 +503,18 @@ export const createRigidBodies = async (params: RigidBodyParams[]) => {
       `Could not create a rigid bodies ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
     );
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
-    const rbIds = (
-      await messageWorkerAsync<CreateRigidBodiesResponse>({
-        type: PhysicsProtocolType.CREATE_RIGID_BODIES,
-        params,
-      })
-    ).ids;
+    const res = await messageWorkerAsync<CreateRigidBodiesResponse>({
+      type: PhysicsProtocolType.CREATE_RIGID_BODIES,
+      params,
+    });
     existsOrThrow(
-      rbIds.length,
+      res.ids.length,
       `Could not create a rigid bodies ("WORKER_THREAD"). Params: ${JSON.stringify(params)}`
     );
     const rbAPIs = [];
-    for (let i = 0; i < rbIds.length; i++) {
-      const id = rbIds[i];
-      const rbAPI = new RigidBodyProxyAPI(id, params[i].userData);
+    for (let i = 0; i < res.ids.length; i++) {
+      const id = res.ids[i];
+      const rbAPI = new RigidBodyProxyAPI(id, res.slots[i], params[i].userData);
       rbAPIs.push(rbAPI);
       rigidBodies.set(id, rbAPI);
     }
@@ -1346,8 +1356,7 @@ class WorldProxyAPI implements WorldAPI {
 
 class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   uData: Record<string, unknown> = {};
-  pos: PhysVector = { x: 0, y: 0, z: 0 };
-  rot: PhysRotation = { x: 0, y: 0, z: 0, w: 0 };
+  // lvel/avel stay RPC-only for this MVP — not synced via the hot-path buffer.
   lvel: PhysVector = { x: 0, y: 0, z: 0 };
   avel: PhysVector = { x: 0, y: 0, z: 0 };
   isBeingDeleted: boolean = false;
@@ -1355,9 +1364,21 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
 
   constructor(
     public id: number,
+    private slot: number,
     userData?: Record<string, unknown>
   ) {
     if (userData) this.uData = userData;
+  }
+
+  // Hot path — reads straight from the shared/latest-pushed transform buffer by slot.
+  // Returns zeroed defaults if no buffer has arrived yet (before the first step/push).
+  get pos(): PhysVector {
+    if (!transformBuffer || this.slot === -1) return { x: 0, y: 0, z: 0 };
+    return transformBuffer.getPosition(this.slot);
+  }
+  get rot(): PhysRotation {
+    if (!transformBuffer || this.slot === -1) return { x: 0, y: 0, z: 0, w: 0 };
+    return transformBuffer.getRotation(this.slot);
   }
 
   async getUserData(): Promise<Record<string, unknown>> {

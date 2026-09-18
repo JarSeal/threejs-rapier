@@ -38,6 +38,8 @@ export type EngineAPIType = {
   restoreSnapshot: (snapshot: Uint8Array) => WorldAPI;
   getRigidBodyAPIWithId: (id: number) => RigidBodyAPI | undefined;
   getColliderAPIWithId: (id: number) => ColliderAPI | undefined;
+  /** Enumerates the ids of all currently-live rigid bodies (worker per-step hot-path write-back). */
+  getAllRigidBodyIds: () => IterableIterator<number>;
   step: (eventQueue?: unknown, hooks?: unknown) => void;
   debugRender: () => { vertices: Float32Array; colors: Float32Array } | undefined;
 };
@@ -2071,7 +2073,14 @@ export type PhysicsDownProtocol =
         worldCreated: boolean;
       }
     // World --------------------------------------
-    | { type: PhysicsProtocolType.CREATE_WORLD; worldCreated: boolean }
+    | {
+        type: PhysicsProtocolType.CREATE_WORLD;
+        worldCreated: boolean;
+        /** Which hot-path transport the worker resolved to for this world. */
+        transportMode?: 'SHARED_MEMORY' | 'MESSAGE_BATCH';
+        /** Only present (and only a SharedArrayBuffer) when transportMode is 'SHARED_MEMORY'. */
+        buffer?: ArrayBuffer | SharedArrayBuffer;
+      }
     | { type: PhysicsProtocolType.DELETE_WORLD; worldDeleted: boolean }
     | {
         type: PhysicsProtocolType.WORLD_GET_GRAVITY;
@@ -2111,8 +2120,8 @@ export type PhysicsDownProtocol =
     | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH; colliderIds: number[] }
     | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR; isIntersecting: boolean }
     // Rigid body --------------------------------------
-    | { type: PhysicsProtocolType.CREATE_RIGID_BODY; id: number }
-    | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; ids: number[] }
+    | { type: PhysicsProtocolType.CREATE_RIGID_BODY; id: number; slot: number }
+    | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; ids: number[]; slots: number[] }
     | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number; colliderIds: number[] }
     | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; ids: number[]; colliderIds: number[] }
     | { type: PhysicsProtocolType.RIGID_GET_USERDATA; userData: Record<string, unknown> }
@@ -2177,6 +2186,8 @@ export type PhysicsDownProtocol =
     | { type: PhysicsProtocolType.COLL_COLLISION_GROUPS; groups: InteractionGroupsAPI }
     | { type: PhysicsProtocolType.COLL_SOLVER_GROUPS; groups: InteractionGroupsAPI }
     | { type: PhysicsProtocolType.COLL_CONTAINS_POINT; isInside: boolean }
+    // Transforms hot path (unsolicited push, MESSAGE_BATCH fallback only) ----
+    | { type: PhysicsProtocolType.TRANSFORMS_PUSH; buffer: ArrayBuffer }
     // Error --------------------------------------
     | {
         type: PhysicsProtocolType.ERROR;
@@ -2197,6 +2208,7 @@ export type RestoreSnapshotResponse = PhysicsResponse<PhysicsProtocolType.RESTOR
 export type ErrorResponse = PhysicsResponse<PhysicsProtocolType.ERROR>;
 // World
 export type CreateWorldResponse = PhysicsResponse<PhysicsProtocolType.CREATE_WORLD>;
+export type TransformsPushMessage = PhysicsResponse<PhysicsProtocolType.TRANSFORMS_PUSH>;
 export type DeleteWorldResponse = PhysicsResponse<PhysicsProtocolType.DELETE_WORLD>;
 export type WorldGravityResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GET_GRAVITY>;
 export type WorldTimestepResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GET_TIMESTEP>;
