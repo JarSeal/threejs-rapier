@@ -26,6 +26,20 @@ ECSWorld.registerPlugin((world) => {
   world.addSystem(ECSSystemStage.MAIN, 'debugCameraSystem', debugCameraSystem);
 });
 
+let panelRefreshCallback: (() => void) | null = null;
+
+/**
+ * Registers a callback that `debugCameraSystem` calls once per frame whenever OrbitControls
+ * reports a change, so a debug-tools panel showing live camera values can refresh itself
+ * without polling. Pass `null` to unregister (e.g. when the panel's pane is torn down) —
+ * callers must do so, since a stale callback would otherwise keep firing against disposed
+ * Tweakpane bindings. Kept as a plain callback (rather than an import) so this file never
+ * has to import the debug-tools panel module back.
+ */
+export const setDebugCameraPanelRefresh = (cb: (() => void) | null) => {
+  panelRefreshCallback = cb;
+};
+
 export const attachOrbitControls = (entityId: number, world: ECSWorld, sceneId: string) => {
   const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value as THREE.Camera;
   const canvas = getCanvasElem();
@@ -46,6 +60,12 @@ export const attachOrbitControls = (entityId: number, world: ECSWorld, sceneId: 
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
     });
   });
+
+  // OrbitControls applies rotate/pan/dolly synchronously inside its own pointermove handler
+  // (it calls its internal update() there directly), dispatching 'change' immediately — well
+  // before debugCameraSystem's next per-frame poll ever sees a diff to react to. So a live panel
+  // must hook 'change' directly rather than relying on that poll's own `changed` return value.
+  controls.addEventListener('change', () => panelRefreshCallback?.());
 
   world.addComponent(entityId, ComponentType.ORBIT_CONTROLS, {
     controls,

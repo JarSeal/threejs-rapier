@@ -32,6 +32,7 @@ import { getECSWorld, getEntityIdByAppId } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import type { DebugCamLSProps } from '../CameraManager';
 import { getDebugCamProps, saveDebugCameraToLS } from './Camera/_dbg__CameraGUI';
+import { DEFAULT_DEBUG_CAM_PROPS, setDebugCameraPanelRefresh } from './Camera/_dbg__DebugCamera';
 
 const LS_KEY = 'AEK_debugTools';
 let scenesDropDown: ListBladeApi<BladeController<View>>;
@@ -117,6 +118,19 @@ const createDebugToolsDebugGUI = () => {
         [clearTabBtn]
       );
       toolsDebugGUI = debugGUI;
+
+      // The Debug Camera folder below registers a per-frame panel-refresh callback with
+      // debugCameraSystem; it must be unregistered when this pane is torn down (e.g. switching
+      // to another debug tab), or a stale callback would keep firing against disposed bindings.
+      const existingOnRemoveCmp = container.props?.onRemoveCmp;
+      container.props = {
+        ...container.props,
+        onRemoveCmp: (cmp) => {
+          existingOnRemoveCmp?.(cmp);
+          setDebugCameraPanelRefresh(null);
+        },
+      };
+
       buildDebugToolsGUI();
 
       return container;
@@ -243,6 +257,17 @@ const buildDebugToolsGUI = () => {
 
   const debugCamProxy: DebugCamLSProps = { ...getDebugCamProps(currentSceneId) };
 
+  // Guards against a feedback loop: refreshing a binding from the viewport-driven callback
+  // below (setDebugCameraPanelRefresh) can make Tweakpane re-emit that same binding's own
+  // 'change' event (its displayed value no longer matches debugCamProxy once we've written the
+  // live camera's values into it) — which would otherwise call applyDebugCameraProps again,
+  // which calls controls.update(), which can re-dispatch OrbitControls' 'change' event, calling
+  // the refresh callback again, ad infinitum (surfaced as a "Maximum call stack size exceeded"
+  // when panning, since panning is what moves the target binding through this exact path).
+  // While set, every binding below treats its 'change' event as an echo of our own refresh,
+  // not a real user edit, and skips calling applyDebugCameraProps.
+  let isRefreshingDebugCameraPanel = false;
+
   const applyDebugCameraProps = (partial: Partial<DebugCamLSProps>) => {
     const entityId = getEntityIdByAppId(DEBUG_CAMERA_ID);
     if (entityId === undefined) return;
@@ -284,41 +309,90 @@ const buildDebugToolsGUI = () => {
   const debugCamPositionBinding = debugCameraFolder
     .addBinding(debugCamProxy, 'position', { label: 'Position' })
     .on('change', (e) => {
-      if (!e.last) return;
+      if (isRefreshingDebugCameraPanel || !e.last) return;
       applyDebugCameraProps({ position: { ...e.value } });
     });
-  debugCameraFolder.addBinding(debugCamProxy, 'target', { label: 'Target' }).on('change', (e) => {
-    if (!e.last) return;
-    applyDebugCameraProps({ target: { ...e.value } });
-  });
-  debugCameraFolder
+  const debugCamTargetBinding = debugCameraFolder
+    .addBinding(debugCamProxy, 'target', { label: 'Target' })
+    .on('change', (e) => {
+      if (isRefreshingDebugCameraPanel || !e.last) return;
+      applyDebugCameraProps({ target: { ...e.value } });
+    });
+  // Lens fields (unlike position/target above) are not gated by `e.last` — matching the
+  // "Camera Controls" tab's own lens bindings (`_dbg__CameraGUI.ts`'s `createEditCameraContent`,
+  // which binds directly to the live camera and applies on every intermediate slide tick) — so
+  // dragging the slider updates the live view continuously instead of only on mouse-up.
+  const debugCamFovBinding = debugCameraFolder
     .addBinding(debugCamProxy, 'fov', { label: 'FOV', min: 1, max: 170, step: 1 })
     .on('change', (e) => {
-      if (!e.last) return;
+      if (isRefreshingDebugCameraPanel) return;
       applyDebugCameraProps({ fov: e.value });
     });
-  debugCameraFolder
+  const debugCamNearBinding = debugCameraFolder
     .addBinding(debugCamProxy, 'near', { label: 'Near', min: 0.001, step: 0.001 })
     .on('change', (e) => {
-      if (!e.last) return;
+      if (isRefreshingDebugCameraPanel) return;
       applyDebugCameraProps({ near: e.value });
     });
-  debugCameraFolder
+  const debugCamFarBinding = debugCameraFolder
     .addBinding(debugCamProxy, 'far', { label: 'Far', min: 1, step: 1 })
     .on('change', (e) => {
-      if (!e.last) return;
+      if (isRefreshingDebugCameraPanel) return;
       applyDebugCameraProps({ far: e.value });
     });
-  debugCameraFolder
+  const debugCamZoomBinding = debugCameraFolder
     .addBinding(debugCamProxy, 'zoom', { label: 'Zoom', min: 0.01, step: 0.01 })
     .on('change', (e) => {
-      if (!e.last) return;
+      if (isRefreshingDebugCameraPanel) return;
       applyDebugCameraProps({ zoom: e.value });
     });
-  debugCameraFolder.addButton({ title: 'Reset to origin' }).on('click', () => {
-    debugCamProxy.position = { x: 0, y: 0, z: 0 };
-    applyDebugCameraProps({ position: { x: 0, y: 0, z: 0 } });
-    debugCamPositionBinding.refresh();
+  debugCameraFolder.addButton({ title: 'Reset to default' }).on('click', () => {
+    debugCamProxy.position = { ...DEFAULT_DEBUG_CAM_PROPS.position };
+    debugCamProxy.target = { ...DEFAULT_DEBUG_CAM_PROPS.target };
+    applyDebugCameraProps({
+      position: { ...DEFAULT_DEBUG_CAM_PROPS.position },
+      target: { ...DEFAULT_DEBUG_CAM_PROPS.target },
+    });
+    isRefreshingDebugCameraPanel = true;
+    try {
+      debugCamPositionBinding.refresh();
+      debugCamTargetBinding.refresh();
+    } finally {
+      isRefreshingDebugCameraPanel = false;
+    }
+  });
+
+  // Live-refresh the bindings above from the viewport (dragging the debug camera with
+  // OrbitControls) — registered with debugCameraSystem, which calls this only on frames
+  // where OrbitControls actually reported a change. Unregistered on pane teardown above.
+  setDebugCameraPanelRefresh(() => {
+    const entityId = getEntityIdByAppId(DEBUG_CAMERA_ID);
+    if (entityId === undefined) return;
+    const world = getECSWorld();
+    const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value as
+      | THREE.PerspectiveCamera
+      | undefined;
+    const controls = world.getComponent(entityId, ComponentType.ORBIT_CONTROLS)?.controls;
+    if (!obj || !controls) return;
+
+    debugCamProxy.position = { x: obj.position.x, y: obj.position.y, z: obj.position.z };
+    debugCamProxy.target = { x: controls.target.x, y: controls.target.y, z: controls.target.z };
+    debugCamProxy.fov = obj.fov;
+    debugCamProxy.near = obj.near;
+    debugCamProxy.far = obj.far;
+    debugCamProxy.zoom = obj.zoom;
+
+    isRefreshingDebugCameraPanel = true;
+    try {
+      debugCamPositionBinding.refresh();
+      debugCamTargetBinding.refresh();
+      debugCamFovBinding.refresh();
+      debugCamNearBinding.refresh();
+      debugCamFarBinding.refresh();
+      debugCamZoomBinding.refresh();
+    } finally {
+      isRefreshingDebugCameraPanel = false;
+    }
   });
 
   // Helpers
