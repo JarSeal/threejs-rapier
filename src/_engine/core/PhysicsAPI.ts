@@ -126,14 +126,13 @@ let physicsState: PhysicsState = {
   pauseReason: null,
   minDeltaTime: 1 / 30,
   maxDeltaTime: 1 / 10,
-  minSubSteps: 0,
   maxSubSteps: 60,
   worldStepEnabled: true,
   visualizerEnabled: false,
   gravity: { x: 0, y: -9.81, z: 0 },
   solverIterations: 10,
   internalPgsIterations: 1,
-  interpolationEnabled: true,
+  interpolationMode: 'NONE',
   useSAB: true,
   maxBodies: 2048,
 };
@@ -201,15 +200,87 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
 /**
  * Steps the physics world (called in the main loop). No-op until a physics world
  * has been created via createPhysicsWorld().
+ *
+ * Runs a fixed-timestep accumulator so simulated motion doesn't speed up/slow down with
+ * the render framerate: real elapsed time (scaled by playSpeedMultiplier, clamped by
+ * maxDeltaTime) is accumulated, then drained in physicsState.timestepRatio-sized slices,
+ * up to maxSubSteps per frame. Also handles backgroundBehavior/pause bookkeeping the same
+ * way legacy PhysicsRapier.ts's baseStepper does (see physicsVisibilityChangeHandler for
+ * the window-hidden 'PAUSE' path, which halts the whole main loop before this is reached).
  */
 export const stepPhysics = (loopState: LoopState) => {
-  if (!physicsWorldEnabled || !loopState.appPlay || !physicsState.worldStepEnabled) return;
+  if (!physicsWorldEnabled || !physicsState.worldStepEnabled) return;
+
+  updateTimer();
+  let dt = timer.getDelta();
+
+  if (!loopState.masterPlay || !loopState.appPlay) {
+    // Explicit pause (unrelated to window visibility) always halts stepping outright —
+    // backgroundBehavior only governs what happens while the window is hidden.
+    if (!physicsState.isPaused) setPhysicsPauseTime();
+    physicsState.isPaused = true;
+    timerRunning = false;
+    return;
+  }
+
+  if (loopState.isWindowHidden) {
+    if (physicsState.backgroundBehavior === 'PAUSE') {
+      // Normally already handled by physicsVisibilityChangeHandler halting the whole main
+      // loop (toggleMainPlay(false), which makes loopState.masterPlay false and is caught
+      // above) — this is a defensive fallback in case stepPhysics is still reached directly
+      // while hidden.
+      if (!physicsState.isPaused) setPhysicsPauseTime();
+      physicsState.isPaused = true;
+      timerRunning = false;
+      return;
+    }
+    if (
+      physicsState.backgroundBehavior === 'KEEP_RUNNING_USE_MIN_DELTA' &&
+      physicsState.minDeltaTime > 0
+    ) {
+      dt = physicsState.minDeltaTime;
+    }
+    // 'KEEP_RUNNING': keep the real dt, still subject to the maxDeltaTime clamp below.
+  } else if (physicsState.isPaused) {
+    // Resuming: the dt just computed above spans the entire paused duration (the timer
+    // wasn't updated while timerRunning was false) — discard it and the stale accumulator
+    // rather than trying to simulate the whole paused duration in one go. Physics resumes
+    // cleanly from next frame's dt instead.
+    physicsState.isPaused = false;
+    physicsState.pauseDurationTotal += performance.now() - physicsState.pausedTime;
+    physicsState.pausedTime = 0;
+    accDelta = 0;
+    return;
+  }
+
+  const scaledDelta = dt * loopState.playSpeedMultiplier;
+  accDelta +=
+    physicsState.maxDeltaTime > 0 ? Math.min(scaledDelta, physicsState.maxDeltaTime) : scaledDelta;
+
+  let stepsTaken = 0;
+  while (
+    accDelta >= physicsState.timestepRatio &&
+    (physicsState.maxSubSteps === 0 || stepsTaken < physicsState.maxSubSteps)
+  ) {
+    accDelta -= physicsState.timestepRatio;
+    stepsTaken++;
+  }
+  // Hit the sub-step ceiling with backlog still left over: drop it instead of deferring it,
+  // so a sustained slowdown can't make the accumulator (and next frame's catch-up cost) grow
+  // without bound — the actual "prevent the spiral of death" behavior.
+  if (physicsState.maxSubSteps > 0 && stepsTaken >= physicsState.maxSubSteps) {
+    accDelta = 0;
+  }
+
+  if (stepsTaken === 0) return;
+
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    engAPI?.step();
+    for (let i = 0; i < stepsTaken; i++) engAPI?.step();
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
-    // One-way, no response awaited — transform results arrive via the hot-path
-    // buffer (transformBuffer), not via a STEP reply.
-    messageWorker({ type: PhysicsProtocolType.STEP, isOneWay: true });
+    // One-way, no response awaited — transform results arrive via the hot-path buffer
+    // (transformBuffer), not via a STEP reply. A single message runs all of this frame's
+    // sub-steps and writes back exactly once, never one message per sub-step.
+    messageWorker({ type: PhysicsProtocolType.STEP, steps: stepsTaken, isOneWay: true });
   }
 };
 
@@ -295,9 +366,10 @@ const physicsVisibilityChangeHandler = (isHidden: boolean) => {
   } else {
     if (physicsState.pauseReason === 'BACKGROUND_BEHAVIOR') {
       physicsState.pauseReason = null;
+      // Re-enable the timer; stepPhysics()'s own resume-detection branch discards the
+      // resulting pause-spanning dt and resets accDelta on its next call, so no flush is
+      // needed here.
       timerRunning = true;
-      updateTimer();
-      timer.getDelta();
       toggleMainPlay(true);
     }
   }
@@ -305,6 +377,7 @@ const physicsVisibilityChangeHandler = (isHidden: boolean) => {
 
 // Physics step accumulator variables
 let timerRunning = true;
+let accDelta = 0;
 const timer = new THREE.Timer();
 const updateTimer = () => {
   if (timerRunning) {
@@ -314,6 +387,17 @@ const updateTimer = () => {
 
 /** Returns the current physicsState */
 export const getPhysicsState = () => physicsState;
+
+/** Returns the fixed-timestep accumulator's current interpolation alpha (0..1): how far
+ * stepPhysics()'s accumulator is into the next physics step, for 'FIXED_PHYSICS'
+ * interpolation mode (see PhysicsManager.ts's physicsInterpolationSystem). 0 means the
+ * render is showing the pose from right after the last consumed step (i.e. one step
+ * "behind" real time, by design — the standard fixed-timestep interpolation trade-off of
+ * never extrapolating into an unknown future state). */
+export const getPhysicsInterpolationAlpha = () =>
+  physicsState.timestepRatio > 0
+    ? Math.min(1, Math.max(0, accDelta / physicsState.timestepRatio))
+    : 0;
 
 /** Returns the current WorldAPI instance (for live setGravity/setNumSolverIterations/etc.
  * calls), or the no-op stub if no world has been created yet via createPhysicsWorld(). */
@@ -362,7 +446,7 @@ export const createPhysicsWorld = async (
       `Could not create physics world (main thread), engineAPI: ${JSON.stringify(getEngineAPI())}`
     );
     physicsWorldEnabled = true;
-    addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChangeHandler);
+    addVisibilityChangeFn('pausePhysicsApiOnVisibilityChange', physicsVisibilityChangeHandler);
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const response = await messageWorkerAsync<CreateWorldResponse>({
       type: PhysicsProtocolType.CREATE_WORLD,
@@ -377,7 +461,7 @@ export const createPhysicsWorld = async (
         transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, response.buffer);
       }
       // MESSAGE_BATCH: transformBuffer stays undefined until the first TRANSFORMS_PUSH arrives.
-      addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChangeHandler);
+      addVisibilityChangeFn('pausePhysicsApiOnVisibilityChange', physicsVisibilityChangeHandler);
     } else {
       lerror(
         `Could not create physics world (WORKER_THREAD), gravity: ${JSON.stringify(gravity)}, opts: ${JSON.stringify(opts)}`

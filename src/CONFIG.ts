@@ -21,7 +21,7 @@ const config: AppConfig = {
     timestep: 60,
     solverIterations: 10,
     internalPgsIterations: 1,
-    interpolationEnabled: true,
+    interpolationMode: 'FIXED_PHYSICS',
     workerTarget: 'WORKER_THREAD',
     useSAB: true,
   },

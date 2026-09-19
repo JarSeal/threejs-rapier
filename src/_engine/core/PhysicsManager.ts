@@ -13,6 +13,7 @@ import {
   createRigidBodySync,
   deleteColliders,
   deleteRigidBody,
+  getPhysicsInterpolationAlpha,
   getPhysicsState,
 } from './PhysicsAPI';
 import { ColliderParams, RigidBodyAPI, RigidBodyParams } from './Physics/PhysicsAPITypes';
@@ -25,12 +26,18 @@ export const registerPhysicsManager = (world: ECSWorld) => {
       disposePhysicsEntity(entityId, w).catch((err) =>
         lerror(`Failed to dispose physics entity ${entityId}.`, err)
       );
+      interpolationStates.delete(entityId);
     },
   });
   world.addSystem(
     ECSSystemStage.APP_POST_PHYSICS,
     'physicsToTransformSystem',
     physicsToTransformSystem
+  );
+  world.addSystem(
+    ECSSystemStage.APP_RENDER_SYNC,
+    'physicsInterpolationSystem',
+    physicsInterpolationSystem
   );
 };
 
@@ -149,5 +156,93 @@ export const physicsToTransformSystem = (world: ECSWorld) => {
 
     // Mark as changed so the Render System knows to update the Mesh
     transform.setDirty();
+  }
+};
+
+type InterpolationState = {
+  prevPos: THREE.Vector3;
+  prevQuat: THREE.Quaternion;
+  currPos: THREE.Vector3;
+  currQuat: THREE.Quaternion;
+  /** performance.now() timestamps of when prev/curr were captured — only used by
+   * 'RENDERER' mode's wall-clock-based alpha; 'FIXED_PHYSICS' uses the physics
+   * accumulator's own alpha instead (getPhysicsInterpolationAlpha()). */
+  prevTime: number;
+  currTime: number;
+};
+
+// Per-entity interpolation history, keyed by entity id — allocated once per entity (on
+// first sight) and mutated in place every frame, matching PhysicsTransformBuffer's
+// zero-per-frame-allocation hot path. Cleaned up in registerPhysicsManager's
+// onDeleteEntity hook.
+const interpolationStates = new Map<number, InterpolationState>();
+const scratchPos = new THREE.Vector3();
+const scratchQuat = new THREE.Quaternion();
+
+/**
+ * Render-only smoothing on top of the discrete physics-step pose (Design Decision 4 of
+ * docs/plans/p024_interpolation-in-the-physics-api.md): reads the same live rb.pos/rb.rot
+ * physicsToTransformSystem already wrote into ECS TRANSFORM this frame, but writes the
+ * blended pose only into the Object3D — TRANSFORM stays the authoritative, non-interpolated
+ * pose for gameplay code (collision queries, AI, etc.). No-ops entirely for 'NONE' (the
+ * default), leaving today's behavior — including object3DSyncSystem's own MAIN-stage sync —
+ * completely untouched.
+ */
+export const physicsInterpolationSystem = (world: ECSWorld) => {
+  const mode = getPhysicsState().interpolationMode;
+  if (mode !== 'RENDERER' && mode !== 'FIXED_PHYSICS') return;
+
+  const dynamicVisuals = world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL);
+  const now = performance.now();
+  const fixedAlpha = mode === 'FIXED_PHYSICS' ? getPhysicsInterpolationAlpha() : 0;
+
+  for (const [entityId, rb] of dynamicVisuals) {
+    const obj3D = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
+    if (!obj3D) continue;
+
+    let state = interpolationStates.get(entityId);
+    if (!state) {
+      state = {
+        prevPos: new THREE.Vector3(rb.pos.x, rb.pos.y, rb.pos.z),
+        prevQuat: new THREE.Quaternion(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w),
+        currPos: new THREE.Vector3(rb.pos.x, rb.pos.y, rb.pos.z),
+        currQuat: new THREE.Quaternion(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w),
+        prevTime: now,
+        currTime: now,
+      };
+      interpolationStates.set(entityId, state);
+    } else if (
+      state.currPos.x !== rb.pos.x ||
+      state.currPos.y !== rb.pos.y ||
+      state.currPos.z !== rb.pos.z ||
+      state.currQuat.x !== rb.rot.x ||
+      state.currQuat.y !== rb.rot.y ||
+      state.currQuat.z !== rb.rot.z ||
+      state.currQuat.w !== rb.rot.w
+    ) {
+      // A new physics step's result became visible since we last looked (works the same
+      // way for MAIN_THREAD's always-fresh reads and WORKER_THREAD's SAB/MESSAGE_BATCH
+      // reads — this is "received", not "stepped", which is exactly Design Decision 3's
+      // Option A: decoupled from physics cadence).
+      state.prevPos.copy(state.currPos);
+      state.prevQuat.copy(state.currQuat);
+      state.prevTime = state.currTime;
+      state.currPos.set(rb.pos.x, rb.pos.y, rb.pos.z);
+      state.currQuat.set(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w);
+      state.currTime = now;
+    }
+
+    let alpha: number;
+    if (mode === 'FIXED_PHYSICS') {
+      alpha = fixedAlpha;
+    } else {
+      const interval = state.currTime - state.prevTime;
+      alpha = interval > 0 ? Math.min(1, Math.max(0, (now - state.currTime) / interval)) : 1;
+    }
+
+    scratchPos.copy(state.prevPos).lerp(state.currPos, alpha);
+    scratchQuat.copy(state.prevQuat).slerp(state.currQuat, alpha);
+    obj3D.position.copy(scratchPos);
+    obj3D.quaternion.copy(scratchQuat);
   }
 };

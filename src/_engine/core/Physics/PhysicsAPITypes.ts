@@ -4,6 +4,7 @@ import { LoopState } from '../MainLoop';
 export type PhysicsEngine = keyof typeof ENGINES;
 export type PhysicsWorkerTarget = 'MAIN_THREAD' | 'WORKER_THREAD'; // + possible 'SERVER_AND_MAIN' | 'SERVER_AND_WORKER' if implemented
 export type PhysicsBackgroundBehavior = 'KEEP_RUNNING' | 'KEEP_RUNNING_USE_MIN_DELTA' | 'PAUSE';
+export type PhysicsInterpolationMode = 'NONE' | 'RENDERER' | 'FIXED_PHYSICS' | 'EXTRAPOLATION';
 
 /**
  * Physics Engine API, which handles the communication between
@@ -50,10 +51,13 @@ export type PhysicsState = {
   workerTarget: PhysicsWorkerTarget;
   timestep: number;
   timestepRatio: number;
-  /** What to do with physics loop if the app window is hidden (under another window, in another tab, minified).
-   * 'KEEP_RUNNING' = Keeps the physics running in the background.
-   * 'KEEP_RUNNING_USE_MIN_DELTA' = If for some reason the physics cannot run in the background, the minDeltaTime will be set as new delta time. Requires: minDelta > 0.
-   * 'PAUSE' = Pauses the physics when the window is hidden and then uses the minDeltaTime to continue. Requires: minDelta > 0.
+  /** What stepPhysics() should do while the window is hidden (another tab, another window,
+   * minimized). Only consulted while hidden — an explicit pause (loopState.masterPlay or
+   * loopState.appPlay = false) always halts stepping outright, regardless of this setting.
+   * 'KEEP_RUNNING' = Keep stepping using the real elapsed time (still subject to maxDeltaTime).
+   * 'KEEP_RUNNING_USE_MIN_DELTA' = Keep stepping, but substitute minDeltaTime for the real
+   *   elapsed time so a throttled background tab doesn't try to catch up to real time. Requires: minDeltaTime > 0.
+   * 'PAUSE' = Halt the physics loop (and, via the visibility handler, the whole main loop) while hidden.
    */
   backgroundBehavior: PhysicsBackgroundBehavior;
   isPaused: boolean;
@@ -65,28 +69,40 @@ export type PhysicsState = {
   pauseDurationTotal: number;
   /** Keeps track whether the pause reason is the background behavior (if the app window is hidden) */
   pauseReason: 'BACKGROUND_BEHAVIOR' | null;
-  /** The minimum delta time to be used for backgroundBehaviors 'USE_MIN_DELTA' and 'PAUSE'.
-   * 0 = not in use
+  /** Minimum delta time (seconds) substituted for the real elapsed time when
+   * backgroundBehavior is 'KEEP_RUNNING_USE_MIN_DELTA' and the window is hidden.
+   * 0 = not in use.
    */
   minDeltaTime: number;
-  /** Clamping protects against large delta times even in the foreground (e.g., if rendering stalls).
-   * 0 = not in use
+  /** Upper bound (seconds) on how much elapsed time a single frame may feed into the
+   * fixed-timestep accumulator, guarding against a huge delta after a stall or a
+   * throttled background tab (e.g., if rendering stalls). 0 = not in use.
    */
   maxDeltaTime: number;
-  /** This ensures stability by forcing the engine to run at least 'minSubsteps'
-   * per frame even if the frame rate is extremely high and deltaTime is tiny.
-   * 0 = not in use
+  /** Maximum fixed-timestep sub-steps stepPhysics() may run in a single frame; once hit,
+   * any remaining accumulated time is dropped (not deferred) to prevent an ever-growing
+   * backlog under sustained slowdowns ("spiral of death"). 0 = not in use.
    */
-  /**  */
-  minSubSteps: number;
-  /** Prevent the spiral of death (should usually be the same as timestep) */
   maxSubSteps: number;
   worldStepEnabled: boolean;
   visualizerEnabled: boolean;
   gravity: { x: number; y: number; z: number };
   solverIterations: number;
   internalPgsIterations: number;
-  interpolationEnabled: boolean;
+  /** Render-time smoothing applied on top of the discrete physics-step pose (never written
+   * back into the ECS TRANSFORM, which always stays the authoritative, non-interpolated
+   * pose for gameplay code). Default 'NONE' — the previous behavior.
+   * 'NONE' = the Object3D shows the latest discrete physics-step pose as-is.
+   * 'RENDERER' = lerp/slerp between the last two received transform snapshots, using the
+   *   actual wall-clock time between when they arrived — decoupled from the physics rate,
+   *   so it degrades gracefully under a low/irregular physics Hz or worker latency/jitter.
+   * 'FIXED_PHYSICS' = lerp/slerp between the same two snapshots, but using the physics
+   *   accumulator's own alpha (getPhysicsInterpolationAlpha()) — precise as long as the
+   *   accumulator's timing and the snapshot's freshness stay in sync (holds well for
+   *   MAIN_THREAD; more approximate under WORKER_THREAD latency).
+   * 'EXTRAPOLATION' = reserved, not implemented (Phase 4 feasibility study).
+   */
+  interpolationMode: PhysicsInterpolationMode;
   /** Intent to use SharedArrayBuffer for the worker-thread hot-path transform buffer.
    * Actual capability (cross-origin isolation) is resolved at initPhysics() time;
    * this is the configured intent, not the resolved capability.
@@ -1715,7 +1731,12 @@ export type PhysicsUpProtocol =
         loopState: LoopState;
         doNotCreateWorld?: boolean;
       }
-    | { type: PhysicsProtocolType.STEP }
+    | {
+        type: PhysicsProtocolType.STEP;
+        /** How many fixed-timestep sub-steps to run before the single write-back
+         * (computed by the main thread's accumulator in stepPhysics()). Default 1. */
+        steps?: number;
+      }
     // World --------------------------------------
     | {
         type: PhysicsProtocolType.CREATE_WORLD;

@@ -56,8 +56,10 @@ self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) 
     switch (type) {
       // EngineAPI
       case PhysicsProtocolType.STEP:
-        // STEP (one-way, no response — transform results arrive via the hot-path buffer)
-        engAPI.step();
+        // STEP (one-way, no response — transform results arrive via the hot-path buffer).
+        // `steps` (from the main thread's fixed-timestep accumulator) may run 0-N Rapier
+        // steps here, but only ever one write-back per message either way.
+        for (let i = 0; i < (data.steps ?? 1); i++) engAPI.step();
         return writeBackTransforms();
       case PhysicsProtocolType.TAKE_SNAPSHOT:
         // TAKE_SNAPSHOT

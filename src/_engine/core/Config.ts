@@ -3,6 +3,7 @@ import { TCMP } from '../utils/CMP';
 import {
   PhysicsBackgroundBehavior,
   PhysicsEngine,
+  PhysicsInterpolationMode,
   PhysicsWorkerTarget,
 } from './Physics/PhysicsAPITypes';
 import { DraggableWindow } from './UI/DraggableWindow';
@@ -32,9 +33,23 @@ export type AppConfig = {
     gravity?: { x: number; y: number; z: number };
     timestep?: number;
     backgroundBehavior?: PhysicsBackgroundBehavior;
+    /** Minimum delta time (seconds) substituted for the real elapsed time when
+     * backgroundBehavior is 'KEEP_RUNNING_USE_MIN_DELTA' and the window is hidden.
+     * 0 = not in use. Default 1/30. */
+    minDeltaTime?: number;
+    /** Upper bound (seconds) on how much elapsed time a single frame may feed into the
+     * fixed-timestep accumulator, guarding against a huge delta after a stall or a
+     * throttled background tab. 0 = not in use. Default 1/10. */
+    maxDeltaTime?: number;
+    /** Maximum fixed-timestep sub-steps stepPhysics() may run in a single frame; once hit,
+     * any remaining accumulated time is dropped (not deferred) to prevent an ever-growing
+     * backlog under sustained slowdowns. 0 = not in use. Default 60. */
+    maxSubSteps?: number;
     solverIterations?: number;
     internalPgsIterations?: number;
-    interpolationEnabled?: boolean;
+    /** Render-time smoothing on top of the discrete physics-step pose. Default 'NONE'
+     * (unchanged behavior). See PhysicsState.interpolationMode for the mode semantics. */
+    interpolationMode?: PhysicsInterpolationMode;
     /** Intent to use SharedArrayBuffer for the worker-thread hot-path transform buffer.
      * Default true. Actual capability (cross-origin isolation) is resolved at runtime;
      * unavailable environments automatically fall back to a batched-message transport.
@@ -81,6 +96,10 @@ let config: AppConfig = {
     gravity: { x: 0, y: 0, z: 0 },
     timestep: 60,
     backgroundBehavior: 'PAUSE',
+    minDeltaTime: 1 / 30,
+    maxDeltaTime: 1 / 10,
+    maxSubSteps: 60,
+    interpolationMode: 'NONE',
     useSAB: true,
     maxBodies: 2048,
   },

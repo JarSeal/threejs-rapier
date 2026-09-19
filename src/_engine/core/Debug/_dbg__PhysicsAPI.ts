@@ -22,7 +22,12 @@ import {
   isPhysicsWorldEnabled,
 } from '../PhysicsAPI';
 import { DEBUG_PHYSICS_API_BOOT_LS_KEY } from '../Config';
-import { ShapeType, type PhysicsState, type PhysicsWorkerTarget } from '../Physics/PhysicsAPITypes';
+import {
+  ShapeType,
+  type PhysicsInterpolationMode,
+  type PhysicsState,
+  type PhysicsWorkerTarget,
+} from '../Physics/PhysicsAPITypes';
 import { getECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 
@@ -58,7 +63,16 @@ const setBootOverride = (partial: DebugPhysicsApiBoot) => {
 // moment any live field changes.
 type LivePhysicsApiState = Pick<
   PhysicsState,
-  'timestep' | 'worldStepEnabled' | 'gravity' | 'solverIterations' | 'internalPgsIterations'
+  | 'timestep'
+  | 'worldStepEnabled'
+  | 'gravity'
+  | 'solverIterations'
+  | 'internalPgsIterations'
+  | 'backgroundBehavior'
+  | 'minDeltaTime'
+  | 'maxDeltaTime'
+  | 'maxSubSteps'
+  | 'interpolationMode'
 >;
 
 const getLiveState = (state: PhysicsState): LivePhysicsApiState => ({
@@ -67,6 +81,11 @@ const getLiveState = (state: PhysicsState): LivePhysicsApiState => ({
   gravity: state.gravity,
   solverIterations: state.solverIterations,
   internalPgsIterations: state.internalPgsIterations,
+  backgroundBehavior: state.backgroundBehavior,
+  minDeltaTime: state.minDeltaTime,
+  maxDeltaTime: state.maxDeltaTime,
+  maxSubSteps: state.maxSubSteps,
+  interpolationMode: state.interpolationMode,
 });
 
 const persistLiveState = (state: PhysicsState) => lsSetItem(LS_KEY, getLiveState(state));
@@ -349,7 +368,7 @@ export const _createPhysicsAPIDebugGUI = () => {
       // creates/destroys the physics world again afterward — the value cannot change
       // for the remaining lifetime of this tab, so there's nothing to poll.
       const transportModeReadout = {
-        transportMode: getResolvedTransportMode() ?? 'Not created yet',
+        transportMode: getResolvedTransportMode() ?? 'N/A, worker only',
       };
       debugGUI.addBinding(transportModeReadout, 'transportMode', {
         label: 'Resolved transport mode',
@@ -359,12 +378,11 @@ export const _createPhysicsAPIDebugGUI = () => {
       debugGUI.addBlade({ view: 'separator' });
 
       // --- Live settings ---
-      // Enable visualizer / Enable interpolation / Background behavior / min-max delta
-      // time / min-max sub-steps are omitted: none of them are read anywhere in the new
-      // Physics API pipeline yet (stepPhysics() does one unconditional step per render
-      // frame, no accumulator). See docs/plans/p024_interpolation-in-the-physics-api.md,
-      // whose Phase 1 is exactly this accumulator work — add these controls back once
-      // that lands instead of shipping controls that silently do nothing.
+      // Enable visualizer is still omitted: visualizerEnabled has no debugRender wiring yet.
+      // Background behavior / min-max delta time / max sub-steps are live as of Phase 1's
+      // fixed-timestep accumulator in stepPhysics(); interpolation mode is live as of
+      // Phase 2's physicsInterpolationSystem (PhysicsManager.ts). 'EXTRAPOLATION' isn't
+      // offered here yet — reserved, not implemented (Phase 4 feasibility study).
 
       debugGUI
         .addBinding(state, 'timestep', { label: 'Global timestep (1 / ts)', step: 1, min: 1 })
@@ -413,6 +431,88 @@ export const _createPhysicsAPIDebugGUI = () => {
             getPhysicsWorld().setNumInternalPgsIterations(e.value);
           }
         });
+
+      debugGUI.addBlade({ view: 'separator' });
+
+      const bgBehaviorDropDown = debugGUI.addBlade({
+        view: 'list',
+        label:
+          'Background behavior (while the window is hidden — another tab, another window, minimized)',
+        options: [
+          { value: 'KEEP_RUNNING', text: 'Keep running' },
+          { value: 'KEEP_RUNNING_USE_MIN_DELTA', text: 'Keep running, use minimum delta time' },
+          { value: 'PAUSE', text: 'Pause' },
+        ],
+        value: state.backgroundBehavior,
+      }) as ListBladeApi<BladeController<View>>;
+      bgBehaviorDropDown.on('change', (e) => {
+        state.backgroundBehavior = e.value as unknown as PhysicsState['backgroundBehavior'];
+        persistLiveState(state);
+      });
+
+      // Displayed as Hz (1 / seconds), matching the 'Global timestep' control above — the
+      // underlying state fields are stored as seconds. A local proxy avoids the mismatch
+      // legacy's debug tab had, where the field bound directly to the seconds value but
+      // its on('change') handler re-interpreted the edited number as Hz.
+      const deltaTimeHzProxy = {
+        minDeltaTimeHz: state.minDeltaTime > 0 ? 1 / state.minDeltaTime : 0,
+        maxDeltaTimeHz: state.maxDeltaTime > 0 ? 1 / state.maxDeltaTime : 0,
+      };
+      debugGUI
+        .addBinding(deltaTimeHzProxy, 'minDeltaTimeHz', {
+          label:
+            'Minimum delta time (as fps; used by "Keep running, use minimum delta time"), 0 = not in use',
+          step: 1,
+          min: 0,
+        })
+        .on('change', (e) => {
+          state.minDeltaTime = e.value > 0 ? 1 / e.value : 0;
+          persistLiveState(state);
+        });
+      debugGUI
+        .addBinding(deltaTimeHzProxy, 'maxDeltaTimeHz', {
+          label:
+            'Maximum delta time (as fps; clamps a single frame’s contribution to the physics accumulator), 0 = not in use',
+          step: 1,
+          min: 0,
+        })
+        .on('change', (e) => {
+          state.maxDeltaTime = e.value > 0 ? 1 / e.value : 0;
+          persistLiveState(state);
+        });
+      debugGUI
+        .addBinding(state, 'maxSubSteps', {
+          label:
+            'Max sub-steps per frame (drops backlog beyond this instead of deferring it), 0 = not in use',
+          step: 1,
+          min: 0,
+        })
+        .on('change', (e) => {
+          state.maxSubSteps = e.value;
+          persistLiveState(state);
+        });
+
+      debugGUI.addBlade({ view: 'separator' });
+
+      // 'EXTRAPOLATION' isn't offered here yet — reserved, not implemented (Phase 4
+      // feasibility study). physicsInterpolationSystem (PhysicsManager.ts) treats any
+      // value other than 'RENDERER'/'FIXED_PHYSICS' as a no-op, so selecting it via
+      // AppConfig before then is safe but inert.
+      const interpolationModeDropDown = debugGUI.addBlade({
+        view: 'list',
+        label:
+          'Interpolation mode (render-only smoothing; ECS TRANSFORM always stays the discrete pose)',
+        options: [
+          { value: 'NONE', text: 'None' },
+          { value: 'RENDERER', text: 'Renderer (smooths toward the latest received pose)' },
+          { value: 'FIXED_PHYSICS', text: 'Fixed physics (accumulator-alpha lerp/slerp)' },
+        ],
+        value: state.interpolationMode,
+      }) as ListBladeApi<BladeController<View>>;
+      interpolationModeDropDown.on('change', (e) => {
+        state.interpolationMode = e.value as unknown as PhysicsInterpolationMode;
+        persistLiveState(state);
+      });
 
       // Switching to another debugger tab rebuilds this container from scratch on
       // return (createDebuggerTab's container() re-runs on every click, it isn't

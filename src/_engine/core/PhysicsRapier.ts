@@ -1383,7 +1383,7 @@ export const createPhysicsWorld = () => {
 
   if (isDebugEnvironment()) initDebuggerScenePhysState();
 
-  addVisibilityChangeFn('pausePhysicsOnVisibilityChange', physicsVisibilityChange);
+  addVisibilityChangeFn('pauseLegacyPhysicsOnVisibilityChange', physicsVisibilityChange);
 };
 
 /**
