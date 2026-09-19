@@ -403,6 +403,11 @@ export const _createPhysicsAPIDebugGUI = () => {
         persistLiveState(state);
         if (isPhysicsWorldEnabled()) {
           getPhysicsWorld().setGravity(state.gravity);
+          // Sleeping bodies don't re-evaluate forces until woken, so they'd keep ignoring
+          // the new gravity value until something else disturbs them.
+          for (const entityId of getAllPhysicsEntityIds()) {
+            getPhysicsEntityRigidBody(entityId)?.wakeUp();
+          }
         }
       });
       debugGUI
