@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Physics
 Blocked by: p022_physics-debugger-tab.md
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
@@ -55,19 +55,20 @@ lead-edge extrapolation.
 3. **Open question, deliberately unresolved here — settle at Phase 2 kickoff.** What
    distinguishes "Renderer interpolation" from "Fixed physics interpolation" is not yet
    decided. Two candidate readings to choose between when Phase 2 starts:
-   - (a) *Decoupled-from-physics-rate reading*: "Renderer interpolation" smooths
+
+   - (a) _Decoupled-from-physics-rate reading_: "Renderer interpolation" smooths
      between the last two received transform snapshots regardless of physics cadence
      (useful when the worker updates less often than render — lower physics Hz, or a
      stalled worker frame); "Fixed physics interpolation" is the classic accumulator
      pattern where physics runs at a fixed Hz and render interpolates using the
      accumulator's leftover alpha between two known fixed states (this is what legacy
      already does).
-   - (b) *Same mechanism, different owner reading*: "Renderer interpolation" = the
+   - (b) _Same mechanism, different owner reading_: "Renderer interpolation" = the
      lerp/slerp logic lives in the render/`APP_RENDER_SYNC` stage and can run even
      without full accumulator decoupling (cheaper, approximate); "Fixed physics
      interpolation" = the same math but driven strictly off the physics-owned
      accumulator state from Design Decision 2.
-   Do not implement either mode's specifics until this is picked with the user.
+     Do not implement either mode's specifics until this is picked with the user.
 
 4. **Interpolated/extrapolated pose never overwrites the authoritative ECS `TRANSFORM`.**
    `physicsToTransformSystem` keeps writing the latest discrete physics-step transform
@@ -120,6 +121,7 @@ Phase 2's manual checks.
 
 **Phase 4 — Lead-Edge extrapolation: feasibility study, then implementation if viable.**
 Study first, implement only if the study doesn't surface a blocker:
+
 - Buffer layout growth (7→13 floats/body) and its effect on SAB byte size
   (`maxBodies * 13 * 4` bytes at the default `maxBodies: 2048`) and on `MESSAGE_BATCH`
   fallback payload size.
@@ -127,11 +129,11 @@ Study first, implement only if the study doesn't surface a blocker:
   or a new getter/worker message is needed.
 - Visibility of misprediction "pop" corrections under realistic gameplay (fast direction
   changes, collisions).
-If viable: implement `EXTRAPOLATION` per Design Decision 5. If not: record why in the
-Risks table below and treat it as a non-goal instead.
-Manual verification (if implemented): compare `FIXED_PHYSICS` vs. `EXTRAPOLATION`
-responsiveness on a fast-moving/rotating body; specifically look for pop artifacts
-around collisions.
+  If viable: implement `EXTRAPOLATION` per Design Decision 5. If not: record why in the
+  Risks table below and treat it as a non-goal instead.
+  Manual verification (if implemented): compare `FIXED_PHYSICS` vs. `EXTRAPOLATION`
+  responsiveness on a fast-moving/rotating body; specifically look for pop artifacts
+  around collisions.
 
 ## Non-goals
 
@@ -144,14 +146,14 @@ around collisions.
 
 ## Risks / open questions
 
-| Risk / question | Notes |
-|---|---|
+| Risk / question                                                                                   | Notes                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Exact distinction between "Renderer interpolation" and "Fixed physics interpolation" is undecided | Deliberately left open per the user; resolve at Phase 2 kickoff (Design Decision 3). Both readings need Phase 1's accumulator regardless. |
-| Accumulator work is a bigger change than a debugger toggle | Confirmed with the user to keep in-scope as this plan's Phase 1 rather than splitting into a separate blocking plan. |
-| Double-buffering doubles `PhysicsTransformBuffer` size (7→14 floats/body) | Modest fixed allocation at default `maxBodies: 2048` (~114KB); confirm SAB allocation still succeeds cross-origin-isolated. |
-| Extrapolation buffer growth (7→13 floats/body) affects SAB size and `MESSAGE_BATCH` bandwidth | Gated behind Phase 4's feasibility study; not committed to implementation. |
-| Misprediction "pop" correction under extrapolation | User's own hedge ("if possible and feasible") — studied in Phase 4 before any implementation commitment. |
-| `p022` currently plans to expose `interpolationEnabled` as a boolean | Update that plan's field-shape note to the new enum once this plan's Phase 2 lands. |
+| Accumulator work is a bigger change than a debugger toggle                                        | Confirmed with the user to keep in-scope as this plan's Phase 1 rather than splitting into a separate blocking plan.                      |
+| Double-buffering doubles `PhysicsTransformBuffer` size (7→14 floats/body)                         | Modest fixed allocation at default `maxBodies: 2048` (~114KB); confirm SAB allocation still succeeds cross-origin-isolated.               |
+| Extrapolation buffer growth (7→13 floats/body) affects SAB size and `MESSAGE_BATCH` bandwidth     | Gated behind Phase 4's feasibility study; not committed to implementation.                                                                |
+| Misprediction "pop" correction under extrapolation                                                | User's own hedge ("if possible and feasible") — studied in Phase 4 before any implementation commitment.                                  |
+| `p022` currently plans to expose `interpolationEnabled` as a boolean                              | Update that plan's field-shape note to the new enum once this plan's Phase 2 lands.                                                       |
 
 ## Verification
 
