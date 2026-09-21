@@ -2,6 +2,7 @@ import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { createMeshEntity } from '../_engine/core/MeshManager';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
+import { addToast } from '../_engine/core/UI/Toaster';
 
 /**
  * Main-thread physics API MVP verification scene
@@ -44,7 +45,7 @@ export const scene = async () => {
     { appId: 'physicsTestBallMesh' }
   );
   await createPhysicsEntity(
-    { type: 'BALL', radius: 0.5 },
+    { type: 'BALL', radius: 0.5, userData: { name: 'Ball' } },
     { rigidType: 'DYNAMIC', translation: { x: -1, y: 5, z: 0 }, angvel: { x: 0, y: 0, z: -3 } },
     ballEntityId
   );
@@ -64,8 +65,27 @@ export const scene = async () => {
     { appId: 'physicsTestBoxMesh' }
   );
   await createPhysicsEntity(
-    { type: 'BOX', hx: 0.5, hy: 0.5, hz: 0.5 },
+    { type: 'BOX', hx: 0.5, hy: 0.5, hz: 0.5, userData: { name: 'Box' } },
     { rigidType: 'DYNAMIC', translation: { x: 1, y: 7, z: 0 }, angvel: { x: 1, y: 7, z: 0 } },
     boxEntityId
+  );
+
+  // Invisible sensor just above the ground's top face (ground: hy: 0.25, centered at
+  // origin, top face at y = 0.25) — toasts the entering entity's name on contact start.
+  await createPhysicsEntity(
+    {
+      type: 'BOX',
+      hx: 5,
+      hy: 0.25,
+      hz: 5,
+      isSensor: true,
+      collisionEventFn: (_sensor, other, started) => {
+        if (!started) return;
+        const otherName = other.getUserDataSync().name;
+        const name = typeof otherName === 'string' ? otherName : String(other.id);
+        addToast({ title: 'Physics sensor', message: `${name} entered` });
+      },
+    },
+    { rigidType: 'FIXED', translation: { x: 0, y: 0.5, z: 0 } }
   );
 };

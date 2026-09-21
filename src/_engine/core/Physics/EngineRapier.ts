@@ -4,6 +4,8 @@ import { getPhysicsEngine } from './PhysicsUtils';
 import {
   ColliderAPI,
   ColliderParams,
+  CollisionEventRecord,
+  ContactForceEventRecord,
   ContactForceEventSnapshot,
   EventQueue,
   InteractionGroupsAPI,
@@ -79,6 +81,12 @@ type ContactForceEventFn = (event: TempContactForceEvent) => void;
 // main thread in PhysicsAPI.ts and only reads plain records back from this module.
 const collisionEventFns = new Map<number, CollisionEventFn[]>();
 const contactForceEventFns = new Map<number, ContactForceEventFn[]>();
+// WORKER_THREAD only: plain-data records accumulated across every step() call between two
+// drainPendingEventRecords() calls (the worker drains once per STEP message, which may run
+// multiple sub-steps), pushed to the main thread via EVENTS_PUSH. Never populated in
+// MAIN_THREAD mode (dispatch there happens directly through the callback registries above).
+let pendingCollisionRecords: CollisionEventRecord[] = [];
+let pendingContactForceRecords: ContactForceEventRecord[] = [];
 // Tracks which collider ids counted towards collisionEventFnCount/contactForceEventFnCount,
 // so deleteCollider()/deleteWorld() can decrement accurately.
 const collisionActiveColliderIds = new Set<number>();
@@ -568,6 +576,8 @@ export const deleteWorld = () => {
   eventQueue = undefined;
   collisionEventFnCount = 0;
   contactForceEventFnCount = 0;
+  pendingCollisionRecords = [];
+  pendingContactForceRecords = [];
 
   // Free the world
   physicsWorld.free();
@@ -594,18 +604,29 @@ export const debugRender = () => {
 /** Drains the module's own eventQueue (populated by physicsWorld.step()) and dispatches
  * to the MAIN_THREAD callback registries, gated by the counters so a scene with no
  * collision/contact-force callbacks pays zero per-step cost. Mirrors PhysicsRapier.ts's
- * legacy drain pattern. WORKER_THREAD mode never populates the callback registries (see
- * the Phase 3 drain-to-records path used by the worker instead), so this stays a no-op
- * there even though eventQueue/the counters are shared module state.
+ * legacy drain pattern. In WORKER_THREAD mode the callback registries are always empty
+ * (the real callbacks can't cross the postMessage boundary — see PhysicsAPI.ts), so this
+ * instead accumulates plain-data records into pendingCollisionRecords/
+ * pendingContactForceRecords for drainPendingEventRecords() to hand to the worker's STEP
+ * handler afterwards.
  */
 const drainAndDispatchEvents = () => {
   if (!eventQueue) return;
+  const isWorker = physicsState.workerTarget === 'WORKER_THREAD';
 
   if (collisionEventFnCount) {
     eventQueue.drainCollisionEvents((handle1, handle2, started) => {
       const collider1 = getColliderAPI(handle1);
       const collider2 = getColliderAPI(handle2);
       if (!collider1 || !collider2) return;
+      if (isWorker) {
+        pendingCollisionRecords.push({
+          collider1Id: collider1.id,
+          collider2Id: collider2.id,
+          started,
+        });
+        return;
+      }
       const fns1 = collisionEventFns.get(collider1.id);
       if (fns1) for (let i = 0; i < fns1.length; i++) fns1[i](collider1, collider2, started);
       const fns2 = collisionEventFns.get(collider2.id);
@@ -618,20 +639,40 @@ const drainAndDispatchEvents = () => {
       const collider1 = getColliderAPI(event.collider1());
       const collider2 = getColliderAPI(event.collider2());
       if (!collider1 || !collider2) return;
-      const snapshot = new ContactForceEventSnapshot({
+      const record: ContactForceEventRecord = {
         collider1Id: collider1.id,
         collider2Id: collider2.id,
         totalForce: event.totalForce(),
         totalForceMagnitude: event.totalForceMagnitude(),
         maxForceDirection: event.maxForceDirection(),
         maxForceMagnitude: event.maxForceMagnitude(),
-      });
+      };
+      if (isWorker) {
+        pendingContactForceRecords.push(record);
+        return;
+      }
+      const snapshot = new ContactForceEventSnapshot(record);
       const fns1 = contactForceEventFns.get(collider1.id);
       if (fns1) for (let i = 0; i < fns1.length; i++) fns1[i](snapshot);
       const fns2 = contactForceEventFns.get(collider2.id);
       if (fns2) for (let i = 0; i < fns2.length; i++) fns2[i](snapshot);
     });
   }
+};
+
+/** WORKER_THREAD only: returns everything accumulated by drainAndDispatchEvents() since
+ * the last call, and clears the accumulators. Called once per STEP message (which may run
+ * multiple sub-steps) from physicsWorker.ts's STEP handler.
+ */
+export const drainPendingEventRecords = (): {
+  collisions: CollisionEventRecord[];
+  contactForces: ContactForceEventRecord[];
+} => {
+  const collisions = pendingCollisionRecords;
+  const contactForces = pendingContactForceRecords;
+  pendingCollisionRecords = [];
+  pendingContactForceRecords = [];
+  return { collisions, contactForces };
 };
 
 export const step = (_eventQueue?: unknown, hooks?: unknown) => {

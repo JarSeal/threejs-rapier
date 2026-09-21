@@ -108,6 +108,9 @@ import {
   CollHalfExtentsResponse,
   CollCollisionGroupsResponse,
   CollSolverGroupsResponse,
+  ContactForceEventSnapshot,
+  TempContactForceEvent,
+  EventsPushMessage,
 } from './Physics/PhysicsAPITypes';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 import { ShapeType } from '@dimforge/rapier3d-compat';
@@ -151,6 +154,15 @@ let resolvedTransportMode: 'SHARED_MEMORY' | 'MESSAGE_BATCH' | undefined;
 
 const rigidBodies = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
 const colliders = new Map<number, ColliderAPI>(); // { "Running id", ColliderAPI }
+
+type CollisionEventFn = (collider1: ColliderAPI, collider2: ColliderAPI, started: boolean) => void;
+type ContactForceEventFn = (event: TempContactForceEvent) => void;
+// WORKER_THREAD only: real callback functions can't cross the postMessage boundary (see
+// createCollider/createColliders stripping them into hasCollisionEventFn/
+// hasContactForceEventFn instead), so they're kept here on the main thread, keyed by
+// collider id, and invoked when an EVENTS_PUSH message names that id.
+const workerCollisionEventFns = new Map<number, CollisionEventFn[]>();
+const workerContactForceEventFns = new Map<number, ContactForceEventFn[]>();
 
 /**
  * Initializes the physics. The MAIN_THREAD branch is the one exercised by this
@@ -319,12 +331,47 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
     // Unsolicited push (MESSAGE_BATCH fallback) — no requestId, not a response to resolve.
     transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, data.buffer);
     return;
+  } else if (type === PhysicsProtocolType.EVENTS_PUSH) {
+    // Unsolicited push, only ever sent when at least one event occurred that step — no
+    // requestId, not a response to resolve.
+    dispatchPushedEvents(data);
+    return;
   } else if (!ValidProtocolTypes.has(type)) {
     lerror(`Error in physics onWorkerMessage, unknown protocol type: ${type}`);
     return;
   }
 
   return resolveRequest(data, requestId, type);
+};
+
+/** Resolves an EVENTS_PUSH message's plain-data records back to ColliderAPIs (via the
+ * locally-registered colliders map) and invokes each side's registered WORKER_THREAD
+ * callbacks with the *other* collider as the second argument — mirrors EngineRapier.ts's
+ * MAIN_THREAD drainAndDispatchEvents() dispatch. Silently skips any record naming a
+ * collider id this thread doesn't (or no longer) know about. */
+const dispatchPushedEvents = (data: EventsPushMessage) => {
+  for (let i = 0; i < data.collisions.length; i++) {
+    const rec = data.collisions[i];
+    const collider1 = colliders.get(rec.collider1Id);
+    const collider2 = colliders.get(rec.collider2Id);
+    if (!collider1 || !collider2) continue;
+    const fns1 = workerCollisionEventFns.get(rec.collider1Id);
+    if (fns1) for (let j = 0; j < fns1.length; j++) fns1[j](collider1, collider2, rec.started);
+    const fns2 = workerCollisionEventFns.get(rec.collider2Id);
+    if (fns2) for (let j = 0; j < fns2.length; j++) fns2[j](collider2, collider1, rec.started);
+  }
+
+  for (let i = 0; i < data.contactForces.length; i++) {
+    const rec = data.contactForces[i];
+    const collider1 = colliders.get(rec.collider1Id);
+    const collider2 = colliders.get(rec.collider2Id);
+    if (!collider1 || !collider2) continue;
+    const snapshot = new ContactForceEventSnapshot(rec);
+    const fns1 = workerContactForceEventFns.get(rec.collider1Id);
+    if (fns1) for (let j = 0; j < fns1.length; j++) fns1[j](snapshot);
+    const fns2 = workerContactForceEventFns.get(rec.collider2Id);
+    if (fns2) for (let j = 0; j < fns2.length; j++) fns2[j](snapshot);
+  }
 };
 
 // WORKER LOGIC -- [ END ] -----------------------
@@ -673,6 +720,7 @@ export const deleteRigidBody = async (id: number) => {
   for (let i = 0; i < deletedColliderIds.length; i++) {
     const collId = deletedColliderIds[i];
     if (colliders.has(collId)) colliders.delete(collId);
+    cleanupWorkerColliderEventFns(collId);
   }
 
   return deletedId;
@@ -703,6 +751,7 @@ export const deleteRigidBodySync = (id: number) => {
   for (let i = 0; i < deletedColliderIds.length; i++) {
     const collId = deletedColliderIds[i];
     if (colliders.has(collId)) colliders.delete(collId);
+    cleanupWorkerColliderEventFns(collId);
   }
 
   return deletedId;
@@ -748,6 +797,7 @@ export const deleteRigidBodies = async (ids: number[]) => {
   for (let i = 0; i < deletedColliderIds.length; i++) {
     const collId = deletedColliderIds[i];
     if (colliders.has(collId)) colliders.delete(collId);
+    cleanupWorkerColliderEventFns(collId);
   }
 
   return deletedIds;
@@ -790,9 +840,48 @@ export const deleteRigidBodiesSync = (ids: number[]) => {
   for (let i = 0; i < deletedColliderIds.length; i++) {
     const collId = deletedColliderIds[i];
     if (colliders.has(collId)) colliders.delete(collId);
+    cleanupWorkerColliderEventFns(collId);
   }
 
   return deletedIds;
+};
+
+/** Strips collisionEventFn/contactForceEventFn from a ColliderParams before it crosses
+ * the postMessage boundary (functions can't be structured-cloned — this is what would
+ * otherwise throw DataCloneError), replacing them with the boolean flags EngineRapier.ts
+ * uses to still set up the right Rapier ActiveEvents on the worker side. Returns the
+ * original object unchanged when there's nothing to strip. */
+const toWireColliderParams = (params: ColliderParams): ColliderParams => {
+  if (!params.collisionEventFn && !params.contactForceEventFn) return params;
+  const { collisionEventFn, contactForceEventFn, ...rest } = params;
+  return {
+    ...rest,
+    hasCollisionEventFn: Boolean(collisionEventFn) || rest.hasCollisionEventFn,
+    hasContactForceEventFn: Boolean(contactForceEventFn) || rest.hasContactForceEventFn,
+  } as ColliderParams;
+};
+
+/** WORKER_THREAD only: registers a collider's real callbacks (once its id is known, i.e.
+ * after the CREATE_COLLIDER(S) response resolves) so the EVENTS_PUSH handler can invoke
+ * them later. No-op for a collider with neither callback. */
+const registerWorkerColliderEventFns = (id: number, params: ColliderParams) => {
+  if (params.collisionEventFn) {
+    const fns = workerCollisionEventFns.get(id) || [];
+    fns.push(params.collisionEventFn);
+    workerCollisionEventFns.set(id, fns);
+  }
+  if (params.contactForceEventFn) {
+    const fns = workerContactForceEventFns.get(id) || [];
+    fns.push(params.contactForceEventFn);
+    workerContactForceEventFns.set(id, fns);
+  }
+};
+
+/** Removes a collider id's registered WORKER_THREAD event callbacks, if any. Harmless
+ * no-op in MAIN_THREAD mode, where these registries are never populated. */
+const cleanupWorkerColliderEventFns = (id: number) => {
+  workerCollisionEventFns.delete(id);
+  workerContactForceEventFns.delete(id);
 };
 
 /** Create a collider. */
@@ -811,11 +900,12 @@ export const createCollider = async (params: ColliderParams, parentId?: number) 
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const res = await messageWorkerAsync<CreateColliderResponse>({
       type: PhysicsProtocolType.CREATE_COLLIDER,
-      params,
+      params: toWireColliderParams(params),
       parentId,
     });
     const collProxy = new ColliderProxyAPI(res.id, res.parentId, params.userData) as ColliderAPI;
     colliders.set(res.id, collProxy); // register locally
+    registerWorkerColliderEventFns(res.id, params);
     return collProxy;
   }
   // Should not get here..
@@ -861,7 +951,7 @@ export const createColliders = async (params: ColliderParams[]) => {
     const collIds = (
       await messageWorkerAsync<CreateCollidersResponse>({
         type: PhysicsProtocolType.CREATE_COLLIDERS,
-        params,
+        params: params.map(toWireColliderParams),
       })
     ).ids;
     existsOrThrow(
@@ -874,6 +964,7 @@ export const createColliders = async (params: ColliderParams[]) => {
       const collAPI = new ColliderProxyAPI(id, undefined, params[i].userData);
       collAPIs.push(collAPI);
       colliders.set(id, collAPI);
+      registerWorkerColliderEventFns(id, params[i]);
     }
     return collAPIs;
   }
@@ -911,6 +1002,7 @@ export const deleteCollider = async (id: number, wakeUp?: boolean) => {
   );
   let deletedId: number | undefined = undefined;
   if (colliders.has(id)) colliders.delete(id);
+  cleanupWorkerColliderEventFns(id);
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     const response = engAPI?.deleteCollider(id, wakeUp);
     deletedId = response?.id;
@@ -938,6 +1030,7 @@ export const deleteColliderSync = (id: number, wakeUp?: boolean) => {
   );
   let deletedId: number | undefined = undefined;
   if (colliders.has(id)) colliders.delete(id);
+  cleanupWorkerColliderEventFns(id);
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     const response = engAPI?.deleteCollider(id, wakeUp);
     deletedId = response?.id;
@@ -962,6 +1055,7 @@ export const deleteColliders = async (ids: number[], wakeUps?: boolean[]) => {
   let deletedIds: number[] | undefined = undefined;
   for (let i = 0; i < ids.length; i++) {
     if (colliders.has(ids[i])) colliders.delete(ids[i]);
+    cleanupWorkerColliderEventFns(ids[i]);
   }
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     const response = engAPI?.deleteColliders(ids, wakeUps);
@@ -999,6 +1093,7 @@ export const deleteCollidersSync = (ids: number[], wakeUps?: boolean[]) => {
   let deletedIds: number[] | undefined = undefined;
   for (let i = 0; i < ids.length; i++) {
     if (colliders.has(ids[i])) colliders.delete(ids[i]);
+    cleanupWorkerColliderEventFns(ids[i]);
   }
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     const response = engAPI?.deleteColliders(ids, wakeUps);

@@ -56,11 +56,13 @@ self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) 
     switch (type) {
       // EngineAPI
       case PhysicsProtocolType.STEP:
-        // STEP (one-way, no response — transform results arrive via the hot-path buffer).
-        // `steps` (from the main thread's fixed-timestep accumulator) may run 0-N Rapier
-        // steps here, but only ever one write-back per message either way.
+        // STEP (one-way, no response — transform results arrive via the hot-path buffer,
+        // and collision/contact-force events via EVENTS_PUSH). `steps` (from the main
+        // thread's fixed-timestep accumulator) may run 0-N Rapier steps here, but only
+        // ever one transform write-back and one (conditional) events push per message.
         for (let i = 0; i < (data.steps ?? 1); i++) engAPI.step();
-        return writeBackTransforms();
+        writeBackTransforms();
+        return pushPendingEvents();
       case PhysicsProtocolType.TAKE_SNAPSHOT:
         // TAKE_SNAPSHOT
         const snapshot = engAPI.takeSnapshot();
@@ -177,6 +179,16 @@ const writeBackTransforms = () => {
     const copy = transformBuffer.buffer.slice(0) as ArrayBuffer;
     sendMessageSimple({ type: PhysicsProtocolType.TRANSFORMS_PUSH, buffer: copy }, [copy]);
   }
+};
+
+/** Pushes whatever collision/contact-force events were collected during the STEP that
+ * just ran, but only when at least one occurred — these are sparse and discrete, unlike
+ * the continuously-valid transform buffer, so there's no reason to pay a postMessage
+ * every frame when nothing collided. */
+const pushPendingEvents = () => {
+  const { collisions, contactForces } = engAPI.drainPendingEventRecords();
+  if (!collisions.length && !contactForces.length) return;
+  sendMessageSimple({ type: PhysicsProtocolType.EVENTS_PUSH, collisions, contactForces });
 };
 
 const initPhysics = async (

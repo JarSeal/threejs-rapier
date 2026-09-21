@@ -43,6 +43,12 @@ export type EngineAPIType = {
   getAllRigidBodyIds: () => IterableIterator<number>;
   step: (eventQueue?: unknown, hooks?: unknown) => void;
   debugRender: () => { vertices: Float32Array; colors: Float32Array } | undefined;
+  /** WORKER_THREAD only: returns (and clears) collision/contact-force events accumulated
+   * since the last call, for the worker's STEP handler to push via EVENTS_PUSH. */
+  drainPendingEventRecords: () => {
+    collisions: CollisionEventRecord[];
+    contactForces: ContactForceEventRecord[];
+  };
 };
 
 export type PhysicsState = {
