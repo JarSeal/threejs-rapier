@@ -4,6 +4,7 @@ import { getPhysicsEngine } from './PhysicsUtils';
 import {
   ColliderAPI,
   ColliderParams,
+  ContactForceEventSnapshot,
   EventQueue,
   InteractionGroupsAPI,
   PhysicsHooks,
@@ -18,6 +19,7 @@ import {
   RigidBodyParams,
   RigidBodyTypeAPI,
   ShapeType,
+  TempContactForceEvent,
   WorldAPI,
 } from './PhysicsAPITypes';
 import { LoopState } from '../MainLoop';
@@ -55,8 +57,13 @@ let nextRigidBodyId = 0;
 let nextColliderId = 0;
 const rigidBodies = new Map<number, number>(); // { "Running id", RigidBody.handle }
 const colliders = new Map<number, number>(); // { "Running id", Collider.handle }
-const rigidBodyAPIs = new Map<number, RigidBodyAPI>(); // { "Rapier handle", RigidBodyAPI }
-const colliderAPIs = new Map<number, ColliderAPI>(); // { "Running handle", ColliderAPI }
+const rigidBodyAPIs = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
+const colliderAPIs = new Map<number, ColliderAPI>(); // { "Running id", ColliderAPI }
+// Reverse of `colliders`, needed because getColliderAPI() is handed Rapier's own raw
+// collider handles (e.g. from event queue drains, raycast/contact-pair query results) —
+// those are Rapier's internal handle values, not our running ids, so colliderAPIs (keyed
+// by id) can't be looked up with them directly.
+const handleToColliderId = new Map<number, number>(); // { "Collider.handle", "Running id" }
 let worldCreated = false;
 let isDebugEnvironment = false;
 let RAPIER: typeof Rapier;
@@ -65,6 +72,17 @@ let physicsWorldAPI: WorldAPI;
 let eventQueue: Rapier.EventQueue | undefined = undefined;
 let collisionEventFnCount = 0;
 let contactForceEventFnCount = 0;
+type CollisionEventFn = (collider1: ColliderAPI, collider2: ColliderAPI, started: boolean) => void;
+type ContactForceEventFn = (event: TempContactForceEvent) => void;
+// { "collider id", callbacks[] } — arrays to match the legacy file's multi-callback support
+// for compound colliders. MAIN_THREAD only; WORKER_THREAD keeps the real callbacks on the
+// main thread in PhysicsAPI.ts and only reads plain records back from this module.
+const collisionEventFns = new Map<number, CollisionEventFn[]>();
+const contactForceEventFns = new Map<number, ContactForceEventFn[]>();
+// Tracks which collider ids counted towards collisionEventFnCount/contactForceEventFnCount,
+// so deleteCollider()/deleteWorld() can decrement accurately.
+const collisionActiveColliderIds = new Set<number>();
+const contactForceActiveColliderIds = new Set<number>();
 
 /** Get Rapier.RigidBody with RigidBodyAPI or id */
 const getRigidBody = (bodyOrId?: RigidBodyAPI | number): RigidBody | undefined => {
@@ -86,7 +104,8 @@ const getCollider = (collOrId?: ColliderAPI | number): Collider | undefined => {
 const getColliderAPI = (collOrHandle?: Collider | number): ColliderAPI | undefined => {
   if (collOrHandle === undefined) return undefined;
   const handle = typeof collOrHandle === 'number' ? collOrHandle : collOrHandle.handle;
-  return colliderAPIs.get(handle);
+  const id = handleToColliderId.get(handle);
+  return id !== undefined ? colliderAPIs.get(id) : undefined;
 };
 
 /** Get rigidBodyAPI with an id (running id). */
@@ -379,38 +398,55 @@ export const createCollider = (params: ColliderParams, parentId?: number) => {
     colliderDesc.setRestitutionCombineRule(getCombineRule(params.restitutionCombineRule));
   if (params.isSensor !== undefined) colliderDesc.setSensor(params.isSensor);
 
-  if (
-    params.enableCollisionActiveEvents ||
-    params.enableContactForceActiveEvents ||
-    params.hasCollisionEventFn ||
-    params.hasContactForceEventFn
-  ) {
-    let activeEvents: Rapier.ActiveEvents = RAPIER.ActiveEvents.NONE;
-    if (
-      (params.enableCollisionActiveEvents && params.enableContactForceActiveEvents) ||
-      (params.hasCollisionEventFn && params.hasContactForceEventFn)
-    ) {
-      activeEvents =
-        RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS;
-    } else if (params.enableCollisionActiveEvents || params.hasCollisionEventFn) {
-      activeEvents = RAPIER.ActiveEvents.COLLISION_EVENTS;
-      if (params.hasCollisionEventFn) collisionEventFnCount++;
-    } else if (params.enableContactForceActiveEvents || params.hasContactForceEventFn) {
-      activeEvents = RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS;
-      if (params.hasContactForceEventFn) contactForceEventFnCount++;
-    }
+  // In MAIN_THREAD mode the real callback is available directly on params (no serialization
+  // boundary); in WORKER_THREAD mode PhysicsAPI.ts strips it and sends hasCollisionEventFn/
+  // hasContactForceEventFn instead. Either one enables the corresponding active events.
+  const hasCollisionFn = Boolean(params.collisionEventFn) || Boolean(params.hasCollisionEventFn);
+  const hasContactForceFn =
+    Boolean(params.contactForceEventFn) || Boolean(params.hasContactForceEventFn);
 
+  let activeEvents: Rapier.ActiveEvents = RAPIER.ActiveEvents.NONE;
+  if (
+    (params.enableCollisionActiveEvents || hasCollisionFn) &&
+    (params.enableContactForceActiveEvents || hasContactForceFn)
+  ) {
+    activeEvents = RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS;
+  } else if (params.enableCollisionActiveEvents || hasCollisionFn) {
+    activeEvents = RAPIER.ActiveEvents.COLLISION_EVENTS;
+  } else if (params.enableContactForceActiveEvents || hasContactForceFn) {
+    activeEvents = RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS;
+  }
+
+  if (activeEvents !== RAPIER.ActiveEvents.NONE) {
     colliderDesc.setActiveEvents(activeEvents);
-    if (!eventQueue && activeEvents !== RAPIER.ActiveEvents.NONE) {
-      eventQueue = new RAPIER.EventQueue(true);
-    }
+    if (!eventQueue) eventQueue = new RAPIER.EventQueue(true);
   }
 
   const collider = physicsWorld.createCollider(colliderDesc, getRigidBody(params.parentId));
   const id = nextColliderId;
   nextColliderId += 1;
   colliders.set(id, collider.handle);
+  handleToColliderId.set(collider.handle, id);
   const colliderAPI = new EngineColliderProxyAPI(id, parentId, params.userData);
+
+  if (hasCollisionFn) {
+    collisionActiveColliderIds.add(id);
+    collisionEventFnCount++;
+  }
+  if (hasContactForceFn) {
+    contactForceActiveColliderIds.add(id);
+    contactForceEventFnCount++;
+  }
+  if (params.collisionEventFn) {
+    const fns = collisionEventFns.get(id) || [];
+    fns.push(params.collisionEventFn);
+    collisionEventFns.set(id, fns);
+  }
+  if (params.contactForceEventFn) {
+    const fns = contactForceEventFns.get(id) || [];
+    fns.push(params.contactForceEventFn);
+    contactForceEventFns.set(id, fns);
+  }
   colliderAPIs.set(id, colliderAPI);
 
   return colliderAPI;
@@ -425,7 +461,7 @@ export const createColliders = (paramsArray: ColliderParams[]) =>
 export const deleteRigidBody = (id: number) => {
   const colliderIds: number[] = [];
   const rbHandle = rigidBodies.get(id);
-  if (!rbHandle) {
+  if (rbHandle === undefined) {
     if (isDebugEnvironment) {
       lwarn(`Trying to remove a non existing rigid body (no handle found), handle: ${rbHandle}`);
     }
@@ -444,10 +480,13 @@ export const deleteRigidBody = (id: number) => {
   }
   const colliderCount = rb.numColliders();
   for (let i = 0; i < colliderCount; i++) {
-    const colliderId = getColliderAPI(rb.collider(i).handle)?.id;
+    const childHandle = rb.collider(i).handle;
+    const colliderId = getColliderAPI(childHandle)?.id;
     if (colliderId !== undefined) {
       colliders.delete(colliderId);
       colliderAPIs.delete(colliderId);
+      handleToColliderId.delete(childHandle);
+      cleanupColliderEventRegistrations(colliderId);
       colliderIds.push(colliderId);
     }
   }
@@ -468,9 +507,17 @@ export const deleteRigidBodies = (ids: number[]) => {
   return { ids: deletedIds, colliderIds: deletedColliderIds };
 };
 
+/** Removes id's event callback/counter/registry bookkeeping (does not touch colliders/colliderAPIs). */
+const cleanupColliderEventRegistrations = (id: number) => {
+  collisionEventFns.delete(id);
+  contactForceEventFns.delete(id);
+  if (collisionActiveColliderIds.delete(id)) collisionEventFnCount--;
+  if (contactForceActiveColliderIds.delete(id)) contactForceEventFnCount--;
+};
+
 export const deleteCollider = (id: number, wakeUp?: boolean) => {
   const collHandle = colliders.get(id);
-  if (!collHandle) {
+  if (collHandle === undefined) {
     if (isDebugEnvironment) {
       lwarn(`Trying to remove a non existing collider (no handle found), handle: ${collHandle}`);
     }
@@ -482,11 +529,15 @@ export const deleteCollider = (id: number, wakeUp?: boolean) => {
       lwarn(`Trying to remove a non existing collider (no collider found), handle: ${collHandle}`);
     }
     colliders.delete(id);
+    handleToColliderId.delete(collHandle);
+    cleanupColliderEventRegistrations(id);
     return { id };
   }
   physicsWorld.removeCollider(coll, Boolean(wakeUp));
   colliderAPIs.delete(id);
   colliders.delete(id);
+  handleToColliderId.delete(collHandle);
+  cleanupColliderEventRegistrations(id);
   return { id };
 };
 
@@ -505,6 +556,11 @@ export const deleteWorld = () => {
   colliders.clear();
   rigidBodyAPIs.clear();
   colliderAPIs.clear();
+  handleToColliderId.clear();
+  collisionEventFns.clear();
+  contactForceEventFns.clear();
+  collisionActiveColliderIds.clear();
+  contactForceActiveColliderIds.clear();
 
   // Reset
   worldCreated = false;
@@ -535,11 +591,52 @@ export const debugRender = () => {
   return { vertices: buffers.vertices, colors: buffers.colors };
 };
 
-export const step = (eventQueue?: unknown, hooks?: unknown) => {
-  physicsWorld.step(
-    eventQueue as Rapier.EventQueue | undefined,
-    hooks as Rapier.PhysicsHooks | undefined
-  );
+/** Drains the module's own eventQueue (populated by physicsWorld.step()) and dispatches
+ * to the MAIN_THREAD callback registries, gated by the counters so a scene with no
+ * collision/contact-force callbacks pays zero per-step cost. Mirrors PhysicsRapier.ts's
+ * legacy drain pattern. WORKER_THREAD mode never populates the callback registries (see
+ * the Phase 3 drain-to-records path used by the worker instead), so this stays a no-op
+ * there even though eventQueue/the counters are shared module state.
+ */
+const drainAndDispatchEvents = () => {
+  if (!eventQueue) return;
+
+  if (collisionEventFnCount) {
+    eventQueue.drainCollisionEvents((handle1, handle2, started) => {
+      const collider1 = getColliderAPI(handle1);
+      const collider2 = getColliderAPI(handle2);
+      if (!collider1 || !collider2) return;
+      const fns1 = collisionEventFns.get(collider1.id);
+      if (fns1) for (let i = 0; i < fns1.length; i++) fns1[i](collider1, collider2, started);
+      const fns2 = collisionEventFns.get(collider2.id);
+      if (fns2) for (let i = 0; i < fns2.length; i++) fns2[i](collider2, collider1, started);
+    });
+  }
+
+  if (contactForceEventFnCount) {
+    eventQueue.drainContactForceEvents((event) => {
+      const collider1 = getColliderAPI(event.collider1());
+      const collider2 = getColliderAPI(event.collider2());
+      if (!collider1 || !collider2) return;
+      const snapshot = new ContactForceEventSnapshot({
+        collider1Id: collider1.id,
+        collider2Id: collider2.id,
+        totalForce: event.totalForce(),
+        totalForceMagnitude: event.totalForceMagnitude(),
+        maxForceDirection: event.maxForceDirection(),
+        maxForceMagnitude: event.maxForceMagnitude(),
+      });
+      const fns1 = contactForceEventFns.get(collider1.id);
+      if (fns1) for (let i = 0; i < fns1.length; i++) fns1[i](snapshot);
+      const fns2 = contactForceEventFns.get(collider2.id);
+      if (fns2) for (let i = 0; i < fns2.length; i++) fns2[i](snapshot);
+    });
+  }
+};
+
+export const step = (_eventQueue?: unknown, hooks?: unknown) => {
+  physicsWorld.step(eventQueue, hooks as Rapier.PhysicsHooks | undefined);
+  drainAndDispatchEvents();
 };
 
 /** World, RigidBody, and Collider proxy API definitions -----[ START ]----- */
@@ -586,11 +683,9 @@ class EngineWorldProxyAPI implements WorldAPI {
   }
 
   // --- Stepping & Propagation ---
-  step(eventQueue?: EventQueue, hooks?: PhysicsHooks): void {
-    physicsWorld.step(
-      eventQueue as Rapier.EventQueue | undefined,
-      hooks as Rapier.PhysicsHooks | undefined
-    );
+  step(_eventQueue?: EventQueue, hooks?: PhysicsHooks): void {
+    physicsWorld.step(eventQueue, hooks as Rapier.PhysicsHooks | undefined);
+    drainAndDispatchEvents();
   }
 
   debugRender(

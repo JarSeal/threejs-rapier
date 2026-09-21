@@ -683,6 +683,58 @@ export interface TempContactForceEvent {
 }
 
 /**
+ * Serializable (structured-clone-safe) record of a single collision event,
+ * used to cross the worker -> main thread boundary (EVENTS_PUSH).
+ */
+export type CollisionEventRecord = {
+  collider1Id: number;
+  collider2Id: number;
+  started: boolean;
+};
+
+/**
+ * Serializable (structured-clone-safe) record of a single contact-force event,
+ * used to cross the worker -> main thread boundary (EVENTS_PUSH).
+ */
+export type ContactForceEventRecord = {
+  collider1Id: number;
+  collider2Id: number;
+  totalForce: PhysVector;
+  totalForceMagnitude: number;
+  maxForceDirection: PhysVector;
+  maxForceMagnitude: number;
+};
+
+/**
+ * Wraps an eagerly-read ContactForceEventRecord so it can be handed to a
+ * contactForceEventFn with the same TempContactForceEvent shape Rapier's live
+ * (drain-closure-only-valid) event has, on both MAIN_THREAD (wrapping the live
+ * Rapier event's values immediately) and WORKER_THREAD (reconstructed from the
+ * pushed record) code paths.
+ */
+export class ContactForceEventSnapshot implements TempContactForceEvent {
+  constructor(private record: ContactForceEventRecord) {}
+  collider1(): number {
+    return this.record.collider1Id;
+  }
+  collider2(): number {
+    return this.record.collider2Id;
+  }
+  totalForce(): PhysVector {
+    return this.record.totalForce;
+  }
+  totalForceMagnitude(): number {
+    return this.record.totalForceMagnitude;
+  }
+  maxForceDirection(): PhysVector {
+    return this.record.maxForceDirection;
+  }
+  maxForceMagnitude(): number {
+    return this.record.maxForceMagnitude;
+  }
+}
+
+/**
  * A structure responsible for collecting events generated
  * by the physics engine.
  *
@@ -2209,6 +2261,12 @@ export type PhysicsDownProtocol =
     | { type: PhysicsProtocolType.COLL_CONTAINS_POINT; isInside: boolean }
     // Transforms hot path (unsolicited push, MESSAGE_BATCH fallback only) ----
     | { type: PhysicsProtocolType.TRANSFORMS_PUSH; buffer: ArrayBuffer }
+    // Events (unsolicited push, only sent when at least one event occurred that step) ----
+    | {
+        type: PhysicsProtocolType.EVENTS_PUSH;
+        collisions: CollisionEventRecord[];
+        contactForces: ContactForceEventRecord[];
+      }
     // Error --------------------------------------
     | {
         type: PhysicsProtocolType.ERROR;
@@ -2230,6 +2288,7 @@ export type ErrorResponse = PhysicsResponse<PhysicsProtocolType.ERROR>;
 // World
 export type CreateWorldResponse = PhysicsResponse<PhysicsProtocolType.CREATE_WORLD>;
 export type TransformsPushMessage = PhysicsResponse<PhysicsProtocolType.TRANSFORMS_PUSH>;
+export type EventsPushMessage = PhysicsResponse<PhysicsProtocolType.EVENTS_PUSH>;
 export type DeleteWorldResponse = PhysicsResponse<PhysicsProtocolType.DELETE_WORLD>;
 export type WorldGravityResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GET_GRAVITY>;
 export type WorldTimestepResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GET_TIMESTEP>;
@@ -2343,6 +2402,8 @@ export enum PhysicsProtocolType {
   DELETE_WORLD = 101,
   /** Worker -> main thread unsolicited push of the hot-path transform buffer (MESSAGE_BATCH fallback only). */
   TRANSFORMS_PUSH = 102,
+  /** Worker -> main thread unsolicited push of collision/contact-force events, only sent when at least one occurred that step. */
+  EVENTS_PUSH = 103,
 
   // WORLD >= 200 && WORLD < 400
   WORLD_GET_GRAVITY = 200,
