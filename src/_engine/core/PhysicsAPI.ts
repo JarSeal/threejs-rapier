@@ -10,6 +10,7 @@ import * as THREE from 'three/webgpu';
 import PhysicsWorker from '../workers/physicsWorker?worker';
 import { getConfig, isDebugEnvironment } from './Config';
 import { PhysicsTransformBuffer } from './Physics/PhysicsTransformBuffer';
+import { PhysicsDebugStateBuffer } from './Physics/PhysicsDebugStateBuffer';
 import {
   getCollOrRigidId,
   getEngineAPI,
@@ -21,7 +22,14 @@ import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay 
 import { DebugModuleRef, initWorker, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import {
   ColliderAPI,
+  CollBorderRadiusResponse,
+  CollHeightsResponse,
+  CollIndicesResponse,
+  CollNormalResponse,
+  CollVerticesResponse,
   EngineAPIType,
+  HeightFieldData,
+  SetDebugStateTrackingResponse,
   InteractionGroupsAPI,
   PhysicsState,
   PhysicsDownProtocol,
@@ -151,6 +159,11 @@ let engAPI: EngineAPIType | null = null;
 let transformBuffer: PhysicsTransformBuffer | undefined;
 /** Which hot-path transport createPhysicsWorld() resolved to for the current world (WORKER_THREAD only). */
 let resolvedTransportMode: 'SHARED_MEMORY' | 'MESSAGE_BATCH' | undefined;
+/** Main-thread wrapper for the worker's debug wireframe state buffer (WORKER_THREAD only,
+ * p025). Undefined until setPhysicsDebugStateTracking() turns tracking on for the first
+ * time. SHARED_MEMORY: set once and never replaced. MESSAGE_BATCH: replaced on every
+ * DEBUG_STATE_PUSH. */
+let debugStateBuffer: PhysicsDebugStateBuffer | undefined;
 
 const rigidBodies = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
 const colliders = new Map<number, ColliderAPI>(); // { "Running id", ColliderAPI }
@@ -335,6 +348,11 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
     // Unsolicited push, only ever sent when at least one event occurred that step — no
     // requestId, not a response to resolve.
     dispatchPushedEvents(data);
+    return;
+  } else if (type === PhysicsProtocolType.DEBUG_STATE_PUSH) {
+    // Unsolicited push (MESSAGE_BATCH fallback) — only ever sent while debug-state
+    // tracking is on. No requestId, not a response to resolve.
+    debugStateBuffer = new PhysicsDebugStateBuffer(physicsState.maxBodies, data.buffer);
     return;
   } else if (!ValidProtocolTypes.has(type)) {
     lerror(`Error in physics onWorkerMessage, unknown protocol type: ${type}`);
@@ -1126,6 +1144,38 @@ export const getAllColliderEntries = (): IterableIterator<[number, ColliderAPI]>
   colliders.entries();
 /** Which hot-path transform transport the current world resolved to (WORKER_THREAD only). Undefined before a world is created or in MAIN_THREAD mode. */
 export const getResolvedTransportMode = () => resolvedTransportMode;
+
+/**
+ * Declares which rigid bodies/colliders the worker should mirror live state for, so the
+ * debug wireframes can be colored by sleep/kinematic/enabled/sensor state without an RPC
+ * per object per frame (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md).
+ *
+ * This is a full replacement of the tracked set, not a delta, and a body's/collider's
+ * index in the arrays passed here is its slot in the buffer readable via
+ * getPhysicsDebugStateBuffer(). Calling it with two empty arrays turns tracking off: the
+ * worker then writes nothing and pushes nothing per step.
+ *
+ * No-op on MAIN_THREAD, where the *Sync state getters are already free.
+ */
+export const setPhysicsDebugStateTracking = async (
+  rigidBodyIds: number[],
+  colliderIds: number[]
+) => {
+  if (physicsState.workerTarget !== 'WORKER_THREAD') return;
+  const response = await messageWorkerAsync<SetDebugStateTrackingResponse>({
+    type: PhysicsProtocolType.SET_DEBUG_STATE_TRACKING,
+    rigidBodyIds,
+    colliderIds,
+  });
+  if (response.buffer) {
+    // SHARED_MEMORY, first enable: wrap the worker's SAB once and read it forever after.
+    debugStateBuffer = new PhysicsDebugStateBuffer(physicsState.maxBodies, response.buffer);
+  }
+};
+
+/** The live debug-state buffer, or undefined while tracking has never been enabled (or
+ * MESSAGE_BATCH mode hasn't received its first push yet). WORKER_THREAD only. */
+export const getPhysicsDebugStateBuffer = () => debugStateBuffer;
 
 /** World, RigidBody, and Collider API classes -----[ START ]----- */
 
@@ -2622,6 +2672,71 @@ class ColliderProxyAPI implements ColliderAPI {
   }
   halfExtentsSync(): PhysVector {
     throw new Error('Sync halfExtents not supported on Proxy');
+  }
+
+  // --- Geometry (mesh-type shapes) ---
+  // One RPC per collider, paid once when its debug wireframe is first built (p025) —
+  // never per frame. The worker sends the typed arrays as Transferables rather than
+  // structured clones, since mesh data can be large.
+
+  async vertices(): Promise<Float32Array | null> {
+    return (
+      await messageWorkerAsync<CollVerticesResponse>({
+        type: PhysicsProtocolType.COLL_VERTICES,
+        colliderId: this.id,
+      })
+    ).vertices;
+  }
+  verticesSync(): Float32Array | null {
+    throw new Error('Sync vertices not supported on Proxy');
+  }
+
+  async indices(): Promise<Uint32Array | null> {
+    return (
+      await messageWorkerAsync<CollIndicesResponse>({
+        type: PhysicsProtocolType.COLL_INDICES,
+        colliderId: this.id,
+      })
+    ).indices;
+  }
+  indicesSync(): Uint32Array | null {
+    throw new Error('Sync indices not supported on Proxy');
+  }
+
+  async heights(): Promise<HeightFieldData | null> {
+    return (
+      await messageWorkerAsync<CollHeightsResponse>({
+        type: PhysicsProtocolType.COLL_HEIGHTS,
+        colliderId: this.id,
+      })
+    ).heights;
+  }
+  heightsSync(): HeightFieldData | null {
+    throw new Error('Sync heights not supported on Proxy');
+  }
+
+  async normal(): Promise<PhysVector | null> {
+    return (
+      await messageWorkerAsync<CollNormalResponse>({
+        type: PhysicsProtocolType.COLL_NORMAL,
+        colliderId: this.id,
+      })
+    ).normal;
+  }
+  normalSync(): PhysVector | null {
+    throw new Error('Sync normal not supported on Proxy');
+  }
+
+  async borderRadius(): Promise<number> {
+    return (
+      await messageWorkerAsync<CollBorderRadiusResponse>({
+        type: PhysicsProtocolType.COLL_BORDER_RADIUS,
+        colliderId: this.id,
+      })
+    ).borderRadius;
+  }
+  borderRadiusSync(): number {
+    throw new Error('Sync borderRadius not supported on Proxy');
   }
 
   // --- Groups ---

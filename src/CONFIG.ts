@@ -25,6 +25,20 @@ const config: AppConfig = {
     workerTarget: 'WORKER_THREAD',
     useSAB: true,
   },
+  // Per-state colors (0xrrggbb) for the physics collider wireframes, switched on per
+  // entity from the Physics API debugger tab. Omit the whole section, or any single key,
+  // to take the engine defaults instead.
+  debugPhysicsWireframe: {
+    colors: {
+      disabled: 0x555555, // dark grey
+      sensor: 0xb8a000, // dark yellow
+      sleeping: 0x8b0000, // dark red
+      kinematic: 0x2266ff, // blue
+      fixed: 0xdddddd, // light grey
+      awake: 0xff0000, // red
+    },
+    lineThickness: 1,
+  },
   debugCamera: {
     position: { x: 3, y: 3, z: 1.5 },
     target: { x: 0, y: 0, z: 0 },

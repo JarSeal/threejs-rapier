@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 
 import { ColliderAPI, RigidBodyAPI } from '../Physics/PhysicsAPITypes';
+import type { PhysicsWireframeColors } from '../Config';
 import { CoreComponentType as CoreType, EntityDebugData } from './ECSRegistry';
 import { AppComponentData, AppComponentType as AppType } from '../../../AppECSRegistry';
 
@@ -73,6 +74,18 @@ export interface CoreComponentData {
   };
   [CoreType.DEBUG_CAMERA_HELPER]: { value: THREE.CameraHelper };
   [CoreType.DEBUG_SYMBOL]: { value: THREE.Group | THREE.Mesh; userVisible: boolean };
+  /** Opt-in, per-entity collider wireframe (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md).
+   * Its presence IS the on/off toggle — absent on every physics entity by default. The
+   * THREE objects it drives are owned by Debug/_dbg__PhysicsDebugDraw.ts rather than
+   * stored here, because they're built asynchronously (WORKER_THREAD mode fetches the
+   * collider's shape over RPC) and addComponent is synchronous. */
+  [CoreType.DEBUG_PHYSICS_WIREFRAME]: {
+    /** Seeds this entity's color overrides, each key falling back to the global tab
+     * value and then to AppConfig.debugPhysicsWireframe.colors. Read once when the
+     * component is added — _dbg__PhysicsDebugDraw.ts then owns them, so they outlive
+     * the wireframe being switched off and back on. */
+    colorOverrides?: PhysicsWireframeColors;
+  };
   [CoreType.DEBUG_TAG_IS_DEBUG_CAMERA]: boolean;
 }
 

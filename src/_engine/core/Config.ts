@@ -15,6 +15,39 @@ export const DEBUG_PHYSICS_API_BOOT_LS_KEY = 'AEK_debugPhysicsApiBoot';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 
+/**
+ * Wireframe colors keyed by collider state, as 24-bit hex numbers (0xrrggbb) — the same
+ * form Tweakpane's `view: 'color'` bindings and THREE.Color.setHex() use.
+ *
+ * At draw time exactly one state wins per collider, resolved highest-priority-first in
+ * the order listed here: a disabled sensor reads as disabled, a sleeping sensor reads as
+ * a sensor, and `awake` is the fallback when nothing else applies.
+ */
+export type PhysicsWireframeColors = {
+  /** The collider, or its owning rigid body, is disabled. */
+  disabled?: number;
+  /** The collider is a sensor (reports overlaps, generates no contact response). */
+  sensor?: number;
+  /** The owning rigid body is asleep. */
+  sleeping?: number;
+  /** The owning rigid body is kinematic: driven programmatically, never sleeps, and
+   * unaffected by forces. Bucketed alongside real dynamic bodies by
+   * PhysicsManager.createPhysicsEntity, so it needs its own color to stay tellable apart. */
+  kinematic?: number;
+  /** The body is fixed (the BODY_STATIC bucket). Deliberately distinct from `disabled`
+   * so a static collider doesn't read as something being wrong. */
+  fixed?: number;
+  /** The fallback: dynamic, enabled, awake, not a sensor. */
+  awake?: number;
+};
+
+export type DebugPhysicsWireframeConfig = {
+  colors?: PhysicsWireframeColors;
+  /** Wireframe line width in pixels. Values above 1 only have a visible effect where the
+   * fat-line path is available; see p025 Phase 6. */
+  lineThickness?: number;
+};
+
 export type AppConfig = {
   debugKeys?: {
     enabled?: boolean; // Default is true
@@ -64,6 +97,12 @@ export type AppConfig = {
     /** Fixed capacity for TYPED_ARRAY storage. Default 100_000, only relevant when storageMode is 'TYPED_ARRAY'. */
     maxEntities?: number;
   };
+  /** Per-state colors and line thickness for the per-entity physics collider wireframes
+   * (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md). Debug-only: nothing reads this
+   * unless a wireframe is actually switched on, which can only happen in a debug or
+   * prod-test environment. Every field is optional and falls back to the engine defaults
+   * in `Debug/_dbg__PhysicsDebugDraw.ts`, so partial overrides are fine. */
+  debugPhysicsWireframe?: DebugPhysicsWireframeConfig;
   /** Default params for the debug (orbit) camera, used the first time a scene is
    * visited (before any per-scene LS override exists at `AEK_debugCams`). */
   debugCamera?: {

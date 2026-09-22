@@ -1,6 +1,6 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Physics
-Blocked by: p022_physics-debugger-tab.md
+Blocked by: _DONE_p022_physics-debugger-tab.md
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
 
 # Debug Drawing in Physics API — Plan
@@ -90,3 +90,107 @@ Manual verification: from the browser console (`?isDebug=true`), create a `TriMe
 - Phase 4/5: Tweakpane UI walkthrough, including all Reset buttons.
 - Phase 6: visual thickness check or confirmed graceful fallback.
 - Throughout: a plain `yarn build` bundle-stats diff confirming none of `_dbg__PhysicsDebugDraw.ts` (or its color/geometry logic) appears in the production chunk.
+
+
+## Implementation notes (what actually shipped)
+
+The Context/Design sections above are the record of what was *planned*; this section
+records where the implementation diverged, so anyone reading this as reference for a
+follow-up plan doesn't inherit the wrong assumptions.
+
+### Corrections to the design above
+
+- **Design decision 1 is wrong about primitives being fully described by the existing
+  getters.** `HalfSpace` needs `.normal` (a plane with no orientation is undrawable) and
+  the `Round*` shapes need `.borderRadius`; neither had an accessor. Both were added in
+  Phase 1 alongside the three the plan listed.
+- **`heights()` returns a `HeightFieldData` object, not a raw array.** A bare
+  `Float32Array` can't reconstruct the surface — Rapier stores `nrows`/`ncols`/`scale`
+  separately.
+- **`vertices()` also covers `Segment`/`Triangle`/`RoundTriangle`.** Rapier's JS layer
+  rebuilds those as separate `a`/`b`/`c` Vector fields rather than a vertex buffer;
+  `EngineColliderProxyAPI.verticesSync()` flattens them so one accessor serves every
+  vertex-based shape. These three weren't mentioned in the plan at all.
+- **`ConvexPolyhedron` built from an auto-computed hull *does* get an index buffer back**
+  (`Shape.fromRaw` reads `coIndices` off WASM regardless), so the "no indices" fallback
+  the plan worried about never triggers in practice.
+- **`Voxels` is the only unsupported shape.** Its `data`/`voxelSize` fit none of the
+  accessors; the builder skips it with a one-time console warning naming the shape type.
+- **`p024` did not double-buffer `PhysicsTransformBuffer`** (it put interpolation in
+  `physicsInterpolationSystem` on the main thread instead), so the plan's stated reason
+  for a separate debug buffer no longer held. A separate buffer was still the right call,
+  for its lazy allocation.
+
+### Protocol / buffer design
+
+- `SET_DEBUG_STATE_TRACKING = 5` lives in the **ENGINE** range, not the `WORLD` range the
+  plan suggested: `physicsSwitchWorld` receives only `physicsWorldAPI` + `sendMessage`, so
+  a `WORLD_*` number would route somewhere with no access to `engAPI` or the buffers.
+  `DEBUG_STATE_PUSH = 104` sits beside `TRANSFORMS_PUSH`/`EVENTS_PUSH`;
+  `COLL_VERTICES`/`INDICES`/`HEIGHTS`/`NORMAL`/`BORDER_RADIUS` are `637`-`641`.
+- **Tracking is an explicit id set, not "all bodies".** The main thread sends exactly the
+  `{rigidBodyIds, colliderIds}` it's visualizing and **array position is the slot**, which
+  needs no allocator on either side (the plan's "indexed the same way the transform buffer
+  indexes bodies" doesn't work — colliders have no transform slot). Flushes are coalesced
+  to once per frame in the render system, which is what resolves the "toggle thrash" risk.
+- A `VALID` bit gates every read, so the frame between a tracking change and the worker's
+  next write leaves colors untouched instead of painting a wrong one.
+- The worker **copies mesh arrays before transferring** them — the getters return the live
+  Rapier shape's buffers, and transferring those would neuter the running simulation.
+
+### Config and persistence
+
+- Config lives at **`AppConfig.debugPhysicsWireframe`** (top level, beside the existing
+  `debugKeys`/`debugCamera`), not nested under `physics`. `initPhysics()` spreads
+  `AppConfig.physics` into `PhysicsState` and posts it to the worker, so anything under
+  `physics` would cross the worker boundary.
+- `Config.ts` declares the **types only** — the default color values live in
+  `_dbg__PhysicsDebugDraw.ts` so no color table ships in a production bundle. Resolution
+  is per-key, because `loadConfig()` merges shallowly and a partial app override would
+  otherwise leave the rest undefined.
+- Three LS keys, deliberately separate: `AEK_debugPhysicsApiWireframe` (global palette),
+  `AEK_debugPhysicsApiEntities` (per-entity), `AEK_debugPhysicsApiUI` (folder open/closed
+  state — kept apart so "Reset all wireframe settings" doesn't collapse the folder you're
+  working in). "Clear tab LS" clears all of them plus `AEK_debugPhysicsApi`.
+- **Per-entity color overrides live in a module map, not on the component.** The component
+  *is* the visibility toggle, so reading overrides off it would discard them every time a
+  wireframe was hidden. The component's `colorOverrides` field seeds the map on add.
+- Design decision 9's persistence test is **`APP_ID.isFixed`** (`ECS.ts` sets it to
+  `Boolean(opts?.appId)`), which is an exact signal rather than a heuristic. Entities
+  without a stable id now say so in the edit window ("Session only (entity has no appId)")
+  instead of silently not saving. `src/app/physicsTest.ts`'s sensor entity was given an
+  explicit `appId` for this reason.
+
+### Rendering
+
+- Three attach cases, not the plan's two: has an `OBJECT3D` -> child of it (covers both
+  dynamic-visual and static-with-mesh); `BODY_DYNAMIC_HEADLESS` -> root-scene host synced
+  per frame; static with no `OBJECT3D` -> root-scene host with the collider's world pose
+  baked in once.
+- **Parent scale is divided out** of both the wireframe's offset and its size, re-applied
+  each frame. `createPhysicsEntity` copies the ECS transform's scale onto the `Object3D`,
+  but collider dimensions are unscaled physics space, so a scaled mesh would otherwise
+  stretch its own collider wireframe.
+- Flat-faced shapes use `EdgesGeometry` (face diagonals are noise); curved ones use
+  `WireframeGeometry` on deliberately low-segment geometry.
+
+### Phase 6 outcome: fat lines work
+
+Three ships a **WebGPU-native** fat-line variant —
+`three/examples/jsm/lines/webgpu/LineSegments2.js` backed by `Line2NodeMaterial`, typed by
+`@types/three`. Unlike the WebGL `LineMaterial` this plan anticipated, it derives
+screen-space width from the viewport directly, so there is **no `resolution` uniform to
+keep in sync with canvas resizes**. Thickness changes are a uniform write: no geometry
+rebuild, no shader recompile. The modules are dynamically imported on first use and both
+the import and the construction are guarded, so the 1px `LineBasicMaterial` fallback plus
+one-time console warning happens automatically rather than being a manual decision.
+
+**Accepted cost:** this adds **12.7 KB raw / 3.7 KB gzipped** to the production bundle
+(3,580.95 -> 3,593.68 kB; 1,201.06 -> 1,204.82 kB gzipped), confirmed by a stash-and-rebuild
+diff. `Line2NodeMaterial` lives inside `three/webgpu`, which is in the always-shipped
+shared chunk, so referencing it from anywhere — even a lazily-imported debug-only chunk —
+stops Rollup tree-shaking it and its TSL node graph out. This is the one exception to the
+Verification section's "nothing from this feature in the production chunk" rule, signed off
+by the user. Everything else honours it: `_dbg__PhysicsDebugDraw.ts` (10.74 kB) and the two
+fat-line addon modules all split into lazy chunks, and the production chunk has zero hits
+for any wireframe logic.

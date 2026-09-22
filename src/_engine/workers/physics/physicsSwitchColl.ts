@@ -7,7 +7,7 @@ import {
 } from '../../core/Physics/PhysicsAPITypes';
 
 const sendNoCollErrorMessage = (
-  sendMessage: (message: any, data: PhysicsUpProtocol) => void,
+  sendMessage: (message: any, data: PhysicsUpProtocol, isError?: boolean) => void,
   data: PhysicsUpProtocol
 ) =>
   sendMessage(
@@ -22,7 +22,12 @@ export const physicsSwitchColl = async (
   data: PhysicsUpProtocol,
   physicsWorldAPI: WorldAPI,
   engAPI: EngineAPIType,
-  sendMessage: (message: any, data: PhysicsUpProtocol) => void
+  sendMessage: (
+    message: any,
+    data: PhysicsUpProtocol,
+    isError?: boolean,
+    transfer?: Transferable[]
+  ) => void
 ) => {
   const type = data.type;
 
@@ -199,6 +204,48 @@ export const physicsSwitchColl = async (
     case PhysicsProtocolType.COLL_HALF_EXTENTS: {
       if (!collAPI) return sendNoCollErrorMessage(sendMessage, data);
       return sendMessage({ type, halfExtents: collAPI.halfExtentsSync() }, data);
+    }
+
+    // --- Geometry (mesh-type shapes) ---
+    // Mesh data can be megabytes, so these three travel as Transferables rather than
+    // through structured clone. They are copied first: the arrays the getters return
+    // belong to the live Rapier shape, and transferring those would neuter the shape
+    // the simulation is still using. The cost is paid once per collider, the moment its
+    // wireframe is first requested — never per frame.
+    case PhysicsProtocolType.COLL_VERTICES: {
+      if (!collAPI) return sendNoCollErrorMessage(sendMessage, data);
+      const live = collAPI.verticesSync();
+      const vertices = live ? new Float32Array(live) : null;
+      return sendMessage({ type, vertices }, data, false, vertices ? [vertices.buffer] : undefined);
+    }
+
+    case PhysicsProtocolType.COLL_INDICES: {
+      if (!collAPI) return sendNoCollErrorMessage(sendMessage, data);
+      const live = collAPI.indicesSync();
+      const indices = live ? new Uint32Array(live) : null;
+      return sendMessage({ type, indices }, data, false, indices ? [indices.buffer] : undefined);
+    }
+
+    case PhysicsProtocolType.COLL_HEIGHTS: {
+      if (!collAPI) return sendNoCollErrorMessage(sendMessage, data);
+      const live = collAPI.heightsSync();
+      const heights = live ? { ...live, heights: new Float32Array(live.heights) } : null;
+      return sendMessage(
+        { type, heights },
+        data,
+        false,
+        heights ? [heights.heights.buffer] : undefined
+      );
+    }
+
+    case PhysicsProtocolType.COLL_NORMAL: {
+      if (!collAPI) return sendNoCollErrorMessage(sendMessage, data);
+      return sendMessage({ type, normal: collAPI.normalSync() }, data);
+    }
+
+    case PhysicsProtocolType.COLL_BORDER_RADIUS: {
+      if (!collAPI) return sendNoCollErrorMessage(sendMessage, data);
+      return sendMessage({ type, borderRadius: collAPI.borderRadiusSync() }, data);
     }
 
     // --- Filtering Groups ---

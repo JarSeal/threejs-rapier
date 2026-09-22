@@ -4,6 +4,8 @@ import { ECSSystemStage } from '../../AppECSRegistry';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { lerror } from '../utils/Logger';
+import { IS_DEBUG_ENV } from './Config';
+import { loadDebugModule } from '../utils/helpers';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import {
@@ -19,6 +21,13 @@ import {
 import { ColliderParams, RigidBodyAPI, RigidBodyParams } from './Physics/PhysicsAPITypes';
 
 export const registerPhysicsManager = (world: ECSWorld) => {
+  if (IS_DEBUG_ENV) {
+    // Per-entity collider wireframes (p025). Self-registers its ECS hooks/system on
+    // import; nothing runs until an entity actually gets a DEBUG_PHYSICS_WIREFRAME
+    // component, and none of it reaches a production bundle.
+    loadDebugModule(() => import('./Debug/_dbg__PhysicsDebugDraw'));
+  }
+
   ECSWorld.registerComponentHooks(ComponentType.TAG_IS_PHYSICS_OBJECT, {
     onDeleteEntity: (entityId, w) => {
       // onDeleteEntity is synchronous; disposal is fire-and-forget (WORKER_THREAD mode

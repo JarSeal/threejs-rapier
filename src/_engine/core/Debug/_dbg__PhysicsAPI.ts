@@ -28,10 +28,43 @@ import {
   type PhysicsState,
   type PhysicsWorkerTarget,
 } from '../Physics/PhysicsAPITypes';
+import {
+  getEntityWireframeColor,
+  getGlobalWireframeColorOverrides,
+  getWireframeColorDefault,
+  getWireframeColors,
+  getWireframeLineThickness,
+  getWireframeLineThicknessDefault,
+  isWireframePersistable,
+  isWireframeVisible,
+  PHYSICS_WIREFRAME_ENTITY_LS_KEY,
+  resetEntityWireframeColors,
+  setEntityWireframeColor,
+  setGlobalWireframeColor,
+  setGlobalWireframeColors,
+  setGlobalWireframeLineThickness,
+  setWireframeVisible,
+  WIREFRAME_COLOR_STATES,
+  type WireframeColorState,
+} from './_dbg__PhysicsDebugDraw';
 import { getECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 
 const LS_KEY = 'AEK_debugPhysicsApi';
+/** Wireframe colors/thickness get their own key so "Clear tab LS" on the main physics
+ * settings doesn't silently wipe the user's palette, and vice versa. */
+const WIREFRAME_LS_KEY = 'AEK_debugPhysicsApiWireframe';
+/** Pure UI state (which folders are open), kept apart from the settings keys so
+ * "Reset all wireframe settings" doesn't also collapse the folder you're working in —
+ * the same split _dbg__SkyBox.ts makes with its own AEK_debugSkyBoxUI key. */
+const UI_LS_KEY = 'AEK_debugPhysicsApiUI';
+
+let physicsApiUIState = {
+  wireframeFolderExpanded: false,
+  entityWireframeFolderExpanded: false,
+};
+
+const persistUIState = () => lsSetItem(UI_LS_KEY, physicsApiUIState);
 const EDIT_PHYS_ENTITY_WIN_ID = 'physicsApiEntityEditorWindow';
 const PHYSICS_ENTITY_COMPONENT_TYPES = [
   ComponentType.BODY_STATIC,
@@ -54,6 +87,48 @@ const setBootOverride = (partial: DebugPhysicsApiBoot) => {
   const current = lsGetItem(DEBUG_PHYSICS_API_BOOT_LS_KEY, {}) as DebugPhysicsApiBoot;
   lsSetItem(DEBUG_PHYSICS_API_BOOT_LS_KEY, { ...current, ...partial });
   location.reload();
+};
+
+type PersistedWireframeState = {
+  colors?: Partial<Record<WireframeColorState, number>>;
+  lineThickness?: number;
+};
+
+/** Human-readable labels for the color pickers, phrased as the condition each one paints. */
+const WIREFRAME_STATE_LABELS: Record<WireframeColorState, string> = {
+  disabled: 'Disabled (collider or its body)',
+  sensor: 'Sensor',
+  sleeping: 'Sleeping',
+  kinematic: 'Kinematic',
+  fixed: 'Fixed / static',
+  awake: 'Awake / active',
+};
+
+/** Pushes any persisted palette into the draw module. Runs at boot rather than when the
+ * tab is first opened, so wireframes come up in the user's colors even if they never
+ * click into this tab. */
+const restoreWireframeState = () => {
+  const saved = lsGetItem(WIREFRAME_LS_KEY, {}) as PersistedWireframeState;
+  if (saved.colors) setGlobalWireframeColors(saved.colors);
+  if (typeof saved.lineThickness === 'number') {
+    setGlobalWireframeLineThickness(saved.lineThickness);
+  }
+};
+
+/** Persists only what the user actually overrode — an untouched state stays absent, so it
+ * keeps tracking the CONFIG.ts default if that changes later. */
+const persistWireframeState = () => {
+  const colors = getGlobalWireframeColorOverrides();
+  const lineThickness = getWireframeLineThickness();
+  const isDefaultThickness = lineThickness === getWireframeLineThicknessDefault();
+  const payload: PersistedWireframeState = {};
+  if (Object.keys(colors).length) payload.colors = colors;
+  if (!isDefaultThickness) payload.lineThickness = lineThickness;
+  if (!Object.keys(payload).length) {
+    lsRemoveItem(WIREFRAME_LS_KEY);
+    return;
+  }
+  lsSetItem(WIREFRAME_LS_KEY, payload);
 };
 
 // Only these fields persist under LS_KEY. workerTarget/useSAB/maxBodies live under their
@@ -180,6 +255,74 @@ const createPhysicsEntitiesDebugList = () => {
   if (!entityIds.length) html += `<li class="emptyState">No physics entities registered..</li>`;
   html += '</ul></div>';
   return html;
+};
+
+/**
+ * Per-entity wireframe controls for the edit window (p025 Design decision 7c / Phase 5):
+ * the visibility toggle, plus one color picker per state that overrides the global
+ * palette for this entity only.
+ *
+ * The pickers always show a color, since Tweakpane has no "unset" state — an untouched
+ * one simply mirrors the current global value, and its "Reset to default" clears the
+ * override so it goes back to tracking the global.
+ */
+const addEntityWireframeControls = (
+  pane: Pane,
+  entityId: number,
+  world: ReturnType<typeof getECSWorld>
+) => {
+  const folder = pane
+    .addFolder({
+      title: 'Debug wireframe',
+      expanded: physicsApiUIState.entityWireframeFolderExpanded,
+    })
+    .on('fold', (foldState) => {
+      physicsApiUIState.entityWireframeFolderExpanded = foldState.expanded;
+      persistUIState();
+    });
+
+  const visibilityProxy = { visible: isWireframeVisible(entityId, world) };
+  folder
+    .addBinding(visibilityProxy, 'visible', { label: 'Show wireframe' })
+    .on('change', (e) => setWireframeVisible(entityId, world, e.value));
+
+  // Without an app-supplied appId an entity's id is a fresh UUID every load, so nothing
+  // below can be keyed to it across reloads. Say so rather than letting the settings look
+  // like they silently failed to save.
+  if (!isWireframePersistable(entityId, world)) {
+    folder.addBinding({ note: 'Session only (entity has no appId)' }, 'note', {
+      label: 'Persistence',
+      readonly: true,
+    });
+  }
+
+  const globals = getWireframeColors();
+  // Seeded with this entity's override where it has one, and the global value otherwise.
+  const colorProxy = {} as Record<WireframeColorState, number>;
+  for (const state of WIREFRAME_COLOR_STATES) {
+    colorProxy[state] = getEntityWireframeColor(entityId, state) ?? globals[state];
+  }
+
+  for (const state of WIREFRAME_COLOR_STATES) {
+    folder
+      .addBinding(colorProxy, state, {
+        label: WIREFRAME_STATE_LABELS[state],
+        view: 'color',
+      })
+      .on('change', (e) => setEntityWireframeColor(entityId, world, state, e.value));
+    folder.addButton({ title: 'Reset to default' }).on('click', () => {
+      setEntityWireframeColor(entityId, world, state, undefined);
+      colorProxy[state] = getWireframeColors()[state];
+      folder.refresh();
+    });
+  }
+
+  folder.addButton({ title: 'Reset all to default' }).on('click', () => {
+    resetEntityWireframeColors(entityId, world);
+    const current = getWireframeColors();
+    for (const state of WIREFRAME_COLOR_STATES) colorProxy[state] = current[state];
+    folder.refresh();
+  });
 };
 
 const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
@@ -310,10 +453,85 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
     rotationInput.refresh();
   });
 
+  entityWindowPane.addBlade({ view: 'separator' });
+  addEntityWireframeControls(entityWindowPane, d.entityId, world);
+
   return entityWindowCmp;
 };
 
+/**
+ * "Wireframe" folder: the global palette every per-entity collider wireframe falls back
+ * to (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md, Design decision 7b). Visibility
+ * itself is never global — it's toggled per entity from the edit window.
+ */
+const addWireframeFolder = (debugGUI: Pane) => {
+  const folder = debugGUI
+    .addFolder({ title: 'Wireframe', expanded: physicsApiUIState.wireframeFolderExpanded })
+    .on('fold', (foldState) => {
+      physicsApiUIState.wireframeFolderExpanded = foldState.expanded;
+      persistUIState();
+    });
+
+  // Tweakpane binds to object properties, so the live values are mirrored into a plain
+  // proxy; each on('change') writes through to the draw module and persists.
+  const colorProxy = getWireframeColors() as Record<WireframeColorState, number>;
+
+  for (const state of WIREFRAME_COLOR_STATES) {
+    folder
+      .addBinding(colorProxy, state, {
+        label: WIREFRAME_STATE_LABELS[state],
+        view: 'color',
+      })
+      .on('change', (e) => {
+        setGlobalWireframeColor(state, e.value);
+        persistWireframeState();
+      });
+    // A bare "Reset" directly under its own picker, matching _dbg__SkyBox.ts's pattern.
+    folder.addButton({ title: 'Reset' }).on('click', () => {
+      setGlobalWireframeColor(state, undefined);
+      colorProxy[state] = getWireframeColorDefault(state);
+      persistWireframeState();
+      folder.refresh();
+    });
+  }
+
+  folder.addBlade({ view: 'separator' });
+
+  const thicknessProxy = { lineThickness: getWireframeLineThickness() };
+  folder
+    .addBinding(thicknessProxy, 'lineThickness', {
+      label: 'Line thickness (px)',
+      min: 1,
+      max: 10,
+      step: 1,
+    })
+    .on('change', (e) => {
+      setGlobalWireframeLineThickness(e.value);
+      persistWireframeState();
+    });
+  folder.addButton({ title: 'Reset' }).on('click', () => {
+    setGlobalWireframeLineThickness(undefined);
+    thicknessProxy.lineThickness = getWireframeLineThicknessDefault();
+    persistWireframeState();
+    folder.refresh();
+  });
+
+  folder.addButton({ title: 'Reset all wireframe settings' }).on('click', () => {
+    for (const state of WIREFRAME_COLOR_STATES) {
+      setGlobalWireframeColor(state, undefined);
+      colorProxy[state] = getWireframeColorDefault(state);
+    }
+    setGlobalWireframeLineThickness(undefined);
+    thicknessProxy.lineThickness = getWireframeLineThicknessDefault();
+    lsRemoveItem(WIREFRAME_LS_KEY);
+    folder.refresh();
+  });
+};
+
 export const _createPhysicsAPIDebugGUI = () => {
+  physicsApiUIState = { ...physicsApiUIState, ...lsGetItem(UI_LS_KEY, physicsApiUIState) };
+  restoreWireframeState();
+
   const state = getPhysicsState();
   const savedValues = lsGetItem(LS_KEY, {}) as Partial<LivePhysicsApiState>;
   Object.assign(state, savedValues);
@@ -328,8 +546,18 @@ export const _createPhysicsAPIDebugGUI = () => {
     orderNr: 6,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
-        hasData: () => lsKeyHasData(LS_KEY),
-        onClear: () => lsRemoveItem(LS_KEY),
+        // Every key this tab owns, so one button leaves nothing behind.
+        hasData: () =>
+          lsKeyHasData(LS_KEY) ||
+          lsKeyHasData(WIREFRAME_LS_KEY) ||
+          lsKeyHasData(PHYSICS_WIREFRAME_ENTITY_LS_KEY) ||
+          lsKeyHasData(UI_LS_KEY),
+        onClear: () => {
+          lsRemoveItem(LS_KEY);
+          lsRemoveItem(WIREFRAME_LS_KEY);
+          lsRemoveItem(PHYSICS_WIREFRAME_ENTITY_LS_KEY);
+          lsRemoveItem(UI_LS_KEY);
+        },
         watchKey: LS_KEY,
       });
       const { container, debugGUI } = createNewDebuggerPane(
@@ -518,6 +746,10 @@ export const _createPhysicsAPIDebugGUI = () => {
         state.interpolationMode = e.value as unknown as PhysicsInterpolationMode;
         persistLiveState(state);
       });
+
+      debugGUI.addBlade({ view: 'separator' });
+
+      addWireframeFolder(debugGUI);
 
       // Switching to another debugger tab rebuilds this container from scratch on
       // return (createDebuggerTab's container() re-runs on every click, it isn't

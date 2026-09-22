@@ -86,6 +86,11 @@ export const scene = async () => {
         addToast({ title: 'Physics sensor', message: `${name} entered` });
       },
     },
-    { rigidType: 'FIXED', translation: { x: 0, y: 0.5, z: 0 } }
+    { rigidType: 'FIXED', translation: { x: 0, y: 0.5, z: 0 } },
+    // No mesh to hang off, so this one creates its own entity — give it an explicit appId
+    // like the three above have, otherwise it gets a fresh UUID on every load and any
+    // per-entity debug settings (e.g. a wireframe toggle) can't survive a reload.
+    undefined,
+    { appId: 'physicsTestSensor' }
   );
 };

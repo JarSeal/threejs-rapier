@@ -418,6 +418,18 @@ export enum ShapeType {
 }
 
 /**
+ * Everything needed to reconstruct a HeightField collider's surface, as returned by
+ * ColliderAPI.heights(). `heights` is a nrows x ncols matrix in column-major order,
+ * along the shape's local y axis; `scale` sizes the local x/z plane it spans.
+ */
+export type HeightFieldData = {
+  nrows: number;
+  ncols: number;
+  heights: Float32Array;
+  scale: PhysVector;
+};
+
+/**
  * A geometric entity that can be attached to a body so it can be affected
  * by contacts and proximity queries.
  */
@@ -489,6 +501,36 @@ export type ColliderAPI = {
   halfHeightSync(): number;
   halfExtents(): Promise<PhysVector>;
   halfExtentsSync(): PhysVector;
+
+  // --- Geometry (mesh-type shapes) ---
+  // The four accessors below exist so a debug visualizer can rebuild a collider's
+  // wireframe client-side without Rapier's whole-world debugRender() line soup
+  // (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md). They are read-only snapshots of
+  // shape data that never changes after creation, so a consumer fetches them once per
+  // collider — never per frame. MAIN_THREAD returns the live arrays the shape owns:
+  // do not mutate them.
+
+  /** Vertex buffer (3 floats per vertex) of any vertex-based shape — TriMesh,
+   * ConvexPolyhedron, RoundConvexPolyhedron, Polyline, and also Segment/Triangle/
+   * RoundTriangle, whose points are flattened into the same form. Null otherwise. */
+  vertices(): Promise<Float32Array | null>;
+  verticesSync(): Float32Array | null;
+  /** Index buffer that goes with vertices(). Null for shapes that have none, and also
+   * for a ConvexPolyhedron built from an auto-computed convex hull. */
+  indices(): Promise<Uint32Array | null>;
+  indicesSync(): Uint32Array | null;
+  /** Full HeightField description, or null for every other shape type. The bare heights
+   * array is not enough to reconstruct the surface — nrows/ncols give it its grid shape
+   * and scale its extent. */
+  heights(): Promise<HeightFieldData | null>;
+  heightsSync(): HeightFieldData | null;
+  /** Outward normal of a HalfSpace, or null for every other shape type. */
+  normal(): Promise<PhysVector | null>;
+  normalSync(): PhysVector | null;
+  /** Border radius of a RoundCuboid/RoundCylinder/RoundCone/RoundTriangle/
+   * RoundConvexPolyhedron, 0 for every other shape type. */
+  borderRadius(): Promise<number>;
+  borderRadiusSync(): number;
 
   // --- Collision Filtering ---
   collisionGroups(): Promise<InteractionGroupsAPI>;
@@ -1795,6 +1837,14 @@ export type PhysicsUpProtocol =
          * (computed by the main thread's accumulator in stepPhysics()). Default 1. */
         steps?: number;
       }
+    | {
+        type: PhysicsProtocolType.SET_DEBUG_STATE_TRACKING;
+        /** Full replacement of the tracked set, not a delta. A body's/collider's position
+         * in these arrays IS its slot in the debug-state buffer, so the sender already
+         * knows the mapping and no slot allocator is needed on either side. */
+        rigidBodyIds: number[];
+        colliderIds: number[];
+      }
     // World --------------------------------------
     | {
         type: PhysicsProtocolType.CREATE_WORLD;
@@ -2133,6 +2183,11 @@ export type PhysicsUpProtocol =
         groups: InteractionGroupsAPI;
       }
     | { type: PhysicsProtocolType.COLL_CONTAINS_POINT; colliderId: number; point: PhysVector }
+    | { type: PhysicsProtocolType.COLL_VERTICES; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_INDICES; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_HEIGHTS; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_NORMAL; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_BORDER_RADIUS; colliderId: number }
   ) & { requestId?: number; isOneWay?: boolean };
 
 /** Physics worker DOWN protocol (from worker to main thread) */
@@ -2265,6 +2320,22 @@ export type PhysicsDownProtocol =
     | { type: PhysicsProtocolType.COLL_COLLISION_GROUPS; groups: InteractionGroupsAPI }
     | { type: PhysicsProtocolType.COLL_SOLVER_GROUPS; groups: InteractionGroupsAPI }
     | { type: PhysicsProtocolType.COLL_CONTAINS_POINT; isInside: boolean }
+    | { type: PhysicsProtocolType.COLL_VERTICES; vertices: Float32Array | null }
+    | { type: PhysicsProtocolType.COLL_INDICES; indices: Uint32Array | null }
+    | { type: PhysicsProtocolType.COLL_HEIGHTS; heights: HeightFieldData | null }
+    | { type: PhysicsProtocolType.COLL_NORMAL; normal: PhysVector | null }
+    | { type: PhysicsProtocolType.COLL_BORDER_RADIUS; borderRadius: number }
+    // Debug state tracking (see SET_DEBUG_STATE_TRACKING) ----
+    | {
+        type: PhysicsProtocolType.SET_DEBUG_STATE_TRACKING;
+        /** Which transport the debug-state buffer resolved to. Mirrors CREATE_WORLD's
+         * transform-buffer resolution, decided once when the buffer is first allocated. */
+        transportMode: 'SHARED_MEMORY' | 'MESSAGE_BATCH';
+        /** Only present (and only a SharedArrayBuffer) on the enable that allocated the
+         * buffer, and only in 'SHARED_MEMORY' mode. */
+        buffer?: SharedArrayBuffer;
+      }
+    | { type: PhysicsProtocolType.DEBUG_STATE_PUSH; buffer: ArrayBuffer }
     // Transforms hot path (unsolicited push, MESSAGE_BATCH fallback only) ----
     | { type: PhysicsProtocolType.TRANSFORMS_PUSH; buffer: ArrayBuffer }
     // Events (unsolicited push, only sent when at least one event occurred that step) ----
@@ -2295,6 +2366,9 @@ export type ErrorResponse = PhysicsResponse<PhysicsProtocolType.ERROR>;
 export type CreateWorldResponse = PhysicsResponse<PhysicsProtocolType.CREATE_WORLD>;
 export type TransformsPushMessage = PhysicsResponse<PhysicsProtocolType.TRANSFORMS_PUSH>;
 export type EventsPushMessage = PhysicsResponse<PhysicsProtocolType.EVENTS_PUSH>;
+export type DebugStatePushMessage = PhysicsResponse<PhysicsProtocolType.DEBUG_STATE_PUSH>;
+export type SetDebugStateTrackingResponse =
+  PhysicsResponse<PhysicsProtocolType.SET_DEBUG_STATE_TRACKING>;
 export type DeleteWorldResponse = PhysicsResponse<PhysicsProtocolType.DELETE_WORLD>;
 export type WorldGravityResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GET_GRAVITY>;
 export type WorldTimestepResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GET_TIMESTEP>;
@@ -2395,6 +2469,11 @@ export type CollCollisionGroupsResponse =
   PhysicsResponse<PhysicsProtocolType.COLL_COLLISION_GROUPS>;
 export type CollSolverGroupsResponse = PhysicsResponse<PhysicsProtocolType.COLL_SOLVER_GROUPS>;
 export type CollContainsPointResponse = PhysicsResponse<PhysicsProtocolType.COLL_CONTAINS_POINT>;
+export type CollVerticesResponse = PhysicsResponse<PhysicsProtocolType.COLL_VERTICES>;
+export type CollIndicesResponse = PhysicsResponse<PhysicsProtocolType.COLL_INDICES>;
+export type CollHeightsResponse = PhysicsResponse<PhysicsProtocolType.COLL_HEIGHTS>;
+export type CollNormalResponse = PhysicsResponse<PhysicsProtocolType.COLL_NORMAL>;
+export type CollBorderRadiusResponse = PhysicsResponse<PhysicsProtocolType.COLL_BORDER_RADIUS>;
 
 export enum PhysicsProtocolType {
   ERROR = 0,
@@ -2404,12 +2483,21 @@ export enum PhysicsProtocolType {
   TAKE_SNAPSHOT = 2,
   RESTORE_SNAPSHOT = 3,
   STEP = 4,
+  /** Replaces the set of rigid bodies/colliders whose live state the worker mirrors into
+   * the debug-state buffer after every step. Empty sets = tracking off, nothing allocated
+   * and nothing written. WORKER_THREAD only — MAIN_THREAD reads the *Sync state getters
+   * directly. Lives in the ENGINE range (not WORLD) because it needs the worker's own
+   * engAPI/buffer module state, which the WORLD switchboard doesn't receive. */
+  SET_DEBUG_STATE_TRACKING = 5,
   CREATE_WORLD = 100,
   DELETE_WORLD = 101,
   /** Worker -> main thread unsolicited push of the hot-path transform buffer (MESSAGE_BATCH fallback only). */
   TRANSFORMS_PUSH = 102,
   /** Worker -> main thread unsolicited push of collision/contact-force events, only sent when at least one occurred that step. */
   EVENTS_PUSH = 103,
+  /** Unsolicited per-step push of the debug-state buffer (MESSAGE_BATCH fallback only,
+   * and only while SET_DEBUG_STATE_TRACKING has a non-empty set). */
+  DEBUG_STATE_PUSH = 104,
 
   // WORLD >= 200 && WORLD < 400
   WORLD_GET_GRAVITY = 200,
@@ -2546,4 +2634,9 @@ export enum PhysicsProtocolType {
   COLL_SOLVER_GROUPS = 634,
   COLL_SET_SOLVER_GROUPS = 635,
   COLL_CONTAINS_POINT = 636,
+  COLL_VERTICES = 637,
+  COLL_INDICES = 638,
+  COLL_HEIGHTS = 639,
+  COLL_NORMAL = 640,
+  COLL_BORDER_RADIUS = 641,
 }

@@ -8,6 +8,7 @@ import {
   ContactForceEventRecord,
   ContactForceEventSnapshot,
   EventQueue,
+  HeightFieldData,
   InteractionGroupsAPI,
   PhysicsHooks,
   PhysicsState,
@@ -1649,6 +1650,79 @@ class EngineColliderProxyAPI implements ColliderAPI {
   }
   async halfExtents() {
     return this.halfExtentsSync();
+  }
+
+  // --- Geometry (mesh-type shapes) ---
+  // Same read-the-live-shape pattern as radiusSync/halfExtentsSync above. Rapier's
+  // compat layer caches the JS-side Shape on first access (Collider.shape), so these
+  // are plain property reads, not WASM round trips. The typed arrays are the ones the
+  // shape itself owns: returned by reference (MAIN_THREAD is zero-copy by design) and
+  // documented read-only on ColliderAPI. The worker's COLL_VERTICES/COLL_INDICES/
+  // COLL_HEIGHTS handlers copy before transferring, precisely so transferring can't
+  // neuter the live shape's buffers.
+
+  verticesSync(): Float32Array | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const shape = this.coll.shape as any;
+    if (shape?.vertices instanceof Float32Array) return shape.vertices;
+    // Segment (a, b) and Triangle/RoundTriangle (a, b, c) are the odd ones out: Rapier's
+    // JS layer rebuilds them as separate Vector fields rather than a vertex buffer, even
+    // though the WASM side stores them as one. Flatten them so every vertex-based shape
+    // answers through this one accessor.
+    const points = [shape?.a, shape?.b, shape?.c].filter(Boolean);
+    if (!points.length) return null;
+    const out = new Float32Array(points.length * 3);
+    for (let i = 0; i < points.length; i++) {
+      out[i * 3] = points[i].x;
+      out[i * 3 + 1] = points[i].y;
+      out[i * 3 + 2] = points[i].z;
+    }
+    return out;
+  }
+  async vertices() {
+    return this.verticesSync();
+  }
+
+  indicesSync(): Uint32Array | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const i = (this.coll.shape as any).indices;
+    return i instanceof Uint32Array ? i : null;
+  }
+  async indices() {
+    return this.indicesSync();
+  }
+
+  heightsSync(): HeightFieldData | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const shape = this.coll.shape as any;
+    if (!(shape?.heights instanceof Float32Array)) return null;
+    const scale = shape.scale;
+    return {
+      nrows: shape.nrows,
+      ncols: shape.ncols,
+      heights: shape.heights,
+      scale: scale ? { x: scale.x, y: scale.y, z: scale.z } : { x: 1, y: 1, z: 1 },
+    };
+  }
+  async heights() {
+    return this.heightsSync();
+  }
+
+  normalSync(): PhysVector | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const n = (this.coll.shape as any).normal;
+    return n ? { x: n.x, y: n.y, z: n.z } : null;
+  }
+  async normal() {
+    return this.normalSync();
+  }
+
+  borderRadiusSync(): number {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (this.coll.shape as any).borderRadius || 0;
+  }
+  async borderRadius() {
+    return this.borderRadiusSync();
   }
 
   // --- Groups ---

@@ -13,6 +13,12 @@ import {
   createPhysicsTransformArrayBuffer,
   PhysicsTransformBuffer,
 } from '../core/Physics/PhysicsTransformBuffer';
+import {
+  createPhysicsDebugStateArrayBuffer,
+  DebugBodyFlag,
+  DebugColliderFlag,
+  PhysicsDebugStateBuffer,
+} from '../core/Physics/PhysicsDebugStateBuffer';
 import { physicsSwitchColl } from './physics/physicsSwitchColl';
 import { physicsSwitchRigid } from './physics/physicsSwitchRigid';
 import { physicsSwitchWorld } from './physics/physicsSwitchWorld';
@@ -23,6 +29,12 @@ let physicsWorldAPI: WorldAPI;
 let workerPhysicsState: PhysicsState | undefined;
 let transformBuffer: PhysicsTransformBuffer | undefined;
 let resolvedUseSAB = false;
+/** Debug wireframe state mirror (p025). Stays undefined until the main thread enables
+ * tracking, which is what keeps the feature's cost at zero while no wireframe is on. */
+let debugStateBuffer: PhysicsDebugStateBuffer | undefined;
+/** Tracked ids, in the order the main thread sent them — index IS slot on both sides. */
+let debugTrackedRigidBodyIds: number[] = [];
+let debugTrackedColliderIds: number[] = [];
 
 self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) => {
   const data = event.data;
@@ -62,7 +74,39 @@ self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) 
         // ever one transform write-back and one (conditional) events push per message.
         for (let i = 0; i < (data.steps ?? 1); i++) engAPI.step();
         writeBackTransforms();
+        writeBackDebugState();
         return pushPendingEvents();
+      case PhysicsProtocolType.SET_DEBUG_STATE_TRACKING: {
+        // SET_DEBUG_STATE_TRACKING — full replacement of the tracked set (p025).
+        debugTrackedRigidBodyIds = data.rigidBodyIds;
+        debugTrackedColliderIds = data.colliderIds;
+        const isTracking =
+          debugTrackedRigidBodyIds.length > 0 || debugTrackedColliderIds.length > 0;
+        let buffer: SharedArrayBuffer | undefined = undefined;
+        if (isTracking && !debugStateBuffer) {
+          // First enable: allocate, and hand the main thread the SAB if we have one. The
+          // buffer outlives later disable/enable cycles — it's a few KB, and reallocating
+          // would mean re-handshaking the SAB every time a wireframe is toggled.
+          const maxSlots = workerPhysicsState?.maxBodies || 2048;
+          debugStateBuffer = new PhysicsDebugStateBuffer(
+            maxSlots,
+            createPhysicsDebugStateArrayBuffer(maxSlots, resolvedUseSAB)
+          );
+          if (resolvedUseSAB) buffer = debugStateBuffer.buffer as SharedArrayBuffer;
+        }
+        // Slots are positional, so any set change invalidates every previous slot's
+        // meaning — zero them rather than let a stale flag paint the wrong color.
+        debugStateBuffer?.clear();
+        if (isTracking) writeBackDebugState();
+        return sendMessage(
+          {
+            type,
+            transportMode: resolvedUseSAB ? 'SHARED_MEMORY' : 'MESSAGE_BATCH',
+            buffer,
+          },
+          data
+        );
+      }
       case PhysicsProtocolType.TAKE_SNAPSHOT:
         // TAKE_SNAPSHOT
         const snapshot = engAPI.takeSnapshot();
@@ -150,13 +194,20 @@ self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) 
   }
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sendMessage = (message: any, data: PhysicsUpProtocol, isError?: boolean) => {
+const sendMessage = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  message: any,
+  data: PhysicsUpProtocol,
+  isError?: boolean,
+  transfer?: Transferable[]
+) => {
   // If the up message has 'isOneWay: true', don't reply
   if (data.isOneWay && isError) return;
   const requestId = data.requestId;
-  if (requestId === undefined) return sendMessageSimple(message);
-  return self.postMessage({ ...message, requestId });
+  if (requestId === undefined) return sendMessageSimple(message, transfer);
+  return transfer
+    ? self.postMessage({ ...message, requestId }, transfer)
+    : self.postMessage({ ...message, requestId });
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -178,6 +229,46 @@ const writeBackTransforms = () => {
   if (!resolvedUseSAB) {
     const copy = transformBuffer.buffer.slice(0) as ArrayBuffer;
     sendMessageSimple({ type: PhysicsProtocolType.TRANSFORMS_PUSH, buffer: copy }, [copy]);
+  }
+};
+
+/** Mirrors the tracked bodies'/colliders' live state into the debug-state buffer after a
+ * step, then (MESSAGE_BATCH fallback only) pushes a copy as one Transferable message.
+ * Returns immediately — allocating nothing and posting nothing — whenever no wireframe is
+ * switched on, which is the normal case. */
+const writeBackDebugState = () => {
+  if (!debugStateBuffer) return;
+  if (!debugTrackedRigidBodyIds.length && !debugTrackedColliderIds.length) return;
+
+  for (let slot = 0; slot < debugTrackedRigidBodyIds.length; slot++) {
+    const rb = engAPI.getRigidBodyAPIWithId(debugTrackedRigidBodyIds[slot]);
+    if (!rb || !rb.isValidSync()) {
+      debugStateBuffer.setBodyFlags(slot, 0);
+      continue;
+    }
+    let flags = DebugBodyFlag.VALID;
+    if (rb.isSleepingSync()) flags |= DebugBodyFlag.SLEEPING;
+    if (rb.isEnabledSync()) flags |= DebugBodyFlag.ENABLED;
+    if (rb.isKinematicSync()) flags |= DebugBodyFlag.KINEMATIC;
+    if (rb.isFixedSync()) flags |= DebugBodyFlag.FIXED;
+    debugStateBuffer.setBodyFlags(slot, flags);
+  }
+
+  for (let slot = 0; slot < debugTrackedColliderIds.length; slot++) {
+    const coll = engAPI.getColliderAPIWithId(debugTrackedColliderIds[slot]);
+    if (!coll || !coll.isValidSync()) {
+      debugStateBuffer.setColliderFlags(slot, 0);
+      continue;
+    }
+    let flags = DebugColliderFlag.VALID;
+    if (coll.isEnabledSync()) flags |= DebugColliderFlag.ENABLED;
+    if (coll.isSensorSync()) flags |= DebugColliderFlag.SENSOR;
+    debugStateBuffer.setColliderFlags(slot, flags);
+  }
+
+  if (!resolvedUseSAB) {
+    const copy = debugStateBuffer.buffer.slice(0) as ArrayBuffer;
+    sendMessageSimple({ type: PhysicsProtocolType.DEBUG_STATE_PUSH, buffer: copy }, [copy]);
   }
 };
 
