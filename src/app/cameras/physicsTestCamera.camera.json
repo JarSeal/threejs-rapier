@@ -2,11 +2,11 @@
   "$schema": "../../../.schemas/camera.schema.json",
   "camProps": {
     "type": "PERSPECTIVE",
-    "fov": 60,
+    "fov": 65,
     "near": 0.1,
-    "far": 100,
-    "position": { "x": 0, "y": 6, "z": 15 },
-    "lookAtPoint": { "x": 0, "y": 2, "z": 0 },
+    "far": 120,
+    "position": { "x": 0, "y": 18, "z": 40 },
+    "lookAtPoint": { "x": 0, "y": 2, "z": -6 },
     "active": true
   },
   "entityOpts": {

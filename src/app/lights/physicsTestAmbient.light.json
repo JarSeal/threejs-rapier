@@ -3,7 +3,7 @@
   "lightProps": {
     "type": "AMBIENT",
     "color": "#ffffff",
-    "intensity": 0.8
+    "intensity": 0.4
   },
   "entityOpts": {
     "appId": "physicsTestAmbient",

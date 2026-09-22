@@ -119,6 +119,19 @@ import {
   ContactForceEventSnapshot,
   TempContactForceEvent,
   EventsPushMessage,
+  JointAPI,
+  JointParams,
+  JointMotorModel,
+  CreateJointResponse,
+  DeleteJointResponse,
+  JointIsValidResponse,
+  JointBody1IdResponse,
+  JointBody2IdResponse,
+  JointAnchor1Response,
+  JointAnchor2Response,
+  JointContactsEnabledResponse,
+  JointLimitsEnabledResponse,
+  JointGetUserDataResponse,
 } from './Physics/PhysicsAPITypes';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 import { ShapeType } from '@dimforge/rapier3d-compat';
@@ -167,6 +180,7 @@ let debugStateBuffer: PhysicsDebugStateBuffer | undefined;
 
 const rigidBodies = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
 const colliders = new Map<number, ColliderAPI>(); // { "Running id", ColliderAPI }
+const joints = new Map<number, JointAPI>(); // { "Running id", JointAPI }
 
 type CollisionEventFn = (collider1: ColliderAPI, collider2: ColliderAPI, started: boolean) => void;
 type ContactForceEventFn = (event: TempContactForceEvent) => void;
@@ -716,11 +730,13 @@ export const deleteRigidBody = async (id: number) => {
   );
   let deletedId: number | undefined = undefined;
   let deletedColliderIds: number[] = [];
+  let deletedJointIds: number[] = [];
   if (rigidBodies.has(id)) rigidBodies.delete(id);
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     const response = engAPI?.deleteRigidBody(id);
     deletedId = response?.id;
     deletedColliderIds = response?.colliderIds || [];
+    deletedJointIds = response?.jointIds || [];
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const response = await messageWorkerAsync<DeleteRigidBodyResponse>({
       type: PhysicsProtocolType.DELETE_RIGID_BODY,
@@ -728,6 +744,7 @@ export const deleteRigidBody = async (id: number) => {
     });
     deletedId = response?.id;
     deletedColliderIds = response?.colliderIds || [];
+    deletedJointIds = response?.jointIds || [];
   }
   if (deletedId !== id) {
     throw new Error(
@@ -739,6 +756,10 @@ export const deleteRigidBody = async (id: number) => {
     const collId = deletedColliderIds[i];
     if (colliders.has(collId)) colliders.delete(collId);
     cleanupWorkerColliderEventFns(collId);
+  }
+  // Delete all possible jointAPIs attached to the rigid body
+  for (let i = 0; i < deletedJointIds.length; i++) {
+    joints.delete(deletedJointIds[i]);
   }
 
   return deletedId;
@@ -752,11 +773,13 @@ export const deleteRigidBodySync = (id: number) => {
   );
   let deletedId: number | undefined = undefined;
   let deletedColliderIds: number[] = [];
+  let deletedJointIds: number[] = [];
   if (rigidBodies.has(id)) rigidBodies.delete(id);
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     const response = engAPI?.deleteRigidBody(id);
     deletedId = response?.id;
     deletedColliderIds = response?.colliderIds || [];
+    deletedJointIds = response?.jointIds || [];
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     throw new Error('Cannot use deleteRigidBodySync in worker mode. Use deleteRigidBody instead.');
   }
@@ -771,6 +794,10 @@ export const deleteRigidBodySync = (id: number) => {
     if (colliders.has(collId)) colliders.delete(collId);
     cleanupWorkerColliderEventFns(collId);
   }
+  // Delete all possible jointAPIs attached to the rigid body
+  for (let i = 0; i < deletedJointIds.length; i++) {
+    joints.delete(deletedJointIds[i]);
+  }
 
   return deletedId;
 };
@@ -784,6 +811,7 @@ export const deleteRigidBodies = async (ids: number[]) => {
   if (!ids.length) return [];
   let deletedIds: number[] | undefined = undefined;
   let deletedColliderIds: number[] = [];
+  let deletedJointIds: number[] = [];
   for (let i = 0; i < ids.length; i++) {
     if (rigidBodies.has(ids[i])) rigidBodies.delete(ids[i]);
   }
@@ -791,6 +819,7 @@ export const deleteRigidBodies = async (ids: number[]) => {
     const response = engAPI?.deleteRigidBodies(ids);
     deletedIds = response?.ids;
     deletedColliderIds = response?.colliderIds || [];
+    deletedJointIds = response?.jointIds || [];
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const response = await messageWorkerAsync<DeleteRigidBodiesResponse>({
       type: PhysicsProtocolType.DELETE_RIGID_BODIES,
@@ -798,6 +827,7 @@ export const deleteRigidBodies = async (ids: number[]) => {
     });
     deletedIds = response?.ids;
     deletedColliderIds = response?.colliderIds || [];
+    deletedJointIds = response?.jointIds || [];
   }
   if (deletedIds === undefined) {
     throw new Error(
@@ -817,6 +847,10 @@ export const deleteRigidBodies = async (ids: number[]) => {
     if (colliders.has(collId)) colliders.delete(collId);
     cleanupWorkerColliderEventFns(collId);
   }
+  // Delete all possible jointAPIs attached to the rigid bodies
+  for (let i = 0; i < deletedJointIds.length; i++) {
+    joints.delete(deletedJointIds[i]);
+  }
 
   return deletedIds;
 };
@@ -830,6 +864,7 @@ export const deleteRigidBodiesSync = (ids: number[]) => {
   if (!ids.length) return [];
   let deletedIds: number[] | undefined = undefined;
   let deletedColliderIds: number[] = [];
+  let deletedJointIds: number[] = [];
   for (let i = 0; i < ids.length; i++) {
     if (rigidBodies.has(ids[i])) rigidBodies.delete(ids[i]);
   }
@@ -837,6 +872,7 @@ export const deleteRigidBodiesSync = (ids: number[]) => {
     const response = engAPI?.deleteRigidBodies(ids);
     deletedIds = response?.ids;
     deletedColliderIds = response?.colliderIds || [];
+    deletedJointIds = response?.jointIds || [];
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     throw new Error(
       'Cannot use deleteRigidBodiesSync in worker mode. Use deleteRigidBodies instead.'
@@ -859,6 +895,10 @@ export const deleteRigidBodiesSync = (ids: number[]) => {
     const collId = deletedColliderIds[i];
     if (colliders.has(collId)) colliders.delete(collId);
     cleanupWorkerColliderEventFns(collId);
+  }
+  // Delete all possible jointAPIs attached to the rigid bodies
+  for (let i = 0; i < deletedJointIds.length; i++) {
+    joints.delete(deletedJointIds[i]);
   }
 
   return deletedIds;
@@ -1134,14 +1174,116 @@ export const deleteCollidersSync = (ids: number[], wakeUps?: boolean[]) => {
   return deletedIds;
 };
 
+/** Create an impulse joint connecting two rigid bodies (by id). */
+export const createJoint = async (params: JointParams) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a joint.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const joint = existsOrThrow(
+      engAPI?.createJoint(params),
+      `Could not create a joint ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+    joints.set(joint.id, joint);
+    return joint;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const res = await messageWorkerAsync<CreateJointResponse>({
+      type: PhysicsProtocolType.CREATE_JOINT,
+      params,
+    });
+    const jointProxy = new JointProxyAPI(res.id, params.userData) as JointAPI;
+    joints.set(res.id, jointProxy);
+    return jointProxy;
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create a joint (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
+  );
+};
+
+/** Create an impulse joint (sync). Only for main thread mode. */
+export const createJointSync = (params: JointParams) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a joint.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const joint = existsOrThrow(
+      engAPI?.createJoint(params),
+      `Could not create a joint ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
+    );
+    joints.set(joint.id, joint);
+    return joint;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    throw new Error('Cannot use createJointSync in worker mode. Use createJoint instead.');
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create a joint (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
+  );
+};
+
+/** Deletes a joint. Returns the id of the deleted jointAPI. */
+export const deleteJoint = async (id: number, wakeUp?: boolean) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before deleting a joint.'
+  );
+  let deletedId: number | undefined = undefined;
+  if (joints.has(id)) joints.delete(id);
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const response = engAPI?.deleteJoint(id, wakeUp);
+    deletedId = response?.id;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const response = await messageWorkerAsync<DeleteJointResponse>({
+      type: PhysicsProtocolType.DELETE_JOINT,
+      id,
+      wakeUp,
+    });
+    deletedId = response?.id;
+  }
+  if (deletedId !== id) {
+    throw new Error(
+      `Could not delete a joint, the returned id (${deletedId}) did not match the id: ${id}.`
+    );
+  }
+  return deletedId;
+};
+
+/** Deletes a joint. Returns the id of the deleted jointAPI (sync). Only for main thread mode. */
+export const deleteJointSync = (id: number, wakeUp?: boolean) => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before deleting a joint.'
+  );
+  let deletedId: number | undefined = undefined;
+  if (joints.has(id)) joints.delete(id);
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    const response = engAPI?.deleteJoint(id, wakeUp);
+    deletedId = response?.id;
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    throw new Error('Cannot use deleteJointSync in worker mode. Use deleteJoint instead.');
+  }
+  if (deletedId !== id) {
+    throw new Error(
+      `Could not delete a joint, the returned id (${deletedId}) did not match the id: ${id}.`
+    );
+  }
+  return deletedId;
+};
+
 export const getRigidBody = (id: number) => rigidBodies.get(id);
 export const getCollider = (id: number) => colliders.get(id);
+export const getJoint = (id: number) => joints.get(id);
 /** All currently tracked rigid bodies, keyed by their physics id (both thread modes). */
 export const getAllRigidBodyEntries = (): IterableIterator<[number, RigidBodyAPI]> =>
   rigidBodies.entries();
 /** All currently tracked colliders, keyed by their physics id (both thread modes). */
 export const getAllColliderEntries = (): IterableIterator<[number, ColliderAPI]> =>
   colliders.entries();
+/** All currently tracked joints, keyed by their physics id (both thread modes). */
+export const getAllJointEntries = (): IterableIterator<[number, JointAPI]> => joints.entries();
 /** Which hot-path transform transport the current world resolved to (WORKER_THREAD only). Undefined before a world is created or in MAIN_THREAD mode. */
 export const getResolvedTransportMode = () => resolvedTransportMode;
 
@@ -1177,7 +1319,7 @@ export const setPhysicsDebugStateTracking = async (
  * MESSAGE_BATCH mode hasn't received its first push yet). WORKER_THREAD only. */
 export const getPhysicsDebugStateBuffer = () => debugStateBuffer;
 
-/** World, RigidBody, and Collider API classes -----[ START ]----- */
+/** World, RigidBody, Collider, and Joint API classes -----[ START ]----- */
 
 class WorldProxyAPI implements WorldAPI {
   restoringWorld: boolean;
@@ -1377,6 +1519,28 @@ class WorldProxyAPI implements WorldAPI {
     throw new Error(msg);
   }
 
+  async createJoint(params: JointParams): Promise<JointAPI> {
+    return await createJoint(params);
+  }
+
+  createJointSync(params: JointParams): JointAPI {
+    if (physicsState.workerTarget === 'MAIN_THREAD') {
+      return existsOrThrow(
+        engAPI?.createJoint(params),
+        `Could not create a joint ("MAIN_THREAD"). Params: ${JSON.stringify(params)}. Has engineAPI: ${Boolean(engAPI)}`
+      );
+    } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+      const msg =
+        'Synchronous creation is not supported in Worker thread mode. Use createJoint(params).';
+      lerror(msg);
+      throw new Error(msg);
+    }
+    // Should not get here
+    const msg = `Unknown physicsState.workerTarget: "${physicsState.workerTarget}".`;
+    lerror(msg);
+    throw new Error(msg);
+  }
+
   // --- Retrieval ---
   /** Returns the main thread rigid body registry rigidBodyAPI promise.
    * It is suggested to use getRigidBodySync(id) method instead of this
@@ -1405,6 +1569,19 @@ class WorldProxyAPI implements WorldAPI {
     return colliders.get(id);
   }
 
+  /** Returns the main thread joint registry jointAPI as promise.
+   * It is suggested to use getJointSync(id) method instead of this
+   * as it is synchronous and faster.
+   */
+  async getJoint(id: number): Promise<JointAPI | undefined> {
+    return joints.get(id);
+  }
+
+  /** Returns the main thread joint registry jointAPI. */
+  getJointSync(id: number): JointAPI | undefined {
+    return joints.get(id);
+  }
+
   // --- Removal ---
   removeRigidBody(bodyOrId: RigidBodyAPI | number): void {
     const id = typeof bodyOrId === 'number' ? bodyOrId : bodyOrId.id;
@@ -1414,6 +1591,11 @@ class WorldProxyAPI implements WorldAPI {
   removeCollider(colliderOrId: ColliderAPI | number, wakeUp: boolean): void {
     const id = typeof colliderOrId === 'number' ? colliderOrId : colliderOrId.id;
     deleteCollider(id, wakeUp);
+  }
+
+  removeJoint(jointOrId: JointAPI | number, wakeUp: boolean): void {
+    const id = typeof jointOrId === 'number' ? jointOrId : jointOrId.id;
+    deleteJoint(id, wakeUp);
   }
 
   // --- Queries (Raycasting) ---
@@ -2794,7 +2976,170 @@ class ColliderProxyAPI implements ColliderAPI {
   }
 }
 
-/** World, RigidBody, and Collider API classes -----[ END ]----- */
+class JointProxyAPI implements JointAPI {
+  uData: Record<string, unknown> = {};
+
+  isBeingDeleted: boolean = false;
+
+  constructor(
+    public id: number,
+    userData?: Record<string, unknown>
+  ) {
+    if (userData) this.uData = userData;
+  }
+
+  // --- Metadata ---
+  async getUserData(): Promise<Record<string, unknown>> {
+    const res = await messageWorkerAsync<JointGetUserDataResponse>({
+      type: PhysicsProtocolType.JOINT_GET_USERDATA,
+      jointId: this.id,
+    });
+    this.uData = res.userData;
+    return res.userData;
+  }
+  getUserDataSync(): Record<string, unknown> {
+    return this.uData;
+  }
+  setUserData(userData: Record<string, unknown>, addToExisting?: boolean): void {
+    this.uData = addToExisting ? { ...this.uData, ...userData } : userData;
+    messageWorker({
+      type: PhysicsProtocolType.JOINT_SET_USERDATA,
+      jointId: this.id,
+      userData,
+      addToExisting,
+      isOneWay: true,
+    });
+  }
+
+  async isValid(): Promise<boolean> {
+    return (
+      await messageWorkerAsync<JointIsValidResponse>({
+        type: PhysicsProtocolType.JOINT_IS_VALID,
+        jointId: this.id,
+      })
+    ).isValid;
+  }
+  isValidSync(): boolean {
+    throw new Error('Sync isValid not supported on Proxy');
+  }
+
+  async body1Id(): Promise<number> {
+    return (
+      await messageWorkerAsync<JointBody1IdResponse>({
+        type: PhysicsProtocolType.JOINT_BODY1_ID,
+        jointId: this.id,
+      })
+    ).body1Id;
+  }
+  body1IdSync(): number {
+    throw new Error('Sync body1Id not supported on Proxy');
+  }
+  async body2Id(): Promise<number> {
+    return (
+      await messageWorkerAsync<JointBody2IdResponse>({
+        type: PhysicsProtocolType.JOINT_BODY2_ID,
+        jointId: this.id,
+      })
+    ).body2Id;
+  }
+  body2IdSync(): number {
+    throw new Error('Sync body2Id not supported on Proxy');
+  }
+
+  async anchor1(): Promise<PhysVector> {
+    return (
+      await messageWorkerAsync<JointAnchor1Response>({
+        type: PhysicsProtocolType.JOINT_ANCHOR1,
+        jointId: this.id,
+      })
+    ).anchor1;
+  }
+  anchor1Sync(): PhysVector {
+    throw new Error('Sync anchor1 not supported on Proxy');
+  }
+  async anchor2(): Promise<PhysVector> {
+    return (
+      await messageWorkerAsync<JointAnchor2Response>({
+        type: PhysicsProtocolType.JOINT_ANCHOR2,
+        jointId: this.id,
+      })
+    ).anchor2;
+  }
+  anchor2Sync(): PhysVector {
+    throw new Error('Sync anchor2 not supported on Proxy');
+  }
+
+  async contactsEnabled(): Promise<boolean> {
+    return (
+      await messageWorkerAsync<JointContactsEnabledResponse>({
+        type: PhysicsProtocolType.JOINT_CONTACTS_ENABLED,
+        jointId: this.id,
+      })
+    ).contactsEnabled;
+  }
+  contactsEnabledSync(): boolean {
+    throw new Error('Sync contactsEnabled not supported on Proxy');
+  }
+  setContactsEnabled(enabled: boolean): void {
+    messageWorker({
+      type: PhysicsProtocolType.JOINT_SET_CONTACTS_ENABLED,
+      jointId: this.id,
+      enabled,
+    });
+  }
+
+  // --- Revolute/Prismatic only ---
+  async limitsEnabled(): Promise<boolean> {
+    return (
+      await messageWorkerAsync<JointLimitsEnabledResponse>({
+        type: PhysicsProtocolType.JOINT_LIMITS_ENABLED,
+        jointId: this.id,
+      })
+    ).limitsEnabled;
+  }
+  limitsEnabledSync(): boolean {
+    throw new Error('Sync limitsEnabled not supported on Proxy');
+  }
+  setLimits(min: number, max: number): void {
+    messageWorker({ type: PhysicsProtocolType.JOINT_SET_LIMITS, jointId: this.id, min, max });
+  }
+  configureMotorModel(model: JointMotorModel): void {
+    messageWorker({
+      type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR_MODEL,
+      jointId: this.id,
+      model,
+    });
+  }
+  configureMotorVelocity(targetVel: number, factor: number): void {
+    messageWorker({
+      type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR_VELOCITY,
+      jointId: this.id,
+      targetVel,
+      factor,
+    });
+  }
+  configureMotorPosition(targetPos: number, stiffness: number, damping: number): void {
+    messageWorker({
+      type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR_POSITION,
+      jointId: this.id,
+      targetPos,
+      stiffness,
+      damping,
+    });
+  }
+  configureMotor(targetPos: number, targetVel: number, stiffness: number, damping: number): void {
+    messageWorker({
+      type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR,
+      jointId: this.id,
+      targetPos,
+      targetVel,
+      stiffness,
+      damping,
+    });
+  }
+}
+
+/** World, RigidBody, Collider, and Joint API classes -----[ END ]----- */
 
 // Debug
 type PhysicsAPIGUIModule = typeof import('./Debug/_dbg__PhysicsAPI');

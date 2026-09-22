@@ -20,6 +20,7 @@ import {
   PhysicsDebugStateBuffer,
 } from '../core/Physics/PhysicsDebugStateBuffer';
 import { physicsSwitchColl } from './physics/physicsSwitchColl';
+import { physicsSwitchJoint } from './physics/physicsSwitchJoint';
 import { physicsSwitchRigid } from './physics/physicsSwitchRigid';
 import { physicsSwitchWorld } from './physics/physicsSwitchWorld';
 
@@ -53,6 +54,9 @@ self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) 
         case 'COLL':
           // COLLIDER
           return physicsSwitchColl(data, physicsWorldAPI, engAPI, sendMessage);
+        case 'JOINT':
+          // JOINT
+          return physicsSwitchJoint(data, physicsWorldAPI, engAPI, sendMessage);
         default:
           sendMessage(
             {
@@ -304,6 +308,9 @@ const getSubType = (type: PhysicsProtocolType) => {
   }
   if (numberOfType >= 600 && numberOfType < 800) {
     return 'COLL';
+  }
+  if (numberOfType >= 800 && numberOfType < 1000) {
+    return 'JOINT';
   }
   return null;
 };

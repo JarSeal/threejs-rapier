@@ -150,19 +150,19 @@
           "camProps": {
             "active": true,
             "near": 0.1,
-            "far": 100,
+            "far": 120,
             "position": {
               "x": 0,
-              "y": 6,
-              "z": 15
+              "y": 18,
+              "z": 40
             },
             "lookAtPoint": {
               "x": 0,
               "y": 2,
-              "z": 0
+              "z": -6
             },
             "type": "PERSPECTIVE",
-            "fov": 60,
+            "fov": 65,
             "appId": "physicsTestCamera"
           },
           "entityOpts": {
@@ -179,7 +179,7 @@
           "lightProps": {
             "type": "AMBIENT",
             "color": "#ffffff",
-            "intensity": 0.8,
+            "intensity": 0.4,
             "appId": "physicsTestAmbient"
           },
           "entityOpts": {
@@ -187,6 +187,44 @@
             "debugData": {
               "name": "Physics test ambient light",
               "description": "Ambient light for the physics API MVP test scene."
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 20,
+              "y": 30,
+              "z": 15
+            },
+            "targetPos": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowPreset": "HIGH",
+            "shadowCameraNearFar": [
+              1,
+              80
+            ],
+            "shadowCameraFrustum": [
+              -30,
+              30,
+              30,
+              -30
+            ],
+            "shadowIntensity": 0.8,
+            "appId": "physicsTestSun"
+          },
+          "entityOpts": {
+            "appId": "physicsTestSun",
+            "debugData": {
+              "name": "Physics test sun",
+              "description": "Directional shadow-casting sun for the physics API test scene. Its shadow frustum is sized to the 50x50 ground plane, not larger — oversizing it would degrade shadow resolution everywhere (see largeWorldSun.light.json for the same pattern)."
             }
           }
         }
@@ -447,19 +485,19 @@
       "camProps": {
         "active": true,
         "near": 0.1,
-        "far": 100,
+        "far": 120,
         "position": {
           "x": 0,
-          "y": 6,
-          "z": 15
+          "y": 18,
+          "z": 40
         },
         "lookAtPoint": {
           "x": 0,
           "y": 2,
-          "z": 0
+          "z": -6
         },
         "type": "PERSPECTIVE",
-        "fov": 60,
+        "fov": 65,
         "appId": "physicsTestCamera"
       },
       "entityOpts": {
@@ -574,7 +612,7 @@
       "lightProps": {
         "type": "AMBIENT",
         "color": "#ffffff",
-        "intensity": 0.8,
+        "intensity": 0.4,
         "appId": "physicsTestAmbient"
       },
       "entityOpts": {
@@ -585,6 +623,45 @@
         }
       },
       "__sourcePath": "src/app/lights/physicsTestAmbient.light.json"
+    },
+    "physicsTestSun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 20,
+          "y": 30,
+          "z": 15
+        },
+        "targetPos": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowPreset": "HIGH",
+        "shadowCameraNearFar": [
+          1,
+          80
+        ],
+        "shadowCameraFrustum": [
+          -30,
+          30,
+          30,
+          -30
+        ],
+        "shadowIntensity": 0.8,
+        "appId": "physicsTestSun"
+      },
+      "entityOpts": {
+        "appId": "physicsTestSun",
+        "debugData": {
+          "name": "Physics test sun",
+          "description": "Directional shadow-casting sun for the physics API test scene. Its shadow frustum is sized to the 50x50 ground plane, not larger — oversizing it would degrade shadow resolution everywhere (see largeWorldSun.light.json for the same pattern)."
+        }
+      },
+      "__sourcePath": "src/app/lights/physicsTestSun.light.json"
     }
   },
   "geometries": {

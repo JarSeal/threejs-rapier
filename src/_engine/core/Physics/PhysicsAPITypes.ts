@@ -30,15 +30,20 @@ export type EngineAPIType = {
   createCollider: (params: ColliderParams, parentId?: number) => ColliderAPI;
   createRigidBodies: (params: RigidBodyParams[]) => RigidBodyAPI[];
   createColliders: (params: ColliderParams[]) => ColliderAPI[];
+  createJoint: (params: JointParams) => JointAPI;
+  createJoints: (params: JointParams[]) => JointAPI[];
   deleteWorld: () => { worldDeleted: boolean };
-  deleteRigidBody: (id: number) => { id: number; colliderIds: number[] };
-  deleteRigidBodies: (id: number[]) => { ids: number[]; colliderIds: number[] };
+  deleteRigidBody: (id: number) => { id: number; colliderIds: number[]; jointIds: number[] };
+  deleteRigidBodies: (id: number[]) => { ids: number[]; colliderIds: number[]; jointIds: number[] };
   deleteCollider: (id: number, wakeUp?: boolean) => { id: number };
   deleteColliders: (ids: number[], wakeUps?: boolean[]) => { ids: number[] };
+  deleteJoint: (id: number, wakeUp?: boolean) => { id: number };
+  deleteJoints: (ids: number[], wakeUps?: boolean[]) => { ids: number[] };
   takeSnapshot: () => Uint8Array | undefined;
   restoreSnapshot: (snapshot: Uint8Array) => WorldAPI;
   getRigidBodyAPIWithId: (id: number) => RigidBodyAPI | undefined;
   getColliderAPIWithId: (id: number) => ColliderAPI | undefined;
+  getJointAPIWithId: (id: number) => JointAPI | undefined;
   /** Enumerates the ids of all currently-live rigid bodies (worker per-step hot-path write-back). */
   getAllRigidBodyIds: () => IterableIterator<number>;
   step: (eventQueue?: unknown, hooks?: unknown) => void;
@@ -1079,6 +1084,150 @@ export type ColliderParams = (
 };
 
 /**
+ * Joint axes bitmask for GENERIC joints. ORed together to select which axes stay free
+ * (e.g. `JointAxesMask.AngX | JointAxesMask.AngY` frees the X and Y rotational axes).
+ * Mirrors Rapier's own JointAxesMask bit values
+ * (node_modules/@dimforge/rapier3d-compat/dynamics/impulse_joint.d.ts) so app-facing code
+ * never has to import RAPIER directly — consistent with how RigidBodyTypeAPI decouples app
+ * code from raw Rapier enums.
+ */
+export enum JointAxesMask {
+  LinX = 1,
+  LinY = 2,
+  LinZ = 4,
+  AngX = 8,
+  AngY = 16,
+  AngZ = 32,
+}
+
+/** Mirrors Rapier's MotorModel enum as a local string union, decoupling app code from the
+ * raw Rapier enum. Only meaningful for Revolute/Prismatic joints. */
+export type JointMotorModel = 'ACCELERATION_BASED' | 'FORCE_BASED';
+
+/**
+ * Params for creating an impulse joint connecting two rigid bodies (by id). A discriminated
+ * union on `type`, mirroring ColliderParams' shape/style.
+ */
+export type JointParams =
+  | {
+      type: 'FIXED';
+      body1Id: number;
+      body2Id: number;
+      anchor1: PhysVector;
+      frame1: PhysRotation;
+      anchor2: PhysVector;
+      frame2: PhysRotation;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'REVOLUTE';
+      body1Id: number;
+      body2Id: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      axis: PhysVector;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'PRISMATIC';
+      body1Id: number;
+      body2Id: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      axis: PhysVector;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'SPHERICAL';
+      body1Id: number;
+      body2Id: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'ROPE';
+      body1Id: number;
+      body2Id: number;
+      length: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'SPRING';
+      body1Id: number;
+      body2Id: number;
+      restLength: number;
+      stiffness: number;
+      damping: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'GENERIC';
+      body1Id: number;
+      body2Id: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      axis: PhysVector;
+      axesMask: number;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    };
+
+/**
+ * An impulse joint connecting two rigid bodies (by id). Covers creation, anchors, contacts,
+ * and (for Revolute/Prismatic only) limits and motor config — not every method Rapier
+ * exposes (e.g. frameX1()/frameX2() orientation getters/setters are skipped as low-value
+ * for v1). The limits/motor methods throw when called on a joint that isn't Revolute or
+ * Prismatic (Rapier's UnitImpulseJoint subset).
+ */
+export type JointAPI = {
+  readonly id: number;
+
+  isBeingDeleted: boolean;
+
+  uData: Record<string, unknown>;
+  getUserData(): Promise<Record<string, unknown>>;
+  getUserDataSync(): Record<string, unknown>;
+  setUserData(userData?: Record<string, unknown>, addToExisting?: boolean): void;
+
+  isValid(): Promise<boolean>;
+  isValidSync(): boolean;
+
+  body1Id(): Promise<number>;
+  body1IdSync(): number;
+  body2Id(): Promise<number>;
+  body2IdSync(): number;
+
+  anchor1(): Promise<PhysVector>;
+  anchor1Sync(): PhysVector;
+  anchor2(): Promise<PhysVector>;
+  anchor2Sync(): PhysVector;
+
+  contactsEnabled(): Promise<boolean>;
+  contactsEnabledSync(): boolean;
+  setContactsEnabled(enabled: boolean): void;
+
+  // Revolute/Prismatic (UnitImpulseJoint) only — throws for every other joint type.
+  limitsEnabled(): Promise<boolean>;
+  limitsEnabledSync(): boolean;
+  setLimits(min: number, max: number): void;
+  configureMotorModel(model: JointMotorModel): void;
+  configureMotorVelocity(targetVel: number, factor: number): void;
+  configureMotorPosition(targetPos: number, stiffness: number, damping: number): void;
+  configureMotor(targetPos: number, targetVel: number, stiffness: number, damping: number): void;
+};
+
+/**
  * The physics world.
  *
  * This contains all the data-structures necessary for creating and simulating
@@ -1455,19 +1604,10 @@ export type WorldAPI = {
    */
   // removeVehicleController(controller: DynamicRayCastVehicleController): void;
   /**
-   * Creates a new impulse joint from the given joint descriptor.
-   *
-   * @param params - The description of the joint to create.
-   * @param parent1 - The first rigid-body attached to this joint.
-   * @param parent2 - The second rigid-body attached to this joint.
-   * @param wakeUp - Should the attached rigid-bodies be awakened?
+   * Creates a new impulse joint connecting two rigid bodies (by id).
    */
-  // createImpulseJoint(
-  //   params: JointData,
-  //   parent1: RigidBody,
-  //   parent2: RigidBody,
-  //   wakeUp: boolean
-  // ): ImpulseJoint;
+  createJoint(params: JointParams): Promise<JointAPI>;
+  createJointSync(params: JointParams): JointAPI;
   /**
    * Creates a new multibody joint from the given joint descriptor.
    *
@@ -1483,11 +1623,10 @@ export type WorldAPI = {
   //   wakeUp: boolean
   // ): MultibodyJoint;
   /**
-   * Retrieves an impulse joint from its handle.
-   *
-   * @param handle - The integer handle of the impulse joint to retrieve.
+   * Retrieves a joint from its id.
    */
-  // getImpulseJoint(handle: ImpulseJointHandle): ImpulseJoint;
+  getJoint(id: number): Promise<JointAPI | undefined>;
+  getJointSync(id: number): JointAPI | undefined;
   /**
    * Retrieves an multibody joint from its handle.
    *
@@ -1497,10 +1636,10 @@ export type WorldAPI = {
   /**
    * Removes the given impulse joint from this physics world.
    *
-   * @param joint - The impulse joint to remove.
+   * @param jointOrId - The joint or id to remove.
    * @param wakeUp - If set to `true`, the rigid-bodies attached by this joint will be awaken.
    */
-  // removeImpulseJoint(joint: ImpulseJoint, wakeUp: boolean): void;
+  removeJoint(jointOrId: JointAPI | number, wakeUp: boolean): void;
   /**
    * Removes the given multibody joint from this physics world.
    *
@@ -2188,6 +2327,53 @@ export type PhysicsUpProtocol =
     | { type: PhysicsProtocolType.COLL_HEIGHTS; colliderId: number }
     | { type: PhysicsProtocolType.COLL_NORMAL; colliderId: number }
     | { type: PhysicsProtocolType.COLL_BORDER_RADIUS; colliderId: number }
+    // Joint --------------------------------------
+    | { type: PhysicsProtocolType.CREATE_JOINT; params: JointParams }
+    | { type: PhysicsProtocolType.CREATE_JOINTS; params: JointParams[] }
+    | { type: PhysicsProtocolType.DELETE_JOINT; id: number; wakeUp?: boolean }
+    | { type: PhysicsProtocolType.DELETE_JOINTS; ids: number[]; wakeUps?: boolean[] }
+    | { type: PhysicsProtocolType.JOINT_IS_VALID; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_BODY1_ID; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_BODY2_ID; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_ANCHOR1; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_ANCHOR2; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_SET_CONTACTS_ENABLED; jointId: number; enabled: boolean }
+    | { type: PhysicsProtocolType.JOINT_CONTACTS_ENABLED; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_LIMITS_ENABLED; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_SET_LIMITS; jointId: number; min: number; max: number }
+    | {
+        type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR_MODEL;
+        jointId: number;
+        model: JointMotorModel;
+      }
+    | {
+        type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR_VELOCITY;
+        jointId: number;
+        targetVel: number;
+        factor: number;
+      }
+    | {
+        type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR_POSITION;
+        jointId: number;
+        targetPos: number;
+        stiffness: number;
+        damping: number;
+      }
+    | {
+        type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR;
+        jointId: number;
+        targetPos: number;
+        targetVel: number;
+        stiffness: number;
+        damping: number;
+      }
+    | { type: PhysicsProtocolType.JOINT_GET_USERDATA; jointId: number }
+    | {
+        type: PhysicsProtocolType.JOINT_SET_USERDATA;
+        jointId: number;
+        userData: Record<string, unknown>;
+        addToExisting?: boolean;
+      }
   ) & { requestId?: number; isOneWay?: boolean };
 
 /** Physics worker DOWN protocol (from worker to main thread) */
@@ -2256,8 +2442,18 @@ export type PhysicsDownProtocol =
     // Rigid body --------------------------------------
     | { type: PhysicsProtocolType.CREATE_RIGID_BODY; id: number; slot: number }
     | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; ids: number[]; slots: number[] }
-    | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number; colliderIds: number[] }
-    | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; ids: number[]; colliderIds: number[] }
+    | {
+        type: PhysicsProtocolType.DELETE_RIGID_BODY;
+        id: number;
+        colliderIds: number[];
+        jointIds: number[];
+      }
+    | {
+        type: PhysicsProtocolType.DELETE_RIGID_BODIES;
+        ids: number[];
+        colliderIds: number[];
+        jointIds: number[];
+      }
     | { type: PhysicsProtocolType.RIGID_GET_USERDATA; userData: Record<string, unknown> }
     | { type: PhysicsProtocolType.RIGID_IS_VALID; isValid: boolean }
     | { type: PhysicsProtocolType.RIGID_DOMINANCE_GROUP; dominanceGroup: number }
@@ -2325,6 +2521,19 @@ export type PhysicsDownProtocol =
     | { type: PhysicsProtocolType.COLL_HEIGHTS; heights: HeightFieldData | null }
     | { type: PhysicsProtocolType.COLL_NORMAL; normal: PhysVector | null }
     | { type: PhysicsProtocolType.COLL_BORDER_RADIUS; borderRadius: number }
+    // Joint --------------------------------------
+    | { type: PhysicsProtocolType.CREATE_JOINT; id: number }
+    | { type: PhysicsProtocolType.CREATE_JOINTS; ids: number[] }
+    | { type: PhysicsProtocolType.DELETE_JOINT; id: number }
+    | { type: PhysicsProtocolType.DELETE_JOINTS; ids: number[] }
+    | { type: PhysicsProtocolType.JOINT_IS_VALID; isValid: boolean }
+    | { type: PhysicsProtocolType.JOINT_BODY1_ID; body1Id: number }
+    | { type: PhysicsProtocolType.JOINT_BODY2_ID; body2Id: number }
+    | { type: PhysicsProtocolType.JOINT_ANCHOR1; anchor1: PhysVector }
+    | { type: PhysicsProtocolType.JOINT_ANCHOR2; anchor2: PhysVector }
+    | { type: PhysicsProtocolType.JOINT_CONTACTS_ENABLED; contactsEnabled: boolean }
+    | { type: PhysicsProtocolType.JOINT_LIMITS_ENABLED; limitsEnabled: boolean }
+    | { type: PhysicsProtocolType.JOINT_GET_USERDATA; userData: Record<string, unknown> }
     // Debug state tracking (see SET_DEBUG_STATE_TRACKING) ----
     | {
         type: PhysicsProtocolType.SET_DEBUG_STATE_TRACKING;
@@ -2474,6 +2683,20 @@ export type CollIndicesResponse = PhysicsResponse<PhysicsProtocolType.COLL_INDIC
 export type CollHeightsResponse = PhysicsResponse<PhysicsProtocolType.COLL_HEIGHTS>;
 export type CollNormalResponse = PhysicsResponse<PhysicsProtocolType.COLL_NORMAL>;
 export type CollBorderRadiusResponse = PhysicsResponse<PhysicsProtocolType.COLL_BORDER_RADIUS>;
+// Joint
+export type CreateJointResponse = PhysicsResponse<PhysicsProtocolType.CREATE_JOINT>;
+export type CreateJointsResponse = PhysicsResponse<PhysicsProtocolType.CREATE_JOINTS>;
+export type DeleteJointResponse = PhysicsResponse<PhysicsProtocolType.DELETE_JOINT>;
+export type DeleteJointsResponse = PhysicsResponse<PhysicsProtocolType.DELETE_JOINTS>;
+export type JointIsValidResponse = PhysicsResponse<PhysicsProtocolType.JOINT_IS_VALID>;
+export type JointBody1IdResponse = PhysicsResponse<PhysicsProtocolType.JOINT_BODY1_ID>;
+export type JointBody2IdResponse = PhysicsResponse<PhysicsProtocolType.JOINT_BODY2_ID>;
+export type JointAnchor1Response = PhysicsResponse<PhysicsProtocolType.JOINT_ANCHOR1>;
+export type JointAnchor2Response = PhysicsResponse<PhysicsProtocolType.JOINT_ANCHOR2>;
+export type JointContactsEnabledResponse =
+  PhysicsResponse<PhysicsProtocolType.JOINT_CONTACTS_ENABLED>;
+export type JointLimitsEnabledResponse = PhysicsResponse<PhysicsProtocolType.JOINT_LIMITS_ENABLED>;
+export type JointGetUserDataResponse = PhysicsResponse<PhysicsProtocolType.JOINT_GET_USERDATA>;
 
 export enum PhysicsProtocolType {
   ERROR = 0,
@@ -2639,4 +2862,25 @@ export enum PhysicsProtocolType {
   COLL_HEIGHTS = 639,
   COLL_NORMAL = 640,
   COLL_BORDER_RADIUS = 641,
+
+  // JOINT >= 800 && JOINT < 1000
+  CREATE_JOINT = 800,
+  CREATE_JOINTS = 801,
+  DELETE_JOINT = 802,
+  DELETE_JOINTS = 803,
+  JOINT_IS_VALID = 804,
+  JOINT_BODY1_ID = 805,
+  JOINT_BODY2_ID = 806,
+  JOINT_ANCHOR1 = 807,
+  JOINT_ANCHOR2 = 808,
+  JOINT_SET_CONTACTS_ENABLED = 809,
+  JOINT_CONTACTS_ENABLED = 810,
+  JOINT_LIMITS_ENABLED = 811,
+  JOINT_SET_LIMITS = 812,
+  JOINT_CONFIGURE_MOTOR_MODEL = 813,
+  JOINT_CONFIGURE_MOTOR_VELOCITY = 814,
+  JOINT_CONFIGURE_MOTOR_POSITION = 815,
+  JOINT_CONFIGURE_MOTOR = 816,
+  JOINT_GET_USERDATA = 817,
+  JOINT_SET_USERDATA = 818,
 }

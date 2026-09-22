@@ -10,6 +10,9 @@ import {
   EventQueue,
   HeightFieldData,
   InteractionGroupsAPI,
+  JointAPI,
+  JointMotorModel,
+  JointParams,
   PhysicsHooks,
   PhysicsState,
   PhysRay,
@@ -58,15 +61,21 @@ let physicsState: PhysicsState = {
 
 let nextRigidBodyId = 0;
 let nextColliderId = 0;
+let nextJointId = 0;
 const rigidBodies = new Map<number, number>(); // { "Running id", RigidBody.handle }
 const colliders = new Map<number, number>(); // { "Running id", Collider.handle }
+const joints = new Map<number, number>(); // { "Running id", ImpulseJoint.handle }
 const rigidBodyAPIs = new Map<number, RigidBodyAPI>(); // { "Running id", RigidBodyAPI }
 const colliderAPIs = new Map<number, ColliderAPI>(); // { "Running id", ColliderAPI }
+const jointAPIs = new Map<number, JointAPI>(); // { "Running id", JointAPI }
 // Reverse of `colliders`, needed because getColliderAPI() is handed Rapier's own raw
 // collider handles (e.g. from event queue drains, raycast/contact-pair query results) —
 // those are Rapier's internal handle values, not our running ids, so colliderAPIs (keyed
 // by id) can't be looked up with them directly.
 const handleToColliderId = new Map<number, number>(); // { "Collider.handle", "Running id" }
+// Reverse of `joints`, needed for the same reason as handleToColliderId — deleteRigidBody
+// reaps attached joint handles via Rapier's own forEachJointHandleAttachedToRigidBody.
+const handleToJointId = new Map<number, number>(); // { "ImpulseJoint.handle", "Running id" }
 let worldCreated = false;
 let isDebugEnvironment = false;
 let RAPIER: typeof Rapier;
@@ -117,12 +126,31 @@ const getColliderAPI = (collOrHandle?: Collider | number): ColliderAPI | undefin
   return id !== undefined ? colliderAPIs.get(id) : undefined;
 };
 
+/** Get Rapier.ImpulseJoint with JointAPI or id */
+const getJoint = (jointOrId?: JointAPI | number): Rapier.ImpulseJoint | undefined => {
+  if (jointOrId === undefined) return undefined;
+  const id = typeof jointOrId === 'number' ? jointOrId : jointOrId.id;
+  const handle = joints.get(id);
+  return handle !== undefined ? physicsWorld.impulseJoints.get(handle) ?? undefined : undefined;
+};
+
+/** Get jointAPI with a Rapier.ImpulseJoint or a Rapier.ImpulseJoint.handle */
+const getJointAPI = (jointOrHandle?: Rapier.ImpulseJoint | number): JointAPI | undefined => {
+  if (jointOrHandle === undefined) return undefined;
+  const handle = typeof jointOrHandle === 'number' ? jointOrHandle : jointOrHandle.handle;
+  const id = handleToJointId.get(handle);
+  return id !== undefined ? jointAPIs.get(id) : undefined;
+};
+
 /** Get rigidBodyAPI with an id (running id). */
 export const getRigidBodyAPIWithId = (id: number): RigidBodyAPI | undefined =>
   rigidBodyAPIs.get(id);
 
 /** Get colliderAPI with an id (running id). */
 export const getColliderAPIWithId = (id: number): ColliderAPI | undefined => colliderAPIs.get(id);
+
+/** Get jointAPI with an id (running id). */
+export const getJointAPIWithId = (id: number): JointAPI | undefined => jointAPIs.get(id);
 
 /** Enumerates the ids of all currently-live rigid bodies. */
 export const getAllRigidBodyIds = (): IterableIterator<number> => rigidBodyAPIs.keys();
@@ -467,14 +495,81 @@ export const createRigidBodies = (paramsArray: RigidBodyParams[]) =>
 export const createColliders = (paramsArray: ColliderParams[]) =>
   paramsArray.map((params) => createCollider(params));
 
+export const createJoint = (params: JointParams) => {
+  const body1 = existsOrThrow(
+    getRigidBody(params.body1Id),
+    `Could not find body1 (id: ${params.body1Id}) when creating a joint.`
+  );
+  const body2 = existsOrThrow(
+    getRigidBody(params.body2Id),
+    `Could not find body2 (id: ${params.body2Id}) when creating a joint.`
+  );
+
+  let jointData: Rapier.JointData;
+  switch (params.type) {
+    case 'FIXED':
+      jointData = RAPIER.JointData.fixed(
+        params.anchor1,
+        params.frame1,
+        params.anchor2,
+        params.frame2
+      );
+      break;
+    case 'REVOLUTE':
+      jointData = RAPIER.JointData.revolute(params.anchor1, params.anchor2, params.axis);
+      break;
+    case 'PRISMATIC':
+      jointData = RAPIER.JointData.prismatic(params.anchor1, params.anchor2, params.axis);
+      break;
+    case 'SPHERICAL':
+      jointData = RAPIER.JointData.spherical(params.anchor1, params.anchor2);
+      break;
+    case 'ROPE':
+      jointData = RAPIER.JointData.rope(params.length, params.anchor1, params.anchor2);
+      break;
+    case 'SPRING':
+      jointData = RAPIER.JointData.spring(
+        params.restLength,
+        params.stiffness,
+        params.damping,
+        params.anchor1,
+        params.anchor2
+      );
+      break;
+    case 'GENERIC':
+      jointData = RAPIER.JointData.generic(
+        params.anchor1,
+        params.anchor2,
+        params.axis,
+        params.axesMask as Rapier.JointAxesMask
+      );
+      break;
+  }
+
+  const wakeUp = params.wakeUp !== false;
+  const joint = physicsWorld.createImpulseJoint(jointData, body1, body2, wakeUp);
+  const id = nextJointId;
+  nextJointId += 1;
+  joints.set(id, joint.handle);
+  handleToJointId.set(joint.handle, id);
+  const jointAPI = new EngineJointProxyAPI(id, params.body1Id, params.body2Id, params.userData);
+  jointAPIs.set(id, jointAPI);
+
+  return jointAPI;
+};
+
+export const createJoints = (paramsArray: JointParams[]) =>
+  paramsArray.map((params) => createJoint(params));
+
 export const deleteRigidBody = (id: number) => {
   const colliderIds: number[] = [];
+  const jointIds: number[] = [];
   const rbHandle = rigidBodies.get(id);
   if (rbHandle === undefined) {
     if (isDebugEnvironment) {
       lwarn(`Trying to remove a non existing rigid body (no handle found), handle: ${rbHandle}`);
     }
-    return { id, colliderIds };
+    return { id, colliderIds, jointIds };
   }
   const rb = physicsWorld.getRigidBody(rbHandle);
   // @CHORE: we need to get the child collider ids and send them to the
@@ -485,7 +580,7 @@ export const deleteRigidBody = (id: number) => {
       );
     }
     rigidBodies.delete(id);
-    return { id, colliderIds };
+    return { id, colliderIds, jointIds };
   }
   const colliderCount = rb.numColliders();
   for (let i = 0; i < colliderCount; i++) {
@@ -499,21 +594,35 @@ export const deleteRigidBody = (id: number) => {
       colliderIds.push(colliderId);
     }
   }
+  // Rapier auto-removes this body's attached joints internally on removeRigidBody, but our
+  // own shadow registries (joints/jointAPIs/handleToJointId) don't know about that — reap
+  // them here first, mirroring the collider cleanup above.
+  physicsWorld.impulseJoints.forEachJointHandleAttachedToRigidBody(rbHandle, (jointHandle) => {
+    const jointId = getJointAPI(jointHandle)?.id;
+    if (jointId !== undefined) {
+      joints.delete(jointId);
+      jointAPIs.delete(jointId);
+      handleToJointId.delete(jointHandle);
+      jointIds.push(jointId);
+    }
+  });
   physicsWorld.removeRigidBody(rb);
   rigidBodyAPIs.delete(id);
   rigidBodies.delete(id);
-  return { id, colliderIds };
+  return { id, colliderIds, jointIds };
 };
 
 export const deleteRigidBodies = (ids: number[]) => {
   const deletedIds: number[] = [];
   const deletedColliderIds: number[] = [];
+  const deletedJointIds: number[] = [];
   for (let i = 0; i < ids.length; i++) {
-    const { id, colliderIds } = deleteRigidBody(ids[i]);
+    const { id, colliderIds, jointIds } = deleteRigidBody(ids[i]);
     deletedIds.push(id);
     deletedColliderIds.push(...colliderIds);
+    deletedJointIds.push(...jointIds);
   }
-  return { ids: deletedIds, colliderIds: deletedColliderIds };
+  return { ids: deletedIds, colliderIds: deletedColliderIds, jointIds: deletedJointIds };
 };
 
 /** Removes id's event callback/counter/registry bookkeeping (does not touch colliders/colliderAPIs). */
@@ -559,13 +668,49 @@ export const deleteColliders = (ids: number[], wakeUps?: boolean[]) => {
   return { ids: deletedIds };
 };
 
+export const deleteJoint = (id: number, wakeUp?: boolean) => {
+  const jointHandle = joints.get(id);
+  if (jointHandle === undefined) {
+    if (isDebugEnvironment) {
+      lwarn(`Trying to remove a non existing joint (no handle found), handle: ${jointHandle}`);
+    }
+    return { id };
+  }
+  const joint = physicsWorld.impulseJoints.get(jointHandle);
+  if (!joint) {
+    if (!isDebugEnvironment) {
+      lwarn(`Trying to remove a non existing joint (no joint found), handle: ${jointHandle}`);
+    }
+    joints.delete(id);
+    handleToJointId.delete(jointHandle);
+    return { id };
+  }
+  physicsWorld.removeImpulseJoint(joint, wakeUp !== false);
+  jointAPIs.delete(id);
+  joints.delete(id);
+  handleToJointId.delete(jointHandle);
+  return { id };
+};
+
+export const deleteJoints = (ids: number[], wakeUps?: boolean[]) => {
+  const deletedIds = [];
+  for (let i = 0; i < ids.length; i++) {
+    const { id } = deleteJoint(ids[i], wakeUps ? wakeUps[i] : undefined);
+    if (id !== undefined) deletedIds.push(id);
+  }
+  return { ids: deletedIds };
+};
+
 export const deleteWorld = () => {
   // Clear the maps
   rigidBodies.clear();
   colliders.clear();
+  joints.clear();
   rigidBodyAPIs.clear();
   colliderAPIs.clear();
+  jointAPIs.clear();
   handleToColliderId.clear();
+  handleToJointId.clear();
   collisionEventFns.clear();
   contactForceEventFns.clear();
   collisionActiveColliderIds.clear();
@@ -813,6 +958,13 @@ class EngineWorldProxyAPI implements WorldAPI {
     return this.createColliderSync(params, parentId);
   }
 
+  createJointSync(params: JointParams): JointAPI {
+    return createJoint(params);
+  }
+  async createJoint(params: JointParams): Promise<JointAPI> {
+    return this.createJointSync(params);
+  }
+
   // --- Retrieval ---
   getRigidBodySync(id: number): RigidBodyAPI | undefined {
     return getRigidBodyAPIWithId(id);
@@ -828,6 +980,13 @@ class EngineWorldProxyAPI implements WorldAPI {
     return this.getColliderSync(id);
   }
 
+  getJointSync(id: number): JointAPI | undefined {
+    return getJointAPIWithId(id);
+  }
+  async getJoint(id: number): Promise<JointAPI | undefined> {
+    return this.getJointSync(id);
+  }
+
   // --- Removal ---
   removeRigidBody(bodyOrId: RigidBodyAPI | number): void {
     const id = typeof bodyOrId === 'number' ? bodyOrId : bodyOrId.id;
@@ -837,6 +996,11 @@ class EngineWorldProxyAPI implements WorldAPI {
   removeCollider(colliderOrId: ColliderAPI | number, wakeUp: boolean): void {
     const id = typeof colliderOrId === 'number' ? colliderOrId : colliderOrId.id;
     deleteCollider(id, wakeUp);
+  }
+
+  removeJoint(jointOrId: JointAPI | number, wakeUp: boolean): void {
+    const id = typeof jointOrId === 'number' ? jointOrId : jointOrId.id;
+    deleteJoint(id, wakeUp);
   }
 
   // --- Queries ---
@@ -1755,4 +1919,113 @@ class EngineColliderProxyAPI implements ColliderAPI {
   }
 }
 
-/** World, RigidBody, and Collider proxy API definitions -----[ END ]----- */
+class EngineJointProxyAPI implements JointAPI {
+  private joint: Rapier.ImpulseJoint;
+  uData: Record<string, unknown> = {};
+
+  isBeingDeleted: boolean = false;
+
+  constructor(
+    public id: number,
+    private _body1Id: number,
+    private _body2Id: number,
+    userData?: Record<string, unknown>
+  ) {
+    if (userData) this.uData = userData;
+    this.joint = existsOrThrow(
+      getJoint(id),
+      `Could not find joint in the engineAPI with id: ${id}`
+    );
+  }
+
+  /** Revolute/Prismatic only (Rapier's UnitImpulseJoint). Throws for every other joint type. */
+  private asUnitJoint(): Rapier.UnitImpulseJoint {
+    return existsOrThrow(
+      this.joint instanceof RAPIER.UnitImpulseJoint ? this.joint : undefined,
+      `Joint (id: ${this.id}) is not a Revolute or Prismatic joint — limits/motor config is not available on this joint type.`
+    );
+  }
+
+  // --- Metadata ---
+  getUserDataSync() {
+    return this.uData;
+  }
+  async getUserData() {
+    return this.getUserDataSync();
+  }
+  setUserData(userData: Record<string, unknown>, addToExisting?: boolean) {
+    this.uData = addToExisting ? { ...this.uData, ...userData } : userData;
+  }
+
+  isValidSync() {
+    return this.joint.isValid();
+  }
+  async isValid() {
+    return this.isValidSync();
+  }
+
+  body1IdSync(): number {
+    return this._body1Id;
+  }
+  async body1Id() {
+    return this.body1IdSync();
+  }
+  body2IdSync(): number {
+    return this._body2Id;
+  }
+  async body2Id() {
+    return this.body2IdSync();
+  }
+
+  anchor1Sync(): PhysVector {
+    const a = this.joint.anchor1();
+    return { x: a.x, y: a.y, z: a.z };
+  }
+  async anchor1() {
+    return this.anchor1Sync();
+  }
+  anchor2Sync(): PhysVector {
+    const a = this.joint.anchor2();
+    return { x: a.x, y: a.y, z: a.z };
+  }
+  async anchor2() {
+    return this.anchor2Sync();
+  }
+
+  contactsEnabledSync() {
+    return this.joint.contactsEnabled();
+  }
+  async contactsEnabled() {
+    return this.contactsEnabledSync();
+  }
+  setContactsEnabled(enabled: boolean) {
+    this.joint.setContactsEnabled(enabled);
+  }
+
+  // --- Revolute/Prismatic only ---
+  limitsEnabledSync() {
+    return this.asUnitJoint().limitsEnabled();
+  }
+  async limitsEnabled() {
+    return this.limitsEnabledSync();
+  }
+  setLimits(min: number, max: number) {
+    this.asUnitJoint().setLimits(min, max);
+  }
+  configureMotorModel(model: JointMotorModel) {
+    this.asUnitJoint().configureMotorModel(
+      model === 'FORCE_BASED' ? RAPIER.MotorModel.ForceBased : RAPIER.MotorModel.AccelerationBased
+    );
+  }
+  configureMotorVelocity(targetVel: number, factor: number) {
+    this.asUnitJoint().configureMotorVelocity(targetVel, factor);
+  }
+  configureMotorPosition(targetPos: number, stiffness: number, damping: number) {
+    this.asUnitJoint().configureMotorPosition(targetPos, stiffness, damping);
+  }
+  configureMotor(targetPos: number, targetVel: number, stiffness: number, damping: number) {
+    this.asUnitJoint().configureMotor(targetPos, targetVel, stiffness, damping);
+  }
+}
+
+/** World, RigidBody, Collider, and Joint proxy API definitions -----[ END ]----- */
