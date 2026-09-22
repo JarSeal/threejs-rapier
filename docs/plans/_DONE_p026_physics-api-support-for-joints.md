@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Physics
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
 
@@ -120,13 +120,79 @@ and adds one worked example per joint type so the new API is exercised and visua
    numeric Rapier enums:
    ```ts
    export type JointParams =
-     | { type: 'FIXED'; body1Id: number; body2Id: number; anchor1: PhysVector; frame1: PhysRotation; anchor2: PhysVector; frame2: PhysRotation; wakeUp?: boolean; userData?: unknown }
-     | { type: 'REVOLUTE'; body1Id: number; body2Id: number; anchor1: PhysVector; anchor2: PhysVector; axis: PhysVector; wakeUp?: boolean; userData?: unknown }
-     | { type: 'PRISMATIC'; body1Id: number; body2Id: number; anchor1: PhysVector; anchor2: PhysVector; axis: PhysVector; wakeUp?: boolean; userData?: unknown }
-     | { type: 'SPHERICAL'; body1Id: number; body2Id: number; anchor1: PhysVector; anchor2: PhysVector; wakeUp?: boolean; userData?: unknown }
-     | { type: 'ROPE'; body1Id: number; body2Id: number; length: number; anchor1: PhysVector; anchor2: PhysVector; wakeUp?: boolean; userData?: unknown }
-     | { type: 'SPRING'; body1Id: number; body2Id: number; restLength: number; stiffness: number; damping: number; anchor1: PhysVector; anchor2: PhysVector; wakeUp?: boolean; userData?: unknown }
-     | { type: 'GENERIC'; body1Id: number; body2Id: number; anchor1: PhysVector; anchor2: PhysVector; axis: PhysVector; axesMask: number; wakeUp?: boolean; userData?: unknown };
+     | {
+         type: 'FIXED';
+         body1Id: number;
+         body2Id: number;
+         anchor1: PhysVector;
+         frame1: PhysRotation;
+         anchor2: PhysVector;
+         frame2: PhysRotation;
+         wakeUp?: boolean;
+         userData?: unknown;
+       }
+     | {
+         type: 'REVOLUTE';
+         body1Id: number;
+         body2Id: number;
+         anchor1: PhysVector;
+         anchor2: PhysVector;
+         axis: PhysVector;
+         wakeUp?: boolean;
+         userData?: unknown;
+       }
+     | {
+         type: 'PRISMATIC';
+         body1Id: number;
+         body2Id: number;
+         anchor1: PhysVector;
+         anchor2: PhysVector;
+         axis: PhysVector;
+         wakeUp?: boolean;
+         userData?: unknown;
+       }
+     | {
+         type: 'SPHERICAL';
+         body1Id: number;
+         body2Id: number;
+         anchor1: PhysVector;
+         anchor2: PhysVector;
+         wakeUp?: boolean;
+         userData?: unknown;
+       }
+     | {
+         type: 'ROPE';
+         body1Id: number;
+         body2Id: number;
+         length: number;
+         anchor1: PhysVector;
+         anchor2: PhysVector;
+         wakeUp?: boolean;
+         userData?: unknown;
+       }
+     | {
+         type: 'SPRING';
+         body1Id: number;
+         body2Id: number;
+         restLength: number;
+         stiffness: number;
+         damping: number;
+         anchor1: PhysVector;
+         anchor2: PhysVector;
+         wakeUp?: boolean;
+         userData?: unknown;
+       }
+     | {
+         type: 'GENERIC';
+         body1Id: number;
+         body2Id: number;
+         anchor1: PhysVector;
+         anchor2: PhysVector;
+         axis: PhysVector;
+         axesMask: number;
+         wakeUp?: boolean;
+         userData?: unknown;
+       };
    ```
    `PhysVector` is the existing vector type already used for e.g. `translation()` return values;
    `PhysRotation` should reuse whatever type `RigidBodyParams`' rotation field already uses
@@ -144,20 +210,43 @@ and adds one worked example per joint type so the new API is exercised and visua
    export interface JointAPI {
      id: number;
      userData?: unknown;
-     isValidSync(): boolean; isValid(): Promise<boolean>;
-     body1IdSync(): number; body1Id(): Promise<number>;
-     body2IdSync(): number; body2Id(): Promise<number>;
-     anchor1Sync(): PhysVector; anchor1(): Promise<PhysVector>;
-     anchor2Sync(): PhysVector; anchor2(): Promise<PhysVector>;
-     setContactsEnabledSync(enabled: boolean): void; setContactsEnabled(enabled: boolean): Promise<void>;
-     contactsEnabledSync(): boolean; contactsEnabled(): Promise<boolean>;
+     isValidSync(): boolean;
+     isValid(): Promise<boolean>;
+     body1IdSync(): number;
+     body1Id(): Promise<number>;
+     body2IdSync(): number;
+     body2Id(): Promise<number>;
+     anchor1Sync(): PhysVector;
+     anchor1(): Promise<PhysVector>;
+     anchor2Sync(): PhysVector;
+     anchor2(): Promise<PhysVector>;
+     setContactsEnabledSync(enabled: boolean): void;
+     setContactsEnabled(enabled: boolean): Promise<void>;
+     contactsEnabledSync(): boolean;
+     contactsEnabled(): Promise<boolean>;
      // Revolute/Prismatic (UnitImpulseJoint) only — no-op/throw for other joint types:
-     limitsEnabledSync(): boolean; limitsEnabled(): Promise<boolean>;
-     setLimitsSync(min: number, max: number): void; setLimits(min: number, max: number): Promise<void>;
-     configureMotorModelSync(model: JointMotorModel): void; configureMotorModel(model: JointMotorModel): Promise<void>;
-     configureMotorVelocitySync(targetVel: number, factor: number): void; configureMotorVelocity(targetVel: number, factor: number): Promise<void>;
-     configureMotorPositionSync(targetPos: number, stiffness: number, damping: number): void; configureMotorPosition(targetPos: number, stiffness: number, damping: number): Promise<void>;
-     configureMotorSync(targetPos: number, targetVel: number, stiffness: number, damping: number): void; configureMotor(targetPos: number, targetVel: number, stiffness: number, damping: number): Promise<void>;
+     limitsEnabledSync(): boolean;
+     limitsEnabled(): Promise<boolean>;
+     setLimitsSync(min: number, max: number): void;
+     setLimits(min: number, max: number): Promise<void>;
+     configureMotorModelSync(model: JointMotorModel): void;
+     configureMotorModel(model: JointMotorModel): Promise<void>;
+     configureMotorVelocitySync(targetVel: number, factor: number): void;
+     configureMotorVelocity(targetVel: number, factor: number): Promise<void>;
+     configureMotorPositionSync(targetPos: number, stiffness: number, damping: number): void;
+     configureMotorPosition(targetPos: number, stiffness: number, damping: number): Promise<void>;
+     configureMotorSync(
+       targetPos: number,
+       targetVel: number,
+       stiffness: number,
+       damping: number
+     ): void;
+     configureMotor(
+       targetPos: number,
+       targetVel: number,
+       stiffness: number,
+       damping: number
+     ): Promise<void>;
    }
    ```
    `JointMotorModel` mirrors Rapier's `MotorModel` enum as a local string union
@@ -234,8 +323,9 @@ no scene/behavior change yet, no existing consumer affected.
 
 **Phase 2 — Physics test scene environment upgrade.** Non-breaking visual/content-only change to
 `src/app/physicsTest.*`:
+
 - Enlarge the ground box from `10×0.5×10` to roughly `50×0.5×50` (half-extents `hx=25, hy=0.25,
-  hz=25`) in both the mesh geometry and the matching `BOX` collider in `physicsTest.ts`.
+hz=25`) in both the mesh geometry and the matching `BOX` collider in `physicsTest.ts`.
 - Add `src/app/lights/physicsTestSun.light.json` — `DIRECTIONAL`, `castShadow: true`,
   `shadowPreset: 'HIGH'` (or `'MEDIUM'`), position/target/`shadowCameraFrustum` sized to the new
   50×50 ground (e.g. position `(20, 30, 15)`, `targetPos (0, 0, 0)`,
@@ -263,6 +353,7 @@ Three.js every frame per `APP_POST_PHYSICS`/`physicsToTransformSystem`) and read
 `RigidBodyAPI.id` off its ECS component (per Context) to feed `createJoint`. Arrange the 7 demos
 in a row (e.g. `z = -15`, `x` from `-21` to `21` in steps of `7`) on the enlarged ground, separate
 from the original falling ball/box demo (shifted to e.g. `x = 0, z = 10` so it doesn't overlap):
+
 - **FIXED** — a small static anchor body + a dynamic box rigidly locked to it (no relative
   motion).
 - **REVOLUTE** — a static anchor + a dynamic box hinged on one axis, driven by
@@ -305,13 +396,13 @@ slack, spring bounce, axis-restricted motion, rigid lock), with no console error
 
 ## Risks / open questions
 
-| Risk / question | Notes |
-| --- | --- |
-| Exact `JointAxesMask`/`MotorModel` bit values/names | Mirror Rapier's `.d.ts` exactly during implementation; get this wrong and `GENERIC` joints silently misbehave. Low risk, easy to verify against `node_modules/@dimforge/rapier3d-compat`. |
-| Reverse joint-handle→id lookup for rigid-body deletion cleanup | New `getJointAPI(jointOrHandle)` helper, same shape as the existing `getColliderAPI` helper — well-precedented, moderate implementation care needed. |
-| Exact lit-material identifier (`'STANDARD'` vs `'PHONG'` etc.) | Not yet confirmed by name; check `materialSchema.ts` at the start of Phase 2. Cosmetic risk only. |
-| Visual layout/spacing of the 7 joint demos | Cosmetic; adjust positions/anchors during Phase 3 manual verification, no functional risk. |
-| WebGPU shadow shader pre-warm skip (`MeshManager.ts` `preWarm`) when no light has an initialized `shadow.map` yet | Noted by research as a pre-existing engine caveat (logs a warning, first real draw compiles instead) — shouldn't block correctness; confirm no new console errors appear in Phase 2. |
+| Risk / question                                                                                                   | Notes                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Exact `JointAxesMask`/`MotorModel` bit values/names                                                               | Mirror Rapier's `.d.ts` exactly during implementation; get this wrong and `GENERIC` joints silently misbehave. Low risk, easy to verify against `node_modules/@dimforge/rapier3d-compat`. |
+| Reverse joint-handle→id lookup for rigid-body deletion cleanup                                                    | New `getJointAPI(jointOrHandle)` helper, same shape as the existing `getColliderAPI` helper — well-precedented, moderate implementation care needed.                                      |
+| Exact lit-material identifier (`'STANDARD'` vs `'PHONG'` etc.)                                                    | Not yet confirmed by name; check `materialSchema.ts` at the start of Phase 2. Cosmetic risk only.                                                                                         |
+| Visual layout/spacing of the 7 joint demos                                                                        | Cosmetic; adjust positions/anchors during Phase 3 manual verification, no functional risk.                                                                                                |
+| WebGPU shadow shader pre-warm skip (`MeshManager.ts` `preWarm`) when no light has an initialized `shadow.map` yet | Noted by research as a pre-existing engine caveat (logs a warning, first real draw compiles instead) — shouldn't block correctness; confirm no new console errors appear in Phase 2.      |
 
 ## Verification
 
