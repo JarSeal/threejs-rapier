@@ -23,7 +23,7 @@ import {
   getPhysicsState,
   setPhysicsDebugStateTracking,
 } from '../PhysicsAPI';
-import { getRootScene } from '../Scene';
+import { getCurrentSceneId, getRootScene } from '../Scene';
 
 /**
  * Per-entity collider wireframes (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md).
@@ -35,8 +35,12 @@ import { getRootScene } from '../Scene';
  * over, and kept positioned by the Three.js scene graph wherever possible.
  *
  * Switched on and off per entity by adding/removing the DEBUG_PHYSICS_WIREFRAME
- * component — there is no global visualizer toggle, on purpose. Dynamically imported
- * (see PhysicsManager.registerPhysicsManager), so none of this reaches production.
+ * component — deliberately not a single global list, so each entity's own toggle
+ * survives independently of the others. `setWireframeMasterVisible` layers a scene-level
+ * show/hide filter on top of that (bound to the on-screen tools bottom bar), but it only
+ * flips `.visible` on what's already built and never touches the per-entity component or
+ * its persisted state. Dynamically imported (see PhysicsManager.registerPhysicsManager),
+ * so none of this reaches production.
  */
 
 // ----------------------------------------------------------------------------
@@ -316,6 +320,67 @@ const trackedColliderSlots = new Map<number, number>();
 let trackingDirty = false;
 
 const isWorkerMode = () => getPhysicsState().workerTarget === 'WORKER_THREAD';
+
+// ----------------------------------------------------------------------------
+// Master visibility (scene-level show/hide filter)
+// ----------------------------------------------------------------------------
+
+/**
+ * A scene-level show/hide filter layered on top of each entity's own
+ * DEBUG_PHYSICS_WIREFRAME toggle. Never adds/removes that component and never touches
+ * `entityColorOverrides`/persisted per-entity state — it only flips `.visible` on
+ * whatever is already built, so switching it back on reveals exactly the set of
+ * wireframes that were on before, with no per-entity state lost. Defaults to visible.
+ */
+const MASTER_VISIBILITY_LS_KEY = 'AEK_debugPhysicsWireframeMaster';
+
+/** Per-scene; a scene is only present here when it deviates from the default (visible). */
+type WireframeMasterVisibilityLSData = Record<string, boolean>;
+
+let masterVisible = true;
+
+const readMasterVisibilityLS = () =>
+  lsGetItem(MASTER_VISIBILITY_LS_KEY, {}) as WireframeMasterVisibilityLSData;
+
+const applyMasterVisibilityToEntry = (entry: EntityWireframes) => {
+  if (entry.host) entry.host.visible = masterVisible;
+  if (entry.parent) {
+    for (const cw of entry.colliders) cw.lines.visible = masterVisible;
+  }
+};
+
+const applyMasterVisibility = () => {
+  for (const entry of wireframes.values()) applyMasterVisibilityToEntry(entry);
+};
+
+export const isWireframeMasterVisible = () => masterVisible;
+
+/** Sets the master filter and immediately re-applies it to every currently built
+ * wireframe. Persisted per scene, keyed off the scene active at call time. */
+export const setWireframeMasterVisible = (visible: boolean) => {
+  masterVisible = visible;
+
+  const sceneId = getCurrentSceneId();
+  if (sceneId) {
+    const data = readMasterVisibilityLS();
+    if (visible) delete data[sceneId];
+    else data[sceneId] = false;
+    if (Object.keys(data).length) lsSetItem(MASTER_VISIBILITY_LS_KEY, data);
+    else lsRemoveItem(MASTER_VISIBILITY_LS_KEY);
+  }
+
+  applyMasterVisibility();
+};
+
+export const toggleWireframeMasterVisible = () => setWireframeMasterVisible(!masterVisible);
+
+/** Restores the master filter for the scene being entered. Called on every scene
+ * entering (PhysicsManager.registerPhysicsManager) so switching scenes doesn't carry a
+ * previous scene's filter state along. */
+export const syncWireframeMasterVisibilityFromLS = (sceneId: string) => {
+  masterVisible = readMasterVisibilityLS()[sceneId] !== false;
+  applyMasterVisibility();
+};
 
 // ----------------------------------------------------------------------------
 // Geometry builders
@@ -755,6 +820,7 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
     };
     wireframes.set(entityId, entry);
     applyLocalTransforms(entry);
+    applyMasterVisibilityToEntry(entry);
     trackingDirty = true;
   } finally {
     building.delete(entityId);

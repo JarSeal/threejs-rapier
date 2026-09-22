@@ -11,11 +11,7 @@ import { IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../../core/Config';
 import { getHUDRootCMP } from '../../core/HUD';
 import { isAnyLightHelperVisible, toggleAllLightHelpers } from '../LightManager';
 import { getReadOnlyLoopState, toggleAppPlay, toggleMainPlay } from '../../core/MainLoop';
-import {
-  buildPhysicsDebugGUI,
-  getPhysicsState,
-  togglePhysicsVisualizer,
-} from '../../core/PhysicsRapier';
+import { getPhysicsState } from '../../core/PhysicsRapier';
 import { getCurrentSceneId, getGeneratedAppData } from '../../core/Scene';
 import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
 import { getSvgIcon } from '../../core/UI/icons/SvgIcon';
@@ -25,9 +21,19 @@ import { getECSWorld } from '../../core/ECS';
 import { type SceneAsset } from '../../schemas/sceneSchema';
 import { type ToolTypes } from '../../debug/OnScreenTools';
 import { DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerGUI';
+import { DebugModuleRef, loadDebugModule, useDebug } from '../../utils/helpers';
 
 let playToolsCMP: TCMP | null = null;
 let switchToolsCMP: TCMP | null = null;
+
+// This file (a lazily-loaded _dbg__ module) also loads in IS_PROD_TEST_MODE (see
+// debug/OnScreenTools.ts's registerOnScreenTools), but the physics wireframe system is
+// IS_DEBUG_ENV-only — never reaches prodTest, matching PhysicsManager.registerPhysicsManager's
+// own gating. Cross-referencing it via loadDebugModule (not a static import) is what keeps
+// that scoping intact: a static import would run this module's side effects unconditionally
+// the moment _dbg__OnScreenTools.ts itself loads, regardless of IS_DEBUG_ENV.
+const physicsDebugDrawRef: DebugModuleRef<typeof import('./_dbg__PhysicsDebugDraw')> | null =
+  loadDebugModule(() => import('./_dbg__PhysicsDebugDraw'));
 
 // PLAY TOOLS
 const playTools = () => {
@@ -277,22 +283,24 @@ const switchTools = () => {
     },
   });
 
-  // Physics visualizer toggle
+  // Physics wireframes master visibility toggle. A display-only filter over whatever
+  // per-entity wireframes are already switched on (see _dbg__PhysicsDebugDraw.ts) — it
+  // never adds/removes any entity's own DEBUG_PHYSICS_WIREFRAME toggle.
   const physicsState = getPhysicsState();
   const togglePhysicsHelpersBtn = CMP({
     class: [
       styles.onScreenTool,
       'onScreenTool',
-      ...(physicsState.scenes[getCurrentSceneId() || '']?.visualizerEnabled
+      ...(useDebug(physicsDebugDrawRef)?.isWireframeMasterVisible() ?? true
         ? [styles.active, 'onScreenToolActive']
         : []),
     ],
     html: () => `<button>${getSvgIcon('rocket', 'small')}</button>`,
-    attr: { title: 'Hide / show physics visualizer' },
+    attr: { title: 'Hide / show all physics wireframes' },
     onClick: (e) => {
       e.stopPropagation();
-      togglePhysicsVisualizer(!physicsState.scenes[getCurrentSceneId() || '']?.visualizerEnabled);
-      buildPhysicsDebugGUI();
+      useDebug(physicsDebugDrawRef)?.toggleWireframeMasterVisible();
+      _updateOnScreenTools('SWITCH');
     },
   });
 

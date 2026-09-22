@@ -7,6 +7,7 @@ import { getECSWorld } from '../_engine/core/ECS';
 import { createJoint } from '../_engine/core/PhysicsAPI';
 import { JointAxesMask, PhysVector } from '../_engine/core/Physics/PhysicsAPITypes';
 import { existsOrThrow } from '../_engine/utils/assert';
+import { IS_DEBUG_ENV } from '../_engine/core/Config';
 
 /**
  * Main-thread physics API MVP verification scene
@@ -189,7 +190,9 @@ export const scene = async () => {
         if (!started) return;
         const otherName = other.getUserDataSync().name;
         const name = typeof otherName === 'string' ? otherName : String(other.id);
-        addToast({ title: 'Physics sensor', message: `${name} entered` });
+        if (IS_DEBUG_ENV) {
+          addToast({ title: 'Physics sensor', message: `${name} entered` });
+        }
       },
     },
     { rigidType: 'FIXED', translation: { x: 0, y: 0.5, z: 10 } },
