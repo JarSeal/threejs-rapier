@@ -21,20 +21,39 @@ export type PhysicsParams = {
 
 // --- Shared ECS system (design decision: keyframe-path movement is one system, registered
 // once, not one addScenePhysicsLooper registration per platform instance) ---------------------
-const activePlatformTicks = new Map<string, (dt: number) => void>();
+// Each tick is owned by its platform's entity: it only runs for that entity's world, and is
+// dropped once the entity is gone (e.g. deleted with its scene) — otherwise it would keep
+// driving a rigid body that no longer exists.
+type PlatformTick = { world: ECSWorld; entityId: number; tick: (dt: number) => void };
+const activePlatformTicks = new Map<string, PlatformTick>();
 
-const movingPlatformSystemFn = (_world: ECSWorld, dt: number) => {
-  for (const tick of activePlatformTicks.values()) tick(dt);
+const movingPlatformSystemFn = (world: ECSWorld, dt: number) => {
+  for (const [key, platform] of activePlatformTicks) {
+    if (platform.world !== world) continue;
+    if (!world.isAlive(platform.entityId)) {
+      activePlatformTicks.delete(key);
+      continue;
+    }
+    platform.tick(dt);
+  }
 };
 
 /** Registers the single shared moving-platform system on `world`, driving every active
- * createMovingPlatform() instance's keyframe-path movement at APP_PRE_PHYSICS (writing the
- * kinematic target pose before the physics step, per docs/plans/p028's design decision 3). Call
- * this once per world before creating any moving platforms on it — mirrors
- * toolkit/ecs/effects/HoverEffect.ts's registerHoverToolEffect(world) convention: the caller
- * registers the system once, individual instances just add themselves to it. */
+ * createMovingPlatform() instance's keyframe-path movement at APP_PHYSICS_STEP — once per fixed
+ * physics sub-step with dt = the fixed timestep, writing that step's kinematic target pose right
+ * before it (the legacy scene physics looper cadence; a once-per-frame tick moves the platform
+ * unevenly whenever a frame runs 0 or 2+ sub-steps). Ordered after the default-order systems of
+ * the same stage (character controllers, scene loopers), matching legacy's looper order where
+ * platforms were created last. Call this once per world before creating any moving platforms on
+ * it — mirrors toolkit/ecs/effects/HoverEffect.ts's registerHoverToolEffect(world) convention:
+ * the caller registers the system once, individual instances just add themselves to it. */
 export const registerMovingPlatformSystem = (world: ECSWorld) => {
-  world.addSystem(ECSSystemStage.APP_PRE_PHYSICS, 'movingPlatformSystem', movingPlatformSystemFn);
+  world.addSystem(
+    ECSSystemStage.APP_PHYSICS_STEP,
+    'movingPlatformSystem',
+    movingPlatformSystemFn,
+    -100
+  );
   return world;
 };
 
@@ -417,47 +436,51 @@ export const createMovingPlatform = async (props: {
   };
 
   // --- TICK (driven by the shared movingPlatformSystemFn, not a per-instance registration) ---
-  activePlatformTicks.set(`platformLoop-${id}`, (dt) => {
-    if (!isPlaying) return;
+  activePlatformTicks.set(`platformLoop-${id}`, {
+    world: getECSWorld(),
+    entityId,
+    tick: (dt) => {
+      if (!isPlaying) return;
 
-    t += dt / (segmentDuration / speedMultiplier);
+      t += dt / (segmentDuration / speedMultiplier);
 
-    if (t > 1) t = 1;
+      if (t > 1) t = 1;
 
-    curPos.lerpVectors(fromPos, toPos, t);
-    curRot.slerpQuaternions(fromRot, toRot, t);
+      curPos.lerpVectors(fromPos, toPos, t);
+      curRot.slerpQuaternions(fromRot, toRot, t);
 
-    body.setNextKinematicTranslation(curPos);
-    body.setNextKinematicRotation(curRot);
+      body.setNextKinematicTranslation(curPos);
+      body.setNextKinematicRotation(curRot);
 
-    if (t === 1) {
-      if (targetSegmentIndex !== null && curIndex === targetSegmentIndex) {
-        isPlaying = false;
-        targetSegmentIndex = null;
-        zeroUserDataVelocities();
-        return;
-      }
+      if (t === 1) {
+        if (targetSegmentIndex !== null && curIndex === targetSegmentIndex) {
+          isPlaying = false;
+          targetSegmentIndex = null;
+          zeroUserDataVelocities();
+          return;
+        }
 
-      const len = points.length;
-      const isLoopComplete =
-        (playDirection === 1 && curIndex === len - 1) || (playDirection === -1 && curIndex === 0);
+        const len = points.length;
+        const isLoopComplete =
+          (playDirection === 1 && curIndex === len - 1) || (playDirection === -1 && curIndex === 0);
 
-      if (isLoopComplete) {
-        if (loopTimes !== -1) {
-          currentLoopCount++;
-          if (currentLoopCount > loopTimes) {
-            isPlaying = false;
-            return;
+        if (isLoopComplete) {
+          if (loopTimes !== -1) {
+            currentLoopCount++;
+            if (currentLoopCount > loopTimes) {
+              isPlaying = false;
+              return;
+            }
           }
         }
+
+        curIndex = nextIndex;
+        t = 0;
+
+        updateSegmentTargets();
+        updateUserDataVelocities();
       }
-
-      curIndex = nextIndex;
-      t = 0;
-
-      updateSegmentTargets();
-      updateUserDataVelocities();
-    }
+    },
   });
 
   if (movingPlatformMesh && !movingPlatformMesh.parent) scene.add(movingPlatformMesh);

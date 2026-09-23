@@ -49,6 +49,10 @@ export enum ECSSystemStage {
 
   // --- Runs in updateAppLoop (Only if AppPlay is true) ---
   APP_PRE_PHYSICS = 'APP_PRE_PHYSICS', // Input handling, logic before physics
+  // Runs once per fixed physics sub-step (0-N times per frame), right before that step, with
+  // dt = the fixed timestep — for anything that has to move in lockstep with the simulation
+  // (kinematic paths, character controllers). Only runs while physics is stepping.
+  APP_PHYSICS_STEP = 'APP_PHYSICS_STEP',
   APP_POST_PHYSICS = 'APP_POST_PHYSICS', // physicsToTransform (Syncing SAB to ECS)
   APP_LOGIC = 'APP_LOGIC', // Standard gameplay systems
   APP_RENDER_SYNC = 'APP_RENDER_SYNC', // transformToMesh (Syncing ECS to Three.js)

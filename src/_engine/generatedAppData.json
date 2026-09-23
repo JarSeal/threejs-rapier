@@ -602,12 +602,12 @@
         {
           "camProps": {
             "active": true,
-            "near": 0.1,
-            "far": 300,
+            "near": 2,
+            "far": 1000,
             "position": {
-              "x": 5,
-              "y": 6,
-              "z": 1
+              "x": 12,
+              "y": 23,
+              "z": 2
             },
             "lookAtPoint": {
               "x": 5,
@@ -615,14 +615,14 @@
               "z": -5
             },
             "type": "PERSPECTIVE",
-            "fov": 65,
+            "fov": 60,
             "appId": "thirdPersonGymCamera"
           },
           "entityOpts": {
             "appId": "thirdPersonGymCamera",
             "debugData": {
               "name": "Third-person gym camera",
-              "description": "Chase camera driven by createFollowObjectCameraRig, tracking the player-controlled character (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 7). This initial position/lookAt only matters for the first instant before the follow rig (APP_LOGIC) takes over each frame."
+              "description": "Follow camera driven by createFollowObjectCameraRig (legacy gym's offset/lens settings), tracking the player-controlled character (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 7). This initial position/lookAt only matters for the first instant before the follow rig (APP_LOGIC) takes over each frame."
             }
           }
         }
@@ -825,12 +825,12 @@
     "thirdPersonGymCamera": {
       "camProps": {
         "active": true,
-        "near": 0.1,
-        "far": 300,
+        "near": 2,
+        "far": 1000,
         "position": {
-          "x": 5,
-          "y": 6,
-          "z": 1
+          "x": 12,
+          "y": 23,
+          "z": 2
         },
         "lookAtPoint": {
           "x": 5,
@@ -838,14 +838,14 @@
           "z": -5
         },
         "type": "PERSPECTIVE",
-        "fov": 65,
+        "fov": 60,
         "appId": "thirdPersonGymCamera"
       },
       "entityOpts": {
         "appId": "thirdPersonGymCamera",
         "debugData": {
           "name": "Third-person gym camera",
-          "description": "Chase camera driven by createFollowObjectCameraRig, tracking the player-controlled character (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 7). This initial position/lookAt only matters for the first instant before the follow rig (APP_LOGIC) takes over each frame."
+          "description": "Follow camera driven by createFollowObjectCameraRig (legacy gym's offset/lens settings), tracking the player-controlled character (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 7). This initial position/lookAt only matters for the first instant before the follow rig (APP_LOGIC) takes over each frame."
         }
       },
       "__sourcePath": "src/app/cameras/thirdPersonGymCamera.camera.json"

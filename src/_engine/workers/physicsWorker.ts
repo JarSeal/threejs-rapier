@@ -37,8 +37,7 @@ let debugStateBuffer: PhysicsDebugStateBuffer | undefined;
 let debugTrackedRigidBodyIds: number[] = [];
 let debugTrackedColliderIds: number[] = [];
 
-self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) => {
-  const data = event.data;
+const handleMessage = async (data: PhysicsUpProtocol) => {
   const type = data.type;
 
   try {
@@ -76,7 +75,14 @@ self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) 
         // and collision/contact-force events via EVENTS_PUSH). `steps` (from the main
         // thread's fixed-timestep accumulator) may run 0-N Rapier steps here, but only
         // ever one transform write-back and one (conditional) events push per message.
-        for (let i = 0; i < (data.steps ?? 1); i++) engAPI.step();
+        // Commands the main thread's APP_PHYSICS_STEP systems issued for each sub-step (e.g.
+        // a kinematic platform's next pose) are replayed right before that sub-step, so they
+        // land on the step they were computed for, exactly like on MAIN_THREAD.
+        for (let i = 0; i < (data.steps ?? 1); i++) {
+          const commands = data.substepCommands?.[i];
+          if (commands) for (let j = 0; j < commands.length; j++) await handleMessage(commands[j]);
+          engAPI.step();
+        }
         writeBackTransforms();
         writeBackDebugState();
         return pushPendingEvents();
@@ -196,7 +202,11 @@ self.addEventListener('message', async (event: MessageEvent<PhysicsUpProtocol>) 
       data
     );
   }
-});
+};
+
+self.addEventListener('message', (event: MessageEvent<PhysicsUpProtocol>) =>
+  handleMessage(event.data)
+);
 
 const sendMessage = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -237,6 +247,7 @@ const writeBackTransforms = () => {
     transformBuffer.setTransform(slot, rb.pos, rb.rot);
     transformBuffer.setVelocity(slot, rb.linvel(), rb.angvel());
   }
+  transformBuffer.markWritten();
   if (!resolvedUseSAB) {
     const copy = transformBuffer.buffer.slice(0) as ArrayBuffer;
     sendMessageSimple({ type: PhysicsProtocolType.TRANSFORMS_PUSH, buffer: copy }, [copy]);

@@ -189,9 +189,13 @@ const vectors = {
 
 const characters: { [id: string]: DynamicCharacter } = {};
 
-// Per-instance tick closures for the shared APP_PRE_PHYSICS system (mirrors the
+// Per-instance tick closures for the shared APP_PHYSICS_STEP system (mirrors the
 // movingPlatform.ts / followObjectCameraRig.ts registerXSystem(world) convention).
-const activeCharacterTicks = new Map<string, (dt: number) => void>();
+// Each tick is owned by its character's entity: it only runs for that entity's world, and the
+// character is cleaned up once the entity is gone (e.g. deleted with its scene) — otherwise the
+// tick would keep driving a rigid body that no longer exists.
+type CharacterTick = { world: ECSWorld; entityId: number; tick: (dt: number) => void };
+const activeCharacterTicks = new Map<string, CharacterTick>();
 
 // Shared scratch objects for refreshWallHit (below) — reused across all character instances
 // and frames to avoid per-frame allocation. Safe across concurrent in-flight casts: each
@@ -202,16 +206,26 @@ const _castPos = { x: 0, y: 0, z: 0 };
 const _castDir = { x: 0, y: 0, z: 0 };
 const _castRot = { w: 1, x: 0, y: 0, z: 0 }; // Identity quaternion
 
-const characterMovementSystemFn = (_world: ECSWorld, dt: number) => {
-  for (const tick of activeCharacterTicks.values()) tick(dt);
+const characterMovementSystemFn = (world: ECSWorld, dt: number) => {
+  for (const [id, character] of activeCharacterTicks) {
+    if (character.world !== world) continue;
+    if (!world.isAlive(character.entityId)) {
+      activeCharacterTicks.delete(id);
+      delete characters[id];
+      continue;
+    }
+    character.tick(dt);
+  }
 };
 
-/** Registers the shared per-tick character-movement system. Idempotent to call more than
- * once (world.addSystem dedupes by name) — call once from wherever the owning scene/app
- * wires up its ECS systems. */
+/** Registers the shared per-tick character-movement system, run once per fixed physics
+ * sub-step (APP_PHYSICS_STEP) like the legacy scene physics looper it replaces — the tick's
+ * per-step amounts (e.g. turning with a rotating platform by angVelo * timestep) are only right
+ * at that cadence. Idempotent to call more than once (world.addSystem dedupes by name) — call
+ * once from wherever the owning scene/app wires up its ECS systems. */
 export const registerDynamicCharacterSystem = (world: ECSWorld) => {
   world.addSystem(
-    ECSSystemStage.APP_PRE_PHYSICS,
+    ECSSystemStage.APP_PHYSICS_STEP,
     'dynamicCharacterSystem',
     characterMovementSystemFn
   );
@@ -371,23 +385,27 @@ export const createDynamicCharacter = async (opts: {
       .catch(() => {});
   };
 
+  const yawQuat = new THREE.Quaternion();
+  /** Turns the character by `amount` radians around the world up axis. The yaw accumulates in
+   * characterData.charRotation, never in charMesh.quaternion: that is rewritten every frame
+   * from the physics pose (interpolated, and one step late in WORKER_THREAD mode), so turning
+   * it in place would silently drop any turn the physics pose hasn't caught up with yet. */
+  const turnCharacter = (amount: number) => {
+    characterData.charRotation += amount;
+    yawQuat.setFromAxisAngle(LEVEL_GROUND_NORMAL, characterData.charRotation);
+    charMesh.quaternion.copy(yawQuat);
+    // Plain object, not the THREE.Quaternion: its values live in private fields that don't
+    // survive the WORKER_THREAD postMessage structured clone.
+    characterBody?.setRotation({ x: yawQuat.x, y: yawQuat.y, z: yawQuat.z, w: yawQuat.w }, true);
+  };
+
   const controlFns = {
     rotate: (direction: 'LEFT' | 'RIGHT') => {
       if (characterData.isTumbling) return;
       const dir = direction === 'LEFT' ? 1 : -1;
       const speed = characterData._rotateSpeed || 2;
       const physDelta = getPhysicsState().timestepRatio; // This runs in the acc phys loop, so we can use the fixed timestep here.
-      const rotationAmount = speed * physDelta * dir;
-      charMesh.rotateY(rotationAmount);
-      characterData.charRotation = eulerForCharRotation.setFromQuaternion(
-        charMesh.quaternion,
-        'XZY'
-      ).y;
-      // Plain object, not the live Object3D quaternion: it carries an internal onChange
-      // callback (wired by Object3D itself) that fails structured-clone across the
-      // WORKER_THREAD postMessage boundary ("could not be cloned").
-      const q = charMesh.quaternion;
-      characterBody?.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+      turnCharacter(speed * physDelta * dir);
     },
     move: (direction: 'FORWARD' | 'BACKWARD') => {
       if (characterData.isTumbling) return;
@@ -625,11 +643,8 @@ export const createDynamicCharacter = async (opts: {
       halfHeight: characterData._height / 10,
       radius: characterData._radius,
       enabled: false,
-      translation: {
-        x: charMesh.position.x,
-        y: charMesh.position.y - characterData._height / 10,
-        z: charMesh.position.z,
-      },
+      // Offset from the body so the shorter capsule's bottom lines up with the walk capsule's
+      translation: { x: 0, y: -characterData._height / 10, z: 0 },
     },
     {
       // Wall sensor [INDEX: 2]
@@ -765,22 +780,27 @@ export const createDynamicCharacter = async (opts: {
     id,
     physicsParams: { colliders, rigidBody: rigidBodyParams },
     meshOrMeshId: charMesh,
+    // Every binding ignores modifiers (as the legacy input system did): Shift and Ctrl are the
+    // run/crouch toggles themselves, and pressing one must not interrupt a held move/turn key.
     controls: inputMappings
       ? [
           {
             id: 'charRotateLeft',
+            ignoreModifiers: true,
             type: 'KEY_HELD',
             chord: inputMappings.rotateLeft.map((key) => ({ key })),
             fn: () => controlFns.rotate('LEFT'),
           },
           {
             id: 'charRotateRight',
+            ignoreModifiers: true,
             type: 'KEY_HELD',
             chord: inputMappings.rotateRight.map((key) => ({ key })),
             fn: () => controlFns.rotate('RIGHT'),
           },
           {
             id: 'charMoveForward',
+            ignoreModifiers: true,
             type: 'KEY_HELD',
             chord: inputMappings.moveForward.map((key) => ({ key })),
             fn: () => {
@@ -790,6 +810,7 @@ export const createDynamicCharacter = async (opts: {
           },
           {
             id: 'charMoveBackward',
+            ignoreModifiers: true,
             type: 'KEY_HELD',
             chord: inputMappings.moveBackward.map((key) => ({ key })),
             fn: () => {
@@ -799,6 +820,7 @@ export const createDynamicCharacter = async (opts: {
           },
           {
             id: 'charStopMoveAndRotate',
+            ignoreModifiers: true,
             type: 'KEY_UP',
             chord: [...inputMappings.moveForward, ...inputMappings.moveBackward].map((key) => ({
               key,
@@ -810,6 +832,7 @@ export const createDynamicCharacter = async (opts: {
           },
           {
             id: 'charJump',
+            ignoreModifiers: true,
             type: 'KEY_DOWN',
             chord: inputMappings.jump.map((key) => ({ key })),
             fn: (e) => {
@@ -820,6 +843,7 @@ export const createDynamicCharacter = async (opts: {
           },
           {
             id: 'charRun',
+            ignoreModifiers: true,
             type: 'KEY_DOWN',
             chord: inputMappings.run.map((key) => ({ key })),
             fn: (e) => {
@@ -830,6 +854,7 @@ export const createDynamicCharacter = async (opts: {
           },
           {
             id: 'charCrouch',
+            ignoreModifiers: true,
             type: 'KEY_DOWN',
             chord: inputMappings.crouch.map((key) => ({ key })),
             fn: (e) => {
@@ -861,315 +886,315 @@ export const createDynamicCharacter = async (opts: {
   const getUpUprightQuat = new THREE.Quaternion();
   const getUpUprightEuler = new THREE.Euler();
 
-  activeCharacterTicks.set(id, () => {
-    const body = characterBody;
-    if (!body) return;
+  activeCharacterTicks.set(id, {
+    world: ecsWorld,
+    entityId: dynamicCharacterObject.entityId,
+    tick: () => {
+      const body = characterBody;
+      if (!body) return;
 
-    // Check isTumbling
-    if (
-      characterData.isTumbling &&
-      !characterData.isGettingUp &&
-      characterData.__isTumblingStartTime + characterData._tumblingMinTime < getPhysGameTime() &&
-      characterData.relVelocity.length < characterData._tumblingEndMinVelo &&
-      characterData.angularVelocity.length < characterData._tumblingEndMinAngVelo
-    ) {
-      // End tumbling and start isGettingUp phase
-      characterData.isGettingUp = true;
-      characterData.__isGettingUpStartTime = getPhysGameTime();
-    } else if (characterData.isTumbling) {
-      // Clamp angular velocity when tumbling
-      const w = body.angvel();
-      const maxAngVel = characterData._tumblingMaxAngVelo;
+      // Check isTumbling
+      if (
+        characterData.isTumbling &&
+        !characterData.isGettingUp &&
+        characterData.__isTumblingStartTime + characterData._tumblingMinTime < getPhysGameTime() &&
+        characterData.relVelocity.length < characterData._tumblingEndMinVelo &&
+        characterData.angularVelocity.length < characterData._tumblingEndMinAngVelo
+      ) {
+        // End tumbling and start isGettingUp phase
+        characterData.isGettingUp = true;
+        characterData.__isGettingUpStartTime = getPhysGameTime();
+      } else if (characterData.isTumbling) {
+        // Clamp angular velocity when tumbling
+        const w = body.angvel();
+        const maxAngVel = characterData._tumblingMaxAngVelo;
 
-      const len = Math.hypot(w.x, w.y, w.z);
-      if (len > maxAngVel) {
-        const scale = maxAngVel / len;
-        body.setAngvel({ x: w.x * scale, y: w.y * scale, z: w.z * scale }, true);
-      }
-    }
-
-    // Perform isGettingUp
-    if (characterData.isGettingUp) {
-      body.setAngularDamping(25.0);
-      const ratio = Math.min(
-        getPhysGameTime() /
-          (characterData.__isGettingUpStartTime + characterData._gettingUpDuration),
-        1
-      );
-      const rot = body.rotation();
-      const q = getUpQuat.set(rot.x, rot.y, rot.z, rot.w);
-      // Compute body's current up direction
-      const bodyUp = getUpVector3.set(0, 1, 0).applyQuaternion(q).normalize();
-      // Axis of rotation required to align bodyUp → worldUp
-      const axis = getUpBodyUpVector3.copy(bodyUp).cross(LEVEL_GROUND_NORMAL);
-      const dot = bodyUp.dot(LEVEL_GROUND_NORMAL);
-      const angle = Math.acos(Math.min(Math.max(dot, -1), 1)); // clamp to valid range
-      const ang = body.angvel();
-      const angVel = getUpAngVelVector3.set(ang.x, ang.y, ang.z);
-      const maxAngVel = 2.0;
-      if (angVel.length() > maxAngVel) {
-        angVel.setLength(maxAngVel);
-        body.setAngvel({ x: angVel.x, y: angVel.y, z: angVel.z }, true);
-      }
-      // Prevent NaN or tiny oscillations
-      if (angle > 0.00005) {
-        axis.normalize();
-        const ease = 1 - Math.pow(1 - ratio, 3);
-        const torqueStrength = 0.2 * ease;
-        const torque = axis.multiplyScalar(angle * torqueStrength);
-        body.applyTorqueImpulse({ x: torque.x, y: torque.y, z: torque.z }, true);
-      }
-      if (ratio >= 1) {
-        // Fully upright the player, preserving yaw
-        const yaw = getUpYawEuler.setFromQuaternion(q, 'YXZ').y;
-        const uprightQuat = getUpUprightQuat.setFromEuler(getUpUprightEuler.set(0, yaw, 0));
-        body.setRotation(uprightQuat, true);
-
-        // Clear any leftover rotational velocity
-        stopCharacterTumbling(characterData, charMesh, body);
-      }
-    }
-
-    // Set isAwake (physics isMoving, aka. is awake)
-    // isMovingSync() throws in WORKER_THREAD mode (not backed by the hot-path buffer) — use
-    // the async form and accept a one-tick-latent update, same tradeoff as the wall sensor's
-    // bodyType() check below.
-    void body.isMoving().then((isMoving) => {
-      characterData.isAwake = isMoving;
-    });
-
-    // Set isFalling
-    if (characterData.isGrounded) {
-      characterData.__isFallingStartTime = 0;
-      characterData.isFalling = false;
-    } else if (!characterData.__isFallingStartTime) {
-      characterData.__isFallingStartTime = getPhysGameTime();
-    } else if (
-      characterData.__isFallingStartTime + characterData._isFallingThreshold <
-      getPhysGameTime()
-    ) {
-      characterData.isFalling = true;
-    }
-
-    // Set velocity and relative velocity data
-    const linvel = body.linvel();
-    const velo = usableVec.set(
-      roundToDecimal(linvel.x || 0, characterData._roundVelocitiesScalingFactor),
-      roundToDecimal(linvel.y || 0, characterData._roundVelocitiesScalingFactor),
-      roundToDecimal(linvel.z || 0, characterData._roundVelocitiesScalingFactor)
-    );
-    const worldVelo = roundToDecimal(velo.length(), characterData._roundVelocitiesScalingFactor);
-    characterData.velocity = {
-      x: velo.x,
-      y: velo.y,
-      z: velo.z,
-      length: worldVelo,
-    };
-    characterData.relVelocity.x = characterData.velocity.x;
-    characterData.relVelocity.y = characterData.velocity.y;
-    characterData.relVelocity.z = characterData.velocity.z;
-    characterData.relVelocity.length = worldVelo;
-
-    // Set angular and relative angular velocity data
-    const bodyAngVelo = body.angvel();
-    const angVelo = usableVec.set(bodyAngVelo.x || 0, bodyAngVelo.y || 0, bodyAngVelo.z || 0);
-    characterData.angularVelocity = {
-      x: roundToDecimal(angVelo.x, characterData._roundVelocitiesScalingFactor),
-      y: roundToDecimal(angVelo.y, characterData._roundVelocitiesScalingFactor),
-      z: roundToDecimal(angVelo.z, characterData._roundVelocitiesScalingFactor),
-      length: roundToDecimal(angVelo.length(), characterData._roundVelocitiesScalingFactor),
-    };
-
-    characterData.__currentPlatformVelocity = { x: 0, y: 0, z: 0 };
-
-    // Handle character on moving platform
-    if (characterData.isOnMovingPlatform) {
-      for (let i = 0; i < characterData.__touchingGroundColliders.length; i++) {
-        const collider = getPhysicsWorld().getColliderSync(
-          characterData.__touchingGroundColliders[i]
-        );
-        if (!collider) continue;
-        const pb = getPhysicsWorld().getRigidBodySync(collider.parentId ?? -1);
-        if (!pb) continue;
-
-        const ud = pb.getUserDataSync() as {
-          isMovingPlatform: boolean;
-          currentPos: THREE.Vector3;
-          prevPos: THREE.Vector3;
-          velo: THREE.Vector3;
-          angVelo: THREE.Vector3;
-          friction: number;
-        };
-        if (ud?.isMovingPlatform) {
-          // 1. GET CORRECT ANGULAR VELOCITY
-          // Rapier's angvel() is often 0 for kinematic bodies. We MUST use the one we calculated.
-          const physicsAngVel = pb.angvel();
-          const udAngVel = ud.angVelo;
-
-          // Fallback to physics engine if userData is missing, but prefer userData
-          const angVelo = {
-            x: udAngVel ? udAngVel.x : physicsAngVel.x,
-            y: udAngVel ? udAngVel.y : physicsAngVel.y,
-            z: udAngVel ? udAngVel.z : physicsAngVel.z,
-          };
-
-          // 2. CALCULATE VECTORS
-          const platformPos = pb.translation();
-          const charPos = body.translation();
-
-          // Flatten Y to prevent "wobble" errors in the radius
-          const r = vectors.r.set(charPos.x - platformPos.x, 0, charPos.z - platformPos.z);
-
-          const omega = vectors.omega.set(angVelo.x, angVelo.y, angVelo.z);
-          const vTan = vectors.vTan.crossVectors(omega, r);
-
-          // 3. CALCULATE TOTAL FLOOR VELOCITY
-          // This is the absolute world speed of the floor under the player's feet.
-          const totalPlatformVeloAtPoint = {
-            x: ud.velo.x + vTan.x,
-            y: ud.velo.y + vTan.y,
-            z: ud.velo.z + vTan.z,
-          };
-
-          // 4. ROTATION (Visuals)
-          if (Math.abs(angVelo.y) > 0.001) {
-            const rotationAmount = angVelo.y * getPhysicsState().timestepRatio;
-            charMesh.rotateY(rotationAmount);
-            characterData.charRotation = eulerForCharRotation.setFromQuaternion(
-              charMesh.quaternion,
-              'XZY'
-            ).y;
-          }
-
-          // 5. VELOCITY RECONSTRUCTION (The Sling Fix)
-
-          // A. Get Current World Velocity
-          const currentWorldVelo = body.linvel();
-
-          // B. Extract Relative Velocity
-          // We subtract the TOTAL platform velocity we applied last frame.
-          const currentRelVelo = vectors.currentRelVelo.set(
-            currentWorldVelo.x - characterData.__lastAppliedPlatformVelocity.x,
-            currentWorldVelo.y - characterData.__lastAppliedPlatformVelocity.y,
-            currentWorldVelo.z - characterData.__lastAppliedPlatformVelocity.z
-          );
-
-          if (Math.abs(angVelo.y) > 0.001) {
-            const rotationStep = angVelo.y * getPhysicsState().timestepRatio;
-            // Rotate the vector around the Y axis
-            currentRelVelo.applyAxisAngle(LEVEL_GROUND_NORMAL, rotationStep);
-          }
-
-          // C. STABILIZATION (Critical)
-          // If the player is not trying to move, Force Relative X/Z to 0.
-          // This kills the "Centrifugal Drift" that causes the slinging.
-          if (!characterData.hasMoveInput && !characterData.isTumbling) {
-            // Apply Friction (Decay the relative velocity)
-            // 0.8 = slippery, 0.95 = icy, 0.5 = sticky
-            currentRelVelo.x *= ud.friction;
-            currentRelVelo.z *= ud.friction;
-
-            // Snap to zero if very slow to prevent micro-sliding forever
-            if (Math.abs(currentRelVelo.x) < 0.01) currentRelVelo.x = 0;
-            if (Math.abs(currentRelVelo.z) < 0.01) currentRelVelo.z = 0;
-          }
-
-          // D. Reconstruct New World Velocity
-          // New World = Clean Relative + New Platform Total
-          const newVelX = currentRelVelo.x + totalPlatformVeloAtPoint.x;
-          const newVelY = currentRelVelo.y + totalPlatformVeloAtPoint.y;
-          const newVelZ = currentRelVelo.z + totalPlatformVeloAtPoint.z;
-
-          // 6. APPLY AND STORE
-          body.setLinvel({ x: newVelX, y: newVelY, z: newVelZ }, true);
-
-          characterData.__lastAppliedPlatformVelocity = {
-            x: totalPlatformVeloAtPoint.x,
-            y: totalPlatformVeloAtPoint.y,
-            z: totalPlatformVeloAtPoint.z,
-          };
-          characterData.__currentPlatformVelocity = totalPlatformVeloAtPoint;
-
-          // 7. UPDATE STATUS
-          // Set new character velocity
-          const v = usableVec.set(newVelX, newVelY, newVelZ);
-          characterData.velocity.x = roundToDecimal(
-            newVelX,
-            characterData._roundVelocitiesScalingFactor
-          );
-          characterData.velocity.y = roundToDecimal(
-            newVelY,
-            characterData._roundVelocitiesScalingFactor
-          );
-          characterData.velocity.z = roundToDecimal(
-            newVelZ,
-            characterData._roundVelocitiesScalingFactor
-          );
-          characterData.velocity.length = roundToDecimal(
-            v.length(),
-            characterData._roundVelocitiesScalingFactor
-          );
-
-          // Set new character relative velocity
-          const newRelVelX = newVelX - ud.velo.x - vTan.x;
-          const newRelVelY = newVelY - ud.velo.y - vTan.y;
-          const newRelVelZ = newVelZ - ud.velo.z - vTan.z;
-          const vRel = usableVec.set(newRelVelX, newRelVelY, newRelVelZ);
-          const vRelLength = vRel.length();
-          characterData.relVelocity.x = roundToDecimal(
-            vRel.x,
-            characterData._roundVelocitiesScalingFactor
-          );
-          characterData.relVelocity.y = roundToDecimal(
-            vRel.y,
-            characterData._roundVelocitiesScalingFactor
-          );
-          characterData.relVelocity.z = roundToDecimal(
-            vRel.z,
-            characterData._roundVelocitiesScalingFactor
-          );
-          characterData.relVelocity.length = roundToDecimal(
-            vRelLength,
-            characterData._roundVelocitiesScalingFactor
-          );
-          characterData.__lastAppliedPlatformVelocity = {
-            x: totalPlatformVeloAtPoint.x,
-            y: totalPlatformVeloAtPoint.y,
-            z: totalPlatformVeloAtPoint.z,
-          };
-
-          // Set character angular velocity
-          characterData.angularVelocity = {
-            x: roundToDecimal(angVelo.x, characterData._roundVelocitiesScalingFactor),
-            y: roundToDecimal(angVelo.y, characterData._roundVelocitiesScalingFactor),
-            z: roundToDecimal(angVelo.z, characterData._roundVelocitiesScalingFactor),
-            length: roundToDecimal(
-              vectors.angularVelocity.set(angVelo.x, angVelo.y, angVelo.z).length(),
-              characterData._roundVelocitiesScalingFactor
-            ),
-          };
-
-          // Stop processing other platforms
-          break;
+        const len = Math.hypot(w.x, w.y, w.z);
+        if (len > maxAngVel) {
+          const scale = maxAngVel / len;
+          body.setAngvel({ x: w.x * scale, y: w.y * scale, z: w.z * scale }, true);
         }
       }
-    } else {
-      characterData.__lastAppliedPlatformVelocity = { x: 0, y: 0, z: 0 };
-    }
 
-    // Set isSliding
-    characterData.isSliding = false;
-    if (
-      characterData.isGrounded &&
-      worldVelo > characterData._minSlidingVelocity &&
-      (!characterData.hasMoveInput || !characterData.groundIsWalkable) &&
-      !characterData.isOnStairs
-    ) {
-      characterData.isSliding = true;
-    }
+      // Perform isGettingUp
+      if (characterData.isGettingUp) {
+        body.setAngularDamping(25.0);
+        const ratio = Math.min(
+          getPhysGameTime() /
+            (characterData.__isGettingUpStartTime + characterData._gettingUpDuration),
+          1
+        );
+        const rot = body.rotation();
+        const q = getUpQuat.set(rot.x, rot.y, rot.z, rot.w);
+        // Compute body's current up direction
+        const bodyUp = getUpVector3.set(0, 1, 0).applyQuaternion(q).normalize();
+        // Axis of rotation required to align bodyUp → worldUp
+        const axis = getUpBodyUpVector3.copy(bodyUp).cross(LEVEL_GROUND_NORMAL);
+        const dot = bodyUp.dot(LEVEL_GROUND_NORMAL);
+        const angle = Math.acos(Math.min(Math.max(dot, -1), 1)); // clamp to valid range
+        const ang = body.angvel();
+        const angVel = getUpAngVelVector3.set(ang.x, ang.y, ang.z);
+        const maxAngVel = 2.0;
+        if (angVel.length() > maxAngVel) {
+          angVel.setLength(maxAngVel);
+          body.setAngvel({ x: angVel.x, y: angVel.y, z: angVel.z }, true);
+        }
+        // Prevent NaN or tiny oscillations
+        if (angle > 0.00005) {
+          axis.normalize();
+          const ease = 1 - Math.pow(1 - ratio, 3);
+          const torqueStrength = 0.2 * ease;
+          const torque = axis.multiplyScalar(angle * torqueStrength);
+          body.applyTorqueImpulse({ x: torque.x, y: torque.y, z: torque.z }, true);
+        }
+        if (ratio >= 1) {
+          // Fully upright the player, preserving yaw
+          const yaw = getUpYawEuler.setFromQuaternion(q, 'YXZ').y;
+          const uprightQuat = getUpUprightQuat.setFromEuler(getUpUprightEuler.set(0, yaw, 0));
+          body.setRotation(uprightQuat, true);
 
-    // Set position
-    characterData.position = body.translation();
+          // Clear any leftover rotational velocity
+          stopCharacterTumbling(characterData, charMesh, body);
+        }
+      }
+
+      // Set isAwake (physics isMoving, aka. is awake)
+      // isMovingSync() throws in WORKER_THREAD mode (not backed by the hot-path buffer) — use
+      // the async form and accept a one-tick-latent update, same tradeoff as the wall sensor's
+      // bodyType() check below.
+      void body.isMoving().then((isMoving) => {
+        characterData.isAwake = isMoving;
+      });
+
+      // Set isFalling
+      if (characterData.isGrounded) {
+        characterData.__isFallingStartTime = 0;
+        characterData.isFalling = false;
+      } else if (!characterData.__isFallingStartTime) {
+        characterData.__isFallingStartTime = getPhysGameTime();
+      } else if (
+        characterData.__isFallingStartTime + characterData._isFallingThreshold <
+        getPhysGameTime()
+      ) {
+        characterData.isFalling = true;
+      }
+
+      // Set velocity and relative velocity data
+      const linvel = body.linvel();
+      const velo = usableVec.set(
+        roundToDecimal(linvel.x || 0, characterData._roundVelocitiesScalingFactor),
+        roundToDecimal(linvel.y || 0, characterData._roundVelocitiesScalingFactor),
+        roundToDecimal(linvel.z || 0, characterData._roundVelocitiesScalingFactor)
+      );
+      const worldVelo = roundToDecimal(velo.length(), characterData._roundVelocitiesScalingFactor);
+      characterData.velocity = {
+        x: velo.x,
+        y: velo.y,
+        z: velo.z,
+        length: worldVelo,
+      };
+      characterData.relVelocity.x = characterData.velocity.x;
+      characterData.relVelocity.y = characterData.velocity.y;
+      characterData.relVelocity.z = characterData.velocity.z;
+      characterData.relVelocity.length = worldVelo;
+
+      // Set angular and relative angular velocity data
+      const bodyAngVelo = body.angvel();
+      const angVelo = usableVec.set(bodyAngVelo.x || 0, bodyAngVelo.y || 0, bodyAngVelo.z || 0);
+      characterData.angularVelocity = {
+        x: roundToDecimal(angVelo.x, characterData._roundVelocitiesScalingFactor),
+        y: roundToDecimal(angVelo.y, characterData._roundVelocitiesScalingFactor),
+        z: roundToDecimal(angVelo.z, characterData._roundVelocitiesScalingFactor),
+        length: roundToDecimal(angVelo.length(), characterData._roundVelocitiesScalingFactor),
+      };
+
+      characterData.__currentPlatformVelocity = { x: 0, y: 0, z: 0 };
+
+      // Handle character on moving platform
+      if (characterData.isOnMovingPlatform) {
+        for (let i = 0; i < characterData.__touchingGroundColliders.length; i++) {
+          const collider = getPhysicsWorld().getColliderSync(
+            characterData.__touchingGroundColliders[i]
+          );
+          if (!collider) continue;
+          const pb = getPhysicsWorld().getRigidBodySync(collider.parentId ?? -1);
+          if (!pb) continue;
+
+          const ud = pb.getUserDataSync() as {
+            isMovingPlatform: boolean;
+            currentPos: THREE.Vector3;
+            prevPos: THREE.Vector3;
+            velo: THREE.Vector3;
+            angVelo: THREE.Vector3;
+            friction: number;
+          };
+          if (ud?.isMovingPlatform) {
+            // 1. GET CORRECT ANGULAR VELOCITY
+            // Rapier's angvel() is often 0 for kinematic bodies. We MUST use the one we calculated.
+            const physicsAngVel = pb.angvel();
+            const udAngVel = ud.angVelo;
+
+            // Fallback to physics engine if userData is missing, but prefer userData
+            const angVelo = {
+              x: udAngVel ? udAngVel.x : physicsAngVel.x,
+              y: udAngVel ? udAngVel.y : physicsAngVel.y,
+              z: udAngVel ? udAngVel.z : physicsAngVel.z,
+            };
+
+            // 2. CALCULATE VECTORS
+            const platformPos = pb.translation();
+            const charPos = body.translation();
+
+            // Flatten Y to prevent "wobble" errors in the radius
+            const r = vectors.r.set(charPos.x - platformPos.x, 0, charPos.z - platformPos.z);
+
+            const omega = vectors.omega.set(angVelo.x, angVelo.y, angVelo.z);
+            const vTan = vectors.vTan.crossVectors(omega, r);
+
+            // 3. CALCULATE TOTAL FLOOR VELOCITY
+            // This is the absolute world speed of the floor under the player's feet.
+            const totalPlatformVeloAtPoint = {
+              x: ud.velo.x + vTan.x,
+              y: ud.velo.y + vTan.y,
+              z: ud.velo.z + vTan.z,
+            };
+
+            // 4. ROTATION (turn with the platform — through the body, like input turning,
+            // since the body's rotation is what the mesh gets synced from)
+            if (Math.abs(angVelo.y) > 0.001 && !characterData.isTumbling) {
+              turnCharacter(angVelo.y * getPhysicsState().timestepRatio);
+            }
+
+            // 5. VELOCITY RECONSTRUCTION (The Sling Fix)
+
+            // A. Get Current World Velocity
+            const currentWorldVelo = body.linvel();
+
+            // B. Extract Relative Velocity
+            // We subtract the TOTAL platform velocity we applied last frame.
+            const currentRelVelo = vectors.currentRelVelo.set(
+              currentWorldVelo.x - characterData.__lastAppliedPlatformVelocity.x,
+              currentWorldVelo.y - characterData.__lastAppliedPlatformVelocity.y,
+              currentWorldVelo.z - characterData.__lastAppliedPlatformVelocity.z
+            );
+
+            if (Math.abs(angVelo.y) > 0.001) {
+              const rotationStep = angVelo.y * getPhysicsState().timestepRatio;
+              // Rotate the vector around the Y axis
+              currentRelVelo.applyAxisAngle(LEVEL_GROUND_NORMAL, rotationStep);
+            }
+
+            // C. STABILIZATION (Critical)
+            // If the player is not trying to move, Force Relative X/Z to 0.
+            // This kills the "Centrifugal Drift" that causes the slinging.
+            if (!characterData.hasMoveInput && !characterData.isTumbling) {
+              // Apply Friction (Decay the relative velocity)
+              // 0.8 = slippery, 0.95 = icy, 0.5 = sticky
+              currentRelVelo.x *= ud.friction;
+              currentRelVelo.z *= ud.friction;
+
+              // Snap to zero if very slow to prevent micro-sliding forever
+              if (Math.abs(currentRelVelo.x) < 0.01) currentRelVelo.x = 0;
+              if (Math.abs(currentRelVelo.z) < 0.01) currentRelVelo.z = 0;
+            }
+
+            // D. Reconstruct New World Velocity
+            // New World = Clean Relative + New Platform Total
+            const newVelX = currentRelVelo.x + totalPlatformVeloAtPoint.x;
+            const newVelY = currentRelVelo.y + totalPlatformVeloAtPoint.y;
+            const newVelZ = currentRelVelo.z + totalPlatformVeloAtPoint.z;
+
+            // 6. APPLY AND STORE
+            body.setLinvel({ x: newVelX, y: newVelY, z: newVelZ }, true);
+
+            characterData.__lastAppliedPlatformVelocity = {
+              x: totalPlatformVeloAtPoint.x,
+              y: totalPlatformVeloAtPoint.y,
+              z: totalPlatformVeloAtPoint.z,
+            };
+            characterData.__currentPlatformVelocity = totalPlatformVeloAtPoint;
+
+            // 7. UPDATE STATUS
+            // Set new character velocity
+            const v = usableVec.set(newVelX, newVelY, newVelZ);
+            characterData.velocity.x = roundToDecimal(
+              newVelX,
+              characterData._roundVelocitiesScalingFactor
+            );
+            characterData.velocity.y = roundToDecimal(
+              newVelY,
+              characterData._roundVelocitiesScalingFactor
+            );
+            characterData.velocity.z = roundToDecimal(
+              newVelZ,
+              characterData._roundVelocitiesScalingFactor
+            );
+            characterData.velocity.length = roundToDecimal(
+              v.length(),
+              characterData._roundVelocitiesScalingFactor
+            );
+
+            // Set new character relative velocity
+            const newRelVelX = newVelX - ud.velo.x - vTan.x;
+            const newRelVelY = newVelY - ud.velo.y - vTan.y;
+            const newRelVelZ = newVelZ - ud.velo.z - vTan.z;
+            const vRel = usableVec.set(newRelVelX, newRelVelY, newRelVelZ);
+            const vRelLength = vRel.length();
+            characterData.relVelocity.x = roundToDecimal(
+              vRel.x,
+              characterData._roundVelocitiesScalingFactor
+            );
+            characterData.relVelocity.y = roundToDecimal(
+              vRel.y,
+              characterData._roundVelocitiesScalingFactor
+            );
+            characterData.relVelocity.z = roundToDecimal(
+              vRel.z,
+              characterData._roundVelocitiesScalingFactor
+            );
+            characterData.relVelocity.length = roundToDecimal(
+              vRelLength,
+              characterData._roundVelocitiesScalingFactor
+            );
+            characterData.__lastAppliedPlatformVelocity = {
+              x: totalPlatformVeloAtPoint.x,
+              y: totalPlatformVeloAtPoint.y,
+              z: totalPlatformVeloAtPoint.z,
+            };
+
+            // Set character angular velocity
+            characterData.angularVelocity = {
+              x: roundToDecimal(angVelo.x, characterData._roundVelocitiesScalingFactor),
+              y: roundToDecimal(angVelo.y, characterData._roundVelocitiesScalingFactor),
+              z: roundToDecimal(angVelo.z, characterData._roundVelocitiesScalingFactor),
+              length: roundToDecimal(
+                vectors.angularVelocity.set(angVelo.x, angVelo.y, angVelo.z).length(),
+                characterData._roundVelocitiesScalingFactor
+              ),
+            };
+
+            // Stop processing other platforms
+            break;
+          }
+        }
+      } else {
+        characterData.__lastAppliedPlatformVelocity = { x: 0, y: 0, z: 0 };
+      }
+
+      // Set isSliding
+      characterData.isSliding = false;
+      if (
+        characterData.isGrounded &&
+        worldVelo > characterData._minSlidingVelocity &&
+        (!characterData.hasMoveInput || !characterData.groundIsWalkable) &&
+        !characterData.isOnStairs
+      ) {
+        characterData.isSliding = true;
+      }
+
+      // Set position
+      characterData.position = body.translation();
+    },
   });
 
   character.charMesh = charMesh;
@@ -1225,12 +1250,17 @@ const stopCharacterTumbling = (
     body.setAngularDamping(0);
     body.setEnabledRotations(false, false, false, true);
     body.lockRotations(true, true);
-    body.setRotation(tumbleStopRotationVector4.set(0, 0, 0, 1), true);
-    body.setAngularDamping(characterData.__charAngDamping);
   }
   characterData.charRotation = eulerForCharRotation.setFromQuaternion(charMesh.quaternion, 'XZY').y;
   charMesh.setRotationFromQuaternion(tumbleStopRotationQuat);
   charMesh.rotation.y = characterData.charRotation;
+  if (body) {
+    // Upright, but keeping the facing: the body's rotation is what the mesh gets synced from,
+    // so resetting it to identity would snap the character to face the default direction.
+    const q = charMesh.quaternion;
+    body.setRotation(tumbleStopRotationVector4.set(q.x, q.y, q.z, q.w), true);
+    body.setAngularDamping(characterData.__charAngDamping);
+  }
   characterData.__charAngDamping = 0;
   characterData.isTumbling = false;
   characterData.__isTumblingStartTime = 0;

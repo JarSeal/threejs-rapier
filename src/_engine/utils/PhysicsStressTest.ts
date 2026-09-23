@@ -8,6 +8,10 @@ import { IS_DEBUG_ENV } from '../core/Config';
 
 let stressTestCount = 0;
 
+// Shared by each shape's mesh geometry and its collider, so the two always match
+const BOX_SIZE = 0.5;
+const SPHERE_RADIUS = 0.3;
+
 export const initPhysicsStressTest = (batchSize: number = 50) => {
   if (!IS_DEBUG_ENV) return;
 
@@ -15,12 +19,12 @@ export const initPhysicsStressTest = (batchSize: number = 50) => {
   const geoBox = createGeometry({
     id: 'stress-box-geo',
     type: 'BOX',
-    params: { width: 0.5, height: 0.5, depth: 0.5 },
+    params: { width: BOX_SIZE, height: BOX_SIZE, depth: BOX_SIZE },
   });
   const geoSphere = createGeometry({
     id: 'stress-sphere-geo',
     type: 'SPHERE',
-    params: { radius: 0.3 },
+    params: { radius: SPHERE_RADIUS },
   });
 
   const mat = createMaterial({
@@ -59,15 +63,10 @@ export const initPhysicsStressTest = (batchSize: number = 50) => {
       // parallel, same as the legacy synchronous spawner effectively did.
       void createPhysicsEntity(
         {
-          // hx/hy/hz explicit at 0.5 each: this matches the legacy PhysicsRapier system's
-          // actual behavior, not the box geometry's own half-extents (0.25) — the old
-          // colliderParams here set `halfHeight`, a CAPSULE/CONE/CYLINDER-only field the BOX
-          // case ignored, so it silently fell back to hx/hy/hz's own 0.5 default. Preserving
-          // that exact (oversized) collider size rather than "fixing" it to match the mesh,
-          // since this is a perf stress test, not a visual-accuracy one.
           type: isBox ? 'BOX' : 'BALL',
-          radius: 0.3, // For ball
-          ...(isBox ? { hx: 0.5, hy: 0.5, hz: 0.5 } : {}),
+          ...(isBox
+            ? { hx: BOX_SIZE / 2, hy: BOX_SIZE / 2, hz: BOX_SIZE / 2 }
+            : { radius: SPHERE_RADIUS }),
           friction: 0.5,
           restitution: 0.5, // Bounciness makes them settle slower (more CPU usage)
           density: 1.0,

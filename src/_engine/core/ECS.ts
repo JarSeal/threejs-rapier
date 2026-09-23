@@ -808,6 +808,11 @@ export class ECSWorld {
     this._runStage(ECSSystemStage.APP_PRE_PHYSICS, dt);
   }
 
+  /** Runs once per fixed physics sub-step, right before that step (driven by stepPhysics) */
+  public updatePhysicsStep(dt: number) {
+    this._runStage(ECSSystemStage.APP_PHYSICS_STEP, dt);
+  }
+
   /** Runs the Simulation/App logic (Physics, Gameplay, Render Sync) */
   public updateAppLoop(dt: number) {
     this._runStage(ECSSystemStage.APP_POST_PHYSICS, dt);
@@ -827,7 +832,8 @@ export class ECSWorld {
    * cost.
    *
    * Stage execution order itself is decided elsewhere: it's the fixed call
-   * sequence in `updateMainLoop` / `updateAppLoop` / `updateLateMainLoop`.
+   * sequence in `updateMainLoop` / `updateAppLoop` / `updateLateMainLoop`, plus
+   * `updatePhysicsStep` once per fixed physics sub-step.
    */
   private _runStage(stage: ECSSystemStage, dt: number) {
     const list = this.systems.get(stage)!;

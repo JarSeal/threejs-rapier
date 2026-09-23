@@ -54,6 +54,9 @@ export type EngineAPIType = {
     collisions: CollisionEventRecord[];
     contactForces: ContactForceEventRecord[];
   };
+  /** MAIN_THREAD only: delivers (and clears) the events accumulated by step() since the last
+   * call to their registered callbacks. */
+  dispatchPendingEventRecords: () => void;
 };
 
 export type PhysicsState = {
@@ -2049,6 +2052,9 @@ export type PhysicsUpProtocol =
         /** How many fixed-timestep sub-steps to run before the single write-back
          * (computed by the main thread's accumulator in stepPhysics()). Default 1. */
         steps?: number;
+        /** Per sub-step (index = sub-step), the one-way commands the main thread's
+         * APP_PHYSICS_STEP systems issued for it — replayed right before that sub-step. */
+        substepCommands?: PhysicsUpProtocol[][];
       }
     | {
         type: PhysicsProtocolType.SET_DEBUG_STATE_TRACKING;

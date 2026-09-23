@@ -1,8 +1,119 @@
-Status: draft | not-implemented
+Status: draft | partially-implemented — see "Current status" below
 Category: Input
 Epic: https://trello.com/c/UyGHLLsX/218-input-system-refactoring
 
 # Input System Refactoring — Plan
+
+## Current status
+
+**This plan (p050): Phases 1–3 of §4 are done. Phases 4–9 are not started.**
+
+- ✅ **Phase 1** — `src/_engine/core/Input/InputSharedTypes.ts` and `KeyboardInput.ts` created
+  (`createKeyBinding`/`deleteKeyBinding`/`isChordHeld`/`pollHeldKeyBindings`/`markChordReserved`),
+  additive only, no consumers yet at that point.
+- ✅ **Phase 2** — `MainLoop.ts` and `PhysicsRapier.ts`'s held-key call sites migrated from
+  `updateInputControllerLoopActions` to `pollHeldKeyBindings`.
+- ✅ **Phase 3** — `dynamicCharacter.ts`'s `KEY_LOOP_ACTION` mapping migrated to 4 `KEY_HELD`
+  bindings + `KEY_UP`/`KEY_DOWN` bindings for jump/run/crouch/stop; `Character.ts`'s **Key**
+  portion of `controls` retyped to `KeyBinding`; `scene01.ts`/`largeWorld.ts`'s single mappings
+  migrated.
+- ⬜ **Phases 4–9 not started**: `MouseInput.ts`, `TouchInput.ts`, `GamepadInput.ts` stub,
+  `DefaultDebugKeyBindings.ts` + `InitApp.ts` wiring, deleting `InputControls.ts`, and updating
+  `docs/plans/p062_add-undo-and-redo-ui.md`.
+- **`Character.ts`'s Mouse portion of `controls` still uses the legacy `MouseInputParams`/
+  `InputControls.ts` type** — never migrated, since Phase 4 (`MouseInput.ts`) never started.
+  `InputControls.ts` therefore still has a live caller and is **not** dead code; Phase 8 (deleting
+  it) isn't safe until Phase 4 happens.
+
+### Mid-plan pivot: full adoption of p028
+
+After Phase 3 above, the request shifted to migrating the old scenes/examples to ECS physics
+entities and making them reachable from the debugger's scene listing. That turned out to already
+have its own (then-untracked, draft) plan —
+[`docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md`](./p028_refactor-old-phys-objs-to-phys-entities.md)
+— which was adopted **in full** rather than re-scoped narrowly. Phases 0–8 of p028 are done:
+
+- ✅ **Phase 0** — `castShape`/`castShapeSync` added to the Physics API (`WorldAPI` /
+  `EngineRapier.ts` / worker protocol), plus a worked example in `physicsTest.ts`.
+- ✅ **Phase 1** — `scene01.ts`, `scene01_v2.ts` ported to `createPhysicsEntity`; `scene01.scene.json`/
+  `scene01_v2.scene.json` added so both appear in the debugger scene listing.
+- ✅ **Phase 2** — `utils/PhysicsStressTest.ts` ported.
+- ✅ **Phase 3** — `ImportModel.ts`'s whole physics pipeline ported (the largest single change;
+  `PhysicsObject` field removed from its return type entirely).
+- ✅ **Phase 4** — `utils/world/movingPlatform.ts` and `utils/cameras/followObjectCameraRig.ts`
+  ported to the shared-ECS-system pattern (one system registered once, a `Map` of active
+  instances) instead of `addScenePhysicsLooper`.
+- ✅ **Phase 5** — `Character.ts`'s physics-creation call, `utils/world/characterTestObjects.ts`,
+  `characterTestObstacles.ts` ported.
+- ✅ **Phase 6** — `utils/character/dynamicCharacter.ts` ported — the plan's own "highest-risk
+  phase." `Character.ts`'s remaining physics-creation piece was folded into this phase (see
+  "Answers to questions asked along the way" below) rather than done separately in Phase 5, since
+  it turned out inseparable from `dynamicCharacter.ts`'s compound-body creation.
+- ✅ **Phase 7** — `app/scene_thirdPersonGym.ts` itself wired together (all ~15 imported GLBs, 6
+  moving platforms, both dynamic characters, the stress-test spawner) + `thirdPersonGym.scene.json`
+  added; also gained a real third-person chase camera via `createFollowObjectCameraRig` (built in
+  Phase 4 but never actually wired into a real scene until here).
+- ✅ **Phase 8** — Bootstrap/debug-tooling call sites (`InitApp.ts`, `MainLoop.ts`, `Scene.ts`,
+  `SceneLoader.ts`, `Debug/_dbg__MainLoop.ts`, `Debug/_dbg__OnScreenTools.ts`,
+  `Debug/_dbg__Character.ts`) cut over off `PhysicsRapier.ts` onto the new Physics API.
+- ❌ **Phase 9 (delete `PhysicsRapier.ts`) — will not be done.** Explicit decision: keep
+  `PhysicsRapier.ts` in the repo for reference rather than deleting it. Confirmed via repo-wide
+  grep that every remaining mention of `PhysicsRapier` outside the file itself is a comment, not a
+  functional import — the file has zero live callers, it's just being kept around on purpose.
+
+Along the way (not part of either plan's original scope — surfaced because this work was the
+first thing to actually exercise these code paths end-to-end), several previously-latent bugs in
+the new Physics API/engine were found and fixed:
+
+- `WORKER_THREAD` mode's hot-path transform sync excluded kinematic bodies, then FIXED bodies
+  repositioned after creation, from ever reaching the mesh (`physicsWorker.ts`).
+- `RigidBodyAPI.linvel()`/`angvel()` were never actually populated in `WORKER_THREAD` mode —
+  `PhysicsTransformBuffer` extended to carry velocity alongside position/rotation.
+- Batch collider creation (`createColliders`) lost each collider's `parentId` in both
+  `MAIN_THREAD` and `WORKER_THREAD` modes, breaking self/other identification in every compound-
+  collider collision handler.
+- `createPhysicsEntity` silently teleported an already-positioned mesh to the origin when
+  attaching a rigid body without an explicit `translation`, and never added a raw-`Object3D`
+  target to the scene graph at all.
+- `physicsToTransformSystem` only ever synced `BODY_DYNAMIC_VISUAL`, never `BODY_STATIC` — any
+  FIXED body repositioned after creation (stairs, walls, imported level geometry) stayed visually
+  stuck at its creation-time transform forever.
+- Primitive colliders (`BOX`/`BALL`/`CAPSULE`/`CONE`/`CYLINDER`) never auto-derived their
+  dimensions from the target mesh's geometry the way the legacy system did — every such collider
+  silently defaulted to a ~0.5-unit shape regardless of the actual mesh size (this is what made
+  the gym scene's floor and moving platforms have no usable collision at all).
+
+### Answers to questions asked along the way
+
+Recorded so these don't need to be re-asked:
+
+1. Continue past p050 Phase 3 into p028 rather than staying narrowly scoped to input: **"Follow
+   p028 in full."**
+2. `scene_thirdPersonGym.ts` was unreachable (no `*.scene.json`) while verifying p028 Phase 6:
+   **"Temporarily wire up a scene.json"** — this became permanent anyway once Phase 7 added the
+   real one.
+3. How to verify `dynamicCharacter.ts`'s held-key migration given the gym scene had no camera at
+   that point: **"Verify the mechanism generically, not the scene."**
+4. Whether to batch multiple p028 phases before the next review: **"Batch several phases before
+   next review"** (covered Phases 2–5).
+5. p028 Phase 3 (`ImportModel.ts`) turned out far more complex than "mechanical": **"Do it now, but
+   as its own checkpoint"** — completed immediately but reviewed on its own, not bundled with
+   Phases 4–5.
+6. `Character.ts` turned out inseparable from `dynamicCharacter.ts` (both needed for Phase 6):
+   **"Fold it into Phase 6"** — ported together instead of `Character.ts` alone in Phase 5.
+7. p028 Phase 9 (delete `PhysicsRapier.ts`): **declined** — keep the file in place for reference.
+   p028 is therefore complete except for this one phase, by explicit choice, not an oversight.
+
+### What still needs to be done
+
+- **p050 Phases 4–9** (§4 below): `MouseInput.ts`, `TouchInput.ts`, `GamepadInput.ts` stub,
+  `DefaultDebugKeyBindings.ts`, deleting `InputControls.ts`, updating p062. Not currently blocking
+  anything — `InputControls.ts` still has a live caller (`Character.ts`'s mouse controls) so it
+  couldn't be deleted yet regardless of anything else.
+- **p028 Phase 9 will not be done** — see the decision above. Anyone picking p028 back up should
+  treat it as complete, not paused.
+
+---
 
 ## Context
 

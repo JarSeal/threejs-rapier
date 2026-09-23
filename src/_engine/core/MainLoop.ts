@@ -13,7 +13,7 @@ import { lerror, lwarn } from '../utils/Logger';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugToolsManager';
-import { getPhysicsState, stepPhysics } from './PhysicsAPI';
+import { flushPhysicsEvents, getPhysicsState, stepPhysics } from './PhysicsAPI';
 import { pollHeldKeyBindings } from './Input/KeyboardInput';
 import { countRayCastFrames, initRayCasting } from './Raycast';
 import { getAllECSWorlds } from './ECS';
@@ -90,28 +90,24 @@ export const transformTimeValue = (durationInMs: number) =>
 
 export let mainLoop: () => void = () => {};
 
-/** Drives held-key input at the same cadence physics is actually simulating at: once per
- * fixed-timestep slice stepPhysics() drained this frame (mirrors legacy PhysicsRapier.ts's
- * baseStepper polling held keys from inside its own per-substep loop — this system's
- * substeps aren't a JS loop this file controls, see stepPhysics()'s own doc comment, so it
- * reports how many happened instead, via the stepsTaken this takes). Falls back to polling
- * once with the raw frame delta whenever physics itself isn't running at all, so held-key-
- * driven input (e.g. debug camera movement) still works with physics off. */
-const pollHeldKeysForPhysicsSteps = (stepsTaken: number, delta: number) => {
-  if (stepsTaken > 0) {
-    const timestepRatio = getPhysicsState().timestepRatio;
-    for (let i = 0; i < stepsTaken; i++) pollHeldKeyBindings(timestepRatio);
-    return;
-  }
-  const physicsState = getPhysicsState();
-  if (!physicsState.enabled || !physicsState.worldStepEnabled) pollHeldKeyBindings(delta);
+/** Everything that has to run in lockstep with the simulation, once per fixed physics
+ * sub-step right before it (see stepPhysics): held-key input, then the previous step's
+ * collision events, then every world's APP_PHYSICS_STEP systems — the same order legacy
+ * PhysicsRapier.ts's baseStepper polled held keys, drained its event queue and ran its scene
+ * physics loopers in (see flushPhysicsEvents for why the order matters). */
+const runPhysicsSubStep = (stepDelta: number) => {
+  pollHeldKeyBindings(stepDelta);
+  flushPhysicsEvents();
+  for (const world of getAllECSWorlds()) world.updatePhysicsStep(stepDelta);
 };
 
-/** Steps the new Physics API and immediately polls held-key input for it — see
- * pollHeldKeysForPhysicsSteps's doc comment. Only mainLoopForProductionWithFPSLimiter needs
- * these split apart (its render-skip check has to sit between the two). */
+/** Steps the new Physics API (running runPhysicsSubStep before each sub-step). Falls back to
+ * polling held keys once with the raw frame delta whenever physics itself isn't running at
+ * all, so held-key-driven input (e.g. debug camera movement) still works with physics off. */
 const stepPhysicsAndPollHeldKeys = (delta: number) => {
-  pollHeldKeysForPhysicsSteps(stepPhysics(loopState), delta);
+  stepPhysics(loopState, runPhysicsSubStep);
+  const physicsState = getPhysicsState();
+  if (!physicsState.enabled || !physicsState.worldStepEnabled) pollHeldKeyBindings(delta);
 };
 
 const renderScene = () => {
@@ -258,11 +254,10 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     deltaApp = dt * loopState.playSpeedMultiplier;
 
     // Step the physics (always, even on a skipped render frame, so it doesn't fall behind)
-    const stepsTaken = stepPhysics(loopState);
+    stepPhysicsAndPollHeldKeys(delta);
 
     if (skipFrame) return;
 
-    pollHeldKeysForPhysicsSteps(stepsTaken, delta);
     // app loopers
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);

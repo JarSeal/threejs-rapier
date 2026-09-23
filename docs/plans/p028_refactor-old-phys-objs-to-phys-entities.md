@@ -116,6 +116,10 @@ every other scene already does.
    `TAG_IS_PHYSICS_OBJECT.onDeleteEntity` hook (`PhysicsManager.ts:39-48`), so a system that queries
    "entities with this component" naturally stops finding anything once the scene's entities are
    gone — no per-scene registration/deregistration bookkeeping to port.
+   **Amended:** per-frame `APP_PRE_PHYSICS` turned out to be the wrong cadence for the platform and
+   character systems (legacy loopers ran once per fixed sub-step; per-frame ticks jittered platforms
+   and over/under-turned riders at refresh rates ≠ the physics rate). Both now run in the dedicated
+   per-sub-step `APP_PHYSICS_STEP` stage instead; the camera rig stays per-frame post-physics.
 4. **`ImportModel.ts` attaches physics to the entity it already creates for the mesh**, via
    `createPhysicsEntity(colliderParams, rigidBodyParams, existingEntityId)` — preserving "one GLB
    import = one ECS entity" rather than the two-object (mesh + separate `PhysicsObject`) shape the

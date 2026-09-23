@@ -7,15 +7,14 @@ import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createDynamicCharacter } from '../_engine/utils/character/dynamicCharacter';
 import { characterTestObstacles } from '../_engine/utils/world/characterTestObjects';
-import { importModelAsync } from '../_engine/core/ImportModel';
+import { importModelAsync, type ImportReturnObj } from '../_engine/core/ImportModel';
 import { addCheckerboardMaterialToMesh } from '../_engine/utils/materials/checkerBoardPattern';
 import { getQuatFromAngle } from '../_engine/utils/helpers';
 import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
 import { getECSWorld } from '../_engine/core/ECS';
-import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
-import { getScene } from '../_engine/core/Scene';
+import { getScene, registerOnSceneExit } from '../_engine/core/Scene';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 import { getCameraByAppId } from '../_engine/core/CameraManager';
 import { createFollowObjectCameraRig } from '../_engine/utils/cameras/followObjectCameraRig';
@@ -25,38 +24,36 @@ export const SCENE_THIRD_PERSON_GYM_META = {
   id: 'thirdPersonGymScene',
 };
 
-/** ImportModel.ts's physics pipeline returns a plain ECS entity id (meshId) instead of a legacy
- * PhysicsObject, so this scene's many "snap the imported rigid body to its final position" calls
- * go through the new Physics API via the entity's rigid body.
- *
- * meshId is an array — one entity per imported mesh piece, each already sitting at its own
- * GLB-authored world position (createMeshEntity parents every piece directly onto the root
- * scene, not under the returned .group, so there's no single group transform to move). Offsets
- * every piece by the same delta so the whole imported cluster shifts together to its final
- * world position while preserving each piece's position relative to the others. */
-const offsetImportedRigidBodyGroupTranslation = (
-  meshId: number | number[] | undefined,
-  offset: { x: number; y: number; z: number }
+const toIdArray = (ids?: number | number[]) =>
+  Array.isArray(ids) ? ids : typeof ids === 'number' ? [ids] : [];
+
+/** Moves a whole imported model so that its anchor lands at `pos`, with every other piece keeping
+ * its glTF-authored offset from that anchor. The anchor is either the entity carrying the (first)
+ * rigid body, or the first mesh entity when there's no physics ('RIGID_BODY'), or the imported
+ * glTF root's origin ('GROUP_ORIGIN', the legacy `physObj.setTranslation(pos, group)` behavior).
+ * world.setTransform moves a piece's rigid body too and writes through the ECS TRANSFORM (a bare
+ * Object3D mutation would be reverted by the first TRANSFORM -> Object3D sync). */
+const placeImportedModel = (
+  result: ImportReturnObj,
+  pos: { x: number; y: number; z: number },
+  anchorType: 'RIGID_BODY' | 'GROUP_ORIGIN' = 'RIGID_BODY'
 ) => {
-  const ids = Array.isArray(meshId) ? meshId : typeof meshId === 'number' ? [meshId] : [];
+  const ids = [...new Set([...toIdArray(result.physicsEntityId), ...toIdArray(result.meshId)])];
   const ecsWorld = getECSWorld();
+  // Imported pieces are created at their glTF-root-local transforms, so the root is at 0,0,0
+  const anchor =
+    anchorType === 'GROUP_ORIGIN'
+      ? { x: 0, y: 0, z: 0 }
+      : ids.length
+        ? ecsWorld.getPosition(ids[0])
+        : undefined;
+  if (!anchor) return;
+  const offset = { x: pos.x - anchor.x, y: pos.y - anchor.y, z: pos.z - anchor.z };
   for (const id of ids) {
-    // world.setTransform handles both cases correctly in one call: it moves the rigid body
-    // too when the entity has one, AND (critically, for mesh-only "keepMesh" pieces with no
-    // body) writes through the ECS TRANSFORM component and marks it dirty. A bare
-    // mesh.position mutation isn't enough for those — object3DSyncSystem's per-entity
-    // _lastVersion starts at -1 (a "never synced yet" sentinel), so it unconditionally
-    // performs one TRANSFORM -> Object3D copy on the very first frame after creation
-    // regardless of any direct Object3D mutation made before that frame runs, silently
-    // reverting it back to the position the entity was created with.
     const current = ecsWorld.getPosition(id);
     if (!current) continue;
     ecsWorld.setTransform(id, {
-      pos: {
-        x: current.x + offset.x,
-        y: current.y + offset.y,
-        z: current.z + offset.z,
-      },
+      pos: { x: current.x + offset.x, y: current.y + offset.y, z: current.z + offset.z },
     });
   }
 };
@@ -76,32 +73,16 @@ const setImportedRigidBodyTranslationPartial = (
   );
 };
 
-/** Returns the actually-rendered THREE.Mesh for each entity id in an ImportReturnObj's meshId
- * (number | number[] | undefined) — NOT the mesh(es) on the same ImportReturnObj, which for a
- * multi-piece importGroup:true result can be a mix of orphaned original-glTF mesh references
- * (never added to any scene) and the one real entity mesh, depending on each piece's keepMesh/
- * isPhysObj GLB metadata. Always going through the ECS entity id is the only reliable way to
- * reach what's actually on screen. */
-const getRealImportedMeshes = (meshId: number | number[] | undefined): THREE.Mesh[] => {
-  const ids = Array.isArray(meshId) ? meshId : typeof meshId === 'number' ? [meshId] : [];
-  const ecsWorld = getECSWorld();
-  const meshes: THREE.Mesh[] = [];
-  for (const id of ids) {
-    const mesh = ecsWorld.getComponent(id, ComponentType.OBJECT3D)?.value as THREE.Mesh | undefined;
-    if (mesh) meshes.push(mesh);
-  }
-  return meshes;
-};
+const getImportedMeshes = (result: ImportReturnObj): THREE.Mesh[] =>
+  Array.isArray(result.mesh) ? result.mesh : result.mesh ? [result.mesh] : [];
 
-/** Applies a shared material + shadow flags to every real rendered piece of an imported
- * (possibly multi-piece) model — see getRealImportedMeshes for why this has to go through the
- * entity id rather than the ImportReturnObj's own .mesh reference(s). */
+/** Applies a shared material + shadow flags to every rendered piece of an imported model */
 const applyMaterialToImportedPieces = (
-  meshId: number | number[] | undefined,
+  result: ImportReturnObj,
   material: THREE.Material,
   opts?: { castShadow?: boolean; receiveShadow?: boolean }
 ) => {
-  for (const mesh of getRealImportedMeshes(meshId)) {
+  for (const mesh of getImportedMeshes(result)) {
     mesh.castShadow = opts?.castShadow ?? true;
     mesh.receiveShadow = opts?.receiveShadow ?? true;
     mesh.material = material;
@@ -286,14 +267,14 @@ export const scene = async () =>
       .getRigidBody(dynamicCharacterObject.entityId)
       ?.setTranslation({ x: 5, y: 3, z: -5 }, true);
 
-    // Third-person chase camera following the player-controlled character.
+    // Follow camera tracking the player-controlled character from above.
     createFollowObjectCameraRig({
       id: 'thirdPersonGymFollowCam',
       camera: getCameraByAppId('thirdPersonGymCamera')!,
       targetMesh: characterMesh,
-      offset: { x: 0, y: 3, z: 6 },
-      targetHeight: 1,
-      smoothingType: 'SMOOTH_DAMP',
+      // Legacy gym's rig values (world-space offset, aimed at the character's center)
+      offset: { x: 7, y: 20, z: 7 },
+      smoothingTime: 0.2,
     });
 
     // Another character without input
@@ -339,7 +320,11 @@ export const scene = async () =>
     let action: 'F' | 'T' | null = null;
     let accDelta = 0;
     getECSWorld().removeSystem('dummyCharLooper');
-    getECSWorld().addSystem(ECSSystemStage.APP_PRE_PHYSICS, 'dummyCharLooper', (_world, dt) => {
+    // ...and remove it on leaving too, or it would keep driving the deleted dummy character.
+    registerOnSceneExit(SCENE_THIRD_PERSON_GYM_META.id, () =>
+      getECSWorld().removeSystem('dummyCharLooper')
+    );
+    getECSWorld().addSystem(ECSSystemStage.APP_PHYSICS_STEP, 'dummyCharLooper', (_world, dt) => {
       if (accDelta > 1) {
         if (action !== 'F') {
           action = 'F';
@@ -362,8 +347,8 @@ export const scene = async () =>
       fileName: '/debugger/assets/testModels/customPropTestCube.glb',
       appId: 'customPropTest',
     });
-    offsetImportedRigidBodyGroupTranslation(result.meshId, { x: 2, y: 2, z: 2 });
-    for (const m of getRealImportedMeshes(result.meshId)) {
+    placeImportedModel(result, { x: 2, y: 2, z: 2 });
+    for (const m of getImportedMeshes(result)) {
       addCheckerboardMaterialToMesh('checkerMaterial', m);
       m.castShadow = true;
       m.receiveShadow = true;
@@ -381,8 +366,8 @@ export const scene = async () =>
         collider: { type: 'TRIMESH', density: 2 },
       },
     });
-    offsetImportedRigidBodyGroupTranslation(result2.meshId, { x: 4, y: 2, z: 3 });
-    for (const m of getRealImportedMeshes(result2.meshId)) {
+    placeImportedModel(result2, { x: 4, y: 2, z: 3 });
+    for (const m of getImportedMeshes(result2)) {
       addCheckerboardMaterialToMesh('checkerMaterial', m);
       m.castShadow = true;
       m.receiveShadow = true;
@@ -400,8 +385,8 @@ export const scene = async () =>
         collider: { type: 'CONVEXHULL', density: 2 },
       },
     });
-    offsetImportedRigidBodyGroupTranslation(result2convex.meshId, { x: 4, y: 6, z: 3 });
-    for (const m of getRealImportedMeshes(result2convex.meshId)) {
+    placeImportedModel(result2convex, { x: 4, y: 6, z: 3 });
+    for (const m of getImportedMeshes(result2convex)) {
       addCheckerboardMaterialToMesh('checkerMaterial', m);
       m.castShadow = true;
       m.receiveShadow = true;
@@ -411,8 +396,8 @@ export const scene = async () =>
       collider: { type: 'TRIMESH', friction: 1 },
     });
     if (slides) {
-      offsetImportedRigidBodyGroupTranslation(slides.meshId, { x: 30, y: -1.9, z: -30 });
-      for (const m of getRealImportedMeshes(slides.meshId)) {
+      placeImportedModel(slides, { x: 30, y: -1.9, z: -30 });
+      for (const m of getImportedMeshes(slides)) {
         m.castShadow = true;
         m.receiveShadow = true;
       }
@@ -426,7 +411,7 @@ export const scene = async () =>
       slideMat.map.wrapS = THREE.RepeatWrapping;
       slideMat.map.wrapT = THREE.RepeatWrapping;
       slideMat.map.repeat.set(34, 34);
-      for (const m of getRealImportedMeshes(slides.meshId)) {
+      for (const m of getImportedMeshes(slides)) {
         m.material = slideMat;
       }
     }
@@ -676,8 +661,8 @@ export const scene = async () =>
       appId: 'customPropTest3',
       importGroup: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result3.meshId, { x: 2, y: 2, z: 2 });
-    for (const m of getRealImportedMeshes(result3.meshId)) {
+    placeImportedModel(result3, { x: 2, y: 2, z: 2 });
+    for (const m of getImportedMeshes(result3)) {
       addCheckerboardMaterialToMesh('checkerMaterial', m, { useConstantCheckerSize: true });
       m.castShadow = true;
       m.receiveShadow = true;
@@ -689,9 +674,9 @@ export const scene = async () =>
       appId: 'customPropTest4',
       importGroup: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result4.meshId, { x: 37, y: -0.4, z: 5 });
+    placeImportedModel(result4, { x: 37, y: -0.4, z: 5 });
     applyMaterialToImportedPieces(
-      result4.meshId,
+      result4,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
@@ -705,9 +690,9 @@ export const scene = async () =>
       appId: 'customPropTest5',
       importGroup: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result5.meshId, { x: 45, y: -0.4, z: 5 });
+    placeImportedModel(result5, { x: 45, y: -0.4, z: 5 });
     applyMaterialToImportedPieces(
-      result5.meshId,
+      result5,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
@@ -720,9 +705,9 @@ export const scene = async () =>
       appId: 'customPropTest6',
       importGroup: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result6.meshId, { x: 53, y: -0.4, z: 5 });
+    placeImportedModel(result6, { x: 53, y: -0.4, z: 5 });
     applyMaterialToImportedPieces(
-      result6.meshId,
+      result6,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
@@ -736,9 +721,9 @@ export const scene = async () =>
       appId: 'customPropTest7',
       importGroup: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result7.meshId, { x: 61, y: -0.4, z: 5 });
+    placeImportedModel(result7, { x: 61, y: -0.4, z: 5 });
     applyMaterialToImportedPieces(
-      result7.meshId,
+      result7,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
@@ -752,9 +737,9 @@ export const scene = async () =>
       appId: 'customPropTest8',
       importGroup: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result8.meshId, { x: 69, y: -0.4, z: 5 });
+    placeImportedModel(result8, { x: 69, y: -0.4, z: 5 });
     applyMaterialToImportedPieces(
-      result8.meshId,
+      result8,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
@@ -768,9 +753,9 @@ export const scene = async () =>
       appId: 'customPropTest9',
       importGroup: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result9.meshId, { x: 77, y: -0.4, z: 5 });
+    placeImportedModel(result9, { x: 77, y: -0.4, z: 5 });
     applyMaterialToImportedPieces(
-      result9.meshId,
+      result9,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
@@ -784,9 +769,9 @@ export const scene = async () =>
       appId: 'customPropTest10',
       importGroup: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result10.meshId, { x: 45, y: -0.4, z: 35 });
+    placeImportedModel(result10, { x: 45, y: -0.4, z: 35 });
     applyMaterialToImportedPieces(
-      result10.meshId,
+      result10,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
@@ -800,9 +785,9 @@ export const scene = async () =>
       appId: 'customPropTest11',
       importGroup: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result11.meshId, { x: 60, y: -0.4, z: 35 });
+    placeImportedModel(result11, { x: 60, y: -0.4, z: 35 });
     applyMaterialToImportedPieces(
-      result11.meshId,
+      result11,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
@@ -816,9 +801,9 @@ export const scene = async () =>
       appId: 'customPropTest12',
       importGroup: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result12.meshId, { x: 20, y: 1.8, z: 33 });
+    placeImportedModel(result12, { x: 20, y: 1.8, z: 33 });
     applyMaterialToImportedPieces(
-      result12.meshId,
+      result12,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
@@ -833,9 +818,9 @@ export const scene = async () =>
       importGroup: true,
       allMeshesVisible: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result13.meshId, { x: -25, y: -1.8, z: 126.336 });
+    placeImportedModel(result13, { x: -25, y: -1.8, z: 126.336 }, 'GROUP_ORIGIN');
     applyMaterialToImportedPieces(
-      result13.meshId,
+      result13,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
@@ -850,13 +835,9 @@ export const scene = async () =>
       importGroup: true,
       allMeshesVisible: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result14.meshId, {
-      x: 52.635,
-      y: -1.8,
-      z: 150.833,
-    });
+    placeImportedModel(result14, { x: 52.635, y: -1.8, z: 150.833 }, 'GROUP_ORIGIN');
     applyMaterialToImportedPieces(
-      result14.meshId,
+      result14,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
@@ -871,9 +852,9 @@ export const scene = async () =>
       importGroup: true,
       allMeshesVisible: true,
     });
-    offsetImportedRigidBodyGroupTranslation(result15.meshId, { x: -30, y: -1, z: 30 });
+    placeImportedModel(result15, { x: -30, y: -1, z: 30 }, 'GROUP_ORIGIN');
     applyMaterialToImportedPieces(
-      result15.meshId,
+      result15,
       createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',

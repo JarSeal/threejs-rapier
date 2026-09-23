@@ -17,6 +17,7 @@ import {
   deleteColliders,
   deleteRigidBody,
   getPhysicsInterpolationAlpha,
+  getPhysicsSnapshotCount,
   getPhysicsState,
 } from './PhysicsAPI';
 import { ColliderParams, RigidBodyAPI, RigidBodyParams } from './Physics/PhysicsAPITypes';
@@ -41,7 +42,7 @@ type PrimitiveGeoParams = {
  * caller already set explicitly. A no-op for any params/shape it doesn't recognize (TRIMESH/
  * CONVEXHULL/HEIGHTFIELD/compound imports already get their own dedicated derivation in
  * ImportModel.ts's deriveMeshDependentColliderFields, which runs before this ever sees them). */
-const deriveColliderDimensionsFromMesh = (
+export const deriveColliderDimensionsFromMesh = (
   params: ColliderParams,
   mesh: THREE.Object3D | undefined
 ): ColliderParams => {
@@ -195,6 +196,12 @@ export const createPhysicsEntity = async (
       : createCollidersSync(paramsArray)
     : [];
 
+  // Primes the worker proxy's cached mass (only known once the colliders exist), so even the
+  // very first applyImpulse on this body can be reflected in its read-your-writes linvel.
+  if (isWorkerThread && rb && rigidBodyParams?.rigidType === 'DYNAMIC') {
+    void rb.mass().catch(() => {});
+  }
+
   const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
   if (rb) {
     transform?.position.set(rb.pos.x, rb.pos.y, rb.pos.z);
@@ -332,6 +339,7 @@ type InterpolationState = {
 // zero-per-frame-allocation hot path. Cleaned up in registerPhysicsManager's
 // onDeleteEntity hook.
 const interpolationStates = new Map<number, InterpolationState>();
+let lastSnapshotCount = -1;
 const scratchPos = new THREE.Vector3();
 const scratchQuat = new THREE.Quaternion();
 
@@ -351,6 +359,9 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
   const dynamicVisuals = world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL);
   const now = performance.now();
   const fixedAlpha = mode === 'FIXED_PHYSICS' ? getPhysicsInterpolationAlpha() : 0;
+  const snapshotCount = getPhysicsSnapshotCount();
+  const isNewSnapshot = snapshotCount !== lastSnapshotCount;
+  lastSnapshotCount = snapshotCount;
 
   for (const [entityId, rb] of dynamicVisuals) {
     const obj3D = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
@@ -367,19 +378,13 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
         currTime: now,
       };
       interpolationStates.set(entityId, state);
-    } else if (
-      state.currPos.x !== rb.pos.x ||
-      state.currPos.y !== rb.pos.y ||
-      state.currPos.z !== rb.pos.z ||
-      state.currQuat.x !== rb.rot.x ||
-      state.currQuat.y !== rb.rot.y ||
-      state.currQuat.z !== rb.rot.z ||
-      state.currQuat.w !== rb.rot.w
-    ) {
-      // A new physics step's result became visible since we last looked (works the same
-      // way for MAIN_THREAD's always-fresh reads and WORKER_THREAD's SAB/MESSAGE_BATCH
-      // reads — this is "received", not "stepped", which is exactly Design Decision 3's
-      // Option A: decoupled from physics cadence).
+    } else if (isNewSnapshot) {
+      // A new physics result became visible since we last looked (works the same way for
+      // MAIN_THREAD's always-fresh reads and WORKER_THREAD's SAB/MESSAGE_BATCH reads — this
+      // is "received", not "stepped", which is exactly Design Decision 3's Option A:
+      // decoupled from physics cadence). Advanced even when the pose didn't change, so a
+      // body that stops (or only ever rotated in place) settles on prev === curr instead of
+      // jittering against a stale prev forever.
       state.prevPos.copy(state.currPos);
       state.prevQuat.copy(state.currQuat);
       state.prevTime = state.currTime;

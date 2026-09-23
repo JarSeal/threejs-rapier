@@ -4,11 +4,11 @@ import { DRACOLoader } from 'three/examples/jsm/Addons.js';
 import { BufferGeometryUtils } from 'three/examples/jsm/Addons.js';
 import { lerror, lwarn } from '../utils/Logger';
 import { ColliderParams, RigidBodyParams } from './Physics/PhysicsAPITypes';
-import { createPhysicsEntity } from './PhysicsManager';
+import { createPhysicsEntity, deriveColliderDimensionsFromMesh } from './PhysicsManager';
 import { generateUUID } from 'three/src/math/MathUtils.js';
 import { isOnlyObject3D, setMeshCreatePropsToUserData } from '../utils/helpers';
 import { type CoreEntityOpts } from '../schemas/_helperSchemas';
-import { createMeshEntity, disposeMesh, getMeshByAppId, MeshProps } from './MeshManager';
+import { createMeshEntity, getMeshByAppId, MeshProps } from './MeshManager';
 import { existsOrThrow } from '../utils/assert';
 import { getECSWorld } from './ECS';
 import { addToGroupEntity, createGroupEntity, getGroupByAppId } from './GroupManager';
@@ -43,6 +43,8 @@ export type ImportModelParams = {
   meshProps?: Partial<MeshProps>[];
   /** Core entity options for all imported meshes and groups */
   entityOpts?: CoreEntityOpts;
+  /** @deprecated No-op: a mesh's visibility is decided by its own custom props alone (non-physics
+   * and keepMesh physics meshes are rendered, collider-only physics meshes never are). */
   allMeshesVisible?: boolean;
   importGroup?: boolean;
   groupId?: string;
@@ -62,8 +64,13 @@ export type ImportModelParams = {
 export type ImportReturnObj = {
   group?: THREE.Group;
   groupId?: number;
+  /** The rendered mesh(es) of the created mesh entities (same order as `meshId`) */
   mesh?: THREE.Mesh | THREE.Mesh[];
+  /** Entity id(s) of the created mesh entities (collider-only meshes don't get one) */
   meshId?: number | number[];
+  /** Entity id(s) carrying the rigid bodies. Usually one of the `meshId` entities, or a
+   * headless physics entity when none of that physics object's meshes are kept visible. */
+  physicsEntityId?: number | number[];
 };
 
 const ALLOWED_FILENAME_EXTENSIONS = ['gltf', 'glb'];
@@ -73,6 +80,33 @@ const setDracoLoader = (loader: GLTFLoader) => {
   const dracoLoader = new DRACOLoader();
   dracoLoader.setDecoderPath('/examples/jsm/libs/draco/');
   loader.setDRACOLoader(dracoLoader);
+};
+
+/** Creates the ECS mesh entity for one loaded glTF mesh. The entity gets its own new
+ * THREE.Mesh (sharing the glTF mesh's geometry/material) — the glTF mesh itself is only a
+ * template and must never end up rendered. Returns the entity id and its real, rendered mesh. */
+const createEntityFromImportedMesh = (
+  m: THREE.Mesh,
+  mProps: Partial<MeshProps> | undefined,
+  appId: string,
+  entityOpts?: CoreEntityOpts
+) => {
+  const entityId = createMeshEntity(
+    {
+      geo: mProps?.geo || m.geometry,
+      mat: mProps?.mat || (Array.isArray(m.material) ? m.material[0] : m.material),
+      castShadow: mProps?.castShadow || m.castShadow,
+      receiveShadow: mProps?.receiveShadow || m.receiveShadow,
+      frustumCullingEnabled: mProps?.frustumCullingEnabled ?? m.frustumCulled,
+      position: mProps?.position || m.position,
+      rotation: mProps?.rotation || m.rotation,
+      quaternion: mProps?.rotation ? undefined : mProps?.quaternion || m.quaternion,
+      appId: mProps?.appId || appId,
+    },
+    entityOpts
+  );
+  const mesh = getECSWorld().getComponent(entityId, ComponentType.OBJECT3D)?.value as THREE.Mesh;
+  return { entityId, mesh };
 };
 
 const parseImportResult = async (
@@ -88,94 +122,56 @@ const parseImportResult = async (
   const meshPropsArr = params.meshProps || [];
 
   if (importGroup) {
-    // Go through meshes and create entities
+    // Every glTF mesh becomes exactly one ECS mesh entity, or none if it's a collider-only
+    // physics mesh (isPhysObj without keepMesh). The glTF meshes themselves are only templates:
+    // they're linked to their entity via userData.entityId (so the physics pass below attaches
+    // to that entity instead of creating a second one) and removed from the group at the end.
     const kids = groupOrMesh.children;
     const customProps: CleanUpCustomPropsResult[] = [];
+    const gltfMeshes: THREE.Mesh[] = [];
+    const meshes: THREE.Mesh[] = [];
+    const meshIds: number[] = [];
     let index = 0;
-    returnObj.mesh = [];
-    returnObj.meshId = [];
     if ('isGroup' in groupOrMesh) returnObj.group = groupOrMesh;
     for (let i = 0; i < kids.length; i++) {
       const kid = kids[i];
       if ('isMesh' in kid && kid.isMesh) {
         const m = kid as THREE.Mesh;
+        gltfMeshes.push(m);
         const id = appId || entityOpts?.appId || m.userData.id || m.uuid;
         const newId = id ? `${id}-${index}-${i}` : m.uuid;
-        const userData = m.userData;
-        if (userData.keepMesh) {
-          const mProps = meshPropsArr[i];
-          const entityId = createMeshEntity(
-            {
-              geo: mProps?.geo || m.geometry,
-              mat: mProps?.mat || (Array.isArray(m.material) ? m.material[0] : m.material),
-              castShadow: mProps?.castShadow || m.castShadow,
-              receiveShadow: mProps?.receiveShadow || m.receiveShadow,
-              frustumCullingEnabled: mProps?.frustumCullingEnabled ?? m.frustumCulled,
-              position: mProps?.position || m.position,
-              rotation: mProps?.rotation || m.rotation,
-              quaternion: mProps?.rotation ? undefined : mProps?.quaternion || m.quaternion,
-              appId: mProps?.appId || newId,
-            },
-            params.entityOpts
-          );
-          returnObj.mesh.push(m);
-          returnObj.meshId.push(entityId);
-        }
-        customProps.push(
-          cleanUpCustomProps(userData as CustomPropsUserData, overridePhysParams[i], m.uuid)
+        // Resolved with the physicsParams overrides applied, so an override's isPhysObj/keepMesh
+        // decides visibility the same way the GLB's own custom properties would.
+        const props = cleanUpCustomProps(
+          m.userData as CustomPropsUserData,
+          overridePhysParams[i],
+          m.uuid
         );
-        if (!userData.keepMesh && (!('isPhysObj' in userData) || !userData.isPhysObj)) {
-          const m = kid as THREE.Mesh;
-          const mProps = meshPropsArr[i];
-          const entityId = createMeshEntity(
-            {
-              geo: mProps?.geo || m.geometry,
-              mat: mProps?.mat || (Array.isArray(m.material) ? m.material[0] : m.material),
-              castShadow: mProps?.castShadow || m.castShadow,
-              receiveShadow: mProps?.receiveShadow || m.receiveShadow,
-              frustumCullingEnabled: mProps?.frustumCullingEnabled ?? m.frustumCulled,
-              position: mProps?.position || m.position,
-              rotation: mProps?.rotation || m.position,
-              quaternion: mProps?.rotation ? undefined : mProps?.quaternion || m.quaternion,
-              appId: mProps?.appId || newId,
-            },
+        customProps.push(props);
+        if (!props.isPhysObj || props.keepMesh) {
+          const { entityId, mesh } = createEntityFromImportedMesh(
+            m,
+            meshPropsArr[i],
+            newId,
             params.entityOpts
           );
-          returnObj.mesh.push(m);
-          returnObj.meshId.push(entityId);
+          m.userData.entityId = entityId;
+          meshes.push(mesh);
+          meshIds.push(entityId);
         }
-        if (userData.isPhysObj !== undefined) delete userData.isPhysObj;
         index++;
       }
     }
 
-    const physGroups = await importMultiplePhysicsObjects(customProps, groupOrMesh, params);
+    const physEntityIds = await importMultiplePhysicsObjects(customProps, groupOrMesh, params);
 
-    for (let i = 0; i < physGroups.length; i++) {
-      const group = physGroups[i];
-      // A mesh whose "keep it" status only became true via a physicsParams override (not the
-      // raw GLB custom property the mesh-creation loop above already checked) has no entity
-      // yet — createPhysicsEntity made one as a side effect; fold it in here.
-      if (group.createdNewMeshEntity && group.targetMesh && group.entityId !== undefined) {
-        group.targetMesh.visible = true;
-        if (Array.isArray(returnObj.mesh)) returnObj.mesh.push(group.targetMesh);
-        if (Array.isArray(returnObj.meshId)) returnObj.meshId.push(group.entityId);
-      }
-      if (params.allMeshesVisible) {
-        for (let j = 0; j < group.meshes.length; j++) {
-          group.meshes[j].visible = true;
-        }
-      }
-    }
+    if (gltfMeshes.length) groupOrMesh.remove(...gltfMeshes);
 
-    if (Array.isArray(returnObj.mesh) && returnObj.mesh.length === 1) {
-      returnObj.mesh = returnObj.mesh[0];
+    returnObj.mesh = meshes.length === 1 ? meshes[0] : meshes;
+    returnObj.meshId = meshIds.length === 1 ? meshIds[0] : meshIds;
+    if (physEntityIds.length) {
+      returnObj.physicsEntityId = physEntityIds.length === 1 ? physEntityIds[0] : physEntityIds;
     }
-    if (Array.isArray(returnObj.meshId) && returnObj.meshId.length === 1) {
-      returnObj.meshId = returnObj.meshId[0];
-    }
-
-    deleteUnwantedImportedMeshes(returnObj);
 
     return returnObj;
   }
@@ -220,21 +216,11 @@ const parseImportResult = async (
     const { physParamsObj } = rigidAndChildParamsResult;
     if (userData.keepMesh) {
       // Keep mesh
-      const meshId = modelMesh.userData.id || modelMesh.uuid;
       const m = modelMesh;
-      const mProps = meshPropsArr[0];
-      const entityId = createMeshEntity(
-        {
-          geo: mProps?.geo || m.geometry,
-          mat: mProps?.mat || (Array.isArray(m.material) ? m.material[0] : m.material),
-          castShadow: mProps?.castShadow || m.castShadow,
-          receiveShadow: mProps?.receiveShadow || m.receiveShadow,
-          frustumCullingEnabled: mProps?.frustumCullingEnabled ?? m.frustumCulled,
-          position: mProps?.position || m.position,
-          rotation: mProps?.rotation || m.rotation,
-          quaternion: mProps?.rotation ? undefined : mProps?.quaternion || m.quaternion,
-          appId: mProps?.appId || meshId,
-        },
+      const { entityId, mesh } = createEntityFromImportedMesh(
+        m,
+        meshPropsArr[0],
+        id,
         params.entityOpts
       );
       // TRIMESH/HEIGHTFIELD/CONVEXHULL shape data (see deriveMeshDependentColliderFields) plus
@@ -249,8 +235,9 @@ const parseImportResult = async (
         physParamsObj.physicsParams[0].rigidBody,
         entityId
       );
-      returnObj.mesh = m;
+      returnObj.mesh = mesh;
       returnObj.meshId = entityId;
+      returnObj.physicsEntityId = entityId;
     } else {
       // Physics object only (no mesh)
       const colliderParamsArray = physParamsObj.physicsParams.map((p, i) => {
@@ -264,6 +251,7 @@ const parseImportResult = async (
         { appId: physParamsObj.id }
       );
       returnObj.meshId = entityId;
+      returnObj.physicsEntityId = entityId;
       // Remove temp mesh, geometry, and material(s)
       modelMesh.geometry.dispose();
       if (Array.isArray(modelMesh.material)) {
@@ -276,30 +264,14 @@ const parseImportResult = async (
       modelMesh.remove();
     }
   } else {
-    const m = modelMesh;
-    const mProps = meshPropsArr[0];
-    const entityId = createMeshEntity(
-      {
-        geo: mProps?.geo || m.geometry,
-        mat: mProps?.mat || (Array.isArray(m.material) ? m.material[0] : m.material),
-        castShadow: mProps?.castShadow || m.castShadow,
-        receiveShadow: mProps?.receiveShadow || m.receiveShadow,
-        frustumCullingEnabled: mProps?.frustumCullingEnabled ?? m.frustumCulled,
-        position: mProps?.position || m.position,
-        rotation: mProps?.rotation || m.rotation,
-        quaternion: mProps?.rotation ? undefined : mProps?.quaternion || m.quaternion,
-        appId: mProps?.appId || id,
-      },
+    const { entityId, mesh } = createEntityFromImportedMesh(
+      modelMesh,
+      meshPropsArr[0],
+      id,
       params.entityOpts
     );
-    returnObj.mesh = m;
+    returnObj.mesh = mesh;
     returnObj.meshId = entityId;
-  }
-
-  deleteUnwantedImportedMeshes(returnObj);
-
-  if (returnObj.group?.userData.entityId) {
-    getECSWorld().deleteEntity(returnObj.group?.userData.entityId);
   }
 
   return returnObj;
@@ -377,7 +349,13 @@ export const importModelAsync = async (params: ImportModelParams): Promise<Impor
 
   const parsedResult = await parseImportResult(modelGroup, params);
 
-  if (!params.importGroup) world.deleteEntity(entityId);
+  if (!params.importGroup) {
+    // The glTF children are only templates by now. Detach them first: disposeGroup deletes any
+    // entity whose appId matches a child's userData.id, which can be the mesh entity just
+    // created from that child (a GLB `id` custom property becomes its appId).
+    modelGroup.clear();
+    world.deleteEntity(entityId);
+  }
 
   return parsedResult;
 };
@@ -826,23 +804,21 @@ const deriveMeshDependentColliderFields = (
   return colliderParams;
 };
 
-type ImportedPhysicsGroupResult = {
-  entityId?: number;
-  /** True when this group's target mesh had no ECS entity yet (e.g. keepMesh was only forced
-   * true via a physicsParams override, not the raw GLB custom property the earlier mesh-creation
-   * loop already checked) and createPhysicsEntity had to create one as a side effect — the
-   * caller still needs to fold this mesh into ImportReturnObj.mesh/meshId itself. */
-  createdNewMeshEntity: boolean;
-  targetMesh?: THREE.Mesh;
-  meshes: THREE.Mesh[];
-};
-
+/** Resolves and creates the physics objects of a group import: one rigid body (and entity) per
+ * custom prop "index" group, with one collider per physics mesh in that index group. Returns the
+ * entity ids carrying the rigid bodies.
+ *
+ * The rigid body attaches to an existing mesh entity (the anchor) — the rigid body mesh itself
+ * when it's kept visible, otherwise the first kept mesh of the same index group — so a physics
+ * object never gets a second, duplicate visual. Every collider is offset (translation + rotation)
+ * from that anchor by its own mesh's glTF-local transform. Only an index group with no kept mesh
+ * at all becomes a headless physics entity, spawned at the rigid body mesh's transform. */
 const importMultiplePhysicsObjects = async (
   customProps: CleanUpCustomPropsResult[],
   groupOrMesh: THREE.Group | THREE.Mesh,
   params: ImportModelParams
-): Promise<ImportedPhysicsGroupResult[]> => {
-  const results: ImportedPhysicsGroupResult[] = [];
+): Promise<number[]> => {
+  const physEntityIds: number[] = [];
   if (!customProps.length) return [];
   const customPropsWithoutIndex: CleanUpCustomPropsResult[] = [];
   // Collect all the different indexes to an array
@@ -863,6 +839,14 @@ const importMultiplePhysicsObjects = async (
     const items = customProps.filter((item) => item.index === indexes[i]);
     customPropsByIndex.push(items);
   }
+
+  // customProps' meshId is the source glTF mesh's uuid (see parseImportResult)
+  const getGltfMesh = (uuid?: string) =>
+    uuid
+      ? (groupOrMesh.children.find((c) => c.uuid === uuid) as THREE.Mesh | undefined)
+      : undefined;
+  const hasEntity = (m?: THREE.Mesh) => typeof m?.userData.entityId === 'number';
+
   for (let j = 0; j < customPropsByIndex.length; j++) {
     const allProps = customPropsByIndex[j];
     const propsWithRigidParams = allProps.find((p) => p.rigidType);
@@ -874,69 +858,73 @@ const importMultiplePhysicsObjects = async (
       ...propsWithoutColliders,
     ];
     const rigidAndChildParamsResult = getRigidParamsAndChildColliders(props, params);
-    if (!rigidAndChildParamsResult) return [];
-    const { rigidMeshId, physParamsObj } = rigidAndChildParamsResult;
+    if (!rigidAndChildParamsResult) continue;
+    const { physParamsObj } = rigidAndChildParamsResult;
 
-    // Resolve one mesh per collider entry — a genuinely compound object can have a different
-    // submesh per collider piece, all attaching to the same rigid body/entity.
-    const resolvedMeshes: (THREE.Mesh | undefined)[] = [];
-    for (let i = 0; i < props.length; i++) {
-      let mesh = groupOrMesh.children.find((m) => m.userData.id === props[i].id) as
-        | THREE.Mesh
-        | undefined;
-      if (!mesh) {
-        mesh = groupOrMesh.children.find((m) => m.uuid === rigidMeshId) as THREE.Mesh | undefined;
-      }
-      if (mesh) {
-        resolvedMeshes.push(mesh);
-      } else {
-        lwarn('Could not find a mesh from groupOrMesh in importMultiplePhysicsObjects');
-      }
+    const rigidMesh = getGltfMesh(physParamsObj.physicsParams[0].meshId);
+    if (!rigidMesh) {
+      lwarn('Could not find the rigid body mesh from groupOrMesh in importMultiplePhysicsObjects');
+      continue;
     }
-    if (!resolvedMeshes.length) continue;
+    const anchorMesh = hasEntity(rigidMesh)
+      ? rigidMesh
+      : props.map((p) => getGltfMesh(p.meshId)).find(hasEntity) || rigidMesh;
+    const anchorEntityId = anchorMesh.userData.entityId as number | undefined;
+    anchorMesh.updateMatrix();
+    const anchorInverse = anchorMesh.matrix.clone().invert();
 
-    const targetMesh = resolvedMeshes[0];
-
-    // Set dimensions of primitive shapes to the mesh userData (debug/inspection metadata,
-    // independent of which physics backend actually creates the collider).
-    for (let i = 0; i < physParamsObj.physicsParams.length; i++) {
-      const mesh = resolvedMeshes[i] || targetMesh;
-      const colliderType = physParamsObj.physicsParams[i].collider?.type;
-      if (mesh && colliderType) setMeshCreatePropsToUserData(colliderType, mesh);
-    }
-
-    // TRIMESH/HEIGHTFIELD/CONVEXHULL shape data (the legacy system derived this from the
-    // attached mesh's geometry automatically; the new Physics API needs it explicit) plus each
-    // secondary collider's local offset from the shared rigid body (mirrors the legacy system's
-    // post-creation `collider.setTranslationWrtParent(mesh.position)` for compound objects).
-    const colliderParamsArray = physParamsObj.physicsParams.map((p, i) => {
-      const mesh = resolvedMeshes[i] || targetMesh;
-      let collider = mesh ? deriveMeshDependentColliderFields(p.collider, mesh) : p.collider;
-      if (i > 0 && mesh) collider = { ...collider, translation: mesh.position };
+    const colliderParamsArray = physParamsObj.physicsParams.map((p) => {
+      const mesh = getGltfMesh(p.meshId) || rigidMesh;
+      // Primitive shape dimensions come from each collider's own mesh (createPhysicsEntity's
+      // fallback derivation would only ever look at the anchor mesh).
+      setMeshCreatePropsToUserData(p.collider.type, mesh);
+      let collider = deriveColliderDimensionsFromMesh(
+        deriveMeshDependentColliderFields(p.collider, mesh),
+        mesh
+      );
+      if (mesh !== anchorMesh && !collider.translation && !collider.rotation) {
+        mesh.updateMatrix();
+        const offset = new THREE.Matrix4().multiplyMatrices(anchorInverse, mesh.matrix);
+        const pos = new THREE.Vector3();
+        const rot = new THREE.Quaternion();
+        offset.decompose(pos, rot, new THREE.Vector3());
+        // Identity rotation is left out so it can't override a shape's own `orientation`
+        const isRotated = Math.abs(rot.w) < 1 - 1e-6;
+        collider = {
+          ...collider,
+          translation: { x: pos.x, y: pos.y, z: pos.z },
+          ...(isRotated ? { rotation: { x: rot.x, y: rot.y, z: rot.z, w: rot.w } } : {}),
+        };
+      }
       return collider;
     });
 
-    const hasEntity = typeof targetMesh?.userData.entityId === 'number';
-    const target: THREE.Object3D | number | undefined = hasEntity
-      ? (targetMesh!.userData.entityId as number)
-      : targetMesh;
-
+    const rigidBody = physParamsObj.physicsParams[0].rigidBody;
     const entityId = await createPhysicsEntity(
       colliderParamsArray,
-      physParamsObj.physicsParams[0].rigidBody,
-      target,
-      target === undefined ? { appId: physParamsObj.id } : undefined
+      anchorEntityId !== undefined || !rigidBody
+        ? rigidBody
+        : {
+            ...rigidBody,
+            translation: rigidBody.translation ?? {
+              x: anchorMesh.position.x,
+              y: anchorMesh.position.y,
+              z: anchorMesh.position.z,
+            },
+            rotation: rigidBody.rotation ?? {
+              x: anchorMesh.quaternion.x,
+              y: anchorMesh.quaternion.y,
+              z: anchorMesh.quaternion.z,
+              w: anchorMesh.quaternion.w,
+            },
+          },
+      anchorEntityId,
+      anchorEntityId === undefined ? { appId: `${physParamsObj.id}-phys-${j}` } : undefined
     );
-
-    results.push({
-      entityId,
-      createdNewMeshEntity: !hasEntity && Boolean(targetMesh),
-      targetMesh,
-      meshes: resolvedMeshes.filter(Boolean) as THREE.Mesh[],
-    });
+    physEntityIds.push(entityId);
   }
 
-  return results;
+  return physEntityIds;
 };
 
 const getRigidParamsAndChildColliders = (
@@ -973,6 +961,7 @@ const getRigidParamsAndChildColliders = (
           userData: rigidParams?.rigidBodyUserData,
         },
         collider: rigidParams?.colliderParams,
+        meshId: rigidParams.meshId,
       },
     ] as PhysicsParams[],
     meshOrMeshId: [] as (THREE.Mesh | string) | (THREE.Mesh | string)[],
@@ -989,7 +978,10 @@ const getRigidParamsAndChildColliders = (
     }
     if (!physParamsObj.id) physParamsObj.id = rigidMeshId;
     physParamsObj.isCompoundObject = false;
-    physParamsObj.physicsParams.push({ collider: colliderParams });
+    physParamsObj.physicsParams.push({
+      collider: colliderParams,
+      meshId: restOfColliderParams[i].meshId,
+    });
   }
 
   return {
@@ -997,54 +989,4 @@ const getRigidParamsAndChildColliders = (
     rigidParams,
     physParamsObj,
   };
-};
-
-const deleteUnwantedImportedMeshes = (obj: ImportReturnObj) => {
-  const removeUUIDs: string[] = [];
-  const removeMeshes: THREE.Mesh[] = [];
-
-  // obj.group
-  if (obj.group) {
-    const group = obj.group;
-    for (let i = 0; i < group.children.length; i++) {
-      const mesh = group.children[i] as THREE.Mesh;
-      if (mesh?.userData.keepMesh === false && !removeUUIDs.includes(mesh.uuid)) {
-        removeUUIDs.push(mesh.uuid);
-        removeMeshes.push(mesh);
-      }
-    }
-    if (group.children.length && removeMeshes.length) {
-      group.remove(...removeMeshes);
-    }
-  }
-
-  // obj.mesh
-  if (Array.isArray(obj.mesh)) {
-    for (let i = 0; i < obj.mesh.length; i++) {
-      const mesh = obj.mesh[i];
-      if (mesh?.userData.keepMesh === false && !removeUUIDs.includes(mesh.uuid)) {
-        removeUUIDs.push(mesh.uuid);
-        removeMeshes.push(mesh);
-      }
-    }
-    if (obj.mesh?.length) {
-      const newMeshes = obj.mesh.filter((m) => !removeUUIDs.includes(m.uuid));
-      obj.mesh = newMeshes;
-    }
-  } else {
-    const mesh = obj.mesh;
-    if (mesh?.userData.keepMesh === false && !removeUUIDs.includes(mesh.uuid)) {
-      removeUUIDs.push(mesh.uuid);
-      removeMeshes.push(mesh);
-    }
-    if (obj.mesh && removeUUIDs.includes(obj.mesh.uuid)) {
-      obj.mesh = undefined;
-    }
-  }
-
-  const ids = removeMeshes.map((m) => m.userData.entityId).filter(Boolean);
-  const world = getECSWorld();
-  for (let i = 0; i < ids.length; i++) {
-    disposeMesh(ids[i], world);
-  }
 };

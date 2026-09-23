@@ -109,7 +109,14 @@ export const createMeshEntity = (
     }
   }
 
-  const entityId = world.createEntity(entityOpts);
+  // The appId resolved above is the entity's real (fixed) appId too, whichever of props/entityOpts
+  // it came from — otherwise a props-only appId (JSON-authored and imported meshes) would leave
+  // the entity with a random per-load id: unfindable via getMeshByAppId, and without the stable
+  // id per-entity persisted settings (e.g. physics debug wireframes) are keyed by.
+  const explicitAppId = props.appId || entityOpts?.appId;
+  const entityId = world.createEntity(
+    explicitAppId ? { ...entityOpts, appId: explicitAppId } : entityOpts
+  );
   mesh.userData.entityId = entityId;
 
   world.addComponent(entityId, ComponentType.OBJECT3D, {

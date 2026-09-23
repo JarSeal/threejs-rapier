@@ -17,6 +17,10 @@ type KeyBindingBase = BindingMeta & {
   /** Array = "any of these chords triggers this binding". */
   chord: KeyChord | KeyChord[];
   caseInsensitive?: boolean; // default true
+  /** Match on the key alone, whatever modifiers are (or aren't) held — the chord's own modifier
+   * fields are ignored too. For continuous controls like movement that must keep working while
+   * an unrelated modifier is pressed (e.g. a Shift run toggle). Default false (exact match). */
+  ignoreModifiers?: boolean;
   enabled?: boolean; // default true
   sceneId?: string;
   enabledInDebugCam?: EnabledInDebugCam;
@@ -74,28 +78,57 @@ const isBindingDisabled = (binding: KeyBinding) =>
 
 const isSceneMatch = (sceneId?: string) => !sceneId || sceneId === getCurrentSceneId();
 
-/** Exact chord match against a live DOM event: key (case rule per binding) plus an exact
- * modifier match (a plain `{ key: 'h' }` requires no modifiers held). */
+/** The modifier flag a modifier key sets on its own events ('Shift' -> shift, ...), if any. */
+const MODIFIER_OF_KEY: { [key: string]: keyof Modifiers } = {
+  shift: 'shift',
+  control: 'ctrl',
+  alt: 'alt',
+  meta: 'meta',
+};
+
+/** Exact modifier match, except that a chord whose key is itself a modifier (e.g.
+ * `{ key: 'Shift' }`) doesn't require its own flag to be off: pressing Shift always reports
+ * shiftKey, so such a chord could never match otherwise. */
+const modifiersMatch = (chord: KeyChord, held: Modifiers): boolean => {
+  const own = MODIFIER_OF_KEY[chord.key.toLowerCase()];
+  return (
+    (own === 'ctrl' || !!chord.ctrl === !!held.ctrl) &&
+    (own === 'shift' || !!chord.shift === !!held.shift) &&
+    (own === 'alt' || !!chord.alt === !!held.alt) &&
+    (own === 'meta' || !!chord.meta === !!held.meta)
+  );
+};
+
+/** Chord match against a live DOM event: key (case rule per binding) plus an exact modifier
+ * match (a plain `{ key: 'h' }` requires no modifiers held) unless ignoreModifiers is set. */
 const eventMatchesChord = (
   e: KeyboardEvent,
   chord: KeyChord,
-  caseInsensitive: boolean
+  caseInsensitive: boolean,
+  ignoreModifiers?: boolean
 ): boolean => {
   const keyMatches = caseInsensitive
     ? e.key.toLowerCase() === chord.key.toLowerCase()
     : e.key === chord.key;
   return (
     keyMatches &&
-    !!chord.ctrl === e.ctrlKey &&
-    !!chord.shift === e.shiftKey &&
-    !!chord.alt === e.altKey &&
-    !!chord.meta === e.metaKey
+    (ignoreModifiers ||
+      modifiersMatch(chord, {
+        ctrl: e.ctrlKey,
+        shift: e.shiftKey,
+        alt: e.altKey,
+        meta: e.metaKey,
+      }))
   );
 };
 
 /** Same exact-match rule as eventMatchesChord, but against the live held-key/modifier
  * snapshot instead of a single DOM event (used by isChordHeld / pollHeldKeyBindings). */
-const chordIsHeld = (chord: KeyChord, caseInsensitive: boolean): boolean => {
+const chordIsHeld = (
+  chord: KeyChord,
+  caseInsensitive: boolean,
+  ignoreModifiers?: boolean
+): boolean => {
   const chordKeyLower = chord.key.toLowerCase();
   let keyHeld = false;
   for (const k of heldRawKeys) {
@@ -104,13 +137,7 @@ const chordIsHeld = (chord: KeyChord, caseInsensitive: boolean): boolean => {
       break;
     }
   }
-  return (
-    keyHeld &&
-    !!chord.ctrl === !!heldModifiers.ctrl &&
-    !!chord.shift === !!heldModifiers.shift &&
-    !!chord.alt === !!heldModifiers.alt &&
-    !!chord.meta === !!heldModifiers.meta
-  );
+  return keyHeld && (!!ignoreModifiers || modifiersMatch(chord, heldModifiers));
 };
 
 const chordsCollide = (a: KeyChord | KeyChord[], b: KeyChord | KeyChord[]): boolean => {
@@ -157,14 +184,18 @@ const initKeyListeners = () => {
       if (isBindingDisabled(binding) || !isSceneMatch(binding.sceneId)) continue;
       const caseInsensitive = binding.caseInsensitive ?? true;
       const matched = getChordArray(binding.chord).some((c) =>
-        eventMatchesChord(e, c, caseInsensitive)
+        eventMatchesChord(e, c, caseInsensitive, binding.ignoreModifiers)
       );
       if (matched) binding.fn(e, timeNow);
     }
   };
 
   keyupListener = (e: KeyboardEvent) => {
+    // A letter's e.key follows the Shift state at the time of each event, so one pressed with
+    // Shift down ('W') and released after Shift ('w') must be cleared in either case.
     heldRawKeys.delete(e.key);
+    heldRawKeys.delete(e.key.toLowerCase());
+    heldRawKeys.delete(e.key.toUpperCase());
     updateHeldModifiers(e);
     if (!keyInputsEnabled) return;
     const timeNow = performance.now();
@@ -174,7 +205,7 @@ const initKeyListeners = () => {
       if (isBindingDisabled(binding) || !isSceneMatch(binding.sceneId)) continue;
       const caseInsensitive = binding.caseInsensitive ?? true;
       const matched = getChordArray(binding.chord).some((c) =>
-        eventMatchesChord(e, c, caseInsensitive)
+        eventMatchesChord(e, c, caseInsensitive, binding.ignoreModifiers)
       );
       if (matched) binding.fn(e, timeNow);
     }
@@ -237,7 +268,9 @@ export const pollHeldKeyBindings = (delta: number): void => {
     if (binding.type !== 'KEY_HELD') continue;
     if (isBindingDisabled(binding) || !isSceneMatch(binding.sceneId)) continue;
     const caseInsensitive = binding.caseInsensitive ?? true;
-    const matched = getChordArray(binding.chord).some((c) => chordIsHeld(c, caseInsensitive));
+    const matched = getChordArray(binding.chord).some((c) =>
+      chordIsHeld(c, caseInsensitive, binding.ignoreModifiers)
+    );
     if (matched) binding.fn(delta);
   }
 };
