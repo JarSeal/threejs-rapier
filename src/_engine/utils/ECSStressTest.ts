@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { createKeyInputControl } from '../core/InputControls';
+import { createKeyBinding } from '../core/Input/KeyboardInput';
 import { getLogger } from './Logger';
 import { createMeshEntity } from '../core/MeshManager';
 import { ECSWorld, getECSWorld } from '../core/ECS';
@@ -146,17 +146,17 @@ export const initECSStressTest = (batchSize: number = 100, targetId?: number) =>
   const world = getECSWorld();
 
   // Bind 'K' for Individual Meshes (Draw Call stress)
-  createKeyInputControl({
+  createKeyBinding({
     id: 'spawn_individual',
-    key: 'k',
+    chord: { key: 'k' },
     type: 'KEY_DOWN',
     fn: () => spawnECSStressTestBatch(world, batchSize, false, targetId),
   });
 
   // Bind 'L' for Instanced Meshes (Pure ECS stress)
-  createKeyInputControl({
+  createKeyBinding({
     id: 'spawn_instanced',
-    key: 'l',
+    chord: { key: 'l' },
     type: 'KEY_DOWN',
     fn: () => spawnECSStressTestBatch(world, batchSize, true, targetId),
   });

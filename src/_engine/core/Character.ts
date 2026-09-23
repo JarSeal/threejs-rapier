@@ -1,13 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { createPhysicsEntity } from './PhysicsManager';
 import { ColliderParams, RigidBodyParams } from './Physics/PhysicsAPITypes';
-import {
-  createMouseInputControl,
-  deleteMouseInputControl,
-  MouseInputControlType,
-  MouseInputParams,
-} from './InputControls';
 import { createKeyBinding, deleteKeyBinding, type KeyBinding } from './Input/KeyboardInput';
+import { createMouseBinding, deleteMouseBinding, type MouseBinding } from './Input/MouseInput';
 import { getMeshByAppId } from './MeshManager';
 import { getECSWorld, getEntityIdByAppId } from './ECS';
 import { existsOrThrow } from '../utils/assert';
@@ -31,7 +26,7 @@ let onDeleteCharacter: { [characterId: string]: () => void } = {};
  * character or controlled by an agent (AI).
  * @param physicsParams (colliders + optional shared rigidBody) ({@link ColliderParams}, {@link RigidBodyParams}) describes the (possibly compound) physics body for this character
  * @param meshOrMeshId (THREE.Mesh | string) mesh or mesh id of the representation of the physics object
- * @param controls (array of KeyBinding and/or MouseInputParams) the input control params for this character
+ * @param controls (array of {@link KeyBinding} and/or {@link MouseBinding}) the input bindings for this character
  * @returns CharacterObject ({@link CharacterObject})
  */
 export const createCharacter = async ({
@@ -46,7 +41,7 @@ export const createCharacter = async ({
   name?: string;
   physicsParams: { colliders: ColliderParams | ColliderParams[]; rigidBody?: RigidBodyParams };
   meshOrMeshId: THREE.Mesh | string;
-  controls?: (KeyBinding | (MouseInputParams & { id: string; type: MouseInputControlType }))[];
+  controls?: (KeyBinding | MouseBinding)[];
   data?: { [key: string]: unknown };
 }) => {
   let mesh: THREE.Mesh;
@@ -94,21 +89,13 @@ export const createCharacter = async ({
     for (let i = 0; i < controls.length; i++) {
       const ctrl = controls[i];
       const ctrlId = ctrl.id;
-      if (ctrl.type?.startsWith('MOUSE')) {
-        // Mouse control
-        createMouseInputControl({
-          ...(ctrl as MouseInputParams),
-          data: { mesh, charObject: char },
-        });
+      if (ctrl.type.startsWith('MOUSE')) {
+        createMouseBinding(ctrl as MouseBinding);
         mouseControlIds.push(ctrlId);
         continue;
       }
-      if (ctrl.type?.startsWith('KEY')) {
-        // Key control
-        createKeyBinding(ctrl as KeyBinding);
-        keyControlIds.push(ctrlId);
-        continue;
-      }
+      createKeyBinding(ctrl as KeyBinding);
+      keyControlIds.push(ctrlId);
     }
   }
 
@@ -133,7 +120,7 @@ export const deleteCharacter = (id: string) => {
     deleteKeyBinding(charObj.keyControlIds[i]);
   }
   for (let i = 0; i < charObj.mouseControlIds.length; i++) {
-    deleteMouseInputControl({ id: charObj.mouseControlIds[i] });
+    deleteMouseBinding(charObj.mouseControlIds[i]);
   }
 
   // Delete ECS entity (also disposes the physics rigid body/colliders and the mesh)

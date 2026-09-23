@@ -1,18 +1,12 @@
 import { AppConfig } from './_engine/core/Config';
-import { toggleDrawer } from './_engine/debug/DebuggerGUI';
 
 export const MAIN_APP_CAM_ID = 'mainAppCam';
 
 const config: AppConfig = {
-  debugKeys: [
-    {
-      enabled: true,
-      id: 'sc-toggle-debug-drawer',
-      key: ['h', 'H'],
-      type: 'KEY_UP',
-      fn: () => toggleDrawer(),
-    },
-  ],
+  // Debug-only key bindings. The engine's defaults ('h' = debug drawer, 'F1' = debug camera)
+  // are overridden by reusing their id (only the given fields change, `enabled: false` turns
+  // one off); any other id adds a new debug key binding (needs `chord` + `fn`).
+  debugKeys: [{ id: 'sc-toggle-debug-drawer', chord: { key: 'h' } }],
   physics: {
     enabled: true,
     worldStepEnabled: true,

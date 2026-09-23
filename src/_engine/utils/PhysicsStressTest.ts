@@ -1,4 +1,4 @@
-import { createKeyInputControl } from '../core/InputControls';
+import { createKeyBinding } from '../core/Input/KeyboardInput';
 import { getLogger } from './Logger';
 import { createPhysicsEntity } from '../core/PhysicsManager';
 import { createGeometry } from '../core/Geometry';
@@ -90,9 +90,9 @@ export const initPhysicsStressTest = (batchSize: number = 50) => {
   };
 
   // 3. Bind to Key 'J' (for "Junk")
-  createKeyInputControl({
+  createKeyBinding({
     id: 'spawn_stress_objects',
-    key: 'j',
+    chord: { key: 'j' },
     type: 'KEY_DOWN',
     fn: () => spawnBatch(),
   });

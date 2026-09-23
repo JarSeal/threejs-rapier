@@ -7,6 +7,7 @@ import {
   PROJECT_METADATA,
 } from './core/Config';
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
+import { registerDefaultDebugKeyBindings } from './core/Input/DefaultDebugKeyBindings';
 import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
 import {
   createPhysicsAPIDebugGUI,
@@ -89,6 +90,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerSkyBoxDebugGUI();
       await registerRaycastDebugGUI();
       await registerDebuggerGUI();
+      registerDefaultDebugKeyBindings();
       await registerCharacterTools();
       await registerECSModule();
       await registerSpatialIndexDebugGUI();

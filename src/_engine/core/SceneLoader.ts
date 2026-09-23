@@ -19,7 +19,7 @@ import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
 import { deleteAllPhysicsEntities } from './PhysicsManager';
 import { DEBUGGER_SCENE_LOADER_ID, disableDebugger } from '../debug/DebuggerGUI';
-import { setAllInputsEnabled } from './InputControls';
+import { setAllInputsEnabled } from './Input/InputState';
 import { getCanvasParentElem } from './Renderer';
 import { getDebugToolsState } from '../debug/DebugToolsManager';
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, isDebugEnvironment } from './Config';

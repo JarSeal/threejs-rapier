@@ -9,6 +9,7 @@ import {
 import { DraggableWindow } from './UI/DraggableWindow';
 import { ECSStorageMode } from './ECS/ECSComponentStorage';
 import { lsGetItem } from '../utils/LocalAndSessionStorage';
+import type { DebugKeyBindingConfig } from './Input/DefaultDebugKeyBindings';
 
 /** LS key for debug-only boot-time physics overrides (workerTarget/useSAB/maxBodies). Written by the Physics API debug tab, read once in loadConfig(). */
 export const DEBUG_PHYSICS_API_BOOT_LS_KEY = 'AEK_debugPhysicsApiBoot';
@@ -49,14 +50,9 @@ export type DebugPhysicsWireframeConfig = {
 };
 
 export type AppConfig = {
-  debugKeys?: {
-    enabled?: boolean; // Default is true
-    id?: string;
-    key?: string | string[];
-    type?: 'KEY_UP' | 'KEY_DOWN'; // Default is 'KEY_UP'
-    sceneId?: string;
-    fn: (e: KeyboardEvent, pressedTime: number) => void;
-  }[];
+  /** Debug-only key bindings: overrides of the engine's default debug keys (same id) and/or
+   * extra app debug keys. See {@link DebugKeyBindingConfig}. */
+  debugKeys?: DebugKeyBindingConfig[];
   physics?: {
     enabled?: boolean;
     physicsEngine?: PhysicsEngine;

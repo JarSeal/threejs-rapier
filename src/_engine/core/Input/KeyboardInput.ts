@@ -3,6 +3,7 @@ import { isDebugEnvironment } from '../Config';
 import { addOnWindowBlurFn, addVisibilityChangeFn } from '../MainLoop';
 import { getCurrentSceneId } from '../Scene';
 import { lwarn } from '../../utils/Logger';
+import { areAllInputsEnabled } from './InputState';
 import type { BindingMeta, EnabledInDebugCam, Modifiers } from './InputSharedTypes';
 
 export type KeyChord = Modifiers & {
@@ -176,7 +177,7 @@ const initKeyListeners = () => {
   keydownListener = (e: KeyboardEvent) => {
     if (!e.repeat) heldRawKeys.add(e.key);
     updateHeldModifiers(e);
-    if (!keyInputsEnabled) return;
+    if (!keyInputsEnabled || !areAllInputsEnabled()) return;
     const timeNow = performance.now();
     for (let i = 0; i < bindings.length; i++) {
       const binding = bindings[i];
@@ -197,7 +198,7 @@ const initKeyListeners = () => {
     heldRawKeys.delete(e.key.toLowerCase());
     heldRawKeys.delete(e.key.toUpperCase());
     updateHeldModifiers(e);
-    if (!keyInputsEnabled) return;
+    if (!keyInputsEnabled || !areAllInputsEnabled()) return;
     const timeNow = performance.now();
     for (let i = 0; i < bindings.length; i++) {
       const binding = bindings[i];
@@ -224,7 +225,8 @@ export const createKeyBinding = (binding: KeyBinding): void => {
       if (reserved.id !== binding.id && chordsCollide(reserved.chord, binding.chord)) {
         lwarn(
           `Debugger shortcut key for "${reserved.chordLabel}" ("${reserved.id}") has been ` +
-            `overwritten with app code ("${binding.id}"). Please overwrite it from the CONFIG.ts file instead.`
+            `overwritten with app code ("${binding.id}"). Please overwrite it from the CONFIG.ts ` +
+            `file instead (a debugKeys entry with the id "${reserved.id}").`
         );
       }
     }
@@ -262,7 +264,7 @@ export const isChordHeld = (chord: KeyChord, caseInsensitive: boolean = true): b
  */
 export const pollHeldKeyBindings = (delta: number): void => {
   initKeyListeners();
-  if (!keyInputsEnabled) return;
+  if (!keyInputsEnabled || !areAllInputsEnabled()) return;
   for (let i = 0; i < bindings.length; i++) {
     const binding = bindings[i];
     if (binding.type !== 'KEY_HELD') continue;
@@ -275,7 +277,7 @@ export const pollHeldKeyBindings = (delta: number): void => {
   }
 };
 
-/** Used only by DefaultDebugKeyBindings.ts to register a chord as a collision-check target. */
+/** Used by DefaultDebugKeyBindings.ts to register a chord as a collision-check target. */
 export const markChordReserved = (id: string, chord: KeyChord | KeyChord[]): void => {
   reservedChords = reservedChords.filter((r) => r.id !== id);
   reservedChords.push({ id, chord, chordLabel: chordLabel(chord) });

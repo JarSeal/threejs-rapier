@@ -6,7 +6,7 @@ Epic: https://trello.com/c/UyGHLLsX/218-input-system-refactoring
 
 ## Current status
 
-**This plan (p050): Phases 1–3 of §4 are done. Phases 4–9 are not started.**
+**This plan (p050): Phases 1–7 of §4 are done. Phases 8–9 are not started.**
 
 - ✅ **Phase 1** — `src/_engine/core/Input/InputSharedTypes.ts` and `KeyboardInput.ts` created
   (`createKeyBinding`/`deleteKeyBinding`/`isChordHeld`/`pollHeldKeyBindings`/`markChordReserved`),
@@ -17,13 +17,69 @@ Epic: https://trello.com/c/UyGHLLsX/218-input-system-refactoring
   bindings + `KEY_UP`/`KEY_DOWN` bindings for jump/run/crouch/stop; `Character.ts`'s **Key**
   portion of `controls` retyped to `KeyBinding`; `scene01.ts`/`largeWorld.ts`'s single mappings
   migrated.
-- ⬜ **Phases 4–9 not started**: `MouseInput.ts`, `TouchInput.ts`, `GamepadInput.ts` stub,
-  `DefaultDebugKeyBindings.ts` + `InitApp.ts` wiring, deleting `InputControls.ts`, and updating
-  `docs/plans/p062_add-undo-and-redo-ui.md`.
-- **`Character.ts`'s Mouse portion of `controls` still uses the legacy `MouseInputParams`/
-  `InputControls.ts` type** — never migrated, since Phase 4 (`MouseInput.ts`) never started.
-  `InputControls.ts` therefore still has a live caller and is **not** dead code; Phase 8 (deleting
-  it) isn't safe until Phase 4 happens.
+- ✅ **Phase 4** — `Input/MouseInput.ts` (`createMouseBinding`/`deleteMouseBinding`/
+  `setMouseBindingEnabled`/`setMouseInputsEnabled`; click/hover/wheel/left+right dblclick) and
+  `Raycast.ts`'s `castRayFromScreenPosition` added. `Character.ts`'s **Mouse** portion of
+  `controls` migrated too (`KeyBinding | MouseBinding`), so `Character.ts` no longer imports
+  `InputControls.ts`. Verified in the running app against real meshes (plain + `?isDebug=true`,
+  incl. debug-camera picking and HUD-button clicks not leaking into scene bindings).
+- ✅ **Phase 5** — `Input/TouchInput.ts` (`createTouchBinding`/`deleteTouchBinding`/
+  `setTouchBindingEnabled`/`setTouchInputsEnabled`; tap/drag/pinch). Verified via CDP touch
+  emulation (tap hit/miss, drag deltas, long-press rejected as tap, two-finger pinch).
+- ✅ **Phase 6** — `Input/GamepadInput.ts` stub; not imported anywhere.
+- ✅ **Remaining `InputControls.ts` importers migrated** (not in the original §2.7 list):
+  `SceneLoader.ts`'s `setAllInputsEnabled` now comes from a new tiny `Input/InputState.ts`
+  master switch that Keyboard/Mouse/Touch all check (on top of their own
+  `set*InputsEnabled`), so SceneLoader doesn't pull Mouse/Touch into every bundle;
+  `utils/ECSStressTest.ts`/`utils/PhysicsStressTest.ts` use `createKeyBinding`.
+  **`InputControls.ts` now has zero importers.**
+- ✅ **Phase 7** — `Input/DefaultDebugKeyBindings.ts` (`registerDefaultDebugKeyBindings`,
+  `DebugKeyBindingConfig`) wired into `InitApp.ts`'s `IS_DEBUG_ENV` block right after
+  `registerDebuggerGUI()`; `_dbg__DebuggerGUI.ts`'s inline `debugKeys` loop removed;
+  `AppConfig.debugKeys` retyped to `DebugKeyBindingConfig[]`; `CONFIG.ts` reduced to a
+  documented `{ id: 'sc-toggle-debug-drawer', chord: { key: 'h' } }` override example (no longer
+  imports `toggleDrawer`). Verified in the running app: `h` toggles the drawer, F1 toggles the
+  debug camera (and the on-screen camera-switch button follows), a different-id app binding on
+  F1 logs the warning, a same-id CONFIG.ts override to another key is silent, nothing
+  registers outside `?isDebug=true`.
+  - F1 is `KEY_DOWN` (not `KEY_UP` as §2.6 sketched) with `preventDefault()` + an `e.repeat`
+    guard, because browsers act on F1 (help) at keydown.
+  - Both defaults ignore the key while focus is in a text field (`input`/`textarea`/`select`/
+    contenteditable), so typing "h" into a debug panel doesn't close the drawer. The guard
+    lives in the default bindings' `fn`s only — `KeyboardInput.ts` stays unopinionated (§5).
+  - `Shift+H` no longer toggles the drawer (exact-modifier match, §5); Caps Lock `H` still
+    does (`caseInsensitive` default true).
+  - A non-default-id `debugKeys` entry without `chord`/`fn` is skipped with a warning.
+- ⬜ **Phases 8–9 not started**: deleting `InputControls.ts` (now safe — no importers left), and
+  updating `docs/plans/p062_add-undo-and-redo-ui.md`.
+
+**Deviations from §2 made while implementing Phases 4–5** (deliberate, recorded so they aren't
+re-litigated):
+
+- **Default picking camera is `getActiveCamera()`, not `getMainCamera()`** (§2.3 said the latter).
+  Screen-space picking has to use the camera that produced the pixels under the cursor; with the
+  debug camera on, `getMainCamera()` would pick through a camera the user isn't looking through.
+  A binding can still pass its own `camera`.
+- **Hover is resolved by an ECS system at `ECSSystemStage.MAIN` on the default world**
+  (registered lazily by the first `MOUSE_HOVER` binding), not by a flag consumed from
+  `MainLoop.ts` — `MainLoop.ts` importing `MouseInput.ts` would bundle it for every app,
+  defeating decision 8. Still at most one raycast per hover binding per frame, and only on frames
+  the pointer moved (so an object moving under a still cursor doesn't fire enter/leave until the
+  pointer moves — a possible future `continuous` option).
+- **Shared picking helper `Input/InputPicking.ts`** (`pickTargetsAt` + `PickOpts`
+  `{ camera?, recursive? }`, `recursive` default true) used by both Mouse and Touch — not in the
+  §2.1 layout, but only imported by those two files so tree-shaking is unaffected.
+- **Only events that land on the renderer canvas count** (`e.target === canvas`): HUD/debug-UI
+  clicks, wheels and touches never raycast into the scene; moving onto HUD UI counts as leaving
+  hover. A click also requires press and release on the canvas within 5px (so camera-orbit drags
+  aren't clicks).
+- **Right-click context menu is suppressed on the canvas** while any RIGHT click/dblclick
+  binding exists (it would otherwise swallow the release).
+- **`targets` semantics for `MOUSE_DBLCLICK`/`TOUCH_TAP`** (where it's optional): with targets,
+  `fn` fires only on a hit; without, it always fires with `intersection` undefined.
+- **Touch bindings also take `enabledInDebugCam`** (§2.4 omitted it) for parity with Mouse.
+- A native double-click also produces its two single clicks (standard browser behavior); a tap
+  also produces emulated mouse events, so it can fire `MOUSE_CLICK` bindings too.
 
 ### Mid-plan pivot: full adoption of p028
 
@@ -106,10 +162,8 @@ Recorded so these don't need to be re-asked:
 
 ### What still needs to be done
 
-- **p050 Phases 4–9** (§4 below): `MouseInput.ts`, `TouchInput.ts`, `GamepadInput.ts` stub,
-  `DefaultDebugKeyBindings.ts`, deleting `InputControls.ts`, updating p062. Not currently blocking
-  anything — `InputControls.ts` still has a live caller (`Character.ts`'s mouse controls) so it
-  couldn't be deleted yet regardless of anything else.
+- **p050 Phases 8–9** (§4 below): deleting `InputControls.ts` (zero importers left), updating
+  p062.
 - **p028 Phase 9 will not be done** — see the decision above. Anyone picking p028 back up should
   treat it as complete, not paused.
 
