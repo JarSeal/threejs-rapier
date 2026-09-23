@@ -9,12 +9,12 @@ Create "TODO_NAME_OF_PLAN" plan in docs/plans/TODO_NAME_OF_PLAN_FILE.md
 
 Category: TODO_GIVE_CATEGORY_OR_REMOVE
 Blocked by: TODO_NAME_OF_PLAN_FILE_OR_REMOVE
-Blocks: TODO_NAME_OF_PLAN_FILE_OR_REMOVE 
+Blocks: TODO_NAME_OF_PLAN_FILE_OR_REMOVE
 EPIC: TODO_NAME_OF_EPIC_OR_REMOVE
 
 TODO_DESCRIPTION_OF_THE_PLAN_AND_REQUIREMENTS
 
-If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this. 
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 *****************************
 
 
@@ -22,12 +22,9 @@ If for some reason this plan can't or shouldn't be created with this specificati
 
 Implement a plan template:
 *****************************
-Implement @docs/plans/TODO_NAME_OF_PLAN_FILE.md
+Implement @docs/plans/TODO_NAME_OF_PLAN_FILE
 
-Read the plan and the files it names before proposing anything. If the
-code has moved since the plan was written, say so rather than following
-it blindly.
+Read the plan and the files it names before proposing anything. If the code has moved since the plan was written, say so rather than following it blindly.
 
-Work through it in order. Stop after each section for my review — don't
-run the whole thing end to end. 
+Work through it in order. Stop after each section for my review — don't run the whole thing end to end.
 *****************************

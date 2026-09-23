@@ -1,0 +1,25 @@
+Create "Line rendering system" plan in docs/plans/p058_line-rendering-system.md
+
+Category: Lines
+
+In the plan p025_debug-drawing-in-physics-api.md (now done) the option to tweak the line width caused the line width logic to become part of the production build and added size to the production build bundle. I already have implementations planned, like the plan p125_spatial-index-system-visualizer.md, which could benefit from the Line rendering system to be a Aekasha core engine system. I am at some going to create a selection tool, which could benefit from showing the bounding box of that entity. This could then be even expanded to show the entity on the scene when hovering a debugger tab list. I would then need a color pulsating feature for the selected object to show up in the scene by changing color and indicating that it is selected. So in other words, do not implement anything related to selecting an object, but implement the feature for pulsating between two or more colors (+ the speed which they change color), but make sure there is also the option just to have one color. Also this could be really nice tool to use in an actual game play code as well (a game might need to render lines) so this would be justified to be part of the core engine. Study and refactor the line drawing to a core engine system and refactor the physics entity rendering visualization to use this system (or if not possible or not recommended, then notify the reason).
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+************************************
+
+UNDER_CONSTRUCTION
+Create "Statistics profiler mega window" plan in docs/plans/p220_stats-profiler-mega-window.md
+
+Category: Statistics should have its own window that would display far more deeper real-time info about the scene and the current state. This will be the base ticket for more plans in the future and we will not implement everything in this plan. The window should have similar tabs as the debugger drawer (can have the same style). In this plan we should implement these tabs:
+- Overview (this should be like the main icon for the stats window, design this)
+- Objects (this can be an isometric wireframe cubes, design this)
+- Settings (a cog wheel, design this if it doesn't exist)
+
+The Overview tab will have some key data on it like FPS, TFPS (true FPS, meaning how many frames in would show per second without the vsync/restricter), Physics calculation + transfer (for Worker thread) ms per frame, memory consumed, total amount of entities, total amount of meshes, total amount of triangles, total amount vertices, and what else (you may suggest some key measurments)? Not sure if it is possible but the total amounts should only count the entities/meshes/objects/triangles/vertices that are visible/enabled (not culled). This view should update at a requested rate (configured in the Settings tab). This tab has no graphs.
+
+The Objects tab should do a breakdown of the different entity, mesh, triangle, vertices (etc.) counts. This view can have graphs, but I am not sure yet how to display them (you can suggest what to use here).
+
+TODO_DESCRIPTION_OF_THE_PLAN_AND_REQUIREMENTS
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
