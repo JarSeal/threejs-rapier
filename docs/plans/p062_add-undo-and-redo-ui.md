@@ -1,15 +1,15 @@
 Status: draft | not-implemented
 Category: Debugger
-Blocked by: p060_debugger-undo-engine-core.md and p061_add-undo-history-action-recording-to-debugger-tools.md
+Blocked by: p060_debugger-undo-engine-core.md and p061_add-undo-history-action-recording-to-debugger-tools.md (keyboard shortcuts also depend on p050_input-system-refactoring.md — implemented)
 Epic: https://trello.com/c/JYgK1s1u/86-add-undo-redo-system
 
 # Add Undo Engine UI and History Setting — Plan
 
 Adds the user-facing surface for the undo/redo engine (`p060`) once it's wired to real actions (`p061`): an OnScreenTools button group (top-left corner) for Undo/Redo, two new SVG icons for them, `Ctrl+Z`/`Ctrl+Shift+Z` keyboard shortcuts, and a "history depth" number control in the Debug Tools tab. No other UI (history list, per-action inspector, etc.) is in scope.
 
-Two of the four asks in this plan turn out to require small, well-scoped amendments to engine code that isn't part of `p060`/`p061` — flagged prominently here, not just in the risk table, since they widen this plan's blast radius slightly beyond "debugger-only files":
+Two of the four asks in this plan originally required small, well-scoped amendments to engine code that isn't part of `p060`/`p061` — flagged prominently here, not just in the risk table. The first has since been delivered by `p050`; the second still stands:
 
-1. **The keyboard-shortcut system has no modifier-key (Ctrl/Shift) support at all today.** The "h" pattern this plan was asked to reuse only matches a bare key string — see §1.3. Adding `Ctrl+Z` needs a small extension to `src/_engine/core/InputControls.ts`, which is a general-purpose engine module used by gameplay input too, not a `_dbg__`-prefixed debug-only file. The change is additive/optional-field (non-breaking), but it's worth flagging that this plan can't stay confined to debug-only files the way `p060`/`p061` did.
+1. ~~The keyboard-shortcut system has no modifier-key (Ctrl/Shift) support.~~ **Resolved by `p050_input-system-refactoring.md`** (implemented): `InputControls.ts` was replaced by `src/_engine/core/Input/KeyboardInput.ts`, which has first-class `ctrl`/`shift`/`alt`/`meta` chords with exact modifier matching, plus an engine-owned default-debug-keys mechanism (`Input/DefaultDebugKeyBindings.ts`). `Ctrl+Z`/`Ctrl+Shift+Z` therefore need **no engine amendment** anymore — see §1.3/§2.3. This plan's keyboard work is now confined to registering two bindings.
 2. **`p060`'s `historySize` is a boot-time config value only** — there's no runtime getter/setter for it to bind a live Debug Tools control to. This plan adds one (§2.4), another small, expected amendment in the same spirit as `p061`'s already-flagged core changes.
 
 ---
@@ -46,17 +46,11 @@ This is a pre-existing fallthrough bug (calling `updateTool('PLAY')` also rebuil
 
 `src/_engine/core/UI/icons/SvgIcon.ts` already imports (and nothing currently uses) `arrowClockwise`/`arrowCounterClockwise` (`arrow-clockwise.svg`/`arrow-counterclockwise.svg`, Bootstrap Icons' circular-refresh-style arrows) — grep confirms zero usages anywhere in `src` besides the map declaration itself. These are the icons the request says not to reuse. Icons in this codebase are manually sourced raw `.svg` files under `src/_engine/core/UI/icons/svg/` (no `bootstrap-icons` npm package installed — confirmed, `node_modules/bootstrap-icons` doesn't exist), imported via `?raw` and registered in the flat `icons` map (`SvgIcon.ts:31-59`) — same pattern `p041`'s research already documented for `databaseX`/`eraser-fill.svg`.
 
-### 1.3 Keyboard shortcuts — the "h" pattern, and its real limits
+### 1.3 Keyboard shortcuts — current mechanism (after p050)
 
-`src/CONFIG.ts:6-15` registers the debug-drawer toggle via `AppConfig.debugKeys`:
+Debug shortcuts are defined by `src/_engine/core/Input/DefaultDebugKeyBindings.ts`: an engine-owned `DEFAULT_DEBUG_KEY_BINDINGS` array (`sc-toggle-debug-drawer` = `h`, `sc-toggle-debug-camera` = `F1`) registered by `registerDefaultDebugKeyBindings()` from `InitApp.ts`'s `IS_DEBUG_ENV` block. Each default's chord is reserved via `markChordReserved`, so app code binding the same chord under a different id gets a console warning. `src/CONFIG.ts`'s `debugKeys` (`AppConfig.debugKeys: DebugKeyBindingConfig[]`) can override a default by reusing its id, or add extra debug-only bindings (new id + `chord` + `fn`).
 
-```ts
-debugKeys: [{ enabled: true, id: 'sc-toggle-debug-drawer', key: ['h', 'H'], type: 'KEY_UP', fn: () => toggleDrawer() }]
-```
-
-`src/_engine/core/Debug/_dbg__DebuggerGUI.ts:48-64` reads `getConfig().debugKeys` once and calls `createKeyInputControl({ type, fn, ...(key && {key}), ...(id && {id}), ...(sceneId && {sceneId}) })` per entry (`InputControls.ts:350-. `). Matching happens in `InputControls.ts`'s `initKeyUpControls`/`initKeyDownControls` (lines 85-. ): for each registered `KeyMapping`, `KEY.toLowerCase() === String(mapping.key).toLowerCase()` (or `.includes(KEY...)` for an array of keys) — **that is the entire match condition**. `KeyMapping` (`InputControls.ts:15-26`) and `AppConfig.debugKeys`'s type (`Config.ts:14-21`) have **no `ctrlKey`/`shiftKey`/`altKey`/`metaKey` field at all**, and no code anywhere in `InputControls.ts` reads `e.ctrlKey`/`e.shiftKey`. Confirmed via grep across the whole file. There is also no `preventDefault()` call anywhere in the key-handling code.
-
-This means: the literal "same pattern as 'h'" cannot express `Ctrl+Z` today. Registering `key: 'z'` as-is would fire on every bare "z" keypress (ctrl or not) — a real bug, not just an incomplete feature, since `Z` may be a legitimate character-input/gameplay key elsewhere in `app`/`toolkit` and would now also trigger undo. §2.3 covers the required fix.
+Bindings are `KeyBinding`s (`Input/KeyboardInput.ts`): `chord: { key, ctrl?, shift?, alt?, meta? }` (or an array = "any of these"), `caseInsensitive` (default `true`), `type: 'KEY_UP' | 'KEY_DOWN' | 'KEY_HELD'`. Matching is **exact on modifiers**: `{ key: 'z', ctrl: true }` matches `Ctrl+Z` but not bare `Z` nor `Ctrl+Shift+Z`. The input system itself has no text-input-focus guard (deliberately unopinionated); the two default debug bindings guard in their own `fn` via a private `isTypingInField()` helper (`document.activeElement` matching `input, textarea, select, [contenteditable]`). F1's default is `KEY_DOWN` with `preventDefault()` + an `e.repeat` check — the precedent for shortcuts the browser itself acts on.
 
 ### 1.4 Debug Tools tab structure
 
@@ -124,36 +118,40 @@ const icons = {
 
 `arrow-90deg-left`/`arrow-90deg-right` (Bootstrap Icons' right-angle "hook" arrows) are suggested as visually distinct from the existing circular `arrow-clockwise`/`arrow-counterclockwise` glyphs already in the codebase (and explicitly disliked per the request) while staying within the same icon family/style/license already used everywhere else in `SvgIcon.ts`. This is a design suggestion, not a hard requirement — confirm the actual glyph choice against the real Bootstrap Icons artwork at implementation time (this plan doesn't have network access to fetch/verify the exact SVG markup). The existing unused `arrowClockwise`/`arrowCounterClockwise` entries are left untouched — nothing depends on removing them, and CLAUDE.md's instructions caution against unrelated cleanup.
 
-### 2.3 Keyboard shortcuts (requires an `InputControls.ts` amendment)
+### 2.3 Keyboard shortcuts (no engine amendment needed — uses p050's mechanism)
 
-**Amendment**: add four optional fields to `KeyMapping` (`InputControls.ts:15-26`) — `ctrlKey?: boolean`, `shiftKey?: boolean`, `altKey?: boolean`, `metaKey?: boolean` — and to `AppConfig.debugKeys`'s per-entry type (`Config.ts:14-21`). Update the key-match condition everywhere it's computed in `initKeyUpControls`/`initKeyDownControls` (four near-identical blocks per `InputControls.ts:85-. `/`130-. ` for the global and per-scene mapping arrays) from:
-
-```ts
-let isCurrentKey = KEY.toLowerCase() === String(mapping.key).toLowerCase();
-```
-
-to also require every specified modifier to match the event's actual modifier state, e.g.:
+Register two bindings:
 
 ```ts
-const modifiersMatch =
-  (mapping.ctrlKey === undefined || mapping.ctrlKey === e.ctrlKey) &&
-  (mapping.shiftKey === undefined || mapping.shiftKey === e.shiftKey) &&
-  (mapping.altKey === undefined || mapping.altKey === e.altKey) &&
-  (mapping.metaKey === undefined || mapping.metaKey === e.metaKey);
+{
+  id: 'sc-undo',
+  type: 'KEY_DOWN',
+  chord: [{ key: 'z', ctrl: true }, { key: 'z', meta: true }], // Ctrl+Z, and Cmd+Z on macOS
+  name: 'Undo',
+  fn: (e) => {
+    if (isTypingInField()) return; // let the focused field's native undo run
+    e.preventDefault();
+    if (!e.repeat) undoLastAction();
+  },
+},
+{
+  id: 'sc-redo',
+  type: 'KEY_DOWN',
+  chord: [{ key: 'z', ctrl: true, shift: true }, { key: 'z', meta: true, shift: true }],
+  name: 'Redo',
+  fn: (e) => { /* same guard, redoLastAction() */ },
+},
 ```
 
-`isCurrentKey` and the existing array-of-keys branch stay as-is; `modifiersMatch` gates alongside them (`if ((isCurrentKey || !mapping.key) && modifiersMatch)`). Every field is optional and defaults to "don't care," so existing mappings (including the "h" one) are unaffected — purely additive. `_dbg__DebuggerGUI.ts:54-60`'s config pass-through needs the same four optional spreads added alongside the existing `key`/`id`/`sceneId` ones.
+Notes:
 
-`src/CONFIG.ts` then registers two new entries alongside the existing "h" one:
-
-```ts
-{ enabled: true, id: 'sc-undo', key: ['z', 'Z'], ctrlKey: true, shiftKey: false, type: 'KEY_UP', fn: () => undoLastAction() },
-{ enabled: true, id: 'sc-redo', key: ['z', 'Z'], ctrlKey: true, shiftKey: true, type: 'KEY_UP', fn: () => redoLastAction() },
-```
-
-(`shiftKey: false` on the undo entry so a bare `Ctrl+Z` doesn't also satisfy the redo mapping's "don't care about ctrl" — actually needed the other way: since both entries require `ctrlKey: true`, the only distinguishing field is `shiftKey`, so undo must pin `shiftKey: false` explicitly rather than leaving it undefined, otherwise `Ctrl+Shift+Z` would match **both** mappings and fire undo then redo in the same keyup. This is a real edge case to get right, not a copy-paste detail.)
-
-**Text-input focus guard — a judgment call, flagged**: unlike the "h" drawer-toggle (safe to fire globally, since it's not a character a user would type while editing a value), `Ctrl+Z`/`Ctrl+Shift+Z` are the browser's own native undo/redo shortcut for whatever text input currently has focus — including, very plausibly, a Tweakpane number/text field the user is mid-edit in inside an open edit window. Firing the engine's undo/redo *at the same time* as the browser's native field-undo would be confusing (two different "undo" behaviors on one keypress). **Recommendation**: gate both new `fn` callbacks (or add a generic guard to `createKeyInputControl` itself, reusable beyond this feature) on `document.activeElement` not being an `<input>`/`<textarea>`/`[contenteditable]` element. This isn't in `p060`/`p061`'s scope and isn't a hard requirement from the request, but is flagged here as a real UX correctness issue discovered while grounding this plan in the actual key-handling code (no such guard exists anywhere in `InputControls.ts` today) — confirm before implementation whether to add it generically or accept the native-undo collision as-is.
+- **No modifier pinning gotcha anymore.** The old draft needed `shiftKey: false` pinned on undo so `Ctrl+Shift+Z` wouldn't fire both undo and redo; `KeyboardInput.ts`'s exact-modifier match already makes `{ key: 'z', ctrl: true }` not match `Ctrl+Shift+Z`. `caseInsensitive` (default `true`) covers Shift turning `e.key` into `'Z'`.
+- **`KEY_DOWN`, not `KEY_UP`.** On macOS, browsers don't fire `keyup` for other keys while ⌘ is held, so a `KEY_UP` Cmd+Z would never fire. `KEY_DOWN` also lets `preventDefault()` stop the browser's own undo. Hence the `e.repeat` check (holding the chord shouldn't undo repeatedly — or, if key-repeat undo is wanted, drop it deliberately).
+- **Where to register them — flagged call for the implementer:**
+  (a) add both to `DEFAULT_DEBUG_KEY_BINDINGS` in `Input/DefaultDebugKeyBindings.ts` — engine-owned debugger feature, chords reserved (collision warning), overridable from `CONFIG.ts` by id, and `isTypingInField()` is already right there; or
+  (b) plain `createKeyBinding` calls from the undo/redo debug module (`_dbg__UndoRedo.ts`) or entries in `src/CONFIG.ts`'s `debugKeys` — no chord reservation, and the focus guard must be written again.
+  (a) fits best since undo/redo is an engine debugger feature, not app-specific — but the choice is left open.
+- **Text-input focus guard — resolved direction.** `KeyboardInput.ts` stays unopinionated (per p050); each binding's `fn` checks focus itself. With (a), reuse `isTypingInField()`; with (b), export it from `DefaultDebugKeyBindings.ts` (or move it into a small shared helper) instead of duplicating it. When focus is in a field, return **without** `preventDefault()` so the field's native undo still works.
 
 ### 2.4 Debug Tools "history depth" control (requires a small `p060`/`p061` runtime-setter amendment)
 
@@ -199,10 +197,7 @@ undoRedoFolder
 - `src/_engine/core/Debug/_dbg__OnScreenTools.ts` — new `undoRedoTools()` group + fix to `updateTool`'s missing `break`s + `IS_DEBUG_ENV`-only branch for the new group (§2.1).
 - `src/_engine/debug/OnScreenTools.ts` — `ToolTypes` gains `'UNDO'`.
 - `src/_engine/core/Debug/OnScreenTools.module.scss` — new `:global(.undoRedoTools)` positioning rule (§2.1, including whatever offset resolves the Stats-panel collision).
-- `src/_engine/core/InputControls.ts` — `KeyMapping` gains `ctrlKey?`/`shiftKey?`/`altKey?`/`metaKey?`; match logic in `initKeyUpControls`/`initKeyDownControls` checks them (§2.3).
-- `src/_engine/core/Config.ts` — `AppConfig.debugKeys`'s per-entry type gains the same four optional fields.
-- `src/_engine/core/Debug/_dbg__DebuggerGUI.ts` — pass the four new optional fields through to `createKeyInputControl` (lines 54-60).
-- `src/CONFIG.ts` — two new `debugKeys` entries (undo/redo).
+- `src/_engine/core/Input/DefaultDebugKeyBindings.ts` — two new `DEFAULT_DEBUG_KEY_BINDINGS` entries (undo/redo), **or**, per §2.3's flagged call, `createKeyBinding` calls in `_dbg__UndoRedo.ts` / `debugKeys` entries in `src/CONFIG.ts` instead. No changes to `KeyboardInput.ts` or `Config.ts` needed.
 - `src/_engine/core/Debug/_dbg__UndoRedo.ts` (from `p060`/`p061`) — `_getUndoRedoHistorySize`/`_setUndoRedoHistorySize`/`_initUndoRedoSettings` + the `updateOnScreenTools('UNDO')` calls from §2.1 (§2.4).
 - `src/_engine/debug/UndoRedo.ts` (from `p060`) — thin public wrappers for the two new functions.
 - `src/_engine/debug/DebugToolsManager.ts` — `DebugToolsState`/`defaultDebugToolsState` gain `undoRedoFolderExpanded`.
@@ -215,9 +210,9 @@ No schema, scene-JSON, or ECS component-type changes.
 ## 4. Phased rollout
 
 - **Phase 1 — Icons.** Add the two new SVG files + `SvgIcon.ts` registration. No behavior change, purely additive assets. Manual verification: temporarily render both icons somewhere (e.g. via the browser console calling `getSvgIcon('undo')`) to confirm they parse/display correctly before wiring them into real buttons.
-- **Phase 2 — Keyboard-shortcut core amendment.** `InputControls.ts` + `Config.ts` modifier-field support, with a throwaway `console.log`-based `debugKeys` entry to manually verify `Ctrl+Z`/`Ctrl+Shift+Z`/bare `Z` are now correctly distinguished, and that the existing "h" drawer toggle still works unaffected. Decide and implement the text-input focus guard (§2.3) here or explicitly defer it with a note. Remove the throwaway entry before Phase 4.
+- **Phase 2 — (obsolete)** The keyboard-shortcut core amendment this phase used to cover was delivered by `p050_input-system-refactoring.md` (modifier chords, exact matching, default debug keys). Nothing to do here; the undo/redo bindings themselves are registered in Phase 4.
 - **Phase 3 — Debug Tools history-size control.** `_dbg__UndoRedo.ts` settings additions (§2.4) + the new Debug Tools folder. Manual verification: change the value, confirm it persists across reload (`AEK_debugUndoRedoSettings`) and that recording more actions than the new (lower) limit correctly trims old entries.
-- **Phase 4 — OnScreenTools button group + real key bindings.** Wire the actual `undo`/`redo` `debugKeys` entries from Phase 2 into `src/CONFIG.ts` for real, build `undoRedoTools()` (§2.1), fix the `updateTool` fallthrough, and wire the `updateOnScreenTools('UNDO')` refresh calls into `_dbg__UndoRedo.ts`. Manual verification: with `p061`'s recordable actions in place, perform a recordable edit (e.g. Renderer tone mapping, per `p061` §4.1) → confirm the Undo button enables → click it (and separately, press `Ctrl+Z`) → confirm the edit reverts and the Redo button enables → confirm the reverse for Redo/`Ctrl+Shift+Z`. Also confirm the button group's on-screen position doesn't visually collide with the Stats panel in its default (enabled, minimal) state.
+- **Phase 4 — OnScreenTools button group + real key bindings.** Register the `sc-undo`/`sc-redo` bindings per §2.3 (including the text-input focus guard), and in a quick manual check confirm `Ctrl+Z`/`Ctrl+Shift+Z` (and `Cmd+Z`/`Cmd+Shift+Z` on macOS) are distinguished from each other and from bare `Z`, and that the "h"/F1 defaults still work; build `undoRedoTools()` (§2.1), fix the `updateTool` fallthrough, and wire the `updateOnScreenTools('UNDO')` refresh calls into `_dbg__UndoRedo.ts`. Manual verification: with `p061`'s recordable actions in place, perform a recordable edit (e.g. Renderer tone mapping, per `p061` §4.1) → confirm the Undo button enables → click it (and separately, press `Ctrl+Z`) → confirm the edit reverts and the Redo button enables → confirm the reverse for Redo/`Ctrl+Shift+Z`. Also confirm the button group's on-screen position doesn't visually collide with the Stats panel in its default (enabled, minimal) state.
 
 ---
 
@@ -225,9 +220,9 @@ No schema, scene-JSON, or ECS component-type changes.
 
 | Risk / question | Notes |
 | --- | --- |
-| `InputControls.ts` is not a debug-only file. | Unlike every other file this plan (and `p060`/`p061`) touches, `InputControls.ts` is a general engine module used by gameplay/app input too. The change is additive and optional-field, so existing behavior is unaffected, but it's a wider blast radius than "debugger-only," worth a deliberate go/no-go before implementation rather than assuming it's fine because it's additive. |
-| Text-input focus guard for `Ctrl+Z`/`Ctrl+Shift+Z` (§2.3). | Not requested explicitly, discovered as a real UX correctness issue (native browser field-undo colliding with engine undo) while grounding the plan in the actual key-handling code. Needs an explicit decision before Phase 2, not a silent default. |
-| Undo/redo `debugKeys` entries need `shiftKey: false`/`shiftKey: true` pinned explicitly, not left `undefined`, to avoid both firing on the same `Ctrl+Shift+Z` keyup. | Called out in §2.3 — an easy mistake to make copy-pasting the "h" entry's shape, since "h" has no modifier fields to get wrong. |
+| Where to register the undo/redo bindings (§2.3). | `DefaultDebugKeyBindings.ts` (recommended: chord reservation + id-based CONFIG override for free) vs. `createKeyBinding` from `_dbg__UndoRedo.ts` / `CONFIG.ts` `debugKeys`. Flagged call for the implementer, per p050. |
+| Text-input focus guard for `Ctrl+Z`/`Ctrl+Shift+Z` (§2.3). | Direction decided by p050: the guard lives in each binding's `fn` (`KeyboardInput.ts` stays unopinionated), reusing `isTypingInField()` from `DefaultDebugKeyBindings.ts`. Returning early without `preventDefault()` keeps native field undo working. |
+| Cmd+Z on macOS needs `KEY_DOWN`. | Browsers don't deliver `keyup` for other keys while ⌘ is held on macOS; a `KEY_UP` binding would never fire for Cmd+Z/Cmd+Shift+Z. Covered in §2.3. |
 | OnScreenTools' top-left position collides with the Stats panel's hardcoded `top:0;left:0` (§2.1). | Flagged, not silently resolved — `InitApp.ts`'s toaster-offset technique is the suggested fix, but exact values need visual confirmation during implementation, and the Stats panel's size varies by its own config (minimal/horizontal/tracked-metrics). |
 | `updateTool`'s missing `break`s (§1.1) is a pre-existing bug, not introduced by this plan. | Fixed in passing since this plan edits that exact function to add a third case — flagged so the fix isn't mistaken for accidental unrelated cleanup during review. |
 | New icon choice (`arrow-90deg-left`/`-right`) is a suggestion, not verified against real Bootstrap Icons artwork. | This plan has no network access to fetch/confirm the actual glyph; implementation should source real SVG markup consistent with the project's existing manual-copy convention (same as how `eraser-fill.svg`/`trash3-fill.svg` etc. were added per `p041`). |

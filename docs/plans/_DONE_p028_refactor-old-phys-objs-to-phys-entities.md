@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Physics
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
 
@@ -15,7 +15,7 @@ every other scene already does.
 ## Context (grounded in code)
 
 - **18 files import `PhysicsRapier.ts`** (confirmed by repo-wide grep; `Physics/EngineRapier.ts`,
-  `PhysicsAPI.ts`, `toolkit/geometry/generateTerrain.ts` only *mention* it in comments), grouped by
+  `PhysicsAPI.ts`, `toolkit/geometry/generateTerrain.ts` only _mention_ it in comments), grouped by
   what they need from it:
   - **Bootstrap/loop/lifecycle (9)**: `InitApp.ts` (`InitRapierPhysics`), `MainLoop.ts`
     (`stepPhysicsWorld`/`renderPhysicsObjects` every frame), `Scene.ts`/`SceneLoader.ts` (teardown:
@@ -232,7 +232,7 @@ equivalents).
 Manual verification: full app boot, scene switching, and debug-drawer frame-stepping all work with
 zero references to `PhysicsRapier.ts` left outside the file itself (confirm via grep).
 
-**Phase 9 — Delete `PhysicsRapier.ts`.** Remove the file and any now-dead legacy-only types it was
+**Phase 9 — (NOT DONE) Delete `PhysicsRapier.ts`.** Remove the file and any now-dead legacy-only types it was
 the sole consumer/producer of (`PhysicsObject`, `ScenePhysicsLooper`, etc., confirmed dead via grep
 first). Repo-wide grep for `PhysicsRapier` returns zero hits outside git history.
 
@@ -259,13 +259,13 @@ by this plan one more time.
 
 ## Risks / open questions
 
-| Risk / question | Notes |
-|---|---|
-| `dynamicCharacter.ts`'s movement-timing migration (Phase 6) is the piece most likely to need iteration, per `p050_input-system-refactoring.md`'s own risk assessment. | Verify feel side-by-side against the still-legacy character before Phase 7 cuts the gym scene over, not just after. |
-| HEIGHTFIELD import logic (Phase 3) is fragile (inferred grid dimensions, Y-up remapping). | Port verbatim, don't refactor; verify against the exact terrain GLBs already in the gym scene, not synthetic ones. |
-| Two physics worlds run in parallel through Phase 8; a half-migrated object (body in new world, some check still against the old world) would be a silent behavioral bug, not a compile error. | Each phase must fully cut its object(s) over — no partial migrations left dangling between phases. |
-| No test suite exists in this repo. | Accepted — every phase is manually verified via `?isDebug=true` and the affected scene(s), per repo convention (see `_DONE_p026`, `p500`). |
-| `castShape`'s exact Rapier parameter surface (target distance, stop-at-penetration, shape velocity) needs to cover what `dynamicCharacter.ts:1149-1161` actually passes, not just a generic subset. | Phase 0 should be written against that exact call site's needs, then generalized — not designed in the abstract first. |
+| Risk / question                                                                                                                                                                                     | Notes                                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `dynamicCharacter.ts`'s movement-timing migration (Phase 6) is the piece most likely to need iteration, per `p050_input-system-refactoring.md`'s own risk assessment.                               | Verify feel side-by-side against the still-legacy character before Phase 7 cuts the gym scene over, not just after.                        |
+| HEIGHTFIELD import logic (Phase 3) is fragile (inferred grid dimensions, Y-up remapping).                                                                                                           | Port verbatim, don't refactor; verify against the exact terrain GLBs already in the gym scene, not synthetic ones.                         |
+| Two physics worlds run in parallel through Phase 8; a half-migrated object (body in new world, some check still against the old world) would be a silent behavioral bug, not a compile error.       | Each phase must fully cut its object(s) over — no partial migrations left dangling between phases.                                         |
+| No test suite exists in this repo.                                                                                                                                                                  | Accepted — every phase is manually verified via `?isDebug=true` and the affected scene(s), per repo convention (see `_DONE_p026`, `p500`). |
+| `castShape`'s exact Rapier parameter surface (target distance, stop-at-penetration, shape velocity) needs to cover what `dynamicCharacter.ts:1149-1161` actually passes, not just a generic subset. | Phase 0 should be written against that exact call site's needs, then generalized — not designed in the abstract first.                     |
 
 ## Verification
 

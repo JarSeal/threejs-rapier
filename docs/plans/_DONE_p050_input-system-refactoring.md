@@ -1,4 +1,4 @@
-Status: draft | partially-implemented — see "Current status" below
+Status: implemented — see "Current status" below
 Category: Input
 Epic: https://trello.com/c/UyGHLLsX/218-input-system-refactoring
 
@@ -6,7 +6,7 @@ Epic: https://trello.com/c/UyGHLLsX/218-input-system-refactoring
 
 ## Current status
 
-**This plan (p050): Phases 1–7 of §4 are done. Phases 8–9 are not started.**
+**This plan (p050): all phases (1–9) of §4 are done.**
 
 - ✅ **Phase 1** — `src/_engine/core/Input/InputSharedTypes.ts` and `KeyboardInput.ts` created
   (`createKeyBinding`/`deleteKeyBinding`/`isChordHeld`/`pollHeldKeyBindings`/`markChordReserved`),
@@ -50,8 +50,15 @@ Epic: https://trello.com/c/UyGHLLsX/218-input-system-refactoring
   - `Shift+H` no longer toggles the drawer (exact-modifier match, §5); Caps Lock `H` still
     does (`caseInsensitive` default true).
   - A non-default-id `debugKeys` entry without `chord`/`fn` is skipped with a warning.
-- ⬜ **Phases 8–9 not started**: deleting `InputControls.ts` (now safe — no importers left), and
-  updating `docs/plans/p062_add-undo-and-redo-ui.md`.
+- ✅ **Phase 8** — `src/_engine/core/InputControls.ts` deleted (zero importers; no stale
+  references to its API names left in `src`). Verified in the running app: full boot, then
+  `scene01` (`d` logs), `largeWorld` (`c`/`C` toggle the camera), `thirdPersonGymScene`
+  (held `W`/`A` move/rotate the character, space jumps).
+- ✅ **Phase 9** — `docs/plans/p062_add-undo-and-redo-ui.md` rewritten: intro point 1, §1.3,
+  §2.3, §3, Phase 2 (now obsolete) and Phase 4, §5 risk rows; `Blocked by` header mentions this
+  plan. Also flagged for p062: Cmd+Z needs `KEY_DOWN` (macOS doesn't fire `keyup` for other keys
+  while ⌘ is held), and the text-input guard should reuse `isTypingInField()` from
+  `DefaultDebugKeyBindings.ts`.
 
 **Deviations from §2 made while implementing Phases 4–5** (deliberate, recorded so they aren't
 re-litigated):
@@ -162,8 +169,9 @@ Recorded so these don't need to be re-asked:
 
 ### What still needs to be done
 
-- **p050 Phases 8–9** (§4 below): deleting `InputControls.ts` (zero importers left), updating
-  p062.
+- **Nothing in p050.** Follow-ups noted along the way, not planned anywhere yet:
+  `MOUSE_HOVER` only re-resolves when the pointer moves (a `continuous` option could handle
+  objects moving under a still cursor); `GamepadInput.ts` is a stub (§2.5).
 - **p028 Phase 9 will not be done** — see the decision above. Anyone picking p028 back up should
   treat it as complete, not paused.
 
