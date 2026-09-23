@@ -3,12 +3,6 @@ import { deleteGeometry, GeoProps } from './Geometry';
 import { deleteMaterial, MatProps } from './Material';
 import { lerror, lwarn } from '../utils/Logger';
 import { deleteTexture, getTexture, TextureProps } from './Texture';
-import {
-  deleteAllScenePhysicsLoopers,
-  deletePhysicsObjectsBySceneId,
-  deletePhysicsWorld,
-  setCurrentScenePhysicsObjects,
-} from './PhysicsRapier';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
 import { LightProps } from './LightManager';
@@ -142,7 +136,6 @@ export const deleteScene = (
     deleteMeshes?: boolean;
     deleteLights?: boolean;
     deleteGroups?: boolean;
-    deletePhysicsWorld?: boolean;
     deleteSavedScene?: boolean;
     deleteAll?: boolean;
   }
@@ -235,12 +228,6 @@ export const deleteScene = (
     if (isCurrentScene(id) && rootScene) rootScene.backgroundNode = null;
   }
 
-  // Delete physics
-  deletePhysicsObjectsBySceneId(id);
-  if (opts?.deletePhysicsWorld || opts?.deleteAll) {
-    deletePhysicsWorld();
-  }
-
   if (opts?.deleteSavedScene) delete scenes[id];
 };
 
@@ -258,8 +245,6 @@ export const setCurrentScene = (id: string | null) => {
   }
 
   const rootScene = getRootScene() as THREE.Scene;
-
-  deleteAllScenePhysicsLoopers();
 
   if (currentScene) rootScene.remove(currentScene);
 
@@ -289,8 +274,6 @@ export const setCurrentScene = (id: string | null) => {
     }
     rootScene.add(nextScene);
   }
-
-  setCurrentScenePhysicsObjects(id);
 
   updateDebuggerSceneTitle(
     currentSceneOpts?.name || id || nextScene?.userData.id || '[No scene..]'

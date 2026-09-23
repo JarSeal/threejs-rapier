@@ -1,14 +1,8 @@
 import * as THREE from 'three/webgpu';
-import { createScene } from '../_engine/core/Scene';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { createMeshEntity, getMeshByAppId } from '../_engine/core/MeshManager';
 import { createSkyBox } from '../_engine/core/SkyBox';
-import {
-  addScenePhysicsLooper,
-  createPhysicsObjectWithMesh,
-  getPhysicsObject,
-} from '../_engine/core/PhysicsRapier';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createDynamicCharacter } from '../_engine/utils/character/dynamicCharacter';
@@ -20,22 +14,51 @@ import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
 import { getECSWorld } from '../_engine/core/ECS';
+import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
+import { getScene } from '../_engine/core/Scene';
+import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
+import { getCameraByAppId } from '../_engine/core/CameraManager';
+import { createFollowObjectCameraRig } from '../_engine/utils/cameras/followObjectCameraRig';
+import { ECSSystemStage } from '../AppECSRegistry';
 
 export const SCENE_THIRD_PERSON_GYM_META = {
   id: 'thirdPersonGymScene',
-  text: 'GYM (3rd person)',
 };
 
-/** ImportModel.ts's physics pipeline now returns a plain ECS entity id (meshId) instead of a
- * legacy PhysicsObject, so this scene's many "snap the imported rigid body to its final
- * position" calls (still on the legacy PhysicsRapier system everywhere else — this scene is
- * fully ported in a later phase) go through the new Physics API via the entity's rigid body. */
-const setImportedRigidBodyTranslation = (
+/** ImportModel.ts's physics pipeline returns a plain ECS entity id (meshId) instead of a legacy
+ * PhysicsObject, so this scene's many "snap the imported rigid body to its final position" calls
+ * go through the new Physics API via the entity's rigid body.
+ *
+ * meshId is an array — one entity per imported mesh piece, each already sitting at its own
+ * GLB-authored world position (createMeshEntity parents every piece directly onto the root
+ * scene, not under the returned .group, so there's no single group transform to move). Offsets
+ * every piece by the same delta so the whole imported cluster shifts together to its final
+ * world position while preserving each piece's position relative to the others. */
+const offsetImportedRigidBodyGroupTranslation = (
   meshId: number | number[] | undefined,
-  pos: { x: number; y: number; z: number }
+  offset: { x: number; y: number; z: number }
 ) => {
-  if (typeof meshId !== 'number') return;
-  getECSWorld().getRigidBody(meshId)?.setTranslation(pos, true);
+  const ids = Array.isArray(meshId) ? meshId : typeof meshId === 'number' ? [meshId] : [];
+  const ecsWorld = getECSWorld();
+  for (const id of ids) {
+    // world.setTransform handles both cases correctly in one call: it moves the rigid body
+    // too when the entity has one, AND (critically, for mesh-only "keepMesh" pieces with no
+    // body) writes through the ECS TRANSFORM component and marks it dirty. A bare
+    // mesh.position mutation isn't enough for those — object3DSyncSystem's per-entity
+    // _lastVersion starts at -1 (a "never synced yet" sentinel), so it unconditionally
+    // performs one TRANSFORM -> Object3D copy on the very first frame after creation
+    // regardless of any direct Object3D mutation made before that frame runs, silently
+    // reverting it back to the position the entity was created with.
+    const current = ecsWorld.getPosition(id);
+    if (!current) continue;
+    ecsWorld.setTransform(id, {
+      pos: {
+        x: current.x + offset.x,
+        y: current.y + offset.y,
+        z: current.z + offset.z,
+      },
+    });
+  }
 };
 
 /** Same as setImportedRigidBodyTranslation, but for a partial {x?, y?, z?} update (matching the
@@ -53,15 +76,48 @@ const setImportedRigidBodyTranslationPartial = (
   );
 };
 
-export const sceneThirdPersonGym = async () =>
-  new Promise<string>(async (resolve) => {
+/** Returns the actually-rendered THREE.Mesh for each entity id in an ImportReturnObj's meshId
+ * (number | number[] | undefined) — NOT the mesh(es) on the same ImportReturnObj, which for a
+ * multi-piece importGroup:true result can be a mix of orphaned original-glTF mesh references
+ * (never added to any scene) and the one real entity mesh, depending on each piece's keepMesh/
+ * isPhysObj GLB metadata. Always going through the ECS entity id is the only reliable way to
+ * reach what's actually on screen. */
+const getRealImportedMeshes = (meshId: number | number[] | undefined): THREE.Mesh[] => {
+  const ids = Array.isArray(meshId) ? meshId : typeof meshId === 'number' ? [meshId] : [];
+  const ecsWorld = getECSWorld();
+  const meshes: THREE.Mesh[] = [];
+  for (const id of ids) {
+    const mesh = ecsWorld.getComponent(id, ComponentType.OBJECT3D)?.value as THREE.Mesh | undefined;
+    if (mesh) meshes.push(mesh);
+  }
+  return meshes;
+};
+
+/** Applies a shared material + shadow flags to every real rendered piece of an imported
+ * (possibly multi-piece) model — see getRealImportedMeshes for why this has to go through the
+ * entity id rather than the ImportReturnObj's own .mesh reference(s). */
+const applyMaterialToImportedPieces = (
+  meshId: number | number[] | undefined,
+  material: THREE.Material,
+  opts?: { castShadow?: boolean; receiveShadow?: boolean }
+) => {
+  for (const mesh of getRealImportedMeshes(meshId)) {
+    mesh.castShadow = opts?.castShadow ?? true;
+    mesh.receiveShadow = opts?.receiveShadow ?? true;
+    mesh.material = material;
+  }
+};
+
+export const scene = async () =>
+  new Promise(async (resolve) => {
     const updateLoaderFn = getLoaderStatusUpdater();
     updateLoaderFn({ loadedCount: 0, totalCount: 2 });
 
-    const scene = createScene(SCENE_THIRD_PERSON_GYM_META.id, {
-      name: 'Test scene 1',
-      isCurrentScene: true,
-    });
+    // Scene itself is already created by registerScenesFromGeneratedData() from this scene's
+    // *.scene.json before this function ever runs (matches scene01.ts/physicsTest.ts) —
+    // createMovingPlatform still needs the THREE.Group to add a platform mesh to if one isn't
+    // already parented (it normally is, via createMeshEntity's own scene-add default).
+    const scene = getScene(SCENE_THIRD_PERSON_GYM_META.id, false, true)!;
 
     updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 
@@ -109,25 +165,15 @@ export const sceneThirdPersonGym = async () =>
       type: 'PHONG',
       params: { map: groundTexture },
     });
-    createMeshEntity({
-      appId: 'largeGroundMesh',
-      geo: groundGeo,
-      mat: groundMat,
-      receiveShadow: true,
-      position: groundPos,
-    });
-    const groundMesh = getMeshByAppId('largeGroundMesh')!;
-    createPhysicsObjectWithMesh({
-      physicsParams: {
-        collider: {
-          type: 'BOX',
-          friction: 2,
-        },
-        rigidBody: { rigidType: 'FIXED', translation: groundPos },
-      },
-      meshOrMeshId: groundMesh,
-    });
-
+    const groundEntityId = createMeshEntity(
+      { geo: groundGeo, mat: groundMat, receiveShadow: true, position: groundPos },
+      { appId: 'largeGroundMesh' }
+    );
+    await createPhysicsEntity(
+      { type: 'BOX', friction: 2 },
+      { rigidType: 'FIXED', translation: groundPos },
+      groundEntityId
+    );
     // OBSTACLES
     const { stairsMesh, stairsEntityId, bigBoxWallMesh, bigBoxWallEntityId } =
       await characterTestObstacles();
@@ -160,29 +206,19 @@ export const sceneThirdPersonGym = async () =>
         }),
       },
     });
-    createMeshEntity({
-      appId: 'testBox1Mesh',
-      geo: geometry2,
-      mat: material2,
-      castShadow: true,
-      receiveShadow: true,
-    });
-    const box = getMeshByAppId('testBox1Mesh')!;
-    createPhysicsObjectWithMesh({
-      physicsParams: {
-        collider: {
-          type: 'BOX',
-          restitution: 0.5,
-          friction: 0,
-        },
-        rigidBody: {
-          rigidType: 'DYNAMIC',
-          translation: { x: 2, y: 0, z: 0 },
-          angvel: { x: 1, y: -2, z: 20 },
-        },
+    const boxEntityId = createMeshEntity(
+      { geo: geometry2, mat: material2, castShadow: true, receiveShadow: true },
+      { appId: 'testBox1Mesh' }
+    );
+    await createPhysicsEntity(
+      { type: 'BOX', restitution: 0.5, friction: 0 },
+      {
+        rigidType: 'DYNAMIC',
+        translation: { x: 2, y: 0, z: 0 },
+        angvel: { x: 1, y: -2, z: 20 },
       },
-      meshOrMeshId: box,
-    });
+      boxEntityId
+    );
 
     // CHARACTER
     const characterData = {
@@ -209,7 +245,6 @@ export const sceneThirdPersonGym = async () =>
     });
     createMeshEntity(
       {
-        appId: 'directionBeakMeshDynamicChar-1',
         geo: createGeometry({
           id: 'directionBeakGeoDynamicChar',
           type: 'BOX',
@@ -222,21 +257,18 @@ export const sceneThirdPersonGym = async () =>
         }),
         position: { x: 0.35, y: 0.43, z: 0 },
       },
-      { doNotAddToScene: true }
+      { appId: 'directionBeakMeshDynamicChar-1', doNotAddToScene: true }
     );
     const directionBeakMesh = getMeshByAppId('directionBeakMeshDynamicChar-1')!;
 
-    createMeshEntity({
-      appId: 'meshDynamicChar-1',
-      geo: charCapsule,
-      mat: charMaterial,
-      receiveShadow: true,
-      castShadow: true,
-    });
+    createMeshEntity(
+      { geo: charCapsule, mat: charMaterial, receiveShadow: true, castShadow: true },
+      { appId: 'meshDynamicChar-1' }
+    );
     const characterMesh = getMeshByAppId('meshDynamicChar-1')!;
     characterMesh.add(directionBeakMesh);
 
-    const { dynamicCharacterObject } = createDynamicCharacter({
+    const { dynamicCharacterObject } = await createDynamicCharacter({
       id: 'topDownChar',
       charMesh: characterMesh,
       charData: characterData,
@@ -250,13 +282,23 @@ export const sceneThirdPersonGym = async () =>
         crouch: ['Control'],
       },
     });
-    const charPhysObj = getPhysicsObject(dynamicCharacterObject.physObjectId);
-    charPhysObj?.setTranslation({ x: 5, y: 3, z: -5 });
+    getECSWorld()
+      .getRigidBody(dynamicCharacterObject.entityId)
+      ?.setTranslation({ x: 5, y: 3, z: -5 }, true);
+
+    // Third-person chase camera following the player-controlled character.
+    createFollowObjectCameraRig({
+      id: 'thirdPersonGymFollowCam',
+      camera: getCameraByAppId('thirdPersonGymCamera')!,
+      targetMesh: characterMesh,
+      offset: { x: 0, y: 3, z: 6 },
+      targetHeight: 1,
+      smoothingType: 'SMOOTH_DAMP',
+    });
 
     // Another character without input
     createMeshEntity(
       {
-        appId: 'directionBeakMeshDynamicChar-2',
         geo: createGeometry({
           id: 'directionBeakGeoDynamicChar2',
           type: 'BOX',
@@ -269,31 +311,35 @@ export const sceneThirdPersonGym = async () =>
         }),
         position: { x: 0.35, y: 0.43, z: 0 },
       },
-      { doNotAddToScene: true }
+      { appId: 'directionBeakMeshDynamicChar-2', doNotAddToScene: true }
     );
     const directionBeakMesh2 = getMeshByAppId('directionBeakMeshDynamicChar-2')!;
 
-    createMeshEntity({
-      appId: 'meshDynamicChar-2',
-      geo: charCapsule,
-      mat: charMaterial,
-      receiveShadow: true,
-      castShadow: true,
-    });
+    createMeshEntity(
+      { geo: charCapsule, mat: charMaterial, receiveShadow: true, castShadow: true },
+      { appId: 'meshDynamicChar-2' }
+    );
     const characterMesh2 = getMeshByAppId('meshDynamicChar-2')!;
     characterMesh2.add(directionBeakMesh2);
 
-    const { controlFns, dynamicCharacterObject: dummyCharacterObject } = createDynamicCharacter({
-      id: 'testDummyChar',
-      charMesh: characterMesh2,
-      charData: characterData,
-    });
-    const dummyCharPhysObj = getPhysicsObject(dummyCharacterObject.physObjectId);
-    dummyCharPhysObj?.setTranslation({ x: -2, y: 5, z: -2 });
+    const { controlFns, dynamicCharacterObject: dummyCharacterObject } =
+      await createDynamicCharacter({
+        id: 'testDummyChar',
+        charMesh: characterMesh2,
+        charData: characterData,
+      });
+    getECSWorld()
+      .getRigidBody(dummyCharacterObject.entityId)
+      ?.setTranslation({ x: -2, y: 5, z: -2 }, true);
 
+    // A named ECS system re-registered on every scene load would be a silent no-op the second
+    // time (world.addSystem ignores a duplicate id) — remove any stale registration from a
+    // previous load of this scene first, since it'd otherwise keep running against this
+    // instance's now-deleted character/controlFns closure.
     let action: 'F' | 'T' | null = null;
     let accDelta = 0;
-    addScenePhysicsLooper('dummyCharLooper', (delta) => {
+    getECSWorld().removeSystem('dummyCharLooper');
+    getECSWorld().addSystem(ECSSystemStage.APP_PRE_PHYSICS, 'dummyCharLooper', (_world, dt) => {
       if (accDelta > 1) {
         if (action !== 'F') {
           action = 'F';
@@ -309,19 +355,18 @@ export const sceneThirdPersonGym = async () =>
       } else {
         controlFns.rotate('LEFT');
       }
-      accDelta += delta;
+      accDelta += dt;
     });
 
     const result = await importModelAsync({
       fileName: '/debugger/assets/testModels/customPropTestCube.glb',
       appId: 'customPropTest',
     });
-    if (result.mesh && !Array.isArray(result.mesh)) {
-      result.mesh?.position.set(2, 2, 2);
-      setImportedRigidBodyTranslation(result.meshId, new THREE.Vector3(2, 2, 2));
-      addCheckerboardMaterialToMesh('checkerMaterial', result.mesh);
-      result.mesh.castShadow = true;
-      result.mesh.receiveShadow = true;
+    offsetImportedRigidBodyGroupTranslation(result.meshId, { x: 2, y: 2, z: 2 });
+    for (const m of getRealImportedMeshes(result.meshId)) {
+      addCheckerboardMaterialToMesh('checkerMaterial', m);
+      m.castShadow = true;
+      m.receiveShadow = true;
     }
 
     // Suzanne (monkey TRIMESH)
@@ -336,12 +381,11 @@ export const sceneThirdPersonGym = async () =>
         collider: { type: 'TRIMESH', density: 2 },
       },
     });
-    if (result2.mesh && !Array.isArray(result2.mesh)) {
-      result2.mesh?.position.set(4, 2, 3);
-      setImportedRigidBodyTranslation(result2.meshId, new THREE.Vector3(4, 2, 3));
-      addCheckerboardMaterialToMesh('checkerMaterial', result2.mesh);
-      result2.mesh.castShadow = true;
-      result2.mesh.receiveShadow = true;
+    offsetImportedRigidBodyGroupTranslation(result2.meshId, { x: 4, y: 2, z: 3 });
+    for (const m of getRealImportedMeshes(result2.meshId)) {
+      addCheckerboardMaterialToMesh('checkerMaterial', m);
+      m.castShadow = true;
+      m.receiveShadow = true;
     }
 
     // Suzanne (monkey TRIMESH)
@@ -356,26 +400,22 @@ export const sceneThirdPersonGym = async () =>
         collider: { type: 'CONVEXHULL', density: 2 },
       },
     });
-    if (result2convex.mesh && !Array.isArray(result2convex.mesh)) {
-      const result2convexPos = [4, 6, 3];
-      setImportedRigidBodyTranslation(result2convex.meshId, {
-        x: result2convexPos[0],
-        y: result2convexPos[1],
-        z: result2convexPos[2],
-      });
-      addCheckerboardMaterialToMesh('checkerMaterial', result2convex.mesh);
-      result2convex.mesh.castShadow = true;
-      result2convex.mesh.receiveShadow = true;
+    offsetImportedRigidBodyGroupTranslation(result2convex.meshId, { x: 4, y: 6, z: 3 });
+    for (const m of getRealImportedMeshes(result2convex.meshId)) {
+      addCheckerboardMaterialToMesh('checkerMaterial', m);
+      m.castShadow = true;
+      m.receiveShadow = true;
     }
 
     const slides = await getTestObstacle('slideAngles', {
       collider: { type: 'TRIMESH', friction: 1 },
     });
-    if (slides?.mesh && !Array.isArray(slides.mesh)) {
-      slides.mesh.castShadow = true;
-      slides.mesh.receiveShadow = true;
-      slides.mesh.position.set(30, -1.9, -30);
-      setImportedRigidBodyTranslation(slides.meshId, slides.mesh.position);
+    if (slides) {
+      offsetImportedRigidBodyGroupTranslation(slides.meshId, { x: 30, y: -1.9, z: -30 });
+      for (const m of getRealImportedMeshes(slides.meshId)) {
+        m.castShadow = true;
+        m.receiveShadow = true;
+      }
 
       const slideMat = (
         Array.isArray(bigBoxWallMesh.material)
@@ -386,7 +426,9 @@ export const sceneThirdPersonGym = async () =>
       slideMat.map.wrapS = THREE.RepeatWrapping;
       slideMat.map.wrapT = THREE.RepeatWrapping;
       slideMat.map.repeat.set(34, 34);
-      slides.mesh.material = slideMat;
+      for (const m of getRealImportedMeshes(slides.meshId)) {
+        m.material = slideMat;
+      }
     }
 
     const movingPlatformMat = createMaterial({
@@ -395,17 +437,19 @@ export const sceneThirdPersonGym = async () =>
       params: { color: '#999' },
     });
 
-    createMeshEntity({
-      appId: 'sideWaysPlatformMesh',
-      geo: createGeometry({
-        id: 'movingPlatform1-geo',
-        type: 'BOX',
-        params: { width: 2, height: 0.2, depth: 4 },
-      }),
-      mat: movingPlatformMat,
-      castShadow: true,
-      receiveShadow: true,
-    });
+    createMeshEntity(
+      {
+        geo: createGeometry({
+          id: 'movingPlatform1-geo',
+          type: 'BOX',
+          params: { width: 2, height: 0.2, depth: 4 },
+        }),
+        mat: movingPlatformMat,
+        castShadow: true,
+        receiveShadow: true,
+      },
+      { appId: 'sideWaysPlatformMesh' }
+    );
     const sideWaysPlatformMesh = getMeshByAppId('sideWaysPlatformMesh')!;
 
     createMovingPlatform({
@@ -426,17 +470,19 @@ export const sceneThirdPersonGym = async () =>
       ],
     });
 
-    createMeshEntity({
-      appId: 'elevatorPlatformMesh',
-      geo: createGeometry({
-        id: 'movingPlatform2-geo',
-        type: 'BOX',
-        params: { width: 4, height: 0.2, depth: 4 },
-      }),
-      mat: movingPlatformMat,
-      castShadow: true,
-      receiveShadow: true,
-    });
+    createMeshEntity(
+      {
+        geo: createGeometry({
+          id: 'movingPlatform2-geo',
+          type: 'BOX',
+          params: { width: 4, height: 0.2, depth: 4 },
+        }),
+        mat: movingPlatformMat,
+        castShadow: true,
+        receiveShadow: true,
+      },
+      { appId: 'elevatorPlatformMesh' }
+    );
     const elevatorPlatformMesh = getMeshByAppId('elevatorPlatformMesh')!;
 
     createMovingPlatform({
@@ -464,17 +510,19 @@ export const sceneThirdPersonGym = async () =>
     const oneLapDuration = 4000;
     const segmentDur = oneLapDuration / 4;
 
-    createMeshEntity({
-      appId: 'carouselPlatformMesh1',
-      geo: createGeometry({
-        id: 'movingPlatform3-geo',
-        type: 'CYLINDER',
-        params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
-      }),
-      mat: movingPlatformMat,
-      castShadow: true,
-      receiveShadow: true,
-    });
+    createMeshEntity(
+      {
+        geo: createGeometry({
+          id: 'movingPlatform3-geo',
+          type: 'CYLINDER',
+          params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
+        }),
+        mat: movingPlatformMat,
+        castShadow: true,
+        receiveShadow: true,
+      },
+      { appId: 'carouselPlatformMesh1' }
+    );
     const carouselPlatformMesh1 = getMeshByAppId('carouselPlatformMesh1')!;
 
     createMovingPlatform({
@@ -501,17 +549,19 @@ export const sceneThirdPersonGym = async () =>
     const oneLapDuration2 = 8000;
     const segmentDur2 = oneLapDuration2 / 4;
 
-    createMeshEntity({
-      appId: 'carouselPlatformMesh2',
-      geo: createGeometry({
-        id: 'movingPlatform4-geo',
-        type: 'BOX',
-        params: { width: 4, height: 0.2, depth: 4 },
-      }),
-      mat: movingPlatformMat,
-      castShadow: true,
-      receiveShadow: true,
-    });
+    createMeshEntity(
+      {
+        geo: createGeometry({
+          id: 'movingPlatform4-geo',
+          type: 'BOX',
+          params: { width: 4, height: 0.2, depth: 4 },
+        }),
+        mat: movingPlatformMat,
+        castShadow: true,
+        receiveShadow: true,
+      },
+      { appId: 'carouselPlatformMesh2' }
+    );
     const carouselPlatformMesh2 = getMeshByAppId('carouselPlatformMesh2')!;
 
     createMovingPlatform({
@@ -538,17 +588,19 @@ export const sceneThirdPersonGym = async () =>
     const oneLapDuration3 = 8000;
     const segmentDur3 = oneLapDuration3 / 4;
 
-    createMeshEntity({
-      appId: 'carouselPlatformMesh3',
-      geo: createGeometry({
-        id: 'movingPlatform5-geo',
-        type: 'CYLINDER',
-        params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
-      }),
-      mat: movingPlatformMat,
-      castShadow: true,
-      receiveShadow: true,
-    });
+    createMeshEntity(
+      {
+        geo: createGeometry({
+          id: 'movingPlatform5-geo',
+          type: 'CYLINDER',
+          params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
+        }),
+        mat: movingPlatformMat,
+        castShadow: true,
+        receiveShadow: true,
+      },
+      { appId: 'carouselPlatformMesh3' }
+    );
     const carouselPlatformMesh3 = getMeshByAppId('carouselPlatformMesh3')!;
 
     createMovingPlatform({
@@ -572,17 +624,19 @@ export const sceneThirdPersonGym = async () =>
     });
 
     const carouselOneSegDur = 1500;
-    createMeshEntity({
-      appId: 'ferrisWheelPlatformMesh',
-      geo: createGeometry({
-        id: 'movingPlatform6-geo',
-        type: 'BOX',
-        params: { width: 2, height: 0.2, depth: 4 },
-      }),
-      mat: movingPlatformMat,
-      castShadow: true,
-      receiveShadow: true,
-    });
+    createMeshEntity(
+      {
+        geo: createGeometry({
+          id: 'movingPlatform6-geo',
+          type: 'BOX',
+          params: { width: 2, height: 0.2, depth: 4 },
+        }),
+        mat: movingPlatformMat,
+        castShadow: true,
+        receiveShadow: true,
+      },
+      { appId: 'ferrisWheelPlatformMesh' }
+    );
     const ferrisWheelPlatformMesh = getMeshByAppId('ferrisWheelPlatformMesh')!;
 
     createMovingPlatform({
@@ -622,14 +676,11 @@ export const sceneThirdPersonGym = async () =>
       appId: 'customPropTest3',
       importGroup: true,
     });
-    if (result3.mesh && !Array.isArray(result3.mesh)) {
-      result3.mesh?.position.set(2, 2, 2);
-      setImportedRigidBodyTranslation(result3.meshId, new THREE.Vector3(2, 2, 2));
-      addCheckerboardMaterialToMesh('checkerMaterial', result3.mesh, {
-        useConstantCheckerSize: true,
-      });
-      result3.mesh.castShadow = true;
-      result3.mesh.receiveShadow = true;
+    offsetImportedRigidBodyGroupTranslation(result3.meshId, { x: 2, y: 2, z: 2 });
+    for (const m of getRealImportedMeshes(result3.meshId)) {
+      addCheckerboardMaterialToMesh('checkerMaterial', m, { useConstantCheckerSize: true });
+      m.castShadow = true;
+      m.receiveShadow = true;
     }
 
     // Straight stairs (TRIMESH)
@@ -638,21 +689,15 @@ export const sceneThirdPersonGym = async () =>
       appId: 'customPropTest4',
       importGroup: true,
     });
-    if (result4.mesh && !Array.isArray(result4.mesh)) {
-      const result4Position = [37, -0.4, 5];
-      result4.mesh?.position.set(result4Position[0], result4Position[1], result4Position[2]);
-      setImportedRigidBodyTranslation(
-        result4.meshId,
-        new THREE.Vector3(result4Position[0], result4Position[1], result4Position[2])
-      );
-      result4.mesh.castShadow = true;
-      result4.mesh.receiveShadow = true;
-      result4.mesh.material = createMaterial({
+    offsetImportedRigidBodyGroupTranslation(result4.meshId, { x: 37, y: -0.4, z: 5 });
+    applyMaterialToImportedPieces(
+      result4.meshId,
+      createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
         params: { color: '#999' },
-      });
-    }
+      })
+    );
 
     // Straight stairs (COMPOUND)
     const result5 = await importModelAsync({
@@ -660,43 +705,30 @@ export const sceneThirdPersonGym = async () =>
       appId: 'customPropTest5',
       importGroup: true,
     });
-    if (result5.mesh && !Array.isArray(result5.mesh)) {
-      const result5Position = [45, -0.4, 5];
-      result5.mesh.position.set(result5Position[0], result5Position[1], result5Position[2]);
-      setImportedRigidBodyTranslation(
-        result5.meshId,
-        new THREE.Vector3(result5Position[0], result5Position[1], result5Position[2])
-      );
-      result5.mesh.castShadow = true;
-      result5.mesh.receiveShadow = true;
-      result5.mesh.material = createMaterial({
+    offsetImportedRigidBodyGroupTranslation(result5.meshId, { x: 45, y: -0.4, z: 5 });
+    applyMaterialToImportedPieces(
+      result5.meshId,
+      createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
         params: { color: '#999' },
-      });
-    }
-
+      })
+    );
     // Straight stairs 2 (TRIMESH)
     const result6 = await importModelAsync({
       fileName: '/debugger/assets/testModels/stairsStraight2Trimesh.glb',
       appId: 'customPropTest6',
       importGroup: true,
     });
-    if (result6.mesh && !Array.isArray(result6.mesh)) {
-      const result6Position = [53, -0.4, 5];
-      result6.mesh?.position.set(result6Position[0], result6Position[1], result6Position[2]);
-      setImportedRigidBodyTranslation(
-        result6.meshId,
-        new THREE.Vector3(result6Position[0], result6Position[1], result6Position[2])
-      );
-      result6.mesh.castShadow = true;
-      result6.mesh.receiveShadow = true;
-      result6.mesh.material = createMaterial({
+    offsetImportedRigidBodyGroupTranslation(result6.meshId, { x: 53, y: -0.4, z: 5 });
+    applyMaterialToImportedPieces(
+      result6.meshId,
+      createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
         params: { color: '#999' },
-      });
-    }
+      })
+    );
 
     // Straight stairs 2 (COMPOUND)
     const result7 = await importModelAsync({
@@ -704,21 +736,15 @@ export const sceneThirdPersonGym = async () =>
       appId: 'customPropTest7',
       importGroup: true,
     });
-    if (result7.mesh && !Array.isArray(result7.mesh)) {
-      const result7Position = [61, -0.4, 5];
-      result7.mesh.position.set(result7Position[0], result7Position[1], result7Position[2]);
-      setImportedRigidBodyTranslation(
-        result7.meshId,
-        new THREE.Vector3(result7Position[0], result7Position[1], result7Position[2])
-      );
-      result7.mesh.castShadow = true;
-      result7.mesh.receiveShadow = true;
-      result7.mesh.material = createMaterial({
+    offsetImportedRigidBodyGroupTranslation(result7.meshId, { x: 61, y: -0.4, z: 5 });
+    applyMaterialToImportedPieces(
+      result7.meshId,
+      createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
         params: { color: '#999' },
-      });
-    }
+      })
+    );
 
     // Straight stairs 3 (TRIMESH)
     const result8 = await importModelAsync({
@@ -726,21 +752,15 @@ export const sceneThirdPersonGym = async () =>
       appId: 'customPropTest8',
       importGroup: true,
     });
-    if (result8.mesh && !Array.isArray(result8.mesh)) {
-      const result8Position = [69, -0.4, 5];
-      result8.mesh?.position.set(result8Position[0], result8Position[1], result8Position[2]);
-      setImportedRigidBodyTranslation(
-        result8.meshId,
-        new THREE.Vector3(result8Position[0], result8Position[1], result8Position[2])
-      );
-      result8.mesh.castShadow = true;
-      result8.mesh.receiveShadow = true;
-      result8.mesh.material = createMaterial({
+    offsetImportedRigidBodyGroupTranslation(result8.meshId, { x: 69, y: -0.4, z: 5 });
+    applyMaterialToImportedPieces(
+      result8.meshId,
+      createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
         params: { color: '#999' },
-      });
-    }
+      })
+    );
 
     // Straight stairs 3 (COMPOUND)
     const result9 = await importModelAsync({
@@ -748,21 +768,15 @@ export const sceneThirdPersonGym = async () =>
       appId: 'customPropTest9',
       importGroup: true,
     });
-    if (result9.mesh && !Array.isArray(result9.mesh)) {
-      const result9Position = [77, -0.4, 5];
-      result9.mesh.position.set(result9Position[0], result9Position[1], result9Position[2]);
-      setImportedRigidBodyTranslation(
-        result9.meshId,
-        new THREE.Vector3(result9Position[0], result9Position[1], result9Position[2])
-      );
-      result9.mesh.castShadow = true;
-      result9.mesh.receiveShadow = true;
-      result9.mesh.material = createMaterial({
+    offsetImportedRigidBodyGroupTranslation(result9.meshId, { x: 77, y: -0.4, z: 5 });
+    applyMaterialToImportedPieces(
+      result9.meshId,
+      createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
         params: { color: '#999' },
-      });
-    }
+      })
+    );
 
     // Cornered stairs with thick railings (COMPOUND)
     const result10 = await importModelAsync({
@@ -770,21 +784,15 @@ export const sceneThirdPersonGym = async () =>
       appId: 'customPropTest10',
       importGroup: true,
     });
-    if (result10.mesh && !Array.isArray(result10.mesh)) {
-      const result10Position = [45, -0.4, 35];
-      setImportedRigidBodyTranslation(result10.meshId, {
-        x: result10Position[0],
-        y: result10Position[1],
-        z: result10Position[2],
-      });
-      result10.mesh.castShadow = true;
-      result10.mesh.receiveShadow = true;
-      result10.mesh.material = createMaterial({
+    offsetImportedRigidBodyGroupTranslation(result10.meshId, { x: 45, y: -0.4, z: 35 });
+    applyMaterialToImportedPieces(
+      result10.meshId,
+      createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
         params: { color: '#999' },
-      });
-    }
+      })
+    );
 
     // Cornered stairs with thick railings (TRIMESH)
     const result11 = await importModelAsync({
@@ -792,21 +800,15 @@ export const sceneThirdPersonGym = async () =>
       appId: 'customPropTest11',
       importGroup: true,
     });
-    if (result11.mesh && !Array.isArray(result11.mesh)) {
-      const result11Position = [60, -0.4, 35];
-      setImportedRigidBodyTranslation(result11.meshId, {
-        x: result11Position[0],
-        y: result11Position[1],
-        z: result11Position[2],
-      });
-      result11.mesh.castShadow = true;
-      result11.mesh.receiveShadow = true;
-      result11.mesh.material = createMaterial({
+    offsetImportedRigidBodyGroupTranslation(result11.meshId, { x: 60, y: -0.4, z: 35 });
+    applyMaterialToImportedPieces(
+      result11.meshId,
+      createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
         params: { color: '#999' },
-      });
-    }
+      })
+    );
 
     // Spiral stairs (TRIMESH)
     const result12 = await importModelAsync({
@@ -814,21 +816,15 @@ export const sceneThirdPersonGym = async () =>
       appId: 'customPropTest12',
       importGroup: true,
     });
-    if (result12.mesh && !Array.isArray(result12.mesh)) {
-      const result12Position = [20, 1.8, 33];
-      setImportedRigidBodyTranslation(result12.meshId, {
-        x: result12Position[0],
-        y: result12Position[1],
-        z: result12Position[2],
-      });
-      result12.mesh.castShadow = true;
-      result12.mesh.receiveShadow = true;
-      result12.mesh.material = createMaterial({
+    offsetImportedRigidBodyGroupTranslation(result12.meshId, { x: 20, y: 1.8, z: 33 });
+    applyMaterialToImportedPieces(
+      result12.meshId,
+      createMaterial({
         id: 'stairsStraightTrimeshMaterial',
         type: 'PHONG',
         params: { color: '#999' },
-      });
-    }
+      })
+    );
 
     // Spiked terrain
     const result13 = await importModelAsync({
@@ -837,24 +833,15 @@ export const sceneThirdPersonGym = async () =>
       importGroup: true,
       allMeshesVisible: true,
     });
-    if (result13.group) {
-      const result13Position = [-25, -1.8, 126.336];
-      for (let i = 0; i < result13.group.children.length; i++) {
-        const child = result13.group.children[i] as THREE.Mesh;
-        child.castShadow = true;
-        child.receiveShadow = true;
-        child.material = createMaterial({
-          id: 'stairsStraightTrimeshMaterial',
-          type: 'PHONG',
-          params: { color: '#999' },
-        });
-      }
-      setImportedRigidBodyTranslation(result13.meshId, {
-        x: result13Position[0],
-        y: result13Position[1],
-        z: result13Position[2],
-      });
-    }
+    offsetImportedRigidBodyGroupTranslation(result13.meshId, { x: -25, y: -1.8, z: 126.336 });
+    applyMaterialToImportedPieces(
+      result13.meshId,
+      createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      })
+    );
 
     // Smooth terrain
     const result14 = await importModelAsync({
@@ -863,24 +850,19 @@ export const sceneThirdPersonGym = async () =>
       importGroup: true,
       allMeshesVisible: true,
     });
-    if (result14.group) {
-      const result14Position = [52.635, -1.8, 150.833];
-      for (let i = 0; i < result14.group.children.length; i++) {
-        const child = result14.group.children[i] as THREE.Mesh;
-        child.castShadow = true;
-        child.receiveShadow = true;
-        child.material = createMaterial({
-          id: 'stairsStraightTrimeshMaterial',
-          type: 'PHONG',
-          params: { color: '#999' },
-        });
-      }
-      setImportedRigidBodyTranslation(result14.meshId, {
-        x: result14Position[0],
-        y: result14Position[1],
-        z: result14Position[2],
-      });
-    }
+    offsetImportedRigidBodyGroupTranslation(result14.meshId, {
+      x: 52.635,
+      y: -1.8,
+      z: 150.833,
+    });
+    applyMaterialToImportedPieces(
+      result14.meshId,
+      createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      })
+    );
 
     // Obstacles
     const result15 = await importModelAsync({
@@ -889,24 +871,15 @@ export const sceneThirdPersonGym = async () =>
       importGroup: true,
       allMeshesVisible: true,
     });
-    if (result15.group) {
-      const result15Position = [-30, -1, 30];
-      for (let i = 0; i < result15.group.children.length; i++) {
-        const child = result15.group.children[i] as THREE.Mesh;
-        child.castShadow = true;
-        child.receiveShadow = true;
-        child.material = createMaterial({
-          id: 'stairsStraightTrimeshMaterial',
-          type: 'PHONG',
-          params: { color: '#999' },
-        });
-      }
-      setImportedRigidBodyTranslation(result15.meshId, {
-        x: result15Position[0],
-        y: result15Position[1],
-        z: result15Position[2],
-      });
-    }
+    offsetImportedRigidBodyGroupTranslation(result15.meshId, { x: -30, y: -1, z: 30 });
+    applyMaterialToImportedPieces(
+      result15.meshId,
+      createMaterial({
+        id: 'stairsStraightTrimeshMaterial',
+        type: 'PHONG',
+        params: { color: '#999' },
+      })
+    );
 
     initPhysicsStressTest();
 

@@ -11,7 +11,7 @@ import { IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../../core/Config';
 import { getHUDRootCMP } from '../../core/HUD';
 import { isAnyLightHelperVisible, toggleAllLightHelpers } from '../LightManager';
 import { getReadOnlyLoopState, toggleAppPlay, toggleMainPlay } from '../../core/MainLoop';
-import { getPhysicsState } from '../../core/PhysicsRapier';
+import { getPhysicsState } from '../../core/PhysicsAPI';
 import { getCurrentSceneId, getGeneratedAppData } from '../../core/Scene';
 import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
 import { getSvgIcon } from '../../core/UI/icons/SvgIcon';

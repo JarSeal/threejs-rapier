@@ -3,7 +3,6 @@ import { getStats, initStats, startCustomMeasurements, updateRestOfStats } from 
 import { getCurrentCamera } from './CameraManager';
 import { getRenderer } from './Renderer';
 import {
-  getCurrentSceneId,
   getRootScene,
   getSceneResizers,
   runSceneAppLoopers,
@@ -14,8 +13,7 @@ import { lerror, lwarn } from '../utils/Logger';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugToolsManager';
-import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './PhysicsRapier';
-import { stepPhysics } from './PhysicsAPI';
+import { getPhysicsState, stepPhysics } from './PhysicsAPI';
 import { pollHeldKeyBindings } from './Input/KeyboardInput';
 import { countRayCastFrames, initRayCasting } from './Raycast';
 import { getAllECSWorlds } from './ECS';
@@ -92,6 +90,30 @@ export const transformTimeValue = (durationInMs: number) =>
 
 export let mainLoop: () => void = () => {};
 
+/** Drives held-key input at the same cadence physics is actually simulating at: once per
+ * fixed-timestep slice stepPhysics() drained this frame (mirrors legacy PhysicsRapier.ts's
+ * baseStepper polling held keys from inside its own per-substep loop — this system's
+ * substeps aren't a JS loop this file controls, see stepPhysics()'s own doc comment, so it
+ * reports how many happened instead, via the stepsTaken this takes). Falls back to polling
+ * once with the raw frame delta whenever physics itself isn't running at all, so held-key-
+ * driven input (e.g. debug camera movement) still works with physics off. */
+const pollHeldKeysForPhysicsSteps = (stepsTaken: number, delta: number) => {
+  if (stepsTaken > 0) {
+    const timestepRatio = getPhysicsState().timestepRatio;
+    for (let i = 0; i < stepsTaken; i++) pollHeldKeyBindings(timestepRatio);
+    return;
+  }
+  const physicsState = getPhysicsState();
+  if (!physicsState.enabled || !physicsState.worldStepEnabled) pollHeldKeyBindings(delta);
+};
+
+/** Steps the new Physics API and immediately polls held-key input for it — see
+ * pollHeldKeysForPhysicsSteps's doc comment. Only mainLoopForProductionWithFPSLimiter needs
+ * these split apart (its render-skip check has to sit between the two). */
+const stepPhysicsAndPollHeldKeys = (delta: number) => {
+  pollHeldKeysForPhysicsSteps(stepPhysics(loopState), delta);
+};
+
 const renderScene = () => {
   const renderer = getRenderer() as Renderer;
   const rootScene = getRootScene() as Scene;
@@ -140,23 +162,12 @@ const mainLoopForDebug = async () => {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
 
-    // Step the physics
-    stepPhysicsWorld(loopState);
-    stepPhysics(loopState); // new engine-agnostic system — no-op until createPhysicsWorld() has been called (§3.4)
-
-    // Render physics objects
-    renderPhysicsObjects();
+    // Step the physics and poll held-key input at the same cadence
+    stepPhysicsAndPollHeldKeys(delta);
 
     // app loopers
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
-
-    // Update loop action inputs if physics is disabled
-    const physicsState = getPhysicsState();
-    const sceneId = getCurrentSceneId();
-    const physDisabled =
-      !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
-    if (physDisabled) pollHeldKeyBindings(delta);
 
     // Count ray cast frames
     countRayCastFrames();
@@ -199,21 +210,12 @@ const mainLoopForProduction = async () => {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
 
-    // Step the physics
-    stepPhysicsWorld(loopState);
-    stepPhysics(loopState); // new engine-agnostic system — no-op until createPhysicsWorld() has been called (§3.4)
+    // Step the physics and poll held-key input at the same cadence
+    stepPhysicsAndPollHeldKeys(delta);
 
-    // Render physics objects
-    renderPhysicsObjects();
     // app loopers
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
-    // Update loop action inputs if physics is disabled
-    const physicsState = getPhysicsState();
-    const sceneId = getCurrentSceneId();
-    const physDisabled =
-      !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
-    if (physDisabled) pollHeldKeyBindings(delta);
   }
 
   renderScene();
@@ -255,23 +257,15 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
 
-    // Step the physics
-    stepPhysicsWorld(loopState);
-    stepPhysics(loopState); // new engine-agnostic system — no-op until createPhysicsWorld() has been called (§3.4)
+    // Step the physics (always, even on a skipped render frame, so it doesn't fall behind)
+    const stepsTaken = stepPhysics(loopState);
 
     if (skipFrame) return;
 
-    // Render physics objects
-    renderPhysicsObjects();
+    pollHeldKeysForPhysicsSteps(stepsTaken, delta);
     // app loopers
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
-    // Update loop action inputs if physics is disabled
-    const physicsState = getPhysicsState();
-    const sceneId = getCurrentSceneId();
-    const physDisabled =
-      !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
-    if (physDisabled) pollHeldKeyBindings(delta);
   } else {
     if (skipFrame) return;
   }
@@ -361,9 +355,8 @@ export const initMainLoop = () => {
   renderScene();
 
   if (loopState.masterPlay) {
-    // Wait for a few loops and start the main loop and physics loop
+    // Wait for a few loops and start the main loop (which steps physics itself each frame)
     setTimeout(() => requestAnimationFrame(mainLoop), 100);
-    setTimeout(() => requestAnimationFrame(() => stepPhysicsWorld(loopState)), 100);
   }
 };
 

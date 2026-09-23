@@ -249,9 +249,17 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
  * up to maxSubSteps per frame. Also handles backgroundBehavior/pause bookkeeping the same
  * way legacy PhysicsRapier.ts's baseStepper does (see physicsVisibilityChangeHandler for
  * the window-hidden 'PAUSE' path, which halts the whole main loop before this is reached).
+ *
+ * Returns how many fixed-timestep slices were actually taken this call (0 if physics is
+ * disabled/paused/hasn't accumulated a full slice yet) — MainLoop.ts uses this to call
+ * pollHeldKeyBindings() once per slice, matching legacy PhysicsRapier.ts's baseStepper
+ * (which polled held keys from inside its own per-substep loop). This system can't do the
+ * same from in here: WORKER_THREAD mode's substeps happen off-thread as one batched message,
+ * not a JS loop this function controls, so there's no in-between-steps point to call out to
+ * held-key handling from — the caller has to do it itself, stepsTaken times.
  */
-export const stepPhysics = (loopState: LoopState) => {
-  if (!physicsWorldEnabled || !physicsState.worldStepEnabled) return;
+export const stepPhysics = (loopState: LoopState): number => {
+  if (!physicsWorldEnabled || !physicsState.worldStepEnabled) return 0;
 
   updateTimer();
   let dt = timer.getDelta();
@@ -262,7 +270,7 @@ export const stepPhysics = (loopState: LoopState) => {
     if (!physicsState.isPaused) setPhysicsPauseTime();
     physicsState.isPaused = true;
     timerRunning = false;
-    return;
+    return 0;
   }
 
   if (loopState.isWindowHidden) {
@@ -274,7 +282,7 @@ export const stepPhysics = (loopState: LoopState) => {
       if (!physicsState.isPaused) setPhysicsPauseTime();
       physicsState.isPaused = true;
       timerRunning = false;
-      return;
+      return 0;
     }
     if (
       physicsState.backgroundBehavior === 'KEEP_RUNNING_USE_MIN_DELTA' &&
@@ -292,7 +300,7 @@ export const stepPhysics = (loopState: LoopState) => {
     physicsState.pauseDurationTotal += performance.now() - physicsState.pausedTime;
     physicsState.pausedTime = 0;
     accDelta = 0;
-    return;
+    return 0;
   }
 
   const scaledDelta = dt * loopState.playSpeedMultiplier;
@@ -314,7 +322,7 @@ export const stepPhysics = (loopState: LoopState) => {
     accDelta = 0;
   }
 
-  if (stepsTaken === 0) return;
+  if (stepsTaken === 0) return 0;
 
   if (physicsState.workerTarget === 'MAIN_THREAD') {
     for (let i = 0; i < stepsTaken; i++) engAPI?.step();
@@ -324,6 +332,8 @@ export const stepPhysics = (loopState: LoopState) => {
     // sub-steps and writes back exactly once, never one message per sub-step.
     messageWorker({ type: PhysicsProtocolType.STEP, steps: stepsTaken, isOneWay: true });
   }
+
+  return stepsTaken;
 };
 
 // WORKER LOGIC -- [ START ] -----------------------
@@ -1022,7 +1032,7 @@ export const createColliders = async (params: ColliderParams[]) => {
     const collAPIs = [];
     for (let i = 0; i < collIds.length; i++) {
       const id = collIds[i];
-      const collAPI = new ColliderProxyAPI(id, undefined, params[i].userData);
+      const collAPI = new ColliderProxyAPI(id, params[i].parentId, params[i].userData);
       collAPIs.push(collAPI);
       colliders.set(id, collAPI);
       registerWorkerColliderEventFns(id, params[i]);
@@ -1834,9 +1844,6 @@ class WorldProxyAPI implements WorldAPI {
 
 class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   uData: Record<string, unknown> = {};
-  // lvel/avel stay RPC-only for this MVP — not synced via the hot-path buffer.
-  lvel: PhysVector = { x: 0, y: 0, z: 0 };
-  avel: PhysVector = { x: 0, y: 0, z: 0 };
   isBeingDeleted: boolean = false;
   // @CHORE: add isEnabled cache
 
@@ -1857,6 +1864,14 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   get rot(): PhysRotation {
     if (!transformBuffer || this.slot === -1) return { x: 0, y: 0, z: 0, w: 0 };
     return transformBuffer.getRotation(this.slot);
+  }
+  get lvel(): PhysVector {
+    if (!transformBuffer || this.slot === -1) return { x: 0, y: 0, z: 0 };
+    return transformBuffer.getLinvel(this.slot);
+  }
+  get avel(): PhysVector {
+    if (!transformBuffer || this.slot === -1) return { x: 0, y: 0, z: 0 };
+    return transformBuffer.getAngvel(this.slot);
   }
 
   async getUserData(): Promise<Record<string, unknown>> {

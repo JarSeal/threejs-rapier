@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "AMBIENT",
+    "color": "#dfe8ff",
+    "intensity": 0.35
+  },
+  "entityOpts": {
+    "appId": "thirdPersonGymAmbient",
+    "debugData": {
+      "name": "Third-person gym ambient fill",
+      "description": "Low-intensity baseline fill so shadowed geometry isn't pure black — thirdPersonGymSun is the dominant light."
+    }
+  }
+}

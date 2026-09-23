@@ -1,7 +1,7 @@
 import { PhysRotation, PhysVector } from './PhysicsAPITypes';
 
-/** Float32 fields per slot: position(3) + quaternion(4). */
-export const PHYSICS_TRANSFORM_FIELD_COUNT = 7;
+/** Float32 fields per slot: position(3) + quaternion(4) + linvel(3) + angvel(3). */
+export const PHYSICS_TRANSFORM_FIELD_COUNT = 13;
 
 /**
  * Allocates the backing buffer for a PhysicsTransformBuffer. Physics-owned and
@@ -105,5 +105,25 @@ export class PhysicsTransformBuffer {
       z: this.floats[o + 5],
       w: this.floats[o + 6],
     };
+  }
+
+  setVelocity(slot: number, linvel: PhysVector, angvel: PhysVector): void {
+    const o = slot * PHYSICS_TRANSFORM_FIELD_COUNT;
+    this.floats[o + 7] = linvel.x;
+    this.floats[o + 8] = linvel.y;
+    this.floats[o + 9] = linvel.z;
+    this.floats[o + 10] = angvel.x;
+    this.floats[o + 11] = angvel.y;
+    this.floats[o + 12] = angvel.z;
+  }
+
+  getLinvel(slot: number): PhysVector {
+    const o = slot * PHYSICS_TRANSFORM_FIELD_COUNT;
+    return { x: this.floats[o + 7], y: this.floats[o + 8], z: this.floats[o + 9] };
+  }
+
+  getAngvel(slot: number): PhysVector {
+    const o = slot * PHYSICS_TRANSFORM_FIELD_COUNT;
+    return { x: this.floats[o + 10], y: this.floats[o + 11], z: this.floats[o + 12] };
   }
 }

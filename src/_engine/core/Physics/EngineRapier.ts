@@ -473,7 +473,7 @@ export const createCollider = (params: ColliderParams, parentId?: number) => {
   nextColliderId += 1;
   colliders.set(id, collider.handle);
   handleToColliderId.set(collider.handle, id);
-  const colliderAPI = new EngineColliderProxyAPI(id, parentId, params.userData);
+  const colliderAPI = new EngineColliderProxyAPI(id, params.parentId, params.userData);
 
   if (hasCollisionFn) {
     collisionActiveColliderIds.add(id);

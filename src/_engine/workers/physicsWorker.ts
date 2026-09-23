@@ -235,6 +235,7 @@ const writeBackTransforms = () => {
     const slot = transformBuffer.getSlot(id);
     if (slot === -1) continue;
     transformBuffer.setTransform(slot, rb.pos, rb.rot);
+    transformBuffer.setVelocity(slot, rb.linvel(), rb.angvel());
   }
   if (!resolvedUseSAB) {
     const copy = transformBuffer.buffer.slice(0) as ArrayBuffer;
