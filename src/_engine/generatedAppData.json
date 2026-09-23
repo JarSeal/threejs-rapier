@@ -232,6 +232,186 @@
       "id": "physicsTest",
       "sceneFile": "./physicsTest.ts"
     },
+    "scene01": {
+      "name": "Scene 01 (basic physics demo)",
+      "description": "Basic FIXED/DYNAMIC physics demo: a ground box, a bouncing box, a falling ball and cylinder, a TRIMESH-collider imported GLB, and a decorative rotating wireframe sphere (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 1).",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 100,
+            "position": {
+              "x": 6,
+              "y": 5,
+              "z": 10
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": -1,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 60,
+            "appId": "scene01Camera"
+          },
+          "entityOpts": {
+            "appId": "scene01Camera",
+            "debugData": {
+              "name": "Scene01 camera",
+              "description": "Static camera framing the ground plane and falling-object cluster shared by scene01.ts and scene01_v2.ts."
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.4,
+            "appId": "scene01Ambient"
+          },
+          "entityOpts": {
+            "appId": "scene01Ambient",
+            "debugData": {
+              "name": "Scene01 ambient light",
+              "description": "Ambient light shared by scene01.ts and scene01_v2.ts."
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 6,
+              "y": 8,
+              "z": 5
+            },
+            "targetPos": {
+              "x": 0,
+              "y": -2,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowPreset": "HIGH",
+            "shadowCameraNearFar": [
+              1,
+              30
+            ],
+            "shadowCameraFrustum": [
+              -8,
+              8,
+              8,
+              -8
+            ],
+            "shadowIntensity": 0.8,
+            "appId": "scene01Sun"
+          },
+          "entityOpts": {
+            "appId": "scene01Sun",
+            "debugData": {
+              "name": "Scene01 sun",
+              "description": "Directional shadow-casting sun shared by scene01.ts and scene01_v2.ts. Its shadow frustum is sized to the 10x10 ground plane, not larger — oversizing it would degrade shadow resolution everywhere (see largeWorldSun.light.json for the same pattern)."
+            }
+          }
+        }
+      ],
+      "id": "scene01",
+      "sceneFile": "./scene01.ts"
+    },
+    "scene01V2": {
+      "name": "Scene 01 v2 (physics demo with shadows + sensor)",
+      "description": "Same basic physics demo as scene01.ts (FIXED/DYNAMIC ground, box, ball, cylinder, TRIMESH-collider imported GLB) plus shadow-casting meshes, a CCD-enabled dynamic body, and a mesh-less sensor collider (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 1).",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 100,
+            "position": {
+              "x": 6,
+              "y": 5,
+              "z": 10
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": -1,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 60,
+            "appId": "scene01Camera"
+          },
+          "entityOpts": {
+            "appId": "scene01Camera",
+            "debugData": {
+              "name": "Scene01 camera",
+              "description": "Static camera framing the ground plane and falling-object cluster shared by scene01.ts and scene01_v2.ts."
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.4,
+            "appId": "scene01Ambient"
+          },
+          "entityOpts": {
+            "appId": "scene01Ambient",
+            "debugData": {
+              "name": "Scene01 ambient light",
+              "description": "Ambient light shared by scene01.ts and scene01_v2.ts."
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 6,
+              "y": 8,
+              "z": 5
+            },
+            "targetPos": {
+              "x": 0,
+              "y": -2,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowPreset": "HIGH",
+            "shadowCameraNearFar": [
+              1,
+              30
+            ],
+            "shadowCameraFrustum": [
+              -8,
+              8,
+              8,
+              -8
+            ],
+            "shadowIntensity": 0.8,
+            "appId": "scene01Sun"
+          },
+          "entityOpts": {
+            "appId": "scene01Sun",
+            "debugData": {
+              "name": "Scene01 sun",
+              "description": "Directional shadow-casting sun shared by scene01.ts and scene01_v2.ts. Its shadow frustum is sized to the 10x10 ground plane, not larger — oversizing it would degrade shadow resolution everywhere (see largeWorldSun.light.json for the same pattern)."
+            }
+          }
+        }
+      ],
+      "id": "scene01V2",
+      "sceneFile": "./scene01_v2.ts"
+    },
     "sceneTestECS": {
       "name": "ECS test scene",
       "description": "This is a ECS test scene.",
@@ -414,6 +594,96 @@
       ],
       "id": "sceneTestECS",
       "sceneFile": "./testECS.ts"
+    },
+    "thirdPersonGymScene": {
+      "name": "GYM (3rd person)",
+      "description": "Third-person obstacle-course/gym scene assembling every ported physics feature (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 7): ~15 imported GLBs (Phase 3), 6 moving platform variants (Phase 4), a player-controlled and a scripted dynamic character (Phase 6), and the physics stress-test spawner (Phase 2).",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 2,
+            "far": 1000,
+            "position": {
+              "x": 12,
+              "y": 23,
+              "z": 2
+            },
+            "lookAtPoint": {
+              "x": 5,
+              "y": 3,
+              "z": -5
+            },
+            "type": "PERSPECTIVE",
+            "fov": 60,
+            "appId": "thirdPersonGymCamera"
+          },
+          "entityOpts": {
+            "appId": "thirdPersonGymCamera",
+            "debugData": {
+              "name": "Third-person gym camera",
+              "description": "Follow camera driven by createFollowObjectCameraRig (legacy gym's offset/lens settings), tracking the player-controlled character (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 7). This initial position/lookAt only matters for the first instant before the follow rig (APP_LOGIC) takes over each frame."
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#dfe8ff",
+            "intensity": 0.35,
+            "appId": "thirdPersonGymAmbient"
+          },
+          "entityOpts": {
+            "appId": "thirdPersonGymAmbient",
+            "debugData": {
+              "name": "Third-person gym ambient fill",
+              "description": "Low-intensity baseline fill so shadowed geometry isn't pure black — thirdPersonGymSun is the dominant light."
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 20,
+              "y": 30,
+              "z": 15
+            },
+            "targetPos": {
+              "x": 0,
+              "y": -2,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowPreset": "HIGH",
+            "shadowCameraNearFar": [
+              1,
+              80
+            ],
+            "shadowCameraFrustum": [
+              -35,
+              35,
+              35,
+              -35
+            ],
+            "shadowIntensity": 0.8,
+            "appId": "thirdPersonGymSun"
+          },
+          "entityOpts": {
+            "appId": "thirdPersonGymSun",
+            "debugData": {
+              "name": "Third-person gym sun",
+              "description": "Directional shadow-casting sun. Shadow frustum is scoped to the core gym play area around the origin (ground, obstacles, moving platforms, character spawns), not the far-flung decorative terrain/stairs samples out past x=35 — sizing it to the whole scene would blur shadow resolution everywhere instead (same principle as largeWorldSun.light.json)."
+            }
+          }
+        }
+      ],
+      "id": "thirdPersonGymScene",
+      "sceneFile": "./scene_thirdPersonGym.ts"
     }
   },
   "cameras": {
@@ -509,6 +779,34 @@
       },
       "__sourcePath": "src/app/cameras/physicsTestCamera.camera.json"
     },
+    "scene01Camera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 100,
+        "position": {
+          "x": 6,
+          "y": 5,
+          "z": 10
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": -1,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 60,
+        "appId": "scene01Camera"
+      },
+      "entityOpts": {
+        "appId": "scene01Camera",
+        "debugData": {
+          "name": "Scene01 camera",
+          "description": "Static camera framing the ground plane and falling-object cluster shared by scene01.ts and scene01_v2.ts."
+        }
+      },
+      "__sourcePath": "src/app/cameras/scene01Camera.camera.json"
+    },
     "testing": {
       "camProps": {
         "active": false,
@@ -523,6 +821,34 @@
         }
       },
       "__sourcePath": "src/app/cameras/testing.camera.json"
+    },
+    "thirdPersonGymCamera": {
+      "camProps": {
+        "active": true,
+        "near": 2,
+        "far": 1000,
+        "position": {
+          "x": 12,
+          "y": 23,
+          "z": 2
+        },
+        "lookAtPoint": {
+          "x": 5,
+          "y": 3,
+          "z": -5
+        },
+        "type": "PERSPECTIVE",
+        "fov": 60,
+        "appId": "thirdPersonGymCamera"
+      },
+      "entityOpts": {
+        "appId": "thirdPersonGymCamera",
+        "debugData": {
+          "name": "Third-person gym camera",
+          "description": "Follow camera driven by createFollowObjectCameraRig (legacy gym's offset/lens settings), tracking the player-controlled character (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 7). This initial position/lookAt only matters for the first instant before the follow rig (APP_LOGIC) takes over each frame."
+        }
+      },
+      "__sourcePath": "src/app/cameras/thirdPersonGymCamera.camera.json"
     }
   },
   "lights": {
@@ -662,6 +988,116 @@
         }
       },
       "__sourcePath": "src/app/lights/physicsTestSun.light.json"
+    },
+    "scene01Ambient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#ffffff",
+        "intensity": 0.4,
+        "appId": "scene01Ambient"
+      },
+      "entityOpts": {
+        "appId": "scene01Ambient",
+        "debugData": {
+          "name": "Scene01 ambient light",
+          "description": "Ambient light shared by scene01.ts and scene01_v2.ts."
+        }
+      },
+      "__sourcePath": "src/app/lights/scene01Ambient.light.json"
+    },
+    "scene01Sun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 6,
+          "y": 8,
+          "z": 5
+        },
+        "targetPos": {
+          "x": 0,
+          "y": -2,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowPreset": "HIGH",
+        "shadowCameraNearFar": [
+          1,
+          30
+        ],
+        "shadowCameraFrustum": [
+          -8,
+          8,
+          8,
+          -8
+        ],
+        "shadowIntensity": 0.8,
+        "appId": "scene01Sun"
+      },
+      "entityOpts": {
+        "appId": "scene01Sun",
+        "debugData": {
+          "name": "Scene01 sun",
+          "description": "Directional shadow-casting sun shared by scene01.ts and scene01_v2.ts. Its shadow frustum is sized to the 10x10 ground plane, not larger — oversizing it would degrade shadow resolution everywhere (see largeWorldSun.light.json for the same pattern)."
+        }
+      },
+      "__sourcePath": "src/app/lights/scene01Sun.light.json"
+    },
+    "thirdPersonGymAmbient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#dfe8ff",
+        "intensity": 0.35,
+        "appId": "thirdPersonGymAmbient"
+      },
+      "entityOpts": {
+        "appId": "thirdPersonGymAmbient",
+        "debugData": {
+          "name": "Third-person gym ambient fill",
+          "description": "Low-intensity baseline fill so shadowed geometry isn't pure black — thirdPersonGymSun is the dominant light."
+        }
+      },
+      "__sourcePath": "src/app/lights/thirdPersonGymAmbient.light.json"
+    },
+    "thirdPersonGymSun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 20,
+          "y": 30,
+          "z": 15
+        },
+        "targetPos": {
+          "x": 0,
+          "y": -2,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowPreset": "HIGH",
+        "shadowCameraNearFar": [
+          1,
+          80
+        ],
+        "shadowCameraFrustum": [
+          -35,
+          35,
+          35,
+          -35
+        ],
+        "shadowIntensity": 0.8,
+        "appId": "thirdPersonGymSun"
+      },
+      "entityOpts": {
+        "appId": "thirdPersonGymSun",
+        "debugData": {
+          "name": "Third-person gym sun",
+          "description": "Directional shadow-casting sun. Shadow frustum is scoped to the core gym play area around the origin (ground, obstacles, moving platforms, character spawns), not the far-flung decorative terrain/stairs samples out past x=35 — sizing it to the whole scene would blur shadow resolution everywhere instead (same principle as largeWorldSun.light.json)."
+        }
+      },
+      "__sourcePath": "src/app/lights/thirdPersonGymSun.light.json"
     }
   },
   "geometries": {

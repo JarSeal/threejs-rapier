@@ -10,7 +10,7 @@ import {
   getActiveCameraId,
   setMainCamera,
 } from '../_engine/core/CameraManager';
-import { createKeyInputControl } from '../_engine/core/InputControls';
+import { createKeyBinding } from '../_engine/core/Input/KeyboardInput';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
 import { getRootScene } from '../_engine/core/Scene';
@@ -437,9 +437,10 @@ export const scene = async () => {
 
   // --- Camera toggle key binding (Phase 6, §2) ---
 
-  createKeyInputControl({
+  createKeyBinding({
     id: 'largeWorldToggleCamera',
-    key: ['c', 'C'],
+    chord: { key: 'c' },
+    caseInsensitive: true,
     type: 'KEY_UP',
     sceneId: 'largeWorld',
     fn: () => {

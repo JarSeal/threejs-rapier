@@ -1,0 +1,9 @@
+{
+  "$schema": "../.schemas/scene.schema.json",
+  "id": "thirdPersonGymScene",
+  "sceneFile": "./scene_thirdPersonGym.ts",
+  "name": "GYM (3rd person)",
+  "description": "Third-person obstacle-course/gym scene assembling every ported physics feature (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 7): ~15 imported GLBs (Phase 3), 6 moving platform variants (Phase 4), a player-controlled and a scripted dynamic character (Phase 6), and the physics stress-test spawner (Phase 2).",
+  "cameras": ["thirdPersonGymCamera"],
+  "lights": ["thirdPersonGymAmbient", "thirdPersonGymSun"]
+}

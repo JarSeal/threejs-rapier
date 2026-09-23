@@ -4,8 +4,7 @@ import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../../utils/Window';
 import { getHUDRootCMP } from '../../core/HUD';
 import { Pane } from 'tweakpane';
-import { getConfig, isDebugEnvironment } from '../../core/Config';
-import { createKeyInputControl } from '../../core/InputControls';
+import { isDebugEnvironment } from '../../core/Config';
 import { lwarn } from '../../utils/Logger';
 import { type TabAndContainer, type DebugGUIOpts } from '../../debug/DebuggerGUI';
 import { createDebuggerSceneLoader } from './_dbg__DebuggerSceneLoader';
@@ -14,7 +13,6 @@ let drawerCMP: TCMP | null = null;
 let currentSceneTitleCMP: TCMP | null = null;
 let currentSceneTitleText: string = '';
 let tabsContainerWrapper: null | TCMP = null;
-let debugKeysFromConfigInitiated = false;
 let debugSceneLoaderCreated = false;
 let debuggerDisabled = false;
 const DRAWER_OPEN_BODY_CLASS = 'debugDrawerOpen';
@@ -43,24 +41,6 @@ const initDrawerState = () => {
   if (!debugSceneLoaderCreated) {
     createDebuggerSceneLoader();
     debugSceneLoaderCreated = true;
-  }
-
-  // Setup debug shortcut keys
-  if (!debugKeysFromConfigInitiated) {
-    const { debugKeys } = getConfig();
-    if (debugKeys && debugKeys.length) {
-      for (let i = 0; i < debugKeys.length; i++) {
-        const keyParams = debugKeys[i];
-        createKeyInputControl({
-          type: keyParams.type || 'KEY_UP',
-          fn: keyParams.fn,
-          ...(keyParams.key ? { key: keyParams.key } : {}),
-          ...(keyParams.id ? { id: keyParams.id } : {}),
-          ...(keyParams.sceneId ? { sceneId: keyParams.sceneId } : {}),
-        });
-      }
-    }
-    debugKeysFromConfigInitiated = true;
   }
 
   // Setup drawerState

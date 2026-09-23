@@ -1,5 +1,8 @@
-import { AdditionalImportPhysicsParams, importModelAsync } from '../../core/ImportModel';
-import { PhysicsParams } from '../../core/PhysicsRapier';
+import {
+  AdditionalImportPhysicsParams,
+  importModelAsync,
+  PhysicsParams,
+} from '../../core/ImportModel';
 
 const obstacles = {
   slideAngles: { fileName: '/debugger/assets/testModels/characterSlideAngles.glb' },

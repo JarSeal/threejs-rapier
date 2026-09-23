@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { deleteTexture, getTexture } from './Texture';
+import { deleteTexture, getTexture, getTextureRegistry } from './Texture';
 import { getRootScene } from './Scene';
 import { existsOrThrow } from '../utils/assert';
 import { tslMaterialFileObjects } from '../generatedAppFns';
@@ -492,16 +492,49 @@ export const getAllMaterials = () => {
 
 export const getMaterialRegistry = () => materials;
 
+/** Whether any registered material other than `except` still holds a texture map matching
+ * `test` (texture refcounts aren't tracked per material, so this is checked at release time). */
+const isTextureInUseByOtherMaterial = (
+  except: Materials,
+  test: (texture: THREE.Texture) => boolean
+) => {
+  for (const id in materials) {
+    const other = materials[id].resource;
+    if (other === except) continue;
+    for (let i = 0; i < textureMapKeys.length; i++) {
+      const texture = other[textureMapKeys[i] as keyof Materials] as THREE.Texture | undefined;
+      if (texture && test(texture)) return true;
+    }
+  }
+  return false;
+};
+
 /**
- * Deletes a materials textures from VRAM cache.
+ * Releases a material's textures from VRAM cache, as far as no other registered material still
+ * uses them: a texture shared between materials (e.g. the same cached loadTexture id) survives
+ * until its last material goes. A texture that isn't the registered one itself — typically a
+ * `.clone()` of it, which copies the source's `userData.id` — belongs to the material alone and
+ * is disposed directly; the registered source is then released with the last material holding
+ * any texture under its id. Persistent registered textures are never released here.
  * @param mat Target material asset.
  */
 export const deleteTexturesFromMaterial = (mat: Materials) => {
   for (let i = 0; i < textureMapKeys.length; i++) {
     const key = textureMapKeys[i] as keyof Materials;
     const texture = mat[key] as THREE.Texture;
-    if (texture && texture.userData?.id) {
-      deleteTexture(texture.userData.id);
+    if (!texture) continue;
+    if (isTextureInUseByOtherMaterial(mat, (t) => t === texture)) continue;
+
+    const id = texture.userData?.id as string | undefined;
+    const registered = id ? getTextureRegistry()[id] : undefined;
+    if (!registered || registered.resource !== texture) texture.dispose();
+    if (
+      id &&
+      registered &&
+      !registered.persistent &&
+      !isTextureInUseByOtherMaterial(mat, (t) => t.userData?.id === id)
+    ) {
+      deleteTexture(id);
     }
   }
 };

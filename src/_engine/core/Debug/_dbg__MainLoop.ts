@@ -2,7 +2,6 @@ import { BindingApi } from '@tweakpane/core';
 import { isProdTestMode } from '../Config';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
-import { stepPhysicsWorld } from '../PhysicsRapier';
 import { mainLoop, type LoopState } from '../MainLoop';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { InitOnScreenTools, updateOnScreenTools } from '../../debug/OnScreenTools';
@@ -35,7 +34,6 @@ export const createLoopDebugControls = (loopState: LoopState) => {
       debugGUI.addBinding(loopState, 'masterPlay', { label: 'Master loop' }).on('change', (e) => {
         if (e.value) {
           requestAnimationFrame(mainLoop);
-          requestAnimationFrame(() => stepPhysicsWorld(loopState));
         }
         lsSetItem(LS_KEY, loopState);
         updateOnScreenTools('PLAY');
@@ -44,7 +42,6 @@ export const createLoopDebugControls = (loopState: LoopState) => {
         .addBinding(loopState, 'appPlay', { label: 'App loop' })
         .on('change', () => {
           lsSetItem(LS_KEY, loopState);
-          requestAnimationFrame(() => stepPhysicsWorld(loopState));
           updateOnScreenTools('PLAY');
         });
       debugGUI

@@ -16,7 +16,7 @@ import { Pane } from 'tweakpane';
 import { createSceneAppLooper, deleteSceneAppLooper } from '../Scene';
 import { llog } from '../../utils/Logger';
 import { deleteCharacter, getCharacterById, getCharacters } from '../Character';
-import { getPhysicsObject } from '../PhysicsRapier';
+import { getECSWorld } from '../ECS';
 import { createClearListLSButton, createClearTabLSButton } from './_dbg__ClearLSButtons';
 
 let debuggerListCmp: TCMP | null = null;
@@ -162,7 +162,7 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
 <div>
   <div><span class="winSmallLabel">Name:</span> ${character.name || ''}</div>
   <div><span class="winSmallLabel">Id:</span> ${character.id}</div>
-  <div><span class="winSmallLabel">Physics object id:</span> ${character.physObjectId}</div>
+  <div><span class="winSmallLabel">Entity id:</span> ${character.entityId}</div>
   ${
     Array.isArray(character.meshId)
       ? `<div><span class="winSmallLabel">Mesh ids:</span> ${character.meshId.join(', ')}</div>`
@@ -175,18 +175,18 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
 </div>`,
   });
 
-  const physObject = getPhysicsObject(character.physObjectId);
-  if (!physObject) return debuggerWindowCmp[d.id];
+  const physRigidBody = getECSWorld().getRigidBody(character.entityId);
+  if (!physRigidBody) return debuggerWindowCmp[d.id];
 
-  if (physObject.rigidBody) {
+  {
     const rigidBody = {
-      position: physObject.rigidBody.translation(),
+      position: physRigidBody.pos,
       rotation: new THREE.Euler().setFromQuaternion(
         new THREE.Quaternion(
-          physObject.rigidBody.rotation().x,
-          physObject.rigidBody.rotation().y,
-          physObject.rigidBody.rotation().z,
-          physObject.rigidBody.rotation().w
+          physRigidBody.rot.x,
+          physRigidBody.rot.y,
+          physRigidBody.rot.z,
+          physRigidBody.rot.w
         )
       ),
     };
@@ -195,13 +195,13 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
       label: 'Position',
     });
     debuggerWindowPane[d.id].addButton({ title: 'Set position' }).on('click', () => {
-      physObject.rigidBody?.setTranslation(
+      physRigidBody.setTranslation(
         new THREE.Vector3(rigidBody.position.x, rigidBody.position.y, rigidBody.position.z),
         true
       );
     });
     debuggerWindowPane[d.id].addButton({ title: 'Update position input' }).on('click', () => {
-      rigidBody.position = physObject.rigidBody?.translation() || rigidBody.position;
+      rigidBody.position = physRigidBody.pos;
       positionInput.refresh();
     });
     debuggerWindowPane[d.id].addBlade({ view: 'separator' });
@@ -211,7 +211,7 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
       step: Math.PI / 8,
     });
     debuggerWindowPane[d.id].addButton({ title: 'Set rotation' }).on('click', () => {
-      physObject.rigidBody?.setRotation(
+      physRigidBody.setRotation(
         new THREE.Quaternion().setFromEuler(
           new THREE.Euler(rigidBody.rotation.x, rigidBody.rotation.y, rigidBody.rotation.z)
         ),
@@ -221,10 +221,10 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
     debuggerWindowPane[d.id].addButton({ title: 'Update rotation input' }).on('click', () => {
       rigidBody.rotation = new THREE.Euler().setFromQuaternion(
         new THREE.Quaternion(
-          physObject.rigidBody?.rotation().x,
-          physObject.rigidBody?.rotation().y,
-          physObject.rigidBody?.rotation().z,
-          physObject.rigidBody?.rotation().w
+          physRigidBody.rot.x,
+          physRigidBody.rot.y,
+          physRigidBody.rot.z,
+          physRigidBody.rot.w
         )
       );
       rotationInput.refresh();

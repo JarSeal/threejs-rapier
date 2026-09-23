@@ -1,0 +1,9 @@
+{
+  "$schema": "../.schemas/scene.schema.json",
+  "id": "scene01V2",
+  "sceneFile": "./scene01_v2.ts",
+  "name": "Scene 01 v2 (physics demo with shadows + sensor)",
+  "description": "Same basic physics demo as scene01.ts (FIXED/DYNAMIC ground, box, ball, cylinder, TRIMESH-collider imported GLB) plus shadow-casting meshes, a CCD-enabled dynamic body, and a mesh-less sensor collider (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 1).",
+  "cameras": ["scene01Camera"],
+  "lights": ["scene01Ambient", "scene01Sun"]
+}

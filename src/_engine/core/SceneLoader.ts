@@ -17,9 +17,9 @@ import {
 } from './Scene';
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
-import { deleteAllPhysicsObjects } from './PhysicsRapier';
+import { deleteAllPhysicsEntities } from './PhysicsManager';
 import { DEBUGGER_SCENE_LOADER_ID, disableDebugger } from '../debug/DebuggerGUI';
-import { setAllInputsEnabled } from './InputControls';
+import { setAllInputsEnabled } from './Input/InputState';
 import { getCanvasParentElem } from './Renderer';
 import { getDebugToolsState } from '../debug/DebugToolsManager';
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, isDebugEnvironment } from './Config';
@@ -461,7 +461,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
       // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
       deleteAllCharacters();
-      deleteAllPhysicsObjects();
+      deleteAllPhysicsEntities();
       deleteAllGroupEntities();
 
       if (loadSceneProps.deletePrevScene && prevScene) {

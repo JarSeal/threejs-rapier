@@ -9,12 +9,12 @@ import { createMeshEntity, getMeshByAppId } from '../_engine/core/MeshManager';
 import { createGroupEntity, addToGroupEntity } from '../_engine/core/GroupManager';
 import { transformMainSpeedValue } from '../_engine/core/MainLoop';
 import { createSkyBox } from '../_engine/core/SkyBox';
-import { createKeyInputControl } from '../_engine/core/InputControls';
-import { createPhysicsObjectWithMesh } from '../_engine/core/PhysicsRapier';
+import { createKeyBinding } from '../_engine/core/Input/KeyboardInput';
+import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 
 export const assets = {};
 
-export const scene01 = async () =>
+export const scene = async () =>
   new Promise(async (resolve) => {
     // Init scene
     const map02 = [
@@ -30,7 +30,7 @@ export const scene01 = async () =>
       type: 'CUBETEXTURE',
       params: {
         fileNames: map02,
-        path: '/assets/testTextures',
+        path: '/debugger/assets/testTextures',
         textureId: 'cubeTextureId',
       },
     });
@@ -45,26 +45,21 @@ export const scene01 = async () =>
       params: { width: groundWidthAndDepth, height: groundHeight, depth: groundWidthAndDepth },
     });
     const groundMat = createMaterial({ id: 'ground', type: 'BASIC', params: { color: 0x0024000 } });
-    createMeshEntity({
-      appId: 'groundMesh',
-      geo: groundGeo,
-      mat: groundMat,
-      position: groundPos,
-    });
-    const groundMesh = getMeshByAppId('groundMesh')!;
-    createPhysicsObjectWithMesh({
-      physicsParams: {
-        collider: {
-          type: 'BOX',
-          hx: groundWidthAndDepth / 2,
-          hy: groundHeight / 2,
-          hz: groundWidthAndDepth / 2,
-          friction: 0,
-        },
-        rigidBody: { rigidType: 'FIXED', translation: groundPos },
+    const groundEntityId = createMeshEntity(
+      { geo: groundGeo, mat: groundMat, position: groundPos },
+      { appId: 'groundMesh' }
+    );
+    await createPhysicsEntity(
+      {
+        type: 'BOX',
+        hx: groundWidthAndDepth / 2,
+        hy: groundHeight / 2,
+        hz: groundWidthAndDepth / 2,
+        friction: 0,
       },
-      meshOrMeshId: groundMesh,
-    });
+      { rigidType: 'FIXED', translation: groundPos },
+      groundEntityId
+    );
 
     const geometry1 = createGeometry({ id: 'sphere1', type: 'SPHERE' });
     const material1 = createMaterial({
@@ -72,7 +67,7 @@ export const scene01 = async () =>
       type: 'BASIC',
       params: { color: 0xff0000, wireframe: true },
     });
-    createMeshEntity({ appId: 'sphereMesh1', geo: geometry1, mat: material1 });
+    createMeshEntity({ geo: geometry1, mat: material1 }, { appId: 'sphereMesh1' });
     const sphere = getMeshByAppId('sphereMesh1')!;
 
     const geometry2 = createGeometry({ id: 'box1', type: 'BOX' });
@@ -82,49 +77,45 @@ export const scene01 = async () =>
       params: {
         map: loadTexture({
           id: 'box1Texture',
-          fileName: '/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
+          fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
         }),
       },
     });
-    createMeshEntity({
-      appId: 'boxMesh1',
-      geo: geometry2,
-      mat: material2,
-      position: { x: 2, y: 0, z: 0 },
-    });
-    const box = getMeshByAppId('boxMesh1')!;
-    createPhysicsObjectWithMesh({
-      physicsParams: {
-        collider: {
-          type: 'BOX',
-          hx: 0.5,
-          hy: 0.5,
-          hz: 0.5,
-          restitution: 0.5,
-          friction: 0,
-        },
-        rigidBody: {
-          rigidType: 'DYNAMIC',
-          translation: { x: 2, y: 0, z: 0 },
-          angvel: { x: 1, y: -2, z: 20 },
-        },
+    const boxEntityId = createMeshEntity(
+      { geo: geometry2, mat: material2, position: { x: 2, y: 0, z: 0 } },
+      { appId: 'boxMesh1' }
+    );
+    await createPhysicsEntity(
+      {
+        type: 'BOX',
+        hx: 0.5,
+        hy: 0.5,
+        hz: 0.5,
+        restitution: 0.5,
+        friction: 0,
       },
-      meshOrMeshId: box,
-    });
+      {
+        rigidType: 'DYNAMIC',
+        translation: { x: 2, y: 0, z: 0 },
+        angvel: { x: 1, y: -2, z: 20 },
+      },
+      boxEntityId
+    );
 
-    createMeshEntity({
-      appId: 'physicsBall01',
-      geo: { type: 'SPHERE', params: { radius: 1, widthSegments: 32, heightSegments: 32 } },
-      mat: material2,
-    });
-    const physBall01 = getMeshByAppId('physicsBall01')!;
-    createPhysicsObjectWithMesh({
-      physicsParams: {
-        collider: { type: 'SPHERE' },
-        rigidBody: { rigidType: 'DYNAMIC', translation: { x: 2, y: 3, z: -2 } },
+    const physBall01EntityId = createMeshEntity(
+      {
+        geo: { type: 'SPHERE', params: { radius: 1, widthSegments: 32, heightSegments: 32 } },
+        mat: material2,
       },
-      meshOrMeshId: physBall01,
-    });
+      { appId: 'physicsBall01' }
+    );
+    // radius explicit: the legacy PhysicsRapier system auto-inferred the collider radius from
+    // the attached mesh's SphereGeometry params — the new Physics API has no such inference.
+    await createPhysicsEntity(
+      { type: 'BALL', radius: 1 },
+      { rigidType: 'DYNAMIC', translation: { x: 2, y: 3, z: -2 } },
+      physBall01EntityId
+    );
 
     const cylMat = createMaterial({
       id: 'cylinder01Material',
@@ -133,38 +124,38 @@ export const scene01 = async () =>
         map: getTexture('box1Texture'),
       },
     });
-    createMeshEntity({
-      appId: 'physicsCyl01',
-      geo: {
-        type: 'CYLINDER',
-        params: {
-          radiusTop: 0.5,
-          radiusBottom: 0.5,
-          height: 0.25,
-          heightSegments: 2,
-          radialSegments: 32,
+    const physCyl01EntityId = createMeshEntity(
+      {
+        geo: {
+          type: 'CYLINDER',
+          params: {
+            radiusTop: 0.5,
+            radiusBottom: 0.5,
+            height: 0.25,
+            heightSegments: 2,
+            radialSegments: 32,
+          },
         },
+        mat: cylMat,
       },
-      mat: cylMat,
-    });
-    const physCyl01 = getMeshByAppId('physicsCyl01')!;
-    createPhysicsObjectWithMesh({
-      physicsParams: {
-        collider: { type: 'CYLINDER' },
-        rigidBody: {
-          rigidType: 'DYNAMIC',
-          translation: { x: -2, y: 3, z: -2 },
-          angvel: { x: 23, y: 1, z: 5 },
-        },
+      { appId: 'physicsCyl01' }
+    );
+    // halfHeight/radius explicit: same mesh-geometry-inference gap as the sphere above
+    // (height: 0.25 -> halfHeight: 0.125, radiusBottom: 0.5 -> radius: 0.5).
+    await createPhysicsEntity(
+      { type: 'CYLINDER', halfHeight: 0.125, radius: 0.5 },
+      {
+        rigidType: 'DYNAMIC',
+        translation: { x: -2, y: 3, z: -2 },
+        angvel: { x: 23, y: 1, z: 5 },
       },
-      meshOrMeshId: physCyl01,
-    });
+      physCyl01EntityId
+    );
 
     // Group example
     const groupEntityId = createGroupEntity({ appId: 'myGroup', position: { x: 0, y: 1.4, z: 0 } });
     createMeshEntity(
       {
-        appId: 'groupBox1',
         geo: createGeometry<THREE.BoxGeometry>({
           type: 'BOX',
           params: { width: 0.2, height: 0.2, depth: 0.2 },
@@ -172,13 +163,12 @@ export const scene01 = async () =>
         mat: createMaterial({ type: 'BASIC', params: { color: '#f0cc00' } }),
         position: { x: -0.2, y: 0, z: 0 },
       },
-      { doNotAddToScene: true }
+      { appId: 'groupBox1', doNotAddToScene: true }
     );
     const groupBox1 = getMeshByAppId('groupBox1')!;
 
     createMeshEntity(
       {
-        appId: 'groupBox2',
         geo: createGeometry<THREE.BoxGeometry>({
           type: 'BOX',
           params: { width: 0.2, height: 0.2, depth: 0.2 },
@@ -186,7 +176,7 @@ export const scene01 = async () =>
         mat: createMaterial({ type: 'BASIC', params: { color: '#ff00c0' } }),
         position: { x: 0.2, y: 0, z: 0 },
       },
-      { doNotAddToScene: true }
+      { appId: 'groupBox2', doNotAddToScene: true }
     );
     const groupBox2 = getMeshByAppId('groupBox2')!;
 
@@ -202,31 +192,38 @@ export const scene01 = async () =>
     };
     loadTextures(
       [
-        { fileName: '/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg' },
-        { fileName: '/assets/testTextures/Poliigon_MetalRust_7642_AmbientOcclusion.jpg' },
-        { fileName: '/assets/testTextures/Poliigon_MetalRust_7642_Metallic.jpg' },
+        { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg' },
+        { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_AmbientOcclusion.jpg' },
+        { fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_Metallic.jpg' },
       ],
       updateLoadStatusFn
     );
 
     const result = await importModelAsync({
       appId: 'importedMesh1',
-      fileName: '/assets/testModels/box01.glb',
+      fileName: '/debugger/assets/testModels/box01.glb',
       throwOnError: true,
     });
-    if (result.mesh && !Array.isArray(result.mesh)) {
+    if (result.mesh && !Array.isArray(result.mesh) && typeof result.meshId === 'number') {
       const importedBox = result.mesh;
-      createPhysicsObjectWithMesh({
-        physicsParams: {
-          collider: { type: 'TRIMESH' },
-          rigidBody: {
-            rigidType: 'DYNAMIC',
-            translation: { x: 3, y: 3, z: 2 },
-            angvel: { x: 3, y: 1, z: 5 },
-          },
+      // vertices/indices explicit: the legacy PhysicsRapier system auto-extracted a TRIMESH
+      // shape straight from the attached mesh's geometry — the new Physics API needs them
+      // passed in explicitly (ImportModel.ts's own GLB->physics pipeline gets ported onto
+      // this same requirement in a later phase; this is the same extraction done inline here).
+      const importedBoxGeo = importedBox.geometry;
+      const trimeshVertices = new Float32Array(importedBoxGeo.attributes.position.array);
+      const trimeshIndices = importedBoxGeo.index
+        ? new Uint32Array(importedBoxGeo.index.array)
+        : new Uint32Array([...Array(trimeshVertices.length / 3).keys()]);
+      await createPhysicsEntity(
+        { type: 'TRIMESH', vertices: trimeshVertices, indices: trimeshIndices },
+        {
+          rigidType: 'DYNAMIC',
+          translation: { x: 3, y: 3, z: 2 },
+          angvel: { x: 3, y: 1, z: 5 },
         },
-        meshOrMeshId: importedBox,
-      });
+        result.meshId
+      );
       const material = createMaterial({
         id: 'importedBox01Material',
         type: 'PHONG',
@@ -247,9 +244,10 @@ export const scene01 = async () =>
   });
 
 // Input
-createKeyInputControl({
+createKeyBinding({
+  id: 'scene01-log-d-press',
   type: 'KEY_DOWN',
-  key: 'd',
+  chord: { key: 'd' },
   fn: (_, time) => {
     console.log('PRESSED', performance.now() - time);
   },

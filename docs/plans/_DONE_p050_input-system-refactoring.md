@@ -1,8 +1,181 @@
-Status: draft | not-implemented
+Status: implemented — see "Current status" below
 Category: Input
 Epic: https://trello.com/c/UyGHLLsX/218-input-system-refactoring
 
 # Input System Refactoring — Plan
+
+## Current status
+
+**This plan (p050): all phases (1–9) of §4 are done.**
+
+- ✅ **Phase 1** — `src/_engine/core/Input/InputSharedTypes.ts` and `KeyboardInput.ts` created
+  (`createKeyBinding`/`deleteKeyBinding`/`isChordHeld`/`pollHeldKeyBindings`/`markChordReserved`),
+  additive only, no consumers yet at that point.
+- ✅ **Phase 2** — `MainLoop.ts` and `PhysicsRapier.ts`'s held-key call sites migrated from
+  `updateInputControllerLoopActions` to `pollHeldKeyBindings`.
+- ✅ **Phase 3** — `dynamicCharacter.ts`'s `KEY_LOOP_ACTION` mapping migrated to 4 `KEY_HELD`
+  bindings + `KEY_UP`/`KEY_DOWN` bindings for jump/run/crouch/stop; `Character.ts`'s **Key**
+  portion of `controls` retyped to `KeyBinding`; `scene01.ts`/`largeWorld.ts`'s single mappings
+  migrated.
+- ✅ **Phase 4** — `Input/MouseInput.ts` (`createMouseBinding`/`deleteMouseBinding`/
+  `setMouseBindingEnabled`/`setMouseInputsEnabled`; click/hover/wheel/left+right dblclick) and
+  `Raycast.ts`'s `castRayFromScreenPosition` added. `Character.ts`'s **Mouse** portion of
+  `controls` migrated too (`KeyBinding | MouseBinding`), so `Character.ts` no longer imports
+  `InputControls.ts`. Verified in the running app against real meshes (plain + `?isDebug=true`,
+  incl. debug-camera picking and HUD-button clicks not leaking into scene bindings).
+- ✅ **Phase 5** — `Input/TouchInput.ts` (`createTouchBinding`/`deleteTouchBinding`/
+  `setTouchBindingEnabled`/`setTouchInputsEnabled`; tap/drag/pinch). Verified via CDP touch
+  emulation (tap hit/miss, drag deltas, long-press rejected as tap, two-finger pinch).
+- ✅ **Phase 6** — `Input/GamepadInput.ts` stub; not imported anywhere.
+- ✅ **Remaining `InputControls.ts` importers migrated** (not in the original §2.7 list):
+  `SceneLoader.ts`'s `setAllInputsEnabled` now comes from a new tiny `Input/InputState.ts`
+  master switch that Keyboard/Mouse/Touch all check (on top of their own
+  `set*InputsEnabled`), so SceneLoader doesn't pull Mouse/Touch into every bundle;
+  `utils/ECSStressTest.ts`/`utils/PhysicsStressTest.ts` use `createKeyBinding`.
+  **`InputControls.ts` now has zero importers.**
+- ✅ **Phase 7** — `Input/DefaultDebugKeyBindings.ts` (`registerDefaultDebugKeyBindings`,
+  `DebugKeyBindingConfig`) wired into `InitApp.ts`'s `IS_DEBUG_ENV` block right after
+  `registerDebuggerGUI()`; `_dbg__DebuggerGUI.ts`'s inline `debugKeys` loop removed;
+  `AppConfig.debugKeys` retyped to `DebugKeyBindingConfig[]`; `CONFIG.ts` reduced to a
+  documented `{ id: 'sc-toggle-debug-drawer', chord: { key: 'h' } }` override example (no longer
+  imports `toggleDrawer`). Verified in the running app: `h` toggles the drawer, F1 toggles the
+  debug camera (and the on-screen camera-switch button follows), a different-id app binding on
+  F1 logs the warning, a same-id CONFIG.ts override to another key is silent, nothing
+  registers outside `?isDebug=true`.
+  - F1 is `KEY_DOWN` (not `KEY_UP` as §2.6 sketched) with `preventDefault()` + an `e.repeat`
+    guard, because browsers act on F1 (help) at keydown.
+  - Both defaults ignore the key while focus is in a text field (`input`/`textarea`/`select`/
+    contenteditable), so typing "h" into a debug panel doesn't close the drawer. The guard
+    lives in the default bindings' `fn`s only — `KeyboardInput.ts` stays unopinionated (§5).
+  - `Shift+H` no longer toggles the drawer (exact-modifier match, §5); Caps Lock `H` still
+    does (`caseInsensitive` default true).
+  - A non-default-id `debugKeys` entry without `chord`/`fn` is skipped with a warning.
+- ✅ **Phase 8** — `src/_engine/core/InputControls.ts` deleted (zero importers; no stale
+  references to its API names left in `src`). Verified in the running app: full boot, then
+  `scene01` (`d` logs), `largeWorld` (`c`/`C` toggle the camera), `thirdPersonGymScene`
+  (held `W`/`A` move/rotate the character, space jumps).
+- ✅ **Phase 9** — `docs/plans/p062_add-undo-and-redo-ui.md` rewritten: intro point 1, §1.3,
+  §2.3, §3, Phase 2 (now obsolete) and Phase 4, §5 risk rows; `Blocked by` header mentions this
+  plan. Also flagged for p062: Cmd+Z needs `KEY_DOWN` (macOS doesn't fire `keyup` for other keys
+  while ⌘ is held), and the text-input guard should reuse `isTypingInField()` from
+  `DefaultDebugKeyBindings.ts`.
+
+**Deviations from §2 made while implementing Phases 4–5** (deliberate, recorded so they aren't
+re-litigated):
+
+- **Default picking camera is `getActiveCamera()`, not `getMainCamera()`** (§2.3 said the latter).
+  Screen-space picking has to use the camera that produced the pixels under the cursor; with the
+  debug camera on, `getMainCamera()` would pick through a camera the user isn't looking through.
+  A binding can still pass its own `camera`.
+- **Hover is resolved by an ECS system at `ECSSystemStage.MAIN` on the default world**
+  (registered lazily by the first `MOUSE_HOVER` binding), not by a flag consumed from
+  `MainLoop.ts` — `MainLoop.ts` importing `MouseInput.ts` would bundle it for every app,
+  defeating decision 8. Still at most one raycast per hover binding per frame, and only on frames
+  the pointer moved (so an object moving under a still cursor doesn't fire enter/leave until the
+  pointer moves — a possible future `continuous` option).
+- **Shared picking helper `Input/InputPicking.ts`** (`pickTargetsAt` + `PickOpts`
+  `{ camera?, recursive? }`, `recursive` default true) used by both Mouse and Touch — not in the
+  §2.1 layout, but only imported by those two files so tree-shaking is unaffected.
+- **Only events that land on the renderer canvas count** (`e.target === canvas`): HUD/debug-UI
+  clicks, wheels and touches never raycast into the scene; moving onto HUD UI counts as leaving
+  hover. A click also requires press and release on the canvas within 5px (so camera-orbit drags
+  aren't clicks).
+- **Right-click context menu is suppressed on the canvas** while any RIGHT click/dblclick
+  binding exists (it would otherwise swallow the release).
+- **`targets` semantics for `MOUSE_DBLCLICK`/`TOUCH_TAP`** (where it's optional): with targets,
+  `fn` fires only on a hit; without, it always fires with `intersection` undefined.
+- **Touch bindings also take `enabledInDebugCam`** (§2.4 omitted it) for parity with Mouse.
+- A native double-click also produces its two single clicks (standard browser behavior); a tap
+  also produces emulated mouse events, so it can fire `MOUSE_CLICK` bindings too.
+
+### Mid-plan pivot: full adoption of p028
+
+After Phase 3 above, the request shifted to migrating the old scenes/examples to ECS physics
+entities and making them reachable from the debugger's scene listing. That turned out to already
+have its own (then-untracked, draft) plan —
+[`docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md`](./p028_refactor-old-phys-objs-to-phys-entities.md)
+— which was adopted **in full** rather than re-scoped narrowly. Phases 0–8 of p028 are done:
+
+- ✅ **Phase 0** — `castShape`/`castShapeSync` added to the Physics API (`WorldAPI` /
+  `EngineRapier.ts` / worker protocol), plus a worked example in `physicsTest.ts`.
+- ✅ **Phase 1** — `scene01.ts`, `scene01_v2.ts` ported to `createPhysicsEntity`; `scene01.scene.json`/
+  `scene01_v2.scene.json` added so both appear in the debugger scene listing.
+- ✅ **Phase 2** — `utils/PhysicsStressTest.ts` ported.
+- ✅ **Phase 3** — `ImportModel.ts`'s whole physics pipeline ported (the largest single change;
+  `PhysicsObject` field removed from its return type entirely).
+- ✅ **Phase 4** — `utils/world/movingPlatform.ts` and `utils/cameras/followObjectCameraRig.ts`
+  ported to the shared-ECS-system pattern (one system registered once, a `Map` of active
+  instances) instead of `addScenePhysicsLooper`.
+- ✅ **Phase 5** — `Character.ts`'s physics-creation call, `utils/world/characterTestObjects.ts`,
+  `characterTestObstacles.ts` ported.
+- ✅ **Phase 6** — `utils/character/dynamicCharacter.ts` ported — the plan's own "highest-risk
+  phase." `Character.ts`'s remaining physics-creation piece was folded into this phase (see
+  "Answers to questions asked along the way" below) rather than done separately in Phase 5, since
+  it turned out inseparable from `dynamicCharacter.ts`'s compound-body creation.
+- ✅ **Phase 7** — `app/scene_thirdPersonGym.ts` itself wired together (all ~15 imported GLBs, 6
+  moving platforms, both dynamic characters, the stress-test spawner) + `thirdPersonGym.scene.json`
+  added; also gained a real third-person chase camera via `createFollowObjectCameraRig` (built in
+  Phase 4 but never actually wired into a real scene until here).
+- ✅ **Phase 8** — Bootstrap/debug-tooling call sites (`InitApp.ts`, `MainLoop.ts`, `Scene.ts`,
+  `SceneLoader.ts`, `Debug/_dbg__MainLoop.ts`, `Debug/_dbg__OnScreenTools.ts`,
+  `Debug/_dbg__Character.ts`) cut over off `PhysicsRapier.ts` onto the new Physics API.
+- ❌ **Phase 9 (delete `PhysicsRapier.ts`) — will not be done.** Explicit decision: keep
+  `PhysicsRapier.ts` in the repo for reference rather than deleting it. Confirmed via repo-wide
+  grep that every remaining mention of `PhysicsRapier` outside the file itself is a comment, not a
+  functional import — the file has zero live callers, it's just being kept around on purpose.
+
+Along the way (not part of either plan's original scope — surfaced because this work was the
+first thing to actually exercise these code paths end-to-end), several previously-latent bugs in
+the new Physics API/engine were found and fixed:
+
+- `WORKER_THREAD` mode's hot-path transform sync excluded kinematic bodies, then FIXED bodies
+  repositioned after creation, from ever reaching the mesh (`physicsWorker.ts`).
+- `RigidBodyAPI.linvel()`/`angvel()` were never actually populated in `WORKER_THREAD` mode —
+  `PhysicsTransformBuffer` extended to carry velocity alongside position/rotation.
+- Batch collider creation (`createColliders`) lost each collider's `parentId` in both
+  `MAIN_THREAD` and `WORKER_THREAD` modes, breaking self/other identification in every compound-
+  collider collision handler.
+- `createPhysicsEntity` silently teleported an already-positioned mesh to the origin when
+  attaching a rigid body without an explicit `translation`, and never added a raw-`Object3D`
+  target to the scene graph at all.
+- `physicsToTransformSystem` only ever synced `BODY_DYNAMIC_VISUAL`, never `BODY_STATIC` — any
+  FIXED body repositioned after creation (stairs, walls, imported level geometry) stayed visually
+  stuck at its creation-time transform forever.
+- Primitive colliders (`BOX`/`BALL`/`CAPSULE`/`CONE`/`CYLINDER`) never auto-derived their
+  dimensions from the target mesh's geometry the way the legacy system did — every such collider
+  silently defaulted to a ~0.5-unit shape regardless of the actual mesh size (this is what made
+  the gym scene's floor and moving platforms have no usable collision at all).
+
+### Answers to questions asked along the way
+
+Recorded so these don't need to be re-asked:
+
+1. Continue past p050 Phase 3 into p028 rather than staying narrowly scoped to input: **"Follow
+   p028 in full."**
+2. `scene_thirdPersonGym.ts` was unreachable (no `*.scene.json`) while verifying p028 Phase 6:
+   **"Temporarily wire up a scene.json"** — this became permanent anyway once Phase 7 added the
+   real one.
+3. How to verify `dynamicCharacter.ts`'s held-key migration given the gym scene had no camera at
+   that point: **"Verify the mechanism generically, not the scene."**
+4. Whether to batch multiple p028 phases before the next review: **"Batch several phases before
+   next review"** (covered Phases 2–5).
+5. p028 Phase 3 (`ImportModel.ts`) turned out far more complex than "mechanical": **"Do it now, but
+   as its own checkpoint"** — completed immediately but reviewed on its own, not bundled with
+   Phases 4–5.
+6. `Character.ts` turned out inseparable from `dynamicCharacter.ts` (both needed for Phase 6):
+   **"Fold it into Phase 6"** — ported together instead of `Character.ts` alone in Phase 5.
+7. p028 Phase 9 (delete `PhysicsRapier.ts`): **declined** — keep the file in place for reference.
+   p028 is therefore complete except for this one phase, by explicit choice, not an oversight.
+
+### What still needs to be done
+
+- **Nothing in p050.** Follow-ups noted along the way, not planned anywhere yet:
+  `MOUSE_HOVER` only re-resolves when the pointer moves (a `continuous` option could handle
+  objects moving under a still cursor); `GamepadInput.ts` is a stub (§2.5).
+- **p028 Phase 9 will not be done** — see the decision above. Anyone picking p028 back up should
+  treat it as complete, not paused.
+
+---
 
 ## Context
 

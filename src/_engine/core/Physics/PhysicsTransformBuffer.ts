@@ -1,7 +1,7 @@
 import { PhysRotation, PhysVector } from './PhysicsAPITypes';
 
-/** Float32 fields per slot: position(3) + quaternion(4). */
-export const PHYSICS_TRANSFORM_FIELD_COUNT = 7;
+/** Float32 fields per slot: position(3) + quaternion(4) + linvel(3) + angvel(3). */
+export const PHYSICS_TRANSFORM_FIELD_COUNT = 13;
 
 /**
  * Allocates the backing buffer for a PhysicsTransformBuffer. Physics-owned and
@@ -12,7 +12,10 @@ export function createPhysicsTransformArrayBuffer(
   maxBodies: number,
   useSAB = false
 ): ArrayBuffer | SharedArrayBuffer {
-  const byteLength = maxBodies * PHYSICS_TRANSFORM_FIELD_COUNT * Float32Array.BYTES_PER_ELEMENT;
+  // + one trailing Int32 write counter (see PhysicsTransformBuffer.markWritten)
+  const byteLength =
+    maxBodies * PHYSICS_TRANSFORM_FIELD_COUNT * Float32Array.BYTES_PER_ELEMENT +
+    Int32Array.BYTES_PER_ELEMENT;
   return useSAB ? new SharedArrayBuffer(byteLength) : new ArrayBuffer(byteLength);
 }
 
@@ -32,6 +35,10 @@ export class PhysicsTransformBuffer {
   readonly maxBodies: number;
   readonly buffer: ArrayBuffer | SharedArrayBuffer;
   readonly floats: Float32Array;
+  /** Trailing counter, bumped once per worker write-back — lets the main thread tell a fresh
+   * physics snapshot apart from a re-read of the previous one (poses alone can't: a body that
+   * didn't move this step reads identical). */
+  private readonly writeCounter: Int32Array;
 
   private readonly slotById = new Map<number, number>();
   private readonly freeSlots: number[] = [];
@@ -40,7 +47,19 @@ export class PhysicsTransformBuffer {
   constructor(maxBodies: number, buffer?: ArrayBuffer | SharedArrayBuffer) {
     this.maxBodies = maxBodies;
     this.buffer = buffer ?? createPhysicsTransformArrayBuffer(maxBodies, false);
-    this.floats = new Float32Array(this.buffer);
+    const floatCount = maxBodies * PHYSICS_TRANSFORM_FIELD_COUNT;
+    this.floats = new Float32Array(this.buffer, 0, floatCount);
+    this.writeCounter = new Int32Array(this.buffer, floatCount * Float32Array.BYTES_PER_ELEMENT, 1);
+  }
+
+  /** Marks a completed write-back of all slots. Worker-side only, called after each step batch. */
+  markWritten(): void {
+    Atomics.add(this.writeCounter, 0, 1);
+  }
+
+  /** How many write-backs have completed so far (wraps harmlessly; only compared for change). */
+  getWriteCount(): number {
+    return Atomics.load(this.writeCounter, 0);
   }
 
   /** Allocates (or returns the existing) slot for a rigid body id. Worker-side only. */
@@ -105,5 +124,25 @@ export class PhysicsTransformBuffer {
       z: this.floats[o + 5],
       w: this.floats[o + 6],
     };
+  }
+
+  setVelocity(slot: number, linvel: PhysVector, angvel: PhysVector): void {
+    const o = slot * PHYSICS_TRANSFORM_FIELD_COUNT;
+    this.floats[o + 7] = linvel.x;
+    this.floats[o + 8] = linvel.y;
+    this.floats[o + 9] = linvel.z;
+    this.floats[o + 10] = angvel.x;
+    this.floats[o + 11] = angvel.y;
+    this.floats[o + 12] = angvel.z;
+  }
+
+  getLinvel(slot: number): PhysVector {
+    const o = slot * PHYSICS_TRANSFORM_FIELD_COUNT;
+    return { x: this.floats[o + 7], y: this.floats[o + 8], z: this.floats[o + 9] };
+  }
+
+  getAngvel(slot: number): PhysVector {
+    const o = slot * PHYSICS_TRANSFORM_FIELD_COUNT;
+    return { x: this.floats[o + 10], y: this.floats[o + 11], z: this.floats[o + 12] };
   }
 }

@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "DIRECTIONAL",
+    "color": "#fff2d9",
+    "intensity": 3,
+    "position": { "x": 20, "y": 30, "z": 15 },
+    "targetPos": { "x": 0, "y": -2, "z": 0 },
+    "castShadow": true,
+    "shadowPreset": "HIGH",
+    "shadowCameraNearFar": [1, 80],
+    "shadowCameraFrustum": [-35, 35, 35, -35],
+    "shadowIntensity": 0.8
+  },
+  "entityOpts": {
+    "appId": "thirdPersonGymSun",
+    "debugData": {
+      "name": "Third-person gym sun",
+      "description": "Directional shadow-casting sun. Shadow frustum is scoped to the core gym play area around the origin (ground, obstacles, moving platforms, character spawns), not the far-flung decorative terrain/stairs samples out past x=35 — sizing it to the whole scene would blur shadow resolution everywhere instead (same principle as largeWorldSun.light.json)."
+    }
+  }
+}

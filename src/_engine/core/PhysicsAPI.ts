@@ -58,7 +58,10 @@ import {
   ColliderParams,
   CreateRigidBodiesResponse,
   CreateCollidersResponse,
+  ShapeCastHitAPI,
+  ShapeParams,
   WorldCastRayResponse,
+  WorldCastShapeResponse,
   WorldIntersectionsWithRayResponse,
   WorldContactPairsResponse,
   WorldIntersectionPairResponse,
@@ -246,9 +249,24 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
  * up to maxSubSteps per frame. Also handles backgroundBehavior/pause bookkeeping the same
  * way legacy PhysicsRapier.ts's baseStepper does (see physicsVisibilityChangeHandler for
  * the window-hidden 'PAUSE' path, which halts the whole main loop before this is reached).
+ *
+ * Calls `onBeforeStep` once per fixed-timestep slice, right before that slice's step, like
+ * legacy PhysicsRapier.ts's baseStepper ran its held-key polling and scene physics loopers
+ * inside its own per-substep loop. In WORKER_THREAD mode the steps themselves run off-thread,
+ * so the callbacks all run here up front, and whatever one-way commands each one issues are
+ * carried in the STEP message and replayed on the worker right before their own sub-step.
+ *
+ * Returns how many fixed-timestep slices were actually taken this call (0 if physics is
+ * disabled/paused/hasn't accumulated a full slice yet).
  */
-export const stepPhysics = (loopState: LoopState) => {
-  if (!physicsWorldEnabled || !physicsState.worldStepEnabled) return;
+export const stepPhysics = (
+  loopState: LoopState,
+  /** Called once per fixed sub-step, right before it, with dt = the fixed timestep (this is
+   * what drives held-key polling, flushPhysicsEvents and the APP_PHYSICS_STEP ECS stage, see
+   * MainLoop.ts). Without one, events are flushed before each sub-step here instead. */
+  onBeforeStep?: (stepDelta: number) => void
+): number => {
+  if (!physicsWorldEnabled || !physicsState.worldStepEnabled) return 0;
 
   updateTimer();
   let dt = timer.getDelta();
@@ -259,7 +277,7 @@ export const stepPhysics = (loopState: LoopState) => {
     if (!physicsState.isPaused) setPhysicsPauseTime();
     physicsState.isPaused = true;
     timerRunning = false;
-    return;
+    return 0;
   }
 
   if (loopState.isWindowHidden) {
@@ -271,7 +289,7 @@ export const stepPhysics = (loopState: LoopState) => {
       if (!physicsState.isPaused) setPhysicsPauseTime();
       physicsState.isPaused = true;
       timerRunning = false;
-      return;
+      return 0;
     }
     if (
       physicsState.backgroundBehavior === 'KEEP_RUNNING_USE_MIN_DELTA' &&
@@ -289,7 +307,7 @@ export const stepPhysics = (loopState: LoopState) => {
     physicsState.pauseDurationTotal += performance.now() - physicsState.pausedTime;
     physicsState.pausedTime = 0;
     accDelta = 0;
-    return;
+    return 0;
   }
 
   const scaledDelta = dt * loopState.playSpeedMultiplier;
@@ -311,22 +329,84 @@ export const stepPhysics = (loopState: LoopState) => {
     accDelta = 0;
   }
 
-  if (stepsTaken === 0) return;
+  if (stepsTaken === 0) return 0;
 
+  const stepDelta = physicsState.timestepRatio;
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    for (let i = 0; i < stepsTaken; i++) engAPI?.step();
+    for (let i = 0; i < stepsTaken; i++) {
+      if (onBeforeStep) onBeforeStep(stepDelta);
+      else flushPhysicsEvents();
+      engAPI?.step();
+    }
+    mainThreadSnapshotCount++;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    let substepCommands: PhysicsUpProtocol[][] | undefined;
+    if (onBeforeStep) {
+      substepCommands = [];
+      for (let i = 0; i < stepsTaken; i++) {
+        substepCommandCapture = [];
+        try {
+          onBeforeStep(stepDelta);
+        } finally {
+          substepCommands.push(substepCommandCapture);
+          substepCommandCapture = null;
+        }
+      }
+    }
     // One-way, no response awaited — transform results arrive via the hot-path buffer
     // (transformBuffer), not via a STEP reply. A single message runs all of this frame's
-    // sub-steps and writes back exactly once, never one message per sub-step.
-    messageWorker({ type: PhysicsProtocolType.STEP, steps: stepsTaken, isOneWay: true });
+    // sub-steps (each preceded by its own captured commands) and writes back exactly once,
+    // never one message per sub-step.
+    messageWorker({
+      type: PhysicsProtocolType.STEP,
+      steps: stepsTaken,
+      substepCommands,
+      isOneWay: true,
+    });
+    stepMessagesPosted++;
   }
+
+  return stepsTaken;
 };
 
 // WORKER LOGIC -- [ START ] -----------------------
 
+/** postMessage structured-clones only own fields, and a THREE.Quaternion keeps its values in
+ * private `_x/_y/_z/_w` fields behind prototype getters — posted as-is, the worker would receive
+ * a rotation with no x/y/z/w at all. Every rotation crossing to the worker goes through this. */
+const toPlainRot = (rot: PhysRotation): PhysRotation => ({
+  x: rot.x,
+  y: rot.y,
+  z: rot.z,
+  w: rot.w,
+});
+
+/** While stepPhysics() runs a sub-step's APP_PHYSICS_STEP callback in WORKER_THREAD mode, the
+ * one-way commands it issues are collected here instead of posted, and then travel inside that
+ * frame's single STEP message to be replayed right before their own sub-step. (Request/response
+ * calls via messageWorkerAsync are still posted immediately — they reach the worker ahead of
+ * the STEP message, i.e. before this frame's first sub-step.) */
+let substepCommandCapture: PhysicsUpProtocol[] | null = null;
+
+/** How many STEP messages have been posted to the worker (reset together with the worker's own
+ * transform buffer, whose write count advances once per processed STEP — so the two line up). */
+let stepMessagesPosted = 0;
+
+/** The transform buffer write count at which a write made right now becomes visible in it: the
+ * worker applies the write before (or, for captured sub-step commands, during) the next STEP,
+ * and that STEP's write-back is the first one to include it. */
+const getWriteVisibleCount = () => stepMessagesPosted + 1;
+
+/** Whether a write tagged with getWriteVisibleCount() hasn't reached the transform buffer yet */
+const isWritePending = (visibleAt: number) =>
+  Boolean(transformBuffer) && transformBuffer!.getWriteCount() < visibleAt;
+
 const messageWorker = (message: PhysicsUpProtocol) => {
   if (!worker) return;
+  if (substepCommandCapture) {
+    substepCommandCapture.push(message);
+    return;
+  }
   worker.postMessage(message);
 };
 
@@ -361,7 +441,8 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
   } else if (type === PhysicsProtocolType.EVENTS_PUSH) {
     // Unsolicited push, only ever sent when at least one event occurred that step — no
     // requestId, not a response to resolve.
-    dispatchPushedEvents(data);
+    // Delivered by flushPhysicsEvents() at the start of the next sub-step, not right away.
+    pendingEventPushes.push(data);
     return;
   } else if (type === PhysicsProtocolType.DEBUG_STATE_PUSH) {
     // Unsolicited push (MESSAGE_BATCH fallback) — only ever sent while debug-state
@@ -374,6 +455,29 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
   }
 
   return resolveRequest(data, requestId, type);
+};
+
+let pendingEventPushes: EventsPushMessage[] = [];
+
+/**
+ * Delivers every collision/contact-force event that has become available since the last call to
+ * its registered callbacks. The main loop calls this once per fixed sub-step, after held-key
+ * polling and before the APP_PHYSICS_STEP systems — the exact point legacy PhysicsRapier.ts's
+ * baseStepper drained its event queue. Ported gameplay code depends on that order: e.g. on the
+ * sub-step a character leaves a moving platform, its held-key move() still runs with the
+ * pre-event "on platform" state (keeping the platform's velocity), and only the character tick
+ * after it sees the ground sensor's "stopped touching". Dispatching straight after each step
+ * would flip that state before move() and drop the platform's velocity from the jump.
+ */
+export const flushPhysicsEvents = () => {
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    engAPI?.dispatchPendingEventRecords();
+    return;
+  }
+  if (!pendingEventPushes.length) return;
+  const pushes = pendingEventPushes;
+  pendingEventPushes = [];
+  for (let i = 0; i < pushes.length; i++) dispatchPushedEvents(pushes[i]);
 };
 
 /** Resolves an EVENTS_PUSH message's plain-data records back to ColliderAPIs (via the
@@ -464,6 +568,18 @@ const updateTimer = () => {
   }
 };
 
+let mainThreadSnapshotCount = 0;
+/** Changes every time a new physics result becomes readable on the main thread: once per
+ * stepping frame on MAIN_THREAD, once per worker write-back on WORKER_THREAD (whichever frame
+ * it actually lands in). Only meaningful compared against an earlier value. Used by render
+ * interpolation to advance its prev/curr pair exactly once per physics result — detecting that
+ * from pose changes instead would never advance for a body that stops moving, leaving a stale
+ * `prev` behind it to jitter against. */
+export const getPhysicsSnapshotCount = () =>
+  physicsState.workerTarget === 'WORKER_THREAD'
+    ? transformBuffer?.getWriteCount() ?? 0
+    : mainThreadSnapshotCount;
+
 /** Returns the current physicsState */
 export const getPhysicsState = () => physicsState;
 
@@ -538,6 +654,8 @@ export const createPhysicsWorld = async (
       resolvedTransportMode = response.transportMode;
       if (response.transportMode === 'SHARED_MEMORY' && response.buffer) {
         transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, response.buffer);
+        stepMessagesPosted = 0;
+        pendingEventPushes = [];
       }
       // MESSAGE_BATCH: transformBuffer stays undefined until the first TRANSFORMS_PUSH arrives.
       addVisibilityChangeFn('pausePhysicsApiOnVisibilityChange', physicsVisibilityChangeHandler);
@@ -1019,7 +1137,7 @@ export const createColliders = async (params: ColliderParams[]) => {
     const collAPIs = [];
     for (let i = 0; i < collIds.length; i++) {
       const id = collIds[i];
-      const collAPI = new ColliderProxyAPI(id, undefined, params[i].userData);
+      const collAPI = new ColliderProxyAPI(id, params[i].parentId, params[i].userData);
       collAPIs.push(collAPI);
       colliders.set(id, collAPI);
       registerWorkerColliderEventFns(id, params[i]);
@@ -1636,6 +1754,51 @@ class WorldProxyAPI implements WorldAPI {
     throw new Error('Raycasting must be async in Worker mode.');
   }
 
+  async castShape(
+    shapePos: PhysVector,
+    shapeRot: PhysRotation,
+    shapeVel: PhysVector,
+    shape: ShapeParams,
+    targetDistance: number,
+    maxToi: number,
+    stopAtPenetration: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+  ): Promise<ShapeCastHitAPI | null> {
+    const response = (
+      await messageWorkerAsync<WorldCastShapeResponse>({
+        type: PhysicsProtocolType.WORLD_CAST_SHAPE,
+        shapePos,
+        shapeRot: toPlainRot(shapeRot),
+        shapeVel,
+        shape,
+        targetDistance,
+        maxToi,
+        stopAtPenetration,
+        filterFlags,
+        filterGroups,
+        filterExcludeCollider:
+          typeof filterExcludeCollider === 'number'
+            ? filterExcludeCollider
+            : filterExcludeCollider?.id,
+        filterExcludeRigidBody:
+          typeof filterExcludeRigidBody === 'number'
+            ? filterExcludeRigidBody
+            : filterExcludeRigidBody?.id,
+      })
+    ).hit;
+    if (!response) return null;
+    const coll = colliders.get(response.collider);
+    if (!coll) return null;
+    return { ...response, collider: coll };
+  }
+
+  castShapeSync(): ShapeCastHitAPI | null {
+    throw new Error('Shape casting must be async in Worker mode.');
+  }
+
   async castRayAndGetNormal(
     ray: PhysRay,
     maxToi: number,
@@ -1784,13 +1947,25 @@ class WorldProxyAPI implements WorldAPI {
   }
 }
 
+type PendingWrite<T> = { value: T; visibleAt: number };
+
 class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   uData: Record<string, unknown> = {};
-  // lvel/avel stay RPC-only for this MVP — not synced via the hot-path buffer.
-  lvel: PhysVector = { x: 0, y: 0, z: 0 };
-  avel: PhysVector = { x: 0, y: 0, z: 0 };
   isBeingDeleted: boolean = false;
   // @CHORE: add isEnabled cache
+
+  // Read-your-writes: a value set here reaches the worker (and then the transform buffer) only
+  // a step or more later, but code like a character controller sets a velocity and reads it back
+  // within the same sub-step — as it can on MAIN_THREAD, where Rapier applies it immediately.
+  // Until the buffer catches up, the reads below return what was last written instead of the
+  // stale buffer value (which would otherwise make e.g. a later setLinvel silently undo an
+  // earlier one, or an impulse).
+  private pendingPos?: PendingWrite<PhysVector>;
+  private pendingRot?: PendingWrite<PhysRotation>;
+  private pendingLvel?: PendingWrite<PhysVector>;
+  private pendingAvel?: PendingWrite<PhysVector>;
+  /** Last known mass, for reflecting applyImpulse locally (refreshed by every mass() call) */
+  private cachedMass?: number;
 
   constructor(
     public id: number,
@@ -1803,12 +1978,36 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   // Hot path — reads straight from the shared/latest-pushed transform buffer by slot.
   // Returns zeroed defaults if no buffer has arrived yet (before the first step/push).
   get pos(): PhysVector {
+    if (this.pendingPos) {
+      if (isWritePending(this.pendingPos.visibleAt)) return { ...this.pendingPos.value };
+      this.pendingPos = undefined;
+    }
     if (!transformBuffer || this.slot === -1) return { x: 0, y: 0, z: 0 };
     return transformBuffer.getPosition(this.slot);
   }
   get rot(): PhysRotation {
+    if (this.pendingRot) {
+      if (isWritePending(this.pendingRot.visibleAt)) return { ...this.pendingRot.value };
+      this.pendingRot = undefined;
+    }
     if (!transformBuffer || this.slot === -1) return { x: 0, y: 0, z: 0, w: 0 };
     return transformBuffer.getRotation(this.slot);
+  }
+  get lvel(): PhysVector {
+    if (this.pendingLvel) {
+      if (isWritePending(this.pendingLvel.visibleAt)) return { ...this.pendingLvel.value };
+      this.pendingLvel = undefined;
+    }
+    if (!transformBuffer || this.slot === -1) return { x: 0, y: 0, z: 0 };
+    return transformBuffer.getLinvel(this.slot);
+  }
+  get avel(): PhysVector {
+    if (this.pendingAvel) {
+      if (isWritePending(this.pendingAvel.visibleAt)) return { ...this.pendingAvel.value };
+      this.pendingAvel = undefined;
+    }
+    if (!transformBuffer || this.slot === -1) return { x: 0, y: 0, z: 0 };
+    return transformBuffer.getAngvel(this.slot);
   }
 
   async getUserData(): Promise<Record<string, unknown>> {
@@ -2014,6 +2213,10 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   }
 
   setTranslation(tra: PhysVector, wakeUp: boolean): void {
+    this.pendingPos = {
+      value: { x: tra.x, y: tra.y, z: tra.z },
+      visibleAt: getWriteVisibleCount(),
+    };
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_TRANSLATION,
       rigidBodyId: this.id,
@@ -2023,6 +2226,10 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   }
 
   setLinvel(vel: PhysVector, wakeUp: boolean): void {
+    this.pendingLvel = {
+      value: { x: vel.x, y: vel.y, z: vel.z },
+      visibleAt: getWriteVisibleCount(),
+    };
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_LINVEL,
       rigidBodyId: this.id,
@@ -2055,15 +2262,20 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   }
 
   setRotation(rot: PhysRotation, wakeUp: boolean): void {
+    this.pendingRot = { value: toPlainRot(rot), visibleAt: getWriteVisibleCount() };
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_ROTATION,
       rigidBodyId: this.id,
-      rot,
+      rot: toPlainRot(rot),
       wakeUp,
     });
   }
 
   setAngvel(vel: PhysVector, wakeUp: boolean): void {
+    this.pendingAvel = {
+      value: { x: vel.x, y: vel.y, z: vel.z },
+      visibleAt: getWriteVisibleCount(),
+    };
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_ANGVEL,
       rigidBodyId: this.id,
@@ -2084,7 +2296,7 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_NEXT_KINEMATIC_ROTATION,
       rigidBodyId: this.id,
-      rot,
+      rot: toPlainRot(rot),
     });
   }
 
@@ -2112,12 +2324,14 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   }
 
   async mass(): Promise<number> {
-    return (
+    const mass = (
       await messageWorkerAsync<RigidMassResponse>({
         type: PhysicsProtocolType.RIGID_MASS,
         rigidBodyId: this.id,
       })
     ).mass;
+    this.cachedMass = mass;
+    return mass;
   }
   massSync(): number {
     throw new Error(
@@ -2502,6 +2716,20 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   }
 
   applyImpulse(impulse: PhysVector, wakeUp: boolean): void {
+    // Reflected locally as the velocity change it causes (Rapier applies an impulse straight to
+    // the velocity too), using the last known mass — refreshed here for the next impulse.
+    if (this.cachedMass) {
+      const v = this.lvel;
+      this.pendingLvel = {
+        value: {
+          x: v.x + impulse.x / this.cachedMass,
+          y: v.y + impulse.y / this.cachedMass,
+          z: v.z + impulse.z / this.cachedMass,
+        },
+        visibleAt: getWriteVisibleCount(),
+      };
+    }
+    void this.mass().catch(() => {});
     messageWorker({
       type: PhysicsProtocolType.RIGID_APPLY_IMPULSE,
       rigidBodyId: this.id,
@@ -2685,13 +2913,17 @@ class ColliderProxyAPI implements ColliderAPI {
     });
   }
   setRotation(rot: PhysRotation): void {
-    messageWorker({ type: PhysicsProtocolType.COLL_SET_ROTATION, colliderId: this.id, rot });
+    messageWorker({
+      type: PhysicsProtocolType.COLL_SET_ROTATION,
+      colliderId: this.id,
+      rot: toPlainRot(rot),
+    });
   }
   setRotationWrtParent(rot: PhysRotation): void {
     messageWorker({
       type: PhysicsProtocolType.COLL_SET_ROTATION_WRT_PARENT,
       colliderId: this.id,
-      rot,
+      rot: toPlainRot(rot),
     });
   }
 

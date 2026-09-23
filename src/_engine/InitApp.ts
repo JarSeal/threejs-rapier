@@ -7,8 +7,8 @@ import {
   PROJECT_METADATA,
 } from './core/Config';
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
+import { registerDefaultDebugKeyBindings } from './core/Input/DefaultDebugKeyBindings';
 import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
-import { InitRapierPhysics } from './core/PhysicsRapier';
 import {
   createPhysicsAPIDebugGUI,
   createPhysicsWorld,
@@ -79,8 +79,6 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Initializes the debug camera (if in debug mode)
     await initDebugCamera(ecsWorld);
 
-    await InitRapierPhysics();
-
     registerPhysicsManager(ecsWorld);
     await initNewPhysics(true); // doNotCreateWorld — createPhysicsWorld() below owns that + physicsWorldEnabled
     if (getConfig().physics?.enabled) {
@@ -92,6 +90,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerSkyBoxDebugGUI();
       await registerRaycastDebugGUI();
       await registerDebuggerGUI();
+      registerDefaultDebugKeyBindings();
       await registerCharacterTools();
       await registerECSModule();
       await registerSpatialIndexDebugGUI();

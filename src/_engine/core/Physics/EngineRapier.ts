@@ -24,6 +24,8 @@ import {
   RigidBodyAPI,
   RigidBodyParams,
   RigidBodyTypeAPI,
+  ShapeCastHitAPI,
+  ShapeParams,
   ShapeType,
   TempContactForceEvent,
   WorldAPI,
@@ -91,10 +93,10 @@ type ContactForceEventFn = (event: TempContactForceEvent) => void;
 // main thread in PhysicsAPI.ts and only reads plain records back from this module.
 const collisionEventFns = new Map<number, CollisionEventFn[]>();
 const contactForceEventFns = new Map<number, ContactForceEventFn[]>();
-// WORKER_THREAD only: plain-data records accumulated across every step() call between two
-// drainPendingEventRecords() calls (the worker drains once per STEP message, which may run
-// multiple sub-steps), pushed to the main thread via EVENTS_PUSH. Never populated in
-// MAIN_THREAD mode (dispatch there happens directly through the callback registries above).
+// Plain-data records accumulated by every step() call. WORKER_THREAD: taken by
+// drainPendingEventRecords() once per STEP message (which may run multiple sub-steps) and pushed
+// to the main thread via EVENTS_PUSH. MAIN_THREAD: delivered by dispatchPendingEventRecords() at
+// the start of the next sub-step (see PhysicsAPI.ts's flushPhysicsEvents for why not right away).
 let pendingCollisionRecords: CollisionEventRecord[] = [];
 let pendingContactForceRecords: ContactForceEventRecord[] = [];
 // Tracks which collider ids counted towards collisionEventFnCount/contactForceEventFnCount,
@@ -246,6 +248,7 @@ export const createRigidBody = (params: RigidBodyParams) => {
 
   const wakeUp = params.wakeUp !== false ? true : false;
 
+  if (params.enabled !== undefined) rigidBody.setEnabled(params.enabled);
   if (params.translation) rigidBody.setTranslation(params.translation, wakeUp);
   if (params.rotation) rigidBody.setRotation(params.rotation, wakeUp);
   if (params.linvel) rigidBody.setLinvel(params.linvel, wakeUp);
@@ -300,11 +303,12 @@ export const createRigidBody = (params: RigidBodyParams) => {
   return rigidBodyAPI;
 };
 
-export const createCollider = (params: ColliderParams, parentId?: number) => {
+/** Builds a bare `Rapier.Shape` from an engine-agnostic {@link ShapeParams} descriptor —
+ * shared by `createCollider` (which wraps the shape in a `ColliderDesc`) and `castShape`/
+ * `castShapeSync` (which cast the bare shape directly, with no collider of its own). */
+const paramsToShape = (params: ShapeParams): Rapier.Shape => {
   let shape: Rapier.Shape | null = null;
   let size: { [key: string]: number };
-
-  if (parentId !== undefined) params.parentId = parentId;
 
   switch (params.type) {
     case 'CUBOID':
@@ -407,7 +411,13 @@ export const createCollider = (params: ColliderParams, parentId?: number) => {
       break;
   }
 
-  existsOrThrow(shape, 'Could not create collider in createCollider, shape is undefined.');
+  return existsOrThrow(shape, 'Could not create shape in paramsToShape, shape is undefined.');
+};
+
+export const createCollider = (params: ColliderParams, parentId?: number) => {
+  if (parentId !== undefined) params.parentId = parentId;
+
+  const shape = paramsToShape(params);
 
   const colliderDesc = new RAPIER.ColliderDesc(shape);
 
@@ -434,6 +444,9 @@ export const createCollider = (params: ColliderParams, parentId?: number) => {
   if (params.restitutionCombineRule)
     colliderDesc.setRestitutionCombineRule(getCombineRule(params.restitutionCombineRule));
   if (params.isSensor !== undefined) colliderDesc.setSensor(params.isSensor);
+  // A collider created disabled must never have been enabled at all: an enabled one would
+  // collide and, more subtly, count towards its rigid body's mass until switched off.
+  if (params.enabled !== undefined) colliderDesc.setEnabled(params.enabled);
 
   // In MAIN_THREAD mode the real callback is available directly on params (no serialization
   // boundary); in WORKER_THREAD mode PhysicsAPI.ts strips it and sends hasCollisionEventFn/
@@ -464,7 +477,7 @@ export const createCollider = (params: ColliderParams, parentId?: number) => {
   nextColliderId += 1;
   colliders.set(id, collider.handle);
   handleToColliderId.set(collider.handle, id);
-  const colliderAPI = new EngineColliderProxyAPI(id, parentId, params.userData);
+  const colliderAPI = new EngineColliderProxyAPI(id, params.parentId, params.userData);
 
   if (hasCollisionFn) {
     collisionActiveColliderIds.add(id);
@@ -724,6 +737,8 @@ export const deleteWorld = () => {
   contactForceEventFnCount = 0;
   pendingCollisionRecords = [];
   pendingContactForceRecords = [];
+  pendingCollisionRecords = [];
+  pendingContactForceRecords = [];
 
   // Free the world
   physicsWorld.free();
@@ -747,36 +762,25 @@ export const debugRender = () => {
   return { vertices: buffers.vertices, colors: buffers.colors };
 };
 
-/** Drains the module's own eventQueue (populated by physicsWorld.step()) and dispatches
- * to the MAIN_THREAD callback registries, gated by the counters so a scene with no
- * collision/contact-force callbacks pays zero per-step cost. Mirrors PhysicsRapier.ts's
- * legacy drain pattern. In WORKER_THREAD mode the callback registries are always empty
- * (the real callbacks can't cross the postMessage boundary — see PhysicsAPI.ts), so this
- * instead accumulates plain-data records into pendingCollisionRecords/
- * pendingContactForceRecords for drainPendingEventRecords() to hand to the worker's STEP
- * handler afterwards.
+/** Drains the module's own eventQueue (populated by physicsWorld.step()) into plain-data
+ * records (pendingCollisionRecords/pendingContactForceRecords), gated by the counters so a scene
+ * with no collision/contact-force callbacks pays zero per-step cost. Nothing is dispatched here:
+ * WORKER_THREAD hands the records to the main thread (drainPendingEventRecords), MAIN_THREAD
+ * delivers them with dispatchPendingEventRecords().
  */
 const drainAndDispatchEvents = () => {
   if (!eventQueue) return;
-  const isWorker = physicsState.workerTarget === 'WORKER_THREAD';
 
   if (collisionEventFnCount) {
     eventQueue.drainCollisionEvents((handle1, handle2, started) => {
       const collider1 = getColliderAPI(handle1);
       const collider2 = getColliderAPI(handle2);
       if (!collider1 || !collider2) return;
-      if (isWorker) {
-        pendingCollisionRecords.push({
-          collider1Id: collider1.id,
-          collider2Id: collider2.id,
-          started,
-        });
-        return;
-      }
-      const fns1 = collisionEventFns.get(collider1.id);
-      if (fns1) for (let i = 0; i < fns1.length; i++) fns1[i](collider1, collider2, started);
-      const fns2 = collisionEventFns.get(collider2.id);
-      if (fns2) for (let i = 0; i < fns2.length; i++) fns2[i](collider2, collider1, started);
+      pendingCollisionRecords.push({
+        collider1Id: collider1.id,
+        collider2Id: collider2.id,
+        started,
+      });
     });
   }
 
@@ -785,28 +789,48 @@ const drainAndDispatchEvents = () => {
       const collider1 = getColliderAPI(event.collider1());
       const collider2 = getColliderAPI(event.collider2());
       if (!collider1 || !collider2) return;
-      const record: ContactForceEventRecord = {
+      pendingContactForceRecords.push({
         collider1Id: collider1.id,
         collider2Id: collider2.id,
         totalForce: event.totalForce(),
         totalForceMagnitude: event.totalForceMagnitude(),
         maxForceDirection: event.maxForceDirection(),
         maxForceMagnitude: event.maxForceMagnitude(),
-      };
-      if (isWorker) {
-        pendingContactForceRecords.push(record);
-        return;
-      }
-      const snapshot = new ContactForceEventSnapshot(record);
-      const fns1 = contactForceEventFns.get(collider1.id);
-      if (fns1) for (let i = 0; i < fns1.length; i++) fns1[i](snapshot);
-      const fns2 = contactForceEventFns.get(collider2.id);
-      if (fns2) for (let i = 0; i < fns2.length; i++) fns2[i](snapshot);
+      });
     });
   }
 };
 
-/** WORKER_THREAD only: returns everything accumulated by drainAndDispatchEvents() since
+/** MAIN_THREAD only: invokes the registered callbacks for every event record accumulated since
+ * the last call (each side's callbacks get the *other* collider as the second argument), then
+ * clears them. Silently skips records naming a collider that no longer exists. */
+export const dispatchPendingEventRecords = () => {
+  if (!pendingCollisionRecords.length && !pendingContactForceRecords.length) return;
+  const { collisions, contactForces } = drainPendingEventRecords();
+
+  for (let i = 0; i < collisions.length; i++) {
+    const rec = collisions[i];
+    const collider1 = colliderAPIs.get(rec.collider1Id);
+    const collider2 = colliderAPIs.get(rec.collider2Id);
+    if (!collider1 || !collider2) continue;
+    const fns1 = collisionEventFns.get(collider1.id);
+    if (fns1) for (let j = 0; j < fns1.length; j++) fns1[j](collider1, collider2, rec.started);
+    const fns2 = collisionEventFns.get(collider2.id);
+    if (fns2) for (let j = 0; j < fns2.length; j++) fns2[j](collider2, collider1, rec.started);
+  }
+
+  for (let i = 0; i < contactForces.length; i++) {
+    const rec = contactForces[i];
+    if (!colliderAPIs.has(rec.collider1Id) || !colliderAPIs.has(rec.collider2Id)) continue;
+    const snapshot = new ContactForceEventSnapshot(rec);
+    const fns1 = contactForceEventFns.get(rec.collider1Id);
+    if (fns1) for (let j = 0; j < fns1.length; j++) fns1[j](snapshot);
+    const fns2 = contactForceEventFns.get(rec.collider2Id);
+    if (fns2) for (let j = 0; j < fns2.length; j++) fns2[j](snapshot);
+  }
+};
+
+/** WORKER_THREAD: returns everything accumulated by drainAndDispatchEvents() since
  * the last call, and clears the accumulators. Called once per STEP message (which may run
  * multiple sub-steps) from physicsWorker.ts's STEP handler.
  */
@@ -1041,6 +1065,75 @@ class EngineWorldProxyAPI implements WorldAPI {
       ray,
       maxToi,
       solid,
+      filterFlags,
+      filterGroups,
+      filterExcludeCollider,
+      filterExcludeRigidBody
+    );
+  }
+
+  castShapeSync(
+    shapePos: PhysVector,
+    shapeRot: PhysRotation,
+    shapeVel: PhysVector,
+    shape: ShapeParams,
+    targetDistance: number,
+    maxToi: number,
+    stopAtPenetration: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+  ): ShapeCastHitAPI | null {
+    const rapierShape = paramsToShape(shape);
+    const hit = physicsWorld.castShape(
+      shapePos,
+      shapeRot,
+      shapeVel,
+      rapierShape,
+      targetDistance,
+      maxToi,
+      stopAtPenetration,
+      filterFlags,
+      filterGroups,
+      getCollider(filterExcludeCollider),
+      getRigidBody(filterExcludeRigidBody)
+    );
+
+    if (!hit) return null;
+    const colliderAPI = getColliderAPI(hit.collider.handle);
+    return colliderAPI
+      ? {
+          collider: colliderAPI,
+          timeOfImpact: hit.time_of_impact,
+          witness1: hit.witness1,
+          witness2: hit.witness2,
+          normal1: hit.normal1,
+          normal2: hit.normal2,
+        }
+      : null;
+  }
+  async castShape(
+    shapePos: PhysVector,
+    shapeRot: PhysRotation,
+    shapeVel: PhysVector,
+    shape: ShapeParams,
+    targetDistance: number,
+    maxToi: number,
+    stopAtPenetration: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+  ): Promise<ShapeCastHitAPI | null> {
+    return this.castShapeSync(
+      shapePos,
+      shapeRot,
+      shapeVel,
+      shape,
+      targetDistance,
+      maxToi,
+      stopAtPenetration,
       filterFlags,
       filterGroups,
       filterExcludeCollider,
@@ -1377,6 +1470,9 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   }
 
   massSync() {
+    // Rapier only refreshes mass properties on the next step, so without this a body queried
+    // right after its colliders were added/enabled/disabled reports its pre-change mass.
+    this.rb.recomputeMassPropertiesFromColliders();
     return this.rb.mass();
   }
   async mass() {
@@ -1826,6 +1922,12 @@ class EngineColliderProxyAPI implements ColliderAPI {
   // neuter the live shape's buffers.
 
   verticesSync(): Float32Array | null {
+    // The collider's own accessor first: for a ConvexPolyhedron built as a hull of loose points,
+    // shape.vertices is the raw input point cloud, while this is the computed hull that
+    // indicesSync()'s index buffer actually refers to.
+    const colliderVertices = this.coll.vertices();
+    if (colliderVertices instanceof Float32Array && colliderVertices.length)
+      return colliderVertices;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const shape = this.coll.shape as any;
     if (shape?.vertices instanceof Float32Array) return shape.vertices;
@@ -1848,6 +1950,10 @@ class EngineColliderProxyAPI implements ColliderAPI {
   }
 
   indicesSync(): Uint32Array | null {
+    // The collider's own accessor first: shape.indices is null for a ConvexPolyhedron built as a
+    // hull of loose points (Rapier only computes that index buffer on the collider side).
+    const colliderIndices = this.coll.indices();
+    if (colliderIndices instanceof Uint32Array) return colliderIndices;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const i = (this.coll.shape as any).indices;
     return i instanceof Uint32Array ? i : null;
