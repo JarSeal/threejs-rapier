@@ -1,15 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { createPhysicsObjectWithMesh, deletePhysicsObject, PhysicsParams } from './PhysicsRapier';
 import {
-  createKeyInputControl,
   createMouseInputControl,
-  deleteKeyInputControl,
   deleteMouseInputControl,
-  KeyInputControlType,
-  KeyInputParams,
   MouseInputControlType,
   MouseInputParams,
 } from './InputControls';
+import { createKeyBinding, deleteKeyBinding, type KeyBinding } from './Input/KeyboardInput';
 import { getMeshByAppId } from './MeshManager';
 import { getECSWorld, getEntityIdByAppId } from './ECS';
 import { existsOrThrow } from '../utils/assert';
@@ -52,10 +49,7 @@ export const createCharacter = ({
   name?: string;
   physicsParams: PhysicsParams | PhysicsParams[];
   meshOrMeshId: (THREE.Mesh | string) | (THREE.Mesh | string)[];
-  controls?: (
-    | (KeyInputParams & { id: string; type: KeyInputControlType })
-    | (MouseInputParams & { id: string; type: MouseInputControlType })
-  )[];
+  controls?: (KeyBinding | (MouseInputParams & { id: string; type: MouseInputControlType }))[];
   sceneId?: string;
   noWarnForUnitializedScene?: boolean;
   data?: { [key: string]: unknown };
@@ -133,10 +127,7 @@ export const createCharacter = ({
       }
       if (ctrl.type?.startsWith('KEY')) {
         // Key control
-        createKeyInputControl({
-          ...(ctrl as KeyInputParams),
-          data: { physObj, mesh, charObject: char },
-        });
+        createKeyBinding(ctrl as KeyBinding);
         keyControlIds.push(ctrlId);
         continue;
       }
@@ -161,7 +152,7 @@ export const deleteCharacter = (id: string) => {
 
   // Delete controls
   for (let i = 0; i < charObj.keyControlIds.length; i++) {
-    deleteKeyInputControl({ id: charObj.keyControlIds[i] });
+    deleteKeyBinding(charObj.keyControlIds[i]);
   }
   for (let i = 0; i < charObj.mouseControlIds.length; i++) {
     deleteMouseInputControl({ id: charObj.mouseControlIds[i] });

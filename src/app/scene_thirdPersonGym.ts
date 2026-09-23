@@ -19,10 +19,38 @@ import { getQuatFromAngle } from '../_engine/utils/helpers';
 import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
+import { getECSWorld } from '../_engine/core/ECS';
 
 export const SCENE_THIRD_PERSON_GYM_META = {
   id: 'thirdPersonGymScene',
   text: 'GYM (3rd person)',
+};
+
+/** ImportModel.ts's physics pipeline now returns a plain ECS entity id (meshId) instead of a
+ * legacy PhysicsObject, so this scene's many "snap the imported rigid body to its final
+ * position" calls (still on the legacy PhysicsRapier system everywhere else — this scene is
+ * fully ported in a later phase) go through the new Physics API via the entity's rigid body. */
+const setImportedRigidBodyTranslation = (
+  meshId: number | number[] | undefined,
+  pos: { x: number; y: number; z: number }
+) => {
+  if (typeof meshId !== 'number') return;
+  getECSWorld().getRigidBody(meshId)?.setTranslation(pos, true);
+};
+
+/** Same as setImportedRigidBodyTranslation, but for a partial {x?, y?, z?} update (matching the
+ * legacy PhysicsObject.setTranslation's partial-update signature) — reads the body's current
+ * position for any axis not provided. */
+const setImportedRigidBodyTranslationPartial = (
+  entityId: number,
+  pos: { x?: number; y?: number; z?: number }
+) => {
+  const body = getECSWorld().getRigidBody(entityId);
+  if (!body) return;
+  body.setTranslation(
+    { x: pos.x ?? body.pos.x, y: pos.y ?? body.pos.y, z: pos.z ?? body.pos.z },
+    true
+  );
 };
 
 export const sceneThirdPersonGym = async () =>
@@ -101,17 +129,20 @@ export const sceneThirdPersonGym = async () =>
     });
 
     // OBSTACLES
-    const { stairsMesh, stairsPhysicsObject, bigBoxWallMesh, bigBoxWallPhysicsObject } =
-      characterTestObstacles();
+    const { stairsMesh, stairsEntityId, bigBoxWallMesh, bigBoxWallEntityId } =
+      await characterTestObstacles();
     (stairsMesh.material as THREE.MeshPhongMaterial).map = uvTexture.clone();
-    stairsPhysicsObject?.setTranslation({ x: 5, y: -1.8 });
+    setImportedRigidBodyTranslationPartial(stairsEntityId, { x: 5, y: -1.8 });
 
     const bigBoxWallMat = bigBoxWallMesh.material as THREE.MeshPhongMaterial;
     bigBoxWallMat.map = uvTexture.clone();
     bigBoxWallMat.map.wrapS = THREE.RepeatWrapping;
     bigBoxWallMat.map.wrapT = THREE.RepeatWrapping;
     bigBoxWallMat.map.repeat.set(2.5, 2.5);
-    bigBoxWallPhysicsObject?.setTranslation({ x: -2, y: -5 + groundHeight / 2 });
+    setImportedRigidBodyTranslationPartial(bigBoxWallEntityId, {
+      x: -2,
+      y: -5 + groundHeight / 2,
+    });
 
     // BOX
     const geometry2 = createGeometry({
@@ -287,8 +318,7 @@ export const sceneThirdPersonGym = async () =>
     });
     if (result.mesh && !Array.isArray(result.mesh)) {
       result.mesh?.position.set(2, 2, 2);
-      if (!Array.isArray(result.physObj))
-        result.physObj?.rigidBody?.setTranslation(new THREE.Vector3(2, 2, 2), true);
+      setImportedRigidBodyTranslation(result.meshId, new THREE.Vector3(2, 2, 2));
       addCheckerboardMaterialToMesh('checkerMaterial', result.mesh);
       result.mesh.castShadow = true;
       result.mesh.receiveShadow = true;
@@ -308,8 +338,7 @@ export const sceneThirdPersonGym = async () =>
     });
     if (result2.mesh && !Array.isArray(result2.mesh)) {
       result2.mesh?.position.set(4, 2, 3);
-      if (!Array.isArray(result2.physObj))
-        result2.physObj?.rigidBody?.setTranslation(new THREE.Vector3(4, 2, 3), true);
+      setImportedRigidBodyTranslation(result2.meshId, new THREE.Vector3(4, 2, 3));
       addCheckerboardMaterialToMesh('checkerMaterial', result2.mesh);
       result2.mesh.castShadow = true;
       result2.mesh.receiveShadow = true;
@@ -329,13 +358,11 @@ export const sceneThirdPersonGym = async () =>
     });
     if (result2convex.mesh && !Array.isArray(result2convex.mesh)) {
       const result2convexPos = [4, 6, 3];
-      if (!Array.isArray(result2convex.physObj) && result2convex.physObj) {
-        result2convex.physObj.setTranslation({
-          x: result2convexPos[0],
-          y: result2convexPos[1],
-          z: result2convexPos[2],
-        });
-      }
+      setImportedRigidBodyTranslation(result2convex.meshId, {
+        x: result2convexPos[0],
+        y: result2convexPos[1],
+        z: result2convexPos[2],
+      });
       addCheckerboardMaterialToMesh('checkerMaterial', result2convex.mesh);
       result2convex.mesh.castShadow = true;
       result2convex.mesh.receiveShadow = true;
@@ -344,16 +371,11 @@ export const sceneThirdPersonGym = async () =>
     const slides = await getTestObstacle('slideAngles', {
       collider: { type: 'TRIMESH', friction: 1 },
     });
-    if (
-      slides?.mesh &&
-      !Array.isArray(slides.mesh) &&
-      slides.physObj &&
-      !Array.isArray(slides.physObj)
-    ) {
+    if (slides?.mesh && !Array.isArray(slides.mesh)) {
       slides.mesh.castShadow = true;
       slides.mesh.receiveShadow = true;
       slides.mesh.position.set(30, -1.9, -30);
-      slides.physObj.rigidBody?.setTranslation(slides.mesh.position, true);
+      setImportedRigidBodyTranslation(slides.meshId, slides.mesh.position);
 
       const slideMat = (
         Array.isArray(bigBoxWallMesh.material)
@@ -602,8 +624,7 @@ export const sceneThirdPersonGym = async () =>
     });
     if (result3.mesh && !Array.isArray(result3.mesh)) {
       result3.mesh?.position.set(2, 2, 2);
-      if (!Array.isArray(result3.physObj))
-        result3.physObj?.rigidBody?.setTranslation(new THREE.Vector3(2, 2, 2), true);
+      setImportedRigidBodyTranslation(result3.meshId, new THREE.Vector3(2, 2, 2));
       addCheckerboardMaterialToMesh('checkerMaterial', result3.mesh, {
         useConstantCheckerSize: true,
       });
@@ -620,11 +641,10 @@ export const sceneThirdPersonGym = async () =>
     if (result4.mesh && !Array.isArray(result4.mesh)) {
       const result4Position = [37, -0.4, 5];
       result4.mesh?.position.set(result4Position[0], result4Position[1], result4Position[2]);
-      if (!Array.isArray(result4.physObj))
-        result4.physObj?.rigidBody?.setTranslation(
-          new THREE.Vector3(result4Position[0], result4Position[1], result4Position[2]),
-          true
-        );
+      setImportedRigidBodyTranslation(
+        result4.meshId,
+        new THREE.Vector3(result4Position[0], result4Position[1], result4Position[2])
+      );
       result4.mesh.castShadow = true;
       result4.mesh.receiveShadow = true;
       result4.mesh.material = createMaterial({
@@ -643,11 +663,10 @@ export const sceneThirdPersonGym = async () =>
     if (result5.mesh && !Array.isArray(result5.mesh)) {
       const result5Position = [45, -0.4, 5];
       result5.mesh.position.set(result5Position[0], result5Position[1], result5Position[2]);
-      if (!Array.isArray(result5.physObj))
-        result5.physObj?.rigidBody?.setTranslation(
-          new THREE.Vector3(result5Position[0], result5Position[1], result5Position[2]),
-          true
-        );
+      setImportedRigidBodyTranslation(
+        result5.meshId,
+        new THREE.Vector3(result5Position[0], result5Position[1], result5Position[2])
+      );
       result5.mesh.castShadow = true;
       result5.mesh.receiveShadow = true;
       result5.mesh.material = createMaterial({
@@ -666,11 +685,10 @@ export const sceneThirdPersonGym = async () =>
     if (result6.mesh && !Array.isArray(result6.mesh)) {
       const result6Position = [53, -0.4, 5];
       result6.mesh?.position.set(result6Position[0], result6Position[1], result6Position[2]);
-      if (!Array.isArray(result6.physObj))
-        result6.physObj?.rigidBody?.setTranslation(
-          new THREE.Vector3(result6Position[0], result6Position[1], result6Position[2]),
-          true
-        );
+      setImportedRigidBodyTranslation(
+        result6.meshId,
+        new THREE.Vector3(result6Position[0], result6Position[1], result6Position[2])
+      );
       result6.mesh.castShadow = true;
       result6.mesh.receiveShadow = true;
       result6.mesh.material = createMaterial({
@@ -689,11 +707,10 @@ export const sceneThirdPersonGym = async () =>
     if (result7.mesh && !Array.isArray(result7.mesh)) {
       const result7Position = [61, -0.4, 5];
       result7.mesh.position.set(result7Position[0], result7Position[1], result7Position[2]);
-      if (!Array.isArray(result7.physObj))
-        result7.physObj?.rigidBody?.setTranslation(
-          new THREE.Vector3(result7Position[0], result7Position[1], result7Position[2]),
-          true
-        );
+      setImportedRigidBodyTranslation(
+        result7.meshId,
+        new THREE.Vector3(result7Position[0], result7Position[1], result7Position[2])
+      );
       result7.mesh.castShadow = true;
       result7.mesh.receiveShadow = true;
       result7.mesh.material = createMaterial({
@@ -712,11 +729,10 @@ export const sceneThirdPersonGym = async () =>
     if (result8.mesh && !Array.isArray(result8.mesh)) {
       const result8Position = [69, -0.4, 5];
       result8.mesh?.position.set(result8Position[0], result8Position[1], result8Position[2]);
-      if (!Array.isArray(result8.physObj))
-        result8.physObj?.rigidBody?.setTranslation(
-          new THREE.Vector3(result8Position[0], result8Position[1], result8Position[2]),
-          true
-        );
+      setImportedRigidBodyTranslation(
+        result8.meshId,
+        new THREE.Vector3(result8Position[0], result8Position[1], result8Position[2])
+      );
       result8.mesh.castShadow = true;
       result8.mesh.receiveShadow = true;
       result8.mesh.material = createMaterial({
@@ -735,11 +751,10 @@ export const sceneThirdPersonGym = async () =>
     if (result9.mesh && !Array.isArray(result9.mesh)) {
       const result9Position = [77, -0.4, 5];
       result9.mesh.position.set(result9Position[0], result9Position[1], result9Position[2]);
-      if (!Array.isArray(result9.physObj))
-        result9.physObj?.rigidBody?.setTranslation(
-          new THREE.Vector3(result9Position[0], result9Position[1], result9Position[2]),
-          true
-        );
+      setImportedRigidBodyTranslation(
+        result9.meshId,
+        new THREE.Vector3(result9Position[0], result9Position[1], result9Position[2])
+      );
       result9.mesh.castShadow = true;
       result9.mesh.receiveShadow = true;
       result9.mesh.material = createMaterial({
@@ -757,13 +772,11 @@ export const sceneThirdPersonGym = async () =>
     });
     if (result10.mesh && !Array.isArray(result10.mesh)) {
       const result10Position = [45, -0.4, 35];
-      if (!Array.isArray(result10.physObj)) {
-        result10.physObj?.setTranslation({
-          x: result10Position[0],
-          y: result10Position[1],
-          z: result10Position[2],
-        });
-      }
+      setImportedRigidBodyTranslation(result10.meshId, {
+        x: result10Position[0],
+        y: result10Position[1],
+        z: result10Position[2],
+      });
       result10.mesh.castShadow = true;
       result10.mesh.receiveShadow = true;
       result10.mesh.material = createMaterial({
@@ -781,13 +794,11 @@ export const sceneThirdPersonGym = async () =>
     });
     if (result11.mesh && !Array.isArray(result11.mesh)) {
       const result11Position = [60, -0.4, 35];
-      if (!Array.isArray(result11.physObj)) {
-        result11.physObj?.setTranslation({
-          x: result11Position[0],
-          y: result11Position[1],
-          z: result11Position[2],
-        });
-      }
+      setImportedRigidBodyTranslation(result11.meshId, {
+        x: result11Position[0],
+        y: result11Position[1],
+        z: result11Position[2],
+      });
       result11.mesh.castShadow = true;
       result11.mesh.receiveShadow = true;
       result11.mesh.material = createMaterial({
@@ -805,13 +816,11 @@ export const sceneThirdPersonGym = async () =>
     });
     if (result12.mesh && !Array.isArray(result12.mesh)) {
       const result12Position = [20, 1.8, 33];
-      if (!Array.isArray(result12.physObj)) {
-        result12.physObj?.setTranslation({
-          x: result12Position[0],
-          y: result12Position[1],
-          z: result12Position[2],
-        });
-      }
+      setImportedRigidBodyTranslation(result12.meshId, {
+        x: result12Position[0],
+        y: result12Position[1],
+        z: result12Position[2],
+      });
       result12.mesh.castShadow = true;
       result12.mesh.receiveShadow = true;
       result12.mesh.material = createMaterial({
@@ -840,16 +849,11 @@ export const sceneThirdPersonGym = async () =>
           params: { color: '#999' },
         });
       }
-      if (!Array.isArray(result13.physObj)) {
-        result13.physObj?.setTranslation(
-          {
-            x: result13Position[0],
-            y: result13Position[1],
-            z: result13Position[2],
-          },
-          result13.group
-        );
-      }
+      setImportedRigidBodyTranslation(result13.meshId, {
+        x: result13Position[0],
+        y: result13Position[1],
+        z: result13Position[2],
+      });
     }
 
     // Smooth terrain
@@ -871,16 +875,11 @@ export const sceneThirdPersonGym = async () =>
           params: { color: '#999' },
         });
       }
-      if (!Array.isArray(result14.physObj)) {
-        result14.physObj?.setTranslation(
-          {
-            x: result14Position[0],
-            y: result14Position[1],
-            z: result14Position[2],
-          },
-          result14.group
-        );
-      }
+      setImportedRigidBodyTranslation(result14.meshId, {
+        x: result14Position[0],
+        y: result14Position[1],
+        z: result14Position[2],
+      });
     }
 
     // Obstacles
@@ -902,16 +901,11 @@ export const sceneThirdPersonGym = async () =>
           params: { color: '#999' },
         });
       }
-      if (!Array.isArray(result15.physObj)) {
-        result15.physObj?.setTranslation(
-          {
-            x: result15Position[0],
-            y: result15Position[1],
-            z: result15Position[2],
-          },
-          result15.group
-        );
-      }
+      setImportedRigidBodyTranslation(result15.meshId, {
+        x: result15Position[0],
+        y: result15Position[1],
+        z: result15Position[2],
+      });
     }
 
     initPhysicsStressTest();

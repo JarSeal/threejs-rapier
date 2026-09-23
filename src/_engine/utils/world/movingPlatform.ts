@@ -2,19 +2,41 @@ import * as THREE from 'three/webgpu';
 import { createGeometry, GeoProps, GeoTypes } from '../../core/Geometry';
 import { createMaterial, Materials, MatProps } from '../../core/Material';
 import { createMeshEntity, getMeshByAppId, MeshProps } from '../../core/MeshManager';
-import { getECSWorld, getEntityIdByAppId } from '../../core/ECS';
-import {
-  addScenePhysicsLooper,
-  createPhysicsObjectWithMesh,
-  createPhysicsObjectWithoutMesh,
-  deletePhysicsObject,
-  deleteScenePhysicsLooper,
-  PhysicsObject,
-  PhysicsParams,
-} from '../../core/PhysicsRapier';
+import { getECSWorld, type ECSWorld } from '../../core/ECS';
+import { createPhysicsEntity } from '../../core/PhysicsManager';
+import type { ColliderParams, RigidBodyParams } from '../../core/Physics/PhysicsAPITypes';
+import { ECSSystemStage } from '../../../AppECSRegistry';
 import { existsOrThrow } from '../assert';
 import { getLogger } from '../Logger';
-import { RigidBody } from '@dimforge/rapier3d-compat';
+
+/** This file's own internal grouping of one collider (+ optionally the shared rigid body),
+ * mirroring ImportModel.ts's identically-named local type — the engine-agnostic Physics API has
+ * no single equivalent combined type since createPhysicsEntity takes collider(s) and the rigid
+ * body as separate params. Kept as the public physicsParams shape below so callers (still on
+ * the legacy shape until they're ported in a later phase) don't need to change at all. */
+export type PhysicsParams = {
+  collider: ColliderParams;
+  rigidBody?: RigidBodyParams;
+};
+
+// --- Shared ECS system (design decision: keyframe-path movement is one system, registered
+// once, not one addScenePhysicsLooper registration per platform instance) ---------------------
+const activePlatformTicks = new Map<string, (dt: number) => void>();
+
+const movingPlatformSystemFn = (_world: ECSWorld, dt: number) => {
+  for (const tick of activePlatformTicks.values()) tick(dt);
+};
+
+/** Registers the single shared moving-platform system on `world`, driving every active
+ * createMovingPlatform() instance's keyframe-path movement at APP_PRE_PHYSICS (writing the
+ * kinematic target pose before the physics step, per docs/plans/p028's design decision 3). Call
+ * this once per world before creating any moving platforms on it — mirrors
+ * toolkit/ecs/effects/HoverEffect.ts's registerHoverToolEffect(world) convention: the caller
+ * registers the system once, individual instances just add themselves to it. */
+export const registerMovingPlatformSystem = (world: ECSWorld) => {
+  world.addSystem(ECSSystemStage.APP_PRE_PHYSICS, 'movingPlatformSystem', movingPlatformSystemFn);
+  return world;
+};
 
 export type DeleteMeshOptions = {
   deleteGeometries?: boolean;
@@ -47,13 +69,13 @@ export type MovingPlatformControls = {
 };
 
 export type MovingPlatformReturn = {
-  physicsObject: PhysicsObject;
+  entityId: number;
   mesh?: THREE.Mesh;
   controls: MovingPlatformControls;
 };
 
 const DEFAULT_SEGMENT_DURATION = 3000;
-export const createMovingPlatform = (props: {
+export const createMovingPlatform = async (props: {
   id: string;
   name?: string;
   scene: THREE.Scene | THREE.Group;
@@ -77,7 +99,7 @@ export const createMovingPlatform = (props: {
     direction?: 'FORWARD' | 'BACKWARD';
     speedMultiplier?: number;
   };
-}): MovingPlatformReturn => {
+}): Promise<MovingPlatformReturn> => {
   const { id, name, scene, shape, physicsParams, points, opts } = props;
 
   if (shape && shape.geo && !shape.mesh) {
@@ -164,56 +186,45 @@ export const createMovingPlatform = (props: {
     hasRotation = false;
   }
 
-  const movingPlatformUserData = {
+  const movingPlatformUserData: { [key: string]: unknown } = {
     isMovingPlatform: true,
-    velo: new THREE.Vector3(0, 0, 0),
-    angVelo: new THREE.Vector3(0, 0, 0),
+    velo: { x: 0, y: 0, z: 0 },
+    angVelo: { x: 0, y: 0, z: 0 },
     // This is whether the character fully sticks on the platform or slides a bit
     friction: hasMovementAndRotation ? 0 : 0.8,
   };
-  if (Array.isArray(physicsParams)) {
-    (physicsParams[0].rigidBody as unknown as RigidBody).userData = {
-      ...(((physicsParams[0].rigidBody as unknown as RigidBody).userData as {
-        [key: string]: unknown;
-      }) || {}),
-      ...movingPlatformUserData,
-    };
-  } else {
-    (physicsParams.rigidBody as unknown as RigidBody).userData = {
-      ...(((physicsParams.rigidBody as unknown as RigidBody).userData as {
-        [key: string]: unknown;
-      }) || {}),
-      ...movingPlatformUserData,
-    };
-  }
+  const paramsArray = Array.isArray(physicsParams) ? physicsParams : [physicsParams];
+  const rigidBodyParams: RigidBodyParams = existsOrThrow(
+    paramsArray[0].rigidBody,
+    `Could not create moving platform, rigidBody is missing (id: ${id}).`
+  );
+  rigidBodyParams.userData = { ...rigidBodyParams.userData, ...movingPlatformUserData };
+  const colliderParamsArray = paramsArray.map((p) => p.collider);
 
-  let movingPlatformPhysicsObject: PhysicsObject | undefined;
+  if (movingPlatformMesh) movingPlatformMesh.userData.isMovingPlatform = true;
 
-  if (movingPlatformMesh) {
-    movingPlatformMesh.userData.isMovingPlatform = true;
-    movingPlatformPhysicsObject = createPhysicsObjectWithMesh({
-      id: `movingPlatform-${id}`,
-      name,
-      physicsParams: physicsParams,
-      meshOrMeshId: movingPlatformMesh,
-    });
-    existsOrThrow(
-      movingPlatformPhysicsObject,
-      `Could not create physics object with mesh for moving platform (id: ${id})`
-    );
-  } else {
-    movingPlatformPhysicsObject = createPhysicsObjectWithoutMesh({
-      id: `movingPlatform-${id}`,
-      name,
-      physicsParams: physicsParams,
-    });
-    existsOrThrow(
-      movingPlatformPhysicsObject,
-      `Could not create physics object with mesh for moving platform (id: ${id})`
-    );
-  }
-
-  const body = existsOrThrow(movingPlatformPhysicsObject?.rigidBody, 'No Body');
+  // Three ways movingPlatformMesh can arrive here:
+  // 1. Built from GeoProps/MeshProps above via createMeshEntity — already has its own entity;
+  //    attach physics to that existing entity by id (passing the raw mesh again as target would
+  //    create a second, duplicate entity for it).
+  // 2. A raw THREE.Mesh passed in directly (shape.mesh with 'isMesh') — has no entity yet, since
+  //    the new ECS-based Physics API (unlike the legacy mesh-coupled one) can only keep a mesh's
+  //    position in sync via an ECS entity's Transform/OBJECT3D component. Pass the mesh itself
+  //    as target so createPhysicsEntity creates that entity and attaches it as a side effect.
+  // 3. No mesh at all — a fully invisible physics-only platform.
+  const meshEntityId: number | undefined = movingPlatformMesh?.userData.entityId;
+  const target: THREE.Object3D | number | undefined =
+    meshEntityId !== undefined ? meshEntityId : movingPlatformMesh;
+  const entityId = await createPhysicsEntity(
+    colliderParamsArray,
+    rigidBodyParams,
+    target,
+    target === undefined ? { appId: `movingPlatform-${id}`, debugData: { name } } : undefined
+  );
+  const body = existsOrThrow(
+    getECSWorld().getRigidBody(entityId),
+    `Could not find rigid body for moving platform (id: ${id})`
+  );
 
   // --- STATE VARIABLES ---
   let isPlaying = opts?.isPlayingFromStart !== undefined ? opts.isPlayingFromStart : true;
@@ -278,10 +289,16 @@ export const createMovingPlatform = (props: {
   };
 
   // --- INTERNAL HELPER: CALCULATE VELOCITIES ---
+  // The new Physics API's rigid body userData (RigidBodyAPI.uData) is a plain snapshot pushed
+  // via setUserData(...) — in WORKER_THREAD mode it round-trips a message to the worker, unlike
+  // the legacy system's raw Rapier RigidBody.userData object, which callers (e.g. a future
+  // dynamicCharacter.ts port) could read AND mutate as one shared live reference. So velo/
+  // angVelo are computed into local scratch vectors, then explicitly pushed with setUserData
+  // instead of being mutated in place.
+  const veloScratch = new THREE.Vector3();
+  const angVeloScratch = new THREE.Vector3();
   const updateUserDataVelocities = () => {
-    const ud = body.userData as { velo: THREE.Vector3; angVelo: THREE.Vector3 };
-
-    ud.velo
+    veloScratch
       .copy(toPos)
       .sub(fromPos)
       .divideScalar(segmentDuration / speedMultiplier);
@@ -299,15 +316,26 @@ export const createMovingPlatform = (props: {
     const angle = 2 * Math.acos(Math.max(-1, Math.min(1, qDiff.w)));
 
     if (angle < 0.0001) {
-      ud.angVelo.set(0, 0, 0);
+      angVeloScratch.set(0, 0, 0);
     } else {
       const sinHalfAngle = Math.sqrt(1 - qDiff.w * qDiff.w);
       if (sinHalfAngle > 0.001) {
         const axis = new THREE.Vector3(qDiff.x, qDiff.y, qDiff.z).divideScalar(sinHalfAngle);
         const angularSpeed = angle / (segmentDuration / speedMultiplier);
-        ud.angVelo.copy(axis).multiplyScalar(angularSpeed);
-      } else ud.angVelo.set(0, 0, 0);
+        angVeloScratch.copy(axis).multiplyScalar(angularSpeed);
+      } else angVeloScratch.set(0, 0, 0);
     }
+
+    body.setUserData(
+      {
+        velo: { x: veloScratch.x, y: veloScratch.y, z: veloScratch.z },
+        angVelo: { x: angVeloScratch.x, y: angVeloScratch.y, z: angVeloScratch.z },
+      },
+      true
+    );
+  };
+  const zeroUserDataVelocities = () => {
+    body.setUserData({ velo: { x: 0, y: 0, z: 0 }, angVelo: { x: 0, y: 0, z: 0 } }, true);
   };
 
   // --- INITIAL SETUP ---
@@ -340,8 +368,7 @@ export const createMovingPlatform = (props: {
     },
     pause: () => {
       isPlaying = false;
-      (body.userData as { velo: THREE.Vector3 }).velo.set(0, 0, 0);
-      (body.userData as { angVelo: THREE.Vector3 }).angVelo.set(0, 0, 0);
+      zeroUserDataVelocities();
     },
     playSegment: (idx) => {
       if (!points[idx]) return;
@@ -363,22 +390,11 @@ export const createMovingPlatform = (props: {
       body.setRotation(fromRot, true);
     },
     delete: () => {
-      if (movingPlatformMesh) {
-        const ecsWorld = getECSWorld();
-        const mAppId = movingPlatformMesh.userData.id || movingPlatformMesh.userData.appId;
-        const entityId =
-          movingPlatformMesh.userData.entityId ??
-          (mAppId ? getEntityIdByAppId(mAppId, ecsWorld) : undefined);
-
-        if (entityId !== undefined) {
-          ecsWorld.deleteEntity(entityId);
-        } else {
-          movingPlatformMesh.removeFromParent();
-        }
-      }
-
-      deletePhysicsObject(`movingPlatform-${id}`);
-      deleteScenePhysicsLooper(`platformLoop-${id}`);
+      // entityId is shared by the mesh (when one exists) and its physics components — deleting
+      // it cleans up both (physics entity cleanup happens via the existing
+      // TAG_IS_PHYSICS_OBJECT.onDeleteEntity hook, same as everywhere else on the new API).
+      getECSWorld().deleteEntity(entityId);
+      activePlatformTicks.delete(`platformLoop-${id}`);
     },
     setOptions: (opts) => {
       if (opts.loopTimes !== undefined) loopTimes = opts.loopTimes;
@@ -400,8 +416,8 @@ export const createMovingPlatform = (props: {
     }),
   };
 
-  // --- PHYSICS LOOPER ---
-  addScenePhysicsLooper(`platformLoop-${id}`, (dt) => {
+  // --- TICK (driven by the shared movingPlatformSystemFn, not a per-instance registration) ---
+  activePlatformTicks.set(`platformLoop-${id}`, (dt) => {
     if (!isPlaying) return;
 
     t += dt / (segmentDuration / speedMultiplier);
@@ -418,8 +434,7 @@ export const createMovingPlatform = (props: {
       if (targetSegmentIndex !== null && curIndex === targetSegmentIndex) {
         isPlaying = false;
         targetSegmentIndex = null;
-        (body.userData as { velo: THREE.Vector3 }).velo.set(0, 0, 0);
-        (body.userData as { angVelo: THREE.Vector3 }).angVelo.set(0, 0, 0);
+        zeroUserDataVelocities();
         return;
       }
 
@@ -448,7 +463,7 @@ export const createMovingPlatform = (props: {
   if (movingPlatformMesh && !movingPlatformMesh.parent) scene.add(movingPlatformMesh);
 
   return {
-    physicsObject: movingPlatformPhysicsObject as PhysicsObject,
+    entityId,
     mesh: movingPlatformMesh,
     controls,
   };

@@ -190,6 +190,33 @@ export type RayColliderHitAPI = {
   timeOfImpact: number;
 };
 
+export type ShapeCastHitAPI = {
+  /**
+   * The handle of the collider hit by the cast shape.
+   */
+  collider: ColliderAPI;
+  /**
+   * The time-of-impact of the cast shape with the collider.
+   */
+  timeOfImpact: number;
+  /**
+   * The local-space contact point on the cast shape, at the time of impact.
+   */
+  witness1: PhysVector;
+  /**
+   * The local-space contact point on the hit collider's shape, at the time of impact.
+   */
+  witness2: PhysVector;
+  /**
+   * The local-space contact normal on the cast shape, at the time of impact.
+   */
+  normal1: PhysVector;
+  /**
+   * The local-space contact normal on the hit collider's shape, at the time of impact.
+   */
+  normal2: PhysVector;
+};
+
 /**
  * The simulation status of a rigid-body.
  */
@@ -983,7 +1010,10 @@ export type RigidBodyParams = {
   userData?: Record<string, unknown>;
 };
 
-export type ColliderParams = (
+/** The pure shape-geometry portion of {@link ColliderParams} (no placement/physics fields) —
+ * also used standalone by `castShape`/`castShapeSync` to describe the shape being cast, since
+ * a shape cast has no collider of its own to draw its geometry from. */
+export type ShapeParams =
   | {
       /** Means the same thing (alias) */
       type: 'CUBOID' | 'BOX';
@@ -1026,8 +1056,9 @@ export type ColliderParams = (
   | {
       type: 'CONVEXHULL';
       vertices?: Float32Array;
-    }
-) & {
+    };
+
+export type ColliderParams = ShapeParams & {
   /** Enabled (default true)  */
   enabled?: boolean;
 
@@ -1455,6 +1486,49 @@ export type WorldAPI = {
     filterExcludeRigidBody?: RigidBodyAPI | number,
     filterPredicate?: (collider: ColliderAPI) => boolean
   ): RayColliderHitAPI | null;
+  /**
+   * Casts a shape at a constant linear velocity and retrieve the first collider it hits, similar
+   * to `castRay` but casting a whole shape instead of a single point.
+   *
+   * @param shapePos - The initial position of the shape to cast.
+   * @param shapeRot - The initial rotation of the shape to cast.
+   * @param shapeVel - The constant velocity (direction and magnitude) of the shape to cast.
+   * @param shape - The geometry of the shape being cast.
+   * @param targetDistance - A hit is reported once the shape gets this close to a collider.
+   * @param maxToi - The maximum time-of-impact that can be reported. Effectively limits the cast
+   *   distance to `shapeVel.norm() * maxToi`.
+   * @param stopAtPenetration - If `false`, the linear shape-cast will not stop at the first
+   *   collider that is penetrating the shape at its starting point.
+   * @param groups - Used to filter the colliders that can or cannot be hit.
+   */
+  castShape(
+    shapePos: PhysVector,
+    shapeRot: PhysRotation,
+    shapeVel: PhysVector,
+    shape: ShapeParams,
+    targetDistance: number,
+    maxToi: number,
+    stopAtPenetration: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean
+  ): Promise<ShapeCastHitAPI | null>;
+  castShapeSync(
+    shapePos: PhysVector,
+    shapeRot: PhysRotation,
+    shapeVel: PhysVector,
+    shape: ShapeParams,
+    targetDistance: number,
+    maxToi: number,
+    stopAtPenetration: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean
+  ): ShapeCastHitAPI | null;
   /**
    * Find the closest intersection between a ray and the physics world.
    *
@@ -2037,6 +2111,20 @@ export type PhysicsUpProtocol =
         filterExcludeRigidBody?: number;
       }
     | {
+        type: PhysicsProtocolType.WORLD_CAST_SHAPE;
+        shapePos: PhysVector;
+        shapeRot: PhysRotation;
+        shapeVel: PhysVector;
+        shape: ShapeParams;
+        targetDistance: number;
+        maxToi: number;
+        stopAtPenetration: boolean;
+        filterFlags?: QueryFilterFlags;
+        filterGroups?: InteractionGroupsAPI;
+        filterExcludeCollider?: number;
+        filterExcludeRigidBody?: number;
+      }
+    | {
         type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL;
         ray: PhysRay;
         maxToi: number;
@@ -2429,6 +2517,10 @@ export type PhysicsDownProtocol =
         hit: (Omit<RayColliderHitAPI, 'collider'> & { collider: number }) | null;
       }
     | {
+        type: PhysicsProtocolType.WORLD_CAST_SHAPE;
+        hit: (Omit<ShapeCastHitAPI, 'collider'> & { collider: number }) | null;
+      }
+    | {
         type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL;
         intersection: (Omit<RayColliderIntersectionAPI, 'collider'> & { collider: number }) | null;
       }
@@ -2590,6 +2682,7 @@ export type WorldMaxCcdSubstepsResponse =
   PhysicsResponse<PhysicsProtocolType.WORLD_GET_CCD_SUBSTEPS>;
 // World query
 export type WorldCastRayResponse = PhysicsResponse<PhysicsProtocolType.WORLD_CAST_RAY>;
+export type WorldCastShapeResponse = PhysicsResponse<PhysicsProtocolType.WORLD_CAST_SHAPE>;
 export type WorldCastRayAndGetNormalResponse =
   PhysicsResponse<PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL>;
 export type WorldIntersectionsWithRayResponse =
@@ -2744,6 +2837,7 @@ export enum PhysicsProtocolType {
   WORLD_CONTACT_PAIRS_WITH = 303,
   WORLD_INTERSECTION_PAIRS_WITH = 304,
   WORLD_INTERSECTION_PAIR = 305,
+  WORLD_CAST_SHAPE = 306,
 
   // RIGID >= 400 && RIGID < 600
   CREATE_RIGID_BODY = 400,

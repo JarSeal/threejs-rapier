@@ -1,0 +1,9 @@
+{
+  "$schema": "../.schemas/scene.schema.json",
+  "id": "scene01",
+  "sceneFile": "./scene01.ts",
+  "name": "Scene 01 (basic physics demo)",
+  "description": "Basic FIXED/DYNAMIC physics demo: a ground box, a bouncing box, a falling ball and cylinder, a TRIMESH-collider imported GLB, and a decorative rotating wireframe sphere (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 1).",
+  "cameras": ["scene01Camera"],
+  "lights": ["scene01Ambient", "scene01Sun"]
+}

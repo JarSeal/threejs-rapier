@@ -232,6 +232,186 @@
       "id": "physicsTest",
       "sceneFile": "./physicsTest.ts"
     },
+    "scene01": {
+      "name": "Scene 01 (basic physics demo)",
+      "description": "Basic FIXED/DYNAMIC physics demo: a ground box, a bouncing box, a falling ball and cylinder, a TRIMESH-collider imported GLB, and a decorative rotating wireframe sphere (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 1).",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 100,
+            "position": {
+              "x": 6,
+              "y": 5,
+              "z": 10
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": -1,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 60,
+            "appId": "scene01Camera"
+          },
+          "entityOpts": {
+            "appId": "scene01Camera",
+            "debugData": {
+              "name": "Scene01 camera",
+              "description": "Static camera framing the ground plane and falling-object cluster shared by scene01.ts and scene01_v2.ts."
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.4,
+            "appId": "scene01Ambient"
+          },
+          "entityOpts": {
+            "appId": "scene01Ambient",
+            "debugData": {
+              "name": "Scene01 ambient light",
+              "description": "Ambient light shared by scene01.ts and scene01_v2.ts."
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 6,
+              "y": 8,
+              "z": 5
+            },
+            "targetPos": {
+              "x": 0,
+              "y": -2,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowPreset": "HIGH",
+            "shadowCameraNearFar": [
+              1,
+              30
+            ],
+            "shadowCameraFrustum": [
+              -8,
+              8,
+              8,
+              -8
+            ],
+            "shadowIntensity": 0.8,
+            "appId": "scene01Sun"
+          },
+          "entityOpts": {
+            "appId": "scene01Sun",
+            "debugData": {
+              "name": "Scene01 sun",
+              "description": "Directional shadow-casting sun shared by scene01.ts and scene01_v2.ts. Its shadow frustum is sized to the 10x10 ground plane, not larger — oversizing it would degrade shadow resolution everywhere (see largeWorldSun.light.json for the same pattern)."
+            }
+          }
+        }
+      ],
+      "id": "scene01",
+      "sceneFile": "./scene01.ts"
+    },
+    "scene01V2": {
+      "name": "Scene 01 v2 (physics demo with shadows + sensor)",
+      "description": "Same basic physics demo as scene01.ts (FIXED/DYNAMIC ground, box, ball, cylinder, TRIMESH-collider imported GLB) plus shadow-casting meshes, a CCD-enabled dynamic body, and a mesh-less sensor collider (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 1).",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 100,
+            "position": {
+              "x": 6,
+              "y": 5,
+              "z": 10
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": -1,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 60,
+            "appId": "scene01Camera"
+          },
+          "entityOpts": {
+            "appId": "scene01Camera",
+            "debugData": {
+              "name": "Scene01 camera",
+              "description": "Static camera framing the ground plane and falling-object cluster shared by scene01.ts and scene01_v2.ts."
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#ffffff",
+            "intensity": 0.4,
+            "appId": "scene01Ambient"
+          },
+          "entityOpts": {
+            "appId": "scene01Ambient",
+            "debugData": {
+              "name": "Scene01 ambient light",
+              "description": "Ambient light shared by scene01.ts and scene01_v2.ts."
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 6,
+              "y": 8,
+              "z": 5
+            },
+            "targetPos": {
+              "x": 0,
+              "y": -2,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowPreset": "HIGH",
+            "shadowCameraNearFar": [
+              1,
+              30
+            ],
+            "shadowCameraFrustum": [
+              -8,
+              8,
+              8,
+              -8
+            ],
+            "shadowIntensity": 0.8,
+            "appId": "scene01Sun"
+          },
+          "entityOpts": {
+            "appId": "scene01Sun",
+            "debugData": {
+              "name": "Scene01 sun",
+              "description": "Directional shadow-casting sun shared by scene01.ts and scene01_v2.ts. Its shadow frustum is sized to the 10x10 ground plane, not larger — oversizing it would degrade shadow resolution everywhere (see largeWorldSun.light.json for the same pattern)."
+            }
+          }
+        }
+      ],
+      "id": "scene01V2",
+      "sceneFile": "./scene01_v2.ts"
+    },
     "sceneTestECS": {
       "name": "ECS test scene",
       "description": "This is a ECS test scene.",
@@ -509,6 +689,34 @@
       },
       "__sourcePath": "src/app/cameras/physicsTestCamera.camera.json"
     },
+    "scene01Camera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 100,
+        "position": {
+          "x": 6,
+          "y": 5,
+          "z": 10
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": -1,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 60,
+        "appId": "scene01Camera"
+      },
+      "entityOpts": {
+        "appId": "scene01Camera",
+        "debugData": {
+          "name": "Scene01 camera",
+          "description": "Static camera framing the ground plane and falling-object cluster shared by scene01.ts and scene01_v2.ts."
+        }
+      },
+      "__sourcePath": "src/app/cameras/scene01Camera.camera.json"
+    },
     "testing": {
       "camProps": {
         "active": false,
@@ -662,6 +870,61 @@
         }
       },
       "__sourcePath": "src/app/lights/physicsTestSun.light.json"
+    },
+    "scene01Ambient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#ffffff",
+        "intensity": 0.4,
+        "appId": "scene01Ambient"
+      },
+      "entityOpts": {
+        "appId": "scene01Ambient",
+        "debugData": {
+          "name": "Scene01 ambient light",
+          "description": "Ambient light shared by scene01.ts and scene01_v2.ts."
+        }
+      },
+      "__sourcePath": "src/app/lights/scene01Ambient.light.json"
+    },
+    "scene01Sun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 6,
+          "y": 8,
+          "z": 5
+        },
+        "targetPos": {
+          "x": 0,
+          "y": -2,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowPreset": "HIGH",
+        "shadowCameraNearFar": [
+          1,
+          30
+        ],
+        "shadowCameraFrustum": [
+          -8,
+          8,
+          8,
+          -8
+        ],
+        "shadowIntensity": 0.8,
+        "appId": "scene01Sun"
+      },
+      "entityOpts": {
+        "appId": "scene01Sun",
+        "debugData": {
+          "name": "Scene01 sun",
+          "description": "Directional shadow-casting sun shared by scene01.ts and scene01_v2.ts. Its shadow frustum is sized to the 10x10 ground plane, not larger — oversizing it would degrade shadow resolution everywhere (see largeWorldSun.light.json for the same pattern)."
+        }
+      },
+      "__sourcePath": "src/app/lights/scene01Sun.light.json"
     }
   },
   "geometries": {

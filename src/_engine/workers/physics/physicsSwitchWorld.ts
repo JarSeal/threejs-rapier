@@ -6,6 +6,7 @@ import {
   WorldAPI,
   WorldCastRayAndGetNormalResponse,
   WorldCastRayResponse,
+  WorldCastShapeResponse,
   WorldIntersectionsWithRayResponse,
 } from '../../core/Physics/PhysicsAPITypes';
 import { getCollOrRigidId } from '../../core/Physics/PhysicsUtils';
@@ -81,11 +82,35 @@ export const physicsSwitchWorld = async (
       );
       if (hit) {
         const colliderId = getCollOrRigidId(hit.collider);
-        if (colliderId) {
+        if (colliderId !== undefined) {
           hitTransfer = { ...hit, collider: colliderId };
         }
       }
       return sendMessage({ type, hit: hitTransfer }, data);
+    case PhysicsProtocolType.WORLD_CAST_SHAPE: {
+      // WORLD_CAST_SHAPE
+      let shapeHitTransfer: WorldCastShapeResponse['hit'] = null;
+      const shapeHit = physicsWorldAPI.castShapeSync(
+        data.shapePos,
+        data.shapeRot,
+        data.shapeVel,
+        data.shape,
+        data.targetDistance,
+        data.maxToi,
+        data.stopAtPenetration,
+        data.filterFlags,
+        data.filterGroups,
+        data.filterExcludeCollider,
+        data.filterExcludeRigidBody
+      );
+      if (shapeHit) {
+        const colliderId = getCollOrRigidId(shapeHit.collider);
+        if (colliderId !== undefined) {
+          shapeHitTransfer = { ...shapeHit, collider: colliderId };
+        }
+      }
+      return sendMessage({ type, hit: shapeHitTransfer }, data);
+    }
     case PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL: {
       // WORLD_CAST_RAY_AND_GET_NORMAL
       let intersectionTransfer: WorldCastRayAndGetNormalResponse['intersection'] = null;
@@ -100,7 +125,7 @@ export const physicsSwitchWorld = async (
       );
       if (intersection) {
         const colliderId = getCollOrRigidId(intersection.collider);
-        if (colliderId) {
+        if (colliderId !== undefined) {
           intersectionTransfer = { ...intersection, collider: colliderId };
         }
       }
@@ -115,7 +140,7 @@ export const physicsSwitchWorld = async (
         data.solid,
         (intersect: RayColliderIntersectionAPI) => {
           const colliderId = getCollOrRigidId(intersect.collider);
-          if (colliderId) {
+          if (colliderId !== undefined) {
             const hit = { ...intersect, collider: colliderId };
             hits.push(hit);
           }

@@ -58,7 +58,10 @@ import {
   ColliderParams,
   CreateRigidBodiesResponse,
   CreateCollidersResponse,
+  ShapeCastHitAPI,
+  ShapeParams,
   WorldCastRayResponse,
+  WorldCastShapeResponse,
   WorldIntersectionsWithRayResponse,
   WorldContactPairsResponse,
   WorldIntersectionPairResponse,
@@ -1634,6 +1637,51 @@ class WorldProxyAPI implements WorldAPI {
 
   castRaySync(): RayColliderHitAPI | null {
     throw new Error('Raycasting must be async in Worker mode.');
+  }
+
+  async castShape(
+    shapePos: PhysVector,
+    shapeRot: PhysRotation,
+    shapeVel: PhysVector,
+    shape: ShapeParams,
+    targetDistance: number,
+    maxToi: number,
+    stopAtPenetration: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+  ): Promise<ShapeCastHitAPI | null> {
+    const response = (
+      await messageWorkerAsync<WorldCastShapeResponse>({
+        type: PhysicsProtocolType.WORLD_CAST_SHAPE,
+        shapePos,
+        shapeRot,
+        shapeVel,
+        shape,
+        targetDistance,
+        maxToi,
+        stopAtPenetration,
+        filterFlags,
+        filterGroups,
+        filterExcludeCollider:
+          typeof filterExcludeCollider === 'number'
+            ? filterExcludeCollider
+            : filterExcludeCollider?.id,
+        filterExcludeRigidBody:
+          typeof filterExcludeRigidBody === 'number'
+            ? filterExcludeRigidBody
+            : filterExcludeRigidBody?.id,
+      })
+    ).hit;
+    if (!response) return null;
+    const coll = colliders.get(response.collider);
+    if (!coll) return null;
+    return { ...response, collider: coll };
+  }
+
+  castShapeSync(): ShapeCastHitAPI | null {
+    throw new Error('Shape casting must be async in Worker mode.');
   }
 
   async castRayAndGetNormal(

@@ -24,6 +24,8 @@ import {
   RigidBodyAPI,
   RigidBodyParams,
   RigidBodyTypeAPI,
+  ShapeCastHitAPI,
+  ShapeParams,
   ShapeType,
   TempContactForceEvent,
   WorldAPI,
@@ -300,11 +302,12 @@ export const createRigidBody = (params: RigidBodyParams) => {
   return rigidBodyAPI;
 };
 
-export const createCollider = (params: ColliderParams, parentId?: number) => {
+/** Builds a bare `Rapier.Shape` from an engine-agnostic {@link ShapeParams} descriptor —
+ * shared by `createCollider` (which wraps the shape in a `ColliderDesc`) and `castShape`/
+ * `castShapeSync` (which cast the bare shape directly, with no collider of its own). */
+const paramsToShape = (params: ShapeParams): Rapier.Shape => {
   let shape: Rapier.Shape | null = null;
   let size: { [key: string]: number };
-
-  if (parentId !== undefined) params.parentId = parentId;
 
   switch (params.type) {
     case 'CUBOID':
@@ -407,7 +410,13 @@ export const createCollider = (params: ColliderParams, parentId?: number) => {
       break;
   }
 
-  existsOrThrow(shape, 'Could not create collider in createCollider, shape is undefined.');
+  return existsOrThrow(shape, 'Could not create shape in paramsToShape, shape is undefined.');
+};
+
+export const createCollider = (params: ColliderParams, parentId?: number) => {
+  if (parentId !== undefined) params.parentId = parentId;
+
+  const shape = paramsToShape(params);
 
   const colliderDesc = new RAPIER.ColliderDesc(shape);
 
@@ -1041,6 +1050,75 @@ class EngineWorldProxyAPI implements WorldAPI {
       ray,
       maxToi,
       solid,
+      filterFlags,
+      filterGroups,
+      filterExcludeCollider,
+      filterExcludeRigidBody
+    );
+  }
+
+  castShapeSync(
+    shapePos: PhysVector,
+    shapeRot: PhysRotation,
+    shapeVel: PhysVector,
+    shape: ShapeParams,
+    targetDistance: number,
+    maxToi: number,
+    stopAtPenetration: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+  ): ShapeCastHitAPI | null {
+    const rapierShape = paramsToShape(shape);
+    const hit = physicsWorld.castShape(
+      shapePos,
+      shapeRot,
+      shapeVel,
+      rapierShape,
+      targetDistance,
+      maxToi,
+      stopAtPenetration,
+      filterFlags,
+      filterGroups,
+      getCollider(filterExcludeCollider),
+      getRigidBody(filterExcludeRigidBody)
+    );
+
+    if (!hit) return null;
+    const colliderAPI = getColliderAPI(hit.collider.handle);
+    return colliderAPI
+      ? {
+          collider: colliderAPI,
+          timeOfImpact: hit.time_of_impact,
+          witness1: hit.witness1,
+          witness2: hit.witness2,
+          normal1: hit.normal1,
+          normal2: hit.normal2,
+        }
+      : null;
+  }
+  async castShape(
+    shapePos: PhysVector,
+    shapeRot: PhysRotation,
+    shapeVel: PhysVector,
+    shape: ShapeParams,
+    targetDistance: number,
+    maxToi: number,
+    stopAtPenetration: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
+  ): Promise<ShapeCastHitAPI | null> {
+    return this.castShapeSync(
+      shapePos,
+      shapeRot,
+      shapeVel,
+      shape,
+      targetDistance,
+      maxToi,
+      stopAtPenetration,
       filterFlags,
       filterGroups,
       filterExcludeCollider,

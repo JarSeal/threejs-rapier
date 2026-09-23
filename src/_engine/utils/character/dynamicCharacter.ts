@@ -449,11 +449,6 @@ export const createDynamicCharacter = (opts: {
     },
   };
 
-  const moveInputMappings = [
-    ...(inputMappings?.moveForward || []),
-    ...(inputMappings?.moveBackward || []),
-  ];
-
   const dynamicCharacterObject = createCharacter({
     id,
     physicsParams: [
@@ -658,44 +653,41 @@ export const createDynamicCharacter = (opts: {
     controls: inputMappings
       ? [
           {
-            id: 'charMove',
-            key: [
-              ...inputMappings.rotateLeft,
-              ...inputMappings.rotateRight,
-              ...inputMappings.moveForward,
-              ...inputMappings.moveBackward,
-            ],
-            type: 'KEY_LOOP_ACTION',
-            fn: (_, __, data) => {
-              const keysPressed = data?.keysPressed as string[];
-              const mesh = data?.mesh as THREE.Mesh;
-              const charObj = data?.charObject as CharacterObject;
-              const charData = charObj.data as CharacterData;
-
-              if (!mesh || !charData) return;
-
-              // Turn left (only mesh rotation, not physical object)
-              if (keysPressed.some((key) => inputMappings.rotateLeft.includes(key)))
-                controlFns.rotate('LEFT');
-              // Turn right (only mesh rotation, not physical object)
-              if (keysPressed.some((key) => inputMappings.rotateRight.includes(key)))
-                controlFns.rotate('RIGHT');
-              // Forward and backward
-              if (keysPressed.some((key) => moveInputMappings.includes(key))) {
-                charData.hasMoveInput = true;
-                // Set small y force to character for smoother moving if hasMoveInput
-                controlFns.move(
-                  keysPressed.some((key) => inputMappings.moveForward.includes(key))
-                    ? 'FORWARD'
-                    : 'BACKWARD'
-                );
-              }
+            id: 'charRotateLeft',
+            type: 'KEY_HELD',
+            chord: inputMappings.rotateLeft.map((key) => ({ key })),
+            fn: () => controlFns.rotate('LEFT'),
+          },
+          {
+            id: 'charRotateRight',
+            type: 'KEY_HELD',
+            chord: inputMappings.rotateRight.map((key) => ({ key })),
+            fn: () => controlFns.rotate('RIGHT'),
+          },
+          {
+            id: 'charMoveForward',
+            type: 'KEY_HELD',
+            chord: inputMappings.moveForward.map((key) => ({ key })),
+            fn: () => {
+              characterData.hasMoveInput = true;
+              controlFns.move('FORWARD');
+            },
+          },
+          {
+            id: 'charMoveBackward',
+            type: 'KEY_HELD',
+            chord: inputMappings.moveBackward.map((key) => ({ key })),
+            fn: () => {
+              characterData.hasMoveInput = true;
+              controlFns.move('BACKWARD');
             },
           },
           {
             id: 'charStopMoveAndRotate',
-            key: [...inputMappings.moveForward, ...inputMappings.moveBackward],
             type: 'KEY_UP',
+            chord: [...inputMappings.moveForward, ...inputMappings.moveBackward].map((key) => ({
+              key,
+            })),
             fn: (e) => {
               e.preventDefault();
               characterData.hasMoveInput = false;
@@ -703,8 +695,8 @@ export const createDynamicCharacter = (opts: {
           },
           {
             id: 'charJump',
-            key: inputMappings.jump,
             type: 'KEY_DOWN',
+            chord: inputMappings.jump.map((key) => ({ key })),
             fn: (e) => {
               e.preventDefault();
               if (e.repeat) return;
@@ -713,8 +705,8 @@ export const createDynamicCharacter = (opts: {
           },
           {
             id: 'charRun',
-            key: inputMappings.run,
             type: 'KEY_DOWN',
+            chord: inputMappings.run.map((key) => ({ key })),
             fn: (e) => {
               e.preventDefault();
               if (e.repeat) return;
@@ -723,8 +715,8 @@ export const createDynamicCharacter = (opts: {
           },
           {
             id: 'charCrouch',
-            key: inputMappings.crouch,
             type: 'KEY_DOWN',
+            chord: inputMappings.crouch.map((key) => ({ key })),
             fn: (e) => {
               e.preventDefault();
               if (e.repeat) return;

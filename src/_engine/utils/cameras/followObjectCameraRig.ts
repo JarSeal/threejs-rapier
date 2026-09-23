@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { addScenePhysicsLooper, deleteScenePhysicsLooper } from '../../core/PhysicsRapier';
+import type { ECSWorld } from '../../core/ECS';
+import { ECSSystemStage } from '../../../AppECSRegistry';
 import { XYZObject } from '../commontTypes';
 import { smoothDampVec3 } from '../helpers';
 
@@ -31,6 +32,34 @@ type FollowObjectCameraParams = {
     spherical: THREE.Spherical;
   }) => void;
   getMouseMoveInput?: () => { x: number; y: number };
+};
+
+type FollowRigState = {
+  tick: (dt: number) => void;
+};
+
+// --- Shared ECS system (design decision: camera-follow smoothing is one system, registered
+// once, not one addScenePhysicsLooper registration per rig instance) --------------------------
+const activeRigs = new Map<string, FollowRigState>();
+
+const followObjectCameraRigSystemFn = (_world: ECSWorld, dt: number) => {
+  for (const rig of activeRigs.values()) rig.tick(dt);
+};
+
+/** Registers the single shared camera-follow system on `world`, driving every active
+ * createFollowObjectCameraRig() instance's smoothing at APP_LOGIC — after physics has synced
+ * into ECS transforms and Three.js Object3D positions (APP_POST_PHYSICS / APP_RENDER_SYNC, both
+ * earlier in the same frame), matching design decision 3's "APP_POST_PHYSICS-or-later" and the
+ * original addScenePhysicsLooper afterStepLooper's own "run after physics to avoid jitter"
+ * intent. Call this once per world before creating any camera rigs on it — mirrors
+ * toolkit/ecs/effects/FollowTool.ts's registerFollowToolEffect(world) convention. */
+export const registerFollowObjectCameraRigSystem = (world: ECSWorld) => {
+  world.addSystem(
+    ECSSystemStage.APP_LOGIC,
+    'followObjectCameraRigSystem',
+    followObjectCameraRigSystemFn
+  );
+  return world;
 };
 
 export const createFollowObjectCameraRig = (params: FollowObjectCameraParams) => {
@@ -85,142 +114,137 @@ export const createFollowObjectCameraRig = (params: FollowObjectCameraParams) =>
     spherical,
   };
 
-  // Register a looper that runs AFTER physics
-  // This is critical to prevent "jitter" where the camera updates before the physics body moves.
-  if (smoothType === 'LERP') {
-    // LERP smoothing
-    addScenePhysicsLooper(createLooperId(id), undefined, (dt) => {
-      // Safety check for NaN DT (on first frame or pause)
-      if (dt <= 0.0001) return;
+  const tick =
+    smoothType === 'LERP'
+      ? (dt: number) => {
+          // Safety check for NaN DT (on first frame or pause)
+          if (dt <= 0.0001) return;
 
-      if (getMouseMoveInput) {
-        // Handle possible mouse move input
-        // -------------------
+          if (getMouseMoveInput) {
+            // Handle possible mouse move input
+            // -------------------
 
-        const mouseDelta = getMouseMoveInput();
+            const mouseDelta = getMouseMoveInput();
 
-        // Horizontal (Theta) - Rotate around Y
-        // Subtract to rotate "intuitively" (drag background) or add for inverted
-        spherical.theta -= mouseDelta.x * sensitivity;
+            // Horizontal (Theta) - Rotate around Y
+            // Subtract to rotate "intuitively" (drag background) or add for inverted
+            spherical.theta -= mouseDelta.x * sensitivity;
 
-        // Vertical (Phi) - Rotate up/down
-        spherical.phi -= mouseDelta.y * sensitivity;
+            // Vertical (Phi) - Rotate up/down
+            spherical.phi -= mouseDelta.y * sensitivity;
 
-        // Clamp Vertical angle
-        spherical.phi = Math.max(minPolarAngle, Math.min(maxPolarAngle, spherical.phi));
+            // Clamp Vertical angle
+            spherical.phi = Math.max(minPolarAngle, Math.min(maxPolarAngle, spherical.phi));
 
-        // Calculate Offset Vector from Spherical Coords
-        // This converts the Angles back into a Vector3 offset (x, y, z)
-        const offsetVector = new THREE.Vector3().setFromSpherical(spherical);
+            // Calculate Offset Vector from Spherical Coords
+            // This converts the Angles back into a Vector3 offset (x, y, z)
+            const offsetVector = new THREE.Vector3().setFromSpherical(spherical);
 
-        // Get Look Target (e.g., Player Head position)
-        targetPos.copy(targetMesh.position).add(targetHeightVector);
+            // Get Look Target (e.g., Player Head position)
+            targetPos.copy(targetMesh.position).add(targetHeightVector);
 
-        // Calculate Ideal Camera Position
-        idealPos.copy(targetPos).add(offsetVector);
-      } else {
-        // No mouse move input
-        // -------------------
+            // Calculate Ideal Camera Position
+            idealPos.copy(targetPos).add(offsetVector);
+          } else {
+            // No mouse move input
+            // -------------------
 
-        // Get Target Position (Mesh or RigidBody)
-        // Using mesh is usually safer for visual smoothness if you interpolate visuals
-        targetPos.copy(targetMesh.position);
+            // Get Target Position (Mesh or RigidBody)
+            // Using mesh is usually safer for visual smoothness if you interpolate visuals
+            targetPos.copy(targetMesh.position);
 
-        // Calculate Ideal Camera Position
-        idealPos.copy(targetPos).add(offset);
-      }
+            // Calculate Ideal Camera Position
+            idealPos.copy(targetPos).add(offset);
+          }
 
-      // Smoothly move camera there (Lerp)
-      // 0.1 is the smoothing factor (adjust for feel)
-      camera.position.lerp(idealPos, smoothTime);
+          // Smoothly move camera there (Lerp)
+          // 0.1 is the smoothing factor (adjust for feel)
+          camera.position.lerp(idealPos, smoothTime);
 
-      // Look at the target
-      camera.lookAt(targetPos);
+          // Look at the target
+          camera.lookAt(targetPos);
 
-      // After lookAt fn
-      if (afterLookAtFn) {
-        afterLookParams.targetPos = targetPos;
-        afterLookAtFn(afterLookParams);
-      }
-    });
-    return;
-  }
+          // After lookAt fn
+          if (afterLookAtFn) {
+            afterLookParams.targetPos = targetPos;
+            afterLookAtFn(afterLookParams);
+          }
+        }
+      : (dt: number) => {
+          // Safety check for NaN DT (on first frame or pause)
+          if (dt <= 0.0001) return;
 
-  // SMOOTH_DAMP smoothing
-  addScenePhysicsLooper(createLooperId(id), undefined, (dt) => {
-    // Safety check for NaN DT (on first frame or pause)
-    if (dt <= 0.0001) return;
+          if (getMouseMoveInput) {
+            // Handle possible mouse move input
+            // -------------------
 
-    if (getMouseMoveInput) {
-      // Handle possible mouse move input
-      // -------------------
+            const mouseDelta = getMouseMoveInput();
 
-      const mouseDelta = getMouseMoveInput();
+            // Horizontal (Theta) - Rotate around Y
+            // Subtract to rotate "intuitively" (drag background) or add for inverted
+            spherical.theta -= mouseDelta.x * sensitivity;
 
-      // Horizontal (Theta) - Rotate around Y
-      // Subtract to rotate "intuitively" (drag background) or add for inverted
-      spherical.theta -= mouseDelta.x * sensitivity;
+            // Vertical (Phi) - Rotate up/down
+            spherical.phi -= mouseDelta.y * sensitivity;
 
-      // Vertical (Phi) - Rotate up/down
-      spherical.phi -= mouseDelta.y * sensitivity;
+            // Clamp Vertical angle
+            spherical.phi = Math.max(minPolarAngle, Math.min(maxPolarAngle, spherical.phi));
 
-      // Clamp Vertical angle
-      spherical.phi = Math.max(minPolarAngle, Math.min(maxPolarAngle, spherical.phi));
+            // Calculate Offset Vector from Spherical Coords
+            // This converts the Angles back into a Vector3 offset (x, y, z)
+            const offsetVector = new THREE.Vector3().setFromSpherical(spherical);
 
-      // Calculate Offset Vector from Spherical Coords
-      // This converts the Angles back into a Vector3 offset (x, y, z)
-      const offsetVector = new THREE.Vector3().setFromSpherical(spherical);
+            // Get Look Target (e.g., Player Head position)
+            targetPos.copy(targetMesh.position).add(targetHeightVector);
 
-      // Get Look Target (e.g., Player Head position)
-      targetPos.copy(targetMesh.position).add(targetHeightVector);
+            // Calculate Ideal Camera Position
+            idealPos.copy(targetPos).add(offsetVector);
 
-      // Calculate Ideal Camera Position
-      idealPos.copy(targetPos).add(offsetVector);
+            // Smooth Damp
+            smoothDampVec3(
+              camera.position,
+              idealPos,
+              velocity,
+              smoothTime, // Faster smooth time for mouse look feels snappier
+              Infinity,
+              dt
+            );
+          } else {
+            // No mouse move input
+            // -------------------
 
-      // Smooth Damp
-      smoothDampVec3(
-        camera.position,
-        idealPos,
-        velocity,
-        smoothTime, // Faster smooth time for mouse look feels snappier
-        Infinity,
-        dt
-      );
-    } else {
-      // No mouse move input
-      // -------------------
+            // Get Target Position (Mesh or RigidBody)
+            // Using mesh is usually safer for visual smoothness if you interpolate visuals
+            targetPos.copy(targetMesh.position);
 
-      // Get Target Position (Mesh or RigidBody)
-      // Using mesh is usually safer for visual smoothness if you interpolate visuals
-      targetPos.copy(targetMesh.position);
+            // Calculate Ideal Camera Position
+            idealPos.copy(targetPos).add(offset);
 
-      // Calculate Ideal Camera Position
-      idealPos.copy(targetPos).add(offset);
+            // Smoothly move Camera -> Ideal
+            // This modifies camera.position AND velocity in place.
+            smoothDampVec3(
+              camera.position, // Current
+              idealPos, // Target
+              velocity, // Velocity State (Stores momentum)
+              smoothTime, // Smooth time
+              100, // Max Speed (Optional cap)
+              dt // Time since last frame
+            );
+          }
 
-      // Smoothly move Camera -> Ideal
-      // This modifies camera.position AND velocity in place.
-      smoothDampVec3(
-        camera.position, // Current
-        idealPos, // Target
-        velocity, // Velocity State (Stores momentum)
-        smoothTime, // Smooth time
-        100, // Max Speed (Optional cap)
-        dt // Time since last frame
-      );
-    }
+          // Look at the target
+          camera.lookAt(targetPos);
 
-    // Look at the target
-    camera.lookAt(targetPos);
+          // After lookAt fn
+          if (afterLookAtFn) {
+            afterLookParams.targetPos = targetPos;
+            afterLookAtFn(afterLookParams);
+          }
+        };
 
-    // After lookAt fn
-    if (afterLookAtFn) {
-      afterLookParams.targetPos = targetPos;
-      afterLookAtFn(afterLookParams);
-    }
-  });
+  activeRigs.set(id, { tick });
 };
 
-export const deleteFollowObjectCameraRig = (id: string) =>
-  deleteScenePhysicsLooper(createLooperId(id));
-
-const createLooperId = (id: string) => `followObjectCam-${id}`;
+export const deleteFollowObjectCameraRig = (id: string) => {
+  activeRigs.delete(id);
+};

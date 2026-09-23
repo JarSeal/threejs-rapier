@@ -43,6 +43,22 @@ export const sceneFileObjects: {
       }
     ).scene({ sceneData, assets });
   },
+  scene01: async ({ sceneData, assets }) => {
+    const module = await import('../app/./scene01.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
+  scene01V2: async ({ sceneData, assets }) => {
+    const module = await import('../app/./scene01_v2.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
   sceneTestECS: async ({ sceneData, assets }) => {
     const module = await import('../app/./testECS.ts');
     await (

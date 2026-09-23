@@ -16,7 +16,7 @@ import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } f
 import { initDebugTools } from '../debug/DebugToolsManager';
 import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './PhysicsRapier';
 import { stepPhysics } from './PhysicsAPI';
-import { updateInputControllerLoopActions } from './InputControls';
+import { pollHeldKeyBindings } from './Input/KeyboardInput';
 import { countRayCastFrames, initRayCasting } from './Raycast';
 import { getAllECSWorlds } from './ECS';
 import { getActiveCamera } from './CameraManager';
@@ -156,7 +156,7 @@ const mainLoopForDebug = async () => {
     const sceneId = getCurrentSceneId();
     const physDisabled =
       !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
-    if (physDisabled) updateInputControllerLoopActions(delta);
+    if (physDisabled) pollHeldKeyBindings(delta);
 
     // Count ray cast frames
     countRayCastFrames();
@@ -213,7 +213,7 @@ const mainLoopForProduction = async () => {
     const sceneId = getCurrentSceneId();
     const physDisabled =
       !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
-    if (physDisabled) updateInputControllerLoopActions(delta);
+    if (physDisabled) pollHeldKeyBindings(delta);
   }
 
   renderScene();
@@ -271,7 +271,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     const sceneId = getCurrentSceneId();
     const physDisabled =
       !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
-    if (physDisabled) updateInputControllerLoopActions(delta);
+    if (physDisabled) pollHeldKeyBindings(delta);
   } else {
     if (skipFrame) return;
   }

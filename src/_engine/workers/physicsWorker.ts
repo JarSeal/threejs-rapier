@@ -218,14 +218,20 @@ const sendMessage = (
 const sendMessageSimple = (message: any, transfer?: Transferable[]) =>
   transfer ? self.postMessage(message, transfer) : self.postMessage(message);
 
-/** Writes every live dynamic rigid body's transform into the hot-path buffer
- * after a step, then (MESSAGE_BATCH fallback only) pushes a fresh copy to the
- * main thread as one Transferable message — never one message per body. */
+/** Writes every live rigid body's transform into the hot-path buffer after a step, then
+ * (MESSAGE_BATCH fallback only) pushes a fresh copy to the main thread as one Transferable
+ * message — never one message per body. This includes FIXED bodies too, not just dynamic/
+ * kinematic ones: although FIXED bodies never move under simulation, they can still be
+ * explicitly repositioned after creation via setTranslation/setRotation (e.g. an obstacle-course
+ * piece created at the origin and moved into place once) — the hot-path buffer is the only path
+ * that reaches the main thread's ECS transform sync, so a body excluded here would never show
+ * that reposition. The per-step cost of re-writing a handful of unchanging static transforms is
+ * negligible next to the physics step itself, so there's no reason to special-case it out. */
 const writeBackTransforms = () => {
   if (!transformBuffer) return;
   for (const id of engAPI.getAllRigidBodyIds()) {
     const rb = engAPI.getRigidBodyAPIWithId(id);
-    if (!rb || !rb.isDynamicSync()) continue;
+    if (!rb) continue;
     const slot = transformBuffer.getSlot(id);
     if (slot === -1) continue;
     transformBuffer.setTransform(slot, rb.pos, rb.rot);

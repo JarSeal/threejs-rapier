@@ -4,16 +4,19 @@ import { createMeshEntity } from '../_engine/core/MeshManager';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 import { addToast } from '../_engine/core/UI/Toaster';
 import { getECSWorld } from '../_engine/core/ECS';
-import { createJoint } from '../_engine/core/PhysicsAPI';
+import { createJoint, getPhysicsWorld } from '../_engine/core/PhysicsAPI';
 import { JointAxesMask, PhysVector } from '../_engine/core/Physics/PhysicsAPITypes';
 import { existsOrThrow } from '../_engine/utils/assert';
 import { IS_DEBUG_ENV } from '../_engine/core/Config';
+import { llog } from '../_engine/utils/Logger';
 
 /**
  * Main-thread physics API MVP verification scene
  * (docs/plans/p020_main-thread-physics-api-mvp.md §3.7): a static ground box,
  * a falling ball, and a falling box — plus one worked example per impulse-joint
- * type (docs/plans/p026_physics-api-support-for-joints.md, Phase 3).
+ * type (docs/plans/p026_physics-api-support-for-joints.md, Phase 3) and a
+ * shape-cast worked example against the ground box
+ * (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 0).
  */
 export const scene = async () => {
   const ecsWorld = getECSWorld();
@@ -121,6 +124,73 @@ export const scene = async () => {
     { rigidType: 'FIXED', translation: { x: 0, y: 0, z: 0 } },
     groundEntityId
   );
+
+  // --- Shape-cast demo (docs/plans/p028, Phase 0) --------------------------
+  // Two casts of a small ball shape from the same point: one straight down into the ground
+  // box (expects a hit with a sane normal/TOI), one straight up into open air (expects no
+  // hit) — the two cases this phase's manual-verification step calls for. Always uses the
+  // async castShape (not castShapeSync, which throws in WORKER_THREAD mode) so this works
+  // identically in both workerTarget modes.
+  //
+  // Deliberately NOT awaited by scene() (fire-and-forget, `void`): the short delay below is
+  // required (Rapier's query pipeline only indexes a newly-created collider once the physics
+  // world has stepped at least once, so querying synchronously right after
+  // createPhysicsEntity() resolves reports no hit even when the geometry genuinely overlaps —
+  // confirmed against castRay too, not specific to castShape), but awaiting it inside scene()
+  // would hold up the whole scene-loading chain (setCurrentScene() runs only after scene()
+  // resolves) long enough to race the main loop, which can start as soon as the root Three.js
+  // scene gets any children — independent of scene loading. That race crashed
+  // renderPhysicsObjects() with "Could not get current scene id" when this scene was set as
+  // the debug start scene, where the extra ~200ms was enough to matter. Real gameplay queries
+  // don't hit either issue, since they naturally run from a system that already ticks after
+  // the scene has fully loaded and the world has been stepping for a while.
+  void (async () => {
+    // Reports via toast when the debug UI is up, falling back to a console log otherwise —
+    // when this scene is set as the debug start scene, this demo can run before the debug
+    // drawer's toaster has been created (toast infra registers after appStartFn() resolves,
+    // which this fire-and-forget block deliberately doesn't block on, see above).
+    const report = (title: string, message: string) => {
+      if (!IS_DEBUG_ENV) return;
+      try {
+        addToast({ title, message });
+      } catch {
+        llog(`[physicsTest] ${title}: ${message}`);
+      }
+    };
+
+    const castOrigin: PhysVector = { x: 0, y: 5, z: 20 };
+    const noRotation = { x: 0, y: 0, z: 0, w: 1 };
+    const castShapeParams = { type: 'BALL' as const, radius: 0.5 };
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const groundHit = await getPhysicsWorld().castShape(
+      castOrigin,
+      noRotation,
+      { x: 0, y: -1, z: 0 },
+      castShapeParams,
+      0,
+      10,
+      true
+    );
+    report(
+      'Shape-cast toward ground',
+      groundHit
+        ? `Hit, TOI ${groundHit.timeOfImpact.toFixed(2)}, normal (${groundHit.normal1.x.toFixed(2)}, ${groundHit.normal1.y.toFixed(2)}, ${groundHit.normal1.z.toFixed(2)})`
+        : 'No hit (unexpected)'
+    );
+
+    const emptyHit = await getPhysicsWorld().castShape(
+      castOrigin,
+      noRotation,
+      { x: 0, y: 1, z: 0 },
+      castShapeParams,
+      0,
+      10,
+      true
+    );
+    report('Shape-cast away from ground', emptyHit ? 'Hit (unexpected)' : 'No hit, as expected');
+  })();
 
   // --- Original falling ball/box demo (shifted off to the side, away from the
   // joint demo row below) ---------------------------------------------------

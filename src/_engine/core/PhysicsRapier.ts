@@ -29,7 +29,7 @@ import {
 } from './UI/DraggableWindow';
 import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay } from './MainLoop';
 import type { Collider, RigidBody } from '@dimforge/rapier3d-compat';
-import { updateInputControllerLoopActions } from './InputControls';
+import { pollHeldKeyBindings } from './Input/KeyboardInput';
 import { BladeController, View } from '@tweakpane/core';
 import { BufferGeometryUtils } from 'three/examples/jsm/Addons.js';
 import { isCurrentlyLoading } from './SceneLoader';
@@ -1609,7 +1609,7 @@ const baseStepper = (loopState: LoopState) => {
     if (physicsState.isPaused) break;
 
     // Update loop action inputs
-    updateInputControllerLoopActions(physicsState.timestepRatio);
+    pollHeldKeyBindings(physicsState.timestepRatio);
 
     // Store previous transforms
     for (let i = 0; i < currentScenePhysicsObjects.length; i++) {
