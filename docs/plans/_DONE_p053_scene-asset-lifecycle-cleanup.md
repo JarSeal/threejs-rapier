@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Assets
 
 # Scene Asset Lifecycle Cleanup — Plan
@@ -136,3 +136,42 @@ No automated test suite exists. Verification is manual:
   `isPersistent` plus a later manual release, or a `keepAssets` option on `loadScene`.
 - Should the sweep be configurable (eg. `AppConfig.assets.releaseOnSceneChange`, default on)?
 - Materials: confirm root cause 5 first. Adding materials to the Assets tab would make it visible.
+
+## Implementation notes
+
+What was built, where it differs from the plan above:
+
+- **Owner tracking** (`core/Assets/AssetOwners.ts`): a `WeakMap` keyed by the registered object.
+  SceneLoader sets the owner scene when a load starts, so the registries don't import
+  SceneLoader. A cache hit never claims an asset without an owner (registered at boot), so boot
+  assets stay untouched. Re-tagging also covers `loadTextures`, the `save*` id hits, the
+  file-name hit of `loadTexture`, reused geometries and textures of a re-import, the assets of a
+  cached import, scene JSON references by id, spotlight cookie textures and
+  `spawnImportedAsset`.
+- **The sweep** (`core/Assets/SceneAssetRelease.ts`) runs after `createNextSceneObject3Ds`. It
+  replaces `releaseSceneImports` and is skipped when a scene is reloaded onto itself. A released
+  material only disposes its own texture clones: registered textures are released by owner. The
+  "used by a material" check also covers TSL node input textures.
+- **Sky boxes**: `SkyBox.ts` bakes PMREMs itself (a throwaway `PMREMGenerator` per bake) and
+  disposes each with its source texture. `pmremTexture(sourceTexture)` gave every node its own
+  generator, and neither the generators nor the baked targets were ever disposed.
+  `backgroundNodeTextureId` is gone: `deleteScene` deletes the textures of all the scene's sky
+  boxes. A sky box created without a `sceneId` during a load now belongs to the loading scene
+  (it used to go to the scene still showing).
+- **`deletePrevScene`** runs the sweep before the next scene loads instead of after it (lower
+  peak memory, shared assets are loaded again). It used to force-delete the previous scene's mesh
+  assets, persistent ones included.
+- **Found on the way**: `addCheckerboardMaterialToMesh`/`addNestedGridMaterialToMesh` assigned
+  `mesh.material` directly and leaked material refs. `MeshManager.setMeshMaterial` moves the ref.
+- **Audit (phase 4)**: nothing needed `isPersistent`. `PhysicsStressTest` now resolves its assets
+  per batch, since its `j` key works in every scene.
+
+Open questions, as resolved: no `keepAssets` option (`isPersistent` covers keeping assets), the
+sweep isn't configurable, and root cause 5 (unused materials) was confirmed and is covered.
+
+Follow-ups, not part of this plan:
+
+- The Gym grows by one GPU geometry and one texture per visit:
+  [p054_gym-scene-gpu-memory-growth.md](./p054_gym-scene-gpu-memory-growth.md).
+- `ECSStressTest`'s instanced mesh (unregistered geometry and material, added to the root scene)
+  and its systems are never cleaned up and carry across scenes.
