@@ -2,7 +2,13 @@ import * as THREE from 'three/webgpu';
 import { lerror, lwarn } from '../utils/Logger';
 import { HDRLoader } from 'three/examples/jsm/Addons.js';
 import { isHDR } from '../utils/helpers';
-import { loadHDRTextureInWorker, loadTextureInWorker, runAssetTask } from './Assets/AssetsAPI';
+import {
+  loadHDRTextureInWorker,
+  loadTextureInWorker,
+  recordAssetLoadReport,
+  runAssetTask,
+} from './Assets/AssetsAPI';
+import type { AssetLoadReport } from './Assets/AssetsAPITypes';
 
 export type TexOpts = {
   image?: TexImageSource | OffscreenCanvas;
@@ -97,6 +103,22 @@ const saveLoadedTexture = <T extends THREE.Texture>(
 ): T => {
   const saved = saveTexture(texture, id || texture.uuid, isPersistent);
   if (saved !== texture) disposeTextureResource(texture);
+  return saved;
+};
+
+/** saveLoadedTexture() plus the load's report (with the file's URL) for the debug tooling, kept
+ * only when this load's texture is the one registered. */
+const saveAndReport = <T extends THREE.Texture>(
+  texture: T,
+  id: string | undefined,
+  isPersistent: boolean | undefined,
+  report: AssetLoadReport,
+  sourceUrl: string
+): T => {
+  const saved = saveLoadedTexture(texture, id, isPersistent);
+  if (saved === texture) {
+    recordAssetLoadReport(`texture:${saved.userData.id}`, { ...report, sourceUrl });
+  }
   return saved;
 };
 
@@ -408,18 +430,14 @@ export const loadTextureAsync = async ({
         // Data texture
         loaderType = 'HDRLoader';
         const url = toLoaderUrl(fileName, path);
-        const loadedTexture = setTextureOpts(
-          await runAssetTask<THREE.DataTexture>(
-            'TEXTURE',
-            async () => createHDRTextureFromWorkerData(await loadHDRTextureInWorker(url)),
-            () => new HDRLoader().setPath(path || './').loadAsync(fileName),
-            null // HDR parsing is plain JS, no worker capability needed
-          ),
-          texOpts,
-          userData,
-          debugData
+        const { result, report } = await runAssetTask<THREE.DataTexture>(
+          'TEXTURE',
+          async () => createHDRTextureFromWorkerData(await loadHDRTextureInWorker(url)),
+          () => new HDRLoader().setPath(path || './').loadAsync(fileName),
+          null // HDR parsing is plain JS, no worker capability needed
         );
-        return saveLoadedTexture(loadedTexture, id, isPersistent) as THREE.DataTexture;
+        const loadedTexture = setTextureOpts(result, texOpts, userData, debugData);
+        return saveAndReport(loadedTexture, id, isPersistent, report, url) as THREE.DataTexture;
       } else {
         if (useHDRLoader && !isHDR(fileName)) {
           lwarn(
@@ -430,17 +448,13 @@ export const loadTextureAsync = async ({
         // Texture
         loaderType = 'TextureLoader';
         const url = toLoaderUrl(fileName, path);
-        const loadedTexture = setTextureOpts(
-          await runAssetTask<THREE.Texture>(
-            'TEXTURE',
-            async () => createTextureFromWorkerBitmap(await loadTextureInWorker(url)),
-            () => new THREE.TextureLoader().setPath(path || './').loadAsync(fileName)
-          ),
-          texOpts,
-          userData,
-          debugData
+        const { result, report } = await runAssetTask<THREE.Texture>(
+          'TEXTURE',
+          async () => createTextureFromWorkerBitmap(await loadTextureInWorker(url)),
+          () => new THREE.TextureLoader().setPath(path || './').loadAsync(fileName)
         );
-        return saveLoadedTexture(loadedTexture, id, isPersistent);
+        const loadedTexture = setTextureOpts(result, texOpts, userData, debugData);
+        return saveAndReport(loadedTexture, id, isPersistent, report, url);
       }
     } else {
       // Cube texture (always loaded on the main thread)

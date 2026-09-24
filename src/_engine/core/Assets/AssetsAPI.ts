@@ -17,6 +17,7 @@ import {
 } from '../../utils/PromiseResolver';
 import {
   AssetKind,
+  AssetLoadReport,
   AssetsDownProtocol,
   AssetsFallbackCause,
   AssetsLoadGLTFResponse,
@@ -91,6 +92,8 @@ const fallbackCounts: Record<AssetsFallbackCause, number> = {
 };
 let lastFallback: { kind: AssetKind; cause: AssetsFallbackCause; detail: string } | undefined;
 const warnedCauses = new Set<AssetsFallbackCause>();
+/** Debug-only: the last load report per key (eg. `texture:${id}`, `import:${id}`). */
+const loadReports = new Map<string, AssetLoadReport>();
 
 /**
  * Resolves the assets config (AppConfig.assets) with its defaults. Called once from
@@ -271,12 +274,13 @@ const requestAssetsWorker = async <R extends AssetsDownProtocol>(
   }
 };
 
-const fallBack = <T>(
+const fallBack = async <T>(
   kind: AssetKind,
   cause: AssetsFallbackCause,
   detail: string,
-  mainThreadTask: () => Promise<T>
-) => {
+  mainThreadTask: () => Promise<T>,
+  startedAt: number
+): Promise<{ result: T; report: AssetLoadReport }> => {
   fallbackCounts[cause] += 1;
   lastFallback = { kind, cause, detail };
   if (!assetsState.fallbackToMainThread) {
@@ -288,7 +292,17 @@ const fallBack = <T>(
       `Assets worker: ${detail}. Falling back to the main thread (${kind}, cause ${cause}; warned once per cause).`
     );
   }
-  return mainThreadTask();
+  const result = await mainThreadTask();
+  return {
+    result,
+    report: {
+      target: 'WORKER_THREAD',
+      loadedOn: 'MAIN_THREAD',
+      fallbackCause: cause,
+      fallbackDetail: detail,
+      durationMs: performance.now() - startedAt,
+    },
+  };
 };
 
 /**
@@ -296,7 +310,8 @@ const fallBack = <T>(
  * worker-targeted load that can't run in the worker re-runs as `mainThreadTask` (warned once per
  * cause), or fails when AppConfig.assets.fallbackToMainThread is false. Both tasks must produce
  * the same result, so callers never depend on the thread. A load whose file itself failed in the
- * worker (eg. an HTTP error) is not re-run: its error is thrown as is.
+ * worker (eg. an HTTP error) is not re-run: its error is thrown as is. Resolves with the result
+ * and a report of where the load ran (for {@link recordAssetLoadReport}).
  * @param kind {@link AssetKind}
  * @param workerTask the load through the worker
  * @param mainThreadTask the same load on the main thread
@@ -308,30 +323,67 @@ export const runAssetTask = async <T>(
   workerTask: () => Promise<T>,
   mainThreadTask: () => Promise<T>,
   requiredCapability: keyof AssetsWorkerCapabilities | null = REQUIRED_CAPABILITY[kind]
-): Promise<T> => {
-  if (getAssetsWorkerTarget(kind) === 'MAIN_THREAD') return mainThreadTask();
+): Promise<{ result: T; report: AssetLoadReport }> => {
+  const startedAt = performance.now();
+  const target = getAssetsWorkerTarget(kind);
+  if (target === 'MAIN_THREAD') {
+    const result = await mainThreadTask();
+    return {
+      result,
+      report: { target, loadedOn: target, durationMs: performance.now() - startedAt },
+    };
+  }
 
   const startedWorker = await startWorker();
   if (!startedWorker) {
-    return fallBack(kind, 'INIT_FAILED', workerFailReason || 'no worker', mainThreadTask);
+    return fallBack(
+      kind,
+      'INIT_FAILED',
+      workerFailReason || 'no worker',
+      mainThreadTask,
+      startedAt
+    );
   }
   if (requiredCapability && !workerCapabilities?.[requiredCapability]) {
     return fallBack(
       kind,
       'CAPABILITY',
       `the worker runtime has no "${requiredCapability}" support`,
-      mainThreadTask
+      mainThreadTask,
+      startedAt
     );
   }
 
+  let result: T;
   try {
-    return await workerTask();
+    result = await workerTask();
   } catch (err) {
     if (err instanceof AssetsSourceError) throw err;
     const cause = err instanceof AssetsWorkerRequestError ? err.reason : 'WORKER_ERROR';
-    return fallBack(kind, cause, err instanceof Error ? err.message : String(err), mainThreadTask);
+    const detail = err instanceof Error ? err.message : String(err);
+    return fallBack(kind, cause, detail, mainThreadTask, startedAt);
   }
+  return {
+    result,
+    report: { target, loadedOn: target, durationMs: performance.now() - startedAt },
+  };
 };
+
+/**
+ * Keeps a load's report for the debug tooling (the Assets tab's info window). Only kept in a
+ * debug environment; a later report for the same key replaces the earlier one.
+ * @param key eg. `texture:${textureId}` or `import:${importId}`
+ * @param report {@link AssetLoadReport} (from {@link runAssetTask})
+ */
+export const recordAssetLoadReport = (key: string, report: AssetLoadReport) => {
+  if (isDebugEnvironment()) loadReports.set(key, report);
+};
+
+/**
+ * Returns the last recorded load report for a key (debug environment only).
+ * @param key eg. `texture:${textureId}` or `import:${importId}`
+ */
+export const getAssetLoadReport = (key: string) => loadReports.get(key);
 
 /**
  * Round-trips a PING through the assets worker, starting it if needed (whatever the

@@ -60,6 +60,22 @@ export type AssetsFallbackCause =
   /** The worker crashed (uncaught error) while the request was in flight, or before it was sent. */
   | 'CRASHED';
 
+/** Where one load ran, and how long it took (debug info, see recordAssetLoadReport()). */
+export type AssetLoadReport = {
+  /** Where the asset kind was targeted. */
+  target: AssetsWorkerTarget;
+  /** Where it was actually loaded. */
+  loadedOn: AssetsWorkerTarget;
+  /** Why a worker-targeted load ran on the main thread instead. */
+  fallbackCause?: AssetsFallbackCause;
+  fallbackDetail?: string;
+  /** From the request to the result, incl. waiting for a worker slot or for the worker to start. */
+  durationMs: number;
+  /** The loaded file's absolute URL, added by the caller (debug tooling can't read it from an
+   * ImageBitmap or a DataTexture). */
+  sourceUrl?: string;
+};
+
 /** The worker's handshake message (read by initWorker, not part of the protocol unions). */
 export type AssetsWorkerReadyMessage = {
   status: 'INIT_READY';

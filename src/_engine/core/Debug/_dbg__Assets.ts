@@ -1,5 +1,7 @@
 import * as THREE from 'three/webgpu';
-import { createDebuggerTab, createNewDebuggerContainer } from '../../debug/DebuggerGUI';
+import { type ListBladeApi, type Pane } from 'tweakpane';
+import type { BladeController, View } from '@tweakpane/core';
+import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { llog } from '../../utils/Logger';
 import { textureMapKeys } from '../../utils/constants';
@@ -18,6 +20,13 @@ import { getTextureRegistry } from '../Texture';
 import { getMaterialRegistry } from '../Material';
 import { getCurrentSceneId, getGeneratedAppData, getGeneratedSceneData } from '../Scene';
 import { getImportedAsset } from '../Import/ImportRegistry';
+import { DEBUG_ASSETS_BOOT_LS_KEY } from '../Config';
+import {
+  getAssetLoadReport,
+  getAssetsWorkerInfo,
+  getAssetsWorkerTarget,
+} from '../Assets/AssetsAPI';
+import type { AssetLoadReport, AssetsWorkerTarget } from '../Assets/AssetsAPITypes';
 import type { ImportedGeometryInfo } from '../Import/ImportTypes';
 import {
   computeUniqueEdgeCount,
@@ -39,7 +48,10 @@ type Scope = 'SCENE' | 'ALL';
 const UI_LS_KEY = 'AEK_debugAssetsUI';
 const INFO_WIN_ID = 'assetsInfoWindow';
 
-let uiState: { scope: Scope } = { scope: 'SCENE' };
+let uiState: { scope: Scope; loadingFolderExpanded: boolean } = {
+  scope: 'SCENE',
+  loadingFolderExpanded: false,
+};
 let listCmp: TCMP | null = null;
 let lastListSignature = '';
 let infoWindowCmp: TCMP | null = null;
@@ -222,6 +234,133 @@ const refreshList = (force?: boolean) => {
   }
 };
 
+// --- Asset loading (assets worker) ---
+
+/** Debug-only boot-time overrides, applied by loadConfig() on the next reload. */
+type DebugAssetsBoot = {
+  workerTarget?: AssetsWorkerTarget;
+  gltfWorkerTarget?: AssetsWorkerTarget;
+  textureWorkerTarget?: AssetsWorkerTarget;
+};
+
+const getBootOverrides = () => lsGetItem(DEBUG_ASSETS_BOOT_LS_KEY, {}) as DebugAssetsBoot;
+/** The overrides this page load booted with (nothing else writes the key before this tab). */
+let bootedOverrides: DebugAssetsBoot = {};
+
+const THREAD_TEXT: Record<AssetsWorkerTarget, string> = {
+  MAIN_THREAD: 'Main thread',
+  WORKER_THREAD: 'Worker thread',
+};
+
+const describeWorkerStatus = () => {
+  const info = getAssetsWorkerInfo();
+  const caps = info.capabilities;
+  const fallbacks = Object.entries(info.fallbackCounts)
+    .filter(([, count]) => count > 0)
+    .map(([cause, count]) => `${cause} ×${count}`);
+  const last = info.lastFallback;
+  return {
+    status:
+      info.status === 'FAILED'
+        ? `FAILED: ${info.failReason}`
+        : info.status === 'NOT_STARTED'
+          ? 'NOT_STARTED (starts on the first worker-targeted load)'
+          : info.status,
+    capabilities: caps
+      ? Object.entries(caps)
+          .map(([name, isSupported]) => `${name} ${isSupported ? 'yes' : 'NO'}`)
+          .join('\n')
+      : '—',
+    requests: `${info.inFlight} in flight, ${info.queued} queued`,
+    fallbacks: fallbacks.length
+      ? `${fallbacks.join(', ')}\nlast: ${last?.kind}, ${last?.detail}`
+      : 'none',
+  };
+};
+
+/** Where an asset was loaded, from its load report. */
+const describeLoadReport = (report?: AssetLoadReport) => {
+  if (!report) return { loadedOn: '— (not loaded through the assets API)', duration: '—' };
+  const loadedOn = report.fallbackCause
+    ? `${THREAD_TEXT[report.loadedOn]} (worker fallback: ${report.fallbackCause}, ${report.fallbackDetail})`
+    : THREAD_TEXT[report.loadedOn];
+  return { loadedOn, duration: `${report.durationMs.toFixed(1)} ms` };
+};
+
+const addLoadingFolder = (debugGUI: Pane) => {
+  const folder = debugGUI.addFolder({
+    title: 'Asset loading',
+    expanded: uiState.loadingFolderExpanded,
+  });
+  folder.on('fold', (e) => {
+    uiState.loadingFolderExpanded = e.expanded;
+    persistUIState();
+  });
+
+  // Boot-time targets: written to LS here, applied by loadConfig() on the next reload
+  const overrides = getBootOverrides();
+  let updateReloadButton = () => {};
+  const addTargetDropDown = (key: keyof DebugAssetsBoot, label: string) => {
+    const dropDown = folder.addBlade({
+      view: 'list',
+      label,
+      options: [
+        { value: '', text: 'No override' },
+        { value: 'MAIN_THREAD', text: THREAD_TEXT.MAIN_THREAD },
+        { value: 'WORKER_THREAD', text: THREAD_TEXT.WORKER_THREAD },
+      ],
+      value: overrides[key] || '',
+    }) as ListBladeApi<BladeController<View>>;
+    dropDown.on('change', (e) => {
+      const next = { ...getBootOverrides() };
+      const value = e.value as unknown as AssetsWorkerTarget | '';
+      if (value) next[key] = value;
+      else delete next[key];
+      lsSetItem(DEBUG_ASSETS_BOOT_LS_KEY, next);
+      updateReloadButton();
+    });
+    return dropDown;
+  };
+  addTargetDropDown('workerTarget', 'Default target (boot)');
+  addTargetDropDown('gltfWorkerTarget', 'GLTF target (boot)');
+  addTargetDropDown('textureWorkerTarget', 'Texture target (boot)');
+  // Enabled while the saved overrides differ from the ones this page load booted with
+  const reloadButton = folder.addButton({ title: 'Reload to apply' });
+  reloadButton.on('click', () => location.reload());
+  updateReloadButton = () => {
+    reloadButton.disabled = JSON.stringify(getBootOverrides()) === JSON.stringify(bootedOverrides);
+  };
+  updateReloadButton();
+
+  const resolved = {
+    current: `GLTF: ${THREAD_TEXT[getAssetsWorkerTarget('GLTF')]}\nTextures: ${THREAD_TEXT[getAssetsWorkerTarget('TEXTURE')]}`,
+  };
+  folder.addBinding(resolved, 'current', {
+    label: 'Resolved targets',
+    readonly: true,
+    multiline: true,
+    rows: 2,
+  });
+
+  // Live worker status (read-only, polled by Tweakpane)
+  const status = describeWorkerStatus();
+  folder.addBinding(status, 'status', { label: 'Worker status', readonly: true });
+  folder.addBinding(status, 'capabilities', {
+    label: 'Capabilities',
+    readonly: true,
+    multiline: true,
+    rows: 3,
+  });
+  folder.addBinding(status, 'requests', { label: 'Requests', readonly: true });
+  folder.addBinding(status, 'fallbacks', {
+    label: 'Fallbacks',
+    readonly: true,
+    multiline: true,
+    rows: 3,
+  });
+  return () => Object.assign(status, describeWorkerStatus());
+};
+
 // --- Info window ---
 
 const field = (label: string, value: unknown) =>
@@ -287,6 +426,7 @@ const createTextureContent = (id: string) => {
   const declared = findDeclaration('textures', id);
   const importDeclaration = importId ? findDeclaration('importedAssets', importId) : undefined;
   const importFile = importId ? getImportedAsset(importId)?.fileName : undefined;
+  const report = getAssetLoadReport(importId ? `import:${importId}` : `texture:${id}`);
 
   let file = '—';
   let urls: string[] = [];
@@ -296,7 +436,9 @@ const createTextureContent = (id: string) => {
   } else if (importFile) {
     file = `embedded in ${importFile}`;
   } else {
-    urls = getTextureImageSrc(texture) || [];
+    // An <img> knows its URL; an ImageBitmap (assets worker) or HDR data doesn't, but the load
+    // report does
+    urls = getTextureImageSrc(texture) || (report?.sourceUrl ? [report.sourceUrl] : []);
     if (urls.length) file = urls.join(', ');
   }
   const fileType = importFile
@@ -308,6 +450,7 @@ const createTextureContent = (id: string) => {
   );
   const users = getTextureMaterialUsers(texture, id);
   const d = describeTexture(texture);
+  const load = describeLoadReport(report);
 
   const html = () => `<div>
 ${field('Type', d.kind)}
@@ -315,6 +458,8 @@ ${field('Id', id)}
 ${field('File', file)}
 ${field('File type', fileType)}
 <div><span class="winSmallLabel">${importFile ? 'Source file size' : 'File size'}:</span> ${fileSizeCmp}</div>
+${field('Loaded on', load.loadedOn)}
+${field(importId ? 'Load duration (whole import)' : 'Load duration', load.duration)}
 ${field('Used by materials', `${users} (texture ref counts aren't tracked)`)}
 ${field('Persistent', entry.persistent ? 'yes' : 'no')}
 ${section(
@@ -357,6 +502,9 @@ const createGeometryContent = (id: string) => {
   const generatorType = (geometry.userData.props as { type?: string } | undefined)?.type;
   const sourceFile = manifest?.fileName ?? importDeclaration?.fileName;
   const triangles = getTriangleCount(geometry);
+  const load = importInfo
+    ? describeLoadReport(getAssetLoadReport(`import:${importInfo.importId}`))
+    : undefined;
 
   const fileSizeCmp = createFileSizeCmp(
     importDeclaration?.__fileSize,
@@ -385,6 +533,8 @@ ${field('Id', id)}
 ${field('File', typeof sourceFile === 'string' ? sourceFile : '—')}
 ${field('File type', typeof sourceFile === 'string' ? getFileType(sourceFile) : '—')}
 <div><span class="winSmallLabel">${importInfo ? 'Source file size' : 'File size'}:</span> ${fileSizeCmp}</div>
+${load ? field('Loaded on', load.loadedOn) : ''}
+${load ? field('Load duration (whole import)', load.duration) : ''}
 ${field('Ref count', entry.count)}
 ${field('Persistent', entry.persistent ? 'yes' : 'no')}
 ${section(
@@ -484,6 +634,7 @@ ${content.html()}
 
 export const _createAssetsDebugGUI = () => {
   uiState = { ...uiState, ...(lsGetItem(UI_LS_KEY, uiState) as typeof uiState) };
+  bootedOverrides = getBootOverrides();
 
   const icon = getSvgIcon('assets');
   createDebuggerTab({
@@ -497,12 +648,18 @@ export const _createAssetsDebugGUI = () => {
         onClear: () => lsRemoveItem(UI_LS_KEY),
         watchKey: UI_LS_KEY,
       });
-      const container = createNewDebuggerContainer('assets', `${icon} Assets`, [clearTabBtn]);
+      const { container, debugGUI } = createNewDebuggerPane('assets', `${icon} Assets`, [
+        clearTabBtn,
+      ]);
+      const updateWorkerStatus = addLoadingFolder(debugGUI);
 
       // No registry change hooks to subscribe to: poll, rebuilding only when the listed rows (or
       // the scope/scene) changed, like the Physics API tab's entity list
       lastListSignature = '';
-      const intervalId = setInterval(() => refreshList(), 500);
+      const intervalId = setInterval(() => {
+        refreshList();
+        updateWorkerStatus();
+      }, 500);
       listCmp = CMP({
         id: 'debuggerAssetsList',
         html: createListHtml,

@@ -3,7 +3,8 @@ import { lerror, lwarn } from '../../utils/Logger';
 import { deleteGeometry, doesGeoExist, getGeometryRegistry, saveBufferGeometry } from '../Geometry';
 import { isTextureUsedByAnyMaterial } from '../Material';
 import { deleteTexture, doesTextureExist, getTextureRegistry } from '../Texture';
-import { loadGLTFInWorker, runAssetTask } from '../Assets/AssetsAPI';
+import { loadGLTFInWorker, recordAssetLoadReport, runAssetTask } from '../Assets/AssetsAPI';
+import type { AssetLoadReport } from '../Assets/AssetsAPITypes';
 import { getDracoWorkerSettings } from './DracoDecoder';
 import { deserializeGeometry } from './GeometryTransfer';
 import { disposeGLTFLeftovers, extractPrimitives } from './GLTFExtract';
@@ -194,12 +195,13 @@ const runImport = async (
   if (fileNameError) return fail(fileNameError);
 
   let loaded: LoadOutcome;
+  let report: AssetLoadReport;
   try {
-    loaded = await runAssetTask(
+    ({ result: loaded, report } = await runAssetTask(
       'GLTF',
       () => loadInWorker(params, id),
       () => loadOnMainThread(params, id)
-    );
+    ));
   } catch (err) {
     return fail(LOAD_ERROR_MESSAGE, err);
   }
@@ -265,6 +267,7 @@ const runImport = async (
     hasTextures: Boolean(textures),
     sourceKey,
   };
+  recordAssetLoadReport(`import:${id}`, report);
   logWarnings(manifest);
   return manifest;
 };
