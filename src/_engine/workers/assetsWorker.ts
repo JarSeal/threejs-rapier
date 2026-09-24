@@ -9,6 +9,8 @@ import {
   AssetsWorkerCapabilities,
   AssetsWorkerReadyMessage,
 } from '../core/Assets/AssetsAPITypes';
+import { AssetsSourceError } from './assets/assetsFetch';
+import { assetsSwitchTexture } from './assets/assetsSwitchTexture';
 
 const STATUS_READY_STRING = 'INIT_READY';
 
@@ -42,6 +44,9 @@ const handleMessage = async (data: AssetsUpProtocol) => {
     switch (type) {
       case AssetsProtocolType.PING:
         return sendMessage({ type, requestId, workerTime: performance.now() });
+      case AssetsProtocolType.LOAD_TEXTURE:
+      case AssetsProtocolType.LOAD_HDR_TEXTURE:
+        return await assetsSwitchTexture(data, sendMessage);
       default:
         return sendMessage({
           type: AssetsProtocolType.ERROR,
@@ -54,6 +59,7 @@ const handleMessage = async (data: AssetsUpProtocol) => {
       type: AssetsProtocolType.ERROR,
       requestId,
       message: err instanceof Error ? err.message : String(err),
+      isSourceError: err instanceof AssetsSourceError,
     });
   }
 };

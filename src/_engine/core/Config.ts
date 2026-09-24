@@ -219,7 +219,7 @@ export const loadConfig = () => {
   if (!config.physics) config.physics = {};
 
   if (typeof envVars.VITE_PHYS_ENABLED === 'string') {
-    const physicsEnabled = Boolean(envVars.VITE_PHYS_ENABLED);
+    const physicsEnabled = envVars.VITE_PHYS_ENABLED === 'true';
     config.physics.enabled = physicsEnabled;
     envVars.VITE_PHYS_ENABLED = physicsEnabled;
   }
@@ -237,7 +237,7 @@ export const loadConfig = () => {
   }
 
   if (typeof envVars.VITE_PHYS_USE_SAB === 'string') {
-    const useSAB = Boolean(envVars.VITE_PHYS_USE_SAB);
+    const useSAB = envVars.VITE_PHYS_USE_SAB === 'true';
     config.physics.useSAB = useSAB;
     envVars.VITE_PHYS_USE_SAB = useSAB;
   }

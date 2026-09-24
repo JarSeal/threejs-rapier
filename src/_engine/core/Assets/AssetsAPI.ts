@@ -19,6 +19,8 @@ import {
   AssetKind,
   AssetsDownProtocol,
   AssetsFallbackCause,
+  AssetsLoadHDRTextureResponse,
+  AssetsLoadTextureResponse,
   AssetsPingResponse,
   AssetsProtocolType,
   AssetsState,
@@ -38,6 +40,15 @@ class AssetsWorkerRequestError extends Error {
     super(message);
     this.name = 'AssetsWorkerRequestError';
     this.reason = reason;
+  }
+}
+
+/** The file itself failed in the worker (eg. an HTTP error): the main thread would fail the same
+ * way, so it is passed on to the caller instead of re-running the load there. */
+class AssetsSourceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AssetsSourceError';
   }
 }
 
@@ -136,15 +147,22 @@ const onWorkerMessage = (event: MessageEvent<AssetsDownProtocol>) => {
 
   if (requestId === undefined || !isRequestPending(requestId)) {
     // Not tied to a request, or a late reply to a request that already timed out (and fell
-    // back). @TODO (p052 phase 2+): close any ImageBitmaps a late reply carries.
+    // back): nothing uses its result, so free what the result holds
     if (data.type === AssetsProtocolType.ERROR && requestId === undefined) {
       lerror(`Error in assets worker, message: ${data.message}`);
+    } else if (data.type === AssetsProtocolType.LOAD_TEXTURE) {
+      data.bitmap.close();
     }
     return;
   }
 
   if (data.type === AssetsProtocolType.ERROR) {
-    rejectRequest(requestId, new AssetsWorkerRequestError('WORKER_ERROR', data.message));
+    rejectRequest(
+      requestId,
+      data.isSourceError
+        ? new AssetsSourceError(data.message)
+        : new AssetsWorkerRequestError('WORKER_ERROR', data.message)
+    );
     return;
   }
   resolveRequest(data, requestId);
@@ -273,15 +291,19 @@ const fallBack = <T>(
  * Runs an asset load where its kind is targeted (see {@link getAssetsWorkerTarget}). A
  * worker-targeted load that can't run in the worker re-runs as `mainThreadTask` (warned once per
  * cause), or fails when AppConfig.assets.fallbackToMainThread is false. Both tasks must produce
- * the same result, so callers never depend on the thread.
+ * the same result, so callers never depend on the thread. A load whose file itself failed in the
+ * worker (eg. an HTTP error) is not re-run: its error is thrown as is.
  * @param kind {@link AssetKind}
  * @param workerTask the load through the worker
  * @param mainThreadTask the same load on the main thread
+ * @param requiredCapability the worker capability this load needs (default: the kind's own,
+ * see REQUIRED_CAPABILITY), or null when it needs none
  */
 export const runAssetTask = async <T>(
   kind: AssetKind,
   workerTask: () => Promise<T>,
-  mainThreadTask: () => Promise<T>
+  mainThreadTask: () => Promise<T>,
+  requiredCapability: keyof AssetsWorkerCapabilities | null = REQUIRED_CAPABILITY[kind]
 ): Promise<T> => {
   if (getAssetsWorkerTarget(kind) === 'MAIN_THREAD') return mainThreadTask();
 
@@ -289,12 +311,11 @@ export const runAssetTask = async <T>(
   if (!startedWorker) {
     return fallBack(kind, 'INIT_FAILED', workerFailReason || 'no worker', mainThreadTask);
   }
-  const capability = REQUIRED_CAPABILITY[kind];
-  if (!workerCapabilities?.[capability]) {
+  if (requiredCapability && !workerCapabilities?.[requiredCapability]) {
     return fallBack(
       kind,
       'CAPABILITY',
-      `the worker runtime has no "${capability}" support`,
+      `the worker runtime has no "${requiredCapability}" support`,
       mainThreadTask
     );
   }
@@ -302,6 +323,7 @@ export const runAssetTask = async <T>(
   try {
     return await workerTask();
   } catch (err) {
+    if (err instanceof AssetsSourceError) throw err;
     const cause = err instanceof AssetsWorkerRequestError ? err.reason : 'WORKER_ERROR';
     return fallBack(kind, cause, err instanceof Error ? err.message : String(err), mainThreadTask);
   }
@@ -323,4 +345,31 @@ export const pingAssetsWorker = async () => {
     return null;
   }
   return performance.now() - sentAt;
+};
+
+/**
+ * Fetches and decodes a standard (non-HDR) image in the assets worker. The bitmap is already
+ * flipped vertically (like TextureLoader's default flipY = true), so its texture needs
+ * `flipY = false`. Call it inside {@link runAssetTask}.
+ * @param url absolute URL
+ */
+export const loadTextureInWorker = async (url: string) =>
+  (
+    await requestAssetsWorker<AssetsLoadTextureResponse>({
+      type: AssetsProtocolType.LOAD_TEXTURE,
+      url,
+    })
+  ).bitmap;
+
+/**
+ * Fetches and parses an .hdr file in the assets worker (HDRLoader, HalfFloatType). Call it
+ * inside {@link runAssetTask}.
+ * @param url absolute URL
+ */
+export const loadHDRTextureInWorker = async (url: string) => {
+  const { width, height, data } = await requestAssetsWorker<AssetsLoadHDRTextureResponse>({
+    type: AssetsProtocolType.LOAD_HDR_TEXTURE,
+    url,
+  });
+  return { width, height, data };
 };

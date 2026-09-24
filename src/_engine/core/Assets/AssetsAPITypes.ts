@@ -57,6 +57,10 @@ export enum AssetsProtocolType {
   ERROR = 0,
   /** Round-trip check, eg. to confirm the worker is alive. */
   PING = 1,
+  /** A standard (non-HDR) texture: fetched and decoded into an ImageBitmap. */
+  LOAD_TEXTURE = 2,
+  /** An .hdr texture: fetched and parsed by HDRLoader into half-float RGBA data. */
+  LOAD_HDR_TEXTURE = 3,
 }
 
 // UP (main thread → worker). Every request has a requestId; the worker answers each one with
@@ -64,7 +68,24 @@ export enum AssetsProtocolType {
 
 export type AssetsPingRequest = { type: AssetsProtocolType.PING; requestId: number };
 
-export type AssetsUpProtocol = AssetsPingRequest;
+/** `url` must be absolute: a relative one would resolve against the worker script's URL. */
+export type AssetsLoadTextureRequest = {
+  type: AssetsProtocolType.LOAD_TEXTURE;
+  requestId: number;
+  url: string;
+};
+
+/** `url` must be absolute: a relative one would resolve against the worker script's URL. */
+export type AssetsLoadHDRTextureRequest = {
+  type: AssetsProtocolType.LOAD_HDR_TEXTURE;
+  requestId: number;
+  url: string;
+};
+
+export type AssetsUpProtocol =
+  | AssetsPingRequest
+  | AssetsLoadTextureRequest
+  | AssetsLoadHDRTextureRequest;
 
 // DOWN (worker → main thread)
 
@@ -73,6 +94,9 @@ export type AssetsErrorResponse = {
   /** Missing when the error isn't tied to a request. */
   requestId?: number;
   message: string;
+  /** The file itself failed (eg. an HTTP error or a missing file), so the main thread would
+   * fail the same way: the request is not re-run there. */
+  isSourceError?: boolean;
 };
 
 export type AssetsPingResponse = {
@@ -82,4 +106,25 @@ export type AssetsPingResponse = {
   workerTime: number;
 };
 
-export type AssetsDownProtocol = AssetsErrorResponse | AssetsPingResponse;
+/** The decoded image, already flipped vertically (the flip TextureLoader's default
+ * `flipY = true` would do), not premultiplied. Transferred, not copied. */
+export type AssetsLoadTextureResponse = {
+  type: AssetsProtocolType.LOAD_TEXTURE;
+  requestId: number;
+  bitmap: ImageBitmap;
+};
+
+/** HDRLoader's parse result in its default HalfFloatType. `data` is transferred, not copied. */
+export type AssetsLoadHDRTextureResponse = {
+  type: AssetsProtocolType.LOAD_HDR_TEXTURE;
+  requestId: number;
+  width: number;
+  height: number;
+  data: Uint16Array;
+};
+
+export type AssetsDownProtocol =
+  | AssetsErrorResponse
+  | AssetsPingResponse
+  | AssetsLoadTextureResponse
+  | AssetsLoadHDRTextureResponse;
