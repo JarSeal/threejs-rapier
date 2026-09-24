@@ -12,29 +12,37 @@ let stressTestCount = 0;
 const BOX_SIZE = 0.5;
 const SPHERE_RADIUS = 0.3;
 
+// Shared by every spawned mesh, by id
+const getAssets = () => ({
+  geoBox: createGeometry({
+    id: 'stress-box-geo',
+    type: 'BOX',
+    params: { width: BOX_SIZE, height: BOX_SIZE, depth: BOX_SIZE },
+  }),
+  geoSphere: createGeometry({
+    id: 'stress-sphere-geo',
+    type: 'SPHERE',
+    params: { radius: SPHERE_RADIUS },
+  }),
+  mat: createMaterial({
+    id: 'stress-mat',
+    type: 'PHONG',
+    params: { color: '#ff4400' },
+  }),
+});
+
 export const initPhysicsStressTest = (batchSize: number = 50) => {
   if (!IS_DEBUG_ENV) return;
 
   // 1. Pre-create assets to minimize GC during the test
-  const geoBox = createGeometry({
-    id: 'stress-box-geo',
-    type: 'BOX',
-    params: { width: BOX_SIZE, height: BOX_SIZE, depth: BOX_SIZE },
-  });
-  const geoSphere = createGeometry({
-    id: 'stress-sphere-geo',
-    type: 'SPHERE',
-    params: { radius: SPHERE_RADIUS },
-  });
-
-  const mat = createMaterial({
-    id: 'stress-mat',
-    type: 'PHONG',
-    params: { color: '#ff4400' },
-  });
+  getAssets();
 
   // 2. The Spawner Function
   const spawnBatch = () => {
+    // Resolved per batch, not captured at init: the key binding works in every scene, and the
+    // assets belong to the scene that created them (released when it's left), so a batch in
+    // another scene gets them from the cache, or creates them again, for the current scene
+    const { geoBox, geoSphere, mat } = getAssets();
     for (let i = 0; i < batchSize; i++) {
       stressTestCount++;
       const isBox = Math.random() > 0.5;

@@ -7,7 +7,7 @@ import { createMeshEntity, type MeshProps } from '../MeshManager';
 import type { ColliderParams, RigidBodyParams } from '../Physics/PhysicsAPITypes';
 import { createPhysicsEntity } from '../PhysicsManager';
 import { parseCustomProps } from './CustomProps';
-import { getImportedAsset } from './ImportRegistry';
+import { getImportedAsset, retagImportedAsset } from './ImportRegistry';
 import { deriveColliderFromGeometry } from './MeshColliderGeometry';
 import type {
   ImportedAssetManifest,
@@ -242,6 +242,8 @@ export const spawnImportedAsset = async (
     lerror(`spawnImportedAsset: no imported asset with id "${manifestOrId}" (import it first).`);
     return { meshEntityIds: [], physicsEntityIds: [] };
   }
+  // Claimed for the scene spawning it (its collider-only geometries take no refs), see AssetOwners
+  retagImportedAsset(manifest.id);
 
   const nodes = toSpawnNodes(manifest, params);
   let appIdPrefix: string | undefined = params.entityOpts?.appId ?? manifest.id;
