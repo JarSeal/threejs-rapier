@@ -1,25 +1,3 @@
-Create "Line rendering system" plan in docs/plans/p058_line-rendering-system.md
-
-Category: Lines
-
-In the plan p025_debug-drawing-in-physics-api.md (now done) the option to tweak the line width caused the line width logic to become part of the production build and added size to the production build bundle. I already have implementations planned, like the plan p125_spatial-index-system-visualizer.md, which could benefit from the Line rendering system to be a Aekasha core engine system. I am at some going to create a selection tool, which could benefit from showing the bounding box of that entity. This could then be even expanded to show the entity on the scene when hovering a debugger tab list. I would then need a color pulsating feature for the selected object to show up in the scene by changing color and indicating that it is selected. So in other words, do not implement anything related to selecting an object, but implement the feature for pulsating between two or more colors (+ the speed which they change color), but make sure there is also the option just to have one color. Also this could be really nice tool to use in an actual game play code as well (a game might need to render lines) so this would be justified to be part of the core engine. Study and refactor the line drawing to a core engine system and refactor the physics entity rendering visualization to use this system (or if not possible or not recommended, then notify the reason).
-
-If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
-
-************************************
-
-Create "Interpolation optimization and fixes" plan in docs/plans/p059_interpolation-optimization-and-fixes.md
-
-Category: Physics
-
-When moving the player in the gym scene the is moved, it is not moving smoothly. I have tried all of the Fixed Physics, Renderer, None interpolation options (the nudging behaviour would be expected in None but not the others). Please check the Renderer and Fixed Physics interpolation options that they work correctly. One note that might or might not be a sign that they are not working (this is just an observation and I am not sure) is that in my legacy version when I had the Rapier debug wireframe system and only an interpolation boolean to toggle it on or off, the character wireframe showed the interpolation visually. It was visible because when I moved the character (especially when running) the wireframe would be ahead of the mesh slightly and then when stopped the mesh would catch up to the wireframe position. I would expect the current Rendering option to work this way. If they are working correctly then notify me and if this is a bug in the character movement system then we should fix that in this plan. As a side note of this plan, please explain the main differences between the Rendering and Fixed Physics interpolation options and what kind of circumstances they should each be used in.
-
-One small observation about this is that the nudging/yanking of the character when moving it is way more observable on Chrome on Windows than on MacBook Air Chrome. I also noticed that the in the gym scene if I use the debug camera instead of the Third person character camera, there seems to be no nudging in Renderer interpolation mode which could suggest that the problem is in the Third person character camera (I am not sure, just guessing). The other interpolation modes are still nudging but I guess that would make sense (at least for None interpolation mode).
-
-If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
-
-************************************
-
 Create "Character state debugger window" plan in docs/plans/p067_character-state-debugger-window.md
 
 Category: Character
@@ -63,3 +41,8 @@ If the measuring display panels option is true, then the panels will show in pro
 
 [NOTE: This IS NOT A PLAN, just run it]
 Add a folder ("Production test mode") and an option to that folder: "Show top on screen tools in prod test mode" (default true). Then when that is not turned on, those buttons should not show in prodTest=true mode.
+
+************************************
+
+[NOTE: This IS NOT A PLAN, just run it]
+Clean up old PhysicsRapier.ts file and possible usages (notify me about them and ask what to do if usages found). Also clean up 
