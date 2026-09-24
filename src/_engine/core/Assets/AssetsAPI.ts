@@ -154,6 +154,8 @@ const onWorkerMessage = (event: MessageEvent<AssetsDownProtocol>) => {
       lerror(`Error in assets worker, message: ${data.message}`);
     } else if (data.type === AssetsProtocolType.LOAD_TEXTURE) {
       data.bitmap.close();
+    } else if (data.type === AssetsProtocolType.LOAD_GLTF) {
+      for (const image of data.images) image.close();
     }
     return;
   }
@@ -384,16 +386,24 @@ export const loadHDRTextureInWorker = async (url: string) => {
  * @param url absolute URL
  * @param opts.importId the import id (geometry id prefix)
  * @param opts.meshIndex only extract this node (see ImportAssetParams.meshIndex)
+ * @param opts.importTextures also send the textures of the primitives' glTF material slots
+ * (TextureTransfer.ts's deserializeTexture() rebuilds them)
  * @param opts.draco the main thread's DRACO settings (DracoDecoder.ts's getDracoWorkerSettings())
  */
 export const loadGLTFInWorker = (
   url: string,
-  opts: { importId: string; meshIndex?: number | number[]; draco: DracoWorkerSettings }
+  opts: {
+    importId: string;
+    meshIndex?: number | number[];
+    importTextures: boolean;
+    draco: DracoWorkerSettings;
+  }
 ) =>
   requestAssetsWorker<AssetsLoadGLTFResponse>({
     type: AssetsProtocolType.LOAD_GLTF,
     url,
     importId: opts.importId,
     ...(opts.meshIndex !== undefined ? { meshIndex: opts.meshIndex } : {}),
+    importTextures: opts.importTextures,
     draco: opts.draco,
   });

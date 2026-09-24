@@ -4,6 +4,8 @@
 
 import type { TransferableGeometry } from '../Import/GeometryTransfer';
 import type { ImportedGeometryInfo } from '../Import/ImportTypes';
+import type { TransferableTexture } from '../Import/TextureTransfer';
+import type { TextureMapKeys } from '../Material';
 
 /** Where an asset kind is loaded. */
 export type AssetsWorkerTarget = 'MAIN_THREAD' | 'WORKER_THREAD';
@@ -104,6 +106,8 @@ export type AssetsLoadGLTFRequest = {
   /** The (main-thread-resolved) import id, the geometry id prefix. */
   importId: string;
   meshIndex?: number | number[];
+  /** Also send the textures of the primitives' glTF material slots. */
+  importTextures: boolean;
   draco: DracoWorkerSettings;
 };
 
@@ -150,8 +154,10 @@ export type AssetsLoadHDRTextureResponse = {
 };
 
 /** GLTFExtract's extractPrimitives() result, run in the worker. Nodes sharing one glTF mesh share
- * one geometry (`geometryIndex`), as they share one BufferGeometry on the main thread. The
- * geometries' arrays are transferred, not copied. */
+ * one geometry (`geometryIndex`), as they share one BufferGeometry on the main thread. With
+ * importTextures, also GLTFTextureCollect's collectGLTFTextures() result (textures sharing one
+ * image share its `imageIndex`, as they share one THREE.Source). The geometries' arrays and the
+ * images are transferred, not copied. */
 export type AssetsLoadGLTFResponse = {
   type: AssetsProtocolType.LOAD_GLTF;
   requestId: number;
@@ -159,6 +165,12 @@ export type AssetsLoadGLTFResponse = {
   error?: string;
   geometries: TransferableGeometry[];
   primitives: { geometryIndex: number; info: ImportedGeometryInfo }[];
+  /** Empty without importTextures. */
+  images: ImageBitmap[];
+  /** Empty without importTextures. */
+  textures: { texture: TransferableTexture; name: string; gltfTextureKey: string }[];
+  /** Per primitive (same order): slot → index in `textures`. Empty without importTextures. */
+  textureSlotsPerPrimitive: Partial<Record<TextureMapKeys, number>>[];
 };
 
 export type AssetsDownProtocol =

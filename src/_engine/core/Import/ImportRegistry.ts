@@ -8,7 +8,9 @@ import { getDracoWorkerSettings } from './DracoDecoder';
 import { deserializeGeometry } from './GeometryTransfer';
 import { disposeGLTFLeftovers, extractPrimitives } from './GLTFExtract';
 import { loadGLTF, toAbsoluteUrl, validateGLTFFileName } from './GLTFSource';
+import { collectGLTFTextures } from './GLTFTextureCollect';
 import { registerGLTFTextures, type RegisteredGLTFTextures } from './GLTFTextures';
+import { deserializeTexture } from './TextureTransfer';
 import type { ImportAssetParams, ImportedAssetManifest, ImportedGeometryInfo } from './ImportTypes';
 
 type ImportRecord = {
@@ -78,8 +80,21 @@ type LoadOutcome =
     }
   | { error: string; cause?: unknown };
 
+const getTextureRegistrationOpts = (params: ImportAssetParams, id: string) => {
+  const { importTextures } = params;
+  return {
+    importId: id,
+    importName: params.debugData?.name || id,
+    fileName: params.fileName,
+    texOpts: typeof importTextures === 'object' ? importTextures.texOpts : undefined,
+    isPersistent:
+      (typeof importTextures === 'object' ? importTextures.isPersistent : undefined) ??
+      params.isPersistent,
+  };
+};
+
 const loadOnMainThread = async (params: ImportAssetParams, id: string): Promise<LoadOutcome> => {
-  const { fileName, meshIndex, isPersistent, importTextures } = params;
+  const { fileName, meshIndex, importTextures } = params;
   let gltf;
   try {
     gltf = await loadGLTF(fileName);
@@ -94,15 +109,10 @@ const loadOnMainThread = async (params: ImportAssetParams, id: string): Promise<
   }
 
   const textures = importTextures
-    ? registerGLTFTextures(gltf, extracted.primitives, {
-        importId: id,
-        importName: params.debugData?.name || id,
-        fileName,
-        texOpts: typeof importTextures === 'object' ? importTextures.texOpts : undefined,
-        isPersistent:
-          (typeof importTextures === 'object' ? importTextures.isPersistent : undefined) ??
-          isPersistent,
-      })
+    ? registerGLTFTextures(
+        collectGLTFTextures(gltf, extracted.primitives),
+        getTextureRegistrationOpts(params, id)
+      )
     : null;
 
   return {
@@ -113,25 +123,57 @@ const loadOnMainThread = async (params: ImportAssetParams, id: string): Promise<
   };
 };
 
-/** The same stage in the assets worker: it runs the same extractPrimitives() and sends the
- * geometries back as transferable data, which are wrapped here (nothing is parsed or copied). */
+/** The same stage in the assets worker: it runs the same extractPrimitives() (and
+ * collectGLTFTextures()) and sends the geometries (and texture images) back as transferable data,
+ * which are wrapped here (nothing is parsed, decoded or copied). */
 const loadInWorker = async (params: ImportAssetParams, id: string): Promise<LoadOutcome> => {
   const response = await loadGLTFInWorker(toAbsoluteUrl(params.fileName), {
     importId: id,
     meshIndex: params.meshIndex,
+    importTextures: Boolean(params.importTextures),
     draco: getDracoWorkerSettings(),
   });
   if (response.error !== undefined) return { error: response.error };
 
   const geometries = response.geometries.map(deserializeGeometry);
+  const primitives = response.primitives.map(({ geometryIndex, info }) => ({
+    geometry: geometries[geometryIndex],
+    info,
+  }));
+
+  // One source per image: textures sharing an image share its source, as GLTFLoader's clones do
+  const sources = response.images.map((image) => new THREE.Source(image));
+  const rebuiltTextures = response.textures.map(({ texture }) =>
+    deserializeTexture(texture, sources[texture.imageIndex])
+  );
+  const textures = params.importTextures
+    ? registerGLTFTextures(
+        {
+          textures: response.textures.map(({ name, gltfTextureKey }, i) => ({
+            texture: rebuiltTextures[i],
+            name,
+            gltfTextureKey,
+          })),
+          slotsPerPrimitive: response.textureSlotsPerPrimitive,
+        },
+        getTextureRegistrationOpts(params, id)
+      )
+    : null;
+
   return {
-    primitives: response.primitives.map(({ geometryIndex, info }) => ({
-      geometry: geometries[geometryIndex],
-      info,
-    })),
-    textures: null,
+    primitives,
+    textures,
     disposeLeftovers: (keepGeometries) => {
       for (const geometry of geometries) if (!keepGeometries.has(geometry)) geometry.dispose();
+      // Same rule as disposeGLTFLeftovers(): an unregistered texture (one a re-import reuses) is
+      // disposed, and its image closed unless a registered texture shares it
+      const keptSources = new Set<THREE.Source<unknown>>();
+      textures?.keep.forEach((texture) => keptSources.add(texture.source));
+      for (const texture of rebuiltTextures) {
+        if (textures?.keep.has(texture)) continue;
+        texture.dispose();
+        if (!keptSources.has(texture.source)) (texture.source.data as ImageBitmap).close();
+      }
     },
   };
 };
@@ -141,7 +183,7 @@ const runImport = async (
   id: string,
   sourceKey: string
 ): Promise<ImportedAssetManifest | null> => {
-  const { fileName, isPersistent, importTextures } = params;
+  const { fileName, isPersistent } = params;
   const fail = (message: string, err?: unknown) => {
     lerror(`Could not import "${fileName}" (import id "${id}"): ${message}`, ...(err ? [err] : []));
     if (params.throwOnError) throw new Error(`Error while importing "${fileName}": ${message}`);
@@ -153,15 +195,11 @@ const runImport = async (
 
   let loaded: LoadOutcome;
   try {
-    // @TODO (p052 phase 4): textures in the worker. Until then, an import with textures always
-    // loads on the main thread.
-    loaded = importTextures
-      ? await loadOnMainThread(params, id)
-      : await runAssetTask(
-          'GLTF',
-          () => loadInWorker(params, id),
-          () => loadOnMainThread(params, id)
-        );
+    loaded = await runAssetTask(
+      'GLTF',
+      () => loadInWorker(params, id),
+      () => loadOnMainThread(params, id)
+    );
   } catch (err) {
     return fail(LOAD_ERROR_MESSAGE, err);
   }

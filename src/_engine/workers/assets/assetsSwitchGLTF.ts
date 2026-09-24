@@ -9,7 +9,9 @@ import {
   DracoWorkerSettings,
 } from '../../core/Assets/AssetsAPITypes';
 import { disposeGLTFLeftovers, extractPrimitives } from '../../core/Import/GLTFExtract';
+import { collectGLTFTextures } from '../../core/Import/GLTFTextureCollect';
 import { serializeGeometry, TransferableGeometry } from '../../core/Import/GeometryTransfer';
+import { serializeTexture } from '../../core/Import/TextureTransfer';
 import { fetchAsset } from './assetsFetch';
 
 let gltfLoader: GLTFLoader | null = null;
@@ -42,7 +44,7 @@ export const assetsSwitchGLTF = async (
   data: AssetsLoadGLTFRequest,
   sendMessage: (message: AssetsDownProtocol, transfer?: Transferable[]) => void
 ) => {
-  const { type, requestId, url, importId, meshIndex, draco } = data;
+  const { type, requestId, url, importId, meshIndex, importTextures, draco } = data;
   const buffer = await (await fetchAsset(url)).arrayBuffer();
   const gltf = await getGLTFLoader(draco).parseAsync(buffer, THREE.LoaderUtils.extractUrlBase(url));
 
@@ -50,7 +52,16 @@ export const assetsSwitchGLTF = async (
   const extracted = extractPrimitives(gltf, { importId, meshIndex });
   if (extracted.error !== undefined) {
     disposeGLTFLeftovers(gltf, {});
-    return sendMessage({ type, requestId, error: extracted.error, geometries: [], primitives: [] });
+    return sendMessage({
+      type,
+      requestId,
+      error: extracted.error,
+      geometries: [],
+      primitives: [],
+      images: [],
+      textures: [],
+      textureSlotsPerPrimitive: [],
+    });
   }
 
   const transfer = new Set<ArrayBuffer>();
@@ -65,8 +76,32 @@ export const assetsSwitchGLTF = async (
     return { geometryIndex, info };
   });
 
-  // Free the rest of the parse (materials, decoded images) before the buffers are transferred:
-  // after postMessage, nothing here may touch the geometries again
-  disposeGLTFLeftovers(gltf, { geometries: new Set(indexByGeometry.keys()) });
-  sendMessage({ type, requestId, geometries, primitives }, [...transfer]);
+  // The same texture collection the main-thread import runs; registering happens there
+  const images: ImageBitmap[] = [];
+  const keepTextures = new Set<THREE.Texture>();
+  const collected = importTextures ? collectGLTFTextures(gltf, extracted.primitives) : null;
+  const imageIndexBySource = new Map<THREE.Source<unknown>, number>();
+  const textures = (collected?.textures || []).map(({ texture, name, gltfTextureKey }) => {
+    keepTextures.add(texture);
+    return { texture: serializeTexture(texture, images, imageIndexBySource), name, gltfTextureKey };
+  });
+
+  // Free the rest of the parse (materials, unused images) before the buffers and images are
+  // transferred: after postMessage, nothing here may touch the kept geometries/textures again
+  disposeGLTFLeftovers(gltf, {
+    geometries: new Set(indexByGeometry.keys()),
+    textures: keepTextures,
+  });
+  sendMessage(
+    {
+      type,
+      requestId,
+      geometries,
+      primitives,
+      images,
+      textures,
+      textureSlotsPerPrimitive: collected?.slotsPerPrimitive || [],
+    },
+    [...transfer, ...images]
+  );
 };

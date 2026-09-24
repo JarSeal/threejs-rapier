@@ -1,10 +1,8 @@
 import * as THREE from 'three/webgpu';
-import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { lwarn } from '../../utils/Logger';
-import { textureMapKeys } from '../../utils/constants';
 import type { TextureMapKeys } from '../Material';
 import { doesTextureExist, getTextureRegistry, saveTexture, type TexOpts } from '../Texture';
-import type { ExtractedPrimitive } from './GLTFExtract';
+import type { CollectedGLTFTextures } from './GLTFTextureCollect';
 
 type TextureSlots = Partial<Record<TextureMapKeys, string>>;
 
@@ -30,28 +28,6 @@ const applyTexOpts = (texture: THREE.Texture, texOpts?: TexOpts) => {
   texture.needsUpdate = true;
 };
 
-/** Texture name → id part: the glTF texture name, else the image name or file basename
- * (GLTFLoader puts those in `texture.name`), else the glTF texture index. */
-const getTextureName = (texture: THREE.Texture, gltf: GLTF) => {
-  const name = texture.name
-    .split(/[?#]/)[0]
-    .split('/')
-    .pop()
-    ?.replace(/\.[a-z0-9]+$/i, '');
-  if (name) return name;
-  const assoc = gltf.parser.associations.get(texture) as { textures?: number } | undefined;
-  return `texture_${assoc?.textures ?? texture.id}`;
-};
-
-/** Identifies a texture within its glTF file across re-imports: the glTF texture index, plus the
- * UV channel and transform, which differ on GLTFLoader's clones (texCoord > 0 or
- * KHR_texture_transform) of the same glTF texture. */
-const getGltfTextureKey = (texture: THREE.Texture, gltf: GLTF) => {
-  const assoc = gltf.parser.associations.get(texture) as { textures?: number } | undefined;
-  const { offset, repeat, rotation, channel } = texture;
-  return `${assoc?.textures}:${channel}:${offset.x},${offset.y}:${repeat.x},${repeat.y}:${rotation}`;
-};
-
 /** Registry id for a texture: `${importId}/${name}`, or the first free `_n`-suffixed one. A
  * texture this same import registered earlier from the same glTF texture is reused. */
 const resolveTextureId = (preferredId: string, importId: string, gltfTextureKey: string) => {
@@ -66,14 +42,13 @@ const resolveTextureId = (preferredId: string, importId: string, gltfTextureKey:
 };
 
 /**
- * Registers the textures used by the extracted primitives' glTF material slots (only slots in
- * `textureMapKeys`), once per texture object even when shared by several slots or materials.
+ * Registers the textures collectGLTFTextures() found in the extracted primitives' glTF material
+ * slots, once per texture object even when shared by several slots or materials.
  * GLTFLoader's flipY (false) and per-slot colorSpace are kept, unless `texOpts` override them.
  * Each registered texture gets `userData.gltfSlots` (every slot it fills) and `userData.importId`.
  */
 export const registerGLTFTextures = (
-  gltf: GLTF,
-  primitives: ExtractedPrimitive[],
+  collected: CollectedGLTFTextures,
   opts: {
     importId: string;
     /** Debug name prefix (the import's debugData name, else its id). */
@@ -84,28 +59,28 @@ export const registerGLTFTextures = (
   }
 ): RegisteredGLTFTextures => {
   const { importId, importName, fileName, texOpts, isPersistent } = opts;
-  const idByTexture = new Map<THREE.Texture, string>();
+  /** Index in collected.textures → registered id. */
+  const idByIndex: string[] = [];
   const textureIds: string[] = [];
   const keep = new Set<THREE.Texture>();
   const idsInUse = new Set<string>();
 
   const slotsById = new Map<string, Set<string>>();
 
-  const registerTexture = (texture: THREE.Texture, slot: TextureMapKeys) => {
-    const existingId = idByTexture.get(texture);
+  const registerTexture = (index: number, slot: TextureMapKeys) => {
+    const existingId = idByIndex[index];
     if (existingId) {
       slotsById.get(existingId)?.add(slot);
       return existingId;
     }
 
-    const gltfTextureKey = getGltfTextureKey(texture, gltf);
-    const name = getTextureName(texture, gltf);
+    const { texture, name, gltfTextureKey } = collected.textures[index];
     let preferredId = `${importId}/${name}`;
     for (let n = 2; idsInUse.has(preferredId); n++) preferredId = `${importId}/${name}_${n}`;
     idsInUse.add(preferredId);
 
     const { textureId, isReused } = resolveTextureId(preferredId, importId, gltfTextureKey);
-    idByTexture.set(texture, textureId);
+    idByIndex[index] = textureId;
     textureIds.push(textureId);
     slotsById.set(textureId, new Set([slot]));
     if (isReused) return textureId;
@@ -124,15 +99,11 @@ export const registerGLTFTextures = (
     return textureId;
   };
 
-  const slotsPerPrimitive = primitives.map(({ material }) => {
+  // Registered in slot walk order, which decides the `_n` suffixes and the id order
+  const slotsPerPrimitive = collected.slotsPerPrimitive.map((indices) => {
     const slots: TextureSlots = {};
-    const materials = Array.isArray(material) ? material : [material];
-    for (const mat of materials) {
-      if (!mat) continue;
-      for (const key of textureMapKeys as TextureMapKeys[]) {
-        const texture = (mat as unknown as Record<string, unknown>)[key] as THREE.Texture | null;
-        if (texture?.isTexture && !slots[key]) slots[key] = registerTexture(texture, key);
-      }
+    for (const [key, index] of Object.entries(indices) as [TextureMapKeys, number][]) {
+      slots[key] = registerTexture(index, key);
     }
     return slots;
   });
