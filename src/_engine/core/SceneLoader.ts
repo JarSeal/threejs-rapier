@@ -2,7 +2,6 @@ import * as THREE from 'three/webgpu';
 import { lerror, lwarn } from '../utils/Logger';
 import {
   deleteAllSceneLoopers,
-  deleteScene,
   getCurrentScene,
   getGeneratedSceneData,
   getRootScene,
@@ -128,6 +127,8 @@ type LoadSceneProps = {
   }) => Promise<void>;
   updateLoaderStatusFn?: UpdateLoaderStatusFn;
   loaderId?: string; // loaderId to use, if not provided then the currentSceneLoader will be used
+  /** Release the previous scene's assets before the next scene loads instead of after it: lower
+   * peak memory, but assets the next scene shares are loaded again. */
   deletePrevScene?: boolean;
   // @TODO: add possibility to disable inputControls for prevScene while loading
   // @TODO: add possibility to add nextSceneCamera (maybe)
@@ -491,13 +492,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       deleteAllPhysicsEntities();
       deleteAllGroupEntities();
 
-      if (loadSceneProps.deletePrevScene && prevScene) {
-        // Delete the whole previous scene and assets
-        // @CONSIDER: maybe add more sophisticated prev scene delete params to the loadSceneProps (like deleteMeshes, deleteTextures, etc.)
-        deleteScene(prevSceneId, { deleteAll: true });
-      } else if (prevScene) {
-        deleteAllSceneLoopers(prevSceneId);
-      }
+      if (prevScene) deleteAllSceneLoopers(prevSceneId);
 
       clearSkyBox();
       handleDraggableWindowsOnSceneChangeStart();
@@ -519,6 +514,9 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         void ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
       }
       ecsWorld.clearNonPersistent();
+      if (loadSceneProps.deletePrevScene && prevSceneId && prevSceneId !== sceneId) {
+        releaseSceneOwnedAssets(prevSceneId);
+      }
 
       loader.phase = 'LOAD';
 

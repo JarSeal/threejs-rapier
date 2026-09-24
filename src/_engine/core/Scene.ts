@@ -7,7 +7,13 @@ import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
 import { LightProps } from './LightManager';
 import type { ImportAssetParams } from './Import/ImportTypes';
-import { createSkyBox, SkyBoxProps } from './SkyBox';
+import {
+  clearSkyBox,
+  createSkyBox,
+  getActiveSkyBoxTexture,
+  getSceneSkyBoxTextureIds,
+  SkyBoxProps,
+} from './SkyBox';
 import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
@@ -221,11 +227,13 @@ export const deleteScene = (
   // Delete loopers
   deleteAllSceneLoopers(id);
 
-  // Delete skybox textures
-  if (scene.userData.backgroundNodeTextureId) {
-    deleteTexture(scene.userData.backgroundNodeTextureId);
-    const rootScene = getRootScene();
-    if (isCurrentScene(id) && rootScene) rootScene.backgroundNode = null;
+  // Delete sky box textures (their baked PMREMs go with them), except one another scene's sky box
+  // is showing
+  if (isCurrentScene(id)) clearSkyBox();
+  const activeSkyBoxTexture = getActiveSkyBoxTexture();
+  for (const textureId of getSceneSkyBoxTextureIds(id)) {
+    const texture = getTexture(textureId);
+    if (texture && texture !== activeSkyBoxTexture) deleteTexture(textureId);
   }
 
   if (opts?.deleteSavedScene) delete scenes[id];

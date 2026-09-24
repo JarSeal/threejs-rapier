@@ -12,7 +12,8 @@ import { getTexture, loadTextureAsync } from './Texture';
 import { isDebugEnvironment } from './Config';
 import { lsGetItem } from '../utils/LocalAndSessionStorage';
 import { DebugModuleRef, isHDR, loadDebugModuleAsync, useDebug } from '../utils/helpers';
-import { getNextSceneId, hasFirstSceneBeenLoaded } from './SceneLoader';
+import { getNextSceneId, hasFirstSceneBeenLoaded, isCurrentlyLoading } from './SceneLoader';
+import { getRenderer } from './Renderer';
 
 export type SkyBoxProps = {
   id: string;
@@ -105,6 +106,54 @@ let allSkyBoxStates: {
   };
 } = {};
 let cubeTexture: THREE.CubeTexture | null = null;
+/** The source texture of the sky box the root scene shows (its PMREM is in use). */
+let activeSkyBoxTexture: THREE.Texture | null = null;
+
+/** Baked PMREMs by source texture, disposed with the source texture. */
+const pmrems = new WeakMap<THREE.Texture, { target: THREE.RenderTarget; version: number }>();
+
+/** Same checks as PMREMNode's (isEquirectangularMapReady / isCubeMapReady). */
+const isPMREMSourceReady = (texture: THREE.Texture) => {
+  const image = texture.image as { height?: number; [index: number]: unknown } | null | undefined;
+  if (!image) return false;
+  if ((texture as THREE.CubeTexture).isCubeTexture) {
+    for (let i = 0; i < 6; i++) if (image[i] === undefined) return false;
+    return true;
+  }
+  return (image.height || 0) > 0;
+};
+
+/**
+ * The texture to give pmremTexture(): a PMREM baked here (once per source texture and PMREM
+ * version), disposed when its source texture is disposed. A PMREMNode given the source texture
+ * itself bakes it with a PMREMGenerator of its own, and nothing ever disposes either. A source
+ * that isn't ready (eg. a failed load) is returned as is, for PMREMNode to bake once it is.
+ */
+const getPMREMTexture = (texture: THREE.Texture) => {
+  const renderer = getRenderer();
+  if (!renderer || !isPMREMSourceReady(texture)) return texture;
+  const cached = pmrems.get(texture);
+  if (cached?.version === texture.pmremVersion) return cached.target.texture;
+
+  // A generator per bake, disposed right after: its working set (a ping-pong target as large as
+  // the PMREM, LOD planes, blur materials) would otherwise stay on the GPU. Before the renderer
+  // has initialized, the generator bakes asynchronously, so it can't be disposed here.
+  const generator = new THREE.PMREMGenerator(renderer);
+  const target = (texture as THREE.CubeTexture).isCubeTexture
+    ? generator.fromCubemap(texture, cached?.target)
+    : generator.fromEquirectangular(texture, cached?.target);
+  if (renderer.hasInitialized()) generator.dispose();
+  if (!cached) {
+    const onDispose = () => {
+      texture.removeEventListener('dispose', onDispose);
+      pmrems.get(texture)?.target.dispose();
+      pmrems.delete(texture);
+    };
+    texture.addEventListener('dispose', onDispose);
+  }
+  pmrems.set(texture, { target, version: texture.pmremVersion });
+  return target.texture;
+};
 
 /**
  * Creates either a sky box (equirectangular, cube texture, or sky and sun). The sky and sun type ("SKYANDSUN") includes a dynamic sun element in the sky.
@@ -115,16 +164,20 @@ export const createSkyBox = async (
   { id, sceneId, isCurrent, type, params, debugData }: SkyBoxProps,
   doNotUpdateDebuggerSceneDefault?: boolean // This is to keep the [*default] indicator in the debugger listings when the debugger changes the sky box
 ) => {
+  // Without a sceneId, a sky box created while a scene loads belongs to the loading scene (which
+  // becomes current only after its scene function has run), not to the one still showing
+  const loadingSceneId = !sceneId && isCurrentlyLoading() ? getNextSceneId() : null;
   let scene = getCurrentScene();
   if (sceneId) scene = getScene(sceneId);
+  else if (loadingSceneId) scene = getScene(loadingSceneId, true);
   const isCurScene = isCurrentScene(scene?.userData.id);
-  if (!scene && hasFirstSceneBeenLoaded()) {
+  if (!scene && !loadingSceneId && hasFirstSceneBeenLoaded()) {
     const msg = `Could not find ${sceneId ? `scene with id "${sceneId}"` : 'current scene'} in createSkyBox (type: ${type}).`;
     lerror(msg);
     throw new Error(msg);
   }
 
-  const givenOrCurrentSceneId = scene?.userData.id || getNextSceneId();
+  const givenOrCurrentSceneId = scene?.userData.id || loadingSceneId || getNextSceneId();
   if (!givenOrCurrentSceneId) {
     const msg = 'Could not find current scene id in createSkyBox.';
     lerror(msg);
@@ -226,29 +279,29 @@ export const createSkyBox = async (
         throw new Error(msg);
       }
       envTexture.mapping = THREE.EquirectangularReflectionMapping;
+      // Before the PMREM is baked
+      envTexture.flipY = false;
+      envTexture.needsUpdate = true;
       // const reflectVec = positionViewDirection
       //   .negate()
       //   .reflect(normalView)
       //   .transformDirection(cameraViewMatrix);
       pmremRoughnessBg.value = skyBoxStateToBeAdded.equiRectRoughness;
-      const backgroundEnvNode = pmremTexture(envTexture, normalWorld, pmremRoughnessBg);
+      const backgroundEnvNode = pmremTexture(
+        getPMREMTexture(envTexture),
+        normalWorld,
+        pmremRoughnessBg
+      );
 
       const rootScene = getRootScene() as THREE.Scene;
       rootScene.backgroundNode = backgroundEnvNode;
       rootScene.environmentNode = backgroundEnvNode;
-      if (scene) {
-        scene.userData.backgroundNodeTextureId = textureId || envTexture.userData.id;
-      }
+      activeSkyBoxTexture = envTexture;
       if (isDebugEnvironment()) {
         // const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.equiRectRoughness);
         // const pmremNodeBall = pmremTexture(envTexture, reflectVec, pmremRoughnessBall);
         // setDebugEnvBallMaterial(pmremNodeBall, pmremRoughnessBall);
       }
-    }
-
-    if (equirectTexture) {
-      equirectTexture.flipY = false;
-      equirectTexture.needsUpdate = true;
     }
 
     // Add to skyBoxStateToBeAdded
@@ -287,10 +340,12 @@ export const createSkyBox = async (
       }
       if (isCurScene && isCurrent !== false) {
         const rootScene = getRootScene() as THREE.Scene;
-        rootScene.backgroundNode = pmremTexture(cubeTexture, backgroundUV, pmremRoughnessBg);
-      }
-      if (scene) {
-        scene.userData.backgroundNodeTextureId = textureId || cubeTexture.userData.id;
+        rootScene.backgroundNode = pmremTexture(
+          getPMREMTexture(cubeTexture),
+          backgroundUV,
+          pmremRoughnessBg
+        );
+        activeSkyBoxTexture = cubeTexture;
       }
       if (isDebugEnvironment()) {
         // const pmremRoughnessBall = uniform(skyBoxStateToBeAdded.cubeTextRoughness);
@@ -352,6 +407,7 @@ export const deleteCurrentSkyBox = () => {
   const rootScene = getRootScene() as THREE.Scene;
   rootScene.backgroundNode = null;
   rootScene.environmentNode = null;
+  activeSkyBoxTexture = null;
   skyBoxState = { ...defaultSkyBoxState };
 
   const sceneId = getCurSceneSkyBoxSceneId();
@@ -433,6 +489,7 @@ export const getCurSceneSkyBoxSceneId = () => {
  */
 export const clearSkyBox = () => {
   skyBoxState = { ...defaultSkyBoxState };
+  activeSkyBoxTexture = null;
   const rootScene = getRootScene() as THREE.Scene;
   if (rootScene) {
     rootScene.backgroundNode = null;
@@ -441,13 +498,14 @@ export const clearSkyBox = () => {
   createSkyBoxDebugGUI();
 };
 
-/** Registry ids of the textures any scene's sky boxes use (the current one included). */
-export const getSkyBoxTextureIds = () => {
-  const states = [skyBoxState, ...Object.values(allSkyBoxStates).flatMap(Object.values)];
-  return new Set(
-    states.flatMap((state) => [state.equiRectTextureId, state.cubeTextTextureId]).filter(Boolean)
-  );
-};
+/** The source texture of the sky box the root scene shows, or null. */
+export const getActiveSkyBoxTexture = () => activeSkyBoxTexture;
+
+/** Registry ids of the textures a scene's sky boxes use. */
+export const getSceneSkyBoxTextureIds = (sceneId: string) =>
+  Object.values(allSkyBoxStates[sceneId] || {})
+    .flatMap((state) => [state.equiRectTextureId, state.cubeTextTextureId])
+    .filter(Boolean);
 
 /**
  * Get pmremRoughnessBg (the environment map roughness shader node)
