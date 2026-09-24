@@ -5,7 +5,7 @@ import { isTextureUsedByAnyMaterial } from '../Material';
 import { deleteTexture, doesTextureExist, getTextureRegistry } from '../Texture';
 import { loadGLTFInWorker, recordAssetLoadReport, runAssetTask } from '../Assets/AssetsAPI';
 import type { AssetLoadReport } from '../Assets/AssetsAPITypes';
-import { recordAssetOwner, retagAssetOwner } from '../Assets/AssetOwners';
+import { getAssetOwner, recordAssetOwner, retagAssetOwner } from '../Assets/AssetOwners';
 import { getDracoWorkerSettings } from './DracoDecoder';
 import { deserializeGeometry } from './GeometryTransfer';
 import { disposeGLTFLeftovers, extractPrimitives } from './GLTFExtract';
@@ -345,6 +345,31 @@ export const importAssetAsync = async (
  */
 export const getImportedAsset = (id: string): ImportedAssetManifest | undefined =>
   imports[id]?.manifest;
+
+/**
+ * Re-tags an import (and its geometries and textures) to the scene being loaded, for a scene that
+ * references it by id instead of importing it. See AssetOwners.
+ * @param id import id
+ */
+export const retagImportedAsset = (id: string) => {
+  if (imports[id]) retagImportOwner(imports[id]);
+};
+
+/**
+ * Drops the manifests of the non-persistent imports a scene owns (see AssetOwners). Their
+ * geometries and textures are left to releaseSceneOwnedAssets, which releases them by owner.
+ * @param sceneId owner scene id
+ * @returns the released import ids
+ */
+export const releaseImportsOwnedBy = (sceneId: string) => {
+  const released: string[] = [];
+  for (const [id, record] of Object.entries(imports)) {
+    if (record.isPersistent || getAssetOwner(record) !== sceneId) continue;
+    delete imports[id];
+    released.push(id);
+  }
+  return released;
+};
 
 /**
  * Releases an import: deletes its registered geometries that are not in use (ref count 0) and its

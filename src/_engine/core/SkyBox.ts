@@ -441,6 +441,14 @@ export const clearSkyBox = () => {
   createSkyBoxDebugGUI();
 };
 
+/** Registry ids of the textures any scene's sky boxes use (the current one included). */
+export const getSkyBoxTextureIds = () => {
+  const states = [skyBoxState, ...Object.values(allSkyBoxStates).flatMap(Object.values)];
+  return new Set(
+    states.flatMap((state) => [state.equiRectTextureId, state.cubeTextTextureId]).filter(Boolean)
+  );
+};
+
 /**
  * Get pmremRoughnessBg (the environment map roughness shader node)
  * @returns ShaderNodeObject<THREE.UniformNode<number>>

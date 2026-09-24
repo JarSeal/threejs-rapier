@@ -47,9 +47,10 @@ import { createGeometry, doesGeoExist, getGeometry } from './Geometry';
 import { createLightEntity } from './LightManager';
 import { createCameraEntity, setActiveCamera } from './CameraManager';
 import { createMeshEntity } from './MeshManager';
-import { getImportedAsset, importAssetAsync, releaseImportedAsset } from './Import/ImportRegistry';
+import { getImportedAsset, importAssetAsync, retagImportedAsset } from './Import/ImportRegistry';
 import type { ImportedAssetManifest } from './Import/ImportTypes';
-import { setAssetOwnerScene } from './Assets/AssetOwners';
+import { retagAssetOwner, setAssetOwnerScene } from './Assets/AssetOwners';
+import { releaseSceneOwnedAssets } from './Assets/SceneAssetRelease';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -230,20 +231,6 @@ export type ScenePrimitiveAssets = {
   importedAssets: { [id: string]: ImportedAssetManifest };
 };
 
-/** Import ids of a scene's declared imported assets. */
-const getSceneImportIds = (sceneData?: SceneData) =>
-  (sceneData?.importedAssets || []).map((asset) => (typeof asset === 'string' ? asset : asset.id));
-
-/** Releases a scene's declared imports (persistent ones are skipped by releaseImportedAsset).
- * Run after the scene's entities are gone: their geometries were already freed with their meshes
- * (ref count 0), this frees the rest (collider-only geometries, textures, the manifests). */
-const releaseSceneImports = (sceneId?: string) => {
-  if (!sceneId) return;
-  for (const id of getSceneImportIds(getGeneratedSceneData(sceneId))) {
-    if (id) releaseImportedAsset(id);
-  }
-};
-
 const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitiveAssets> => {
   const textures: ScenePrimitiveAssets['textures'] = {};
   const materials: ScenePrimitiveAssets['materials'] = {};
@@ -251,10 +238,12 @@ const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitive
   const importedAssets: ScenePrimitiveAssets['importedAssets'] = {};
 
   // Load textures and imported assets (in parallel): materials can use the textures and meshes the
-  // imported geometries (by id)
+  // imported geometries (by id). Assets referenced by id are re-tagged to this scene (AssetOwners),
+  // so leaving the scene that loaded them doesn't release them.
   const importPromises: Promise<ImportedAssetManifest | null>[] = [];
   for (const asset of sceneData.importedAssets || []) {
     if (typeof asset === 'string') {
+      retagImportedAsset(asset);
       const manifest = getImportedAsset(asset);
       if (manifest) importedAssets[asset] = manifest;
       continue;
@@ -266,7 +255,11 @@ const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitive
   const textureIds: string[] = [];
   for (let i = 0; i < sceneTextures.length; i++) {
     const tex = sceneTextures[i];
-    if (typeof tex === 'string') continue;
+    if (typeof tex === 'string') {
+      const texture = getTexture(tex);
+      if (texture) retagAssetOwner(texture);
+      continue;
+    }
     const texId = tex.id;
     if (!texId) continue;
     textureIds.push(texId);
@@ -289,7 +282,10 @@ const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitive
     const material = sceneMaterials[i];
     if (typeof material === 'string') {
       const mat = getMaterial(material);
-      if (mat) materials[material] = mat;
+      if (mat) {
+        retagAssetOwner(mat);
+        materials[material] = mat;
+      }
       continue;
     }
     for (let j = 0; j < textureMapKeys.length; j++) {
@@ -318,7 +314,10 @@ const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitive
     const geometry = sceneGeometries[i];
     if (typeof geometry === 'string') {
       const geo = getGeometry(geometry);
-      if (geo) geometries[geometry] = geo as THREE.BufferGeometry;
+      if (geo) {
+        retagAssetOwner(geo as THREE.BufferGeometry);
+        geometries[geometry] = geo as THREE.BufferGeometry;
+      }
       continue;
     }
     const geo = createGeometry({ ...geometry });
@@ -520,7 +519,6 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         void ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
       }
       ecsWorld.clearNonPersistent();
-      releaseSceneImports(prevSceneId);
 
       loader.phase = 'LOAD';
 
@@ -539,6 +537,10 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
           setCurrentScene(sceneId);
           await applySkyBoxForScene(sceneId);
           await createNextSceneObject3Ds(sceneData);
+          // The next scene has taken refs on, or re-tagged, what it shares with the previous one:
+          // release what the previous scene still owns and nothing uses. (Reloading the same
+          // scene releases nothing: its assets are all tagged with the same id.)
+          if (prevSceneId && prevSceneId !== sceneId) releaseSceneOwnedAssets(prevSceneId);
 
           const canvasParentElem = getCanvasParentElem();
           canvasParentElem?.style.setProperty('pointer-events', '');

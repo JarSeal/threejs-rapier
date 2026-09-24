@@ -498,8 +498,9 @@ export const getAllMaterials = () => {
 
 export const getMaterialRegistry = () => materials;
 
-/** Whether any registered material other than `except` still holds a texture map matching
- * `test` (texture refcounts aren't tracked per material, so this is checked at release time). */
+/** Whether any registered material other than `except` still holds a texture (in a map slot or a
+ * TSL node input) matching `test` (texture refcounts aren't tracked per material, so this is
+ * checked at release time). */
 const isTextureInUseByOtherMaterial = (
   except: Materials | null,
   test: (texture: THREE.Texture) => boolean
@@ -510,6 +511,12 @@ const isTextureInUseByOtherMaterial = (
     for (let i = 0; i < textureMapKeys.length; i++) {
       const texture = other[textureMapKeys[i] as keyof Materials] as THREE.Texture | undefined;
       if (texture && test(texture)) return true;
+    }
+    // TSL node inputs (createMaterial keeps them in userData.uniforms): texture nodes
+    const uniforms = other.userData.uniforms as Record<string, unknown> | undefined;
+    for (const key in uniforms) {
+      const node = uniforms[key] as { isTextureNode?: boolean; value?: THREE.Texture } | undefined;
+      if (node?.isTextureNode && node.value && test(node.value)) return true;
     }
   }
   return false;
@@ -537,8 +544,10 @@ export const isTextureUsedByAnyMaterial = (texture: THREE.Texture) => {
  * is disposed directly; the registered source is then released with the last material holding
  * any texture under its id. Persistent registered textures are never released here.
  * @param mat Target material asset.
+ * @param opts.keepRegistered only dispose the textures the material holds alone (eg. clones), and
+ * leave registered textures for the caller to release
  */
-export const deleteTexturesFromMaterial = (mat: Materials) => {
+export const deleteTexturesFromMaterial = (mat: Materials, opts?: { keepRegistered?: boolean }) => {
   for (let i = 0; i < textureMapKeys.length; i++) {
     const key = textureMapKeys[i] as keyof Materials;
     const texture = mat[key] as THREE.Texture;
@@ -548,6 +557,7 @@ export const deleteTexturesFromMaterial = (mat: Materials) => {
     const id = texture.userData?.id as string | undefined;
     const registered = id ? getTextureRegistry()[id] : undefined;
     if (!registered || registered.resource !== texture) texture.dispose();
+    if (opts?.keepRegistered) continue;
     if (
       id &&
       registered &&
