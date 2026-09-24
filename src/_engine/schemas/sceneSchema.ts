@@ -33,7 +33,7 @@ const SceneOverridesSchema = z.object({
   textures: z.array(z.union([z.string(), TextureAssetSchema])).optional(),
   materials: z.array(z.union([z.string(), MaterialAssetSchema])).optional(),
   meshes: z.array(AssetReferenceOrInline).optional(),
-  importedMeshes: z.array(AssetReferenceOrInline).optional(),
+  importedAssets: z.array(AssetReferenceOrInline).optional(),
   skyboxes: z.array(AssetReferenceOrInline).optional(),
 });
 

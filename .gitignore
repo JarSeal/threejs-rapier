@@ -8,3 +8,5 @@ yarn-error.log
 **/dist-stats
 *.blend[0-9]
 *.kra~
+# DRACO decoders, copied from three.js by devTools/copyDracoDecoders.ts
+src/public/draco/

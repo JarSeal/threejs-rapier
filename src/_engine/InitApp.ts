@@ -24,6 +24,7 @@ import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
 import { createCharactersDebuggerGUI, registerCharacterTools } from './core/Character';
 import { createToaster } from './core/UI/Toaster';
 import { getStatsCmp, registerStatsModule } from './debug/Stats';
+import { createAssetsDebugGUI } from './debug/Assets';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
 
 // ECS Core Plugins
@@ -115,6 +116,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     if (IS_DEBUG_ENV) {
       await createRendererDebugGUI();
       await createPhysicsAPIDebugGUI();
+      await createAssetsDebugGUI();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
 

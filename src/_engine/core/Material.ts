@@ -46,7 +46,7 @@ const materials: {
   };
 } = {};
 
-type TextureMapKeys =
+export type TextureMapKeys =
   | 'map'
   | 'alphaMap'
   | 'aoMap'
@@ -56,6 +56,8 @@ type TextureMapKeys =
   | 'lightMap'
   | 'matcap'
   | 'normalMap'
+  | 'roughnessMap'
+  | 'metalnessMap'
   | 'specularMap'
   | 'displacementMap'
   | 'anisotropyMap'
@@ -495,7 +497,7 @@ export const getMaterialRegistry = () => materials;
 /** Whether any registered material other than `except` still holds a texture map matching
  * `test` (texture refcounts aren't tracked per material, so this is checked at release time). */
 const isTextureInUseByOtherMaterial = (
-  except: Materials,
+  except: Materials | null,
   test: (texture: THREE.Texture) => boolean
 ) => {
   for (const id in materials) {
@@ -507,6 +509,20 @@ const isTextureInUseByOtherMaterial = (
     }
   }
   return false;
+};
+
+/**
+ * Whether any registered material holds `texture`, or another texture under the same registry id
+ * (eg. a clone of it). Texture ref counts aren't tracked, so this is how a registered texture's
+ * owner (eg. an import) can tell whether it's safe to delete.
+ * @param texture registered texture
+ */
+export const isTextureUsedByAnyMaterial = (texture: THREE.Texture) => {
+  const id = texture.userData?.id as string | undefined;
+  return isTextureInUseByOtherMaterial(
+    null,
+    (t) => t === texture || (id !== undefined && t.userData?.id === id)
+  );
 };
 
 /**

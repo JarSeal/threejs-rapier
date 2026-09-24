@@ -7,7 +7,13 @@ import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
 import { createDynamicCharacter } from '../_engine/utils/character/dynamicCharacter';
 import { characterTestObstacles } from '../_engine/utils/world/characterTestObjects';
-import { importModelAsync, type ImportReturnObj } from '../_engine/core/ImportModel';
+import { importAssetAsync } from '../_engine/core/Import/ImportRegistry';
+import { spawnImportedAsset } from '../_engine/core/Import/SpawnImported';
+import type {
+  ImportedAssetManifest,
+  SpawnImportedResult,
+} from '../_engine/core/Import/ImportTypes';
+import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { addCheckerboardMaterialToMesh } from '../_engine/utils/materials/checkerBoardPattern';
 import { getQuatFromAngle } from '../_engine/utils/helpers';
 import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
@@ -24,39 +30,23 @@ export const SCENE_THIRD_PERSON_GYM_META = {
   id: 'thirdPersonGymScene',
 };
 
-const toIdArray = (ids?: number | number[]) =>
-  Array.isArray(ids) ? ids : typeof ids === 'number' ? [ids] : [];
+const TEST_MODELS = '/debugger/assets/testModels';
 
-/** Moves a whole imported model so that its anchor lands at `pos`, with every other piece keeping
- * its glTF-authored offset from that anchor. The anchor is either the entity carrying the (first)
- * rigid body, or the first mesh entity when there's no physics ('RIGID_BODY'), or the imported
- * glTF root's origin ('GROUP_ORIGIN', the legacy `physObj.setTranslation(pos, group)` behavior).
- * world.setTransform moves a piece's rigid body too and writes through the ECS TRANSFORM (a bare
- * Object3D mutation would be reverted by the first TRANSFORM -> Object3D sync). */
-const placeImportedModel = (
-  result: ImportReturnObj,
-  pos: { x: number; y: number; z: number },
-  anchorType: 'RIGID_BODY' | 'GROUP_ORIGIN' = 'RIGID_BODY'
-) => {
-  const ids = [...new Set([...toIdArray(result.physicsEntityId), ...toIdArray(result.meshId)])];
-  const ecsWorld = getECSWorld();
-  // Imported pieces are created at their glTF-root-local transforms, so the root is at 0,0,0
-  const anchor =
-    anchorType === 'GROUP_ORIGIN'
-      ? { x: 0, y: 0, z: 0 }
-      : ids.length
-        ? ecsWorld.getPosition(ids[0])
-        : undefined;
-  if (!anchor) return;
-  const offset = { x: pos.x - anchor.x, y: pos.y - anchor.y, z: pos.z - anchor.z };
-  for (const id of ids) {
-    const current = ecsWorld.getPosition(id);
-    if (!current) continue;
-    ecsWorld.setTransform(id, {
-      pos: { x: current.x + offset.x, y: current.y + offset.y, z: current.z + offset.z },
-    });
-  }
+/** Root transform that puts an import's first visible node (its first mesh, which is also its
+ * physics anchor) at `pos`: these models were positioned by that node, not by their glTF root. */
+const rootPlacing = (manifest: ImportedAssetManifest, pos: { x: number; y: number; z: number }) => {
+  const anchor = manifest.geometries.find(
+    ({ customProps }) => !customProps.isPhysObj || customProps.keepMesh
+  );
+  const offset = anchor?.transform.position || { x: 0, y: 0, z: 0 };
+  return { position: { x: pos.x - offset.x, y: pos.y - offset.y, z: pos.z - offset.z } };
 };
+
+/** The rendered meshes of a spawned import (for per-mesh materials like the checkerboard). */
+const getSpawnedMeshes = (result: SpawnImportedResult) =>
+  result.meshEntityIds.map(
+    (id) => getECSWorld().getComponent(id, ComponentType.OBJECT3D)?.value as THREE.Mesh
+  );
 
 /** Same as setImportedRigidBodyTranslation, but for a partial {x?, y?, z?} update (matching the
  * legacy PhysicsObject.setTranslation's partial-update signature) — reads the body's current
@@ -71,22 +61,6 @@ const setImportedRigidBodyTranslationPartial = (
     { x: pos.x ?? body.pos.x, y: pos.y ?? body.pos.y, z: pos.z ?? body.pos.z },
     true
   );
-};
-
-const getImportedMeshes = (result: ImportReturnObj): THREE.Mesh[] =>
-  Array.isArray(result.mesh) ? result.mesh : result.mesh ? [result.mesh] : [];
-
-/** Applies a shared material + shadow flags to every rendered piece of an imported model */
-const applyMaterialToImportedPieces = (
-  result: ImportReturnObj,
-  material: THREE.Material,
-  opts?: { castShadow?: boolean; receiveShadow?: boolean }
-) => {
-  for (const mesh of getImportedMeshes(result)) {
-    mesh.castShadow = opts?.castShadow ?? true;
-    mesh.receiveShadow = opts?.receiveShadow ?? true;
-    mesh.material = material;
-  }
 };
 
 export const scene = async () =>
@@ -343,78 +317,70 @@ export const scene = async () =>
       accDelta += dt;
     });
 
-    const result = await importModelAsync({
-      fileName: '/debugger/assets/testModels/customPropTestCube.glb',
-      appId: 'customPropTest',
+    const cube = await importAssetAsync({ fileName: `${TEST_MODELS}/customPropTestCube.glb` });
+    const monkey = await importAssetAsync({ fileName: `${TEST_MODELS}/customPropTestMonkey.glb` });
+    const multiBox = await importAssetAsync({ fileName: `${TEST_MODELS}/test_multi_box.glb` });
+    if (!cube || !monkey || !multiBox) throw new Error('Could not import the gym test models.');
+
+    const cubeResult = await spawnImportedAsset(cube, {
+      transform: rootPlacing(cube, { x: 2, y: 2, z: 2 }),
+      castShadow: true,
+      receiveShadow: true,
+      entityOpts: { appId: 'customPropTest' },
     });
-    placeImportedModel(result, { x: 2, y: 2, z: 2 });
-    for (const m of getImportedMeshes(result)) {
+    for (const m of getSpawnedMeshes(cubeResult))
       addCheckerboardMaterialToMesh('checkerMaterial', m);
-      m.castShadow = true;
-      m.receiveShadow = true;
-    }
 
     // Suzanne (monkey TRIMESH)
-    const result2 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/customPropTestMonkey.glb',
-      appId: 'customPropTest2',
-      importGroup: true,
+    const monkeyTrimesh = await spawnImportedAsset(monkey, {
+      transform: rootPlacing(monkey, { x: 4, y: 2, z: 3 }),
+      castShadow: true,
+      receiveShadow: true,
       physicsParams: {
         isPhysObj: true,
         keepMesh: true,
         rigidBody: { rigidType: 'DYNAMIC' },
         collider: { type: 'TRIMESH', density: 2 },
       },
+      entityOpts: { appId: 'customPropTest2' },
     });
-    placeImportedModel(result2, { x: 4, y: 2, z: 3 });
-    for (const m of getImportedMeshes(result2)) {
+    for (const m of getSpawnedMeshes(monkeyTrimesh)) {
       addCheckerboardMaterialToMesh('checkerMaterial', m);
-      m.castShadow = true;
-      m.receiveShadow = true;
     }
 
-    // Suzanne (monkey TRIMESH)
-    const result2convex = await importModelAsync({
-      fileName: '/debugger/assets/testModels/customPropTestMonkey.glb',
-      appId: 'customPropTest2_2',
-      importGroup: true,
+    // Suzanne (monkey CONVEXHULL)
+    const monkeyConvex = await spawnImportedAsset(monkey, {
+      transform: rootPlacing(monkey, { x: 4, y: 6, z: 3 }),
+      castShadow: true,
+      receiveShadow: true,
       physicsParams: {
         isPhysObj: true,
         keepMesh: true,
         rigidBody: { rigidType: 'DYNAMIC' },
         collider: { type: 'CONVEXHULL', density: 2 },
       },
+      entityOpts: { appId: 'customPropTest2_2' },
     });
-    placeImportedModel(result2convex, { x: 4, y: 6, z: 3 });
-    for (const m of getImportedMeshes(result2convex)) {
+    for (const m of getSpawnedMeshes(monkeyConvex)) {
       addCheckerboardMaterialToMesh('checkerMaterial', m);
-      m.castShadow = true;
-      m.receiveShadow = true;
     }
 
-    const slides = await getTestObstacle('slideAngles', {
-      collider: { type: 'TRIMESH', friction: 1 },
+    const slideMat = (
+      Array.isArray(bigBoxWallMesh.material)
+        ? bigBoxWallMesh.material[0]?.clone()
+        : bigBoxWallMesh.material?.clone()
+    ) as THREE.MeshPhongMaterial;
+    slideMat.map = uvTexture.clone();
+    slideMat.map.wrapS = THREE.RepeatWrapping;
+    slideMat.map.wrapT = THREE.RepeatWrapping;
+    slideMat.map.repeat.set(34, 34);
+    await getTestObstacle('slideAngles', {
+      transform: { position: { x: 30, y: -1.9, z: -30 } },
+      material: slideMat,
+      castShadow: true,
+      receiveShadow: true,
+      physicsParams: { collider: { type: 'TRIMESH', friction: 1 } },
     });
-    if (slides) {
-      placeImportedModel(slides, { x: 30, y: -1.9, z: -30 });
-      for (const m of getImportedMeshes(slides)) {
-        m.castShadow = true;
-        m.receiveShadow = true;
-      }
-
-      const slideMat = (
-        Array.isArray(bigBoxWallMesh.material)
-          ? bigBoxWallMesh.material[0]?.clone()
-          : bigBoxWallMesh.material?.clone()
-      ) as THREE.MeshPhongMaterial;
-      slideMat.map = uvTexture.clone();
-      slideMat.map.wrapS = THREE.RepeatWrapping;
-      slideMat.map.wrapT = THREE.RepeatWrapping;
-      slideMat.map.repeat.set(34, 34);
-      for (const m of getImportedMeshes(slides)) {
-        m.material = slideMat;
-      }
-    }
 
     const movingPlatformMat = createMaterial({
       id: 'movingPlatform1-mat',
@@ -656,211 +622,124 @@ export const scene = async () =>
       ],
     });
 
-    const result3 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/test_multi_box.glb',
-      appId: 'customPropTest3',
-      importGroup: true,
+    const multiBoxResult = await spawnImportedAsset(multiBox, {
+      transform: rootPlacing(multiBox, { x: 2, y: 2, z: 2 }),
+      castShadow: true,
+      receiveShadow: true,
+      entityOpts: { appId: 'customPropTest3' },
     });
-    placeImportedModel(result3, { x: 2, y: 2, z: 2 });
-    for (const m of getImportedMeshes(result3)) {
+    for (const m of getSpawnedMeshes(multiBoxResult)) {
       addCheckerboardMaterialToMesh('checkerMaterial', m, { useConstantCheckerSize: true });
-      m.castShadow = true;
-      m.receiveShadow = true;
     }
 
-    // Straight stairs (TRIMESH)
-    const result4 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/stairsStraightTrimesh.glb',
-      appId: 'customPropTest4',
-      importGroup: true,
+    const stairsAndTerrainMat = createMaterial({
+      id: 'stairsStraightTrimeshMaterial',
+      type: 'PHONG',
+      params: { color: '#999' },
     });
-    placeImportedModel(result4, { x: 37, y: -0.4, z: 5 });
-    applyMaterialToImportedPieces(
-      result4,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
-
-    // Straight stairs (COMPOUND)
-    const result5 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/stairsStraightCompound.glb',
-      appId: 'customPropTest5',
-      importGroup: true,
-    });
-    placeImportedModel(result5, { x: 45, y: -0.4, z: 5 });
-    applyMaterialToImportedPieces(
-      result5,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
-    // Straight stairs 2 (TRIMESH)
-    const result6 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/stairsStraight2Trimesh.glb',
-      appId: 'customPropTest6',
-      importGroup: true,
-    });
-    placeImportedModel(result6, { x: 53, y: -0.4, z: 5 });
-    applyMaterialToImportedPieces(
-      result6,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
-
-    // Straight stairs 2 (COMPOUND)
-    const result7 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/stairsStraight2Compound.glb',
-      appId: 'customPropTest7',
-      importGroup: true,
-    });
-    placeImportedModel(result7, { x: 61, y: -0.4, z: 5 });
-    applyMaterialToImportedPieces(
-      result7,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
-
-    // Straight stairs 3 (TRIMESH)
-    const result8 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/stairsStraight3Trimesh.glb',
-      appId: 'customPropTest8',
-      importGroup: true,
-    });
-    placeImportedModel(result8, { x: 69, y: -0.4, z: 5 });
-    applyMaterialToImportedPieces(
-      result8,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
-
-    // Straight stairs 3 (COMPOUND)
-    const result9 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/stairsStraight3Compound.glb',
-      appId: 'customPropTest9',
-      importGroup: true,
-    });
-    placeImportedModel(result9, { x: 77, y: -0.4, z: 5 });
-    applyMaterialToImportedPieces(
-      result9,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
-
-    // Cornered stairs with thick railings (COMPOUND)
-    const result10 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/stairsCorneredWithThickRailingsCompound.glb',
-      appId: 'customPropTest10',
-      importGroup: true,
-    });
-    placeImportedModel(result10, { x: 45, y: -0.4, z: 35 });
-    applyMaterialToImportedPieces(
-      result10,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
-
-    // Cornered stairs with thick railings (TRIMESH)
-    const result11 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/stairsCorneredWithThickRailingsTrimesh.glb',
-      appId: 'customPropTest11',
-      importGroup: true,
-    });
-    placeImportedModel(result11, { x: 60, y: -0.4, z: 35 });
-    applyMaterialToImportedPieces(
-      result11,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
-
-    // Spiral stairs (TRIMESH)
-    const result12 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/stairsSpiralTrimesh.glb',
-      appId: 'customPropTest12',
-      importGroup: true,
-    });
-    placeImportedModel(result12, { x: 20, y: 1.8, z: 33 });
-    applyMaterialToImportedPieces(
-      result12,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
-
-    // Spiked terrain
-    const result13 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/terrainSpiked.glb',
-      appId: 'customPropTest13',
-      importGroup: true,
-      allMeshesVisible: true,
-    });
-    placeImportedModel(result13, { x: -25, y: -1.8, z: 126.336 }, 'GROUP_ORIGIN');
-    applyMaterialToImportedPieces(
-      result13,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
-
-    // Smooth terrain
-    const result14 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/terrainSmooth.glb',
-      appId: 'customPropTest14',
-      importGroup: true,
-      allMeshesVisible: true,
-    });
-    placeImportedModel(result14, { x: 52.635, y: -1.8, z: 150.833 }, 'GROUP_ORIGIN');
-    applyMaterialToImportedPieces(
-      result14,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
-
-    // Obstacles
-    const result15 = await importModelAsync({
-      fileName: '/debugger/assets/testModels/obstacles.glb',
-      appId: 'customPropTest15',
-      importGroup: true,
-      allMeshesVisible: true,
-    });
-    placeImportedModel(result15, { x: -30, y: -1, z: 30 }, 'GROUP_ORIGIN');
-    applyMaterialToImportedPieces(
-      result15,
-      createMaterial({
-        id: 'stairsStraightTrimeshMaterial',
-        type: 'PHONG',
-        params: { color: '#999' },
-      })
-    );
+    // Stairs are positioned by their first visible node, terrains and obstacles by their glTF root
+    const staticModels: {
+      file: string;
+      appId: string;
+      pos: { x: number; y: number; z: number };
+      placeBy: 'FIRST_MESH' | 'ROOT';
+    }[] = [
+      // Straight stairs (TRIMESH)
+      {
+        file: 'stairsStraightTrimesh',
+        appId: 'customPropTest4',
+        pos: { x: 37, y: -0.4, z: 5 },
+        placeBy: 'FIRST_MESH',
+      },
+      // Straight stairs (COMPOUND)
+      {
+        file: 'stairsStraightCompound',
+        appId: 'customPropTest5',
+        pos: { x: 45, y: -0.4, z: 5 },
+        placeBy: 'FIRST_MESH',
+      },
+      // Straight stairs 2 (TRIMESH)
+      {
+        file: 'stairsStraight2Trimesh',
+        appId: 'customPropTest6',
+        pos: { x: 53, y: -0.4, z: 5 },
+        placeBy: 'FIRST_MESH',
+      },
+      // Straight stairs 2 (COMPOUND)
+      {
+        file: 'stairsStraight2Compound',
+        appId: 'customPropTest7',
+        pos: { x: 61, y: -0.4, z: 5 },
+        placeBy: 'FIRST_MESH',
+      },
+      // Straight stairs 3 (TRIMESH)
+      {
+        file: 'stairsStraight3Trimesh',
+        appId: 'customPropTest8',
+        pos: { x: 69, y: -0.4, z: 5 },
+        placeBy: 'FIRST_MESH',
+      },
+      // Straight stairs 3 (COMPOUND)
+      {
+        file: 'stairsStraight3Compound',
+        appId: 'customPropTest9',
+        pos: { x: 77, y: -0.4, z: 5 },
+        placeBy: 'FIRST_MESH',
+      },
+      // Cornered stairs with thick railings (COMPOUND)
+      {
+        file: 'stairsCorneredWithThickRailingsCompound',
+        appId: 'customPropTest10',
+        pos: { x: 45, y: -0.4, z: 35 },
+        placeBy: 'FIRST_MESH',
+      },
+      // Cornered stairs with thick railings (TRIMESH)
+      {
+        file: 'stairsCorneredWithThickRailingsTrimesh',
+        appId: 'customPropTest11',
+        pos: { x: 60, y: -0.4, z: 35 },
+        placeBy: 'FIRST_MESH',
+      },
+      // Spiral stairs (TRIMESH)
+      {
+        file: 'stairsSpiralTrimesh',
+        appId: 'customPropTest12',
+        pos: { x: 20, y: 1.8, z: 33 },
+        placeBy: 'FIRST_MESH',
+      },
+      // Spiked terrain
+      {
+        file: 'terrainSpiked',
+        appId: 'customPropTest13',
+        pos: { x: -25, y: -1.8, z: 126.336 },
+        placeBy: 'ROOT',
+      },
+      // Smooth terrain
+      {
+        file: 'terrainSmooth',
+        appId: 'customPropTest14',
+        pos: { x: 52.635, y: -1.8, z: 150.833 },
+        placeBy: 'ROOT',
+      },
+      // Obstacles
+      {
+        file: 'obstacles',
+        appId: 'customPropTest15',
+        pos: { x: -30, y: -1, z: 30 },
+        placeBy: 'ROOT',
+      },
+    ];
+    for (const { file, appId, pos, placeBy } of staticModels) {
+      const manifest = await importAssetAsync({ fileName: `${TEST_MODELS}/${file}.glb` });
+      if (!manifest) continue;
+      await spawnImportedAsset(manifest, {
+        transform: placeBy === 'ROOT' ? { position: pos } : rootPlacing(manifest, pos),
+        material: stairsAndTerrainMat,
+        castShadow: true,
+        receiveShadow: true,
+        entityOpts: { appId },
+      });
+    }
 
     initPhysicsStressTest();
 

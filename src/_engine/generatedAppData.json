@@ -487,7 +487,8 @@
           "texOpts": {
             "wrapS": 1000,
             "wrapT": 1000
-          }
+          },
+          "__fileSize": 967035
         }
       ],
       "materials": [
@@ -550,34 +551,33 @@
             },
             "appId": "testMesh"
           }
-        }
-      ],
-      "importedMeshes": [
+        },
         {
           "props": {
-            "fileName": "/debugger/assets/testModels/box01.glb",
-            "appId": "testImportedMesh",
-            "importGroup": false,
-            "meshProps": [
-              {
-                "mat": {
-                  "id": "importedMeshMat",
-                  "params": {
-                    "map": "testTexture"
-                  },
-                  "type": "PHONG"
-                },
-                "castShadow": true,
-                "receiveShadow": true,
-                "position": {
-                  "x": -4,
-                  "y": 1,
-                  "z": -1
-                }
-              }
-            ],
-            "allMeshesVisible": true
+            "geo": "testImport/Cube",
+            "mat": {
+              "id": "importedMeshMat",
+              "params": {
+                "map": "testTexture"
+              },
+              "type": "PHONG"
+            },
+            "castShadow": true,
+            "receiveShadow": true,
+            "position": {
+              "x": -4,
+              "y": 1,
+              "z": -1
+            },
+            "appId": "testImportedMesh"
           }
+        }
+      ],
+      "importedAssets": [
+        {
+          "id": "testImport",
+          "fileName": "/debugger/assets/testModels/box01.glb",
+          "__fileSize": 46676
         }
       ],
       "skyboxes": [
@@ -1149,7 +1149,8 @@
           }
         ]
       },
-      "__sourcePath": "src/app/textures/testTexture.texture.json"
+      "__sourcePath": "src/app/textures/testTexture.texture.json",
+      "__fileSize": 967035
     }
   },
   "materials": {
@@ -1243,6 +1244,27 @@
     }
   },
   "meshes": {
+    "testImportedMesh": {
+      "props": {
+        "geo": "testImport/Cube",
+        "mat": {
+          "id": "importedMeshMat",
+          "params": {
+            "map": "testTexture"
+          },
+          "type": "PHONG"
+        },
+        "castShadow": true,
+        "receiveShadow": true,
+        "position": {
+          "x": -4,
+          "y": 1,
+          "z": -1
+        },
+        "appId": "testImportedMesh"
+      },
+      "__sourcePath": "src/app/meshes/testImportedMesh.mesh.json"
+    },
     "testMesh": {
       "props": {
         "geo": "testSphere",
@@ -1269,43 +1291,12 @@
       "__sourcePath": "src/app/meshes/testMesh.mesh.json"
     }
   },
-  "importedMeshes": {
-    "testImportedMesh": {
-      "props": {
-        "fileName": "/debugger/assets/testModels/box01.glb",
-        "appId": "testImportedMesh",
-        "importGroup": true,
-        "meshProps": [
-          {
-            "mat": {
-              "id": "importedMeshMat",
-              "params": {
-                "map": "testTexture"
-              },
-              "type": "PHONG"
-            },
-            "castShadow": true,
-            "receiveShadow": true,
-            "position": {
-              "x": -4,
-              "y": 1,
-              "z": -1
-            }
-          }
-        ],
-        "allMeshesVisible": true
-      },
-      "__saveData": {
-        "sceneTestECS": [
-          {
-            "importGroup": false,
-            "__meta": {
-              "date": 1779449688109
-            }
-          }
-        ]
-      },
-      "__sourcePath": "src/app/importedMeshes/testImport.importedMesh.json"
+  "importedAssets": {
+    "testImport": {
+      "id": "testImport",
+      "fileName": "/debugger/assets/testModels/box01.glb",
+      "__sourcePath": "src/app/importedAssets/testImport.importedAsset.json",
+      "__fileSize": 46676
     }
   },
   "skyboxes": {

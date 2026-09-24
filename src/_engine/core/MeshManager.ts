@@ -29,6 +29,7 @@ export type MeshProps = {
   position?: { x?: number; y?: number; z?: number };
   rotation?: { x?: number; y?: number; z?: number };
   quaternion?: THREE.Quaternion;
+  scale?: { x: number; y: number; z: number };
   appId?: string;
   /** Native Object3D.frustumCulled (Three.js's own per-mesh render-list culling). Defaults to Three's own default (true). */
   frustumCullingEnabled?: boolean;
@@ -153,6 +154,14 @@ export const createMeshEntity = (
     tra.rot.w = quat.w;
   }
   setTransform(entityId, tra, world);
+  if (props.scale) {
+    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+    if (transform) {
+      transform.scale.set(props.scale.x, props.scale.y, props.scale.z);
+      transform.setDirty();
+      world.commitTransform(entityId, transform);
+    }
+  }
 
   // After the transform is finalized so the spatial index's initial insert
   // (docs/plans/_DONE_p050_spatial-index.md §3) uses this mesh's real position,

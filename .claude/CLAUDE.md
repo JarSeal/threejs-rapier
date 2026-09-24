@@ -67,7 +67,7 @@ This boundary is convention only — nothing in `eslint.config.js` enforces impo
 
 ### Scene/asset data pipeline (JSON → generated code)
 
-Scenes and assets are authored as JSON files under `src/app/**`, named by suffix (e.g. `*.scene.json`, `*.mesh.json`, `*.camera.json`, `*.light.json`, `*.geometry.json`, `*.texture.json`, `*.material.json`, `*.importedMesh.json`, `*.skybox.json`). `devTools/gatherAppData.ts`:
+Scenes and assets are authored as JSON files under `src/app/**`, named by suffix (e.g. `*.scene.json`, `*.mesh.json`, `*.camera.json`, `*.light.json`, `*.geometry.json`, `*.texture.json`, `*.material.json`, `*.importedAsset.json`, `*.skybox.json`). `devTools/gatherAppData.ts`:
 
 1. Walks `src/`, finds files matching those suffixes.
 2. Validates each against a Zod schema in `src/_engine/schemas/*.ts`.

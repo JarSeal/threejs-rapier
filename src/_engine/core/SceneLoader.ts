@@ -43,11 +43,12 @@ import { sceneFileObjects } from '../generatedAppFns';
 import { getTexture, loadTextureAsync } from './Texture';
 import { createMaterial, getMaterial } from './Material';
 import { textureMapKeys } from '../utils/constants';
-import { createGeometry, getGeometry } from './Geometry';
+import { createGeometry, doesGeoExist, getGeometry } from './Geometry';
 import { createLightEntity } from './LightManager';
 import { createCameraEntity, setActiveCamera } from './CameraManager';
 import { createMeshEntity } from './MeshManager';
-import { importModelAsync, type ImportReturnObj } from './ImportModel';
+import { getImportedAsset, importAssetAsync, releaseImportedAsset } from './Import/ImportRegistry';
+import type { ImportedAssetManifest } from './Import/ImportTypes';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -224,14 +225,41 @@ export type ScenePrimitiveAssets = {
   textures: { [id: string]: THREE.Texture };
   materials: { [id: string]: THREE.Material };
   geometries: { [id: string]: THREE.BufferGeometry };
+  /** The scene's imported assets by import id (spawn them with spawnImportedAsset). */
+  importedAssets: { [id: string]: ImportedAssetManifest };
+};
+
+/** Import ids of a scene's declared imported assets. */
+const getSceneImportIds = (sceneData?: SceneData) =>
+  (sceneData?.importedAssets || []).map((asset) => (typeof asset === 'string' ? asset : asset.id));
+
+/** Releases a scene's declared imports (persistent ones are skipped by releaseImportedAsset).
+ * Run after the scene's entities are gone: their geometries were already freed with their meshes
+ * (ref count 0), this frees the rest (collider-only geometries, textures, the manifests). */
+const releaseSceneImports = (sceneId?: string) => {
+  if (!sceneId) return;
+  for (const id of getSceneImportIds(getGeneratedSceneData(sceneId))) {
+    if (id) releaseImportedAsset(id);
+  }
 };
 
 const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitiveAssets> => {
   const textures: ScenePrimitiveAssets['textures'] = {};
   const materials: ScenePrimitiveAssets['materials'] = {};
   const geometries: ScenePrimitiveAssets['geometries'] = {};
+  const importedAssets: ScenePrimitiveAssets['importedAssets'] = {};
 
-  // Load and create textures
+  // Load textures and imported assets (in parallel): materials can use the textures and meshes the
+  // imported geometries (by id)
+  const importPromises: Promise<ImportedAssetManifest | null>[] = [];
+  for (const asset of sceneData.importedAssets || []) {
+    if (typeof asset === 'string') {
+      const manifest = getImportedAsset(asset);
+      if (manifest) importedAssets[asset] = manifest;
+      continue;
+    }
+    importPromises.push(importAssetAsync(asset));
+  }
   const sceneTextures = sceneData.textures || [];
   const texturePromises: Promise<THREE.Texture>[] = [];
   const textureIds: string[] = [];
@@ -243,7 +271,13 @@ const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitive
     textureIds.push(texId);
     texturePromises.push(loadTextureAsync(tex));
   }
-  const loadedTextures = await Promise.all(texturePromises);
+  const [loadedTextures, manifests] = await Promise.all([
+    Promise.all(texturePromises),
+    Promise.all(importPromises),
+  ]);
+  for (const manifest of manifests) {
+    if (manifest) importedAssets[manifest.id] = manifest;
+  }
   for (let i = 0; i < loadedTextures.length; i++) {
     textures[textureIds[i]] = loadedTextures[i];
   }
@@ -290,7 +324,7 @@ const loadNextSceneAssets = async (sceneData: SceneData): Promise<ScenePrimitive
     if (geo) geometries[geometry.id || `geometry-${i}`] = geo;
   }
 
-  return { textures, materials, geometries };
+  return { textures, materials, geometries, importedAssets };
 };
 
 const createNextSceneObject3Ds = async (sceneData: SceneData): Promise<void> => {
@@ -308,7 +342,7 @@ const createNextSceneObject3Ds = async (sceneData: SceneData): Promise<void> => 
     const props = meshProps[i];
     if (typeof props === 'string') continue;
     if (typeof props.props.geo === 'string') {
-      const geo = getGeometry(props.props.geo);
+      const geo = doesGeoExist(props.props.geo) ? getGeometry(props.props.geo) : undefined;
       if (!geo) {
         lerror(
           `Could not find geometry with id "${props.props.geo}" for mesh "${props.props.appId || props.entityOpts?.appId}" in createNextSceneObject3Ds. Mesh not created.`
@@ -329,15 +363,6 @@ const createNextSceneObject3Ds = async (sceneData: SceneData): Promise<void> => 
     }
     createMeshEntity(props.props, props.entityOpts);
   }
-
-  // Create imported meshes
-  const importedMeshProps = sceneData.importedMeshes || [];
-  const promises: Promise<ImportReturnObj>[] = [];
-  for (let i = 0; i < importedMeshProps.length; i++) {
-    const props = importedMeshProps[i];
-    promises.push(importModelAsync(props.props));
-  }
-  await Promise.all(promises);
 };
 
 /**
@@ -492,6 +517,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         void ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
       }
       ecsWorld.clearNonPersistent();
+      releaseSceneImports(prevSceneId);
 
       loader.phase = 'LOAD';
 

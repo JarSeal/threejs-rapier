@@ -6,7 +6,7 @@ import { deleteTexture, getTexture, TextureProps } from './Texture';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
 import { LightProps } from './LightManager';
-import { ImportModelParams } from './ImportModel';
+import type { ImportAssetParams } from './Import/ImportTypes';
 import { createSkyBox, SkyBoxProps } from './SkyBox';
 import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
@@ -39,7 +39,7 @@ export type SceneData = {
   textures?: (TextureProps | string)[];
   materials?: (MatProps | string)[];
   meshes?: ({ props: MeshProps; entityOpts?: CoreEntityOpts } | string)[];
-  importedMeshes?: { props: ImportModelParams }[];
+  importedAssets?: (ImportAssetParams | string)[];
   skyboxes?: (SkyBoxProps | string)[];
 };
 

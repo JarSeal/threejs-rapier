@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../.schemas/mesh.schema.json",
+  "props": {
+    "appId": "testImportedMesh",
+    "geo": "testImport/Cube",
+    "mat": {
+      "id": "importedMeshMat",
+      "type": "PHONG",
+      "params": { "map": "testTexture" }
+    },
+    "position": { "x": -4, "y": 1, "z": -1 },
+    "castShadow": true,
+    "receiveShadow": true
+  }
+}

@@ -4,7 +4,8 @@ import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial } from '../_engine/core/Material';
 import { getTexture, loadTexture, loadTextures } from '../_engine/core/Texture';
 import { llog } from '../_engine/utils/Logger';
-import { importModelAsync } from '../_engine/core/ImportModel';
+import { importAssetAsync } from '../_engine/core/Import/ImportRegistry';
+import { spawnImportedAsset } from '../_engine/core/Import/SpawnImported';
 import { createMeshEntity, getMeshByAppId } from '../_engine/core/MeshManager';
 import { createGroupEntity, addToGroupEntity } from '../_engine/core/GroupManager';
 import { transformMainSpeedValue } from '../_engine/core/MainLoop';
@@ -199,41 +200,31 @@ export const scene = async () =>
       updateLoadStatusFn
     );
 
-    const result = await importModelAsync({
-      appId: 'importedMesh1',
+    // box01 with a TRIMESH collider from its own geometry. The collider values are the Physics
+    // API's defaults this box has always had (the importer's custom-prop defaults are 0.2).
+    const importedBox01 = await importAssetAsync({
       fileName: '/debugger/assets/testModels/box01.glb',
       throwOnError: true,
     });
-    if (result.mesh && !Array.isArray(result.mesh) && typeof result.meshId === 'number') {
-      const importedBox = result.mesh;
-      // vertices/indices explicit: the legacy PhysicsRapier system auto-extracted a TRIMESH
-      // shape straight from the attached mesh's geometry — the new Physics API needs them
-      // passed in explicitly (ImportModel.ts's own GLB->physics pipeline gets ported onto
-      // this same requirement in a later phase; this is the same extraction done inline here).
-      const importedBoxGeo = importedBox.geometry;
-      const trimeshVertices = new Float32Array(importedBoxGeo.attributes.position.array);
-      const trimeshIndices = importedBoxGeo.index
-        ? new Uint32Array(importedBoxGeo.index.array)
-        : new Uint32Array([...Array(trimeshVertices.length / 3).keys()]);
-      await createPhysicsEntity(
-        { type: 'TRIMESH', vertices: trimeshVertices, indices: trimeshIndices },
-        {
-          rigidType: 'DYNAMIC',
-          translation: { x: 3, y: 3, z: 2 },
-          angvel: { x: 3, y: 1, z: 5 },
-        },
-        result.meshId
-      );
-      const material = createMaterial({
+    const { physicsEntityIds } = await spawnImportedAsset(importedBox01!, {
+      transform: { position: { x: 3, y: 3, z: 2 } },
+      material: createMaterial({
         id: 'importedBox01Material',
         type: 'PHONG',
-        params: {
-          map: getTexture('box1Texture'),
+        params: { map: getTexture('box1Texture') },
+      }),
+      physicsParams: {
+        isPhysObj: true,
+        keepMesh: true,
+        rigidBody: {
+          rigidType: 'DYNAMIC',
+          angvel: { x: 3, y: 1, z: 5 },
         },
-      });
-      importedBox.position.set(3, 3, 2);
-      importedBox.material = material;
-    }
+        collider: { type: 'TRIMESH', density: 1, friction: 0.5, restitution: 0 },
+      },
+      entityOpts: { appId: 'importedMesh1' },
+    });
+    if (!physicsEntityIds.length) throw new Error('Could not spawn the imported box01.');
 
     createSceneMainLooper(() => {
       sphere.rotation.z -= transformMainSpeedValue(0.1);

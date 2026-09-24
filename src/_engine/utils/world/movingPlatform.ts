@@ -9,8 +9,8 @@ import { ECSSystemStage } from '../../../AppECSRegistry';
 import { existsOrThrow } from '../assert';
 import { getLogger } from '../Logger';
 
-/** This file's own internal grouping of one collider (+ optionally the shared rigid body),
- * mirroring ImportModel.ts's identically-named local type — the engine-agnostic Physics API has
+/** This file's own internal grouping of one collider (+ optionally the shared rigid body) — the
+ * engine-agnostic Physics API has
  * no single equivalent combined type since createPhysicsEntity takes collider(s) and the rigid
  * body as separate params. Kept as the public physicsParams shape below so callers (still on
  * the legacy shape until they're ported in a later phase) don't need to change at all. */

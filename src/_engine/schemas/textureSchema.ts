@@ -36,6 +36,8 @@ export const TextureAssetSchema = z.object({
   ...TextureOverridesSchema.omit({ __meta: true }).shape,
   __saveData: createSaveDataSchema(TextureOverridesSchema),
   __sourcePath: z.string().optional(),
+  /** Bytes on disk (all six faces for a cube texture), baked in by gatherAppData. */
+  __fileSize: z.number().optional(),
 });
 
 export type TextureAsset = z.infer<typeof TextureAssetSchema>;

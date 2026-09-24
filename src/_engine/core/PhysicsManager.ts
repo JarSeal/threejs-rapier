@@ -40,8 +40,8 @@ type PrimitiveGeoParams = {
  * target mesh's createGeometry()-authored params, mirroring the legacy PhysicsRapier.ts
  * createCollider's per-shape-type mesh-geometry fallback — never overrides a dimension the
  * caller already set explicitly. A no-op for any params/shape it doesn't recognize (TRIMESH/
- * CONVEXHULL/HEIGHTFIELD/compound imports already get their own dedicated derivation in
- * ImportModel.ts's deriveMeshDependentColliderFields, which runs before this ever sees them). */
+ * CONVEXHULL/HEIGHTFIELD imports already get their own dedicated derivation in
+ * Import/MeshColliderGeometry.ts, which runs before this ever sees them). */
 export const deriveColliderDimensionsFromMesh = (
   params: ColliderParams,
   mesh: THREE.Object3D | undefined
@@ -224,19 +224,17 @@ export const createPhysicsEntity = async (
       object3D.userData._lastVersion = transform.version;
     }
     world.addComponent(entityId, ComponentType.OBJECT3D, { value: object3D, _lastVersion: -1 });
-    // A raw Object3D handed in as `target` (e.g. importMultiplePhysicsObjects's compound-collider
-    // "keepMesh" case, which resolves its target mesh straight off the loaded glTF's children,
-    // never through createMeshEntity) has no parent yet — createMeshEntity's own callers get this
+    // A raw Object3D handed in as `target` (eg. a mesh taken straight off a loaded glTF's
+    // children, never through createMeshEntity) may have no parent yet — createMeshEntity's own callers get this
     // for free, but this path doesn't, so without it the object becomes this entity's OBJECT3D
     // component and gets correctly positioned, yet never actually renders (no parent = not part
     // of any scene graph). Mirrors createMeshEntity's own default (rootScene.add unless opted out).
     // Always reparent onto the root scene (THREE.Object3D.add() removes from any existing
     // parent first, so this is a safe no-op for an object already correctly parented there —
     // e.g. one already created via createMeshEntity). This has to be unconditional, not just
-    // "if it has no parent yet": importMultiplePhysicsObjects's compound-collider "keepMesh"
-    // case resolves its target mesh straight off the loaded glTF's temporary root group, which
-    // DOES give it a parent (that throwaway group), just not one connected to the real scene
-    // graph — checking parent-ness alone would wrongly treat it as already placed.
+    // "if it has no parent yet": a mesh taken off a loaded glTF's temporary root group DOES
+    // have a parent (that throwaway group), just not one connected to the real scene graph —
+    // checking parent-ness alone would wrongly treat it as already placed.
     if (!entityOpts?.doNotAddToScene) {
       existsOrThrow(getRootScene(), 'Could not find root scene in createPhysicsEntity.').add(
         object3D

@@ -48,6 +48,8 @@ export const textureMapKeys = [
   'lightMap',
   'matcap',
   'normalMap',
+  'roughnessMap',
+  'metalnessMap',
   'specularMap',
   'displacementMap',
   'anisotropyMap',

@@ -2,16 +2,25 @@ import * as THREE from 'three/webgpu';
 import { getRenderer, isWebGPURenderer } from './Renderer';
 import { getRootScene } from './Scene';
 
+export type GeoDebugData = { name?: string; description?: string };
+
 const geometries: {
   [id: string]: {
     resource: THREE.BufferGeometry;
     count: number;
     persistent?: boolean;
     preWarm?: boolean;
+    debugData?: GeoDebugData;
   };
 } = {};
 
-type GeoBaseProps = { id?: string; isPersistent?: boolean; preWarm?: boolean };
+type GeoBaseProps = {
+  id?: string;
+  isPersistent?: boolean;
+  preWarm?: boolean;
+  /** Name/description for debug tooling, also stored on `geometry.userData.debugData`. */
+  debugData?: GeoDebugData;
+};
 
 export type GeoProps = GeoBaseProps &
   (
@@ -201,11 +210,13 @@ export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
   const id = props?.id || geo.uuid;
   geo.userData.id = id;
   geo.userData.props = props;
+  if (props?.debugData) geo.userData.debugData = props.debugData;
   geometries[id] = {
     resource: geo,
     count: 0,
     ...(props?.isPersistent ? { persistent: true } : {}),
     ...(props?.preWarm ? { preWarm: true } : {}),
+    ...(props?.debugData ? { debugData: props.debugData } : {}),
   };
 
   if (props?.preWarm) prewarmGeometry(id);
@@ -276,14 +287,16 @@ export const saveBufferGeometry = (
   props?: GeoBaseProps & { isImported?: boolean }
 ) => {
   const id = props?.id || geometry.uuid;
-  if (geometries[id]) return geometries[id];
+  if (geometries[id]) return geometries[id].resource;
   geometry.userData.id = id;
   if (props?.isImported) geometry.userData.isImported = true;
+  if (props?.debugData) geometry.userData.debugData = props.debugData;
   geometries[id] = {
     resource: geometry,
     count: 0,
     ...(props?.isPersistent ? { persistent: true } : {}),
     ...(props?.preWarm ? { preWarm: true } : {}),
+    ...(props?.debugData ? { debugData: props.debugData } : {}),
   };
 
   if (props?.preWarm) prewarmGeometry(id);
