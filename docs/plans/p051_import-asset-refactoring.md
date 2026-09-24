@@ -1,229 +1,261 @@
 Status: draft | not-implemented
 Category: Assets
 Epic: https://trello.com/c/YCUX4DKL/219-model-import-refactoring
+Blocks: p052_gltf-import-via-assets-worker.md
 
 # Import Asset Refactoring — Plan
 
 ## Context
 
-`src/_engine/core/ImportModel.ts` (1086 lines) is the engine's GLTF/GLB model importer, and it has accumulated real architectural debt: three overlapping entry points with inconsistent internals, a 287-line function with two near-duplicate code paths (single mesh vs. group import), a `createMeshEntity({...})` call copy-pasted four times (one copy has a live bug — wrong fallback field), and custom-property parsing spread across several tightly-coupled helper functions. It also has two capability gaps the user wants closed: it never touches textures at all (GLTF-embedded materials/textures ride along untracked, bypassing the engine's own `Texture.ts`/`Material.ts` registries), and all asset loading — this importer and the separate `Texture.ts` — is main-thread-only with no way to move loading off the render thread.
+`src/_engine/core/ImportModel.ts` (992 lines) is the engine's GLTF/GLB importer. Today one call does everything: it loads the file, creates a group entity, creates one mesh entity per glTF mesh (reusing the glTF materials), parses Blender custom properties, and creates physics entities from them. There are three overlapping entry points (`importModelAsync`, `importModels`, `importModel`) and two structurally different code paths (single mesh vs `importGroup`).
 
-This plan designs a ground-up rewrite (not an incremental patch, given the scope) that:
+**Scope decision (2026-09-24): a GLTF import only brings in assets.** It registers **geometries** and, when opted in, **textures**, in the engine's existing registries (`Geometry.ts`, `Texture.ts`). It creates no mesh, group or physics entities, and it never imports GLTF materials (meshes use engine materials). Each registered geometry carries its node transform and its parsed Blender custom properties as metadata. A separate **spawner** turns that metadata into mesh and physics entities, which keeps the Blender-authored physics workflow (`isPhysObj`, `colliderType`, compound `index` groups, …) that `scene_thirdPersonGym.ts` depends on.
 
-1. Restructures model importing into a clean pipeline of small, mostly-pure modules, while preserving every existing feature — especially the Blender-custom-property → physics-entity pipeline that scenes like `scene_thirdPersonGym.ts` depend on.
-2. Adds an opt-in feature to import and properly register GLTF-embedded textures.
-3. Adds a main-thread/worker-thread configuration for asset loading, modeled on the existing physics worker-threading architecture, applied to texture loading now (GLTF loading stays main-thread in this plan — see Decisions).
-4. Adds a new "Assets" debugger tab (with a new SVG icon) listing scene **textures and geometries** with click-to-inspect detail windows. There is no "imported model" asset kind: import produces mesh and/or physics _entities_ (and, per-import, whichever textures/geometries it registers), not a standalone importable-object concept, so the debugger list only ever shows the two asset kinds that are actually registered — textures and geometries.
+Why this split:
 
-This was researched via 3 parallel codebase-exploration passes and 3 parallel architecture-design passes, all with direct source verification (not assumption) of the claims below. Four scope-defining decisions were made explicitly with the user (see Decisions).
+- **Modular.** Geometry becomes a first-class, ref-counted, shareable asset like any `*.geometry.json` one. Scene JSON `meshes` can reference imported geometry by id, and nothing is created that the app didn't ask for.
+- **Threadable.** A pure "file → typed arrays + images + JSON metadata" step is exactly the shape a worker can produce. Moving it off the main thread is its own plan: **p052_gltf-import-via-assets-worker.md**. This plan stays main-thread only, but its output (`ImportedAssetManifest`) is the contract p052's worker must reproduce exactly.
 
-## Decisions (confirmed with user)
+### What changed since the previous revision of this plan
 
-- **Physics backend: dual-backend, ship on legacy.** The new import pipeline will produce physics params in the _new_ Physics API's shape (`Physics/PhysicsAPITypes.ts` `ColliderParams`/`RigidBodyParams`), but by default still create bodies in the **legacy** `PhysicsRapier.ts` world via an adapter (`PhysicsBackendLegacy`). A second adapter (`PhysicsBackendECS`, using `PhysicsManager.createPhysicsEntity`) is built in this plan but stays **opt-in/dark** (not the default), verified on a dedicated test scene. Reason: `PhysicsRapier.ts` and the new Physics API are two _separate Rapier worlds_ — bodies in one can't collide with bodies in the other — and `Character.ts`/`MainLoop.ts`/`movingPlatform.ts`/etc. (~10 files) still run on the legacy world. Porting the importer alone would make `scene_thirdPersonGym.ts`'s character fall through every imported surface. Migrating those ~10 files is a separate future plan; this plan makes that eventual flip a config change, not a rewrite.
-- **GLTF threading: textures threaded now, GLTF stays main-thread.** Worker-thread texture loading (fetch + `createImageBitmap`) is implemented in this plan. Worker-thread GLTF _parsing_ is architecturally designed for (the shared `AppConfig.assets` config, the worker/protocol scaffolding) but not implemented — `GLTFLoader.parse()` continues to run on the main thread. Reason: textures are a clear, low-risk win; full in-worker GLTF parsing requires serializing the entire scene graph into transferable descriptors (structured clone can't preserve `THREE.*` class prototypes) and correctly covering morph targets, skinning, and GLTF extensions — real fidelity risk that deserves its own follow-up plan and spike, not to be absorbed into this one.
-- **`importTextures` opt-in defaults off.** Registering GLTF textures/materials changes their memory-lifetime semantics (ref-counted and shareable, vs. today's untracked-inside-the-material). Off by default so no existing scene's behavior changes; consumers opt in per import.
-- **Consumer call sites updated now.** The new `placement` import option (set position/rotation/quaternion at import time) is added, and `scene_thirdPersonGym.ts`'s ~15 manual post-import `mesh.position.set(...)` + `physObj.rigidBody.setTranslation(...)` blocks are refactored to use it, in this plan — rather than deferring that cleanup to when the ECS backend is eventually flipped on.
+The previous revision predates `_DONE_p028_refactor-old-phys-objs-to-phys-entities.md`. Verified against the code on `physics-api-finalization`:
 
-## Two corrections to prior assumptions (verified in source, load-bearing)
+- `ImportModel.ts` already creates physics through the new Physics API (`createPhysicsEntity`, `deriveColliderDimensionsFromMesh` from `PhysicsManager.ts`). **No file imports `PhysicsRapier.ts` any more** (it is an orphan file, mentioned only in comments), so the whole "dual LEGACY/ECS physics backend" design is dropped.
+- The four copy-pasted `createMeshEntity` calls were already deduplicated into `createEntityFromImportedMesh` (`ImportModel.ts:88`), and the `rotation: m.position` bug is gone.
+- `Material.ts`'s `deleteTexturesFromMaterial` is already refcount-aware (`isTextureInUseByOtherMaterial`, `Material.ts:497-541`), so the "shared texture gets force-disposed" fix is no longer needed.
+- The requested `placement` option is covered by the new spawner's root `transform` (Part 2). `scene_thirdPersonGym.ts` currently works around the gap with an app-side `placeImportedModel` helper (`:36`).
+- Worker-thread asset loading (previously Part 3) moved to p052.
 
-- `cleanUpCustomProps` does **not** mutate the live `mesh.userData` — the parameter is rebound to a shallow copy (`ImportModel.ts:585`, `userData = { ...userData, ...overrides }`) before any `delete` runs. So today, imported meshes **retain** their GLTF custom props in `userData` after import (only `isPhysObj` is truly deleted, group path only). The redesign should preserve this real behavior (leave `mesh.userData` as GLTF delivered it, additionally attach a parsed-props debug object) rather than "fixing" it into a breaking change.
-- The new Physics API was seemingly designed with this importer in mind: `saveBufferGeometry(geo, { isImported: true })` (`Geometry.ts:274`) and `ColliderParams.orientation` ("Do not set manually! ... for imported models", `PhysicsAPITypes.ts:1035`) already exist with **zero current call sites**.
+Still true today, and handled by this plan:
 
----
+- `SceneLoader.ts:338` calls `importModelAsync(props.props)` and drops the sibling `entityOpts` the schema defines.
+- `importedMeshSchema.ts` has a dead `saveMaterial` field and a commented-out `physicsParams`.
+- There is no in-flight de-dup: parallel scene loading can fetch the same `.glb` twice.
+- **DRACO is broken, but no one has hit it yet.** `setDracoLoader` (`ImportModel.ts:78-83`) points at `/examples/jsm/libs/draco/`, and no decoder files exist in `src/public`. None of the 20 repo GLBs uses `KHR_draco_mesh_compression`, so the decoder has never been requested. It also creates a new `DRACOLoader` (its own decoder fetch + worker pool) per import call and never disposes it. See Part 5.
+- An unknown or typo'd `colliderType` custom prop silently produces no physics.
+- The `Geometry.ts` runtime registry doesn't carry `debugData` (the schema has it), and `gatherAppData.ts` doesn't record file sizes.
 
-## Part 1 — Import pipeline rewrite
+## Decisions
 
-### Module structure
-
-Keep `src/_engine/core/ImportModel.ts` as a thin facade (re-exports only, ~60 lines) so no existing import path breaks. Real implementation moves into a new `src/_engine/core/Import/` folder (mirroring the `Physics/` convention):
-
-| File                              | Responsibility                                                                                                                                                                                                                                                                                                          |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Import/ImportTypes.ts`           | All public + internal types (`ImportModelParams`, `ImportResult`, `ImportPhysicsParams`, `ImportedNode`, `TextureImportOptions`, etc.)                                                                                                                                                                                  |
-| `Import/GLTFSource.ts`            | `GLTFLoader`/DRACO setup, filename validation, `loadGLTF()`, in-flight de-dup (today, `SceneLoader.ts`'s `Promise.all` can fetch the same `.glb` twice)                                                                                                                                                                 |
-| `Import/GLTFScenegraph.ts`        | Normalizes `gltf.scene` → flat `ImportedNode[]`; owns the "single empty wrapper `Object3D`" unwrap and `meshIndex` path picking                                                                                                                                                                                         |
-| `Import/CustomProps.ts`           | Pure, non-mutating Blender-custom-property parsing (see below)                                                                                                                                                                                                                                                          |
-| `Import/PhysicsSpec.ts`           | Pure merge (caller `physicsParams` overrides file custom props) + `index`-based compound-object grouping                                                                                                                                                                                                                |
-| `Import/MeshColliderGeometry.ts`  | Mesh → engine-agnostic collider geometry (bbox sizing, TRIMESH/CONVEXHULL vertex arrays, HEIGHTFIELD grid, spine-axis orientation) — this logic doesn't exist in the new Physics API by design (it can't; colliders there are mesh-free so they can run in a worker), so it must live here regardless of backend choice |
-| `Import/PhysicsBackend.ts`        | The one shared interface (`ImportPhysicsBackend`, `PhysicsBodyRequest`, `ImportedPhysicsHandle`)                                                                                                                                                                                                                        |
-| `Import/PhysicsBackendLegacy.ts`  | Default. Adapts to `createPhysicsObjectWithMesh`/`WithoutMesh` (`PhysicsRapier.ts`)                                                                                                                                                                                                                                     |
-| `Import/PhysicsBackendECS.ts`     | Opt-in. Adapts to `PhysicsManager.createPhysicsEntity`                                                                                                                                                                                                                                                                  |
-| `Import/EntityBuilder.ts`         | The one and only `createMeshEntity` call site; group entity creation; `keepMesh` disposal (computed as a set up front, not re-derived from userData)                                                                                                                                                                    |
-| `Import/GLTFAssetRegistration.ts` | New feature: registers GLTF textures/materials/geometries into `Texture.ts`/`Material.ts`/`Geometry.ts` (Part 2 detail)                                                                                                                                                                                                 |
-| `Import/ImportPipeline.ts`        | Orchestrator — one pipeline for all three public entry points                                                                                                                                                                                                                                                           |
-
-`importGroup` stops being a structural fork; it collapses into one pipeline with orthogonal flags:
-
-```
-loadGLTF → collectNodes → parseCustomProps → resolvePhysicsSpecs → groupCompounds
-  → registerImportedAssets (if importTextures) → buildVisualEntities
-  → deriveColliderGeometry → createPhysicsBodies (backend) → disposeUnkeptMeshes → toImportResult
-```
-
-The array↔single-value coalescing that's currently duplicated ~8 places happens exactly once, in `toImportResult`.
-
-### Key types (additive — existing fields/behavior unchanged)
-
-```ts
-export type ImportModelParams = {
-  // ...all existing fields unchanged...
-  importTextures?: boolean | TextureImportOptions; // new, Part 2
-  placement?: { position?: Vector3Like; quaternion?: QuatLike; rotation?: Vector3Like }; // new
-  physicsBackend?: 'LEGACY' | 'ECS'; // new, per-import override; default from AppConfig
-};
-
-export type ImportResult = {
-  // existing fields unchanged: group, groupId, mesh, meshId, physObj (kept, @deprecated on LEGACY path)
-  entityIds: number[]; // new
-  physics: ImportedPhysicsHandle[]; // new — backend-neutral handle, see below
-  assets?: ImportedAssetIds; // new, Part 2
-};
-
-// PhysicsBackend.ts
-export type ImportedPhysicsHandle = {
-  appId: string;
-  entityId?: number; // ECS backend only
-  setTranslation(
-    pos: Partial<Vector3Like>,
-    opts?: { wakeUp?: boolean; moveVisual?: boolean }
-  ): void;
-  setRotation(rot: QuatLike, opts?: { wakeUp?: boolean; moveVisual?: boolean }): void;
-  legacy?: PhysicsObject; // exactly one of legacy/rigidBody is populated
-  rigidBody?: RigidBodyAPI;
-};
-```
-
-### Custom-property parsing (pure, preserves every recognized key)
-
-`CUSTOM_PROP_KEYS` (one source of truth, also drives future docs/debug display): `isPhysObj`, `keepMesh`, `rigidType`, `colliderType`, `density`, `friction`, `frictionCombineRule`, `restitution`, `restitutionCombineRule`, `index`, `id`, `name`, `nCols`, `nRows`, `hx`/`hy`/`hz`, `radius`, `borderRadius`, `halfHeight`, plus the `userData_<key>` forwarding convention (kept as-is — no in-repo consumers to break, and it's the only mechanism Blender artists have for attaching arbitrary gameplay data to a body).
-
-`parseCustomProps(userData) → ParsedCustomProps` is a pure function (no mutation, no side effects) that also collects `warnings` for unrecognized/malformed values — today a typo'd `colliderType` in Blender silently produces _no_ physics with no error; this rewrite `lwarn`s once per import with the offending node name instead.
-
-`resolvePhysicsSpec(parsed, override?)` in `PhysicsSpec.ts` implements the override semantics exactly as today: caller-supplied `physicsParams` wins field-by-field over GLTF-parsed custom props, or can add physics with no custom props present at all. `groupByCompoundIndex(specs)` replaces `importMultiplePhysicsObjects`/`getRigidParamsAndChildColliders` with the same `index`-based bucketing (meshes sharing a numeric `index` become one compound body: a "main" mesh carrying `rigidType` plus sibling collider-only meshes).
-
-### JSON schema additions
-
-New `src/_engine/schemas/_physicsSchemas.ts`: `RigidBodyParamsSchema`, `ColliderParamsSchema` (Zod discriminated union on `type`, covering CUBOID/BOX, BALL/SPHERE, CAPSULE/CONE/CYLINDER, TRIMESH, HEIGHTFIELD, CONVEXHULL), `ImportPhysicsParamsSchema`. (Typed-array-only fields like `vertices`/`heights` and function fields like `collisionEventFn` are intentionally excluded from the JSON schema — they're derived from the mesh or are TS-only.)
-
-`importedMeshSchema.ts` gains: `physicsParams` (currently commented out — `// physicsParams: z.union([]),` — this is why JSON-authored imports can currently only get physics from GLTF-baked custom props, never from JSON overrides), `importTextures`, `placement`. Also drop the dead `saveMaterial` field (in the schema, but nothing in `ImportModel.ts` ever reads it) and fix a real bug found during research: `SceneLoader.ts:338` calls `importModelAsync(props.props)` but drops the sibling `entityOpts` the schema defines — so `appId`/`debugData`/`persistent` authored in a `.importedMesh.json` file are silently ignored today.
-
-### Consumer migration
-
-No consumer _needs_ to change (new fields are all optional, existing `ImportResult` fields keep their type/semantics under the default LEGACY backend). Per the confirmed decision, this plan also does the following non-required-but-recommended cleanup:
-
-- `src/app/scene_thirdPersonGym.ts`: replace its ~15 manual `mesh.position.set(...)` + `physObj.rigidBody.setTranslation(...)`/`physObj.setTranslation(...)` blocks with the new `placement` option on the import call.
-- `src/_engine/utils/world/characterTestObstacles.ts`: re-type its `physicsParams` param from the legacy-typed `Partial<PhysicsParams & AdditionalImportPhysicsParams>` to the new `ImportPhysicsParams`.
-- `src/_engine/core/SceneLoader.ts`: fix the dropped-`entityOpts` bug above.
-
-`scene01.ts`/`scene01_v2.ts` need no changes (optionally adopt `importTextures: true` later to drop their hand-rolled texture-swap workaround — not required by this plan).
-
-### Verified physics-capability parity (why the dual-backend design is safe)
-
-Checked directly against `Physics/PhysicsAPITypes.ts`, `PhysicsManager.ts`, `Physics/EngineRapier.ts`: all 7 collider types match, compound multi-collider bodies are supported (`PhysicsManager.ts:75-81` sets `parentId` per collider), per-collider local offset and the Blender spine-axis `orientation` field both exist and are unused elsewhere (built for this), rigid-body userData forwarding has parity, and `createPhysicsEntity` being async fits the already-async import flow cleanly. The real gap is mesh→collider-geometry derivation, which doesn't exist in the new API by design (colliders there are mesh-free, since they may run in a worker) — `MeshColliderGeometry.ts` fills that gap for both backends.
+- **Assets only, plus metadata** (confirmed with the user). The import creates no entities and no materials.
+- **`importTextures` is opt-in and off by default.** When on, only textures actually referenced by a glTF material slot are registered. All other GLTF material data is disposed.
+- **Physics goes only through the new Physics API.** The spawner calls `createPhysicsEntity`. Physics remains code-only (not in scene/asset JSON), per the existing rule in CLAUDE.md.
+- **`ImportModel.ts` is deleted in the last phase.** Every consumer is in-repo and gets migrated in this plan, so no compatibility facade is kept.
+- **Threading lives in p052.** This plan adds no worker, config or protocol.
 
 ---
 
-## Part 2 — Texture importing from GLTF (new opt-in feature)
+## Part 1 — Asset import pipeline
+
+New folder `src/_engine/core/Import/` (mirrors the `Physics/` convention). Everything here runs on the main thread. Everything except the registry writes is pure, so p052 can reuse the same code after rebuilding geometries from worker-transferred arrays.
+
+| File                             | Responsibility                                                                                                                                                                                                                                 |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Import/ImportTypes.ts`          | `ImportAssetParams`, `ImportedAssetManifest`, `ImportedGeometryInfo`, `ParsedCustomProps`, `SpawnImportedParams`, `SpawnImportedResult`                                                                                                        |
+| `Import/DracoDecoder.ts`         | Shared, lazily created `DRACOLoader` + decoder path/config (Part 5). Lands first, used by today's `ImportModel.ts` until `GLTFSource.ts` replaces it                                                                                           |
+| `Import/GLTFSource.ts`           | `GLTFLoader` setup (DRACO via `DracoDecoder.ts`), filename/extension validation, `loadGLTF(url)` with in-flight de-dup keyed on the absolutized URL                                                                                            |
+| `Import/GLTFExtract.ts`          | Walks `gltf.scene` → one `ImportedGeometryInfo` per primitive. Unwraps a single empty wrapper `Object3D` and picks by `meshIndex`/`nodeFilter` (both kept from today). Registers geometries and disposes all remaining GLTF materials/textures |
+| `Import/GLTFTextures.ts`         | Opt-in texture registration (see below)                                                                                                                                                                                                        |
+| `Import/CustomProps.ts`          | Pure Blender custom-property parsing                                                                                                                                                                                                           |
+| `Import/MeshColliderGeometry.ts` | Geometry + transform → collider shape data (moved from `ImportModel.ts`, see Part 2)                                                                                                                                                           |
+| `Import/ImportRegistry.ts`       | `importAssetAsync`, `getImportedAsset`, `releaseImportedAsset`, manifest cache                                                                                                                                                                 |
+| `Import/SpawnImported.ts`        | Part 2's entity spawner                                                                                                                                                                                                                        |
+
+### Key types
 
 ```ts
-export type TextureImportOptions = {
-  idPrefix?: string; // default: appId ?? basename(fileName)
+export type ImportAssetParams = {
+  /** Import id, also the geometry/texture id prefix. Default: file basename. */
+  id?: string;
+  fileName: string;
+  /** Default false. true = register every material-slot texture with defaults. */
+  importTextures?: boolean | { texOpts?: TexOpts; isPersistent?: boolean };
+  /** Kept from today: pick one node by (nested) child index instead of importing all. */
+  meshIndex?: number | number[];
   isPersistent?: boolean;
-  texOpts?: TexOpts;
-  registerMaterials?: boolean; // default true
-  registerGeometries?: boolean; // default false
-  reuseExistingIds?: boolean; // default true
+  throwOnError?: boolean;
+  debugData?: { name?: string; description?: string };
+};
+
+export type ImportedGeometryInfo = {
+  geometryId: string;
+  nodeName: string;
+  /** Node names from the glTF root to this node, for debugging / filtering. */
+  parentPath: string[];
+  /** Relative to the glTF root (after the empty-wrapper unwrap). */
+  transform: { position: Vector3Like; quaternion: QuatLike; scale: Vector3Like };
+  customProps: ParsedCustomProps;
+  /** The primitive came from KHR_draco_mesh_compression (vertex order not preserved, see Part 5). */
+  isDracoCompressed: boolean;
+  /** Only with importTextures: which registered texture fills which material slot. */
+  textureSlots?: Partial<Record<TextureMapKey, string>>;
+};
+
+export type ImportedAssetManifest = {
+  id: string;
+  fileName: string;
+  geometries: ImportedGeometryInfo[];
+  textureIds: string[];
 };
 ```
 
-`registerImportedAssets` walks each material actually applied to a mesh (**after** any caller `meshProps[].mat` override — GLTF materials that lose to an override must not be registered, or they'd sit at `count: 0` forever), and for each populated slot in `textureMapKeys` (`Material.ts` — needs exporting) calls `saveTexture`/`saveMaterial`/optionally `saveBufferGeometry`. Id generation prefers the glTF texture's own name, then its source image filename, then a stable positional fallback, with collision-on-different-instance producing a `_2` suffix and a warning.
+The same `ImportedGeometryInfo` is also stored on `geometry.userData.importInfo`. The debugger and ad-hoc code can then read it from the geometry alone.
 
-**Ordering matters and is the reason this is simple:** `createMeshEntity` already calls `incGeometryRef`/`incMaterialRef` when `geo.userData.id`/`mat.userData.id` exist (`MeshManager.ts:76-77`), and `disposeMesh` already calls the matching `dec*Ref`. Running registration _before_ `buildVisualEntities` in the pipeline means imported assets get correct ref-counting and disposal for free, with zero `MeshManager` changes.
+### Geometry registration
 
-**One pre-existing hazard this feature makes reachable, fixed in this plan:** `Material.ts`'s `deleteTexturesFromMaterial` (called from `decMaterialRef` at zero) currently force-disposes textures via `deleteTexture(id)` regardless of remaining refcount. That's harmless today because nothing shares a texture across materials, but once imported textures are shared and ref-counted, disposing one material could yank a texture still in use elsewhere. Fix: change it to `decTextureRef` (keep the hard-delete behind an explicit `deleteMaterial(id, deleteTextures: true)`).
+- Each primitive gets one geometry (a glTF mesh with several primitives yields several geometries). Ids follow `${importId}/${nodeName}`, with a `#n` suffix when a mesh has several primitives. A name collision with a different geometry gets a `_2` suffix and an `lwarn`.
+- Geometries are registered with the existing `saveBufferGeometry(geo, { id, isImported: true, isPersistent })` (`Geometry.ts:274`), which already has an `isImported` flag and no call sites yet.
+- Collider-only nodes (`isPhysObj && !keepMesh`) are registered too, because the spawner derives TRIMESH/CONVEXHULL/HEIGHTFIELD shapes from them. Nothing ever increments their ref count, so `releaseImportedAsset(id)` is the way to free them: it deletes the import's count-0, non-persistent geometries and textures and drops the manifest. Scene teardown for imports declared in scene JSON calls it.
+- A repeat `importAssetAsync` with the same id returns the cached manifest if all of its geometries still exist (`doesGeoExist`), and re-imports otherwise.
+
+### Texture registration (opt-in)
+
+`GLTFTextures.ts` visits only textures actually referenced by a material slot in `textureMapKeys` (`utils/constants.ts`). For each one it:
+
+- Registers the texture with `saveTexture(texture, id, isPersistent)`. Ids prefer the glTF texture name, then the source image filename, then a stable positional fallback, all prefixed `${importId}/`.
+- Keeps GLTFLoader's `flipY = false` and its colorSpace (sRGB for color maps, none for data maps). An engine material using these textures then samples them the same way the glTF material would have.
+- Sets `userData.gltfSlot` to the slot name.
+- Writes `textureSlots` onto each geometry's info, so app code (or a scene JSON material) can pair the right maps with the right geometry.
+
+A texture shared by several glTF materials is registered once. Engine materials that use it go through the existing refcount-aware material cleanup.
+
+### Custom-property parsing (pure)
+
+`parseCustomProps(userData) → ParsedCustomProps` recognizes every key of today's `CustomPropsUserData` (`ImportModel.ts:473-494`): `isPhysObj`, `keepMesh`, `rigidType`, `colliderType`, `density`, `friction`, `frictionCombineRule`, `restitution`, `restitutionCombineRule`, `index`, `id`, `name`, `nCols`, `nRows`, `hx`/`hy`/`hz`, `radius`, `borderRadius`, `halfHeight`. It also keeps the `userData_<key>` → rigid-body `userData` forwarding.
+
+It produces the same defaults as today's `cleanUpCustomProps` (density/friction/restitution 0.2, combine rule `AVERAGE`, unknown `rigidType` → `FIXED`). It has no side effects: it neither mutates `userData` nor creates physics. It returns `warnings`, so an unknown `colliderType` gets one `lwarn` naming the node and file. Today that fails silently.
 
 ---
 
-## Part 3 — Main/worker-thread asset loading (textures now, GLTF-ready architecture)
+## Part 2 — Entity spawner
 
-### Config
-
-New `AppConfig.assets` (`Config.ts`, sibling to `physics`):
+`spawnImportedAsset(manifestOrId, params?) → Promise<SpawnImportedResult>` does everything the entity half of `ImportModel.ts` does today, but reads geometries and metadata instead of a live glTF scene graph:
 
 ```ts
-assets?: {
-  workerTarget?: 'MAIN_THREAD' | 'WORKER_THREAD';   // shared default, default 'MAIN_THREAD'
-  textureWorkerTarget?: 'MAIN_THREAD' | 'WORKER_THREAD'; // per-kind override, falls back to workerTarget
-  maxConcurrentLoads?: number;   // default 8
-  requestTimeoutMs?: number;     // default 30000
-  fallbackToMainThread?: boolean; // default true
+export type SpawnImportedParams = {
+  /** Root transform; every node's transform is composed under it (replaces the gym's placeImportedModel). */
+  transform?: { position?: Vector3Like; quaternion?: QuatLike; rotation?: Vector3Like };
+  /** Engine material for all visible pieces (glTF materials are never imported). */
+  material?: THREE.Material | string;
+  /** Per-geometry overrides, by geometryId or node order. */
+  meshProps?: Partial<MeshProps>[] | Record<string, Partial<MeshProps>>;
+  /** Same override semantics as today's physicsParams: wins field-by-field over custom props,
+   * or adds physics to a node that has none. */
+  physicsParams?: ImportPhysicsParams | ImportPhysicsParams[];
+  /** Only spawn some of the import's geometries. */
+  filter?: (info: ImportedGeometryInfo) => boolean;
+  entityOpts?: CoreEntityOpts;
+};
+
+export type SpawnImportedResult = {
+  meshEntityIds: number[];
+  /** Entities carrying rigid bodies: a mesh entity (anchor) or a headless physics entity. */
+  physicsEntityIds: number[];
 };
 ```
 
-Follows the exact `physics.workerTarget` convention: env var overrides (`VITE_ASSETS_*`) plus a debug-env-only boot-time localStorage override (`AEK_debugAssetsBoot`) read in `loadConfig()`, applied on next reload — mirroring `DEBUG_PHYSICS_API_BOOT_LS_KEY`. Default is `MAIN_THREAD` (not `WORKER_THREAD` like physics) since this is new, unproven infrastructure — the app opts in via `src/CONFIG.ts` once verified.
+- **Visible pieces.** Each non-collider-only node gets one `createMeshEntity` using the registered geometry by id (so `incGeometryRef` works through the existing `MeshManager.ts` path), the given material, and root ∘ node transform.
+- **Physics.** The existing logic moves over rather than being rewritten: the `index` compound grouping, anchor selection and per-collider offset maths from `importMultiplePhysicsObjects` (`ImportModel.ts:816-928`), and `getRigidParamsAndChildColliders`. `deriveMeshDependentColliderFields` (TRIMESH/CONVEXHULL/HEIGHTFIELD, including the fragile HEIGHTFIELD row/column logic, kept as-is) moves into `MeshColliderGeometry.ts`. So do the primitive dimension steps (`setMeshCreatePropsToUserData` + `deriveColliderDimensionsFromMesh`). These now take `(geometry, info.transform.scale)` instead of a template `THREE.Mesh`.
+  - HEIGHTFIELD's `mergeVertices` currently replaces `mesh.geometry` in place. It must now write to a scratch geometry and must not replace the registered asset.
+- **Collider-only nodes** get no mesh entity. A compound group with no visible piece becomes a headless physics entity at its rigid-body node's transform, as today.
+- `createPhysicsEntity(..., target = anchorEntityId)` attaches physics to the existing mesh entity, as today.
 
-No `useSAB`/transport-mode fields: verified that `SharedArrayBuffer`/`crossOriginIsolated` are irrelevant here. Physics needs a persistent shared buffer because it's written 60×/second; asset loads are one-shot, so plain `Transferable` (`ArrayBuffer`/`ImageBitmap`) postMessage — which needs no cross-origin isolation — is sufficient and simpler. The worker holds no cache (transferred buffers are detached after send); `Texture.ts`'s existing registry remains the single source of truth.
+---
 
-### What moves to the worker
+## Part 3 — JSON schema + scene loading
 
-Textures: worker does `fetch` → `Blob` → `createImageBitmap(blob, opts)` (verified available in Web Workers, no DOM dependency), or for `.hdr` runs `HDRLoader.parse()` on the raw `ArrayBuffer` (pure JS, currently a genuine main-thread cost). Returns a transferable `ImageBitmap`/typed array. Main thread wraps it (`new THREE.Texture(bitmap)`) and proceeds through the **existing, unchanged** `setTextureOpts`/`saveTexture` calls — so registry/ref-count/persistence semantics are identical on both branches.
-
-GLTF: **not moved to the worker in this plan** (see Decisions). Feasibility was investigated (source-verified against the installed three.js 0.183.2 — `GLTFLoader.parse()` has zero DOM dependencies except a Safari-<17/Firefox-<98 fallback branch), so the config/protocol groundwork below is deliberately shaped to support adding it later without rework.
-
-### Protocol & facade
-
-New `AssetsProtocolType` enum + `AssetsUpProtocol`/`AssetsDownProtocol` discriminated unions (flat `switch` dispatch — no numeric-range bucketing like physics needs, since there's no per-frame hot path to fast-dispatch). Reuses the two genuinely generic pieces of the physics worker infrastructure, confirmed to have zero non-physics consumers today:
-
-- `initWorker<T>` (`utils/helpers.ts:400`) for the worker bootstrap/handshake.
-- `createNewResolver`/`resolveRequest` (`utils/PromiseResolver.ts`) for request/response correlation — extended **additively** (new optional `reject` param + `rejectRequest`/`deleteResolver`) to fix a latent bug found during research: the physics `ERROR` path (`PhysicsAPI.ts:325-329`) logs and returns without resolving, leaking the pending promise forever. The assets worker's `ERROR` messages must resolve (as a `{ok:false, error}` envelope), not just log.
-
-`Texture.ts`'s public `loadTextureAsync(props)` signature **does not change** — internally it branches on the resolved worker target exactly as `PhysicsAPI.ts` branches on `physicsState.workerTarget`, with both branches converging on the same `setTextureOpts`/`saveTexture` calls. Callers (`SceneLoader.ts`, `SkyBox.ts`, app code) stay thread-agnostic.
-
-New files: `Assets/AssetsAPITypes.ts`, `Assets/AssetsAPI.ts` (`initAssets()`, called from `InitApp.ts` after `loadConfig()` and before `registerScenesFromGeneratedData()`), `workers/assetsWorker.ts`, `workers/assets/assetsSwitchTexture.ts`.
-
-**Known gotcha to build in from day one:** URLs must be absolutized on the main thread before posting to the worker (`new URL(fileName, new URL(path, document.baseURI)).href`) — inside the worker, relative `fetch` resolves against the worker's own (hashed, production-chunked) script URL, not the page, so unabsolutized relative paths 404 silently.
+- **New asset kind.** Replace `schemas/importedMeshSchema.ts` with `schemas/importedAssetSchema.ts`. The file suffix changes from `*.importedMesh.json` to `*.importedAsset.json`, and the scene key from `importedMeshes` to `importedAssets`. Props: `id`, `fileName`, `importTextures`, `meshIndex`, `isPersistent`, `throwOnError`, `debugData`. Dropped: `saveMaterial` (dead), `allMeshesVisible` (already a no-op), `importGroup`, `meshProps`, `groupId`/`groupName`, which are all entity-level. Update `devTools/gatherAppData.ts`'s suffix map, registry and `.schemas/` output accordingly.
+- **Load order in `SceneLoader.loadNextSceneAssets`.** Textures and imported assets load first, in parallel. Then materials, geometries and meshes. A scene's `meshes` JSON can then reference an imported geometry (`"geo": "box01/Cube"`) and a material can reference an imported texture id. This gives GLTF geometry a JSON authoring path. The old `createNextSceneObject3Ds` import loop, and with it the dropped-`entityOpts` bug, goes away.
+- Scene exit calls `releaseImportedAsset` for the scene's declared imports (persistent ones survive).
+- **Migrate `src/app/importedMeshes/testImport.importedMesh.json`** into `importedAssets/testImport.importedAsset.json` plus a `meshes/*.mesh.json` that references the imported geometry and keeps the existing `importedMeshMat`/`testTexture` material, position and shadows. Carry its `__saveData` (`sceneTestECS`) over where the fields still exist.
 
 ---
 
 ## Part 4 — Assets debugger tab
 
-Follows the repo's established dual-layer debug pattern exactly (thin public wrapper + `_dbg__`-prefixed real implementation, lazy-imported only in debug builds — see `PhysicsAPI.ts`/`Debug/_dbg__PhysicsAPI.ts` as the reference).
+Follows the repo's dual-layer debug pattern (thin public wrapper + `_dbg__`-prefixed implementation, lazy-imported in debug builds only; `PhysicsAPI.ts` / `Debug/_dbg__PhysicsAPI.ts` is the reference).
 
-- **New files**: `Debug/_dbg__Assets.ts` (the tab), `Debug/_dbg__AssetStats.ts` (pure stat-computation helpers: geometry vertex/triangle counts, texture descriptions, byte-size formatting — kept separate so they're reusable and independently readable).
-- **Registration**: `InitApp.ts`, alongside `createPhysicsAPIDebugGUI()`, `orderNr: 8` (free slot between Renderer=7 and Raycast=10).
-- **Tab layout**: config section (workerTarget selector for `AppConfig.assets`, boot-override + reload, same pattern as the Physics tab) above a filterable, searchable asset list (scope: current scene / all declared / all loaded — see scoping note below).
-- **List**: hand-built `<ul>` (not Tweakpane — matches the existing list-of-entities pattern in `_dbg__PhysicsAPI.ts`), sourced by merging `getTextureRegistry()` + `getGeometryRegistry()` only, refreshed on a polling interval with signature-diffing to avoid needless rebuilds. Each row shows name + description (from each asset's `debugData`) and a type icon. There is no third "imported model" row kind — a `.importedMesh.json` import is a _recipe_ that (depending on its options) registers some combination of geometries/textures and creates mesh/physics entities; once run, the only things left to list as _assets_ are those registered geometries and textures. The mesh/physics entities it created are ECS entities, not assets, and are out of scope for this list (they already show up wherever the debugger lists entities).
-- **Scene scoping — recommendation**: scope by the _declared_ assets in the current scene's generated data (`generatedAppData.scenes[id].textures/geometries`), not by tagging registry entries with a scene id. Assets are shared/ref-counted across scenes (many-to-many), so a single "owning scene" field on the registry would be semantically wrong; the declared-assets relation already exists in generated data for free. Geometries/textures declared indirectly via a scene's `importedMeshes` entries (when `importTextures`/`registerGeometries` is on) are attributed to the scene the same way — there's no separate "imported model" bucket to reconcile. A visible "+N loaded assets not declared in this scene" affordance covers assets created imperatively in scene `.ts` code (which the declared-list approach can't see), switching to an "all loaded" scope on click.
-- **Icons**: 3 new SVG keys added to `UI/icons/SvgIcon.ts`'s existing `icons` map (drop `.svg?raw` file, add key, use via `getSvgIcon(key)`) — one for the Assets tab button itself (a stacked-cards "collection" mark combining a sphere + picture-corner glyph to signal "3D + image assets"), and two for per-row type differentiation: texture (filled image-frame glyph) and geometry (outlined isometric cube). No "imported model" icon — that asset kind doesn't exist.
-- **Info window**: click-to-open `DraggableWindow` (matching `_dbg__PhysicsAPI.ts`'s `createEditPhysicsEntityContent` pattern, including the `registerDraggableWindowCmp` re-registration needed for the window to survive a page reload while open). Fields:
-  - Common: type (`texture` | `geometry`), filename, path, filetype (all derived from the asset's `fileName`/`path` — no schema change needed), size, ref count.
-  - Texture: dimensions, plus color space / format-type / mipmaps / filtering / wrap / anisotropy / estimated GPU memory.
-  - Geometry: vertex/triangle counts (triangle count via `geometry.index ? index.count/3 : position.count/3`; **"edges" is intentionally not shipped as a single number** — `BufferGeometry` has no edge topology, and a meaningful unique-edge count requires an expensive weld/hash pass whose result depends on a chosen tolerance; instead show the exact, cheap "edge instances = 3 × triangles" with a clearly-labeled on-demand "compute unique edges" button for indexed geometry under a size guard), plus an estimated VRAM footprint (buffer byte sizes). No mesh/material/embedded-texture rollup here — a geometry asset doesn't know which mesh entity (if any) currently uses it or what material/textures that entity paired it with; that association lives on the entity, not the asset.
-- **File size**: not tracked anywhere today. Primary source: bake it at build time in `devTools/gatherAppData.ts` (a `fs.statSync` per declared asset file, written as a new optional `__fileSize` field alongside the existing `__sourcePath`, on the top-level catalog entries only). Fallback for undeclared/remote assets: an on-demand "Measure" button doing a `HEAD` request and reading `content-length`.
-- **`debugData` (name/description) gap**: `TextureSchema` already has it and `Texture.ts` already surfaces it on the live resource; `GeometrySchema` has it in the schema but `Geometry.ts`'s runtime type doesn't carry it through yet. This plan adds the missing runtime plumbing for geometries so both listed asset kinds support it uniformly. (`importedMeshSchema.ts`'s own `debugData` gap, if it matters, is about naming an import _recipe_/entity, not a list asset — out of scope here.)
+- **New files**: `Debug/_dbg__Assets.ts` (the tab) and `Debug/_dbg__AssetStats.ts` (pure helpers: vertex/triangle counts, texture descriptions, byte-size formatting).
+- **Registration**: in `InitApp.ts` next to `createPhysicsAPIDebugGUI()`, `orderNr: 8` (free: Physics=6, Renderer=7, Light/Raycast=10).
+- **List**: a hand-built `<ul>` (the same list pattern as `_dbg__PhysicsAPI.ts`), built from `getTextureRegistry()` + `getGeometryRegistry()` only, refreshed on a polling interval with signature-diffing. Each row shows name, description (from `debugData`) and a type icon. There are only two row kinds, texture and geometry: an import is a recipe, not an asset.
+- **Scene scoping**: scoped by the current scene's declared assets in generated data (`textures`, `geometries`, and the geometry/texture ids of its `importedAssets` manifests), not by tagging registry entries with a scene id (assets are shared many-to-many). A "+N loaded assets not declared in this scene" affordance switches to an "all loaded" scope, which covers assets created in scene `.ts` code.
+- **Icons**: 3 new keys in `UI/icons/SvgIcon.ts` (add the `.svg?raw` file + key): the tab icon (a stacked-cards collection mark, sphere + picture corner), texture (filled image frame) and geometry (outlined isometric cube).
+- **Info window**: click-to-open `DraggableWindow` (the same pattern as `createEditPhysicsEntityContent`, including `registerDraggableWindowCmp` so it survives a reload). Fields:
+  - Common: type, id, filename/path/filetype, file size, ref count, persistent.
+  - Texture: dimensions, colorSpace, format/type, mipmaps, filtering, wrap, anisotropy, flipY, estimated GPU memory, and `gltfSlot` if it came from an import.
+  - Geometry: vertex and triangle counts. Also "edge instances = 3 × triangles", with an on-demand "compute unique edges" button for indexed geometry under a size guard (BufferGeometry has no edge topology). Also estimated VRAM (buffer byte sizes). For imported geometry: the source (`file.glb`, import id, node path), transform, and parsed custom props incl. warnings, all read from `geometry.userData.importInfo`.
+- **File size**: `gatherAppData.ts` bakes a `__fileSize` (`fs.statSync`) next to `__sourcePath` for declared texture files and imported-asset source files. The fallback for undeclared or remote assets is an on-demand "Measure" button (`HEAD` request → `content-length`).
+- **`debugData` plumbing**: `Geometry.ts` stores `debugData` on the registry entry and `resource.userData` (the schema already has it; the runtime drops it). Imported geometries get the import's `debugData` name plus their node name.
+
+The worker-target config section of this tab belongs to p052.
 
 ---
 
-## Suggested phasing (each independently reviewable/committable)
+## Part 5 — DRACO compression (fix + proper support)
 
-1. **Extract, no behavior change** — `Import/` module split, single pipeline, dedup the 4x `createMeshEntity` call (fixing the `rotation: m.position` bug), remove the two-path fork. Consumers untouched.
-2. **`MeshColliderGeometry.ts`** — move mesh→collider-shape derivation into the importer; legacy backend now receives fully-resolved params. Acceptance: visual diff of `scene_thirdPersonGym.ts` (the only scene exercising compound bodies, TRIMESH, CONVEXHULL, and heightfield terrain — there's no automated test suite, so this scene is the manual gate for every physics-adjacent phase).
-3. **Texture/material/geometry registration** (Part 2) + the `deleteTexturesFromMaterial` refcount fix. Opt-in, default off.
-4. **Schema updates** (`_physicsSchemas.ts`, `importedMeshSchema.ts` additions, drop `saveMaterial`, fix the `SceneLoader.ts` dropped-`entityOpts` bug).
-5. **`placement` option + consumer cleanup** — add the option, refactor `scene_thirdPersonGym.ts`'s manual positioning.
-6. **`PhysicsBackendECS.ts`** — opt-in second backend, verified on a dedicated test scene (e.g. `src/app/physicsTest.ts`), not defaulted on.
-7. **Asset threading (Part 3)** — `AppConfig.assets`, worker/protocol scaffolding, `Texture.ts` worker branch, `PromiseResolver.ts` reject/timeout extension.
-8. **Assets debugger tab (Part 4)** — icons, schema `debugData` plumbing, `gatherAppData.ts` file-size baking, the tab itself.
+### What's wrong today (verified in code)
 
-Later, out of scope for this plan: migrating `Character.ts`/`movingPlatform.ts`/etc. off the legacy physics world (which is what would let the ECS import backend become the default), and in-worker GLTF parsing.
+1. **Wrong decoder path.** `dracoLoader.setDecoderPath('/examples/jsm/libs/draco/')` (`ImportModel.ts:81`) points at a URL nothing serves. Vite's `root` is `./src`, so only `src/public/**` is served at `/`, and the decoders exist only in `node_modules/three/examples/jsm/libs/draco/`. The first DRACO-compressed primitive would fail to load its decoder, and the import would error.
+2. **One `DRACOLoader` per import.** `setDracoLoader` runs on every `importModelAsync`/`importModels` call and builds a fresh `DRACOLoader`. Each instance fetches and compiles the decoder separately, starts its own worker pool (up to `workerLimit`, default 4, workers per instance), and is never `dispose()`d. Ten compressed imports would mean ten decoder downloads and up to 40 idle workers.
+3. **Never exercised.** None of the repo's GLBs (the 19 test models + `3DSymbols.glb`) lists `KHR_draco_mesh_compression` in `extensionsUsed`, which is why nothing has failed yet. `debug/3DSymbols.ts` has its own `GLTFLoader` without DRACO; it stays as is.
+
+### Design
+
+- **Serve the decoders from the installed three.js version, not from committed copies.** A small `devTools/copyDracoDecoders.ts` (run with `tsx`, like `gatherAppData`) copies the **glTF-variant** decoders into `src/public/draco/gltf/`: `draco_decoder.js`, `draco_decoder.wasm` and `draco_wasm_wrapper.js` from `node_modules/three/examples/jsm/libs/draco/gltf/`. The encoder is not copied.
+  - It runs as a step in the `dev`, `dev:*` and `build*` scripts next to `yarn gatherAppData`. It is idempotent (it skips files with identical size/mtime) and `src/public/draco/` is gitignored.
+  - Why the glTF variant: it is the build targeted at `KHR_draco_mesh_compression` and smaller (192 KB vs 286 KB wasm).
+  - Why a copy script rather than `?url` imports: `DRACOLoader` expects a directory with fixed file names, so hashed `?url` assets would need a `LoadingManager` URL-modifier shim. `vite-plugin-wasm` also intercepts `.wasm` imports. And upgrading three.js then updates the decoders automatically, with no binaries in git.
+- **One shared loader: `Import/DracoDecoder.ts`.**
+  - `getDracoLoader()` creates the `DRACOLoader` lazily, once. Its decoder path is ``new URL(`${import.meta.env.BASE_URL}draco/gltf/`, document.baseURI).href``: absolute, so it also works with a non-root `base` and inside p052's worker.
+  - `configureDraco({ decoderPath?, decoderType?: 'wasm' | 'js', workerLimit? })` lets an app point at a CDN, force the JS decoder, or cap workers. Call it before the first compressed import.
+  - `disposeDracoLoader()` terminates the pool on demand. It is not called automatically.
+  - No `preload()`. The decoder files are only fetched when a compressed primitive is actually decoded, so apps without DRACO models pay nothing, in keeping with the "only bring into existence what you need" principle.
+  - Phase 1 wires this into the **current** `ImportModel.ts` by replacing `setDracoLoader`'s body with `loader.setDRACOLoader(getDracoLoader())`. That fix is testable immediately; phase 2's `GLTFSource.ts` then reuses the same module.
+- **HEIGHTFIELD guard.** Draco's default edgebreaker encoding reorders vertices, but HEIGHTFIELD derivation reads heights by grid-ordered vertex index (`threeIndex = flippedZ * sizeX + i`, `ImportModel.ts:791`). A compressed heightfield would load without errors but build the wrong terrain.
+  - The pipeline detects compressed primitives through `gltf.parser.json.meshes[m].primitives[p].extensions.KHR_draco_mesh_compression`, mapped to nodes via `gltf.parser.associations`. It records `isDracoCompressed` on `ImportedGeometryInfo`.
+  - When `colliderType: 'HEIGHTFIELD'` meets a compressed geometry, it `lerror`s and skips that collider (TRIMESH/CONVEXHULL are order-independent and fine).
+  - Authoring note for the docs: export heightfield terrains uncompressed, or with Draco's sequential encoding.
+- **COEP check.** The dev server sends cross-origin-isolation headers for the physics SAB. `DRACOLoader`'s blob-URL workers and same-origin decoder fetches should be unaffected, but this has to be confirmed in the browser (see Verification). A cross-origin `decoderPath` (CDN) needs CORP/CORS headers under COEP, which is worth a comment in `configureDraco`'s doc.
+
+### Test assets
+
+Add at least two DRACO-compressed GLBs under `src/public/debugger/assets/testModels/`, either exported from the `.blend` sources in `src/_engine/3dModels/` (`customPropTemplates.blend`, `characterObstacles.blend`) with the Blender glTF exporter's "Compression" option, or re-compressed from the existing GLBs with `npx @gltf-transform/cli draco in.glb out.glb`. No `.blend` source for `box01` exists in the repo, so that one has to use the gltf-transform route:
+
+- `box01Draco.glb`: compare against `box01.glb` visually and by vertex/triangle count.
+- `customPropTestMultiColliderDraco.glb`: confirms that node custom props (`extras`) survive compression and that compound physics from compressed geometry matches the uncompressed file.
+
+Optionally, a compressed `terrainSmooth` to confirm the HEIGHTFIELD guard fires.
+
+---
+
+## Suggested phasing (each independently reviewable/committable, non-breaking)
+
+1. **DRACO fix** (Part 5): `devTools/copyDracoDecoders.ts` + script wiring + `.gitignore`, `Import/DracoDecoder.ts`, and today's `ImportModel.ts` switched to the shared loader. Add the compressed test models and a temporary import of them in `physicsTest.ts`. Independent of the rest of the rewrite and testable on the current importer.
+2. **Import pipeline, alongside the old importer.** `Import/` types, `GLTFSource` (using `DracoDecoder.ts`), `GLTFExtract` (+ `isDracoCompressed`), `CustomProps`, `ImportRegistry`. `ImportModel.ts` and all consumers are untouched.
+3. **Texture opt-in**: `GLTFTextures.ts`.
+4. **Spawner**: `SpawnImported.ts` + `MeshColliderGeometry.ts` (+ the HEIGHTFIELD/Draco guard), with the collider/compound logic moved over. Verified with a temporary side-by-side import in `physicsTest.ts`.
+5. **Migrate code consumers**:
+   - `scene_thirdPersonGym.ts` (16 imports; the spawner `transform` replaces `placeImportedModel`, and `material` replaces `applyMaterialToImportedPieces`/checkerboard loops where possible).
+   - `scene01.ts` / `scene01_v2.ts` (box01: its hand-rolled TRIMESH extraction becomes a spawner `physicsParams` override).
+   - `utils/world/characterTestObstacles.ts` (re-typed to `ImportPhysicsParams`).
+6. **Schema + SceneLoader + JSON migration** (Part 3).
+7. **Delete `ImportModel.ts`**, with a repo-wide grep for leftovers (`ImportReturnObj`, `AdditionalImportPhysicsParams`, `PhysicsParams`).
+8. **Assets debugger tab** (Part 4).
 
 ## Verification
 
-No automated test suite exists in this repo. Verification is manual, per phase:
+No automated test suite exists. Verification is manual, per phase:
 
-- After phases 1–2 and 5–6: load `scene_thirdPersonGym.ts` with `?isDebug=true`, confirm the character still collides correctly with imported stairs/terrain/obstacles (compound bodies, TRIMESH, CONVEXHULL, heightfield), and that positions match pre-refactor screenshots.
-- After phase 3: toggle `importTextures: true` on one import in a test scene, confirm textures appear in the new Assets tab's texture list with correct ref counts, and confirm disposal (`decMaterialRef` reaching zero) doesn't break a texture still shared elsewhere.
-- After phase 4: run `yarn gatherAppData` and confirm `.importedMesh.json`/`.texture.json` assets with the new fields still validate; confirm `.schemas/*.schema.json` regenerate without errors.
-- After phase 7: toggle `AppConfig.assets.workerTarget` between `MAIN_THREAD`/`WORKER_THREAD` via the debug boot-override, confirm textures load and render identically both ways (visual diff), including a relative-path texture (to catch the URL-absolutization gotcha) and an HDR texture.
-- After phase 8: open the Assets tab, confirm the list matches the current scene's declared assets (textures and geometries only — no "imported model" rows), click through texture/geometry info windows, reload the page with a window open and confirm it survives.
-- Throughout: `yarn lint` and `yarn build` must stay clean.
+- **Phase 1 (DRACO)**: this needs a real browser and real compressed assets, so it is a hands-on check.
+  - `yarn dev` creates `src/public/draco/gltf/` with the three decoder files, and `git status` stays clean.
+  - With `?isDebug=true`, load the scene importing the compressed test models. In the Network panel, the three decoder files are fetched **once** in total across all imports, not per import. A scene with no compressed models fetches none of them.
+  - `box01Draco.glb` renders the same as `box01.glb`. The compressed multi-collider has the same custom props (`mesh.userData`) and the same physics wireframes as the uncompressed one.
+  - In DevTools → Sources → Threads, the DRACO worker count stays ≤ `workerLimit` after several compressed imports (it grew per import before the fix).
+  - There are no COEP/CORP console errors with the dev server's isolation headers on. `crossOriginIsolated` is still `true`.
+  - `yarn build` → `dist/draco/gltf/` exists. Serve `dist` and repeat the Network check against the production build.
+  - Optional: `configureDraco({ decoderType: 'js' })` still decodes, which covers the no-WASM fallback.
+- **Phases 2–3**: in a debug scene, `importAssetAsync` a few test models (`box01.glb`, `box01Draco.glb`, `customPropTestMultiCollider.glb`, one with textures) and inspect the manifest and registries in the console: ids, transforms, parsed props, `isDracoCompressed`, warnings, and `flipY`/colorSpace on textures. Import the same file twice in parallel and confirm one fetch in the Network panel.
+- **Phases 4–5**: load `scene_thirdPersonGym` with `?isDebug=true` and physics wireframes on. Compare against screenshots taken before the migration: the character must still collide with compound stairs, the TRIMESH/CONVEXHULL monkeys, both heightfield terrains, the slide-angle obstacle and `obstacles.glb`, and positions must match. Check scene01/scene01_v2's box01. If a compressed terrain test model exists, confirm the HEIGHTFIELD guard logs its error and skips the collider.
+- **Phase 6**: `yarn gatherAppData` validates `*.importedAsset.json` and regenerates `.schemas/`. `sceneTestECS` shows the migrated test import with its texture. Switch scenes and confirm the import's non-persistent geometries are released (registry counts in the console).
+- **Phase 8**: the Assets tab lists the current scene's declared textures and geometries (including imported ones). Click through both info-window kinds. Reload with a window open and confirm it survives.
+- Throughout: `yarn lint` and `yarn build` stay clean.
