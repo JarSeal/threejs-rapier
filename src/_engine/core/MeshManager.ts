@@ -202,6 +202,31 @@ export const disposeMesh = (entityId: number, ecsWorld?: ECSWorld) => {
   }
 };
 
+const forEachMaterialId = (
+  material: THREE.Material | THREE.Material[],
+  fn: (id: string) => void
+) => {
+  for (const m of Array.isArray(material) ? material : [material]) {
+    if (m.userData.id) fn(m.userData.id);
+  }
+};
+
+/**
+ * Swaps a mesh entity's material and moves its material ref count to the new material. Assigning
+ * `mesh.material` directly would leave the old material's ref taken (never freed) and release a
+ * ref the new one never got (freed while still in use) when the mesh is disposed.
+ * @param mesh a mesh created with createMeshEntity (other meshes take no refs: only assigned)
+ * @param material the new material(s)
+ */
+export const setMeshMaterial = (mesh: THREE.Mesh, material: THREE.Material | THREE.Material[]) => {
+  const prev = mesh.material;
+  mesh.material = material;
+  if (mesh.userData.entityId === undefined || prev === material) return;
+  // New refs first: the old and new material can share ids (eg. the same one in an array)
+  forEachMaterialId(material, incMaterialRef);
+  forEachMaterialId(prev, decMaterialRef);
+};
+
 export const getMeshByAppId = (appId: string, ecsWorld?: ECSWorld) => {
   const world = ecsWorld || getECSWorld();
   const entityId = getEntityIdByAppId(appId, world);
