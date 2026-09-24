@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Assets
 Epic: https://trello.com/c/YCUX4DKL/219-model-import-refactoring
 Blocks: p052_gltf-import-via-assets-worker.md
