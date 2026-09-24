@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { getRenderer, isWebGPURenderer } from './Renderer';
 import { getRootScene } from './Scene';
+import { recordAssetOwner, retagAssetOwner } from './Assets/AssetOwners';
 
 export type GeoDebugData = { name?: string; description?: string };
 
@@ -143,7 +144,10 @@ export const prewarmGeometry = async (id: string) => {
  */
 export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
   let geo;
-  if (props?.id && geometries[props.id]) return geometries[props.id].resource as T;
+  if (props?.id && geometries[props.id]) {
+    retagAssetOwner(geometries[props.id].resource);
+    return geometries[props.id].resource as T;
+  }
 
   switch (props.type) {
     case 'BOX':
@@ -218,6 +222,7 @@ export const createGeometry = <T extends GeoTypes>(props: GeoProps): T => {
     ...(props?.preWarm ? { preWarm: true } : {}),
     ...(props?.debugData ? { debugData: props.debugData } : {}),
   };
+  recordAssetOwner(geo);
 
   if (props?.preWarm) prewarmGeometry(id);
 
@@ -287,7 +292,10 @@ export const saveBufferGeometry = (
   props?: GeoBaseProps & { isImported?: boolean }
 ) => {
   const id = props?.id || geometry.uuid;
-  if (geometries[id]) return geometries[id].resource;
+  if (geometries[id]) {
+    retagAssetOwner(geometries[id].resource);
+    return geometries[id].resource;
+  }
   geometry.userData.id = id;
   if (props?.isImported) geometry.userData.isImported = true;
   if (props?.debugData) geometry.userData.debugData = props.debugData;
@@ -298,6 +306,7 @@ export const saveBufferGeometry = (
     ...(props?.preWarm ? { preWarm: true } : {}),
     ...(props?.debugData ? { debugData: props.debugData } : {}),
   };
+  recordAssetOwner(geometry);
 
   if (props?.preWarm) prewarmGeometry(id);
 

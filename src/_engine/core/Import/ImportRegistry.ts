@@ -5,6 +5,7 @@ import { isTextureUsedByAnyMaterial } from '../Material';
 import { deleteTexture, doesTextureExist, getTextureRegistry } from '../Texture';
 import { loadGLTFInWorker, recordAssetLoadReport, runAssetTask } from '../Assets/AssetsAPI';
 import type { AssetLoadReport } from '../Assets/AssetsAPITypes';
+import { recordAssetOwner, retagAssetOwner } from '../Assets/AssetOwners';
 import { getDracoWorkerSettings } from './DracoDecoder';
 import { deserializeGeometry } from './GeometryTransfer';
 import { disposeGLTFLeftovers, extractPrimitives } from './GLTFExtract';
@@ -58,6 +59,21 @@ const resolveGeometryId = (info: ImportedGeometryInfo) => {
 const isManifestValid = (manifest: ImportedAssetManifest) =>
   manifest.geometries.every((info) => doesGeoExist(info.geometryId)) &&
   manifest.textureIds.every((textureId) => doesTextureExist(textureId));
+
+/** Re-tags a cached import to the scene getting it: its record, geometries and textures. */
+const retagImportOwner = (record: ImportRecord) => {
+  retagAssetOwner(record);
+  const geometryRegistry = getGeometryRegistry();
+  for (const info of record.manifest.geometries) {
+    const entry = geometryRegistry[info.geometryId];
+    if (entry) retagAssetOwner(entry.resource);
+  }
+  const textureRegistry = getTextureRegistry();
+  for (const textureId of record.manifest.textureIds) {
+    const entry = textureRegistry[textureId];
+    if (entry) retagAssetOwner(entry.resource);
+  }
+};
 
 const logWarnings = (manifest: ImportedAssetManifest) => {
   for (const info of manifest.geometries) {
@@ -229,7 +245,9 @@ const runImport = async (
       // Re-import: keep using the registered geometry (with the new info, eg. now with texture
       // slots), the freshly parsed one is disposed
       const reusedInfo = { ...info, geometryId };
-      getGeometryRegistry()[geometryId].resource.userData.importInfo = reusedInfo;
+      const reused = getGeometryRegistry()[geometryId].resource;
+      reused.userData.importInfo = reusedInfo;
+      retagAssetOwner(reused);
       geometries.push(reusedInfo);
       continue;
     }
@@ -267,6 +285,7 @@ const runImport = async (
     hasTextures: Boolean(textures),
     sourceKey,
   };
+  recordAssetOwner(imports[id]);
   recordAssetLoadReport(`import:${id}`, report);
   logWarnings(manifest);
   return manifest;
@@ -300,13 +319,17 @@ export const importAssetAsync = async (
   }
   if (pending) {
     const result = await pending.promise;
-    if (!params.importTextures || imports[id]?.hasTextures) return result;
+    if (!params.importTextures || imports[id]?.hasTextures) {
+      if (imports[id]) retagImportOwner(imports[id]);
+      return result;
+    }
     // The pending import had no textures: re-import below (its geometries are reused)
   } else if (
     record &&
     isManifestValid(record.manifest) &&
     (!params.importTextures || record.hasTextures)
   ) {
+    retagImportOwner(record);
     return record.manifest;
   }
   if (pendingImports.has(id)) return importAssetAsync(params);

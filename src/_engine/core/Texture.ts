@@ -9,6 +9,7 @@ import {
   runAssetTask,
 } from './Assets/AssetsAPI';
 import type { AssetLoadReport } from './Assets/AssetsAPITypes';
+import { recordAssetOwner, retagAssetOwner } from './Assets/AssetOwners';
 
 export type TexOpts = {
   image?: TexImageSource | OffscreenCanvas;
@@ -211,7 +212,10 @@ const createTexture = (
   debugData?: { name?: string; description?: string },
   isPersistent?: boolean
 ) => {
-  if (id && textures[id]) return textures[id].resource;
+  if (id && textures[id]) {
+    retagAssetOwner(textures[id].resource);
+    return textures[id].resource;
+  }
 
   if (!fileName) return getNoFileTexture(texOpts);
 
@@ -295,6 +299,7 @@ export const loadTextures = (
     const loader = new THREE.TextureLoader();
 
     if (id && textures[id]) {
+      retagAssetOwner(textures[id].resource);
       batchTextures[id] = textures[id].resource;
       loadedCount++;
       if (updateStatusFn) updateStatusFn(batchTextures, loadedCount, totalCount);
@@ -381,13 +386,10 @@ export const loadTexture = ({
   userData?: Record<string, unknown>;
   debugData?: { name?: string; description?: string };
 }) => {
-  if (id) {
-    const texture = getTexture(id);
-    if (texture) return texture;
-  }
-  if (fileName) {
-    const texture = getTexture(fileName);
-    if (texture) return texture;
+  const cached = (id && getTexture(id)) || (fileName && getTexture(fileName));
+  if (cached) {
+    retagAssetOwner(cached);
+    return cached;
   }
   const texture = createTexture(
     id,
@@ -418,7 +420,10 @@ export const loadTextureAsync = async ({
   userData,
   debugData,
 }: TextureProps) => {
-  if (id && textures[id]) return textures[id].resource;
+  if (id && textures[id]) {
+    retagAssetOwner(textures[id].resource);
+    return textures[id].resource;
+  }
 
   if (!fileName) return getNoFileTexture(texOpts);
 
@@ -549,7 +554,10 @@ export const saveTexture = <T extends THREE.Texture = THREE.Texture>(
   isPersistent?: boolean
 ): T => {
   const id = givenId || texture.uuid;
-  if (textures[id]) return textures[id].resource as T;
+  if (textures[id]) {
+    retagAssetOwner(textures[id].resource);
+    return textures[id].resource as T;
+  }
 
   texture.userData.id = id;
   textures[id] = {
@@ -557,5 +565,6 @@ export const saveTexture = <T extends THREE.Texture = THREE.Texture>(
     count: 0,
     ...(isPersistent ? { persistent: true } : {}),
   };
+  recordAssetOwner(texture);
   return texture;
 };

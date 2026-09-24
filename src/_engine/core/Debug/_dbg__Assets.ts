@@ -20,6 +20,7 @@ import { getTextureRegistry } from '../Texture';
 import { getMaterialRegistry } from '../Material';
 import { getCurrentSceneId, getGeneratedAppData, getGeneratedSceneData } from '../Scene';
 import { getImportedAsset } from '../Import/ImportRegistry';
+import { getAssetOwner } from '../Assets/AssetOwners';
 import { DEBUG_ASSETS_BOOT_LS_KEY } from '../Config';
 import {
   getAssetLoadReport,
@@ -42,7 +43,14 @@ import {
 } from './_dbg__AssetStats';
 
 type AssetKind = 'texture' | 'geometry';
-type AssetRow = { kind: AssetKind; id: string; name: string; description?: string };
+type AssetRow = {
+  kind: AssetKind;
+  id: string;
+  name: string;
+  description?: string;
+  /** Owner scene id (see AssetOwners). */
+  owner?: string;
+};
 type Scope = 'SCENE' | 'ALL';
 
 const UI_LS_KEY = 'AEK_debugAssetsUI';
@@ -100,8 +108,8 @@ const findDeclaration = (kind: 'textures' | 'importedAssets', id: string) => {
 const toIds = (entries?: (string | { id?: string })[]) =>
   (entries || []).map((entry) => (typeof entry === 'string' ? entry : entry.id)).filter(Boolean);
 
-/** Assets the current scene declares: its textures, geometries, and the geometries/textures its
- * imported assets registered (registry entries aren't tagged by scene: assets are shared). */
+/** Assets the current scene's JSON declares: its textures, geometries, and the
+ * geometries/textures its imported assets registered. */
 const getSceneDeclaredKeys = () => {
   const keys = new Set<string>();
   const sceneId = getCurrentSceneId();
@@ -132,6 +140,7 @@ const getAllRows = (): AssetRow[] => {
       id,
       name: (t.userData.name as string) || t.name || id,
       description: t.userData.description as string | undefined,
+      owner: getAssetOwner(t),
     });
   }
   for (const [id, entry] of Object.entries(getGeometryRegistry())) {
@@ -140,17 +149,22 @@ const getAllRows = (): AssetRow[] => {
       id,
       name: entry.debugData?.name || id,
       description: entry.debugData?.description,
+      owner: getAssetOwner(entry.resource),
     });
   }
   return rows.sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
 };
 
+/** In this scene: declared by its JSON, or owned by it (registered or reused by its code too). */
 const getListState = () => {
   const all = getAllRows();
   const declared = getSceneDeclaredKeys();
-  const inScene = all.filter((row) => declared.has(rowKey(row.kind, row.id)));
+  const sceneId = getCurrentSceneId();
+  const inScene = all.filter(
+    (row) => declared.has(rowKey(row.kind, row.id)) || (sceneId && row.owner === sceneId)
+  );
   const rows = uiState.scope === 'ALL' ? all : inScene;
-  return { rows, notDeclaredCount: all.length - inScene.length };
+  return { rows, notInSceneCount: all.length - inScene.length };
 };
 
 const updateSelectedClass = (key: string | null) => {
@@ -183,20 +197,20 @@ const openInfoWindow = (row: AssetRow) => {
 };
 
 const createListHtml = () => {
-  const { rows, notDeclaredCount } = getListState();
+  const { rows, notInSceneCount } = getListState();
   const isAll = uiState.scope === 'ALL';
   const scopeButton =
-    isAll || notDeclaredCount
+    isAll || notInSceneCount
       ? CMP({
           onClick: () => {
             uiState.scope = isAll ? 'SCENE' : 'ALL';
             persistUIState();
             refreshList(true);
           },
-          html: `<button class="debuggerSmallButton" title="${isAll ? "List only the assets the current scene's JSON declares" : 'Also list the loaded assets the current scene does not declare (eg. created in scene code)'}">${
+          html: `<button class="debuggerSmallButton" title="${isAll ? "List only the current scene's assets (declared in its JSON, or owned by it)" : 'Also list the loaded assets the current scene neither declares nor owns (eg. registered at boot or left by a previous scene)'}">${
             isAll
               ? "Show only this scene's assets"
-              : `+${notDeclaredCount} loaded asset${notDeclaredCount === 1 ? '' : 's'} not declared in this scene`
+              : `+${notInSceneCount} loaded asset${notInSceneCount === 1 ? '' : 's'} not in this scene`
           }</button>`,
         })
       : '';
@@ -221,8 +235,8 @@ const createListHtml = () => {
 };
 
 const refreshList = (force?: boolean) => {
-  const { rows } = getListState();
-  const signature = `${uiState.scope}|${getCurrentSceneId()}|${rows
+  const { rows, notInSceneCount } = getListState();
+  const signature = `${uiState.scope}|${getCurrentSceneId()}|${notInSceneCount}|${rows
     .map((row) => `${row.kind}:${row.id}:${row.name}:${row.description || ''}`)
     .join(',')}`;
   if (!force && signature === lastListSignature) return;
@@ -406,6 +420,9 @@ const createFileSizeCmp = (bakedSize: number | undefined, urls: string[]) => {
   return cmp;
 };
 
+const describeOwner = (asset: object) =>
+  getAssetOwner(asset) ?? '— (registered before the first scene load)';
+
 const getTextureMaterialUsers = (texture: THREE.Texture, id: string) => {
   let users = 0;
   for (const entry of Object.values(getMaterialRegistry())) {
@@ -462,6 +479,7 @@ ${field('Loaded on', load.loadedOn)}
 ${field(importId ? 'Load duration (whole import)' : 'Load duration', load.duration)}
 ${field('Used by materials', `${users} (texture ref counts aren't tracked)`)}
 ${field('Persistent', entry.persistent ? 'yes' : 'no')}
+${field('Owner scene', describeOwner(texture))}
 ${section(
   'Texture',
   [
@@ -537,6 +555,7 @@ ${load ? field('Loaded on', load.loadedOn) : ''}
 ${load ? field('Load duration (whole import)', load.duration) : ''}
 ${field('Ref count', entry.count)}
 ${field('Persistent', entry.persistent ? 'yes' : 'no')}
+${field('Owner scene', describeOwner(geometry))}
 ${section(
   'Geometry',
   [

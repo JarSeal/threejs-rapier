@@ -49,6 +49,7 @@ import { createCameraEntity, setActiveCamera } from './CameraManager';
 import { createMeshEntity } from './MeshManager';
 import { getImportedAsset, importAssetAsync, releaseImportedAsset } from './Import/ImportRegistry';
 import type { ImportedAssetManifest } from './Import/ImportTypes';
+import { setAssetOwnerScene } from './Assets/AssetOwners';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -407,6 +408,8 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
   // Resolve Scene Data using the final resolved sceneId
   nextSceneId = sceneId;
+  // Assets registered (or taken from the cache) from here on belong to the next scene
+  setAssetOwnerScene(sceneId);
   let sceneData = getGeneratedSceneData(sceneId);
 
   if (!sceneData) {

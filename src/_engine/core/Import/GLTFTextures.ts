@@ -3,6 +3,7 @@ import { lwarn } from '../../utils/Logger';
 import type { TextureMapKeys } from '../Material';
 import { doesTextureExist, getTextureRegistry, saveTexture, type TexOpts } from '../Texture';
 import type { CollectedGLTFTextures } from './GLTFTextureCollect';
+import { retagAssetOwner } from '../Assets/AssetOwners';
 
 type TextureSlots = Partial<Record<TextureMapKeys, string>>;
 
@@ -83,7 +84,10 @@ export const registerGLTFTextures = (
     idByIndex[index] = textureId;
     textureIds.push(textureId);
     slotsById.set(textureId, new Set([slot]));
-    if (isReused) return textureId;
+    if (isReused) {
+      retagAssetOwner(getTextureRegistry()[textureId].resource);
+      return textureId;
+    }
     if (textureId !== preferredId) {
       lwarn(
         `Import "${importId}" (${fileName}): texture id "${preferredId}" is already used by another texture, registered as "${textureId}" instead.`

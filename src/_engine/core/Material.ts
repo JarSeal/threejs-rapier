@@ -6,6 +6,7 @@ import { tslMaterialFileObjects } from '../generatedAppFns';
 import { lerror, lwarn } from '../utils/Logger';
 import { color, Node, texture, uniform } from 'three/tsl';
 import { textureMapKeys } from '../utils/constants';
+import { recordAssetOwner, retagAssetOwner } from './Assets/AssetOwners';
 
 export type Materials =
   | THREE.LineBasicMaterial
@@ -197,7 +198,10 @@ export const setMaterialPersistence = (id: string, state: boolean) => {
 export const createMaterial = (props: MatProps) => {
   const id = props.id;
 
-  if (id && materials[id]) return materials[id].resource;
+  if (id && materials[id]) {
+    retagAssetOwner(materials[id].resource);
+    return materials[id].resource;
+  }
 
   let mat: Materials | null = null;
 
@@ -586,7 +590,10 @@ export const saveMaterial = (
 ) => {
   if (!Array.isArray(material)) {
     const id = givenId || material.uuid;
-    if (materials[id]) return materials[id].resource;
+    if (materials[id]) {
+      retagAssetOwner(materials[id].resource);
+      return materials[id].resource;
+    }
 
     material.userData.id = id;
     materials[id] = {
@@ -594,6 +601,7 @@ export const saveMaterial = (
       count: 0,
       ...(isPersistent ? { persistent: true } : {}),
     };
+    recordAssetOwner(material);
     return material;
   }
 
@@ -601,7 +609,10 @@ export const saveMaterial = (
     const mat = material[i];
     if (!mat.isMaterial) continue;
     const combinedId = givenId ? `${givenId}-${i}` : mat.uuid;
-    if (materials[combinedId]) continue;
+    if (materials[combinedId]) {
+      retagAssetOwner(materials[combinedId].resource);
+      continue;
+    }
 
     mat.userData.id = combinedId;
     materials[combinedId] = {
@@ -609,6 +620,7 @@ export const saveMaterial = (
       count: 0,
       ...(isPersistent ? { persistent: true } : {}),
     };
+    recordAssetOwner(mat);
   }
 
   return material;
