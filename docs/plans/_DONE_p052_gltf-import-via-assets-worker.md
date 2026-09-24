@@ -1,4 +1,4 @@
-Status: draft | feasibility study — not-implemented
+Status: implemented
 Category: Assets
 Epic: https://trello.com/c/YCUX4DKL/219-model-import-refactoring
 Blocked by: p051_import-asset-refactoring.md
