@@ -1,3 +1,14 @@
+Create "Refactor debugger drawer tab creation" plan in docs/plans/p010_refactor-debugger-drawer-tab-creation.md
+
+Category: Debugger
+
+UNDER_CONSTRUCTION
+Currently the creation of a debugger tab is not very intuitive and requires several imported functions to be used to create a basic tab with a Tweakpane. If possible, this should be one
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+*******************************
+
 Create "Character state debugger window" plan in docs/plans/p067_character-state-debugger-window.md
 
 Category: Character

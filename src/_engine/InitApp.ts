@@ -6,6 +6,7 @@ import {
   loadConfig,
   PROJECT_METADATA,
 } from './core/Config';
+import { initAssets } from './core/Assets/AssetsAPI';
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
 import { registerDefaultDebugKeyBindings } from './core/Input/DefaultDebugKeyBindings';
 import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
@@ -67,6 +68,9 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     // HUD container
     createHudContainer();
+
+    // Resolve the assets config (the assets worker is only started by its first request)
+    initAssets();
 
     // Register scenes from generated data
     await registerScenesFromGeneratedData();

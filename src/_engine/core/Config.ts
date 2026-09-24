@@ -6,6 +6,7 @@ import {
   PhysicsInterpolationMode,
   PhysicsWorkerTarget,
 } from './Physics/PhysicsAPITypes';
+import type { AssetsWorkerTarget } from './Assets/AssetsAPITypes';
 import { DraggableWindow } from './UI/DraggableWindow';
 import { ECSStorageMode } from './ECS/ECSComponentStorage';
 import { lsGetItem } from '../utils/LocalAndSessionStorage';
@@ -13,6 +14,9 @@ import type { DebugKeyBindingConfig } from './Input/DefaultDebugKeyBindings';
 
 /** LS key for debug-only boot-time physics overrides (workerTarget/useSAB/maxBodies/stepStatsEnabled). Written by the Physics API debug tab, read once in loadConfig(). */
 export const DEBUG_PHYSICS_API_BOOT_LS_KEY = 'AEK_debugPhysicsApiBoot';
+
+/** LS key for debug-only boot-time assets overrides (workerTarget + per-kind overrides). Written by the Assets debug tab, read once in loadConfig(). */
+export const DEBUG_ASSETS_BOOT_LS_KEY = 'AEK_debugAssetsBoot';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 
@@ -92,6 +96,26 @@ export type AppConfig = {
      * for. Boot-time only — read once here, same as useSAB/maxBodies. */
     stepStatsEnabled?: boolean;
   };
+  /** Where asset files are loaded and decoded (docs/plans/p052_gltf-import-via-assets-worker.md).
+   * Whatever the target, the public loading API stays the same, and a failed worker request
+   * transparently re-runs on the main thread (unless fallbackToMainThread is false). */
+  assets?: {
+    /** Shared default for all asset kinds. Default 'MAIN_THREAD'. The worker is only started
+     * by the first worker-targeted request, never at boot. */
+    workerTarget?: AssetsWorkerTarget;
+    /** Per-kind overrides; fall back to workerTarget. */
+    gltfWorkerTarget?: AssetsWorkerTarget;
+    textureWorkerTarget?: AssetsWorkerTarget;
+    /** Max number of requests in flight in the assets worker at once. Default 8. */
+    maxConcurrentLoads?: number;
+    /** A worker request not answered in this time (ms) falls back to the main thread. Also
+     * bounds the worker's start-up handshake. Default 30000. */
+    requestTimeoutMs?: number;
+    /** Re-run a failed worker request (start-up failure, missing capability, timeout, error
+     * reply or crash) on the main thread, warning once per cause. When false, the request
+     * fails instead. Default true. */
+    fallbackToMainThread?: boolean;
+  };
   ecs?: {
     /** Build-time-selectable ECS component storage backend. Default 'MAP'. */
     storageMode?: ECSStorageMode;
@@ -143,6 +167,12 @@ let config: AppConfig = {
     useSAB: true,
     maxBodies: 2048,
     stepStatsEnabled: false,
+  },
+  assets: {
+    workerTarget: 'MAIN_THREAD',
+    maxConcurrentLoads: 8,
+    requestTimeoutMs: 30_000,
+    fallbackToMainThread: true,
   },
   ecs: {
     storageMode: 'MAP',
@@ -241,6 +271,60 @@ export const loadConfig = () => {
     }
     if (typeof debugPhysicsBoot.stepStatsEnabled === 'boolean') {
       config.physics.stepStatsEnabled = debugPhysicsBoot.stepStatsEnabled;
+    }
+  }
+
+  // Setup assets ENV configs
+  if (!config.assets) config.assets = {};
+
+  const assetsTargetEnvs = [
+    ['VITE_ASSETS_WORKER_TARGET', 'workerTarget'],
+    ['VITE_ASSETS_GLTF_WORKER_TARGET', 'gltfWorkerTarget'],
+    ['VITE_ASSETS_TEXTURE_WORKER_TARGET', 'textureWorkerTarget'],
+  ] as const;
+  for (const [envKey, configKey] of assetsTargetEnvs) {
+    const target = envVars[envKey];
+    if (target === 'MAIN_THREAD' || target === 'WORKER_THREAD') {
+      config.assets[configKey] = target;
+    } else if (target !== undefined) {
+      envVars[envKey] = undefined;
+    }
+  }
+
+  const assetsNumberEnvs = [
+    ['VITE_ASSETS_MAX_CONCURRENT_LOADS', 'maxConcurrentLoads'],
+    ['VITE_ASSETS_REQUEST_TIMEOUT_MS', 'requestTimeoutMs'],
+  ] as const;
+  for (const [envKey, configKey] of assetsNumberEnvs) {
+    if (typeof envVars[envKey] !== 'string') continue;
+    const value = Number(envVars[envKey]);
+    if (!isNaN(value)) {
+      config.assets[configKey] = value;
+      envVars[envKey] = value;
+    } else {
+      envVars[envKey] = undefined;
+    }
+  }
+
+  if (typeof envVars.VITE_ASSETS_FALLBACK_TO_MAIN_THREAD === 'string') {
+    const fallbackToMainThread = envVars.VITE_ASSETS_FALLBACK_TO_MAIN_THREAD !== 'false';
+    config.assets.fallbackToMainThread = fallbackToMainThread;
+    envVars.VITE_ASSETS_FALLBACK_TO_MAIN_THREAD = fallbackToMainThread;
+  }
+
+  // Debug-only boot-time assets overrides (set by the Assets debug tab, applied on next reload)
+  if (isDebugEnvironment()) {
+    const debugAssetsBoot = lsGetItem(DEBUG_ASSETS_BOOT_LS_KEY, {}) as {
+      workerTarget?: AssetsWorkerTarget;
+      gltfWorkerTarget?: AssetsWorkerTarget;
+      textureWorkerTarget?: AssetsWorkerTarget;
+    };
+    if (debugAssetsBoot.workerTarget) config.assets.workerTarget = debugAssetsBoot.workerTarget;
+    if (debugAssetsBoot.gltfWorkerTarget) {
+      config.assets.gltfWorkerTarget = debugAssetsBoot.gltfWorkerTarget;
+    }
+    if (debugAssetsBoot.textureWorkerTarget) {
+      config.assets.textureWorkerTarget = debugAssetsBoot.textureWorkerTarget;
     }
   }
 
