@@ -2,6 +2,9 @@
 // runtime imports, so the worker never pulls in main-thread-only modules (eg. Config.ts reads
 // `window` at module load).
 
+import type { TransferableGeometry } from '../Import/GeometryTransfer';
+import type { ImportedGeometryInfo } from '../Import/ImportTypes';
+
 /** Where an asset kind is loaded. */
 export type AssetsWorkerTarget = 'MAIN_THREAD' | 'WORKER_THREAD';
 
@@ -30,6 +33,14 @@ export type AssetsWorkerCapabilities = {
    * TextureLoader (needs `document`) without createImageBitmap, on Safari < 17 and Firefox < 98. */
   gltfImageBitmapPath: boolean;
   offscreenCanvas: boolean;
+};
+
+/** The main thread's DRACO settings (DracoDecoder.ts), for the worker's own DRACOLoader. */
+export type DracoWorkerSettings = {
+  /** Absolute URL of the decoder directory. */
+  decoderPath: string;
+  decoderType: 'wasm' | 'js';
+  workerLimit?: number;
 };
 
 export type AssetsWorkerStatus = 'NOT_STARTED' | 'STARTING' | 'READY' | 'FAILED';
@@ -61,6 +72,8 @@ export enum AssetsProtocolType {
   LOAD_TEXTURE = 2,
   /** An .hdr texture: fetched and parsed by HDRLoader into half-float RGBA data. */
   LOAD_HDR_TEXTURE = 3,
+  /** A .glb/.gltf file: fetched, parsed (DRACO decoded) and its mesh primitives extracted. */
+  LOAD_GLTF = 4,
 }
 
 // UP (main thread → worker). Every request has a requestId; the worker answers each one with
@@ -82,10 +95,23 @@ export type AssetsLoadHDRTextureRequest = {
   url: string;
 };
 
+/** `url` must be absolute: a relative one would resolve against the worker script's URL (the
+ * glTF's own relative .bin/image URIs resolve against `url`). */
+export type AssetsLoadGLTFRequest = {
+  type: AssetsProtocolType.LOAD_GLTF;
+  requestId: number;
+  url: string;
+  /** The (main-thread-resolved) import id, the geometry id prefix. */
+  importId: string;
+  meshIndex?: number | number[];
+  draco: DracoWorkerSettings;
+};
+
 export type AssetsUpProtocol =
   | AssetsPingRequest
   | AssetsLoadTextureRequest
-  | AssetsLoadHDRTextureRequest;
+  | AssetsLoadHDRTextureRequest
+  | AssetsLoadGLTFRequest;
 
 // DOWN (worker → main thread)
 
@@ -123,8 +149,21 @@ export type AssetsLoadHDRTextureResponse = {
   data: Uint16Array;
 };
 
+/** GLTFExtract's extractPrimitives() result, run in the worker. Nodes sharing one glTF mesh share
+ * one geometry (`geometryIndex`), as they share one BufferGeometry on the main thread. The
+ * geometries' arrays are transferred, not copied. */
+export type AssetsLoadGLTFResponse = {
+  type: AssetsProtocolType.LOAD_GLTF;
+  requestId: number;
+  /** extractPrimitives()'s error (eg. no node at meshIndex): the file loaded, the import fails. */
+  error?: string;
+  geometries: TransferableGeometry[];
+  primitives: { geometryIndex: number; info: ImportedGeometryInfo }[];
+};
+
 export type AssetsDownProtocol =
   | AssetsErrorResponse
   | AssetsPingResponse
   | AssetsLoadTextureResponse
-  | AssetsLoadHDRTextureResponse;
+  | AssetsLoadHDRTextureResponse
+  | AssetsLoadGLTFResponse;

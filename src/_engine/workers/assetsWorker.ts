@@ -10,6 +10,7 @@ import {
   AssetsWorkerReadyMessage,
 } from '../core/Assets/AssetsAPITypes';
 import { AssetsSourceError } from './assets/assetsFetch';
+import { assetsSwitchGLTF } from './assets/assetsSwitchGLTF';
 import { assetsSwitchTexture } from './assets/assetsSwitchTexture';
 
 const STATUS_READY_STRING = 'INIT_READY';
@@ -47,6 +48,8 @@ const handleMessage = async (data: AssetsUpProtocol) => {
       case AssetsProtocolType.LOAD_TEXTURE:
       case AssetsProtocolType.LOAD_HDR_TEXTURE:
         return await assetsSwitchTexture(data, sendMessage);
+      case AssetsProtocolType.LOAD_GLTF:
+        return await assetsSwitchGLTF(data, sendMessage);
       default:
         return sendMessage({
           type: AssetsProtocolType.ERROR,

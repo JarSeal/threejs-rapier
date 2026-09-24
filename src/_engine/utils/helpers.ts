@@ -242,16 +242,8 @@ export const smoothDampVec3 = (
   current.z = outputZ;
 };
 
-export const isOnlyObject3D = (
-  obj: THREE.Object3D | THREE.Mesh | THREE.Group | THREE.Light | THREE.Camera | THREE.Texture
-) =>
-  'isObject3D' in obj &&
-  obj.isObject3D &&
-  !('isMesh' in obj) &&
-  !('isGroup' in obj) &&
-  !('isLight' in obj) &&
-  !('isCamera' in obj) &&
-  !('isTexture' in obj);
+// Lives in a worker-safe module (the assets worker uses it too), re-exported here
+export { isOnlyObject3D } from './object3DHelpers';
 
 export const setMeshCreatePropsToUserData = (shape: string, mesh: THREE.Mesh) => {
   if (!mesh) return;

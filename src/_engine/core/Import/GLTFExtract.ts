@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
-import { isOnlyObject3D } from '../../utils/helpers';
+import { isOnlyObject3D } from '../../utils/object3DHelpers';
 import { parseCustomProps } from './CustomProps';
 import type { ImportedGeometryInfo } from './ImportTypes';
 
@@ -9,6 +9,9 @@ type Association = { nodes?: number; meshes?: number; primitives?: number };
 type GLTFJson = {
   meshes?: { primitives: { extensions?: Record<string, unknown> }[] }[];
 };
+
+// Runs on both threads (main-thread imports and the assets worker): keep it free of imports that
+// touch `window`/`document` (eg. Config.ts, Logger.ts, utils/helpers.ts).
 
 /** One extracted primitive: its (not yet registered) geometry, glTF material and metadata. */
 export type ExtractedPrimitive = {

@@ -117,6 +117,11 @@ export default defineConfig({
     minify: true,
     reportCompressedSize: true,
   },
+  optimizeDeps: {
+    // Deps only the assets worker imports: Vite's dep scan doesn't follow `?worker` imports, so
+    // without these, the first dev run re-optimizes when the worker starts and reloads the page
+    include: ['three/addons/loaders/HDRLoader.js'],
+  },
   server: {
     fs: {
       strict: false,

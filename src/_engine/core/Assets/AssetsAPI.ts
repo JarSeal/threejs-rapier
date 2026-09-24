@@ -19,6 +19,7 @@ import {
   AssetKind,
   AssetsDownProtocol,
   AssetsFallbackCause,
+  AssetsLoadGLTFResponse,
   AssetsLoadHDRTextureResponse,
   AssetsLoadTextureResponse,
   AssetsPingResponse,
@@ -29,6 +30,7 @@ import {
   AssetsWorkerReadyMessage,
   AssetsWorkerStatus,
   AssetsWorkerTarget,
+  DracoWorkerSettings,
 } from './AssetsAPITypes';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -373,3 +375,25 @@ export const loadHDRTextureInWorker = async (url: string) => {
   });
   return { width, height, data };
 };
+
+/**
+ * Fetches, parses (DRACO decoded) and extracts a .glb/.gltf file in the assets worker, with the
+ * same extractPrimitives() the main-thread import runs. The geometries come back as transferable
+ * data (GeometryTransfer.ts's deserializeGeometry() rebuilds them). Call it inside
+ * {@link runAssetTask}.
+ * @param url absolute URL
+ * @param opts.importId the import id (geometry id prefix)
+ * @param opts.meshIndex only extract this node (see ImportAssetParams.meshIndex)
+ * @param opts.draco the main thread's DRACO settings (DracoDecoder.ts's getDracoWorkerSettings())
+ */
+export const loadGLTFInWorker = (
+  url: string,
+  opts: { importId: string; meshIndex?: number | number[]; draco: DracoWorkerSettings }
+) =>
+  requestAssetsWorker<AssetsLoadGLTFResponse>({
+    type: AssetsProtocolType.LOAD_GLTF,
+    url,
+    importId: opts.importId,
+    ...(opts.meshIndex !== undefined ? { meshIndex: opts.meshIndex } : {}),
+    draco: opts.draco,
+  });
