@@ -8,18 +8,58 @@ If for some reason this plan can't or shouldn't be created with this specificati
 
 ************************************
 
+Create "Interpolation optimization and fixes" plan in docs/plans/p059_interpolation-optimization-and-fixes.md
+
+Category: Physics
+
+When moving the player in the gym scene the is moved, it is not moving smoothly. I have tried all of the Fixed Physics, Renderer, None interpolation options (the nudging behaviour would be expected in None but not the others). Please check the Renderer and Fixed Physics interpolation options that they work correctly. One note that might or might not be a sign that they are not working (this is just an observation and I am not sure) is that in my legacy version when I had the Rapier debug wireframe system and only an interpolation boolean to toggle it on or off, the character wireframe showed the interpolation visually. It was visible because when I moved the character (especially when running) the wireframe would be ahead of the mesh slightly and then when stopped the mesh would catch up to the wireframe position. I would expect the current Rendering option to work this way. If they are working correctly then notify me and if this is a bug in the character movement system then we should fix that in this plan. As a side note of this plan, please explain the main differences between the Rendering and Fixed Physics interpolation options and what kind of circumstances they should each be used in.
+
+One small observation about this is that the nudging/yanking of the character when moving it is way more observable on Chrome on Windows than on MacBook Air Chrome. I also noticed that the in the gym scene if I use the debug camera instead of the Third person character camera, there seems to be no nudging in Renderer interpolation mode which could suggest that the problem is in the Third person character camera (I am not sure, just guessing). The other interpolation modes are still nudging but I guess that would make sense (at least for None interpolation mode).
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+************************************
+
+Create "Character state debugger window" plan in docs/plans/p067_character-state-debugger-window.md
+
+Category: Character
+
+The legacy character edit window had a working character state debugger window. We should revive it. It wasn't very performant because the whole window (or maybe just the content of the window) was updating on every frame. The performance optimization should be studied more. This should also be improved at least with an option at the top for update interval meaning that it should have a number input to take in 0 for updating it every frame or a positive millisecond value for the update frequency for that window. I don't know whether updating only the changing values is more performant than updating the whole list. The list should show the vectors, booleans, numbers in a visually nice way so that vectors are one line, booleans show clearly the state with a round svg icon where at the center is a negative symbol (a cutout) of a checkmark for true and X for false (also the circle should be green for true and red for false). Design these SVG icons. There is also a clear pattern for using the underscore (_) before the param name. There are three different param types (these three types should be in their own collapsable list group with a title, and if the group is closed/hidden then that list shouldn't be updated):
+- Params without the underscore are the main character state values (position, isFalling, etc.). This is the most important debugging view and it should be the first list group to show and by default open.
+- Params with one underscore are semi-static character properties (height, radius, maxVelocity, etc.). Semi static means that some of these values like maxVelocity could theoretically change so that list should be updated as well when open. This should be the second list and by default open.
+- Params with two underscores are the character internal cached/memorized values for determining whether to change the state to another (for example deterimining whether the character is just jumping or actually falling when isGrounded = false). This should be the last list and by default closed.
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+************************************
+
 UNDER_CONSTRUCTION
-Create "Statistics profiler mega window" plan in docs/plans/p220_stats-profiler-mega-window.md
+Create "Statistics Profiler mega window" plan in docs/plans/p220_stats-profiler-mega-window.md
 
 Category: Statistics should have its own window that would display far more deeper real-time info about the scene and the current state. This will be the base ticket for more plans in the future and we will not implement everything in this plan. The window should have similar tabs as the debugger drawer (can have the same style). In this plan we should implement these tabs:
 - Overview (this should be like the main icon for the stats window, design this)
 - Objects (this can be an isometric wireframe cubes, design this)
 - Settings (a cog wheel, design this if it doesn't exist)
 
-The Overview tab will have some key data on it like FPS, TFPS (true FPS, meaning how many frames in would show per second without the vsync/restricter), Physics calculation + transfer (for Worker thread) ms per frame, memory consumed, total amount of entities, total amount of meshes, total amount of triangles, total amount vertices, and what else (you may suggest some key measurments)? Not sure if it is possible but the total amounts should only count the entities/meshes/objects/triangles/vertices that are visible/enabled (not culled). This view should update at a requested rate (configured in the Settings tab). This tab has no graphs.
+The window can be opened either by clicking the on screen stats panels, with a button from the Stats debugger tab, and from the top on screen tools (add the spedometer icon button next to the pause button). All of these functionalities need to implemented. Also add an option to the Stats debugger tab to whether to enable/disable the Profiler mega window opening by clicking the on screen stats panels: "Profiler mega window can be opened by clicking the on screen stats panels" (default true).
+
+The Overview tab will have some key data on it like TFPS (true FPS, meaning how many frames in would show per second without the vsync/restricter), FPS, CPU, Physics calculation + transfer (for Worker thread) ms per frame, memory consumed, total amount of entities, total amount of meshes, total amount of triangles, total amount vertices, and what else (you may suggest some key measurments)? Not sure if it is possible but the total amounts should only count the entities/meshes/objects/triangles/vertices that are visible/enabled (not culled). This view should update at a requested rate (configured in the Settings tab). This tab has no graphs.
 
 The Objects tab should do a breakdown of the different entity, mesh, triangle, vertices (etc.) counts. This view can have graphs, but I am not sure yet how to display them (you can suggest what to use here).
 
-TODO_DESCRIPTION_OF_THE_PLAN_AND_REQUIREMENTS
+TODO_SETTINGS_TAB_PLAN
 
 If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+************************************
+
+[NOTE: This should be implemented after the Profiler mega window and IS NOT A PLAN, just run it]
+Add two more options to the Stats debugger tab (after Enable measuring option):
+- Enable measuring display panels in prodTest (checkbox)
+- Enable Profiler mega window in prodTest (checkbox)
+If the measuring display panels option is true, then the panels will show in prodTest (when the onScreenTool play button is pressed). If the Profiler mega window option is true then the the mega window can be displayed in prodTest by clicking the on screen stats panels (if that feature is turned on and there is at least one panel shown), from the top on screen tools (next to the pause button), or then by having the Profiler mega window already open when the prodTest play button is pressed.
+
+************************************
+
+[NOTE: This IS NOT A PLAN, just run it]
+Add a folder ("Production test mode") and an option to that folder: "Show top on screen tools in prod test mode" (default true). Then when that is not turned on, those buttons should not show in prodTest=true mode.

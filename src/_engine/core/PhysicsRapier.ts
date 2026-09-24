@@ -16,7 +16,6 @@ import { decGeometryRef } from './Geometry';
 import { decMaterialRef } from './Material';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { getSvgIcon } from './UI/icons/SvgIcon';
-import { updatePhysicsPanel } from '../debug/Stats';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { ThreeVector3 } from '../utils/helpers';
 import { CMP, TCMP } from '../utils/CMP';
@@ -1746,8 +1745,6 @@ const stepperFnProduction = (loopState: LoopState) => baseStepper(loopState);
 
 // DEBUG STEPPER
 const stepperFnDebug = (loopState: LoopState) => {
-  const startMeasuring = performance.now();
-
   const curSceneParams = physicsState.scenes[getCurrentSceneId() || ''];
   if (!curSceneParams?.worldStepEnabled) return;
 
@@ -1793,9 +1790,6 @@ const stepperFnDebug = (loopState: LoopState) => {
   } else {
     debugMesh.visible = false;
   }
-
-  const stopMeasuring = performance.now();
-  updatePhysicsPanel(stopMeasuring - startMeasuring);
 };
 
 /**

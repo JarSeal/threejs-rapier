@@ -11,7 +11,7 @@ import { ECSStorageMode } from './ECS/ECSComponentStorage';
 import { lsGetItem } from '../utils/LocalAndSessionStorage';
 import type { DebugKeyBindingConfig } from './Input/DefaultDebugKeyBindings';
 
-/** LS key for debug-only boot-time physics overrides (workerTarget/useSAB/maxBodies). Written by the Physics API debug tab, read once in loadConfig(). */
+/** LS key for debug-only boot-time physics overrides (workerTarget/useSAB/maxBodies/stepStatsEnabled). Written by the Physics API debug tab, read once in loadConfig(). */
 export const DEBUG_PHYSICS_API_BOOT_LS_KEY = 'AEK_debugPhysicsApiBoot';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
@@ -86,6 +86,11 @@ export type AppConfig = {
     useSAB?: boolean;
     /** Fixed capacity for the worker-thread hot-path transform buffer. Default 2048. */
     maxBodies?: number;
+    /** Measure how long the physics engine spends stepping the world each frame (and, in
+     * WORKER_THREAD mode, the messaging overhead around it) and feed it to the debug "PHY"
+     * panel. Opt-in and default false so the measurement itself costs nothing unless asked
+     * for. Boot-time only — read once here, same as useSAB/maxBodies. */
+    stepStatsEnabled?: boolean;
   };
   ecs?: {
     /** Build-time-selectable ECS component storage backend. Default 'MAP'. */
@@ -137,6 +142,7 @@ let config: AppConfig = {
     interpolationMode: 'NONE',
     useSAB: true,
     maxBodies: 2048,
+    stepStatsEnabled: false,
   },
   ecs: {
     storageMode: 'MAP',
@@ -222,6 +228,7 @@ export const loadConfig = () => {
       workerTarget?: PhysicsWorkerTarget;
       useSAB?: boolean;
       maxBodies?: number;
+      stepStatsEnabled?: boolean;
     };
     if (debugPhysicsBoot.workerTarget) {
       config.physics.workerTarget = debugPhysicsBoot.workerTarget;
@@ -231,6 +238,9 @@ export const loadConfig = () => {
     }
     if (typeof debugPhysicsBoot.maxBodies === 'number') {
       config.physics.maxBodies = debugPhysicsBoot.maxBodies;
+    }
+    if (typeof debugPhysicsBoot.stepStatsEnabled === 'boolean') {
+      config.physics.stepStatsEnabled = debugPhysicsBoot.stepStatsEnabled;
     }
   }
 

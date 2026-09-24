@@ -21,7 +21,7 @@ import {
   getResolvedTransportMode,
   isPhysicsWorldEnabled,
 } from '../PhysicsAPI';
-import { DEBUG_PHYSICS_API_BOOT_LS_KEY } from '../Config';
+import { setBootOverride } from './_dbg__PhysicsBootOverrides';
 import {
   ShapeType,
   type PhysicsInterpolationMode,
@@ -77,18 +77,6 @@ let lastEntityListSignature = '';
 let entityWindowCmp: TCMP | null = null;
 let entityWindowPane: Pane | null = null;
 
-type DebugPhysicsApiBoot = {
-  workerTarget?: PhysicsWorkerTarget;
-  useSAB?: boolean;
-  maxBodies?: number;
-};
-
-const setBootOverride = (partial: DebugPhysicsApiBoot) => {
-  const current = lsGetItem(DEBUG_PHYSICS_API_BOOT_LS_KEY, {}) as DebugPhysicsApiBoot;
-  lsSetItem(DEBUG_PHYSICS_API_BOOT_LS_KEY, { ...current, ...partial });
-  location.reload();
-};
-
 type PersistedWireframeState = {
   colors?: Partial<Record<WireframeColorState, number>>;
   lineThickness?: number;
@@ -131,11 +119,11 @@ const persistWireframeState = () => {
   lsSetItem(WIREFRAME_LS_KEY, payload);
 };
 
-// Only these fields persist under LS_KEY. workerTarget/useSAB/maxBodies live under their
-// own boot-override key (DEBUG_PHYSICS_API_BOOT_LS_KEY, see setBootOverride) and applying
-// via config on the next reload — persisting the whole PhysicsState blob here would let a
-// stale in-memory copy of those three fields clobber the boot-override-derived values the
-// moment any live field changes.
+// Only these fields persist under LS_KEY. workerTarget/useSAB/maxBodies/stepStatsEnabled
+// live under their own boot-override key (DEBUG_PHYSICS_API_BOOT_LS_KEY, see
+// setBootOverride) and applying via config on the next reload — persisting the whole
+// PhysicsState blob here would let a stale in-memory copy of those four fields clobber the
+// boot-override-derived values the moment any live field changes.
 type LivePhysicsApiState = Pick<
   PhysicsState,
   | 'timestep'
@@ -589,6 +577,16 @@ export const _createPhysicsAPIDebugGUI = () => {
         .addBinding(state, 'maxBodies', { label: 'Max bodies (reloads)', step: 1, min: 1 })
         .on('change', (e) => {
           setBootOverride({ maxBodies: e.value });
+        });
+      // Feeds the stats "PHY" panel, and getLastPhysicsStepDuration()/
+      // getLastPhysicsStepMessagingLatency(). Off by default so the measurement costs
+      // nothing — including the risk of the timing overhead skewing the very number it
+      // reports — unless someone asks for it. Boot-time, because the SHARED_MEMORY
+      // transport's stats buffer is allocated once at world creation.
+      debugGUI
+        .addBinding(state, 'stepStatsEnabled', { label: 'Track physics step time (reloads)' })
+        .on('change', (e) => {
+          setBootOverride({ stepStatsEnabled: e.value });
         });
 
       // Read once: createPhysicsWorld() (which resolves this) always runs before this

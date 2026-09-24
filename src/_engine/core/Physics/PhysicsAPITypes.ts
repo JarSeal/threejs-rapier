@@ -124,6 +124,12 @@ export type PhysicsState = {
   useSAB: boolean;
   /** Fixed capacity for the worker-thread hot-path transform buffer (PhysicsTransformBuffer). */
   maxBodies: number;
+  /** Whether per-frame step-duration (and, in WORKER_THREAD mode, messaging-latency)
+   * measurement is on. Opt-in, default false: with it off, no extra performance.now() call,
+   * buffer allocation or message field is paid anywhere in the step hot path. Boot-time only
+   * (reload to change), so it also reaches the worker inside the one-off INIT_PHYSICS
+   * payload with no protocol message of its own. */
+  stepStatsEnabled: boolean;
 };
 
 export interface PhysVector {
@@ -2055,6 +2061,11 @@ export type PhysicsUpProtocol =
         /** Per sub-step (index = sub-step), the one-way commands the main thread's
          * APP_PHYSICS_STEP systems issued for it — replayed right before that sub-step. */
         substepCommands?: PhysicsUpProtocol[][];
+        /** Main thread's performance.now() at postMessage time, only stamped when
+         * PhysicsState.stepStatsEnabled is on. The worker subtracts it from its own clock
+         * to derive the dispatch latency (a dedicated worker shares its owning document's
+         * time origin, so the two clocks are directly comparable). */
+        sentAt?: number;
       }
     | {
         type: PhysicsProtocolType.SET_DEBUG_STATE_TRACKING;
@@ -2494,6 +2505,11 @@ export type PhysicsDownProtocol =
         transportMode?: 'SHARED_MEMORY' | 'MESSAGE_BATCH';
         /** Only present (and only a SharedArrayBuffer) when transportMode is 'SHARED_MEMORY'. */
         buffer?: ArrayBuffer | SharedArrayBuffer;
+        /** Step-statistics scratch buffer (p027), only present when transportMode is
+         * 'SHARED_MEMORY' AND PhysicsState.stepStatsEnabled is on. See
+         * PHYSICS_STEP_STATS_SLOTS for its layout. In MESSAGE_BATCH mode the same numbers
+         * ride on TRANSFORMS_PUSH instead, so no buffer is handed over. */
+        statsBuffer?: SharedArrayBuffer;
       }
     | { type: PhysicsProtocolType.DELETE_WORLD; worldDeleted: boolean }
     | {
@@ -2644,7 +2660,18 @@ export type PhysicsDownProtocol =
       }
     | { type: PhysicsProtocolType.DEBUG_STATE_PUSH; buffer: ArrayBuffer }
     // Transforms hot path (unsolicited push, MESSAGE_BATCH fallback only) ----
-    | { type: PhysicsProtocolType.TRANSFORMS_PUSH; buffer: ArrayBuffer }
+    | {
+        type: PhysicsProtocolType.TRANSFORMS_PUSH;
+        buffer: ArrayBuffer;
+        /** Step statistics (p027), only populated when PhysicsState.stepStatsEnabled is on.
+         * MESSAGE_BATCH mode only — the SHARED_MEMORY transport has no per-step message, so
+         * there it uses the CREATE_WORLD statsBuffer instead. The three stay separate and
+         * are never summed: stepDuration is the pure simulation cost, the other two bracket
+         * it as messaging overhead. */
+        stepDuration?: number;
+        dispatchMs?: number;
+        stepEndAt?: number;
+      }
     // Events (unsolicited push, only sent when at least one event occurred that step) ----
     | {
         type: PhysicsProtocolType.EVENTS_PUSH;

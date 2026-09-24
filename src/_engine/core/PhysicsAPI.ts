@@ -10,6 +10,10 @@ import * as THREE from 'three/webgpu';
 import PhysicsWorker from '../workers/physicsWorker?worker';
 import { getConfig, isDebugEnvironment } from './Config';
 import { PhysicsTransformBuffer } from './Physics/PhysicsTransformBuffer';
+import {
+  PHYSICS_STEP_STATS_FIELD_COUNT,
+  PHYSICS_STEP_STATS_SLOTS,
+} from './Physics/PhysicsStepStatsBuffer';
 import { PhysicsDebugStateBuffer } from './Physics/PhysicsDebugStateBuffer';
 import {
   getCollOrRigidId,
@@ -18,6 +22,9 @@ import {
   ValidProtocolTypes,
 } from './Physics/PhysicsUtils';
 import { lerror, lwarn } from '../utils/Logger';
+// Always-safe thin wrapper: a no-op outside debug builds and tree-shaken out of production,
+// same as legacy PhysicsRapier.ts imported it (p027 moves the PHY panel's source here).
+import { updatePhysicsPanel } from '../debug/Stats';
 import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay } from './MainLoop';
 import { DebugModuleRef, initWorker, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import {
@@ -162,6 +169,7 @@ let physicsState: PhysicsState = {
   interpolationMode: 'NONE',
   useSAB: true,
   maxBodies: 2048,
+  stepStatsEnabled: false,
 };
 let worker: Worker | null = null;
 let physicsWorld: WorldAPI = { step: () => {} } as unknown as WorldAPI;
@@ -175,6 +183,17 @@ let engAPI: EngineAPIType | null = null;
 let transformBuffer: PhysicsTransformBuffer | undefined;
 /** Which hot-path transport createPhysicsWorld() resolved to for the current world (WORKER_THREAD only). */
 let resolvedTransportMode: 'SHARED_MEMORY' | 'MESSAGE_BATCH' | undefined;
+/** Step statistics (p027), all only ever populated while physicsState.stepStatsEnabled is on.
+ * Pure simulation time for the last stepped frame — the sum of that frame's engine step()
+ * calls, with nothing else folded in. Deliberately never includes messaging overhead; that
+ * is reported separately by lastPhysicsMessagingLatency. */
+let lastPhysicsStepDurationMs: number | undefined;
+/** Messaging overhead bracketing the step, WORKER_THREAD only (stays undefined on
+ * MAIN_THREAD, where no message crosses a thread at all). */
+let lastPhysicsMessagingLatency: { dispatchMs: number; writeBackMs: number } | undefined;
+/** SHARED_MEMORY-transport view onto the worker's step-stats buffer. Undefined in every
+ * other configuration (MAIN_THREAD, MESSAGE_BATCH, or stepStatsEnabled off). */
+let stepStatsFloats: Float64Array | undefined;
 /** Main-thread wrapper for the worker's debug wireframe state buffer (WORKER_THREAD only,
  * p025). Undefined until setPhysicsDebugStateTracking() turns tracking on for the first
  * time. SHARED_MEMORY: set once and never replaced. MESSAGE_BATCH: replaced on every
@@ -332,11 +351,27 @@ export const stepPhysics = (
   if (stepsTaken === 0) return 0;
 
   const stepDelta = physicsState.timestepRatio;
+  const trackStats = physicsState.stepStatsEnabled;
   if (physicsState.workerTarget === 'MAIN_THREAD') {
+    let stepMs = 0;
     for (let i = 0; i < stepsTaken; i++) {
       if (onBeforeStep) onBeforeStep(stepDelta);
       else flushPhysicsEvents();
+      if (!trackStats) {
+        engAPI?.step();
+        continue;
+      }
+      // Timed around step() alone: onBeforeStep above runs app/ECS work, and including it
+      // would reproduce exactly the contamination that made the legacy PHY panel misleading.
+      const subStepStart = performance.now();
       engAPI?.step();
+      stepMs += performance.now() - subStepStart;
+    }
+    if (trackStats) {
+      lastPhysicsStepDurationMs = stepMs;
+      // No thread boundary is crossed here, so there is no messaging overhead to report.
+      lastPhysicsMessagingLatency = undefined;
+      updatePhysicsPanel(stepMs);
     }
     mainThreadSnapshotCount++;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
@@ -362,12 +397,68 @@ export const stepPhysics = (
       steps: stepsTaken,
       substepCommands,
       isOneWay: true,
+      // Only stamped while measuring; the worker derives dispatchMs from it.
+      sentAt: trackStats ? performance.now() : undefined,
     });
     stepMessagesPosted++;
+    // SHARED_MEMORY has no per-step return message, so the stats are polled here instead,
+    // one frame behind — the same latency tradeoff the transform buffer itself already makes.
+    if (trackStats) readSharedStepStats();
   }
 
   return stepsTaken;
 };
+
+/** Polls the SHARED_MEMORY step-stats buffer, if one exists. No-op in every other transport.
+ *
+ * Note the asymmetry this creates in writeBackMs: in MESSAGE_BATCH mode that figure is real
+ * postMessage transit time, whereas here there is no return message to time, so it measures
+ * how long after the worker finished stepping the main thread got around to reading — a
+ * read-cadence latency. The two transports' writeBackMs are therefore not comparable. */
+const readSharedStepStats = () => {
+  if (!stepStatsFloats) return;
+  const stepEndAt = stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.STEP_END_AT];
+  // Zero means the worker hasn't completed a step yet — nothing to report.
+  if (!stepEndAt) return;
+  lastPhysicsStepDurationMs = stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.STEP_MS];
+  lastPhysicsMessagingLatency = {
+    dispatchMs: stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.DISPATCH_MS],
+    writeBackMs: performance.now() - stepEndAt,
+  };
+  updatePhysicsPanel(lastPhysicsStepDurationMs);
+};
+
+/**
+ * Time the physics engine spent stepping the world on the last stepped frame, in
+ * milliseconds — the sum of that frame's fixed-timestep sub-steps and nothing else.
+ *
+ * Returns `undefined` until a measured step has happened, and stays frozen at its last value
+ * while `AppConfig.physics.stepStatsEnabled` is off (the default), since nothing measures
+ * then. Enable it from the Physics API debug tab; it is a boot-time flag and needs a reload.
+ *
+ * This figure never includes main-thread↔worker messaging overhead, in any `workerTarget` or
+ * transport configuration — see {@link getLastPhysicsStepMessagingLatency} for that, which is
+ * measured independently and is never summed into this one.
+ */
+export const getLastPhysicsStepDuration = () => lastPhysicsStepDurationMs;
+
+/**
+ * Main-thread↔worker messaging overhead bracketing the last measured physics step, in
+ * milliseconds. `undefined` in `MAIN_THREAD` mode (nothing crosses a thread boundary), and
+ * until a measured step has happened.
+ *
+ * - `dispatchMs` — main→worker: how long the one-way STEP message took to reach the worker.
+ * - `writeBackMs` — worker→main, and **it does not mean the same thing in both transports**:
+ *   in `MESSAGE_BATCH` it is real postMessage transit time of the TRANSFORMS_PUSH carrying
+ *   the results; in `SHARED_MEMORY` there is no return message at all, so it is instead the
+ *   read-cadence latency (worker finished stepping → main thread next polled the shared
+ *   buffer). Surface that distinction anywhere these are displayed rather than comparing the
+ *   two transports' numbers as like for like.
+ *
+ * Disjoint from {@link getLastPhysicsStepDuration} by construction: the intervals are
+ * adjacent, never overlapping, and the two are never combined into a single figure.
+ */
+export const getLastPhysicsStepMessagingLatency = () => lastPhysicsMessagingLatency;
 
 // WORKER LOGIC -- [ START ] -----------------------
 
@@ -437,6 +528,17 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
   } else if (type === PhysicsProtocolType.TRANSFORMS_PUSH) {
     // Unsolicited push (MESSAGE_BATCH fallback) — no requestId, not a response to resolve.
     transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, data.buffer);
+    // Step stats (p027) ride along on this message in MESSAGE_BATCH mode, so the receipt
+    // time here is the return leg's real arrival time. Only present while measuring.
+    if (data.stepDuration !== undefined) {
+      lastPhysicsStepDurationMs = data.stepDuration;
+      lastPhysicsMessagingLatency = {
+        dispatchMs: data.dispatchMs ?? 0,
+        writeBackMs: data.stepEndAt !== undefined ? performance.now() - data.stepEndAt : 0,
+      };
+      // The panel shows the pure step time only — never step + messaging overhead.
+      updatePhysicsPanel(data.stepDuration);
+    }
     return;
   } else if (type === PhysicsProtocolType.EVENTS_PUSH) {
     // Unsolicited push, only ever sent when at least one event occurred that step — no
@@ -656,6 +758,11 @@ export const createPhysicsWorld = async (
         transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, response.buffer);
         stepMessagesPosted = 0;
         pendingEventPushes = [];
+      }
+      // Only handed over in SHARED_MEMORY mode with stepStatsEnabled on (p027); allocated
+      // once here, like the transform buffer, which is why the flag is boot-time only.
+      if (response.statsBuffer) {
+        stepStatsFloats = new Float64Array(response.statsBuffer, 0, PHYSICS_STEP_STATS_FIELD_COUNT);
       }
       // MESSAGE_BATCH: transformBuffer stays undefined until the first TRANSFORMS_PUSH arrives.
       addVisibilityChangeFn('pausePhysicsApiOnVisibilityChange', physicsVisibilityChangeHandler);

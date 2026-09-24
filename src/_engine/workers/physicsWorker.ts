@@ -19,6 +19,11 @@ import {
   DebugColliderFlag,
   PhysicsDebugStateBuffer,
 } from '../core/Physics/PhysicsDebugStateBuffer';
+import {
+  createPhysicsStepStatsArrayBuffer,
+  PHYSICS_STEP_STATS_FIELD_COUNT,
+  PHYSICS_STEP_STATS_SLOTS,
+} from '../core/Physics/PhysicsStepStatsBuffer';
 import { physicsSwitchColl } from './physics/physicsSwitchColl';
 import { physicsSwitchJoint } from './physics/physicsSwitchJoint';
 import { physicsSwitchRigid } from './physics/physicsSwitchRigid';
@@ -36,6 +41,23 @@ let debugStateBuffer: PhysicsDebugStateBuffer | undefined;
 /** Tracked ids, in the order the main thread sent them — index IS slot on both sides. */
 let debugTrackedRigidBodyIds: number[] = [];
 let debugTrackedColliderIds: number[] = [];
+/** Step-statistics scratch view (p027). Only allocated when stepStatsEnabled is on AND the
+ * SHARED_MEMORY transport resolved; in MESSAGE_BATCH mode the stats ride on TRANSFORMS_PUSH
+ * and this stays undefined. */
+let stepStatsFloats: Float64Array | undefined;
+
+/** One frame's step measurements, kept as three independent numbers all the way through —
+ * they are never added together (p027). */
+type StepStats = {
+  /** Pure simulation time: the sum of this message's engAPI.step() calls, with sub-step
+   * command replay and write-back excluded. */
+  stepMs: number;
+  /** main→worker latency of the STEP message itself. */
+  dispatchMs: number;
+  /** Worker clock at the instant the last sub-step returned, for the main thread to derive
+   * the return-leg latency from. */
+  stepEndAt: number;
+};
 
 const handleMessage = async (data: PhysicsUpProtocol) => {
   const type = data.type;
@@ -78,12 +100,35 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
         // Commands the main thread's APP_PHYSICS_STEP systems issued for each sub-step (e.g.
         // a kinematic platform's next pose) are replayed right before that sub-step, so they
         // land on the step they were computed for, exactly like on MAIN_THREAD.
-        for (let i = 0; i < (data.steps ?? 1); i++) {
-          const commands = data.substepCommands?.[i];
-          if (commands) for (let j = 0; j < commands.length; j++) await handleMessage(commands[j]);
-          engAPI.step();
+        {
+          // Step statistics (p027) are entirely opt-in: with stepStatsEnabled off, not even
+          // a performance.now() call is made here.
+          const trackStats = Boolean(workerPhysicsState?.stepStatsEnabled);
+          const receivedAt = trackStats ? performance.now() : 0;
+          let stepMs = 0;
+          let stepEndAt = 0;
+          for (let i = 0; i < (data.steps ?? 1); i++) {
+            const commands = data.substepCommands?.[i];
+            if (commands)
+              for (let j = 0; j < commands.length; j++) await handleMessage(commands[j]);
+            if (!trackStats) {
+              engAPI.step();
+              continue;
+            }
+            // Timed around step() alone — replaying this sub-step's commands above is main-
+            // thread-issued work, not simulation cost, and folding it in would repeat the
+            // legacy PHY panel's contamination bug in a new place.
+            const subStepStart = performance.now();
+            engAPI.step();
+            stepEndAt = performance.now();
+            stepMs += stepEndAt - subStepStart;
+          }
+          writeBackTransforms(
+            trackStats
+              ? { stepMs, dispatchMs: receivedAt - (data.sentAt ?? receivedAt), stepEndAt }
+              : undefined
+          );
         }
-        writeBackTransforms();
         writeBackDebugState();
         return pushPendingEvents();
       case PhysicsProtocolType.SET_DEBUG_STATE_TRACKING: {
@@ -138,12 +183,20 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
           maxBodies,
           createPhysicsTransformArrayBuffer(maxBodies, resolvedUseSAB)
         );
+        // Step-stats buffer (p027): only in SHARED_MEMORY mode, where there is no per-step
+        // message to carry the numbers on, and only when the measurement is switched on.
+        let statsBuffer: SharedArrayBuffer | undefined = undefined;
+        if (resolvedUseSAB && workerPhysicsState?.stepStatsEnabled) {
+          statsBuffer = createPhysicsStepStatsArrayBuffer();
+          stepStatsFloats = new Float64Array(statsBuffer, 0, PHYSICS_STEP_STATS_FIELD_COUNT);
+        }
         return sendMessage(
           {
             type,
             worldCreated: true,
             transportMode: resolvedUseSAB ? 'SHARED_MEMORY' : 'MESSAGE_BATCH',
             buffer: resolvedUseSAB ? transformBuffer.buffer : undefined,
+            statsBuffer,
           },
           data
         );
@@ -237,7 +290,14 @@ const sendMessageSimple = (message: any, transfer?: Transferable[]) =>
  * that reaches the main thread's ECS transform sync, so a body excluded here would never show
  * that reposition. The per-step cost of re-writing a handful of unchanging static transforms is
  * negligible next to the physics step itself, so there's no reason to special-case it out. */
-const writeBackTransforms = () => {
+const writeBackTransforms = (stats?: StepStats) => {
+  // Stats go out first, and outside the transformBuffer guard, so the measurement doesn't
+  // silently depend on a world having a transform buffer.
+  if (stats && stepStatsFloats) {
+    stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.STEP_MS] = stats.stepMs;
+    stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.DISPATCH_MS] = stats.dispatchMs;
+    stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.STEP_END_AT] = stats.stepEndAt;
+  }
   if (!transformBuffer) return;
   for (const id of engAPI.getAllRigidBodyIds()) {
     const rb = engAPI.getRigidBodyAPIWithId(id);
@@ -250,7 +310,18 @@ const writeBackTransforms = () => {
   transformBuffer.markWritten();
   if (!resolvedUseSAB) {
     const copy = transformBuffer.buffer.slice(0) as ArrayBuffer;
-    sendMessageSimple({ type: PhysicsProtocolType.TRANSFORMS_PUSH, buffer: copy }, [copy]);
+    sendMessageSimple(
+      {
+        type: PhysicsProtocolType.TRANSFORMS_PUSH,
+        buffer: copy,
+        // MESSAGE_BATCH only: piggyback the stats on the message that already goes out every
+        // step rather than inventing a second one. Three separate fields, never combined.
+        stepDuration: stats?.stepMs,
+        dispatchMs: stats?.dispatchMs,
+        stepEndAt: stats?.stepEndAt,
+      },
+      [copy]
+    );
   }
 };
 

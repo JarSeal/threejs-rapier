@@ -57,6 +57,7 @@ let physicsState: PhysicsState = {
   interpolationMode: 'NONE',
   useSAB: true,
   maxBodies: 2048,
+  stepStatsEnabled: false,
 };
 
 /** NEW STUFF (@CHORE: delete this line when everything is diamonds!!!) */
