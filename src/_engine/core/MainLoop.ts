@@ -24,6 +24,8 @@ import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers
 const timer = new Timer();
 let delta = 0;
 let deltaApp = 0;
+let elapsed = 0;
+let discardNextElapsedDelta = true; // the first frame's delta is time since module load
 let mainLoopInitiated = false;
 let lastRenderTime = performance.now();
 const resizers: { [key: string]: () => void } = {};
@@ -65,6 +67,16 @@ export const getDelta = () => delta;
  * @returns (number) delta time
  */
 export const getAppDelta = () => deltaApp;
+
+/**
+ * Returns the main loop's accumulated elapsed time in seconds: the sum of every main loop
+ * delta, so it scales with loopState.playSpeedMultiplier and stands still while the master
+ * loop is paused (it keeps running while only the app loop is paused). Unlike TSL's `time`
+ * node (renderer wall-clock), this is the clock anything that must freeze and speed up with
+ * the loop should read.
+ * @returns (number) elapsed time in seconds
+ */
+export const getElapsedTime = () => elapsed;
 
 /**
  * Returns linear speed value in relation to main loop delta time
@@ -110,6 +122,26 @@ const stepPhysicsAndPollHeldKeys = (delta: number) => {
   if (!physicsState.enabled || !physicsState.worldStepEnabled) pollHeldKeyBindings(delta);
 };
 
+/** Advances getElapsedTime by this frame's delta. Must run in every loop variant right after
+ * the masterPlay check. The timer is never reset across a master pause, so the first delta
+ * after resuming spans the whole paused duration — it is discarded (as stepPhysics does for
+ * physics), otherwise the elapsed time would jump forward instead of having stood still.
+ * Starts out true, which also covers a loop that starts paused (saved loop state) and so
+ * never reaches the paused branch before its first resume.
+ * Detected here rather than in toggleMainPlay because the debug GUI's master loop toggle
+ * flips loopState.masterPlay directly. */
+const advanceElapsedTime = () => {
+  if (!loopState.masterPlay) {
+    discardNextElapsedDelta = true;
+    return;
+  }
+  if (discardNextElapsedDelta) {
+    discardNextElapsedDelta = false;
+    return;
+  }
+  elapsed += delta;
+};
+
 const renderScene = () => {
   const renderer = getRenderer() as Renderer;
   const rootScene = getRootScene() as Scene;
@@ -138,6 +170,7 @@ const mainLoopForDebug = async () => {
   } else {
     loopState.isMasterPlaying = false;
   }
+  advanceElapsedTime();
 
   // --- Max FPS limiter ---
   let skipFrame = false;
@@ -197,6 +230,7 @@ const mainLoopForProduction = async () => {
   } else {
     loopState.isMasterPlaying = false;
   }
+  advanceElapsedTime();
 
   // main loopers
   for (const world of getAllECSWorlds()) world.updateMainLoop(delta);
@@ -233,6 +267,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
   } else {
     loopState.isMasterPlaying = false;
   }
+  advanceElapsedTime();
 
   // --- Max FPS limiter ---
   let skipFrame = false;
