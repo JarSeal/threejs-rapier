@@ -1,25 +1,70 @@
 Create "Refactor debugger drawer tab creation" plan in docs/plans/p010_refactor-debugger-drawer-tab-creation.md
 
-Category: Debugger
+Category: Debugger, Refactor
 
-UNDER_CONSTRUCTION
-Currently the creation of a debugger tab is not very intuitive and requires several imported functions to be used to create a basic tab with a Tweakpane. If possible, this should be one nice call and it would create the tab (+ order number), title, icon, add the content to the tab content container (CMP content), and would recognize when the information is a Tweakpane and then it would add that. The tab creation would get an id and we could call a common "updateDebuggerTab(id)" function to update them (it would check if that tab is open and then only actually update it). It would also get the local storage key to save the changes to the local storage (and to load them from it), but if that key is missing, then it wouldn't save the changes. The content should be an array something like this (the example is a pseudo array):
+Currently the creation of a debugger tab is not very intuitive and requires several imported functions to be used to create a basic tab with a Tweakpane. If possible, this should be one clean call and it would create the tab , title, icon, add the content to the tab content container (CMP content), and would recognize when the information is a Tweakpane section and when a CMP section. The tab creation would get an id and we could call a common "updateDebuggerTab(id)" function to update them (it would check if that tab is open and then only actually update it). It would also get the local storage key to save the changes to the local storage (and to load them from it), but if that key is missing, then it wouldn't save the changes. The order numbering logic should first read an optional array from the CONFIG file that would have the tab ids in the wanted order, but that ordering could be overwritten by giving the tab creator function an explicit order number (duplicate order numbers are not a problem) like 1.8, which would then land between the second and third tab. The content should be an array something like this (the example is a pseudo code array):
 [
   CMP({ text: "some text..." }),
   {
     pane: true, // This is a Tweakpane
     content: ...pane content (inputs with label, min, step, etc., folders with nested inputs with label, min, step, etc.)...
   },
-  debuggerListCMP({ heading: "My table", perItemConfig: { toggles: [{ icon, fn, title }], onClick }, data: [{ itemId, title, subTitle (small font title at top of an item), icon, toggleValues: [true, false, true (whether each toggle is checked or not)] }, ...more items] }),
+  debuggerListCMP({
+    id?: "myList",
+    heading: "My list",
+    perItemConfig: { toggles: [{ icon, fn, title }], onClick },
+    data: [
+      {
+        itemId,
+        title,
+        subTitle (small font sized title at top of an item),
+        icon,
+        toggleValues: [true, false, true (whether each toggle is checked or not)]
+      },
+      ...more items
+    ],
+  }),
   {
     pane: true, // Another Tweakpane
     content...,
   }
 ]
 
-The new Tweakpane instance would be automatically created when pane: true. Each input/folder would have an option to opt-out of saving the data to the local storage.
+The new Tweakpane instance would be automatically created when "pane: true". Each input/folder would have an option to opt-out of saving the data to the local storage.
 
-The debuggerListCMP in that example should also be implemented. The heading would be on top of the list. Toggles would be small icons on the right side of a list item that would for example toggle the visibility (or helper visibility) of a light entity. The data would have the actual list data. The onClick would get the itemId and then do something with that (usually opens an edit window).
+The debuggerListCMP in that example should also be implemented. The heading would be on top of the list. Toggles would be small icons on the right side of a list item that would for example toggle the visibility (or helper visibility) of a light entity. The data would have the actual list data. The onClick function will get the itemId and then do something with that (usually opens an edit window with that item's data).
+
+All of the old debugger tab creations and updating should be replaced with this new feature.
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+*******************************
+
+Create "Multi-viewport rendering and Axis gizmo" plan in docs/plans/p080_multi-viewport-rendering-and-axis-gizmo.md
+
+Category: Multi-viewport, Gizmo
+
+I haven't been able to get the multi-viewport rendering (aka. Picture-in-picture/PiP, Viewport overlay, or Scissored viewport rendering) feature to work on Three.js WebGPU. I haven't tried to implement it for a while and I have updated Three.js since then. We need to study the implementation of this feature as a core feature for Aekasha. I have several debugger side usages planned for this (+ app/game side potentially need this feature as well), but the first feature should be implemented right away and that should be the Axis gizmo.
+
+The Axis gizmo should have the same features as the Blender Axis gizmo. It should be rotated at the top right corner of the screen and if the debugger drawer if opened, it should move left the width of the debugger (+ a small padding). It should rotate and be aligned with the world axis when rotated and when clicked on an axis (X, -X, Y, -Y, Z, -Z) the debug camera should align with that axis. The gizmo should be clickable only in the The Debug Tools Controls debugger tab should have two options (above the "Show axes helper" option):
+- "Show axes gizmo" [keyboard shortcut F8], boolean (whether the gizmo is shown at all, default true)
+- "Show axes gizmo in main camera", boolean (whether the gizmo should be shown in the main camera view or not, default false)
+
+There is a stand-alone Three.js implementation for a Axis Gizmo (might be WebGL only, I am not sure). You can copy some code or ideas from this if you find something useful: https://github.com/Fennec-hub/three-viewport-gizmo
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+*******************************
+
+UNDER_CONSTRUCTION
+Create "Refactor SkyBox file" plan in docs/plans/p100_refactor-skybox-file.md
+
+Category: Refactor
+
+The SkyBox file is a bit of a mess. We should refactor it to be more clean and consistent. We should also add the environment ball (a ) as a multi-viewport view next to the Axis gizmo (left to the Axis gizmo) and it should also move to the left when the debugger drawer is opened. In the Debug Tools Controls as its own section underneath the axis section, there should be three options:
+- "Show environment ball" [keyboard shortcut F7], boolean (whether the ball is shown at all, default true)
+- "Show env ball in main camera", boolean (whether the env ball should be shown in the main camera view or not, default false)
+- "Env ball roughness", slider (the env ball material roughness value, default 0)
 
 If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
@@ -27,9 +72,12 @@ If for some reason this plan can't or shouldn't be created with this specificati
 
 Create "Small bug fixes and tweaks" plan in docs/plans/p100_small-bug-fixes-and-tweaks.md
 
+Category: Bug, Refactor
+
 Fix or tweak these list items:
 - When switching a scene in edit mode, the edit windows are carried over to the next scene. The window(s) should be closed, but if possible, if the same asset or entity is found in that scene, then the window would stay open.
 - When pressing play in the top on screen tools to go to the prodTest mode and if an edit window is open, that window will show up in prodTest (as an empty window, because the content is gated). The windows should not show up unless that window has an option set to show up in prodTest. If set to true the window should show in prodTest. The gating for the content should then be automatic depending on that property (either gated by is debug env or is prodTest env).
+- Can you verify that the main thread and the worker thread physics both are actually deterministic (with Rapier). I think I had some weird differences when refreshing and loading the Gym scene. This can be nothing, as I cannot reproduce it now (might have been fixed earlier but I am not sure). Try also with and without SAB and with different interpolation values.
 
 If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
@@ -69,15 +117,10 @@ If for some reason this plan can't or shouldn't be created with this specificati
 ************************************
 
 [NOTE: This should be implemented after the Profiler mega window and IS NOT A PLAN, just run it]
-Add two more options to the Stats debugger tab (after Enable measuring option):
+Add two more options to the Stats debugger tab (after Enable measuring option) and in the Debug Tools Controls tab's Production test mode folder:
 - Enable measuring display panels in prodTest (checkbox)
 - Enable Profiler mega window in prodTest (checkbox)
 If the measuring display panels option is true, then the panels will show in prodTest (when the onScreenTool play button is pressed). If the Profiler mega window option is true then the the mega window can be displayed in prodTest by clicking the on screen stats panels (if that feature is turned on and there is at least one panel shown), from the top on screen tools (next to the pause button), or then by having the Profiler mega window already open when the prodTest play button is pressed.
-
-************************************
-
-[NOTE: This IS NOT A PLAN, just run it]
-Add a folder ("Production test mode") and an option to that folder: "Show top on screen tools in prod test mode" (default true). Then when that is not turned on, those buttons should not show in prodTest=true mode.
 
 ************************************
 

@@ -22,6 +22,7 @@ import { type SceneAsset } from '../../schemas/sceneSchema';
 import { type ToolTypes } from '../../debug/OnScreenTools';
 import { DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerGUI';
 import { DebugModuleRef, loadDebugModule, useDebug } from '../../utils/helpers';
+import { getDebugToolsState } from '../../debug/DebugToolsManager';
 
 let playToolsCMP: TCMP | null = null;
 let switchToolsCMP: TCMP | null = null;
@@ -41,6 +42,14 @@ const playTools = () => {
   if (!hudRootCMP) return;
 
   if (playToolsCMP) playToolsCMP.remove();
+  playToolsCMP = null;
+
+  // Toggled in the Debug Tools Controls tab ("Production test mode" folder); read from LS
+  // here because that tab (and its state loading) never runs in prodTest mode itself.
+  if (IS_PROD_TEST_MODE && !getDebugToolsState(true).prodTestMode.showOnScreenToolsInProdTest) {
+    return;
+  }
+
   playToolsCMP = CMP({ class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'playTools'] });
 
   const buttonBaseClasses = [styles.onScreenTool, 'onScreenTool'];

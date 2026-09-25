@@ -57,6 +57,10 @@ let debugToolsState: DebugToolsState = {
   loggingActions: {
     loggingFolderExpanded: false,
   },
+  prodTestMode: {
+    prodTestFolderExpanded: false,
+    showOnScreenToolsInProdTest: true,
+  },
   debugCameraFolderExpanded: false,
   helpers: {
     helpersFolderExpanded: false,
@@ -239,6 +243,24 @@ const buildDebugToolsGUI = () => {
     .addBinding(debugToolsState.scenesListing, 'useDebuggerSceneLoader', {
       label: 'Use debugger scene loader for start scene',
       disabled: !debugToolsState.scenesListing.useDebugStartScene,
+    })
+    .on('change', () => {
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+
+  // Production test mode
+  const prodTestFolder = debugGUI
+    .addFolder({
+      title: 'Production test mode',
+      expanded: debugToolsState.prodTestMode.prodTestFolderExpanded,
+    })
+    .on('fold', (state) => {
+      debugToolsState.prodTestMode.prodTestFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  prodTestFolder
+    .addBinding(debugToolsState.prodTestMode, 'showOnScreenToolsInProdTest', {
+      label: 'Show top on screen tools in prod test mode',
     })
     .on('change', () => {
       lsSetItem(LS_KEY, debugToolsState);

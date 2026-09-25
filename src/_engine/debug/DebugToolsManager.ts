@@ -22,6 +22,10 @@ export type DebugToolsState = {
   loggingActions: {
     loggingFolderExpanded: boolean;
   };
+  prodTestMode: {
+    prodTestFolderExpanded: boolean;
+    showOnScreenToolsInProdTest: boolean;
+  };
   debugCameraFolderExpanded: boolean;
   helpers: {
     helpersFolderExpanded: boolean;
@@ -56,6 +60,10 @@ const defaultDebugToolsState: DebugToolsState = {
   },
   loggingActions: {
     loggingFolderExpanded: false,
+  },
+  prodTestMode: {
+    prodTestFolderExpanded: false,
+    showOnScreenToolsInProdTest: true,
   },
   debugCameraFolderExpanded: false,
   helpers: {
