@@ -135,7 +135,7 @@ const setRendererOptions = async (opts?: Partial<RendererOptions>) => {
     options = { ...options, ...opts, ...savedOptions };
   }
 
-  if (!options.forceWebGL && navigator.gpu) {
+  if (!options.forceWebGL && 'gpu' in navigator) {
     options.currentApi = 'WebGPU';
     options.currentApiIsWebGPU = true;
     options.currentApiIsWebGL = false;

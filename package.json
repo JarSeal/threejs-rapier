@@ -54,13 +54,13 @@
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",
     "stats-gl": "3.6.0",
-    "three": "0.183.2",
+    "three": "0.186.1",
     "tweakpane": "4.0.5"
   },
   "devDependencies": {
     "@tweakpane/core": "2.0.5",
     "@types/node": "22.10.6",
-    "@types/three": "0.183.1",
+    "@types/three": "0.186.0",
     "@typescript-eslint/eslint-plugin": "8.70.0",
     "@typescript-eslint/parser": "8.70.0",
     "eslint": "9.39.5",

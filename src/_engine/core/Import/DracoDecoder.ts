@@ -31,12 +31,17 @@ const getDefaultDecoderPath = () =>
   new URL(`${import.meta.env.BASE_URL}draco/gltf/`, document.baseURI).href;
 
 const setDecoder = (loader: DRACOLoader) => {
+  const prevDecoderType = activeDecoder?.decoderType;
   activeDecoder = {
     decoderPath: config.decoderPath || getDefaultDecoderPath(),
     decoderType: config.decoderType || 'wasm',
   };
   loader.setDecoderPath(activeDecoder.decoderPath);
-  loader.setDecoderConfig({ type: activeDecoder.decoderType });
+  // DRACOLoader uses WASM by default and setDecoderConfig() is deprecated (warns since r186), so
+  // it's only called to switch to the 'js' decoder or back from it.
+  if (activeDecoder.decoderType === 'js' || prevDecoderType === 'js') {
+    loader.setDecoderConfig({ type: activeDecoder.decoderType });
+  }
 };
 
 /**

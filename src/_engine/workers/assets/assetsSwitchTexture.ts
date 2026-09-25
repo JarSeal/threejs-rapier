@@ -33,13 +33,11 @@ export const assetsSwitchTexture = async (
       const texData = hdrLoader.parse(buffer);
       // @types/three says Float32Array | Uint8Array, but HalfFloatType data is a Uint16Array
       const hdrData: unknown = texData.data;
-      if (!(hdrData instanceof Uint16Array)) {
+      const { width, height } = texData;
+      if (!(hdrData instanceof Uint16Array) || width === undefined || height === undefined) {
         throw new Error(`HDRLoader returned no half-float data for "${url}".`);
       }
-      return sendMessage(
-        { type, requestId, width: texData.width, height: texData.height, data: hdrData },
-        [hdrData.buffer]
-      );
+      return sendMessage({ type, requestId, width, height, data: hdrData }, [hdrData.buffer]);
     }
   }
 };

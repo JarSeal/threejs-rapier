@@ -38,8 +38,8 @@ const toVector2Like = (v: THREE.Vector2): Vector2Like => ({ x: v.x, y: v.y });
 
 /**
  * Describes a texture as structured-clone-safe data. Its ImageBitmap is added to `images` once
- * per THREE.Source (GLTFLoader's clones for another UV channel or transform share their source),
- * for the postMessage transfer list. Throws for a texture whose image isn't an ImageBitmap.
+ * per THREE.TextureSource (GLTFLoader's clones for another UV channel or transform share their
+ * source), for the postMessage transfer list. Throws for a texture whose image isn't an ImageBitmap.
  * @param texture the texture to describe
  * @param images collects the ImageBitmaps to transfer
  * @param imageIndexBySource the image index per already collected source
@@ -47,7 +47,7 @@ const toVector2Like = (v: THREE.Vector2): Vector2Like => ({ x: v.x, y: v.y });
 export const serializeTexture = (
   texture: THREE.Texture,
   images: ImageBitmap[],
-  imageIndexBySource: Map<THREE.Source<unknown>, number>
+  imageIndexBySource: Map<THREE.TextureSource<unknown>, number>
 ): TransferableTexture => {
   let imageIndex = imageIndexBySource.get(texture.source);
   if (imageIndex === undefined) {
@@ -92,9 +92,12 @@ export const serializeTexture = (
  * Rebuilds a texture described by {@link serializeTexture} around a source holding its
  * (transferred) ImageBitmap. Textures sharing an image must be given the same source.
  * @param data {@link TransferableTexture}
- * @param source the THREE.Source for `data.imageIndex`
+ * @param source the THREE.TextureSource for `data.imageIndex`
  */
-export const deserializeTexture = (data: TransferableTexture, source: THREE.Source<unknown>) => {
+export const deserializeTexture = (
+  data: TransferableTexture,
+  source: THREE.TextureSource<unknown>
+) => {
   const texture = new THREE.Texture();
   texture.source = source;
   texture.name = data.name;

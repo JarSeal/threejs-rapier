@@ -159,7 +159,7 @@ const loadInWorker = async (params: ImportAssetParams, id: string): Promise<Load
   }));
 
   // One source per image: textures sharing an image share its source, as GLTFLoader's clones do
-  const sources = response.images.map((image) => new THREE.Source(image));
+  const sources = response.images.map((image) => new THREE.TextureSource(image));
   const rebuiltTextures = response.textures.map(({ texture }) =>
     deserializeTexture(texture, sources[texture.imageIndex])
   );
@@ -184,7 +184,7 @@ const loadInWorker = async (params: ImportAssetParams, id: string): Promise<Load
       for (const geometry of geometries) if (!keepGeometries.has(geometry)) geometry.dispose();
       // Same rule as disposeGLTFLeftovers(): an unregistered texture (one a re-import reuses) is
       // disposed, and its image closed unless a registered texture shares it
-      const keptSources = new Set<THREE.Source<unknown>>();
+      const keptSources = new Set<THREE.TextureSource<unknown>>();
       textures?.keep.forEach((texture) => keptSources.add(texture.source));
       for (const texture of rebuiltTextures) {
         if (textures?.keep.has(texture)) continue;
