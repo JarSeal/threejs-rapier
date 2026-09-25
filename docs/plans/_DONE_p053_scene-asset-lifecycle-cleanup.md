@@ -172,6 +172,6 @@ sweep isn't configurable, and root cause 5 (unused materials) was confirmed and 
 Follow-ups, not part of this plan:
 
 - The Gym grows by one GPU geometry and one texture per visit:
-  [p054_gym-scene-gpu-memory-growth.md](./p054_gym-scene-gpu-memory-growth.md).
+  [\_DONE_p054_gym-scene-gpu-memory-growth.md](./_DONE_p054_gym-scene-gpu-memory-growth.md).
 - `ECSStressTest`'s instanced mesh (unregistered geometry and material, added to the root scene)
   and its systems are never cleaned up and carry across scenes.

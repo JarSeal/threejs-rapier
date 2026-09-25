@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry, deleteGeometry } from '../../core/Geometry';
+import { createGeometry, deleteGeometry, saveBufferGeometry } from '../../core/Geometry';
 import { createMaterial } from '../../core/Material';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createMeshEntity, getMeshByAppId } from '../../core/MeshManager';
@@ -21,7 +21,8 @@ export const characterTestObstacles = async () => {
     newGeo.translate(0, stairOffsetH * i, stairOffsetW * i);
     stairGeos.push(newGeo);
   }
-  const stairsGeo = mergeGeometries(stairGeos, true);
+  // Registered so the mesh's ref count disposes it (an unregistered geometry is never disposed)
+  const stairsGeo = saveBufferGeometry(mergeGeometries(stairGeos, true), { id: 'stairsGeo' });
   deleteGeometry(oneStairGeo.userData.id);
   const stairsMat = createMaterial({
     id: 'largeGroundUvMat',

@@ -1,6 +1,19 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry, incGeometryRef, decGeometryRef, GeoProps } from './Geometry';
-import { createMaterial, incMaterialRef, decMaterialRef, MatProps, getMaterial } from './Material';
+import {
+  createGeometry,
+  incGeometryRef,
+  decGeometryRef,
+  GeoProps,
+  getGeometryRegistry,
+} from './Geometry';
+import {
+  createMaterial,
+  incMaterialRef,
+  decMaterialRef,
+  MatProps,
+  getMaterial,
+  getMaterialRegistry,
+} from './Material';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getRootScene } from './Scene';
 import { ThreeEuler, ThreeQuoternion } from '../utils/helpers';
@@ -13,6 +26,7 @@ import { existsOrThrow } from '../utils/assert';
 import { getGeometry } from './Geometry';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import { setFrustumCullingEnabled } from './ECS/ObjectFrustumCullingSystem';
+import { IS_DEBUG_ENV } from './Config';
 
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
@@ -33,6 +47,31 @@ export type MeshProps = {
   appId?: string;
   /** Native Object3D.frustumCulled (Three.js's own per-mesh render-list culling). Defaults to Three's own default (true). */
   frustumCullingEnabled?: boolean;
+};
+
+/** Debug only: warns about a geometry or material that isn't the registered one under its id (it
+ * has no id, or it's eg. a `.clone()` carrying its source's id). Mesh refs only release registered
+ * assets, so nothing ever disposes these, and they leak GPU memory on every scene visit. */
+const warnIfUnregistered = (
+  appId: string,
+  geo?: THREE.BufferGeometry,
+  material?: THREE.Material | THREE.Material[]
+) => {
+  if (!IS_DEBUG_ENV) return;
+  const describe = (id?: string) => (id ? `a copy carrying the id "${id}"` : 'no id');
+  const geoId = geo?.userData.id as string | undefined;
+  if (geo && getGeometryRegistry()[geoId || '']?.resource !== geo) {
+    lwarn(
+      `[MeshManager] Mesh "${appId}" uses an unregistered geometry (${describe(geoId)}), which is never disposed. Create it with createGeometry or register it with saveBufferGeometry.`
+    );
+  }
+  for (const m of Array.isArray(material) ? material : material ? [material] : []) {
+    const matId = m.userData.id as string | undefined;
+    if (getMaterialRegistry()[matId || '']?.resource === m) continue;
+    lwarn(
+      `[MeshManager] Mesh "${appId}" uses an unregistered material (${describe(matId)}), which is never disposed. Create it with createMaterial or register it with saveMaterial.`
+    );
+  }
 };
 
 export const createMeshEntity = (
@@ -74,6 +113,7 @@ export const createMeshEntity = (
   mesh.frustumCulled = props.frustumCullingEnabled ?? true;
   mesh.userData.id = appId;
 
+  warnIfUnregistered(appId, geo, mat);
   if (geo.userData.id) incGeometryRef(geo.userData.id);
   if (mat.userData.id) incMaterialRef(mat.userData.id);
 
@@ -222,6 +262,7 @@ export const setMeshMaterial = (mesh: THREE.Mesh, material: THREE.Material | THR
   const prev = mesh.material;
   mesh.material = material;
   if (mesh.userData.entityId === undefined || prev === material) return;
+  warnIfUnregistered(mesh.userData.id, undefined, material);
   // New refs first: the old and new material can share ids (eg. the same one in an array)
   forEachMaterialId(material, incMaterialRef);
   forEachMaterialId(prev, decMaterialRef);

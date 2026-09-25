@@ -365,15 +365,17 @@ export const scene = async () =>
       addCheckerboardMaterialToMesh('checkerMaterial', m);
     }
 
-    const slideMat = (
-      Array.isArray(bigBoxWallMesh.material)
-        ? bigBoxWallMesh.material[0]?.clone()
-        : bigBoxWallMesh.material?.clone()
-    ) as THREE.MeshPhongMaterial;
-    slideMat.map = uvTexture.clone();
-    slideMat.map.wrapS = THREE.RepeatWrapping;
-    slideMat.map.wrapT = THREE.RepeatWrapping;
-    slideMat.map.repeat.set(34, 34);
+    const slideTexture = uvTexture.clone();
+    slideTexture.wrapS = THREE.RepeatWrapping;
+    slideTexture.wrapT = THREE.RepeatWrapping;
+    slideTexture.repeat.set(34, 34);
+    // Registered (not a clone of bigBoxWallMesh's material, which would carry its id) so it and
+    // its map are disposed when the slide is deleted
+    const slideMat = createMaterial({
+      id: 'slideAnglesMat',
+      type: 'PHONG',
+      params: { color: '#999', map: slideTexture },
+    });
     await getTestObstacle('slideAngles', {
       transform: { position: { x: 30, y: -1.9, z: -30 } },
       material: slideMat,
