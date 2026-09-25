@@ -1,21 +1,30 @@
 import * as THREE from 'three/webgpu';
 
 import { ECSWorld } from '../../ECS';
-import { ComponentType } from '../../ECS/ECSCoreComponents';
+import { ComponentType, type CoreComponentData } from '../../ECS/ECSCoreComponents';
+import { CoreComponentType } from '../../ECS/ECSRegistry';
 import { ECSSystemStage } from '../../../../AppECSRegistry';
 import { existsOrThrow } from '../../../utils/assert';
 import { getRootScene } from '../../Scene';
 import { isAnyLightHelperVisible } from '../../LightManager';
 
+/**
+ * Removes a light's helper and its shadow camera helper from the scene and
+ * disposes their internal geometries/materials.
+ */
+export const disposeLightHelpers = (
+  helperComp: CoreComponentData[CoreComponentType.DEBUG_LIGHT_HELPER]
+) => {
+  helperComp.value.removeFromParent();
+  helperComp.value.dispose();
+  helperComp.camHelper?.removeFromParent();
+  helperComp.camHelper?.dispose();
+};
+
 ECSWorld.registerComponentHooks(ComponentType.DEBUG_LIGHT_HELPER, {
   onDeleteEntity: (entityId, world) => {
     const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
-    if (helper) {
-      helper.value.removeFromParent();
-      // Helpers often have internal geometries/materials to dispose
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((helper.value as any).dispose) (helper.value as any).dispose();
-    }
+    if (helper) disposeLightHelpers(helper);
   },
 });
 

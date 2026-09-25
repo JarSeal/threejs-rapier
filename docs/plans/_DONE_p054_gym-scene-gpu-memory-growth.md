@@ -143,7 +143,9 @@ Cycle script after the fix (5 cycles):
 | no query | 30 / 15 every visit | 2 / 3 every visit |
 
 The heap diff between visits 2 and 4 is flat too, except for a debug camera helper (see the
-follow-ups).
+follow-ups). Correction, found in p055: it isn't flat. Each Gym visit also leaves ~16
+`_BufferGeometry` objects in the JS heap, in every mode, held through Three's bind group cache
+([p056_three-bind-group-cache-light-leak.md](./p056_three-bind-group-cache-light-leak.md)).
 
 ### Method gotchas
 
@@ -157,7 +159,9 @@ follow-ups).
 - A shortest retainer path found with a plain BFS can go through a WeakMap value (eg.
   `DirectionalLightNode → .light`) even when only its own key keeps it alive. Skip the
   `part of key ... -> value` edges to find real retainers, and strip `@ids` and numeric indices
-  from labels to compare paths between snapshots.
+  from labels to compare paths between snapshots. (Skipping them hides objects held only by a
+  WeakMap: see the Method gotchas in
+  [\_DONE_p055_debug-camera-helper-leak.md](./_DONE_p055_debug-camera-helper-leak.md).)
 - The retained geometries can be listed live from
   `renderer._geometries._geometryDisposeListeners`. Textures have no such map: add a `dispose`
   listener to every texture reachable from the scene, then check `renderer._textures.has(t)`
@@ -167,7 +171,7 @@ follow-ups).
 
 - Debug only: the `CameraHelper` left in the root scene per Gym visit is the sun's shadow camera
   helper, which the light helpers' delete hook never removes:
-  [p055_debug-camera-helper-leak.md](./p055_debug-camera-helper-leak.md).
+  [\_DONE_p055_debug-camera-helper-leak.md](./_DONE_p055_debug-camera-helper-leak.md).
 - The new warning finds the same leak in `largeWorld`: `largeWorldTerrain` (the generated terrain
   geometry), `largeWorldDynamicCrateStack` and `largeWorldDynamicBarbell` (`mergeGeometries`
   results) use unregistered geometries. One More Scene has 5 more geometries after a `largeWorld`
