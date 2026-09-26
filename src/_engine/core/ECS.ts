@@ -28,6 +28,8 @@ type SystemEntry = { id: string; fn: ECSSystem; order: number; seq: number };
 
 export type WorldPlugin = (world: ECSWorld) => void;
 export type ComponentHook = (entityId: number, world: ECSWorld) => void;
+/** See ECSWorld.registerTransformResetListener. */
+export type TransformResetListener = (world: ECSWorld, entityId: number) => void;
 
 export const DEFAULT_ECS_WORLD_ID = '[default]';
 
@@ -117,6 +119,7 @@ export class ECSWorld {
   private static onAddComponentHooks: Map<ComponentType, ComponentHook[]> = new Map();
   private static onRemoveComponentHooks: Map<ComponentType, ComponentHook[]> = new Map();
   private static onDeleteEntityHooks: Map<ComponentType, ComponentHook[]> = new Map();
+  private static transformResetListeners: TransformResetListener[] = [];
 
   /** * Global registration methods.
    * Managers call these once at app startup.
@@ -210,6 +213,17 @@ export class ECSWorld {
       if (!this.onDeleteEntityHooks.has(type)) this.onDeleteEntityHooks.set(type, []);
       this.onDeleteEntityHooks.get(type)!.push(hooks.onDeleteEntity);
     }
+  }
+
+  /**
+   * Registers a listener fired whenever setTransform (and so teleport) explicitly moves or
+   * rotates an entity, after its rigid body and TRANSFORM have been updated. That is a pose
+   * discontinuity: anything holding pose history (e.g. PhysicsManager's render interpolation)
+   * must not smooth across it. Static like registerComponentHooks, so it covers every world —
+   * and lets such managers react without ECS importing them back.
+   */
+  public static registerTransformResetListener(listener: TransformResetListener) {
+    this.transformResetListeners.push(listener);
   }
 
   // Bitwise constants for generation usage:
@@ -667,6 +681,10 @@ export class ECSWorld {
       transform.setDirty();
       this.commitTransform(entityId, transform);
     }
+
+    if (pos || rot) {
+      for (const listener of ECSWorld.transformResetListeners) listener(this, entityId);
+    }
   }
 
   /**
@@ -675,7 +693,7 @@ export class ECSWorld {
    * the object doesn't carry old momentum to the new spot.
    */
   public teleport(entityId: number, tra: ECSTransformProp): void {
-    // @CHORE: We probably need to take interpolation into consideration (set the prev transform to the new position)
+    // Render interpolation history is invalidated by setTransform's transform reset listeners.
     this.setTransform(entityId, { ...tra, resetVelocity: true, resetForces: true });
   }
 

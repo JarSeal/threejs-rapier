@@ -723,6 +723,10 @@ export const getPhysicsSnapshotStepIndex = () =>
     ? transformBuffer?.getStepIndex() ?? 0
     : stepsIssued;
 
+/** The snapshot step index from which a pose/velocity write made right now shows up in the
+ * snapshots (see getPhysicsSnapshotStepIndex) — anything stamped earlier predates it. */
+export const getPhysicsWriteVisibleStep = () => getWriteVisibleStep();
+
 /** Stamp of the latest visible snapshot: `step` = getPhysicsSnapshotStepIndex(), `phase` = the
  * accumulator's fraction of a step when its batch was issued (0 if no longer known). Returns
  * false before the first snapshot. Writes into `out`, allocation-free. */

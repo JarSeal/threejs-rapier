@@ -20,6 +20,7 @@ import {
   getPhysicsSimClockEpoch,
   getPhysicsSimHistoryEpoch,
   getPhysicsState,
+  getPhysicsWriteVisibleStep,
   readPhysicsSnapshotStamp,
 } from './PhysicsAPI';
 import {
@@ -370,6 +371,12 @@ type InterpolationHistory = {
    * state's previous `lastStep` when a new snapshot arrives means this entity missed one (new,
    * disabled, skipped) — its history has a hole and gets reseeded instead of shifted. */
   capturedAt: number;
+  /** Set by an explicit pose reset (setTransform/teleport): until a snapshot stamped at least
+   * this step is visible, no snapshot reflects the new pose yet, so snapPose is shown as-is and
+   * nothing is captured. 0 = not snapping. */
+  snapUntilStep: number;
+  /** The reset pose (POSE_FLOATS), allocated on the entity's first reset. */
+  snapPose: Float32Array | null;
 };
 
 /** Live values for the Physics API debug tab, mutated in place (never reallocated). */
@@ -447,7 +454,10 @@ const getWorldInterpolationState = (world: ECSWorld) => {
 /** Throws away every pose history (they'll reseed on their next capture). Rare — world
  * replaced / snapshot restored — so the per-entity walk is fine. */
 const resetInterpolationHistory = (state: WorldInterpolationState) => {
-  for (const history of state.histories.values()) history.capturedAt = NO_SNAPSHOT;
+  for (const history of state.histories.values()) {
+    history.capturedAt = NO_SNAPSHOT;
+    history.snapUntilStep = 0; // a stale target from the previous timeline could never be reached
+  }
   state.lastStep = NO_SNAPSHOT;
   state.intervals.fill(1);
   state.wasLastIntervalOutlier = false;
@@ -485,6 +495,36 @@ const writeHistorySlot = (
   poses[o + 5] = rot.z * invQuatLength;
   poses[o + 6] = rot.w * invQuatLength;
 };
+
+const createInterpolationHistory = (): InterpolationHistory => ({
+  poses: new Float32Array(HISTORY_SLOTS * POSE_FLOATS),
+  capturedAt: NO_SNAPSHOT,
+  snapUntilStep: 0,
+  snapPose: null,
+});
+
+// Explicit pose resets (setTransform/teleport) are discontinuities: without this the history
+// would blend from the old position to the new one — a visible streak across the jump. The
+// history isn't reseeded here: under WORKER_THREAD rb.pos is still the not-yet-stepped pending
+// value, and stamping it with the latest snapshot's step would place it at a simulated time it
+// doesn't belong to. The reset pose is shown as-is instead until a later-stamped snapshot lands.
+ECSWorld.registerTransformResetListener((world, entityId) => {
+  if (!world.hasComponent(entityId, ComponentType.BODY_DYNAMIC_VISUAL)) return;
+  const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+  if (!transform) return;
+  const state = getWorldInterpolationState(world);
+  let history = state.histories.get(entityId);
+  if (!history) {
+    history = createInterpolationHistory();
+    state.histories.set(entityId, history);
+  }
+  const q = transform.quaternion;
+  const quatLengthSq = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+  if (quatLengthSq < MIN_QUAT_LENGTH_SQ) return;
+  history.snapPose ??= new Float32Array(POSE_FLOATS);
+  writeHistorySlot(history.snapPose, 0, transform.position, q, 1 / Math.sqrt(quatLengthSq));
+  history.snapUntilStep = getPhysicsWriteVisibleStep();
+});
 
 /**
  * Render-only smoothing on top of the discrete physics-step pose: writes the blended pose only
@@ -665,6 +705,17 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
     if (!obj3D) continue;
 
     let history = state.histories.get(entityId);
+    if (history && history.snapUntilStep > 0) {
+      if (state.lastStep < history.snapUntilStep) {
+        const p = history.snapPose!;
+        obj3D.position.set(p[0], p[1], p[2]);
+        obj3D.quaternion.set(p[3], p[4], p[5], p[6]);
+        continue;
+      }
+      // The first snapshot that includes the reset: start the history over from it.
+      history.snapUntilStep = 0;
+      history.capturedAt = NO_SNAPSHOT;
+    }
     if (!history || history.capturedAt !== state.lastStep) {
       const rot = rb.rot;
       const quatLengthSq = rot.x * rot.x + rot.y * rot.y + rot.z * rot.z + rot.w * rot.w;
@@ -672,7 +723,7 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
       const invQuatLength = 1 / Math.sqrt(quatLengthSq);
       const pos = rb.pos;
       if (!history) {
-        history = { poses: new Float32Array(HISTORY_SLOTS * POSE_FLOATS), capturedAt: NO_SNAPSHOT };
+        history = createInterpolationHistory();
         state.histories.set(entityId, history);
       }
       const poses = history.poses;
