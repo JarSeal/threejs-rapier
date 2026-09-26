@@ -43,6 +43,10 @@ import {
   setGlobalWireframeColor,
   setGlobalWireframeColors,
   setGlobalWireframeLineThickness,
+  getWireframePoseSource,
+  setWireframePoseSource,
+  DEFAULT_WIREFRAME_POSE_SOURCE,
+  type WireframePoseSource,
   setWireframeVisible,
   WIREFRAME_COLOR_STATES,
   type WireframeColorState,
@@ -81,7 +85,12 @@ let entityWindowPane: Pane | null = null;
 type PersistedWireframeState = {
   colors?: Partial<Record<WireframeColorState, number>>;
   lineThickness?: number;
+  poseSource?: WireframePoseSource;
 };
+
+/** The "Wireframe pose" dropdown, when the tab is open — so the wireframe folder's reset can
+ * move it back to the default. */
+let wireframePoseDropDown: ListBladeApi<WireframePoseSource> | null = null;
 
 /** Human-readable labels for the color pickers, phrased as the condition each one paints. */
 const WIREFRAME_STATE_LABELS: Record<WireframeColorState, string> = {
@@ -102,6 +111,9 @@ const restoreWireframeState = () => {
   if (typeof saved.lineThickness === 'number') {
     setGlobalWireframeLineThickness(saved.lineThickness);
   }
+  if (saved.poseSource === 'PHYSICS' || saved.poseSource === 'RENDERED') {
+    setWireframePoseSource(saved.poseSource);
+  }
 };
 
 /** Persists only what the user actually overrode — an untouched state stays absent, so it
@@ -113,6 +125,8 @@ const persistWireframeState = () => {
   const payload: PersistedWireframeState = {};
   if (Object.keys(colors).length) payload.colors = colors;
   if (!isDefaultThickness) payload.lineThickness = lineThickness;
+  const poseSource = getWireframePoseSource();
+  if (poseSource !== DEFAULT_WIREFRAME_POSE_SOURCE) payload.poseSource = poseSource;
   if (!Object.keys(payload).length) {
     lsRemoveItem(WIREFRAME_LS_KEY);
     return;
@@ -512,6 +526,8 @@ const addWireframeFolder = (debugGUI: Pane) => {
     }
     setGlobalWireframeLineThickness(undefined);
     thicknessProxy.lineThickness = getWireframeLineThicknessDefault();
+    setWireframePoseSource(undefined);
+    if (wireframePoseDropDown) wireframePoseDropDown.value = DEFAULT_WIREFRAME_POSE_SOURCE;
     lsRemoveItem(WIREFRAME_LS_KEY);
     folder.refresh();
   });
@@ -749,6 +765,23 @@ export const _createPhysicsAPIDebugGUI = () => {
       interpolationModeDropDown.on('change', (e) => {
         state.interpolationMode = e.value as unknown as PhysicsInterpolationMode;
         persistLiveState(state);
+      });
+
+      // Which pose moving bodies' collider wireframes follow: the raw physics pose shows the
+      // interpolation offset (the mesh trails its wireframe while moving), the rendered pose
+      // puts the wireframe on the mesh. Headless bodies have no mesh and always show physics.
+      wireframePoseDropDown = debugGUI.addBlade({
+        view: 'list',
+        label: 'Wireframe pose (moving bodies)',
+        options: [
+          { value: 'PHYSICS', text: 'Physics (raw stepped pose)' },
+          { value: 'RENDERED', text: 'Rendered (interpolated mesh pose)' },
+        ],
+        value: getWireframePoseSource(),
+      }) as ListBladeApi<WireframePoseSource>;
+      wireframePoseDropDown.on('change', (e) => {
+        setWireframePoseSource(e.value);
+        persistWireframeState();
       });
 
       // Live render-clock values (updated by physicsInterpolationSystem, frozen in 'NONE') —

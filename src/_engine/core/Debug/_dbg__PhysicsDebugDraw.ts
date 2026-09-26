@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 import { existsOrThrow } from '../../utils/assert';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lwarn } from '../../utils/Logger';
@@ -136,6 +136,24 @@ export const getGlobalWireframeColorOverrides = (): PhysicsWireframeColors => ({
 export const resetGlobalWireframeColors = () => {
   for (const state of WIREFRAME_COLOR_STATES) delete globalColorOverrides[state];
   repaintAllWireframes();
+};
+
+/**
+ * Which pose the wireframes of moving bodies follow. 'PHYSICS' (default) = the raw stepped
+ * pose from the latest physics snapshot, so any render interpolation offset shows as the mesh
+ * trailing its wireframe. 'RENDERED' = the mesh's final render pose (interpolated, or in 'NONE'
+ * whatever the renderer draws), so the wireframe sits on the mesh. Bodies without an Object3D
+ * (BODY_DYNAMIC_HEADLESS) have no rendered pose and always follow the physics pose.
+ */
+export type WireframePoseSource = 'PHYSICS' | 'RENDERED';
+export const DEFAULT_WIREFRAME_POSE_SOURCE: WireframePoseSource = 'PHYSICS';
+let wireframePoseSource: WireframePoseSource = DEFAULT_WIREFRAME_POSE_SOURCE;
+
+export const getWireframePoseSource = () => wireframePoseSource;
+
+/** `undefined` restores the default. Takes effect on the next frame. */
+export const setWireframePoseSource = (source?: WireframePoseSource) => {
+  wireframePoseSource = source ?? DEFAULT_WIREFRAME_POSE_SOURCE;
 };
 
 /**
@@ -297,12 +315,15 @@ type EntityWireframes = {
   entityId: number;
   rb?: RigidBodyAPI;
   /** The entity's Object3D, when the wireframes hang off it and the scene graph keeps
-   * them positioned for free. Undefined when they live under `host` instead. */
+   * them positioned for free (static bodies only). Undefined when they live under `host`. */
   parent?: THREE.Object3D;
-  /** Debug-only root-scene Object3D, for entities with no Object3D to piggyback on. */
+  /** Debug-only root-scene Object3D, for moving bodies and for anything with no Object3D. */
   host?: THREE.Object3D;
-  /** True for BODY_DYNAMIC_HEADLESS: moves, but has no Object3D — the only case that
-   * needs a per-frame transform sync from this module. */
+  /** A moving body's own Object3D (BODY_DYNAMIC_VISUAL only), followed instead of the raw
+   * physics pose while the pose source is 'RENDERED'. */
+  renderObject?: THREE.Object3D;
+  /** True for every moving body (BODY_DYNAMIC_VISUAL and BODY_DYNAMIC_HEADLESS): its host
+   * is synced from the raw physics pose every frame by this module. */
   needsTransformSync: boolean;
   colliders: ColliderWireframe[];
 };
@@ -676,10 +697,16 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
     // pinned-FAT lines would start 1px and swap backends when the chunk arrives.
     await preloadFatLineBackend();
     const rb = world.getRigidBody(entityId);
-    const parent = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
-    // Only a body that both moves and has no Object3D needs this module to move its
-    // wireframe. A parented one rides the scene graph; a static one never moves.
-    const needsTransformSync = world.hasComponent(entityId, ComponentType.BODY_DYNAMIC_HEADLESS);
+    // Every moving body gets its own host synced from the raw physics pose, even one with an
+    // Object3D: render interpolation writes a blended pose into that Object3D, and this is
+    // the tool for inspecting the offset between the two — riding the mesh would hide it.
+    // Only static bodies (which never move, so never interpolate) hang off their Object3D.
+    const needsTransformSync =
+      world.hasComponent(entityId, ComponentType.BODY_DYNAMIC_VISUAL) ||
+      world.hasComponent(entityId, ComponentType.BODY_DYNAMIC_HEADLESS);
+    const object3D = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
+    const parent = needsTransformSync ? undefined : object3D;
+    const renderObject = needsTransformSync ? object3D : undefined;
 
     for (const collider of colliders) {
       const geometry = await buildShapeGeometry(collider);
@@ -717,7 +744,8 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
     if (parent) {
       for (const cw of built) cw.line.attach({ to: 'PARENT', parent });
     } else {
-      // A plain Object3D this module owns (the headless sync below moves it every frame)
+      // A plain Object3D this module owns (physicsWireframeSystem moves it every frame when
+      // the body moves)
       host = new THREE.Object3D();
       host.name = `physicsWireframeHost_e${entityId}`;
       for (const cw of built) cw.line.attach({ to: 'PARENT', parent: host });
@@ -729,6 +757,7 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
       rb,
       parent,
       host,
+      renderObject,
       needsTransformSync,
       colliders: built,
     };
@@ -909,18 +938,34 @@ const flushTracking = () => {
  * actually changed. Takes no world argument: everything it reads is module state, keyed
  * by entity id.
  */
+const _renderObjectScale = new THREE.Vector3();
+
 const physicsWireframeSystem = () => {
   if (trackingDirty) flushTracking();
   if (!wireframes.size) return;
 
   const worker = isWorkerMode();
   const globals = getWireframeColors();
+  const followRendered = wireframePoseSource === 'RENDERED';
 
   for (const entry of wireframes.values()) {
-    if (entry.needsTransformSync && entry.host && entry.rb) {
-      // BODY_DYNAMIC_HEADLESS: moves, but has no Object3D for the scene graph to carry.
-      entry.host.position.set(entry.rb.pos.x, entry.rb.pos.y, entry.rb.pos.z);
-      entry.host.quaternion.set(entry.rb.rot.x, entry.rb.rot.y, entry.rb.rot.z, entry.rb.rot.w);
+    if (entry.needsTransformSync && entry.host) {
+      if (followRendered && entry.renderObject) {
+        // The mesh's final render pose. This system runs after every render-pose producer
+        // (APP_RENDER_SYNC_ORDER.POSE_CONSUMERS), and the world matrix is brought up to date
+        // here since the renderer only does that later in the frame. Scale is dropped: collider
+        // dimensions are in unscaled physics space.
+        entry.renderObject.updateWorldMatrix(true, false);
+        entry.renderObject.matrixWorld.decompose(
+          entry.host.position,
+          entry.host.quaternion,
+          _renderObjectScale
+        );
+      } else if (entry.rb) {
+        // The raw stepped pose (latest snapshot), never the interpolated render pose.
+        entry.host.position.set(entry.rb.pos.x, entry.rb.pos.y, entry.rb.pos.z);
+        entry.host.quaternion.set(entry.rb.rot.x, entry.rb.rot.y, entry.rb.rot.z, entry.rb.rot.w);
+      }
     }
     if (entry.parent) applyLocalTransforms(entry);
 
@@ -973,7 +1018,14 @@ ECSWorld.registerComponentHooks(ComponentType.COLLIDER, {
 });
 
 ECSWorld.registerPlugin((world) => {
-  world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'physicsWireframeSystem', physicsWireframeSystem);
+  // POSE_CONSUMERS: in 'RENDERED' pose mode this reads the render pose of other entities, so
+  // it must run after physicsInterpolationSystem whatever the registration order.
+  world.addSystem(
+    ECSSystemStage.APP_RENDER_SYNC,
+    'physicsWireframeSystem',
+    physicsWireframeSystem,
+    APP_RENDER_SYNC_ORDER.POSE_CONSUMERS
+  );
 
   // Pick up anything that already had the component before this module finished loading
   // (it's dynamically imported, so a world can outrun it).
