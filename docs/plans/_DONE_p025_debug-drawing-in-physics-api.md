@@ -194,3 +194,11 @@ Verification section's "nothing from this feature in the production chunk" rule,
 by the user. Everything else honours it: `_dbg__PhysicsDebugDraw.ts` (10.74 kB) and the two
 fat-line addon modules all split into lazy chunks, and the production chunk has zero hits
 for any wireframe logic.
+
+> **Amended by [_DONE_p058_line-rendering-system.md](./_DONE_p058_line-rendering-system.md)
+> (2026-09-26):** the wireframes now draw with the engine's own line system and nothing
+> references `Line2NodeMaterial` any more — but that removed only **2.5 kB raw / 0.6 kB gzip**
+> of this cost. Its module-level TSL graphs (`mvpLine`, `alphaLine`, …) are not
+> `/*@__PURE__*/`-annotated inside `three.webgpu.js`, so they stay in the main chunk
+> regardless; "referencing it stops Rollup tree-shaking its TSL node graph out" above is
+> therefore only true of the class itself. See p058's Implementation notes for the numbers.

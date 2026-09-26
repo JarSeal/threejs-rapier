@@ -2,7 +2,7 @@
 
 Status: draft | not-implemented
 Category: Debugger
-Blocked by: [_DONE_p050_spatial-index.md](./_DONE_p050_spatial-index.md), [_DONE_p081_light-object-culling.md](./_DONE_p081_light-object-culling.md), [p058_line-rendering-system.md](./p058_line-rendering-system.md)
+Blocked by: [_DONE_p050_spatial-index.md](./_DONE_p050_spatial-index.md), [_DONE_p081_light-object-culling.md](./_DONE_p081_light-object-culling.md), [_DONE_p058_line-rendering-system.md](./_DONE_p058_line-rendering-system.md) (implemented — no longer blocking)
 
 ## Goal
 
@@ -13,7 +13,7 @@ Add a debug-mode toggle that visualizes the [spatial index grid](../../src/_engi
 - The spatial index is a sparse, CSR-backed uniform grid (`SpatialGrid.ts`), one instance per `ECSWorld`, held in a `WeakMap` and rebuilt every frame from current member positions ([SpatialIndexSystem.ts](../../src/_engine/core/Spatial/SpatialIndexSystem.ts), registered as a plugin on `ECSSystemStage.APP_POST_PHYSICS`). It is **not bounded by a fixed world-space AABB** — cells are only allocated where members actually land, so there is no single fixed "grid boundary" to draw; the outer extent of the visualization is simply the union of currently-occupied cell wireframes.
 - Members whose radius exceeds `cellSize * oversizedRadiusMultiplier` bypass the grid entirely (the "oversized tier", tracked in a separate `Set`). They have no cell to draw and are **out of scope** for this plan (see Non-goals).
 - §9 of `_DONE_p050_spatial-index.md` planned an occupancy histogram, live cell-size tuning, and a brute-force oracle for debug tooling — all already implemented in `_dbg__SpatialGrid.ts`. A 3D wireframe visualizer was never part of that plan; this is new scope.
-- The engine's established pattern for a toggleable 3D debug wireframe used to be the legacy physics collider debug mesh (`createPhysicsDebugMesh`/`stepperFnDebug` in [PhysicsRapier.ts:1465](../../src/_engine/core/PhysicsRapier.ts)): a single `LineSegments` created **once**, added to the scene, with its `BufferGeometry` position/color attributes **refilled every frame** while enabled; the toggle only flips a `visible` flag and an `enabled` state flag read by the per-frame refill — nothing is destroyed/recreated on toggle. **That pattern is superseded by the core Line rendering system** ([p058_line-rendering-system.md](./p058_line-rendering-system.md)), which owns exactly this shape: a pre-allocated segment buffer, an allocation-free `beginWrite()`/`endWrite()` refill that never re-wraps the attribute, `setColor()` as a uniform write, and `setVisible()`. This plan builds on that API rather than hand-rolling a third copy of it.
+- The engine's established pattern for a toggleable 3D debug wireframe used to be the legacy physics collider debug mesh (`createPhysicsDebugMesh`/`stepperFnDebug` in [PhysicsRapier.ts:1465](../../src/_engine/core/PhysicsRapier.ts)): a single `LineSegments` created **once**, added to the scene, with its `BufferGeometry` position/color attributes **refilled every frame** while enabled; the toggle only flips a `visible` flag and an `enabled` state flag read by the per-frame refill — nothing is destroyed/recreated on toggle. **That pattern is superseded by the core Line rendering system** ([_DONE_p058_line-rendering-system.md](./_DONE_p058_line-rendering-system.md)), which owns exactly this shape: a pre-allocated segment buffer, an allocation-free `beginWrite()`/`endWrite()` refill that never re-wraps the attribute, `setColor()` as a uniform write, and `setVisible()`. This plan builds on that API rather than hand-rolling a third copy of it.
 
 ## Design decisions
 
@@ -39,10 +39,10 @@ Add a debug-mode toggle that visualizes the [spatial index grid](../../src/_engi
 
 ### Phase 2 — Wireframe object + per-frame refill
 
-- In `_dbg__SpatialGrid.ts`: one `createLines({ ... })` call (p058), `id: 'SPATIAL_GRID_DEBUG_VISUALIZER'`, created once and `visible: false` by default. Pre-size `capacity` to `expectedCells * 12` segments and use `growth: 'FIXED'` so a per-frame refill with a known ceiling never reallocates mid-frame. `frustumCulled` stays at its default `false`, which is what a refilled line needs.
+- In `_dbg__SpatialGrid.ts`: one `createLines({ ... })` call (p058), `id: 'SPATIAL_GRID_DEBUG_VISUALIZER'`, created once and `visible: false` by default. Pre-size `capacity` to `expectedCells * 12` segments and use `growth: 'FIXED'` so a per-frame refill with a known ceiling never reallocates mid-frame. `frustumCulled` stays at its default `false`, which is what a refilled line needs. **Create it with `persistent: true`:** it is created once and outlives scenes, and a scene switch disposes every non-persistent standalone line (`disposeNonPersistentLines`, see p058's Implementation notes). `writeBox3Edges` takes a `THREE.Box3` — reuse one scratch box (`box.min.set(...)`/`box.max.set(...)`) per cell to keep the refill allocation-free.
 - **Use the `THIN` backend** (`backend: 'THIN'`). Occupied-cell counts can run into the tens of thousands (see Risks); as instanced quads that would be 12N instances rather than 12N line primitives. Thickness is not worth that here.
 - Add a debug-only ECS system registered on `ECSSystemStage.LATE_MAIN` (gated by `IS_DEBUG_ENV`, and internally no-op unless the visualizer is enabled for that world) that calls `getSpatialGrid(world).getOccupiedCellBoundsInto(...)` and refills via `beginWrite()` + `writeBox3Edges`/`writeBoxEdges` per AABB + `endWrite()`. p058's core system does **not** refill geometry for anyone — the refill cadence stays owned here.
-- Color is `lines.setColor()`, a uniform write, so the color picker (Phase 3) updates live with no geometry rebuild. No material handling needed in this plan.
+- Color is `lines.setColor()`, a uniform write, so the color picker (Phase 3) updates live with no geometry rebuild. No material handling needed in this plan. Note that lines are tone-mapped with the rest of the scene (p058 Implementation notes), so the drawn red will not be exactly `#ff0000`.
 
 ### Phase 3 — Tweakpane UI
 

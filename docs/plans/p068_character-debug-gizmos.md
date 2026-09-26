@@ -28,9 +28,8 @@ The grounded ray does **not** use `_groundedRayMaxDistance` (that field is never
 ## 2. Notes
 
 - **Renderer.**
-  - The preferred renderer is the engine line system from `p058_line-rendering-system.md`, if it lands first.
-  - The existing precedent is `src/_engine/core/Debug/_dbg__PhysicsDebugDraw.ts`, which already draws physics wireframes with fat lines, colour states and thickness settings.
-  - Decide between waiting for p058 and a minimal `THREE.ArrowHelper`/`LineSegments` version.
+  - The renderer is the engine line system (`LineManager.ts`, [_DONE_p058_line-rendering-system.md](./_DONE_p058_line-rendering-system.md), implemented): `createLines` + `beginWrite`/`endWrite` for per-frame refill, `setColor`/`setColorStyle` for state colours, `width` for thickness.
+  - The existing precedent is `src/_engine/core/Debug/_dbg__PhysicsDebugDraw.ts`, which draws physics wireframes on that system with colour states and a thickness setting.
 - **Worker mode.** Shape-cast and ray results are async and one step late (`dynamicCharacter.ts:278-284`). The gizmo shows the _cached_ result the controller actually used, which is the honest thing to draw.
 - **Implementation pattern.** Debug-only, in a `_dbg__` module under `src/_engine/core/Debug/Character/`. Gizmo objects are created once and updated in place in a late main looper (same lifecycle as p067 §3.8), with no per-frame allocation, and disposed on window close or scene change.
 

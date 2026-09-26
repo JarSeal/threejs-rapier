@@ -1,8 +1,14 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Rendering
 Blocks: p125_spatial-index-system-visualizer.md
 
 # Line Rendering System — Core Engine — Plan
+
+> **Implemented (2026-09-26).** The design below is kept as written; where the code departs
+> from it, and the measured bundle result, are in **Implementation notes** at the end — read
+> those first. In particular: Design decision 10 does not hold on WebGPURenderer (lines are
+> tone-mapped), Design decision 1's `colorNode` argument is obsolete on three r186, and the
+> bundle is a net **increase**, not a saving.
 
 A first-class engine system for drawing line segments — usable from gameplay code, not just
 debug tooling. It owns the segment buffer, the thin/thick backends, colour (static **and**
@@ -408,3 +414,105 @@ not just the net.
   "Manual verification" notes above.
 - Phase 7's bundle diff is the plan's headline result: the grep table is the gate, the raw/gzip delta
   on `index-*.js` is the number.
+
+## Implementation notes
+
+Implemented in phases 0-7 (commits `e2cccdf`..`9e1f5ae` plus the Phase 7 docs).
+
+### Bundle measurement (Phase 7)
+
+Instead of `git stash -u` (which would have hot-reloaded a running dev server onto reverted
+files), each state was built with the real `yarn build` in a throwaway git worktree:
+`b3d258c` (before Phase 0), `HEAD` (`9e1f5ae`), and a *variant* of `HEAD` with the only two
+static imports of the line core removed (`registerLineManager()` in `InitApp.ts`,
+`disposeNonPersistentLines()` in `SceneLoader.ts`), which separates the two halves of the
+delta. Main chunk (`dist/assets/index-*.js`), gzip at level 9:
+
+| Build | Raw (B) | Gzip (B) |
+| --- | --- | --- |
+| before (`b3d258c`) | 3,555,833 | 1,207,236 |
+| variant (`HEAD`, line core not statically imported) | 3,553,345 | 1,206,598 |
+| after (`HEAD`) | 3,565,605 | 1,210,798 |
+
+- **`Line2NodeMaterial` out: −2,488 B raw / −638 B gzip** (before → variant; this also
+  includes the few bytes of `getElapsedTime` and the two new ECS component types).
+- **Line core statically reachable: +12,260 B raw / +4,200 B gzip** (variant → after; the same
+  code is a 12,091 B lazy `LineManager-*.js` chunk in the variant).
+- **Net: +9,772 B raw / +3,562 B gzip.** Vite's own report: 3,555.83 → 3,565.61 kB,
+  1,206.21 → 1,209.87 kB gzip.
+- Lazy chunks: `LineSegments2` (3.79 kB) and `LineSegmentsGeometry` (2.62 kB) are gone;
+  `LineBackendFat` is new at 4.21 kB (1.73 kB gzip); `_dbg__PhysicsDebugDraw` 11.26 → 9.86 kB;
+  `_dbg__Raycast` 8.24 → 8.04 kB.
+- The plan's baseline (3,593,675 B) was stale: `dist/` had been rebuilt from `b3d258c`
+  (3,555,833 B, byte-identical to the "before" build here).
+
+Gate table: `isLine2NodeMaterial` 1 → **0** ✓, `worldUnits` 1 → **0** ✓, `LineSegments2-*.js`
+**gone** ✓, the TSL-namespace control 1 → **1** ✓, **`useDash` 1 → 1 ✗**.
+
+**Why the removal only saved 2.5 kB, and why `useDash` stays.** In `three.webgpu.js`,
+`Line2NodeMaterial`'s module-level TSL graphs — `trimSegmentAlpha`, `closestLineToLine`,
+`mvpLine`, `alphaLine` (`Fn(...)`, `Fn(...)()`) and its four `varyingProperty(...)` varyings —
+are **not** `/*@__PURE__*/`-annotated, so Rollup keeps them whether or not anything uses the
+class; only the class and its `/*@__PURE__*/ new LineDashedMaterial()` defaults went. So the
+Context section's "the only lever is: stop referencing the class" was only partly right, and
+most of p025's recorded 12.7 kB was never removable this way. The *rest* of Design decision 1
+still stands (owned blending, no silent 1px fallback, no raycast machinery), but its bundle
+side is a net cost.
+
+**Follow-up worth doing:** the +12.3 kB line core ships in production although this app draws
+no lines outside its debug tooling. Registering the time system on the first `createLines`
+and having the line manager hook itself into scene teardown (instead of `SceneLoader`
+importing it) would make that cost ~0 for apps that don't draw lines — in line with "you only
+bring into existence what you need". Not done here.
+
+### Where the implementation departs from this plan
+
+- **Phase 0 — pause.** The loop's `Timer` is never reset, so the first delta after a master
+  pause spans the whole pause; `getElapsedTime()` discards it (as `stepPhysics` does). The
+  pause is detected inside the loop, because the debug GUI writes `loopState.masterPlay`
+  directly rather than calling `toggleMainPlay`.
+- **Design decision 1 — `colorNode`.** Obsolete on three r186: `lineColorNode` is a
+  deprecated alias of `colorNode` (`Line2NodeMaterial.js:548-558`) and nothing overwrites it.
+  The line references into that file are stale.
+- **Design decision 1 / Phase 2 — MSAA.** The MSAA gating is not a trap on this renderer: the
+  canvas is `alpha: true`, so cap coverage written as alpha without MSAA or blending shows the
+  page through. `LineNodeMaterial` branches at build time like three does (smooth caps with
+  MSAA *or* when transparent, hard round caps otherwise); `opacity` works (normal blending).
+- **Design decision 10 — rejected.** `WebGPURenderer` renders into a frame-buffer target and
+  tone-maps the whole frame in its output pass; `material.toneMapped` is only read by
+  `WebGLRenderer`. Lines are tone-mapped like the rest of the scene (`#3366cc` renders as
+  `#0d53b8` with ACES at 0.7 exposure). Accepted; the dead `toneMapped = false` settings were
+  removed. Exact line colours would need a post-output overlay pass — a separate plan.
+- **Design decision 5 — "allocation-free".** Writing segments allocates nothing; each commit
+  costs ~78 B because the renderer clears `updateRanges` after every upload and V8 regrows the
+  array (a retained range object avoids a further 32 B). On FAT lines both instance attributes
+  upload the shared buffer (three tracks versions per attribute), so a refill uploads the
+  written range plus the full capacity; two buffers would halve that at double the memory.
+- **Design decision 7 — colour ownership.** `LineObject` owns the colour uniforms and the
+  colour graph and hands the same nodes to whichever backend draws it
+  (`setColorNodes`/`setTransparent`), so `setColor` and pulses share one writer across swaps.
+- **Design decision 8 — `autoPhase`.** Plain FNV-1a left ids differing only in their last
+  character ~0.004 cycles apart (a grid still pulsed in unison); a murmur3 finaliser fixes it.
+- **Design decision 11 / Files — ECS.** No `entityId → id` map: the `LINE` component is that
+  map, per world. The ECS glue lives in `Lines/LineEntity.ts` (so `LineObject` can call it
+  without an import cycle). `attach: { to: 'ENTITY' }` is placement only.
+- **Design decision 12 — tagging.** The FAT object is marked `isFatLineSegments`, not
+  `isLine`: the renderer reads `isLine` on a Mesh as "draw as a line strip". Entities are
+  re-tagged after creation and after every swap, as planned.
+- **Lifetime (not in the plan).** A scene switch runs `disposeNonPersistentLines()`: standalone
+  lines are disposed unless created `persistent: true`; entity-bound lines follow their entity
+  (`clearNonPersistent`). `disposeAllLines()` disposes everything.
+- **Registration.** `registerLineManager()` takes no world (core plugins and component hooks
+  are static) and there is no side-effect import (`SceneLoader` already imports the manager).
+- **Raycasting.** Both backends' `raycast` is a no-op, so a line's pickability doesn't depend
+  on its backend. Physics wireframes no longer intercept scene raycasts (`LineSegments2` did).
+- **Phase 5.** `await preloadFatLineBackend()` replaces `await loadFatLineDeps()` rather than
+  being removed: pinning `'FAT'` alone would still create each line THIN and swap it when the
+  chunk arrives. Wireframe lines are `persistent` (their module owns their lifetime).
+- **Phase 6.** `ad336bf` had removed the only caller of `cleanUpRayHelpers()`; helper id arrays
+  grew on every draw, stale helpers stayed up until a scene switch, and the ray statistics
+  stopped updating. `_dbg__Raycast.ts` now registers its own `LATE_MAIN` cleanup system.
+- **Phase 7 — p125.** Its header, Context, Phase 2 and open question had already been updated
+  when this plan was written; only the link and a `persistent: true` note were added.
+- **Found along the way.** `_dbg__MainLoop.ts` tested `!isProdTestMode` (a function, always
+  truthy); fixed to `IS_PROD_TEST_MODE`, so prod-test mode gets only the on-screen play tools.
