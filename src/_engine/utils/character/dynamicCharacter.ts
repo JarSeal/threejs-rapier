@@ -1,6 +1,5 @@
 import * as THREE from 'three/webgpu';
 import { CharacterObject, createCharacter, deleteCharacter } from '../../core/Character';
-import { transformAppSpeedValue } from '../../core/MainLoop';
 import { getECSWorld, type ECSWorld } from '../../core/ECS';
 import { ComponentType } from '../../core/ECS/ECSCoreComponents';
 import { ECSSystemStage } from '../../../AppECSRegistry';
@@ -88,8 +87,12 @@ export type DynamicCharacter = {
   charMesh: THREE.Mesh;
   charData: CharacterData;
   controlFns: {
-    rotate: (direction: 'LEFT' | 'RIGHT') => void;
-    move: (direction: 'FORWARD' | 'BACKWARD') => void;
+    /** `delta` = simulated seconds this call covers (default: the fixed physics timestep —
+     * correct when called once per sub-step, e.g. from an APP_PHYSICS_STEP system). */
+    rotate: (direction: 'LEFT' | 'RIGHT', delta?: number) => void;
+    /** `delta` = simulated seconds this call covers (default: the fixed physics timestep —
+     * correct when called once per sub-step, e.g. from an APP_PHYSICS_STEP system). */
+    move: (direction: 'FORWARD' | 'BACKWARD', delta?: number) => void;
     jump: () => void;
   };
   camera?: THREE.PerspectiveCamera;
@@ -387,27 +390,31 @@ export const createDynamicCharacter = async (opts: {
 
   const yawQuat = new THREE.Quaternion();
   /** Turns the character by `amount` radians around the world up axis. The yaw accumulates in
-   * characterData.charRotation, never in charMesh.quaternion: that is rewritten every frame
-   * from the physics pose (interpolated, and one step late in WORKER_THREAD mode), so turning
-   * it in place would silently drop any turn the physics pose hasn't caught up with yet. */
+   * characterData.charRotation and goes only into the body: the body is the single source of
+   * truth and the mesh follows it like any other physics-driven Object3D. Never write
+   * charMesh.quaternion here: it is rewritten from the physics pose (interpolated, and one step
+   * late in WORKER_THREAD mode), and since this only runs on frames with a physics sub-step, a
+   * direct write makes the rendered yaw alternate between the live and the physics yaw whenever
+   * the render rate exceeds the physics rate. */
   const turnCharacter = (amount: number) => {
     characterData.charRotation += amount;
     yawQuat.setFromAxisAngle(LEVEL_GROUND_NORMAL, characterData.charRotation);
-    charMesh.quaternion.copy(yawQuat);
     // Plain object, not the THREE.Quaternion: its values live in private fields that don't
     // survive the WORKER_THREAD postMessage structured clone.
     characterBody?.setRotation({ x: yawQuat.x, y: yawQuat.y, z: yawQuat.z, w: yawQuat.w }, true);
   };
 
   const controlFns = {
-    rotate: (direction: 'LEFT' | 'RIGHT') => {
+    // Both take the simulation delta they are driven with (KEY_HELD bindings pass the fixed
+    // sub-step delta), never the render-frame delta: they run once per physics sub-step, so a
+    // render-rate delta would make turning/acceleration depend on the display's refresh rate.
+    rotate: (direction: 'LEFT' | 'RIGHT', delta = getPhysicsState().timestepRatio) => {
       if (characterData.isTumbling) return;
       const dir = direction === 'LEFT' ? 1 : -1;
       const speed = characterData._rotateSpeed || 2;
-      const physDelta = getPhysicsState().timestepRatio; // This runs in the acc phys loop, so we can use the fixed timestep here.
-      turnCharacter(speed * physDelta * dir);
+      turnCharacter(speed * delta * dir);
     },
-    move: (direction: 'FORWARD' | 'BACKWARD') => {
+    move: (direction: 'FORWARD' | 'BACKWARD', delta = getPhysicsState().timestepRatio) => {
       if (characterData.isTumbling) return;
       const rigidBody = characterBody;
       if (rigidBody) {
@@ -430,9 +437,11 @@ export const createDynamicCharacter = async (opts: {
         const crouchVeloAccuMultiplier = characterData.isCrouching
           ? characterData._crouchingMultiplier + 1
           : 1;
-        const veloAccu = transformAppSpeedValue(
-          characterData._accumulateVeloPerInterval * inTheAirDiminisher * crouchVeloAccuMultiplier
-        );
+        const veloAccu =
+          characterData._accumulateVeloPerInterval *
+          inTheAirDiminisher *
+          crouchVeloAccuMultiplier *
+          delta;
         const xVelo = Math.cos(characterData.charRotation) * veloAccu * mainDirection;
         const zVelo = -Math.sin(characterData.charRotation) * veloAccu * mainDirection;
 
@@ -581,8 +590,8 @@ export const createDynamicCharacter = async (opts: {
 
             // Optional: Add extra downward slide force so you don't just stick
             const slideSpeed = 15.0; // Adjust for slippiness
-            vel.x += slopeSlideDir.x * slideSpeed * 0.016;
-            vel.z += slopeSlideDir.z * slideSpeed * 0.016;
+            vel.x += slopeSlideDir.x * slideSpeed * delta;
+            vel.z += slopeSlideDir.z * slideSpeed * delta;
           }
 
           // 4. Allow Gravity to do its job
@@ -789,23 +798,23 @@ export const createDynamicCharacter = async (opts: {
             ignoreModifiers: true,
             type: 'KEY_HELD',
             chord: inputMappings.rotateLeft.map((key) => ({ key })),
-            fn: () => controlFns.rotate('LEFT'),
+            fn: (delta) => controlFns.rotate('LEFT', delta),
           },
           {
             id: 'charRotateRight',
             ignoreModifiers: true,
             type: 'KEY_HELD',
             chord: inputMappings.rotateRight.map((key) => ({ key })),
-            fn: () => controlFns.rotate('RIGHT'),
+            fn: (delta) => controlFns.rotate('RIGHT', delta),
           },
           {
             id: 'charMoveForward',
             ignoreModifiers: true,
             type: 'KEY_HELD',
             chord: inputMappings.moveForward.map((key) => ({ key })),
-            fn: () => {
+            fn: (delta) => {
               characterData.hasMoveInput = true;
-              controlFns.move('FORWARD');
+              controlFns.move('FORWARD', delta);
             },
           },
           {
@@ -813,9 +822,9 @@ export const createDynamicCharacter = async (opts: {
             ignoreModifiers: true,
             type: 'KEY_HELD',
             chord: inputMappings.moveBackward.map((key) => ({ key })),
-            fn: () => {
+            fn: (delta) => {
               characterData.hasMoveInput = true;
-              controlFns.move('BACKWARD');
+              controlFns.move('BACKWARD', delta);
             },
           },
           {
@@ -954,7 +963,7 @@ export const createDynamicCharacter = async (opts: {
           body.setRotation(uprightQuat, true);
 
           // Clear any leftover rotational velocity
-          stopCharacterTumbling(characterData, charMesh, body);
+          stopCharacterTumbling(characterData, body);
         }
       }
 
@@ -1240,27 +1249,28 @@ const startCharacterTumbling = (characterData: CharacterData, body?: RigidBodyAP
 
 const tumbleStopRotationVector4 = new THREE.Vector4();
 const tumbleStopRotationQuat = new THREE.Quaternion(0, 0, 0, 1);
-const stopCharacterTumbling = (
-  characterData: CharacterData,
-  charMesh: THREE.Mesh,
-  body?: RigidBodyAPI
-) => {
-  if (body) {
-    body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-    body.setAngularDamping(0);
-    body.setEnabledRotations(false, false, false, true);
-    body.lockRotations(true, true);
-  }
-  characterData.charRotation = eulerForCharRotation.setFromQuaternion(charMesh.quaternion, 'XZY').y;
-  charMesh.setRotationFromQuaternion(tumbleStopRotationQuat);
-  charMesh.rotation.y = characterData.charRotation;
-  if (body) {
-    // Upright, but keeping the facing: the body's rotation is what the mesh gets synced from,
-    // so resetting it to identity would snap the character to face the default direction.
-    const q = charMesh.quaternion;
-    body.setRotation(tumbleStopRotationVector4.set(q.x, q.y, q.z, q.w), true);
-    body.setAngularDamping(characterData.__charAngDamping);
-  }
+const stopCharacterTumbling = (characterData: CharacterData, body: RigidBodyAPI) => {
+  body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  body.setAngularDamping(0);
+  body.setEnabledRotations(false, false, false, true);
+  body.lockRotations(true, true);
+  // The facing is read from the body, not the mesh: in the interpolation modes the mesh holds
+  // a blended in-between pose (and in 'NONE' last frame's), while body.rotation() already
+  // returns a rotation set earlier this sub-step, in both MAIN_THREAD and WORKER_THREAD mode.
+  const rot = body.rotation();
+  tumbleStopRotationQuat.set(rot.x, rot.y, rot.z, rot.w);
+  characterData.charRotation = eulerForCharRotation.setFromQuaternion(
+    tumbleStopRotationQuat,
+    'XZY'
+  ).y;
+  // Upright, but keeping the facing: the body's rotation is what the mesh gets synced from,
+  // so resetting it to identity would snap the character to face the default direction.
+  const q = tumbleStopRotationQuat.setFromAxisAngle(
+    LEVEL_GROUND_NORMAL,
+    characterData.charRotation
+  );
+  body.setRotation(tumbleStopRotationVector4.set(q.x, q.y, q.z, q.w), true);
+  body.setAngularDamping(characterData.__charAngDamping);
   characterData.__charAngDamping = 0;
   characterData.isTumbling = false;
   characterData.__isTumblingStartTime = 0;

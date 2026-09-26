@@ -310,9 +310,9 @@ export const scene = async () =>
         accDelta = 0;
       }
       if (action === 'F') {
-        controlFns.move('FORWARD');
+        controlFns.move('FORWARD', dt);
       } else {
-        controlFns.rotate('LEFT');
+        controlFns.rotate('LEFT', dt);
       }
       accDelta += dt;
     });
