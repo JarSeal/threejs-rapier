@@ -326,6 +326,7 @@ export const stepPhysics = (
     physicsState.pauseDurationTotal += performance.now() - physicsState.pausedTime;
     physicsState.pausedTime = 0;
     accDelta = 0;
+    simClockEpoch++;
     return 0;
   }
 
@@ -345,6 +346,8 @@ export const stepPhysics = (
   // so a sustained slowdown can't make the accumulator (and next frame's catch-up cost) grow
   // without bound — the actual "prevent the spiral of death" behavior.
   if (physicsState.maxSubSteps > 0 && stepsTaken >= physicsState.maxSubSteps) {
+    // Only a discontinuity if there was backlog to drop (sitting exactly at the ceiling isn't).
+    if (accDelta >= physicsState.timestepRatio) simClockEpoch++;
     accDelta = 0;
   }
 
@@ -373,7 +376,7 @@ export const stepPhysics = (
       lastPhysicsMessagingLatency = undefined;
       updatePhysicsPanel(stepMs);
     }
-    mainThreadSnapshotCount++;
+    stampStepBatch(stepsTaken);
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     let substepCommands: PhysicsUpProtocol[][] | undefined;
     if (onBeforeStep) {
@@ -401,6 +404,7 @@ export const stepPhysics = (
       sentAt: trackStats ? performance.now() : undefined,
     });
     stepMessagesPosted++;
+    stampStepBatch(stepsTaken);
     // SHARED_MEMORY has no per-step return message, so the stats are polled here instead,
     // one frame behind — the same latency tradeoff the transform buffer itself already makes.
     if (trackStats) readSharedStepStats();
@@ -670,31 +674,95 @@ const updateTimer = () => {
   }
 };
 
-let mainThreadSnapshotCount = 0;
+// --- Simulated-time clock + snapshot stamps (render interpolation, p059) ---
+// Everything here is measured in fixed steps (1 = one timestepRatio of simulated time), so the
+// stamps are integers and nothing drifts.
+
+/** Fixed steps issued to the current world since it was created (MAIN_THREAD: stepped;
+ * WORKER_THREAD: sent in STEP messages, possibly not executed yet). */
+let stepsIssued = 0;
+/** Step batches (one per stepping frame = one STEP message = one snapshot) issued to the
+ * current world. The worker's transform buffer write count starts from 0 at CREATE_WORLD and
+ * advances once per processed STEP, so batch N is the snapshot with write count N. */
+let stepBatchesIssued = 0;
+/** Bumped whenever the simulated-time clock is discontinuous: the accumulator is discarded
+ * (pause → resume, maxSubSteps overflow) or the world is replaced. */
+let simClockEpoch = 0;
+/** Bumped whenever earlier snapshots stop describing the current world (world created/deleted,
+ * snapshot restored), so pose histories captured before it must be thrown away. */
+let simHistoryEpoch = 0;
+
+// Snapshot stamps by batch number. 64 batches is over a second of in-flight worker latency at
+// 60 stepping frames per second — a snapshot older than that simply can't be stamped.
+const SNAPSHOT_STAMP_RING_SIZE = 64;
+const snapshotStampBatch = new Float64Array(SNAPSHOT_STAMP_RING_SIZE).fill(-1);
+const snapshotStampStep = new Float64Array(SNAPSHOT_STAMP_RING_SIZE);
+const snapshotStampPhase = new Float64Array(SNAPSHOT_STAMP_RING_SIZE);
+
+/** Stamps the step batch stepPhysics() just issued: the step index its snapshot will describe,
+ * plus the accumulator's leftover fraction of a step at that moment (the phase of the
+ * continuous clock when this batch was issued). */
+const stampStepBatch = (stepsTaken: number) => {
+  stepsIssued += stepsTaken;
+  stepBatchesIssued++;
+  const i = stepBatchesIssued % SNAPSHOT_STAMP_RING_SIZE;
+  snapshotStampBatch[i] = stepBatchesIssued;
+  snapshotStampStep[i] = stepsIssued;
+  snapshotStampPhase[i] =
+    physicsState.timestepRatio > 0 ? accDelta / physicsState.timestepRatio : 0;
+};
+
+/** A new world starts a new simulated timeline: stamps and counters restart with it (the
+ * worker's own transform buffer, and so its write count, is recreated at CREATE_WORLD too). */
+const resetSimClock = () => {
+  stepsIssued = 0;
+  stepBatchesIssued = 0;
+  snapshotStampBatch.fill(-1);
+  simClockEpoch++;
+  simHistoryEpoch++;
+};
+
 /** Changes every time a new physics result becomes readable on the main thread: once per
  * stepping frame on MAIN_THREAD, once per worker write-back on WORKER_THREAD (whichever frame
- * it actually lands in). Only meaningful compared against an earlier value. Used by render
- * interpolation to advance its prev/curr pair exactly once per physics result — detecting that
- * from pose changes instead would never advance for a body that stops moving, leaving a stale
- * `prev` behind it to jitter against. */
+ * it actually lands in). Only meaningful compared against an earlier value; see
+ * readPhysicsSnapshotStamp() for which simulated step a given count describes. */
 export const getPhysicsSnapshotCount = () =>
   physicsState.workerTarget === 'WORKER_THREAD'
     ? transformBuffer?.getWriteCount() ?? 0
-    : mainThreadSnapshotCount;
+    : stepBatchesIssued;
+
+/** Looks up the stamp of the snapshot with the given getPhysicsSnapshotCount() value: `step` =
+ * the step index its poses describe, `phase` = the accumulator's fraction of a step when its
+ * batch was issued. Returns false when it can't be stamped (no snapshot yet, a stale buffer
+ * from a previous world, or older than the stamp ring). Writes into `out`, allocation-free. */
+export const readPhysicsSnapshotStamp = (
+  snapshotCount: number,
+  out: { step: number; phase: number }
+): boolean => {
+  if (snapshotCount <= 0) return false;
+  const i = snapshotCount % SNAPSHOT_STAMP_RING_SIZE;
+  if (snapshotStampBatch[i] !== snapshotCount) return false;
+  out.step = snapshotStampStep[i];
+  out.phase = snapshotStampPhase[i];
+  return true;
+};
+
+/** The stepper's continuous simulated-time clock, in fixed steps: steps issued to the current
+ * world plus the accumulator's fraction of the next one. Advances by exactly what stepPhysics()
+ * accumulates, so the render clock can move on the very same number (never a separate timer). */
+export const getPhysicsSimClock = () =>
+  physicsState.timestepRatio > 0
+    ? stepsIssued + accDelta / physicsState.timestepRatio
+    : stepsIssued;
+
+/** See simClockEpoch: changes whenever getPhysicsSimClock() jumps. */
+export const getPhysicsSimClockEpoch = () => simClockEpoch;
+
+/** See simHistoryEpoch: changes whenever earlier snapshots stop describing the current world. */
+export const getPhysicsSimHistoryEpoch = () => simHistoryEpoch;
 
 /** Returns the current physicsState */
 export const getPhysicsState = () => physicsState;
-
-/** Returns the fixed-timestep accumulator's current interpolation alpha (0..1): how far
- * stepPhysics()'s accumulator is into the next physics step, for 'FIXED_PHYSICS'
- * interpolation mode (see PhysicsManager.ts's physicsInterpolationSystem). 0 means the
- * render is showing the pose from right after the last consumed step (i.e. one step
- * "behind" real time, by design — the standard fixed-timestep interpolation trade-off of
- * never extrapolating into an unknown future state). */
-export const getPhysicsInterpolationAlpha = () =>
-  physicsState.timestepRatio > 0
-    ? Math.min(1, Math.max(0, accDelta / physicsState.timestepRatio))
-    : 0;
 
 /** Returns the current WorldAPI instance (for live setGravity/setNumSolverIterations/etc.
  * calls), or the no-op stub if no world has been created yet via createPhysicsWorld(). */
@@ -743,6 +811,7 @@ export const createPhysicsWorld = async (
       `Could not create physics world (main thread), engineAPI: ${JSON.stringify(getEngineAPI())}`
     );
     physicsWorldEnabled = true;
+    resetSimClock();
     addVisibilityChangeFn('pausePhysicsApiOnVisibilityChange', physicsVisibilityChangeHandler);
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const response = await messageWorkerAsync<CreateWorldResponse>({
@@ -753,6 +822,7 @@ export const createPhysicsWorld = async (
     if (response.worldCreated) {
       physicsWorld = new WorldProxyAPI();
       physicsWorldEnabled = true;
+      resetSimClock();
       resolvedTransportMode = response.transportMode;
       if (response.transportMode === 'SHARED_MEMORY' && response.buffer) {
         transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, response.buffer);
@@ -796,6 +866,8 @@ export const deletePhysicsWorld = async () => {
     // Reset
     physicsWorldEnabled = false;
     physicsWorld = { step: () => {} } as unknown as WorldAPI;
+    simClockEpoch++;
+    simHistoryEpoch++;
   } else {
     lerror('Could not delete physics world.');
   }
@@ -837,6 +909,9 @@ export const restorePhysicsSnapshot = async (snapshot: Uint8Array) => {
     });
     if (response.worldCreated) physicsWorld = new WorldProxyAPI();
   }
+  // Every body may have jumped: earlier poses no longer lead up to the restored ones.
+  simClockEpoch++;
+  simHistoryEpoch++;
   return physicsWorld;
 };
 

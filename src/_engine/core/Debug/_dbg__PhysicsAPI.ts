@@ -48,6 +48,7 @@ import {
   type WireframeColorState,
 } from './_dbg__PhysicsDebugDraw';
 import { getECSWorld } from '../ECS';
+import { getPhysicsInterpolationReadout } from '../PhysicsManager';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 
 const LS_KEY = 'AEK_debugPhysicsApi';
@@ -725,24 +726,68 @@ export const _createPhysicsAPIDebugGUI = () => {
 
       debugGUI.addBlade({ view: 'separator' });
 
-      // 'EXTRAPOLATION' isn't offered here yet — reserved, not implemented (Phase 4
-      // feasibility study). physicsInterpolationSystem (PhysicsManager.ts) treats any
-      // value other than 'RENDERER'/'FIXED_PHYSICS' as a no-op, so selecting it via
-      // AppConfig before then is safe but inert.
+      // 'EXTRAPOLATION' isn't offered here yet — reserved, not implemented (p024 feasibility
+      // study). physicsInterpolationSystem (PhysicsManager.ts) returns early for it, so
+      // selecting it via AppConfig is safe but inert.
       const interpolationModeDropDown = debugGUI.addBlade({
         view: 'list',
         label:
           'Interpolation mode (render-only smoothing; ECS TRANSFORM always stays the discrete pose)',
         options: [
-          { value: 'NONE', text: 'None' },
-          { value: 'RENDERER', text: 'Renderer (smooths toward the latest received pose)' },
-          { value: 'FIXED_PHYSICS', text: 'Fixed physics (accumulator-alpha lerp/slerp)' },
+          { value: 'NONE', text: 'None (latest step pose, judders above the physics rate)' },
+          {
+            value: 'RENDERER',
+            text: 'Renderer (servoed to the received snapshots; use with the worker)',
+          },
+          {
+            value: 'FIXED_PHYSICS',
+            text: 'Fixed physics (open-loop from the stepper; MAIN_THREAD only)',
+          },
         ],
         value: state.interpolationMode,
       }) as ListBladeApi<BladeController<View>>;
       interpolationModeDropDown.on('change', (e) => {
         state.interpolationMode = e.value as unknown as PhysicsInterpolationMode;
         persistLiveState(state);
+      });
+
+      // Live render-clock values (updated by physicsInterpolationSystem, frozen in 'NONE') —
+      // the jitter margin and servo can't be tuned without them. Readonly bindings poll.
+      const interpolationReadout = getPhysicsInterpolationReadout(getECSWorld());
+      const interpolationFolder = debugGUI.addFolder({
+        title: 'Interpolation clock (live, simulated ms)',
+        expanded: false,
+      });
+      const formatMs = (v: number) => v.toFixed(2);
+      interpolationFolder.addBinding(interpolationReadout, 'lagMs', {
+        label: 'Lag behind the stepper',
+        readonly: true,
+        format: formatMs,
+      });
+      interpolationFolder.addBinding(interpolationReadout, 'delayMs', {
+        label: 'Delay D (max recent interval)',
+        readonly: true,
+        format: formatMs,
+      });
+      interpolationFolder.addBinding(interpolationReadout, 'intervalMs', {
+        label: 'Last snapshot interval',
+        readonly: true,
+        format: formatMs,
+      });
+      interpolationFolder.addBinding(interpolationReadout, 'errorMs', {
+        label: 'Servo error (RENDERER)',
+        readonly: true,
+        format: formatMs,
+      });
+      interpolationFolder.addBinding(interpolationReadout, 'rate', {
+        label: 'Clock rate',
+        readonly: true,
+        format: (v: number) => v.toFixed(3),
+      });
+      interpolationFolder.addBinding(interpolationReadout, 'resets', {
+        label: 'Clock re-anchors',
+        readonly: true,
+        format: (v: number) => v.toFixed(0),
       });
 
       debugGUI.addBlade({ view: 'separator' });

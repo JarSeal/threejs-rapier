@@ -16,11 +16,19 @@ import {
   createRigidBodySync,
   deleteColliders,
   deleteRigidBody,
-  getPhysicsInterpolationAlpha,
+  getPhysicsSimClock,
+  getPhysicsSimClockEpoch,
+  getPhysicsSimHistoryEpoch,
   getPhysicsSnapshotCount,
   getPhysicsState,
+  readPhysicsSnapshotStamp,
 } from './PhysicsAPI';
-import { ColliderParams, RigidBodyAPI, RigidBodyParams } from './Physics/PhysicsAPITypes';
+import {
+  ColliderParams,
+  RigidBodyAPI,
+  RigidBodyParams,
+  type PhysicsInterpolationMode,
+} from './Physics/PhysicsAPITypes';
 import { getCurrentSceneId, getRootScene, registerOnAllSceneEnterings } from './Scene';
 
 let debugPhysicsDraw: DebugModuleRef<typeof import('./Debug/_dbg__PhysicsDebugDraw')> | null = null;
@@ -103,7 +111,7 @@ export const registerPhysicsManager = (world: ECSWorld) => {
       disposePhysicsEntity(entityId, w).catch((err) =>
         lerror(`Failed to dispose physics entity ${entityId}.`, err)
       );
-      interpolationStates.delete(entityId);
+      worldInterpolationStates.get(w)?.histories.delete(entityId);
     },
   });
   world.addSystem(
@@ -321,103 +329,376 @@ export const physicsToTransformSystem = (world: ECSWorld) => {
   syncStorage(world.getStorage(ComponentType.BODY_STATIC));
 };
 
-type InterpolationState = {
-  prevPos: THREE.Vector3;
-  prevQuat: THREE.Quaternion;
-  currPos: THREE.Vector3;
-  currQuat: THREE.Quaternion;
-  /** performance.now() timestamps of when prev/curr were captured — only used by
-   * 'RENDERER' mode's wall-clock-based alpha; 'FIXED_PHYSICS' uses the physics
-   * accumulator's own alpha instead (getPhysicsInterpolationAlpha()). */
-  prevTime: number;
-  currTime: number;
+// --- Render interpolation (p059) ------------------------------------------------------------
+//
+// Every rendered pose is a monotone render clock, measured in simulated fixed steps, evaluated
+// against the last three snapshots, whose endpoints carry the step index they describe:
+//   alpha = (renderClock - prevStep) / (currStep - prevStep)
+// The two modes run identical blend math and differ only in where the render clock comes from:
+// - 'FIXED_PHYSICS' (open-loop): renderClock = simClock - delay, straight from the stepper.
+//   Exact, but only valid when snapshots are visible in the frame they are issued (MAIN_THREAD).
+// - 'RENDERER' (closed-loop): renderClock only ever advances by the stepper's own per-frame
+//   advance, slightly sped up/slowed down (never displaced) toward a target anchored on every
+//   newly visible snapshot. Worker latency is never estimated — it ends up as a constant lag.
+// On MAIN_THREAD the target sits exactly on the FIXED_PHYSICS clock, so both modes converge.
+
+/** Poses kept per entity (oldest → newest). Three, not two: under jitter the render clock can
+ * legitimately fall before the previous snapshot, and two slots would clamp/stall there. */
+const HISTORY_SLOTS = 3;
+/** Floats per history slot: position xyz + (normalized) quaternion xyzw. */
+const POSE_FLOATS = 7;
+/** How many recent snapshot intervals the delay is the max of (~0.5s at 60 snapshots/s). */
+const DELAY_WINDOW = 32;
+/** Max render-clock speed-up/slow-down (and delay slew) relative to the simulation: a 15%
+ * velocity error on a moving object is invisible, a position jump is not. */
+const MAX_RATE_DEVIATION = 0.15;
+/** Time constant (simulated seconds) of the RENDERER servo's lag correction. */
+const SERVO_TIME_CONSTANT = 0.5;
+/** Extra RENDERER delay under WORKER_THREAD, as a fraction of the delay, absorbing snapshot
+ * arrival jitter (dominated by when the main thread gets around to reading). */
+const JITTER_MARGIN_RATIO = 0.5;
+/** RENDERER re-anchors outright (instead of servoing) once off by more than this many delays. */
+const HARD_RESET_ERROR_RATIO = 4;
+/** A quaternion shorter than this is no valid pose yet (e.g. rb.rot before the first snapshot
+ * reads all zeros) — the entity is skipped rather than slerping NaN into its matrix. */
+const MIN_QUAT_LENGTH_SQ = 1e-6;
+const NO_SNAPSHOT = -1;
+
+type InterpolationHistory = {
+  /** HISTORY_SLOTS × POSE_FLOATS, oldest → newest, mutated in place. */
+  poses: Float32Array;
+  /** Snapshot count the newest slot was captured at. Anything but the world state's previous
+   * `lastCount` when a new snapshot arrives means this entity missed one (new, disabled,
+   * skipped) — its history has a hole and gets reseeded instead of shifted. */
+  capturedAt: number;
 };
 
-// Per-entity interpolation history, keyed by entity id — allocated once per entity (on
-// first sight) and mutated in place every frame, matching PhysicsTransformBuffer's
-// zero-per-frame-allocation hot path. Cleaned up in registerPhysicsManager's
-// onDeleteEntity hook.
-const interpolationStates = new Map<number, InterpolationState>();
-let lastSnapshotCount = -1;
-const scratchPos = new THREE.Vector3();
-const scratchQuat = new THREE.Quaternion();
+/** Live values for the Physics API debug tab, mutated in place (never reallocated). */
+export type PhysicsInterpolationReadout = {
+  /** Render clock behind the stepper's clock (ms of simulated time). */
+  lagMs: number;
+  /** Render clock speed relative to the simulation over the last frame (1 = nominal). */
+  rate: number;
+  /** Current (slewed) delay D (ms) — the max recent snapshot interval. */
+  delayMs: number;
+  /** Most recently measured snapshot interval (ms). */
+  intervalMs: number;
+  /** RENDERER: target minus render clock (ms); 0 for FIXED_PHYSICS. */
+  errorMs: number;
+  /** Hard resets (re-anchors) since boot. */
+  resets: number;
+};
+
+type WorldInterpolationState = {
+  histories: Map<number, InterpolationHistory>;
+  /** Step index of each history slot, oldest → newest. Shared by the whole world — every
+   * entity captures on the same snapshots, and a reseeded history holds one pose in all slots,
+   * so its stamps don't matter. */
+  stamps: Float64Array;
+  lastCount: number;
+  clockEpoch: number;
+  historyEpoch: number;
+  mode: PhysicsInterpolationMode | null;
+  timestepRatio: number;
+  lastSimClock: number;
+  /** Slewed D, in steps. */
+  delay: number;
+  intervals: Int32Array;
+  intervalIndex: number;
+  wasLastIntervalOutlier: boolean;
+  /** RENDERER only. */
+  renderClock: number;
+  targetClock: number;
+  hasTarget: boolean;
+  isClockAnchored: boolean;
+  readout: PhysicsInterpolationReadout;
+};
+
+// Per world: entity ids (and so history keys) are only unique within one world.
+const worldInterpolationStates = new WeakMap<ECSWorld, WorldInterpolationState>();
+
+const getWorldInterpolationState = (world: ECSWorld) => {
+  let state = worldInterpolationStates.get(world);
+  if (!state) {
+    state = {
+      histories: new Map(),
+      stamps: new Float64Array(HISTORY_SLOTS),
+      lastCount: NO_SNAPSHOT,
+      clockEpoch: -1,
+      historyEpoch: -1,
+      mode: null,
+      timestepRatio: 0,
+      lastSimClock: 0,
+      delay: 1,
+      intervals: new Int32Array(DELAY_WINDOW).fill(1),
+      intervalIndex: 0,
+      wasLastIntervalOutlier: false,
+      renderClock: 0,
+      targetClock: 0,
+      hasTarget: false,
+      isClockAnchored: false,
+      readout: { lagMs: 0, rate: 1, delayMs: 0, intervalMs: 0, errorMs: 0, resets: 0 },
+    };
+    worldInterpolationStates.set(world, state);
+  }
+  return state;
+};
+
+/** Throws away every pose history (they'll reseed on their next capture). Rare — world
+ * replaced / snapshot restored — so the per-entity walk is fine. */
+const resetInterpolationHistory = (state: WorldInterpolationState) => {
+  for (const history of state.histories.values()) history.capturedAt = NO_SNAPSHOT;
+  state.lastCount = NO_SNAPSHOT;
+  state.intervals.fill(1);
+  state.wasLastIntervalOutlier = false;
+  state.hasTarget = false;
+  state.isClockAnchored = false;
+};
+
+/** Live interpolation clock values of `world`, for the debug tab. Stable object, updated every
+ * frame the interpolation system runs in an interpolating mode. */
+export const getPhysicsInterpolationReadout = (world: ECSWorld) =>
+  getWorldInterpolationState(world).readout;
+
+const snapshotStamp = { step: 0, phase: 0 };
+const scratchQuatA = new THREE.Quaternion();
+const scratchQuatB = new THREE.Quaternion();
 // Checked here rather than at initPhysics() so it also catches a mode restored from
 // localStorage or switched live from the Physics API debug tab.
 let hasWarnedInvalidInterpolationPairing = false;
 
+/** Writes rb's current pose into history slot `slot`, normalizing the quaternion at capture
+ * (Float32 round-trips drift off unit length, and slerp assumes unit inputs). */
+const writeHistorySlot = (
+  poses: Float32Array,
+  slot: number,
+  pos: { x: number; y: number; z: number },
+  rot: { x: number; y: number; z: number; w: number },
+  invQuatLength: number
+) => {
+  const o = slot * POSE_FLOATS;
+  poses[o] = pos.x;
+  poses[o + 1] = pos.y;
+  poses[o + 2] = pos.z;
+  poses[o + 3] = rot.x * invQuatLength;
+  poses[o + 4] = rot.y * invQuatLength;
+  poses[o + 5] = rot.z * invQuatLength;
+  poses[o + 6] = rot.w * invQuatLength;
+};
+
 /**
- * Render-only smoothing on top of the discrete physics-step pose (Design Decision 4 of
- * docs/plans/p024_interpolation-in-the-physics-api.md): reads the same live rb.pos/rb.rot
- * physicsToTransformSystem already wrote into ECS TRANSFORM this frame, but writes the
- * blended pose only into the Object3D — TRANSFORM stays the authoritative, non-interpolated
- * pose for gameplay code (collision queries, AI, etc.). No-ops entirely for 'NONE' (the
- * default), leaving today's behavior — including object3DSyncSystem's own MAIN-stage sync —
- * completely untouched.
+ * Render-only smoothing on top of the discrete physics-step pose: writes the blended pose only
+ * into the Object3D — TRANSFORM stays the authoritative, non-interpolated pose for gameplay
+ * code (collision queries, AI, etc.). No-ops entirely for 'NONE', leaving object3DSyncSystem's
+ * own MAIN-stage sync as the sole writer. See the section comment above for the clock model.
  */
 export const physicsInterpolationSystem = (world: ECSWorld) => {
-  const mode = getPhysicsState().interpolationMode;
-  if (mode !== 'RENDERER' && mode !== 'FIXED_PHYSICS') return;
+  const physicsState = getPhysicsState();
+  const mode = physicsState.interpolationMode;
+  if (mode === 'NONE') return;
+  // Reserved, not implemented (p024 feasibility study).
+  if (mode === 'EXTRAPOLATION') return;
 
   if (
     IS_DEBUG_ENV &&
     !hasWarnedInvalidInterpolationPairing &&
     mode === 'FIXED_PHYSICS' &&
-    getPhysicsState().workerTarget === 'WORKER_THREAD'
+    physicsState.workerTarget === 'WORKER_THREAD'
   ) {
     hasWarnedInvalidInterpolationPairing = true;
     lwarn(
-      "interpolationMode 'FIXED_PHYSICS' is not valid with workerTarget 'WORKER_THREAD': its alpha comes from the main thread's accumulator, but the snapshots arrive asynchronously from the worker, so the pose saws back and forth once per physics step. Use 'RENDERER' for WORKER_THREAD (see docs/plans/p059_interpolation-optimization-and-fixes.md)."
+      "interpolationMode 'FIXED_PHYSICS' is not valid with workerTarget 'WORKER_THREAD': its clock comes from the main thread's accumulator, but the snapshots arrive asynchronously from the worker, later than that clock assumes, so the pose freezes and jumps. Use 'RENDERER' for WORKER_THREAD (see docs/plans/p059_interpolation-optimization-and-fixes.md)."
     );
   }
 
-  const dynamicVisuals = world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL);
-  const now = performance.now();
-  const fixedAlpha = mode === 'FIXED_PHYSICS' ? getPhysicsInterpolationAlpha() : 0;
-  const snapshotCount = getPhysicsSnapshotCount();
-  const isNewSnapshot = snapshotCount !== lastSnapshotCount;
-  lastSnapshotCount = snapshotCount;
+  const state = getWorldInterpolationState(world);
+  const timestepRatio = physicsState.timestepRatio;
 
+  // --- Reset events (snap and re-anchor, no servoing) ---
+  let resetClock = false;
+  const historyEpoch = getPhysicsSimHistoryEpoch();
+  if (state.historyEpoch !== historyEpoch) {
+    state.historyEpoch = historyEpoch;
+    resetInterpolationHistory(state);
+    resetClock = true;
+  }
+  if (state.mode !== mode) {
+    // The mode may have been 'NONE' until now, during which nothing here ran: the snapshot
+    // tracking is stale (its next interval would span the whole gap).
+    if (state.mode !== null) resetInterpolationHistory(state);
+    state.mode = mode;
+    resetClock = true;
+  }
+  const clockEpoch = getPhysicsSimClockEpoch();
+  if (state.clockEpoch !== clockEpoch || state.timestepRatio !== timestepRatio) {
+    state.clockEpoch = clockEpoch;
+    state.timestepRatio = timestepRatio;
+    resetClock = true;
+  }
+
+  // --- Newly visible snapshot? ---
+  const count = getPhysicsSnapshotCount();
+  let prevCount = state.lastCount;
+  let isNewSnapshot = false;
+  if (count !== state.lastCount && readPhysicsSnapshotStamp(count, snapshotStamp)) {
+    isNewSnapshot = true;
+    const newestStep = state.stamps[HISTORY_SLOTS - 1];
+    if (prevCount === NO_SNAPSHOT || snapshotStamp.step <= newestStep) {
+      // First snapshot of a timeline (or one that doesn't follow the last): nothing to
+      // interpolate from yet.
+      if (prevCount !== NO_SNAPSHOT) resetInterpolationHistory(state);
+      prevCount = NO_SNAPSHOT;
+      state.stamps.fill(snapshotStamp.step);
+      resetClock = true;
+    } else {
+      const interval = snapshotStamp.step - newestStep;
+      const isOutlier = interval > HARD_RESET_ERROR_RATIO * state.delay;
+      if (isOutlier && !state.wasLastIntervalOutlier) {
+        // A one-off hitch (or a stall in delivery), not a cadence: snap past it rather than
+        // stretching D — and so the lag — for the whole window.
+        resetClock = true;
+      } else {
+        // Two in a row is a new cadence (e.g. the render rate dropped well below the physics
+        // rate): adopt it at once.
+        if (isOutlier) resetClock = true;
+        state.intervals[state.intervalIndex] = interval;
+        state.intervalIndex = (state.intervalIndex + 1) % DELAY_WINDOW;
+      }
+      state.wasLastIntervalOutlier = isOutlier;
+      state.stamps.copyWithin(0, 1);
+      state.stamps[HISTORY_SLOTS - 1] = snapshotStamp.step;
+    }
+    state.lastCount = count;
+  }
+  if (state.lastCount === NO_SNAPSHOT) return; // nothing stamped yet — leave the MAIN sync pose
+
+  // --- Delay D: one snapshot interval, measured (max over the recent window, so alternating
+  // intervals are extra-delayed on the short ones instead of clamping on the long ones) ---
+  let maxInterval = 1;
+  for (let i = 0; i < DELAY_WINDOW; i++) {
+    if (state.intervals[i] > maxInterval) maxInterval = state.intervals[i];
+  }
+  const simClock = getPhysicsSimClock();
+  const simAdvance = resetClock ? 0 : Math.max(0, simClock - state.lastSimClock);
+  state.lastSimClock = simClock;
+  if (resetClock) {
+    state.delay = maxInterval;
+  } else {
+    const maxSlew = MAX_RATE_DEVIATION * simAdvance;
+    state.delay += Math.min(maxSlew, Math.max(-maxSlew, maxInterval - state.delay));
+  }
+
+  // --- Render clock ---
+  const prevRenderClock = state.renderClock;
+  let error = 0;
+  if (mode === 'FIXED_PHYSICS') {
+    state.renderClock = simClock - state.delay;
+  } else {
+    const margin =
+      physicsState.workerTarget === 'WORKER_THREAD' ? JITTER_MARGIN_RATIO * maxInterval : 0;
+    if (isNewSnapshot) {
+      // Where the render clock belongs at the moment this snapshot becomes visible: its step
+      // plus the clock phase it was issued at (on MAIN_THREAD that is exactly simClock now).
+      state.targetClock = snapshotStamp.step + snapshotStamp.phase - state.delay - margin;
+      state.hasTarget = true;
+    } else {
+      state.targetClock += simAdvance;
+    }
+
+    if (!state.hasTarget) {
+      state.renderClock = state.stamps[HISTORY_SLOTS - 1];
+      state.isClockAnchored = false;
+    } else if (resetClock || !state.isClockAnchored) {
+      state.renderClock = state.targetClock;
+      state.isClockAnchored = true;
+      state.readout.resets++;
+    } else {
+      // Against where the clock lands this frame at nominal rate — the target has already
+      // been advanced by this frame's simAdvance above.
+      const nominalRenderClock = state.renderClock + simAdvance;
+      error = state.targetClock - nominalRenderClock;
+      if (Math.abs(error) > HARD_RESET_ERROR_RATIO * maxInterval) {
+        state.renderClock = state.targetClock;
+        state.readout.resets++;
+      } else {
+        // Time dilation, never displacement: the correction is bounded by a fraction of this
+        // frame's own advance, so the clock is monotone and the pose continuous.
+        const maxCorrection = MAX_RATE_DEVIATION * simAdvance;
+        const gain = Math.min(1, (simAdvance * timestepRatio) / SERVO_TIME_CONSTANT);
+        const correction = Math.min(maxCorrection, Math.max(-maxCorrection, error * gain));
+        state.renderClock = nominalRenderClock + correction;
+      }
+    }
+  }
+  const renderClock = state.renderClock;
+
+  const toMs = timestepRatio * 1000;
+  const readout = state.readout;
+  readout.lagMs = (simClock - renderClock) * toMs;
+  if (simAdvance > 0) readout.rate = (renderClock - prevRenderClock) / simAdvance;
+  readout.delayMs = state.delay * toMs;
+  readout.intervalMs =
+    state.intervals[(state.intervalIndex + DELAY_WINDOW - 1) % DELAY_WINDOW] * toMs;
+  readout.errorMs = error * toMs;
+
+  // --- Segment (shared by every entity: same stamps) ---
+  const stamps = state.stamps;
+  let slotA = 0;
+  let slotB = 0;
+  let alpha = 0;
+  if (renderClock >= stamps[2]) {
+    slotA = slotB = 2;
+  } else if (renderClock >= stamps[1]) {
+    slotA = 1;
+    slotB = 2;
+    alpha = (renderClock - stamps[1]) / (stamps[2] - stamps[1]);
+  } else if (renderClock >= stamps[0]) {
+    slotB = 1;
+    alpha = (renderClock - stamps[0]) / (stamps[1] - stamps[0]);
+  } // else: before the oldest snapshot — freeze on it rather than reverse (alpha stays 0)
+
+  const a = slotA * POSE_FLOATS;
+  const b = slotB * POSE_FLOATS;
+  const dynamicVisuals = world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL);
   for (const [entityId, rb] of dynamicVisuals) {
+    if (world.isDisabled(entityId)) continue;
     const obj3D = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
     if (!obj3D) continue;
 
-    let state = interpolationStates.get(entityId);
-    if (!state) {
-      state = {
-        prevPos: new THREE.Vector3(rb.pos.x, rb.pos.y, rb.pos.z),
-        prevQuat: new THREE.Quaternion(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w),
-        currPos: new THREE.Vector3(rb.pos.x, rb.pos.y, rb.pos.z),
-        currQuat: new THREE.Quaternion(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w),
-        prevTime: now,
-        currTime: now,
-      };
-      interpolationStates.set(entityId, state);
-    } else if (isNewSnapshot) {
-      // A new physics result became visible since we last looked (works the same way for
-      // MAIN_THREAD's always-fresh reads and WORKER_THREAD's SAB/MESSAGE_BATCH reads — this
-      // is "received", not "stepped", which is exactly Design Decision 3's Option A:
-      // decoupled from physics cadence). Advanced even when the pose didn't change, so a
-      // body that stops (or only ever rotated in place) settles on prev === curr instead of
-      // jittering against a stale prev forever.
-      state.prevPos.copy(state.currPos);
-      state.prevQuat.copy(state.currQuat);
-      state.prevTime = state.currTime;
-      state.currPos.set(rb.pos.x, rb.pos.y, rb.pos.z);
-      state.currQuat.set(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w);
-      state.currTime = now;
+    let history = state.histories.get(entityId);
+    if (!history || history.capturedAt !== state.lastCount) {
+      const rot = rb.rot;
+      const quatLengthSq = rot.x * rot.x + rot.y * rot.y + rot.z * rot.z + rot.w * rot.w;
+      if (quatLengthSq < MIN_QUAT_LENGTH_SQ) continue;
+      const invQuatLength = 1 / Math.sqrt(quatLengthSq);
+      const pos = rb.pos;
+      if (!history) {
+        history = { poses: new Float32Array(HISTORY_SLOTS * POSE_FLOATS), capturedAt: NO_SNAPSHOT };
+        state.histories.set(entityId, history);
+      }
+      const poses = history.poses;
+      if (isNewSnapshot && prevCount !== NO_SNAPSHOT && history.capturedAt === prevCount) {
+        poses.copyWithin(0, POSE_FLOATS);
+        writeHistorySlot(poses, HISTORY_SLOTS - 1, pos, rot, invQuatLength);
+      } else {
+        // Hole in the history (new, re-enabled, skipped, or reset): reseed every slot with the
+        // current pose, which makes this frame (and the history) snap to it.
+        for (let slot = 0; slot < HISTORY_SLOTS; slot++) {
+          writeHistorySlot(poses, slot, pos, rot, invQuatLength);
+        }
+      }
+      history.capturedAt = state.lastCount;
     }
 
-    let alpha: number;
-    if (mode === 'FIXED_PHYSICS') {
-      alpha = fixedAlpha;
-    } else {
-      const interval = state.currTime - state.prevTime;
-      alpha = interval > 0 ? Math.min(1, Math.max(0, (now - state.currTime) / interval)) : 1;
-    }
-
-    scratchPos.copy(state.prevPos).lerp(state.currPos, alpha);
-    scratchQuat.copy(state.prevQuat).slerp(state.currQuat, alpha);
-    obj3D.position.copy(scratchPos);
-    obj3D.quaternion.copy(scratchQuat);
+    const poses = history.poses;
+    const invAlpha = 1 - alpha;
+    obj3D.position.set(
+      poses[a] * invAlpha + poses[b] * alpha,
+      poses[a + 1] * invAlpha + poses[b + 1] * alpha,
+      poses[a + 2] * invAlpha + poses[b + 2] * alpha
+    );
+    scratchQuatA.set(poses[a + 3], poses[a + 4], poses[a + 5], poses[a + 6]);
+    scratchQuatB.set(poses[b + 3], poses[b + 4], poses[b + 5], poses[b + 6]);
+    obj3D.quaternion.copy(scratchQuatA.slerp(scratchQuatB, alpha));
   }
 };

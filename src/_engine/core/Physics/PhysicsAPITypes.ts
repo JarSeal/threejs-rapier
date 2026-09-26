@@ -105,17 +105,20 @@ export type PhysicsState = {
   internalPgsIterations: number;
   /** Render-time smoothing applied on top of the discrete physics-step pose (never written
    * back into the ECS TRANSFORM, which always stays the authoritative, non-interpolated
-   * pose for gameplay code). Default 'NONE' — the previous behavior.
-   * 'NONE' = the Object3D shows the latest discrete physics-step pose as-is.
-   * 'RENDERER' = lerp/slerp between the last two received transform snapshots, using the
-   *   actual wall-clock time between when they arrived — decoupled from the physics rate,
-   *   so it degrades gracefully under a low/irregular physics Hz or worker latency/jitter.
-   * 'FIXED_PHYSICS' = lerp/slerp between the same two snapshots, but using the physics
-   *   accumulator's own alpha (getPhysicsInterpolationAlpha()). MAIN_THREAD only: under
-   *   WORKER_THREAD the main thread's accumulator and the worker's asynchronous write-backs
-   *   are on different clocks, so the pose saws back and forth once per physics step (a
-   *   one-time warning is logged in debug builds). Use 'RENDERER' for WORKER_THREAD.
-   * 'EXTRAPOLATION' = reserved, not implemented (Phase 4 feasibility study).
+   * pose for gameplay code). Engine default 'NONE'. Both smoothing modes blend the last
+   * snapshots with identical math, at a render clock measured in simulated time and one
+   * snapshot interval behind; they differ only in where that clock comes from.
+   * 'NONE' = the Object3D shows the latest discrete physics-step pose as-is (one render frame
+   *   stale, and it judders whenever the render rate exceeds the physics rate — by design).
+   * 'RENDERER' = closed-loop: the clock advances with the simulation and is gently sped up or
+   *   slowed down toward the snapshots actually received. Worker latency ends up as a constant
+   *   extra lag (plus a jitter margin), late or bunched write-backs are ridden out. Use this
+   *   with WORKER_THREAD. On MAIN_THREAD it converges to 'FIXED_PHYSICS'.
+   * 'FIXED_PHYSICS' = open-loop: the clock is the stepper's own accumulator. Exact and
+   *   frame-reproducible, lowest latency, but MAIN_THREAD only: under WORKER_THREAD the
+   *   snapshots arrive asynchronously, so the pose freezes and jumps (a one-time warning is
+   *   logged in debug builds).
+   * 'EXTRAPOLATION' = reserved, not implemented (p024 feasibility study).
    */
   interpolationMode: PhysicsInterpolationMode;
   /** Intent to use SharedArrayBuffer for the worker-thread hot-path transform buffer.
