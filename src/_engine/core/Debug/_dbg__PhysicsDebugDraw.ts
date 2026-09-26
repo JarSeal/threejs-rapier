@@ -1,6 +1,4 @@
 import * as THREE from 'three/webgpu';
-import type { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
-import type { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js';
 
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import { existsOrThrow } from '../../utils/assert';
@@ -9,6 +7,12 @@ import { lwarn } from '../../utils/Logger';
 import { getConfig, PhysicsWireframeColors } from '../Config';
 import { ECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
+import {
+  createLines,
+  flattenSegmentGeometry,
+  preloadFatLineBackend,
+  type LineObject,
+} from '../LineManager';
 import {
   ColliderAPI,
   HeightFieldData,
@@ -31,8 +35,8 @@ import { getCurrentSceneId, getRootScene } from '../Scene';
  * Deliberately NOT Rapier's own `World.debugRender()`: that returns one flat line list
  * for the entire world, which in WORKER_THREAD mode would mean a full-world round trip
  * every frame for data the user wants about a handful of objects. Instead each collider
- * gets its own small LineSegments, built once from shape data the Physics API can hand
- * over, and kept positioned by the Three.js scene graph wherever possible.
+ * gets its own small engine line (LineManager), built once from shape data the Physics API
+ * can hand over, and kept positioned by the Three.js scene graph wherever possible.
  *
  * Switched on and off per entity by adding/removing the DEBUG_PHYSICS_WIREFRAME
  * component — deliberately not a single global list, so each entity's own toggle
@@ -137,10 +141,10 @@ export const resetGlobalWireframeColors = () => {
 /**
  * Sets the wireframe line width in pixels, or clears the override with `undefined`.
  *
- * Takes effect immediately on every live wireframe — Line2NodeMaterial reads the width
- * as a uniform, so there's no geometry rebuild and no shader recompile. Has no visible
- * effect only in the fallback case where the fat-line modules couldn't be loaded (see
- * createWireframeObject), which warns once on the console.
+ * Takes effect immediately on every live wireframe: the lines are pinned to the thick-line
+ * backend, where width is a uniform — no geometry rebuild, no shader recompile, and a drag
+ * never crosses the 1px thin/thick boundary. Only if that backend fails to load do the
+ * lines stay 1px (the line system warns once).
  */
 export const setGlobalWireframeLineThickness = (thickness?: number) => {
   globalLineThickness = thickness;
@@ -150,7 +154,7 @@ export const setGlobalWireframeLineThickness = (thickness?: number) => {
 const applyLineThickness = () => {
   const linewidth = getWireframeLineThickness();
   for (const entry of wireframes.values()) {
-    for (const cw of entry.colliders) cw.material.linewidth = linewidth;
+    for (const cw of entry.colliders) cw.line.setWidth(linewidth);
   }
 };
 
@@ -277,19 +281,15 @@ export const resetEntityWireframeColors = (entityId: number, world: ECSWorld) =>
 // Live state
 // ----------------------------------------------------------------------------
 
-/** Either implementation: LineSegments2 when the fat-line path is available (respects
- * lineThickness), plain LineSegments otherwise (always 1px). */
-type WireframeLines = THREE.LineSegments | LineSegments2;
-type WireframeMaterial = THREE.LineBasicMaterial | THREE.Line2NodeMaterial;
-
 type ColliderWireframe = {
   collider: ColliderAPI;
-  lines: WireframeLines;
-  material: WireframeMaterial;
+  /** Read `line.object3D` fresh every time — never cache it (it would go stale across a
+   * backend swap, should the thick-line backend arrive late). */
+  line: LineObject;
   /** Collider pose relative to its rigid body, fetched once at build time. */
   localPos: THREE.Vector3;
   localQuat: THREE.Quaternion;
-  /** Last painted state, so material.color is only written when it actually changes. */
+  /** Last painted state, so the line colour is only written when it actually changes. */
   lastState: WireframeColorState | null;
 };
 
@@ -345,7 +345,7 @@ const readMasterVisibilityLS = () =>
 const applyMasterVisibilityToEntry = (entry: EntityWireframes) => {
   if (entry.host) entry.host.visible = masterVisible;
   if (entry.parent) {
-    for (const cw of entry.colliders) cw.lines.visible = masterVisible;
+    for (const cw of entry.colliders) cw.line.setVisible(masterVisible);
   }
 };
 
@@ -635,111 +635,25 @@ const buildShapeGeometry = async (collider: ColliderAPI): Promise<THREE.BufferGe
 };
 
 // ----------------------------------------------------------------------------
-// Line implementation (fat lines, with a 1px fallback)
+// Line creation
 // ----------------------------------------------------------------------------
 
-/**
- * `LineBasicMaterial.linewidth` is ignored by essentially every modern graphics backend,
- * WebGPU included — it's a GL/D3D/Metal/Vulkan-level limitation, not a Three.js one. The
- * standard workaround is the "fat lines" family, which builds each segment as instanced
- * quad geometry instead.
- *
- * Three ships a WebGPU-native variant of it (examples/jsm/lines/webgpu/LineSegments2,
- * backed by Line2NodeMaterial) which is what this uses. Unlike the WebGL LineMaterial it
- * needs no `resolution` uniform kept in sync with the canvas: the node implementation
- * derives screen-space width from the viewport directly, so there's no resize plumbing.
- *
- * Loaded dynamically and guarded: if it can't be loaded or constructed, wireframes fall
- * back to plain 1px LineSegments and the thickness setting becomes a documented no-op
- * (p025 Design decision 8).
- */
-type FatLineDeps = {
-  LineSegments2: typeof LineSegments2;
-  LineSegmentsGeometry: typeof LineSegmentsGeometry;
-};
-
-// undefined = not attempted yet, null = attempted and unavailable.
-let fatLineDeps: FatLineDeps | null | undefined = undefined;
-let fatLinePromise: Promise<FatLineDeps | null> | undefined = undefined;
-let warnedNoFatLines = false;
-
-const loadFatLineDeps = (): Promise<FatLineDeps | null> => {
-  if (fatLineDeps !== undefined) return Promise.resolve(fatLineDeps);
-  if (!fatLinePromise) {
-    fatLinePromise = Promise.all([
-      import('three/examples/jsm/lines/webgpu/LineSegments2.js'),
-      import('three/examples/jsm/lines/LineSegmentsGeometry.js'),
-    ])
-      .then(([seg, geo]) => {
-        fatLineDeps = {
-          LineSegments2: seg.LineSegments2,
-          LineSegmentsGeometry: geo.LineSegmentsGeometry,
-        };
-        return fatLineDeps;
-      })
-      .catch((err) => {
-        fatLineDeps = null;
-        lwarn(
-          'Physics debug wireframe: fat lines unavailable, falling back to 1px lines. The wireframe line-thickness setting will have no visible effect.',
-          err
-        );
-        warnedNoFatLines = true;
-        return null;
-      });
-  }
-  return fatLinePromise;
-};
-
-/** LineSegmentsGeometry.setPositions wants a flat, non-indexed list of segment endpoints.
- * WireframeGeometry/EdgesGeometry already produce that, but a Polyline's geometry carries
- * an index buffer, so expand it. */
-const toFlatSegmentPositions = (geometry: THREE.BufferGeometry): Float32Array => {
-  const position = geometry.getAttribute('position');
-  const index = geometry.getIndex();
-  if (!index) return new Float32Array(position.array);
-
-  const out = new Float32Array(index.count * 3);
-  for (let i = 0; i < index.count; i++) {
-    const v = index.getX(i);
-    out[i * 3] = position.getX(v);
-    out[i * 3 + 1] = position.getY(v);
-    out[i * 3 + 2] = position.getZ(v);
-  }
-  return out;
-};
-
-/** Builds the drawable object for one collider's line geometry, preferring fat lines. */
-const createWireframeObject = (
-  geometry: THREE.BufferGeometry,
-  deps: FatLineDeps | null
-): { lines: WireframeLines; material: WireframeMaterial } => {
-  const linewidth = getWireframeLineThickness();
-
-  if (deps) {
-    try {
-      const fatGeometry = new deps.LineSegmentsGeometry();
-      fatGeometry.setPositions(toFlatSegmentPositions(geometry));
-      // The source geometry was only ever a staging buffer for this.
-      geometry.dispose();
-      const material = new THREE.Line2NodeMaterial({ linewidth });
-      material.toneMapped = false;
-      return { lines: new deps.LineSegments2(fatGeometry, material), material };
-    } catch (err) {
-      // Constructing it can fail even when the import succeeded (an unsupported
-      // backend, say) — degrade instead of losing the wireframe entirely.
-      if (!warnedNoFatLines) {
-        warnedNoFatLines = true;
-        lwarn(
-          'Physics debug wireframe: could not build a fat-line wireframe, falling back to 1px lines. The line-thickness setting will have no visible effect.',
-          err
-        );
-      }
-      fatLineDeps = null;
-    }
-  }
-
-  const material = new THREE.LineBasicMaterial({ toneMapped: false, linewidth });
-  return { lines: new THREE.LineSegments(geometry, material), material };
+/** One collider's line, from its (staging) segment geometry. Pinned to the thick backend so
+ * the thickness slider is always a uniform write, and `persistent` because this module owns
+ * its lifetime (the DEBUG_PHYSICS_WIREFRAME hooks), not the scene switch. Attached by the
+ * caller. */
+const createColliderLine = (geometry: THREE.BufferGeometry, name: string): LineObject => {
+  const line = createLines({
+    name,
+    segments: flattenSegmentGeometry(geometry),
+    backend: 'FAT',
+    width: getWireframeLineThickness(),
+    persistent: true,
+    attach: { to: 'NONE' },
+  });
+  // The source geometry was only ever a staging buffer for this.
+  geometry.dispose();
+  return line;
 };
 
 // ----------------------------------------------------------------------------
@@ -758,8 +672,9 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
   const built: ColliderWireframe[] = [];
 
   try {
-    // Resolved once and cached module-wide; only the very first wireframe pays for it.
-    const fatLines = await loadFatLineDeps();
+    // Resolved once and cached; only the very first wireframe waits for it. Without it the
+    // pinned-FAT lines would start 1px and swap backends when the chunk arrives.
+    await preloadFatLineBackend();
     const rb = world.getRigidBody(entityId);
     const parent = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
     // Only a body that both moves and has no Object3D needs this module to move its
@@ -770,11 +685,9 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
       const geometry = await buildShapeGeometry(collider);
       if (!geometry) continue;
 
-      const { lines, material } = createWireframeObject(geometry, fatLines);
-      lines.name = `physicsWireframe_e${entityId}_c${collider.id}`;
-      // Physics debug geometry should never disappear because its own bounds were
-      // mis-estimated; the set is small and explicitly opted into.
-      lines.frustumCulled = false;
+      // Engine lines are never frustum culled by default: physics debug geometry should
+      // never disappear because its own bounds were mis-estimated.
+      const line = createColliderLine(geometry, `physicsWireframe_e${entityId}_c${collider.id}`);
 
       let localPos: THREE.Vector3;
       let localQuat: THREE.Quaternion;
@@ -789,7 +702,7 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
         localQuat = toQuat(await collider.rotation());
       }
 
-      built.push({ collider, lines, material, localPos, localQuat, lastState: null });
+      built.push({ collider, line, localPos, localQuat, lastState: null });
     }
 
     // The component may have been removed (or the entity deleted) while the awaits above
@@ -802,11 +715,12 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
 
     let host: THREE.Object3D | undefined = undefined;
     if (parent) {
-      for (const cw of built) parent.add(cw.lines);
+      for (const cw of built) cw.line.attach({ to: 'PARENT', parent });
     } else {
+      // A plain Object3D this module owns (the headless sync below moves it every frame)
       host = new THREE.Object3D();
       host.name = `physicsWireframeHost_e${entityId}`;
-      for (const cw of built) host.add(cw.lines);
+      for (const cw of built) cw.line.attach({ to: 'PARENT', parent: host });
       existsOrThrow(getRootScene(), 'No root scene in physics debug wireframes').add(host);
     }
 
@@ -827,11 +741,7 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
   }
 };
 
-const disposeColliderWireframe = (cw: ColliderWireframe) => {
-  cw.lines.removeFromParent();
-  cw.lines.geometry.dispose();
-  cw.material.dispose();
-};
+const disposeColliderWireframe = (cw: ColliderWireframe) => cw.line.dispose();
 
 const disposeEntityWireframes = (entityId: number) => {
   const entry = wireframes.get(entityId);
@@ -854,16 +764,17 @@ const disposeEntityWireframes = (entityId: number) => {
 const applyLocalTransforms = (entry: EntityWireframes) => {
   const scale = entry.parent?.scale;
   for (const cw of entry.colliders) {
-    cw.lines.quaternion.copy(cw.localQuat);
+    const obj = cw.line.object3D;
+    obj.quaternion.copy(cw.localQuat);
     if (scale) {
-      cw.lines.position.set(
+      obj.position.set(
         cw.localPos.x / (scale.x || 1),
         cw.localPos.y / (scale.y || 1),
         cw.localPos.z / (scale.z || 1)
       );
-      cw.lines.scale.set(1 / (scale.x || 1), 1 / (scale.y || 1), 1 / (scale.z || 1));
+      obj.scale.set(1 / (scale.x || 1), 1 / (scale.y || 1), 1 / (scale.z || 1));
     } else {
-      cw.lines.position.copy(cw.localPos);
+      obj.position.copy(cw.localPos);
     }
   }
 };
@@ -994,7 +905,7 @@ const flushTracking = () => {
 /**
  * The feature's only per-frame work. Iterates the DEBUG_PHYSICS_WIREFRAME set, which is
  * empty unless the user explicitly switched something on, and does nothing else:
- * geometry is never rebuilt, and material.color is only written when the resolved state
+ * geometry is never rebuilt, and a line's colour is only written when the resolved state
  * actually changed. Takes no world argument: everything it reads is module state, keyed
  * by entity id.
  */
@@ -1016,7 +927,7 @@ const physicsWireframeSystem = () => {
     for (const cw of entry.colliders) {
       const state = resolveColorState(entry, cw, worker);
       if (!state || state === cw.lastState) continue;
-      cw.material.color.setHex(colorFor(entry, state, globals));
+      cw.line.setColor(colorFor(entry, state, globals));
       cw.lastState = state;
     }
   }
