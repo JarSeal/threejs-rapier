@@ -1,5 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { getRootScene } from '../Scene';
+import { getECSWorld } from '../ECS';
+import { ComponentType } from '../ECS/ECSCoreComponents';
 import { existsOrThrow } from '../../utils/assert';
 import { lwarn } from '../../utils/Logger';
 import {
@@ -17,6 +19,7 @@ import {
   hashLinePhase,
   LINE_PULSE_MAX_COLORS,
 } from './LinePulse';
+import { releaseLineEntity, repointLineEntity, type LineEntityBinding } from './LineEntity';
 import { unregisterLine } from './LineRegistry';
 import type {
   LineAttachment,
@@ -91,6 +94,10 @@ class LineBuffer implements LineWriteTarget {
  */
 export class LineObject {
   readonly id: string;
+  /** Kept on scene switches (see LineProps.persistent). */
+  readonly persistent: boolean;
+  /** @internal Set by LineManager while an entity owns this line. */
+  entityBinding: LineEntityBinding | null = null;
   private backend: LineBackend;
   private readonly buffer: LineBuffer;
   private readonly writer: LineWriter;
@@ -115,6 +122,7 @@ export class LineObject {
   /** @internal Use `createLines`. */
   constructor(id: string, props: LineProps) {
     this.id = id;
+    this.persistent = props.persistent ?? false;
     this.backendChoice = props.backend ?? 'AUTO';
     this.colorUniforms.opacity.value = clampOpacity(props.opacity ?? 1);
     this.writeColorStyle(props.colorStyle ?? { type: 'STATIC', color: props.color ?? 0xffffff });
@@ -269,12 +277,21 @@ export class LineObject {
       case 'PARENT':
         attachment.parent.add(obj);
         break;
+      case 'ENTITY': {
+        const world = attachment.world ?? getECSWorld();
+        existsOrThrow(
+          world.getComponent(attachment.entityId, ComponentType.OBJECT3D)?.value,
+          `Entity ${attachment.entityId} has no Object3D to attach line "${this.id}" to.`
+        ).add(obj);
+        break;
+      }
       case 'NONE':
         break;
     }
   }
 
-  /** The line's transform relative to what it is attached to. Omitted parts are kept. */
+  /** The line's transform relative to what it is attached to. Omitted parts are kept. On a
+   * line entity (createLineEntity) the ECS transform owns this — use setTransform. */
   setLocalTransform(transform: LineLocalTransform) {
     const obj = this.backend.object3D;
     if (transform.position) obj.position.copy(transform.position);
@@ -282,12 +299,16 @@ export class LineObject {
     if (transform.scale) obj.scale.copy(transform.scale);
   }
 
-  /** Removes the line from the scene and frees its GPU resources. Idempotent. */
+  /** Removes the line from the scene and frees its GPU resources. Idempotent. A line entity
+   * (createLineEntity) is deleted with it; a bound entity loses its LINE component. */
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    const binding = this.entityBinding;
+    this.entityBinding = null;
     this.backend.dispose();
     unregisterLine(this.id);
+    if (binding) releaseLineEntity(binding);
   }
 
   // --------------------------------------------------------------------------
@@ -349,6 +370,7 @@ export class LineObject {
     }
 
     this.backend = next;
+    if (this.entityBinding) repointLineEntity(this.entityBinding, from, to);
     this.applyStateToBackend();
     next.commit(this.segments);
     if (this.boundsComputed) this.updateBounds();

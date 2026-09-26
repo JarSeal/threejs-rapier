@@ -27,7 +27,9 @@ class ThinLineBackend implements LineBackend {
     this.attribute = new THREE.BufferAttribute(positions, 3);
     this.geometry.setAttribute('position', this.attribute);
     this.geometry.setDrawRange(0, 0);
-    this.material = new THREE.LineBasicNodeMaterial({ toneMapped: false });
+    // No toneMapped = false: WebGPURenderer tone-maps the whole frame in its output pass
+    // and never reads that flag, so lines are tone-mapped like the rest of the scene.
+    this.material = new THREE.LineBasicNodeMaterial();
     this.object3D = new THREE.LineSegments(this.geometry, this.material);
     // Lines are not pickable (neither backend is), so scene-wide raycasts skip them
     this.object3D.raycast = () => {};

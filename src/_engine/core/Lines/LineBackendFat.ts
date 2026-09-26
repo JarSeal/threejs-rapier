@@ -147,7 +147,6 @@ export class LineNodeMaterial extends THREE.NodeMaterial {
 
   constructor() {
     super();
-    this.toneMapped = false;
     this.alphaToCoverage = true;
   }
 

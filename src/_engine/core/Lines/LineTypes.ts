@@ -1,4 +1,5 @@
 import type * as THREE from 'three/webgpu';
+import type { ECSWorld } from '../ECS';
 
 /** The two line renderers. `THIN` is `THREE.LineSegments` (always 1px, cheapest for very
  * large segment counts), `FAT` is instanced screen-space quads (any pixel width). */
@@ -12,10 +13,13 @@ export type LineBackendChoice = 'AUTO' | LineBackendKind;
  * with a one-time warning — what a per-frame refill with a known ceiling wants. */
 export type LineGrowth = 'GROW' | 'FIXED';
 
-/** Where the line's Object3D is added. The caller owns the policy; the line only obeys it. */
+/** Where the line's Object3D is added. The caller owns the policy; the line only obeys it.
+ * `ENTITY` parents it to an entity's OBJECT3D (placement only — bindLineToEntity is what
+ * ties the line's lifetime to an entity). */
 export type LineAttachment =
   | { to: 'ROOT_SCENE' }
   | { to: 'PARENT'; parent: THREE.Object3D }
+  | { to: 'ENTITY'; entityId: number; world?: ECSWorld }
   | { to: 'NONE' };
 
 /** A transform relative to whatever the line is attached to. Omitted parts are left as is. */
@@ -82,6 +86,10 @@ export type LineProps = {
   backend?: LineBackendChoice;
   /** Default `{ to: 'ROOT_SCENE' }`. */
   attach?: LineAttachment;
+  /** Survives scene switches (which dispose every other standalone line), like a
+   * PERSISTENT entity. For lines whose owner manages their lifetime itself. Default false.
+   * Lines bound to an entity follow that entity instead. */
+  persistent?: boolean;
   localTransform?: LineLocalTransform;
   /** Default true. */
   visible?: boolean;

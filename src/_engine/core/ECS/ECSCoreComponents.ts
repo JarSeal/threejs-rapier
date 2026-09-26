@@ -39,6 +39,11 @@ export interface CoreComponentData {
     controls: OrbitControls;
     sceneId: string;
   };
+  /** A line bound to this entity (LineManager's createLineEntity/bindLineToEntity): the
+   * entity's deletion disposes it. Holds the id, not the LineObject or its Object3D — a
+   * line swaps its Object3D when it moves between the thin and thick backends, so a stored
+   * object would go stale. Resolve it with getLineForEntity. */
+  [CoreType.LINE]: { lineId: string };
   // Physics
   [CoreType.COLLIDER]: ColliderAPI[];
   [CoreType.BODY_DYNAMIC_VISUAL]: RigidBodyAPI;
@@ -47,6 +52,7 @@ export interface CoreComponentData {
   // Tags
   [CoreType.TAG_IS_MESH]: boolean;
   [CoreType.TAG_IS_GROUP]: boolean;
+  [CoreType.TAG_IS_LINE]: boolean;
   [CoreType.TAG_IS_LIGHT]: boolean;
   [CoreType.TAG_IS_AMBIENT_LIGHT]: boolean;
   [CoreType.TAG_IS_HEMISPHERE_LIGHT]: boolean;
@@ -108,11 +114,14 @@ export const OBJECT3D_TAGS = [
   { prop: 'isPointLight', tag: ComponentType.TAG_IS_POINT_LIGHT },
   { prop: 'isDirectionalLight', tag: ComponentType.TAG_IS_DIRECTIONAL_LIGHT },
   { prop: 'isSpotLight', tag: ComponentType.TAG_IS_SPOT_LIGHT },
+  // Any THREE.Line/LineSegments/LineLoop. A thick engine line (LineManager) is a Mesh
+  // instead, so this rule misses it and `isMesh` tags it TAG_IS_MESH — LineManager re-tags
+  // those entities itself (Lines/LineEntity.ts retagLineEntity).
+  { prop: 'isLine', tag: ComponentType.TAG_IS_LINE },
 
   // @QUESTION: What other type of Three.js Object3Ds should we tag? Points/Particles?
   // From GEMINI (ask more about the SKINNED and BONE when you get there):
   // TAG_IS_POINTS
-  // TAG_IS_LINE
   // TAG_IS_SPRITE
   // TAG_IS_SKINNED
   // TAG_IS_BONE
