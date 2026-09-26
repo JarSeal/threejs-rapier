@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
 
-import { ECSSystemStage } from '../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../AppECSRegistry';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
-import { lerror } from '../utils/Logger';
+import { lerror, lwarn } from '../utils/Logger';
 import { IS_DEBUG_ENV } from './Config';
 import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
@@ -114,7 +114,8 @@ export const registerPhysicsManager = (world: ECSWorld) => {
   world.addSystem(
     ECSSystemStage.APP_RENDER_SYNC,
     'physicsInterpolationSystem',
-    physicsInterpolationSystem
+    physicsInterpolationSystem,
+    APP_RENDER_SYNC_ORDER.POSE_PRODUCERS
   );
 };
 
@@ -340,6 +341,9 @@ const interpolationStates = new Map<number, InterpolationState>();
 let lastSnapshotCount = -1;
 const scratchPos = new THREE.Vector3();
 const scratchQuat = new THREE.Quaternion();
+// Checked here rather than at initPhysics() so it also catches a mode restored from
+// localStorage or switched live from the Physics API debug tab.
+let hasWarnedInvalidInterpolationPairing = false;
 
 /**
  * Render-only smoothing on top of the discrete physics-step pose (Design Decision 4 of
@@ -353,6 +357,18 @@ const scratchQuat = new THREE.Quaternion();
 export const physicsInterpolationSystem = (world: ECSWorld) => {
   const mode = getPhysicsState().interpolationMode;
   if (mode !== 'RENDERER' && mode !== 'FIXED_PHYSICS') return;
+
+  if (
+    IS_DEBUG_ENV &&
+    !hasWarnedInvalidInterpolationPairing &&
+    mode === 'FIXED_PHYSICS' &&
+    getPhysicsState().workerTarget === 'WORKER_THREAD'
+  ) {
+    hasWarnedInvalidInterpolationPairing = true;
+    lwarn(
+      "interpolationMode 'FIXED_PHYSICS' is not valid with workerTarget 'WORKER_THREAD': its alpha comes from the main thread's accumulator, but the snapshots arrive asynchronously from the worker, so the pose saws back and forth once per physics step. Use 'RENDERER' for WORKER_THREAD (see docs/plans/p059_interpolation-optimization-and-fixes.md)."
+    );
+  }
 
   const dynamicVisuals = world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL);
   const now = performance.now();

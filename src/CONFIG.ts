@@ -15,7 +15,8 @@ const config: AppConfig = {
     timestep: 60,
     solverIterations: 10,
     internalPgsIterations: 1,
-    interpolationMode: 'FIXED_PHYSICS',
+    // 'RENDERER' for WORKER_THREAD; 'FIXED_PHYSICS' is only valid with 'MAIN_THREAD'.
+    interpolationMode: 'RENDERER',
     workerTarget: 'WORKER_THREAD',
     useSAB: true,
   },

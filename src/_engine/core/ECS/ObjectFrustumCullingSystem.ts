@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 import { ECSWorld } from '../ECS';
 import { getMainCamera } from '../CameraManager';
 import { ComponentType } from './ECSCoreComponents';
@@ -171,7 +171,7 @@ ECSWorld.registerPlugin((world) => {
     ECSSystemStage.APP_RENDER_SYNC,
     'objectFrustumCullingSystem',
     objectFrustumCullingSystem,
-    -1
+    APP_RENDER_SYNC_ORDER.FRUSTUM_CULLING
   );
   return world;
 });

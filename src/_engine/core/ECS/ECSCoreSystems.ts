@@ -1,4 +1,4 @@
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 import { isAnyLightHelperVisible } from '../LightManager';
 import { IS_DEBUG_ENV } from '../Config';
 import { ECSWorld } from '../ECS';
@@ -137,7 +137,12 @@ ECSWorld.registerCorePlugin((world) => {
   // entities that expired during the logic step (hence stage is LATE_MAIN).
   world.addSystem(ECSSystemStage.LATE_MAIN, 'entityLifetimeSystem', entityLifetimeSystem);
 
-  world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'lookAtSystem', lookAtSystem);
+  world.addSystem(
+    ECSSystemStage.APP_RENDER_SYNC,
+    'lookAtSystem',
+    lookAtSystem,
+    APP_RENDER_SYNC_ORDER.POSE_PRODUCERS
+  );
 
   return world;
 });

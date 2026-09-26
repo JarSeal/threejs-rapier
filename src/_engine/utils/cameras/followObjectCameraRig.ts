@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type { ECSWorld } from '../../core/ECS';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 import { XYZObject } from '../commontTypes';
 import { smoothDampVec3 } from '../helpers';
 
@@ -47,17 +47,21 @@ const followObjectCameraRigSystemFn = (_world: ECSWorld, dt: number) => {
 };
 
 /** Registers the single shared camera-follow system on `world`, driving every active
- * createFollowObjectCameraRig() instance's smoothing at APP_LOGIC — after physics has synced
- * into ECS transforms and Three.js Object3D positions (APP_POST_PHYSICS / APP_RENDER_SYNC, both
- * earlier in the same frame), matching design decision 3's "APP_POST_PHYSICS-or-later" and the
- * original addScenePhysicsLooper afterStepLooper's own "run after physics to avoid jitter"
- * intent. Call this once per world before creating any camera rigs on it — mirrors
+ * createFollowObjectCameraRig() instance's smoothing. It reads `targetMesh.position`, i.e. the
+ * rendered pose, so it runs at APP_RENDER_SYNC with APP_RENDER_SYNC_ORDER.POSE_CONSUMERS: after
+ * physicsInterpolationSystem has written this frame's final (possibly interpolated) pose into
+ * the Object3D, and before frustum culling reads the main camera. At APP_LOGIC the mesh would
+ * still hold the previous frame's discrete pose, so the camera would chase a pose that differs
+ * from the one being drawn. An explicit order is required: this registers before
+ * registerPhysicsManager, so at the default order 0 it would still run first.
+ * Call this once per world before creating any camera rigs on it — mirrors
  * toolkit/ecs/effects/FollowTool.ts's registerFollowToolEffect(world) convention. */
 export const registerFollowObjectCameraRigSystem = (world: ECSWorld) => {
   world.addSystem(
-    ECSSystemStage.APP_LOGIC,
+    ECSSystemStage.APP_RENDER_SYNC,
     'followObjectCameraRigSystem',
-    followObjectCameraRigSystemFn
+    followObjectCameraRigSystemFn,
+    APP_RENDER_SYNC_ORDER.POSE_CONSUMERS
   );
   return world;
 };

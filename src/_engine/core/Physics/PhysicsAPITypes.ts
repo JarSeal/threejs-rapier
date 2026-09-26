@@ -111,9 +111,10 @@ export type PhysicsState = {
    *   actual wall-clock time between when they arrived — decoupled from the physics rate,
    *   so it degrades gracefully under a low/irregular physics Hz or worker latency/jitter.
    * 'FIXED_PHYSICS' = lerp/slerp between the same two snapshots, but using the physics
-   *   accumulator's own alpha (getPhysicsInterpolationAlpha()) — precise as long as the
-   *   accumulator's timing and the snapshot's freshness stay in sync (holds well for
-   *   MAIN_THREAD; more approximate under WORKER_THREAD latency).
+   *   accumulator's own alpha (getPhysicsInterpolationAlpha()). MAIN_THREAD only: under
+   *   WORKER_THREAD the main thread's accumulator and the worker's asynchronous write-backs
+   *   are on different clocks, so the pose saws back and forth once per physics step (a
+   *   one-time warning is logged in debug builds). Use 'RENDERER' for WORKER_THREAD.
    * 'EXTRAPOLATION' = reserved, not implemented (Phase 4 feasibility study).
    */
   interpolationMode: PhysicsInterpolationMode;

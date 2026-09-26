@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 import { ECSWorld } from '../ECS';
 import { getMainCamera } from '../CameraManager';
 import { ComponentType } from './ECSCoreComponents';
@@ -107,13 +107,13 @@ export const lightObjectCullingSystem = (world: ECSWorld) => {
 };
 
 ECSWorld.registerPlugin((world) => {
-  // order: -2, one below objectFrustumCullingSystem's -1 in the same stage —
+  // LIGHT_CULLING (-2), one below objectFrustumCullingSystem's FRUSTUM_CULLING (-1) —
   // runs after frustum culling has updated TAG_FRUSTUM_CULLED for this
   // frame, so the skip above sees this frame's result, not last frame's.
   world.addSystem(
     ECSSystemStage.APP_RENDER_SYNC,
     'lightObjectCullingSystem',
     lightObjectCullingSystem,
-    -2
+    APP_RENDER_SYNC_ORDER.LIGHT_CULLING
   );
 });
