@@ -403,7 +403,6 @@ export const stepPhysics = (
       // Only stamped while measuring; the worker derives dispatchMs from it.
       sentAt: trackStats ? performance.now() : undefined,
     });
-    stepMessagesPosted++;
     stampStepBatch(stepsTaken);
     // SHARED_MEMORY has no per-step return message, so the stats are polled here instead,
     // one frame behind — the same latency tradeoff the transform buffer itself already makes.
@@ -483,18 +482,17 @@ const toPlainRot = (rot: PhysRotation): PhysRotation => ({
  * the STEP message, i.e. before this frame's first sub-step.) */
 let substepCommandCapture: PhysicsUpProtocol[] | null = null;
 
-/** How many STEP messages have been posted to the worker (reset together with the worker's own
- * transform buffer, whose write count advances once per processed STEP — so the two line up). */
-let stepMessagesPosted = 0;
-
-/** The transform buffer write count at which a write made right now becomes visible in it: the
+/** The transform buffer step index from which a write made right now is visible in it: the
  * worker applies the write before (or, for captured sub-step commands, during) the next STEP,
- * and that STEP's write-back is the first one to include it. */
-const getWriteVisibleCount = () => stepMessagesPosted + 1;
+ * whose steps are all numbered after the ones issued so far. Keyed on the producer's own step
+ * stamp, so it can't drift from the worker when a world is recreated (unlike a count of posted
+ * messages, which MESSAGE_BATCH never reset — p059 D10). */
+const getWriteVisibleStep = () => stepsIssued + 1;
 
-/** Whether a write tagged with getWriteVisibleCount() hasn't reached the transform buffer yet */
+/** Whether a write tagged with getWriteVisibleStep() hasn't reached the transform buffer yet.
+ * Without any buffer (MESSAGE_BATCH before its first push) nothing has reached it. */
 const isWritePending = (visibleAt: number) =>
-  Boolean(transformBuffer) && transformBuffer!.getWriteCount() < visibleAt;
+  !transformBuffer || transformBuffer.getStepIndex() < visibleAt;
 
 const messageWorker = (message: PhysicsUpProtocol) => {
   if (!worker) return;
@@ -681,10 +679,6 @@ const updateTimer = () => {
 /** Fixed steps issued to the current world since it was created (MAIN_THREAD: stepped;
  * WORKER_THREAD: sent in STEP messages, possibly not executed yet). */
 let stepsIssued = 0;
-/** Step batches (one per stepping frame = one STEP message = one snapshot) issued to the
- * current world. The worker's transform buffer write count starts from 0 at CREATE_WORLD and
- * advances once per processed STEP, so batch N is the snapshot with write count N. */
-let stepBatchesIssued = 0;
 /** Bumped whenever the simulated-time clock is discontinuous: the accumulator is discarded
  * (pause → resume, maxSubSteps overflow) or the world is replaced. */
 let simClockEpoch = 0;
@@ -692,58 +686,52 @@ let simClockEpoch = 0;
  * snapshot restored), so pose histories captured before it must be thrown away. */
 let simHistoryEpoch = 0;
 
-// Snapshot stamps by batch number. 64 batches is over a second of in-flight worker latency at
-// 60 stepping frames per second — a snapshot older than that simply can't be stamped.
-const SNAPSHOT_STAMP_RING_SIZE = 64;
-const snapshotStampBatch = new Float64Array(SNAPSHOT_STAMP_RING_SIZE).fill(-1);
-const snapshotStampStep = new Float64Array(SNAPSHOT_STAMP_RING_SIZE);
-const snapshotStampPhase = new Float64Array(SNAPSHOT_STAMP_RING_SIZE);
+// The clock phase each issued batch was stamped with, keyed by the step index its snapshot
+// will carry. Only the phase lives here — the step index itself comes from the producer
+// (PhysicsTransformBuffer.getStepIndex() on WORKER_THREAD), which can't know the main thread's
+// accumulator. 64 steps is over a second of in-flight worker latency at 60Hz; a snapshot older
+// than that just gets phase 0.
+const SNAPSHOT_PHASE_RING_SIZE = 64;
+const snapshotPhaseStep = new Float64Array(SNAPSHOT_PHASE_RING_SIZE).fill(-1);
+const snapshotPhase = new Float64Array(SNAPSHOT_PHASE_RING_SIZE);
 
-/** Stamps the step batch stepPhysics() just issued: the step index its snapshot will describe,
- * plus the accumulator's leftover fraction of a step at that moment (the phase of the
- * continuous clock when this batch was issued). */
+/** Counts the steps stepPhysics() just issued and records the accumulator's leftover fraction
+ * of a step at that moment (the phase of the continuous clock when this batch was issued). */
 const stampStepBatch = (stepsTaken: number) => {
   stepsIssued += stepsTaken;
-  stepBatchesIssued++;
-  const i = stepBatchesIssued % SNAPSHOT_STAMP_RING_SIZE;
-  snapshotStampBatch[i] = stepBatchesIssued;
-  snapshotStampStep[i] = stepsIssued;
-  snapshotStampPhase[i] =
-    physicsState.timestepRatio > 0 ? accDelta / physicsState.timestepRatio : 0;
+  const i = stepsIssued % SNAPSHOT_PHASE_RING_SIZE;
+  snapshotPhaseStep[i] = stepsIssued;
+  snapshotPhase[i] = physicsState.timestepRatio > 0 ? accDelta / physicsState.timestepRatio : 0;
 };
 
-/** A new world starts a new simulated timeline: stamps and counters restart with it (the
- * worker's own transform buffer, and so its write count, is recreated at CREATE_WORLD too). */
+/** A new world starts a new simulated timeline: the step count restarts with it (as the
+ * worker's own count does at CREATE_WORLD). */
 const resetSimClock = () => {
   stepsIssued = 0;
-  stepBatchesIssued = 0;
-  snapshotStampBatch.fill(-1);
+  snapshotPhaseStep.fill(-1);
   simClockEpoch++;
   simHistoryEpoch++;
 };
 
-/** Changes every time a new physics result becomes readable on the main thread: once per
- * stepping frame on MAIN_THREAD, once per worker write-back on WORKER_THREAD (whichever frame
- * it actually lands in). Only meaningful compared against an earlier value; see
- * readPhysicsSnapshotStamp() for which simulated step a given count describes. */
-export const getPhysicsSnapshotCount = () =>
+/** Step index of the latest physics snapshot readable on the main thread — how many steps had
+ * been executed on the current world when its poses were captured (0 before the first one).
+ * MAIN_THREAD steps synchronously, so it is simply the steps issued; WORKER_THREAD reads the
+ * stamp the worker writes into the transform buffer with every write-back. Changes exactly when
+ * a new snapshot becomes visible, and only ever increases within one world. */
+export const getPhysicsSnapshotStepIndex = () =>
   physicsState.workerTarget === 'WORKER_THREAD'
-    ? transformBuffer?.getWriteCount() ?? 0
-    : stepBatchesIssued;
+    ? transformBuffer?.getStepIndex() ?? 0
+    : stepsIssued;
 
-/** Looks up the stamp of the snapshot with the given getPhysicsSnapshotCount() value: `step` =
- * the step index its poses describe, `phase` = the accumulator's fraction of a step when its
- * batch was issued. Returns false when it can't be stamped (no snapshot yet, a stale buffer
- * from a previous world, or older than the stamp ring). Writes into `out`, allocation-free. */
-export const readPhysicsSnapshotStamp = (
-  snapshotCount: number,
-  out: { step: number; phase: number }
-): boolean => {
-  if (snapshotCount <= 0) return false;
-  const i = snapshotCount % SNAPSHOT_STAMP_RING_SIZE;
-  if (snapshotStampBatch[i] !== snapshotCount) return false;
-  out.step = snapshotStampStep[i];
-  out.phase = snapshotStampPhase[i];
+/** Stamp of the latest visible snapshot: `step` = getPhysicsSnapshotStepIndex(), `phase` = the
+ * accumulator's fraction of a step when its batch was issued (0 if no longer known). Returns
+ * false before the first snapshot. Writes into `out`, allocation-free. */
+export const readPhysicsSnapshotStamp = (out: { step: number; phase: number }): boolean => {
+  const step = getPhysicsSnapshotStepIndex();
+  if (step <= 0) return false;
+  const i = step % SNAPSHOT_PHASE_RING_SIZE;
+  out.step = step;
+  out.phase = snapshotPhaseStep[i] === step ? snapshotPhase[i] : 0;
   return true;
 };
 
@@ -826,8 +814,10 @@ export const createPhysicsWorld = async (
       resolvedTransportMode = response.transportMode;
       if (response.transportMode === 'SHARED_MEMORY' && response.buffer) {
         transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, response.buffer);
-        stepMessagesPosted = 0;
         pendingEventPushes = [];
+      } else {
+        // MESSAGE_BATCH: a previous world's last pushed copy must never be read as this one's.
+        transformBuffer = undefined;
       }
       // Only handed over in SHARED_MEMORY mode with stepStatsEnabled on (p027); allocated
       // once here, like the transform buffer, which is why the flag is boot-time only.
@@ -2397,7 +2387,7 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   setTranslation(tra: PhysVector, wakeUp: boolean): void {
     this.pendingPos = {
       value: { x: tra.x, y: tra.y, z: tra.z },
-      visibleAt: getWriteVisibleCount(),
+      visibleAt: getWriteVisibleStep(),
     };
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_TRANSLATION,
@@ -2410,7 +2400,7 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   setLinvel(vel: PhysVector, wakeUp: boolean): void {
     this.pendingLvel = {
       value: { x: vel.x, y: vel.y, z: vel.z },
-      visibleAt: getWriteVisibleCount(),
+      visibleAt: getWriteVisibleStep(),
     };
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_LINVEL,
@@ -2444,7 +2434,7 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   }
 
   setRotation(rot: PhysRotation, wakeUp: boolean): void {
-    this.pendingRot = { value: toPlainRot(rot), visibleAt: getWriteVisibleCount() };
+    this.pendingRot = { value: toPlainRot(rot), visibleAt: getWriteVisibleStep() };
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_ROTATION,
       rigidBodyId: this.id,
@@ -2456,7 +2446,7 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   setAngvel(vel: PhysVector, wakeUp: boolean): void {
     this.pendingAvel = {
       value: { x: vel.x, y: vel.y, z: vel.z },
-      visibleAt: getWriteVisibleCount(),
+      visibleAt: getWriteVisibleStep(),
     };
     return messageWorker({
       type: PhysicsProtocolType.RIGID_SET_ANGVEL,
@@ -2908,7 +2898,7 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
           y: v.y + impulse.y / this.cachedMass,
           z: v.z + impulse.z / this.cachedMass,
         },
-        visibleAt: getWriteVisibleCount(),
+        visibleAt: getWriteVisibleStep(),
       };
     }
     void this.mass().catch(() => {});

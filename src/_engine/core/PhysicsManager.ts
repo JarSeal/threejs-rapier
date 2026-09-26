@@ -19,7 +19,6 @@ import {
   getPhysicsSimClock,
   getPhysicsSimClockEpoch,
   getPhysicsSimHistoryEpoch,
-  getPhysicsSnapshotCount,
   getPhysicsState,
   readPhysicsSnapshotStamp,
 } from './PhysicsAPI';
@@ -367,9 +366,9 @@ const NO_SNAPSHOT = -1;
 type InterpolationHistory = {
   /** HISTORY_SLOTS × POSE_FLOATS, oldest → newest, mutated in place. */
   poses: Float32Array;
-  /** Snapshot count the newest slot was captured at. Anything but the world state's previous
-   * `lastCount` when a new snapshot arrives means this entity missed one (new, disabled,
-   * skipped) — its history has a hole and gets reseeded instead of shifted. */
+  /** Step index of the snapshot the newest slot was captured at. Anything but the world
+   * state's previous `lastStep` when a new snapshot arrives means this entity missed one (new,
+   * disabled, skipped) — its history has a hole and gets reseeded instead of shifted. */
   capturedAt: number;
 };
 
@@ -395,7 +394,8 @@ type WorldInterpolationState = {
    * entity captures on the same snapshots, and a reseeded history holds one pose in all slots,
    * so its stamps don't matter. */
   stamps: Float64Array;
-  lastCount: number;
+  /** Step index of the newest snapshot captured (NO_SNAPSHOT: none yet). */
+  lastStep: number;
   clockEpoch: number;
   historyEpoch: number;
   mode: PhysicsInterpolationMode | null;
@@ -423,7 +423,7 @@ const getWorldInterpolationState = (world: ECSWorld) => {
     state = {
       histories: new Map(),
       stamps: new Float64Array(HISTORY_SLOTS),
-      lastCount: NO_SNAPSHOT,
+      lastStep: NO_SNAPSHOT,
       clockEpoch: -1,
       historyEpoch: -1,
       mode: null,
@@ -448,7 +448,7 @@ const getWorldInterpolationState = (world: ECSWorld) => {
  * replaced / snapshot restored — so the per-entity walk is fine. */
 const resetInterpolationHistory = (state: WorldInterpolationState) => {
   for (const history of state.histories.values()) history.capturedAt = NO_SNAPSHOT;
-  state.lastCount = NO_SNAPSHOT;
+  state.lastStep = NO_SNAPSHOT;
   state.intervals.fill(1);
   state.wasLastIntervalOutlier = false;
   state.hasTarget = false;
@@ -536,18 +536,17 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
     resetClock = true;
   }
 
-  // --- Newly visible snapshot? ---
-  const count = getPhysicsSnapshotCount();
-  let prevCount = state.lastCount;
+  // --- Newly visible snapshot? (identified by the step index it was stamped with) ---
+  let prevStep = state.lastStep;
   let isNewSnapshot = false;
-  if (count !== state.lastCount && readPhysicsSnapshotStamp(count, snapshotStamp)) {
+  if (readPhysicsSnapshotStamp(snapshotStamp) && snapshotStamp.step !== state.lastStep) {
     isNewSnapshot = true;
     const newestStep = state.stamps[HISTORY_SLOTS - 1];
-    if (prevCount === NO_SNAPSHOT || snapshotStamp.step <= newestStep) {
+    if (prevStep === NO_SNAPSHOT || snapshotStamp.step <= newestStep) {
       // First snapshot of a timeline (or one that doesn't follow the last): nothing to
       // interpolate from yet.
-      if (prevCount !== NO_SNAPSHOT) resetInterpolationHistory(state);
-      prevCount = NO_SNAPSHOT;
+      if (prevStep !== NO_SNAPSHOT) resetInterpolationHistory(state);
+      prevStep = NO_SNAPSHOT;
       state.stamps.fill(snapshotStamp.step);
       resetClock = true;
     } else {
@@ -568,9 +567,9 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
       state.stamps.copyWithin(0, 1);
       state.stamps[HISTORY_SLOTS - 1] = snapshotStamp.step;
     }
-    state.lastCount = count;
+    state.lastStep = snapshotStamp.step;
   }
-  if (state.lastCount === NO_SNAPSHOT) return; // nothing stamped yet — leave the MAIN sync pose
+  if (state.lastStep === NO_SNAPSHOT) return; // nothing stamped yet — leave the MAIN sync pose
 
   // --- Delay D: one snapshot interval, measured (max over the recent window, so alternating
   // intervals are extra-delayed on the short ones instead of clamping on the long ones) ---
@@ -666,7 +665,7 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
     if (!obj3D) continue;
 
     let history = state.histories.get(entityId);
-    if (!history || history.capturedAt !== state.lastCount) {
+    if (!history || history.capturedAt !== state.lastStep) {
       const rot = rb.rot;
       const quatLengthSq = rot.x * rot.x + rot.y * rot.y + rot.z * rot.z + rot.w * rot.w;
       if (quatLengthSq < MIN_QUAT_LENGTH_SQ) continue;
@@ -677,7 +676,7 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
         state.histories.set(entityId, history);
       }
       const poses = history.poses;
-      if (isNewSnapshot && prevCount !== NO_SNAPSHOT && history.capturedAt === prevCount) {
+      if (isNewSnapshot && prevStep !== NO_SNAPSHOT && history.capturedAt === prevStep) {
         poses.copyWithin(0, POSE_FLOATS);
         writeHistorySlot(poses, HISTORY_SLOTS - 1, pos, rot, invQuatLength);
       } else {
@@ -687,7 +686,7 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
           writeHistorySlot(poses, slot, pos, rot, invQuatLength);
         }
       }
-      history.capturedAt = state.lastCount;
+      history.capturedAt = state.lastStep;
     }
 
     const poses = history.poses;

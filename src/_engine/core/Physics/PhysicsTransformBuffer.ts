@@ -3,6 +3,11 @@ import { PhysRotation, PhysVector } from './PhysicsAPITypes';
 /** Float32 fields per slot: position(3) + quaternion(4) + linvel(3) + angvel(3). */
 export const PHYSICS_TRANSFORM_FIELD_COUNT = 13;
 
+/** Int32 header fields trailing the float slots: [write count, step index] (see markWritten). */
+export const PHYSICS_TRANSFORM_HEADER_INTS = 2;
+const HEADER_WRITE_COUNT = 0;
+const HEADER_STEP_INDEX = 1;
+
 /**
  * Allocates the backing buffer for a PhysicsTransformBuffer. Physics-owned and
  * independent of ECS's TypedArrayTransformStore (see p021 §3.3) so worker-thread
@@ -12,10 +17,10 @@ export function createPhysicsTransformArrayBuffer(
   maxBodies: number,
   useSAB = false
 ): ArrayBuffer | SharedArrayBuffer {
-  // + one trailing Int32 write counter (see PhysicsTransformBuffer.markWritten)
+  // + the trailing Int32 header (see PhysicsTransformBuffer.markWritten)
   const byteLength =
     maxBodies * PHYSICS_TRANSFORM_FIELD_COUNT * Float32Array.BYTES_PER_ELEMENT +
-    Int32Array.BYTES_PER_ELEMENT;
+    PHYSICS_TRANSFORM_HEADER_INTS * Int32Array.BYTES_PER_ELEMENT;
   return useSAB ? new SharedArrayBuffer(byteLength) : new ArrayBuffer(byteLength);
 }
 
@@ -35,10 +40,11 @@ export class PhysicsTransformBuffer {
   readonly maxBodies: number;
   readonly buffer: ArrayBuffer | SharedArrayBuffer;
   readonly floats: Float32Array;
-  /** Trailing counter, bumped once per worker write-back — lets the main thread tell a fresh
-   * physics snapshot apart from a re-read of the previous one (poses alone can't: a body that
-   * didn't move this step reads identical). */
-  private readonly writeCounter: Int32Array;
+  /** Trailing header: a write counter bumped once per worker write-back, and the step index
+   * (steps executed on the current world) the written poses describe. The stamp makes each
+   * snapshot self-describing — the main thread never has to reconstruct which step it is from
+   * message bookkeeping (poses alone can't tell either: a body that didn't move reads identical). */
+  private readonly header: Int32Array;
 
   private readonly slotById = new Map<number, number>();
   private readonly freeSlots: number[] = [];
@@ -49,17 +55,29 @@ export class PhysicsTransformBuffer {
     this.buffer = buffer ?? createPhysicsTransformArrayBuffer(maxBodies, false);
     const floatCount = maxBodies * PHYSICS_TRANSFORM_FIELD_COUNT;
     this.floats = new Float32Array(this.buffer, 0, floatCount);
-    this.writeCounter = new Int32Array(this.buffer, floatCount * Float32Array.BYTES_PER_ELEMENT, 1);
+    this.header = new Int32Array(
+      this.buffer,
+      floatCount * Float32Array.BYTES_PER_ELEMENT,
+      PHYSICS_TRANSFORM_HEADER_INTS
+    );
   }
 
-  /** Marks a completed write-back of all slots. Worker-side only, called after each step batch. */
-  markWritten(): void {
-    Atomics.add(this.writeCounter, 0, 1);
+  /** Marks a completed write-back of all slots, stamped with the step index the poses describe.
+   * Worker-side only, called after each step batch — after every slot has been written: the
+   * Atomics stores are the release fence for them. */
+  markWritten(stepIndex: number): void {
+    Atomics.store(this.header, HEADER_STEP_INDEX, stepIndex);
+    Atomics.add(this.header, HEADER_WRITE_COUNT, 1);
   }
 
   /** How many write-backs have completed so far (wraps harmlessly; only compared for change). */
   getWriteCount(): number {
-    return Atomics.load(this.writeCounter, 0);
+    return Atomics.load(this.header, HEADER_WRITE_COUNT);
+  }
+
+  /** Step index of the last completed write-back (0 = nothing written yet). */
+  getStepIndex(): number {
+    return Atomics.load(this.header, HEADER_STEP_INDEX);
   }
 
   /** Allocates (or returns the existing) slot for a rigid body id. Worker-side only. */

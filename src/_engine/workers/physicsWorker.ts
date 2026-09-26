@@ -35,6 +35,11 @@ let physicsWorldAPI: WorldAPI;
 let workerPhysicsState: PhysicsState | undefined;
 let transformBuffer: PhysicsTransformBuffer | undefined;
 let resolvedUseSAB = false;
+/** Steps executed on the current world since CREATE_WORLD — the step index every transform
+ * write-back is stamped with. Mirrors the main thread's own count of steps issued (reset at the
+ * same CREATE_WORLD), so the two agree exactly once a STEP has been processed. Deliberately
+ * not reset by RESTORE_SNAPSHOT: the timeline keeps going, only the poses jump. */
+let stepsExecuted = 0;
 /** Debug wireframe state mirror (p025). Stays undefined until the main thread enables
  * tracking, which is what keeps the feature's cost at zero while no wireframe is on. */
 let debugStateBuffer: PhysicsDebugStateBuffer | undefined;
@@ -113,6 +118,7 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
               for (let j = 0; j < commands.length; j++) await handleMessage(commands[j]);
             if (!trackStats) {
               engAPI.step();
+              stepsExecuted++;
               continue;
             }
             // Timed around step() alone — replaying this sub-step's commands above is main-
@@ -120,6 +126,7 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
             // legacy PHY panel's contamination bug in a new place.
             const subStepStart = performance.now();
             engAPI.step();
+            stepsExecuted++;
             stepEndAt = performance.now();
             stepMs += stepEndAt - subStepStart;
           }
@@ -173,6 +180,7 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
       case PhysicsProtocolType.CREATE_WORLD: {
         // CREATE_WORLD
         physicsWorldAPI = engAPI.createWorld(data.gravity, data.opts);
+        stepsExecuted = 0;
         const maxBodies = workerPhysicsState?.maxBodies || 2048;
         resolvedUseSAB = Boolean(
           workerPhysicsState?.useSAB &&
@@ -307,7 +315,7 @@ const writeBackTransforms = (stats?: StepStats) => {
     transformBuffer.setTransform(slot, rb.pos, rb.rot);
     transformBuffer.setVelocity(slot, rb.linvel(), rb.angvel());
   }
-  transformBuffer.markWritten();
+  transformBuffer.markWritten(stepsExecuted);
   if (!resolvedUseSAB) {
     const copy = transformBuffer.buffer.slice(0) as ArrayBuffer;
     sendMessageSimple(
