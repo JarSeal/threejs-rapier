@@ -181,7 +181,10 @@ export const smoothDampVec3 = (
   let changeY = current.y - target.y;
   let changeZ = current.z - target.z;
 
-  const originalTo = target.clone();
+  // The target before the clamp below rewrites it (plain numbers, not a per-call clone)
+  const originalToX = target.x;
+  const originalToY = target.y;
+  const originalToZ = target.z;
 
   // 3. Clamp maximum speed
   const maxChange = maxSpeed * smoothTime;
@@ -214,12 +217,12 @@ export const smoothDampVec3 = (
   let outputZ = target.z + (changeZ + tempZ) * exp;
 
   // 6. Prevent overshooting
-  const origMinusCurrentX = originalTo.x - current.x;
-  const origMinusCurrentY = originalTo.y - current.y;
-  const origMinusCurrentZ = originalTo.z - current.z;
-  const outMinusOrigX = outputX - originalTo.x;
-  const outMinusOrigY = outputY - originalTo.y;
-  const outMinusOrigZ = outputZ - originalTo.z;
+  const origMinusCurrentX = originalToX - current.x;
+  const origMinusCurrentY = originalToY - current.y;
+  const origMinusCurrentZ = originalToZ - current.z;
+  const outMinusOrigX = outputX - originalToX;
+  const outMinusOrigY = outputY - originalToY;
+  const outMinusOrigZ = outputZ - originalToZ;
 
   if (
     origMinusCurrentX * outMinusOrigX +
@@ -227,13 +230,13 @@ export const smoothDampVec3 = (
       origMinusCurrentZ * outMinusOrigZ >
     0
   ) {
-    outputX = originalTo.x;
-    outputY = originalTo.y;
-    outputZ = originalTo.z;
+    outputX = originalToX;
+    outputY = originalToY;
+    outputZ = originalToZ;
 
-    currentVelocity.x = (outputX - originalTo.x) / deltaTime;
-    currentVelocity.y = (outputY - originalTo.y) / deltaTime;
-    currentVelocity.z = (outputZ - originalTo.z) / deltaTime;
+    currentVelocity.x = (outputX - originalToX) / deltaTime;
+    currentVelocity.y = (outputY - originalToY) / deltaTime;
+    currentVelocity.z = (outputZ - originalToZ) / deltaTime;
   }
 
   // Apply result

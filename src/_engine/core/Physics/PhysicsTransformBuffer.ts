@@ -1,4 +1,4 @@
-import { PhysRotation, PhysVector } from './PhysicsAPITypes';
+import { PhysRotation, PhysVector, type PoseArray } from './PhysicsAPITypes';
 
 /** Float32 fields per slot: position(3) + quaternion(4) + linvel(3) + angvel(3). */
 export const PHYSICS_TRANSFORM_FIELD_COUNT = 13;
@@ -38,13 +38,14 @@ export function createPhysicsTransformArrayBuffer(
  */
 export class PhysicsTransformBuffer {
   readonly maxBodies: number;
-  readonly buffer: ArrayBuffer | SharedArrayBuffer;
-  readonly floats: Float32Array;
+  /** Replaced only by rebind() (MESSAGE_BATCH main-thread copies). */
+  buffer: ArrayBuffer | SharedArrayBuffer;
+  floats: Float32Array;
   /** Trailing header: a write counter bumped once per worker write-back, and the step index
    * (steps executed on the current world) the written poses describe. The stamp makes each
    * snapshot self-describing — the main thread never has to reconstruct which step it is from
    * message bookkeeping (poses alone can't tell either: a body that didn't move reads identical). */
-  private readonly header: Int32Array;
+  private header: Int32Array;
 
   private readonly slotById = new Map<number, number>();
   private readonly freeSlots: number[] = [];
@@ -57,6 +58,20 @@ export class PhysicsTransformBuffer {
     this.floats = new Float32Array(this.buffer, 0, floatCount);
     this.header = new Int32Array(
       this.buffer,
+      floatCount * Float32Array.BYTES_PER_ELEMENT,
+      PHYSICS_TRANSFORM_HEADER_INTS
+    );
+  }
+
+  /** Re-points this wrapper at another buffer of the same layout. For the MESSAGE_BATCH main
+   * thread, which receives a fresh copy on every step: two views per step instead of a whole
+   * new wrapper (with its own slot map). Main-thread only — the slot map isn't touched. */
+  rebind(buffer: ArrayBuffer | SharedArrayBuffer): void {
+    const floatCount = this.maxBodies * PHYSICS_TRANSFORM_FIELD_COUNT;
+    this.buffer = buffer;
+    this.floats = new Float32Array(buffer, 0, floatCount);
+    this.header = new Int32Array(
+      buffer,
       floatCount * Float32Array.BYTES_PER_ELEMENT,
       PHYSICS_TRANSFORM_HEADER_INTS
     );
@@ -127,6 +142,13 @@ export class PhysicsTransformBuffer {
     this.floats[o + 4] = rot.y;
     this.floats[o + 5] = rot.z;
     this.floats[o + 6] = rot.w;
+  }
+
+  /** Allocation-free pose read: [posX, posY, posZ, rotX, rotY, rotZ, rotW] into `out` at `offset`. */
+  readPoseInto(slot: number, out: PoseArray, offset = 0): void {
+    const o = slot * PHYSICS_TRANSFORM_FIELD_COUNT;
+    const f = this.floats;
+    for (let i = 0; i < 7; i++) out[offset + i] = f[o + i];
   }
 
   getPosition(slot: number): PhysVector {

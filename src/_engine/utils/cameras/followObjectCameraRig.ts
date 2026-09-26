@@ -83,6 +83,7 @@ export const createFollowObjectCameraRig = (params: FollowObjectCameraParams) =>
   const idealPos = new THREE.Vector3();
   const velocity = new THREE.Vector3(0, 0, 0); // For dampening (if using smoothDamp)
   const targetHeightVector = new THREE.Vector3(0, targetHeight, 0);
+  const sphericalOffset = new THREE.Vector3(); // mouse-look offset, rewritten every tick
 
   const offsetObj = offsetParam || DEFAULT_OFFSET;
   const offset = new THREE.Vector3(offsetObj.x, offsetObj.y, offsetObj.z);
@@ -142,7 +143,7 @@ export const createFollowObjectCameraRig = (params: FollowObjectCameraParams) =>
 
             // Calculate Offset Vector from Spherical Coords
             // This converts the Angles back into a Vector3 offset (x, y, z)
-            const offsetVector = new THREE.Vector3().setFromSpherical(spherical);
+            const offsetVector = sphericalOffset.setFromSpherical(spherical);
 
             // Get Look Target (e.g., Player Head position)
             targetPos.copy(targetMesh.position).add(targetHeightVector);
@@ -161,9 +162,10 @@ export const createFollowObjectCameraRig = (params: FollowObjectCameraParams) =>
             idealPos.copy(targetPos).add(offset);
           }
 
-          // Smoothly move camera there (Lerp)
-          // 0.1 is the smoothing factor (adjust for feel)
-          camera.position.lerp(idealPos, smoothTime);
+          // Smoothly move camera there (Lerp): an exponential approach with time constant
+          // smoothTime, so the feel doesn't change with the frame rate (a fixed per-frame lerp
+          // factor would converge 2.4x faster at 144Hz than at 60Hz)
+          camera.position.lerp(idealPos, 1 - Math.exp(-dt / smoothTime));
 
           // Look at the target
           camera.lookAt(targetPos);
@@ -196,7 +198,7 @@ export const createFollowObjectCameraRig = (params: FollowObjectCameraParams) =>
 
             // Calculate Offset Vector from Spherical Coords
             // This converts the Angles back into a Vector3 offset (x, y, z)
-            const offsetVector = new THREE.Vector3().setFromSpherical(spherical);
+            const offsetVector = sphericalOffset.setFromSpherical(spherical);
 
             // Get Look Target (e.g., Player Head position)
             targetPos.copy(targetMesh.position).add(targetHeightVector);

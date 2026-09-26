@@ -30,6 +30,21 @@ let mainLoopInitiated = false;
 let lastRenderTime = performance.now();
 const resizers: { [key: string]: () => void } = {};
 
+/** Max FPS limiter: whether to skip rendering this frame. The reference time advances by
+ * exactly one interval per rendered frame rather than jumping to "now", so the time a frame
+ * arrives late is carried over instead of discarded — otherwise a frame landing a hair under
+ * the interval gets skipped and the rate falls to the next display-rate divisor (a 30 FPS cap
+ * on a 60Hz display averaged ~24). After a hitch it re-anchors instead of bursting to catch up. */
+const shouldSkipFrameForMaxFPS = () => {
+  if (loopState.maxFPS <= 0) return false;
+  const interval = loopState.maxFPSInterval;
+  const nowMs = performance.now();
+  const sinceLast = nowMs - lastRenderTime;
+  if (sinceLast < interval) return true;
+  lastRenderTime = sinceLast < 2 * interval ? lastRenderTime + interval : nowMs;
+  return false;
+};
+
 export type LoopState = {
   masterPlay: boolean;
   appPlay: boolean;
@@ -173,15 +188,7 @@ const mainLoopForDebug = async () => {
   advanceElapsedTime();
 
   // --- Max FPS limiter ---
-  let skipFrame = false;
-  if (loopState.maxFPS > 0) {
-    const nowMs = performance.now();
-    if (nowMs - lastRenderTime < loopState.maxFPSInterval) {
-      skipFrame = true; // Skip rendering this frame
-    } else {
-      lastRenderTime = nowMs;
-    }
-  }
+  const skipFrame = shouldSkipFrameForMaxFPS();
 
   // main loopers
   for (const world of getAllECSWorlds()) world.updateMainLoop(delta);
@@ -270,15 +277,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
   advanceElapsedTime();
 
   // --- Max FPS limiter ---
-  let skipFrame = false;
-  if (loopState.maxFPS > 0) {
-    const nowMs = performance.now();
-    if (nowMs - lastRenderTime < loopState.maxFPSInterval) {
-      skipFrame = true; // Skip rendering this frame
-    } else {
-      lastRenderTime = nowMs;
-    }
-  }
+  const skipFrame = shouldSkipFrameForMaxFPS();
 
   // main loopers
   for (const world of getAllECSWorlds()) world.updateMainLoop(delta);
@@ -357,7 +356,9 @@ export const initMainLoop = () => {
   const maxFPS = Number(getEnv('VITE_MAX_FPS'));
   if (maxFPS !== undefined && !isNaN(maxFPS)) {
     loopState.maxFPS = maxFPS;
-    if (maxFPS > 0) loopState.maxFPSInterval = 1 / maxFPS;
+    // In ms, like the performance.now() deltas it's compared against (and the debug GUI's own
+    // 1000 / value) — as 1 / maxFPS (seconds) the limiter never engaged.
+    if (maxFPS > 0) loopState.maxFPSInterval = 1000 / maxFPS;
   }
 
   initWinVisibilityListener();

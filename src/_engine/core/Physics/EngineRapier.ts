@@ -17,6 +17,7 @@ import {
   PhysicsState,
   PhysRay,
   PhysRotation,
+  PoseArray,
   PhysVector,
   QueryFilterFlags,
   RayColliderHitAPI,
@@ -1307,6 +1308,19 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   }
   get rot(): PhysRotation {
     return this.rb.rotation();
+  }
+  readPoseInto(out: PoseArray, offset = 0): void {
+    // Rapier's own getters allocate one object each; this is still 2 per read instead of one
+    // per component read (up to 7) through pos/rot.
+    const t = this.rb.translation();
+    const r = this.rb.rotation();
+    out[offset] = t.x;
+    out[offset + 1] = t.y;
+    out[offset + 2] = t.z;
+    out[offset + 3] = r.x;
+    out[offset + 4] = r.y;
+    out[offset + 5] = r.z;
+    out[offset + 6] = r.w;
   }
   get lvel(): PhysVector {
     return this.rb.linvel();

@@ -939,6 +939,7 @@ const flushTracking = () => {
  * by entity id.
  */
 const _renderObjectScale = new THREE.Vector3();
+const _rawPose = new Float64Array(7);
 
 const physicsWireframeSystem = () => {
   if (trackingDirty) flushTracking();
@@ -963,8 +964,10 @@ const physicsWireframeSystem = () => {
         );
       } else if (entry.rb) {
         // The raw stepped pose (latest snapshot), never the interpolated render pose.
-        entry.host.position.set(entry.rb.pos.x, entry.rb.pos.y, entry.rb.pos.z);
-        entry.host.quaternion.set(entry.rb.rot.x, entry.rb.rot.y, entry.rb.rot.z, entry.rb.rot.w);
+        const p = _rawPose;
+        entry.rb.readPoseInto(p);
+        entry.host.position.set(p[0], p[1], p[2]);
+        entry.host.quaternion.set(p[3], p[4], p[5], p[6]);
       }
     }
     if (entry.parent) applyLocalTransforms(entry);

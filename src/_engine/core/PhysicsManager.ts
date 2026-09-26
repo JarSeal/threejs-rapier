@@ -288,6 +288,10 @@ export const deleteAllPhysicsEntities = (ecsWorld?: ECSWorld) => {
   for (const id of ids) world.deleteEntity(id);
 };
 
+// [pos xyz, quat xyzw] scratch every body's pose is read into — Float64 so TRANSFORM gets the
+// exact values, and one readPoseInto() per body instead of 7 object-allocating pos/rot reads.
+const transformSyncPose = new Float64Array(7);
+
 /**
  * Update transform from physics
  */
@@ -295,22 +299,27 @@ export const physicsToTransformSystem = (world: ECSWorld) => {
   const transformStore = world.getTypedTransformStore();
 
   const syncStorage = (storage: IComponentStorage<RigidBodyAPI>) => {
-    for (const [entityId, rb] of storage) {
+    // keys() + get(): destructuring the storage's own iterator allocates a [key, value] array
+    // per entry, per frame.
+    for (const entityId of storage.keys()) {
+      const rb = storage.get(entityId)!;
       if (transformStore) {
         const slot = transformStore.getSlot(entityId);
         if (slot === -1) continue;
-        // Direct SAB access from your Physics Proxy
-        transformStore.setPosition(slot, rb.pos.x, rb.pos.y, rb.pos.z);
-        transformStore.setQuaternion(slot, rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w);
+        const p = transformSyncPose;
+        rb.readPoseInto(p);
+        transformStore.setPosition(slot, p[0], p[1], p[2]);
+        transformStore.setQuaternion(slot, p[3], p[4], p[5], p[6]);
         continue;
       }
 
       const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
       if (!transform) continue;
 
-      // Direct SAB access from your Physics Proxy
-      transform.position.set(rb.pos.x, rb.pos.y, rb.pos.z);
-      transform.quaternion.set(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w);
+      const p = transformSyncPose;
+      rb.readPoseInto(p);
+      transform.position.set(p[0], p[1], p[2]);
+      transform.quaternion.set(p[3], p[4], p[5], p[6]);
 
       // Mark as changed so the Render System knows to update the Mesh
       transform.setDirty();
@@ -479,21 +488,29 @@ let hasWarnedInvalidInterpolationPairing = false;
 
 /** Writes rb's current pose into history slot `slot`, normalizing the quaternion at capture
  * (Float32 round-trips drift off unit length, and slerp assumes unit inputs). */
-const writeHistorySlot = (
-  poses: Float32Array,
-  slot: number,
-  pos: { x: number; y: number; z: number },
-  rot: { x: number; y: number; z: number; w: number },
-  invQuatLength: number
-) => {
+/** [pos xyz, quat xyzw] every capture is read into (rb.readPoseInto, no per-read allocation). */
+const capturePose = new Float64Array(POSE_FLOATS);
+
+/** Normalizes capturePose's quaternion in place — at capture, since Float32 round-trips drift
+ * off unit length and slerp assumes unit inputs. False when it is no valid pose yet (a (near)
+ * zero quaternion, e.g. rb.rot before the first snapshot): the caller must skip the entity
+ * rather than slerp NaN into its matrix. */
+const normalizeCapturePose = (): boolean => {
+  const p = capturePose;
+  const quatLengthSq = p[3] * p[3] + p[4] * p[4] + p[5] * p[5] + p[6] * p[6];
+  if (quatLengthSq < MIN_QUAT_LENGTH_SQ) return false;
+  const invQuatLength = 1 / Math.sqrt(quatLengthSq);
+  p[3] *= invQuatLength;
+  p[4] *= invQuatLength;
+  p[5] *= invQuatLength;
+  p[6] *= invQuatLength;
+  return true;
+};
+
+/** Copies capturePose into history slot `slot`. */
+const writeHistorySlot = (poses: Float32Array, slot: number) => {
   const o = slot * POSE_FLOATS;
-  poses[o] = pos.x;
-  poses[o + 1] = pos.y;
-  poses[o + 2] = pos.z;
-  poses[o + 3] = rot.x * invQuatLength;
-  poses[o + 4] = rot.y * invQuatLength;
-  poses[o + 5] = rot.z * invQuatLength;
-  poses[o + 6] = rot.w * invQuatLength;
+  for (let i = 0; i < POSE_FLOATS; i++) poses[o + i] = capturePose[i];
 };
 
 const createInterpolationHistory = (): InterpolationHistory => ({
@@ -518,11 +535,17 @@ ECSWorld.registerTransformResetListener((world, entityId) => {
     history = createInterpolationHistory();
     state.histories.set(entityId, history);
   }
-  const q = transform.quaternion;
-  const quatLengthSq = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
-  if (quatLengthSq < MIN_QUAT_LENGTH_SQ) return;
+  const { position: pos, quaternion: q } = transform;
+  capturePose[0] = pos.x;
+  capturePose[1] = pos.y;
+  capturePose[2] = pos.z;
+  capturePose[3] = q.x;
+  capturePose[4] = q.y;
+  capturePose[5] = q.z;
+  capturePose[6] = q.w;
+  if (!normalizeCapturePose()) return;
   history.snapPose ??= new Float32Array(POSE_FLOATS);
-  writeHistorySlot(history.snapPose, 0, transform.position, q, 1 / Math.sqrt(quatLengthSq));
+  writeHistorySlot(history.snapPose, 0);
   history.snapUntilStep = getPhysicsWriteVisibleStep();
 });
 
@@ -699,8 +722,9 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
   const a = slotA * POSE_FLOATS;
   const b = slotB * POSE_FLOATS;
   const dynamicVisuals = world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL);
-  for (const [entityId, rb] of dynamicVisuals) {
+  for (const entityId of dynamicVisuals.keys()) {
     if (world.isDisabled(entityId)) continue;
+    const rb = dynamicVisuals.get(entityId)!;
     const obj3D = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
     if (!obj3D) continue;
 
@@ -717,11 +741,8 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
       history.capturedAt = NO_SNAPSHOT;
     }
     if (!history || history.capturedAt !== state.lastStep) {
-      const rot = rb.rot;
-      const quatLengthSq = rot.x * rot.x + rot.y * rot.y + rot.z * rot.z + rot.w * rot.w;
-      if (quatLengthSq < MIN_QUAT_LENGTH_SQ) continue;
-      const invQuatLength = 1 / Math.sqrt(quatLengthSq);
-      const pos = rb.pos;
+      rb.readPoseInto(capturePose);
+      if (!normalizeCapturePose()) continue;
       if (!history) {
         history = createInterpolationHistory();
         state.histories.set(entityId, history);
@@ -729,12 +750,12 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
       const poses = history.poses;
       if (isNewSnapshot && prevStep !== NO_SNAPSHOT && history.capturedAt === prevStep) {
         poses.copyWithin(0, POSE_FLOATS);
-        writeHistorySlot(poses, HISTORY_SLOTS - 1, pos, rot, invQuatLength);
+        writeHistorySlot(poses, HISTORY_SLOTS - 1);
       } else {
         // Hole in the history (new, re-enabled, skipped, or reset): reseed every slot with the
         // current pose, which makes this frame (and the history) snap to it.
         for (let slot = 0; slot < HISTORY_SLOTS; slot++) {
-          writeHistorySlot(poses, slot, pos, rot, invQuatLength);
+          writeHistorySlot(poses, slot);
         }
       }
       history.capturedAt = state.lastStep;

@@ -48,6 +48,7 @@ import {
   RigidBodyAPI,
   WorldAPI,
   PhysRotation,
+  PoseArray,
   RigidBodyTypeAPI,
   TakeSnapshotResponse,
   CreateWorldResponse,
@@ -529,7 +530,9 @@ const onWorkerMessage = (event: MessageEvent<PhysicsDownProtocol>) => {
     return;
   } else if (type === PhysicsProtocolType.TRANSFORMS_PUSH) {
     // Unsolicited push (MESSAGE_BATCH fallback) — no requestId, not a response to resolve.
-    transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, data.buffer);
+    // The wrapper is built once per world and only re-pointed at each new copy after that.
+    if (transformBuffer) transformBuffer.rebind(data.buffer);
+    else transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, data.buffer);
     // Step stats (p027) ride along on this message in MESSAGE_BATCH mode, so the receipt
     // time here is the return leg's real arrival time. Only present while measuring.
     if (data.stepDuration !== undefined) {
@@ -2168,6 +2171,29 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
     }
     if (!transformBuffer || this.slot === -1) return { x: 0, y: 0, z: 0, w: 0 };
     return transformBuffer.getRotation(this.slot);
+  }
+  readPoseInto(out: PoseArray, offset = 0): void {
+    if (this.pendingPos && !isWritePending(this.pendingPos.visibleAt)) this.pendingPos = undefined;
+    if (this.pendingRot && !isWritePending(this.pendingRot.visibleAt)) this.pendingRot = undefined;
+    if (transformBuffer && this.slot !== -1) {
+      transformBuffer.readPoseInto(this.slot, out, offset);
+    } else {
+      // Same zeroed defaults as the pos/rot getters before the first step/push
+      for (let i = 0; i < 7; i++) out[offset + i] = 0;
+    }
+    const p = this.pendingPos?.value;
+    if (p) {
+      out[offset] = p.x;
+      out[offset + 1] = p.y;
+      out[offset + 2] = p.z;
+    }
+    const r = this.pendingRot?.value;
+    if (r) {
+      out[offset + 3] = r.x;
+      out[offset + 4] = r.y;
+      out[offset + 5] = r.z;
+      out[offset + 6] = r.w;
+    }
   }
   get lvel(): PhysVector {
     if (this.pendingLvel) {

@@ -23,7 +23,10 @@ import { getECSWorld } from '../_engine/core/ECS';
 import { getScene, registerOnSceneExit } from '../_engine/core/Scene';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 import { getCameraByAppId } from '../_engine/core/CameraManager';
-import { createFollowObjectCameraRig } from '../_engine/utils/cameras/followObjectCameraRig';
+import {
+  createFollowObjectCameraRig,
+  deleteFollowObjectCameraRig,
+} from '../_engine/utils/cameras/followObjectCameraRig';
 import { ECSSystemStage } from '../AppECSRegistry';
 
 export const SCENE_THIRD_PERSON_GYM_META = {
@@ -295,9 +298,12 @@ export const scene = async () =>
     let accDelta = 0;
     getECSWorld().removeSystem('dummyCharLooper');
     // ...and remove it on leaving too, or it would keep driving the deleted dummy character.
-    registerOnSceneExit(SCENE_THIRD_PERSON_GYM_META.id, () =>
-      getECSWorld().removeSystem('dummyCharLooper')
-    );
+    // The follow camera rig likewise, or it keeps ticking against the deleted character mesh.
+    // (One exit callback per scene — registerOnSceneExit replaces any earlier one.)
+    registerOnSceneExit(SCENE_THIRD_PERSON_GYM_META.id, () => {
+      getECSWorld().removeSystem('dummyCharLooper');
+      deleteFollowObjectCameraRig('thirdPersonGymFollowCam');
+    });
     getECSWorld().addSystem(ECSSystemStage.APP_PHYSICS_STEP, 'dummyCharLooper', (_world, dt) => {
       if (accDelta > 1) {
         if (action !== 'F') {

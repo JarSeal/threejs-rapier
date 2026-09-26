@@ -282,6 +282,9 @@ export type OmitSync<T> = {
   [K in keyof T as K extends `${string}Sync` ? never : K]: T[K];
 };
 
+/** Writable numeric array a pose is read into (see RigidBodyAPI.readPoseInto). */
+export type PoseArray = Float32Array | Float64Array | number[];
+
 /**
  * A rigid-body.
  */
@@ -294,6 +297,11 @@ export type RigidBodyAPI = {
   rot: PhysRotation;
   lvel: PhysVector;
   avel: PhysVector;
+  /** Allocation-free read of the pose for per-frame hot paths: writes the same values as
+   * `pos`/`rot` (including a still-pending write in WORKER_THREAD mode) into `out` as
+   * [posX, posY, posZ, rotX, rotY, rotZ, rotW], starting at `offset` (default 0) — instead of
+   * two fresh objects per `pos`/`rot` read. */
+  readPoseInto(out: PoseArray, offset?: number): void;
 
   isBeingDeleted: boolean;
 
