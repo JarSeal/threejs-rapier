@@ -1,5 +1,5 @@
 import { BindingApi } from '@tweakpane/core';
-import { isProdTestMode } from '../Config';
+import { IS_PROD_TEST_MODE } from '../Config';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
 import { mainLoop, type LoopState } from '../MainLoop';
@@ -14,7 +14,8 @@ export const createLoopDebugControls = (loopState: LoopState) => {
   // Init On Screen Tools
   InitOnScreenTools();
 
-  if (!isProdTestMode) return;
+  // Prod test mode only gets the on-screen play tools, not the drawer tab
+  if (IS_PROD_TEST_MODE) return;
 
   const icon = getSvgIcon('infinity');
   createDebuggerTab({

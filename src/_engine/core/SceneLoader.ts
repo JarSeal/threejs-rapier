@@ -29,6 +29,7 @@ import { deleteAllCharacters } from './Character';
 import { existsOrThrow } from '../utils/assert';
 import { deleteAllRayHelpers, resetRayCastStats } from './Raycast';
 import { deleteAllGroupEntities } from './GroupManager';
+import { disposeAllLines } from './LineManager';
 import { setIsLoadingScene } from './MainLoop';
 import {
   DEFAULT_ECS_WORLD_ID,
@@ -491,6 +492,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       deleteAllCharacters();
       deleteAllPhysicsEntities();
       deleteAllGroupEntities();
+      disposeAllLines();
 
       if (prevScene) deleteAllSceneLoopers(prevSceneId);
 
