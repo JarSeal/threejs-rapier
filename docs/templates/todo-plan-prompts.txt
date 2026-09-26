@@ -59,12 +59,27 @@ If for some reason this plan can't or shouldn't be created with this specificati
 UNDER_CONSTRUCTION
 Create "Refactor SkyBox file" plan in docs/plans/p100_refactor-skybox-file.md
 
-Category: Refactor
+Category: Skybox, Refactor
 
 The SkyBox file is a bit of a mess. We should refactor it to be more clean and consistent. We should also add the environment ball (a ) as a multi-viewport view next to the Axis gizmo (left to the Axis gizmo) and it should also move to the left when the debugger drawer is opened. In the Debug Tools Controls as its own section underneath the axis section, there should be three options:
 - "Show environment ball" [keyboard shortcut F7], boolean (whether the ball is shown at all, default true)
 - "Show env ball in main camera", boolean (whether the env ball should be shown in the main camera view or not, default false)
 - "Env ball roughness", slider (the env ball material roughness value, default 0)
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+*******************************
+
+UNDER_CONSTRUCTION
+Create "Add sky and sun option to SkyBox" plan in docs/plans/p101_add-sky-and-sun-option-to-skybox.md
+
+Category: Skybox
+
+In Three.js examples there is a sky and sun example (Sky shader). I would like to add this feature to the SkyBox manager. It should provide the correct environment ball output. It should also have the same tweakable parameters as in the example (could we add some more useful parameters)? I would also like to add the option to add the directional light as an integrated entity (with its own controls) to the Sky and Sun Skybox option so that the light could be tweaked also from the Skybox tab. It should be positioned with the shader's visual sun and change color, intensity, shadows etc. as the sun's params change. We can also add an ambient light feature for it as well which would also change its values according to the sun's values.
+
+If possible, I would like to study the possibility to expand this feature to also have night + moon (with its own directional light) + stars coverage as well which would create a full day-night cycle. I would also like to add the possibility for it to animate the day-night cycle with params to describe how long a full cycle should take in real world time. We should be also able to fast forward or reverse it. Either implement it with the sky + sun or create a plan for it. With it, I would like to add the option to show space with only stars and sun (or two) + a nebulae creator.
+
+However, the sun/clouds/ground/lifecycle could be options that we could introduce to every skybox as an option. Then, if for example a equirectangular texture is used for a skybox, it would just be rendered in the sun's/moon's/coulds' background. In my opinion it would be much better to refactor the whole thing from the start to support all of these features, what do you think? You can split this plan into several plans if you see that wise.
 
 If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 

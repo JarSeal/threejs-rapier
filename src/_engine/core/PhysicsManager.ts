@@ -570,7 +570,7 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
   ) {
     hasWarnedInvalidInterpolationPairing = true;
     lwarn(
-      "interpolationMode 'FIXED_PHYSICS' is not valid with workerTarget 'WORKER_THREAD': its clock comes from the main thread's accumulator, but the snapshots arrive asynchronously from the worker, later than that clock assumes, so the pose freezes and jumps. Use 'RENDERER' for WORKER_THREAD (see docs/plans/p059_interpolation-optimization-and-fixes.md)."
+      "interpolationMode 'FIXED_PHYSICS' is not valid with workerTarget 'WORKER_THREAD': its clock comes from the main thread's accumulator, but the snapshots arrive asynchronously from the worker, later than that clock assumes, so the pose freezes and jumps. Use 'RENDERER' for WORKER_THREAD (see docs/plans/_DONE_p059_interpolation-optimization-and-fixes.md)."
     );
   }
 

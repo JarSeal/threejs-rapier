@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Physics
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
 
@@ -392,7 +392,7 @@ scene exit (D11), and fix the `maxFPSInterval` unit bug (`MainLoop.ts:325`).
 *Verify:* a ~30s movement profile shows no per-frame GC sawtooth from these paths;
 `VITE_MAX_FPS=30` actually caps.
 
-**Phase 8 (separate plan) — Double-banked buffer (D9).** Fixes tearing, lets the main thread
+**Phase 8 (separate plan: [p063_triple-buffered-physics-transform-buffer.md](./p063_triple-buffered-physics-transform-buffer.md)) — Double-banked buffer (D9).** Fixes tearing, lets the main thread
 latch one bank per frame so both consuming systems agree, and yields `prev`/`curr` for free.
 The right long-term shape, and genuinely not a prerequisite for correct alpha.
 
@@ -439,3 +439,119 @@ The right long-term shape, and genuinely not a prerequisite for correct alpha.
   {`MAIN_THREAD`, `WORKER_THREAD`} × {native, throttled}, walking and running, wireframe on.
   Neither interpolated mode should nudge; `NONE` should show its expected per-step snap.
 - Confirm on both a high-refresh Windows display and a 60Hz panel.
+
+## Implementation notes
+
+Implemented in phases 1-7 (commits `54313f0`..`6aa611d`). Phase 8 became its own plan,
+[p063_triple-buffered-physics-transform-buffer.md](./p063_triple-buffered-physics-transform-buffer.md).
+Phase 0 (the manual diagnostic on the high-refresh Windows machine) was the user's to run; no
+results are recorded here.
+
+### How it was verified
+
+No test runner exists, so every phase was checked with small headless Playwright scripts
+(`playwright-core` from `.claude/skills/run-aekasha-js/`) against a dev server on a spare port.
+They weren't committed; this is the method, for reuse (p063 needs it):
+
+- **Driving the engine.** Vite serves source modules, so a script can `import()` engine
+  modules in the page. Import the exact URLs the app loaded (from
+  `performance.getEntriesByType('resource')`): after an HMR update Vite appends `?t=…`, and a
+  bare path then gives a *second* module instance with its own state. Boot overrides go into
+  `localStorage['AEK_debugPhysicsApiBoot']` (`workerTarget`, `useSAB`) via `addInitScript`.
+- **Rendering isn't needed.** WebGPU can't render in headless Chrome under WSL2 (buffer-size
+  errors). The ECS stages still run, so probes read the pose that would be drawn from a system
+  at `APP_RENDER_SYNC` with order −100 (after every pose writer, before `renderScene()`).
+- **Emulating high refresh.** Headless rAF is 60Hz. Setting physics to 25Hz
+  (`state.timestep`, `timestepRatio`, `getPhysicsWorld().setTimestep`) gives the same
+  render-to-physics ratio as 144Hz against 60Hz physics.
+- **Smoothness metric.** A box created 5000 units up falls freely. Per frame: rendered
+  velocity = Δy / Δ(`getPhysicsSimClock()`), fitted linearly. Jitter = RMS residual / mean
+  velocity; also counted: reversals, stalls. The plan's "second difference of y is constant"
+  test can't pass even when everything is correct, because blending straight lines between
+  points on a parabola puts kinks in the velocity at every step boundary. The fit residual
+  measures that floor instead (~0.31%).
+- **Allocations.** CDP `HeapProfiler.startSampling` with `includeObjectsCollectedByMajorGC`/
+  `MinorGC`, aggregated by function; 500 dynamic bodies for 10s.
+- **Baselines** were run from a throwaway `git worktree` of the previous commit, with its own
+  Vite `cacheDir` (a wrapper config). With a symlinked `node_modules`, the default cache is
+  shared, and a second server rewriting it gives every other running dev server `504
+  Outdated Optimize Dep` errors, the user's own `yarn dev` included.
+
+### Results
+
+| Check | Before | After |
+| --- | --- | --- |
+| `RENDERER` jitter, 25Hz physics, `MAIN_THREAD` / SAB / `MESSAGE_BATCH` | 54% with 15 stalls on each | 0.31-0.33% everywhere, no stalls |
+| `FIXED_PHYSICS` + SAB worker, 25Hz | 237%, 75 reversals | ~55% (unsupported pairing, warned) |
+| `MAIN_THREAD`: `RENDERER` vs. `FIXED_PHYSICS` | differed | identical: lag = `D`, servo error 0, same jitter |
+| Teleport, frames rendered mid-streak | 2-3 | 0 |
+| Producer stamp vs. main-thread count (Phase 4) | — | 0 disagreements in ~8,400 reads |
+| Allocations on the physics/interpolation paths, 500 bodies (worker / main) | 15.4 / 17.5 MB/s | 1.1 / 4.4 MB/s |
+| `VITE_MAX_FPS=30` on a 60Hz loop | 60 fps (never engaged) | 30.0 fps |
+| Follow rig after leaving the gym | kept ticking | stops |
+
+### Where the implementation departs from this plan
+
+- **Phase 1.** The invalid-pairing warning lives in `physicsInterpolationSystem`, not at init, so
+  it also catches a mode restored from localStorage or switched live. The order constants are
+  also used by `lookAtSystem` and the two culling systems (same values, so no behaviour change).
+- **Phase 2.** `rotate()` takes the delta too, like `move()`. The old `move()` also applied the
+  play-speed multiplier twice, since `deltaApp` includes it and the accumulator adds sub-steps
+  for it. `stopCharacterTumbling` did more than read the mesh: it used the mesh as scratch to
+  build the upright rotation and then overwrote the body's rotation with it. It was rewritten
+  to work from `body.rotation()` alone.
+- **Phase 3 — the servo.** The `RENDERER` target is anchored on each newly visible snapshot at
+  its step plus the accumulator *phase* its batch was issued at. On `MAIN_THREAD` that's
+  exactly the `FIXED_PHYSICS` clock, which is why the two modes converge. The jitter margin is
+  0 on `MAIN_THREAD`. `D` is rate-limited (at most 15% of each frame's advance) in *both*
+  modes, so `FIXED_PHYSICS` isn't entirely stateless: without that, a single long interval
+  would make it jump backwards. A single outlier interval (> 4·`D`) snaps the clock instead of
+  inflating `D`; two in a row are adopted as a new cadence (render well below physics rate).
+  Mode and timestep changes reset the tracking; the mode reset matters because nothing runs
+  while in `NONE`, so the next interval would otherwise cover the whole gap. The per-entity
+  `Int32Array(3)` of stamps became one stamp array per world (all entities capture on the
+  same snapshots, and a reseeded history holds one pose in all slots). Two bugs the probes
+  caught: the stale interval after `NONE`, and the servo comparing its target against the
+  *previous* frame's clock (a one-frame bias that made it clamp).
+- **Phase 3 — one regression.** `FIXED_PHYSICS` + worker at matched 60/60Hz went from 0.12% to
+  ~17% jitter headless (the old code happened to benefit from just-in-time delivery). That
+  pairing is unsupported and warned about, so it was left alone.
+- **Phase 4.** The worker can't know the main thread's accumulator phase, so a small phase
+  lookup keyed by step index remains; the step index itself comes from the producer.
+  `getPhysicsSnapshotCount()` was replaced by `getPhysicsSnapshotStepIndex()`. Reads with no
+  transform buffer yet now return the pending write instead of zeros (before `MESSAGE_BATCH`'s
+  first push). The worker's step counter resets at `CREATE_WORLD` but not at
+  `RESTORE_SNAPSHOT` (the main thread's doesn't either).
+- **Phase 5.** The reset pose is taken from `TRANSFORM` after `setTransform` updated it. The
+  Physics API tab's position editor for physics entities does not go through `setTransform`,
+  so moving a body there can still streak once.
+- **Phase 6 — `NONE` is not locked.** The expectation "under `NONE` they stay locked" is wrong:
+  `object3DSyncSystem` copies TRANSFORM → Object3D at `MAIN`, before physics writes that frame's
+  pose, so under `NONE` the mesh shows each new step one render frame late. Measured with the
+  raw-pose wireframe: it leads the mesh by 16ms on average (a full step on frames with a new
+  step, 0 otherwise). Left as is, per DD12 (`NONE` byte-identical).
+- **Phase 6 — added.** A "Wireframe pose (moving bodies)" dropdown under the interpolation
+  dropdown in the Physics API tab: *Physics* (raw stepped pose, default) or *Rendered* (the
+  mesh's final pose). It's persisted with the other wireframe settings. The wireframe system
+  now registers at `APP_RENDER_SYNC_ORDER.POSE_CONSUMERS`.
+- **Phase 7.**
+  - `physicsToTransformSystem` made 7 allocations per body per frame, not 4. Besides
+    `readPoseInto`, the two physics loops iterate `keys()` + `get()`, because the storage's
+    own iterator allocates a `[key, value]` array per entry.
+  - The FPS limiter also dropped each frame's leftover time (a 30 cap gave ~24 fps on a 60Hz
+    loop). It now carries the remainder and is one shared helper instead of two copies.
+  - `registerOnSceneExit` keeps a single callback per scene, so the gym's rig cleanup shares
+    the dummy character's callback.
+  - `LERP` smoothing's `smoothingTime` is now a real time constant (slightly faster than
+    before at 60Hz; the gym uses `SMOOTH_DAMP`).
+  - What remains in the allocation profile (~20 bytes per body per frame, ~39 KiB/s in
+    `smoothDampVec3`) isn't objects the code creates; it looks like V8 boxing number
+    temporaries in not-yet-optimized code.
+
+### Open follow-ups
+
+- D9 tearing on `SHARED_MEMORY`: p063.
+- `NONE`'s extra frame of lag (syncing the mesh after physics would remove it).
+- The Physics API tab's position editor streaking once under interpolation.
+- Unchanged non-goals: `FollowTool`'s write-direction lag, smoothing `camera.lookAt`,
+  `EXTRAPOLATION`.
