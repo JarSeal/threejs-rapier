@@ -7,13 +7,22 @@ import {
   loadFatLineBackend,
   resolveLineBackendKind,
   type LineBackend,
+  type LineColorNode,
 } from './LineBackend';
 import { createThinLineBackend } from './LineBackendThin';
+import {
+  colorGraphKey,
+  createLineColorNode,
+  createLineColorUniforms,
+  hashLinePhase,
+  LINE_PULSE_MAX_COLORS,
+} from './LinePulse';
 import { unregisterLine } from './LineRegistry';
 import type {
   LineAttachment,
   LineBackendChoice,
   LineBackendKind,
+  LineColorStyle,
   LineGrowth,
   LineLocalTransform,
   LineProps,
@@ -90,22 +99,25 @@ export class LineObject {
   private writing = false;
   private disposed = false;
 
-  private readonly color = new THREE.Color();
-  private opacity: number;
+  /** The only writer of this line's colour: setColor and pulses both write these. */
+  private readonly colorUniforms = createLineColorUniforms();
+  private colorGraph = '';
+  private colorNode: LineColorNode = this.colorUniforms.colors[0];
   private width: number;
   private depthTest: boolean;
   private readonly recomputeBounds: boolean;
   private boundsComputed = false;
 
   private warnedOverflow = false;
+  private warnedPalette = false;
   private warnedStaleBounds = false;
 
   /** @internal Use `createLines`. */
   constructor(id: string, props: LineProps) {
     this.id = id;
     this.backendChoice = props.backend ?? 'AUTO';
-    this.color.set(props.color ?? 0xffffff);
-    this.opacity = clampOpacity(props.opacity ?? 1);
+    this.colorUniforms.opacity.value = clampOpacity(props.opacity ?? 1);
+    this.writeColorStyle(props.colorStyle ?? { type: 'STATIC', color: props.color ?? 0xffffff });
     this.width = props.width ?? 1;
     this.depthTest = props.depthTest ?? true;
     this.recomputeBounds = props.recomputeBounds ?? false;
@@ -205,12 +217,23 @@ export class LineObject {
   // Appearance
   // --------------------------------------------------------------------------
 
-  /** Sets the line colour, and optionally its opacity (0..1). Always writes — there is no
-   * equal-value elision here, so callers that elide their own writes stay in control. */
+  /** Sets a static colour, and optionally the opacity (0..1) — the one-colour case of
+   * `setColorStyle`, stopping any pulse. Always writes: there is no equal-value elision
+   * here, so callers that elide their own writes stay in control. */
   setColor(color: THREE.ColorRepresentation, opacity?: number) {
-    this.color.set(color);
-    if (opacity !== undefined) this.opacity = clampOpacity(opacity);
-    this.backend.setColor(this.color, this.opacity);
+    this.setColorStyle({ type: 'STATIC', color, opacity });
+  }
+
+  /**
+   * Sets a static colour or a pulse through up to 4 colours (see LinePulse.ts for the
+   * blend). Colour values are uniform writes; only switching between static and pulsing,
+   * or to another easing/mode, rebuilds the pipeline.
+   */
+  setColorStyle(style: LineColorStyle) {
+    if (this.writeColorStyle(style)) {
+      this.backend.setColorNodes(this.colorNode, this.colorUniforms.opacity);
+    }
+    this.backend.setTransparent(this.colorUniforms.opacity.value < 1);
   }
 
   /** Line width in screen pixels. A uniform write, unless it moves an `'AUTO'` line across
@@ -384,9 +407,45 @@ export class LineObject {
 
   /** Pushes every piece of owned state into the current backend. */
   private applyStateToBackend() {
-    this.backend.setColor(this.color, this.opacity);
+    this.backend.setColorNodes(this.colorNode, this.colorUniforms.opacity);
+    this.backend.setTransparent(this.colorUniforms.opacity.value < 1);
     this.backend.setWidth(this.width);
     this.backend.setDepthTest(this.depthTest);
+  }
+
+  /** Writes a style into the colour uniforms. Returns true when it needs a different
+   * colour graph than the current one (which it then builds). */
+  private writeColorStyle(style: LineColorStyle) {
+    const u = this.colorUniforms;
+    if (style.type === 'STATIC') {
+      u.colors[0].value.set(style.color);
+      u.count.value = 1;
+      u.speed.value = 0;
+    } else {
+      if (!style.colors.length) {
+        lwarn(`[Lines] Pulse without colours on line "${this.id}". Colour unchanged.`);
+        return false;
+      }
+      if (style.colors.length > LINE_PULSE_MAX_COLORS && !this.warnedPalette) {
+        this.warnedPalette = true;
+        lwarn(
+          `[Lines] Line "${this.id}" pulses through ${style.colors.length} colours; only the first ${LINE_PULSE_MAX_COLORS} are used.`
+        );
+      }
+      const count = Math.min(style.colors.length, LINE_PULSE_MAX_COLORS);
+      for (let i = 0; i < count; i++) u.colors[i].value.set(style.colors[i]);
+      u.count.value = count;
+      u.speed.value = style.speed;
+      const phase = (style.phase ?? 0) + (style.autoPhase ? hashLinePhase(this.id) : 0);
+      u.phase.value = phase - Math.floor(phase);
+    }
+    if (style.opacity !== undefined) u.opacity.value = clampOpacity(style.opacity);
+
+    const graph = colorGraphKey(style);
+    if (graph === this.colorGraph) return false;
+    this.colorGraph = graph;
+    this.colorNode = createLineColorNode(u, style);
+    return true;
   }
 
   private warnOverflow() {

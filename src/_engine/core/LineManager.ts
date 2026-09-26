@@ -7,12 +7,22 @@ import {
   nextLineId,
   registerLine,
 } from './Lines/LineRegistry';
+import { registerLineTimeSystem } from './Lines/LineSystem';
 import type { LineProps } from './Lines/LineTypes';
 
 export { LineObject } from './Lines/LineObject';
 export type { LineWriter } from './Lines/LineWriter';
 export type * from './Lines/LineTypes';
 export * from './Lines/LineBuilders';
+export { LINE_PULSE_MAX_COLORS, lineTimeUniform } from './Lines/LinePulse';
+
+/**
+ * Registers the line system: the per-frame time uniform every pulsing line reads. Called
+ * once by InitEngine; without it, lines draw but pulses stand still.
+ */
+export const registerLineManager = () => {
+  registerLineTimeSystem();
+};
 
 /**
  * Creates a line-segment object and attaches it (to the root scene unless `props.attach`

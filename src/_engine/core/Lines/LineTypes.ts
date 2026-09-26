@@ -25,6 +25,39 @@ export type LineLocalTransform = {
   scale?: THREE.Vector3Like;
 };
 
+/** How a pulse eases between two colours: `LINEAR`, `SMOOTH` (smoothstep, the default —
+ * continuous across colour stops) or `SINE` (half a cosine). */
+export type LinePulseEasing = 'LINEAR' | 'SMOOTH' | 'SINE';
+
+/** `CYCLE` (default) wraps last → first; `PING_PONG` sweeps first → last → first. */
+export type LinePulseMode = 'CYCLE' | 'PING_PONG';
+
+/** A line's colour. `setColor` is the STATIC case; both write the same GPU uniforms. */
+export type LineColorStyle =
+  | {
+      type: 'STATIC';
+      color: THREE.ColorRepresentation;
+      /** 0..1, keeps the current opacity when omitted. */
+      opacity?: number;
+    }
+  | {
+      type: 'PULSE';
+      /** 1 to 4 colours (LINE_PULSE_MAX_COLORS); extras are ignored with a warning. */
+      colors: THREE.ColorRepresentation[];
+      /** Cycles per second of main loop time — follows play speed, stops on master pause. */
+      speed: number;
+      /** Start offset in cycles, 0..1. Default 0. */
+      phase?: number;
+      /** Adds a phase derived from the line id, so many lines pulse out of step. */
+      autoPhase?: boolean;
+      /** Default `'SMOOTH'`. */
+      easing?: LinePulseEasing;
+      /** Default `'CYCLE'`. */
+      mode?: LinePulseMode;
+      /** 0..1, keeps the current opacity when omitted. */
+      opacity?: number;
+    };
+
 export type LineProps = {
   /** Registry id. Auto-generated when omitted; must be unique among live lines. */
   id?: string;
@@ -37,8 +70,10 @@ export type LineProps = {
   capacity?: number;
   /** Overflow policy, default `'GROW'`. */
   growth?: LineGrowth;
-  /** Default `0xffffff`. */
+  /** Default `0xffffff`. Ignored when `colorStyle` is given. */
   color?: THREE.ColorRepresentation;
+  /** A static colour or a pulse. Overrides `color`. */
+  colorStyle?: LineColorStyle;
   /** 0..1, default 1. Below 1 the line renders as transparent. */
   opacity?: number;
   /** Line width in screen pixels, default 1. */

@@ -22,7 +22,7 @@ import {
   vec4,
   viewport,
 } from 'three/tsl';
-import type { LineBackend } from './LineBackend';
+import type { LineBackend, LineColorNode, LineOpacityNode } from './LineBackend';
 import { FLOATS_PER_SEGMENT } from './LineWriter';
 
 /**
@@ -39,8 +39,8 @@ import { FLOATS_PER_SEGMENT } from './LineWriter';
  *   without MSAA they are cut out hard, as every other mesh edge in that scene is — a
  *   partial alpha there would write through to the (alpha: true) canvas instead. The
  *   quad's sides are real triangle edges, which MSAA smooths like any mesh edge.
- * - Width and colour are uniforms owned by the material: changing either never rebuilds
- *   the pipeline (the physics wireframe thickness slider drags live).
+ * - Width is a uniform (the physics wireframe thickness slider drags live) and colour is
+ *   the LineObject's uniform-driven graph: changing either never rebuilds the pipeline.
  */
 
 // ----------------------------------------------------------------------------
@@ -135,12 +135,11 @@ const hardRoundCapCoverage = Fn(() => {
   return float(1);
 });
 
-/** @internal Screen-space thick-line material. Width and colour are uniforms. */
+/** @internal Screen-space thick-line material. Width is a uniform; colour and opacity come
+ * from the owning LineObject's colour graph (colorNode/opacityNode). */
 export class LineNodeMaterial extends THREE.NodeMaterial {
   readonly isLineNodeMaterial = true;
   readonly lineWidth = uniform(1);
-  readonly lineColor = uniform(new THREE.Color(0xffffff));
-  readonly lineOpacity = uniform(1);
 
   static get type() {
     return 'LineNodeMaterial';
@@ -150,8 +149,6 @@ export class LineNodeMaterial extends THREE.NodeMaterial {
     super();
     this.toneMapped = false;
     this.alphaToCoverage = true;
-    this.colorNode = this.lineColor;
-    this.opacityNode = this.lineOpacity;
   }
 
   setupPosition(builder: THREE.NodeBuilder) {
@@ -250,16 +247,18 @@ class FatLineBackend implements LineBackend {
     (this.geometry.boundingSphere ??= new THREE.Sphere()).copy(sphere);
   }
 
-  setColor(color: THREE.Color, opacity: number) {
-    this.material.lineColor.value.copy(color);
-    this.material.lineOpacity.value = opacity;
-    const transparent = opacity < 1;
-    if (this.material.transparent !== transparent) {
-      this.material.transparent = transparent;
-      // Blending already smooths the caps; alpha-to-coverage on top would thin them twice.
-      this.material.alphaToCoverage = !transparent;
-      this.material.needsUpdate = true;
-    }
+  setColorNodes(colorNode: LineColorNode, opacityNode: LineOpacityNode) {
+    this.material.colorNode = colorNode;
+    this.material.opacityNode = opacityNode;
+    this.material.needsUpdate = true;
+  }
+
+  setTransparent(transparent: boolean) {
+    if (this.material.transparent === transparent) return;
+    this.material.transparent = transparent;
+    // Blending already smooths the caps; alpha-to-coverage on top would thin them twice.
+    this.material.alphaToCoverage = !transparent;
+    this.material.needsUpdate = true;
   }
 
   setWidth(width: number) {

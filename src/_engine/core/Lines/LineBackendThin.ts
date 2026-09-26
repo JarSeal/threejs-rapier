@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import type { LineBackend } from './LineBackend';
+import type { LineBackend, LineColorNode, LineOpacityNode } from './LineBackend';
 import { FLOATS_PER_SEGMENT } from './LineWriter';
 
 /**
@@ -57,14 +57,16 @@ class ThinLineBackend implements LineBackend {
     (this.geometry.boundingSphere ??= new THREE.Sphere()).copy(sphere);
   }
 
-  setColor(color: THREE.Color, opacity: number) {
-    this.material.color.copy(color);
-    this.material.opacity = opacity;
-    const transparent = opacity < 1;
-    if (this.material.transparent !== transparent) {
-      this.material.transparent = transparent;
-      this.material.needsUpdate = true;
-    }
+  setColorNodes(colorNode: LineColorNode, opacityNode: LineOpacityNode) {
+    this.material.colorNode = colorNode;
+    this.material.opacityNode = opacityNode;
+    this.material.needsUpdate = true;
+  }
+
+  setTransparent(transparent: boolean) {
+    if (this.material.transparent === transparent) return;
+    this.material.transparent = transparent;
+    this.material.needsUpdate = true;
   }
 
   setWidth() {}

@@ -27,6 +27,7 @@ import { createToaster } from './core/UI/Toaster';
 import { getStatsCmp, registerStatsModule } from './debug/Stats';
 import { createAssetsDebugGUI } from './debug/Assets';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
+import { registerLineManager } from './core/LineManager';
 
 // ECS Core Plugins
 import './core/ECS/ECSCoreSystems';
@@ -80,6 +81,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Register Managers
     registerCameraManager();
     registerLightManager(ecsWorld);
+    registerLineManager();
 
     // Initializes the debug camera (if in debug mode)
     await initDebugCamera(ecsWorld);

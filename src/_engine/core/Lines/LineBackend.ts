@@ -2,6 +2,11 @@ import type * as THREE from 'three/webgpu';
 import { lwarn } from '../../utils/Logger';
 import type { LineBackendChoice, LineBackendKind } from './LineTypes';
 
+/** @internal What a line material's colorNode/opacityNode accept. */
+export type LineColorNode = NonNullable<THREE.NodeMaterial['colorNode']>;
+/** @internal */
+export type LineOpacityNode = NonNullable<THREE.NodeMaterial['opacityNode']>;
+
 /**
  * @internal
  * One renderer for a LineObject. The LineObject owns every piece of state (the segment
@@ -21,7 +26,11 @@ export interface LineBackend {
   /** Uploads the first `segmentCount` segments and draws exactly those. */
   commit(segmentCount: number): void;
   setBounds(box: THREE.Box3, sphere: THREE.Sphere): void;
-  setColor(color: THREE.Color, opacity: number): void;
+  /** The line's colour graph (owned by its LineObject, shared across a swap). Rebuilds
+   * the pipeline, so it is only called when the graph itself changes. */
+  setColorNodes(colorNode: LineColorNode, opacityNode: LineOpacityNode): void;
+  /** Blended rendering, for opacity < 1. Rebuilds the pipeline when it changes. */
+  setTransparent(transparent: boolean): void;
   /** Screen pixels. A no-op on THIN, which is always 1px. */
   setWidth(width: number): void;
   setDepthTest(depthTest: boolean): void;
