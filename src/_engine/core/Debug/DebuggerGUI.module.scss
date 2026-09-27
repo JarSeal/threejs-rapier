@@ -329,6 +329,10 @@
       }
     }
 
+    &:global(.disabledItem) > button {
+      opacity: 0.45;
+    }
+
     &:global(.selected) {
       &:before {
         display: block;

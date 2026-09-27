@@ -20,6 +20,7 @@ import { getAllECSWorlds } from './ECS';
 import { getActiveCamera } from './CameraManager';
 import { existsOrThrow } from '../utils/assert';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import { getActivePostFxPipeline } from './PostFX';
 
 const timer = new Timer();
 let delta = 0;
@@ -166,7 +167,12 @@ const renderScene = () => {
     `Error in renderScene, missing renderer, rootScene, and/or camera. Status:\nrenderer: ${Boolean(renderer)}\nrootScene: ${Boolean(rootScene)}\ncamera: ${Boolean(camera)}`
   );
 
-  renderer.render(rootScene, camera);
+  const postFxPipeline = getActivePostFxPipeline();
+  if (postFxPipeline) {
+    postFxPipeline.render();
+  } else {
+    renderer.render(rootScene, camera);
+  }
 };
 
 // LOOP (for debug)

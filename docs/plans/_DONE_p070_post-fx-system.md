@@ -1,6 +1,6 @@
-Status: draft | not-implemented
+Status: implemented
 Category: PostFX
-Blocks: p071_post-fx-debugger-ui.md
+Blocks: _DONE_p071_post-fx-debugger-ui.md
 Epic: https://trello.com/c/6a8QkjPf/62-add-postprocessing-system-to-core-code
 
 # PostFX System — Core Engine — Plan
@@ -10,6 +10,32 @@ A post-processing system for the Aekasha engine, built on Three.js r183's TSL `R
 Ships one PostFX pass — Ambient Occlusion, wrapping Three.js's `GTAONode` with every option it exposes — wired into the Large ECS test world scene.
 
 Also ships an opt-in per-pass performance measuring **API only** (no UI; the UI is p071's job). Research finding: measurement does **not** require a page refresh — see Design decision 8.
+
+## Implementation notes (where the code differs from this plan)
+
+The plan below is kept as written. Where the implementation deliberately differs, the code is right and this section says why:
+
+- **Three.js is r186, not r183.** Every "r183 fact" below was re-checked against the installed r186 and still holds, but the file/line references point at older code.
+- **Design decision 7 was dropped.** In r186, `RenderPipeline._update()` detects `renderer.toneMapping` / `outputColorSpace` changes and re-bakes the chain itself (verified live: the Renderer tab applies with PostFX on). `_dbg__Renderer.ts` is unchanged. `invalidatePostFxPipeline()` remains as a general "force rebuild" API.
+- **Depth and normals come from a lazy, non-MSAA pre-pass, not from the scene pass.** The scene pass inherits the renderer's MSAA, which makes its depth a `texture_depth_multisampled_2d`. WGSL has no `textureGather` for that (`GTAONode` uses it), and three doesn't resolve MSAA depth on WebGPU, so AO failed shader validation. `ctx.sceneDepthNode` / `ctx.sceneNormalNode` now come from `pass(scene, camera, { samples: 0 })` with MRT `{ output: normalView }`. It's created only when a PostFX pass reads either one, which costs one extra scene render in those scenes. The colour scene pass keeps MSAA, so Design decision 9 still holds for colour.
+- **The AO composition is `vec4(colorNode.rgb * ao.r, colorNode.a)`, not `ao.mul(colorNode)`.** The r186 `GTAONode` render target is `RedFormat`, so the plan's snippet would zero green and blue. Multiply-colour AO was kept by choice. r186 now documents lighting-context AO (`scenePass.contextNode = builtinAOContext(...)`, occluding only indirect light), which is a possible follow-up needing a new PostFX pass hook. The AO pass has no `onSetSize` (`GTAONode` resizes itself every frame) and adds `onDispose`.
+- **Types:** the colour chain is typed `Node<'vec4'>` from `three/webgpu`. The repo's `three/tsl` `Node` shim (`types/three-node-material-helpers.d.ts`) isn't the real class.
+- **Lifecycle:**
+  - `initPostFX()` runs before `appStartFn()`. It needs no renderer and registers the scene enter/exit hooks, which must exist before the first scene loads.
+  - `registerOnAllSceneExits` in `Scene.ts` was storing callbacks in `onAllSceneEnters`; fixed.
+  - The active-camera identity check lives in `getActivePostFxPipeline()`, not in `renderScene()`.
+  - Resize is a per-frame drawing-buffer size check, done only while the pipeline is active, that calls each pass's `onSetSize`. It replaces a resizer, whose registration order wasn't guaranteed.
+- **Profiler (Design decision 8):**
+  - Three only calls `renderer.inspector.begin()` / `finish()` from its own `setAnimationLoop`, which the engine doesn't use, so the profiler wraps `pipeline.render()` as its frame boundary.
+  - `gpuAttribution` is decided on the CPU side: did the PostFX pass open render passes of its own.
+  - Figures are exponential moving averages over about 30 frames. Each chain rebuild resets them and skips its first two frames, which carry the shader compile.
+  - Timestamp resolves are shared with the stats-gl GPU panel. On WebGL a concurrent resolve returns at once, so a frame can be missed, but it is never reported wrong.
+  - On the WebGL backend, three warns once (`".toInspector()" is only available with WebGPU`) whenever a custom inspector is installed. The warning is harmless.
+- **Scenes:** the AO pass is wired into both `largeWorld` and `thirdPersonGym`.
+- **Open / unverified:**
+  - `resolutionScale < 1` removes the AO on the WebGL2 backend, even with the non-MSAA pre-pass. The cause is `GTAONode`'s gather-based depth path; it is unverified on WebGPU.
+  - The profiler's GPU tier was only exercised where timestamp queries never resolve (headless software WebGL). The GPU figures and the `samples` 16 → 64 proportionality check still need a real-GPU run.
+  - `thickness` / `distanceExponent` / `distanceFallOff` showed no measurable effect from the `largeWorld` overview camera.
 
 ## Context (grounded in code)
 
@@ -256,7 +282,7 @@ Manual verification: on the Large ECS test world with AO on, call `setPostFxMeas
 
 ## Non-goals
 
-- **The PostFX debugger tab and UI** — that is `p071_post-fx-debugger-ui.md`, which this plan blocks. Phase 5 deliberately ships the measuring API with no UI, as the brief asks. `PostFX.ts`'s `getPostFxPasses()`/`setPostFxPassParam()` and the profiler's `getPostFxPassStats()` are the surfaces p071 will consume.
+- **The PostFX debugger tab and UI** — that is `_DONE_p071_post-fx-debugger-ui.md`, which this plan blocks. Phase 5 deliberately ships the measuring API with no UI, as the brief asks. `PostFX.ts`'s `getPostFxPasses()`/`setPostFxPassParam()` and the profiler's `getPostFxPassStats()` are the surfaces p071 will consume.
 - **Any second PostFX pass** (bloom, DoF, FXAA/SMAA/TRAA, SSR, godrays, …). Three.js ships 40 ready-made TSL display nodes; each becomes a small, self-contained follow-up once this plan lands. AA passes in particular are deliberately deferred — see Design decision 9.
 - **Changing antialiasing behavior.** MSAA keeps working exactly as today. The MSAA-vs-screen-space-AO tension documented in `docs/analysis/ambient-occlusion-options.md` is acknowledged and left alone.
 - **Reworking `_dbg__Renderer.ts`'s ownership of tone mapping / output color space.** This plan only makes the existing controls keep working when PostFX is on; moving tone mapping into the chain as an authored pass is a separate question.

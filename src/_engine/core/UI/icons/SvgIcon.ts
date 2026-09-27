@@ -22,6 +22,7 @@ import lampIcon from './svg/lamp.svg?raw';
 import pauseIcon from './svg/pause-fill.svg?raw';
 import personArmsUpIcon from './svg/person-arms-up.svg?raw';
 import playFillIcon from './svg/play-fill.svg?raw';
+import postFxIcon from './svg/post-fx.svg?raw';
 import redoIcon from './svg/arrow-90deg-right.svg?raw';
 import rocketIcon from './svg/rocket.svg?raw';
 import rocketTakeoffIcon from './svg/rocket-takeoff-fill.svg?raw';
@@ -60,6 +61,7 @@ const icons = {
   pause: pauseIcon,
   personArmsUp: personArmsUpIcon,
   playFill: playFillIcon,
+  postFx: postFxIcon,
   redo: redoIcon,
   rocket: rocketIcon,
   rocketTakeoff: rocketTakeoffIcon,

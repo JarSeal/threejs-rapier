@@ -28,6 +28,7 @@ import { getStatsCmp, registerStatsModule } from './debug/Stats';
 import { createAssetsDebugGUI } from './debug/Assets';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
 import { registerLineManager } from './core/LineManager';
+import { createPostFXDebugGUI, initPostFX } from './core/PostFX';
 
 // ECS Core Plugins
 import './core/ECS/ECSCoreSystems';
@@ -48,6 +49,7 @@ import { registerRaycastDebugGUI } from './core/Raycast';
 import { registerOnScreenTools } from './debug/OnScreenTools';
 import { DEBUG_TOASTER_ID, registerDebuggerGUI } from './debug/DebuggerGUI';
 import { initUndoRedo, registerUndoRedoModule } from './debug/UndoRedo';
+import { registerPostFxProfiler } from './debug/PostFXProfiler';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -115,6 +117,9 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerOnScreenTools();
     }
 
+    // Before appStartFn, so it is ready for the first scene load (it needs no renderer yet)
+    initPostFX();
+
     await appStartFn();
 
     // Start engine/loop if root scene has children
@@ -126,6 +131,10 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await createRendererDebugGUI();
       await createPhysicsAPIDebugGUI();
       await createAssetsDebugGUI();
+      // After appStartFn: measuring needs the renderer
+      await registerPostFxProfiler();
+      // After the profiler: the tab re-applies a persisted measuring override
+      await createPostFXDebugGUI();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
 

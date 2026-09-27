@@ -119,6 +119,75 @@
           }
         }
       ],
+      "postFx": [
+        {
+          "id": "ambientOcclusion",
+          "tslFile": "postFx/ambientOcclusion.tsl.ts",
+          "enabled": true,
+          "params": {
+            "radius": 0.25,
+            "thickness": 1,
+            "distanceExponent": 1,
+            "distanceFallOff": 1,
+            "scale": 1,
+            "samples": 16,
+            "resolutionScale": 1,
+            "useTemporalFiltering": false
+          },
+          "paramsMeta": {
+            "radius": {
+              "label": "Radius",
+              "min": 0.01,
+              "max": 2,
+              "step": 0.01
+            },
+            "thickness": {
+              "label": "Thickness",
+              "min": 0.01,
+              "max": 2,
+              "step": 0.01
+            },
+            "distanceExponent": {
+              "label": "Distance exponent (no effect since three r186)",
+              "min": 1,
+              "max": 2,
+              "step": 0.01
+            },
+            "distanceFallOff": {
+              "label": "Distance falloff (no effect since three r186)",
+              "min": 0.01,
+              "max": 1,
+              "step": 0.01
+            },
+            "scale": {
+              "label": "Scale",
+              "min": 0.01,
+              "max": 2,
+              "step": 0.01
+            },
+            "samples": {
+              "label": "Samples (recompiles the AO shader)",
+              "min": 1,
+              "max": 64,
+              "step": 1
+            },
+            "resolutionScale": {
+              "label": "Resolution scale",
+              "min": 0.25,
+              "max": 1,
+              "step": 0.05
+            },
+            "useTemporalFiltering": {
+              "label": "Temporal filtering (needs a TRAA pass after it)"
+            }
+          },
+          "debugData": {
+            "name": "Ambient Occlusion",
+            "description": "Ground Truth Ambient Occlusion (GTAO). Darkens creases and contact points using the scene depth and normal buffers. Screen-space only — cannot see off-screen geometry."
+          }
+        }
+      ],
+      "postFxEnabled": true,
       "id": "largeWorld",
       "sceneFile": "./largeWorld.ts"
     },
@@ -682,6 +751,75 @@
           }
         }
       ],
+      "postFx": [
+        {
+          "id": "ambientOcclusion",
+          "tslFile": "postFx/ambientOcclusion.tsl.ts",
+          "enabled": true,
+          "params": {
+            "radius": 0.25,
+            "thickness": 1,
+            "distanceExponent": 1,
+            "distanceFallOff": 1,
+            "scale": 1,
+            "samples": 16,
+            "resolutionScale": 1,
+            "useTemporalFiltering": false
+          },
+          "paramsMeta": {
+            "radius": {
+              "label": "Radius",
+              "min": 0.01,
+              "max": 2,
+              "step": 0.01
+            },
+            "thickness": {
+              "label": "Thickness",
+              "min": 0.01,
+              "max": 2,
+              "step": 0.01
+            },
+            "distanceExponent": {
+              "label": "Distance exponent (no effect since three r186)",
+              "min": 1,
+              "max": 2,
+              "step": 0.01
+            },
+            "distanceFallOff": {
+              "label": "Distance falloff (no effect since three r186)",
+              "min": 0.01,
+              "max": 1,
+              "step": 0.01
+            },
+            "scale": {
+              "label": "Scale",
+              "min": 0.01,
+              "max": 2,
+              "step": 0.01
+            },
+            "samples": {
+              "label": "Samples (recompiles the AO shader)",
+              "min": 1,
+              "max": 64,
+              "step": 1
+            },
+            "resolutionScale": {
+              "label": "Resolution scale",
+              "min": 0.25,
+              "max": 1,
+              "step": 0.05
+            },
+            "useTemporalFiltering": {
+              "label": "Temporal filtering (needs a TRAA pass after it)"
+            }
+          },
+          "debugData": {
+            "name": "Ambient Occlusion",
+            "description": "Ground Truth Ambient Occlusion (GTAO). Darkens creases and contact points using the scene depth and normal buffers. Screen-space only — cannot see off-screen geometry."
+          }
+        }
+      ],
+      "postFxEnabled": true,
       "id": "thirdPersonGymScene",
       "sceneFile": "./scene_thirdPersonGym.ts"
     }
@@ -1304,6 +1442,75 @@
         ]
       },
       "__sourcePath": "src/app/skyboxes/basicSkybox.skybox.json"
+    }
+  },
+  "postFx": {
+    "ambientOcclusion": {
+      "id": "ambientOcclusion",
+      "tslFile": "postFx/ambientOcclusion.tsl.ts",
+      "enabled": true,
+      "params": {
+        "radius": 0.25,
+        "thickness": 1,
+        "distanceExponent": 1,
+        "distanceFallOff": 1,
+        "scale": 1,
+        "samples": 16,
+        "resolutionScale": 1,
+        "useTemporalFiltering": false
+      },
+      "paramsMeta": {
+        "radius": {
+          "label": "Radius",
+          "min": 0.01,
+          "max": 2,
+          "step": 0.01
+        },
+        "thickness": {
+          "label": "Thickness",
+          "min": 0.01,
+          "max": 2,
+          "step": 0.01
+        },
+        "distanceExponent": {
+          "label": "Distance exponent (no effect since three r186)",
+          "min": 1,
+          "max": 2,
+          "step": 0.01
+        },
+        "distanceFallOff": {
+          "label": "Distance falloff (no effect since three r186)",
+          "min": 0.01,
+          "max": 1,
+          "step": 0.01
+        },
+        "scale": {
+          "label": "Scale",
+          "min": 0.01,
+          "max": 2,
+          "step": 0.01
+        },
+        "samples": {
+          "label": "Samples (recompiles the AO shader)",
+          "min": 1,
+          "max": 64,
+          "step": 1
+        },
+        "resolutionScale": {
+          "label": "Resolution scale",
+          "min": 0.25,
+          "max": 1,
+          "step": 0.05
+        },
+        "useTemporalFiltering": {
+          "label": "Temporal filtering (needs a TRAA pass after it)"
+        }
+      },
+      "debugData": {
+        "name": "Ambient Occlusion",
+        "description": "Ground Truth Ambient Occlusion (GTAO). Darkens creases and contact points using the scene depth and normal buffers. Screen-space only — cannot see off-screen geometry."
+      },
+      "__sourcePath": "src/app/postFx/ambientOcclusion.postFx.json"
     }
   }
 }

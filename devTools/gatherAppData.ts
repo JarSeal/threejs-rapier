@@ -12,6 +12,7 @@ import { MaterialAsset, MaterialAssetSchema } from '../src/_engine/schemas/mater
 import { MeshAsset, MeshAssetSchema } from '../src/_engine/schemas/meshSchema';
 import { ImportedAsset, ImportedAssetSchema } from '../src/_engine/schemas/importedAssetSchema';
 import { SkyBoxAsset, SkyBoxAssetSchema } from '../src/_engine/schemas/skyBoxSchema';
+import { PostFxAsset, PostFxAssetSchema } from '../src/_engine/schemas/postFxSchema';
 import { toUniqueJsIdentifier } from '../src/_engine/utils/jsIdentifier';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,7 +35,7 @@ const JSON_ENDING_SIGNATURES = {
   importedAsset: '.importedAsset.json',
   skybox: '.skybox.json',
   // physicsObjects: '.physObj.json',
-  // postFx: '.postFx.json',
+  postFx: '.postFx.json',
 };
 
 const logValidationError = (msg: string, issues: z.ZodError['issues']) => {
@@ -102,6 +103,7 @@ const compileJsonSchemas = () => {
     { name: 'mesh.schema.json', schema: MeshAssetSchema },
     { name: 'importedAsset.schema.json', schema: ImportedAssetSchema },
     { name: 'skyBox.schema.json', schema: SkyBoxAssetSchema },
+    { name: 'postFx.schema.json', schema: PostFxAssetSchema },
   ];
 
   for (const target of targets) {
@@ -138,6 +140,7 @@ export const gatherSceneData = () => {
     meshes: Record<string, unknown>;
     importedAssets: Record<string, unknown>;
     skyboxes: Record<string, unknown>;
+    postFx: Record<string, PostFxAsset>;
   } = {
     scenes: {},
     cameras: {},
@@ -149,13 +152,15 @@ export const gatherSceneData = () => {
     importedAssets: {},
     skyboxes: {},
     // physicsObjects: {},
-    // postFx: {},
+    postFx: {},
   };
   let sceneFileImports = `// THIS IS AN AUTO-GENERATED FILE, DO NOT MODIFY!\n// ALSO, DO NOT MODIFY THE '${generatedAppDataJSONFilename}' FILE)!\n`;
   let addedFirstImport = false;
   let sceneFileObject = '';
   let tslMaterialFileObject = '';
-  const usedMaterialNamespaces = new Set<string>();
+  let postFxFileObject = '';
+  // Shared by material and PostFX TS imports, which land in the same generated file
+  const usedImportNamespaces = new Set<string>();
   const ids: {
     scenes: string[];
     cameras: string[];
@@ -166,6 +171,7 @@ export const gatherSceneData = () => {
     meshes: string[];
     importedAssets: string[];
     skyboxes: string[];
+    postFx: string[];
   } = {
     scenes: [],
     cameras: [],
@@ -176,6 +182,7 @@ export const gatherSceneData = () => {
     meshes: [],
     importedAssets: [],
     skyboxes: [],
+    postFx: [],
   };
 
   const logJSONError = (file: string) =>
@@ -425,7 +432,7 @@ export const gatherSceneData = () => {
 
           const runtimeUniqueNamespace = toUniqueJsIdentifier(
             `${matId}Fn`,
-            usedMaterialNamespaces,
+            usedImportNamespaces,
             'mat'
           );
           sceneFileImports += `import * as ${runtimeUniqueNamespace} from '../${basePath}/${matJSON.tslFile}';\n`;
@@ -549,6 +556,80 @@ export const gatherSceneData = () => {
       }
     }
     combinedData.skyboxes = skyRegistry;
+
+    // PostFX passes
+    const postFxRegistry: Record<string, PostFxAsset> = {};
+    const postFxFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.postFx)
+    ) as string[];
+    for (const file of postFxFiles) {
+      const fullPath = path.resolve(srcDir, file);
+      const fileContent = fs.readFileSync(fullPath, 'utf-8');
+      try {
+        const parsedData = JSON.parse(fileContent);
+        const validation = PostFxAssetSchema.safeParse(parsedData);
+        if (!validation.success) {
+          logValidationError(
+            `Validation error inside PostFX file ${file}`,
+            validation.error.issues
+          );
+          hasError = true;
+          continue;
+        }
+        const postFxJSON = validation.data;
+        const postFxId = postFxJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.postFx);
+        if (ids.postFx.includes(postFxId)) {
+          logDuplicateIdError('PostFX pass', postFxId, file);
+          continue;
+        }
+        ids.postFx.push(postFxId);
+        postFxJSON.id = postFxId;
+        postFxJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        delete postFxJSON.$schema;
+        postFxRegistry[postFxId] = postFxJSON;
+        const isFoundInAScene = sceneFilesArray.find(
+          (sceneFile) => sceneFile.postFx?.includes(postFxId) || false
+        );
+
+        if (isFoundInAScene || !isProduction) {
+          const basePath = getBasePath(fullPath);
+
+          // Assert physical existence of script tracking path on disk
+          let postFxTslFilePath = path.resolve(srcDir, basePath, postFxJSON.tslFile);
+          if (!fs.existsSync(postFxTslFilePath) && !path.extname(postFxTslFilePath)) {
+            if (fs.existsSync(postFxTslFilePath + '.ts')) {
+              postFxTslFilePath += '.ts';
+            }
+          }
+          if (!fs.existsSync(postFxTslFilePath)) {
+            console.error(
+              `\x1b[31m✗ [Scene Gatherer] Error gathering PostFX data: specified tslFile "${postFxJSON.tslFile}" does not exist on disk.\n  └─ Expected path: ${postFxTslFilePath}\x1b[0m`
+            );
+            hasError = true;
+            continue;
+          }
+
+          const runtimeUniqueNamespace = toUniqueJsIdentifier(
+            `${postFxId}PostFxFn`,
+            usedImportNamespaces,
+            'postFx'
+          );
+          sceneFileImports += `import * as ${runtimeUniqueNamespace} from '../${basePath}/${postFxJSON.tslFile}';\n`;
+
+          if (!postFxFileObject) {
+            postFxFileObject += 'export const postFxFileObjects = {\n';
+          }
+
+          // Use single quotes if the identifier starts with a number, otherwise keep it unquoted to match lint rules
+          postFxFileObject += `  ${postFxId.match(/^[0-9]/) ? `'${postFxId}'` : postFxId}: {\n`;
+          postFxFileObject += `    fxNode: ${runtimeUniqueNamespace}.fxNode,\n`;
+          postFxFileObject += `  },\n`;
+        }
+      } catch (e) {
+        logJSONError(file);
+      }
+    }
+    combinedData.postFx = postFxRegistry;
 
     // --- SCENES ---
     // --------------
@@ -844,6 +925,31 @@ export const gatherSceneData = () => {
         });
       }
 
+      // Add PostFX passes to scenes (order is kept: it is the execution order)
+      if (Array.isArray(fileContentJSON.postFx)) {
+        fileContentJSON.postFx = fileContentJSON.postFx.map((postFxId) => {
+          if (typeof postFxId !== 'string') return postFxId;
+          if (postFxRegistry[postFxId]) {
+            const __saveData = postFxRegistry[postFxId].__saveData?.[sceneId]?.length
+              ? postFxRegistry[postFxId].__saveData?.[sceneId]?.[0] || {}
+              : {};
+            if (isProduction) delete postFxRegistry[postFxId].debugData;
+            const registryData = postFxRegistry[postFxId];
+            const postFxData = {
+              ...registryData,
+              ...__saveData,
+              params: { ...registryData.params, ...__saveData.params },
+              id: postFxId,
+            };
+            if ('__meta' in postFxData) delete postFxData.__meta;
+            delete postFxData.__sourcePath;
+            delete postFxData.__saveData;
+            return postFxData;
+          }
+          return postFxId; // Fallback to raw string ID if asset file doesn't exist yet
+        });
+      }
+
       if (isProduction) {
         // Remove debug data from scene files for production build
         fileContentJSON.sceneFile = '';
@@ -878,10 +984,15 @@ export const gatherSceneData = () => {
     } else {
       tslMaterialFileObject = 'export const tslMaterialFileObjects = {};\n';
     }
+    if (postFxFileObject) {
+      postFxFileObject += '};\n';
+    } else {
+      postFxFileObject = 'export const postFxFileObjects = {};\n';
+    }
     fs.mkdirSync(path.dirname(OUTPUT_FILE_FN), { recursive: true });
     fs.writeFileSync(
       OUTPUT_FILE_FN,
-      `${sceneFileImports}\n${sceneFileObject}\n${tslMaterialFileObject}`,
+      `${sceneFileImports}\n${sceneFileObject}\n${tslMaterialFileObject}\n${postFxFileObject}`,
       'utf-8'
     );
 

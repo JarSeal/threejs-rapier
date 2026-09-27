@@ -1,13 +1,64 @@
-Status: draft | not-implemented
+Status: implemented
 Category: PostFX, Debugger
-Blocked by: p070_post-fx-system.md
+Blocked by: _DONE_p070_post-fx-system.md (implemented — no longer blocking)
 Epic: https://trello.com/c/6a8QkjPf/62-add-postprocessing-system-to-core-code
 
 # PostFX System Debugger UI — Plan
 
-Add a debugger drawer tab for the PostFX system that `p070_post-fx-system.md` builds. The tab carries a new hand-authored "screen with FX" SVG icon, two global toggles at the top (**PostFX enabled**, **Measuring enabled**), and below them a list of the PostFX passes active in the current scene; clicking a row opens that pass's properties in a draggable edit window, exactly as the Camera, Light, Character, ECS and Physics API tabs already do.
+Add a debugger drawer tab for the PostFX system that `_DONE_p070_post-fx-system.md` builds. The tab carries a new hand-authored "screen with FX" SVG icon, two global toggles at the top (**PostFX enabled**, **Measuring enabled**), and below them a list of the PostFX passes active in the current scene; clicking a row opens that pass's properties in a draggable edit window, exactly as the Camera, Light, Character, ECS and Physics API tabs already do.
 
 p070 ships `PostFX.ts` and the measuring API with **no UI at all** and names this plan as the consumer of `getPostFxPasses()` / `setPostFxPassParam()` / `setPostFxMeasureEnabled()`. This plan is that consumer, plus the small additive engine-side gaps those surfaces are missing.
+
+## Implementation notes (where the code differs from this plan)
+
+The plan below is kept as written. Where the implementation deliberately differs, the code is right and this section says why:
+
+- **p070 was already implemented when this started.** The "Nothing here exists yet" context bullet and the "fully blocked on p070" risk are stale, and several line references (eg. `_dbg__PhysicsAPI.ts:531-804`) have shifted.
+- **The tab is `orderNr: 9`, not 8.** The Assets tab took 8. PostFX sits after Assets and before Raycast/Light.
+- **Design decision 8 was replaced: every PostFX pass is editable.** p070's `setPostFxPassParam()` falls back to rebuilding the chain when a pass has no `setParam`, so nothing is shown read-only.
+  - `getPostFxPasses()` reports `liveParams: 'setParam' | 'rebuild' | 'unknown'` instead of a `supportsLiveParams` boolean. `'unknown'` means the pass hasn't been built yet (it's disabled, or no frame has rendered it), since only a build shows whether it returns a `setParam`.
+  - A `'setParam'` pass follows every drag tick. The others get only the released value (`e.last`), and the window says why in a one-line note.
+  - A `addPostFxChainListener()` listener rebuilds the open window when the pass's mode changes (eg. `'unknown'` → `'setParam'` after re-enabling).
+- **`isPostFxMeasureEnabled()` already existed**, so the fourth Phase 1 gap was a no-op.
+- **Undo/redo landed after this plan and is wired in.** These are undoable, each per scene:
+  - the **PostFX enabled** toggle
+  - a pass's **Enabled** toggle
+  - each committed param edit
+
+  **Measuring enabled** is not undoable, since it's a profiler switch rather than an edit.
+- **Persistence:**
+  - `AEK_debugPostFxSettings` holds both global toggles as deviations only: **PostFX enabled** per scene against the scene's `postFxEnabled`, **Measuring enabled** globally against `AppConfig.postFx.measureEnabled`.
+  - `AEK_debugPostFx` holds the per-pass overrides, also as deviations only. They are measured against a snapshot of `getPostFxPasses()` taken on scene enter, before the overrides are applied. The chain has just been built from the scene data at that point, so the tab never reads `PostFX.ts` internals to learn the authored values.
+  - There is no `AEK_debugPostFxUI` key, because the edit window has no folders.
+  - Both clear-LS buttons also put the live state back to its authored or configured value, instead of only deleting the key.
+- **Lifecycle:**
+  - The first scene is entered inside `appStartFn()`, before the debug GUIs exist. So `_createPostFXDebugGUI()` applies the persisted state to the current scene once, and the `'postFxDebugSync'` scene-enter hook handles every scene after that.
+  - That hook runs after p070's `'postFxSceneEnter'` because `runOnAllSceneEnters()` runs hooks in key-insertion order (the Scene-enter risk row below).
+  - The drawer is rebuilt in `setCurrentScene()`, before `runOnAllSceneEnters()`, so the hook also refreshes the toggles and the list.
+  - `createPostFXDebugGUI()` runs right after `registerPostFxProfiler()` in `InitApp.ts`, so a persisted measuring override has a profiler to apply to.
+- **Edit window restore:** only the module-level `registerDraggableWindowContentFn()` is needed. `loadDraggableWindowStatesFromLS()` runs at the end of `InitEngine`, after this module has loaded, so there is no boot-time `registerDraggableWindowCmp()`. The content function re-attaches `onClose` itself.
+- **List:**
+  - The pass description is the row's tooltip, which keeps rows the same shape as the Camera and Light lists.
+  - Disabled passes are dimmed **and** tagged "(disabled)".
+  - The dimming is a new shared `.ulList li.disabledItem` rule in `DebuggerGUI.module.scss`, since no list had a dimmed-row style before.
+- **Control inference goes further than Design decision 7:**
+  - `{x,y}` up to `{x,y,z,w}` become point controls.
+  - `{r,g,b(,a)}` becomes a color picker (float when every component is ≤ 1, int otherwise).
+  - `paramsMeta.options` becomes a dropdown, and `hidden` leaves the param out.
+  - The read-only JSON fallback is labelled "(JSON, readonly)".
+- **AO `paramsMeta`:**
+  - `distanceExponent` and `distanceFallOff` are labelled as having no effect, since `GTAONode` deprecated both in three r186.
+  - The `samples` label warns that it recompiles the AO shader (`GTAONode` rebuilds its material when `samples` changes).
+- **Icon:**
+  - Its import goes after `playFill`, not before (alphabetical).
+  - The drawer has only one style, so there was no light/dark check to do.
+  - Phase 5's "`post-fx.svg` is not in the production bundle" doesn't hold, and it can't without restructuring `SvgIcon.ts`. Every icon's raw string is in the main chunk, because `SvgIcon.ts` imports them all statically and is imported by always-bundled code. The cost is about 0.5 kB; fixing it would be a follow-up for all icons. The tab code itself does code-split into its own `_dbg__PostFX` chunk.
+- **Dev-server gotcha:** a running `yarn dev` keeps the Zod schemas it started with. After a schema change, restart it, or its watcher regenerates `generatedAppData.json` with the old schema and silently drops the new keys (that is what happened to `paramsMeta`).
+- **Open / unverified** (headless WebGPU doesn't work under WSL2, so all checks were scripted DOM and API checks):
+  - It hasn't been confirmed that the AO effect changes live with radius and samples, or disappears and returns when switched off.
+  - Frame time rising with `samples` hasn't been checked.
+  - Live slider-drag ticks weren't exercised; the tests typed values in, which fires only a final change.
+  - If the start scene has a saved "off", the first few frames may still build the chain before the tab switches it off. That is one extra shader compile, behind the loading screen.
 
 ## Context (grounded in code)
 

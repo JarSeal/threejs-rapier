@@ -20,6 +20,7 @@ import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { MeshProps } from './MeshManager';
 import { deleteEntity } from '../utils/ECSHelpers';
 import { getECSWorld, getEntityIdByAppId } from './ECS';
+import type { PostFxPassProps } from './PostFX/PostFXTypes';
 
 export type Looper = (delta: number) => void;
 
@@ -47,6 +48,9 @@ export type SceneData = {
   meshes?: ({ props: MeshProps; entityOpts?: CoreEntityOpts } | string)[];
   importedAssets?: (ImportAssetParams | string)[];
   skyboxes?: (SkyBoxProps | string)[];
+  /** Ordered PostFX pass chain (array order is execution order). */
+  postFx?: (PostFxPassProps | string)[];
+  postFxEnabled?: boolean;
 };
 
 const scenes: { [id: string]: THREE.Group } = {};
@@ -77,6 +81,10 @@ export type SceneOptions = {
   mainLoopers?: Looper[];
   mainLateLoopers?: Looper[];
   appLoopers?: Looper[];
+  /** Ordered PostFX pass chain (array order is execution order), see PostFX.ts. */
+  postFx?: (PostFxPassProps | string)[];
+  /** Whether the PostFX chain starts switched on. Default true. */
+  postFxEnabled?: boolean;
 };
 
 /**
@@ -684,7 +692,7 @@ export const runOnSceneExit = (sceneId?: string) => {
 export const registerOnAllSceneEnterings = (id: string, fn: () => void) =>
   (onAllSceneEnters[id] = fn);
 
-export const registerOnAllSceneExits = (id: string, fn: () => void) => (onAllSceneEnters[id] = fn);
+export const registerOnAllSceneExits = (id: string, fn: () => void) => (onAllSceneExits[id] = fn);
 
 export const runOnAllSceneEnters = () => {
   const keys = Object.keys(onAllSceneEnters);
@@ -722,6 +730,8 @@ export const registerScenesFromGeneratedData = async () => {
       backgroundTexture: sceneData.backgroundTexture,
       name: sceneData.name,
       description: sceneData.description,
+      postFx: sceneData.postFx,
+      postFxEnabled: sceneData.postFxEnabled,
     });
 
     if (sceneData.skyboxes?.length) {
