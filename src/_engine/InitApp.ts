@@ -47,6 +47,7 @@ import { registerDebugToolsModule } from './debug/DebugToolsManager';
 import { registerRaycastDebugGUI } from './core/Raycast';
 import { registerOnScreenTools } from './debug/OnScreenTools';
 import { registerDebuggerGUI } from './debug/DebuggerGUI';
+import { initUndoRedo, registerUndoRedoModule } from './debug/UndoRedo';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -93,6 +94,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     }
 
     if (IS_DEBUG_ENV) {
+      await registerUndoRedoModule();
+      initUndoRedo();
       await registerStatsModule();
       await registerSkyBoxDebugGUI();
       await registerRaycastDebugGUI();

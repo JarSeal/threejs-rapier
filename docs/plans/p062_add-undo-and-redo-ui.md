@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Debugger
-Blocked by: p060_debugger-undo-engine-core.md and p061_add-undo-history-action-recording-to-debugger-tools.md (keyboard shortcuts also depend on the p050 input system refactoring — implemented, see `src/_engine/core/Input/`)
+Blocked by: \_DONE_p060_debugger-undo-engine-core.md and p061_add-undo-history-action-recording-to-debugger-tools.md (keyboard shortcuts also depend on the p050 input system refactoring — implemented, see `src/_engine/core/Input/`)
 Epic: https://trello.com/c/JYgK1s1u/86-add-undo-redo-system
 
 # Add Undo Engine UI and History Setting — Plan

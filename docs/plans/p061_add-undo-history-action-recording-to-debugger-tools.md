@@ -1,12 +1,12 @@
 Status: draft | not-implemented
 Category: Debugger
-Blocked by: p060_debugger-undo-engine-core.md
+Blocked by: \_DONE_p060_debugger-undo-engine-core.md
 Blocks: p062_add-undo-and-redo-ui.md
 Epic: https://trello.com/c/JYgK1s1u/86-add-undo-redo-system
 
 # Add Undo History Action Recording to Debugger Tools — Plan
 
-Wires the undo/redo engine core (`docs/plans/p060_debugger-undo-engine-core.md`) into the debugger's actual mutation sites: OnScreenTools, every debugger drawer tab, and every entity edit window. This is the "make it real" plan `p060` deliberately deferred — it goes through every actionable UI element across the whole debugger, decides whether recording it as an undo/redo action makes sense, and for the ones that do, specifies the `actionType`/payload/handler. **No key bindings, no UI (history list, undo/redo buttons) are added here** — only the recording/handler wiring, per the request. Actual keyboard shortcuts and UI affordances are separate, later work.
+Wires the undo/redo engine core (`docs/plans/_DONE_p060_debugger-undo-engine-core.md`) into the debugger's actual mutation sites: OnScreenTools, every debugger drawer tab, and every entity edit window. This is the "make it real" plan `p060` deliberately deferred — it goes through every actionable UI element across the whole debugger, decides whether recording it as an undo/redo action makes sense, and for the ones that do, specifies the `actionType`/payload/handler. **No key bindings, no UI (history list, undo/redo buttons) are added here** — only the recording/handler wiring, per the request. Actual keyboard shortcuts and UI affordances are separate, later work.
 
 This plan is unusually catalog-heavy by nature of the request ("go through each actionable UI element... report every single UI action that is not possible"). §2 is the full inventory (grounded in a dedicated research pass across all 11 debugger tabs + both entity edit windows); §3 proposes concrete `p060` core amendments the inventory in §2 revealed are necessary (explicitly permitted by the request: "refactoring the undo engine core is allowed to suit the different types of edge cases"); §4 lists the actual recordable actions with their `actionType`/payload/handler shape; §5 is the full non-recordable report the request asked for.
 
