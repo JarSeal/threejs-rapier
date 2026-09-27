@@ -14,10 +14,11 @@ import {
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { Pane } from 'tweakpane';
 import { createSceneAppLooper, deleteSceneAppLooper } from '../Scene';
-import { llog } from '../../utils/Logger';
+import { llog, lwarn } from '../../utils/Logger';
 import { deleteCharacter, getCharacterById, getCharacters } from '../Character';
 import { getECSWorld } from '../ECS';
 import { createClearListLSButton, createClearTabLSButton } from './_dbg__ClearLSButtons';
+import { _recordUndoRedoAction, _registerUndoRedoActionHandler } from './_dbg__UndoRedo';
 
 let debuggerListCmp: TCMP | null = null;
 const debuggerWindowCmp: { [id: string]: TCMP } = {};
@@ -29,6 +30,50 @@ const CHAR_TRACKER_WIN_ID = 'characterDataTrackerWindow';
 
 const getEditWindowId = (charId: string) => `${CHAR_EDIT_WIN_ID}_${charId}`;
 const getTrackerWindowId = (charId: string) => `${CHAR_TRACKER_WIN_ID}_${charId}`;
+
+// Undo/redo
+
+/** Character poses set from the edit window, recorded to the scene's history. Character ids
+ * are always app-supplied, so they're stable across reloads. */
+type CharVec3 = { x: number; y: number; z: number };
+type CharQuat = { x: number; y: number; z: number; w: number };
+type CharacterUndoPayload<T> = { characterId: string; prev: T; next: T };
+
+/** Finds the character's rigid body by character id at undo/redo time (never a captured
+ * reference). */
+const resolveCharacterRigidBody = (characterId: string) => {
+  const character = getCharacterById(characterId);
+  const rigidBody = character ? getECSWorld().getRigidBody(character.entityId) : undefined;
+  if (!rigidBody) lwarn(`Undo/redo: character "${characterId}" no longer exists, skipping.`);
+  return rigidBody;
+};
+
+// Only the pose is restored: the body keeps simulating (and its controls keep driving it),
+// so its velocity isn't rolled back.
+_registerUndoRedoActionHandler<CharacterUndoPayload<CharVec3>>('character.position', {
+  undo: ({ characterId, prev }) =>
+    resolveCharacterRigidBody(characterId)?.setTranslation(prev, true),
+  redo: ({ characterId, next }) =>
+    resolveCharacterRigidBody(characterId)?.setTranslation(next, true),
+});
+_registerUndoRedoActionHandler<CharacterUndoPayload<CharQuat>>('character.rotation', {
+  undo: ({ characterId, prev }) => resolveCharacterRigidBody(characterId)?.setRotation(prev, true),
+  redo: ({ characterId, next }) => resolveCharacterRigidBody(characterId)?.setRotation(next, true),
+});
+
+const recordCharacterPose = <T extends CharVec3 | CharQuat>(
+  characterId: string,
+  field: 'position' | 'rotation',
+  prev: T,
+  next: T
+) => {
+  if (JSON.stringify(prev) === JSON.stringify(next)) return;
+  _recordUndoRedoAction<CharacterUndoPayload<T>>(
+    `character.${field}`,
+    `Character ${characterId}: ${field}`,
+    { characterId, prev, next }
+  );
+};
 
 const createTrackCharacterContent = (winData?: { [key: string]: unknown }) => {
   const characters = getCharacters();
@@ -195,10 +240,10 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
       label: 'Position',
     });
     debuggerWindowPane[d.id].addButton({ title: 'Set position' }).on('click', () => {
-      physRigidBody.setTranslation(
-        new THREE.Vector3(rigidBody.position.x, rigidBody.position.y, rigidBody.position.z),
-        true
-      );
+      const { x, y, z } = physRigidBody.pos;
+      const next = { x: rigidBody.position.x, y: rigidBody.position.y, z: rigidBody.position.z };
+      physRigidBody.setTranslation(new THREE.Vector3(next.x, next.y, next.z), true);
+      recordCharacterPose(character.id, 'position', { x, y, z }, next);
     });
     debuggerWindowPane[d.id].addButton({ title: 'Update position input' }).on('click', () => {
       rigidBody.position = physRigidBody.pos;
@@ -211,11 +256,16 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
       step: Math.PI / 8,
     });
     debuggerWindowPane[d.id].addButton({ title: 'Set rotation' }).on('click', () => {
-      physRigidBody.setRotation(
-        new THREE.Quaternion().setFromEuler(
-          new THREE.Euler(rigidBody.rotation.x, rigidBody.rotation.y, rigidBody.rotation.z)
-        ),
-        true
+      const { x, y, z, w } = physRigidBody.rot;
+      const quat = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(rigidBody.rotation.x, rigidBody.rotation.y, rigidBody.rotation.z)
+      );
+      physRigidBody.setRotation(quat, true);
+      recordCharacterPose(
+        character.id,
+        'rotation',
+        { x, y, z, w },
+        { x: quat.x, y: quat.y, z: quat.z, w: quat.w }
       );
     });
     debuggerWindowPane[d.id].addButton({ title: 'Update rotation input' }).on('click', () => {
