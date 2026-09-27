@@ -5,7 +5,7 @@ import { existsOrThrow } from '../../utils/assert';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lwarn } from '../../utils/Logger';
 import { getConfig, PhysicsWireframeColors } from '../Config';
-import { ECSWorld } from '../ECS';
+import { ECSWorld, getStableAppId } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import {
   createLines,
@@ -192,20 +192,6 @@ export const PHYSICS_WIREFRAME_ENTITY_LS_KEY = 'AEK_debugPhysicsApiEntities';
 type PersistedEntityWireframe = {
   visible?: boolean;
   colorOverrides?: PhysicsWireframeColors;
-};
-
-/**
- * The entity's app id, but only when the app explicitly supplied one.
- *
- * ECS.ts generates a UUID for entities created without an `appId`, and that UUID is new
- * on every reload — so persisting against it would just accumulate dead records.
- * `APP_ID.isFixed` is exactly the "the app named this one" flag, which makes
- * per-entity debug settings reload-durable for named entities and session-only for the
- * rest.
- */
-const getStableAppId = (entityId: number, world: ECSWorld): string | undefined => {
-  const appId = world.getComponent(entityId, ComponentType.APP_ID);
-  return appId?.isFixed ? appId.id : undefined;
 };
 
 const readPersistedEntities = () =>

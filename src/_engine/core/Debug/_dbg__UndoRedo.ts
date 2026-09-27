@@ -7,7 +7,9 @@ import type {
   UndoRedoActionHandler,
   UndoRedoClearScope,
   UndoRedoEntry,
+  UndoRedoHistoryEntry,
   UndoRedoHistoryState,
+  UndoRedoScope,
 } from '../../debug/UndoRedo';
 
 /** The structure of 'AEK_debugUndoRedo' in LocalStorage */
@@ -15,22 +17,75 @@ type UndoRedoLSData = {
   [sceneId: string]: UndoRedoHistoryState;
 };
 
+type RegisteredHandler = UndoRedoActionHandler & { scope: UndoRedoScope };
+
 const LS_KEY = 'AEK_debugUndoRedo';
-/** Bucket for actions recorded while no scene is current. */
+/** Bucket for 'global' scoped actions, and for 'perScene' ones recorded while no scene is current. */
 const GLOBAL_BUCKET_ID = '_global';
 const DEFAULT_HISTORY_SIZE = 50;
+const DEFAULT_COALESCE_WINDOW_MS = 800;
 
 let state: UndoRedoLSData = {};
-const actionHandlers = new Map<string, UndoRedoActionHandler>();
+let lastTimestamp = 0;
+const actionHandlers = new Map<string, RegisteredHandler>();
 
 const getHistorySize = () => Math.max(1, getConfig().undoRedo?.historySize ?? DEFAULT_HISTORY_SIZE);
 
-const getBucketId = () => getCurrentSceneId() ?? GLOBAL_BUCKET_ID;
+const getSceneBucketId = () => getCurrentSceneId() ?? GLOBAL_BUCKET_ID;
 
-const getBucket = () => {
-  const bucketId = getBucketId();
+/** The buckets undo/redo work on: the current scene's and the global one (merged by timestamp). */
+const getVisibleBucketIds = () => {
+  const sceneBucketId = getSceneBucketId();
+  return sceneBucketId === GLOBAL_BUCKET_ID
+    ? [GLOBAL_BUCKET_ID]
+    : [sceneBucketId, GLOBAL_BUCKET_ID];
+};
+
+const getScope = (actionType: string): UndoRedoScope => {
+  const handler = actionHandlers.get(actionType);
+  if (!handler) {
+    lwarn(
+      `Recording undo/redo action "${actionType}" before its handler is registered, assuming 'perScene' scope.`
+    );
+    return 'perScene';
+  }
+  return handler.scope;
+};
+
+const getBucketIdForScope = (scope: UndoRedoScope) =>
+  scope === 'global' ? GLOBAL_BUCKET_ID : getSceneBucketId();
+
+const getBucket = (bucketId: string) => {
   if (!state[bucketId]) state[bucketId] = { entries: [], pointer: -1 };
   return state[bucketId];
+};
+
+/** Entry timestamps order the merged timeline, so they must be strictly increasing. */
+const nextTimestamp = () => {
+  lastTimestamp = Math.max(Date.now(), lastTimestamp + 1);
+  return lastTimestamp;
+};
+
+/** Newest applied entry across the visible buckets (what undo reverts). */
+const findUndoTarget = () => {
+  let target: { bucket: UndoRedoHistoryState; entry: UndoRedoEntry } | null = null;
+  for (const bucketId of getVisibleBucketIds()) {
+    const bucket = state[bucketId];
+    const entry = bucket?.entries[bucket.pointer];
+    if (entry && (!target || entry.timestamp > target.entry.timestamp)) target = { bucket, entry };
+  }
+  return target;
+};
+
+/** Oldest undone entry across the visible buckets (what redo reapplies). */
+const findRedoTarget = () => {
+  let target: { bucket: UndoRedoHistoryState; entry: UndoRedoEntry } | null = null;
+  for (const bucketId of getVisibleBucketIds()) {
+    const bucket = state[bucketId];
+    const entry = bucket?.entries[bucket.pointer + 1];
+    if (entry && (!target || entry.timestamp < target.entry.timestamp)) target = { bucket, entry };
+  }
+  return target;
 };
 
 const persist = () => {
@@ -41,32 +96,46 @@ const persist = () => {
   lsSetItem(LS_KEY, state);
 };
 
+/** Stores data exactly as it will come back from LocalStorage, so an undo right away and an
+ * undo after a reload see the same payload (e.g. undefined fields are already gone). */
+const toStoredData = <T>(data: T): T => JSON.parse(JSON.stringify(data ?? null));
+
 export const _initUndoRedo = () => {
   state = lsGetItem(LS_KEY, {}) as UndoRedoLSData;
+  lastTimestamp = 0;
+  for (const bucket of Object.values(state)) {
+    for (const entry of bucket.entries) lastTimestamp = Math.max(lastTimestamp, entry.timestamp);
+  }
 };
 
 export const _registerUndoRedoActionHandler = <TPayload>(
   actionType: string,
-  handler: UndoRedoActionHandler<TPayload>
+  handler: UndoRedoActionHandler<TPayload>,
+  scope: UndoRedoScope = 'perScene'
 ) => {
-  actionHandlers.set(actionType, handler as UndoRedoActionHandler);
+  actionHandlers.set(actionType, { ...(handler as UndoRedoActionHandler), scope });
 };
 
 export const _recordUndoRedoAction = <TPayload>(
   actionType: string,
   label: string,
-  payload: TPayload
+  payload: TPayload,
+  coalesceKey?: string
 ) => {
-  const bucket = getBucket();
-  bucket.entries.splice(bucket.pointer + 1);
+  // A new action ends the redo tail of the whole visible timeline, not just its own bucket.
+  for (const bucketId of getVisibleBucketIds()) {
+    const bucket = state[bucketId];
+    if (bucket) bucket.entries.splice(bucket.pointer + 1);
+  }
+
+  const bucket = getBucket(getBucketIdForScope(getScope(actionType)));
   bucket.entries.push({
     id: THREE.MathUtils.generateUUID(),
     actionType,
     label,
-    timestamp: Date.now(),
-    // Stored exactly as it will come back from LocalStorage, so an undo right away and an
-    // undo after a reload see the same payload (e.g. undefined fields are already gone).
-    payload: JSON.parse(JSON.stringify(payload ?? null)),
+    timestamp: nextTimestamp(),
+    payload: toStoredData(payload),
+    ...(coalesceKey !== undefined ? { coalesceKey } : {}),
   });
   bucket.pointer = bucket.entries.length - 1;
 
@@ -77,6 +146,32 @@ export const _recordUndoRedoAction = <TPayload>(
   }
 
   persist();
+};
+
+export const _recordOrCoalesceUndoRedoAction = <TPayload extends { prev: unknown; next: unknown }>(
+  actionType: string,
+  label: string,
+  payload: TPayload,
+  coalesceKey: string,
+  coalesceWindowMs = DEFAULT_COALESCE_WINDOW_MS
+) => {
+  // Only the newest entry of the timeline can absorb the tick, and only while nothing has been
+  // undone (an undone entry means the user has stepped out of the gesture).
+  const top = _canRedo() ? null : findUndoTarget();
+  if (
+    top &&
+    top.bucket === state[getBucketIdForScope(getScope(actionType))] &&
+    top.entry.actionType === actionType &&
+    top.entry.coalesceKey === coalesceKey &&
+    Date.now() - top.entry.timestamp < coalesceWindowMs
+  ) {
+    // Same gesture: keep the original `prev`, take the latest `next`.
+    top.entry.payload = { ...(top.entry.payload as TPayload), next: toStoredData(payload.next) };
+    top.entry.timestamp = nextTimestamp();
+    persist();
+    return;
+  }
+  _recordUndoRedoAction(actionType, label, payload, coalesceKey);
 };
 
 /** Runs one direction of an entry's handler. Returns false (pointer must not move) when the
@@ -99,41 +194,40 @@ const applyEntry = (entry: UndoRedoEntry, direction: 'undo' | 'redo') => {
 };
 
 export const _undoLastAction = () => {
-  const bucket = getBucket();
-  if (bucket.pointer < 0) return false;
-  if (!applyEntry(bucket.entries[bucket.pointer], 'undo')) return false;
-  bucket.pointer--;
+  const target = findUndoTarget();
+  if (!target || !applyEntry(target.entry, 'undo')) return false;
+  target.bucket.pointer--;
   persist();
   return true;
 };
 
 export const _redoLastAction = () => {
-  const bucket = getBucket();
-  if (bucket.pointer >= bucket.entries.length - 1) return false;
-  if (!applyEntry(bucket.entries[bucket.pointer + 1], 'redo')) return false;
-  bucket.pointer++;
+  const target = findRedoTarget();
+  if (!target || !applyEntry(target.entry, 'redo')) return false;
+  target.bucket.pointer++;
   persist();
   return true;
 };
 
-export const _canUndo = () => (state[getBucketId()]?.pointer ?? -1) >= 0;
+export const _canUndo = () => Boolean(findUndoTarget());
 
-export const _canRedo = () => {
-  const bucket = state[getBucketId()];
-  return !!bucket && bucket.pointer < bucket.entries.length - 1;
-};
+export const _canRedo = () => Boolean(findRedoTarget());
 
-export const _getUndoRedoHistory = (): UndoRedoHistoryState => {
-  const bucket = state[getBucketId()];
-  if (!bucket) return { entries: [], pointer: -1 };
-  return { entries: bucket.entries.map((entry) => ({ ...entry })), pointer: bucket.pointer };
-};
+export const _getUndoRedoHistory = (): UndoRedoHistoryEntry[] =>
+  getVisibleBucketIds()
+    .flatMap((bucketId) => {
+      const bucket = state[bucketId];
+      if (!bucket) return [];
+      const scope: UndoRedoScope = bucketId === GLOBAL_BUCKET_ID ? 'global' : 'perScene';
+      return bucket.entries.map((entry, i) => ({ ...entry, scope, applied: i <= bucket.pointer }));
+    })
+    .sort((a, b) => a.timestamp - b.timestamp);
 
 export const _clearUndoRedoHistory = (scope: UndoRedoClearScope) => {
   if (scope === 'all') {
     state = {};
   } else {
-    delete state[getBucketId()];
+    delete state[getSceneBucketId()];
   }
   persist();
 };
