@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Pane, type ButtonApi } from 'tweakpane';
-import { getECSWorld, ECSWorld, getEntityIdByAppId } from '../../ECS';
+import { getECSWorld, ECSWorld, getEntityIdByAppId, getStableAppId } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import { CMP, getCmpById, TCMP } from '../../../utils/CMP';
 import { getSvgIcon } from '../../UI/icons/SvgIcon';
@@ -29,6 +29,12 @@ import {
 import { getWindowSize } from '../../../utils/Window';
 import { DEFAULT_DEBUG_CAM_PROPS } from './_dbg__DebugCamera';
 import { updateOnScreenTools } from '../../../debug/OnScreenTools';
+import { lwarn } from '../../../utils/Logger';
+import {
+  _recordOrCoalesceUndoRedoAction,
+  _recordUndoRedoAction,
+  _registerUndoRedoActionHandler,
+} from '../_dbg__UndoRedo';
 
 export interface CamEntityDebugState {
   helperVisible?: boolean;
@@ -66,6 +72,119 @@ export const LS_KEY = 'AEK_debugCams';
 const DEBUGGER_CAMS_LIST_ID = 'debuggerCamerasList';
 let debuggerListCmp: TCMP | null = null;
 
+// Undo/redo
+
+/** Edit window fields recorded to the (per-scene) undo/redo history. */
+const UNDOABLE_CAM_KEYS = [
+  'position',
+  'responsiveAspect',
+  'referenceAspect',
+  'fov',
+  'frustumSize',
+  'near',
+  'far',
+] as const;
+type UndoableCamKey = (typeof UNDOABLE_CAM_KEYS)[number];
+type UndoableCamValues = { [K in UndoableCamKey]: NonNullable<CamEntityDebugState[K]> };
+type CamUndoPayload<K extends UndoableCamKey> = {
+  appId: string;
+  prev: UndoableCamValues[K];
+  next: UndoableCamValues[K];
+};
+
+const UNDOABLE_CAM_LABELS: Record<UndoableCamKey, string> = {
+  position: 'position',
+  responsiveAspect: 'responsive aspect',
+  referenceAspect: 'reference aspect',
+  fov: 'fov',
+  frustumSize: 'frustum size',
+  near: 'near',
+  far: 'far',
+};
+
+/** Continuous (slider) fields: a drag is merged into one history entry. */
+const COALESCED_CAM_KEYS: ReadonlySet<UndoableCamKey> = new Set([
+  'referenceAspect',
+  'fov',
+  'frustumSize',
+  'near',
+  'far',
+]);
+
+/** Finds the camera by app id at undo/redo time (never a captured reference). */
+const resolveCamera = (appId: string) => {
+  const world = getECSWorld();
+  const entityId = getEntityIdByAppId(appId, world);
+  const camera =
+    entityId !== undefined ? world.getComponent(entityId, ComponentType.OBJECT3D)?.value : null;
+  const settings =
+    entityId !== undefined ? world.getComponent(entityId, ComponentType.CAMERA_SETTINGS) : null;
+  if (entityId === undefined || !(camera instanceof THREE.Camera) || !settings) {
+    lwarn(`Undo/redo: camera "${appId}" no longer exists, skipping.`);
+    return null;
+  }
+  return {
+    world,
+    entityId,
+    camera: camera as THREE.PerspectiveCamera | THREE.OrthographicCamera,
+    settings,
+  };
+};
+
+type ResolvedCamera = NonNullable<ReturnType<typeof resolveCamera>>;
+
+/** Applies a value the same way the edit window's own control does. */
+const applyCamField: {
+  [K in UndoableCamKey]: (cam: ResolvedCamera, value: UndoableCamValues[K]) => void;
+} = {
+  position: ({ world, entityId }, value) => world.setTransform(entityId, { pos: value }),
+  responsiveAspect: ({ camera, settings }, value) => {
+    settings.responsiveAspect = value;
+    applyCameraProjection(camera, settings, getWindowSize().aspect);
+  },
+  referenceAspect: ({ camera, settings }, value) => {
+    settings.referenceAspect = value;
+    applyCameraProjection(camera, settings, getWindowSize().aspect);
+  },
+  // Goes through settings.fov in both modes: applyCameraProjection derives the live fov from it.
+  fov: ({ camera, settings }, value) => {
+    settings.fov = value;
+    applyCameraProjection(camera, settings, getWindowSize().aspect);
+  },
+  frustumSize: ({ camera, settings }, value) => {
+    settings.frustumSize = value;
+    applyCameraProjection(camera, settings, getWindowSize().aspect);
+  },
+  near: ({ camera }, value) => {
+    camera.near = value;
+    camera.updateProjectionMatrix();
+  },
+  far: ({ camera }, value) => {
+    camera.far = value;
+    camera.updateProjectionMatrix();
+  },
+};
+
+const setCamField = <K extends UndoableCamKey>(
+  key: K,
+  appId: string,
+  value: UndoableCamValues[K]
+) => {
+  const cam = resolveCamera(appId);
+  if (!cam) return;
+  applyCamField[key](cam, value);
+  saveCameraToLS(cam.entityId, key, value);
+  updateCamerasDebuggerGUI('WINDOW');
+};
+
+const registerCamUndoHandler = <K extends UndoableCamKey>(key: K) => {
+  _registerUndoRedoActionHandler<CamUndoPayload<K>>(`camera.${key}`, {
+    undo: ({ appId, prev }) => setCamField(key, appId, prev),
+    redo: ({ appId, next }) => setCamField(key, appId, next),
+  });
+};
+for (const key of UNDOABLE_CAM_KEYS) registerCamUndoHandler(key);
+
 /** Content for the Edit Camera Draggable Window */
 export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   const d = data as { id: string; winId: string };
@@ -96,6 +215,37 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   const save = <K extends keyof CamEntityDebugState>(key: K, value: CamEntityDebugState[K]) => {
     saveCameraToLS(entityId, key, value);
     if (clearLSBtn) clearLSBtn.disabled = false;
+  };
+
+  // Tweakpane has already written the new value when 'change' fires, so the previous value
+  // of each recorded field is kept here. Generated app ids can't be found again after a
+  // reload, so only cameras with a stable app id are recorded.
+  const stableAppId = getStableAppId(entityId, world);
+  const committed: UndoableCamValues = {
+    position: {
+      x: transform?.position.x ?? 0,
+      y: transform?.position.y ?? 0,
+      z: transform?.position.z ?? 0,
+    },
+    responsiveAspect: settings.responsiveAspect,
+    referenceAspect: settings.referenceAspect,
+    fov: settings.fov,
+    frustumSize: settings.frustumSize,
+    near: camera.near,
+    far: camera.far,
+  };
+  const record = <K extends UndoableCamKey>(key: K, next: UndoableCamValues[K]) => {
+    const prev = committed[key];
+    committed[key] = next;
+    if (!stableAppId || JSON.stringify(prev) === JSON.stringify(next)) return;
+    const actionType = `camera.${key}`;
+    const label = `Camera ${stableAppId}: ${UNDOABLE_CAM_LABELS[key]}`;
+    const payload: CamUndoPayload<K> = { appId: stableAppId, prev, next };
+    if (COALESCED_CAM_KEYS.has(key)) {
+      _recordOrCoalesceUndoRedoAction(actionType, label, payload, `${stableAppId}.${key}`);
+    } else {
+      _recordUndoRedoAction(actionType, label, payload);
+    }
   };
 
   // Helper Toggle (Direct binding to the Three.js Helper object)
@@ -152,7 +302,13 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
     pane.addBinding(transform, 'position', { label: 'Position' }).on('change', (ev) => {
       if (!ev.last) return;
       world.setTransform(entityId, { pos: transform.position });
-      save('position', { ...transform.position });
+      const position = {
+        x: transform.position.x,
+        y: transform.position.y,
+        z: transform.position.z,
+      };
+      save('position', position);
+      record('position', position);
     });
   }
 
@@ -174,6 +330,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
       settings.responsiveAspect = ev.value;
       applyCameraProjection(camera, settings, getWindowSize().aspect);
       save('responsiveAspect', ev.value);
+      record('responsiveAspect', ev.value);
       // Without this one iteration timeout, Tweakpane will crash (maybe fix at one point)
       setTimeout(() => {
         updateCamerasDebuggerGUI('WINDOW'); // rebuild so the fov/frustumSize label reflects the new mode
@@ -189,27 +346,26 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
       settings.referenceAspect = ev.value;
       applyCameraProjection(camera, settings, getWindowSize().aspect);
       save('referenceAspect', ev.value);
+      record('referenceAspect', ev.value);
     });
 
   if (settings.type === 'PERSPECTIVE') {
+    // The slider edits the authored settings.fov (the base value at the reference aspect in
+    // responsive mode), not the live camera.fov: applyCameraProjection derives the live fov
+    // from settings.fov, so a direct camera.fov edit would revert on the next resize.
+    const fovProxy = { fov: settings.fov };
     lensFolder
-      .addBinding(camera as THREE.PerspectiveCamera, 'fov', {
+      .addBinding(fovProxy, 'fov', {
         min: 1,
         max: 170,
         step: 1,
         label: settings.responsiveAspect ? 'Fov (base, @ ref aspect)' : 'Fov',
       })
-      .on('change', () => {
-        const liveFov = (camera as THREE.PerspectiveCamera).fov;
-        if (settings.responsiveAspect) {
-          // The slider edits the authored base value; re-derive the live fov for the
-          // current aspect immediately so the edit doesn't silently revert on next resize.
-          settings.fov = liveFov;
-          applyCameraProjection(camera, settings, getWindowSize().aspect);
-        } else {
-          camera.updateProjectionMatrix();
-        }
-        save('fov', settings.responsiveAspect ? settings.fov : liveFov);
+      .on('change', (ev) => {
+        settings.fov = ev.value;
+        applyCameraProjection(camera, settings, getWindowSize().aspect);
+        save('fov', settings.fov);
+        record('fov', settings.fov);
       });
   } else {
     const frustumProxy = { frustumSize: settings.frustumSize };
@@ -223,16 +379,19 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
         settings.frustumSize = ev.value;
         applyCameraProjection(camera, settings, getWindowSize().aspect);
         save('frustumSize', settings.frustumSize);
+        record('frustumSize', settings.frustumSize);
       });
   }
 
   lensFolder.addBinding(camera, 'near', { min: 0.001, step: 0.01 }).on('change', () => {
     camera.updateProjectionMatrix();
     save('near', camera.near);
+    record('near', camera.near);
   });
   lensFolder.addBinding(camera, 'far', { min: 1, step: 1 }).on('change', () => {
     camera.updateProjectionMatrix();
     save('far', camera.far);
+    record('far', camera.far);
   });
 
   clearLSBtn = pane.addButton({
@@ -430,10 +589,17 @@ export const getDebugCamProps = (sceneId: string) => {
   return saved[sceneId].debugCam;
 };
 
-export const loadCameraDebugData = (appId?: string): CamEntityDebugState | undefined => {
+/**
+ * Returns a camera's saved debugger state.
+ * @param appId (string) the camera's app id
+ * @param sceneId (string) scene whose data to read, defaults to the current scene
+ */
+export const loadCameraDebugData = (
+  appId?: string,
+  sceneId: string | null = getCurrentSceneId()
+): CamEntityDebugState | undefined => {
   if (!appId) return;
   const currentData = lsGetItem(LS_KEY, {}) as CamDebugLSData;
-  const sceneId = getCurrentSceneId();
   if (
     !sceneId ||
     !currentData ||

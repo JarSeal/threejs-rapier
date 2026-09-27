@@ -911,10 +911,17 @@ const refreshLightShadows = async (light: THREE.Light, entityId: number, world: 
   updateLightsDebuggerGUI();
 };
 
-export const loadLightDebugData = (appId?: string): LightEntityDebugState | undefined => {
+/**
+ * Returns a light's saved debugger state.
+ * @param appId (string) the light's app id
+ * @param sceneId (string) scene whose data to read, defaults to the current scene
+ */
+export const loadLightDebugData = (
+  appId?: string,
+  sceneId: string | null = getCurrentSceneId()
+): LightEntityDebugState | undefined => {
   if (!appId) return;
   const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
-  const sceneId = getCurrentSceneId();
   if (
     !sceneId ||
     !currentData ||

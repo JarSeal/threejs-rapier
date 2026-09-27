@@ -2,6 +2,8 @@ import { useDebug } from '../utils/helpers';
 import { cameraDebugGUI } from './CameraManager';
 import { debugGUI } from './LightManager';
 import { IS_DEBUG_ENV } from './Config';
+import { getCurrentSceneId } from './Scene';
+import { getNextSceneId } from './SceneLoader';
 
 type PropType = 'LIGHT' | 'CAMERA';
 
@@ -37,10 +39,13 @@ export const loadPersistentProps = <T extends LoadableProps>(
 };
 
 const getSavedDebugProps = (appId: string, propType: PropType) => {
+  // Cameras (and lights created by a scene's init code) are created while their scene is
+  // still loading, before it becomes the current scene, so read the loading scene's data.
+  const sceneId = getNextSceneId() ?? getCurrentSceneId();
   switch (propType) {
     case 'LIGHT':
-      return useDebug(debugGUI)?.loadLightDebugData(appId) || {};
+      return useDebug(debugGUI)?.loadLightDebugData(appId, sceneId) || {};
     case 'CAMERA':
-      return useDebug(cameraDebugGUI)?.loadCameraDebugData(appId) || {};
+      return useDebug(cameraDebugGUI)?.loadCameraDebugData(appId, sceneId) || {};
   }
 };
