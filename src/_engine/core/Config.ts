@@ -138,12 +138,15 @@ export type AppConfig = {
     far?: number;
     zoom?: number;
   };
-  /** PostFX engine-level defaults (docs/plans/p070_post-fx-system.md). Per-scene and
+  /** PostFX engine-level defaults (docs/plans/_DONE_p070_post-fx-system.md). Per-scene and
    * per-pass state lives in the scene / `*.postFx.json` files, not here. */
   postFx?: {
     /** Global master switch: when false, no scene's PostFX chain is ever rendered. A scene
      * still has to declare PostFX passes for anything to happen. Default true. */
     enabled?: boolean;
+    /** Start the debug-only per-PostFX pass performance measuring at boot (it can also be
+     * switched on and off live with setPostFxMeasureEnabled()). Default false. */
+    measureEnabled?: boolean;
   };
   /** Debugger undo/redo history (debug-only, see `debug/UndoRedo.ts`). */
   undoRedo?: {
@@ -203,6 +206,7 @@ let config: AppConfig = {
   },
   postFx: {
     enabled: true,
+    measureEnabled: false,
   },
 };
 

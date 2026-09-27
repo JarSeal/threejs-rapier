@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { DebugDataSchema, UserDataSchema } from './_helperSchemas';
 
-/** Raw JSON values handed to the pass's `fxNode` function as-is (not TSL uniform nodes), see docs/plans/p070_post-fx-system.md, Design decision 2. */
+/** Raw JSON values handed to the pass's `fxNode` function as-is (not TSL uniform nodes), see docs/plans/_DONE_p070_post-fx-system.md, Design decision 2. */
 const PostFxParamsSchema = z.record(z.string(), z.unknown());
 
 const PostFxOverridesSchema = z.object({

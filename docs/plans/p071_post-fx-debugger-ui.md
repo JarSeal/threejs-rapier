@@ -1,11 +1,11 @@
 Status: draft | not-implemented
 Category: PostFX, Debugger
-Blocked by: p070_post-fx-system.md
+Blocked by: _DONE_p070_post-fx-system.md (implemented — no longer blocking)
 Epic: https://trello.com/c/6a8QkjPf/62-add-postprocessing-system-to-core-code
 
 # PostFX System Debugger UI — Plan
 
-Add a debugger drawer tab for the PostFX system that `p070_post-fx-system.md` builds. The tab carries a new hand-authored "screen with FX" SVG icon, two global toggles at the top (**PostFX enabled**, **Measuring enabled**), and below them a list of the PostFX passes active in the current scene; clicking a row opens that pass's properties in a draggable edit window, exactly as the Camera, Light, Character, ECS and Physics API tabs already do.
+Add a debugger drawer tab for the PostFX system that `_DONE_p070_post-fx-system.md` builds. The tab carries a new hand-authored "screen with FX" SVG icon, two global toggles at the top (**PostFX enabled**, **Measuring enabled**), and below them a list of the PostFX passes active in the current scene; clicking a row opens that pass's properties in a draggable edit window, exactly as the Camera, Light, Character, ECS and Physics API tabs already do.
 
 p070 ships `PostFX.ts` and the measuring API with **no UI at all** and names this plan as the consumer of `getPostFxPasses()` / `setPostFxPassParam()` / `setPostFxMeasureEnabled()`. This plan is that consumer, plus the small additive engine-side gaps those surfaces are missing.
 

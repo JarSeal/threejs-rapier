@@ -40,3 +40,39 @@ export type PostFxPassFn = (
 
 /** A PostFX pass as it arrives in the scene data, after the gatherer has inlined it. */
 export type PostFxPassProps = Omit<PostFxAsset, '$schema' | '__sourcePath' | '__saveData'>;
+
+/** The currently built PostFX chain, as the debug profiler sees it. */
+export type PostFxBuiltChain = {
+  pipeline: THREE.RenderPipeline;
+  /** The PostFX passes in the chain (enabled and built), in chain order. */
+  postFxPasses: { id: string; profileNodes: THREE.Node[] }[];
+};
+
+/** Per-PostFX pass measurement (smoothed ms per frame), see getPostFxPassStats(). */
+export type PostFxPassStats = {
+  id: string;
+  /** JS-side time in the PostFX pass's profileNodes' updateBefore(): render target setup,
+   * uniform updates, draw dispatch. 0 for pure in-chain math PostFX passes. */
+  cpuMs: number;
+  /** GPU time of the render passes this PostFX pass issued, null when gpuAttribution is
+   * 'shared' or GPU timing is unavailable. */
+  gpuMs: number | null;
+  /** 'exact': the PostFX pass issued render passes of its own, measured on their own.
+   * 'shared': pure in-chain math, evaluated inside the final composite quad together with every
+   * other 'shared' PostFX pass, so it can't be separated on the GPU (see compositeGpuMs). */
+  gpuAttribution: 'exact' | 'shared';
+};
+
+/** PostFX measurement results, see getPostFxPassStats(). */
+export type PostFxStats = {
+  /** Whether GPU timing is available (timestamp queries supported by the device). */
+  gpuAvailable: boolean;
+  /** Measured frames (CPU) and frames with resolved GPU timestamps. */
+  cpuSamples: number;
+  gpuSamples: number;
+  /** GPU time of the scene pass (render passes not issued by any PostFX pass). */
+  sceneGpuMs: number | null;
+  /** GPU time of the final composite quad, which includes every 'shared' PostFX pass. */
+  compositeGpuMs: number | null;
+  postFxPasses: PostFxPassStats[];
+};

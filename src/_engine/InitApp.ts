@@ -49,6 +49,7 @@ import { registerRaycastDebugGUI } from './core/Raycast';
 import { registerOnScreenTools } from './debug/OnScreenTools';
 import { DEBUG_TOASTER_ID, registerDebuggerGUI } from './debug/DebuggerGUI';
 import { initUndoRedo, registerUndoRedoModule } from './debug/UndoRedo';
+import { registerPostFxProfiler } from './debug/PostFXProfiler';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -130,6 +131,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await createRendererDebugGUI();
       await createPhysicsAPIDebugGUI();
       await createAssetsDebugGUI();
+      // After appStartFn: measuring needs the renderer
+      await registerPostFxProfiler();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
 

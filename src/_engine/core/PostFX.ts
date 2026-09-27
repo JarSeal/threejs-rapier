@@ -1,5 +1,5 @@
 /**
- * PostFX system (docs/plans/p070_post-fx-system.md): an ordered, per-scene chain of authored
+ * PostFX system (docs/plans/_DONE_p070_post-fx-system.md): an ordered, per-scene chain of authored
  * PostFX passes (a `<name>.postFx.json` + `<name>.tsl.ts` pair each), rendered through a TSL
  * `RenderPipeline` instead of `renderer.render()` while it is switched on.
  *
@@ -29,6 +29,7 @@ import { getActiveCamera } from './CameraManager';
 import { postFxFileObjects } from '../generatedAppFns';
 import { lerror, llog, lwarn } from '../utils/Logger';
 import type {
+  PostFxBuiltChain,
   PostFxPassApi,
   PostFxPassContext,
   PostFxPassFn,
@@ -65,6 +66,8 @@ let prePass: THREE.PassNode | null = null;
 /** The camera the current build's scene pass renders with. */
 let builtCamera: THREE.Camera | null = null;
 let needsRebuild = true;
+/** Called after the PostFX chain is (re)built or disposed (eg. by the debug profiler). */
+const postFxChainListeners = new Set<() => void>();
 const lastSize = new THREE.Vector2(-1, -1);
 const curSize = new THREE.Vector2();
 
@@ -201,6 +204,8 @@ const buildPostFxPipeline = (
   builtCamera = camera;
   lastSize.set(-1, -1);
   needsRebuild = false;
+
+  for (const listener of postFxChainListeners) listener();
 
   if (IS_DEBUG_ENV) {
     const ids = postFxPasses.filter((p) => p.api).map((p) => p.id);
@@ -373,4 +378,35 @@ export const disposePostFx = () => {
   postFxSceneId = null;
   isEnabled = false;
   needsRebuild = true;
+  for (const listener of postFxChainListeners) listener();
+};
+
+/**
+ * Adds a listener called after the PostFX chain is (re)built or disposed.
+ * @param listener (() => void)
+ * @returns (() => void) a function that removes the listener
+ */
+export const addPostFxChainListener = (listener: () => void) => {
+  postFxChainListeners.add(listener);
+  return () => {
+    postFxChainListeners.delete(listener);
+  };
+};
+
+/**
+ * Returns the currently built PostFX chain (for the debug profiler), or null when none is built.
+ * @returns ({@link PostFxBuiltChain} | null)
+ */
+export const getPostFxBuiltChain = (): PostFxBuiltChain | null => {
+  if (!pipeline) return null;
+  const builtPostFxPasses: PostFxBuiltChain['postFxPasses'] = [];
+  for (let i = 0; i < postFxPasses.length; i++) {
+    const api = postFxPasses[i].api;
+    if (!api) continue;
+    builtPostFxPasses.push({
+      id: postFxPasses[i].id,
+      profileNodes: api.profileNodes || [api.node],
+    });
+  }
+  return { pipeline, postFxPasses: builtPostFxPasses };
 };
