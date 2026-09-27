@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { Pane } from 'tweakpane';
 import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
-import { llog } from '../../utils/Logger';
+import { llog, lwarn } from '../../utils/Logger';
 import { CMP, type TCMP } from '../../utils/CMP';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import {
@@ -51,9 +51,14 @@ import {
   WIREFRAME_COLOR_STATES,
   type WireframeColorState,
 } from './_dbg__PhysicsDebugDraw';
-import { getECSWorld } from '../ECS';
+import { getECSWorld, getEntityIdByAppId, getStableAppId } from '../ECS';
 import { getPhysicsInterpolationReadout } from '../PhysicsManager';
 import { ComponentType } from '../ECS/ECSCoreComponents';
+import {
+  _recordOrCoalesceUndoRedoAction,
+  _recordUndoRedoAction,
+  _registerUndoRedoActionHandler,
+} from './_dbg__UndoRedo';
 
 const LS_KEY = 'AEK_debugPhysicsApi';
 /** Wireframe colors/thickness get their own key so "Clear tab LS" on the main physics
@@ -200,6 +205,123 @@ const getPhysicsEntityRigidBody = (entityId: number) => {
   }
   return undefined;
 };
+
+// Undo/redo
+
+/** Live world settings recorded to the global undo/redo history (the physics world and its
+ * settings are shared by every scene). */
+type UndoableSetting = 'gravity' | 'solverIterations' | 'internalPgsIterations';
+type SettingValues = Pick<PhysicsState, UndoableSetting>;
+type SettingUndoPayload<K extends UndoableSetting> = {
+  prev: SettingValues[K];
+  next: SettingValues[K];
+};
+
+const UNDOABLE_SETTING_LABELS: Record<UndoableSetting, string> = {
+  gravity: 'Physics: gravity',
+  solverIterations: 'Physics: solver iterations',
+  internalPgsIterations: 'Physics: internal PGS iterations',
+};
+
+/** The tab's pane, when it's open (stale once the tab is closed). */
+let physicsPane: Pane | null = null;
+/** True while undo/redo refreshes the pane, so the change listeners don't record it. */
+let isApplyingUndoRedo = false;
+/** Tweakpane has already written the new value into the state when 'change' fires, so each
+ * setting's previous value is kept here. Set once the persisted state has been restored. */
+let committedSettings: SettingValues | null = null;
+
+/** Pushes a setting from the state into the running world. */
+const applySettingToWorld: Record<UndoableSetting, (state: PhysicsState) => void> = {
+  gravity: (state) => {
+    if (!isPhysicsWorldEnabled()) return;
+    getPhysicsWorld().setGravity(state.gravity);
+    // Sleeping bodies don't re-evaluate forces until woken, so they'd keep ignoring
+    // the new gravity value until something else disturbs them.
+    for (const entityId of getAllPhysicsEntityIds()) {
+      getPhysicsEntityRigidBody(entityId)?.wakeUp();
+    }
+  },
+  solverIterations: (state) => {
+    if (isPhysicsWorldEnabled()) getPhysicsWorld().setNumSolverIterations(state.solverIterations);
+  },
+  internalPgsIterations: (state) => {
+    if (isPhysicsWorldEnabled()) {
+      getPhysicsWorld().setNumInternalPgsIterations(state.internalPgsIterations);
+    }
+  },
+};
+
+/** Tweakpane's point binding writes into the bound gravity object in place, so the state, the
+ * committed values and the history payloads must never share one. */
+const copySetting = <T>(value: T): T => structuredClone(value);
+
+const recordSettingChange = <K extends UndoableSetting>(key: K, next: SettingValues[K]) => {
+  if (!committedSettings) return;
+  const prev = committedSettings[key];
+  committedSettings[key] = copySetting(next);
+  if (JSON.stringify(prev) === JSON.stringify(next)) return;
+  const payload: SettingUndoPayload<K> = { prev, next };
+  // Gravity is a point binding, recorded once per drag (on its last event); the iteration
+  // counts are plain number bindings, so a drag is merged into one entry.
+  if (key === 'gravity') {
+    _recordUndoRedoAction(`physics.${key}`, UNDOABLE_SETTING_LABELS[key], payload);
+  } else {
+    _recordOrCoalesceUndoRedoAction(`physics.${key}`, UNDOABLE_SETTING_LABELS[key], payload, key);
+  }
+};
+
+const setSetting = <K extends UndoableSetting>(key: K, value: SettingValues[K]) => {
+  const state = getPhysicsState();
+  (state as SettingValues)[key] = copySetting(value);
+  if (committedSettings) committedSettings[key] = copySetting(value);
+  persistLiveState(state);
+  applySettingToWorld[key](state);
+  if (!physicsPane?.element.isConnected) return;
+  isApplyingUndoRedo = true;
+  try {
+    physicsPane.refresh();
+  } finally {
+    isApplyingUndoRedo = false;
+  }
+};
+
+const registerSettingUndoHandler = <K extends UndoableSetting>(key: K) => {
+  _registerUndoRedoActionHandler<SettingUndoPayload<K>>(
+    `physics.${key}`,
+    {
+      undo: ({ prev }) => setSetting(key, prev),
+      redo: ({ next }) => setSetting(key, next),
+    },
+    'global'
+  );
+};
+registerSettingUndoHandler('gravity');
+registerSettingUndoHandler('solverIterations');
+registerSettingUndoHandler('internalPgsIterations');
+
+/** Physics entity poses set from the edit window, recorded to the scene's history. */
+type PhysVec3 = { x: number; y: number; z: number };
+type PhysQuat = { x: number; y: number; z: number; w: number };
+type PhysicsObjectUndoPayload<T> = { appId: string; prev: T; next: T };
+
+/** Finds the rigid body by app id at undo/redo time (never a captured reference). */
+const resolvePhysicsEntityRigidBody = (appId: string) => {
+  const entityId = getEntityIdByAppId(appId);
+  const rigidBody = entityId !== undefined ? getPhysicsEntityRigidBody(entityId) : undefined;
+  if (!rigidBody) lwarn(`Undo/redo: physics entity "${appId}" no longer exists, skipping.`);
+  return rigidBody;
+};
+
+// Only the pose is restored: the body keeps simulating, so its velocity isn't rolled back.
+_registerUndoRedoActionHandler<PhysicsObjectUndoPayload<PhysVec3>>('physicsObject.position', {
+  undo: ({ appId, prev }) => resolvePhysicsEntityRigidBody(appId)?.setTranslation(prev, true),
+  redo: ({ appId, next }) => resolvePhysicsEntityRigidBody(appId)?.setTranslation(next, true),
+});
+_registerUndoRedoActionHandler<PhysicsObjectUndoPayload<PhysQuat>>('physicsObject.rotation', {
+  undo: ({ appId, prev }) => resolvePhysicsEntityRigidBody(appId)?.setRotation(prev, true),
+  redo: ({ appId, next }) => resolvePhysicsEntityRigidBody(appId)?.setRotation(next, true),
+});
 
 const getPhysicsEntityLabel = (entityId: number): string => {
   const world = getECSWorld();
@@ -425,12 +547,28 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
     ),
   };
 
+  // Generated app ids can't be found again after a reload, so only entities with a stable
+  // app id are recorded to the undo/redo history.
+  const stableAppId = getStableAppId(d.entityId, world);
+  const recordPose = <T extends PhysVec3 | PhysQuat>(
+    field: 'position' | 'rotation',
+    prev: T,
+    next: T
+  ) => {
+    if (!stableAppId || JSON.stringify(prev) === JSON.stringify(next)) return;
+    _recordUndoRedoAction<PhysicsObjectUndoPayload<T>>(
+      `physicsObject.${field}`,
+      `Physics entity ${stableAppId}: ${field}`,
+      { appId: stableAppId, prev, next }
+    );
+  };
+
   const positionInput = entityWindowPane.addBinding(transform, 'position', { label: 'Position' });
   entityWindowPane.addButton({ title: 'Set position' }).on('click', () => {
-    rigidBody.setTranslation(
-      { x: transform.position.x, y: transform.position.y, z: transform.position.z },
-      true
-    );
+    const { x, y, z } = rigidBody.translation();
+    const next = { x: transform.position.x, y: transform.position.y, z: transform.position.z };
+    rigidBody.setTranslation(next, true);
+    recordPose('position', { x, y, z }, next);
   });
   entityWindowPane.addButton({ title: 'Update position input' }).on('click', () => {
     transform.position = rigidBody.translation();
@@ -446,7 +584,10 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
     const quat = new THREE.Quaternion().setFromEuler(
       new THREE.Euler(transform.rotation.x, transform.rotation.y, transform.rotation.z)
     );
-    rigidBody.setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w }, true);
+    const { x, y, z, w } = rigidBody.rotation();
+    const next = { x: quat.x, y: quat.y, z: quat.z, w: quat.w };
+    rigidBody.setRotation(next, true);
+    recordPose('rotation', { x, y, z, w }, next);
   });
   entityWindowPane.addButton({ title: 'Update rotation input' }).on('click', () => {
     const rot = rigidBody.rotation();
@@ -542,6 +683,11 @@ export const _createPhysicsAPIDebugGUI = () => {
   Object.assign(state, savedValues);
   state.timestepRatio = 1 / (state.timestep || 60);
   applyLiveStateToWorld(state);
+  committedSettings = {
+    gravity: { ...state.gravity },
+    solverIterations: state.solverIterations,
+    internalPgsIterations: state.internalPgsIterations,
+  };
 
   const icon = getSvgIcon('rocketTakeoff');
   createDebuggerTab({
@@ -570,6 +716,7 @@ export const _createPhysicsAPIDebugGUI = () => {
         `${icon} Physics API Controls`,
         [clearTabBtn]
       );
+      physicsPane = debugGUI;
 
       // --- Boot-time settings (require a reload to take effect) ---
 
@@ -642,16 +789,11 @@ export const _createPhysicsAPIDebugGUI = () => {
           persistLiveState(state);
         });
       debugGUI.addBinding(state, 'gravity', { label: 'Gravity' }).on('change', (e) => {
+        if (isApplyingUndoRedo) return;
         state.gravity = { ...e.value };
         persistLiveState(state);
-        if (isPhysicsWorldEnabled()) {
-          getPhysicsWorld().setGravity(state.gravity);
-          // Sleeping bodies don't re-evaluate forces until woken, so they'd keep ignoring
-          // the new gravity value until something else disturbs them.
-          for (const entityId of getAllPhysicsEntityIds()) {
-            getPhysicsEntityRigidBody(entityId)?.wakeUp();
-          }
-        }
+        applySettingToWorld.gravity(state);
+        if (e.last) recordSettingChange('gravity', state.gravity);
       });
       debugGUI
         .addBinding(state, 'solverIterations', {
@@ -660,11 +802,11 @@ export const _createPhysicsAPIDebugGUI = () => {
           step: 1,
         })
         .on('change', (e) => {
+          if (isApplyingUndoRedo) return;
           state.solverIterations = e.value;
           persistLiveState(state);
-          if (isPhysicsWorldEnabled()) {
-            getPhysicsWorld().setNumSolverIterations(e.value);
-          }
+          applySettingToWorld.solverIterations(state);
+          recordSettingChange('solverIterations', e.value);
         });
       debugGUI
         .addBinding(state, 'internalPgsIterations', {
@@ -673,11 +815,11 @@ export const _createPhysicsAPIDebugGUI = () => {
           step: 1,
         })
         .on('change', (e) => {
+          if (isApplyingUndoRedo) return;
           state.internalPgsIterations = e.value;
           persistLiveState(state);
-          if (isPhysicsWorldEnabled()) {
-            getPhysicsWorld().setNumInternalPgsIterations(e.value);
-          }
+          applySettingToWorld.internalPgsIterations(state);
+          recordSettingChange('internalPgsIterations', e.value);
         });
 
       debugGUI.addBlade({ view: 'separator' });

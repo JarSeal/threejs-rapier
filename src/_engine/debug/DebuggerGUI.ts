@@ -3,6 +3,7 @@ import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/he
 import { lerror } from '../utils/Logger';
 
 export const DEBUGGER_SCENE_LOADER_ID = '__debugger-scene-loader';
+export const DEBUG_TOASTER_ID = 'debugToaster';
 
 type DebuggerGUIModule = typeof import('../core/Debug/_dbg__DebuggerGUI');
 let debugGUI: DebugModuleRef<DebuggerGUIModule> | null = null;

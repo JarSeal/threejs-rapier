@@ -1,6 +1,6 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Debugger
-Blocks: p061_add-undo-history-action-recording-to-debugger-tools.md and p062_add-undo-and-redo-ui.md
+Blocks: \_DONE_p061_add-undo-history-action-recording-to-debugger-tools.md and \_DONE_p062_add-undo-and-redo-ui.md
 Epic: https://trello.com/c/JYgK1s1u/86-add-undo-redo-system
 
 # Debugger Undo/Redo Engine Core — Plan
@@ -158,3 +158,60 @@ No further phases — this plan is deliberately small (core engine only); the bl
 | Payload serializability isn't enforced at the type level.                                                    | `UndoRedoEntry<TPayload>` doesn't statically prevent a future caller from passing a live object reference or function in `payload` — it's a documented convention (§2.1), matching how e.g. Camera/Light LS state is already "just" plain data by convention rather than by compiler enforcement. A runtime `JSON.stringify`/`parse` round-trip inside `_recordUndoRedoAction` would catch violations early (cheap safety net) but silently mutates any payload containing e.g. `undefined` fields — worth deciding at implementation time whether that tradeoff is worth it.                                                                        |
 | No scene-change event system to hook into (§1).                                                              | Every operation re-resolves `getCurrentSceneId()` itself rather than tracking transitions, so there's no risk of stale scene-id caching — but it also means nothing proactively prunes stale scene buckets when a scene is deleted (`Scene.ts` has scene deletion, e.g. the `debugToolsState.debugCamera[id]` cleanup near `Scene.ts:250-253`). This plan doesn't add equivalent cleanup for `AEK_debugUndoRedo`'s per-scene buckets; a deleted scene's history simply becomes unreachable dead data in LS until `_clearUndoRedoHistory('all')` is called. Low-severity (bounded by `historySize` per scene, not unbounded growth) but worth noting. |
 | `historySize` config changes don't retroactively trim already-persisted history.                             | If a project lowers `historySize` between sessions, existing entries beyond the new limit aren't purged until the next `_recordUndoRedoAction` call trims from the front. Matches how trimming is defined (§2.2) — only enforced on write, not on load — flagging as a judgment call rather than an oversight.                                                                                                                                                                                                                                                                                                                                       |
+
+---
+
+## Implementation notes
+
+Implemented in two phases: Phase 1 in `00c3e73`, Phase 2 (bootstrap wiring) in the commit that
+renamed this plan to `_DONE_`.
+
+### How it was verified
+
+No test runner exists, so both phases were checked with a throwaway headless Playwright script
+(`playwright-core` from `.claude/skills/run-aekasha-js/`) against `yarn dev` with `?isDebug=true`.
+The script `import()`ed `/_engine/debug/UndoRedo.ts` in the page (the same module instance
+`InitApp.ts` loads) and checked:
+
+- record A, record B → undo, undo, undo on an empty history (returns `false`) → redo; handlers ran
+  in the order `1 → 0 → 1`;
+- recording C after that redo dropped the redo tail (`[A, C]`);
+- `AEK_debugUndoRedo` held `{ [sceneId]: { entries, pointer } }`;
+- after a reload the history was restored as it was; an undo before the handler was registered
+  warned and left `pointer` alone, and succeeded once the handler was registered;
+- 55 records left 50 entries (`N5`..`N54`, `pointer` 49);
+- `clearUndoRedoHistory('all')` removed the LS key.
+
+### Where the implementation departs from this plan
+
+- **Types live in the thin entry.** `UndoRedoEntry`, `UndoRedoActionHandler`,
+  `UndoRedoHistoryState` and `UndoRedoClearScope` are exported from `debug/UndoRedo.ts`, not
+  `_dbg__UndoRedo.ts` (same as `StatsOptions` in `debug/Stats.ts`), so callers can import them
+  without referencing the debug implementation.
+- **Payloads go through a JSON round-trip on record** (the §6 open question). An undo right away
+  and an undo after a reload then see the same payload; `undefined` fields are dropped at once
+  instead of only after a reload.
+- **`undoLastAction`/`redoLastAction` return a boolean** (whether an action was applied). A
+  handler that throws is logged with `lerror` and leaves `pointer` alone, same as a missing
+  handler.
+- **Read-only calls don't create buckets.** `canUndo`/`canRedo`/`getUndoRedoHistory` read the
+  bucket without creating it (§2.3 said every call creates one lazily), so reading never leaves
+  empty scene buckets in LS. When the last bucket is cleared the LS key is removed rather than
+  stored as `{}`, which keeps p041's `lsKeyHasData` checks accurate.
+- **`historySize` is read with a fallback**, as `getConfig().undoRedo?.historySize ?? 50`
+  clamped to at least 1. `loadConfig()` merges `CONFIG.ts` shallowly, so an app setting
+  `undoRedo: {}` would otherwise lose the default.
+- **Bootstrap placement.** `registerUndoRedoModule()` + `initUndoRedo()` run first in
+  `InitApp.ts`'s `IS_DEBUG_ENV`-only block. `registerDebugToolsModule()` (which §1/§2.5 named as
+  the neighbour) has since moved to the separate `IS_DEBUG_ENV || IS_PROD_TEST_MODE` block.
+
+### Notes for p061/p062
+
+- **Handler registration and load order.** The public `registerUndoRedoActionHandler` is a no-op
+  until `registerUndoRedoModule()` has resolved, so a registration made at module load time
+  before that is silently dropped. The `p061` call sites are all `_dbg__` files, which can
+  import `_dbg__UndoRedo.ts` directly (as they already do with `_dbg__ClearLSButtons.ts`) and
+  avoid the ordering issue.
+- **Bucket resolution is in one helper**, `getBucketId()`, so p061's `scope: 'global'` change
+  stays local. p061 still has to define which bucket "undo last action" pops when the current
+  scene's bucket and `'_global'` both have entries.

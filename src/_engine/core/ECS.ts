@@ -872,6 +872,22 @@ export const getEntityIdByAppId = (appId: string, ecsWorld?: ECSWorld): number |
   return undefined;
 };
 
+/**
+ * Returns the entity's app id, but only when the app explicitly supplied one.
+ *
+ * Entities created without an `appId` get a generated UUID that is new on every reload, so
+ * anything persisted against it (debugger LocalStorage state, undo/redo history) can't find
+ * the entity again. `APP_ID.isFixed` marks the ids that are stable across reloads.
+ * @param entityId (number) the entity to read
+ * @param ecsWorld ({@link ECSWorld}) optional world, defaults to the current world
+ * @returns (string | undefined) the stable app id, or undefined for generated ids
+ */
+export const getStableAppId = (entityId: number, ecsWorld?: ECSWorld): string | undefined => {
+  const world = ecsWorld || getECSWorld();
+  const appId = world.getComponent(entityId, CoreComponentType.APP_ID);
+  return appId?.isFixed ? appId.id : undefined;
+};
+
 // Debug stuff
 
 type ECSGUIModule = typeof import('../core/Debug/_dbg__ECS');

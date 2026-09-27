@@ -138,6 +138,11 @@ export type AppConfig = {
     far?: number;
     zoom?: number;
   };
+  /** Debugger undo/redo history (debug-only, see `debug/UndoRedo.ts`). */
+  undoRedo?: {
+    /** Max number of history entries kept per scene bucket. Default 50. */
+    historySize?: number;
+  };
   draggableWindows?: {
     [id: string]: Partial<DraggableWindow> & {
       contentFn?: (data?: { [key: string]: unknown }) => TCMP;
@@ -185,6 +190,9 @@ let config: AppConfig = {
     near: 0.1,
     far: 1000,
     zoom: 1,
+  },
+  undoRedo: {
+    historySize: 50,
   },
 };
 

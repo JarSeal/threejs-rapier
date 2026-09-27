@@ -46,7 +46,8 @@ import { load3DSymbols } from './debug/3DSymbols';
 import { registerDebugToolsModule } from './debug/DebugToolsManager';
 import { registerRaycastDebugGUI } from './core/Raycast';
 import { registerOnScreenTools } from './debug/OnScreenTools';
-import { registerDebuggerGUI } from './debug/DebuggerGUI';
+import { DEBUG_TOASTER_ID, registerDebuggerGUI } from './debug/DebuggerGUI';
+import { initUndoRedo, registerUndoRedoModule } from './debug/UndoRedo';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -93,6 +94,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     }
 
     if (IS_DEBUG_ENV) {
+      await registerUndoRedoModule();
+      initUndoRedo();
       await registerStatsModule();
       await registerSkyBoxDebugGUI();
       await registerRaycastDebugGUI();
@@ -132,7 +135,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       if (statsCmp) yOffset = `${-statsCmp.elem.offsetHeight - 16}px`;
       getHUDRootCMP().add(
         createToaster({
-          id: 'debugToaster',
+          id: DEBUG_TOASTER_ID,
           settings: {
             animationTimeMs: 200,
             verticalPosition: 'bottom',

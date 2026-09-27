@@ -66,6 +66,12 @@
   }
 }
 
+// The debug drawer opens from the right and the stats panel sits bottom-left, so this corner stays free
+:global(.undoRedoTools) {
+  top: 1.6rem;
+  left: 1.6rem;
+}
+
 .onScreenTool {
   @include variables.nakedButton;
   position: relative;
@@ -94,6 +100,15 @@
 
   &:hover {
     background-color: variables.$debugGuiBackgroundLighter;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.35;
+
+    &:hover {
+      background-color: variables.$debugGuiBackgroundLighter2;
+    }
   }
 
   svg path {

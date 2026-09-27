@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { ButtonApi, ListBladeApi, Pane } from 'tweakpane';
-import { getECSWorld, ECSWorld, getEntityIdByAppId } from '../../ECS';
+import { getECSWorld, ECSWorld, getEntityIdByAppId, getStableAppId } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import { CMP, getCmpById, TCMP } from '../../../utils/CMP';
 import { getSvgIcon } from '../../UI/icons/SvgIcon';
@@ -31,6 +31,12 @@ import { BladeController, View } from '@tweakpane/core';
 import { FOUR_PX_TO_8K_LIST } from '../../../utils/constants';
 import { getRendererOptions } from '../../Renderer';
 import { updateOnScreenTools } from '../../../debug/OnScreenTools';
+import { lwarn } from '../../../utils/Logger';
+import {
+  _recordOrCoalesceUndoRedoAction,
+  _recordUndoRedoAction,
+  _registerUndoRedoActionHandler,
+} from '../_dbg__UndoRedo';
 
 export interface LightEntityDebugState {
   enabled: boolean;
@@ -189,6 +195,206 @@ const getLightTypeShorthand = (world: ECSWorld, entityId: number) => {
   return '??';
 };
 
+// Undo/redo
+
+type LightPos = { x: number; y: number; z: number };
+type ShadowLight = THREE.PointLight | THREE.SpotLight | THREE.DirectionalLight;
+
+/** Edit window fields recorded to the (per-scene) undo/redo history, and their values. */
+type UndoableLightValues = {
+  enabled: boolean;
+  color: number;
+  groundColor: number;
+  intensity: number;
+  distance: number;
+  decay: number;
+  frustumCullingEnabled: boolean;
+  objectCullingEnabled: boolean;
+  position: LightPos;
+  targetPos: LightPos;
+  castShadow: boolean;
+  shadowBias: number;
+  shadowNormalBias: number;
+  shadowIntensity: number;
+  shadowBlurSamples: number;
+  shadowRadius: number;
+  shadowMapSize: [number, number];
+  shadowCameraNearFar: [number, number];
+  shadowCameraFrustum: [number, number, number, number];
+};
+type UndoableLightKey = keyof UndoableLightValues;
+type LightUndoPayload<K extends UndoableLightKey> = {
+  appId: string;
+  prev: UndoableLightValues[K];
+  next: UndoableLightValues[K];
+};
+
+const UNDOABLE_LIGHT_LABELS: Record<UndoableLightKey, string> = {
+  enabled: 'enabled',
+  color: 'color',
+  groundColor: 'ground color',
+  intensity: 'intensity',
+  distance: 'distance',
+  decay: 'decay',
+  frustumCullingEnabled: 'frustum culling',
+  objectCullingEnabled: 'object culling',
+  position: 'position',
+  targetPos: 'target position',
+  castShadow: 'cast shadow',
+  shadowBias: 'shadow bias',
+  shadowNormalBias: 'shadow normal bias',
+  shadowIntensity: 'shadow intensity',
+  shadowBlurSamples: 'shadow blur samples',
+  shadowRadius: 'shadow radius',
+  shadowMapSize: 'shadow map size',
+  shadowCameraNearFar: 'shadow camera near/far',
+  shadowCameraFrustum: 'shadow camera frustum',
+};
+
+/** Continuous (slider/color) fields: a drag is merged into one history entry. */
+const COALESCED_LIGHT_KEYS: ReadonlySet<UndoableLightKey> = new Set([
+  'color',
+  'groundColor',
+  'intensity',
+  'distance',
+  'decay',
+  'shadowBias',
+  'shadowNormalBias',
+  'shadowIntensity',
+  'shadowBlurSamples',
+  'shadowRadius',
+  'shadowCameraNearFar',
+  'shadowCameraFrustum',
+]);
+
+const toLightPos = (v: LightPos): LightPos => ({ x: v.x, y: v.y, z: v.z });
+
+const getOrthoBounds = (light: ShadowLight): [number, number, number, number] | undefined => {
+  const cam = light.shadow.camera;
+  return cam instanceof THREE.OrthographicCamera
+    ? [cam.left, cam.right, cam.top, cam.bottom]
+    : undefined;
+};
+
+/** Finds the light by app id at undo/redo time (never a captured reference: changing the
+ * shadow map size replaces the light's Three.js object). */
+const resolveLight = (appId: string) => {
+  const world = getECSWorld();
+  const entityId = getEntityIdByAppId(appId, world);
+  const light =
+    entityId !== undefined ? world.getComponent(entityId, ComponentType.OBJECT3D)?.value : null;
+  if (entityId === undefined || !(light instanceof THREE.Light)) {
+    lwarn(`Undo/redo: light "${appId}" no longer exists, skipping.`);
+    return null;
+  }
+  return { world, entityId, light };
+};
+type ResolvedLight = NonNullable<ReturnType<typeof resolveLight>>;
+
+const updateShadowCamHelper = ({ world, entityId }: ResolvedLight) =>
+  world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER)?.camHelper?.update();
+
+/** Applies a value the same way the edit window's own control does. */
+const applyLightField: {
+  [K in UndoableLightKey]: (target: ResolvedLight, value: UndoableLightValues[K]) => void;
+} = {
+  enabled: ({ world, entityId, light }, value) => {
+    light.visible = value;
+    setLightEnabled(entityId, value, world);
+  },
+  // For a hemisphere light `color` is the sky color
+  color: ({ light }, value) => light.color.setHex(value),
+  groundColor: ({ light }, value) => {
+    if (light instanceof THREE.HemisphereLight) light.groundColor.setHex(value);
+  },
+  intensity: ({ light }, value) => {
+    light.intensity = value;
+  },
+  distance: ({ light }, value) => {
+    (light as THREE.PointLight | THREE.SpotLight).distance = value;
+  },
+  decay: ({ light }, value) => {
+    (light as THREE.PointLight | THREE.SpotLight).decay = value;
+  },
+  frustumCullingEnabled: ({ world, entityId }, value) =>
+    setLightFrustumCullingEnabled(entityId, value, world),
+  objectCullingEnabled: ({ world, entityId }, value) =>
+    setLightObjectCullingEnabled(entityId, value, world),
+  position: ({ world, entityId }, value) => {
+    world.setTransform(entityId, { pos: value });
+    const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (helper && 'update' in helper.value) (helper.value as any).update();
+  },
+  // The target entity is found through the light's current TARGET_LINK, so it doesn't
+  // need a stable app id of its own.
+  targetPos: ({ world, entityId }, value) => {
+    const targetLink = world.getComponent(entityId, ComponentType.TARGET_LINK);
+    if (targetLink) world.setTransform(targetLink.targetId, { pos: value });
+  },
+  castShadow: ({ world, entityId, light }, value) => {
+    light.castShadow = value;
+    reconcileDebugVisuals(entityId, world);
+  },
+  shadowBias: ({ light }, value) => {
+    (light as ShadowLight).shadow.bias = value;
+  },
+  shadowNormalBias: ({ light }, value) => {
+    (light as ShadowLight).shadow.normalBias = value;
+  },
+  shadowIntensity: ({ light }, value) => {
+    (light as ShadowLight).shadow.intensity = value;
+  },
+  shadowBlurSamples: ({ light }, value) => {
+    (light as ShadowLight).shadow.blurSamples = value;
+  },
+  shadowRadius: ({ light }, value) => {
+    (light as ShadowLight).shadow.radius = value;
+  },
+  shadowMapSize: ({ world, entityId, light }, [width, height]) => {
+    const l = light as ShadowLight;
+    l.shadow.mapSize.set(width, height);
+    refreshLightShadows(l, entityId, world);
+  },
+  shadowCameraNearFar: (target, [near, far]) => {
+    const cam = (target.light as ShadowLight).shadow.camera;
+    cam.near = near;
+    cam.far = far;
+    cam.updateProjectionMatrix();
+    updateShadowCamHelper(target);
+  },
+  shadowCameraFrustum: (target, [left, right, top, bottom]) => {
+    const cam = (target.light as ShadowLight).shadow.camera;
+    if (!(cam instanceof THREE.OrthographicCamera)) return;
+    Object.assign(cam, { left, right, top, bottom });
+    cam.updateProjectionMatrix();
+    updateShadowCamHelper(target);
+  },
+};
+
+const setLightField = <K extends UndoableLightKey>(
+  key: K,
+  appId: string,
+  value: UndoableLightValues[K]
+) => {
+  const target = resolveLight(appId);
+  if (!target) return;
+  applyLightField[key](target, value);
+  saveLightToLS(target.entityId, key, value as LightEntityDebugState[K]);
+  // refreshLightShadows rebuilds the window itself once the new light's helpers exist
+  if (key !== 'shadowMapSize') updateLightsDebuggerGUI('WINDOW');
+};
+
+const registerLightUndoHandler = <K extends UndoableLightKey>(key: K) => {
+  _registerUndoRedoActionHandler<LightUndoPayload<K>>(`light.${key}`, {
+    undo: ({ appId, prev }) => setLightField(key, appId, prev),
+    redo: ({ appId, next }) => setLightField(key, appId, next),
+  });
+};
+for (const key of Object.keys(UNDOABLE_LIGHT_LABELS) as UndoableLightKey[]) {
+  registerLightUndoHandler(key);
+}
+
 /** Logic for the Edit Light Draggable Window */
 export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   const d = data as { id: string; winId: string };
@@ -223,6 +429,27 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     if (clearLSBtn) clearLSBtn.disabled = false;
   };
 
+  // Tweakpane has already written the new value when 'change' fires, so each recorded
+  // field's previous value is kept here (set when its control is created). Generated app
+  // ids can't be found again after a reload, so only lights with a stable app id are recorded.
+  const stableAppId = getStableAppId(entityId, world);
+  const committed: Partial<UndoableLightValues> = {};
+  const record = <K extends UndoableLightKey>(key: K, next: UndoableLightValues[K]) => {
+    const prev = committed[key];
+    committed[key] = next;
+    if (!stableAppId || prev === undefined || JSON.stringify(prev) === JSON.stringify(next)) {
+      return;
+    }
+    const actionType = `light.${key}`;
+    const label = `Light ${stableAppId}: ${UNDOABLE_LIGHT_LABELS[key]}`;
+    const payload: LightUndoPayload<K> = { appId: stableAppId, prev, next };
+    if (COALESCED_LIGHT_KEYS.has(key)) {
+      _recordOrCoalesceUndoRedoAction(actionType, label, payload, `${stableAppId}.${key}`);
+    } else {
+      _recordUndoRedoAction(actionType, label, payload);
+    }
+  };
+
   // Footer Info
   container.add({
     class: ['winNotRightPaddedContent', 'winFlexContent'],
@@ -246,10 +473,12 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   });
 
   // Tweakpane Bindings
+  committed.enabled = light.visible;
   pane.addBinding(light, 'visible', { label: 'Enabled' }).on('change', (e) => {
     const value = e.value;
     setLightEnabled(entityId, value, world);
     save('enabled', value);
+    record('enabled', value);
   });
 
   // Helper Toggle (Direct binding to the Three.js Helper object)
@@ -283,6 +512,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         sky: hemi.color.getHex(),
         ground: hemi.groundColor.getHex(),
       };
+      committed.color = colorProxy.sky;
+      committed.groundColor = colorProxy.ground;
       pane
         .addBinding(colorProxy, 'sky', {
           label: 'Sky Color',
@@ -291,6 +522,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         .on('change', (ev) => {
           hemi.color.setHex(ev.value);
           save('color', ev.value);
+          record('color', ev.value);
         });
       pane
         .addBinding(colorProxy, 'ground', {
@@ -300,9 +532,11 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         .on('change', (ev) => {
           hemi.groundColor.setHex(ev.value);
           save('groundColor', ev.value);
+          record('groundColor', ev.value);
         });
     } else {
       const colorProxy = { hex: light.color.getHex() };
+      committed.color = colorProxy.hex;
       pane
         .addBinding(colorProxy, 'hex', {
           label: 'Color',
@@ -311,29 +545,38 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         .on('change', (ev) => {
           light.color.setHex(ev.value);
           save('color', ev.value);
+          record('color', ev.value);
         });
     }
   }
 
   // Intensity
+  committed.intensity = light.intensity;
   pane
     .addBinding(light, 'intensity', { label: 'Intensity', min: 0, step: 0.01 })
-    .on('change', (ev) => save('intensity', ev.value));
+    .on('change', (ev) => {
+      save('intensity', ev.value);
+      record('intensity', ev.value);
+    });
 
   // Distance
   if (lightChars.hasDistance) {
     const l = light as THREE.PointLight | THREE.SpotLight;
-    pane
-      .addBinding(l, 'distance', { label: 'Distance', min: 0, step: 0.01 })
-      .on('change', (ev) => save('distance', ev.value));
+    committed.distance = l.distance;
+    pane.addBinding(l, 'distance', { label: 'Distance', min: 0, step: 0.01 }).on('change', (ev) => {
+      save('distance', ev.value);
+      record('distance', ev.value);
+    });
   }
 
   // Decay
   if (lightChars.hasDecay) {
     const l = light as THREE.PointLight | THREE.SpotLight;
-    pane
-      .addBinding(l, 'decay', { label: 'Decay', min: 0, step: 0.01 })
-      .on('change', (ev) => save('decay', ev.value));
+    committed.decay = l.decay;
+    pane.addBinding(l, 'decay', { label: 'Decay', min: 0, step: 0.01 }).on('change', (ev) => {
+      save('decay', ev.value);
+      record('decay', ev.value);
+    });
   }
 
   // Frustum Culling (opt-in, ECS-only state — proxy binding)
@@ -341,9 +584,11 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     const cullProxy = {
       enabled: world.hasComponent(entityId, ComponentType.FRUSTUM_CULLING_ENABLED),
     };
+    committed.frustumCullingEnabled = cullProxy.enabled;
     pane.addBinding(cullProxy, 'enabled', { label: 'Frustum Culling' }).on('change', (ev) => {
       setLightFrustumCullingEnabled(entityId, ev.value, world);
       save('frustumCullingEnabled', ev.value);
+      record('frustumCullingEnabled', ev.value);
     });
   }
 
@@ -352,14 +597,17 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     const objCullProxy = {
       enabled: world.hasComponent(entityId, ComponentType.OBJECT_CULLING_ENABLED),
     };
+    committed.objectCullingEnabled = objCullProxy.enabled;
     pane.addBinding(objCullProxy, 'enabled', { label: 'Object Culling' }).on('change', (ev) => {
       setLightObjectCullingEnabled(entityId, ev.value, world);
       save('objectCullingEnabled', ev.value);
+      record('objectCullingEnabled', ev.value);
     });
   }
 
   // Sync Position to ECS Transform
   if (transform && lightChars.hasPosition) {
+    committed.position = toLightPos(transform.position);
     pane
       .addBinding(transform, 'position', {
         label: 'Position',
@@ -375,6 +623,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           (helper.value as any).update();
         }
         save('position', transform.position);
+        record('position', toLightPos(transform.position));
       });
   }
 
@@ -384,6 +633,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     const targetEntityId = targetLink.targetId;
     const targetTransform = world.getComponent(targetEntityId, ComponentType.TRANSFORM);
     if (targetTransform) {
+      committed.targetPos = toLightPos(targetTransform.position);
       pane
         .addBinding(targetTransform, 'position', {
           label: 'Target Position',
@@ -392,6 +642,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           if (!e.last) return;
           world.setTransform(targetEntityId, { pos: targetTransform.position });
           save('targetPos', targetTransform.position);
+          record('targetPos', toLightPos(targetTransform.position));
         });
     }
   }
@@ -402,11 +653,22 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     const renderOptions = getRendererOptions();
     const isVSM = renderOptions.shadowMapType === THREE.VSMShadowMap;
 
+    committed.castShadow = light.castShadow;
+    committed.shadowBias = l.shadow.bias;
+    committed.shadowNormalBias = l.shadow.normalBias;
+    committed.shadowIntensity = l.shadow.intensity;
+    committed.shadowBlurSamples = l.shadow.blurSamples;
+    committed.shadowRadius = l.shadow.radius;
+    committed.shadowMapSize = [l.shadow.mapSize.width, l.shadow.mapSize.height];
+    committed.shadowCameraNearFar = [l.shadow.camera.near, l.shadow.camera.far];
+    committed.shadowCameraFrustum = getOrthoBounds(l);
+
     pane.addBinding(light, 'castShadow', { label: 'Cast Shadow' }).on('change', (ev) => {
       reconcileDebugVisuals(entityId, world);
       // We need to wait a cycle for the pane to be updated
       setTimeout(() => updateDraggableWindow(EDIT_LIGHT_WIN_ID), 0);
       save('castShadow', ev.value);
+      record('castShadow', ev.value);
     });
 
     const shadowFolder = pane
@@ -419,7 +681,10 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         step: 0.00001,
         disabled: !l.castShadow,
       })
-      .on('change', (ev) => save('shadowBias', ev.value));
+      .on('change', (ev) => {
+        save('shadowBias', ev.value);
+        record('shadowBias', ev.value);
+      });
 
     shadowFolder
       .addBinding(l.shadow, 'normalBias', {
@@ -427,7 +692,10 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         step: 0.00001,
         disabled: !l.castShadow,
       })
-      .on('change', (ev) => save('shadowNormalBias', ev.value));
+      .on('change', (ev) => {
+        save('shadowNormalBias', ev.value);
+        record('shadowNormalBias', ev.value);
+      });
 
     shadowFolder
       .addBinding(l.shadow, 'intensity', {
@@ -437,7 +705,10 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         step: 0.001,
         disabled: !l.castShadow,
       })
-      .on('change', (ev) => save('shadowIntensity', ev.value));
+      .on('change', (ev) => {
+        save('shadowIntensity', ev.value);
+        record('shadowIntensity', ev.value);
+      });
 
     // --- VSM SPECIFIC PARAMETERS ---
     shadowFolder
@@ -448,7 +719,10 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         step: 1,
         disabled: !isVSM || !l.castShadow,
       })
-      .on('change', (ev) => save('shadowBlurSamples', ev.value));
+      .on('change', (ev) => {
+        save('shadowBlurSamples', ev.value);
+        record('shadowBlurSamples', ev.value);
+      });
 
     shadowFolder
       .addBinding(l.shadow, 'radius', {
@@ -456,7 +730,10 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         min: 0,
         disabled: !isVSM || !l.castShadow,
       })
-      .on('change', (ev) => save('shadowRadius', ev.value));
+      .on('change', (ev) => {
+        save('shadowRadius', ev.value);
+        record('shadowRadius', ev.value);
+      });
 
     const widthBlade = shadowFolder.addBlade({
       view: 'list',
@@ -489,6 +766,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       refreshLightShadows(l, entityId, world);
 
       save('shadowMapSize', [value, l.shadow.mapSize.height]);
+      record('shadowMapSize', [value, l.shadow.mapSize.height]);
     });
 
     heightBlade.on('change', (e) => {
@@ -506,6 +784,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
       refreshLightShadows(l, entityId, world);
 
       save('shadowMapSize', [l.shadow.mapSize.width, value]);
+      record('shadowMapSize', [l.shadow.mapSize.width, value]);
     });
 
     const camFolder = shadowFolder
@@ -523,6 +802,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
         if (helper?.camHelper) helper.camHelper.update();
         save('shadowCameraNearFar', [ev.value, l.shadow.camera.far]);
+        record('shadowCameraNearFar', [ev.value, l.shadow.camera.far]);
       });
     camFolder
       .addBinding(l.shadow.camera, 'far', {
@@ -535,6 +815,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
         const helper = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
         if (helper?.camHelper) helper.camHelper.update();
         save('shadowCameraNearFar', [l.shadow.camera.near, ev.value]);
+        record('shadowCameraNearFar', [l.shadow.camera.near, ev.value]);
       });
 
     // Orthographic specific (Directional Light only)
@@ -550,6 +831,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           if (helper?.camHelper) helper.camHelper.update();
           const cam = l.shadow.camera as THREE.OrthographicCamera;
           save('shadowCameraFrustum', [ev.value, cam.right, cam.top, cam.bottom]);
+          record('shadowCameraFrustum', [ev.value, cam.right, cam.top, cam.bottom]);
         });
       camFolder
         .addBinding(ortho, 'right', { label: 'Right', step, disabled: !l.castShadow })
@@ -559,6 +841,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           if (helper?.camHelper) helper.camHelper.update();
           const cam = l.shadow.camera as THREE.OrthographicCamera;
           save('shadowCameraFrustum', [cam.left, ev.value, cam.top, cam.bottom]);
+          record('shadowCameraFrustum', [cam.left, ev.value, cam.top, cam.bottom]);
         });
       camFolder
         .addBinding(ortho, 'top', { label: 'Top', step, disabled: !l.castShadow })
@@ -568,6 +851,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           if (helper?.camHelper) helper.camHelper.update();
           const cam = l.shadow.camera as THREE.OrthographicCamera;
           save('shadowCameraFrustum', [cam.left, cam.right, ev.value, cam.bottom]);
+          record('shadowCameraFrustum', [cam.left, cam.right, ev.value, cam.bottom]);
         });
       camFolder
         .addBinding(ortho, 'bottom', { label: 'Bottom', step, disabled: !l.castShadow })
@@ -577,6 +861,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
           if (helper?.camHelper) helper.camHelper.update();
           const cam = l.shadow.camera as THREE.OrthographicCamera;
           save('shadowCameraFrustum', [cam.left, cam.right, cam.top, ev.value]);
+          record('shadowCameraFrustum', [cam.left, cam.right, cam.top, ev.value]);
         });
     }
   }
@@ -841,23 +1126,14 @@ const refreshLightShadows = async (light: THREE.Light, entityId: number, world: 
   if (!rootScene) return;
 
   // Finalize Projection for the new Light
-  // We must ensure the shadow camera knows about the new MapSize aspect ratio
+  // A perspective shadow camera's aspect follows the map size (same as createLightEntity).
+  // A directional light's ortho bounds are left as they are: createLightEntity applies
+  // shadowCameraFrustum as-is regardless of the map size, so this preview must too.
   const l = light as THREE.SpotLight | THREE.DirectionalLight;
   if (l.shadow) {
     const { width, height } = l.shadow.mapSize;
-    const aspect = width / height;
-
     if (l.shadow.camera instanceof THREE.PerspectiveCamera) {
-      // For SpotLights: Sync aspect ratio
-      l.shadow.camera.aspect = aspect;
-    } else if (l.shadow.camera instanceof THREE.OrthographicCamera) {
-      // For DirectionalLights: Ensure bounds match the resolution aspect
-      // If you don't do this, rectangular pixels stretch and look "bigger"
-      const halfW = (l.shadow.camera.right - l.shadow.camera.left) / 2;
-      const center = (l.shadow.camera.right + l.shadow.camera.left) / 2;
-      // Adjust horizontal bounds based on aspect if you want square shadow pixels
-      l.shadow.camera.left = center - halfW * aspect;
-      l.shadow.camera.right = center + halfW * aspect;
+      l.shadow.camera.aspect = width / height;
     }
     l.shadow.camera.updateProjectionMatrix();
   }
@@ -911,10 +1187,17 @@ const refreshLightShadows = async (light: THREE.Light, entityId: number, world: 
   updateLightsDebuggerGUI();
 };
 
-export const loadLightDebugData = (appId?: string): LightEntityDebugState | undefined => {
+/**
+ * Returns a light's saved debugger state.
+ * @param appId (string) the light's app id
+ * @param sceneId (string) scene whose data to read, defaults to the current scene
+ */
+export const loadLightDebugData = (
+  appId?: string,
+  sceneId: string | null = getCurrentSceneId()
+): LightEntityDebugState | undefined => {
   if (!appId) return;
   const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
-  const sceneId = getCurrentSceneId();
   if (
     !sceneId ||
     !currentData ||

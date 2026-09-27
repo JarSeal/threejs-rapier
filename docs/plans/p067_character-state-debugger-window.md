@@ -261,7 +261,7 @@ A small `key → formatter` map, used only for known keys. Any other key uses th
   - `updateDraggableWindow` being hard-wired to call `updateDebuggerCharactersListSelectedClass()` (`DraggableWindow.ts:611`)
   - `windowClassList.concat(...)` discarding its result (`:500, :634`)
   - the height clamp using `minSize.w` (`:753, :823`)
-- **Undo plans.** `p061_add-undo-history-action-recording-to-debugger-tools.md` lists the tracker button as navigation-only (not recorded). That stays true: nothing in this window edits scene or character data. Editing arrives with p069.
+- **Undo plans.** `_DONE_p061_add-undo-history-action-recording-to-debugger-tools.md` lists the tracker button as navigation-only (not recorded). That stays true: nothing in this window edits scene or character data. Editing arrives with p069.
 - **Prod-test mode.** `_dbg__Character.ts` also loads in `?isProdTest=true`, but `_createCharactersDebuggerGUI` returns early unless `IS_DEBUG_ENV`. The window therefore stays debug-only, as today.
 
 ---

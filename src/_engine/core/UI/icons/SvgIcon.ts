@@ -22,6 +22,7 @@ import lampIcon from './svg/lamp.svg?raw';
 import pauseIcon from './svg/pause-fill.svg?raw';
 import personArmsUpIcon from './svg/person-arms-up.svg?raw';
 import playFillIcon from './svg/play-fill.svg?raw';
+import redoIcon from './svg/arrow-90deg-right.svg?raw';
 import rocketIcon from './svg/rocket.svg?raw';
 import rocketTakeoffIcon from './svg/rocket-takeoff-fill.svg?raw';
 import spatialGridIcon from './svg/spatial-grid.svg?raw';
@@ -30,6 +31,7 @@ import stopIcon from './svg/stop-fill.svg?raw';
 import textureIcon from './svg/texture-image.svg?raw';
 import thrashIcon from './svg/trash3-fill.svg?raw';
 import toolsIcon from './svg/tools.svg?raw';
+import undoIcon from './svg/arrow-90deg-left.svg?raw';
 import warningIcon from './svg/exclamation-triangle-fill.svg?raw';
 import xIcon from './svg/x.svg?raw';
 
@@ -58,6 +60,7 @@ const icons = {
   pause: pauseIcon,
   personArmsUp: personArmsUpIcon,
   playFill: playFillIcon,
+  redo: redoIcon,
   rocket: rocketIcon,
   rocketTakeoff: rocketTakeoffIcon,
   spatialGrid: spatialGridIcon,
@@ -66,6 +69,7 @@ const icons = {
   texture: textureIcon,
   thrash: thrashIcon,
   tools: toolsIcon,
+  undo: undoIcon,
   warning: warningIcon,
   x: xIcon,
 };
