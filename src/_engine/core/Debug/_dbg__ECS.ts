@@ -125,8 +125,7 @@ export const createEditECSWorldContent = (data?: { [key: string]: unknown }) => 
       location.reload();
     });
 
-  // Both MAP and TYPED_ARRAY now enforce maxEntities as a real cap
-  // (docs/plans/_DONE-ecs-multiple-worlds.md §5.3), so this is always
+  // Both MAP and TYPED_ARRAY now enforce maxEntities as a real cap, so this is always
   // editable — it used to be disabled exactly when TYPED_ARRAY (its one
   // working mode at the time) was selected, which was backwards.
   storageFolder
@@ -210,6 +209,10 @@ export const _initECSDebugGUI = () => {
         clearTabBtn,
         clearListBtn,
       ]);
+      // Must happen before anything else attaches to container.elem (Tweakpane below,
+      // in particular): CMP.update() replaces the CMP's own DOM element wholesale
+      // (cmp.elem.replaceWith(newElem)), which would orphan whatever Tweakpane already
+      // attached into the old element if this ran any later.
       container.update({ onRemoveCmp: () => pane?.dispose() });
 
       debuggerListCmp = CMP({
@@ -224,7 +227,7 @@ export const _initECSDebugGUI = () => {
         updateECSWorldsDebuggerListSelectedClass((winState.data as { id: string }).id);
       }
 
-      // --- Benchmark (Phase 3, docs/plans/ecs-typed-arrays-feature.md) ---
+      // --- Benchmark ---
       // Always targets the default world — reuses ECSStressTest.ts's spawn
       // logic so Map vs Typed Array can be compared live: pick a mode in a
       // world's edit window (reloads), then spawn a batch here and watch
@@ -252,10 +255,17 @@ export const _initECSDebugGUI = () => {
         label: 'TRANSFORM entities',
         readonly: true,
       });
-      setInterval(() => {
+      // createDebuggerTab's container() re-runs on every tab click (it isn't built once
+      // and hidden/shown), so this must be cleared on teardown or revisiting the tab
+      // leaks a new interval each time. Added as its own child (via .add(), which is
+      // non-destructive) rather than folded into container's own onRemoveCmp above —
+      // that one has to run before Tweakpane attaches (see the comment on it), while
+      // this needs the interval id, which doesn't exist yet at that point.
+      const benchmarkIntervalId = setInterval(() => {
         updateReadout();
         pane.refresh();
       }, 1000);
+      container.add({ onRemoveCmp: () => clearInterval(benchmarkIntervalId) });
 
       const benchmarkConfig = { batchSize: 1000 };
       benchmarkFolder.addBinding(benchmarkConfig, 'batchSize', {

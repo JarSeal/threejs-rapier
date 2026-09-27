@@ -896,7 +896,8 @@ const refreshLightShadows = async (light: THREE.Light, entityId: number, world: 
   }
 
   // Re-attach Helpers
-  const { attachLightHelpers } = await import('./_dbg__LightHelpers');
+  const { attachLightHelpers, disposeLightHelpers } = await import('./_dbg__LightHelpers');
+  if (oldHelperComp) disposeLightHelpers(oldHelperComp);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   attachLightHelpers(entityId, newLight as any, world, rootScene);
 

@@ -2099,6 +2099,9 @@
               },
               "__sourcePath": {
                 "type": "string"
+              },
+              "__fileSize": {
+                "type": "number"
               }
             },
             "additionalProperties": false
@@ -2570,7 +2573,7 @@
         ]
       }
     },
-    "importedMeshes": {
+    "importedAssets": {
       "type": "array",
       "items": {
         "anyOf": [
@@ -4729,6 +4732,9 @@
                       },
                       "__sourcePath": {
                         "type": "string"
+                      },
+                      "__fileSize": {
+                        "type": "number"
                       }
                     },
                     "additionalProperties": false
@@ -5200,7 +5206,7 @@
                 ]
               }
             },
-            "importedMeshes": {
+            "importedAssets": {
               "type": "array",
               "items": {
                 "anyOf": [

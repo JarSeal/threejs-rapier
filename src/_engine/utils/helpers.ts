@@ -181,7 +181,10 @@ export const smoothDampVec3 = (
   let changeY = current.y - target.y;
   let changeZ = current.z - target.z;
 
-  const originalTo = target.clone();
+  // The target before the clamp below rewrites it (plain numbers, not a per-call clone)
+  const originalToX = target.x;
+  const originalToY = target.y;
+  const originalToZ = target.z;
 
   // 3. Clamp maximum speed
   const maxChange = maxSpeed * smoothTime;
@@ -214,12 +217,12 @@ export const smoothDampVec3 = (
   let outputZ = target.z + (changeZ + tempZ) * exp;
 
   // 6. Prevent overshooting
-  const origMinusCurrentX = originalTo.x - current.x;
-  const origMinusCurrentY = originalTo.y - current.y;
-  const origMinusCurrentZ = originalTo.z - current.z;
-  const outMinusOrigX = outputX - originalTo.x;
-  const outMinusOrigY = outputY - originalTo.y;
-  const outMinusOrigZ = outputZ - originalTo.z;
+  const origMinusCurrentX = originalToX - current.x;
+  const origMinusCurrentY = originalToY - current.y;
+  const origMinusCurrentZ = originalToZ - current.z;
+  const outMinusOrigX = outputX - originalToX;
+  const outMinusOrigY = outputY - originalToY;
+  const outMinusOrigZ = outputZ - originalToZ;
 
   if (
     origMinusCurrentX * outMinusOrigX +
@@ -227,13 +230,13 @@ export const smoothDampVec3 = (
       origMinusCurrentZ * outMinusOrigZ >
     0
   ) {
-    outputX = originalTo.x;
-    outputY = originalTo.y;
-    outputZ = originalTo.z;
+    outputX = originalToX;
+    outputY = originalToY;
+    outputZ = originalToZ;
 
-    currentVelocity.x = (outputX - originalTo.x) / deltaTime;
-    currentVelocity.y = (outputY - originalTo.y) / deltaTime;
-    currentVelocity.z = (outputZ - originalTo.z) / deltaTime;
+    currentVelocity.x = (outputX - originalToX) / deltaTime;
+    currentVelocity.y = (outputY - originalToY) / deltaTime;
+    currentVelocity.z = (outputZ - originalToZ) / deltaTime;
   }
 
   // Apply result
@@ -242,16 +245,8 @@ export const smoothDampVec3 = (
   current.z = outputZ;
 };
 
-export const isOnlyObject3D = (
-  obj: THREE.Object3D | THREE.Mesh | THREE.Group | THREE.Light | THREE.Camera | THREE.Texture
-) =>
-  'isObject3D' in obj &&
-  obj.isObject3D &&
-  !('isMesh' in obj) &&
-  !('isGroup' in obj) &&
-  !('isLight' in obj) &&
-  !('isCamera' in obj) &&
-  !('isTexture' in obj);
+// Lives in a worker-safe module (the assets worker uses it too), re-exported here
+export { isOnlyObject3D } from './object3DHelpers';
 
 export const setMeshCreatePropsToUserData = (shape: string, mesh: THREE.Mesh) => {
   if (!mesh) return;
@@ -396,18 +391,46 @@ export const setMeshCreatePropsToUserData = (shape: string, mesh: THREE.Mesh) =>
  * The default status message is 'INIT_READY', but it can be overwritten with
  * `statusReadyString` in the initWorker call. Make sure the worker top-level message
  * then matches the `statusReadyString`.
+ *
+ * Instead of the `statusReadyString`, an options object can be given:
+ * - `statusReadyString`: same as above.
+ * - `onReady`: receives the handshake message's data (eg. an object-style message can carry
+ *   the worker's capabilities along with its `status`).
+ * - `timeoutMs`: rejects (and terminates the worker) if the handshake doesn't arrive in time.
+ *
+ * On a failed or timed out handshake, the worker is terminated.
  */
 export const initWorker = async <T>(
   WorkerClass: new (options?: { name?: string }) => Worker,
   name: string,
   onMessage: (event: MessageEvent<T>) => void,
   onError: (err: ErrorEvent) => void,
-  statusReadyString: string = 'INIT_READY'
+  statusReadyStringOrOpts:
+    | string
+    | {
+        statusReadyString?: string;
+        onReady?: (data: unknown) => void;
+        timeoutMs?: number;
+      } = 'INIT_READY'
 ): Promise<Worker> => {
+  const opts =
+    typeof statusReadyStringOrOpts === 'string'
+      ? { statusReadyString: statusReadyStringOrOpts }
+      : statusReadyStringOrOpts;
+  const statusReadyString = opts.statusReadyString || 'INIT_READY';
   const worker = new WorkerClass({ name });
   return new Promise((resolve, reject) => {
+    const timeoutId =
+      opts.timeoutMs && opts.timeoutMs > 0
+        ? setTimeout(() => {
+            worker.terminate();
+            reject(new Error(`[${name}] Setup Error: no handshake in ${opts.timeoutMs}ms.`));
+          }, opts.timeoutMs)
+        : undefined;
     // Setup temporary error handler for boot-up failures
     worker.onerror = (err) => {
+      clearTimeout(timeoutId);
+      worker.terminate();
       reject(new Error(`[${name}] Setup Error: ${err.message}`));
     };
     // Setup temporary message handler for the handshake
@@ -415,6 +438,8 @@ export const initWorker = async <T>(
       // Check for both object-style and string-style messages for flexibility
       const status = typeof event.data === 'string' ? event.data : event.data.status;
       if (status === statusReadyString) {
+        clearTimeout(timeoutId);
+        opts.onReady?.(event.data);
         // Setup long-term message and error handlers
         worker.onmessage = onMessage;
         worker.onerror = onError;

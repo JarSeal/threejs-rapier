@@ -3,7 +3,6 @@ import { getStats, initStats, startCustomMeasurements, updateRestOfStats } from 
 import { getCurrentCamera } from './CameraManager';
 import { getRenderer } from './Renderer';
 import {
-  getCurrentSceneId,
   getRootScene,
   getSceneResizers,
   runSceneAppLoopers,
@@ -14,8 +13,8 @@ import { lerror, lwarn } from '../utils/Logger';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugToolsManager';
-import { getPhysicsState, renderPhysicsObjects, stepPhysicsWorld } from './PhysicsRapier';
-import { updateInputControllerLoopActions } from './InputControls';
+import { flushPhysicsEvents, getPhysicsState, stepPhysics } from './PhysicsAPI';
+import { pollHeldKeyBindings } from './Input/KeyboardInput';
 import { countRayCastFrames, initRayCasting } from './Raycast';
 import { getAllECSWorlds } from './ECS';
 import { getActiveCamera } from './CameraManager';
@@ -25,9 +24,26 @@ import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers
 const timer = new Timer();
 let delta = 0;
 let deltaApp = 0;
+let elapsed = 0;
+let discardNextElapsedDelta = true; // the first frame's delta is time since module load
 let mainLoopInitiated = false;
 let lastRenderTime = performance.now();
 const resizers: { [key: string]: () => void } = {};
+
+/** Max FPS limiter: whether to skip rendering this frame. The reference time advances by
+ * exactly one interval per rendered frame rather than jumping to "now", so the time a frame
+ * arrives late is carried over instead of discarded — otherwise a frame landing a hair under
+ * the interval gets skipped and the rate falls to the next display-rate divisor (a 30 FPS cap
+ * on a 60Hz display averaged ~24). After a hitch it re-anchors instead of bursting to catch up. */
+const shouldSkipFrameForMaxFPS = () => {
+  if (loopState.maxFPS <= 0) return false;
+  const interval = loopState.maxFPSInterval;
+  const nowMs = performance.now();
+  const sinceLast = nowMs - lastRenderTime;
+  if (sinceLast < interval) return true;
+  lastRenderTime = sinceLast < 2 * interval ? lastRenderTime + interval : nowMs;
+  return false;
+};
 
 export type LoopState = {
   masterPlay: boolean;
@@ -68,6 +84,16 @@ export const getDelta = () => delta;
 export const getAppDelta = () => deltaApp;
 
 /**
+ * Returns the main loop's accumulated elapsed time in seconds: the sum of every main loop
+ * delta, so it scales with loopState.playSpeedMultiplier and stands still while the master
+ * loop is paused (it keeps running while only the app loop is paused). Unlike TSL's `time`
+ * node (renderer wall-clock), this is the clock anything that must freeze and speed up with
+ * the loop should read.
+ * @returns (number) elapsed time in seconds
+ */
+export const getElapsedTime = () => elapsed;
+
+/**
  * Returns linear speed value in relation to main loop delta time
  * @param unitsPerSecond (number) units per second
  * @returns (number) transformed speed value (delta * unitsPerSecond)
@@ -90,6 +116,45 @@ export const transformTimeValue = (durationInMs: number) =>
   durationInMs * loopState.playSpeedMultiplier;
 
 export let mainLoop: () => void = () => {};
+
+/** Everything that has to run in lockstep with the simulation, once per fixed physics
+ * sub-step right before it (see stepPhysics): held-key input, then the previous step's
+ * collision events, then every world's APP_PHYSICS_STEP systems (see flushPhysicsEvents for
+ * why the order matters). */
+const runPhysicsSubStep = (stepDelta: number) => {
+  pollHeldKeyBindings(stepDelta);
+  flushPhysicsEvents();
+  for (const world of getAllECSWorlds()) world.updatePhysicsStep(stepDelta);
+};
+
+/** Steps the new Physics API (running runPhysicsSubStep before each sub-step). Falls back to
+ * polling held keys once with the raw frame delta whenever physics itself isn't running at
+ * all, so held-key-driven input (e.g. debug camera movement) still works with physics off. */
+const stepPhysicsAndPollHeldKeys = (delta: number) => {
+  stepPhysics(loopState, runPhysicsSubStep);
+  const physicsState = getPhysicsState();
+  if (!physicsState.enabled || !physicsState.worldStepEnabled) pollHeldKeyBindings(delta);
+};
+
+/** Advances getElapsedTime by this frame's delta. Must run in every loop variant right after
+ * the masterPlay check. The timer is never reset across a master pause, so the first delta
+ * after resuming spans the whole paused duration — it is discarded (as stepPhysics does for
+ * physics), otherwise the elapsed time would jump forward instead of having stood still.
+ * Starts out true, which also covers a loop that starts paused (saved loop state) and so
+ * never reaches the paused branch before its first resume.
+ * Detected here rather than in toggleMainPlay because the debug GUI's master loop toggle
+ * flips loopState.masterPlay directly. */
+const advanceElapsedTime = () => {
+  if (!loopState.masterPlay) {
+    discardNextElapsedDelta = true;
+    return;
+  }
+  if (discardNextElapsedDelta) {
+    discardNextElapsedDelta = false;
+    return;
+  }
+  elapsed += delta;
+};
 
 const renderScene = () => {
   const renderer = getRenderer() as Renderer;
@@ -119,17 +184,10 @@ const mainLoopForDebug = async () => {
   } else {
     loopState.isMasterPlaying = false;
   }
+  advanceElapsedTime();
 
   // --- Max FPS limiter ---
-  let skipFrame = false;
-  if (loopState.maxFPS > 0) {
-    const nowMs = performance.now();
-    if (nowMs - lastRenderTime < loopState.maxFPSInterval) {
-      skipFrame = true; // Skip rendering this frame
-    } else {
-      lastRenderTime = nowMs;
-    }
-  }
+  const skipFrame = shouldSkipFrameForMaxFPS();
 
   // main loopers
   for (const world of getAllECSWorlds()) world.updateMainLoop(delta);
@@ -139,22 +197,12 @@ const mainLoopForDebug = async () => {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
 
-    // Step the physics
-    stepPhysicsWorld(loopState);
-
-    // Render physics objects
-    renderPhysicsObjects();
+    // Step the physics and poll held-key input at the same cadence
+    stepPhysicsAndPollHeldKeys(delta);
 
     // app loopers
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
-
-    // Update loop action inputs if physics is disabled
-    const physicsState = getPhysicsState();
-    const sceneId = getCurrentSceneId();
-    const physDisabled =
-      !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
-    if (physDisabled) updateInputControllerLoopActions(delta);
 
     // Count ray cast frames
     countRayCastFrames();
@@ -188,6 +236,7 @@ const mainLoopForProduction = async () => {
   } else {
     loopState.isMasterPlaying = false;
   }
+  advanceElapsedTime();
 
   // main loopers
   for (const world of getAllECSWorlds()) world.updateMainLoop(delta);
@@ -197,20 +246,12 @@ const mainLoopForProduction = async () => {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
 
-    // Step the physics
-    stepPhysicsWorld(loopState);
+    // Step the physics and poll held-key input at the same cadence
+    stepPhysicsAndPollHeldKeys(delta);
 
-    // Render physics objects
-    renderPhysicsObjects();
     // app loopers
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
-    // Update loop action inputs if physics is disabled
-    const physicsState = getPhysicsState();
-    const sceneId = getCurrentSceneId();
-    const physDisabled =
-      !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
-    if (physDisabled) updateInputControllerLoopActions(delta);
   }
 
   renderScene();
@@ -232,17 +273,10 @@ const mainLoopForProductionWithFPSLimiter = async () => {
   } else {
     loopState.isMasterPlaying = false;
   }
+  advanceElapsedTime();
 
   // --- Max FPS limiter ---
-  let skipFrame = false;
-  if (loopState.maxFPS > 0) {
-    const nowMs = performance.now();
-    if (nowMs - lastRenderTime < loopState.maxFPSInterval) {
-      skipFrame = true; // Skip rendering this frame
-    } else {
-      lastRenderTime = nowMs;
-    }
-  }
+  const skipFrame = shouldSkipFrameForMaxFPS();
 
   // main loopers
   for (const world of getAllECSWorlds()) world.updateMainLoop(delta);
@@ -252,22 +286,14 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     loopState.isAppPlaying = true;
     deltaApp = dt * loopState.playSpeedMultiplier;
 
-    // Step the physics
-    stepPhysicsWorld(loopState);
+    // Step the physics (always, even on a skipped render frame, so it doesn't fall behind)
+    stepPhysicsAndPollHeldKeys(delta);
 
     if (skipFrame) return;
 
-    // Render physics objects
-    renderPhysicsObjects();
     // app loopers
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
-    // Update loop action inputs if physics is disabled
-    const physicsState = getPhysicsState();
-    const sceneId = getCurrentSceneId();
-    const physDisabled =
-      !sceneId || !physicsState.enabled || !physicsState.scenes[sceneId].worldStepEnabled;
-    if (physDisabled) updateInputControllerLoopActions(delta);
   } else {
     if (skipFrame) return;
   }
@@ -329,7 +355,9 @@ export const initMainLoop = () => {
   const maxFPS = Number(getEnv('VITE_MAX_FPS'));
   if (maxFPS !== undefined && !isNaN(maxFPS)) {
     loopState.maxFPS = maxFPS;
-    if (maxFPS > 0) loopState.maxFPSInterval = 1 / maxFPS;
+    // In ms, like the performance.now() deltas it's compared against (and the debug GUI's own
+    // 1000 / value) — as 1 / maxFPS (seconds) the limiter never engaged.
+    if (maxFPS > 0) loopState.maxFPSInterval = 1000 / maxFPS;
   }
 
   initWinVisibilityListener();
@@ -357,9 +385,8 @@ export const initMainLoop = () => {
   renderScene();
 
   if (loopState.masterPlay) {
-    // Wait for a few loops and start the main loop and physics loop
+    // Wait for a few loops and start the main loop (which steps physics itself each frame)
     setTimeout(() => requestAnimationFrame(mainLoop), 100);
-    setTimeout(() => requestAnimationFrame(() => stepPhysicsWorld(loopState)), 100);
   }
 };
 

@@ -1,11 +1,11 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry, deleteGeometry } from '../../core/Geometry';
+import { createGeometry, deleteGeometry, saveBufferGeometry } from '../../core/Geometry';
 import { createMaterial } from '../../core/Material';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createMeshEntity, getMeshByAppId } from '../../core/MeshManager';
-import { createPhysicsObjectWithMesh } from '../../core/PhysicsRapier';
+import { createPhysicsEntity } from '../../core/PhysicsManager';
 
-export const characterTestObstacles = () => {
+export const characterTestObstacles = async () => {
   // Stairs
   const stairOffsetW = 0.4;
   const stairOffsetH = 0.2;
@@ -21,7 +21,8 @@ export const characterTestObstacles = () => {
     newGeo.translate(0, stairOffsetH * i, stairOffsetW * i);
     stairGeos.push(newGeo);
   }
-  const stairsGeo = mergeGeometries(stairGeos, true);
+  // Registered so the mesh's ref count disposes it (an unregistered geometry is never disposed)
+  const stairsGeo = saveBufferGeometry(mergeGeometries(stairGeos, true), { id: 'stairsGeo' });
   deleteGeometry(oneStairGeo.userData.id);
   const stairsMat = createMaterial({
     id: 'largeGroundUvMat',
@@ -29,13 +30,10 @@ export const characterTestObstacles = () => {
     params: { color: '#999' },
   });
 
-  createMeshEntity({
-    appId: 'stairsMesh',
-    geo: stairsGeo,
-    mat: stairsMat,
-    castShadow: true,
-    receiveShadow: true,
-  });
+  const stairsEntityId = createMeshEntity(
+    { geo: stairsGeo, mat: stairsMat, castShadow: true, receiveShadow: true },
+    { appId: 'stairsMesh' }
+  );
   const stairsMesh = getMeshByAppId('stairsMesh')!;
   stairsMesh.userData.isStairsObject = true;
   stairsMesh.userData.stairsOffsetW = stairOffsetW;
@@ -44,41 +42,34 @@ export const characterTestObstacles = () => {
   const quaternionForRotation = new THREE.Quaternion().setFromEuler(
     new THREE.Euler(-Math.PI / 6.8, 0, 0)
   );
-  const stairsPhysicsObject = createPhysicsObjectWithMesh({
-    id: 'stairsPhyObj',
-    name: 'Stairs',
-    physicsParams: [
+  await createPhysicsEntity(
+    [
       {
-        collider: {
-          type: 'BOX',
-          friction: 1,
-          hx: 2,
-          hy: 0.1,
-          hz: 2.2,
-          translation: { x: 0, y: 0.83, z: -0.32 },
-          rotation: {
-            x: quaternionForRotation.x,
-            y: quaternionForRotation.y,
-            z: quaternionForRotation.z,
-            w: quaternionForRotation.w,
-          },
+        type: 'BOX',
+        friction: 1,
+        hx: 2,
+        hy: 0.1,
+        hz: 2.2,
+        translation: { x: 0, y: 0.83, z: -0.32 },
+        rotation: {
+          x: quaternionForRotation.x,
+          y: quaternionForRotation.y,
+          z: quaternionForRotation.z,
+          w: quaternionForRotation.w,
         },
-        rigidBody: { rigidType: 'FIXED', userData: { isStairs: true, stairsColliderIndex: 0 } },
       },
       {
-        collider: {
-          type: 'BOX',
-          friction: 1,
-          hx: 2,
-          hy: 0.1,
-          hz: 2,
-          translation: { x: 0, y: 1.8, z: 3.6 },
-        },
+        type: 'BOX',
+        friction: 1,
+        hx: 2,
+        hy: 0.1,
+        hz: 2,
+        translation: { x: 0, y: 1.8, z: 3.6 },
       },
     ],
-    isCompoundObject: true,
-    meshOrMeshId: stairsMesh,
-  });
+    { rigidType: 'FIXED', userData: { isStairs: true, stairsColliderIndex: 0 } },
+    stairsEntityId
+  );
 
   // Walls
   const bigBoxWallGeo = createGeometry({
@@ -92,29 +83,17 @@ export const characterTestObstacles = () => {
     params: { color: '#999' },
   });
 
-  createMeshEntity({
-    appId: 'bigBoxWallMesh',
-    geo: bigBoxWallGeo,
-    mat: bigBoxWallMat,
-    castShadow: true,
-    receiveShadow: true,
-  });
+  const bigBoxWallEntityId = createMeshEntity(
+    { geo: bigBoxWallGeo, mat: bigBoxWallMat, castShadow: true, receiveShadow: true },
+    { appId: 'bigBoxWallMesh' }
+  );
   const bigBoxWallMesh = getMeshByAppId('bigBoxWallMesh')!;
 
-  const bigBoxWallPhysicsObject = createPhysicsObjectWithMesh({
-    id: 'bigBoxWallPhyObj',
-    name: 'Big box wall',
-    physicsParams: [
-      {
-        collider: {
-          type: 'BOX',
-          friction: 1,
-        },
-        rigidBody: { rigidType: 'FIXED' },
-      },
-    ],
-    meshOrMeshId: bigBoxWallMesh,
-  });
+  await createPhysicsEntity(
+    { type: 'BOX', friction: 1 },
+    { rigidType: 'FIXED' },
+    bigBoxWallEntityId
+  );
 
-  return { stairsMesh, stairsPhysicsObject, bigBoxWallMesh, bigBoxWallPhysicsObject };
+  return { stairsMesh, stairsEntityId, bigBoxWallMesh, bigBoxWallEntityId };
 };

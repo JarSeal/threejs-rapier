@@ -9,6 +9,7 @@ import {
 } from 'three/tsl';
 import { existsOrThrow } from '../assert';
 import { createMaterial } from '../../core/Material';
+import { setMeshMaterial } from '../../core/MeshManager';
 
 export const getUVRepeatFactor = (mesh: THREE.Mesh, metersPerTile: number) => {
   const geometry = mesh.geometry;
@@ -114,7 +115,7 @@ export const addCheckerboardMaterialToMesh = (
     },
   });
 
-  mesh.material = checkerboardMaterial;
+  setMeshMaterial(mesh, checkerboardMaterial);
 
   applyRepeatFactorAsAttribute(mesh, repeatFactor);
 

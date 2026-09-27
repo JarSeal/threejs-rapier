@@ -2,6 +2,14 @@ import * as THREE from 'three/webgpu';
 import { lerror, lwarn } from '../utils/Logger';
 import { HDRLoader } from 'three/examples/jsm/Addons.js';
 import { isHDR } from '../utils/helpers';
+import {
+  loadHDRTextureInWorker,
+  loadTextureInWorker,
+  recordAssetLoadReport,
+  runAssetTask,
+} from './Assets/AssetsAPI';
+import type { AssetLoadReport } from './Assets/AssetsAPITypes';
+import { recordAssetOwner, retagAssetOwner } from './Assets/AssetOwners';
 
 export type TexOpts = {
   image?: TexImageSource | OffscreenCanvas;
@@ -36,6 +44,85 @@ const textures: {
   };
 } = {};
 
+/** Textures whose image is an ImageBitmap decoded in the assets worker: nothing else holds it,
+ * so it is closed when the texture is disposed. (Not flagged in userData: setTextureOpts replaces
+ * it, and a `.clone()` copies it while sharing the bitmap.) */
+const workerBitmapTextures = new WeakSet<THREE.Texture>();
+
+/** Disposes a registered texture, and closes its ImageBitmap if it was decoded in the assets
+ * worker. */
+const disposeTextureResource = (texture: THREE.Texture) => {
+  texture.dispose();
+  if (workerBitmapTextures.has(texture)) (texture.image as ImageBitmap).close();
+};
+
+/** Resolves a file name the way three's loaders do (`path + fileName`, then against the
+ * document), so the worker fetches exactly the same URL. */
+const toLoaderUrl = (fileName: string, path?: string) =>
+  new URL((path || './') + fileName, document.baseURI).href;
+
+/** A texture from an assets-worker ImageBitmap, in the state TextureLoader leaves a texture in,
+ * except flipY: the flip is already baked into the bitmap. */
+const createTextureFromWorkerBitmap = (bitmap: ImageBitmap) => {
+  const texture = new THREE.Texture(bitmap);
+  texture.flipY = false;
+  texture.needsUpdate = true;
+  workerBitmapTextures.add(texture);
+  return texture;
+};
+
+/** A DataTexture from assets-worker HDR data, in the state HDRLoader.load() (DataTextureLoader
+ * plus its own onLoad) leaves a HalfFloatType texture in. */
+const createHDRTextureFromWorkerData = ({
+  width,
+  height,
+  data,
+}: {
+  width: number;
+  height: number;
+  data: Uint16Array;
+}) => {
+  const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.HalfFloatType);
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearFilter;
+  texture.anisotropy = 1;
+  texture.colorSpace = THREE.LinearSRGBColorSpace;
+  texture.generateMipmaps = false;
+  texture.flipY = true;
+  texture.needsUpdate = true;
+  return texture;
+};
+
+/** Registers a freshly loaded texture. If a parallel load registered the same id first, the
+ * fresh one is disposed and the registered one returned, so only one instance is ever used. */
+const saveLoadedTexture = <T extends THREE.Texture>(
+  texture: T,
+  id: string | undefined,
+  isPersistent?: boolean
+): T => {
+  const saved = saveTexture(texture, id || texture.uuid, isPersistent);
+  if (saved !== texture) disposeTextureResource(texture);
+  return saved;
+};
+
+/** saveLoadedTexture() plus the load's report (with the file's URL) for the debug tooling, kept
+ * only when this load's texture is the one registered. */
+const saveAndReport = <T extends THREE.Texture>(
+  texture: T,
+  id: string | undefined,
+  isPersistent: boolean | undefined,
+  report: AssetLoadReport,
+  sourceUrl: string
+): T => {
+  const saved = saveLoadedTexture(texture, id, isPersistent);
+  if (saved === texture) {
+    recordAssetLoadReport(`texture:${saved.userData.id}`, { ...report, sourceUrl });
+  }
+  return saved;
+};
+
 export const incTextureRef = (id: string) => {
   if (textures[id]) {
     textures[id].count++;
@@ -49,7 +136,7 @@ export const decTextureRef = (id: string) => {
   entry.count--;
 
   if (entry.count <= 0 && !entry.persistent) {
-    entry.resource.dispose();
+    disposeTextureResource(entry.resource);
     delete textures[id];
   }
 };
@@ -60,7 +147,7 @@ export const setTexturePersistence = (id: string, state: boolean) => {
   entry.persistent = state;
 
   if (!state && entry.count === 0) {
-    entry.resource.dispose();
+    disposeTextureResource(entry.resource);
     delete textures[id];
   }
 };
@@ -125,7 +212,10 @@ const createTexture = (
   debugData?: { name?: string; description?: string },
   isPersistent?: boolean
 ) => {
-  if (id && textures[id]) return textures[id].resource;
+  if (id && textures[id]) {
+    retagAssetOwner(textures[id].resource);
+    return textures[id].resource;
+  }
 
   if (!fileName) return getNoFileTexture(texOpts);
 
@@ -209,6 +299,7 @@ export const loadTextures = (
     const loader = new THREE.TextureLoader();
 
     if (id && textures[id]) {
+      retagAssetOwner(textures[id].resource);
       batchTextures[id] = textures[id].resource;
       loadedCount++;
       if (updateStatusFn) updateStatusFn(batchTextures, loadedCount, totalCount);
@@ -295,13 +386,10 @@ export const loadTexture = ({
   userData?: Record<string, unknown>;
   debugData?: { name?: string; description?: string };
 }) => {
-  if (id) {
-    const texture = getTexture(id);
-    if (texture) return texture;
-  }
-  if (fileName) {
-    const texture = getTexture(fileName);
-    if (texture) return texture;
+  const cached = (id && getTexture(id)) || (fileName && getTexture(fileName));
+  if (cached) {
+    retagAssetOwner(cached);
+    return cached;
   }
   const texture = createTexture(
     id,
@@ -318,6 +406,8 @@ export const loadTexture = ({
 
 /**
  * Loads a texture asynchronously supporting standard textures, HDR data textures, and CubeTextures.
+ * Standard and HDR textures load where AppConfig.assets targets textures (main thread or the
+ * assets worker, with the same result either way); cube textures always load on the main thread.
  */
 export const loadTextureAsync = async ({
   id,
@@ -330,7 +420,10 @@ export const loadTextureAsync = async ({
   userData,
   debugData,
 }: TextureProps) => {
-  if (id && textures[id]) return textures[id].resource;
+  if (id && textures[id]) {
+    retagAssetOwner(textures[id].resource);
+    return textures[id].resource;
+  }
 
   if (!fileName) return getNoFileTexture(texOpts);
 
@@ -341,15 +434,15 @@ export const loadTextureAsync = async ({
       if (useHDRLoader && isHDR(fileName)) {
         // Data texture
         loaderType = 'HDRLoader';
-        const loader = new HDRLoader();
-        const loadedTexture = setTextureOpts(
-          await loader.setPath(path || './').loadAsync(fileName),
-          texOpts,
-          userData,
-          debugData
+        const url = toLoaderUrl(fileName, path);
+        const { result, report } = await runAssetTask<THREE.DataTexture>(
+          'TEXTURE',
+          async () => createHDRTextureFromWorkerData(await loadHDRTextureInWorker(url)),
+          () => new HDRLoader().setPath(path || './').loadAsync(fileName),
+          null // HDR parsing is plain JS, no worker capability needed
         );
-        saveTexture(loadedTexture, id || loadedTexture.uuid, isPersistent);
-        return loadedTexture as THREE.DataTexture;
+        const loadedTexture = setTextureOpts(result, texOpts, userData, debugData);
+        return saveAndReport(loadedTexture, id, isPersistent, report, url) as THREE.DataTexture;
       } else {
         if (useHDRLoader && !isHDR(fileName)) {
           lwarn(
@@ -359,18 +452,17 @@ export const loadTextureAsync = async ({
 
         // Texture
         loaderType = 'TextureLoader';
-        const loader = new THREE.TextureLoader();
-        const loadedTexture = setTextureOpts(
-          await loader.setPath(path || './').loadAsync(fileName),
-          texOpts,
-          userData,
-          debugData
+        const url = toLoaderUrl(fileName, path);
+        const { result, report } = await runAssetTask<THREE.Texture>(
+          'TEXTURE',
+          async () => createTextureFromWorkerBitmap(await loadTextureInWorker(url)),
+          () => new THREE.TextureLoader().setPath(path || './').loadAsync(fileName)
         );
-        saveTexture(loadedTexture, id || loadedTexture.uuid, isPersistent);
-        return loadedTexture as THREE.Texture;
+        const loadedTexture = setTextureOpts(result, texOpts, userData, debugData);
+        return saveAndReport(loadedTexture, id, isPersistent, report, url);
       }
     } else {
-      // Cube texture
+      // Cube texture (always loaded on the main thread)
       if (fileName.length !== 6) {
         throw new Error(
           `Cube texture has to have exactly 6 images in an array (found ${fileName.length} images).`
@@ -384,8 +476,7 @@ export const loadTextureAsync = async ({
         userData,
         debugData
       );
-      saveTexture(loadedTexture, id || loadedTexture.uuid, isPersistent);
-      return loadedTexture as THREE.CubeTexture;
+      return saveLoadedTexture(loadedTexture, id, isPersistent) as THREE.CubeTexture;
     }
   } catch (err) {
     const errorMsg = `Could not load texture in loadTextureAsync (id: "${id}", fileName: "${typeof fileName === 'string' ? fileName : fileName.join(', ')}", ${path ? `path: "${path}", ` : ''}loaderType: "${loaderType}")`;
@@ -436,7 +527,7 @@ export const deleteTexture = (id: string | string[]) => {
     const entry = textures[texId];
     if (!entry) continue;
 
-    entry.resource.dispose();
+    disposeTextureResource(entry.resource);
     delete textures[texId];
     idsDeleted.push(texId);
   }
@@ -463,7 +554,10 @@ export const saveTexture = <T extends THREE.Texture = THREE.Texture>(
   isPersistent?: boolean
 ): T => {
   const id = givenId || texture.uuid;
-  if (textures[id]) return textures[id].resource as T;
+  if (textures[id]) {
+    retagAssetOwner(textures[id].resource);
+    return textures[id].resource as T;
+  }
 
   texture.userData.id = id;
   textures[id] = {
@@ -471,5 +565,6 @@ export const saveTexture = <T extends THREE.Texture = THREE.Texture>(
     count: 0,
     ...(isPersistent ? { persistent: true } : {}),
   };
+  recordAssetOwner(texture);
   return texture;
 };

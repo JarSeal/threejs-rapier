@@ -3,18 +3,17 @@ import { deleteGeometry, GeoProps } from './Geometry';
 import { deleteMaterial, MatProps } from './Material';
 import { lerror, lwarn } from '../utils/Logger';
 import { deleteTexture, getTexture, TextureProps } from './Texture';
-import {
-  deleteAllScenePhysicsLoopers,
-  deletePhysicsObjectsBySceneId,
-  deletePhysicsWorld,
-  setCurrentScenePhysicsObjects,
-} from './PhysicsRapier';
-import { addSceneToDebugtools, getDebugToolsState } from '../debug/DebugToolsManager';
 import { initMainLoop } from './MainLoop';
 import { updateDebuggerSceneTitle } from '../debug/DebuggerGUI';
 import { LightProps } from './LightManager';
-import { ImportModelParams } from './ImportModel';
-import { createSkyBox, SkyBoxProps } from './SkyBox';
+import type { ImportAssetParams } from './Import/ImportTypes';
+import {
+  clearSkyBox,
+  createSkyBox,
+  getActiveSkyBoxTexture,
+  getSceneSkyBoxTextureIds,
+  SkyBoxProps,
+} from './SkyBox';
 import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
@@ -46,7 +45,7 @@ export type SceneData = {
   textures?: (TextureProps | string)[];
   materials?: (MatProps | string)[];
   meshes?: ({ props: MeshProps; entityOpts?: CoreEntityOpts } | string)[];
-  importedMeshes?: { props: ImportModelParams }[];
+  importedAssets?: (ImportAssetParams | string)[];
   skyboxes?: (SkyBoxProps | string)[];
 };
 
@@ -98,8 +97,6 @@ export const createScene = (id: string, opts?: SceneOptions) => {
   scenes[id] = scene;
   scene.userData.id = id;
 
-  addSceneToDebugtools(id);
-
   // @TODO: remove this old implementation that is kept for just in case...
   // if (opts?.isCurrentScene || !currentSceneId) setCurrentScene(id);
   if (opts?.isCurrentScene) setCurrentScene(id);
@@ -145,7 +142,6 @@ export const deleteScene = (
     deleteMeshes?: boolean;
     deleteLights?: boolean;
     deleteGroups?: boolean;
-    deletePhysicsWorld?: boolean;
     deleteSavedScene?: boolean;
     deleteAll?: boolean;
   }
@@ -231,25 +227,16 @@ export const deleteScene = (
   // Delete loopers
   deleteAllSceneLoopers(id);
 
-  // Delete skybox textures
-  if (scene.userData.backgroundNodeTextureId) {
-    deleteTexture(scene.userData.backgroundNodeTextureId);
-    const rootScene = getRootScene();
-    if (isCurrentScene(id) && rootScene) rootScene.backgroundNode = null;
-  }
-
-  // Delete physics
-  deletePhysicsObjectsBySceneId(id);
-  if (opts?.deletePhysicsWorld || opts?.deleteAll) {
-    deletePhysicsWorld();
+  // Delete sky box textures (their baked PMREMs go with them), except one another scene's sky box
+  // is showing
+  if (isCurrentScene(id)) clearSkyBox();
+  const activeSkyBoxTexture = getActiveSkyBoxTexture();
+  for (const textureId of getSceneSkyBoxTextureIds(id)) {
+    const texture = getTexture(textureId);
+    if (texture && texture !== activeSkyBoxTexture) deleteTexture(textureId);
   }
 
   if (opts?.deleteSavedScene) delete scenes[id];
-
-  const debugToolsState = getDebugToolsState();
-  if (debugToolsState.debugCamera[id]) {
-    delete debugToolsState.debugCamera[id];
-  }
 };
 
 /**
@@ -266,8 +253,6 @@ export const setCurrentScene = (id: string | null) => {
   }
 
   const rootScene = getRootScene() as THREE.Scene;
-
-  deleteAllScenePhysicsLoopers();
 
   if (currentScene) rootScene.remove(currentScene);
 
@@ -297,8 +282,6 @@ export const setCurrentScene = (id: string | null) => {
     }
     rootScene.add(nextScene);
   }
-
-  setCurrentScenePhysicsObjects(id);
 
   updateDebuggerSceneTitle(
     currentSceneOpts?.name || id || nextScene?.userData.id || '[No scene..]'

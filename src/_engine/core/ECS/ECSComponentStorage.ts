@@ -5,7 +5,7 @@ import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
  * storages. `MAP` (the default) uses a plain `Map`; `TYPED_ARRAY` currently
  * only applies to the TRANSFORM component (see TypedArrayTransformStore) —
  * every other component type stays `Map`-backed regardless of this setting.
- * Selected once at boot; not dynamic (see docs/plans/ecs-typed-arrays-feature.md).
+ * Selected once at boot; not dynamic.
  */
 export type ECSStorageMode = 'MAP' | 'TYPED_ARRAY';
 
@@ -17,7 +17,7 @@ export interface ECSStorageLSOverride {
 /**
  * LocalStorage key for ECS debug-tab dev-only per-world storage overrides
  * (IS_DEBUG_ENV only, reload-on-change). Stored as one `ECSStorageLSOverride`
- * per world id (see docs/plans/_DONE-ecs-multiple-worlds.md) — read/write it
+ * per world id — read/write it
  * through `getECSStorageLSOverride`/`setECSStorageLSOverride`, not directly.
  */
 export const ECS_LS_KEY = 'AEK_ecs';

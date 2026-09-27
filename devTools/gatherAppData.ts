@@ -10,10 +10,7 @@ import { GeoAsset, GeoAssetSchema } from '../src/_engine/schemas/geometrySchema'
 import { TextureAsset, TextureAssetSchema } from '../src/_engine/schemas/textureSchema';
 import { MaterialAsset, MaterialAssetSchema } from '../src/_engine/schemas/materialSchema';
 import { MeshAsset, MeshAssetSchema } from '../src/_engine/schemas/meshSchema';
-import {
-  ImportedMeshAsset,
-  ImportedMeshAssetSchema,
-} from '../src/_engine/schemas/importedMeshSchema';
+import { ImportedAsset, ImportedAssetSchema } from '../src/_engine/schemas/importedAssetSchema';
 import { SkyBoxAsset, SkyBoxAssetSchema } from '../src/_engine/schemas/skyBoxSchema';
 import { toUniqueJsIdentifier } from '../src/_engine/utils/jsIdentifier';
 
@@ -34,7 +31,7 @@ const JSON_ENDING_SIGNATURES = {
   texture: '.texture.json',
   material: '.material.json',
   mesh: '.mesh.json',
-  importedMesh: '.importedMesh.json',
+  importedAsset: '.importedAsset.json',
   skybox: '.skybox.json',
   // physicsObjects: '.physObj.json',
   // postFx: '.postFx.json',
@@ -51,6 +48,27 @@ const logDuplicateIdError = (type: string, id: string, file: string) => {
   console.error(
     `\x1b[31m✗ [Scene Gatherer] Duplicate ${type} ID found: ${id} in file: ${file}\x1b[0m`
   );
+};
+
+/** Size in bytes of a file served from src/public by its URL path (eg.
+ * '/debugger/assets/box.glb'), summed over an array of files, or undefined if any is missing.
+ * Remote URLs have no size here (the debugger can measure them on demand). */
+const getPublicFileSize = (fileName?: string | string[], urlPath?: string) => {
+  const fileNames = Array.isArray(fileName) ? fileName : fileName ? [fileName] : [];
+  if (!fileNames.length) return undefined;
+  let size = 0;
+  for (const name of fileNames) {
+    if (/^[a-z]+:\/\//i.test(name)) return undefined;
+    const filePath = path.resolve(
+      __dirname,
+      '../src/public',
+      (urlPath || '').replace(/^\//, ''),
+      name.replace(/^\//, '')
+    );
+    if (!fs.existsSync(filePath)) return undefined;
+    size += fs.statSync(filePath).size;
+  }
+  return size;
 };
 
 export const isFilePathValid = (filePath: string) => {
@@ -82,7 +100,7 @@ const compileJsonSchemas = () => {
     { name: 'texture.schema.json', schema: TextureAssetSchema },
     { name: 'material.schema.json', schema: MaterialAssetSchema },
     { name: 'mesh.schema.json', schema: MeshAssetSchema },
-    { name: 'importedMesh.schema.json', schema: ImportedMeshAssetSchema },
+    { name: 'importedAsset.schema.json', schema: ImportedAssetSchema },
     { name: 'skyBox.schema.json', schema: SkyBoxAssetSchema },
   ];
 
@@ -118,7 +136,7 @@ export const gatherSceneData = () => {
     textures: Record<string, TextureAsset>;
     materials: Record<string, MaterialAsset>;
     meshes: Record<string, unknown>;
-    importedMeshes: Record<string, unknown>;
+    importedAssets: Record<string, unknown>;
     skyboxes: Record<string, unknown>;
   } = {
     scenes: {},
@@ -128,7 +146,7 @@ export const gatherSceneData = () => {
     textures: {},
     materials: {},
     meshes: {},
-    importedMeshes: {},
+    importedAssets: {},
     skyboxes: {},
     // physicsObjects: {},
     // postFx: {},
@@ -146,7 +164,7 @@ export const gatherSceneData = () => {
     textures: string[];
     materials: string[];
     meshes: string[];
-    importedMeshes: string[];
+    importedAssets: string[];
     skyboxes: string[];
   } = {
     scenes: [],
@@ -156,7 +174,7 @@ export const gatherSceneData = () => {
     textures: [],
     materials: [],
     meshes: [],
-    importedMeshes: [],
+    importedAssets: [],
     skyboxes: [],
   };
 
@@ -343,6 +361,7 @@ export const gatherSceneData = () => {
         }
         ids.textures.push(texId);
         texJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        texJSON.__fileSize = getPublicFileSize(texJSON.fileName, texJSON.path);
         texJSON.id = texId;
         delete texJSON.$schema;
         texRegistry[texId] = texJSON;
@@ -467,44 +486,43 @@ export const gatherSceneData = () => {
     }
     combinedData.meshes = meshRegistry;
 
-    // Imported meshes
-    const importedMeshRegistry: Record<string, ImportedMeshAsset> = {};
-    const importedMeshFiles = files.filter(
-      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.importedMesh)
+    // Imported assets
+    const importedAssetRegistry: Record<string, ImportedAsset> = {};
+    const importedAssetFiles = files.filter(
+      (file) => typeof file === 'string' && file.endsWith(JSON_ENDING_SIGNATURES.importedAsset)
     ) as string[];
-    for (const file of importedMeshFiles) {
+    for (const file of importedAssetFiles) {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
         const parsedData = JSON.parse(fileContent);
-        const validation = ImportedMeshAssetSchema.safeParse(parsedData);
+        const validation = ImportedAssetSchema.safeParse(parsedData);
         if (!validation.success) {
           logValidationError(
-            `Validation error inside imported mesh file ${file}`,
+            `Validation error inside imported asset file ${file}`,
             validation.error.issues
           );
           hasError = true;
           continue;
         }
-        const importedMeshJSON = validation.data;
+        const importedAssetJSON = validation.data;
         const id =
-          importedMeshJSON.props.appId ||
-          importedMeshJSON.entityOpts?.appId ||
-          path.basename(file, JSON_ENDING_SIGNATURES.importedMesh);
-        if (ids.importedMeshes.includes(id)) {
-          logDuplicateIdError('imported mesh', id, file);
+          importedAssetJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.importedAsset);
+        if (ids.importedAssets.includes(id)) {
+          logDuplicateIdError('imported asset', id, file);
           continue;
         }
-        ids.importedMeshes.push(id);
-        importedMeshJSON.props.appId = id;
-        importedMeshJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
-        delete importedMeshJSON.$schema;
-        importedMeshRegistry[id] = importedMeshJSON;
+        ids.importedAssets.push(id);
+        importedAssetJSON.id = id;
+        importedAssetJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
+        importedAssetJSON.__fileSize = getPublicFileSize(importedAssetJSON.fileName);
+        delete importedAssetJSON.$schema;
+        importedAssetRegistry[id] = importedAssetJSON;
       } catch (e) {
         logJSONError(file);
       }
     }
-    combinedData.importedMeshes = importedMeshRegistry;
+    combinedData.importedAssets = importedAssetRegistry;
 
     // Skyboxes
     const skyRegistry: Record<string, SkyBoxAsset> = {};
@@ -701,6 +719,8 @@ export const gatherSceneData = () => {
               : {};
             if (isProduction) delete texRegistry[texId].debugData;
             const texData = { ...texRegistry[texId], ...__saveData };
+            // A per-scene override can point at another file
+            texData.__fileSize = getPublicFileSize(texData.fileName, texData.path);
             if ('__meta' in texData) delete texData.__meta;
             delete texData.__sourcePath;
             delete texData.__saveData;
@@ -782,25 +802,23 @@ export const gatherSceneData = () => {
         });
       }
 
-      // Add imported meshes to scenes
-      if (Array.isArray(fileContentJSON.importedMeshes)) {
-        fileContentJSON.importedMeshes = fileContentJSON.importedMeshes.map((importedMeshId) => {
-          if (typeof importedMeshId !== 'string') return importedMeshId;
-          if (importedMeshRegistry[importedMeshId]) {
-            const __saveData = importedMeshRegistry[importedMeshId].__saveData?.[sceneId]?.length
-              ? importedMeshRegistry[importedMeshId].__saveData?.[sceneId]?.[0] || {}
+      // Add imported assets to scenes
+      if (Array.isArray(fileContentJSON.importedAssets)) {
+        fileContentJSON.importedAssets = fileContentJSON.importedAssets.map((importId) => {
+          if (typeof importId !== 'string') return importId;
+          if (importedAssetRegistry[importId]) {
+            const __saveData = importedAssetRegistry[importId].__saveData?.[sceneId]?.length
+              ? importedAssetRegistry[importId].__saveData?.[sceneId]?.[0] || {}
               : {};
-            if (isProduction) delete importedMeshRegistry[importedMeshId].entityOpts?.debugData;
-            const meshData = {
-              ...importedMeshRegistry[importedMeshId],
-              props: { ...importedMeshRegistry[importedMeshId].props, ...__saveData },
-            };
-            if ('__meta' in meshData.props) delete meshData.props.__meta;
-            delete meshData.__sourcePath;
-            delete meshData.__saveData;
-            return meshData;
+            if (isProduction) delete importedAssetRegistry[importId].debugData;
+            const importData = { ...importedAssetRegistry[importId], ...__saveData, id: importId };
+            importData.__fileSize = getPublicFileSize(importData.fileName);
+            if ('__meta' in importData) delete importData.__meta;
+            delete importData.__sourcePath;
+            delete importData.__saveData;
+            return importData;
           }
-          return importedMeshId; // Fallback to raw string ID if asset file doesn't exist yet
+          return importId; // Fallback to raw string ID if asset file doesn't exist yet
         });
       }
 
@@ -870,11 +888,13 @@ export const gatherSceneData = () => {
     console.log(
       `\x1b[32m✓ [Scene Gatherer] Consolidated ${sceneFiles.length} scene configurations (${isProduction ? 'prod' : 'dev'}).\x1b[0m`
     );
+    return true;
   } catch (err) {
     console.error(
       `\x1b[31m✗ [Scene Gatherer] Error gathering scene data (${isProduction ? 'production' : 'development'}):\x1b[0m`,
       err
     );
+    return false;
   }
 };
 

@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "DIRECTIONAL",
+    "color": "#fff2d9",
+    "intensity": 3,
+    "position": { "x": 6, "y": 8, "z": 5 },
+    "targetPos": { "x": 0, "y": -2, "z": 0 },
+    "castShadow": true,
+    "shadowPreset": "HIGH",
+    "shadowCameraNearFar": [1, 30],
+    "shadowCameraFrustum": [-8, 8, 8, -8],
+    "shadowIntensity": 0.8
+  },
+  "entityOpts": {
+    "appId": "scene01Sun",
+    "debugData": {
+      "name": "Scene01 sun",
+      "description": "Directional shadow-casting sun shared by scene01.ts and scene01_v2.ts. Its shadow frustum is sized to the 10x10 ground plane, not larger — oversizing it would degrade shadow resolution everywhere (see largeWorldSun.light.json for the same pattern)."
+    }
+  }
+}

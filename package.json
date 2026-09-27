@@ -1,26 +1,26 @@
 {
   "name": "aekasha-js",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "High-performance WebGPU application powered by the Ækasha framework.",
   "repository": "https://github.com/JarSeal/threerapier.git",
   "author": "JarSeal",
-  "app_metadata": {
-    "version": "0.1.0",
-    "codename": "Toddler",
-    "name": "Example App",
-    "fullName": "Example App for Ækasha",
-    "description": "Project template utilizing the Ækasha modular toolkit.",
-    "url": ""
-  },
   "engine_metadata": {
-    "version": "0.1.0",
-    "codename": "Dawn",
+    "version": "1.0.0",
+    "codename": "Sunrise",
     "name": "Ækasha",
     "fullName": "Ækasha Framework",
     "description": "The 'fifth element' of web development: a modular, high-performance WebGPU framework built on Three.js and the Ækasha ECS.",
     "url": "",
     "repository": "https://github.com/JarSeal/threerapier.git",
     "author": "JarSeal"
+  },
+  "app_metadata": {
+    "version": "1.0.0",
+    "codename": "Preschooler",
+    "name": "Example App",
+    "fullName": "Example App for Ækasha",
+    "description": "Project template utilizing the Ækasha modular toolkit.",
+    "url": ""
   },
   "keywords": [
     "aekasha",
@@ -39,12 +39,13 @@
   "type": "module",
   "scripts": {
     "gatherAppData": "tsx ./devTools/gatherAppData.ts",
-    "dev": "yarn gatherAppData && VITE_APP_ENV=development vite serve --port 8080 --host",
-    "dev:test": "yarn gatherAppData && VITE_APP_ENV=test vite serve --port 8080 --host",
-    "dev:production": "yarn gatherAppData && vite serve --port 8080 --host",
+    "copyDracoDecoders": "tsx ./devTools/copyDracoDecoders.ts",
+    "dev": "yarn copyDracoDecoders && yarn gatherAppData && VITE_APP_ENV=development vite serve --port 8080 --host",
+    "dev:test": "yarn copyDracoDecoders && yarn gatherAppData && VITE_APP_ENV=test vite serve --port 8080 --host",
+    "dev:production": "yarn copyDracoDecoders && yarn gatherAppData && vite serve --port 8080 --host",
     "lint": "eslint",
-    "build": "NODE_ENV=production yarn gatherAppData && tsc && vite build && yarn gatherAppData",
-    "build:test": "NODE_ENV=production yarn gatherAppData && tsc && VITE_APP_ENV=test vite build && yarn gatherAppData",
+    "build": "yarn copyDracoDecoders && NODE_ENV=production yarn gatherAppData && tsc && vite build && yarn gatherAppData",
+    "build:test": "yarn copyDracoDecoders && NODE_ENV=production yarn gatherAppData && tsc && VITE_APP_ENV=test vite build && yarn gatherAppData",
     "docs": "typedoc",
     "codecat": "./devTools/codecat.sh",
     "cc": "bash ./devTools/codecat.sh",
@@ -53,13 +54,13 @@
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",
     "stats-gl": "3.6.0",
-    "three": "0.183.2",
+    "three": "0.186.1",
     "tweakpane": "4.0.5"
   },
   "devDependencies": {
     "@tweakpane/core": "2.0.5",
     "@types/node": "22.10.6",
-    "@types/three": "0.183.1",
+    "@types/three": "0.186.0",
     "@typescript-eslint/eslint-plugin": "8.70.0",
     "@typescript-eslint/parser": "8.70.0",
     "eslint": "9.39.5",

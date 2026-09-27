@@ -1,3 +1,4 @@
+import * as THREE from 'three/webgpu';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { BladeController, View } from '@tweakpane/core';
 import { getRenderer, getRendererOptions } from '../../core/Renderer';
@@ -7,7 +8,7 @@ import {
   createDebuggerTab,
   DEBUGGER_SCENE_LOADER_ID,
 } from '../../debug/DebuggerGUI';
-import { getCurrentSceneId, getGeneratedAppData, getRootScene, getScene } from '../../core/Scene';
+import { getCurrentSceneId, getGeneratedAppData, getRootScene } from '../../core/Scene';
 import { getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../../core/Config';
 import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
 import { lerror, llog } from '../../utils/Logger';
@@ -25,56 +26,15 @@ import {
 import { updateOnScreenTools } from '../../debug/OnScreenTools';
 import { addToast } from '../../core/UI/Toaster';
 import { type SceneAsset } from '../../schemas/sceneSchema';
-import { DebugCameraState, DebugToolsState } from '../../debug/DebugToolsManager';
-import { confirmClearScope, createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
+import { DEBUG_CAMERA_ID, DebugToolsState } from '../../debug/DebugToolsManager';
+import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
+import { getECSWorld, getEntityIdByAppId } from '../ECS';
+import { ComponentType } from '../ECS/ECSCoreComponents';
+import type { DebugCamLSProps } from '../CameraManager';
+import { getDebugCamProps, saveDebugCameraToLS } from './Camera/_dbg__CameraGUI';
+import { DEFAULT_DEBUG_CAM_PROPS, setDebugCameraPanelRefresh } from './Camera/_dbg__DebugCamera';
 
 const LS_KEY = 'AEK_debugTools';
-export const DEBUG_CAMERA_ID = '_debugCamera';
-const DEFAULT_DEBUG_CAM_PARAMS: DebugCameraState = {
-  enabled: false,
-  latestAppCameraId: null,
-  fov: 60,
-  near: 0.001,
-  far: 1000,
-  position: [0, 0, 10],
-  target: [0, 0, 0],
-};
-const getDefaultDebugCamParams = () => ({ ...DEFAULT_DEBUG_CAM_PARAMS }) as DebugCameraState;
-const DEFAULT_DEBUG_TOOLS_STATE: DebugToolsState = {
-  env: {
-    envBallFolderExpanded: false,
-    envBallVisible: false,
-    separateBallValues: false,
-    ballRoughness: 0,
-    ballDefaultRoughness: 0,
-  },
-  scenesListing: {
-    scenesFolderExpanded: false,
-    useDebugStartScene: false,
-    debugStartScene: '',
-    useDebuggerSceneLoader: false,
-  },
-  loggingActions: {
-    loggingFolderExpanded: false,
-  },
-  debugCamera: {},
-  debugCameraFolderExpanded: false,
-  helpers: {
-    helpersFolderExpanded: false,
-    showAxesHelper: false,
-    axesHelperSize: 1,
-    showGridHelper: false,
-    gridSize: 100,
-    gridDivisionsSize: 100,
-    gridColorCenterLine: 0x888888,
-    gridColorGrid: 0x444444,
-    showPolarGridHelper: false,
-    polarGridRadius: 10,
-    polarGridSectors: 16,
-    polarGridRings: 8,
-    polarGridDivisions: 16,
-  },
-};
 let scenesDropDown: ListBladeApi<BladeController<View>>;
 let sceneStarterDropDown: ListBladeApi<BladeController<View>>;
 let toolsDebugGUI: Pane | null = null;
@@ -97,7 +57,10 @@ let debugToolsState: DebugToolsState = {
   loggingActions: {
     loggingFolderExpanded: false,
   },
-  debugCamera: {},
+  prodTestMode: {
+    prodTestFolderExpanded: false,
+    showOnScreenToolsInProdTest: true,
+  },
   debugCameraFolderExpanded: false,
   helpers: {
     helpersFolderExpanded: false,
@@ -151,30 +114,7 @@ const createDebugToolsDebugGUI = () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),
         watchKey: LS_KEY,
-        onClear: () => {
-          const current = lsGetItem(LS_KEY, debugToolsState) as DebugToolsState;
-          const sceneIdsWithDebugCamera = Object.keys(current.debugCamera || {});
-          const applyClear = (debugCamera: DebugToolsState['debugCamera']) => {
-            if (Object.keys(debugCamera).length === 0) {
-              lsRemoveItem(LS_KEY);
-            } else {
-              lsSetItem(LS_KEY, { ...DEFAULT_DEBUG_TOOLS_STATE, debugCamera });
-            }
-          };
-          if (sceneIdsWithDebugCamera.length > 1) {
-            confirmClearScope({
-              onClearAllScenes: () => applyClear({}),
-              onClearThisScene: () => {
-                const sceneId = getCurrentSceneId();
-                const keptDebugCamera = { ...current.debugCamera };
-                if (sceneId) delete keptDebugCamera[sceneId];
-                applyClear(keptDebugCamera);
-              },
-            });
-          } else {
-            applyClear({});
-          }
-        },
+        onClear: () => lsRemoveItem(LS_KEY),
       });
       const { container, debugGUI } = createNewDebuggerPane(
         'debugTools',
@@ -182,6 +122,19 @@ const createDebugToolsDebugGUI = () => {
         [clearTabBtn]
       );
       toolsDebugGUI = debugGUI;
+
+      // The Debug Camera folder below registers a per-frame panel-refresh callback with
+      // debugCameraSystem; it must be unregistered when this pane is torn down (e.g. switching
+      // to another debug tab), or a stale callback would keep firing against disposed bindings.
+      const existingOnRemoveCmp = container.props?.onRemoveCmp;
+      container.props = {
+        ...container.props,
+        onRemoveCmp: (cmp) => {
+          existingOnRemoveCmp?.(cmp);
+          setDebugCameraPanelRefresh(null);
+        },
+      };
+
       buildDebugToolsGUI();
 
       return container;
@@ -210,18 +163,6 @@ const getSceneStarterDropDownOptions = () => {
     { value: '', text: '---NOT-SET---' },
     ...scenes.map((s) => ({ value: s.id, text: s.name || `[${s.id}]` })),
   ];
-};
-
-/**
- * Add scene to debug tools states
- * @param sceneId (string)
- */
-export const _addSceneToDebugtools = (sceneId: string) => {
-  if (!isDebugEnvironment()) return;
-  const foundScene = getScene(sceneId);
-  if (!foundScene || debugToolsState.debugCamera[sceneId]) return;
-
-  debugToolsState.debugCamera[sceneId] = getDefaultDebugCamParams();
 };
 
 /**
@@ -306,6 +247,175 @@ const buildDebugToolsGUI = () => {
     .on('change', () => {
       lsSetItem(LS_KEY, debugToolsState);
     });
+
+  // Production test mode
+  const prodTestFolder = debugGUI
+    .addFolder({
+      title: 'Production test mode',
+      expanded: debugToolsState.prodTestMode.prodTestFolderExpanded,
+    })
+    .on('fold', (state) => {
+      debugToolsState.prodTestMode.prodTestFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+  prodTestFolder
+    .addBinding(debugToolsState.prodTestMode, 'showOnScreenToolsInProdTest', {
+      label: 'Show top on screen tools in prod test mode',
+    })
+    .on('change', () => {
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+
+  // Debug Camera
+  const debugCameraFolder = debugGUI
+    .addFolder({
+      title: 'Debug Camera',
+      expanded: debugToolsState.debugCameraFolderExpanded,
+    })
+    .on('fold', (state) => {
+      debugToolsState.debugCameraFolderExpanded = state.expanded;
+      lsSetItem(LS_KEY, debugToolsState);
+    });
+
+  const debugCamProxy: DebugCamLSProps = { ...getDebugCamProps(currentSceneId) };
+
+  // Guards against a feedback loop: refreshing a binding from the viewport-driven callback
+  // below (setDebugCameraPanelRefresh) can make Tweakpane re-emit that same binding's own
+  // 'change' event (its displayed value no longer matches debugCamProxy once we've written the
+  // live camera's values into it) — which would otherwise call applyDebugCameraProps again,
+  // which calls controls.update(), which can re-dispatch OrbitControls' 'change' event, calling
+  // the refresh callback again, ad infinitum (surfaced as a "Maximum call stack size exceeded"
+  // when panning, since panning is what moves the target binding through this exact path).
+  // While set, every binding below treats its 'change' event as an echo of our own refresh,
+  // not a real user edit, and skips calling applyDebugCameraProps.
+  let isRefreshingDebugCameraPanel = false;
+
+  const applyDebugCameraProps = (partial: Partial<DebugCamLSProps>) => {
+    const entityId = getEntityIdByAppId(DEBUG_CAMERA_ID);
+    if (entityId === undefined) return;
+    const world = getECSWorld();
+    const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value as
+      | THREE.PerspectiveCamera
+      | undefined;
+    const controls = world.getComponent(entityId, ComponentType.ORBIT_CONTROLS)?.controls;
+    const settings = world.getComponent(entityId, ComponentType.CAMERA_SETTINGS);
+
+    if (partial.position && obj) {
+      obj.position.set(partial.position.x, partial.position.y, partial.position.z);
+    }
+    if (partial.target && controls) {
+      controls.target.set(partial.target.x, partial.target.y, partial.target.z);
+    }
+    const hasLensChange =
+      partial.fov !== undefined ||
+      partial.near !== undefined ||
+      partial.far !== undefined ||
+      partial.zoom !== undefined;
+    if (obj && hasLensChange) {
+      if (partial.fov !== undefined) obj.fov = partial.fov;
+      if (partial.near !== undefined) obj.near = partial.near;
+      if (partial.far !== undefined) obj.far = partial.far;
+      if (partial.zoom !== undefined) obj.zoom = partial.zoom;
+      obj.updateProjectionMatrix();
+    }
+    if (settings && hasLensChange) {
+      if (partial.fov !== undefined) settings.fov = partial.fov;
+      if (partial.near !== undefined) settings.near = partial.near;
+      if (partial.far !== undefined) settings.far = partial.far;
+      if (partial.zoom !== undefined) settings.zoom = partial.zoom;
+    }
+    controls?.update();
+    saveDebugCameraToLS(partial);
+  };
+
+  const debugCamPositionBinding = debugCameraFolder
+    .addBinding(debugCamProxy, 'position', { label: 'Position' })
+    .on('change', (e) => {
+      if (isRefreshingDebugCameraPanel || !e.last) return;
+      applyDebugCameraProps({ position: { ...e.value } });
+    });
+  const debugCamTargetBinding = debugCameraFolder
+    .addBinding(debugCamProxy, 'target', { label: 'Target' })
+    .on('change', (e) => {
+      if (isRefreshingDebugCameraPanel || !e.last) return;
+      applyDebugCameraProps({ target: { ...e.value } });
+    });
+  // Lens fields (unlike position/target above) are not gated by `e.last` — matching the
+  // "Camera Controls" tab's own lens bindings (`_dbg__CameraGUI.ts`'s `createEditCameraContent`,
+  // which binds directly to the live camera and applies on every intermediate slide tick) — so
+  // dragging the slider updates the live view continuously instead of only on mouse-up.
+  const debugCamFovBinding = debugCameraFolder
+    .addBinding(debugCamProxy, 'fov', { label: 'FOV', min: 1, max: 170, step: 1 })
+    .on('change', (e) => {
+      if (isRefreshingDebugCameraPanel) return;
+      applyDebugCameraProps({ fov: e.value });
+    });
+  const debugCamNearBinding = debugCameraFolder
+    .addBinding(debugCamProxy, 'near', { label: 'Near', min: 0.001, step: 0.001 })
+    .on('change', (e) => {
+      if (isRefreshingDebugCameraPanel) return;
+      applyDebugCameraProps({ near: e.value });
+    });
+  const debugCamFarBinding = debugCameraFolder
+    .addBinding(debugCamProxy, 'far', { label: 'Far', min: 1, step: 1 })
+    .on('change', (e) => {
+      if (isRefreshingDebugCameraPanel) return;
+      applyDebugCameraProps({ far: e.value });
+    });
+  const debugCamZoomBinding = debugCameraFolder
+    .addBinding(debugCamProxy, 'zoom', { label: 'Zoom', min: 0.01, step: 0.01 })
+    .on('change', (e) => {
+      if (isRefreshingDebugCameraPanel) return;
+      applyDebugCameraProps({ zoom: e.value });
+    });
+  debugCameraFolder.addButton({ title: 'Reset to default' }).on('click', () => {
+    debugCamProxy.position = { ...DEFAULT_DEBUG_CAM_PROPS.position };
+    debugCamProxy.target = { ...DEFAULT_DEBUG_CAM_PROPS.target };
+    applyDebugCameraProps({
+      position: { ...DEFAULT_DEBUG_CAM_PROPS.position },
+      target: { ...DEFAULT_DEBUG_CAM_PROPS.target },
+    });
+    isRefreshingDebugCameraPanel = true;
+    try {
+      debugCamPositionBinding.refresh();
+      debugCamTargetBinding.refresh();
+    } finally {
+      isRefreshingDebugCameraPanel = false;
+    }
+  });
+
+  // Live-refresh the bindings above from the viewport (dragging the debug camera with
+  // OrbitControls) — registered with debugCameraSystem, which calls this only on frames
+  // where OrbitControls actually reported a change. Unregistered on pane teardown above.
+  setDebugCameraPanelRefresh(() => {
+    const entityId = getEntityIdByAppId(DEBUG_CAMERA_ID);
+    if (entityId === undefined) return;
+    const world = getECSWorld();
+    const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value as
+      | THREE.PerspectiveCamera
+      | undefined;
+    const controls = world.getComponent(entityId, ComponentType.ORBIT_CONTROLS)?.controls;
+    if (!obj || !controls) return;
+
+    debugCamProxy.position = { x: obj.position.x, y: obj.position.y, z: obj.position.z };
+    debugCamProxy.target = { x: controls.target.x, y: controls.target.y, z: controls.target.z };
+    debugCamProxy.fov = obj.fov;
+    debugCamProxy.near = obj.near;
+    debugCamProxy.far = obj.far;
+    debugCamProxy.zoom = obj.zoom;
+
+    isRefreshingDebugCameraPanel = true;
+    try {
+      debugCamPositionBinding.refresh();
+      debugCamTargetBinding.refresh();
+      debugCamFovBinding.refresh();
+      debugCamNearBinding.refresh();
+      debugCamFarBinding.refresh();
+      debugCamZoomBinding.refresh();
+    } finally {
+      isRefreshingDebugCameraPanel = false;
+    }
+  });
 
   // Helpers
   const helpersFolder = debugGUI

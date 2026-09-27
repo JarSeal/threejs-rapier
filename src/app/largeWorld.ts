@@ -10,7 +10,7 @@ import {
   getActiveCameraId,
   setMainCamera,
 } from '../_engine/core/CameraManager';
-import { createKeyInputControl } from '../_engine/core/InputControls';
+import { createKeyBinding } from '../_engine/core/Input/KeyboardInput';
 import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
 import { getRootScene } from '../_engine/core/Scene';
@@ -82,6 +82,7 @@ export const scene = async () => {
     params: { color: '#2f5d34', flatShading: true },
   });
   const treePool = createInstancedMeshPool({
+    world: ecsWorld,
     geometry: treeGeo.geometry,
     material: [treeTrunkMat, treeFoliageMat],
     maxInstances: treePlacements.length,
@@ -105,6 +106,7 @@ export const scene = async () => {
     params: { color: '#3c6e35', flatShading: true },
   });
   const bushPool = createInstancedMeshPool({
+    world: ecsWorld,
     geometry: bushGeo,
     material: bushMat,
     maxInstances: bushPlacements.length,
@@ -229,8 +231,8 @@ export const scene = async () => {
   }
 
   // --- Point lights (Phase 5) — a handful of lantern/firefly accents among the foliage,
-  // exercising docs/plans/_DONE_p081_light-object-culling.md's per-light contribution culling
-  // (`objectCullingEnabled`), which no other example scene in this repo uses yet (§1.5).
+  // exercising per-light contribution culling (`objectCullingEnabled`, LightObjectCullingSystem.ts),
+  // which no other example scene in this repo uses yet (§1.5).
 
   const lanternPlacements = scatterOnSurface({
     surface: terrainMesh,
@@ -435,9 +437,10 @@ export const scene = async () => {
 
   // --- Camera toggle key binding (Phase 6, §2) ---
 
-  createKeyInputControl({
+  createKeyBinding({
     id: 'largeWorldToggleCamera',
-    key: ['c', 'C'],
+    chord: { key: 'c' },
+    caseInsensitive: true,
     type: 'KEY_UP',
     sceneId: 'largeWorld',
     fn: () => {

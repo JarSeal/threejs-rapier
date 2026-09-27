@@ -1,4 +1,4 @@
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 import { isAnyLightHelperVisible } from '../LightManager';
 import { IS_DEBUG_ENV } from '../Config';
 import { ECSWorld } from '../ECS';
@@ -9,7 +9,7 @@ import { CoreComponentType } from './ECSRegistry';
 
 /**
  * Single source of truth for Object3D.visible, recomputed from the full
- * three-way AND (docs/plans/_DONE_p081_light-object-culling.md §3.2)
+ * three-way AND
  * whenever any of DISABLED/TAG_FRUSTUM_CULLED/TAG_OBJECT_CULLED changes,
  * instead of each hook fighting over the flag pairwise.
  *
@@ -137,13 +137,11 @@ ECSWorld.registerCorePlugin((world) => {
   // entities that expired during the logic step (hence stage is LATE_MAIN).
   world.addSystem(ECSSystemStage.LATE_MAIN, 'entityLifetimeSystem', entityLifetimeSystem);
 
-  world.addSystem(ECSSystemStage.APP_RENDER_SYNC, 'lookAtSystem', lookAtSystem);
-
-  // @CHORE: register this system in the PhysicsAPI
   world.addSystem(
-    ECSSystemStage.APP_POST_PHYSICS,
-    'physicsToTransformSystem',
-    physicsToTransformSystem
+    ECSSystemStage.APP_RENDER_SYNC,
+    'lookAtSystem',
+    lookAtSystem,
+    APP_RENDER_SYNC_ORDER.POSE_PRODUCERS
   );
 
   return world;
@@ -192,37 +190,6 @@ export function object3DSyncSystem(world: ECSWorld) {
     }
   }
 }
-
-// @CHORE: Move this to PhysicsAPI and create initPhysicsToTransformSystem (follow mesh system pattern)
-/**
- * Update transform from physics
- */
-export const physicsToTransformSystem = (world: ECSWorld) => {
-  // We ONLY iterate over entities that are dynamic and have visuals
-  const dynamicVisuals = world.getStorage(ComponentType.BODY_DYNAMIC_VISUAL);
-  const transformStore = world.getTypedTransformStore();
-
-  for (const [entityId, rb] of dynamicVisuals) {
-    if (transformStore) {
-      const slot = transformStore.getSlot(entityId);
-      if (slot === -1) continue;
-      // Direct SAB access from your Physics Proxy
-      transformStore.setPosition(slot, rb.pos.x, rb.pos.y, rb.pos.z);
-      transformStore.setQuaternion(slot, rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w);
-      continue;
-    }
-
-    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
-    if (!transform) continue;
-
-    // Direct SAB access from your Physics Proxy
-    transform.position.set(rb.pos.x, rb.pos.y, rb.pos.z);
-    transform.quaternion.set(rb.rot.x, rb.rot.y, rb.rot.z, rb.rot.w);
-
-    // Mark as changed so the Render System knows to update the Mesh
-    transform.setDirty();
-  }
-};
 
 /**
  * Processes all entities with a LIFETIME component.

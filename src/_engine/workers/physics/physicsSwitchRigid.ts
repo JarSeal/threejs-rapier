@@ -5,6 +5,7 @@ import {
   PhysicsUpProtocol,
   WorldAPI,
 } from '../../core/Physics/PhysicsAPITypes';
+import { PhysicsTransformBuffer } from '../../core/Physics/PhysicsTransformBuffer';
 
 const sendNoRigidBodyErrorMessage = (
   sendMessage: (message: any, data: PhysicsUpProtocol) => void,
@@ -22,7 +23,8 @@ export const physicsSwitchRigid = async (
   data: PhysicsUpProtocol,
   physicsWorldAPI: WorldAPI,
   engAPI: EngineAPIType,
-  sendMessage: (message: any, data: PhysicsUpProtocol) => void
+  sendMessage: (message: any, data: PhysicsUpProtocol) => void,
+  transformBuffer?: PhysicsTransformBuffer
 ) => {
   const type = data.type;
   const rigidBodyAPI =
@@ -30,19 +32,35 @@ export const physicsSwitchRigid = async (
 
   switch (data.type) {
     // RigidBodyAPI ---------------------------
-    case PhysicsProtocolType.CREATE_RIGID_BODY:
+    case PhysicsProtocolType.CREATE_RIGID_BODY: {
       // CREATE_RIGID_BODY
-      const rbId = (await physicsWorldAPI.createRigidBody(data.params)).id;
-      return sendMessage({ type, id: rbId }, data);
-    case PhysicsProtocolType.CREATE_RIGID_BODIES:
+      const rb = await physicsWorldAPI.createRigidBody(data.params);
+      let slot = -1;
+      if (transformBuffer) {
+        slot = transformBuffer.allocateSlot(rb.id);
+        transformBuffer.setTransform(slot, rb.pos, rb.rot);
+      }
+      return sendMessage({ type, id: rb.id, slot }, data);
+    }
+    case PhysicsProtocolType.CREATE_RIGID_BODIES: {
       // CREATE_RIGID_BODIES
-      const rbIds = engAPI.createRigidBodies(data.params).map((api) => api.id);
-      return sendMessage({ type, ids: rbIds }, data);
+      const rbAPIs = engAPI.createRigidBodies(data.params);
+      const ids = rbAPIs.map((api) => api.id);
+      const slots = rbAPIs.map((api) => {
+        if (!transformBuffer) return -1;
+        const slot = transformBuffer.allocateSlot(api.id);
+        transformBuffer.setTransform(slot, api.pos, api.rot);
+        return slot;
+      });
+      return sendMessage({ type, ids, slots }, data);
+    }
     case PhysicsProtocolType.DELETE_RIGID_BODY:
       // DELETE_RIGID_BODY
+      transformBuffer?.freeSlot(data.id);
       return sendMessage({ type, ...engAPI.deleteRigidBody(data.id) }, data);
     case PhysicsProtocolType.DELETE_RIGID_BODIES:
       // DELETE_RIGID_BODIES
+      for (const id of data.ids) transformBuffer?.freeSlot(id);
       return sendMessage({ type, ...engAPI.deleteRigidBodies(data.ids) }, data);
     case PhysicsProtocolType.RIGID_GET_USERDATA: {
       // RIGID_GET_USERDATA

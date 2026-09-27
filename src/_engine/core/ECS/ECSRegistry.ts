@@ -12,6 +12,7 @@ export enum CoreComponentType {
   TARGET_LINK = 'CORE_TARGET_LINK',
   CAMERA_SETTINGS = 'CORE_CAMERA_SETTINGS',
   ORBIT_CONTROLS = 'CORE_ORBIT_CONTROLS',
+  LINE = 'CORE_LINE',
   // Physics
   COLLIDER = 'CORE_COLLIDER',
   BODY_DYNAMIC_VISUAL = 'CORE_BODY_DYNAMIC_VISUAL', // Moving + Has Mesh
@@ -20,6 +21,7 @@ export enum CoreComponentType {
   // Tags
   TAG_IS_MESH = 'CORE_TAG_IS_MESH',
   TAG_IS_GROUP = 'CORE_TAG_IS_GROUP',
+  TAG_IS_LINE = 'CORE_TAG_IS_LINE',
   TAG_IS_LIGHT = 'CORE_TAG_IS_LIGHT',
   TAG_IS_AMBIENT_LIGHT = 'CORE_IS_AMBIENT_LIGHT',
   TAG_IS_HEMISPHERE_LIGHT = 'CORE_IS_HEMISPHERE_LIGHT',
@@ -33,7 +35,7 @@ export enum CoreComponentType {
   // Frustum culling
   FRUSTUM_CULLING_ENABLED = 'CORE_FRUSTUM_CULLING_ENABLED', // opt-in, user-authored
   TAG_FRUSTUM_CULLED = 'CORE_TAG_FRUSTUM_CULLED', // runtime-only, current culled state
-  // Object (contribution) culling — docs/plans/_DONE_p081_light-object-culling.md
+  // Object (contribution) culling — see ECS/LightObjectCullingSystem.ts
   OBJECT_CULLING_ENABLED = 'CORE_OBJECT_CULLING_ENABLED', // opt-in, user-authored
   TAG_OBJECT_CULLED = 'CORE_TAG_OBJECT_CULLED', // runtime-only, current culled state
   // Spatial index (docs/plans/_DONE_p050_spatial-index.md)
@@ -43,6 +45,7 @@ export enum CoreComponentType {
   DEBUG_LIGHT_HELPER = 'CORE_DEBUG_LIGHT_HELPER',
   DEBUG_CAMERA_HELPER = 'CORE_DEBUG_CAMERA_HELPER',
   DEBUG_SYMBOL = 'CORE_DEBUG_SYMBOL',
+  DEBUG_PHYSICS_WIREFRAME = 'CORE_DEBUG_PHYSICS_WIREFRAME',
   DEBUG_TAG_IS_DEBUG_CAMERA = 'CORE_DEBUG_IS_DEBUG_CAMERA',
 }
 

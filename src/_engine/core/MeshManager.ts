@@ -1,6 +1,19 @@
 import * as THREE from 'three/webgpu';
-import { createGeometry, incGeometryRef, decGeometryRef, GeoProps } from './Geometry';
-import { createMaterial, incMaterialRef, decMaterialRef, MatProps, getMaterial } from './Material';
+import {
+  createGeometry,
+  incGeometryRef,
+  decGeometryRef,
+  GeoProps,
+  getGeometryRegistry,
+} from './Geometry';
+import {
+  createMaterial,
+  incMaterialRef,
+  decMaterialRef,
+  MatProps,
+  getMaterial,
+  getMaterialRegistry,
+} from './Material';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getRootScene } from './Scene';
 import { ThreeEuler, ThreeQuoternion } from '../utils/helpers';
@@ -13,6 +26,7 @@ import { existsOrThrow } from '../utils/assert';
 import { getGeometry } from './Geometry';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import { setFrustumCullingEnabled } from './ECS/ObjectFrustumCullingSystem';
+import { IS_DEBUG_ENV } from './Config';
 
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
@@ -29,9 +43,35 @@ export type MeshProps = {
   position?: { x?: number; y?: number; z?: number };
   rotation?: { x?: number; y?: number; z?: number };
   quaternion?: THREE.Quaternion;
+  scale?: { x: number; y: number; z: number };
   appId?: string;
   /** Native Object3D.frustumCulled (Three.js's own per-mesh render-list culling). Defaults to Three's own default (true). */
   frustumCullingEnabled?: boolean;
+};
+
+/** Debug only: warns about a geometry or material that isn't the registered one under its id (it
+ * has no id, or it's eg. a `.clone()` carrying its source's id). Mesh refs only release registered
+ * assets, so nothing ever disposes these, and they leak GPU memory on every scene visit. */
+const warnIfUnregistered = (
+  appId: string,
+  geo?: THREE.BufferGeometry,
+  material?: THREE.Material | THREE.Material[]
+) => {
+  if (!IS_DEBUG_ENV) return;
+  const describe = (id?: string) => (id ? `a copy carrying the id "${id}"` : 'no id');
+  const geoId = geo?.userData.id as string | undefined;
+  if (geo && getGeometryRegistry()[geoId || '']?.resource !== geo) {
+    lwarn(
+      `[MeshManager] Mesh "${appId}" uses an unregistered geometry (${describe(geoId)}), which is never disposed. Create it with createGeometry or register it with saveBufferGeometry.`
+    );
+  }
+  for (const m of Array.isArray(material) ? material : material ? [material] : []) {
+    const matId = m.userData.id as string | undefined;
+    if (getMaterialRegistry()[matId || '']?.resource === m) continue;
+    lwarn(
+      `[MeshManager] Mesh "${appId}" uses an unregistered material (${describe(matId)}), which is never disposed. Create it with createMaterial or register it with saveMaterial.`
+    );
+  }
 };
 
 export const createMeshEntity = (
@@ -73,6 +113,7 @@ export const createMeshEntity = (
   mesh.frustumCulled = props.frustumCullingEnabled ?? true;
   mesh.userData.id = appId;
 
+  warnIfUnregistered(appId, geo, mat);
   if (geo.userData.id) incGeometryRef(geo.userData.id);
   if (mat.userData.id) incMaterialRef(mat.userData.id);
 
@@ -109,7 +150,14 @@ export const createMeshEntity = (
     }
   }
 
-  const entityId = world.createEntity(entityOpts);
+  // The appId resolved above is the entity's real (fixed) appId too, whichever of props/entityOpts
+  // it came from — otherwise a props-only appId (JSON-authored and imported meshes) would leave
+  // the entity with a random per-load id: unfindable via getMeshByAppId, and without the stable
+  // id per-entity persisted settings (e.g. physics debug wireframes) are keyed by.
+  const explicitAppId = props.appId || entityOpts?.appId;
+  const entityId = world.createEntity(
+    explicitAppId ? { ...entityOpts, appId: explicitAppId } : entityOpts
+  );
   mesh.userData.entityId = entityId;
 
   world.addComponent(entityId, ComponentType.OBJECT3D, {
@@ -146,6 +194,14 @@ export const createMeshEntity = (
     tra.rot.w = quat.w;
   }
   setTransform(entityId, tra, world);
+  if (props.scale) {
+    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+    if (transform) {
+      transform.scale.set(props.scale.x, props.scale.y, props.scale.z);
+      transform.setDirty();
+      world.commitTransform(entityId, transform);
+    }
+  }
 
   // After the transform is finalized so the spatial index's initial insert
   // (docs/plans/_DONE_p050_spatial-index.md §3) uses this mesh's real position,
@@ -184,6 +240,32 @@ export const disposeMesh = (entityId: number, ecsWorld?: ECSWorld) => {
   } else if (mesh.material.userData.id) {
     decMaterialRef(mesh.material.userData.id);
   }
+};
+
+const forEachMaterialId = (
+  material: THREE.Material | THREE.Material[],
+  fn: (id: string) => void
+) => {
+  for (const m of Array.isArray(material) ? material : [material]) {
+    if (m.userData.id) fn(m.userData.id);
+  }
+};
+
+/**
+ * Swaps a mesh entity's material and moves its material ref count to the new material. Assigning
+ * `mesh.material` directly would leave the old material's ref taken (never freed) and release a
+ * ref the new one never got (freed while still in use) when the mesh is disposed.
+ * @param mesh a mesh created with createMeshEntity (other meshes take no refs: only assigned)
+ * @param material the new material(s)
+ */
+export const setMeshMaterial = (mesh: THREE.Mesh, material: THREE.Material | THREE.Material[]) => {
+  const prev = mesh.material;
+  mesh.material = material;
+  if (mesh.userData.entityId === undefined || prev === material) return;
+  warnIfUnregistered(mesh.userData.id, undefined, material);
+  // New refs first: the old and new material can share ids (eg. the same one in an array)
+  forEachMaterialId(material, incMaterialRef);
+  forEachMaterialId(prev, decMaterialRef);
 };
 
 export const getMeshByAppId = (appId: string, ecsWorld?: ECSWorld) => {

@@ -1,0 +1,5 @@
+{
+  "$schema": "../../../.schemas/importedAsset.schema.json",
+  "id": "testImport",
+  "fileName": "/debugger/assets/testModels/box01.glb"
+}

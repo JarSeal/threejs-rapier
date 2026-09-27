@@ -1,11 +1,12 @@
 import * as THREE from 'three/webgpu';
-import { deleteTexture, getTexture } from './Texture';
+import { deleteTexture, getTexture, getTextureRegistry } from './Texture';
 import { getRootScene } from './Scene';
 import { existsOrThrow } from '../utils/assert';
 import { tslMaterialFileObjects } from '../generatedAppFns';
 import { lerror, lwarn } from '../utils/Logger';
 import { color, Node, texture, uniform } from 'three/tsl';
 import { textureMapKeys } from '../utils/constants';
+import { recordAssetOwner, retagAssetOwner } from './Assets/AssetOwners';
 
 export type Materials =
   | THREE.LineBasicMaterial
@@ -46,7 +47,7 @@ const materials: {
   };
 } = {};
 
-type TextureMapKeys =
+export type TextureMapKeys =
   | 'map'
   | 'alphaMap'
   | 'aoMap'
@@ -56,6 +57,8 @@ type TextureMapKeys =
   | 'lightMap'
   | 'matcap'
   | 'normalMap'
+  | 'roughnessMap'
+  | 'metalnessMap'
   | 'specularMap'
   | 'displacementMap'
   | 'anisotropyMap'
@@ -195,7 +198,10 @@ export const setMaterialPersistence = (id: string, state: boolean) => {
 export const createMaterial = (props: MatProps) => {
   const id = props.id;
 
-  if (id && materials[id]) return materials[id].resource;
+  if (id && materials[id]) {
+    retagAssetOwner(materials[id].resource);
+    return materials[id].resource;
+  }
 
   let mat: Materials | null = null;
 
@@ -492,16 +498,73 @@ export const getAllMaterials = () => {
 
 export const getMaterialRegistry = () => materials;
 
+/** Whether any registered material other than `except` still holds a texture (in a map slot or a
+ * TSL node input) matching `test` (texture refcounts aren't tracked per material, so this is
+ * checked at release time). */
+const isTextureInUseByOtherMaterial = (
+  except: Materials | null,
+  test: (texture: THREE.Texture) => boolean
+) => {
+  for (const id in materials) {
+    const other = materials[id].resource;
+    if (other === except) continue;
+    for (let i = 0; i < textureMapKeys.length; i++) {
+      const texture = other[textureMapKeys[i] as keyof Materials] as THREE.Texture | undefined;
+      if (texture && test(texture)) return true;
+    }
+    // TSL node inputs (createMaterial keeps them in userData.uniforms): texture nodes
+    const uniforms = other.userData.uniforms as Record<string, unknown> | undefined;
+    for (const key in uniforms) {
+      const node = uniforms[key] as { isTextureNode?: boolean; value?: THREE.Texture } | undefined;
+      if (node?.isTextureNode && node.value && test(node.value)) return true;
+    }
+  }
+  return false;
+};
+
 /**
- * Deletes a materials textures from VRAM cache.
- * @param mat Target material asset.
+ * Whether any registered material holds `texture`, or another texture under the same registry id
+ * (eg. a clone of it). Texture ref counts aren't tracked, so this is how a registered texture's
+ * owner (eg. an import) can tell whether it's safe to delete.
+ * @param texture registered texture
  */
-export const deleteTexturesFromMaterial = (mat: Materials) => {
+export const isTextureUsedByAnyMaterial = (texture: THREE.Texture) => {
+  const id = texture.userData?.id as string | undefined;
+  return isTextureInUseByOtherMaterial(
+    null,
+    (t) => t === texture || (id !== undefined && t.userData?.id === id)
+  );
+};
+
+/**
+ * Releases a material's textures from VRAM cache, as far as no other registered material still
+ * uses them: a texture shared between materials (e.g. the same cached loadTexture id) survives
+ * until its last material goes. A texture that isn't the registered one itself — typically a
+ * `.clone()` of it, which copies the source's `userData.id` — belongs to the material alone and
+ * is disposed directly; the registered source is then released with the last material holding
+ * any texture under its id. Persistent registered textures are never released here.
+ * @param mat Target material asset.
+ * @param opts.keepRegistered only dispose the textures the material holds alone (eg. clones), and
+ * leave registered textures for the caller to release
+ */
+export const deleteTexturesFromMaterial = (mat: Materials, opts?: { keepRegistered?: boolean }) => {
   for (let i = 0; i < textureMapKeys.length; i++) {
     const key = textureMapKeys[i] as keyof Materials;
     const texture = mat[key] as THREE.Texture;
-    if (texture && texture.userData?.id) {
-      deleteTexture(texture.userData.id);
+    if (!texture) continue;
+    if (isTextureInUseByOtherMaterial(mat, (t) => t === texture)) continue;
+
+    const id = texture.userData?.id as string | undefined;
+    const registered = id ? getTextureRegistry()[id] : undefined;
+    if (!registered || registered.resource !== texture) texture.dispose();
+    if (opts?.keepRegistered) continue;
+    if (
+      id &&
+      registered &&
+      !registered.persistent &&
+      !isTextureInUseByOtherMaterial(mat, (t) => t.userData?.id === id)
+    ) {
+      deleteTexture(id);
     }
   }
 };
@@ -537,7 +600,10 @@ export const saveMaterial = (
 ) => {
   if (!Array.isArray(material)) {
     const id = givenId || material.uuid;
-    if (materials[id]) return materials[id].resource;
+    if (materials[id]) {
+      retagAssetOwner(materials[id].resource);
+      return materials[id].resource;
+    }
 
     material.userData.id = id;
     materials[id] = {
@@ -545,6 +611,7 @@ export const saveMaterial = (
       count: 0,
       ...(isPersistent ? { persistent: true } : {}),
     };
+    recordAssetOwner(material);
     return material;
   }
 
@@ -552,7 +619,10 @@ export const saveMaterial = (
     const mat = material[i];
     if (!mat.isMaterial) continue;
     const combinedId = givenId ? `${givenId}-${i}` : mat.uuid;
-    if (materials[combinedId]) continue;
+    if (materials[combinedId]) {
+      retagAssetOwner(materials[combinedId].resource);
+      continue;
+    }
 
     mat.userData.id = combinedId;
     materials[combinedId] = {
@@ -560,6 +630,7 @@ export const saveMaterial = (
       count: 0,
       ...(isPersistent ? { persistent: true } : {}),
     };
+    recordAssetOwner(mat);
   }
 
   return material;

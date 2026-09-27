@@ -1,8 +1,21 @@
 import { type Scene } from 'three/webgpu';
-import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, loadConfig, PROJECT_METADATA } from './core/Config';
+import {
+  getConfig,
+  IS_DEBUG_ENV,
+  IS_PROD_TEST_MODE,
+  loadConfig,
+  PROJECT_METADATA,
+} from './core/Config';
+import { initAssets } from './core/Assets/AssetsAPI';
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
+import { registerDefaultDebugKeyBindings } from './core/Input/DefaultDebugKeyBindings';
 import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
-import { InitRapierPhysics } from './core/PhysicsRapier';
+import {
+  createPhysicsAPIDebugGUI,
+  createPhysicsWorld,
+  initPhysics as initNewPhysics,
+} from './core/PhysicsAPI';
+import { registerPhysicsManager } from './core/PhysicsManager';
 import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
 import { lerror, llog } from './utils/Logger';
@@ -12,7 +25,9 @@ import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
 import { createCharactersDebuggerGUI, registerCharacterTools } from './core/Character';
 import { createToaster } from './core/UI/Toaster';
 import { getStatsCmp, registerStatsModule } from './debug/Stats';
+import { createAssetsDebugGUI } from './debug/Assets';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
+import { registerLineManager } from './core/LineManager';
 
 // ECS Core Plugins
 import './core/ECS/ECSCoreSystems';
@@ -55,6 +70,9 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // HUD container
     createHudContainer();
 
+    // Resolve the assets config (the assets worker is only started by its first request)
+    initAssets();
+
     // Register scenes from generated data
     await registerScenesFromGeneratedData();
 
@@ -63,17 +81,23 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Register Managers
     registerCameraManager();
     registerLightManager(ecsWorld);
+    registerLineManager();
 
     // Initializes the debug camera (if in debug mode)
     await initDebugCamera(ecsWorld);
 
-    await InitRapierPhysics();
+    registerPhysicsManager(ecsWorld);
+    await initNewPhysics(true); // doNotCreateWorld — createPhysicsWorld() below owns that + physicsWorldEnabled
+    if (getConfig().physics?.enabled) {
+      await createPhysicsWorld();
+    }
 
     if (IS_DEBUG_ENV) {
       await registerStatsModule();
       await registerSkyBoxDebugGUI();
       await registerRaycastDebugGUI();
       await registerDebuggerGUI();
+      registerDefaultDebugKeyBindings();
       await registerCharacterTools();
       await registerECSModule();
       await registerSpatialIndexDebugGUI();
@@ -97,6 +121,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Create debug GUIs and utils
     if (IS_DEBUG_ENV) {
       await createRendererDebugGUI();
+      await createPhysicsAPIDebugGUI();
+      await createAssetsDebugGUI();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
 

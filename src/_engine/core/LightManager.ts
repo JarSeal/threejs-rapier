@@ -15,6 +15,7 @@ import { existsOrThrow } from '../utils/assert';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import { lerror, lwarn } from '../utils/Logger';
 import { getTexture } from './Texture';
+import { retagAssetOwner } from './Assets/AssetOwners';
 import { setFrustumCullingEnabled } from './ECS/ObjectFrustumCullingSystem';
 
 export const registerLightManager = (world: ECSWorld) => {
@@ -197,6 +198,9 @@ export const createLightEntity = (
         if (typeof props.map === 'string') {
           const texResource = getTexture(props.map);
           if (texResource) {
+            // Claimed for this light's scene: no material uses it, so nothing else protects it
+            // from the scene asset release when the scene that loaded it is left (AssetOwners)
+            retagAssetOwner(texResource);
             light.map = texResource;
           } else {
             lwarn(

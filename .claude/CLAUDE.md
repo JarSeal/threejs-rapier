@@ -26,7 +26,7 @@ Maintain the brand, feeling, and core principles in creating the best UX for bot
 - `yarn build` — type-check (`tsc`) + production build to `dist/`.
 - `yarn build:test` — production build with `VITE_APP_ENV=test`.
 - `yarn lint` — ESLint (flat config in `eslint.config.js`, Prettier enforced as a lint rule).
-- `yarn docs` — generate TypeDoc docs (scoped to `src/_engine/**` only — the engine is the documented public API surface; `app`/`toolkit` are not documented).
+- `yarn docs` — generate TypeDoc docs into `docs-api/` (scoped to `src/_engine/**` only — the engine is the documented public API surface; `app`/`toolkit` are not documented). The folder is gitignored and TypeDoc wipes it on every run, so never point `out` at `docs/`.
 - `yarn gatherAppData` — manually run the scene/asset JSON → generated data pipeline (see below); this also runs automatically before `dev`/`build` and via a Vite plugin on file save.
 
 There is no test suite/framework configured in this repo currently (no `test` script, no test runner dependency).
@@ -63,11 +63,11 @@ This boundary is convention only — nothing in `eslint.config.js` enforces impo
 
 - **Plugin registration**: managers call `ECSWorld.registerPlugin(fn)` and `ECSWorld.registerComponentHooks(type, { onAddComponent, onRemoveComponent, onDeleteEntity })` at module load time (static, applies to all current/future worlds). App-level plugin registration is centralized in `src/AppECSPlugins.ts` — this is where you wire up new app/toolkit ECS managers/effects.
 - **Component types**: core types live in `src/_engine/core/ECS/ECSRegistry.ts` + `ECSCoreComponents.ts`. App-specific component types/data extend this in `src/AppECSRegistry.ts` (`AppComponentType`, `AppComponentData`) — that file is import-type-only by convention (comment at the top: "import only types and everything with `import type ...`") so it stays tree-shakeable.
-- **System stages**, also defined in `src/AppECSRegistry.ts` (`ECSSystemStage`), run in this fixed order every frame: `MAIN → APP_PRE_PHYSICS → APP_POST_PHYSICS → APP_LOGIC → APP_RENDER_SYNC → LATE_MAIN`. `APP_POST_PHYSICS` is where physics state syncs into ECS transforms; `APP_RENDER_SYNC` is where ECS transforms sync into Three.js `Object3D`s.
+- **System stages**, also defined in `src/AppECSRegistry.ts` (`ECSSystemStage`), run in this fixed order every frame: `MAIN → APP_PRE_PHYSICS → APP_POST_PHYSICS → APP_LOGIC → APP_RENDER_SYNC → LATE_MAIN`. `APP_PHYSICS_STEP` is the exception: it runs 0-N times per frame, once right before each fixed physics sub-step (dt = the fixed timestep), from inside `stepPhysics` (between `APP_PRE_PHYSICS` and `APP_POST_PHYSICS`) — use it for anything that must move in lockstep with the simulation (kinematic platforms, character controllers). In `WORKER_THREAD` mode the one-way worker commands those systems issue are carried in that frame's single STEP message and replayed before their own sub-step. Collision/contact-force events (both modes) are delivered by `flushPhysicsEvents` at the start of the next sub-step — after held-key polling, before `APP_PHYSICS_STEP` — an order gameplay code (e.g. `dynamicCharacter.ts`'s moving-platform logic) depends on. `APP_POST_PHYSICS` is where physics state syncs into ECS transforms; `APP_RENDER_SYNC` is where ECS transforms sync into Three.js `Object3D`s.
 
 ### Scene/asset data pipeline (JSON → generated code)
 
-Scenes and assets are authored as JSON files under `src/app/**`, named by suffix (e.g. `*.scene.json`, `*.mesh.json`, `*.camera.json`, `*.light.json`, `*.geometry.json`, `*.texture.json`, `*.material.json`, `*.importedMesh.json`, `*.skybox.json`). `devTools/gatherAppData.ts`:
+Scenes and assets are authored as JSON files under `src/app/**`, named by suffix (e.g. `*.scene.json`, `*.mesh.json`, `*.camera.json`, `*.light.json`, `*.geometry.json`, `*.texture.json`, `*.material.json`, `*.importedAsset.json`, `*.skybox.json`). `devTools/gatherAppData.ts`:
 
 1. Walks `src/`, finds files matching those suffixes.
 2. Validates each against a Zod schema in `src/_engine/schemas/*.ts`.
@@ -92,9 +92,9 @@ This debug drawer (`src/_engine/debug/`, `src/_engine/core/Debug/`) is under act
 
 ### Physics
 
-`src/_engine/core/PhysicsRapier.ts` wraps `@dimforge/rapier3d-compat`, exposing rigid bodies/colliders as `PhysicsObject`s and integrating with the ECS world, `MeshManager`, and the main loop. Despite a `PhysicsWorkerTarget` config option and worker-switch scaffolding in `src/_engine/workers/physicsWorker.ts` and `src/_engine/workers/physics/*.ts`, that worker-threaded path is currently disabled (the worker file body is commented out) — physics currently only runs on the main thread. `src/_engine/core/PhysicsAPI.ts` is entirely commented-out legacy code from an earlier threaded design; don't build on it.
+The engine-agnostic Physics API — `PhysicsAPI.ts` (facade) + `Physics/EngineRapier.ts` (Rapier backend) + `Physics/PhysicsAPITypes.ts` (shared types/protocol) + `PhysicsManager.ts` (ECS integration) + `workers/physicsWorker.ts`/`workers/physics/physicsSwitch{World,Rigid,Coll}.ts` (worker-thread RPC switchboard). The legacy mesh-coupled `PhysicsRapier.ts` has been removed; don't reintroduce a non-ECS physics path. Rapier is currently the only backend (`Physics/ENGINES.ts`); a settings-driven engine choice (Jolt, Ammo, etc.) is a future extension point, not implemented.
 
-The plan in the near future is to implement the commented code in the PhysicsAPI.ts file (and others) so that physics system is engine agnostic (Rapier, Jolt, Ammo, etc.) and can be changed in the settings, and also that the physics system can be either run by the main thread or in a worker (also configured in the settings). When that is implemented, then the physics object can be made into an ECS component and the physics object should be added to the scene and saveable file schema format.
+`AppConfig.physics.workerTarget` (`'MAIN_THREAD' | 'WORKER_THREAD'`, default `'WORKER_THREAD'`) selects where the new system's simulation runs. In `WORKER_THREAD` mode, per-frame rigid-body transforms sync back via a physics-owned hot-path buffer (`Physics/PhysicsTransformBuffer.ts`): a real `SharedArrayBuffer` when the runtime is cross-origin-isolated (`AppConfig.physics.useSAB`, default `true`; the dev server sends the required COOP/COEP headers), otherwise an automatic single-batched-message-per-frame fallback — never one message per body either way. Physics objects are ECS components (`BODY_STATIC`/`BODY_DYNAMIC_VISUAL`/`BODY_DYNAMIC_HEADLESS`, synced to `TRANSFORM` every frame at `ECSSystemStage.APP_POST_PHYSICS` by `PhysicsManager.ts`'s `physicsToTransformSystem`); `PhysicsManager.createPhysicsEntity` is `async` and is the entry point app code should use. Physics objects are still created in code, not yet part of the scene/asset JSON schema — that remains a future step.
 
 ### Build config notes (`vite.config.ts`)
 
@@ -103,6 +103,21 @@ The plan in the near future is to implement the commented code in the PhysicsAPI
 - Custom `sceneGathererPlugin` (see data pipeline above) and an `html-transform` plugin that injects `%APP_NAME%`/`%VERSION_CHECKSUM%`/etc. placeholders (sourced from `package.json`'s `app_metadata`/ `engine_metadata`) into `index.html`.
 - `rollup-plugin-visualizer` writes a bundle treemap to `dist-stats/bundle-stats.html`.
 - No TS path aliases are configured (`tsconfig.json` has no `paths`) — imports are relative.
+
+## Versioning
+
+`package.json` holds three semver versions (`MAJOR.MINOR.PATCH`: major = breaking, minor = new feature, patch = fix):
+
+- `engine_metadata.version` — the engine (`src/_engine/`) plus `src/toolkit/`, which ships with it.
+- `app_metadata.version` — the example app (`src/app/` and the app-level files in `src/`: `AppECSPlugins.ts`, `AppECSRegistry.ts`, `CONFIG.ts`).
+- `version` (the project/package version) — **always identical to `engine_metadata.version`**. App-only changes bump `app_metadata.version` and never touch the project version.
+
+Rules:
+
+- Bump once per branch merged to `main` (in the PR), not per commit, at the level of the biggest change on that side since the last merge. Reset the lower parts to 0 (e.g. `1.4.2` → minor bump → `1.5.0`).
+- Engine and app are bumped independently; a side with no changes keeps its version.
+- A major bump gets a new codename. Engine codenames follow the sun's path (Dawn → Sunrise → Morning → Zenith → …); app codenames follow life stages (Toddler → Preschooler → Kid → Teen → …).
+- `createMergeVersion` in `vite.config.ts` (engine + app summed part by part) only feeds the `x-version-checksum` meta tag. It is not a version to bump or display.
 
 ## Workflow
 

@@ -58,7 +58,11 @@ export const createGroupEntity = (
     rootScene.add(group);
   }
 
-  const entityId = world.createEntity(entityOpts);
+  // Same as createMeshEntity: a props-only appId is the entity's real (fixed) appId too.
+  const explicitAppId = props.appId || entityOpts?.appId;
+  const entityId = world.createEntity(
+    explicitAppId ? { ...entityOpts, appId: explicitAppId } : entityOpts
+  );
   group.userData.entityId = entityId;
 
   world.addComponent(entityId, ComponentType.OBJECT3D, {

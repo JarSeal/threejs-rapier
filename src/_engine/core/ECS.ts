@@ -28,6 +28,8 @@ type SystemEntry = { id: string; fn: ECSSystem; order: number; seq: number };
 
 export type WorldPlugin = (world: ECSWorld) => void;
 export type ComponentHook = (entityId: number, world: ECSWorld) => void;
+/** See ECSWorld.registerTransformResetListener. */
+export type TransformResetListener = (world: ECSWorld, entityId: number) => void;
 
 export const DEFAULT_ECS_WORLD_ID = '[default]';
 
@@ -117,6 +119,7 @@ export class ECSWorld {
   private static onAddComponentHooks: Map<ComponentType, ComponentHook[]> = new Map();
   private static onRemoveComponentHooks: Map<ComponentType, ComponentHook[]> = new Map();
   private static onDeleteEntityHooks: Map<ComponentType, ComponentHook[]> = new Map();
+  private static transformResetListeners: TransformResetListener[] = [];
 
   /** * Global registration methods.
    * Managers call these once at app startup.
@@ -212,6 +215,17 @@ export class ECSWorld {
     }
   }
 
+  /**
+   * Registers a listener fired whenever setTransform (and so teleport) explicitly moves or
+   * rotates an entity, after its rigid body and TRANSFORM have been updated. That is a pose
+   * discontinuity: anything holding pose history (e.g. PhysicsManager's render interpolation)
+   * must not smooth across it. Static like registerComponentHooks, so it covers every world —
+   * and lets such managers react without ECS importing them back.
+   */
+  public static registerTransformResetListener(listener: TransformResetListener) {
+    this.transformResetListeners.push(listener);
+  }
+
   // Bitwise constants for generation usage:
   // We use 20 bits for the index (~1 million entities)
   // and 12 bits for the generation (4096 reuses per slot)
@@ -222,8 +236,8 @@ export class ECSWorld {
   // 1,048,576-slot address space the packed-id scheme could support — a
   // world with a small maxEntities (e.g. a bare secondary world) shouldn't
   // pay for the ~4 MiB a full-size array would cost regardless of how many
-  // entities it actually ever holds (see docs/plans/ecs-multiple-worlds.md
-  // §5.3). Allocated in the constructor, after `maxEntities` is known.
+  // entities it actually ever holds. Allocated in the constructor, after
+  // `maxEntities` is known.
   private generations: Uint32Array;
 
   private nextEntityId = 1;
@@ -237,7 +251,7 @@ export class ECSWorld {
   private systems: Map<ECSSystemStage, SystemEntry[]> = new Map();
   private systemSeq = 0;
 
-  // Build-time-selectable storage backend (see docs/plans/ecs-typed-arrays-feature.md).
+  // Build-time-selectable storage backend (see ECS/ECSComponentStorage.ts).
   // TYPED_ARRAY currently only applies to TRANSFORM; every other component
   // type stays Map-backed regardless of this setting.
   public readonly storageMode: ECSStorageMode;
@@ -367,8 +381,8 @@ export class ECSWorld {
   /**
    * Extracts the stable, dense entity-slot index from a packed entity id.
    * Exposed (narrowly, alongside the still-private `_pack`/`_getGeneration`)
-   * for storage backends — e.g. the TypedArray-backed sparse set proposed in
-   * docs/plans/ecs-typed-arrays-feature.md — that need a numeric array
+   * for storage backends — e.g. the TypedArray-backed sparse set in
+   * ECS/TypedArrayTransformStore.ts — that need a numeric array
    * offset; the packed id itself is not usable as one.
    */
   public getEntityIndex(entityId: number): number {
@@ -466,7 +480,18 @@ export class ECSWorld {
     this.storages.forEach((storage, type) => {
       if (storage.has(entityId)) {
         const hooks = ECSWorld.onDeleteEntityHooks.get(type);
-        hooks?.forEach((hook) => hook(entityId, this));
+        hooks?.forEach((hook) => {
+          // One hook throwing (e.g. a disposal error) must not block another
+          // hook's cleanup, or the entity-removal code below it in this method.
+          try {
+            hook(entityId, this);
+          } catch (err) {
+            lerror(
+              `onDeleteEntity hook for component type '${type}' threw for entity ${entityId}.`,
+              err
+            );
+          }
+        });
       }
     });
 
@@ -541,7 +566,7 @@ export class ECSWorld {
    * internally. This is an implementation detail, not a guarantee — systems
    * must not depend on it. It's expected to change for any component type
    * that moves to a different storage backing (e.g. the TypedArray-backed
-   * sparse-set storage proposed in docs/plans/ecs-typed-arrays-feature.md,
+   * sparse-set storage in ECS/TypedArrayTransformStore.ts,
    * which reorders on removal by design).
    */
   public getStorage<K extends ComponentType>(type: K): IComponentStorage<ComponentData[K]> {
@@ -656,6 +681,10 @@ export class ECSWorld {
       transform.setDirty();
       this.commitTransform(entityId, transform);
     }
+
+    if (pos || rot) {
+      for (const listener of ECSWorld.transformResetListeners) listener(this, entityId);
+    }
   }
 
   /**
@@ -664,7 +693,7 @@ export class ECSWorld {
    * the object doesn't carry old momentum to the new spot.
    */
   public teleport(entityId: number, tra: ECSTransformProp): void {
-    // @CHORE: We probably need to take interpolation into consideration (set the prev transform to the new position)
+    // Render interpolation history is invalidated by setTransform's transform reset listeners.
     this.setTransform(entityId, { ...tra, resetVelocity: true, resetForces: true });
   }
 
@@ -797,6 +826,11 @@ export class ECSWorld {
     this._runStage(ECSSystemStage.APP_PRE_PHYSICS, dt);
   }
 
+  /** Runs once per fixed physics sub-step, right before that step (driven by stepPhysics) */
+  public updatePhysicsStep(dt: number) {
+    this._runStage(ECSSystemStage.APP_PHYSICS_STEP, dt);
+  }
+
   /** Runs the Simulation/App logic (Physics, Gameplay, Render Sync) */
   public updateAppLoop(dt: number) {
     this._runStage(ECSSystemStage.APP_POST_PHYSICS, dt);
@@ -816,7 +850,8 @@ export class ECSWorld {
    * cost.
    *
    * Stage execution order itself is decided elsewhere: it's the fixed call
-   * sequence in `updateMainLoop` / `updateAppLoop` / `updateLateMainLoop`.
+   * sequence in `updateMainLoop` / `updateAppLoop` / `updateLateMainLoop`, plus
+   * `updatePhysicsStep` once per fixed physics sub-step.
    */
   private _runStage(stage: ECSSystemStage, dt: number) {
     const list = this.systems.get(stage)!;

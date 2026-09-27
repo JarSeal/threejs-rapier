@@ -1,11 +1,10 @@
-import type * as THREE from 'three/webgpu';
-
 import { ENGINES } from './ENGINES';
 import { LoopState } from '../MainLoop';
 
 export type PhysicsEngine = keyof typeof ENGINES;
 export type PhysicsWorkerTarget = 'MAIN_THREAD' | 'WORKER_THREAD'; // + possible 'SERVER_AND_MAIN' | 'SERVER_AND_WORKER' if implemented
 export type PhysicsBackgroundBehavior = 'KEEP_RUNNING' | 'KEEP_RUNNING_USE_MIN_DELTA' | 'PAUSE';
+export type PhysicsInterpolationMode = 'NONE' | 'RENDERER' | 'FIXED_PHYSICS' | 'EXTRAPOLATION';
 
 /**
  * Physics Engine API, which handles the communication between
@@ -31,15 +30,33 @@ export type EngineAPIType = {
   createCollider: (params: ColliderParams, parentId?: number) => ColliderAPI;
   createRigidBodies: (params: RigidBodyParams[]) => RigidBodyAPI[];
   createColliders: (params: ColliderParams[]) => ColliderAPI[];
+  createJoint: (params: JointParams) => JointAPI;
+  createJoints: (params: JointParams[]) => JointAPI[];
   deleteWorld: () => { worldDeleted: boolean };
-  deleteRigidBody: (id: number) => { id: number; colliderIds: number[] };
-  deleteRigidBodies: (id: number[]) => { ids: number[]; colliderIds: number[] };
+  deleteRigidBody: (id: number) => { id: number; colliderIds: number[]; jointIds: number[] };
+  deleteRigidBodies: (id: number[]) => { ids: number[]; colliderIds: number[]; jointIds: number[] };
   deleteCollider: (id: number, wakeUp?: boolean) => { id: number };
   deleteColliders: (ids: number[], wakeUps?: boolean[]) => { ids: number[] };
+  deleteJoint: (id: number, wakeUp?: boolean) => { id: number };
+  deleteJoints: (ids: number[], wakeUps?: boolean[]) => { ids: number[] };
   takeSnapshot: () => Uint8Array | undefined;
   restoreSnapshot: (snapshot: Uint8Array) => WorldAPI;
   getRigidBodyAPIWithId: (id: number) => RigidBodyAPI | undefined;
   getColliderAPIWithId: (id: number) => ColliderAPI | undefined;
+  getJointAPIWithId: (id: number) => JointAPI | undefined;
+  /** Enumerates the ids of all currently-live rigid bodies (worker per-step hot-path write-back). */
+  getAllRigidBodyIds: () => IterableIterator<number>;
+  step: (eventQueue?: unknown, hooks?: unknown) => void;
+  debugRender: () => { vertices: Float32Array; colors: Float32Array } | undefined;
+  /** WORKER_THREAD only: returns (and clears) collision/contact-force events accumulated
+   * since the last call, for the worker's STEP handler to push via EVENTS_PUSH. */
+  drainPendingEventRecords: () => {
+    collisions: CollisionEventRecord[];
+    contactForces: ContactForceEventRecord[];
+  };
+  /** MAIN_THREAD only: delivers (and clears) the events accumulated by step() since the last
+   * call to their registered callbacks. */
+  dispatchPendingEventRecords: () => void;
 };
 
 export type PhysicsState = {
@@ -48,10 +65,13 @@ export type PhysicsState = {
   workerTarget: PhysicsWorkerTarget;
   timestep: number;
   timestepRatio: number;
-  /** What to do with physics loop if the app window is hidden (under another window, in another tab, minified).
-   * 'KEEP_RUNNING' = Keeps the physics running in the background.
-   * 'KEEP_RUNNING_USE_MIN_DELTA' = If for some reason the physics cannot run in the background, the minDeltaTime will be set as new delta time. Requires: minDelta > 0.
-   * 'PAUSE' = Pauses the physics when the window is hidden and then uses the minDeltaTime to continue. Requires: minDelta > 0.
+  /** What stepPhysics() should do while the window is hidden (another tab, another window,
+   * minimized). Only consulted while hidden — an explicit pause (loopState.masterPlay or
+   * loopState.appPlay = false) always halts stepping outright, regardless of this setting.
+   * 'KEEP_RUNNING' = Keep stepping using the real elapsed time (still subject to maxDeltaTime).
+   * 'KEEP_RUNNING_USE_MIN_DELTA' = Keep stepping, but substitute minDeltaTime for the real
+   *   elapsed time so a throttled background tab doesn't try to catch up to real time. Requires: minDeltaTime > 0.
+   * 'PAUSE' = Halt the physics loop (and, via the visibility handler, the whole main loop) while hidden.
    */
   backgroundBehavior: PhysicsBackgroundBehavior;
   isPaused: boolean;
@@ -63,28 +83,57 @@ export type PhysicsState = {
   pauseDurationTotal: number;
   /** Keeps track whether the pause reason is the background behavior (if the app window is hidden) */
   pauseReason: 'BACKGROUND_BEHAVIOR' | null;
-  /** The minimum delta time to be used for backgroundBehaviors 'USE_MIN_DELTA' and 'PAUSE'.
-   * 0 = not in use
+  /** Minimum delta time (seconds) substituted for the real elapsed time when
+   * backgroundBehavior is 'KEEP_RUNNING_USE_MIN_DELTA' and the window is hidden.
+   * 0 = not in use.
    */
   minDeltaTime: number;
-  /** Clamping protects against large delta times even in the foreground (e.g., if rendering stalls).
-   * 0 = not in use
+  /** Upper bound (seconds) on how much elapsed time a single frame may feed into the
+   * fixed-timestep accumulator, guarding against a huge delta after a stall or a
+   * throttled background tab (e.g., if rendering stalls). 0 = not in use.
    */
   maxDeltaTime: number;
-  /** This ensures stability by forcing the engine to run at least 'minSubsteps'
-   * per frame even if the frame rate is extremely high and deltaTime is tiny.
-   * 0 = not in use
+  /** Maximum fixed-timestep sub-steps stepPhysics() may run in a single frame; once hit,
+   * any remaining accumulated time is dropped (not deferred) to prevent an ever-growing
+   * backlog under sustained slowdowns ("spiral of death"). 0 = not in use.
    */
-  /**  */
-  minSubSteps: number;
-  /** Prevent the spiral of death (should usually be the same as timestep) */
   maxSubSteps: number;
   worldStepEnabled: boolean;
   visualizerEnabled: boolean;
   gravity: { x: number; y: number; z: number };
   solverIterations: number;
   internalPgsIterations: number;
-  interpolationEnabled: boolean;
+  /** Render-time smoothing applied on top of the discrete physics-step pose (never written
+   * back into the ECS TRANSFORM, which always stays the authoritative, non-interpolated
+   * pose for gameplay code). Engine default 'NONE'. Both smoothing modes blend the last
+   * snapshots with identical math, at a render clock measured in simulated time and one
+   * snapshot interval behind; they differ only in where that clock comes from.
+   * 'NONE' = the Object3D shows the latest discrete physics-step pose as-is (one render frame
+   *   stale, and it judders whenever the render rate exceeds the physics rate — by design).
+   * 'RENDERER' = closed-loop: the clock advances with the simulation and is gently sped up or
+   *   slowed down toward the snapshots actually received. Worker latency ends up as a constant
+   *   extra lag (plus a jitter margin), late or bunched write-backs are ridden out. Use this
+   *   with WORKER_THREAD. On MAIN_THREAD it converges to 'FIXED_PHYSICS'.
+   * 'FIXED_PHYSICS' = open-loop: the clock is the stepper's own accumulator. Exact and
+   *   frame-reproducible, lowest latency, but MAIN_THREAD only: under WORKER_THREAD the
+   *   snapshots arrive asynchronously, so the pose freezes and jumps (a one-time warning is
+   *   logged in debug builds).
+   * 'EXTRAPOLATION' = reserved, not implemented.
+   */
+  interpolationMode: PhysicsInterpolationMode;
+  /** Intent to use SharedArrayBuffer for the worker-thread hot-path transform buffer.
+   * Actual capability (cross-origin isolation) is resolved at initPhysics() time;
+   * this is the configured intent, not the resolved capability.
+   */
+  useSAB: boolean;
+  /** Fixed capacity for the worker-thread hot-path transform buffer (PhysicsTransformBuffer). */
+  maxBodies: number;
+  /** Whether per-frame step-duration (and, in WORKER_THREAD mode, messaging-latency)
+   * measurement is on. Opt-in, default false: with it off, no extra performance.now() call,
+   * buffer allocation or message field is paid anywhere in the step hot path. Boot-time only
+   * (reload to change), so it also reaches the worker inside the one-off INIT_PHYSICS
+   * payload with no protocol message of its own. */
+  stepStatsEnabled: boolean;
 };
 
 export interface PhysVector {
@@ -154,6 +203,33 @@ export type RayColliderHitAPI = {
   timeOfImpact: number;
 };
 
+export type ShapeCastHitAPI = {
+  /**
+   * The handle of the collider hit by the cast shape.
+   */
+  collider: ColliderAPI;
+  /**
+   * The time-of-impact of the cast shape with the collider.
+   */
+  timeOfImpact: number;
+  /**
+   * The local-space contact point on the cast shape, at the time of impact.
+   */
+  witness1: PhysVector;
+  /**
+   * The local-space contact point on the hit collider's shape, at the time of impact.
+   */
+  witness2: PhysVector;
+  /**
+   * The local-space contact normal on the cast shape, at the time of impact.
+   */
+  normal1: PhysVector;
+  /**
+   * The local-space contact normal on the hit collider's shape, at the time of impact.
+   */
+  normal2: PhysVector;
+};
+
 /**
  * The simulation status of a rigid-body.
  */
@@ -206,6 +282,9 @@ export type OmitSync<T> = {
   [K in keyof T as K extends `${string}Sync` ? never : K]: T[K];
 };
 
+/** Writable numeric array a pose is read into (see RigidBodyAPI.readPoseInto). */
+export type PoseArray = Float32Array | Float64Array | number[];
+
 /**
  * A rigid-body.
  */
@@ -218,6 +297,11 @@ export type RigidBodyAPI = {
   rot: PhysRotation;
   lvel: PhysVector;
   avel: PhysVector;
+  /** Allocation-free read of the pose for per-frame hot paths: writes the same values as
+   * `pos`/`rot` (including a still-pending write in WORKER_THREAD mode) into `out` as
+   * [posX, posY, posZ, rotX, rotY, rotZ, rotW], starting at `offset` (default 0) — instead of
+   * two fresh objects per `pos`/`rot` read. */
+  readPoseInto(out: PoseArray, offset?: number): void;
 
   isBeingDeleted: boolean;
 
@@ -387,6 +471,18 @@ export enum ShapeType {
 }
 
 /**
+ * Everything needed to reconstruct a HeightField collider's surface, as returned by
+ * ColliderAPI.heights(). `heights` is a nrows x ncols matrix in column-major order,
+ * along the shape's local y axis; `scale` sizes the local x/z plane it spans.
+ */
+export type HeightFieldData = {
+  nrows: number;
+  ncols: number;
+  heights: Float32Array;
+  scale: PhysVector;
+};
+
+/**
  * A geometric entity that can be attached to a body so it can be affected
  * by contacts and proximity queries.
  */
@@ -458,6 +554,36 @@ export type ColliderAPI = {
   halfHeightSync(): number;
   halfExtents(): Promise<PhysVector>;
   halfExtentsSync(): PhysVector;
+
+  // --- Geometry (mesh-type shapes) ---
+  // The four accessors below exist so a debug visualizer can rebuild a collider's
+  // wireframe client-side without Rapier's whole-world debugRender() line soup
+  // (Debug/_dbg__PhysicsDebugDraw.ts). They are read-only snapshots of
+  // shape data that never changes after creation, so a consumer fetches them once per
+  // collider — never per frame. MAIN_THREAD returns the live arrays the shape owns:
+  // do not mutate them.
+
+  /** Vertex buffer (3 floats per vertex) of any vertex-based shape — TriMesh,
+   * ConvexPolyhedron, RoundConvexPolyhedron, Polyline, and also Segment/Triangle/
+   * RoundTriangle, whose points are flattened into the same form. Null otherwise. */
+  vertices(): Promise<Float32Array | null>;
+  verticesSync(): Float32Array | null;
+  /** Index buffer that goes with vertices(). Null for shapes that have none, and also
+   * for a ConvexPolyhedron built from an auto-computed convex hull. */
+  indices(): Promise<Uint32Array | null>;
+  indicesSync(): Uint32Array | null;
+  /** Full HeightField description, or null for every other shape type. The bare heights
+   * array is not enough to reconstruct the surface — nrows/ncols give it its grid shape
+   * and scale its extent. */
+  heights(): Promise<HeightFieldData | null>;
+  heightsSync(): HeightFieldData | null;
+  /** Outward normal of a HalfSpace, or null for every other shape type. */
+  normal(): Promise<PhysVector | null>;
+  normalSync(): PhysVector | null;
+  /** Border radius of a RoundCuboid/RoundCylinder/RoundCone/RoundTriangle/
+   * RoundConvexPolyhedron, 0 for every other shape type. */
+  borderRadius(): Promise<number>;
+  borderRadiusSync(): number;
 
   // --- Collision Filtering ---
   collisionGroups(): Promise<InteractionGroupsAPI>;
@@ -658,6 +784,58 @@ export interface TempContactForceEvent {
 }
 
 /**
+ * Serializable (structured-clone-safe) record of a single collision event,
+ * used to cross the worker -> main thread boundary (EVENTS_PUSH).
+ */
+export type CollisionEventRecord = {
+  collider1Id: number;
+  collider2Id: number;
+  started: boolean;
+};
+
+/**
+ * Serializable (structured-clone-safe) record of a single contact-force event,
+ * used to cross the worker -> main thread boundary (EVENTS_PUSH).
+ */
+export type ContactForceEventRecord = {
+  collider1Id: number;
+  collider2Id: number;
+  totalForce: PhysVector;
+  totalForceMagnitude: number;
+  maxForceDirection: PhysVector;
+  maxForceMagnitude: number;
+};
+
+/**
+ * Wraps an eagerly-read ContactForceEventRecord so it can be handed to a
+ * contactForceEventFn with the same TempContactForceEvent shape Rapier's live
+ * (drain-closure-only-valid) event has, on both MAIN_THREAD (wrapping the live
+ * Rapier event's values immediately) and WORKER_THREAD (reconstructed from the
+ * pushed record) code paths.
+ */
+export class ContactForceEventSnapshot implements TempContactForceEvent {
+  constructor(private record: ContactForceEventRecord) {}
+  collider1(): number {
+    return this.record.collider1Id;
+  }
+  collider2(): number {
+    return this.record.collider2Id;
+  }
+  totalForce(): PhysVector {
+    return this.record.totalForce;
+  }
+  totalForceMagnitude(): number {
+    return this.record.totalForceMagnitude;
+  }
+  maxForceDirection(): PhysVector {
+    return this.record.maxForceDirection;
+  }
+  maxForceMagnitude(): number {
+    return this.record.maxForceMagnitude;
+  }
+}
+
+/**
  * A structure responsible for collecting events generated
  * by the physics engine.
  *
@@ -776,43 +954,6 @@ export interface PhysicsHooks {
   ): boolean;
 }
 
-type CollisionEventFn = (
-  collider1: ColliderAPI,
-  collider2: ColliderAPI,
-  started: boolean,
-  physObj1: PhysicsObject,
-  physObj2: PhysicsObject
-) => void;
-
-type ContactForceEventFn = (
-  event: TempContactForceEvent,
-  physObj1: PhysicsObject,
-  physObj2: PhysicsObject
-) => void;
-
-export type PhysicsObject = {
-  id: string;
-  name?: string;
-  mesh?: THREE.Mesh;
-  meshes?: THREE.Mesh[];
-  collider: ColliderAPI | ColliderAPI[];
-  rigidBody?: RigidBodyAPI;
-  hasCollisionEventFn?: boolean | boolean[];
-  collisionEventFn?: CollisionEventFn | CollisionEventFn[];
-  hasContactForceEventFn?: boolean | boolean[];
-  contactForceEventFn?: ContactForceEventFn | ContactForceEventFn[];
-  currentObjectIndex?: number;
-  currentMeshIndex?: number;
-  setTranslation: (
-    translation: { x?: number; y?: number; z?: number; wakeUp?: boolean },
-    meshGroup?: THREE.Group
-  ) => void;
-  setRotation: (
-    rotation: { x?: number; y?: number; z?: number; w?: number; wakeUp?: boolean },
-    meshGroup?: THREE.Group
-  ) => void;
-};
-
 export type RigidBodyParams = {
   /** Type of rigid body */
   rigidType: 'FIXED' | 'DYNAMIC' | 'POS_BASED' | 'VELO_BASED';
@@ -890,7 +1031,10 @@ export type RigidBodyParams = {
   userData?: Record<string, unknown>;
 };
 
-export type ColliderParams = (
+/** The pure shape-geometry portion of {@link ColliderParams} (no placement/physics fields) —
+ * also used standalone by `castShape`/`castShapeSync` to describe the shape being cast, since
+ * a shape cast has no collider of its own to draw its geometry from. */
+export type ShapeParams =
   | {
       /** Means the same thing (alias) */
       type: 'CUBOID' | 'BOX';
@@ -933,8 +1077,9 @@ export type ColliderParams = (
   | {
       type: 'CONVEXHULL';
       vertices?: Float32Array;
-    }
-) & {
+    };
+
+export type ColliderParams = ShapeParams & {
   /** Enabled (default true)  */
   enabled?: boolean;
 
@@ -972,23 +1117,13 @@ export type ColliderParams = (
   hasCollisionEventFn?: boolean;
 
   /** Creates a collision event callback, automatically sets enableCollisionActiveEvents to true for the collider */
-  collisionEventFn?: (
-    collider1: ColliderAPI,
-    collider2: ColliderAPI,
-    started: boolean,
-    physObj1: PhysicsObject,
-    physObj2: PhysicsObject
-  ) => void;
+  collisionEventFn?: (collider1: ColliderAPI, collider2: ColliderAPI, started: boolean) => void;
 
   /** Do not set manually! Whether the collider has a contact force event function or not */
   hasContactForceEventFn?: boolean;
 
   /** Creates a contact force event callback, automatically sets enableContactForceActiveEvents to true for the collider */
-  contactForceEventFn?: (
-    e: TempContactForceEvent,
-    physObj1: PhysicsObject,
-    physObj2: PhysicsObject
-  ) => void;
+  contactForceEventFn?: (e: TempContactForceEvent) => void;
 
   /** User data to be added to the collider */
   userData?: Record<string, unknown>;
@@ -998,6 +1133,150 @@ export type ColliderParams = (
 
   /** Do not set manually! Orientation to set for imported models (custom property "orientation: 'x' | 'z'" defines this). */
   orientation?: PhysRotation;
+};
+
+/**
+ * Joint axes bitmask for GENERIC joints. ORed together to select which axes stay free
+ * (e.g. `JointAxesMask.AngX | JointAxesMask.AngY` frees the X and Y rotational axes).
+ * Mirrors Rapier's own JointAxesMask bit values
+ * (node_modules/@dimforge/rapier3d-compat/dynamics/impulse_joint.d.ts) so app-facing code
+ * never has to import RAPIER directly — consistent with how RigidBodyTypeAPI decouples app
+ * code from raw Rapier enums.
+ */
+export enum JointAxesMask {
+  LinX = 1,
+  LinY = 2,
+  LinZ = 4,
+  AngX = 8,
+  AngY = 16,
+  AngZ = 32,
+}
+
+/** Mirrors Rapier's MotorModel enum as a local string union, decoupling app code from the
+ * raw Rapier enum. Only meaningful for Revolute/Prismatic joints. */
+export type JointMotorModel = 'ACCELERATION_BASED' | 'FORCE_BASED';
+
+/**
+ * Params for creating an impulse joint connecting two rigid bodies (by id). A discriminated
+ * union on `type`, mirroring ColliderParams' shape/style.
+ */
+export type JointParams =
+  | {
+      type: 'FIXED';
+      body1Id: number;
+      body2Id: number;
+      anchor1: PhysVector;
+      frame1: PhysRotation;
+      anchor2: PhysVector;
+      frame2: PhysRotation;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'REVOLUTE';
+      body1Id: number;
+      body2Id: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      axis: PhysVector;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'PRISMATIC';
+      body1Id: number;
+      body2Id: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      axis: PhysVector;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'SPHERICAL';
+      body1Id: number;
+      body2Id: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'ROPE';
+      body1Id: number;
+      body2Id: number;
+      length: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'SPRING';
+      body1Id: number;
+      body2Id: number;
+      restLength: number;
+      stiffness: number;
+      damping: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    }
+  | {
+      type: 'GENERIC';
+      body1Id: number;
+      body2Id: number;
+      anchor1: PhysVector;
+      anchor2: PhysVector;
+      axis: PhysVector;
+      axesMask: number;
+      wakeUp?: boolean;
+      userData?: Record<string, unknown>;
+    };
+
+/**
+ * An impulse joint connecting two rigid bodies (by id). Covers creation, anchors, contacts,
+ * and (for Revolute/Prismatic only) limits and motor config — not every method Rapier
+ * exposes (e.g. frameX1()/frameX2() orientation getters/setters are skipped as low-value
+ * for v1). The limits/motor methods throw when called on a joint that isn't Revolute or
+ * Prismatic (Rapier's UnitImpulseJoint subset).
+ */
+export type JointAPI = {
+  readonly id: number;
+
+  isBeingDeleted: boolean;
+
+  uData: Record<string, unknown>;
+  getUserData(): Promise<Record<string, unknown>>;
+  getUserDataSync(): Record<string, unknown>;
+  setUserData(userData?: Record<string, unknown>, addToExisting?: boolean): void;
+
+  isValid(): Promise<boolean>;
+  isValidSync(): boolean;
+
+  body1Id(): Promise<number>;
+  body1IdSync(): number;
+  body2Id(): Promise<number>;
+  body2IdSync(): number;
+
+  anchor1(): Promise<PhysVector>;
+  anchor1Sync(): PhysVector;
+  anchor2(): Promise<PhysVector>;
+  anchor2Sync(): PhysVector;
+
+  contactsEnabled(): Promise<boolean>;
+  contactsEnabledSync(): boolean;
+  setContactsEnabled(enabled: boolean): void;
+
+  // Revolute/Prismatic (UnitImpulseJoint) only — throws for every other joint type.
+  limitsEnabled(): Promise<boolean>;
+  limitsEnabledSync(): boolean;
+  setLimits(min: number, max: number): void;
+  configureMotorModel(model: JointMotorModel): void;
+  configureMotorVelocity(targetVel: number, factor: number): void;
+  configureMotorPosition(targetPos: number, stiffness: number, damping: number): void;
+  configureMotor(targetPos: number, targetVel: number, stiffness: number, damping: number): void;
 };
 
 /**
@@ -1043,24 +1322,24 @@ export type WorldAPI = {
    * @param filterPredicate - Any collider for which this closure returns `false` will be excluded from the
    *                          debug rendering.
    */
-  // debugRender(
-  //   filterFlags?: QueryFilterFlags,
-  //   filterPredicate?: (collider: Collider) => boolean
-  // ): {
-  //   /**
-  //    * The lines to render. This is a flat array containing all the lines
-  //    * to render. Each line is described as two consecutive point. Each
-  //    * point is described as two (in 2D) or three (in 3D) consecutive
-  //    * floats. For example, in 2D, the array: `[1, 2, 3, 4, 5, 6, 7, 8]`
-  //    * describes the two segments `[[1, 2], [3, 4]]` and `[[5, 6], [7, 8]]`.
-  //    */
-  //   vertices: Float32Array;
-  //   /**
-  //    * The color buffer. There is one color per vertex, and each color
-  //    * has four consecutive components (in RGBA format).
-  //    */
-  //   colors: Float32Array;
-  // };
+  debugRender(
+    filterFlags?: QueryFilterFlags,
+    filterPredicate?: (collider: ColliderAPI) => boolean
+  ): {
+    /**
+     * The lines to render. This is a flat array containing all the lines
+     * to render. Each line is described as two consecutive point. Each
+     * point is described as two (in 2D) or three (in 3D) consecutive
+     * floats. For example, in 2D, the array: `[1, 2, 3, 4, 5, 6, 7, 8]`
+     * describes the two segments `[[1, 2], [3, 4]]` and `[[5, 6], [7, 8]]`.
+     */
+    vertices: Float32Array;
+    /**
+     * The color buffer. There is one color per vertex, and each color
+     * has four consecutive components (in RGBA format).
+     */
+    colors: Float32Array;
+  };
   /**
    * Advance the simulation by one time step.
    *
@@ -1069,7 +1348,7 @@ export type WorldAPI = {
    * @param EventQueue - (optional) structure responsible for collecting
    *   events generated by the physics engine.
    */
-  // step(eventQueue?: EventQueue, hooks?: PhysicsHooks): void;
+  step(eventQueue?: EventQueue, hooks?: PhysicsHooks): void;
   /**
    * Update colliders positions after rigid-bodies moved.
    *
@@ -1229,6 +1508,49 @@ export type WorldAPI = {
     filterPredicate?: (collider: ColliderAPI) => boolean
   ): RayColliderHitAPI | null;
   /**
+   * Casts a shape at a constant linear velocity and retrieve the first collider it hits, similar
+   * to `castRay` but casting a whole shape instead of a single point.
+   *
+   * @param shapePos - The initial position of the shape to cast.
+   * @param shapeRot - The initial rotation of the shape to cast.
+   * @param shapeVel - The constant velocity (direction and magnitude) of the shape to cast.
+   * @param shape - The geometry of the shape being cast.
+   * @param targetDistance - A hit is reported once the shape gets this close to a collider.
+   * @param maxToi - The maximum time-of-impact that can be reported. Effectively limits the cast
+   *   distance to `shapeVel.norm() * maxToi`.
+   * @param stopAtPenetration - If `false`, the linear shape-cast will not stop at the first
+   *   collider that is penetrating the shape at its starting point.
+   * @param groups - Used to filter the colliders that can or cannot be hit.
+   */
+  castShape(
+    shapePos: PhysVector,
+    shapeRot: PhysRotation,
+    shapeVel: PhysVector,
+    shape: ShapeParams,
+    targetDistance: number,
+    maxToi: number,
+    stopAtPenetration: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean
+  ): Promise<ShapeCastHitAPI | null>;
+  castShapeSync(
+    shapePos: PhysVector,
+    shapeRot: PhysRotation,
+    shapeVel: PhysVector,
+    shape: ShapeParams,
+    targetDistance: number,
+    maxToi: number,
+    stopAtPenetration: boolean,
+    filterFlags?: QueryFilterFlags,
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean
+  ): ShapeCastHitAPI | null;
+  /**
    * Find the closest intersection between a ray and the physics world.
    *
    * This also computes the normal at the hit point.
@@ -1377,19 +1699,10 @@ export type WorldAPI = {
    */
   // removeVehicleController(controller: DynamicRayCastVehicleController): void;
   /**
-   * Creates a new impulse joint from the given joint descriptor.
-   *
-   * @param params - The description of the joint to create.
-   * @param parent1 - The first rigid-body attached to this joint.
-   * @param parent2 - The second rigid-body attached to this joint.
-   * @param wakeUp - Should the attached rigid-bodies be awakened?
+   * Creates a new impulse joint connecting two rigid bodies (by id).
    */
-  // createImpulseJoint(
-  //   params: JointData,
-  //   parent1: RigidBody,
-  //   parent2: RigidBody,
-  //   wakeUp: boolean
-  // ): ImpulseJoint;
+  createJoint(params: JointParams): Promise<JointAPI>;
+  createJointSync(params: JointParams): JointAPI;
   /**
    * Creates a new multibody joint from the given joint descriptor.
    *
@@ -1405,11 +1718,10 @@ export type WorldAPI = {
   //   wakeUp: boolean
   // ): MultibodyJoint;
   /**
-   * Retrieves an impulse joint from its handle.
-   *
-   * @param handle - The integer handle of the impulse joint to retrieve.
+   * Retrieves a joint from its id.
    */
-  // getImpulseJoint(handle: ImpulseJointHandle): ImpulseJoint;
+  getJoint(id: number): Promise<JointAPI | undefined>;
+  getJointSync(id: number): JointAPI | undefined;
   /**
    * Retrieves an multibody joint from its handle.
    *
@@ -1419,10 +1731,10 @@ export type WorldAPI = {
   /**
    * Removes the given impulse joint from this physics world.
    *
-   * @param joint - The impulse joint to remove.
+   * @param jointOrId - The joint or id to remove.
    * @param wakeUp - If set to `true`, the rigid-bodies attached by this joint will be awaken.
    */
-  // removeImpulseJoint(joint: ImpulseJoint, wakeUp: boolean): void;
+  removeJoint(jointOrId: JointAPI | number, wakeUp: boolean): void;
   /**
    * Removes the given multibody joint from this physics world.
    *
@@ -1753,6 +2065,28 @@ export type PhysicsUpProtocol =
         loopState: LoopState;
         doNotCreateWorld?: boolean;
       }
+    | {
+        type: PhysicsProtocolType.STEP;
+        /** How many fixed-timestep sub-steps to run before the single write-back
+         * (computed by the main thread's accumulator in stepPhysics()). Default 1. */
+        steps?: number;
+        /** Per sub-step (index = sub-step), the one-way commands the main thread's
+         * APP_PHYSICS_STEP systems issued for it — replayed right before that sub-step. */
+        substepCommands?: PhysicsUpProtocol[][];
+        /** Main thread's performance.now() at postMessage time, only stamped when
+         * PhysicsState.stepStatsEnabled is on. The worker subtracts it from its own clock
+         * to derive the dispatch latency (a dedicated worker shares its owning document's
+         * time origin, so the two clocks are directly comparable). */
+        sentAt?: number;
+      }
+    | {
+        type: PhysicsProtocolType.SET_DEBUG_STATE_TRACKING;
+        /** Full replacement of the tracked set, not a delta. A body's/collider's position
+         * in these arrays IS its slot in the debug-state buffer, so the sender already
+         * knows the mapping and no slot allocator is needed on either side. */
+        rigidBodyIds: number[];
+        colliderIds: number[];
+      }
     // World --------------------------------------
     | {
         type: PhysicsProtocolType.CREATE_WORLD;
@@ -1800,6 +2134,20 @@ export type PhysicsUpProtocol =
         ray: PhysRay;
         maxToi: number;
         solid: boolean;
+        filterFlags?: QueryFilterFlags;
+        filterGroups?: InteractionGroupsAPI;
+        filterExcludeCollider?: number;
+        filterExcludeRigidBody?: number;
+      }
+    | {
+        type: PhysicsProtocolType.WORLD_CAST_SHAPE;
+        shapePos: PhysVector;
+        shapeRot: PhysRotation;
+        shapeVel: PhysVector;
+        shape: ShapeParams;
+        targetDistance: number;
+        maxToi: number;
+        stopAtPenetration: boolean;
         filterFlags?: QueryFilterFlags;
         filterGroups?: InteractionGroupsAPI;
         filterExcludeCollider?: number;
@@ -2091,6 +2439,58 @@ export type PhysicsUpProtocol =
         groups: InteractionGroupsAPI;
       }
     | { type: PhysicsProtocolType.COLL_CONTAINS_POINT; colliderId: number; point: PhysVector }
+    | { type: PhysicsProtocolType.COLL_VERTICES; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_INDICES; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_HEIGHTS; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_NORMAL; colliderId: number }
+    | { type: PhysicsProtocolType.COLL_BORDER_RADIUS; colliderId: number }
+    // Joint --------------------------------------
+    | { type: PhysicsProtocolType.CREATE_JOINT; params: JointParams }
+    | { type: PhysicsProtocolType.CREATE_JOINTS; params: JointParams[] }
+    | { type: PhysicsProtocolType.DELETE_JOINT; id: number; wakeUp?: boolean }
+    | { type: PhysicsProtocolType.DELETE_JOINTS; ids: number[]; wakeUps?: boolean[] }
+    | { type: PhysicsProtocolType.JOINT_IS_VALID; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_BODY1_ID; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_BODY2_ID; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_ANCHOR1; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_ANCHOR2; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_SET_CONTACTS_ENABLED; jointId: number; enabled: boolean }
+    | { type: PhysicsProtocolType.JOINT_CONTACTS_ENABLED; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_LIMITS_ENABLED; jointId: number }
+    | { type: PhysicsProtocolType.JOINT_SET_LIMITS; jointId: number; min: number; max: number }
+    | {
+        type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR_MODEL;
+        jointId: number;
+        model: JointMotorModel;
+      }
+    | {
+        type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR_VELOCITY;
+        jointId: number;
+        targetVel: number;
+        factor: number;
+      }
+    | {
+        type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR_POSITION;
+        jointId: number;
+        targetPos: number;
+        stiffness: number;
+        damping: number;
+      }
+    | {
+        type: PhysicsProtocolType.JOINT_CONFIGURE_MOTOR;
+        jointId: number;
+        targetPos: number;
+        targetVel: number;
+        stiffness: number;
+        damping: number;
+      }
+    | { type: PhysicsProtocolType.JOINT_GET_USERDATA; jointId: number }
+    | {
+        type: PhysicsProtocolType.JOINT_SET_USERDATA;
+        jointId: number;
+        userData: Record<string, unknown>;
+        addToExisting?: boolean;
+      }
   ) & { requestId?: number; isOneWay?: boolean };
 
 /** Physics worker DOWN protocol (from worker to main thread) */
@@ -2110,7 +2510,19 @@ export type PhysicsDownProtocol =
         worldCreated: boolean;
       }
     // World --------------------------------------
-    | { type: PhysicsProtocolType.CREATE_WORLD; worldCreated: boolean }
+    | {
+        type: PhysicsProtocolType.CREATE_WORLD;
+        worldCreated: boolean;
+        /** Which hot-path transport the worker resolved to for this world. */
+        transportMode?: 'SHARED_MEMORY' | 'MESSAGE_BATCH';
+        /** Only present (and only a SharedArrayBuffer) when transportMode is 'SHARED_MEMORY'. */
+        buffer?: ArrayBuffer | SharedArrayBuffer;
+        /** Step-statistics scratch buffer (p027), only present when transportMode is
+         * 'SHARED_MEMORY' AND PhysicsState.stepStatsEnabled is on. See
+         * PHYSICS_STEP_STATS_SLOTS for its layout. In MESSAGE_BATCH mode the same numbers
+         * ride on TRANSFORMS_PUSH instead, so no buffer is handed over. */
+        statsBuffer?: SharedArrayBuffer;
+      }
     | { type: PhysicsProtocolType.DELETE_WORLD; worldDeleted: boolean }
     | {
         type: PhysicsProtocolType.WORLD_GET_GRAVITY;
@@ -2139,6 +2551,10 @@ export type PhysicsDownProtocol =
         hit: (Omit<RayColliderHitAPI, 'collider'> & { collider: number }) | null;
       }
     | {
+        type: PhysicsProtocolType.WORLD_CAST_SHAPE;
+        hit: (Omit<ShapeCastHitAPI, 'collider'> & { collider: number }) | null;
+      }
+    | {
         type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL;
         intersection: (Omit<RayColliderIntersectionAPI, 'collider'> & { collider: number }) | null;
       }
@@ -2150,10 +2566,20 @@ export type PhysicsDownProtocol =
     | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH; colliderIds: number[] }
     | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR; isIntersecting: boolean }
     // Rigid body --------------------------------------
-    | { type: PhysicsProtocolType.CREATE_RIGID_BODY; id: number }
-    | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; ids: number[] }
-    | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number; colliderIds: number[] }
-    | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; ids: number[]; colliderIds: number[] }
+    | { type: PhysicsProtocolType.CREATE_RIGID_BODY; id: number; slot: number }
+    | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; ids: number[]; slots: number[] }
+    | {
+        type: PhysicsProtocolType.DELETE_RIGID_BODY;
+        id: number;
+        colliderIds: number[];
+        jointIds: number[];
+      }
+    | {
+        type: PhysicsProtocolType.DELETE_RIGID_BODIES;
+        ids: number[];
+        colliderIds: number[];
+        jointIds: number[];
+      }
     | { type: PhysicsProtocolType.RIGID_GET_USERDATA; userData: Record<string, unknown> }
     | { type: PhysicsProtocolType.RIGID_IS_VALID; isValid: boolean }
     | { type: PhysicsProtocolType.RIGID_DOMINANCE_GROUP; dominanceGroup: number }
@@ -2216,6 +2642,54 @@ export type PhysicsDownProtocol =
     | { type: PhysicsProtocolType.COLL_COLLISION_GROUPS; groups: InteractionGroupsAPI }
     | { type: PhysicsProtocolType.COLL_SOLVER_GROUPS; groups: InteractionGroupsAPI }
     | { type: PhysicsProtocolType.COLL_CONTAINS_POINT; isInside: boolean }
+    | { type: PhysicsProtocolType.COLL_VERTICES; vertices: Float32Array | null }
+    | { type: PhysicsProtocolType.COLL_INDICES; indices: Uint32Array | null }
+    | { type: PhysicsProtocolType.COLL_HEIGHTS; heights: HeightFieldData | null }
+    | { type: PhysicsProtocolType.COLL_NORMAL; normal: PhysVector | null }
+    | { type: PhysicsProtocolType.COLL_BORDER_RADIUS; borderRadius: number }
+    // Joint --------------------------------------
+    | { type: PhysicsProtocolType.CREATE_JOINT; id: number }
+    | { type: PhysicsProtocolType.CREATE_JOINTS; ids: number[] }
+    | { type: PhysicsProtocolType.DELETE_JOINT; id: number }
+    | { type: PhysicsProtocolType.DELETE_JOINTS; ids: number[] }
+    | { type: PhysicsProtocolType.JOINT_IS_VALID; isValid: boolean }
+    | { type: PhysicsProtocolType.JOINT_BODY1_ID; body1Id: number }
+    | { type: PhysicsProtocolType.JOINT_BODY2_ID; body2Id: number }
+    | { type: PhysicsProtocolType.JOINT_ANCHOR1; anchor1: PhysVector }
+    | { type: PhysicsProtocolType.JOINT_ANCHOR2; anchor2: PhysVector }
+    | { type: PhysicsProtocolType.JOINT_CONTACTS_ENABLED; contactsEnabled: boolean }
+    | { type: PhysicsProtocolType.JOINT_LIMITS_ENABLED; limitsEnabled: boolean }
+    | { type: PhysicsProtocolType.JOINT_GET_USERDATA; userData: Record<string, unknown> }
+    // Debug state tracking (see SET_DEBUG_STATE_TRACKING) ----
+    | {
+        type: PhysicsProtocolType.SET_DEBUG_STATE_TRACKING;
+        /** Which transport the debug-state buffer resolved to. Mirrors CREATE_WORLD's
+         * transform-buffer resolution, decided once when the buffer is first allocated. */
+        transportMode: 'SHARED_MEMORY' | 'MESSAGE_BATCH';
+        /** Only present (and only a SharedArrayBuffer) on the enable that allocated the
+         * buffer, and only in 'SHARED_MEMORY' mode. */
+        buffer?: SharedArrayBuffer;
+      }
+    | { type: PhysicsProtocolType.DEBUG_STATE_PUSH; buffer: ArrayBuffer }
+    // Transforms hot path (unsolicited push, MESSAGE_BATCH fallback only) ----
+    | {
+        type: PhysicsProtocolType.TRANSFORMS_PUSH;
+        buffer: ArrayBuffer;
+        /** Step statistics (p027), only populated when PhysicsState.stepStatsEnabled is on.
+         * MESSAGE_BATCH mode only — the SHARED_MEMORY transport has no per-step message, so
+         * there it uses the CREATE_WORLD statsBuffer instead. The three stay separate and
+         * are never summed: stepDuration is the pure simulation cost, the other two bracket
+         * it as messaging overhead. */
+        stepDuration?: number;
+        dispatchMs?: number;
+        stepEndAt?: number;
+      }
+    // Events (unsolicited push, only sent when at least one event occurred that step) ----
+    | {
+        type: PhysicsProtocolType.EVENTS_PUSH;
+        collisions: CollisionEventRecord[];
+        contactForces: ContactForceEventRecord[];
+      }
     // Error --------------------------------------
     | {
         type: PhysicsProtocolType.ERROR;
@@ -2236,6 +2710,11 @@ export type RestoreSnapshotResponse = PhysicsResponse<PhysicsProtocolType.RESTOR
 export type ErrorResponse = PhysicsResponse<PhysicsProtocolType.ERROR>;
 // World
 export type CreateWorldResponse = PhysicsResponse<PhysicsProtocolType.CREATE_WORLD>;
+export type TransformsPushMessage = PhysicsResponse<PhysicsProtocolType.TRANSFORMS_PUSH>;
+export type EventsPushMessage = PhysicsResponse<PhysicsProtocolType.EVENTS_PUSH>;
+export type DebugStatePushMessage = PhysicsResponse<PhysicsProtocolType.DEBUG_STATE_PUSH>;
+export type SetDebugStateTrackingResponse =
+  PhysicsResponse<PhysicsProtocolType.SET_DEBUG_STATE_TRACKING>;
 export type DeleteWorldResponse = PhysicsResponse<PhysicsProtocolType.DELETE_WORLD>;
 export type WorldGravityResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GET_GRAVITY>;
 export type WorldTimestepResponse = PhysicsResponse<PhysicsProtocolType.WORLD_GET_TIMESTEP>;
@@ -2248,6 +2727,7 @@ export type WorldMaxCcdSubstepsResponse =
   PhysicsResponse<PhysicsProtocolType.WORLD_GET_CCD_SUBSTEPS>;
 // World query
 export type WorldCastRayResponse = PhysicsResponse<PhysicsProtocolType.WORLD_CAST_RAY>;
+export type WorldCastShapeResponse = PhysicsResponse<PhysicsProtocolType.WORLD_CAST_SHAPE>;
 export type WorldCastRayAndGetNormalResponse =
   PhysicsResponse<PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL>;
 export type WorldIntersectionsWithRayResponse =
@@ -2336,6 +2816,25 @@ export type CollCollisionGroupsResponse =
   PhysicsResponse<PhysicsProtocolType.COLL_COLLISION_GROUPS>;
 export type CollSolverGroupsResponse = PhysicsResponse<PhysicsProtocolType.COLL_SOLVER_GROUPS>;
 export type CollContainsPointResponse = PhysicsResponse<PhysicsProtocolType.COLL_CONTAINS_POINT>;
+export type CollVerticesResponse = PhysicsResponse<PhysicsProtocolType.COLL_VERTICES>;
+export type CollIndicesResponse = PhysicsResponse<PhysicsProtocolType.COLL_INDICES>;
+export type CollHeightsResponse = PhysicsResponse<PhysicsProtocolType.COLL_HEIGHTS>;
+export type CollNormalResponse = PhysicsResponse<PhysicsProtocolType.COLL_NORMAL>;
+export type CollBorderRadiusResponse = PhysicsResponse<PhysicsProtocolType.COLL_BORDER_RADIUS>;
+// Joint
+export type CreateJointResponse = PhysicsResponse<PhysicsProtocolType.CREATE_JOINT>;
+export type CreateJointsResponse = PhysicsResponse<PhysicsProtocolType.CREATE_JOINTS>;
+export type DeleteJointResponse = PhysicsResponse<PhysicsProtocolType.DELETE_JOINT>;
+export type DeleteJointsResponse = PhysicsResponse<PhysicsProtocolType.DELETE_JOINTS>;
+export type JointIsValidResponse = PhysicsResponse<PhysicsProtocolType.JOINT_IS_VALID>;
+export type JointBody1IdResponse = PhysicsResponse<PhysicsProtocolType.JOINT_BODY1_ID>;
+export type JointBody2IdResponse = PhysicsResponse<PhysicsProtocolType.JOINT_BODY2_ID>;
+export type JointAnchor1Response = PhysicsResponse<PhysicsProtocolType.JOINT_ANCHOR1>;
+export type JointAnchor2Response = PhysicsResponse<PhysicsProtocolType.JOINT_ANCHOR2>;
+export type JointContactsEnabledResponse =
+  PhysicsResponse<PhysicsProtocolType.JOINT_CONTACTS_ENABLED>;
+export type JointLimitsEnabledResponse = PhysicsResponse<PhysicsProtocolType.JOINT_LIMITS_ENABLED>;
+export type JointGetUserDataResponse = PhysicsResponse<PhysicsProtocolType.JOINT_GET_USERDATA>;
 
 export enum PhysicsProtocolType {
   ERROR = 0,
@@ -2345,8 +2844,21 @@ export enum PhysicsProtocolType {
   TAKE_SNAPSHOT = 2,
   RESTORE_SNAPSHOT = 3,
   STEP = 4,
+  /** Replaces the set of rigid bodies/colliders whose live state the worker mirrors into
+   * the debug-state buffer after every step. Empty sets = tracking off, nothing allocated
+   * and nothing written. WORKER_THREAD only — MAIN_THREAD reads the *Sync state getters
+   * directly. Lives in the ENGINE range (not WORLD) because it needs the worker's own
+   * engAPI/buffer module state, which the WORLD switchboard doesn't receive. */
+  SET_DEBUG_STATE_TRACKING = 5,
   CREATE_WORLD = 100,
   DELETE_WORLD = 101,
+  /** Worker -> main thread unsolicited push of the hot-path transform buffer (MESSAGE_BATCH fallback only). */
+  TRANSFORMS_PUSH = 102,
+  /** Worker -> main thread unsolicited push of collision/contact-force events, only sent when at least one occurred that step. */
+  EVENTS_PUSH = 103,
+  /** Unsolicited per-step push of the debug-state buffer (MESSAGE_BATCH fallback only,
+   * and only while SET_DEBUG_STATE_TRACKING has a non-empty set). */
+  DEBUG_STATE_PUSH = 104,
 
   // WORLD >= 200 && WORLD < 400
   WORLD_GET_GRAVITY = 200,
@@ -2370,6 +2882,7 @@ export enum PhysicsProtocolType {
   WORLD_CONTACT_PAIRS_WITH = 303,
   WORLD_INTERSECTION_PAIRS_WITH = 304,
   WORLD_INTERSECTION_PAIR = 305,
+  WORLD_CAST_SHAPE = 306,
 
   // RIGID >= 400 && RIGID < 600
   CREATE_RIGID_BODY = 400,
@@ -2483,4 +2996,30 @@ export enum PhysicsProtocolType {
   COLL_SOLVER_GROUPS = 634,
   COLL_SET_SOLVER_GROUPS = 635,
   COLL_CONTAINS_POINT = 636,
+  COLL_VERTICES = 637,
+  COLL_INDICES = 638,
+  COLL_HEIGHTS = 639,
+  COLL_NORMAL = 640,
+  COLL_BORDER_RADIUS = 641,
+
+  // JOINT >= 800 && JOINT < 1000
+  CREATE_JOINT = 800,
+  CREATE_JOINTS = 801,
+  DELETE_JOINT = 802,
+  DELETE_JOINTS = 803,
+  JOINT_IS_VALID = 804,
+  JOINT_BODY1_ID = 805,
+  JOINT_BODY2_ID = 806,
+  JOINT_ANCHOR1 = 807,
+  JOINT_ANCHOR2 = 808,
+  JOINT_SET_CONTACTS_ENABLED = 809,
+  JOINT_CONTACTS_ENABLED = 810,
+  JOINT_LIMITS_ENABLED = 811,
+  JOINT_SET_LIMITS = 812,
+  JOINT_CONFIGURE_MOTOR_MODEL = 813,
+  JOINT_CONFIGURE_MOTOR_VELOCITY = 814,
+  JOINT_CONFIGURE_MOTOR_POSITION = 815,
+  JOINT_CONFIGURE_MOTOR = 816,
+  JOINT_GET_USERDATA = 817,
+  JOINT_SET_USERDATA = 818,
 }

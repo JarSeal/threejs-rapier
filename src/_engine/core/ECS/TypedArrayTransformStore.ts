@@ -9,9 +9,9 @@ export const TRANSFORM_FIELD_COUNT = 10;
  * Allocates the backing buffer for a TypedArrayTransformStore. A plain
  * `ArrayBuffer` today — kept as a factory so a future worker-based Physics
  * API can swap in a `SharedArrayBuffer` later without touching the store's
- * field layout (see docs/plans/ecs-typed-arrays-feature.md §7). `useSAB` is
- * never passed `true` yet; cross-origin isolation (COOP/COEP) is required
- * for `SharedArrayBuffer` and isn't configured anywhere in this project.
+ * field layout. `useSAB` is never passed `true` yet (worker-thread physics
+ * uses its own Physics/PhysicsTransformBuffer.ts instead); `SharedArrayBuffer`
+ * requires cross-origin isolation (COOP/COEP).
  */
 export function createTransformBuffer(
   maxEntities: number,

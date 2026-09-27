@@ -37,6 +37,9 @@ export interface InstancedMeshPoolComponentData {
 }
 
 export interface CreateInstancedMeshPoolOptions {
+  /** Used to create one dedicated ECS entity that owns `mesh` itself (distinct from the
+   * per-instance slot entities `spawn()` creates) — see `InstancedMeshPool.mesh`'s doc comment. */
+  world: ECSWorld;
   geometry: THREE.BufferGeometry;
   /** A material array (with a matching-length `geometry.groups`) works the same as on a plain `Mesh` — see `generateTreeGeometry`'s `materialGroups`. */
   material: THREE.Material | THREE.Material[];
@@ -44,11 +47,19 @@ export interface CreateInstancedMeshPoolOptions {
   maxInstances: number;
   castShadow?: boolean;
   receiveShadow?: boolean;
+  /** Passed to the mesh's own owning entity (e.g. to mark a long-lived pool `persistent`). */
+  entityOpts?: CoreEntityOpts;
 }
 
 export interface InstancedMeshPool {
-  /** Not added to any scene yet — add `pool.mesh` to the scene yourself (mirrors `bakeScatterToInstancedMesh`, which likewise never touches the scene graph). */
+  /** Not added to any scene yet — add `pool.mesh` to the scene yourself (mirrors `bakeScatterToInstancedMesh`, which likewise never touches the scene graph). `mesh` is still owned by `meshEntityId`
+   * (holding `OBJECT3D`/`TAG_IS_MESH`, like any plain mesh entity), so `MeshManager`'s existing
+   * `TAG_IS_MESH` `onDeleteEntity` hook removes it from wherever it was added and disposes it once
+   * that entity is deleted (e.g. by `ECSWorld.clearNonPersistent()` on scene switch) — without this,
+   * the shared mesh would silently outlive every scene that created it. */
   mesh: THREE.InstancedMesh;
+  /** The entity that owns `mesh` for lifecycle purposes (see `mesh`'s doc comment above). */
+  meshEntityId: number;
   /**
    * Spawns one ECS entity per placement, holding a slot index into `mesh` (the pattern used by
    * `src/_engine/utils/ECSStressTest.ts`'s instanced mode) — per-instance-addressable via ECS,
@@ -72,12 +83,22 @@ const _matrix = new THREE.Matrix4();
 export const createInstancedMeshPool = (
   opts: CreateInstancedMeshPoolOptions
 ): InstancedMeshPool => {
-  const { geometry, material, maxInstances, castShadow = true, receiveShadow = true } = opts;
+  const { world, geometry, material, maxInstances, castShadow = true, receiveShadow = true } = opts;
 
   const mesh = new THREE.InstancedMesh(geometry, material, maxInstances);
   mesh.castShadow = castShadow;
   mesh.receiveShadow = receiveShadow;
   mesh.count = 0;
+
+  // Only `CoreComponentType` (never `ComponentType` from `ECSCoreComponents.ts`) per this file's
+  // top-of-file import note — same string keys ('CORE_OBJECT3D'/'CORE_TAG_IS_MESH'), so
+  // `MeshManager`'s globally-registered `TAG_IS_MESH` hook still fires for this entity.
+  const meshEntityId = world.createEntity(opts.entityOpts);
+  world.addComponent(meshEntityId, CoreComponentType.OBJECT3D as any, {
+    value: mesh,
+    _lastVersion: -1,
+  });
+  world.addComponent(meshEntityId, CoreComponentType.TAG_IS_MESH as any, true);
 
   let nextIndex = 0;
 
@@ -133,7 +154,7 @@ export const createInstancedMeshPool = (
     return entityIds;
   };
 
-  return { mesh, spawn };
+  return { mesh, meshEntityId, spawn };
 };
 
 /** Bakes each pooled entity's `Transform` into its `InstancedMesh` slot, skipping instances whose transform hasn't changed since the last bake (see `InstancedMeshSlotData._lastVersion`, mirroring `object3DSyncSystem`'s version-diff). */

@@ -117,9 +117,21 @@ export default defineConfig({
     minify: true,
     reportCompressedSize: true,
   },
+  optimizeDeps: {
+    // Deps only the assets worker imports: Vite's dep scan doesn't follow `?worker` imports, so
+    // without these, the first dev run re-optimizes when the worker starts and reloads the page
+    include: ['three/addons/loaders/HDRLoader.js'],
+  },
   server: {
     fs: {
       strict: false,
+    },
+    // Required for self.crossOriginIsolated/SharedArrayBuffer to be available at all in
+    // dev, so worker-thread physics can use the SHARED_MEMORY hot-path transport instead
+    // of automatically falling back to MESSAGE_BATCH (see PhysicsTransformBuffer.ts).
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },
   plugins: [

@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "AMBIENT",
+    "color": "#ffffff",
+    "intensity": 0.4
+  },
+  "entityOpts": {
+    "appId": "scene01Ambient",
+    "debugData": {
+      "name": "Scene01 ambient light",
+      "description": "Ambient light shared by scene01.ts and scene01_v2.ts."
+    }
+  }
+}

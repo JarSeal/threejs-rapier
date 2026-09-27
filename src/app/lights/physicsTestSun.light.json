@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "DIRECTIONAL",
+    "color": "#fff2d9",
+    "intensity": 3,
+    "position": { "x": 20, "y": 30, "z": 15 },
+    "targetPos": { "x": 0, "y": 0, "z": 0 },
+    "castShadow": true,
+    "shadowPreset": "HIGH",
+    "shadowCameraNearFar": [1, 80],
+    "shadowCameraFrustum": [-30, 30, 30, -30],
+    "shadowIntensity": 0.8
+  },
+  "entityOpts": {
+    "appId": "physicsTestSun",
+    "debugData": {
+      "name": "Physics test sun",
+      "description": "Directional shadow-casting sun for the physics API test scene. Its shadow frustum is sized to the 50x50 ground plane, not larger — oversizing it would degrade shadow resolution everywhere (see largeWorldSun.light.json for the same pattern)."
+    }
+  }
+}

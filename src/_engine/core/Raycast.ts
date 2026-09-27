@@ -142,6 +142,55 @@ export const castRayFromAngle = <TIntersected extends THREE.Object3D = THREE.Obj
   return intersects;
 };
 
+const screenPos = new THREE.Vector2();
+
+/**
+ * Casts a ray from a screen position through the camera (picking), e.g. for mouse/touch input.
+ * @param objects (THREE.Object3D | THREE.Object3D[]) object(s) to test against
+ * @param ndcX (number) normalized device coordinate x, -1 (left) .. 1 (right)
+ * @param ndcY (number) normalized device coordinate y, -1 (bottom) .. 1 (top)
+ * @param camera (THREE.Camera) the camera the screen position is relative to (usually the one rendering)
+ * @param opts ({@link Opts}) optional ray cast options (directionForAngle is ignored)
+ * @returns (Array<THREE.Intersection>) intersections sorted by distance, closest first
+ */
+export const castRayFromScreenPosition = <TIntersected extends THREE.Object3D = THREE.Object3D>(
+  objects: THREE.Object3D | THREE.Object3D[],
+  ndcX: number,
+  ndcY: number,
+  camera: THREE.Camera,
+  opts?: Opts<TIntersected>
+): Array<THREE.Intersection<TIntersected>> => {
+  const {
+    startLength,
+    endLength,
+    perIntersectFn,
+    optionalTargetArr,
+    recursive,
+    helperId,
+    helperColor,
+  } = opts || {};
+  // Input events can arrive before initMainLoop has called initRayCasting
+  if (!ray) ray = new THREE.Raycaster();
+  ray.setFromCamera(screenPos.set(ndcX, ndcY), camera);
+  const intersects = getRayCastIntersects({
+    ray,
+    objects,
+    startLength,
+    endLength,
+    perIntersectFn,
+    optionalTargetArr,
+    recursive,
+  });
+  useDebug(debugGUI)?._drawRayHelper({
+    from: ray.ray.origin,
+    to: ray.ray.direction,
+    endLength,
+    helperId,
+    helperColor,
+  });
+  return intersects;
+};
+
 // Debug
 type RaycastGUIModule = typeof import('../core/Debug/_dbg__Raycast');
 let debugGUI: DebugModuleRef<RaycastGUIModule> | null = null;

@@ -1,8 +1,10 @@
 import * as THREE from 'three/webgpu';
 import { Pane } from 'tweakpane';
 import { TCMP } from '../../utils/CMP';
+import { ECSSystemStage } from '../../../AppECSRegistry';
 import { IS_DEBUG_ENV } from '../Config';
-import { getRootScene } from '../Scene';
+import { ECSWorld } from '../ECS';
+import { createLines, writePolyline, type LineObject } from '../LineManager';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerPane, getDrawerState } from '../../debug/DebuggerGUI';
@@ -12,9 +14,12 @@ import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 const DEFAULT_HELPER_COLOR = '#ff0000';
 const DEFAULT_MAX_HELPER_LENGTH = 1000;
 const LS_KEY = 'debugRayCast';
-let helperLineGeom: THREE.BufferGeometry | null = null;
-let helperIds: string[] = [];
-let drawnHelperIds: string[] = [];
+/** One single-segment line per helper id, refilled on every draw. */
+const rayHelpers = new Map<string, { line: LineObject; color: THREE.ColorRepresentation }>();
+/** Helper ids drawn since the last cleanup; the rest are disposed by it. */
+const drawnHelperIds = new Set<string>();
+const rayEnd = new THREE.Vector3();
+const rayPoints: THREE.Vector3Like[] = [rayEnd, rayEnd];
 let rayCastDebugGUI: Pane | null = null;
 let rayCastState = {
   showAllRayDebugHelpers: false,
@@ -62,8 +67,18 @@ let averageLongIntervalText = '';
 
 export const _initRayCastingDebugger = () => {
   if (IS_DEBUG_ENV) {
-    helperLineGeom = new THREE.BufferGeometry();
     createDebugControls();
+    // After rendering (and not on frames the FPS limiter skips): drop the helpers of rays
+    // that weren't cast this frame
+    ECSWorld.registerPlugin((world) => {
+      world.addSystem(
+        ECSSystemStage.LATE_MAIN,
+        'rayHelperCleanupSystem',
+        _cleanUpRayHelpers,
+        -1000
+      );
+      return world;
+    });
   }
 };
 
@@ -82,63 +97,53 @@ export const _drawRayHelper = ({
 }) => {
   countStats();
   if (!helperId || !rayCastState.showAllRayDebugHelpers) return;
-  const rootScene = getRootScene() as THREE.Scene;
-  if (helperIds.includes(helperId)) {
-    // Update helper
-    const rayLine = rootScene.children.find(
-      (line) => line.userData.helperId === helperId
-    ) as THREE.Line;
-    rayLine.geometry.setFromPoints([
-      from,
-      from.clone().add(to.clone().multiplyScalar(endLength || DEFAULT_MAX_HELPER_LENGTH)),
-    ]);
-  } else {
-    // Create the helper
-    const geo = (helperLineGeom as THREE.BufferGeometry)
-      .clone()
-      .setFromPoints([
-        from,
-        from.clone().add(to.clone().multiplyScalar(endLength || DEFAULT_MAX_HELPER_LENGTH)),
-      ]);
-    const rayLine = new THREE.Line(
-      geo,
-      new THREE.LineBasicMaterial({ color: helperColor || DEFAULT_HELPER_COLOR })
-    );
-    rayLine.userData.isRayHelper = true;
-    rayLine.userData.helperId = helperId;
-    rootScene.add(rayLine);
+
+  const color = helperColor || DEFAULT_HELPER_COLOR;
+  let helper = rayHelpers.get(helperId);
+  if (!helper) {
+    helper = {
+      line: createLines({
+        name: `rayHelper_${helperId}`,
+        capacity: 1,
+        growth: 'FIXED',
+        color,
+        // This module disposes them (cleanup, deleteAllRayHelpers), not the scene switch
+        persistent: true,
+      }),
+      color,
+    };
+    rayHelpers.set(helperId, helper);
+  } else if (helper.color !== color) {
+    helper.color = color;
+    helper.line.setColor(color);
   }
-  helperIds.push(helperId);
-  drawnHelperIds.push(helperId);
+
+  rayEnd
+    .copy(to)
+    .multiplyScalar(endLength || DEFAULT_MAX_HELPER_LENGTH)
+    .add(from);
+  rayPoints[0] = from;
+  writePolyline(helper.line.beginWrite(), rayPoints);
+  helper.line.endWrite();
+  drawnHelperIds.add(helperId);
 };
 
+/** Once per rendered frame: disposes the helpers of rays that weren't cast this frame, and
+ * refreshes the statistics. */
 export const _cleanUpRayHelpers = () => {
-  const lines = (getRootScene() as THREE.Scene).children.filter(
-    (line) => line.userData.isRayHelper
-  );
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] as THREE.Line;
-    if (!drawnHelperIds.includes(line.userData.helperId)) {
-      helperIds = helperIds.filter((id) => id !== line.userData.helperId);
-      line.geometry.dispose();
-      line.removeFromParent();
-    }
+  for (const [helperId, helper] of rayHelpers) {
+    if (drawnHelperIds.has(helperId)) continue;
+    helper.line.dispose();
+    rayHelpers.delete(helperId);
   }
-  helperIds = [...drawnHelperIds];
-  drawnHelperIds = [];
+  drawnHelperIds.clear();
   _updateStats();
 };
 
 export const _deleteAllRayHelpers = () => {
-  const lines = (getRootScene() as THREE.Scene).children.filter(
-    (line) => line.userData.isRayHelper
-  );
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] as THREE.Line;
-    line.geometry.dispose();
-    line.removeFromParent();
-  }
-  helperIds = [];
+  for (const helper of rayHelpers.values()) helper.line.dispose();
+  rayHelpers.clear();
+  drawnHelperIds.clear();
 };
 
 export const _toggleAllRayDebugHelpers = (show?: boolean) => {

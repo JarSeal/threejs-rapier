@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { addScenePhysicsLooper, deleteScenePhysicsLooper } from '../../core/PhysicsRapier';
+import type { ECSWorld } from '../../core/ECS';
+import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 import { XYZObject } from '../commontTypes';
 import { smoothDampVec3 } from '../helpers';
 
@@ -33,6 +34,38 @@ type FollowObjectCameraParams = {
   getMouseMoveInput?: () => { x: number; y: number };
 };
 
+type FollowRigState = {
+  tick: (dt: number) => void;
+};
+
+// --- Shared ECS system (design decision: camera-follow smoothing is one system, registered
+// once, not one addScenePhysicsLooper registration per rig instance) --------------------------
+const activeRigs = new Map<string, FollowRigState>();
+
+const followObjectCameraRigSystemFn = (_world: ECSWorld, dt: number) => {
+  for (const rig of activeRigs.values()) rig.tick(dt);
+};
+
+/** Registers the single shared camera-follow system on `world`, driving every active
+ * createFollowObjectCameraRig() instance's smoothing. It reads `targetMesh.position`, i.e. the
+ * rendered pose, so it runs at APP_RENDER_SYNC with APP_RENDER_SYNC_ORDER.POSE_CONSUMERS: after
+ * physicsInterpolationSystem has written this frame's final (possibly interpolated) pose into
+ * the Object3D, and before frustum culling reads the main camera. At APP_LOGIC the mesh would
+ * still hold the previous frame's discrete pose, so the camera would chase a pose that differs
+ * from the one being drawn. An explicit order is required: this registers before
+ * registerPhysicsManager, so at the default order 0 it would still run first.
+ * Call this once per world before creating any camera rigs on it — mirrors
+ * toolkit/ecs/effects/FollowTool.ts's registerFollowToolEffect(world) convention. */
+export const registerFollowObjectCameraRigSystem = (world: ECSWorld) => {
+  world.addSystem(
+    ECSSystemStage.APP_RENDER_SYNC,
+    'followObjectCameraRigSystem',
+    followObjectCameraRigSystemFn,
+    APP_RENDER_SYNC_ORDER.POSE_CONSUMERS
+  );
+  return world;
+};
+
 export const createFollowObjectCameraRig = (params: FollowObjectCameraParams) => {
   const {
     id,
@@ -50,6 +83,7 @@ export const createFollowObjectCameraRig = (params: FollowObjectCameraParams) =>
   const idealPos = new THREE.Vector3();
   const velocity = new THREE.Vector3(0, 0, 0); // For dampening (if using smoothDamp)
   const targetHeightVector = new THREE.Vector3(0, targetHeight, 0);
+  const sphericalOffset = new THREE.Vector3(); // mouse-look offset, rewritten every tick
 
   const offsetObj = offsetParam || DEFAULT_OFFSET;
   const offset = new THREE.Vector3(offsetObj.x, offsetObj.y, offsetObj.z);
@@ -85,142 +119,138 @@ export const createFollowObjectCameraRig = (params: FollowObjectCameraParams) =>
     spherical,
   };
 
-  // Register a looper that runs AFTER physics
-  // This is critical to prevent "jitter" where the camera updates before the physics body moves.
-  if (smoothType === 'LERP') {
-    // LERP smoothing
-    addScenePhysicsLooper(createLooperId(id), undefined, (dt) => {
-      // Safety check for NaN DT (on first frame or pause)
-      if (dt <= 0.0001) return;
+  const tick =
+    smoothType === 'LERP'
+      ? (dt: number) => {
+          // Safety check for NaN DT (on first frame or pause)
+          if (dt <= 0.0001) return;
 
-      if (getMouseMoveInput) {
-        // Handle possible mouse move input
-        // -------------------
+          if (getMouseMoveInput) {
+            // Handle possible mouse move input
+            // -------------------
 
-        const mouseDelta = getMouseMoveInput();
+            const mouseDelta = getMouseMoveInput();
 
-        // Horizontal (Theta) - Rotate around Y
-        // Subtract to rotate "intuitively" (drag background) or add for inverted
-        spherical.theta -= mouseDelta.x * sensitivity;
+            // Horizontal (Theta) - Rotate around Y
+            // Subtract to rotate "intuitively" (drag background) or add for inverted
+            spherical.theta -= mouseDelta.x * sensitivity;
 
-        // Vertical (Phi) - Rotate up/down
-        spherical.phi -= mouseDelta.y * sensitivity;
+            // Vertical (Phi) - Rotate up/down
+            spherical.phi -= mouseDelta.y * sensitivity;
 
-        // Clamp Vertical angle
-        spherical.phi = Math.max(minPolarAngle, Math.min(maxPolarAngle, spherical.phi));
+            // Clamp Vertical angle
+            spherical.phi = Math.max(minPolarAngle, Math.min(maxPolarAngle, spherical.phi));
 
-        // Calculate Offset Vector from Spherical Coords
-        // This converts the Angles back into a Vector3 offset (x, y, z)
-        const offsetVector = new THREE.Vector3().setFromSpherical(spherical);
+            // Calculate Offset Vector from Spherical Coords
+            // This converts the Angles back into a Vector3 offset (x, y, z)
+            const offsetVector = sphericalOffset.setFromSpherical(spherical);
 
-        // Get Look Target (e.g., Player Head position)
-        targetPos.copy(targetMesh.position).add(targetHeightVector);
+            // Get Look Target (e.g., Player Head position)
+            targetPos.copy(targetMesh.position).add(targetHeightVector);
 
-        // Calculate Ideal Camera Position
-        idealPos.copy(targetPos).add(offsetVector);
-      } else {
-        // No mouse move input
-        // -------------------
+            // Calculate Ideal Camera Position
+            idealPos.copy(targetPos).add(offsetVector);
+          } else {
+            // No mouse move input
+            // -------------------
 
-        // Get Target Position (Mesh or RigidBody)
-        // Using mesh is usually safer for visual smoothness if you interpolate visuals
-        targetPos.copy(targetMesh.position);
+            // Get Target Position (Mesh or RigidBody)
+            // Using mesh is usually safer for visual smoothness if you interpolate visuals
+            targetPos.copy(targetMesh.position);
 
-        // Calculate Ideal Camera Position
-        idealPos.copy(targetPos).add(offset);
-      }
+            // Calculate Ideal Camera Position
+            idealPos.copy(targetPos).add(offset);
+          }
 
-      // Smoothly move camera there (Lerp)
-      // 0.1 is the smoothing factor (adjust for feel)
-      camera.position.lerp(idealPos, smoothTime);
+          // Smoothly move camera there (Lerp): an exponential approach with time constant
+          // smoothTime, so the feel doesn't change with the frame rate (a fixed per-frame lerp
+          // factor would converge 2.4x faster at 144Hz than at 60Hz)
+          camera.position.lerp(idealPos, 1 - Math.exp(-dt / smoothTime));
 
-      // Look at the target
-      camera.lookAt(targetPos);
+          // Look at the target
+          camera.lookAt(targetPos);
 
-      // After lookAt fn
-      if (afterLookAtFn) {
-        afterLookParams.targetPos = targetPos;
-        afterLookAtFn(afterLookParams);
-      }
-    });
-    return;
-  }
+          // After lookAt fn
+          if (afterLookAtFn) {
+            afterLookParams.targetPos = targetPos;
+            afterLookAtFn(afterLookParams);
+          }
+        }
+      : (dt: number) => {
+          // Safety check for NaN DT (on first frame or pause)
+          if (dt <= 0.0001) return;
 
-  // SMOOTH_DAMP smoothing
-  addScenePhysicsLooper(createLooperId(id), undefined, (dt) => {
-    // Safety check for NaN DT (on first frame or pause)
-    if (dt <= 0.0001) return;
+          if (getMouseMoveInput) {
+            // Handle possible mouse move input
+            // -------------------
 
-    if (getMouseMoveInput) {
-      // Handle possible mouse move input
-      // -------------------
+            const mouseDelta = getMouseMoveInput();
 
-      const mouseDelta = getMouseMoveInput();
+            // Horizontal (Theta) - Rotate around Y
+            // Subtract to rotate "intuitively" (drag background) or add for inverted
+            spherical.theta -= mouseDelta.x * sensitivity;
 
-      // Horizontal (Theta) - Rotate around Y
-      // Subtract to rotate "intuitively" (drag background) or add for inverted
-      spherical.theta -= mouseDelta.x * sensitivity;
+            // Vertical (Phi) - Rotate up/down
+            spherical.phi -= mouseDelta.y * sensitivity;
 
-      // Vertical (Phi) - Rotate up/down
-      spherical.phi -= mouseDelta.y * sensitivity;
+            // Clamp Vertical angle
+            spherical.phi = Math.max(minPolarAngle, Math.min(maxPolarAngle, spherical.phi));
 
-      // Clamp Vertical angle
-      spherical.phi = Math.max(minPolarAngle, Math.min(maxPolarAngle, spherical.phi));
+            // Calculate Offset Vector from Spherical Coords
+            // This converts the Angles back into a Vector3 offset (x, y, z)
+            const offsetVector = sphericalOffset.setFromSpherical(spherical);
 
-      // Calculate Offset Vector from Spherical Coords
-      // This converts the Angles back into a Vector3 offset (x, y, z)
-      const offsetVector = new THREE.Vector3().setFromSpherical(spherical);
+            // Get Look Target (e.g., Player Head position)
+            targetPos.copy(targetMesh.position).add(targetHeightVector);
 
-      // Get Look Target (e.g., Player Head position)
-      targetPos.copy(targetMesh.position).add(targetHeightVector);
+            // Calculate Ideal Camera Position
+            idealPos.copy(targetPos).add(offsetVector);
 
-      // Calculate Ideal Camera Position
-      idealPos.copy(targetPos).add(offsetVector);
+            // Smooth Damp
+            smoothDampVec3(
+              camera.position,
+              idealPos,
+              velocity,
+              smoothTime, // Faster smooth time for mouse look feels snappier
+              Infinity,
+              dt
+            );
+          } else {
+            // No mouse move input
+            // -------------------
 
-      // Smooth Damp
-      smoothDampVec3(
-        camera.position,
-        idealPos,
-        velocity,
-        smoothTime, // Faster smooth time for mouse look feels snappier
-        Infinity,
-        dt
-      );
-    } else {
-      // No mouse move input
-      // -------------------
+            // Get Target Position (Mesh or RigidBody)
+            // Using mesh is usually safer for visual smoothness if you interpolate visuals
+            targetPos.copy(targetMesh.position);
 
-      // Get Target Position (Mesh or RigidBody)
-      // Using mesh is usually safer for visual smoothness if you interpolate visuals
-      targetPos.copy(targetMesh.position);
+            // Calculate Ideal Camera Position
+            idealPos.copy(targetPos).add(offset);
 
-      // Calculate Ideal Camera Position
-      idealPos.copy(targetPos).add(offset);
+            // Smoothly move Camera -> Ideal
+            // This modifies camera.position AND velocity in place.
+            smoothDampVec3(
+              camera.position, // Current
+              idealPos, // Target
+              velocity, // Velocity State (Stores momentum)
+              smoothTime, // Smooth time
+              100, // Max Speed (Optional cap)
+              dt // Time since last frame
+            );
+          }
 
-      // Smoothly move Camera -> Ideal
-      // This modifies camera.position AND velocity in place.
-      smoothDampVec3(
-        camera.position, // Current
-        idealPos, // Target
-        velocity, // Velocity State (Stores momentum)
-        smoothTime, // Smooth time
-        100, // Max Speed (Optional cap)
-        dt // Time since last frame
-      );
-    }
+          // Look at the target
+          camera.lookAt(targetPos);
 
-    // Look at the target
-    camera.lookAt(targetPos);
+          // After lookAt fn
+          if (afterLookAtFn) {
+            afterLookParams.targetPos = targetPos;
+            afterLookAtFn(afterLookParams);
+          }
+        };
 
-    // After lookAt fn
-    if (afterLookAtFn) {
-      afterLookParams.targetPos = targetPos;
-      afterLookAtFn(afterLookParams);
-    }
-  });
+  activeRigs.set(id, { tick });
 };
 
-export const deleteFollowObjectCameraRig = (id: string) =>
-  deleteScenePhysicsLooper(createLooperId(id));
-
-const createLooperId = (id: string) => `followObjectCam-${id}`;
+export const deleteFollowObjectCameraRig = (id: string) => {
+  activeRigs.delete(id);
+};

@@ -100,6 +100,8 @@ No generic ECS entity/component inspector exists anywhere (confirmed independent
 
 Note: `DebugToolsState.env.*` and `.debugCamera`/`debugCameraFolderExpanded` fields exist in the type (`DebugToolsManager.ts:18-41`) but **are dead — `buildDebugToolsGUI()` builds no folder for either**. Nothing to catalog; flagged for whoever owns that tab, not an undo-plan concern.
 
+> **STALE:** the legacy `PhysicsRapier.ts` (and the Physics tab it built) has been removed. Every `PhysicsRapier.ts:NNNN` reference in this table and in the §4.1 table below points at deleted code — redo this catalog against the Physics API debug tab before implementing.
+
 **Physics tab** (`PhysicsRapier.ts`) — mixed global/per-scene, first tab where the §3.1 scope amendment matters:
 
 | Element                                                    | File:line                    | Scope     | Verdict                                                                                                                                                                                    |

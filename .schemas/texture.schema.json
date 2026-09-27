@@ -253,6 +253,9 @@
     },
     "__sourcePath": {
       "type": "string"
+    },
+    "__fileSize": {
+      "type": "number"
     }
   },
   "additionalProperties": false

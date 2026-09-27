@@ -1,0 +1,303 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "fileName": {
+      "type": "string"
+    },
+    "importTextures": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "texOpts": {
+              "type": "object",
+              "properties": {
+                "image": {},
+                "mapping": {
+                  "type": "number"
+                },
+                "wrapS": {
+                  "type": "number"
+                },
+                "wrapT": {
+                  "type": "number"
+                },
+                "magFilter": {
+                  "type": "number"
+                },
+                "minFilter": {
+                  "type": "number"
+                },
+                "type": {
+                  "type": "number"
+                },
+                "anisotropy": {
+                  "type": "number"
+                },
+                "colorSpace": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": ""
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb"
+                    },
+                    {
+                      "type": "string",
+                      "const": "srgb-linear"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "isPersistent": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "meshIndex": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      ]
+    },
+    "isPersistent": {
+      "type": "boolean"
+    },
+    "throwOnError": {
+      "type": "boolean"
+    },
+    "debugData": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "comments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": "number"
+              },
+              "comment": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "timestamp",
+              "comment"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "todo": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "debugObj": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "__sourcePath": {
+      "type": "string"
+    },
+    "__fileSize": {
+      "type": "number"
+    },
+    "__saveData": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "__meta": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "id": {
+              "type": "string"
+            },
+            "fileName": {
+              "type": "string"
+            },
+            "importTextures": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "texOpts": {
+                      "type": "object",
+                      "properties": {
+                        "image": {},
+                        "mapping": {
+                          "type": "number"
+                        },
+                        "wrapS": {
+                          "type": "number"
+                        },
+                        "wrapT": {
+                          "type": "number"
+                        },
+                        "magFilter": {
+                          "type": "number"
+                        },
+                        "minFilter": {
+                          "type": "number"
+                        },
+                        "type": {
+                          "type": "number"
+                        },
+                        "anisotropy": {
+                          "type": "number"
+                        },
+                        "colorSpace": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "const": ""
+                            },
+                            {
+                              "type": "string",
+                              "const": "srgb"
+                            },
+                            {
+                              "type": "string",
+                              "const": "srgb-linear"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "isPersistent": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "meshIndex": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              ]
+            },
+            "isPersistent": {
+              "type": "boolean"
+            },
+            "throwOnError": {
+              "type": "boolean"
+            },
+            "debugData": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "comments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "timestamp": {
+                        "type": "number"
+                      },
+                      "comment": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "timestamp",
+                      "comment"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "todo": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "debugObj": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "required": [
+    "fileName"
+  ],
+  "additionalProperties": false
+}

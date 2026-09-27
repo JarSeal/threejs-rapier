@@ -9,7 +9,7 @@
   "geometries": ["testSphere", { "id": "otherTestBox", "type": "BOX" }],
   "textures": ["testTexture"],
   "materials": ["testMaterial", "checkerBoard", "testTslMat"],
-  "meshes": ["testMesh"],
-  "importedMeshes": ["testImportedMesh"],
+  "importedAssets": ["testImport"],
+  "meshes": ["testMesh", "testImportedMesh"],
   "skyboxes": ["basicSkybox"]
 }

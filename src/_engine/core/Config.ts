@@ -3,22 +3,60 @@ import { TCMP } from '../utils/CMP';
 import {
   PhysicsBackgroundBehavior,
   PhysicsEngine,
+  PhysicsInterpolationMode,
   PhysicsWorkerTarget,
 } from './Physics/PhysicsAPITypes';
+import type { AssetsWorkerTarget } from './Assets/AssetsAPITypes';
 import { DraggableWindow } from './UI/DraggableWindow';
 import { ECSStorageMode } from './ECS/ECSComponentStorage';
+import { lsGetItem } from '../utils/LocalAndSessionStorage';
+import type { DebugKeyBindingConfig } from './Input/DefaultDebugKeyBindings';
+
+/** LS key for debug-only boot-time physics overrides (workerTarget/useSAB/maxBodies/stepStatsEnabled). Written by the Physics API debug tab, read once in loadConfig(). */
+export const DEBUG_PHYSICS_API_BOOT_LS_KEY = 'AEK_debugPhysicsApiBoot';
+
+/** LS key for debug-only boot-time assets overrides (workerTarget + per-kind overrides). Written by the Assets debug tab, read once in loadConfig(). */
+export const DEBUG_ASSETS_BOOT_LS_KEY = 'AEK_debugAssetsBoot';
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 
+/**
+ * Wireframe colors keyed by collider state, as 24-bit hex numbers (0xrrggbb) — the same
+ * form Tweakpane's `view: 'color'` bindings and THREE.Color.setHex() use.
+ *
+ * At draw time exactly one state wins per collider, resolved highest-priority-first in
+ * the order listed here: a disabled sensor reads as disabled, a sleeping sensor reads as
+ * a sensor, and `awake` is the fallback when nothing else applies.
+ */
+export type PhysicsWireframeColors = {
+  /** The collider, or its owning rigid body, is disabled. */
+  disabled?: number;
+  /** The collider is a sensor (reports overlaps, generates no contact response). */
+  sensor?: number;
+  /** The owning rigid body is asleep. */
+  sleeping?: number;
+  /** The owning rigid body is kinematic: driven programmatically, never sleeps, and
+   * unaffected by forces. Bucketed alongside real dynamic bodies by
+   * PhysicsManager.createPhysicsEntity, so it needs its own color to stay tellable apart. */
+  kinematic?: number;
+  /** The body is fixed (the BODY_STATIC bucket). Deliberately distinct from `disabled`
+   * so a static collider doesn't read as something being wrong. */
+  fixed?: number;
+  /** The fallback: dynamic, enabled, awake, not a sensor. */
+  awake?: number;
+};
+
+export type DebugPhysicsWireframeConfig = {
+  colors?: PhysicsWireframeColors;
+  /** Wireframe line width in pixels. Values above 1 only have a visible effect where the
+   * fat-line path is available. */
+  lineThickness?: number;
+};
+
 export type AppConfig = {
-  debugKeys?: {
-    enabled?: boolean; // Default is true
-    id?: string;
-    key?: string | string[];
-    type?: 'KEY_UP' | 'KEY_DOWN'; // Default is 'KEY_UP'
-    sceneId?: string;
-    fn: (e: KeyboardEvent, pressedTime: number) => void;
-  }[];
+  /** Debug-only key bindings: overrides of the engine's default debug keys (same id) and/or
+   * extra app debug keys. See {@link DebugKeyBindingConfig}. */
+  debugKeys?: DebugKeyBindingConfig[];
   physics?: {
     enabled?: boolean;
     physicsEngine?: PhysicsEngine;
@@ -28,15 +66,77 @@ export type AppConfig = {
     gravity?: { x: number; y: number; z: number };
     timestep?: number;
     backgroundBehavior?: PhysicsBackgroundBehavior;
+    /** Minimum delta time (seconds) substituted for the real elapsed time when
+     * backgroundBehavior is 'KEEP_RUNNING_USE_MIN_DELTA' and the window is hidden.
+     * 0 = not in use. Default 1/30. */
+    minDeltaTime?: number;
+    /** Upper bound (seconds) on how much elapsed time a single frame may feed into the
+     * fixed-timestep accumulator, guarding against a huge delta after a stall or a
+     * throttled background tab. 0 = not in use. Default 1/10. */
+    maxDeltaTime?: number;
+    /** Maximum fixed-timestep sub-steps stepPhysics() may run in a single frame; once hit,
+     * any remaining accumulated time is dropped (not deferred) to prevent an ever-growing
+     * backlog under sustained slowdowns. 0 = not in use. Default 60. */
+    maxSubSteps?: number;
     solverIterations?: number;
     internalPgsIterations?: number;
-    interpolationEnabled?: boolean;
+    /** Render-time smoothing on top of the discrete physics-step pose. Default 'NONE'
+     * (unchanged behavior). See PhysicsState.interpolationMode for the mode semantics. */
+    interpolationMode?: PhysicsInterpolationMode;
+    /** Intent to use SharedArrayBuffer for the worker-thread hot-path transform buffer.
+     * Default true. Actual capability (cross-origin isolation) is resolved at runtime;
+     * unavailable environments automatically fall back to a batched-message transport.
+     */
+    useSAB?: boolean;
+    /** Fixed capacity for the worker-thread hot-path transform buffer. Default 2048. */
+    maxBodies?: number;
+    /** Measure how long the physics engine spends stepping the world each frame (and, in
+     * WORKER_THREAD mode, the messaging overhead around it) and feed it to the debug "PHY"
+     * panel. Opt-in and default false so the measurement itself costs nothing unless asked
+     * for. Boot-time only — read once here, same as useSAB/maxBodies. */
+    stepStatsEnabled?: boolean;
+  };
+  /** Where asset files are loaded and decoded.
+   * Whatever the target, the public loading API stays the same, and a failed worker request
+   * transparently re-runs on the main thread (unless fallbackToMainThread is false). */
+  assets?: {
+    /** Shared default for all asset kinds. Default 'MAIN_THREAD'. The worker is only started
+     * by the first worker-targeted request, never at boot. */
+    workerTarget?: AssetsWorkerTarget;
+    /** Per-kind overrides; fall back to workerTarget. */
+    gltfWorkerTarget?: AssetsWorkerTarget;
+    textureWorkerTarget?: AssetsWorkerTarget;
+    /** Max number of requests in flight in the assets worker at once. Default 8. */
+    maxConcurrentLoads?: number;
+    /** A worker request not answered in this time (ms) falls back to the main thread. Also
+     * bounds the worker's start-up handshake. Default 30000. */
+    requestTimeoutMs?: number;
+    /** Re-run a failed worker request (start-up failure, missing capability, timeout, error
+     * reply or crash) on the main thread, warning once per cause. When false, the request
+     * fails instead. Default true. */
+    fallbackToMainThread?: boolean;
   };
   ecs?: {
     /** Build-time-selectable ECS component storage backend. Default 'MAP'. */
     storageMode?: ECSStorageMode;
     /** Fixed capacity for TYPED_ARRAY storage. Default 100_000, only relevant when storageMode is 'TYPED_ARRAY'. */
     maxEntities?: number;
+  };
+  /** Per-state colors and line thickness for the per-entity physics collider wireframes
+   * (Debug/_dbg__PhysicsDebugDraw.ts). Debug-only: nothing reads this
+   * unless a wireframe is actually switched on, which can only happen in a debug or
+   * prod-test environment. Every field is optional and falls back to the engine defaults
+   * in `Debug/_dbg__PhysicsDebugDraw.ts`, so partial overrides are fine. */
+  debugPhysicsWireframe?: DebugPhysicsWireframeConfig;
+  /** Default params for the debug (orbit) camera, used the first time a scene is
+   * visited (before any per-scene LS override exists at `AEK_debugCams`). */
+  debugCamera?: {
+    position?: { x: number; y: number; z: number };
+    target?: { x: number; y: number; z: number };
+    fov?: number;
+    near?: number;
+    far?: number;
+    zoom?: number;
   };
   draggableWindows?: {
     [id: string]: Partial<DraggableWindow> & {
@@ -55,15 +155,36 @@ let config: AppConfig = {
   physics: {
     enabled: false,
     physicsEngine: 'RAPIER',
-    workerTarget: 'MAIN_THREAD',
+    workerTarget: 'WORKER_THREAD',
     worldStepEnabled: true,
     gravity: { x: 0, y: 0, z: 0 },
     timestep: 60,
     backgroundBehavior: 'PAUSE',
+    minDeltaTime: 1 / 30,
+    maxDeltaTime: 1 / 10,
+    maxSubSteps: 60,
+    interpolationMode: 'NONE',
+    useSAB: true,
+    maxBodies: 2048,
+    stepStatsEnabled: false,
+  },
+  assets: {
+    workerTarget: 'MAIN_THREAD',
+    maxConcurrentLoads: 8,
+    requestTimeoutMs: 30_000,
+    fallbackToMainThread: true,
   },
   ecs: {
     storageMode: 'MAP',
     maxEntities: 100_000,
+  },
+  debugCamera: {
+    position: { x: 3, y: 3, z: 1.5 },
+    target: { x: 0, y: 0, z: 0 },
+    fov: 60,
+    near: 0.1,
+    far: 1000,
+    zoom: 1,
   },
 };
 
@@ -98,7 +219,7 @@ export const loadConfig = () => {
   if (!config.physics) config.physics = {};
 
   if (typeof envVars.VITE_PHYS_ENABLED === 'string') {
-    const physicsEnabled = Boolean(envVars.VITE_PHYS_ENABLED);
+    const physicsEnabled = envVars.VITE_PHYS_ENABLED === 'true';
     config.physics.enabled = physicsEnabled;
     envVars.VITE_PHYS_ENABLED = physicsEnabled;
   }
@@ -115,6 +236,12 @@ export const loadConfig = () => {
     envVars.VITE_PHYS_GRAVITY = config.physics.gravity;
   }
 
+  if (typeof envVars.VITE_PHYS_USE_SAB === 'string') {
+    const useSAB = envVars.VITE_PHYS_USE_SAB === 'true';
+    config.physics.useSAB = useSAB;
+    envVars.VITE_PHYS_USE_SAB = useSAB;
+  }
+
   if (typeof envVars.VITE_PHYS_TIMESTEP === 'string') {
     const timestep = Number(envVars.VITE_PHYS_TIMESTEP);
     if (!isNaN(timestep)) {
@@ -122,6 +249,82 @@ export const loadConfig = () => {
       envVars.VITE_PHYS_TIMESTEP = timestep;
     } else {
       envVars.VITE_PHYS_TIMESTEP = undefined;
+    }
+  }
+
+  // Debug-only boot-time physics overrides (set by the Physics API debug tab, applied on next reload)
+  if (isDebugEnvironment()) {
+    const debugPhysicsBoot = lsGetItem(DEBUG_PHYSICS_API_BOOT_LS_KEY, {}) as {
+      workerTarget?: PhysicsWorkerTarget;
+      useSAB?: boolean;
+      maxBodies?: number;
+      stepStatsEnabled?: boolean;
+    };
+    if (debugPhysicsBoot.workerTarget) {
+      config.physics.workerTarget = debugPhysicsBoot.workerTarget;
+    }
+    if (typeof debugPhysicsBoot.useSAB === 'boolean') {
+      config.physics.useSAB = debugPhysicsBoot.useSAB;
+    }
+    if (typeof debugPhysicsBoot.maxBodies === 'number') {
+      config.physics.maxBodies = debugPhysicsBoot.maxBodies;
+    }
+    if (typeof debugPhysicsBoot.stepStatsEnabled === 'boolean') {
+      config.physics.stepStatsEnabled = debugPhysicsBoot.stepStatsEnabled;
+    }
+  }
+
+  // Setup assets ENV configs
+  if (!config.assets) config.assets = {};
+
+  const assetsTargetEnvs = [
+    ['VITE_ASSETS_WORKER_TARGET', 'workerTarget'],
+    ['VITE_ASSETS_GLTF_WORKER_TARGET', 'gltfWorkerTarget'],
+    ['VITE_ASSETS_TEXTURE_WORKER_TARGET', 'textureWorkerTarget'],
+  ] as const;
+  for (const [envKey, configKey] of assetsTargetEnvs) {
+    const target = envVars[envKey];
+    if (target === 'MAIN_THREAD' || target === 'WORKER_THREAD') {
+      config.assets[configKey] = target;
+    } else if (target !== undefined) {
+      envVars[envKey] = undefined;
+    }
+  }
+
+  const assetsNumberEnvs = [
+    ['VITE_ASSETS_MAX_CONCURRENT_LOADS', 'maxConcurrentLoads'],
+    ['VITE_ASSETS_REQUEST_TIMEOUT_MS', 'requestTimeoutMs'],
+  ] as const;
+  for (const [envKey, configKey] of assetsNumberEnvs) {
+    if (typeof envVars[envKey] !== 'string') continue;
+    const value = Number(envVars[envKey]);
+    if (!isNaN(value)) {
+      config.assets[configKey] = value;
+      envVars[envKey] = value;
+    } else {
+      envVars[envKey] = undefined;
+    }
+  }
+
+  if (typeof envVars.VITE_ASSETS_FALLBACK_TO_MAIN_THREAD === 'string') {
+    const fallbackToMainThread = envVars.VITE_ASSETS_FALLBACK_TO_MAIN_THREAD !== 'false';
+    config.assets.fallbackToMainThread = fallbackToMainThread;
+    envVars.VITE_ASSETS_FALLBACK_TO_MAIN_THREAD = fallbackToMainThread;
+  }
+
+  // Debug-only boot-time assets overrides (set by the Assets debug tab, applied on next reload)
+  if (isDebugEnvironment()) {
+    const debugAssetsBoot = lsGetItem(DEBUG_ASSETS_BOOT_LS_KEY, {}) as {
+      workerTarget?: AssetsWorkerTarget;
+      gltfWorkerTarget?: AssetsWorkerTarget;
+      textureWorkerTarget?: AssetsWorkerTarget;
+    };
+    if (debugAssetsBoot.workerTarget) config.assets.workerTarget = debugAssetsBoot.workerTarget;
+    if (debugAssetsBoot.gltfWorkerTarget) {
+      config.assets.gltfWorkerTarget = debugAssetsBoot.gltfWorkerTarget;
+    }
+    if (debugAssetsBoot.textureWorkerTarget) {
+      config.assets.textureWorkerTarget = debugAssetsBoot.textureWorkerTarget;
     }
   }
 

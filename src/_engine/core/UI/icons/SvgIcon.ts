@@ -1,6 +1,7 @@
 import alertIcon from './svg/exclamation-octagon-fill.svg?raw';
 import arrowClockwiseIcon from './svg/arrow-clockwise.svg?raw';
 import arrowCounterClockwiseIcon from './svg/arrow-counterclockwise.svg?raw';
+import assetsIcon from './svg/assets-collection.svg?raw';
 import aspectRatioIcon from './svg/aspect-ratio.svg?raw';
 import cameraIcon from './svg/camera2.svg?raw';
 import cameraReelsIcon from './svg/camera-reels.svg?raw';
@@ -11,6 +12,7 @@ import ecsNodesIcon from './svg/ecs-nodes.svg?raw';
 import eraserIcon from './svg/eraser-fill.svg?raw';
 import fileAsterixIcon from './svg/file-earmark-medical-fill.svg?raw';
 import fileCodeIcon from './svg/file-earmark-code-fill.svg?raw';
+import geometryIcon from './svg/geometry-cube.svg?raw';
 import gpuCardIcon from './svg/gpu-card.svg?raw';
 import heartArrowIcon from './svg/heart-arrow.svg?raw';
 import infinityIcon from './svg/infinity.svg?raw';
@@ -25,6 +27,7 @@ import rocketTakeoffIcon from './svg/rocket-takeoff-fill.svg?raw';
 import spatialGridIcon from './svg/spatial-grid.svg?raw';
 import speedometerIcon from './svg/speedometer.svg?raw';
 import stopIcon from './svg/stop-fill.svg?raw';
+import textureIcon from './svg/texture-image.svg?raw';
 import thrashIcon from './svg/trash3-fill.svg?raw';
 import toolsIcon from './svg/tools.svg?raw';
 import warningIcon from './svg/exclamation-triangle-fill.svg?raw';
@@ -34,6 +37,7 @@ const icons = {
   alert: alertIcon,
   arrowClockwise: arrowClockwiseIcon,
   arrowCounterClockwise: arrowCounterClockwiseIcon,
+  assets: assetsIcon,
   aspectRatio: aspectRatioIcon,
   camera: cameraIcon,
   cameraReels: cameraReelsIcon,
@@ -44,6 +48,7 @@ const icons = {
   eraser: eraserIcon,
   fileAsterix: fileAsterixIcon,
   fileCode: fileCodeIcon,
+  geometry: geometryIcon,
   gpuCard: gpuCardIcon,
   heartArrow: heartArrowIcon,
   infinity: infinityIcon,
@@ -58,6 +63,7 @@ const icons = {
   spatialGrid: spatialGridIcon,
   speedometer: speedometerIcon,
   stop: stopIcon,
+  texture: textureIcon,
   thrash: thrashIcon,
   tools: toolsIcon,
   warning: warningIcon,

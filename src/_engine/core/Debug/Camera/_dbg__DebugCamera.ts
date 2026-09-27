@@ -7,21 +7,38 @@ import { ECSSystemStage } from '../../../../AppECSRegistry';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import type { DebugCamLSProps } from '../../CameraManager';
 import { getDebugCamProps, saveDebugCameraToLS, updateCamerasDebuggerGUI } from './_dbg__CameraGUI';
+import { getConfig } from '../../Config';
+
+const configDebugCamera = getConfig().debugCamera;
 
 export const DEFAULT_DEBUG_CAM_PROPS: DebugCamLSProps = {
-  position: { x: 3, y: 3, z: 1.5 },
-  target: { x: 0, y: 0, z: 0 },
+  position: configDebugCamera?.position ?? { x: 3, y: 3, z: 1.5 },
+  target: configDebugCamera?.target ?? { x: 0, y: 0, z: 0 },
   enabled: false,
   latestAppCameraId: null as string | null,
-  fov: 60,
-  near: 0.1,
-  far: 1000,
-  zoom: 1,
+  fov: configDebugCamera?.fov ?? 60,
+  near: configDebugCamera?.near ?? 0.1,
+  far: configDebugCamera?.far ?? 1000,
+  zoom: configDebugCamera?.zoom ?? 1,
 };
 
 ECSWorld.registerPlugin((world) => {
   world.addSystem(ECSSystemStage.MAIN, 'debugCameraSystem', debugCameraSystem);
 });
+
+let panelRefreshCallback: (() => void) | null = null;
+
+/**
+ * Registers a callback that `debugCameraSystem` calls once per frame whenever OrbitControls
+ * reports a change, so a debug-tools panel showing live camera values can refresh itself
+ * without polling. Pass `null` to unregister (e.g. when the panel's pane is torn down) —
+ * callers must do so, since a stale callback would otherwise keep firing against disposed
+ * Tweakpane bindings. Kept as a plain callback (rather than an import) so this file never
+ * has to import the debug-tools panel module back.
+ */
+export const setDebugCameraPanelRefresh = (cb: (() => void) | null) => {
+  panelRefreshCallback = cb;
+};
 
 export const attachOrbitControls = (entityId: number, world: ECSWorld, sceneId: string) => {
   const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value as THREE.Camera;
@@ -43,6 +60,12 @@ export const attachOrbitControls = (entityId: number, world: ECSWorld, sceneId: 
       target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
     });
   });
+
+  // OrbitControls applies rotate/pan/dolly synchronously inside its own pointermove handler
+  // (it calls its internal update() there directly), dispatching 'change' immediately — well
+  // before debugCameraSystem's next per-frame poll ever sees a diff to react to. So a live panel
+  // must hook 'change' directly rather than relying on that poll's own `changed` return value.
+  controls.addEventListener('change', () => panelRefreshCallback?.());
 
   world.addComponent(entityId, ComponentType.ORBIT_CONTROLS, {
     controls,

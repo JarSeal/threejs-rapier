@@ -5,8 +5,15 @@ import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers
 
 export type StatsOptions = {
   performanceFolderExpanded?: boolean;
+  /** stats-gl builds its FPS and CPU panels unconditionally, so these two are applied by
+   * detaching the panel afterwards rather than by skipping its creation. */
+  trackFPS?: boolean;
+  trackCPU?: boolean;
+  /** Engine-side panel (not stats-gl's): time spent in app logic, as a theoretical FPS. */
+  trackTFPS?: boolean;
   trackGPU?: boolean;
   trackCPT?: boolean;
+  /** Drawn as a small overlay inside the CPU panel, so it requires trackCPU. */
   trackHz?: boolean;
   logsPerSecond?: number;
   graphsPerSecond?: number;
@@ -14,7 +21,6 @@ export type StatsOptions = {
   samplesGraph?: number;
   precision?: number;
   outlookFolderExpanded?: boolean;
-  minimal?: boolean;
   horizontal?: boolean;
   mode?: number;
   enabled?: boolean;
@@ -22,13 +28,17 @@ export type StatsOptions = {
 
 export const defaultStatsOptions = {
   performanceFolderExpanded: true,
+  trackFPS: true,
+  trackCPU: true,
+  trackTFPS: true,
   trackGPU: false,
   trackHz: false,
   trackCPT: false,
-  // @TODO: add trackPHY, trackTFPS, and FPS
+  // PHY tracking is deliberately absent here: it lives with the boot-time physics overrides
+  // (see _dbg__PhysicsBootOverrides.ts), because physics initializes long before initStats()
+  // and so cannot read this. The Statistics tab's "Track PHY" toggle writes there instead.
   outlookFolderExpanded: true,
   horizontal: false,
-  minimal: true,
   enabled: true,
 };
 
