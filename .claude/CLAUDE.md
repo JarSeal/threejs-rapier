@@ -104,6 +104,21 @@ The engine-agnostic Physics API — `PhysicsAPI.ts` (facade) + `Physics/EngineRa
 - `rollup-plugin-visualizer` writes a bundle treemap to `dist-stats/bundle-stats.html`.
 - No TS path aliases are configured (`tsconfig.json` has no `paths`) — imports are relative.
 
+## Versioning
+
+`package.json` holds three semver versions (`MAJOR.MINOR.PATCH`: major = breaking, minor = new feature, patch = fix):
+
+- `engine_metadata.version` — the engine (`src/_engine/`) plus `src/toolkit/`, which ships with it.
+- `app_metadata.version` — the example app (`src/app/` and the app-level files in `src/`: `AppECSPlugins.ts`, `AppECSRegistry.ts`, `CONFIG.ts`).
+- `version` (the project/package version) — **always identical to `engine_metadata.version`**. App-only changes bump `app_metadata.version` and never touch the project version.
+
+Rules:
+
+- Bump once per branch merged to `main` (in the PR), not per commit, at the level of the biggest change on that side since the last merge. Reset the lower parts to 0 (e.g. `1.4.2` → minor bump → `1.5.0`).
+- Engine and app are bumped independently; a side with no changes keeps its version.
+- A major bump gets a new codename. Engine codenames follow the sun's path (Dawn → Sunrise → Morning → Zenith → …); app codenames follow life stages (Toddler → Preschooler → Kid → Teen → …).
+- `createMergeVersion` in `vite.config.ts` (engine + app summed part by part) only feeds the `x-version-checksum` meta tag. It is not a version to bump or display.
+
 ## Workflow
 
 - A Stop hook runs lint and type-check. Leave the tree compiling.
