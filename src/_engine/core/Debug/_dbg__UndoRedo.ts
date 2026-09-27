@@ -17,9 +17,15 @@ type UndoRedoLSData = {
   [sceneId: string]: UndoRedoHistoryState;
 };
 
+/** The structure of 'AEK_debugUndoRedoSettings' in LocalStorage (global, not scene data) */
+type UndoRedoSettingsLSData = {
+  historySize: number;
+};
+
 type RegisteredHandler = UndoRedoActionHandler & { scope: UndoRedoScope };
 
 const LS_KEY = 'AEK_debugUndoRedo';
+const SETTINGS_LS_KEY = 'AEK_debugUndoRedoSettings';
 /** Bucket for 'global' scoped actions, and for 'perScene' ones recorded while no scene is current. */
 const GLOBAL_BUCKET_ID = '_global';
 const DEFAULT_HISTORY_SIZE = 50;
@@ -27,9 +33,10 @@ const DEFAULT_COALESCE_WINDOW_MS = 800;
 
 let state: UndoRedoLSData = {};
 let lastTimestamp = 0;
+let historySize = DEFAULT_HISTORY_SIZE;
 const actionHandlers = new Map<string, RegisteredHandler>();
 
-const getHistorySize = () => Math.max(1, getConfig().undoRedo?.historySize ?? DEFAULT_HISTORY_SIZE);
+const toValidHistorySize = (size: number) => Math.max(1, Math.round(size));
 
 const getSceneBucketId = () => getCurrentSceneId() ?? GLOBAL_BUCKET_ID;
 
@@ -88,6 +95,16 @@ const findRedoTarget = () => {
   return target;
 };
 
+/** Drops a bucket's oldest entries over the history size. Returns whether anything was dropped. */
+const trimBucket = (bucket: UndoRedoHistoryState) => {
+  const overflow = bucket.entries.length - historySize;
+  if (overflow <= 0) return false;
+  bucket.entries.splice(0, overflow);
+  // Below -1 when applied entries were dropped along with the oldest undone ones
+  bucket.pointer = Math.max(-1, bucket.pointer - overflow);
+  return true;
+};
+
 const persist = () => {
   if (!Object.keys(state).length) {
     lsRemoveItem(LS_KEY);
@@ -101,6 +118,13 @@ const persist = () => {
 const toStoredData = <T>(data: T): T => JSON.parse(JSON.stringify(data ?? null));
 
 export const _initUndoRedo = () => {
+  // The debugger's history size setting overrides CONFIG.ts once it has been changed
+  const configHistorySize = getConfig().undoRedo?.historySize ?? DEFAULT_HISTORY_SIZE;
+  const settings = lsGetItem(SETTINGS_LS_KEY, {
+    historySize: configHistorySize,
+  }) as UndoRedoSettingsLSData;
+  historySize = toValidHistorySize(settings.historySize ?? configHistorySize);
+
   state = lsGetItem(LS_KEY, {}) as UndoRedoLSData;
   lastTimestamp = 0;
   for (const bucket of Object.values(state)) {
@@ -138,12 +162,7 @@ export const _recordUndoRedoAction = <TPayload>(
     ...(coalesceKey !== undefined ? { coalesceKey } : {}),
   });
   bucket.pointer = bucket.entries.length - 1;
-
-  const overflow = bucket.entries.length - getHistorySize();
-  if (overflow > 0) {
-    bucket.entries.splice(0, overflow);
-    bucket.pointer -= overflow;
-  }
+  trimBucket(bucket);
 
   persist();
 };
@@ -222,6 +241,19 @@ export const _getUndoRedoHistory = (): UndoRedoHistoryEntry[] =>
       return bucket.entries.map((entry, i) => ({ ...entry, scope, applied: i <= bucket.pointer }));
     })
     .sort((a, b) => a.timestamp - b.timestamp);
+
+export const _getUndoRedoHistorySize = () => historySize;
+
+/** Takes effect immediately: every bucket (all scenes and the global one) is trimmed to the new
+ * size right away, not just on the next recorded action. */
+export const _setUndoRedoHistorySize = (size: number) => {
+  historySize = toValidHistorySize(size);
+  lsSetItem(SETTINGS_LS_KEY, { historySize } satisfies UndoRedoSettingsLSData);
+
+  let trimmed = false;
+  for (const bucket of Object.values(state)) trimmed = trimBucket(bucket) || trimmed;
+  if (trimmed) persist();
+};
 
 export const _clearUndoRedoHistory = (scope: UndoRedoClearScope) => {
   if (scope === 'all') {

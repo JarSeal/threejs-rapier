@@ -139,6 +139,22 @@ export const canRedo = () => useDebug(debugGUI)?._canRedo() ?? false;
 export const getUndoRedoHistory = () => useDebug(debugGUI)?._getUndoRedoHistory();
 
 /**
+ * Returns the max number of history entries kept per bucket (the debugger's persisted setting,
+ * else `AppConfig.undoRedo.historySize`)
+ * @returns (number | undefined) undefined outside the debug environment
+ */
+export const getUndoRedoHistorySize = () => useDebug(debugGUI)?._getUndoRedoHistorySize();
+
+/**
+ * Sets and persists the max number of history entries kept per bucket. Takes effect
+ * immediately: every scene's and the global history are trimmed from the oldest end.
+ * @param size (number) new history size, min 1
+ */
+export const setUndoRedoHistorySize = (size: number) => {
+  useDebug(debugGUI)?._setUndoRedoHistorySize(size);
+};
+
+/**
  * Clears the history of the current scene or of all scenes
  * @param scope ({@link UndoRedoClearScope})
  */

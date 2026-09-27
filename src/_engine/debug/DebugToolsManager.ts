@@ -22,6 +22,9 @@ export type DebugToolsState = {
   loggingActions: {
     loggingFolderExpanded: boolean;
   };
+  undoRedo: {
+    undoRedoFolderExpanded: boolean;
+  };
   prodTestMode: {
     prodTestFolderExpanded: boolean;
     showOnScreenToolsInProdTest: boolean;
@@ -60,6 +63,9 @@ const defaultDebugToolsState: DebugToolsState = {
   },
   loggingActions: {
     loggingFolderExpanded: false,
+  },
+  undoRedo: {
+    undoRedoFolderExpanded: false,
   },
   prodTestMode: {
     prodTestFolderExpanded: false,
