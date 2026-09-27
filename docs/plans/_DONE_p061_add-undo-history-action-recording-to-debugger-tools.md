@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Debugger
 Blocked by: \_DONE_p060_debugger-undo-engine-core.md
 Blocks: p062_add-undo-and-redo-ui.md
@@ -100,7 +100,7 @@ No generic ECS entity/component inspector exists anywhere (confirmed independent
 
 Note: `DebugToolsState.env.*` and `.debugCamera`/`debugCameraFolderExpanded` fields exist in the type (`DebugToolsManager.ts:18-41`) but **are dead — `buildDebugToolsGUI()` builds no folder for either**. Nothing to catalog; flagged for whoever owns that tab, not an undo-plan concern.
 
-> **STALE:** the legacy `PhysicsRapier.ts` (and the Physics tab it built) has been removed. Every `PhysicsRapier.ts:NNNN` reference in this table and in the §4.1 table below points at deleted code — redo this catalog against the Physics API debug tab before implementing.
+> **STALE:** the legacy `PhysicsRapier.ts` (and the Physics tab it built) has been removed. Every `PhysicsRapier.ts:NNNN` reference in this table and in the §4.1 table below points at deleted code. The catalog was redone against `_dbg__PhysicsAPI.ts` during implementation — see "Implementation notes" at the end.
 
 **Physics tab** (`PhysicsRapier.ts`) — mixed global/per-scene, first tab where the §3.1 scope amendment matters:
 
@@ -327,3 +327,128 @@ The full non-recordable inventory is §2.2 (organized per tool, tagged by catego
 - **Phase 7 — SkyBox tab.** Wire both roughness sliders (coalesced), both Reset buttons, and the skybox-select dropdown. Manual verification: drag roughness, confirm coalescing; select a different skybox then undo, confirm the previous skybox's background/environment nodes are restored via `createSkyBox`, not a stale reference.
 
 No phase is scheduled for MainLoop, Raycast, Stats, DebugTools, ECS, or OnScreenTools — every element in those areas was excluded in §2 (Stats/ECS storage/DebugTools' scene controls are `[RELOAD]`/`[SCENE-BOUNDARY]`; the rest are `[COSMETIC]`/`[DEV-TOOL]`/`[SESSION-ONLY]`/`[NAV]`). This is a deliberate, reasoned "zero phases" outcome, not an omission.
+
+---
+
+## Implementation notes
+
+Implemented in seven phases: Phases 1–6 in `f27e0be`..`c421d21`, Phase 7 in the commit that
+renamed this plan to `_DONE_`. The plan body above is the original draft; where it differs from
+the code, these notes are what shipped.
+
+### What shipped
+
+| Action types                                                                                                                                                                                                      | Source                                  | Scope     | Recording                               |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | --------- | --------------------------------------- |
+| `renderer.toneMapping` / `outputColorSpace` / `alpha` / `enableShadows`                                                                                                                                           | `_dbg__Renderer.ts`                     | global    | one per change                          |
+| `camera.position` / `responsiveAspect`                                                                                                                                                                            | Camera edit window                      | per scene | one per change (`ev.last` for position) |
+| `camera.referenceAspect` / `fov` / `frustumSize` / `near` / `far`                                                                                                                                                 | Camera edit window                      | per scene | coalesced                               |
+| `light.enabled` / `frustumCullingEnabled` / `objectCullingEnabled` / `position` / `targetPos` / `castShadow` / `shadowMapSize`                                                                                    | Light edit window                       | per scene | one per change                          |
+| `light.color` / `groundColor` / `intensity` / `distance` / `decay` / `shadowBias` / `shadowNormalBias` / `shadowIntensity` / `shadowBlurSamples` / `shadowRadius` / `shadowCameraNearFar` / `shadowCameraFrustum` | Light edit window                       | per scene | coalesced                               |
+| `physics.gravity`                                                                                                                                                                                                 | Physics API tab                         | global    | once per drag (`ev.last`)               |
+| `physics.solverIterations` / `internalPgsIterations`                                                                                                                                                              | Physics API tab                         | global    | coalesced                               |
+| `physicsObject.position` / `rotation`                                                                                                                                                                             | Physics entity edit window, Set buttons | per scene | one per click                           |
+| `character.position` / `rotation`                                                                                                                                                                                 | Character edit window, Set buttons      | per scene | one per click                           |
+| `skybox.roughness`                                                                                                                                                                                                | SkyBox tab sliders                      | per scene | coalesced                               |
+| `skybox.resetRoughness` / `skybox.select`                                                                                                                                                                         | SkyBox tab Reset buttons / dropdown     | per scene | one per click / change                  |
+
+Every handler is registered at module load (the `_dbg__` files import `_dbg__UndoRedo.ts`
+directly, as p060's notes suggested) and resolves its target when it runs: cameras, lights and
+physics entities by stable app id, characters by character id, sky boxes by scene + sky box id.
+A target that no longer exists is skipped with a warning and the entry still counts as applied,
+so one deleted entity can't block the rest of the history. Handlers mirror what the control
+itself does (apply, save to the tab's LS key) and then refresh or rebuild the tab/window; a pane
+refresh that would fire `change` again is guarded so it doesn't re-record.
+
+### How it was verified
+
+No test runner exists, so every phase was checked with a throwaway headless Playwright script
+(`playwright-core` from `.claude/skills/run-aekasha-js/`) against `yarn dev` with
+`?isDebug=true`, driving the real Tweakpane controls (including real mouse drags on number
+knobs to check coalescing) and asserting the live objects, the tab's LS key, the pane and the
+history, across scene switches and reloads. Practical notes for the next person doing this:
+
+- Import engine modules through the exact URL the page loaded
+  (`performance.getEntriesByType('resource')`) — Vite adds `?t=` after invalidations, and a bare
+  path gives a second, empty module instance.
+- CMP ids are not DOM ids (only with `idAttr`); find tabs by their `title` and controls by
+  their Tweakpane label text.
+- Open the debug drawer (`h`) before any mouse drag on a drawer tab — closed, its controls have
+  no layout.
+
+### Where the implementation departs from this plan
+
+- **Undo/redo walk one merged timeline (§3.1 left this open).** `scope` decides which bucket an
+  entry is stored in; undo reverts the newest applied entry across the current scene's bucket
+  and `'_global'`, redo reapplies the oldest undone one, and recording drops the redo tail of
+  both. Entry timestamps are kept strictly increasing because they order the timeline.
+  `getUndoRedoHistory()` now returns that merged list, each entry marked with `scope` and
+  `applied`, instead of `{ entries, pointer }` (one pointer can't describe two buckets).
+- **Coalescing is stricter than §3.2's sketch.** A tick only merges into the newest entry of the
+  whole timeline, and only while nothing is undone; the first tick's label is kept. Scalars
+  whose control is a point binding (camera/light position, gravity) record on `ev.last`
+  instead.
+- **§3.3's helper already existed** privately in `_dbg__PhysicsDebugDraw.ts`; it moved to
+  `ECS.ts` as `getStableAppId(entityId, world?)`, next to `getEntityIdByAppId`.
+- **Renderer:** the shadows action is `renderer.enableShadows` (every type is
+  `renderer.<option key>`).
+- **Light:** the Object Culling checkbox (not in §2's inventory) is recorded too. §5's
+  target-position risk didn't apply: the handler finds the light by its stable id and follows its
+  current `TARGET_LINK`, so the target entity needs no stable id of its own.
+- **Physics (catalog redone against `_dbg__PhysicsAPI.ts`):** there's one physics world with
+  one global state under the flat `AEK_debugPhysicsApi` key, so gravity and the iteration counts
+  are `global`, not per scene. Excluded: the four boot-time controls (`setBootOverride` reloads),
+  the interpolation mode and wireframe pose dropdowns and the whole Wireframe folder (cosmetic),
+  per-entity wireframe controls (cosmetic), console-log (dev tool), Delete (no inverse), the
+  "Update … input" buttons and read-only readouts, plus everything §2/§4.2 already excluded
+  (timestep, world step, background behaviour, delta times, sub-steps). Physics entities are
+  recorded only when they have a stable app id.
+- **Character:** character ids are always app-supplied, so no stable-id guard is needed.
+- **SkyBox:** `skybox.select` stores sky box ids (including `NO_SKYBOX_ID`). The dropdown choice
+  is session-only by design — on load `createSkyBox` takes `isCurrent` from the scene code —
+  so a reload shows the scene default again; the history still undoes/redoes across it.
+- **`p040` had landed** by implementation time: Delete camera/light exist and stay unrecorded
+  ([DESTRUCTIVE-NO-INVERSE], as §2 provisioned). The Assets and SpatialGrid tabs postdate §2's
+  inventory and were not reviewed or wired.
+
+### Pre-existing bugs fixed along the way
+
+- **Camera/light debug props restored against the wrong scene.** `loadScene` creates cameras
+  (and scene init code creates lights) before `setCurrentScene`, so `loadPersistentProps` read
+  the previous scene's LS data or none. `PropertyLoader.ts` now reads the loading scene
+  (`getNextSceneId() ?? getCurrentSceneId()`).
+- **Camera fov slider.** It was bound to the live `camera.fov`: non-responsive edits reverted on
+  resize (`applyCameraProjection` derives fov from `settings.fov`), and in responsive mode it
+  showed the derived fov while storing it as the base. It's now bound to a proxy of
+  `settings.fov`, like Frustum Size.
+- **Directional shadow frustum stretch.** `refreshLightShadows` widened the ortho bounds by the
+  map aspect on every shadow-map-size change (compounding, and never saved, so a reload dropped
+  it). Removed: the frustum is `shadowCameraFrustum` as authored, same as `createLightEntity`.
+- **SkyBox tab.** The tab was built from the boot-time state objects (`createSkyBox` replaces
+  them), so it showed "[No skybox]" and stale folders; it now uses the latest ones `SkyBox.ts`
+  passes. The roughness sliders wrote a local uniform nothing rendered with; they now write
+  `getEnvMapRoughnessBg()`. `debuggerCreated` is set before the tab is created so the tab's own
+  build can't re-enter it.
+
+### Known limitations
+
+- Physics-object and character pose undo restores the pose only; velocity isn't rolled back, and
+  anything driving the body keeps doing so (e.g. `thirdPersonGym`'s `dummyCharLooper`, or the
+  `sideWaysPlatform` next to `topDownChar`'s spawn point).
+- Undo doesn't refresh the staged position/rotation fields of those two windows (the Set buttons
+  don't either; the "Update … input" buttons still work).
+- Entities with generated app ids aren't recorded (they can't be found again after a reload).
+- The 800 ms coalescing window is still an untuned default.
+
+### Notes for p062
+
+- One Undo/Redo button pair and one shortcut pair fit the merged timeline; `canUndo()` /
+  `canRedo()` already look at both the scene and the global bucket.
+- p062 §2.1 calls `updateOnScreenTools('UNDO')` from every record/undo/redo path.
+  `_recordOrCoalesceUndoRedoAction` runs on every drag tick and OnScreenTools rebuilds fully on
+  update, so refresh only when `canUndo()`/`canRedo()` actually change.
+- `historySize` is enforced per bucket, so the merged history can hold up to twice that many
+  entries (scene + global).
+- `getUndoRedoHistory()`'s shape changed (above); p062 doesn't use it.
+- Undo from a key binding must not run while a Tweakpane input has focus (p062 §2.3's
+  `isTypingInField()` guard) — several handlers rebuild the pane the user would be typing in.

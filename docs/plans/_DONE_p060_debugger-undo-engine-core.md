@@ -1,6 +1,6 @@
 Status: implemented
 Category: Debugger
-Blocks: p061_add-undo-history-action-recording-to-debugger-tools.md and p062_add-undo-and-redo-ui.md
+Blocks: \_DONE_p061_add-undo-history-action-recording-to-debugger-tools.md and p062_add-undo-and-redo-ui.md
 Epic: https://trello.com/c/JYgK1s1u/86-add-undo-redo-system
 
 # Debugger Undo/Redo Engine Core — Plan

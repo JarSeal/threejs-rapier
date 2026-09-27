@@ -1,4 +1,3 @@
-import { uniform } from 'three/tsl';
 import { ListBladeApi, Pane } from 'tweakpane';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
@@ -13,38 +12,150 @@ import {
 import {
   clearSkyBox,
   createSkyBox,
+  createSkyBoxDebugGUI,
   defaultRoughness,
   defaultSkyBoxState,
   deleteCurrentSkyBox,
   extractSkyBoxParamsFromState,
   getCurSceneSkyBoxSceneId,
+  getEnvMapRoughnessBg,
   LS_KEY_ALL_STATES,
   NO_SKYBOX_ID,
   SkyBoxState,
 } from '../SkyBox';
 import { BladeController, View } from '@tweakpane/core';
 import { getCurrentSceneId } from '../Scene';
+import { lwarn } from '../../utils/Logger';
+import {
+  _recordOrCoalesceUndoRedoAction,
+  _recordUndoRedoAction,
+  _registerUndoRedoActionHandler,
+} from './_dbg__UndoRedo';
+
+type AllSkyBoxStates = { [sceneId: string]: { [id: string]: SkyBoxState } };
 
 const LS_KEY_UI = 'AEK_debugSkyBoxUI';
-const pmremRoughnessBg = uniform(defaultRoughness);
 let skyBoxDebugGUI: Pane | null = null;
+/** SkyBox.ts replaces its state objects whenever a sky box is created or cleared and passes the
+ * new ones on every rebuild, so the tab and the undo/redo handlers use the latest ones. */
+let latestSkyBoxState: SkyBoxState = { ...defaultSkyBoxState };
+let latestAllSkyBoxStates: AllSkyBoxStates = {};
 let debuggerCreated = false;
 let debugSkyBoxUIState = {
   currentFolderExpanded: true,
   scenesSkyBoxesListExpanded: true,
 };
 
+// Undo/redo
+
+type RoughnessKind = 'EQUIRECTANGULAR' | 'CUBETEXTURE';
+const ROUGHNESS_FIELD = {
+  EQUIRECTANGULAR: 'equiRectRoughness',
+  CUBETEXTURE: 'cubeTextRoughness',
+} as const;
+type SkyBoxRoughnessPayload = {
+  sceneId: string;
+  skyBoxId: string;
+  kind: RoughnessKind;
+  prev: number;
+  next: number;
+};
+type SkyBoxSelectPayload = { sceneId: string; prev: string; next: string };
+
+/** Writes a sky box's roughness to its state, to the rendered sky when it's the current sky
+ * box, and to LS. */
+const writeSkyBoxRoughness = (
+  sceneId: string,
+  skyBoxId: string,
+  kind: RoughnessKind,
+  value: number
+) => {
+  const field = ROUGHNESS_FIELD[kind];
+  if (!latestAllSkyBoxStates[sceneId]) latestAllSkyBoxStates[sceneId] = {};
+  const sceneStates = latestAllSkyBoxStates[sceneId];
+  if (sceneStates[skyBoxId]) {
+    sceneStates[skyBoxId][field] = value;
+  } else {
+    sceneStates[skyBoxId] = { ...defaultSkyBoxState, [field]: value };
+  }
+  if (latestSkyBoxState.id === skyBoxId && latestSkyBoxState.type === kind) {
+    latestSkyBoxState[field] = value;
+    getEnvMapRoughnessBg().value = value;
+  }
+  lsSetItem(LS_KEY_ALL_STATES, latestAllSkyBoxStates);
+};
+
+const recordSkyBoxRoughness = (
+  actionType: 'skybox.roughness' | 'skybox.resetRoughness',
+  payload: SkyBoxRoughnessPayload
+) => {
+  if (payload.prev === payload.next) return;
+  if (actionType === 'skybox.resetRoughness') {
+    _recordUndoRedoAction(actionType, `Sky box ${payload.skyBoxId}: reset roughness`, payload);
+    return;
+  }
+  _recordOrCoalesceUndoRedoAction(
+    actionType,
+    `Sky box ${payload.skyBoxId}: roughness`,
+    payload,
+    `${payload.sceneId}.${payload.skyBoxId}.${payload.kind}`
+  );
+};
+
+/** Makes a scene's sky box current (or removes the current one with NO_SKYBOX_ID). */
+const selectSkyBox = (sceneId: string, id: string) => {
+  if (id === NO_SKYBOX_ID) {
+    deleteCurrentSkyBox();
+    lsSetItem(LS_KEY_ALL_STATES, latestAllSkyBoxStates);
+    // We have to use setTimeout, because the debugGUI is rebuilt
+    setTimeout(() => createSkyBoxDebugGUI(), 0);
+    return;
+  }
+  const sbState = latestAllSkyBoxStates[sceneId]?.[id];
+  if (!sbState) {
+    lwarn(`Could not find sky box "${id}" in scene "${sceneId}", skipping.`);
+    return;
+  }
+  sbState.isCurrent = true;
+  lsSetItem(LS_KEY_ALL_STATES, latestAllSkyBoxStates);
+  // We have to use setTimeout, because the debugGUI is rebuilt
+  setTimeout(async () => {
+    await createSkyBox(
+      {
+        ...extractSkyBoxParamsFromState(sbState),
+        id,
+        sceneId,
+        isCurrent: true,
+        ...(sbState.name ? { debugData: { name: sbState.name } } : {}),
+      },
+      true
+    );
+    lsSetItem(LS_KEY_ALL_STATES, latestAllSkyBoxStates);
+  }, 0);
+};
+
+const applyRoughnessUndoRedo = (payload: SkyBoxRoughnessPayload, value: number) => {
+  writeSkyBoxRoughness(payload.sceneId, payload.skyBoxId, payload.kind, value);
+  createSkyBoxDebugGUI();
+};
+const roughnessUndoHandler = {
+  undo: (payload: SkyBoxRoughnessPayload) => applyRoughnessUndoRedo(payload, payload.prev),
+  redo: (payload: SkyBoxRoughnessPayload) => applyRoughnessUndoRedo(payload, payload.next),
+};
+_registerUndoRedoActionHandler('skybox.roughness', roughnessUndoHandler);
+_registerUndoRedoActionHandler('skybox.resetRoughness', roughnessUndoHandler);
+_registerUndoRedoActionHandler<SkyBoxSelectPayload>('skybox.select', {
+  undo: ({ sceneId, prev }) => selectSkyBox(sceneId, prev),
+  redo: ({ sceneId, next }) => selectSkyBox(sceneId, next),
+});
+
 /**
  * Creates the sky box debug GUI for the first time
  */
-const buildSkyBoxDebugGUI = (
-  skyBoxState: SkyBoxState,
-  allSkyBoxStates: {
-    [sceneId: string]: {
-      [id: string]: SkyBoxState;
-    };
-  }
-) => {
+const buildSkyBoxDebugGUI = () => {
+  // Set before createDebuggerTab: it can build the tab right away, and the tab's own build
+  // must not come back here.
+  debuggerCreated = true;
   const icon = getSvgIcon('cloudSun');
   createDebuggerTab({
     id: 'skyBoxControls',
@@ -95,11 +206,10 @@ const buildSkyBoxDebugGUI = (
         clearListBtn,
       ]);
       skyBoxDebugGUI = debugGUI;
-      _createSkyBoxDebugGUI(skyBoxState, allSkyBoxStates);
+      _createSkyBoxDebugGUI(latestSkyBoxState, latestAllSkyBoxStates);
       return container;
     },
   });
-  debuggerCreated = true;
 };
 
 /**
@@ -114,7 +224,9 @@ export const _createSkyBoxDebugGUI = (
   }
 ) => {
   if (!IS_DEBUG_ENV) return;
-  if (!debuggerCreated) buildSkyBoxDebugGUI(skyBoxState, allSkyBoxStates);
+  latestSkyBoxState = skyBoxState;
+  latestAllSkyBoxStates = allSkyBoxStates;
+  if (!debuggerCreated) buildSkyBoxDebugGUI();
 
   if (!skyBoxDebugGUI) return;
   const debugGUI = skyBoxDebugGUI;
@@ -161,30 +273,35 @@ export const _createSkyBoxDebugGUI = (
       max: 1,
     })
     .on('change', (e) => {
-      pmremRoughnessBg.value = e.value;
       // const debugToolsState = getDebugToolsState();
       // if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(e.value);
       const sceneId = getCurSceneSkyBoxSceneId();
-      const curSceneState = allSkyBoxStates[sceneId][skyBoxState.id];
-      if (curSceneState) {
-        allSkyBoxStates[sceneId][skyBoxState.id].equiRectRoughness = e.value;
-      } else {
-        allSkyBoxStates[sceneId][skyBoxState.id] = {
-          ...defaultSkyBoxState,
-          equiRectRoughness: e.value,
-        };
-      }
-      lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+      // The binding has already written skyBoxState, so the previous value is the stored one
+      const prev =
+        allSkyBoxStates[sceneId]?.[skyBoxState.id]?.equiRectRoughness ?? defaultRoughness;
+      writeSkyBoxRoughness(sceneId, skyBoxState.id, 'EQUIRECTANGULAR', e.value);
+      recordSkyBoxRoughness('skybox.roughness', {
+        sceneId,
+        skyBoxId: skyBoxState.id,
+        kind: 'EQUIRECTANGULAR',
+        prev,
+        next: e.value,
+      });
     });
   equiRectFolder.addButton({ title: 'Reset' }).on('click', () => {
-    skyBoxState.equiRectRoughness = defaultRoughness;
-    pmremRoughnessBg.value = defaultRoughness;
     // const debugToolsState = getDebugToolsState();
     // if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(defaultRoughness);
     const sceneId = getCurSceneSkyBoxSceneId();
-    allSkyBoxStates[sceneId][skyBoxState.id].equiRectRoughness = defaultRoughness;
-    lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+    const prev = skyBoxState.equiRectRoughness;
+    writeSkyBoxRoughness(sceneId, skyBoxState.id, 'EQUIRECTANGULAR', defaultRoughness);
     debugGUI.refresh();
+    recordSkyBoxRoughness('skybox.resetRoughness', {
+      sceneId,
+      skyBoxId: skyBoxState.id,
+      kind: 'EQUIRECTANGULAR',
+      prev,
+      next: defaultRoughness,
+    });
   });
 
   // Cubetexture
@@ -231,20 +348,20 @@ export const _createSkyBoxDebugGUI = (
       max: 1,
     })
     .on('change', (e) => {
-      pmremRoughnessBg.value = e.value;
       // const debugToolsState = getDebugToolsState();
       // if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(e.value);
       const sceneId = getCurSceneSkyBoxSceneId();
-      const curSceneState = allSkyBoxStates[sceneId][skyBoxState.id];
-      if (curSceneState) {
-        allSkyBoxStates[sceneId][skyBoxState.id].cubeTextRoughness = e.value;
-      } else {
-        allSkyBoxStates[sceneId][skyBoxState.id] = {
-          ...defaultSkyBoxState,
-          cubeTextRoughness: e.value,
-        };
-      }
-      lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+      // The binding has already written skyBoxState, so the previous value is the stored one
+      const prev =
+        allSkyBoxStates[sceneId]?.[skyBoxState.id]?.cubeTextRoughness ?? defaultRoughness;
+      writeSkyBoxRoughness(sceneId, skyBoxState.id, 'CUBETEXTURE', e.value);
+      recordSkyBoxRoughness('skybox.roughness', {
+        sceneId,
+        skyBoxId: skyBoxState.id,
+        kind: 'CUBETEXTURE',
+        prev,
+        next: e.value,
+      });
     });
   // @TODO: show cubeTextRotate
   // cubeTextureFolder
@@ -256,14 +373,19 @@ export const _createSkyBoxDebugGUI = (
   //   })
   //   .on('change', (e) => {});
   cubeTextureFolder.addButton({ title: 'Reset' }).on('click', () => {
-    skyBoxState.cubeTextRoughness = defaultRoughness;
-    pmremRoughnessBg.value = defaultRoughness;
     // const debugToolsState = getDebugToolsState();
     // if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(defaultRoughness);
     const sceneId = getCurSceneSkyBoxSceneId();
-    allSkyBoxStates[sceneId][skyBoxState.id].cubeTextRoughness = defaultRoughness;
-    lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
+    const prev = skyBoxState.cubeTextRoughness;
+    writeSkyBoxRoughness(sceneId, skyBoxState.id, 'CUBETEXTURE', defaultRoughness);
     debugGUI.refresh();
+    recordSkyBoxRoughness('skybox.resetRoughness', {
+      sceneId,
+      skyBoxId: skyBoxState.id,
+      kind: 'CUBETEXTURE',
+      prev,
+      next: defaultRoughness,
+    });
   });
 
   // Scene's skyboxes
@@ -282,10 +404,11 @@ export const _createSkyBoxDebugGUI = (
     [NO_SKYBOX_ID]: { ...defaultSkyBoxState, id: NO_SKYBOX_ID, name: '[No skybox]' },
   } as { [key: string]: SkyBoxState };
   const sceneSkyBoxesKeys = Object.keys(sceneSkyBoxes || {});
+  const selectedSkyBoxId = findScenesCurrentSkyBoxState(allSkyBoxStates).id || NO_SKYBOX_ID;
   const scenesSkyBoxesDropDown = sceneSkyBoxesFolder.addBlade({
     view: 'list',
     label: 'Sky boxes in scene',
-    value: findScenesCurrentSkyBoxState(allSkyBoxStates).id,
+    value: selectedSkyBoxId,
     options: sceneSkyBoxesKeys
       .map((key) => ({
         text: `${sceneSkyBoxes[key].name || sceneSkyBoxes[key].id}${sceneSkyBoxes[key].isDefaultForScene ? ' [*default]' : ''}`,
@@ -299,30 +422,14 @@ export const _createSkyBoxDebugGUI = (
   }) as ListBladeApi<BladeController<View>>;
   scenesSkyBoxesDropDown.on('change', (e) => {
     const id = String(e.value);
-    if (id === NO_SKYBOX_ID) {
-      deleteCurrentSkyBox();
-      lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
-      // We have to use setTimeout, because the debugGUI is rebuilt
-      setTimeout(() => _createSkyBoxDebugGUI(skyBoxState, allSkyBoxStates), 0);
-      return;
+    selectSkyBox(sceneId, id);
+    if (id !== selectedSkyBoxId) {
+      _recordUndoRedoAction<SkyBoxSelectPayload>('skybox.select', 'Sky box: select', {
+        sceneId,
+        prev: selectedSkyBoxId,
+        next: id,
+      });
     }
-    const sbState = sceneSkyBoxes[id];
-    sbState.isCurrent = true;
-    lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
-    // We have to use setTimeout, because the debugGUI is rebuilt
-    setTimeout(async () => {
-      await createSkyBox(
-        {
-          ...extractSkyBoxParamsFromState(sbState),
-          id,
-          sceneId: getCurSceneSkyBoxSceneId(),
-          isCurrent: true,
-          ...(sbState?.name ? { debugData: { name: sbState.name } } : {}),
-        },
-        true
-      );
-      lsSetItem(LS_KEY_ALL_STATES, allSkyBoxStates);
-    }, 0);
   });
 };
 
