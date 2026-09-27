@@ -9,16 +9,25 @@
  *
  * Changing the enabled PostFX pass set rebuilds the node chain (a shader recompile, so a
  * one-frame hitch), but a disabled PostFX pass then costs nothing. Switching the whole stack
- * off keeps the pipeline warm, so switching it back on does not recompile.
+ * off keeps the pipeline warm, so switching it back on does not recompile. The chain is also
+ * rebuilt when the active camera changes (eg. the debug fly camera is toggled), because the TSL
+ * scene pass binds its camera at construction. Resizing needs no rebuild.
  */
 import * as THREE from 'three/webgpu';
 import { mrt, normalView, output, pass } from 'three/tsl';
-import { getConfig } from './Config';
+import { getConfig, IS_DEBUG_ENV } from './Config';
 import { getRenderer } from './Renderer';
-import { getGeneratedAppData, getRootScene, getSceneOpts } from './Scene';
+import {
+  getCurrentSceneId,
+  getGeneratedAppData,
+  getRootScene,
+  getSceneOpts,
+  registerOnAllSceneEnterings,
+  registerOnAllSceneExits,
+} from './Scene';
 import { getActiveCamera } from './CameraManager';
 import { postFxFileObjects } from '../generatedAppFns';
-import { lerror, lwarn } from '../utils/Logger';
+import { lerror, llog, lwarn } from '../utils/Logger';
 import type {
   PostFxPassApi,
   PostFxPassContext,
@@ -51,6 +60,8 @@ let postFxPasses: PostFxPassState[] = [];
 let enabledPostFxPassCount = 0;
 let pipeline: THREE.RenderPipeline | null = null;
 let scenePass: THREE.PassNode | null = null;
+/** The camera the current build's scene pass renders with. */
+let builtCamera: THREE.Camera | null = null;
 let needsRebuild = true;
 const lastSize = new THREE.Vector2(-1, -1);
 const curSize = new THREE.Vector2();
@@ -61,6 +72,13 @@ const curSize = new THREE.Vector2();
  */
 export const initPostFX = () => {
   isMasterEnabled = getConfig().postFx?.enabled !== false;
+
+  // The PostFX chain is scene-scoped: set up on every scene enter, released on every exit
+  registerOnAllSceneExits('postFxSceneExit', disposePostFx);
+  registerOnAllSceneEnterings('postFxSceneEnter', () => {
+    const sceneId = getCurrentSceneId();
+    if (sceneId) buildPostFxForScene(sceneId);
+  });
 };
 
 const resolvePostFxPass = (
@@ -114,6 +132,7 @@ const disposePostFxNodes = () => {
   }
   scenePass?.dispose();
   scenePass = null;
+  builtCamera = null;
 };
 
 const buildPostFxPipeline = (
@@ -170,8 +189,14 @@ const buildPostFxPipeline = (
   pipeline.outputNode = colorNode;
   pipeline.needsUpdate = true;
   scenePass = newScenePass;
+  builtCamera = camera;
   lastSize.set(-1, -1);
   needsRebuild = false;
+
+  if (IS_DEBUG_ENV) {
+    const ids = postFxPasses.filter((p) => p.api).map((p) => p.id);
+    llog(`[PostFX] Built the PostFX chain (scene "${postFxSceneId}"): ${ids.join(' → ')}`);
+  }
 };
 
 /** Calls the PostFX passes' onSetSize hooks when the drawing buffer size has changed. */
@@ -193,11 +218,11 @@ const updatePostFxSize = (renderer: THREE.WebGPURenderer) => {
 export const getActivePostFxPipeline = () => {
   if (!isMasterEnabled || !isEnabled || !enabledPostFxPassCount) return null;
   const renderer = getRenderer();
-  if (!renderer) return null;
-  if (needsRebuild || !pipeline) {
+  const camera = getActiveCamera();
+  if (!renderer || !camera) return null;
+  if (needsRebuild || !pipeline || camera !== builtCamera) {
     const rootScene = getRootScene();
-    const camera = getActiveCamera();
-    if (!rootScene || !camera) return null;
+    if (!rootScene) return null;
     buildPostFxPipeline(renderer, rootScene, camera);
   }
   updatePostFxSize(renderer);

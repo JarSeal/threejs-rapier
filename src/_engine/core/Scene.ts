@@ -692,7 +692,7 @@ export const runOnSceneExit = (sceneId?: string) => {
 export const registerOnAllSceneEnterings = (id: string, fn: () => void) =>
   (onAllSceneEnters[id] = fn);
 
-export const registerOnAllSceneExits = (id: string, fn: () => void) => (onAllSceneEnters[id] = fn);
+export const registerOnAllSceneExits = (id: string, fn: () => void) => (onAllSceneExits[id] = fn);
 
 export const runOnAllSceneEnters = () => {
   const keys = Object.keys(onAllSceneEnters);
