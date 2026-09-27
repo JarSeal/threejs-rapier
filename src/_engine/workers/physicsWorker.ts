@@ -40,7 +40,7 @@ let resolvedUseSAB = false;
  * same CREATE_WORLD), so the two agree exactly once a STEP has been processed. Deliberately
  * not reset by RESTORE_SNAPSHOT: the timeline keeps going, only the poses jump. */
 let stepsExecuted = 0;
-/** Debug wireframe state mirror (p025). Stays undefined until the main thread enables
+/** Debug wireframe state mirror. Stays undefined until the main thread enables
  * tracking, which is what keeps the feature's cost at zero while no wireframe is on. */
 let debugStateBuffer: PhysicsDebugStateBuffer | undefined;
 /** Tracked ids, in the order the main thread sent them — index IS slot on both sides. */
@@ -139,7 +139,7 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
         writeBackDebugState();
         return pushPendingEvents();
       case PhysicsProtocolType.SET_DEBUG_STATE_TRACKING: {
-        // SET_DEBUG_STATE_TRACKING — full replacement of the tracked set (p025).
+        // SET_DEBUG_STATE_TRACKING — full replacement of the tracked set.
         debugTrackedRigidBodyIds = data.rigidBodyIds;
         debugTrackedColliderIds = data.colliderIds;
         const isTracking =

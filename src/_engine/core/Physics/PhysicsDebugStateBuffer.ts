@@ -1,6 +1,5 @@
 /**
- * Per-step live-state mirror for the physics debug wireframes
- * (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md, Design decision 4).
+ * Per-step live-state mirror for the physics debug wireframes.
  *
  * The wireframe colors depend on simulation state (sleeping / kinematic / enabled /
  * sensor), which in WORKER_THREAD mode is only reachable through async RPC —

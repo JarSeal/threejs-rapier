@@ -261,7 +261,7 @@ const createPhysicsEntitiesDebugList = () => {
 };
 
 /**
- * Per-entity wireframe controls for the edit window (p025 Design decision 7c / Phase 5):
+ * Per-entity wireframe controls for the edit window:
  * the visibility toggle, plus one color picker per state that overrides the global
  * palette for this entity only.
  *
@@ -464,7 +464,7 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
 
 /**
  * "Wireframe" folder: the global palette every per-entity collider wireframe falls back
- * to (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md, Design decision 7b). Visibility
+ * to. Visibility
  * itself is never global — it's toggled per entity from the edit window.
  */
 const addWireframeFolder = (debugGUI: Pane) => {
@@ -742,8 +742,8 @@ export const _createPhysicsAPIDebugGUI = () => {
 
       debugGUI.addBlade({ view: 'separator' });
 
-      // 'EXTRAPOLATION' isn't offered here yet — reserved, not implemented (p024 feasibility
-      // study). physicsInterpolationSystem (PhysicsManager.ts) returns early for it, so
+      // 'EXTRAPOLATION' isn't offered here yet — reserved, not implemented.
+      // physicsInterpolationSystem (PhysicsManager.ts) returns early for it, so
       // selecting it via AppConfig is safe but inert.
       const interpolationModeDropDown = debugGUI.addBlade({
         view: 'list',

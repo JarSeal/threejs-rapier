@@ -231,8 +231,8 @@ export const scene = async () => {
   }
 
   // --- Point lights (Phase 5) — a handful of lantern/firefly accents among the foliage,
-  // exercising docs/plans/_DONE_p081_light-object-culling.md's per-light contribution culling
-  // (`objectCullingEnabled`), which no other example scene in this repo uses yet (§1.5).
+  // exercising per-light contribution culling (`objectCullingEnabled`, LightObjectCullingSystem.ts),
+  // which no other example scene in this repo uses yet (§1.5).
 
   const lanternPlacements = scatterOnSurface({
     surface: terrainMesh,

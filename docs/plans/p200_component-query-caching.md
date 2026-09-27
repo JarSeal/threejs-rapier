@@ -113,12 +113,11 @@ worker-threaded Physics API, currently sketched as commented-out code
 `src/_engine/workers/physics/*.ts`, disabled). Checked whether this future design would
 need a multi-component compound-query cache:
 
-- `PhysicsAPI.ts` (3651 lines, fully commented out) and the active
-  `PhysicsRapier.ts` never query ECS component storages for bulk entity sets — both
-  maintain their own separate `physicsObjects`/`currentScenePhysicsObjects` registries
-  (`PhysicsAPI.ts:181-182`, `PhysicsRapier.ts:325,330`) and iterate those arrays
-  directly. `PhysicsRapier.ts`'s only ECS touchpoints are a handful of lines inside
-  `deletePhysicsObject` (`PhysicsRapier.ts:1231-1239`) that delete one specific entity
+- `PhysicsAPI.ts` (3651 lines, fully commented out) and the then-active legacy
+  `PhysicsRapier.ts` (since removed) never queried ECS component storages for bulk entity
+  sets — both maintained their own separate `physicsObjects`/`currentScenePhysicsObjects`
+  registries and iterated those arrays directly. The legacy file's only ECS touchpoints
+  were a handful of lines inside `deletePhysicsObject` that deleted one specific entity
   by id — not a query.
 - The one real per-frame ECS query in the physics-sync path,
   `physicsToTransformSystem` (`ECSCoreSystems.ts:178-203`), uses a single
@@ -134,14 +133,12 @@ need a multi-component compound-query cache:
   `physicsSwitchWorld.ts`) is a per-object-id `postMessage`/`requestId` protocol
   (resolve one `rigidBodyId`/`colliderId`, call one method) — it never reads ECS
   storages at all, let alone more than one simultaneously.
-- `docs/plans/_DONE_ecs-typed-arrays-feature.md:210-223` frames the future
-  `SharedArrayBuffer` design purely around transferring transform *values* for
-  already-known entities via the existing single-component `BODY_DYNAMIC_VISUAL`
-  bucket — never around deriving/caching which entities satisfy a component
-  conjunction. `docs/plans/_DONE_ecs-multiple-worlds.md:374` and
-  `docs/plans/_DONE_p050_spatial-index.md:20` (Rapier broadphase only knows entities with the
-  single `TAG_IS_PHYSICS_OBJECT` tag) corroborate the same single-component-type
-  pattern.
+- The worker-thread transform sync (`Physics/PhysicsTransformBuffer.ts`) transfers
+  transform *values* for already-known entities via the single-component
+  `BODY_DYNAMIC_VISUAL` bucket — never derives/caches which entities satisfy a
+  component conjunction. `docs/plans/_DONE_p050_spatial-index.md:20` (Rapier broadphase
+  only knows entities with the single `TAG_IS_PHYSICS_OBJECT` tag) corroborates the same
+  single-component-type pattern.
 
 **Verdict: no current or planned system in this codebase needs a multi-component
 compound-query cache.** Building one now would be speculative infrastructure with no

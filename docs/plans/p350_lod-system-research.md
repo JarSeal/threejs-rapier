@@ -343,8 +343,8 @@ output is a recommendation, not an implementation.
    culled entities anyway (e.g. to keep shadow-caster LODs correct)? Shadow LOD is unaddressed
    in this document and may deserve its own section.
 4. Terrain is not covered here at all. Terrain LOD (clipmaps / quadtree / CDLOD) is a separate
-   problem with a separate literature; `toolkit/geometry/generateTerrain.ts` exists but is
-   currently a `PhysicsRapier.ts` consumer. Flagging as a known gap.
+   problem with a separate literature; `toolkit/geometry/generateTerrain.ts` exists (physics-engine-agnostic,
+   exposes its height samples for a heightfield collider). Flagging as a known gap.
 5. Numbering: `p350` places this after the asset pipeline (`p300`) on the assumption that LOD
    generation belongs there. If physics tiers (§6, Tier 1.2) are pulled forward as their own
    plan, they arguably want a `p0xx` number to sit with the physics epic instead.

@@ -2,7 +2,7 @@
 
 Status: draft | not-implemented
 Category: Debugger
-Blocked by: [_DONE_p050_spatial-index.md](./_DONE_p050_spatial-index.md), [_DONE_p081_light-object-culling.md](./_DONE_p081_light-object-culling.md), [_DONE_p058_line-rendering-system.md](./_DONE_p058_line-rendering-system.md) (implemented — no longer blocking)
+Blocked by: [_DONE_p050_spatial-index.md](./_DONE_p050_spatial-index.md) (incl. light object culling), [_DONE_p058_line-rendering-system.md](./_DONE_p058_line-rendering-system.md) (implemented — no longer blocking)
 
 ## Goal
 
@@ -13,7 +13,7 @@ Add a debug-mode toggle that visualizes the [spatial index grid](../../src/_engi
 - The spatial index is a sparse, CSR-backed uniform grid (`SpatialGrid.ts`), one instance per `ECSWorld`, held in a `WeakMap` and rebuilt every frame from current member positions ([SpatialIndexSystem.ts](../../src/_engine/core/Spatial/SpatialIndexSystem.ts), registered as a plugin on `ECSSystemStage.APP_POST_PHYSICS`). It is **not bounded by a fixed world-space AABB** — cells are only allocated where members actually land, so there is no single fixed "grid boundary" to draw; the outer extent of the visualization is simply the union of currently-occupied cell wireframes.
 - Members whose radius exceeds `cellSize * oversizedRadiusMultiplier` bypass the grid entirely (the "oversized tier", tracked in a separate `Set`). They have no cell to draw and are **out of scope** for this plan (see Non-goals).
 - §9 of `_DONE_p050_spatial-index.md` planned an occupancy histogram, live cell-size tuning, and a brute-force oracle for debug tooling — all already implemented in `_dbg__SpatialGrid.ts`. A 3D wireframe visualizer was never part of that plan; this is new scope.
-- The engine's established pattern for a toggleable 3D debug wireframe used to be the legacy physics collider debug mesh (`createPhysicsDebugMesh`/`stepperFnDebug` in [PhysicsRapier.ts:1465](../../src/_engine/core/PhysicsRapier.ts)): a single `LineSegments` created **once**, added to the scene, with its `BufferGeometry` position/color attributes **refilled every frame** while enabled; the toggle only flips a `visible` flag and an `enabled` state flag read by the per-frame refill — nothing is destroyed/recreated on toggle. **That pattern is superseded by the core Line rendering system** ([_DONE_p058_line-rendering-system.md](./_DONE_p058_line-rendering-system.md)), which owns exactly this shape: a pre-allocated segment buffer, an allocation-free `beginWrite()`/`endWrite()` refill that never re-wraps the attribute, `setColor()` as a uniform write, and `setVisible()`. This plan builds on that API rather than hand-rolling a third copy of it.
+- The engine's established pattern for a toggleable 3D debug wireframe used to be the legacy physics collider debug mesh (`createPhysicsDebugMesh`/`stepperFnDebug` in the since-removed `PhysicsRapier.ts`): a single `LineSegments` created **once**, added to the scene, with its `BufferGeometry` position/color attributes **refilled every frame** while enabled; the toggle only flips a `visible` flag and an `enabled` state flag read by the per-frame refill — nothing is destroyed/recreated on toggle. **That pattern is superseded by the core Line rendering system** ([_DONE_p058_line-rendering-system.md](./_DONE_p058_line-rendering-system.md)), which owns exactly this shape: a pre-allocated segment buffer, an allocation-free `beginWrite()`/`endWrite()` refill that never re-wraps the attribute, `setColor()` as a uniform write, and `setVisible()`. This plan builds on that API rather than hand-rolling a third copy of it.
 
 ## Design decisions
 
@@ -34,7 +34,7 @@ Add a debug-mode toggle that visualizes the [spatial index grid](../../src/_engi
 ### Phase 1 — Engine API (additive, non-breaking)
 
 - Add `SpatialGrid.cellSize` getter.
-- Add `SpatialGrid.getOccupiedCellBoundsInto(out: Float32Array): number` (grows/replaces the caller's buffer reference if too small, same convention as `PhysicsRapier.ts`'s debug-mesh buffer growth).
+- Add `SpatialGrid.getOccupiedCellBoundsInto(out: Float32Array): number` (grows/replaces the caller's buffer reference if too small, same convention as the Line rendering system's segment-buffer growth).
 - No behavior change to existing consumers. Verify manually via the existing "Live stats" panel (occupied cell count should match the number of AABBs returned).
 
 ### Phase 2 — Wireframe object + per-frame refill

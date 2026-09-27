@@ -1,12 +1,12 @@
 Status: draft | not-implemented | needs-replanning
 Category: Physics
-Blocked by: p026_physics-api-support-for-joints.md
+Blocked by: _DONE_p026_physics-api-support-for-joints.md (implemented — no longer blocking; replan against its final shapes)
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
 
 # Physics API Support for Multibody Joints — Plan
 
 Adds Rapier **multibody-joint** support to the engine-agnostic Physics API, as a follow-up to
-`p026_physics-api-support-for-joints.md`'s impulse-joint work. Split out because multibody joints
+`_DONE_p026_physics-api-support-for-joints.md`'s impulse-joint work. Split out because multibody joints
 are a genuinely separate Rapier solver with different tradeoffs and a smaller JS-level surface —
 bundling both into one plan would roughly double p026's scope for a feature most game-engine use
 cases don't need immediately.
@@ -26,7 +26,7 @@ wakeUp): MultibodyJoint`, `RAPIER.World.multibodyJoints: MultibodyJointSet` (`cr
   reduced-coordinate articulated-body solver — no drift between connected bodies, better suited to
   rigid chains (e.g. robot arms) than impulse joints' soft-constraint solver, at the cost of the
   missing motor/limit controls.
-- This plan assumes `p026_physics-api-support-for-joints.md` has been implemented first: the
+- This plan assumes `_DONE_p026_physics-api-support-for-joints.md` has been implemented first: the
   `JointParams`/`JointAPI` shape, the `PhysicsProtocolType.JOINT` numeric range (800-999), the
   `physicsSwitchJoint.ts` worker file, and the `EngineRapier.ts`/`PhysicsAPI.ts` registries it
   introduces are the direct precedent this plan extends. **Do not start detailed design on this

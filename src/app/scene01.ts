@@ -110,8 +110,7 @@ export const scene = async () =>
       },
       { appId: 'physicsBall01' }
     );
-    // radius explicit: the legacy PhysicsRapier system auto-inferred the collider radius from
-    // the attached mesh's SphereGeometry params — the new Physics API has no such inference.
+    // radius explicit instead of relying on inference from the mesh's SphereGeometry params.
     await createPhysicsEntity(
       { type: 'BALL', radius: 1 },
       { rigidType: 'DYNAMIC', translation: { x: 2, y: 3, z: -2 } },

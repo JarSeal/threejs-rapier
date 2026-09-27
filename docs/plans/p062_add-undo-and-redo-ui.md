@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Debugger
-Blocked by: p060_debugger-undo-engine-core.md and p061_add-undo-history-action-recording-to-debugger-tools.md (keyboard shortcuts also depend on p050_input-system-refactoring.md — implemented)
+Blocked by: p060_debugger-undo-engine-core.md and p061_add-undo-history-action-recording-to-debugger-tools.md (keyboard shortcuts also depend on the p050 input system refactoring — implemented, see `src/_engine/core/Input/`)
 Epic: https://trello.com/c/JYgK1s1u/86-add-undo-redo-system
 
 # Add Undo Engine UI and History Setting — Plan
@@ -9,7 +9,7 @@ Adds the user-facing surface for the undo/redo engine (`p060`) once it's wired t
 
 Two of the four asks in this plan originally required small, well-scoped amendments to engine code that isn't part of `p060`/`p061` — flagged prominently here, not just in the risk table. The first has since been delivered by `p050`; the second still stands:
 
-1. ~~The keyboard-shortcut system has no modifier-key (Ctrl/Shift) support.~~ **Resolved by `p050_input-system-refactoring.md`** (implemented): `InputControls.ts` was replaced by `src/_engine/core/Input/KeyboardInput.ts`, which has first-class `ctrl`/`shift`/`alt`/`meta` chords with exact modifier matching, plus an engine-owned default-debug-keys mechanism (`Input/DefaultDebugKeyBindings.ts`). `Ctrl+Z`/`Ctrl+Shift+Z` therefore need **no engine amendment** anymore — see §1.3/§2.3. This plan's keyboard work is now confined to registering two bindings.
+1. ~~The keyboard-shortcut system has no modifier-key (Ctrl/Shift) support.~~ **Resolved by the p050 input system refactoring** (implemented): `InputControls.ts` was replaced by `src/_engine/core/Input/KeyboardInput.ts`, which has first-class `ctrl`/`shift`/`alt`/`meta` chords with exact modifier matching, plus an engine-owned default-debug-keys mechanism (`Input/DefaultDebugKeyBindings.ts`). `Ctrl+Z`/`Ctrl+Shift+Z` therefore need **no engine amendment** anymore — see §1.3/§2.3. This plan's keyboard work is now confined to registering two bindings.
 2. **`p060`'s `historySize` is a boot-time config value only** — there's no runtime getter/setter for it to bind a live Debug Tools control to. This plan adds one (§2.4), another small, expected amendment in the same spirit as `p061`'s already-flagged core changes.
 
 ---
@@ -210,7 +210,7 @@ No schema, scene-JSON, or ECS component-type changes.
 ## 4. Phased rollout
 
 - **Phase 1 — Icons.** Add the two new SVG files + `SvgIcon.ts` registration. No behavior change, purely additive assets. Manual verification: temporarily render both icons somewhere (e.g. via the browser console calling `getSvgIcon('undo')`) to confirm they parse/display correctly before wiring them into real buttons.
-- **Phase 2 — (obsolete)** The keyboard-shortcut core amendment this phase used to cover was delivered by `p050_input-system-refactoring.md` (modifier chords, exact matching, default debug keys). Nothing to do here; the undo/redo bindings themselves are registered in Phase 4.
+- **Phase 2 — (obsolete)** The keyboard-shortcut core amendment this phase used to cover was delivered by the p050 input system refactoring (modifier chords, exact matching, default debug keys). Nothing to do here; the undo/redo bindings themselves are registered in Phase 4.
 - **Phase 3 — Debug Tools history-size control.** `_dbg__UndoRedo.ts` settings additions (§2.4) + the new Debug Tools folder. Manual verification: change the value, confirm it persists across reload (`AEK_debugUndoRedoSettings`) and that recording more actions than the new (lower) limit correctly trims old entries.
 - **Phase 4 — OnScreenTools button group + real key bindings.** Register the `sc-undo`/`sc-redo` bindings per §2.3 (including the text-input focus guard), and in a quick manual check confirm `Ctrl+Z`/`Ctrl+Shift+Z` (and `Cmd+Z`/`Cmd+Shift+Z` on macOS) are distinguished from each other and from bare `Z`, and that the "h"/F1 defaults still work; build `undoRedoTools()` (§2.1), fix the `updateTool` fallthrough, and wire the `updateOnScreenTools('UNDO')` refresh calls into `_dbg__UndoRedo.ts`. Manual verification: with `p061`'s recordable actions in place, perform a recordable edit (e.g. Renderer tone mapping, per `p061` §4.1) → confirm the Undo button enables → click it (and separately, press `Ctrl+Z`) → confirm the edit reverts and the Redo button enables → confirm the reverse for Redo/`Ctrl+Shift+Z`. Also confirm the button group's on-screen position doesn't visually collide with the Stats panel in its default (enabled, minimal) state.
 

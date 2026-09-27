@@ -119,9 +119,8 @@ export let mainLoop: () => void = () => {};
 
 /** Everything that has to run in lockstep with the simulation, once per fixed physics
  * sub-step right before it (see stepPhysics): held-key input, then the previous step's
- * collision events, then every world's APP_PHYSICS_STEP systems — the same order legacy
- * PhysicsRapier.ts's baseStepper polled held keys, drained its event queue and ran its scene
- * physics loopers in (see flushPhysicsEvents for why the order matters). */
+ * collision events, then every world's APP_PHYSICS_STEP systems (see flushPhysicsEvents for
+ * why the order matters). */
 const runPhysicsSubStep = (stepDelta: number) => {
   pollHeldKeyBindings(stepDelta);
   flushPhysicsEvents();

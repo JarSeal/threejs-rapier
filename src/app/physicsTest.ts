@@ -11,12 +11,10 @@ import { IS_DEBUG_ENV } from '../_engine/core/Config';
 import { llog } from '../_engine/utils/Logger';
 
 /**
- * Main-thread physics API MVP verification scene
- * (docs/plans/p020_main-thread-physics-api-mvp.md §3.7): a static ground box,
- * a falling ball, and a falling box — plus one worked example per impulse-joint
- * type (docs/plans/p026_physics-api-support-for-joints.md, Phase 3) and a
- * shape-cast worked example against the ground box
- * (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 0).
+ * Physics API verification scene: a static ground box, a falling ball, and a
+ * falling box — plus one worked example per impulse-joint type
+ * (docs/plans/_DONE_p026_physics-api-support-for-joints.md, Phase 3) and a
+ * shape-cast worked example against the ground box.
  */
 export const scene = async () => {
   const ecsWorld = getECSWorld();
@@ -125,7 +123,7 @@ export const scene = async () => {
     groundEntityId
   );
 
-  // --- Shape-cast demo (docs/plans/p028, Phase 0) --------------------------
+  // --- Shape-cast demo --------------------------------------------------------
   // Two casts of a small ball shape from the same point: one straight down into the ground
   // box (expects a hit with a sane normal/TOI), one straight up into open air (expects no
   // hit) — the two cases this phase's manual-verification step calls for. Always uses the

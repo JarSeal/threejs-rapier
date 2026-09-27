@@ -118,7 +118,7 @@ export type PhysicsState = {
    *   frame-reproducible, lowest latency, but MAIN_THREAD only: under WORKER_THREAD the
    *   snapshots arrive asynchronously, so the pose freezes and jumps (a one-time warning is
    *   logged in debug builds).
-   * 'EXTRAPOLATION' = reserved, not implemented (p024 feasibility study).
+   * 'EXTRAPOLATION' = reserved, not implemented.
    */
   interpolationMode: PhysicsInterpolationMode;
   /** Intent to use SharedArrayBuffer for the worker-thread hot-path transform buffer.
@@ -558,7 +558,7 @@ export type ColliderAPI = {
   // --- Geometry (mesh-type shapes) ---
   // The four accessors below exist so a debug visualizer can rebuild a collider's
   // wireframe client-side without Rapier's whole-world debugRender() line soup
-  // (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md). They are read-only snapshots of
+  // (Debug/_dbg__PhysicsDebugDraw.ts). They are read-only snapshots of
   // shape data that never changes after creation, so a consumer fetches them once per
   // collider — never per frame. MAIN_THREAD returns the live arrays the shape owns:
   // do not mutate them.

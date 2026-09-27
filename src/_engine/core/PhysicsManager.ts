@@ -45,8 +45,8 @@ type PrimitiveGeoParams = {
 };
 
 /** Fills in a primitive collider's missing dimensions (hx/hy/hz, radius, halfHeight) from its
- * target mesh's createGeometry()-authored params, mirroring the legacy PhysicsRapier.ts
- * createCollider's per-shape-type mesh-geometry fallback — never overrides a dimension the
+ * target mesh's createGeometry()-authored params (per-shape-type mesh-geometry fallback) —
+ * never overrides a dimension the
  * caller already set explicitly. A no-op for any params/shape it doesn't recognize (TRIMESH/
  * CONVEXHULL/HEIGHTFIELD imports already get their own dedicated derivation in
  * Import/MeshColliderGeometry.ts, which runs before this ever sees them). */
@@ -93,7 +93,7 @@ export const deriveColliderDimensionsFromMesh = (
 
 export const registerPhysicsManager = (world: ECSWorld) => {
   if (IS_DEBUG_ENV) {
-    // Per-entity collider wireframes (p025). Self-registers its ECS hooks/system on
+    // Per-entity collider wireframes. Self-registers its ECS hooks/system on
     // import; nothing runs until an entity actually gets a DEBUG_PHYSICS_WIREFRAME
     // component, and none of it reaches a production bundle.
     debugPhysicsDraw = loadDebugModule(() => import('./Debug/_dbg__PhysicsDebugDraw'));
@@ -559,7 +559,7 @@ export const physicsInterpolationSystem = (world: ECSWorld) => {
   const physicsState = getPhysicsState();
   const mode = physicsState.interpolationMode;
   if (mode === 'NONE') return;
-  // Reserved, not implemented (p024 feasibility study).
+  // Reserved, not implemented.
   if (mode === 'EXTRAPOLATION') return;
 
   if (

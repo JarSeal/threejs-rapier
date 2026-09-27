@@ -5,7 +5,7 @@ Category: Bug fix
 
 ## Context
 
-Found while verifying [\_DONE_p055_debug-camera-helper-leak.md](./_DONE_p055_debug-camera-helper-leak.md).
+Found while verifying the (implemented, since-removed) p055 debug-camera-helper-leak fix.
 Each `thirdPersonGymScene` visit leaves ~16 `_BufferGeometry` objects in the JS heap for good,
 in every mode:
 
@@ -14,7 +14,7 @@ in every mode:
 | `?isDebug=true` | 55 / 71 / 103 |
 | no query | 49 / 65 / 97 |
 
-The GPU side is fine: p054's cycle script shows `renderer.info.memory` flat, so these are
+The GPU side is fine: the cycle script (see Method) shows `renderer.info.memory` flat, so these are
 disposed geometries whose JS objects can't be collected. The same chain also keeps each visit's
 sun, its shadow camera and that camera's render list alive. So the growth is more than the
 geometries, and it grows with every scene that has a shadow-casting light.
@@ -57,8 +57,8 @@ NodeBuilder.js module scope: _bindingGroupsCache (WeakMap)
    cached `RenderContext`s, so their `_bindingGroupsCache` entries (and the `.camera` reference)
    can be collected. It's a private field, and other caches are keyed by `RenderContext`
    (render objects, bindings), so the first frames of the next scene rebuild them. Measure that
-   cost, and check that pipelines/shaders are not recompiled. It would live next to p053's scene
-   leave sweep in `SceneLoader.ts`, not in `_engine` code that runs every frame.
+   cost, and check that pipelines/shaders are not recompiled. It would live next to the scene-leave
+   asset sweep in `SceneLoader.ts`, not in `_engine` code that runs every frame.
 3. **Reuse light objects across scenes**, so no new uniform ids appear. Doesn't fit how scenes
    create their lights. Only worth it if 1 and 2 fail.
 
@@ -66,11 +66,45 @@ NodeBuilder.js module scope: _bindingGroupsCache (WeakMap)
 
 ## Method
 
-- Cycle script and heap snapshots as in p054/p055: `loadScene` Gym ↔ One More Scene, CDP
-  `HeapProfiler.takeHeapSnapshot` in One More Scene after visits 1, 2 and 4. Count
-  `_BufferGeometry`, and diff node ids against the first snapshot to trace retainers of the
-  geometries left from earlier visits (see p055's Method gotchas for WeakMap edges).
+- Cycle script: a Playwright script driven by `.claude/skills/run-aekasha-js` opens
+  `http://localhost:8080/?isDebug=true`, waits for the first scene, then in the page imports the
+  engine modules at the exact URLs the app loaded them from (after HMR Vite serves them with a
+  `?t=` query, so a plain `import('/_engine/core/SceneLoader.ts')` gets a second module instance):
+
+  ```js
+  const url = (n) => performance.getEntriesByType('resource').map((e) => e.name)
+    .find((x) => new URL(x).pathname === n) || n;
+  const L = await import(url('/_engine/core/SceneLoader.ts'));
+  ```
+
+  It calls `loadScene`, waits while `isCurrentlyLoading()`, then 1.5 s, reads
+  `getRenderer().info.memory`, and repeats `thirdPersonGymScene` → `oneMoreScene`.
+- Heap snapshots: CDP `HeapProfiler.takeHeapSnapshot` in One More Scene after visits 1, 2 and 4.
+  Count `_BufferGeometry`, and diff node ids against the first snapshot to trace retainers of the
+  geometries left from earlier visits.
 - Test option 2 behind a temporary flag before deciding.
+
+### Method gotchas (learned in the earlier Gym leak fixes)
+
+- `page.waitForFunction` with an async predicate returns at once: it treats the returned
+  Promise as truthy. Poll inside `page.evaluate` instead.
+- The `url()` helper's `|| n` fallback imports the bare path, which is a second module instance,
+  if it runs before the app has loaded that module. Only import once the resource entry exists.
+- Heap snapshots taken over CDP include `(Global handles) → DevTools console` roots: whatever
+  the page logged is kept alive by the attached session. Skip edges with that name (it's in the
+  edge name, not the node name).
+- WeakMap edges: a plain BFS shortest retainer path can go through a WeakMap value even when only
+  its own key keeps it alive, but skipping all `part of key ... -> value` edges hides objects held
+  only by a WeakMap. Follow such an edge only once both the key and the WeakMap's table are
+  reached (the edge name holds `part of key (X @keyId)` and `(table @tableId)`), and re-check a
+  parked edge only when its missing dependency is reached (re-scanning the source node's edges
+  makes the pass quadratic). Strip `@ids` and numeric indices from labels to compare paths
+  between snapshots.
+- The retained geometries can be listed live from
+  `renderer._geometries._geometryDisposeListeners`.
+- `npx vite serve` without `VITE_APP_ENV=development` ignores `?isDebug=true` (use the `yarn dev`
+  env). A second dev server run from a git worktree with a symlinked `node_modules` shares and
+  rewrites `node_modules/.vite`, the running dev server's dependency cache.
 
 ## Verification
 

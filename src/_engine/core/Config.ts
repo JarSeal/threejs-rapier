@@ -49,7 +49,7 @@ export type PhysicsWireframeColors = {
 export type DebugPhysicsWireframeConfig = {
   colors?: PhysicsWireframeColors;
   /** Wireframe line width in pixels. Values above 1 only have a visible effect where the
-   * fat-line path is available; see p025 Phase 6. */
+   * fat-line path is available. */
   lineThickness?: number;
 };
 
@@ -96,7 +96,7 @@ export type AppConfig = {
      * for. Boot-time only — read once here, same as useSAB/maxBodies. */
     stepStatsEnabled?: boolean;
   };
-  /** Where asset files are loaded and decoded (docs/plans/p052_gltf-import-via-assets-worker.md).
+  /** Where asset files are loaded and decoded.
    * Whatever the target, the public loading API stays the same, and a failed worker request
    * transparently re-runs on the main thread (unless fallbackToMainThread is false). */
   assets?: {
@@ -123,7 +123,7 @@ export type AppConfig = {
     maxEntities?: number;
   };
   /** Per-state colors and line thickness for the per-entity physics collider wireframes
-   * (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md). Debug-only: nothing reads this
+   * (Debug/_dbg__PhysicsDebugDraw.ts). Debug-only: nothing reads this
    * unless a wireframe is actually switched on, which can only happen in a debug or
    * prod-test environment. Every field is optional and falls back to the engine defaults
    * in `Debug/_dbg__PhysicsDebugDraw.ts`, so partial overrides are fine. */

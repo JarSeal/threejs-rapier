@@ -10,7 +10,7 @@ const HEADER_STEP_INDEX = 1;
 
 /**
  * Allocates the backing buffer for a PhysicsTransformBuffer. Physics-owned and
- * independent of ECS's TypedArrayTransformStore (see p021 §3.3) so worker-thread
+ * independent of ECS's TypedArrayTransformStore so worker-thread
  * physics doesn't require ecs.storageMode: 'TYPED_ARRAY' as a prerequisite.
  */
 export function createPhysicsTransformArrayBuffer(

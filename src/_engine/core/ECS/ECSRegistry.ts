@@ -35,7 +35,7 @@ export enum CoreComponentType {
   // Frustum culling
   FRUSTUM_CULLING_ENABLED = 'CORE_FRUSTUM_CULLING_ENABLED', // opt-in, user-authored
   TAG_FRUSTUM_CULLED = 'CORE_TAG_FRUSTUM_CULLED', // runtime-only, current culled state
-  // Object (contribution) culling — docs/plans/_DONE_p081_light-object-culling.md
+  // Object (contribution) culling — see ECS/LightObjectCullingSystem.ts
   OBJECT_CULLING_ENABLED = 'CORE_OBJECT_CULLING_ENABLED', // opt-in, user-authored
   TAG_OBJECT_CULLED = 'CORE_TAG_OBJECT_CULLED', // runtime-only, current culled state
   // Spatial index (docs/plans/_DONE_p050_spatial-index.md)

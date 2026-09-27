@@ -22,8 +22,7 @@ import {
   ValidProtocolTypes,
 } from './Physics/PhysicsUtils';
 import { lerror, lwarn } from '../utils/Logger';
-// Always-safe thin wrapper: a no-op outside debug builds and tree-shaken out of production,
-// same as legacy PhysicsRapier.ts imported it (p027 moves the PHY panel's source here).
+// Always-safe thin wrapper: a no-op outside debug builds and tree-shaken out of production.
 import { updatePhysicsPanel } from '../debug/Stats';
 import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay } from './MainLoop';
 import { DebugModuleRef, initWorker, loadDebugModuleAsync, useDebug } from '../utils/helpers';
@@ -195,8 +194,8 @@ let lastPhysicsMessagingLatency: { dispatchMs: number; writeBackMs: number } | u
 /** SHARED_MEMORY-transport view onto the worker's step-stats buffer. Undefined in every
  * other configuration (MAIN_THREAD, MESSAGE_BATCH, or stepStatsEnabled off). */
 let stepStatsFloats: Float64Array | undefined;
-/** Main-thread wrapper for the worker's debug wireframe state buffer (WORKER_THREAD only,
- * p025). Undefined until setPhysicsDebugStateTracking() turns tracking on for the first
+/** Main-thread wrapper for the worker's debug wireframe state buffer (WORKER_THREAD
+ * only). Undefined until setPhysicsDebugStateTracking() turns tracking on for the first
  * time. SHARED_MEMORY: set once and never replaced. MESSAGE_BATCH: replaced on every
  * DEBUG_STATE_PUSH. */
 let debugStateBuffer: PhysicsDebugStateBuffer | undefined;
@@ -266,13 +265,13 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
  * Runs a fixed-timestep accumulator so simulated motion doesn't speed up/slow down with
  * the render framerate: real elapsed time (scaled by playSpeedMultiplier, clamped by
  * maxDeltaTime) is accumulated, then drained in physicsState.timestepRatio-sized slices,
- * up to maxSubSteps per frame. Also handles backgroundBehavior/pause bookkeeping the same
- * way legacy PhysicsRapier.ts's baseStepper does (see physicsVisibilityChangeHandler for
- * the window-hidden 'PAUSE' path, which halts the whole main loop before this is reached).
+ * up to maxSubSteps per frame. Also handles backgroundBehavior/pause bookkeeping (see
+ * physicsVisibilityChangeHandler for the window-hidden 'PAUSE' path, which halts the whole
+ * main loop before this is reached).
  *
- * Calls `onBeforeStep` once per fixed-timestep slice, right before that slice's step, like
- * legacy PhysicsRapier.ts's baseStepper ran its held-key polling and scene physics loopers
- * inside its own per-substep loop. In WORKER_THREAD mode the steps themselves run off-thread,
+ * Calls `onBeforeStep` once per fixed-timestep slice, right before that slice's step (held-key
+ * polling, event delivery and APP_PHYSICS_STEP systems, see MainLoop.ts's runPhysicsSubStep).
+ * In WORKER_THREAD mode the steps themselves run off-thread,
  * so the callbacks all run here up front, and whatever one-way commands each one issues are
  * carried in the STEP message and replayed on the worker right before their own sub-step.
  *
@@ -569,8 +568,7 @@ let pendingEventPushes: EventsPushMessage[] = [];
 /**
  * Delivers every collision/contact-force event that has become available since the last call to
  * its registered callbacks. The main loop calls this once per fixed sub-step, after held-key
- * polling and before the APP_PHYSICS_STEP systems — the exact point legacy PhysicsRapier.ts's
- * baseStepper drained its event queue. Ported gameplay code depends on that order: e.g. on the
+ * polling and before the APP_PHYSICS_STEP systems. Gameplay code depends on that order: e.g. on the
  * sub-step a character leaves a moving platform, its held-key move() still runs with the
  * pre-event "on platform" state (keeping the platform's velocity), and only the character tick
  * after it sees the ground sensor's "stopped touching". Dispatching straight after each step
@@ -1587,7 +1585,7 @@ export const getResolvedTransportMode = () => resolvedTransportMode;
 /**
  * Declares which rigid bodies/colliders the worker should mirror live state for, so the
  * debug wireframes can be colored by sleep/kinematic/enabled/sensor state without an RPC
- * per object per frame (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md).
+ * per object per frame.
  *
  * This is a full replacement of the tracked set, not a delta, and a body's/collider's
  * index in the arrays passed here is its slot in the buffer readable via
@@ -3291,7 +3289,7 @@ class ColliderProxyAPI implements ColliderAPI {
   }
 
   // --- Geometry (mesh-type shapes) ---
-  // One RPC per collider, paid once when its debug wireframe is first built (p025) —
+  // One RPC per collider, paid once when its debug wireframe is first built —
   // never per frame. The worker sends the typed arrays as Transferables rather than
   // structured clones, since mesh data can be large.
 

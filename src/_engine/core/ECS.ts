@@ -236,8 +236,8 @@ export class ECSWorld {
   // 1,048,576-slot address space the packed-id scheme could support — a
   // world with a small maxEntities (e.g. a bare secondary world) shouldn't
   // pay for the ~4 MiB a full-size array would cost regardless of how many
-  // entities it actually ever holds (see docs/plans/ecs-multiple-worlds.md
-  // §5.3). Allocated in the constructor, after `maxEntities` is known.
+  // entities it actually ever holds. Allocated in the constructor, after
+  // `maxEntities` is known.
   private generations: Uint32Array;
 
   private nextEntityId = 1;
@@ -251,7 +251,7 @@ export class ECSWorld {
   private systems: Map<ECSSystemStage, SystemEntry[]> = new Map();
   private systemSeq = 0;
 
-  // Build-time-selectable storage backend (see docs/plans/ecs-typed-arrays-feature.md).
+  // Build-time-selectable storage backend (see ECS/ECSComponentStorage.ts).
   // TYPED_ARRAY currently only applies to TRANSFORM; every other component
   // type stays Map-backed regardless of this setting.
   public readonly storageMode: ECSStorageMode;
@@ -381,8 +381,8 @@ export class ECSWorld {
   /**
    * Extracts the stable, dense entity-slot index from a packed entity id.
    * Exposed (narrowly, alongside the still-private `_pack`/`_getGeneration`)
-   * for storage backends — e.g. the TypedArray-backed sparse set proposed in
-   * docs/plans/ecs-typed-arrays-feature.md — that need a numeric array
+   * for storage backends — e.g. the TypedArray-backed sparse set in
+   * ECS/TypedArrayTransformStore.ts — that need a numeric array
    * offset; the packed id itself is not usable as one.
    */
   public getEntityIndex(entityId: number): number {
@@ -566,7 +566,7 @@ export class ECSWorld {
    * internally. This is an implementation detail, not a guarantee — systems
    * must not depend on it. It's expected to change for any component type
    * that moves to a different storage backing (e.g. the TypedArray-backed
-   * sparse-set storage proposed in docs/plans/ecs-typed-arrays-feature.md,
+   * sparse-set storage in ECS/TypedArrayTransformStore.ts,
    * which reorders on removal by design).
    */
   public getStorage<K extends ComponentType>(type: K): IComponentStorage<ComponentData[K]> {

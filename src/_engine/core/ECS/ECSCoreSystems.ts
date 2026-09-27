@@ -9,7 +9,7 @@ import { CoreComponentType } from './ECSRegistry';
 
 /**
  * Single source of truth for Object3D.visible, recomputed from the full
- * three-way AND (docs/plans/_DONE_p081_light-object-culling.md §3.2)
+ * three-way AND
  * whenever any of DISABLED/TAG_FRUSTUM_CULLED/TAG_OBJECT_CULLED changes,
  * instead of each hook fighting over the flag pairwise.
  *

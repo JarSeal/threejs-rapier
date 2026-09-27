@@ -36,9 +36,8 @@ export interface GeneratedTerrain {
    * Bilinear-sampled terrain height at world-space (x, z), clamped to the terrain's extent.
    * Deliberately physics-engine-agnostic (no Rapier/PhysicsAPI import here) — feed this into
    * whichever heightfield collider API is current when physics is wired up for this scene
-   * (see docs/plans/p090_large-ecs-test-world-scene.md §1.1: the physics layer is being
-   * rewritten as PhysicsAPI.ts, so this generator intentionally doesn't commit to
-   * PhysicsRapier.ts's HEIGHTFIELD shape).
+   * (see docs/plans/p090_large-ecs-test-world-scene.md §1.1: this generator intentionally
+   * doesn't commit to any one physics engine's HEIGHTFIELD shape).
    */
   getHeightAt: (x: number, z: number) => number;
   /** Row-major height samples backing `getHeightAt` (row-major, `cols = widthSegments + 1`), exposed so a future heightfield collider can reuse this exact grid instead of resampling noise. */

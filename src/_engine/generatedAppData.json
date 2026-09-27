@@ -144,7 +144,7 @@
     },
     "physicsTest": {
       "name": "Physics API MVP test scene",
-      "description": "Main-thread physics API MVP verification scene (docs/plans/p020_main-thread-physics-api-mvp.md §3.7): a static ground box, a falling ball, and a falling box.",
+      "description": "Physics API verification scene: a static ground box, a falling ball, and a falling box, plus impulse-joint and shape-cast worked examples.",
       "cameras": [
         {
           "camProps": {
@@ -234,7 +234,7 @@
     },
     "scene01": {
       "name": "Scene 01 (basic physics demo)",
-      "description": "Basic FIXED/DYNAMIC physics demo: a ground box, a bouncing box, a falling ball and cylinder, a TRIMESH-collider imported GLB, and a decorative rotating wireframe sphere (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 1).",
+      "description": "Basic FIXED/DYNAMIC physics demo: a ground box, a bouncing box, a falling ball and cylinder, a TRIMESH-collider imported GLB, and a decorative rotating wireframe sphere.",
       "cameras": [
         {
           "camProps": {
@@ -324,7 +324,7 @@
     },
     "scene01V2": {
       "name": "Scene 01 v2 (physics demo with shadows + sensor)",
-      "description": "Same basic physics demo as scene01.ts (FIXED/DYNAMIC ground, box, ball, cylinder, TRIMESH-collider imported GLB) plus shadow-casting meshes, a CCD-enabled dynamic body, and a mesh-less sensor collider (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 1).",
+      "description": "Same basic physics demo as scene01.ts (FIXED/DYNAMIC ground, box, ball, cylinder, TRIMESH-collider imported GLB) plus shadow-casting meshes, a CCD-enabled dynamic body, and a mesh-less sensor collider.",
       "cameras": [
         {
           "camProps": {
@@ -597,7 +597,7 @@
     },
     "thirdPersonGymScene": {
       "name": "GYM (3rd person)",
-      "description": "Third-person obstacle-course/gym scene assembling every ported physics feature (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 7): ~15 imported GLBs (Phase 3), 6 moving platform variants (Phase 4), a player-controlled and a scripted dynamic character (Phase 6), and the physics stress-test spawner (Phase 2).",
+      "description": "Third-person obstacle-course/gym scene assembling every ported physics feature: ~15 imported GLBs, 6 moving platform variants, a player-controlled and a scripted dynamic character, and the physics stress-test spawner.",
       "cameras": [
         {
           "camProps": {
@@ -622,7 +622,7 @@
             "appId": "thirdPersonGymCamera",
             "debugData": {
               "name": "Third-person gym camera",
-              "description": "Follow camera driven by createFollowObjectCameraRig (legacy gym's offset/lens settings), tracking the player-controlled character (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 7). This initial position/lookAt only matters for the first instant before the follow rig (APP_LOGIC) takes over each frame."
+              "description": "Follow camera driven by createFollowObjectCameraRig (legacy gym's offset/lens settings), tracking the player-controlled character. This initial position/lookAt only matters for the first instant before the follow rig (APP_LOGIC) takes over each frame."
             }
           }
         }
@@ -807,21 +807,6 @@
       },
       "__sourcePath": "src/app/cameras/scene01Camera.camera.json"
     },
-    "testing": {
-      "camProps": {
-        "active": false,
-        "type": "PERSPECTIVE",
-        "fov": 90,
-        "appId": "testing"
-      },
-      "entityOpts": {
-        "appId": "testing",
-        "debugData": {
-          "description": "Main application camera 2"
-        }
-      },
-      "__sourcePath": "src/app/cameras/testing.camera.json"
-    },
     "thirdPersonGymCamera": {
       "camProps": {
         "active": true,
@@ -845,7 +830,7 @@
         "appId": "thirdPersonGymCamera",
         "debugData": {
           "name": "Third-person gym camera",
-          "description": "Follow camera driven by createFollowObjectCameraRig (legacy gym's offset/lens settings), tracking the player-controlled character (docs/plans/p028_refactor-old-phys-objs-to-phys-entities.md, Phase 7). This initial position/lookAt only matters for the first instant before the follow rig (APP_LOGIC) takes over each frame."
+          "description": "Follow camera driven by createFollowObjectCameraRig (legacy gym's offset/lens settings), tracking the player-controlled character. This initial position/lookAt only matters for the first instant before the follow rig (APP_LOGIC) takes over each frame."
         }
       },
       "__sourcePath": "src/app/cameras/thirdPersonGymCamera.camera.json"

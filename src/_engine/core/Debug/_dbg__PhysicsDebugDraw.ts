@@ -30,7 +30,7 @@ import {
 import { getCurrentSceneId, getRootScene } from '../Scene';
 
 /**
- * Per-entity collider wireframes (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md).
+ * Per-entity collider wireframes.
  *
  * Deliberately NOT Rapier's own `World.debugRender()`: that returns one flat line list
  * for the entire world, which in WORKER_THREAD mode would mean a full-world round trip
@@ -201,7 +201,7 @@ type PersistedEntityWireframe = {
  * on every reload — so persisting against it would just accumulate dead records.
  * `APP_ID.isFixed` is exactly the "the app named this one" flag, which makes
  * per-entity debug settings reload-durable for named entities and session-only for the
- * rest (p025 Design decision 9).
+ * rest.
  */
 const getStableAppId = (entityId: number, world: ECSWorld): string | undefined => {
   const appId = world.getComponent(entityId, ComponentType.APP_ID);
@@ -250,8 +250,8 @@ const restoreEntityWireframe = (entityId: number, world: ECSWorld) => {
  * Whether this entity's wireframe settings survive a reload.
  *
  * False for entities created without an explicit `appId` — they get a fresh UUID every
- * load, so there's nothing stable to key against and their settings are session-only
- * (p025 Design decision 9). Surfaced in the edit window so that difference is visible
+ * load, so there's nothing stable to key against and their settings are session-only.
+ * Surfaced in the edit window so that difference is visible
  * rather than looking like settings silently failing to save.
  */
 export const isWireframePersistable = (entityId: number, world: ECSWorld) =>
@@ -899,7 +899,7 @@ export const repaintEntityWireframes = (entityId: number) => {
 /**
  * Tells the worker which bodies/colliders to mirror state for. Coalesced to at most once
  * per frame, so switching many wireframes on at once costs one message, not one each
- * (p025's "could thrash if a user rapidly toggles" risk).
+ * (so rapidly toggling many wireframes can't thrash the worker).
  */
 const flushTracking = () => {
   trackingDirty = false;

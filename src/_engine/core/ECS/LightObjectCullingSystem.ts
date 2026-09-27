@@ -12,9 +12,9 @@ import {
 } from '../Spatial/SpatialIndexSystem';
 
 // --- OBJECT (CONTRIBUTION) CULLING VISIBILITY HOOK ---
-// docs/plans/_DONE_p081_light-object-culling.md §3.2 — a third, independent
-// cull reason alongside DISABLED and TAG_FRUSTUM_CULLED, reconciled through
-// the shared helper rather than another pairwise visibility guard.
+// A third, independent cull reason alongside DISABLED and TAG_FRUSTUM_CULLED,
+// reconciled through the shared helper rather than another pairwise
+// visibility guard.
 
 ECSWorld.registerComponentHooks(ComponentType.TAG_OBJECT_CULLED, {
   onAddComponent: (entityId, world) => {
@@ -49,8 +49,7 @@ function meshIsVisibleReceiver(entityId: number, world: ECSWorld): boolean {
 
 /**
  * Whether `lightId` has at least one nearby, in-frustum mesh that could
- * receive its light. External shape kept as `p081` §3.3/§5 specified — the
- * caller doesn't need to know this queries a spatial index rather than
+ * receive its light. The caller doesn't need to know this queries a spatial index rather than
  * scanning every mesh.
  */
 function testLightAgainstMeshList(

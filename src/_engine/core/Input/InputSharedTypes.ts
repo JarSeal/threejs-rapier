@@ -1,6 +1,5 @@
 // NOTE! Type-only file: everything here is erased at build time, so importing it broadly
-// does not defeat the file-boundary tree-shaking described in
-// docs/plans/p050_input-system-refactoring.md §2.1.
+// does not defeat the file-boundary tree-shaking (one file per input device, no barrel).
 import type * as THREE from 'three/webgpu';
 
 /** Whether a binding fires while the debug (orbit) camera is active. */

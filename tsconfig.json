@@ -20,7 +20,7 @@
   },
   "typedocOptions": {
     "entryPoints": ["src/_engine/**"],
-    "out": "docs",
+    "out": "docs-api",
     "theme": "default",
     "excludePrivate": true,
     "readme": "none"

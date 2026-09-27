@@ -125,8 +125,7 @@ export const createEditECSWorldContent = (data?: { [key: string]: unknown }) => 
       location.reload();
     });
 
-  // Both MAP and TYPED_ARRAY now enforce maxEntities as a real cap
-  // (docs/plans/_DONE-ecs-multiple-worlds.md §5.3), so this is always
+  // Both MAP and TYPED_ARRAY now enforce maxEntities as a real cap, so this is always
   // editable — it used to be disabled exactly when TYPED_ARRAY (its one
   // working mode at the time) was selected, which was backwards.
   storageFolder
@@ -228,7 +227,7 @@ export const _initECSDebugGUI = () => {
         updateECSWorldsDebuggerListSelectedClass((winState.data as { id: string }).id);
       }
 
-      // --- Benchmark (Phase 3, docs/plans/ecs-typed-arrays-feature.md) ---
+      // --- Benchmark ---
       // Always targets the default world — reuses ECSStressTest.ts's spawn
       // logic so Map vs Typed Array can be compared live: pick a mode in a
       // world's edit window (reloads), then spawn a batch here and watch

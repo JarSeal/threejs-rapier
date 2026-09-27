@@ -80,7 +80,7 @@ export interface CoreComponentData {
   };
   [CoreType.DEBUG_CAMERA_HELPER]: { value: THREE.CameraHelper };
   [CoreType.DEBUG_SYMBOL]: { value: THREE.Group | THREE.Mesh; userVisible: boolean };
-  /** Opt-in, per-entity collider wireframe (docs/plans/_DONE_p025_debug-drawing-in-physics-api.md).
+  /** Opt-in, per-entity collider wireframe.
    * Its presence IS the on/off toggle — absent on every physics entity by default. The
    * THREE objects it drives are owned by Debug/_dbg__PhysicsDebugDraw.ts rather than
    * stored here, because they're built asynchronously (WORKER_THREAD mode fetches the

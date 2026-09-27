@@ -75,9 +75,8 @@ All of the following was read out of the original TypeScript embedded in
   `EngineRapier.ts:281-292` (including the `lockRotationsX/Y/Z` mirror) and `:292`, and read
   **nowhere** in `core/Physics/`, `core/PhysicsAPI.ts` or `workers/` — every other `.userData` hit
   in those files is the proxy's own `this.uData` field or a constructor pass-through. The only
-  readers in the repo are legacy `core/PhysicsRapier.ts` and
-  `utils/character/dynamicCharacter.ts`, both of which run against the *legacy* world, not this
-  one. Rapier does not serialize `userData` — but because nothing reads it back, **no userData
+  reader in the repo is `utils/character/dynamicCharacter.ts` (the legacy
+  `core/PhysicsRapier.ts` reader has since been removed). Rapier does not serialize `userData` — but because nothing reads it back, **no userData
   sidecar inside the snapshot is required.** The API-level `uData` lives on the engine proxy
   objects and therefore survives re-pointing for free. (This is worth stating explicitly because
   the sidecar is the obvious-looking design, and it is unnecessary here.)
@@ -421,7 +420,6 @@ Manual verification: take/restore/clear from the tab in all four configurations 
   pass — note it there.
 - **Character-controller / PID-controller / vehicle-controller state.** Not restored by
   `World.fromRaw` and not exposed by the new API (`PhysicsAPITypes.ts:1563-1605`).
-- **Legacy `core/PhysicsRapier.ts`.** Owns a separate world; untouched by this plan.
 - **Adding a transfer list to `messageWorker`/`messageWorkerAsync`.** Design decision 9. No
   main→worker transferables are introduced.
 - **Snapshot compression, ring buffers, or a replay timeline data structure.** The consumer's
