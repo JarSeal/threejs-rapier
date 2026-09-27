@@ -14,7 +14,7 @@
  * scene pass binds its camera at construction. Resizing needs no rebuild.
  */
 import * as THREE from 'three/webgpu';
-import { mrt, normalView, output, pass } from 'three/tsl';
+import { mrt, normalView, pass } from 'three/tsl';
 import { getConfig, IS_DEBUG_ENV } from './Config';
 import { getRenderer } from './Renderer';
 import {
@@ -60,6 +60,8 @@ let postFxPasses: PostFxPassState[] = [];
 let enabledPostFxPassCount = 0;
 let pipeline: THREE.RenderPipeline | null = null;
 let scenePass: THREE.PassNode | null = null;
+/** Lazy non-MSAA depth + normal pre-pass, see buildPostFxPipeline(). */
+let prePass: THREE.PassNode | null = null;
 /** The camera the current build's scene pass renders with. */
 let builtCamera: THREE.Camera | null = null;
 let needsRebuild = true;
@@ -132,6 +134,8 @@ const disposePostFxNodes = () => {
   }
   scenePass?.dispose();
   scenePass = null;
+  prePass?.dispose();
+  prePass = null;
   builtCamera = null;
 };
 
@@ -144,29 +148,34 @@ const buildPostFxPipeline = (
 
   const newScenePass = pass(rootScene, camera);
   const sceneColorNode = newScenePass.getTextureNode('output');
-  let sceneNormalNode: THREE.Node | null = null;
+  // Depth and normals come from a separate, non-MSAA pre-pass: the scene pass inherits the
+  // renderer's MSAA, and a multisampled depth texture can't be sampled like a regular one (eg.
+  // WGSL has no textureGather for it, which GTAONode uses). Lazy, so the extra scene render only
+  // happens when a PostFX pass actually reads depth or normals.
+  const getPrePass = () => {
+    if (!prePass) {
+      prePass = pass(rootScene, camera, { samples: 0 });
+      prePass.setMRT(mrt({ output: normalView }));
+    }
+    return prePass;
+  };
   // A fresh object per PostFX pass (not a spread copy, which would trigger the getters)
-  const createContext = (colorNode: THREE.Node): PostFxPassContext => ({
+  const createContext = (colorNode: THREE.Node<'vec4'>): PostFxPassContext => ({
     renderer,
     scene: rootScene,
     camera,
     scenePass: newScenePass,
     colorNode,
     sceneColorNode,
-    // Lazy, so the normal render target only exists when a PostFX pass actually reads it
     get sceneNormalNode() {
-      if (!sceneNormalNode) {
-        newScenePass.setMRT(mrt({ output, normal: normalView }));
-        sceneNormalNode = newScenePass.getTextureNode('normal');
-      }
-      return sceneNormalNode;
+      return getPrePass().getTextureNode('output');
     },
     get sceneDepthNode() {
-      return newScenePass.getTextureNode('depth');
+      return getPrePass().getTextureNode('depth');
     },
   });
 
-  let colorNode: THREE.Node = sceneColorNode;
+  let colorNode: THREE.Node<'vec4'> = sceneColorNode;
   for (let i = 0; i < postFxPasses.length; i++) {
     const postFxPass = postFxPasses[i];
     if (!postFxPass.enabled) continue;
@@ -177,7 +186,7 @@ const buildPostFxPipeline = (
         postFxPass.props.staticDefines
       );
       postFxPass.api = (result as THREE.Node).isNode
-        ? { node: result as THREE.Node }
+        ? { node: result as THREE.Node<'vec4'> }
         : (result as PostFxPassApi);
       colorNode = postFxPass.api.node;
     } catch (err) {
@@ -195,7 +204,9 @@ const buildPostFxPipeline = (
 
   if (IS_DEBUG_ENV) {
     const ids = postFxPasses.filter((p) => p.api).map((p) => p.id);
-    llog(`[PostFX] Built the PostFX chain (scene "${postFxSceneId}"): ${ids.join(' → ')}`);
+    llog(
+      `[PostFX] Built the PostFX chain (scene "${postFxSceneId}"): ${ids.join(' → ')}${prePass ? ' (+ depth/normal pre-pass)' : ''}`
+    );
   }
 };
 

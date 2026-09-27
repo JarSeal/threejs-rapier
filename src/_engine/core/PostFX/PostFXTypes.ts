@@ -11,10 +11,10 @@ export type PostFxPassContext = {
   /** The shared TSL scene pass (the scene render that feeds the chain). */
   scenePass: THREE.PassNode;
   /** Output of the previous PostFX pass in the chain (the scene color for the first one), what this pass should build on. */
-  colorNode: THREE.Node;
+  colorNode: THREE.Node<'vec4'>;
   /** Unmodified scene buffers, for PostFX passes that need the raw G-buffer. */
-  sceneColorNode: THREE.Node;
-  /** View-space normals. Lazy: reading it is what adds the normal MRT output to the scene pass. */
+  sceneColorNode: THREE.Node<'vec4'>;
+  /** View-space normals and depth, from a non-MSAA pre-pass (sampleable like regular textures, unlike the MSAA scene pass's own depth). Lazy: reading either one is what adds the pre-pass, an extra scene render. */
   sceneNormalNode: THREE.Node;
   sceneDepthNode: THREE.Node;
 };
@@ -22,7 +22,7 @@ export type PostFxPassContext = {
 /** What a PostFX pass may return instead of a bare Node, when it needs lifecycle hooks. */
 export type PostFxPassApi = {
   /** The node this PostFX pass contributes to the chain. */
-  node: THREE.Node;
+  node: THREE.Node<'vec4'>;
   /** Nodes whose updateBefore() cost is attributed to this PostFX pass when profiling. Defaults to [node]. */
   profileNodes?: THREE.Node[];
   /** Live param write-through, used by the debugger (docs/plans/p071_post-fx-debugger-ui.md). */
@@ -36,7 +36,7 @@ export type PostFxPassFn = (
   params: Record<string, unknown>,
   ctx: PostFxPassContext,
   defines?: Record<string, unknown>
-) => THREE.Node | PostFxPassApi;
+) => THREE.Node<'vec4'> | PostFxPassApi;
 
 /** A PostFX pass as it arrives in the scene data, after the gatherer has inlined it. */
 export type PostFxPassProps = Omit<PostFxAsset, '$schema' | '__sourcePath' | '__saveData'>;
