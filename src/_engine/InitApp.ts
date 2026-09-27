@@ -28,7 +28,7 @@ import { getStatsCmp, registerStatsModule } from './debug/Stats';
 import { createAssetsDebugGUI } from './debug/Assets';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
 import { registerLineManager } from './core/LineManager';
-import { initPostFX } from './core/PostFX';
+import { createPostFXDebugGUI, initPostFX } from './core/PostFX';
 
 // ECS Core Plugins
 import './core/ECS/ECSCoreSystems';
@@ -133,6 +133,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await createAssetsDebugGUI();
       // After appStartFn: measuring needs the renderer
       await registerPostFxProfiler();
+      // After the profiler: the tab re-applies a persisted measuring override
+      await createPostFXDebugGUI();
       createCharactersDebuggerGUI();
       createSkyBoxDebugGUI();
 

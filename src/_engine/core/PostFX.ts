@@ -28,6 +28,7 @@ import {
 import { getActiveCamera } from './CameraManager';
 import { postFxFileObjects } from '../generatedAppFns';
 import { lerror, llog, lwarn } from '../utils/Logger';
+import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import type {
   PostFxBuiltChain,
   PostFxPassApi,
@@ -407,6 +408,16 @@ export const addPostFxChainListener = (listener: () => void) => {
   return () => {
     postFxChainListeners.delete(listener);
   };
+};
+
+// Debug
+type PostFXGUIModule = typeof import('./Debug/_dbg__PostFX');
+let debugGUI: DebugModuleRef<PostFXGUIModule> | null = null;
+
+/** Creates the PostFX debugger tab (debug only). */
+export const createPostFXDebugGUI = async () => {
+  debugGUI = await loadDebugModuleAsync(() => import('./Debug/_dbg__PostFX'));
+  await useDebug(debugGUI)?._createPostFXDebugGUI();
 };
 
 /**
