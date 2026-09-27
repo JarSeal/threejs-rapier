@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Debugger
 Blocked by: \_DONE_p060_debugger-undo-engine-core.md and \_DONE_p061_add-undo-history-action-recording-to-debugger-tools.md (keyboard shortcuts also depend on the p050 input system refactoring — implemented, see `src/_engine/core/Input/`)
 Epic: https://trello.com/c/JYgK1s1u/86-add-undo-redo-system
@@ -227,3 +227,38 @@ No schema, scene-JSON, or ECS component-type changes.
 | `updateTool`'s missing `break`s (§1.1) is a pre-existing bug, not introduced by this plan. | Fixed in passing since this plan edits that exact function to add a third case — flagged so the fix isn't mistaken for accidental unrelated cleanup during review. |
 | New icon choice (`arrow-90deg-left`/`-right`) is a suggestion, not verified against real Bootstrap Icons artwork. | This plan has no network access to fetch/confirm the actual glyph; implementation should source real SVG markup consistent with the project's existing manual-copy convention (same as how `eraser-fill.svg`/`trash3-fill.svg` etc. were added per `p041`). |
 | History-size control takes effect immediately (no reload), unlike the ECS storage-mode override it's modeled on. | Deliberate — flagged so it isn't "fixed" to match the ECS reload behavior by mistake; there's no boot-time/allocation reason for undo history size to need a reload. |
+
+---
+
+## Implementation notes
+
+### What shipped
+
+- **Icons.** `undo`/`redo` in `SvgIcon.ts` (`arrow-90deg-left.svg`/`arrow-90deg-right.svg`): the Bootstrap Icons hook-arrow glyphs, redrawn at a 2-unit stroke (Bootstrap's is 1) to match the weight of the solid play/pause icons. Filled paths like every other icon, since the on-screen tools color icons via `svg path { fill }`.
+- **Settings.** `_dbg__UndoRedo.ts` keeps `UndoRedoSettings` (`historySize`, `showToasts`), exposed as `getUndoRedoSettings()` / `setUndoRedoSettings(partial)` in `debug/UndoRedo.ts`. `AEK_debugUndoRedoSettings` stores only the fields changed in the debugger, so `AppConfig.undoRedo.historySize` / the defaults still apply to the rest. A smaller `historySize` trims every bucket immediately (pointer clamped at -1).
+- **Debug Tools "Undo / Redo" folder** (between Helpers and Logging): history size slider (1–500, applied on release only — shrinking deletes history, so a drag passing through a small value must not already drop entries) and a "Show undo/redo toasts" toggle. Fold state is `undoRedo.undoRedoFolderExpanded` in `DebugToolsState`.
+- **OnScreenTools group** (`undoRedoTools()`, top-left at `1.6rem`): Undo/Redo buttons, disabled when there's nothing to undo/redo (`.onScreenTool:disabled` style added). Debug environment only. `_dbg__UndoRedo.ts` refreshes it (`updateOnScreenTools('UNDO')`) after record, undo, redo, clear, and a trimming settings change — not in the coalesce branch, where `canUndo`/`canRedo` can't change. Scene changes are covered by `SceneLoader.ts`'s full `updateOnScreenTools()`.
+- **Key bindings** `sc-undo` (`Ctrl+Z` / `⌘Z`) and `sc-redo` (`Ctrl+Shift+Z` / `⇧⌘Z`) in `DEFAULT_DEBUG_KEY_BINDINGS` (option (a) of §2.3): `KEY_DOWN`, `preventDefault`, no key repeat, and no-ops (without `preventDefault`) while `isTypingInField()`.
+- **Toasts.** Each successful undo/redo shows an info toast in the debug toaster — title "Undo"/"Redo", the entry's label as the message, 2.4 s — unless `showToasts` is off. Targeted by the new `DEBUG_TOASTER_ID` (`debug/DebuggerGUI.ts`, also used by `InitApp.ts`), so a later app toaster can't take them over. An undo/redo before the debug toaster exists (end of `InitEngine`) skips the toast, not the action.
+
+### How it was verified
+
+Headless Chrome (the `run-aekasha-js` driver's browser) against the dev server, with a throwaway `global` action handler registered through the app's own module instance: all four chords undo/redo and toggle the buttons' disabled state, bare `Z` and `Ctrl+Z` inside an `<input>` do nothing, the button clicks work, 3 undone entries trimmed to size 1 leave the newest with `pointer: -1`, toasts show the label and expire, `showToasts: false` stops them (the undo still runs), and both settings survive a reload — including a pre-existing `{"historySize":3}` value from before `showToasts` existed. Not verified by hand yet: undo of a real debugger edit end to end, and `h`/F1 still working.
+
+### Where the implementation departs from this plan
+
+- **Stats-panel collision (§2.1) didn't exist.** `.statsContainer` in `styles/index.scss` overrides stats-gl's inline `top:0; left:0` and pins the panel bottom-left, and the debug drawer opens from the right, so the top-left corner was free — plain `top/left: 1.6rem`, no runtime offset.
+- **No `_initUndoRedoSettings` (§2.4).** The settings load inside the existing `_initUndoRedo()`, replacing its `getHistorySize()` config read.
+- **`get/setUndoRedoHistorySize` became `get/setUndoRedoSettings`** once the toast toggle added a second setting.
+- **Toasts and the toast toggle** weren't in this plan's scope; added on request after the four phases.
+- Line references and the `PhysicsRapier.ts:1929` precedent (§2.1) were stale — that file is gone; `DefaultDebugKeyBindings.ts`/`CameraManager.ts` call `updateOnScreenTools('SWITCH')` the same way.
+
+### Pre-existing bugs fixed along the way
+
+- `updateTool`'s missing `break`s in `_dbg__OnScreenTools.ts` (§1.1).
+
+### Known limitations
+
+- The Debug Tools tab's "clear LS" button only clears `AEK_debugTools`, not `AEK_debugUndoRedoSettings`.
+- "History size (per scene)" is per bucket: the global bucket has its own limit too, so the merged timeline can hold up to twice that many entries.
+- Toasts stack on rapid repeated undo/redo (one per action); no collapsing.

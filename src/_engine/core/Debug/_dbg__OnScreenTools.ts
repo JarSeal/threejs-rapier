@@ -23,9 +23,11 @@ import { type ToolTypes } from '../../debug/OnScreenTools';
 import { DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerGUI';
 import { DebugModuleRef, loadDebugModule, useDebug } from '../../utils/helpers';
 import { getDebugToolsState } from '../../debug/DebugToolsManager';
+import { canRedo, canUndo, redoLastAction, undoLastAction } from '../../debug/UndoRedo';
 
 let playToolsCMP: TCMP | null = null;
 let switchToolsCMP: TCMP | null = null;
+let undoRedoToolsCMP: TCMP | null = null;
 
 // This file (a lazily-loaded _dbg__ module) also loads in IS_PROD_TEST_MODE (see
 // debug/OnScreenTools.ts's registerOnScreenTools), but the physics wireframe system is
@@ -323,6 +325,45 @@ const switchTools = () => {
   hudRootCMP.add(switchToolsCMP);
 };
 
+// UNDO / REDO TOOLS
+// Debug environment only (never prod test mode, which has no debugger to make edits with) —
+// the IS_PROD_TEST_MODE early returns in _InitOnScreenTools/_updateOnScreenTools keep it out.
+// The undo/redo module refreshes this group itself (updateOnScreenTools('UNDO')) whenever
+// the history changes.
+const undoRedoTools = () => {
+  const hudRootCMP = getHUDRootCMP();
+  if (!hudRootCMP) return;
+
+  if (undoRedoToolsCMP) undoRedoToolsCMP.remove();
+  undoRedoToolsCMP = CMP({
+    class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'undoRedoTools'],
+  });
+
+  const undoBtn = CMP({
+    class: [styles.onScreenTool, 'onScreenTool'],
+    html: () => `<button${!canUndo() ? ' disabled' : ''}>${getSvgIcon('undo')}</button>`,
+    attr: { title: 'Undo (Ctrl+Z / ⌘Z)' },
+    onClick: (e) => {
+      e.stopPropagation();
+      undoLastAction();
+    },
+  });
+  undoRedoToolsCMP.add(undoBtn);
+
+  const redoBtn = CMP({
+    class: [styles.onScreenTool, 'onScreenTool'],
+    html: () => `<button${!canRedo() ? ' disabled' : ''}>${getSvgIcon('redo')}</button>`,
+    attr: { title: 'Redo (Ctrl+Shift+Z / ⇧⌘Z)' },
+    onClick: (e) => {
+      e.stopPropagation();
+      redoLastAction();
+    },
+  });
+  undoRedoToolsCMP.add(redoBtn);
+
+  hudRootCMP.add(undoRedoToolsCMP);
+};
+
 export const _InitOnScreenTools = () => {
   if (!IS_DEBUG_ENV && !IS_PROD_TEST_MODE) return;
 
@@ -333,14 +374,20 @@ export const _InitOnScreenTools = () => {
 
   playTools();
   switchTools();
+  undoRedoTools();
 };
 
 const updateTool = (toolType: ToolTypes) => {
   switch (toolType) {
     case 'PLAY':
       playTools();
+      break;
     case 'SWITCH':
       switchTools();
+      break;
+    case 'UNDO':
+      undoRedoTools();
+      break;
   }
 };
 

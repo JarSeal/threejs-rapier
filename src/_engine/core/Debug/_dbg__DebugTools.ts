@@ -33,7 +33,7 @@ import { ComponentType } from '../ECS/ECSCoreComponents';
 import type { DebugCamLSProps } from '../CameraManager';
 import { getDebugCamProps, saveDebugCameraToLS } from './Camera/_dbg__CameraGUI';
 import { DEFAULT_DEBUG_CAM_PROPS, setDebugCameraPanelRefresh } from './Camera/_dbg__DebugCamera';
-import { getUndoRedoHistorySize, setUndoRedoHistorySize } from '../../debug/UndoRedo';
+import { getUndoRedoSettings, setUndoRedoSettings } from '../../debug/UndoRedo';
 
 const LS_KEY = 'AEK_debugTools';
 let scenesDropDown: ListBladeApi<BladeController<View>>;
@@ -586,19 +586,24 @@ const buildDebugToolsGUI = () => {
       debugToolsState.undoRedo.undoRedoFolderExpanded = state.expanded;
       lsSetItem(LS_KEY, debugToolsState);
     });
-  const undoRedoSettings = { historySize: getUndoRedoHistorySize() ?? 1 };
-  undoRedoFolder
-    .addBinding(undoRedoSettings, 'historySize', {
-      label: 'History size (per scene)',
-      min: 1,
-      max: 500,
-      step: 1,
-    })
-    .on('change', (e) => {
-      // Applied on release only: shrinking trims (deletes) history, so a slider drag passing
-      // through a small value must not already drop entries
-      if (e.last) setUndoRedoHistorySize(e.value);
-    });
+  const undoRedoSettings = getUndoRedoSettings();
+  if (undoRedoSettings) {
+    undoRedoFolder
+      .addBinding(undoRedoSettings, 'historySize', {
+        label: 'History size (per scene)',
+        min: 1,
+        max: 500,
+        step: 1,
+      })
+      .on('change', (e) => {
+        // Applied on release only: shrinking trims (deletes) history, so a slider drag passing
+        // through a small value must not already drop entries
+        if (e.last) setUndoRedoSettings({ historySize: e.value });
+      });
+    undoRedoFolder
+      .addBinding(undoRedoSettings, 'showToasts', { label: 'Show undo/redo toasts' })
+      .on('change', (e) => setUndoRedoSettings({ showToasts: e.value }));
+  }
 
   // Logging actions
   const loggingFolder = debugGUI

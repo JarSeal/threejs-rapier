@@ -1,5 +1,6 @@
 import { toggleDrawer } from '../../debug/DebuggerGUI';
 import { updateOnScreenTools } from '../../debug/OnScreenTools';
+import { redoLastAction, undoLastAction } from '../../debug/UndoRedo';
 import { lwarn } from '../../utils/Logger';
 import { isDebugCameraActive, toggleDebugCamera } from '../CameraManager';
 import { getConfig } from '../Config';
@@ -40,6 +41,37 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
       if (e.repeat || isTypingInField()) return;
       toggleDebugCamera(getECSWorld(), !isDebugCameraActive());
       updateOnScreenTools('SWITCH');
+    },
+  },
+  // Undo/redo are keydown: macOS browsers fire no keyup for other keys while ⌘ is held, and
+  // preventDefault stops the browser's own undo. In a text field they do nothing (no
+  // preventDefault either), so the field's native undo still works.
+  {
+    id: 'sc-undo',
+    type: 'KEY_DOWN',
+    chord: [
+      { key: 'z', ctrl: true },
+      { key: 'z', meta: true },
+    ],
+    name: 'Undo debugger action',
+    fn: (e) => {
+      if (isTypingInField()) return;
+      e.preventDefault();
+      if (!e.repeat) undoLastAction();
+    },
+  },
+  {
+    id: 'sc-redo',
+    type: 'KEY_DOWN',
+    chord: [
+      { key: 'z', ctrl: true, shift: true },
+      { key: 'z', meta: true, shift: true },
+    ],
+    name: 'Redo debugger action',
+    fn: (e) => {
+      if (isTypingInField()) return;
+      e.preventDefault();
+      if (!e.repeat) redoLastAction();
     },
   },
 ];

@@ -47,6 +47,15 @@ export type UndoRedoHistoryEntry = UndoRedoEntry & {
 
 export type UndoRedoClearScope = 'currentScene' | 'all';
 
+/** Debugger undo/redo settings, persisted to LocalStorage once changed in the debugger. */
+export type UndoRedoSettings = {
+  /** Max number of history entries kept per bucket (each scene's and the global one). Min 1,
+   * defaults to `AppConfig.undoRedo.historySize`. */
+  historySize: number;
+  /** Whether each undo/redo shows an info toast (in the debug toaster). Default true. */
+  showToasts: boolean;
+};
+
 type UndoRedoModule = typeof import('../core/Debug/_dbg__UndoRedo');
 let debugGUI: DebugModuleRef<UndoRedoModule> | null = null;
 
@@ -139,19 +148,18 @@ export const canRedo = () => useDebug(debugGUI)?._canRedo() ?? false;
 export const getUndoRedoHistory = () => useDebug(debugGUI)?._getUndoRedoHistory();
 
 /**
- * Returns the max number of history entries kept per bucket (the debugger's persisted setting,
- * else `AppConfig.undoRedo.historySize`)
- * @returns (number | undefined) undefined outside the debug environment
+ * Returns a copy of the current undo/redo settings
+ * @returns ({@link UndoRedoSettings} | undefined) undefined outside the debug environment
  */
-export const getUndoRedoHistorySize = () => useDebug(debugGUI)?._getUndoRedoHistorySize();
+export const getUndoRedoSettings = () => useDebug(debugGUI)?._getUndoRedoSettings();
 
 /**
- * Sets and persists the max number of history entries kept per bucket. Takes effect
- * immediately: every scene's and the global history are trimmed from the oldest end.
- * @param size (number) new history size, min 1
+ * Sets and persists undo/redo settings (only the given fields). Takes effect immediately: a
+ * smaller `historySize` trims every scene's and the global history from the oldest end.
+ * @param settings (Partial<{@link UndoRedoSettings}>) the settings to change
  */
-export const setUndoRedoHistorySize = (size: number) => {
-  useDebug(debugGUI)?._setUndoRedoHistorySize(size);
+export const setUndoRedoSettings = (settings: Partial<UndoRedoSettings>) => {
+  useDebug(debugGUI)?._setUndoRedoSettings(settings);
 };
 
 /**

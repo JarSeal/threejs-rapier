@@ -3,6 +3,9 @@ import { getConfig } from '../Config';
 import { getCurrentSceneId } from '../Scene';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lerror, lwarn } from '../../utils/Logger';
+import { updateOnScreenTools } from '../../debug/OnScreenTools';
+import { DEBUG_TOASTER_ID } from '../../debug/DebuggerGUI';
+import { addToast } from '../UI/Toaster';
 import type {
   UndoRedoActionHandler,
   UndoRedoClearScope,
@@ -10,6 +13,7 @@ import type {
   UndoRedoHistoryEntry,
   UndoRedoHistoryState,
   UndoRedoScope,
+  UndoRedoSettings,
 } from '../../debug/UndoRedo';
 
 /** The structure of 'AEK_debugUndoRedo' in LocalStorage */
@@ -17,10 +21,9 @@ type UndoRedoLSData = {
   [sceneId: string]: UndoRedoHistoryState;
 };
 
-/** The structure of 'AEK_debugUndoRedoSettings' in LocalStorage (global, not scene data) */
-type UndoRedoSettingsLSData = {
-  historySize: number;
-};
+/** The structure of 'AEK_debugUndoRedoSettings' in LocalStorage (global, not scene data): only
+ * the settings changed in the debugger, so CONFIG.ts / the defaults still apply to the rest. */
+type UndoRedoSettingsLSData = Partial<UndoRedoSettings>;
 
 type RegisteredHandler = UndoRedoActionHandler & { scope: UndoRedoScope };
 
@@ -30,13 +33,26 @@ const SETTINGS_LS_KEY = 'AEK_debugUndoRedoSettings';
 const GLOBAL_BUCKET_ID = '_global';
 const DEFAULT_HISTORY_SIZE = 50;
 const DEFAULT_COALESCE_WINDOW_MS = 800;
+const DEFAULT_SHOW_TOASTS = true;
+const TOAST_SHOWING_TIME_MS = 2400;
 
 let state: UndoRedoLSData = {};
 let lastTimestamp = 0;
-let historySize = DEFAULT_HISTORY_SIZE;
+let settingsOverrides: UndoRedoSettingsLSData = {};
+let settings: UndoRedoSettings = {
+  historySize: DEFAULT_HISTORY_SIZE,
+  showToasts: DEFAULT_SHOW_TOASTS,
+};
 const actionHandlers = new Map<string, RegisteredHandler>();
 
 const toValidHistorySize = (size: number) => Math.max(1, Math.round(size));
+
+const resolveSettings = (): UndoRedoSettings => ({
+  historySize: toValidHistorySize(
+    settingsOverrides.historySize ?? getConfig().undoRedo?.historySize ?? DEFAULT_HISTORY_SIZE
+  ),
+  showToasts: settingsOverrides.showToasts ?? DEFAULT_SHOW_TOASTS,
+});
 
 const getSceneBucketId = () => getCurrentSceneId() ?? GLOBAL_BUCKET_ID;
 
@@ -97,7 +113,7 @@ const findRedoTarget = () => {
 
 /** Drops a bucket's oldest entries over the history size. Returns whether anything was dropped. */
 const trimBucket = (bucket: UndoRedoHistoryState) => {
-  const overflow = bucket.entries.length - historySize;
+  const overflow = bucket.entries.length - settings.historySize;
   if (overflow <= 0) return false;
   bucket.entries.splice(0, overflow);
   // Below -1 when applied entries were dropped along with the oldest undone ones
@@ -118,12 +134,8 @@ const persist = () => {
 const toStoredData = <T>(data: T): T => JSON.parse(JSON.stringify(data ?? null));
 
 export const _initUndoRedo = () => {
-  // The debugger's history size setting overrides CONFIG.ts once it has been changed
-  const configHistorySize = getConfig().undoRedo?.historySize ?? DEFAULT_HISTORY_SIZE;
-  const settings = lsGetItem(SETTINGS_LS_KEY, {
-    historySize: configHistorySize,
-  }) as UndoRedoSettingsLSData;
-  historySize = toValidHistorySize(settings.historySize ?? configHistorySize);
+  settingsOverrides = lsGetItem(SETTINGS_LS_KEY, {}) as UndoRedoSettingsLSData;
+  settings = resolveSettings();
 
   state = lsGetItem(LS_KEY, {}) as UndoRedoLSData;
   lastTimestamp = 0;
@@ -165,6 +177,7 @@ export const _recordUndoRedoAction = <TPayload>(
   trimBucket(bucket);
 
   persist();
+  updateOnScreenTools('UNDO');
 };
 
 export const _recordOrCoalesceUndoRedoAction = <TPayload extends { prev: unknown; next: unknown }>(
@@ -187,10 +200,24 @@ export const _recordOrCoalesceUndoRedoAction = <TPayload extends { prev: unknown
     // Same gesture: keep the original `prev`, take the latest `next`.
     top.entry.payload = { ...(top.entry.payload as TPayload), next: toStoredData(payload.next) };
     top.entry.timestamp = nextTimestamp();
-    persist();
+    persist(); // canUndo/canRedo can't change here, so no on-screen tools refresh per tick
     return;
   }
   _recordUndoRedoAction(actionType, label, payload, coalesceKey);
+};
+
+const showActionToast = (entry: UndoRedoEntry, direction: 'undo' | 'redo') => {
+  if (!settings.showToasts) return;
+  try {
+    addToast({
+      toasterId: DEBUG_TOASTER_ID,
+      title: direction === 'undo' ? 'Undo' : 'Redo',
+      message: entry.label,
+      showingTime: TOAST_SHOWING_TIME_MS,
+    });
+  } catch {
+    // No debug toaster yet (it's created at the end of InitEngine) — the action itself still ran
+  }
 };
 
 /** Runs one direction of an entry's handler. Returns false (pointer must not move) when the
@@ -217,6 +244,8 @@ export const _undoLastAction = () => {
   if (!target || !applyEntry(target.entry, 'undo')) return false;
   target.bucket.pointer--;
   persist();
+  updateOnScreenTools('UNDO');
+  showActionToast(target.entry, 'undo');
   return true;
 };
 
@@ -225,6 +254,8 @@ export const _redoLastAction = () => {
   if (!target || !applyEntry(target.entry, 'redo')) return false;
   target.bucket.pointer++;
   persist();
+  updateOnScreenTools('UNDO');
+  showActionToast(target.entry, 'redo');
   return true;
 };
 
@@ -242,17 +273,20 @@ export const _getUndoRedoHistory = (): UndoRedoHistoryEntry[] =>
     })
     .sort((a, b) => a.timestamp - b.timestamp);
 
-export const _getUndoRedoHistorySize = () => historySize;
+export const _getUndoRedoSettings = (): UndoRedoSettings => ({ ...settings });
 
-/** Takes effect immediately: every bucket (all scenes and the global one) is trimmed to the new
- * size right away, not just on the next recorded action. */
-export const _setUndoRedoHistorySize = (size: number) => {
-  historySize = toValidHistorySize(size);
-  lsSetItem(SETTINGS_LS_KEY, { historySize } satisfies UndoRedoSettingsLSData);
+/** Takes effect immediately: a smaller history size trims every bucket (all scenes and the
+ * global one) right away, not just on the next recorded action. */
+export const _setUndoRedoSettings = (partial: Partial<UndoRedoSettings>) => {
+  settingsOverrides = { ...settingsOverrides, ...partial };
+  lsSetItem(SETTINGS_LS_KEY, settingsOverrides);
+  settings = resolveSettings();
 
   let trimmed = false;
   for (const bucket of Object.values(state)) trimmed = trimBucket(bucket) || trimmed;
-  if (trimmed) persist();
+  if (!trimmed) return;
+  persist();
+  updateOnScreenTools('UNDO');
 };
 
 export const _clearUndoRedoHistory = (scope: UndoRedoClearScope) => {
@@ -262,4 +296,5 @@ export const _clearUndoRedoHistory = (scope: UndoRedoClearScope) => {
     delete state[getSceneBucketId()];
   }
   persist();
+  updateOnScreenTools('UNDO');
 };
