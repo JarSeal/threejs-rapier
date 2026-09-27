@@ -2607,6 +2607,203 @@
         ]
       }
     },
+    "postFx": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "tslFile": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "params": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "staticDefines": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "debugData": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "comments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "timestamp": {
+                          "type": "number"
+                        },
+                        "comment": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "timestamp",
+                        "comment"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "todo": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "debugObj": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "additionalProperties": false
+              },
+              "userData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "$schema": {
+                "type": "string"
+              },
+              "__sourcePath": {
+                "type": "string"
+              },
+              "__saveData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "__meta": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "params": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "staticDefines": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "debugData": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "comments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "timestamp": {
+                                  "type": "number"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timestamp",
+                                "comment"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "todo": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugObj": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "userData": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              }
+            },
+            "required": [
+              "id",
+              "tslFile"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "postFxEnabled": {
+      "type": "boolean"
+    },
     "id": {
       "type": "string"
     },
@@ -5239,6 +5436,203 @@
                   }
                 ]
               }
+            },
+            "postFx": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "tslFile": {
+                        "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "params": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "staticDefines": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "debugData": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "comments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "timestamp": {
+                                  "type": "number"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timestamp",
+                                "comment"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "todo": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugObj": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "userData": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {}
+                      },
+                      "$schema": {
+                        "type": "string"
+                      },
+                      "__sourcePath": {
+                        "type": "string"
+                      },
+                      "__saveData": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "__meta": {
+                                "type": "object",
+                                "properties": {
+                                  "date": {
+                                    "type": "number"
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "params": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "staticDefines": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "debugData": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "description": {
+                                    "type": "string"
+                                  },
+                                  "comments": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "timestamp": {
+                                          "type": "number"
+                                        },
+                                        "comment": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "timestamp",
+                                        "comment"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "todo": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  },
+                                  "debugObj": {
+                                    "type": "object",
+                                    "propertyNames": {
+                                      "type": "string"
+                                    },
+                                    "additionalProperties": {}
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "userData": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "tslFile"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "postFxEnabled": {
+              "type": "boolean"
             }
           },
           "additionalProperties": false

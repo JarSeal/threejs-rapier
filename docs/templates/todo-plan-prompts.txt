@@ -85,18 +85,12 @@ If for some reason this plan can't or shouldn't be created with this specificati
 
 *******************************
 
-Create "Small bug fixes and tweaks" plan in docs/plans/p100_small-bug-fixes-and-tweaks.md
+Create "Small bug fixes and tweaks" plan in docs/plans/p102_small-bug-fixes-and-tweaks.md
 
 Category: Bug, Refactor
 
 Fix or tweak these list items:
-- Fix all lint errors and warnings
-- When switching a scene in edit mode, the edit windows are carried over to the next scene. The window(s) should be closed, but if possible, if the same asset or entity is found in that scene, then the window would stay open.
-- When pressing play in the top on screen tools to go to the prodTest mode and if an edit window is open, that window will show up in prodTest (as an empty window, because the content is gated). The windows should not show up unless that window has an option set to show up in prodTest. If set to true the window should show in prodTest. The gating for the content should then be automatic depending on that property (either gated by is debug env or is prodTest env).
-- Can you verify that the main thread and the worker thread physics both are actually deterministic (with Rapier). I think I had some weird differences when refreshing and loading the Gym scene. This can be nothing, as I cannot reproduce it now (might have been fixed earlier but I am not sure). Try also with and without SAB and with different interpolation values. Update: at least one case verified that the end results change: when I open the gym scene, switch to another scene, and then switch back to the gym scene then at least one of the Suzanne entities lands in a different position than on the first load.
-- Console warns about GPU or CPT stats measuring: THREE.Renderer: "hasFeatureAsync()" has been deprecated. Use "hasFeature()" and "await renderer.init();" when creating the renderer. Can this be fixed?
-- (Carried over from the removed p054 GPU memory plan's follow-ups) `largeWorld` leaks unregistered geometries: `largeWorldTerrain` (the generated terrain geometry), `largeWorldDynamicCrateStack` and `largeWorldDynamicBarbell` (`mergeGeometries` results) are never registered, so One More Scene has 5 more geometries after a `largeWorld` visit.
-- (Carried over from the removed p054 GPU memory plan's follow-ups) On a revisit of `sceneTestECS` the unregistered-geometry warning fires for `testMesh` and `testImportedMesh`: `createNextSceneObject3Ds` (`SceneLoader.ts`) writes the resolved geometry and material objects over the string ids in the cached scene data (`props.props.geo = geo`), so the next visit reuses the previous visit's disposed, unregistered objects instead of looking the ids up again.
+- When loading the page the browser console warns: "using deprecated parameters for the initialization function; pass a single object instead". There is an issue for this but it seems to be closed/solved: https://github.com/dimforge/rapier/issues/811 . Maybe updating Rapier could help.
 
 If any of these fixes/tweaks are large refactorings/fixes then produce a plan for those.
 
