@@ -28,6 +28,7 @@ import { getStatsCmp, registerStatsModule } from './debug/Stats';
 import { createAssetsDebugGUI } from './debug/Assets';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
 import { registerLineManager } from './core/LineManager';
+import { initPostFX } from './core/PostFX';
 
 // ECS Core Plugins
 import './core/ECS/ECSCoreSystems';
@@ -114,6 +115,9 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerMainLoopDebugGUI();
       await registerOnScreenTools();
     }
+
+    // Before appStartFn, so it is ready for the first scene load (it needs no renderer yet)
+    initPostFX();
 
     await appStartFn();
 

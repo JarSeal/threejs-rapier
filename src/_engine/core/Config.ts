@@ -138,6 +138,13 @@ export type AppConfig = {
     far?: number;
     zoom?: number;
   };
+  /** PostFX engine-level defaults (docs/plans/p070_post-fx-system.md). Per-scene and
+   * per-pass state lives in the scene / `*.postFx.json` files, not here. */
+  postFx?: {
+    /** Global master switch: when false, no scene's PostFX chain is ever rendered. A scene
+     * still has to declare PostFX passes for anything to happen. Default true. */
+    enabled?: boolean;
+  };
   /** Debugger undo/redo history (debug-only, see `debug/UndoRedo.ts`). */
   undoRedo?: {
     /** Max number of history entries kept per scene bucket. Default 50. */
@@ -193,6 +200,9 @@ let config: AppConfig = {
   },
   undoRedo: {
     historySize: 50,
+  },
+  postFx: {
+    enabled: true,
   },
 };
 
