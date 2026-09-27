@@ -5,11 +5,12 @@
 import type { Pane } from 'tweakpane';
 import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
 import { getConfig } from '../Config';
-import { isPostFxEnabled, setPostFxEnabled } from '../PostFX';
+import { getPostFxPasses, isPostFxEnabled, setPostFxEnabled } from '../PostFX';
 import { isPostFxMeasureEnabled, setPostFxMeasureEnabled } from '../../debug/PostFXProfiler';
 import { getCurrentSceneId, getSceneOpts, registerOnAllSceneEnterings } from '../Scene';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { CMP, getCmpById, type TCMP } from '../../utils/CMP';
 import {
   confirmClearScope,
   createClearListLSButton,
@@ -28,6 +29,8 @@ type PostFxSettingsLSData = {
 
 const SETTINGS_LS_KEY = 'AEK_debugPostFxSettings';
 
+const DEBUGGER_POSTFX_LIST_ID = 'debuggerPostFxPassList';
+
 const UNDO_POSTFX_ENABLED = 'postFx.enabled';
 type PostFxEnabledPayload = { prev: boolean; next: boolean };
 
@@ -38,6 +41,7 @@ const settingsProxy = { postFxEnabled: false, measureEnabled: false };
 /** True while undo/redo, clearing or a scene change pushes a value into the GUI, so the change
  * listeners don't record or persist it. */
 let isSyncingGUI = false;
+let debuggerListCmp: TCMP | null = null;
 
 const isMasterEnabled = () => getConfig().postFx?.enabled !== false;
 const getAuthoredPostFxEnabled = (sceneId: string) =>
@@ -61,6 +65,39 @@ const refreshGUI = () => {
     postFxPane.refresh();
   } finally {
     isSyncingGUI = false;
+  }
+};
+
+/** The current scene's PostFX passes, in chain order. */
+const createPostFxPassList = () => {
+  const postFxPasses = getPostFxPasses();
+  let html = `<div><h3 class="listItemCount">${postFxPasses.length} PostFX pass${postFxPasses.length === 1 ? '' : 'es'} (in chain order):</h3>`;
+  html += '<ul class="ulList">';
+  for (let i = 0; i < postFxPasses.length; i++) {
+    const { id, index, enabled, debugData } = postFxPasses[i];
+    const button = CMP({
+      html: `<button class="listItemWithId"${debugData?.description ? ` title="${debugData.description}"` : ''}>
+  <span class="itemId">#${index + 1} [${id}]</span>${!enabled ? '<span>(disabled)</span> ' : ''}
+  <h4${!debugData?.name ? ` style="font-style:italic"` : ''}>${debugData?.name || `[${id}]`}</h4>
+</button>`,
+    });
+    html += `<li data-id="${id}"${!enabled ? ' class="disabledItem"' : ''}>${button}</li>`;
+  }
+  if (!postFxPasses.length) html += `<li class="emptyState">No PostFX passes in this scene..</li>`;
+  html += '</ul></div>';
+  return html;
+};
+
+const refreshPostFxList = () => {
+  if (debuggerListCmp?.elem.isConnected) debuggerListCmp.update({ html: createPostFxPassList });
+};
+
+export const updateDebuggerPostFxListSelectedClass = (id: string | null) => {
+  const ulElem = getCmpById(DEBUGGER_POSTFX_LIST_ID)?.elem.querySelector('ul');
+  if (!ulElem) return;
+  for (const child of ulElem.children) {
+    child.classList.remove('selected');
+    if (id !== null && child.getAttribute('data-id') === id) child.classList.add('selected');
   }
 };
 
@@ -133,6 +170,8 @@ export const _createPostFXDebugGUI = async () => {
   registerOnAllSceneEnterings('postFxDebugSync', () => {
     syncPostFxEnabledFromLS();
     refreshGUI();
+    // The drawer is rebuilt on scene change before the new scene's PostFX passes are set up
+    refreshPostFxList();
   });
 
   const icon = getSvgIcon('postFx');
@@ -193,6 +232,8 @@ export const _createPostFXDebugGUI = async () => {
           void applyMeasureEnabled(e.value);
         });
 
+      debuggerListCmp = CMP({ id: DEBUGGER_POSTFX_LIST_ID, html: createPostFxPassList });
+      container.add(debuggerListCmp);
       return container;
     },
   });
