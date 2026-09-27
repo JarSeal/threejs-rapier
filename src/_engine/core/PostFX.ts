@@ -36,6 +36,7 @@ import type {
   PostFxPassProps,
 } from './PostFX/PostFXTypes';
 import type { DebugData } from '../schemas/_helperSchemas';
+import type { PostFxParamMeta } from '../schemas/postFxSchema';
 
 type PostFxPassState = {
   id: string;
@@ -46,12 +47,24 @@ type PostFxPassState = {
   api: PostFxPassApi | null;
 };
 
+/**
+ * How a PostFX pass takes param edits: 'setParam' live through its own setParam, 'rebuild' by
+ * rebuilding the chain (a shader recompile), 'unknown' while it has not been built (disabled, or
+ * no frame rendered with it yet), since only a build shows whether it returns a setParam.
+ */
+export type PostFxLiveParams = 'setParam' | 'rebuild' | 'unknown';
+
 /** A PostFX pass as listed by getPostFxPasses() (for the debugger, p071). */
 export type PostFxPassInfo = {
   id: string;
+  /** Position in the scene's chain (execution order). */
+  index: number;
   enabled: boolean;
   debugData?: DebugData;
+  /** The current (live) param values, a copy. */
   params: Record<string, unknown>;
+  paramsMeta?: Record<string, PostFxParamMeta>;
+  liveParams: PostFxLiveParams;
 };
 
 let isMasterEnabled = false;
@@ -337,11 +350,14 @@ export const togglePostFxPass = (id: string) => {
  * @returns ({@link PostFxPassInfo}[])
  */
 export const getPostFxPasses = (): PostFxPassInfo[] =>
-  postFxPasses.map((p) => ({
+  postFxPasses.map((p, index) => ({
     id: p.id,
+    index,
     enabled: p.enabled,
     debugData: p.props.debugData,
     params: { ...p.props.params },
+    paramsMeta: p.props.paramsMeta,
+    liveParams: !p.api ? 'unknown' : p.api.setParam ? 'setParam' : 'rebuild',
   }));
 
 /**
