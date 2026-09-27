@@ -5,7 +5,7 @@ import { DebugDataSchema, UserDataSchema } from './_helperSchemas';
 /** Raw JSON values handed to the pass's `fxNode` function as-is (not TSL uniform nodes), see docs/plans/_DONE_p070_post-fx-system.md, Design decision 2. */
 const PostFxParamsSchema = z.record(z.string(), z.unknown());
 
-/** Debugger-only hints for one param's control (the control type itself is inferred from the param's value), see docs/plans/p071_post-fx-debugger-ui.md, Design decision 7. */
+/** Debugger-only hints for one param's control (the control type itself is inferred from the param's value), see docs/plans/_DONE_p071_post-fx-debugger-ui.md, Design decision 7. */
 const PostFxParamMetaSchema = z
   .object({
     /** Control label. Defaults to the param key. */

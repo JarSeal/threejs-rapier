@@ -1,6 +1,6 @@
 Status: implemented
 Category: PostFX
-Blocks: p071_post-fx-debugger-ui.md
+Blocks: _DONE_p071_post-fx-debugger-ui.md
 Epic: https://trello.com/c/6a8QkjPf/62-add-postprocessing-system-to-core-code
 
 # PostFX System — Core Engine — Plan
@@ -282,7 +282,7 @@ Manual verification: on the Large ECS test world with AO on, call `setPostFxMeas
 
 ## Non-goals
 
-- **The PostFX debugger tab and UI** — that is `p071_post-fx-debugger-ui.md`, which this plan blocks. Phase 5 deliberately ships the measuring API with no UI, as the brief asks. `PostFX.ts`'s `getPostFxPasses()`/`setPostFxPassParam()` and the profiler's `getPostFxPassStats()` are the surfaces p071 will consume.
+- **The PostFX debugger tab and UI** — that is `_DONE_p071_post-fx-debugger-ui.md`, which this plan blocks. Phase 5 deliberately ships the measuring API with no UI, as the brief asks. `PostFX.ts`'s `getPostFxPasses()`/`setPostFxPassParam()` and the profiler's `getPostFxPassStats()` are the surfaces p071 will consume.
 - **Any second PostFX pass** (bloom, DoF, FXAA/SMAA/TRAA, SSR, godrays, …). Three.js ships 40 ready-made TSL display nodes; each becomes a small, self-contained follow-up once this plan lands. AA passes in particular are deliberately deferred — see Design decision 9.
 - **Changing antialiasing behavior.** MSAA keeps working exactly as today. The MSAA-vs-screen-space-AO tension documented in `docs/analysis/ambient-occlusion-options.md` is acknowledged and left alone.
 - **Reworking `_dbg__Renderer.ts`'s ownership of tone mapping / output color space.** This plan only makes the existing controls keep working when PostFX is on; moving tone mapping into the chain as an authored pass is a separate question.

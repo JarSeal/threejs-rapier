@@ -25,7 +25,7 @@ export type PostFxPassApi = {
   node: THREE.Node<'vec4'>;
   /** Nodes whose updateBefore() cost is attributed to this PostFX pass when profiling. Defaults to [node]. */
   profileNodes?: THREE.Node[];
-  /** Live param write-through, used by the debugger (docs/plans/p071_post-fx-debugger-ui.md). */
+  /** Live param write-through, used by the debugger (docs/plans/_DONE_p071_post-fx-debugger-ui.md). */
   setParam?: (key: string, value: unknown) => void;
   onSetSize?: (width: number, height: number) => void;
   onDispose?: () => void;

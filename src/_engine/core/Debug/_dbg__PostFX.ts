@@ -1,5 +1,5 @@
 /**
- * PostFX debugger tab (docs/plans/p071_post-fx-debugger-ui.md). Debug-only, lazily loaded
+ * PostFX debugger tab (docs/plans/_DONE_p071_post-fx-debugger-ui.md). Debug-only, lazily loaded
  * through PostFX.ts's createPostFXDebugGUI().
  */
 import { Pane, type BindingParams } from 'tweakpane';
