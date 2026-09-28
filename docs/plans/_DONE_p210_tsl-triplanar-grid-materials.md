@@ -1,4 +1,4 @@
-Status: in-progress | phase 1 (grid) implemented, phase 2 (checkerboard) not-implemented
+Status: implemented
 Category: Texture
 
 # TSL Triplanar Grid Materials — Plan
@@ -9,8 +9,7 @@ checkerboard (with optional plus-sign) material — following the declarative `<
 line thickness / checker size read as real-world meters on any mesh without UV unwrapping.
 
 Phase 1 grew well past the original draft during review (object alignment, bounds fitting, minor
-lines, seam normals, per-mesh material variants); this document describes what is built, and what
-phase 2 should reuse.
+lines, seam normals, per-mesh material variants); this document describes what is built.
 
 ---
 
@@ -18,8 +17,8 @@ phase 2 should reuse.
 
 - **Triplanar Grid** (implemented) — grid lines over a background color, usable on floors, walls
   and props for greyboxing / level layout reference.
-- **Triplanar Checkerboard** (phase 2) — two checker colors and an optional solid-color "+" mark
-  centered in each cell.
+- **Triplanar Checkerboard** (implemented) — two checker colors and an optional solid-color "+"
+  mark centered in each cell.
 
 All defaults are retunable via the material JSON; per-mesh differences go through mesh
 `matOverrides` (§4), not extra material files.
@@ -99,19 +98,28 @@ and box-wall obstacles, slide, imported stairs/terrains/obstacles).
 
 ---
 
-## 4. Phase 2 — Triplanar Checkerboard (not-implemented)
+## 4. Triplanar Checkerboard (implemented)
 
-`src/toolkit/materials/triplanarCheckerboard.tsl.ts` + `.material.json`. Reuse from the grid (move
-shared helpers to a small toolkit module rather than copy-pasting): the projection space
-(`alignToObject` / `fitToBounds`), blend weights, `staticDefines` handling, the input typing.
+`src/toolkit/materials/triplanarCheckerboard.tsl.ts` + `triplanarCheckerboard.material.json`.
+Color only (`colorNode`).
 
-- **Inputs:** `checkerSize` (m), `checkerColorA`, `checkerColorB`, `plusSignColor`;
-  **defines:** `alignToObject`, `fitToBounds`, `plusSigns`.
-- **Parity:** `mod(floor(x) + floor(y), 2)` gives 0/1 directly with the floored mod — don't add
-  `.sign()` (the draft had it; a -0 cell index would make it negative and `mix` overshoot).
-- **Plus sign:** hardcoded proportions (arm 0.35, bar 0.06 of a cell); use the same anti-aliased
-  edges as the grid lines instead of hard `step()` edges.
-- **Open question:** seam normals along checker edges, or color only.
+- **Shared with the grid:** `src/toolkit/materials/triplanarProjection.ts` —
+  `triplanarProjection` (object/world alignment, `fitToBounds` with the per-object bounds
+  uniforms, geometry-normal blend weights), `blendProjections` (evaluate a pattern per projection
+  and blend) and `readBooleanDefines`. New triplanar materials should build on it.
+- **`staticDefines`:** `alignToObject` (`true`), `fitToBounds` (`false`), `plusSigns` (`false`).
+- **Inputs:** `colorNode` — `checkerSize` (m), `checkerColorA`, `checkerColorB`, `plusSignColor`
+  (only needed with `plusSigns`).
+- **Checker:** box-filtered analytic checker (Inigo Quilez's "filtered checker": the square
+  wave's integral over the `fwidth` pixel footprint), so it fades to the average of the two colors
+  in the distance instead of aliasing/moiré. No `mod`/parity math (the draft's `.sign()` parity
+  would have overshot on a -0 cell index).
+- **Plus signs:** hardcoded proportions (half arm 0.35, half bar 0.06 of a cell), pixel-width
+  anti-aliased edges, and faded out while a pixel grows from 5% to 15% of a cell (too thin to
+  draw without shimmering). With `fitToBounds` the cells can be slightly non-square, and the plus
+  stretches with them.
+- **Possible extension:** seam normals along the checker edges (reusing the grid's groove math) —
+  not requested yet.
 
 ---
 

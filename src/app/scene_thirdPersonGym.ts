@@ -126,9 +126,8 @@ export const scene = async () =>
           },
           nodes: {
             colorNode: {
-              backgroundColor: '#8c8c8c',
+              backgroundColor: '#9c9c9c',
               lineColor: '#a5a5a5',
-              minorLineColor: '#939393',
             },
           },
         },

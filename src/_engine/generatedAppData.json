@@ -1397,6 +1397,30 @@
       "type": "STANDARDNODEMATERIAL",
       "__sourcePath": "src/toolkit/materials/checkerBoard.material.json"
     },
+    "triplanarCheckerboard": {
+      "id": "triplanarCheckerboard",
+      "params": {
+        "color": "#808080",
+        "roughness": 0.85,
+        "metalness": 0
+      },
+      "tslFile": "materials/triplanarCheckerboard.tsl.ts",
+      "staticDefines": {
+        "alignToObject": true,
+        "fitToBounds": false,
+        "plusSigns": false
+      },
+      "nodes": {
+        "colorNode": {
+          "checkerSize": 1,
+          "checkerColorA": "#707070",
+          "checkerColorB": "#404040",
+          "plusSignColor": "#a0a0a0"
+        }
+      },
+      "type": "STANDARDNODEMATERIAL",
+      "__sourcePath": "src/toolkit/materials/triplanarCheckerboard.material.json"
+    },
     "triplanarGrid": {
       "id": "triplanarGrid",
       "params": {

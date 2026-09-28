@@ -1,13 +1,8 @@
 import {
-  positionLocal,
-  positionWorld,
-  normalLocal,
-  normalWorldGeometry,
   normalView,
   modelScale,
   modelViewMatrix,
   cameraViewMatrix,
-  uniform,
   vec2,
   vec3,
   vec4,
@@ -16,7 +11,6 @@ import {
   min,
   max,
   clamp,
-  step,
   smoothstep,
   oneMinus,
   fwidth,
@@ -25,13 +19,8 @@ import {
   select,
 } from 'three/tsl';
 // The real generic `Node<T>` typings (the `three/tsl` `Node` is a loose local shim)
-import {
-  Vector3,
-  type BufferGeometry,
-  type Node,
-  type NodeMaterial,
-  type Object3D,
-} from 'three/webgpu';
+import { type Node, type NodeMaterial } from 'three/webgpu';
+import { blendProjections, readBooleanDefines, triplanarProjection } from './triplanarProjection';
 
 // Minor lines widen (up to the major thickness) once their half-thickness would drop below this
 // many pixels, so they don't break up / vanish at a distance.
@@ -59,42 +48,8 @@ const DEFAULT_DEFINES: GridDefines = {
   seamNormals: true,
 };
 
-const getDefines = (defines?: Record<string, unknown>): GridDefines => {
-  const result = { ...DEFAULT_DEFINES };
-  for (const key of Object.keys(DEFAULT_DEFINES) as (keyof GridDefines)[]) {
-    if (typeof defines?.[key] === 'boolean') result[key] = defines[key] as boolean;
-  }
-  return result;
-};
-
-// ─── Per-object local bounds (fitToBounds only) ───
-// The one per-object cost: two uniforms updated before each draw, and only in fitToBounds variants,
-// so a mesh's geometry and world scale can change at runtime.
-
-const noBounds = new Vector3();
-const localBounds = (object: Object3D | null) => {
-  const geometry = (object as { geometry?: BufferGeometry } | null)?.geometry;
-  if (!geometry) return null;
-  if (!geometry.boundingBox) geometry.computeBoundingBox();
-  return geometry.boundingBox;
-};
-
-const boundsUniforms = new WeakMap<NodeMaterial, { min: Node<'vec3'>; max: Node<'vec3'> }>();
-const getBoundsUniforms = (material: NodeMaterial) => {
-  let bounds = boundsUniforms.get(material);
-  if (!bounds) {
-    bounds = {
-      min: uniform(new Vector3()).onObjectUpdate(
-        ({ object }) => localBounds(object)?.min ?? noBounds
-      ),
-      max: uniform(new Vector3()).onObjectUpdate(
-        ({ object }) => localBounds(object)?.max ?? noBounds
-      ),
-    };
-    boundsUniforms.set(material, bounds);
-  }
-  return bounds;
-};
+const getDefines = (defines?: Record<string, unknown>) =>
+  readBooleanDefines(DEFAULT_DEFINES, defines);
 
 // ─── Pattern ───
 
@@ -128,37 +83,16 @@ const getPatternParams = (
   };
 };
 
-// Projection space shared by both sockets: object-aligned (rotation follows the mesh, world scale
-// multiplied back in so units stay meters) or world-aligned (continuous across separate meshes).
-// fitToBounds anchors the lines to the bounding box corner and stretches the spacing per axis so a
-// whole number of cells spans the object, putting lines on its edges.
-// Uses the geometry normal so the blend isn't fed back through the perturbed seam normal.
-const projectionSpace = (params: PatternParams, defines: GridDefines, material: NodeMaterial) => {
-  const baseSpacing = vec3(params.lineFrequency);
-  let pos: Node<'vec3'> = positionWorld;
-  let spacing: Node<'vec3'> = baseSpacing;
-  let normal: Node<'vec3'> = normalWorldGeometry;
-
-  if (defines.alignToObject) {
-    pos = positionLocal.mul(modelScale);
-    normal = normalLocal.div(modelScale).normalize();
-
-    if (defines.fitToBounds) {
-      const bounds = getBoundsUniforms(material);
-      const boundsSize = bounds.max.sub(bounds.min).mul(modelScale);
-      pos = pos.sub(bounds.min.mul(modelScale));
-      // Flat axes (eg. a plane's thickness) keep the base spacing instead of dividing by zero
-      const cellCount = max(boundsSize.div(params.lineFrequency).round(), vec3(1.0));
-      spacing = mix(baseSpacing, boundsSize.div(cellCount), step(vec3(0.0001), boundsSize));
-    }
-  }
-
-  // Triplanar blend weights (components sum to 1)
-  let blend = normal.abs();
-  blend = blend.div(blend.dot(vec3(1.0)));
-
-  return { pos, spacing, blend };
-};
+// Projection shared by both sockets (see triplanarProjection), with the line spacing as cell size
+const projectionSpace = (params: PatternParams, defines: GridDefines, material: NodeMaterial) =>
+  triplanarProjection(
+    {
+      cellSize: params.lineFrequency,
+      alignToObject: defines.alignToObject,
+      fitToBounds: defines.fitToBounds,
+    },
+    material
+  );
 
 // One axis of a line set (lines at multiples of `spacing`, not at cell centers):
 // - mask: anti-aliased color mask (1 = on a line)
@@ -251,21 +185,15 @@ export const colorNode = (
   if (defines.minorLines && !minorLineColor) {
     throw new Error('[triplanarGrid] Missing colorNode input "minorLineColor" (minorLines is on).');
   }
-  const { pos, spacing, blend } = projectionSpace(params, defines, material);
+  const projection = projectionSpace(params, defines, material);
 
   // Major lines are drawn over minor lines, minor lines over the background
-  const projectionColor = (coord: Node<'vec2'>, axisSpacing: Node<'vec2'>) => {
-    const { major, minor } = gridPattern(coord, axisSpacing, params, defines);
+  return blendProjections(projection, (coord, spacing) => {
+    const { major, minor } = gridPattern(coord, spacing, params, defines);
     const withMinor =
       minor && minorLineColor ? mix(backgroundColor, minorLineColor, minor.mask) : backgroundColor;
     return mix(withMinor, lineColor, major.mask);
-  };
-
-  return add(
-    projectionColor(pos.yz, spacing.yz).mul(blend.x),
-    projectionColor(pos.zx, spacing.zx).mul(blend.y),
-    projectionColor(pos.xy, spacing.xy).mul(blend.z)
-  );
+  });
 };
 
 // Seam grooves derived from the same line data as colorNode. The pattern inputs are read from the
@@ -283,7 +211,7 @@ export const normalNode = (
   const params = getPatternParams(uniforms, 'colorNode_', defines);
   const strength = inputs.seamNormalStrength;
   const minorStrength = inputs.minorSeamNormalStrength ?? float(0.0);
-  const { pos, spacing, blend } = projectionSpace(params, defines, material);
+  const { pos, size: spacing, blend } = projectionSpace(params, defines, material);
 
   // The stronger groove (major or minor) sets the slope, each with its own strength
   const slope = (coord: Node<'vec2'>, axisSpacing: Node<'vec2'>) => {
