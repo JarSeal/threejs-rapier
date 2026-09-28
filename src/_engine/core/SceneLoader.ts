@@ -343,27 +343,31 @@ const createNextSceneObject3Ds = async (sceneData: SceneData): Promise<void> => 
   for (let i = 0; i < meshProps.length; i++) {
     const props = meshProps[i];
     if (typeof props === 'string') continue;
-    if (typeof props.props.geo === 'string') {
-      const geo = doesGeoExist(props.props.geo) ? getGeometry(props.props.geo) : undefined;
-      if (!geo) {
+    // Resolve into locals, never write back: the generated scene data is cached, and a revisit
+    // would otherwise reuse the previous visit's released (disposed) geometry/material objects
+    let geo = props.props.geo;
+    if (typeof geo === 'string') {
+      const foundGeo = doesGeoExist(geo) ? getGeometry(geo) : undefined;
+      if (!foundGeo) {
         lerror(
-          `Could not find geometry with id "${props.props.geo}" for mesh "${props.props.appId || props.entityOpts?.appId}" in createNextSceneObject3Ds. Mesh not created.`
+          `Could not find geometry with id "${geo}" for mesh "${props.props.appId || props.entityOpts?.appId}" in createNextSceneObject3Ds. Mesh not created.`
         );
         continue;
       }
-      props.props.geo = geo as THREE.BufferGeometry;
+      geo = foundGeo as THREE.BufferGeometry;
     }
-    if (typeof props.props.mat === 'string') {
-      const mat = getMaterial(props.props.mat);
-      if (!mat) {
+    let mat = props.props.mat;
+    if (typeof mat === 'string') {
+      const foundMat = getMaterial(mat);
+      if (!foundMat) {
         lerror(
-          `Could not find material with id "${props.props.mat}" for "${props.props.appId || props.entityOpts?.appId}" mesh in createNextSceneObject3Ds. Mesh not created.`
+          `Could not find material with id "${mat}" for "${props.props.appId || props.entityOpts?.appId}" mesh in createNextSceneObject3Ds. Mesh not created.`
         );
         continue;
       }
-      props.props.mat = mat;
+      mat = foundMat;
     }
-    createMeshEntity(props.props, props.entityOpts);
+    createMeshEntity({ ...props.props, geo, mat }, props.entityOpts);
   }
 };
 
