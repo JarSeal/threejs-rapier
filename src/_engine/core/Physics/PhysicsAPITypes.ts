@@ -81,8 +81,10 @@ export type PhysicsState = {
   pausedTime: number;
   /** Total pause duration, used for the getPhysGameTime helper (in the helpers.ts) */
   pauseDurationTotal: number;
-  /** Keeps track whether the pause reason is the background behavior (if the app window is hidden) */
-  pauseReason: 'BACKGROUND_BEHAVIOR' | null;
+  /** Why physics is paused, when something other than an explicit play toggle paused it:
+   * 'BACKGROUND_BEHAVIOR' = the app window is hidden, 'SCENE_LOAD' = a scene is loading (see
+   * holdPhysicsStepping). */
+  pauseReason: 'BACKGROUND_BEHAVIOR' | 'SCENE_LOAD' | null;
   /** Minimum delta time (seconds) substituted for the real elapsed time when
    * backgroundBehavior is 'KEEP_RUNNING_USE_MIN_DELTA' and the window is hidden.
    * 0 = not in use.
@@ -2087,6 +2089,7 @@ export type PhysicsUpProtocol =
         rigidBodyIds: number[];
         colliderIds: number[];
       }
+    | { type: PhysicsProtocolType.FLUSH }
     // World --------------------------------------
     | {
         type: PhysicsProtocolType.CREATE_WORLD;
@@ -2509,6 +2512,7 @@ export type PhysicsDownProtocol =
         type: PhysicsProtocolType.INIT_PHYSICS;
         worldCreated: boolean;
       }
+    | { type: PhysicsProtocolType.FLUSH }
     // World --------------------------------------
     | {
         type: PhysicsProtocolType.CREATE_WORLD;
@@ -2707,6 +2711,7 @@ type PhysicsResponse<T extends PhysicsProtocolType> = Extract<PhysicsDownProtoco
 export type InitPhysicsResponse = PhysicsResponse<PhysicsProtocolType.INIT_PHYSICS>;
 export type TakeSnapshotResponse = PhysicsResponse<PhysicsProtocolType.TAKE_SNAPSHOT>;
 export type RestoreSnapshotResponse = PhysicsResponse<PhysicsProtocolType.RESTORE_SNAPSHOT>;
+export type FlushResponse = PhysicsResponse<PhysicsProtocolType.FLUSH>;
 export type ErrorResponse = PhysicsResponse<PhysicsProtocolType.ERROR>;
 // World
 export type CreateWorldResponse = PhysicsResponse<PhysicsProtocolType.CREATE_WORLD>;
@@ -2850,6 +2855,9 @@ export enum PhysicsProtocolType {
    * directly. Lives in the ENGINE range (not WORLD) because it needs the worker's own
    * engAPI/buffer module state, which the WORLD switchboard doesn't receive. */
   SET_DEBUG_STATE_TRACKING = 5,
+  /** Round-trip ordering barrier: the worker replies immediately, so the reply arrives only
+   * after every message posted before it has been handled. */
+  FLUSH = 6,
   CREATE_WORLD = 100,
   DELETE_WORLD = 101,
   /** Worker -> main thread unsolicited push of the hot-path transform buffer (MESSAGE_BATCH fallback only). */

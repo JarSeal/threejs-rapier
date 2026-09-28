@@ -52,6 +52,7 @@ import {
   TakeSnapshotResponse,
   CreateWorldResponse,
   DeleteWorldResponse,
+  FlushResponse,
   RestoreSnapshotResponse,
   WorldGravityResponse,
   WorldTimestepResponse,
@@ -285,14 +286,19 @@ export const stepPhysics = (
    * MainLoop.ts). Without one, events are flushed before each sub-step here instead. */
   onBeforeStep?: (stepDelta: number) => void
 ): number => {
-  if (!physicsWorldEnabled || !physicsState.worldStepEnabled) return 0;
+  if (!physicsWorldEnabled) return 0;
+  // Scene load in progress (holdPhysicsStepping): no timer update either, releasing it
+  // resumes through the paused branch below.
+  if (isSteppingHeld) return 0;
 
   updateTimer();
   let dt = timer.getDelta();
 
-  if (!loopState.masterPlay || !loopState.appPlay) {
+  if (!loopState.masterPlay || !loopState.appPlay || !physicsState.worldStepEnabled) {
     // Explicit pause (unrelated to window visibility) always halts stepping outright —
-    // backgroundBehavior only governs what happens while the window is hidden.
+    // backgroundBehavior only governs what happens while the window is hidden. Switching
+    // the world step off counts as one too, so switching it back on resumes cleanly instead
+    // of catching up on the time it was off.
     if (!physicsState.isPaused) setPhysicsPauseTime();
     physicsState.isPaused = true;
     timerRunning = false;
@@ -318,15 +324,17 @@ export const stepPhysics = (
     }
     // 'KEEP_RUNNING': keep the real dt, still subject to the maxDeltaTime clamp below.
   } else if (physicsState.isPaused) {
-    // Resuming: the dt just computed above spans the entire paused duration (the timer
-    // wasn't updated while timerRunning was false) — discard it and the stale accumulator
-    // rather than trying to simulate the whole paused duration in one go. Physics resumes
-    // cleanly from next frame's dt instead.
+    // Resuming: the dt just computed above is either stale (the timer wasn't updated while
+    // timerRunning was false) or spans the entire paused duration — discard it and the stale
+    // accumulator rather than trying to simulate the whole paused duration in one go. The
+    // timer restarts from now, whatever paused it, so the next frame's dt is one frame long.
     physicsState.isPaused = false;
     physicsState.pauseDurationTotal += performance.now() - physicsState.pausedTime;
     physicsState.pausedTime = 0;
     accDelta = 0;
     simClockEpoch++;
+    timerRunning = true;
+    timer.update();
     return 0;
   }
 
@@ -675,6 +683,36 @@ const physicsVisibilityChangeHandler = (isHidden: boolean) => {
   }
 };
 
+/** Whether holdPhysicsStepping() is in effect. */
+let isSteppingHeld = false;
+
+/**
+ * Stops the world from stepping until releasePhysicsStepping() is called. SceneLoader.ts holds
+ * it for the whole scene build, so every body of the next scene starts stepping on the same
+ * step no matter how long its assets took to load. Counts as a pause for getPhysGameTime().
+ */
+export const holdPhysicsStepping = () => {
+  if (isSteppingHeld) return;
+  isSteppingHeld = true;
+  if (!physicsState.isPaused) setPhysicsPauseTime();
+  physicsState.isPaused = true;
+  physicsState.pauseReason ??= 'SCENE_LOAD';
+};
+
+/**
+ * Ends holdPhysicsStepping(). The next stepPhysics() call takes the resume-from-pause path: it
+ * discards the dt spanning the hold and the accumulator and restarts the timer, so stepping
+ * restarts from a clean step boundary. That also covers the first boot, where the loop only
+ * starts after the first load.
+ */
+export const releasePhysicsStepping = () => {
+  if (!isSteppingHeld) return;
+  isSteppingHeld = false;
+  if (physicsState.pauseReason === 'SCENE_LOAD') physicsState.pauseReason = null;
+};
+
+export const isPhysicsSteppingHeld = () => isSteppingHeld;
+
 // Physics step accumulator variables
 let timerRunning = true;
 let accDelta = 0;
@@ -867,6 +905,16 @@ export const createPhysicsWorld = async (
   }
 
   return physicsWorld;
+};
+
+/**
+ * Ordering barrier. WORKER_THREAD: resolves once the worker has handled every message posted
+ * before this call (including fire-and-forget deletes). MAIN_THREAD: everything already ran
+ * synchronously, so it resolves right away.
+ */
+export const flushPhysics = async () => {
+  if (physicsState.workerTarget !== 'WORKER_THREAD' || !worker) return;
+  await messageWorkerAsync<FlushResponse>({ type: PhysicsProtocolType.FLUSH });
 };
 
 export const deletePhysicsWorld = async () => {

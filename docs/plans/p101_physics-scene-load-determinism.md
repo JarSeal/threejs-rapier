@@ -166,6 +166,20 @@ Drive the runs and collect the probe lines with the run-aekasha-js skill.
 - Worker fresh loads are not repeatable. This is consistent with the worker-only ordering races (§2.4).
 - One no-SAB fresh load matched MAIN_THREAD (`f5addbe3`), so the two modes can produce identical results when the timing lines up.
 
+**After P1 (2026-09-28).** Same setup.
+
+| Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- |
+| MAIN_THREAD | `f5addbe3` | `bf057095` | `f5addbe3` |
+| WORKER_THREAD, SAB | `2c159762` | `dbdd9eb7` | `39d20788` |
+| WORKER_THREAD, no SAB | `c178eefb` | `2579ecb6` | `469dc120` |
+
+- A direct check confirms the hold. Polling the step count during a gym load, it stayed at one value for every held frame, in both MAIN_THREAD and WORKER_THREAD. Stepping resumed after the release.
+- Revisits still differ in every mode (Suzanne is 6.8–7.5 units off). This is expected until P2: the world reuse (§2.2) is still in place.
+- MAIN_THREAD fresh loads are unchanged (`f5addbe3`), as expected: the first boot never stepped during the load.
+- Worker fresh loads still vary. The causes left are §2.3 (no SAB) and the create ordering in §2.4, which P3/P4 address.
+- The "first differing body" is the first differing body in key order (alphabetical `appId`), not necessarily the one that diverged first. Here it is `carouselPlatformMesh2`.
+
 ---
 
 ## 5. Risks

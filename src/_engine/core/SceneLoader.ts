@@ -16,7 +16,8 @@ import {
 } from './Scene';
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
-import { deleteAllPhysicsEntities } from './PhysicsManager';
+import { deleteAllPhysicsEntities, settlePendingPhysicsEntities } from './PhysicsManager';
+import { holdPhysicsStepping, releasePhysicsStepping } from './PhysicsAPI';
 import { DEBUGGER_SCENE_LOADER_ID, disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './Input/InputState';
 import { getCanvasParentElem } from './Renderer';
@@ -501,6 +502,9 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   await loadStartFn(loader)
     .then(async () => {
       setIsLoadingScene(true);
+      // No stepping until the whole next scene exists (released before loadEndFn below), so a
+      // scene's physics never depends on how long its assets took to load.
+      holdPhysicsStepping();
 
       // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
       deleteAllCharacters();
@@ -577,6 +581,11 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
             resetRayCastStats();
           }
 
+          // Includes creates the scene code didn't await (and the prev scene's deletes, in
+          // WORKER_THREAD mode), so every body starts stepping on the same step.
+          await settlePendingPhysicsEntities();
+          releasePhysicsStepping();
+
           loader.phase = 'END';
           await loadEndFn(loader).then(() => {
             if (loaderContainer) loaderContainer.remove();
@@ -595,7 +604,9 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       lerror(msg, reason);
       handleDraggableWindowsOnSceneChangeEnd(true);
       // @CONSIDER: should this throw an error?
-    });
+    })
+    // A failed load must not leave physics held (a no-op if it was already released).
+    .finally(releasePhysicsStepping);
 };
 
 /**

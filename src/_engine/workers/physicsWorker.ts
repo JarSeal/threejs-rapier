@@ -169,6 +169,9 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
           data
         );
       }
+      case PhysicsProtocolType.FLUSH:
+        // FLUSH (ordering barrier: messages are handled in arrival order, so replying is enough)
+        return sendMessage({ type }, data);
       case PhysicsProtocolType.TAKE_SNAPSHOT:
         // TAKE_SNAPSHOT
         const snapshot = engAPI.takeSnapshot();

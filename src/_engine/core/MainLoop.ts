@@ -137,6 +137,11 @@ const stepPhysicsAndPollHeldKeys = (delta: number) => {
   if (!physicsState.enabled || !physicsState.worldStepEnabled) pollHeldKeyBindings(delta);
 };
 
+/** Called instead of stepPhysicsAndPollHeldKeys while the app loop is paused. It steps nothing,
+ * but stepPhysics() is what notices the pause, so it can discard the paused time on resume
+ * instead of catching up on it (up to maxDeltaTime worth of steps in one frame). */
+const notePhysicsAppPause = () => stepPhysics(loopState);
+
 /** Advances getElapsedTime by this frame's delta. Must run in every loop variant right after
  * the masterPlay check. The timer is never reset across a master pause, so the first delta
  * after resuming spans the whole paused duration — it is discarded (as stepPhysics does for
@@ -215,6 +220,7 @@ const mainLoopForDebug = async () => {
   } else {
     // Only master loop is playing (app loop is paused)
     loopState.isAppPlaying = false;
+    notePhysicsAppPause();
   }
 
   if (skipFrame) return;
@@ -258,6 +264,8 @@ const mainLoopForProduction = async () => {
     // app loopers
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
+  } else {
+    notePhysicsAppPause();
   }
 
   renderScene();
@@ -301,6 +309,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
   } else {
+    notePhysicsAppPause();
     if (skipFrame) return;
   }
 
