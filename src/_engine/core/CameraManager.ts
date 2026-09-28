@@ -16,7 +16,6 @@ import { CoreComponentType } from './ECS/ECSRegistry';
 import { DEBUG_CAMERA_ID } from '../debug/DebugToolsManager';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { lerror } from '../utils/Logger';
-import { updateDraggableWindow } from './UI/DraggableWindow';
 
 // --- STATE ---
 let activeCameraEntityId: number | null = null;
@@ -528,8 +527,7 @@ export const toggleAllCameraHelpers = (show?: boolean) => {
 
   lsSetItem(LS_KEY, currentData);
 
-  const debugModule = useDebug(cameraDebugGUI);
-  if (debugModule) updateDraggableWindow(debugModule.EDIT_CAMERA_WIN_ID);
+  useDebug(cameraDebugGUI)?.updateCamerasDebuggerGUI();
 };
 
 export const syncCameraHelpersFromLS = (sceneId: string, world: ECSWorld) => {

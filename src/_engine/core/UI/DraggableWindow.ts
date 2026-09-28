@@ -2,7 +2,6 @@ import { CMP, getCmpById, TCMP } from '../../utils/CMP';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lerror } from '../../utils/Logger';
 import { getWindowSize } from '../../utils/Window';
-import { updateDebuggerCharactersListSelectedClass } from '../Character';
 import { getConfig, IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../Config';
 import { getHUDRootCMP } from '../HUD';
 import { addResizer, deleteResizer } from '../MainLoop';
@@ -641,8 +640,6 @@ export const updateDraggableWindow = (id: string) => {
   if (!state?.isOpen || suspendedWindowIds.has(id)) return;
   removeDraggableWindow(id, true);
   openDraggableWindow(state);
-  // @TODO: This probably shouldn't be here. Refactor so that draggable window will update also the character list without referencing this here (there could be an implementation already, check this).
-  updateDebuggerCharactersListSelectedClass();
 };
 
 const createBackDropId = (id: string) => `backdrop-${id}`;

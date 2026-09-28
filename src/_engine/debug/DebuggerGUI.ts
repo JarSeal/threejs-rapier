@@ -159,6 +159,53 @@ export type DebuggerTabDef<S extends object = object> = {
   content: () => DebuggerTabSection<S>[];
 };
 
+/** A small icon toggle on the right side of each list row. */
+export type DebuggerListToggle = {
+  icon: SvgIconKey;
+  /** Icon when off. Default: `icon` (dimmed). */
+  iconOff?: SvgIconKey;
+  title: string;
+  /** Called with the new value. Use the same setter the item's edit window uses, so undo,
+   * LS and an open edit window stay consistent. */
+  fn: (itemId: string, nextValue: boolean) => void;
+};
+
+export type DebuggerListItem = {
+  itemId: string;
+  title: string;
+  /** Small line at the top of the row (eg. '[appId] [entityId]'). */
+  subTitle?: string;
+  icon?: SvgIconKey;
+  /** Short text before the title (eg. a type shorthand). */
+  badge?: string;
+  /** Index-aligned with `perItemConfig.toggles`; null (or missing) = no toggle on this row. */
+  toggleValues?: (boolean | null)[];
+  /** Dimmed row. */
+  disabled?: boolean;
+  tooltip?: string;
+  /** Italic title (eg. a fallback name). */
+  titlePlaceholder?: boolean;
+};
+
+/** Definition for {@link debuggerListCMP}. */
+export type DebuggerListDef = {
+  /** CMP id `debuggerList-${id}`, automatic if omitted. */
+  id?: string;
+  /** Rendered above the list, with the item count. */
+  heading?: string;
+  emptyText?: string;
+  perItemConfig?: {
+    toggles?: DebuggerListToggle[];
+    /** Row click, usually opens the edit window. */
+    onClick?: (itemId: string) => void;
+  };
+  /** The selected row(s), re-read on every render and refresh. */
+  selectedItemId?: () => string | string[] | null | undefined;
+  /** The rows. A function is re-read on every refresh (the list re-renders only when the rows
+   * or the selection changed). */
+  data: DebuggerListItem[] | (() => DebuggerListItem[]);
+};
+
 /** A tab definition with its state type erased (the builder's view of any tab). */
 export type AnyDebuggerTabDef = DebuggerTabDef<Record<string, unknown>>;
 
@@ -293,6 +340,23 @@ export const createNewDebuggerPane = (id: string, heading?: string, headerButton
     throw new Error(msg);
   }
   return debugPane;
+};
+
+/**
+ * Creates a debugger list (the shared list component of debugger tabs). A list inside the open
+ * tab is refreshed by {@link updateDebuggerTab}.
+ * @param def (object) {@link DebuggerListDef}
+ * @returns TCMP
+ */
+export const debuggerListCMP = (def: DebuggerListDef) => {
+  const list = useDebug(debugGUI)?._debuggerListCMP(def);
+  if (!list) {
+    const msg =
+      'Failed to create a debugger list (in debuggerListCMP). It could be that it is being created in production mode.';
+    lerror(msg);
+    throw new Error(msg);
+  }
+  return list;
 };
 
 /**

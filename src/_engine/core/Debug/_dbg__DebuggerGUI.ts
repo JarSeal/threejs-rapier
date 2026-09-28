@@ -16,6 +16,9 @@ import { createDebuggerSceneLoader } from './_dbg__DebuggerSceneLoader';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import { _buildDebuggerPane, persistDebuggerTabStateValue } from './_dbg__DebuggerPaneBuilder';
+import { _refreshDebuggerLists } from './_dbg__DebuggerList';
+
+export { _debuggerListCMP } from './_dbg__DebuggerList';
 
 let drawerCMP: TCMP | null = null;
 let currentSceneTitleCMP: TCMP | null = null;
@@ -251,7 +254,7 @@ const mountTab = (entry: TabEntry) => {
   startTabInterval();
 };
 
-/** Refreshes the mounted tab's content: panes and CMP sections with an `html` function. */
+/** Refreshes the mounted tab's content: panes, lists and CMP sections with an `html` function. */
 const refreshMountedTab = () => {
   if (!mountedTab) return;
   const entry = tabs.get(mountedTab.id);
@@ -259,6 +262,7 @@ const refreshMountedTab = () => {
   runOnRefresh(entry.def);
   const refreshers = mountedTab.sectionRefreshers;
   for (let i = 0; i < refreshers.length; i++) refreshers[i]();
+  if (tabsContainerWrapper) _refreshDebuggerLists(tabsContainerWrapper.elem);
 };
 
 let guiOpts: DebugGUIOpts | undefined = undefined;
