@@ -3,7 +3,12 @@
  * through PostFX.ts's createPostFXDebugGUI().
  */
 import { Pane, type BindingParams } from 'tweakpane';
-import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
+import {
+  createDebuggerTab,
+  debuggerListCMP,
+  updateDebuggerTab,
+  type DebuggerListItem,
+} from '../../debug/DebuggerGUI';
 import { getConfig } from '../Config';
 import {
   addPostFxChainListener,
@@ -17,7 +22,6 @@ import {
 } from '../PostFX';
 import { isPostFxMeasureEnabled, setPostFxMeasureEnabled } from '../../debug/PostFXProfiler';
 import { getCurrentSceneId, getSceneOpts, registerOnAllSceneEnterings } from '../Scene';
-import { getSvgIcon } from '../UI/icons/SvgIcon';
 import {
   addOnCloseToWindow,
   closeDraggableWindow,
@@ -28,7 +32,7 @@ import {
   updateDraggableWindow,
 } from '../UI/DraggableWindow';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
-import { CMP, getCmpById, type TCMP } from '../../utils/CMP';
+import { CMP } from '../../utils/CMP';
 import {
   confirmClearScope,
   createClearListLSButton,
@@ -59,7 +63,7 @@ type PostFxPassesLSData = {
 const SETTINGS_LS_KEY = 'AEK_debugPostFxSettings';
 const LS_KEY = 'AEK_debugPostFx';
 
-const DEBUGGER_POSTFX_LIST_ID = 'debuggerPostFxPassList';
+const TAB_ID = 'postFxControls';
 const EDIT_POSTFX_PASS_WIN_ID = 'postFxPassEditorWindow';
 
 const UNDO_POSTFX_ENABLED = 'postFx.enabled';
@@ -69,14 +73,9 @@ type PostFxEnabledPayload = { prev: boolean; next: boolean };
 type PostFxPassEnabledPayload = { postFxPassId: string; prev: boolean; next: boolean };
 type PostFxPassParamPayload = { postFxPassId: string; key: string; prev: unknown; next: unknown };
 
-/** The currently built pane (null until the tab is first opened, stale once it's closed). */
-let postFxPane: Pane | null = null;
-/** Tweakpane binds to object properties, so the live values are mirrored here. */
+/** Tweakpane binds to object properties, so the live values are mirrored here (synced on every
+ * tab refresh). */
 const settingsProxy = { postFxEnabled: false, measureEnabled: false };
-/** True while undo/redo, clearing or a scene change pushes a value into the GUI, so the change
- * listeners don't record or persist it. */
-let isSyncingGUI = false;
-let debuggerListCmp: TCMP | null = null;
 /** The current scene's PostFX passes as authored, taken on scene enter before the persisted
  * overrides are applied (the chain has just been set up from the scene data then). */
 let authoredPostFxPasses = new Map<string, { enabled: boolean; params: Record<string, unknown> }>();
@@ -97,74 +96,37 @@ const writeSettingsLSOrRemove = (data: PostFxSettingsLSData) => {
   else lsRemoveItem(SETTINGS_LS_KEY);
 };
 
-const refreshGUI = () => {
-  settingsProxy.postFxEnabled = isPostFxEnabled();
-  settingsProxy.measureEnabled = isPostFxMeasureEnabled();
-  if (!postFxPane?.element.isConnected) return;
-  isSyncingGUI = true;
-  try {
-    postFxPane.refresh();
-  } finally {
-    isSyncingGUI = false;
-  }
-};
-
-const escapeAttr = (text: string) => text.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+/** Refreshes the tab (its settings and the PostFX pass list), when it's the open one. */
+const refreshGUI = () => updateDebuggerTab(TAB_ID);
 
 /** The current scene's PostFX passes, in chain order. */
-const createPostFxPassList = () => {
-  const postFxPasses = getPostFxPasses();
-  let html = `<div><h3 class="listItemCount">${postFxPasses.length} PostFX pass${postFxPasses.length === 1 ? '' : 'es'} (in chain order):</h3>`;
-  html += '<ul class="ulList">';
-  for (let i = 0; i < postFxPasses.length; i++) {
-    const { id, index, enabled, debugData } = postFxPasses[i];
-    const button = CMP({
-      onClick: () => {
-        const winState = getDraggableWindow(EDIT_POSTFX_PASS_WIN_ID);
-        if (winState?.isOpen && winState.data?.id === id) {
-          closeDraggableWindow(EDIT_POSTFX_PASS_WIN_ID);
-          return;
-        }
-        openDraggableWindow({
-          id: EDIT_POSTFX_PASS_WIN_ID,
-          title: `Edit PostFX pass: ${debugData?.name || `[${id}]`}`,
-          isDebugWindow: true,
-          content: createEditPostFxPassContent,
-          data: { id, winId: EDIT_POSTFX_PASS_WIN_ID },
-          closeOnSceneChange: true,
-          saveToLS: true,
-          onClose: onEditWindowClose,
-        });
-        updateDebuggerPostFxListSelectedClass(id);
-      },
-      html: `<button class="listItemWithId"${debugData?.description ? ` title="${escapeAttr(debugData.description)}"` : ''}>
-  <span class="itemId">#${index + 1} [${id}]</span>${!enabled ? '<span>(disabled)</span> ' : ''}
-  <h4${!debugData?.name ? ` style="font-style:italic"` : ''}>${debugData?.name || `[${id}]`}</h4>
-</button>`,
-    });
-    html += `<li data-id="${id}"${!enabled ? ' class="disabledItem"' : ''}>${button}</li>`;
-  }
-  if (!postFxPasses.length) html += `<li class="emptyState">No PostFX passes in this scene..</li>`;
-  html += '</ul></div>';
-  return html;
-};
+const getPostFxPassListData = (): DebuggerListItem[] =>
+  getPostFxPasses().map(({ id, index, enabled, debugData }) => ({
+    itemId: id,
+    title: debugData?.name || `[${id}]`,
+    titlePlaceholder: !debugData?.name,
+    subTitle: `#${index + 1} [${id}]`,
+    ...(!enabled ? { badge: '(disabled)', disabled: true } : {}),
+    ...(debugData?.description ? { tooltip: debugData.description } : {}),
+  }));
 
-const refreshPostFxList = () => {
-  if (!debuggerListCmp?.elem.isConnected) return;
-  debuggerListCmp.update({ html: createPostFxPassList });
+const toggleEditPostFxPassWindow = (id: string) => {
   const winState = getDraggableWindow(EDIT_POSTFX_PASS_WIN_ID);
-  if (winState?.isOpen && typeof winState.data?.id === 'string') {
-    updateDebuggerPostFxListSelectedClass(winState.data.id);
+  if (winState?.isOpen && winState.data?.id === id) {
+    closeDraggableWindow(EDIT_POSTFX_PASS_WIN_ID);
+    return;
   }
-};
-
-export const updateDebuggerPostFxListSelectedClass = (id: string | null) => {
-  const ulElem = getCmpById(DEBUGGER_POSTFX_LIST_ID)?.elem.querySelector('ul');
-  if (!ulElem) return;
-  for (const child of ulElem.children) {
-    child.classList.remove('selected');
-    if (id !== null && child.getAttribute('data-id') === id) child.classList.add('selected');
-  }
+  const debugData = findPostFxPass(id)?.debugData;
+  openDraggableWindow({
+    id: EDIT_POSTFX_PASS_WIN_ID,
+    title: `Edit PostFX pass: ${debugData?.name || `[${id}]`}`,
+    isDebugWindow: true,
+    content: createEditPostFxPassContent,
+    data: { id, winId: EDIT_POSTFX_PASS_WIN_ID },
+    closeOnSceneChange: true,
+    saveToLS: true,
+    onClose: onEditWindowClose,
+  });
 };
 
 /** Switches the current scene's PostFX stack and persists it (only when it deviates from the
@@ -281,7 +243,7 @@ const applyPostFxPassEnabled = (postFxPassId: string, enabled: boolean) => {
   }
   setPostFxPassEnabled(postFxPassId, enabled);
   persistPostFxPassOverride(postFxPassId);
-  refreshPostFxList();
+  refreshGUI();
 };
 
 const applyPostFxPassParam = (postFxPassId: string, key: string, value: unknown) => {
@@ -312,7 +274,7 @@ const clearPassesLS = (scope: 'ALL' | 'THIS_SCENE') => {
     }
     if (live.enabled !== authored.enabled) setPostFxPassEnabled(postFxPassId, authored.enabled);
   }
-  refreshPostFxList();
+  refreshGUI();
   refreshEditWindow();
 };
 
@@ -400,7 +362,7 @@ const LIVE_PARAMS_TEXT: Record<PostFxLiveParams, string> = {
 
 const onEditWindowClose = () => {
   windowBuiltFor = null;
-  updateDebuggerPostFxListSelectedClass(null);
+  refreshGUI();
 };
 
 const createEditPostFxPassContent = (data?: { [key: string]: unknown }) => {
@@ -412,8 +374,12 @@ const createEditPostFxPassContent = (data?: { [key: string]: unknown }) => {
     return CMP({ text: 'PostFX pass not found' });
   }
 
-  addOnCloseToWindow(EDIT_POSTFX_PASS_WIN_ID, onEditWindowClose);
-  updateDebuggerPostFxListSelectedClass(info.id);
+  // The content is built before the window state is open: refresh the list selection after it.
+  // The onClose is set here too, because a window restored from LS has none.
+  queueMicrotask(() => {
+    addOnCloseToWindow(EDIT_POSTFX_PASS_WIN_ID, onEditWindowClose);
+    refreshGUI();
+  });
   windowBuiltFor = { postFxPassId: info.id, liveParams: info.liveParams };
 
   const container = CMP({ onRemoveCmp: () => pane.dispose() });
@@ -581,17 +547,18 @@ export const _createPostFXDebugGUI = async () => {
     snapshotAuthoredPostFxPasses();
     syncPostFxEnabledFromLS();
     applyPostFxPassOverridesFromLS();
-    refreshGUI();
     // The drawer is rebuilt on scene change before the new scene's PostFX passes are set up
-    refreshPostFxList();
+    refreshGUI();
   });
 
-  const icon = getSvgIcon('postFx');
+  const masterEnabled = isMasterEnabled();
   createDebuggerTab({
-    id: 'postFxControls',
-    buttonText: icon,
+    id: TAB_ID,
     title: 'PostFX controls',
-    container: () => {
+    icon: 'postFx',
+    // Both LS keys are scene-scoped / deviation-only (module-owned), so both buttons are custom
+    clearLSButton: false,
+    headerButtons: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(SETTINGS_LS_KEY),
         watchKey: SETTINGS_LS_KEY,
@@ -622,42 +589,51 @@ export const _createPostFXDebugGUI = async () => {
           }
         },
       });
-      const { container, debugGUI } = createNewDebuggerPane('postFx', `${icon} PostFX Controls`, [
-        clearTabBtn,
-        clearListBtn,
-      ]);
-      postFxPane = debugGUI;
+      return [clearTabBtn, clearListBtn];
+    },
+    onRefresh: () => {
       settingsProxy.postFxEnabled = isPostFxEnabled();
       settingsProxy.measureEnabled = isPostFxMeasureEnabled();
-
-      const masterEnabled = isMasterEnabled();
-      debugGUI
-        .addBinding(settingsProxy, 'postFxEnabled', {
-          label: masterEnabled ? 'PostFX enabled' : 'PostFX enabled (off in AppConfig.postFx)',
-          disabled: !masterEnabled,
-        })
-        .on('change', (e) => {
-          if (isSyncingGUI) return;
-          const prev = !e.value;
-          applyPostFxEnabled(e.value);
-          _recordUndoRedoAction<PostFxEnabledPayload>(
-            UNDO_POSTFX_ENABLED,
-            `PostFX: ${e.value ? 'enable' : 'disable'} PostFX`,
-            { prev, next: e.value }
-          );
-        });
-      debugGUI
-        .addBinding(settingsProxy, 'measureEnabled', {
-          label: 'Measuring enabled (see getPostFxPassStats())',
-        })
-        .on('change', (e) => {
-          if (isSyncingGUI) return;
-          void applyMeasureEnabled(e.value);
-        });
-
-      debuggerListCmp = CMP({ id: DEBUGGER_POSTFX_LIST_ID, html: createPostFxPassList });
-      container.add(debuggerListCmp);
-      return container;
     },
+    content: () => [
+      {
+        pane: true,
+        content: [
+          {
+            key: 'postFxEnabled',
+            target: settingsProxy,
+            label: masterEnabled ? 'PostFX enabled' : 'PostFX enabled (off in AppConfig.postFx)',
+            disabled: !masterEnabled,
+            onChange: (value, e) => {
+              applyPostFxEnabled(Boolean(value));
+              _recordUndoRedoAction<PostFxEnabledPayload>(
+                UNDO_POSTFX_ENABLED,
+                `PostFX: ${value ? 'enable' : 'disable'} PostFX`,
+                { prev: Boolean(e.prev), next: Boolean(value) }
+              );
+            },
+          },
+          {
+            key: 'measureEnabled',
+            target: settingsProxy,
+            label: 'Measuring enabled (see getPostFxPassStats())',
+            onChange: (value) => void applyMeasureEnabled(Boolean(value)),
+          },
+        ],
+      },
+      debuggerListCMP({
+        id: 'postFxPasses',
+        heading: 'PostFX passes (in chain order)',
+        emptyText: 'No PostFX passes in this scene..',
+        data: getPostFxPassListData,
+        selectedItemId: () => {
+          const winState = getDraggableWindow(EDIT_POSTFX_PASS_WIN_ID);
+          return winState?.isOpen ? (winState.data?.id as string | undefined) : null;
+        },
+        // No row toggle (p071 Design decision 9): the pass toggle rebuilds the PostFX chain (a
+        // shader recompile), so it stays in the edit window
+        perItemConfig: { onClick: toggleEditPostFxPassWindow },
+      }),
+    ],
   });
 };

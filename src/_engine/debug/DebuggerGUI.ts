@@ -194,6 +194,10 @@ export type DebuggerListItem = {
   icon?: SvgIconKey;
   /** Short text before the title (eg. a type shorthand). */
   badge?: string;
+  /** Short text after the title (eg. a count). */
+  suffix?: string;
+  /** A dimmed line under the title. */
+  description?: string;
   /** Index-aligned with `perItemConfig.toggles`; null (or missing) = no toggle on this row. */
   toggleValues?: (boolean | null)[];
   /** Dimmed row. */

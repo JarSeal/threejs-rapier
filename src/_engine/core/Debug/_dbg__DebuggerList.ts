@@ -74,12 +74,14 @@ export const _debuggerListCMP = (def: DebuggerListDef): TCMP => {
     rows.set(item.itemId, li);
 
     const onClick = def.perItemConfig?.onClick;
+    const titleHtml = `<h4${item.titlePlaceholder ? ' style="font-style:italic"' : ''}>${esc(item.title)}</h4>`;
     li.add({
       html: `<button class="listItemWithId"${item.tooltip ? ` title="${esc(item.tooltip)}"` : ''}>
         ${item.subTitle ? `<span class="itemId">${esc(item.subTitle)}</span>` : ''}
         ${item.icon ? getSvgIcon(item.icon, 'small') : ''}
         ${item.badge ? `<span>${esc(item.badge)}</span>` : ''}
-        <h4${item.titlePlaceholder ? ' style="font-style:italic"' : ''}>${esc(item.title)}</h4>
+        ${item.description ? `<span>${titleHtml}<span style="opacity:0.7">${esc(item.description)}</span></span>` : titleHtml}
+        ${item.suffix ? `<span>${esc(item.suffix)}</span>` : ''}
       </button>`,
       ...(onClick ? { onClick: () => onClick(item.itemId) } : {}),
     });

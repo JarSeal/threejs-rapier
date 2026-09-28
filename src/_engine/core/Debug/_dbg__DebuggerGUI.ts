@@ -160,8 +160,18 @@ const buildNewTabContent = (def: AnyDebuggerTabDef) => {
     const section = sections[i];
     if ('isCmp' in section) {
       container.add(section);
-      // Only a dynamic template has anything to refresh (a static CMP is left alone)
-      if (typeof section.props?.html === 'function') sectionRefreshers.push(() => section.update());
+      // Only a dynamic template has anything to refresh (a static CMP is left alone), and it is
+      // only re-rendered when its html changed (a re-render replaces the element: hover, focus)
+      const html = section.props?.html;
+      if (typeof html === 'function') {
+        let lastHtml = html(section);
+        sectionRefreshers.push(() => {
+          const nextHtml = html(section);
+          if (nextHtml === lastHtml) return;
+          lastHtml = nextHtml;
+          section.update();
+        });
+      }
       continue;
     }
     const built = _buildDebuggerPane(def, section);
