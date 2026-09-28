@@ -21,6 +21,7 @@ import { getActiveCamera } from './CameraManager';
 import { existsOrThrow } from '../utils/assert';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import { getActivePostFxPipeline } from './PostFX';
+import { renderViewports } from './Viewports';
 import { updateDebuggerTab } from '../debug/DebuggerGUI';
 
 /** Debugger drawer tab id of the loop controls. */
@@ -182,6 +183,9 @@ const renderScene = () => {
   } else {
     renderer.render(rootScene, camera);
   }
+
+  // Viewports (picture-in-picture, the debug axes gizmo) go over the finished frame
+  renderViewports(renderer, delta);
 };
 
 // LOOP (for debug)

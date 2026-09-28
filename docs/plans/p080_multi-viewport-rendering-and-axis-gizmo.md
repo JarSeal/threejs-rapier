@@ -293,3 +293,20 @@ Each phase compiles, lints and leaves the app working.
   - With the gizmo hidden, the stats show no extra draw calls.
 - Production build (`yarn build`, `dist-stats/bundle-stats.html`): `_dbg__AxesGizmo` is not in the main chunk, and `Viewports.ts` is present but idle.
 - Use the `run-aekasha-js` skill for screenshots of each Phase 1 matrix cell and the gizmo states.
+
+## Implementation notes
+
+### Phase 1 (compositor spike + core API): GO
+
+- The render-to-target + neutralised-quad composite works as designed on both backends. No fallback needed.
+- Verified with a throwaway `?vpTest=1` snippet (not committed) in `largeWorld`: a transparent private-scene cube (top right), the same cube 50% off the canvas's left edge (crop test), and an opaque `'RENDERER'` PiP of `rootScene` from `getMainCamera()` (bottom left, `%` rect).
+  - Full matrix, 16 cells (WebGPU / WebGL2 × PostFX AO on / off × antialias on / off × pixel ratio 1 / 2): correct placement (no y flip on WebGL), no black or stale rects, no full-frame wipe, no console errors. The backend was confirmed per cell from the canvas context type.
+  - `'NONE'` colours are exact (pure 0/255 channels sampled) on both backends, PostFX on and off. MSAA edges are smooth with antialias on and stepped with it off, with no dark fringe over the frame.
+  - A live `renderer.toneMapping` switch (ACES → None → Reinhard → ACES) is followed by the `'RENDERER'` PiP on both backends.
+  - Render pipeline cache size, textures and geometries stay flat over 60s and after the tone-mapping switches (no per-frame recompiles).
+- r186 facts found while implementing (differ from or add to the plan):
+  - `renderOutput()` already un-premultiplies, tone-maps / converts, and re-premultiplies (`RenderOutputNode.setup`), so the "premultiplied sRGB edges" risk does not apply.
+  - `Renderer.currentSamples` is 0 for any `QuadMesh` drawn to screen (`fullscreenPass`), so the composite never loads the MSAA canvas attachment.
+  - The renderer floors `viewport * pixelRatio`. The compositor snaps rects to whole device px and passes `(devicePx + 0.5) / pixelRatio`, so the floor lands exactly.
+- Added beyond the plan: a rect partly outside the canvas is cropped (uv offset/scale uniforms on the quad) rather than squeezed or passed out-of-bounds to `setViewport`.
+- Phase 1's `ViewportProps` holds only what Phase 1 implements (`rect` is required). `anchor`/`order`/`size`/`slotClass`/`interactive`/`sceneId`/`syncCameraAspect` and `setViewportInteractive`/`invalidateViewportLayout`/`getViewportPointerNDC` come in Phase 2.
