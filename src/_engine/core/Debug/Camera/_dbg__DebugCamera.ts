@@ -27,6 +27,18 @@ ECSWorld.registerPlugin((world) => {
 });
 
 let panelRefreshCallback: (() => void) | null = null;
+/** Set while another debug tool moves the debug camera itself (the axes gizmo's drag orbit):
+ * debugCameraSystem then keeps the OrbitControls disabled instead of re-enabling them. */
+let isControlsSuspended = false;
+
+/**
+ * Suspends (disables) the debug camera's OrbitControls while another debug tool moves the
+ * camera itself, eg. the axes gizmo's drag orbit. `controls.update()` still runs every frame.
+ * @param suspended (boolean)
+ */
+export const setDebugCameraControlsSuspended = (suspended: boolean) => {
+  isControlsSuspended = suspended;
+};
 
 /**
  * Registers a callback that `debugCameraSystem` calls once per frame whenever OrbitControls
@@ -81,7 +93,7 @@ export function debugCameraSystem(world: ECSWorld) {
 
   for (const [entityId, data] of storage) {
     const isDisabled = world.isDisabled(entityId);
-    data.controls.enabled = !isDisabled;
+    data.controls.enabled = !isDisabled && !isControlsSuspended;
 
     if (isDisabled) continue;
 

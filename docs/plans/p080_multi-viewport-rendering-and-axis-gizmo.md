@@ -180,7 +180,7 @@ A core engine **viewport** feature: extra rectangles rendered on top of the main
     - **Hit-testing.** A `Raycaster` against the six bubbles, using `getViewportPointerNDC`. The front-most bubble wins.
     - **Click versus drag.** A press counts as a click if it moves ≤ 5px, the same threshold as `MouseInput.ts`'s `CLICK_MAX_MOVE_PX` (exported for reuse rather than duplicated).
     - **Target.** The camera goes to `controls.target + axis * currentOrbitDistance`, so the orbit target and zoom are kept. The camera's `up` stays +Y; OrbitControls requires it.
-    - **Pole views.** Top (+Y) uses spherical `phi = ε, theta = 0`, so X points right and −Z up on screen. Bottom (−Y) uses `phi = π − ε, theta = π`, so X points right and +Z up. Both stay inside OrbitControls' `makeSafe` EPS clamp, so there is no roll jump.
+    - **Pole views.** Top (+Y) uses spherical `phi = ε, theta = 0`, so X points right and −Z up on screen. Bottom (−Y) uses `phi = π − ε, theta = 0`, so X points right and +Z up (corrected in Phase 4: `theta = π` mirrors it to X left, −Z up). Both stay inside OrbitControls' `makeSafe` EPS clamp, so there is no roll jump.
     - **Blender flip.** Clicking the axis the view is already aligned to (within ~1°) aligns to the opposite axis.
     - **Animation.**
       - Interpolates spherical `(theta, phi)` around the target over ~250ms with ease-out, driven by the frame `delta`. Theta takes the shortest path. Spherical interpolation, rather than a quaternion slerp, is well-defined for the antipodal flip and matches how OrbitControls rebuilds orientation from position, target and up.
@@ -356,3 +356,24 @@ Each phase compiles, lints and leaves the app working.
   - "In main camera" follows the gameplay camera, and the canvas is still the element under it.
   - Both options survive a reload.
   - Production build: `_dbg__AxesGizmo` is its own 2.7 kB chunk (plus 0.4 kB CSS). The main chunk has only the core `Viewports.ts`.
+
+### Phase 4 (axes gizmo interaction): done
+
+- **Plan correction (Design decision 10, pole views):** the bottom view needs `theta = 0`, the same as the top view. `theta = π` gave X left and −Z up. Verified: the top view is X right, −Z up; the bottom view is X right, +Z up.
+- Clickable = visible and the debug camera is active. The gizmo system drives `setViewportInteractive`. Losing clickability (F1, F8, or hidden) drops any press, drag and hover. The align animation is cancelled when the debug camera is no longer active.
+- The gizmo system runs at `order: 1` in MAIN, so it runs before `debugCameraSystem` (order 0), whose `controls.update()` applies the animation step in the same frame. Panel refresh comes for free: `controls.update()` dispatches `'change'`, which already drives the Debug Tools panel refresh.
+- The align animation is timed with `performance.now()`, not the loop delta. The loop delta is scaled by `playSpeedMultiplier`, and a debug camera move shouldn't crawl in slow motion. It uses a 250ms cubic ease-out over spherical `(phi, theta)`, with theta taking the shortest path.
+- Only the polar target is clamped to `min/maxPolarAngle` (within `POLE_EPS = 1e-4`). Azimuth limits are left to OrbitControls' own `update()` clamp.
+- The damping momentum (`_sphericalDelta`, `_panOffset`, not in the typings) is zeroed at animation start and drag start.
+- Hover:
+  - A second atlas with the same layout holds the hover variants: a lighter positive bubble, and a filled, labelled "−X"-style negative one. Hover swaps each bubble's idle/hover material.
+  - The backdrop is a translucent disc shown on `pointerenter`.
+  - The cursor is `pointer` over a bubble and `grabbing` while dragging.
+- Drag handshake: `setDebugCameraControlsSuspended()` in `_dbg__DebugCamera.ts`. `debugCameraSystem` writes `enabled = !isDisabled && !isControlsSuspended`.
+- `CLICK_MAX_MOVE_PX` is exported from `MouseInput.ts` and reused.
+- Verified on WebGPU and WebGL2 (identical results):
+  - Debug camera: the slot is interactive and is the element under the gizmo.
+  - Clicking +X animates (mid-frame direction `-0.97, -0.21, -0.13`), ends looking along −X from `(4.5, 0, 0)` with the orbit distance kept, and saves to `AEK_debugCams`. A second click flips to `(-4.5, 0, 0)`. +Y, +Z and −Y all align exactly.
+  - A 100px drag on the gizmo, continuing outside it under pointer capture, turned the azimuth by −0.897 rad (OrbitControls' speed predicts −0.898) with no elevation change. So OrbitControls did not rotate as well, and it worked again right after.
+  - Wheel over the gizmo leaves the distance unchanged. A canvas drag during an align cancels it.
+  - The pose survives a reload.

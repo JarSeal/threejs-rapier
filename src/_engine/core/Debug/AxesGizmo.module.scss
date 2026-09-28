@@ -17,6 +17,15 @@ $fitsNextToOpenDrawer: 650px;
     height: 8rem;
   }
 
+  // Interactive only while the debug camera is active (see _dbg__AxesGizmo.ts)
+  &.axesGizmoSlot_bubbleHover {
+    cursor: pointer;
+  }
+
+  &.axesGizmoSlot_dragging {
+    cursor: grabbing;
+  }
+
   // No room next to the open drawer (also where the drawer is narrower or full width)
   @media screen and (max-width: $fitsNextToOpenDrawer) {
     :global(.debugDrawerOpen) & {
