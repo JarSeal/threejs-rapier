@@ -674,7 +674,7 @@ const buildDebugToolsGUI = () => {
       id: 'myFirstDialogTest',
       saveToLS: true,
       title: 'My dialog window',
-      // isDebugWindow: true,
+      isDebugWindow: true,
       backDropClickClosesWindow: true,
       closeOnSceneChange: true,
     });

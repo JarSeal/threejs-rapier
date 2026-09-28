@@ -3,7 +3,7 @@ import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lerror } from '../../utils/Logger';
 import { getWindowSize } from '../../utils/Window';
 import { updateDebuggerCharactersListSelectedClass } from '../Character';
-import { getConfig } from '../Config';
+import { getConfig, IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../Config';
 import { getHUDRootCMP } from '../HUD';
 import { addResizer, deleteResizer } from '../MainLoop';
 import styles from './DraggableWindow.module.scss';
@@ -34,6 +34,11 @@ export type DraggableWindow = {
   saveToLS?: boolean;
   title?: string;
   isDebugWindow?: boolean;
+  /** Shows this debug window (`isDebugWindow`) in prodTest mode too (default false, debug
+   * windows are debug mode only). The window's content module must then be loaded in prodTest
+   * mode as well, ie. with `loadDebugModuleAsync(importer, true)` / `useDebug(ref, true)`,
+   * otherwise the window opens without content. */
+  showInProdTest?: boolean;
   disableVertResize?: boolean;
   disableHoriResize?: boolean;
   disableDragging?: boolean;
@@ -74,6 +79,11 @@ export type OpenDraggableWindowProps = {
   saveToLS?: boolean;
   title?: string;
   isDebugWindow?: boolean;
+  /** Shows this debug window (`isDebugWindow`) in prodTest mode too (default false, debug
+   * windows are debug mode only). The window's content module must then be loaded in prodTest
+   * mode as well, ie. with `loadDebugModuleAsync(importer, true)` / `useDebug(ref, true)`,
+   * otherwise the window opens without content. */
+  showInProdTest?: boolean;
   disableVertResize?: boolean;
   disableHoriResize?: boolean;
   disableDragging?: boolean;
@@ -149,6 +159,11 @@ const VERT_AND_HORI_RESIZER_CLASS_NAME = 'vertAndHoriDragHandle';
 const MAX_OFF_SCREEN_HORI_THRESHOLD = 65;
 const MAX_OFF_SCREEN_VERT_THRESHOLD = 10; // For the the bottom threshold this number is *2
 
+/** Non-debug (app) windows are always allowed. Debug windows are allowed in debug mode, and in
+ * prodTest mode only when they opt in with `showInProdTest`. */
+const isDraggableWindowAllowed = (state: { isDebugWindow?: boolean; showInProdTest?: boolean }) =>
+  !state.isDebugWindow || IS_DEBUG_ENV || (Boolean(state.showInProdTest) && IS_PROD_TEST_MODE);
+
 export const getDraggableWindowsDefaultZIndexes = () => ({
   defaultZIndex: DEFAULT_Z_INDEX,
   defaultZIndexActive: DEFAULT_Z_INDEX_ACTIVE,
@@ -177,6 +192,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     saveToLS,
     title,
     isDebugWindow,
+    showInProdTest: shouldShowInProdTest,
     disableVertResize,
     disableHoriResize,
     disableDragging,
@@ -200,7 +216,6 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   }
 
   const foundWindow = draggableWindows[id];
-  suspendedWindowIds.delete(id);
 
   let size = {
     ...(foundWindow?.size ||
@@ -237,6 +252,13 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   // only used when the prop is not passed (eg. restoring with openDraggableWindow({ id })).
   const isDebugWin =
     isDebugWindow !== undefined ? isDebugWindow : Boolean(foundWindow?.isDebugWindow);
+  const showInProdTest =
+    shouldShowInProdTest !== undefined
+      ? shouldShowInProdTest
+      : Boolean(foundWindow?.showInProdTest);
+  // Also gates the content: every path that builds a window's content goes through here
+  if (!isDraggableWindowAllowed({ isDebugWindow: isDebugWin, showInProdTest })) return;
+  suspendedWindowIds.delete(id);
   const vertResizeDisabled =
     foundWindow?.disableVertResize !== undefined
       ? foundWindow.disableVertResize
@@ -397,6 +419,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     saveToLS: Boolean(saveToLS !== undefined ? saveToLS : foundWindow?.saveToLS),
     title: headerTitle,
     isDebugWindow: isDebugWin,
+    showInProdTest,
     disableVertResize: vertResizeDisabled,
     disableHoriResize: horiResizeDisabled,
     disableDragging: draggingDisabled,
@@ -1023,6 +1046,8 @@ export const handleDraggableWindowsOnSceneChangeStart = () => {
   const keys = Object.keys(draggableWindows);
   for (let i = 0; i < keys.length; i++) {
     const state = draggableWindows[keys[i]];
+    // Never opened in this mode: kept as is, so it comes back in the mode that allows it
+    if (!isDraggableWindowAllowed(state)) continue;
     if (state.removeOnSceneChange) {
       removeDraggableWindow(state.id);
       continue;
@@ -1074,6 +1099,9 @@ export const loadDraggableWindowStatesFromLS = () => {
     const state = draggableWindowCmpsToRegister[id] || {};
     draggableWindows[id] = { ...draggableWindows[id], ...state };
     if (!draggableWindows[id].isOpen) return;
+    // Not shown in this mode, but isOpen is kept, so it comes back in the mode that allows it
+    // (eg. back in debug mode from prodTest mode)
+    if (!isDraggableWindowAllowed(draggableWindows[id])) return;
     // Reloaded into a scene without the window's target: close it instead of showing "not found"
     if (sceneTargetResolvers[id] && !resolveSceneTarget(draggableWindows[id])) {
       draggableWindows[id].isOpen = false;
