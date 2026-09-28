@@ -56,7 +56,14 @@ Makes loading the same scene produce the same physics results every time, whethe
 - The gym's five moving platforms are created fire-and-forget (`scene_thirdPersonGym.ts:414, 447, 487, 526, 565`).
 - In MAIN_THREAD mode all of this is synchronous and runs in call order.
 
-### 2.5 Not a cause: interpolation
+### 2.5 Captured sub-step commands kept by reference (WORKER_THREAD) — found during P4
+
+- `messageWorker` (`PhysicsAPI.ts`) stored each `APP_PHYSICS_STEP` command in `substepCommandCapture` by reference. The STEP message carrying them is only structured-cloned after every sub-step of the frame has run.
+- `movingPlatform.ts`'s tick passes the same scratch `curPos` vector to `setNextKinematicTranslation` every sub-step. So in a frame with 2+ sub-steps, every sub-step got the last sub-step's kinematic target.
+- How often a frame runs 2+ sub-steps depends on frame pacing, so platforms (and bodies they touch) diverged run to run. At a segment boundary this showed up as identical positions with zero velocity. Rotations were unaffected only because `toPlainRot` copies them. Character code (`justLandedVector3`) reuses vectors the same way.
+- Fixed in P4: captured commands are cloned at capture time (`structuredClone`), which is what an immediate `postMessage` would have done.
+
+### 2.6 Not a cause: interpolation
 
 `physicsInterpolationSystem` (`PhysicsManager.ts:552-775`) only writes `Object3D.position/quaternion`. No path feeds the Object3D pose back into physics. Interpolation settings can only change results indirectly, through frame timing, and that stops mattering once §2.1 is fixed. The probe confirms this empirically.
 
@@ -204,6 +211,22 @@ Drive the runs and collect the probe lines with the run-aekasha-js skill.
 - A direct check confirms the fix. Without SAB, a body created while stepping is held (so no push can arrive) reads its real pose right away: (1, 2, 3) with a unit rotation. Without the proxy seeding, the same body reads (0, 0, 0) with a zero rotation.
 - Without SAB, loads now often reproduce the MAIN_THREAD hash bit for bit (2 of 3 here, none after P2).
 - Both worker transports still vary sometimes, again by at most 0.26 units at `customPropTest3/BoxWithChildCollider`. That matches the create-order race left for P4.
+
+**After P4 (2026-09-28).**
+
+- With `CREATE_PHYSICS_ENTITY` alone, worker loads still varied. A diagnostic that compares creation order (rigid body ids) and per-body state found the creation order identical across worker loads and MAIN_THREAD. Two things still differed:
+  - platform velocities at step 300, caused by §2.5 and fixed;
+  - `BoxWithChildCollider`'s resting position. The gym's dummy character (spawned at (−2, 5, −2), walking and jumping every second) pushes it, and characters are a non-goal (§1).
+- With the §2.5 fix and the dummy character's movement system temporarily disabled, every load produced the same hash in every mode:
+
+| Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- |
+| MAIN_THREAD | `24df7a1d` | — | `24df7a1d` |
+| WORKER_THREAD, SAB | `24df7a1d` | `24df7a1d` | `24df7a1d` |
+| WORKER_THREAD, no SAB | `24df7a1d` | `24df7a1d` | `24df7a1d` |
+
+(MAIN_THREAD revisits already matched after P2. Fresh loads come from the diagnostic: 4× SAB, 2× no SAB, 2× MAIN_THREAD.) With the dummy character active, MAIN_THREAD stays repeatable (`f5addbe3`), but worker loads can differ at `BoxWithChildCollider`. That is expected, since the character is frame-timing dependent in worker mode (async shape casts). P5's probe flag for characters covers this.
+- Also fixed in P4: a P2 regression in MAIN_THREAD mode. `createColliders`/`createCollidersSync` (and `createRigidBodies`/`createRigidBodiesSync`) never registered their results in the main-thread maps, so P2's "skip unknown ids" made `deleteColliders` skip them. A deleted collider-only entity stayed in the world, and a ray still hit it. They now register like the worker branches. Verified: the ray hits before the delete and misses after it, in both modes.
 
 ---
 

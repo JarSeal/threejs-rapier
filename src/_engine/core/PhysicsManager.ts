@@ -10,10 +10,8 @@ import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import type { IComponentStorage } from './ECS/ECSComponentStorage';
 import {
-  createColliders,
-  createCollidersSync,
-  createRigidBody,
-  createRigidBodySync,
+  createRigidBodyWithColliders,
+  createRigidBodyWithCollidersSync,
   deleteColliders,
   deleteRigidBody,
   flushPhysics,
@@ -221,14 +219,6 @@ const createPhysicsEntityNow = async (
     }
   }
 
-  let rb: RigidBodyAPI | undefined;
-  if (rigidBodyParams) {
-    rb = isWorkerThread
-      ? await createRigidBody(rigidBodyParams)
-      : createRigidBodySync(rigidBodyParams);
-  }
-
-  const paramsArray = Array.isArray(colliderParams) ? colliderParams : [colliderParams];
   // The legacy system auto-derived a primitive collider's dimensions from its target mesh's
   // geometry whenever the caller didn't specify them explicitly (a ground box created as
   // { type: 'BOX' } against a 200x0.2x200 mesh got a 200x0.2x200 collider "for free"). The new
@@ -240,15 +230,16 @@ const createPhysicsEntityNow = async (
   // THREE.Mesh/BufferGeometry can't be structured-cloned to derive this worker-side.
   const targetMeshForDerivation =
     object3D ?? world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
-  for (let i = 0; i < paramsArray.length; i++) {
-    paramsArray[i] = deriveColliderDimensionsFromMesh(paramsArray[i], targetMeshForDerivation);
-  }
-  if (rb) for (const p of paramsArray) p.parentId = rb.id;
-  const colls = paramsArray.length
-    ? isWorkerThread
-      ? await createColliders(paramsArray)
-      : createCollidersSync(paramsArray)
-    : [];
+  const paramsArray = (Array.isArray(colliderParams) ? colliderParams : [colliderParams]).map(
+    (params) => deriveColliderDimensionsFromMesh(params, targetMeshForDerivation)
+  );
+
+  // Body and colliders together, requested before this function's first await: in
+  // WORKER_THREAD mode the worker then creates entities in call order (as MAIN_THREAD does),
+  // and no step can land between a body and its colliders.
+  const { rigidBody: rb, colliders: colls } = isWorkerThread
+    ? await createRigidBodyWithColliders(rigidBodyParams, paramsArray)
+    : createRigidBodyWithCollidersSync(rigidBodyParams, paramsArray);
 
   // Primes the worker proxy's cached mass (only known once the colliders exist), so even the
   // very first applyImpulse on this body can be reflected in its read-your-writes linvel.

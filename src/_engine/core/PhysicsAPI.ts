@@ -61,6 +61,7 @@ import {
   WorldNumInternalPgsIterationsResponse,
   RigidBodyParams,
   CreateRigidBodyResponse,
+  CreatePhysicsEntityResponse,
   CreateColliderResponse,
   QueryFilterFlags,
   ColliderParams,
@@ -518,7 +519,10 @@ const isWritePending = (visibleAt: number) =>
 const messageWorker = (message: PhysicsUpProtocol) => {
   if (!worker) return;
   if (substepCommandCapture) {
-    substepCommandCapture.push(message);
+    // Cloned now, as postMessage would: callers reuse scratch vectors (e.g. a platform's
+    // kinematic target), and the STEP message is only cloned after every sub-step's systems
+    // ran, so a captured reference would carry the last sub-step's value into all of them.
+    substepCommandCapture.push(structuredClone(message));
     return;
   }
   worker.postMessage(message);
@@ -1073,10 +1077,12 @@ export const createRigidBodies = async (params: RigidBodyParams[]) => {
     'Physics world is not created. Create the world before creating a rigid body.'
   );
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    return existsOrThrow(
+    const rbAPIs = existsOrThrow(
       engAPI?.createRigidBodies(params),
       `Could not create a rigid bodies ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
     );
+    for (const rbAPI of rbAPIs) rigidBodies.set(rbAPI.id, rbAPI);
+    return rbAPIs;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const res = await messageWorkerAsync<CreateRigidBodiesResponse>({
       type: PhysicsProtocolType.CREATE_RIGID_BODIES,
@@ -1108,10 +1114,12 @@ export const createRigidBodiesSync = (params: RigidBodyParams[]) => {
     'Physics world is not created. Create the world before creating a rigid body.'
   );
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    return existsOrThrow(
+    const rbAPIs = existsOrThrow(
       engAPI?.createRigidBodies(params),
       `Could not create a rigid bodies ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
     );
+    for (const rbAPI of rbAPIs) rigidBodies.set(rbAPI.id, rbAPI);
+    return rbAPIs;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     throw new Error(
       'Cannot use createRigidBodiesSync in worker mode. Use createRigidBodies instead.'
@@ -1342,6 +1350,74 @@ const cleanupWorkerColliderEventFns = (id: number) => {
   workerContactForceEventFns.delete(id);
 };
 
+/** What createRigidBodyWithColliders() creates. */
+export type RigidBodyWithColliders = { rigidBody?: RigidBodyAPI; colliders: ColliderAPI[] };
+
+/**
+ * Creates an optional rigid body and its colliders together (with a body, every collider's
+ * parentId is set to it). In WORKER_THREAD mode this is one message, posted synchronously by
+ * this call: the worker creates everything in the order these calls were made (like
+ * MAIN_THREAD does), and no step can ever run between a body and its colliders.
+ */
+export const createRigidBodyWithColliders = async (
+  rigidBodyParams: RigidBodyParams | undefined,
+  colliderParams: ColliderParams[]
+): Promise<RigidBodyWithColliders> => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a rigid body or colliders.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    return createRigidBodyWithCollidersSync(rigidBodyParams, colliderParams);
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const res = await messageWorkerAsync<CreatePhysicsEntityResponse>({
+      type: PhysicsProtocolType.CREATE_PHYSICS_ENTITY,
+      rigidBody: rigidBodyParams,
+      colliders: colliderParams.map(toWireColliderParams),
+    });
+    let rigidBody: RigidBodyAPI | undefined;
+    if (rigidBodyParams && res.id !== undefined) {
+      rigidBody = new RigidBodyProxyAPI(
+        res.id,
+        res.slot,
+        rigidBodyParams.userData,
+        res.pose
+      ) as RigidBodyAPI;
+      rigidBodies.set(res.id, rigidBody);
+    }
+    const collAPIs: ColliderAPI[] = [];
+    for (let i = 0; i < res.colliderIds.length; i++) {
+      const id = res.colliderIds[i];
+      const params = colliderParams[i];
+      const collAPI = new ColliderProxyAPI(
+        id,
+        rigidBody?.id ?? params.parentId,
+        params.userData
+      ) as ColliderAPI;
+      collAPIs.push(collAPI);
+      colliders.set(id, collAPI);
+      registerWorkerColliderEventFns(id, params);
+    }
+    return { rigidBody, colliders: collAPIs };
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create a rigid body with colliders (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
+  );
+};
+
+/** createRigidBodyWithColliders() (sync). Only for main thread mode. */
+export const createRigidBodyWithCollidersSync = (
+  rigidBodyParams: RigidBodyParams | undefined,
+  colliderParams: ColliderParams[]
+): RigidBodyWithColliders => {
+  const rigidBody = rigidBodyParams ? createRigidBodySync(rigidBodyParams) : undefined;
+  const params = rigidBody
+    ? colliderParams.map((p) => ({ ...p, parentId: rigidBody.id }))
+    : colliderParams;
+  return { rigidBody, colliders: params.length ? createCollidersSync(params) : [] };
+};
+
 /** Create a collider. */
 export const createCollider = async (params: ColliderParams, parentId?: number) => {
   existsOrThrow(
@@ -1401,10 +1477,13 @@ export const createColliders = async (params: ColliderParams[]) => {
     'Physics world is not created. Create the world before creating a collider.'
   );
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    return existsOrThrow(
+    const collAPIs = existsOrThrow(
       engAPI?.createColliders(params),
       `Could not create colliders ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
     );
+    // Registered like in WORKER_THREAD mode: deleteColliders skips ids it doesn't know
+    for (const coll of collAPIs) colliders.set(coll.id, coll);
+    return collAPIs;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const collIds = (
       await messageWorkerAsync<CreateCollidersResponse>({
@@ -1439,10 +1518,13 @@ export const createCollidersSync = (params: ColliderParams[]) => {
     'Physics world is not created. Create the world before creating a collider.'
   );
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    return existsOrThrow(
+    const collAPIs = existsOrThrow(
       engAPI?.createColliders(params),
       `Could not create colliders ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
     );
+    // Registered like in WORKER_THREAD mode: deleteColliders skips ids it doesn't know
+    for (const coll of collAPIs) colliders.set(coll.id, coll);
+    return collAPIs;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     throw new Error('Cannot use createCollidersSync in worker mode. Use createColliders instead.');
   }

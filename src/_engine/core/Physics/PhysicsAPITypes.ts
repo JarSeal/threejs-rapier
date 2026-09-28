@@ -2188,6 +2188,12 @@ export type PhysicsUpProtocol =
       }
     // RigidBody --------------------------------------
     | { type: PhysicsProtocolType.CREATE_RIGID_BODY; params: RigidBodyParams }
+    | {
+        type: PhysicsProtocolType.CREATE_PHYSICS_ENTITY;
+        rigidBody?: RigidBodyParams;
+        /** Their parentId is set to the new body's id by the worker, when there is a body */
+        colliders: ColliderParams[];
+      }
     | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; params: RigidBodyParams[] }
     | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number }
     | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; ids: number[] }
@@ -2581,6 +2587,15 @@ export type PhysicsDownProtocol =
         pose: RigidBodyPose;
       }
     | {
+        type: PhysicsProtocolType.CREATE_PHYSICS_ENTITY;
+        /** The rigid body's id, slot and pose, as in CREATE_RIGID_BODY. Undefined id and pose
+         * (and slot -1) when no rigid body was requested. */
+        id?: number;
+        slot: number;
+        pose?: RigidBodyPose;
+        colliderIds: number[];
+      }
+    | {
         type: PhysicsProtocolType.CREATE_RIGID_BODIES;
         ids: number[];
         slots: number[];
@@ -2760,6 +2775,8 @@ export type WorldIntersectionPairResponse =
   PhysicsResponse<PhysicsProtocolType.WORLD_INTERSECTION_PAIR>;
 // Rigid body
 export type CreateRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.CREATE_RIGID_BODY>;
+export type CreatePhysicsEntityResponse =
+  PhysicsResponse<PhysicsProtocolType.CREATE_PHYSICS_ENTITY>;
 export type CreateRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.CREATE_RIGID_BODIES>;
 export type DeleteRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODY>;
 export type DeleteRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODIES>;
@@ -2980,6 +2997,8 @@ export enum PhysicsProtocolType {
   RIGID_APPLY_IMPULSE_AT_POINT = 469,
   RIGID_USER_FORCE = 470,
   RIGID_USER_TORQUE = 471,
+  /** A rigid body (optional) and its colliders in one message (see createRigidBodyWithColliders) */
+  CREATE_PHYSICS_ENTITY = 472,
 
   // COLLIDER >= 600 && COLLIDER < 800
   CREATE_COLLIDER = 600,

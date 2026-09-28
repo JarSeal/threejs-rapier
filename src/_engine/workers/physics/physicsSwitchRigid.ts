@@ -5,6 +5,7 @@ import {
   PhysicsUpProtocol,
   PhysRotation,
   PhysVector,
+  RigidBodyAPI,
   RigidBodyPose,
   WorldAPI,
 } from '../../core/Physics/PhysicsAPITypes';
@@ -15,6 +16,17 @@ const toPlainPose = (pos: PhysVector, rot: PhysRotation): RigidBodyPose => ({
   pos: { x: pos.x, y: pos.y, z: pos.z },
   rot: { x: rot.x, y: rot.y, z: rot.z, w: rot.w },
 });
+
+/** A new body's transform buffer slot (-1 without a buffer), seeded with its pose. */
+const allocateBodySlot = (rb: RigidBodyAPI, transformBuffer?: PhysicsTransformBuffer) => {
+  const pose = toPlainPose(rb.pos, rb.rot);
+  let slot = -1;
+  if (transformBuffer) {
+    slot = transformBuffer.allocateSlot(rb.id);
+    transformBuffer.setTransform(slot, pose.pos, pose.rot);
+  }
+  return { slot, pose };
+};
 
 const sendNoRigidBodyErrorMessage = (
   sendMessage: (message: any, data: PhysicsUpProtocol) => void,
@@ -44,25 +56,30 @@ export const physicsSwitchRigid = async (
     case PhysicsProtocolType.CREATE_RIGID_BODY: {
       // CREATE_RIGID_BODY
       const rb = await physicsWorldAPI.createRigidBody(data.params);
-      const pose = toPlainPose(rb.pos, rb.rot);
-      let slot = -1;
-      if (transformBuffer) {
-        slot = transformBuffer.allocateSlot(rb.id);
-        transformBuffer.setTransform(slot, pose.pos, pose.rot);
-      }
+      const { slot, pose } = allocateBodySlot(rb, transformBuffer);
       return sendMessage({ type, id: rb.id, slot, pose }, data);
+    }
+    case PhysicsProtocolType.CREATE_PHYSICS_ENTITY: {
+      // CREATE_PHYSICS_ENTITY: body and colliders in one message, so nothing (e.g. a STEP) can
+      // run in between, and they're created in the order the main thread asked for them.
+      if (!data.rigidBody) {
+        const colliderIds = engAPI.createColliders(data.colliders).map((c) => c.id);
+        return sendMessage({ type, slot: -1, colliderIds }, data);
+      }
+      const rb = await physicsWorldAPI.createRigidBody(data.rigidBody);
+      const { slot, pose } = allocateBodySlot(rb, transformBuffer);
+      const colliderIds = engAPI
+        .createColliders(data.colliders.map((params) => ({ ...params, parentId: rb.id })))
+        .map((c) => c.id);
+      return sendMessage({ type, id: rb.id, slot, pose, colliderIds }, data);
     }
     case PhysicsProtocolType.CREATE_RIGID_BODIES: {
       // CREATE_RIGID_BODIES
       const rbAPIs = engAPI.createRigidBodies(data.params);
       const ids = rbAPIs.map((api) => api.id);
-      const poses = rbAPIs.map((api) => toPlainPose(api.pos, api.rot));
-      const slots = rbAPIs.map((api, i) => {
-        if (!transformBuffer) return -1;
-        const slot = transformBuffer.allocateSlot(api.id);
-        transformBuffer.setTransform(slot, poses[i].pos, poses[i].rot);
-        return slot;
-      });
+      const allocated = rbAPIs.map((api) => allocateBodySlot(api, transformBuffer));
+      const slots = allocated.map((a) => a.slot);
+      const poses = allocated.map((a) => a.pose);
       return sendMessage({ type, ids, slots, poses }, data);
     }
     case PhysicsProtocolType.DELETE_RIGID_BODY:
