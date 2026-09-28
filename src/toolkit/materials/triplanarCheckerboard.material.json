@@ -3,18 +3,19 @@
   "id": "triplanarCheckerboard",
   "tslFile": "materials/triplanarCheckerboard.tsl.ts",
   "type": "STANDARDNODEMATERIAL",
-  "params": { "color": "#808080", "roughness": 0.85, "metalness": 0.0 },
+  "params": { "color": "#ff0000", "roughness": 0.85, "metalness": 0.0 },
   "staticDefines": {
     "alignToObject": true,
     "fitToBounds": false,
-    "plusSigns": false
+    "dominantAxis": false,
+    "plusSigns": true
   },
   "nodes": {
     "colorNode": {
-      "checkerSize": 1.0,
-      "checkerColorA": "#707070",
-      "checkerColorB": "#404040",
-      "plusSignColor": "#a0a0a0"
+      "checkerSize": 0.25,
+      "checkerColorA": "#898989",
+      "checkerColorB": "#787878",
+      "plusSignColor": "#555555"
     }
   }
 }

@@ -4,7 +4,6 @@ import {
   modelViewMatrix,
   cameraViewMatrix,
   vec2,
-  vec3,
   vec4,
   float,
   mod,
@@ -15,12 +14,16 @@ import {
   oneMinus,
   fwidth,
   mix,
-  add,
   select,
 } from 'three/tsl';
 // The real generic `Node<T>` typings (the `three/tsl` `Node` is a loose local shim)
 import { type Node, type NodeMaterial } from 'three/webgpu';
-import { blendProjections, readBooleanDefines, triplanarProjection } from './triplanarProjection';
+import {
+  blendProjectionGradients,
+  blendProjections,
+  readBooleanDefines,
+  triplanarProjection,
+} from './triplanarProjection';
 
 // Minor lines widen (up to the major thickness) once their half-thickness would drop below this
 // many pixels, so they don't break up / vanish at a distance.
@@ -35,6 +38,10 @@ type GridDefines = {
   alignToObject: boolean;
   /** alignToObject only: fit a whole number of cells to the geometry's bounds (lines on the edges) */
   fitToBounds: boolean;
+  /** Only the projection the surface faces most, no triplanar blending: no doubled lines on flat
+   * slopes (ramps, stairs), but hard seams on curved surfaces, where blending gives terrain its
+   * contour-line look instead (see triplanarProjection) */
+  dominantAxis: boolean;
   /** Thinner lines between the major lines */
   minorLines: boolean;
   /** Grooves along the lines (normalNode) */
@@ -44,6 +51,7 @@ type GridDefines = {
 const DEFAULT_DEFINES: GridDefines = {
   alignToObject: true,
   fitToBounds: false,
+  dominantAxis: false,
   minorLines: true,
   seamNormals: true,
 };
@@ -90,6 +98,7 @@ const projectionSpace = (params: PatternParams, defines: GridDefines, material: 
       cellSize: params.lineFrequency,
       alignToObject: defines.alignToObject,
       fitToBounds: defines.fitToBounds,
+      dominantAxis: defines.dominantAxis,
     },
     material
   );
@@ -211,7 +220,7 @@ export const normalNode = (
   const params = getPatternParams(uniforms, 'colorNode_', defines);
   const strength = inputs.seamNormalStrength;
   const minorStrength = inputs.minorSeamNormalStrength ?? float(0.0);
-  const { pos, size: spacing, blend } = projectionSpace(params, defines, material);
+  const projection = projectionSpace(params, defines, material);
 
   // The stronger groove (major or minor) sets the slope, each with its own strength
   const slope = (coord: Node<'vec2'>, axisSpacing: Node<'vec2'>) => {
@@ -225,15 +234,8 @@ export const normalNode = (
     );
   };
 
-  // Lift each projection's 2D gradient back to 3D (projection X uses yz, Y uses zx, Z uses xy)
-  const slopeX = slope(pos.yz, spacing.yz);
-  const slopeY = slope(pos.zx, spacing.zx);
-  const slopeZ = slope(pos.xy, spacing.xy);
-  const gradient = add(
-    vec3(0.0, slopeX.x, slopeX.y).mul(blend.x),
-    vec3(slopeY.y, 0.0, slopeY.x).mul(blend.y),
-    vec3(slopeZ.x, slopeZ.y, 0.0).mul(blend.z)
-  );
+  // Each projection's 2D gradient, lifted back to 3D and blended
+  const gradient = blendProjectionGradients(projection, slope);
 
   // Into view space: world coords via the camera, object coords via the model-view (divided by
   // the world scale that projectionSpace multiplied in, leaving rotation only)

@@ -4,12 +4,12 @@ import { type Node, type NodeMaterial } from 'three/webgpu';
 import { blendProjections, readBooleanDefines, triplanarProjection } from './triplanarProjection';
 
 // Plus sign proportions as fractions of one cell (hardcoded, not exposed as inputs)
-const PLUS_HALF_ARM_LENGTH = 0.35;
-const PLUS_HALF_BAR_THICKNESS = 0.06;
+const PLUS_HALF_ARM_LENGTH = 0.175;
+const PLUS_HALF_BAR_THICKNESS = 0.03;
 // The plus signs fade out while one pixel grows from this (start) to this (end) fraction of a cell,
 // ie. once they'd be too thin on screen to draw without shimmering
-const PLUS_FADE_PIXEL_START = 0.05;
-const PLUS_FADE_PIXEL_END = 0.15;
+const PLUS_FADE_PIXEL_START = 0.025;
+const PLUS_FADE_PIXEL_END = 0.075;
 
 // ─── Static defines ───
 // Structural switches, resolved at shader build time (only the used paths end up in the shader).
@@ -20,6 +20,9 @@ const DEFAULT_DEFINES = {
   alignToObject: true,
   /** alignToObject only: fit a whole number of cells to the geometry's bounds (edges on cell edges) */
   fitToBounds: false,
+  /** Only the projection the surface faces most, no triplanar blending: no doubled checkers on flat
+   * slopes, but hard seams on curved surfaces (see triplanarProjection) */
+  dominantAxis: false,
   /** A solid "+" centered in every cell */
   plusSigns: false,
 };
@@ -85,6 +88,7 @@ export const colorNode = (
       cellSize: checkerSize,
       alignToObject: defines.alignToObject,
       fitToBounds: defines.fitToBounds,
+      dominantAxis: defines.dominantAxis,
     },
     material
   );

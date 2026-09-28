@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { createGeometry } from '../_engine/core/Geometry';
-import { createMaterial, getMaterial } from '../_engine/core/Material';
+import { createMaterial, getMaterial, getMaterialVariant } from '../_engine/core/Material';
 import { createMeshEntity, getMeshByAppId, setMeshMaterial } from '../_engine/core/MeshManager';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
@@ -9,20 +9,17 @@ import { createDynamicCharacter } from '../_engine/utils/character/dynamicCharac
 import { characterTestObstacles } from '../_engine/utils/world/characterTestObjects';
 import { importAssetAsync } from '../_engine/core/Import/ImportRegistry';
 import { spawnImportedAsset } from '../_engine/core/Import/SpawnImported';
-import type {
-  ImportedAssetManifest,
-  SpawnImportedResult,
-} from '../_engine/core/Import/ImportTypes';
-import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
-import { addCheckerboardMaterialToMesh } from '../_engine/utils/materials/checkerBoardPattern';
+import type { ImportedAssetManifest } from '../_engine/core/Import/ImportTypes';
+import { ComponentType, Transform } from '../_engine/core/ECS/ECSCoreComponents';
 import { getQuatFromAngle } from '../_engine/utils/helpers';
 import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
-import { getECSWorld } from '../_engine/core/ECS';
+import { ECSWorld, getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
 import { getScene, registerOnSceneExit } from '../_engine/core/Scene';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 import { getCameraByAppId } from '../_engine/core/CameraManager';
+import { getLightByAppId, getLightTargetId } from '../_engine/core/LightManager';
 import {
   createFollowObjectCameraRig,
   deleteFollowObjectCameraRig,
@@ -45,12 +42,6 @@ const rootPlacing = (manifest: ImportedAssetManifest, pos: { x: number; y: numbe
   return { position: { x: pos.x - offset.x, y: pos.y - offset.y, z: pos.z - offset.z } };
 };
 
-/** The rendered meshes of a spawned import (for per-mesh materials like the checkerboard). */
-const getSpawnedMeshes = (result: SpawnImportedResult) =>
-  result.meshEntityIds.map(
-    (id) => getECSWorld().getComponent(id, ComponentType.OBJECT3D)?.value as THREE.Mesh
-  );
-
 /** Same as setImportedRigidBodyTranslation, but for a partial {x?, y?, z?} update (matching the
  * legacy PhysicsObject.setTranslation's partial-update signature) — reads the body's current
  * position for any axis not provided. */
@@ -64,6 +55,74 @@ const setImportedRigidBodyTranslationPartial = (
     { x: pos.x ?? body.pos.x, y: pos.y ?? body.pos.y, z: pos.z ?? body.pos.z },
     true
   );
+};
+
+const snapToStep = (value: number, step: number) => Math.round(value / step) * step;
+
+/**
+ * An ECS system moving a directional light (and its target) with an entity, so its shadow frustum
+ * covers the area around it wherever it goes. The light's direction and distance stay as authored
+ * (its position - target offset). The frustum moves in whole shadow map texels in light space, or
+ * shadow edges would shimmer as it slides. The light is looked up lazily: a scene's JSON lights are
+ * created after its scene function runs.
+ * @param centerOffset shifts the frustum center from the followed entity (eg. toward where the
+ * camera sees more ground)
+ */
+const followWithSun = (
+  sunAppId: string,
+  followEntityId: number,
+  centerOffset: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 }
+) => {
+  const center = new THREE.Vector3();
+  let sun: {
+    id: number;
+    targetId: number;
+    transform: Transform;
+    targetTransform: Transform;
+    offset: THREE.Vector3;
+    axisX: THREE.Vector3;
+    axisY: THREE.Vector3;
+    axisZ: THREE.Vector3;
+    texelSize: number;
+  } | null = null;
+
+  const resolveSun = (world: ECSWorld) => {
+    const light = getLightByAppId(sunAppId, world) as THREE.DirectionalLight | undefined;
+    const id = getEntityIdByAppId(sunAppId, world);
+    const targetId = id !== undefined ? getLightTargetId(id, world) : undefined;
+    if (!light?.isDirectionalLight || id === undefined || targetId === undefined) return null;
+    const transform = world.getComponent(id, ComponentType.TRANSFORM);
+    const targetTransform = world.getComponent(targetId, ComponentType.TRANSFORM);
+    if (!transform || !targetTransform) return null;
+
+    const offset = transform.position.clone().sub(targetTransform.position);
+    // Light-space axes (as the shadow camera's lookAt builds them)
+    const axisZ = offset.clone().normalize();
+    const axisX = new THREE.Vector3(0, 1, 0).cross(axisZ).normalize();
+    const axisY = axisZ.clone().cross(axisX);
+    const shadowCam = light.shadow.camera;
+    const texelSize = (shadowCam.right - shadowCam.left) / light.shadow.mapSize.width;
+    return { id, targetId, transform, targetTransform, offset, axisX, axisY, axisZ, texelSize };
+  };
+
+  return (world: ECSWorld) => {
+    sun ??= resolveSun(world);
+    const followed = world.getComponent(followEntityId, ComponentType.TRANSFORM);
+    if (!sun || !followed) return;
+
+    const { axisX, axisY, axisZ, texelSize } = sun;
+    const p = center.copy(followed.position).add(centerOffset);
+    sun.targetTransform.position
+      .copy(axisX)
+      .multiplyScalar(snapToStep(p.dot(axisX), texelSize))
+      .addScaledVector(axisY, snapToStep(p.dot(axisY), texelSize))
+      .addScaledVector(axisZ, p.dot(axisZ));
+    sun.transform.position.copy(sun.targetTransform.position).add(sun.offset);
+    sun.targetTransform.setDirty();
+    world.commitTransform(sun.targetId, sun.targetTransform);
+    sun.transform.setDirty();
+    world.commitTransform(sun.id, sun.transform);
+  };
 };
 
 export const scene = async () =>
@@ -102,7 +161,19 @@ export const scene = async () =>
     // Static physics meshes use the toolkit's triplanar grid material (listed in the scene JSON)
     const gridMat = getMaterial('triplanarGrid');
     if (!gridMat) throw new Error('Could not find the triplanarGrid material for the gym scene.');
-    gridMat.color.set('#000000');
+    // Dynamic physics objects and moving platforms use the toolkit's triplanar checkerboard (listed
+    // in the scene JSON); the platforms get fitted amber cells so the moving pieces stand out (a
+    // cached material variant, see getMaterialVariant)
+    const dynamicMat = getMaterial('triplanarCheckerboard');
+    if (!dynamicMat) {
+      throw new Error('Could not find the triplanarCheckerboard material for the gym scene.');
+    }
+    const platformMat = getMaterialVariant('triplanarCheckerboard', {
+      staticDefines: { fitToBounds: true },
+      nodes: {
+        colorNode: { checkerSize: 0.5, checkerColorA: '#a18862', checkerColorB: '#7b6b54' },
+      },
+    });
 
     // Ground
     const groundWidthAndDepth = 200;
@@ -158,18 +229,8 @@ export const scene = async () =>
       type: 'BOX',
       params: { width: 1, height: 1, depth: 1 },
     });
-    const material2 = createMaterial({
-      id: 'testBox1Material',
-      type: 'PHONG',
-      params: {
-        map: loadTexture({
-          id: 'box1Texture',
-          fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
-        }),
-      },
-    });
     const boxEntityId = createMeshEntity(
-      { geo: geometry2, mat: material2, castShadow: true, receiveShadow: true },
+      { geo: geometry2, mat: dynamicMat, castShadow: true, receiveShadow: true },
       { appId: 'testBox1Mesh' }
     );
     await createPhysicsEntity(
@@ -258,6 +319,23 @@ export const scene = async () =>
       smoothingTime: 0.2,
     });
 
+    // Sun follows the player (the follow camera's focus), see followWithSun. The camera looks down
+    // at the player from its (7, 20, 7) offset, so it sees more ground ahead (~20m) than behind
+    // (~11m): center the shadow frustum ~4m ahead, along the camera's ground-forward (-x, -z).
+    // The frustum size (thirdPersonGymSun.light.json) covers the ~±23m screen width at the player.
+    const world = getECSWorld();
+    world.removeSystem('gymSunFollow');
+    const followSun = followWithSun(
+      'thirdPersonGymSun',
+      characterMesh.userData.entityId as number,
+      {
+        x: -3,
+        y: 0,
+        z: -3,
+      }
+    );
+    world.addSystem(ECSSystemStage.APP_LOGIC, 'gymSunFollow', followSun);
+
     // Another character without input
     createMeshEntity(
       {
@@ -306,6 +384,7 @@ export const scene = async () =>
     // (One exit callback per scene — registerOnSceneExit replaces any earlier one.)
     registerOnSceneExit(SCENE_THIRD_PERSON_GYM_META.id, () => {
       getECSWorld().removeSystem('dummyCharLooper');
+      getECSWorld().removeSystem('gymSunFollow');
       deleteFollowObjectCameraRig('thirdPersonGymFollowCam');
     });
     getECSWorld().addSystem(ECSSystemStage.APP_PHYSICS_STEP, 'dummyCharLooper', (_world, dt) => {
@@ -332,18 +411,18 @@ export const scene = async () =>
     const multiBox = await importAssetAsync({ fileName: `${TEST_MODELS}/test_multi_box.glb` });
     if (!cube || !monkey || !multiBox) throw new Error('Could not import the gym test models.');
 
-    const cubeResult = await spawnImportedAsset(cube, {
+    await spawnImportedAsset(cube, {
       transform: rootPlacing(cube, { x: 2, y: 2, z: 2 }),
+      material: dynamicMat,
       castShadow: true,
       receiveShadow: true,
       entityOpts: { appId: 'customPropTest' },
     });
-    for (const m of getSpawnedMeshes(cubeResult))
-      addCheckerboardMaterialToMesh('checkerMaterial', m);
 
     // Suzanne (monkey TRIMESH)
-    const monkeyTrimesh = await spawnImportedAsset(monkey, {
+    await spawnImportedAsset(monkey, {
       transform: rootPlacing(monkey, { x: 4, y: 2, z: 3 }),
+      material: dynamicMat,
       castShadow: true,
       receiveShadow: true,
       physicsParams: {
@@ -354,13 +433,11 @@ export const scene = async () =>
       },
       entityOpts: { appId: 'customPropTest2' },
     });
-    for (const m of getSpawnedMeshes(monkeyTrimesh)) {
-      addCheckerboardMaterialToMesh('checkerMaterial', m);
-    }
 
     // Suzanne (monkey CONVEXHULL)
-    const monkeyConvex = await spawnImportedAsset(monkey, {
+    await spawnImportedAsset(monkey, {
       transform: rootPlacing(monkey, { x: 4, y: 6, z: 3 }),
+      material: dynamicMat,
       castShadow: true,
       receiveShadow: true,
       physicsParams: {
@@ -371,22 +448,14 @@ export const scene = async () =>
       },
       entityOpts: { appId: 'customPropTest2_2' },
     });
-    for (const m of getSpawnedMeshes(monkeyConvex)) {
-      addCheckerboardMaterialToMesh('checkerMaterial', m);
-    }
 
+    // Flat ramps: one projection only, or two blended ones show doubled lines (see dominantAxis)
     await getTestObstacle('slideAngles', {
       transform: { position: { x: 30, y: -1.9, z: -30 } },
-      material: gridMat,
+      material: getMaterialVariant('triplanarGrid', { staticDefines: { dominantAxis: true } }),
       castShadow: true,
       receiveShadow: true,
       physicsParams: { collider: { type: 'TRIMESH', friction: 1 } },
-    });
-
-    const movingPlatformMat = createMaterial({
-      id: 'movingPlatform1-mat',
-      type: 'PHONG',
-      params: { color: '#999' },
     });
 
     createMeshEntity(
@@ -396,7 +465,7 @@ export const scene = async () =>
           type: 'BOX',
           params: { width: 2, height: 0.2, depth: 4 },
         }),
-        mat: movingPlatformMat,
+        mat: platformMat,
         castShadow: true,
         receiveShadow: true,
       },
@@ -429,7 +498,7 @@ export const scene = async () =>
           type: 'BOX',
           params: { width: 4, height: 0.2, depth: 4 },
         }),
-        mat: movingPlatformMat,
+        mat: platformMat,
         castShadow: true,
         receiveShadow: true,
       },
@@ -469,7 +538,7 @@ export const scene = async () =>
           type: 'CYLINDER',
           params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
         }),
-        mat: movingPlatformMat,
+        mat: platformMat,
         castShadow: true,
         receiveShadow: true,
       },
@@ -508,7 +577,7 @@ export const scene = async () =>
           type: 'BOX',
           params: { width: 4, height: 0.2, depth: 4 },
         }),
-        mat: movingPlatformMat,
+        mat: platformMat,
         castShadow: true,
         receiveShadow: true,
       },
@@ -547,7 +616,7 @@ export const scene = async () =>
           type: 'CYLINDER',
           params: { radiusTop: 4, radiusBottom: 4, height: 0.2 },
         }),
-        mat: movingPlatformMat,
+        mat: platformMat,
         castShadow: true,
         receiveShadow: true,
       },
@@ -583,7 +652,7 @@ export const scene = async () =>
           type: 'BOX',
           params: { width: 2, height: 0.2, depth: 4 },
         }),
-        mat: movingPlatformMat,
+        mat: platformMat,
         castShadow: true,
         receiveShadow: true,
       },
@@ -623,15 +692,13 @@ export const scene = async () =>
       ],
     });
 
-    const multiBoxResult = await spawnImportedAsset(multiBox, {
+    await spawnImportedAsset(multiBox, {
       transform: rootPlacing(multiBox, { x: 2, y: 2, z: 2 }),
+      material: dynamicMat,
       castShadow: true,
       receiveShadow: true,
       entityOpts: { appId: 'customPropTest3' },
     });
-    for (const m of getSpawnedMeshes(multiBoxResult)) {
-      addCheckerboardMaterialToMesh('checkerMaterial', m, { useConstantCheckerSize: true });
-    }
 
     // Stairs are positioned by their first visible node, terrains and obstacles by their glTF root
     const staticModels: {

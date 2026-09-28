@@ -12,6 +12,7 @@ import {
   step,
   mix,
   add,
+  select,
 } from 'three/tsl';
 // The real generic `Node<T>` typings (the `three/tsl` `Node` is a loose local shim)
 import {
@@ -77,15 +78,22 @@ export type TriplanarProjectionOptions = {
   /** alignToObject only: anchor at the geometry's bounding box corner and stretch the cell size per
    * axis so a whole number of cells spans the object (cell edges on the object's edges) */
   fitToBounds: boolean;
+  /** Use only the projection the surface faces most instead of blending all three: no doubled
+   * lines/cells on flat slopes (two blended projections put their lines at different places there),
+   * slopes up to 45° continue the floor's pattern seamlessly (stretched along the incline), and the
+   * pattern is evaluated once instead of three times. Hard seams on curved surfaces where the
+   * facing axis switches, where blending gives terrain its contour-line look instead. */
+  dominantAxis: boolean;
 };
 
 /**
  * Triplanar projection: the position to evaluate a pattern at, the (per axis) cell size, and the
- * blend weights of the three projections (components sum to 1). The weights use the geometry
- * normal, never `normalWorld`, which outside the normal sub-build is the perturbed normal.
+ * blend weights of the three projections (components sum to 1), or with `dominantAxis` which
+ * single projection to use. Both use the geometry normal, never `normalWorld`, which outside the
+ * normal sub-build is the perturbed normal.
  */
 export const triplanarProjection = (
-  { cellSize, alignToObject, fitToBounds }: TriplanarProjectionOptions,
+  { cellSize, alignToObject, fitToBounds, dominantAxis }: TriplanarProjectionOptions,
   material: NodeMaterial
 ) => {
   const baseSize = vec3(cellSize);
@@ -107,24 +115,67 @@ export const triplanarProjection = (
     }
   }
 
-  let blend = normal.abs();
-  blend = blend.div(blend.dot(vec3(1.0)));
+  const facing = normal.abs();
+  const blend = facing.div(facing.dot(vec3(1.0)));
 
-  return { pos, size, blend };
+  // X faces most, else Y faces more than Z (else Z)
+  const dominant = dominantAxis
+    ? {
+        isX: facing.x.greaterThanEqual(max(facing.y, facing.z)),
+        isY: facing.y.greaterThanEqual(facing.z),
+      }
+    : null;
+
+  return { pos, size, blend, dominant };
 };
 
 export type TriplanarProjection = ReturnType<typeof triplanarProjection>;
 
+type ProjectionPattern<T> = (coord: Node<'vec2'>, cellSize: Node<'vec2'>) => T;
+
 /**
  * Evaluates `pattern` for the three projections (X uses the yz plane, Y zx, Z xy) and blends the
- * results by the projection's weights.
+ * results by the projection's weights, or with `dominantAxis` evaluates it once, for the
+ * projection the surface faces most.
  */
 export const blendProjections = (
-  { pos, size, blend }: TriplanarProjection,
-  pattern: (coord: Node<'vec2'>, cellSize: Node<'vec2'>) => Node<'vec3'>
-) =>
-  add(
+  { pos, size, blend, dominant }: TriplanarProjection,
+  pattern: ProjectionPattern<Node<'vec3'>>
+) => {
+  if (dominant) {
+    const coord = select(dominant.isX, pos.yz, select(dominant.isY, pos.zx, pos.xy));
+    const cellSize = select(dominant.isX, size.yz, select(dominant.isY, size.zx, size.xy));
+    return pattern(coord, cellSize);
+  }
+  return add(
     pattern(pos.yz, size.yz).mul(blend.x),
     pattern(pos.zx, size.zx).mul(blend.y),
     pattern(pos.xy, size.xy).mul(blend.z)
   );
+};
+
+/**
+ * Like blendProjections, for a 2D gradient in projection coordinates (eg. a height slope for
+ * normals): each projection's gradient is lifted back to 3D (in the projection's coordinate space)
+ * before blending.
+ */
+export const blendProjectionGradients = (
+  { pos, size, blend, dominant }: TriplanarProjection,
+  gradient: ProjectionPattern<Node<'vec2'>>
+) => {
+  const liftX = (g: Node<'vec2'>) => vec3(0.0, g.x, g.y); // yz plane
+  const liftY = (g: Node<'vec2'>) => vec3(g.y, 0.0, g.x); // zx plane
+  const liftZ = (g: Node<'vec2'>) => vec3(g.x, g.y, 0.0); // xy plane
+
+  if (dominant) {
+    const coord = select(dominant.isX, pos.yz, select(dominant.isY, pos.zx, pos.xy));
+    const cellSize = select(dominant.isX, size.yz, select(dominant.isY, size.zx, size.xy));
+    const g = gradient(coord, cellSize);
+    return select(dominant.isX, liftX(g), select(dominant.isY, liftY(g), liftZ(g)));
+  }
+  return add(
+    liftX(gradient(pos.yz, size.yz)).mul(blend.x),
+    liftY(gradient(pos.zx, size.zx)).mul(blend.y),
+    liftZ(gradient(pos.xy, size.xy)).mul(blend.z)
+  );
+};
