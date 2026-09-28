@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Debugger
-Related: p080_multi-viewport-rendering-and-axis-gizmo.md and p115_debug-environment-ball-viewport.md (add clickable on-screen gizmos that should join the disabled set), p105_refactor-debugger-drawer-tab-creation.md (will migrate the Debug Tools options this plan adds)
+Related: p080_multi-viewport-rendering-and-axis-gizmo.md and p115_debug-environment-ball-viewport.md (add clickable on-screen gizmos that should join the disabled set), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will migrate the Debug Tools options this plan adds)
 
 # Add On-Screen Tools Disabler Settings — Plan
 
@@ -129,7 +129,7 @@ In debug mode, the on-screen tools, the debug drawer handle and the stats panel 
 | `src/_engine/core/Debug/_dbg__DebuggerGUI.ts`              | Global `debugDrawerToggler` class on the handle                                                                            |
 | `src/_engine/core/Debug/OnScreenTools.module.scss`         | Body-class rule and opacity transitions                                                                                    |
 | `src/_engine/core/Input/DefaultDebugKeyBindings.ts`        | `sc-toggle-on-screen-tools` (§) binding                                                                                    |
-| `docs/plans/p105_refactor-debugger-drawer-tab-creation.md` | Phase 4 DebugTools bullet mentions this folder                                                                             |
+| `docs/plans/_DONE_p105_refactor-debugger-drawer-tab-creation.md` | Phase 4 DebugTools bullet mentions this folder                                                                             |
 | `package.json`                                             | Engine minor bump at merge (per CLAUDE.md versioning)                                                                      |
 
 ## Verification

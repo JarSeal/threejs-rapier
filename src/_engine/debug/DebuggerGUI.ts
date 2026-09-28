@@ -15,19 +15,6 @@ let debugGUI: DebugModuleRef<DebuggerGUIModule> | null = null;
 
 export type DebugGUIOpts = { drawerBtnPlace?: 'TOP' | 'MIDDLE' | 'BOTTOM' };
 
-/**
- * Legacy tab shape (menu button text + a hand-built container).
- * @deprecated Use {@link DebuggerTabDef} with {@link createDebuggerTab} instead.
- */
-export type TabAndContainer = {
-  id: string;
-  buttonText: string | TCMP;
-  title?: string;
-  container: TCMP | (() => TCMP | TCMP[]);
-  button: null | TCMP;
-  orderNr?: number;
-};
-
 /** A key of a tab's state, or a one level deep path into a nested object of it
  * (eg. 'helpers.showGrid'). */
 export type DebuggerStateKey<S> = {
@@ -258,16 +245,17 @@ export const toggleDrawer = (openOrClose?: 'OPEN' | 'CLOSE') => {
 };
 
 /**
- * Creates (or replaces, by id) a debugger tab.
- * @param def (object) tab definition {@link DebuggerTabDef}, or the deprecated legacy shape
- * {@link TabAndContainer} (without `button`)
+ * Creates (or replaces, by id) a debugger tab: the menu button, the heading row and the content
+ * (CMP sections, declarative Tweakpane panes and lists). Persisted `state` values are hydrated
+ * right away (also in prod test mode, where the drawer itself doesn't exist).
+ * @param def (object) tab definition {@link DebuggerTabDef}
  * @param opts (object: DebugGUIOpts) optional debug GUI options {@link DebugGUIOpts}
  */
 export const createDebuggerTab = <S extends object>(
-  def: DebuggerTabDef<S> | Omit<TabAndContainer, 'button'>,
+  def: DebuggerTabDef<S>,
   opts?: DebugGUIOpts
 ) => {
-  if ('content' in def) hydrateDebuggerTabState(def);
+  hydrateDebuggerTabState(def);
   // The builder only works with string keys, S only types the call site
   useDebug(debugGUI)?._createDebuggerTab(def as unknown as AnyDebuggerTabDef, opts);
 };
@@ -301,8 +289,8 @@ export const persistDebuggerTabValue = (id: string, key: string) => {
 /**
  * Refreshes a debugger tab, but only if it is the visible one (see {@link isDebuggerTabOpen}),
  * otherwise it does nothing (a closed tab is built fresh on its next mount anyway).
- * A refresh updates the tab's dynamic content (CMP sections with an `html` function); legacy
- * tabs are only affected by `rebuild`.
+ * A refresh runs the tab's `onRefresh`, then updates its panes (hidden/disabled and the bound
+ * values, without firing onChange), its lists and its CMP sections with an `html` function.
  * @param id (string) tab id
  * @param opts (object) optional {@link UpdateDebuggerTabOpts}
  */
@@ -319,47 +307,11 @@ export const isDebuggerTabOpen = (id: string) =>
   useDebug(debugGUI)?._isDebuggerTabOpen(id) ?? false;
 
 /**
- * Removes a tab and container
- * @param id (string) tabsAndContainers id to be removed
+ * Removes a debugger tab
+ * @param id (string) tab id
  */
 export const removeDebuggerTab = (id: string) => {
   useDebug(debugGUI)?._removeDebuggerTab(id);
-};
-
-export const createNewDebuggerContainer = (
-  id: string,
-  heading?: string,
-  headerButtons?: TCMP[]
-) => {
-  const debugContainer = useDebug(debugGUI)?._createNewDebuggerContainer(
-    id,
-    heading,
-    headerButtons
-  );
-  if (!debugContainer) {
-    const msg =
-      'Failed to create a new debugger container (in createNewDebuggerContainer). It could be that the a new pane is being created in production mode.';
-    lerror(msg);
-    throw new Error(msg);
-  }
-  return debugContainer;
-};
-
-/**
- * Creates a new debugger pane (in a CMP container).
- * @param id (string) debugger pane id
- * @param heading (string) optional heading for the section
- * @returns (object: { container, debugGUI }) the container component and the debugGUI parent object
- */
-export const createNewDebuggerPane = (id: string, heading?: string, headerButtons?: TCMP[]) => {
-  const debugPane = useDebug(debugGUI)?._createNewDebuggerPane(id, heading, headerButtons);
-  if (!debugPane) {
-    const msg =
-      'Failed to create a new debugger pane (in createNewDebuggerPane). It could be that the a new pane is being created in production mode.';
-    lerror(msg);
-    throw new Error(msg);
-  }
-  return debugPane;
 };
 
 /**

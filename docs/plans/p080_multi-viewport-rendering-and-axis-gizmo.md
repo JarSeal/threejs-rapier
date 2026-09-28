@@ -1,7 +1,7 @@
 Status: draft | not-implemented
 Category: Rendering, Multi-viewport, Debugger
 Blocks: p115_debug-environment-ball-viewport.md
-Related: p110_skybox-refactor-and-layered-sky-system.md (epic), p115_debug-environment-ball-viewport.md (env ball as a second viewport left of the gizmo, F7; blocked by this plan), p105_refactor-debugger-drawer-tab-creation.md (will migrate the options this plan adds)
+Related: p110_skybox-refactor-and-layered-sky-system.md (epic), p115_debug-environment-ball-viewport.md (env ball as a second viewport left of the gizmo, F7; blocked by this plan), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will migrate the options this plan adds)
 
 # Multi-viewport Rendering and Axes Gizmo — Plan
 

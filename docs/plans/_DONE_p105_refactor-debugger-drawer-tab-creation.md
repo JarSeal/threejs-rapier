@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Debugger, Refactoring
 Related: \_DONE_p100_small-bug-fixes-and-tweaks.md (§8.1 `_disableDebugger` bug lives in the same file), p125_spatial-index-system-visualizer.md (should be built on the new API), p067_character-state-debugger-window.md (touches the Characters tab), p111_skybox-core-refactor-and-layered-schema.md (rewrites the SkyBox tab folder-per-layer; see Phase 4), p080_multi-viewport-rendering-and-axis-gizmo.md and p115_debug-environment-ball-viewport.md (add Debug Tools options this plan migrates)
 
@@ -305,6 +305,26 @@ Manual verification: per tab as before. Also check scene switching (the lists re
 | Large lists | The Large ECS test world can have many physics entities. The signature check keeps refreshes cheap, but a full re-render after a toggle is O(n). Acceptable for now; row-level patching is a follow-up if it becomes measurable. |
 | Overlap with p100 §8.1, p067, p125 | p100 fixes `_disableDebugger` in the same file, so land either one first and rebase the other. p067 changes the Characters tab. p125 should be written against the new API. |
 | No automated verification | There is no test framework, and headless WebGPU doesn't run under WSL2 (see p071's notes). Every phase relies on manual `?isDebug=true` walkthroughs. |
+
+## Implementation notes (where the shipped code differs from the design above)
+
+- **Persistence is tab-level `persistKeys`, not per-binding `persist` flags** (decision 7). Hydration and writes touch only the listed `state` keys, so stale runtime fields in old whole-object LS values (`isMasterPlaying`, `currentApi*`) are no longer restored and drop out on the first write. Programmatic writes (undo handlers) use `persistDebuggerTabValue(id, key)`.
+- **Binding keys can be one-level paths** (`'helpers.showGridHelper'`, typed by `DebuggerStateKey<S>`). The top-level key is what's persisted, so nested LS shapes (`AEK_debugTools`) stay unchanged.
+- **`uiLsKey`** sets the folder-state key independently of `lsKey` (default `${lsKey}UI`). SkyBox and Assets use it because their only tab-owned key is the UI key. Module fields that share a UI key are merged, not overwritten.
+- **`onRefresh`** (runs before the content is built and before every refresh) syncs live values into proxies. It replaces most of the per-module `update…` bookkeeping.
+- **Folders use `persistExpanded`**, not `persist`.
+- **`isDebuggerTabOpen` checks the mounted tab**, not `drawerState.currentTabId`, which can name a tab that isn't registered yet.
+- **Lists:**
+  - `selectedItemId` may return an array (Characters has several edit windows open at once).
+  - Items also have `badge`, `suffix` and `description`.
+  - The selection refresh from inside an edit window's content is deferred with `queueMicrotask`, because the window state isn't open yet while its content is built. That same microtask sets `onClose` for windows restored from LS.
+- **Dynamic-`html` CMP sections re-render only when their HTML changed.**
+- **The default `tabOrder` puts Raycast before Lights.** That was the on-screen order read from the running drawer. The legacy `orderNr` values were removed from every module.
+- **Removed public API:** `createNewDebuggerPane`, `createNewDebuggerContainer`, `TabAndContainer`, the legacy `createDebuggerTab` shape, `buildStatsDebugGUI` and `updateStatsDebugGUI`. The engine version went 1.2.x "Sunrise" → 2.0.0 "Morning".
+- **Physics gravity undo** coalesces like the iteration counts, instead of the hand-kept drag-start value.
+- **Raycast's on-screen helper toggle** uses a plain refresh, not `{ rebuild: true }`.
+- **ECS's benchmark readout** uses `refreshIntervalMs` + `onRefresh`, not `onOpen`.
+- **p080, p111 and p115 had not landed.** SkyBox took the non-p111 path, and there were no axes gizmo or environment ball options to migrate.
 
 ## Verification
 

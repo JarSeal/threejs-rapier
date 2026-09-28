@@ -1,7 +1,6 @@
 import { type Renderer } from 'three/webgpu';
 import { IS_DEBUG_ENV } from '../core/Config';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
-import { updateDebuggerTab } from './DebuggerGUI';
 
 export type StatsOptions = {
   /** @deprecated Unused: the Statistics tab keeps its folder states in `AEK_debugStatsUI`. */
@@ -82,8 +81,5 @@ export const getStats = () => useDebug(debugGUI)?._getStats();
  * @returns {@link StatsOptions}
  */
 export const getStatsConfig = () => useDebug(debugGUI)?._getStatsConfig();
-
-/** Refreshes the Statistics debugger tab (when it is the open one). */
-export const updateStatsDebugGUI = () => updateDebuggerTab('statsControls');
 
 export const getStatsCmp = () => useDebug(debugGUI)?._getStatsCmp();
