@@ -330,7 +330,7 @@ export const _updateDebuggerSceneTitle = (title: string) => {
 };
 
 export const _disableDebugger = (disable: boolean) => {
-  if (!isDebugEnvironment) return;
+  if (!isDebugEnvironment()) return;
   debuggerDisabled = disable;
   if (disable) {
     drawerCMP?.updateClass(styles.debuggerDisabled, 'add');

@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Physics, Bug
-Related: p100_small-bug-fixes-and-tweaks.md (§5, where this was split out from), p500_restore-physics-snapshot.md
+Related: \_DONE_p100_small-bug-fixes-and-tweaks.md (§5, where this was split out from), p500_restore-physics-snapshot.md
 
 # Physics Scene-Load Determinism — Plan
 
