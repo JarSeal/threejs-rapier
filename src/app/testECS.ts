@@ -6,6 +6,7 @@ import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
 import { createLightEntity } from '../_engine/core/LightManager';
 import { createCameraEntity } from '../_engine/core/CameraManager';
 import { registerHoverToolEffect } from '../toolkit/ecs/effects/HoverEffect';
+import { getMaterial } from '../_engine/core/Material'; // TEMP p210
 
 export const scene = async () => {
   const updateLoaderFn = getLoaderStatusUpdater();
@@ -172,6 +173,52 @@ export const scene = async () => {
     rotation: { x: Math.PI / 2 },
   };
   createMeshEntity(groundProps, { appId: 'ground', debugData: { name: 'Ground' } }, ecsWorld);
+
+  // TEMP p210 verification: triplanarGrid on a floor, a wall meeting it at a corner, and a rotated box
+  const tmpGridMat = getMaterial('triplanarGrid');
+  if (tmpGridMat) {
+    createMeshEntity(
+      {
+        geo: { type: 'BOX', params: { width: 8, height: 0.2, depth: 8 } },
+        mat: tmpGridMat,
+        receiveShadow: true,
+        position: { x: 4, y: -0.8, z: 11 },
+      },
+      { appId: 'tmpGridFloor' },
+      ecsWorld
+    );
+    createMeshEntity(
+      {
+        geo: { type: 'BOX', params: { width: 8, height: 4, depth: 0.2 } },
+        mat: tmpGridMat,
+        receiveShadow: true,
+        position: { x: 4, y: 1.3, z: 7 },
+      },
+      { appId: 'tmpGridWall' },
+      ecsWorld
+    );
+    createMeshEntity(
+      {
+        geo: { type: 'BOX', params: { width: 2, height: 2, depth: 2 } },
+        mat: tmpGridMat,
+        castShadow: true,
+        position: { x: 7.6, y: 3.2, z: 15.2 },
+        rotation: { y: Math.PI / 4 },
+      },
+      { appId: 'tmpGridBox' },
+      ecsWorld
+    );
+    createMeshEntity(
+      {
+        geo: { type: 'SPHERE', params: { radius: 1.2, widthSegments: 48, heightSegments: 32 } },
+        mat: tmpGridMat,
+        castShadow: true,
+        position: { x: 9.6, y: 3.4, z: 15.6 },
+      },
+      { appId: 'tmpGridSphere' },
+      ecsWorld
+    );
+  }
 
   // Second world
   const uiWorld = new ECSWorld({ id: 'ui', applyGlobalPlugins: false });

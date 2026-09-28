@@ -2,6 +2,7 @@
 // ALSO, DO NOT MODIFY THE 'generatedAppData.json' FILE)!
 import * as testTslMatFn from '../app/materials/testTslMat.tsl.ts';
 import * as checkerBoardFn from '../toolkit/materials/checkerBoard.tsl.ts';
+import * as triplanarGridFn from '../toolkit/materials/triplanarGrid.tsl.ts';
 import * as ambientOcclusionPostFxFn from '../app/postFx/ambientOcclusion.tsl.ts';
 import { type SceneData } from './core/Scene.ts';
 import { type ScenePrimitiveAssets } from './core/SceneLoader.ts';
@@ -86,6 +87,10 @@ export const tslMaterialFileObjects = {
     colorNode: checkerBoardFn.colorNode,
     roughnessNode: checkerBoardFn.roughnessNode,
     normalNode: checkerBoardFn.normalNode,
+  },
+  triplanarGrid: {
+    colorNode: triplanarGridFn.colorNode,
+    normalNode: triplanarGridFn.normalNode,
   },
 };
 
