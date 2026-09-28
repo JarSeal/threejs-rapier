@@ -239,6 +239,6 @@ createKeyBinding({
   type: 'KEY_DOWN',
   chord: { key: 'd' },
   fn: (_, time) => {
-    console.log('PRESSED', performance.now() - time);
+    llog('PRESSED', performance.now() - time);
   },
 });

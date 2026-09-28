@@ -180,7 +180,7 @@ export const init = (
     });
     return physicsWorldAPI;
   } catch (err) {
-    throw new Error('Failed to initialize Rapier physics.');
+    throw new Error(`Failed to initialize Rapier physics: ${(err as Error)?.message ?? err}`);
   }
 };
 

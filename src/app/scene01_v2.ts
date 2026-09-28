@@ -11,6 +11,7 @@ import { transformAppSpeedValue } from '../_engine/core/MainLoop';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
+import { llog } from '../_engine/utils/Logger';
 
 export const SCENE01_ID = 'testScene1';
 
@@ -273,7 +274,7 @@ export const scene = async () =>
         isSensor: true,
         translation: { x: 0, y: -1.5, z: 0 },
         collisionEventFn: (collider1, collider2, started) => {
-          console.log('SENSOR ALERT', collider1, collider2, started);
+          llog('SENSOR ALERT', collider1, collider2, started);
         },
       },
       undefined,
