@@ -1,7 +1,7 @@
 Status: draft | feasibility study — not-implemented
 Category: Skybox, Refactor, Rendering
 Blocks: p111_skybox-core-refactor-and-layered-schema.md, p112_procedural-sky-atmosphere-sun-and-env-bake.md, p113_night-sky-and-day-night-cycle.md, p114_space-preset-and-nebula-creator.md, p115_debug-environment-ball-viewport.md
-Related: p080_multi-viewport-rendering-and-axis-gizmo.md (the env ball viewport builds on it), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will migrate the SkyBox tab and the Debug Tools env ball options)
+Related: \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (the env ball viewport builds on it), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will migrate the SkyBox tab and the Debug Tools env ball options)
 
 # SkyBox Refactor and Layered Sky System — Epic Plan
 

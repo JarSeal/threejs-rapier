@@ -1,7 +1,6 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Rendering, Multi-viewport, Debugger
-Blocks: p115_debug-environment-ball-viewport.md
-Related: p110_skybox-refactor-and-layered-sky-system.md (epic), p115_debug-environment-ball-viewport.md (env ball as a second viewport left of the gizmo, F7; blocked by this plan), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will migrate the options this plan adds)
+Related: p110_skybox-refactor-and-layered-sky-system.md (epic), p115_debug-environment-ball-viewport.md (env ball as a second viewport left of the gizmo, F7; builds on this plan), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed first: this plan's Debug Tools options were built on its declarative tab API)
 
 # Multi-viewport Rendering and Axes Gizmo — Plan
 
@@ -377,3 +376,13 @@ Each phase compiles, lints and leaves the app working.
   - A 100px drag on the gizmo, continuing outside it under pointer capture, turned the azimuth by −0.897 rad (OrbitControls' speed predicts −0.898) with no elevation change. So OrbitControls did not rotate as well, and it worked again right after.
   - Wheel over the gizmo leaves the distance unchanged. A canvas drag during an align cancels it.
   - The pose survives a reload.
+
+### Phase 5 (docs and version): done
+
+- `.claude/CLAUDE.md` has a "Viewports" section under Architecture.
+- **No version bump.** This branch already carries an engine major bump (`2.0.0` "Morning", from `main`'s `1.2.0`). The rule is one bump per branch, at the level of the biggest change, so this minor feature is covered by it. The app side is unchanged: the throwaway spike in `src/index.ts`, committed in Phases 1–3, was removed here, which restores the file to its pre-plan state.
+- The `Blocks` / `Blocked by` links to p115 are removed (p115 is now blocked only by p111). The p110, p115 and p130 references point to the `_DONE_` file.
+- How the final file list differs from "Files touched":
+  - `HUD.ts` / `InitApp.ts` do not create the viewports layer: it is created by the first `createViewport()`. `InitApp.ts` only awaits `registerAxesGizmoModule()`.
+  - Also touched: `core/Debug/_dbg__DebuggerGUI.ts` (a global `debugDrawerToggler` class on the drawer toggler, for the TOP-position rule) and `debug/DebugToolsManager.ts` (`toggleAxesGizmo()` for F8, plus the state type and defaults).
+  - `package.json` is unchanged (see above).

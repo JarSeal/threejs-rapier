@@ -107,6 +107,14 @@ Scene loads are deterministic (p101). `SceneLoader.ts` holds physics stepping (`
 
 To check determinism, append `?physicsProbe=N` (debug mode) or use "Determinism probe" in the Physics API debug tab. It freezes physics N fixed steps after each scene enter, logs a hash of every dynamic body's state, and diffs it against the last run of the same scene and N. The gym's `ARE_CHARACTERS_ENABLED` flag leaves its characters out for this.
 
+### Viewports
+
+`src/_engine/core/Viewports.ts` renders extra rectangles over the canvas, each with its own scene and camera (picture-in-picture, minimaps, item previews), after the main render and PostFX. Each enabled viewport renders into its own render target, then a quad composites it with the renderer's tone mapping and colour space neutralised (the `RenderPipeline.render()` contract), so it works on both backends with PostFX on or off. `renderViewports()` is called once from `MainLoop.renderScene()` and is a single count check while no viewport is enabled. A viewport is render configuration, not ECS: `createViewport({ id, scene, camera, anchor | rect, ... })`, where `camera` can be a resolver (eg. `getActiveCamera`), and `sceneId` deletes it on that scene's exit.
+
+- Placement is DOM-driven. Each viewport owns a slot element in `#aekViewportsLayer` (created on the first viewport), either in a corner stack (`anchor` + `order`, 0 = in the corner; global class `aekViewportStack_<ANCHOR>` for consumer SCSS) or at an explicit `rect` (px or %). The rendered rect is the slot's box, re-read only on create/enable, canvas resize, `<body>` class changes, while a CSS transition runs in the layer, or on `invalidateViewportLayout()`.
+- `interactive` slots take pointer events, so those never reach the canvas, OrbitControls or `MouseInput`; raycast into the viewport with `getViewportPointerNDC`. Other slots let everything through.
+- The first consumer is the debug-only axes gizmo (`debug/AxesGizmo.ts` → `core/Debug/_dbg__AxesGizmo.ts`): top right, follows the active camera, F8 and two Debug Tools options. With the debug camera, clicking a bubble aligns it and dragging orbits it.
+
 ### Build config notes (`vite.config.ts`)
 
 - `root: './src'`, output to `../dist`.
