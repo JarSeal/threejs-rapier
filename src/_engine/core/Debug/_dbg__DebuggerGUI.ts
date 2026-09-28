@@ -9,12 +9,13 @@ import { lerror, lwarn } from '../../utils/Logger';
 import {
   type TabAndContainer,
   type DebugGUIOpts,
-  type DebuggerTabDef,
+  type AnyDebuggerTabDef,
   type UpdateDebuggerTabOpts,
 } from '../../debug/DebuggerGUI';
 import { createDebuggerSceneLoader } from './_dbg__DebuggerSceneLoader';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
+import { _buildDebuggerPane, persistDebuggerTabStateValue } from './_dbg__DebuggerPaneBuilder';
 
 let drawerCMP: TCMP | null = null;
 let currentSceneTitleCMP: TCMP | null = null;
@@ -67,10 +68,10 @@ const initDrawerState = () => {
 };
 
 type LegacyTabDef = Omit<TabAndContainer, 'button'>;
-type AnyTabDef = DebuggerTabDef | LegacyTabDef;
+type AnyTabDef = AnyDebuggerTabDef | LegacyTabDef;
 type TabEntry = { def: AnyTabDef; button: TCMP | null };
 
-const isNewTabDef = (def: AnyTabDef): def is DebuggerTabDef => 'content' in def;
+const isNewTabDef = (def: AnyTabDef): def is AnyDebuggerTabDef => 'content' in def;
 
 // Keyed by tab id. A Map keeps insertion order, so a re-registered (replaced) tab keeps its
 // registration position for the ordering tie-break.
@@ -80,8 +81,8 @@ const tabs = new Map<string, TabEntry>();
  * preference, and it can point to a tab that is not registered yet). */
 type MountedTab = {
   id: string;
-  /** New shape tabs only: the content sections (for refresh). */
-  sections: TCMP[];
+  /** New shape tabs only: refresh function of each content section. */
+  sectionRefreshers: (() => void)[];
   onOpenCleanup: (() => void) | null;
   intervalId: ReturnType<typeof setInterval> | null;
 };
@@ -126,7 +127,7 @@ const createTabMenuButtons = () => {
 };
 
 /** Builds a new shape tab: container with the heading row, then the content sections. */
-const buildNewTabContent = (def: DebuggerTabDef) => {
+const buildNewTabContent = (def: AnyDebuggerTabDef) => {
   const container = CMP({ id: `debuggerPane-${def.id}`, class: styles.childContainer });
 
   const headingRow = container.add({ class: 'debuggerTabHeadingRow' });
@@ -149,10 +150,31 @@ const buildNewTabContent = (def: DebuggerTabDef) => {
   const headerButtons = def.headerButtons?.() || [];
   for (let i = 0; i < headerButtons.length; i++) headingRow.add(headerButtons[i]);
 
+  runOnRefresh(def);
   const sections = def.content();
-  for (let i = 0; i < sections.length; i++) container.add(sections[i]);
+  const sectionRefreshers: (() => void)[] = [];
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
+    if ('isCmp' in section) {
+      container.add(section);
+      // Only a dynamic template has anything to refresh (a static CMP is left alone)
+      if (typeof section.props?.html === 'function') sectionRefreshers.push(() => section.update());
+      continue;
+    }
+    const built = _buildDebuggerPane(def, section);
+    container.add(built.cmp);
+    sectionRefreshers.push(built.refresh);
+  }
 
-  return { container, sections };
+  return { container, sectionRefreshers };
+};
+
+const runOnRefresh = (def: AnyDebuggerTabDef) => {
+  try {
+    def.onRefresh?.();
+  } catch (err) {
+    lerror(`Debugger tab "${def.id}" onRefresh failed`, err);
+  }
 };
 
 /** Builds a legacy tab: its container(s), each with the child container class. */
@@ -203,10 +225,10 @@ const mountTab = (entry: TabEntry) => {
   tabsContainerWrapper.removeChildren();
 
   const def = entry.def;
-  let sections: TCMP[] = [];
+  let sectionRefreshers: (() => void)[] = [];
   if (isNewTabDef(def)) {
     const built = buildNewTabContent(def);
-    sections = built.sections;
+    sectionRefreshers = built.sectionRefreshers;
     tabsContainerWrapper.add(built.container);
   } else {
     const containers = buildLegacyTabContent(def);
@@ -218,7 +240,7 @@ const mountTab = (entry: TabEntry) => {
   }
   entry.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
 
-  mountedTab = { id: def.id, sections, onOpenCleanup: null, intervalId: null };
+  mountedTab = { id: def.id, sectionRefreshers, onOpenCleanup: null, intervalId: null };
   if (isNewTabDef(def) && def.onOpen) {
     try {
       mountedTab.onOpenCleanup = def.onOpen() || null;
@@ -229,14 +251,14 @@ const mountTab = (entry: TabEntry) => {
   startTabInterval();
 };
 
-/** Refreshes the mounted tab's dynamic content (only CMP sections with an `html` function). */
+/** Refreshes the mounted tab's content: panes and CMP sections with an `html` function. */
 const refreshMountedTab = () => {
   if (!mountedTab) return;
-  const sections = mountedTab.sections;
-  for (let i = 0; i < sections.length; i++) {
-    const section = sections[i];
-    if (typeof section.props?.html === 'function') section.update();
-  }
+  const entry = tabs.get(mountedTab.id);
+  if (!entry || !isNewTabDef(entry.def)) return;
+  runOnRefresh(entry.def);
+  const refreshers = mountedTab.sectionRefreshers;
+  for (let i = 0; i < refreshers.length; i++) refreshers[i]();
 };
 
 let guiOpts: DebugGUIOpts | undefined = undefined;
@@ -411,6 +433,15 @@ export const _removeDebuggerTab = (id: string) => {
   createTabMenuButtons();
   if (!drawerCMP) return;
   _createDebugGui(guiOpts);
+};
+
+export const _persistDebuggerTabValue = (id: string, key: string) => {
+  const entry = tabs.get(id);
+  if (!entry || !isNewTabDef(entry.def)) {
+    lwarn(`Could not find a debugger tab with id "${id}" in persistDebuggerTabValue`);
+    return;
+  }
+  persistDebuggerTabStateValue(entry.def, key);
 };
 
 export const _isDebuggerTabOpen = (id: string) =>

@@ -21,6 +21,10 @@ import { getActiveCamera } from './CameraManager';
 import { existsOrThrow } from '../utils/assert';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import { getActivePostFxPipeline } from './PostFX';
+import { updateDebuggerTab } from '../debug/DebuggerGUI';
+
+/** Debugger drawer tab id of the loop controls. */
+export const LOOP_DEBUGGER_TAB_ID = 'loopControls';
 
 const timer = new Timer();
 let delta = 0;
@@ -59,7 +63,7 @@ export type LoopState = {
   isLoadingScene: boolean;
 };
 
-let loopState: LoopState = {
+const loopState: LoopState = {
   masterPlay: true,
   appPlay: true,
   isMasterPlaying: false,
@@ -379,10 +383,8 @@ export const initMainLoop = () => {
 
   if (isDebugEnvironment() || isProdTestMode()) {
     const gui = useDebug(debugGUI, true);
-    if (gui) {
-      loopState = gui.getSavedLoopState(loopState);
-      gui.createLoopDebugControls(loopState);
-    }
+    // Also hydrates loopState's persisted debug values
+    if (gui) gui.createLoopDebugControls(loopState);
   }
 
   initRayCasting();
@@ -445,6 +447,7 @@ export const toggleMainPlay = (value?: boolean) => {
     loopState.isMasterPlaying = true;
     requestAnimationFrame(mainLoop);
   }
+  updateDebuggerTab(LOOP_DEBUGGER_TAB_ID);
 };
 
 /**
@@ -454,11 +457,10 @@ export const toggleMainPlay = (value?: boolean) => {
 export const toggleAppPlay = (value?: boolean) => {
   if (value !== undefined) {
     loopState.appPlay = value;
-    useDebug(debugGUI, true)?.refreshAppPlayBinding();
-    return;
+  } else {
+    loopState.appPlay = !loopState.appPlay;
   }
-  loopState.appPlay = !loopState.appPlay;
-  useDebug(debugGUI, true)?.refreshAppPlayBinding();
+  updateDebuggerTab(LOOP_DEBUGGER_TAB_ID);
 };
 
 /**

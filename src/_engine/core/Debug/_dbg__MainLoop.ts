@@ -1,73 +1,52 @@
-import { BindingApi } from '@tweakpane/core';
-import { IS_PROD_TEST_MODE } from '../Config';
-import { getSvgIcon } from '../UI/icons/SvgIcon';
-import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
-import { mainLoop, type LoopState } from '../MainLoop';
-import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { createDebuggerTab } from '../../debug/DebuggerGUI';
+import { LOOP_DEBUGGER_TAB_ID, mainLoop, type LoopState } from '../MainLoop';
 import { InitOnScreenTools, updateOnScreenTools } from '../../debug/OnScreenTools';
-import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 
 const LS_KEY = 'AEK_debugLoop';
-let appPlayBinding: BindingApi | null = null;
 
+/**
+ * Registers the Loop tab. It also hydrates loopState's persisted values (in prod test mode
+ * too, where the drawer itself doesn't exist), so call it before loopState is used.
+ */
 export const createLoopDebugControls = (loopState: LoopState) => {
-  // Init On Screen Tools
-  InitOnScreenTools();
-
-  // Prod test mode only gets the on-screen play tools, not the drawer tab
-  if (IS_PROD_TEST_MODE) return;
-
-  const icon = getSvgIcon('infinity');
   createDebuggerTab({
-    id: 'loopControls',
-    buttonText: icon,
+    id: LOOP_DEBUGGER_TAB_ID,
     title: 'Loop controls',
-    container: () => {
-      const clearTabBtn = createClearTabLSButton({
-        hasData: () => lsKeyHasData(LS_KEY),
-        onClear: () => lsRemoveItem(LS_KEY),
-        watchKey: LS_KEY,
-      });
-      const { container, debugGUI } = createNewDebuggerPane('loop', `${icon} Loop Controls`, [
-        clearTabBtn,
-      ]);
-      debugGUI.addBinding(loopState, 'masterPlay', { label: 'Master loop' }).on('change', (e) => {
-        if (e.value) {
-          requestAnimationFrame(mainLoop);
-        }
-        lsSetItem(LS_KEY, loopState);
-        updateOnScreenTools('PLAY');
-      });
-      appPlayBinding = debugGUI
-        .addBinding(loopState, 'appPlay', { label: 'App loop' })
-        .on('change', () => {
-          lsSetItem(LS_KEY, loopState);
-          updateOnScreenTools('PLAY');
-        });
-      debugGUI
-        .addBinding(loopState, 'maxFPS', { label: 'Forced max FPS (0 = off)', step: 1, min: 0 })
-        .on('change', (e) => {
-          const value = e.value;
-          if (value > 0) {
-            loopState.maxFPSInterval = 1000 / value;
-          }
-          lsSetItem(LS_KEY, loopState);
-        });
-      debugGUI
-        .addBinding(loopState, 'playSpeedMultiplier', {
-          label: 'Play speed multiplier',
-          step: 0.01,
-          min: 0,
-        })
-        .on('change', (e) => {
-          loopState.playSpeedMultiplier = e.value;
-          lsSetItem(LS_KEY, loopState);
-        });
-      return container;
-    },
+    icon: 'infinity',
+    lsKey: LS_KEY,
+    state: loopState,
+    persistKeys: ['masterPlay', 'appPlay', 'maxFPS', 'playSpeedMultiplier'],
+    content: () => [
+      {
+        pane: true,
+        content: [
+          {
+            key: 'masterPlay',
+            label: 'Master loop',
+            onChange: (value) => {
+              if (value) requestAnimationFrame(mainLoop);
+              updateOnScreenTools('PLAY');
+            },
+          },
+          { key: 'appPlay', label: 'App loop', onChange: () => updateOnScreenTools('PLAY') },
+          {
+            key: 'maxFPS',
+            label: 'Forced max FPS (0 = off)',
+            step: 1,
+            min: 0,
+            onChange: (value) => {
+              if (Number(value) > 0) loopState.maxFPSInterval = 1000 / Number(value);
+            },
+          },
+          { key: 'playSpeedMultiplier', label: 'Play speed multiplier', step: 0.01, min: 0 },
+        ],
+      },
+    ],
   });
+
+  // maxFPSInterval is derived, not persisted
+  if (loopState.maxFPS > 0) loopState.maxFPSInterval = 1000 / loopState.maxFPS;
+
+  // After the hydration above: the tools render from loopState
+  InitOnScreenTools();
 };
-
-export const refreshAppPlayBinding = () => appPlayBinding?.refresh();
-
-export const getSavedLoopState = (loopState: LoopState): LoopState => lsGetItem(LS_KEY, loopState);
