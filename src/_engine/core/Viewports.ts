@@ -16,14 +16,31 @@
  *    `renderOutput()` does the tone mapping and colour space conversion, and blends
  *    premultiplied "over" the frame.
  *
+ * Layout is DOM-anchored: every viewport owns a slot element in the viewports layer (in the
+ * HUD root), either in a corner stack (`anchor` + `order`) or placed by an explicit `rect`. The
+ * rendered rect is the slot's box, so CSS (media queries, transitions) is the single source of
+ * truth for placement. Slot boxes are only read when they may have changed: on create/enable,
+ * canvas resize, pixel ratio change, a body class change, every frame while a CSS transition
+ * runs in the layer, and on invalidateViewportLayout().
+ *
+ * Input: an `interactive` viewport's slot takes pointer events (so they never reach the canvas,
+ * OrbitControls or MouseInput); others let everything through to the canvas.
+ *
  * The same path works with PostFX on or off, and on the WebGPU and WebGL2 backends. With no
- * enabled viewport, renderViewports() is a single count check.
+ * enabled viewport, renderViewports() is a single count check, and nothing is added to the DOM
+ * before the first createViewport().
  */
 import * as THREE from 'three/webgpu';
 import { texture, uniform, uv } from 'three/tsl';
+import type { TCMP } from '../utils/CMP';
 import { lwarn } from '../utils/Logger';
+import { getHUDRootCMP } from './HUD';
+import { getCurrentSceneId, registerOnAllSceneExits } from './Scene';
+import styles from './Viewports.module.scss';
 
 export type ViewportRect = { x: number; y: number; width: number; height: number };
+
+export type ViewportAnchor = 'TOP_RIGHT' | 'TOP_LEFT' | 'BOTTOM_RIGHT' | 'BOTTOM_LEFT';
 
 export type ViewportProps = {
   id: string;
@@ -34,9 +51,18 @@ export type ViewportProps = {
   /** The camera, or a resolver called every frame (eg. `() => getActiveCamera() ?? null`).
    * The viewport is skipped on frames where the resolver returns null. */
   camera: THREE.Camera | (() => THREE.Camera | null);
-  /** Placement in CSS px (or `%` of the canvas), relative to the canvas top-left corner. The
-   * part outside the canvas is cropped. */
-  rect: ViewportRect & { unit?: 'px' | '%' };
+  /** Corner stack to place the slot in, when there is no `rect`. Default 'TOP_RIGHT'. Its
+   * global class is `aekViewportStack_<anchor>` (for consumer SCSS). */
+  anchor?: ViewportAnchor;
+  /** Position inside the corner stack, from the corner outwards (0 = in the corner). */
+  order?: number;
+  /** Explicit placement in CSS px (or `%` of the canvas), relative to the canvas top-left
+   * corner, instead of a corner stack. The part outside the canvas is cropped. */
+  rect?: ViewportRect & { unit?: 'px' | '%' };
+  /** CSS size of a stacked slot (eg. '10rem'). Can be left out when `slotClass` sizes it. */
+  size?: { width: string; height: string };
+  /** Extra class(es) on the slot (consumer SCSS: size, margins, media queries). */
+  slotClass?: string;
   /** Default true: cleared with alpha 0 and blended over the frame. */
   transparent?: boolean;
   /** Clear colour, for opaque viewports whose scene has no background. Default black. */
@@ -47,9 +73,19 @@ export type ViewportProps = {
   /** MSAA samples of the viewport's render target. Default: 4 if the renderer uses MSAA,
    * otherwise 0. */
   samples?: number;
+  /** Default false. When true, the slot takes pointer events (see getViewportPointerNDC()). */
+  interactive?: boolean;
   /** Default true */
   enabled?: boolean;
-  /** Called every frame before the viewport renders (only while it is enabled). */
+  /** When set, the viewport is deleted when that scene is exited. Otherwise it is global and
+   * persists across scene changes. */
+  sceneId?: string;
+  /** Default false. Keeps a perspective camera's aspect (or an orthographic camera's frustum
+   * width) matched to the viewport rect. Don't use it with a camera the main view also renders
+   * with (eg. getMainCamera()). */
+  syncCameraAspect?: boolean;
+  /** Called every frame before the viewport renders (only while it is enabled and on the
+   * canvas). */
   onBeforeRender?: (vp: Viewport, delta: number) => void;
 };
 
@@ -57,9 +93,12 @@ export type Viewport = {
   readonly id: string;
   readonly props: Readonly<ViewportProps>;
   /** The rendered rect in CSS px, relative to the canvas top-left corner, snapped to whole
-   * device pixels (before cropping to the canvas). 0×0 until its first frame. */
+   * device pixels (before cropping to the canvas). 0×0 until its first layout. */
   readonly rect: Readonly<ViewportRect>;
   readonly enabled: boolean;
+  readonly interactive: boolean;
+  /** The viewport's slot element (listen to pointer events on it when interactive). */
+  readonly slotElem: HTMLElement;
 };
 
 type ViewportState = {
@@ -67,9 +106,10 @@ type ViewportState = {
   props: ViewportProps;
   rect: ViewportRect;
   enabled: boolean;
-  /** Needs a layout (rect, render target size, crop) before its next render. */
-  isLayoutDirty: boolean;
-  /** Nothing of it is on the canvas (empty or fully cropped rect). */
+  interactive: boolean;
+  slotElem: HTMLElement;
+  slotCmp: TCMP;
+  /** Nothing of it is on the canvas (empty, hidden or fully cropped slot). */
   isEmpty: boolean;
   /** Full rect in device px (x0, y0 = top-left, relative to the canvas). */
   devX: number;
@@ -91,10 +131,29 @@ type ViewportState = {
   /** Tone mapping and output colour space the quad material was built with (null = never). */
   builtToneMapping: THREE.ToneMapping | null;
   builtColorSpace: string | null;
+  /** The camera and aspect syncCameraAspect last applied. */
+  syncedCamera: THREE.Camera | null;
+  syncedAspect: number;
 };
+
+const LAYER_ID = 'aekViewportsLayer';
+const SCENE_EXIT_HOOK_ID = 'viewports';
+/** A transition that never reports its end (eg. its element was removed mid-way) stops being
+ * tracked after this long without transition events. */
+const TRANSITION_TRACKING_TIMEOUT_MS = 3000;
 
 const viewports: ViewportState[] = [];
 let enabledCount = 0;
+
+let layerCmp: TCMP | null = null;
+const stackCmps: Partial<Record<ViewportAnchor, TCMP>> = {};
+let isLayoutDirty = true;
+let runningTransitionCount = 0;
+let lastTransitionEventTime = 0;
+
+// The canvas's CSS box at the last layout (for getViewportPointerNDC)
+let canvasLeft = 0;
+let canvasTop = 0;
 
 // Canvas size and pixel ratio of the last layout (a change re-layouts every viewport)
 let lastCanvasWidth = -1;
@@ -107,6 +166,83 @@ const _bufferSize = new THREE.Vector2();
 const _prevClearColor = new THREE.Color();
 const _prevViewport = new THREE.Vector4();
 
+const onTransitionRun = () => {
+  runningTransitionCount++;
+  lastTransitionEventTime = performance.now();
+};
+
+const onTransitionStop = () => {
+  runningTransitionCount = Math.max(0, runningTransitionCount - 1);
+  lastTransitionEventTime = performance.now();
+  // One more layout for the final position
+  isLayoutDirty = true;
+};
+
+/** Creates the viewports layer (on the first createViewport()). */
+const ensureLayer = () => {
+  if (layerCmp) return layerCmp;
+  layerCmp = getHUDRootCMP().add({
+    id: LAYER_ID,
+    idAttr: true,
+    class: styles.viewportsLayer,
+    // First in the HUD root, so it is below the rest of the HUD also in DOM order
+    prepend: true,
+  });
+  // Transition events bubble, so the layer sees every slot and stack transition
+  layerCmp.elem.addEventListener('transitionrun', onTransitionRun);
+  layerCmp.elem.addEventListener('transitionend', onTransitionStop);
+  layerCmp.elem.addEventListener('transitioncancel', onTransitionStop);
+  // Body classes (eg. the debugger drawer's) can move or hide slots without a transition
+  new MutationObserver(invalidateViewportLayout).observe(document.body, {
+    attributes: true,
+    attributeFilter: ['class'],
+  });
+  registerOnAllSceneExits(SCENE_EXIT_HOOK_ID, deleteSceneViewports);
+  return layerCmp;
+};
+
+const getStackCmp = (anchor: ViewportAnchor) => {
+  let stackCmp = stackCmps[anchor];
+  if (!stackCmp) {
+    stackCmp = ensureLayer().add({
+      id: `${LAYER_ID}_stack_${anchor}`,
+      class: [styles.viewportStack, `aekViewportStack_${anchor}`],
+    });
+    stackCmps[anchor] = stackCmp;
+  }
+  return stackCmp;
+};
+
+const createSlotCmp = (props: ViewportProps) => {
+  const classes = ['aekViewportSlot', styles.viewportSlot];
+  if (props.slotClass) classes.push(...props.slotClass.split(' ').filter(Boolean));
+  if (props.interactive) classes.push('aekViewportSlot_interactive');
+  if (props.enabled === false) classes.push(styles.viewportSlot_disabled);
+  const slotProps = { id: `${LAYER_ID}_slot_${props.id}`, class: classes };
+
+  const rect = props.rect;
+  if (rect) {
+    const unit = rect.unit || 'px';
+    classes.push(styles.viewportSlot_rect);
+    return ensureLayer().add({
+      ...slotProps,
+      style: {
+        left: `${rect.x}${unit}`,
+        top: `${rect.y}${unit}`,
+        width: `${rect.width}${unit}`,
+        height: `${rect.height}${unit}`,
+      },
+    });
+  }
+  return getStackCmp(props.anchor || 'TOP_RIGHT').add({
+    ...slotProps,
+    style: {
+      order: String(props.order ?? 0),
+      ...(props.size ? { width: props.size.width, height: props.size.height } : {}),
+    },
+  });
+};
+
 /**
  * Creates a viewport: an extra rect with its own scene and camera, rendered over the main
  * canvas every frame after the main render (and PostFX).
@@ -118,6 +254,9 @@ export const createViewport = (props: ViewportProps): Viewport => {
   if (existing) {
     lwarn(`Viewport with id "${props.id}" already exists, in createViewport. Replacing it.`);
     deleteViewport(props.id);
+  }
+  if (props.rect && (props.anchor || props.order !== undefined || props.size)) {
+    lwarn(`Viewport "${props.id}" has a rect, so its anchor, order and size are ignored.`);
   }
 
   const material = new THREE.NodeMaterial();
@@ -132,12 +271,16 @@ export const createViewport = (props: ViewportProps): Viewport => {
   material.depthTest = false;
   material.depthWrite = false;
 
+  const slotCmp = createSlotCmp(props);
+
   const vp: ViewportState = {
     id: props.id,
     props,
     rect: { x: 0, y: 0, width: 0, height: 0 },
     enabled: props.enabled !== false,
-    isLayoutDirty: true,
+    interactive: Boolean(props.interactive),
+    slotElem: slotCmp.elem,
+    slotCmp,
     isEmpty: true,
     devX: 0,
     devY: 0,
@@ -155,14 +298,17 @@ export const createViewport = (props: ViewportProps): Viewport => {
     uvScale: uniform(new THREE.Vector2(1, 1)),
     builtToneMapping: null,
     builtColorSpace: null,
+    syncedCamera: null,
+    syncedAspect: 0,
   };
   viewports.push(vp);
   if (vp.enabled) enabledCount++;
+  isLayoutDirty = true;
   return vp;
 };
 
 /**
- * Deletes a viewport and disposes its render target and quad material.
+ * Deletes a viewport and disposes its render target, quad material and slot element.
  * @param id (string) viewport id
  */
 export const deleteViewport = (id: string) => {
@@ -173,11 +319,23 @@ export const deleteViewport = (id: string) => {
   if (vp.enabled) enabledCount--;
   vp.renderTarget?.dispose();
   vp.material.dispose();
+  vp.slotCmp.remove();
+  // Removing a slot can move the others in its stack
+  isLayoutDirty = true;
+};
+
+/** Deletes the viewports of the scene being exited (registered on all scene exits). */
+const deleteSceneViewports = () => {
+  const sceneId = getCurrentSceneId();
+  if (!sceneId) return;
+  for (let i = viewports.length - 1; i >= 0; i--) {
+    if (viewports[i].props.sceneId === sceneId) deleteViewport(viewports[i].id);
+  }
 };
 
 /**
- * Enables or disables a viewport. A disabled viewport costs nothing per frame, and keeps its
- * render target (so re-enabling it is cheap).
+ * Enables or disables a viewport. A disabled viewport costs nothing per frame, keeps its
+ * render target (so re-enabling it is cheap), and its slot is hidden (`display: none`).
  * @param id (string) viewport id
  * @param enabled (boolean)
  */
@@ -186,7 +344,21 @@ export const setViewportEnabled = (id: string, enabled: boolean) => {
   if (!vp || vp.enabled === enabled) return;
   vp.enabled = enabled;
   enabledCount += enabled ? 1 : -1;
-  if (enabled) vp.isLayoutDirty = true;
+  vp.slotElem.classList.toggle(styles.viewportSlot_disabled, !enabled);
+  isLayoutDirty = true;
+};
+
+/**
+ * Sets whether a viewport's slot takes pointer events (true) or lets them through to the
+ * canvas (false).
+ * @param id (string) viewport id
+ * @param interactive (boolean)
+ */
+export const setViewportInteractive = (id: string, interactive: boolean) => {
+  const vp = viewports.find((v) => v.id === id);
+  if (!vp || vp.interactive === interactive) return;
+  vp.interactive = interactive;
+  vp.slotElem.classList.toggle('aekViewportSlot_interactive', interactive);
 };
 
 /**
@@ -197,30 +369,59 @@ export const setViewportEnabled = (id: string, enabled: boolean) => {
 export const getViewport = (id: string): Viewport | undefined =>
   viewports.find((vp) => vp.id === id);
 
+/**
+ * Re-reads every viewport's slot box before the next render. Call it after changing something
+ * that moves or resizes slots without a transition, a canvas resize or a body class change
+ * (eg. a class on a slot's ancestor).
+ */
+export const invalidateViewportLayout = () => {
+  isLayoutDirty = true;
+};
+
+/**
+ * Writes a pointer event's position as normalized device coordinates of a viewport (-1..1,
+ * y up, the same as the viewport camera's), eg. for raycasting into the viewport's scene.
+ * @param id (string) viewport id
+ * @param e (PointerEvent | MouseEvent)
+ * @param out (THREE.Vector2) target
+ * @returns (boolean) whether the pointer is inside the viewport rect (`out` is written anyway)
+ */
+export const getViewportPointerNDC = (
+  id: string,
+  e: PointerEvent | MouseEvent,
+  out: THREE.Vector2
+) => {
+  const vp = viewports.find((v) => v.id === id);
+  if (!vp || !vp.rect.width || !vp.rect.height) return false;
+  const x = (e.clientX - canvasLeft - vp.rect.x) / vp.rect.width;
+  const y = (e.clientY - canvasTop - vp.rect.y) / vp.rect.height;
+  out.set(x * 2 - 1, -(y * 2 - 1));
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1;
+};
+
 const resolveCamera = (vp: ViewportState) => {
   const camera = vp.props.camera;
   return typeof camera === 'function' ? camera() : camera;
 };
 
-/** Computes the viewport's device px rect (snapped to whole pixels), its crop to the canvas,
+/** Reads the viewport's slot box, snaps it to whole device px, computes its crop to the canvas,
  * and (re)sizes its render target. */
 const layoutViewport = (
   vp: ViewportState,
   renderer: THREE.Renderer,
+  canvasRect: DOMRect,
   pixelRatio: number,
   bufferWidth: number,
   bufferHeight: number
 ) => {
-  vp.isLayoutDirty = false;
-  const rect = vp.props.rect;
-  const isPercent = rect.unit === '%';
-  const scaleX = (isPercent ? _canvasSize.x / 100 : 1) * pixelRatio;
-  const scaleY = (isPercent ? _canvasSize.y / 100 : 1) * pixelRatio;
-
-  const x0 = Math.round(rect.x * scaleX);
-  const y0 = Math.round(rect.y * scaleY);
-  const x1 = Math.round((rect.x + rect.width) * scaleX);
-  const y1 = Math.round((rect.y + rect.height) * scaleY);
+  // A hidden slot (display: none, also via an ancestor) has an empty box
+  const slotRect = vp.slotElem.getBoundingClientRect();
+  const x = slotRect.left - canvasRect.left;
+  const y = slotRect.top - canvasRect.top;
+  const x0 = Math.round(x * pixelRatio);
+  const y0 = Math.round(y * pixelRatio);
+  const x1 = Math.round((x + slotRect.width) * pixelRatio);
+  const y1 = Math.round((y + slotRect.height) * pixelRatio);
   vp.devX = x0;
   vp.devY = y0;
   vp.devWidth = Math.max(0, x1 - x0);
@@ -258,6 +459,39 @@ const layoutViewport = (
     vp.renderTarget.texture.name = `viewport_${vp.id}`;
   } else if (vp.renderTarget.width !== vp.devWidth || vp.renderTarget.height !== vp.devHeight) {
     vp.renderTarget.setSize(vp.devWidth, vp.devHeight);
+  }
+};
+
+/** Reads every enabled viewport's slot box (one forced layout for all of them). */
+const layoutViewports = (renderer: THREE.Renderer, pixelRatio: number) => {
+  isLayoutDirty = false;
+  renderer.getDrawingBufferSize(_bufferSize);
+  const canvasRect = renderer.domElement.getBoundingClientRect();
+  canvasLeft = canvasRect.left;
+  canvasTop = canvasRect.top;
+  for (let i = 0; i < viewports.length; i++) {
+    const vp = viewports[i];
+    if (vp.enabled)
+      layoutViewport(vp, renderer, canvasRect, pixelRatio, _bufferSize.x, _bufferSize.y);
+  }
+};
+
+/** Keeps a perspective camera's aspect, or an orthographic camera's frustum width (around its
+ * centre, keeping its height), matched to the viewport rect. */
+const syncCameraAspect = (vp: ViewportState, camera: THREE.Camera) => {
+  const aspect = vp.devWidth / vp.devHeight;
+  if (camera === vp.syncedCamera && aspect === vp.syncedAspect) return;
+  vp.syncedCamera = camera;
+  vp.syncedAspect = aspect;
+  if (camera instanceof THREE.PerspectiveCamera) {
+    camera.aspect = aspect;
+    camera.updateProjectionMatrix();
+  } else if (camera instanceof THREE.OrthographicCamera) {
+    const halfWidth = ((camera.top - camera.bottom) / 2) * aspect;
+    const centerX = (camera.left + camera.right) / 2;
+    camera.left = centerX - halfWidth;
+    camera.right = centerX + halfWidth;
+    camera.updateProjectionMatrix();
   }
 };
 
@@ -300,9 +534,17 @@ export const renderViewports = (renderer: THREE.Renderer, delta: number) => {
     lastCanvasWidth = _canvasSize.x;
     lastCanvasHeight = _canvasSize.y;
     lastPixelRatio = pixelRatio;
-    for (let i = 0; i < viewports.length; i++) viewports[i].isLayoutDirty = true;
+    isLayoutDirty = true;
   }
-  renderer.getDrawingBufferSize(_bufferSize);
+  // While a CSS transition runs in the layer (eg. a stack sliding along with the debugger
+  // drawer), the slots are re-read every frame
+  if (runningTransitionCount > 0) {
+    if (performance.now() - lastTransitionEventTime > TRANSITION_TRACKING_TIMEOUT_MS) {
+      runningTransitionCount = 0;
+    }
+    isLayoutDirty = true;
+  }
+  if (isLayoutDirty) layoutViewports(renderer, pixelRatio);
 
   // Saved renderer state (restored below)
   const prevRenderTarget = renderer.getRenderTarget();
@@ -317,17 +559,14 @@ export const renderViewports = (renderer: THREE.Renderer, delta: number) => {
 
   for (let i = 0; i < viewports.length; i++) {
     const vp = viewports[i];
-    if (!vp.enabled) continue;
-    if (vp.isLayoutDirty) {
-      layoutViewport(vp, renderer, pixelRatio, _bufferSize.x, _bufferSize.y);
-    }
-    if (vp.isEmpty) continue;
+    if (!vp.enabled || vp.isEmpty) continue;
 
     vp.props.onBeforeRender?.(vp, delta);
     // onBeforeRender may disable it
     if (!vp.enabled) continue;
     const camera = resolveCamera(vp);
     if (!camera) continue;
+    if (vp.props.syncCameraAspect) syncCameraAspect(vp, camera);
 
     // 1. The viewport's scene into its own render target (not an output target: no tone
     // mapping, working colour space)

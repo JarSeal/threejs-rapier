@@ -310,3 +310,23 @@ Each phase compiles, lints and leaves the app working.
   - The renderer floors `viewport * pixelRatio`. The compositor snaps rects to whole device px and passes `(devicePx + 0.5) / pixelRatio`, so the floor lands exactly.
 - Added beyond the plan: a rect partly outside the canvas is cropped (uv offset/scale uniforms on the quad) rather than squeezed or passed out-of-bounds to `setViewport`.
 - Phase 1's `ViewportProps` holds only what Phase 1 implements (`rect` is required). `anchor`/`order`/`size`/`slotClass`/`interactive`/`sceneId`/`syncCameraAspect` and `setViewportInteractive`/`invalidateViewportLayout`/`getViewportPointerNDC` come in Phase 2.
+
+### Phase 2 (layout and input plumbing): done
+
+- Every viewport now owns a slot element, including explicit-`rect` ones: the slot is absolutely positioned in `px` or `%`, so the `%` math of Phase 1 is gone and every rect comes from the DOM the same way.
+- The viewports layer (`#aekViewportsLayer`, `z-index: 1`, prepended to the HUD root, so below app windows at 100, loaders at 1000 and debug tools at 10000+) is created **lazily on the first `createViewport()`**, not in `HUD.ts`/`InitApp.ts`: with no viewports, nothing is added to the DOM.
+- Corner stacks: `.aekViewportStack_<ANCHOR>` (global), inset `1.6rem`, gap `0.8rem`. Right anchors use `row-reverse`, so `order` always counts from the corner outwards (0 = in the corner) on both sides.
+- Layout triggers (all set one dirty flag; all enabled slots are read together, so one forced layout per change):
+  - create, delete, enable/disable, `invalidateViewportLayout()`
+  - canvas size or pixel ratio change, found by the per-frame size compare (this also covers window resize, so there is no resize listener)
+  - **added:** any `class` change on `<body>` (a `MutationObserver`), so rules like `.debugDrawerOpen …` that move or hide a slot without a transition still re-layout
+  - every frame while a CSS transition runs anywhere in the layer (`transitionrun` / `transitionend` / `transitioncancel` bubble to the layer), plus one more frame after it ends. A transition that never reports its end stops being tracked after 3s without transition events.
+- `getViewportPointerNDC` uses the full (uncropped) rect, returns whether the pointer is inside, and writes `out` either way.
+- `syncCameraAspect` is applied right before the render, only when the camera or the rect aspect changed. Orthographic cameras keep their frustum height and centre.
+- Verified (throwaway spike, WebGPU and WebGL2, pixel ratio 1 and 2):
+  - `viewport.rect` matches the slot box in every state. The rendered PiP edge sits flush with its 1px slot outline at device resolution.
+  - Two slots in the top-right stack are placed in `order`. Disabling the corner one moves the other into the corner.
+  - A 0.6s `right` transition on the stack is tracked frame by frame (the mid-transition rect was one frame behind the DOM). The final rect is exact.
+  - A media query hiding a slot on resize makes it render nothing. A partly off-canvas explicit rect is cropped.
+  - Only the interactive slot is hit by `elementFromPoint`: the canvas gets everything else. Pointer NDC was exact (centre `0,0`, 5% corner `-0.9,0.9`).
+  - A `sceneId` viewport is deleted on that scene's exit, and the global ones survive the scene change.

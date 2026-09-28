@@ -73,17 +73,24 @@ InitEngine(async () => {
   // P080 SPIKE (THROWAWAY, DO NOT COMMIT)
   const vpParams = new URLSearchParams(window.location.search);
   if (vpParams.get('vpTest')) {
-    const { createViewport } = await import('./_engine/core/Viewports');
-    const { getRootScene } = await import('./_engine/core/Scene');
+    const vpApi = await import('./_engine/core/Viewports');
+    const { createViewport, getViewportPointerNDC } = vpApi;
+    const { getRootScene, getCurrentSceneId } = await import('./_engine/core/Scene');
     const { getMainCamera } = await import('./_engine/core/CameraManager');
     const { setPostFxEnabled } = await import('./_engine/core/PostFX');
     const { getRenderer } = await import('./_engine/core/Renderer');
+    const w = window as unknown as Record<string, unknown>;
+    w.__r = getRenderer();
+    w.__vp = vpApi;
+    w.__loadScene = (sceneId: string) => loadScene({ sceneId });
     if (vpParams.get('postFx') === '0') setPostFxEnabled(false);
-    (window as unknown as { __r: unknown }).__r = getRenderer();
-    if (vpParams.get('tm') === 'none') {
-      setTimeout(() => ((getRenderer() as THREE.Renderer).toneMapping = THREE.NoToneMapping), 3000);
-    }
-    // Transparent private scene: a spinning cube with pure colours per face
+    // Transition test: toggling body.vpSpikeShift slides the top-right stack
+    const styleElem = document.createElement('style');
+    styleElem.textContent = `.aekViewportStack_TOP_RIGHT { transition: right 0.6s linear; }
+      body.vpSpikeShift .aekViewportStack_TOP_RIGHT { right: 40rem; }
+      @media (max-width: 600px) { .vpSpikeSmall { display: none; } }`;
+    document.head.appendChild(styleElem);
+    // Transparent private scene: a cube with pure colours per face
     const cubeScene = new THREE.Scene();
     const cube = new THREE.Mesh(
       new THREE.BoxGeometry(1, 1, 1),
@@ -93,26 +100,55 @@ InitEngine(async () => {
     );
     cube.rotation.set(0.5, 0.6, 0);
     cubeScene.add(cube);
-    const cubeCam = new THREE.PerspectiveCamera(40, 1, 0.1, 10);
-    cubeCam.position.set(0, 0, 3);
-    const spin = vpParams.get('spin') !== '0';
-    createViewport({
-      id: 'spikeCube',
+    const makeCam = () => {
+      const cam = new THREE.PerspectiveCamera(40, 1, 0.1, 10);
+      cam.position.set(0, 0, 3);
+      return cam;
+    };
+    const ndc = new THREE.Vector2();
+    w.__ndc = [];
+    // Corner stack: order 0 (in the corner, interactive) and order 1 (wide, left of it)
+    const cornerVp = createViewport({
+      id: 'spikeCorner',
       scene: cubeScene,
-      camera: cubeCam,
-      rect: { x: window.innerWidth - 220, y: 20, width: 200, height: 200 },
-      onBeforeRender: (_vp, delta) => {
-        if (spin) cube.rotation.y += delta;
-      },
+      camera: makeCam(),
+      anchor: 'TOP_RIGHT',
+      order: 0,
+      size: { width: '10rem', height: '10rem' },
+      syncCameraAspect: true,
+      interactive: true,
     });
-    // Same cube, partially off the canvas (left edge), to test the crop
+    cornerVp.slotElem.addEventListener('pointerdown', (e) => {
+      const inside = getViewportPointerNDC('spikeCorner', e, ndc);
+      (w.__ndc as unknown[]).push({ inside, x: ndc.x, y: ndc.y });
+    });
     createViewport({
-      id: 'spikeCubeCropped',
+      id: 'spikeWide',
       scene: cubeScene,
-      camera: cubeCam,
-      rect: { x: -100, y: 20, width: 200, height: 200 },
+      camera: makeCam(),
+      anchor: 'TOP_RIGHT',
+      order: 1,
+      size: { width: '16rem', height: '8rem' },
+      slotClass: 'vpSpikeSmall',
+      syncCameraAspect: true,
     });
-    // Opaque PiP of the game scene from the main camera (canvas aspect)
+    createViewport({
+      id: 'spikeBottomRight',
+      scene: cubeScene,
+      camera: makeCam(),
+      anchor: 'BOTTOM_RIGHT',
+      size: { width: '8rem', height: '8rem' },
+      syncCameraAspect: true,
+    });
+    // Explicit px rect, partially off the canvas (crop)
+    createViewport({
+      id: 'spikeCropped',
+      scene: cubeScene,
+      camera: makeCam(),
+      rect: { x: -60, y: 90, width: 120, height: 120 },
+      syncCameraAspect: true,
+    });
+    // Opaque PiP of the game scene from the main camera, deleted on this scene's exit
     createViewport({
       id: 'spikePiP',
       scene: getRootScene() as THREE.Scene,
@@ -121,6 +157,7 @@ InitEngine(async () => {
       transparent: false,
       clearColor: 0x330033,
       toneMapping: 'RENDERER',
+      sceneId: getCurrentSceneId() || undefined,
     });
   }
 });
