@@ -16,7 +16,7 @@ import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
-import { getScene, registerOnSceneExit } from '../_engine/core/Scene';
+import { getRootScene, getScene, registerOnSceneExit } from '../_engine/core/Scene';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 import { getCameraByAppId } from '../_engine/core/CameraManager';
 import { getLightByAppId, getLightTargetId } from '../_engine/core/LightManager';
@@ -29,6 +29,11 @@ import { ECSSystemStage } from '../AppECSRegistry';
 export const SCENE_THIRD_PERSON_GYM_META = {
   id: 'thirdPersonGymScene',
 };
+
+/** Sky (environment map) light strength: at full strength the blue sky tints every face turned
+ * away from the sun blue on the PBR (triplanar) materials. The root scene is shared by all scenes,
+ * so this is reset on scene exit. */
+const GYM_ENVIRONMENT_INTENSITY = 0.3;
 
 const TEST_MODELS = '/debugger/assets/testModels';
 
@@ -138,6 +143,8 @@ export const scene = async () =>
 
     updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 
+    (getRootScene() as THREE.Scene).environmentIntensity = GYM_ENVIRONMENT_INTENSITY;
+
     await createSkyBox({
       id: 'stylizedSunsetEquiRect',
       type: 'EQUIRECTANGULAR',
@@ -161,6 +168,11 @@ export const scene = async () =>
     // Static physics meshes use the toolkit's triplanar grid material (listed in the scene JSON)
     const gridMat = getMaterial('triplanarGrid');
     if (!gridMat) throw new Error('Could not find the triplanarGrid material for the gym scene.');
+    // Flat slopes (ramps, stair flights): one projection only, or two blended ones show doubled
+    // lines there (see the grid's dominantAxis define)
+    const gridFlatSlopesMat = getMaterialVariant('triplanarGrid', {
+      staticDefines: { dominantAxis: true },
+    });
     // Dynamic physics objects and moving platforms use the toolkit's triplanar checkerboard (listed
     // in the scene JSON); the platforms get fitted amber cells so the moving pieces stand out (a
     // cached material variant, see getMaterialVariant)
@@ -385,6 +397,7 @@ export const scene = async () =>
     registerOnSceneExit(SCENE_THIRD_PERSON_GYM_META.id, () => {
       getECSWorld().removeSystem('dummyCharLooper');
       getECSWorld().removeSystem('gymSunFollow');
+      (getRootScene() as THREE.Scene).environmentIntensity = 1;
       deleteFollowObjectCameraRig('thirdPersonGymFollowCam');
     });
     getECSWorld().addSystem(ECSSystemStage.APP_PHYSICS_STEP, 'dummyCharLooper', (_world, dt) => {
@@ -449,10 +462,9 @@ export const scene = async () =>
       entityOpts: { appId: 'customPropTest2_2' },
     });
 
-    // Flat ramps: one projection only, or two blended ones show doubled lines (see dominantAxis)
     await getTestObstacle('slideAngles', {
       transform: { position: { x: 30, y: -1.9, z: -30 } },
-      material: getMaterialVariant('triplanarGrid', { staticDefines: { dominantAxis: true } }),
+      material: gridFlatSlopesMat,
       castShadow: true,
       receiveShadow: true,
       physicsParams: { collider: { type: 'TRIMESH', friction: 1 } },
@@ -706,6 +718,8 @@ export const scene = async () =>
       appId: string;
       pos: { x: number; y: number; z: number };
       placeBy: 'FIRST_MESH' | 'ROOT';
+      /** Flat slopes: use gridFlatSlopesMat */
+      flatSlopes?: boolean;
     }[] = [
       // Straight stairs (TRIMESH)
       {
@@ -753,6 +767,7 @@ export const scene = async () =>
       {
         file: 'stairsCorneredWithThickRailingsCompound',
         appId: 'customPropTest10',
+        flatSlopes: true,
         pos: { x: 45, y: -0.4, z: 35 },
         placeBy: 'FIRST_MESH',
       },
@@ -760,6 +775,7 @@ export const scene = async () =>
       {
         file: 'stairsCorneredWithThickRailingsTrimesh',
         appId: 'customPropTest11',
+        flatSlopes: true,
         pos: { x: 60, y: -0.4, z: 35 },
         placeBy: 'FIRST_MESH',
       },
@@ -792,12 +808,12 @@ export const scene = async () =>
         placeBy: 'ROOT',
       },
     ];
-    for (const { file, appId, pos, placeBy } of staticModels) {
+    for (const { file, appId, pos, placeBy, flatSlopes } of staticModels) {
       const manifest = await importAssetAsync({ fileName: `${TEST_MODELS}/${file}.glb` });
       if (!manifest) continue;
       await spawnImportedAsset(manifest, {
         transform: placeBy === 'ROOT' ? { position: pos } : rootPlacing(manifest, pos),
-        material: gridMat,
+        material: flatSlopes ? gridFlatSlopesMat : gridMat,
         castShadow: true,
         receiveShadow: true,
         entityOpts: { appId },
