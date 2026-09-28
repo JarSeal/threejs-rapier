@@ -10,6 +10,7 @@ import {
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowContentFn,
+  registerDraggableWindowSceneTargetResolver,
   updateDraggableWindow,
 } from '../../UI/DraggableWindow';
 import { getCurrentSceneId } from '../../Scene';
@@ -648,3 +649,8 @@ export const saveDebugCameraToLS = (debugCamProps: Partial<DebugCamLSProps>) => 
 };
 
 registerDraggableWindowContentFn(EDIT_CAMERA_WIN_ID, createEditCameraContent);
+// Kept open on a scene change when the next scene has a camera with the same appId
+registerDraggableWindowSceneTargetResolver(EDIT_CAMERA_WIN_ID, (data) => {
+  const entityId = getEntityIdByAppId(String(data?.id));
+  return Boolean(entityId && getECSWorld().isAlive(entityId));
+});

@@ -23,7 +23,10 @@ import { getCanvasParentElem } from './Renderer';
 import { getDebugToolsState } from '../debug/DebugToolsManager';
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, isDebugEnvironment } from './Config';
 import { applySkyBoxForScene, clearSkyBox } from './SkyBox';
-import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
+import {
+  handleDraggableWindowsOnSceneChangeEnd,
+  handleDraggableWindowsOnSceneChangeStart,
+} from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { deleteAllCharacters } from './Character';
 import { existsOrThrow } from '../utils/assert';
@@ -563,6 +566,8 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
           runOnSceneEnter(sceneId);
           runOnAllSceneEnters();
+          // After the enter hooks, so entities created by scene code exist too
+          handleDraggableWindowsOnSceneChangeEnd();
 
           if (IS_DEBUG_ENV) {
             // Enable debuggers
@@ -588,6 +593,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
     .catch((reason) => {
       const msg = `Could not load scene (phase '${loader.phase}')`;
       lerror(msg, reason);
+      handleDraggableWindowsOnSceneChangeEnd(true);
       // @CONSIDER: should this throw an error?
     });
 };

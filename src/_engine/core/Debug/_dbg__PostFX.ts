@@ -24,6 +24,7 @@ import {
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowContentFn,
+  registerDraggableWindowSceneTargetResolver,
   updateDraggableWindow,
 } from '../UI/DraggableWindow';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
@@ -509,6 +510,10 @@ const addParamBindings = (pane: Pane, info: PostFxPassInfo, isLive: boolean) => 
 };
 
 registerDraggableWindowContentFn(EDIT_POSTFX_PASS_WIN_ID, createEditPostFxPassContent);
+// Kept open on a scene change when the next scene's PostFX chain has the same pass
+registerDraggableWindowSceneTargetResolver(EDIT_POSTFX_PASS_WIN_ID, (data) =>
+  Boolean(findPostFxPass(String(data?.id)))
+);
 
 const clearSettingsLS = (scope: 'ALL' | 'THIS_SCENE') => {
   const sceneId = getCurrentSceneId();

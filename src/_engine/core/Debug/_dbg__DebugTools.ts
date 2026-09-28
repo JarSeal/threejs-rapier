@@ -666,6 +666,7 @@ const buildDebugToolsGUI = () => {
       disableVertResize: false,
       disableDragging: false,
       resetPosition: true,
+      closeOnSceneChange: true,
     });
   });
   loggingFolder.addButton({ title: 'OPEN DIALOG WINDOW' }).on('click', () => {
@@ -675,6 +676,7 @@ const buildDebugToolsGUI = () => {
       title: 'My dialog window',
       // isDebugWindow: true,
       backDropClickClosesWindow: true,
+      closeOnSceneChange: true,
     });
   });
   loggingFolder.addButton({ title: 'TEST TOASTER (info)' }).on('click', () => {

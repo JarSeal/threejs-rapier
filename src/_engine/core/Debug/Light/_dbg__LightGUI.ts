@@ -10,6 +10,7 @@ import {
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowContentFn,
+  registerDraggableWindowSceneTargetResolver,
   updateDraggableWindow,
 } from '../../UI/DraggableWindow';
 import {
@@ -1000,6 +1001,11 @@ export const initLightDebuggerGUI = () => {
 };
 
 registerDraggableWindowContentFn(EDIT_LIGHT_WIN_ID, createEditLightContent);
+// Kept open on a scene change when the next scene has a light with the same appId
+registerDraggableWindowSceneTargetResolver(EDIT_LIGHT_WIN_ID, (data) => {
+  const entityId = getEntityIdByAppId(String(data?.id));
+  return Boolean(entityId && getECSWorld().isAlive(entityId));
+});
 
 const createLightsDebuggerList = (world: ECSWorld) => {
   const storage = world.getStorage(ComponentType.TAG_IS_LIGHT);

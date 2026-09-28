@@ -30,6 +30,7 @@ import {
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowContentFn,
+  registerDraggableWindowSceneTargetResolver,
   updateDraggableWindow,
 } from '../UI/DraggableWindow';
 
@@ -163,6 +164,10 @@ export const createEditECSWorldContent = (data?: { [key: string]: unknown }) => 
 };
 
 registerDraggableWindowContentFn(EDIT_ECS_WORLD_WIN_ID, createEditECSWorldContent);
+// Kept open on a scene change when the world still exists (secondary worlds are scene-scoped)
+registerDraggableWindowSceneTargetResolver(EDIT_ECS_WORLD_WIN_ID, (data) =>
+  Boolean(ECSWorld.getWorld(String(data?.id)))
+);
 
 /** Creates the Tab in the Debug Drawer */
 export const _initECSDebugGUI = () => {

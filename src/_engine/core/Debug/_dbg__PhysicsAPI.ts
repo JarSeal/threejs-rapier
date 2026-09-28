@@ -11,6 +11,7 @@ import {
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowCmp,
+  registerDraggableWindowSceneTargetResolver,
 } from '../UI/DraggableWindow';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import { type ListBladeApi } from 'tweakpane';
@@ -332,6 +333,22 @@ const getPhysicsEntityLabel = (entityId: number): string => {
   return `[${entityId}]`;
 };
 
+type PhysEntityWinData = { entityId: number; appId?: string };
+
+/** The edit window's entity: by its stable appId first (the raw entity id doesn't survive a scene
+ * change), by the raw entity id only when the entity has no stable appId. */
+const getPhysWinEntityId = (data?: { [key: string]: unknown }) => {
+  const d = (data || {}) as Partial<PhysEntityWinData>;
+  return d.appId ? getEntityIdByAppId(d.appId) : d.entityId;
+};
+
+// Kept open on a scene change when the next scene has a physics entity with the same stable appId
+registerDraggableWindowSceneTargetResolver(EDIT_PHYS_ENTITY_WIN_ID, (data) => {
+  if (!(data as Partial<PhysEntityWinData>)?.appId) return false;
+  const entityId = getPhysWinEntityId(data);
+  return entityId !== undefined && Boolean(getPhysicsEntityRigidBody(entityId));
+});
+
 const updateDebuggerEntityListSelectedClass = (entityId: number | null) => {
   const ulElem = debuggerEntityListCmp?.elem.getElementsByTagName('ul')[0];
   if (!ulElem) return;
@@ -352,7 +369,7 @@ const createPhysicsEntitiesDebugList = () => {
     const button = CMP({
       onClick: () => {
         const winState = getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
-        if (winState?.isOpen && winState?.data?.entityId === entityId) {
+        if (winState?.isOpen && getPhysWinEntityId(winState.data) === entityId) {
           closeDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
           return;
         }
@@ -364,7 +381,7 @@ const createPhysicsEntitiesDebugList = () => {
           title: `Edit physics entity: ${label}`,
           isDebugWindow: true,
           content: createEditPhysicsEntityContent,
-          data: { entityId },
+          data: { entityId, appId: getStableAppId(entityId) },
           closeOnSceneChange: true,
           onClose: () => updateDebuggerEntityListSelectedClass(null),
         });
@@ -451,7 +468,7 @@ const addEntityWireframeControls = (
 };
 
 const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
-  const d = data as { entityId: number };
+  const entityId = getPhysWinEntityId(data);
   const world = getECSWorld();
 
   if (entityWindowPane) {
@@ -463,8 +480,8 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
     entityWindowCmp = null;
   }
 
-  const rigidBody = getPhysicsEntityRigidBody(d.entityId);
-  if (!rigidBody) {
+  const rigidBody = entityId === undefined ? undefined : getPhysicsEntityRigidBody(entityId);
+  if (entityId === undefined || !rigidBody) {
     // We want to close the window when no entity is found,
     // but we have to return first, so wait one iteration.
     setTimeout(() => closeDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID), 0);
@@ -472,10 +489,10 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
   }
 
   addOnCloseToWindow(EDIT_PHYS_ENTITY_WIN_ID, () => updateDebuggerEntityListSelectedClass(null));
-  updateDebuggerEntityListSelectedClass(d.entityId);
+  updateDebuggerEntityListSelectedClass(entityId);
 
-  const label = getPhysicsEntityLabel(d.entityId);
-  const colliders = world.getComponent(d.entityId, ComponentType.COLLIDER);
+  const label = getPhysicsEntityLabel(entityId);
+  const colliders = world.getComponent(entityId, ComponentType.COLLIDER);
 
   let isClosed = false;
   entityWindowCmp = CMP({
@@ -491,7 +508,7 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
     html: () =>
       `<button title="Console.log / print this physics entity to browser console">${getSvgIcon('fileAsterix')}</button>`,
     onClick: () => {
-      llog('PHYSICS ENTITY:***************', { entityId: d.entityId, rigidBody, colliders });
+      llog('PHYSICS ENTITY:***************', { entityId, rigidBody, colliders });
     },
   });
   const deleteButton = CMP({
@@ -499,7 +516,7 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
     html: () =>
       `<button title="Delete this physics entity (removes the ECS entity and its rigid body/colliders)">${getSvgIcon('thrash')}</button>`,
     onClick: () => {
-      world.deleteEntity(d.entityId);
+      world.deleteEntity(entityId);
       closeDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
     },
   });
@@ -518,7 +535,7 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
     html: () => `<div>
 <div>
   <div><span class="winSmallLabel">Name:</span> ${label}</div>
-  <div><span class="winSmallLabel">Id:</span> ${d.entityId}</div>
+  <div><span class="winSmallLabel">Id:</span> ${entityId}</div>
   <div><span class="winSmallLabel">${shapeLabel}:</span> ${shapeCmp}</div>
 </div>
 <div style="text-align:right">${logButton}${deleteButton}</div>
@@ -549,7 +566,7 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
 
   // Generated app ids can't be found again after a reload, so only entities with a stable
   // app id are recorded to the undo/redo history.
-  const stableAppId = getStableAppId(d.entityId, world);
+  const stableAppId = getStableAppId(entityId, world);
   const recordPose = <T extends PhysVec3 | PhysQuat>(
     field: 'position' | 'rotation',
     prev: T,
@@ -598,7 +615,7 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
   });
 
   entityWindowPane.addBlade({ view: 'separator' });
-  addEntityWireframeControls(entityWindowPane, d.entityId, world);
+  addEntityWireframeControls(entityWindowPane, entityId, world);
 
   return entityWindowCmp;
 };
@@ -984,9 +1001,8 @@ export const _createPhysicsAPIDebugGUI = () => {
         lastEntityListSignature = signature;
         debuggerEntityListCmp?.update({ html: createPhysicsEntitiesDebugList });
         const winState = getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
-        if (winState?.isOpen && typeof winState.data?.entityId === 'number') {
-          updateDebuggerEntityListSelectedClass(winState.data.entityId);
-        }
+        const winEntityId = winState?.isOpen ? getPhysWinEntityId(winState.data) : undefined;
+        if (winEntityId !== undefined) updateDebuggerEntityListSelectedClass(winEntityId);
       }, 500);
       // Switching to another debugger tab rebuilds this container from scratch on
       // return (createDebuggerTab's container() re-runs on every click, it isn't built

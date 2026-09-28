@@ -13,6 +13,7 @@ import {
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowCmp,
+  registerDraggableWindowSceneTargetResolver,
 } from '../UI/DraggableWindow';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import { getGeometryRegistry } from '../Geometry';
@@ -191,10 +192,19 @@ const openInfoWindow = (row: AssetRow) => {
     isDebugWindow: true,
     content: createInfoContent,
     data: { key, kind: row.kind, id: row.id },
+    closeOnSceneChange: true,
     onClose: () => updateSelectedClass(null),
   });
   updateSelectedClass(key);
 };
+
+// Kept open on a scene change when the asset is still loaded (eg. shared with the next scene)
+registerDraggableWindowSceneTargetResolver(INFO_WIN_ID, (data) => {
+  const d = data as { kind: AssetKind; id: string };
+  return d.kind === 'texture'
+    ? Boolean(getTextureRegistry()[d.id])
+    : Boolean(getGeometryRegistry()[d.id]);
+});
 
 const createListHtml = () => {
   const { rows, notInSceneCount } = getListState();
