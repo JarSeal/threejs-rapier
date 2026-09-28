@@ -8,7 +8,7 @@
 import * as THREE from 'three/webgpu';
 
 import PhysicsWorker from '../workers/physicsWorker?worker';
-import { getConfig, isDebugEnvironment } from './Config';
+import { getConfig, IS_DEBUG_ENV, isDebugEnvironment } from './Config';
 import { PhysicsTransformBuffer } from './Physics/PhysicsTransformBuffer';
 import {
   PHYSICS_STEP_STATS_FIELD_COUNT,
@@ -330,6 +330,14 @@ export const stepPhysics = (
     return 0;
   }
 
+  // Debug-only freeze (setPhysicsStepLimit): at the limit, hold there without banking time
+  // toward the next step, so releasing it resumes cleanly instead of catching up.
+  const stepsToLimit = stepLimit === null ? Infinity : stepLimit - stepsIssued;
+  if (stepsToLimit <= 0) {
+    accDelta = 0;
+    return 0;
+  }
+
   const scaledDelta = dt * loopState.playSpeedMultiplier;
   accDelta +=
     physicsState.maxDeltaTime > 0 ? Math.min(scaledDelta, physicsState.maxDeltaTime) : scaledDelta;
@@ -348,6 +356,10 @@ export const stepPhysics = (
   if (physicsState.maxSubSteps > 0 && stepsTaken >= physicsState.maxSubSteps) {
     // Only a discontinuity if there was backlog to drop (sitting exactly at the ceiling isn't).
     if (accDelta >= physicsState.timestepRatio) simClockEpoch++;
+    accDelta = 0;
+  }
+  if (stepsTaken >= stepsToLimit) {
+    stepsTaken = stepsToLimit;
     accDelta = 0;
   }
 
@@ -753,6 +765,22 @@ export const getPhysicsSimClockEpoch = () => simClockEpoch;
 
 /** See simHistoryEpoch: changes whenever earlier snapshots stop describing the current world. */
 export const getPhysicsSimHistoryEpoch = () => simHistoryEpoch;
+
+/** Absolute step index (in stepsIssued) stepPhysics() never steps past; null = no limit. */
+let stepLimit: number | null = null;
+
+/**
+ * Debug only (a no-op returning null outside IS_DEBUG_ENV): freezes the simulation after
+ * `steps` more fixed steps, in both worker targets, until called again with null. Returns the
+ * step index it freezes at, which is what getPhysicsSnapshotStepIndex() reads once the frozen
+ * pose is visible (WORKER_THREAD mode gets there a frame or more later than MAIN_THREAD).
+ * Used by the physics determinism probe (_dbg__PhysicsDeterminism.ts).
+ */
+export const setPhysicsStepLimit = (steps: number | null) => {
+  if (!IS_DEBUG_ENV) return null;
+  stepLimit = steps === null ? null : stepsIssued + Math.max(0, Math.floor(steps));
+  return stepLimit;
+};
 
 /** Returns the current physicsState */
 export const getPhysicsState = () => physicsState;

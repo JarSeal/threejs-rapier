@@ -5,7 +5,7 @@ import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { lerror, lwarn } from '../utils/Logger';
 import { IS_DEBUG_ENV } from './Config';
-import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
+import { DebugModuleRef, loadDebugModule, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import type { IComponentStorage } from './ECS/ECSComponentStorage';
@@ -125,6 +125,13 @@ export const registerPhysicsManager = (world: ECSWorld) => {
     physicsInterpolationSystem,
     APP_RENDER_SYNC_ORDER.POSE_PRODUCERS
   );
+};
+
+/** Debug only: loads the physics determinism probe (_dbg__PhysicsDeterminism.ts). Must run
+ * before the first scene load, so `?physicsProbe=N` also catches the first scene enter. */
+export const registerPhysicsDeterminismProbe = async () => {
+  const probe = await loadDebugModuleAsync(() => import('./Debug/_dbg__PhysicsDeterminism'));
+  useDebug(probe)?._initPhysicsDeterminismProbe();
 };
 
 export const createPhysicsEntity = async (

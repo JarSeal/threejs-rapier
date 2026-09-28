@@ -15,7 +15,7 @@ import {
   createPhysicsWorld,
   initPhysics as initNewPhysics,
 } from './core/PhysicsAPI';
-import { registerPhysicsManager } from './core/PhysicsManager';
+import { registerPhysicsDeterminismProbe, registerPhysicsManager } from './core/PhysicsManager';
 import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
 import { lerror, llog } from './utils/Logger';
@@ -94,6 +94,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     if (getConfig().physics?.enabled) {
       await createPhysicsWorld();
     }
+    if (IS_DEBUG_ENV) await registerPhysicsDeterminismProbe();
 
     if (IS_DEBUG_ENV) {
       await registerUndoRedoModule();

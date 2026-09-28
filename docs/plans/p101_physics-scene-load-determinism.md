@@ -151,6 +151,21 @@ Expected:
 
 Drive the runs and collect the probe lines with the run-aekasha-js skill.
 
+### 4.1 Results
+
+**Before P1 (P0 baseline, 2026-09-28).** Gym probed at N = 300 (counted from scene enter), interpolation `RENDERER`, headless Chrome. Each run is a fresh load, then gym → `sceneTestECS` → gym, then a page reload.
+
+| Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- |
+| MAIN_THREAD | `f5addbe3` | `21f6e8a0`, `9d24184e` (two runs) | `f5addbe3` |
+| WORKER_THREAD, SAB | `ad4394e7` | `c633ffb5` | `cddb215d` |
+| WORKER_THREAD, no SAB | `f5addbe3` | `9bb66cbd` | `6eeb8ee9` |
+
+- Every revisit differs from its fresh load. The first differing body is always `carouselPlatformMesh1`, and the largest position delta is always `customPropTest2/Suzanne` (5.2–7.5 units). This reproduces the reported bug.
+- MAIN_THREAD fresh loads are repeatable. The first boot builds the scene before the loop starts (§2.1).
+- Worker fresh loads are not repeatable. This is consistent with the worker-only ordering races (§2.4).
+- One no-SAB fresh load matched MAIN_THREAD (`f5addbe3`), so the two modes can produce identical results when the timing lines up.
+
 ---
 
 ## 5. Risks

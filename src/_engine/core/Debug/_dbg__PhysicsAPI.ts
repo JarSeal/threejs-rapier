@@ -52,6 +52,11 @@ import {
   WIREFRAME_COLOR_STATES,
   type WireframeColorState,
 } from './_dbg__PhysicsDebugDraw';
+import {
+  armPhysicsDeterminismProbe,
+  disarmPhysicsDeterminismProbe,
+  getPhysicsDeterminismProbeSteps,
+} from './_dbg__PhysicsDeterminism';
 import { getECSWorld, getEntityIdByAppId, getStableAppId } from '../ECS';
 import { getPhysicsInterpolationReadout } from '../PhysicsManager';
 import { ComponentType } from '../ECS/ECSCoreComponents';
@@ -691,6 +696,19 @@ const addWireframeFolder = (debugGUI: Pane) => {
   });
 };
 
+/** Arms/disarms the determinism probe (_dbg__PhysicsDeterminism.ts). Results go to the console. */
+const addDeterminismProbeFolder = (pane: Pane) => {
+  const folder = pane.addFolder({ title: 'Determinism probe', expanded: false });
+  const probeState = { steps: getPhysicsDeterminismProbeSteps() ?? 300 };
+  folder.addBinding(probeState, 'steps', { label: 'Steps (N)', step: 1, min: 1 });
+  folder
+    .addButton({ title: 'Probe N steps (from now, then on every scene enter)' })
+    .on('click', () => armPhysicsDeterminismProbe(probeState.steps));
+  folder.addButton({ title: 'Stop probe (resumes physics)' }).on('click', () => {
+    disarmPhysicsDeterminismProbe();
+  });
+};
+
 export const _createPhysicsAPIDebugGUI = () => {
   physicsApiUIState = { ...physicsApiUIState, ...lsGetItem(UI_LS_KEY, physicsApiUIState) };
   restoreWireframeState();
@@ -981,6 +999,10 @@ export const _createPhysicsAPIDebugGUI = () => {
         readonly: true,
         format: (v: number) => v.toFixed(0),
       });
+
+      debugGUI.addBlade({ view: 'separator' });
+
+      addDeterminismProbeFolder(debugGUI);
 
       debugGUI.addBlade({ view: 'separator' });
 
