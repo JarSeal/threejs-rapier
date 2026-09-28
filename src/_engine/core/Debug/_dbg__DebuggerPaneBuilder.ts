@@ -34,8 +34,9 @@ const snapshot = (value: unknown) => {
   }
 };
 
-/** LS key of a tab's UI state (folder open/closed states). */
-export const getDebuggerTabUIKey = (lsKey: string) => `${lsKey}UI`;
+/** LS key of a tab's UI state (folder open/closed states), if it has one. */
+const getDebuggerTabUIKey = (def: AnyDebuggerTabDef) =>
+  def.uiLsKey ?? (def.lsKey ? `${def.lsKey}UI` : undefined);
 
 /**
  * Writes one state key of a tab to its lsKey: the other persistKeys already saved are kept, any
@@ -57,8 +58,7 @@ export const persistDebuggerTabStateValue = (def: AnyDebuggerTabDef, key: string
   lsSetItem(lsKey, next);
 };
 
-const saveFolderExpanded = (lsKey: string, folderId: string, expanded: boolean) => {
-  const uiKey = getDebuggerTabUIKey(lsKey);
+const saveFolderExpanded = (uiKey: string, folderId: string, expanded: boolean) => {
   // Merged: a module may keep other UI fields in the same key
   const uiState = lsGetItem(uiKey, {}) as UIState;
   lsSetItem(uiKey, { ...uiState, folders: { ...uiState.folders, [folderId]: expanded } });
@@ -72,10 +72,8 @@ export const _buildDebuggerPane = (
   def: AnyDebuggerTabDef,
   section: DebuggerPaneSection<AnyState>
 ): BuiltDebuggerPane => {
-  const lsKey = def.lsKey;
-  const savedFolders = lsKey
-    ? (lsGetItem(getDebuggerTabUIKey(lsKey), {}) as UIState).folders || {}
-    : {};
+  const uiKey = getDebuggerTabUIKey(def);
+  const savedFolders = uiKey ? (lsGetItem(uiKey, {}) as UIState).folders || {} : {};
 
   // True while values are pushed into the pane (refresh): Tweakpane's refresh() emits `change`
   let isSuppressed = false;
@@ -90,37 +88,43 @@ export const _buildDebuggerPane = (
     persist && folderId in savedFolders ? savedFolders[folderId] : expanded !== false;
 
   const bindFolderPersistence = (folder: FolderApi | Pane, folderId: string, persist: boolean) => {
-    if (!persist || !lsKey) return;
-    folder.on('fold', (e) => saveFolderExpanded(lsKey, folderId, e.expanded));
+    if (!persist || !uiKey) return;
+    folder.on('fold', (e) => saveFolderExpanded(uiKey, folderId, e.expanded));
   };
 
   const addBinding = (parent: Pane | FolderApi, item: DebuggerPaneBinding<AnyState>) => {
     const { key, target, hidden, disabled, onChange, onCreate, ...params } = item;
     delete params.type;
-    const obj = (target as AnyState | undefined) || def.state;
+    // A state key can be a path one level deep ('nested.prop'); the top-level key is persisted
+    const dotIndex = target ? -1 : key.indexOf('.');
+    const rootKey = dotIndex === -1 ? key : key.slice(0, dotIndex);
+    const prop = dotIndex === -1 ? key : key.slice(dotIndex + 1);
+    const obj =
+      (target as AnyState | undefined) ||
+      (dotIndex === -1 ? def.state : (def.state?.[rootKey] as AnyState | undefined));
     if (!obj) {
-      lwarn(`Debugger tab "${def.id}" binding "${key}" has no target and the tab has no state.`);
+      lwarn(`Debugger tab "${def.id}" binding "${key}" has no target object.`);
       return;
     }
-    const isPersisted = !target && Boolean(def.persistKeys?.includes(key));
-    const api: BindingApi = parent.addBinding(obj, key, {
+    const isPersisted = !target && Boolean(def.persistKeys?.includes(rootKey));
+    const api: BindingApi = parent.addBinding(obj, prop, {
       ...params,
       ...(hidden !== undefined ? { hidden: resolveDyn(hidden) } : {}),
       ...(disabled !== undefined ? { disabled: resolveDyn(disabled) } : {}),
     });
 
-    let lastValue = snapshot(obj[key]);
+    let lastValue = snapshot(obj[prop]);
     api.on('change', (e) => {
       if (isSuppressed) return;
       const prev = lastValue;
       lastValue = snapshot(e.value);
-      if (isPersisted && e.last) persistDebuggerTabStateValue(def, key);
+      if (isPersisted && e.last) persistDebuggerTabStateValue(def, rootKey);
       onChange?.(e.value, { prev, last: e.last, api });
     });
     refreshers.push(() => {
       if (hidden !== undefined) api.hidden = resolveDyn(hidden);
       if (disabled !== undefined) api.disabled = resolveDyn(disabled);
-      lastValue = snapshot(obj[key]);
+      lastValue = snapshot(obj[prop]);
     });
     onCreate?.(api);
   };
@@ -135,7 +139,7 @@ export const _buildDebuggerPane = (
       if (item.type === 'folder') {
         const folderPath = path ? `${path}/${item.title}` : item.title;
         const folderId = item.id || folderPath;
-        const persist = item.persistExpanded ?? Boolean(lsKey);
+        const persist = item.persistExpanded ?? Boolean(uiKey);
         const folder = parent.addFolder({
           title: item.title,
           expanded: getFolderExpanded(folderId, item.expanded, persist),
@@ -179,7 +183,7 @@ export const _buildDebuggerPane = (
   };
 
   const paneId = section.id || section.title || '';
-  const persistPane = Boolean(section.title && lsKey);
+  const persistPane = Boolean(section.title && uiKey);
   pane = new Pane({
     container: container.elem,
     ...(section.title

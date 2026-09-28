@@ -1,31 +1,23 @@
 import * as THREE from 'three/webgpu';
-import { Pane } from 'tweakpane';
-import { TCMP } from '../../utils/CMP';
+import { CMP } from '../../utils/CMP';
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import { IS_DEBUG_ENV } from '../Config';
 import { ECSWorld } from '../ECS';
 import { createLines, writePolyline, type LineObject } from '../LineManager';
-import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
-import { getSvgIcon } from '../UI/icons/SvgIcon';
-import {
-  createDebuggerTab,
-  createNewDebuggerPane,
-  isDebuggerTabOpen,
-} from '../../debug/DebuggerGUI';
+import { createDebuggerTab, updateDebuggerTab } from '../../debug/DebuggerGUI';
 import { PercentagePieHtml } from '../../utils/UI/PercentagePieHtml';
-import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 
 const DEFAULT_HELPER_COLOR = '#ff0000';
 const DEFAULT_MAX_HELPER_LENGTH = 1000;
 const LS_KEY = 'debugRayCast';
+const TAB_ID = 'rayCastControls';
 /** One single-segment line per helper id, refilled on every draw. */
 const rayHelpers = new Map<string, { line: LineObject; color: THREE.ColorRepresentation }>();
 /** Helper ids drawn since the last cleanup; the rest are disposed by it. */
 const drawnHelperIds = new Set<string>();
 const rayEnd = new THREE.Vector3();
 const rayPoints: THREE.Vector3Like[] = [rayEnd, rayEnd];
-let rayCastDebugGUI: Pane | null = null;
-let rayCastState = {
+const rayCastState = {
   showAllRayDebugHelpers: false,
   enableRayStatistics: false,
 };
@@ -63,7 +55,6 @@ const DEFAULT_STATS_CONFIG = {
   sceneLongAverageIntervalInMs: 20000,
 };
 const statsConfig = { ...DEFAULT_STATS_CONFIG };
-let statsCMP: TCMP | null = null;
 let maxMinIntervalText = '';
 let maxMinLongIntervalText = '';
 let averageIntervalText = '';
@@ -151,79 +142,49 @@ export const _deleteAllRayHelpers = () => {
 };
 
 export const _toggleAllRayDebugHelpers = (show?: boolean) => {
-  if (show === undefined) {
-    rayCastState.showAllRayDebugHelpers = !rayCastState.showAllRayDebugHelpers;
-    _buildRayCastDebugGUI();
-    return;
-  }
-  rayCastState.showAllRayDebugHelpers = show;
-  _buildRayCastDebugGUI();
+  rayCastState.showAllRayDebugHelpers = show ?? !rayCastState.showAllRayDebugHelpers;
+  updateDebuggerTab(TAB_ID);
 };
 
 const createDebugControls = () => {
-  const savedValues = lsGetItem(LS_KEY, rayCastState);
-  rayCastState = {
-    ...rayCastState,
-    ...savedValues,
-  };
   createIntervalTexts();
 
-  const icon = getSvgIcon('heartArrow');
   createDebuggerTab({
-    id: 'rayCastControls',
-    buttonText: icon,
+    id: TAB_ID,
     title: 'Ray cast controls',
-    container: () => {
-      const clearTabBtn = createClearTabLSButton({
-        hasData: () => lsKeyHasData(LS_KEY),
-        onClear: () => lsRemoveItem(LS_KEY),
-        watchKey: LS_KEY,
-      });
-      const { container, debugGUI } = createNewDebuggerPane(
-        'rayCast',
-        `${icon} Ray Cast Controls`,
-        [clearTabBtn]
-      );
-      rayCastDebugGUI = debugGUI;
-      _buildRayCastDebugGUI();
-      statsCMP = container.add({ class: 'rayCastStats' }).add();
-      if (!rayCastState.enableRayStatistics) disableStats();
-      return container;
-    },
+    icon: 'heartArrow',
+    lsKey: LS_KEY,
+    state: rayCastState,
+    persistKeys: ['showAllRayDebugHelpers', 'enableRayStatistics'],
+    content: () => [
+      {
+        pane: true,
+        content: [
+          { key: 'showAllRayDebugHelpers', label: 'Show ray cast helpers' },
+          {
+            key: 'enableRayStatistics',
+            label: 'Enable ray cast statistics',
+            onChange: () => {
+              stats._percentageSceneMaxMinInterval = 0;
+              stats._percentageSceneLongMaxMinInterval = 0;
+              stats._percentageSceneAverageInterval = 0;
+              stats._percentageSceneLongAverageInterval = 0;
+              stats._lastSceneMaxMinTime = performance.now();
+              stats._lastSceneLongMaxMinTime = performance.now();
+              stats._lastSceneAverageTime = performance.now();
+              stats._lastSceneLongAverageTime = performance.now();
+              stats.current = 0;
+              stats.sceneAverageTotal = 0;
+              stats.sceneLongAverageTotal = 0;
+              updateDebuggerTab(TAB_ID);
+            },
+          },
+        ],
+      },
+      // Dynamic template: re-rendered on every tab refresh (each frame while statistics are on)
+      CMP({ html: () => `<div class="rayCastStats">${getStatsHtml()}</div>` }),
+    ],
   });
-};
-
-export const _buildRayCastDebugGUI = () => {
-  const debugGUI = rayCastDebugGUI;
-  if (!debugGUI) return;
-
-  const blades = debugGUI?.children || [];
-  for (let i = 0; i < blades.length; i++) {
-    blades[i].dispose();
-  }
-
-  debugGUI
-    .addBinding(rayCastState, 'showAllRayDebugHelpers', { label: 'Show ray cast helpers' })
-    .on('change', () => {
-      lsSetItem(LS_KEY, rayCastState);
-    });
-  debugGUI
-    .addBinding(rayCastState, 'enableRayStatistics', { label: 'Enable ray cast statistics' })
-    .on('change', () => {
-      stats._percentageSceneMaxMinInterval = 0;
-      stats._percentageSceneLongMaxMinInterval = 0;
-      stats._percentageSceneAverageInterval = 0;
-      stats._percentageSceneLongAverageInterval = 0;
-      stats._lastSceneMaxMinTime = performance.now();
-      stats._lastSceneLongMaxMinTime = performance.now();
-      stats._lastSceneAverageTime = performance.now();
-      stats._lastSceneLongAverageTime = performance.now();
-      stats.current = 0;
-      stats.sceneAverageTotal = 0;
-      stats.sceneLongAverageTotal = 0;
-      lsSetItem(LS_KEY, rayCastState);
-      disableStats();
-    });
 };
 
 const countStats = () => {
@@ -322,13 +283,9 @@ export const _updateStats = () => {
       );
     }
 
-    // Update Ray Cast Controls drawer view
-    // @TODO: if stats window and total stats (with ray stats) are implemented, add checks for those as well here
-    if (isDebuggerTabOpen('rayCastControls')) {
-      statsCMP?.update({
-        html: statsHtml(stats, 'active'),
-      });
-    }
+    // Update Ray Cast Controls drawer view (only when it's the open tab)
+    // @TODO: if stats window and total stats (with ray stats) are implemented, update those as well here
+    updateDebuggerTab(TAB_ID);
   }
 
   if (stats.current > stats._maxCounter) stats._maxCounter = stats.current;
@@ -356,17 +313,10 @@ const statsHtml = (s: typeof stats, className: string) => `<div>
   </ul>
 </div>`;
 
-const disableStats = () => {
-  statsCMP?.update({
-    html: statsHtml(
-      {
-        ...stats,
-        current: '-',
-      } as unknown as typeof stats,
-      'inactive'
-    ),
-  });
-};
+const getStatsHtml = () =>
+  rayCastState.enableRayStatistics
+    ? statsHtml(stats, 'active')
+    : statsHtml({ ...stats, current: '-' } as unknown as typeof stats, 'inactive');
 
 const createIntervalTexts = () => {
   const maxMin = statsConfig.sceneMaxMinIntervalInMs / 1000;

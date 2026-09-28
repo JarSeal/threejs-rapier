@@ -28,6 +28,16 @@ export type TabAndContainer = {
   orderNr?: number;
 };
 
+/** A key of a tab's state, or a one level deep path into a nested object of it
+ * (eg. 'helpers.showGrid'). */
+export type DebuggerStateKey<S> = {
+  [K in keyof S & string]: S[K] extends readonly unknown[]
+    ? K
+    : S[K] extends object
+      ? K | `${K}.${keyof S[K] & string}`
+      : K;
+}[keyof S & string];
+
 /** A static value or a function that is re-evaluated on every tab refresh. */
 export type DebuggerDyn<T> = T | (() => T);
 
@@ -48,8 +58,9 @@ export type DebuggerPaneBinding<S extends object = object> = {
   [tweakpaneParam: string]: unknown;
 } & (
   | {
-      /** Property of the tab's `state`. */
-      key: keyof S & string;
+      /** Property of the tab's `state`, or a path one level into it (eg. 'helpers.showGrid').
+       * It is persisted when its top-level key is one of the tab's persistKeys. */
+      key: DebuggerStateKey<S>;
       target?: undefined;
     }
   | {
@@ -60,7 +71,8 @@ export type DebuggerPaneBinding<S extends object = object> = {
     }
 );
 
-/** A Tweakpane folder. Its open/closed state is persisted to `${lsKey}UI` when the tab has an lsKey. */
+/** A Tweakpane folder. Its open/closed state is persisted to the tab's UI key (see
+ * `DebuggerTabDef.uiLsKey`) when it has one. */
 export type DebuggerPaneFolder<S extends object = object> = {
   type: 'folder';
   /** Folder state id. Default: the title path (eg. 'Parent/Child'). */
@@ -68,7 +80,7 @@ export type DebuggerPaneFolder<S extends object = object> = {
   title: string;
   /** Initial open state (before any persisted state). Default true. */
   expanded?: boolean;
-  /** Whether the open/closed state is persisted. Default true when the tab has an lsKey. */
+  /** Whether the open/closed state is persisted. Default true when the tab has a UI key. */
   persistExpanded?: boolean;
   hidden?: DebuggerDyn<boolean>;
   content: DebuggerPaneItem<S>[];
@@ -136,8 +148,12 @@ export type DebuggerTabDef<S extends object = object> = {
   state?: S;
   /** The `state` keys that are persisted under `lsKey` (as a flat object). They are hydrated
    * into `state` synchronously at registration (also in prod test mode), and written on each
-   * finished user change. No other key is ever read from or written to `lsKey`. */
+   * finished user change. No other key is ever read from or written to `lsKey`. A nested
+   * object is persisted (and hydrated) whole. */
   persistKeys?: readonly (keyof S & string)[];
+  /** LocalStorage key of the tab's UI state (folder open/closed states). Default:
+   * `${lsKey}UI` when `lsKey` is set, otherwise none (nothing is persisted). */
+  uiLsKey?: string;
   /** Extra heading row buttons, after the clear-LS button (eg. a clear list LS button). */
   headerButtons?: () => TCMP[];
   /** Whether the heading has the clear tab LS button. Default: true when `lsKey` is set. Set to
