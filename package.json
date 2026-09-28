@@ -53,7 +53,7 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",
-    "stats-gl": "3.6.0",
+    "stats-gl": "4.2.3",
     "three": "0.186.1",
     "tweakpane": "4.0.5"
   },

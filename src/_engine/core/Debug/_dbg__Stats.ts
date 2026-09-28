@@ -35,9 +35,9 @@ type StatsInternals = {
 };
 
 /** Top-to-bottom display order, independent of the order the panels get created in — which
- * we don't control: stats-gl builds FPS and CPU in its constructor, we add PHY and TFPS next,
- * and GPU/CPT only appear later, asynchronously, once init() has checked for timestamp-query
- * support. */
+ * we don't control: stats-gl builds FPS, CPU, GPU and CPT in its constructor, then we add PHY
+ * and TFPS. GPU/CPT are built before init() has checked for timestamp-query support, so they
+ * get detached again once it settles if the renderer turns out not to support it. */
 const PANEL_ORDER = ['TFPS', 'FPS', 'CPU', 'PHY', 'GPU', 'CPT'];
 
 let stats: Stats | null = null;
@@ -81,6 +81,9 @@ export const _initStats = (config?: StatsOptions) => {
     if (stats) stats.update();
     stats = new Stats({
       ...(savedConfig as Omit<StatsOptions, 'enabled'>),
+      // stats-gl builds FPS and CPU together, and only when trackFPS is on, so CPU would
+      // vanish along with FPS. Always build both; a switched-off one is detached below.
+      trackFPS: true,
       // Hz is drawn as a small overlay inside the CPU panel, so with CPU off it would have
       // nothing to sit on. The debug tab disables the Hz toggle in that case; this is the
       // matching guard for an already-persisted combination.
@@ -92,8 +95,8 @@ export const _initStats = (config?: StatsOptions) => {
       minimal: false,
     });
     const internals = stats as unknown as StatsInternals;
-    // stats-gl builds FPS and CPU in its constructor with no way to opt out, so switching
-    // them off means detaching the canvas after the fact. Detaching (rather than
+    // FPS and CPU can't be opted out of separately (see trackFPS above), so switching either
+    // off means detaching its canvas after the fact. Detaching (rather than
     // display:none) because stats-gl's own window-resize handler re-asserts display:block
     // on every panel it knows about, which would undo a hide on the first resize.
     if (!cfg.trackFPS) internals.fpsPanel?.canvas.remove();
@@ -113,14 +116,21 @@ export const _initStats = (config?: StatsOptions) => {
     statsCmp.elem.appendChild(stats.dom);
     getHUDRootCMP().add(statsCmp);
     // Ordered once now so nothing flashes in creation order, and again once init() settles,
-    // because that is when the GPU/CPT panels (if any) actually get added. Reordering on
-    // settle rather than on success: a renderer that fails to init simply contributes no
-    // GPU/CPT panels, and the rest must still come out in the right order.
+    // because that is when the GPU/CPT panels may get detached (no timestamp-query support,
+    // which stats-gl only checks in init()). Reordering on settle rather than on success: a
+    // renderer that fails to init must still leave the rest in the right order.
     applyPanelOrder();
+    const renderer = getRenderer();
     stats
-      .init(getRenderer())
+      .init(renderer)
       .catch(() => undefined)
-      .then(applyPanelOrder);
+      .then(() => {
+        if (!renderer?.hasFeature('timestamp-query')) {
+          internals.gpuPanel?.canvas.remove();
+          internals.gpuPanelCompute?.canvas.remove();
+        }
+        applyPanelOrder();
+      });
   }
   setDebuggerUI();
   return stats;
@@ -194,6 +204,8 @@ const positionVSyncOverlay = (canvas: HTMLCanvasElement | undefined, visible: St
 export const _updateRestOfStats = (renderer: Renderer) => {
   logicEndTime = performance.now();
   logicDuration = logicEndTime - logicStartTime;
+  // stats-gl only reads renderer.info's timestamps for a three.js WebGPURenderer (it resolves
+  // them itself only on its native GPUDevice path), so resolving them stays our job.
   if (statsConfig.trackCPT) renderer.resolveTimestampsAsync(TimestampQuery.COMPUTE);
   if (statsConfig.trackGPU) renderer.resolveTimestampsAsync(TimestampQuery.RENDER);
   updateTFPSPanel(logicDuration);

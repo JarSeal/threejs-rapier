@@ -5,8 +5,8 @@ import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers
 
 export type StatsOptions = {
   performanceFolderExpanded?: boolean;
-  /** stats-gl builds its FPS and CPU panels unconditionally, so these two are applied by
-   * detaching the panel afterwards rather than by skipping its creation. */
+  /** stats-gl builds its FPS and CPU panels together (only via its own trackFPS), so these two
+   * are applied by always building both and detaching the panel afterwards. */
   trackFPS?: boolean;
   trackCPU?: boolean;
   /** Engine-side panel (not stats-gl's): time spent in app logic, as a theoretical FPS. */
