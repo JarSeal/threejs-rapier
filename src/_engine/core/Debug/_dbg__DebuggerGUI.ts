@@ -1,13 +1,20 @@
 import { CMP, TCMP } from '../../utils/CMP';
 import styles from './DebuggerGUI.module.scss';
-import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../../utils/Window';
 import { getHUDRootCMP } from '../../core/HUD';
 import { Pane } from 'tweakpane';
-import { isDebugEnvironment } from '../../core/Config';
-import { lwarn } from '../../utils/Logger';
-import { type TabAndContainer, type DebugGUIOpts } from '../../debug/DebuggerGUI';
+import { DEFAULT_DEBUG_DRAWER_TAB_ORDER, getConfig, isDebugEnvironment } from '../../core/Config';
+import { lerror, lwarn } from '../../utils/Logger';
+import {
+  type TabAndContainer,
+  type DebugGUIOpts,
+  type DebuggerTabDef,
+  type UpdateDebuggerTabOpts,
+} from '../../debug/DebuggerGUI';
 import { createDebuggerSceneLoader } from './_dbg__DebuggerSceneLoader';
+import { getSvgIcon } from '../UI/icons/SvgIcon';
+import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 
 let drawerCMP: TCMP | null = null;
 let currentSceneTitleCMP: TCMP | null = null;
@@ -26,7 +33,8 @@ type DrawerState = {
 
 let drawerState: DrawerState = {
   isOpen: false,
-  currentTabId: 'stats',
+  // Empty = the first tab in order
+  currentTabId: '',
   currentScrollPos: 0,
 };
 
@@ -58,50 +66,176 @@ const initDrawerState = () => {
   return drawerState;
 };
 
-let tabsAndContainers: TabAndContainer[] = [];
+type LegacyTabDef = Omit<TabAndContainer, 'button'>;
+type AnyTabDef = DebuggerTabDef | LegacyTabDef;
+type TabEntry = { def: AnyTabDef; button: TCMP | null };
+
+const isNewTabDef = (def: AnyTabDef): def is DebuggerTabDef => 'content' in def;
+
+// Keyed by tab id. A Map keeps insertion order, so a re-registered (replaced) tab keeps its
+// registration position for the ordering tie-break.
+const tabs = new Map<string, TabEntry>();
+
+/** The tab whose content is currently in the drawer (drawerState.currentTabId is only the saved
+ * preference, and it can point to a tab that is not registered yet). */
+type MountedTab = {
+  id: string;
+  /** New shape tabs only: the content sections (for refresh). */
+  sections: TCMP[];
+  onOpenCleanup: (() => void) | null;
+  intervalId: ReturnType<typeof setInterval> | null;
+};
+let mountedTab: MountedTab | null = null;
+
+const getTabSortValue = (def: AnyTabDef, tabOrder: string[]) => {
+  if (def.orderNr !== undefined) return def.orderNr;
+  const index = tabOrder.indexOf(def.id);
+  return index === -1 ? Infinity : index;
+};
+
+/** All tabs in menu order: `orderNr ?? tabOrder index`, ties (and unlisted tabs) in registration order. */
+const getOrderedTabs = () => {
+  const tabOrder = getConfig().debugDrawer?.tabOrder || DEFAULT_DEBUG_DRAWER_TAB_ORDER;
+  // Array.sort is stable, so equal values keep the Map's registration order
+  return [...tabs.values()].sort((a, b) => {
+    const aValue = getTabSortValue(a.def, tabOrder);
+    const bValue = getTabSortValue(b.def, tabOrder);
+    if (aValue < bValue) return -1;
+    if (aValue > bValue) return 1;
+    return 0;
+  });
+};
 
 const createTabMenuButtons = () => {
-  for (let i = 0; i < tabsAndContainers.length; i++) {
-    const data = tabsAndContainers[i];
-    if (data.button) data.button.remove();
-    const button = CMP({
-      id: `debugTabsMenuButton-${data.id}`,
+  for (const entry of tabs.values()) {
+    const def = entry.def;
+    if (entry.button) entry.button.remove();
+    const buttonText = isNewTabDef(def) ? getSvgIcon(def.icon) : def.buttonText;
+    entry.button = CMP({
+      id: `debugTabsMenuButton-${def.id}`,
       class: styles.debugDrawerTabButton,
-      html: () => `<button>${data.buttonText}</button>`,
-      attr: data.title ? { title: data.title } : undefined,
+      html: () => `<button>${buttonText}</button>`,
+      attr: def.title ? { title: def.title } : undefined,
       onClick: (_, cmp) => {
         if (cmp.elem.classList.contains(styles.debugDrawerTabButton_selected)) return;
-        let container: TCMP | TCMP[] | null = null;
-        if (typeof data.container !== 'function') {
-          container = data.container.updateClass(styles.childContainer);
-        } else {
-          const containerOrcontainers = data.container();
-          if (Array.isArray(containerOrcontainers)) {
-            for (let i = 0; i < containerOrcontainers.length; i++) {
-              containerOrcontainers[i].updateClass(styles.childContainer);
-            }
-            container = containerOrcontainers;
-          } else {
-            container = containerOrcontainers.updateClass(styles.childContainer);
-          }
-        }
-        tabsContainerWrapper?.removeChildren();
-        if (Array.isArray(container)) {
-          for (let i = 0; i < container.length; i++) {
-            tabsContainerWrapper?.add(container[i]);
-          }
-        } else {
-          tabsContainerWrapper?.add(container);
-        }
-        for (let i = 0; i < tabsAndContainers.length; i++) {
-          const btn = tabsAndContainers[i]?.button;
-          if (btn) btn.updateClass(styles.debugDrawerTabButton_selected, 'remove');
-        }
-        data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
-        saveDrawerState({ currentTabId: data.id, currentScrollPos: 0 });
+        mountTab(entry);
+        saveDrawerState({ currentTabId: def.id, currentScrollPos: 0 });
       },
     });
-    tabsAndContainers[i].button = button;
+  }
+};
+
+/** Builds a new shape tab: container with the heading row, then the content sections. */
+const buildNewTabContent = (def: DebuggerTabDef) => {
+  const container = CMP({ id: `debuggerPane-${def.id}`, class: styles.childContainer });
+
+  const headingRow = container.add({ class: 'debuggerTabHeadingRow' });
+  const icon = getSvgIcon(def.icon);
+  headingRow.add({ html: () => `<h3>${icon} ${def.title}</h3>`, class: 'debuggerTabHeading' });
+  const lsKey = def.lsKey;
+  if (def.clearLSButton ?? Boolean(lsKey)) {
+    headingRow.add(
+      createClearTabLSButton({
+        hasData: () => (lsKey ? lsKeyHasData(lsKey) : false),
+        onClear: () => {
+          if (!lsKey) return;
+          lsRemoveItem(lsKey);
+          def.onClearLS?.();
+        },
+        watchKey: lsKey,
+      })
+    );
+  }
+  const headerButtons = def.headerButtons?.() || [];
+  for (let i = 0; i < headerButtons.length; i++) headingRow.add(headerButtons[i]);
+
+  const sections = def.content();
+  for (let i = 0; i < sections.length; i++) container.add(sections[i]);
+
+  return { container, sections };
+};
+
+/** Builds a legacy tab: its container(s), each with the child container class. */
+const buildLegacyTabContent = (def: LegacyTabDef) => {
+  if (typeof def.container !== 'function') {
+    return [def.container.updateClass(styles.childContainer)];
+  }
+  const containerOrContainers = def.container();
+  const containers = Array.isArray(containerOrContainers)
+    ? containerOrContainers
+    : [containerOrContainers];
+  for (let i = 0; i < containers.length; i++) containers[i].updateClass(styles.childContainer);
+  return containers;
+};
+
+const startTabInterval = () => {
+  if (!mountedTab || mountedTab.intervalId !== null || !drawerState.isOpen) return;
+  const entry = tabs.get(mountedTab.id);
+  if (!entry || !isNewTabDef(entry.def) || !entry.def.refreshIntervalMs) return;
+  const id = mountedTab.id;
+  mountedTab.intervalId = setInterval(() => _updateDebuggerTab(id), entry.def.refreshIntervalMs);
+};
+
+const stopTabInterval = () => {
+  if (!mountedTab || mountedTab.intervalId === null) return;
+  clearInterval(mountedTab.intervalId);
+  mountedTab.intervalId = null;
+};
+
+/** Runs the mounted tab's lifecycle cleanup. The DOM/CMP removal is up to the caller. */
+const unmountTab = () => {
+  if (!mountedTab) return;
+  stopTabInterval();
+  const cleanup = mountedTab.onOpenCleanup;
+  const id = mountedTab.id;
+  mountedTab = null;
+  try {
+    cleanup?.();
+  } catch (err) {
+    lerror(`Debugger tab "${id}" onOpen cleanup failed`, err);
+  }
+};
+
+/** Replaces the drawer's tab content with this tab's (fresh) content and selects its button. */
+const mountTab = (entry: TabEntry) => {
+  if (!tabsContainerWrapper) return;
+  unmountTab();
+  tabsContainerWrapper.removeChildren();
+
+  const def = entry.def;
+  let sections: TCMP[] = [];
+  if (isNewTabDef(def)) {
+    const built = buildNewTabContent(def);
+    sections = built.sections;
+    tabsContainerWrapper.add(built.container);
+  } else {
+    const containers = buildLegacyTabContent(def);
+    for (let i = 0; i < containers.length; i++) tabsContainerWrapper.add(containers[i]);
+  }
+
+  for (const other of tabs.values()) {
+    other.button?.updateClass(styles.debugDrawerTabButton_selected, 'remove');
+  }
+  entry.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
+
+  mountedTab = { id: def.id, sections, onOpenCleanup: null, intervalId: null };
+  if (isNewTabDef(def) && def.onOpen) {
+    try {
+      mountedTab.onOpenCleanup = def.onOpen() || null;
+    } catch (err) {
+      lerror(`Debugger tab "${def.id}" onOpen failed`, err);
+    }
+  }
+  startTabInterval();
+};
+
+/** Refreshes the mounted tab's dynamic content (only CMP sections with an `html` function). */
+const refreshMountedTab = () => {
+  if (!mountedTab) return;
+  const sections = mountedTab.sections;
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
+    if (typeof section.props?.html === 'function') section.update();
   }
 };
 
@@ -114,7 +248,8 @@ export const _createDebugGui = (opts?: DebugGUIOpts) => {
   initDrawerState();
   createTabMenuButtons();
 
-  // Drawer
+  // Drawer (the lifecycle cleanup of the mounted tab runs before its CMPs are removed)
+  unmountTab();
   if (drawerCMP) drawerCMP.remove();
   drawerCMP = getHUDRootCMP().add({
     id: 'debugDrawer',
@@ -169,18 +304,9 @@ export const _createDebugGui = (opts?: DebugGUIOpts) => {
     id: 'debugDrawerTabsMenu',
     class: styles.debugDrawerTabsMenu,
   });
-  const orderedTabsAndContainers = tabsAndContainers.sort((a, b) => {
-    const maxOrderNr = 9999;
-    let aOrderNr = a.orderNr;
-    let bOrderNr = b.orderNr;
-    if (aOrderNr === undefined) aOrderNr = maxOrderNr;
-    if (bOrderNr === undefined) bOrderNr = maxOrderNr;
-    if (aOrderNr < bOrderNr) return -1;
-    if (aOrderNr > bOrderNr) return 1;
-    return 0;
-  });
-  for (let i = 0; i < orderedTabsAndContainers.length; i++) {
-    const button = orderedTabsAndContainers[i]?.button;
+  const orderedTabs = getOrderedTabs();
+  for (let i = 0; i < orderedTabs.length; i++) {
+    const button = orderedTabs[i].button;
     if (button) tabsMenuContainer.add(button);
   }
 
@@ -217,34 +343,13 @@ export const _createDebugGui = (opts?: DebugGUIOpts) => {
     },
   });
 
-  // Show current tab
-  let data = tabsAndContainers.find((tab) => drawerState.currentTabId === tab.id);
-  let tabFound = true;
-  if (!data) {
-    data = tabsAndContainers[0];
-    tabFound = false;
-  }
-  if (!data) return;
+  // Show current tab (the saved one, or the first in order)
+  const savedTab = tabs.get(drawerState.currentTabId);
+  const entry = savedTab || orderedTabs[0];
+  if (!entry) return drawerCMP;
 
-  if (typeof data.container !== 'function') {
-    tabsContainerWrapper?.add(data.container.updateClass(styles.childContainer));
-  } else {
-    const container = data.container();
-    if (Array.isArray(container)) {
-      for (let i = 0; i < container.length; i++) {
-        tabsContainerWrapper?.add(container[i].updateClass(styles.childContainer));
-      }
-    } else {
-      tabsContainerWrapper?.add(container.updateClass(styles.childContainer));
-    }
-  }
-
-  for (let i = 0; i < tabsAndContainers.length; i++) {
-    const btn = tabsAndContainers[i]?.button;
-    if (btn) btn.updateClass(styles.debugDrawerTabButton_selected, 'remove');
-  }
-  data.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
-  tabsContainerWrapper.elem.scrollTop = tabFound ? drawerState.currentScrollPos || 0 : 0;
+  mountTab(entry);
+  tabsContainerWrapper.elem.scrollTop = savedTab ? drawerState.currentScrollPos || 0 : 0;
 
   return drawerCMP;
 };
@@ -259,23 +364,35 @@ export const _toggleDrawer = (openOrClose?: 'OPEN' | 'CLOSE') => {
   } else {
     newState = !drawerState.isOpen;
   }
+  const wasOpen = drawerState.isOpen;
   saveDrawerState({ isOpen: newState });
   if (drawerState.isOpen) {
     drawerCMP.updateClass(styles.debuggerGUI_open, 'add');
     drawerCMP.updateClass(styles.debuggerGUI_closed, 'remove');
     document.body.classList.add(DRAWER_OPEN_BODY_CLASS);
+    if (!wasOpen) {
+      // The tab was not refreshed while hidden
+      refreshMountedTab();
+      startTabInterval();
+    }
     return;
   }
+  stopTabInterval();
   drawerCMP.updateClass(styles.debuggerGUI_open, 'remove');
   drawerCMP.updateClass(styles.debuggerGUI_closed, 'add');
   document.body.classList.remove(DRAWER_OPEN_BODY_CLASS);
 };
 
-export const _createDebuggerTab = (
-  tabAndContainer: Omit<TabAndContainer, 'button'>,
-  opts?: DebugGUIOpts
-) => {
-  tabsAndContainers.push({ ...tabAndContainer, button: null });
+export const _createDebuggerTab = (def: AnyTabDef, opts?: DebugGUIOpts) => {
+  const existing = tabs.get(def.id);
+  if (existing) {
+    // Replace (keeps the registration position)
+    existing.button?.remove();
+    existing.button = null;
+    existing.def = def;
+  } else {
+    tabs.set(def.id, { def, button: null });
+  }
   createTabMenuButtons();
   if (!drawerCMP) return;
   const options = { ...guiOpts, ...opts };
@@ -283,15 +400,33 @@ export const _createDebuggerTab = (
 };
 
 export const _removeDebuggerTab = (id: string) => {
-  const foundTabAndContainer = tabsAndContainers.find((tnc) => tnc.id === id);
-  if (!foundTabAndContainer) {
-    lwarn(`Could not find a tabAndContainer to remove with id "${id}" in removeDebuggerTab`);
+  const entry = tabs.get(id);
+  if (!entry) {
+    lwarn(`Could not find a debugger tab to remove with id "${id}" in removeDebuggerTab`);
     return;
   }
-  tabsAndContainers = tabsAndContainers.filter((tnc) => tnc.id !== id);
+  if (mountedTab?.id === id) unmountTab();
+  entry.button?.remove();
+  tabs.delete(id);
   createTabMenuButtons();
   if (!drawerCMP) return;
   _createDebugGui(guiOpts);
+};
+
+export const _isDebuggerTabOpen = (id: string) =>
+  Boolean(drawerCMP) && drawerState.isOpen && mountedTab?.id === id;
+
+export const _updateDebuggerTab = (id: string, opts?: UpdateDebuggerTabOpts) => {
+  if (!_isDebuggerTabOpen(id)) return;
+  if (!opts?.rebuild) {
+    refreshMountedTab();
+    return;
+  }
+  const entry = tabs.get(id);
+  if (!entry || !tabsContainerWrapper) return;
+  const scrollPos = tabsContainerWrapper.elem.scrollTop;
+  mountTab(entry);
+  tabsContainerWrapper.elem.scrollTop = scrollPos;
 };
 
 export const _createNewDebuggerContainer = (

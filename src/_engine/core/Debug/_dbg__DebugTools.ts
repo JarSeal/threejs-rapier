@@ -113,7 +113,6 @@ const createDebugToolsDebugGUI = () => {
     id: 'debugToolsControls',
     buttonText: icon,
     title: 'Debug tools controls',
-    orderNr: 6,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),

@@ -34,6 +34,12 @@ const config: AppConfig = {
     },
     lineThickness: 1,
   },
+  // Debug drawer tab order (tab ids). Replaces the engine default order whole; tabs not
+  // listed go last. A tab's own `orderNr` overrides its place (0-based, eg. 1.5 = between
+  // the 2nd and the 3rd tab).
+  // debugDrawer: {
+  //   tabOrder: ['statsControls', 'loopControls', 'rendererControls', 'physicsApiControls'],
+  // },
   debugCamera: {
     position: { x: 3, y: 3, z: 1.5 },
     target: { x: 0, y: 0, z: 0 },

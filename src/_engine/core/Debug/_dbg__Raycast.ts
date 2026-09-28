@@ -7,7 +7,11 @@ import { ECSWorld } from '../ECS';
 import { createLines, writePolyline, type LineObject } from '../LineManager';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
-import { createDebuggerTab, createNewDebuggerPane, getDrawerState } from '../../debug/DebuggerGUI';
+import {
+  createDebuggerTab,
+  createNewDebuggerPane,
+  isDebuggerTabOpen,
+} from '../../debug/DebuggerGUI';
 import { PercentagePieHtml } from '../../utils/UI/PercentagePieHtml';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 
@@ -169,7 +173,6 @@ const createDebugControls = () => {
     id: 'rayCastControls',
     buttonText: icon,
     title: 'Ray cast controls',
-    orderNr: 10,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),
@@ -320,9 +323,8 @@ export const _updateStats = () => {
     }
 
     // Update Ray Cast Controls drawer view
-    const drawerState = getDrawerState();
     // @TODO: if stats window and total stats (with ray stats) are implemented, add checks for those as well here
-    if (drawerState?.isOpen && drawerState.currentTabId === 'rayCastControls') {
+    if (isDebuggerTabOpen('rayCastControls')) {
       statsCMP?.update({
         html: statsHtml(stats, 'active'),
       });

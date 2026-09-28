@@ -729,7 +729,6 @@ export const _createPhysicsAPIDebugGUI = () => {
     id: 'physicsApiControls',
     buttonText: icon,
     title: 'Physics API controls',
-    orderNr: 6,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         // Every key this tab owns, so one button leaves nothing behind.

@@ -105,7 +105,6 @@ export const _createRendererDebugGUI = async (
     id: 'rendererControls',
     buttonText: icon,
     title: 'Renderer controls',
-    orderNr: 7,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),

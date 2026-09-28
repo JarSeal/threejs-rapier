@@ -916,7 +916,6 @@ export const initLightDebuggerGUI = () => {
     id: 'lightsControls',
     buttonText: icon,
     title: 'Light controls',
-    orderNr: 10,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => {

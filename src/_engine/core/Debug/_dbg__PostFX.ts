@@ -591,7 +591,6 @@ export const _createPostFXDebugGUI = async () => {
     id: 'postFxControls',
     buttonText: icon,
     title: 'PostFX controls',
-    orderNr: 9,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(SETTINGS_LS_KEY),

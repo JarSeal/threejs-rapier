@@ -195,7 +195,6 @@ export const _initECSDebugGUI = () => {
     id: 'ecsControls',
     buttonText: icon,
     title: 'ECS',
-    orderNr: 15,
     container: () => {
       let pane: Pane | undefined = undefined;
       const clearTabBtn = createClearTabLSButton({

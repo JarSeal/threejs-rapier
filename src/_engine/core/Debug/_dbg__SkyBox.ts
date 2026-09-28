@@ -161,7 +161,6 @@ const buildSkyBoxDebugGUI = () => {
     id: 'skyBoxControls',
     buttonText: icon,
     title: 'Sky box controls',
-    orderNr: 5,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY_UI),

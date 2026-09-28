@@ -1,4 +1,5 @@
 import { type TCMP } from '../utils/CMP';
+import type { SvgIconKey } from '../core/UI/icons/SvgIcon';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
 import { lerror } from '../utils/Logger';
 
@@ -10,6 +11,10 @@ let debugGUI: DebugModuleRef<DebuggerGUIModule> | null = null;
 
 export type DebugGUIOpts = { drawerBtnPlace?: 'TOP' | 'MIDDLE' | 'BOTTOM' };
 
+/**
+ * Legacy tab shape (menu button text + a hand-built container).
+ * @deprecated Use {@link DebuggerTabDef} with {@link createDebuggerTab} instead.
+ */
 export type TabAndContainer = {
   id: string;
   buttonText: string | TCMP;
@@ -17,6 +22,51 @@ export type TabAndContainer = {
   container: TCMP | (() => TCMP | TCMP[]);
   button: null | TCMP;
   orderNr?: number;
+};
+
+/** One section of a debugger tab's content, mounted in array order. */
+export type DebuggerTabSection = TCMP;
+
+/**
+ * Declarative debugger tab definition for {@link createDebuggerTab}. The call builds the menu
+ * button, the heading row (icon, title, clear-LS button, header buttons) and the content.
+ */
+export type DebuggerTabDef = {
+  /** Unique tab id. Registering the same id again replaces the tab. */
+  id: string;
+  /** Heading text and menu button tooltip. */
+  title: string;
+  /** Menu button and heading icon. */
+  icon: SvgIconKey;
+  /** Explicit place in the menu, overriding `AppConfig.debugDrawer.tabOrder`. It is on the same
+   * 0-based scale as the tabOrder indexes (eg. 1.5 = between the 2nd and the 3rd tab). */
+  orderNr?: number;
+  /** LocalStorage key of this tab's own data. When set, the heading gets a clear-LS button for
+   * it (see `clearLSButton`). */
+  lsKey?: string;
+  /** Extra heading row buttons, after the clear-LS button (eg. a clear list LS button). */
+  headerButtons?: () => TCMP[];
+  /** Whether the heading has the clear tab LS button. Default: true when `lsKey` is set. Set to
+   * true without `lsKey` for a permanently disabled button (consistency with other tabs). */
+  clearLSButton?: boolean;
+  /** Called after the clear-LS button has removed `lsKey`, eg. to reset the live state. */
+  onClearLS?: () => void;
+  /** When set, the tab is refreshed ({@link updateDebuggerTab}) at this interval, but only
+   * while it is visible (drawer open and this tab selected). */
+  refreshIntervalMs?: number;
+  /** Runs every time the tab content is mounted. The returned function runs on unmount (tab
+   * switch, rebuild or drawer rebuild). */
+  onOpen?: () => void | (() => void);
+  /** Content factory. Runs on every mount and rebuild, because a removed CMP can't be mounted
+   * again. */
+  content: () => DebuggerTabSection[];
+};
+
+/** Options for {@link updateDebuggerTab}. */
+export type UpdateDebuggerTabOpts = {
+  /** Re-run the tab's content factory instead of refreshing the mounted content (for
+   * structural changes). The scroll position is kept. */
+  rebuild?: boolean;
 };
 
 export const registerDebuggerGUI = async () => {
@@ -41,16 +91,37 @@ export const toggleDrawer = (openOrClose?: 'OPEN' | 'CLOSE') => {
 };
 
 /**
- * Creates a debugger tab (and container)
- * @param tabAndContainer (object: Omit<TabAndContainer, 'button'>) {@link TabAndContainer}
+ * Creates (or replaces, by id) a debugger tab.
+ * @param def (object) tab definition {@link DebuggerTabDef}, or the deprecated legacy shape
+ * {@link TabAndContainer} (without `button`)
  * @param opts (object: DebugGUIOpts) optional debug GUI options {@link DebugGUIOpts}
  */
 export const createDebuggerTab = (
-  tabAndContainer: Omit<TabAndContainer, 'button'>,
+  def: DebuggerTabDef | Omit<TabAndContainer, 'button'>,
   opts?: DebugGUIOpts
 ) => {
-  useDebug(debugGUI)?._createDebuggerTab(tabAndContainer, opts);
+  useDebug(debugGUI)?._createDebuggerTab(def, opts);
 };
+
+/**
+ * Refreshes a debugger tab, but only if it is the visible one (see {@link isDebuggerTabOpen}),
+ * otherwise it does nothing (a closed tab is built fresh on its next mount anyway).
+ * A refresh updates the tab's dynamic content (CMP sections with an `html` function); legacy
+ * tabs are only affected by `rebuild`.
+ * @param id (string) tab id
+ * @param opts (object) optional {@link UpdateDebuggerTabOpts}
+ */
+export const updateDebuggerTab = (id: string, opts?: UpdateDebuggerTabOpts) => {
+  useDebug(debugGUI)?._updateDebuggerTab(id, opts);
+};
+
+/**
+ * Whether a debugger tab is visible: the drawer is built and open, and the tab is the mounted one.
+ * @param id (string) tab id
+ * @returns boolean
+ */
+export const isDebuggerTabOpen = (id: string) =>
+  useDebug(debugGUI)?._isDebuggerTabOpen(id) ?? false;
 
 /**
  * Removes a tab and container

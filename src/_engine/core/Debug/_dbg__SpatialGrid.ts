@@ -61,7 +61,6 @@ export const _createSpatialGridDebugGUI = () => {
     id: 'spatialGridControls',
     buttonText: icon,
     title: 'Spatial index',
-    orderNr: 16,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),

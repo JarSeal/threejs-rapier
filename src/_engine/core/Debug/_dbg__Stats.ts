@@ -291,7 +291,6 @@ const setDebuggerUI = () => {
     id: 'statsControls',
     buttonText: icon,
     title: 'Statistics',
-    orderNr: 3,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),

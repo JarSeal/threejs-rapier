@@ -670,7 +670,6 @@ export const _createAssetsDebugGUI = () => {
     id: 'assetsControls',
     buttonText: icon,
     title: 'Assets',
-    orderNr: 8,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(UI_LS_KEY),

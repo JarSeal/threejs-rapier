@@ -76,7 +76,10 @@ const icons = {
   x: xIcon,
 };
 
-export const getSvgIcon = (iconKey: keyof typeof icons, size?: 'small') => {
+/** Key of an engine UI icon (see {@link getSvgIcon}). */
+export type SvgIconKey = keyof typeof icons;
+
+export const getSvgIcon = (iconKey: SvgIconKey, size?: 'small') => {
   const icon = icons[iconKey] || '??';
   return `<span class="uiIcon${size === 'small' ? ' smallIcon' : ''}">${icon}</span>`;
 };

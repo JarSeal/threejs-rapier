@@ -22,7 +22,6 @@ export const createLoopDebugControls = (loopState: LoopState) => {
     id: 'loopControls',
     buttonText: icon,
     title: 'Loop controls',
-    orderNr: 4,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => lsKeyHasData(LS_KEY),

@@ -334,7 +334,6 @@ export const _createCharactersDebuggerGUI = () => {
     id: 'charactersControls',
     buttonText: icon,
     title: 'Character controls',
-    orderNr: 14,
     container: () => {
       // No LS key exists for character data today (see §2.1/§3.1 of the clear-LS-buttons
       // plan) - both buttons exist for consistency with every other list tab, but stay

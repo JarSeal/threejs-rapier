@@ -487,7 +487,6 @@ export const initCameraDebuggerGUI = () => {
     id: 'camerasControls',
     buttonText: icon,
     title: 'Camera Controls',
-    orderNr: 11,
     container: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => {
