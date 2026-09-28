@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../.schemas/material.schema.json",
+  "id": "triplanarGrid",
+  "tslFile": "materials/triplanarGrid.tsl.ts",
+  "type": "STANDARDNODEMATERIAL",
+  "params": { "color": "#808080", "roughness": 0.85, "metalness": 0.0 },
+  "staticDefines": {
+    "alignToObject": true,
+    "fitToBounds": true,
+    "dominantAxis": false,
+    "minorLines": true,
+    "seamNormals": false
+  },
+  "nodes": {
+    "colorNode": {
+      "lineThickness": 0.05,
+      "lineFrequency": 1.0,
+      "lineColor": "#999999",
+      "backgroundColor": "#808080",
+      "minorLineDivisions": 2,
+      "minorLineColor": "#878787"
+    },
+    "normalNode": {
+      "seamNormalStrength": 0.5,
+      "minorSeamNormalStrength": 0.25
+    }
+  }
+}

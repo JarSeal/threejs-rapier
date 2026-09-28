@@ -13,6 +13,8 @@ import {
   MatProps,
   getMaterial,
   getMaterialRegistry,
+  getMaterialVariant,
+  MaterialVariantOverrides,
 } from './Material';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { getRootScene } from './Scene';
@@ -37,6 +39,8 @@ export type MeshProps = {
   // @CONSIDER: We could also allow passing an id for geo and mat (as strings), and then look them up in the asset manager.
   geo: THREE.BufferGeometry | GeoProps | string;
   mat: THREE.Material | MatProps;
+  /** Per-mesh material overrides: the mesh gets a cached variant of its (registered) material, see getMaterialVariant */
+  matOverrides?: MaterialVariantOverrides;
   castShadow?: boolean;
   receiveShadow?: boolean;
   preWarm?: boolean;
@@ -104,6 +108,17 @@ export const createMeshEntity = (
     );
   } else {
     mat = createMaterial(props.mat);
+  }
+
+  if (props.matOverrides) {
+    const baseMatId = mat.userData.id as string | undefined;
+    if (baseMatId && getMaterialRegistry()[baseMatId]?.resource === mat) {
+      mat = getMaterialVariant(baseMatId, props.matOverrides);
+    } else {
+      lwarn(
+        `[MeshManager] Mesh "${props.appId || entityOpts?.appId}" has matOverrides but its material is not registered, ignoring the overrides.`
+      );
+    }
   }
 
   const mesh = new THREE.Mesh(geo, mat);

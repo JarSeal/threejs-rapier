@@ -10,6 +10,12 @@
 //   node driver.mjs http://localhost:8080 "" out.png
 //   node driver.mjs http://localhost:8080 "?isDebug=true" debug.png
 //   node driver.mjs http://localhost:8080 "" portrait.png 6000 675x1200
+//   DRIVER_WEBGL=1 node driver.mjs http://localhost:8080 "" webgl.png 30000
+//
+// DRIVER_WEBGL=1: hide navigator.gpu so the engine falls back to its WebGL2
+// backend, rendered by SwiftShader (software). For machines where headless
+// WebGPU can't render (verified on WSL2) - it exercises the same TSL node
+// graphs, compiled to GLSL instead of WGSL, so WebGPU-only issues won't show.
 //
 // Exits non-zero and prints [DRIVER][FATAL] on launch/navigation failure.
 // Always prints captured console/page errors before exiting, even on success -
@@ -98,7 +104,11 @@ if (executablePath) {
 // doesn't init there, try adding --use-angle=vulkan or, as a
 // software-rendering last resort, --use-gl=swiftshader / --use-angle=swiftshader
 // (slow, but works without real GPU passthrough).
-const launchArgs = ['--enable-unsafe-webgpu', '--enable-features=Vulkan'];
+const useWebGL = process.env.DRIVER_WEBGL === '1';
+const launchArgs = useWebGL
+  ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
+  : ['--enable-unsafe-webgpu', '--enable-features=Vulkan'];
+if (useWebGL) console.log('[DRIVER] DRIVER_WEBGL=1: WebGL2 fallback (SwiftShader), navigator.gpu hidden');
 
 const browser = await chromium
   .launch({
@@ -111,6 +121,8 @@ const browser = await chromium
   });
 
 const page = await browser.newPage({ viewport: { width: viewportWidth, height: viewportHeight } });
+// Without navigator.gpu the engine's renderer picks its WebGL2 backend (see core/Renderer.ts)
+if (useWebGL) await page.addInitScript(() => delete Object.getPrototypeOf(navigator).gpu);
 
 const consoleLogs = [];
 page.on('console', (msg) => consoleLogs.push(`[console:${msg.type()}] ${msg.text()}`));

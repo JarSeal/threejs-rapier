@@ -2,11 +2,12 @@ import { z } from 'zod';
 import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { CoreEntityOptsSchema, Vector3Schema, Vector4Schema } from './_helperSchemas';
 import { GeoPropsSchema } from './geometrySchema';
-import { MaterialAssetSchema } from './materialSchema';
+import { MaterialAssetSchema, MaterialVariantOverridesSchema } from './materialSchema';
 
 export const MeshPropsSchema = z.object({
   geo: z.union([GeoPropsSchema, z.string()]),
   mat: z.union([MaterialAssetSchema, z.string()]),
+  matOverrides: MaterialVariantOverridesSchema.optional(),
   castShadow: z.boolean().optional(),
   receiveShadow: z.boolean().optional(),
   preWarm: z.boolean().optional(),
@@ -25,6 +26,7 @@ const PartialMatProps = z.union(MaterialAssetSchema.options.map((variant) => var
 const MeshOverridesSchema = z.object({
   geo: z.union([PartialGeoProps, z.string()]).optional(),
   mat: z.union([PartialMatProps, z.string()]).optional(),
+  matOverrides: MaterialVariantOverridesSchema.optional(),
   castShadow: z.boolean().optional(),
   receiveShadow: z.boolean().optional(),
   preWarm: z.boolean().optional(),

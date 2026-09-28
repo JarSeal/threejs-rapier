@@ -44,6 +44,10 @@ const materials: {
     resource: Materials;
     count: number;
     persistent?: boolean;
+    /** The props the material was created with (createMaterial), the base for its variants */
+    props?: MatProps;
+    /** Variants only: the overrides key the variant was created for (see getMaterialVariant) */
+    variantKey?: string;
   };
 } = {};
 
@@ -83,6 +87,8 @@ export type MatProps = {
   isPersistent?: boolean;
   debugData?: { name?: string; description?: string };
   userData?: Record<string, unknown>;
+  /** Registry id of the TSL functions (tslFile) to use, defaults to `id` (variants use their base's) */
+  tslMaterialId?: string;
 } & (
   | { type: 'LINEBASIC'; params?: AllowTextureStrings<THREE.LineBasicMaterialParameters> }
   | { type: 'LINEDASHED'; params?: AllowTextureStrings<THREE.LineDashedMaterialParameters> }
@@ -319,7 +325,10 @@ export const createMaterial = (props: MatProps) => {
   // TSL file
   if ('tslFile' in props && props.tslFile) {
     const activeMaterialRegistry = existsOrThrow(
-      id && (tslMaterialFileObjects as Record<string, Record<string, unknown>>)[id],
+      (props.tslMaterialId || id) &&
+        (tslMaterialFileObjects as Record<string, Record<string, unknown>>)[
+          props.tslMaterialId || id || ''
+        ],
       `[Material Manager] Could not locate compiled TSL Master Graph registry entry for material ID "${id}. Materials with a TSL file must have a *.material.json file."`
     );
     if (activeMaterialRegistry === '') {
@@ -447,7 +456,7 @@ export const createMaterial = (props: MatProps) => {
         mat[nodeSocket] = genericGraphFn(
           uniformNodesPayload,
           mat as THREE.NodeMaterial,
-          nodeStaticDefines
+          nodeStaticDefines || staticDefines
         );
       }
     }
@@ -466,7 +475,95 @@ export const createMaterial = (props: MatProps) => {
   }
 
   saveMaterial(mat, id, props.isPersistent);
+  if (id && materials[id]?.resource === mat) materials[id].props = props;
   return mat;
+};
+
+export type MaterialVariantOverrides = {
+  params?: Record<string, unknown>;
+  staticDefines?: Record<string, unknown>;
+  nodes?: Record<string, Record<string, unknown>>;
+};
+
+// Deterministic JSON (sorted object keys), so equal overrides give the same variant
+const stableStringify = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .filter((key) => obj[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(obj[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+
+// FNV-1a, only to keep variant ids short (collisions are resolved in getMaterialVariant)
+const hashString = (str: string) => {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+/**
+ * Returns a variant of a registered material: a separate material created from the base
+ * material's creation props with `overrides` merged over them (`params` and `staticDefines`
+ * shallowly, `nodes` per socket), cached and shared by all callers with equal overrides.
+ * Variants have no per-frame cost (unlike per-object uniforms) and TSL functions can branch on
+ * their `staticDefines` at build time, at the price of one material (and, for differing
+ * `staticDefines`, one shader) per unique override set. Variants are ref counted and disposed like
+ * any other non-persistent material. Override values should be plain data (eg. texture ids, not
+ * texture objects), since they form the variant's cache key.
+ * @param baseId registered material id (created with createMaterial)
+ * @param overrides params, staticDefines and TSL node inputs to override
+ * @returns the variant material
+ */
+export const getMaterialVariant = (baseId: string, overrides: MaterialVariantOverrides) => {
+  const base = existsOrThrow(
+    materials[baseId],
+    `[Material Manager] Could not find base material "${baseId}" for a material variant.`
+  );
+  const baseProps = existsOrThrow(
+    base.props,
+    `[Material Manager] Material "${baseId}" has no creation props (it was not created with createMaterial), so it can't have variants.`
+  );
+
+  const variantKey = stableStringify(overrides);
+  let variantId = `${baseId}#${hashString(variantKey)}`;
+  for (let i = 2; materials[variantId] && materials[variantId].variantKey !== variantKey; i++) {
+    variantId = `${baseId}#${hashString(variantKey)}-${i}`;
+  }
+  if (materials[variantId]) {
+    retagAssetOwner(materials[variantId].resource);
+    return materials[variantId].resource;
+  }
+
+  const props = { ...baseProps } as MatProps & MaterialVariantOverrides;
+  if (overrides.params) props.params = { ...props.params, ...overrides.params };
+  if (overrides.staticDefines) {
+    props.staticDefines = { ...props.staticDefines, ...overrides.staticDefines };
+  }
+  if (overrides.nodes) {
+    const nodes = { ...props.nodes };
+    for (const socket in overrides.nodes) {
+      nodes[socket] = { ...nodes[socket], ...overrides.nodes[socket] };
+    }
+    props.nodes = nodes;
+  }
+
+  const variant = createMaterial({
+    ...props,
+    id: variantId,
+    isPersistent: false,
+    tslMaterialId: baseProps.tslMaterialId || baseId,
+  } as MatProps);
+  materials[variantId].variantKey = variantKey;
+  variant.userData.variantOf = baseId;
+  return variant;
 };
 
 /**

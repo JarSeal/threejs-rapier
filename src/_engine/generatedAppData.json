@@ -734,10 +734,10 @@
               80
             ],
             "shadowCameraFrustum": [
-              -35,
-              35,
-              35,
-              -35
+              -25,
+              25,
+              25,
+              -25
             ],
             "shadowIntensity": 0.8,
             "appId": "thirdPersonGymSun"
@@ -746,9 +746,66 @@
             "appId": "thirdPersonGymSun",
             "debugData": {
               "name": "Third-person gym sun",
-              "description": "Directional shadow-casting sun. Shadow frustum is scoped to the core gym play area around the origin (ground, obstacles, moving platforms, character spawns), not the far-flung decorative terrain/stairs samples out past x=35 — sizing it to the whole scene would blur shadow resolution everywhere instead (same principle as largeWorldSun.light.json)."
+              "description": "Directional shadow-casting sun. scene_thirdPersonGym.ts moves it (and its target) with the player every frame, keeping this position - targetPos offset as the light direction, so the shadow frustum (sized for the play area around the player, not the whole scene, which would blur shadow resolution everywhere) follows the player instead of covering a fixed area around the origin."
             }
           }
+        }
+      ],
+      "materials": [
+        {
+          "id": "triplanarGrid",
+          "params": {
+            "color": "#808080",
+            "roughness": 0.85,
+            "metalness": 0
+          },
+          "tslFile": "materials/triplanarGrid.tsl.ts",
+          "staticDefines": {
+            "alignToObject": true,
+            "fitToBounds": true,
+            "dominantAxis": false,
+            "minorLines": true,
+            "seamNormals": false
+          },
+          "nodes": {
+            "colorNode": {
+              "lineThickness": 0.05,
+              "lineFrequency": 1,
+              "lineColor": "#999999",
+              "backgroundColor": "#808080",
+              "minorLineDivisions": 2,
+              "minorLineColor": "#878787"
+            },
+            "normalNode": {
+              "seamNormalStrength": 0.5,
+              "minorSeamNormalStrength": 0.25
+            }
+          },
+          "type": "STANDARDNODEMATERIAL"
+        },
+        {
+          "id": "triplanarCheckerboard",
+          "params": {
+            "color": "#ff0000",
+            "roughness": 0.85,
+            "metalness": 0
+          },
+          "tslFile": "materials/triplanarCheckerboard.tsl.ts",
+          "staticDefines": {
+            "alignToObject": true,
+            "fitToBounds": false,
+            "dominantAxis": false,
+            "plusSigns": true
+          },
+          "nodes": {
+            "colorNode": {
+              "checkerSize": 0.25,
+              "checkerColorA": "#898989",
+              "checkerColorB": "#787878",
+              "plusSignColor": "#555555"
+            }
+          },
+          "type": "STANDARDNODEMATERIAL"
         }
       ],
       "postFx": [
@@ -1205,10 +1262,10 @@
           80
         ],
         "shadowCameraFrustum": [
-          -35,
-          35,
-          35,
-          -35
+          -25,
+          25,
+          25,
+          -25
         ],
         "shadowIntensity": 0.8,
         "appId": "thirdPersonGymSun"
@@ -1217,7 +1274,7 @@
         "appId": "thirdPersonGymSun",
         "debugData": {
           "name": "Third-person gym sun",
-          "description": "Directional shadow-casting sun. Shadow frustum is scoped to the core gym play area around the origin (ground, obstacles, moving platforms, character spawns), not the far-flung decorative terrain/stairs samples out past x=35 — sizing it to the whole scene would blur shadow resolution everywhere instead (same principle as largeWorldSun.light.json)."
+          "description": "Directional shadow-casting sun. scene_thirdPersonGym.ts moves it (and its target) with the player every frame, keeping this position - targetPos offset as the light direction, so the shadow frustum (sized for the play area around the player, not the whole scene, which would blur shadow resolution everywhere) follows the player instead of covering a fixed area around the origin."
         }
       },
       "__sourcePath": "src/app/lights/thirdPersonGymSun.light.json"
@@ -1364,6 +1421,63 @@
       },
       "type": "STANDARDNODEMATERIAL",
       "__sourcePath": "src/toolkit/materials/checkerBoard.material.json"
+    },
+    "triplanarCheckerboard": {
+      "id": "triplanarCheckerboard",
+      "params": {
+        "color": "#ff0000",
+        "roughness": 0.85,
+        "metalness": 0
+      },
+      "tslFile": "materials/triplanarCheckerboard.tsl.ts",
+      "staticDefines": {
+        "alignToObject": true,
+        "fitToBounds": false,
+        "dominantAxis": false,
+        "plusSigns": true
+      },
+      "nodes": {
+        "colorNode": {
+          "checkerSize": 0.25,
+          "checkerColorA": "#898989",
+          "checkerColorB": "#787878",
+          "plusSignColor": "#555555"
+        }
+      },
+      "type": "STANDARDNODEMATERIAL",
+      "__sourcePath": "src/toolkit/materials/triplanarCheckerboard.material.json"
+    },
+    "triplanarGrid": {
+      "id": "triplanarGrid",
+      "params": {
+        "color": "#808080",
+        "roughness": 0.85,
+        "metalness": 0
+      },
+      "tslFile": "materials/triplanarGrid.tsl.ts",
+      "staticDefines": {
+        "alignToObject": true,
+        "fitToBounds": true,
+        "dominantAxis": false,
+        "minorLines": true,
+        "seamNormals": false
+      },
+      "nodes": {
+        "colorNode": {
+          "lineThickness": 0.05,
+          "lineFrequency": 1,
+          "lineColor": "#999999",
+          "backgroundColor": "#808080",
+          "minorLineDivisions": 2,
+          "minorLineColor": "#878787"
+        },
+        "normalNode": {
+          "seamNormalStrength": 0.5,
+          "minorSeamNormalStrength": 0.25
+        }
+      },
+      "type": "STANDARDNODEMATERIAL",
+      "__sourcePath": "src/toolkit/materials/triplanarGrid.material.json"
     }
   },
   "meshes": {

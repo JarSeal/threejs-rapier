@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../.schemas/material.schema.json",
+  "id": "triplanarCheckerboard",
+  "tslFile": "materials/triplanarCheckerboard.tsl.ts",
+  "type": "STANDARDNODEMATERIAL",
+  "params": { "color": "#ff0000", "roughness": 0.85, "metalness": 0.0 },
+  "staticDefines": {
+    "alignToObject": true,
+    "fitToBounds": false,
+    "dominantAxis": false,
+    "plusSigns": true
+  },
+  "nodes": {
+    "colorNode": {
+      "checkerSize": 0.25,
+      "checkerColorA": "#898989",
+      "checkerColorB": "#787878",
+      "plusSignColor": "#555555"
+    }
+  }
+}
