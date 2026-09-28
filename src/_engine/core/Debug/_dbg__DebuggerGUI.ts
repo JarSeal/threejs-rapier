@@ -36,12 +36,18 @@ const saveDrawerState = (newState?: Partial<DrawerState>) => {
   lsSetItem(LS_KEY, JSON.stringify(updatedState));
 };
 
+/**
+ * Creates the debugger scene loader (idempotent). Called at registration so the loader exists
+ * before the first loadScene (which may target it via the debug start scene options).
+ */
+export const _ensureDebuggerSceneLoader = () => {
+  if (debugSceneLoaderCreated) return;
+  createDebuggerSceneLoader();
+  debugSceneLoaderCreated = true;
+};
+
 const initDrawerState = () => {
-  // Create debugger scene loader
-  if (!debugSceneLoaderCreated) {
-    createDebuggerSceneLoader();
-    debugSceneLoaderCreated = true;
-  }
+  _ensureDebuggerSceneLoader();
 
   // Setup drawerState
   const savedState = lsGetItem(LS_KEY, '{}');

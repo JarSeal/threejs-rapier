@@ -21,6 +21,8 @@ export type TabAndContainer = {
 
 export const registerDebuggerGUI = async () => {
   debugGUI = await loadDebugModuleAsync(() => import('../core/Debug/_dbg__DebuggerGUI'), true);
+  // Debug env only: the first loadScene may target this loader ("Use debugger scene loader for start scene")
+  useDebug(debugGUI)?._ensureDebuggerSceneLoader();
 };
 
 /**
