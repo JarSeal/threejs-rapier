@@ -1,6 +1,6 @@
 Status: implemented
 Category: Bug, Refactor
-Related: p101_physics-scene-load-determinism.md (the physics determinism item, split out because it is a multi-phase engine change)
+Related: \_DONE_p101_physics-scene-load-determinism.md (the physics determinism item, split out because it is a multi-phase engine change)
 
 # Small Bug Fixes and Tweaks — Plan
 
@@ -120,7 +120,7 @@ Verified: the reported case (Gym → other scene → Gym puts a Suzanne somewher
 3. **Without SAB (MESSAGE_BATCH), a new body can read a deleted body's stale pose from a reused buffer slot.** This moves the gym's stairs/wall, which Suzanne lands on.
 4. **Worker-only ordering races.** Body and colliders are created in separate messages, and deletes aren't awaited.
 
-Interpolation is visual-only, so it isn't a direct cause. The characters are nondeterministic by design (wall clock + `Math.random`). The probe, the verification matrix (main thread / worker ± SAB / interpolation modes) and the fixes are all in **`p101_physics-scene-load-determinism.md`**.
+Interpolation is visual-only, so it isn't a direct cause. The characters are nondeterministic by design (wall clock + `Math.random`). The probe, the verification matrix (main thread / worker ± SAB / interpolation modes) and the fixes are all in **`_DONE_p101_physics-scene-load-determinism.md`**.
 
 ---
 

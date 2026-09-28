@@ -96,6 +96,14 @@ The engine-agnostic Physics API — `PhysicsAPI.ts` (facade) + `Physics/EngineRa
 
 `AppConfig.physics.workerTarget` (`'MAIN_THREAD' | 'WORKER_THREAD'`, default `'WORKER_THREAD'`) selects where the new system's simulation runs. In `WORKER_THREAD` mode, per-frame rigid-body transforms sync back via a physics-owned hot-path buffer (`Physics/PhysicsTransformBuffer.ts`): a real `SharedArrayBuffer` when the runtime is cross-origin-isolated (`AppConfig.physics.useSAB`, default `true`; the dev server sends the required COOP/COEP headers), otherwise an automatic single-batched-message-per-frame fallback — never one message per body either way. Physics objects are ECS components (`BODY_STATIC`/`BODY_DYNAMIC_VISUAL`/`BODY_DYNAMIC_HEADLESS`, synced to `TRANSFORM` every frame at `ECSSystemStage.APP_POST_PHYSICS` by `PhysicsManager.ts`'s `physicsToTransformSystem`); `PhysicsManager.createPhysicsEntity` is `async` and is the entry point app code should use. Physics objects are still created in code, not yet part of the scene/asset JSON schema — that remains a future step.
 
+Scene loads are deterministic (p101). `SceneLoader.ts` holds physics stepping (`holdPhysicsStepping`) for the whole load, replaces the physics world with a fresh one (`resetPhysicsWorld`, right after `createCameras`), and releases the hold only after every `createPhysicsEntity` call has finished (`settlePendingPhysicsEntities`, which also catches un-awaited ones). So a scene simulates identically on every visit, in both worker targets. Consequences:
+
+- No physics entity survives a scene switch, and any body/collider reference from the previous scene is stale. Deleting one is a quiet no-op.
+- Physics writes (poses, velocities, impulses, kinematic targets) go in `APP_PHYSICS_STEP` systems or in scene-load code. Writes from per-frame stages depend on frame timing. In `WORKER_THREAD` mode, `APP_PHYSICS_STEP` commands are captured per sub-step and cloned at capture, so reusing scratch vectors is safe.
+- Characters (`utils/character/dynamicCharacter.ts`) are not deterministic yet: they use the wall clock, `Math.random`, and (in `WORKER_THREAD` mode) async shape casts.
+
+To check determinism, append `?physicsProbe=N` (debug mode) or use "Determinism probe" in the Physics API debug tab. It freezes physics N fixed steps after each scene enter, logs a hash of every dynamic body's state, and diffs it against the last run of the same scene and N. The gym's `ARE_CHARACTERS_ENABLED` flag leaves its characters out for this.
+
 ### Build config notes (`vite.config.ts`)
 
 - `root: './src'`, output to `../dist`.

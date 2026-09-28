@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Physics, Bug
 Related: \_DONE_p100_small-bug-fixes-and-tweaks.md (§5, where this was split out from), p500_restore-physics-snapshot.md
 
@@ -17,7 +17,7 @@ Makes loading the same scene produce the same physics results every time, whethe
   - whether the scene was visited before in the same session.
 - **Goal:** MAIN_THREAD and WORKER_THREAD (± SAB) issue the same Rapier call sequence, and therefore produce the same results (see open question §6.3).
 - **Non-goal: bit-identical results across platforms or browsers.** That would need `@dimforge/rapier3d-deterministic`. The current `@dimforge/rapier3d-compat` 0.19.3 runs the same WASM in both threads, so it is repeatable given the same call sequence. Revisit only if two fresh loads with the same config ever differ.
-- **Non-goal: deterministic characters.** `src/toolkit/ecs/dynamicCharacter.ts` uses the wall clock (`getPhysGameTime()` at `:613, 616, 909, 932, 983`), `Math.random` (`:1242-1245`) and async shape-cast queries that resolve per frame. Step-clocked, seeded characters should get their own follow-up plan. The probe reports characters separately and they are excluded from the hash.
+- **Non-goal: deterministic characters.** `src/_engine/utils/character/dynamicCharacter.ts` uses the wall clock (`getPhysGameTime()` at `:613, 616, 909, 932, 983`), `Math.random` (`:1242-1245`) and async shape-cast queries that resolve per frame. Step-clocked, seeded characters should get their own follow-up plan (not written yet). In WORKER_THREAD mode the async shape casts make them frame-timing dependent too. The probe reports characters separately and they are excluded from the hash, but they still push other bodies. That is why the gym has an `ARE_CHARACTERS_ENABLED` flag (P5).
 
 ---
 
@@ -227,6 +227,27 @@ Drive the runs and collect the probe lines with the run-aekasha-js skill.
 
 (MAIN_THREAD revisits already matched after P2. Fresh loads come from the diagnostic: 4× SAB, 2× no SAB, 2× MAIN_THREAD.) With the dummy character active, MAIN_THREAD stays repeatable (`f5addbe3`), but worker loads can differ at `BoxWithChildCollider`. That is expected, since the character is frame-timing dependent in worker mode (async shape casts). P5's probe flag for characters covers this.
 - Also fixed in P4: a P2 regression in MAIN_THREAD mode. `createColliders`/`createCollidersSync` (and `createRigidBodies`/`createRigidBodiesSync`) never registered their results in the main-thread maps, so P2's "skip unknown ids" made `deleteColliders` skip them. A deleted collider-only entity stayed in the world, and a ray still hit it. They now register like the worker branches. Verified: the ray hits before the delete and misses after it, in both modes.
+
+**After P5 (2026-09-28).** Changes:
+- The gym awaits its six `createMovingPlatform` calls.
+- Its characters (player, follow camera, dummy) moved into `createGymCharacters()`, behind a local `ARE_CHARACTERS_ENABLED` flag.
+- CLAUDE.md's Physics section documents the scene-load hold/reset, the `APP_PHYSICS_STEP` write rule and the probe.
+
+Final matrix at N = 300:
+
+| Characters | Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- | --- |
+| off | MAIN_THREAD | `ce5e0e85` | `ce5e0e85` | `ce5e0e85` |
+| off | WORKER_THREAD, SAB | `ce5e0e85` | `ce5e0e85` | `ce5e0e85` |
+| off | WORKER_THREAD, no SAB | `ce5e0e85` | `ce5e0e85` | `ce5e0e85` |
+| on | MAIN_THREAD | `f5addbe3` | `f5addbe3` | `f5addbe3` |
+
+With characters off, a fresh load followed by a revisit under changed frame pacing or interpolation matched every time (`ce5e0e85` → `ce5e0e85`):
+- WORKER_THREAD with SAB: play speed ×2 and ×0.5, a 20 FPS cap, interpolation NONE.
+- WORKER_THREAD without SAB: play speed ×2, interpolation NONE.
+- MAIN_THREAD: play speed ×2, interpolation FIXED_PHYSICS and NONE.
+
+All goals in §1 are met, including identical results across MAIN_THREAD and WORKER_THREAD (§6.3). The one exception is characters, which are a non-goal.
 
 ---
 
