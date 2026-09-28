@@ -276,7 +276,8 @@ export const _createDebugGui = (opts?: DebugGUIOpts) => {
     id: 'debugDrawerToggler',
     tag: 'button',
     text: 'Debug',
-    class: [styles.debugDrawerToggler, opts?.drawerBtnPlace || 'MIDDLE'],
+    // The global class lets other debug SCSS find it (eg. the axes gizmo clears the TOP one)
+    class: [styles.debugDrawerToggler, 'debugDrawerToggler', opts?.drawerBtnPlace || 'MIDDLE'],
     onClick: () => _toggleDrawer(),
   });
 

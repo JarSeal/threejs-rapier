@@ -84,6 +84,8 @@ InitEngine(async () => {
     w.__vp = vpApi;
     w.__loadScene = (sceneId: string) => loadScene({ sceneId });
     if (vpParams.get('postFx') === '0') setPostFxEnabled(false);
+    w.__getActiveCamera = (await import('./_engine/core/CameraManager')).getActiveCamera;
+    if (vpParams.get('vpTest') === 'api') return;
     // Transition test: toggling body.vpSpikeShift slides the top-right stack
     const styleElem = document.createElement('style');
     styleElem.textContent = `.aekViewportStack_TOP_RIGHT { transition: right 0.6s linear; }

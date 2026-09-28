@@ -4,6 +4,7 @@ import { lsGetItem } from '../../utils/LocalAndSessionStorage';
 import {
   createDebuggerTab,
   DEBUGGER_SCENE_LOADER_ID,
+  persistDebuggerTabValue,
   updateDebuggerTab,
   type DebuggerPaneItem,
 } from '../../debug/DebuggerGUI';
@@ -31,6 +32,11 @@ import type { DebugCamLSProps } from '../CameraManager';
 import { getDebugCamProps, saveDebugCameraToLS } from './Camera/_dbg__CameraGUI';
 import { DEFAULT_DEBUG_CAM_PROPS, setDebugCameraPanelRefresh } from './Camera/_dbg__DebugCamera';
 import { getUndoRedoSettings, setUndoRedoSettings } from '../../debug/UndoRedo';
+import {
+  initAxesGizmo,
+  setAxesGizmoInMainCamera,
+  setAxesGizmoVisible,
+} from '../../debug/AxesGizmo';
 
 const LS_KEY = 'AEK_debugTools';
 const TAB_ID = 'debugToolsControls';
@@ -63,6 +69,10 @@ let debugToolsState: DebugToolsState = {
     showOnScreenToolsInProdTest: true,
   },
   debugCameraFolderExpanded: false,
+  axesGizmo: {
+    show: true,
+    showInMainCamera: false,
+  },
   helpers: {
     helpersFolderExpanded: false,
     showAxesHelper: false,
@@ -104,7 +114,7 @@ const createDebugToolsDebugGUI = () => {
     state: debugToolsState,
     // The nested objects are persisted whole (the same LS shape as before). The *FolderExpanded
     // fields in them are no longer used: folder states are in `${LS_KEY}UI`.
-    persistKeys: ['scenesListing', 'prodTestMode', 'helpers', 'env'],
+    persistKeys: ['scenesListing', 'prodTestMode', 'helpers', 'env', 'axesGizmo'],
     // Live-refresh the Debug Camera folder from the viewport (dragging the debug camera with
     // OrbitControls): debugCameraSystem calls this only on frames where OrbitControls reported
     // a change. Unregistered on unmount, so a stale callback never runs against a disposed pane.
@@ -120,6 +130,16 @@ const createDebugToolsDebugGUI = () => {
   toggleAxesHelperVisibility(debugToolsState.helpers.showAxesHelper);
   toggleGridHelperVisibility(debugToolsState.helpers.showGridHelper);
   togglePolarGridHelperVisibility(debugToolsState.helpers.showPolarGridHelper);
+  initAxesGizmo(debugToolsState.axesGizmo);
+};
+
+/** The axes gizmo shortcut (F8): flips the "Show axes gizmo" option. */
+export const _toggleAxesGizmo = () => {
+  const axesGizmo = debugToolsState.axesGizmo;
+  axesGizmo.show = !axesGizmo.show;
+  setAxesGizmoVisible(axesGizmo.show);
+  persistDebuggerTabValue(TAB_ID, 'axesGizmo');
+  updateDebuggerTab(TAB_ID);
 };
 
 /**
@@ -404,6 +424,16 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
       title: 'Helpers',
       expanded: false,
       content: [
+        {
+          key: 'axesGizmo.show',
+          label: 'Show axes gizmo [F8]',
+          onChange: (value) => setAxesGizmoVisible(Boolean(value)),
+        },
+        {
+          key: 'axesGizmo.showInMainCamera',
+          label: 'Show axes gizmo in main camera',
+          onChange: (value) => setAxesGizmoInMainCamera(Boolean(value)),
+        },
         {
           key: 'helpers.showAxesHelper',
           label: 'Show axes helper',

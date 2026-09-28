@@ -1,0 +1,42 @@
+@use '../../styles/variables.scss';
+
+// The drawer toggler tab hangs 3rem off the drawer's left edge
+$drawerTogglerWidth: 3rem;
+$stackInset: 1.6rem;
+// Narrowest window where the gizmo fits left of the open drawer without covering the top-left
+// on-screen tools (drawer + toggler + insets + gizmo + undo/redo tools). Media queries don't use
+// the html font-size (rem = 10px here), so this is in px.
+$fitsNextToOpenDrawer: 650px;
+
+.axesGizmoSlot {
+  width: 10rem;
+  height: 10rem;
+
+  @media screen and (max-width: variables.$breakpointSmall) {
+    width: 8rem;
+    height: 8rem;
+  }
+
+  // No room next to the open drawer (also where the drawer is narrower or full width)
+  @media screen and (max-width: $fitsNextToOpenDrawer) {
+    :global(.debugDrawerOpen) & {
+      display: none;
+    }
+  }
+}
+
+// The whole top-right viewport stack slides left with the drawer (viewports follow the
+// transition frame by frame, see Viewports.ts)
+:global(.aekViewportStack_TOP_RIGHT) {
+  transition: right 0.2s ease-in-out;
+
+  // Clear the drawer toggler when it is in the TOP position (it covers the right edge there).
+  // Not while the drawer is open: `:has()` would out-specify the open rule below.
+  :global(body:not(.debugDrawerOpen):has(.debugDrawerToggler.TOP)) & {
+    right: $drawerTogglerWidth + $stackInset;
+  }
+
+  :global(.debugDrawerOpen) & {
+    right: variables.$drawerWidth + $drawerTogglerWidth + $stackInset;
+  }
+}

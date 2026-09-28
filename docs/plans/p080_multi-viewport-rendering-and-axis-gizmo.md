@@ -330,3 +330,29 @@ Each phase compiles, lints and leaves the app working.
   - A media query hiding a slot on resize makes it render nothing. A partly off-canvas explicit rect is cropped.
   - Only the interactive slot is hit by `elementFromPoint`: the canvas gets everything else. Pointer NDC was exact (centre `0,0`, 5% corner `-0.9,0.9`).
   - A `sceneId` viewport is deleted on that scene's exit, and the global ones survive the scene change.
+
+### Phase 3 (axes gizmo, display only): done
+
+- Built on p105's declarative tab (landed before this phase), not the plan's `lsSetItem` pattern:
+  - `axesGizmo` is a new top-level state key, and it is in `persistKeys`. Hydration still replaces a persisted key whole, so the top-level reasoning holds.
+  - The two bindings are declarative, and user changes are persisted by the tab.
+  - F8 goes through `DebugToolsManager.toggleAxesGizmo()` → `_toggleAxesGizmo()`, which uses `persistDebuggerTabValue` and `updateDebuggerTab`. A tab refresh never fires `onChange`, so the plan's "refresh re-emits change" concern is gone.
+- Module loading: `registerAxesGizmoModule()` (the thin `debug/AxesGizmo.ts`) is awaited in InitApp's `IS_DEBUG_ENV` block. `_initDebugTools` calls `initAxesGizmo(state.axesGizmo)` after hydration.
+- The visibility rule runs in a MAIN-stage system (`axesGizmoVisibilitySystem`), not in `onBeforeRender`: a disabled viewport gets no `onBeforeRender`, so it could never re-enable itself. Plugins apply to every ECS world, so the system only runs for the default world.
+- Visuals:
+  - The bubbles come from one `CanvasTexture` atlas row (+X +Y +Z −X −Y −Z). Each bubble is a quad whose uvs show its cell, and each has its own material, so its opacity can dim independently.
+  - The bubbles are scene children placed along the rotated axes, so they always face the camera. The lines are cylinders under the rotated root.
+  - The root follows the active camera's **world** quaternion, not the local one, because a gameplay camera can be parented.
+- Drawer offset (`AxesGizmo.module.scss`) — additions to the plan:
+  - The toggler got a global `debugDrawerToggler` class, so `body:not(.debugDrawerOpen):has(.debugDrawerToggler.TOP)` can clear it (`right: 4.6rem`). The `:not()` is needed because `:has()` would out-specify the open rule.
+  - The gizmo is hidden while the drawer is open whenever the window is ≤ 650px. Below that, it can't sit left of the drawer and toggler without being cropped or covering the undo/redo tools. This covers both the `$drawerWidthSmall` and full-width drawer breakpoints.
+- Phase 3 keeps the slot non-interactive. `interactive` while the debug camera is active comes with Phase 4's handlers, so the gizmo area doesn't swallow OrbitControls drags before it can use them.
+- Verified on WebGPU and WebGL2 (identical results):
+  - Hidden with the main camera by default; shown after F1. Existing `AEK_debugTools` saved state without `axesGizmo` got the defaults.
+  - Bubble colours were sampled at the screen positions predicted from the active camera. The front ones are exact (`#ff3653` / `#8adb00` / `#2c8fff`) at the default view, after an orbit drag, and in the main camera.
+  - Top view: X right, −Z up, −Y hidden behind +Y.
+  - F8 toggles it and persists, and the open tab's checkbox follows. The gizmo is 10 draw calls when visible and 0 when hidden.
+  - The drawer slide is tracked (mid-frame x = 784, then 454, which is 1000px − 44.6rem − 10rem). At 620px with the drawer open it is hidden. The TOP toggler moves it to x = 854.
+  - "In main camera" follows the gameplay camera, and the canvas is still the element under it.
+  - Both options survive a reload.
+  - Production build: `_dbg__AxesGizmo` is its own 2.7 kB chunk (plus 0.4 kB CSS). The main chunk has only the core `Viewports.ts`.
