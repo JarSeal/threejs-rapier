@@ -193,6 +193,18 @@ Drive the runs and collect the probe lines with the run-aekasha-js skill.
 - WORKER_THREAD is not repeatable yet, so the expectation "all hashes equal within each mode" holds for MAIN_THREAD only. The remaining differences are small (0.007–0.21 units, largest at `customPropTest3/BoxWithChildCollider`), and worker runs often land on the MAIN_THREAD hash (`f5addbe3`). What remains looks like the worker-only creation-order race (§2.4, since body and colliders are still two RPCs, entities created concurrently can interleave differently) and, without SAB, the stale pose (§2.3). P3 and P4 target these.
 - The reset had to run after `createCameras()`, not directly after `clearNonPersistent()` as §3 P2 says. In WORKER_THREAD mode it awaits the worker, and frames render meanwhile. Without a camera, `renderScene` throws.
 
+**After P3 (2026-09-28).** Same setup.
+
+| Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- |
+| MAIN_THREAD | `f5addbe3` | `f5addbe3` | `f5addbe3` |
+| WORKER_THREAD, SAB | `f5addbe3` | `03f8d106` | `6efd3750` |
+| WORKER_THREAD, no SAB | `f5addbe3` | `f5addbe3` | `342915f7` |
+
+- A direct check confirms the fix. Without SAB, a body created while stepping is held (so no push can arrive) reads its real pose right away: (1, 2, 3) with a unit rotation. Without the proxy seeding, the same body reads (0, 0, 0) with a zero rotation.
+- Without SAB, loads now often reproduce the MAIN_THREAD hash bit for bit (2 of 3 here, none after P2).
+- Both worker transports still vary sometimes, again by at most 0.26 units at `customPropTest3/BoxWithChildCollider`. That matches the create-order race left for P4.
+
 ---
 
 ## 5. Risks

@@ -3,9 +3,18 @@ import {
   EngineAPIType,
   PhysicsProtocolType,
   PhysicsUpProtocol,
+  PhysRotation,
+  PhysVector,
+  RigidBodyPose,
   WorldAPI,
 } from '../../core/Physics/PhysicsAPITypes';
 import { PhysicsTransformBuffer } from '../../core/Physics/PhysicsTransformBuffer';
+
+/** Copies a pose into plain objects, so it posts as exactly these fields. */
+const toPlainPose = (pos: PhysVector, rot: PhysRotation): RigidBodyPose => ({
+  pos: { x: pos.x, y: pos.y, z: pos.z },
+  rot: { x: rot.x, y: rot.y, z: rot.z, w: rot.w },
+});
 
 const sendNoRigidBodyErrorMessage = (
   sendMessage: (message: any, data: PhysicsUpProtocol) => void,
@@ -35,24 +44,26 @@ export const physicsSwitchRigid = async (
     case PhysicsProtocolType.CREATE_RIGID_BODY: {
       // CREATE_RIGID_BODY
       const rb = await physicsWorldAPI.createRigidBody(data.params);
+      const pose = toPlainPose(rb.pos, rb.rot);
       let slot = -1;
       if (transformBuffer) {
         slot = transformBuffer.allocateSlot(rb.id);
-        transformBuffer.setTransform(slot, rb.pos, rb.rot);
+        transformBuffer.setTransform(slot, pose.pos, pose.rot);
       }
-      return sendMessage({ type, id: rb.id, slot }, data);
+      return sendMessage({ type, id: rb.id, slot, pose }, data);
     }
     case PhysicsProtocolType.CREATE_RIGID_BODIES: {
       // CREATE_RIGID_BODIES
       const rbAPIs = engAPI.createRigidBodies(data.params);
       const ids = rbAPIs.map((api) => api.id);
-      const slots = rbAPIs.map((api) => {
+      const poses = rbAPIs.map((api) => toPlainPose(api.pos, api.rot));
+      const slots = rbAPIs.map((api, i) => {
         if (!transformBuffer) return -1;
         const slot = transformBuffer.allocateSlot(api.id);
-        transformBuffer.setTransform(slot, api.pos, api.rot);
+        transformBuffer.setTransform(slot, poses[i].pos, poses[i].rot);
         return slot;
       });
-      return sendMessage({ type, ids, slots }, data);
+      return sendMessage({ type, ids, slots, poses }, data);
     }
     case PhysicsProtocolType.DELETE_RIGID_BODY:
       // DELETE_RIGID_BODY

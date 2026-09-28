@@ -284,6 +284,9 @@ export type OmitSync<T> = {
   [K in keyof T as K extends `${string}Sync` ? never : K]: T[K];
 };
 
+/** A rigid body's translation + rotation as plain data (e.g. in a worker reply). */
+export type RigidBodyPose = { pos: PhysVector; rot: PhysRotation };
+
 /** Writable numeric array a pose is read into (see RigidBodyAPI.readPoseInto). */
 export type PoseArray = Float32Array | Float64Array | number[];
 
@@ -2570,8 +2573,20 @@ export type PhysicsDownProtocol =
     | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH; colliderIds: number[] }
     | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR; isIntersecting: boolean }
     // Rigid body --------------------------------------
-    | { type: PhysicsProtocolType.CREATE_RIGID_BODY; id: number; slot: number }
-    | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; ids: number[]; slots: number[] }
+    | {
+        type: PhysicsProtocolType.CREATE_RIGID_BODY;
+        id: number;
+        slot: number;
+        /** The new body's pose as Rapier reports it, readable before any transform write-back */
+        pose: RigidBodyPose;
+      }
+    | {
+        type: PhysicsProtocolType.CREATE_RIGID_BODIES;
+        ids: number[];
+        slots: number[];
+        /** Per body, same as CREATE_RIGID_BODY's pose */
+        poses: RigidBodyPose[];
+      }
     | {
         type: PhysicsProtocolType.DELETE_RIGID_BODY;
         id: number;

@@ -143,6 +143,7 @@ import {
   JointContactsEnabledResponse,
   JointLimitsEnabledResponse,
   JointGetUserDataResponse,
+  RigidBodyPose,
 } from './Physics/PhysicsAPITypes';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 import { ShapeType } from '@dimforge/rapier3d-compat';
@@ -1028,7 +1029,12 @@ export const createRigidBody = async (params: RigidBodyParams) => {
       type: PhysicsProtocolType.CREATE_RIGID_BODY,
       params,
     });
-    const rbAPI = new RigidBodyProxyAPI(res.id, res.slot, params.userData) as RigidBodyAPI;
+    const rbAPI = new RigidBodyProxyAPI(
+      res.id,
+      res.slot,
+      params.userData,
+      res.pose
+    ) as RigidBodyAPI;
     rigidBodies.set(res.id, rbAPI);
     return rbAPI;
   }
@@ -1083,7 +1089,7 @@ export const createRigidBodies = async (params: RigidBodyParams[]) => {
     const rbAPIs = [];
     for (let i = 0; i < res.ids.length; i++) {
       const id = res.ids[i];
-      const rbAPI = new RigidBodyProxyAPI(id, res.slots[i], params[i].userData);
+      const rbAPI = new RigidBodyProxyAPI(id, res.slots[i], params[i].userData, res.poses[i]);
       rbAPIs.push(rbAPI);
       rigidBodies.set(id, rbAPI);
     }
@@ -2251,9 +2257,18 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   constructor(
     public id: number,
     private slot: number,
-    userData?: Record<string, unknown>
+    userData?: Record<string, unknown>,
+    /** The pose the worker reported at creation. Read until the first transform write-back
+     * that includes this body, which (without SAB) can arrive a frame or more later, and
+     * until then the slot holds zeros or a deleted body's last pose. */
+    initialPose?: RigidBodyPose
   ) {
     if (userData) this.uData = userData;
+    if (initialPose) {
+      const visibleAt = getWriteVisibleStep();
+      this.pendingPos = { value: { ...initialPose.pos }, visibleAt };
+      this.pendingRot = { value: { ...initialPose.rot }, visibleAt };
+    }
   }
 
   // Hot path — reads straight from the shared/latest-pushed transform buffer by slot.
