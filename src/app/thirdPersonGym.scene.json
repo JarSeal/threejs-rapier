@@ -6,6 +6,7 @@
   "description": "Third-person obstacle-course/gym scene assembling every ported physics feature: ~15 imported GLBs, 6 moving platform variants, a player-controlled and a scripted dynamic character, and the physics stress-test spawner.",
   "cameras": ["thirdPersonGymCamera"],
   "lights": ["thirdPersonGymAmbient", "thirdPersonGymSun"],
+  "materials": ["triplanarGrid"],
   "postFx": ["ambientOcclusion"],
   "postFxEnabled": true
 }

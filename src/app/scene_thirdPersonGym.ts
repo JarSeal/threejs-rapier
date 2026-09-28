@@ -1,10 +1,10 @@
 import * as THREE from 'three/webgpu';
 import { createGeometry } from '../_engine/core/Geometry';
-import { createMaterial } from '../_engine/core/Material';
-import { createMeshEntity, getMeshByAppId } from '../_engine/core/MeshManager';
+import { createMaterial, getMaterial } from '../_engine/core/Material';
+import { createMeshEntity, getMeshByAppId, setMeshMaterial } from '../_engine/core/MeshManager';
 import { createSkyBox } from '../_engine/core/SkyBox';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
-import { loadTexture, loadTextureAsync } from '../_engine/core/Texture';
+import { loadTexture } from '../_engine/core/Texture';
 import { createDynamicCharacter } from '../_engine/utils/character/dynamicCharacter';
 import { characterTestObstacles } from '../_engine/utils/world/characterTestObjects';
 import { importAssetAsync } from '../_engine/core/Import/ImportRegistry';
@@ -99,11 +99,10 @@ export const scene = async () =>
       },
     });
 
-    // UV texture
-    const uvTexture = await loadTextureAsync({
-      id: 'largeGroundTexture',
-      fileName: '/debugger/assets/testTextures/UVMaps/UVCheckerMap-grey-white-512.png',
-    });
+    // Static physics meshes use the toolkit's triplanar grid material (listed in the scene JSON)
+    const gridMat = getMaterial('triplanarGrid');
+    if (!gridMat) throw new Error('Could not find the triplanarGrid material for the gym scene.');
+    gridMat.color.set('#000000');
 
     // Ground
     const groundWidthAndDepth = 200;
@@ -114,17 +113,26 @@ export const scene = async () =>
       type: 'BOX',
       params: { width: groundWidthAndDepth, height: groundHeight, depth: groundWidthAndDepth },
     });
-    const groundTexture = uvTexture.clone();
-    groundTexture.wrapS = THREE.RepeatWrapping;
-    groundTexture.wrapT = THREE.RepeatWrapping;
-    groundTexture.repeat.set(groundWidthAndDepth / 4, groundWidthAndDepth / 4);
-    const groundMat = createMaterial({
-      id: 'largeGroundMat',
-      type: 'PHONG',
-      params: { map: groundTexture },
-    });
     const groundEntityId = createMeshEntity(
-      { geo: groundGeo, mat: groundMat, receiveShadow: true, position: groundPos },
+      {
+        geo: groundGeo,
+        mat: gridMat,
+        receiveShadow: true,
+        position: groundPos,
+        // A slightly lighter tint than the other static meshes (a material variant, same shader)
+        matOverrides: {
+          staticDefines: {
+            minorLines: false,
+          },
+          nodes: {
+            colorNode: {
+              backgroundColor: '#8c8c8c',
+              lineColor: '#a5a5a5',
+              minorLineColor: '#939393',
+            },
+          },
+        },
+      },
       { appId: 'largeGroundMesh' }
     );
     await createPhysicsEntity(
@@ -135,14 +143,11 @@ export const scene = async () =>
     // OBSTACLES
     const { stairsMesh, stairsEntityId, bigBoxWallMesh, bigBoxWallEntityId } =
       await characterTestObstacles();
-    (stairsMesh.material as THREE.MeshPhongMaterial).map = uvTexture.clone();
+    // setMeshMaterial moves the ref counts (the obstacles' own materials are then disposed)
+    setMeshMaterial(stairsMesh, gridMat);
     setImportedRigidBodyTranslationPartial(stairsEntityId, { x: 5, y: -1.8 });
 
-    const bigBoxWallMat = bigBoxWallMesh.material as THREE.MeshPhongMaterial;
-    bigBoxWallMat.map = uvTexture.clone();
-    bigBoxWallMat.map.wrapS = THREE.RepeatWrapping;
-    bigBoxWallMat.map.wrapT = THREE.RepeatWrapping;
-    bigBoxWallMat.map.repeat.set(2.5, 2.5);
+    setMeshMaterial(bigBoxWallMesh, gridMat);
     setImportedRigidBodyTranslationPartial(bigBoxWallEntityId, {
       x: -2,
       y: -5 + groundHeight / 2,
@@ -371,20 +376,9 @@ export const scene = async () =>
       addCheckerboardMaterialToMesh('checkerMaterial', m);
     }
 
-    const slideTexture = uvTexture.clone();
-    slideTexture.wrapS = THREE.RepeatWrapping;
-    slideTexture.wrapT = THREE.RepeatWrapping;
-    slideTexture.repeat.set(34, 34);
-    // Registered (not a clone of bigBoxWallMesh's material, which would carry its id) so it and
-    // its map are disposed when the slide is deleted
-    const slideMat = createMaterial({
-      id: 'slideAnglesMat',
-      type: 'PHONG',
-      params: { color: '#999', map: slideTexture },
-    });
     await getTestObstacle('slideAngles', {
       transform: { position: { x: 30, y: -1.9, z: -30 } },
-      material: slideMat,
+      material: gridMat,
       castShadow: true,
       receiveShadow: true,
       physicsParams: { collider: { type: 'TRIMESH', friction: 1 } },
@@ -640,11 +634,6 @@ export const scene = async () =>
       addCheckerboardMaterialToMesh('checkerMaterial', m, { useConstantCheckerSize: true });
     }
 
-    const stairsAndTerrainMat = createMaterial({
-      id: 'stairsStraightTrimeshMaterial',
-      type: 'PHONG',
-      params: { color: '#999' },
-    });
     // Stairs are positioned by their first visible node, terrains and obstacles by their glTF root
     const staticModels: {
       file: string;
@@ -742,7 +731,7 @@ export const scene = async () =>
       if (!manifest) continue;
       await spawnImportedAsset(manifest, {
         transform: placeBy === 'ROOT' ? { position: pos } : rootPlacing(manifest, pos),
-        material: stairsAndTerrainMat,
+        material: gridMat,
         castShadow: true,
         receiveShadow: true,
         entityOpts: { appId },
