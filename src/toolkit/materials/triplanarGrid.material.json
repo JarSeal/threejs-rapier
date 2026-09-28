@@ -4,20 +4,24 @@
   "tslFile": "materials/triplanarGrid.tsl.ts",
   "type": "STANDARDNODEMATERIAL",
   "params": { "color": "#808080", "roughness": 0.85, "metalness": 0.0 },
+  "staticDefines": {
+    "alignToObject": true,
+    "fitToBounds": false,
+    "minorLines": true,
+    "seamNormals": true
+  },
   "nodes": {
     "colorNode": {
       "lineThickness": 0.05,
       "lineFrequency": 1.0,
-      "alignToObject": true,
       "lineColor": "#999999",
       "backgroundColor": "#808080",
-      "minorLines": true,
       "minorLineDivisions": 2,
       "minorLineColor": "#878787"
     },
     "normalNode": {
-      "seamNormals": true,
-      "seamNormalStrength": 0.5
+      "seamNormalStrength": 0.5,
+      "minorSeamNormalStrength": 0.25
     }
   }
 }
