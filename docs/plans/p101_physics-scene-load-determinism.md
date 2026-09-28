@@ -180,6 +180,19 @@ Drive the runs and collect the probe lines with the run-aekasha-js skill.
 - Worker fresh loads still vary. The causes left are §2.3 (no SAB) and the create ordering in §2.4, which P3/P4 address.
 - The "first differing body" is the first differing body in key order (alphabetical `appId`), not necessarily the one that diverged first. Here it is `carouselPlatformMesh2`.
 
+**After P2 (2026-09-28).** Same setup.
+
+| Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- |
+| MAIN_THREAD | `f5addbe3` | `f5addbe3` | `f5addbe3` |
+| MAIN_THREAD, N = 1200 | `15d1f6df` | `15d1f6df` | `15d1f6df` |
+| WORKER_THREAD, SAB | `5dc2186f` | `f5addbe3` | `a3682d8b` |
+| WORKER_THREAD, no SAB | `2f1390ad` | `562173d7` | `736c1f43` |
+
+- MAIN_THREAD is repeatable: fresh loads and revisits match at N = 300 and N = 1200. The reported bug (Suzanne landing elsewhere on a revisit) is gone in this mode.
+- WORKER_THREAD is not repeatable yet, so the expectation "all hashes equal within each mode" holds for MAIN_THREAD only. The remaining differences are small (0.007–0.21 units, largest at `customPropTest3/BoxWithChildCollider`), and worker runs often land on the MAIN_THREAD hash (`f5addbe3`). What remains looks like the worker-only creation-order race (§2.4, since body and colliders are still two RPCs, entities created concurrently can interleave differently) and, without SAB, the stale pose (§2.3). P3 and P4 target these.
+- The reset had to run after `createCameras()`, not directly after `clearNonPersistent()` as §3 P2 says. In WORKER_THREAD mode it awaits the worker, and frames render meanwhile. Without a camera, `renderScene` throws.
+
 ---
 
 ## 5. Risks

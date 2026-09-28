@@ -17,7 +17,7 @@ import {
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
 import { deleteAllPhysicsEntities, settlePendingPhysicsEntities } from './PhysicsManager';
-import { holdPhysicsStepping, releasePhysicsStepping } from './PhysicsAPI';
+import { holdPhysicsStepping, releasePhysicsStepping, resetPhysicsWorld } from './PhysicsAPI';
 import { DEBUGGER_SCENE_LOADER_ID, disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './Input/InputState';
 import { getCanvasParentElem } from './Renderer';
@@ -541,6 +541,12 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
       loader.phase = 'LOAD';
 
       createCameras(sceneData);
+
+      // Every physics entity is gone by now: start the next scene on a fresh world, so a
+      // revisit simulates exactly like the first visit (no leftover Rapier internal state).
+      // After createCameras: in WORKER_THREAD mode this awaits the worker, and frames keep
+      // rendering meanwhile, which needs a camera. Before the assets: imports can spawn bodies.
+      await resetPhysicsWorld();
 
       // Create / load all next scene assets before the scene file
       const nextSceneAssets = await loadNextSceneAssets(sceneData);

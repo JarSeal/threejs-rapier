@@ -934,14 +934,38 @@ export const deletePhysicsWorld = async () => {
   }
 
   if (worldDeleted) {
-    // Reset
+    // Reset. Every API object and callback belonged to the deleted world. Keeps the settings
+    // in physicsState (gravity, solver iterations, timestep), which the next world is built from.
     physicsWorldEnabled = false;
     physicsWorld = { step: () => {} } as unknown as WorldAPI;
+    rigidBodies.clear();
+    colliders.clear();
+    joints.clear();
+    workerCollisionEventFns.clear();
+    workerContactForceEventFns.clear();
+    pendingEventPushes = [];
+    transformBuffer = undefined;
+    accDelta = 0;
     simClockEpoch++;
     simHistoryEpoch++;
   } else {
     lerror('Could not delete physics world.');
   }
+};
+
+/**
+ * Replaces the physics world with a new, empty one built from the current physicsState
+ * settings (so debug-tab edits carry over). SceneLoader.ts calls this on every scene load:
+ * a reused world keeps Rapier's internal history (freed handle slots, broadphase, contact
+ * graph, islands), which makes the same scene simulate differently on a revisit.
+ * Delete every physics entity first; anything still referencing the old world goes stale.
+ */
+export const resetPhysicsWorld = async () => {
+  if (!physicsWorldEnabled) return;
+  // Lets in-flight deletes of the previous scene's bodies finish against the old world
+  await flushPhysics();
+  await deletePhysicsWorld();
+  await createPhysicsWorld();
 };
 
 export const takePhysicsSnapshot = async () => {
@@ -1093,12 +1117,11 @@ export const createRigidBodiesSync = (params: RigidBodyParams[]) => {
   );
 };
 
-/** Deletes a rigid body (and all child colliders). Returns the id of the deleted rigidBodyAPI. */
+/** Deletes a rigid body (and all child colliders). Returns the id of the deleted rigidBodyAPI,
+ * or undefined (a quiet no-op) if there is no world or no body with that id, e.g. a late delete
+ * of a body whose world has already been replaced (resetPhysicsWorld). */
 export const deleteRigidBody = async (id: number) => {
-  existsOrThrow(
-    physicsWorldEnabled,
-    'Physics world is not created. Create the world before deleting a rigid body.'
-  );
+  if (!physicsWorldEnabled || !rigidBodies.has(id)) return undefined;
   let deletedId: number | undefined = undefined;
   let deletedColliderIds: number[] = [];
   let deletedJointIds: number[] = [];
@@ -1474,12 +1497,17 @@ export const deleteColliderSync = (id: number, wakeUp?: boolean) => {
   return deletedId;
 };
 
-/** Deletes multiple colliders. Returns the ids of the deleted colliderAPIs. */
-export const deleteColliders = async (ids: number[], wakeUps?: boolean[]) => {
-  existsOrThrow(
-    physicsWorldEnabled,
-    'Physics world is not created. Create the world before deleting colliders.'
-  );
+/** Deletes multiple colliders. Returns the ids of the deleted colliderAPIs. Unknown ids are
+ * skipped quietly, and without a world nothing happens (see deleteRigidBody). */
+export const deleteColliders = async (allIds: number[], allWakeUps?: boolean[]) => {
+  if (!physicsWorldEnabled) return [];
+  const ids: number[] = [];
+  const wakeUps: boolean[] | undefined = allWakeUps ? [] : undefined;
+  for (let i = 0; i < allIds.length; i++) {
+    if (!colliders.has(allIds[i])) continue;
+    ids.push(allIds[i]);
+    wakeUps?.push(allWakeUps![i]);
+  }
   if (!ids.length) return [];
   let deletedIds: number[] | undefined = undefined;
   for (let i = 0; i < ids.length; i++) {

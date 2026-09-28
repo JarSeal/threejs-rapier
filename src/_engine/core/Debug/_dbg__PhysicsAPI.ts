@@ -789,9 +789,9 @@ export const _createPhysicsAPIDebugGUI = () => {
         });
 
       // Read once: createPhysicsWorld() (which resolves this) always runs before this
-      // tab is ever built (see InitApp.ts's boot order), and nothing in the app
-      // creates/destroys the physics world again afterward — the value cannot change
-      // for the remaining lifetime of this tab, so there's nothing to poll.
+      // tab is ever built (see InitApp.ts's boot order). The world is recreated on every
+      // scene load, but always resolves the same transport (it only depends on the boot-time
+      // useSAB setting and the page's cross-origin isolation), so there's nothing to poll.
       const transportModeReadout = {
         transportMode: getResolvedTransportMode() ?? 'N/A, worker only',
       };
