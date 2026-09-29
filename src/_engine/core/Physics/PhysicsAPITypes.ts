@@ -1490,7 +1490,8 @@ export type WorldAPI = {
    *   origin already lies inside of a shape. In other terms, `true` implies that all shapes are plain,
    *   whereas `false` implies that all shapes are hollow for this ray-cast.
    * @param groups - Used to filter the colliders that can or cannot be hit by the ray.
-   * @param filter - The callback to filter out which collider will be hit.
+   * @param filterPredicate - Not supported yet (ignored): no backend applies it and the worker
+   *   protocol doesn't carry it. Use `filterExcludeCollider`/`filterExcludeRigidBody`/`filterGroups`.
    */
   castRay(
     ray: PhysRay,
@@ -1526,6 +1527,8 @@ export type WorldAPI = {
    * @param stopAtPenetration - If `false`, the linear shape-cast will not stop at the first
    *   collider that is penetrating the shape at its starting point.
    * @param groups - Used to filter the colliders that can or cannot be hit.
+   * @param filterPredicate - Not supported yet (ignored): no backend applies it and the worker
+   *   protocol doesn't carry it. Use `filterExcludeCollider`/`filterExcludeRigidBody`/`filterGroups`.
    */
   castShape(
     shapePos: PhysVector,
@@ -1566,6 +1569,8 @@ export type WorldAPI = {
    *   origin already lies inside of a shape. In other terms, `true` implies that all shapes are plain,
    *   whereas `false` implies that all shapes are hollow for this ray-cast.
    * @param groups - Used to filter the colliders that can or cannot be hit by the ray.
+   * @param filterPredicate - Not supported yet (ignored): no backend applies it and the worker
+   *   protocol doesn't carry it. Use `filterExcludeCollider`/`filterExcludeRigidBody`/`filterGroups`.
    */
   castRayAndGetNormal(
     ray: PhysRay,
@@ -1599,6 +1604,8 @@ export type WorldAPI = {
    * @param groups - Used to filter the colliders that can or cannot be hit by the ray.
    * @param callback - The callback called once per hit (in no particular order) between a ray and a collider.
    *   If this callback returns `false`, then the cast will stop and no further hits will be detected/reported.
+   * @param filterPredicate - Not supported yet (ignored): no backend applies it and the worker
+   *   protocol doesn't carry it. Use `filterExcludeCollider`/`filterExcludeRigidBody`/`filterGroups`.
    */
   intersectionsWithRay(
     ray: PhysRay,

@@ -69,6 +69,7 @@ import {
   CreateCollidersResponse,
   ShapeCastHitAPI,
   ShapeParams,
+  WorldCastRayAndGetNormalResponse,
   WorldCastRayResponse,
   WorldCastShapeResponse,
   WorldIntersectionsWithRayResponse,
@@ -2173,16 +2174,26 @@ class WorldProxyAPI implements WorldAPI {
     maxToi: number,
     solid: boolean,
     filterFlags?: QueryFilterFlags,
-    filterGroups?: InteractionGroupsAPI
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number
   ): Promise<RayColliderIntersectionAPI | null> {
-    return await messageWorkerAsync<RayColliderIntersectionAPI | null>({
-      type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL,
-      ray,
-      maxToi,
-      solid,
-      filterFlags,
-      filterGroups,
-    });
+    const intersection = (
+      await messageWorkerAsync<WorldCastRayAndGetNormalResponse>({
+        type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL,
+        ray,
+        maxToi,
+        solid,
+        filterFlags,
+        filterGroups,
+        filterExcludeCollider: getCollOrRigidId(filterExcludeCollider),
+        filterExcludeRigidBody: getCollOrRigidId(filterExcludeRigidBody),
+      })
+    ).intersection;
+    if (!intersection) return null;
+    const coll = colliders.get(intersection.collider);
+    if (!coll) return null;
+    return { ...intersection, collider: coll };
   }
 
   castRayAndGetNormalSync(): RayColliderIntersectionAPI | null {
