@@ -2,14 +2,20 @@ import * as THREE from 'three/webgpu';
 import { ButtonApi, ListBladeApi, Pane } from 'tweakpane';
 import { getECSWorld, ECSWorld, getEntityIdByAppId, getStableAppId } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
-import { CMP, getCmpById, TCMP } from '../../../utils/CMP';
-import { getSvgIcon } from '../../UI/icons/SvgIcon';
-import { createDebuggerTab, createNewDebuggerContainer } from '../../../debug/DebuggerGUI';
+import { CMP } from '../../../utils/CMP';
 import {
+  createDebuggerTab,
+  debuggerListCMP,
+  updateDebuggerTab,
+  type DebuggerListItem,
+} from '../../../debug/DebuggerGUI';
+import {
+  addOnCloseToWindow,
   closeDraggableWindow,
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowContentFn,
+  registerDraggableWindowSceneTargetResolver,
   updateDraggableWindow,
 } from '../../UI/DraggableWindow';
 import {
@@ -80,9 +86,8 @@ export interface LightDebugLSData {
 
 export const EDIT_LIGHT_WIN_ID = 'lightEditorWindow';
 const LS_LIGHTS_KEY = 'AEK_debugLights';
-const DEBUGGER_LIGHTS_LIST_ID = 'debuggerLightsList';
+const LIGHTS_TAB_ID = 'lightsControls';
 export let globalHelpersVisible = false;
-let debuggerListCmp: TCMP | null = null;
 
 const reconcileDebugVisuals = (
   entityId: number,
@@ -382,7 +387,29 @@ const setLightField = <K extends UndoableLightKey>(
   applyLightField[key](target, value);
   saveLightToLS(target.entityId, key, value as LightEntityDebugState[K]);
   // refreshLightShadows rebuilds the window itself once the new light's helpers exist
-  if (key !== 'shadowMapSize') updateLightsDebuggerGUI('WINDOW');
+  if (key !== 'shadowMapSize') updateLightsDebuggerGUI();
+};
+
+/** Records a (not coalesced) light change to the undo/redo history. */
+const recordLightAction = <K extends UndoableLightKey>(
+  key: K,
+  stableAppId: string,
+  prev: UndoableLightValues[K],
+  next: UndoableLightValues[K]
+) => {
+  const payload: LightUndoPayload<K> = { appId: stableAppId, prev, next };
+  _recordUndoRedoAction(
+    `light.${key}`,
+    `Light ${stableAppId}: ${UNDOABLE_LIGHT_LABELS[key]}`,
+    payload
+  );
+};
+
+/** Sets a light's "show helper" preference (edit window and list toggle). */
+const setLightHelperVisible = (entityId: number, world: ECSWorld, show: boolean) => {
+  saveLightToLS(entityId, 'helperVisible', show);
+  setLightDebugPreference(entityId, world, 'helperVisible', show);
+  updateOnScreenTools('SWITCH');
 };
 
 const registerLightUndoHandler = <K extends UndoableLightKey>(key: K) => {
@@ -440,13 +467,12 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     if (!stableAppId || prev === undefined || JSON.stringify(prev) === JSON.stringify(next)) {
       return;
     }
-    const actionType = `light.${key}`;
-    const label = `Light ${stableAppId}: ${UNDOABLE_LIGHT_LABELS[key]}`;
-    const payload: LightUndoPayload<K> = { appId: stableAppId, prev, next };
     if (COALESCED_LIGHT_KEYS.has(key)) {
-      _recordOrCoalesceUndoRedoAction(actionType, label, payload, `${stableAppId}.${key}`);
+      const payload: LightUndoPayload<K> = { appId: stableAppId, prev, next };
+      const label = `Light ${stableAppId}: ${UNDOABLE_LIGHT_LABELS[key]}`;
+      _recordOrCoalesceUndoRedoAction(`light.${key}`, label, payload, `${stableAppId}.${key}`);
     } else {
-      _recordUndoRedoAction(actionType, label, payload);
+      recordLightAction(key, stableAppId, prev, next);
     }
   };
 
@@ -479,6 +505,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     setLightEnabled(entityId, value, world);
     save('enabled', value);
     record('enabled', value);
+    updateDebuggerTab(LIGHTS_TAB_ID);
   });
 
   // Helper Toggle (Direct binding to the Three.js Helper object)
@@ -486,10 +513,9 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   if (helperComp && lightChars.hasHelper) {
     const helperProxy = { visible: prefs.helper };
     pane.addBinding(helperProxy, 'visible', { label: 'Show Helper' }).on('change', (e) => {
-      const show = e.value;
-      save('helperVisible', show);
-      setLightDebugPreference(entityId, world, 'helperVisible', show);
-      updateOnScreenTools('SWITCH');
+      setLightHelperVisible(entityId, world, e.value);
+      if (clearLSBtn) clearLSBtn.disabled = false;
+      updateDebuggerTab(LIGHTS_TAB_ID);
     });
   }
 
@@ -886,7 +912,12 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     updateLightsDebuggerGUI('LIST');
   });
 
-  if (appId || entityId) updateDebuggerLightsListSelectedClass(appId || String(entityId));
+  // The content is built before the window state is open: refresh the list selection after it.
+  // The onClose is set here too, because a window restored from LS has none.
+  queueMicrotask(() => {
+    addOnCloseToWindow(EDIT_LIGHT_WIN_ID, () => updateDebuggerTab(LIGHTS_TAB_ID));
+    updateDebuggerTab(LIGHTS_TAB_ID);
+  });
 
   return container;
 };
@@ -910,13 +941,13 @@ const writeLightLSOrRemove = (data: LightDebugLSData) => {
 let lightDebuggerGUIInitiated = false;
 export const initLightDebuggerGUI = () => {
   if (lightDebuggerGUIInitiated) return;
-  const icon = getSvgIcon('lightBulb');
   createDebuggerTab({
-    id: 'lightsControls',
-    buttonText: icon,
+    id: LIGHTS_TAB_ID,
     title: 'Light controls',
-    orderNr: 10,
-    container: () => {
+    icon: 'lightBulb',
+    // The tab's LS data is scene-scoped (module-owned), so both clear buttons are custom
+    clearLSButton: false,
+    headerButtons: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => {
           const current = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
@@ -979,88 +1010,118 @@ export const initLightDebuggerGUI = () => {
           }
         },
       });
-      const container = createNewDebuggerContainer('debuggerLights', `${icon} Light Controls`, [
-        clearTabBtn,
-        clearListBtn,
-      ]);
-      debuggerListCmp = CMP({
-        id: DEBUGGER_LIGHTS_LIST_ID,
-        html: () => createLightsDebuggerList(getECSWorld()),
-      });
-      container.add(debuggerListCmp);
-      const winState = getDraggableWindow(EDIT_LIGHT_WIN_ID);
-      if (winState?.isOpen && winState.data?.id) {
-        const id = (winState.data as { id: string }).id;
-        updateDebuggerLightsListSelectedClass(id);
-      }
-      return container;
+      return [clearTabBtn, clearListBtn];
     },
+    content: () => [
+      debuggerListCMP({
+        id: 'lights',
+        emptyText: 'No ECS lights found.',
+        data: () => getLightsListData(getECSWorld()),
+        selectedItemId: () => {
+          const winState = getDraggableWindow(EDIT_LIGHT_WIN_ID);
+          return winState?.isOpen ? (winState.data?.id as string | undefined) : null;
+        },
+        perItemConfig: {
+          onClick: openEditLightWindow,
+          toggles: [
+            { icon: 'lightBulb', title: 'Enabled', fn: toggleLightEnabled },
+            { icon: 'lamp', title: 'Show helper', fn: toggleLightHelper },
+          ],
+        },
+      }),
+    ],
   });
   lightDebuggerGUIInitiated = true;
 };
 
 registerDraggableWindowContentFn(EDIT_LIGHT_WIN_ID, createEditLightContent);
+// Kept open on a scene change when the next scene has a light with the same appId
+registerDraggableWindowSceneTargetResolver(EDIT_LIGHT_WIN_ID, (data) => {
+  const entityId = getEntityIdByAppId(String(data?.id));
+  return Boolean(entityId && getECSWorld().isAlive(entityId));
+});
 
-const createLightsDebuggerList = (world: ECSWorld) => {
-  const storage = world.getStorage(ComponentType.TAG_IS_LIGHT);
-  let html = '<ul class="ulList">';
-
-  for (const [entityId] of storage) {
-    const appId = world.getComponent(entityId, ComponentType.APP_ID)?.id;
-    const appOrEntityId = appId || entityId;
-    const debugData = world.getComponent(entityId, ComponentType.DEBUG_DATA);
-    const typeShorthand = getLightTypeShorthand(world, entityId);
-
-    const button = CMP({
-      onClick: () => {
-        openDraggableWindow({
-          id: EDIT_LIGHT_WIN_ID,
-          title: `Edit Light: ${debugData?.name || `[${appOrEntityId}]`}`,
-          isDebugWindow: true,
-          content: createEditLightContent,
-          data: { id: appId, winId: EDIT_LIGHT_WIN_ID },
-          closeOnSceneChange: true,
-          saveToLS: true,
-          onClose: () => updateDebuggerLightsListSelectedClass(null),
-        });
-        updateDebuggerLightsListSelectedClass(String(appOrEntityId));
-      },
-      html: `<button class="listItemWithId">
-        <span class="itemId">[${appId}] [${entityId}]</span>
-        <span>${typeShorthand}</span>
-        <h4${!debugData?.name ? ` style="font-style:italic"` : ''}>${debugData?.name || `[${appOrEntityId}]`}</h4>
-      </button>`,
-    });
-
-    html += `<li data-id="${appOrEntityId}">${button}</li>`;
-  }
-
-  if (storage.size === 0) html += `<li class="emptyState">No ECS lights found.</li>`;
-  html += '</ul>';
-  return html;
+/** Finds a list row's light (the row id is the app id, or the entity id without one). */
+const resolveLightListItem = (itemId: string) => {
+  const world = getECSWorld();
+  const entityId =
+    getEntityIdByAppId(itemId, world) ?? (/^\d+$/.test(itemId) ? Number(itemId) : undefined);
+  const light =
+    entityId !== undefined ? world.getComponent(entityId, ComponentType.OBJECT3D)?.value : null;
+  if (entityId === undefined || !(light instanceof THREE.Light)) return null;
+  return { world, entityId, light };
 };
 
-export const updateDebuggerLightsListSelectedClass = (id: string | null) => {
-  const debuggerListCmp = getCmpById(DEBUGGER_LIGHTS_LIST_ID);
-  const ulElem = debuggerListCmp?.elem;
-  if (!ulElem) return;
-  for (const child of ulElem.children) {
-    child.classList.remove('selected');
-    if (id === null) continue;
-    const elemId = child.getAttribute('data-id');
-    if (elemId === id) {
-      child.classList.add('selected');
-    }
+const getLightsListData = (world: ECSWorld): DebuggerListItem[] => {
+  const storage = world.getStorage(ComponentType.TAG_IS_LIGHT);
+  const lsData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
+  const items: DebuggerListItem[] = [];
+  for (const [entityId] of storage) {
+    const appId = world.getComponent(entityId, ComponentType.APP_ID)?.id;
+    const debugData = world.getComponent(entityId, ComponentType.DEBUG_DATA);
+    const light = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
+    const hasHelper =
+      light instanceof THREE.Light &&
+      Boolean(world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER)) &&
+      getLightCharacteristics(light).hasHelper;
+    const itemId = appId || String(entityId);
+    items.push({
+      itemId,
+      title: debugData?.name || `[${itemId}]`,
+      titlePlaceholder: !debugData?.name,
+      subTitle: `[${appId}] [${entityId}]`,
+      badge: getLightTypeShorthand(world, entityId),
+      toggleValues: [
+        light instanceof THREE.Light ? light.visible : null,
+        hasHelper ? getLightDebugVisibilityPref(entityId, world, lsData).helper : null,
+      ],
+    });
   }
+  return items;
+};
+
+const openEditLightWindow = (itemId: string) => {
+  const target = resolveLightListItem(itemId);
+  const appId = target ? target.world.getComponent(target.entityId, ComponentType.APP_ID)?.id : '';
+  const debugData = target
+    ? target.world.getComponent(target.entityId, ComponentType.DEBUG_DATA)
+    : undefined;
+  openDraggableWindow({
+    id: EDIT_LIGHT_WIN_ID,
+    title: `Edit Light: ${debugData?.name || `[${itemId}]`}`,
+    isDebugWindow: true,
+    content: createEditLightContent,
+    data: { id: appId, winId: EDIT_LIGHT_WIN_ID },
+    closeOnSceneChange: true,
+    saveToLS: true,
+    onClose: () => updateDebuggerTab(LIGHTS_TAB_ID),
+  });
+};
+
+/** List toggle: the same path as the edit window's Enabled input (LS, undo, open window). */
+const toggleLightEnabled = (itemId: string, next: boolean) => {
+  const target = resolveLightListItem(itemId);
+  if (!target) return;
+  const prev = target.light.visible;
+  applyLightField.enabled(target, next);
+  saveLightToLS(target.entityId, 'enabled', next);
+  const stableAppId = getStableAppId(target.entityId, target.world);
+  if (stableAppId && prev !== next) recordLightAction('enabled', stableAppId, prev, next);
+  updateLightsDebuggerGUI('WINDOW');
+};
+
+/** List toggle: the same path as the edit window's Show Helper input. */
+const toggleLightHelper = (itemId: string, next: boolean) => {
+  const target = resolveLightListItem(itemId);
+  if (!target) return;
+  setLightHelperVisible(target.entityId, target.world, next);
+  updateLightsDebuggerGUI('WINDOW');
 };
 
 export const updateLightsDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
-  if (only !== 'WINDOW') debuggerListCmp?.update();
-  const winState = getDraggableWindow(EDIT_LIGHT_WIN_ID);
-  const lightId = winState?.data?.id as string;
-  if (lightId) updateDebuggerLightsListSelectedClass(lightId);
+  if (only !== 'WINDOW') updateDebuggerTab(LIGHTS_TAB_ID);
   if (only === 'LIST') return;
-  if (winState?.isOpen) updateDraggableWindow(EDIT_LIGHT_WIN_ID);
+  if (getDraggableWindow(EDIT_LIGHT_WIN_ID)?.isOpen) updateDraggableWindow(EDIT_LIGHT_WIN_ID);
 };
 
 export const _toggleAllLightHelpers = (show?: boolean) => {
@@ -1102,6 +1163,7 @@ export const _toggleAllLightHelpers = (show?: boolean) => {
   lsSetItem(LS_LIGHTS_KEY, currentData);
 
   updateDraggableWindow(EDIT_LIGHT_WIN_ID);
+  updateDebuggerTab(LIGHTS_TAB_ID);
 };
 
 export const syncDebugVisualsFromLS = (sceneId: string, world: ECSWorld) => {

@@ -5,17 +5,16 @@ import { CoreEntityOpts } from '../schemas/_helperSchemas';
 import { existsOrThrow } from '../utils/assert';
 import { lerror, lwarn } from '../utils/Logger';
 import { IS_DEBUG_ENV } from './Config';
-import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
+import { DebugModuleRef, loadDebugModule, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import type { IComponentStorage } from './ECS/ECSComponentStorage';
 import {
-  createColliders,
-  createCollidersSync,
-  createRigidBody,
-  createRigidBodySync,
+  createRigidBodyWithColliders,
+  createRigidBodyWithCollidersSync,
   deleteColliders,
   deleteRigidBody,
+  flushPhysics,
   getPhysicsSimClock,
   getPhysicsSimClockEpoch,
   getPhysicsSimHistoryEpoch,
@@ -127,7 +126,31 @@ export const registerPhysicsManager = (world: ECSWorld) => {
   );
 };
 
-export const createPhysicsEntity = async (
+/** Debug only: loads the physics determinism probe (_dbg__PhysicsDeterminism.ts). Must run
+ * before the first scene load, so `?physicsProbe=N` also catches the first scene enter. */
+export const registerPhysicsDeterminismProbe = async () => {
+  const probe = await loadDebugModuleAsync(() => import('./Debug/_dbg__PhysicsDeterminism'));
+  useDebug(probe)?._initPhysicsDeterminismProbe();
+};
+
+/** createPhysicsEntity() calls still in flight, so a scene load can wait for them even when the
+ * scene code didn't await them (see settlePendingPhysicsEntities). */
+const pendingPhysicsEntityCreates = new Set<Promise<number>>();
+
+/**
+ * Resolves once every createPhysicsEntity() call made so far has finished, including ones
+ * started while waiting (e.g. a character created after its mesh loads), and the physics side
+ * has handled everything sent before that (flushPhysics). SceneLoader.ts awaits this before it
+ * releases the scene-load stepping hold, so fire-and-forget creates still start on step 0.
+ */
+export const settlePendingPhysicsEntities = async () => {
+  while (pendingPhysicsEntityCreates.size) {
+    await Promise.allSettled([...pendingPhysicsEntityCreates]);
+  }
+  await flushPhysics();
+};
+
+export const createPhysicsEntity = (
   colliderParams: ColliderParams | ColliderParams[],
   rigidBodyParams?: RigidBodyParams,
   /**
@@ -135,8 +158,28 @@ export const createPhysicsEntity = async (
    * OBJECT3D component, same as before), or the id of an existing entity to attach the
    * physics components to directly (e.g. one already created by createMeshEntity) —
    * no new entity is created, and its own OBJECT3D/other components (if any) already
-   * on it govern the BODY_DYNAMIC_VISUAL/HEADLESS bucket choice below.
+   * on it govern the BODY_DYNAMIC_VISUAL/HEADLESS bucket choice (see createPhysicsEntityNow).
    */
+  target?: THREE.Object3D | number,
+  entityOpts?: CoreEntityOpts,
+  ecsWorld?: ECSWorld
+): Promise<number> => {
+  const creation = createPhysicsEntityNow(
+    colliderParams,
+    rigidBodyParams,
+    target,
+    entityOpts,
+    ecsWorld
+  );
+  pendingPhysicsEntityCreates.add(creation);
+  const untrack = () => pendingPhysicsEntityCreates.delete(creation);
+  creation.then(untrack, untrack);
+  return creation;
+};
+
+const createPhysicsEntityNow = async (
+  colliderParams: ColliderParams | ColliderParams[],
+  rigidBodyParams?: RigidBodyParams,
   target?: THREE.Object3D | number,
   entityOpts?: CoreEntityOpts,
   ecsWorld?: ECSWorld
@@ -176,14 +219,6 @@ export const createPhysicsEntity = async (
     }
   }
 
-  let rb: RigidBodyAPI | undefined;
-  if (rigidBodyParams) {
-    rb = isWorkerThread
-      ? await createRigidBody(rigidBodyParams)
-      : createRigidBodySync(rigidBodyParams);
-  }
-
-  const paramsArray = Array.isArray(colliderParams) ? colliderParams : [colliderParams];
   // The legacy system auto-derived a primitive collider's dimensions from its target mesh's
   // geometry whenever the caller didn't specify them explicitly (a ground box created as
   // { type: 'BOX' } against a 200x0.2x200 mesh got a 200x0.2x200 collider "for free"). The new
@@ -195,15 +230,16 @@ export const createPhysicsEntity = async (
   // THREE.Mesh/BufferGeometry can't be structured-cloned to derive this worker-side.
   const targetMeshForDerivation =
     object3D ?? world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
-  for (let i = 0; i < paramsArray.length; i++) {
-    paramsArray[i] = deriveColliderDimensionsFromMesh(paramsArray[i], targetMeshForDerivation);
-  }
-  if (rb) for (const p of paramsArray) p.parentId = rb.id;
-  const colls = paramsArray.length
-    ? isWorkerThread
-      ? await createColliders(paramsArray)
-      : createCollidersSync(paramsArray)
-    : [];
+  const paramsArray = (Array.isArray(colliderParams) ? colliderParams : [colliderParams]).map(
+    (params) => deriveColliderDimensionsFromMesh(params, targetMeshForDerivation)
+  );
+
+  // Body and colliders together, requested before this function's first await: in
+  // WORKER_THREAD mode the worker then creates entities in call order (as MAIN_THREAD does),
+  // and no step can land between a body and its colliders.
+  const { rigidBody: rb, colliders: colls } = isWorkerThread
+    ? await createRigidBodyWithColliders(rigidBodyParams, paramsArray)
+    : createRigidBodyWithCollidersSync(rigidBodyParams, paramsArray);
 
   // Primes the worker proxy's cached mass (only known once the colliders exist), so even the
   // very first applyImpulse on this body can be reflected in its read-your-writes linvel.
@@ -269,9 +305,15 @@ export const createPhysicsEntity = async (
 
 export const disposePhysicsEntity = async (entityId: number, world: ECSWorld) => {
   const rb = world.getRigidBody(entityId);
+  // One call either way, so in WORKER_THREAD mode every delete is posted synchronously, in
+  // deletion order, ahead of whatever the next scene creates. Deleting a body also deletes
+  // its colliders (they're all attached to it, see createPhysicsEntity).
+  if (rb) {
+    await deleteRigidBody(rb.id);
+    return;
+  }
   const colls = world.getComponent(entityId, ComponentType.COLLIDER);
-  if (colls) await deleteColliders(colls.map((c) => c.id));
-  if (rb) await deleteRigidBody(rb.id);
+  if (colls?.length) await deleteColliders(colls.map((c) => c.id));
 };
 
 export const getPhysicsEntityByAppId = (appId: string) => getEntityIdByAppId(appId);

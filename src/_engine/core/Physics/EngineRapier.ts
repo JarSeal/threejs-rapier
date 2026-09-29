@@ -63,6 +63,9 @@ let physicsState: PhysicsState = {
 
 /** NEW STUFF (@CHORE: delete this line when everything is diamonds!!!) */
 
+// Running ids. Never reset, not even by deleteWorld(): SceneLoader.ts recreates the world on
+// every scene load, and a stale id from the previous world (e.g. a late delete) must never
+// match a body/collider/joint of the new one.
 let nextRigidBodyId = 0;
 let nextColliderId = 0;
 let nextJointId = 0;
@@ -180,7 +183,7 @@ export const init = (
     });
     return physicsWorldAPI;
   } catch (err) {
-    throw new Error('Failed to initialize Rapier physics.');
+    throw new Error(`Failed to initialize Rapier physics: ${(err as Error)?.message ?? err}`);
   }
 };
 
@@ -731,14 +734,13 @@ export const deleteWorld = () => {
   collisionActiveColliderIds.clear();
   contactForceActiveColliderIds.clear();
 
-  // Reset
+  // Reset (the running id counters are deliberately kept, see nextRigidBodyId)
   worldCreated = false;
   physicsWorldAPI = undefined as unknown as WorldAPI;
+  eventQueue?.free();
   eventQueue = undefined;
   collisionEventFnCount = 0;
   contactForceEventFnCount = 0;
-  pendingCollisionRecords = [];
-  pendingContactForceRecords = [];
   pendingCollisionRecords = [];
   pendingContactForceRecords = [];
 

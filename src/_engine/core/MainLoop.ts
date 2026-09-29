@@ -21,6 +21,11 @@ import { getActiveCamera } from './CameraManager';
 import { existsOrThrow } from '../utils/assert';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 import { getActivePostFxPipeline } from './PostFX';
+import { renderViewports } from './Viewports';
+import { updateDebuggerTab } from '../debug/DebuggerGUI';
+
+/** Debugger drawer tab id of the loop controls. */
+export const LOOP_DEBUGGER_TAB_ID = 'loopControls';
 
 const timer = new Timer();
 let delta = 0;
@@ -59,7 +64,7 @@ export type LoopState = {
   isLoadingScene: boolean;
 };
 
-let loopState: LoopState = {
+const loopState: LoopState = {
   masterPlay: true,
   appPlay: true,
   isMasterPlaying: false,
@@ -137,6 +142,11 @@ const stepPhysicsAndPollHeldKeys = (delta: number) => {
   if (!physicsState.enabled || !physicsState.worldStepEnabled) pollHeldKeyBindings(delta);
 };
 
+/** Called instead of stepPhysicsAndPollHeldKeys while the app loop is paused. It steps nothing,
+ * but stepPhysics() is what notices the pause, so it can discard the paused time on resume
+ * instead of catching up on it (up to maxDeltaTime worth of steps in one frame). */
+const notePhysicsAppPause = () => stepPhysics(loopState);
+
 /** Advances getElapsedTime by this frame's delta. Must run in every loop variant right after
  * the masterPlay check. The timer is never reset across a master pause, so the first delta
  * after resuming spans the whole paused duration — it is discarded (as stepPhysics does for
@@ -173,6 +183,9 @@ const renderScene = () => {
   } else {
     renderer.render(rootScene, camera);
   }
+
+  // Viewports (picture-in-picture, the debug axes gizmo) go over the finished frame
+  renderViewports(renderer, delta);
 };
 
 // LOOP (for debug)
@@ -215,6 +228,7 @@ const mainLoopForDebug = async () => {
   } else {
     // Only master loop is playing (app loop is paused)
     loopState.isAppPlaying = false;
+    notePhysicsAppPause();
   }
 
   if (skipFrame) return;
@@ -258,6 +272,8 @@ const mainLoopForProduction = async () => {
     // app loopers
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
+  } else {
+    notePhysicsAppPause();
   }
 
   renderScene();
@@ -301,6 +317,7 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
   } else {
+    notePhysicsAppPause();
     if (skipFrame) return;
   }
 
@@ -370,10 +387,8 @@ export const initMainLoop = () => {
 
   if (isDebugEnvironment() || isProdTestMode()) {
     const gui = useDebug(debugGUI, true);
-    if (gui) {
-      loopState = gui.getSavedLoopState(loopState);
-      gui.createLoopDebugControls(loopState);
-    }
+    // Also hydrates loopState's persisted debug values
+    if (gui) gui.createLoopDebugControls(loopState);
   }
 
   initRayCasting();
@@ -436,6 +451,7 @@ export const toggleMainPlay = (value?: boolean) => {
     loopState.isMasterPlaying = true;
     requestAnimationFrame(mainLoop);
   }
+  updateDebuggerTab(LOOP_DEBUGGER_TAB_ID);
 };
 
 /**
@@ -445,11 +461,10 @@ export const toggleMainPlay = (value?: boolean) => {
 export const toggleAppPlay = (value?: boolean) => {
   if (value !== undefined) {
     loopState.appPlay = value;
-    useDebug(debugGUI, true)?.refreshAppPlayBinding();
-    return;
+  } else {
+    loopState.appPlay = !loopState.appPlay;
   }
-  loopState.appPlay = !loopState.appPlay;
-  useDebug(debugGUI, true)?.refreshAppPlayBinding();
+  updateDebuggerTab(LOOP_DEBUGGER_TAB_ID);
 };
 
 /**

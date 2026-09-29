@@ -1,6 +1,6 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Physics, Bug
-Related: p100_small-bug-fixes-and-tweaks.md (§5, where this was split out from), p500_restore-physics-snapshot.md
+Related: \_DONE_p100_small-bug-fixes-and-tweaks.md (§5, where this was split out from), p500_restore-physics-snapshot.md
 
 # Physics Scene-Load Determinism — Plan
 
@@ -17,7 +17,7 @@ Makes loading the same scene produce the same physics results every time, whethe
   - whether the scene was visited before in the same session.
 - **Goal:** MAIN_THREAD and WORKER_THREAD (± SAB) issue the same Rapier call sequence, and therefore produce the same results (see open question §6.3).
 - **Non-goal: bit-identical results across platforms or browsers.** That would need `@dimforge/rapier3d-deterministic`. The current `@dimforge/rapier3d-compat` 0.19.3 runs the same WASM in both threads, so it is repeatable given the same call sequence. Revisit only if two fresh loads with the same config ever differ.
-- **Non-goal: deterministic characters.** `src/toolkit/ecs/dynamicCharacter.ts` uses the wall clock (`getPhysGameTime()` at `:613, 616, 909, 932, 983`), `Math.random` (`:1242-1245`) and async shape-cast queries that resolve per frame. Step-clocked, seeded characters should get their own follow-up plan. The probe reports characters separately and they are excluded from the hash.
+- **Non-goal: deterministic characters.** `src/_engine/utils/character/dynamicCharacter.ts` uses the wall clock (`getPhysGameTime()` at `:613, 616, 909, 932, 983`), `Math.random` (`:1242-1245`) and async shape-cast queries that resolve per frame. Step-clocked, seeded characters should get their own follow-up plan (not written yet). In WORKER_THREAD mode the async shape casts make them frame-timing dependent too. The probe reports characters separately and they are excluded from the hash, but they still push other bodies. That is why the gym has an `ARE_CHARACTERS_ENABLED` flag (P5).
 
 ---
 
@@ -56,7 +56,14 @@ Makes loading the same scene produce the same physics results every time, whethe
 - The gym's five moving platforms are created fire-and-forget (`scene_thirdPersonGym.ts:414, 447, 487, 526, 565`).
 - In MAIN_THREAD mode all of this is synchronous and runs in call order.
 
-### 2.5 Not a cause: interpolation
+### 2.5 Captured sub-step commands kept by reference (WORKER_THREAD) — found during P4
+
+- `messageWorker` (`PhysicsAPI.ts`) stored each `APP_PHYSICS_STEP` command in `substepCommandCapture` by reference. The STEP message carrying them is only structured-cloned after every sub-step of the frame has run.
+- `movingPlatform.ts`'s tick passes the same scratch `curPos` vector to `setNextKinematicTranslation` every sub-step. So in a frame with 2+ sub-steps, every sub-step got the last sub-step's kinematic target.
+- How often a frame runs 2+ sub-steps depends on frame pacing, so platforms (and bodies they touch) diverged run to run. At a segment boundary this showed up as identical positions with zero velocity. Rotations were unaffected only because `toPlainRot` copies them. Character code (`justLandedVector3`) reuses vectors the same way.
+- Fixed in P4: captured commands are cloned at capture time (`structuredClone`), which is what an immediate `postMessage` would have done.
+
+### 2.6 Not a cause: interpolation
 
 `physicsInterpolationSystem` (`PhysicsManager.ts:552-775`) only writes `Object3D.position/quaternion`. No path feeds the Object3D pose back into physics. Interpolation settings can only change results indirectly, through frame timing, and that stops mattering once §2.1 is fixed. The probe confirms this empirically.
 
@@ -150,6 +157,97 @@ Expected:
 - After P3 + P4: equal across all modes. The only exception is a character touching a body, which the per-body diff shows.
 
 Drive the runs and collect the probe lines with the run-aekasha-js skill.
+
+### 4.1 Results
+
+**Before P1 (P0 baseline, 2026-09-28).** Gym probed at N = 300 (counted from scene enter), interpolation `RENDERER`, headless Chrome. Each run is a fresh load, then gym → `sceneTestECS` → gym, then a page reload.
+
+| Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- |
+| MAIN_THREAD | `f5addbe3` | `21f6e8a0`, `9d24184e` (two runs) | `f5addbe3` |
+| WORKER_THREAD, SAB | `ad4394e7` | `c633ffb5` | `cddb215d` |
+| WORKER_THREAD, no SAB | `f5addbe3` | `9bb66cbd` | `6eeb8ee9` |
+
+- Every revisit differs from its fresh load. The first differing body is always `carouselPlatformMesh1`, and the largest position delta is always `customPropTest2/Suzanne` (5.2–7.5 units). This reproduces the reported bug.
+- MAIN_THREAD fresh loads are repeatable. The first boot builds the scene before the loop starts (§2.1).
+- Worker fresh loads are not repeatable. This is consistent with the worker-only ordering races (§2.4).
+- One no-SAB fresh load matched MAIN_THREAD (`f5addbe3`), so the two modes can produce identical results when the timing lines up.
+
+**After P1 (2026-09-28).** Same setup.
+
+| Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- |
+| MAIN_THREAD | `f5addbe3` | `bf057095` | `f5addbe3` |
+| WORKER_THREAD, SAB | `2c159762` | `dbdd9eb7` | `39d20788` |
+| WORKER_THREAD, no SAB | `c178eefb` | `2579ecb6` | `469dc120` |
+
+- A direct check confirms the hold. Polling the step count during a gym load, it stayed at one value for every held frame, in both MAIN_THREAD and WORKER_THREAD. Stepping resumed after the release.
+- Revisits still differ in every mode (Suzanne is 6.8–7.5 units off). This is expected until P2: the world reuse (§2.2) is still in place.
+- MAIN_THREAD fresh loads are unchanged (`f5addbe3`), as expected: the first boot never stepped during the load.
+- Worker fresh loads still vary. The causes left are §2.3 (no SAB) and the create ordering in §2.4, which P3/P4 address.
+- The "first differing body" is the first differing body in key order (alphabetical `appId`), not necessarily the one that diverged first. Here it is `carouselPlatformMesh2`.
+
+**After P2 (2026-09-28).** Same setup.
+
+| Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- |
+| MAIN_THREAD | `f5addbe3` | `f5addbe3` | `f5addbe3` |
+| MAIN_THREAD, N = 1200 | `15d1f6df` | `15d1f6df` | `15d1f6df` |
+| WORKER_THREAD, SAB | `5dc2186f` | `f5addbe3` | `a3682d8b` |
+| WORKER_THREAD, no SAB | `2f1390ad` | `562173d7` | `736c1f43` |
+
+- MAIN_THREAD is repeatable: fresh loads and revisits match at N = 300 and N = 1200. The reported bug (Suzanne landing elsewhere on a revisit) is gone in this mode.
+- WORKER_THREAD is not repeatable yet, so the expectation "all hashes equal within each mode" holds for MAIN_THREAD only. The remaining differences are small (0.007–0.21 units, largest at `customPropTest3/BoxWithChildCollider`), and worker runs often land on the MAIN_THREAD hash (`f5addbe3`). What remains looks like the worker-only creation-order race (§2.4, since body and colliders are still two RPCs, entities created concurrently can interleave differently) and, without SAB, the stale pose (§2.3). P3 and P4 target these.
+- The reset had to run after `createCameras()`, not directly after `clearNonPersistent()` as §3 P2 says. In WORKER_THREAD mode it awaits the worker, and frames render meanwhile. Without a camera, `renderScene` throws.
+
+**After P3 (2026-09-28).** Same setup.
+
+| Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- |
+| MAIN_THREAD | `f5addbe3` | `f5addbe3` | `f5addbe3` |
+| WORKER_THREAD, SAB | `f5addbe3` | `03f8d106` | `6efd3750` |
+| WORKER_THREAD, no SAB | `f5addbe3` | `f5addbe3` | `342915f7` |
+
+- A direct check confirms the fix. Without SAB, a body created while stepping is held (so no push can arrive) reads its real pose right away: (1, 2, 3) with a unit rotation. Without the proxy seeding, the same body reads (0, 0, 0) with a zero rotation.
+- Without SAB, loads now often reproduce the MAIN_THREAD hash bit for bit (2 of 3 here, none after P2).
+- Both worker transports still vary sometimes, again by at most 0.26 units at `customPropTest3/BoxWithChildCollider`. That matches the create-order race left for P4.
+
+**After P4 (2026-09-28).**
+
+- With `CREATE_PHYSICS_ENTITY` alone, worker loads still varied. A diagnostic that compares creation order (rigid body ids) and per-body state found the creation order identical across worker loads and MAIN_THREAD. Two things still differed:
+  - platform velocities at step 300, caused by §2.5 and fixed;
+  - `BoxWithChildCollider`'s resting position. The gym's dummy character (spawned at (−2, 5, −2), walking and jumping every second) pushes it, and characters are a non-goal (§1).
+- With the §2.5 fix and the dummy character's movement system temporarily disabled, every load produced the same hash in every mode:
+
+| Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- |
+| MAIN_THREAD | `24df7a1d` | — | `24df7a1d` |
+| WORKER_THREAD, SAB | `24df7a1d` | `24df7a1d` | `24df7a1d` |
+| WORKER_THREAD, no SAB | `24df7a1d` | `24df7a1d` | `24df7a1d` |
+
+(MAIN_THREAD revisits already matched after P2. Fresh loads come from the diagnostic: 4× SAB, 2× no SAB, 2× MAIN_THREAD.) With the dummy character active, MAIN_THREAD stays repeatable (`f5addbe3`), but worker loads can differ at `BoxWithChildCollider`. That is expected, since the character is frame-timing dependent in worker mode (async shape casts). P5's probe flag for characters covers this.
+- Also fixed in P4: a P2 regression in MAIN_THREAD mode. `createColliders`/`createCollidersSync` (and `createRigidBodies`/`createRigidBodiesSync`) never registered their results in the main-thread maps, so P2's "skip unknown ids" made `deleteColliders` skip them. A deleted collider-only entity stayed in the world, and a ray still hit it. They now register like the worker branches. Verified: the ray hits before the delete and misses after it, in both modes.
+
+**After P5 (2026-09-28).** Changes:
+- The gym awaits its six `createMovingPlatform` calls.
+- Its characters (player, follow camera, dummy) moved into `createGymCharacters()`, behind a local `ARE_CHARACTERS_ENABLED` flag.
+- CLAUDE.md's Physics section documents the scene-load hold/reset, the `APP_PHYSICS_STEP` write rule and the probe.
+
+Final matrix at N = 300:
+
+| Characters | Mode | Fresh | Revisit | Fresh #2 |
+| --- | --- | --- | --- | --- |
+| off | MAIN_THREAD | `ce5e0e85` | `ce5e0e85` | `ce5e0e85` |
+| off | WORKER_THREAD, SAB | `ce5e0e85` | `ce5e0e85` | `ce5e0e85` |
+| off | WORKER_THREAD, no SAB | `ce5e0e85` | `ce5e0e85` | `ce5e0e85` |
+| on | MAIN_THREAD | `f5addbe3` | `f5addbe3` | `f5addbe3` |
+
+With characters off, a fresh load followed by a revisit under changed frame pacing or interpolation matched every time (`ce5e0e85` → `ce5e0e85`):
+- WORKER_THREAD with SAB: play speed ×2 and ×0.5, a 20 FPS cap, interpolation NONE.
+- WORKER_THREAD without SAB: play speed ×2, interpolation NONE.
+- MAIN_THREAD: play speed ×2, interpolation FIXED_PHYSICS and NONE.
+
+All goals in §1 are met, including identical results across MAIN_THREAD and WORKER_THREAD (§6.3). The one exception is characters, which are a non-goal.
 
 ---
 

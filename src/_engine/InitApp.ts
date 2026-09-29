@@ -15,7 +15,7 @@ import {
   createPhysicsWorld,
   initPhysics as initNewPhysics,
 } from './core/PhysicsAPI';
-import { registerPhysicsManager } from './core/PhysicsManager';
+import { registerPhysicsDeterminismProbe, registerPhysicsManager } from './core/PhysicsManager';
 import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
 import { lerror, llog } from './utils/Logger';
@@ -50,6 +50,7 @@ import { registerOnScreenTools } from './debug/OnScreenTools';
 import { DEBUG_TOASTER_ID, registerDebuggerGUI } from './debug/DebuggerGUI';
 import { initUndoRedo, registerUndoRedoModule } from './debug/UndoRedo';
 import { registerPostFxProfiler } from './debug/PostFXProfiler';
+import { registerAxesGizmoModule } from './debug/AxesGizmo';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -94,6 +95,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     if (getConfig().physics?.enabled) {
       await createPhysicsWorld();
     }
+    if (IS_DEBUG_ENV) await registerPhysicsDeterminismProbe();
 
     if (IS_DEBUG_ENV) {
       await registerUndoRedoModule();
@@ -102,6 +104,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerSkyBoxDebugGUI();
       await registerRaycastDebugGUI();
       await registerDebuggerGUI();
+      await registerAxesGizmoModule();
       registerDefaultDebugKeyBindings();
       await registerCharacterTools();
       await registerECSModule();

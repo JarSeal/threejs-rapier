@@ -169,6 +169,9 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
           data
         );
       }
+      case PhysicsProtocolType.FLUSH:
+        // FLUSH (ordering barrier: messages are handled in arrival order, so replying is enough)
+        return sendMessage({ type }, data);
       case PhysicsProtocolType.TAKE_SNAPSHOT:
         // TAKE_SNAPSHOT
         const snapshot = engAPI.takeSnapshot();
@@ -209,10 +212,19 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
           data
         );
       }
-      case PhysicsProtocolType.DELETE_WORLD:
+      case PhysicsProtocolType.DELETE_WORLD: {
         // DELETE_WORLD
         const createdStatus = engAPI.deleteWorld();
+        // CREATE_WORLD allocates a fresh transform buffer and restarts the step count. The
+        // debug-state buffer is kept (the main thread may hold it as a SAB), but its tracked
+        // ids all named bodies/colliders of the deleted world.
+        transformBuffer = undefined;
+        stepsExecuted = 0;
+        debugTrackedRigidBodyIds = [];
+        debugTrackedColliderIds = [];
+        debugStateBuffer?.clear();
         return sendMessage({ type, ...createdStatus }, data);
+      }
       case PhysicsProtocolType.INIT_PHYSICS:
         // INIT_PHYSICS
         workerPhysicsState = data.physicsState;

@@ -169,7 +169,3 @@ export const createCharactersDebuggerGUI = () => {
 export const updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   useDebug(debugGUI, true)?._updateCharactersDebuggerGUI(only);
 };
-
-export const updateDebuggerCharactersListSelectedClass = () => {
-  useDebug(debugGUI, true)?._updateDebuggerCharactersListSelectedClass();
-};

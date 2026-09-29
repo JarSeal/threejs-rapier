@@ -18,6 +18,24 @@ export const DEBUG_PHYSICS_API_BOOT_LS_KEY = 'AEK_debugPhysicsApiBoot';
 /** LS key for debug-only boot-time assets overrides (workerTarget + per-kind overrides). Written by the Assets debug tab, read once in loadConfig(). */
 export const DEBUG_ASSETS_BOOT_LS_KEY = 'AEK_debugAssetsBoot';
 
+/** Engine default debug drawer tab order (tab ids, see `AppConfig.debugDrawer.tabOrder`). */
+export const DEFAULT_DEBUG_DRAWER_TAB_ORDER = [
+  'statsControls',
+  'loopControls',
+  'skyBoxControls',
+  'debugToolsControls',
+  'physicsApiControls',
+  'rendererControls',
+  'assetsControls',
+  'postFxControls',
+  'rayCastControls',
+  'lightsControls',
+  'camerasControls',
+  'charactersControls',
+  'ecsControls',
+  'spatialGridControls',
+];
+
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
 
 /**
@@ -148,6 +166,13 @@ export type AppConfig = {
      * switched on and off live with setPostFxMeasureEnabled()). Default false. */
     measureEnabled?: boolean;
   };
+  /** Debug drawer settings (debug-only, see `debug/DebuggerGUI.ts`). */
+  debugDrawer?: {
+    /** Tab ids in menu order. Replaces the engine default ({@link DEFAULT_DEBUG_DRAWER_TAB_ORDER})
+     * whole, it is not merged. Tabs not listed go last, in registration order. A tab's own
+     * `orderNr` overrides its place on this 0-based scale (eg. 1.5 = between the 2nd and 3rd tab). */
+    tabOrder?: string[];
+  };
   /** Debugger undo/redo history (debug-only, see `debug/UndoRedo.ts`). */
   undoRedo?: {
     /** Max number of history entries kept per scene bucket. Default 50. */
@@ -200,6 +225,9 @@ let config: AppConfig = {
     near: 0.1,
     far: 1000,
     zoom: 1,
+  },
+  debugDrawer: {
+    tabOrder: DEFAULT_DEBUG_DRAWER_TAB_ORDER,
   },
   undoRedo: {
     historySize: 50,

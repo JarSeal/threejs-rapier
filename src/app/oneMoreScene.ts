@@ -1,3 +1,5 @@
+import { llog } from '../_engine/utils/Logger';
+
 export const scene = async () => {
-  console.log('Another scene');
+  llog('Another scene');
 };

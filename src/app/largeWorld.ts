@@ -4,7 +4,7 @@ import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { createMeshEntity, getMeshByAppId, type MeshProps } from '../_engine/core/MeshManager';
 import { createMaterial } from '../_engine/core/Material';
 import { createLightEntity } from '../_engine/core/LightManager';
-import { createGeometry, deleteGeometry } from '../_engine/core/Geometry';
+import { createGeometry, deleteGeometry, saveBufferGeometry } from '../_engine/core/Geometry';
 import {
   createCameraEntity,
   getActiveCameraId,
@@ -45,6 +45,9 @@ export const scene = async () => {
     seed: 5,
   });
 
+  // Generated geometries are registered so the scene asset release disposes them on scene exit
+  const terrainGeo = saveBufferGeometry(terrain.geometry, { id: 'largeWorldTerrainGeo' });
+
   const terrainMat = createMaterial({
     id: 'largeWorldTerrainMat',
     type: 'PHONG',
@@ -52,7 +55,7 @@ export const scene = async () => {
   });
 
   createMeshEntity(
-    { geo: terrain.geometry, mat: terrainMat, castShadow: true, receiveShadow: true },
+    { geo: terrainGeo, mat: terrainMat, castShadow: true, receiveShadow: true },
     { appId: 'largeWorldTerrain', debugData: { name: 'Large world terrain' } }
   );
   const terrainMesh = existsOrThrow(
@@ -71,6 +74,7 @@ export const scene = async () => {
     scaleRange: [0.7, 1.3],
   });
   const treeGeo = generateTreeGeometry();
+  const treeGeometry = saveBufferGeometry(treeGeo.geometry, { id: 'largeWorldTreeGeo' });
   const treeTrunkMat = createMaterial({
     id: 'largeWorldTreeTrunkMat',
     type: 'PHONG',
@@ -83,7 +87,7 @@ export const scene = async () => {
   });
   const treePool = createInstancedMeshPool({
     world: ecsWorld,
-    geometry: treeGeo.geometry,
+    geometry: treeGeometry,
     material: [treeTrunkMat, treeFoliageMat],
     maxInstances: treePlacements.length,
     castShadow: true,
@@ -99,7 +103,7 @@ export const scene = async () => {
     minSpacing: 1,
     scaleRange: [0.6, 1.2],
   });
-  const bushGeo = generateBushGeometry();
+  const bushGeo = saveBufferGeometry(generateBushGeometry(), { id: 'largeWorldBushGeo' });
   const bushMat = createMaterial({
     id: 'largeWorldBushMat',
     type: 'PHONG',
@@ -328,11 +332,14 @@ export const scene = async () => {
   });
   const crateTopGeo = crateBaseGeo.clone();
   crateTopGeo.translate(0.7, 1.4, 0);
-  const crateStackGeo = mergeGeometries([crateBaseGeo, crateTopGeo], false)!;
-  crateStackGeo.computeVertexNormals();
-  crateStackGeo.computeBoundingSphere();
-  crateStackGeo.computeBoundingBox();
+  const mergedCrateStackGeo = mergeGeometries([crateBaseGeo, crateTopGeo], false)!;
+  mergedCrateStackGeo.computeVertexNormals();
+  mergedCrateStackGeo.computeBoundingSphere();
+  mergedCrateStackGeo.computeBoundingBox();
+  const crateStackGeo = saveBufferGeometry(mergedCrateStackGeo, { id: 'largeWorldCrateStackGeo' });
   deleteGeometry(crateBaseGeo.userData.id);
+  // The clone carries the source's userData.id, so deleteGeometry never reaches it
+  crateTopGeo.dispose();
 
   const crateX = 5;
   const crateZ = 8;
@@ -375,14 +382,18 @@ export const scene = async () => {
     params: { radiusTop: 0.15, radiusBottom: 0.15, height: 1.8, radialSegments: 8 },
   });
   barbellHandleGeo.rotateZ(Math.PI / 2);
-  const barbellGeo = mergeGeometries(
+  const mergedBarbellGeo = mergeGeometries(
     [barbellSphereGeoA, barbellSphereGeoB, barbellHandleGeo],
     false
   )!;
-  barbellGeo.computeVertexNormals();
-  barbellGeo.computeBoundingSphere();
-  barbellGeo.computeBoundingBox();
+  mergedBarbellGeo.computeVertexNormals();
+  mergedBarbellGeo.computeBoundingSphere();
+  mergedBarbellGeo.computeBoundingBox();
+  const barbellGeo = saveBufferGeometry(mergedBarbellGeo, { id: 'largeWorldBarbellGeo' });
   deleteGeometry([barbellSphereGeo.userData.id, barbellHandleGeo.userData.id]);
+  // The clones carry the source's userData.id, so deleteGeometry never reaches them
+  barbellSphereGeoA.dispose();
+  barbellSphereGeoB.dispose();
 
   const barbellX = -20;
   const barbellZ = -35;

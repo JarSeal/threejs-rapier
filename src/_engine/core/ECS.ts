@@ -9,7 +9,7 @@ import {
 } from './ECS/ECSCoreComponents';
 import { existsOrThrow } from '../utils/assert';
 import { RigidBodyAPI } from './Physics/PhysicsAPITypes';
-import { getConfig, IS_DEBUG_ENV, isDebugEnvironment } from './Config';
+import { getConfig, IS_DEBUG_ENV, IS_PROD_TEST_MODE } from './Config';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import {
   getECSStorageLSOverride,
@@ -45,6 +45,10 @@ export type ECSWorldOptions = {
   /** Whether globally registered plugins (ECSWorld.registerPlugin) run on this world. Default true. */
   applyGlobalPlugins?: boolean;
 };
+
+/** DEBUG_DATA is only stored where it is read: debug and prodTest mode (eg. the on-screen tools'
+ * camera names). Production never stores it. */
+const STORE_DEBUG_DATA = IS_DEBUG_ENV || IS_PROD_TEST_MODE;
 
 let ecsWorld: ECSWorld;
 
@@ -512,7 +516,7 @@ export class ECSWorld {
   }
 
   addComponent<K extends ComponentType>(entityId: number, type: K, data: ComponentData[K]): void {
-    if (type === ComponentType.DEBUG_DATA && !isDebugEnvironment) return;
+    if (!STORE_DEBUG_DATA && type === ComponentType.DEBUG_DATA) return;
 
     let storage = this.storages.get(type);
     if (!storage) {

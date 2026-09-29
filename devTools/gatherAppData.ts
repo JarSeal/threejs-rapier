@@ -263,7 +263,7 @@ export const gatherSceneData = () => {
         cameraJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete cameraJSON.$schema;
         cameraRegistry[cameraId] = cameraJSON;
-      } catch (e) {
+      } catch {
         logJSONError(file);
       }
     }
@@ -299,7 +299,7 @@ export const gatherSceneData = () => {
         lightJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete lightJSON.$schema;
         lightRegistry[lightId] = lightJSON;
-      } catch (e) {
+      } catch {
         logJSONError(file);
       }
     }
@@ -335,7 +335,7 @@ export const gatherSceneData = () => {
         geoJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete geoJSON.$schema;
         geoRegistry[geoId] = geoJSON;
-      } catch (e) {
+      } catch {
         logJSONError(file);
       }
     }
@@ -372,7 +372,7 @@ export const gatherSceneData = () => {
         texJSON.id = texId;
         delete texJSON.$schema;
         texRegistry[texId] = texJSON;
-      } catch (e) {
+      } catch {
         logJSONError(file);
       }
     }
@@ -451,7 +451,7 @@ export const gatherSceneData = () => {
           }
           tslMaterialFileObject += `  },\n`;
         }
-      } catch (e) {
+      } catch {
         logJSONError(file);
       }
     }
@@ -487,7 +487,7 @@ export const gatherSceneData = () => {
         meshJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete meshJSON.$schema;
         meshRegistry[meshId] = meshJSON;
-      } catch (e) {
+      } catch {
         logJSONError(file);
       }
     }
@@ -525,7 +525,7 @@ export const gatherSceneData = () => {
         importedAssetJSON.__fileSize = getPublicFileSize(importedAssetJSON.fileName);
         delete importedAssetJSON.$schema;
         importedAssetRegistry[id] = importedAssetJSON;
-      } catch (e) {
+      } catch {
         logJSONError(file);
       }
     }
@@ -551,7 +551,7 @@ export const gatherSceneData = () => {
         skyJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete skyJSON.$schema;
         skyRegistry[skyId] = skyJSON;
-      } catch (e) {
+      } catch {
         logJSONError(file);
       }
     }
@@ -625,7 +625,7 @@ export const gatherSceneData = () => {
           postFxFileObject += `    fxNode: ${runtimeUniqueNamespace}.fxNode,\n`;
           postFxFileObject += `  },\n`;
         }
-      } catch (e) {
+      } catch {
         logJSONError(file);
       }
     }

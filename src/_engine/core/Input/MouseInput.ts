@@ -71,7 +71,8 @@ export type MouseBinding =
 
 export type MouseBindingType = MouseBinding['type'];
 
-const CLICK_MAX_MOVE_PX = 5;
+/** A press that moves at most this far (CSS px) before its release is a click, not a drag. */
+export const CLICK_MAX_MOVE_PX = 5;
 const DEFAULT_DBLCLICK_MAX_INTERVAL_MS = 300;
 const HOVER_SYSTEM_ID = 'inputMouseHoverSystem';
 const MOUSE_BUTTONS: MouseButton[] = ['LEFT', 'MIDDLE', 'RIGHT'];

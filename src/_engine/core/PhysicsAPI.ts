@@ -8,7 +8,7 @@
 import * as THREE from 'three/webgpu';
 
 import PhysicsWorker from '../workers/physicsWorker?worker';
-import { getConfig, isDebugEnvironment } from './Config';
+import { getConfig, IS_DEBUG_ENV, isDebugEnvironment } from './Config';
 import { PhysicsTransformBuffer } from './Physics/PhysicsTransformBuffer';
 import {
   PHYSICS_STEP_STATS_FIELD_COUNT,
@@ -52,6 +52,7 @@ import {
   TakeSnapshotResponse,
   CreateWorldResponse,
   DeleteWorldResponse,
+  FlushResponse,
   RestoreSnapshotResponse,
   WorldGravityResponse,
   WorldTimestepResponse,
@@ -60,6 +61,7 @@ import {
   WorldNumInternalPgsIterationsResponse,
   RigidBodyParams,
   CreateRigidBodyResponse,
+  CreatePhysicsEntityResponse,
   CreateColliderResponse,
   QueryFilterFlags,
   ColliderParams,
@@ -142,6 +144,7 @@ import {
   JointContactsEnabledResponse,
   JointLimitsEnabledResponse,
   JointGetUserDataResponse,
+  RigidBodyPose,
 } from './Physics/PhysicsAPITypes';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
 import { ShapeType } from '@dimforge/rapier3d-compat';
@@ -285,14 +288,19 @@ export const stepPhysics = (
    * MainLoop.ts). Without one, events are flushed before each sub-step here instead. */
   onBeforeStep?: (stepDelta: number) => void
 ): number => {
-  if (!physicsWorldEnabled || !physicsState.worldStepEnabled) return 0;
+  if (!physicsWorldEnabled) return 0;
+  // Scene load in progress (holdPhysicsStepping): no timer update either, releasing it
+  // resumes through the paused branch below.
+  if (isSteppingHeld) return 0;
 
   updateTimer();
   let dt = timer.getDelta();
 
-  if (!loopState.masterPlay || !loopState.appPlay) {
+  if (!loopState.masterPlay || !loopState.appPlay || !physicsState.worldStepEnabled) {
     // Explicit pause (unrelated to window visibility) always halts stepping outright —
-    // backgroundBehavior only governs what happens while the window is hidden.
+    // backgroundBehavior only governs what happens while the window is hidden. Switching
+    // the world step off counts as one too, so switching it back on resumes cleanly instead
+    // of catching up on the time it was off.
     if (!physicsState.isPaused) setPhysicsPauseTime();
     physicsState.isPaused = true;
     timerRunning = false;
@@ -318,15 +326,25 @@ export const stepPhysics = (
     }
     // 'KEEP_RUNNING': keep the real dt, still subject to the maxDeltaTime clamp below.
   } else if (physicsState.isPaused) {
-    // Resuming: the dt just computed above spans the entire paused duration (the timer
-    // wasn't updated while timerRunning was false) — discard it and the stale accumulator
-    // rather than trying to simulate the whole paused duration in one go. Physics resumes
-    // cleanly from next frame's dt instead.
+    // Resuming: the dt just computed above is either stale (the timer wasn't updated while
+    // timerRunning was false) or spans the entire paused duration — discard it and the stale
+    // accumulator rather than trying to simulate the whole paused duration in one go. The
+    // timer restarts from now, whatever paused it, so the next frame's dt is one frame long.
     physicsState.isPaused = false;
     physicsState.pauseDurationTotal += performance.now() - physicsState.pausedTime;
     physicsState.pausedTime = 0;
     accDelta = 0;
     simClockEpoch++;
+    timerRunning = true;
+    timer.update();
+    return 0;
+  }
+
+  // Debug-only freeze (setPhysicsStepLimit): at the limit, hold there without banking time
+  // toward the next step, so releasing it resumes cleanly instead of catching up.
+  const stepsToLimit = stepLimit === null ? Infinity : stepLimit - stepsIssued;
+  if (stepsToLimit <= 0) {
+    accDelta = 0;
     return 0;
   }
 
@@ -348,6 +366,10 @@ export const stepPhysics = (
   if (physicsState.maxSubSteps > 0 && stepsTaken >= physicsState.maxSubSteps) {
     // Only a discontinuity if there was backlog to drop (sitting exactly at the ceiling isn't).
     if (accDelta >= physicsState.timestepRatio) simClockEpoch++;
+    accDelta = 0;
+  }
+  if (stepsTaken >= stepsToLimit) {
+    stepsTaken = stepsToLimit;
     accDelta = 0;
   }
 
@@ -497,7 +519,10 @@ const isWritePending = (visibleAt: number) =>
 const messageWorker = (message: PhysicsUpProtocol) => {
   if (!worker) return;
   if (substepCommandCapture) {
-    substepCommandCapture.push(message);
+    // Cloned now, as postMessage would: callers reuse scratch vectors (e.g. a platform's
+    // kinematic target), and the STEP message is only cloned after every sub-step's systems
+    // ran, so a captured reference would carry the last sub-step's value into all of them.
+    substepCommandCapture.push(structuredClone(message));
     return;
   }
   worker.postMessage(message);
@@ -663,6 +688,36 @@ const physicsVisibilityChangeHandler = (isHidden: boolean) => {
   }
 };
 
+/** Whether holdPhysicsStepping() is in effect. */
+let isSteppingHeld = false;
+
+/**
+ * Stops the world from stepping until releasePhysicsStepping() is called. SceneLoader.ts holds
+ * it for the whole scene build, so every body of the next scene starts stepping on the same
+ * step no matter how long its assets took to load. Counts as a pause for getPhysGameTime().
+ */
+export const holdPhysicsStepping = () => {
+  if (isSteppingHeld) return;
+  isSteppingHeld = true;
+  if (!physicsState.isPaused) setPhysicsPauseTime();
+  physicsState.isPaused = true;
+  physicsState.pauseReason ??= 'SCENE_LOAD';
+};
+
+/**
+ * Ends holdPhysicsStepping(). The next stepPhysics() call takes the resume-from-pause path: it
+ * discards the dt spanning the hold and the accumulator and restarts the timer, so stepping
+ * restarts from a clean step boundary. That also covers the first boot, where the loop only
+ * starts after the first load.
+ */
+export const releasePhysicsStepping = () => {
+  if (!isSteppingHeld) return;
+  isSteppingHeld = false;
+  if (physicsState.pauseReason === 'SCENE_LOAD') physicsState.pauseReason = null;
+};
+
+export const isPhysicsSteppingHeld = () => isSteppingHeld;
+
 // Physics step accumulator variables
 let timerRunning = true;
 let accDelta = 0;
@@ -754,6 +809,22 @@ export const getPhysicsSimClockEpoch = () => simClockEpoch;
 /** See simHistoryEpoch: changes whenever earlier snapshots stop describing the current world. */
 export const getPhysicsSimHistoryEpoch = () => simHistoryEpoch;
 
+/** Absolute step index (in stepsIssued) stepPhysics() never steps past; null = no limit. */
+let stepLimit: number | null = null;
+
+/**
+ * Debug only (a no-op returning null outside IS_DEBUG_ENV): freezes the simulation after
+ * `steps` more fixed steps, in both worker targets, until called again with null. Returns the
+ * step index it freezes at, which is what getPhysicsSnapshotStepIndex() reads once the frozen
+ * pose is visible (WORKER_THREAD mode gets there a frame or more later than MAIN_THREAD).
+ * Used by the physics determinism probe (_dbg__PhysicsDeterminism.ts).
+ */
+export const setPhysicsStepLimit = (steps: number | null) => {
+  if (!IS_DEBUG_ENV) return null;
+  stepLimit = steps === null ? null : stepsIssued + Math.max(0, Math.floor(steps));
+  return stepLimit;
+};
+
 /** Returns the current physicsState */
 export const getPhysicsState = () => physicsState;
 
@@ -841,6 +912,16 @@ export const createPhysicsWorld = async (
   return physicsWorld;
 };
 
+/**
+ * Ordering barrier. WORKER_THREAD: resolves once the worker has handled every message posted
+ * before this call (including fire-and-forget deletes). MAIN_THREAD: everything already ran
+ * synchronously, so it resolves right away.
+ */
+export const flushPhysics = async () => {
+  if (physicsState.workerTarget !== 'WORKER_THREAD' || !worker) return;
+  await messageWorkerAsync<FlushResponse>({ type: PhysicsProtocolType.FLUSH });
+};
+
 export const deletePhysicsWorld = async () => {
   existsOrThrow(
     physicsWorldEnabled,
@@ -858,14 +939,38 @@ export const deletePhysicsWorld = async () => {
   }
 
   if (worldDeleted) {
-    // Reset
+    // Reset. Every API object and callback belonged to the deleted world. Keeps the settings
+    // in physicsState (gravity, solver iterations, timestep), which the next world is built from.
     physicsWorldEnabled = false;
     physicsWorld = { step: () => {} } as unknown as WorldAPI;
+    rigidBodies.clear();
+    colliders.clear();
+    joints.clear();
+    workerCollisionEventFns.clear();
+    workerContactForceEventFns.clear();
+    pendingEventPushes = [];
+    transformBuffer = undefined;
+    accDelta = 0;
     simClockEpoch++;
     simHistoryEpoch++;
   } else {
     lerror('Could not delete physics world.');
   }
+};
+
+/**
+ * Replaces the physics world with a new, empty one built from the current physicsState
+ * settings (so debug-tab edits carry over). SceneLoader.ts calls this on every scene load:
+ * a reused world keeps Rapier's internal history (freed handle slots, broadphase, contact
+ * graph, islands), which makes the same scene simulate differently on a revisit.
+ * Delete every physics entity first; anything still referencing the old world goes stale.
+ */
+export const resetPhysicsWorld = async () => {
+  if (!physicsWorldEnabled) return;
+  // Lets in-flight deletes of the previous scene's bodies finish against the old world
+  await flushPhysics();
+  await deletePhysicsWorld();
+  await createPhysicsWorld();
 };
 
 export const takePhysicsSnapshot = async () => {
@@ -928,7 +1033,12 @@ export const createRigidBody = async (params: RigidBodyParams) => {
       type: PhysicsProtocolType.CREATE_RIGID_BODY,
       params,
     });
-    const rbAPI = new RigidBodyProxyAPI(res.id, res.slot, params.userData) as RigidBodyAPI;
+    const rbAPI = new RigidBodyProxyAPI(
+      res.id,
+      res.slot,
+      params.userData,
+      res.pose
+    ) as RigidBodyAPI;
     rigidBodies.set(res.id, rbAPI);
     return rbAPI;
   }
@@ -967,10 +1077,12 @@ export const createRigidBodies = async (params: RigidBodyParams[]) => {
     'Physics world is not created. Create the world before creating a rigid body.'
   );
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    return existsOrThrow(
+    const rbAPIs = existsOrThrow(
       engAPI?.createRigidBodies(params),
       `Could not create a rigid bodies ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
     );
+    for (const rbAPI of rbAPIs) rigidBodies.set(rbAPI.id, rbAPI);
+    return rbAPIs;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const res = await messageWorkerAsync<CreateRigidBodiesResponse>({
       type: PhysicsProtocolType.CREATE_RIGID_BODIES,
@@ -983,7 +1095,7 @@ export const createRigidBodies = async (params: RigidBodyParams[]) => {
     const rbAPIs = [];
     for (let i = 0; i < res.ids.length; i++) {
       const id = res.ids[i];
-      const rbAPI = new RigidBodyProxyAPI(id, res.slots[i], params[i].userData);
+      const rbAPI = new RigidBodyProxyAPI(id, res.slots[i], params[i].userData, res.poses[i]);
       rbAPIs.push(rbAPI);
       rigidBodies.set(id, rbAPI);
     }
@@ -1002,10 +1114,12 @@ export const createRigidBodiesSync = (params: RigidBodyParams[]) => {
     'Physics world is not created. Create the world before creating a rigid body.'
   );
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    return existsOrThrow(
+    const rbAPIs = existsOrThrow(
       engAPI?.createRigidBodies(params),
       `Could not create a rigid bodies ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
     );
+    for (const rbAPI of rbAPIs) rigidBodies.set(rbAPI.id, rbAPI);
+    return rbAPIs;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     throw new Error(
       'Cannot use createRigidBodiesSync in worker mode. Use createRigidBodies instead.'
@@ -1017,12 +1131,11 @@ export const createRigidBodiesSync = (params: RigidBodyParams[]) => {
   );
 };
 
-/** Deletes a rigid body (and all child colliders). Returns the id of the deleted rigidBodyAPI. */
+/** Deletes a rigid body (and all child colliders). Returns the id of the deleted rigidBodyAPI,
+ * or undefined (a quiet no-op) if there is no world or no body with that id, e.g. a late delete
+ * of a body whose world has already been replaced (resetPhysicsWorld). */
 export const deleteRigidBody = async (id: number) => {
-  existsOrThrow(
-    physicsWorldEnabled,
-    'Physics world is not created. Create the world before deleting a rigid body.'
-  );
+  if (!physicsWorldEnabled || !rigidBodies.has(id)) return undefined;
   let deletedId: number | undefined = undefined;
   let deletedColliderIds: number[] = [];
   let deletedJointIds: number[] = [];
@@ -1237,6 +1350,74 @@ const cleanupWorkerColliderEventFns = (id: number) => {
   workerContactForceEventFns.delete(id);
 };
 
+/** What createRigidBodyWithColliders() creates. */
+export type RigidBodyWithColliders = { rigidBody?: RigidBodyAPI; colliders: ColliderAPI[] };
+
+/**
+ * Creates an optional rigid body and its colliders together (with a body, every collider's
+ * parentId is set to it). In WORKER_THREAD mode this is one message, posted synchronously by
+ * this call: the worker creates everything in the order these calls were made (like
+ * MAIN_THREAD does), and no step can ever run between a body and its colliders.
+ */
+export const createRigidBodyWithColliders = async (
+  rigidBodyParams: RigidBodyParams | undefined,
+  colliderParams: ColliderParams[]
+): Promise<RigidBodyWithColliders> => {
+  existsOrThrow(
+    physicsWorldEnabled,
+    'Physics world is not created. Create the world before creating a rigid body or colliders.'
+  );
+  if (physicsState.workerTarget === 'MAIN_THREAD') {
+    return createRigidBodyWithCollidersSync(rigidBodyParams, colliderParams);
+  } else if (physicsState.workerTarget === 'WORKER_THREAD') {
+    const res = await messageWorkerAsync<CreatePhysicsEntityResponse>({
+      type: PhysicsProtocolType.CREATE_PHYSICS_ENTITY,
+      rigidBody: rigidBodyParams,
+      colliders: colliderParams.map(toWireColliderParams),
+    });
+    let rigidBody: RigidBodyAPI | undefined;
+    if (rigidBodyParams && res.id !== undefined) {
+      rigidBody = new RigidBodyProxyAPI(
+        res.id,
+        res.slot,
+        rigidBodyParams.userData,
+        res.pose
+      ) as RigidBodyAPI;
+      rigidBodies.set(res.id, rigidBody);
+    }
+    const collAPIs: ColliderAPI[] = [];
+    for (let i = 0; i < res.colliderIds.length; i++) {
+      const id = res.colliderIds[i];
+      const params = colliderParams[i];
+      const collAPI = new ColliderProxyAPI(
+        id,
+        rigidBody?.id ?? params.parentId,
+        params.userData
+      ) as ColliderAPI;
+      collAPIs.push(collAPI);
+      colliders.set(id, collAPI);
+      registerWorkerColliderEventFns(id, params);
+    }
+    return { rigidBody, colliders: collAPIs };
+  }
+  // Should not get here..
+  throw new Error(
+    `Could not create a rigid body with colliders (workerTarget was not 'MAIN_THREAD' nor was it 'WORKER_THREAD'), worker target: ${physicsState.workerTarget}`
+  );
+};
+
+/** createRigidBodyWithColliders() (sync). Only for main thread mode. */
+export const createRigidBodyWithCollidersSync = (
+  rigidBodyParams: RigidBodyParams | undefined,
+  colliderParams: ColliderParams[]
+): RigidBodyWithColliders => {
+  const rigidBody = rigidBodyParams ? createRigidBodySync(rigidBodyParams) : undefined;
+  const params = rigidBody
+    ? colliderParams.map((p) => ({ ...p, parentId: rigidBody.id }))
+    : colliderParams;
+  return { rigidBody, colliders: params.length ? createCollidersSync(params) : [] };
+};
+
 /** Create a collider. */
 export const createCollider = async (params: ColliderParams, parentId?: number) => {
   existsOrThrow(
@@ -1296,10 +1477,13 @@ export const createColliders = async (params: ColliderParams[]) => {
     'Physics world is not created. Create the world before creating a collider.'
   );
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    return existsOrThrow(
+    const collAPIs = existsOrThrow(
       engAPI?.createColliders(params),
       `Could not create colliders ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
     );
+    // Registered like in WORKER_THREAD mode: deleteColliders skips ids it doesn't know
+    for (const coll of collAPIs) colliders.set(coll.id, coll);
+    return collAPIs;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     const collIds = (
       await messageWorkerAsync<CreateCollidersResponse>({
@@ -1334,10 +1518,13 @@ export const createCollidersSync = (params: ColliderParams[]) => {
     'Physics world is not created. Create the world before creating a collider.'
   );
   if (physicsState.workerTarget === 'MAIN_THREAD') {
-    return existsOrThrow(
+    const collAPIs = existsOrThrow(
       engAPI?.createColliders(params),
       `Could not create colliders ("MAIN_THREAD"). Params: ${JSON.stringify(params)}`
     );
+    // Registered like in WORKER_THREAD mode: deleteColliders skips ids it doesn't know
+    for (const coll of collAPIs) colliders.set(coll.id, coll);
+    return collAPIs;
   } else if (physicsState.workerTarget === 'WORKER_THREAD') {
     throw new Error('Cannot use createCollidersSync in worker mode. Use createColliders instead.');
   }
@@ -1398,12 +1585,17 @@ export const deleteColliderSync = (id: number, wakeUp?: boolean) => {
   return deletedId;
 };
 
-/** Deletes multiple colliders. Returns the ids of the deleted colliderAPIs. */
-export const deleteColliders = async (ids: number[], wakeUps?: boolean[]) => {
-  existsOrThrow(
-    physicsWorldEnabled,
-    'Physics world is not created. Create the world before deleting colliders.'
-  );
+/** Deletes multiple colliders. Returns the ids of the deleted colliderAPIs. Unknown ids are
+ * skipped quietly, and without a world nothing happens (see deleteRigidBody). */
+export const deleteColliders = async (allIds: number[], allWakeUps?: boolean[]) => {
+  if (!physicsWorldEnabled) return [];
+  const ids: number[] = [];
+  const wakeUps: boolean[] | undefined = allWakeUps ? [] : undefined;
+  for (let i = 0; i < allIds.length; i++) {
+    if (!colliders.has(allIds[i])) continue;
+    ids.push(allIds[i]);
+    wakeUps?.push(allWakeUps![i]);
+  }
   if (!ids.length) return [];
   let deletedIds: number[] | undefined = undefined;
   for (let i = 0; i < ids.length; i++) {
@@ -2147,9 +2339,18 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
   constructor(
     public id: number,
     private slot: number,
-    userData?: Record<string, unknown>
+    userData?: Record<string, unknown>,
+    /** The pose the worker reported at creation. Read until the first transform write-back
+     * that includes this body, which (without SAB) can arrive a frame or more later, and
+     * until then the slot holds zeros or a deleted body's last pose. */
+    initialPose?: RigidBodyPose
   ) {
     if (userData) this.uData = userData;
+    if (initialPose) {
+      const visibleAt = getWriteVisibleStep();
+      this.pendingPos = { value: { ...initialPose.pos }, visibleAt };
+      this.pendingRot = { value: { ...initialPose.rot }, visibleAt };
+    }
   }
 
   // Hot path — reads straight from the shared/latest-pushed transform buffer by slot.

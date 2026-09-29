@@ -2,8 +2,7 @@ import { CMP, getCmpById, TCMP } from '../../utils/CMP';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lerror } from '../../utils/Logger';
 import { getWindowSize } from '../../utils/Window';
-import { updateDebuggerCharactersListSelectedClass } from '../Character';
-import { getConfig } from '../Config';
+import { getConfig, IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../Config';
 import { getHUDRootCMP } from '../HUD';
 import { addResizer, deleteResizer } from '../MainLoop';
 import styles from './DraggableWindow.module.scss';
@@ -34,6 +33,11 @@ export type DraggableWindow = {
   saveToLS?: boolean;
   title?: string;
   isDebugWindow?: boolean;
+  /** Shows this debug window (`isDebugWindow`) in prodTest mode too (default false, debug
+   * windows are debug mode only). The window's content module must then be loaded in prodTest
+   * mode as well, ie. with `loadDebugModuleAsync(importer, true)` / `useDebug(ref, true)`,
+   * otherwise the window opens without content. */
+  showInProdTest?: boolean;
   disableVertResize?: boolean;
   disableHoriResize?: boolean;
   disableDragging?: boolean;
@@ -74,6 +78,11 @@ export type OpenDraggableWindowProps = {
   saveToLS?: boolean;
   title?: string;
   isDebugWindow?: boolean;
+  /** Shows this debug window (`isDebugWindow`) in prodTest mode too (default false, debug
+   * windows are debug mode only). The window's content module must then be loaded in prodTest
+   * mode as well, ie. with `loadDebugModuleAsync(importer, true)` / `useDebug(ref, true)`,
+   * otherwise the window opens without content. */
+  showInProdTest?: boolean;
   disableVertResize?: boolean;
   disableHoriResize?: boolean;
   disableDragging?: boolean;
@@ -97,6 +106,14 @@ const draggableWindowCmpsToRegister: {
     onClose?: () => void;
   };
 } = {};
+/** Checks whether a window's target (eg. an entity, by the window's `data`) exists in the
+ * current scene. Not persisted (functions can't go into LS), so registered next to each window's
+ * content function. */
+type SceneTargetResolver = (data?: { [key: string]: unknown }) => boolean;
+const sceneTargetResolvers: { [id: string]: SceneTargetResolver } = {};
+/** Windows suspended at a scene change start: torn down but kept open until the scene change end
+ * decides whether their target exists in the next scene. */
+const suspendedWindowIds = new Set<string>();
 let listenersCreated = false;
 let orderNr = 0;
 let draggingPosId: null | string = null;
@@ -141,6 +158,11 @@ const VERT_AND_HORI_RESIZER_CLASS_NAME = 'vertAndHoriDragHandle';
 const MAX_OFF_SCREEN_HORI_THRESHOLD = 65;
 const MAX_OFF_SCREEN_VERT_THRESHOLD = 10; // For the the bottom threshold this number is *2
 
+/** Non-debug (app) windows are always allowed. Debug windows are allowed in debug mode, and in
+ * prodTest mode only when they opt in with `showInProdTest`. */
+const isDraggableWindowAllowed = (state: { isDebugWindow?: boolean; showInProdTest?: boolean }) =>
+  !state.isDebugWindow || IS_DEBUG_ENV || (Boolean(state.showInProdTest) && IS_PROD_TEST_MODE);
+
 export const getDraggableWindowsDefaultZIndexes = () => ({
   defaultZIndex: DEFAULT_Z_INDEX,
   defaultZIndexActive: DEFAULT_Z_INDEX_ACTIVE,
@@ -169,6 +191,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     saveToLS,
     title,
     isDebugWindow,
+    showInProdTest: shouldShowInProdTest,
     disableVertResize,
     disableHoriResize,
     disableDragging,
@@ -221,9 +244,20 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   const minSize = foundWindow?.minSize ||
     sizeMin || { w: DEFAULT_MIN_WIDTH, h: DEFAULT_MIN_HEIGHT };
   const winUnits = foundWindow?.units || units;
-  let headerTitle = foundWindow?.title || title || '';
+  // A passed title wins too: the stored one may belong to the window's previous target
+  const headerTitle = title || foundWindow?.title || '';
+  // Behavioral flags: an explicitly passed prop wins over the stored (LS) value, so a window
+  // persisted before a flag was added (or changed) can't keep a stale value. The stored value is
+  // only used when the prop is not passed (eg. restoring with openDraggableWindow({ id })).
   const isDebugWin =
-    foundWindow?.isDebugWindow !== undefined ? foundWindow.isDebugWindow : Boolean(isDebugWindow);
+    isDebugWindow !== undefined ? isDebugWindow : Boolean(foundWindow?.isDebugWindow);
+  const showInProdTest =
+    shouldShowInProdTest !== undefined
+      ? shouldShowInProdTest
+      : Boolean(foundWindow?.showInProdTest);
+  // Also gates the content: every path that builds a window's content goes through here
+  if (!isDraggableWindowAllowed({ isDebugWindow: isDebugWin, showInProdTest })) return;
+  suspendedWindowIds.delete(id);
   const vertResizeDisabled =
     foundWindow?.disableVertResize !== undefined
       ? foundWindow.disableVertResize
@@ -239,17 +273,15 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   const isCollapsed =
     foundWindow?.isCollapsed !== undefined ? foundWindow.isCollapsed : Boolean(winIsCollapsed);
   const closeOnSceneChange =
-    foundWindow?.closeOnSceneChange !== undefined
-      ? foundWindow.closeOnSceneChange
-      : Boolean(shouldCloseOnSceneChange);
+    shouldCloseOnSceneChange !== undefined
+      ? shouldCloseOnSceneChange
+      : Boolean(foundWindow?.closeOnSceneChange);
   const removeOnSceneChange =
-    foundWindow?.removeOnSceneChange !== undefined
-      ? foundWindow.removeOnSceneChange
-      : Boolean(shouldRemoveOnSceneChange);
+    shouldRemoveOnSceneChange !== undefined
+      ? shouldRemoveOnSceneChange
+      : Boolean(foundWindow?.removeOnSceneChange);
   const removeOnClose =
-    foundWindow?.removeOnClose !== undefined
-      ? foundWindow.removeOnClose
-      : Boolean(shouldRemoveOnClose);
+    shouldRemoveOnClose !== undefined ? shouldRemoveOnClose : Boolean(foundWindow?.removeOnClose);
   const hasBackDrop =
     foundWindow?.hasBackDrop !== undefined ? foundWindow.hasBackDrop : Boolean(winHasBackDrop);
   const backDropClickClosesWindow =
@@ -323,10 +355,8 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     }
 
     // Update heading
-    if (headerTitle !== title) {
-      headerTitle = title || '';
-      const headerTitleCMP = getCmpById(getHeaderTitleId(id));
-      headerTitleCMP?.updateText(headerTitle);
+    if (headerTitle !== foundWindow.title) {
+      getCmpById(getHeaderTitleId(id))?.updateText(headerTitle);
     }
 
     if (onClose) addOnCloseToWindow(id, onClose);
@@ -388,6 +418,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     saveToLS: Boolean(saveToLS !== undefined ? saveToLS : foundWindow?.saveToLS),
     title: headerTitle,
     isDebugWindow: isDebugWin,
+    showInProdTest,
     disableVertResize: vertResizeDisabled,
     disableHoriResize: horiResizeDisabled,
     disableDragging: draggingDisabled,
@@ -417,6 +448,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
 export const closeDraggableWindow = (id: string) => {
   const state = draggableWindows[id];
   if (!state) return;
+  suspendedWindowIds.delete(id);
 
   if (state.backDropCMP) {
     state.backDropCMP.remove();
@@ -604,11 +636,10 @@ const createWindowCMP = (
 
 export const updateDraggableWindow = (id: string) => {
   const state = draggableWindows[id];
-  if (!state?.isOpen) return;
+  // A suspended window is rebuilt (or closed) at the scene change end, not mid scene load
+  if (!state?.isOpen || suspendedWindowIds.has(id)) return;
   removeDraggableWindow(id, true);
   openDraggableWindow(state);
-  // @TODO: This probably shouldn't be here. Refactor so that draggable window will update also the character list without referencing this here (there could be an implementation already, check this).
-  updateDebuggerCharactersListSelectedClass();
 };
 
 const createBackDropId = (id: string) => `backdrop-${id}`;
@@ -972,6 +1003,7 @@ const checkAndSetMaxWindowPosition = (state: DraggableWindow) => {
 export const removeDraggableWindow = (id: string, doNotSaveToLS?: boolean) => {
   const state = draggableWindows[id];
   if (!state) return;
+  suspendedWindowIds.delete(id);
 
   if (state.onClose) state.onClose();
 
@@ -981,12 +1013,71 @@ export const removeDraggableWindow = (id: string, doNotSaveToLS?: boolean) => {
   if (!doNotSaveToLS) saveDraggableWindowStatesToLS();
 };
 
+/** Tears the window's DOM and content down (running the content's own teardown, eg. disposing
+ * panes and clearing intervals), but keeps its state, like a window restored from LS. */
+const teardownWindowCMP = (state: DraggableWindow) => {
+  if (state.backDropCMP) {
+    state.backDropCMP.remove();
+    state.backDropCMP = undefined;
+  }
+  state.windowCMP?.remove();
+  delete (state as Partial<DraggableWindow>).windowCMP;
+};
+
+const resolveSceneTarget = (state: DraggableWindow) => {
+  const resolver = sceneTargetResolvers[state.id];
+  if (!resolver) return false;
+  try {
+    return resolver(state.data);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Handles the windows at a scene change start: removes the windows flagged `removeOnSceneChange`
+ * and closes the ones flagged `closeOnSceneChange`, except the ones with a scene target resolver:
+ * those are suspended until {@link handleDraggableWindowsOnSceneChangeEnd}.
+ */
 export const handleDraggableWindowsOnSceneChangeStart = () => {
   const keys = Object.keys(draggableWindows);
   for (let i = 0; i < keys.length; i++) {
     const state = draggableWindows[keys[i]];
-    if (state.closeOnSceneChange) closeDraggableWindow(state.id);
-    if (state.removeOnSceneChange) removeDraggableWindow(state.id);
+    // Never opened in this mode: kept as is, so it comes back in the mode that allows it
+    if (!isDraggableWindowAllowed(state)) continue;
+    if (state.removeOnSceneChange) {
+      removeDraggableWindow(state.id);
+      continue;
+    }
+    if (!state.closeOnSceneChange || !state.isOpen) continue;
+    if (sceneTargetResolvers[state.id]) {
+      // Torn down rather than kept live, so no content refresh runs against the entities that
+      // are being torn down
+      teardownWindowCMP(state);
+      suspendedWindowIds.add(state.id);
+    } else {
+      closeDraggableWindow(state.id);
+    }
+  }
+};
+
+/**
+ * Handles the windows suspended at the scene change start: rebuilds the ones whose target exists
+ * in the next scene and closes the rest. Call once the next scene's entities exist (after the
+ * scene enter hooks).
+ * @param loadFailed (boolean) optional, closes every suspended window (the scene failed to load)
+ */
+export const handleDraggableWindowsOnSceneChangeEnd = (loadFailed?: boolean) => {
+  const ids = [...suspendedWindowIds];
+  suspendedWindowIds.clear();
+  for (let i = 0; i < ids.length; i++) {
+    const state = draggableWindows[ids[i]];
+    if (!state) continue;
+    if (!loadFailed && resolveSceneTarget(state)) {
+      openDraggableWindow(state);
+    } else {
+      closeDraggableWindow(state.id);
+    }
   }
 };
 
@@ -1001,26 +1092,35 @@ export const loadDraggableWindowStatesFromLS = () => {
     if (aOrderNr < bOrderNr) return -1;
     return 0;
   });
-  let activeState: DraggableWindow | null = null;
+  const restoreWindow = (id: string) => {
+    const state = draggableWindowCmpsToRegister[id] || {};
+    draggableWindows[id] = { ...draggableWindows[id], ...state };
+    if (!draggableWindows[id].isOpen) return;
+    // Not shown in this mode, but isOpen is kept, so it comes back in the mode that allows it
+    // (eg. back in debug mode from prodTest mode)
+    if (!isDraggableWindowAllowed(draggableWindows[id])) return;
+    // Reloaded into a scene without the window's target: close it instead of showing "not found"
+    if (sceneTargetResolvers[id] && !resolveSceneTarget(draggableWindows[id])) {
+      draggableWindows[id].isOpen = false;
+      return;
+    }
+    // The registered content has to be passed, a window restored from LS has none of its own
+    openDraggableWindow({ id, content: draggableWindows[id].content });
+  };
+
+  let activeId: string | null = null;
   for (let i = 0; i < keys.length; i++) {
     const id = keys[i];
     if (!draggableWindows[id]) continue;
     if (draggableWindows[id].isOpen && draggableWindows[id].isActive) {
-      activeState = draggableWindows[id];
+      activeId = id;
       continue;
     }
-    const state = draggableWindowCmpsToRegister[id] || {};
-    draggableWindows[id] = { ...draggableWindows[id], ...state };
-
-    if (draggableWindows[id].isOpen) openDraggableWindow({ id });
+    restoreWindow(id);
   }
 
-  if (activeState) {
-    const id = activeState.id;
-    const state = draggableWindowCmpsToRegister[id] || {};
-    draggableWindows[id] = { ...draggableWindows[id], ...state };
-    openDraggableWindow({ id });
-  }
+  if (activeId) restoreWindow(activeId);
+  saveDraggableWindowStatesToLS();
 };
 
 export const getDraggableWindow = (id: string) => {
@@ -1060,6 +1160,20 @@ export const registerDraggableWindowCmp = (
   }
 
   draggableWindowCmpsToRegister[id] = fn;
+};
+
+/**
+ * Registers a scene target resolver for a window flagged `closeOnSceneChange`: on a scene change
+ * the window stays open (rebuilt for the next scene) when the resolver returns true for the
+ * window's `data`, and closes otherwise. It is also checked when restoring the window on reload.
+ * @param id (string) window id
+ * @param resolver ((data) => boolean) whether the window's target exists in the current scene
+ */
+export const registerDraggableWindowSceneTargetResolver = (
+  id: string,
+  resolver: SceneTargetResolver
+) => {
+  sceneTargetResolvers[id] = resolver;
 };
 
 export const registerDraggableWindowContentFn = (
