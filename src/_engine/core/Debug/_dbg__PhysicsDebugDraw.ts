@@ -462,25 +462,26 @@ const buildPolylineGeometry = (
 
 const buildHeightFieldGeometry = (hf: HeightFieldData): THREE.BufferGeometry | null => {
   const { nrows, ncols, heights, scale } = hf;
-  if (nrows < 2 || ncols < 2) return null;
+  if (nrows < 1 || ncols < 1) return null;
 
-  // Rapier stores the height matrix column-major and centers the surface on the local
-  // origin, spanning scale.x by scale.z.
-  const heightAt = (row: number, col: number) => heights[col * nrows + row] * scale.y;
-  const xAt = (row: number) => (row / (nrows - 1) - 0.5) * scale.x;
-  const zAt = (col: number) => (col / (ncols - 1) - 0.5) * scale.z;
+  // nrows/ncols count cells, so the height matrix is (nrows + 1) x (ncols + 1), stored
+  // column-major. Rows run along local z and columns along local x, and the surface is
+  // centered on the local origin, spanning scale.x by scale.z.
+  const heightAt = (row: number, col: number) => heights[col * (nrows + 1) + row] * scale.y;
+  const zAt = (row: number) => (row / nrows - 0.5) * scale.z;
+  const xAt = (col: number) => (col / ncols - 0.5) * scale.x;
 
   const positions: number[] = [];
-  for (let row = 0; row < nrows; row++) {
-    for (let col = 0; col < ncols; col++) {
-      const x = xAt(row);
-      const z = zAt(col);
+  for (let row = 0; row <= nrows; row++) {
+    for (let col = 0; col <= ncols; col++) {
+      const x = xAt(col);
+      const z = zAt(row);
       const y = heightAt(row, col);
-      if (col + 1 < ncols) {
-        positions.push(x, y, z, x, heightAt(row, col + 1), zAt(col + 1));
+      if (col < ncols) {
+        positions.push(x, y, z, xAt(col + 1), heightAt(row, col + 1), z);
       }
-      if (row + 1 < nrows) {
-        positions.push(x, y, z, xAt(row + 1), heightAt(row + 1, col), z);
+      if (row < nrows) {
+        positions.push(x, y, z, x, heightAt(row + 1, col), zAt(row + 1));
       }
     }
   }

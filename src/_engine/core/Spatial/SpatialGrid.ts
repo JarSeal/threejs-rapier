@@ -126,6 +126,23 @@ export class SpatialGrid {
     out[i + 5] = (cz + 1) * s;
   };
 
+  // Bound once so getOversizedBoundsInto never allocates a closure per call.
+  private oversizedBoundsOut: Float32Array | null = null;
+  private oversizedBoundsCount = 0;
+  private readonly oversizedBoundsVisitor = (slot: number): void => {
+    const r = this.radius[slot];
+    if (!Number.isFinite(r)) return;
+    const out = this.oversizedBoundsOut!;
+    const i = this.oversizedBoundsCount++ * 6;
+    if (i + 6 > out.length) return;
+    out[i] = this.posX[slot] - r;
+    out[i + 1] = this.posY[slot] - r;
+    out[i + 2] = this.posZ[slot] - r;
+    out[i + 3] = this.posX[slot] + r;
+    out[i + 4] = this.posY[slot] + r;
+    out[i + 5] = this.posZ[slot] + r;
+  };
+
   constructor(opts: SpatialGridOptions) {
     this._cellSize = opts.cellSize;
     this.invCellSize = 1 / opts.cellSize;
@@ -259,6 +276,20 @@ export class SpatialGrid {
     this.cellKeyToIndex.forEach(this.cellBoundsVisitor);
     this.cellBoundsOut = null;
     return this.occupiedCellCount;
+  }
+
+  /**
+   * Debug tooling only — the oversized tier's members as world-space AABBs (position ±
+   * radius), 6 floats each like getOccupiedCellBoundsInto. Members with an infinite radius
+   * (eg. a never-attenuating light) have no finite bounds and are skipped. Returns the
+   * number of finite members, which may exceed `out.length / 6`; extras are dropped.
+   */
+  getOversizedBoundsInto(out: Float32Array): number {
+    this.oversizedBoundsOut = out;
+    this.oversizedBoundsCount = 0;
+    this.oversizedSlots.forEach(this.oversizedBoundsVisitor);
+    this.oversizedBoundsOut = null;
+    return this.oversizedBoundsCount;
   }
 
   private _setRadius(slot: number, radius: number): void {
