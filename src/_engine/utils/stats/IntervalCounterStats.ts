@@ -55,7 +55,7 @@ export class IntervalCounterStats {
   private readonly windowSnaps: IntervalWindowSnapshot[];
   private readonly acc: WindowAccumulator[];
 
-  constructor(windows: IntervalWindowConfig[]) {
+  constructor(windows: readonly IntervalWindowConfig[]) {
     this.windowSnaps = windows.map(({ id, intervalMs, kind }) => ({
       id,
       intervalMs,

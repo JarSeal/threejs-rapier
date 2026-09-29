@@ -7,7 +7,7 @@ import {
 } from '../utils/stats/IntervalCounterStats';
 import { DEFAULT_ECS_WORLD_ID, ECSWorld } from './ECS';
 import { ECSSystemStage } from '../../AppECSRegistry';
-import type { RayDebugOpts } from './RayDebugTypes';
+import { RAY_STATS_WINDOWS, type RayDebugOpts } from './RayDebugTypes';
 
 export type { RayDebugOpts, RayHelperKind } from './RayDebugTypes';
 
@@ -212,12 +212,7 @@ export const castRayFromScreenPosition = <TIntersected extends THREE.Object3D = 
 // Stats
 
 /** Ray cast statistics windows (per rendered frame) */
-const stats = new IntervalCounterStats([
-  { id: 'minMax3s', intervalMs: 3000, kind: 'MIN_MAX' },
-  { id: 'minMax10s', intervalMs: 10000, kind: 'MIN_MAX' },
-  { id: 'average3s', intervalMs: 3000, kind: 'AVERAGE' },
-  { id: 'average20s', intervalMs: 20000, kind: 'AVERAGE' },
-]);
+const stats = new IntervalCounterStats(RAY_STATS_WINDOWS);
 let statsEnabled = false;
 
 /**

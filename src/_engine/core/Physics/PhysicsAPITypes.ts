@@ -1,10 +1,42 @@
 import { ENGINES } from './ENGINES';
 import { LoopState } from '../MainLoop';
+import type { RayDebugOpts } from '../RayDebugTypes';
 
 export type PhysicsEngine = keyof typeof ENGINES;
 export type PhysicsWorkerTarget = 'MAIN_THREAD' | 'WORKER_THREAD'; // + possible 'SERVER_AND_MAIN' | 'SERVER_AND_WORKER' if implemented
 export type PhysicsBackgroundBehavior = 'KEEP_RUNNING' | 'KEEP_RUNNING_USE_MIN_DELTA' | 'PAUSE';
 export type PhysicsInterpolationMode = 'NONE' | 'RENDERER' | 'FIXED_PHYSICS' | 'EXTRAPOLATION';
+
+/** The physics queries a {@link PhysicsQueryObserver} sees. */
+export type PhysicsQueryKind =
+  | 'CAST_RAY'
+  | 'CAST_RAY_AND_GET_NORMAL'
+  | 'INTERSECTIONS_WITH_RAY'
+  | 'CAST_SHAPE';
+
+/**
+ * Sees every physics query the main thread issues (stats and debug helpers, see PhysicsAPI.ts).
+ * Engine-agnostic: a backend calls it from its query methods (MAIN_THREAD), the worker proxy
+ * calls it around each query message (WORKER_THREAD). It is never set in the worker.
+ *
+ * `dir`, `maxToi` and every toi are as the query was issued: toi is in units of `|dir|` (a
+ * shape cast's `dir` is its `shapeVel`), so the distance is `toi * |dir|`.
+ */
+export type PhysicsQueryObserver = {
+  /** Called when a query is issued. Returns a token for `onResult`. */
+  onQuery: (
+    kind: PhysicsQueryKind,
+    origin: PhysVector,
+    dir: PhysVector,
+    maxToi: number,
+    debug: RayDebugOpts | undefined
+  ) => number;
+  /** Called once the query's result is known: right away on MAIN_THREAD, when the worker's
+   * reply arrives on WORKER_THREAD. A query whose reply never arrives never calls it.
+   * @param firstHitToi the smallest toi of the returned hits, null when nothing was hit
+   * @param hitCount how many hits the caller got (0 or 1, or any for INTERSECTIONS_WITH_RAY) */
+  onResult: (token: number, firstHitToi: number | null, hitCount: number) => void;
+};
 
 /**
  * Physics Engine API, which handles the communication between
@@ -57,6 +89,10 @@ export type EngineAPIType = {
   /** MAIN_THREAD only: delivers (and clears) the events accumulated by step() since the last
    * call to their registered callbacks. */
   dispatchPendingEventRecords: () => void;
+  /** MAIN_THREAD only: sets (or clears, with null) the observer every query method reports to.
+   * While none is set a query costs one null check. Only the `*Sync` implementations report,
+   * so an async wrapper that delegates to one is not counted twice. */
+  setQueryObserver: (observer: PhysicsQueryObserver | null) => void;
 };
 
 export type PhysicsState = {
@@ -1492,6 +1528,8 @@ export type WorldAPI = {
    * @param groups - Used to filter the colliders that can or cannot be hit by the ray.
    * @param filterPredicate - Not supported yet (ignored): no backend applies it and the worker
    *   protocol doesn't carry it. Use `filterExcludeCollider`/`filterExcludeRigidBody`/`filterGroups`.
+   * @param debug - Debug helper options (debug env only): the helper id, colors, etc. Stays on
+   *   the main thread, never sent to the worker.
    */
   castRay(
     ray: PhysRay,
@@ -1501,7 +1539,8 @@ export type WorldAPI = {
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
-    filterPredicate?: (collider: ColliderAPI) => boolean
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<RayColliderHitAPI | null>;
   castRaySync(
     ray: PhysRay,
@@ -1511,7 +1550,8 @@ export type WorldAPI = {
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
-    filterPredicate?: (collider: ColliderAPI) => boolean
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): RayColliderHitAPI | null;
   /**
    * Casts a shape at a constant linear velocity and retrieve the first collider it hits, similar
@@ -1529,6 +1569,8 @@ export type WorldAPI = {
    * @param groups - Used to filter the colliders that can or cannot be hit.
    * @param filterPredicate - Not supported yet (ignored): no backend applies it and the worker
    *   protocol doesn't carry it. Use `filterExcludeCollider`/`filterExcludeRigidBody`/`filterGroups`.
+   * @param debug - Debug helper options (debug env only): the helper id, colors, etc. Stays on
+   *   the main thread, never sent to the worker.
    */
   castShape(
     shapePos: PhysVector,
@@ -1542,7 +1584,8 @@ export type WorldAPI = {
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
-    filterPredicate?: (collider: ColliderAPI) => boolean
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<ShapeCastHitAPI | null>;
   castShapeSync(
     shapePos: PhysVector,
@@ -1556,7 +1599,8 @@ export type WorldAPI = {
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
-    filterPredicate?: (collider: ColliderAPI) => boolean
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): ShapeCastHitAPI | null;
   /**
    * Find the closest intersection between a ray and the physics world.
@@ -1571,6 +1615,8 @@ export type WorldAPI = {
    * @param groups - Used to filter the colliders that can or cannot be hit by the ray.
    * @param filterPredicate - Not supported yet (ignored): no backend applies it and the worker
    *   protocol doesn't carry it. Use `filterExcludeCollider`/`filterExcludeRigidBody`/`filterGroups`.
+   * @param debug - Debug helper options (debug env only): the helper id, colors, etc. Stays on
+   *   the main thread, never sent to the worker.
    */
   castRayAndGetNormal(
     ray: PhysRay,
@@ -1580,7 +1626,8 @@ export type WorldAPI = {
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
-    filterPredicate?: (collider: ColliderAPI) => boolean
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<RayColliderIntersectionAPI | null>;
   castRayAndGetNormalSync(
     ray: PhysRay,
@@ -1590,7 +1637,8 @@ export type WorldAPI = {
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
-    filterPredicate?: (collider: ColliderAPI) => boolean
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): RayColliderIntersectionAPI | null;
   /**
    * Cast a ray and collects all the intersections between a ray and the scene.
@@ -1606,6 +1654,8 @@ export type WorldAPI = {
    *   If this callback returns `false`, then the cast will stop and no further hits will be detected/reported.
    * @param filterPredicate - Not supported yet (ignored): no backend applies it and the worker
    *   protocol doesn't carry it. Use `filterExcludeCollider`/`filterExcludeRigidBody`/`filterGroups`.
+   * @param debug - Debug helper options (debug env only): the helper id, colors, etc. Stays on
+   *   the main thread, never sent to the worker.
    */
   intersectionsWithRay(
     ray: PhysRay,
@@ -1616,7 +1666,8 @@ export type WorldAPI = {
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
-    filterPredicate?: (collider: ColliderAPI) => boolean
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<void>;
   intersectionsWithRaySync(
     ray: PhysRay,
@@ -1627,7 +1678,8 @@ export type WorldAPI = {
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
     filterExcludeRigidBody?: RigidBodyAPI | number,
-    filterPredicate?: (collider: ColliderAPI) => boolean
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): void;
   /**
    * Enumerates all the colliders potentially in contact with the given collider.

@@ -1,4 +1,5 @@
 import type * as THREE from 'three/webgpu';
+import type { IntervalWindowConfig } from '../utils/stats/IntervalCounterStats';
 
 /** The ray kinds the debug helper renderer draws, each with its own settings and colors. */
 export type RayHelperKind = 'THREE' | 'PHYSICS';
@@ -28,3 +29,12 @@ export type RayDebugOpts = {
   /** Default false: helpers draw on top of everything */
   depthTest?: boolean;
 };
+
+/** The interval windows of every ray statistics counter (Three.js rays, physics rays and shape
+ * casts), so their numbers are comparable. */
+export const RAY_STATS_WINDOWS: readonly IntervalWindowConfig[] = [
+  { id: 'minMax3s', intervalMs: 3000, kind: 'MIN_MAX' },
+  { id: 'minMax10s', intervalMs: 10000, kind: 'MIN_MAX' },
+  { id: 'average3s', intervalMs: 3000, kind: 'AVERAGE' },
+  { id: 'average20s', intervalMs: 20000, kind: 'AVERAGE' },
+];
