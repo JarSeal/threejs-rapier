@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented (Phases 1–4, engine 3.0.0 "Zenith"; see Implementation notes for where it differs from this plan)
 Category: Skybox, Refactor
 Blocked by: none (p110's Phase 0 spike / go-no-go gate passed on 2026-09-29: go)
 Blocks: p112_procedural-sky-atmosphere-sun-and-env-bake.md, p115_debug-environment-ball-viewport.md
@@ -247,3 +247,19 @@ Each phase compiles, lints, and leaves every app scene rendering as before, or b
 - Scene switching ten times leaves `renderer.info.memory.textures` stable, and the displayed skybox texture is never released.
 - WebGPU and WebGL2 (`forceWebGL`), with PostFX on and off, on `largeWorld`.
 - `?isProdTest=true` and a production build: no LS reads for skyboxes, and no `_dbg__SkyBox*` in the main chunk (`dist-stats/bundle-stats.html`).
+
+## Implementation notes
+
+Where the implementation differs from the plan above (2026-09-29). The code and `.claude/CLAUDE.md` ("Sky box") are the current state; these are the reasons.
+
+- **Orientation (DD6).** The old background looked up `normalWorld`, which three negates on back faces (`negateOnBackSide`), so on the back-side background box it sampled the antipodal direction. It made up for it with a forced `texture.flipY = false` (equirect) and an x mirror (cube), and the app's `map02` cube lists its ±y faces swapped to match. The plan assumed `normalWorld` = `normalWorldGeometry`.
+  - Now both nodes use three's standard orientation: the background looks up `normalWorldGeometry`, and nothing forces `flipY` (the old force was also a no-op for worker-loaded textures, so the old look depended on the load target).
+  - The old looks are exact half turns in the standard orientation: legacy equirects convert to `rotate: π`, legacy cubes to `flipY: true`. The app files keep that look (the user's call).
+  - A cube's `flipY` is a half turn about X (`(x, -y, -z)`), not the old `(-x, ±y, z)`. There is no x mirror any more: three's `CubeTextureNode` already handles cube handedness. A legacy `flipY: true` (a z mirror, which no rotation gives) becomes `flipY: false`.
+  - The cube environment's flip goes through context chaining (`RemappedEnvironmentNode` in `layers/base.ts`), validated with a mirror sphere. The corrected-cube-bake fallback wasn't needed.
+- **Rotation.** PMREMNode applies `scene.environmentRotation` only to materials whose `envMap` is `null`; the background box's plain `NodeMaterial` has no `envMap` property, so it always gets the identity. The background applies the same transposed rotation itself (a `mat3` uniform, after the flip). `backgroundRotation` never reaches our node (it has an explicit UV).
+- **Scene default (DD5).** Every legacy `createSkyBox` call used to take over `isCurrent`, so the last one created was the default. To keep that, `createSkyBox` defaults `isDefault` to true, and the scene default is the last one registered with `isDefault: true`, else the first. JSON definitions (no `isDefault`) still get "first".
+- **Schema (DD1, DD3).** Zod 4 has no `.deepPartial()`: the overrides schema is written out, with a flat `base` override that can't change `type`. The runtime type comes from the inner `SkyBoxDefSchema` (the preprocessed `SkyBoxAssetSchema` has an `unknown` input type). `id` is required; the gatherer fills it from the file name first. `sceneId` is code-only, and JSON drops it. Flat legacy save entries convert too (`fromLegacySkyBoxOverrides`).
+- **Gym (Phase 4 item).** Moved in Phase 2: activation owns `scene.environmentIntensity`, so the gym's manual 0.3 would have been overwritten on enter.
+- **Debug tab (DD7).** "Reset layer" is on both folders; a `COLOR` base gets a colour binding; edited numbers are rounded to 6 decimals (Tweakpane's step snapping leaves float noise). The LS migration runs when the debug module is imported (before the first activation), so code-created sky boxes, not registered yet, are compared to the default (0) only.
+- **Verification.** Done on WebGL2 (SwiftShader; headless WebGPU doesn't render on WSL2), against the pre-Phase-2 build. The final grep also matches the app's `equiRect*Id` texture ids and the LS migration's old field names; those are expected.

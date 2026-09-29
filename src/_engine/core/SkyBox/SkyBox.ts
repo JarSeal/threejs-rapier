@@ -128,7 +128,7 @@ const applySceneProperties = (def: SkyBoxDef) => {
   rootScene.environmentIntensity =
     def.env?.environmentIntensity ?? ENV_DEFAULTS.environmentIntensity;
   rootScene.backgroundIntensity = def.env?.backgroundIntensity ?? ENV_DEFAULTS.backgroundIntensity;
-  // Applied by PMREMNode to both the background and the environment (see layers/base.ts)
+  // PMREMNode applies it to the environment; the background applies it itself (layers/base.ts)
   const rotate = def.base.type === 'COLOR' ? 0 : def.base.rotate ?? BASE_DEFAULTS.rotate;
   rootScene.environmentRotation.set(0, rotate, 0);
 };

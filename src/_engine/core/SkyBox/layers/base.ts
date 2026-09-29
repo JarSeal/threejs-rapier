@@ -40,6 +40,8 @@ export type BaseLayer = {
     backgroundRoughness: THREE.UniformNode<'float', number>;
     /** The COLOR base's colour (unused by texture bases). */
     color: THREE.UniformNode<'color', THREE.Color>;
+    /** The background's rotation (see buildBaseLayer). */
+    rotation: THREE.UniformNode<'mat3', THREE.Matrix3>;
   };
 };
 
@@ -152,14 +154,26 @@ class RemappedEnvironmentNode extends THREE.Node {
   }
 }
 
+const _rotation4 = new THREE.Matrix4();
+
+/** The inverse (transposed) Y rotation, as PMREMNode applies scene.environmentRotation. */
+const setRotation = (target: THREE.Matrix3, rotate: number) =>
+  target.setFromMatrix4(_rotation4.makeRotationY(rotate).transpose());
+
+const getRotate = (base: SkyBoxBaseDef) =>
+  base.type === 'COLOR' ? 0 : base.rotate ?? BASE_DEFAULTS.rotate;
+
 /**
  * Builds the base layer's nodes from one PMREM: the background (blurred by
  * env.backgroundRoughness), and the environment (a bare PMREM, so the lighting context drives
  * its direction and level). Both look up the same world direction (the background's is its
  * view direction, normalWorldGeometry of the back-side background box; not normalWorld, which
- * is negated on back sides), so what materials reflect matches the background. Rotation is
- * scene.environmentRotation, which PMREMNode applies to both while the scene has an
- * environment node.
+ * is negated on back sides), so what materials reflect matches the background.
+ *
+ * Rotation: PMREMNode applies scene.environmentRotation (set by SkyBox.ts) to the environment,
+ * but only for materials whose `envMap` is null, and the background box's plain NodeMaterial has
+ * no envMap at all, so it always gets the identity there. The background applies the same
+ * (transposed) rotation itself, after the flip, exactly as the environment gets it.
  */
 export const buildBaseLayer = (
   base: SkyBoxBaseDef,
@@ -170,6 +184,7 @@ export const buildBaseLayer = (
     intensity: uniform(base.type === 'COLOR' ? 1 : base.intensity ?? BASE_DEFAULTS.intensity),
     backgroundRoughness: uniform(env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness),
     color: uniform(base.type === 'COLOR' ? toColor(base.color) : new THREE.Color(0x000000)),
+    rotation: uniform(setRotation(new THREE.Matrix3(), getRotate(base))),
   };
 
   // A texture base whose texture failed to load shows black, like a black COLOR base
@@ -185,7 +200,8 @@ export const buildBaseLayer = (
 
   const pmrem = getPMREMTexture(texture);
   const flipY = base.type === 'CUBE_TEXTURE' && Boolean(base.flipY);
-  const lookupDir = flipY ? turnUpsideDown(normalWorldGeometry) : normalWorldGeometry;
+  const viewDir = flipY ? turnUpsideDown(normalWorldGeometry) : normalWorldGeometry;
+  const lookupDir = uniforms.rotation.mul(viewDir);
   const backgroundNode = pmremTexture(pmrem, lookupDir, uniforms.backgroundRoughness).mul(
     uniforms.intensity
   );
@@ -206,5 +222,6 @@ export const updateBaseLayerUniforms = (
     base.type === 'COLOR' ? 1 : base.intensity ?? BASE_DEFAULTS.intensity;
   layer.uniforms.backgroundRoughness.value =
     env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness;
+  setRotation(layer.uniforms.rotation.value, getRotate(base));
   if (base.type === 'COLOR') layer.uniforms.color.value.copy(toColor(base.color));
 };

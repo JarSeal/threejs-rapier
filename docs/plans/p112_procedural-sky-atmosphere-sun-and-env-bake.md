@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Skybox, Rendering, Lights
-Blocked by: p111_skybox-core-refactor-and-layered-schema.md
+Blocked by: none (\_DONE_p111_skybox-core-refactor-and-layered-schema.md landed on 2026-09-29)
 Blocks: p113_night-sky-and-day-night-cycle.md, p114_space-preset-and-nebula-creator.md
 Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic; Phase 0 §0.1–0.5 are the research this plan implements)
 

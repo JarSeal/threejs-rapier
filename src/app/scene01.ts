@@ -9,7 +9,7 @@ import { spawnImportedAsset } from '../_engine/core/Import/SpawnImported';
 import { createMeshEntity, getMeshByAppId } from '../_engine/core/MeshManager';
 import { createGroupEntity, addToGroupEntity } from '../_engine/core/GroupManager';
 import { transformMainSpeedValue } from '../_engine/core/MainLoop';
-import { createSkyBox } from '../_engine/core/SkyBox';
+import { createSkyBox } from '../_engine/core/SkyBox/SkyBox';
 import { createKeyBinding } from '../_engine/core/Input/KeyboardInput';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 
@@ -28,11 +28,12 @@ export const scene = async () =>
     ];
     await createSkyBox({
       id: 'desert-dunes',
-      type: 'CUBETEXTURE',
-      params: {
+      base: {
+        type: 'CUBE_TEXTURE',
         fileNames: map02,
         path: '/debugger/assets/testTextures',
         textureId: 'cubeTextureId',
+        flipY: true,
       },
     });
 

@@ -111,6 +111,15 @@ Scene loads are deterministic (p101). `SceneLoader.ts` holds physics stepping (`
 
 To check determinism, append `?physicsProbe=N` (debug mode) or use "Determinism probe" in the Physics API debug tab. It freezes physics N fixed steps after each scene enter, logs a hash of every dynamic body's state, and diffs it against the last run of the same scene and N. The gym's `ARE_CHARACTERS_ENABLED` flag leaves its characters out for this.
 
+### Sky box
+
+`src/_engine/core/SkyBox/` shows at most one sky box, as the root scene's `backgroundNode` and `environmentNode`. A definition (`SkyBoxDef` in `SkyBoxTypes.ts`, typed from `schemas/skyBoxSchema.ts`) is a set of layers: `base` (`COLOR` | `EQUIRECTANGULAR` | `CUBE_TEXTURE`, with `rotate` in radians, cube `flipY` = a half turn about X, `intensity`) and `env` (background roughness and intensity, environment intensity; its bake fields are reserved for p112). Later plans add their layers (atmosphere, suns, ...) as optional keys.
+
+- State flow: `registerSkyBox(def, sceneId?)` stores definitions per scene (default: the loading scene, else the current one). `setActiveSkyBox(id | null)` resolves one (plus its debug overrides from `AEK_debugSkyBox`, debug env only), loads its texture, builds its nodes and shows it; when calls overlap, the latest wins. `SceneLoader` clears the sky box on exit and calls `activateSceneDefaultSkyBox` on enter (the last one registered with `isDefault: true`, else the first). `createSkyBox` registers and, for the current scene, shows it; its `isDefault` defaults to true, so the last one created is the default. `updateSkyBox(id, partial)` rebuilds on a structural key (`BASE_STRUCTURAL_KEYS` in `layers/base.ts`); anything else is a uniform or scene property write. Activation owns `scene.environmentIntensity`, `backgroundIntensity` and `environmentRotation`: set them in the definition, not by hand.
+- Both nodes sample one PMREM (`getPMREMTexture` in `SkyEnvironment.ts`: baked once per texture, disposed with it) in the same world direction, so reflections match the background. The background looks up `normalWorldGeometry` (not `normalWorld`, which is negated on the back-side background box), and the environment is a bare `pmremTexture` so the lighting context drives its direction and level. Rotation: PMREMNode applies `scene.environmentRotation` to the environment only (it skips materials without an `envMap` property, like the background box's plain `NodeMaterial`), so the background applies the same transposed rotation itself, in `layers/base.ts`.
+- The pre-3.0 `{ type, params }` shape (code and JSON) still converts through `legacySkyBox.ts`, with a dev warning. Legacy equirects get `rotate: π` and legacy cubes `flipY: true`: that reproduces their old look in the standard orientation.
+- Debug tab: `core/Debug/_dbg__SkyBox.ts` plus one `core/Debug/SkyBox/_dbg__*Folder.ts` per layer. Bindings call `setSkyBoxParam(path, ...)`, which renders the value, stores it as an override (only values that differ from the definition) and records the `skybox.param` undo action; a new layer's controls need no new action type.
+
 ### Viewports
 
 `src/_engine/core/Viewports.ts` renders extra rectangles over the canvas, each with its own scene and camera (picture-in-picture, minimaps, item previews), after the main render and PostFX. Each enabled viewport renders into its own render target, then a quad composites it with the renderer's tone mapping and colour space neutralised (the `RenderPipeline.render()` contract), so it works on both backends with PostFX on or off. `renderViewports()` is called once from `MainLoop.renderScene()` and is a single count check while no viewport is enabled. A viewport is render configuration, not ECS: `createViewport({ id, scene, camera, anchor | rect, ... })`, where `camera` can be a resolver (eg. `getActiveCamera`), and `sceneId` deletes it on that scene's exit.
@@ -144,7 +153,7 @@ Rules:
 - Each PR adds an entry to `CHANGELOG.md` with a section per part it bumped (Engine / Toolkit / App, plus Project for repo tooling).
 - Before opening the PR, `yarn checkVersions --against main` must pass. The Stop hook runs the base check (project version = engine version, valid semver) whenever `package.json` changes.
 - After merging to `main`, run `yarn tagRelease` and push the tags it prints.
-- The `x-version-checksum` meta tag hashes every part's version and codename plus the project version. `PROJECT_METADATA.mergeVersion` (`createMergeVersion` in `vite.config.ts`, engine + app summed part by part) is deprecated: it isn't in the checksum or the meta tags any more, and it goes in the next major engine version. It is not a version to bump or display.
+- The `x-version-checksum` meta tag hashes every part's version and codename plus the project version.
 
 ## Workflow
 

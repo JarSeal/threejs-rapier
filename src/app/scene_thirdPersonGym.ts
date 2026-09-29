@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { createGeometry } from '../_engine/core/Geometry';
 import { createMaterial, getMaterial, getMaterialVariant } from '../_engine/core/Material';
 import { createMeshEntity, getMeshByAppId, setMeshMaterial } from '../_engine/core/MeshManager';
-import { createSkyBox } from '../_engine/core/SkyBox';
+import { createSkyBox } from '../_engine/core/SkyBox/SkyBox';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture } from '../_engine/core/Texture';
 import { createDynamicCharacter } from '../_engine/utils/character/dynamicCharacter';

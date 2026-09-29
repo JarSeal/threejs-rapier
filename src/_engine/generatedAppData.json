@@ -656,7 +656,7 @@
             "type": "EQUIRECTANGULAR",
             "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
             "textureId": "equiRectEmptyId",
-            "colorSpace": "",
+            "colorSpace": "srgb",
             "rotate": 3.141592653589793
           }
         }
@@ -1545,18 +1545,6 @@
         "textureId": "equiRectEmptyId",
         "colorSpace": "srgb",
         "rotate": 3.141592653589793
-      },
-      "__saveData": {
-        "sceneTestECS": [
-          {
-            "base": {
-              "colorSpace": ""
-            },
-            "__meta": {
-              "date": 1779449688109
-            }
-          }
-        ]
       },
       "__sourcePath": "src/app/skyboxes/basicSkybox.skybox.json"
     }

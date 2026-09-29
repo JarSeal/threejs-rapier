@@ -33,7 +33,6 @@ declare const __PROJECT_METADATA__: {
     author: string;
   };
   pkgVersion: string;
-  mergeVersion: string;
   versionChecksum: string;
   versionChecksumString: string;
 };

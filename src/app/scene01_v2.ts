@@ -8,7 +8,7 @@ import { spawnImportedAsset } from '../_engine/core/Import/SpawnImported';
 import { createMeshEntity, getMeshByAppId } from '../_engine/core/MeshManager';
 import { createGroupEntity, addToGroupEntity } from '../_engine/core/GroupManager';
 import { transformAppSpeedValue } from '../_engine/core/MainLoop';
-import { createSkyBox } from '../_engine/core/SkyBox';
+import { createSkyBox } from '../_engine/core/SkyBox/SkyBox';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { llog } from '../_engine/utils/Logger';
@@ -26,29 +26,32 @@ export const scene = async () =>
 
     await createSkyBox({
       id: 'emptyBlueSkyEquiRect',
-      type: 'EQUIRECTANGULAR',
-      params: {
+      base: {
+        type: 'EQUIRECTANGULAR',
         file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png',
         textureId: 'equiRectEmptyId',
         colorSpace: THREE.SRGBColorSpace,
+        rotate: Math.PI,
       },
     });
     await createSkyBox({
       id: 'stylizedSunsetEquiRect',
-      type: 'EQUIRECTANGULAR',
-      params: {
+      base: {
+        type: 'EQUIRECTANGULAR',
         file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_41_4k.png',
         textureId: 'equiRectSunsetStylizedId',
         colorSpace: THREE.SRGBColorSpace,
+        rotate: Math.PI,
       },
     });
     await createSkyBox({
       id: 'partly-cloudy',
-      type: 'EQUIRECTANGULAR',
-      params: {
+      base: {
+        type: 'EQUIRECTANGULAR',
         file: '/debugger/assets/testTextures/kloofendal_48d_partly_cloudy_puresky_4k.hdr',
         textureId: 'equiRectId',
         colorSpace: THREE.LinearSRGBColorSpace,
+        rotate: Math.PI,
       },
     });
     const map02 = [
@@ -61,11 +64,12 @@ export const scene = async () =>
     ];
     await createSkyBox({
       id: 'desert-dunes',
-      type: 'CUBETEXTURE',
-      params: {
+      base: {
+        type: 'CUBE_TEXTURE',
         fileNames: map02,
         path: '/debugger/assets/testTextures',
         textureId: 'cubeTextureId',
+        flipY: true,
       },
     });
 
