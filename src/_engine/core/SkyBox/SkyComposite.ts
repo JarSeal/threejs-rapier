@@ -8,6 +8,7 @@ import {
   type BaseUniforms,
 } from './layers/base';
 import {
+  applyAtmosphereSunUniforms,
   applyAtmosphereUniforms,
   atmosphereParts,
   atmosphereTerms,
@@ -16,24 +17,28 @@ import {
   type AtmosphereUniforms,
 } from './layers/atmosphere';
 import {
+  applyCloudsSunUniforms,
   applyCloudsUniforms,
   cloudsNode,
   createCloudsUniforms,
   type CloudsUniforms,
 } from './layers/clouds';
 import {
+  applyGroundSunUniforms,
   applyGroundUniforms,
   createGroundUniforms,
   groundNode,
   type GroundUniforms,
 } from './layers/ground';
 import {
+  applySunLightingUniforms,
   applySunUniforms,
   createSunUniforms,
-  getSunDirection,
+  getFixedSunDirection,
   sunNode,
   type SunUniforms,
 } from './layers/sun';
+import { computeSunDirection, type SkyTimeState } from './SkyTime';
 
 /**
  * The composite path: every layer of a sky box composited into one node, used as the
@@ -81,8 +86,15 @@ export const isSunLightEnabled = (def: SkyBoxDef) => isOn(def.suns?.[0]?.light);
 /** Clouds need the atmosphere (the schema rejects them without one). */
 export const isCloudsEnabled = (def: SkyBoxDef) => isOn(def.clouds) && isAtmosphereEnabled(def);
 export const isGroundEnabled = (def: SkyBoxDef) => isOn(def.ground);
+/** While on, suns[0]'s direction comes from the time of day (SkyTime.ts). */
+export const isDayNightEnabled = (def: SkyBoxDef | undefined) => isOn(def?.dayNight);
 
-export const createSkyUniforms = (def: SkyBoxDef): SkyUniforms => {
+/** The env bake's size: 256 by default, 128 with day-night (it re-bakes as the sun moves). */
+export const getEnvSize = (def: SkyBoxDef | undefined) =>
+  def?.env?.size ?? (isDayNightEnabled(def) ? DAY_NIGHT_ENV_SIZE : ENV_DEFAULTS.size);
+const DAY_NIGHT_ENV_SIZE = 128;
+
+export const createSkyUniforms = (def: SkyBoxDef, time: SkyTimeState): SkyUniforms => {
   const u = {
     base: createBaseUniforms(def.base, def.env),
     sun: createSunUniforms(),
@@ -90,27 +102,46 @@ export const createSkyUniforms = (def: SkyBoxDef): SkyUniforms => {
     clouds: createCloudsUniforms(),
     ground: createGroundUniforms(),
   };
-  applySkyUniforms(u, def);
+  applySkyUniforms(u, def, time);
   return u;
+};
+
+/** suns[0]'s direction: from the time of day with day-night on, else its elevation and azimuth. */
+const writeSunDirection = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) => {
+  if (isDayNightEnabled(def))
+    computeSunDirection(def.dayNight, time.timeOfDay, u.sun.direction.value);
+  else getFixedSunDirection(def.suns?.[0], u.sun.direction.value);
 };
 
 /** Writes every layer's non-structural values to its uniforms. The primary sun's direction
  * comes first: the atmosphere's terms depend on it, and the disc on the atmosphere's. */
-export const applySkyUniforms = (u: SkyUniforms, def: SkyBoxDef) => {
+export const applySkyUniforms = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) => {
   applyBaseUniforms(u.base, def.base, def.env);
-  const sun = def.suns?.[0];
-  getSunDirection(sun, u.sun.direction.value);
+  writeSunDirection(u, def, time);
   applyAtmosphereUniforms(u.atmosphere, def.atmosphere, u.sun.direction.value);
   applySunUniforms(
     u.sun,
-    sun,
-    isAtmosphereEnabled(def)
-      ? { sunE: u.atmosphere.sunE.value, extinctionAtSun: u.atmosphere.extinctionAtSun }
-      : null,
-    def.env?.size ?? ENV_DEFAULTS.size
+    def.suns?.[0],
+    isAtmosphereEnabled(def) ? u.atmosphere : null,
+    getEnvSize(def)
   );
   applyCloudsUniforms(u.clouds, def.clouds, u.sun.direction.value);
   applyGroundUniforms(u.ground, def.ground, isAtmosphereEnabled(def), u.sun.direction.value);
+};
+
+/**
+ * The day-night step's write, after the time changed: the sun's direction and only what depends
+ * on it (every other value is as applySkyUniforms left it). Runs every frame while the cycle
+ * plays, so it allocates nothing.
+ */
+export const applySkyTimeUniforms = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) => {
+  writeSunDirection(u, def, time);
+  const sunDirection = u.sun.direction.value;
+  const hasAtmosphere = isAtmosphereEnabled(def);
+  applyAtmosphereSunUniforms(u.atmosphere, def.atmosphere, sunDirection);
+  applySunLightingUniforms(u.sun, hasAtmosphere ? u.atmosphere : null);
+  applyCloudsSunUniforms(u.clouds, sunDirection);
+  applyGroundSunUniforms(u.ground, hasAtmosphere, sunDirection);
 };
 
 /** Whether a definition has an enabled procedural layer (then it's on the composite path). */

@@ -99,6 +99,11 @@ export const applyCloudsUniforms = (
   u.color.value.copy(toSkyColor(def?.color ?? CLOUDS_DEFAULTS.color));
   const [windX, windZ] = def?.windDirection ?? CLOUDS_DEFAULTS.windDirection;
   u.windDirection.value.set(windX, windZ);
+  applyCloudsSunUniforms(u, sunDirection);
+};
+
+/** Writes the sun-dependent day factor (the day-night step, every time the sun moves). */
+export const applyCloudsSunUniforms = (u: CloudsUniforms, sunDirection: THREE.Vector3) => {
   u.dayFactor.value = THREE.MathUtils.smoothstep(sunDirection.y, -0.08, 0.3);
 };
 

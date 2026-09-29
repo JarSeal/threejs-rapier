@@ -10,6 +10,7 @@ import { deepMerge, isIndexObject } from '../../utils/deepMerge';
 import { ECSWorld, getECSWorld } from '../ECS';
 import { getRenderer } from '../Renderer';
 import { ECSSystemStage } from '../../../AppECSRegistry';
+import { getElapsedTime, isAppPlaying } from '../MainLoop';
 import type {
   SkyBoxBaseDef,
   SkyBoxDef,
@@ -26,12 +27,15 @@ import {
   loadBaseTexture,
 } from './layers/base';
 import {
+  applySkyTimeUniforms,
   applySkyUniforms,
   buildSkyComposite,
   createSkyUniforms,
   getCompositeSignature,
+  getEnvSize,
   hasProceduralLayer,
   isAtmosphereEnabled,
+  isDayNightEnabled,
   isOn,
   type SkyUniforms,
 } from './SkyComposite';
@@ -43,7 +47,22 @@ import {
   runRequestedEnvBake,
   setEnvBake,
 } from './SkyEnvironment';
-import { deleteSkyLights, syncSkyLights, updateSkyLightsFrame } from './SkyLights';
+import {
+  deleteSkyLights,
+  syncSkyLights,
+  updateSkyLightsForSun,
+  updateSkyLightsFrame,
+} from './SkyLights';
+import {
+  advanceSkyTime,
+  applyDayNightChange,
+  computeSunDirection,
+  createSkyTimeState,
+  DAY_NIGHT_DEFAULTS,
+  resetSkyTimeState,
+  wrap24,
+  type SkyTimeState,
+} from './SkyTime';
 
 export type { SkyBoxDef } from './SkyBoxTypes';
 
@@ -62,6 +81,9 @@ export type ActiveSkyBox = {
   /** The base's source texture, and the PMREM the environment samples (the texture's, or the
    * env bake's target). */
   textures: { source: THREE.Texture | null; environment: THREE.Texture | null };
+  /** The day-night cycle's runtime time (used while `def.dayNight` is on). Games drive it
+   * through setTimeOfDay etc.; it's never written to the definition. */
+  time: SkyTimeState;
 };
 
 /** A change to the active sky box: any subset of its layers' values. */
@@ -74,6 +96,9 @@ export type SkyBoxUpdate = {
   ambientLight?: SkyBoxOverrides['ambientLight'];
   clouds?: SkyBoxOverrides['clouds'];
   ground?: SkyBoxOverrides['ground'];
+  /** Its runtime keys (timeOfDay, speed, cycleDurationSec, playing) also set the running
+   * cycle's; turning it on starts the cycle from the definition's values. */
+  dayNight?: SkyBoxOverrides['dayNight'];
 };
 
 export type SkyBoxChangeReason = 'activate' | 'update' | 'clear';
@@ -226,7 +251,7 @@ const buildNodes = (def: SkyBoxDef, u: SkyUniforms, texture: THREE.Texture | nul
   }
   const sources = { basePMREM: texture ? getPMREMTexture(texture) : null };
   const bake = setEnvBake(
-    def.env?.size ?? ENV_DEFAULTS.size,
+    getEnvSize(def),
     buildSkyComposite(def, u, 'ENV_BAKE', sources, normalWorldGeometry)
   );
   const background = isBackgroundFromBake(def)
@@ -245,7 +270,7 @@ const needsRebuild = (current: ActiveSkyBox, def: SkyBoxDef) => {
   if (!current.isComposite) return false;
   return (
     getCompositeSignature(def) !== getCompositeSignature(current.def) ||
-    (def.env?.size ?? ENV_DEFAULTS.size) !== (current.def.env?.size ?? ENV_DEFAULTS.size) ||
+    getEnvSize(def) !== getEnvSize(current.def) ||
     isBackgroundFromBake(def) !== isBackgroundFromBake(current.def)
   );
 };
@@ -261,8 +286,9 @@ const show = (next: ActiveSkyBox) => {
   syncSkyLights(next.id, next.def, next.uniforms);
 };
 
-/** Loads, builds and shows a resolved definition. */
-const activate = async (sceneId: string, def: SkyBoxDef) => {
+/** Loads, builds and shows a resolved definition. `time` carries a running cycle's time over
+ * (a structural update of the same sky box); without it, the cycle starts from the definition. */
+const activate = async (sceneId: string, def: SkyBoxDef, time?: SkyTimeState) => {
   const seq = ++activationSeq;
   const texture = await loadBaseTexture(def.base);
   if (seq !== activationSeq) return active; // Superseded by a later activation or clear
@@ -275,8 +301,16 @@ const activate = async (sceneId: string, def: SkyBoxDef) => {
       `Sky box "${def.id}": only suns[0] is drawn for now (p114 adds more), the others are ignored.`
     );
   }
-  const uniforms = createSkyUniforms(def);
-  show({ id: def.id, sceneId, def, uniforms, ...buildNodes(def, uniforms, texture) });
+  const skyTime = time ?? createSkyTimeState(def.dayNight);
+  const uniforms = createSkyUniforms(def, skyTime);
+  show({
+    id: def.id,
+    sceneId,
+    def,
+    uniforms,
+    time: skyTime,
+    ...buildNodes(def, uniforms, texture),
+  });
   notify('activate');
   return active;
 };
@@ -373,9 +407,18 @@ export const updateSkyBox = async (id: string, update: SkyBoxUpdate) => {
   if (!active || active.id !== id) return active;
   const current = active;
   const def = mergeSkyBoxDef(current.def, update);
-  if (isStructuralBaseUpdate(current.def.base, update.base)) return activate(current.sceneId, def);
+  if (update.dayNight) {
+    if (isDayNightEnabled(def) && !isDayNightEnabled(current.def)) {
+      resetSkyTimeState(current.time, def.dayNight);
+    } else {
+      applyDayNightChange(current.time, update.dayNight);
+    }
+  }
+  if (isStructuralBaseUpdate(current.def.base, update.base)) {
+    return activate(current.sceneId, def, current.time);
+  }
 
-  applySkyUniforms(current.uniforms, def);
+  applySkyUniforms(current.uniforms, def, current.time);
   if (needsRebuild(current, def)) {
     show({ ...current, def, ...buildNodes(def, current.uniforms, current.textures.source) });
   } else {
@@ -426,6 +469,107 @@ export const onSkyBoxChange = (listener: SkyBoxChangeListener) => {
   };
 };
 
+// Day-night (p113). Runtime only: nothing here writes the definition or the debug overrides.
+// The setters are no-ops without an active sky box with day-night on.
+
+/** The active sky box's day-night time, or null (no sky box, or day-night off). */
+const getSkyTime = () => (active && isDayNightEnabled(active.def) ? active.time : null);
+
+/**
+ * Sets the time of day (hours, wrapped into [0, 24)). The sky, sun and lights follow on the
+ * next frame, whether the cycle is playing or not.
+ */
+export const setTimeOfDay = (hours: number) => {
+  const time = getSkyTime();
+  if (!time || !Number.isFinite(hours)) return;
+  time.timeOfDay = wrap24(hours);
+  time.isDirty = true;
+};
+
+/** The time of day in hours [0, 24), or null without day-night. */
+export const getTimeOfDay = () => getSkyTime()?.timeOfDay ?? null;
+
+/** Runs the day-night cycle (it advances with its `timeSource`). */
+export const playDayNight = () => {
+  const time = getSkyTime();
+  if (time) time.playing = true;
+};
+
+/** Stops the day-night cycle where it is (setTimeOfDay still moves it). */
+export const pauseDayNight = () => {
+  const time = getSkyTime();
+  if (time) time.playing = false;
+};
+
+export const isDayNightPlaying = () => Boolean(getSkyTime()?.playing);
+
+/** Sets the cycle's time multiplier: negative runs it backwards, 0 freezes it. */
+export const setDayNightSpeed = (multiplier: number) => {
+  const time = getSkyTime();
+  if (time && Number.isFinite(multiplier)) time.speed = multiplier;
+};
+
+/** The cycle's time multiplier, or null without day-night. */
+export const getDayNightSpeed = () => getSkyTime()?.speed ?? null;
+
+/** Sets how many real seconds 24 in-game hours take (at speed 1). */
+export const setDayNightCycleDuration = (seconds: number) => {
+  const time = getSkyTime();
+  if (time && Number.isFinite(seconds) && seconds > 0) time.cycleDurationSec = seconds;
+};
+
+/**
+ * The unit world direction toward a sun, into `out` (with day-night on, for the current time
+ * of day, including a setTimeOfDay made this frame). Only suns[0] until p114.
+ * @returns `out`, or null (no active sky box, or no such sun)
+ */
+export const getSunDirection = (out: THREE.Vector3, i = 0) => {
+  if (!active || i !== 0) return null;
+  if (isDayNightEnabled(active.def)) {
+    return computeSunDirection(active.def.dayNight, active.time.timeOfDay, out);
+  }
+  return out.copy(active.uniforms.sun.direction.value);
+};
+
+const _sunDirection = new THREE.Vector3();
+
+/** A sun's elevation above the horizon in radians (negative below it), or null (see
+ * getSunDirection). */
+export const getSunElevation = (i = 0) => {
+  const direction = getSunDirection(_sunDirection, i);
+  return direction ? Math.asin(THREE.MathUtils.clamp(direction.y, -1, 1)) : null;
+};
+
+/** Last frame's getElapsedTime: the day-night step advances by the difference, which (unlike
+ * the MAIN delta) is 0 on the frame the master loop pauses and the frame it resumes. */
+let lastElapsedTime = 0;
+
+const isTimeSourceRunning = (def: SkyBoxDef) => {
+  const source = def.dayNight?.timeSource ?? DAY_NIGHT_DEFAULTS.timeSource;
+  return source === 'MAIN' || (source === 'APP' && isAppPlaying());
+};
+
+/**
+ * Advances the active sky box's day-night time and, when it changed, writes the sun-dependent
+ * uniforms and lights. Stands still while a scene loads, so a scene starts at its start time.
+ * Allocates nothing.
+ */
+const stepDayNight = (world: ECSWorld) => {
+  const elapsed = getElapsedTime();
+  const dt = elapsed - lastElapsedTime;
+  lastElapsedTime = elapsed;
+  const current = active;
+  if (!current || !isDayNightEnabled(current.def) || isCurrentlyLoading()) return;
+  const time = current.time;
+  if (isTimeSourceRunning(current.def) && advanceSkyTime(time, dt)) time.isDirty = true;
+  if (!time.isDirty) return;
+  time.isDirty = false;
+  applySkyTimeUniforms(current.uniforms, current.def, time);
+  updateSkyLightsForSun(current.def, current.uniforms, world);
+  // Every change re-bakes for now (p113 Phase 2 adds the angle and rate rules)
+  if (current.isComposite && isBakeDynamic(current.def)) requestEnvBake();
+};
+
 // System
 
 ECSWorld.registerPlugin((world) => {
@@ -433,10 +577,12 @@ ECSWorld.registerPlugin((world) => {
   world.addSystem(ECSSystemStage.MAIN, 'skyBoxSystem', skyBoxSystem, 1);
 });
 
-/** Moves the sky lights with their follow point, and runs a requested env bake (never while a
- * scene loads). The sky box is global: only the default world drives it. */
+/** Steps the day-night cycle, moves the sky lights with their follow point, and runs a
+ * requested env bake (never while a scene loads). The sky box is global: only the default world
+ * drives it. */
 function skyBoxSystem(world: ECSWorld) {
   if (world !== getECSWorld()) return;
+  stepDayNight(world);
   updateSkyLightsFrame(world);
   if (!isEnvBakeRequested() || isCurrentlyLoading()) return;
   // The bake's clouds are frozen where the view's are now

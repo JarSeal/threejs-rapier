@@ -18,6 +18,7 @@ import { AMBIENT_LIGHT_DEFAULTS, SUN_LIGHT_DEFAULTS } from '../../SkyBox/SkyLigh
 import { CLOUDS_DEFAULTS } from '../../SkyBox/layers/clouds';
 import { GROUND_DEFAULTS } from '../../SkyBox/layers/ground';
 import { SHADOW_PRESETS } from '../../LightManager';
+import { getEnvSize } from '../../SkyBox/SkyComposite';
 import {
   _recordOrCoalesceUndoRedoAction,
   _recordUndoRedoAction,
@@ -106,6 +107,8 @@ export const getDefValue = (def: SkyBoxDef | undefined, path: string) => {
   if (path.endsWith('.enabled') && path !== 'enabled') {
     return getPath(def, path.slice(0, -'.enabled'.length)) !== undefined;
   }
+  // The env bake's default size depends on day-night
+  if (path === 'env.size') return getEnvSize(def);
   return getPresetDefault(def, path) ?? getPath(DEFAULTS_TREE, path);
 };
 

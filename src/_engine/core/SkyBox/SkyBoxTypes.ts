@@ -7,6 +7,7 @@ import type {
   SkyBoxAtmosphereSchema,
   SkyBoxBaseSchema,
   SkyBoxCloudsSchema,
+  SkyBoxDayNightSchema,
   SkyBoxGroundSchema,
   SkyBoxDefSchema,
   SkyBoxEnvSchema,
@@ -48,6 +49,12 @@ export type SkyBoxGroundDef = z.input<typeof SkyBoxGroundSchema>;
 
 /** The managed ambient (or hemisphere) light. */
 export type SkyBoxAmbientLightDef = z.input<typeof SkyBoxAmbientLightSchema>;
+
+/** The day-night cycle's values on activation (the runtime time is SkyTimeState). */
+export type SkyBoxDayNightDef = z.input<typeof SkyBoxDayNightSchema>;
+
+/** What advances the day-night time. */
+export type SkyTimeSource = NonNullable<SkyBoxDayNightDef['timeSource']>;
 
 /**
  * A sky box definition: the JSON shape (`SkyBoxDefSchema`), plus what only code can give, a

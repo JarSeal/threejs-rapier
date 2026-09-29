@@ -87,6 +87,7 @@ const _followPoint = new THREE.Vector3();
 const _color = new THREE.Color();
 const _vec = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
+const GROUND_DEFAULT_COLOR = toSkyColor(GROUND_DEFAULTS.color);
 
 const getLight = <T extends THREE.Light>(entityId: number, world: ECSWorld) =>
   world.getComponent(entityId, ComponentType.OBJECT3D)?.value as T | undefined;
@@ -155,20 +156,9 @@ const applySunLight = (
 ) => {
   const light = getLight<THREE.DirectionalLight>(state.entityId, world);
   if (!light?.isDirectionalLight) return;
-  state.direction.copy(u.sun.direction.value);
-  setLightSpaceAxes(state);
-  const fade = getSunFade(state.direction, lightDef.horizonFade ?? SUN_LIGHT_DEFAULTS.horizonFade);
 
   const color = lightDef.color ?? SUN_LIGHT_DEFAULTS.color;
-  if (color !== 'AUTO') {
-    light.color.copy(toSkyColor(color));
-  } else if (isAtmosphereEnabled(def)) {
-    const fex = u.atmosphere.extinctionAtSun;
-    light.color.copy(normalizeColor(_color.setRGB(fex.x, fex.y, fex.z)));
-  } else {
-    light.color.setRGB(1, 1, 1);
-  }
-  light.intensity = (lightDef.intensity ?? SUN_LIGHT_DEFAULTS.intensity) * fade;
+  if (color !== 'AUTO') light.color.copy(toSkyColor(color));
 
   // castShadow is set at creation only (see the header: a change re-creates the light)
 
@@ -182,9 +172,6 @@ const applySunLight = (
   shadow.normalBias = lightDef.shadowNormalBias ?? preset.normalBias;
   shadow.radius = preset.radius;
   shadow.blurSamples = preset.blurSamples;
-  shadow.intensity = fade;
-  // Below the horizon the shadow map isn't rendered
-  shadow.autoUpdate = fade > 0;
 
   const half = lightDef.shadowFrustumSize ?? SUN_LIGHT_DEFAULTS.shadowFrustumSize;
   state.distance = lightDef.distance ?? SUN_LIGHT_DEFAULTS.distance;
@@ -198,6 +185,38 @@ const applySunLight = (
   camera.updateProjectionMatrix();
   state.texelSize = (half * 2) / mapSize;
   state.follow = lightDef.shadowFollow ?? SUN_LIGHT_DEFAULTS.shadowFollow;
+
+  applySunLightSun(state, lightDef, def, u, light);
+};
+
+/**
+ * The sun light's values that follow the sun: its direction (and light-space axes), AUTO
+ * colour, faded intensity and shadow fade. The day-night step calls it every time the sun
+ * moves: it allocates nothing.
+ */
+const applySunLightSun = (
+  state: SunLightState,
+  lightDef: SkyBoxSunLightDef,
+  def: SkyBoxDef,
+  u: SkyUniforms,
+  light: THREE.DirectionalLight
+) => {
+  state.direction.copy(u.sun.direction.value);
+  setLightSpaceAxes(state);
+  const fade = getSunFade(state.direction, lightDef.horizonFade ?? SUN_LIGHT_DEFAULTS.horizonFade);
+
+  if ((lightDef.color ?? SUN_LIGHT_DEFAULTS.color) === 'AUTO') {
+    if (isAtmosphereEnabled(def)) {
+      const fex = u.atmosphere.extinctionAtSun;
+      light.color.copy(normalizeColor(_color.setRGB(fex.x, fex.y, fex.z)));
+    } else {
+      light.color.setRGB(1, 1, 1);
+    }
+  }
+  light.intensity = (lightDef.intensity ?? SUN_LIGHT_DEFAULTS.intensity) * fade;
+  light.shadow.intensity = fade;
+  // Below the horizon the shadow map isn't rendered
+  light.shadow.autoUpdate = fade > 0;
   state.needsWrite = true;
 };
 
@@ -266,17 +285,34 @@ const applyAmbientLight = (
 ) => {
   const light = getLight<THREE.HemisphereLight | THREE.AmbientLight>(entityId, world);
   if (!light) return;
-  // Fades with the sun like its light does (with the sun light's fade range, if it has one)
+  light.intensity = ambientDef.intensity ?? AMBIENT_LIGHT_DEFAULTS.intensity;
+  const skyColor = ambientDef.skyColor ?? AMBIENT_LIGHT_DEFAULTS.skyColor;
+  if (skyColor !== 'AUTO') light.color.copy(toSkyColor(skyColor));
+  if ((light as THREE.HemisphereLight).isHemisphereLight) {
+    const groundColor = ambientDef.groundColor ?? AMBIENT_LIGHT_DEFAULTS.groundColor;
+    if (groundColor !== 'AUTO') {
+      (light as THREE.HemisphereLight).groundColor.copy(toSkyColor(groundColor));
+    }
+  }
+  applyAmbientLightSun(light, ambientDef, def, u);
+};
+
+/**
+ * The ambient light's AUTO colours, which fade with the sun (with the sun light's fade range, if
+ * it has one). The day-night step calls it every time the sun moves: it allocates nothing.
+ */
+const applyAmbientLightSun = (
+  light: THREE.HemisphereLight | THREE.AmbientLight,
+  ambientDef: SkyBoxAmbientLightDef,
+  def: SkyBoxDef,
+  u: SkyUniforms
+) => {
   const fade = getSunFade(
     u.sun.direction.value,
     def.suns?.[0]?.light?.horizonFade ?? SUN_LIGHT_DEFAULTS.horizonFade
   );
-  light.intensity = ambientDef.intensity ?? AMBIENT_LIGHT_DEFAULTS.intensity;
 
-  const skyColor = ambientDef.skyColor ?? AMBIENT_LIGHT_DEFAULTS.skyColor;
-  if (skyColor !== 'AUTO') {
-    light.color.copy(toSkyColor(skyColor));
-  } else {
+  if ((ambientDef.skyColor ?? AMBIENT_LIGHT_DEFAULTS.skyColor) === 'AUTO') {
     if (isAtmosphereEnabled(def)) {
       computeInscatter(UP, u.atmosphere, u.sun.direction.value, _vec);
       normalizeColor(_color.setRGB(_vec.x, _vec.y, _vec.z));
@@ -286,15 +322,35 @@ const applyAmbientLight = (
     light.color.copy(_color.multiplyScalar(fade));
   }
 
-  if ((light as THREE.HemisphereLight).isHemisphereLight) {
-    const groundColor = ambientDef.groundColor ?? AMBIENT_LIGHT_DEFAULTS.groundColor;
-    const ground = (light as THREE.HemisphereLight).groundColor;
-    if (groundColor !== 'AUTO') ground.copy(toSkyColor(groundColor));
-    else {
-      // The ground layer's colour (its default without one), faded with the sun
-      const color = isGroundEnabled(def) ? def.ground?.color : undefined;
-      ground.copy(toSkyColor(color ?? GROUND_DEFAULTS.color)).multiplyScalar(fade);
-    }
+  if (
+    (light as THREE.HemisphereLight).isHemisphereLight &&
+    (ambientDef.groundColor ?? AMBIENT_LIGHT_DEFAULTS.groundColor) === 'AUTO'
+  ) {
+    // The ground layer's colour (its default without one), faded with the sun
+    (light as THREE.HemisphereLight).groundColor
+      .copy(isGroundEnabled(def) ? u.ground.color.value : GROUND_DEFAULT_COLOR)
+      .multiplyScalar(fade);
+  }
+};
+
+/**
+ * The day-night step's light write, after the sun moved (applySkyTimeUniforms first): each
+ * light's sun-dependent values only. The transforms follow in updateSkyLightsFrame. Runs every
+ * frame while the cycle plays, so it allocates nothing.
+ */
+export const updateSkyLightsForSun = (def: SkyBoxDef, u: SkyUniforms, world: ECSWorld) => {
+  const lightDef = def.suns?.[0]?.light;
+  if (sunLight && lightDef) {
+    const light = getLight<THREE.DirectionalLight>(sunLight.entityId, world);
+    if (light?.isDirectionalLight) applySunLightSun(sunLight, lightDef, def, u, light);
+  }
+  const ambientDef = def.ambientLight;
+  if (ambientLight && ambientDef) {
+    const light = getLight<THREE.HemisphereLight | THREE.AmbientLight>(
+      ambientLight.entityId,
+      world
+    );
+    if (light) applyAmbientLightSun(light, ambientDef, def, u);
   }
 };
 

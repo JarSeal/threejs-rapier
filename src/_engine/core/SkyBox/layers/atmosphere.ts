@@ -131,9 +131,36 @@ export const applyAtmosphereUniforms = (
   sunDirection: THREE.Vector3
 ) => {
   const turbidity = def?.turbidity ?? ATMOSPHERE_DEFAULTS.turbidity;
-  const rayleigh = def?.rayleigh ?? ATMOSPHERE_DEFAULTS.rayleigh;
   const mieCoefficient = def?.mieCoefficient ?? ATMOSPHERE_DEFAULTS.mieCoefficient;
   const g = def?.mieDirectionalG ?? ATMOSPHERE_DEFAULTS.mieDirectionalG;
+
+  // betaM (:207-210)
+  const c = 0.2 * turbidity * 10e-18;
+  u.betaM.value.copy(MIE_CONST).multiplyScalar(0.434 * c * mieCoefficient);
+
+  u.miePhase.value.set(1 - g * g, 1 + g * g, 2 * g);
+  u.exposure.value = def?.exposure ?? ATMOSPHERE_DEFAULTS.exposure;
+
+  const night = def?.nightSkyColor ?? ATMOSPHERE_DEFAULTS.nightSkyColor;
+  u.isNightCustom.value = night === 'AUTO' ? 0 : 1;
+  if (night !== 'AUTO') u.nightColor.value.copy(toSkyColor(night));
+  u.horizonTint.value.copy(toSkyColor(def?.horizonTint ?? ATMOSPHERE_DEFAULTS.horizonTint));
+  u.zenithTint.value.copy(toSkyColor(def?.zenithTint ?? ATMOSPHERE_DEFAULTS.zenithTint));
+
+  applyAtmosphereSunUniforms(u, def, sunDirection);
+};
+
+/**
+ * Writes the terms that depend on the sun's direction (sunE, betaR, linMix and the extinction
+ * at the sun); the rest must be written already. The day-night step calls it every time the
+ * sun moves: it allocates nothing.
+ */
+export const applyAtmosphereSunUniforms = (
+  u: AtmosphereUniforms,
+  def: SkyBoxAtmosphereDef | undefined,
+  sunDirection: THREE.Vector3
+) => {
+  const rayleigh = def?.rayleigh ?? ATMOSPHERE_DEFAULTS.rayleigh;
   const sunIntensity = def?.sunIntensity ?? ATMOSPHERE_DEFAULTS.sunIntensity;
   const twilight = Math.max(0.05, def?.twilightLength ?? ATMOSPHERE_DEFAULTS.twilightLength);
   const y = sunDirection.y;
@@ -150,19 +177,7 @@ export const applyAtmosphereUniforms = (
   const sunfade = 1 - THREE.MathUtils.clamp(1 - Math.exp(y / 450000), 0, 1);
   u.betaR.value.copy(TOTAL_RAYLEIGH).multiplyScalar(rayleigh - (1 - sunfade));
 
-  // betaM (:207-210)
-  const c = 0.2 * turbidity * 10e-18;
-  u.betaM.value.copy(MIE_CONST).multiplyScalar(0.434 * c * mieCoefficient);
-
-  u.miePhase.value.set(1 - g * g, 1 + g * g, 2 * g);
   u.linMix.value = THREE.MathUtils.clamp((1 - y) ** 5, 0, 1);
-  u.exposure.value = def?.exposure ?? ATMOSPHERE_DEFAULTS.exposure;
-
-  const night = def?.nightSkyColor ?? ATMOSPHERE_DEFAULTS.nightSkyColor;
-  u.isNightCustom.value = night === 'AUTO' ? 0 : 1;
-  if (night !== 'AUTO') u.nightColor.value.copy(toSkyColor(night));
-  u.horizonTint.value.copy(toSkyColor(def?.horizonTint ?? ATMOSPHERE_DEFAULTS.horizonTint));
-  u.zenithTint.value.copy(toSkyColor(def?.zenithTint ?? ATMOSPHERE_DEFAULTS.zenithTint));
 
   computeExtinction(y, u.betaR.value, u.betaM.value, u.extinctionAtSun);
 };

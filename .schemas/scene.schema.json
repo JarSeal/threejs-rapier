@@ -3366,6 +3366,56 @@
                 },
                 "additionalProperties": false
               },
+              "dayNight": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "timeOfDay": {
+                    "type": "number",
+                    "minimum": 0,
+                    "exclusiveMaximum": 24
+                  },
+                  "cycleDurationSec": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "speed": {
+                    "type": "number"
+                  },
+                  "playing": {
+                    "type": "boolean"
+                  },
+                  "timeSource": {
+                    "type": "string",
+                    "enum": [
+                      "APP",
+                      "MAIN",
+                      "MANUAL"
+                    ]
+                  },
+                  "latitude": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "dayOfYear": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 366
+                  },
+                  "axialTilt": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 90
+                  },
+                  "northOffset": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              },
               "debugData": {
                 "type": "object",
                 "properties": {
@@ -4229,6 +4279,56 @@
                           },
                           "useAtmosphereHorizon": {
                             "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "dayNight": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "timeOfDay": {
+                            "type": "number",
+                            "minimum": 0,
+                            "exclusiveMaximum": 24
+                          },
+                          "cycleDurationSec": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "speed": {
+                            "type": "number"
+                          },
+                          "playing": {
+                            "type": "boolean"
+                          },
+                          "timeSource": {
+                            "type": "string",
+                            "enum": [
+                              "APP",
+                              "MAIN",
+                              "MANUAL"
+                            ]
+                          },
+                          "latitude": {
+                            "type": "number",
+                            "minimum": -90,
+                            "maximum": 90
+                          },
+                          "dayOfYear": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 366
+                          },
+                          "axialTilt": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 90
+                          },
+                          "northOffset": {
+                            "type": "number"
                           }
                         },
                         "additionalProperties": false
@@ -7928,6 +8028,56 @@
                         },
                         "additionalProperties": false
                       },
+                      "dayNight": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "timeOfDay": {
+                            "type": "number",
+                            "minimum": 0,
+                            "exclusiveMaximum": 24
+                          },
+                          "cycleDurationSec": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "speed": {
+                            "type": "number"
+                          },
+                          "playing": {
+                            "type": "boolean"
+                          },
+                          "timeSource": {
+                            "type": "string",
+                            "enum": [
+                              "APP",
+                              "MAIN",
+                              "MANUAL"
+                            ]
+                          },
+                          "latitude": {
+                            "type": "number",
+                            "minimum": -90,
+                            "maximum": 90
+                          },
+                          "dayOfYear": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 366
+                          },
+                          "axialTilt": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 90
+                          },
+                          "northOffset": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
                       "debugData": {
                         "type": "object",
                         "properties": {
@@ -8791,6 +8941,56 @@
                                   },
                                   "useAtmosphereHorizon": {
                                     "type": "boolean"
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "dayNight": {
+                                "type": "object",
+                                "properties": {
+                                  "enabled": {
+                                    "type": "boolean"
+                                  },
+                                  "timeOfDay": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "exclusiveMaximum": 24
+                                  },
+                                  "cycleDurationSec": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "speed": {
+                                    "type": "number"
+                                  },
+                                  "playing": {
+                                    "type": "boolean"
+                                  },
+                                  "timeSource": {
+                                    "type": "string",
+                                    "enum": [
+                                      "APP",
+                                      "MAIN",
+                                      "MANUAL"
+                                    ]
+                                  },
+                                  "latitude": {
+                                    "type": "number",
+                                    "minimum": -90,
+                                    "maximum": 90
+                                  },
+                                  "dayOfYear": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 366
+                                  },
+                                  "axialTilt": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 90
+                                  },
+                                  "northOffset": {
+                                    "type": "number"
                                   }
                                 },
                                 "additionalProperties": false

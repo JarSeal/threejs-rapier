@@ -55,6 +55,15 @@ export const applyGroundUniforms = (
   u.blend.value = Math.max(MIN_BLEND, def?.horizonBlend ?? GROUND_DEFAULTS.horizonBlend);
   const useHorizon = def?.useAtmosphereHorizon ?? GROUND_DEFAULTS.useAtmosphereHorizon;
   u.aerial.value = useHorizon && hasAtmosphere ? 1 : 0;
+  applyGroundSunUniforms(u, hasAtmosphere, sunDirection);
+};
+
+/** Writes the sun-dependent ground light (the day-night step, every time the sun moves). */
+export const applyGroundSunUniforms = (
+  u: GroundUniforms,
+  hasAtmosphere: boolean,
+  sunDirection: THREE.Vector3
+) => {
   u.light.value = hasAtmosphere
     ? Math.max(THREE.MathUtils.smoothstep(sunDirection.y, -0.08, 0.3), 0.03)
     : 1;

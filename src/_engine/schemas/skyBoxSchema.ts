@@ -13,8 +13,8 @@ import {
 } from '../core/SkyBox/legacySkyBox';
 
 // A sky box definition is a set of layers. p111 has the base and env layers, p112 the atmosphere
-// and suns; later plans add their own layers (clouds, moons, stars, ...) as optional keys. A
-// procedural layer is on when its key is there, unless it says `enabled: false`.
+// and suns, p113 the day-night cycle; later plans add their own layers (moons, stars, ...) as
+// optional keys. A procedural layer is on when its key is there, unless it says `enabled: false`.
 
 // Base layer
 
@@ -78,9 +78,9 @@ export const SkyBoxEnvSchema = z.object({
 
   // Environment bake settings: used by sky boxes on the composite path (procedural layers),
   // which bake their environment. A texture-only or colour-only sky box has no bake.
-  /** The bake's cube face size, fixed per activation. Default 256. 512 gives sharper mirror
-   * reflections for 4× the memory (a 1536×2048 half-float target); the bake's GPU cost is per
-   * pass, so it barely changes with size (p110 spike). */
+  /** The bake's cube face size, fixed per activation. Default 256, or 128 with day-night. 512
+   * gives sharper mirror reflections for 4× the memory (a 1536×2048 half-float target); the
+   * bake's GPU cost is per pass, so it barely changes with size (p110 spike). */
   size: SkyBoxEnvSizeSchema.optional(),
   /** Whether value changes re-bake the environment. False: only activation, a rebuild and
    * `bakeEnvironment()` do. Default true. */
@@ -232,6 +232,34 @@ export const SkyBoxGroundSchema = z.object({
   useAtmosphereHorizon: z.boolean().optional(),
 });
 
+// Day-night cycle (p113): animates the sun from a time of day. Games drive it at runtime
+// (setTimeOfDay, playDayNight, ...); these are its values on activation.
+
+export const SkyBoxDayNightSchema = z.object({
+  /** Default true. */
+  enabled: z.boolean().optional(),
+  /** The time on activation, in hours [0, 24). Default 12. */
+  timeOfDay: z.number().min(0).lt(24).optional(),
+  /** Real seconds per 24 in-game hours. Default 1200. */
+  cycleDurationSec: z.number().positive().optional(),
+  /** Time multiplier: negative runs it backwards, 0 freezes it. Default 1. */
+  speed: z.number().optional(),
+  /** Whether the cycle runs on activation. Default true. */
+  playing: z.boolean().optional(),
+  /** 'APP': runs while the app loop plays (a game pause pauses the sky). 'MAIN': runs with the
+   * master loop, also while the app is paused. 'MANUAL': only setTimeOfDay changes it.
+   * Default 'APP'. */
+  timeSource: z.enum(['APP', 'MAIN', 'MANUAL']).optional(),
+  /** Degrees north (negative: south). Default 45. */
+  latitude: z.number().min(-90).max(90).optional(),
+  /** Day of the year (1-365), for the sun's declination. Default 172 (the June solstice). */
+  dayOfYear: z.number().min(0).max(366).optional(),
+  /** Degrees. Default 23.44 (the Earth's). */
+  axialTilt: z.number().min(0).max(90).optional(),
+  /** Where north is: degrees clockwise seen from above, from -z (0) toward +x (90). Default 0. */
+  northOffset: z.number().optional(),
+});
+
 // Overrides (scene save data, and the debugger's changed values): a deep partial of the layers.
 // Zod 4 has no .deepPartial(), so each layer is spelled out. The base override is flat across
 // the base types, and can't change `type`: a type change is a different definition.
@@ -267,6 +295,7 @@ export const SkyBoxOverridesSchema = z.object({
   ambientLight: SkyBoxAmbientLightSchema.partial().optional(),
   clouds: SkyBoxCloudsSchema.partial().optional(),
   ground: SkyBoxGroundSchema.partial().optional(),
+  dayNight: SkyBoxDayNightSchema.partial().optional(),
   __meta: MetaSchema.optional(),
 });
 
@@ -294,6 +323,8 @@ export const SkyBoxDefSchema = z
     /** Needs an enabled atmosphere. */
     clouds: SkyBoxCloudsSchema.optional(),
     ground: SkyBoxGroundSchema.optional(),
+    /** While on, suns[0]'s elevation and azimuth are derived from the time of day. */
+    dayNight: SkyBoxDayNightSchema.optional(),
     debugData: DebugDataSchema.optional(),
 
     // Meta

@@ -8,6 +8,7 @@ import { dot, max, pow, smoothstep, uniform } from 'three/tsl';
 import type { SkyBoxEnvSize, SkyBoxSunDef } from '../SkyBoxTypes';
 import type { SkyCompositeMode } from '../SkyComposite';
 import { toSkyColor } from '../skyColor';
+import type { AtmosphereUniforms } from './atmosphere';
 
 export const SUN_STRUCTURAL_KEYS = ['enabled'] as const;
 
@@ -50,6 +51,11 @@ export type SunUniforms = {
   /** White for 'AUTO'; a custom colour divided by the extinction at the sun, so it is seen as
    * given once the atmosphere has dimmed it. */
   tint: THREE.UniformNode<'color', THREE.Color>;
+  /** CPU only: the disc's peak radiance (discIntensity), and its colour as given (linear; used
+   * unless isAutoColor). The lighting write (applySunLightingUniforms) derives from these. */
+  peakRadiance: number;
+  color: THREE.Color;
+  isAutoColor: boolean;
 };
 
 export const createSunUniforms = (): SunUniforms => ({
@@ -61,13 +67,17 @@ export const createSunUniforms = (): SunUniforms => ({
   glowIntensity: uniform(0),
   glowExponent: uniform(1),
   tint: uniform(new THREE.Color(1, 1, 1)),
+  peakRadiance: SUN_DEFAULTS.discIntensity,
+  color: new THREE.Color(1, 1, 1),
+  isAutoColor: true,
 });
 
 /**
  * A sun's unit direction from its elevation and azimuth (degrees), the way three's sky example
- * places it: azimuth 0 = +z, 90 = +x, 180 = -z.
+ * places it: azimuth 0 = +z, 90 = +x, 180 = -z. Day-night derives it from the time instead
+ * (SkyTime.ts).
  */
-export const getSunDirection = (sun: SkyBoxSunDef | undefined, out: THREE.Vector3) => {
+export const getFixedSunDirection = (sun: SkyBoxSunDef | undefined, out: THREE.Vector3) => {
   const elevation = sun?.elevation ?? SUN_DEFAULTS.elevation;
   const azimuth = sun?.azimuth ?? SUN_DEFAULTS.azimuth;
   return out.setFromSphericalCoords(
@@ -77,45 +87,54 @@ export const getSunDirection = (sun: SkyBoxSunDef | undefined, out: THREE.Vector
   );
 };
 
-const _color = new THREE.Color();
-
 /**
  * Writes the sun's uniforms (its direction is written first, see applySkyUniforms).
- * @param atmosphere the atmosphere's sun energy and extinction at the sun, when it is enabled
+ * @param atmosphere the atmosphere's uniforms when it is enabled (its sun terms written already)
  */
 export const applySunUniforms = (
   u: SunUniforms,
   sun: SkyBoxSunDef | undefined,
-  atmosphere: { sunE: number; extinctionAtSun: THREE.Vector3 } | null,
+  atmosphere: AtmosphereUniforms | null,
   envSize: SkyBoxEnvSize
 ) => {
   const radius = DISC_RADIUS * (sun?.discSize ?? SUN_DEFAULTS.discSize);
   u.discCos.value = Math.cos(radius);
   u.envDiscCos.value = Math.cos(Math.max(radius, (ENV_DISC_MIN_TEXELS * Math.PI) / 2 / envSize));
 
-  // SkyMesh's peak is min(sunE · Fex, 80) · 760 (~60,800): here the peak is discIntensity, and
-  // the sun's energy only takes it down (below the horizon, sunE goes to 0)
-  const discIntensity = sun?.discIntensity ?? SUN_DEFAULTS.discIntensity;
-  const radiance = atmosphere
-    ? Math.min(atmosphere.sunE * DISC_SCALE, discIntensity)
-    : discIntensity;
-  u.discRadiance.value = radiance;
-  u.envDiscRadiance.value = Math.min(radiance, ENV_DISC_CLAMP);
-
   u.glowIntensity.value = sun?.glowIntensity ?? SUN_DEFAULTS.glowIntensity;
   const glowSize = THREE.MathUtils.degToRad(sun?.glowSize ?? SUN_DEFAULTS.glowSize);
   u.glowExponent.value = Math.log(0.5) / Math.log(Math.cos(glowSize));
 
+  u.peakRadiance = sun?.discIntensity ?? SUN_DEFAULTS.discIntensity;
   const color = sun?.color ?? SUN_DEFAULTS.color;
-  if (color === 'AUTO') {
+  u.isAutoColor = color === 'AUTO';
+  if (color !== 'AUTO') u.color.copy(toSkyColor(color));
+
+  applySunLightingUniforms(u, atmosphere);
+};
+
+/**
+ * Writes what the atmosphere's sun terms change: the disc's radiance and a custom colour's
+ * extinction compensation. The day-night step calls it every time the sun moves: it
+ * allocates nothing.
+ */
+export const applySunLightingUniforms = (u: SunUniforms, atmosphere: AtmosphereUniforms | null) => {
+  // SkyMesh's peak is min(sunE · Fex, 80) · 760 (~60,800): here the peak is discIntensity, and
+  // the sun's energy only takes it down (below the horizon, sunE goes to 0)
+  const radiance = atmosphere
+    ? Math.min(atmosphere.sunE.value * DISC_SCALE, u.peakRadiance)
+    : u.peakRadiance;
+  u.discRadiance.value = radiance;
+  u.envDiscRadiance.value = Math.min(radiance, ENV_DISC_CLAMP);
+
+  if (u.isAutoColor) {
     u.tint.value.setRGB(1, 1, 1);
   } else {
-    _color.copy(toSkyColor(color));
     const fex = atmosphere?.extinctionAtSun;
     u.tint.value.setRGB(
-      _color.r / Math.max(fex?.x ?? 1, MIN_EXTINCTION),
-      _color.g / Math.max(fex?.y ?? 1, MIN_EXTINCTION),
-      _color.b / Math.max(fex?.z ?? 1, MIN_EXTINCTION)
+      u.color.r / Math.max(fex?.x ?? 1, MIN_EXTINCTION),
+      u.color.g / Math.max(fex?.y ?? 1, MIN_EXTINCTION),
+      u.color.b / Math.max(fex?.z ?? 1, MIN_EXTINCTION)
     );
   }
 };
