@@ -1,4 +1,4 @@
-Status: feasibility study done — go, with adjusted re-bake defaults (see Implementation notes → Phase 0 spike results) | implementation in p111–p115
+Status: implemented (Phase 0 feasibility study and spike done: go, with adjusted re-bake defaults, see Implementation notes → Phase 0 spike results; the implementation itself is in p111–p115)
 Category: Skybox, Refactor, Rendering
 Blocks: p111_skybox-core-refactor-and-layered-schema.md, p112_procedural-sky-atmosphere-sun-and-env-bake.md, p113_night-sky-and-day-night-cycle.md, p114_space-preset-and-nebula-creator.md, p115_debug-environment-ball-viewport.md
 Related: \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (the env ball viewport builds on it), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed: the SkyBox and Debug Tools tabs are already on `createDebuggerTab` and the pane builder)
