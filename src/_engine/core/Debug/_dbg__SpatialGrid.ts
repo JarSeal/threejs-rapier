@@ -1,6 +1,9 @@
+import * as THREE from 'three/webgpu';
 import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
-import { getECSWorld } from '../ECS';
+import { ECSWorld, getECSWorld } from '../ECS';
+import { ECSSystemStage } from '../../../AppECSRegistry';
+import { BOX_EDGE_SEGMENT_COUNT, createLines, LineObject, writeBox3Edges } from '../LineManager';
 import {
   getLastRebuildDurationMs,
   getOracleMismatchCount,
@@ -49,12 +52,77 @@ function formatOccupancyHistogram(counts: number[]): string {
   return lines.join('\n');
 }
 
+// --- VISUALIZER (docs/plans/p125_spatial-index-system-visualizer.md) ---
+// One line, created once and hidden; the toggle only flips visibility and the `enabled`
+// flag the refill system reads, so nothing is recreated per toggle.
+
+const VISUALIZER_LINE_ID = 'SPATIAL_GRID_DEBUG_VISUALIZER';
+const VISUALIZER_DEFAULT_COLOR = 0xff0000;
+// Ceiling for the FIXED line buffer. Occupied cells are bounded only by maxEntities
+// (100k by default), far too much to pre-allocate for a debug overlay; past this the line
+// drops the extra boxes and warns once.
+const VISUALIZER_MAX_CELLS = 4096;
+
+let visualizerLine: LineObject | null = null;
+const visualizerEnabled = false;
+let cellBounds = new Float32Array(VISUALIZER_MAX_CELLS * 6);
+const scratchBox = new THREE.Box3();
+
+/** Refills the wireframe from the grid's last rebuild. LATE_MAIN, so after the
+ * APP_POST_PHYSICS rebuild. Only the default world is drawn — there is one line. */
+const spatialGridVisualizerSystem = (world: ECSWorld) => {
+  if (!visualizerEnabled || !visualizerLine || world !== getECSWorld()) return;
+
+  // Re-read every frame: setSpatialGridCellSize swaps the grid instance.
+  const grid = getSpatialGrid(world);
+  let count = grid.getOccupiedCellBoundsInto(cellBounds);
+  if (count * 6 > cellBounds.length) {
+    // Rare (only when the count first outgrows the buffer). Everything past
+    // VISUALIZER_MAX_CELLS is dropped by the FIXED line, with its own warning.
+    cellBounds = new Float32Array(count * 6 * 2);
+    count = grid.getOccupiedCellBoundsInto(cellBounds);
+  }
+
+  const writer = visualizerLine.beginWrite();
+  for (let c = 0; c < count; c++) {
+    const i = c * 6;
+    scratchBox.min.set(cellBounds[i], cellBounds[i + 1], cellBounds[i + 2]);
+    scratchBox.max.set(cellBounds[i + 3], cellBounds[i + 4], cellBounds[i + 5]);
+    writeBox3Edges(writer, scratchBox);
+  }
+  visualizerLine.endWrite();
+};
+
+const initSpatialGridVisualizer = () => {
+  visualizerLine = createLines({
+    id: VISUALIZER_LINE_ID,
+    capacity: VISUALIZER_MAX_CELLS * BOX_EDGE_SEGMENT_COUNT,
+    growth: 'FIXED',
+    // Up to 12 segments per occupied cell; instanced quads would cost far more than 1px lines.
+    backend: 'THIN',
+    color: VISUALIZER_DEFAULT_COLOR,
+    // Created once and outlives scenes, so a scene switch must not dispose it.
+    persistent: true,
+    visible: false,
+  });
+
+  ECSWorld.registerPlugin((world) => {
+    world.addSystem(
+      ECSSystemStage.LATE_MAIN,
+      'spatialGridVisualizerSystem',
+      spatialGridVisualizerSystem
+    );
+  });
+};
+
 export const _createSpatialGridDebugGUI = () => {
   const world = getECSWorld();
   const savedLSData = lsGetItem(LS_KEY, { cellSize: DEFAULT_CELL_SIZE }) as LSData;
   if (savedLSData.cellSize !== DEFAULT_CELL_SIZE) {
     setSpatialGridCellSize(world, savedLSData.cellSize);
   }
+
+  initSpatialGridVisualizer();
 
   const icon = getSvgIcon('spatialGrid');
   createDebuggerTab({
