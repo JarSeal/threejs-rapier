@@ -11,7 +11,11 @@ import type { RayDebugOpts } from './RayDebugTypes';
 
 export type { RayDebugOpts } from './RayDebugTypes';
 
-/** Options of the `castRayFrom*` functions. */
+/**
+ * Options of the `castRayFrom*` functions. The deprecated aliases (helperId, helperColor,
+ * startLength, endLength, perIntersectFn, optionalTargetArr) still work and are removed in a
+ * later major version.
+ */
 export type RayCastOpts<TIntersected extends THREE.Object3D = THREE.Object3D> = {
   /** Minimum hit distance (Raycaster.near), default 0 */
   near?: number;
@@ -22,7 +26,8 @@ export type RayCastOpts<TIntersected extends THREE.Object3D = THREE.Object3D> = 
   recursive?: boolean;
   /** Reused result array: it is cleared and filled, and returned instead of a new array */
   target?: Array<THREE.Intersection<TIntersected>>;
-  /** Called per hit in distance order; return false to stop iterating */
+  /** Called per hit in distance order; return false to stop iterating. Don't cast another ray
+   * from it (all casts share one raycaster): collect the hits first, then cast. */
   perIntersect?: (intersect: THREE.Intersection<TIntersected>) => void | boolean;
   /** Whether this ray is counted in the ray cast statistics, default true */
   countInStats?: boolean;
@@ -50,7 +55,8 @@ const scratchDirection = new THREE.Vector3();
 const screenPos = new THREE.Vector2();
 const legacyDebugOpts: RayDebugOpts = { id: '' };
 
-/** Wires up the debug side (a no-op outside debug). */
+/** Wires up the debug side: the Ray cast controls tab (a no-op outside debug). Called once by
+ * the main loop init. */
 export const initRayCasting = () => {
   useDebug(debugGUI)?._initRayCastingDebugger();
 };
@@ -109,9 +115,6 @@ const castPrepared = <TIntersected extends THREE.Object3D>(
 
 /**
  * Casts a ray from an origin in a direction.
- *
- * Not re-entrant: all casts share one raycaster, so don't cast from a `perIntersect` callback
- * (collect the hits first, then cast).
  * @param objects (THREE.Object3D | THREE.Object3D[]) object(s) to test against
  * @param origin (THREE.Vector3) ray origin
  * @param direction (THREE.Vector3) normalized ray direction
@@ -234,13 +237,13 @@ export const isRayCastStatsEnabled = () => statsEnabled;
  */
 export const getRayCastStats = (): Readonly<IntervalCounterSnapshot> => stats.snapshot();
 
-/** Resets the ray cast statistics (eg. on scene enter). */
+/** Resets the ray cast statistics. The scene loader calls it on every scene enter. */
 export const resetRayCastStats = () => {
   stats.reset();
 };
 
 /** Once per rendered frame (LATE_MAIN, after rendering): ends the stats frame, then runs the
- * debug side's frame end (helper cleanup, stats view refresh). */
+ * debug side's frame end (helper cleanup). */
 const rayCastFrameEndSystem = () => {
   if (statsEnabled) stats.endFrame(performance.now());
   useDebug(debugGUI)?._onRayCastFrameEnd();
@@ -256,10 +259,12 @@ ECSWorld.registerPlugin((world) => {
 type RaycastGUIModule = typeof import('../core/Debug/_dbg__Raycast');
 let debugGUI: DebugModuleRef<RaycastGUIModule> | null = null;
 
+/** Loads the ray cast debug module (debug env only). */
 export const registerRaycastDebugGUI = async () => {
   debugGUI = await loadDebugModuleAsync(() => import('../core/Debug/_dbg__Raycast'));
 };
 
+/** Disposes every ray debug helper. The scene loader calls it on every scene exit. */
 export const deleteAllRayHelpers = () => {
   useDebug(debugGUI)?._deleteAllRayHelpers();
 };

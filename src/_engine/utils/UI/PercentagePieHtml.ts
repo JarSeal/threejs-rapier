@@ -9,6 +9,8 @@ export type PercentagePieOpts = {
   fillClass?: string;
   /** Fill color (CSS color), default #fff (from the .percentagePie style) */
   fillColor?: string;
+  /** @deprecated no effect since the pie is one element (use `height`) */
+  size?: number;
 };
 
 /** A live pie from {@link createPercentagePie}. */

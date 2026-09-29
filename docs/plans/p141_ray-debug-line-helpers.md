@@ -1,12 +1,11 @@
 Status: draft | not-implemented
 Category: Debugger, Lines
-Blocked by: p140_refactor-ray-casting.md
 Blocks: p142_physics-ray-debugging-and-stats.md, p143_ray-cast-tester-windows.md
 Related: \_DONE_p058_line-rendering-system.md (amends its "no dashed lines" non-goal)
 
 # Ray Debug Line Helpers — Plan
 
-Part of the ray casting plan set (index: `p140_refactor-ray-casting.md` §1.1). Ray helpers today are
+Part of the ray casting plan set (index: `_DONE_p140_refactor-ray-casting.md` §1.1). Ray helpers today are
 1 px THIN lines that are disposed the first frame their ray isn't cast. A ray that is cast for a
 single frame is practically invisible, and it churns a line + material every time it flickers. This
 plan replaces them with a shared, pooled, **thick-line** helper renderer. Its helpers stay visible
@@ -33,13 +32,15 @@ ray kinds: Three.js rays here, physics rays in p142.
 
 ## 2. Current state (grounded in the actual code)
 
-- `_dbg__Raycast.ts:85-129` `_drawRayHelper`: there is one `createLines({ capacity: 1, growth:
-  'FIXED', persistent: true })` per `helperId`. The backend is AUTO at width 1, so THIN. The line is
-  refilled with `writePolyline(beginWrite(), [from, end])` each cast. `setColor` is only called when
-  the color changes.
-- `_dbg__Raycast.ts:133-141` `_cleanUpRayHelpers` (LATE_MAIN `rayHelperCleanupSystem`, :73-80)
+- `_dbg__Raycast.ts` `_drawRayHelper(origin, direction, far, debugOpts)`, called by p140's
+  `castPrepared` only when a cast has `debug` (or the deprecated `helperId`): there is one
+  `createLines({ capacity: 1, growth: 'FIXED', persistent: true })` per `debug.id`. The backend is
+  AUTO at width 1, so THIN. The line is refilled with `writePolyline(beginWrite(), [origin, end])`
+  each cast, where end = `far` (1000 when infinite). `setColor` is only called when the color changes.
+- `_dbg__Raycast.ts` `_onRayCastFrameEnd`, called once per rendered frame by p140's core LATE_MAIN
+  `rayCastFrameEndSystem` (`Raycast.ts`, default ECS world only, right after the stats `endFrame`),
   **disposes every helper not drawn this frame**. `_deleteAllRayHelpers` runs on scene exit
-  (`SceneLoader.ts:504`).
+  (`SceneLoader.ts`, via `deleteAllRayHelpers()`).
 - There is one global toggle, `showAllRayDebugHelpers`, and one default color, `#ff0000`. No real
   caller passes a `helperId`, so helpers effectively never show.
 - **Line system** (`core/LineManager.ts`, `core/Lines/*`):
@@ -174,7 +175,9 @@ _clearRayHelpers(kind?: RayKind): void;                           // scene exit,
 
 - `castPrepared` (p140) calls `useDebug(helpers)?._drawRay('THREE', origin, dir, far, firstHitDistance,
   opts.debug, now)` after intersecting.
-- The old `_drawRayHelper`, `_cleanUpRayHelpers`, `_deleteAllRayHelpers` and `_toggleAllRayDebugHelpers`
+- The update pass hooks into `rayCastFrameEndSystem` (replacing its `_onRayCastFrameEnd` call), and
+  the hit distance is added to `castPrepared`'s debug call.
+- The old `_drawRayHelper`, `_onRayCastFrameEnd`, `_deleteAllRayHelpers` and `_toggleAllRayDebugHelpers`
   are removed from `_dbg__Raycast.ts`. The public `deleteAllRayHelpers()` wrapper stays and forwards
   to `_clearRayHelpers()`.
 

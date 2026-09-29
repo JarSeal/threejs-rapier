@@ -4,6 +4,41 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-09-29 — ray-casting-refactoring
+
+### Engine 2.2.0 (Morning)
+
+**Added**
+
+- `castRayFromDirection(objects, origin, direction, opts?)` (what `castRayFromPoints` used to do).
+- `RayCastOpts` (exported): `near`, `far`, `target`, `perIntersect` (return `false` to stop), `countInStats` and `debug` (`RayDebugOpts`: `{ id, color? }`).
+- Ray cast statistics API, now in the core (it used to live in the debug module): `setRayCastStatsEnabled`, `isRayCastStatsEnabled`, `getRayCastStats` (one reused snapshot object, rays per rendered frame) and `resetRayCastStats`.
+- `IntervalCounterStats` (`utils/stats/`): an allocation-free per-frame counter with rolling min/max and average windows.
+- `createPercentagePie()`: a pie CMP updated with `set(percentage)`.
+
+**Changed**
+
+- `castRayFromPoints(objects, from, to)` is point-to-point: `to` is the end point (it was treated as a direction), and hits beyond it are left out.
+- `near`/`far` (and the deprecated `startLength`/`endLength`) are applied by the raycaster, so they filter the returned hits too, not only the per-hit callback. A passed `target` array is cleared before it is filled.
+- The ray cast statistics count rays per rendered frame (frames skipped by the FPS limiter are no longer counted as frames).
+- The Ray cast controls tab updates its statistics from cached elements five times a second while the tab is visible, instead of re-rendering the block every frame. The max and min rows are merged into one "max / min" row per window.
+- `PercentagePieHtml` renders one element (a CSS conic gradient) instead of seven nested ones.
+- `castRayFromAngle` no longer allocates a vector per cast.
+
+**Deprecated**
+
+- The `RayCastOpts` aliases `helperId`, `helperColor`, `startLength`, `endLength`, `perIntersectFn` and `optionalTargetArr` (use `debug.id`, `debug.color`, `near`, `far`, `perIntersect` and `target`).
+- `PercentagePieHtml`'s `size` option (it has no effect).
+
+**Removed**
+
+- `countRayCastFrames` and `cleanUpRayHelpers` (internal plumbing).
+
+**Fixed**
+
+- `PercentagePieHtml` joined extra classes with a comma.
+- The ray helper cleanup ran once per ECS world each frame instead of once.
+
 ## 2026-09-29 — spatial-index-system-visualizer
 
 ### Engine 2.1.0 (Morning)

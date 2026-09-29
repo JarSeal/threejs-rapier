@@ -1,9 +1,11 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Refactor, Debugger
 Blocks: p141_ray-debug-line-helpers.md, p142_physics-ray-debugging-and-stats.md, p143_ray-cast-tester-windows.md
 Related: \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will change how the Ray Cast tab is built), p220_stats-profiler-mega-window.md (still a prompt in `docs/templates/todo-plan-prompts.txt`; consumes the stats API defined here), \_DONE_p061_add-undo-history-action-recording-to-debugger-tools.md (§2.2 classifies the Ray Cast settings as no-undo)
 
 # Refactor Ray Casting — Plan
+
+> Implemented in engine 2.2.0. §8 lists where the code differs from the design below.
 
 The Three.js ray casting module (`src/_engine/core/Raycast.ts` + `src/_engine/core/Debug/_dbg__Raycast.ts`)
 grew organically: a misleading API, post-hoc distance filtering, per-cast allocations, ray-count
@@ -356,3 +358,36 @@ export const resetRayCastStats = () => { … };           // existing name, now 
   A generic `registerStatsSource(id, getter)` registry can be introduced there if the profiler needs
   to enumerate sources.
 - Remove the deprecated `RayCastOpts` aliases in a later release.
+
+---
+
+## 8. Implementation notes (where the code differs from the design)
+
+- **p105 had already landed.** The stats view uses `refreshIntervalMs` (`STATS_VIEW_REFRESH_MS`,
+  200 ms), `onRefresh` and `onOpen` (its cleanup drops the cached elements) directly.
+- **The LATE_MAIN system is `rayCastFrameEndSystem` in `Raycast.ts`, on the default ECS world only.**
+  Global plugins run on every world that doesn't opt out, and LATE_MAIN runs once per world, so a
+  second world would have ended the stats frame twice. It calls the debug side's
+  `_onRayCastFrameEnd` (helper cleanup) after `endFrame`. The old debug-registered
+  `rayHelperCleanupSystem` is gone.
+- **`resetRayCastStats()` on scene enter runs outside the `IS_DEBUG_ENV` guard**, since the stats
+  are core.
+- **`IntervalCounterStats.endFrame` records the frame before checking the interval**, so the frame
+  that closes an interval belongs to it.
+- **The stats view shows `lastFrame`** ("Last frame"), not `current`: it refreshes between frames,
+  where `current` is almost always 0. The rows come from each window's `kind`, not from the window
+  order.
+- **three.js does not clear a passed result array** (`intersectObject(s)` pushes and sorts), contrary
+  to §3.1. `castPrepared` clears `target`, and the deprecated `optionalTargetArr` too, so
+  `InputPicking.ts` no longer clears it itself.
+- **`perIntersectFn` got a deprecated alias** (for `perIntersect`); §3.1 didn't list one.
+- **Aliases are resolved inline in `castPrepared`** with `??`. Only `helperId`/`helperColor` go
+  through `resolveDebugOpts`, which fills one reused object. The deprecated `startLength`/`endLength`
+  keep "0 = not set", and they now filter the returned hits too, not only the callback.
+- **`RayDebugOpts` lives in `core/RayDebugTypes.ts`** (the type-only module p141 widens) and is
+  re-exported from `Raycast.ts`.
+- **The debug hook gets no hit distance yet** (`_drawRayHelper(origin, direction, far, debug)`); p141
+  adds it with the new helper renderer.
+- **`PercentagePieHtml`'s `size` option is kept as a deprecated no-op** instead of being removed, so
+  the change stays non-breaking.
+- **Removed exports:** `countRayCastFrames` and `cleanUpRayHelpers` (engine-internal plumbing).

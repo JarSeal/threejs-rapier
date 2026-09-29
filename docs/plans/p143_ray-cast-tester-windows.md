@@ -1,11 +1,11 @@
 Status: draft | not-implemented
 Category: Debugger
-Blocked by: p140_refactor-ray-casting.md, p141_ray-debug-line-helpers.md, p142_physics-ray-debugging-and-stats.md (the Three.js tester only needs p140 + p141)
+Blocked by: p141_ray-debug-line-helpers.md, p142_physics-ray-debugging-and-stats.md (the Three.js tester only needs p141)
 Related: \_DONE_p105_refactor-debugger-drawer-tab-creation.md (edit windows are out of its scope), p150_current-entity-data-source-info-on-edit-windows.md
 
 # Ray Cast Tester Windows — Plan
 
-Part of the ray casting plan set (index: `p140_refactor-ray-casting.md` §1.1). This plan adds two
+Part of the ray casting plan set (index: `_DONE_p140_refactor-ray-casting.md` §1.1). This plan adds two
 buttons to the Ray Cast Controls tab. They open two draggable debug windows: a **Three.js ray
 tester** and a **physics ray tester**. Each lets you configure a ray, cast it into the current scene
 with a **Fire** button, see it with a debug helper (p141), and read the hits. The parameters are

@@ -1,12 +1,12 @@
 Status: draft | not-implemented
 Category: Physics, Debugger, Bug fix
-Blocked by: p140_refactor-ray-casting.md, p141_ray-debug-line-helpers.md (Phase 1 of this plan is not blocked and can land first)
+Blocked by: p141_ray-debug-line-helpers.md (Phase 1 of this plan is not blocked and can land first)
 Blocks: p143_ray-cast-tester-windows.md
 Related: \_DONE_p027_physics-api-stats-tracker.md (same opt-in stats philosophy), p068_character-debug-gizmos.md (lists a "character floor ray gizmo"), \_DONE_p100_small-bug-fixes-and-tweaks.md (was considered as a home for Phase 1; it shipped without it)
 
 # Physics Ray Debugging and Stats — Plan
 
-Part of the ray casting plan set (index: `p140_refactor-ray-casting.md` §1.1). Physics queries
+Part of the ray casting plan set (index: `_DONE_p140_refactor-ray-casting.md` §1.1). Physics queries
 (`castRay`, `castRayAndGetNormal`, `intersectionsWithRay`, `castShape`) have no statistics and no
 visual helpers, and two of them are broken in `WORKER_THREAD` mode. This plan:
 - fixes those bugs;
