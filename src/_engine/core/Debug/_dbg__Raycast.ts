@@ -1,25 +1,15 @@
-import * as THREE from 'three/webgpu';
 import { CMP, type TCMP } from '../../utils/CMP';
 import { IS_DEBUG_ENV } from '../Config';
-import { createLines, writePolyline, type LineObject } from '../LineManager';
 import { createDebuggerTab, updateDebuggerTab } from '../../debug/DebuggerGUI';
 import { createPercentagePie, type PercentagePie } from '../../utils/UI/PercentagePieHtml';
 import type { IntervalWindowSnapshot } from '../../utils/stats/IntervalCounterStats';
-import type { RayDebugOpts } from '../RayDebugTypes';
 import { getRayCastStats, isRayCastStatsEnabled, setRayCastStatsEnabled } from '../Raycast';
+import { setRayHelperSettings } from './_dbg__RayHelpers';
 
-const DEFAULT_HELPER_COLOR = '#ff0000';
-const DEFAULT_MAX_HELPER_LENGTH = 1000;
 const LS_KEY = 'debugRayCast';
 const TAB_ID = 'rayCastControls';
 /** How often the open tab writes the stats values into its view */
 const STATS_VIEW_REFRESH_MS = 200;
-/** One single-segment line per helper id, refilled on every draw. */
-const rayHelpers = new Map<string, { line: LineObject; color: THREE.ColorRepresentation }>();
-/** Helper ids drawn since the last cleanup; the rest are disposed by it. */
-const drawnHelperIds = new Set<string>();
-const rayEnd = new THREE.Vector3();
-const rayPoints: THREE.Vector3Like[] = [rayEnd, rayEnd];
 const rayCastState = {
   showAllRayDebugHelpers: false,
   enableRayStatistics: false,
@@ -28,69 +18,10 @@ const rayCastState = {
 export const _initRayCastingDebugger = () => {
   if (IS_DEBUG_ENV) {
     createDebugControls();
-    // The persisted toggle is hydrated by createDebuggerTab
+    // The persisted toggles are hydrated by createDebuggerTab
     setRayCastStatsEnabled(rayCastState.enableRayStatistics);
+    setRayHelperSettings('THREE', { show: rayCastState.showAllRayDebugHelpers });
   }
-};
-
-export const _drawRayHelper = (
-  origin: THREE.Vector3,
-  direction: THREE.Vector3,
-  far: number,
-  { id: helperId, color: helperColor }: RayDebugOpts
-) => {
-  if (!rayCastState.showAllRayDebugHelpers) return;
-
-  const color = helperColor || DEFAULT_HELPER_COLOR;
-  let helper = rayHelpers.get(helperId);
-  if (!helper) {
-    helper = {
-      line: createLines({
-        name: `rayHelper_${helperId}`,
-        capacity: 1,
-        growth: 'FIXED',
-        color,
-        // This module disposes them (cleanup, deleteAllRayHelpers), not the scene switch
-        persistent: true,
-      }),
-      color,
-    };
-    rayHelpers.set(helperId, helper);
-  } else if (helper.color !== color) {
-    helper.color = color;
-    helper.line.setColor(color);
-  }
-
-  rayEnd
-    .copy(direction)
-    .multiplyScalar(Number.isFinite(far) ? far : DEFAULT_MAX_HELPER_LENGTH)
-    .add(origin);
-  rayPoints[0] = origin;
-  writePolyline(helper.line.beginWrite(), rayPoints);
-  helper.line.endWrite();
-  drawnHelperIds.add(helperId);
-};
-
-/** Once per rendered frame (Raycast.ts's LATE_MAIN frame end, after the stats frame has ended):
- * disposes the helpers of rays that weren't cast this frame, and refreshes the stats view. */
-export const _onRayCastFrameEnd = () => {
-  for (const [helperId, helper] of rayHelpers) {
-    if (drawnHelperIds.has(helperId)) continue;
-    helper.line.dispose();
-    rayHelpers.delete(helperId);
-  }
-  drawnHelperIds.clear();
-};
-
-export const _deleteAllRayHelpers = () => {
-  for (const helper of rayHelpers.values()) helper.line.dispose();
-  rayHelpers.clear();
-  drawnHelperIds.clear();
-};
-
-export const _toggleAllRayDebugHelpers = (show?: boolean) => {
-  rayCastState.showAllRayDebugHelpers = show ?? !rayCastState.showAllRayDebugHelpers;
-  updateDebuggerTab(TAB_ID);
 };
 
 const createDebugControls = () => {
@@ -111,7 +42,13 @@ const createDebugControls = () => {
       {
         pane: true,
         content: [
-          { key: 'showAllRayDebugHelpers', label: 'Show ray cast helpers' },
+          {
+            key: 'showAllRayDebugHelpers',
+            label: 'Show ray cast helpers',
+            onChange: () => {
+              setRayHelperSettings('THREE', { show: rayCastState.showAllRayDebugHelpers });
+            },
+          },
           {
             key: 'enableRayStatistics',
             label: 'Enable ray cast statistics',

@@ -9,7 +9,7 @@ import { DEFAULT_ECS_WORLD_ID, ECSWorld } from './ECS';
 import { ECSSystemStage } from '../../AppECSRegistry';
 import type { RayDebugOpts } from './RayDebugTypes';
 
-export type { RayDebugOpts } from './RayDebugTypes';
+export type { RayDebugOpts, RayHelperKind } from './RayDebugTypes';
 
 /**
  * Options of the `castRayFrom*` functions. The deprecated aliases (helperId, helperColor,
@@ -106,9 +106,19 @@ const castPrepared = <TIntersected extends THREE.Object3D>(
     }
   }
   if (statsEnabled && opts?.countInStats !== false) stats.add();
-  const debug = opts && resolveDebugOpts(opts);
-  if (debug) {
-    useDebug(debugGUI)?._drawRayHelper(raycaster.ray.origin, raycaster.ray.direction, far, debug);
+  // Every cast, with or without debug options: rays without an id are drawn when the Three.js
+  // helpers show anonymous rays
+  const helpers = useDebug(rayHelpers);
+  if (helpers) {
+    helpers._drawRay(
+      'THREE',
+      raycaster.ray.origin,
+      raycaster.ray.direction,
+      far,
+      intersects.length ? intersects[0].distance : null,
+      opts && resolveDebugOpts(opts),
+      performance.now()
+    );
   }
   return intersects;
 };
@@ -243,10 +253,11 @@ export const resetRayCastStats = () => {
 };
 
 /** Once per rendered frame (LATE_MAIN, after rendering): ends the stats frame, then runs the
- * debug side's frame end (helper cleanup). */
+ * debug helpers' update pass (hold, fade out, recycle). */
 const rayCastFrameEndSystem = () => {
-  if (statsEnabled) stats.endFrame(performance.now());
-  useDebug(debugGUI)?._onRayCastFrameEnd();
+  const now = performance.now();
+  if (statsEnabled) stats.endFrame(now);
+  useDebug(rayHelpers)?._updateRayHelpers(now);
 };
 
 ECSWorld.registerPlugin((world) => {
@@ -257,14 +268,20 @@ ECSWorld.registerPlugin((world) => {
 
 // Debug
 type RaycastGUIModule = typeof import('../core/Debug/_dbg__Raycast');
+type RayHelpersModule = typeof import('../core/Debug/_dbg__RayHelpers');
 let debugGUI: DebugModuleRef<RaycastGUIModule> | null = null;
+let rayHelpers: DebugModuleRef<RayHelpersModule> | null = null;
 
-/** Loads the ray cast debug module (debug env only). */
+/** Loads the ray cast debug modules: the tab and the helper renderer (debug env only). */
 export const registerRaycastDebugGUI = async () => {
-  debugGUI = await loadDebugModuleAsync(() => import('../core/Debug/_dbg__Raycast'));
+  [debugGUI, rayHelpers] = await Promise.all([
+    loadDebugModuleAsync(() => import('../core/Debug/_dbg__Raycast')),
+    loadDebugModuleAsync(() => import('../core/Debug/_dbg__RayHelpers')),
+  ]);
 };
 
-/** Disposes every ray debug helper. The scene loader calls it on every scene exit. */
+/** Hides every ray debug helper (they are pooled, not disposed). The scene loader calls it on
+ * every scene exit. */
 export const deleteAllRayHelpers = () => {
-  useDebug(debugGUI)?._deleteAllRayHelpers();
+  useDebug(rayHelpers)?._clearRayHelpers();
 };
