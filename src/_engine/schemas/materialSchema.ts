@@ -18,6 +18,13 @@ const MaterialOverridesSchema = z.object({
 
 export type MaterialOverrides = z.infer<typeof MaterialOverridesSchema>;
 
+/** Per-mesh material overrides (mesh `matOverrides`), see getMaterialVariant */
+export const MaterialVariantOverridesSchema = z.object({
+  params: ThreeJsParamsSchema.optional(),
+  staticDefines: z.record(z.string(), z.any()).optional(),
+  nodes: z.record(z.string(), TslNodeInputsSchema).optional(),
+});
+
 const MaterailBaseProps = z.object({
   // Common props
   id: z.string({ error: "Material 'id' key is required." }),

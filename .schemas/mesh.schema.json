@@ -897,6 +897,39 @@
             }
           ]
         },
+        "matOverrides": {
+          "type": "object",
+          "properties": {
+            "params": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "staticDefines": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "nodes": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "castShadow": {
           "type": "boolean"
         },
@@ -1936,6 +1969,39 @@
                   "type": "string"
                 }
               ]
+            },
+            "matOverrides": {
+              "type": "object",
+              "properties": {
+                "params": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "staticDefines": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "nodes": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                }
+              },
+              "additionalProperties": false
             },
             "castShadow": {
               "type": "boolean"

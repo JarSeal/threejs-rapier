@@ -233,6 +233,12 @@ export const lookAtSystem = (world: ECSWorld) => {
       const targetSlot = transformStore.getSlot(link.targetId);
       if (slot === -1 || targetSlot === -1) continue;
 
+      // Aim from the current position, not the Object3D's (possibly not yet synced) one
+      objComp.value.position.set(
+        transformStore.posX[slot],
+        transformStore.posY[slot],
+        transformStore.posZ[slot]
+      );
       objComp.value.lookAt(
         transformStore.posX[targetSlot],
         transformStore.posY[targetSlot],
@@ -246,6 +252,13 @@ export const lookAtSystem = (world: ECSWorld) => {
     const targetTransform = world.getComponent(link.targetId, ComponentType.TRANSFORM);
 
     if (transform && targetTransform) {
+      // Sync a pending position/scale change first: lookAt must aim from the current position,
+      // and marking the version synced below would otherwise make object3DSyncSystem skip it
+      // (a moved light would never move)
+      if (objComp._lastVersion !== transform.version) {
+        objComp.value.position.copy(transform.position);
+        objComp.value.scale.copy(transform.scale);
+      }
       objComp.value.lookAt(targetTransform.position);
       transform.quaternion.copy(objComp.value.quaternion);
       transform.setDirty();
