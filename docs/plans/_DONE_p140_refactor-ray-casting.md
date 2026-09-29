@@ -1,6 +1,6 @@
 Status: implemented
 Category: Refactor, Debugger
-Blocks: \_DONE_p141_ray-debug-line-helpers.md, \_DONE_p142_physics-ray-debugging-and-stats.md, p143_ray-cast-tester-windows.md
+Blocks: \_DONE_p141_ray-debug-line-helpers.md, \_DONE_p142_physics-ray-debugging-and-stats.md, \_DONE_p143_ray-cast-tester-windows.md
 Related: \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will change how the Ray Cast tab is built), p220_stats-profiler-mega-window.md (still a prompt in `docs/templates/todo-plan-prompts.txt`; consumes the stats API defined here), \_DONE_p061_add-undo-history-action-recording-to-debugger-tools.md (§2.2 classifies the Ray Cast settings as no-undo)
 
 # Refactor Ray Casting — Plan
@@ -36,7 +36,7 @@ different subsystem (line renderer, physics query API, debug windows) and can be
 | **p140** (this) | Three.js raycast API cleanup, stats util + stats API, Percentage pie, cheap stats view | 1 |
 | \_DONE_p141_ray-debug-line-helpers.md | Opt-in dashes for the FAT line backend; shared, pooled, fading thick-line ray helpers with active/inactive styles; helper settings + per-kind colors in the tab | 2 |
 | \_DONE_p142_physics-ray-debugging-and-stats.md | Fix two worker-mode query bugs; physics-owned ray instrumentation (stats + helpers); "Physics rays" section in the tab | 3 |
-| p143_ray-cast-tester-windows.md | Three.js and physics ray tester draggable windows, per-scene localStorage params, multi-ray-ready state | 4 |
+| \_DONE_p143_ray-cast-tester-windows.md | Three.js and physics ray tester draggable windows, per-scene localStorage params, multi-ray-ready state | 4 |
 
 ### 1.2 Ownership decision (physics rays)
 

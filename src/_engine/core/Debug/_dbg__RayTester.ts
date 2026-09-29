@@ -7,6 +7,7 @@ import {
 } from '../../debug/DebuggerGUI';
 import { _buildDebuggerPane, type BuiltDebuggerPane } from './_dbg__DebuggerPaneBuilder';
 import {
+  addOnCloseToWindow,
   closeDraggableWindow,
   getDraggableWindow,
   openDraggableWindow,
@@ -24,6 +25,8 @@ import {
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { confirmClearScope, createClearLSButton } from './_dbg__ClearLSButtons';
 import { getActiveCamera } from '../CameraManager';
+import { getCanvasElem } from '../Renderer';
+import { createMouseBinding, deleteMouseBinding } from '../Input/MouseInput';
 import { getECSWorld, getEntityIdByAppId } from '../ECS';
 import { CoreComponentType } from '../ECS/ECSRegistry';
 import { castRayFromDirection, castRayFromPoints, type RayCastOpts } from '../Raycast';
@@ -53,6 +56,9 @@ import { _setRayHelpersShown } from './_dbg__Raycast';
  *
  * The params are saved per scene (LS_KEY, on every committed change) and each window shows the
  * current scene's. The results are not saved: a scene enter clears them.
+ *
+ * The origin and the target point can be picked with a click on the scene (a one-shot mouse
+ * binding, Esc or a second press cancels it).
  */
 
 type AnyState = Record<string, unknown>;
@@ -284,6 +290,7 @@ let physicsFireSerial = 0;
 /** The mounted views (stale while a window is closed: they are only written to) */
 const resultsViews: Partial<Record<RayTesterKind, TCMP>> = {};
 const helperNotices: Partial<Record<RayTesterKind, TCMP>> = {};
+const pickStatusViews: Partial<Record<RayTesterKind, TCMP>> = {};
 const paneRefreshers: Partial<Record<RayTesterKind, () => void>> = {};
 
 // ----------------------------------------------------------------------------
@@ -295,6 +302,7 @@ export const _toggleRayTesterWindow = (kind: RayTesterKind) => {
   const id = WINDOW_IDS[kind];
   if (getDraggableWindow(id)?.isOpen) {
     closeDraggableWindow(id);
+    cancelPickFor(kind);
     return;
   }
   openDraggableWindow({
@@ -348,6 +356,16 @@ const createTesterContent = <P extends AimedRay>(
   const container = CMP({ class: 'rayTesterWindow' });
   container.add(createToolbar(kind));
   container.add(createHelperNotice(kind));
+  pickStatusViews[kind] = container.add({
+    class: ['winPaddedContent', 'rayTesterPickStatus'],
+    // A text CMP, so syncPickStatus can updateText it
+    text: '',
+  });
+  syncPickStatus(kind);
+  // A pick armed for the previous content would write into a replaced params object
+  cancelPickFor(kind);
+  // After the window state exists (a window restored from LS has no onClose of its own)
+  queueMicrotask(() => addOnCloseToWindow(WINDOW_IDS[kind], () => cancelPickFor(kind)));
 
   let built: BuiltDebuggerPane | null = null;
   const refreshPane = () => built?.refresh();
@@ -409,30 +427,55 @@ const persistOnCommit = <S extends object>(
 
 /** The aim bindings every kind has. `onEdited` runs after a non-binding edit (a button). */
 const aimItems = (
+  kind: RayTesterKind,
   ray: AimedRay,
   refreshPane: () => void,
   onEdited: () => void
-): DebuggerPaneItem<AimedRay>[] => [
-  { key: 'aim.mode', label: 'Aim', options: AIM_MODE_OPTIONS, onChange: refreshPane },
-  { key: 'origin', label: 'Origin', hidden: () => ray.aim.mode === 'CAMERA_FORWARD' },
-  {
-    type: 'button',
-    title: 'Set origin from active camera',
-    hidden: () => ray.aim.mode === 'CAMERA_FORWARD',
-    onClick: () => {
-      const camera = getActiveCamera();
-      if (!camera) return;
-      const pos = camera.getWorldPosition(scratchVec);
-      ray.origin.x = pos.x;
-      ray.origin.y = pos.y;
-      ray.origin.z = pos.z;
-      refreshPane();
-      onEdited();
+): DebuggerPaneItem<AimedRay>[] => {
+  const onPicked = () => {
+    refreshPane();
+    onEdited();
+  };
+  return [
+    { key: 'aim.mode', label: 'Aim', options: AIM_MODE_OPTIONS, onChange: refreshPane },
+    { key: 'origin', label: 'Origin', hidden: () => ray.aim.mode === 'CAMERA_FORWARD' },
+    {
+      type: 'button',
+      title: 'Set origin from active camera',
+      hidden: () => ray.aim.mode === 'CAMERA_FORWARD',
+      onClick: () => {
+        const camera = getActiveCamera();
+        if (!camera) return;
+        const pos = camera.getWorldPosition(scratchVec);
+        ray.origin.x = pos.x;
+        ray.origin.y = pos.y;
+        ray.origin.z = pos.z;
+        refreshPane();
+        onEdited();
+      },
     },
-  },
-  { key: 'aim.dir', label: 'Direction', hidden: () => ray.aim.mode !== 'DIRECTION' },
-  { key: 'aim.point', label: 'Target point', hidden: () => ray.aim.mode !== 'TARGET_POINT' },
-];
+    {
+      type: 'button',
+      title: 'Pick origin (click the scene)',
+      hidden: () => ray.aim.mode === 'CAMERA_FORWARD',
+      onClick: () => togglePick(kind, 'ORIGIN', ray, onPicked),
+    },
+    { key: 'aim.dir', label: 'Direction', hidden: () => ray.aim.mode !== 'DIRECTION' },
+    {
+      type: 'button',
+      title: 'Aim at a picked point',
+      hidden: () => ray.aim.mode !== 'DIRECTION',
+      onClick: () => togglePick(kind, 'TARGET', ray, onPicked),
+    },
+    { key: 'aim.point', label: 'Target point', hidden: () => ray.aim.mode !== 'TARGET_POINT' },
+    {
+      type: 'button',
+      title: 'Pick target point (click the scene)',
+      hidden: () => ray.aim.mode !== 'TARGET_POINT',
+      onClick: () => togglePick(kind, 'TARGET', ray, onPicked),
+    },
+  ];
+};
 
 const helperFolder = (): DebuggerPaneItem<{ helper: RayTesterHelperParams }> => ({
   type: 'folder',
@@ -500,7 +543,7 @@ const threePaneItems = (
 ): DebuggerPaneItem<ThreeRayParams>[] => [
   { type: 'button', title: 'Fire', onClick: fireThreeRays },
   { type: 'separator' },
-  ...aimItems(ray, refreshPane, () => persistTesterState('THREE')),
+  ...aimItems('THREE', ray, refreshPane, () => persistTesterState('THREE')),
   { key: 'near', label: 'Near', min: 0, step: 0.1 },
   { key: 'far', label: 'Far', min: 0, step: 0.1 },
   { key: 'recursive', label: 'Recursive' },
@@ -662,7 +705,7 @@ const physicsPaneItems = (
   },
   { type: 'separator' },
   { key: 'query', label: 'Query', options: PHYSICS_QUERY_OPTIONS },
-  ...aimItems(ray, refreshPane, () => persistTesterState('PHYSICS')),
+  ...aimItems('PHYSICS', ray, refreshPane, () => persistTesterState('PHYSICS')),
   { key: 'maxToi', label: 'Max toi', min: 0, step: 0.1 },
   { key: 'solid', label: 'Solid' },
   {
@@ -862,6 +905,107 @@ const addPhysicsHitRow = (list: TCMP, hit: PhysicsHitRow, index: number) => {
 };
 
 // ----------------------------------------------------------------------------
+// Picking with the mouse
+// ----------------------------------------------------------------------------
+
+/** ORIGIN writes the origin. TARGET writes the target point, or in DIRECTION mode aims the
+ * direction at the picked point. */
+type PickField = 'ORIGIN' | 'TARGET';
+type ArmedPick = { kind: RayTesterKind; field: PickField; ray: AimedRay; onPicked: () => void };
+
+const PICK_BINDING_ID = 'debugRayTesterPick';
+/** At most one pick is armed, across both windows */
+let armedPick: ArmedPick | null = null;
+let cursorBeforePick = '';
+
+/**
+ * Arms a one-shot pick: the next left click on the scene (not a drag) writes the hit point
+ * into the ray. Pressing the same button again cancels it, another pick button re-arms. It
+ * picks on the rendered scene (collectSceneTargets), for the physics tester too, and uses the
+ * active camera, so it works with the debug camera.
+ */
+const togglePick = (kind: RayTesterKind, field: PickField, ray: AimedRay, onPicked: () => void) => {
+  const isSame = armedPick?.kind === kind && armedPick.field === field;
+  cancelPick();
+  if (isSame) return;
+  armedPick = { kind, field, ray, onPicked };
+  createMouseBinding({
+    id: PICK_BINDING_ID,
+    type: 'MOUSE_CLICK',
+    button: 'LEFT',
+    name: 'Ray tester pick',
+    targets: collectSceneTargets,
+    enabledInDebugCam: 'ENABLED_IN_DEBUG',
+    fn: (_e, hit) => completePick(hit.point),
+  });
+  // Capture phase: while a pick is armed, Esc is the pick's only
+  window.addEventListener('keydown', onPickKeyDown, true);
+  const canvas = getCanvasElem();
+  cursorBeforePick = canvas.style.cursor;
+  canvas.style.cursor = 'crosshair';
+  syncPickStatus(kind);
+};
+
+const completePick = (point: THREE.Vector3) => {
+  if (!armedPick) return;
+  const { field, ray, onPicked } = armedPick;
+  if (field === 'ORIGIN') {
+    ray.origin.x = point.x;
+    ray.origin.y = point.y;
+    ray.origin.z = point.z;
+  } else if (ray.aim.mode === 'DIRECTION') {
+    const dir = scratchVec.set(point.x, point.y, point.z).sub(ray.origin);
+    // Picking the origin itself leaves the direction as it was
+    if (dir.lengthSq() > 0) {
+      dir.normalize();
+      ray.aim.dir.x = dir.x;
+      ray.aim.dir.y = dir.y;
+      ray.aim.dir.z = dir.z;
+    }
+  } else {
+    ray.aim.point.x = point.x;
+    ray.aim.point.y = point.y;
+    ray.aim.point.z = point.z;
+  }
+  cancelPick();
+  onPicked();
+};
+
+const cancelPick = () => {
+  if (!armedPick) return;
+  const { kind } = armedPick;
+  armedPick = null;
+  deleteMouseBinding(PICK_BINDING_ID);
+  window.removeEventListener('keydown', onPickKeyDown, true);
+  getCanvasElem().style.cursor = cursorBeforePick;
+  syncPickStatus(kind);
+};
+
+const cancelPickFor = (kind: RayTesterKind) => {
+  if (armedPick?.kind === kind) cancelPick();
+};
+
+const onPickKeyDown = (e: KeyboardEvent) => {
+  if (e.key !== 'Escape') return;
+  e.stopPropagation();
+  cancelPick();
+};
+
+const PICK_STATUS_TEXTS: Record<PickField, string> = {
+  ORIGIN: 'Click the scene to pick the origin (Esc cancels)',
+  TARGET: 'Click the scene to pick the target point (Esc cancels)',
+};
+
+/** Shows what the armed pick waits for, in its window only. */
+const syncPickStatus = (kind: RayTesterKind) => {
+  const view = pickStatusViews[kind];
+  if (!view) return;
+  const field = armedPick?.kind === kind ? armedPick.field : null;
+  view.updateText(field ? PICK_STATUS_TEXTS[field] : '');
+  view.updateStyle({ display: field ? '' : 'none' });
+};
+
+// ----------------------------------------------------------------------------
 // Per-scene persistence
 // ----------------------------------------------------------------------------
 
@@ -981,6 +1125,7 @@ export const _createClearRayTestersLSButton = () =>
 /** On every scene enter: the results belong to the previous scene, and the open windows show
  * the new scene's params (getTesterState reloads them). */
 const onSceneEnter = () => {
+  cancelPick();
   threeResults = null;
   physicsResults = null;
   physicsFireSerial++;

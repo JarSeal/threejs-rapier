@@ -1,6 +1,6 @@
 Status: implemented
 Category: Physics, Debugger, Bug fix
-Blocks: p143_ray-cast-tester-windows.md
+Blocks: \_DONE_p143_ray-cast-tester-windows.md
 Related: \_DONE_p027_physics-api-stats-tracker.md (same opt-in stats philosophy), p068_character-debug-gizmos.md (lists a "character floor ray gizmo"), \_DONE_p100_small-bug-fixes-and-tweaks.md (was considered as a home for Phase 1; it shipped without it)
 
 # Physics Ray Debugging and Stats — Plan
