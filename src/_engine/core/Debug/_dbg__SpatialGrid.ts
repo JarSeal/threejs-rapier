@@ -17,8 +17,21 @@ import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 
 const LS_KEY = 'AEK_debugSpatialGrid';
 const DEFAULT_CELL_SIZE = 20;
+const VISUALIZER_DEFAULT_COLOR = 0xff0000;
 
-type LSData = { cellSize: number };
+type LSData = { cellSize: number; visualizerEnabled: boolean; visualizerColor: number };
+const DEFAULT_LS_DATA: LSData = {
+  cellSize: DEFAULT_CELL_SIZE,
+  visualizerEnabled: false,
+  visualizerColor: VISUALIZER_DEFAULT_COLOR,
+};
+
+// Merged over the defaults: saves from before the visualizer existed only hold cellSize.
+const readLSData = (): LSData => ({ ...DEFAULT_LS_DATA, ...(lsGetItem(LS_KEY, {}) as LSData) });
+
+// Read-merge-write, so saving one field neither drops the others nor brings back values
+// that the "clear tab" button removed.
+const saveLSData = (patch: Partial<LSData>) => lsSetItem(LS_KEY, { ...readLSData(), ...patch });
 
 /**
  * Debug-only occupancy histogram: how many members each occupied cell
@@ -57,16 +70,27 @@ function formatOccupancyHistogram(counts: number[]): string {
 // flag the refill system reads, so nothing is recreated per toggle.
 
 const VISUALIZER_LINE_ID = 'SPATIAL_GRID_DEBUG_VISUALIZER';
-const VISUALIZER_DEFAULT_COLOR = 0xff0000;
 // Ceiling for the FIXED line buffer. Occupied cells are bounded only by maxEntities
 // (100k by default), far too much to pre-allocate for a debug overlay; past this the line
 // drops the extra boxes and warns once.
 const VISUALIZER_MAX_CELLS = 4096;
 
 let visualizerLine: LineObject | null = null;
-const visualizerEnabled = false;
+let visualizerEnabled = false;
+let visualizerColor = VISUALIZER_DEFAULT_COLOR;
 let cellBounds = new Float32Array(VISUALIZER_MAX_CELLS * 6);
 const scratchBox = new THREE.Box3();
+
+const setVisualizerEnabled = (enabled: boolean) => {
+  visualizerEnabled = enabled;
+  visualizerLine?.setVisible(enabled);
+};
+
+/** A uniform write — no geometry rebuild. */
+const setVisualizerColor = (color: number) => {
+  visualizerColor = color;
+  visualizerLine?.setColor(color);
+};
 
 /** Refills the wireframe from the grid's last rebuild. LATE_MAIN, so after the
  * APP_POST_PHYSICS rebuild. Only the default world is drawn — there is one line. */
@@ -93,18 +117,18 @@ const spatialGridVisualizerSystem = (world: ECSWorld) => {
   visualizerLine.endWrite();
 };
 
-const initSpatialGridVisualizer = () => {
+const initSpatialGridVisualizer = (saved: LSData) => {
   visualizerLine = createLines({
     id: VISUALIZER_LINE_ID,
     capacity: VISUALIZER_MAX_CELLS * BOX_EDGE_SEGMENT_COUNT,
     growth: 'FIXED',
     // Up to 12 segments per occupied cell; instanced quads would cost far more than 1px lines.
     backend: 'THIN',
-    color: VISUALIZER_DEFAULT_COLOR,
     // Created once and outlives scenes, so a scene switch must not dispose it.
     persistent: true,
-    visible: false,
   });
+  setVisualizerColor(saved.visualizerColor);
+  setVisualizerEnabled(saved.visualizerEnabled);
 
   ECSWorld.registerPlugin((world) => {
     world.addSystem(
@@ -117,12 +141,12 @@ const initSpatialGridVisualizer = () => {
 
 export const _createSpatialGridDebugGUI = () => {
   const world = getECSWorld();
-  const savedLSData = lsGetItem(LS_KEY, { cellSize: DEFAULT_CELL_SIZE }) as LSData;
+  const savedLSData = readLSData();
   if (savedLSData.cellSize !== DEFAULT_CELL_SIZE) {
     setSpatialGridCellSize(world, savedLSData.cellSize);
   }
 
-  initSpatialGridVisualizer();
+  initSpatialGridVisualizer(savedLSData);
 
   const icon = getSvgIcon('spatialGrid');
   createDebuggerTab({
@@ -147,7 +171,7 @@ export const _createSpatialGridDebugGUI = () => {
         .addBinding(cellSizeState, 'cellSize', { label: 'Cell size', min: 0.1, step: 0.5 })
         .on('change', (ev) => {
           setSpatialGridCellSize(world, ev.value);
-          lsSetItem(LS_KEY, { cellSize: ev.value });
+          saveLSData({ cellSize: ev.value });
         });
 
       const oracleState = { enabled: isSpatialGridOracleEnabled(world) };
@@ -156,6 +180,21 @@ export const _createSpatialGridDebugGUI = () => {
           label: 'Brute-force oracle',
         })
         .on('change', (ev) => setSpatialGridOracleEnabled(world, ev.value));
+
+      const visualizerState = { enabled: visualizerEnabled, color: visualizerColor };
+      const visualizerFolder = pane.addFolder({ title: 'Visualizer', expanded: true });
+      visualizerFolder
+        .addBinding(visualizerState, 'enabled', { label: 'Show grid wireframe' })
+        .on('change', (ev) => {
+          setVisualizerEnabled(ev.value);
+          saveLSData({ visualizerEnabled: ev.value });
+        });
+      visualizerFolder
+        .addBinding(visualizerState, 'color', { label: 'Wireframe color', view: 'color' })
+        .on('change', (ev) => {
+          setVisualizerColor(ev.value);
+          saveLSData({ visualizerColor: ev.value });
+        });
 
       const statsState = {
         memberCount: 0,
