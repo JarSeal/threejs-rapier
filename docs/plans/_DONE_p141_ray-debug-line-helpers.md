@@ -1,9 +1,11 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Debugger, Lines
 Blocks: p142_physics-ray-debugging-and-stats.md, p143_ray-cast-tester-windows.md
 Related: \_DONE_p058_line-rendering-system.md (amends its "no dashed lines" non-goal)
 
 # Ray Debug Line Helpers — Plan
+
+> Implemented in engine 2.2.0. §8 lists where the code differs from the design below.
 
 Part of the ray casting plan set (index: `_DONE_p140_refactor-ray-casting.md` §1.1). Ray helpers today are
 1 px THIN lines that are disposed the first frame their ray isn't cast. A ray that is cast for a
@@ -250,3 +252,50 @@ _clearRayHelpers(kind?: RayKind): void;                           // scene exit,
 - p143's testers use long-hold helpers.
 - Possibly reuse the dashable FAT line for other debug visuals, e.g. p068 character gizmos and p125
   spatial index visualizer boundaries.
+
+---
+
+## 8. Implementation notes (where the code differs from the design)
+
+- **No TSL linear (no-perspective) varying.** It exists (`setInterpolation('linear')`), but the WebGL2
+  fallback compiles it to GLSL `noperspective`, which GLSL ES 3.00 doesn't have. The dash distance is
+  always passed as `d·w` and `w` (`varyingProperty`s `vLineDashDistanceW`/`vLineDashW`) and divided
+  per fragment. Verified on WebGPU and on the WebGL2 fallback.
+- **The dash variant is chosen per material, not per pipeline.** `LineNodeMaterial(dashable)` picks
+  one of two prebuilt vertex Fns (`buildSegmentQuadClipPosition(false | true)`); the non-dashable one
+  is the pre-p141 body unchanged. `createFatLineBackend(positions, dashable)`, and `LineBackend`
+  gained `setDash` (a no-op on THIN). `LineObject.isDashable` was added. Negative dash/gap values
+  are clamped to 0.
+- **The pattern anchors at the near-plane-trimmed start.** A segment starting behind the camera
+  (e.g. a picking ray seen from another camera) restarts its dashes at the near-plane crossing, so
+  they slide as the camera moves. Acceptable for debug helpers.
+- **Found, not fixed: on the WebGL2 fallback a FAT line crossing the near plane is mostly missing**,
+  dashed or not. `nearPlaneCrossing`'s near estimate appears to assume WebGPU's 0..1 depth range.
+  Out of scope here.
+- **The kind settings live in the renderer**, one object per kind (`getRayHelperSettings(kind)`,
+  `setRayHelperSettings(kind, patch)` in `_dbg__RayHelpers.ts`), with the §3.4 defaults for both
+  kinds already in place. Besides the tab settings they hold `hitMarkerSize` (0.3 world units, the
+  length of each hit cross segment; the plan gave no default), `maxHelperLength` (1000),
+  `maxAnonymousHelpers` (32) and `maxHelpers` (256, the plan's `maxHelpersPerKind`), which are not
+  in the tab. A settings change bumps a per-kind version and live helpers restyle on the next update
+  pass.
+- **`RayHelperKind` (`'THREE' | 'PHYSICS'`)** is exported from `core/RayDebugTypes.ts` (re-exported
+  by `Raycast.ts`) instead of a module-local `RayKind`.
+- **Every Three.js cast reports to the renderer**, not only casts with `debug`, so anonymous rays
+  can be drawn. It is a `useDebug` check and an early return while the kind is hidden.
+- **A cast applies the active style immediately** (not on the next update pass): the update pass
+  runs in LATE_MAIN, after the frame has rendered.
+- **Casts are ignored until the FAT backend has settled** (the preload starts when a kind is first
+  shown; a failed load still lets helpers draw, 1 px and solid), instead of drawing 1 px first.
+- **At the cap with no inactive helper to recycle**, a new helper is skipped (the same one-time
+  warning covers both cases).
+- **Tokens** are `index · 2^21 + castSerial`; `_updateRayHit` only updates the helper's latest cast.
+- **`_dbg__RayHelpers.ts` is loaded next to `_dbg__Raycast.ts`** in `registerRaycastDebugGUI`, and
+  the tab imports it statically for the settings (same module instance).
+- **The tab's per-kind folder is built by `helperSettingsFolder(prefix, kind, title)`** from a
+  suffix → setting table (`HELPER_SETTING_KEYS`), so p142's "Physics rays" folder is the `'physics'`
+  prefix plus one call. Every change, drag ticks included, is pushed with `setRayHelperSettings`.
+- **`showAllRayDebugHelpers` is migrated by rewriting the LS object once**, before hydration (which
+  only reads the persistKeys), to `threeShow`.
+- **The clear-tab-LS button doesn't reset the live settings**, as before p141: the defaults come
+  back on the next load.
