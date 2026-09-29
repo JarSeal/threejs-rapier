@@ -6,13 +6,6 @@ let debugGUI: DebugModuleRef<LightGUIModule> | null = null;
 export const DEBUG_CAMERA_ID = '_debugCamera';
 
 export type DebugToolsState = {
-  env: {
-    envBallFolderExpanded: boolean;
-    envBallVisible: boolean;
-    separateBallValues: boolean;
-    ballRoughness: number;
-    ballDefaultRoughness: number;
-  };
   scenesListing: {
     scenesFolderExpanded: boolean;
     useDebugStartScene: boolean;
@@ -54,13 +47,6 @@ export type DebugToolsState = {
 };
 
 const defaultDebugToolsState: DebugToolsState = {
-  env: {
-    envBallFolderExpanded: false,
-    envBallVisible: false,
-    separateBallValues: false,
-    ballRoughness: 0,
-    ballDefaultRoughness: 0,
-  },
   scenesListing: {
     scenesFolderExpanded: false,
     useDebugStartScene: false,

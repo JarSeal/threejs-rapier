@@ -45,13 +45,6 @@ let debugCamPanelProxy: DebugCamLSProps | null = null;
 
 let firstDebugToolsStateLoaded = false;
 let debugToolsState: DebugToolsState = {
-  env: {
-    envBallFolderExpanded: false,
-    envBallVisible: false,
-    separateBallValues: false,
-    ballRoughness: 0,
-    ballDefaultRoughness: 0,
-  },
   scenesListing: {
     scenesFolderExpanded: false,
     useDebugStartScene: false,
@@ -114,7 +107,7 @@ const createDebugToolsDebugGUI = () => {
     state: debugToolsState,
     // The nested objects are persisted whole (the same LS shape as before). The *FolderExpanded
     // fields in them are no longer used: folder states are in `${LS_KEY}UI`.
-    persistKeys: ['scenesListing', 'prodTestMode', 'helpers', 'env', 'axesGizmo'],
+    persistKeys: ['scenesListing', 'prodTestMode', 'helpers', 'axesGizmo'],
     // Live-refresh the Debug Camera folder from the viewport (dragging the debug camera with
     // OrbitControls): debugCameraSystem calls this only on frames where OrbitControls reported
     // a change. Unregistered on unmount, so a stale callback never runs against a disposed pane.
