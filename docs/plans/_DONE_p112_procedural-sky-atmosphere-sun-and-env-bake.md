@@ -1,6 +1,6 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Skybox, Rendering, Lights
-Blocked by: none (\_DONE_p111_skybox-core-refactor-and-layered-schema.md landed on 2026-09-29)
+Blocked by: none (\_DONE_p111_skybox-core-refactor-and-layered-schema.md)
 Blocks: p113_night-sky-and-day-night-cycle.md, p114_space-preset-and-nebula-creator.md
 Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic; Phase 0 §0.1–0.5 are the research this plan implements)
 
@@ -227,3 +227,63 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
 - Pipeline and program counts are stable over 60 s with the sun moving from the debugger (`renderer.info`).
 - A scene round trip 10×: no leaked lights, render targets or generators (`renderer.info.memory`, ECS entity count).
 - Production build: no `_dbg__*Folder` code in the main chunk. `SkyComposite` and the layers are in the main chunk, since they are production features.
+
+## Implementation notes
+
+Where the implementation differs from the plan above (2026-09-29). The code and `.claude/CLAUDE.md` ("Sky box") are the current state; these are the reasons.
+
+### Composite and env bake (DD1, DD2)
+
+- **The bake target is allocated at activation, not by the first `fromScene`.** Scene-enter activation runs while the scene is loading, and bakes never do, so the environment node needs a target before the first bake. `SkyEnvironment.ts` allocates the same target as `PMREMGenerator._allocateTarget(true)` and passes it through `{ renderTarget }`. The environment is black until the first bake, on the first frame after loading, behind the loader.
+- **Each rebuild gets a fresh bake scene.** Three disposes a scene's background mesh when the node it was built with is disposed, so a bake scene only ever holds one node. The root scene's background material belongs to three (reused across nodes) and is not disposed.
+- **The composite zeroes `scene.environmentRotation` and uses no cube-flip remap:** both are baked into the target already.
+- **`env.size` also takes 512** (sharp mirror reflections, 4× the memory of 256, about the same GPU time).
+- **`env.dynamic: false`** skips the re-bake on value changes; turning it back on re-bakes once. Changes to the env layer itself (intensities, background blur) never re-bake: none of it is baked.
+- **Layer API.** Each procedural layer module exports its defaults, `create*Uniforms`, `apply*Uniforms` and a node function; the base layer keeps prefixed names (`createBaseUniforms`, `applyBaseUniforms`, `baseNode`). All layers' uniforms are created on activation, whether the layer is on or not, so turning one on only rebuilds nodes. `getCompositeSignature` (which layers exist) decides rebuilds, instead of per-layer structural key lists.
+- **Debug tools.** "Force composite path" routes a texture base through the composite, and "Re-bake every frame" is the stress test. Both are session-only and stay until p113 Phase 2 has recorded its measurements (see p113 Phase 2).
+
+### GPU timer
+
+- **`_dbg__GPUTimer.ts` owns one inspector tap and one resolve at a time.** Every resolve replaces the timestamp pool's batch, so the PostFX profiler and the bake stats would have consumed each other's timestamps. The profiler moved onto it.
+- **Bake GPU times are WebGPU only.** Three's WebGL query pool times one context at a time, and the bake's nested passes never resolve (the resolve hangs). The bake stats hold the timer only from a bake's start until its timestamps arrive, with a 2 s timeout.
+
+### Atmosphere and sun (DD3, DD4)
+
+- **Parity with SkyMesh.** The CPU terms match SkyMesh's formulas exactly (zero error at -2°, 2°, 10°, 30°, 60° and 85°), and the rendered sky matches a temporary `SkyMesh` to 1/255 at 2°, 10°, 30°, 60° and 85° (disc off, `exposure: 1`; WebGL2/SwiftShader).
+- **SkyMesh's `sunfade`** assumes a sun position ~450,000 units away (the older `Sky`). With the unit direction the example passes it stays ~1; the port keeps that for parity.
+- **`exposure` defaults to 0.714**, 0.5 / 0.7: the renderer applies its exposure before ACES, so at the renderer's 0.7 this gives the example's 0.5. The example itself (not in `node_modules`) wasn't opened to confirm its 0.5.
+- **`nightSkyColor: 'AUTO' | colour`.** 'AUTO' keeps SkyMesh's floor (`0.1 · Fex · 0.04` plus its faint blue); a colour replaces both, seen through Fex.
+- **The disc.** SkyMesh compares the angle to the sun against 0.533° (its comment calls it the diameter; its code uses it as the radius); `discSize` scales that radius. The peak is `min(sunE · 760, discIntensity)` before the atmosphere's extinction. A custom `color` is divided by the extinction at the sun, so it's seen as given. In the env bake the disc is at least two bake texels wide and clamped to 20, and left out when the sun has a light (its halo stays).
+- **`deepMerge` merges an index object into an array by index** (`{ suns: { "0": { … } } }`, how overrides address one sun). An index object with no array under it becomes the array in `SkyBox.ts` (eg. a debug override turning suns[0] on).
+
+### Managed entities (DD5)
+
+- **The light's target gets `role: '<role>_TARGET'`**, so a lookup by role can't return it.
+- **`openDebuggerTab(id)`** (new, `debug/DebuggerGUI.ts`) for the "Open in Sky box tab" button, and **`_dbg__ManagedEntities.ts`**, where a manager's debug module registers its label, icon and tab. The Lights tab never imports the sky box's debug code.
+- **Helper visibility of managed lights is kept in memory** (session): the per-light helper choice was stored only in LS. Without a choice they follow the global toggle, which resets them. The list has no enabled toggle for them (the sky box owns it).
+
+### Sun and ambient lights (DD6, DD7)
+
+- **Colours are `'AUTO' | colour`**, like the sun's disc colour and the night sky, instead of `colorMode` + `color`. `shadowMapSize` is one number (square). The shadow camera's near and far are 0.5 and twice `distance`.
+- **A `castShadow` change re-creates the light.** With PostFX on (WebGPU, three r186), turning an existing light's shadow back on after it was off crashed the frame (`Texture "output" ... writable usage and another usage in the same synchronization scope`), while a new light with `castShadow: true` rendered fine. The exact defect in three wasn't found (headless WebGPU doesn't run on WSL2); the Lights tab still toggles the flag in place on ordinary lights and may hit the same crash.
+- **`SKYBOX_MANAGER_ID` lives in `SkyLights.ts`** (re-exported from `SkyBox.ts`), and the default shadow preset is a string literal: `LightManager` → `Scene` → `SkyBox` → `SkyLights` is an import cycle, so LightManager's enum can be unset while `SkyLights` loads.
+- **"Reset layer" re-activates the sky box when a nested object (a sun's light) changed:** setting it back key by key would fall back to the light defaults (`enabled: true`) and turn on a light the definition doesn't have.
+- **The frustum follows last frame's camera** (MAIN runs before the camera rigs), which a texel-snapped frustum doesn't show.
+
+### Clouds and ground (DD8, DD9)
+
+- **The atmosphere's output is split into parts** (`transmitted`, `inscatter`, `floor`) so the clouds can hide what they cover, as SkyMesh does; the composed colour is identical. Clouds match a temporary `SkyMesh` with clouds to 1/255 at 8° and 40° (both static).
+- **The bake's frozen cloud time** is three's `time` value at the bake (the renderer's node frame time, a private field, read with a fallback of 0).
+- **Ground.** `height` is in degrees below the horizon. With an atmosphere the ground is lit by the clouds' day factor (floored at 0.03). `useAtmosphereHorizon` defaults to true.
+
+### Verification
+
+- Done headless on WebGL2 (SwiftShader) with the `run-aekasha-js` skill; headless WebGPU loses its device on WSL2. Every phase: `yarn lint`, `yarn build`, and the debug folders only in the lazy `_dbg__SkyBox` chunk.
+- Env bake: pipeline, program, render target and texture counts flat over 60 s of per-frame bakes; back to the direct path returns to the starting counts; 20 updates in one frame make one bake.
+- Sun light: its direction matches the sun to ~1e-16; the AUTO colour warms from `#fff7e5` (60°) to `#ff5402` (0°); the fade reaches 0 at -5° with no pipeline or program change; a sub-texel camera move doesn't move the frustum; three scene round trips leave no stray lights.
+- **Not measured: bake times per size and backend.** SwiftShader timings mean nothing, so the p110 spike's numbers (~2 ms GPU per bake on an RX 7900 XT at every size) still stand. p113 Phase 2 measures the iGPU, 512, and the whole-frame cost, in a real browser.
+
+### Open
+
+- The default day sky (sun at 30°) is very pale toward the horizon, and the default ground colour (`#3b3a36`) reads as nearly black against it. Both come from SkyMesh's defaults and the p110 sketch; neither was retuned.
+- WebGPU in a real browser: the pixel checks above ran on WebGL2.

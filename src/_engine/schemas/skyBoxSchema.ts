@@ -133,7 +133,8 @@ export const SkyBoxSunLightSchema = z.object({
   /** 'AUTO': the atmosphere's extinction along the sun (warms toward the horizon; white without
    * an atmosphere). Default 'AUTO'. */
   color: AutoOrColorSchema.optional(),
-  /** Changing it rebuilds every lit material once; the sky never toggles it. Default true. */
+  /** Changing it re-creates the light (one rebuild of every lit material); the sky never
+   * toggles it to fade. Default true. */
   castShadow: z.boolean().optional(),
   /** Default 'MEDIUM'. The bias, normal bias and map size below override it. */
   shadowPreset: ShadowQualitySchema.optional(),
@@ -193,6 +194,44 @@ export const SkyBoxAmbientLightSchema = z.object({
   groundColor: AutoOrColorSchema.optional(),
 });
 
+// Clouds layer (a port of SkyMesh's; needs the atmosphere)
+
+export const SkyBoxCloudsSchema = z.object({
+  /** Default true. */
+  enabled: z.boolean().optional(),
+  /** How much of the sky they cover, 0-1. Default 0.4. */
+  coverage: z.number().min(0).max(1).optional(),
+  /** How opaque they get. Default 0.4. */
+  density: z.number().min(0).optional(),
+  /** Noise scale (smaller: bigger clouds). Default 0.0002. */
+  scale: z.number().min(0).optional(),
+  /** Drift speed. Default 0.00002. */
+  speed: z.number().min(0).optional(),
+  /** Cloud layer height, 0-1 (higher: lower and closer). Default 0.5. */
+  elevation: z.number().min(0).max(1).optional(),
+  /** Multiplies their colour. Default white. */
+  color: ColorJSONSchema.optional(),
+  /** Drift direction on the xz plane (its length scales the speed). Default [1, 1] (SkyMesh's). */
+  windDirection: z.tuple([z.number(), z.number()]).optional(),
+});
+
+// Ground layer (the sky's lower hemisphere colour; a physical ground is the game's job)
+
+export const SkyBoxGroundSchema = z.object({
+  /** Default true. */
+  enabled: z.boolean().optional(),
+  /** Default '#3b3a36'. It's also the ambient light's AUTO ground colour. */
+  color: ColorJSONSchema.optional(),
+  /** Width of the blend band below the horizon line (in view direction height). Default 0.05. */
+  horizonBlend: z.number().min(0).optional(),
+  /** Degrees the ground's horizon line sits below the horizon (eg. above a sea of clouds).
+   * Default 0. */
+  height: z.number().min(-90).max(90).optional(),
+  /** Fade toward the sky's horizon colour near the horizon (aerial perspective), with an
+   * atmosphere. Default true. */
+  useAtmosphereHorizon: z.boolean().optional(),
+});
+
 // Overrides (scene save data, and the debugger's changed values): a deep partial of the layers.
 // Zod 4 has no .deepPartial(), so each layer is spelled out. The base override is flat across
 // the base types, and can't change `type`: a type change is a different definition.
@@ -226,6 +265,8 @@ export const SkyBoxOverridesSchema = z.object({
     ])
     .optional(),
   ambientLight: SkyBoxAmbientLightSchema.partial().optional(),
+  clouds: SkyBoxCloudsSchema.partial().optional(),
+  ground: SkyBoxGroundSchema.partial().optional(),
   __meta: MetaSchema.optional(),
 });
 
@@ -233,28 +274,43 @@ export type SkyBoxOverrides = z.infer<typeof SkyBoxOverridesSchema>;
 
 // Definition
 
-/** A sky box definition as authored (JSON or code). `SkyBoxDef` (SkyBox/SkyBoxTypes.ts) is its runtime type. */
-export const SkyBoxDefSchema = z.object({
-  id: z.string(),
-  /** Whether this is the sky box its scene starts with. Without one, the first registered is. */
-  isDefault: z.boolean().optional(),
-  /** A preset to start from (p114). Accepted, but not used yet. */
-  preset: z.string().optional(),
-  base: SkyBoxBaseSchema,
-  env: SkyBoxEnvSchema.optional(),
-  atmosphere: SkyBoxAtmosphereSchema.optional(),
-  /** Only suns[0] is drawn until p114 (multiple suns); it also drives the atmosphere. */
-  suns: z.array(SkyBoxSunSchema).optional(),
-  ambientLight: SkyBoxAmbientLightSchema.optional(),
-  debugData: DebugDataSchema.optional(),
+const isLayerOn = (layer: { enabled?: boolean } | undefined) =>
+  Boolean(layer && layer.enabled !== false);
 
-  // Meta
-  $schema: z.string().optional(),
-  __sourcePath: z.string().optional(),
-  __saveData: createSaveDataSchema(
-    z.preprocess((entry) => fromLegacySkyBoxOverrides(entry) ?? entry, SkyBoxOverridesSchema)
-  ),
-});
+/** A sky box definition as authored (JSON or code). `SkyBoxDef` (SkyBox/SkyBoxTypes.ts) is its runtime type. */
+export const SkyBoxDefSchema = z
+  .object({
+    id: z.string(),
+    /** Whether this is the sky box its scene starts with. Without one, the first registered is. */
+    isDefault: z.boolean().optional(),
+    /** A preset to start from (p114). Accepted, but not used yet. */
+    preset: z.string().optional(),
+    base: SkyBoxBaseSchema,
+    env: SkyBoxEnvSchema.optional(),
+    atmosphere: SkyBoxAtmosphereSchema.optional(),
+    /** Only suns[0] is drawn until p114 (multiple suns); it also drives the atmosphere. */
+    suns: z.array(SkyBoxSunSchema).optional(),
+    ambientLight: SkyBoxAmbientLightSchema.optional(),
+    /** Needs an enabled atmosphere. */
+    clouds: SkyBoxCloudsSchema.optional(),
+    ground: SkyBoxGroundSchema.optional(),
+    debugData: DebugDataSchema.optional(),
+
+    // Meta
+    $schema: z.string().optional(),
+    __sourcePath: z.string().optional(),
+    __saveData: createSaveDataSchema(
+      z.preprocess((entry) => fromLegacySkyBoxOverrides(entry) ?? entry, SkyBoxOverridesSchema)
+    ),
+  })
+  .refine(
+    // A layer is on when its key is there, unless it says `enabled: false`
+    (def) => !isLayerOn(def.clouds) || isLayerOn(def.atmosphere),
+    {
+      error: 'Clouds need an enabled atmosphere (they are lit and seen through it).',
+      path: ['clouds'],
+    }
+  );
 
 /** A sky box asset file (or an inline sky box in scene JSON): the definition, with the legacy
  * `{ type, params }` shape converted to it first. */

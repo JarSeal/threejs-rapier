@@ -8,6 +8,7 @@ import { lsGetItem } from '../../utils/LocalAndSessionStorage';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
 import { deepMerge, isIndexObject } from '../../utils/deepMerge';
 import { ECSWorld, getECSWorld } from '../ECS';
+import { getRenderer } from '../Renderer';
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import type {
   SkyBoxBaseDef,
@@ -30,6 +31,8 @@ import {
   createSkyUniforms,
   getCompositeSignature,
   hasProceduralLayer,
+  isAtmosphereEnabled,
+  isOn,
   type SkyUniforms,
 } from './SkyComposite';
 import {
@@ -69,6 +72,8 @@ export type SkyBoxUpdate = {
   /** An array replaces the suns; an index object (`{ 0: { ... } }`) changes those entries. */
   suns?: SkyBoxOverrides['suns'];
   ambientLight?: SkyBoxOverrides['ambientLight'];
+  clouds?: SkyBoxOverrides['clouds'];
+  ground?: SkyBoxOverrides['ground'];
 };
 
 export type SkyBoxChangeReason = 'activate' | 'update' | 'clear';
@@ -262,6 +267,9 @@ const activate = async (sceneId: string, def: SkyBoxDef) => {
   const texture = await loadBaseTexture(def.base);
   if (seq !== activationSeq) return active; // Superseded by a later activation or clear
 
+  if (isOn(def.clouds) && !isAtmosphereEnabled(def) && isDebugEnvironment()) {
+    lwarn(`Sky box "${def.id}": clouds need an enabled atmosphere, they are left out.`);
+  }
   if ((def.suns?.length ?? 0) > 1 && isDebugEnvironment()) {
     lwarn(
       `Sky box "${def.id}": only suns[0] is drawn for now (p114 adds more), the others are ignored.`
@@ -430,8 +438,16 @@ ECSWorld.registerPlugin((world) => {
 function skyBoxSystem(world: ECSWorld) {
   if (world !== getECSWorld()) return;
   updateSkyLightsFrame(world);
-  if (isEnvBakeRequested() && !isCurrentlyLoading()) runRequestedEnvBake();
+  if (!isEnvBakeRequested() || isCurrentlyLoading()) return;
+  // The bake's clouds are frozen where the view's are now
+  if (active) active.uniforms.clouds.bakeTime.value = getFrameTime();
+  runRequestedEnvBake();
 }
+
+/** three's `time` node value (the renderer's node frame time, in seconds). */
+const getFrameTime = () =>
+  (getRenderer() as unknown as { _nodes?: { nodeFrame?: { time?: number } } } | undefined)?._nodes
+    ?.nodeFrame?.time ?? 0;
 
 // Debug
 

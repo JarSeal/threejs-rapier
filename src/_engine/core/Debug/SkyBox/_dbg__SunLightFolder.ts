@@ -1,33 +1,11 @@
 import type { DebuggerPaneItem } from '../../../debug/DebuggerGUI';
 import { FOUR_PX_TO_8K_LIST } from '../../../utils/constants';
 import { setSkyBoxParam, skyBoxProxy } from './_dbg__SkyBoxShared';
-import { buildAutoColorItems, numberParam } from './_dbg__LayerFolderItems';
+import { buildAutoColorItems, numberParam, tupleParams } from './_dbg__LayerFolderItems';
 
 const isOff = () => !skyBoxProxy.sunLight.enabled;
 const PRESET_OPTIONS = ['LOW', 'MEDIUM', 'HIGH', 'ULTRA'].map((value) => ({ text: value, value }));
 const MAP_SIZE_OPTIONS = FOUR_PX_TO_8K_LIST.filter((option) => option.value >= 256);
-
-/** One end of horizonFade: both ends are written as the one tuple value. */
-const horizonFadeParam = (key: 'horizonFadeStart' | 'horizonFadeEnd', label: string) => {
-  const target = skyBoxProxy.sunLight;
-  const tuple = (changed: number) =>
-    key === 'horizonFadeStart'
-      ? [changed, Number(target.horizonFadeEnd)]
-      : [Number(target.horizonFadeStart), changed];
-  return {
-    key,
-    target,
-    label,
-    min: -20,
-    max: 30,
-    step: 0.1,
-    disabled: isOff,
-    onChange: (value: unknown, e: { prev: unknown }) =>
-      setSkyBoxParam('suns.0.light.horizonFade', 'horizon fade', tuple(Number(value)), {
-        prev: tuple(Number(e.prev)),
-      }),
-  } satisfies DebuggerPaneItem;
-};
 
 /** The primary sun's managed directional light (a subfolder of the Sun folder). */
 export const buildSunLightFolder = (): DebuggerPaneItem => {
@@ -48,8 +26,12 @@ export const buildSunLightFolder = (): DebuggerPaneItem => {
       },
       param('intensity', 'Intensity', 0, 20, 0.01),
       ...buildAutoColorItems(target, 'sunLight', 'color', 'Color', isOff),
-      horizonFadeParam('horizonFadeStart', 'Fade starts (deg)'),
-      horizonFadeParam('horizonFadeEnd', 'Faded out (deg)'),
+      ...tupleParams(target, 'sunLight', 'horizonFade', ['Fade starts (deg)', 'Faded out (deg)'], {
+        min: -20,
+        max: 30,
+        step: 0.1,
+        disabled: isOff,
+      }),
       {
         key: 'castShadow',
         target,

@@ -210,23 +210,38 @@ export const atmosphereTerms = (
   return { fex, lin, cosTheta };
 };
 
-/** The atmosphere over `behind`: `behind · Fex + (inscatter + floor) · exposure`. */
-export const atmosphereNode = (
+/** The atmosphere over what's behind it, in pieces (the clouds hide some of them). */
+export type AtmosphereParts = {
+  /** What's behind, seen through the atmosphere: `behind · Fex`. */
+  transmitted: THREE.Node<'vec3'>;
+  /** The scattered light (SkyMesh's `Lin · 0.04`, tinted), plus SkyMesh's faint blue when the
+   * night floor is 'AUTO'. */
+  inscatter: THREE.Node<'vec3'>;
+  /** The night floor: SkyMesh's `L0 · 0.04`, or the custom colour through Fex. */
+  floor: THREE.Node<'vec3'>;
+};
+
+export const atmosphereParts = (
   dir: THREE.Node<'vec3'>,
   behind: THREE.Node,
   u: AtmosphereUniforms,
   terms: AtmosphereTerms
-): THREE.Node => {
+): AtmosphereParts => {
   const fex = terms.fex as THREE.Node<'vec3'>;
   const tint = mix(u.horizonTint, u.zenithTint, dir.y.clamp(0.0, 1.0));
-  const inscatter = (terms.lin as THREE.Node<'vec3'>).mul(SKY_SCALE).mul(tint);
-  const floor = mix(
-    fex.mul(NIGHT_L0 * SKY_SCALE).add(vec3(NIGHT_OFFSET.x, NIGHT_OFFSET.y, NIGHT_OFFSET.z)),
-    fex.mul(u.nightColor),
-    u.isNightCustom
+  const offset = vec3(NIGHT_OFFSET.x, NIGHT_OFFSET.y, NIGHT_OFFSET.z).mul(
+    float(1.0).sub(u.isNightCustom)
   );
-  return (behind as THREE.Node<'vec3'>).mul(fex).add(inscatter.add(floor).mul(u.exposure));
+  return {
+    transmitted: (behind as THREE.Node<'vec3'>).mul(fex),
+    inscatter: (terms.lin as THREE.Node<'vec3'>).mul(SKY_SCALE).mul(tint).add(offset),
+    floor: mix(fex.mul(NIGHT_L0 * SKY_SCALE), fex.mul(u.nightColor), u.isNightCustom),
+  };
 };
+
+/** The atmosphere's colour from its parts: `transmitted + (inscatter + floor) · exposure`. */
+export const composeAtmosphere = (parts: AtmosphereParts, u: AtmosphereUniforms) =>
+  parts.transmitted.add(parts.inscatter.add(parts.floor).mul(u.exposure));
 
 const _fex = new THREE.Vector3();
 

@@ -15,6 +15,8 @@ import { toSkyColor } from '../../SkyBox/skyColor';
 import { ATMOSPHERE_DEFAULTS } from '../../SkyBox/layers/atmosphere';
 import { SUN_DEFAULTS } from '../../SkyBox/layers/sun';
 import { AMBIENT_LIGHT_DEFAULTS, SUN_LIGHT_DEFAULTS } from '../../SkyBox/SkyLights';
+import { CLOUDS_DEFAULTS } from '../../SkyBox/layers/clouds';
+import { GROUND_DEFAULTS } from '../../SkyBox/layers/ground';
 import { SHADOW_PRESETS } from '../../LightManager';
 import {
   _recordOrCoalesceUndoRedoAction,
@@ -25,7 +27,15 @@ import {
 export const SKYBOX_TAB_ID = 'skyBoxControls';
 
 /** The layers the tab edits. p112-p114 add theirs here (and a folder file each). */
-export type SkyBoxLayerKey = 'base' | 'env' | 'atmosphere' | 'sun' | 'sunLight' | 'ambient';
+export type SkyBoxLayerKey =
+  | 'base'
+  | 'env'
+  | 'atmosphere'
+  | 'sun'
+  | 'sunLight'
+  | 'ambient'
+  | 'clouds'
+  | 'ground';
 
 /** Where each layer lives in the definition. */
 export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
@@ -35,6 +45,8 @@ export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
   sun: 'suns.0',
   sunLight: 'suns.0.light',
   ambient: 'ambientLight',
+  clouds: 'clouds',
+  ground: 'ground',
 };
 
 /** Values a definition doesn't set fall back to these (the renderer's defaults), by path. */
@@ -44,6 +56,8 @@ const DEFAULTS_TREE = {
   atmosphere: ATMOSPHERE_DEFAULTS,
   suns: [{ ...SUN_DEFAULTS, light: SUN_LIGHT_DEFAULTS }],
   ambientLight: AMBIENT_LIGHT_DEFAULTS,
+  clouds: CLOUDS_DEFAULTS,
+  ground: GROUND_DEFAULTS,
 };
 
 /** A sun light's bias, normal bias and map size default to its shadow preset's. */
@@ -161,6 +175,8 @@ export const skyBoxProxy: Record<SkyBoxLayerKey, Obj> & { select: { skyBoxId: st
   sun: {},
   sunLight: {},
   ambient: {},
+  clouds: {},
+  ground: {},
 };
 
 /** The keys a layer folder binds, synced from the active sky box (and its layer defaults). */
@@ -199,12 +215,21 @@ const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
     'shadowFollow',
   ],
   ambient: ['enabled', 'type', 'intensity'],
+  clouds: ['enabled', 'coverage', 'density', 'scale', 'speed', 'elevation'],
+  ground: ['enabled', 'horizonBlend', 'height', 'useAtmosphereHorizon'],
+};
+/** 2-tuples, bound as `${key}0` and `${key}1`. */
+const TUPLE_KEYS: Partial<Record<SkyBoxLayerKey, string[]>> = {
+  sunLight: ['horizonFade'],
+  clouds: ['windDirection'],
 };
 /** Read-only text bindings need a string, even when the definition has no value. */
 const TEXT_KEYS = new Set(['type', 'file', 'path', 'textureId', 'colorSpace']);
 /** Colour keys, bound as '#rrggbb'. */
 const COLOR_KEYS: Partial<Record<SkyBoxLayerKey, string[]>> = {
   atmosphere: ['horizonTint', 'zenithTint'],
+  clouds: ['color'],
+  ground: ['color'],
 };
 /** 'AUTO' or a colour: bound as `${key}Mode` ('AUTO' | 'CUSTOM') and `${key}` (a colour, the
  * last custom one or this fallback). */
@@ -234,6 +259,11 @@ export const syncSkyBoxProxy = () => {
     for (const key of COLOR_KEYS[layer] || []) {
       proxy[key] = toHex(getDefValue(active?.def, `${layerPath}.${key}`));
     }
+    for (const key of TUPLE_KEYS[layer] || []) {
+      const [first, second] = getDefValue(active?.def, `${layerPath}.${key}`) as [number, number];
+      proxy[`${key}0`] = first;
+      proxy[`${key}1`] = second;
+    }
     for (const [key, fallback] of Object.entries(AUTO_COLOR_KEYS[layer] || {})) {
       const value = getDefValue(active?.def, `${layerPath}.${key}`);
       proxy[`${key}Mode`] = value === 'AUTO' ? 'AUTO' : 'CUSTOM';
@@ -242,9 +272,6 @@ export const syncSkyBoxProxy = () => {
       else if (typeof proxy[key] !== 'string') proxy[key] = fallback;
     }
   }
-  const fade = getDefValue(active?.def, 'suns.0.light.horizonFade') as [number, number];
-  skyBoxProxy.sunLight.horizonFadeStart = fade[0];
-  skyBoxProxy.sunLight.horizonFadeEnd = fade[1];
   const base = active?.def.base;
   skyBoxProxy.base.fileNames = base?.type === 'CUBE_TEXTURE' ? base.fileNames.join('\n') : '';
   skyBoxProxy.base.color = base?.type === 'COLOR' ? base.color : '#000000';

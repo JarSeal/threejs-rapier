@@ -1,7 +1,7 @@
 Status: implemented (Phases 1–4, engine 3.0.0 "Zenith"; see Implementation notes for where it differs from this plan)
 Category: Skybox, Refactor
 Blocked by: none (p110's Phase 0 spike / go-no-go gate passed on 2026-09-29: go)
-Blocks: p112_procedural-sky-atmosphere-sun-and-env-bake.md, p115_debug-environment-ball-viewport.md
+Blocks: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md, p115_debug-environment-ball-viewport.md
 Related: \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed: the Skybox tab is already on `createDebuggerTab` and the pane builder)
 
 # SkyBox Core Refactor and Layered Schema — Plan

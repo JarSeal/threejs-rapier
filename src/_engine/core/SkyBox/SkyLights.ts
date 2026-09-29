@@ -9,6 +9,12 @@
  * colours and intensity. Anything else (eg. setLightEnabled from app code) is left alone. The
  * light is read from OBJECT3D on every write (the Lights tab can swap it), and `castShadow`
  * changes only when the definition changes it (it rebuilds every lit material), never to fade.
+ *
+ * A `castShadow` change re-creates the sun light instead of setting the flag: with PostFX on
+ * (WebGPU, three r186), turning a light's shadow back on after it was off crashes the frame
+ * ("Texture 'output' ... writable usage and another usage in the same synchronization scope"),
+ * while a new light with `castShadow: true` renders fine. The cost is the same one lit-material
+ * rebuild either way.
  */
 import * as THREE from 'three/webgpu';
 import { getECSWorld, type ECSWorld } from '../ECS';
@@ -21,7 +27,8 @@ import {
 } from '../LightManager';
 import { getActiveCamera } from '../CameraManager';
 import type { SkyBoxAmbientLightDef, SkyBoxDef, SkyBoxSunLightDef } from './SkyBoxTypes';
-import { isAtmosphereEnabled, isOn, type SkyUniforms } from './SkyComposite';
+import { isAtmosphereEnabled, isGroundEnabled, isOn, type SkyUniforms } from './SkyComposite';
+import { GROUND_DEFAULTS } from './layers/ground';
 import { computeInscatter } from './layers/atmosphere';
 import { toSkyColor } from './skyColor';
 
@@ -50,8 +57,6 @@ export const AMBIENT_LIGHT_DEFAULTS = {
   groundColor: 'AUTO',
 };
 
-/** The AUTO ground colour (until the ground layer supplies it, p112 Phase 5). */
-const DEFAULT_GROUND_COLOR = '#3b3a36';
 /** The shadow camera's near plane; its far plane is twice the light's distance. */
 const SHADOW_NEAR = 0.5;
 
@@ -165,9 +170,7 @@ const applySunLight = (
   }
   light.intensity = (lightDef.intensity ?? SUN_LIGHT_DEFAULTS.intensity) * fade;
 
-  const castShadow = lightDef.castShadow ?? SUN_LIGHT_DEFAULTS.castShadow;
-  if (light.castShadow !== castShadow) light.castShadow = castShadow;
-  state.castShadow = castShadow;
+  // castShadow is set at creation only (see the header: a change re-creates the light)
 
   // Shadow settings: all of them are read live by the shadow node (a map size change resizes
   // the map on its next render)
@@ -287,7 +290,11 @@ const applyAmbientLight = (
     const groundColor = ambientDef.groundColor ?? AMBIENT_LIGHT_DEFAULTS.groundColor;
     const ground = (light as THREE.HemisphereLight).groundColor;
     if (groundColor !== 'AUTO') ground.copy(toSkyColor(groundColor));
-    else ground.copy(toSkyColor(DEFAULT_GROUND_COLOR)).multiplyScalar(fade);
+    else {
+      // The ground layer's colour (its default without one), faded with the sun
+      const color = isGroundEnabled(def) ? def.ground?.color : undefined;
+      ground.copy(toSkyColor(color ?? GROUND_DEFAULTS.color)).multiplyScalar(fade);
+    }
   }
 };
 
@@ -326,11 +333,13 @@ export const syncSkyLights = (skyBoxId: string, def: SkyBoxDef, u: SkyUniforms) 
 
   const lightDef = def.suns?.[0]?.light;
   if (lightDef && isOn(lightDef)) {
-    sunLight ??= createSunLight(
-      skyBoxId,
-      lightDef.castShadow ?? SUN_LIGHT_DEFAULTS.castShadow,
-      world
-    );
+    const castShadow = lightDef.castShadow ?? SUN_LIGHT_DEFAULTS.castShadow;
+    // Also when something else changed the light's flag: never toggle it in place
+    const current = sunLight && getLight<THREE.DirectionalLight>(sunLight.entityId, world);
+    if (sunLight && (sunLight.castShadow !== castShadow || current?.castShadow !== castShadow)) {
+      deleteSunLight(world);
+    }
+    sunLight ??= createSunLight(skyBoxId, castShadow, world);
     applySunLight(sunLight, lightDef, def, u, world);
   } else {
     deleteSunLight(world);

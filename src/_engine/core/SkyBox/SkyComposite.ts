@@ -9,11 +9,24 @@ import {
 } from './layers/base';
 import {
   applyAtmosphereUniforms,
-  atmosphereNode,
+  atmosphereParts,
   atmosphereTerms,
+  composeAtmosphere,
   createAtmosphereUniforms,
   type AtmosphereUniforms,
 } from './layers/atmosphere';
+import {
+  applyCloudsUniforms,
+  cloudsNode,
+  createCloudsUniforms,
+  type CloudsUniforms,
+} from './layers/clouds';
+import {
+  applyGroundUniforms,
+  createGroundUniforms,
+  groundNode,
+  type GroundUniforms,
+} from './layers/ground';
 import {
   applySunUniforms,
   createSunUniforms,
@@ -45,6 +58,8 @@ export type SkyUniforms = {
   base: BaseUniforms;
   sun: SunUniforms;
   atmosphere: AtmosphereUniforms;
+  clouds: CloudsUniforms;
+  ground: GroundUniforms;
 };
 
 /** What the composite samples that isn't a uniform. */
@@ -63,12 +78,17 @@ export const isSunEnabled = (def: SkyBoxDef) => isOn(def.suns?.[0]);
 /** Whether suns[0] has a light: then the env bake leaves its disc out (the light gives that
  * highlight already). */
 export const isSunLightEnabled = (def: SkyBoxDef) => isOn(def.suns?.[0]?.light);
+/** Clouds need the atmosphere (the schema rejects them without one). */
+export const isCloudsEnabled = (def: SkyBoxDef) => isOn(def.clouds) && isAtmosphereEnabled(def);
+export const isGroundEnabled = (def: SkyBoxDef) => isOn(def.ground);
 
 export const createSkyUniforms = (def: SkyBoxDef): SkyUniforms => {
   const u = {
     base: createBaseUniforms(def.base, def.env),
     sun: createSunUniforms(),
     atmosphere: createAtmosphereUniforms(),
+    clouds: createCloudsUniforms(),
+    ground: createGroundUniforms(),
   };
   applySkyUniforms(u, def);
   return u;
@@ -89,14 +109,23 @@ export const applySkyUniforms = (u: SkyUniforms, def: SkyBoxDef) => {
       : null,
     def.env?.size ?? ENV_DEFAULTS.size
   );
+  applyCloudsUniforms(u.clouds, def.clouds, u.sun.direction.value);
+  applyGroundUniforms(u.ground, def.ground, isAtmosphereEnabled(def), u.sun.direction.value);
 };
 
 /** Whether a definition has an enabled procedural layer (then it's on the composite path). */
-export const hasProceduralLayer = (def: SkyBoxDef) => isAtmosphereEnabled(def) || isSunEnabled(def);
+export const hasProceduralLayer = (def: SkyBoxDef) =>
+  isAtmosphereEnabled(def) || isSunEnabled(def) || isGroundEnabled(def);
 
 /** Which layers exist: a change to it is a rebuild. */
 export const getCompositeSignature = (def: SkyBoxDef) =>
-  `${isSunEnabled(def)}|${isSunLightEnabled(def)}|${isAtmosphereEnabled(def)}`;
+  [
+    isSunEnabled(def),
+    isSunLightEnabled(def),
+    isAtmosphereEnabled(def),
+    isCloudsEnabled(def),
+    isGroundEnabled(def),
+  ].join('|');
 
 /**
  * The composite colour in direction `dir` (a world direction: normalWorldGeometry of the
@@ -113,13 +142,12 @@ export const buildSkyComposite = (
   // Space layers (p113/p114)
   if (isSunEnabled(def)) color = sunNode(dir, color, u.sun, mode, isSunLightEnabled(def));
   if (isAtmosphereEnabled(def)) {
-    color = atmosphereNode(
-      dir,
-      color,
-      u.atmosphere,
-      atmosphereTerms(dir, u.atmosphere, u.sun.direction)
-    );
+    const terms = atmosphereTerms(dir, u.atmosphere, u.sun.direction);
+    const parts = atmosphereParts(dir, color, u.atmosphere, terms);
+    color = isCloudsEnabled(def)
+      ? cloudsNode(dir, parts, terms, u.atmosphere, u.clouds, mode)
+      : composeAtmosphere(parts, u.atmosphere);
   }
-  // Clouds, ground (p112 Phase 5)
+  if (isGroundEnabled(def)) color = groundNode(dir, color, u.ground);
   return color;
 };

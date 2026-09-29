@@ -3249,6 +3249,123 @@
                 },
                 "additionalProperties": false
               },
+              "clouds": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "coverage": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "density": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "scale": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "speed": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "elevation": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "color": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "r": {
+                            "type": "number"
+                          },
+                          "g": {
+                            "type": "number"
+                          },
+                          "b": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "r",
+                          "g",
+                          "b"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "windDirection": {
+                    "type": "array",
+                    "items": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              "ground": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "color": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "r": {
+                            "type": "number"
+                          },
+                          "g": {
+                            "type": "number"
+                          },
+                          "b": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "r",
+                          "g",
+                          "b"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "horizonBlend": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "useAtmosphereHorizon": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
               "debugData": {
                 "type": "object",
                 "properties": {
@@ -3995,6 +4112,123 @@
                                 ]
                               }
                             ]
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "clouds": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "coverage": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "density": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "scale": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "speed": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "elevation": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "color": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "r": {
+                                    "type": "number"
+                                  },
+                                  "g": {
+                                    "type": "number"
+                                  },
+                                  "b": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "r",
+                                  "g",
+                                  "b"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          },
+                          "windDirection": {
+                            "type": "array",
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "ground": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "color": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "r": {
+                                    "type": "number"
+                                  },
+                                  "g": {
+                                    "type": "number"
+                                  },
+                                  "b": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "r",
+                                  "g",
+                                  "b"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          },
+                          "horizonBlend": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "height": {
+                            "type": "number",
+                            "minimum": -90,
+                            "maximum": 90
+                          },
+                          "useAtmosphereHorizon": {
+                            "type": "boolean"
                           }
                         },
                         "additionalProperties": false
@@ -7577,6 +7811,123 @@
                         },
                         "additionalProperties": false
                       },
+                      "clouds": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "coverage": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "density": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "scale": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "speed": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "elevation": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "color": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "r": {
+                                    "type": "number"
+                                  },
+                                  "g": {
+                                    "type": "number"
+                                  },
+                                  "b": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "r",
+                                  "g",
+                                  "b"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          },
+                          "windDirection": {
+                            "type": "array",
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "ground": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "color": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "r": {
+                                    "type": "number"
+                                  },
+                                  "g": {
+                                    "type": "number"
+                                  },
+                                  "b": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "r",
+                                  "g",
+                                  "b"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          },
+                          "horizonBlend": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "height": {
+                            "type": "number",
+                            "minimum": -90,
+                            "maximum": 90
+                          },
+                          "useAtmosphereHorizon": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
                       "debugData": {
                         "type": "object",
                         "properties": {
@@ -8323,6 +8674,123 @@
                                         ]
                                       }
                                     ]
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "clouds": {
+                                "type": "object",
+                                "properties": {
+                                  "enabled": {
+                                    "type": "boolean"
+                                  },
+                                  "coverage": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                  },
+                                  "density": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  "scale": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  "speed": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  "elevation": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                  },
+                                  "color": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "r": {
+                                            "type": "number"
+                                          },
+                                          "g": {
+                                            "type": "number"
+                                          },
+                                          "b": {
+                                            "type": "number"
+                                          }
+                                        },
+                                        "required": [
+                                          "r",
+                                          "g",
+                                          "b"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  },
+                                  "windDirection": {
+                                    "type": "array",
+                                    "items": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "ground": {
+                                "type": "object",
+                                "properties": {
+                                  "enabled": {
+                                    "type": "boolean"
+                                  },
+                                  "color": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "r": {
+                                            "type": "number"
+                                          },
+                                          "g": {
+                                            "type": "number"
+                                          },
+                                          "b": {
+                                            "type": "number"
+                                          }
+                                        },
+                                        "required": [
+                                          "r",
+                                          "g",
+                                          "b"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  },
+                                  "horizonBlend": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  "height": {
+                                    "type": "number",
+                                    "minimum": -90,
+                                    "maximum": 90
+                                  },
+                                  "useAtmosphereHorizon": {
+                                    "type": "boolean"
                                   }
                                 },
                                 "additionalProperties": false

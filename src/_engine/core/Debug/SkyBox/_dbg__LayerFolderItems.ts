@@ -60,3 +60,32 @@ export const buildAutoColorItems = (
     },
   ];
 };
+
+/**
+ * Two sliders for the ends of a 2-tuple value (eg. horizonFade), each writing the whole tuple.
+ * The proxy holds `${key}0` and `${key}1` (see syncSkyBoxProxy).
+ */
+export const tupleParams = (
+  target: Record<string, unknown>,
+  layer: SkyBoxLayerKey,
+  key: string,
+  labels: [string, string],
+  opts: { min: number; max: number; step: number; disabled?: () => boolean }
+): DebuggerPaneItem[] =>
+  ([0, 1] as const).map((index) => {
+    const tuple = (changed: number) =>
+      index === 0 ? [changed, Number(target[`${key}1`])] : [Number(target[`${key}0`]), changed];
+    return {
+      key: `${key}${index}`,
+      target,
+      label: labels[index],
+      min: opts.min,
+      max: opts.max,
+      step: opts.step,
+      ...(opts.disabled ? { disabled: opts.disabled } : {}),
+      onChange: (value: unknown, e: { prev: unknown }) =>
+        setSkyBoxParam(`${LAYER_PATHS[layer]}.${key}`, toUndoLabel(key), tuple(Number(value)), {
+          prev: tuple(Number(e.prev)),
+        }),
+    };
+  });

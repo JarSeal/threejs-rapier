@@ -6,6 +6,8 @@ import type {
   SkyBoxAmbientLightSchema,
   SkyBoxAtmosphereSchema,
   SkyBoxBaseSchema,
+  SkyBoxCloudsSchema,
+  SkyBoxGroundSchema,
   SkyBoxDefSchema,
   SkyBoxEnvSchema,
   SkyBoxEnvSizeSchema,
@@ -37,6 +39,12 @@ export type SkyBoxSunDef = z.input<typeof SkyBoxSunSchema>;
 
 /** A sun's managed directional light. */
 export type SkyBoxSunLightDef = z.input<typeof SkyBoxSunLightSchema>;
+
+/** The clouds layer (needs the atmosphere). */
+export type SkyBoxCloudsDef = z.input<typeof SkyBoxCloudsSchema>;
+
+/** The ground layer. */
+export type SkyBoxGroundDef = z.input<typeof SkyBoxGroundSchema>;
 
 /** The managed ambient (or hemisphere) light. */
 export type SkyBoxAmbientLightDef = z.input<typeof SkyBoxAmbientLightSchema>;
