@@ -2,6 +2,7 @@ import { CMP, type TCMP } from '../../utils/CMP';
 import { IS_DEBUG_ENV } from '../Config';
 import {
   createDebuggerTab,
+  persistDebuggerTabValue,
   updateDebuggerTab,
   type DebuggerPaneItem,
 } from '../../debug/DebuggerGUI';
@@ -26,6 +27,7 @@ import {
   setRayHelperSettings,
   type RayHelperKindSettings,
 } from './_dbg__RayHelpers';
+import { _refreshRayTesterHelperNotices, _toggleRayTesterWindow } from './_dbg__RayTester';
 
 const LS_KEY = 'debugRayCast';
 const TAB_ID = 'rayCastControls';
@@ -100,6 +102,18 @@ const applyHelperSettings = (prefix: HelperStatePrefix, kind: RayHelperKind) => 
   }
   setRayHelperSettings(kind, patch as Partial<RayHelperKindSettings>);
   if (kind === 'PHYSICS') setPhysicsRayHelpersEnabled(rayCastState.physicsShow);
+  _refreshRayTesterHelperNotices();
+};
+
+/** Turns a kind's helpers on or off as the tab's "Show helpers" does (persisted, tab refreshed).
+ * The ray tester windows use it, so the tab stays the one owner of the setting. */
+export const _setRayHelpersShown = (kind: RayHelperKind, show: boolean) => {
+  const prefix: HelperStatePrefix = kind === 'THREE' ? 'three' : 'physics';
+  const key = `${prefix}Show` as const;
+  rayCastState[key] = show;
+  applyHelperSettings(prefix, kind);
+  persistDebuggerTabValue(TAB_ID, key);
+  updateDebuggerTab(TAB_ID);
 };
 
 /** `showAllRayDebugHelpers` became `threeShow`. Rewritten once, before hydration (which only
@@ -165,6 +179,16 @@ const createDebugControls = () => {
       statsBlocks = [];
       pendingQueriesView = null;
       return [
+        {
+          pane: true,
+          content: [
+            {
+              type: 'button',
+              title: 'Three.js ray tester',
+              onClick: () => _toggleRayTesterWindow('THREE'),
+            },
+          ],
+        },
         {
           pane: true,
           content: [

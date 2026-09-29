@@ -22,6 +22,12 @@ export type BuiltDebuggerPane = {
 
 type UIState = { folders?: { [folderId: string]: boolean } };
 
+/** What a pane needs of its owner: a debugger tab, or eg. a debug window with its own state. */
+export type DebuggerPaneOwner = Pick<
+  AnyDebuggerTabDef,
+  'id' | 'state' | 'lsKey' | 'persistKeys' | 'uiLsKey'
+>;
+
 const resolveDyn = <T>(value: DebuggerDyn<T>) =>
   typeof value === 'function' ? (value as () => T)() : value;
 
@@ -35,14 +41,14 @@ const snapshot = (value: unknown) => {
 };
 
 /** LS key of a tab's UI state (folder open/closed states), if it has one. */
-const getDebuggerTabUIKey = (def: AnyDebuggerTabDef) =>
+const getDebuggerTabUIKey = (def: DebuggerPaneOwner) =>
   def.uiLsKey ?? (def.lsKey ? `${def.lsKey}UI` : undefined);
 
 /**
  * Writes one state key of a tab to its lsKey: the other persistKeys already saved are kept, any
  * other (legacy) field of the saved object is dropped.
  */
-export const persistDebuggerTabStateValue = (def: AnyDebuggerTabDef, key: string) => {
+export const persistDebuggerTabStateValue = (def: DebuggerPaneOwner, key: string) => {
   const { lsKey, state, persistKeys } = def;
   if (!lsKey || !state || !persistKeys?.includes(key)) {
     lwarn(`Debugger tab "${def.id}" has no persisted state key "${key}" (see persistKeys).`);
@@ -65,11 +71,12 @@ const saveFolderExpanded = (uiKey: string, folderId: string, expanded: boolean) 
 };
 
 /**
- * Builds a declarative pane section of a debugger tab (Tweakpane in its own container CMP).
+ * Builds a declarative pane section of a debugger tab, or of any other {@link DebuggerPaneOwner}
+ * (eg. a debug window), as Tweakpane in its own container CMP.
  * The pane is disposed when the container CMP is removed.
  */
 export const _buildDebuggerPane = (
-  def: AnyDebuggerTabDef,
+  def: DebuggerPaneOwner,
   section: DebuggerPaneSection<AnyState>
 ): BuiltDebuggerPane => {
   const uiKey = getDebuggerTabUIKey(def);

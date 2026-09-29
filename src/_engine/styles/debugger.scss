@@ -1,3 +1,4 @@
+@use 'sass:color';
 @use './variables.scss';
 
 .rayCastStats {
@@ -31,6 +32,71 @@
   .rayStatNote {
     font-size: 1.4rem;
     opacity: 0.6;
+  }
+}
+
+// _dbg__RayTester.ts
+.rayTesterNotice {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 1.2rem;
+  color: color.adjust(variables.$warning, $lightness: 35%);
+
+  button {
+    flex-shrink: 0;
+  }
+}
+
+.rayTesterResults {
+  font-size: 1.2rem;
+
+  h4 {
+    margin: 0.8rem 0 0.4rem;
+  }
+
+  ol {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  li {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 0.4rem 0;
+  }
+
+  .rayTesterHitHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: bold;
+  }
+
+  .rayTesterField {
+    display: flex;
+    gap: 0.8rem;
+
+    .winSmallLabel {
+      flex-shrink: 0;
+      width: 5rem;
+    }
+  }
+
+  .rayTesterSummary {
+    margin: 0.4rem 0;
+    font-weight: bold;
+  }
+
+  .rayTesterNote,
+  .rayTesterMore {
+    opacity: 0.6;
+  }
+
+  .rayTesterError {
+    margin: 0.4rem 0;
+    color: color.adjust(variables.$alert, $lightness: 45%);
   }
 }
 
