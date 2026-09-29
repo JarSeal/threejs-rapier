@@ -24,6 +24,10 @@ export type RayHelperKindSettings = {
   showAnonymous: boolean;
   /** Ignore the per-ray colors, to tell the kinds apart at a glance */
   forceKindColors: boolean;
+  /** Respect depth: geometry in front hides the helpers. Off (default), they draw on top of
+   * everything. A ray's own `debug.depthTest` overrides it. Changing it rebuilds the helpers'
+   * pipelines once. */
+  depthTest: boolean;
   activeColor: string;
   inactiveColor: string;
   /** Screen px */
@@ -46,6 +50,7 @@ const DEFAULT_SETTINGS: Omit<RayHelperKindSettings, 'activeColor' | 'inactiveCol
   show: false,
   showAnonymous: false,
   forceKindColors: false,
+  depthTest: false,
   width: 3,
   holdMs: 250,
   fadeOutMs: 1500,
@@ -85,7 +90,7 @@ type Helper = {
   holdMs: number | undefined;
   fadeOutMs: number | undefined;
   showHit: boolean;
-  depthTest: boolean;
+  depthTest: boolean | undefined;
   // Resolved style, and what the line currently has
   readonly activeColor: THREE.Color;
   readonly inactiveColor: THREE.Color;
@@ -307,9 +312,10 @@ const resolveStyle = (pool: KindPool, helper: Helper) => {
     helper.appliedWidth = width;
     helper.line.setWidth(width);
   }
-  if (helper.depthTest !== helper.appliedDepthTest) {
-    helper.appliedDepthTest = helper.depthTest;
-    helper.line.setDepthTest(helper.depthTest);
+  const depthTest = helper.depthTest ?? s.depthTest;
+  if (depthTest !== helper.appliedDepthTest) {
+    helper.appliedDepthTest = depthTest;
+    helper.line.setDepthTest(depthTest);
   }
   helper.styleVersion = pool.version;
 };
@@ -320,7 +326,7 @@ const copyOverrides = (helper: Helper, opts: RayDebugOpts | undefined) => {
   const color = opts?.color;
   const inactiveColor = opts?.inactiveColor;
   const width = opts?.width;
-  const depthTest = opts?.depthTest ?? false;
+  const depthTest = opts?.depthTest;
   const changed =
     color !== helper.color ||
     inactiveColor !== helper.inactiveColorOverride ||
@@ -420,7 +426,7 @@ const createHelper = (pool: KindPool): Helper => {
     holdMs: undefined,
     fadeOutMs: undefined,
     showHit: true,
-    depthTest: false,
+    depthTest: undefined,
     activeColor,
     inactiveColor: new THREE.Color(s.inactiveColor),
     styleVersion: -1,

@@ -26,7 +26,8 @@ export type RayDebugOpts = {
   fadeOutMs?: number;
   /** Whether the hit point is marked with a cross, default true */
   showHit?: boolean;
-  /** Default false: helpers draw on top of everything */
+  /** Whether geometry in front hides the helper. Defaults to the kind's "Respect depth" setting,
+   * which is off: helpers draw on top of everything. */
   depthTest?: boolean;
 };
 

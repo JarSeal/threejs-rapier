@@ -307,6 +307,9 @@ export const resetPhysicsRayStats = () => { … };
 - **The character's debug objects are created once per character**, with their ids
   (`char_floor_<entityId>`, `char_wall_<entityId>`) set after the entity exists, so no query
   allocates one.
+- **Added after review: a "Respect depth" setting per kind** (`RayHelperKindSettings.depthTest`, off
+  by default), in both the Three.js and the physics folders. `RayDebugOpts.depthTest` now defaults
+  to it instead of `false`, so a per-ray value still wins.
 - **Verified in both `workerTarget` modes** (gym and physicsTest scenes): the fixed queries return
   the same results, the summed per-frame stats equal the query calls (no double count), the pending
   count returns to 0, and helpers with a non-unit `dir` end on the physics hit (with the hit cross in
