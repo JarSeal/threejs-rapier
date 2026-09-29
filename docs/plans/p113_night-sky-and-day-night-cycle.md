@@ -122,7 +122,8 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
    - Verify: `setTimeOfDay` from the console moves the sun, sky and shadows. Speed, reverse and pause behave as specified, and `timeSource` APP pauses with the app pause.
 2. **Budgeted re-bakes.** Angle and rate rules, a final bake on pause, and `env.dynamic`.
    - Verify: bakes/s stays ≤ the cap at ×100, and ~0.3 bakes/s at ×1. Frame time shows no periodic spikes above the budget recorded in p110.
-   - Measure what the p110 spike left open: an **iGPU** bake time at 128 and 256 (keep 128 for day-night only if it is clearly cheaper there), and a **whole-frame** cross-check on the dGPU (the stats panel's GPU ms with bakes vs. without, same view), since the spike's per-pass sums were taken on a near-idle GPU.
+   - Measure what the p110 spike left open: an **iGPU** bake time at 128, 256 and 512 (keep 128 for day-night only if it is clearly cheaper there), and a **whole-frame** cross-check on the dGPU (the stats panel's GPU ms with bakes vs. without, same view), since the spike's per-pass sums were taken on a near-idle GPU. p112's "Re-bake every frame" toggle (Environment → Env bake) gives the worst case, and "Force composite path" lets a texture-only skybox be measured against its direct path.
+   - Once those numbers are in "Implementation notes", **remove both toggles**: `_setSkyCompositeForced` / `_isSkyCompositeForced` and `isCompositeForced` in `SkyBox/SkyBox.ts`, `setContinuousEnvBake` / `isContinuousEnvBake` in `Debug/SkyBox/_dbg__EnvBakeStats.ts`, and their bindings in `_dbg__EnvironmentFolder.ts`. The bake stats (count, CPU/GPU ms) and "Re-bake now" stay.
 3. **Moon + moon light.**
    - Verify: phases 0, 0.25, 0.5, 0.75 look right, with the terminator facing the sun. A full moon rises at sunset. Moon light only at night; no recompiles across the day/night switch.
 4. **Stars (+ Milky Way).**

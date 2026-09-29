@@ -56,7 +56,7 @@ When this plan is done, the brief's fallback "Sky and sun" type is covered as on
      - Uniform writes from `updateSkyBox` and structural rebuilds call `requestEnvBake()`.
      - p113 adds the angle and rate rules.
    - **Size.**
-     - `env.size` (a power of two: 64, 128 or 256) is fixed per activation.
+     - `env.size` (a power of two: 64, 128, 256 or 512) is fixed per activation. 512 is for sharp mirror reflections: 4× the memory of 256 (a 1536×2048 half-float target), about the same GPU time (the cost is per pass).
      - Changing it from the debugger is structural: the target and generator are disposed and recreated, **and `environmentNode` gets a new `pmremTexture` node** (one lit-material rebuild). Swapping `.value` of the old node to the new target left stale texture bindings on WebGL2 in the spike.
      - The default comes from p110: 256, or 128 if `dayNight.enabled` (unchanged by the spike, which found size saves almost no GPU time on a dGPU).
    - **Disposal.** `clearSkyBox()` disposes the target, the generator, the bake scene's background material and the view composite material. **Nothing from `getPMREMTexture`'s cache is touched.**
@@ -168,7 +168,7 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
 
 1. **Composite builder + dynamic bake infrastructure.**
    - Add `SkyComposite`, the bake target, generator and scene, the scheduler, disposal, `bakeEnvironment` and the GPU timer util.
-   - It is exercised through a debug-only "Force composite path" toggle in the Environment folder, which routes a texture base through the builder and the bake.
+   - It is exercised through a debug-only "Force composite path" toggle in the Environment folder, which routes a texture base through the builder and the bake, plus a "Re-bake every frame" stress toggle. Both are session-only measuring tools and stay until p113 Phase 2 has recorded its bake measurements, which then removes them (the bake stats stay: they are DD2's).
    - Verify: with the toggle on, the result is identical to the direct path, and the pipeline counts stay flat while re-baking for 60 s.
 2. **Atmosphere + sun disc** (no lights yet).
    - Add the layers, the schema and the debug folders.

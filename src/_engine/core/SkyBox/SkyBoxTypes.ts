@@ -6,6 +6,7 @@ import type {
   SkyBoxBaseSchema,
   SkyBoxDefSchema,
   SkyBoxEnvSchema,
+  SkyBoxEnvSizeSchema,
   SkyBoxOverridesSchema,
 } from '../../schemas/skyBoxSchema';
 
@@ -20,6 +21,9 @@ export type SkyBoxBaseType = SkyBoxBaseDef['type'];
 
 /** A sky box's env layer (background blur and intensities, and the env bake settings). */
 export type SkyBoxEnvDef = z.input<typeof SkyBoxEnvSchema>;
+
+/** The env bake's cube face size. */
+export type SkyBoxEnvSize = z.infer<typeof SkyBoxEnvSizeSchema>;
 
 /**
  * A sky box definition: the JSON shape (`SkyBoxDefSchema`), plus what only code can give, a

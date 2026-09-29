@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { context, normalWorldGeometry, pmremTexture, uniform, vec3 } from 'three/tsl';
-import type { SkyBoxBaseDef, SkyBoxEnvDef } from '../SkyBoxTypes';
+import { context, float, normalWorldGeometry, pmremTexture, uniform, vec3 } from 'three/tsl';
+import type { SkyBoxBaseDef, SkyBoxEnvDef, SkyBoxEnvSize } from '../SkyBoxTypes';
 import { getPMREMTexture } from '../SkyEnvironment';
 import { getTexture, loadTextureAsync } from '../../Texture';
 import { isDebugEnvironment } from '../../Config';
@@ -25,6 +25,18 @@ export const ENV_DEFAULTS = {
   backgroundRoughness: 0,
   backgroundIntensity: 1,
   environmentIntensity: 1,
+  size: 256 as SkyBoxEnvSize,
+  dynamic: true,
+};
+
+/** The base layer's uniforms, created once per activation and kept across node rebuilds. */
+export type BaseUniforms = {
+  intensity: THREE.UniformNode<'float', number>;
+  backgroundRoughness: THREE.UniformNode<'float', number>;
+  /** The COLOR base's colour (black for texture bases, which is what a failed load shows). */
+  color: THREE.UniformNode<'color', THREE.Color>;
+  /** The background's rotation (see buildBaseLayer). */
+  rotation: THREE.UniformNode<'mat3', THREE.Matrix3>;
 };
 
 export type BaseLayer = {
@@ -33,16 +45,8 @@ export type BaseLayer = {
   /** The PMREM both nodes sample (the source texture itself until it's ready), null for a COLOR base. */
   environmentTexture: THREE.Texture | null;
   backgroundNode: THREE.Node;
-  /** Null for a COLOR base (p112 adds an optional solid-colour bake). */
+  /** Null for a COLOR base (the composite path bakes one, see SkyBox.ts). */
   environmentNode: THREE.Node | null;
-  uniforms: {
-    intensity: THREE.UniformNode<'float', number>;
-    backgroundRoughness: THREE.UniformNode<'float', number>;
-    /** The COLOR base's colour (unused by texture bases). */
-    color: THREE.UniformNode<'color', THREE.Color>;
-    /** The background's rotation (see buildBaseLayer). */
-    rotation: THREE.UniformNode<'mat3', THREE.Matrix3>;
-  };
 };
 
 /** A ColorJSON value ('#rrggbb', or { r, g, b } in 0-255) as a THREE.Color. */
@@ -163,12 +167,61 @@ const setRotation = (target: THREE.Matrix3, rotate: number) =>
 const getRotate = (base: SkyBoxBaseDef) =>
   base.type === 'COLOR' ? 0 : base.rotate ?? BASE_DEFAULTS.rotate;
 
+const getIntensity = (base: SkyBoxBaseDef) =>
+  base.type === 'COLOR' ? 1 : base.intensity ?? BASE_DEFAULTS.intensity;
+
+export const createBaseUniforms = (
+  base: SkyBoxBaseDef,
+  env: SkyBoxEnvDef | undefined
+): BaseUniforms => ({
+  intensity: uniform(getIntensity(base)),
+  backgroundRoughness: uniform(env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness),
+  color: uniform(base.type === 'COLOR' ? toColor(base.color) : new THREE.Color(0x000000)),
+  rotation: uniform(setRotation(new THREE.Matrix3(), getRotate(base))),
+});
+
+/** Writes the base layer's non-structural values to its uniforms. */
+export const applyBaseUniforms = (
+  u: BaseUniforms,
+  base: SkyBoxBaseDef,
+  env: SkyBoxEnvDef | undefined
+) => {
+  u.intensity.value = getIntensity(base);
+  u.backgroundRoughness.value = env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness;
+  setRotation(u.rotation.value, getRotate(base));
+  if (base.type === 'COLOR') u.color.value.copy(toColor(base.color));
+};
+
+/** The PMREM's lookup direction for a view direction: the cube's flip, then the rotation. */
+const toLookupDir = (base: SkyBoxBaseDef, u: BaseUniforms, dir: THREE.Node) => {
+  const flipY = base.type === 'CUBE_TEXTURE' && Boolean(base.flipY);
+  return u.rotation.mul((flipY ? turnUpsideDown(dir) : dir) as THREE.Node<'vec3'>);
+};
+
 /**
- * Builds the base layer's nodes from one PMREM: the background (blurred by
- * env.backgroundRoughness), and the environment (a bare PMREM, so the lighting context drives
- * its direction and level). Both look up the same world direction (the background's is its
- * view direction, normalWorldGeometry of the back-side background box; not normalWorld, which
- * is negated on back sides), so what materials reflect matches the background.
+ * The base layer in the composite (SkyComposite.ts): the colour it shows in direction `dir`,
+ * with the flip and rotation applied here (the bake then holds them, so the environment node
+ * gets neither). Sampled sharp: the composite's background blur comes from the env bake.
+ * @param pmrem the source texture's PMREM (getPMREMTexture), null for a COLOR base or a
+ * texture that failed to load (black, as on the direct path)
+ */
+export const baseNode = (
+  dir: THREE.Node,
+  base: SkyBoxBaseDef,
+  u: BaseUniforms,
+  pmrem: THREE.Texture | null
+): THREE.Node => {
+  if (base.type === 'COLOR' || !pmrem) return u.color.mul(u.intensity);
+  return pmremTexture(pmrem, toLookupDir(base, u, dir), float(0)).mul(u.intensity);
+};
+
+/**
+ * Builds the base layer's nodes from one PMREM (the direct path, for sky boxes without
+ * procedural layers): the background (blurred by env.backgroundRoughness), and the environment
+ * (a bare PMREM, so the lighting context drives its direction and level). Both look up the same
+ * world direction (the background's is its view direction, normalWorldGeometry of the back-side
+ * background box; not normalWorld, which is negated on back sides), so what materials reflect
+ * matches the background.
  *
  * Rotation: PMREMNode applies scene.environmentRotation (set by SkyBox.ts) to the environment,
  * but only for materials whose `envMap` is null, and the background box's plain NodeMaterial has
@@ -177,51 +230,29 @@ const getRotate = (base: SkyBoxBaseDef) =>
  */
 export const buildBaseLayer = (
   base: SkyBoxBaseDef,
-  env: SkyBoxEnvDef | undefined,
+  u: BaseUniforms,
   texture: THREE.Texture | null
 ): BaseLayer => {
-  const uniforms = {
-    intensity: uniform(base.type === 'COLOR' ? 1 : base.intensity ?? BASE_DEFAULTS.intensity),
-    backgroundRoughness: uniform(env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness),
-    color: uniform(base.type === 'COLOR' ? toColor(base.color) : new THREE.Color(0x000000)),
-    rotation: uniform(setRotation(new THREE.Matrix3(), getRotate(base))),
-  };
-
   // A texture base whose texture failed to load shows black, like a black COLOR base
   if (base.type === 'COLOR' || !texture) {
     return {
       texture: null,
       environmentTexture: null,
-      backgroundNode: uniforms.color.mul(uniforms.intensity),
+      backgroundNode: u.color.mul(u.intensity),
       environmentNode: null,
-      uniforms,
     };
   }
 
   const pmrem = getPMREMTexture(texture);
   const flipY = base.type === 'CUBE_TEXTURE' && Boolean(base.flipY);
-  const viewDir = flipY ? turnUpsideDown(normalWorldGeometry) : normalWorldGeometry;
-  const lookupDir = uniforms.rotation.mul(viewDir);
-  const backgroundNode = pmremTexture(pmrem, lookupDir, uniforms.backgroundRoughness).mul(
-    uniforms.intensity
-  );
+  const backgroundNode = pmremTexture(
+    pmrem,
+    toLookupDir(base, u, normalWorldGeometry),
+    u.backgroundRoughness
+  ).mul(u.intensity);
   const environmentNode = flipY
     ? new RemappedEnvironmentNode(pmremTexture(pmrem), turnUpsideDown)
     : pmremTexture(pmrem);
 
-  return { texture, environmentTexture: pmrem, backgroundNode, environmentNode, uniforms };
-};
-
-/** Writes the base layer's non-structural values to its uniforms. */
-export const updateBaseLayerUniforms = (
-  layer: Pick<BaseLayer, 'uniforms'>,
-  base: SkyBoxBaseDef,
-  env: SkyBoxEnvDef | undefined
-) => {
-  layer.uniforms.intensity.value =
-    base.type === 'COLOR' ? 1 : base.intensity ?? BASE_DEFAULTS.intensity;
-  layer.uniforms.backgroundRoughness.value =
-    env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness;
-  setRotation(layer.uniforms.rotation.value, getRotate(base));
-  if (base.type === 'COLOR') layer.uniforms.color.value.copy(toColor(base.color));
+  return { texture, environmentTexture: pmrem, backgroundNode, environmentNode };
 };

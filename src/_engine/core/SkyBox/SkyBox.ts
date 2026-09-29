@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { normalWorldGeometry, pmremTexture } from 'three/tsl';
 import { lerror, lwarn } from '../../utils/Logger';
 import { getCurrentSceneId, getRootScene } from '../Scene';
 import { getNextSceneId, isCurrentlyLoading } from '../SceneLoader';
@@ -6,6 +7,8 @@ import { isDebugEnvironment } from '../Config';
 import { lsGetItem } from '../../utils/LocalAndSessionStorage';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
 import { deepMerge } from '../../utils/deepMerge';
+import { ECSWorld, getECSWorld } from '../ECS';
+import { ECSSystemStage } from '../../../AppECSRegistry';
 import type { SkyBoxBaseDef, SkyBoxDef, SkyBoxEnvDef, SkyBoxOverrides } from './SkyBoxTypes';
 import { fromLegacySkyBoxProps, isLegacySkyBoxProps, type LegacySkyBoxProps } from './legacySkyBox';
 import {
@@ -14,9 +17,22 @@ import {
   buildBaseLayer,
   ENV_DEFAULTS,
   loadBaseTexture,
-  updateBaseLayerUniforms,
-  type BaseLayer,
 } from './layers/base';
+import {
+  applySkyUniforms,
+  buildSkyComposite,
+  createSkyUniforms,
+  hasProceduralLayer,
+  type SkyUniforms,
+} from './SkyComposite';
+import {
+  disposeEnvBake,
+  getPMREMTexture,
+  isEnvBakeRequested,
+  requestEnvBake,
+  runRequestedEnvBake,
+  setEnvBake,
+} from './SkyEnvironment';
 
 export type { SkyBoxDef } from './SkyBoxTypes';
 
@@ -26,8 +42,14 @@ export type ActiveSkyBox = {
   sceneId: string;
   /** The definition with the debug overrides (debug env only) and updateSkyBox changes merged in. */
   def: SkyBoxDef;
-  uniforms: BaseLayer['uniforms'];
+  /** Every layer's uniforms, created on activation and kept across node rebuilds. */
+  uniforms: SkyUniforms;
+  /** Whether it's on the composite path (SkyComposite.ts), whose environment is an env bake,
+   * or on the direct path (a texture or colour base only, sampled as is). */
+  isComposite: boolean;
   nodes: { background: THREE.Node; environment: THREE.Node | null };
+  /** The base's source texture, and the PMREM the environment samples (the texture's, or the
+   * env bake's target). */
   textures: { source: THREE.Texture | null; environment: THREE.Texture | null };
 };
 
@@ -123,13 +145,15 @@ const resolveSkyBoxDef = (def: SkyBoxDef, sceneId: string): SkyBoxDef => {
   return overrides ? deepMerge(def, overrides) : def;
 };
 
-const applySceneProperties = (def: SkyBoxDef) => {
+const applySceneProperties = (def: SkyBoxDef, isComposite: boolean) => {
   const rootScene = getRootScene() as THREE.Scene;
   rootScene.environmentIntensity =
     def.env?.environmentIntensity ?? ENV_DEFAULTS.environmentIntensity;
   rootScene.backgroundIntensity = def.env?.backgroundIntensity ?? ENV_DEFAULTS.backgroundIntensity;
-  // PMREMNode applies it to the environment; the background applies it itself (layers/base.ts)
-  const rotate = def.base.type === 'COLOR' ? 0 : def.base.rotate ?? BASE_DEFAULTS.rotate;
+  // Direct path: PMREMNode applies it to the environment; the background applies it itself
+  // (layers/base.ts). Composite path: the rotation is baked into the environment already.
+  const rotate =
+    isComposite || def.base.type === 'COLOR' ? 0 : def.base.rotate ?? BASE_DEFAULTS.rotate;
   rootScene.environmentRotation.set(0, rotate, 0);
 };
 
@@ -143,27 +167,74 @@ const resetSceneProperties = () => {
   rootScene.environmentRotation.set(0, 0, 0);
 };
 
+/** Debug only: routes every sky box through the composite path (see _setSkyCompositeForced). */
+let isCompositeForced = false;
+
+const usesComposite = (def: SkyBoxDef) =>
+  hasProceduralLayer(def) || (isCompositeForced && isDebugEnvironment());
+
+/** On the composite path, a blurred background samples the env bake (switching is a rebuild). */
+const isBackgroundFromBake = (def: SkyBoxDef) =>
+  (def.env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness) > 0;
+
+const isBakeDynamic = (def: SkyBoxDef) => def.env?.dynamic ?? ENV_DEFAULTS.dynamic;
+
+type SkyBoxBuild = Pick<ActiveSkyBox, 'isComposite' | 'nodes' | 'textures'>;
+
+/** Builds a definition's nodes (and, on the composite path, its env bake, with a bake requested). */
+const buildNodes = (def: SkyBoxDef, u: SkyUniforms, texture: THREE.Texture | null): SkyBoxBuild => {
+  if (!usesComposite(def)) {
+    disposeEnvBake();
+    const layer = buildBaseLayer(def.base, u.base, texture);
+    return {
+      isComposite: false,
+      nodes: { background: layer.backgroundNode, environment: layer.environmentNode },
+      textures: { source: layer.texture, environment: layer.environmentTexture },
+    };
+  }
+  const sources = { basePMREM: texture ? getPMREMTexture(texture) : null };
+  const bake = setEnvBake(
+    def.env?.size ?? ENV_DEFAULTS.size,
+    buildSkyComposite(def, u, 'ENV_BAKE', sources, normalWorldGeometry)
+  );
+  const background = isBackgroundFromBake(def)
+    ? pmremTexture(bake.target.texture, normalWorldGeometry, u.base.backgroundRoughness)
+    : buildSkyComposite(def, u, 'VIEW', sources, normalWorldGeometry);
+  return {
+    isComposite: true,
+    nodes: { background, environment: bake.environmentNode },
+    textures: { source: texture, environment: bake.target.texture },
+  };
+};
+
+/** Whether going from `current` to `def` (same base) needs new nodes. */
+const needsRebuild = (current: ActiveSkyBox, def: SkyBoxDef) => {
+  if (usesComposite(def) !== current.isComposite) return true;
+  if (!current.isComposite) return false;
+  return (
+    (def.env?.size ?? ENV_DEFAULTS.size) !== (current.def.env?.size ?? ENV_DEFAULTS.size) ||
+    isBackgroundFromBake(def) !== isBackgroundFromBake(current.def)
+  );
+};
+
+/** Makes `next` the active sky box and shows it. */
+const show = (next: ActiveSkyBox) => {
+  const rootScene = getRootScene() as THREE.Scene;
+  rootScene.backgroundNode = next.nodes.background;
+  // Typed vec3, but EnvironmentNode takes any PMREM-like node (as the three.js examples do)
+  rootScene.environmentNode = next.nodes.environment as THREE.Node<'vec3'> | null;
+  applySceneProperties(next.def, next.isComposite);
+  active = next;
+};
+
 /** Loads, builds and shows a resolved definition. */
 const activate = async (sceneId: string, def: SkyBoxDef) => {
   const seq = ++activationSeq;
   const texture = await loadBaseTexture(def.base);
   if (seq !== activationSeq) return active; // Superseded by a later activation or clear
 
-  const layer = buildBaseLayer(def.base, def.env, texture);
-  const rootScene = getRootScene() as THREE.Scene;
-  rootScene.backgroundNode = layer.backgroundNode;
-  // Typed vec3, but EnvironmentNode takes any PMREM-like node (as the three.js examples do)
-  rootScene.environmentNode = layer.environmentNode as THREE.Node<'vec3'> | null;
-  applySceneProperties(def);
-
-  active = {
-    id: def.id,
-    sceneId,
-    def,
-    uniforms: layer.uniforms,
-    nodes: { background: layer.backgroundNode, environment: layer.environmentNode },
-    textures: { source: layer.texture, environment: layer.environmentTexture },
-  };
+  const uniforms = createSkyUniforms(def);
+  show({ id: def.id, sceneId, def, uniforms, ...buildNodes(def, uniforms, texture) });
   notify('activate');
   return active;
 };
@@ -250,9 +321,11 @@ const isStructuralBaseUpdate = (current: SkyBoxBaseDef, update: SkyBoxUpdate['ba
 
 /**
  * Changes the active sky box (a no-op for any other id). A change to a structural key (for the
- * base: type, file, fileNames, path, textureId, texture, colorSpace, flipY) rebuilds it; any
- * other change only writes uniforms and scene properties. Changes last until it's activated
- * again, which starts from its definition.
+ * base: type, file, fileNames, path, textureId, texture, colorSpace, flipY) re-runs the
+ * activation; one that changes which nodes exist (on the composite path: env.size, or
+ * env.backgroundRoughness crossing 0) rebuilds the nodes; any other change only writes uniforms
+ * and scene properties, and (with env.dynamic) re-bakes the environment. Changes last until
+ * it's activated again, which starts from its definition.
  */
 export const updateSkyBox = async (id: string, update: SkyBoxUpdate) => {
   if (!active || active.id !== id) return active;
@@ -260,9 +333,19 @@ export const updateSkyBox = async (id: string, update: SkyBoxUpdate) => {
   const def = deepMerge(current.def, update);
   if (isStructuralBaseUpdate(current.def.base, update.base)) return activate(current.sceneId, def);
 
-  active = { ...current, def };
-  updateBaseLayerUniforms(active, def.base, def.env);
-  applySceneProperties(def);
+  applySkyUniforms(current.uniforms, def);
+  if (needsRebuild(current, def)) {
+    show({ ...current, def, ...buildNodes(def, current.uniforms, current.textures.source) });
+  } else {
+    show({ ...current, def });
+    // The env layer is scene properties and the view's blur, none of it baked; turning
+    // `dynamic` on catches up on what changed while it was off
+    const affectsBake = Object.keys(update).some((key) => key !== 'env');
+    const turnedDynamic = isBakeDynamic(def) && !isBakeDynamic(current.def);
+    if (current.isComposite && ((affectsBake && isBakeDynamic(def)) || turnedDynamic)) {
+      requestEnvBake();
+    }
+  }
   notify('update');
   return active;
 };
@@ -271,9 +354,18 @@ export const updateSkyBox = async (id: string, update: SkyBoxUpdate) => {
 export const clearSkyBox = () => {
   activationSeq++;
   active = null;
+  disposeEnvBake();
   resetSceneProperties();
   notify('clear');
 };
+
+/**
+ * Re-bakes the active sky box's environment on the next frame (at most one bake per frame,
+ * and none while a scene loads). Only a composite sky box (procedural layers) has an env bake:
+ * for any other this is a no-op. Useful with `env.dynamic: false`, which bakes only on
+ * activation and rebuilds.
+ */
+export const bakeEnvironment = () => requestEnvBake();
 
 /** The source texture of the sky box the root scene shows, or null. */
 export const getActiveSkyBoxTexture = () => active?.textures.source ?? null;
@@ -291,6 +383,19 @@ export const onSkyBoxChange = (listener: SkyBoxChangeListener) => {
   };
 };
 
+// System
+
+ECSWorld.registerPlugin((world) => {
+  // MAIN, order 1: before object3DSyncSystem (order 0), where the sky lights' transforms go
+  world.addSystem(ECSSystemStage.MAIN, 'skyBoxSystem', skyBoxSystem, 1);
+});
+
+/** Runs a requested env bake (the sky box is global: only the default world drives it). */
+function skyBoxSystem(world: ECSWorld) {
+  if (!isEnvBakeRequested() || world !== getECSWorld() || isCurrentlyLoading()) return;
+  runRequestedEnvBake();
+}
+
 // Debug
 
 type SkyBoxGUIModule = typeof import('../Debug/_dbg__SkyBox');
@@ -304,3 +409,18 @@ export const registerSkyBoxDebugGUI = async () => {
 export const createSkyBoxDebugGUI = (opts?: { rebuild?: boolean }) => {
   useDebug(debugGUI)?._createSkyBoxDebugGUI(opts);
 };
+
+/**
+ * @internal Debug only: routes every sky box through the composite path and its env bake,
+ * rebuilding the active one (session-only, to check the composite against the direct path).
+ */
+export const _setSkyCompositeForced = (forced: boolean) => {
+  isCompositeForced = forced;
+  const current = active;
+  if (!current || usesComposite(current.def) === current.isComposite) return;
+  show({ ...current, ...buildNodes(current.def, current.uniforms, current.textures.source) });
+  notify('update');
+};
+
+/** @internal */
+export const _isSkyCompositeForced = () => isCompositeForced;

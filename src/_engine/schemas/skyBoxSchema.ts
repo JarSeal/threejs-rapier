@@ -57,15 +57,29 @@ export const SkyBoxBaseSchema = z.discriminatedUnion('type', [
 
 // Env layer
 
+export const SkyBoxEnvSizeSchema = z.union([
+  z.literal(64),
+  z.literal(128),
+  z.literal(256),
+  z.literal(512),
+]);
+
 export const SkyBoxEnvSchema = z.object({
   /** Blur of the background (PMREM roughness, 0-1). Materials' own roughness drives the environment. */
   backgroundRoughness: z.number().min(0).max(1).optional(),
   backgroundIntensity: z.number().min(0).optional(),
   environmentIntensity: z.number().min(0).optional(),
 
-  // Environment bake settings (p112). Accepted, but not used yet.
-  size: z.number().int().positive().optional(),
+  // Environment bake settings: used by sky boxes on the composite path (procedural layers),
+  // which bake their environment. A texture-only or colour-only sky box has no bake.
+  /** The bake's cube face size, fixed per activation. Default 256. 512 gives sharper mirror
+   * reflections for 4× the memory (a 1536×2048 half-float target); the bake's GPU cost is per
+   * pass, so it barely changes with size (p110 spike). */
+  size: SkyBoxEnvSizeSchema.optional(),
+  /** Whether value changes re-bake the environment. False: only activation, a rebuild and
+   * `bakeEnvironment()` do. Default true. */
   dynamic: z.boolean().optional(),
+  /** Day-night re-bake rules (p113). Accepted, but not used yet. */
   updateAngleDeg: z.number().min(0).optional(),
   maxUpdatesPerSec: z.number().min(0).optional(),
 });

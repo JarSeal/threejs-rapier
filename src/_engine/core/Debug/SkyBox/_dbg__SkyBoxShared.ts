@@ -117,7 +117,7 @@ export const skyBoxProxy: Record<SkyBoxLayerKey, Obj> & { select: { skyBoxId: st
 /** The keys a layer folder binds, synced from the active sky box (and its layer defaults). */
 const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
   base: ['type', 'file', 'path', 'textureId', 'colorSpace', 'rotate', 'flipY', 'intensity'],
-  env: ['backgroundRoughness', 'backgroundIntensity', 'environmentIntensity'],
+  env: ['backgroundRoughness', 'backgroundIntensity', 'environmentIntensity', 'size', 'dynamic'],
 };
 /** Read-only text bindings need a string, even when the definition has no value. */
 const TEXT_KEYS = new Set(['type', 'file', 'path', 'textureId', 'colorSpace']);

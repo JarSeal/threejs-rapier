@@ -4,30 +4,24 @@
  * While off nothing is installed: no inspector, no wrappers, no timing calls.
  *
  * - CPU: each PostFX pass's profileNodes' updateBefore() is wrapped with performance.now().
- * - GPU: an InspectorBase subclass is installed as renderer.inspector. Every render context
- *   opened (beginRender) while a PostFX pass's updateBefore() is running is attributed to that
- *   PostFX pass (including nested ones, eg. the depth/normal pre-pass is attributed to the first
- *   PostFX pass that renders it). After the frame, the render timestamps are resolved and each
- *   context's GPU duration is read from the backend's timestamp pool.
+ * - GPU: through the shared GPU timer (_dbg__GPUTimer.ts). Every render context opened while a
+ *   PostFX pass's updateBefore() is running is attributed to that PostFX pass (including nested
+ *   ones, eg. the depth/normal pre-pass is attributed to the first PostFX pass that renders it).
+ *   After the frame, the render timestamps are resolved and each context's GPU duration is read
+ *   from the resolved batch.
  * - Render contexts opened outside any PostFX pass are the final composite quad (the first
  *   context of the pipeline render) and the scene pass. Pure in-chain PostFX passes are
  *   evaluated inside the composite, so they are reported as gpuAttribution 'shared'.
  */
+import type { Node, NodeFrame, RenderPipeline } from 'three/webgpu';
 import {
-  InspectorBase,
-  TimestampQuery,
-  type Camera,
-  type ComputeNode,
-  type Node,
-  type NodeFrame,
-  type RenderPipeline,
-  type RenderTarget,
-  type Renderer,
-  type Scene,
-  type Texture,
-  type WebGPURenderer,
-} from 'three/webgpu';
-import { getRenderer } from '../Renderer';
+  _acquireGpuTimer,
+  _onRenderContext,
+  _onTimestampsResolved,
+  _releaseGpuTimer,
+  _requestTimestampResolve,
+  _sumGpuMs,
+} from './_dbg__GPUTimer';
 import { addPostFxChainListener, getPostFxBuiltChain } from '../PostFX';
 import type { PostFxPassStats, PostFxStats } from '../PostFX/PostFXTypes';
 import { lwarn } from '../../utils/Logger';
@@ -51,21 +45,11 @@ type FrameRecord = {
 type Avg = { value: number; hasValue: boolean };
 type PassAverages = { cpu: Avg; gpu: Avg; hasGpuWork: boolean };
 
-type TimestampPool = { timestamps: Map<string, number> };
-type ProfiledBackend = {
-  trackTimestamp: boolean;
-  isWebGPUBackend?: boolean;
-  hasTimestamp: boolean;
-  timestampQueryPool: Record<string, TimestampPool | null | undefined>;
-};
-
 let isMeasuring = false;
-let renderer: WebGPURenderer | null = null;
-let backend: ProfiledBackend | null = null;
 let gpuAvailable = false;
-let prevTrackTimestamp = false;
-let prevInspector: InspectorBase | null = null;
 let removeChainListener: (() => void) | null = null;
+let removeRenderContextListener: (() => void) | null = null;
+let removeResolveListener: (() => void) | null = null;
 
 // Current build's wrapping
 let passIds: string[] = [];
@@ -76,7 +60,6 @@ let wrappedNodes: { node: Node; orig: Node['updateBefore']; isOwn: boolean }[] =
 let currentFrame: FrameRecord | null = null;
 const activePassStack: number[] = [];
 let pendingFrames: FrameRecord[] = [];
-let isResolving = false;
 let framesToSkip = 0;
 
 // Results
@@ -104,96 +87,30 @@ const getPassAverages = (id: string) => {
   return avgs;
 };
 
-/** Forwards everything to the previously installed inspector, so it keeps working. */
-class PostFxProfilerInspector extends InspectorBase {
-  private readonly prev: InspectorBase;
-
-  constructor(prev: InspectorBase) {
-    super();
-    this.prev = prev;
+/** Attributes a render context to the PostFX pass that is running, else to the frame's others. */
+const onRenderContext = (uid: string) => {
+  if (!currentFrame) return;
+  if (activePassStack.length) {
+    currentFrame.passUids[activePassStack[activePassStack.length - 1]].push(uid);
+  } else {
+    currentFrame.otherUids.push(uid);
   }
-
-  setRenderer(r: Renderer) {
-    super.setRenderer(r);
-    this.prev.setRenderer(r);
-    return this;
-  }
-
-  begin() {
-    super.begin();
-    this.prev.begin();
-  }
-
-  finish() {
-    super.finish();
-    this.prev.finish();
-  }
-
-  inspect(node: Node) {
-    this.prev.inspect(node);
-  }
-
-  computeAsync(computeNode: ComputeNode, dispatchSizeOrCount: number | number[]) {
-    this.prev.computeAsync(computeNode, dispatchSizeOrCount);
-  }
-
-  beginCompute(uid: string, computeNode: ComputeNode) {
-    this.prev.beginCompute(uid, computeNode);
-  }
-
-  finishCompute(uid: string) {
-    this.prev.finishCompute(uid);
-  }
-
-  beginRender(uid: string, scene: Scene, camera: Camera, renderTarget: RenderTarget) {
-    if (currentFrame) {
-      if (activePassStack.length) {
-        currentFrame.passUids[activePassStack[activePassStack.length - 1]].push(uid);
-      } else {
-        currentFrame.otherUids.push(uid);
-      }
-    }
-    this.prev.beginRender(uid, scene, camera, renderTarget);
-  }
-
-  finishRender(uid: string) {
-    this.prev.finishRender(uid);
-  }
-
-  copyTextureToTexture(srcTexture: Texture, dstTexture: Texture) {
-    this.prev.copyTextureToTexture(srcTexture, dstTexture);
-  }
-
-  copyFramebufferToTexture(framebufferTexture: Texture) {
-    this.prev.copyFramebufferToTexture(framebufferTexture);
-  }
-}
-
-const getGpuMs = (pool: TimestampPool, uids: string[]) => {
-  let total = 0;
-  for (let i = 0; i < uids.length; i++) {
-    const ms = pool.timestamps.get(uids[i]);
-    if (ms === undefined) return null;
-    total += ms;
-  }
-  return total;
 };
 
 /** Reads the GPU durations of every pending frame whose timestamps the last resolve delivered. */
-const collectGpuTimes = () => {
-  const pool = backend?.timestampQueryPool[TimestampQuery.RENDER];
+const collectGpuTimes = (timestamps: ReadonlyMap<string, number>) => {
   const stillPending: FrameRecord[] = [];
   for (let f = 0; f < pendingFrames.length; f++) {
     const record = pendingFrames[f];
     const passGpu: (number | null)[] = [];
-    let isComplete = Boolean(pool);
-    for (let i = 0; pool && i < record.passUids.length && isComplete; i++) {
-      const ms = getGpuMs(pool, record.passUids[i]);
+    let isComplete = true;
+    for (let i = 0; i < record.passUids.length && isComplete; i++) {
+      const ms = _sumGpuMs(timestamps, record.passUids[i]);
       if (ms === null) isComplete = false;
       passGpu.push(record.passUids[i].length ? ms : null);
     }
-    const compositeMs = pool && record.otherUids.length ? getGpuMs(pool, [record.otherUids[0]]) : 0;
-    const sceneMs = pool ? getGpuMs(pool, record.otherUids.slice(1)) : null;
+    const compositeMs = record.otherUids.length ? _sumGpuMs(timestamps, [record.otherUids[0]]) : 0;
+    const sceneMs = _sumGpuMs(timestamps, record.otherUids.slice(1));
     if (!isComplete || compositeMs === null || sceneMs === null) {
       if (++record.age < MAX_PENDING_FRAMES) stillPending.push(record);
       continue;
@@ -231,20 +148,11 @@ const endFrame = () => {
     avgs.hasGpuWork = record.passUids[i].length > 0;
   }
   cpuSamples++;
-  if (!gpuAvailable || !renderer) return;
+  if (!gpuAvailable) return;
   pendingFrames.push(record);
-  // Shared with the stats-gl GPU panel's own per-frame resolve. WebGPU: concurrent resolves
-  // share one promise, and the pool keeps the last resolved batch until the next one. WebGL: a
-  // concurrent resolve returns at once, so a batch another resolve consumed can be missed (that
-  // frame then ages out of pendingFrames, it is never reported wrong).
-  if (isResolving) return;
-  isResolving = true;
-  renderer
-    .resolveTimestampsAsync(TimestampQuery.RENDER)
-    .then(collectGpuTimes)
-    .finally(() => {
-      isResolving = false;
-    });
+  // A batch another resolve consumed (eg. the stats-gl GPU panel's own) can be missed: that
+  // frame then ages out of pendingFrames, it is never reported wrong
+  _requestTimestampResolve();
 };
 
 const unwrapChain = () => {
@@ -325,26 +233,17 @@ export const _setPostFxMeasureEnabled = (enabled: boolean) => {
   if (enabled === isMeasuring) return;
 
   if (enabled) {
-    renderer = getRenderer() || null;
-    if (!renderer) {
+    const timer = _acquireGpuTimer();
+    if (!timer) {
       lwarn('[PostFX profiler] Could not start measuring, the renderer has not been created.');
       return;
     }
-    backend = renderer.backend as unknown as ProfiledBackend;
-    // WebGPUBackend.hasTimestamp is always true, the device feature is what decides
-    gpuAvailable = backend.isWebGPUBackend
-      ? renderer.hasFeature('timestamp-query')
-      : backend.hasTimestamp;
+    gpuAvailable = timer.gpuAvailable;
     if (!gpuAvailable) {
       lwarn('[PostFX profiler] GPU timestamp queries are not supported, measuring CPU time only.');
     }
-    prevTrackTimestamp = backend.trackTimestamp;
-    // The timestamp query pool is created lazily on first use, so this works after init
-    if (gpuAvailable) backend.trackTimestamp = true;
-    prevInspector = renderer.inspector;
-    // Note: on the WebGL backend three warns once that ".toInspector()" needs WebGPU whenever a
-    // custom inspector is installed, harmless (it only concerns three's own inspector addon)
-    renderer.inspector = new PostFxProfilerInspector(prevInspector);
+    removeRenderContextListener = _onRenderContext(onRenderContext);
+    removeResolveListener = _onTimestampsResolved(collectGpuTimes);
     isMeasuring = true;
     removeChainListener = addPostFxChainListener(wrapChain);
     wrapChain();
@@ -355,12 +254,11 @@ export const _setPostFxMeasureEnabled = (enabled: boolean) => {
   removeChainListener?.();
   removeChainListener = null;
   unwrapChain();
-  if (renderer && prevInspector) renderer.inspector = prevInspector;
-  // Keep timestamps on if something else (eg. the stats-gl GPU panel) switched them on meanwhile
-  if (backend && !prevTrackTimestamp) backend.trackTimestamp = false;
-  prevInspector = null;
-  renderer = null;
-  backend = null;
+  removeRenderContextListener?.();
+  removeRenderContextListener = null;
+  removeResolveListener?.();
+  removeResolveListener = null;
+  _releaseGpuTimer();
 };
 
 /** Whether PostFX measuring is on. */
