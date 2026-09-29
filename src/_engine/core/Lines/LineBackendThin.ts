@@ -73,6 +73,8 @@ class ThinLineBackend implements LineBackend {
 
   setWidth() {}
 
+  setDash() {}
+
   setDepthTest(depthTest: boolean) {
     if (this.material.depthTest === depthTest) return;
     this.material.depthTest = depthTest;
