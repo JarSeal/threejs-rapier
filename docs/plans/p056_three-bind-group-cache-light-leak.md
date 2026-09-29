@@ -62,6 +62,12 @@ NodeBuilder.js module scope: _bindingGroupsCache (WeakMap)
      [mrdoob/three.js#34705](https://github.com/mrdoob/three.js/issues/34705), with the standalone
      page as a CodePen. Related, closed without a fix: #33912 (same symptom, no repro) and #33676
      (`NodeManager.nodeBuilderCache`, merged into #32409).
+   - Fix PR: [mrdoob/three.js#34707](https://github.com/mrdoob/three.js/pull/34707) (open, not
+     merged as of 2026-09-29). It moves the cache into `Bindings` and deletes an entry when its
+     bind group is destroyed. The standalone page at the PR commit `aec7fcc` (WebGL2 backend)
+     collected 20 / 20 lights, and 19 / 20 with shadows; the last one is held through the latest
+     shadow render's render list, bounded to one light. Once it ships in a release, this plan
+     becomes a Three upgrade plus the Verification checks below (Gym ↔ One More Scene cycle).
 2. **Reset the render contexts on scene leave.** `renderer._renderContexts.dispose()` drops the
    cached `RenderContext`s, so their `_bindingGroupsCache` entries (and the `.camera` reference)
    can be collected. It's a private field, and other caches are keyed by `RenderContext`
