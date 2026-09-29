@@ -20,7 +20,9 @@ import {
   getSceneDefaultSkyBoxId,
   setActiveSkyBox,
   SKYBOX_DEBUG_OVERRIDES_LS_KEY,
+  SKYBOX_MANAGER_ID,
 } from '../SkyBox/SkyBox';
+import { _registerManagerDebugInfo } from './_dbg__ManagedEntities';
 import { getCurrentSceneId } from '../Scene';
 import { _recordUndoRedoAction, _registerUndoRedoActionHandler } from './_dbg__UndoRedo';
 import {
@@ -42,6 +44,13 @@ let debuggerCreated = false;
 
 // Before any sky box activates: the first scene load reads the migrated overrides
 if (IS_DEBUG_ENV) migrateLegacySkyBoxLS();
+
+// The Lights tab shows a sky box's lights as managed, with a link here
+_registerManagerDebugInfo(SKYBOX_MANAGER_ID, {
+  label: 'Sky box',
+  icon: 'cloudSun',
+  tabId: SKYBOX_TAB_ID,
+});
 
 // Selection (session-only: on load, the scene default wins)
 

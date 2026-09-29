@@ -410,6 +410,20 @@ export const _createDebuggerTab = (def: AnyDebuggerTabDef, opts?: DebugGUIOpts) 
   _createDebugGui(options);
 };
 
+export const _openDebuggerTab = (id: string) => {
+  const entry = tabs.get(id);
+  if (!entry) {
+    lwarn(`Could not find a debugger tab to open with id "${id}" in openDebuggerTab`);
+    return;
+  }
+  saveDrawerState({ currentTabId: id, currentScrollPos: 0 });
+  if (tabsContainerWrapper && mountedTab?.id !== id) {
+    mountTab(entry);
+    tabsContainerWrapper.elem.scrollTop = 0;
+  }
+  _toggleDrawer('OPEN');
+};
+
 export const _removeDebuggerTab = (id: string) => {
   const entry = tabs.get(id);
   if (!entry) {

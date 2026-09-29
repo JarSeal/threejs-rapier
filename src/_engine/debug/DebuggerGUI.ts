@@ -307,6 +307,14 @@ export const isDebuggerTabOpen = (id: string) =>
   useDebug(debugGUI)?._isDebuggerTabOpen(id) ?? false;
 
 /**
+ * Opens the drawer on a debugger tab (switching to it if another one is showing).
+ * @param id (string) tab id
+ */
+export const openDebuggerTab = (id: string) => {
+  useDebug(debugGUI)?._openDebuggerTab(id);
+};
+
+/**
  * Removes a debugger tab
  * @param id (string) tab id
  */

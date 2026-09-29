@@ -72,6 +72,9 @@ export type SkyBoxUpdate = {
 export type SkyBoxChangeReason = 'activate' | 'update' | 'clear';
 type SkyBoxChangeListener = (active: ActiveSkyBox | null, reason: SkyBoxChangeReason) => void;
 
+/** The MANAGED_BY manager id of the entities a sky box owns (its lights, p112 Phase 4). */
+export const SKYBOX_MANAGER_ID = 'SKYBOX';
+
 /** @internal The debug tab's override store: `{ [sceneId]: { [skyBoxId]: SkyBoxOverrides } }`. */
 export const SKYBOX_DEBUG_OVERRIDES_LS_KEY = 'AEK_debugSkyBox';
 
