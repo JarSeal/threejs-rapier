@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
-import { CMP } from '../../utils/CMP';
+import { CMP, type TCMP } from '../../utils/CMP';
 import { IS_DEBUG_ENV } from '../Config';
 import { createLines, writePolyline, type LineObject } from '../LineManager';
 import { createDebuggerTab, updateDebuggerTab } from '../../debug/DebuggerGUI';
-import { PercentagePieHtml } from '../../utils/UI/PercentagePieHtml';
+import { createPercentagePie, type PercentagePie } from '../../utils/UI/PercentagePieHtml';
 import type { IntervalWindowSnapshot } from '../../utils/stats/IntervalCounterStats';
 import { getRayCastStats, isRayCastStatsEnabled, setRayCastStatsEnabled } from '../Raycast';
 
@@ -11,6 +11,8 @@ const DEFAULT_HELPER_COLOR = '#ff0000';
 const DEFAULT_MAX_HELPER_LENGTH = 1000;
 const LS_KEY = 'debugRayCast';
 const TAB_ID = 'rayCastControls';
+/** How often the open tab writes the stats values into its view */
+const STATS_VIEW_REFRESH_MS = 200;
 /** One single-segment line per helper id, refilled on every draw. */
 const rayHelpers = new Map<string, { line: LineObject; color: THREE.ColorRepresentation }>();
 /** Helper ids drawn since the last cleanup; the rest are disposed by it. */
@@ -84,8 +86,6 @@ export const _onRayCastFrameEnd = () => {
     rayHelpers.delete(helperId);
   }
   drawnHelperIds.clear();
-  // Only refreshes when it's the open tab
-  if (isRayCastStatsEnabled()) updateDebuggerTab(TAB_ID);
 };
 
 export const _deleteAllRayHelpers = () => {
@@ -107,6 +107,12 @@ const createDebugControls = () => {
     lsKey: LS_KEY,
     state: rayCastState,
     persistKeys: ['showAllRayDebugHelpers', 'enableRayStatistics'],
+    // Only while the tab is visible
+    refreshIntervalMs: STATS_VIEW_REFRESH_MS,
+    onRefresh: refreshStatsView,
+    onOpen: () => () => {
+      statsView = null;
+    },
     content: () => [
       {
         pane: true,
@@ -122,37 +128,85 @@ const createDebugControls = () => {
           },
         ],
       },
-      // Dynamic template: re-rendered on every tab refresh (each frame while statistics are on)
-      CMP({ html: () => `<div class="rayCastStats">${getStatsHtml()}</div>` }),
+      buildStatsView(),
     ],
   });
 };
 
-const intervalText = (win: IntervalWindowSnapshot) => `Last ${win.intervalMs / 1000}s`;
+type StatsValue = { elem: HTMLElement; text: string };
+type StatsWindowRow = { win: IntervalWindowSnapshot; pie: PercentagePie; value: StatsValue };
+/** The mounted stats block's cached elements (null while the tab isn't mounted) */
+let statsView: {
+  list: TCMP;
+  isActive: boolean | null;
+  lastFrame: StatsValue;
+  maxEver: StatsValue;
+  rows: StatsWindowRow[];
+} | null = null;
 
-const pie = (win: IntervalWindowSnapshot) => PercentagePieHtml(Math.round(win.progress * 100));
+const INACTIVE_VALUE = '-';
+
+const addStatsRow = (list: TCMP, label: string, pie?: PercentagePie): StatsValue => {
+  const row = list.add({ tag: 'li' });
+  const labelCmp = row.add({ tag: 'span', class: 'rayStatLabel', text: label });
+  if (pie) labelCmp.add(pie.cmp);
+  return { elem: row.add({ tag: 'span', text: INACTIVE_VALUE }).elem, text: INACTIVE_VALUE };
+};
+
+/** Builds the stats block once per mount (static markup, the value elements are cached). */
+const buildStatsView = () => {
+  const root = CMP({ class: 'rayCastStats' });
+  root.add({ tag: 'h3', text: 'Stats:' });
+  const list = root.add({ tag: 'ul' });
+  const lastFrame = addStatsRow(list, 'Last frame:');
+  const maxEver = addStatsRow(list, 'Max ever:');
+  const rows: StatsWindowRow[] = [];
+  const windows = getRayCastStats().windows;
+  for (const kind of ['AVERAGE', 'MIN_MAX'] as const) {
+    const heading = kind === 'AVERAGE' ? 'Average per frame' : 'Max / min per frame';
+    list.add({ tag: 'li', class: 'rayStatHeading', text: heading });
+    for (let i = 0; i < windows.length; i++) {
+      const win = windows[i];
+      if (win.kind !== kind) continue;
+      const pie = createPercentagePie();
+      const value = addStatsRow(list, `Last ${win.intervalMs / 1000}s: `, pie);
+      rows.push({ win, pie, value });
+    }
+  }
+  statsView = { list, isActive: null, lastFrame, maxEver, rows };
+  refreshStatsView();
+  return root;
+};
+
+const writeStatsValue = (value: StatsValue, text: string) => {
+  if (value.text === text) return;
+  value.text = text;
+  value.elem.textContent = text;
+};
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-const getStatsHtml = () => {
-  const s = getRayCastStats();
+/** Writes the stats into the cached view: only changed texts and pie values, no html. */
+const refreshStatsView = () => {
+  const view = statsView;
+  if (!view) return;
   const isActive = isRayCastStatsEnabled();
-  // Raycast.ts's window order: MIN_MAX 3s, MIN_MAX 10s, AVERAGE 3s, AVERAGE 20s
-  const [minMax, minMaxLong, average, averageLong] = s.windows;
-  return `<div>
-  <h3>Stats:</h3>
-  <ul class="${isActive ? 'active' : 'inactive'}">
-    <li><span class="rayStatLabel">Current rays:</span> ${isActive ? s.lastFrame : '-'}</li>
-    <li class="rayStatHeading">Average per frame</li>
-    <li><span class="rayStatLabel">${intervalText(average)}: ${pie(average)}</span> ${round2(average.average)}</li>
-    <li><span class="rayStatLabel">${intervalText(averageLong)}: ${pie(averageLong)}</span> ${round2(averageLong.average)}</li>
-    <li class="rayStatHeading">Maximum per frame</li>
-    <li><span class="rayStatLabel">Ever:</span> ${s.maxEver}</li>
-    <li><span class="rayStatLabel">${intervalText(minMax)}: ${pie(minMax)}</span> ${minMax.max}</li>
-    <li><span class="rayStatLabel">${intervalText(minMaxLong)}: ${pie(minMaxLong)}</span> ${minMaxLong.max}</li>
-    <li class="rayStatHeading">Minimum per frame</li>
-    <li><span class="rayStatLabel">${intervalText(minMax)}: ${pie(minMax)}</span> ${minMax.min}</li>
-    <li><span class="rayStatLabel">${intervalText(minMaxLong)}: ${pie(minMaxLong)}</span> ${minMaxLong.min}</li>
-  </ul>
-</div>`;
+  if (isActive !== view.isActive) {
+    view.isActive = isActive;
+    view.list.updateClass('inactive', isActive ? 'remove' : 'add');
+  }
+  const s = getRayCastStats();
+  writeStatsValue(view.lastFrame, isActive ? String(s.lastFrame) : INACTIVE_VALUE);
+  writeStatsValue(view.maxEver, isActive ? String(s.maxEver) : INACTIVE_VALUE);
+  for (let i = 0; i < view.rows.length; i++) {
+    const { win, pie, value } = view.rows[i];
+    pie.set(isActive ? win.progress * 100 : 0);
+    if (!isActive) {
+      writeStatsValue(value, INACTIVE_VALUE);
+    } else if (win.kind === 'AVERAGE') {
+      writeStatsValue(value, String(round2(win.average)));
+    } else {
+      writeStatsValue(value, `${win.max} / ${win.min}`);
+    }
+  }
 };

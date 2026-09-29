@@ -29,6 +29,19 @@
   }
 }
 
+// PercentagePieHtml.ts: the fill is a conic gradient, driven by --p (0..100)
+.percentagePie {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--pie-fill, #fff) calc(var(--p, 0) * 1%),
+    var(--pie-bg, transparent) 0
+  );
+  vertical-align: middle;
+}
+
 #debugToaster .toastType-info .toastIcon path {
   fill: variables.$info;
 }
