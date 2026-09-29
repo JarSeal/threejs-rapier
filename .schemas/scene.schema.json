@@ -2659,10 +2659,399 @@
           },
           {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "isDefault": {
+                "type": "boolean"
+              },
+              "preset": {
+                "type": "string"
+              },
+              "base": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "COLOR"
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "r": {
+                                "type": "number"
+                              },
+                              "g": {
+                                "type": "number"
+                              },
+                              "b": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "r",
+                              "g",
+                              "b"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "color"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "EQUIRECTANGULAR"
+                      },
+                      "file": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "textureId": {
+                        "type": "string"
+                      },
+                      "colorSpace": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "const": ""
+                          },
+                          {
+                            "type": "string",
+                            "const": "srgb"
+                          },
+                          {
+                            "type": "string",
+                            "const": "srgb-linear"
+                          }
+                        ]
+                      },
+                      "rotate": {
+                        "type": "number"
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "CUBE_TEXTURE"
+                      },
+                      "fileNames": {
+                        "minItems": 6,
+                        "maxItems": 6,
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "textureId": {
+                        "type": "string"
+                      },
+                      "colorSpace": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "const": ""
+                          },
+                          {
+                            "type": "string",
+                            "const": "srgb"
+                          },
+                          {
+                            "type": "string",
+                            "const": "srgb-linear"
+                          }
+                        ]
+                      },
+                      "rotate": {
+                        "type": "number"
+                      },
+                      "flipY": {
+                        "type": "boolean"
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "fileNames"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "env": {
+                "type": "object",
+                "properties": {
+                  "backgroundRoughness": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "backgroundIntensity": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "environmentIntensity": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "size": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "dynamic": {
+                    "type": "boolean"
+                  },
+                  "updateAngleDeg": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "maxUpdatesPerSec": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
+              "debugData": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "comments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "timestamp": {
+                          "type": "number"
+                        },
+                        "comment": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "timestamp",
+                        "comment"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "todo": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "debugObj": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "additionalProperties": false
+              },
+              "$schema": {
+                "type": "string"
+              },
+              "__sourcePath": {
+                "type": "string"
+              },
+              "__saveData": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "base": {
+                        "type": "object",
+                        "properties": {
+                          "color": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "r": {
+                                    "type": "number"
+                                  },
+                                  "g": {
+                                    "type": "number"
+                                  },
+                                  "b": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "r",
+                                  "g",
+                                  "b"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          },
+                          "file": {
+                            "type": "string"
+                          },
+                          "fileNames": {
+                            "minItems": 6,
+                            "maxItems": 6,
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "textureId": {
+                            "type": "string"
+                          },
+                          "colorSpace": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "const": ""
+                              },
+                              {
+                                "type": "string",
+                                "const": "srgb"
+                              },
+                              {
+                                "type": "string",
+                                "const": "srgb-linear"
+                              }
+                            ]
+                          },
+                          "rotate": {
+                            "type": "number"
+                          },
+                          "flipY": {
+                            "type": "boolean"
+                          },
+                          "intensity": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "env": {
+                        "type": "object",
+                        "properties": {
+                          "backgroundRoughness": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "backgroundIntensity": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "environmentIntensity": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "size": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "dynamic": {
+                            "type": "boolean"
+                          },
+                          "updateAngleDeg": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "maxUpdatesPerSec": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "__meta": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "number"
+                          },
+                          "engineVersion": {
+                            "type": "string",
+                            "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                          },
+                          "toolkitVersion": {
+                            "type": "string",
+                            "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                          },
+                          "appVersion": {
+                            "type": "string",
+                            "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              }
             },
-            "additionalProperties": {}
+            "required": [
+              "id",
+              "base"
+            ],
+            "additionalProperties": false
           }
         ]
       }
@@ -5619,10 +6008,399 @@
                   },
                   {
                     "type": "object",
-                    "propertyNames": {
-                      "type": "string"
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "isDefault": {
+                        "type": "boolean"
+                      },
+                      "preset": {
+                        "type": "string"
+                      },
+                      "base": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "COLOR"
+                              },
+                              "color": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "r": {
+                                        "type": "number"
+                                      },
+                                      "g": {
+                                        "type": "number"
+                                      },
+                                      "b": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "r",
+                                      "g",
+                                      "b"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "color"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "EQUIRECTANGULAR"
+                              },
+                              "file": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "textureId": {
+                                "type": "string"
+                              },
+                              "colorSpace": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "const": ""
+                                  },
+                                  {
+                                    "type": "string",
+                                    "const": "srgb"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "const": "srgb-linear"
+                                  }
+                                ]
+                              },
+                              "rotate": {
+                                "type": "number"
+                              },
+                              "intensity": {
+                                "type": "number",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "CUBE_TEXTURE"
+                              },
+                              "fileNames": {
+                                "minItems": 6,
+                                "maxItems": 6,
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "textureId": {
+                                "type": "string"
+                              },
+                              "colorSpace": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "const": ""
+                                  },
+                                  {
+                                    "type": "string",
+                                    "const": "srgb"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "const": "srgb-linear"
+                                  }
+                                ]
+                              },
+                              "rotate": {
+                                "type": "number"
+                              },
+                              "flipY": {
+                                "type": "boolean"
+                              },
+                              "intensity": {
+                                "type": "number",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "fileNames"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "env": {
+                        "type": "object",
+                        "properties": {
+                          "backgroundRoughness": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "backgroundIntensity": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "environmentIntensity": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "size": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "dynamic": {
+                            "type": "boolean"
+                          },
+                          "updateAngleDeg": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "maxUpdatesPerSec": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "debugData": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "comments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "timestamp": {
+                                  "type": "number"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "timestamp",
+                                "comment"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "todo": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          },
+                          "debugObj": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "$schema": {
+                        "type": "string"
+                      },
+                      "__sourcePath": {
+                        "type": "string"
+                      },
+                      "__saveData": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "base": {
+                                "type": "object",
+                                "properties": {
+                                  "color": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "r": {
+                                            "type": "number"
+                                          },
+                                          "g": {
+                                            "type": "number"
+                                          },
+                                          "b": {
+                                            "type": "number"
+                                          }
+                                        },
+                                        "required": [
+                                          "r",
+                                          "g",
+                                          "b"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  },
+                                  "file": {
+                                    "type": "string"
+                                  },
+                                  "fileNames": {
+                                    "minItems": 6,
+                                    "maxItems": 6,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "textureId": {
+                                    "type": "string"
+                                  },
+                                  "colorSpace": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "const": ""
+                                      },
+                                      {
+                                        "type": "string",
+                                        "const": "srgb"
+                                      },
+                                      {
+                                        "type": "string",
+                                        "const": "srgb-linear"
+                                      }
+                                    ]
+                                  },
+                                  "rotate": {
+                                    "type": "number"
+                                  },
+                                  "flipY": {
+                                    "type": "boolean"
+                                  },
+                                  "intensity": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "env": {
+                                "type": "object",
+                                "properties": {
+                                  "backgroundRoughness": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                  },
+                                  "backgroundIntensity": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  "environmentIntensity": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  "size": {
+                                    "type": "integer",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "dynamic": {
+                                    "type": "boolean"
+                                  },
+                                  "updateAngleDeg": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  "maxUpdatesPerSec": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "__meta": {
+                                "type": "object",
+                                "properties": {
+                                  "date": {
+                                    "type": "number"
+                                  },
+                                  "engineVersion": {
+                                    "type": "string",
+                                    "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                  },
+                                  "toolkitVersion": {
+                                    "type": "string",
+                                    "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                  },
+                                  "appVersion": {
+                                    "type": "string",
+                                    "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        }
+                      }
                     },
-                    "additionalProperties": {}
+                    "required": [
+                      "id",
+                      "base"
+                    ],
+                    "additionalProperties": false
                   }
                 ]
               }

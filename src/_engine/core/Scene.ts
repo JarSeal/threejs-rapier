@@ -14,6 +14,7 @@ import {
   getSceneSkyBoxTextureIds,
   SkyBoxProps,
 } from './SkyBox';
+import type { SkyBoxDef } from './SkyBox/SkyBoxTypes';
 import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
@@ -47,7 +48,7 @@ export type SceneData = {
   materials?: (MatProps | string)[];
   meshes?: ({ props: MeshProps; entityOpts?: CoreEntityOpts } | string)[];
   importedAssets?: (ImportAssetParams | string)[];
-  skyboxes?: (SkyBoxProps | string)[];
+  skyboxes?: (SkyBoxDef | string)[];
   /** Ordered PostFX pass chain (array order is execution order). */
   postFx?: (PostFxPassProps | string)[];
   postFxEnabled?: boolean;
@@ -717,6 +718,43 @@ export const getGeneratedSceneData = (sceneId: string) =>
     | SceneData
     | undefined;
 
+/**
+ * @deprecated p111 Phase 1 shim, removed in Phase 2: converts a generated (layered) sky box
+ * definition back to the legacy props createSkyBox still takes.
+ */
+const toLegacySkyBoxProps = (def: SkyBoxDef): SkyBoxProps => {
+  const { id, debugData, base, env } = def;
+  const roughness = env?.backgroundRoughness;
+  if (base.type === 'EQUIRECTANGULAR') {
+    const { file, texture, path, textureId, colorSpace } = base;
+    return {
+      id,
+      debugData,
+      type: 'EQUIRECTANGULAR',
+      params: { file: file ?? texture, path, textureId, colorSpace, roughness },
+    };
+  }
+  if (base.type === 'CUBE_TEXTURE') {
+    const { fileNames, path, textureId, colorSpace, rotate, flipY } = base;
+    return {
+      id,
+      debugData,
+      type: 'CUBETEXTURE',
+      params: {
+        fileNames,
+        path,
+        textureId,
+        colorSpace,
+        roughness,
+        cubeTextRotate: rotate !== undefined ? rotate / Math.PI : undefined,
+        flipY,
+      },
+    };
+  }
+  // COLOR has no legacy equivalent (and no JSON uses it yet)
+  return { id, debugData, type: '', params: null };
+};
+
 /** Registers (creates) the scenes at initEngine (initApp). */
 export const registerScenesFromGeneratedData = async () => {
   const data = getGeneratedAppData();
@@ -738,7 +776,7 @@ export const registerScenesFromGeneratedData = async () => {
       for (let j = 0; j < sceneData.skyboxes.length; j++) {
         const props = sceneData.skyboxes[j];
         if (typeof props === 'string') continue;
-        await createSkyBox({ ...props, sceneId, isCurrent: false });
+        await createSkyBox({ ...toLegacySkyBoxProps(props), sceneId, isCurrent: false });
       }
     }
   }
