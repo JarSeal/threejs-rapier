@@ -546,6 +546,18 @@
                               "properties": {
                                 "date": {
                                   "type": "number"
+                                },
+                                "engineVersion": {
+                                  "type": "string",
+                                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                },
+                                "toolkitVersion": {
+                                  "type": "string",
+                                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                },
+                                "appVersion": {
+                                  "type": "string",
+                                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
                                 }
                               },
                               "additionalProperties": false
@@ -770,6 +782,18 @@
                               "properties": {
                                 "date": {
                                   "type": "number"
+                                },
+                                "engineVersion": {
+                                  "type": "string",
+                                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                },
+                                "toolkitVersion": {
+                                  "type": "string",
+                                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                },
+                                "appVersion": {
+                                  "type": "string",
+                                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
                                 }
                               },
                               "additionalProperties": false
@@ -1628,6 +1652,18 @@
                                   "properties": {
                                     "date": {
                                       "type": "number"
+                                    },
+                                    "engineVersion": {
+                                      "type": "string",
+                                      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                    },
+                                    "toolkitVersion": {
+                                      "type": "string",
+                                      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                    },
+                                    "appVersion": {
+                                      "type": "string",
+                                      "pattern": "^\\d+\\.\\d+\\.\\d+$"
                                     }
                                   },
                                   "additionalProperties": false
@@ -1847,6 +1883,18 @@
                                   "properties": {
                                     "date": {
                                       "type": "number"
+                                    },
+                                    "engineVersion": {
+                                      "type": "string",
+                                      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                    },
+                                    "toolkitVersion": {
+                                      "type": "string",
+                                      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                                    },
+                                    "appVersion": {
+                                      "type": "string",
+                                      "pattern": "^\\d+\\.\\d+\\.\\d+$"
                                     }
                                   },
                                   "additionalProperties": false
@@ -2084,6 +2132,18 @@
               "properties": {
                 "date": {
                   "type": "number"
+                },
+                "engineVersion": {
+                  "type": "string",
+                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                },
+                "toolkitVersion": {
+                  "type": "string",
+                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                },
+                "appVersion": {
+                  "type": "string",
+                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
                 }
               },
               "additionalProperties": false

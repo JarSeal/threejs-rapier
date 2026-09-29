@@ -64,13 +64,14 @@ const createMergeVersion = (appVersion?: string, engineVersion?: string) => {
 
 const createVersionChecksumString = (m?: typeof meta) => {
   if (!m) return '';
-  const mergeVersion = createMergeVersion(m.app?.version, m.engine?.version);
   const appVersion = m.app?.version;
   const appCodename = m.app?.codename;
   const engVersion = m.engine?.version;
   const engCodename = m.engine?.codename;
+  const tkVersion = m.toolkit?.version;
+  const tkCodename = m.toolkit?.codename;
   const pkgVersion = m.pkgVersion;
-  return `${mergeVersion}_${appVersion}-${appCodename}_${engVersion}-${engCodename}_${pkgVersion}`;
+  return `${appVersion}-${appCodename}_${engVersion}-${engCodename}_${tkVersion}-${tkCodename}_${pkgVersion}`;
 };
 
 const appVersion = pkg.app_metadata?.version || (pkg.version ? `${pkg.version}-pkg` : '');
@@ -96,7 +97,19 @@ const meta = {
     repoUrl: pkg.engine_metadata?.repository || pkg.repository || '',
     author: pkg.engine_metadata?.author || '',
   },
+  // Ships with the engine, so the repo and author default to the engine's
+  toolkit: {
+    version: pkg.toolkit_metadata?.version || '',
+    codename: pkg.toolkit_metadata?.codename || '',
+    name: pkg.toolkit_metadata?.name || '',
+    fullName: pkg.toolkit_metadata?.fullName || '',
+    description: pkg.toolkit_metadata?.description || '',
+    url: pkg.toolkit_metadata?.url || '',
+    repoUrl: pkg.engine_metadata?.repository || pkg.repository || '',
+    author: pkg.engine_metadata?.author || '',
+  },
   pkgVersion: pkg.version || '',
+  // Deprecated (see PROJECT_METADATA.mergeVersion), kept until the next major engine version
   mergeVersion: createMergeVersion(appVersion, engineVersion),
   versionChecksum: '',
   versionChecksumString: '',
@@ -153,8 +166,11 @@ export default defineConfig({
             ENGINE_FULL_NAME: meta.engine.fullName,
             ENGINE_VERSION: meta.engine.version,
             ENGINE_CODENAME: meta.engine.codename,
+            TOOLKIT_NAME: meta.toolkit.name,
+            TOOLKIT_FULL_NAME: meta.toolkit.fullName,
+            TOOLKIT_VERSION: meta.toolkit.version,
+            TOOLKIT_CODENAME: meta.toolkit.codename,
             VERSION_CHECKSUM: meta.versionChecksum,
-            MERGE_VERSION: meta.mergeVersion,
           };
           return flatMeta[key as keyof typeof flatMeta] || match;
         });

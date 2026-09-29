@@ -19,12 +19,12 @@
     "typeRoots": ["./src/types", "./node_modules/@types"]
   },
   "typedocOptions": {
-    "entryPoints": ["src/_engine/**"],
+    "entryPoints": ["src/_engine/**", "src/toolkit/**"],
     "out": "docs-api",
     "theme": "default",
     "excludePrivate": true,
     "readme": "none"
   },
   "exclude": ["node_modules"],
-  "include": ["src/**/*", "vite.config.ts", "vite-env.d.ts"]
+  "include": ["src/**/*", "devTools/**/*.ts", "vite.config.ts", "vite-env.d.ts"]
 }

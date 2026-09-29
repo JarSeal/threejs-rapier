@@ -6,9 +6,6 @@ set -uo pipefail
 
 cd "${CLAUDE_PROJECT_DIR:-}" 2>/dev/null || exit 0
 
-# Nothing changed in src/ (including new files) — skip.
-[[ -z "$(git status --porcelain -- src)" ]] && exit 0
-
 # The hook's shell can start on an older default Node than package.json's engines field
 # allows, and yarn then refuses to run at all. Prefer the newest nvm-installed Node.
 NVM_NODE_DIR="$HOME/.nvm/versions/node"
@@ -16,6 +13,20 @@ if [[ -d "$NVM_NODE_DIR" ]]; then
   LATEST_NODE=$(ls "$NVM_NODE_DIR" | sort -V | tail -1)
   [[ -n "$LATEST_NODE" ]] && export PATH="$NVM_NODE_DIR/$LATEST_NODE/bin:$PATH"
 fi
+
+# Version rules (project version = engine version, valid semver). package.json is outside
+# src/, so this runs before the src/ skip below, and only when package.json changed. The
+# per-part bump check (--against main) is for before a PR, not every stop.
+if [[ -n "$(git status --porcelain -- package.json)" ]]; then
+  if ! VERSION_OUT=$(yarn -s checkVersions 2>&1); then
+    echo "Version rule violations. Fix package.json before finishing:" >&2
+    echo "$VERSION_OUT" >&2
+    exit 2
+  fi
+fi
+
+# Nothing changed in src/ (including new files) — skip.
+[[ -z "$(git status --porcelain -- src)" ]] && exit 0
 
 yarn lint --fix >/dev/null 2>&1
 

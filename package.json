@@ -14,6 +14,14 @@
     "repository": "https://github.com/JarSeal/threerapier.git",
     "author": "JarSeal"
   },
+  "toolkit_metadata": {
+    "version": "1.0.0",
+    "codename": "Crescent",
+    "name": "Ækasha Toolkit",
+    "fullName": "Ækasha Toolkit — Modules & Assets",
+    "description": "Ready-made ECS components, modules, models, textures, and shaders for Ækasha: bring in only what you need, as-is, or copy it into your app and make it your own.",
+    "url": ""
+  },
   "app_metadata": {
     "version": "1.2.1",
     "codename": "Preschooler",
@@ -40,6 +48,8 @@
   "scripts": {
     "gatherAppData": "tsx ./devTools/gatherAppData.ts",
     "copyDracoDecoders": "tsx ./devTools/copyDracoDecoders.ts",
+    "checkVersions": "tsx ./devTools/checkVersions.ts",
+    "tagRelease": "tsx ./devTools/tagRelease.ts",
     "dev": "yarn copyDracoDecoders && yarn gatherAppData && VITE_APP_ENV=development vite serve --port 8080 --host",
     "dev:test": "yarn copyDracoDecoders && yarn gatherAppData && VITE_APP_ENV=test vite serve --port 8080 --host",
     "dev:production": "yarn copyDracoDecoders && yarn gatherAppData && vite serve --port 8080 --host",
