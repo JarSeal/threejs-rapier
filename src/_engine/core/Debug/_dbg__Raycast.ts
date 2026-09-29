@@ -1,11 +1,11 @@
 import * as THREE from 'three/webgpu';
 import { CMP } from '../../utils/CMP';
-import { ECSSystemStage } from '../../../AppECSRegistry';
 import { IS_DEBUG_ENV } from '../Config';
-import { ECSWorld } from '../ECS';
 import { createLines, writePolyline, type LineObject } from '../LineManager';
 import { createDebuggerTab, updateDebuggerTab } from '../../debug/DebuggerGUI';
 import { PercentagePieHtml } from '../../utils/UI/PercentagePieHtml';
+import type { IntervalWindowSnapshot } from '../../utils/stats/IntervalCounterStats';
+import { getRayCastStats, isRayCastStatsEnabled, setRayCastStatsEnabled } from '../Raycast';
 
 const DEFAULT_HELPER_COLOR = '#ff0000';
 const DEFAULT_MAX_HELPER_LENGTH = 1000;
@@ -21,59 +21,12 @@ const rayCastState = {
   showAllRayDebugHelpers: false,
   enableRayStatistics: false,
 };
-const DEFAULT_STATS = {
-  current: 0,
-  sceneMaxEver: 0,
-  sceneMax: 0,
-  sceneMin: 0,
-  sceneMaxLong: 0,
-  sceneMinLong: 0,
-  sceneAverage: 0,
-  sceneAverageTotal: 0,
-  sceneLongAverage: 0,
-  sceneLongAverageTotal: 0,
-  _framesSceneAverage: 0,
-  _framesSceneLongAverage: 0,
-  _lastSceneMaxMinTime: 0,
-  _lastSceneLongMaxMinTime: 0,
-  _lastSceneAverageTime: 0,
-  _lastSceneLongAverageTime: 0,
-  _minCounter: Infinity,
-  _maxCounter: 0,
-  _minLongCounter: Infinity,
-  _maxLongCounter: 0,
-  _percentageSceneMaxMinInterval: 0,
-  _percentageSceneLongMaxMinInterval: 0,
-  _percentageSceneAverageInterval: 0,
-  _percentageSceneLongAverageInterval: 0,
-};
-let stats = { ...DEFAULT_STATS };
-const DEFAULT_STATS_CONFIG = {
-  sceneMaxMinIntervalInMs: 3000,
-  sceneLongMaxMinIntervalInMs: 10000,
-  sceneAverageIntervalInMs: 3000,
-  sceneLongAverageIntervalInMs: 20000,
-};
-const statsConfig = { ...DEFAULT_STATS_CONFIG };
-let maxMinIntervalText = '';
-let maxMinLongIntervalText = '';
-let averageIntervalText = '';
-let averageLongIntervalText = '';
 
 export const _initRayCastingDebugger = () => {
   if (IS_DEBUG_ENV) {
     createDebugControls();
-    // After rendering (and not on frames the FPS limiter skips): drop the helpers of rays
-    // that weren't cast this frame
-    ECSWorld.registerPlugin((world) => {
-      world.addSystem(
-        ECSSystemStage.LATE_MAIN,
-        'rayHelperCleanupSystem',
-        _cleanUpRayHelpers,
-        -1000
-      );
-      return world;
-    });
+    // The persisted toggle is hydrated by createDebuggerTab
+    setRayCastStatsEnabled(rayCastState.enableRayStatistics);
   }
 };
 
@@ -90,7 +43,6 @@ export const _drawRayHelper = ({
   helperId?: string;
   helperColor?: THREE.ColorRepresentation;
 }) => {
-  countStats();
   if (!helperId || !rayCastState.showAllRayDebugHelpers) return;
 
   const color = helperColor || DEFAULT_HELPER_COLOR;
@@ -123,16 +75,17 @@ export const _drawRayHelper = ({
   drawnHelperIds.add(helperId);
 };
 
-/** Once per rendered frame: disposes the helpers of rays that weren't cast this frame, and
- * refreshes the statistics. */
-export const _cleanUpRayHelpers = () => {
+/** Once per rendered frame (Raycast.ts's LATE_MAIN frame end, after the stats frame has ended):
+ * disposes the helpers of rays that weren't cast this frame, and refreshes the stats view. */
+export const _onRayCastFrameEnd = () => {
   for (const [helperId, helper] of rayHelpers) {
     if (drawnHelperIds.has(helperId)) continue;
     helper.line.dispose();
     rayHelpers.delete(helperId);
   }
   drawnHelperIds.clear();
-  _updateStats();
+  // Only refreshes when it's the open tab
+  if (isRayCastStatsEnabled()) updateDebuggerTab(TAB_ID);
 };
 
 export const _deleteAllRayHelpers = () => {
@@ -147,8 +100,6 @@ export const _toggleAllRayDebugHelpers = (show?: boolean) => {
 };
 
 const createDebugControls = () => {
-  createIntervalTexts();
-
   createDebuggerTab({
     id: TAB_ID,
     title: 'Ray cast controls',
@@ -165,17 +116,7 @@ const createDebugControls = () => {
             key: 'enableRayStatistics',
             label: 'Enable ray cast statistics',
             onChange: () => {
-              stats._percentageSceneMaxMinInterval = 0;
-              stats._percentageSceneLongMaxMinInterval = 0;
-              stats._percentageSceneAverageInterval = 0;
-              stats._percentageSceneLongAverageInterval = 0;
-              stats._lastSceneMaxMinTime = performance.now();
-              stats._lastSceneLongMaxMinTime = performance.now();
-              stats._lastSceneAverageTime = performance.now();
-              stats._lastSceneLongAverageTime = performance.now();
-              stats.current = 0;
-              stats.sceneAverageTotal = 0;
-              stats.sceneLongAverageTotal = 0;
+              setRayCastStatsEnabled(rayCastState.enableRayStatistics);
               updateDebuggerTab(TAB_ID);
             },
           },
@@ -187,146 +128,31 @@ const createDebugControls = () => {
   });
 };
 
-const countStats = () => {
-  stats.current++;
-  stats.sceneAverageTotal++;
-  stats.sceneLongAverageTotal++;
-};
+const intervalText = (win: IntervalWindowSnapshot) => `Last ${win.intervalMs / 1000}s`;
 
-export const _countRayCastFrames = () => {
-  if (!rayCastState.enableRayStatistics) return;
-  stats._framesSceneAverage++;
-  stats._framesSceneLongAverage++;
-};
+const pie = (win: IntervalWindowSnapshot) => PercentagePieHtml(Math.round(win.progress * 100));
 
-export const _updateStats = () => {
-  if (rayCastState.enableRayStatistics) {
-    const timeNow = performance.now();
-    let targetTime = 0;
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
-    // Max/min rays
-    targetTime = stats._lastSceneMaxMinTime + statsConfig.sceneMaxMinIntervalInMs;
-    if (targetTime < timeNow) {
-      stats.sceneMax = stats._maxCounter;
-      stats.sceneMin = stats._minCounter;
-      stats._maxCounter = 0;
-      stats._minCounter = Infinity;
-      stats._lastSceneMaxMinTime = performance.now();
-      stats._percentageSceneMaxMinInterval = 0;
-    } else {
-      stats._percentageSceneMaxMinInterval = Math.min(
-        100,
-        Math.round(
-          ((timeNow - stats._lastSceneMaxMinTime) / (targetTime - stats._lastSceneMaxMinTime)) * 100
-        )
-      );
-    }
-
-    // Max/min rays LONG
-    targetTime = stats._lastSceneLongMaxMinTime + statsConfig.sceneLongMaxMinIntervalInMs;
-    if (targetTime < timeNow) {
-      stats.sceneMaxLong = stats._maxLongCounter;
-      stats.sceneMinLong = stats._minLongCounter;
-      stats._maxLongCounter = 0;
-      stats._minLongCounter = Infinity;
-      stats._lastSceneLongMaxMinTime = performance.now();
-      stats._percentageSceneLongMaxMinInterval = 0;
-    } else {
-      stats._percentageSceneLongMaxMinInterval = Math.min(
-        100,
-        Math.round(
-          ((timeNow - stats._lastSceneLongMaxMinTime) /
-            (targetTime - stats._lastSceneLongMaxMinTime)) *
-            100
-        )
-      );
-    }
-
-    // Average
-    targetTime = stats._lastSceneAverageTime + statsConfig.sceneAverageIntervalInMs;
-    if (targetTime < timeNow) {
-      stats.sceneAverage = parseFloat(
-        (stats.sceneAverageTotal / stats._framesSceneAverage).toFixed(2)
-      );
-      stats.sceneAverageTotal = 0;
-      stats._framesSceneAverage = 0;
-      stats._lastSceneAverageTime = performance.now();
-      stats._percentageSceneAverageInterval = 0;
-    } else {
-      stats._percentageSceneAverageInterval = Math.min(
-        100,
-        Math.round(
-          ((timeNow - stats._lastSceneAverageTime) / (targetTime - stats._lastSceneAverageTime)) *
-            100
-        )
-      );
-    }
-
-    // Average LONG
-    targetTime = stats._lastSceneLongAverageTime + statsConfig.sceneLongAverageIntervalInMs;
-    if (targetTime < timeNow) {
-      stats.sceneLongAverage = parseFloat(
-        (stats.sceneLongAverageTotal / stats._framesSceneLongAverage).toFixed(2)
-      );
-      stats.sceneLongAverageTotal = 0;
-      stats._framesSceneLongAverage = 0;
-      stats._lastSceneLongAverageTime = performance.now();
-      stats._percentageSceneLongAverageInterval = 0;
-    } else {
-      stats._percentageSceneLongAverageInterval = Math.min(
-        100,
-        Math.round(
-          ((timeNow - stats._lastSceneLongAverageTime) /
-            (targetTime - stats._lastSceneLongAverageTime)) *
-            100
-        )
-      );
-    }
-
-    // Update Ray Cast Controls drawer view (only when it's the open tab)
-    // @TODO: if stats window and total stats (with ray stats) are implemented, update those as well here
-    updateDebuggerTab(TAB_ID);
-  }
-
-  if (stats.current > stats._maxCounter) stats._maxCounter = stats.current;
-  if (stats.current < stats._minCounter) stats._minCounter = stats.current;
-  if (stats.current > stats._maxLongCounter) stats._maxLongCounter = stats.current;
-  if (stats.current < stats._minLongCounter) stats._minLongCounter = stats.current;
-  if (stats.current > stats.sceneMaxEver) stats.sceneMaxEver = stats.current;
-  stats.current = 0;
-};
-
-const statsHtml = (s: typeof stats, className: string) => `<div>
+const getStatsHtml = () => {
+  const s = getRayCastStats();
+  const isActive = isRayCastStatsEnabled();
+  // Raycast.ts's window order: MIN_MAX 3s, MIN_MAX 10s, AVERAGE 3s, AVERAGE 20s
+  const [minMax, minMaxLong, average, averageLong] = s.windows;
+  return `<div>
   <h3>Stats:</h3>
-  <ul class="${className}">
-    <li><span class="rayStatLabel">Current rays:</span> ${s.current}</li>
+  <ul class="${isActive ? 'active' : 'inactive'}">
+    <li><span class="rayStatLabel">Current rays:</span> ${isActive ? s.lastFrame : '-'}</li>
     <li class="rayStatHeading">Average per frame</li>
-    <li><span class="rayStatLabel">${averageIntervalText}: ${PercentagePieHtml(s._percentageSceneAverageInterval)}</span> ${s.sceneAverage}</li>
-    <li><span class="rayStatLabel">${averageLongIntervalText}: ${PercentagePieHtml(s._percentageSceneLongAverageInterval)}</span> ${s.sceneLongAverage}</li>
+    <li><span class="rayStatLabel">${intervalText(average)}: ${pie(average)}</span> ${round2(average.average)}</li>
+    <li><span class="rayStatLabel">${intervalText(averageLong)}: ${pie(averageLong)}</span> ${round2(averageLong.average)}</li>
     <li class="rayStatHeading">Maximum per frame</li>
-    <li><span class="rayStatLabel">Ever:</span> ${s.sceneMaxEver}</li>
-    <li><span class="rayStatLabel">${maxMinIntervalText}: ${PercentagePieHtml(s._percentageSceneMaxMinInterval)}</span> ${s.sceneMax}</li>
-    <li><span class="rayStatLabel">${maxMinLongIntervalText}: ${PercentagePieHtml(s._percentageSceneLongMaxMinInterval)}</span> ${s.sceneMaxLong}</li>
+    <li><span class="rayStatLabel">Ever:</span> ${s.maxEver}</li>
+    <li><span class="rayStatLabel">${intervalText(minMax)}: ${pie(minMax)}</span> ${minMax.max}</li>
+    <li><span class="rayStatLabel">${intervalText(minMaxLong)}: ${pie(minMaxLong)}</span> ${minMaxLong.max}</li>
     <li class="rayStatHeading">Minimum per frame</li>
-    <li><span class="rayStatLabel">${maxMinIntervalText}: ${PercentagePieHtml(s._percentageSceneMaxMinInterval)}</span> ${s.sceneMin}</li>
-    <li><span class="rayStatLabel">${maxMinLongIntervalText}: ${PercentagePieHtml(s._percentageSceneLongMaxMinInterval)}</span> ${s.sceneMinLong}</li>
+    <li><span class="rayStatLabel">${intervalText(minMax)}: ${pie(minMax)}</span> ${minMax.min}</li>
+    <li><span class="rayStatLabel">${intervalText(minMaxLong)}: ${pie(minMaxLong)}</span> ${minMaxLong.min}</li>
   </ul>
 </div>`;
-
-const getStatsHtml = () =>
-  rayCastState.enableRayStatistics
-    ? statsHtml(stats, 'active')
-    : statsHtml({ ...stats, current: '-' } as unknown as typeof stats, 'inactive');
-
-const createIntervalTexts = () => {
-  const maxMin = statsConfig.sceneMaxMinIntervalInMs / 1000;
-  const maxMinLong = statsConfig.sceneLongMaxMinIntervalInMs / 1000;
-  const average = statsConfig.sceneAverageIntervalInMs / 1000;
-  const averageLong = statsConfig.sceneLongAverageIntervalInMs / 1000;
-  maxMinIntervalText = `Last ${maxMin}s`;
-  maxMinLongIntervalText = `Last ${maxMinLong}s`;
-  averageIntervalText = `Last ${average}s`;
-  averageLongIntervalText = `Last ${averageLong}s`;
 };
-
-export const _resetRayCastStats = () => (stats = { ...DEFAULT_STATS });

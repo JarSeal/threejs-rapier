@@ -584,8 +584,8 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
             disableDebugger(false);
 
             updateOnScreenTools();
-            resetRayCastStats();
           }
+          resetRayCastStats();
 
           // Includes creates the scene code didn't await (and the prev scene's deletes, in
           // WORKER_THREAD mode), so every body starts stepping on the same step.

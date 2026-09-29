@@ -1,6 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { DIRECTIONS } from '../utils/constants';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import {
+  IntervalCounterStats,
+  type IntervalCounterSnapshot,
+} from '../utils/stats/IntervalCounterStats';
+import { DEFAULT_ECS_WORLD_ID, ECSWorld } from './ECS';
+import { ECSSystemStage } from '../../AppECSRegistry';
 
 type Opts<TIntersected extends THREE.Object3D = THREE.Object3D> = {
   startLength?: number;
@@ -82,6 +88,7 @@ export const castRayFromPoints = <TIntersected extends THREE.Object3D = THREE.Ob
     optionalTargetArr,
     recursive,
   });
+  if (statsEnabled) stats.add();
   // drawRayHelper({ from, to, endLength, helperId, helperColor });
   useDebug(debugGUI)?._drawRayHelper({ from, to, endLength, helperId, helperColor });
   return intersects;
@@ -131,6 +138,7 @@ export const castRayFromAngle = <TIntersected extends THREE.Object3D = THREE.Obj
     optionalTargetArr,
     recursive,
   });
+  if (statsEnabled) stats.add();
   // drawRayHelper({ from, to: angleDirection, endLength, helperId, helperColor });
   useDebug(debugGUI)?._drawRayHelper({
     from,
@@ -181,6 +189,7 @@ export const castRayFromScreenPosition = <TIntersected extends THREE.Object3D = 
     optionalTargetArr,
     recursive,
   });
+  if (statsEnabled) stats.add();
   useDebug(debugGUI)?._drawRayHelper({
     from: ray.ray.origin,
     to: ray.ray.direction,
@@ -191,6 +200,62 @@ export const castRayFromScreenPosition = <TIntersected extends THREE.Object3D = 
   return intersects;
 };
 
+// Stats
+
+/** Ray cast statistics windows (per rendered frame) */
+const stats = new IntervalCounterStats([
+  { id: 'minMax3s', intervalMs: 3000, kind: 'MIN_MAX' },
+  { id: 'minMax10s', intervalMs: 10000, kind: 'MIN_MAX' },
+  { id: 'average3s', intervalMs: 3000, kind: 'AVERAGE' },
+  { id: 'average20s', intervalMs: 20000, kind: 'AVERAGE' },
+]);
+let statsEnabled = false;
+
+/**
+ * Enables or disables the ray cast statistics. Enabling resets them. While disabled, a cast
+ * costs one boolean check and nothing is counted.
+ * @param enabled (boolean) whether casts are counted
+ */
+export const setRayCastStatsEnabled = (enabled: boolean) => {
+  if (enabled && !statsEnabled) stats.reset();
+  statsEnabled = enabled;
+};
+
+/**
+ * Whether the ray cast statistics are enabled
+ * @returns boolean
+ */
+export const isRayCastStatsEnabled = () => statsEnabled;
+
+/**
+ * The ray cast statistics: rays cast per rendered frame (the last frame, the max ever and the
+ * min/max/average of rolling intervals). Casts made on frames the FPS limiter skips count toward
+ * the next rendered frame.
+ *
+ * The returned object is the same on every call and is updated in place every rendered frame,
+ * so polling it allocates nothing. Copy the values out to keep them.
+ * @returns (Readonly<IntervalCounterSnapshot>) the live statistics snapshot
+ */
+export const getRayCastStats = (): Readonly<IntervalCounterSnapshot> => stats.snapshot();
+
+/** Resets the ray cast statistics (eg. on scene enter). */
+export const resetRayCastStats = () => {
+  stats.reset();
+};
+
+/** Once per rendered frame (LATE_MAIN, after rendering): ends the stats frame, then runs the
+ * debug side's frame end (helper cleanup, stats view refresh). */
+const rayCastFrameEndSystem = () => {
+  if (statsEnabled) stats.endFrame(performance.now());
+  useDebug(debugGUI)?._onRayCastFrameEnd();
+};
+
+ECSWorld.registerPlugin((world) => {
+  // Only the default world: LATE_MAIN runs once per world, and a frame must end only once
+  if (world.id !== DEFAULT_ECS_WORLD_ID) return;
+  world.addSystem(ECSSystemStage.LATE_MAIN, 'rayCastFrameEndSystem', rayCastFrameEndSystem, -1000);
+});
+
 // Debug
 type RaycastGUIModule = typeof import('../core/Debug/_dbg__Raycast');
 let debugGUI: DebugModuleRef<RaycastGUIModule> | null = null;
@@ -199,18 +264,6 @@ export const registerRaycastDebugGUI = async () => {
   debugGUI = await loadDebugModuleAsync(() => import('../core/Debug/_dbg__Raycast'));
 };
 
-export const countRayCastFrames = () => {
-  useDebug(debugGUI)?._countRayCastFrames();
-};
-
 export const deleteAllRayHelpers = () => {
   useDebug(debugGUI)?._deleteAllRayHelpers();
-};
-
-export const resetRayCastStats = () => {
-  useDebug(debugGUI)?._resetRayCastStats();
-};
-
-export const cleanUpRayHelpers = () => {
-  useDebug(debugGUI)?._cleanUpRayHelpers();
 };
