@@ -3,11 +3,13 @@
 import type * as THREE from 'three/webgpu';
 import type { z } from 'zod';
 import type {
+  SkyBoxAtmosphereSchema,
   SkyBoxBaseSchema,
   SkyBoxDefSchema,
   SkyBoxEnvSchema,
   SkyBoxEnvSizeSchema,
   SkyBoxOverridesSchema,
+  SkyBoxSunSchema,
 } from '../../schemas/skyBoxSchema';
 
 type SkyBoxBaseInput = z.input<typeof SkyBoxBaseSchema>;
@@ -24,6 +26,12 @@ export type SkyBoxEnvDef = z.input<typeof SkyBoxEnvSchema>;
 
 /** The env bake's cube face size. */
 export type SkyBoxEnvSize = z.infer<typeof SkyBoxEnvSizeSchema>;
+
+/** The atmosphere layer (Preetham scattering, driven by suns[0]). */
+export type SkyBoxAtmosphereDef = z.input<typeof SkyBoxAtmosphereSchema>;
+
+/** A sun layer: its disc and halo, and (suns[0]) the atmosphere's sun direction. */
+export type SkyBoxSunDef = z.input<typeof SkyBoxSunSchema>;
 
 /**
  * A sky box definition: the JSON shape (`SkyBoxDefSchema`), plus what only code can give, a

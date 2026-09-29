@@ -72,6 +72,32 @@ export const scene = async () =>
         flipY: true,
       },
     });
+    // A procedural day sky (the atmosphere and the sun disc), picked from the Sky box tab
+    await createSkyBox({
+      id: 'daySky',
+      isDefault: false,
+      base: { type: 'COLOR', color: '#000000' },
+      atmosphere: {},
+      suns: [{ elevation: 30, azimuth: 180 }],
+      debugData: { name: 'Day sky (procedural)' },
+    });
+
+    // Environment check: smooth to rough PBR spheres (the rest of the scene is Lambert/Phong,
+    // which don't sample the sky box's environment)
+    [0, 0.25, 0.5, 1].forEach((roughness, i) => {
+      createMeshEntity(
+        {
+          geo: { type: 'SPHERE', params: { radius: 0.4, widthSegments: 32, heightSegments: 32 } },
+          mat: createMaterial({
+            id: `envCheckSphere${i}Material`,
+            type: 'STANDARD',
+            params: { color: 0xffffff, metalness: 1, roughness },
+          }),
+          position: { x: -3 + i, y: -1.4, z: 4 },
+        },
+        { appId: `envCheckSphere${i}` }
+      );
+    });
 
     // Create ground
     const groundWidthAndDepth = 10;

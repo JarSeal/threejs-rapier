@@ -205,6 +205,205 @@
       },
       "additionalProperties": false
     },
+    "atmosphere": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "turbidity": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rayleigh": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mieCoefficient": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mieDirectionalG": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.999
+        },
+        "exposure": {
+          "type": "number",
+          "minimum": 0
+        },
+        "sunIntensity": {
+          "type": "number",
+          "minimum": 0
+        },
+        "nightSkyColor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "AUTO"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "r": {
+                      "type": "number"
+                    },
+                    "g": {
+                      "type": "number"
+                    },
+                    "b": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "r",
+                    "g",
+                    "b"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          ]
+        },
+        "twilightLength": {
+          "type": "number",
+          "minimum": 0.05
+        },
+        "horizonTint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "r": {
+                  "type": "number"
+                },
+                "g": {
+                  "type": "number"
+                },
+                "b": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "r",
+                "g",
+                "b"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "zenithTint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "r": {
+                  "type": "number"
+                },
+                "g": {
+                  "type": "number"
+                },
+                "b": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "r",
+                "g",
+                "b"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "suns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "elevation": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "azimuth": {
+            "type": "number"
+          },
+          "discSize": {
+            "type": "number",
+            "minimum": 0
+          },
+          "discIntensity": {
+            "type": "number",
+            "minimum": 0
+          },
+          "glowIntensity": {
+            "type": "number",
+            "minimum": 0
+          },
+          "glowSize": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 90
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "AUTO"
+              },
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "r": {
+                        "type": "number"
+                      },
+                      "g": {
+                        "type": "number"
+                      },
+                      "b": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "r",
+                      "g",
+                      "b"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "debugData": {
       "type": "object",
       "properties": {
@@ -391,6 +590,285 @@
                 }
               },
               "additionalProperties": false
+            },
+            "atmosphere": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "turbidity": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "rayleigh": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "mieCoefficient": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "mieDirectionalG": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 0.999
+                },
+                "exposure": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "sunIntensity": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "nightSkyColor": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "AUTO"
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "r": {
+                              "type": "number"
+                            },
+                            "g": {
+                              "type": "number"
+                            },
+                            "b": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "r",
+                            "g",
+                            "b"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "twilightLength": {
+                  "type": "number",
+                  "minimum": 0.05
+                },
+                "horizonTint": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "r": {
+                          "type": "number"
+                        },
+                        "g": {
+                          "type": "number"
+                        },
+                        "b": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "r",
+                        "g",
+                        "b"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "zenithTint": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "r": {
+                          "type": "number"
+                        },
+                        "g": {
+                          "type": "number"
+                        },
+                        "b": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "r",
+                        "g",
+                        "b"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "suns": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "elevation": {
+                        "type": "number",
+                        "minimum": -90,
+                        "maximum": 90
+                      },
+                      "azimuth": {
+                        "type": "number"
+                      },
+                      "discSize": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "discIntensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "glowIntensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "glowSize": {
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 90
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "const": "AUTO"
+                          },
+                          {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "r": {
+                                    "type": "number"
+                                  },
+                                  "g": {
+                                    "type": "number"
+                                  },
+                                  "b": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "r",
+                                  "g",
+                                  "b"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9]\\d*)$"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "elevation": {
+                        "type": "number",
+                        "minimum": -90,
+                        "maximum": 90
+                      },
+                      "azimuth": {
+                        "type": "number"
+                      },
+                      "discSize": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "discIntensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "glowIntensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "glowSize": {
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 90
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "const": "AUTO"
+                          },
+                          {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "r": {
+                                    "type": "number"
+                                  },
+                                  "g": {
+                                    "type": "number"
+                                  },
+                                  "b": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "r",
+                                  "g",
+                                  "b"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              ]
             },
             "__meta": {
               "type": "object",

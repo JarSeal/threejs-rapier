@@ -10,6 +10,9 @@ import {
 } from '../../SkyBox/SkyBox';
 import type { SkyBoxDef, SkyBoxOverrides } from '../../SkyBox/SkyBoxTypes';
 import { BASE_DEFAULTS, ENV_DEFAULTS } from '../../SkyBox/layers/base';
+import { toSkyColor } from '../../SkyBox/skyColor';
+import { ATMOSPHERE_DEFAULTS } from '../../SkyBox/layers/atmosphere';
+import { SUN_DEFAULTS } from '../../SkyBox/layers/sun';
 import {
   _recordOrCoalesceUndoRedoAction,
   _recordUndoRedoAction,
@@ -19,12 +22,22 @@ import {
 export const SKYBOX_TAB_ID = 'skyBoxControls';
 
 /** The layers the tab edits. p112-p114 add theirs here (and a folder file each). */
-export type SkyBoxLayerKey = 'base' | 'env';
+export type SkyBoxLayerKey = 'base' | 'env' | 'atmosphere' | 'sun';
 
-/** Values a definition doesn't set fall back to these (the renderer's defaults). */
-const LAYER_DEFAULTS: Record<SkyBoxLayerKey, Record<string, unknown>> = {
+/** Where each layer lives in the definition. */
+export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
+  base: 'base',
+  env: 'env',
+  atmosphere: 'atmosphere',
+  sun: 'suns.0',
+};
+
+/** Values a definition doesn't set fall back to these (the renderer's defaults), by path. */
+const DEFAULTS_TREE = {
   base: BASE_DEFAULTS,
   env: ENV_DEFAULTS,
+  atmosphere: ATMOSPHERE_DEFAULTS,
+  suns: [SUN_DEFAULTS],
 };
 
 type Obj = Record<string, unknown>;
@@ -35,8 +48,14 @@ const isObj = (value: unknown): value is Obj =>
 const asObj = (value: unknown): Obj => (isObj(value) ? value : {});
 const isEqual = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
+/** A value by path; array entries by index ('suns.0.elevation'). */
 const getPath = (obj: unknown, path: string) =>
-  path.split('.').reduce<unknown>((acc, key) => (isObj(acc) ? acc[key] : undefined), obj);
+  path
+    .split('.')
+    .reduce<unknown>(
+      (acc, key) => (isObj(acc) ? acc[key] : Array.isArray(acc) ? acc[Number(key)] : undefined),
+      obj
+    );
 
 /** `'env.backgroundRoughness', 0.2` → `{ env: { backgroundRoughness: 0.2 } }` */
 export const toSkyBoxUpdate = (path: string, value: unknown) =>
@@ -46,9 +65,16 @@ export const toSkyBoxUpdate = (path: string, value: unknown) =>
 export const getSkyBoxDef = (sceneId: string, skyBoxId: string) =>
   _getSkyBoxRegistry().get(sceneId)?.get(skyBoxId);
 
-/** The value a path has when nothing overrides it: the definition's, else the layer default. */
-export const getDefValue = (def: SkyBoxDef | undefined, path: string) =>
-  getPath(def, path) ?? getPath(LAYER_DEFAULTS, path);
+/** The value a path has when nothing overrides it: the definition's, else the layer default.
+ * A procedural layer's `enabled` defaults to whether the definition has that layer at all. */
+export const getDefValue = (def: SkyBoxDef | undefined, path: string) => {
+  const value = getPath(def, path);
+  if (value !== undefined) return value;
+  if (path.endsWith('.enabled') && path !== 'enabled') {
+    return getPath(def, path.slice(0, -'.enabled'.length)) !== undefined;
+  }
+  return getPath(DEFAULTS_TREE, path);
+};
 
 // Overrides (AEK_debugSkyBox): only the values changed from the definition
 
@@ -112,15 +138,50 @@ export const skyBoxProxy: Record<SkyBoxLayerKey, Obj> & { select: { skyBoxId: st
   select: { skyBoxId: '' },
   base: {},
   env: {},
+  atmosphere: {},
+  sun: {},
 };
 
 /** The keys a layer folder binds, synced from the active sky box (and its layer defaults). */
 const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
   base: ['type', 'file', 'path', 'textureId', 'colorSpace', 'rotate', 'flipY', 'intensity'],
   env: ['backgroundRoughness', 'backgroundIntensity', 'environmentIntensity', 'size', 'dynamic'],
+  atmosphere: [
+    'enabled',
+    'turbidity',
+    'rayleigh',
+    'mieCoefficient',
+    'mieDirectionalG',
+    'exposure',
+    'sunIntensity',
+    'twilightLength',
+  ],
+  sun: [
+    'enabled',
+    'elevation',
+    'azimuth',
+    'discSize',
+    'discIntensity',
+    'glowIntensity',
+    'glowSize',
+  ],
 };
 /** Read-only text bindings need a string, even when the definition has no value. */
 const TEXT_KEYS = new Set(['type', 'file', 'path', 'textureId', 'colorSpace']);
+/** Colour keys, bound as '#rrggbb'. */
+const COLOR_KEYS: Partial<Record<SkyBoxLayerKey, string[]>> = {
+  atmosphere: ['horizonTint', 'zenithTint'],
+};
+/** 'AUTO' or a colour: bound as `${key}Mode` ('AUTO' | 'CUSTOM') and `${key}` (a colour, the
+ * last custom one or this fallback). */
+const AUTO_COLOR_KEYS: Partial<Record<SkyBoxLayerKey, Record<string, string>>> = {
+  atmosphere: { nightSkyColor: '#0c0c0c' },
+  sun: { color: '#fff4e0' },
+};
+
+/** A ColorJSON as '#rrggbb' (sRGB). */
+const toHex = (value: unknown) =>
+  `#${toSkyColor(value as string | { r: number; g: number; b: number }).getHexString()}`;
 
 export const NO_SKYBOX_ID = '__noSkyBox';
 
@@ -128,9 +189,21 @@ export const syncSkyBoxProxy = () => {
   const active = getActiveSkyBox();
   skyBoxProxy.select.skyBoxId = active?.id ?? NO_SKYBOX_ID;
   for (const layer of Object.keys(PROXY_KEYS) as SkyBoxLayerKey[]) {
+    const layerPath = LAYER_PATHS[layer];
+    const proxy = skyBoxProxy[layer];
     for (const key of PROXY_KEYS[layer]) {
-      const value = getDefValue(active?.def, `${layer}.${key}`);
-      skyBoxProxy[layer][key] = TEXT_KEYS.has(key) ? String(value ?? '') : value;
+      const value = getDefValue(active?.def, `${layerPath}.${key}`);
+      proxy[key] = TEXT_KEYS.has(key) ? String(value ?? '') : value;
+    }
+    for (const key of COLOR_KEYS[layer] || []) {
+      proxy[key] = toHex(getDefValue(active?.def, `${layerPath}.${key}`));
+    }
+    for (const [key, fallback] of Object.entries(AUTO_COLOR_KEYS[layer] || {})) {
+      const value = getDefValue(active?.def, `${layerPath}.${key}`);
+      proxy[`${key}Mode`] = value === 'AUTO' ? 'AUTO' : 'CUSTOM';
+      // Keep the picker's last custom colour while on AUTO
+      if (value !== 'AUTO') proxy[key] = toHex(value);
+      else if (typeof proxy[key] !== 'string') proxy[key] = fallback;
     }
   }
   const base = active?.def.base;
@@ -151,7 +224,8 @@ type SkyBoxParamPayload = {
 type SkyBoxResetLayerPayload = {
   sceneId: string;
   skyBoxId: string;
-  layer: SkyBoxLayerKey;
+  /** The layer's path in the definition (LAYER_PATHS). */
+  layer: string;
   /** The layer's override subtree before the reset. */
   prev: Obj | undefined;
 };
@@ -206,18 +280,23 @@ export const setSkyBoxParam = (
 const applyLayerOverride = async (
   sceneId: string,
   skyBoxId: string,
-  layer: SkyBoxLayerKey,
+  layerPath: string,
   layerOverride: Obj | undefined
 ) => {
   const current = (getSkyBoxOverrides(sceneId, skyBoxId) || {}) as Obj;
   const touchedKeys = new Set([
-    ...Object.keys(asObj(current[layer])),
+    ...Object.keys(asObj(getPath(current, layerPath))),
     ...Object.keys(layerOverride || {}),
   ]);
   setSkyBoxOverrides(
     sceneId,
     skyBoxId,
-    withPath(current, [layer], layerOverride, !layerOverride || !Object.keys(layerOverride).length)
+    withPath(
+      current,
+      layerPath.split('.'),
+      layerOverride,
+      !layerOverride || !Object.keys(layerOverride).length
+    )
   );
   if (!isActive(sceneId, skyBoxId)) {
     refreshTab();
@@ -226,9 +305,9 @@ const applyLayerOverride = async (
   const def = getSkyBoxDef(sceneId, skyBoxId);
   const layerUpdate: Obj = {};
   for (const key of touchedKeys) {
-    layerUpdate[key] = layerOverride?.[key] ?? getDefValue(def, `${layer}.${key}`);
+    layerUpdate[key] = layerOverride?.[key] ?? getDefValue(def, `${layerPath}.${key}`);
   }
-  await updateSkyBox(skyBoxId, { [layer]: layerUpdate } as SkyBoxUpdate);
+  await updateSkyBox(skyBoxId, toSkyBoxUpdate(layerPath, layerUpdate));
 };
 
 /** "Reset layer": drops the active sky box's overrides of one layer (undoable). */
@@ -236,13 +315,14 @@ export const resetSkyBoxLayer = (layer: SkyBoxLayerKey) => {
   const active = getActiveSkyBox();
   if (!active) return;
   const { sceneId, id: skyBoxId } = active;
-  const prev = getSkyBoxOverrides(sceneId, skyBoxId)?.[layer] as Obj | undefined;
-  void applyLayerOverride(sceneId, skyBoxId, layer, undefined);
+  const layerPath = LAYER_PATHS[layer];
+  const prev = getPath(getSkyBoxOverrides(sceneId, skyBoxId), layerPath) as Obj | undefined;
+  void applyLayerOverride(sceneId, skyBoxId, layerPath, undefined);
   if (!prev || !Object.keys(prev).length) return;
   _recordUndoRedoAction<SkyBoxResetLayerPayload>(
     'skybox.resetLayer',
     `Sky box ${skyBoxId}: reset ${layer}`,
-    { sceneId, skyBoxId, layer, prev }
+    { sceneId, skyBoxId, layer: layerPath, prev }
   );
 };
 

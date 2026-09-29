@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { context, float, normalWorldGeometry, pmremTexture, uniform, vec3 } from 'three/tsl';
 import type { SkyBoxBaseDef, SkyBoxEnvDef, SkyBoxEnvSize } from '../SkyBoxTypes';
 import { getPMREMTexture } from '../SkyEnvironment';
+import { toSkyColor } from '../skyColor';
 import { getTexture, loadTextureAsync } from '../../Texture';
 import { isDebugEnvironment } from '../../Config';
 import { isHDR } from '../../../utils/helpers';
@@ -48,12 +49,6 @@ export type BaseLayer = {
   /** Null for a COLOR base (the composite path bakes one, see SkyBox.ts). */
   environmentNode: THREE.Node | null;
 };
-
-/** A ColorJSON value ('#rrggbb', or { r, g, b } in 0-255) as a THREE.Color. */
-const toColor = (color: string | { r: number; g: number; b: number }) =>
-  typeof color === 'string'
-    ? new THREE.Color(color)
-    : new THREE.Color(color.r / 255, color.g / 255, color.b / 255);
 
 /** Default sRGB, or linear sRGB for .hdr files. An empty string is unset (the legacy save data
  * has one). */
@@ -176,7 +171,7 @@ export const createBaseUniforms = (
 ): BaseUniforms => ({
   intensity: uniform(getIntensity(base)),
   backgroundRoughness: uniform(env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness),
-  color: uniform(base.type === 'COLOR' ? toColor(base.color) : new THREE.Color(0x000000)),
+  color: uniform(base.type === 'COLOR' ? toSkyColor(base.color) : new THREE.Color(0x000000)),
   rotation: uniform(setRotation(new THREE.Matrix3(), getRotate(base))),
 });
 
@@ -189,7 +184,7 @@ export const applyBaseUniforms = (
   u.intensity.value = getIntensity(base);
   u.backgroundRoughness.value = env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness;
   setRotation(u.rotation.value, getRotate(base));
-  if (base.type === 'COLOR') u.color.value.copy(toColor(base.color));
+  if (base.type === 'COLOR') u.color.value.copy(toSkyColor(base.color));
 };
 
 /** The PMREM's lookup direction for a view direction: the cube's flip, then the rotation. */

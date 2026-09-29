@@ -6,10 +6,16 @@ import { getNextSceneId, isCurrentlyLoading } from '../SceneLoader';
 import { isDebugEnvironment } from '../Config';
 import { lsGetItem } from '../../utils/LocalAndSessionStorage';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
-import { deepMerge } from '../../utils/deepMerge';
+import { deepMerge, isIndexObject } from '../../utils/deepMerge';
 import { ECSWorld, getECSWorld } from '../ECS';
 import { ECSSystemStage } from '../../../AppECSRegistry';
-import type { SkyBoxBaseDef, SkyBoxDef, SkyBoxEnvDef, SkyBoxOverrides } from './SkyBoxTypes';
+import type {
+  SkyBoxBaseDef,
+  SkyBoxDef,
+  SkyBoxEnvDef,
+  SkyBoxOverrides,
+  SkyBoxSunDef,
+} from './SkyBoxTypes';
 import { fromLegacySkyBoxProps, isLegacySkyBoxProps, type LegacySkyBoxProps } from './legacySkyBox';
 import {
   BASE_DEFAULTS,
@@ -22,6 +28,7 @@ import {
   applySkyUniforms,
   buildSkyComposite,
   createSkyUniforms,
+  getCompositeSignature,
   hasProceduralLayer,
   type SkyUniforms,
 } from './SkyComposite';
@@ -57,6 +64,9 @@ export type ActiveSkyBox = {
 export type SkyBoxUpdate = {
   base?: NonNullable<SkyBoxOverrides['base']> & { texture?: THREE.Texture };
   env?: SkyBoxEnvDef;
+  atmosphere?: SkyBoxOverrides['atmosphere'];
+  /** An array replaces the suns; an index object (`{ 0: { ... } }`) changes those entries. */
+  suns?: SkyBoxOverrides['suns'];
 };
 
 export type SkyBoxChangeReason = 'activate' | 'update' | 'clear';
@@ -142,7 +152,20 @@ const resolveSkyBoxDef = (def: SkyBoxDef, sceneId: string): SkyBoxDef => {
     [sceneId: string]: { [id: string]: SkyBoxOverrides } | undefined;
   } | null;
   const overrides = allOverrides?.[sceneId]?.[def.id];
-  return overrides ? deepMerge(def, overrides) : def;
+  return overrides ? mergeSkyBoxDef(def, overrides) : def;
+};
+
+/** A definition with a change merged in. An index object merges into the suns array, and one
+ * with no suns to merge into becomes the array (eg. a debug override turning suns[0] on). */
+const mergeSkyBoxDef = (def: SkyBoxDef, change: unknown): SkyBoxDef => {
+  const merged = deepMerge(def, change);
+  if (isIndexObject(merged.suns)) {
+    const suns: SkyBoxSunDef[] = [];
+    for (const [index, sun] of Object.entries(merged.suns))
+      suns[Number(index)] = sun as SkyBoxSunDef;
+    merged.suns = Array.from(suns, (sun) => sun ?? {});
+  }
+  return merged;
 };
 
 const applySceneProperties = (def: SkyBoxDef, isComposite: boolean) => {
@@ -212,6 +235,7 @@ const needsRebuild = (current: ActiveSkyBox, def: SkyBoxDef) => {
   if (usesComposite(def) !== current.isComposite) return true;
   if (!current.isComposite) return false;
   return (
+    getCompositeSignature(def) !== getCompositeSignature(current.def) ||
     (def.env?.size ?? ENV_DEFAULTS.size) !== (current.def.env?.size ?? ENV_DEFAULTS.size) ||
     isBackgroundFromBake(def) !== isBackgroundFromBake(current.def)
   );
@@ -233,6 +257,11 @@ const activate = async (sceneId: string, def: SkyBoxDef) => {
   const texture = await loadBaseTexture(def.base);
   if (seq !== activationSeq) return active; // Superseded by a later activation or clear
 
+  if ((def.suns?.length ?? 0) > 1 && isDebugEnvironment()) {
+    lwarn(
+      `Sky box "${def.id}": only suns[0] is drawn for now (p114 adds more), the others are ignored.`
+    );
+  }
   const uniforms = createSkyUniforms(def);
   show({ id: def.id, sceneId, def, uniforms, ...buildNodes(def, uniforms, texture) });
   notify('activate');
@@ -330,7 +359,7 @@ const isStructuralBaseUpdate = (current: SkyBoxBaseDef, update: SkyBoxUpdate['ba
 export const updateSkyBox = async (id: string, update: SkyBoxUpdate) => {
   if (!active || active.id !== id) return active;
   const current = active;
-  const def = deepMerge(current.def, update);
+  const def = mergeSkyBoxDef(current.def, update);
   if (isStructuralBaseUpdate(current.def.base, update.base)) return activate(current.sceneId, def);
 
   applySkyUniforms(current.uniforms, def);

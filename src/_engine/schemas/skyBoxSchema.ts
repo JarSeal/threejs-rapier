@@ -7,8 +7,9 @@ import {
   isLegacySkyBoxProps,
 } from '../core/SkyBox/legacySkyBox';
 
-// A sky box definition is a set of layers. p111 has the base and env layers; later plans add
-// their own layers (atmosphere, suns, clouds, ...) as optional keys.
+// A sky box definition is a set of layers. p111 has the base and env layers, p112 the atmosphere
+// and suns; later plans add their own layers (clouds, moons, stars, ...) as optional keys. A
+// procedural layer is on when its key is there, unless it says `enabled: false`.
 
 // Base layer
 
@@ -84,6 +85,61 @@ export const SkyBoxEnvSchema = z.object({
   maxUpdatesPerSec: z.number().min(0).optional(),
 });
 
+// Atmosphere layer (Preetham scattering, a port of three's SkyMesh; driven by suns[0])
+
+/** 'AUTO', or a colour. */
+const AutoOrColorSchema = z.union([z.literal('AUTO'), ColorJSONSchema]);
+
+export const SkyBoxAtmosphereSchema = z.object({
+  /** Default true. */
+  enabled: z.boolean().optional(),
+  /** Haze (Mie scattering amount). Default 2. */
+  turbidity: z.number().min(0).optional(),
+  /** Rayleigh scattering amount (the blue). Default 1. */
+  rayleigh: z.number().min(0).optional(),
+  /** Default 0.005. */
+  mieCoefficient: z.number().min(0).optional(),
+  /** Forward scattering of the sun's halo, 0-1. Default 0.8. */
+  mieDirectionalG: z.number().min(0).max(0.999).optional(),
+  /** Sky-only radiance multiplier (the renderer's tone mapping exposure stays global). Default
+   * 0.714: at the renderer's 0.7 with ACES, the look of three's sky example at its 0.5. */
+  exposure: z.number().min(0).optional(),
+  /** Scales the sun's energy (SkyMesh's EE) without changing the turbidity. Default 1. */
+  sunIntensity: z.number().min(0).optional(),
+  /** The sky's floor, what's left with the sun down: 'AUTO' (SkyMesh's own faint floor), or
+   * a colour (seen through the extinction). Default 'AUTO'. */
+  nightSkyColor: AutoOrColorSchema.optional(),
+  /** Stretches (> 1) or shortens (< 1) dusk: how far below the horizon the sun still lights
+   * the sky, and how softly it fades. Default 1. */
+  twilightLength: z.number().min(0.05).optional(),
+  /** Colour grading of the scattered light at the horizon and the zenith (multiplied, blended by
+   * height). Default white. */
+  horizonTint: ColorJSONSchema.optional(),
+  zenithTint: ColorJSONSchema.optional(),
+});
+
+// Sun layer (the disc and its halo; suns[0] also drives the atmosphere)
+
+export const SkyBoxSunSchema = z.object({
+  /** Whether the disc is drawn. The atmosphere follows the sun either way. Default true. */
+  enabled: z.boolean().optional(),
+  /** Degrees above the horizon. Default 30. */
+  elevation: z.number().min(-90).max(90).optional(),
+  /** Degrees clockwise seen from above: 0 = +z, 90 = +x, 180 = -z. Default 180. */
+  azimuth: z.number().optional(),
+  /** Multiplier on the disc's angular radius (0.533°, SkyMesh's). Default 1. */
+  discSize: z.number().min(0).optional(),
+  /** The disc's peak radiance (SkyMesh's is ~60,800, which blows out bloom). Default 40. */
+  discIntensity: z.number().min(0).optional(),
+  /** A halo around the disc. Default 0 (none). */
+  glowIntensity: z.number().min(0).optional(),
+  /** The halo's half-brightness radius in degrees. Default 10. */
+  glowSize: z.number().min(0.1).max(90).optional(),
+  /** 'AUTO': white, coloured by the atmosphere's extinction (reddens at the horizon). A
+   * colour: the disc's colour as seen. Default 'AUTO'. */
+  color: AutoOrColorSchema.optional(),
+});
+
 // Overrides (scene save data, and the debugger's changed values): a deep partial of the layers.
 // Zod 4 has no .deepPartial(), so each layer is spelled out. The base override is flat across
 // the base types, and can't change `type`: a type change is a different definition.
@@ -100,9 +156,20 @@ const SkyBoxBaseOverridesSchema = z.object({
   intensity: z.number().min(0).optional(),
 });
 
+const SkyBoxSunOverridesSchema = SkyBoxSunSchema.partial();
+
 export const SkyBoxOverridesSchema = z.object({
   base: SkyBoxBaseOverridesSchema.optional(),
   env: SkyBoxEnvSchema.partial().optional(),
+  atmosphere: SkyBoxAtmosphereSchema.partial().optional(),
+  /** An array replaces the definition's suns; an index object (`{ "0": { ... } }`) changes
+   * those entries only. */
+  suns: z
+    .union([
+      z.array(SkyBoxSunOverridesSchema),
+      z.record(z.string().regex(/^(0|[1-9]\d*)$/), SkyBoxSunOverridesSchema),
+    ])
+    .optional(),
   __meta: MetaSchema.optional(),
 });
 
@@ -119,6 +186,9 @@ export const SkyBoxDefSchema = z.object({
   preset: z.string().optional(),
   base: SkyBoxBaseSchema,
   env: SkyBoxEnvSchema.optional(),
+  atmosphere: SkyBoxAtmosphereSchema.optional(),
+  /** Only suns[0] is drawn until p114 (multiple suns); it also drives the atmosphere. */
+  suns: z.array(SkyBoxSunSchema).optional(),
   debugData: DebugDataSchema.optional(),
 
   // Meta

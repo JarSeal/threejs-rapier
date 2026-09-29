@@ -6,13 +6,29 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return proto === Object.prototype || proto === null;
 };
 
+const INDEX_KEY = /^(0|[1-9]\d*)$/;
+
+/** A plain object whose keys are all array indices, eg. `{ "0": { ... } }`. */
+export const isIndexObject = (value: unknown): value is Record<string, unknown> =>
+  isPlainObject(value) && Object.keys(value).every((key) => INDEX_KEY.test(key));
+
 /**
  * Returns `target` with `source` merged over it, without mutating either. Plain objects merge
- * key by key (and are copied); anything else, including arrays and class instances such as
- * textures, replaces the target's value as is. `undefined` values in `source` are skipped.
+ * key by key (and are copied). An array target takes an index object (`{ "0": { ... } }`, how
+ * overrides address one entry) index by index, and stays an array. Anything else, including
+ * arrays and class instances such as textures, replaces the target's value as is. `undefined`
+ * values in `source` are skipped.
  */
 export const deepMerge = <T>(target: T, source: unknown): T => {
   if (source === undefined) return (isPlainObject(target) ? deepMerge(target, {}) : target) as T;
+  if (Array.isArray(target) && isIndexObject(source)) {
+    const result: unknown[] = target.map((item) => deepMerge(item, undefined));
+    for (const key of Object.keys(source)) {
+      if (source[key] !== undefined)
+        result[Number(key)] = deepMerge(result[Number(key)], source[key]);
+    }
+    return result as T;
+  }
   if (!isPlainObject(source)) return source as T;
   const result: Record<string, unknown> = {};
   if (isPlainObject(target)) {
