@@ -2,7 +2,7 @@ Status: draft | not-implemented
 Category: Skybox, Refactor
 Blocked by: p110_skybox-refactor-and-layered-sky-system.md (the Phase 0 spike / go-no-go gate)
 Blocks: p112_procedural-sky-atmosphere-sun-and-env-bake.md, p115_debug-environment-ball-viewport.md
-Related: p105_refactor-debugger-drawer-tab-creation.md (Phase 4 migrates the Skybox tab; see Risks)
+Related: \_DONE_p105_refactor-debugger-drawer-tab-creation.md (Phase 4 migrates the Skybox tab; see Risks)
 
 # SkyBox Core Refactor and Layered Schema — Plan
 

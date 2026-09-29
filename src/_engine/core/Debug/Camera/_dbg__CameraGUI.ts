@@ -2,14 +2,20 @@ import * as THREE from 'three/webgpu';
 import { Pane, type ButtonApi } from 'tweakpane';
 import { getECSWorld, ECSWorld, getEntityIdByAppId, getStableAppId } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
-import { CMP, getCmpById, TCMP } from '../../../utils/CMP';
-import { getSvgIcon } from '../../UI/icons/SvgIcon';
-import { createDebuggerTab, createNewDebuggerContainer } from '../../../debug/DebuggerGUI';
+import { CMP } from '../../../utils/CMP';
 import {
+  createDebuggerTab,
+  debuggerListCMP,
+  updateDebuggerTab,
+  type DebuggerListItem,
+} from '../../../debug/DebuggerGUI';
+import {
+  addOnCloseToWindow,
   closeDraggableWindow,
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowContentFn,
+  registerDraggableWindowSceneTargetResolver,
   updateDraggableWindow,
 } from '../../UI/DraggableWindow';
 import { getCurrentSceneId } from '../../Scene';
@@ -69,8 +75,7 @@ export interface CamDebugLSData {
 
 export const EDIT_CAMERA_WIN_ID = 'cameraEditorWindow';
 export const LS_KEY = 'AEK_debugCams';
-const DEBUGGER_CAMS_LIST_ID = 'debuggerCamerasList';
-let debuggerListCmp: TCMP | null = null;
+const CAMERAS_TAB_ID = 'camerasControls';
 
 // Undo/redo
 
@@ -253,15 +258,9 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
   if (helperComp) {
     const helperProxy = { visible: helperComp.value.visible };
     pane.addBinding(helperProxy, 'visible', { label: 'Show Helper' }).on('change', (e) => {
-      const show = e.value;
-      helperComp.value.visible = show;
-      if (show) {
-        const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
-        if (objComp) objComp.value.updateMatrixWorld(true);
-        helperComp.value.update();
-      }
-      save('helperVisible', show);
-      updateOnScreenTools('SWITCH');
+      setCameraHelperVisible(entityId, world, e.value);
+      if (clearLSBtn) clearLSBtn.disabled = false;
+      updateDebuggerTab(CAMERAS_TAB_ID);
     });
   }
 
@@ -419,45 +418,85 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
       updateCamerasDebuggerGUI('LIST');
     });
 
-  if (d.id) updateDebuggerCamerasListSelectedClass(d.id);
+  // The content is built before the window state is open: refresh the list selection after it.
+  // The onClose is set here too, because a window restored from LS has none.
+  queueMicrotask(() => {
+    addOnCloseToWindow(EDIT_CAMERA_WIN_ID, () => updateDebuggerTab(CAMERAS_TAB_ID));
+    updateDebuggerTab(CAMERAS_TAB_ID);
+  });
   return container;
 };
 
-const createCameraList = (world: ECSWorld) => {
-  const storage = world.getStorage(ComponentType.TAG_IS_CAMERA);
-  let html = '<ul class="ulList">';
+/** Sets a camera's helper visibility and its saved preference (edit window and list toggle). */
+const setCameraHelperVisible = (entityId: number, world: ECSWorld, show: boolean) => {
+  const helperComp = world.getComponent(entityId, ComponentType.DEBUG_CAMERA_HELPER);
+  if (!helperComp) return;
+  helperComp.value.visible = show;
+  if (show) {
+    const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
+    if (objComp) objComp.value.updateMatrixWorld(true);
+    helperComp.value.update();
+  }
+  saveCameraToLS(entityId, 'helperVisible', show);
+  updateOnScreenTools('SWITCH');
+};
 
+/** Finds a list row's camera (the row id is the app id, or the entity id without one). */
+const resolveCameraListItem = (itemId: string) => {
+  const world = getECSWorld();
+  const entityId =
+    getEntityIdByAppId(itemId, world) ?? (/^\d+$/.test(itemId) ? Number(itemId) : undefined);
+  return entityId !== undefined && world.isAlive(entityId) ? { world, entityId } : null;
+};
+
+const openEditCameraWindow = (itemId: string) => {
+  const target = resolveCameraListItem(itemId);
+  const appId = target ? target.world.getComponent(target.entityId, ComponentType.APP_ID)?.id : '';
+  openDraggableWindow({
+    id: EDIT_CAMERA_WIN_ID,
+    title: `Edit Camera: ${appId}`,
+    isDebugWindow: true,
+    content: createEditCameraContent,
+    data: { id: appId, winId: EDIT_CAMERA_WIN_ID },
+    closeOnSceneChange: true,
+    saveToLS: true,
+    onClose: () => updateDebuggerTab(CAMERAS_TAB_ID),
+  });
+};
+
+/** List toggle: the same path as the edit window's Show Helper input. */
+const toggleCameraHelper = (itemId: string, next: boolean) => {
+  const target = resolveCameraListItem(itemId);
+  if (!target) return;
+  setCameraHelperVisible(target.entityId, target.world, next);
+  updateCamerasDebuggerGUI('WINDOW');
+};
+
+const getCamerasListData = (world: ECSWorld): DebuggerListItem[] => {
+  const storage = world.getStorage(ComponentType.TAG_IS_CAMERA);
+  const activeId = getActiveCameraId();
+  const items: DebuggerListItem[] = [];
   for (const [entityId] of storage) {
     if (world.hasComponent(entityId, ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA)) continue;
 
     const appId = world.getComponent(entityId, ComponentType.APP_ID)?.id;
-    const appOrEntityId = appId || entityId;
     const debugData = world.getComponent(entityId, ComponentType.DEBUG_DATA);
-    const activeId = getActiveCameraId();
-    const isActiveCam = activeId === entityId;
     const isMainCam = world.getComponent(entityId, ComponentType.TAG_IS_MAIN_CAMERA);
-
-    const button = CMP({
-      onClick: () => {
-        openDraggableWindow({
-          id: EDIT_CAMERA_WIN_ID,
-          title: `Edit Camera: ${appId}`,
-          isDebugWindow: true,
-          content: createEditCameraContent,
-          data: { id: appId, winId: EDIT_CAMERA_WIN_ID },
-          closeOnSceneChange: true,
-          saveToLS: true,
-          onClose: () => updateDebuggerCamerasListSelectedClass(null),
-        });
-      },
-      html: `<button class="listItemWithId">
-        <span class="itemId">[${appId}] [${entityId}]</span>${isActiveCam ? '* ' : ''}${isMainCam ? '<span>(Main)</span> ' : ''}
-        <h4${!debugData?.name ? ` style="font-style:italic"` : ''}>${debugData?.name || `[${appOrEntityId}]`}</h4>
-      </button>`,
+    const helperComp = world.getComponent(entityId, ComponentType.DEBUG_CAMERA_HELPER);
+    const itemId = appId || String(entityId);
+    const badge = [activeId === entityId ? '*' : '', isMainCam ? '(Main)' : '']
+      .filter(Boolean)
+      .join(' ');
+    items.push({
+      itemId,
+      title: debugData?.name || `[${itemId}]`,
+      titlePlaceholder: !debugData?.name,
+      subTitle: `[${appId}] [${entityId}]`,
+      ...(badge ? { badge } : {}),
+      toggleValues: [helperComp ? helperComp.value.visible : null],
     });
-    html += `<li data-id="${appOrEntityId}">${button}</li>`;
   }
-  return html + '</ul>';
+  return items;
 };
 
 const isDefaultDebugCamProps = (props: CamSceneDebugState['debugCam']) =>
@@ -481,13 +520,13 @@ const writeCamLSOrRemove = (data: CamDebugLSData) => {
 let cameraDebuggerGUIInitiated = false;
 export const initCameraDebuggerGUI = () => {
   if (cameraDebuggerGUIInitiated) return;
-  const icon = getSvgIcon('camera');
   createDebuggerTab({
-    id: 'camerasControls',
-    buttonText: icon,
+    id: CAMERAS_TAB_ID,
     title: 'Camera Controls',
-    orderNr: 11,
-    container: () => {
+    icon: 'camera',
+    // The tab's LS data is scene-scoped (module-owned), so both clear buttons are custom
+    clearLSButton: false,
+    headerButtons: () => {
       const clearTabBtn = createClearTabLSButton({
         hasData: () => {
           const current = lsGetItem(LS_KEY, {}) as CamDebugLSData;
@@ -550,34 +589,30 @@ export const initCameraDebuggerGUI = () => {
           }
         },
       });
-      const container = createNewDebuggerContainer('debuggerCams', `${icon} Camera Controls`, [
-        clearTabBtn,
-        clearListBtn,
-      ]);
-      debuggerListCmp = CMP({
-        id: DEBUGGER_CAMS_LIST_ID,
-        html: () => createCameraList(getECSWorld()),
-      });
-      container.add(debuggerListCmp);
-      return container;
+      return [clearTabBtn, clearListBtn];
     },
+    content: () => [
+      debuggerListCMP({
+        id: 'cameras',
+        data: () => getCamerasListData(getECSWorld()),
+        selectedItemId: () => {
+          const winState = getDraggableWindow(EDIT_CAMERA_WIN_ID);
+          return winState?.isOpen ? (winState.data?.id as string | undefined) : null;
+        },
+        perItemConfig: {
+          onClick: openEditCameraWindow,
+          toggles: [{ icon: 'cameraReels', title: 'Show helper', fn: toggleCameraHelper }],
+        },
+      }),
+    ],
   });
   cameraDebuggerGUIInitiated = true;
 };
 
 export const updateCamerasDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
-  if (only !== 'WINDOW') debuggerListCmp?.update();
+  if (only !== 'WINDOW') updateDebuggerTab(CAMERAS_TAB_ID);
   const winState = getDraggableWindow(EDIT_CAMERA_WIN_ID);
   if (only !== 'LIST' && winState?.isOpen) updateDraggableWindow(EDIT_CAMERA_WIN_ID);
-};
-
-export const updateDebuggerCamerasListSelectedClass = (id: string | null) => {
-  const ulElem = getCmpById(DEBUGGER_CAMS_LIST_ID)?.elem;
-  if (!ulElem) return;
-  for (const child of ulElem.children) {
-    child.classList.remove('selected');
-    if (child.getAttribute('data-id') === id) child.classList.add('selected');
-  }
 };
 
 export const getDebugCamProps = (sceneId: string) => {
@@ -648,3 +683,8 @@ export const saveDebugCameraToLS = (debugCamProps: Partial<DebugCamLSProps>) => 
 };
 
 registerDraggableWindowContentFn(EDIT_CAMERA_WIN_ID, createEditCameraContent);
+// Kept open on a scene change when the next scene has a camera with the same appId
+registerDraggableWindowSceneTargetResolver(EDIT_CAMERA_WIN_ID, (data) => {
+  const entityId = getEntityIdByAppId(String(data?.id));
+  return Boolean(entityId && getECSWorld().isAlive(entityId));
+});

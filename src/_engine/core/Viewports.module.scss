@@ -1,0 +1,67 @@
+// Viewports layer (Viewports.ts). The viewports themselves are rendered into the canvas: these
+// elements only give them a CSS-driven place (a slot) and, for interactive viewports, a pointer
+// target. The stack and slot classes are global so consumer SCSS can target them (eg. the debug
+// layer shifts the top-right stack while the debugger drawer is open).
+
+.viewportsLayer {
+  position: fixed;
+  inset: 0;
+  // Below the app's own HUD (draggable windows, loaders) and the debug tools
+  z-index: 1;
+  pointer-events: none;
+}
+
+// A corner stack: slots are laid out from the corner outwards in `order` (0 = in the corner)
+.viewportStack {
+  position: absolute;
+  display: flex;
+  gap: 0.8rem;
+  pointer-events: none;
+}
+
+:global(.aekViewportStack_TOP_RIGHT) {
+  top: 1.6rem;
+  right: 1.6rem;
+  flex-direction: row-reverse;
+  align-items: flex-start;
+}
+
+:global(.aekViewportStack_TOP_LEFT) {
+  top: 1.6rem;
+  left: 1.6rem;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+:global(.aekViewportStack_BOTTOM_RIGHT) {
+  bottom: 1.6rem;
+  right: 1.6rem;
+  flex-direction: row-reverse;
+  align-items: flex-end;
+}
+
+:global(.aekViewportStack_BOTTOM_LEFT) {
+  bottom: 1.6rem;
+  left: 1.6rem;
+  flex-direction: row;
+  align-items: flex-end;
+}
+
+.viewportSlot {
+  position: relative;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+// A slot with an explicit rect (not in a corner stack)
+.viewportSlot_rect {
+  position: absolute;
+}
+
+.viewportSlot_disabled {
+  display: none;
+}
+
+:global(.aekViewportSlot_interactive) {
+  pointer-events: auto;
+}

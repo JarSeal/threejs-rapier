@@ -37,6 +37,10 @@ const GYM_ENVIRONMENT_INTENSITY = 0.3;
 
 const TEST_MODELS = '/debugger/assets/testModels';
 
+/** Off when probing physics determinism (`?physicsProbe=N`): the characters aren't deterministic,
+ * and the dummy one walks into the test props, so the probe would report their differences. */
+const ARE_CHARACTERS_ENABLED = true;
+
 /** Root transform that puts an import's first visible node (its first mesh, which is also its
  * physics anchor) at `pos`: these models were positioned by that node, not by their glTF root. */
 const rootPlacing = (manifest: ImportedAssetManifest, pos: { x: number; y: number; z: number }) => {
@@ -130,6 +134,164 @@ const followWithSun = (
   };
 };
 
+/** The player character (with its follow camera) and an input-less dummy that walks and jumps
+ * around. Both are frame-timing dependent (wall clock, random tumbling, async shape casts in
+ * WORKER_THREAD mode), so they're left out when ARE_CHARACTERS_ENABLED is off (p101 §1). */
+const createGymCharacters = async () => {
+  const characterData = {
+    _height: 1.6,
+    _radius: 0.5,
+  };
+  const charCapsule = createGeometry({
+    id: 'capsuleDynamicChar',
+    type: 'CAPSULE',
+    params: {
+      radius: characterData._radius,
+      height: characterData._height - characterData._radius * 2,
+    },
+  });
+  const charMaterial = createMaterial({
+    id: 'materialDynamicChar',
+    type: 'PHONG',
+    params: {
+      map: loadTexture({
+        id: 'box1Texture',
+        fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
+      }),
+    },
+  });
+  createMeshEntity(
+    {
+      geo: createGeometry({
+        id: 'directionBeakGeoDynamicChar',
+        type: 'BOX',
+        params: { width: 0.25, height: 0.25, depth: 0.7 },
+      }),
+      mat: createMaterial({
+        id: 'directionBeakMatDynamicChar',
+        type: 'BASIC',
+        params: { color: '#333' },
+      }),
+      position: { x: 0.35, y: 0.43, z: 0 },
+    },
+    { appId: 'directionBeakMeshDynamicChar-1', doNotAddToScene: true }
+  );
+  const directionBeakMesh = getMeshByAppId('directionBeakMeshDynamicChar-1')!;
+
+  createMeshEntity(
+    { geo: charCapsule, mat: charMaterial, receiveShadow: true, castShadow: true },
+    { appId: 'meshDynamicChar-1' }
+  );
+  const characterMesh = getMeshByAppId('meshDynamicChar-1')!;
+  characterMesh.add(directionBeakMesh);
+
+  const { dynamicCharacterObject } = await createDynamicCharacter({
+    id: 'topDownChar',
+    charMesh: characterMesh,
+    charData: characterData,
+    inputMappings: {
+      rotateLeft: ['a', 'A'],
+      rotateRight: ['d', 'D'],
+      moveForward: ['w', 'W'],
+      moveBackward: ['s', 'S'],
+      jump: [' '],
+      run: ['Shift'],
+      crouch: ['Control'],
+    },
+  });
+  getECSWorld()
+    .getRigidBody(dynamicCharacterObject.entityId)
+    ?.setTranslation({ x: 5, y: 3, z: -5 }, true);
+
+  // Follow camera tracking the player-controlled character from above.
+  createFollowObjectCameraRig({
+    id: 'thirdPersonGymFollowCam',
+    camera: getCameraByAppId('thirdPersonGymCamera')!,
+    targetMesh: characterMesh,
+    // Legacy gym's rig values (world-space offset, aimed at the character's center)
+    offset: { x: 7, y: 20, z: 7 },
+    smoothingTime: 0.2,
+  });
+
+  // Sun follows the player (the follow camera's focus), see followWithSun. The camera looks down
+  // at the player from its (7, 20, 7) offset, so it sees more ground ahead (~20m) than behind
+  // (~11m): center the shadow frustum ~4m ahead, along the camera's ground-forward (-x, -z).
+  // The frustum size (thirdPersonGymSun.light.json) covers the ~±23m screen width at the player.
+  const world = getECSWorld();
+  world.removeSystem('gymSunFollow');
+  const followSun = followWithSun('thirdPersonGymSun', characterMesh.userData.entityId as number, {
+    x: -3,
+    y: 0,
+    z: -3,
+  });
+  world.addSystem(ECSSystemStage.APP_LOGIC, 'gymSunFollow', followSun);
+
+  // Another character without input
+  createMeshEntity(
+    {
+      geo: createGeometry({
+        id: 'directionBeakGeoDynamicChar2',
+        type: 'BOX',
+        params: { width: 0.25, height: 0.25, depth: 0.7 },
+      }),
+      mat: createMaterial({
+        id: 'directionBeakMatDynamicChar',
+        type: 'BASIC',
+        params: { color: '#333' },
+      }),
+      position: { x: 0.35, y: 0.43, z: 0 },
+    },
+    { appId: 'directionBeakMeshDynamicChar-2', doNotAddToScene: true }
+  );
+  const directionBeakMesh2 = getMeshByAppId('directionBeakMeshDynamicChar-2')!;
+
+  createMeshEntity(
+    { geo: charCapsule, mat: charMaterial, receiveShadow: true, castShadow: true },
+    { appId: 'meshDynamicChar-2' }
+  );
+  const characterMesh2 = getMeshByAppId('meshDynamicChar-2')!;
+  characterMesh2.add(directionBeakMesh2);
+
+  const { controlFns, dynamicCharacterObject: dummyCharacterObject } = await createDynamicCharacter(
+    {
+      id: 'testDummyChar',
+      charMesh: characterMesh2,
+      charData: characterData,
+    }
+  );
+  getECSWorld()
+    .getRigidBody(dummyCharacterObject.entityId)
+    ?.setTranslation({ x: -2, y: 5, z: -2 }, true);
+
+  // A named ECS system re-registered on every scene load would be a silent no-op the second
+  // time (world.addSystem ignores a duplicate id) — remove any stale registration from a
+  // previous load of this scene first, since it'd otherwise keep running against this
+  // instance's now-deleted character/controlFns closure.
+  let action: 'F' | 'T' | null = null;
+  let accDelta = 0;
+  getECSWorld().removeSystem('dummyCharLooper');
+  // ...and it's removed on leaving too (see the scene's exit callback), or it would keep driving
+  // the deleted dummy character.
+  getECSWorld().addSystem(ECSSystemStage.APP_PHYSICS_STEP, 'dummyCharLooper', (_world, dt) => {
+    if (accDelta > 1) {
+      if (action !== 'F') {
+        action = 'F';
+        controlFns.jump();
+      } else {
+        action = 'T';
+        controlFns.jump();
+      }
+      accDelta = 0;
+    }
+    if (action === 'F') {
+      controlFns.move('FORWARD', dt);
+    } else {
+      controlFns.rotate('LEFT', dt);
+    }
+    accDelta += dt;
+  });
+};
+
 export const scene = async () =>
   new Promise(async (resolve) => {
     const updateLoaderFn = getLoaderStatusUpdater();
@@ -144,6 +306,15 @@ export const scene = async () =>
     updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 
     (getRootScene() as THREE.Scene).environmentIntensity = GYM_ENVIRONMENT_INTENSITY;
+    // Clean up on leaving: the characters' systems and follow camera rig would otherwise keep
+    // running against their deleted entities/meshes (all no-ops when ARE_CHARACTERS_ENABLED is off).
+    // (One exit callback per scene — registerOnSceneExit replaces any earlier one.)
+    registerOnSceneExit(SCENE_THIRD_PERSON_GYM_META.id, () => {
+      getECSWorld().removeSystem('dummyCharLooper');
+      getECSWorld().removeSystem('gymSunFollow');
+      (getRootScene() as THREE.Scene).environmentIntensity = 1;
+      deleteFollowObjectCameraRig('thirdPersonGymFollowCam');
+    });
 
     await createSkyBox({
       id: 'stylizedSunsetEquiRect',
@@ -255,169 +426,7 @@ export const scene = async () =>
       boxEntityId
     );
 
-    // CHARACTER
-    const characterData = {
-      _height: 1.6,
-      _radius: 0.5,
-    };
-    const charCapsule = createGeometry({
-      id: 'capsuleDynamicChar',
-      type: 'CAPSULE',
-      params: {
-        radius: characterData._radius,
-        height: characterData._height - characterData._radius * 2,
-      },
-    });
-    const charMaterial = createMaterial({
-      id: 'materialDynamicChar',
-      type: 'PHONG',
-      params: {
-        map: loadTexture({
-          id: 'box1Texture',
-          fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
-        }),
-      },
-    });
-    createMeshEntity(
-      {
-        geo: createGeometry({
-          id: 'directionBeakGeoDynamicChar',
-          type: 'BOX',
-          params: { width: 0.25, height: 0.25, depth: 0.7 },
-        }),
-        mat: createMaterial({
-          id: 'directionBeakMatDynamicChar',
-          type: 'BASIC',
-          params: { color: '#333' },
-        }),
-        position: { x: 0.35, y: 0.43, z: 0 },
-      },
-      { appId: 'directionBeakMeshDynamicChar-1', doNotAddToScene: true }
-    );
-    const directionBeakMesh = getMeshByAppId('directionBeakMeshDynamicChar-1')!;
-
-    createMeshEntity(
-      { geo: charCapsule, mat: charMaterial, receiveShadow: true, castShadow: true },
-      { appId: 'meshDynamicChar-1' }
-    );
-    const characterMesh = getMeshByAppId('meshDynamicChar-1')!;
-    characterMesh.add(directionBeakMesh);
-
-    const { dynamicCharacterObject } = await createDynamicCharacter({
-      id: 'topDownChar',
-      charMesh: characterMesh,
-      charData: characterData,
-      inputMappings: {
-        rotateLeft: ['a', 'A'],
-        rotateRight: ['d', 'D'],
-        moveForward: ['w', 'W'],
-        moveBackward: ['s', 'S'],
-        jump: [' '],
-        run: ['Shift'],
-        crouch: ['Control'],
-      },
-    });
-    getECSWorld()
-      .getRigidBody(dynamicCharacterObject.entityId)
-      ?.setTranslation({ x: 5, y: 3, z: -5 }, true);
-
-    // Follow camera tracking the player-controlled character from above.
-    createFollowObjectCameraRig({
-      id: 'thirdPersonGymFollowCam',
-      camera: getCameraByAppId('thirdPersonGymCamera')!,
-      targetMesh: characterMesh,
-      // Legacy gym's rig values (world-space offset, aimed at the character's center)
-      offset: { x: 7, y: 20, z: 7 },
-      smoothingTime: 0.2,
-    });
-
-    // Sun follows the player (the follow camera's focus), see followWithSun. The camera looks down
-    // at the player from its (7, 20, 7) offset, so it sees more ground ahead (~20m) than behind
-    // (~11m): center the shadow frustum ~4m ahead, along the camera's ground-forward (-x, -z).
-    // The frustum size (thirdPersonGymSun.light.json) covers the ~±23m screen width at the player.
-    const world = getECSWorld();
-    world.removeSystem('gymSunFollow');
-    const followSun = followWithSun(
-      'thirdPersonGymSun',
-      characterMesh.userData.entityId as number,
-      {
-        x: -3,
-        y: 0,
-        z: -3,
-      }
-    );
-    world.addSystem(ECSSystemStage.APP_LOGIC, 'gymSunFollow', followSun);
-
-    // Another character without input
-    createMeshEntity(
-      {
-        geo: createGeometry({
-          id: 'directionBeakGeoDynamicChar2',
-          type: 'BOX',
-          params: { width: 0.25, height: 0.25, depth: 0.7 },
-        }),
-        mat: createMaterial({
-          id: 'directionBeakMatDynamicChar',
-          type: 'BASIC',
-          params: { color: '#333' },
-        }),
-        position: { x: 0.35, y: 0.43, z: 0 },
-      },
-      { appId: 'directionBeakMeshDynamicChar-2', doNotAddToScene: true }
-    );
-    const directionBeakMesh2 = getMeshByAppId('directionBeakMeshDynamicChar-2')!;
-
-    createMeshEntity(
-      { geo: charCapsule, mat: charMaterial, receiveShadow: true, castShadow: true },
-      { appId: 'meshDynamicChar-2' }
-    );
-    const characterMesh2 = getMeshByAppId('meshDynamicChar-2')!;
-    characterMesh2.add(directionBeakMesh2);
-
-    const { controlFns, dynamicCharacterObject: dummyCharacterObject } =
-      await createDynamicCharacter({
-        id: 'testDummyChar',
-        charMesh: characterMesh2,
-        charData: characterData,
-      });
-    getECSWorld()
-      .getRigidBody(dummyCharacterObject.entityId)
-      ?.setTranslation({ x: -2, y: 5, z: -2 }, true);
-
-    // A named ECS system re-registered on every scene load would be a silent no-op the second
-    // time (world.addSystem ignores a duplicate id) — remove any stale registration from a
-    // previous load of this scene first, since it'd otherwise keep running against this
-    // instance's now-deleted character/controlFns closure.
-    let action: 'F' | 'T' | null = null;
-    let accDelta = 0;
-    getECSWorld().removeSystem('dummyCharLooper');
-    // ...and remove it on leaving too, or it would keep driving the deleted dummy character.
-    // The follow camera rig likewise, or it keeps ticking against the deleted character mesh.
-    // (One exit callback per scene — registerOnSceneExit replaces any earlier one.)
-    registerOnSceneExit(SCENE_THIRD_PERSON_GYM_META.id, () => {
-      getECSWorld().removeSystem('dummyCharLooper');
-      getECSWorld().removeSystem('gymSunFollow');
-      (getRootScene() as THREE.Scene).environmentIntensity = 1;
-      deleteFollowObjectCameraRig('thirdPersonGymFollowCam');
-    });
-    getECSWorld().addSystem(ECSSystemStage.APP_PHYSICS_STEP, 'dummyCharLooper', (_world, dt) => {
-      if (accDelta > 1) {
-        if (action !== 'F') {
-          action = 'F';
-          controlFns.jump();
-        } else {
-          action = 'T';
-          controlFns.jump();
-        }
-        accDelta = 0;
-      }
-      if (action === 'F') {
-        controlFns.move('FORWARD', dt);
-      } else {
-        controlFns.rotate('LEFT', dt);
-      }
-      accDelta += dt;
-    });
+    if (ARE_CHARACTERS_ENABLED) await createGymCharacters();
 
     const cube = await importAssetAsync({ fileName: `${TEST_MODELS}/customPropTestCube.glb` });
     const monkey = await importAssetAsync({ fileName: `${TEST_MODELS}/customPropTestMonkey.glb` });
@@ -485,7 +494,7 @@ export const scene = async () =>
     );
     const sideWaysPlatformMesh = getMeshByAppId('sideWaysPlatformMesh')!;
 
-    createMovingPlatform({
+    await createMovingPlatform({
       id: 'sideWaysPlatform',
       scene,
       shape: {
@@ -518,7 +527,7 @@ export const scene = async () =>
     );
     const elevatorPlatformMesh = getMeshByAppId('elevatorPlatformMesh')!;
 
-    createMovingPlatform({
+    await createMovingPlatform({
       id: 'elevatorPlatform',
       scene,
       shape: {
@@ -558,7 +567,7 @@ export const scene = async () =>
     );
     const carouselPlatformMesh1 = getMeshByAppId('carouselPlatformMesh1')!;
 
-    createMovingPlatform({
+    await createMovingPlatform({
       id: 'carouselPlatform',
       scene,
       shape: {
@@ -597,7 +606,7 @@ export const scene = async () =>
     );
     const carouselPlatformMesh2 = getMeshByAppId('carouselPlatformMesh2')!;
 
-    createMovingPlatform({
+    await createMovingPlatform({
       id: 'carouselPlatform2',
       scene,
       shape: {
@@ -636,7 +645,7 @@ export const scene = async () =>
     );
     const carouselPlatformMesh3 = getMeshByAppId('carouselPlatformMesh3')!;
 
-    createMovingPlatform({
+    await createMovingPlatform({
       id: 'carouselPlatform3',
       scene,
       shape: {
@@ -672,7 +681,7 @@ export const scene = async () =>
     );
     const ferrisWheelPlatformMesh = getMeshByAppId('ferrisWheelPlatformMesh')!;
 
-    createMovingPlatform({
+    await createMovingPlatform({
       id: 'ferrisWheelPlatform',
       scene,
       shape: {

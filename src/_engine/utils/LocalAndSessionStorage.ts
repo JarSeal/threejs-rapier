@@ -36,7 +36,7 @@ const checkStorage = (type: 'local' | 'session' = 'local') => {
       localStorage.setItem(test, test);
       localStorage.removeItem(test);
       lsAvailable = true;
-    } catch (e) {
+    } catch {
       lsAvailable = false;
     }
   } else {
@@ -46,7 +46,7 @@ const checkStorage = (type: 'local' | 'session' = 'local') => {
       sessionStorage.setItem(test, test);
       sessionStorage.removeItem(test);
       ssAvailable = true;
-    } catch (e) {
+    } catch {
       ssAvailable = false;
     }
   }

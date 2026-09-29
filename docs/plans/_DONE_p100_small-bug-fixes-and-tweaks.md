@@ -1,6 +1,6 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Bug, Refactor
-Related: p101_physics-scene-load-determinism.md (the physics determinism item, split out because it is a multi-phase engine change)
+Related: \_DONE_p101_physics-scene-load-determinism.md (the physics determinism item, split out because it is a multi-phase engine change)
 
 # Small Bug Fixes and Tweaks — Plan
 
@@ -120,7 +120,7 @@ Verified: the reported case (Gym → other scene → Gym puts a Suzanne somewher
 3. **Without SAB (MESSAGE_BATCH), a new body can read a deleted body's stale pose from a reused buffer slot.** This moves the gym's stairs/wall, which Suzanne lands on.
 4. **Worker-only ordering races.** Body and colliders are created in separate messages, and deletes aren't awaited.
 
-Interpolation is visual-only, so it isn't a direct cause. The characters are nondeterministic by design (wall clock + `Math.random`). The probe, the verification matrix (main thread / worker ± SAB / interpolation modes) and the fixes are all in **`p101_physics-scene-load-determinism.md`**.
+Interpolation is visual-only, so it isn't a direct cause. The characters are nondeterministic by design (wall clock + `Math.random`). The probe, the verification matrix (main thread / worker ± SAB / interpolation modes) and the fixes are all in **`_DONE_p101_physics-scene-load-determinism.md`**.
 
 ---
 
@@ -243,3 +243,14 @@ Two small bugs turned up while tracing §2 and §6. Neither causes a visible pro
 
 - `yarn lint` (0 problems) and `tsc` pass after every phase. The Stop hook enforces this.
 - Run each phase's browser checks above via the run-aekasha-js skill in `?isDebug=true` and `?isProdTest=true`. The console must be free of errors, the `hasFeatureAsync` deprecation and `[MeshManager] ... unregistered ...` warnings.
+
+## 11. Implementation notes (where the code differed from this plan)
+
+- **§1:** the baseline was 22 problems, not 21 (a 9th unused `catch (e)` in `gatherAppData.ts`). The `lib` target is ES2021, so `EngineRapier.ts` puts the original error's message into the thrown one instead of using `{ cause }`.
+- **§2:** `registerDebuggerGUI()` uses the file's `useDebug(debugGUI)?._ensureDebuggerSceneLoader()` idiom instead of importing `isDebugEnvironment()`.
+- **§3.1:** `largeWorld` leaked 5 geometries, not 3: the tree and bush geometries (passed to `createInstancedMeshPool`, so never flagged by the `[MeshManager]` warning) are registered too. In debug mode One More Scene still counts 3 more GPU geometries after the first `largeWorld` visit: the shared debug symbol templates, uploaded once and stable over repeated visits (not a leak).
+- **§4:** stats-gl 4.2.3 reads a three.js `WebGPURenderer`'s timestamps but never resolves them, so `_updateRestOfStats` keeps its `resolveTimestampsAsync` calls. `yarn add` needs Node ≥ 22.13 (`engines.node` raised accordingly).
+- **§6:** the PostFX pass window (not listed above) got a resolver too. Suspending tears the window's content down (not just hides it), so panes and intervals stop. Also fixed: Assets/Physics windows reopening empty after a reload (the restore never passed their registered content), and a stale LS `title` winning over the passed one. The Physics window stores the entity's stable (fixed) `appId`.
+- **§7:** the gate lives only in `openDraggableWindow` (every path that builds content goes through it), and the scene change start handler also skips disallowed windows, so a scene switch in prodTest can't close and persist them as closed. The test dialog's `isDebugWindow` was re-enabled; no z-index fix was needed.
+- **§8.1:** the same uncalled-function guard existed in `ECS.ts` `addComponent`; `DEBUG_DATA` is now only stored in debug and prodTest mode.
+- **§8.2:** already fixed before this plan was implemented (commit `c9e4e93`); PostFX's exit hook depends on it.

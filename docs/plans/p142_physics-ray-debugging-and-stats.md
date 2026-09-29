@@ -2,7 +2,7 @@ Status: draft | not-implemented
 Category: Physics, Debugger, Bug fix
 Blocked by: p140_refactor-ray-casting.md, p141_ray-debug-line-helpers.md (Phase 1 of this plan is not blocked and can land first)
 Blocks: p143_ray-cast-tester-windows.md
-Related: \_DONE_p027_physics-api-stats-tracker.md (same opt-in stats philosophy), p068_character-debug-gizmos.md (lists a "character floor ray gizmo"), p100_small-bug-fixes-and-tweaks.md (Phase 1 could move there instead)
+Related: \_DONE_p027_physics-api-stats-tracker.md (same opt-in stats philosophy), p068_character-debug-gizmos.md (lists a "character floor ray gizmo"), \_DONE_p100_small-bug-fixes-and-tweaks.md (was considered as a home for Phase 1; it shipped without it)
 
 # Physics Ray Debugging and Stats — Plan
 

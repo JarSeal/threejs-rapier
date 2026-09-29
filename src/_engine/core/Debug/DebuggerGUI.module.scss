@@ -381,3 +381,79 @@ ul li :global(.listItemWithId) {
     margin: 0;
   }
 }
+
+// Shared debugger list (_dbg__DebuggerList.ts)
+:global(.debuggerListHeading) {
+  margin: 1.2rem 0 0.6rem;
+  font-size: 1.3rem;
+  color: variables.$debugTextColor;
+
+  :global(.debuggerListCount) {
+    color: variables.$debugTextColorDark;
+    font-weight: 400;
+  }
+}
+
+:global(.ulList) li:global(.hasToggles) {
+  display: flex;
+  align-items: center;
+
+  > button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+ul li :global(.listItemWithId) > :global(.uiIcon) {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 1.4rem;
+}
+
+:global(.debuggerListToggles) {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.4rem;
+  padding: 0 0.8rem;
+}
+
+:global(.debuggerListToggle),
+:global(.debuggerListToggleSpacer) {
+  width: 2.2rem;
+  height: 2.2rem;
+}
+
+:global(.debuggerListToggle) {
+  @include variables.nakedButton;
+  display: block;
+  border-radius: 0.4rem;
+  padding: 0.4rem;
+  background-color: transparent;
+  border: 0.1rem solid transparent;
+  opacity: 0.4;
+  transition:
+    background-color 0.17s ease-in-out,
+    opacity 0.17s ease-in-out;
+
+  &:global(.isOn) {
+    opacity: 1;
+  }
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    opacity: 1;
+  }
+
+  &:focus-visible {
+    border-color: variables.$debugTextColor;
+    opacity: 1;
+  }
+
+  :global(.uiIcon) {
+    display: block;
+  }
+
+  svg path {
+    fill: variables.$debugTextColor;
+  }
+}

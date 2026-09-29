@@ -1,12 +1,12 @@
 import { type Renderer } from 'three/webgpu';
-import { type Pane } from 'tweakpane';
 import { IS_DEBUG_ENV } from '../core/Config';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
 export type StatsOptions = {
+  /** @deprecated Unused: the Statistics tab keeps its folder states in `AEK_debugStatsUI`. */
   performanceFolderExpanded?: boolean;
-  /** stats-gl builds its FPS and CPU panels unconditionally, so these two are applied by
-   * detaching the panel afterwards rather than by skipping its creation. */
+  /** stats-gl builds its FPS and CPU panels together (only via its own trackFPS), so these two
+   * are applied by always building both and detaching the panel afterwards. */
   trackFPS?: boolean;
   trackCPU?: boolean;
   /** Engine-side panel (not stats-gl's): time spent in app logic, as a theoretical FPS. */
@@ -20,6 +20,7 @@ export type StatsOptions = {
   samplesLog?: number;
   samplesGraph?: number;
   precision?: number;
+  /** @deprecated Unused: the Statistics tab keeps its folder states in `AEK_debugStatsUI`. */
   outlookFolderExpanded?: boolean;
   horizontal?: boolean;
   mode?: number;
@@ -80,13 +81,5 @@ export const getStats = () => useDebug(debugGUI)?._getStats();
  * @returns {@link StatsOptions}
  */
 export const getStatsConfig = () => useDebug(debugGUI)?._getStatsConfig();
-
-export const updateStatsDebugGUI = () => {
-  useDebug(debugGUI)?._updateStatsDebugGUI();
-};
-
-export const buildStatsDebugGUI = (pane: Pane) => {
-  useDebug(debugGUI)?._buildStatsDebugGUI(pane);
-};
 
 export const getStatsCmp = () => useDebug(debugGUI)?._getStatsCmp();

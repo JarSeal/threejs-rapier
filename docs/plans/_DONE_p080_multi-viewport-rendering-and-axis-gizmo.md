@@ -1,7 +1,6 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Rendering, Multi-viewport, Debugger
-Blocks: p115_debug-environment-ball-viewport.md
-Related: p110_skybox-refactor-and-layered-sky-system.md (epic), p115_debug-environment-ball-viewport.md (env ball as a second viewport left of the gizmo, F7; blocked by this plan), p105_refactor-debugger-drawer-tab-creation.md (will migrate the options this plan adds)
+Related: p110_skybox-refactor-and-layered-sky-system.md (epic), p115_debug-environment-ball-viewport.md (env ball as a second viewport left of the gizmo, F7; builds on this plan), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed first: this plan's Debug Tools options were built on its declarative tab API)
 
 # Multi-viewport Rendering and Axes Gizmo — Plan
 
@@ -180,7 +179,7 @@ A core engine **viewport** feature: extra rectangles rendered on top of the main
     - **Hit-testing.** A `Raycaster` against the six bubbles, using `getViewportPointerNDC`. The front-most bubble wins.
     - **Click versus drag.** A press counts as a click if it moves ≤ 5px, the same threshold as `MouseInput.ts`'s `CLICK_MAX_MOVE_PX` (exported for reuse rather than duplicated).
     - **Target.** The camera goes to `controls.target + axis * currentOrbitDistance`, so the orbit target and zoom are kept. The camera's `up` stays +Y; OrbitControls requires it.
-    - **Pole views.** Top (+Y) uses spherical `phi = ε, theta = 0`, so X points right and −Z up on screen. Bottom (−Y) uses `phi = π − ε, theta = π`, so X points right and +Z up. Both stay inside OrbitControls' `makeSafe` EPS clamp, so there is no roll jump.
+    - **Pole views.** Top (+Y) uses spherical `phi = ε, theta = 0`, so X points right and −Z up on screen. Bottom (−Y) uses `phi = π − ε, theta = 0`, so X points right and +Z up (corrected in Phase 4: `theta = π` mirrors it to X left, −Z up). Both stay inside OrbitControls' `makeSafe` EPS clamp, so there is no roll jump.
     - **Blender flip.** Clicking the axis the view is already aligned to (within ~1°) aligns to the opposite axis.
     - **Animation.**
       - Interpolates spherical `(theta, phi)` around the target over ~250ms with ease-out, driven by the frame `delta`. Theta takes the shortest path. Spherical interpolation, rather than a quaternion slerp, is well-defined for the antipodal flip and matches how OrbitControls rebuilds orientation from position, target and up.
@@ -293,3 +292,97 @@ Each phase compiles, lints and leaves the app working.
   - With the gizmo hidden, the stats show no extra draw calls.
 - Production build (`yarn build`, `dist-stats/bundle-stats.html`): `_dbg__AxesGizmo` is not in the main chunk, and `Viewports.ts` is present but idle.
 - Use the `run-aekasha-js` skill for screenshots of each Phase 1 matrix cell and the gizmo states.
+
+## Implementation notes
+
+### Phase 1 (compositor spike + core API): GO
+
+- The render-to-target + neutralised-quad composite works as designed on both backends. No fallback needed.
+- Verified with a throwaway `?vpTest=1` snippet (not committed) in `largeWorld`: a transparent private-scene cube (top right), the same cube 50% off the canvas's left edge (crop test), and an opaque `'RENDERER'` PiP of `rootScene` from `getMainCamera()` (bottom left, `%` rect).
+  - Full matrix, 16 cells (WebGPU / WebGL2 × PostFX AO on / off × antialias on / off × pixel ratio 1 / 2): correct placement (no y flip on WebGL), no black or stale rects, no full-frame wipe, no console errors. The backend was confirmed per cell from the canvas context type.
+  - `'NONE'` colours are exact (pure 0/255 channels sampled) on both backends, PostFX on and off. MSAA edges are smooth with antialias on and stepped with it off, with no dark fringe over the frame.
+  - A live `renderer.toneMapping` switch (ACES → None → Reinhard → ACES) is followed by the `'RENDERER'` PiP on both backends.
+  - Render pipeline cache size, textures and geometries stay flat over 60s and after the tone-mapping switches (no per-frame recompiles).
+- r186 facts found while implementing (differ from or add to the plan):
+  - `renderOutput()` already un-premultiplies, tone-maps / converts, and re-premultiplies (`RenderOutputNode.setup`), so the "premultiplied sRGB edges" risk does not apply.
+  - `Renderer.currentSamples` is 0 for any `QuadMesh` drawn to screen (`fullscreenPass`), so the composite never loads the MSAA canvas attachment.
+  - The renderer floors `viewport * pixelRatio`. The compositor snaps rects to whole device px and passes `(devicePx + 0.5) / pixelRatio`, so the floor lands exactly.
+- Added beyond the plan: a rect partly outside the canvas is cropped (uv offset/scale uniforms on the quad) rather than squeezed or passed out-of-bounds to `setViewport`.
+- Phase 1's `ViewportProps` holds only what Phase 1 implements (`rect` is required). `anchor`/`order`/`size`/`slotClass`/`interactive`/`sceneId`/`syncCameraAspect` and `setViewportInteractive`/`invalidateViewportLayout`/`getViewportPointerNDC` come in Phase 2.
+
+### Phase 2 (layout and input plumbing): done
+
+- Every viewport now owns a slot element, including explicit-`rect` ones: the slot is absolutely positioned in `px` or `%`, so the `%` math of Phase 1 is gone and every rect comes from the DOM the same way.
+- The viewports layer (`#aekViewportsLayer`, `z-index: 1`, prepended to the HUD root, so below app windows at 100, loaders at 1000 and debug tools at 10000+) is created **lazily on the first `createViewport()`**, not in `HUD.ts`/`InitApp.ts`: with no viewports, nothing is added to the DOM.
+- Corner stacks: `.aekViewportStack_<ANCHOR>` (global), inset `1.6rem`, gap `0.8rem`. Right anchors use `row-reverse`, so `order` always counts from the corner outwards (0 = in the corner) on both sides.
+- Layout triggers (all set one dirty flag; all enabled slots are read together, so one forced layout per change):
+  - create, delete, enable/disable, `invalidateViewportLayout()`
+  - canvas size or pixel ratio change, found by the per-frame size compare (this also covers window resize, so there is no resize listener)
+  - **added:** any `class` change on `<body>` (a `MutationObserver`), so rules like `.debugDrawerOpen …` that move or hide a slot without a transition still re-layout
+  - every frame while a CSS transition runs anywhere in the layer (`transitionrun` / `transitionend` / `transitioncancel` bubble to the layer), plus one more frame after it ends. A transition that never reports its end stops being tracked after 3s without transition events.
+- `getViewportPointerNDC` uses the full (uncropped) rect, returns whether the pointer is inside, and writes `out` either way.
+- `syncCameraAspect` is applied right before the render, only when the camera or the rect aspect changed. Orthographic cameras keep their frustum height and centre.
+- Verified (throwaway spike, WebGPU and WebGL2, pixel ratio 1 and 2):
+  - `viewport.rect` matches the slot box in every state. The rendered PiP edge sits flush with its 1px slot outline at device resolution.
+  - Two slots in the top-right stack are placed in `order`. Disabling the corner one moves the other into the corner.
+  - A 0.6s `right` transition on the stack is tracked frame by frame (the mid-transition rect was one frame behind the DOM). The final rect is exact.
+  - A media query hiding a slot on resize makes it render nothing. A partly off-canvas explicit rect is cropped.
+  - Only the interactive slot is hit by `elementFromPoint`: the canvas gets everything else. Pointer NDC was exact (centre `0,0`, 5% corner `-0.9,0.9`).
+  - A `sceneId` viewport is deleted on that scene's exit, and the global ones survive the scene change.
+
+### Phase 3 (axes gizmo, display only): done
+
+- Built on p105's declarative tab (landed before this phase), not the plan's `lsSetItem` pattern:
+  - `axesGizmo` is a new top-level state key, and it is in `persistKeys`. Hydration still replaces a persisted key whole, so the top-level reasoning holds.
+  - The two bindings are declarative, and user changes are persisted by the tab.
+  - F8 goes through `DebugToolsManager.toggleAxesGizmo()` → `_toggleAxesGizmo()`, which uses `persistDebuggerTabValue` and `updateDebuggerTab`. A tab refresh never fires `onChange`, so the plan's "refresh re-emits change" concern is gone.
+- Module loading: `registerAxesGizmoModule()` (the thin `debug/AxesGizmo.ts`) is awaited in InitApp's `IS_DEBUG_ENV` block. `_initDebugTools` calls `initAxesGizmo(state.axesGizmo)` after hydration.
+- The visibility rule runs in a MAIN-stage system (`axesGizmoVisibilitySystem`), not in `onBeforeRender`: a disabled viewport gets no `onBeforeRender`, so it could never re-enable itself. Plugins apply to every ECS world, so the system only runs for the default world.
+- Visuals:
+  - The bubbles come from one `CanvasTexture` atlas row (+X +Y +Z −X −Y −Z). Each bubble is a quad whose uvs show its cell, and each has its own material, so its opacity can dim independently.
+  - The bubbles are scene children placed along the rotated axes, so they always face the camera. The lines are cylinders under the rotated root.
+  - The root follows the active camera's **world** quaternion, not the local one, because a gameplay camera can be parented.
+- Drawer offset (`AxesGizmo.module.scss`) — additions to the plan:
+  - The toggler got a global `debugDrawerToggler` class, so `body:not(.debugDrawerOpen):has(.debugDrawerToggler.TOP)` can clear it (`right: 4.6rem`). The `:not()` is needed because `:has()` would out-specify the open rule.
+  - The gizmo is hidden while the drawer is open whenever the window is ≤ 650px. Below that, it can't sit left of the drawer and toggler without being cropped or covering the undo/redo tools. This covers both the `$drawerWidthSmall` and full-width drawer breakpoints.
+- Phase 3 keeps the slot non-interactive. `interactive` while the debug camera is active comes with Phase 4's handlers, so the gizmo area doesn't swallow OrbitControls drags before it can use them.
+- Verified on WebGPU and WebGL2 (identical results):
+  - Hidden with the main camera by default; shown after F1. Existing `AEK_debugTools` saved state without `axesGizmo` got the defaults.
+  - Bubble colours were sampled at the screen positions predicted from the active camera. The front ones are exact (`#ff3653` / `#8adb00` / `#2c8fff`) at the default view, after an orbit drag, and in the main camera.
+  - Top view: X right, −Z up, −Y hidden behind +Y.
+  - F8 toggles it and persists, and the open tab's checkbox follows. The gizmo is 10 draw calls when visible and 0 when hidden.
+  - The drawer slide is tracked (mid-frame x = 784, then 454, which is 1000px − 44.6rem − 10rem). At 620px with the drawer open it is hidden. The TOP toggler moves it to x = 854.
+  - "In main camera" follows the gameplay camera, and the canvas is still the element under it.
+  - Both options survive a reload.
+  - Production build: `_dbg__AxesGizmo` is its own 2.7 kB chunk (plus 0.4 kB CSS). The main chunk has only the core `Viewports.ts`.
+
+### Phase 4 (axes gizmo interaction): done
+
+- **Plan correction (Design decision 10, pole views):** the bottom view needs `theta = 0`, the same as the top view. `theta = π` gave X left and −Z up. Verified: the top view is X right, −Z up; the bottom view is X right, +Z up.
+- Clickable = visible and the debug camera is active. The gizmo system drives `setViewportInteractive`. Losing clickability (F1, F8, or hidden) drops any press, drag and hover. The align animation is cancelled when the debug camera is no longer active.
+- The gizmo system runs at `order: 1` in MAIN, so it runs before `debugCameraSystem` (order 0), whose `controls.update()` applies the animation step in the same frame. Panel refresh comes for free: `controls.update()` dispatches `'change'`, which already drives the Debug Tools panel refresh.
+- The align animation is timed with `performance.now()`, not the loop delta. The loop delta is scaled by `playSpeedMultiplier`, and a debug camera move shouldn't crawl in slow motion. It uses a 250ms cubic ease-out over spherical `(phi, theta)`, with theta taking the shortest path.
+- Only the polar target is clamped to `min/maxPolarAngle` (within `POLE_EPS = 1e-4`). Azimuth limits are left to OrbitControls' own `update()` clamp.
+- The damping momentum (`_sphericalDelta`, `_panOffset`, not in the typings) is zeroed at animation start and drag start.
+- Hover:
+  - A second atlas with the same layout holds the hover variants: a lighter positive bubble, and a filled, labelled "−X"-style negative one. Hover swaps each bubble's idle/hover material.
+  - The backdrop is a translucent disc shown on `pointerenter`.
+  - The cursor is `pointer` over a bubble and `grabbing` while dragging.
+- Drag handshake: `setDebugCameraControlsSuspended()` in `_dbg__DebugCamera.ts`. `debugCameraSystem` writes `enabled = !isDisabled && !isControlsSuspended`.
+- `CLICK_MAX_MOVE_PX` is exported from `MouseInput.ts` and reused.
+- Verified on WebGPU and WebGL2 (identical results):
+  - Debug camera: the slot is interactive and is the element under the gizmo.
+  - Clicking +X animates (mid-frame direction `-0.97, -0.21, -0.13`), ends looking along −X from `(4.5, 0, 0)` with the orbit distance kept, and saves to `AEK_debugCams`. A second click flips to `(-4.5, 0, 0)`. +Y, +Z and −Y all align exactly.
+  - A 100px drag on the gizmo, continuing outside it under pointer capture, turned the azimuth by −0.897 rad (OrbitControls' speed predicts −0.898) with no elevation change. So OrbitControls did not rotate as well, and it worked again right after.
+  - Wheel over the gizmo leaves the distance unchanged. A canvas drag during an align cancels it.
+  - The pose survives a reload.
+
+### Phase 5 (docs and version): done
+
+- `.claude/CLAUDE.md` has a "Viewports" section under Architecture.
+- **No version bump.** This branch already carries an engine major bump (`2.0.0` "Morning", from `main`'s `1.2.0`). The rule is one bump per branch, at the level of the biggest change, so this minor feature is covered by it. The app side is unchanged: the throwaway spike in `src/index.ts`, committed in Phases 1–3, was removed here, which restores the file to its pre-plan state.
+- The `Blocks` / `Blocked by` links to p115 are removed (p115 is now blocked only by p111). The p110, p115 and p130 references point to the `_DONE_` file.
+- How the final file list differs from "Files touched":
+  - `HUD.ts` / `InitApp.ts` do not create the viewports layer: it is created by the first `createViewport()`. `InitApp.ts` only awaits `registerAxesGizmoModule()`.
+  - Also touched: `core/Debug/_dbg__DebuggerGUI.ts` (a global `debugDrawerToggler` class on the drawer toggler, for the TOP-position rule) and `debug/DebugToolsManager.ts` (`toggleAxesGizmo()` for F8, plus the state type and defaults).
+  - `package.json` is unchanged (see above).

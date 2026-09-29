@@ -1,6 +1,10 @@
 import { Pane } from 'tweakpane';
-import { createNewDebuggerContainer, createDebuggerTab } from '../../debug/DebuggerGUI';
-import { getSvgIcon } from '../../core/UI/icons/SvgIcon';
+import {
+  createDebuggerTab,
+  debuggerListCMP,
+  updateDebuggerTab,
+  type DebuggerListItem,
+} from '../../debug/DebuggerGUI';
 import {
   DEFAULT_ECS_WORLD_ID,
   deleteECSWorld,
@@ -17,26 +21,24 @@ import {
   setECSStorageLSOverride,
 } from '../ECS/ECSComponentStorage';
 import { lsRemoveItem } from '../../utils/LocalAndSessionStorage';
-import {
-  createClearListLSButton,
-  createClearTabLSButton,
-  lsKeyHasData,
-} from './_dbg__ClearLSButtons';
+import { createClearListLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { resetECSStressTest, spawnECSStressTestBatch } from '../../utils/ECSStressTest';
-import { CMP, getCmpById, type TCMP } from '../../utils/CMP';
+import { CMP } from '../../utils/CMP';
 import {
+  addOnCloseToWindow,
   closeDraggableWindow,
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowContentFn,
+  registerDraggableWindowSceneTargetResolver,
   updateDraggableWindow,
 } from '../UI/DraggableWindow';
 
 export const EDIT_ECS_WORLD_WIN_ID = 'ecsWorldEditorWindow';
-const DEBUGGER_ECS_WORLDS_LIST_ID = 'debuggerECSWorldsList';
-let debuggerListCmp: TCMP | null = null;
+const TAB_ID = 'ecsControls';
 let worldRegistryListenerRegistered = false;
+const refreshECSTab = () => updateDebuggerTab(TAB_ID);
 
 // Coalesces list refreshes to at most once per animation frame. Entity
 // creation/deletion can happen thousands of times in one stress-test batch
@@ -49,7 +51,7 @@ const scheduleListRefresh = () => {
   listRefreshScheduled = true;
   requestAnimationFrame(() => {
     listRefreshScheduled = false;
-    debuggerListCmp?.update();
+    refreshECSTab();
   });
 };
 
@@ -70,6 +72,13 @@ export const createEditECSWorldContent = (data?: { [key: string]: unknown }) => 
       style: { padding: '10px' },
       text: 'ECS World no longer exists',
     });
+
+  // The content is built before the window state is open: refresh the list selection after it.
+  // The onClose is set here too, because a window restored from LS has none.
+  queueMicrotask(() => {
+    addOnCloseToWindow(EDIT_ECS_WORLD_WIN_ID, refreshECSTab);
+    refreshECSTab();
+  });
 
   const isDefault = world.id === DEFAULT_ECS_WORLD_ID;
   const container = CMP({
@@ -163,11 +172,24 @@ export const createEditECSWorldContent = (data?: { [key: string]: unknown }) => 
 };
 
 registerDraggableWindowContentFn(EDIT_ECS_WORLD_WIN_ID, createEditECSWorldContent);
+// Kept open on a scene change when the world still exists (secondary worlds are scene-scoped)
+registerDraggableWindowSceneTargetResolver(EDIT_ECS_WORLD_WIN_ID, (data) =>
+  Boolean(ECSWorld.getWorld(String(data?.id)))
+);
+
+/** The default world's TRANSFORM entity count (and capacity), for the benchmark readout. */
+const benchmarkReadout = { entities: '' };
+const updateBenchmarkReadout = () => {
+  const world = getECSWorld();
+  const entityCount = world.getStorage(ComponentType.TRANSFORM).size;
+  const capacity = world.getTypedTransformStore()?.capacity;
+  benchmarkReadout.entities =
+    capacity !== undefined ? `${entityCount} / ${capacity}` : `${entityCount} (Map, uncapped)`;
+};
+const benchmarkConfig = { batchSize: 1000 };
 
 /** Creates the Tab in the Debug Drawer */
 export const _initECSDebugGUI = () => {
-  const icon = getSvgIcon('ecs');
-
   // Registered once (not per tab-open): refreshes the live list (and the
   // edit window, if open) whenever any world is created or deleted anywhere
   // in the app — mirrors LightManager's TAG_IS_LIGHT onAddComponent hook
@@ -187,168 +209,118 @@ export const _initECSDebugGUI = () => {
   }
 
   createDebuggerTab({
-    id: 'ecsControls',
-    buttonText: icon,
+    id: TAB_ID,
     title: 'ECS',
-    orderNr: 15,
-    container: () => {
-      let pane: Pane | undefined = undefined;
-      const clearTabBtn = createClearTabLSButton({
-        // The whole 'AEK_ecs' key IS the per-world-id list (see ECSComponentStorage.ts) -
-        // there is no separate tab-only field for this button to clear.
-        hasData: () => false,
-        onClear: () => {},
-      });
-      const clearListBtn = createClearListLSButton({
+    icon: 'ecs',
+    // The whole 'AEK_ecs' key IS the per-world-id list (see ECSComponentStorage.ts) - there is
+    // no separate tab-only field, so the tab button stays disabled (kept for consistency)
+    clearLSButton: true,
+    headerButtons: () => [
+      createClearListLSButton({
         hasData: () => lsKeyHasData(ECS_LS_KEY),
         watchKey: ECS_LS_KEY,
         // Keyed by world id, not scene id - no scope ambiguity, so no confirm dialog.
         onClear: () => lsRemoveItem(ECS_LS_KEY),
-      });
-      const container = createNewDebuggerContainer('ecs', `${icon} ECS`, [
-        clearTabBtn,
-        clearListBtn,
-      ]);
-      // Must happen before anything else attaches to container.elem (Tweakpane below,
-      // in particular): CMP.update() replaces the CMP's own DOM element wholesale
-      // (cmp.elem.replaceWith(newElem)), which would orphan whatever Tweakpane already
-      // attached into the old element if this ran any later.
-      container.update({ onRemoveCmp: () => pane?.dispose() });
-
-      debuggerListCmp = CMP({
-        id: DEBUGGER_ECS_WORLDS_LIST_ID,
-        html: () => createECSWorldsDebuggerList(),
-        style: { marginBottom: '16px' },
-      });
-      container.add(debuggerListCmp);
-
-      const winState = getDraggableWindow(EDIT_ECS_WORLD_WIN_ID);
-      if (winState?.isOpen && winState.data?.id) {
-        updateECSWorldsDebuggerListSelectedClass((winState.data as { id: string }).id);
-      }
-
+      }),
+    ],
+    // The benchmark readout (only while the tab is visible)
+    refreshIntervalMs: 1000,
+    onRefresh: updateBenchmarkReadout,
+    content: () => [
+      debuggerListCMP({
+        id: 'ecsWorlds',
+        emptyText: 'No ECS worlds found.',
+        data: getECSWorldsListData,
+        selectedItemId: () => {
+          const winState = getDraggableWindow(EDIT_ECS_WORLD_WIN_ID);
+          return winState?.isOpen ? (winState.data?.id as string | undefined) : null;
+        },
+        perItemConfig: { onClick: openEditECSWorldWindow },
+      }),
       // --- Benchmark ---
-      // Always targets the default world — reuses ECSStressTest.ts's spawn
-      // logic so Map vs Typed Array can be compared live: pick a mode in a
-      // world's edit window (reloads), then spawn a batch here and watch
-      // the Stats tab's FPS/frame-time panel.
-      pane = new Pane({ container: container.elem });
-
-      const benchmarkFolder = pane.addFolder({
-        title: 'Stress Test Benchmark (default world)',
-        expanded: true,
-      });
-
-      const readout = { entities: '' };
-      const updateReadout = () => {
-        const world = getECSWorld();
-        const entityCount = world.getStorage(ComponentType.TRANSFORM).size;
-        const capacity = world.getTypedTransformStore()?.capacity;
-        readout.entities =
-          capacity !== undefined
-            ? `${entityCount} / ${capacity}`
-            : `${entityCount} (Map, uncapped)`;
-      };
-      updateReadout();
-
-      benchmarkFolder.addBinding(readout, 'entities', {
-        label: 'TRANSFORM entities',
-        readonly: true,
-      });
-      // createDebuggerTab's container() re-runs on every tab click (it isn't built once
-      // and hidden/shown), so this must be cleared on teardown or revisiting the tab
-      // leaks a new interval each time. Added as its own child (via .add(), which is
-      // non-destructive) rather than folded into container's own onRemoveCmp above —
-      // that one has to run before Tweakpane attaches (see the comment on it), while
-      // this needs the interval id, which doesn't exist yet at that point.
-      const benchmarkIntervalId = setInterval(() => {
-        updateReadout();
-        pane.refresh();
-      }, 1000);
-      container.add({ onRemoveCmp: () => clearInterval(benchmarkIntervalId) });
-
-      const benchmarkConfig = { batchSize: 1000 };
-      benchmarkFolder.addBinding(benchmarkConfig, 'batchSize', {
-        label: 'Batch size',
-        step: 100,
-        min: 1,
-        max: 20000,
-      });
-
-      benchmarkFolder.addButton({ title: 'Spawn individual meshes' }).on('click', () => {
-        spawnECSStressTestBatch(getECSWorld(), benchmarkConfig.batchSize, false);
-        updateReadout();
-        pane.refresh();
-      });
-      benchmarkFolder.addButton({ title: 'Spawn instanced meshes' }).on('click', () => {
-        spawnECSStressTestBatch(getECSWorld(), benchmarkConfig.batchSize, true);
-        updateReadout();
-        pane.refresh();
-      });
-      benchmarkFolder.addButton({ title: 'Clear stress-test entities' }).on('click', () => {
-        resetECSStressTest(getECSWorld());
-        updateReadout();
-        pane.refresh();
-      });
-
-      return container;
-    },
+      // Always targets the default world — reuses ECSStressTest.ts's spawn logic so Map vs
+      // Typed Array can be compared live: pick a mode in a world's edit window (reloads), then
+      // spawn a batch here and watch the Stats tab's FPS/frame-time panel.
+      {
+        pane: true,
+        content: [
+          {
+            type: 'folder',
+            id: 'benchmark',
+            title: 'Stress Test Benchmark (default world)',
+            content: [
+              {
+                key: 'entities',
+                target: benchmarkReadout,
+                label: 'TRANSFORM entities',
+                readonly: true,
+              },
+              {
+                key: 'batchSize',
+                target: benchmarkConfig,
+                label: 'Batch size',
+                step: 100,
+                min: 1,
+                max: 20000,
+              },
+              {
+                type: 'button',
+                title: 'Spawn individual meshes',
+                onClick: () => {
+                  spawnECSStressTestBatch(getECSWorld(), benchmarkConfig.batchSize, false);
+                  refreshECSTab();
+                },
+              },
+              {
+                type: 'button',
+                title: 'Spawn instanced meshes',
+                onClick: () => {
+                  spawnECSStressTestBatch(getECSWorld(), benchmarkConfig.batchSize, true);
+                  refreshECSTab();
+                },
+              },
+              {
+                type: 'button',
+                title: 'Clear stress-test entities',
+                onClick: () => {
+                  resetECSStressTest(getECSWorld());
+                  refreshECSTab();
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
   });
 };
 
-const createECSWorldsDebuggerList = () => {
-  const worlds = getAllECSWorlds();
-  let html = '<ul class="ulList">';
+const getECSWorldsListData = (): DebuggerListItem[] =>
+  getAllECSWorlds().map((world) => ({
+    itemId: world.id,
+    title: world.name,
+    subTitle: world.id === DEFAULT_ECS_WORLD_ID ? world.id : `[${world.id}]`,
+    suffix: `(${world.getEntityCount()} ent.)`,
+  }));
 
-  for (const world of worlds) {
-    const isDefault = world.id === DEFAULT_ECS_WORLD_ID;
-
-    const button = CMP({
-      onClick: () => {
-        openDraggableWindow({
-          id: EDIT_ECS_WORLD_WIN_ID,
-          title: `Edit ECS World: ${world.name}`,
-          isDebugWindow: true,
-          content: createEditECSWorldContent,
-          data: { id: world.id },
-          closeOnSceneChange: true,
-          saveToLS: true,
-          onClose: () => updateECSWorldsDebuggerListSelectedClass(null),
-        });
-        updateECSWorldsDebuggerListSelectedClass(world.id);
-      },
-      html: `<button class="listItemWithId">
-        <span class="itemId">${isDefault ? world.id : `[${world.id}]`}</span>
-        <h4>${world.name}</h4>
-        <span>(${world.getEntityCount()} ent.)</span>
-      </button>`,
-    });
-
-    html += `<li data-id="${world.id}">${button}</li>`;
-  }
-
-  if (worlds.length === 0) html += `<li class="emptyState">No ECS worlds found.</li>`;
-  html += '</ul>';
-  return html;
-};
-
-export const updateECSWorldsDebuggerListSelectedClass = (id: string | null) => {
-  const listElem = getCmpById(DEBUGGER_ECS_WORLDS_LIST_ID)?.elem;
-  if (!listElem) return;
-  for (const child of listElem.children) {
-    child.classList.remove('selected');
-    if (id === null) continue;
-    if (child.getAttribute('data-id') === id) {
-      child.classList.add('selected');
-    }
-  }
+const openEditECSWorldWindow = (worldId: string) => {
+  const world = ECSWorld.getWorld(worldId);
+  if (!world) return;
+  openDraggableWindow({
+    id: EDIT_ECS_WORLD_WIN_ID,
+    title: `Edit ECS World: ${world.name}`,
+    isDebugWindow: true,
+    content: createEditECSWorldContent,
+    data: { id: world.id },
+    closeOnSceneChange: true,
+    saveToLS: true,
+    onClose: refreshECSTab,
+  });
 };
 
 export const updateECSWorldsDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
-  if (only !== 'WINDOW') debuggerListCmp?.update();
-  const winState = getDraggableWindow(EDIT_ECS_WORLD_WIN_ID);
-  const worldId = winState?.data?.id as string;
-  if (worldId) updateECSWorldsDebuggerListSelectedClass(worldId);
+  if (only !== 'WINDOW') refreshECSTab();
   if (only === 'LIST') return;
-  if (winState?.isOpen) updateDraggableWindow(EDIT_ECS_WORLD_WIN_ID);
+  if (getDraggableWindow(EDIT_ECS_WORLD_WIN_ID)?.isOpen)
+    updateDraggableWindow(EDIT_ECS_WORLD_WIN_ID);
 };

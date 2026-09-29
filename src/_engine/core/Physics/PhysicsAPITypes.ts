@@ -81,8 +81,10 @@ export type PhysicsState = {
   pausedTime: number;
   /** Total pause duration, used for the getPhysGameTime helper (in the helpers.ts) */
   pauseDurationTotal: number;
-  /** Keeps track whether the pause reason is the background behavior (if the app window is hidden) */
-  pauseReason: 'BACKGROUND_BEHAVIOR' | null;
+  /** Why physics is paused, when something other than an explicit play toggle paused it:
+   * 'BACKGROUND_BEHAVIOR' = the app window is hidden, 'SCENE_LOAD' = a scene is loading (see
+   * holdPhysicsStepping). */
+  pauseReason: 'BACKGROUND_BEHAVIOR' | 'SCENE_LOAD' | null;
   /** Minimum delta time (seconds) substituted for the real elapsed time when
    * backgroundBehavior is 'KEEP_RUNNING_USE_MIN_DELTA' and the window is hidden.
    * 0 = not in use.
@@ -281,6 +283,9 @@ export type PhysicsBridge<T> = {
 export type OmitSync<T> = {
   [K in keyof T as K extends `${string}Sync` ? never : K]: T[K];
 };
+
+/** A rigid body's translation + rotation as plain data (e.g. in a worker reply). */
+export type RigidBodyPose = { pos: PhysVector; rot: PhysRotation };
 
 /** Writable numeric array a pose is read into (see RigidBodyAPI.readPoseInto). */
 export type PoseArray = Float32Array | Float64Array | number[];
@@ -2087,6 +2092,7 @@ export type PhysicsUpProtocol =
         rigidBodyIds: number[];
         colliderIds: number[];
       }
+    | { type: PhysicsProtocolType.FLUSH }
     // World --------------------------------------
     | {
         type: PhysicsProtocolType.CREATE_WORLD;
@@ -2182,6 +2188,12 @@ export type PhysicsUpProtocol =
       }
     // RigidBody --------------------------------------
     | { type: PhysicsProtocolType.CREATE_RIGID_BODY; params: RigidBodyParams }
+    | {
+        type: PhysicsProtocolType.CREATE_PHYSICS_ENTITY;
+        rigidBody?: RigidBodyParams;
+        /** Their parentId is set to the new body's id by the worker, when there is a body */
+        colliders: ColliderParams[];
+      }
     | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; params: RigidBodyParams[] }
     | { type: PhysicsProtocolType.DELETE_RIGID_BODY; id: number }
     | { type: PhysicsProtocolType.DELETE_RIGID_BODIES; ids: number[] }
@@ -2509,6 +2521,7 @@ export type PhysicsDownProtocol =
         type: PhysicsProtocolType.INIT_PHYSICS;
         worldCreated: boolean;
       }
+    | { type: PhysicsProtocolType.FLUSH }
     // World --------------------------------------
     | {
         type: PhysicsProtocolType.CREATE_WORLD;
@@ -2566,8 +2579,29 @@ export type PhysicsDownProtocol =
     | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH; colliderIds: number[] }
     | { type: PhysicsProtocolType.WORLD_INTERSECTION_PAIR; isIntersecting: boolean }
     // Rigid body --------------------------------------
-    | { type: PhysicsProtocolType.CREATE_RIGID_BODY; id: number; slot: number }
-    | { type: PhysicsProtocolType.CREATE_RIGID_BODIES; ids: number[]; slots: number[] }
+    | {
+        type: PhysicsProtocolType.CREATE_RIGID_BODY;
+        id: number;
+        slot: number;
+        /** The new body's pose as Rapier reports it, readable before any transform write-back */
+        pose: RigidBodyPose;
+      }
+    | {
+        type: PhysicsProtocolType.CREATE_PHYSICS_ENTITY;
+        /** The rigid body's id, slot and pose, as in CREATE_RIGID_BODY. Undefined id and pose
+         * (and slot -1) when no rigid body was requested. */
+        id?: number;
+        slot: number;
+        pose?: RigidBodyPose;
+        colliderIds: number[];
+      }
+    | {
+        type: PhysicsProtocolType.CREATE_RIGID_BODIES;
+        ids: number[];
+        slots: number[];
+        /** Per body, same as CREATE_RIGID_BODY's pose */
+        poses: RigidBodyPose[];
+      }
     | {
         type: PhysicsProtocolType.DELETE_RIGID_BODY;
         id: number;
@@ -2707,6 +2741,7 @@ type PhysicsResponse<T extends PhysicsProtocolType> = Extract<PhysicsDownProtoco
 export type InitPhysicsResponse = PhysicsResponse<PhysicsProtocolType.INIT_PHYSICS>;
 export type TakeSnapshotResponse = PhysicsResponse<PhysicsProtocolType.TAKE_SNAPSHOT>;
 export type RestoreSnapshotResponse = PhysicsResponse<PhysicsProtocolType.RESTORE_SNAPSHOT>;
+export type FlushResponse = PhysicsResponse<PhysicsProtocolType.FLUSH>;
 export type ErrorResponse = PhysicsResponse<PhysicsProtocolType.ERROR>;
 // World
 export type CreateWorldResponse = PhysicsResponse<PhysicsProtocolType.CREATE_WORLD>;
@@ -2740,6 +2775,8 @@ export type WorldIntersectionPairResponse =
   PhysicsResponse<PhysicsProtocolType.WORLD_INTERSECTION_PAIR>;
 // Rigid body
 export type CreateRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.CREATE_RIGID_BODY>;
+export type CreatePhysicsEntityResponse =
+  PhysicsResponse<PhysicsProtocolType.CREATE_PHYSICS_ENTITY>;
 export type CreateRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.CREATE_RIGID_BODIES>;
 export type DeleteRigidBodyResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODY>;
 export type DeleteRigidBodiesResponse = PhysicsResponse<PhysicsProtocolType.DELETE_RIGID_BODIES>;
@@ -2850,6 +2887,9 @@ export enum PhysicsProtocolType {
    * directly. Lives in the ENGINE range (not WORLD) because it needs the worker's own
    * engAPI/buffer module state, which the WORLD switchboard doesn't receive. */
   SET_DEBUG_STATE_TRACKING = 5,
+  /** Round-trip ordering barrier: the worker replies immediately, so the reply arrives only
+   * after every message posted before it has been handled. */
+  FLUSH = 6,
   CREATE_WORLD = 100,
   DELETE_WORLD = 101,
   /** Worker -> main thread unsolicited push of the hot-path transform buffer (MESSAGE_BATCH fallback only). */
@@ -2957,6 +2997,8 @@ export enum PhysicsProtocolType {
   RIGID_APPLY_IMPULSE_AT_POINT = 469,
   RIGID_USER_FORCE = 470,
   RIGID_USER_TORQUE = 471,
+  /** A rigid body (optional) and its colliders in one message (see createRigidBodyWithColliders) */
+  CREATE_PHYSICS_ENTITY = 472,
 
   // COLLIDER >= 600 && COLLIDER < 800
   CREATE_COLLIDER = 600,

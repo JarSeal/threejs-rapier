@@ -16,14 +16,18 @@ import {
 } from './Scene';
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
-import { deleteAllPhysicsEntities } from './PhysicsManager';
+import { deleteAllPhysicsEntities, settlePendingPhysicsEntities } from './PhysicsManager';
+import { holdPhysicsStepping, releasePhysicsStepping, resetPhysicsWorld } from './PhysicsAPI';
 import { DEBUGGER_SCENE_LOADER_ID, disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './Input/InputState';
 import { getCanvasParentElem } from './Renderer';
 import { getDebugToolsState } from '../debug/DebugToolsManager';
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, isDebugEnvironment } from './Config';
 import { applySkyBoxForScene, clearSkyBox } from './SkyBox';
-import { handleDraggableWindowsOnSceneChangeStart } from './UI/DraggableWindow';
+import {
+  handleDraggableWindowsOnSceneChangeEnd,
+  handleDraggableWindowsOnSceneChangeStart,
+} from './UI/DraggableWindow';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
 import { deleteAllCharacters } from './Character';
 import { existsOrThrow } from '../utils/assert';
@@ -343,27 +347,31 @@ const createNextSceneObject3Ds = async (sceneData: SceneData): Promise<void> => 
   for (let i = 0; i < meshProps.length; i++) {
     const props = meshProps[i];
     if (typeof props === 'string') continue;
-    if (typeof props.props.geo === 'string') {
-      const geo = doesGeoExist(props.props.geo) ? getGeometry(props.props.geo) : undefined;
-      if (!geo) {
+    // Resolve into locals, never write back: the generated scene data is cached, and a revisit
+    // would otherwise reuse the previous visit's released (disposed) geometry/material objects
+    let geo = props.props.geo;
+    if (typeof geo === 'string') {
+      const foundGeo = doesGeoExist(geo) ? getGeometry(geo) : undefined;
+      if (!foundGeo) {
         lerror(
-          `Could not find geometry with id "${props.props.geo}" for mesh "${props.props.appId || props.entityOpts?.appId}" in createNextSceneObject3Ds. Mesh not created.`
+          `Could not find geometry with id "${geo}" for mesh "${props.props.appId || props.entityOpts?.appId}" in createNextSceneObject3Ds. Mesh not created.`
         );
         continue;
       }
-      props.props.geo = geo as THREE.BufferGeometry;
+      geo = foundGeo as THREE.BufferGeometry;
     }
-    if (typeof props.props.mat === 'string') {
-      const mat = getMaterial(props.props.mat);
-      if (!mat) {
+    let mat = props.props.mat;
+    if (typeof mat === 'string') {
+      const foundMat = getMaterial(mat);
+      if (!foundMat) {
         lerror(
-          `Could not find material with id "${props.props.mat}" for "${props.props.appId || props.entityOpts?.appId}" mesh in createNextSceneObject3Ds. Mesh not created.`
+          `Could not find material with id "${mat}" for "${props.props.appId || props.entityOpts?.appId}" mesh in createNextSceneObject3Ds. Mesh not created.`
         );
         continue;
       }
-      props.props.mat = mat;
+      mat = foundMat;
     }
-    createMeshEntity(props.props, props.entityOpts);
+    createMeshEntity({ ...props.props, geo, mat }, props.entityOpts);
   }
 };
 
@@ -443,6 +451,13 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   let loader: SceneLoader | undefined = getCurrentSceneLoader();
   if (targetLoaderId) {
     loader = sceneLoaders.find((sl) => sl.id === targetLoaderId);
+    if (!loader && targetLoaderId === DEBUGGER_SCENE_LOADER_ID) {
+      // A stale debug setting must never kill boot, fall back to the current loader
+      lwarn(
+        `Could not find the debugger scene loader (loader id "${targetLoaderId}") in loadScene, using the current scene loader instead.`
+      );
+      loader = getCurrentSceneLoader();
+    }
     if (!loader) {
       const msg = `Could not find scene loader with loader id "${targetLoaderId}" in loadScene.`;
       lerror(msg);
@@ -487,6 +502,9 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
   await loadStartFn(loader)
     .then(async () => {
       setIsLoadingScene(true);
+      // No stepping until the whole next scene exists (released before loadEndFn below), so a
+      // scene's physics never depends on how long its assets took to load.
+      holdPhysicsStepping();
 
       // Delete prev scene characters, physics objects, in scene cameras, and in scene lights
       deleteAllCharacters();
@@ -524,6 +542,12 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
       createCameras(sceneData);
 
+      // Every physics entity is gone by now: start the next scene on a fresh world, so a
+      // revisit simulates exactly like the first visit (no leftover Rapier internal state).
+      // After createCameras: in WORKER_THREAD mode this awaits the worker, and frames keep
+      // rendering meanwhile, which needs a camera. Before the assets: imports can spawn bodies.
+      await resetPhysicsWorld();
+
       // Create / load all next scene assets before the scene file
       const nextSceneAssets = await loadNextSceneAssets(sceneData);
 
@@ -552,6 +576,8 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
 
           runOnSceneEnter(sceneId);
           runOnAllSceneEnters();
+          // After the enter hooks, so entities created by scene code exist too
+          handleDraggableWindowsOnSceneChangeEnd();
 
           if (IS_DEBUG_ENV) {
             // Enable debuggers
@@ -560,6 +586,11 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
             updateOnScreenTools();
             resetRayCastStats();
           }
+
+          // Includes creates the scene code didn't await (and the prev scene's deletes, in
+          // WORKER_THREAD mode), so every body starts stepping on the same step.
+          await settlePendingPhysicsEntities();
+          releasePhysicsStepping();
 
           loader.phase = 'END';
           await loadEndFn(loader).then(() => {
@@ -577,8 +608,11 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
     .catch((reason) => {
       const msg = `Could not load scene (phase '${loader.phase}')`;
       lerror(msg, reason);
+      handleDraggableWindowsOnSceneChangeEnd(true);
       // @CONSIDER: should this throw an error?
-    });
+    })
+    // A failed load must not leave physics held (a no-op if it was already released).
+    .finally(releasePhysicsStepping);
 };
 
 /**

@@ -1,5 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { createDebuggerTab, createNewDebuggerContainer } from '../../debug/DebuggerGUI';
+import {
+  createDebuggerTab,
+  debuggerListCMP,
+  updateDebuggerTab,
+  type DebuggerListItem,
+} from '../../debug/DebuggerGUI';
 import { CMP, type TCMP } from '../../utils/CMP';
 import { IS_DEBUG_ENV } from '../Config';
 import {
@@ -17,10 +22,10 @@ import { createSceneAppLooper, deleteSceneAppLooper } from '../Scene';
 import { llog, lwarn } from '../../utils/Logger';
 import { deleteCharacter, getCharacterById, getCharacters } from '../Character';
 import { getECSWorld } from '../ECS';
-import { createClearListLSButton, createClearTabLSButton } from './_dbg__ClearLSButtons';
+import { createClearListLSButton } from './_dbg__ClearLSButtons';
 import { _recordUndoRedoAction, _registerUndoRedoActionHandler } from './_dbg__UndoRedo';
 
-let debuggerListCmp: TCMP | null = null;
+const CHARACTERS_TAB_ID = 'charactersControls';
 const debuggerWindowCmp: { [id: string]: TCMP } = {};
 const debuggerWindowPane: { [id: string]: Pane } = {};
 let debuggerTrackerWindowCmp: TCMP | null = null;
@@ -29,6 +34,8 @@ const CHAR_EDIT_WIN_ID = 'characterEditorWindow';
 const CHAR_TRACKER_WIN_ID = 'characterDataTrackerWindow';
 
 const getEditWindowId = (charId: string) => `${CHAR_EDIT_WIN_ID}_${charId}`;
+/** The list's selection follows the edit windows' open states. */
+const refreshCharactersList = () => updateDebuggerTab(CHARACTERS_TAB_ID);
 const getTrackerWindowId = (charId: string) => `${CHAR_TRACKER_WIN_ID}_${charId}`;
 
 // Undo/redo
@@ -148,10 +155,9 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
     return CMP();
   }
 
-  addOnCloseToWindow(getEditWindowId(d.id), () => {
-    _updateDebuggerCharactersListSelectedClass();
-  });
-  _updateDebuggerCharactersListSelectedClass();
+  addOnCloseToWindow(getEditWindowId(d.id), refreshCharactersList);
+  // The content is built before the window state is open: refresh the list selection after it
+  queueMicrotask(refreshCharactersList);
 
   debuggerWindowCmp[d.id] = CMP({
     onRemoveCmp: () => delete debuggerWindowPane[d.id],
@@ -284,79 +290,64 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   return debuggerWindowCmp[d.id];
 };
 
-const createCharactersDebuggerList = () => {
+const getCharactersListData = (): DebuggerListItem[] => {
   const characters = getCharacters();
-  const keys = Object.keys(characters);
-  let html = '<ul class="ulList">';
+  return Object.keys(characters).map((key) => {
+    const character = characters[key];
+    return {
+      itemId: key,
+      title: character.name || `[${character.id}]`,
+      subTitle: `[${character.id}]`,
+    };
+  });
+};
 
-  for (let i = 0; i < keys.length; i++) {
-    const character = characters[keys[i]];
-    const button = CMP({
-      onClick: () => {
-        const winState = getDraggableWindow(getEditWindowId(character.id));
-        if (winState?.isOpen && winState?.data?.id === keys[i]) {
-          closeDraggableWindow(getEditWindowId(character.id));
-          return;
-        }
-        openDraggableWindow({
-          id: getEditWindowId(character.id),
-          position: { x: 110, y: 60 },
-          size: { w: 400, h: 400 },
-          saveToLS: true,
-          title: `Edit character: ${character.name || `[${character.id}]`}`,
-          isDebugWindow: true,
-          content: createEditCharacterContent,
-          data: { id: character.id, CHAR_EDIT_WIN_ID: getEditWindowId(character.id) },
-          removeOnSceneChange: true, // @TODO: This is the only way to get the character window to work properly after scene change (and coming back), fix this
-          onClose: _updateDebuggerCharactersListSelectedClass,
-        });
-        _updateDebuggerCharactersListSelectedClass();
-      },
-      html: `<button class="listItemWithId">
-  <span class="itemId">[${character.id}]</span>
-  <h4>${character.name || `[${character.id}]`}</h4>
-</button>`,
-    });
-
-    html += `<li data-id="${keys[i]}">${button}</li>`;
+const toggleEditCharacterWindow = (charId: string) => {
+  const character = getCharacterById(charId);
+  if (!character) return;
+  const winId = getEditWindowId(character.id);
+  const winState = getDraggableWindow(winId);
+  if (winState?.isOpen && winState?.data?.id === charId) {
+    closeDraggableWindow(winId);
+    return;
   }
-
-  if (!keys.length) html += `<li class="emptyState">No characters registered to this scene..</li>`;
-
-  html += '</ul>';
-  return html;
+  openDraggableWindow({
+    id: winId,
+    position: { x: 110, y: 60 },
+    size: { w: 400, h: 400 },
+    saveToLS: true,
+    title: `Edit character: ${character.name || `[${character.id}]`}`,
+    isDebugWindow: true,
+    content: createEditCharacterContent,
+    data: { id: character.id, CHAR_EDIT_WIN_ID: winId },
+    removeOnSceneChange: true, // @TODO: This is the only way to get the character window to work properly after scene change (and coming back), fix this
+    onClose: refreshCharactersList,
+  });
 };
 
 export const _createCharactersDebuggerGUI = () => {
   if (!IS_DEBUG_ENV) return;
-  const icon = getSvgIcon('personArmsUp');
   createDebuggerTab({
-    id: 'charactersControls',
-    buttonText: icon,
+    id: CHARACTERS_TAB_ID,
     title: 'Character controls',
-    orderNr: 14,
-    container: () => {
-      // No LS key exists for character data today (see §2.1/§3.1 of the clear-LS-buttons
-      // plan) - both buttons exist for consistency with every other list tab, but stay
-      // permanently disabled until character data persistence is ever added.
-      const clearTabBtn = createClearTabLSButton({ hasData: () => false, onClear: () => {} });
-      const clearListBtn = createClearListLSButton({ hasData: () => false, onClear: () => {} });
-      const container = createNewDebuggerContainer(
-        'debuggerCharacters',
-        `${icon} Character Controls`,
-        [clearTabBtn, clearListBtn]
-      );
-      debuggerListCmp = CMP({ id: 'debuggerCharactersList', html: createCharactersDebuggerList });
-      container.add(debuggerListCmp);
-      const winStates = getDraggableWindowsStartingWith(CHAR_EDIT_WIN_ID);
-      for (let i = 0; i < winStates.length; i++) {
-        const winState = winStates[i];
-        if (winState?.isOpen) {
-          _updateDebuggerCharactersListSelectedClass();
-        }
-      }
-      return container;
-    },
+    icon: 'personArmsUp',
+    // No LS key exists for character data today (see §2.1/§3.1 of the clear-LS-buttons
+    // plan) - both buttons exist for consistency with every other list tab, but stay
+    // permanently disabled until character data persistence is ever added.
+    clearLSButton: true,
+    headerButtons: () => [createClearListLSButton({ hasData: () => false, onClear: () => {} })],
+    content: () => [
+      debuggerListCMP({
+        id: 'characters',
+        emptyText: 'No characters registered to this scene..',
+        data: getCharactersListData,
+        selectedItemId: () =>
+          Object.keys(getCharacters()).filter(
+            (key) => getDraggableWindow(getEditWindowId(key))?.isOpen
+          ),
+        perItemConfig: { onClick: toggleEditCharacterWindow },
+      }),
+    ],
   });
 
   setTimeout(() => {
@@ -366,7 +357,7 @@ export const _createCharactersDebuggerGUI = () => {
 
 export const _updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (!IS_DEBUG_ENV) return;
-  if (only !== 'WINDOW') debuggerListCmp?.update({ html: createCharactersDebuggerList });
+  if (only !== 'WINDOW') refreshCharactersList();
   if (only === 'LIST') return;
   const winStates = [
     ...getDraggableWindowsStartingWith(CHAR_EDIT_WIN_ID),
@@ -379,33 +370,16 @@ export const _updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
         if (winState.id?.startsWith(CHAR_EDIT_WIN_ID)) {
           registerDraggableWindowCmp(winState.id, {
             content: createEditCharacterContent,
-            onClose: _updateDebuggerCharactersListSelectedClass,
+            onClose: refreshCharactersList,
           });
         } else if (winState.id?.startsWith(CHAR_TRACKER_WIN_ID)) {
           registerDraggableWindowCmp(winState.id, {
             content: createTrackCharacterContent,
-            onClose: _updateDebuggerCharactersListSelectedClass,
+            onClose: refreshCharactersList,
           });
         }
       }
       updateDraggableWindow(winState.id);
     }
-  }
-};
-
-export const _updateDebuggerCharactersListSelectedClass = () => {
-  if (!IS_DEBUG_ENV) return;
-  const ulElem = debuggerListCmp?.elem;
-  if (!ulElem) return;
-
-  for (const child of ulElem.children) {
-    child.classList.remove('selected');
-  }
-
-  for (const child of ulElem.children) {
-    const elemId = child.getAttribute('data-id');
-    if (!elemId) continue;
-    const winState = getDraggableWindow(getEditWindowId(elemId));
-    if (winState?.isOpen) child.classList.add('selected');
   }
 };

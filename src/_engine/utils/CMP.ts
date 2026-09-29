@@ -283,7 +283,11 @@ export const CMP = (
     if (globalSettings.replaceRootDom) {
       props.attach.replaceWith(elem);
     } else {
-      props.prepend ? props.attach.prepend(elem) : props.attach.appendChild(elem);
+      if (props.prepend) {
+        props.attach.prepend(elem);
+      } else {
+        props.attach.appendChild(elem);
+      }
     }
     rootCMP = cmp;
     cmp.parentElem = elem.parentElement;
@@ -316,7 +320,11 @@ const addChildCmp = (parent: TCMP, child?: TCMP | TProps) => {
 
   parent.children.push(cmp);
   const prepend = cmp.props?.prepend;
-  prepend ? parent.elem.prepend(cmp.elem) : parent.elem.appendChild(cmp.elem);
+  if (prepend) {
+    parent.elem.prepend(cmp.elem);
+  } else {
+    parent.elem.appendChild(cmp.elem);
+  }
   cmp.parent = parent;
   cmp.parentElem = parent.elem;
   if (cmp.props?.focus) focusCmp(cmp);
@@ -417,7 +425,7 @@ const createElem = (cmp: TCMP, props?: TProps) => {
     classes = props.class.split(' ');
   }
   for (let i = 0; i < classes.length; i++) {
-    classes[i] && elem.classList.add(classes[i].trim());
+    if (classes[i]) elem.classList.add(classes[i].trim());
   }
 
   // Styles

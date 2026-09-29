@@ -1,14 +1,10 @@
 import Stats from 'stats-gl';
-import { Pane } from 'tweakpane';
 import { TimestampQuery, type Renderer } from 'three/webgpu';
 import { getRenderer } from '../../core/Renderer';
-import { createNewDebuggerPane, createDebuggerTab } from '../../debug/DebuggerGUI';
-import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { createDebuggerTab } from '../../debug/DebuggerGUI';
 import { getHUDRootCMP } from '../../core/HUD';
-import { getSvgIcon } from '../../core/UI/icons/SvgIcon';
 import { CMP, type TCMP } from '../../utils/CMP';
 import { defaultStatsOptions, type StatsOptions } from '../../debug/Stats';
-import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import { setBootOverride } from './_dbg__PhysicsBootOverrides';
 import { getConfig } from '../../core/Config';
 
@@ -35,21 +31,19 @@ type StatsInternals = {
 };
 
 /** Top-to-bottom display order, independent of the order the panels get created in — which
- * we don't control: stats-gl builds FPS and CPU in its constructor, we add PHY and TFPS next,
- * and GPU/CPT only appear later, asynchronously, once init() has checked for timestamp-query
- * support. */
+ * we don't control: stats-gl builds FPS, CPU, GPU and CPT in its constructor, then we add PHY
+ * and TFPS. GPU/CPT are built before init() has checked for timestamp-query support, so they
+ * get detached again once it settles if the renderer turns out not to support it. */
 const PANEL_ORDER = ['TFPS', 'FPS', 'CPU', 'PHY', 'GPU', 'CPT'];
 
 let stats: Stats | null = null;
 let statsCmp: TCMP | null = null;
 let physicsPanel: StatsPanel | null = null;
 let tFpsPanel: StatsPanel | null = null;
-let savedConfig = {};
-const statsDebugGUIs: Pane[] = [];
 const LS_KEY = 'AEK_debugStats';
+const STATS_TAB_ID = 'statsControls';
 
-let statsConfig: StatsOptions = {
-  performanceFolderExpanded: false,
+const statsConfig: StatsOptions = {
   trackFPS: true,
   trackCPU: true,
   trackTFPS: true,
@@ -67,20 +61,27 @@ let statsConfig: StatsOptions = {
   enabled: true,
 };
 
+/** Every change reloads the app: the panels are only built once, at boot. */
+const RELOAD_NOTE = '(reloads the app)';
+
 /**
  * Initializes statistics for debugging
  * @param config ({@link StatsOptions}) optional configurations for stats
  * @returns ({@link Stats} | null)
  */
 export const _initStats = (config?: StatsOptions) => {
-  savedConfig = { ...defaultStatsOptions, ...lsGetItem(LS_KEY, config || {}) };
-  const cfg = savedConfig as StatsOptions;
-  // Published before the panels are built, because applyPanelOrder() reads it.
-  statsConfig = savedConfig;
+  Object.assign(statsConfig, defaultStatsOptions, config);
+  // Registered first: the registration hydrates the persisted values into statsConfig, which
+  // the panels below are built from
+  setDebuggerUI();
+  const cfg = statsConfig;
   if (cfg.enabled) {
     if (stats) stats.update();
     stats = new Stats({
-      ...(savedConfig as Omit<StatsOptions, 'enabled'>),
+      ...(cfg as Omit<StatsOptions, 'enabled'>),
+      // stats-gl builds FPS and CPU together, and only when trackFPS is on, so CPU would
+      // vanish along with FPS. Always build both; a switched-off one is detached below.
+      trackFPS: true,
       // Hz is drawn as a small overlay inside the CPU panel, so with CPU off it would have
       // nothing to sit on. The debug tab disables the Hz toggle in that case; this is the
       // matching guard for an already-persisted combination.
@@ -92,8 +93,8 @@ export const _initStats = (config?: StatsOptions) => {
       minimal: false,
     });
     const internals = stats as unknown as StatsInternals;
-    // stats-gl builds FPS and CPU in its constructor with no way to opt out, so switching
-    // them off means detaching the canvas after the fact. Detaching (rather than
+    // FPS and CPU can't be opted out of separately (see trackFPS above), so switching either
+    // off means detaching its canvas after the fact. Detaching (rather than
     // display:none) because stats-gl's own window-resize handler re-asserts display:block
     // on every panel it knows about, which would undo a hide on the first resize.
     if (!cfg.trackFPS) internals.fpsPanel?.canvas.remove();
@@ -113,16 +114,22 @@ export const _initStats = (config?: StatsOptions) => {
     statsCmp.elem.appendChild(stats.dom);
     getHUDRootCMP().add(statsCmp);
     // Ordered once now so nothing flashes in creation order, and again once init() settles,
-    // because that is when the GPU/CPT panels (if any) actually get added. Reordering on
-    // settle rather than on success: a renderer that fails to init simply contributes no
-    // GPU/CPT panels, and the rest must still come out in the right order.
+    // because that is when the GPU/CPT panels may get detached (no timestamp-query support,
+    // which stats-gl only checks in init()). Reordering on settle rather than on success: a
+    // renderer that fails to init must still leave the rest in the right order.
     applyPanelOrder();
+    const renderer = getRenderer();
     stats
-      .init(getRenderer())
+      .init(renderer)
       .catch(() => undefined)
-      .then(applyPanelOrder);
+      .then(() => {
+        if (!renderer?.hasFeature('timestamp-query')) {
+          internals.gpuPanel?.canvas.remove();
+          internals.gpuPanelCompute?.canvas.remove();
+        }
+        applyPanelOrder();
+      });
   }
-  setDebuggerUI();
   return stats;
 };
 
@@ -194,6 +201,8 @@ const positionVSyncOverlay = (canvas: HTMLCanvasElement | undefined, visible: St
 export const _updateRestOfStats = (renderer: Renderer) => {
   logicEndTime = performance.now();
   logicDuration = logicEndTime - logicStartTime;
+  // stats-gl only reads renderer.info's timestamps for a three.js WebGPURenderer (it resolves
+  // them itself only on its native GPUDevice path), so resolving them stays our job.
   if (statsConfig.trackCPT) renderer.resolveTimestampsAsync(TimestampQuery.COMPUTE);
   if (statsConfig.trackGPU) renderer.resolveTimestampsAsync(TimestampQuery.RENDER);
   updateTFPSPanel(logicDuration);
@@ -274,101 +283,76 @@ export const _getStats = () => stats;
 export const _getStatsConfig = () => statsConfig;
 
 const setDebuggerUI = () => {
-  const icon = getSvgIcon('speedometer');
-  return createDebuggerTab({
-    id: 'statsControls',
-    buttonText: icon,
+  const reloadApp = () => location.reload();
+  createDebuggerTab({
+    id: STATS_TAB_ID,
     title: 'Statistics',
-    orderNr: 3,
-    container: () => {
-      const clearTabBtn = createClearTabLSButton({
-        hasData: () => lsKeyHasData(LS_KEY),
-        onClear: () => lsRemoveItem(LS_KEY),
-        watchKey: LS_KEY,
-      });
-      const { container, debugGUI } = createNewDebuggerPane('Stats', `${icon} Statistics`, [
-        clearTabBtn,
-      ]);
-
-      statsDebugGUIs.push(debugGUI);
-      _buildStatsDebugGUI(debugGUI);
-
-      return container;
+    icon: 'speedometer',
+    lsKey: LS_KEY,
+    state: statsConfig,
+    persistKeys: [
+      'enabled',
+      'trackTFPS',
+      'trackFPS',
+      'trackCPU',
+      'trackHz',
+      'trackGPU',
+      'trackCPT',
+      'horizontal',
+    ],
+    content: () => {
+      // Physics step tracking drives the PHY panel, so it belongs among these panel toggles —
+      // but unlike its neighbours it is not a stats setting: it lives with the other boot-time
+      // physics overrides and is equally reachable from the Physics API tab. Bound through a
+      // proxy so there is exactly one stored source of truth, not a copy in LS_KEY that could
+      // drift from it.
+      const physicsStepTrackingProxy = {
+        stepStatsEnabled: Boolean(getConfig().physics?.stepStatsEnabled),
+      };
+      return [
+        {
+          pane: true,
+          content: [
+            {
+              type: 'folder',
+              id: 'performance',
+              title: `Performance Measuring ${RELOAD_NOTE}`,
+              content: [
+                { key: 'enabled', label: 'Enable measuring', onChange: reloadApp },
+                // Ordered to mirror the panels' own top-to-bottom order on screen
+                // (PANEL_ORDER), so the toggle list reads the same way the display does.
+                { key: 'trackTFPS', label: 'Track TFPS', onChange: reloadApp },
+                { key: 'trackFPS', label: 'Track FPS', onChange: reloadApp },
+                { key: 'trackCPU', label: 'Track CPU', onChange: reloadApp },
+                // Hz has no panel of its own — it is an overlay drawn inside the CPU panel —
+                // so it is only offered while CPU is on. _initStats forces it off for any
+                // already-persisted combination where CPU is off.
+                {
+                  key: 'trackHz',
+                  label: 'Track Hz (showed in CPU panel)',
+                  disabled: () => !statsConfig.trackCPU,
+                  onChange: reloadApp,
+                },
+                {
+                  key: 'stepStatsEnabled',
+                  target: physicsStepTrackingProxy,
+                  label: 'Track PHY',
+                  onChange: (value) => setBootOverride({ stepStatsEnabled: Boolean(value) }),
+                },
+                { key: 'trackGPU', label: 'Track GPU', onChange: reloadApp },
+                { key: 'trackCPT', label: 'Track CPT', onChange: reloadApp },
+              ],
+            },
+            {
+              type: 'folder',
+              id: 'outlook',
+              title: `Measuring Outlook ${RELOAD_NOTE}`,
+              content: [{ key: 'horizontal', label: 'Horizontal', onChange: reloadApp }],
+            },
+          ],
+        },
+      ];
     },
-  });
-};
-
-export const _updateStatsDebugGUI = () => {
-  for (let i = 0; i < statsDebugGUIs.length; i++) {
-    statsDebugGUIs[i].refresh();
-  }
-};
-
-export const _buildStatsDebugGUI = (debugGUI: Pane) => {
-  const performanceFolder = debugGUI
-    .addFolder({
-      title: 'Performance Measuring (reloads the app)',
-      expanded: statsConfig.performanceFolderExpanded,
-    })
-    .on('fold', (state) => {
-      statsConfig.performanceFolderExpanded = state.expanded;
-      lsSetItem(LS_KEY, statsConfig || {});
-      _updateStatsDebugGUI();
-    });
-  const outlookFolder = debugGUI
-    .addFolder({
-      title: 'Measuring Outlook (reloads the app)',
-      expanded: statsConfig.outlookFolderExpanded,
-    })
-    .on('fold', (state) => {
-      statsConfig.outlookFolderExpanded = state.expanded;
-      lsSetItem(LS_KEY, statsConfig || {});
-      _updateStatsDebugGUI();
-    });
-
-  performanceFolder
-    .addBinding(statsConfig, 'enabled', { label: 'Enable measuring' })
-    .on('change', () => {
-      lsSetItem(LS_KEY, statsConfig);
-      location.reload();
-      _updateStatsDebugGUI();
-    });
-  // Ordered to mirror the panels' own top-to-bottom order on screen (PANEL_ORDER), so the
-  // toggle list reads the same way the display does.
-  const addTrackBinding = (key: keyof StatsOptions, label: string, disabled?: boolean) =>
-    performanceFolder.addBinding(statsConfig, key, { label, disabled }).on('change', () => {
-      lsSetItem(LS_KEY, statsConfig);
-      location.reload();
-      _updateStatsDebugGUI();
-    });
-
-  addTrackBinding('trackTFPS', 'Track TFPS');
-  addTrackBinding('trackFPS', 'Track FPS');
-  addTrackBinding('trackCPU', 'Track CPU');
-  // Hz has no panel of its own — it is an overlay drawn inside the CPU panel — so it is
-  // only offered while CPU is on. _initStats forces it off for any already-persisted
-  // combination where CPU is off.
-  addTrackBinding('trackHz', 'Track Hz (showed in CPU panel)', !statsConfig.trackCPU);
-  // Physics step tracking drives the PHY panel, so it belongs among these panel toggles —
-  // but unlike its neighbours it is not a stats setting: it lives with the other boot-time
-  // physics overrides and is equally reachable from the Physics API tab. Bound through a
-  // proxy so there is exactly one stored source of truth, not a copy in LS_KEY that could
-  // drift from it.
-  const physicsStepTrackingProxy = {
-    stepStatsEnabled: Boolean(getConfig().physics?.stepStatsEnabled),
-  };
-  performanceFolder
-    .addBinding(physicsStepTrackingProxy, 'stepStatsEnabled', { label: 'Track PHY' })
-    .on('change', (e) => {
-      setBootOverride({ stepStatsEnabled: e.value });
-    });
-  addTrackBinding('trackGPU', 'Track GPU');
-  addTrackBinding('trackCPT', 'Track CPT');
-
-  outlookFolder.addBinding(statsConfig, 'horizontal', { label: 'Horizontal' }).on('change', () => {
-    lsSetItem(LS_KEY, statsConfig);
-    location.reload();
-    _updateStatsDebugGUI();
   });
 
   // @TODO: add current scene and all loaded scene stats

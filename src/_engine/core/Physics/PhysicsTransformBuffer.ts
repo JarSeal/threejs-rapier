@@ -120,11 +120,14 @@ export class PhysicsTransformBuffer {
     return slot;
   }
 
-  /** Frees the slot for a rigid body id, if any. Worker-side only. */
+  /** Frees the slot for a rigid body id, if any, and zeroes it: slots are reused, and a new
+   * body must never read the deleted one's pose. Worker-side only. */
   freeSlot(id: number): void {
     const slot = this.slotById.get(id);
     if (slot === undefined) return;
     this.slotById.delete(id);
+    const o = slot * PHYSICS_TRANSFORM_FIELD_COUNT;
+    this.floats.fill(0, o, o + PHYSICS_TRANSFORM_FIELD_COUNT);
     this.freeSlots.push(slot);
   }
 

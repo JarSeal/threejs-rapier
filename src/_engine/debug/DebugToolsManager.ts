@@ -30,6 +30,12 @@ export type DebugToolsState = {
     showOnScreenToolsInProdTest: boolean;
   };
   debugCameraFolderExpanded: boolean;
+  /** Top-level (not in helpers): hydration replaces a persisted key whole, so a new field
+   * inside an existing key would be undefined for anyone with saved state. */
+  axesGizmo: {
+    show: boolean;
+    showInMainCamera: boolean;
+  };
   helpers: {
     helpersFolderExpanded: boolean;
     showAxesHelper: boolean;
@@ -72,6 +78,10 @@ const defaultDebugToolsState: DebugToolsState = {
     showOnScreenToolsInProdTest: true,
   },
   debugCameraFolderExpanded: false,
+  axesGizmo: {
+    show: true,
+    showInMainCamera: false,
+  },
   helpers: {
     helpersFolderExpanded: false,
     showAxesHelper: false,
@@ -113,6 +123,14 @@ export const initDebugTools = () => {
  */
 export const getDebugToolsState = (loadFromLS?: boolean) =>
   useDebug(debugGUI, true)?._getDebugToolsState(loadFromLS) || defaultDebugToolsState;
+
+/**
+ * Toggles the axes gizmo option (the F8 shortcut): persisted, and the Debug Tools tab is
+ * refreshed if open.
+ */
+export const toggleAxesGizmo = () => {
+  useDebug(debugGUI)?._toggleAxesGizmo();
+};
 
 /**
  * Handles debug camera switching

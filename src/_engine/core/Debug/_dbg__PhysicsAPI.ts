@@ -1,6 +1,13 @@
 import * as THREE from 'three/webgpu';
 import { Pane } from 'tweakpane';
-import { createDebuggerTab, createNewDebuggerPane } from '../../debug/DebuggerGUI';
+import {
+  createDebuggerTab,
+  debuggerListCMP,
+  persistDebuggerTabValue,
+  updateDebuggerTab,
+  type DebuggerListItem,
+  type DebuggerPaneItem,
+} from '../../debug/DebuggerGUI';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { llog, lwarn } from '../../utils/Logger';
 import { CMP, type TCMP } from '../../utils/CMP';
@@ -11,10 +18,10 @@ import {
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowCmp,
+  registerDraggableWindowSceneTargetResolver,
+  updateDraggableWindow,
 } from '../UI/DraggableWindow';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
-import { type ListBladeApi } from 'tweakpane';
-import type { BladeController, View } from '@tweakpane/core';
 import {
   getPhysicsState,
   getPhysicsWorld,
@@ -22,12 +29,7 @@ import {
   isPhysicsWorldEnabled,
 } from '../PhysicsAPI';
 import { setBootOverride } from './_dbg__PhysicsBootOverrides';
-import {
-  ShapeType,
-  type PhysicsInterpolationMode,
-  type PhysicsState,
-  type PhysicsWorkerTarget,
-} from '../Physics/PhysicsAPITypes';
+import { ShapeType, type PhysicsState, type PhysicsWorkerTarget } from '../Physics/PhysicsAPITypes';
 import {
   getEntityWireframeColor,
   getGlobalWireframeColorOverrides,
@@ -51,6 +53,11 @@ import {
   WIREFRAME_COLOR_STATES,
   type WireframeColorState,
 } from './_dbg__PhysicsDebugDraw';
+import {
+  armPhysicsDeterminismProbe,
+  disarmPhysicsDeterminismProbe,
+  getPhysicsDeterminismProbeSteps,
+} from './_dbg__PhysicsDeterminism';
 import { getECSWorld, getEntityIdByAppId, getStableAppId } from '../ECS';
 import { getPhysicsInterpolationReadout } from '../PhysicsManager';
 import { ComponentType } from '../ECS/ECSCoreComponents';
@@ -61,20 +68,23 @@ import {
 } from './_dbg__UndoRedo';
 
 const LS_KEY = 'AEK_debugPhysicsApi';
+const TAB_ID = 'physicsApiControls';
 /** Wireframe colors/thickness get their own key so "Clear tab LS" on the main physics
  * settings doesn't silently wipe the user's palette, and vice versa. */
 const WIREFRAME_LS_KEY = 'AEK_debugPhysicsApiWireframe';
 /** Pure UI state (which folders are open), kept apart from the settings keys so
- * "Reset all wireframe settings" doesn't also collapse the folder you're working in —
- * the same split _dbg__SkyBox.ts makes with its own AEK_debugSkyBoxUI key. */
+ * "Reset all wireframe settings" doesn't also collapse the folder you're working in. It is the
+ * tab's UI key (`${LS_KEY}UI`): the tab keeps its folder states under `folders`, the edit window
+ * its own field next to them. */
 const UI_LS_KEY = 'AEK_debugPhysicsApiUI';
 
 let physicsApiUIState = {
-  wireframeFolderExpanded: false,
   entityWireframeFolderExpanded: false,
 };
 
-const persistUIState = () => lsSetItem(UI_LS_KEY, physicsApiUIState);
+/** Merged, so the tab's own folder states in the same key are kept. */
+const persistUIState = () =>
+  lsSetItem(UI_LS_KEY, { ...(lsGetItem(UI_LS_KEY, {}) as object), ...physicsApiUIState });
 const EDIT_PHYS_ENTITY_WIN_ID = 'physicsApiEntityEditorWindow';
 const PHYSICS_ENTITY_COMPONENT_TYPES = [
   ComponentType.BODY_STATIC,
@@ -82,8 +92,6 @@ const PHYSICS_ENTITY_COMPONENT_TYPES = [
   ComponentType.BODY_DYNAMIC_HEADLESS,
 ] as const;
 
-let debuggerEntityListCmp: TCMP | null = null;
-let lastEntityListSignature = '';
 let entityWindowCmp: TCMP | null = null;
 let entityWindowPane: Pane | null = null;
 
@@ -92,10 +100,6 @@ type PersistedWireframeState = {
   lineThickness?: number;
   poseSource?: WireframePoseSource;
 };
-
-/** The "Wireframe pose" dropdown, when the tab is open — so the wireframe folder's reset can
- * move it back to the default. */
-let wireframePoseDropDown: ListBladeApi<WireframePoseSource> | null = null;
 
 /** Human-readable labels for the color pickers, phrased as the condition each one paints. */
 const WIREFRAME_STATE_LABELS: Record<WireframeColorState, string> = {
@@ -144,39 +148,23 @@ const persistWireframeState = () => {
 // setBootOverride) and applying via config on the next reload — persisting the whole
 // PhysicsState blob here would let a stale in-memory copy of those four fields clobber the
 // boot-override-derived values the moment any live field changes.
-type LivePhysicsApiState = Pick<
-  PhysicsState,
-  | 'timestep'
-  | 'worldStepEnabled'
-  | 'gravity'
-  | 'solverIterations'
-  | 'internalPgsIterations'
-  | 'backgroundBehavior'
-  | 'minDeltaTime'
-  | 'maxDeltaTime'
-  | 'maxSubSteps'
-  | 'interpolationMode'
->;
-
-const getLiveState = (state: PhysicsState): LivePhysicsApiState => ({
-  timestep: state.timestep,
-  worldStepEnabled: state.worldStepEnabled,
-  gravity: state.gravity,
-  solverIterations: state.solverIterations,
-  internalPgsIterations: state.internalPgsIterations,
-  backgroundBehavior: state.backgroundBehavior,
-  minDeltaTime: state.minDeltaTime,
-  maxDeltaTime: state.maxDeltaTime,
-  maxSubSteps: state.maxSubSteps,
-  interpolationMode: state.interpolationMode,
-});
-
-const persistLiveState = (state: PhysicsState) => lsSetItem(LS_KEY, getLiveState(state));
+const LIVE_PERSIST_KEYS = [
+  'timestep',
+  'worldStepEnabled',
+  'gravity',
+  'solverIterations',
+  'internalPgsIterations',
+  'backgroundBehavior',
+  'minDeltaTime',
+  'maxDeltaTime',
+  'maxSubSteps',
+  'interpolationMode',
+] as const satisfies readonly (keyof PhysicsState)[];
 
 /** gravity/solverIterations/internalPgsIterations/timestep are baked into the Rapier
  * world once at createPhysicsWorld() time, which runs before this debug tab's LS
  * restore — so a restored custom value has to be re-pushed into the already-running
- * world explicitly, the same way each field's own live on('change') handler does. */
+ * world explicitly, the same way each field's own live onChange handler does. */
 const applyLiveStateToWorld = (state: PhysicsState) => {
   if (!isPhysicsWorldEnabled()) return;
   const world = getPhysicsWorld();
@@ -223,14 +211,6 @@ const UNDOABLE_SETTING_LABELS: Record<UndoableSetting, string> = {
   internalPgsIterations: 'Physics: internal PGS iterations',
 };
 
-/** The tab's pane, when it's open (stale once the tab is closed). */
-let physicsPane: Pane | null = null;
-/** True while undo/redo refreshes the pane, so the change listeners don't record it. */
-let isApplyingUndoRedo = false;
-/** Tweakpane has already written the new value into the state when 'change' fires, so each
- * setting's previous value is kept here. Set once the persisted state has been restored. */
-let committedSettings: SettingValues | null = null;
-
 /** Pushes a setting from the state into the running world. */
 const applySettingToWorld: Record<UndoableSetting, (state: PhysicsState) => void> = {
   gravity: (state) => {
@@ -252,38 +232,28 @@ const applySettingToWorld: Record<UndoableSetting, (state: PhysicsState) => void
   },
 };
 
-/** Tweakpane's point binding writes into the bound gravity object in place, so the state, the
- * committed values and the history payloads must never share one. */
+/** Tweakpane's point binding writes into the bound gravity object in place, so the state and
+ * the history payloads must never share one. */
 const copySetting = <T>(value: T): T => structuredClone(value);
 
-const recordSettingChange = <K extends UndoableSetting>(key: K, next: SettingValues[K]) => {
-  if (!committedSettings) return;
-  const prev = committedSettings[key];
-  committedSettings[key] = copySetting(next);
+/** Records a finished or in-progress change; the ticks of one drag merge into one entry
+ * (the first `prev`, the latest `next`). */
+const recordSettingChange = <K extends UndoableSetting>(
+  key: K,
+  prev: SettingValues[K],
+  next: SettingValues[K]
+) => {
   if (JSON.stringify(prev) === JSON.stringify(next)) return;
-  const payload: SettingUndoPayload<K> = { prev, next };
-  // Gravity is a point binding, recorded once per drag (on its last event); the iteration
-  // counts are plain number bindings, so a drag is merged into one entry.
-  if (key === 'gravity') {
-    _recordUndoRedoAction(`physics.${key}`, UNDOABLE_SETTING_LABELS[key], payload);
-  } else {
-    _recordOrCoalesceUndoRedoAction(`physics.${key}`, UNDOABLE_SETTING_LABELS[key], payload, key);
-  }
+  const payload: SettingUndoPayload<K> = { prev: copySetting(prev), next: copySetting(next) };
+  _recordOrCoalesceUndoRedoAction(`physics.${key}`, UNDOABLE_SETTING_LABELS[key], payload, key);
 };
 
 const setSetting = <K extends UndoableSetting>(key: K, value: SettingValues[K]) => {
   const state = getPhysicsState();
   (state as SettingValues)[key] = copySetting(value);
-  if (committedSettings) committedSettings[key] = copySetting(value);
-  persistLiveState(state);
+  persistDebuggerTabValue(TAB_ID, key);
   applySettingToWorld[key](state);
-  if (!physicsPane?.element.isConnected) return;
-  isApplyingUndoRedo = true;
-  try {
-    physicsPane.refresh();
-  } finally {
-    isApplyingUndoRedo = false;
-  }
+  updateDebuggerTab(TAB_ID);
 };
 
 const registerSettingUndoHandler = <K extends UndoableSetting>(key: K) => {
@@ -332,54 +302,62 @@ const getPhysicsEntityLabel = (entityId: number): string => {
   return `[${entityId}]`;
 };
 
-const updateDebuggerEntityListSelectedClass = (entityId: number | null) => {
-  const ulElem = debuggerEntityListCmp?.elem.getElementsByTagName('ul')[0];
-  if (!ulElem) return;
-  for (const child of ulElem.children) {
-    child.classList.remove('selected');
-    if (entityId === null) continue;
-    if (child.getAttribute('data-id') === String(entityId)) child.classList.add('selected');
-  }
+type PhysEntityWinData = { entityId: number; appId?: string };
+
+/** The edit window's entity: by its stable appId first (the raw entity id doesn't survive a scene
+ * change), by the raw entity id only when the entity has no stable appId. */
+const getPhysWinEntityId = (data?: { [key: string]: unknown }) => {
+  const d = (data || {}) as Partial<PhysEntityWinData>;
+  return d.appId ? getEntityIdByAppId(d.appId) : d.entityId;
 };
 
-const createPhysicsEntitiesDebugList = () => {
-  const entityIds = getAllPhysicsEntityIds();
-  let html = `<div><h3 class="listItemCount">${entityIds.length} physics entities:</h3>`;
-  html += '<ul class="ulList">';
-  for (let i = 0; i < entityIds.length; i++) {
-    const entityId = entityIds[i];
-    const label = getPhysicsEntityLabel(entityId);
-    const button = CMP({
-      onClick: () => {
-        const winState = getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
-        if (winState?.isOpen && winState?.data?.entityId === entityId) {
-          closeDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
-          return;
-        }
-        openDraggableWindow({
-          id: EDIT_PHYS_ENTITY_WIN_ID,
-          position: { x: 110, y: 60 },
-          size: { w: 400, h: 400 },
-          saveToLS: true,
-          title: `Edit physics entity: ${label}`,
-          isDebugWindow: true,
-          content: createEditPhysicsEntityContent,
-          data: { entityId },
-          closeOnSceneChange: true,
-          onClose: () => updateDebuggerEntityListSelectedClass(null),
-        });
-        updateDebuggerEntityListSelectedClass(entityId);
-      },
-      html: `<button class="listItemWithId">
-  <span class="itemId">[${entityId}]</span>
-  <h4>${label}</h4>
-</button>`,
-    });
-    html += `<li data-id="${entityId}">${button}</li>`;
+// Kept open on a scene change when the next scene has a physics entity with the same stable appId
+registerDraggableWindowSceneTargetResolver(EDIT_PHYS_ENTITY_WIN_ID, (data) => {
+  if (!(data as Partial<PhysEntityWinData>)?.appId) return false;
+  const entityId = getPhysWinEntityId(data);
+  return entityId !== undefined && Boolean(getPhysicsEntityRigidBody(entityId));
+});
+
+/** The list's selection follows the edit window. */
+const refreshPhysicsTab = () => updateDebuggerTab(TAB_ID);
+
+const getPhysicsEntitiesListData = (): DebuggerListItem[] => {
+  const world = getECSWorld();
+  return getAllPhysicsEntityIds().map((entityId) => ({
+    itemId: String(entityId),
+    title: getPhysicsEntityLabel(entityId),
+    subTitle: `[${entityId}]`,
+    toggleValues: [isWireframeVisible(entityId, world)],
+  }));
+};
+
+const toggleEditPhysicsEntityWindow = (itemId: string) => {
+  const entityId = Number(itemId);
+  const winState = getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
+  if (winState?.isOpen && getPhysWinEntityId(winState.data) === entityId) {
+    closeDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
+    return;
   }
-  if (!entityIds.length) html += `<li class="emptyState">No physics entities registered..</li>`;
-  html += '</ul></div>';
-  return html;
+  openDraggableWindow({
+    id: EDIT_PHYS_ENTITY_WIN_ID,
+    position: { x: 110, y: 60 },
+    size: { w: 400, h: 400 },
+    saveToLS: true,
+    title: `Edit physics entity: ${getPhysicsEntityLabel(entityId)}`,
+    isDebugWindow: true,
+    content: createEditPhysicsEntityContent,
+    data: { entityId, appId: getStableAppId(entityId) },
+    closeOnSceneChange: true,
+    onClose: refreshPhysicsTab,
+  });
+};
+
+/** List toggle: the same setter as the edit window's "Show wireframe" input. */
+const togglePhysicsEntityWireframe = (itemId: string, next: boolean) => {
+  setWireframeVisible(Number(itemId), getECSWorld(), next);
+  if (getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID)?.isOpen) {
+    updateDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
+  }
 };
 
 /**
@@ -407,9 +385,10 @@ const addEntityWireframeControls = (
     });
 
   const visibilityProxy = { visible: isWireframeVisible(entityId, world) };
-  folder
-    .addBinding(visibilityProxy, 'visible', { label: 'Show wireframe' })
-    .on('change', (e) => setWireframeVisible(entityId, world, e.value));
+  folder.addBinding(visibilityProxy, 'visible', { label: 'Show wireframe' }).on('change', (e) => {
+    setWireframeVisible(entityId, world, e.value);
+    refreshPhysicsTab();
+  });
 
   // Without an app-supplied appId an entity's id is a fresh UUID every load, so nothing
   // below can be keyed to it across reloads. Say so rather than letting the settings look
@@ -451,7 +430,7 @@ const addEntityWireframeControls = (
 };
 
 const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
-  const d = data as { entityId: number };
+  const entityId = getPhysWinEntityId(data);
   const world = getECSWorld();
 
   if (entityWindowPane) {
@@ -463,19 +442,23 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
     entityWindowCmp = null;
   }
 
-  const rigidBody = getPhysicsEntityRigidBody(d.entityId);
-  if (!rigidBody) {
+  const rigidBody = entityId === undefined ? undefined : getPhysicsEntityRigidBody(entityId);
+  if (entityId === undefined || !rigidBody) {
     // We want to close the window when no entity is found,
     // but we have to return first, so wait one iteration.
     setTimeout(() => closeDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID), 0);
     return CMP();
   }
 
-  addOnCloseToWindow(EDIT_PHYS_ENTITY_WIN_ID, () => updateDebuggerEntityListSelectedClass(null));
-  updateDebuggerEntityListSelectedClass(d.entityId);
+  // The content is built before the window state is open: refresh the list selection after it.
+  // The onClose is set here too, because a window restored from LS has none.
+  queueMicrotask(() => {
+    addOnCloseToWindow(EDIT_PHYS_ENTITY_WIN_ID, refreshPhysicsTab);
+    refreshPhysicsTab();
+  });
 
-  const label = getPhysicsEntityLabel(d.entityId);
-  const colliders = world.getComponent(d.entityId, ComponentType.COLLIDER);
+  const label = getPhysicsEntityLabel(entityId);
+  const colliders = world.getComponent(entityId, ComponentType.COLLIDER);
 
   let isClosed = false;
   entityWindowCmp = CMP({
@@ -491,7 +474,7 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
     html: () =>
       `<button title="Console.log / print this physics entity to browser console">${getSvgIcon('fileAsterix')}</button>`,
     onClick: () => {
-      llog('PHYSICS ENTITY:***************', { entityId: d.entityId, rigidBody, colliders });
+      llog('PHYSICS ENTITY:***************', { entityId, rigidBody, colliders });
     },
   });
   const deleteButton = CMP({
@@ -499,7 +482,7 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
     html: () =>
       `<button title="Delete this physics entity (removes the ECS entity and its rigid body/colliders)">${getSvgIcon('thrash')}</button>`,
     onClick: () => {
-      world.deleteEntity(d.entityId);
+      world.deleteEntity(entityId);
       closeDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
     },
   });
@@ -518,7 +501,7 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
     html: () => `<div>
 <div>
   <div><span class="winSmallLabel">Name:</span> ${label}</div>
-  <div><span class="winSmallLabel">Id:</span> ${d.entityId}</div>
+  <div><span class="winSmallLabel">Id:</span> ${entityId}</div>
   <div><span class="winSmallLabel">${shapeLabel}:</span> ${shapeCmp}</div>
 </div>
 <div style="text-align:right">${logButton}${deleteButton}</div>
@@ -549,7 +532,7 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
 
   // Generated app ids can't be found again after a reload, so only entities with a stable
   // app id are recorded to the undo/redo history.
-  const stableAppId = getStableAppId(d.entityId, world);
+  const stableAppId = getStableAppId(entityId, world);
   const recordPose = <T extends PhysVec3 | PhysQuat>(
     field: 'position' | 'rotation',
     prev: T,
@@ -598,80 +581,140 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
   });
 
   entityWindowPane.addBlade({ view: 'separator' });
-  addEntityWireframeControls(entityWindowPane, d.entityId, world);
+  addEntityWireframeControls(entityWindowPane, entityId, world);
 
   return entityWindowCmp;
 };
 
+type WireframeProxies = {
+  colors: Record<WireframeColorState, number>;
+  thickness: { lineThickness: number };
+  pose: { poseSource: WireframePoseSource };
+};
+
 /**
  * "Wireframe" folder: the global palette every per-entity collider wireframe falls back
- * to. Visibility
- * itself is never global — it's toggled per entity from the edit window.
+ * to. Visibility itself is never global — it's toggled per entity (edit window or list).
+ * Tweakpane binds to object properties, so the live values are mirrored into plain proxies;
+ * each onChange writes through to the draw module and persists (to its own module-owned key).
  */
-const addWireframeFolder = (debugGUI: Pane) => {
-  const folder = debugGUI
-    .addFolder({ title: 'Wireframe', expanded: physicsApiUIState.wireframeFolderExpanded })
-    .on('fold', (foldState) => {
-      physicsApiUIState.wireframeFolderExpanded = foldState.expanded;
-      persistUIState();
-    });
-
-  // Tweakpane binds to object properties, so the live values are mirrored into a plain
-  // proxy; each on('change') writes through to the draw module and persists.
-  const colorProxy = getWireframeColors() as Record<WireframeColorState, number>;
-
+const getWireframeFolder = (proxies: WireframeProxies): DebuggerPaneItem<PhysicsState> => {
+  const { colors, thickness, pose } = proxies;
+  const items: DebuggerPaneItem<PhysicsState>[] = [];
   for (const state of WIREFRAME_COLOR_STATES) {
-    folder
-      .addBinding(colorProxy, state, {
+    items.push(
+      {
+        key: state,
+        target: colors,
         label: WIREFRAME_STATE_LABELS[state],
         view: 'color',
-      })
-      .on('change', (e) => {
-        setGlobalWireframeColor(state, e.value);
-        persistWireframeState();
-      });
-    // A bare "Reset" directly under its own picker, matching _dbg__SkyBox.ts's pattern.
-    folder.addButton({ title: 'Reset' }).on('click', () => {
-      setGlobalWireframeColor(state, undefined);
-      colorProxy[state] = getWireframeColorDefault(state);
-      persistWireframeState();
-      folder.refresh();
-    });
+        onChange: (value) => {
+          setGlobalWireframeColor(state, Number(value));
+          persistWireframeState();
+        },
+      },
+      // A bare "Reset" directly under its own picker, matching the Sky box tab's pattern.
+      {
+        type: 'button',
+        title: 'Reset',
+        onClick: () => {
+          setGlobalWireframeColor(state, undefined);
+          colors[state] = getWireframeColorDefault(state);
+          persistWireframeState();
+          refreshPhysicsTab();
+        },
+      }
+    );
   }
-
-  folder.addBlade({ view: 'separator' });
-
-  const thicknessProxy = { lineThickness: getWireframeLineThickness() };
-  folder
-    .addBinding(thicknessProxy, 'lineThickness', {
+  items.push(
+    { type: 'separator' },
+    {
+      key: 'lineThickness',
+      target: thickness,
       label: 'Line thickness (px)',
       min: 1,
       max: 10,
       step: 1,
-    })
-    .on('change', (e) => {
-      setGlobalWireframeLineThickness(e.value);
-      persistWireframeState();
-    });
-  folder.addButton({ title: 'Reset' }).on('click', () => {
-    setGlobalWireframeLineThickness(undefined);
-    thicknessProxy.lineThickness = getWireframeLineThicknessDefault();
-    persistWireframeState();
-    folder.refresh();
-  });
-
-  folder.addButton({ title: 'Reset all wireframe settings' }).on('click', () => {
-    for (const state of WIREFRAME_COLOR_STATES) {
-      setGlobalWireframeColor(state, undefined);
-      colorProxy[state] = getWireframeColorDefault(state);
+      onChange: (value) => {
+        setGlobalWireframeLineThickness(Number(value));
+        persistWireframeState();
+      },
+    },
+    {
+      type: 'button',
+      title: 'Reset',
+      onClick: () => {
+        setGlobalWireframeLineThickness(undefined);
+        thickness.lineThickness = getWireframeLineThicknessDefault();
+        persistWireframeState();
+        refreshPhysicsTab();
+      },
+    },
+    {
+      type: 'button',
+      title: 'Reset all wireframe settings',
+      onClick: () => {
+        for (const state of WIREFRAME_COLOR_STATES) {
+          setGlobalWireframeColor(state, undefined);
+          colors[state] = getWireframeColorDefault(state);
+        }
+        setGlobalWireframeLineThickness(undefined);
+        thickness.lineThickness = getWireframeLineThicknessDefault();
+        setWireframePoseSource(undefined);
+        pose.poseSource = DEFAULT_WIREFRAME_POSE_SOURCE;
+        lsRemoveItem(WIREFRAME_LS_KEY);
+        refreshPhysicsTab();
+      },
     }
-    setGlobalWireframeLineThickness(undefined);
-    thicknessProxy.lineThickness = getWireframeLineThicknessDefault();
-    setWireframePoseSource(undefined);
-    if (wireframePoseDropDown) wireframePoseDropDown.value = DEFAULT_WIREFRAME_POSE_SOURCE;
-    lsRemoveItem(WIREFRAME_LS_KEY);
-    folder.refresh();
-  });
+  );
+  return { type: 'folder', id: 'wireframe', title: 'Wireframe', expanded: false, content: items };
+};
+
+/** Arms/disarms the determinism probe (_dbg__PhysicsDeterminism.ts). Results go to the console. */
+const getDeterminismProbeFolder = (): DebuggerPaneItem<PhysicsState> => {
+  const probeState = { steps: getPhysicsDeterminismProbeSteps() ?? 300 };
+  return {
+    type: 'folder',
+    id: 'determinismProbe',
+    title: 'Determinism probe',
+    expanded: false,
+    content: [
+      { key: 'steps', target: probeState, label: 'Steps (N)', step: 1, min: 1 },
+      {
+        type: 'button',
+        title: 'Probe N steps (from now, then on every scene enter)',
+        onClick: () => armPhysicsDeterminismProbe(probeState.steps),
+      },
+      {
+        type: 'button',
+        title: 'Stop probe (resumes physics)',
+        onClick: () => disarmPhysicsDeterminismProbe(),
+      },
+    ],
+  };
+};
+
+/** Live render-clock values (updated by physicsInterpolationSystem, frozen in 'NONE') — the
+ * jitter margin and servo can't be tuned without them. Readonly bindings poll. */
+const getInterpolationClockFolder = (): DebuggerPaneItem<PhysicsState> => {
+  const readout = getPhysicsInterpolationReadout(getECSWorld());
+  const formatMs = (v: number) => v.toFixed(2);
+  const monitor = (key: string, label: string, format = formatMs) =>
+    ({ key, target: readout, label, readonly: true, format }) as DebuggerPaneItem<PhysicsState>;
+  return {
+    type: 'folder',
+    id: 'interpolationClock',
+    title: 'Interpolation clock (live, simulated ms)',
+    expanded: false,
+    content: [
+      monitor('lagMs', 'Lag behind the stepper'),
+      monitor('delayMs', 'Delay D (max recent interval)'),
+      monitor('intervalMs', 'Last snapshot interval'),
+      monitor('errorMs', 'Servo error (RENDERER)'),
+      monitor('rate', 'Clock rate', (v: number) => v.toFixed(3)),
+      monitor('resets', 'Clock re-anchors', (v: number) => v.toFixed(0)),
+    ],
+  };
 };
 
 export const _createPhysicsAPIDebugGUI = () => {
@@ -679,25 +722,18 @@ export const _createPhysicsAPIDebugGUI = () => {
   restoreWireframeState();
 
   const state = getPhysicsState();
-  const savedValues = lsGetItem(LS_KEY, {}) as Partial<LivePhysicsApiState>;
-  Object.assign(state, savedValues);
-  state.timestepRatio = 1 / (state.timestep || 60);
-  applyLiveStateToWorld(state);
-  committedSettings = {
-    gravity: { ...state.gravity },
-    solverIterations: state.solverIterations,
-    internalPgsIterations: state.internalPgsIterations,
-  };
 
-  const icon = getSvgIcon('rocketTakeoff');
   createDebuggerTab({
-    id: 'physicsApiControls',
-    buttonText: icon,
+    id: TAB_ID,
     title: 'Physics API controls',
-    orderNr: 6,
-    container: () => {
-      const clearTabBtn = createClearTabLSButton({
-        // Every key this tab owns, so one button leaves nothing behind.
+    icon: 'rocketTakeoff',
+    lsKey: LS_KEY,
+    state,
+    persistKeys: LIVE_PERSIST_KEYS,
+    // Every key this tab owns, so one button leaves nothing behind
+    clearLSButton: false,
+    headerButtons: () => [
+      createClearTabLSButton({
         hasData: () =>
           lsKeyHasData(LS_KEY) ||
           lsKeyHasData(WIREFRAME_LS_KEY) ||
@@ -710,299 +746,233 @@ export const _createPhysicsAPIDebugGUI = () => {
           lsRemoveItem(UI_LS_KEY);
         },
         watchKey: LS_KEY,
-      });
-      const { container, debugGUI } = createNewDebuggerPane(
-        'physicsApi',
-        `${icon} Physics API Controls`,
-        [clearTabBtn]
-      );
-      physicsPane = debugGUI;
-
-      // --- Boot-time settings (require a reload to take effect) ---
-
-      const workerTargetDropDown = debugGUI.addBlade({
-        view: 'list',
-        label: 'Worker target (reloads)',
-        options: [
-          { value: 'MAIN_THREAD', text: 'Main thread' },
-          { value: 'WORKER_THREAD', text: 'Worker thread' },
-        ],
-        value: state.workerTarget,
-      }) as ListBladeApi<BladeController<View>>;
-      workerTargetDropDown.on('change', (e) => {
-        setBootOverride({ workerTarget: e.value as unknown as PhysicsWorkerTarget });
-      });
-      debugGUI
-        .addBinding(state, 'useSAB', { label: 'Use SharedArrayBuffer (reloads)' })
-        .on('change', (e) => {
-          setBootOverride({ useSAB: e.value });
-        });
-      debugGUI
-        .addBinding(state, 'maxBodies', { label: 'Max bodies (reloads)', step: 1, min: 1 })
-        .on('change', (e) => {
-          setBootOverride({ maxBodies: e.value });
-        });
-      // Feeds the stats "PHY" panel, and getLastPhysicsStepDuration()/
-      // getLastPhysicsStepMessagingLatency(). Off by default so the measurement costs
-      // nothing — including the risk of the timing overhead skewing the very number it
-      // reports — unless someone asks for it. Boot-time, because the SHARED_MEMORY
-      // transport's stats buffer is allocated once at world creation.
-      debugGUI
-        .addBinding(state, 'stepStatsEnabled', { label: 'Track physics step time (reloads)' })
-        .on('change', (e) => {
-          setBootOverride({ stepStatsEnabled: e.value });
-        });
-
-      // Read once: createPhysicsWorld() (which resolves this) always runs before this
-      // tab is ever built (see InitApp.ts's boot order), and nothing in the app
-      // creates/destroys the physics world again afterward — the value cannot change
-      // for the remaining lifetime of this tab, so there's nothing to poll.
+      }),
+    ],
+    // No entity create/delete hook to subscribe to: poll, same tradeoff as the spatial grid
+    // debug panel's live readout (the list only re-renders when its rows changed)
+    refreshIntervalMs: 500,
+    content: () => {
+      // Read once: createPhysicsWorld() (which resolves this) always runs before this tab is
+      // ever built (see InitApp.ts's boot order). The world is recreated on every scene load,
+      // but always resolves the same transport (it only depends on the boot-time useSAB
+      // setting and the page's cross-origin isolation), so there's nothing to poll.
       const transportModeReadout = {
         transportMode: getResolvedTransportMode() ?? 'N/A, worker only',
       };
-      debugGUI.addBinding(transportModeReadout, 'transportMode', {
-        label: 'Resolved transport mode',
-        readonly: true,
-      });
-
-      debugGUI.addBlade({ view: 'separator' });
-
-      // --- Live settings ---
-      // Enable visualizer is still omitted: visualizerEnabled has no debugRender wiring yet.
-      // Background behavior / min-max delta time / max sub-steps are live as of Phase 1's
-      // fixed-timestep accumulator in stepPhysics(); interpolation mode is live as of
-      // Phase 2's physicsInterpolationSystem (PhysicsManager.ts). 'EXTRAPOLATION' isn't
-      // offered here yet — reserved, not implemented (Phase 4 feasibility study).
-
-      debugGUI
-        .addBinding(state, 'timestep', { label: 'Global timestep (1 / ts)', step: 1, min: 1 })
-        .on('change', (e) => {
-          state.timestepRatio = 1 / e.value;
-          persistLiveState(state);
-          if (isPhysicsWorldEnabled()) {
-            getPhysicsWorld().setTimestep(state.timestepRatio);
-          }
-        });
-      debugGUI
-        .addBinding(state, 'worldStepEnabled', { label: 'Enable world step' })
-        .on('change', () => {
-          persistLiveState(state);
-        });
-      debugGUI.addBinding(state, 'gravity', { label: 'Gravity' }).on('change', (e) => {
-        if (isApplyingUndoRedo) return;
-        state.gravity = { ...e.value };
-        persistLiveState(state);
-        applySettingToWorld.gravity(state);
-        if (e.last) recordSettingChange('gravity', state.gravity);
-      });
-      debugGUI
-        .addBinding(state, 'solverIterations', {
-          label: 'Solver iterations',
-          min: 1,
-          step: 1,
-        })
-        .on('change', (e) => {
-          if (isApplyingUndoRedo) return;
-          state.solverIterations = e.value;
-          persistLiveState(state);
-          applySettingToWorld.solverIterations(state);
-          recordSettingChange('solverIterations', e.value);
-        });
-      debugGUI
-        .addBinding(state, 'internalPgsIterations', {
-          label: 'Internal PGS iterations (run at each solver iteration)',
-          min: 1,
-          step: 1,
-        })
-        .on('change', (e) => {
-          if (isApplyingUndoRedo) return;
-          state.internalPgsIterations = e.value;
-          persistLiveState(state);
-          applySettingToWorld.internalPgsIterations(state);
-          recordSettingChange('internalPgsIterations', e.value);
-        });
-
-      debugGUI.addBlade({ view: 'separator' });
-
-      const bgBehaviorDropDown = debugGUI.addBlade({
-        view: 'list',
-        label:
-          'Background behavior (while the window is hidden — another tab, another window, minimized)',
-        options: [
-          { value: 'KEEP_RUNNING', text: 'Keep running' },
-          { value: 'KEEP_RUNNING_USE_MIN_DELTA', text: 'Keep running, use minimum delta time' },
-          { value: 'PAUSE', text: 'Pause' },
-        ],
-        value: state.backgroundBehavior,
-      }) as ListBladeApi<BladeController<View>>;
-      bgBehaviorDropDown.on('change', (e) => {
-        state.backgroundBehavior = e.value as unknown as PhysicsState['backgroundBehavior'];
-        persistLiveState(state);
-      });
-
-      // Displayed as Hz (1 / seconds), matching the 'Global timestep' control above — the
-      // underlying state fields are stored as seconds. A local proxy avoids the mismatch
-      // legacy's debug tab had, where the field bound directly to the seconds value but
-      // its on('change') handler re-interpreted the edited number as Hz.
+      // The boot value, not the live one: it only takes effect after a reload
+      const workerTargetProxy = { workerTarget: state.workerTarget };
+      // Displayed as Hz (1 / seconds), matching the 'Global timestep' control — the state
+      // fields are stored as seconds.
       const deltaTimeHzProxy = {
         minDeltaTimeHz: state.minDeltaTime > 0 ? 1 / state.minDeltaTime : 0,
         maxDeltaTimeHz: state.maxDeltaTime > 0 ? 1 / state.maxDeltaTime : 0,
       };
-      debugGUI
-        .addBinding(deltaTimeHzProxy, 'minDeltaTimeHz', {
-          label:
-            'Minimum delta time (as fps; used by "Keep running, use minimum delta time"), 0 = not in use',
-          step: 1,
-          min: 0,
-        })
-        .on('change', (e) => {
-          state.minDeltaTime = e.value > 0 ? 1 / e.value : 0;
-          persistLiveState(state);
-        });
-      debugGUI
-        .addBinding(deltaTimeHzProxy, 'maxDeltaTimeHz', {
-          label:
-            'Maximum delta time (as fps; clamps a single frame’s contribution to the physics accumulator), 0 = not in use',
-          step: 1,
-          min: 0,
-        })
-        .on('change', (e) => {
-          state.maxDeltaTime = e.value > 0 ? 1 / e.value : 0;
-          persistLiveState(state);
-        });
-      debugGUI
-        .addBinding(state, 'maxSubSteps', {
-          label:
-            'Max sub-steps per frame (drops backlog beyond this instead of deferring it), 0 = not in use',
-          step: 1,
-          min: 0,
-        })
-        .on('change', (e) => {
-          state.maxSubSteps = e.value;
-          persistLiveState(state);
-        });
+      const wireframeProxies: WireframeProxies = {
+        colors: { ...getWireframeColors() } as Record<WireframeColorState, number>,
+        thickness: { lineThickness: getWireframeLineThickness() },
+        pose: { poseSource: getWireframePoseSource() },
+      };
 
-      debugGUI.addBlade({ view: 'separator' });
+      return [
+        {
+          pane: true,
+          content: [
+            // --- Boot-time settings (require a reload to take effect) ---
+            {
+              key: 'workerTarget',
+              target: workerTargetProxy,
+              label: 'Worker target (reloads)',
+              options: [
+                { value: 'MAIN_THREAD', text: 'Main thread' },
+                { value: 'WORKER_THREAD', text: 'Worker thread' },
+              ],
+              onChange: (value) => setBootOverride({ workerTarget: value as PhysicsWorkerTarget }),
+            },
+            {
+              key: 'useSAB',
+              label: 'Use SharedArrayBuffer (reloads)',
+              onChange: (value) => setBootOverride({ useSAB: Boolean(value) }),
+            },
+            {
+              key: 'maxBodies',
+              label: 'Max bodies (reloads)',
+              step: 1,
+              min: 1,
+              onChange: (value) => setBootOverride({ maxBodies: Number(value) }),
+            },
+            // Feeds the stats "PHY" panel, and getLastPhysicsStepDuration()/
+            // getLastPhysicsStepMessagingLatency(). Off by default so the measurement costs
+            // nothing — including the risk of the timing overhead skewing the very number it
+            // reports — unless someone asks for it. Boot-time, because the SHARED_MEMORY
+            // transport's stats buffer is allocated once at world creation.
+            {
+              key: 'stepStatsEnabled',
+              label: 'Track physics step time (reloads)',
+              onChange: (value) => setBootOverride({ stepStatsEnabled: Boolean(value) }),
+            },
+            {
+              key: 'transportMode',
+              target: transportModeReadout,
+              label: 'Resolved transport mode',
+              readonly: true,
+            },
+            { type: 'separator' },
 
-      // 'EXTRAPOLATION' isn't offered here yet — reserved, not implemented.
-      // physicsInterpolationSystem (PhysicsManager.ts) returns early for it, so
-      // selecting it via AppConfig is safe but inert.
-      const interpolationModeDropDown = debugGUI.addBlade({
-        view: 'list',
-        label:
-          'Interpolation mode (render-only smoothing; ECS TRANSFORM always stays the discrete pose)',
-        options: [
-          { value: 'NONE', text: 'None (latest step pose, judders above the physics rate)' },
-          {
-            value: 'RENDERER',
-            text: 'Renderer (servoed to the received snapshots; use with the worker)',
+            // --- Live settings ---
+            // Enable visualizer is still omitted: visualizerEnabled has no debugRender wiring
+            // yet. 'EXTRAPOLATION' isn't offered below yet — reserved, not implemented.
+            {
+              key: 'timestep',
+              label: 'Global timestep (1 / ts)',
+              step: 1,
+              min: 1,
+              onChange: (value) => {
+                state.timestepRatio = 1 / Number(value);
+                if (isPhysicsWorldEnabled()) getPhysicsWorld().setTimestep(state.timestepRatio);
+              },
+            },
+            { key: 'worldStepEnabled', label: 'Enable world step' },
+            {
+              key: 'gravity',
+              label: 'Gravity',
+              onChange: (value, e) => {
+                state.gravity = copySetting(value as PhysicsState['gravity']);
+                applySettingToWorld.gravity(state);
+                recordSettingChange('gravity', e.prev as PhysicsState['gravity'], state.gravity);
+              },
+            },
+            {
+              key: 'solverIterations',
+              label: 'Solver iterations',
+              min: 1,
+              step: 1,
+              onChange: (value, e) => {
+                applySettingToWorld.solverIterations(state);
+                recordSettingChange('solverIterations', Number(e.prev), Number(value));
+              },
+            },
+            {
+              key: 'internalPgsIterations',
+              label: 'Internal PGS iterations (run at each solver iteration)',
+              min: 1,
+              step: 1,
+              onChange: (value, e) => {
+                applySettingToWorld.internalPgsIterations(state);
+                recordSettingChange('internalPgsIterations', Number(e.prev), Number(value));
+              },
+            },
+            { type: 'separator' },
+            {
+              key: 'backgroundBehavior',
+              label:
+                'Background behavior (while the window is hidden — another tab, another window, minimized)',
+              options: [
+                { value: 'KEEP_RUNNING', text: 'Keep running' },
+                {
+                  value: 'KEEP_RUNNING_USE_MIN_DELTA',
+                  text: 'Keep running, use minimum delta time',
+                },
+                { value: 'PAUSE', text: 'Pause' },
+              ],
+            },
+            {
+              key: 'minDeltaTimeHz',
+              target: deltaTimeHzProxy,
+              label:
+                'Minimum delta time (as fps; used by "Keep running, use minimum delta time"), 0 = not in use',
+              step: 1,
+              min: 0,
+              onChange: (value, e) => {
+                state.minDeltaTime = Number(value) > 0 ? 1 / Number(value) : 0;
+                if (e.last) persistDebuggerTabValue(TAB_ID, 'minDeltaTime');
+              },
+            },
+            {
+              key: 'maxDeltaTimeHz',
+              target: deltaTimeHzProxy,
+              label:
+                'Maximum delta time (as fps; clamps a single frame’s contribution to the physics accumulator), 0 = not in use',
+              step: 1,
+              min: 0,
+              onChange: (value, e) => {
+                state.maxDeltaTime = Number(value) > 0 ? 1 / Number(value) : 0;
+                if (e.last) persistDebuggerTabValue(TAB_ID, 'maxDeltaTime');
+              },
+            },
+            {
+              key: 'maxSubSteps',
+              label:
+                'Max sub-steps per frame (drops backlog beyond this instead of deferring it), 0 = not in use',
+              step: 1,
+              min: 0,
+            },
+            { type: 'separator' },
+            // physicsInterpolationSystem (PhysicsManager.ts) returns early for
+            // 'EXTRAPOLATION', so selecting it via AppConfig is safe but inert.
+            {
+              key: 'interpolationMode',
+              label:
+                'Interpolation mode (render-only smoothing; ECS TRANSFORM always stays the discrete pose)',
+              options: [
+                { value: 'NONE', text: 'None (latest step pose, judders above the physics rate)' },
+                {
+                  value: 'RENDERER',
+                  text: 'Renderer (servoed to the received snapshots; use with the worker)',
+                },
+                {
+                  value: 'FIXED_PHYSICS',
+                  text: 'Fixed physics (open-loop from the stepper; MAIN_THREAD only)',
+                },
+              ],
+            },
+            // Which pose moving bodies' collider wireframes follow: the raw physics pose shows
+            // the interpolation offset (the mesh trails its wireframe while moving), the
+            // rendered pose puts the wireframe on the mesh. Headless bodies have no mesh and
+            // always show physics.
+            {
+              key: 'poseSource',
+              target: wireframeProxies.pose,
+              label: 'Wireframe pose (moving bodies)',
+              options: [
+                { value: 'PHYSICS', text: 'Physics (raw stepped pose)' },
+                { value: 'RENDERED', text: 'Rendered (interpolated mesh pose)' },
+              ],
+              onChange: (value) => {
+                setWireframePoseSource(value as WireframePoseSource);
+                persistWireframeState();
+              },
+            },
+            getInterpolationClockFolder(),
+            { type: 'separator' },
+            getDeterminismProbeFolder(),
+            { type: 'separator' },
+            getWireframeFolder(wireframeProxies),
+          ],
+        },
+        debuggerListCMP({
+          id: 'physicsEntities',
+          heading: 'Physics entities',
+          emptyText: 'No physics entities registered..',
+          data: getPhysicsEntitiesListData,
+          selectedItemId: () => {
+            const winState = getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
+            const entityId = winState?.isOpen ? getPhysWinEntityId(winState.data) : undefined;
+            return entityId !== undefined ? String(entityId) : null;
           },
-          {
-            value: 'FIXED_PHYSICS',
-            text: 'Fixed physics (open-loop from the stepper; MAIN_THREAD only)',
+          perItemConfig: {
+            onClick: toggleEditPhysicsEntityWindow,
+            toggles: [
+              { icon: 'rocket', title: 'Show wireframe', fn: togglePhysicsEntityWireframe },
+            ],
           },
-        ],
-        value: state.interpolationMode,
-      }) as ListBladeApi<BladeController<View>>;
-      interpolationModeDropDown.on('change', (e) => {
-        state.interpolationMode = e.value as unknown as PhysicsInterpolationMode;
-        persistLiveState(state);
-      });
-
-      // Which pose moving bodies' collider wireframes follow: the raw physics pose shows the
-      // interpolation offset (the mesh trails its wireframe while moving), the rendered pose
-      // puts the wireframe on the mesh. Headless bodies have no mesh and always show physics.
-      wireframePoseDropDown = debugGUI.addBlade({
-        view: 'list',
-        label: 'Wireframe pose (moving bodies)',
-        options: [
-          { value: 'PHYSICS', text: 'Physics (raw stepped pose)' },
-          { value: 'RENDERED', text: 'Rendered (interpolated mesh pose)' },
-        ],
-        value: getWireframePoseSource(),
-      }) as ListBladeApi<WireframePoseSource>;
-      wireframePoseDropDown.on('change', (e) => {
-        setWireframePoseSource(e.value);
-        persistWireframeState();
-      });
-
-      // Live render-clock values (updated by physicsInterpolationSystem, frozen in 'NONE') —
-      // the jitter margin and servo can't be tuned without them. Readonly bindings poll.
-      const interpolationReadout = getPhysicsInterpolationReadout(getECSWorld());
-      const interpolationFolder = debugGUI.addFolder({
-        title: 'Interpolation clock (live, simulated ms)',
-        expanded: false,
-      });
-      const formatMs = (v: number) => v.toFixed(2);
-      interpolationFolder.addBinding(interpolationReadout, 'lagMs', {
-        label: 'Lag behind the stepper',
-        readonly: true,
-        format: formatMs,
-      });
-      interpolationFolder.addBinding(interpolationReadout, 'delayMs', {
-        label: 'Delay D (max recent interval)',
-        readonly: true,
-        format: formatMs,
-      });
-      interpolationFolder.addBinding(interpolationReadout, 'intervalMs', {
-        label: 'Last snapshot interval',
-        readonly: true,
-        format: formatMs,
-      });
-      interpolationFolder.addBinding(interpolationReadout, 'errorMs', {
-        label: 'Servo error (RENDERER)',
-        readonly: true,
-        format: formatMs,
-      });
-      interpolationFolder.addBinding(interpolationReadout, 'rate', {
-        label: 'Clock rate',
-        readonly: true,
-        format: (v: number) => v.toFixed(3),
-      });
-      interpolationFolder.addBinding(interpolationReadout, 'resets', {
-        label: 'Clock re-anchors',
-        readonly: true,
-        format: (v: number) => v.toFixed(0),
-      });
-
-      debugGUI.addBlade({ view: 'separator' });
-
-      addWireframeFolder(debugGUI);
-
-      // Switching to another debugger tab rebuilds this container from scratch on
-      // return (createDebuggerTab's container() re-runs on every click, it isn't
-      // built once and hidden/shown) — an interval started here without teardown
-      // would leak a new one on every visit. Clear it in onRemoveCmp, which the CMP
-      // framework calls when this tab's content is torn down for the next one.
-      // No entity create/delete hook to subscribe to — poll, same tradeoff as the spatial
-      // grid debug panel's live readout. Skips the actual rebuild when the entity set
-      // hasn't changed, so an open edit window's list selection isn't wiped every tick
-      // for no reason.
-      const entityListIntervalId = setInterval(() => {
-        const signature = getAllPhysicsEntityIds().join(',');
-        if (signature === lastEntityListSignature) return;
-        lastEntityListSignature = signature;
-        debuggerEntityListCmp?.update({ html: createPhysicsEntitiesDebugList });
-        const winState = getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
-        if (winState?.isOpen && typeof winState.data?.entityId === 'number') {
-          updateDebuggerEntityListSelectedClass(winState.data.entityId);
-        }
-      }, 500);
-      // Switching to another debugger tab rebuilds this container from scratch on
-      // return (createDebuggerTab's container() re-runs on every click, it isn't built
-      // once and hidden/shown) — an interval started here without teardown would leak a
-      // new one on every visit. Clear it in onRemoveCmp, which the CMP framework calls
-      // when this tab's content is torn down for the next one.
-      debuggerEntityListCmp = CMP({
-        id: 'debuggerPhysicsApiEntityList',
-        html: createPhysicsEntitiesDebugList,
-        onRemoveCmp: () => clearInterval(entityListIntervalId),
-      });
-      container.add(debuggerEntityListCmp);
-
-      return container;
+        }),
+      ];
     },
   });
+
+  // Hydrated at registration
+  state.timestepRatio = 1 / (state.timestep || 60);
+  applyLiveStateToWorld(state);
 
   // The edit window's `content` is a function, which can't survive the JSON
   // serialization DraggableWindow uses to persist open/position state — after a reload,
@@ -1015,7 +985,7 @@ export const _createPhysicsAPIDebugGUI = () => {
     if (winState && !winState.content) {
       registerDraggableWindowCmp(EDIT_PHYS_ENTITY_WIN_ID, {
         content: createEditPhysicsEntityContent,
-        onClose: () => updateDebuggerEntityListSelectedClass(null),
+        onClose: refreshPhysicsTab,
       });
     }
   }, 0);

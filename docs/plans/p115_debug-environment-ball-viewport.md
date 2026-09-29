@@ -1,7 +1,7 @@
 Status: draft | not-implemented
 Category: Debugger, Rendering, Multi-viewport
-Blocked by: p080_multi-viewport-rendering-and-axis-gizmo.md (not implemented: Viewports API + axes gizmo), p111_skybox-core-refactor-and-layered-schema.md (`getActiveEnvironmentTexture`, `onSkyBoxChange`)
-Related: p110_skybox-refactor-and-layered-sky-system.md (epic), p105_refactor-debugger-drawer-tab-creation.md (will migrate the Debug Tools options this plan adds)
+Blocked by: p111_skybox-core-refactor-and-layered-schema.md (`getActiveEnvironmentTexture`, `onSkyBoxChange`)
+Related: p110_skybox-refactor-and-layered-sky-system.md (epic), \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (implemented: Viewports API + axes gizmo), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will migrate the Debug Tools options this plan adds)
 
 # Debug Environment Ball Viewport — Plan
 

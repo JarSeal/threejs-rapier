@@ -1,5 +1,6 @@
 import { toggleDrawer } from '../../debug/DebuggerGUI';
 import { updateOnScreenTools } from '../../debug/OnScreenTools';
+import { toggleAxesGizmo } from '../../debug/DebugToolsManager';
 import { redoLastAction, undoLastAction } from '../../debug/UndoRedo';
 import { lwarn } from '../../utils/Logger';
 import { isDebugCameraActive, toggleDebugCamera } from '../CameraManager';
@@ -41,6 +42,17 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
       if (e.repeat || isTypingInField()) return;
       toggleDebugCamera(getECSWorld(), !isDebugCameraActive());
       updateOnScreenTools('SWITCH');
+    },
+  },
+  {
+    id: 'sc-toggle-axes-gizmo',
+    type: 'KEY_DOWN', // keydown, so preventDefault can stop the browser's own F8 action
+    chord: { key: 'F8' },
+    name: 'Toggle axes gizmo',
+    fn: (e) => {
+      e.preventDefault();
+      if (e.repeat || isTypingInField()) return;
+      toggleAxesGizmo();
     },
   },
   // Undo/redo are keydown: macOS browsers fire no keyup for other keys while ⌘ is held, and

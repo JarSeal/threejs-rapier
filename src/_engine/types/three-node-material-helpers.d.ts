@@ -14,6 +14,8 @@ declare module 'three/tsl' {
   /**
    * A generic Node representing a shader expression of type T.
    */
+  // T is an intentional phantom type (documents the node's value type)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   export interface Node<T = any> {
     (uvNode: Node): Node;
 
@@ -66,15 +68,15 @@ declare module 'three/tsl' {
   /**
    * A vector2 node type alias
    */
-  export interface Vec2Node extends Node<THREE.Vector2> {}
+  export type Vec2Node = Node<THREE.Vector2>;
   /**
    * A float scalar node
    */
-  export interface FloatNode extends Node<number> {}
+  export type FloatNode = Node<number>;
   /**
    * A color/vec3 node type
    */
-  export interface Vec3Node extends Node<THREE.Vector3> {}
+  export type Vec3Node = Node<THREE.Vector3>;
 
   /**
    * The fn() function wrapper for shader logic.
