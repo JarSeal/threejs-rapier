@@ -1,6 +1,6 @@
 Status: implemented
 Category: Rendering
-Blocks: p125_spatial-index-system-visualizer.md
+Blocks: _DONE_p125_spatial-index-system-visualizer.md
 
 # Line Rendering System — Core Engine — Plan
 
@@ -92,7 +92,7 @@ it implements the colour-pulsation and box-outline primitives those features wil
 
 `LineSegmentsGeometry.setPositions()` (`:97-125`) allocates a fresh `InstancedInterleavedBuffer` plus
 two `InterleavedBufferAttribute`s **and** calls `computeBoundingBox()` + `computeBoundingSphere()` on
-*every* call. `p125_spatial-index-system-visualizer.md:42` needs exactly the opposite — "create once,
+*every* call. `_DONE_p125_spatial-index-system-visualizer.md:42` needs exactly the opposite — "create once,
 hidden, toggle `visible`, gate the per-frame geometry refill on an `enabled` flag so it costs nothing
 while off" — over potentially tens of thousands of cells (its own risk note, :61). The core API must
 write into a retained array and flip `needsUpdate`, never re-wrap.
@@ -269,7 +269,7 @@ and the pause toggle.
   `WireframeLines`/`WireframeMaterial` union types :280-283** and the two `import type` lines :2-3,
   then swap ~6 call sites. Everything else stays.
 - `src/_engine/core/Debug/_dbg__Raycast.ts` — `:65-137` onto the core API.
-- `docs/plans/p125_spatial-index-system-visualizer.md` — header + Phases 2-3 + Risks (docs only).
+- `docs/plans/_DONE_p125_spatial-index-system-visualizer.md` — header + Phases 2-3 + Risks (docs only).
 - `docs/plans/_DONE_p025_debug-drawing-in-physics-api.md` — amend the "Accepted cost" note
   (:188-196) with a pointer to this plan and the achieved figure.
 

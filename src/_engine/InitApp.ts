@@ -62,8 +62,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Load env variables and other configurations
     loadConfig();
 
-    // Sets the engine version to the HTML
-    setEngineVersionToDOM();
+    // Logs the engine, toolkit and app versions (they are in the HTML meta tags too)
+    consoleBootText();
 
     // Create base scene
     createRootScene();
@@ -183,11 +183,13 @@ const consoleBootText = () => {
   const sInfo = 'color: #888;';
   const sBlue = 'color: #00d2ff; font-weight: bold;';
   const sEng = 'color: #ff9955; font-style: italic;';
+  const sToolkit = 'color: #ff9955; font-style: italic;';
   const sApp = 'color: #ff9955; font-style: italic;';
 
   llog(
     `%c${meta.engine.name}%c starting...\n` +
       `%cEngine version: %c${meta.engine.version} %c${meta.engine.codename}\n` +
+      `%cToolkit version: %c${meta.toolkit.version} %c${meta.toolkit.codename}\n` +
       `%cApp version: %c${meta.app.version} %c${meta.app.codename}\n` +
       `%cVersion checksum: %c${meta.versionChecksum}`,
     // Line 1 styles
@@ -200,18 +202,13 @@ const consoleBootText = () => {
     // Line 3 styles
     sInfo,
     sBlue,
-    sApp,
+    sToolkit,
     // Line 4 styles
+    sInfo,
+    sBlue,
+    sApp,
+    // Line 5 styles
     sInfo,
     sBlue
   );
-};
-
-const setEngineVersionToDOM = () => {
-  consoleBootText();
-  // @CHORE: add metadata as header metadata tag (remove these below)
-  const elemEng = document.getElementById('engineVersion');
-  if (elemEng) elemEng.textContent = PROJECT_METADATA.engine.version;
-  const elemApp = document.getElementById('appVersion');
-  if (elemApp) elemApp.textContent = PROJECT_METADATA.app.version;
 };

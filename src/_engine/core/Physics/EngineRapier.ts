@@ -388,8 +388,8 @@ const paramsToShape = (params: ShapeParams): Rapier.Shape => {
         'Could not find nRows when creating a HEIGHTFIELD shape.'
       );
       const nCols = existsOrThrow(
-        params.nrows,
-        'Could not find nRows when creating a HEIGHTFIELD shape.'
+        params.ncols,
+        'Could not find nCols when creating a HEIGHTFIELD shape.'
       );
       const heights = existsOrThrow(
         params.heights,

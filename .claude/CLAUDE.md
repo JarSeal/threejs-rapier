@@ -26,8 +26,10 @@ Maintain the brand, feeling, and core principles in creating the best UX for bot
 - `yarn build` — type-check (`tsc`) + production build to `dist/`.
 - `yarn build:test` — production build with `VITE_APP_ENV=test`.
 - `yarn lint` — ESLint (flat config in `eslint.config.js`, Prettier enforced as a lint rule).
-- `yarn docs` — generate TypeDoc docs into `docs-api/` (scoped to `src/_engine/**` only — the engine is the documented public API surface; `app`/`toolkit` are not documented). The folder is gitignored and TypeDoc wipes it on every run, so never point `out` at `docs/`.
+- `yarn docs` — generate TypeDoc docs into `docs-api/` (scoped to `src/_engine/**` and `src/toolkit/**` — the engine and the toolkit are the documented public API surface; `app` is not documented). The folder is gitignored and TypeDoc wipes it on every run, so never point `out` at `docs/`.
 - `yarn gatherAppData` — manually run the scene/asset JSON → generated data pipeline (see below); this also runs automatically before `dev`/`build` and via a Vite plugin on file save.
+- `yarn checkVersions` — check `package.json` against the versioning rules (see Versioning). `yarn checkVersions --against main` also checks each part's bump; run it before opening a PR.
+- `yarn tagRelease` — on `main` after a merge, tag each part's version (`engine-v…`, `toolkit-v…`, `app-v…`). Local tags only; it prints the push command.
 
 There is no test suite/framework configured in this repo currently (no `test` script, no test runner dependency).
 
@@ -74,6 +76,8 @@ Scenes and assets are authored as JSON files under `src/app/**`, named by suffix
 3. Emits `src/_engine/generatedAppData.json` and `generatedAppFns.ts` (consumed at runtime by `src/_engine/core/Scene.ts`'s `registerScenesFromGeneratedData()` to build scenes).
 4. Also compiles the Zod schemas to plain JSON Schema files in `.schemas/*.schema.json` (used for editor autocomplete/validation on the asset JSON files themselves).
 
+Per-scene overrides live in each asset file's `__saveData` (`{ [sceneId]: [latest, ...older] }`; only the latest entry is applied). An entry's `__meta` can carry `engineVersion`/`toolkitVersion`/`appVersion` (`src/_engine/schemas/_saveDataSchema.ts`); anything that writes save entries should stamp all three, and the gatherer warns when an applied entry comes from another major version.
+
 This runs via `yarn gatherAppData`, and automatically on file add/change/delete during `yarn dev` through the custom `sceneGathererPlugin` Vite plugin in `vite.config.ts` (triggers a full reload, or surfaces a Vite error overlay if validation fails).
 
 ### Bootstrap flow
@@ -119,26 +123,30 @@ To check determinism, append `?physicsProbe=N` (debug mode) or use "Determinism 
 
 - `root: './src'`, output to `../dist`.
 - `vite-plugin-wasm` for Rapier's WASM binary.
-- Custom `sceneGathererPlugin` (see data pipeline above) and an `html-transform` plugin that injects `%APP_NAME%`/`%VERSION_CHECKSUM%`/etc. placeholders (sourced from `package.json`'s `app_metadata`/ `engine_metadata`) into `index.html`.
+- Custom `sceneGathererPlugin` (see data pipeline above) and an `html-transform` plugin that injects `%APP_NAME%`/`%VERSION_CHECKSUM%`/etc. placeholders (sourced from `package.json`'s `app_metadata`/`engine_metadata`/`toolkit_metadata`) into `index.html`.
 - `rollup-plugin-visualizer` writes a bundle treemap to `dist-stats/bundle-stats.html`.
 - No TS path aliases are configured (`tsconfig.json` has no `paths`) — imports are relative.
 
 ## Versioning
 
-`package.json` holds three semver versions (`MAJOR.MINOR.PATCH`: major = breaking, minor = new feature, patch = fix):
+`package.json` holds four semver versions (`MAJOR.MINOR.PATCH`: major = breaking, minor = new feature, patch = fix):
 
-- `engine_metadata.version` — the engine (`src/_engine/`) plus `src/toolkit/`, which ships with it.
+- `engine_metadata.version` — the engine (`src/_engine/`).
+- `toolkit_metadata.version` — the toolkit (`src/toolkit/`), which ships with the engine. Its own scale: additions are minor, fixes/updates are patch, and a major bump happens only when an engine-level change requires it.
 - `app_metadata.version` — the example app (`src/app/` and the app-level files in `src/`: `AppECSPlugins.ts`, `AppECSRegistry.ts`, `CONFIG.ts`).
 - `version` (the project/package version) — **always identical to `engine_metadata.version`**. App-only changes bump `app_metadata.version` and never touch the project version.
 
 Rules:
 
 - Bump once per branch merged to `main` (in the PR), not per commit, at the level of the biggest change on that side since the last merge. Reset the lower parts to 0 (e.g. `1.4.2` → minor bump → `1.5.0`).
-- Engine and app are bumped independently; a side with no changes keeps its version.
-- A major bump gets a new codename. Engine codenames follow the sun's path (Dawn → Sunrise → Morning → Zenith → …); app codenames follow life stages (Toddler → Preschooler → Kid → Teen → …).
-- `createMergeVersion` in `vite.config.ts` (engine + app summed part by part) only feeds the `x-version-checksum` meta tag. It is not a version to bump or display.
+- Engine, toolkit and app are bumped independently; a side with no changes keeps its version.
+- A major bump gets a new codename. Engine codenames follow the sun's path (Dawn → Sunrise → Morning → Zenith → …); toolkit codenames follow the moon's phases (Crescent → Half Moon → Gibbous → Full Moon → …); app codenames follow life stages (Toddler → Preschooler → Kid → Teen → …).
+- Each PR adds an entry to `CHANGELOG.md` with a section per part it bumped (Engine / Toolkit / App, plus Project for repo tooling).
+- Before opening the PR, `yarn checkVersions --against main` must pass. The Stop hook runs the base check (project version = engine version, valid semver) whenever `package.json` changes.
+- After merging to `main`, run `yarn tagRelease` and push the tags it prints.
+- The `x-version-checksum` meta tag hashes every part's version and codename plus the project version. `PROJECT_METADATA.mergeVersion` (`createMergeVersion` in `vite.config.ts`, engine + app summed part by part) is deprecated: it isn't in the checksum or the meta tags any more, and it goes in the next major engine version. It is not a version to bump or display.
 
 ## Workflow
 
-- A Stop hook runs lint and type-check. Leave the tree compiling.
+- A Stop hook runs lint and type-check, plus the version rule check when `package.json` changed. Leave the tree compiling.
 - `docs/plans/` holds specs for unstarted work. Never treat one as current state or implement one unless I reference it explicitly.

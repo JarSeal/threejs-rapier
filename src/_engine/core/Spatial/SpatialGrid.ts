@@ -51,7 +51,7 @@ function worldToCell(coord: number, invCellSize: number): number {
 }
 
 export class SpatialGrid {
-  private readonly cellSize: number;
+  private readonly _cellSize: number;
   private readonly invCellSize: number;
   private readonly maxMembers: number;
   private readonly oversizedRadiusThreshold: number;
@@ -106,8 +106,45 @@ export class SpatialGrid {
     this.queryIntoCount++;
   };
 
+  // Bound once so getOccupiedCellBoundsInto never allocates a closure per call.
+  private cellBoundsOut: Float32Array | null = null;
+  private readonly cellBoundsVisitor = (cellIndex: number, key: number): void => {
+    const out = this.cellBoundsOut!;
+    const i = cellIndex * 6;
+    if (i + 6 > out.length) return;
+    // Inverse of _packCellKey. CELL_AXIS_SIZE is a power of two, so these divisions are
+    // exact on the (safe-integer) key.
+    const cx = Math.floor(key / (CELL_AXIS_SIZE * CELL_AXIS_SIZE)) - CELL_AXIS_OFFSET;
+    const cy = (Math.floor(key / CELL_AXIS_SIZE) % CELL_AXIS_SIZE) - CELL_AXIS_OFFSET;
+    const cz = (key % CELL_AXIS_SIZE) - CELL_AXIS_OFFSET;
+    const s = this._cellSize;
+    out[i] = cx * s;
+    out[i + 1] = cy * s;
+    out[i + 2] = cz * s;
+    out[i + 3] = (cx + 1) * s;
+    out[i + 4] = (cy + 1) * s;
+    out[i + 5] = (cz + 1) * s;
+  };
+
+  // Bound once so getOversizedBoundsInto never allocates a closure per call.
+  private oversizedBoundsOut: Float32Array | null = null;
+  private oversizedBoundsCount = 0;
+  private readonly oversizedBoundsVisitor = (slot: number): void => {
+    const r = this.radius[slot];
+    if (!Number.isFinite(r)) return;
+    const out = this.oversizedBoundsOut!;
+    const i = this.oversizedBoundsCount++ * 6;
+    if (i + 6 > out.length) return;
+    out[i] = this.posX[slot] - r;
+    out[i + 1] = this.posY[slot] - r;
+    out[i + 2] = this.posZ[slot] - r;
+    out[i + 3] = this.posX[slot] + r;
+    out[i + 4] = this.posY[slot] + r;
+    out[i + 5] = this.posZ[slot] + r;
+  };
+
   constructor(opts: SpatialGridOptions) {
-    this.cellSize = opts.cellSize;
+    this._cellSize = opts.cellSize;
     this.invCellSize = 1 / opts.cellSize;
     this.maxMembers = opts.maxMembers;
     this.oversizedRadiusThreshold = opts.cellSize * (opts.oversizedRadiusMultiplier ?? 2);
@@ -204,6 +241,11 @@ export class SpatialGrid {
     return this.liveCount;
   }
 
+  /** World-space edge length of one grid cell, fixed at construction. */
+  get cellSize(): number {
+    return this._cellSize;
+  }
+
   getStats(): SpatialGridStats {
     return {
       memberCount: this.liveCount,
@@ -220,6 +262,34 @@ export class SpatialGrid {
       counts[c] = this.cellStart[c + 1] - this.cellStart[c];
     }
     return counts;
+  }
+
+  /**
+   * Debug tooling only — every occupied cell's world-space AABB as of the last rebuild,
+   * written as 6 floats per cell (`minX, minY, minZ, maxX, maxY, maxZ`) at the cell's
+   * dense index. Returns the occupied cell count, which may exceed `out.length / 6`;
+   * cells that don't fit are dropped (same convention as queryInto). Oversized members
+   * have no cell and don't appear here.
+   */
+  getOccupiedCellBoundsInto(out: Float32Array): number {
+    this.cellBoundsOut = out;
+    this.cellKeyToIndex.forEach(this.cellBoundsVisitor);
+    this.cellBoundsOut = null;
+    return this.occupiedCellCount;
+  }
+
+  /**
+   * Debug tooling only — the oversized tier's members as world-space AABBs (position ±
+   * radius), 6 floats each like getOccupiedCellBoundsInto. Members with an infinite radius
+   * (eg. a never-attenuating light) have no finite bounds and are skipped. Returns the
+   * number of finite members, which may exceed `out.length / 6`; extras are dropped.
+   */
+  getOversizedBoundsInto(out: Float32Array): number {
+    this.oversizedBoundsOut = out;
+    this.oversizedBoundsCount = 0;
+    this.oversizedSlots.forEach(this.oversizedBoundsVisitor);
+    this.oversizedBoundsOut = null;
+    return this.oversizedBoundsCount;
   }
 
   private _setRadius(slot: number, radius: number): void {

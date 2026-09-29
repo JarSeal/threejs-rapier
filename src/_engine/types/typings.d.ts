@@ -22,6 +22,16 @@ declare const __PROJECT_METADATA__: {
     repoUrl: string;
     author: string;
   };
+  toolkit: {
+    version: string;
+    codename: string;
+    name: string;
+    fullName: string;
+    description: string;
+    url: string;
+    repoUrl: string;
+    author: string;
+  };
   pkgVersion: string;
   mergeVersion: string;
   versionChecksum: string;

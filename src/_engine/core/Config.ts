@@ -547,6 +547,26 @@ export const PROJECT_METADATA: {
     /** Engine author */
     author: string;
   };
+  /** Toolkit (src/toolkit/) specific metadata. It ships with the engine but is versioned on its
+   * own, so the repository and author default to the engine's. */
+  toolkit: {
+    /** Toolkit version */
+    version: string;
+    /** Toolkit codename */
+    codename: string;
+    /** Toolkit name */
+    name: string;
+    /** Toolkit full name */
+    fullName: string;
+    /** Toolkit description */
+    description: string;
+    /** Toolkit URL */
+    url: string;
+    /** Toolkit repository URL */
+    repoUrl: string;
+    /** Toolkit author */
+    author: string;
+  };
   /** Merged version number. This is a sum of each SemVar number (major.minor.patch). Example of calculation:
    *
    * App version: 1.3.23
@@ -554,6 +574,9 @@ export const PROJECT_METADATA: {
    * Engine version: 0.1.12
    *
    * Merge version: 1.3.23 + 0.1.12 = 1.4.37
+   *
+   * @deprecated Not a real version (different combinations sum to the same value) and no longer
+   * part of the checksum or the HTML meta tags. To be removed in the next major engine version.
    * */
   mergeVersion: string;
   /** package.json version number */
@@ -562,7 +585,7 @@ export const PROJECT_METADATA: {
   versionChecksum: string;
   /** Version string created from all version data:
    *
-   * "mergeVersion_appVersion-appCodename_engVersion-engCodename_pkgVersion"
+   * "appVersion-appCodename_engVersion-engCodename_toolkitVersion-toolkitCodename_pkgVersion"
    */
   versionChecksumString: string;
 } = __PROJECT_METADATA__;

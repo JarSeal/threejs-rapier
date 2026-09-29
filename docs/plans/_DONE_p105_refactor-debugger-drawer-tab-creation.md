@@ -1,6 +1,6 @@
 Status: implemented
 Category: Debugger, Refactoring
-Related: \_DONE_p100_small-bug-fixes-and-tweaks.md (§8.1 `_disableDebugger` bug lives in the same file), p125_spatial-index-system-visualizer.md (should be built on the new API), p067_character-state-debugger-window.md (touches the Characters tab), p111_skybox-core-refactor-and-layered-schema.md (rewrites the SkyBox tab folder-per-layer; see Phase 4), p080_multi-viewport-rendering-and-axis-gizmo.md and p115_debug-environment-ball-viewport.md (add Debug Tools options this plan migrates)
+Related: \_DONE_p100_small-bug-fixes-and-tweaks.md (§8.1 `_disableDebugger` bug lives in the same file), _DONE_p125_spatial-index-system-visualizer.md (should be built on the new API), p067_character-state-debugger-window.md (touches the Characters tab), p111_skybox-core-refactor-and-layered-schema.md (rewrites the SkyBox tab folder-per-layer; see Phase 4), p080_multi-viewport-rendering-and-axis-gizmo.md and p115_debug-environment-ball-viewport.md (add Debug Tools options this plan migrates)
 
 # Refactor Debugger Drawer Tab Creation — Plan
 

@@ -14,6 +14,8 @@ import { ImportedAsset, ImportedAssetSchema } from '../src/_engine/schemas/impor
 import { SkyBoxAsset, SkyBoxAssetSchema } from '../src/_engine/schemas/skyBoxSchema';
 import { PostFxAsset, PostFxAssetSchema } from '../src/_engine/schemas/postFxSchema';
 import { toUniqueJsIdentifier } from '../src/_engine/utils/jsIdentifier';
+import { MetaSchema } from '../src/_engine/schemas/_saveDataSchema';
+import pkg from '../package.json';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
@@ -43,6 +45,35 @@ const logValidationError = (msg: string, issues: z.ZodError['issues']) => {
     .map((err) => ` └─ [${err.path.join('.')}]: ${err.message}`)
     .join('\n');
   console.error(`\x1b[31m✗ [Scene Gatherer] ${msg}:\n${errorDetails}\x1b[0m`);
+};
+
+// Versions of the current build, compared against the ones stamped in save entries' __meta
+const CURRENT_VERSIONS = {
+  engineVersion: pkg.engine_metadata.version,
+  toolkitVersion: pkg.toolkit_metadata.version,
+  appVersion: pkg.app_metadata.version,
+};
+const majorOf = (version: string) => Number(version.split('.')[0]);
+
+/** Warns (doesn't fail) when a scene's applied save entry (the latest, index 0) was stamped
+ * under another major version of a part than the current build: a breaking change may have
+ * changed what its overrides mean. Entries without stamps are never warned about. */
+const warnOnStaleSaveData = (
+  file: string,
+  data: { __saveData?: Record<string, { __meta?: z.infer<typeof MetaSchema> }[]> }
+) => {
+  for (const [sceneId, entries] of Object.entries(data.__saveData ?? {})) {
+    const meta = entries?.[0]?.__meta;
+    if (!meta) continue;
+    for (const key of Object.keys(CURRENT_VERSIONS) as (keyof typeof CURRENT_VERSIONS)[]) {
+      const saved = meta[key];
+      const current = CURRENT_VERSIONS[key];
+      if (!saved || majorOf(saved) === majorOf(current)) continue;
+      console.warn(
+        `\x1b[33m⚠ [Scene Gatherer] Save data for scene "${sceneId}" in ${file} was saved with ${key} ${saved}, the current one is ${current} (another major version). Check that its overrides still apply.\x1b[0m`
+      );
+    }
+  }
 };
 
 const logDuplicateIdError = (type: string, id: string, file: string) => {
@@ -207,6 +238,7 @@ export const gatherSceneData = () => {
 
         // Validate scene file content against schema
         const validation = SceneAssetSchema.safeParse(parsedData);
+        if (validation.success) warnOnStaleSaveData(file, validation.data);
         if (!validation.success) {
           logValidationError(`Validation error inside scene file ${file}`, validation.error.issues);
           hasError = true;
@@ -241,6 +273,7 @@ export const gatherSceneData = () => {
       try {
         const parsedData = JSON.parse(fileContent);
         const validation = CameraAssetSchema.safeParse(parsedData);
+        if (validation.success) warnOnStaleSaveData(file, validation.data);
         if (!validation.success) {
           logValidationError(
             `Validation error inside camera file ${file}`,
@@ -280,6 +313,7 @@ export const gatherSceneData = () => {
       try {
         const parsedData = JSON.parse(fileContent);
         const validation = LightAssetSchema.safeParse(parsedData);
+        if (validation.success) warnOnStaleSaveData(file, validation.data);
         if (!validation.success) {
           logValidationError(`Validation error inside light file ${file}`, validation.error.issues);
           hasError = true;
@@ -316,6 +350,7 @@ export const gatherSceneData = () => {
       try {
         const parsedData = JSON.parse(fileContent);
         const validation = GeoAssetSchema.safeParse(parsedData);
+        if (validation.success) warnOnStaleSaveData(file, validation.data);
         if (!validation.success) {
           logValidationError(
             `Validation error inside geometry file ${file}`,
@@ -352,6 +387,7 @@ export const gatherSceneData = () => {
       try {
         const parsedData = JSON.parse(fileContent);
         const validation = TextureAssetSchema.safeParse(parsedData);
+        if (validation.success) warnOnStaleSaveData(file, validation.data);
         if (!validation.success) {
           logValidationError(
             `Validation error inside texture file ${file}`,
@@ -389,6 +425,7 @@ export const gatherSceneData = () => {
       try {
         const parsedData = JSON.parse(fileContent);
         const validation = MaterialAssetSchema.safeParse(parsedData);
+        if (validation.success) warnOnStaleSaveData(file, validation.data);
         if (!validation.success) {
           logValidationError(
             `Validation error inside material file ${file}`,
@@ -468,6 +505,7 @@ export const gatherSceneData = () => {
       try {
         const parsedData = JSON.parse(fileContent);
         const validation = MeshAssetSchema.safeParse(parsedData);
+        if (validation.success) warnOnStaleSaveData(file, validation.data);
         if (!validation.success) {
           logValidationError(`Validation error inside mesh file ${file}`, validation.error.issues);
           hasError = true;
@@ -504,6 +542,7 @@ export const gatherSceneData = () => {
       try {
         const parsedData = JSON.parse(fileContent);
         const validation = ImportedAssetSchema.safeParse(parsedData);
+        if (validation.success) warnOnStaleSaveData(file, validation.data);
         if (!validation.success) {
           logValidationError(
             `Validation error inside imported asset file ${file}`,
@@ -568,6 +607,7 @@ export const gatherSceneData = () => {
       try {
         const parsedData = JSON.parse(fileContent);
         const validation = PostFxAssetSchema.safeParse(parsedData);
+        if (validation.success) warnOnStaleSaveData(file, validation.data);
         if (!validation.success) {
           logValidationError(
             `Validation error inside PostFX file ${file}`,
