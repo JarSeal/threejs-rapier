@@ -58,6 +58,10 @@ NodeBuilder.js module scope: _bindingGroupsCache (WeakMap)
 1. **Upstream first.** Check whether a newer Three release evicts `_bindingGroupsCache` entries
    (or keys it differently). If it does, this becomes a Three upgrade. If not, open an issue with
    the path above.
+   - Still unfixed on `dev` (r187dev, `ce0fdf2`, 2026-09-29). Reported upstream as
+     [mrdoob/three.js#34705](https://github.com/mrdoob/three.js/issues/34705), with the standalone
+     page as a CodePen. Related, closed without a fix: #33912 (same symptom, no repro) and #33676
+     (`NodeManager.nodeBuilderCache`, merged into #32409).
 2. **Reset the render contexts on scene leave.** `renderer._renderContexts.dispose()` drops the
    cached `RenderContext`s, so their `_bindingGroupsCache` entries (and the `.camera` reference)
    can be collected. It's a private field, and other caches are keyed by `RenderContext`
