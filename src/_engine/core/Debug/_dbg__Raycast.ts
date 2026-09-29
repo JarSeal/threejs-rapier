@@ -7,9 +7,20 @@ import {
 } from '../../debug/DebuggerGUI';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { createPercentagePie, type PercentagePie } from '../../utils/UI/PercentagePieHtml';
-import type { IntervalWindowSnapshot } from '../../utils/stats/IntervalCounterStats';
+import type {
+  IntervalCounterSnapshot,
+  IntervalWindowSnapshot,
+} from '../../utils/stats/IntervalCounterStats';
 import type { RayHelperKind } from '../RayDebugTypes';
 import { getRayCastStats, isRayCastStatsEnabled, setRayCastStatsEnabled } from '../Raycast';
+import {
+  getPhysicsRayStats,
+  getPhysicsState,
+  isPhysicsRayStatsEnabled,
+  isPhysicsWorldEnabled,
+  setPhysicsRayHelpersEnabled,
+  setPhysicsRayStatsEnabled,
+} from '../PhysicsAPI';
 import {
   getRayHelperSettings,
   setRayHelperSettings,
@@ -40,7 +51,7 @@ const HELPER_SETTING_KEYS = {
 type HelperSettingSuffix = keyof typeof HELPER_SETTING_KEYS;
 const HELPER_SETTING_SUFFIXES = Object.keys(HELPER_SETTING_KEYS) as HelperSettingSuffix[];
 
-type HelperStatePrefix = 'three';
+type HelperStatePrefix = 'three' | 'physics';
 type HelperState<P extends HelperStatePrefix> = {
   [K in HelperSettingSuffix as `${P}${K}`]: RayHelperKindSettings[(typeof HELPER_SETTING_KEYS)[K]];
 };
@@ -61,6 +72,8 @@ const helperStateKeys = <P extends HelperStatePrefix>(prefix: P) =>
 const rayCastState = {
   enableRayStatistics: false,
   ...createHelperState('three', 'THREE'),
+  physicsEnableRayStatistics: false,
+  ...createHelperState('physics', 'PHYSICS'),
 };
 type RayCastState = typeof rayCastState;
 
@@ -71,17 +84,21 @@ export const _initRayCastingDebugger = () => {
     // The persisted values are hydrated by createDebuggerTab
     setRayCastStatsEnabled(rayCastState.enableRayStatistics);
     applyHelperSettings('three', 'THREE');
+    setPhysicsRayStatsEnabled(rayCastState.physicsEnableRayStatistics);
+    applyHelperSettings('physics', 'PHYSICS');
   }
 };
 
-/** Pushes a kind's tab state into the helper renderer. Live helpers restyle on the next frame
- * (uniform writes), so this runs on every change, drag ticks included. */
+/** Pushes a kind's tab state into the helper renderer (and, for physics, whether the Physics API
+ * draws its queries at all). Live helpers restyle on the next frame (uniform writes), so this
+ * runs on every change, drag ticks included. */
 const applyHelperSettings = (prefix: HelperStatePrefix, kind: RayHelperKind) => {
   const patch: Record<string, unknown> = {};
   for (const suffix of HELPER_SETTING_SUFFIXES) {
     patch[HELPER_SETTING_KEYS[suffix]] = rayCastState[`${prefix}${suffix}`];
   }
   setRayHelperSettings(kind, patch as Partial<RayHelperKindSettings>);
+  if (kind === 'PHYSICS') setPhysicsRayHelpersEnabled(rayCastState.physicsShow);
 };
 
 /** `showAllRayDebugHelpers` became `threeShow`. Rewritten once, before hydration (which only
@@ -128,43 +145,75 @@ const createDebugControls = () => {
     icon: 'heartArrow',
     lsKey: LS_KEY,
     state: rayCastState,
-    persistKeys: ['enableRayStatistics', ...helperStateKeys('three')],
+    persistKeys: [
+      'enableRayStatistics',
+      ...helperStateKeys('three'),
+      'physicsEnableRayStatistics',
+      ...helperStateKeys('physics'),
+    ],
     // Only while the tab is visible
     refreshIntervalMs: STATS_VIEW_REFRESH_MS,
     onRefresh: refreshStatsView,
     onOpen: () => () => {
-      statsView = null;
+      statsBlocks = [];
+      pendingQueriesView = null;
     },
-    content: () => [
-      {
-        pane: true,
-        content: [
-          helperSettingsFolder('three', 'THREE', 'Three.js rays'),
-          {
-            key: 'enableRayStatistics',
-            label: 'Enable ray cast statistics',
-            onChange: () => {
-              setRayCastStatsEnabled(rayCastState.enableRayStatistics);
-              updateDebuggerTab(TAB_ID);
+    content: () => {
+      // Re-run on every mount and rebuild: the views below re-register themselves
+      statsBlocks = [];
+      pendingQueriesView = null;
+      return [
+        {
+          pane: true,
+          content: [
+            helperSettingsFolder('three', 'THREE', 'Three.js rays'),
+            {
+              key: 'enableRayStatistics',
+              label: 'Enable ray cast statistics',
+              onChange: () => {
+                setRayCastStatsEnabled(rayCastState.enableRayStatistics);
+                updateDebuggerTab(TAB_ID);
+              },
             },
-          },
-        ],
-      },
-      buildStatsView(),
-    ],
+          ],
+        },
+        buildThreeStatsView(),
+        {
+          pane: true,
+          content: [
+            helperSettingsFolder('physics', 'PHYSICS', 'Physics rays'),
+            {
+              key: 'physicsEnableRayStatistics',
+              label: 'Enable physics ray statistics',
+              onChange: () => {
+                setPhysicsRayStatsEnabled(rayCastState.physicsEnableRayStatistics);
+                updateDebuggerTab(TAB_ID);
+              },
+            },
+          ],
+        },
+        buildPhysicsStatsView(),
+      ];
+    },
   });
 };
 
 type StatsValue = { elem: HTMLElement; text: string };
 type StatsWindowRow = { win: IntervalWindowSnapshot; pie: PercentagePie; value: StatsValue };
-/** The mounted stats block's cached elements (null while the tab isn't mounted) */
-let statsView: {
+/** One counter's cached stats elements */
+type StatsBlock = {
   list: TCMP;
+  getStats: () => Readonly<IntervalCounterSnapshot>;
+  isEnabled: () => boolean;
   isActive: boolean | null;
   lastFrame: StatsValue;
   maxEver: StatsValue;
   rows: StatsWindowRow[];
-} | null = null;
+};
+/** The mounted stats blocks (empty while the tab isn't mounted) */
+let statsBlocks: StatsBlock[] = [];
+/** The mounted pending physics queries row (WORKER_THREAD only) */
+let pendingQueriesView: { list: TCMP; isActive: boolean | null; value: StatsValue } | null = null;
 
 const INACTIVE_VALUE = '-';
 
@@ -175,15 +224,19 @@ const addStatsRow = (list: TCMP, label: string, pie?: PercentagePie): StatsValue
   return { elem: row.add({ tag: 'span', text: INACTIVE_VALUE }).elem, text: INACTIVE_VALUE };
 };
 
-/** Builds the stats block once per mount (static markup, the value elements are cached). */
-const buildStatsView = () => {
-  const root = CMP({ class: 'rayCastStats' });
-  root.add({ tag: 'h3', text: 'Stats:' });
+/** Builds one counter's stats markup once per mount (static, the value elements are cached). */
+const buildStatsBlock = (
+  root: TCMP,
+  title: string,
+  getStats: () => Readonly<IntervalCounterSnapshot>,
+  isEnabled: () => boolean
+) => {
+  root.add({ tag: 'h3', text: title });
   const list = root.add({ tag: 'ul' });
   const lastFrame = addStatsRow(list, 'Last frame:');
   const maxEver = addStatsRow(list, 'Max ever:');
   const rows: StatsWindowRow[] = [];
-  const windows = getRayCastStats().windows;
+  const windows = getStats().windows;
   for (const kind of ['AVERAGE', 'MIN_MAX'] as const) {
     const heading = kind === 'AVERAGE' ? 'Average per frame' : 'Max / min per frame';
     list.add({ tag: 'li', class: 'rayStatHeading', text: heading });
@@ -195,7 +248,39 @@ const buildStatsView = () => {
       rows.push({ win, pie, value });
     }
   }
-  statsView = { list, isActive: null, lastFrame, maxEver, rows };
+  statsBlocks.push({ list, getStats, isEnabled, isActive: null, lastFrame, maxEver, rows });
+};
+
+const buildThreeStatsView = () => {
+  const root = CMP({ class: 'rayCastStats' });
+  buildStatsBlock(root, 'Three.js ray stats:', getRayCastStats, isRayCastStatsEnabled);
+  refreshStatsView();
+  return root;
+};
+
+const getPhysicsRaysSnapshot = () => getPhysicsRayStats().rays;
+const getPhysicsShapeCastsSnapshot = () => getPhysicsRayStats().shapeCasts;
+
+/** The physics stats, or a note when there is no physics world (the settings above stay). */
+const buildPhysicsStatsView = () => {
+  const root = CMP({ class: 'rayCastStats' });
+  if (!isPhysicsWorldEnabled()) {
+    root.add({ tag: 'p', class: 'rayStatNote', text: 'No physics world' });
+    return root;
+  }
+  buildStatsBlock(root, 'Physics ray stats:', getPhysicsRaysSnapshot, isPhysicsRayStatsEnabled);
+  buildStatsBlock(
+    root,
+    'Physics shape cast stats:',
+    getPhysicsShapeCastsSnapshot,
+    isPhysicsRayStatsEnabled
+  );
+  if (getPhysicsState().workerTarget === 'WORKER_THREAD') {
+    const list = root.add({ tag: 'ul' });
+    list.add({ tag: 'li', class: 'rayStatHeading', text: 'Worker' });
+    const value = addStatsRow(list, 'Pending queries:');
+    pendingQueriesView = { list, isActive: null, value };
+  }
   refreshStatsView();
   return root;
 };
@@ -206,22 +291,22 @@ const writeStatsValue = (value: StatsValue, text: string) => {
   value.elem.textContent = text;
 };
 
+const writeListActive = (view: { list: TCMP; isActive: boolean | null }, isActive: boolean) => {
+  if (isActive === view.isActive) return;
+  view.isActive = isActive;
+  view.list.updateClass('inactive', isActive ? 'remove' : 'add');
+};
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/** Writes the stats into the cached view: only changed texts and pie values, no html. */
-const refreshStatsView = () => {
-  const view = statsView;
-  if (!view) return;
-  const isActive = isRayCastStatsEnabled();
-  if (isActive !== view.isActive) {
-    view.isActive = isActive;
-    view.list.updateClass('inactive', isActive ? 'remove' : 'add');
-  }
-  const s = getRayCastStats();
-  writeStatsValue(view.lastFrame, isActive ? String(s.lastFrame) : INACTIVE_VALUE);
-  writeStatsValue(view.maxEver, isActive ? String(s.maxEver) : INACTIVE_VALUE);
-  for (let i = 0; i < view.rows.length; i++) {
-    const { win, pie, value } = view.rows[i];
+const refreshStatsBlock = (block: StatsBlock) => {
+  const isActive = block.isEnabled();
+  writeListActive(block, isActive);
+  const s = block.getStats();
+  writeStatsValue(block.lastFrame, isActive ? String(s.lastFrame) : INACTIVE_VALUE);
+  writeStatsValue(block.maxEver, isActive ? String(s.maxEver) : INACTIVE_VALUE);
+  for (let i = 0; i < block.rows.length; i++) {
+    const { win, pie, value } = block.rows[i];
     pie.set(isActive ? win.progress * 100 : 0);
     if (!isActive) {
       writeStatsValue(value, INACTIVE_VALUE);
@@ -230,5 +315,17 @@ const refreshStatsView = () => {
     } else {
       writeStatsValue(value, `${win.max} / ${win.min}`);
     }
+  }
+};
+
+/** Writes the stats into the cached views: only changed texts and pie values, no html. */
+const refreshStatsView = () => {
+  for (let i = 0; i < statsBlocks.length; i++) refreshStatsBlock(statsBlocks[i]);
+  const pending = pendingQueriesView;
+  if (pending) {
+    const isActive = isPhysicsRayStatsEnabled();
+    writeListActive(pending, isActive);
+    const pendingQueries = getPhysicsRayStats().pendingQueries;
+    writeStatsValue(pending.value, isActive ? String(pendingQueries) : INACTIVE_VALUE);
   }
 };

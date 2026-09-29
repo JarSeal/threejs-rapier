@@ -25,7 +25,13 @@ import { lerror, lwarn } from '../utils/Logger';
 // Always-safe thin wrapper: a no-op outside debug builds and tree-shaken out of production.
 import { updatePhysicsPanel } from '../debug/Stats';
 import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay } from './MainLoop';
-import { DebugModuleRef, initWorker, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import {
+  DebugModuleRef,
+  initWorker,
+  loadDebugModule,
+  loadDebugModuleAsync,
+  useDebug,
+} from '../utils/helpers';
 import {
   ColliderAPI,
   CollBorderRadiusResponse,
@@ -493,10 +499,11 @@ export const getLastPhysicsStepDuration = () => lastPhysicsStepDurationMs;
  */
 export const getLastPhysicsStepMessagingLatency = () => lastPhysicsMessagingLatency;
 
-// PHYSICS RAY STATS (p142) -- [ START ] -----------------------
-// Physics queries are counted by a query observer. It is installed only while something needs
-// it (the stats, for now), so a query costs one null check otherwise. MAIN_THREAD: the engine
-// backend calls it (engAPI.setQueryObserver). WORKER_THREAD: WorldProxyAPI calls it.
+// PHYSICS RAY STATS AND HELPERS (p142) -- [ START ] -----------------------
+// Physics queries are counted and drawn by a query observer. It is installed only while the
+// stats or the physics ray helpers are on, so a query costs one null check otherwise.
+// MAIN_THREAD: the engine backend calls it (engAPI.setQueryObserver). WORKER_THREAD:
+// WorldProxyAPI calls it.
 
 /** Physics query statistics, per rendered frame (see {@link getPhysicsRayStats}). */
 export type PhysicsRayStats = {
@@ -517,20 +524,39 @@ const physicsRayStats: PhysicsRayStats = {
   pendingQueries: 0,
 };
 let physicsRayStatsEnabled = false;
+/** Debug only: the physics kind's "Show helpers" setting (Ray cast controls tab) */
+let physicsRayHelpersEnabled = false;
+type RayHelpersModule = typeof import('./Debug/_dbg__RayHelpers');
+let rayHelpers: DebugModuleRef<RayHelpersModule> | null = null;
 
-/** Counts queries at issue time, so a frame's count includes every sub-step's queries. */
+/**
+ * Counts queries at issue time, so a frame's count includes every sub-step's queries, and
+ * draws each one as a `'PHYSICS'` ray helper right away, even in WORKER_THREAD mode. The
+ * helper runs to maxToi until the result sets its hit: in the same call on MAIN_THREAD, about
+ * a frame later on WORKER_THREAD.
+ *
+ * The helper gets the query's own `dir`, not a normalized one: its lengths are then tois, and
+ * `origin + dir * toi` is the exact hit point for any `|dir|`. (Only the helpers'
+ * maxHelperLength cap on misses is in `|dir|` units then.)
+ */
 const physicsQueryObserver: PhysicsQueryObserver = {
-  onQuery: (kind) => {
+  onQuery: (kind, origin, dir, maxToi, debug) => {
     if (physicsRayStatsEnabled) {
       if (kind === 'CAST_SHAPE') physicsShapeCastsStats.add();
       else physicsRaysStats.add();
       physicsRayStats.pendingQueries++;
     }
-    return 0;
+    if (!physicsRayHelpersEnabled) return 0;
+    const helpers = useDebug(rayHelpers);
+    return helpers
+      ? helpers._drawRay('PHYSICS', origin, dir, maxToi, null, debug, performance.now())
+      : 0;
   },
-  onResult: () => {
+  onResult: (token, firstHitToi) => {
     // Clamped: a reply to a query issued before the last reset has nothing to subtract from
     if (physicsRayStats.pendingQueries > 0) physicsRayStats.pendingQueries--;
+    // A no-op when the helper has been cast again or recycled since
+    if (token) useDebug(rayHelpers)?._updateRayHit(token, firstHitToi);
   },
 };
 
@@ -539,7 +565,7 @@ let queryObserver: PhysicsQueryObserver | null = null;
 
 /** Installs the query observer while anything needs it, removes it otherwise. */
 const updateQueryObserver = () => {
-  queryObserver = physicsRayStatsEnabled ? physicsQueryObserver : null;
+  queryObserver = physicsRayStatsEnabled || physicsRayHelpersEnabled ? physicsQueryObserver : null;
   engAPI?.setQueryObserver(queryObserver);
 };
 
@@ -559,6 +585,20 @@ export const setPhysicsRayStatsEnabled = (enabled: boolean) => {
  * @returns boolean
  */
 export const isPhysicsRayStatsEnabled = () => physicsRayStatsEnabled;
+
+/**
+ * Debug only (a no-op outside the debug env): whether physics queries are drawn as `'PHYSICS'`
+ * ray helpers. The Ray cast controls tab calls it with the physics helpers' "Show helpers"
+ * setting; the helpers' look is set there too.
+ * @param enabled (boolean) whether physics queries are drawn
+ */
+export const setPhysicsRayHelpersEnabled = (enabled: boolean) => {
+  physicsRayHelpersEnabled = enabled && IS_DEBUG_ENV;
+  if (physicsRayHelpersEnabled && !rayHelpers) {
+    rayHelpers = loadDebugModule(() => import('./Debug/_dbg__RayHelpers'), 'RayHelpers');
+  }
+  updateQueryObserver();
+};
 
 /**
  * The physics query statistics: queries issued per rendered frame (the last frame, the max ever
@@ -588,7 +628,7 @@ export const endPhysicsRayStatsFrame = (nowMs: number) => {
   physicsShapeCastsStats.endFrame(nowMs);
 };
 
-// PHYSICS RAY STATS -- [ END ] -----------------------
+// PHYSICS RAY STATS AND HELPERS -- [ END ] -----------------------
 
 // WORKER LOGIC -- [ START ] -----------------------
 

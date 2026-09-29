@@ -27,6 +27,11 @@
   .inactive {
     opacity: 0.5;
   }
+
+  .rayStatNote {
+    font-size: 1.4rem;
+    opacity: 0.6;
+  }
 }
 
 // PercentagePieHtml.ts: the fill is a conic gradient, driven by --p (0..100)

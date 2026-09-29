@@ -12,6 +12,7 @@ import {
   type RigidBodyAPI,
   type RigidBodyParams,
 } from '../../core/Physics/PhysicsAPITypes';
+import type { RayDebugOpts } from '../../core/RayDebugTypes';
 import { roundToDecimal } from '../helpers';
 import { GRAVITY_DOWN_NORMAL, LEVEL_GROUND_NORMAL } from '../constants';
 import { existsOrThrow } from '../assert';
@@ -287,6 +288,10 @@ export const createDynamicCharacter = async (opts: {
   // and the isAwake update below cope with the same async-only constraint).
   let cachedWallHit: { normal: PhysVector; distance: number } | null = null;
   let wallHitCastInFlight = false;
+  // The casts' physics ray helper ids (drawn only while the physics helpers are on), set once
+  // the character entity exists
+  const wallCastDebug: RayDebugOpts = { id: '' };
+  const floorRayDebug: RayDebugOpts = { id: '' };
 
   /** Fires an async wall shape-cast (fire-and-forget) if one isn't already in flight,
    * updating cachedWallHit once it resolves. move() reads cachedWallHit synchronously —
@@ -331,7 +336,9 @@ export const createDynamicCharacter = async (opts: {
         undefined,
         undefined,
         undefined,
-        characterBody // Exclude Self
+        characterBody, // Exclude Self
+        undefined,
+        wallCastDebug
       )
       .then(async (hit) => {
         wallHitCastInFlight = false;
@@ -367,7 +374,9 @@ export const createDynamicCharacter = async (opts: {
         undefined,
         undefined,
         undefined,
-        characterBody
+        characterBody,
+        undefined,
+        floorRayDebug
       )
       .then((hit) => {
         const groundNormal = hit?.normal || { x: 0, y: 1, z: 0 };
@@ -881,6 +890,8 @@ export const createDynamicCharacter = async (opts: {
     `Could not find character physics object rigid body with id: '${dynamicCharacterObject.entityId}'.`
   );
   characterBodyId = characterBody.id;
+  wallCastDebug.id = `char_wall_${dynamicCharacterObject.entityId}`;
+  floorRayDebug.id = `char_floor_${dynamicCharacterObject.entityId}`;
   liveColliders = existsOrThrow(
     ecsWorld.getComponent(dynamicCharacterObject.entityId, ComponentType.COLLIDER),
     `Could not find character colliders for entity id: '${dynamicCharacterObject.entityId}'.`

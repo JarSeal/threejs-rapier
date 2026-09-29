@@ -1,7 +1,6 @@
 Status: draft | not-implemented
 Category: Debugger
-Blocked by: p142_physics-ray-debugging-and-stats.md (the Three.js tester only needs \_DONE_p141_ray-debug-line-helpers.md, which is implemented)
-Related: \_DONE_p105_refactor-debugger-drawer-tab-creation.md (edit windows are out of its scope), p150_current-entity-data-source-info-on-edit-windows.md
+Related: \_DONE_p141_ray-debug-line-helpers.md and \_DONE_p142_physics-ray-debugging-and-stats.md (both implemented: the helpers, the fixed physics queries and the `'PHYSICS'` helper kind this plan builds on), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (edit windows are out of its scope), p150_current-entity-data-source-info-on-edit-windows.md
 
 # Ray Cast Tester Windows — Plan
 
