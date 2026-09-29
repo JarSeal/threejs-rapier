@@ -11,13 +11,7 @@ import { ECSWorld, getECSWorld } from '../ECS';
 import { getRenderer } from '../Renderer';
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import { getElapsedTime, isAppPlaying } from '../MainLoop';
-import type {
-  SkyBoxBaseDef,
-  SkyBoxDef,
-  SkyBoxEnvDef,
-  SkyBoxOverrides,
-  SkyBoxSunDef,
-} from './SkyBoxTypes';
+import type { SkyBoxBaseDef, SkyBoxDef, SkyBoxEnvDef, SkyBoxOverrides } from './SkyBoxTypes';
 import { fromLegacySkyBoxProps, isLegacySkyBoxProps, type LegacySkyBoxProps } from './legacySkyBox';
 import {
   BASE_DEFAULTS,
@@ -50,16 +44,20 @@ import {
 import {
   deleteSkyLights,
   syncSkyLights,
-  updateSkyLightsForSun,
+  updateSkyLightsForTime,
   updateSkyLightsFrame,
 } from './SkyLights';
+import { loadMoonTexture } from './layers/moon';
 import {
   advanceSkyTime,
   applyDayNightChange,
+  computeMoonDirection,
   computeSunDirection,
   createSkyTimeState,
   DAY_NIGHT_DEFAULTS,
+  getMoonPhaseOf,
   resetSkyTimeState,
+  setSkyTimeMoonPhase,
   wrap24,
   type SkyTimeState,
 } from './SkyTime';
@@ -78,9 +76,13 @@ export type ActiveSkyBox = {
    * or on the direct path (a texture or colour base only, sampled as is). */
   isComposite: boolean;
   nodes: { background: THREE.Node; environment: THREE.Node | null };
-  /** The base's source texture, and the PMREM the environment samples (the texture's, or the
-   * env bake's target). */
-  textures: { source: THREE.Texture | null; environment: THREE.Texture | null };
+  /** The base's source texture, the PMREM the environment samples (the texture's, or the env
+   * bake's target), and moons[0]'s texture. */
+  textures: {
+    source: THREE.Texture | null;
+    environment: THREE.Texture | null;
+    moon: THREE.Texture | null;
+  };
   /** The day-night cycle's runtime time (used while `def.dayNight` is on). Games drive it
    * through setTimeOfDay etc.; it's never written to the definition. */
   time: SkyTimeState;
@@ -93,6 +95,9 @@ export type SkyBoxUpdate = {
   atmosphere?: SkyBoxOverrides['atmosphere'];
   /** An array replaces the suns; an index object (`{ 0: { ... } }`) changes those entries. */
   suns?: SkyBoxOverrides['suns'];
+  /** As `suns`. A change to moons[0].texture reloads the sky box; one to its phase also sets
+   * the running phase. */
+  moons?: SkyBoxOverrides['moons'];
   ambientLight?: SkyBoxOverrides['ambientLight'];
   clouds?: SkyBoxOverrides['clouds'];
   ground?: SkyBoxOverrides['ground'];
@@ -171,10 +176,13 @@ export const getSceneDefaultSkyBoxId = (sceneId: string) => {
 export const _getSkyBoxRegistry = (): ReadonlyMap<string, ReadonlyMap<string, SkyBoxDef>> =>
   registry;
 
-/** Registry ids of the textures a scene's sky boxes use. */
+/** Registry ids of the textures a scene's sky boxes use (their bases' and moons'). */
 export const getSceneSkyBoxTextureIds = (sceneId: string) =>
   [...(registry.get(sceneId)?.values() || [])]
-    .map((def) => (def.base.type === 'COLOR' ? undefined : def.base.textureId))
+    .flatMap((def) => [
+      def.base.type === 'COLOR' ? undefined : def.base.textureId,
+      def.moons?.[0]?.texture?.textureId,
+    ])
     .filter((id): id is string => Boolean(id));
 
 // Activation
@@ -189,16 +197,21 @@ const resolveSkyBoxDef = (def: SkyBoxDef, sceneId: string): SkyBoxDef => {
   return overrides ? mergeSkyBoxDef(def, overrides) : def;
 };
 
-/** A definition with a change merged in. An index object merges into the suns array, and one
- * with no suns to merge into becomes the array (eg. a debug override turning suns[0] on). */
+/** An index object left where an array goes (nothing to merge into), as the array. */
+const toArray = <T extends object>(value: T[] | Record<string, T>): T[] => {
+  if (!isIndexObject(value)) return value as T[];
+  const entries: T[] = [];
+  for (const [index, entry] of Object.entries(value)) entries[Number(index)] = entry;
+  return Array.from(entries, (entry) => entry ?? ({} as T));
+};
+
+/** A definition with a change merged in. An index object merges into the suns (or moons)
+ * array, and one with none to merge into becomes the array (eg. a debug override turning
+ * suns[0] on). */
 const mergeSkyBoxDef = (def: SkyBoxDef, change: unknown): SkyBoxDef => {
   const merged = deepMerge(def, change);
-  if (isIndexObject(merged.suns)) {
-    const suns: SkyBoxSunDef[] = [];
-    for (const [index, sun] of Object.entries(merged.suns))
-      suns[Number(index)] = sun as SkyBoxSunDef;
-    merged.suns = Array.from(suns, (sun) => sun ?? {});
-  }
+  if (merged.suns) merged.suns = toArray(merged.suns);
+  if (merged.moons) merged.moons = toArray(merged.moons);
   return merged;
 };
 
@@ -233,17 +246,22 @@ const isBakeDynamic = (def: SkyBoxDef) => def.env?.dynamic ?? ENV_DEFAULTS.dynam
 type SkyBoxBuild = Pick<ActiveSkyBox, 'isComposite' | 'nodes' | 'textures'>;
 
 /** Builds a definition's nodes (and, on the composite path, its env bake, with a bake requested). */
-const buildNodes = (def: SkyBoxDef, u: SkyUniforms, texture: THREE.Texture | null): SkyBoxBuild => {
+const buildNodes = (
+  def: SkyBoxDef,
+  u: SkyUniforms,
+  texture: THREE.Texture | null,
+  moonTexture: THREE.Texture | null
+): SkyBoxBuild => {
   if (!hasProceduralLayer(def)) {
     disposeEnvBake();
     const layer = buildBaseLayer(def.base, u.base, texture);
     return {
       isComposite: false,
       nodes: { background: layer.backgroundNode, environment: layer.environmentNode },
-      textures: { source: layer.texture, environment: layer.environmentTexture },
+      textures: { source: layer.texture, environment: layer.environmentTexture, moon: null },
     };
   }
-  const sources = { basePMREM: texture ? getPMREMTexture(texture) : null };
+  const sources = { basePMREM: texture ? getPMREMTexture(texture) : null, moonTexture };
   const bake = setEnvBake(
     getEnvSize(def),
     buildSkyComposite(def, u, 'ENV_BAKE', sources, normalWorldGeometry)
@@ -254,7 +272,7 @@ const buildNodes = (def: SkyBoxDef, u: SkyUniforms, texture: THREE.Texture | nul
   return {
     isComposite: true,
     nodes: { background, environment: bake.environmentNode },
-    textures: { source: texture, environment: bake.target.texture },
+    textures: { source: texture, environment: bake.target.texture, moon: moonTexture },
   };
 };
 
@@ -284,7 +302,10 @@ const show = (next: ActiveSkyBox) => {
  * (a structural update of the same sky box); without it, the cycle starts from the definition. */
 const activate = async (sceneId: string, def: SkyBoxDef, time?: SkyTimeState) => {
   const seq = ++activationSeq;
-  const texture = await loadBaseTexture(def.base);
+  const [texture, moonTexture] = await Promise.all([
+    loadBaseTexture(def.base),
+    loadMoonTexture(def.moons?.[0]),
+  ]);
   if (seq !== activationSeq) return active; // Superseded by a later activation or clear
 
   if (isOn(def.clouds) && !isAtmosphereEnabled(def) && isDebugEnvironment()) {
@@ -295,7 +316,10 @@ const activate = async (sceneId: string, def: SkyBoxDef, time?: SkyTimeState) =>
       `Sky box "${def.id}": only suns[0] is drawn for now (p114 adds more), the others are ignored.`
     );
   }
-  const skyTime = time ?? createSkyTimeState(def.dayNight);
+  if ((def.moons?.length ?? 0) > 1 && isDebugEnvironment()) {
+    lwarn(`Sky box "${def.id}": only moons[0] is drawn for now, the others are ignored.`);
+  }
+  const skyTime = time ?? createSkyTimeState(def);
   const uniforms = createSkyUniforms(def, skyTime);
   show({
     id: def.id,
@@ -303,7 +327,7 @@ const activate = async (sceneId: string, def: SkyBoxDef, time?: SkyTimeState) =>
     def,
     uniforms,
     time: skyTime,
-    ...buildNodes(def, uniforms, texture),
+    ...buildNodes(def, uniforms, texture, moonTexture),
   });
   notify('activate');
   return active;
@@ -391,7 +415,7 @@ const isStructuralBaseUpdate = (current: SkyBoxBaseDef, update: SkyBoxUpdate['ba
 
 /**
  * Changes the active sky box (a no-op for any other id). A change to a structural key (for the
- * base: type, file, fileNames, path, textureId, texture, colorSpace, flipY) re-runs the
+ * base: type, file, fileNames, path, textureId, texture, colorSpace, flipY; moons[0].texture) re-runs the
  * activation; one that changes which nodes exist (on the composite path: env.size, or
  * env.backgroundRoughness crossing 0) rebuilds the nodes; any other change only writes uniforms
  * and scene properties, and (with env.dynamic) re-bakes the environment. Changes last until
@@ -403,18 +427,29 @@ export const updateSkyBox = async (id: string, update: SkyBoxUpdate) => {
   const def = mergeSkyBoxDef(current.def, update);
   if (update.dayNight) {
     if (isDayNightEnabled(def) && !isDayNightEnabled(current.def)) {
-      resetSkyTimeState(current.time, def.dayNight);
+      resetSkyTimeState(current.time, def);
     } else {
       applyDayNightChange(current.time, update.dayNight);
     }
   }
-  if (isStructuralBaseUpdate(current.def.base, update.base)) {
+  const moonPhase = def.moons?.[0]?.phase;
+  if (moonPhase !== undefined && moonPhase !== current.def.moons?.[0]?.phase) {
+    setSkyTimeMoonPhase(current.time, moonPhase);
+  }
+  if (
+    isStructuralBaseUpdate(current.def.base, update.base) ||
+    JSON.stringify(def.moons?.[0]?.texture) !== JSON.stringify(current.def.moons?.[0]?.texture)
+  ) {
     return activate(current.sceneId, def, current.time);
   }
 
   applySkyUniforms(current.uniforms, def, current.time);
   if (needsRebuild(current, def)) {
-    show({ ...current, def, ...buildNodes(def, current.uniforms, current.textures.source) });
+    show({
+      ...current,
+      def,
+      ...buildNodes(def, current.uniforms, current.textures.source, current.textures.moon),
+    });
   } else {
     show({ ...current, def });
     // The env layer is scene properties and the view's blur, none of it baked; turning
@@ -543,8 +578,10 @@ export const getSunElevation = (i = 0) => {
 // reverses. A cycle that keeps playing after a setTimeOfDay jump catches up within the rate
 // cap (bakeEnvironment() bakes on the next frame). env.dynamic: false turns all of it off.
 
-/** The sun's direction the last env bake saw (any bake), and when it ran (performance.now). */
+/** The sun's and moon's directions the last env bake saw (any bake), and when it ran
+ * (performance.now). */
 const lastBakeSunDir = new THREE.Vector3();
+const lastBakeMoonDir = new THREE.Vector3();
 let lastBakeTimeMs = -Infinity;
 /** Whether the time moved on the previous day-night step. */
 let wasTimeMoving = false;
@@ -553,9 +590,11 @@ let needsCatchUpBake = false;
 /** Any movement at all counts for the catch-up bake. */
 const CATCH_UP_ANGLE_COS = Math.cos(THREE.MathUtils.degToRad(0.01));
 
-/** Whether the sun has turned further from the last bake's direction than `angleCos` (a cosine). */
+/** Whether the sun or the moon has turned further from the last bake's direction than
+ * `angleCos` (a cosine). */
 const hasSkyTurnedSinceBake = (u: SkyUniforms, angleCos: number) =>
-  u.sun.direction.value.dot(lastBakeSunDir) < angleCos;
+  u.sun.direction.value.dot(lastBakeSunDir) < angleCos ||
+  u.moon.direction.value.dot(lastBakeMoonDir) < angleCos;
 
 const scheduleDayNightBake = (current: ActiveSkyBox, moved: boolean) => {
   const def = current.def;
@@ -578,7 +617,30 @@ const scheduleDayNightBake = (current: ActiveSkyBox, moved: boolean) => {
 const noteEnvBake = () => {
   if (!active) return;
   lastBakeSunDir.copy(active.uniforms.sun.direction.value);
+  lastBakeMoonDir.copy(active.uniforms.moon.direction.value);
   lastBakeTimeMs = performance.now();
+};
+
+/**
+ * The unit world direction toward a moon, into `out` (with day-night on, for the current time
+ * and phase). Only moons[0] until p114.
+ * @returns `out`, or null (no active sky box, or no such moon)
+ */
+export const getMoonDirection = (out: THREE.Vector3, i = 0) => {
+  const moon = active?.def.moons?.[0];
+  if (!active || i !== 0 || !moon) return null;
+  const { def, time } = active;
+  if (isDayNightEnabled(def)) {
+    return computeMoonDirection(def.dayNight, moon, time.timeOfDay, time.moonPhase, out);
+  }
+  return out.copy(active.uniforms.moon.direction.value);
+};
+
+/** A moon's phase in [0, 1) (0 new, 0.5 full): with day-night, the running one (a 'CYCLE' moon
+ * advances with the days). Null without an active sky box or such a moon. */
+export const getMoonPhase = (i = 0) => {
+  if (!active || i !== 0 || !active.def.moons?.[0]) return null;
+  return getMoonPhaseOf(active.def, active.time, isDayNightEnabled(active.def));
 };
 
 /** Last frame's getElapsedTime: the day-night step advances by the difference, which (unlike
@@ -602,12 +664,14 @@ const stepDayNight = (world: ECSWorld) => {
   const current = active;
   if (!current || !isDayNightEnabled(current.def) || isCurrentlyLoading()) return;
   const time = current.time;
-  if (isTimeSourceRunning(current.def) && advanceSkyTime(time, dt)) time.isDirty = true;
+  if (isTimeSourceRunning(current.def) && advanceSkyTime(time, dt, current.def)) {
+    time.isDirty = true;
+  }
   const moved = time.isDirty;
   if (moved) {
     time.isDirty = false;
     applySkyTimeUniforms(current.uniforms, current.def, time);
-    updateSkyLightsForSun(current.def, current.uniforms, world);
+    updateSkyLightsForTime(current.def, current.uniforms, world);
   }
   scheduleDayNightBake(current, moved);
   wasTimeMoving = moved;

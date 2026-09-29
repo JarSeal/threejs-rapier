@@ -14,8 +14,13 @@ import { BASE_DEFAULTS, ENV_DEFAULTS } from '../../SkyBox/layers/base';
 import { toSkyColor } from '../../SkyBox/skyColor';
 import { ATMOSPHERE_DEFAULTS } from '../../SkyBox/layers/atmosphere';
 import { SUN_DEFAULTS } from '../../SkyBox/layers/sun';
-import { AMBIENT_LIGHT_DEFAULTS, SUN_LIGHT_DEFAULTS } from '../../SkyBox/SkyLights';
+import {
+  AMBIENT_LIGHT_DEFAULTS,
+  MOON_LIGHT_DEFAULTS,
+  SUN_LIGHT_DEFAULTS,
+} from '../../SkyBox/SkyLights';
 import { CLOUDS_DEFAULTS } from '../../SkyBox/layers/clouds';
+import { MOON_DEFAULTS } from '../../SkyBox/layers/moon';
 import { GROUND_DEFAULTS } from '../../SkyBox/layers/ground';
 import { SHADOW_PRESETS } from '../../LightManager';
 import { getEnvSize } from '../../SkyBox/SkyComposite';
@@ -34,6 +39,8 @@ export type SkyBoxLayerKey =
   | 'atmosphere'
   | 'sun'
   | 'sunLight'
+  | 'moon'
+  | 'moonLight'
   | 'ambient'
   | 'clouds'
   | 'ground';
@@ -45,6 +52,8 @@ export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
   atmosphere: 'atmosphere',
   sun: 'suns.0',
   sunLight: 'suns.0.light',
+  moon: 'moons.0',
+  moonLight: 'moons.0.light',
   ambient: 'ambientLight',
   clouds: 'clouds',
   ground: 'ground',
@@ -56,13 +65,15 @@ const DEFAULTS_TREE = {
   env: ENV_DEFAULTS,
   atmosphere: ATMOSPHERE_DEFAULTS,
   suns: [{ ...SUN_DEFAULTS, light: SUN_LIGHT_DEFAULTS }],
+  moons: [{ ...MOON_DEFAULTS, light: MOON_LIGHT_DEFAULTS }],
   ambientLight: AMBIENT_LIGHT_DEFAULTS,
   clouds: CLOUDS_DEFAULTS,
   ground: GROUND_DEFAULTS,
 };
 
-/** A sun light's bias, normal bias and map size default to its shadow preset's. */
-const PRESET_KEY_PATH = /^(suns\.\d+\.light)\.(shadowBias|shadowNormalBias|shadowMapSize)$/;
+/** A sun or moon light's bias, normal bias and map size default to its shadow preset's. */
+const PRESET_KEY_PATH =
+  /^((?:suns|moons)\.\d+\.light)\.(shadowBias|shadowNormalBias|shadowMapSize)$/;
 const getPresetDefault = (def: SkyBoxDef | undefined, path: string) => {
   const match = PRESET_KEY_PATH.exec(path);
   if (!match) return undefined;
@@ -177,6 +188,8 @@ export const skyBoxProxy: Record<SkyBoxLayerKey, Obj> & { select: { skyBoxId: st
   atmosphere: {},
   sun: {},
   sunLight: {},
+  moon: {},
+  moonLight: {},
   ambient: {},
   clouds: {},
   ground: {},
@@ -225,6 +238,31 @@ const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
     'distance',
     'shadowFollow',
   ],
+  moon: [
+    'enabled',
+    'elevation',
+    'azimuth',
+    'discSize',
+    'intensity',
+    'limbDarkening',
+    'earthshine',
+    'phase',
+    'phaseMode',
+    'lunarCycleDays',
+    'inclination',
+  ],
+  moonLight: [
+    'enabled',
+    'intensity',
+    'castShadow',
+    'shadowPreset',
+    'shadowBias',
+    'shadowNormalBias',
+    'shadowMapSize',
+    'shadowFrustumSize',
+    'distance',
+    'shadowFollow',
+  ],
   ambient: ['enabled', 'type', 'intensity'],
   clouds: ['enabled', 'coverage', 'density', 'scale', 'speed', 'elevation'],
   ground: ['enabled', 'horizonBlend', 'height', 'useAtmosphereHorizon'],
@@ -232,6 +270,7 @@ const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
 /** 2-tuples, bound as `${key}0` and `${key}1`. */
 const TUPLE_KEYS: Partial<Record<SkyBoxLayerKey, string[]>> = {
   sunLight: ['horizonFade'],
+  moonLight: ['horizonFade'],
   clouds: ['windDirection'],
 };
 /** Read-only text bindings need a string, even when the definition has no value. */
@@ -239,6 +278,7 @@ const TEXT_KEYS = new Set(['type', 'file', 'path', 'textureId', 'colorSpace']);
 /** Colour keys, bound as '#rrggbb'. */
 const COLOR_KEYS: Partial<Record<SkyBoxLayerKey, string[]>> = {
   atmosphere: ['horizonTint', 'zenithTint'],
+  moon: ['color'],
   clouds: ['color'],
   ground: ['color'],
 };
@@ -248,6 +288,7 @@ const AUTO_COLOR_KEYS: Partial<Record<SkyBoxLayerKey, Record<string, string>>> =
   atmosphere: { nightSkyColor: '#0c0c0c' },
   sun: { color: '#fff4e0' },
   sunLight: { color: '#fff4e0' },
+  moonLight: { color: '#b8c6ff' },
   ambient: { skyColor: '#9ec9ff', groundColor: '#3b3a36' },
 };
 

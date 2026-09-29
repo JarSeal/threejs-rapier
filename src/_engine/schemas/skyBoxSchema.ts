@@ -181,6 +181,71 @@ export const SkyBoxSunSchema = z.object({
   light: SkyBoxSunLightSchema.optional(),
 });
 
+// Moon light: a managed directional light aimed like the moon (the sun light's settings)
+
+export const SkyBoxMoonLightSchema = SkyBoxSunLightSchema.extend({
+  /** Scaled by the moon's lit fraction, its horizon fade and the night (it's off by day).
+   * Default 0.3. */
+  intensity: z.number().min(0).optional(),
+  /** 'AUTO': a cool white (#b8c6ff) through the atmosphere's extinction along the moon.
+   * Default 'AUTO'. */
+  color: AutoOrColorSchema.optional(),
+  /** Changing it re-creates the light (one rebuild of every lit material). Default false: one
+   * shadow-casting sky light by default. */
+  castShadow: z.boolean().optional(),
+});
+
+// Moon layer (the disc, lit by the sun into its phase; moons[0] only until p114)
+
+const SkyBoxMoonTextureSchema = z
+  .object({
+    file: z.string().optional(),
+    path: z.string().optional(),
+    textureId: z.string().optional(),
+    /** Default 'srgb'. */
+    colorSpace: ColorSpaceSchema.optional(),
+    /** 'DISC': a picture of the moon's face as seen. 'EQUIRECTANGULAR': a map of the whole
+     * sphere, its centre facing the viewer. Default 'DISC'. */
+    projection: z.enum(['DISC', 'EQUIRECTANGULAR']).optional(),
+  })
+  .refine((texture) => Boolean(texture.file || texture.textureId), {
+    error: 'A moon texture needs a file or a textureId.',
+    path: ['file'],
+  });
+
+export const SkyBoxMoonSchema = z.object({
+  /** Default true. */
+  enabled: z.boolean().optional(),
+  /** Degrees above the horizon, without day-night (with it, the time and phase place the moon).
+   * Default 30. */
+  elevation: z.number().min(-90).max(90).optional(),
+  /** Degrees, as the sun's (0 = +z, 90 = +x, 180 = -z), without day-night. Default 0. */
+  azimuth: z.number().optional(),
+  /** Multiplier on the disc's angular radius (the sun disc's, 0.533°). Default 1. */
+  discSize: z.number().min(0).optional(),
+  /** The lit disc's radiance. Default 2. */
+  intensity: z.number().min(0).optional(),
+  /** Multiplies the disc (and its texture). Default white. */
+  color: ColorJSONSchema.optional(),
+  /** How much the disc darkens toward its rim, 0-1. Default 0.2. */
+  limbDarkening: z.number().min(0).max(1).optional(),
+  /** The unlit side's brightness, relative to the lit side. Default 0.02. */
+  earthshine: z.number().min(0).max(1).optional(),
+  /** Changing it reloads the sky box. Default: none (a plain disc). */
+  texture: SkyBoxMoonTextureSchema.optional(),
+  /** 0 = new, 0.25 = first quarter, 0.5 = full, 0.75 = last quarter. Default 0.5. */
+  phase: z.number().min(0).lt(1).optional(),
+  /** 'CYCLE': with day-night, the phase advances by 1 / lunarCycleDays per in-game day.
+   * Default 'FIXED'. */
+  phaseMode: z.enum(['FIXED', 'CYCLE']).optional(),
+  /** In-game days per lunar cycle. Default 29.53. */
+  lunarCycleDays: z.number().positive().optional(),
+  /** Degrees the moon's path is tilted from the sun's, with day-night. Default 5. */
+  inclination: z.number().min(0).max(90).optional(),
+  /** A directional light that follows the moon, at night. Default: none. */
+  light: SkyBoxMoonLightSchema.optional(),
+});
+
 // Ambient light: a managed hemisphere or ambient light that follows the sun. Off by default:
 // the environment bake already lights PBR materials (a hemisphere light adds to it); it's for
 // non-PBR materials (Lambert/Phong don't sample the environment) and stylized looks.
@@ -236,7 +301,7 @@ export const SkyBoxGroundSchema = z.object({
   useAtmosphereHorizon: z.boolean().optional(),
 });
 
-// Day-night cycle (p113): animates the sun from a time of day. Games drive it at runtime
+// Day-night cycle (p113): places the sun and moon from a time of day. Games drive it at runtime
 // (setTimeOfDay, playDayNight, ...); these are its values on activation.
 
 export const SkyBoxDayNightSchema = z.object({
@@ -284,18 +349,24 @@ const SkyBoxSunOverridesSchema = SkyBoxSunSchema.extend({
   light: SkyBoxSunLightSchema.partial().optional(),
 }).partial();
 
+const SkyBoxMoonOverridesSchema = SkyBoxMoonSchema.extend({
+  light: SkyBoxMoonLightSchema.partial().optional(),
+}).partial();
+
+/** An array replaces the definition's entries; an index object (`{ "0": { ... } }`) changes
+ * those entries only. */
+const indexedOverrides = <T extends z.ZodType>(entry: T) =>
+  z.union([z.array(entry), z.record(z.string().regex(/^(0|[1-9]\d*)$/), entry)]).optional();
+
 export const SkyBoxOverridesSchema = z.object({
   base: SkyBoxBaseOverridesSchema.optional(),
   env: SkyBoxEnvSchema.partial().optional(),
   atmosphere: SkyBoxAtmosphereSchema.partial().optional(),
   /** An array replaces the definition's suns; an index object (`{ "0": { ... } }`) changes
    * those entries only. */
-  suns: z
-    .union([
-      z.array(SkyBoxSunOverridesSchema),
-      z.record(z.string().regex(/^(0|[1-9]\d*)$/), SkyBoxSunOverridesSchema),
-    ])
-    .optional(),
+  suns: indexedOverrides(SkyBoxSunOverridesSchema),
+  /** As `suns`. */
+  moons: indexedOverrides(SkyBoxMoonOverridesSchema),
   ambientLight: SkyBoxAmbientLightSchema.partial().optional(),
   clouds: SkyBoxCloudsSchema.partial().optional(),
   ground: SkyBoxGroundSchema.partial().optional(),
@@ -323,11 +394,13 @@ export const SkyBoxDefSchema = z
     atmosphere: SkyBoxAtmosphereSchema.optional(),
     /** Only suns[0] is drawn until p114 (multiple suns); it also drives the atmosphere. */
     suns: z.array(SkyBoxSunSchema).optional(),
+    /** Only moons[0] is drawn until p114. */
+    moons: z.array(SkyBoxMoonSchema).optional(),
     ambientLight: SkyBoxAmbientLightSchema.optional(),
     /** Needs an enabled atmosphere. */
     clouds: SkyBoxCloudsSchema.optional(),
     ground: SkyBoxGroundSchema.optional(),
-    /** While on, suns[0]'s elevation and azimuth are derived from the time of day. */
+    /** While on, suns[0]'s and moons[0]'s positions are derived from the time of day. */
     dayNight: SkyBoxDayNightSchema.optional(),
     debugData: DebugDataSchema.optional(),
 

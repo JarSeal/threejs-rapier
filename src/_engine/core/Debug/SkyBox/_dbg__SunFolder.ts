@@ -3,7 +3,7 @@ import { getActiveSkyBox } from '../../SkyBox/SkyBox';
 import { isDayNightEnabled } from '../../SkyBox/SkyComposite';
 import { resetSkyBoxLayer, setSkyBoxParam, skyBoxProxy } from './_dbg__SkyBoxShared';
 import { buildAutoColorItems, numberParam } from './_dbg__LayerFolderItems';
-import { buildSunLightFolder } from './_dbg__SunLightFolder';
+import { buildDiscLightFolder } from './_dbg__DiscLightFolder';
 
 const isOff = () => !skyBoxProxy.sun.enabled;
 /** With day-night on, the time of day places the sun (the Day-night folder, p113 Phase 5). */
@@ -41,7 +41,7 @@ export const buildSunFolder = (): DebuggerPaneItem => {
       param('glowSize', 'Glow size (deg)', 0.1, 90, 0.1, isOff),
       ...buildAutoColorItems(target, 'sun', 'color', 'Color', isOff),
       // Its own reset: "Reset layer" below resets the whole sun, light included
-      buildSunLightFolder(),
+      buildDiscLightFolder('sunLight'),
       { type: 'button', title: 'Reset layer', onClick: () => resetSkyBoxLayer('sun') },
     ],
   };

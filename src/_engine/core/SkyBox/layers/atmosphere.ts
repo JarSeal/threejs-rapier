@@ -98,6 +98,11 @@ export const createAtmosphereUniforms = (): AtmosphereUniforms => ({
   extinctionAtSun: new THREE.Vector3(1, 1, 1),
 });
 
+/** SkyMesh's day factor (its clouds' daylight, :351): 0 with the sun well below the horizon, 1
+ * from ~17° up. The clouds, the ground and the moon light share it. */
+export const getDayFactor = (sunDirection: THREE.Vector3) =>
+  THREE.MathUtils.smoothstep(sunDirection.y, -0.08, 0.3);
+
 /** SkyMesh's optical length factor for a direction's height (:243-244). */
 const opticalLengthFactor = (dirY: number) => {
   const zenithAngle = Math.acos(Math.max(0, dirY));
@@ -119,6 +124,24 @@ export const computeExtinction = (
     Math.exp(-(betaR.y * sR + betaM.y * sM)),
     Math.exp(-(betaR.z * sR + betaM.z * sM))
   );
+};
+
+const _zenithFex = new THREE.Vector3();
+
+/**
+ * The extinction along a direction of height `dirY` relative to the zenith's, into `out`: 1 at
+ * the zenith, redder (and dimmer) toward the horizon. A colour times it is seen as given
+ * overhead (the moon light's AUTO colour, and the clouds' moonlight).
+ */
+export const computeRelativeExtinction = (
+  dirY: number,
+  betaR: THREE.Vector3,
+  betaM: THREE.Vector3,
+  out: THREE.Vector3
+) => {
+  computeExtinction(1, betaR, betaM, _zenithFex);
+  computeExtinction(dirY, betaR, betaM, out);
+  return out.set(out.x / _zenithFex.x, out.y / _zenithFex.y, out.z / _zenithFex.z);
 };
 
 /**

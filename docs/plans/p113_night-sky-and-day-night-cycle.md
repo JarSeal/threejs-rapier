@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–2 implemented
+Status: in progress | Phases 1–3 implemented
 Category: Skybox, Rendering
 Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md
 Blocks: p114_space-preset-and-nebula-creator.md (its space layers reuse the stars layer and sidereal rotation)
@@ -189,3 +189,16 @@ Where the implementation differs from the plan above (2026-09-30). The code is t
   - The stats panel's GPU graph shows a small gap about once a second at ×100. Most likely the timer, not stutter: the bake stats resolve the timestamps once after each bake, and every resolve takes the whole batch, so stats-gl misses that frame (see the header of `_dbg__GPUTimer.ts`). With a bake every frame the graph is steady.
   - **No iGPU was measured.** `env.size` stays 128 with day-night, as p110's insurance, until one is.
 - **The p112 measuring toggles are removed** ("Force composite path", "Re-bake every frame"), as planned. The bake stats and "Re-bake now" stay.
+
+### Phase 3: moon and moon light
+
+- **Without day-night, the moon has its own `elevation`/`azimuth`** (defaults 30° and 0, as the sun's convention). The plan only places it from the time; a static night sky still needs a moon.
+- **The disc's lit direction is the moon's direction turned toward the sun by the phase's elongation, folded into [0, π]** (the short way). Any phase then shows as given, with the lit side toward the sun, in both modes; unfolded, 0.75 was lit on the side away from the sun. The lit fraction is the plan's `(1 − cos 2π·phase) / 2`.
+- **Declination:** `(axialTilt + inclination) · sin(λ_sun + 2π·phase)`, the orbit's node fixed where the tilts add. A full moon runs low in summer and high in winter. At the June solstice, 45° N, it rises between 20:00 and 20:30 as the sun sets.
+- **No branch in the disc shader.** `fwidth` and the texture sample need uniform control flow on WebGPU, so the disc is computed for every sky pixel and masked; it's a few dot products.
+- **The AUTO moonlight colour uses the extinction relative to the zenith's** (`computeRelativeExtinction`): `#b8c6ff` overhead, warmer toward the horizon. The absolute extinction, normalized as the sun's, is warm even at the zenith, so the colour never showed.
+- **The clouds' moonlight** is `0.06 × moon intensity × lit fraction`, faded below the horizon and by day, in the moonlight colour. Tune it with the showcase in Phase 5.
+- **Sun and moon lights share one code path** (`DiscKind` in `SkyLights.ts`), and the Sun and Moon folders share one light folder (`_dbg__DiscLightFolder.ts`, instead of a separate `_dbg__MoonLightFolder.ts`). The Moon folder came in this phase, with its layer, as p112 did per layer.
+- **A moon texture** (`moons[0].texture`, 'DISC' or 'EQUIRECTANGULAR') loads with the base texture; changing it re-activates the sky box. `getSceneSkyBoxTextureIds` includes its `textureId`.
+- **Checked:** phases 0, 0.25, 0.5 and 0.75; the moon light 0 by day and `0.3 × lit fraction` at night; the pipeline count stable (20) across the day/night switch; the texture's orientation (a UV checker, both projections).
+- **Debug-only artifact:** the Lights debug tooling draws a `DirectionalLightSymbol` icon at each directional light. The sky lights sit 100 units along their direction from the camera, so the icon covers the moon (and the sun) disc in debug mode. It predates p113 for the sun.

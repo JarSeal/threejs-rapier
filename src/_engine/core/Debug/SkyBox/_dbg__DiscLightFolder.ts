@@ -1,20 +1,22 @@
 import type { DebuggerPaneItem } from '../../../debug/DebuggerGUI';
 import { FOUR_PX_TO_8K_LIST } from '../../../utils/constants';
-import { setSkyBoxParam, skyBoxProxy } from './_dbg__SkyBoxShared';
+import { LAYER_PATHS, setSkyBoxParam, skyBoxProxy } from './_dbg__SkyBoxShared';
 import { buildAutoColorItems, numberParam, tupleParams } from './_dbg__LayerFolderItems';
 
-const isOff = () => !skyBoxProxy.sunLight.enabled;
 const PRESET_OPTIONS = ['LOW', 'MEDIUM', 'HIGH', 'ULTRA'].map((value) => ({ text: value, value }));
 const MAP_SIZE_OPTIONS = FOUR_PX_TO_8K_LIST.filter((option) => option.value >= 256);
 
-/** The primary sun's managed directional light (a subfolder of the Sun folder). */
-export const buildSunLightFolder = (): DebuggerPaneItem => {
-  const target = skyBoxProxy.sunLight;
+/** A sun's or moon's managed directional light (a subfolder of the Sun or Moon folder). */
+export const buildDiscLightFolder = (layer: 'sunLight' | 'moonLight'): DebuggerPaneItem => {
+  const target = skyBoxProxy[layer];
+  const path = LAYER_PATHS[layer];
+  const name = layer === 'sunLight' ? 'sun' : 'moon';
+  const isOff = () => !target.enabled;
   const param = (key: string, label: string, min: number, max: number, step: number) =>
-    numberParam(target, 'sunLight', key, label, { min, max, step, disabled: isOff });
+    numberParam(target, layer, key, label, { min, max, step, disabled: isOff });
   return {
     type: 'folder',
-    id: 'sunLight',
+    id: layer,
     title: 'Light',
     content: [
       {
@@ -22,11 +24,11 @@ export const buildSunLightFolder = (): DebuggerPaneItem => {
         target,
         label: 'Enabled',
         onChange: (value, e) =>
-          setSkyBoxParam('suns.0.light.enabled', 'sun light enabled', Boolean(value), e),
+          setSkyBoxParam(`${path}.enabled`, `${name} light enabled`, Boolean(value), e),
       },
       param('intensity', 'Intensity', 0, 20, 0.01),
-      ...buildAutoColorItems(target, 'sunLight', 'color', 'Color', isOff),
-      ...tupleParams(target, 'sunLight', 'horizonFade', ['Fade starts (deg)', 'Faded out (deg)'], {
+      ...buildAutoColorItems(target, layer, 'color', 'Color', isOff),
+      ...tupleParams(target, layer, 'horizonFade', ['Fade starts (deg)', 'Faded out (deg)'], {
         min: -20,
         max: 30,
         step: 0.1,
@@ -38,7 +40,7 @@ export const buildSunLightFolder = (): DebuggerPaneItem => {
         label: 'Cast shadow (rebuilds materials)',
         disabled: isOff,
         onChange: (value, e) =>
-          setSkyBoxParam('suns.0.light.castShadow', 'cast shadow', Boolean(value), e),
+          setSkyBoxParam(`${path}.castShadow`, 'cast shadow', Boolean(value), e),
       },
       {
         key: 'shadowPreset',
@@ -46,8 +48,7 @@ export const buildSunLightFolder = (): DebuggerPaneItem => {
         label: 'Shadow preset',
         options: PRESET_OPTIONS,
         disabled: isOff,
-        onChange: (value, e) =>
-          setSkyBoxParam('suns.0.light.shadowPreset', 'shadow preset', value, e),
+        onChange: (value, e) => setSkyBoxParam(`${path}.shadowPreset`, 'shadow preset', value, e),
       },
       {
         key: 'shadowMapSize',
@@ -56,7 +57,7 @@ export const buildSunLightFolder = (): DebuggerPaneItem => {
         options: MAP_SIZE_OPTIONS,
         disabled: isOff,
         onChange: (value, e) =>
-          setSkyBoxParam('suns.0.light.shadowMapSize', 'shadow map size', Number(value), e),
+          setSkyBoxParam(`${path}.shadowMapSize`, 'shadow map size', Number(value), e),
       },
       param('shadowBias', 'Shadow bias', -0.01, 0.01, 0.00001),
       param('shadowNormalBias', 'Shadow normal bias', 0, 0.5, 0.001),
@@ -71,8 +72,7 @@ export const buildSunLightFolder = (): DebuggerPaneItem => {
           { text: 'Origin', value: 'ORIGIN' },
         ],
         disabled: isOff,
-        onChange: (value, e) =>
-          setSkyBoxParam('suns.0.light.shadowFollow', 'shadow follow', value, e),
+        onChange: (value, e) => setSkyBoxParam(`${path}.shadowFollow`, 'shadow follow', value, e),
       },
     ],
   };

@@ -501,6 +501,227 @@
         "additionalProperties": false
       }
     },
+    "moons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "elevation": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "azimuth": {
+            "type": "number"
+          },
+          "discSize": {
+            "type": "number",
+            "minimum": 0
+          },
+          "intensity": {
+            "type": "number",
+            "minimum": 0
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "r": {
+                    "type": "number"
+                  },
+                  "g": {
+                    "type": "number"
+                  },
+                  "b": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "r",
+                  "g",
+                  "b"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "limbDarkening": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "earthshine": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "texture": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "textureId": {
+                "type": "string"
+              },
+              "colorSpace": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": ""
+                  },
+                  {
+                    "type": "string",
+                    "const": "srgb"
+                  },
+                  {
+                    "type": "string",
+                    "const": "srgb-linear"
+                  }
+                ]
+              },
+              "projection": {
+                "type": "string",
+                "enum": [
+                  "DISC",
+                  "EQUIRECTANGULAR"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "phase": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMaximum": 1
+          },
+          "phaseMode": {
+            "type": "string",
+            "enum": [
+              "FIXED",
+              "CYCLE"
+            ]
+          },
+          "lunarCycleDays": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "inclination": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 90
+          },
+          "light": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "intensity": {
+                "type": "number",
+                "minimum": 0
+              },
+              "color": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "AUTO"
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "r": {
+                            "type": "number"
+                          },
+                          "g": {
+                            "type": "number"
+                          },
+                          "b": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "r",
+                          "g",
+                          "b"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                ]
+              },
+              "castShadow": {
+                "type": "boolean"
+              },
+              "shadowPreset": {
+                "type": "string",
+                "enum": [
+                  "LOW",
+                  "MEDIUM",
+                  "HIGH",
+                  "ULTRA"
+                ]
+              },
+              "shadowBias": {
+                "type": "number"
+              },
+              "shadowNormalBias": {
+                "type": "number"
+              },
+              "shadowMapSize": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "shadowFrustumSize": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "distance": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "shadowFollow": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE_CAMERA",
+                  "ORIGIN"
+                ]
+              },
+              "horizonFade": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "ambientLight": {
       "type": "object",
       "properties": {
@@ -1314,6 +1535,456 @@
                             ]
                           }
                         ]
+                      },
+                      "light": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "intensity": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "color": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "const": "AUTO"
+                              },
+                              {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "r": {
+                                        "type": "number"
+                                      },
+                                      "g": {
+                                        "type": "number"
+                                      },
+                                      "b": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "r",
+                                      "g",
+                                      "b"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "castShadow": {
+                            "type": "boolean"
+                          },
+                          "shadowPreset": {
+                            "type": "string",
+                            "enum": [
+                              "LOW",
+                              "MEDIUM",
+                              "HIGH",
+                              "ULTRA"
+                            ]
+                          },
+                          "shadowBias": {
+                            "type": "number"
+                          },
+                          "shadowNormalBias": {
+                            "type": "number"
+                          },
+                          "shadowMapSize": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "shadowFrustumSize": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "distance": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "shadowFollow": {
+                            "type": "string",
+                            "enum": [
+                              "ACTIVE_CAMERA",
+                              "ORIGIN"
+                            ]
+                          },
+                          "horizonFade": {
+                            "type": "array",
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              ]
+            },
+            "moons": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "elevation": {
+                        "type": "number",
+                        "minimum": -90,
+                        "maximum": 90
+                      },
+                      "azimuth": {
+                        "type": "number"
+                      },
+                      "discSize": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "r": {
+                                "type": "number"
+                              },
+                              "g": {
+                                "type": "number"
+                              },
+                              "b": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "r",
+                              "g",
+                              "b"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "limbDarkening": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "earthshine": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "texture": {
+                        "type": "object",
+                        "properties": {
+                          "file": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "textureId": {
+                            "type": "string"
+                          },
+                          "colorSpace": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "const": ""
+                              },
+                              {
+                                "type": "string",
+                                "const": "srgb"
+                              },
+                              {
+                                "type": "string",
+                                "const": "srgb-linear"
+                              }
+                            ]
+                          },
+                          "projection": {
+                            "type": "string",
+                            "enum": [
+                              "DISC",
+                              "EQUIRECTANGULAR"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "phase": {
+                        "type": "number",
+                        "minimum": 0,
+                        "exclusiveMaximum": 1
+                      },
+                      "phaseMode": {
+                        "type": "string",
+                        "enum": [
+                          "FIXED",
+                          "CYCLE"
+                        ]
+                      },
+                      "lunarCycleDays": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "inclination": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 90
+                      },
+                      "light": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "intensity": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "color": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "const": "AUTO"
+                              },
+                              {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "r": {
+                                        "type": "number"
+                                      },
+                                      "g": {
+                                        "type": "number"
+                                      },
+                                      "b": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "r",
+                                      "g",
+                                      "b"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "castShadow": {
+                            "type": "boolean"
+                          },
+                          "shadowPreset": {
+                            "type": "string",
+                            "enum": [
+                              "LOW",
+                              "MEDIUM",
+                              "HIGH",
+                              "ULTRA"
+                            ]
+                          },
+                          "shadowBias": {
+                            "type": "number"
+                          },
+                          "shadowNormalBias": {
+                            "type": "number"
+                          },
+                          "shadowMapSize": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "shadowFrustumSize": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "distance": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "shadowFollow": {
+                            "type": "string",
+                            "enum": [
+                              "ACTIVE_CAMERA",
+                              "ORIGIN"
+                            ]
+                          },
+                          "horizonFade": {
+                            "type": "array",
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9]\\d*)$"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "elevation": {
+                        "type": "number",
+                        "minimum": -90,
+                        "maximum": 90
+                      },
+                      "azimuth": {
+                        "type": "number"
+                      },
+                      "discSize": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "r": {
+                                "type": "number"
+                              },
+                              "g": {
+                                "type": "number"
+                              },
+                              "b": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "r",
+                              "g",
+                              "b"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "limbDarkening": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "earthshine": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "texture": {
+                        "type": "object",
+                        "properties": {
+                          "file": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "textureId": {
+                            "type": "string"
+                          },
+                          "colorSpace": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "const": ""
+                              },
+                              {
+                                "type": "string",
+                                "const": "srgb"
+                              },
+                              {
+                                "type": "string",
+                                "const": "srgb-linear"
+                              }
+                            ]
+                          },
+                          "projection": {
+                            "type": "string",
+                            "enum": [
+                              "DISC",
+                              "EQUIRECTANGULAR"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "phase": {
+                        "type": "number",
+                        "minimum": 0,
+                        "exclusiveMaximum": 1
+                      },
+                      "phaseMode": {
+                        "type": "string",
+                        "enum": [
+                          "FIXED",
+                          "CYCLE"
+                        ]
+                      },
+                      "lunarCycleDays": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "inclination": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 90
                       },
                       "light": {
                         "type": "object",

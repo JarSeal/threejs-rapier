@@ -26,7 +26,7 @@ export const SUN_DEFAULTS = {
 /** SkyMesh's disc (:230, :275-276): it compares the angle to the sun against 0.533° (its
  * comment says the angular diameter, but it's used as the radius), with this edge sharpness and
  * scale. */
-const DISC_RADIUS = Math.acos(0.9999566769464484);
+export const SUN_DISC_RADIUS = Math.acos(0.9999566769464484);
 const DISC_EDGE = 50000;
 const DISC_SCALE = 760;
 /** The env bake's disc: at most this bright (GGX fireflies, p110 §0.2), and at least this many
@@ -97,7 +97,7 @@ export const applySunUniforms = (
   atmosphere: AtmosphereUniforms | null,
   envSize: SkyBoxEnvSize
 ) => {
-  const radius = DISC_RADIUS * (sun?.discSize ?? SUN_DEFAULTS.discSize);
+  const radius = SUN_DISC_RADIUS * (sun?.discSize ?? SUN_DEFAULTS.discSize);
   u.discCos.value = Math.cos(radius);
   u.envDiscCos.value = Math.cos(Math.max(radius, (ENV_DISC_MIN_TEXELS * Math.PI) / 2 / envSize));
 

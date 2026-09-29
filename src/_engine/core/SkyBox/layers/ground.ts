@@ -9,6 +9,7 @@ import * as THREE from 'three/webgpu';
 import { float, mix, smoothstep, uniform } from 'three/tsl';
 import type { SkyBoxGroundDef } from '../SkyBoxTypes';
 import { toSkyColor } from '../skyColor';
+import { getDayFactor } from './atmosphere';
 
 export const GROUND_STRUCTURAL_KEYS = ['enabled'] as const;
 
@@ -64,9 +65,7 @@ export const applyGroundSunUniforms = (
   hasAtmosphere: boolean,
   sunDirection: THREE.Vector3
 ) => {
-  u.light.value = hasAtmosphere
-    ? Math.max(THREE.MathUtils.smoothstep(sunDirection.y, -0.08, 0.3), 0.03)
-    : 1;
+  u.light.value = hasAtmosphere ? Math.max(getDayFactor(sunDirection), 0.03) : 1;
 };
 
 /** The ground over `behind` (everything above it, seen below the horizon too). */

@@ -3,7 +3,7 @@
  * License, Copyright © 2010-2026 three.js authors): gradient noise, 4-octave fbm, Beer-powder
  * self-shadowing and a silver lining, composited through the atmosphere so distant clouds
  * dissolve into haze. They need the atmosphere (they are lit by its sun and seen through its
- * extinction), and are lit by the primary sun (p113 adds moonlight).
+ * extinction), and are lit by the primary sun and, at night, by the moon.
  *
  * Differences from SkyMesh: a `color` tint and a `windDirection` (SkyMesh scrolls along
  * (1, 1), the default here); the dayFactor and the horizon fade width are computed on the CPU;
@@ -36,10 +36,13 @@ import type { SkyCompositeMode } from '../SkyComposite';
 import { toSkyColor } from '../skyColor';
 import {
   composeAtmosphere,
+  computeRelativeExtinction,
+  getDayFactor,
   type AtmosphereParts,
   type AtmosphereTerms,
   type AtmosphereUniforms,
 } from './atmosphere';
+import { MOONLIGHT_COLOR, type MoonUniforms } from './moon';
 
 export const CLOUDS_STRUCTURAL_KEYS = ['enabled'] as const;
 
@@ -69,6 +72,8 @@ export type CloudsUniforms = {
   dayFactor: THREE.UniformNode<'float', number>;
   /** The env bake's frozen time (the view uses three's `time`); set before each bake. */
   bakeTime: THREE.UniformNode<'float', number>;
+  /** The moonlight on the clouds (black by day, or without a moon). */
+  moonLight: THREE.UniformNode<'color', THREE.Color>;
 };
 
 export const createCloudsUniforms = (): CloudsUniforms => ({
@@ -82,6 +87,7 @@ export const createCloudsUniforms = (): CloudsUniforms => ({
   windDirection: uniform(new THREE.Vector2(1, 1)),
   dayFactor: uniform(1),
   bakeTime: uniform(0),
+  moonLight: uniform(new THREE.Color(0, 0, 0)),
 });
 
 export const applyCloudsUniforms = (
@@ -104,7 +110,43 @@ export const applyCloudsUniforms = (
 
 /** Writes the sun-dependent day factor (the day-night step, every time the sun moves). */
 export const applyCloudsSunUniforms = (u: CloudsUniforms, sunDirection: THREE.Vector3) => {
-  u.dayFactor.value = THREE.MathUtils.smoothstep(sunDirection.y, -0.08, 0.3);
+  u.dayFactor.value = getDayFactor(sunDirection);
+};
+
+/** The clouds' moonlight per unit of moon radiance: faint, it only shows at night. */
+const MOONLIGHT_SCALE = 0.06;
+/** Moon heights (direction y) where its light on the clouds starts and is full. */
+const MOON_HORIZON_FADE: [number, number] = [-0.05, 0.1];
+const _fex = new THREE.Vector3();
+
+/**
+ * Writes the clouds' moonlight: the moon's radiance times its lit fraction, faded below the
+ * horizon and by day, through the extinction along it (relative to the zenith's). The day-night step calls it every time
+ * the sky moves: it allocates nothing.
+ * @param moon the moon's uniforms (position written), null without a moon
+ * @param atmosphere the atmosphere's uniforms (clouds always have one)
+ */
+export const applyCloudsMoonUniforms = (
+  u: CloudsUniforms,
+  moon: MoonUniforms | null,
+  atmosphere: AtmosphereUniforms,
+  sunDirection: THREE.Vector3
+) => {
+  if (!moon) {
+    u.moonLight.value.setRGB(0, 0, 0);
+    return;
+  }
+  const moonY = moon.direction.value.y;
+  const fade =
+    THREE.MathUtils.smoothstep(moonY, MOON_HORIZON_FADE[0], MOON_HORIZON_FADE[1]) *
+    (1 - getDayFactor(sunDirection));
+  const strength = MOONLIGHT_SCALE * moon.radiance.value * moon.illuminatedFraction * fade;
+  const { betaR, betaM } = atmosphere;
+  const fex = computeRelativeExtinction(moonY, betaR.value, betaM.value, _fex);
+  u.moonLight.value.copy(MOONLIGHT_COLOR).multiply(moon.color.value).multiplyScalar(strength);
+  u.moonLight.value.r *= fex.x;
+  u.moonLight.value.g *= fex.y;
+  u.moonLight.value.b *= fex.z;
 };
 
 // SkyMesh's noise (:280-323)
@@ -203,6 +245,8 @@ export const cloudsNode = (
       const cloudColor = skyAmbient.add(sunColor.mul(shade)).toVar();
       cloudColor.addAssign(sunColor.mul(silver).mul(edge).mul(0.6));
       cloudColor.mulAssign(max(u.dayFactor, 0.03));
+      // Moonlight (0 by day), with the same self-shadowing
+      cloudColor.addAssign(u.moonLight.mul(shade));
       cloudColor.mulAssign(u.color.mul(atmosphere.exposure));
 
       // Opacity via Beer's law: density sets how solid the clouds get

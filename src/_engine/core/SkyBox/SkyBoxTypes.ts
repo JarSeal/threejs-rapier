@@ -9,6 +9,8 @@ import type {
   SkyBoxCloudsSchema,
   SkyBoxDayNightSchema,
   SkyBoxGroundSchema,
+  SkyBoxMoonLightSchema,
+  SkyBoxMoonSchema,
   SkyBoxDefSchema,
   SkyBoxEnvSchema,
   SkyBoxEnvSizeSchema,
@@ -40,6 +42,15 @@ export type SkyBoxSunDef = z.input<typeof SkyBoxSunSchema>;
 
 /** A sun's managed directional light. */
 export type SkyBoxSunLightDef = z.input<typeof SkyBoxSunLightSchema>;
+
+/** A moon layer: its disc, lit into its phase. */
+export type SkyBoxMoonDef = z.input<typeof SkyBoxMoonSchema>;
+
+/** A moon's managed directional light. */
+export type SkyBoxMoonLightDef = z.input<typeof SkyBoxMoonLightSchema>;
+
+/** The moon's texture. */
+export type SkyBoxMoonTextureDef = NonNullable<SkyBoxMoonDef['texture']>;
 
 /** The clouds layer (needs the atmosphere). */
 export type SkyBoxCloudsDef = z.input<typeof SkyBoxCloudsSchema>;
