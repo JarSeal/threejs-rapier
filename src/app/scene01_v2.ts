@@ -14,6 +14,8 @@ import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { llog } from '../_engine/utils/Logger';
 
 export const SCENE01_ID = 'testScene1';
+/** The id in scene01_v2.scene.json (SCENE01_ID above is only the scene fn's resolve value). */
+const SCENE01_V2_SCENE_ID = 'scene01V2';
 
 export const scene = async () =>
   new Promise(async (resolve) => {
@@ -282,10 +284,11 @@ export const scene = async () =>
       { appId: 'sensorTest' }
     );
 
+    // Pass the scene id: while a scene loads there is no current scene to default to
     createSceneAppLooper(() => {
       sphere.rotation.y -= transformAppSpeedValue(2);
       sphere.rotation.z -= transformAppSpeedValue(2);
-    });
+    }, SCENE01_V2_SCENE_ID);
 
     updateLoaderFn({ loadedCount: 2, totalCount: 2 });
 
