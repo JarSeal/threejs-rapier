@@ -1,4 +1,4 @@
-Status: draft | feasibility study — not-implemented
+Status: feasibility study done — go, with adjusted re-bake defaults (see Implementation notes → Phase 0 spike results) | implementation in p111–p115
 Category: Skybox, Refactor, Rendering
 Blocks: p111_skybox-core-refactor-and-layered-schema.md, p112_procedural-sky-atmosphere-sun-and-env-bake.md, p113_night-sky-and-day-night-cycle.md, p114_space-preset-and-nebula-creator.md, p115_debug-environment-ball-viewport.md
 Related: \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (the env ball viewport builds on it), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed: the SkyBox and Debug Tools tabs are already on `createDebuggerTab` and the pane builder)
@@ -129,17 +129,17 @@ Everything below was checked against `node_modules/three` **0.186.1** and the cu
 
 ### 0.3 PMREM re-bake cost and the chosen strategy
 
-| `env.size` | LODs | `render()` calls per bake | GGX texel fetches (≈) | Estimated GPU time                     |
-| ---------- | ---- | ------------------------- | --------------------- | -------------------------------------- |
-| 256        | 11   | 26 (6 faces + 20 GGX)     | ~36 M                 | ~0.5–1.5 ms desktop dGPU, ~2–5 ms iGPU |
-| 128        | 10   | 24                        | ~9 M                  | ~0.2–0.5 ms dGPU, ~0.8–1.5 ms iGPU     |
-| 64         | 9    | 22                        | ~2.3 M                | draw-call bound, ~0.2–0.5 ms           |
+| `env.size` | LODs | `render()` calls per bake (measured) | GGX texel fetches (≈) | Estimated GPU time (first draft)       | Measured GPU time (RX 7900 XT, WebGPU) |
+| ---------- | ---- | ------------------------------------ | --------------------- | -------------------------------------- | -------------------------------------- |
+| 256        | 11   | 27 (1 clear + 6 faces + 20 GGX)      | ~36 M                 | ~0.5–1.5 ms desktop dGPU, ~2–5 ms iGPU | 2.07–2.37 ms                           |
+| 128        | 10   | 25                                   | ~9 M                  | ~0.2–0.5 ms dGPU, ~0.8–1.5 ms iGPU     | 1.94–2.15 ms                           |
+| 64         | 9    | 23                                   | ~2.3 M                | draw-call bound, ~0.2–0.5 ms           | 1.85–1.90 ms                           |
 
 - **Where the counts come from.**
   - `LOD_MIN = 4`, `EXTRA_LODS = 6` and `GGX_SAMPLES = 256` (`PMREMGenerator.js:33-44`).
   - Each GGX step is two draws: filter into the ping-pong target, then copy back (`:620-666`).
   - The fetch counts sum 256 samples over each filtered level. The largest level at size 256 is 384×256 texels.
-- **The times are estimates**, which the Phase 0 spike replaces with measurements.
+- **The first-draft times were estimates. The spike measured them** (Implementation notes → Phase 0 spike results): the cost is **per pass (~80 µs each), not per texel**. The six face renders (the atmosphere shader) take ~0.04 ms; the GGX filter passes take the rest. Size barely changes the cost, so only the bake rate is a real lever.
 
 Options compared:
 
@@ -147,10 +147,11 @@ Options compared:
 - **Amortized bake (faces over frames).** `_sceneToCubeUV` and `_applyPMREM` are private and run back to back, so time-slicing means forking PMREMGenerator. That is fragile across three upgrades. **Rejected.**
 - **Throttled full bakes into a fixed-size target. Chosen.** A bake writes the same target within one frame's command stream, so no double buffering is needed.
   - **Event-driven.** A `dirty` flag is set by any change to layer uniforms or structure, and consumed at most once per frame by `skyBoxSystem`. Debug slider drags therefore cost at most one bake per frame, and zero once released.
-  - **During day-night (p113).** Re-bake only when the sun or moon direction has moved more than `env.updateAngleDeg` (default **1°**) since the last bake, **and** at least `1 / env.maxUpdatesPerSec` has passed (default **4/s**). Do one final bake when the cycle pauses.
-    - With the default 20-minute cycle the sun moves 0.3°/s, which gives one bake every ~3.3 s.
-    - At 100× fast-forward the 4/s cap applies.
-  - **Size.** `env.size` defaults to 256, or **128 when day-night is enabled**. It is fixed for the skybox's lifetime (see 0.2).
+  - **During day-night (p113).** Re-bake only when the sun or moon direction has moved more than `env.updateAngleDeg` (default **1°**) since the last bake, **and** at least `1 / env.maxUpdatesPerSec` has passed (default **1/s**, lowered from the first draft's 4/s by the spike). Do one final bake when the cycle pauses.
+    - With the default 20-minute cycle the sun moves 0.3°/s, which gives one bake (~2 ms) every ~3.3 s.
+    - At 100× fast-forward the 1/s cap applies: one ~2 ms bake per second.
+  - **Size.** `env.size` defaults to 256, or **128 when day-night is enabled**. It is fixed for the skybox's lifetime (see 0.2). The spike showed size buys almost no GPU time on a dGPU; the 128 default for day-night stays only as insurance until an iGPU is measured (p113 Phase 2), since a weak GPU may be fetch-bound where a dGPU is not.
+  - **A size change needs a new env node.** Swapping `.value` of the same `pmremTexture` node to the new target left stale texture bindings on WebGL2 (the spike). A size change is structural: new target, new node, one material rebuild.
   - **Generator.** A dedicated long-lived `PMREMGenerator` is used for dynamic bakes, and disposed on `clearSkyBox`. The existing create-bake-dispose generator in `getPMREMTexture` stays for texture PMREMs. It is right for one-off bakes and wrong for repeated ones, because it would reallocate the working set every time.
   - **Escape hatch.** With `env.dynamic: false`, bakes happen only on activation, on structural changes and on explicit `bakeEnvironment()`. The background and lights still animate; only reflections lag.
 - **How the spike measures it.** It reuses the WebGPU timestamp-query code in `core/Debug/_dbg__PostFXProfiler.ts:243, 341-360` (`backend.trackTimestamp`, `resolveTimestampsAsync(TimestampQuery.RENDER)`), plus `renderer.info.render.calls` and CPU `performance.now()` around `fromScene`. On WebGL2 only CPU times are available.
@@ -246,13 +247,15 @@ Decision (implemented in p112):
 
 **Degrade order**, if the spike misses budget (bake > 2 ms at 128 on the iGPU reference):
 
-1. `env.size` 64, and `maxUpdatesPerSec` 1.
+1. `env.size` 64, and `maxUpdatesPerSec` 1. **Applied in part:** the spike missed the dGPU budget, and `maxUpdatesPerSec` is now 1 by default. Size 64 was **not** applied, because it saves only ~5% (the cost is per pass, not per texel).
 2. `env.dynamic: false` by default: bake on activation and explicit `bakeEnvironment()` only.
 3. Only if the composite background itself fails on a backend (not expected: it is the same NodeMaterial path Background.js already uses), fall back to **mutually exclusive types** (none/background colour, equirectangular, cube texture, sky and sun with an integrated directional light and ambient), keeping the p111 clean refactor.
 
 ## Phase 0 — Spike (go/no-go gate, not committed)
 
 A throwaway, uncommitted spike, written directly into the `scene01V2` scene (`src/app/scene01_v2.ts` + `scene01_v2.scene.json`):
+
+The spike was run on 2026-09-29; results are in "Implementation notes → Phase 0 spike results".
 
 1. A minimal ported `atmosphere(dir)` Fn as `rootScene.backgroundNode`, with the sun parameters as uniforms. It replaces the scene's four `createSkyBox` calls for the spike.
 2. `fromScene(envBakeScene, 0, 0.1, 100, { size, renderTarget })` into a reused target, with `rootScene.environmentNode = pmremTexture(target.texture)`.
@@ -373,7 +376,7 @@ getSunElevation(index?: number): number;                       // radians, < 0 b
     "size": 256,
     "dynamic": true,
     "updateAngleDeg": 1,
-    "maxUpdatesPerSec": 4,
+    "maxUpdatesPerSec": 1,
   },
   "atmosphere": {
     "enabled": true,
@@ -479,6 +482,69 @@ getSunElevation(index?: number): number;                       // radians, < 0 b
 ## Implementation notes
 
 (Filled in by the Phase 0 spike and the sub-plans.)
+
+### Phase 0 spike results (2026-09-29)
+
+**Verdict: go.** The layered design (0.1–0.7) holds. The dynamic re-bake budget failed as written, so the re-bake defaults changed (below). The spike (`src/app/scene01_v2.skySpike.ts`, wired into `scene01V2`) was not committed.
+
+Machine: AMD Radeon RX 7900 XT (RDNA-3), Chrome with `#enable-webgpu-developer-features` (unrounded timestamps). No iGPU was available.
+
+**Pass criteria:**
+
+| Criterion                                          | Result                                                                                                                                                                                                                            |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Background matches SkyMesh                         | **Pass.** Pixel-identical to three's `SkyMesh` (clouds off) at sun elevations 2°, 10°, 30° and 60° (headless WebGL2, sampled pixels). In the browser (WebGPU), swapping the two shows no visible change.                          |
+| PBR spheres pick up the sky's colour               | **Pass.** Metal spheres reflect the baked sky (blue zenith, bright horizon), and the rough ones blur it. With the environment off, the smooth metal spheres go black and the rough ones keep only direct light (browser, WebGPU). |
+| No pipeline/material growth over 60 s of re-baking | **Pass.** Over 60 s+ of per-frame bakes: pipelines +1, programs −3, render targets +0, textures +0 (noise). ~20 scene switches settle at the same counts on every visit (WebGPU and WebGL2).                                      |
+| Bake at 128 ≤ 1 ms (dGPU) / ≤ 2 ms (iGPU)          | **Fail on the dGPU:** 1.94 ms (PostFX on), 2.15 ms (PostFX off). iGPU not measured.                                                                                                                                               |
+
+**WebGPU, RX 7900 XT** (per-frame bakes; GPU = sum of the bake's render-pass timestamps):
+
+| PostFX | Size | Bakes  | GPU avg ms | GPU p95 ms | GPU faces ms | GPU filter ms | GPU per pass ms | CPU avg ms | CPU p95 ms | `render()` calls/bake |
+| ------ | ---- | ------ | ---------- | ---------- | ------------ | ------------- | --------------- | ---------- | ---------- | --------------------- |
+| on     | 256  | 4,419  | 2.068      | 2.543      | 0.044        | 2.023         | 0.077           | 0.507      | 0.695      | 27                    |
+| on     | 128  | 10,794 | 1.937      | 2.324      | 0.040        | 1.897         | 0.077           | 0.494      | 0.685      | 25                    |
+| on     | 64   | 3,728  | 1.847      | 2.131      | 0.043        | 1.805         | 0.080           | 0.461      | 0.640      | 23                    |
+| off    | 256  | 3,673  | 2.367      | 2.826      | 0.051        | 2.315         | 0.088           | 0.859      | 1.260      | 27                    |
+| off    | 128  | 7,838  | 2.150      | 2.477      | 0.045        | 2.105         | 0.086           | 0.498      | 0.685      | 25                    |
+| off    | 64   | 9,858  | 1.897      | 2.174      | 0.044        | 1.852         | 0.082           | 0.511      | 0.915      | 23                    |
+
+**WebGL2, same machine** (CPU only; WebGL2 has no usable timer queries for nested renders):
+
+| PostFX | Size | Bakes  | CPU avg ms | CPU p95 ms | `render()` calls/bake |
+| ------ | ---- | ------ | ---------- | ---------- | --------------------- |
+| off    | 256  | 6,663  | 0.296      | 0.375      | 27                    |
+| off    | 128  | 6,669  | 0.278      | 0.360      | 25                    |
+| off    | 64   | 3,329  | 0.258      | 0.330      | 23                    |
+| on     | 256  | 11,369 | 0.296      | 0.375      | 27                    |
+| on     | 128  | 12,450 | 0.277      | 0.355      | 25                    |
+| on     | 64   | 13,021 | 0.278      | 0.410      | 23                    |
+
+**Reading the numbers:**
+
+- **The cost is per pass, not per texel.** ~80 µs per pass at every size, and 95% of it in the GGX filter passes (18–20 dependent passes, each reading the previous one's output). The atmosphere shader (6 faces) costs ~0.04 ms. Size 64 has ~1/16 of the texel work of 256 and saves ~12%.
+- **PostFX on measures faster than off.** The likely cause is the GPU's clock state: the light spike scene leaves the GPU near idle, so each tiny pass runs at low clocks. A game scene that loads the GPU should bake faster, so these numbers are probably pessimistic. This was not cross-checked against whole-frame GPU time (the stats panel in `PER_FRAME` vs `ON_CHANGE` with the sun paused); p113 Phase 2 repeats it.
+- **`render()` calls are the first draft's estimate + 1:** `fromScene` draws a solid-colour clear box when the bake scene has no `background` (`PMREMGenerator.js:466-510`). It costs nothing measurable.
+- **CPU cost** is ~0.5 ms per bake on WebGPU and ~0.3 ms on WebGL2 (encoding 23–27 passes).
+
+**What changed because of it:**
+
+- `env.maxUpdatesPerSec` defaults to **1** (was 4): at 100× fast-forward, one ~2 ms bake per second instead of four. `updateAngleDeg` stays 1° (a bake every ~3.3 s at the default cycle).
+- `env.size` defaults are unchanged (256, or 128 with day-night). The 128 is kept only as iGPU insurance, pending a measurement.
+- Per-frame dynamic bakes stay rejected. Debug slider drags still bake at most once per frame, which is a debug-only cost.
+- A size change creates a new env node (see 0.3); `.value` swaps are only for the same target.
+
+**Other findings:**
+
+- **Stale bindings after a `.value` swap (WebGL2).** Swapping a `pmremTexture` node's `.value` to a new target of a different size, after disposing the old one, gave endless `bindTexture: attempt to use a deleted object` warnings. A new node was clean. Not checked on WebGPU (the spike's `?skySpikeSwap=1` keeps the swap for that). p115 relies on `.value` swaps for the env ball; it must hand over a new node when the target is replaced.
+- **Exposure.** At the renderer's exposure 0.7 with ACES, the sky toward the sun saturates to near-white from ~10° elevation up (SkyMesh does the same). p112 tunes the `atmosphere.exposure` default.
+- **Low sun, looking away from it, is very dark** (zenith radiance ~0.03 at 10°). That is Preetham, not a bug, but it matters for the night-sky floor (`nightSkyColor`, p113).
+- **Ordering.** `setCurrentScene` resets `backgroundNode` after the scene function runs, so anything that installs a background from a scene function must do it at scene enter (the spike used `registerOnSceneEnter`). p111's `setActiveSkyBox` on enter (`SceneLoader.ts:562`) already runs after it.
+- **Unrelated bug found:** `scene01_v2.ts` registers its looper with `createSceneAppLooper(fn)` while the scene is loading, when there is no current scene yet, so the looper is never registered ("Could not find scene with id null") and its wireframe sphere never rotates. The fix is to pass the scene id.
+
+**Still open (not blocking p111):**
+
+- An iGPU measurement, and the whole-frame GPU cross-check. Both move to p113 Phase 2, which measures the day-night path anyway.
 
 ### Plan refresh (2026-09-29)
 

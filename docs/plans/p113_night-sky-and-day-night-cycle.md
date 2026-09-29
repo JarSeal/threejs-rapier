@@ -18,7 +18,7 @@ The day-night cycle is a public production API. It animates the sun, moon, stars
   - APP stages run only while the app is playing (`ECS.ts:835`).
   - The only way to read "is the app playing" today is `getReadOnlyLoopState()` (`:465`), which JSON-deep-copies on every call, so it can't be used every frame.
 - **Stage and order.** `skyBoxSystem` (p112) runs at MAIN stage with order > 0, before `object3DSyncSystem` (`ECSCoreSystems.ts:134`). That way light transforms written this frame render this frame.
-- **Re-bake strategy** is from p110 §0.3: re-bake when the sun or moon has moved more than `env.updateAngleDeg` (1°), capped at `env.maxUpdatesPerSec` (4/s), and bake once more on pause. `env.size` defaults to 128 when `dayNight.enabled`. p110's Phase 0 notes may have changed these defaults.
+- **Re-bake strategy** is from p110 §0.3: re-bake when the sun or moon has moved more than `env.updateAngleDeg` (1°), capped at `env.maxUpdatesPerSec` (**1/s**, lowered from 4/s by the p110 spike: a bake is ~2 ms of GPU on an RX 7900 XT, whatever the size), and bake once more on pause. `env.size` defaults to 128 when `dayNight.enabled`, kept only as iGPU insurance until Phase 2 measures one.
 
 ## Design decisions
 
@@ -122,6 +122,7 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
    - Verify: `setTimeOfDay` from the console moves the sun, sky and shadows. Speed, reverse and pause behave as specified, and `timeSource` APP pauses with the app pause.
 2. **Budgeted re-bakes.** Angle and rate rules, a final bake on pause, and `env.dynamic`.
    - Verify: bakes/s stays ≤ the cap at ×100, and ~0.3 bakes/s at ×1. Frame time shows no periodic spikes above the budget recorded in p110.
+   - Measure what the p110 spike left open: an **iGPU** bake time at 128 and 256 (keep 128 for day-night only if it is clearly cheaper there), and a **whole-frame** cross-check on the dGPU (the stats panel's GPU ms with bakes vs. without, same view), since the spike's per-pass sums were taken on a near-idle GPU.
 3. **Moon + moon light.**
    - Verify: phases 0, 0.25, 0.5, 0.75 look right, with the terminator facing the sun. A full moon rises at sunset. Moon light only at night; no recompiles across the day/night switch.
 4. **Stars (+ Milky Way).**
@@ -143,7 +144,7 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
 
 | Risk                                                                            | Mitigation                                                                                                             |
 | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Periodic bake spikes read as stutter at high speed                              | Rate cap; `env.size` 128 (or 64); `env.dynamic: false` as the escape hatch. Measure in Phase 2.                        |
+| Periodic bake spikes read as stutter at high speed                              | Rate cap (1/s); `env.dynamic: false` as the escape hatch. Size barely helps (p110 spike). Measure in Phase 2.          |
 | Night looks black with ACES at exposure 0.7                                     | `nightSkyColor`, moon light and star brightness defaults are tuned in the showcase. Document the recommended settings. |
 | Stars shimmer or alias at low resolution or in motion                           | `fwidth` antialiasing, a minimum angular size of ~1 px, and twinkle kept low. Checked at pixel ratios 1 and 2.         |
 | `timeSource: 'APP'` surprises users (time stops in the debugger's pause)        | That is the default because game time should pause. The debug folder shows the source, and `'MAIN'` is one click away. |

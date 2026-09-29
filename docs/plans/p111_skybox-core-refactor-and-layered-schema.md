@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Skybox, Refactor
-Blocked by: p110_skybox-refactor-and-layered-sky-system.md (the Phase 0 spike / go-no-go gate)
+Blocked by: none (p110's Phase 0 spike / go-no-go gate passed on 2026-09-29: go)
 Blocks: p112_procedural-sky-atmosphere-sun-and-env-bake.md, p115_debug-environment-ball-viewport.md
 Related: \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed: the Skybox tab is already on `createDebuggerTab` and the pane builder)
 

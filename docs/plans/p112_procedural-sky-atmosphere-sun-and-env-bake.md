@@ -26,7 +26,7 @@ When this plan is done, the brief's fallback "Sky and sun" type is covered as on
   - §0.3 cost and strategy;
   - §0.4 lights;
   - §0.5 tone mapping.
-- The Phase 0 spike results in p110 "Implementation notes" set the defaults for `env.size` and `maxUpdatesPerSec`. **Re-read them before Phase 1.**
+- The Phase 0 spike results (p110 "Implementation notes → Phase 0 spike results") set the defaults: a bake costs ~2 ms of GPU on an RX 7900 XT at every size (~80 µs per pass, almost all in the GGX filter passes), so `maxUpdatesPerSec` defaults to **1** and `env.size` stays 256 (128 with day-night). **Re-read them before Phase 1.**
 - The p111 state flow is the base:
   - `ActiveSkyBox` holds the uniforms, nodes and lights;
   - `updateSkyBox` separates structural keys from uniform keys;
@@ -57,12 +57,13 @@ When this plan is done, the brief's fallback "Sky and sun" type is covered as on
      - p113 adds the angle and rate rules.
    - **Size.**
      - `env.size` (a power of two: 64, 128 or 256) is fixed per activation.
-     - Changing it from the debugger is structural: the target and generator are disposed and recreated.
-     - The default comes from p110: 256, or 128 if `dayNight.enabled`, as adjusted by the spike.
+     - Changing it from the debugger is structural: the target and generator are disposed and recreated, **and `environmentNode` gets a new `pmremTexture` node** (one lit-material rebuild). Swapping `.value` of the old node to the new target left stale texture bindings on WebGL2 in the spike.
+     - The default comes from p110: 256, or 128 if `dayNight.enabled` (unchanged by the spike, which found size saves almost no GPU time on a dGPU).
    - **Disposal.** `clearSkyBox()` disposes the target, the generator, the bake scene's background material and the view composite material. **Nothing from `getPMREMTexture`'s cache is touched.**
    - **Stats (debug).** Each bake records CPU ms (`performance.now()`), and GPU ms when timestamp queries are available. The helper is factored out of `_dbg__PostFXProfiler.ts:243, 341-360` into a shared `_dbg__` util, and exposed in the Environment folder together with a bake counter and "Re-bake now".
    - **The `ENV_BAKE` variant** (p110 §0.2):
      - a sun with `light.enabled` contributes no disc to the bake;
+     - (spike) the bake scene has no `background`, so `fromScene` also draws a solid-colour clear box first: one extra `render()` call, nothing measurable;
      - otherwise the disc becomes a clamped, wide glow (`min(disc, envSunClamp)`, default 20);
      - clouds use a frozen time uniform;
      - stars are skipped (p113).

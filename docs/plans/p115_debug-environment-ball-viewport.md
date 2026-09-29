@@ -26,7 +26,7 @@ It replaces the env ball that the pre-ECS code once had and that now only surviv
 - **p111 provides the environment.** `getActiveEnvironmentTexture()` returns the PMREM texture in use: a texture PMREM from `getPMREMTexture`, or the p112 bake target. `onSkyBoxChange(id, fn)` fires on activation, clear and structural rebuilds.
 - **PMREM facts (three r186).**
   - `pmremTexture(tex, uv, level)` samples a CubeUV texture directly (`PMREMNode.js:299-301`).
-  - Setting `.value` swaps the texture without a material rebuild (`PMREMNode.js:256-260`).
+  - Setting `.value` swaps the texture without a material rebuild (`PMREMNode.js:256-260`). **Caveat from the p110 spike:** swapping to a _different-size_ target after the old one was disposed left stale texture bindings on WebGL2 (`bindTexture: attempt to use a deleted object`); a new node was clean.
   - `reflectVector` is the world-space reflection (`accessors/ReflectVector.js:28`).
   - `materialEnvRotation` uses `material.envMapRotation` when the scene has no environment (`MaterialProperties.js:35-48`). That is the case for the private ball scene.
 - **Debug Tools tab** (`core/Debug/_dbg__DebugTools.ts`).
@@ -56,6 +56,7 @@ It replaces the env ball that the pre-ECS code once had and that now only surviv
    - `material.envMapRotation` is copied from the active skybox's `environmentRotation` on every `onSkyBoxChange`, so a rotated skybox reflects correctly.
 3. **Environment swap.**
    - On `onSkyBoxChange`, set `pmremNode.value = getActiveEnvironmentTexture()`. There is no rebuild, because PMREMNode resets its internal PMREM on `value` set.
+     - If the texture's size changed (another skybox, or an `env.size` change), build a new `pmremTexture` node for the ball's material instead (see the caveat above). Verify on WebGL2.
    - With no environment (no skybox, or a COLOR base without layers), the viewport is disabled.
    - A p112 dynamic re-bake writes into the same target, so the ball updates live with no extra wiring.
 4. **Visibility rule**, evaluated in `onBeforeRender` (a per-frame boolean compare; the slot changes only on transitions):
