@@ -121,22 +121,26 @@ export const applySunUniforms = (
 };
 
 /**
- * The sun over `behind`. ENV_BAKE: the disc widened to a few bake texels (a 0.5° disc is
- * sub-texel there) and clamped, so the GGX filter doesn't sparkle.
+ * The sun over `behind`. ENV_BAKE: no disc when the sun has a light (the light gives that
+ * highlight, twice would double it); otherwise the disc widened to a few bake texels (a 0.5°
+ * disc is sub-texel there) and clamped, so the GGX filter doesn't sparkle. The halo stays.
  */
 export const sunNode = (
   dir: THREE.Node<'vec3'>,
   behind: THREE.Node,
   u: SunUniforms,
-  mode: SkyCompositeMode
+  mode: SkyCompositeMode,
+  hasLight: boolean
 ): THREE.Node => {
   const cosTheta = dot(dir, u.direction);
+  const glow = pow(max(cosTheta, 0.0), u.glowExponent).mul(u.glowIntensity);
+  if (mode === 'ENV_BAKE' && hasLight) return (behind as THREE.Node<'vec3'>).add(u.tint.mul(glow));
   const disc =
     mode === 'VIEW'
       ? cosTheta.sub(u.discCos).mul(DISC_EDGE).clamp(0.0, 1.0).mul(u.discRadiance)
-      : smoothstep(u.envDiscCos.mul(u.envDiscCos).mul(2.0).sub(1.0), u.envDiscCos, cosTheta).mul(
+      : // Between cos(2r) and cos(r)
+        smoothstep(u.envDiscCos.mul(u.envDiscCos).mul(2.0).sub(1.0), u.envDiscCos, cosTheta).mul(
           u.envDiscRadiance
         );
-  const glow = pow(max(cosTheta, 0.0), u.glowExponent).mul(u.glowIntensity);
   return (behind as THREE.Node<'vec3'>).add(u.tint.mul(disc.add(glow)));
 };

@@ -3,12 +3,14 @@
 import type * as THREE from 'three/webgpu';
 import type { z } from 'zod';
 import type {
+  SkyBoxAmbientLightSchema,
   SkyBoxAtmosphereSchema,
   SkyBoxBaseSchema,
   SkyBoxDefSchema,
   SkyBoxEnvSchema,
   SkyBoxEnvSizeSchema,
   SkyBoxOverridesSchema,
+  SkyBoxSunLightSchema,
   SkyBoxSunSchema,
 } from '../../schemas/skyBoxSchema';
 
@@ -32,6 +34,12 @@ export type SkyBoxAtmosphereDef = z.input<typeof SkyBoxAtmosphereSchema>;
 
 /** A sun layer: its disc and halo, and (suns[0]) the atmosphere's sun direction. */
 export type SkyBoxSunDef = z.input<typeof SkyBoxSunSchema>;
+
+/** A sun's managed directional light. */
+export type SkyBoxSunLightDef = z.input<typeof SkyBoxSunLightSchema>;
+
+/** The managed ambient (or hemisphere) light. */
+export type SkyBoxAmbientLightDef = z.input<typeof SkyBoxAmbientLightSchema>;
 
 /**
  * A sky box definition: the JSON shape (`SkyBoxDefSchema`), plus what only code can give, a

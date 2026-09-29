@@ -2,6 +2,7 @@ import type { DebuggerPaneItem } from '../../../debug/DebuggerGUI';
 import { getActiveSkyBox } from '../../SkyBox/SkyBox';
 import { resetSkyBoxLayer, setSkyBoxParam, skyBoxProxy } from './_dbg__SkyBoxShared';
 import { buildAutoColorItems, numberParam } from './_dbg__LayerFolderItems';
+import { buildSunLightFolder } from './_dbg__SunLightFolder';
 
 const isOff = () => !skyBoxProxy.sun.enabled;
 
@@ -36,6 +37,8 @@ export const buildSunFolder = (): DebuggerPaneItem => {
       param('glowIntensity', 'Glow intensity', 0, 20, 0.01, isOff),
       param('glowSize', 'Glow size (deg)', 0.1, 90, 0.1, isOff),
       ...buildAutoColorItems(target, 'sun', 'color', 'Color', isOff),
+      // Its own reset: "Reset layer" below resets the whole sun, light included
+      buildSunLightFolder(),
       { type: 'button', title: 'Reset layer', onClick: () => resetSkyBoxLayer('sun') },
     ],
   };

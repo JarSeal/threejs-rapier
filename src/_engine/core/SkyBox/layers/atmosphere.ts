@@ -227,3 +227,38 @@ export const atmosphereNode = (
   );
   return (behind as THREE.Node<'vec3'>).mul(fex).add(inscatter.add(floor).mul(u.exposure));
 };
+
+const _fex = new THREE.Vector3();
+
+/**
+ * The atmosphere's scattered light seen in direction `dir` (unit), on the CPU: the same maths
+ * as atmosphereTerms' `lin`, with SkyMesh's output scale, into `out` (linear RGB). Used for the
+ * ambient light's AUTO sky colour. Uses the uniforms' current values.
+ */
+export const computeInscatter = (
+  dir: THREE.Vector3,
+  u: AtmosphereUniforms,
+  sunDirection: THREE.Vector3,
+  out: THREE.Vector3
+) => {
+  const betaR = u.betaR.value;
+  const betaM = u.betaM.value;
+  const miePhase = u.miePhase.value;
+  computeExtinction(dir.y, betaR, betaM, _fex);
+  const cosTheta = dir.dot(sunDirection);
+  const c = cosTheta * 0.5 + 0.5;
+  const rPhase = THREE_OVER_SIXTEENPI * (1 + c ** 2);
+  const mPhase = (ONE_OVER_FOURPI * miePhase.x) / (miePhase.y - miePhase.z * cosTheta) ** 1.5;
+  const channel = (r: number, m: number, fex: number) => {
+    const scatter = (u.sunE.value * (r * rPhase + m * mPhase)) / (r + m);
+    const lin =
+      (scatter * (1 - fex)) ** 1.5 *
+      THREE.MathUtils.lerp(1, (scatter * fex) ** 0.5, u.linMix.value);
+    return lin * SKY_SCALE;
+  };
+  return out.set(
+    channel(betaR.x, betaM.x, _fex.x),
+    channel(betaR.y, betaM.y, _fex.y),
+    channel(betaR.z, betaM.z, _fex.z)
+  );
+};

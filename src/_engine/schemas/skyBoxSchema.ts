@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
-import { ColorJSONSchema, ColorSpaceSchema, DebugDataSchema } from './_helperSchemas';
+import {
+  ColorJSONSchema,
+  ColorSpaceSchema,
+  DebugDataSchema,
+  ShadowQualitySchema,
+} from './_helperSchemas';
 import {
   fromLegacySkyBoxOverrides,
   fromLegacySkyBoxProps,
@@ -118,6 +123,35 @@ export const SkyBoxAtmosphereSchema = z.object({
   zenithTint: ColorJSONSchema.optional(),
 });
 
+// Sun light: a managed directional light (MANAGED_BY) aimed like the sun
+
+export const SkyBoxSunLightSchema = z.object({
+  /** Default true. */
+  enabled: z.boolean().optional(),
+  /** Default 3. */
+  intensity: z.number().min(0).optional(),
+  /** 'AUTO': the atmosphere's extinction along the sun (warms toward the horizon; white without
+   * an atmosphere). Default 'AUTO'. */
+  color: AutoOrColorSchema.optional(),
+  /** Changing it rebuilds every lit material once; the sky never toggles it. Default true. */
+  castShadow: z.boolean().optional(),
+  /** Default 'MEDIUM'. The bias, normal bias and map size below override it. */
+  shadowPreset: ShadowQualitySchema.optional(),
+  shadowBias: z.number().optional(),
+  shadowNormalBias: z.number().optional(),
+  /** The (square) shadow map's size in texels. */
+  shadowMapSize: z.number().int().positive().optional(),
+  /** Half the shadow camera's width and height, in world units. Default 30. */
+  shadowFrustumSize: z.number().positive().optional(),
+  /** The light's distance from the point it follows. Default 100. */
+  distance: z.number().positive().optional(),
+  /** What the shadow frustum centres on (snapped to shadow texels). Default 'ACTIVE_CAMERA'. */
+  shadowFollow: z.enum(['ACTIVE_CAMERA', 'ORIGIN']).optional(),
+  /** Sun elevations (degrees) where the light starts fading out and where it is out.
+   * Default [6, -3]. */
+  horizonFade: z.tuple([z.number(), z.number()]).optional(),
+});
+
 // Sun layer (the disc and its halo; suns[0] also drives the atmosphere)
 
 export const SkyBoxSunSchema = z.object({
@@ -138,6 +172,25 @@ export const SkyBoxSunSchema = z.object({
   /** 'AUTO': white, coloured by the atmosphere's extinction (reddens at the horizon). A
    * colour: the disc's colour as seen. Default 'AUTO'. */
   color: AutoOrColorSchema.optional(),
+  /** A directional light that follows the sun. Default: none. */
+  light: SkyBoxSunLightSchema.optional(),
+});
+
+// Ambient light: a managed hemisphere or ambient light that follows the sun. Off by default:
+// the environment bake already lights PBR materials (a hemisphere light adds to it); it's for
+// non-PBR materials (Lambert/Phong don't sample the environment) and stylized looks.
+
+export const SkyBoxAmbientLightSchema = z.object({
+  /** Default true. */
+  enabled: z.boolean().optional(),
+  /** Default 'HEMISPHERE'. */
+  type: z.enum(['HEMISPHERE', 'AMBIENT']).optional(),
+  /** Default 0.5. */
+  intensity: z.number().min(0).optional(),
+  /** 'AUTO': the sky's colour at the zenith, faded with the sun. Default 'AUTO'. */
+  skyColor: AutoOrColorSchema.optional(),
+  /** HEMISPHERE only. 'AUTO': a ground colour, faded with the sun. Default 'AUTO'. */
+  groundColor: AutoOrColorSchema.optional(),
 });
 
 // Overrides (scene save data, and the debugger's changed values): a deep partial of the layers.
@@ -156,7 +209,9 @@ const SkyBoxBaseOverridesSchema = z.object({
   intensity: z.number().min(0).optional(),
 });
 
-const SkyBoxSunOverridesSchema = SkyBoxSunSchema.partial();
+const SkyBoxSunOverridesSchema = SkyBoxSunSchema.extend({
+  light: SkyBoxSunLightSchema.partial().optional(),
+}).partial();
 
 export const SkyBoxOverridesSchema = z.object({
   base: SkyBoxBaseOverridesSchema.optional(),
@@ -170,6 +225,7 @@ export const SkyBoxOverridesSchema = z.object({
       z.record(z.string().regex(/^(0|[1-9]\d*)$/), SkyBoxSunOverridesSchema),
     ])
     .optional(),
+  ambientLight: SkyBoxAmbientLightSchema.partial().optional(),
   __meta: MetaSchema.optional(),
 });
 
@@ -189,6 +245,7 @@ export const SkyBoxDefSchema = z.object({
   atmosphere: SkyBoxAtmosphereSchema.optional(),
   /** Only suns[0] is drawn until p114 (multiple suns); it also drives the atmosphere. */
   suns: z.array(SkyBoxSunSchema).optional(),
+  ambientLight: SkyBoxAmbientLightSchema.optional(),
   debugData: DebugDataSchema.optional(),
 
   // Meta

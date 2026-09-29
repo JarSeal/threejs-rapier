@@ -40,6 +40,7 @@ import {
   runRequestedEnvBake,
   setEnvBake,
 } from './SkyEnvironment';
+import { deleteSkyLights, syncSkyLights, updateSkyLightsFrame } from './SkyLights';
 
 export type { SkyBoxDef } from './SkyBoxTypes';
 
@@ -67,13 +68,13 @@ export type SkyBoxUpdate = {
   atmosphere?: SkyBoxOverrides['atmosphere'];
   /** An array replaces the suns; an index object (`{ 0: { ... } }`) changes those entries. */
   suns?: SkyBoxOverrides['suns'];
+  ambientLight?: SkyBoxOverrides['ambientLight'];
 };
 
 export type SkyBoxChangeReason = 'activate' | 'update' | 'clear';
 type SkyBoxChangeListener = (active: ActiveSkyBox | null, reason: SkyBoxChangeReason) => void;
 
-/** The MANAGED_BY manager id of the entities a sky box owns (its lights, p112 Phase 4). */
-export const SKYBOX_MANAGER_ID = 'SKYBOX';
+export { SKYBOX_MANAGER_ID } from './SkyLights';
 
 /** @internal The debug tab's override store: `{ [sceneId]: { [skyBoxId]: SkyBoxOverrides } }`. */
 export const SKYBOX_DEBUG_OVERRIDES_LS_KEY = 'AEK_debugSkyBox';
@@ -252,6 +253,7 @@ const show = (next: ActiveSkyBox) => {
   rootScene.environmentNode = next.nodes.environment as THREE.Node<'vec3'> | null;
   applySceneProperties(next.def, next.isComposite);
   active = next;
+  syncSkyLights(next.id, next.def, next.uniforms);
 };
 
 /** Loads, builds and shows a resolved definition. */
@@ -387,6 +389,7 @@ export const clearSkyBox = () => {
   activationSeq++;
   active = null;
   disposeEnvBake();
+  deleteSkyLights();
   resetSceneProperties();
   notify('clear');
 };
@@ -422,10 +425,12 @@ ECSWorld.registerPlugin((world) => {
   world.addSystem(ECSSystemStage.MAIN, 'skyBoxSystem', skyBoxSystem, 1);
 });
 
-/** Runs a requested env bake (the sky box is global: only the default world drives it). */
+/** Moves the sky lights with their follow point, and runs a requested env bake (never while a
+ * scene loads). The sky box is global: only the default world drives it. */
 function skyBoxSystem(world: ECSWorld) {
-  if (!isEnvBakeRequested() || world !== getECSWorld() || isCurrentlyLoading()) return;
-  runRequestedEnvBake();
+  if (world !== getECSWorld()) return;
+  updateSkyLightsFrame(world);
+  if (isEnvBakeRequested() && !isCurrentlyLoading()) runRequestedEnvBake();
 }
 
 // Debug

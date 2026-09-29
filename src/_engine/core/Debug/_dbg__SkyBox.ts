@@ -38,6 +38,7 @@ import { buildBaseFolder } from './SkyBox/_dbg__BaseFolder';
 import { buildEnvironmentFolder } from './SkyBox/_dbg__EnvironmentFolder';
 import { buildSunFolder } from './SkyBox/_dbg__SunFolder';
 import { buildAtmosphereFolder } from './SkyBox/_dbg__AtmosphereFolder';
+import { buildAmbientLightFolder } from './SkyBox/_dbg__AmbientLightFolder';
 
 const LS_KEY_UI = 'AEK_debugSkyBoxUI';
 let debuggerCreated = false;
@@ -203,6 +204,7 @@ const buildSkyBoxDebugGUI = () => {
           buildBaseFolder(),
           buildSunFolder(),
           buildAtmosphereFolder(),
+          buildAmbientLightFolder(),
           buildEnvironmentFolder(),
           {
             type: 'button',

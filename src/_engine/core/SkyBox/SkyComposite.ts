@@ -54,12 +54,15 @@ export type SkyCompositeSources = {
 };
 
 /** A procedural layer is on when its key is there, unless it says `enabled: false`. */
-const isOn = (layer: { enabled?: boolean } | undefined) =>
+export const isOn = (layer: { enabled?: boolean } | undefined) =>
   Boolean(layer && layer.enabled !== false);
 
 export const isAtmosphereEnabled = (def: SkyBoxDef) => isOn(def.atmosphere);
 /** suns[0]'s disc (its direction drives the atmosphere either way). */
 export const isSunEnabled = (def: SkyBoxDef) => isOn(def.suns?.[0]);
+/** Whether suns[0] has a light: then the env bake leaves its disc out (the light gives that
+ * highlight already). */
+export const isSunLightEnabled = (def: SkyBoxDef) => isOn(def.suns?.[0]?.light);
 
 export const createSkyUniforms = (def: SkyBoxDef): SkyUniforms => {
   const u = {
@@ -93,7 +96,7 @@ export const hasProceduralLayer = (def: SkyBoxDef) => isAtmosphereEnabled(def) |
 
 /** Which layers exist: a change to it is a rebuild. */
 export const getCompositeSignature = (def: SkyBoxDef) =>
-  `${isSunEnabled(def)}|${isAtmosphereEnabled(def)}`;
+  `${isSunEnabled(def)}|${isSunLightEnabled(def)}|${isAtmosphereEnabled(def)}`;
 
 /**
  * The composite colour in direction `dir` (a world direction: normalWorldGeometry of the
@@ -108,7 +111,7 @@ export const buildSkyComposite = (
 ): THREE.Node => {
   let color = baseNode(dir, def.base, u.base, sources.basePMREM);
   // Space layers (p113/p114)
-  if (isSunEnabled(def)) color = sunNode(dir, color, u.sun, mode);
+  if (isSunEnabled(def)) color = sunNode(dir, color, u.sun, mode, isSunLightEnabled(def));
   if (isAtmosphereEnabled(def)) {
     color = atmosphereNode(
       dir,

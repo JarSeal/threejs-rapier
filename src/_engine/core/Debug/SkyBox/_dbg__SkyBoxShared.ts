@@ -4,6 +4,7 @@ import { getCurrentSceneId } from '../../Scene';
 import {
   _getSkyBoxRegistry,
   getActiveSkyBox,
+  setActiveSkyBox,
   SKYBOX_DEBUG_OVERRIDES_LS_KEY,
   updateSkyBox,
   type SkyBoxUpdate,
@@ -13,6 +14,8 @@ import { BASE_DEFAULTS, ENV_DEFAULTS } from '../../SkyBox/layers/base';
 import { toSkyColor } from '../../SkyBox/skyColor';
 import { ATMOSPHERE_DEFAULTS } from '../../SkyBox/layers/atmosphere';
 import { SUN_DEFAULTS } from '../../SkyBox/layers/sun';
+import { AMBIENT_LIGHT_DEFAULTS, SUN_LIGHT_DEFAULTS } from '../../SkyBox/SkyLights';
+import { SHADOW_PRESETS } from '../../LightManager';
 import {
   _recordOrCoalesceUndoRedoAction,
   _recordUndoRedoAction,
@@ -22,7 +25,7 @@ import {
 export const SKYBOX_TAB_ID = 'skyBoxControls';
 
 /** The layers the tab edits. p112-p114 add theirs here (and a folder file each). */
-export type SkyBoxLayerKey = 'base' | 'env' | 'atmosphere' | 'sun';
+export type SkyBoxLayerKey = 'base' | 'env' | 'atmosphere' | 'sun' | 'sunLight' | 'ambient';
 
 /** Where each layer lives in the definition. */
 export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
@@ -30,6 +33,8 @@ export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
   env: 'env',
   atmosphere: 'atmosphere',
   sun: 'suns.0',
+  sunLight: 'suns.0.light',
+  ambient: 'ambientLight',
 };
 
 /** Values a definition doesn't set fall back to these (the renderer's defaults), by path. */
@@ -37,7 +42,21 @@ const DEFAULTS_TREE = {
   base: BASE_DEFAULTS,
   env: ENV_DEFAULTS,
   atmosphere: ATMOSPHERE_DEFAULTS,
-  suns: [SUN_DEFAULTS],
+  suns: [{ ...SUN_DEFAULTS, light: SUN_LIGHT_DEFAULTS }],
+  ambientLight: AMBIENT_LIGHT_DEFAULTS,
+};
+
+/** A sun light's bias, normal bias and map size default to its shadow preset's. */
+const PRESET_KEY_PATH = /^(suns\.\d+\.light)\.(shadowBias|shadowNormalBias|shadowMapSize)$/;
+const getPresetDefault = (def: SkyBoxDef | undefined, path: string) => {
+  const match = PRESET_KEY_PATH.exec(path);
+  if (!match) return undefined;
+  const presetName = (getPath(def, `${match[1]}.shadowPreset`) ??
+    SUN_LIGHT_DEFAULTS.shadowPreset) as keyof typeof SHADOW_PRESETS;
+  const preset = SHADOW_PRESETS[presetName] || SHADOW_PRESETS[SUN_LIGHT_DEFAULTS.shadowPreset];
+  if (match[2] === 'shadowBias') return preset.bias;
+  if (match[2] === 'shadowNormalBias') return preset.normalBias;
+  return preset.mapSize[0];
 };
 
 type Obj = Record<string, unknown>;
@@ -73,7 +92,7 @@ export const getDefValue = (def: SkyBoxDef | undefined, path: string) => {
   if (path.endsWith('.enabled') && path !== 'enabled') {
     return getPath(def, path.slice(0, -'.enabled'.length)) !== undefined;
   }
-  return getPath(DEFAULTS_TREE, path);
+  return getPresetDefault(def, path) ?? getPath(DEFAULTS_TREE, path);
 };
 
 // Overrides (AEK_debugSkyBox): only the values changed from the definition
@@ -140,6 +159,8 @@ export const skyBoxProxy: Record<SkyBoxLayerKey, Obj> & { select: { skyBoxId: st
   env: {},
   atmosphere: {},
   sun: {},
+  sunLight: {},
+  ambient: {},
 };
 
 /** The keys a layer folder binds, synced from the active sky box (and its layer defaults). */
@@ -165,6 +186,19 @@ const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
     'glowIntensity',
     'glowSize',
   ],
+  sunLight: [
+    'enabled',
+    'intensity',
+    'castShadow',
+    'shadowPreset',
+    'shadowBias',
+    'shadowNormalBias',
+    'shadowMapSize',
+    'shadowFrustumSize',
+    'distance',
+    'shadowFollow',
+  ],
+  ambient: ['enabled', 'type', 'intensity'],
 };
 /** Read-only text bindings need a string, even when the definition has no value. */
 const TEXT_KEYS = new Set(['type', 'file', 'path', 'textureId', 'colorSpace']);
@@ -177,6 +211,8 @@ const COLOR_KEYS: Partial<Record<SkyBoxLayerKey, string[]>> = {
 const AUTO_COLOR_KEYS: Partial<Record<SkyBoxLayerKey, Record<string, string>>> = {
   atmosphere: { nightSkyColor: '#0c0c0c' },
   sun: { color: '#fff4e0' },
+  sunLight: { color: '#fff4e0' },
+  ambient: { skyColor: '#9ec9ff', groundColor: '#3b3a36' },
 };
 
 /** A ColorJSON as '#rrggbb' (sRGB). */
@@ -206,6 +242,9 @@ export const syncSkyBoxProxy = () => {
       else if (typeof proxy[key] !== 'string') proxy[key] = fallback;
     }
   }
+  const fade = getDefValue(active?.def, 'suns.0.light.horizonFade') as [number, number];
+  skyBoxProxy.sunLight.horizonFadeStart = fade[0];
+  skyBoxProxy.sunLight.horizonFadeEnd = fade[1];
   const base = active?.def.base;
   skyBoxProxy.base.fileNames = base?.type === 'CUBE_TEXTURE' ? base.fileNames.join('\n') : '';
   skyBoxProxy.base.color = base?.type === 'COLOR' ? base.color : '#000000';
@@ -300,6 +339,13 @@ const applyLayerOverride = async (
   );
   if (!isActive(sceneId, skyBoxId)) {
     refreshTab();
+    return;
+  }
+  // A nested layer (eg. a sun's light) can't be "set back" key by key when the definition
+  // doesn't have it: activate again from the definition and the remaining overrides instead
+  const prevLayer = asObj(getPath(current, layerPath));
+  if ([...touchedKeys].some((key) => isObj(prevLayer[key]) || isObj(layerOverride?.[key]))) {
+    await setActiveSkyBox(skyBoxId, sceneId);
     return;
   }
   const def = getSkyBoxDef(sceneId, skyBoxId);
