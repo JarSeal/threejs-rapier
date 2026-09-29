@@ -187,6 +187,13 @@ const createDebugControls = () => {
               title: 'Three.js ray tester',
               onClick: () => _toggleRayTesterWindow('THREE'),
             },
+            {
+              type: 'button',
+              title: 'Physics ray tester',
+              // Re-evaluated on every tab refresh (a scene may have no physics world)
+              disabled: () => !isPhysicsWorldEnabled(),
+              onClick: () => _toggleRayTesterWindow('PHYSICS'),
+            },
           ],
         },
         {

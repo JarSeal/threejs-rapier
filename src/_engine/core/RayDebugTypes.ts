@@ -31,6 +31,13 @@ export type RayDebugOpts = {
   depthTest?: boolean;
 };
 
+/**
+ * Helper id prefix of the debug ray tester windows' rays. Physics queries have no
+ * `countInStats` option, so the physics ray statistics skip the queries whose `debug.id` starts
+ * with it (they are still drawn). Don't use it for gameplay rays.
+ */
+export const RAY_TESTER_ID_PREFIX = 'rayTester_';
+
 /** The interval windows of every ray statistics counter (Three.js rays, physics rays and shape
  * casts), so their numbers are comparable. */
 export const RAY_STATS_WINDOWS: readonly IntervalWindowConfig[] = [

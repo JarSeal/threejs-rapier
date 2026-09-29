@@ -159,7 +159,7 @@ import {
   IntervalCounterStats,
   type IntervalCounterSnapshot,
 } from '../utils/stats/IntervalCounterStats';
-import { RAY_STATS_WINDOWS, type RayDebugOpts } from './RayDebugTypes';
+import { RAY_STATS_WINDOWS, RAY_TESTER_ID_PREFIX, type RayDebugOpts } from './RayDebugTypes';
 import { ShapeType } from '@dimforge/rapier3d-compat';
 import { existsOrThrow } from '../utils/assert';
 
@@ -541,22 +541,37 @@ let rayHelpers: DebugModuleRef<RayHelpersModule> | null = null;
  */
 const physicsQueryObserver: PhysicsQueryObserver = {
   onQuery: (kind, origin, dir, maxToi, debug) => {
-    if (physicsRayStatsEnabled) {
+    // The ray tester windows' queries are drawn, never counted (RAY_TESTER_ID_PREFIX)
+    const isCounted = physicsRayStatsEnabled && !debug?.id.startsWith(RAY_TESTER_ID_PREFIX);
+    if (isCounted) {
       if (kind === 'CAST_SHAPE') physicsShapeCastsStats.add();
       else physicsRaysStats.add();
       physicsRayStats.pendingQueries++;
     }
-    if (!physicsRayHelpersEnabled) return 0;
-    const helpers = useDebug(rayHelpers);
-    return helpers
-      ? helpers._drawRay('PHYSICS', origin, dir, maxToi, null, debug, performance.now())
-      : 0;
+    let helperToken = 0;
+    if (physicsRayHelpersEnabled) {
+      const helpers = useDebug(rayHelpers);
+      if (helpers) {
+        helperToken = helpers._drawRay(
+          'PHYSICS',
+          origin,
+          dir,
+          maxToi,
+          null,
+          debug,
+          performance.now()
+        );
+      }
+    }
+    // The token's lowest bit tells onResult whether this query was counted as pending
+    return helperToken * 2 + (isCounted ? 1 : 0);
   },
   onResult: (token, firstHitToi) => {
     // Clamped: a reply to a query issued before the last reset has nothing to subtract from
-    if (physicsRayStats.pendingQueries > 0) physicsRayStats.pendingQueries--;
+    if (token % 2 === 1 && physicsRayStats.pendingQueries > 0) physicsRayStats.pendingQueries--;
     // A no-op when the helper has been cast again or recycled since
-    if (token) useDebug(rayHelpers)?._updateRayHit(token, firstHitToi);
+    const helperToken = Math.floor(token / 2);
+    if (helperToken) useDebug(rayHelpers)?._updateRayHit(helperToken, firstHitToi);
   },
 };
 
