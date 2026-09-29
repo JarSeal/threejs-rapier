@@ -17,7 +17,8 @@ in every mode:
 The GPU side is fine: the cycle script (see Method) shows `renderer.info.memory` flat, so these are
 disposed geometries whose JS objects can't be collected. The same chain also keeps each visit's
 sun, its shadow camera and that camera's render list alive. So the growth is more than the
-geometries, and it grows with every scene that has a shadow-casting light.
+geometries, and it grows with every scene that creates lights. Shadows are not needed (see Root
+cause); they only add the shadow camera, its render list and the geometries to what is kept.
 
 ## Root cause (verified in heap snapshots, Three 0.183.2)
 
@@ -40,6 +41,10 @@ NodeBuilder.js module scope: _bindingGroupsCache (WeakMap)
 - The key doesn't die: `RenderContexts.get()` (`renderers/common/RenderContexts.js`) caches one
   `RenderContext` per attachment state (format, type, samples...). Every shadow map with the same
   format shares it, for the renderer's lifetime.
+- **Shadows are not required.** The main pass's `RenderContext` (attachment state `default`) is
+  cached the same way, so every light that is added and later removed leaks, shadow-casting or
+  not. Verified in Three 0.186.1 with a standalone page (see Method): with `castShadow = false`,
+  all 20 removed `DirectionalLight`s stayed alive through the `default` context's entry.
 - The uniform is one of the per-light `renderGroup` uniforms in `nodes/accessors/Lights.js`
   (`lightPosition`, `lightTargetPosition` or `lightViewPosition`: `Vector3` uniforms whose
   `onRenderUpdate` closure holds `light`). A new light has new uniform ids, so the hash is new
@@ -59,6 +64,12 @@ NodeBuilder.js module scope: _bindingGroupsCache (WeakMap)
    (render objects, bindings), so the first frames of the next scene rebuild them. Measure that
    cost, and check that pipelines/shaders are not recompiled. It would live next to the scene-leave
    asset sweep in `SceneLoader.ts`, not in `_engine` code that runs every frame.
+   - **Not enough on its own** (tested in the standalone page, Three 0.186.1): with
+     `_renderContexts.dispose()` after every light swap, all 20 removed lights stayed alive. The
+     old `RenderContext`s are still referenced by the render objects of meshes that stay in the
+     scene (`renderer._objects._renderObjects` → `RenderObject.context`), so their
+     `_bindingGroupsCache` entries survive. This option would also have to drop those render
+     objects, which is untested.
 3. **Reuse light objects across scenes**, so no new uniform ids appear. Doesn't fit how scenes
    create their lights. Only worth it if 1 and 2 fail.
 
@@ -82,6 +93,14 @@ NodeBuilder.js module scope: _bindingGroupsCache (WeakMap)
 - Heap snapshots: CDP `HeapProfiler.takeHeapSnapshot` in One More Scene after visits 1, 2 and 4.
   Count `_BufferGeometry`, and diff node ids against the first snapshot to trace retainers of the
   geometries left from earlier visits.
+- Standalone page (no engine; also the upstream repro): `WebGPURenderer` with a persistent ground
+  plane and box, then 20 swaps of a fresh `DirectionalLight` (add, render 3 frames, remove,
+  `light.dispose()`), each registered in a `FinalizationRegistry`. After CDP
+  `HeapProfiler.collectGarbage`, stock 0.186.1 collected 0 / 20 lights with or without shadows. A
+  copy with `_bindingGroupsCache` reads and writes disabled collected 20 / 20 (19 / 20 with
+  shadows, the last held by `renderContext.camera`), so the cache is the only retainer. Run on the
+  WebGL2 backend (`forceWebGL`), since headless WebGPU doesn't render under WSL2. The cache sits in
+  the shared `NodeBuilder`, but the WebGPU backend still needs a check in a real browser.
 - Test option 2 behind a temporary flag before deciding.
 
 ### Method gotchas (learned in the earlier Gym leak fixes)
