@@ -5,6 +5,7 @@ import { createLines, writePolyline, type LineObject } from '../LineManager';
 import { createDebuggerTab, updateDebuggerTab } from '../../debug/DebuggerGUI';
 import { createPercentagePie, type PercentagePie } from '../../utils/UI/PercentagePieHtml';
 import type { IntervalWindowSnapshot } from '../../utils/stats/IntervalCounterStats';
+import type { RayDebugOpts } from '../RayDebugTypes';
 import { getRayCastStats, isRayCastStatsEnabled, setRayCastStatsEnabled } from '../Raycast';
 
 const DEFAULT_HELPER_COLOR = '#ff0000';
@@ -32,20 +33,13 @@ export const _initRayCastingDebugger = () => {
   }
 };
 
-export const _drawRayHelper = ({
-  from,
-  to,
-  endLength,
-  helperId,
-  helperColor,
-}: {
-  from: THREE.Vector3;
-  to: THREE.Vector3;
-  endLength?: number;
-  helperId?: string;
-  helperColor?: THREE.ColorRepresentation;
-}) => {
-  if (!helperId || !rayCastState.showAllRayDebugHelpers) return;
+export const _drawRayHelper = (
+  origin: THREE.Vector3,
+  direction: THREE.Vector3,
+  far: number,
+  { id: helperId, color: helperColor }: RayDebugOpts
+) => {
+  if (!rayCastState.showAllRayDebugHelpers) return;
 
   const color = helperColor || DEFAULT_HELPER_COLOR;
   let helper = rayHelpers.get(helperId);
@@ -68,10 +62,10 @@ export const _drawRayHelper = ({
   }
 
   rayEnd
-    .copy(to)
-    .multiplyScalar(endLength || DEFAULT_MAX_HELPER_LENGTH)
-    .add(from);
-  rayPoints[0] = from;
+    .copy(direction)
+    .multiplyScalar(Number.isFinite(far) ? far : DEFAULT_MAX_HELPER_LENGTH)
+    .add(origin);
+  rayPoints[0] = origin;
   writePolyline(helper.line.beginWrite(), rayPoints);
   helper.line.endWrite();
   drawnHelperIds.add(helperId);

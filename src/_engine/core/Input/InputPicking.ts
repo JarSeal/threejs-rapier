@@ -30,9 +30,8 @@ export const pickTargetsAt = (
   const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
   const objects = typeof targets === 'function' ? targets() : targets;
   if (!objects.length) return undefined;
-  if (targetArr) targetArr.length = 0;
   return castRayFromScreenPosition(objects, ndcX, ndcY, camera, {
     recursive: opts.recursive ?? true,
-    optionalTargetArr: targetArr,
+    target: targetArr,
   })[0];
 };

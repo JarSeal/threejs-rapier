@@ -7,150 +7,174 @@ import {
 } from '../utils/stats/IntervalCounterStats';
 import { DEFAULT_ECS_WORLD_ID, ECSWorld } from './ECS';
 import { ECSSystemStage } from '../../AppECSRegistry';
+import type { RayDebugOpts } from './RayDebugTypes';
 
-type Opts<TIntersected extends THREE.Object3D = THREE.Object3D> = {
-  startLength?: number;
-  endLength?: number;
-  perIntersectFn?: (intersect: THREE.Intersection<TIntersected>) => void | boolean;
-  helperId?: string;
-  helperColor?: THREE.ColorRepresentation;
-  optionalTargetArr?: Array<THREE.Intersection<TIntersected>>;
+export type { RayDebugOpts } from './RayDebugTypes';
+
+/** Options of the `castRayFrom*` functions. */
+export type RayCastOpts<TIntersected extends THREE.Object3D = THREE.Object3D> = {
+  /** Minimum hit distance (Raycaster.near), default 0 */
+  near?: number;
+  /** Maximum hit distance (Raycaster.far), default Infinity (castRayFromPoints: the from→to
+   * distance) */
+  far?: number;
+  /** Whether the objects' descendants are tested too, default true */
   recursive?: boolean;
+  /** Reused result array: it is cleared and filled, and returned instead of a new array */
+  target?: Array<THREE.Intersection<TIntersected>>;
+  /** Called per hit in distance order; return false to stop iterating */
+  perIntersect?: (intersect: THREE.Intersection<TIntersected>) => void | boolean;
+  /** Whether this ray is counted in the ray cast statistics, default true */
+  countInStats?: boolean;
+  /** Debug helper options, ignored outside debug */
+  debug?: RayDebugOpts;
+  /** Only castRayFromAngle: the local axis rotated by the angle, default FORWARD */
   directionForAngle?: keyof typeof DIRECTIONS;
+  /** @deprecated use `debug.id` */
+  helperId?: string;
+  /** @deprecated use `debug.color` */
+  helperColor?: THREE.ColorRepresentation;
+  /** @deprecated use `near` */
+  startLength?: number;
+  /** @deprecated use `far` */
+  endLength?: number;
+  /** @deprecated use `perIntersect` */
+  perIntersectFn?: (intersect: THREE.Intersection<TIntersected>) => void | boolean;
+  /** @deprecated use `target` */
+  optionalTargetArr?: Array<THREE.Intersection<TIntersected>>;
 };
 
-let ray: THREE.Raycaster | null = null;
-const defaultDirectionForAngle = DIRECTIONS.FORWARD;
+/** Shared by every cast. castPrepared restores its near/far after each cast. */
+const raycaster = new THREE.Raycaster();
+const scratchDirection = new THREE.Vector3();
+const screenPos = new THREE.Vector2();
+const legacyDebugOpts: RayDebugOpts = { id: '' };
 
+/** Wires up the debug side (a no-op outside debug). */
 export const initRayCasting = () => {
-  ray = new THREE.Raycaster();
   useDebug(debugGUI)?._initRayCastingDebugger();
 };
 
-const getRayCastIntersects = <TIntersected extends THREE.Object3D = THREE.Object3D>({
-  ray,
-  objects,
-  startLength,
-  endLength,
-  perIntersectFn,
-  optionalTargetArr,
-  recursive,
-}: {
-  ray: THREE.Raycaster;
-  objects: THREE.Object3D | THREE.Object3D[];
-  startLength?: number;
-  endLength?: number;
-  perIntersectFn?: (intersect: THREE.Intersection<TIntersected>) => void | boolean;
-  optionalTargetArr?: Array<THREE.Intersection<TIntersected>>;
-  recursive?: boolean;
-}) => {
+/** Maps the deprecated helperId/helperColor onto the debug options (without allocating). */
+const resolveDebugOpts = (
+  opts: Pick<RayCastOpts, 'debug' | 'helperId' | 'helperColor'>
+): RayDebugOpts | undefined => {
+  if (opts.debug) return opts.debug;
+  if (!opts.helperId) return undefined;
+  legacyDebugOpts.id = opts.helperId;
+  legacyDebugOpts.color = opts.helperColor;
+  return legacyDebugOpts;
+};
+
+/**
+ * Intersects the objects with the already positioned raycaster. Every cast funnels through
+ * here, and the deprecated option aliases are resolved here.
+ */
+const castPrepared = <TIntersected extends THREE.Object3D>(
+  objects: THREE.Object3D | THREE.Object3D[],
+  opts: RayCastOpts<TIntersected> | undefined,
+  defaultFar: number
+): Array<THREE.Intersection<TIntersected>> => {
+  // The deprecated startLength/endLength were ignored when 0, so they still are
+  const far = opts?.far ?? (opts?.endLength || defaultFar);
+  const target = opts?.target ?? opts?.optionalTargetArr;
+  const perIntersect = opts?.perIntersect ?? opts?.perIntersectFn;
+  const recursive = opts?.recursive ?? true;
+
   let intersects: Array<THREE.Intersection<TIntersected>>;
-  if (Array.isArray(objects)) {
-    // intersectObjects (multiple objects)
-    intersects = ray.intersectObjects(objects, recursive, optionalTargetArr);
-  } else {
-    // intersectObject (one object)
-    intersects = ray.intersectObject(objects, recursive, optionalTargetArr);
+  raycaster.near = opts?.near ?? (opts?.startLength || 0);
+  raycaster.far = far;
+  try {
+    if (target) target.length = 0;
+    intersects = Array.isArray(objects)
+      ? raycaster.intersectObjects(objects, recursive, target)
+      : raycaster.intersectObject(objects, recursive, target);
+  } finally {
+    raycaster.near = 0;
+    raycaster.far = Infinity;
   }
-  if (perIntersectFn) {
+
+  if (perIntersect) {
     for (let i = 0; i < intersects.length; i++) {
-      const int = intersects[i];
-      if (startLength && startLength > int.distance) continue;
-      if (endLength && endLength < int.distance) return intersects;
-      perIntersectFn(int);
+      if (perIntersect(intersects[i]) === false) break;
     }
+  }
+  if (statsEnabled && opts?.countInStats !== false) stats.add();
+  const debug = opts && resolveDebugOpts(opts);
+  if (debug) {
+    useDebug(debugGUI)?._drawRayHelper(raycaster.ray.origin, raycaster.ray.direction, far, debug);
   }
   return intersects;
 };
 
+/**
+ * Casts a ray from an origin in a direction.
+ *
+ * Not re-entrant: all casts share one raycaster, so don't cast from a `perIntersect` callback
+ * (collect the hits first, then cast).
+ * @param objects (THREE.Object3D | THREE.Object3D[]) object(s) to test against
+ * @param origin (THREE.Vector3) ray origin
+ * @param direction (THREE.Vector3) normalized ray direction
+ * @param opts ({@link RayCastOpts}) optional ray cast options
+ * @returns (Array<THREE.Intersection>) intersections sorted by distance, closest first
+ */
+export const castRayFromDirection = <TIntersected extends THREE.Object3D = THREE.Object3D>(
+  objects: THREE.Object3D | THREE.Object3D[],
+  origin: THREE.Vector3,
+  direction: THREE.Vector3,
+  opts?: RayCastOpts<TIntersected>
+): Array<THREE.Intersection<TIntersected>> => {
+  raycaster.set(origin, direction);
+  return castPrepared(objects, opts, Infinity);
+};
+
+/**
+ * Casts a ray from a point to another point: only hits between them are returned (`far`
+ * defaults to the from→to distance).
+ *
+ * Changed in engine 2.2.0: `to` used to be treated as a direction (use
+ * {@link castRayFromDirection} for that).
+ * @param objects (THREE.Object3D | THREE.Object3D[]) object(s) to test against
+ * @param from (THREE.Vector3) ray origin
+ * @param to (THREE.Vector3) ray end point
+ * @param opts ({@link RayCastOpts}) optional ray cast options
+ * @returns (Array<THREE.Intersection>) intersections sorted by distance, closest first
+ */
 export const castRayFromPoints = <TIntersected extends THREE.Object3D = THREE.Object3D>(
   objects: THREE.Object3D | THREE.Object3D[],
   from: THREE.Vector3,
   to: THREE.Vector3,
-  opts?: Opts<TIntersected>
+  opts?: RayCastOpts<TIntersected>
 ): Array<THREE.Intersection<TIntersected>> => {
-  const {
-    startLength,
-    endLength,
-    perIntersectFn,
-    optionalTargetArr,
-    recursive,
-    helperId,
-    helperColor,
-  } = opts || {};
-  (ray as THREE.Raycaster).set(from, to);
-  const intersects = getRayCastIntersects({
-    ray: ray as THREE.Raycaster,
-    objects,
-    startLength,
-    endLength,
-    perIntersectFn,
-    optionalTargetArr,
-    recursive,
-  });
-  if (statsEnabled) stats.add();
-  // drawRayHelper({ from, to, endLength, helperId, helperColor });
-  useDebug(debugGUI)?._drawRayHelper({ from, to, endLength, helperId, helperColor });
-  return intersects;
+  const distance = from.distanceTo(to);
+  raycaster.set(from, scratchDirection.subVectors(to, from).normalize());
+  return castPrepared(objects, opts, distance);
 };
 
-const getAngleDirectionPoint = (
-  angle: THREE.Euler | THREE.Quaternion,
-  directionForAngle?: keyof typeof DIRECTIONS
-) => {
-  const angleDirection = directionForAngle
-    ? DIRECTIONS[directionForAngle].clone()
-    : defaultDirectionForAngle.clone();
-  if ('isEuler' in angle) {
-    // Euler angle
-    angleDirection.applyEuler(angle).normalize();
-  } else {
-    // Quaternion angle
-    angleDirection.applyQuaternion(angle).normalize();
-  }
-  return angleDirection;
-};
-
+/**
+ * Casts a ray from an origin in the direction of an angle: `opts.directionForAngle` (default
+ * FORWARD, -Z) rotated by the angle.
+ * @param objects (THREE.Object3D | THREE.Object3D[]) object(s) to test against
+ * @param from (THREE.Vector3) ray origin
+ * @param angle (THREE.Euler | THREE.Quaternion) rotation of the direction
+ * @param opts ({@link RayCastOpts}) optional ray cast options
+ * @returns (Array<THREE.Intersection>) intersections sorted by distance, closest first
+ */
 export const castRayFromAngle = <TIntersected extends THREE.Object3D = THREE.Object3D>(
   objects: THREE.Object3D | THREE.Object3D[],
   from: THREE.Vector3,
   angle: THREE.Euler | THREE.Quaternion,
-  opts?: Opts<TIntersected>
+  opts?: RayCastOpts<TIntersected>
 ): Array<THREE.Intersection<TIntersected>> => {
-  const {
-    startLength,
-    endLength,
-    perIntersectFn,
-    optionalTargetArr,
-    recursive,
-    directionForAngle,
-    helperId,
-    helperColor,
-  } = opts || {};
-  const angleDirection = getAngleDirectionPoint(angle, directionForAngle);
-  (ray as THREE.Raycaster).set(from, angleDirection);
-  const intersects = getRayCastIntersects({
-    ray: ray as THREE.Raycaster,
-    objects,
-    startLength,
-    endLength,
-    perIntersectFn,
-    optionalTargetArr,
-    recursive,
-  });
-  if (statsEnabled) stats.add();
-  // drawRayHelper({ from, to: angleDirection, endLength, helperId, helperColor });
-  useDebug(debugGUI)?._drawRayHelper({
-    from,
-    to: angleDirection,
-    endLength,
-    helperId,
-    helperColor,
-  });
-  return intersects;
+  scratchDirection.copy(DIRECTIONS[opts?.directionForAngle || 'FORWARD']);
+  if ('isEuler' in angle) {
+    scratchDirection.applyEuler(angle).normalize();
+  } else {
+    scratchDirection.applyQuaternion(angle).normalize();
+  }
+  raycaster.set(from, scratchDirection);
+  return castPrepared(objects, opts, Infinity);
 };
-
-const screenPos = new THREE.Vector2();
 
 /**
  * Casts a ray from a screen position through the camera (picking), e.g. for mouse/touch input.
@@ -158,7 +182,7 @@ const screenPos = new THREE.Vector2();
  * @param ndcX (number) normalized device coordinate x, -1 (left) .. 1 (right)
  * @param ndcY (number) normalized device coordinate y, -1 (bottom) .. 1 (top)
  * @param camera (THREE.Camera) the camera the screen position is relative to (usually the one rendering)
- * @param opts ({@link Opts}) optional ray cast options (directionForAngle is ignored)
+ * @param opts ({@link RayCastOpts}) optional ray cast options (directionForAngle is ignored)
  * @returns (Array<THREE.Intersection>) intersections sorted by distance, closest first
  */
 export const castRayFromScreenPosition = <TIntersected extends THREE.Object3D = THREE.Object3D>(
@@ -166,38 +190,10 @@ export const castRayFromScreenPosition = <TIntersected extends THREE.Object3D = 
   ndcX: number,
   ndcY: number,
   camera: THREE.Camera,
-  opts?: Opts<TIntersected>
+  opts?: RayCastOpts<TIntersected>
 ): Array<THREE.Intersection<TIntersected>> => {
-  const {
-    startLength,
-    endLength,
-    perIntersectFn,
-    optionalTargetArr,
-    recursive,
-    helperId,
-    helperColor,
-  } = opts || {};
-  // Input events can arrive before initMainLoop has called initRayCasting
-  if (!ray) ray = new THREE.Raycaster();
-  ray.setFromCamera(screenPos.set(ndcX, ndcY), camera);
-  const intersects = getRayCastIntersects({
-    ray,
-    objects,
-    startLength,
-    endLength,
-    perIntersectFn,
-    optionalTargetArr,
-    recursive,
-  });
-  if (statsEnabled) stats.add();
-  useDebug(debugGUI)?._drawRayHelper({
-    from: ray.ray.origin,
-    to: ray.ray.direction,
-    endLength,
-    helperId,
-    helperColor,
-  });
-  return intersects;
+  raycaster.setFromCamera(screenPos.set(ndcX, ndcY), camera);
+  return castPrepared(objects, opts, Infinity);
 };
 
 // Stats
