@@ -1,6 +1,6 @@
 # Spatial index system visualizer
 
-Status: draft | not-implemented
+Status: implemented
 Category: Debugger
 Blocked by: [_DONE_p050_spatial-index.md](./_DONE_p050_spatial-index.md) (incl. light object culling), [_DONE_p058_line-rendering-system.md](./_DONE_p058_line-rendering-system.md) (implemented — no longer blocking)
 
@@ -19,7 +19,7 @@ Add a debug-mode toggle that visualizes the [spatial index grid](../../src/_engi
 
 1. **Create-once, not create/destroy-on-toggle.** The user's spec asks whether create/delete-per-toggle is necessary to avoid a memory footprint — it isn't, and it would be inconsistent with the codebase's own precedent. Since the grid rebuilds every frame, a wireframe that only existed while the checkbox was checked would still need per-frame geometry writes; recreating the `LineSegments`/`BufferGeometry`/`Material` object graph itself on every toggle only adds GC churn for no benefit. Instead: allocate the object once (hidden, `visible = false`) when the debug GUI module loads, toggle only `visible`, and gate the per-frame geometry refill on an `enabled` flag so it costs nothing while off.
 2. **No separate "grid boundary" line.** Because the grid is dynamically sparse and unbounded, "grid boundaries" is interpreted as *the boundaries of each occupied cell*, per the user's own second sentence ("visualize the boundaries of the grid and each cell"). The union of per-cell wireframe boxes already conveys the occupied extent; no additional bounding box is drawn.
-3. **Oversized members are not visualized** in this plan (no cell to draw for them). Flagged as a possible future extension, not required scope.
+3. ~~**Oversized members are not visualized** in this plan (no cell to draw for them). Flagged as a possible future extension, not required scope.~~ Reversed during implementation: they are drawn as a separate overlay (see Implementation notes).
 4. **Per-frame update via an ECS system, not a poll.** The existing stats/histogram readout in `_dbg__SpatialGrid.ts` refreshes via `setInterval(refreshStats, 500)`, which is fine for text but would make a moving wireframe visibly lag/pop for anything crossing cell boundaries within that window. Since `SpatialIndexSystem.ts` already wires the grid into the ECS via `ECSWorld.registerPlugin`, the visualizer refill is added the same way: a debug-only system registered on `ECSSystemStage.LATE_MAIN` (after the grid's own `APP_POST_PHYSICS` rebuild), no-op unless the visualizer is enabled for the active world.
 
 ## Engine-side gaps to close first
@@ -53,7 +53,7 @@ Add a debug-mode toggle that visualizes the [spatial index grid](../../src/_engi
 
 ## Non-goals
 
-- Visualizing oversized (grid-bypassing) members.
+- ~~Visualizing oversized (grid-bypassing) members.~~ Implemented after all (see Implementation notes).
 - Any change to grid rebuild behavior, cell sizing, or query semantics — this is read-only visualization of existing state.
 - Worker-threaded physics/spatial concerns (unrelated, tracked separately per `CLAUDE.md`'s physics section).
 
@@ -61,3 +61,18 @@ Add a debug-mode toggle that visualizes the [spatial index grid](../../src/_engi
 
 - **Cell count spikes**: a very small `cellSize` over a large occupied area could produce a large number of boxes (12 line segments each). Since this is debug-only and gated behind an explicit opt-in checkbox, no additional guardrail is planned, but worth watching for GPU/CPU cost if occupied-cell counts run into the tens of thousands. This is why Phase 2 pins the `THIN` backend.
 - ~~Confirm the correct place to source the "root scene" reference~~ — resolved by p058's `attach: { to: 'ROOT_SCENE' }`, which is the default.
+
+## Implementation notes (where the shipped code differs from the design above)
+
+- **`getOccupiedCellBoundsInto` doesn't grow the caller's buffer.** A method that takes a `Float32Array` can't replace the caller's reference. It follows `queryInto`'s convention in the same file instead: it returns the full cell count and drops cells that don't fit. The visualizer grows its own scratch buffer when `count * 6 > out.length`.
+- **`expectedCells` is `VISUALIZER_MAX_CELLS = 4096`** (about 49k segments). The only hard ceiling is `world.maxEntities` (100k by default), which is far too much to pre-allocate for a debug overlay. Past 4,096 cells the FIXED line drops the extra boxes and warns once.
+- **The line is created in `_createSpatialGridDebugGUI`, not the tab's content factory**, which re-runs on every tab mount and would try to register the same line id again. The refill re-reads `getSpatialGrid(world)` every frame, because `setSpatialGridCellSize` swaps the grid instance. Only the default world is drawn, since there is one line.
+- **No separate `IS_DEBUG_ENV` check on the system.** The module is only loaded through `loadDebugModuleAsync`, behind that same flag.
+- **Phase 3 is built on the declarative `createDebuggerTab` API** ([_DONE_p105_refactor-debugger-drawer-tab-creation.md](./_DONE_p105_refactor-debugger-drawer-tab-creation.md)), not hand-written `lsGetItem`/`lsSetItem`. The visualizer settings are `persistKeys` of the tab's `settings` under `AEK_debugSpatialGrid`. Hydration is per key, so older saves that only hold `cellSize` still load.
+- **Oversized members are drawn** (design decision 3 and the Non-goal reversed). `SpatialGrid.getOversizedBoundsInto(out)` writes each oversized member's position ± radius, with the same buffer convention as the cell getter. Members with an infinite radius (eg. a never-attenuating light) are skipped. They go on a second THIN/FIXED line, `SPATIAL_GRID_DEBUG_VISUALIZER_OVERSIZED` (256 boxes), with its own "Show oversized bounds" checkbox and "Oversized color" picker (default `0xffaa00`), both persisted. Both overlays share one refill routine. The Gym scene's smooth terrain was the trigger: its radius (~73) is over `cellSize * 2`, so it never had a cell to show.
+- **Unrelated fixes found while verifying in the Gym scene:**
+  - `_dbg__PhysicsDebugDraw.ts`'s heightfield wireframe read Rapier's height matrix with the wrong stride, swapped axes and one row/column too few. Rapier's `nrows`/`ncols` count cells: the matrix is `(nrows + 1) x (ncols + 1)`, column-major, with rows along local z and columns along local x.
+  - `EngineRapier.ts` read the heightfield column count from `params.nrows`.
+- **Not fixed (importer, [MeshColliderGeometry.ts](../../src/_engine/core/Import/MeshColliderGeometry.ts)), found by the corrected wireframe:**
+  - The heightfield collider is centered on the node origin, but the spiked terrain's mesh isn't centered on its origin, so its physics surface sits ~0.5 units off in z.
+  - Up to ~190 heights near one edge of each Gym terrain differ from the mesh (≤ 0.22 units), probably from the vertex order after `mergeVertices`.

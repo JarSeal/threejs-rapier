@@ -50,7 +50,7 @@ function formatOccupancyHistogram(counts: number[]): string {
   return lines.join('\n');
 }
 
-// --- VISUALIZER (docs/plans/p125_spatial-index-system-visualizer.md) ---
+// --- VISUALIZER (docs/plans/_DONE_p125_spatial-index-system-visualizer.md) ---
 // Two overlays, each one line created once and hidden: the occupied cells, and the
 // oversized tier's members (which bypass the grid, so they have no cell to draw). A toggle
 // only flips visibility and the `enabled` flag the refill system reads, so nothing is
