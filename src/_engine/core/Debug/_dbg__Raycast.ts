@@ -27,7 +27,11 @@ import {
   setRayHelperSettings,
   type RayHelperKindSettings,
 } from './_dbg__RayHelpers';
-import { _refreshRayTesterHelperNotices, _toggleRayTesterWindow } from './_dbg__RayTester';
+import {
+  _createClearRayTestersLSButton,
+  _refreshRayTesterHelperNotices,
+  _toggleRayTesterWindow,
+} from './_dbg__RayTester';
 
 const LS_KEY = 'debugRayCast';
 const TAB_ID = 'rayCastControls';
@@ -160,6 +164,8 @@ const createDebugControls = () => {
     title: 'Ray cast controls',
     icon: 'heartArrow',
     lsKey: LS_KEY,
+    // The ray testers' saved params are scene-scoped (their own LS key): a separate button
+    headerButtons: () => [_createClearRayTestersLSButton()],
     state: rayCastState,
     persistKeys: [
       'enableRayStatistics',

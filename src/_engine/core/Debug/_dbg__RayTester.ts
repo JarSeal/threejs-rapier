@@ -11,10 +11,18 @@ import {
   getDraggableWindow,
   openDraggableWindow,
   registerDraggableWindowContentFn,
+  updateDraggableWindow,
 } from '../UI/DraggableWindow';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { addToast } from '../UI/Toaster';
-import { getCurrentScene, getRootScene } from '../Scene';
+import {
+  getCurrentScene,
+  getCurrentSceneId,
+  getRootScene,
+  registerOnAllSceneEnterings,
+} from '../Scene';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { confirmClearScope, createClearLSButton } from './_dbg__ClearLSButtons';
 import { getActiveCamera } from '../CameraManager';
 import { getECSWorld, getEntityIdByAppId } from '../ECS';
 import { CoreComponentType } from '../ECS/ECSRegistry';
@@ -42,6 +50,9 @@ import { _setRayHelpersShown } from './_dbg__Raycast';
  *
  * Tester rays are never counted in the ray statistics: Three.js rays pass `countInStats: false`,
  * and physics queries are skipped by their helper id prefix (RAY_TESTER_ID_PREFIX).
+ *
+ * The params are saved per scene (LS_KEY, on every committed change) and each window shows the
+ * current scene's. The results are not saved: a scene enter clears them.
  */
 
 type AnyState = Record<string, unknown>;
@@ -229,16 +240,46 @@ const createState = <P>(createParams: () => P): RayTesterState<P> => ({
   activeIndex: 0,
 });
 
-let threeState: RayTesterState<ThreeRayParams> | null = null;
-let physicsState: RayTesterState<PhysicsRayParams> | null = null;
-const getThreeState = () => (threeState ??= createState(createThreeRayParams));
-const getPhysicsState = () => (physicsState ??= createState(createPhysicsRayParams));
+type RayTesterParamsByKind = { THREE: ThreeRayParams; PHYSICS: PhysicsRayParams };
+type LoadedState<P> = { sceneId: string | null; state: RayTesterState<P> };
+
+const CREATE_PARAMS: { [K in RayTesterKind]: () => RayTesterParamsByKind[K] } = {
+  THREE: createThreeRayParams,
+  PHYSICS: createPhysicsRayParams,
+};
+
+/** Each kind's state, and the scene it was loaded for */
+const loadedStates: { [K in RayTesterKind]: LoadedState<RayTesterParamsByKind[K]> | null } = {
+  THREE: null,
+  PHYSICS: null,
+};
+
+/**
+ * A kind's state for the current scene: loaded from LS (merged over the defaults) the first
+ * time it's read in a scene. The first scene is entered before the debug GUIs exist, so this
+ * lazy check, not only the scene enter hook, is what applies each scene's saved params.
+ */
+const getTesterState = <K extends RayTesterKind>(
+  kind: K
+): RayTesterState<RayTesterParamsByKind[K]> => {
+  const sceneId = getCurrentSceneId() ?? null;
+  const loaded = loadedStates[kind];
+  if (loaded && loaded.sceneId === sceneId) return loaded.state;
+  const next = { sceneId, state: readTesterState(kind, sceneId) };
+  loadedStates[kind] = next as (typeof loadedStates)[K];
+  return next.state;
+};
+const getThreeState = () => getTesterState('THREE');
+const getPhysicsState = () => getTesterState('PHYSICS');
 
 /** The last fire's results (not persisted) */
 let threeResults: RayTesterResult<ThreeHitRow>[] | null = null;
 let physicsResults: RayTesterResult<PhysicsHitRow>[] | null = null;
 /** True while the physics queries are in flight (≥1 frame in WORKER_THREAD mode) */
 let isPhysicsFiring = false;
+/** Bumped per physics fire and per scene enter: a fire whose serial is stale when its results
+ * arrive (eg. the scene changed meanwhile) drops them */
+let physicsFireSerial = 0;
 
 /** The mounted views (stale while a window is closed: they are only written to) */
 const resultsViews: Partial<Record<RayTesterKind, TCMP>> = {};
@@ -296,7 +337,8 @@ const createHelperNotice = (kind: RayTesterKind) => {
   return notice;
 };
 
-/** A tester window's content: the helper notice, the ray's pane and the results. */
+/** A tester window's content: the toolbar, the helper notice, the ray's pane and the
+ * results. Every committed pane change saves the kind's state. */
 const createTesterContent = <P extends AimedRay>(
   kind: RayTesterKind,
   ray: P,
@@ -304,11 +346,16 @@ const createTesterContent = <P extends AimedRay>(
   renderResults: () => void
 ) => {
   const container = CMP({ class: 'rayTesterWindow' });
+  container.add(createToolbar(kind));
   container.add(createHelperNotice(kind));
 
   let built: BuiltDebuggerPane | null = null;
   const refreshPane = () => built?.refresh();
-  const section: DebuggerPaneSection<P> = { pane: true, content: paneItems(refreshPane) };
+  const persist = () => persistTesterState(kind);
+  const section: DebuggerPaneSection<P> = {
+    pane: true,
+    content: persistOnCommit(paneItems(refreshPane), persist),
+  };
   built = _buildDebuggerPane(
     { id: WINDOW_IDS[kind], state: ray as unknown as AnyState },
     section as unknown as DebuggerPaneSection<AnyState>
@@ -321,8 +368,51 @@ const createTesterContent = <P extends AimedRay>(
   return container;
 };
 
-/** The aim bindings every kind has. */
-const aimItems = (ray: AimedRay, refreshPane: () => void): DebuggerPaneItem<AimedRay>[] => [
+/** The window's top row: which scene's params are shown, and the clear-LS button. */
+const createToolbar = (kind: RayTesterKind) => {
+  const toolbar = CMP({ class: ['winPaddedContent', 'rayTesterToolbar'] });
+  const sceneId = getCurrentSceneId();
+  toolbar.add({
+    tag: 'span',
+    class: 'winSmallLabel',
+    text: sceneId ? `Saved per scene (${sceneId})` : 'No scene: not saved',
+  });
+  toolbar.add(
+    createClearLSButton({
+      icon: 'eraser',
+      title: `Clear the ${WINDOW_TITLES[kind].toLowerCase()}'s saved params`,
+      hasData: () => getScenesWithData([kind]).length > 0,
+      watchKey: LS_KEY,
+      onClear: () => clearTesterLSWithConfirm([kind]),
+    })
+  );
+  return toolbar;
+};
+
+/** Wraps every binding's onChange to call `persist` on committed changes (not drag ticks). */
+const persistOnCommit = <S extends object>(
+  items: DebuggerPaneItem<S>[],
+  persist: () => void
+): DebuggerPaneItem<S>[] =>
+  items.map((item) => {
+    if (item.type === 'folder') return { ...item, content: persistOnCommit(item.content, persist) };
+    if (item.type === 'button' || item.type === 'separator' || item.type === 'custom') return item;
+    const { onChange } = item;
+    return {
+      ...item,
+      onChange: (value, e) => {
+        onChange?.(value, e);
+        if (e.last) persist();
+      },
+    } as DebuggerPaneItem<S>;
+  });
+
+/** The aim bindings every kind has. `onEdited` runs after a non-binding edit (a button). */
+const aimItems = (
+  ray: AimedRay,
+  refreshPane: () => void,
+  onEdited: () => void
+): DebuggerPaneItem<AimedRay>[] => [
   { key: 'aim.mode', label: 'Aim', options: AIM_MODE_OPTIONS, onChange: refreshPane },
   { key: 'origin', label: 'Origin', hidden: () => ray.aim.mode === 'CAMERA_FORWARD' },
   {
@@ -337,6 +427,7 @@ const aimItems = (ray: AimedRay, refreshPane: () => void): DebuggerPaneItem<Aime
       ray.origin.y = pos.y;
       ray.origin.z = pos.z;
       refreshPane();
+      onEdited();
     },
   },
   { key: 'aim.dir', label: 'Direction', hidden: () => ray.aim.mode !== 'DIRECTION' },
@@ -409,7 +500,7 @@ const threePaneItems = (
 ): DebuggerPaneItem<ThreeRayParams>[] => [
   { type: 'button', title: 'Fire', onClick: fireThreeRays },
   { type: 'separator' },
-  ...aimItems(ray, refreshPane),
+  ...aimItems(ray, refreshPane, () => persistTesterState('THREE')),
   { key: 'near', label: 'Near', min: 0, step: 0.1 },
   { key: 'far', label: 'Far', min: 0, step: 0.1 },
   { key: 'recursive', label: 'Recursive' },
@@ -571,7 +662,7 @@ const physicsPaneItems = (
   },
   { type: 'separator' },
   { key: 'query', label: 'Query', options: PHYSICS_QUERY_OPTIONS },
-  ...aimItems(ray, refreshPane),
+  ...aimItems(ray, refreshPane, () => persistTesterState('PHYSICS')),
   { key: 'maxToi', label: 'Max toi', min: 0, step: 0.1 },
   { key: 'solid', label: 'Solid' },
   {
@@ -606,12 +697,18 @@ const physicsPaneItems = (
  */
 const firePhysicsRays = async () => {
   if (isPhysicsFiring) return;
+  const serial = ++physicsFireSerial;
   setPhysicsFiring(true);
+  let results: RayTesterResult<PhysicsHitRow>[] | null = null;
   try {
     const { rays } = getPhysicsState();
-    physicsResults = await Promise.all(rays.map(firePhysicsRay));
+    results = await Promise.all(rays.map(firePhysicsRay));
   } finally {
-    setPhysicsFiring(false);
+    // Stale: the scene changed while the queries were in flight (its hook reset the state)
+    if (serial === physicsFireSerial) {
+      physicsResults = results;
+      setPhysicsFiring(false);
+    }
   }
 };
 
@@ -765,6 +862,134 @@ const addPhysicsHitRow = (list: TCMP, hit: PhysicsHitRow, index: number) => {
 };
 
 // ----------------------------------------------------------------------------
+// Per-scene persistence
+// ----------------------------------------------------------------------------
+
+const LS_KEY = 'AEK_debugRayTester';
+const LS_FIELDS = { THREE: 'three', PHYSICS: 'physics' } as const satisfies Record<
+  RayTesterKind,
+  string
+>;
+type RayTesterSceneLSData = {
+  three?: RayTesterState<ThreeRayParams>;
+  physics?: RayTesterState<PhysicsRayParams>;
+};
+type RayTesterLSData = { [sceneId: string]: RayTesterSceneLSData };
+
+const readLS = () => (lsGetItem(LS_KEY, {}) as RayTesterLSData | null) || {};
+
+const writeLS = (data: RayTesterLSData) => {
+  if (Object.keys(data).length) lsSetItem(LS_KEY, data);
+  else lsRemoveItem(LS_KEY);
+};
+
+/** A kind's saved state for a scene, merged over the defaults, or the defaults. */
+const readTesterState = <K extends RayTesterKind>(
+  kind: K,
+  sceneId: string | null
+): RayTesterState<RayTesterParamsByKind[K]> => {
+  const createParams = CREATE_PARAMS[kind] as () => RayTesterParamsByKind[K];
+  const saved = sceneId ? readLS()[sceneId]?.[LS_FIELDS[kind]] : undefined;
+  if (saved?.version !== 1 || !Array.isArray(saved.rays) || !saved.rays.length) {
+    return createState(createParams);
+  }
+  const rays = saved.rays.map((ray: unknown) => mergeOverDefaults(createParams(), ray));
+  const activeIndex = Number.isInteger(saved.activeIndex) ? saved.activeIndex : 0;
+  return { version: 1, rays, activeIndex: Math.min(Math.max(activeIndex, 0), rays.length - 1) };
+};
+
+/** Copies the saved values whose type matches the default's, recursing into objects: fields
+ * added later get their defaults, and removed or retyped ones are dropped. */
+const mergeOverDefaults = <T extends object>(defaults: T, saved: unknown): T => {
+  if (!isPlainObject(saved)) return defaults;
+  const target = defaults as Record<string, unknown>;
+  for (const key of Object.keys(target)) {
+    const def = target[key];
+    const value = saved[key];
+    if (isPlainObject(def)) {
+      target[key] = mergeOverDefaults(def, value);
+    } else if (typeof value === typeof def && value !== null) {
+      target[key] = value;
+    }
+  }
+  return defaults;
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Saves a kind's state under the scene it was loaded for (not saved without a scene). */
+const persistTesterState = (kind: RayTesterKind) => {
+  const loaded = loadedStates[kind];
+  if (!loaded?.sceneId) return;
+  const data = readLS();
+  data[loaded.sceneId] = { ...data[loaded.sceneId], [LS_FIELDS[kind]]: loaded.state };
+  writeLS(data);
+};
+
+/** The scenes that have saved params of any of the kinds */
+const getScenesWithData = (kinds: RayTesterKind[]) => {
+  const data = readLS();
+  return Object.keys(data).filter((sceneId) =>
+    kinds.some((kind) => data[sceneId][LS_FIELDS[kind]] !== undefined)
+  );
+};
+
+/** Clears the kinds' saved params: asks for the scope when more than one scene has some. */
+const clearTesterLSWithConfirm = (kinds: RayTesterKind[]) => {
+  if (getScenesWithData(kinds).length > 1) {
+    confirmClearScope({
+      onClearAllScenes: () => clearTesterLS(kinds, 'ALL'),
+      onClearThisScene: () => clearTesterLS(kinds, 'THIS_SCENE'),
+    });
+  } else {
+    clearTesterLS(kinds, 'ALL');
+  }
+};
+
+/** Clears the kinds' saved params, then resets the current scene's to the defaults (both
+ * scopes include the current scene). */
+const clearTesterLS = (kinds: RayTesterKind[], scope: 'ALL' | 'THIS_SCENE') => {
+  const data = readLS();
+  const currentSceneId = getCurrentSceneId();
+  for (const sceneId of Object.keys(data)) {
+    if (scope === 'THIS_SCENE' && sceneId !== currentSceneId) continue;
+    for (const kind of kinds) delete data[sceneId][LS_FIELDS[kind]];
+    if (!Object.keys(data[sceneId]).length) delete data[sceneId];
+  }
+  writeLS(data);
+  for (const kind of kinds) {
+    loadedStates[kind] = null;
+    updateDraggableWindow(WINDOW_IDS[kind]);
+  }
+};
+
+/**
+ * The Ray cast controls tab's clear button for both testers' saved params (the scope is asked
+ * when more than one scene has some).
+ * @returns (TCMP) the button
+ */
+export const _createClearRayTestersLSButton = () =>
+  createClearLSButton({
+    icon: 'databaseX',
+    title: "Clear the ray testers' saved params",
+    hasData: () => getScenesWithData(['THREE', 'PHYSICS']).length > 0,
+    watchKey: LS_KEY,
+    onClear: () => clearTesterLSWithConfirm(['THREE', 'PHYSICS']),
+  });
+
+/** On every scene enter: the results belong to the previous scene, and the open windows show
+ * the new scene's params (getTesterState reloads them). */
+const onSceneEnter = () => {
+  threeResults = null;
+  physicsResults = null;
+  physicsFireSerial++;
+  isPhysicsFiring = false;
+  updateDraggableWindow(WINDOW_IDS.THREE);
+  updateDraggableWindow(WINDOW_IDS.PHYSICS);
+};
+
+// ----------------------------------------------------------------------------
 // Shared helpers
 // ----------------------------------------------------------------------------
 
@@ -883,3 +1108,4 @@ const fmtVec = (v: Vec3) => `(${fmt(v.x)}, ${fmt(v.y)}, ${fmt(v.z)})`;
 // was open before a reload gets its content
 registerDraggableWindowContentFn(WINDOW_IDS.THREE, createThreeTesterContent);
 registerDraggableWindowContentFn(WINDOW_IDS.PHYSICS, createPhysicsTesterContent);
+registerOnAllSceneEnterings('rayTester', onSceneEnter);

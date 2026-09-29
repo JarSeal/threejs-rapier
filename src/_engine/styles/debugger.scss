@@ -36,6 +36,13 @@
 }
 
 // _dbg__RayTester.ts
+.rayTesterToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
 .rayTesterNotice {
   display: flex;
   gap: 0.8rem;

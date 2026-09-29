@@ -22,7 +22,9 @@ type ClearLSButtonOpts = {
   watchKey?: string;
 };
 
-const createClearLSButton = (
+/** A clear-LS icon button, disabled while `hasData` is false. The tab and list variants below
+ * preset the icon and the title. */
+export const createClearLSButton = (
   opts: ClearLSButtonOpts & { icon: 'eraser' | 'databaseX'; title: string }
 ): TCMP => {
   let lastHasData = opts.hasData();
