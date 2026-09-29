@@ -92,11 +92,11 @@ When this plan is done, the brief's fallback "Sky and sun" type is covered as on
      - It is set through a new `CoreEntityOpts.managedBy`, which is **not** in the JSON schema: managed entities are only created in code.
    - **`LightManager.createLightEntity`** skips `loadPersistentProps` (`LightManager.ts:166`) when `managedBy` is set, and passes the option on to the target entity.
    - **The Lights tab** (`Debug/Light/_dbg__LightGUI.ts`):
-     - list rows for managed lights get a sky icon and a "Managed by Sky box" subtitle (`:1004-1041`);
-     - `createEditLightContent` (`:399-892`) renders a read-only summary for them, with an "Open in Sky box tab" button (switching the drawer's current tab) and no delete button (`:879`);
-     - `saveLightToLS` (`:1225-1246`) and undo recording skip managed lights;
-     - "Toggle all helpers" (`:1066-1084`) still includes them, since helpers are cosmetic.
-   - Out of scope, flagged: `createEntity` ignores `entityOpts.persistent` for the light itself (`ECS.ts:456-469`). Skybox lights are non-persistent, so this plan doesn't need the fix.
+     - list rows for managed lights get a sky icon and a "Managed by Sky box" subtitle (`getLightsListData`, `:1055-1081`);
+     - `createEditLightContent` (`:426`) renders a read-only summary for them, with an "Open in Sky box tab" button (switching the drawer's current tab) and no delete button (`:905-907`);
+     - `saveLightToLS` (`:1287`) and undo recording skip managed lights;
+     - "Toggle all helpers" (`_toggleAllLightHelpers`, `:1127-1167`) still includes them, since helpers are cosmetic.
+   - Out of scope, flagged: `createEntity` ignores `entityOpts.persistent` for the light itself (`ECS.ts:460-474`). Skybox lights are non-persistent, so this plan doesn't need the fix.
 6. **Sun light** (`SkyBox/SkyLights.ts`, `suns[i].light`).
    - **Params:**
      - `enabled`, `intensity`
@@ -109,6 +109,7 @@ When this plan is done, the brief's fallback "Sky and sun" type is covered as on
    - **Creation.** `createLightEntity({ type: 'DIRECTIONAL', …, castShadow }, { managedBy: { manager: 'SKYBOX', ownerId, role: 'SUN_0' }, appId: `\__skybox_${ownerId}\_SUN_0` })` runs on activation. The light is deleted in `clearSkyBox`.
    - **Updates** (`skyBoxSystem`, MAIN stage, order > 0, so it runs before `object3DSyncSystem`, `ECSCoreSystems.ts:134`):
      - The follow point is the active camera's world position, snapped to shadow texels (`frustumSize·2 / mapSize`), or the origin.
+       - Snap in **light space** (along the light's own X/Y axes; depth unsnapped), not along world axes, or the shadows still shimmer. `scene_thirdPersonGym.ts:80-133` (`gymSunFollow`) already does exactly this for an entity-followed sun; port its maths. Once `shadowFollow` exists, consider an `ENTITY` mode (follow an entity id with an offset) so the gym can drop its app-side system.
      - Position is `followPoint + sunDir·distance`, set with `world.setTransform` + `commitTransform`. The target goes to `followPoint` with `setLightTargetPosition` (`LightManager.ts:381`).
      - `AUTO` colour is the CPU-evaluated extinction along the sun direction (the same maths as `Fex`, written into a module-level `Color`).
      - Intensity is `intensity · smoothstep(horizonFade)`. `shadow.intensity` follows the same factor. `shadow.autoUpdate` is `false` while the factor is 0.

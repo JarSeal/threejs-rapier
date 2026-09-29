@@ -1,7 +1,7 @@
 Status: draft | not-implemented
 Category: Debugger, Rendering, Multi-viewport
 Blocked by: p111_skybox-core-refactor-and-layered-schema.md (`getActiveEnvironmentTexture`, `onSkyBoxChange`)
-Related: p110_skybox-refactor-and-layered-sky-system.md (epic), \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (implemented: Viewports API + axes gizmo), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will migrate the Debug Tools options this plan adds)
+Related: p110_skybox-refactor-and-layered-sky-system.md (epic), \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (implemented: Viewports API + axes gizmo), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed: the Debug Tools tab is a `createDebuggerTab` with pane-builder bindings and `persistKeys`)
 
 # Debug Environment Ball Viewport — Plan
 
@@ -22,7 +22,7 @@ It replaces the env ball that the pre-ECS code once had and that now only surviv
   - Corner stacks: `anchor: 'TOP_RIGHT'` plus `order`, where **order 0 is the rightmost**. The gizmo uses `order: 0` (p080 DD4, DD8).
   - A single SCSS rule shifts the whole top-right stack when the drawer opens (`.debugDrawerOpen .aekViewportStack_TOP_RIGHT`, p080 DD9). **Any viewport in that stack moves with the drawer for free.**
   - `toneMapping: 'RENDERER'` matches the main view (p080 DD3).
-  - The visibility rule and the Debug Tools state pattern: a new **top-level** key, because the LS load is a shallow merge (`_dbg__DebugTools.ts:96-97`; p080 DD12).
+  - The visibility rule and the Debug Tools state pattern: a new **top-level** key, because `persistKeys` persists and hydrates top-level keys whole (`_dbg__DebugTools.ts:117`; p080 DD12).
 - **p111 provides the environment.** `getActiveEnvironmentTexture()` returns the PMREM texture in use: a texture PMREM from `getPMREMTexture`, or the p112 bake target. `onSkyBoxChange(id, fn)` fires on activation, clear and structural rebuilds.
 - **PMREM facts (three r186).**
   - `pmremTexture(tex, uv, level)` samples a CubeUV texture directly (`PMREMNode.js:299-301`).
@@ -63,19 +63,18 @@ It replaces the env ball that the pre-ECS code once had and that now only surviv
    - When not visible, the viewport is disabled and costs no GPU time.
 5. **Debug Tools state, options and shortcut.**
 
-   - **State:** a new top-level `envBall: { show: boolean; showInMainCamera: boolean; roughness: number }`, default `{ show: true, showInMainCamera: false, roughness: 0 }`. It goes in the `DebugToolsState` type and in both default objects (`debug/DebugToolsManager.ts`, `core/Debug/_dbg__DebugTools.ts`). p111 has already removed the dead `env` block.
-   - **Bindings.** A separator plus three bindings **after "Axes helper size"** and before the grid-helper separator, forming the section directly under the axes section:
+   - **State:** a new top-level `envBall: { show: boolean; showInMainCamera: boolean; roughness: number }`, default `{ show: true, showInMainCamera: false, roughness: 0 }`. It goes in the `DebugToolsState` type, in both default objects (`debug/DebugToolsManager.ts`, `core/Debug/_dbg__DebugTools.ts`) and in the tab's `persistKeys` (`_dbg__DebugTools.ts:117`, next to `axesGizmo`). p111 has already removed the dead `env` block.
+   - **Bindings.** In the "Helpers" folder, a separator plus three pane-builder bindings **after "Axes helper size"** and before the grid-helper separator, forming the section directly under the axes section:
 
      - "Show environment ball [F7]" (boolean)
      - "Show env ball in main camera" (boolean)
      - "Env ball roughness" (slider 0–1, step 0.01)
 
-     Each `on('change')` calls the matching `EnvBall.ts` setter and `lsSetItem(LS_KEY, debugToolsState)`, like its neighbours. They are cosmetic, so there is no undo (per `_DONE_p061`).
+     They use one-level `key` paths (`'envBall.show'`, …), like the `axesGizmo.*` bindings (`_dbg__DebugTools.ts:428-436`). Each `onChange` calls the matching `EnvBall.ts` setter; the tab persists the value itself. They are cosmetic, so there is no undo (per `_DONE_p061`).
 
    - **Shortcut.** A `DEFAULT_DEBUG_KEY_BINDINGS` entry: `id: 'sc-toggle-env-ball'`, `KEY_DOWN`, `chord: { key: 'F7' }`, `preventDefault`, and the same `repeat` / `isTypingInField` guard as F1 and F8.
-     - It flips `envBall.show`, saves to LS, and refreshes the Debug Tools pane if it exists (the same refresh approach as p080's F8).
+     - It flips `envBall.show`, then calls `persistDebuggerTabValue(TAB_ID, 'envBall')` and `updateDebuggerTab(TAB_ID)`, exactly like `_toggleAxesGizmo` (`_dbg__DebugTools.ts:137-143`).
      - It can be rebound through `AppConfig.debugKeys`.
-   - **p105.** When p105 lands, these three options migrate with the rest of the tab (`updateDebuggerTab` replaces the manual refresh). p105's Phase 4 DebugTools bullet lists them.
 
 6. **Drawer offset.** Nothing new is needed: p080's `.aekViewportStack_TOP_RIGHT` rule moves the stack, including the ball, and its breakpoint rules (hidden below `$breakpointSmall` while the drawer is open) apply to the whole stack.
 
