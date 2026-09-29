@@ -9,11 +9,10 @@ import { LightProps } from './LightManager';
 import type { ImportAssetParams } from './Import/ImportTypes';
 import {
   clearSkyBox,
-  createSkyBox,
   getActiveSkyBoxTexture,
   getSceneSkyBoxTextureIds,
-  SkyBoxProps,
-} from './SkyBox';
+  registerSkyBox,
+} from './SkyBox/SkyBox';
 import type { SkyBoxDef } from './SkyBox/SkyBoxTypes';
 import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
@@ -272,6 +271,7 @@ export const setCurrentScene = (id: string | null) => {
   if (nextScene) {
     rootScene.background = null;
     rootScene.backgroundNode = null;
+    rootScene.environmentNode = null;
     if (currentSceneOpts?.backgroundColor) {
       rootScene.background = new THREE.Color(currentSceneOpts.backgroundColor);
     }
@@ -718,43 +718,6 @@ export const getGeneratedSceneData = (sceneId: string) =>
     | SceneData
     | undefined;
 
-/**
- * @deprecated p111 Phase 1 shim, removed in Phase 2: converts a generated (layered) sky box
- * definition back to the legacy props createSkyBox still takes.
- */
-const toLegacySkyBoxProps = (def: SkyBoxDef): SkyBoxProps => {
-  const { id, debugData, base, env } = def;
-  const roughness = env?.backgroundRoughness;
-  if (base.type === 'EQUIRECTANGULAR') {
-    const { file, texture, path, textureId, colorSpace } = base;
-    return {
-      id,
-      debugData,
-      type: 'EQUIRECTANGULAR',
-      params: { file: file ?? texture, path, textureId, colorSpace, roughness },
-    };
-  }
-  if (base.type === 'CUBE_TEXTURE') {
-    const { fileNames, path, textureId, colorSpace, rotate, flipY } = base;
-    return {
-      id,
-      debugData,
-      type: 'CUBETEXTURE',
-      params: {
-        fileNames,
-        path,
-        textureId,
-        colorSpace,
-        roughness,
-        cubeTextRotate: rotate !== undefined ? rotate / Math.PI : undefined,
-        flipY,
-      },
-    };
-  }
-  // COLOR has no legacy equivalent (and no JSON uses it yet)
-  return { id, debugData, type: '', params: null };
-};
-
 /** Registers (creates) the scenes at initEngine (initApp). */
 export const registerScenesFromGeneratedData = async () => {
   const data = getGeneratedAppData();
@@ -776,7 +739,7 @@ export const registerScenesFromGeneratedData = async () => {
       for (let j = 0; j < sceneData.skyboxes.length; j++) {
         const props = sceneData.skyboxes[j];
         if (typeof props === 'string') continue;
-        await createSkyBox({ ...toLegacySkyBoxProps(props), sceneId, isCurrent: false });
+        registerSkyBox(props, sceneId);
       }
     }
   }

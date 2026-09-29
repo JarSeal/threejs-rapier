@@ -4,337 +4,90 @@ import {
   type DebuggerPaneItem,
 } from '../../debug/DebuggerGUI';
 import { IS_DEBUG_ENV } from '../Config';
-import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { lsRemoveItem } from '../../utils/LocalAndSessionStorage';
+import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import {
-  confirmClearScope,
-  createClearListLSButton,
-  createClearTabLSButton,
-  lsKeyHasData,
-} from './_dbg__ClearLSButtons';
-import {
-  clearSkyBox,
-  createSkyBox,
-  createSkyBoxDebugGUI,
-  defaultRoughness,
-  defaultSkyBoxState,
-  deleteCurrentSkyBox,
-  extractSkyBoxParamsFromState,
-  getCurSceneSkyBoxSceneId,
-  getEnvMapRoughnessBg,
-  LS_KEY_ALL_STATES,
-  NO_SKYBOX_ID,
-  SkyBoxState,
-} from '../SkyBox';
+  _getSkyBoxRegistry,
+  getActiveSkyBox,
+  getSceneDefaultSkyBoxId,
+  setActiveSkyBox,
+  updateSkyBox,
+  type SkyBoxUpdate,
+} from '../SkyBox/SkyBox';
+import { ENV_DEFAULTS } from '../SkyBox/layers/base';
 import { getCurrentSceneId } from '../Scene';
-import { lwarn } from '../../utils/Logger';
 import {
   _recordOrCoalesceUndoRedoAction,
   _recordUndoRedoAction,
   _registerUndoRedoActionHandler,
 } from './_dbg__UndoRedo';
 
-type AllSkyBoxStates = { [sceneId: string]: { [id: string]: SkyBoxState } };
+// p111 Phase 2: the scene's sky box dropdown and the background roughness, on the new SkyBox
+// API (not persisted). Phase 3 rewrites the tab folder by folder.
 
 const LS_KEY_UI = 'AEK_debugSkyBoxUI';
 const TAB_ID = 'skyBoxControls';
-/** SkyBox.ts replaces its state objects whenever a sky box is created or cleared and passes the
- * new ones on every rebuild, so the tab and the undo/redo handlers use the latest ones. */
-let latestSkyBoxState: SkyBoxState = { ...defaultSkyBoxState };
-let latestAllSkyBoxStates: AllSkyBoxStates = {};
+const NO_SKYBOX_ID = '__noSkyBox';
 let debuggerCreated = false;
 
-// Undo/redo
+// What the panes bind to, synced from the active sky box before every build and refresh
+const selectProxy = { skyBoxId: NO_SKYBOX_ID };
+const envProxy = { backgroundRoughness: ENV_DEFAULTS.backgroundRoughness };
 
-type RoughnessKind = 'EQUIRECTANGULAR' | 'CUBETEXTURE';
-const ROUGHNESS_FIELD = {
-  EQUIRECTANGULAR: 'equiRectRoughness',
-  CUBETEXTURE: 'cubeTextRoughness',
-} as const;
-type SkyBoxRoughnessPayload = {
+const syncProxies = () => {
+  const active = getActiveSkyBox();
+  selectProxy.skyBoxId = active?.id ?? NO_SKYBOX_ID;
+  envProxy.backgroundRoughness =
+    active?.def.env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness;
+};
+
+// Undo/redo: the handlers resolve the sky box by scene and id every time
+
+type SkyBoxParamPayload = {
   sceneId: string;
   skyBoxId: string;
-  kind: RoughnessKind;
-  prev: number;
-  next: number;
+  /** A layer value's path in the definition, eg. 'env.backgroundRoughness'. */
+  path: string;
+  prev: unknown;
+  next: unknown;
 };
-type SkyBoxSelectPayload = { sceneId: string; prev: string; next: string };
+type SkyBoxSelectPayload = { sceneId: string; prev: string | null; next: string | null };
 
-/** Writes a sky box's roughness to its state, to the rendered sky when it's the current sky
- * box, and to LS. */
-const writeSkyBoxRoughness = (
-  sceneId: string,
-  skyBoxId: string,
-  kind: RoughnessKind,
-  value: number
-) => {
-  const field = ROUGHNESS_FIELD[kind];
-  if (!latestAllSkyBoxStates[sceneId]) latestAllSkyBoxStates[sceneId] = {};
-  const sceneStates = latestAllSkyBoxStates[sceneId];
-  if (sceneStates[skyBoxId]) {
-    sceneStates[skyBoxId][field] = value;
-  } else {
-    sceneStates[skyBoxId] = { ...defaultSkyBoxState, [field]: value };
-  }
-  if (latestSkyBoxState.id === skyBoxId && latestSkyBoxState.type === kind) {
-    latestSkyBoxState[field] = value;
-    getEnvMapRoughnessBg().value = value;
-  }
-  lsSetItem(LS_KEY_ALL_STATES, latestAllSkyBoxStates);
+/** `'env.backgroundRoughness', 0.2` → `{ env: { backgroundRoughness: 0.2 } }` */
+const toUpdate = (path: string, value: unknown) =>
+  path.split('.').reduceRight<unknown>((acc, key) => ({ [key]: acc }), value) as SkyBoxUpdate;
+
+const applyParam = async ({ sceneId, skyBoxId, path }: SkyBoxParamPayload, value: unknown) => {
+  if (getCurrentSceneId() !== sceneId) return;
+  await updateSkyBox(skyBoxId, toUpdate(path, value));
 };
 
-const recordSkyBoxRoughness = (
-  actionType: 'skybox.roughness' | 'skybox.resetRoughness',
-  payload: SkyBoxRoughnessPayload
-) => {
-  if (payload.prev === payload.next) return;
-  if (actionType === 'skybox.resetRoughness') {
-    _recordUndoRedoAction(actionType, `Sky box ${payload.skyBoxId}: reset roughness`, payload);
-    return;
-  }
-  _recordOrCoalesceUndoRedoAction(
-    actionType,
-    `Sky box ${payload.skyBoxId}: roughness`,
-    payload,
-    `${payload.sceneId}.${payload.skyBoxId}.${payload.kind}`
-  );
-};
-
-/** Makes a scene's sky box current (or removes the current one with NO_SKYBOX_ID). */
-const selectSkyBox = (sceneId: string, id: string) => {
-  if (id === NO_SKYBOX_ID) {
-    deleteCurrentSkyBox();
-    lsSetItem(LS_KEY_ALL_STATES, latestAllSkyBoxStates);
-    // We have to use setTimeout, because the debugGUI is rebuilt
-    setTimeout(() => createSkyBoxDebugGUI(), 0);
-    return;
-  }
-  const sbState = latestAllSkyBoxStates[sceneId]?.[id];
-  if (!sbState) {
-    lwarn(`Could not find sky box "${id}" in scene "${sceneId}", skipping.`);
-    return;
-  }
-  sbState.isCurrent = true;
-  lsSetItem(LS_KEY_ALL_STATES, latestAllSkyBoxStates);
-  // We have to use setTimeout, because the debugGUI is rebuilt
-  setTimeout(async () => {
-    await createSkyBox(
-      {
-        ...extractSkyBoxParamsFromState(sbState),
-        id,
-        sceneId,
-        isCurrent: true,
-        ...(sbState.name ? { debugData: { name: sbState.name } } : {}),
-      },
-      true
-    );
-    lsSetItem(LS_KEY_ALL_STATES, latestAllSkyBoxStates);
-  }, 0);
-};
-
-const applyRoughnessUndoRedo = (payload: SkyBoxRoughnessPayload, value: number) => {
-  writeSkyBoxRoughness(payload.sceneId, payload.skyBoxId, payload.kind, value);
-  updateDebuggerTab(TAB_ID);
-};
-const roughnessUndoHandler = {
-  undo: (payload: SkyBoxRoughnessPayload) => applyRoughnessUndoRedo(payload, payload.prev),
-  redo: (payload: SkyBoxRoughnessPayload) => applyRoughnessUndoRedo(payload, payload.next),
-};
-_registerUndoRedoActionHandler('skybox.roughness', roughnessUndoHandler);
-_registerUndoRedoActionHandler('skybox.resetRoughness', roughnessUndoHandler);
+_registerUndoRedoActionHandler<SkyBoxParamPayload>('skybox.param', {
+  undo: (payload) => applyParam(payload, payload.prev),
+  redo: (payload) => applyParam(payload, payload.next),
+});
 _registerUndoRedoActionHandler<SkyBoxSelectPayload>('skybox.select', {
-  undo: ({ sceneId, prev }) => selectSkyBox(sceneId, prev),
-  redo: ({ sceneId, next }) => selectSkyBox(sceneId, next),
+  undo: ({ sceneId, prev }) => {
+    if (getCurrentSceneId() === sceneId) void setActiveSkyBox(prev, sceneId);
+  },
+  redo: ({ sceneId, next }) => {
+    if (getCurrentSceneId() === sceneId) void setActiveSkyBox(next, sceneId);
+  },
 });
 
-/**
- * Creates the sky box debug tab for the first time
- */
-const buildSkyBoxDebugGUI = () => {
-  // Set before createDebuggerTab: it can build the tab right away, and the tab's own build
-  // must not come back here.
-  debuggerCreated = true;
-  createDebuggerTab({
-    id: TAB_ID,
-    title: 'Sky box controls',
-    icon: 'cloudSun',
-    // The sky box states are scene-scoped (module-owned); the tab's own data is only its UI
-    // state, so both clear buttons are custom
-    uiLsKey: LS_KEY_UI,
-    clearLSButton: false,
-    headerButtons: () => {
-      const clearTabBtn = createClearTabLSButton({
-        hasData: () => lsKeyHasData(LS_KEY_UI),
-        watchKey: LS_KEY_UI,
-        onClear: () => lsRemoveItem(LS_KEY_UI),
-      });
-      const clearListBtn = createClearListLSButton({
-        hasData: () => {
-          const current = lsGetItem(LS_KEY_ALL_STATES, {}) as {
-            [sceneId: string]: { [id: string]: SkyBoxState };
-          };
-          return Object.values(current).some((scene) => Object.keys(scene || {}).length > 0);
-        },
-        watchKey: LS_KEY_ALL_STATES,
-        onClear: () => {
-          const current = lsGetItem(LS_KEY_ALL_STATES, {}) as {
-            [sceneId: string]: { [id: string]: SkyBoxState };
-          };
-          const sceneIdsWithData = Object.keys(current).filter(
-            (id) => Object.keys(current[id] || {}).length > 0
-          );
-          const applyClear = (sceneIds: string[]) => {
-            for (const sceneId of sceneIds) delete current[sceneId];
-            if (Object.keys(current).length === 0) lsRemoveItem(LS_KEY_ALL_STATES);
-            else lsSetItem(LS_KEY_ALL_STATES, current);
-          };
-          if (sceneIdsWithData.length > 1) {
-            confirmClearScope({
-              onClearAllScenes: () => applyClear(sceneIdsWithData),
-              onClearThisScene: () => {
-                const sceneId = getCurrentSceneId();
-                if (sceneId) applyClear([sceneId]);
-              },
-            });
-          } else {
-            applyClear(sceneIdsWithData);
-          }
-        },
-      });
-      return [clearTabBtn, clearListBtn];
-    },
-    content: () => [{ pane: true, content: buildSkyBoxItems() }],
-  });
-};
-
-/**
- * Build the debug GUI (called by SkyBox.ts with the latest states whenever they change)
- */
-export const _createSkyBoxDebugGUI = (
-  skyBoxState: SkyBoxState,
-  allSkyBoxStates: {
-    [sceneId: string]: {
-      [id: string]: SkyBoxState;
-    };
-  }
-) => {
-  if (!IS_DEBUG_ENV) return;
-  latestSkyBoxState = skyBoxState;
-  latestAllSkyBoxStates = allSkyBoxStates;
-  if (!debuggerCreated) {
-    buildSkyBoxDebugGUI();
-    return;
-  }
-  // Structural: the state objects the bindings target are replaced
-  updateDebuggerTab(TAB_ID, { rebuild: true });
-};
-
-/** A roughness input (and its Reset button) of the current sky box. */
-const roughnessItems = (
-  skyBoxState: SkyBoxState,
-  kind: RoughnessKind
-): DebuggerPaneItem<SkyBoxState>[] => [
-  {
-    key: ROUGHNESS_FIELD[kind],
-    target: skyBoxState,
-    label: 'Roughness',
-    step: 0.001,
-    min: 0,
-    max: 1,
-    onChange: (value, e) => {
-      // const debugToolsState = getDebugToolsState();
-      // if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(value);
-      const sceneId = getCurSceneSkyBoxSceneId();
-      writeSkyBoxRoughness(sceneId, skyBoxState.id, kind, Number(value));
-      recordSkyBoxRoughness('skybox.roughness', {
-        sceneId,
-        skyBoxId: skyBoxState.id,
-        kind,
-        prev: Number(e.prev),
-        next: Number(value),
-      });
-    },
-  },
-  {
-    type: 'button',
-    title: 'Reset',
-    onClick: () => {
-      // const debugToolsState = getDebugToolsState();
-      // if (!debugToolsState.env.separateBallValues) changeDebugEnvBallRoughness(defaultRoughness);
-      const sceneId = getCurSceneSkyBoxSceneId();
-      const prev = skyBoxState[ROUGHNESS_FIELD[kind]];
-      writeSkyBoxRoughness(sceneId, skyBoxState.id, kind, defaultRoughness);
-      updateDebuggerTab(TAB_ID);
-      recordSkyBoxRoughness('skybox.resetRoughness', {
-        sceneId,
-        skyBoxId: skyBoxState.id,
-        kind,
-        prev,
-        next: defaultRoughness,
-      });
-    },
-  },
-];
-
-const buildSkyBoxItems = (): DebuggerPaneItem<SkyBoxState>[] => {
-  const skyBoxState = latestSkyBoxState;
-  const allSkyBoxStates = latestAllSkyBoxStates;
-
-  const sceneId = getCurSceneSkyBoxSceneId();
-  const sceneSkyBoxes = {
-    ...allSkyBoxStates[sceneId],
-    [NO_SKYBOX_ID]: { ...defaultSkyBoxState, id: NO_SKYBOX_ID, name: '[No skybox]' },
-  } as { [key: string]: SkyBoxState };
-  const selectedSkyBoxId = findScenesCurrentSkyBoxState(allSkyBoxStates).id || NO_SKYBOX_ID;
-  const selectProxy = { skyBoxId: selectedSkyBoxId };
+const buildSkyBoxItems = (): DebuggerPaneItem[] => {
+  const sceneId = getCurrentSceneId();
+  const sceneDefs = sceneId ? _getSkyBoxRegistry().get(sceneId) : undefined;
+  const defaultId = sceneId ? getSceneDefaultSkyBoxId(sceneId) : null;
+  const options = [
+    ...[...(sceneDefs?.values() || [])].map((def) => ({
+      text: `${def.debugData?.name || def.id}${def.id === defaultId ? ' [*default]' : ''}`,
+      value: def.id,
+    })),
+    { text: '[No skybox]', value: NO_SKYBOX_ID },
+  ].sort((a, b) => (a.text < b.text ? -1 : a.text > b.text ? 1 : 0));
 
   return [
-    // Equirectangular (the two "Current" folders share one folder state)
-    {
-      type: 'folder',
-      id: 'current',
-      title: 'Current: Equirectangular sky box params',
-      hidden: skyBoxState.type !== 'EQUIRECTANGULAR',
-      content: [
-        { key: 'type', target: skyBoxState, label: 'Type', readonly: true },
-        { key: 'equiRectFile', target: skyBoxState, label: 'File path or URL', readonly: true },
-        { key: 'equiRectTextureId', target: skyBoxState, label: 'Texture id', readonly: true },
-        { key: 'equiRectColorSpace', target: skyBoxState, label: 'Color space', readonly: true },
-        ...roughnessItems(skyBoxState, 'EQUIRECTANGULAR'),
-      ],
-    },
-
-    // Cubetexture
-    {
-      type: 'folder',
-      id: 'current',
-      title: 'Current: Cube texture sky box params',
-      hidden: skyBoxState.type !== 'CUBETEXTURE',
-      content: [
-        {
-          key: 'type',
-          target: skyBoxState,
-          label: 'Type',
-          readonly: true,
-          options: [{ value: skyBoxState.type }],
-        },
-        { key: 'cubeTextPath', target: skyBoxState, label: 'Texture path', readonly: true },
-        {
-          key: 'v',
-          target: { v: skyBoxState.cubeTextFile.join('\n') },
-          readonly: true,
-          multiline: true,
-          label: 'Files',
-          rows: 3,
-          interval: 0,
-        },
-        { key: 'cubeTextTextureId', target: skyBoxState, label: 'Texture id', readonly: true },
-        { key: 'cubeTextColorSpace', target: skyBoxState, label: 'Color space', readonly: true },
-        // @TODO: show cubeTextRotate (step 0.001, min 0, max 1)
-        ...roughnessItems(skyBoxState, 'CUBETEXTURE'),
-      ],
-    },
-
-    // Scene's skyboxes
     {
       type: 'folder',
       id: 'sceneSkyBoxes',
@@ -344,26 +97,58 @@ const buildSkyBoxItems = (): DebuggerPaneItem<SkyBoxState>[] => {
           key: 'skyBoxId',
           target: selectProxy,
           label: 'Sky boxes in scene',
-          options: Object.keys(sceneSkyBoxes)
-            .map((key) => ({
-              text: `${sceneSkyBoxes[key].name || sceneSkyBoxes[key].id}${sceneSkyBoxes[key].isDefaultForScene ? ' [*default]' : ''}`,
-              value: sceneSkyBoxes[key].id,
-            }))
-            .sort((a, b) => {
-              if (a.text < b.text) return -1;
-              if (a.text > b.text) return 1;
-              return 0;
-            }),
+          options,
           onChange: (value, e) => {
-            const id = String(value);
-            selectSkyBox(sceneId, id);
-            if (id !== e.prev) {
+            if (!sceneId) return;
+            const toId = (v: unknown) => (String(v) === NO_SKYBOX_ID ? null : String(v));
+            const prev = toId(e.prev);
+            const next = toId(value);
+            void setActiveSkyBox(next, sceneId);
+            if (prev !== next) {
               _recordUndoRedoAction<SkyBoxSelectPayload>('skybox.select', 'Sky box: select', {
                 sceneId,
-                prev: String(e.prev),
-                next: id,
+                prev,
+                next,
               });
             }
+          },
+        },
+      ],
+    },
+    {
+      type: 'folder',
+      id: 'environment',
+      title: 'Environment',
+      hidden: () => {
+        const active = getActiveSkyBox();
+        return !active || active.def.base.type === 'COLOR';
+      },
+      content: [
+        {
+          key: 'backgroundRoughness',
+          target: envProxy,
+          label: 'Background roughness',
+          step: 0.001,
+          min: 0,
+          max: 1,
+          onChange: (value, e) => {
+            const active = getActiveSkyBox();
+            if (!active) return;
+            const next = Number(value);
+            void updateSkyBox(active.id, { env: { backgroundRoughness: next } });
+            if (Number(e.prev) === next) return;
+            _recordOrCoalesceUndoRedoAction<SkyBoxParamPayload>(
+              'skybox.param',
+              `Sky box ${active.id}: background roughness`,
+              {
+                sceneId: active.sceneId,
+                skyBoxId: active.id,
+                path: 'env.backgroundRoughness',
+                prev: Number(e.prev),
+                next,
+              },
+              `${active.sceneId}.${active.id}.env.backgroundRoughness`
+            );
           },
         },
       ],
@@ -371,21 +156,50 @@ const buildSkyBoxItems = (): DebuggerPaneItem<SkyBoxState>[] => {
   ];
 };
 
-const findScenesCurrentSkyBoxState = (allSkyBoxStates: {
-  [sceneId: string]: {
-    [id: string]: SkyBoxState;
-  };
-}) => {
-  const sceneId = getCurrentSceneId();
-  if (!sceneId) {
-    clearSkyBox();
-    return { ...defaultSkyBoxState };
+const buildSkyBoxDebugGUI = () => {
+  // Set before createDebuggerTab: it can build the tab right away, and the tab's own build
+  // must not come back here.
+  debuggerCreated = true;
+  createDebuggerTab({
+    id: TAB_ID,
+    title: 'Sky box controls',
+    icon: 'cloudSun',
+    uiLsKey: LS_KEY_UI,
+    clearLSButton: false,
+    headerButtons: () => [
+      createClearTabLSButton({
+        hasData: () => lsKeyHasData(LS_KEY_UI),
+        watchKey: LS_KEY_UI,
+        onClear: () => lsRemoveItem(LS_KEY_UI),
+      }),
+    ],
+    onRefresh: syncProxies,
+    content: () => [{ pane: true, content: buildSkyBoxItems() }],
+  });
+};
+
+let pendingRebuild: boolean | null = null;
+
+/**
+ * Builds the tab the first time, then rebuilds (default) or refreshes it. Called by SkyBox.ts
+ * whenever the registry or the active sky box changes. Deferred to a microtask (coalesced), so
+ * a change made from one of the tab's own bindings never rebuilds the pane inside its handler.
+ */
+export const _createSkyBoxDebugGUI = (opts?: { rebuild?: boolean }) => {
+  if (!IS_DEBUG_ENV) return;
+  if (!debuggerCreated) {
+    buildSkyBoxDebugGUI();
+    return;
   }
-  if (!allSkyBoxStates[sceneId]) allSkyBoxStates[sceneId] = {};
-  const sceneSkyboxStatesKeys = Object.keys(allSkyBoxStates[sceneId]);
-  for (let i = 0; i < sceneSkyboxStatesKeys.length; i++) {
-    const state = allSkyBoxStates[sceneId][sceneSkyboxStatesKeys[i]];
-    if (state?.isCurrent) return state;
+  const rebuild = opts?.rebuild !== false;
+  if (pendingRebuild !== null) {
+    pendingRebuild ||= rebuild;
+    return;
   }
-  return { ...defaultSkyBoxState };
+  pendingRebuild = rebuild;
+  queueMicrotask(() => {
+    const doRebuild = Boolean(pendingRebuild);
+    pendingRebuild = null;
+    updateDebuggerTab(TAB_ID, { rebuild: doRebuild });
+  });
 };

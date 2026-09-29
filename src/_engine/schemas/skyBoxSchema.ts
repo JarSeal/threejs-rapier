@@ -44,7 +44,7 @@ const SkyBoxCubeBaseSchema = z.object({
   colorSpace: ColorSpaceSchema.optional(),
   /** Rotation around the Y axis, in radians. */
   rotate: z.number().optional(),
-  /** Flips the cube upside down (for cube maps authored the other way up). */
+  /** Turns the cube upside down (a half turn about the X axis). */
   flipY: z.boolean().optional(),
   intensity: z.number().min(0).optional(),
 });

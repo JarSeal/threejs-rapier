@@ -9,7 +9,7 @@ import {
 } from '../Material';
 import { deleteTexture, getTextureRegistry } from '../Texture';
 import { releaseImportsOwnedBy } from '../Import/ImportRegistry';
-import { getActiveSkyBoxTexture } from '../SkyBox';
+import { getActiveSkyBoxTexture } from '../SkyBox/SkyBox';
 import { getAssetOwner } from './AssetOwners';
 
 /**
@@ -47,7 +47,7 @@ export const releaseSceneOwnedAssets = (sceneId: string) => {
     released.geometries.push(id);
   }
 
-  // A sky box texture's baked PMREM is disposed with it (SkyBox.ts)
+  // A sky box texture's baked PMREM is disposed with it (SkyBox/SkyEnvironment.ts)
   const skyBoxTexture = getActiveSkyBoxTexture();
   for (const [id, entry] of Object.entries(getTextureRegistry())) {
     if (entry.persistent || !isOwned(entry.resource)) continue;

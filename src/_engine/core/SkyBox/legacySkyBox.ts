@@ -49,6 +49,12 @@ export const isLegacySkyBoxProps = (input: unknown): input is LegacySkyBoxProps 
 const toFileNames = (names?: string[] | string) =>
   typeof names === 'string' ? names.split(',').map((name) => name.trim()) : names;
 
+// The legacy runtime looked the background up in the opposite direction (normalWorld, which
+// is negated on the back-side background box) and made up for it with a forced
+// `texture.flipY = false` (equirect) or an x mirror (cube). In the standard orientation that
+// look is a half turn: about Y for an equirect, about X (flipY) for a cube. The conversion
+// adds that turn, so a legacy sky box looks as before (and now lights materials the same way).
+
 /** The legacy cube rotate was a multiple of π, `rotate` is in radians. */
 const toRadians = (piMultiple?: number) =>
   piMultiple !== undefined ? piMultiple * Math.PI : undefined;
@@ -83,6 +89,7 @@ export const fromLegacySkyBoxProps = (
       path: p.path,
       textureId: p.textureId,
       colorSpace: p.colorSpace,
+      rotate: Math.PI,
     };
   } else if (type === 'CUBETEXTURE' || type === 'CUBEMAP') {
     base = {
@@ -92,7 +99,9 @@ export const fromLegacySkyBoxProps = (
       textureId: p.textureId,
       colorSpace: p.colorSpace,
       rotate: toRadians(p.cubeTextRotate ?? p.cubeTextureRotate),
-      flipY: p.flipY,
+      // A legacy flipY: true was a z mirror, which no turn gives: it becomes the standard
+      // orientation
+      flipY: !p.flipY,
     };
   } else if (type === 'SKYANDSUN') {
     base = { type: 'COLOR', color: '#000000' };
@@ -139,7 +148,7 @@ export const fromLegacySkyBoxOverrides = (entry: unknown): SkyBoxOverrides | nul
     textureId: p.textureId,
     colorSpace: p.colorSpace,
     rotate: toRadians(p.cubeTextRotate ?? p.cubeTextureRotate),
-    flipY: p.flipY,
+    flipY: p.flipY !== undefined ? !p.flipY : undefined,
   };
   return {
     ...(p.__meta ? { __meta: p.__meta } : {}),

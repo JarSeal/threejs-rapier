@@ -16,7 +16,7 @@ import { createMovingPlatform } from '../_engine/utils/world/movingPlatform';
 import { initPhysicsStressTest } from '../_engine/utils/PhysicsStressTest';
 import { getTestObstacle } from '../_engine/utils/world/characterTestObstacles';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from '../_engine/core/ECS';
-import { getRootScene, getScene, registerOnSceneExit } from '../_engine/core/Scene';
+import { getScene, registerOnSceneExit } from '../_engine/core/Scene';
 import { createPhysicsEntity } from '../_engine/core/PhysicsManager';
 import { getCameraByAppId } from '../_engine/core/CameraManager';
 import { getLightByAppId, getLightTargetId } from '../_engine/core/LightManager';
@@ -31,8 +31,7 @@ export const SCENE_THIRD_PERSON_GYM_META = {
 };
 
 /** Sky (environment map) light strength: at full strength the blue sky tints every face turned
- * away from the sun blue on the PBR (triplanar) materials. The root scene is shared by all scenes,
- * so this is reset on scene exit. */
+ * away from the sun blue on the PBR (triplanar) materials. */
 const GYM_ENVIRONMENT_INTENSITY = 0.3;
 
 const TEST_MODELS = '/debugger/assets/testModels';
@@ -305,35 +304,37 @@ export const scene = async () =>
 
     updateLoaderFn({ loadedCount: 1, totalCount: 2 });
 
-    (getRootScene() as THREE.Scene).environmentIntensity = GYM_ENVIRONMENT_INTENSITY;
     // Clean up on leaving: the characters' systems and follow camera rig would otherwise keep
     // running against their deleted entities/meshes (all no-ops when ARE_CHARACTERS_ENABLED is off).
     // (One exit callback per scene — registerOnSceneExit replaces any earlier one.)
     registerOnSceneExit(SCENE_THIRD_PERSON_GYM_META.id, () => {
       getECSWorld().removeSystem('dummyCharLooper');
       getECSWorld().removeSystem('gymSunFollow');
-      (getRootScene() as THREE.Scene).environmentIntensity = 1;
       deleteFollowObjectCameraRig('thirdPersonGymFollowCam');
     });
 
     await createSkyBox({
       id: 'stylizedSunsetEquiRect',
-      type: 'EQUIRECTANGULAR',
-      params: {
+      base: {
+        type: 'EQUIRECTANGULAR',
         file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_41_4k.png',
         textureId: 'equiRectSunsetStylizedId',
         colorSpace: THREE.SRGBColorSpace,
+        rotate: Math.PI,
       },
+      env: { environmentIntensity: GYM_ENVIRONMENT_INTENSITY },
     });
 
     await createSkyBox({
       id: 'emptyBlueSkyEquiRect',
-      type: 'EQUIRECTANGULAR',
-      params: {
+      base: {
+        type: 'EQUIRECTANGULAR',
         file: '/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png',
         textureId: 'equiRectEmptyId',
         colorSpace: THREE.SRGBColorSpace,
+        rotate: Math.PI,
       },
+      env: { environmentIntensity: GYM_ENVIRONMENT_INTENSITY },
     });
 
     // Static physics meshes use the toolkit's triplanar grid material (listed in the scene JSON)

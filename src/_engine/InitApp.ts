@@ -19,7 +19,7 @@ import { registerPhysicsDeterminismProbe, registerPhysicsManager } from './core/
 import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
 import { lerror, llog } from './utils/Logger';
-import { createSkyBoxDebugGUI, registerSkyBoxDebugGUI } from './core/SkyBox';
+import { createSkyBoxDebugGUI, registerSkyBoxDebugGUI } from './core/SkyBox/SkyBox';
 import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
 import { createCharactersDebuggerGUI, registerCharacterTools } from './core/Character';

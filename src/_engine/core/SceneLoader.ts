@@ -23,7 +23,7 @@ import { setAllInputsEnabled } from './Input/InputState';
 import { getCanvasParentElem } from './Renderer';
 import { getDebugToolsState } from '../debug/DebugToolsManager';
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE, isDebugEnvironment } from './Config';
-import { applySkyBoxForScene, clearSkyBox } from './SkyBox';
+import { activateSceneDefaultSkyBox, clearSkyBox } from './SkyBox/SkyBox';
 import {
   handleDraggableWindowsOnSceneChangeEnd,
   handleDraggableWindowsOnSceneChangeStart,
@@ -559,7 +559,7 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
             `Scene loader could not find scene with scene id '${sceneId}'.`
           );
           setCurrentScene(sceneId);
-          await applySkyBoxForScene(sceneId);
+          await activateSceneDefaultSkyBox(sceneId);
           await createNextSceneObject3Ds(sceneData);
           // The next scene has taken refs on, or re-tagged, what it shares with the previous one:
           // release what the previous scene still owns and nothing uses. (Reloading the same
