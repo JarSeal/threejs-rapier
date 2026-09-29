@@ -10,7 +10,13 @@ export const numberParam = (
   layer: SkyBoxLayerKey,
   key: string,
   label: string,
-  opts: { min: number; max: number; step: number; disabled?: () => boolean }
+  opts: {
+    min: number;
+    max: number;
+    step: number;
+    disabled?: () => boolean;
+    hidden?: () => boolean;
+  }
 ): DebuggerPaneItem => ({
   key,
   target,
@@ -19,6 +25,7 @@ export const numberParam = (
   max: opts.max,
   step: opts.step,
   ...(opts.disabled ? { disabled: opts.disabled } : {}),
+  ...(opts.hidden ? { hidden: opts.hidden } : {}),
   onChange: (value, e) =>
     setSkyBoxParam(`${LAYER_PATHS[layer]}.${key}`, toUndoLabel(key), Number(value), e),
 });

@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phases 1–2 implemented
 Category: Skybox, Rendering
 Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md
 Blocks: p114_space-preset-and-nebula-creator.md (its space layers reuse the stars layer and sidereal rotation)
@@ -160,3 +160,32 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
 - `perf-auditor` pass plus a DevTools allocation timeline: no allocations per frame while the cycle is playing.
 - A scene switch during the cycle leaves nothing behind: lights, render targets and generators (`renderer.info.memory`, ECS entity count).
 - Production build: the `SkyTime` and layers are present, and the debug folders are absent from the main chunk.
+
+## Implementation notes
+
+Where the implementation differs from the plan above (2026-09-30). The code is the current state; these are the reasons.
+
+### Phase 1: time model and API
+
+- **The time step uses the change in `getElapsedTime()`, not the MAIN-stage `dt`.** After a master pause, the first MAIN `delta` spans the whole pause, and the frame that pauses still runs with the old one. The elapsed time discards both, so a pause never jumps the sky forward.
+- **The per-frame path has its own writes.** The existing `apply*Uniforms` and light writes allocate (`toSkyColor` creates a `Color` on every call, and the sun light rewrites its shadow camera). Each layer and light is split into a settings write and a sun-dependent write (`applyAtmosphereSunUniforms`, `applySunLightingUniforms`, `applyCloudsSunUniforms`, `applyGroundSunUniforms`, `updateSkyLightsForSun`), and the day-night step (`applySkyTimeUniforms`) calls only the sun-dependent ones.
+- **`layers/sun.ts`'s `getSunDirection` is now `getFixedSunDirection`**, so the public `getSunDirection(out, i)` in `SkyBox.ts` could take the name.
+- **The getters work with day-night off.** `getSunDirection` and `getSunElevation` return the fixed sun; the setters are no-ops and `getTimeOfDay`/`getDayNightSpeed` return null.
+- **Smaller decisions:**
+  - `dayOfYear` defaults to 172 (the June solstice, from p110's example definition).
+  - Time stands still while a scene loads, so a scene starts at its start time.
+  - A structural `updateSkyBox` (a base texture change) keeps the running time; a re-activation starts from the definition.
+  - Through `updateSkyBox`, `dayNight.timeOfDay`, `speed`, `playing` and `cycleDurationSec` also set the running cycle's values, and turning day-night on starts it from the definition's.
+
+### Phase 2: budgeted re-bakes
+
+- **Rules.** While the cycle moves, it re-bakes once the sun has turned more than `env.updateAngleDeg` since the last bake (any bake) and at least `1 / env.maxUpdatesPerSec` has passed. When it stops (pause, speed 0, the end of a scrub or a one-off `setTimeOfDay`) or reverses, it bakes once to catch up. `maxUpdatesPerSec: 0` means catch-up bakes only.
+- **A `setTimeOfDay` jump while the cycle plays isn't baked at once**: it catches up within the rate cap (up to 1 s of stale reflections), so a game that sets the time every frame can't bake every frame. `bakeEnvironment()` bakes on the next frame.
+- **Debug:** the Env bake folder gained a "Bakes/s (10 s)" readout and, with day-night on, the two budget sliders.
+- **Measurements** (a powerful desktop dGPU, WebGPU, `scene01V2`'s Day sky with day-night on, `env.size` 128, fixed view):
+  - One bake: 2.07 ms GPU on average (last reading 2.22), 0.50 ms CPU. This matches the p110 spike (1.94–2.37 ms).
+  - Whole frame (stats panel): 0.33–0.36 ms at night and 0.42–0.44 ms by day without bakes; 2.15–2.32 ms with a bake every frame. A bake adds ~1.8–1.9 ms to a frame, its isolated cost: nothing extra from sharing the frame. This scene's frame is light; a heavy one wasn't measured.
+  - At ×100 the rate stays at the 1/s cap: one ~2 ms bump per second, which fits a 16.7 ms frame unless that frame is already near its budget.
+  - The stats panel's GPU graph shows a small gap about once a second at ×100. Most likely the timer, not stutter: the bake stats resolve the timestamps once after each bake, and every resolve takes the whole batch, so stats-gl misses that frame (see the header of `_dbg__GPUTimer.ts`). With a bake every frame the graph is steady.
+  - **No iGPU was measured.** `env.size` stays 128 with day-night, as p110's insurance, until one is.
+- **The p112 measuring toggles are removed** ("Force composite path", "Re-bake every frame"), as planned. The bake stats and "Re-bake now" stay.

@@ -185,7 +185,15 @@ export const skyBoxProxy: Record<SkyBoxLayerKey, Obj> & { select: { skyBoxId: st
 /** The keys a layer folder binds, synced from the active sky box (and its layer defaults). */
 const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
   base: ['type', 'file', 'path', 'textureId', 'colorSpace', 'rotate', 'flipY', 'intensity'],
-  env: ['backgroundRoughness', 'backgroundIntensity', 'environmentIntensity', 'size', 'dynamic'],
+  env: [
+    'backgroundRoughness',
+    'backgroundIntensity',
+    'environmentIntensity',
+    'size',
+    'dynamic',
+    'updateAngleDeg',
+    'maxUpdatesPerSec',
+  ],
   atmosphere: [
     'enabled',
     'turbidity',

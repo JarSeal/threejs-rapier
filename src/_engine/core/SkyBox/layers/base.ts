@@ -28,6 +28,8 @@ export const ENV_DEFAULTS = {
   environmentIntensity: 1,
   size: 256 as SkyBoxEnvSize,
   dynamic: true,
+  updateAngleDeg: 1,
+  maxUpdatesPerSec: 1,
 };
 
 /** The base layer's uniforms, created once per activation and kept across node rebuilds. */

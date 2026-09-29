@@ -1,4 +1,4 @@
-import { _setEnvBakeHooks, requestEnvBake } from '../../SkyBox/SkyEnvironment';
+import { _setEnvBakeHooks } from '../../SkyBox/SkyEnvironment';
 import {
   _acquireGpuTimer,
   _getGpuTimerSupport,
@@ -37,8 +37,27 @@ let pending: { uids: string[]; age: number }[] = [];
 let pendingTimeout: ReturnType<typeof setTimeout> | null = null;
 let removeListeners: (() => void) | null = null;
 
+/** The window bakes per second are averaged over. */
+const RATE_WINDOW_MS = 10000;
+/** When each bake in the window ran (performance.now). */
+let bakeTimes: number[] = [];
+
+const getBakesPerSec = () => {
+  const since = performance.now() - RATE_WINDOW_MS;
+  bakeTimes = bakeTimes.filter((time) => time >= since);
+  return (bakeTimes.length / (RATE_WINDOW_MS / 1000)).toFixed(2);
+};
+
 /** What the Environment folder's read-only bindings poll. */
-export const envBakeStatsView = { bakes: 0, cpuMs: '-', gpuMs: '-' };
+export const envBakeStatsView = {
+  bakes: 0,
+  cpuMs: '-',
+  gpuMs: '-',
+  /** Over the last 10 s (read on every poll, so it falls back to 0 once bakes stop). */
+  get bakesPerSec() {
+    return getBakesPerSec();
+  },
+};
 
 const addSample = (avg: Avg, value: number) => {
   avg.last = value;
@@ -105,6 +124,7 @@ _setEnvBakeHooks({
   },
   onBakeEnd: (cpuMs) => {
     bakeCount++;
+    bakeTimes.push(performance.now());
     addSample(cpu, cpuMs);
     if (captureUids) {
       if (captureUids.length) pending.push({ uids: captureUids, age: 0 });
@@ -120,22 +140,3 @@ _setEnvBakeHooks({
     updateView();
   },
 });
-
-// Continuous re-bake (a stress test: pipeline counts must stay flat, and the per-frame bake
-// cost shows in the stats). Session-only.
-
-let isContinuous = false;
-
-const continuousTick = () => {
-  if (!isContinuous) return;
-  requestEnvBake();
-  requestAnimationFrame(continuousTick);
-};
-
-export const setContinuousEnvBake = (on: boolean) => {
-  if (on === isContinuous) return;
-  isContinuous = on;
-  if (on) continuousTick();
-};
-
-export const isContinuousEnvBake = () => isContinuous;

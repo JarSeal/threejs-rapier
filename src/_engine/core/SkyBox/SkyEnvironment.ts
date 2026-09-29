@@ -160,11 +160,12 @@ export const requestEnvBake = () => {
 
 export const isEnvBakeRequested = () => isBakeRequested;
 
-/** Bakes the environment now, if one is requested (called by skyBoxSystem). */
+/** Bakes the environment now, if one is requested (called by skyBoxSystem).
+ * @returns whether it baked */
 export const runRequestedEnvBake = () => {
   isBakeRequested = false;
   const renderer = getRenderer();
-  if (!envBake || !renderer?.hasInitialized()) return;
+  if (!envBake || !renderer?.hasInitialized()) return false;
   bakeHooks?.onBakeStart();
   const start = performance.now();
   envBake.generator.fromScene(envBake.scene, 0, 0.1, 100, {
@@ -172,4 +173,5 @@ export const runRequestedEnvBake = () => {
     renderTarget: envBake.target,
   });
   bakeHooks?.onBakeEnd(performance.now() - start);
+  return true;
 };

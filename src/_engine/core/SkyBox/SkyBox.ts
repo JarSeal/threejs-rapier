@@ -224,12 +224,6 @@ const resetSceneProperties = () => {
   rootScene.environmentRotation.set(0, 0, 0);
 };
 
-/** Debug only: routes every sky box through the composite path (see _setSkyCompositeForced). */
-let isCompositeForced = false;
-
-const usesComposite = (def: SkyBoxDef) =>
-  hasProceduralLayer(def) || (isCompositeForced && isDebugEnvironment());
-
 /** On the composite path, a blurred background samples the env bake (switching is a rebuild). */
 const isBackgroundFromBake = (def: SkyBoxDef) =>
   (def.env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness) > 0;
@@ -240,7 +234,7 @@ type SkyBoxBuild = Pick<ActiveSkyBox, 'isComposite' | 'nodes' | 'textures'>;
 
 /** Builds a definition's nodes (and, on the composite path, its env bake, with a bake requested). */
 const buildNodes = (def: SkyBoxDef, u: SkyUniforms, texture: THREE.Texture | null): SkyBoxBuild => {
-  if (!usesComposite(def)) {
+  if (!hasProceduralLayer(def)) {
     disposeEnvBake();
     const layer = buildBaseLayer(def.base, u.base, texture);
     return {
@@ -266,7 +260,7 @@ const buildNodes = (def: SkyBoxDef, u: SkyUniforms, texture: THREE.Texture | nul
 
 /** Whether going from `current` to `def` (same base) needs new nodes. */
 const needsRebuild = (current: ActiveSkyBox, def: SkyBoxDef) => {
-  if (usesComposite(def) !== current.isComposite) return true;
+  if (hasProceduralLayer(def) !== current.isComposite) return true;
   if (!current.isComposite) return false;
   return (
     getCompositeSignature(def) !== getCompositeSignature(current.def) ||
@@ -506,7 +500,10 @@ export const isDayNightPlaying = () => Boolean(getSkyTime()?.playing);
 /** Sets the cycle's time multiplier: negative runs it backwards, 0 freezes it. */
 export const setDayNightSpeed = (multiplier: number) => {
   const time = getSkyTime();
-  if (time && Number.isFinite(multiplier)) time.speed = multiplier;
+  if (!time || !Number.isFinite(multiplier)) return;
+  // Reversing catches the environment up once (a stop does too, see scheduleDayNightBake)
+  if (multiplier * time.speed < 0) needsCatchUpBake = true;
+  time.speed = multiplier;
 };
 
 /** The cycle's time multiplier, or null without day-night. */
@@ -540,6 +537,50 @@ export const getSunElevation = (i = 0) => {
   return direction ? Math.asin(THREE.MathUtils.clamp(direction.y, -1, 1)) : null;
 };
 
+// Budgeted re-bakes while the cycle moves (p110 §0.3): a re-bake once the sky has turned more
+// than env.updateAngleDeg since the last bake, at most env.maxUpdatesPerSec, plus one bake to
+// catch up when it stops (pause, speed 0, the end of a scrub or a one-off setTimeOfDay) or
+// reverses. A cycle that keeps playing after a setTimeOfDay jump catches up within the rate
+// cap (bakeEnvironment() bakes on the next frame). env.dynamic: false turns all of it off.
+
+/** The sun's direction the last env bake saw (any bake), and when it ran (performance.now). */
+const lastBakeSunDir = new THREE.Vector3();
+let lastBakeTimeMs = -Infinity;
+/** Whether the time moved on the previous day-night step. */
+let wasTimeMoving = false;
+/** Set when the cycle reverses: the next step bakes once to catch up. */
+let needsCatchUpBake = false;
+/** Any movement at all counts for the catch-up bake. */
+const CATCH_UP_ANGLE_COS = Math.cos(THREE.MathUtils.degToRad(0.01));
+
+/** Whether the sun has turned further from the last bake's direction than `angleCos` (a cosine). */
+const hasSkyTurnedSinceBake = (u: SkyUniforms, angleCos: number) =>
+  u.sun.direction.value.dot(lastBakeSunDir) < angleCos;
+
+const scheduleDayNightBake = (current: ActiveSkyBox, moved: boolean) => {
+  const def = current.def;
+  if (!current.isComposite || !isBakeDynamic(def)) return;
+  if (moved && !needsCatchUpBake) {
+    const maxPerSec = def.env?.maxUpdatesPerSec ?? ENV_DEFAULTS.maxUpdatesPerSec;
+    if (maxPerSec <= 0 || performance.now() - lastBakeTimeMs < 1000 / maxPerSec) return;
+    const angleDeg = def.env?.updateAngleDeg ?? ENV_DEFAULTS.updateAngleDeg;
+    if (hasSkyTurnedSinceBake(current.uniforms, Math.cos(THREE.MathUtils.degToRad(angleDeg)))) {
+      requestEnvBake();
+    }
+    return;
+  }
+  if (!wasTimeMoving && !needsCatchUpBake) return;
+  needsCatchUpBake = false;
+  if (hasSkyTurnedSinceBake(current.uniforms, CATCH_UP_ANGLE_COS)) requestEnvBake();
+};
+
+/** Records what a bake that just ran saw (for the day-night bake rules). */
+const noteEnvBake = () => {
+  if (!active) return;
+  lastBakeSunDir.copy(active.uniforms.sun.direction.value);
+  lastBakeTimeMs = performance.now();
+};
+
 /** Last frame's getElapsedTime: the day-night step advances by the difference, which (unlike
  * the MAIN delta) is 0 on the frame the master loop pauses and the frame it resumes. */
 let lastElapsedTime = 0;
@@ -562,12 +603,14 @@ const stepDayNight = (world: ECSWorld) => {
   if (!current || !isDayNightEnabled(current.def) || isCurrentlyLoading()) return;
   const time = current.time;
   if (isTimeSourceRunning(current.def) && advanceSkyTime(time, dt)) time.isDirty = true;
-  if (!time.isDirty) return;
-  time.isDirty = false;
-  applySkyTimeUniforms(current.uniforms, current.def, time);
-  updateSkyLightsForSun(current.def, current.uniforms, world);
-  // Every change re-bakes for now (p113 Phase 2 adds the angle and rate rules)
-  if (current.isComposite && isBakeDynamic(current.def)) requestEnvBake();
+  const moved = time.isDirty;
+  if (moved) {
+    time.isDirty = false;
+    applySkyTimeUniforms(current.uniforms, current.def, time);
+    updateSkyLightsForSun(current.def, current.uniforms, world);
+  }
+  scheduleDayNightBake(current, moved);
+  wasTimeMoving = moved;
 };
 
 // System
@@ -587,7 +630,7 @@ function skyBoxSystem(world: ECSWorld) {
   if (!isEnvBakeRequested() || isCurrentlyLoading()) return;
   // The bake's clouds are frozen where the view's are now
   if (active) active.uniforms.clouds.bakeTime.value = getFrameTime();
-  runRequestedEnvBake();
+  if (runRequestedEnvBake()) noteEnvBake();
 }
 
 /** three's `time` node value (the renderer's node frame time, in seconds). */
@@ -608,18 +651,3 @@ export const registerSkyBoxDebugGUI = async () => {
 export const createSkyBoxDebugGUI = (opts?: { rebuild?: boolean }) => {
   useDebug(debugGUI)?._createSkyBoxDebugGUI(opts);
 };
-
-/**
- * @internal Debug only: routes every sky box through the composite path and its env bake,
- * rebuilding the active one (session-only, to check the composite against the direct path).
- */
-export const _setSkyCompositeForced = (forced: boolean) => {
-  isCompositeForced = forced;
-  const current = active;
-  if (!current || usesComposite(current.def) === current.isComposite) return;
-  show({ ...current, ...buildNodes(current.def, current.uniforms, current.textures.source) });
-  notify('update');
-};
-
-/** @internal */
-export const _isSkyCompositeForced = () => isCompositeForced;

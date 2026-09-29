@@ -82,11 +82,15 @@ export const SkyBoxEnvSchema = z.object({
    * gives sharper mirror reflections for 4× the memory (a 1536×2048 half-float target); the
    * bake's GPU cost is per pass, so it barely changes with size (p110 spike). */
   size: SkyBoxEnvSizeSchema.optional(),
-  /** Whether value changes re-bake the environment. False: only activation, a rebuild and
-   * `bakeEnvironment()` do. Default true. */
+  /** Whether value changes and the day-night cycle re-bake the environment. False: only
+   * activation, a rebuild and `bakeEnvironment()` do (reflections lag, the rest animates).
+   * Default true. */
   dynamic: z.boolean().optional(),
-  /** Day-night re-bake rules (p113). Accepted, but not used yet. */
+  /** Day-night: re-bake once the sun has turned this many degrees since the last bake.
+   * Default 1. */
   updateAngleDeg: z.number().min(0).optional(),
+  /** Day-night: at most this many re-bakes per second while the cycle moves (0: only when it
+   * stops or reverses). A bake is ~2 ms of GPU at any size (p110 spike). Default 1. */
   maxUpdatesPerSec: z.number().min(0).optional(),
 });
 
