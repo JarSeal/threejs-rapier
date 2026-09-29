@@ -1,332 +1,370 @@
-import * as THREE from 'three/webgpu';
-import { CMP } from '../../utils/CMP';
-import { ECSSystemStage } from '../../../AppECSRegistry';
+import { CMP, type TCMP } from '../../utils/CMP';
 import { IS_DEBUG_ENV } from '../Config';
-import { ECSWorld } from '../ECS';
-import { createLines, writePolyline, type LineObject } from '../LineManager';
-import { createDebuggerTab, updateDebuggerTab } from '../../debug/DebuggerGUI';
-import { PercentagePieHtml } from '../../utils/UI/PercentagePieHtml';
+import {
+  createDebuggerTab,
+  persistDebuggerTabValue,
+  updateDebuggerTab,
+  type DebuggerPaneItem,
+} from '../../debug/DebuggerGUI';
+import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { createPercentagePie, type PercentagePie } from '../../utils/UI/PercentagePieHtml';
+import type {
+  IntervalCounterSnapshot,
+  IntervalWindowSnapshot,
+} from '../../utils/stats/IntervalCounterStats';
+import type { RayHelperKind } from '../RayDebugTypes';
+import { getRayCastStats, isRayCastStatsEnabled, setRayCastStatsEnabled } from '../Raycast';
+import {
+  getPhysicsRayStats,
+  getPhysicsState,
+  isPhysicsRayStatsEnabled,
+  isPhysicsWorldEnabled,
+  setPhysicsRayHelpersEnabled,
+  setPhysicsRayStatsEnabled,
+} from '../PhysicsAPI';
+import {
+  getRayHelperSettings,
+  setRayHelperSettings,
+  type RayHelperKindSettings,
+} from './_dbg__RayHelpers';
+import {
+  _createClearRayTestersLSButton,
+  _refreshRayTesterHelperNotices,
+  _toggleRayTesterWindow,
+} from './_dbg__RayTester';
 
-const DEFAULT_HELPER_COLOR = '#ff0000';
-const DEFAULT_MAX_HELPER_LENGTH = 1000;
 const LS_KEY = 'debugRayCast';
 const TAB_ID = 'rayCastControls';
-/** One single-segment line per helper id, refilled on every draw. */
-const rayHelpers = new Map<string, { line: LineObject; color: THREE.ColorRepresentation }>();
-/** Helper ids drawn since the last cleanup; the rest are disposed by it. */
-const drawnHelperIds = new Set<string>();
-const rayEnd = new THREE.Vector3();
-const rayPoints: THREE.Vector3Like[] = [rayEnd, rayEnd];
+/** How often the open tab writes the stats values into its view */
+const STATS_VIEW_REFRESH_MS = 200;
+/** The pre-p141 single helper toggle, migrated to `threeShow` */
+const LEGACY_SHOW_HELPERS_KEY = 'showAllRayDebugHelpers';
+
+/** The helper settings in the tab, per kind: state key suffix → the kind's setting. The state
+ * keys are the kind's prefix plus the suffix (eg. `threeActiveColor`). */
+const HELPER_SETTING_KEYS = {
+  Show: 'show',
+  ShowAnonymous: 'showAnonymous',
+  ForceKindColors: 'forceKindColors',
+  DepthTest: 'depthTest',
+  ActiveColor: 'activeColor',
+  InactiveColor: 'inactiveColor',
+  Width: 'width',
+  HoldMs: 'holdMs',
+  FadeOutMs: 'fadeOutMs',
+  DashPx: 'dashPx',
+  GapPx: 'gapPx',
+} as const satisfies Record<string, keyof RayHelperKindSettings>;
+type HelperSettingSuffix = keyof typeof HELPER_SETTING_KEYS;
+const HELPER_SETTING_SUFFIXES = Object.keys(HELPER_SETTING_KEYS) as HelperSettingSuffix[];
+
+type HelperStatePrefix = 'three' | 'physics';
+type HelperState<P extends HelperStatePrefix> = {
+  [K in HelperSettingSuffix as `${P}${K}`]: RayHelperKindSettings[(typeof HELPER_SETTING_KEYS)[K]];
+};
+
+/** A kind's tab state keys, seeded with the kind's default settings. */
+const createHelperState = <P extends HelperStatePrefix>(prefix: P, kind: RayHelperKind) => {
+  const settings = getRayHelperSettings(kind);
+  const state: Record<string, unknown> = {};
+  for (const suffix of HELPER_SETTING_SUFFIXES) {
+    state[`${prefix}${suffix}`] = settings[HELPER_SETTING_KEYS[suffix]];
+  }
+  return state as HelperState<P>;
+};
+
+const helperStateKeys = <P extends HelperStatePrefix>(prefix: P) =>
+  HELPER_SETTING_SUFFIXES.map((suffix) => `${prefix}${suffix}` as keyof HelperState<P>);
+
 const rayCastState = {
-  showAllRayDebugHelpers: false,
   enableRayStatistics: false,
+  ...createHelperState('three', 'THREE'),
+  physicsEnableRayStatistics: false,
+  ...createHelperState('physics', 'PHYSICS'),
 };
-const DEFAULT_STATS = {
-  current: 0,
-  sceneMaxEver: 0,
-  sceneMax: 0,
-  sceneMin: 0,
-  sceneMaxLong: 0,
-  sceneMinLong: 0,
-  sceneAverage: 0,
-  sceneAverageTotal: 0,
-  sceneLongAverage: 0,
-  sceneLongAverageTotal: 0,
-  _framesSceneAverage: 0,
-  _framesSceneLongAverage: 0,
-  _lastSceneMaxMinTime: 0,
-  _lastSceneLongMaxMinTime: 0,
-  _lastSceneAverageTime: 0,
-  _lastSceneLongAverageTime: 0,
-  _minCounter: Infinity,
-  _maxCounter: 0,
-  _minLongCounter: Infinity,
-  _maxLongCounter: 0,
-  _percentageSceneMaxMinInterval: 0,
-  _percentageSceneLongMaxMinInterval: 0,
-  _percentageSceneAverageInterval: 0,
-  _percentageSceneLongAverageInterval: 0,
-};
-let stats = { ...DEFAULT_STATS };
-const DEFAULT_STATS_CONFIG = {
-  sceneMaxMinIntervalInMs: 3000,
-  sceneLongMaxMinIntervalInMs: 10000,
-  sceneAverageIntervalInMs: 3000,
-  sceneLongAverageIntervalInMs: 20000,
-};
-const statsConfig = { ...DEFAULT_STATS_CONFIG };
-let maxMinIntervalText = '';
-let maxMinLongIntervalText = '';
-let averageIntervalText = '';
-let averageLongIntervalText = '';
+type RayCastState = typeof rayCastState;
 
 export const _initRayCastingDebugger = () => {
   if (IS_DEBUG_ENV) {
+    migrateLegacyShowHelpers();
     createDebugControls();
-    // After rendering (and not on frames the FPS limiter skips): drop the helpers of rays
-    // that weren't cast this frame
-    ECSWorld.registerPlugin((world) => {
-      world.addSystem(
-        ECSSystemStage.LATE_MAIN,
-        'rayHelperCleanupSystem',
-        _cleanUpRayHelpers,
-        -1000
-      );
-      return world;
-    });
+    // The persisted values are hydrated by createDebuggerTab
+    setRayCastStatsEnabled(rayCastState.enableRayStatistics);
+    applyHelperSettings('three', 'THREE');
+    setPhysicsRayStatsEnabled(rayCastState.physicsEnableRayStatistics);
+    applyHelperSettings('physics', 'PHYSICS');
   }
 };
 
-export const _drawRayHelper = ({
-  from,
-  to,
-  endLength,
-  helperId,
-  helperColor,
-}: {
-  from: THREE.Vector3;
-  to: THREE.Vector3;
-  endLength?: number;
-  helperId?: string;
-  helperColor?: THREE.ColorRepresentation;
-}) => {
-  countStats();
-  if (!helperId || !rayCastState.showAllRayDebugHelpers) return;
-
-  const color = helperColor || DEFAULT_HELPER_COLOR;
-  let helper = rayHelpers.get(helperId);
-  if (!helper) {
-    helper = {
-      line: createLines({
-        name: `rayHelper_${helperId}`,
-        capacity: 1,
-        growth: 'FIXED',
-        color,
-        // This module disposes them (cleanup, deleteAllRayHelpers), not the scene switch
-        persistent: true,
-      }),
-      color,
-    };
-    rayHelpers.set(helperId, helper);
-  } else if (helper.color !== color) {
-    helper.color = color;
-    helper.line.setColor(color);
+/** Pushes a kind's tab state into the helper renderer (and, for physics, whether the Physics API
+ * draws its queries at all). Live helpers restyle on the next frame (uniform writes), so this
+ * runs on every change, drag ticks included. */
+const applyHelperSettings = (prefix: HelperStatePrefix, kind: RayHelperKind) => {
+  const patch: Record<string, unknown> = {};
+  for (const suffix of HELPER_SETTING_SUFFIXES) {
+    patch[HELPER_SETTING_KEYS[suffix]] = rayCastState[`${prefix}${suffix}`];
   }
-
-  rayEnd
-    .copy(to)
-    .multiplyScalar(endLength || DEFAULT_MAX_HELPER_LENGTH)
-    .add(from);
-  rayPoints[0] = from;
-  writePolyline(helper.line.beginWrite(), rayPoints);
-  helper.line.endWrite();
-  drawnHelperIds.add(helperId);
+  setRayHelperSettings(kind, patch as Partial<RayHelperKindSettings>);
+  if (kind === 'PHYSICS') setPhysicsRayHelpersEnabled(rayCastState.physicsShow);
+  _refreshRayTesterHelperNotices();
 };
 
-/** Once per rendered frame: disposes the helpers of rays that weren't cast this frame, and
- * refreshes the statistics. */
-export const _cleanUpRayHelpers = () => {
-  for (const [helperId, helper] of rayHelpers) {
-    if (drawnHelperIds.has(helperId)) continue;
-    helper.line.dispose();
-    rayHelpers.delete(helperId);
-  }
-  drawnHelperIds.clear();
-  _updateStats();
-};
-
-export const _deleteAllRayHelpers = () => {
-  for (const helper of rayHelpers.values()) helper.line.dispose();
-  rayHelpers.clear();
-  drawnHelperIds.clear();
-};
-
-export const _toggleAllRayDebugHelpers = (show?: boolean) => {
-  rayCastState.showAllRayDebugHelpers = show ?? !rayCastState.showAllRayDebugHelpers;
+/** Turns a kind's helpers on or off as the tab's "Show helpers" does (persisted, tab refreshed).
+ * The ray tester windows use it, so the tab stays the one owner of the setting. */
+export const _setRayHelpersShown = (kind: RayHelperKind, show: boolean) => {
+  const prefix: HelperStatePrefix = kind === 'THREE' ? 'three' : 'physics';
+  const key = `${prefix}Show` as const;
+  rayCastState[key] = show;
+  applyHelperSettings(prefix, kind);
+  persistDebuggerTabValue(TAB_ID, key);
   updateDebuggerTab(TAB_ID);
 };
 
-const createDebugControls = () => {
-  createIntervalTexts();
+/** `showAllRayDebugHelpers` became `threeShow`. Rewritten once, before hydration (which only
+ * reads the persistKeys). */
+const migrateLegacyShowHelpers = () => {
+  const saved = lsGetItem(LS_KEY, {}) as Record<string, unknown> | null;
+  if (!saved || !(LEGACY_SHOW_HELPERS_KEY in saved)) return;
+  const { [LEGACY_SHOW_HELPERS_KEY]: legacyShow, ...rest } = saved;
+  if (!('threeShow' in rest) && typeof legacyShow === 'boolean') rest.threeShow = legacyShow;
+  lsSetItem(LS_KEY, rest);
+};
 
+/** A kind's helper settings folder. */
+const helperSettingsFolder = (
+  prefix: HelperStatePrefix,
+  kind: RayHelperKind,
+  title: string
+): DebuggerPaneItem<RayCastState> => {
+  const onChange = () => applyHelperSettings(prefix, kind);
+  const key = (suffix: HelperSettingSuffix) => `${prefix}${suffix}` as const;
+  return {
+    type: 'folder',
+    id: `${prefix}RayHelpers`,
+    title,
+    content: [
+      { key: key('Show'), label: 'Show helpers', onChange },
+      { key: key('ShowAnonymous'), label: 'Show rays without an id', onChange },
+      { key: key('ForceKindColors'), label: 'Force kind colors', onChange },
+      { key: key('DepthTest'), label: 'Respect depth', onChange },
+      { key: key('ActiveColor'), label: 'Active color', view: 'color', onChange },
+      { key: key('InactiveColor'), label: 'Inactive color', view: 'color', onChange },
+      { key: key('Width'), label: 'Width (px)', min: 1, max: 20, step: 0.5, onChange },
+      { key: key('HoldMs'), label: 'Hold (ms)', min: 0, max: 5000, step: 10, onChange },
+      { key: key('FadeOutMs'), label: 'Fade out (ms)', min: 0, max: 10000, step: 50, onChange },
+      { key: key('DashPx'), label: 'Dash (px)', min: 1, max: 64, step: 1, onChange },
+      { key: key('GapPx'), label: 'Gap (px)', min: 0, max: 64, step: 1, onChange },
+    ],
+  };
+};
+
+const createDebugControls = () => {
   createDebuggerTab({
     id: TAB_ID,
     title: 'Ray cast controls',
     icon: 'heartArrow',
     lsKey: LS_KEY,
+    // The ray testers' saved params are scene-scoped (their own LS key): a separate button
+    headerButtons: () => [_createClearRayTestersLSButton()],
     state: rayCastState,
-    persistKeys: ['showAllRayDebugHelpers', 'enableRayStatistics'],
-    content: () => [
-      {
-        pane: true,
-        content: [
-          { key: 'showAllRayDebugHelpers', label: 'Show ray cast helpers' },
-          {
-            key: 'enableRayStatistics',
-            label: 'Enable ray cast statistics',
-            onChange: () => {
-              stats._percentageSceneMaxMinInterval = 0;
-              stats._percentageSceneLongMaxMinInterval = 0;
-              stats._percentageSceneAverageInterval = 0;
-              stats._percentageSceneLongAverageInterval = 0;
-              stats._lastSceneMaxMinTime = performance.now();
-              stats._lastSceneLongMaxMinTime = performance.now();
-              stats._lastSceneAverageTime = performance.now();
-              stats._lastSceneLongAverageTime = performance.now();
-              stats.current = 0;
-              stats.sceneAverageTotal = 0;
-              stats.sceneLongAverageTotal = 0;
-              updateDebuggerTab(TAB_ID);
-            },
-          },
-        ],
-      },
-      // Dynamic template: re-rendered on every tab refresh (each frame while statistics are on)
-      CMP({ html: () => `<div class="rayCastStats">${getStatsHtml()}</div>` }),
+    persistKeys: [
+      'enableRayStatistics',
+      ...helperStateKeys('three'),
+      'physicsEnableRayStatistics',
+      ...helperStateKeys('physics'),
     ],
+    // Only while the tab is visible
+    refreshIntervalMs: STATS_VIEW_REFRESH_MS,
+    onRefresh: refreshStatsView,
+    onOpen: () => () => {
+      statsBlocks = [];
+      pendingQueriesView = null;
+    },
+    content: () => {
+      // Re-run on every mount and rebuild: the views below re-register themselves
+      statsBlocks = [];
+      pendingQueriesView = null;
+      return [
+        {
+          pane: true,
+          content: [
+            {
+              type: 'button',
+              title: 'Three.js ray tester',
+              onClick: () => _toggleRayTesterWindow('THREE'),
+            },
+            {
+              type: 'button',
+              title: 'Physics ray tester',
+              // Re-evaluated on every tab refresh (a scene may have no physics world)
+              disabled: () => !isPhysicsWorldEnabled(),
+              onClick: () => _toggleRayTesterWindow('PHYSICS'),
+            },
+          ],
+        },
+        {
+          pane: true,
+          content: [
+            helperSettingsFolder('three', 'THREE', 'Three.js rays'),
+            {
+              key: 'enableRayStatistics',
+              label: 'Enable ray cast statistics',
+              onChange: () => {
+                setRayCastStatsEnabled(rayCastState.enableRayStatistics);
+                updateDebuggerTab(TAB_ID);
+              },
+            },
+          ],
+        },
+        buildThreeStatsView(),
+        {
+          pane: true,
+          content: [
+            helperSettingsFolder('physics', 'PHYSICS', 'Physics rays'),
+            {
+              key: 'physicsEnableRayStatistics',
+              label: 'Enable physics ray statistics',
+              onChange: () => {
+                setPhysicsRayStatsEnabled(rayCastState.physicsEnableRayStatistics);
+                updateDebuggerTab(TAB_ID);
+              },
+            },
+          ],
+        },
+        buildPhysicsStatsView(),
+      ];
+    },
   });
 };
 
-const countStats = () => {
-  stats.current++;
-  stats.sceneAverageTotal++;
-  stats.sceneLongAverageTotal++;
+type StatsValue = { elem: HTMLElement; text: string };
+type StatsWindowRow = { win: IntervalWindowSnapshot; pie: PercentagePie; value: StatsValue };
+/** One counter's cached stats elements */
+type StatsBlock = {
+  list: TCMP;
+  getStats: () => Readonly<IntervalCounterSnapshot>;
+  isEnabled: () => boolean;
+  isActive: boolean | null;
+  lastFrame: StatsValue;
+  maxEver: StatsValue;
+  rows: StatsWindowRow[];
+};
+/** The mounted stats blocks (empty while the tab isn't mounted) */
+let statsBlocks: StatsBlock[] = [];
+/** The mounted pending physics queries row (WORKER_THREAD only) */
+let pendingQueriesView: { list: TCMP; isActive: boolean | null; value: StatsValue } | null = null;
+
+const INACTIVE_VALUE = '-';
+
+const addStatsRow = (list: TCMP, label: string, pie?: PercentagePie): StatsValue => {
+  const row = list.add({ tag: 'li' });
+  const labelCmp = row.add({ tag: 'span', class: 'rayStatLabel', text: label });
+  if (pie) labelCmp.add(pie.cmp);
+  return { elem: row.add({ tag: 'span', text: INACTIVE_VALUE }).elem, text: INACTIVE_VALUE };
 };
 
-export const _countRayCastFrames = () => {
-  if (!rayCastState.enableRayStatistics) return;
-  stats._framesSceneAverage++;
-  stats._framesSceneLongAverage++;
-};
-
-export const _updateStats = () => {
-  if (rayCastState.enableRayStatistics) {
-    const timeNow = performance.now();
-    let targetTime = 0;
-
-    // Max/min rays
-    targetTime = stats._lastSceneMaxMinTime + statsConfig.sceneMaxMinIntervalInMs;
-    if (targetTime < timeNow) {
-      stats.sceneMax = stats._maxCounter;
-      stats.sceneMin = stats._minCounter;
-      stats._maxCounter = 0;
-      stats._minCounter = Infinity;
-      stats._lastSceneMaxMinTime = performance.now();
-      stats._percentageSceneMaxMinInterval = 0;
-    } else {
-      stats._percentageSceneMaxMinInterval = Math.min(
-        100,
-        Math.round(
-          ((timeNow - stats._lastSceneMaxMinTime) / (targetTime - stats._lastSceneMaxMinTime)) * 100
-        )
-      );
+/** Builds one counter's stats markup once per mount (static, the value elements are cached). */
+const buildStatsBlock = (
+  root: TCMP,
+  title: string,
+  getStats: () => Readonly<IntervalCounterSnapshot>,
+  isEnabled: () => boolean
+) => {
+  root.add({ tag: 'h3', text: title });
+  const list = root.add({ tag: 'ul' });
+  const lastFrame = addStatsRow(list, 'Last frame:');
+  const maxEver = addStatsRow(list, 'Max ever:');
+  const rows: StatsWindowRow[] = [];
+  const windows = getStats().windows;
+  for (const kind of ['AVERAGE', 'MIN_MAX'] as const) {
+    const heading = kind === 'AVERAGE' ? 'Average per frame' : 'Max / min per frame';
+    list.add({ tag: 'li', class: 'rayStatHeading', text: heading });
+    for (let i = 0; i < windows.length; i++) {
+      const win = windows[i];
+      if (win.kind !== kind) continue;
+      const pie = createPercentagePie();
+      const value = addStatsRow(list, `Last ${win.intervalMs / 1000}s: `, pie);
+      rows.push({ win, pie, value });
     }
-
-    // Max/min rays LONG
-    targetTime = stats._lastSceneLongMaxMinTime + statsConfig.sceneLongMaxMinIntervalInMs;
-    if (targetTime < timeNow) {
-      stats.sceneMaxLong = stats._maxLongCounter;
-      stats.sceneMinLong = stats._minLongCounter;
-      stats._maxLongCounter = 0;
-      stats._minLongCounter = Infinity;
-      stats._lastSceneLongMaxMinTime = performance.now();
-      stats._percentageSceneLongMaxMinInterval = 0;
-    } else {
-      stats._percentageSceneLongMaxMinInterval = Math.min(
-        100,
-        Math.round(
-          ((timeNow - stats._lastSceneLongMaxMinTime) /
-            (targetTime - stats._lastSceneLongMaxMinTime)) *
-            100
-        )
-      );
-    }
-
-    // Average
-    targetTime = stats._lastSceneAverageTime + statsConfig.sceneAverageIntervalInMs;
-    if (targetTime < timeNow) {
-      stats.sceneAverage = parseFloat(
-        (stats.sceneAverageTotal / stats._framesSceneAverage).toFixed(2)
-      );
-      stats.sceneAverageTotal = 0;
-      stats._framesSceneAverage = 0;
-      stats._lastSceneAverageTime = performance.now();
-      stats._percentageSceneAverageInterval = 0;
-    } else {
-      stats._percentageSceneAverageInterval = Math.min(
-        100,
-        Math.round(
-          ((timeNow - stats._lastSceneAverageTime) / (targetTime - stats._lastSceneAverageTime)) *
-            100
-        )
-      );
-    }
-
-    // Average LONG
-    targetTime = stats._lastSceneLongAverageTime + statsConfig.sceneLongAverageIntervalInMs;
-    if (targetTime < timeNow) {
-      stats.sceneLongAverage = parseFloat(
-        (stats.sceneLongAverageTotal / stats._framesSceneLongAverage).toFixed(2)
-      );
-      stats.sceneLongAverageTotal = 0;
-      stats._framesSceneLongAverage = 0;
-      stats._lastSceneLongAverageTime = performance.now();
-      stats._percentageSceneLongAverageInterval = 0;
-    } else {
-      stats._percentageSceneLongAverageInterval = Math.min(
-        100,
-        Math.round(
-          ((timeNow - stats._lastSceneLongAverageTime) /
-            (targetTime - stats._lastSceneLongAverageTime)) *
-            100
-        )
-      );
-    }
-
-    // Update Ray Cast Controls drawer view (only when it's the open tab)
-    // @TODO: if stats window and total stats (with ray stats) are implemented, update those as well here
-    updateDebuggerTab(TAB_ID);
   }
-
-  if (stats.current > stats._maxCounter) stats._maxCounter = stats.current;
-  if (stats.current < stats._minCounter) stats._minCounter = stats.current;
-  if (stats.current > stats._maxLongCounter) stats._maxLongCounter = stats.current;
-  if (stats.current < stats._minLongCounter) stats._minLongCounter = stats.current;
-  if (stats.current > stats.sceneMaxEver) stats.sceneMaxEver = stats.current;
-  stats.current = 0;
+  statsBlocks.push({ list, getStats, isEnabled, isActive: null, lastFrame, maxEver, rows });
 };
 
-const statsHtml = (s: typeof stats, className: string) => `<div>
-  <h3>Stats:</h3>
-  <ul class="${className}">
-    <li><span class="rayStatLabel">Current rays:</span> ${s.current}</li>
-    <li class="rayStatHeading">Average per frame</li>
-    <li><span class="rayStatLabel">${averageIntervalText}: ${PercentagePieHtml(s._percentageSceneAverageInterval)}</span> ${s.sceneAverage}</li>
-    <li><span class="rayStatLabel">${averageLongIntervalText}: ${PercentagePieHtml(s._percentageSceneLongAverageInterval)}</span> ${s.sceneLongAverage}</li>
-    <li class="rayStatHeading">Maximum per frame</li>
-    <li><span class="rayStatLabel">Ever:</span> ${s.sceneMaxEver}</li>
-    <li><span class="rayStatLabel">${maxMinIntervalText}: ${PercentagePieHtml(s._percentageSceneMaxMinInterval)}</span> ${s.sceneMax}</li>
-    <li><span class="rayStatLabel">${maxMinLongIntervalText}: ${PercentagePieHtml(s._percentageSceneLongMaxMinInterval)}</span> ${s.sceneMaxLong}</li>
-    <li class="rayStatHeading">Minimum per frame</li>
-    <li><span class="rayStatLabel">${maxMinIntervalText}: ${PercentagePieHtml(s._percentageSceneMaxMinInterval)}</span> ${s.sceneMin}</li>
-    <li><span class="rayStatLabel">${maxMinLongIntervalText}: ${PercentagePieHtml(s._percentageSceneLongMaxMinInterval)}</span> ${s.sceneMinLong}</li>
-  </ul>
-</div>`;
-
-const getStatsHtml = () =>
-  rayCastState.enableRayStatistics
-    ? statsHtml(stats, 'active')
-    : statsHtml({ ...stats, current: '-' } as unknown as typeof stats, 'inactive');
-
-const createIntervalTexts = () => {
-  const maxMin = statsConfig.sceneMaxMinIntervalInMs / 1000;
-  const maxMinLong = statsConfig.sceneLongMaxMinIntervalInMs / 1000;
-  const average = statsConfig.sceneAverageIntervalInMs / 1000;
-  const averageLong = statsConfig.sceneLongAverageIntervalInMs / 1000;
-  maxMinIntervalText = `Last ${maxMin}s`;
-  maxMinLongIntervalText = `Last ${maxMinLong}s`;
-  averageIntervalText = `Last ${average}s`;
-  averageLongIntervalText = `Last ${averageLong}s`;
+const buildThreeStatsView = () => {
+  const root = CMP({ class: 'rayCastStats' });
+  buildStatsBlock(root, 'Three.js ray stats:', getRayCastStats, isRayCastStatsEnabled);
+  refreshStatsView();
+  return root;
 };
 
-export const _resetRayCastStats = () => (stats = { ...DEFAULT_STATS });
+const getPhysicsRaysSnapshot = () => getPhysicsRayStats().rays;
+const getPhysicsShapeCastsSnapshot = () => getPhysicsRayStats().shapeCasts;
+
+/** The physics stats, or a note when there is no physics world (the settings above stay). */
+const buildPhysicsStatsView = () => {
+  const root = CMP({ class: 'rayCastStats' });
+  if (!isPhysicsWorldEnabled()) {
+    root.add({ tag: 'p', class: 'rayStatNote', text: 'No physics world' });
+    return root;
+  }
+  buildStatsBlock(root, 'Physics ray stats:', getPhysicsRaysSnapshot, isPhysicsRayStatsEnabled);
+  buildStatsBlock(
+    root,
+    'Physics shape cast stats:',
+    getPhysicsShapeCastsSnapshot,
+    isPhysicsRayStatsEnabled
+  );
+  if (getPhysicsState().workerTarget === 'WORKER_THREAD') {
+    const list = root.add({ tag: 'ul' });
+    list.add({ tag: 'li', class: 'rayStatHeading', text: 'Worker' });
+    const value = addStatsRow(list, 'Pending queries:');
+    pendingQueriesView = { list, isActive: null, value };
+  }
+  refreshStatsView();
+  return root;
+};
+
+const writeStatsValue = (value: StatsValue, text: string) => {
+  if (value.text === text) return;
+  value.text = text;
+  value.elem.textContent = text;
+};
+
+const writeListActive = (view: { list: TCMP; isActive: boolean | null }, isActive: boolean) => {
+  if (isActive === view.isActive) return;
+  view.isActive = isActive;
+  view.list.updateClass('inactive', isActive ? 'remove' : 'add');
+};
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+const refreshStatsBlock = (block: StatsBlock) => {
+  const isActive = block.isEnabled();
+  writeListActive(block, isActive);
+  const s = block.getStats();
+  writeStatsValue(block.lastFrame, isActive ? String(s.lastFrame) : INACTIVE_VALUE);
+  writeStatsValue(block.maxEver, isActive ? String(s.maxEver) : INACTIVE_VALUE);
+  for (let i = 0; i < block.rows.length; i++) {
+    const { win, pie, value } = block.rows[i];
+    pie.set(isActive ? win.progress * 100 : 0);
+    if (!isActive) {
+      writeStatsValue(value, INACTIVE_VALUE);
+    } else if (win.kind === 'AVERAGE') {
+      writeStatsValue(value, String(round2(win.average)));
+    } else {
+      writeStatsValue(value, `${win.max} / ${win.min}`);
+    }
+  }
+};
+
+/** Writes the stats into the cached views: only changed texts and pie values, no html. */
+const refreshStatsView = () => {
+  for (let i = 0; i < statsBlocks.length; i++) refreshStatsBlock(statsBlocks[i]);
+  const pending = pendingQueriesView;
+  if (pending) {
+    const isActive = isPhysicsRayStatsEnabled();
+    writeListActive(pending, isActive);
+    const pendingQueries = getPhysicsRayStats().pendingQueries;
+    writeStatsValue(pending.value, isActive ? String(pendingQueries) : INACTIVE_VALUE);
+  }
+};

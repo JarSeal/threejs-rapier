@@ -25,7 +25,13 @@ import { lerror, lwarn } from '../utils/Logger';
 // Always-safe thin wrapper: a no-op outside debug builds and tree-shaken out of production.
 import { updatePhysicsPanel } from '../debug/Stats';
 import { addVisibilityChangeFn, getReadOnlyLoopState, LoopState, toggleMainPlay } from './MainLoop';
-import { DebugModuleRef, initWorker, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import {
+  DebugModuleRef,
+  initWorker,
+  loadDebugModule,
+  loadDebugModuleAsync,
+  useDebug,
+} from '../utils/helpers';
 import {
   ColliderAPI,
   CollBorderRadiusResponse,
@@ -34,6 +40,7 @@ import {
   CollNormalResponse,
   CollVerticesResponse,
   EngineAPIType,
+  PhysicsQueryObserver,
   HeightFieldData,
   SetDebugStateTrackingResponse,
   InteractionGroupsAPI,
@@ -69,6 +76,7 @@ import {
   CreateCollidersResponse,
   ShapeCastHitAPI,
   ShapeParams,
+  WorldCastRayAndGetNormalResponse,
   WorldCastRayResponse,
   WorldCastShapeResponse,
   WorldIntersectionsWithRayResponse,
@@ -147,6 +155,11 @@ import {
   RigidBodyPose,
 } from './Physics/PhysicsAPITypes';
 import { createNewResolver, resolveRequest } from '../utils/PromiseResolver';
+import {
+  IntervalCounterStats,
+  type IntervalCounterSnapshot,
+} from '../utils/stats/IntervalCounterStats';
+import { RAY_STATS_WINDOWS, RAY_TESTER_ID_PREFIX, type RayDebugOpts } from './RayDebugTypes';
 import { ShapeType } from '@dimforge/rapier3d-compat';
 import { existsOrThrow } from '../utils/assert';
 
@@ -233,6 +246,7 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
     const { engine, engineAPI } = await initPhysicsEngine(physicsState.physicsEngine);
     engineInitiated = Boolean(engine);
     engAPI = engineAPI;
+    engAPI.setQueryObserver(queryObserver);
     const worldOrUndefined = engAPI.init(
       physicsState,
       isDebugEnvironment(),
@@ -484,6 +498,152 @@ export const getLastPhysicsStepDuration = () => lastPhysicsStepDurationMs;
  * adjacent, never overlapping, and the two are never combined into a single figure.
  */
 export const getLastPhysicsStepMessagingLatency = () => lastPhysicsMessagingLatency;
+
+// PHYSICS RAY STATS AND HELPERS (p142) -- [ START ] -----------------------
+// Physics queries are counted and drawn by a query observer. It is installed only while the
+// stats or the physics ray helpers are on, so a query costs one null check otherwise.
+// MAIN_THREAD: the engine backend calls it (engAPI.setQueryObserver). WORKER_THREAD:
+// WorldProxyAPI calls it.
+
+/** Physics query statistics, per rendered frame (see {@link getPhysicsRayStats}). */
+export type PhysicsRayStats = {
+  /** CAST_RAY + CAST_RAY_AND_GET_NORMAL + INTERSECTIONS_WITH_RAY queries */
+  rays: Readonly<IntervalCounterSnapshot>;
+  /** CAST_SHAPE queries */
+  shapeCasts: Readonly<IntervalCounterSnapshot>;
+  /** Queries issued but not answered yet (WORKER_THREAD; always 0 on MAIN_THREAD). A number
+   * that keeps growing means worker replies are piling up or never arriving. */
+  pendingQueries: number;
+};
+
+const physicsRaysStats = new IntervalCounterStats(RAY_STATS_WINDOWS);
+const physicsShapeCastsStats = new IntervalCounterStats(RAY_STATS_WINDOWS);
+const physicsRayStats: PhysicsRayStats = {
+  rays: physicsRaysStats.snapshot(),
+  shapeCasts: physicsShapeCastsStats.snapshot(),
+  pendingQueries: 0,
+};
+let physicsRayStatsEnabled = false;
+/** Debug only: the physics kind's "Show helpers" setting (Ray cast controls tab) */
+let physicsRayHelpersEnabled = false;
+type RayHelpersModule = typeof import('./Debug/_dbg__RayHelpers');
+let rayHelpers: DebugModuleRef<RayHelpersModule> | null = null;
+
+/**
+ * Counts queries at issue time, so a frame's count includes every sub-step's queries, and
+ * draws each one as a `'PHYSICS'` ray helper right away, even in WORKER_THREAD mode. The
+ * helper runs to maxToi until the result sets its hit: in the same call on MAIN_THREAD, about
+ * a frame later on WORKER_THREAD.
+ *
+ * The helper gets the query's own `dir`, not a normalized one: its lengths are then tois, and
+ * `origin + dir * toi` is the exact hit point for any `|dir|`. (Only the helpers'
+ * maxHelperLength cap on misses is in `|dir|` units then.)
+ */
+const physicsQueryObserver: PhysicsQueryObserver = {
+  onQuery: (kind, origin, dir, maxToi, debug) => {
+    // The ray tester windows' queries are drawn, never counted (RAY_TESTER_ID_PREFIX)
+    const isCounted = physicsRayStatsEnabled && !debug?.id.startsWith(RAY_TESTER_ID_PREFIX);
+    if (isCounted) {
+      if (kind === 'CAST_SHAPE') physicsShapeCastsStats.add();
+      else physicsRaysStats.add();
+      physicsRayStats.pendingQueries++;
+    }
+    let helperToken = 0;
+    if (physicsRayHelpersEnabled) {
+      const helpers = useDebug(rayHelpers);
+      if (helpers) {
+        helperToken = helpers._drawRay(
+          'PHYSICS',
+          origin,
+          dir,
+          maxToi,
+          null,
+          debug,
+          performance.now()
+        );
+      }
+    }
+    // The token's lowest bit tells onResult whether this query was counted as pending
+    return helperToken * 2 + (isCounted ? 1 : 0);
+  },
+  onResult: (token, firstHitToi) => {
+    // Clamped: a reply to a query issued before the last reset has nothing to subtract from
+    if (token % 2 === 1 && physicsRayStats.pendingQueries > 0) physicsRayStats.pendingQueries--;
+    // A no-op when the helper has been cast again or recycled since
+    const helperToken = Math.floor(token / 2);
+    if (helperToken) useDebug(rayHelpers)?._updateRayHit(helperToken, firstHitToi);
+  },
+};
+
+/** The installed query observer, null while nothing needs one. Read by WorldProxyAPI. */
+let queryObserver: PhysicsQueryObserver | null = null;
+
+/** Installs the query observer while anything needs it, removes it otherwise. */
+const updateQueryObserver = () => {
+  queryObserver = physicsRayStatsEnabled || physicsRayHelpersEnabled ? physicsQueryObserver : null;
+  engAPI?.setQueryObserver(queryObserver);
+};
+
+/**
+ * Enables or disables the physics ray statistics. Enabling resets them. While disabled (and no
+ * other query instrumentation is on) a query costs one null check and nothing is counted.
+ * @param enabled (boolean) whether physics queries are counted
+ */
+export const setPhysicsRayStatsEnabled = (enabled: boolean) => {
+  if (enabled && !physicsRayStatsEnabled) resetPhysicsRayStats();
+  physicsRayStatsEnabled = enabled;
+  updateQueryObserver();
+};
+
+/**
+ * Whether the physics ray statistics are enabled
+ * @returns boolean
+ */
+export const isPhysicsRayStatsEnabled = () => physicsRayStatsEnabled;
+
+/**
+ * Debug only (a no-op outside the debug env): whether physics queries are drawn as `'PHYSICS'`
+ * ray helpers. The Ray cast controls tab calls it with the physics helpers' "Show helpers"
+ * setting; the helpers' look is set there too.
+ * @param enabled (boolean) whether physics queries are drawn
+ */
+export const setPhysicsRayHelpersEnabled = (enabled: boolean) => {
+  physicsRayHelpersEnabled = enabled && IS_DEBUG_ENV;
+  if (physicsRayHelpersEnabled && !rayHelpers) {
+    rayHelpers = loadDebugModule(() => import('./Debug/_dbg__RayHelpers'), 'RayHelpers');
+  }
+  updateQueryObserver();
+};
+
+/**
+ * The physics query statistics: queries issued per rendered frame (the last frame, the max ever
+ * and the min/max/average of rolling intervals), rays and shape casts separately, plus the
+ * queries still waiting for a worker reply. Counted when issued, so queries issued in
+ * `APP_PHYSICS_STEP` count once per sub-step.
+ *
+ * The returned object is the same on every call and is updated in place, so polling it
+ * allocates nothing. Copy the values out to keep them.
+ * @returns ({@link PhysicsRayStats}) the live statistics
+ */
+export const getPhysicsRayStats = (): Readonly<PhysicsRayStats> => physicsRayStats;
+
+/** Resets the physics ray statistics. The scene loader calls it on every scene enter. */
+export const resetPhysicsRayStats = () => {
+  const now = performance.now();
+  physicsRaysStats.reset(now);
+  physicsShapeCastsStats.reset(now);
+  physicsRayStats.pendingQueries = 0;
+};
+
+/** Ends the physics ray stats frame. Engine internal: PhysicsManager's LATE_MAIN system calls
+ * it once per rendered frame. */
+export const endPhysicsRayStatsFrame = (nowMs: number) => {
+  if (!physicsRayStatsEnabled) return;
+  physicsRaysStats.endFrame(nowMs);
+  physicsShapeCastsStats.endFrame(nowMs);
+};
+
+// PHYSICS RAY STATS AND HELPERS -- [ END ] -----------------------
 
 // WORKER LOGIC -- [ START ] -----------------------
 
@@ -2086,6 +2246,9 @@ class WorldProxyAPI implements WorldAPI {
   }
 
   // --- Queries (Raycasting) ---
+  // Each query reports to the query observer captured when it was issued: onQuery before the
+  // message, onResult when the reply arrives (≥1 frame later). `debug` never crosses to the
+  // worker.
   async castRay(
     ray: PhysRay,
     maxToi: number,
@@ -2093,8 +2256,12 @@ class WorldProxyAPI implements WorldAPI {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    _filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<RayColliderHitAPI | null> {
+    const observer = queryObserver;
+    const token = observer ? observer.onQuery('CAST_RAY', ray.origin, ray.dir, maxToi, debug) : 0;
     const response = (
       await messageWorkerAsync<WorldCastRayResponse>({
         type: PhysicsProtocolType.WORLD_CAST_RAY,
@@ -2103,20 +2270,14 @@ class WorldProxyAPI implements WorldAPI {
         solid,
         filterFlags,
         filterGroups,
-        filterExcludeCollider:
-          typeof filterExcludeCollider === 'number'
-            ? filterExcludeCollider
-            : filterExcludeCollider?.id,
-        filterExcludeRigidBody:
-          typeof filterExcludeRigidBody === 'number'
-            ? filterExcludeRigidBody
-            : filterExcludeRigidBody?.id,
+        filterExcludeCollider: getCollOrRigidId(filterExcludeCollider),
+        filterExcludeRigidBody: getCollOrRigidId(filterExcludeRigidBody),
       })
     ).hit;
-    if (!response) return null;
-    const coll = colliders.get(response.collider);
-    if (!coll) return null;
-    return { ...response, collider: coll };
+    const coll = response ? colliders.get(response.collider) : undefined;
+    const result = response && coll ? { ...response, collider: coll } : null;
+    if (observer) observer.onResult(token, result ? result.timeOfImpact : null, result ? 1 : 0);
+    return result;
   }
 
   castRaySync(): RayColliderHitAPI | null {
@@ -2134,8 +2295,12 @@ class WorldProxyAPI implements WorldAPI {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    _filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<ShapeCastHitAPI | null> {
+    const observer = queryObserver;
+    const token = observer ? observer.onQuery('CAST_SHAPE', shapePos, shapeVel, maxToi, debug) : 0;
     const response = (
       await messageWorkerAsync<WorldCastShapeResponse>({
         type: PhysicsProtocolType.WORLD_CAST_SHAPE,
@@ -2148,20 +2313,14 @@ class WorldProxyAPI implements WorldAPI {
         stopAtPenetration,
         filterFlags,
         filterGroups,
-        filterExcludeCollider:
-          typeof filterExcludeCollider === 'number'
-            ? filterExcludeCollider
-            : filterExcludeCollider?.id,
-        filterExcludeRigidBody:
-          typeof filterExcludeRigidBody === 'number'
-            ? filterExcludeRigidBody
-            : filterExcludeRigidBody?.id,
+        filterExcludeCollider: getCollOrRigidId(filterExcludeCollider),
+        filterExcludeRigidBody: getCollOrRigidId(filterExcludeRigidBody),
       })
     ).hit;
-    if (!response) return null;
-    const coll = colliders.get(response.collider);
-    if (!coll) return null;
-    return { ...response, collider: coll };
+    const coll = response ? colliders.get(response.collider) : undefined;
+    const result = response && coll ? { ...response, collider: coll } : null;
+    if (observer) observer.onResult(token, result ? result.timeOfImpact : null, result ? 1 : 0);
+    return result;
   }
 
   castShapeSync(): ShapeCastHitAPI | null {
@@ -2173,16 +2332,32 @@ class WorldProxyAPI implements WorldAPI {
     maxToi: number,
     solid: boolean,
     filterFlags?: QueryFilterFlags,
-    filterGroups?: InteractionGroupsAPI
+    filterGroups?: InteractionGroupsAPI,
+    filterExcludeCollider?: ColliderAPI | number,
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    _filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<RayColliderIntersectionAPI | null> {
-    return await messageWorkerAsync<RayColliderIntersectionAPI | null>({
-      type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL,
-      ray,
-      maxToi,
-      solid,
-      filterFlags,
-      filterGroups,
-    });
+    const observer = queryObserver;
+    const token = observer
+      ? observer.onQuery('CAST_RAY_AND_GET_NORMAL', ray.origin, ray.dir, maxToi, debug)
+      : 0;
+    const intersection = (
+      await messageWorkerAsync<WorldCastRayAndGetNormalResponse>({
+        type: PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL,
+        ray,
+        maxToi,
+        solid,
+        filterFlags,
+        filterGroups,
+        filterExcludeCollider: getCollOrRigidId(filterExcludeCollider),
+        filterExcludeRigidBody: getCollOrRigidId(filterExcludeRigidBody),
+      })
+    ).intersection;
+    const coll = intersection ? colliders.get(intersection.collider) : undefined;
+    const result = intersection && coll ? { ...intersection, collider: coll } : null;
+    if (observer) observer.onResult(token, result ? result.timeOfImpact : null, result ? 1 : 0);
+    return result;
   }
 
   castRayAndGetNormalSync(): RayColliderIntersectionAPI | null {
@@ -2198,10 +2373,14 @@ class WorldProxyAPI implements WorldAPI {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    _filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<void> {
-    const filtExclColl = getCollOrRigidId(filterExcludeCollider);
-    const filtExclRB = getCollOrRigidId(filterExcludeRigidBody);
+    const observer = queryObserver;
+    const token = observer
+      ? observer.onQuery('INTERSECTIONS_WITH_RAY', ray.origin, ray.dir, maxToi, debug)
+      : 0;
     const intersections = (
       await messageWorkerAsync<WorldIntersectionsWithRayResponse>({
         type: PhysicsProtocolType.WORLD_INTERSECTIONS_WITH_RAY,
@@ -2210,15 +2389,24 @@ class WorldProxyAPI implements WorldAPI {
         solid,
         filterFlags,
         filterGroups,
-        filterExcludeCollider: filtExclColl,
-        filterExcludeRigidBody: filtExclRB,
+        filterExcludeCollider: getCollOrRigidId(filterExcludeCollider),
+        filterExcludeRigidBody: getCollOrRigidId(filterExcludeRigidBody),
       })
     ).intersections;
+    let hitCount = 0;
+    let firstHitToi = Infinity;
     for (let i = 0; i < intersections.length; i++) {
       const intersectTransfer = intersections[i];
       const collider = colliders.get(intersectTransfer.collider);
-      if (collider) callback({ ...intersectTransfer, collider });
+      if (!collider) continue;
+      hitCount++;
+      if (intersectTransfer.timeOfImpact < firstHitToi) {
+        firstHitToi = intersectTransfer.timeOfImpact;
+      }
+      // The worker collects every hit, so `false` (stop) is applied here, as on MAIN_THREAD
+      if (callback({ ...intersectTransfer, collider }) === false) break;
     }
+    if (observer) observer.onResult(token, hitCount ? firstHitToi : null, hitCount);
   }
 
   intersectionsWithRaySync(
@@ -2239,7 +2427,9 @@ class WorldProxyAPI implements WorldAPI {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _filterExcludeRigidBody?: RigidBodyAPI | number,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _filterPredicate?: (collider: ColliderAPI) => boolean
+    _filterPredicate?: (collider: ColliderAPI) => boolean,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _debug?: RayDebugOpts
   ): void {
     throw new Error('Raycasting must be async in Worker mode.');
   }

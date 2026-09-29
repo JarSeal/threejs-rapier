@@ -30,7 +30,9 @@ import {
   ShapeType,
   TempContactForceEvent,
   WorldAPI,
+  type PhysicsQueryObserver,
 } from './PhysicsAPITypes';
+import type { RayDebugOpts } from '../RayDebugTypes';
 import { LoopState } from '../MainLoop';
 import { lwarn } from '../../utils/Logger';
 import { existsOrThrow } from '../../utils/assert';
@@ -161,6 +163,16 @@ export const getJointAPIWithId = (id: number): JointAPI | undefined => jointAPIs
 
 /** Enumerates the ids of all currently-live rigid bodies. */
 export const getAllRigidBodyIds = (): IterableIterator<number> => rigidBodyAPIs.keys();
+
+/** The query observer (stats and debug helpers), MAIN_THREAD only; see setQueryObserver. */
+let queryObserver: PhysicsQueryObserver | null = null;
+
+/** Sets (or clears, with null) the observer the query methods report to. Only PhysicsAPI.ts
+ * sets it, on the main thread: the worker's engine never has one, so worker queries cost
+ * nothing extra. */
+export const setQueryObserver = (observer: PhysicsQueryObserver | null) => {
+  queryObserver = observer;
+};
 
 export const init = (
   physicsSt: PhysicsState,
@@ -1032,6 +1044,8 @@ class EngineWorldProxyAPI implements WorldAPI {
   }
 
   // --- Queries ---
+  // Only the *Sync forms report to the query observer: the async forms delegate to them, so
+  // they are counted once. The worker's engine never has an observer (see setQueryObserver).
   castRaySync(
     ray: PhysRay,
     maxToi: number,
@@ -1039,8 +1053,12 @@ class EngineWorldProxyAPI implements WorldAPI {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    _filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): RayColliderHitAPI | null {
+    const observer = queryObserver;
+    const token = observer ? observer.onQuery('CAST_RAY', ray.origin, ray.dir, maxToi, debug) : 0;
     const rapierRay = new RAPIER.Ray(ray.origin, ray.dir);
     const hit = physicsWorld.castRay(
       rapierRay,
@@ -1052,9 +1070,11 @@ class EngineWorldProxyAPI implements WorldAPI {
       getRigidBody(filterExcludeRigidBody)
     );
 
-    if (!hit) return null;
-    const colliderAPI = getColliderAPI(hit.collider.handle);
-    return colliderAPI ? { collider: colliderAPI, timeOfImpact: hit.timeOfImpact } : null;
+    const colliderAPI = hit ? getColliderAPI(hit.collider.handle) : undefined;
+    const result =
+      hit && colliderAPI ? { collider: colliderAPI, timeOfImpact: hit.timeOfImpact } : null;
+    if (observer) observer.onResult(token, result ? result.timeOfImpact : null, result ? 1 : 0);
+    return result;
   }
   async castRay(
     ray: PhysRay,
@@ -1063,7 +1083,9 @@ class EngineWorldProxyAPI implements WorldAPI {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<RayColliderHitAPI | null> {
     return this.castRaySync(
       ray,
@@ -1072,7 +1094,9 @@ class EngineWorldProxyAPI implements WorldAPI {
       filterFlags,
       filterGroups,
       filterExcludeCollider,
-      filterExcludeRigidBody
+      filterExcludeRigidBody,
+      filterPredicate,
+      debug
     );
   }
 
@@ -1087,8 +1111,12 @@ class EngineWorldProxyAPI implements WorldAPI {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    _filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): ShapeCastHitAPI | null {
+    const observer = queryObserver;
+    const token = observer ? observer.onQuery('CAST_SHAPE', shapePos, shapeVel, maxToi, debug) : 0;
     const rapierShape = paramsToShape(shape);
     const hit = physicsWorld.castShape(
       shapePos,
@@ -1104,18 +1132,20 @@ class EngineWorldProxyAPI implements WorldAPI {
       getRigidBody(filterExcludeRigidBody)
     );
 
-    if (!hit) return null;
-    const colliderAPI = getColliderAPI(hit.collider.handle);
-    return colliderAPI
-      ? {
-          collider: colliderAPI,
-          timeOfImpact: hit.time_of_impact,
-          witness1: hit.witness1,
-          witness2: hit.witness2,
-          normal1: hit.normal1,
-          normal2: hit.normal2,
-        }
-      : null;
+    const colliderAPI = hit ? getColliderAPI(hit.collider.handle) : undefined;
+    const result =
+      hit && colliderAPI
+        ? {
+            collider: colliderAPI,
+            timeOfImpact: hit.time_of_impact,
+            witness1: hit.witness1,
+            witness2: hit.witness2,
+            normal1: hit.normal1,
+            normal2: hit.normal2,
+          }
+        : null;
+    if (observer) observer.onResult(token, result ? result.timeOfImpact : null, result ? 1 : 0);
+    return result;
   }
   async castShape(
     shapePos: PhysVector,
@@ -1128,7 +1158,9 @@ class EngineWorldProxyAPI implements WorldAPI {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<ShapeCastHitAPI | null> {
     return this.castShapeSync(
       shapePos,
@@ -1141,7 +1173,9 @@ class EngineWorldProxyAPI implements WorldAPI {
       filterFlags,
       filterGroups,
       filterExcludeCollider,
-      filterExcludeRigidBody
+      filterExcludeRigidBody,
+      filterPredicate,
+      debug
     );
   }
 
@@ -1152,8 +1186,14 @@ class EngineWorldProxyAPI implements WorldAPI {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    _filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): RayColliderIntersectionAPI | null {
+    const observer = queryObserver;
+    const token = observer
+      ? observer.onQuery('CAST_RAY_AND_GET_NORMAL', ray.origin, ray.dir, maxToi, debug)
+      : 0;
     const rapierRay = new RAPIER.Ray(ray.origin, ray.dir);
     const inter = physicsWorld.castRayAndGetNormal(
       rapierRay,
@@ -1165,17 +1205,19 @@ class EngineWorldProxyAPI implements WorldAPI {
       getRigidBody(filterExcludeRigidBody)
     );
 
-    if (!inter) return null;
-    const colliderAPI = getColliderAPI(inter.collider.handle);
-    return colliderAPI
-      ? {
-          collider: colliderAPI,
-          timeOfImpact: inter.timeOfImpact,
-          normal: inter.normal,
-          featureType: inter.featureType,
-          featureId: inter.featureId,
-        }
-      : null;
+    const colliderAPI = inter ? getColliderAPI(inter.collider.handle) : undefined;
+    const result =
+      inter && colliderAPI
+        ? {
+            collider: colliderAPI,
+            timeOfImpact: inter.timeOfImpact,
+            normal: inter.normal,
+            featureType: inter.featureType,
+            featureId: inter.featureId,
+          }
+        : null;
+    if (observer) observer.onResult(token, result ? result.timeOfImpact : null, result ? 1 : 0);
+    return result;
   }
   async castRayAndGetNormal(
     ray: PhysRay,
@@ -1184,7 +1226,9 @@ class EngineWorldProxyAPI implements WorldAPI {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<RayColliderIntersectionAPI | null> {
     return this.castRayAndGetNormalSync(
       ray,
@@ -1193,7 +1237,9 @@ class EngineWorldProxyAPI implements WorldAPI {
       filterFlags,
       filterGroups,
       filterExcludeCollider,
-      filterExcludeRigidBody
+      filterExcludeRigidBody,
+      filterPredicate,
+      debug
     );
   }
 
@@ -1205,8 +1251,16 @@ class EngineWorldProxyAPI implements WorldAPI {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    _filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): void {
+    const observer = queryObserver;
+    const token = observer
+      ? observer.onQuery('INTERSECTIONS_WITH_RAY', ray.origin, ray.dir, maxToi, debug)
+      : 0;
+    let hitCount = 0;
+    let firstHitToi = Infinity;
     physicsWorld.intersectionsWithRay(
       new RAPIER.Ray(ray.origin, ray.dir),
       maxToi,
@@ -1214,6 +1268,8 @@ class EngineWorldProxyAPI implements WorldAPI {
       (inter) => {
         const colliderAPI = getColliderAPI(inter.collider.handle);
         if (!colliderAPI) return true;
+        hitCount++;
+        if (inter.timeOfImpact < firstHitToi) firstHitToi = inter.timeOfImpact;
         return callback({
           collider: colliderAPI,
           timeOfImpact: inter.timeOfImpact,
@@ -1227,6 +1283,7 @@ class EngineWorldProxyAPI implements WorldAPI {
       getCollider(filterExcludeCollider),
       getRigidBody(filterExcludeRigidBody)
     );
+    if (observer) observer.onResult(token, hitCount ? firstHitToi : null, hitCount);
   }
   async intersectionsWithRay(
     ray: PhysRay,
@@ -1236,7 +1293,9 @@ class EngineWorldProxyAPI implements WorldAPI {
     filterFlags?: QueryFilterFlags,
     filterGroups?: InteractionGroupsAPI,
     filterExcludeCollider?: ColliderAPI | number,
-    filterExcludeRigidBody?: RigidBodyAPI | number
+    filterExcludeRigidBody?: RigidBodyAPI | number,
+    filterPredicate?: (collider: ColliderAPI) => boolean,
+    debug?: RayDebugOpts
   ): Promise<void> {
     this.intersectionsWithRaySync(
       ray,
@@ -1246,10 +1305,11 @@ class EngineWorldProxyAPI implements WorldAPI {
       filterFlags,
       filterGroups,
       filterExcludeCollider,
-      filterExcludeRigidBody
+      filterExcludeRigidBody,
+      filterPredicate,
+      debug
     );
   }
-
   // --- Interaction Pairs ---
   contactPairsWithSync(collider1: ColliderAPI | number, f: (collider2: ColliderAPI) => void): void {
     const coll = getCollider(collider1);

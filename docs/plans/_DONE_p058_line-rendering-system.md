@@ -376,7 +376,8 @@ not just the net.
 - **Object selection, hover highlighting, and selection outlines.** This plan ships the pulsation and
   box-outline primitives they need, and stops there.
 - **Dashed lines.** `dashSize`/`gapSize`/`computeLineDistances` need a per-segment distance attribute
-  that complicates the refill path.
+  that complicates the refill path. (Later: p141 added opt-in screen-space, per-segment dashes to the
+  FAT backend, `LineProps.dash`/`setDash`, with no distance attribute.)
 - **Per-vertex / per-segment colours and gradients along a line.** A second buffer and a separate
   feature. Note this is the one thing `PhysicsRapier.ts:1465-1481`'s legacy `debugRender()` mesh uses,
   which is why that file is deliberately left alone here — and the todo queue already has an entry to

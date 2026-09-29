@@ -34,6 +34,9 @@ export interface LineBackend {
   /** Screen pixels. A no-op on THIN, which is always 1px. */
   setWidth(width: number): void;
   setDepthTest(depthTest: boolean): void;
+  /** CSS pixels, a gap of 0 draws solid. Only a dashable FAT backend draws dashes; a no-op
+   * everywhere else. */
+  setDash(dashPx: number, gapPx: number): void;
   dispose(): void;
 }
 

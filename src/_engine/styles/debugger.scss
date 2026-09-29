@@ -1,3 +1,4 @@
+@use 'sass:color';
 @use './variables.scss';
 
 .rayCastStats {
@@ -27,6 +28,102 @@
   .inactive {
     opacity: 0.5;
   }
+
+  .rayStatNote {
+    font-size: 1.4rem;
+    opacity: 0.6;
+  }
+}
+
+// _dbg__RayTester.ts
+.rayTesterToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.rayTesterNotice {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 1.2rem;
+  color: color.adjust(variables.$warning, $lightness: 35%);
+
+  button {
+    flex-shrink: 0;
+  }
+}
+
+.rayTesterPickStatus {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: color.adjust(variables.$info, $lightness: 30%);
+}
+
+.rayTesterResults {
+  font-size: 1.2rem;
+
+  h4 {
+    margin: 0.8rem 0 0.4rem;
+  }
+
+  ol {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  li {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 0.4rem 0;
+  }
+
+  .rayTesterHitHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: bold;
+  }
+
+  .rayTesterField {
+    display: flex;
+    gap: 0.8rem;
+
+    .winSmallLabel {
+      flex-shrink: 0;
+      width: 5rem;
+    }
+  }
+
+  .rayTesterSummary {
+    margin: 0.4rem 0;
+    font-weight: bold;
+  }
+
+  .rayTesterNote,
+  .rayTesterMore {
+    opacity: 0.6;
+  }
+
+  .rayTesterError {
+    margin: 0.4rem 0;
+    color: color.adjust(variables.$alert, $lightness: 45%);
+  }
+}
+
+// PercentagePieHtml.ts: the fill is a conic gradient, driven by --p (0..100)
+.percentagePie {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--pie-fill, #fff) calc(var(--p, 0) * 1%),
+    var(--pie-bg, transparent) 0
+  );
+  vertical-align: middle;
 }
 
 #debugToaster .toastType-info .toastIcon path {

@@ -112,12 +112,16 @@ export class LineObject {
   private colorNode: LineColorNode = this.colorUniforms.colors[0];
   private width: number;
   private depthTest: boolean;
+  private readonly dashable: boolean;
+  private dashPx = 0;
+  private gapPx = 0;
   private readonly recomputeBounds: boolean;
   private boundsComputed = false;
 
   private warnedOverflow = false;
   private warnedPalette = false;
   private warnedStaleBounds = false;
+  private warnedNotDashable = false;
 
   /** @internal Use `createLines`. */
   constructor(id: string, props: LineProps) {
@@ -128,6 +132,11 @@ export class LineObject {
     this.writeColorStyle(props.colorStyle ?? { type: 'STATIC', color: props.color ?? 0xffffff });
     this.width = props.width ?? 1;
     this.depthTest = props.depthTest ?? true;
+    this.dashable = Boolean(props.dash);
+    if (props.dash) {
+      this.dashPx = Math.max(0, props.dash.dashPx);
+      this.gapPx = Math.max(0, props.dash.gapPx);
+    }
     this.recomputeBounds = props.recomputeBounds ?? false;
 
     const initialSegments = props.segments
@@ -184,6 +193,11 @@ export class LineObject {
 
   get isDisposed() {
     return this.disposed;
+  }
+
+  /** Whether the line was created with `dash` (and so can `setDash`). */
+  get isDashable() {
+    return this.dashable;
   }
 
   // --------------------------------------------------------------------------
@@ -262,6 +276,24 @@ export class LineObject {
     this.backend.setDepthTest(depthTest);
   }
 
+  /** The dash pattern in CSS pixels (see LineDash). A uniform write: a gap of 0 draws solid,
+   * so toggling between solid and dashed never rebuilds the pipeline. Only for a line
+   * created with `dash`; on any other line it warns once and does nothing. */
+  setDash(dashPx: number, gapPx: number) {
+    if (!this.dashable) {
+      if (!this.warnedNotDashable) {
+        this.warnedNotDashable = true;
+        lwarn(
+          `[Lines] setDash on line "${this.id}", which was not created with \`dash\`. Ignored (warned once per line).`
+        );
+      }
+      return;
+    }
+    this.dashPx = Math.max(0, dashPx);
+    this.gapPx = Math.max(0, gapPx);
+    this.backend.setDash(this.dashPx, this.gapPx);
+  }
+
   // --------------------------------------------------------------------------
   // Placement
   // --------------------------------------------------------------------------
@@ -323,7 +355,7 @@ export class LineObject {
   private createBackend(kind: LineBackendKind) {
     const createFat = kind === 'FAT' ? getFatLineBackendFactory() : null;
     return createFat
-      ? createFat(this.buffer.positions)
+      ? createFat(this.buffer.positions, this.dashable)
       : createThinLineBackend(this.buffer.positions);
   }
 
@@ -433,6 +465,7 @@ export class LineObject {
     this.backend.setTransparent(this.colorUniforms.opacity.value < 1);
     this.backend.setWidth(this.width);
     this.backend.setDepthTest(this.depthTest);
+    this.backend.setDash(this.dashPx, this.gapPx);
   }
 
   /** Writes a style into the colour uniforms. Returns true when it needs a different

@@ -17,7 +17,12 @@ import {
 import { TCMP } from '../utils/CMP';
 import { getHUDRootCMP } from './HUD';
 import { deleteAllPhysicsEntities, settlePendingPhysicsEntities } from './PhysicsManager';
-import { holdPhysicsStepping, releasePhysicsStepping, resetPhysicsWorld } from './PhysicsAPI';
+import {
+  holdPhysicsStepping,
+  releasePhysicsStepping,
+  resetPhysicsRayStats,
+  resetPhysicsWorld,
+} from './PhysicsAPI';
 import { DEBUGGER_SCENE_LOADER_ID, disableDebugger } from '../debug/DebuggerGUI';
 import { setAllInputsEnabled } from './Input/InputState';
 import { getCanvasParentElem } from './Renderer';
@@ -584,8 +589,9 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
             disableDebugger(false);
 
             updateOnScreenTools();
-            resetRayCastStats();
           }
+          resetRayCastStats();
+          resetPhysicsRayStats();
 
           // Includes creates the scene code didn't await (and the prev scene's deletes, in
           // WORKER_THREAD mode), so every body starts stepping on the same step.
