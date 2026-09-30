@@ -21,6 +21,7 @@ import {
 } from '../../SkyBox/SkyLights';
 import { CLOUDS_DEFAULTS } from '../../SkyBox/layers/clouds';
 import { MOON_DEFAULTS } from '../../SkyBox/layers/moon';
+import { STARS_DEFAULTS } from '../../SkyBox/layers/stars';
 import { GROUND_DEFAULTS } from '../../SkyBox/layers/ground';
 import { SHADOW_PRESETS } from '../../LightManager';
 import { getEnvSize } from '../../SkyBox/SkyComposite';
@@ -41,6 +42,9 @@ export type SkyBoxLayerKey =
   | 'sunLight'
   | 'moon'
   | 'moonLight'
+  | 'stars'
+  | 'starsTwinkle'
+  | 'milkyWay'
   | 'ambient'
   | 'clouds'
   | 'ground';
@@ -54,6 +58,9 @@ export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
   sunLight: 'suns.0.light',
   moon: 'moons.0',
   moonLight: 'moons.0.light',
+  stars: 'stars',
+  starsTwinkle: 'stars.twinkle',
+  milkyWay: 'stars.milkyWay',
   ambient: 'ambientLight',
   clouds: 'clouds',
   ground: 'ground',
@@ -66,6 +73,7 @@ const DEFAULTS_TREE = {
   atmosphere: ATMOSPHERE_DEFAULTS,
   suns: [{ ...SUN_DEFAULTS, light: SUN_LIGHT_DEFAULTS }],
   moons: [{ ...MOON_DEFAULTS, light: MOON_LIGHT_DEFAULTS }],
+  stars: STARS_DEFAULTS,
   ambientLight: AMBIENT_LIGHT_DEFAULTS,
   clouds: CLOUDS_DEFAULTS,
   ground: GROUND_DEFAULTS,
@@ -190,6 +198,9 @@ export const skyBoxProxy: Record<SkyBoxLayerKey, Obj> & { select: { skyBoxId: st
   sunLight: {},
   moon: {},
   moonLight: {},
+  stars: {},
+  starsTwinkle: {},
+  milkyWay: {},
   ambient: {},
   clouds: {},
   ground: {},
@@ -263,6 +274,9 @@ const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
     'distance',
     'shadowFollow',
   ],
+  stars: ['enabled', 'density', 'brightness', 'size', 'colorVariance', 'rotateWithSky', 'seed'],
+  starsTwinkle: ['amount', 'frequency'],
+  milkyWay: ['enabled', 'intensity', 'width'],
   ambient: ['enabled', 'type', 'intensity'],
   clouds: ['enabled', 'coverage', 'density', 'scale', 'speed', 'elevation'],
   ground: ['enabled', 'horizonBlend', 'height', 'useAtmosphereHorizon'],
@@ -271,6 +285,7 @@ const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
 const TUPLE_KEYS: Partial<Record<SkyBoxLayerKey, string[]>> = {
   sunLight: ['horizonFade'],
   moonLight: ['horizonFade'],
+  stars: ['fadeRange'],
   clouds: ['windDirection'],
 };
 /** Read-only text bindings need a string, even when the definition has no value. */

@@ -208,7 +208,7 @@ const sampleMoonTexture = (
 
 /**
  * The moon over `behind`. VIEW: the lit sphere (the phase, earthshine and limb darkening, and the
- * texture), antialiased at the rim. No branch: implicit-derivative work (fwidth, the texture
+ * texture), antialiased at the rim, hiding what's behind it. No branch: implicit-derivative work (fwidth, the texture
  * sample) must stay in uniform control flow on WebGPU, and a few dot products per sky pixel are
  * cheap. ENV_BAKE: nothing when the moon has a light (it gives that highlight); otherwise a
  * clamped glow a few bake texels wide, scaled by the lit fraction.
@@ -257,5 +257,6 @@ export const moonNode = (
   const moon = map
     ? tint.mul(sampleMoonTexture(map.texture, map.def, sx, sy, z)).mul(shade)
     : tint.mul(shade);
-  return back.add(moon);
+  // The disc hides what's behind it (stars, the base), even where it's unlit
+  return back.mul(float(1.0).sub(mask)).add(moon);
 };

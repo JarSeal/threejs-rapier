@@ -1,4 +1,4 @@
-import type * as THREE from 'three/webgpu';
+import * as THREE from 'three/webgpu';
 import type { SkyBoxDef } from './SkyBoxTypes';
 import {
   applyBaseUniforms,
@@ -48,7 +48,15 @@ import {
   type MoonUniforms,
 } from './layers/moon';
 import {
+  applyStarsSkyUniforms,
+  applyStarsUniforms,
+  createStarsUniforms,
+  starsNode,
+  type StarsUniforms,
+} from './layers/stars';
+import {
   computeMoonDirection,
+  computeSkyRotation,
   computeSunDirection,
   getMoonPhaseOf,
   type SkyTimeState,
@@ -68,7 +76,7 @@ import {
 
 /** VIEW: the background the camera sees. ENV_BAKE: what the environment is baked from (a
  * wider, clamped sun disc, no disc where a sun or moon light gives the specular, frozen
- * clouds; later also no stars). */
+ * clouds, no stars). */
 export type SkyCompositeMode = 'VIEW' | 'ENV_BAKE';
 
 /** Every layer's uniforms, created once per activation (whether the layer is on or not, so
@@ -77,6 +85,7 @@ export type SkyUniforms = {
   base: BaseUniforms;
   sun: SunUniforms;
   moon: MoonUniforms;
+  stars: StarsUniforms;
   atmosphere: AtmosphereUniforms;
   clouds: CloudsUniforms;
   ground: GroundUniforms;
@@ -104,6 +113,9 @@ export const isSunLightEnabled = (def: SkyBoxDef) => isOn(def.suns?.[0]?.light);
 export const isMoonEnabled = (def: SkyBoxDef) => isOn(def.moons?.[0]);
 /** Whether moons[0] has a light: then the env bake leaves its disc out. */
 export const isMoonLightEnabled = (def: SkyBoxDef) => isOn(def.moons?.[0]?.light);
+export const isStarsEnabled = (def: SkyBoxDef) => isOn(def.stars);
+export const isMilkyWayEnabled = (def: SkyBoxDef) =>
+  isStarsEnabled(def) && isOn(def.stars?.milkyWay);
 /** Clouds need the atmosphere (the schema rejects them without one). */
 export const isCloudsEnabled = (def: SkyBoxDef) => isOn(def.clouds) && isAtmosphereEnabled(def);
 export const isGroundEnabled = (def: SkyBoxDef) => isOn(def.ground);
@@ -120,6 +132,7 @@ export const createSkyUniforms = (def: SkyBoxDef, time: SkyTimeState): SkyUnifor
     base: createBaseUniforms(def.base, def.env),
     sun: createSunUniforms(),
     moon: createMoonUniforms(),
+    stars: createStarsUniforms(),
     atmosphere: createAtmosphereUniforms(),
     clouds: createCloudsUniforms(),
     ground: createGroundUniforms(),
@@ -147,6 +160,16 @@ const writeDirections = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) => 
   }
 };
 
+const _skyRotation = new THREE.Matrix3();
+
+/** The stars' fade and rotation (the sidereal one with day-night, else none). */
+const applyStarsSky = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) => {
+  const rotation = isDayNightEnabled(def)
+    ? computeSkyRotation(def.dayNight, time.timeOfDay, _skyRotation)
+    : null;
+  applyStarsSkyUniforms(u.stars, def.stars, u.sun.direction.value, rotation);
+};
+
 /** The moon's position-dependent values and the clouds' moonlight (after the atmosphere's). */
 const applyMoonPosition = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) => {
   const sunDirection = u.sun.direction.value;
@@ -171,6 +194,8 @@ export const applySkyUniforms = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeSt
     getEnvSize(def)
   );
   applyMoonUniforms(u.moon, def.moons?.[0], getEnvSize(def));
+  applyStarsUniforms(u.stars, def.stars);
+  applyStarsSky(u, def, time);
   applyCloudsUniforms(u.clouds, def.clouds, u.sun.direction.value);
   applyMoonPosition(u, def, time);
   applyGroundUniforms(u.ground, def.ground, isAtmosphereEnabled(def), u.sun.direction.value);
@@ -189,12 +214,17 @@ export const applySkyTimeUniforms = (u: SkyUniforms, def: SkyBoxDef, time: SkyTi
   applySunLightingUniforms(u.sun, hasAtmosphere ? u.atmosphere : null);
   applyCloudsSunUniforms(u.clouds, sunDirection);
   applyMoonPosition(u, def, time);
+  applyStarsSky(u, def, time);
   applyGroundSunUniforms(u.ground, hasAtmosphere, sunDirection);
 };
 
 /** Whether a definition has an enabled procedural layer (then it's on the composite path). */
 export const hasProceduralLayer = (def: SkyBoxDef) =>
-  isAtmosphereEnabled(def) || isSunEnabled(def) || isMoonEnabled(def) || isGroundEnabled(def);
+  isAtmosphereEnabled(def) ||
+  isSunEnabled(def) ||
+  isMoonEnabled(def) ||
+  isStarsEnabled(def) ||
+  isGroundEnabled(def);
 
 /** Which layers exist: a change to it is a rebuild. */
 export const getCompositeSignature = (def: SkyBoxDef) =>
@@ -204,6 +234,8 @@ export const getCompositeSignature = (def: SkyBoxDef) =>
     isMoonEnabled(def),
     isMoonLightEnabled(def),
     Boolean(def.moons?.[0]?.texture),
+    isStarsEnabled(def),
+    isMilkyWayEnabled(def),
     isAtmosphereEnabled(def),
     isCloudsEnabled(def),
     isGroundEnabled(def),
@@ -221,7 +253,10 @@ export const buildSkyComposite = (
   dir: THREE.Node<'vec3'>
 ): THREE.Node => {
   let color = baseNode(dir, def.base, u.base, sources.basePMREM);
-  // Space layers (p113/p114)
+  // Space layers (p114 adds nebulae). Never in the env bake (p110 §0.2)
+  if (isStarsEnabled(def) && mode === 'VIEW') {
+    color = starsNode(dir, color, u.stars, isMilkyWayEnabled(def));
+  }
   if (isSunEnabled(def)) color = sunNode(dir, color, u.sun, mode, isSunLightEnabled(def));
   if (isMoonEnabled(def)) {
     const texture = def.moons?.[0]?.texture;

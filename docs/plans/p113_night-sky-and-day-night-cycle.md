@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–3 implemented
+Status: in progress | Phases 1–4 implemented
 Category: Skybox, Rendering
 Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md
 Blocks: p114_space-preset-and-nebula-creator.md (its space layers reuse the stars layer and sidereal rotation)
@@ -202,3 +202,13 @@ Where the implementation differs from the plan above (2026-09-30). The code is t
 - **A moon texture** (`moons[0].texture`, 'DISC' or 'EQUIRECTANGULAR') loads with the base texture; changing it re-activates the sky box. `getSceneSkyBoxTextureIds` includes its `textureId`.
 - **Checked:** phases 0, 0.25, 0.5 and 0.75; the moon light 0 by day and `0.3 × lit fraction` at night; the pipeline count stable (20) across the day/night switch; the texture's orientation (a UV checker, both projections).
 - **Debug-only artifact:** the Lights debug tooling draws a `DirectionalLightSymbol` icon at each directional light. The sky lights sit 100 units along their direction from the camera, so the icon covers the moon (and the sun) disc in debug mode. It predates p113 for the sun.
+
+### Phase 4: stars
+
+- **Sidereal rotation.** The stars sit still in their own frame; `computeSkyRotation` turns it into world space by the local sidereal time, the sun's hour angle plus its longitude (the plan's "hour angle plus a sidereal offset"). It shares its latitude and north mapping with the sun (`hourFrameToWorld`), so a star where the sun is stays with the sun at every time (checked numerically), and the pole stands at the latitude. Without day-night, or with `rotateWithSky: false`, the rotation is identity.
+- **Pixel size from `fwidth` of the direction, not of the star distance.** The distance jumps at cell edges, and its `fwidth` would have drawn the grid's lines.
+- **The day skip is a branch on the fade uniform.** A uniform condition is uniform control flow on WebGPU, so `fwidth` is legal inside it. By day, stars on cost nothing measurable (1.9 fps off vs 2.1 on, faded out, in software rendering).
+- **Tuned density:** at density 0.5 the coarse grid has about one star per 5.5 square degrees (the naked-eye sky's), plus ~3× as many faint fine-grid stars; ~8% of stars are over 0.5 radiance. The first defaults (3× denser, 31% over 0.1) looked like snow.
+- **Twinkle and the Milky Way are objects** (`twinkle: { amount, frequency }`, `milkyWay: { enabled, intensity, direction, width }`), as DD4 lists; p110's example had `twinkle` as a number. **`seed`** was added for another pattern. The debug folder has no binding for `milkyWay.direction` (a 3-tuple).
+- **The moon disc now hides what's behind it** (stars, the base), including its unlit side: `behind · (1 − mask) + moon`.
+- **Not checked here:** twinkle in motion, and pixel ratio 2. Only stills at pixel ratio 1 were taken (software rendering).

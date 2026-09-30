@@ -15,6 +15,7 @@ import type {
   SkyBoxEnvSchema,
   SkyBoxEnvSizeSchema,
   SkyBoxOverridesSchema,
+  SkyBoxStarsSchema,
   SkyBoxSunLightSchema,
   SkyBoxSunSchema,
 } from '../../schemas/skyBoxSchema';
@@ -51,6 +52,9 @@ export type SkyBoxMoonLightDef = z.input<typeof SkyBoxMoonLightSchema>;
 
 /** The moon's texture. */
 export type SkyBoxMoonTextureDef = NonNullable<SkyBoxMoonDef['texture']>;
+
+/** The stars layer (and its optional Milky Way). */
+export type SkyBoxStarsDef = z.input<typeof SkyBoxStarsSchema>;
 
 /** The clouds layer (needs the atmosphere). */
 export type SkyBoxCloudsDef = z.input<typeof SkyBoxCloudsSchema>;

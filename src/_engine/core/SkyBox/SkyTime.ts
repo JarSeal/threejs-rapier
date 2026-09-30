@@ -12,6 +12,9 @@
  *   adds to the Earth's). So a full moon rises as the sun sets, low in summer and high in winter.
  * - the standard latitude formula into east/north/up, then into world space with +y up and
  *   north at -z, turned clockwise (seen from above) by northOffset.
+ * - the stars sit still in their own frame, which turns into world space by the local sidereal
+ *   time (`H + λ`: the sun's hour angle plus its right ascension, taken as its longitude), so
+ *   a star where the sun is stays with the sun.
  */
 import * as THREE from 'three/webgpu';
 import type { SkyBoxDayNightDef, SkyBoxDef, SkyBoxMoonDef, SkyTimeSource } from './SkyBoxTypes';
@@ -127,10 +130,30 @@ export const getMoonPhaseOf = (def: SkyBoxDef, state: SkyTimeState, isDayNight: 
   isDayNight ? state.moonPhase : wrap1(def.moons?.[0]?.phase ?? MOON_TIME_DEFAULTS.phase);
 
 /**
- * A unit world direction from equatorial coordinates: an hour angle and a declination (radians)
- * seen from a latitude (radians), with north turned by northOffset (radians, clockwise from -z
- * seen from above), into `out`.
+ * A vector in the hour-angle frame (x toward the meridian on the celestial equator, y 90° west
+ * of it, z the celestial pole) into world space, seen from a latitude (radians), with north
+ * turned by northOffset (radians, clockwise from -z seen from above), into `out`.
  */
+const hourFrameToWorld = (
+  hx: number,
+  hy: number,
+  hz: number,
+  latitude: number,
+  northOffset: number,
+  out: THREE.Vector3
+) => {
+  const sinLat = Math.sin(latitude);
+  const cosLat = Math.cos(latitude);
+  const up = sinLat * hz + cosLat * hx;
+  const east = -hy;
+  const north = cosLat * hz - sinLat * hx;
+  // North is (sin o, 0, -cos o) and east (cos o, 0, sin o)
+  const sinO = Math.sin(northOffset);
+  const cosO = Math.cos(northOffset);
+  return out.set(north * sinO + east * cosO, up, east * sinO - north * cosO);
+};
+
+/** A unit world direction from an hour angle and a declination (radians), into `out`. */
 const setFromEquatorial = (
   hourAngle: number,
   declination: number,
@@ -138,18 +161,15 @@ const setFromEquatorial = (
   northOffset: number,
   out: THREE.Vector3
 ) => {
-  const sinLat = Math.sin(latitude);
-  const cosLat = Math.cos(latitude);
-  const sinDec = Math.sin(declination);
   const cosDec = Math.cos(declination);
-  const cosH = Math.cos(hourAngle);
-  const up = sinLat * sinDec + cosLat * cosDec * cosH;
-  const east = -cosDec * Math.sin(hourAngle);
-  const north = cosLat * sinDec - sinLat * cosDec * cosH;
-  // North is (sin o, 0, -cos o) and east (cos o, 0, sin o)
-  const sinO = Math.sin(northOffset);
-  const cosO = Math.cos(northOffset);
-  return out.set(north * sinO + east * cosO, up, east * sinO - north * cosO);
+  return hourFrameToWorld(
+    cosDec * Math.cos(hourAngle),
+    cosDec * Math.sin(hourAngle),
+    Math.sin(declination),
+    latitude,
+    northOffset,
+    out
+  );
 };
 
 /** The sun's ecliptic longitude (radians) on the definition's day of the year. */
@@ -199,4 +219,32 @@ export const computeMoonDirection = (
     getNorthOffset(def),
     out
   );
+};
+
+const _column0 = new THREE.Vector3();
+const _column1 = new THREE.Vector3();
+const _column2 = new THREE.Vector3();
+
+/**
+ * The stars' lookup rotation at `timeOfDay`: world direction → star frame, into `out` (the
+ * transpose of the star frame's turn into world space by the local sidereal time). A star at
+ * right ascension α and declination δ sits at `(cos δ cos α, −cos δ sin α, sin δ)` in that
+ * frame.
+ */
+export const computeSkyRotation = (
+  def: SkyBoxDayNightDef | undefined,
+  timeOfDay: number,
+  out: THREE.Matrix3
+) => {
+  const siderealTime = getSunHourAngle(timeOfDay) + getSunLongitude(def);
+  const cosT = Math.cos(siderealTime);
+  const sinT = Math.sin(siderealTime);
+  const latitude = getLatitude(def);
+  const northOffset = getNorthOffset(def);
+  // The star frame's axes in world space: the hour frame turned about the pole by the time
+  const c0 = hourFrameToWorld(cosT, sinT, 0, latitude, northOffset, _column0);
+  const c1 = hourFrameToWorld(-sinT, cosT, 0, latitude, northOffset, _column1);
+  const c2 = hourFrameToWorld(0, 0, 1, latitude, northOffset, _column2);
+  // Rows are those axes: the transpose, world → star frame
+  return out.set(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z);
 };

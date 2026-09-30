@@ -38,6 +38,7 @@ import { buildBaseFolder } from './SkyBox/_dbg__BaseFolder';
 import { buildEnvironmentFolder } from './SkyBox/_dbg__EnvironmentFolder';
 import { buildSunFolder } from './SkyBox/_dbg__SunFolder';
 import { buildMoonFolder } from './SkyBox/_dbg__MoonFolder';
+import { buildStarsFolder } from './SkyBox/_dbg__StarsFolder';
 import { buildAtmosphereFolder } from './SkyBox/_dbg__AtmosphereFolder';
 import { buildAmbientLightFolder } from './SkyBox/_dbg__AmbientLightFolder';
 import { buildCloudsFolder } from './SkyBox/_dbg__CloudsFolder';
@@ -207,6 +208,7 @@ const buildSkyBoxDebugGUI = () => {
           buildBaseFolder(),
           buildSunFolder(),
           buildMoonFolder(),
+          buildStarsFolder(),
           buildAtmosphereFolder(),
           buildCloudsFolder(),
           buildGroundFolder(),

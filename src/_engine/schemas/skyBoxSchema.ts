@@ -246,6 +246,52 @@ export const SkyBoxMoonSchema = z.object({
   light: SkyBoxMoonLightSchema.optional(),
 });
 
+// Stars layer (procedural; behind the atmosphere, which dims them near the horizon and hides
+// them by day; never in the env bake)
+
+const SkyBoxStarsTwinkleSchema = z.object({
+  /** How much a star's brightness varies, 0-1. Default 0.2. */
+  amount: z.number().min(0).max(1).optional(),
+  /** Roughly how many times a second a star twinkles. Default 1. */
+  frequency: z.number().min(0).optional(),
+});
+
+const SkyBoxMilkyWaySchema = z.object({
+  /** Default true. */
+  enabled: z.boolean().optional(),
+  /** Default 0.15. */
+  intensity: z.number().min(0).optional(),
+  /** The band's pole: the band is the great circle around it (in the stars' frame, which turns
+   * with the sky). Default [-0.87, 0.46, 0.18]. */
+  direction: z.tuple([z.number(), z.number(), z.number()]).optional(),
+  /** The band's half-width in degrees. Default 12. */
+  width: z.number().min(0.1).max(90).optional(),
+});
+
+export const SkyBoxStarsSchema = z.object({
+  /** Default true. */
+  enabled: z.boolean().optional(),
+  /** How many stars, 0-1. Default 0.5. */
+  density: z.number().min(0).max(1).optional(),
+  /** Default 1. */
+  brightness: z.number().min(0).optional(),
+  /** Multiplier on a star's angular size (never under ~1 pixel). Default 1. */
+  size: z.number().min(0).optional(),
+  /** How far star colours spread from white (blue to orange), 0-1. Default 0.5. */
+  colorVariance: z.number().min(0).max(1).optional(),
+  /** Default: amount 0.2, frequency 1. */
+  twinkle: SkyBoxStarsTwinkleSchema.optional(),
+  /** Sun elevations (degrees) where the stars start to show and where they are full.
+   * Default [-4, -12]. */
+  fadeRange: z.tuple([z.number(), z.number()]).optional(),
+  /** Whether they turn with the sky (day-night: about the celestial pole). Default true. */
+  rotateWithSky: z.boolean().optional(),
+  /** Another pattern of stars. Default 0. */
+  seed: z.number().int().min(0).optional(),
+  /** A band of faint light along a great circle. Default: none. */
+  milkyWay: SkyBoxMilkyWaySchema.optional(),
+});
+
 // Ambient light: a managed hemisphere or ambient light that follows the sun. Off by default:
 // the environment bake already lights PBR materials (a hemisphere light adds to it); it's for
 // non-PBR materials (Lambert/Phong don't sample the environment) and stylized looks.
@@ -367,6 +413,12 @@ export const SkyBoxOverridesSchema = z.object({
   suns: indexedOverrides(SkyBoxSunOverridesSchema),
   /** As `suns`. */
   moons: indexedOverrides(SkyBoxMoonOverridesSchema),
+  stars: SkyBoxStarsSchema.extend({
+    twinkle: SkyBoxStarsTwinkleSchema.partial().optional(),
+    milkyWay: SkyBoxMilkyWaySchema.partial().optional(),
+  })
+    .partial()
+    .optional(),
   ambientLight: SkyBoxAmbientLightSchema.partial().optional(),
   clouds: SkyBoxCloudsSchema.partial().optional(),
   ground: SkyBoxGroundSchema.partial().optional(),
@@ -396,6 +448,7 @@ export const SkyBoxDefSchema = z
     suns: z.array(SkyBoxSunSchema).optional(),
     /** Only moons[0] is drawn until p114. */
     moons: z.array(SkyBoxMoonSchema).optional(),
+    stars: SkyBoxStarsSchema.optional(),
     ambientLight: SkyBoxAmbientLightSchema.optional(),
     /** Needs an enabled atmosphere. */
     clouds: SkyBoxCloudsSchema.optional(),

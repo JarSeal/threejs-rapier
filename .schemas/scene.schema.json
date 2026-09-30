@@ -3380,6 +3380,99 @@
                   "additionalProperties": false
                 }
               },
+              "stars": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "density": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "brightness": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "size": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "colorVariance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "twinkle": {
+                    "type": "object",
+                    "properties": {
+                      "amount": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "frequency": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "fadeRange": {
+                    "type": "array",
+                    "items": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "rotateWithSky": {
+                    "type": "boolean"
+                  },
+                  "seed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "milkyWay": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "direction": {
+                        "type": "array",
+                        "items": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "width": {
+                        "type": "number",
+                        "minimum": 0.1,
+                        "maximum": 90
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
               "ambientLight": {
                 "type": "object",
                 "properties": {
@@ -4746,6 +4839,99 @@
                             }
                           }
                         ]
+                      },
+                      "stars": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "density": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "brightness": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "size": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "colorVariance": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "twinkle": {
+                            "type": "object",
+                            "properties": {
+                              "amount": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                              },
+                              "frequency": {
+                                "type": "number",
+                                "minimum": 0
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "fadeRange": {
+                            "type": "array",
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "rotateWithSky": {
+                            "type": "boolean"
+                          },
+                          "seed": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "milkyWay": {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "intensity": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "direction": {
+                                "type": "array",
+                                "items": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ]
+                              },
+                              "width": {
+                                "type": "number",
+                                "minimum": 0.1,
+                                "maximum": 90
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "additionalProperties": false
                       },
                       "ambientLight": {
                         "type": "object",
@@ -8713,6 +8899,99 @@
                           "additionalProperties": false
                         }
                       },
+                      "stars": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "density": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "brightness": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "size": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "colorVariance": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "twinkle": {
+                            "type": "object",
+                            "properties": {
+                              "amount": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                              },
+                              "frequency": {
+                                "type": "number",
+                                "minimum": 0
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "fadeRange": {
+                            "type": "array",
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "rotateWithSky": {
+                            "type": "boolean"
+                          },
+                          "seed": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "milkyWay": {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "intensity": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "direction": {
+                                "type": "array",
+                                "items": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ]
+                              },
+                              "width": {
+                                "type": "number",
+                                "minimum": 0.1,
+                                "maximum": 90
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "additionalProperties": false
+                      },
                       "ambientLight": {
                         "type": "object",
                         "properties": {
@@ -10079,6 +10358,99 @@
                                     }
                                   }
                                 ]
+                              },
+                              "stars": {
+                                "type": "object",
+                                "properties": {
+                                  "enabled": {
+                                    "type": "boolean"
+                                  },
+                                  "density": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                  },
+                                  "brightness": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  "size": {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  "colorVariance": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                  },
+                                  "twinkle": {
+                                    "type": "object",
+                                    "properties": {
+                                      "amount": {
+                                        "type": "number",
+                                        "minimum": 0,
+                                        "maximum": 1
+                                      },
+                                      "frequency": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "fadeRange": {
+                                    "type": "array",
+                                    "items": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ]
+                                  },
+                                  "rotateWithSky": {
+                                    "type": "boolean"
+                                  },
+                                  "seed": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "milkyWay": {
+                                    "type": "object",
+                                    "properties": {
+                                      "enabled": {
+                                        "type": "boolean"
+                                      },
+                                      "intensity": {
+                                        "type": "number",
+                                        "minimum": 0
+                                      },
+                                      "direction": {
+                                        "type": "array",
+                                        "items": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "number"
+                                          }
+                                        ]
+                                      },
+                                      "width": {
+                                        "type": "number",
+                                        "minimum": 0.1,
+                                        "maximum": 90
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "additionalProperties": false
                               },
                               "ambientLight": {
                                 "type": "object",
