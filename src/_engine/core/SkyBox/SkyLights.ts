@@ -1,9 +1,11 @@
 /**
  * The active sky box's managed lights (MANAGED_BY, p110 §0.4): a directional "disc light" per
- * sun and moon (suns[0] and moons[0] until p114), and an optional hemisphere or ambient light
- * that follows the sun. They are ordinary ECS lights made by createLightEntity, created on
- * activation and deleted with the sky box. The moon light only shines at night: it's scaled by
- * the moon's lit fraction and fades out as the day comes up.
+ * sun and moon that has one (roles SUN_0..3 and MOON_0..1, p114), and an optional hemisphere or
+ * ambient light that follows the primary sun. They are ordinary ECS lights made by
+ * createLightEntity, created on activation and deleted with the sky box. A moon light only
+ * shines at night: it's scaled by its moon's lit fraction and fades out as the day comes up.
+ * Only suns[0]'s light casts shadows by default; the debug env warns above
+ * MAX_SHADOW_CASTERS_HINT shadow-casting sky lights (each is a full extra scene render).
  *
  * The sky box only writes what it owns: a disc light's transform and its target, colour,
  * intensity, shadow settings, shadow intensity and shadow.autoUpdate, and the ambient light's
@@ -33,11 +35,21 @@ import type {
   SkyBoxMoonLightDef,
   SkyBoxSunLightDef,
 } from './SkyBoxTypes';
-import { isAtmosphereEnabled, isGroundEnabled, isOn, type SkyUniforms } from './SkyComposite';
+import {
+  getMoonCount,
+  getSunCount,
+  isAtmosphereEnabled,
+  isGroundEnabled,
+  isOn,
+  type SkyUniforms,
+} from './SkyComposite';
 import { GROUND_DEFAULTS } from './layers/ground';
 import { computeInscatter, computeRelativeExtinction, getDayFactor } from './layers/atmosphere';
-import { MOONLIGHT_COLOR } from './layers/moon';
+import { MAX_MOONS, MOONLIGHT_COLOR } from './layers/moon';
+import { MAX_SUNS } from './layers/sun';
 import { toSkyColor } from './skyColor';
+import { isDebugEnvironment } from '../Config';
+import { lwarn } from '../../utils/Logger';
 
 /** The MANAGED_BY manager id of the entities a sky box owns. */
 export const SKYBOX_MANAGER_ID = 'SKYBOX';
@@ -56,11 +68,20 @@ export const SUN_LIGHT_DEFAULTS = {
   horizonFade: [6, -3] as [number, number],
 };
 
+/** suns[1..3]'s lights: no shadow by default (one shadow-casting sky light by default). */
+export const EXTRA_SUN_LIGHT_DEFAULTS = {
+  ...SUN_LIGHT_DEFAULTS,
+  castShadow: false,
+};
+
 export const MOON_LIGHT_DEFAULTS = {
   ...SUN_LIGHT_DEFAULTS,
   intensity: 0.3,
   castShadow: false,
 };
+
+/** Above this many shadow-casting sky lights, the debug env warns. */
+export const MAX_SHADOW_CASTERS_HINT = 2;
 
 export const AMBIENT_LIGHT_DEFAULTS = {
   enabled: true,
@@ -73,18 +94,27 @@ export const AMBIENT_LIGHT_DEFAULTS = {
 /** The shadow camera's near plane; its far plane is twice the light's distance. */
 const SHADOW_NEAR = 0.5;
 
-/** Which sky disc a directional light follows. */
+/** Which kind of sky disc a directional light follows. */
 type DiscKind = 'SUN' | 'MOON';
 
-const DISC_LIGHTS = {
-  SUN: { role: 'SUN_0', name: 'Sky box sun', defaults: SUN_LIGHT_DEFAULTS },
-  MOON: { role: 'MOON_0', name: 'Sky box moon', defaults: MOON_LIGHT_DEFAULTS },
-} as const;
+/** A disc light's defaults, by kind and index. */
+export const getDiscLightDefaults = (kind: DiscKind, index: number) =>
+  kind === 'MOON'
+    ? MOON_LIGHT_DEFAULTS
+    : index === 0
+      ? SUN_LIGHT_DEFAULTS
+      : EXTRA_SUN_LIGHT_DEFAULTS;
+
+/** Its MANAGED_BY role, eg. 'SUN_0', and its debug name ('Sky box sun', 'Sky box sun 2'). */
+const getDiscLightRole = (kind: DiscKind, index: number) => `${kind}_${index}`;
+const getDiscLightName = (kind: DiscKind, index: number) =>
+  `Sky box ${kind === 'SUN' ? 'sun' : 'moon'}${index > 0 ? ` ${index + 1}` : ''}`;
 
 type DiscLightDef = SkyBoxSunLightDef | SkyBoxMoonLightDef;
 
 type DiscLightState = {
   kind: DiscKind;
+  index: number;
   entityId: number;
   castShadow: boolean;
   distance: number;
@@ -103,7 +133,13 @@ type DiscLightState = {
 };
 
 let ownerId: string | null = null;
-const discLights: Record<DiscKind, DiscLightState | null> = { SUN: null, MOON: null };
+/** By kind, then by sun or moon index. */
+const discLights: Record<DiscKind, (DiscLightState | null)[]> = {
+  SUN: new Array<DiscLightState | null>(MAX_SUNS).fill(null),
+  MOON: new Array<DiscLightState | null>(MAX_MOONS).fill(null),
+};
+/** The shadow-casting count last warned about (debug env), so a drag doesn't repeat it. */
+let warnedShadowCasters = 0;
 let ambientLight: { entityId: number; type: 'HEMISPHERE' | 'AMBIENT' } | null = null;
 
 // Scratch objects (no allocations on the per-frame path)
@@ -146,25 +182,31 @@ const setLightSpaceAxes = (state: DiscLightState) => {
 
 // Disc lights (sun and moon)
 
-const getDiscLightDef = (kind: DiscKind, def: SkyBoxDef): DiscLightDef | undefined =>
-  kind === 'SUN' ? def.suns?.[0]?.light : def.moons?.[0]?.light;
+const getDiscLightDef = (
+  kind: DiscKind,
+  index: number,
+  def: SkyBoxDef
+): DiscLightDef | undefined =>
+  kind === 'SUN' ? def.suns?.[index]?.light : def.moons?.[index]?.light;
 
-const getDiscDirection = (kind: DiscKind, u: SkyUniforms) =>
-  kind === 'SUN' ? u.sun.direction.value : u.moon.direction.value;
+const getDiscDirection = (kind: DiscKind, index: number, u: SkyUniforms) =>
+  kind === 'SUN' ? u.suns[index].direction.value : u.moons[index].direction.value;
 
 const createDiscLight = (
   kind: DiscKind,
+  index: number,
   skyBoxId: string,
   castShadow: boolean,
   world: ECSWorld
 ): DiscLightState => {
-  const { role, name, defaults } = DISC_LIGHTS[kind];
+  const role = getDiscLightRole(kind, index);
+  const defaults = getDiscLightDefaults(kind, index);
   const entityId = createLightEntity(
     { type: 'DIRECTIONAL', intensity: 0, castShadow },
     {
       appId: `__skybox_${skyBoxId}_${role}`,
       managedBy: { manager: SKYBOX_MANAGER_ID, ownerId: skyBoxId, role },
-      debugData: { name },
+      debugData: { name: getDiscLightName(kind, index) },
     },
     world
   );
@@ -176,6 +218,7 @@ const createDiscLight = (
   if (castShadow && light?.shadow) light.shadow.needsUpdate = true;
   return {
     kind,
+    index,
     entityId,
     castShadow,
     distance: defaults.distance,
@@ -199,7 +242,7 @@ const applyDiscLight = (
 ) => {
   const light = getLight<THREE.DirectionalLight>(state.entityId, world);
   if (!light?.isDirectionalLight) return;
-  const defaults = DISC_LIGHTS[state.kind].defaults;
+  const defaults = getDiscLightDefaults(state.kind, state.index);
 
   const color = lightDef.color ?? defaults.color;
   if (color !== 'AUTO') light.color.copy(toSkyColor(color));
@@ -235,9 +278,9 @@ const applyDiscLight = (
 
 /**
  * A disc light's values that follow the sky: its direction (and light-space axes), AUTO colour,
- * faded intensity and shadow fade. The sun light fades below the horizon; the moon light also
- * with the moon's lit fraction and the day (`1 − dayFactor`). The day-night step calls it every
- * time the sky moves: it allocates nothing.
+ * faded intensity and shadow fade. A sun light fades below the horizon; a moon light also
+ * with its moon's lit fraction and the day (`1 − dayFactor` of the primary sun). The day-night
+ * step calls it every time the sky moves: it allocates nothing.
  */
 const applyDiscLightMotion = (
   state: DiscLightState,
@@ -246,18 +289,20 @@ const applyDiscLightMotion = (
   u: SkyUniforms,
   light: THREE.DirectionalLight
 ) => {
-  const defaults = DISC_LIGHTS[state.kind].defaults;
-  state.direction.copy(getDiscDirection(state.kind, u));
+  const defaults = getDiscLightDefaults(state.kind, state.index);
+  state.direction.copy(getDiscDirection(state.kind, state.index, u));
   setLightSpaceAxes(state);
   let fade = getHorizonFade(state.direction, lightDef.horizonFade ?? defaults.horizonFade);
   if (state.kind === 'MOON') {
-    fade *= u.moon.illuminatedFraction * (1 - getDayFactor(u.sun.direction.value));
+    fade *=
+      u.moons[state.index].illuminatedFraction * (1 - getDayFactor(u.suns[0].direction.value));
   }
 
   if ((lightDef.color ?? defaults.color) === 'AUTO') {
     const hasAtmosphere = isAtmosphereEnabled(def);
     if (state.kind === 'SUN') {
-      const fex = u.atmosphere.extinctionAtSun;
+      // The extinction along this sun (suns[0]'s is the atmosphere's extinctionAtSun)
+      const fex = u.suns[state.index].extinction;
       if (hasAtmosphere) light.color.copy(normalizeColor(_color.setRGB(fex.x, fex.y, fex.z)));
       else light.color.setRGB(1, 1, 1);
     } else {
@@ -295,8 +340,8 @@ const writeTransform = (entityId: number, position: THREE.Vector3, world: ECSWor
  * camera's world matrix is last frame's here, which a texel-snapped frustum doesn't notice.
  */
 export const updateSkyLightsFrame = (world: ECSWorld) => {
-  if (discLights.SUN) updateDiscLightTransform(discLights.SUN, world);
-  if (discLights.MOON) updateDiscLightTransform(discLights.MOON, world);
+  for (const state of discLights.SUN) if (state) updateDiscLightTransform(state, world);
+  for (const state of discLights.MOON) if (state) updateDiscLightTransform(state, world);
 };
 
 const updateDiscLightTransform = (state: DiscLightState, world: ECSWorld) => {
@@ -367,14 +412,15 @@ const applyAmbientLightSun = (
   def: SkyBoxDef,
   u: SkyUniforms
 ) => {
+  const sunDirection = u.suns[0].direction.value;
   const fade = getHorizonFade(
-    u.sun.direction.value,
+    sunDirection,
     def.suns?.[0]?.light?.horizonFade ?? SUN_LIGHT_DEFAULTS.horizonFade
   );
 
   if ((ambientDef.skyColor ?? AMBIENT_LIGHT_DEFAULTS.skyColor) === 'AUTO') {
     if (isAtmosphereEnabled(def)) {
-      computeInscatter(UP, u.atmosphere, u.sun.direction.value, _vec);
+      computeInscatter(UP, u.atmosphere, sunDirection, _vec);
       normalizeColor(_color.setRGB(_vec.x, _vec.y, _vec.z));
     } else {
       _color.setRGB(1, 1, 1);
@@ -399,8 +445,8 @@ const applyAmbientLightSun = (
  * every frame while the cycle plays, so it allocates nothing.
  */
 export const updateSkyLightsForTime = (def: SkyBoxDef, u: SkyUniforms, world: ECSWorld) => {
-  updateDiscLightForTime('SUN', def, u, world);
-  updateDiscLightForTime('MOON', def, u, world);
+  for (let i = 0; i < MAX_SUNS; i++) updateDiscLightForTime('SUN', i, def, u, world);
+  for (let i = 0; i < MAX_MOONS; i++) updateDiscLightForTime('MOON', i, def, u, world);
   const ambientDef = def.ambientLight;
   if (ambientLight && ambientDef) {
     const light = getLight<THREE.HemisphereLight | THREE.AmbientLight>(
@@ -413,44 +459,75 @@ export const updateSkyLightsForTime = (def: SkyBoxDef, u: SkyUniforms, world: EC
 
 const updateDiscLightForTime = (
   kind: DiscKind,
+  index: number,
   def: SkyBoxDef,
   u: SkyUniforms,
   world: ECSWorld
 ) => {
-  const state = discLights[kind];
-  const lightDef = getDiscLightDef(kind, def);
-  if (!state || !lightDef) return;
+  const state = discLights[kind][index];
+  if (!state) return;
+  const lightDef = getDiscLightDef(kind, index, def);
+  if (!lightDef) return;
   const light = getLight<THREE.DirectionalLight>(state.entityId, world);
   if (light?.isDirectionalLight) applyDiscLightMotion(state, lightDef, def, u, light);
 };
 
 // Lifecycle
 
-const deleteDiscLight = (kind: DiscKind, world: ECSWorld) => {
+const deleteDiscLight = (kind: DiscKind, index: number, world: ECSWorld) => {
   // Also deletes its target (LightManager's delete hook)
-  const state = discLights[kind];
+  const state = discLights[kind][index];
   if (state) world.deleteEntity(state.entityId);
-  discLights[kind] = null;
+  discLights[kind][index] = null;
 };
 
+/** Whether a sun's or moon's light casts shadows (its definition, else its default). */
+const castsShadow = (kind: DiscKind, index: number, lightDef: DiscLightDef) =>
+  lightDef.castShadow ?? getDiscLightDefaults(kind, index).castShadow;
+
 /** Creates, updates or deletes a disc light to match its definition. */
-const syncDiscLight = (kind: DiscKind, skyBoxId: string, def: SkyBoxDef, u: SkyUniforms) => {
+const syncDiscLight = (
+  kind: DiscKind,
+  index: number,
+  skyBoxId: string,
+  def: SkyBoxDef,
+  u: SkyUniforms
+) => {
   const world = getECSWorld();
-  const lightDef = getDiscLightDef(kind, def);
+  const count = kind === 'SUN' ? getSunCount(def) : getMoonCount(def);
+  const lightDef = index < count ? getDiscLightDef(kind, index, def) : undefined;
   if (!lightDef || !isOn(lightDef)) {
-    deleteDiscLight(kind, world);
+    deleteDiscLight(kind, index, world);
     return;
   }
-  const castShadow = lightDef.castShadow ?? DISC_LIGHTS[kind].defaults.castShadow;
+  const castShadow = castsShadow(kind, index, lightDef);
   // Also when something else changed the light's flag: never toggle it in place
-  const state = discLights[kind];
+  const state = discLights[kind][index];
   const current = state && getLight<THREE.DirectionalLight>(state.entityId, world);
   if (state && (state.castShadow !== castShadow || current?.castShadow !== castShadow)) {
-    deleteDiscLight(kind, world);
+    deleteDiscLight(kind, index, world);
   }
-  const next = discLights[kind] ?? createDiscLight(kind, skyBoxId, castShadow, world);
-  discLights[kind] = next;
+  const next = discLights[kind][index] ?? createDiscLight(kind, index, skyBoxId, castShadow, world);
+  discLights[kind][index] = next;
   applyDiscLight(next, lightDef, def, u, world);
+};
+
+/** How many of the sky box's lights cast shadows (each is a full extra scene render). */
+export const getSkyShadowCasterCount = () =>
+  [...discLights.SUN, ...discLights.MOON].filter((state) => state?.castShadow).length;
+
+/** Debug env: warns once each time the shadow-casting count goes above the hint. */
+const warnAboutShadowCasters = (skyBoxId: string) => {
+  const count = getSkyShadowCasterCount();
+  if (count <= MAX_SHADOW_CASTERS_HINT) {
+    warnedShadowCasters = 0;
+    return;
+  }
+  if (count === warnedShadowCasters || !isDebugEnvironment()) return;
+  warnedShadowCasters = count;
+  lwarn(
+    `Sky box "${skyBoxId}": ${count} sky lights cast shadows (more than ${MAX_SHADOW_CASTERS_HINT}). Each shadow map is a full extra scene render.`
+  );
 };
 
 const deleteAmbientLight = (world: ECSWorld) => {
@@ -461,10 +538,11 @@ const deleteAmbientLight = (world: ECSWorld) => {
 /** Deletes the sky box's lights (clearSkyBox, or another sky box activating). */
 export const deleteSkyLights = () => {
   const world = getECSWorld();
-  deleteDiscLight('SUN', world);
-  deleteDiscLight('MOON', world);
+  for (let i = 0; i < MAX_SUNS; i++) deleteDiscLight('SUN', i, world);
+  for (let i = 0; i < MAX_MOONS; i++) deleteDiscLight('MOON', i, world);
   deleteAmbientLight(world);
   ownerId = null;
+  warnedShadowCasters = 0;
 };
 
 /**
@@ -477,13 +555,16 @@ export const syncSkyLights = (skyBoxId: string, def: SkyBoxDef, u: SkyUniforms) 
   ownerId = skyBoxId;
   // An entity deleted from outside (eg. a world reset) is created again
   for (const kind of ['SUN', 'MOON'] as const) {
-    const state = discLights[kind];
-    if (state && !world.isAlive(state.entityId)) discLights[kind] = null;
+    const states = discLights[kind];
+    states.forEach((state, i) => {
+      if (state && !world.isAlive(state.entityId)) states[i] = null;
+    });
   }
   if (ambientLight && !world.isAlive(ambientLight.entityId)) ambientLight = null;
 
-  syncDiscLight('SUN', skyBoxId, def, u);
-  syncDiscLight('MOON', skyBoxId, def, u);
+  for (let i = 0; i < MAX_SUNS; i++) syncDiscLight('SUN', i, skyBoxId, def, u);
+  for (let i = 0; i < MAX_MOONS; i++) syncDiscLight('MOON', i, skyBoxId, def, u);
+  warnAboutShadowCasters(skyBoxId);
 
   const ambientDef = def.ambientLight;
   if (ambientDef && isOn(ambientDef)) {
@@ -497,9 +578,9 @@ export const syncSkyLights = (skyBoxId: string, def: SkyBoxDef, u: SkyUniforms) 
   }
 };
 
-/** The sky box's managed light entity ids (debug and tests). */
+/** The sky box's managed light entity ids, by sun and moon index (debug and tests). */
 export const getSkyLightIds = () => ({
-  sun: discLights.SUN?.entityId ?? null,
-  moon: discLights.MOON?.entityId ?? null,
+  suns: discLights.SUN.map((state) => state?.entityId ?? null),
+  moons: discLights.MOON.map((state) => state?.entityId ?? null),
   ambient: ambientLight?.entityId ?? null,
 });

@@ -2,7 +2,6 @@ import * as THREE from 'three/webgpu';
 import type { DebuggerPaneItem } from '../../../debug/DebuggerGUI';
 import { getActiveSkyBox } from '../../SkyBox/SkyBox';
 import type { SkyBoxNebulaDef } from '../../SkyBox/SkyBoxTypes';
-import { MAX_NEBULAE } from '../../SkyBox/layers/nebula';
 import {
   _setStaticLayersBakeHooks,
   getStaticLayers,
@@ -10,21 +9,22 @@ import {
   requestStaticLayersBake,
 } from '../../SkyBox/SkyStaticLayers';
 import { getActiveCamera } from '../../CameraManager';
-import { updateDebuggerTab } from '../../../debug/DebuggerGUI';
 import {
-  getSelectedNebula,
-  getSkyBoxDef,
-  isNebulaeOverrideAnArray,
+  isListOverrideAnArray,
   LAYER_PATHS,
   resetSkyBoxLayer,
-  selectNebula,
-  setSkyBoxArray,
   setSkyBoxParam,
-  SKYBOX_TAB_ID,
   skyBoxProxy,
 } from './_dbg__SkyBoxShared';
 import { numberParam } from './_dbg__LayerFolderItems';
 import { createBakeStats } from './_dbg__BakeStats';
+import {
+  buildListItems,
+  buildResetListButton,
+  hasNoEntries,
+  offSuffix,
+  type ListConfig,
+} from './_dbg__ListFolderItems';
 
 /**
  * The nebula creator (p114): the active sky box's nebulae list (select, add, duplicate, remove),
@@ -46,15 +46,8 @@ const info = {
   },
 };
 
-const getNebulae = (): SkyBoxNebulaDef[] => getActiveSkyBox()?.def.nebulae ?? [];
-const hasNone = () => getNebulae().length === 0;
+const hasNone = () => hasNoEntries('nebulae');
 const isOff = () => hasNone() || !skyBoxProxy.nebula.enabled;
-const isFull = () => getNebulae().length >= MAX_NEBULAE;
-
-const selectAndRebuild = (index: number) => {
-  selectNebula(index);
-  updateDebuggerTab(SKYBOX_TAB_ID, { rebuild: true });
-};
 
 const randomSeed = () => Math.floor(Math.random() * 100000);
 
@@ -73,49 +66,18 @@ const getViewDirection = (): [number, number, number] | null => {
 
 // List edits
 
-const addNebula = () => {
-  const prev = getNebulae();
-  if (prev.length >= MAX_NEBULAE) return;
-  const entry: SkyBoxNebulaDef = { seed: randomSeed() };
-  const direction = getViewDirection();
-  if (direction) entry.direction = direction;
-  selectNebula(prev.length);
-  setSkyBoxArray('nebulae', 'add nebula', prev, [...prev, entry]);
-};
-
-const duplicateNebula = () => {
-  const prev = getNebulae();
-  const index = getSelectedNebula();
-  if (prev.length >= MAX_NEBULAE || !prev[index]) return;
-  const copy = { ...structuredClone(prev[index]), seed: randomSeed() };
-  selectNebula(index + 1);
-  setSkyBoxArray('nebulae', 'duplicate nebula', prev, [
-    ...prev.slice(0, index + 1),
-    copy,
-    ...prev.slice(index + 1),
-  ]);
-};
-
-const removeNebula = () => {
-  const prev = getNebulae();
-  const index = getSelectedNebula();
-  if (!prev[index]) return;
-  selectNebula(Math.max(0, index - 1));
-  setSkyBoxArray(
-    'nebulae',
-    'remove nebula',
-    prev,
-    prev.filter((_, i) => i !== index)
-  );
-};
-
-/** Drops every nebulae override (the list and its values): back to the definition's list
- * (writing a value equal to the definition's removes the override). */
-const resetNebulaeList = () => {
-  const active = getActiveSkyBox();
-  if (!active) return;
-  const registered = getSkyBoxDef(active.sceneId, active.id)?.nebulae ?? [];
-  setSkyBoxArray('nebulae', 'reset nebulae', getNebulae(), registered);
+const LIST: ListConfig<SkyBoxNebulaDef> = {
+  list: 'nebulae',
+  name: 'nebula',
+  addTitle: 'Add (at view)',
+  describe: (nebula, i) => `${i + 1}${offSuffix(nebula)}, seed ${nebula.seed ?? 0}`,
+  create: () => {
+    const entry: SkyBoxNebulaDef = { seed: randomSeed() };
+    const direction = getViewDirection();
+    if (direction) entry.direction = direction;
+    return entry;
+  },
+  duplicate: (nebula) => ({ ...nebula, seed: randomSeed() }),
 };
 
 // Param items
@@ -247,8 +209,6 @@ const buildCubeFolder = (): DebuggerPaneItem => ({
 
 /** The Nebulae folder (see the file comment). */
 export const buildNebulaeFolder = (): DebuggerPaneItem => {
-  const nebulae = getNebulae();
-  const selection = { nebula: Math.min(getSelectedNebula(), Math.max(0, nebulae.length - 1)) };
   const proxy = skyBoxProxy.nebula;
   return {
     type: 'folder',
@@ -256,27 +216,7 @@ export const buildNebulaeFolder = (): DebuggerPaneItem => {
     title: 'Nebulae',
     hidden: () => !getActiveSkyBox(),
     content: [
-      {
-        key: 'nebula',
-        target: selection,
-        label: 'Nebula',
-        options: nebulae.length
-          ? nebulae.map((nebula, i) => ({
-              text: `${i + 1}${nebula.enabled === false ? ' (off)' : ''}, seed ${nebula.seed ?? 0}`,
-              value: i,
-            }))
-          : [{ text: '(none)', value: 0 }],
-        disabled: hasNone,
-        onChange: (value) => selectAndRebuild(Number(value)),
-      },
-      { type: 'button', title: 'Add (at view)', disabled: isFull, onClick: addNebula },
-      {
-        type: 'button',
-        title: 'Duplicate',
-        disabled: () => hasNone() || isFull(),
-        onClick: duplicateNebula,
-      },
-      { type: 'button', title: 'Remove', disabled: hasNone, onClick: removeNebula },
+      ...buildListItems(LIST),
       {
         type: 'folder',
         id: 'nebula',
@@ -324,12 +264,12 @@ export const buildNebulaeFolder = (): DebuggerPaneItem => {
           {
             type: 'button',
             title: 'Reset nebula',
-            disabled: isNebulaeOverrideAnArray,
+            disabled: () => isListOverrideAnArray('nebulae'),
             onClick: () => resetSkyBoxLayer('nebula'),
           },
         ],
       },
-      { type: 'button', title: 'Reset nebulae list', onClick: resetNebulaeList },
+      buildResetListButton(LIST),
       buildCubeFolder(),
     ],
   };

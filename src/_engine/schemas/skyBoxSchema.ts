@@ -141,7 +141,8 @@ export const SkyBoxSunLightSchema = z.object({
    * an atmosphere). Default 'AUTO'. */
   color: AutoOrColorSchema.optional(),
   /** Changing it re-creates the light (one rebuild of every lit material); the sky never
-   * toggles it to fade. Default true. */
+   * toggles it to fade. Every shadow-casting light is a full extra scene render. Default true for
+   * suns[0], false for the others. */
   castShadow: z.boolean().optional(),
   /** Default 'MEDIUM'. The bias, normal bias and map size below override it. */
   shadowPreset: ShadowQualitySchema.optional(),
@@ -160,7 +161,7 @@ export const SkyBoxSunLightSchema = z.object({
   horizonFade: z.tuple([z.number(), z.number()]).optional(),
 });
 
-// Sun layer (the disc and its halo; suns[0] also drives the atmosphere)
+// Sun layer (the disc and its halo; suns[0] also drives the atmosphere). Up to 4 suns.
 
 export const SkyBoxSunSchema = z.object({
   /** Whether the disc is drawn. The atmosphere follows the sun either way. Default true. */
@@ -180,6 +181,11 @@ export const SkyBoxSunSchema = z.object({
   /** 'AUTO': white, coloured by the atmosphere's extinction (reddens at the horizon). A
    * colour: the disc's colour as seen. Default 'AUTO'. */
   color: AutoOrColorSchema.optional(),
+  /** suns[1..3] with day-night (suns[0] follows the time of day either way). true: the
+   * elevation and azimuth are where it stands at dayNight.timeOfDay (the start time), and it
+   * turns with the sky from there, keeping its place among the stars and next to suns[0].
+   * false: it stays at its elevation and azimuth. Default true. */
+  rotateWithSky: z.boolean().optional(),
   /** A directional light that follows the sun. Default: none. */
   light: SkyBoxSunLightSchema.optional(),
 });
@@ -198,7 +204,8 @@ export const SkyBoxMoonLightSchema = SkyBoxSunLightSchema.extend({
   castShadow: z.boolean().optional(),
 });
 
-// Moon layer (the disc, lit by the sun into its phase; moons[0] only until p114)
+// Moon layer (the disc, lit by the sun into its phase). Up to 2 moons, each on its own orbit
+// with day-night.
 
 const SkyBoxMoonTextureSchema = z
   .object({
@@ -442,8 +449,10 @@ const SkyBoxMoonOverridesSchema = SkyBoxMoonSchema.extend({
 
 /** An array replaces the definition's entries; an index object (`{ "0": { ... } }`) changes
  * those entries only. */
-const indexedOverrides = <T extends z.ZodType>(entry: T) =>
-  z.union([z.array(entry), z.record(z.string().regex(/^(0|[1-9]\d*)$/), entry)]).optional();
+const indexedOverrides = <T extends z.ZodType>(entry: T, max: number) =>
+  z
+    .union([z.array(entry).max(max), z.record(z.string().regex(/^(0|[1-9]\d*)$/), entry)])
+    .optional();
 
 export const SkyBoxOverridesSchema = z.object({
   base: SkyBoxBaseOverridesSchema.optional(),
@@ -451,11 +460,11 @@ export const SkyBoxOverridesSchema = z.object({
   atmosphere: SkyBoxAtmosphereSchema.partial().optional(),
   /** An array replaces the definition's suns; an index object (`{ "0": { ... } }`) changes
    * those entries only. */
-  suns: indexedOverrides(SkyBoxSunOverridesSchema),
+  suns: indexedOverrides(SkyBoxSunOverridesSchema, 4),
   /** As `suns`. */
-  moons: indexedOverrides(SkyBoxMoonOverridesSchema),
+  moons: indexedOverrides(SkyBoxMoonOverridesSchema, 2),
   /** As `suns`. */
-  nebulae: indexedOverrides(SkyBoxNebulaSchema.partial()),
+  nebulae: indexedOverrides(SkyBoxNebulaSchema.partial(), 8),
   stars: SkyBoxStarsSchema.extend({
     twinkle: SkyBoxStarsTwinkleSchema.partial().optional(),
     milkyWay: SkyBoxMilkyWaySchema.partial().optional(),
@@ -487,10 +496,11 @@ export const SkyBoxDefSchema = z
     base: SkyBoxBaseSchema,
     env: SkyBoxEnvSchema.optional(),
     atmosphere: SkyBoxAtmosphereSchema.optional(),
-    /** Only suns[0] is drawn until p114 (multiple suns); it also drives the atmosphere. */
-    suns: z.array(SkyBoxSunSchema).optional(),
-    /** Only moons[0] is drawn until p114. */
-    moons: z.array(SkyBoxMoonSchema).optional(),
+    /** Up to 4. suns[0] is the primary: it drives the atmosphere, the clouds' light and the
+     * stars' fade. */
+    suns: z.array(SkyBoxSunSchema).max(4).optional(),
+    /** Up to 2. moons[0] lights the clouds at night. */
+    moons: z.array(SkyBoxMoonSchema).max(2).optional(),
     stars: SkyBoxStarsSchema.optional(),
     /** Up to 8, baked into a cube (env.nebulaSize) once per change. */
     nebulae: z.array(SkyBoxNebulaSchema).max(8).optional(),
@@ -498,7 +508,8 @@ export const SkyBoxDefSchema = z
     /** Needs an enabled atmosphere. */
     clouds: SkyBoxCloudsSchema.optional(),
     ground: SkyBoxGroundSchema.optional(),
-    /** While on, suns[0]'s and moons[0]'s positions are derived from the time of day. */
+    /** While on, suns[0]'s and every moon's positions are derived from the time of day (and
+     * the extra suns turn with the sky, see `rotateWithSky`). */
     dayNight: SkyBoxDayNightSchema.optional(),
     debugData: DebugDataSchema.optional(),
 

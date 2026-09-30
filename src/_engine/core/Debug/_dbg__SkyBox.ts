@@ -36,8 +36,8 @@ import {
 } from './SkyBox/_dbg__SkyBoxShared';
 import { buildBaseFolder } from './SkyBox/_dbg__BaseFolder';
 import { buildEnvironmentFolder } from './SkyBox/_dbg__EnvironmentFolder';
-import { buildSunFolder } from './SkyBox/_dbg__SunFolder';
-import { buildMoonFolder } from './SkyBox/_dbg__MoonFolder';
+import { buildSunsFolder } from './SkyBox/_dbg__SunsFolder';
+import { buildMoonsFolder } from './SkyBox/_dbg__MoonFolder';
 import { buildStarsFolder } from './SkyBox/_dbg__StarsFolder';
 import { buildDayNightFolder, syncDayNightTransport } from './SkyBox/_dbg__DayNightFolder';
 import { buildAtmosphereFolder } from './SkyBox/_dbg__AtmosphereFolder';
@@ -214,8 +214,8 @@ const buildSkyBoxDebugGUI = () => {
           buildSelectFolder(),
           buildDayNightFolder(),
           buildBaseFolder(),
-          buildSunFolder(),
-          buildMoonFolder(),
+          buildSunsFolder(),
+          buildMoonsFolder(),
           buildStarsFolder(),
           buildNebulaeFolder(),
           buildAtmosphereFolder(),

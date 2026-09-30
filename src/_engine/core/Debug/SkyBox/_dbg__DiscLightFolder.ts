@@ -1,12 +1,22 @@
 import type { DebuggerPaneItem } from '../../../debug/DebuggerGUI';
 import { FOUR_PX_TO_8K_LIST } from '../../../utils/constants';
+import { getSkyShadowCasterCount, MAX_SHADOW_CASTERS_HINT } from '../../SkyBox/SkyLights';
 import { LAYER_PATHS, setSkyBoxParam, skyBoxProxy } from './_dbg__SkyBoxShared';
 import { buildAutoColorItems, numberParam, tupleParams } from './_dbg__LayerFolderItems';
 
 const PRESET_OPTIONS = ['LOW', 'MEDIUM', 'HIGH', 'ULTRA'].map((value) => ({ text: value, value }));
 const MAP_SIZE_OPTIONS = FOUR_PX_TO_8K_LIST.filter((option) => option.value >= 256);
 
-/** A sun's or moon's managed directional light (a subfolder of the Sun or Moon folder). */
+/** Read-only: the shadow-casting sky lights, shown above MAX_SHADOW_CASTERS_HINT. */
+const shadowInfo = {
+  get casters() {
+    return `${getSkyShadowCasterCount()} sky lights cast shadows (each is a full extra scene render)`;
+  },
+};
+const hasFewShadowCasters = () => getSkyShadowCasterCount() <= MAX_SHADOW_CASTERS_HINT;
+
+/** The selected sun's or moon's managed directional light (a subfolder of the Suns or Moons
+ * folder's selected entry). */
 export const buildDiscLightFolder = (layer: 'sunLight' | 'moonLight'): DebuggerPaneItem => {
   const target = skyBoxProxy[layer];
   const path = LAYER_PATHS[layer];
@@ -41,6 +51,14 @@ export const buildDiscLightFolder = (layer: 'sunLight' | 'moonLight'): DebuggerP
         disabled: isOff,
         onChange: (value, e) =>
           setSkyBoxParam(`${path}.castShadow`, 'cast shadow', Boolean(value), e),
+      },
+      {
+        key: 'casters',
+        target: shadowInfo,
+        label: 'Warning',
+        readonly: true,
+        interval: 500,
+        hidden: hasFewShadowCasters,
       },
       {
         key: 'shadowPreset',

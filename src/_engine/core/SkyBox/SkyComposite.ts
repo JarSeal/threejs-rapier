@@ -37,7 +37,10 @@ import {
   applySunUniforms,
   createSunUniforms,
   getFixedSunDirection,
+  MAX_SUNS,
+  SUN_DEFAULTS,
   sunNode,
+  type SunAtmosphere,
   type SunUniforms,
 } from './layers/sun';
 import {
@@ -45,6 +48,7 @@ import {
   applyMoonUniforms,
   createMoonUniforms,
   getFixedMoonDirection,
+  MAX_MOONS,
   moonNode,
   type MoonUniforms,
 } from './layers/moon';
@@ -60,7 +64,9 @@ import {
   computeMoonDirection,
   computeSkyRotation,
   computeSunDirection,
+  getDayNightStartTime,
   getMoonPhaseOf,
+  turnWithSky,
   type SkyTimeState,
 } from './SkyTime';
 import type { StaticLayersSource } from './SkyStaticLayers';
@@ -80,7 +86,7 @@ import {
  * (buildBaseLayer), which needs no bake.
  *
  * Layer order, back to front (p110 "Composite order"): base, static layers (the nebulae's baked
- * cube, p114), stars, discs, atmosphere, clouds, ground. Each layer takes the colour behind it and
+ * cube, p114), stars, discs (the suns, then the moons, p114), atmosphere, clouds, ground. Each layer takes the colour behind it and
  * returns the new colour; an absent or disabled layer is left out of the graph (changing which
  * layers exist is a rebuild, anything else is a uniform write).
  */
@@ -94,8 +100,11 @@ export type SkyCompositeMode = 'VIEW' | 'ENV_BAKE';
  * turning one on only rebuilds nodes) and shared by both modes' nodes. */
 export type SkyUniforms = {
   base: BaseUniforms;
-  sun: SunUniforms;
-  moon: MoonUniforms;
+  /** One set per possible sun (MAX_SUNS), by index; suns[0]'s direction drives the atmosphere
+   * (and is written even without any suns). */
+  suns: SunUniforms[];
+  /** One set per possible moon (MAX_MOONS), by index. */
+  moons: MoonUniforms[];
   stars: StarsUniforms;
   atmosphere: AtmosphereUniforms;
   clouds: CloudsUniforms;
@@ -118,8 +127,8 @@ export type StaticLayersUniforms = {
 export type SkyCompositeSources = {
   /** The base texture's PMREM (getPMREMTexture), null for a COLOR base or a failed load. */
   basePMREM: THREE.Texture | null;
-  /** moons[0]'s texture, null without one or on a failed load. */
-  moonTexture: THREE.Texture | null;
+  /** Each moon's texture (by index), null without one or on a failed load. */
+  moonTextures: (THREE.Texture | null)[];
   /** The static layers' baked cube (SkyStaticLayers.ts), null without static layers. */
   staticLayers: THREE.CubeTexture | null;
 };
@@ -129,15 +138,20 @@ export const isOn = (layer: { enabled?: boolean } | undefined) =>
   Boolean(layer && layer.enabled !== false);
 
 export const isAtmosphereEnabled = (def: SkyBoxDef) => isOn(def.atmosphere);
-/** suns[0]'s disc (its direction drives the atmosphere either way). */
-export const isSunEnabled = (def: SkyBoxDef) => isOn(def.suns?.[0]);
-/** Whether suns[0] has a light: then the env bake leaves its disc out (the light gives that
+/** How many suns (moons) the sky box draws: its entries, up to MAX_SUNS (MAX_MOONS). */
+export const getSunCount = (def: SkyBoxDef) => Math.min(def.suns?.length ?? 0, MAX_SUNS);
+export const getMoonCount = (def: SkyBoxDef) => Math.min(def.moons?.length ?? 0, MAX_MOONS);
+/** A sun's disc (suns[0]'s direction drives the atmosphere either way). */
+export const isSunEnabled = (def: SkyBoxDef, i: number) => i < MAX_SUNS && isOn(def.suns?.[i]);
+/** Whether a sun has a light: then the env bake leaves its disc out (the light gives that
  * highlight already). */
-export const isSunLightEnabled = (def: SkyBoxDef) => isOn(def.suns?.[0]?.light);
-/** moons[0]'s disc. */
-export const isMoonEnabled = (def: SkyBoxDef) => isOn(def.moons?.[0]);
-/** Whether moons[0] has a light: then the env bake leaves its disc out. */
-export const isMoonLightEnabled = (def: SkyBoxDef) => isOn(def.moons?.[0]?.light);
+export const isSunLightEnabled = (def: SkyBoxDef, i: number) =>
+  i < MAX_SUNS && isOn(def.suns?.[i]?.light);
+/** A moon's disc. */
+export const isMoonEnabled = (def: SkyBoxDef, i: number) => i < MAX_MOONS && isOn(def.moons?.[i]);
+/** Whether a moon has a light: then the env bake leaves its disc out. */
+export const isMoonLightEnabled = (def: SkyBoxDef, i: number) =>
+  i < MAX_MOONS && isOn(def.moons?.[i]?.light);
 export const isStarsEnabled = (def: SkyBoxDef) => isOn(def.stars);
 export const isMilkyWayEnabled = (def: SkyBoxDef) =>
   isStarsEnabled(def) && isOn(def.stars?.milkyWay);
@@ -157,7 +171,8 @@ export const getStaticLayersSourceOf = (
   hasStaticLayers(def)
     ? { resolution: getNebulaSize(def), build: (dir) => nebulaeNode(dir, def.nebulae, u.nebulae) }
     : null;
-/** While on, suns[0]'s and moons[0]'s directions come from the time of day (SkyTime.ts). */
+/** While on, suns[0]'s and every moon's directions come from the time of day, and the other
+ * suns turn with the sky (SkyTime.ts). */
 export const isDayNightEnabled = (def: SkyBoxDef | undefined) => isOn(def?.dayNight);
 
 /** The env bake's size: 256 by default, 128 with day-night (it re-bakes as the sun moves). */
@@ -168,8 +183,8 @@ const DAY_NIGHT_ENV_SIZE = 128;
 export const createSkyUniforms = (def: SkyBoxDef, time: SkyTimeState): SkyUniforms => {
   const u = {
     base: createBaseUniforms(def.base, def.env),
-    sun: createSunUniforms(),
-    moon: createMoonUniforms(),
+    suns: Array.from({ length: MAX_SUNS }, createSunUniforms),
+    moons: Array.from({ length: MAX_MOONS }, createMoonUniforms),
     stars: createStarsUniforms(),
     atmosphere: createAtmosphereUniforms(),
     clouds: createCloudsUniforms(),
@@ -184,23 +199,48 @@ export const createSkyUniforms = (def: SkyBoxDef, time: SkyTimeState): SkyUnifor
   return u;
 };
 
-/** suns[0]'s and moons[0]'s directions: from the time of day (and the moon's phase) with
- * day-night on, else their elevations and azimuths. */
+/**
+ * A sun's unit direction at `timeOfDay`, into `out`. suns[0]: from the time of day with
+ * day-night on, else its elevation and azimuth. Any other sun: its elevation and azimuth, which
+ * with day-night and `rotateWithSky` are where it stands at the start time, turned with the sky
+ * from there.
+ */
+export const computeSunDirectionOf = (
+  def: SkyBoxDef,
+  i: number,
+  timeOfDay: number,
+  out: THREE.Vector3
+) => {
+  const dayNight = isDayNightEnabled(def);
+  if (i === 0 && dayNight) return computeSunDirection(def.dayNight, timeOfDay, out);
+  const sun = def.suns?.[i];
+  getFixedSunDirection(sun, out);
+  if (!dayNight || i === 0 || !(sun?.rotateWithSky ?? SUN_DEFAULTS.rotateWithSky)) return out;
+  return turnWithSky(def.dayNight, out, getDayNightStartTime(def.dayNight), timeOfDay, out);
+};
+
+/** A moon's unit direction, into `out`: from the time of day and its running phase with
+ * day-night on, else its elevation and azimuth. */
+export const computeMoonDirectionOf = (
+  def: SkyBoxDef,
+  i: number,
+  time: SkyTimeState,
+  out: THREE.Vector3
+) => {
+  const moon = def.moons?.[i];
+  if (!isDayNightEnabled(def)) return getFixedMoonDirection(moon, out);
+  return computeMoonDirection(def.dayNight, moon, time.timeOfDay, time.moonPhases[i] ?? 0, out);
+};
+
+/** Every sun's and moon's direction (suns[0] and moons[0] always: the atmosphere, clouds and
+ * lights read them without any entries too). */
 const writeDirections = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) => {
-  const moon = def.moons?.[0];
-  if (isDayNightEnabled(def)) {
-    computeSunDirection(def.dayNight, time.timeOfDay, u.sun.direction.value);
-    computeMoonDirection(
-      def.dayNight,
-      moon,
-      time.timeOfDay,
-      time.moonPhase,
-      u.moon.direction.value
-    );
-  } else {
-    getFixedSunDirection(def.suns?.[0], u.sun.direction.value);
-    getFixedMoonDirection(moon, u.moon.direction.value);
+  const suns = Math.max(1, getSunCount(def));
+  for (let i = 0; i < suns; i++) {
+    computeSunDirectionOf(def, i, time.timeOfDay, u.suns[i].direction.value);
   }
+  const moons = Math.max(1, getMoonCount(def));
+  for (let i = 0; i < moons; i++) computeMoonDirectionOf(def, i, time, u.moons[i].direction.value);
 };
 
 const _skyRotation = new THREE.Matrix3();
@@ -211,7 +251,7 @@ const applySkyRotation = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) =>
   const rotation = isDayNightEnabled(def)
     ? computeSkyRotation(def.dayNight, time.timeOfDay, _skyRotation)
     : null;
-  applyStarsSkyUniforms(u.stars, def.stars, u.sun.direction.value, rotation);
+  applyStarsSkyUniforms(u.stars, def.stars, u.suns[0].direction.value, rotation);
   const { rotation: staticRotation, starsToStatic } = u.staticLayers;
   if (rotation) staticRotation.value.copy(rotation);
   else staticRotation.value.identity();
@@ -221,37 +261,42 @@ const applySkyRotation = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) =>
   else starsToStatic.value.identity();
 };
 
-/** The moon's position-dependent values and the clouds' moonlight (after the atmosphere's). */
+/** Each moon's position-dependent values and the clouds' moonlight (moons[0]'s; after the
+ * atmosphere's). */
 const applyMoonPosition = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) => {
-  const sunDirection = u.sun.direction.value;
-  applyMoonPositionUniforms(
-    u.moon,
-    sunDirection,
-    getMoonPhaseOf(def, time, isDayNightEnabled(def))
-  );
+  const sunDirection = u.suns[0].direction.value;
+  const isDayNight = isDayNightEnabled(def);
+  const moons = Math.max(1, getMoonCount(def));
+  for (let i = 0; i < moons; i++) {
+    applyMoonPositionUniforms(u.moons[i], sunDirection, getMoonPhaseOf(def, time, isDayNight, i));
+  }
   if (!isCloudsEnabled(def)) return;
-  applyCloudsMoonUniforms(u.clouds, isMoonEnabled(def) ? u.moon : null, u.atmosphere, sunDirection);
+  const moon = isMoonEnabled(def, 0) ? u.moons[0] : null;
+  applyCloudsMoonUniforms(u.clouds, moon, u.atmosphere, sunDirection);
 };
 
+const getSunAtmosphere = (u: SkyUniforms, def: SkyBoxDef): SunAtmosphere =>
+  isAtmosphereEnabled(def) ? { u: u.atmosphere, def: def.atmosphere } : null;
+
 /** Writes every layer's non-structural values to its uniforms. The primary sun's direction
- * comes first: the atmosphere's terms depend on it, and the disc on the atmosphere's. */
+ * comes first: the atmosphere's terms depend on it, and the discs on the atmosphere's. */
 export const applySkyUniforms = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) => {
   applyBaseUniforms(u.base, def.base, def.env);
   writeDirections(u, def, time);
-  applyAtmosphereUniforms(u.atmosphere, def.atmosphere, u.sun.direction.value);
-  applySunUniforms(
-    u.sun,
-    def.suns?.[0],
-    isAtmosphereEnabled(def) ? u.atmosphere : null,
-    getEnvSize(def)
-  );
-  applyMoonUniforms(u.moon, def.moons?.[0], getEnvSize(def));
+  const sunDirection = u.suns[0].direction.value;
+  applyAtmosphereUniforms(u.atmosphere, def.atmosphere, sunDirection);
+  const atmosphere = getSunAtmosphere(u, def);
+  const envSize = getEnvSize(def);
+  const suns = Math.max(1, getSunCount(def));
+  for (let i = 0; i < suns; i++) applySunUniforms(u.suns[i], def.suns?.[i], atmosphere, envSize);
+  const moons = Math.max(1, getMoonCount(def));
+  for (let i = 0; i < moons; i++) applyMoonUniforms(u.moons[i], def.moons?.[i], envSize);
   applyStarsUniforms(u.stars, def.stars);
   applySkyRotation(u, def, time);
   applyNebulaeUniforms(u.nebulae, def.nebulae);
-  applyCloudsUniforms(u.clouds, def.clouds, u.sun.direction.value);
+  applyCloudsUniforms(u.clouds, def.clouds, sunDirection);
   applyMoonPosition(u, def, time);
-  applyGroundUniforms(u.ground, def.ground, isAtmosphereEnabled(def), u.sun.direction.value);
+  applyGroundUniforms(u.ground, def.ground, isAtmosphereEnabled(def), sunDirection);
 };
 
 /**
@@ -261,12 +306,15 @@ export const applySkyUniforms = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeSt
  */
 export const applySkyTimeUniforms = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) => {
   writeDirections(u, def, time);
-  const sunDirection = u.sun.direction.value;
+  const sunDirection = u.suns[0].direction.value;
   const hasAtmosphere = isAtmosphereEnabled(def);
   // A layer that's off is skipped: nothing reads its uniforms, and turning it on runs
-  // applySkyUniforms. The moon's position is always written: its light needs the lit fraction.
+  // applySkyUniforms. The moons' positions are always written: their lights need the lit
+  // fraction.
   if (hasAtmosphere) applyAtmosphereSunUniforms(u.atmosphere, def.atmosphere, sunDirection);
-  applySunLightingUniforms(u.sun, hasAtmosphere ? u.atmosphere : null);
+  const atmosphere = getSunAtmosphere(u, def);
+  const suns = Math.max(1, getSunCount(def));
+  for (let i = 0; i < suns; i++) applySunLightingUniforms(u.suns[i], atmosphere);
   if (isCloudsEnabled(def)) applyCloudsSunUniforms(u.clouds, sunDirection);
   applyMoonPosition(u, def, time);
   if (isStarsEnabled(def) || hasStaticLayers(def)) applySkyRotation(u, def, time);
@@ -276,8 +324,8 @@ export const applySkyTimeUniforms = (u: SkyUniforms, def: SkyBoxDef, time: SkyTi
 /** Whether a definition has an enabled procedural layer (then it's on the composite path). */
 export const hasProceduralLayer = (def: SkyBoxDef) =>
   isAtmosphereEnabled(def) ||
-  isSunEnabled(def) ||
-  isMoonEnabled(def) ||
+  (def.suns?.some((_, i) => isSunEnabled(def, i)) ?? false) ||
+  (def.moons?.some((_, i) => isMoonEnabled(def, i)) ?? false) ||
   isStarsEnabled(def) ||
   isGroundEnabled(def) ||
   hasStaticLayers(def);
@@ -285,11 +333,15 @@ export const hasProceduralLayer = (def: SkyBoxDef) =>
 /** Which layers exist: a change to it is a rebuild. */
 export const getCompositeSignature = (def: SkyBoxDef) =>
   [
-    isSunEnabled(def),
-    isSunLightEnabled(def),
-    isMoonEnabled(def),
-    isMoonLightEnabled(def),
-    Boolean(def.moons?.[0]?.texture),
+    Array.from(
+      { length: getSunCount(def) },
+      (_, i) => `${+isSunEnabled(def, i)}${+isSunLightEnabled(def, i)}`
+    ).join(','),
+    Array.from(
+      { length: getMoonCount(def) },
+      (_, i) =>
+        `${+isMoonEnabled(def, i)}${+isMoonLightEnabled(def, i)}${+Boolean(def.moons?.[i]?.texture)}`
+    ).join(','),
     isStarsEnabled(def),
     isMilkyWayEnabled(def),
     isAtmosphereEnabled(def),
@@ -329,15 +381,20 @@ export const buildSkyComposite = (
       : null;
     color = starsNode(dir, color, u.stars, isMilkyWayEnabled(def), boost);
   }
-  if (isSunEnabled(def)) color = sunNode(dir, color, u.sun, mode, isSunLightEnabled(def));
-  if (isMoonEnabled(def)) {
-    const texture = def.moons?.[0]?.texture;
-    const map =
-      texture && sources.moonTexture ? { texture: sources.moonTexture, def: texture } : null;
-    color = moonNode(dir, color, u.moon, mode, isMoonLightEnabled(def), map);
+  // Unrolled: which discs exist is part of the signature
+  for (let i = 0; i < getSunCount(def); i++) {
+    if (!isSunEnabled(def, i)) continue;
+    color = sunNode(dir, color, u.suns[i], mode, isSunLightEnabled(def, i));
+  }
+  for (let i = 0; i < getMoonCount(def); i++) {
+    if (!isMoonEnabled(def, i)) continue;
+    const texture = def.moons?.[i]?.texture;
+    const moonTexture = sources.moonTextures[i];
+    const map = texture && moonTexture ? { texture: moonTexture, def: texture } : null;
+    color = moonNode(dir, color, u.moons[i], mode, isMoonLightEnabled(def, i), map);
   }
   if (isAtmosphereEnabled(def)) {
-    const terms = atmosphereTerms(dir, u.atmosphere, u.sun.direction);
+    const terms = atmosphereTerms(dir, u.atmosphere, u.suns[0].direction);
     const parts = atmosphereParts(dir, color, u.atmosphere, terms);
     color = isCloudsEnabled(def)
       ? cloudsNode(dir, parts, terms, u.atmosphere, u.clouds, mode)

@@ -349,6 +349,7 @@
       "additionalProperties": false
     },
     "suns": {
+      "maxItems": 4,
       "type": "array",
       "items": {
         "type": "object",
@@ -415,6 +416,9 @@
                 ]
               }
             ]
+          },
+          "rotateWithSky": {
+            "type": "boolean"
           },
           "light": {
             "type": "object",
@@ -518,6 +522,7 @@
       }
     },
     "moons": {
+      "maxItems": 2,
       "type": "array",
       "items": {
         "type": "object",
@@ -1532,6 +1537,7 @@
             "suns": {
               "anyOf": [
                 {
+                  "maxItems": 4,
                   "type": "array",
                   "items": {
                     "type": "object",
@@ -1598,6 +1604,9 @@
                             ]
                           }
                         ]
+                      },
+                      "rotateWithSky": {
+                        "type": "boolean"
                       },
                       "light": {
                         "type": "object",
@@ -1772,6 +1781,9 @@
                           }
                         ]
                       },
+                      "rotateWithSky": {
+                        "type": "boolean"
+                      },
                       "light": {
                         "type": "object",
                         "properties": {
@@ -1878,6 +1890,7 @@
             "moons": {
               "anyOf": [
                 {
+                  "maxItems": 2,
                   "type": "array",
                   "items": {
                     "type": "object",
@@ -2328,6 +2341,7 @@
             "nebulae": {
               "anyOf": [
                 {
+                  "maxItems": 8,
                   "type": "array",
                   "items": {
                     "type": "object",

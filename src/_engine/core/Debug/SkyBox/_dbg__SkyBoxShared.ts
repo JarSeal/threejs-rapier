@@ -13,20 +13,21 @@ import type { SkyBoxDef, SkyBoxOverrides } from '../../SkyBox/SkyBoxTypes';
 import { BASE_DEFAULTS, ENV_DEFAULTS } from '../../SkyBox/layers/base';
 import { toSkyColor } from '../../SkyBox/skyColor';
 import { ATMOSPHERE_DEFAULTS } from '../../SkyBox/layers/atmosphere';
-import { SUN_DEFAULTS } from '../../SkyBox/layers/sun';
+import { MAX_SUNS, SUN_DEFAULTS } from '../../SkyBox/layers/sun';
 import {
   AMBIENT_LIGHT_DEFAULTS,
+  EXTRA_SUN_LIGHT_DEFAULTS,
   MOON_LIGHT_DEFAULTS,
   SUN_LIGHT_DEFAULTS,
 } from '../../SkyBox/SkyLights';
 import { CLOUDS_DEFAULTS } from '../../SkyBox/layers/clouds';
-import { MOON_DEFAULTS } from '../../SkyBox/layers/moon';
+import { MAX_MOONS, MOON_DEFAULTS } from '../../SkyBox/layers/moon';
 import { STARS_DEFAULTS } from '../../SkyBox/layers/stars';
 import { DAY_NIGHT_DEFAULTS } from '../../SkyBox/SkyTime';
 import { getMoonPhase } from '../../SkyBox/SkyBox';
 import { isDayNightEnabled } from '../../SkyBox/SkyComposite';
 import { GROUND_DEFAULTS } from '../../SkyBox/layers/ground';
-import { NEBULA_DEFAULTS } from '../../SkyBox/layers/nebula';
+import { MAX_NEBULAE, NEBULA_DEFAULTS } from '../../SkyBox/layers/nebula';
 import { SHADOW_PRESETS } from '../../LightManager';
 import { getEnvSize } from '../../SkyBox/SkyComposite';
 import {
@@ -55,7 +56,8 @@ export type SkyBoxLayerKey =
   | 'ground'
   | 'nebula';
 
-/** Where each layer lives in the definition. */
+/** Where each layer lives in the definition. A list entry's layers point at the selected entry
+ * (selectListEntry). */
 export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
   base: 'base',
   env: 'env',
@@ -71,20 +73,43 @@ export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
   ambient: 'ambientLight',
   clouds: 'clouds',
   ground: 'ground',
-  /** The selected nebula (see selectNebula). */
   nebula: 'nebulae.0',
 };
 
-/** The nebula the Nebulae folder edits (session only). */
-let selectedNebula = 0;
+/** The definition's lists the tab edits one entry at a time (p114). */
+export type SkyBoxListKey = 'suns' | 'moons' | 'nebulae';
 
-export const getSelectedNebula = () => selectedNebula;
-
-/** Selects the nebula the Nebulae folder edits (its `nebula` layer path). */
-export const selectNebula = (index: number) => {
-  selectedNebula = Math.max(0, Math.floor(index));
-  LAYER_PATHS.nebula = `nebulae.${selectedNebula}`;
+export const LIST_MAX: Record<SkyBoxListKey, number> = {
+  suns: MAX_SUNS,
+  moons: MAX_MOONS,
+  nebulae: MAX_NEBULAE,
 };
+
+/** The layers that point at a list's selected entry. */
+const LIST_LAYERS: Record<SkyBoxListKey, SkyBoxLayerKey[]> = {
+  suns: ['sun', 'sunLight'],
+  moons: ['moon', 'moonLight'],
+  nebulae: ['nebula'],
+};
+
+/** The entry each list's folder edits (session only). */
+const selectedIndex: Record<SkyBoxListKey, number> = { suns: 0, moons: 0, nebulae: 0 };
+
+export const getSelectedIndex = (list: SkyBoxListKey) => selectedIndex[list];
+
+/** Selects the entry a list's folder edits (repoints its layer paths; the tab must be rebuilt,
+ * its items capture their paths). */
+export const selectListEntry = (list: SkyBoxListKey, index: number) => {
+  const next = Math.max(0, Math.floor(index));
+  selectedIndex[list] = next;
+  for (const layer of LIST_LAYERS[list]) {
+    LAYER_PATHS[layer] = LAYER_PATHS[layer].replace(/^(\w+)\.\d+/, `$1.${next}`);
+  }
+};
+
+/** The active sky box's entries of a list (as many as it draws). */
+export const getListEntries = <T = Record<string, unknown>>(list: SkyBoxListKey) =>
+  ((getActiveSkyBox()?.def[list] ?? []) as T[]).slice(0, LIST_MAX[list]);
 
 /** Values a definition doesn't set fall back to these (the renderer's defaults), by path. */
 const DEFAULTS_TREE = {
@@ -101,8 +126,11 @@ const DEFAULTS_TREE = {
   nebulae: [NEBULA_DEFAULTS],
 };
 
-/** Every sun, moon and nebula falls back to the first one's defaults. */
+/** Every sun, moon and nebula falls back to the first one's defaults (but see getDefValue). */
 const toDefaultsPath = (path: string) => path.replace(/^(suns|moons|nebulae)\.\d+/, '$1.0');
+
+/** Only suns[0]'s light casts shadows by default. */
+const EXTRA_SUN_CAST_SHADOW_PATH = /^suns\.[1-9]\d*\.light\.castShadow$/;
 
 /** A sun or moon light's bias, normal bias and map size default to its shadow preset's. */
 const PRESET_KEY_PATH =
@@ -153,8 +181,9 @@ export const getDefValue = (def: SkyBoxDef | undefined, path: string) => {
   }
   // The env bake's default size depends on day-night
   if (path === 'env.size') return getEnvSize(def);
-  // A definition without nebulae has none (the defaults tree's entry is for its entries' keys)
-  if (path === 'nebulae') return [];
+  // A definition without a list has none (the defaults tree's entry is for its entries' keys)
+  if (path === 'suns' || path === 'moons' || path === 'nebulae') return [];
+  if (EXTRA_SUN_CAST_SHADOW_PATH.test(path)) return EXTRA_SUN_LIGHT_DEFAULTS.castShadow;
   return getPresetDefault(def, path) ?? getPath(DEFAULTS_TREE, toDefaultsPath(path));
 };
 
@@ -237,11 +266,11 @@ export const writeSkyBoxOverride = (
   );
 };
 
-/** Whether the active sky box's nebulae override is a whole array (after an add, duplicate or
- * remove): then a nebula can't be reset on its own, only the whole list. */
-export const isNebulaeOverrideAnArray = () => {
+/** Whether the active sky box's override of a list is a whole array (after an add, duplicate
+ * or remove): then an entry can't be reset on its own, only the whole list. */
+export const isListOverrideAnArray = (list: SkyBoxListKey) => {
   const active = getActiveSkyBox();
-  return Boolean(active && Array.isArray(getSkyBoxOverrides(active.sceneId, active.id)?.nebulae));
+  return Boolean(active && Array.isArray(getSkyBoxOverrides(active.sceneId, active.id)?.[list]));
 };
 
 // What the panes bind to: every edited layer value of the active sky box, synced before every
@@ -297,6 +326,7 @@ const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
     'discIntensity',
     'glowIntensity',
     'glowSize',
+    'rotateWithSky',
   ],
   sunLight: [
     'enabled',
@@ -402,29 +432,43 @@ export const NO_SKYBOX_ID = '__noSkyBox';
 
 const toDegrees = (radians: number) => Math.round(((radians * 180) / Math.PI) * 100) / 100;
 
-/** A direction's elevation and azimuth (degrees, the sun's convention: 0 = +z, 90 = +x). */
-const setElevationAzimuth = (proxy: Obj, direction: { x: number; y: number; z: number }) => {
-  proxy.elevation = toDegrees(Math.asin(Math.min(1, Math.max(-1, direction.y))));
-  proxy.azimuth = (toDegrees(Math.atan2(direction.x, direction.z)) + 360) % 360;
+/** A unit direction's elevation and azimuth (degrees, rounded to 0.01; the sun's convention:
+ * 0 = +z, 90 = +x). */
+export const getElevationAzimuth = (direction: { x: number; y: number; z: number }) => ({
+  elevation: toDegrees(Math.asin(Math.min(1, Math.max(-1, direction.y)))),
+  azimuth: (toDegrees(Math.atan2(direction.x, direction.z)) + 360) % 360,
+});
+
+const setElevationAzimuth = (proxy: Obj, direction: { x: number; y: number; z: number }) =>
+  Object.assign(proxy, getElevationAzimuth(direction));
+
+/** With day-night on, the (disabled) sliders of the primary sun and of the selected moon show
+ * where the time puts them, and the moon's phase slider its running phase. An extra sun's
+ * sliders stay its definition's (where it stands at the start time). */
+const syncDerivedPositions = (active: NonNullable<ReturnType<typeof getActiveSkyBox>>) => {
+  if (selectedIndex.suns === 0) {
+    setElevationAzimuth(skyBoxProxy.sun, active.uniforms.suns[0].direction.value);
+  }
+  const moon = selectedIndex.moons;
+  setElevationAzimuth(skyBoxProxy.moon, active.uniforms.moons[moon].direction.value);
+  const phase = getMoonPhase(moon);
+  if (phase !== null) skyBoxProxy.moon.phase = Math.round(phase * 1000) / 1000;
 };
 
-/** With day-night on, the (disabled) sun and moon sliders show where the time puts them, and
- * the moon's phase slider the running phase. */
-const syncDerivedPositions = (active: NonNullable<ReturnType<typeof getActiveSkyBox>>) => {
-  setElevationAzimuth(skyBoxProxy.sun, active.uniforms.sun.direction.value);
-  setElevationAzimuth(skyBoxProxy.moon, active.uniforms.moon.direction.value);
-  const phase = getMoonPhase();
-  if (phase !== null) skyBoxProxy.moon.phase = Math.round(phase * 1000) / 1000;
+/** Keeps each list's selection within its entries. */
+const clampSelections = (def: SkyBoxDef | undefined) => {
+  for (const list of Object.keys(selectedIndex) as SkyBoxListKey[]) {
+    const count = Math.min(def?.[list]?.length ?? 0, LIST_MAX[list]);
+    if (selectedIndex[list] >= count) selectListEntry(list, Math.max(0, count - 1));
+  }
 };
 
 /** The selected nebula's colours ('#rrggbb' each, the third one repeating the second with two
  * stops), its stop count, its direction as elevation and azimuth, and the list's size (the
  * selection is clamped to it). */
 const syncNebulaProxy = (def: SkyBoxDef | undefined) => {
-  const count = def?.nebulae?.length ?? 0;
-  if (selectedNebula >= count) selectNebula(Math.max(0, count - 1));
   const proxy = skyBoxProxy.nebula;
-  proxy.count = count;
+  proxy.count = def?.nebulae?.length ?? 0;
   const path = LAYER_PATHS.nebula;
   for (const key of PROXY_KEYS.nebula) proxy[key] = getDefValue(def, `${path}.${key}`);
   const colors = getDefValue(def, `${path}.colors`) as unknown[];
@@ -440,6 +484,7 @@ const syncNebulaProxy = (def: SkyBoxDef | undefined) => {
 export const syncSkyBoxProxy = () => {
   const active = getActiveSkyBox();
   skyBoxProxy.select.skyBoxId = active?.id ?? NO_SKYBOX_ID;
+  clampSelections(active?.def);
   for (const layer of Object.keys(PROXY_KEYS) as SkyBoxLayerKey[]) {
     // Synced with its colours, direction and selection (syncNebulaProxy)
     if (layer === 'nebula') continue;
@@ -500,7 +545,8 @@ const isActive = (sceneId: string, skyBoxId: string) => {
 const refreshTab = () => updateDebuggerTab(SKYBOX_TAB_ID);
 
 /** Writes a param to the override store and, when that sky box is showing, to the render. A
- * whole array (a list edit: the nebulae) changes the list's options, so the tab is rebuilt. */
+ * whole array (a list edit: suns, moons, nebulae) changes the list's options, so the tab is
+ * rebuilt. */
 const applyParam = async (sceneId: string, skyBoxId: string, path: string, value: unknown) => {
   writeSkyBoxOverride(sceneId, skyBoxId, path, value);
   if (isActive(sceneId, skyBoxId)) await updateSkyBox(skyBoxId, toSkyBoxUpdate(path, value));
@@ -540,8 +586,8 @@ export const setSkyBoxParam = (
 };
 
 /**
- * Replaces a whole array of the active sky box (a list edit: add, duplicate or remove a
- * nebula), as one undo step (not coalesced). `prev` is the array before the edit.
+ * Replaces a whole array of the active sky box (a list edit: add, duplicate or remove a sun,
+ * moon or nebula), as one undo step (not coalesced). `prev` is the array before the edit.
  */
 export const setSkyBoxArray = (path: string, label: string, prev: unknown[], next: unknown[]) => {
   const active = getActiveSkyBox();

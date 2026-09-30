@@ -174,6 +174,20 @@ export const applyAtmosphereUniforms = (
 };
 
 /**
+ * SkyMesh's sun energy (:188-190) for a sun at height `dirY`: twilightLength moves the cutoff
+ * below the horizon, and softens the fade. The atmosphere's is suns[0]'s; every sun's disc is
+ * capped by its own (layers/sun.ts).
+ */
+export const computeSunE = (def: SkyBoxAtmosphereDef | undefined, dirY: number) => {
+  const sunIntensity = def?.sunIntensity ?? ATMOSPHERE_DEFAULTS.sunIntensity;
+  const twilight = Math.max(0.05, def?.twilightLength ?? ATMOSPHERE_DEFAULTS.twilightLength);
+  const cutoffAngle = Math.PI / 2 + (CUTOFF_ANGLE - Math.PI / 2) * twilight;
+  const steepness = STEEPNESS * twilight;
+  const zenithAngle = Math.acos(THREE.MathUtils.clamp(dirY, -1, 1));
+  return EE * sunIntensity * Math.max(0, 1 - Math.exp(-(cutoffAngle - zenithAngle) / steepness));
+};
+
+/**
  * Writes the terms that depend on the sun's direction (sunE, betaR, linMix and the extinction
  * at the sun); the rest must be written already. The day-night step calls it every time the
  * sun moves: it allocates nothing.
@@ -184,16 +198,9 @@ export const applyAtmosphereSunUniforms = (
   sunDirection: THREE.Vector3
 ) => {
   const rayleigh = def?.rayleigh ?? ATMOSPHERE_DEFAULTS.rayleigh;
-  const sunIntensity = def?.sunIntensity ?? ATMOSPHERE_DEFAULTS.sunIntensity;
-  const twilight = Math.max(0.05, def?.twilightLength ?? ATMOSPHERE_DEFAULTS.twilightLength);
   const y = sunDirection.y;
 
-  // sunE (:188-190): twilightLength moves the cutoff below the horizon, and softens the fade
-  const cutoffAngle = Math.PI / 2 + (CUTOFF_ANGLE - Math.PI / 2) * twilight;
-  const steepness = STEEPNESS * twilight;
-  const zenithAngle = Math.acos(THREE.MathUtils.clamp(y, -1, 1));
-  u.sunE.value =
-    EE * sunIntensity * Math.max(0, 1 - Math.exp(-(cutoffAngle - zenithAngle) / steepness));
+  u.sunE.value = computeSunE(def, y);
 
   // sunfade and betaR (:195-203). SkyMesh's 450000 is from the older Sky's sun distance: with
   // a unit direction, sunfade stays ~1 (kept as is, for parity)

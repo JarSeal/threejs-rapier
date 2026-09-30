@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–2 implemented
+Status: in progress | Phases 1–3 implemented
 Category: Skybox, Rendering
 Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md, \_DONE_p113_night-sky-and-day-night-cycle.md (stars layer, sidereal rotation)
 Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic)
@@ -47,6 +47,11 @@ The **SPACE** preset is stars, one or more suns and nebulae, with no atmosphere,
 - **The throttle doesn't need release detection.** The rule "at most one bake per 150 ms, and the latest request always runs" gives the final bake after a drag for free.
 - **The bake stats become shared.** `_dbg__EnvBakeStats.ts` is module-level state for the env bake only. It becomes a factory (`createBakeStats`), used by both bakes. The GPU timer is already reference counted.
 - **The SPACE demo gets its own scene**, instead of being a selectable sky box in the showcase. The showcase also lists the `space` sky box, for the PBR-sphere reflection check.
+- **Extra suns and moons with day-night (decided in Phase 3).** DD3's "fixed elevation/azimuth offsets" had no field and no reference point. `dayOfYear` never advances, so the sun stands still in the star frame, and "turns with the sky" is the same motion as "keeps its offset to `suns[0]`".
+  - An extra sun gets `rotateWithSky` (default true). Its elevation and azimuth are where it stands at `dayNight.timeOfDay` (the start time), and it turns with the sky from there. With false, it stays at its elevation and azimuth.
+  - `moons[1]` is a second p113 orbit, not an offset: its own phase, `phaseMode`, `lunarCycleDays` and `inclination` (`computeMoonDirection` already took the moon). `SkyTimeState.moonPhase` became `moonPhases[]`.
+- **What stays primary-only.** `suns[0]` drives the atmosphere, the stars' fade, the clouds' light, the ground and the ambient light. `moons[0]` lights the clouds. Every sun is dimmed and coloured by the atmosphere along its own direction: a custom colour's compensation, the disc's `sunE` cap and the light's AUTO colour are per sun (`computeSunE`, `computeExtinction` at its height).
+- **The Suns and Moons lists (DD5) are built in Phase 3**, since the Phase 3 check "adding or removing an entry is a single rebuild" needs them. "Apply preset" stays in Phase 4.
 
 ## Design decisions
 
@@ -87,7 +92,7 @@ The **SPACE** preset is stars, one or more suns and nebulae, with no atmosphere,
    - **The primary sun.** Only `suns[0]` drives the atmosphere (p110 composite order). The others are discs plus glow.
    - **Colours.** An extra sun's `color` is `'AUTO'`: the extinction colour when an atmosphere exists, otherwise white. A hex colour can be set instead, which space scenes need (a blue and an orange sun).
    - **Lights.** Each sun and moon can have a managed light, with roles `SUN_i` and `MOON_i`. **Only `suns[0].light.castShadow` defaults to true**, and every other light defaults to no shadow. The debugger warns when more than two sky lights cast shadows, because each shadow map is a full extra scene render.
-   - **Positions.** With day-night enabled, the extra suns and moons keep fixed elevation/azimuth offsets and rotate with the sidereal rotation when `rotateWithSky` is set. That makes them "stars" in the sky, not solar-system orbits; orbits are out of scope.
+   - **Positions.** With day-night enabled, an extra sun with `rotateWithSky` (default true) stands at its elevation/azimuth at the start time and turns with the sky from there, which makes it a "star" in the sky, not a solar-system orbit (orbits are out of scope). Each moon follows the p113 orbit with its own phase. See "Changes since the plan was written".
 4. **Presets** (`SkyBox/presets.ts`).
    - `preset: 'DAY_SKY' | 'NIGHT_SKY' | 'DAY_NIGHT' | 'SPACE'` names a def template. It is deep-merged **under** the def, so explicit fields win. Arrays such as `suns` are replaced, not merged.
    - **SPACE:**
@@ -213,7 +218,7 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
      - `renderer.info.memory` is stable over test on/off, resolution changes and scene round trips.
 2. **Nebula layer + schema + nebula creator.** **Done** (see Implementation notes, Phase 2). The test layer is removed.
    - Verify: every param behaves, dragging stays responsive (bakes at most every 150 ms), seeds are deterministic across reloads, and nebulae rotate with the sky when day-night is on.
-3. **Multiple suns and moons.**
+3. **Multiple suns and moons.** **Done** (see Implementation notes, Phase 3).
    - Verify: 1–4 suns render with the right colours and optional lights, only `suns[0]` shapes the atmosphere, the shadow-count warning appears, and adding or removing an entry is a single rebuild.
 4. **Presets.** `presets.ts`, the schema's `preset`, build-time resolution in `gatherAppData`, and "Apply preset" with `skybox.applyPreset`.
    - Verify:
@@ -339,3 +344,53 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
   - bake times on a real GPU.
 - **Reading the showcase.** In the showcase, the stone gate's lintel and the unlit ground hide part of the sky: straight dark cuts across a nebula there are those, not cube seams (confirmed by hiding the meshes and by dumping the cube faces).
 - **Stars need the fade off without a sun.** Without a sun, the default sun is at 30° elevation, so the stars' day fade hides them. A space sky box needs `stars.fadeRange: [90, 90]` (the SPACE preset in Phase 4 will set it).
+
+### Phase 3: multiple suns and moons
+
+- **What was built.**
+  - Schema: `suns` max 4 and `moons` max 2, in the definition and in whole-array overrides. A sun's `rotateWithSky`. A sun light's `castShadow` defaults to true for `suns[0]` only.
+  - `SkyComposite.ts`:
+    - `u.suns[4]` / `u.moons[2]`, one uniform set per index (the old `u.sun` / `u.moon`).
+    - `computeSunDirectionOf` / `computeMoonDirectionOf` place every entry. Index 0 is written even without entries: the atmosphere, clouds and lights read it.
+    - The composite unrolls the enabled discs, suns then moons. The signature holds each index's disc, light and (moons) texture flags.
+    - The per-frame path loops only over existing entries.
+  - `layers/sun.ts`: `applySunLightingUniforms` takes `{ u, def }` of the atmosphere and computes the sun's own extinction (`SunUniforms.extinction`) and `sunE` cap from its height. For `suns[0]`, that equals the atmosphere's `extinctionAtSun` and `sunE` (checked).
+  - `layers/atmosphere.ts`: `computeSunE(def, y)`, pulled out of `applyAtmosphereSunUniforms`.
+  - `SkyTime.ts`:
+    - `MAX_MOONS` lives here, since `layers/moon.ts` imports this module at load, and is re-exported there.
+    - `moonPhases[]`, `setSkyTimeMoonPhase(state, i, phase)`, `getMoonPhaseOf(…, i)`.
+    - `turnWithSky(dayNight, dir, fromTime, toTime, out)`: into the star frame at one time, back out at the other. Allocation-free.
+  - `SkyLights.ts`: the lights are kept by kind and index, with roles `SUN_0..3` / `MOON_0..1` and names "Sky box sun", "Sky box sun 2", …
+    - A moon light fades by its own moon's lit fraction.
+    - `EXTRA_SUN_LIGHT_DEFAULTS` (no shadow), `getSkyShadowCasterCount()`.
+    - A debug-env `lwarn` fires once per activation, and again only when the count changes, above `MAX_SHADOW_CASTERS_HINT` (2).
+    - `getSkyLightIds()` returns `{ suns[], moons[], ambient }`.
+  - `SkyBox.ts`:
+    - Moon textures are loaded per moon.
+    - A moon texture change reloads; adding or removing a moon without one is a rebuild.
+    - `getSunDirection` / `getSunElevation` / `getMoonDirection` / `getMoonPhase` take any index.
+    - The dev warning is now about entries past the limits (code definitions aren't schema-validated).
+    - The day-night re-bake still watches `suns[0]` and `moons[0]` only: the other entries move at about the same rate.
+  - Debug:
+    - `_dbg__ListFolderItems.ts` holds the list controls: a dropdown, "Add", "Duplicate", "Remove" and "Reset <list> list". The Nebulae folder moved onto it too.
+    - `_dbg__SkyBoxShared.ts`: `selectListEntry(list, i)` repoints the `sun`/`sunLight`, `moon`/`moonLight` and `nebula` paths, and `isListOverrideAnArray(list)` is the generalized nebulae check. `getDefValue` gives `castShadow: false` for an extra sun's light, and `[]` for a definition without `suns`/`moons`.
+    - Suns folder (`_dbg__SunsFolder.ts`, was `_dbg__SunFolder.ts`): "Add (at view)" is turned back to the start time for an extra sun with day-night. "Duplicate" goes 15° further round, with the light's shadow off. The selected sun has "Turns with the sky" (extra suns) and a "Now at" readout while it turns.
+    - Moons folder (`_dbg__MoonFolder.ts`): "Add" makes a quarter moon, at the view without day-night. "Duplicate" is a quarter cycle on, without a shadow.
+    - The Light subfolder shows a warning line above 2 shadow casters.
+- **Checked on WebGL2 (SwiftShader), showcase:**
+  - `dayNight.skybox.json` is unchanged against a HEAD worktree at 11:00, 17:30 and 21:00 (paused): the pixel diff shows only the drifting clouds, twinkling stars and the FPS panel.
+  - A test sky box with 4 suns and 2 moons (3 shadow-casting sun lights, a light on `moons[1]`): roles `SUN_0..2` and `MOON_1`, 3 casters, and the warning logged.
+  - Moving `suns[1]` leaves the atmosphere's `sunE` unchanged; moving `suns[0]` changes it.
+  - `suns[2]`'s orange tint is its colour ÷ its own extinction.
+  - Removing a sun or a moon, and a param change: one `update` each, never an `activate`. The removals rebuild the background node, and the param change doesn't. The removed moon's light is deleted.
+  - Day-night: at the start time `suns[1]` is at its elevation/azimuth. At 15:00 it has turned, and its angle to `suns[0]` is the same (95.33°). With `rotateWithSky: false` it stays put. `moons[1]` has its own direction and phase.
+  - Undo: a list edit (remove to 2 suns), then a param on `suns.1` (written into the array override), then undo twice: back to 4 suns with no override left.
+  - Screenshots: 4 coloured suns and 2 phased moons in a black sky (no atmosphere), and the same through an atmosphere with `suns[0]` at 6°.
+  - `renderer.info.memory`: textures, render targets and geometries are back at baseline after 3 switches. `uniformBuffers` grows by 2 per switch that creates shadow-casting sky lights, exactly as on HEAD: three's bind-group cache (p056), not this phase.
+  - A production build keeps the Suns/Moons folders in the lazy debug chunk.
+- **Not checked yet:**
+  - WebGPU (WSL2 headless can't);
+  - the folders' buttons by hand in the drawer (the script drove the helpers they call);
+  - bloom on the extra suns.
+- **Custom disc colours clip to white at the core** without bloom or strong tone mapping (radiance 40 × colour); the glow shows the colour. It's the same for `suns[0]`.
+- **Changing `dayNight.timeOfDay` moves the extra suns that turn with the sky**, because their elevation/azimuth is anchored to the start time.
