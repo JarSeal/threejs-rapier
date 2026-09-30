@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–4 implemented
+Status: in progress | Phases 1–5 implemented
 Category: Skybox, Rendering
 Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md, \_DONE_p113_night-sky-and-day-night-cycle.md (stars layer, sidereal rotation)
 Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic)
@@ -230,7 +230,7 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
      - `gatherAppData` emits the resolved preset def;
      - `dayNight.skybox.json` on `DAY_NIGHT` looks unchanged;
      - "Apply preset" can be undone.
-5. **Scene-scoped debugger tabs** (DD7).
+5. **Scene-scoped debugger tabs** (DD7). **Done** (see Implementation notes, Phase 5).
    - Verify:
      - a test tab with `sceneId` disappears on scene exit and comes back on re-entry;
      - a reload with that tab open lands on it once the scene has created it;
@@ -436,3 +436,23 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
   - SPACE with the space scene's camera (Phase 7 may retune its nebulae).
 - **The preset templates are a first pass.** SPACE's second nebula (teal, `[0.7, -0.1, 0.6]`) is behind the showcase camera. Phase 7's space scene is where the SPACE look gets its final tuning.
 
+### Phase 5: scene-scoped debugger tabs
+
+- **Most of DD7's saved-tab behaviour was already there.** `_createDebuggerTab` rebuilds the drawer, and every rebuild mounts `drawerState.currentTabId` if it exists, so a saved tab that registers later is mounted then. The fallback never overwrote the saved id, and removing the open tab already mounted the first tab.
+- **What was built.**
+  - `DebuggerTabDef.sceneId` (`debug/DebuggerGUI.ts`).
+  - `_dbg__DebuggerGUI.ts`:
+    - one `registerOnAllSceneExits` hook (`debuggerSceneTabs`) at module load. It removes the exiting scene's tabs with one drawer rebuild, and keeps the saved id, so a re-entry lands on the tab again;
+    - `deleteTabEntry` is shared with `_removeDebuggerTab`;
+    - scene tabs sort after the other tabs with the same order value, so an unlisted scene tab goes last. `orderNr` or a `tabOrder` entry still place it;
+    - the tooltip reads "<title> (scene tab: <sceneId>)";
+    - a debug warning fires when `sceneId` isn't a scene, since such a tab is never removed.
+  - A fix: while the fallback tab is shown, its scroll position is no longer saved, so the saved tab opens at its own scroll position.
+- **Checked on WebGL2 (SwiftShader).** A script created a scene tab for `scene01` and a plain unlisted tab in the page, going through `createDebuggerTab`:
+  - the scene tab registered first still sorts after the plain tab, and the other 14 tabs keep their order;
+  - on exit to `oneMoreScene`, the tab is removed and Statistics is mounted. The saved id and scroll (300) are kept, including after a scroll event on the fallback tab;
+  - re-entering `scene01` (the tab re-created by an enter hook, standing in for the scene file) mounts it again at scroll 300;
+  - after a reload with it open, the drawer shows Statistics until the tab is created, then switches to it at scroll 300;
+  - after clicking another tab, entering the scene doesn't jump back to the scene tab;
+  - no new console warnings or errors.
+- **Not checked yet:** by hand in the drawer. Phase 7's "Space demo" tab is the first real scene tab.

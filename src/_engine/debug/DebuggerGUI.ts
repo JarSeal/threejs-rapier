@@ -128,6 +128,11 @@ export type DebuggerTabDef<S extends object = object> = {
   /** Explicit place in the menu, overriding `AppConfig.debugDrawer.tabOrder`. It is on the same
    * 0-based scale as the tabOrder indexes (eg. 1.5 = between the 2nd and the 3rd tab). */
   orderNr?: number;
+  /** Makes this a scene tab: it is removed when this scene exits, so the scene creates it in its
+   * scene code (it comes back on every visit). Unless `orderNr` or the tabOrder place it, it
+   * goes after all the other tabs. When the saved open tab is a scene tab that doesn't exist yet
+   * (eg. after a reload), the drawer shows the first tab until it is created. */
+  sceneId?: string;
   /** LocalStorage key of this tab's own data. When set, the heading gets a clear-LS button for
    * it (see `clearLSButton`). */
   lsKey?: string;
@@ -315,7 +320,8 @@ export const openDebuggerTab = (id: string) => {
 };
 
 /**
- * Removes a debugger tab
+ * Removes a debugger tab (a scene tab, see `DebuggerTabDef.sceneId`, is removed automatically on
+ * its scene's exit)
  * @param id (string) tab id
  */
 export const removeDebuggerTab = (id: string) => {
