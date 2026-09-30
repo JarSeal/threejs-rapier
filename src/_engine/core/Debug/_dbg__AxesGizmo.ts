@@ -571,7 +571,8 @@ export const _initAxesGizmo = (opts: AxesGizmoOpts) => {
     camera: gizmoCamera,
     anchor: 'TOP_RIGHT',
     order: 0,
-    slotClass: styles.axesGizmoSlot,
+    // The global class is for the "Disable on-screen tools" rule (OnScreenTools.module.scss)
+    slotClass: `${styles.axesGizmoSlot} aekAxesGizmoSlot`,
     transparent: true,
     toneMapping: 'NONE',
     // The gizmo system enables it and makes it interactive

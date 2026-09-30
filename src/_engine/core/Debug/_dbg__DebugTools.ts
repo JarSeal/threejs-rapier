@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { getRenderer, getRendererOptions } from '../../core/Renderer';
-import { lsGetItem } from '../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import {
   createDebuggerTab,
   DEBUGGER_SCENE_LOADER_ID,
@@ -9,7 +9,12 @@ import {
   type DebuggerPaneItem,
 } from '../../debug/DebuggerGUI';
 import { getCurrentSceneId, getGeneratedAppData, getRootScene } from '../../core/Scene';
-import { getCurrentEnvironment, getEnvs, isDebugEnvironment } from '../../core/Config';
+import {
+  getCurrentEnvironment,
+  getEnvs,
+  IS_DEBUG_ENV,
+  isDebugEnvironment,
+} from '../../core/Config';
 import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
 import { lerror, llog } from '../../utils/Logger';
 import { openDraggableWindow } from '../../core/UI/DraggableWindow';
@@ -64,9 +69,10 @@ let debugToolsState: DebugToolsState = {
   undoRedo: {
     undoRedoFolderExpanded: false,
   },
-  prodTestMode: {
-    prodTestFolderExpanded: false,
+  onScreenTools: {
     showOnScreenToolsInProdTest: true,
+    disableOnScreenTools: false,
+    disabledOnScreenToolsOpacity: 0.5,
   },
   debugCameraFolderExpanded: false,
   axesGizmo: {
@@ -114,7 +120,7 @@ const createDebugToolsDebugGUI = () => {
     state: debugToolsState,
     // The nested objects are persisted whole (the same LS shape as before). The *FolderExpanded
     // fields in them are no longer used: folder states are in `${LS_KEY}UI`.
-    persistKeys: ['scenesListing', 'prodTestMode', 'helpers', 'env', 'axesGizmo'],
+    persistKeys: ['scenesListing', 'onScreenTools', 'helpers', 'env', 'axesGizmo'],
     // Live-refresh the Debug Camera folder from the viewport (dragging the debug camera with
     // OrbitControls): debugCameraSystem calls this only on frames where OrbitControls reported
     // a change. Unregistered on unmount, so a stale callback never runs against a disposed pane.
@@ -133,6 +139,23 @@ const createDebugToolsDebugGUI = () => {
   initAxesGizmo(debugToolsState.axesGizmo);
 };
 
+const ON_SCREEN_TOOLS_DISABLED_BODY_CLASS = 'aekOnScreenToolsDisabled';
+const ON_SCREEN_TOOLS_OPACITY_CSS_VAR = '--aek-disabled-on-screen-tools-opacity';
+
+/**
+ * Applies the "Disable on-screen tools" option: a body class (see OnScreenTools.module.scss) and
+ * the opacity CSS variable, so rebuilt tool groups keep it. Idempotent. Debug env only.
+ */
+export const _applyOnScreenToolsDisabled = () => {
+  if (!IS_DEBUG_ENV) return;
+  const { disableOnScreenTools, disabledOnScreenToolsOpacity } = debugToolsState.onScreenTools;
+  document.body.classList.toggle(ON_SCREEN_TOOLS_DISABLED_BODY_CLASS, disableOnScreenTools);
+  document.body.style.setProperty(
+    ON_SCREEN_TOOLS_OPACITY_CSS_VAR,
+    String(disabledOnScreenToolsOpacity)
+  );
+};
+
 /** The axes gizmo shortcut (F8): flips the "Show axes gizmo" option. */
 export const _toggleAxesGizmo = () => {
   const axesGizmo = debugToolsState.axesGizmo;
@@ -148,11 +171,34 @@ export const _toggleAxesGizmo = () => {
  * @returns debugToolsState {@link debugToolsState}
  */
 export const _getDebugToolsState = (loadFromLS?: boolean) => {
-  if (!firstDebugToolsStateLoaded && loadFromLS) {
-    const savedDebugToolsState = lsGetItem(LS_KEY, debugToolsState);
-    debugToolsState = { ...debugToolsState, ...savedDebugToolsState };
-  }
+  if (!firstDebugToolsStateLoaded && loadFromLS) loadDebugToolsStateFromLS();
   return debugToolsState;
+};
+
+type LegacyDebugToolsLS = Partial<DebugToolsState> & {
+  prodTestMode?: { showOnScreenToolsInProdTest?: boolean };
+};
+
+/**
+ * Shallow-merges the LS state over debugToolsState. The old `prodTestMode` key is migrated to
+ * `onScreenTools` and written back right away: the tab's persist writes only keep the
+ * persistKeys already in LS, so any later write would otherwise drop the migrated value.
+ */
+const loadDebugToolsStateFromLS = () => {
+  let saved = lsGetItem(LS_KEY, {}) as LegacyDebugToolsLS | null;
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return;
+  if (saved.prodTestMode && !saved.onScreenTools) {
+    const { prodTestMode, ...rest } = saved;
+    saved = {
+      ...rest,
+      onScreenTools: {
+        ...debugToolsState.onScreenTools,
+        showOnScreenToolsInProdTest: prodTestMode.showOnScreenToolsInProdTest !== false,
+      },
+    };
+    lsSetItem(LS_KEY, saved);
+  }
+  debugToolsState = { ...debugToolsState, ...saved };
 };
 
 const getSceneStarterDropDownOptions = () => {
@@ -330,15 +376,28 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
       ],
     },
 
-    // Production test mode
+    // On-screen tools
     {
       type: 'folder',
-      id: 'prodTest',
-      title: 'Production test mode',
+      id: 'onScreenTools',
+      title: 'On-screen tools',
       expanded: false,
       content: [
         {
-          key: 'prodTestMode.showOnScreenToolsInProdTest',
+          key: 'onScreenTools.disableOnScreenTools',
+          label: 'Disable on-screen tools [§]',
+          onChange: _applyOnScreenToolsDisabled,
+        },
+        {
+          key: 'onScreenTools.disabledOnScreenToolsOpacity',
+          label: 'Disabled on-screen tools opacity',
+          min: 0,
+          max: 1,
+          step: 0.01,
+          onChange: _applyOnScreenToolsDisabled,
+        },
+        {
+          key: 'onScreenTools.showOnScreenToolsInProdTest',
           label: 'Show top on screen tools in prod test mode',
         },
       ],

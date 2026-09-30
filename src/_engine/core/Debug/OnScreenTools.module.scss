@@ -8,6 +8,7 @@
   padding: 0.4rem;
   background-color: variables.$debugOnScreenAlphaBack;
   border-radius: 0.2rem;
+  transition: opacity 0.2s ease-in-out;
 
   :global(.uiIcon) {
     display: block;
@@ -25,7 +26,9 @@
   bottom: 1.6rem;
   left: 50%;
   transform: translateX(-50%);
-  transition: transform 0.2s ease-in-out;
+  transition:
+    transform 0.2s ease-in-out,
+    opacity 0.2s ease-in-out;
 
   @media screen and (max-width: variables.$breakpointMedium) {
     left: 100%;
@@ -55,7 +58,9 @@
   top: 1.6rem;
   left: 50%;
   transform: translateX(-50%);
-  transition: transform 0.2s ease-in-out;
+  transition:
+    transform 0.2s ease-in-out,
+    opacity 0.2s ease-in-out;
 
   :global(.debugDrawerOpen) & {
     transform: translateX(calc(-50% - (variables.$drawerWidth / 2)));
@@ -70,6 +75,30 @@
 :global(.undoRedoTools) {
   top: 1.6rem;
   left: 1.6rem;
+}
+
+// Set on <body> by the Debug Tools "On-screen tools" folder / § shortcut (debug env only). Makes
+// the on-screen tools, the drawer handle, the stats panel and the axes gizmo click-through, so the
+// whole canvas is clickable. pointer-events goes on every descendant too, because a child with its
+// own value (buttons, <select>, stats-gl's canvases) would still catch clicks. The axes gizmo is
+// not dimmed: it renders into the canvas, its slot is an empty box.
+// New on-screen elements add their selector here.
+:global(body.aekOnScreenToolsDisabled) {
+  :global(.onScreenToolGroup),
+  :global(.debugDrawerToggler),
+  :global(.statsContainer) {
+    opacity: var(--aek-disabled-on-screen-tools-opacity, 0.5);
+  }
+
+  :global(.onScreenToolGroup),
+  :global(.debugDrawerToggler),
+  :global(.statsContainer),
+  :global(.aekAxesGizmoSlot) {
+    &,
+    & * {
+      pointer-events: none !important;
+    }
+  }
 }
 
 .onScreenTool {

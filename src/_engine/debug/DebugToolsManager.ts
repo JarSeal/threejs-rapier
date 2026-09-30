@@ -25,9 +25,13 @@ export type DebugToolsState = {
   undoRedo: {
     undoRedoFolderExpanded: boolean;
   };
-  prodTestMode: {
-    prodTestFolderExpanded: boolean;
+  /** Replaces the old `prodTestMode` key (migrated on LS load, see _dbg__DebugTools.ts). */
+  onScreenTools: {
     showOnScreenToolsInProdTest: boolean;
+    /** Makes the on-screen tools, the drawer handle, the stats panel and the axes gizmo
+     * click-through and dims them (debug env only). */
+    disableOnScreenTools: boolean;
+    disabledOnScreenToolsOpacity: number;
   };
   debugCameraFolderExpanded: boolean;
   /** Top-level (not in helpers): hydration replaces a persisted key whole, so a new field
@@ -73,9 +77,10 @@ const defaultDebugToolsState: DebugToolsState = {
   undoRedo: {
     undoRedoFolderExpanded: false,
   },
-  prodTestMode: {
-    prodTestFolderExpanded: false,
+  onScreenTools: {
     showOnScreenToolsInProdTest: true,
+    disableOnScreenTools: false,
+    disabledOnScreenToolsOpacity: 0.5,
   },
   debugCameraFolderExpanded: false,
   axesGizmo: {
@@ -106,6 +111,12 @@ export const registerDebugToolsModule = async () => {
   // scene-to-load decision), even though the debug tools UI panel itself
   // (initDebugTools()/_initDebugTools) stays IS_DEBUG_ENV-only and never renders here.
   debugGUI = await loadDebugModuleAsync(() => import('../core/Debug/_dbg__DebugTools'), true);
+  // Applied here (before the first scene load), not when the tab is built, so the on-screen
+  // tools never start out fully visible and clickable
+  if (IS_DEBUG_ENV) {
+    getDebugToolsState(true);
+    useDebug(debugGUI)?._applyOnScreenToolsDisabled();
+  }
 };
 
 /**
