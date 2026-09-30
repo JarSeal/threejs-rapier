@@ -1,7 +1,7 @@
 Status: draft | not-implemented
 Category: Editor-Creator View
 Blocks: p084_material-editor-stage-and-selector.md, p085_material-editor-params-and-persistence.md
-Related: \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (the axes gizmo must follow the editor camera), \_DONE_p062_add-undo-and-redo-ui.md and \_DONE_p060_debugger-undo-engine-core.md (undo buckets per view), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (the editor drawers reuse its declarative tabs), p110_skybox-refactor-and-layered-sky-system.md (later editors: skybox), p130_add-on-screen-tools-disabler-settings.md (the view tools group joins its disabled set)
+Related: \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (the axes gizmo must follow the editor camera), \_DONE_p062_add-undo-and-redo-ui.md and \_DONE_p060_debugger-undo-engine-core.md (undo buckets per view), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (the editor drawers reuse its declarative tabs), p110_skybox-refactor-and-layered-sky-system.md (later editors: skybox), \_DONE_p130_add-on-screen-tools-disabler-settings.md (the view tools group joins its disabled set)
 
 # Editor-Creator View — Epic and View Switching Core
 

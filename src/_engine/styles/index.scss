@@ -51,6 +51,7 @@ body {
   border-radius: 0 0.4rem 0 0;
   -webkit-filter: grayscale(100%);
   filter: brightness(200%) contrast(100%) grayscale(100%);
+  transition: opacity 0.2s ease-in-out;
 
   > div {
     display: flex;

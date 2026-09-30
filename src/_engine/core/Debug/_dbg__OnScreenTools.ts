@@ -46,9 +46,9 @@ const playTools = () => {
   if (playToolsCMP) playToolsCMP.remove();
   playToolsCMP = null;
 
-  // Toggled in the Debug Tools Controls tab ("Production test mode" folder); read from LS
+  // Toggled in the Debug Tools Controls tab ("On-screen tools" folder); read from LS
   // here because that tab (and its state loading) never runs in prodTest mode itself.
-  if (IS_PROD_TEST_MODE && !getDebugToolsState(true).prodTestMode.showOnScreenToolsInProdTest) {
+  if (IS_PROD_TEST_MODE && !getDebugToolsState(true).onScreenTools.showOnScreenToolsInProdTest) {
     return;
   }
 
