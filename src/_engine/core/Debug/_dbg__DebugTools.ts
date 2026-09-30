@@ -3,6 +3,7 @@ import { getRenderer, getRendererOptions } from '../../core/Renderer';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import {
   createDebuggerTab,
+  DEBUG_TOASTER_ID,
   DEBUGGER_SCENE_LOADER_ID,
   persistDebuggerTabValue,
   updateDebuggerTab,
@@ -141,6 +142,7 @@ const createDebugToolsDebugGUI = () => {
 
 const ON_SCREEN_TOOLS_DISABLED_BODY_CLASS = 'aekOnScreenToolsDisabled';
 const ON_SCREEN_TOOLS_OPACITY_CSS_VAR = '--aek-disabled-on-screen-tools-opacity';
+const ON_SCREEN_TOOLS_TOAST_SHOWING_TIME_MS = 2000;
 
 /**
  * Applies the "Disable on-screen tools" option: a body class (see OnScreenTools.module.scss) and
@@ -154,6 +156,36 @@ export const _applyOnScreenToolsDisabled = () => {
     ON_SCREEN_TOOLS_OPACITY_CSS_VAR,
     String(disabledOnScreenToolsOpacity)
   );
+};
+
+/**
+ * The on-screen tools shortcut (§): flips the "Disable on-screen tools" option and shows a toast.
+ * @param keyHint (string) optional readable chord that was pressed, for the toast
+ */
+export const _toggleOnScreenToolsDisabled = (keyHint?: string) => {
+  const onScreenTools = debugToolsState.onScreenTools;
+  onScreenTools.disableOnScreenTools = !onScreenTools.disableOnScreenTools;
+  _applyOnScreenToolsDisabled();
+  if (firstDebugToolsStateLoaded) {
+    persistDebuggerTabValue(TAB_ID, 'onScreenTools');
+    updateDebuggerTab(TAB_ID);
+  } else {
+    // The tab isn't registered yet (the key bindings are, during the first scene load). Written
+    // directly, or the tab's hydration would restore the old value over this one.
+    lsSetItem(LS_KEY, { ...(lsGetItem(LS_KEY, {}) as object), onScreenTools });
+  }
+  try {
+    addToast({
+      toasterId: DEBUG_TOASTER_ID,
+      title: 'On-screen tools',
+      message: onScreenTools.disableOnScreenTools
+        ? `Disabled (click-through).${keyHint ? ` Press ${keyHint} to enable.` : ''}`
+        : 'Enabled',
+      showingTime: ON_SCREEN_TOOLS_TOAST_SHOWING_TIME_MS,
+    });
+  } catch {
+    // No debug toaster yet (it's created at the end of InitEngine) — the toggle itself still ran
+  }
 };
 
 /** The axes gizmo shortcut (F8): flips the "Show axes gizmo" option. */

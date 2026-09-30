@@ -144,6 +144,15 @@ export const toggleAxesGizmo = () => {
 };
 
 /**
+ * Toggles the "Disable on-screen tools" option (the § shortcut): applied, persisted, the Debug
+ * Tools tab is refreshed if open, and a toast is shown. Debug env only.
+ * @param keyHint (string) optional readable chord that was pressed, for the toast
+ */
+export const toggleOnScreenToolsDisabled = (keyHint?: string) => {
+  useDebug(debugGUI)?._toggleOnScreenToolsDisabled(keyHint);
+};
+
+/**
  * Handles debug camera switching
  */
 export const handleDebugCameraSwitch = () => {
