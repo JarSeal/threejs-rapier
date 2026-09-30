@@ -1,12 +1,14 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Physics, Debugger, Bug fix
-Blocked by: p140_refactor-ray-casting.md, p141_ray-debug-line-helpers.md (Phase 1 of this plan is not blocked and can land first)
-Blocks: p143_ray-cast-tester-windows.md
+Blocks: \_DONE_p143_ray-cast-tester-windows.md
 Related: \_DONE_p027_physics-api-stats-tracker.md (same opt-in stats philosophy), p068_character-debug-gizmos.md (lists a "character floor ray gizmo"), \_DONE_p100_small-bug-fixes-and-tweaks.md (was considered as a home for Phase 1; it shipped without it)
 
 # Physics Ray Debugging and Stats — Plan
 
-Part of the ray casting plan set (index: `p140_refactor-ray-casting.md` §1.1). Physics queries
+> Implemented in engine 2.2.0. §8 lists where the code differs from the design below. The file
+> references in §2 are from before the implementation.
+
+Part of the ray casting plan set (index: `_DONE_p140_refactor-ray-casting.md` §1.1). Physics queries
 (`castRay`, `castRayAndGetNormal`, `intersectionsWithRay`, `castShape`) have no statistics and no
 visual helpers, and two of them are broken in `WORKER_THREAD` mode. This plan:
 - fixes those bugs;
@@ -262,3 +264,54 @@ export const resetPhysicsRayStats = () => { … };
 - p220 profiler reads `getPhysicsRayStats()`.
 - A possible `WORLD_QUERY_BATCH` protocol message if the multi-ray tester or gameplay needs many
   queries per frame.
+
+---
+
+## 8. Implementation notes (where the code differs from the design)
+
+- **The code had moved before implementation, cosmetically.** The worker files are in
+  `src/_engine/workers/`, not `core/workers/`, `RayDebugOpts` is in `core/RayDebugTypes.ts`, and
+  the §2 line numbers had shifted. No design change came from it.
+- **`sendMessage` typing is tightened in the World switch only.** `physicsSwitchWorld.ts` types its
+  `sendMessage` against `PhysicsDownProtocol`, and every reply uses its case's narrowed `data.type`.
+  With it, `tsc` reports the `hits`/`intersections` mismatch, and nothing else. The Rigid, Coll and
+  Joint switches still take `any`: typing them the same way gives 55 errors, because they reply
+  with a widened `const type = data.type`.
+- **The observer gets `dir`, `maxToi` and every toi as the query was issued, never normalized.**
+  Rapier's toi is in units of `|dir|`, and a shape cast's `shapeVel` is rarely unit length, so the
+  planned "normalized `shapeVel` + raw `maxToi`" would draw wrong lengths. The helpers get the raw
+  `dir` too, with lengths in toi units: `origin + dir * toi` is the exact hit point for any `|dir|`,
+  with no conversion or per-token state. Only the renderer's `maxHelperLength` cap on misses is then
+  in `|dir|` units.
+- **Worker-mode `intersectionsWithRay` now stops when the callback returns `false`.** The worker
+  collects every hit and the proxy used to deliver all of them. Found while adding the observer; not
+  in §2.2.
+- **The implementations declare a `_filterPredicate` placeholder**, so the trailing `debug`
+  parameter lands in the right position (they omitted `filterPredicate` before).
+- **The engine-backend observer is module state in `EngineRapier.ts`** behind a `setQueryObserver`
+  export, which `EngineAPIType` requires. A future backend has to provide it.
+- **`pendingQueries` is a field of `getPhysicsRayStats()`** and never goes below 0: a reply to a
+  query issued before a reset has nothing to subtract from. A worker query that errors is only
+  logged and never resolved, so it stays counted. Surfacing that is the point of the counter.
+- **Physics helpers are switched by `setPhysicsRayHelpersEnabled(enabled)`**, a new public (debug
+  only) function the tab calls with the physics "Show helpers" setting. `PhysicsAPI.ts` loads its
+  own reference to `_dbg__RayHelpers.ts`, which is the same module instance `Raycast.ts` uses.
+- **The stats frame ends in a LATE_MAIN system in `PhysicsManager.ts`** (order -1000, like
+  `rayCastFrameEndSystem`), not inside Raycast's system, so `Raycast.ts` doesn't import physics.
+- **One stats window config.** `RAY_STATS_WINDOWS` (`core/RayDebugTypes.ts`) is shared by the
+  Three.js ray stats and both physics counters.
+- **Tab layout.** The physics folder and its stats toggle are in their own pane, below the Three.js
+  stats, with the physics stats blocks (rays, shape casts, and "Pending queries" in
+  `WORKER_THREAD` mode only) after it. The Three.js stats heading became "Three.js ray stats:". The
+  "No physics world" check runs when the tab mounts.
+- **The character's debug objects are created once per character**, with their ids
+  (`char_floor_<entityId>`, `char_wall_<entityId>`) set after the entity exists, so no query
+  allocates one.
+- **Added after review: a "Respect depth" setting per kind** (`RayHelperKindSettings.depthTest`, off
+  by default), in both the Three.js and the physics folders. `RayDebugOpts.depthTest` now defaults
+  to it instead of `false`, so a per-ray value still wins.
+- **Verified in both `workerTarget` modes** (gym and physicsTest scenes): the fixed queries return
+  the same results, the summed per-frame stats equal the query calls (no double count), the pending
+  count returns to 0, and helpers with a non-unit `dir` end on the physics hit (with the hit cross in
+  worker mode too). The DevTools profile of the disabled path was not recorded: it is one null check
+  per query by construction.

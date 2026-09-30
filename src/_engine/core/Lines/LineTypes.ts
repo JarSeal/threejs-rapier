@@ -62,6 +62,15 @@ export type LineColorStyle =
       opacity?: number;
     };
 
+/** A screen-space dash pattern, in CSS pixels. It restarts at each segment's start (a
+ * polyline's segments are dashed one by one, not as one continuous pattern). */
+export type LineDash = {
+  /** Length of a dash, CSS pixels. */
+  dashPx: number;
+  /** Length of a gap, CSS pixels. 0 draws solid. */
+  gapPx: number;
+};
+
 export type LineProps = {
   /** Registry id. Auto-generated when omitted; must be unique among live lines. */
   id?: string;
@@ -84,6 +93,11 @@ export type LineProps = {
   width?: number;
   /** Default `'AUTO'`. */
   backend?: LineBackendChoice;
+  /** Makes the line dashable (and sets its initial pattern; `setDash` changes it later).
+   * Fixed at creation: only a dashable line pays for the dash shader. Dashes are drawn by
+   * the FAT backend only — THIN, and a FAT line whose backend is still loading, draw solid —
+   * so pin `backend: 'FAT'` alongside it. */
+  dash?: LineDash;
   /** Default `{ to: 'ROOT_SCENE' }`. */
   attach?: LineAttachment;
   /** Survives scene switches (which dispose every other standalone line), like a

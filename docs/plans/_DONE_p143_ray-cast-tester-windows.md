@@ -1,11 +1,14 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Debugger
-Blocked by: p140_refactor-ray-casting.md, p141_ray-debug-line-helpers.md, p142_physics-ray-debugging-and-stats.md (the Three.js tester only needs p140 + p141)
-Related: \_DONE_p105_refactor-debugger-drawer-tab-creation.md (edit windows are out of its scope), p150_current-entity-data-source-info-on-edit-windows.md
+Related: \_DONE_p141_ray-debug-line-helpers.md and \_DONE_p142_physics-ray-debugging-and-stats.md (both implemented: the helpers, the fixed physics queries and the `'PHYSICS'` helper kind this plan builds on), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (edit windows are out of its scope), p150_current-entity-data-source-info-on-edit-windows.md
 
 # Ray Cast Tester Windows — Plan
 
-Part of the ray casting plan set (index: `p140_refactor-ray-casting.md` §1.1). This plan adds two
+> Implemented in engine 2.2.0 (all four phases). §8 lists where the code differs from the design
+> below. The file references in §2 are from before the implementation; the two §2 facts that were
+> wrong are corrected in place.
+
+Part of the ray casting plan set (index: `_DONE_p140_refactor-ray-casting.md` §1.1). This plan adds two
 buttons to the Ray Cast Controls tab. They open two draggable debug windows: a **Three.js ray
 tester** and a **physics ray tester**. Each lets you configure a ray, cast it into the current scene
 with a **Fire** button, see it with a debug helper (p141), and read the hits. The parameters are
@@ -43,19 +46,23 @@ one ray is edited and fired for now.
   - The first scene is entered before the debug GUIs exist, so state must also be applied at GUI
     creation (`_dbg__PostFX.ts:568-575`).
   - `confirmClearScope({ onClearAllScenes, onClearThisScene })` is in `_dbg__ClearLSButtons.ts:60`.
-- **Raycast targets:**
-  - `getCurrentScene()` (`Scene.ts:307`) is the current scene's group. The root scene
-    (`getRootScene()`) also holds debug visuals (symbols, light helpers, collider wireframes, lines),
-    so it must **not** be the target.
-  - Line objects already opt out of raycasting.
+- **Raycast targets** (corrected after implementation):
+  - `getCurrentScene()` (`Scene.ts:307`) is the current scene's group, but it holds almost nothing:
+    `MeshManager`, `GroupManager` and `createPhysicsEntity` add scene entities to the **root**
+    scene. The root scene also holds debug visuals that are not entities (light and camera symbols,
+    light/camera helpers, grids), so neither group alone is the right target. The testers use the
+    root scene's children that carry `userData.entityId`, plus the current scene group (§8).
+  - Line objects already opt out of raycasting (both line backends no-op `raycast`).
 - **Hit → entity:**
   - `userData.entityId` is set on meshes, groups, lights, cameras and lines (`MeshManager.ts:161`,
     `GroupManager.ts:66`, …).
   - Children of imported models are not tagged, so walk up `.parent` until an id is found. No helper
     exists for this.
   - App id: `getStableAppId(entityId)` / the `APP_ID` component (`ECS.ts`).
-- **Physics hit → entity:** `collider.parentId` → rigid body → its entity mapping (as
-  `dynamicCharacter.ts:707` does).
+- **Physics hit → entity** (corrected after implementation): `collider.parentId` is the rigid
+  body id, but there is no body → entity mapping (`dynamicCharacter.ts` reads the body's user data,
+  not an entity). Every physics entity holds its `COLLIDER` array, so the tester maps collider id →
+  entity from those components (§8).
 - **Camera:** `getActiveCamera()` (used by `Input/InputPicking.ts`) respects the debug camera.
 - **Undo:** tester params are a dev tool, so no undo recording (p061 §2.2 categories).
 
@@ -244,3 +251,84 @@ type RayTesterState<P> = { version: 1; rays: P[]; activeIndex: number };
 - Multi-ray fire patterns (fan, grid, cone) using `rays[]`.
 - A batched physics query message (p142 §7) if multi-ray physics fire gets heavy.
 - A shape-cast tester (`castShape`) with a shape outline helper.
+- `countInStats` on `PickOpts` (`Input/InputPicking.ts`), so a tester pick click isn't counted as a
+  Three.js ray (§8).
+
+---
+
+## 8. Implementation notes (where the code differs from the design)
+
+- **The code had moved before implementation.** Besides the two §2 facts corrected in place, the
+  §2 line numbers had shifted (eg. `openDraggableWindow` `:174`, `updateDraggableWindow` `:637`,
+  `registerDraggableWindowContentFn` `:1179`, `QueryFilterFlags` `PhysicsAPITypes.ts:918`), and
+  `createMouseBinding`'s `enabledInDebugCam` takes `'ENABLED_IN_DEBUG'`, not `true`.
+- **Everything is in `core/Debug/_dbg__RayTester.ts`**, loaded by `_dbg__Raycast.ts` (so its
+  content functions are registered before the saved windows are restored). The two windows share
+  the aim bindings, the Helper folder, the helper notice, the results renderer and the persistence.
+- **The panes use the tab pane builder.** `_buildDebuggerPane` takes a `DebuggerPaneOwner` (the
+  `id`, `state`, `lsKey`, `persistKeys` and `uiLsKey` of a tab def) instead of a whole tab def, so a
+  window can build a declarative pane (hidden/disabled states per aim mode, buttons, refresh).
+- **Helpers are off by default, which the design didn't cover.** A tester ray is only drawn while
+  its kind's "Show helpers" is on (`_drawRay` returns early otherwise, and for physics the query
+  observer isn't installed). Each window shows a notice with a "Show helpers" button while they
+  are off. It calls `_setRayHelpersShown(kind, true)` in `_dbg__Raycast.ts`, which sets, persists
+  and applies the tab's setting, so the tab stays the only owner of it.
+- **Stored shape.**
+  - The aim is `{ mode, dir, point }` rather than a union, so switching modes keeps each mode's
+    values.
+  - The Three.js target is `{ type, appId }`.
+  - The physics filter flags are one boolean per `QueryFilterFlags` bit (`filterFlags.excludeFixed`
+    …), OR-ed at fire time.
+  - Filter groups are `useFilterGroups` + `filterGroups` (default `0xffffffff`), since a Tweakpane
+    binding can't hold `null`.
+  - `excludeAppId` is `''` for none.
+  - The helper params add `depthTest: 'KIND' | 'ON' | 'OFF'` ("Respect depth"; KIND follows the
+    tab's setting, added after review).
+- **Target point mode** limits `far` (Three.js) or `maxToi` (physics) to the distance to the point,
+  so a point behind a mesh only yields the near hit. Three.js still casts it with
+  `castRayFromPoints`.
+- **The physics stats skip needed the query token.** `onResult` can't see the ray id, so skipping
+  only in `onQuery` would make `pendingQueries` drift. The observer's token now carries whether the
+  query was counted in its lowest bit (`helperToken * 2 + counted`), and only counted queries lower
+  the pending count. That also fixes a drift when stats were switched on while queries were in
+  flight. The prefix is `RAY_TESTER_ID_PREFIX` in `RayDebugTypes.ts`.
+- **Hit → entity.** Three.js hits walk `userData.entityId` up the parents
+  (`getEntityIdForObject3D`, exported from `_dbg__RayTester.ts`). Physics hits map collider id →
+  entity from the `COLLIDER` components, built per fire. Both show the raw `APP_ID` marked
+  "(generated)" when it isn't fixed (`getStableAppId` returns nothing then).
+- **Exclude by app id** passes the entity's rigid body, or its collider when it has exactly one
+  and no body; otherwise the result shows why it can't be excluded.
+- **Physics fire** runs the queries with `Promise.all`, disables Fire and shows "Waiting for the
+  physics results…" while they are in flight. A per-fire serial drops results that arrive after a
+  scene change.
+- **Persistence.** The state is loaded lazily per scene (`getTesterState` reloads it when the
+  current scene differs from the one it was loaded for), so the first scene needs no special
+  case. The saved rays are merged over the defaults (fields of a matching type are kept,
+  `activeIndex` is clamped). Every committed binding change and every button edit writes it. The
+  scene enter hook clears the results, cancels a pick and rebuilds the open windows.
+- **Clear buttons.** Draggable windows have no header buttons, so each window has a top row with
+  "Saved per scene (sceneId)" and its clear button. The Ray cast tab keeps its own clear button and
+  gets a second one for both testers. Both ask for the scope only when more than one scene has
+  data (the PostFX pattern). `createClearLSButton` in `_dbg__ClearLSButtons.ts` is exported for
+  them.
+- **Picking.**
+  - Three buttons: "Pick origin", "Pick target point" (target point mode), and "Aim at a picked
+    point" (direction mode, sets the direction toward the clicked point).
+  - It picks on the same targets as the Three.js tester, for the physics tester too (the rendered
+    scene, not the colliders).
+  - While armed, the window shows what it waits for and the canvas cursor is a crosshair.
+  - Esc is taken in the capture phase while armed.
+  - Closing the window, rebuilding its content or entering a scene cancels the pick.
+  - A pick click is counted as one Three.js ray in the statistics (`PickOpts` has no
+    `countInStats`, see §7) and also reaches the app's own click bindings.
+- **Verified in headless Chrome** against the ECS test, physicsTest and gym scenes:
+  - Three.js tester: direction, camera forward and target point modes, and the entity target
+    errors.
+  - Physics tester, identical in both `workerTarget` modes: `castRayAndGetNormal` toi 4.75 with
+    normal (0, 1, 0) on the physicsTest ground; excluding the ground gives no hit;
+    `intersectionsWithRay` lists the sensor and the ground; "Exclude sensors" leaves the ground.
+  - Stats: tester rays left the stats and the pending count at 0, while the gym's own queries were
+    still counted and the pending count returned to 0.
+  - Persistence: per-scene save and restore, reload, both clear scopes, and a malformed saved entry.
+  - Picking: arm, cancel by second press and by Esc, a drag doesn't pick, and a picked target point
+    is hit exactly.

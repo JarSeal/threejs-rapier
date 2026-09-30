@@ -15,7 +15,7 @@ import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } f
 import { initDebugTools } from '../debug/DebugToolsManager';
 import { flushPhysicsEvents, getPhysicsState, stepPhysics } from './PhysicsAPI';
 import { pollHeldKeyBindings } from './Input/KeyboardInput';
-import { countRayCastFrames, initRayCasting } from './Raycast';
+import { initRayCasting } from './Raycast';
 import { getAllECSWorlds } from './ECS';
 import { getActiveCamera } from './CameraManager';
 import { existsOrThrow } from '../utils/assert';
@@ -222,9 +222,6 @@ const mainLoopForDebug = async () => {
     // app loopers
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
-
-    // Count ray cast frames
-    countRayCastFrames();
   } else {
     // Only master loop is playing (app loop is paused)
     loopState.isAppPlaying = false;

@@ -1,5 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
+  PhysicsDownProtocol,
   PhysicsProtocolType,
   PhysicsUpProtocol,
   RayColliderIntersectionAPI,
@@ -14,7 +14,10 @@ import { getCollOrRigidId } from '../../core/Physics/PhysicsUtils';
 export const physicsSwitchWorld = async (
   data: PhysicsUpProtocol,
   physicsWorldAPI: WorldAPI,
-  sendMessage: (message: any, data: PhysicsUpProtocol) => void
+  // Typed against the down protocol (unlike the other switches' `any`), so a reply whose payload
+  // doesn't match its type's response shape fails tsc. Every reply must use the narrowed
+  // `data.type` of its case, not the widened `type` below.
+  sendMessage: (message: PhysicsDownProtocol, data: PhysicsUpProtocol) => void
 ) => {
   const type = data.type;
 
@@ -23,7 +26,7 @@ export const physicsSwitchWorld = async (
     case PhysicsProtocolType.WORLD_GET_GRAVITY:
       // WORLD_GET_GRAVITY
       const gravity = physicsWorldAPI.getGravitySync();
-      return sendMessage({ type, gravity }, data);
+      return sendMessage({ type: data.type, gravity }, data);
     case PhysicsProtocolType.WORLD_SET_GRAVITY:
       // WORLD_SET_GRAVITY
       return physicsWorldAPI.setGravity(data.gravity);
@@ -36,35 +39,35 @@ export const physicsSwitchWorld = async (
     case PhysicsProtocolType.WORLD_GET_TIMESTEP:
       // WORLD_GET_TIMESTEP
       const dt = physicsWorldAPI.getTimestepSync();
-      return sendMessage({ type, dt }, data);
+      return sendMessage({ type: data.type, dt }, data);
     case PhysicsProtocolType.WORLD_SET_TIMESTEP:
       // WORLD_SET_TIMESTEP
       return physicsWorldAPI.setTimestep(data.dt);
     case PhysicsProtocolType.WORLD_GET_LENGTH_UNIT:
       // WORLD_GET_LENGTH_UNIT
       const unitsPerMeter = physicsWorldAPI.getLengthUnitSync();
-      return sendMessage({ type, unitsPerMeter }, data);
+      return sendMessage({ type: data.type, unitsPerMeter }, data);
     case PhysicsProtocolType.WORLD_SET_LENGTH_UNIT:
       // WORLD_SET_LENGTH_UNIT
       return physicsWorldAPI.setLengthUnit(data.unitsPerMeter);
     case PhysicsProtocolType.WORLD_GET_SOLVER_ITERS:
       // WORLD_GET_SOLVER_ITERS
       const solverIterations = physicsWorldAPI.getNumSolverIterationsSync();
-      return sendMessage({ type, solverIterations }, data);
+      return sendMessage({ type: data.type, solverIterations }, data);
     case PhysicsProtocolType.WORLD_SET_SOLVER_ITERS:
       // WORLD_SET_SOLVER_ITERS
       return physicsWorldAPI.setNumSolverIterations(data.niter);
     case PhysicsProtocolType.WORLD_GET_PGS_ITERS:
       // WORLD_GET_PGS_ITERS
       const internalPgsIterations = physicsWorldAPI.getNumInternalPgsIterationsSync();
-      return sendMessage({ type, internalPgsIterations }, data);
+      return sendMessage({ type: data.type, internalPgsIterations }, data);
     case PhysicsProtocolType.WORLD_SET_PGS_ITERS:
       // WORLD_SET_PGS_ITERS
       return physicsWorldAPI.setNumInternalPgsIterations(data.niter);
     case PhysicsProtocolType.WORLD_GET_CCD_SUBSTEPS:
       // WORLD_GET_CCD_SUBSTEPS
       const substeps = physicsWorldAPI.getMaxCcdSubstepsSync();
-      return sendMessage({ type, substeps }, data);
+      return sendMessage({ type: data.type, substeps }, data);
     case PhysicsProtocolType.WORLD_SET_CCD_SUBSTEPS:
       // WORLD_SET_CCD_SUBSTEPS
       return physicsWorldAPI.setMaxCcdSubstepsSync(data.substeps);
@@ -86,7 +89,7 @@ export const physicsSwitchWorld = async (
           hitTransfer = { ...hit, collider: colliderId };
         }
       }
-      return sendMessage({ type, hit: hitTransfer }, data);
+      return sendMessage({ type: data.type, hit: hitTransfer }, data);
     case PhysicsProtocolType.WORLD_CAST_SHAPE: {
       // WORLD_CAST_SHAPE
       let shapeHitTransfer: WorldCastShapeResponse['hit'] = null;
@@ -109,7 +112,7 @@ export const physicsSwitchWorld = async (
           shapeHitTransfer = { ...shapeHit, collider: colliderId };
         }
       }
-      return sendMessage({ type, hit: shapeHitTransfer }, data);
+      return sendMessage({ type: data.type, hit: shapeHitTransfer }, data);
     }
     case PhysicsProtocolType.WORLD_CAST_RAY_AND_GET_NORMAL: {
       // WORLD_CAST_RAY_AND_GET_NORMAL
@@ -129,11 +132,11 @@ export const physicsSwitchWorld = async (
           intersectionTransfer = { ...intersection, collider: colliderId };
         }
       }
-      return sendMessage({ type, intersection: intersectionTransfer }, data);
+      return sendMessage({ type: data.type, intersection: intersectionTransfer }, data);
     }
     case PhysicsProtocolType.WORLD_INTERSECTIONS_WITH_RAY: {
       // WORLD_INTERSECTIONS_WITH_RAY
-      const hits: WorldIntersectionsWithRayResponse['intersections'] = [];
+      const intersections: WorldIntersectionsWithRayResponse['intersections'] = [];
       physicsWorldAPI.intersectionsWithRaySync(
         data.ray,
         data.maxToi,
@@ -141,8 +144,7 @@ export const physicsSwitchWorld = async (
         (intersect: RayColliderIntersectionAPI) => {
           const colliderId = getCollOrRigidId(intersect.collider);
           if (colliderId !== undefined) {
-            const hit = { ...intersect, collider: colliderId };
-            hits.push(hit);
+            intersections.push({ ...intersect, collider: colliderId });
           }
           return true;
         },
@@ -151,7 +153,7 @@ export const physicsSwitchWorld = async (
         data.filterExcludeCollider,
         data.filterExcludeRigidBody
       );
-      return sendMessage({ type, hits }, data);
+      return sendMessage({ type: data.type, intersections }, data);
     }
     case PhysicsProtocolType.WORLD_CONTACT_PAIRS_WITH: {
       // WORLD_CONTACT_PAIRS_WITH
@@ -160,7 +162,7 @@ export const physicsSwitchWorld = async (
         const coll2Id = getCollOrRigidId(collider2);
         if (coll2Id) colliderIds.push(coll2Id);
       });
-      return sendMessage({ type, colliderIds }, data);
+      return sendMessage({ type: data.type, colliderIds }, data);
     }
     case PhysicsProtocolType.WORLD_INTERSECTION_PAIRS_WITH: {
       // WORLD_INTERSECTION_PAIRS_WITH
@@ -169,7 +171,7 @@ export const physicsSwitchWorld = async (
         const coll2Id = getCollOrRigidId(collider2);
         if (coll2Id) colliderIds.push(coll2Id);
       });
-      return sendMessage({ type, colliderIds }, data);
+      return sendMessage({ type: data.type, colliderIds }, data);
     }
     case PhysicsProtocolType.WORLD_INTERSECTION_PAIR: {
       // WORLD_INTERSECTION_PAIR
@@ -177,7 +179,7 @@ export const physicsSwitchWorld = async (
         data.colliderId1,
         data.colliderId2
       );
-      return sendMessage({ type, isIntersecting }, data);
+      return sendMessage({ type: data.type, isIntersecting }, data);
     }
 
     default:

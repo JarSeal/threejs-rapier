@@ -18,6 +18,7 @@ import {
   screenDPR,
   smoothstep,
   uniform,
+  varyingProperty,
   vec2,
   vec4,
   viewport,
@@ -31,7 +32,7 @@ import { FLOATS_PER_SEGMENT } from './LineWriter';
  * never draws a line wider than 1px ships none of it.
  *
  * The material is a trimmed-down port of three's Line2NodeMaterial (screen-space width and
- * round caps only: no dashes, no world-unit widths, no raycasting), with three behavioural
+ * round caps only: no world-unit widths, no raycasting), with four behavioural
  * differences:
  * - Normal blending, so `opacity` works (Line2NodeMaterial hard-sets NoBlending).
  * - Smooth round caps whenever something can smooth them: alpha-to-coverage with MSAA,
@@ -41,6 +42,10 @@ import { FLOATS_PER_SEGMENT } from './LineWriter';
  *   quad's sides are real triangle edges, which MSAA smooths like any mesh edge.
  * - Width is a uniform (the physics wireframe thickness slider drags live) and colour is
  *   the LineObject's uniform-driven graph: changing either never rebuilds the pipeline.
+ * - Dashes are opt-in per material (a dashable line compiles the dash branch, every other
+ *   line the exact shader it had before), measured in screen pixels and restarting at each
+ *   segment's start, so they need no cumulative distance attribute. Dash and gap are
+ *   uniforms; a gap of 0 draws solid.
  */
 
 // ----------------------------------------------------------------------------
@@ -60,55 +65,76 @@ const nearPlaneCrossing = Fn(([start, end]: [THREE.Node<'vec4'>, THREE.Node<'vec
   return nearEstimate.sub(start.z).div(end.z.sub(start.z));
 });
 
+// A dashable line's distance along its segment, in CSS pixels from the (near-plane trimmed)
+// start. It has to interpolate linearly in screen space, but WebGL2's GLSL has no
+// `noperspective`, so it is passed as d·w and w (both perspective-corrected) and divided
+// per fragment, which leaves d screen-linear on both backends.
+const dashDistanceW = varyingProperty('float', 'vLineDashDistanceW');
+const dashW = varyingProperty('float', 'vLineDashW');
+
 /** Clip-space position of a template-quad vertex, expanded to `lineWidth` screen pixels
  * around its segment. Template x is the side (-1/+1); template y is 0 at the start, 1 at
- * the end, and beyond those in the cap regions. */
-const segmentQuadClipPosition = Fn(([lineWidth]: [THREE.Node<'float'>]) => {
-  const start = modelViewMatrix.mul(vec4(attribute('instanceStart', 'vec3'), 1)).toVar();
-  const end = modelViewMatrix.mul(vec4(attribute('instanceEnd', 'vec3'), 1)).toVar();
+ * the end, and beyond those in the cap regions. `dashed` adds the dash distance varyings. */
+const buildSegmentQuadClipPosition = (dashed: boolean) =>
+  Fn(([lineWidth]: [THREE.Node<'float'>]) => {
+    const start = modelViewMatrix.mul(vec4(attribute('instanceStart', 'vec3'), 1)).toVar();
+    const end = modelViewMatrix.mul(vec4(attribute('instanceEnd', 'vec3'), 1)).toVar();
 
-  // Perspective only: a segment ending behind the camera has to be trimmed at the near
-  // plane before projecting, or its NDC direction flips.
-  const isPerspective = projectionColumn2().w.equal(-1);
-  If(isPerspective, () => {
-    If(start.z.lessThan(0).and(end.z.greaterThan(0)), () => {
-      end.assign(vec4(mix(start.xyz, end.xyz, nearPlaneCrossing(start, end)), end.w));
-    }).ElseIf(end.z.lessThan(0).and(start.z.greaterThanEqual(0)), () => {
-      start.assign(vec4(mix(end.xyz, start.xyz, nearPlaneCrossing(end, start)), start.w));
+    // Perspective only: a segment ending behind the camera has to be trimmed at the near
+    // plane before projecting, or its NDC direction flips.
+    const isPerspective = projectionColumn2().w.equal(-1);
+    If(isPerspective, () => {
+      If(start.z.lessThan(0).and(end.z.greaterThan(0)), () => {
+        end.assign(vec4(mix(start.xyz, end.xyz, nearPlaneCrossing(start, end)), end.w));
+      }).ElseIf(end.z.lessThan(0).and(start.z.greaterThanEqual(0)), () => {
+        start.assign(vec4(mix(end.xyz, start.xyz, nearPlaneCrossing(end, start)), start.w));
+      });
     });
+
+    const clipStart = cameraProjectionMatrix.mul(start);
+    const clipEnd = cameraProjectionMatrix.mul(end);
+    const ndcStart = clipStart.xyz.div(clipStart.w);
+    const ndcEnd = clipEnd.xyz.div(clipEnd.w);
+
+    // Screen-space direction, aspect-corrected. A zero-length segment gets an arbitrary one
+    // (it draws as a dot) instead of normalising to NaN.
+    const aspect = viewport.z.div(viewport.w);
+    const dir = ndcEnd.xy.sub(ndcStart.xy).toVar();
+    dir.x.assign(dir.x.mul(aspect));
+    dir.assign(dir.length().greaterThan(0).select(dir.normalize(), vec2(1, 0)));
+
+    const offset = vec2(dir.y, dir.x.negate()).toVar();
+    dir.x.assign(dir.x.div(aspect));
+    offset.x.assign(offset.x.div(aspect));
+    offset.assign(positionGeometry.x.lessThan(0).select(offset.negate(), offset));
+
+    // Caps extend half a width past each end
+    If(positionGeometry.y.lessThan(0), () => {
+      offset.assign(offset.sub(dir));
+    }).ElseIf(positionGeometry.y.greaterThan(1), () => {
+      offset.assign(offset.add(dir));
+    });
+
+    // Pixels → NDC (viewport is in physical pixels, width is in CSS pixels)
+    offset.assign(offset.mul(lineWidth).div(viewport.w.div(screenDPR)));
+
+    const clip = positionGeometry.y.lessThan(0.5).select(clipStart, clipEnd).toVar();
+    clip.assign(clip.add(vec4(offset.mul(clip.w), 0, 0)));
+
+    if (dashed) {
+      // Caps clamp to the ends, so they carry the pattern's first and last value
+      const halfViewportCss = viewport.zw.div(screenDPR.mul(2));
+      const lengthPx = ndcEnd.xy.sub(ndcStart.xy).mul(halfViewportCss).length();
+      const w = clip.w;
+      dashDistanceW.assign(positionGeometry.y.clamp(0, 1).mul(lengthPx).mul(w));
+      dashW.assign(w);
+    }
+
+    return clip;
   });
 
-  const clipStart = cameraProjectionMatrix.mul(start);
-  const clipEnd = cameraProjectionMatrix.mul(end);
-  const ndcStart = clipStart.xyz.div(clipStart.w);
-  const ndcEnd = clipEnd.xyz.div(clipEnd.w);
-
-  // Screen-space direction, aspect-corrected. A zero-length segment gets an arbitrary one
-  // (it draws as a dot) instead of normalising to NaN.
-  const aspect = viewport.z.div(viewport.w);
-  const dir = ndcEnd.xy.sub(ndcStart.xy).toVar();
-  dir.x.assign(dir.x.mul(aspect));
-  dir.assign(dir.length().greaterThan(0).select(dir.normalize(), vec2(1, 0)));
-
-  const offset = vec2(dir.y, dir.x.negate()).toVar();
-  dir.x.assign(dir.x.div(aspect));
-  offset.x.assign(offset.x.div(aspect));
-  offset.assign(positionGeometry.x.lessThan(0).select(offset.negate(), offset));
-
-  // Caps extend half a width past each end
-  If(positionGeometry.y.lessThan(0), () => {
-    offset.assign(offset.sub(dir));
-  }).ElseIf(positionGeometry.y.greaterThan(1), () => {
-    offset.assign(offset.add(dir));
-  });
-
-  // Pixels → NDC (viewport is in physical pixels, width is in CSS pixels)
-  offset.assign(offset.mul(lineWidth).div(viewport.w.div(screenDPR)));
-
-  const clip = positionGeometry.y.lessThan(0.5).select(clipStart, clipEnd).toVar();
-  clip.assign(clip.add(vec4(offset.mul(clip.w), 0, 0)));
-  return clip;
-});
+const segmentQuadClipPosition = buildSegmentQuadClipPosition(false);
+const dashedSegmentQuadClipPosition = buildSegmentQuadClipPosition(true);
 
 // Template uv: x is -1/+1 across the width; y runs -1..1 along the body, and past ±1 into
 // the caps, which are round within a unit radius of the segment ends.
@@ -135,23 +161,32 @@ const hardRoundCapCoverage = Fn(() => {
   return float(1);
 });
 
-/** @internal Screen-space thick-line material. Width is a uniform; colour and opacity come
- * from the owning LineObject's colour graph (colorNode/opacityNode). */
+/** @internal Screen-space thick-line material. Width (and a dashable material's dash and
+ * gap) are uniforms; colour and opacity come from the owning LineObject's colour graph
+ * (colorNode/opacityNode). */
 export class LineNodeMaterial extends THREE.NodeMaterial {
   readonly isLineNodeMaterial = true;
   readonly lineWidth = uniform(1);
+  /** Fixed at construction: only a dashable material compiles the dash branch. */
+  readonly dashable: boolean;
+  /** CSS pixels. A gap of 0 draws solid. Only read by a dashable material. */
+  readonly dashPx = uniform(0);
+  readonly gapPx = uniform(0);
 
   static get type() {
     return 'LineNodeMaterial';
   }
 
-  constructor() {
+  constructor(dashable = false) {
     super();
+    this.dashable = dashable;
     this.alphaToCoverage = true;
   }
 
   setupPosition(builder: THREE.NodeBuilder) {
-    const clip = segmentQuadClipPosition(this.lineWidth);
+    const clip = this.dashable
+      ? dashedSegmentQuadClipPosition(this.lineWidth)
+      : segmentQuadClipPosition(this.lineWidth);
     const local = modelWorldMatrixInverse
       .mul(cameraWorldMatrix)
       .mul(cameraProjectionMatrixInverse)
@@ -166,6 +201,13 @@ export class LineNodeMaterial extends THREE.NodeMaterial {
 
   setupDiffuseColor(builder: THREE.NodeBuilder) {
     super.setupDiffuseColor(builder);
+    if (this.dashable) {
+      const distance = dashDistanceW.div(dashW);
+      this.gapPx
+        .greaterThan(0)
+        .and(distance.mod(this.dashPx.add(this.gapPx)).greaterThan(this.dashPx))
+        .discard();
+    }
     // Decided per pipeline, like three's own clipping: `transparent` rebuilds the material,
     // and the sample count is part of the render context.
     const smoothCaps = this.transparent || builder.renderer.currentSamples > 0;
@@ -206,14 +248,14 @@ class FatLineBackend implements LineBackend {
    * upload but double the GPU memory; FAT lines are mostly build-once. */
   private readonly uploadRange = { start: 0, count: 0 };
 
-  constructor(positions: Float32Array) {
+  constructor(positions: Float32Array, dashable: boolean) {
     this.geometry = new THREE.InstancedBufferGeometry();
     this.geometry.setIndex(QUAD_INDEX);
     this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(QUAD_POSITIONS, 3));
     this.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(QUAD_UVS, 2));
     this.bindPositions(positions);
     this.geometry.instanceCount = 0;
-    this.material = new LineNodeMaterial();
+    this.material = new LineNodeMaterial(dashable);
     this.object3D = new FatLineSegments(this.geometry, this.material);
   }
 
@@ -270,6 +312,11 @@ class FatLineBackend implements LineBackend {
     this.material.needsUpdate = true;
   }
 
+  setDash(dashPx: number, gapPx: number) {
+    this.material.dashPx.value = dashPx;
+    this.material.gapPx.value = gapPx;
+  }
+
   dispose() {
     this.object3D.removeFromParent();
     this.geometry.dispose();
@@ -277,6 +324,6 @@ class FatLineBackend implements LineBackend {
   }
 }
 
-/** @internal */
-export const createFatLineBackend = (positions: Float32Array): LineBackend =>
-  new FatLineBackend(positions);
+/** @internal `dashable` builds the dash variant of the material (LineProps.dash). */
+export const createFatLineBackend = (positions: Float32Array, dashable: boolean): LineBackend =>
+  new FatLineBackend(positions, dashable);

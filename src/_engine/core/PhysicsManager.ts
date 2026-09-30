@@ -14,6 +14,7 @@ import {
   createRigidBodyWithCollidersSync,
   deleteColliders,
   deleteRigidBody,
+  endPhysicsRayStatsFrame,
   flushPhysics,
   getPhysicsSimClock,
   getPhysicsSimClockEpoch,
@@ -123,6 +124,13 @@ export const registerPhysicsManager = (world: ECSWorld) => {
     'physicsInterpolationSystem',
     physicsInterpolationSystem,
     APP_RENDER_SYNC_ORDER.POSE_PRODUCERS
+  );
+  // Next to Raycast.ts's rayCastFrameEndSystem (same order), so both ray stats end the same frame
+  world.addSystem(
+    ECSSystemStage.LATE_MAIN,
+    'physicsRayStatsFrameEndSystem',
+    () => endPhysicsRayStatsFrame(performance.now()),
+    -1000
   );
 };
 

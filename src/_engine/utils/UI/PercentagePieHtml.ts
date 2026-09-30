@@ -1,60 +1,75 @@
-export const PercentagePieHtml = (
-  percentage: number = 0,
-  opts?: {
-    height?: string;
-    mainClass?: string;
-    fillClass?: string;
-    size?: number;
-    fillColor?: string;
-  }
-) => {
-  const h = opts?.height || '1rem';
-  const pieCSS = `display: inline-block; border-radius: 50%; width: ${h}; height: ${h}; position: relative; line-height: 0; font-size: ${opts?.size || '200'}%; letter-spacing: 0; overflow: hidden;`;
+import { CMP, type TCMP } from '../CMP';
 
-  const class0 = ['percentagePie'];
-  if (opts?.mainClass) class0.push(opts.mainClass);
-  const class1 = ['percentagePieFill'];
-  if (opts?.fillClass) class1.push(opts.fillClass);
+export type PercentagePieOpts = {
+  /** Width and height of the pie (CSS length), default 1rem (from the .percentagePie style) */
+  height?: string;
+  /** Extra class for the pie element */
+  mainClass?: string;
+  /** Extra class for the pie element (the pie is one element, so this is the same as mainClass) */
+  fillClass?: string;
+  /** Fill color (CSS color), default #fff (from the .percentagePie style) */
+  fillColor?: string;
+  /** @deprecated no effect since the pie is one element (use `height`) */
+  size?: number;
+};
 
-  let color = '#fff';
-  if (opts?.fillColor) color = opts.fillColor;
+/** A live pie from {@link createPercentagePie}. */
+export type PercentagePie = {
+  cmp: TCMP;
+  /**
+   * Sets the filled percentage (clamped to 0..100 and rounded). Writes only the `--p` custom
+   * property, and only when the rounded value changed.
+   */
+  set: (percentage: number) => void;
+};
 
-  let per = percentage;
-  if (per < 0) per = 0;
-  if (per > 100) per = 100;
+const clampPercentage = (percentage: number) =>
+  Math.round(Math.min(100, Math.max(0, percentage || 0)));
 
-  // H1
-  const h1Style = `display: inline-block; position: absolute; bottom: 0; left: 50%; width: 50%; height: 100%; overflow: hidden;`;
-  let h1Rot = '0deg';
-  if (per > 50) {
-    h1Rot = '180deg';
-  } else {
-    h1Rot = `${(per / 50) * 180}deg`;
-  }
-  const h1InnerStyle = `display: inline-block; transform: rotate(${h1Rot}); position: absolute; left: -200%; top: -150%; width: 400%; height: 400%; overflow: hidden;`;
-  const h1FillStyle = `display: inline-block; position: absolute; left: 0; top: 0; width: 50%; height: 100%; background: ${color}`;
+const getPieClasses = (opts?: PercentagePieOpts) => {
+  const classes = ['percentagePie'];
+  if (opts?.mainClass) classes.push(opts.mainClass);
+  if (opts?.fillClass) classes.push(opts.fillClass);
+  return classes;
+};
 
-  // H2
-  const h2Style = `display: inline-block; position: absolute; bottom: 0; left: 0; width: 50%; height: 100%; overflow: hidden;`;
-  let h2Rot = '0deg';
-  if (per > 50) {
-    h2Rot = `${((per - 50) / 50) * 180}deg`;
-  } else {
-    h2Rot = '0deg';
-  }
-  const h2InnerStyle = `display: inline-block; transform: rotate(${h2Rot}); position: absolute; left: -100%; top: -150%; width: 400%; height: 400%; overflow: hidden;`;
-  const h2FillStyle = `display: inline-block; position: absolute; right: 0; top: 0; width: 50%; height: 100%; background: ${color};`;
-  const html = `<span class="${class0}" style="${pieCSS}">
-  <span class="${class1} percentagePieFillH1" style="${h1Style}">
-    <span style="${h1InnerStyle}">
-      <span style="${h1FillStyle}"></span>
-    </span>
-  </span>
-  <span class="${class1} percentagePieFillH2" style="${h2Style}">
-    <span style="${h2InnerStyle}">
-      <span style="${h2FillStyle}"></span>
-    </span>
-  </span>
-</span>`;
-  return html;
+/**
+ * Percentage pie as an HTML string (one span, styled by `.percentagePie` in debugger.scss), for
+ * one-off markup. Use {@link createPercentagePie} for a pie that updates.
+ * @param percentage (number) filled percentage, 0..100
+ * @param opts ({@link PercentagePieOpts}) optional pie options
+ * @returns (string) the pie html
+ */
+export const PercentagePieHtml = (percentage: number = 0, opts?: PercentagePieOpts) => {
+  let style = `--p: ${clampPercentage(percentage)};`;
+  if (opts?.height) style += ` width: ${opts.height}; height: ${opts.height};`;
+  if (opts?.fillColor) style += ` --pie-fill: ${opts.fillColor};`;
+  return `<span class="${getPieClasses(opts).join(' ')}" style="${style}"></span>`;
+};
+
+/**
+ * Creates a percentage pie CMP (one span, styled by `.percentagePie` in debugger.scss) that is
+ * updated with `set`, without touching its html.
+ * @param opts ({@link PercentagePieOpts}) optional pie options
+ * @returns ({@link PercentagePie}) the pie CMP and its setter
+ */
+export const createPercentagePie = (opts?: PercentagePieOpts): PercentagePie => {
+  const cmp = CMP({
+    tag: 'span',
+    class: getPieClasses(opts),
+    ...(opts?.height ? { style: { width: opts.height, height: opts.height } } : {}),
+  });
+  const style = cmp.elem.style;
+  if (opts?.fillColor) style.setProperty('--pie-fill', opts.fillColor);
+  let current = 0;
+  style.setProperty('--p', '0');
+  return {
+    cmp,
+    set: (percentage) => {
+      const next = clampPercentage(percentage);
+      if (next === current) return;
+      current = next;
+      style.setProperty('--p', String(next));
+    },
+  };
 };
