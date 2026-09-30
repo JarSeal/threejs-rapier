@@ -104,6 +104,22 @@ const createEnvBakeTarget = (size: SkyBoxEnvSize) => {
   return target;
 };
 
+/**
+ * Sets up a new target's GPU texture now, by clearing it (a clear runs three's render target
+ * setup, as a render would). Without it, the target is first sampled (by every lit material,
+ * for the whole scene load: bakes wait for it to end) before anything renders into it, so three
+ * gives it a placeholder GPU texture, and the first bake's render target setup destroys that
+ * one in place (Textures.updateTexture, three r186) without invalidating the bind groups that
+ * sample it: a "Destroyed texture used in a submit" on every frame after that (WebGPU).
+ */
+const initEnvBakeTarget = (renderer: THREE.Renderer, target: THREE.RenderTarget) => {
+  if (!renderer.hasInitialized()) return;
+  const prevTarget = renderer.getRenderTarget();
+  renderer.setRenderTarget(target);
+  renderer.clear();
+  renderer.setRenderTarget(prevTarget);
+};
+
 const disposeBakeScene = (scene: THREE.Scene) => {
   // Background.js disposes the scene's background mesh (material and geometry) when the node
   // it was built with is disposed. Each bake scene only ever has one node.
@@ -121,6 +137,7 @@ export const setEnvBake = (size: SkyBoxEnvSize, source: THREE.Node): EnvBake => 
   if (envBake && envBake.size !== size) disposeEnvBake();
   if (!envBake) {
     const target = createEnvBakeTarget(size);
+    if (renderer) initEnvBakeTarget(renderer as THREE.Renderer, target);
     envBake = {
       size,
       target,

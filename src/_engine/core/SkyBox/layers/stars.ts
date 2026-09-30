@@ -14,7 +14,8 @@
  *
  * With the sun above fadeRange[0], the whole layer is skipped: its fade is a uniform, so the
  * branch stays in uniform control flow (fwidth is legal in it on WebGPU), and by day it costs a
- * uniform read.
+ * uniform read and one matrix multiply. Nodes other layers share (the view direction) must be
+ * built before the branch (see starsNode).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -263,8 +264,12 @@ export const starsNode = (
 ): THREE.Node =>
   Fn(() => {
     const color = vec3(behind as THREE.Node<'vec3'>).toVar();
+    // Built before the branch: TSL caches a node's value where it's first built, and `dir` is
+    // shared with every layer after this one. First built inside the branch (a COLOR base
+    // doesn't use it), it was unassigned whenever the branch was skipped, and by day the whole
+    // sky became one flat colour.
+    const s = u.rotation.mul(dir).toVar();
     If(u.fade.greaterThan(0), () => {
-      const s = u.rotation.mul(dir).toVar();
       // One pixel's angular size (from the continuous direction)
       const pixel = length(fwidth(s)).mul(0.75).toVar();
       const stars = starGrid(s, u.coarseGrid, COARSE_PROBABILITY, 1, 0, pixel, u).add(

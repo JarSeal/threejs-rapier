@@ -22,6 +22,9 @@ import {
 import { CLOUDS_DEFAULTS } from '../../SkyBox/layers/clouds';
 import { MOON_DEFAULTS } from '../../SkyBox/layers/moon';
 import { STARS_DEFAULTS } from '../../SkyBox/layers/stars';
+import { DAY_NIGHT_DEFAULTS } from '../../SkyBox/SkyTime';
+import { getMoonPhase } from '../../SkyBox/SkyBox';
+import { isDayNightEnabled } from '../../SkyBox/SkyComposite';
 import { GROUND_DEFAULTS } from '../../SkyBox/layers/ground';
 import { SHADOW_PRESETS } from '../../LightManager';
 import { getEnvSize } from '../../SkyBox/SkyComposite';
@@ -45,6 +48,7 @@ export type SkyBoxLayerKey =
   | 'stars'
   | 'starsTwinkle'
   | 'milkyWay'
+  | 'dayNight'
   | 'ambient'
   | 'clouds'
   | 'ground';
@@ -61,6 +65,7 @@ export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
   stars: 'stars',
   starsTwinkle: 'stars.twinkle',
   milkyWay: 'stars.milkyWay',
+  dayNight: 'dayNight',
   ambient: 'ambientLight',
   clouds: 'clouds',
   ground: 'ground',
@@ -74,6 +79,7 @@ const DEFAULTS_TREE = {
   suns: [{ ...SUN_DEFAULTS, light: SUN_LIGHT_DEFAULTS }],
   moons: [{ ...MOON_DEFAULTS, light: MOON_LIGHT_DEFAULTS }],
   stars: STARS_DEFAULTS,
+  dayNight: DAY_NIGHT_DEFAULTS,
   ambientLight: AMBIENT_LIGHT_DEFAULTS,
   clouds: CLOUDS_DEFAULTS,
   ground: GROUND_DEFAULTS,
@@ -201,6 +207,7 @@ export const skyBoxProxy: Record<SkyBoxLayerKey, Obj> & { select: { skyBoxId: st
   stars: {},
   starsTwinkle: {},
   milkyWay: {},
+  dayNight: {},
   ambient: {},
   clouds: {},
   ground: {},
@@ -277,6 +284,18 @@ const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
   stars: ['enabled', 'density', 'brightness', 'size', 'colorVariance', 'rotateWithSky', 'seed'],
   starsTwinkle: ['amount', 'frequency'],
   milkyWay: ['enabled', 'intensity', 'width'],
+  dayNight: [
+    'enabled',
+    'timeOfDay',
+    'cycleDurationSec',
+    'speed',
+    'playing',
+    'timeSource',
+    'latitude',
+    'dayOfYear',
+    'axialTilt',
+    'northOffset',
+  ],
   ambient: ['enabled', 'type', 'intensity'],
   clouds: ['enabled', 'coverage', 'density', 'scale', 'speed', 'elevation'],
   ground: ['enabled', 'horizonBlend', 'height', 'useAtmosphereHorizon'],
@@ -313,6 +332,23 @@ const toHex = (value: unknown) =>
 
 export const NO_SKYBOX_ID = '__noSkyBox';
 
+const toDegrees = (radians: number) => Math.round(((radians * 180) / Math.PI) * 100) / 100;
+
+/** A direction's elevation and azimuth (degrees, the sun's convention: 0 = +z, 90 = +x). */
+const setElevationAzimuth = (proxy: Obj, direction: { x: number; y: number; z: number }) => {
+  proxy.elevation = toDegrees(Math.asin(Math.min(1, Math.max(-1, direction.y))));
+  proxy.azimuth = (toDegrees(Math.atan2(direction.x, direction.z)) + 360) % 360;
+};
+
+/** With day-night on, the (disabled) sun and moon sliders show where the time puts them, and
+ * the moon's phase slider the running phase. */
+const syncDerivedPositions = (active: NonNullable<ReturnType<typeof getActiveSkyBox>>) => {
+  setElevationAzimuth(skyBoxProxy.sun, active.uniforms.sun.direction.value);
+  setElevationAzimuth(skyBoxProxy.moon, active.uniforms.moon.direction.value);
+  const phase = getMoonPhase();
+  if (phase !== null) skyBoxProxy.moon.phase = Math.round(phase * 1000) / 1000;
+};
+
 export const syncSkyBoxProxy = () => {
   const active = getActiveSkyBox();
   skyBoxProxy.select.skyBoxId = active?.id ?? NO_SKYBOX_ID;
@@ -339,6 +375,7 @@ export const syncSkyBoxProxy = () => {
       else if (typeof proxy[key] !== 'string') proxy[key] = fallback;
     }
   }
+  if (active && isDayNightEnabled(active.def)) syncDerivedPositions(active);
   const base = active?.def.base;
   skyBoxProxy.base.fileNames = base?.type === 'CUBE_TEXTURE' ? base.fileNames.join('\n') : '';
   skyBoxProxy.base.color = base?.type === 'COLOR' ? base.color : '#000000';

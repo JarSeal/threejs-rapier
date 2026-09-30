@@ -481,6 +481,84 @@
       "id": "scene01V2",
       "sceneFile": "./scene01_v2.ts"
     },
+    "skyShowcase": {
+      "name": "Sky showcase (day-night)",
+      "description": "The verification scene for the sky box plans (p113-p115): a day-night sky box with every layer, rows of metal and dielectric PBR spheres (roughness 0 to 1) and shadow casters.",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 200,
+            "position": {
+              "x": 7.5,
+              "y": 1.8,
+              "z": 0
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 2.6,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 60,
+            "appId": "skyShowcaseCamera"
+          },
+          "entityOpts": {
+            "appId": "skyShowcaseCamera",
+            "debugData": {
+              "name": "Sky showcase camera",
+              "description": "Looks west over the sphere rows, toward the sunset (the scene's dayOfYear puts it just north of west)."
+            }
+          }
+        }
+      ],
+      "skyboxes": [
+        {
+          "id": "dayNight",
+          "base": {
+            "type": "COLOR",
+            "color": "#000000"
+          },
+          "atmosphere": {
+            "nightSkyColor": "#0a1020"
+          },
+          "suns": [
+            {
+              "glowIntensity": 0.4,
+              "light": {}
+            }
+          ],
+          "moons": [
+            {
+              "phase": 0.4,
+              "phaseMode": "CYCLE",
+              "light": {
+                "intensity": 0.5
+              }
+            }
+          ],
+          "stars": {
+            "milkyWay": {}
+          },
+          "clouds": {
+            "coverage": 0.35
+          },
+          "ground": {},
+          "dayNight": {
+            "timeOfDay": 17.5,
+            "cycleDurationSec": 300,
+            "dayOfYear": 100
+          },
+          "debugData": {
+            "name": "Day-night (showcase)",
+            "description": "Every p113 layer: atmosphere, sun and light, moon and light, stars and Milky Way, clouds and ground, on a 5-minute day."
+          }
+        }
+      ],
+      "id": "skyShowcase",
+      "sceneFile": "./skyShowcase.ts"
+    },
     "sceneTestECS": {
       "name": "ECS test scene",
       "description": "This is a ECS test scene.",
@@ -1001,6 +1079,34 @@
         }
       },
       "__sourcePath": "src/app/cameras/scene01Camera.camera.json"
+    },
+    "skyShowcaseCamera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 200,
+        "position": {
+          "x": 7.5,
+          "y": 1.8,
+          "z": 0
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 2.6,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 60,
+        "appId": "skyShowcaseCamera"
+      },
+      "entityOpts": {
+        "appId": "skyShowcaseCamera",
+        "debugData": {
+          "name": "Sky showcase camera",
+          "description": "Looks west over the sphere rows, toward the sunset (the scene's dayOfYear puts it just north of west)."
+        }
+      },
+      "__sourcePath": "src/app/cameras/skyShowcaseCamera.camera.json"
     },
     "thirdPersonGymCamera": {
       "camProps": {
@@ -1547,6 +1653,48 @@
         "rotate": 3.141592653589793
       },
       "__sourcePath": "src/app/skyboxes/basicSkybox.skybox.json"
+    },
+    "dayNight": {
+      "id": "dayNight",
+      "base": {
+        "type": "COLOR",
+        "color": "#000000"
+      },
+      "atmosphere": {
+        "nightSkyColor": "#0a1020"
+      },
+      "suns": [
+        {
+          "glowIntensity": 0.4,
+          "light": {}
+        }
+      ],
+      "moons": [
+        {
+          "phase": 0.4,
+          "phaseMode": "CYCLE",
+          "light": {
+            "intensity": 0.5
+          }
+        }
+      ],
+      "stars": {
+        "milkyWay": {}
+      },
+      "clouds": {
+        "coverage": 0.35
+      },
+      "ground": {},
+      "dayNight": {
+        "timeOfDay": 17.5,
+        "cycleDurationSec": 300,
+        "dayOfYear": 100
+      },
+      "debugData": {
+        "name": "Day-night (showcase)",
+        "description": "Every p113 layer: atmosphere, sun and light, moon and light, stars and Milky Way, clouds and ground, on a 5-minute day."
+      },
+      "__sourcePath": "src/app/skyboxes/dayNight.skybox.json"
     }
   },
   "postFx": {

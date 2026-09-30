@@ -178,6 +178,7 @@ const applyMoonPosition = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) =
     sunDirection,
     getMoonPhaseOf(def, time, isDayNightEnabled(def))
   );
+  if (!isCloudsEnabled(def)) return;
   applyCloudsMoonUniforms(u.clouds, isMoonEnabled(def) ? u.moon : null, u.atmosphere, sunDirection);
 };
 
@@ -210,12 +211,14 @@ export const applySkyTimeUniforms = (u: SkyUniforms, def: SkyBoxDef, time: SkyTi
   writeDirections(u, def, time);
   const sunDirection = u.sun.direction.value;
   const hasAtmosphere = isAtmosphereEnabled(def);
-  applyAtmosphereSunUniforms(u.atmosphere, def.atmosphere, sunDirection);
+  // A layer that's off is skipped: nothing reads its uniforms, and turning it on runs
+  // applySkyUniforms. The moon's position is always written: its light needs the lit fraction.
+  if (hasAtmosphere) applyAtmosphereSunUniforms(u.atmosphere, def.atmosphere, sunDirection);
   applySunLightingUniforms(u.sun, hasAtmosphere ? u.atmosphere : null);
-  applyCloudsSunUniforms(u.clouds, sunDirection);
+  if (isCloudsEnabled(def)) applyCloudsSunUniforms(u.clouds, sunDirection);
   applyMoonPosition(u, def, time);
-  applyStarsSky(u, def, time);
-  applyGroundSunUniforms(u.ground, hasAtmosphere, sunDirection);
+  if (isStarsEnabled(def)) applyStarsSky(u, def, time);
+  if (isGroundEnabled(def)) applyGroundSunUniforms(u.ground, hasAtmosphere, sunDirection);
 };
 
 /** Whether a definition has an enabled procedural layer (then it's on the composite path). */

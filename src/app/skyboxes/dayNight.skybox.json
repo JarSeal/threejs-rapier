@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../.schemas/skyBox.schema.json",
+  "id": "dayNight",
+  "base": { "type": "COLOR", "color": "#000000" },
+  "atmosphere": { "nightSkyColor": "#0a1020" },
+  "suns": [{ "glowIntensity": 0.4, "light": {} }],
+  "moons": [{ "phase": 0.4, "phaseMode": "CYCLE", "light": { "intensity": 0.5 } }],
+  "stars": { "milkyWay": {} },
+  "clouds": { "coverage": 0.35 },
+  "ground": {},
+  "dayNight": { "timeOfDay": 17.5, "cycleDurationSec": 300, "dayOfYear": 100 },
+  "debugData": {
+    "name": "Day-night (showcase)",
+    "description": "Every p113 layer: atmosphere, sun and light, moon and light, stars and Milky Way, clouds and ground, on a 5-minute day."
+  }
+}

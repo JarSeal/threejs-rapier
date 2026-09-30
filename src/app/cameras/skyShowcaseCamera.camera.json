@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../.schemas/camera.schema.json",
+  "camProps": {
+    "type": "PERSPECTIVE",
+    "fov": 60,
+    "near": 0.1,
+    "far": 200,
+    "position": { "x": 7.5, "y": 1.8, "z": 0 },
+    "lookAtPoint": { "x": 0, "y": 2.6, "z": 0 },
+    "active": true
+  },
+  "entityOpts": {
+    "appId": "skyShowcaseCamera",
+    "debugData": {
+      "name": "Sky showcase camera",
+      "description": "Looks west over the sphere rows, toward the sunset (the scene's dayOfYear puts it just north of west)."
+    }
+  }
+}

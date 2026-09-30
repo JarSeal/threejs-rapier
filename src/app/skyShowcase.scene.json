@@ -1,0 +1,9 @@
+{
+  "$schema": "../.schemas/scene.schema.json",
+  "id": "skyShowcase",
+  "sceneFile": "./skyShowcase.ts",
+  "name": "Sky showcase (day-night)",
+  "description": "The verification scene for the sky box plans (p113-p115): a day-night sky box with every layer, rows of metal and dielectric PBR spheres (roughness 0 to 1) and shadow casters.",
+  "cameras": ["skyShowcaseCamera"],
+  "skyboxes": ["dayNight"]
+}

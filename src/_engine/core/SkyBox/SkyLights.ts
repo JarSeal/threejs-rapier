@@ -168,6 +168,12 @@ const createDiscLight = (
     },
     world
   );
+  // Render the shadow map once now, even when the light starts faded out (autoUpdate false):
+  // a map first sampled and only later rendered into gets its GPU texture destroyed in place
+  // on that first render (see initEnvBakeTarget in SkyEnvironment.ts), a "Destroyed texture
+  // used in a submit" on every frame after that (WebGPU)
+  const light = getLight<THREE.DirectionalLight>(entityId, world);
+  if (castShadow && light?.shadow) light.shadow.needsUpdate = true;
   return {
     kind,
     entityId,
