@@ -43,11 +43,10 @@ import {
   setEnvBake,
 } from './SkyEnvironment';
 import {
-  _setStaticLayersTestSource,
   disposeStaticLayers,
+  requestStaticLayersBake,
   runRequestedStaticLayersBake,
   setStaticLayers,
-  type StaticLayersSource,
 } from './SkyStaticLayers';
 import {
   deleteSkyLights,
@@ -106,6 +105,8 @@ export type SkyBoxUpdate = {
   /** As `suns`. A change to moons[0].texture reloads the sky box; one to its phase also sets
    * the running phase. */
   moons?: SkyBoxOverrides['moons'];
+  /** As `suns`. A change re-bakes the nebula cube (throttled: at most every 150 ms). */
+  nebulae?: SkyBoxOverrides['nebulae'];
   ambientLight?: SkyBoxOverrides['ambientLight'];
   clouds?: SkyBoxOverrides['clouds'];
   ground?: SkyBoxOverrides['ground'];
@@ -213,13 +214,14 @@ const toArray = <T extends object>(value: T[] | Record<string, T>): T[] => {
   return Array.from(entries, (entry) => entry ?? ({} as T));
 };
 
-/** A definition with a change merged in. An index object merges into the suns (or moons)
- * array, and one with none to merge into becomes the array (eg. a debug override turning
- * suns[0] on). */
+/** A definition with a change merged in. An index object merges into the suns (or moons,
+ * nebulae) array, and one with none to merge into becomes the array (eg. a debug override
+ * turning suns[0] on). */
 const mergeSkyBoxDef = (def: SkyBoxDef, change: unknown): SkyBoxDef => {
   const merged = deepMerge(def, change);
   if (merged.suns) merged.suns = toArray(merged.suns);
   if (merged.moons) merged.moons = toArray(merged.moons);
+  if (merged.nebulae) merged.nebulae = toArray(merged.nebulae);
   return merged;
 };
 
@@ -271,11 +273,8 @@ const buildNodes = (
     };
   }
   // Before the composites: they sample its cube
-  const staticSource = getStaticLayersSourceOf(def);
-  const staticLayers = staticSource
-    ? setStaticLayers(staticSource.resolution, staticSource.build(normalWorldGeometry)).target
-        .texture
-    : null;
+  const staticSource = getStaticLayersSourceOf(def, u);
+  const staticLayers = staticSource ? setStaticLayers(staticSource).target.texture : null;
   if (!staticSource) disposeStaticLayers();
   const sources = {
     basePMREM: texture ? getPMREMTexture(texture) : null,
@@ -437,8 +436,9 @@ const isStructuralBaseUpdate = (current: SkyBoxBaseDef, update: SkyBoxUpdate['ba
  * Changes the active sky box (a no-op for any other id). A change to a structural key (for the
  * base: type, file, fileNames, path, textureId, texture, colorSpace, flipY; moons[0].texture) re-runs the
  * activation; one that changes which nodes exist (on the composite path: env.size, or
- * env.backgroundRoughness crossing 0) rebuilds the nodes; any other change only writes uniforms
- * and scene properties, and (with env.dynamic) re-bakes the environment. Changes last until
+ * env.backgroundRoughness crossing 0; which nebulae exist, their octaves, env.nebulaSize)
+ * rebuilds the nodes; any other change only writes uniforms and scene properties, and (with
+ * env.dynamic) re-bakes the environment (a nebula change re-bakes the nebula cube first). Changes last until
  * it's activated again, which starts from its definition.
  */
 export const updateSkyBox = async (id: string, update: SkyBoxUpdate) => {
@@ -472,9 +472,11 @@ export const updateSkyBox = async (id: string, update: SkyBoxUpdate) => {
     });
   } else {
     show({ ...current, def });
+    // A drag re-bakes the nebulae at most every 150 ms; the env bake follows each of those
+    if (update.nebulae) requestStaticLayersBake(true);
     // The env layer is scene properties and the view's blur, none of it baked; turning
     // `dynamic` on catches up on what changed while it was off
-    const affectsBake = Object.keys(update).some((key) => key !== 'env');
+    const affectsBake = Object.keys(update).some((key) => key !== 'env' && key !== 'nebulae');
     const turnedDynamic = isBakeDynamic(def) && !isBakeDynamic(current.def);
     if (current.isComposite && ((affectsBake && isBakeDynamic(def)) || turnedDynamic)) {
       requestEnvBake();
@@ -727,22 +729,6 @@ const getFrameTime = () =>
     ?.nodeFrame?.time ?? 0;
 
 // Debug
-
-/**
- * @internal Sets (or, with null, removes) the static-layers test layer (the p114 Phase 1 test
- * harness, from the debug tab) and rebuilds the active sky box's nodes. Session only: every sky
- * box activated while it's set gets it.
- */
-export const _setStaticLayersTest = (source: StaticLayersSource | null) => {
-  _setStaticLayersTestSource(source);
-  const current = active;
-  if (!current) return;
-  show({
-    ...current,
-    ...buildNodes(current.def, current.uniforms, current.textures.source, current.textures.moon),
-  });
-  notify('update');
-};
 
 type SkyBoxGUIModule = typeof import('../Debug/_dbg__SkyBox');
 let debugGUI: DebugModuleRef<SkyBoxGUIModule> | null = null;

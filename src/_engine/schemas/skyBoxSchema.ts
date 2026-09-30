@@ -13,7 +13,7 @@ import {
 } from '../core/SkyBox/legacySkyBox';
 
 // A sky box definition is a set of layers. p111 has the base and env layers, p112 the atmosphere
-// and suns, p113 the day-night cycle; later plans add their own layers (moons, stars, ...) as
+// and suns, p113 the day-night cycle and p114 the nebulae; later plans add their own layers as
 // optional keys. A procedural layer is on when its key is there, unless it says `enabled: false`.
 
 // Base layer
@@ -92,6 +92,9 @@ export const SkyBoxEnvSchema = z.object({
   /** Day-night: at most this many re-bakes per second while the cycle moves (0: only when it
    * stops or reverses). A bake is ~2 ms of GPU at any size (p110 spike). Default 1. */
   maxUpdatesPerSec: z.number().min(0).optional(),
+  /** The nebula cube's face size (the nebulae are baked into a HalfFloat cube, re-baked only
+   * when they change): 12.6 MB at 512, 50.3 MB at 1024. Default 512. */
+  nebulaSize: z.union([z.literal(256), z.literal(512), z.literal(1024)]).optional(),
 });
 
 // Atmosphere layer (Preetham scattering, a port of three's SkyMesh; driven by suns[0])
@@ -292,6 +295,44 @@ export const SkyBoxStarsSchema = z.object({
   milkyWay: SkyBoxMilkyWaySchema.optional(),
 });
 
+// Nebula layer (p114: procedural, baked into a cube once per change; behind the stars, and
+// behind the atmosphere when there is one)
+
+const Vec3TupleSchema = z.tuple([z.number(), z.number(), z.number()]);
+
+export const SkyBoxNebulaSchema = z.object({
+  /** Default true. */
+  enabled: z.boolean().optional(),
+  /** Another cloud pattern. Default 0. */
+  seed: z.number().int().min(0).optional(),
+  /** The centre (in the sky's frame, which turns with the day-night cycle). Default
+   * [0, 0.2, -1]. */
+  direction: Vec3TupleSchema.optional(),
+  /** Angular radius in degrees. Default 25. */
+  size: z.number().min(1).max(180).optional(),
+  /** Edge softness, 0-1 (0: a hard edge; 1: fades from the centre). Default 0.6. */
+  falloff: z.number().min(0).max(1).optional(),
+  /** Length ÷ width (1: round). Default 1. */
+  stretch: z.number().min(1).max(10).optional(),
+  /** Degrees the long axis is turned about the centre, from the sky's up. Default 0. */
+  orientation: z.number().optional(),
+  /** 2-3 colours, from the thin edges to the dense core. Default ['#1c1450', '#b0307a',
+   * '#ffc49a']. */
+  colors: z.array(ColorJSONSchema).min(2).max(3).optional(),
+  /** How much of the shape the cloud fills, 0-1. Default 0.5. */
+  density: z.number().min(0).max(1).optional(),
+  /** The cloud noise's detail (changing it rebuilds the bake's shader). Default 5. */
+  octaves: z.number().int().min(2).max(6).optional(),
+  /** Domain-warp strength (swirls), 0-2. Default 0.6. */
+  warp: z.number().min(0).max(2).optional(),
+  /** Dark dust lanes, 0-1. Default 0.4. */
+  dust: z.number().min(0).max(1).optional(),
+  /** HDR emission multiplier. Default 1. */
+  brightness: z.number().min(0).optional(),
+  /** Extra live stars inside the cloud, 0-1 (up to 3× as many). Default 0. */
+  starBoost: z.number().min(0).max(1).optional(),
+});
+
 // Ambient light: a managed hemisphere or ambient light that follows the sun. Off by default:
 // the environment bake already lights PBR materials (a hemisphere light adds to it); it's for
 // non-PBR materials (Lambert/Phong don't sample the environment) and stylized looks.
@@ -413,6 +454,8 @@ export const SkyBoxOverridesSchema = z.object({
   suns: indexedOverrides(SkyBoxSunOverridesSchema),
   /** As `suns`. */
   moons: indexedOverrides(SkyBoxMoonOverridesSchema),
+  /** As `suns`. */
+  nebulae: indexedOverrides(SkyBoxNebulaSchema.partial()),
   stars: SkyBoxStarsSchema.extend({
     twinkle: SkyBoxStarsTwinkleSchema.partial().optional(),
     milkyWay: SkyBoxMilkyWaySchema.partial().optional(),
@@ -449,6 +492,8 @@ export const SkyBoxDefSchema = z
     /** Only moons[0] is drawn until p114. */
     moons: z.array(SkyBoxMoonSchema).optional(),
     stars: SkyBoxStarsSchema.optional(),
+    /** Up to 8, baked into a cube (env.nebulaSize) once per change. */
+    nebulae: z.array(SkyBoxNebulaSchema).max(8).optional(),
     ambientLight: SkyBoxAmbientLightSchema.optional(),
     /** Needs an enabled atmosphere. */
     clouds: SkyBoxCloudsSchema.optional(),

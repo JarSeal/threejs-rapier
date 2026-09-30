@@ -44,7 +44,7 @@ import { buildAtmosphereFolder } from './SkyBox/_dbg__AtmosphereFolder';
 import { buildAmbientLightFolder } from './SkyBox/_dbg__AmbientLightFolder';
 import { buildCloudsFolder } from './SkyBox/_dbg__CloudsFolder';
 import { buildGroundFolder } from './SkyBox/_dbg__GroundFolder';
-import { buildStaticLayersFolder } from './SkyBox/_dbg__StaticLayersFolder';
+import { buildNebulaeFolder } from './SkyBox/_dbg__NebulaFolder';
 
 const LS_KEY_UI = 'AEK_debugSkyBoxUI';
 let debuggerCreated = false;
@@ -217,12 +217,12 @@ const buildSkyBoxDebugGUI = () => {
           buildSunFolder(),
           buildMoonFolder(),
           buildStarsFolder(),
+          buildNebulaeFolder(),
           buildAtmosphereFolder(),
           buildCloudsFolder(),
           buildGroundFolder(),
           buildAmbientLightFolder(),
           buildEnvironmentFolder(),
-          buildStaticLayersFolder(),
           {
             type: 'button',
             title: 'Copy JSON',

@@ -26,6 +26,7 @@ import { DAY_NIGHT_DEFAULTS } from '../../SkyBox/SkyTime';
 import { getMoonPhase } from '../../SkyBox/SkyBox';
 import { isDayNightEnabled } from '../../SkyBox/SkyComposite';
 import { GROUND_DEFAULTS } from '../../SkyBox/layers/ground';
+import { NEBULA_DEFAULTS } from '../../SkyBox/layers/nebula';
 import { SHADOW_PRESETS } from '../../LightManager';
 import { getEnvSize } from '../../SkyBox/SkyComposite';
 import {
@@ -51,7 +52,8 @@ export type SkyBoxLayerKey =
   | 'dayNight'
   | 'ambient'
   | 'clouds'
-  | 'ground';
+  | 'ground'
+  | 'nebula';
 
 /** Where each layer lives in the definition. */
 export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
@@ -69,6 +71,19 @@ export const LAYER_PATHS: Record<SkyBoxLayerKey, string> = {
   ambient: 'ambientLight',
   clouds: 'clouds',
   ground: 'ground',
+  /** The selected nebula (see selectNebula). */
+  nebula: 'nebulae.0',
+};
+
+/** The nebula the Nebulae folder edits (session only). */
+let selectedNebula = 0;
+
+export const getSelectedNebula = () => selectedNebula;
+
+/** Selects the nebula the Nebulae folder edits (its `nebula` layer path). */
+export const selectNebula = (index: number) => {
+  selectedNebula = Math.max(0, Math.floor(index));
+  LAYER_PATHS.nebula = `nebulae.${selectedNebula}`;
 };
 
 /** Values a definition doesn't set fall back to these (the renderer's defaults), by path. */
@@ -83,7 +98,11 @@ const DEFAULTS_TREE = {
   ambientLight: AMBIENT_LIGHT_DEFAULTS,
   clouds: CLOUDS_DEFAULTS,
   ground: GROUND_DEFAULTS,
+  nebulae: [NEBULA_DEFAULTS],
 };
+
+/** Every sun, moon and nebula falls back to the first one's defaults. */
+const toDefaultsPath = (path: string) => path.replace(/^(suns|moons|nebulae)\.\d+/, '$1.0');
 
 /** A sun or moon light's bias, normal bias and map size default to its shadow preset's. */
 const PRESET_KEY_PATH =
@@ -134,7 +153,9 @@ export const getDefValue = (def: SkyBoxDef | undefined, path: string) => {
   }
   // The env bake's default size depends on day-night
   if (path === 'env.size') return getEnvSize(def);
-  return getPresetDefault(def, path) ?? getPath(DEFAULTS_TREE, path);
+  // A definition without nebulae has none (the defaults tree's entry is for its entries' keys)
+  if (path === 'nebulae') return [];
+  return getPresetDefault(def, path) ?? getPath(DEFAULTS_TREE, toDefaultsPath(path));
 };
 
 // Overrides (AEK_debugSkyBox): only the values changed from the definition
@@ -164,22 +185,41 @@ export const setSkyBoxOverrides = (
   writeAllOverrides(all);
 };
 
-/** Sets or deletes a path in a copy of `obj`, dropping objects the deletion left empty. */
-const withPath = (obj: Obj, keys: string[], value: unknown, remove: boolean): Obj => {
+type Container = Obj | unknown[];
+
+/**
+ * Sets or deletes a path in a copy of `obj`, dropping objects the deletion left empty. Arrays
+ * on the way (a whole-array override, eg. the nebulae after an add) are copied and written by
+ * index; nothing is ever deleted from one.
+ */
+const withPath = (obj: Container, keys: string[], value: unknown, remove: boolean): Container => {
   const [key, ...rest] = keys;
-  const result = { ...obj };
+  const isArray = Array.isArray(obj);
+  const result = (isArray ? [...obj] : { ...obj }) as Record<string, unknown>;
   if (!rest.length) {
-    if (remove) delete result[key];
+    if (remove && !isArray) delete result[key];
     else result[key] = value;
     return result;
   }
-  const child = withPath(asObj(obj[key]), rest, value, remove);
-  if (Object.keys(child).length) result[key] = child;
+  const next = result[key];
+  const child = withPath(Array.isArray(next) ? next : asObj(next), rest, value, remove);
+  if (isArray || Array.isArray(child) || Object.keys(child).length) result[key] = child;
   else delete result[key];
   return result;
 };
 
-/** Writes one override value. A value equal to the definition's is removed instead. */
+/** Whether a path goes through an array in `obj` (a whole-array override). */
+const crossesArray = (obj: unknown, path: string) => {
+  let node = obj;
+  for (const key of path.split('.').slice(0, -1)) {
+    node = isObj(node) ? node[key] : Array.isArray(node) ? node[Number(key)] : undefined;
+    if (Array.isArray(node)) return true;
+  }
+  return false;
+};
+
+/** Writes one override value. A value equal to the definition's is removed instead, unless it
+ * is inside a whole-array override (whose entries are complete: they replace the definition's). */
 export const writeSkyBoxOverride = (
   sceneId: string,
   skyBoxId: string,
@@ -187,9 +227,21 @@ export const writeSkyBoxOverride = (
   value: unknown
 ) => {
   const def = getSkyBoxDef(sceneId, skyBoxId);
-  const remove = value === undefined || isEqual(value, getDefValue(def, path));
   const current = (getSkyBoxOverrides(sceneId, skyBoxId) || {}) as Obj;
-  setSkyBoxOverrides(sceneId, skyBoxId, withPath(current, path.split('.'), value, remove));
+  const remove =
+    value === undefined || (!crossesArray(current, path) && isEqual(value, getDefValue(def, path)));
+  setSkyBoxOverrides(
+    sceneId,
+    skyBoxId,
+    withPath(current, path.split('.'), value, remove) as SkyBoxOverrides
+  );
+};
+
+/** Whether the active sky box's nebulae override is a whole array (after an add, duplicate or
+ * remove): then a nebula can't be reset on its own, only the whole list. */
+export const isNebulaeOverrideAnArray = () => {
+  const active = getActiveSkyBox();
+  return Boolean(active && Array.isArray(getSkyBoxOverrides(active.sceneId, active.id)?.nebulae));
 };
 
 // What the panes bind to: every edited layer value of the active sky box, synced before every
@@ -211,6 +263,7 @@ export const skyBoxProxy: Record<SkyBoxLayerKey, Obj> & { select: { skyBoxId: st
   ambient: {},
   clouds: {},
   ground: {},
+  nebula: {},
 };
 
 /** The keys a layer folder binds, synced from the active sky box (and its layer defaults). */
@@ -224,6 +277,7 @@ const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
     'dynamic',
     'updateAngleDeg',
     'maxUpdatesPerSec',
+    'nebulaSize',
   ],
   atmosphere: [
     'enabled',
@@ -299,6 +353,20 @@ const PROXY_KEYS: Record<SkyBoxLayerKey, string[]> = {
   ambient: ['enabled', 'type', 'intensity'],
   clouds: ['enabled', 'coverage', 'density', 'scale', 'speed', 'elevation'],
   ground: ['enabled', 'horizonBlend', 'height', 'useAtmosphereHorizon'],
+  nebula: [
+    'enabled',
+    'seed',
+    'size',
+    'falloff',
+    'stretch',
+    'orientation',
+    'density',
+    'octaves',
+    'warp',
+    'dust',
+    'brightness',
+    'starBoost',
+  ],
 };
 /** 2-tuples, bound as `${key}0` and `${key}1`. */
 const TUPLE_KEYS: Partial<Record<SkyBoxLayerKey, string[]>> = {
@@ -349,10 +417,32 @@ const syncDerivedPositions = (active: NonNullable<ReturnType<typeof getActiveSky
   if (phase !== null) skyBoxProxy.moon.phase = Math.round(phase * 1000) / 1000;
 };
 
+/** The selected nebula's colours ('#rrggbb' each, the third one repeating the second with two
+ * stops), its stop count, its direction as elevation and azimuth, and the list's size (the
+ * selection is clamped to it). */
+const syncNebulaProxy = (def: SkyBoxDef | undefined) => {
+  const count = def?.nebulae?.length ?? 0;
+  if (selectedNebula >= count) selectNebula(Math.max(0, count - 1));
+  const proxy = skyBoxProxy.nebula;
+  proxy.count = count;
+  const path = LAYER_PATHS.nebula;
+  for (const key of PROXY_KEYS.nebula) proxy[key] = getDefValue(def, `${path}.${key}`);
+  const colors = getDefValue(def, `${path}.colors`) as unknown[];
+  proxy.colorStops = colors.length >= 3 ? 3 : 2;
+  proxy.color0 = toHex(colors[0]);
+  proxy.color1 = toHex(colors[1] ?? colors[0]);
+  proxy.color2 = toHex(colors[2] ?? colors[1] ?? colors[0]);
+  const [x, y, z] = getDefValue(def, `${path}.direction`) as [number, number, number];
+  const length = Math.hypot(x, y, z) || 1;
+  setElevationAzimuth(proxy, { x: x / length, y: y / length, z: z / length });
+};
+
 export const syncSkyBoxProxy = () => {
   const active = getActiveSkyBox();
   skyBoxProxy.select.skyBoxId = active?.id ?? NO_SKYBOX_ID;
   for (const layer of Object.keys(PROXY_KEYS) as SkyBoxLayerKey[]) {
+    // Synced with its colours, direction and selection (syncNebulaProxy)
+    if (layer === 'nebula') continue;
     const layerPath = LAYER_PATHS[layer];
     const proxy = skyBoxProxy[layer];
     for (const key of PROXY_KEYS[layer]) {
@@ -376,6 +466,7 @@ export const syncSkyBoxProxy = () => {
     }
   }
   if (active && isDayNightEnabled(active.def)) syncDerivedPositions(active);
+  syncNebulaProxy(active?.def);
   const base = active?.def.base;
   skyBoxProxy.base.fileNames = base?.type === 'CUBE_TEXTURE' ? base.fileNames.join('\n') : '';
   skyBoxProxy.base.color = base?.type === 'COLOR' ? base.color : '#000000';
@@ -408,11 +499,14 @@ const isActive = (sceneId: string, skyBoxId: string) => {
 /** Refreshes the tab when a change can't reach it through SkyBox.ts (an inactive sky box). */
 const refreshTab = () => updateDebuggerTab(SKYBOX_TAB_ID);
 
-/** Writes a param to the override store and, when that sky box is showing, to the render. */
+/** Writes a param to the override store and, when that sky box is showing, to the render. A
+ * whole array (a list edit: the nebulae) changes the list's options, so the tab is rebuilt. */
 const applyParam = async (sceneId: string, skyBoxId: string, path: string, value: unknown) => {
   writeSkyBoxOverride(sceneId, skyBoxId, path, value);
   if (isActive(sceneId, skyBoxId)) await updateSkyBox(skyBoxId, toSkyBoxUpdate(path, value));
-  else refreshTab();
+  if (Array.isArray(value) && !path.includes('.'))
+    updateDebuggerTab(SKYBOX_TAB_ID, { rebuild: true });
+  else if (!isActive(sceneId, skyBoxId)) refreshTab();
 };
 
 /** Tweakpane's step snapping leaves float noise (0.49999999999999994): keep 6 decimals, so the
@@ -445,6 +539,24 @@ export const setSkyBoxParam = (
   );
 };
 
+/**
+ * Replaces a whole array of the active sky box (a list edit: add, duplicate or remove a
+ * nebula), as one undo step (not coalesced). `prev` is the array before the edit.
+ */
+export const setSkyBoxArray = (path: string, label: string, prev: unknown[], next: unknown[]) => {
+  const active = getActiveSkyBox();
+  if (!active || isEqual(prev, next)) return;
+  const { sceneId, id: skyBoxId } = active;
+  void applyParam(sceneId, skyBoxId, path, next);
+  _recordUndoRedoAction<SkyBoxParamPayload>('skybox.param', `Sky box ${skyBoxId}: ${label}`, {
+    sceneId,
+    skyBoxId,
+    path,
+    prev,
+    next,
+  });
+};
+
 /** Sets a layer's override subtree, and renders the result when that sky box is showing:
  * every key the change touches gets its overridden value, or else the definition's. */
 const applyLayerOverride = async (
@@ -466,7 +578,7 @@ const applyLayerOverride = async (
       layerPath.split('.'),
       layerOverride,
       !layerOverride || !Object.keys(layerOverride).length
-    )
+    ) as SkyBoxOverrides
   );
   if (!isActive(sceneId, skyBoxId)) {
     refreshTab();

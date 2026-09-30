@@ -1,8 +1,9 @@
 /**
  * Stars layer: procedural stars (and an optional Milky Way band) in the stars' own frame, which
- * turns with the sky (SkyTime.ts computeSkyRotation). Drawn behind the atmosphere: its
- * extinction dims them near the horizon and its inscatter hides them by day. Never in the env
- * bake (p110 §0.2).
+ * turns with the sky (SkyTime.ts computeSkyRotation). Inside a nebula with a star boost, more
+ * cells have a star (the nebula cube's alpha, SkyStaticLayers.ts). Drawn behind the atmosphere:
+ * its extinction dims them near the horizon and its inscatter hides them by day. Never in the
+ * env bake (p110 §0.2).
  *
  * Placement is cube-projected (no pinching at the poles): the lookup direction's dominant axis
  * picks a face, and each face is a grid of cells, two grids at different scales. A PCG hash per
@@ -20,6 +21,7 @@
 import * as THREE from 'three/webgpu';
 import {
   abs,
+  cubeTexture,
   float,
   floor,
   Fn,
@@ -85,6 +87,8 @@ const JITTER_RANGE = 0.6;
 /** Colour temperatures: blue, white, orange (linear). */
 const STAR_BLUE = new THREE.Color('#9bb0ff');
 const STAR_ORANGE = new THREE.Color('#ffc58a');
+/** A cell's star chance is multiplied by 1 + this × the nebulae's boost mask (up to 3×). */
+const STAR_BOOST_GAIN = 2;
 /** The Milky Way's colour and noise scale. */
 const MILKY_WAY_COLOR = new THREE.Color('#c9d4ff');
 const MILKY_WAY_NOISE_SCALE = 3;
@@ -123,6 +127,13 @@ export const createStarsUniforms = (): StarsUniforms => ({
   milkyWayPole: uniform(new THREE.Vector3(...STARS_DEFAULTS.milkyWay.direction).normalize()),
   milkyWayWidth: uniform(Math.sin(THREE.MathUtils.degToRad(STARS_DEFAULTS.milkyWay.width))),
 });
+
+/** The nebulae's star boost: their baked cube (its alpha is the mask) and where to look it up. */
+export type StarBoostSource = {
+  cube: THREE.CubeTexture;
+  /** The stars' frame → the cube's (static layers') frame. */
+  starsToStatic: THREE.Node<'mat3'>;
+};
 
 /** Writes the stars' settings (the rotation and fade follow in applyStarsSkyUniforms). */
 export const applyStarsUniforms = (u: StarsUniforms, def: SkyBoxStarsDef | undefined) => {
@@ -173,9 +184,26 @@ export const applyStarsSkyUniforms = (
   else u.rotation.value.identity();
 };
 
+/** A direction back from its cube face coordinates (in [-1, 1]). */
+const fromFace = (
+  isX: THREE.Node<'bool'>,
+  isY: THREE.Node<'bool'>,
+  faceAxis: THREE.Node<'float'>,
+  uv: THREE.Node<'vec2'>
+) =>
+  normalize(
+    select(
+      isX,
+      vec3(faceAxis, uv.x, uv.y),
+      select(isY, vec3(uv.x, faceAxis, uv.y), vec3(uv.x, uv.y, faceAxis))
+    )
+  );
+
 /**
  * One grid's stars in direction `s` (the stars' frame): its radiance, coloured and twinkling.
  * @param seedOffset makes the grids independent
+ * @param boost the nebulae's star boost, or null. The mask is looked up at the cell's centre,
+ * so a star is never cut by it.
  */
 const starGrid = (
   s: THREE.Node<'vec3'>,
@@ -184,7 +212,8 @@ const starGrid = (
   gain: number,
   seedOffset: number,
   pixel: THREE.Node<'float'>,
-  u: StarsUniforms
+  u: StarsUniforms,
+  boost: StarBoostSource | null
 ) => {
   // The cube face: the dominant axis, and the face's coordinates in [-1, 1]
   const a = abs(s);
@@ -203,7 +232,15 @@ const starGrid = (
     .add(uint(face).mul(4096 * 4096))
     .add(u.seed.mul(16777259))
     .add(seedOffset);
-  const hasStar = hash(seed).lessThan(probability);
+  const cellDir = fromFace(isX, isY, faceAxis, cell.add(0.5).div(grid).mul(2).sub(1));
+  const chance = boost
+    ? float(probability).mul(
+        float(1).add(
+          cubeTexture(boost.cube, boost.starsToStatic.mul(cellDir), float(0)).a.mul(STAR_BOOST_GAIN)
+        )
+      )
+    : float(probability);
+  const hasStar = hash(seed).lessThan(chance);
   const jitter = vec2(hash(seed.add(1)), hash(seed.add(2)))
     .mul(JITTER_RANGE)
     .add(JITTER_MIN);
@@ -212,14 +249,7 @@ const starGrid = (
   const phase = hash(seed.add(5));
 
   // The star's direction, back from its face coordinates
-  const starUV = cell.add(jitter).div(grid).mul(2).sub(1);
-  const starDir = normalize(
-    select(
-      isX,
-      vec3(faceAxis, starUV.x, starUV.y),
-      select(isY, vec3(starUV.x, faceAxis, starUV.y), vec3(starUV.x, starUV.y, faceAxis))
-    )
-  );
+  const starDir = fromFace(isX, isY, faceAxis, cell.add(jitter).div(grid).mul(2).sub(1));
   const dist = length(s.sub(starDir));
   // Full inside the radius (at least half a pixel), fading out over one pixel
   const radius = max(u.radius, pixel.mul(0.5));
@@ -255,12 +285,14 @@ const milkyWay = (s: THREE.Node<'vec3'>, u: StarsUniforms) => {
   );
 };
 
-/** The stars (and Milky Way) over `behind`; skipped entirely while their fade is 0 (by day). */
+/** The stars (and Milky Way) over `behind`; skipped entirely while their fade is 0 (by day).
+ * @param boost the nebulae's star boost (their cube), or null without nebulae */
 export const starsNode = (
   dir: THREE.Node<'vec3'>,
   behind: THREE.Node,
   u: StarsUniforms,
-  hasMilkyWay: boolean
+  hasMilkyWay: boolean,
+  boost: StarBoostSource | null = null
 ): THREE.Node =>
   Fn(() => {
     const color = vec3(behind as THREE.Node<'vec3'>).toVar();
@@ -272,8 +304,8 @@ export const starsNode = (
     If(u.fade.greaterThan(0), () => {
       // One pixel's angular size (from the continuous direction)
       const pixel = length(fwidth(s)).mul(0.75).toVar();
-      const stars = starGrid(s, u.coarseGrid, COARSE_PROBABILITY, 1, 0, pixel, u).add(
-        starGrid(s, u.fineGrid, FINE_PROBABILITY, FINE_BRIGHTNESS, 0x51ed27, pixel, u)
+      const stars = starGrid(s, u.coarseGrid, COARSE_PROBABILITY, 1, 0, pixel, u, boost).add(
+        starGrid(s, u.fineGrid, FINE_PROBABILITY, FINE_BRIGHTNESS, 0x51ed27, pixel, u, boost)
       );
       const light = hasMilkyWay ? stars.add(milkyWay(s, u)) : stars;
       color.addAssign(light.mul(u.brightness).mul(u.fade));

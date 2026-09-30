@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { context, float, normalWorldGeometry, pmremTexture, uniform, vec3 } from 'three/tsl';
-import type { SkyBoxBaseDef, SkyBoxEnvDef, SkyBoxEnvSize } from '../SkyBoxTypes';
+import type { SkyBoxBaseDef, SkyBoxEnvDef, SkyBoxEnvSize, SkyBoxNebulaSize } from '../SkyBoxTypes';
 import { getPMREMTexture } from '../SkyEnvironment';
 import { toSkyColor } from '../skyColor';
 import { getTexture, loadTextureAsync } from '../../Texture';
@@ -30,6 +30,7 @@ export const ENV_DEFAULTS = {
   dynamic: true,
   updateAngleDeg: 1,
   maxUpdatesPerSec: 1,
+  nebulaSize: 512 as SkyBoxNebulaSize,
 };
 
 /** The base layer's uniforms, created once per activation and kept across node rebuilds. */

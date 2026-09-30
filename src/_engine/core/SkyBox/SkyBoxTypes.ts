@@ -11,6 +11,7 @@ import type {
   SkyBoxGroundSchema,
   SkyBoxMoonLightSchema,
   SkyBoxMoonSchema,
+  SkyBoxNebulaSchema,
   SkyBoxDefSchema,
   SkyBoxEnvSchema,
   SkyBoxEnvSizeSchema,
@@ -55,6 +56,12 @@ export type SkyBoxMoonTextureDef = NonNullable<SkyBoxMoonDef['texture']>;
 
 /** The stars layer (and its optional Milky Way). */
 export type SkyBoxStarsDef = z.input<typeof SkyBoxStarsSchema>;
+
+/** A nebula (baked into the nebula cube, SkyStaticLayers.ts). */
+export type SkyBoxNebulaDef = z.input<typeof SkyBoxNebulaSchema>;
+
+/** The nebula cube's face size. */
+export type SkyBoxNebulaSize = NonNullable<SkyBoxEnvDef['nebulaSize']>;
 
 /** The clouds layer (needs the atmosphere). */
 export type SkyBoxCloudsDef = z.input<typeof SkyBoxCloudsSchema>;

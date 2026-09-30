@@ -1,30 +1,28 @@
 import * as THREE from 'three/webgpu';
+import { positionLocal } from 'three/tsl';
 import { getRenderer } from '../Renderer';
+import type { SkyBoxNebulaSize } from './SkyBoxTypes';
 
 /**
- * Static layers (p114): sky layers that only change when their params do (nebulae), baked into
- * a HalfFloat cube once per change and sampled with one cube lookup per pixel (SkyComposite.ts),
- * in the view and in the env bake. They sit at infinity in their own frame, which turns with the
+ * Static layers (p114): sky layers that only change when their params do (the nebulae), baked
+ * into a HalfFloat cube once per change and sampled with one cube lookup per pixel
+ * (SkyComposite.ts), in the view and in the env bake. They sit at infinity in their own frame, which turns with the
  * sky (the sidereal rotation) as a lookup rotation, so moving the sky never re-bakes them.
  *
  * Bakes run from skyBoxSystem, before the env bake of the same tick (which samples the cube),
  * never while a scene loads: a structural one on the next tick, a param change's throttled.
  */
 
-export type StaticLayersResolution = 256 | 512 | 1024;
+export type StaticLayersResolution = SkyBoxNebulaSize;
 
-/** What the cube holds, and how the composite shows it. */
+/** What the cube holds. */
 export type StaticLayersSource = {
   resolution: StaticLayersResolution;
-  /** The layers' colour in direction `dir` (the static layers' own frame). */
-  build: (dir: THREE.Node<'vec3'>) => THREE.Node<'vec3'>;
-  /** Debug only (the p114 Phase 1 test harness): BAKED samples the cube (the real path), LIVE
-   * evaluates `build` per pixel, DIFF shows |baked − live| × 10 in place of the sky behind. The
-   * env bake always samples the cube. Default BAKED. */
-  view?: 'BAKED' | 'LIVE' | 'DIFF';
+  /** The layers in direction `dir` (the static layers' own frame): the colour (rgb) and the
+   * star boost mask (a, see layers/stars.ts). */
+  build: (dir: THREE.Node<'vec3'>) => THREE.Node<'vec4'>;
 };
 
-export const STATIC_LAYERS_DEFAULT_RESOLUTION: StaticLayersResolution = 512;
 /** A param change's bake: at most one per this many ms (the latest request always runs, so a
  * drag ends on its final value). */
 export const STATIC_LAYERS_THROTTLE_MS = 150;
@@ -41,8 +39,12 @@ export type StaticLayersBake = {
   resolution: StaticLayersResolution;
   target: THREE.CubeRenderTarget;
   camera: THREE.CubeCamera;
-  /** Private: holds only the layers' source as its backgroundNode. */
+  /** Private: holds only `mesh`. */
   scene: THREE.Scene;
+  /** A back-side unit sphere around the camera that draws the source. Not the scene's
+   * backgroundNode: the background material is opaque, and three writes alpha 1 for opaque
+   * materials, which would drop the star boost mask. */
+  mesh: THREE.Mesh<THREE.SphereGeometry, THREE.NodeMaterial>;
 };
 
 let bake: StaticLayersBake | null = null;
@@ -57,19 +59,6 @@ let bakeHooks: StaticLayersBakeHooks | null = null;
 export const _setStaticLayersBakeHooks = (hooks: StaticLayersBakeHooks | null) => {
   bakeHooks = hooks;
 };
-
-// Source. Until nebulae exist (p114 Phase 2), the only source is the debug test layer.
-
-let testSource: StaticLayersSource | null = null;
-
-/** @internal The debug test layer (set by the static layers folder, session only). SkyBox.ts's
- * `_setStaticLayersTest` sets it and rebuilds the active sky box. */
-export const _setStaticLayersTestSource = (source: StaticLayersSource | null) => {
-  testSource = source;
-};
-
-/** A sky box's static layers, or null when it has none. */
-export const getStaticLayersSource = (): StaticLayersSource | null => testSource;
 
 // Target
 
@@ -106,48 +95,69 @@ const initTarget = (renderer: THREE.Renderer, target: THREE.CubeRenderTarget) =>
   renderer.setRenderTarget(prevTarget, prevFace, prevLevel);
 };
 
-const disposeBakeScene = (scene: THREE.Scene) => {
-  // Background.js disposes the background mesh (material and geometry) with its node
-  scene.backgroundNode?.dispose();
-  scene.backgroundNode = null;
+/**
+ * The mesh that draws `source`. Its fragments' interpolated local positions, normalized, are
+ * exactly each pixel's direction from the centre (the cube camera sits there). No blending, so
+ * the source's alpha is written as is.
+ */
+const createSourceMesh = (source: StaticLayersSource) => {
+  const material = new THREE.NodeMaterial();
+  material.name = 'SkyBox.staticLayersMaterial';
+  material.side = THREE.BackSide;
+  material.depthTest = false;
+  material.depthWrite = false;
+  material.blending = THREE.NoBlending;
+  material.fog = false;
+  material.lights = false;
+  material.colorNode = source.build(positionLocal.normalize());
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32), material);
+  mesh.frustumCulled = false;
+  mesh.name = 'SkyBox.staticLayersMesh';
+  return mesh;
+};
+
+const disposeMesh = (mesh: THREE.Mesh<THREE.SphereGeometry, THREE.NodeMaterial>) => {
+  mesh.removeFromParent();
+  mesh.geometry.dispose();
+  mesh.material.dispose();
 };
 
 /**
- * The static-layer bake for `resolution`, with `source` (the layers' node, on
- * normalWorldGeometry) as what it bakes, and a bake requested for the next tick. Keeps the
- * current target and camera when the resolution is the same; a new resolution replaces both
- * (the composite that samples the old target is rebuilt by the caller).
+ * The static-layer bake of `source`, with a bake requested for the next tick. Keeps the
+ * current target and camera when the resolution is the same (only the source mesh is
+ * replaced); a new resolution replaces both (the composite that samples the old target is
+ * rebuilt by the caller).
  */
-export const setStaticLayers = (
-  resolution: StaticLayersResolution,
-  source: THREE.Node
-): StaticLayersBake => {
-  if (bake && bake.resolution !== resolution) disposeStaticLayers();
+export const setStaticLayers = (source: StaticLayersSource): StaticLayersBake => {
+  if (bake && bake.resolution !== source.resolution) disposeStaticLayers();
+  const mesh = createSourceMesh(source);
   if (!bake) {
     const renderer = getRenderer();
-    const target = createTarget(resolution);
+    const target = createTarget(source.resolution);
     if (renderer) initTarget(renderer as THREE.Renderer, target);
+    const scene = new THREE.Scene();
+    scene.name = 'SkyBox.staticLayersScene';
     bake = {
-      resolution,
+      resolution: source.resolution,
       target,
       camera: new THREE.CubeCamera(0.1, 100, target),
-      scene: new THREE.Scene(),
+      scene,
+      mesh,
     };
   } else {
-    disposeBakeScene(bake.scene);
-    bake.scene = new THREE.Scene();
+    disposeMesh(bake.mesh);
+    bake.mesh = mesh;
   }
-  bake.scene.name = 'SkyBox.staticLayersScene';
-  bake.scene.backgroundNode = source;
+  bake.scene.add(mesh);
   request = 'NOW';
   return bake;
 };
 
-/** Disposes the static-layer target and bake scene. */
+/** Disposes the static-layer target and source mesh. */
 export const disposeStaticLayers = () => {
   request = null;
   if (!bake) return;
-  disposeBakeScene(bake.scene);
+  disposeMesh(bake.mesh);
   bake.target.dispose();
   bake = null;
 };

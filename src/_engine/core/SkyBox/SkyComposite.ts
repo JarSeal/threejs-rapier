@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { abs, cubeTexture, float, uniform, vec3 } from 'three/tsl';
+import { cubeTexture, float, uniform, vec3 } from 'three/tsl';
 import type { SkyBoxDef } from './SkyBoxTypes';
 import {
   applyBaseUniforms,
@@ -51,6 +51,7 @@ import {
 import {
   applyStarsSkyUniforms,
   applyStarsUniforms,
+  STARS_DEFAULTS,
   createStarsUniforms,
   starsNode,
   type StarsUniforms,
@@ -62,7 +63,15 @@ import {
   getMoonPhaseOf,
   type SkyTimeState,
 } from './SkyTime';
-import { getStaticLayersSource, type StaticLayersSource } from './SkyStaticLayers';
+import type { StaticLayersSource } from './SkyStaticLayers';
+import {
+  applyNebulaeUniforms,
+  createNebulaeUniforms,
+  getEnabledNebulae,
+  getNebulaeSignature,
+  nebulaeNode,
+  type NebulaUniforms,
+} from './layers/nebula';
 
 /**
  * The composite path: every layer of a sky box composited into one node, used as the
@@ -70,8 +79,8 @@ import { getStaticLayersSource, type StaticLayersSource } from './SkyStaticLayer
  * procedural layer is enabled; a texture-only or colour-only one keeps the direct path
  * (buildBaseLayer), which needs no bake.
  *
- * Layer order, back to front (p110 "Composite order"): base, static layers (the baked cube,
- * p114), stars, discs, atmosphere, clouds, ground. Each layer takes the colour behind it and
+ * Layer order, back to front (p110 "Composite order"): base, static layers (the nebulae's baked
+ * cube, p114), stars, discs, atmosphere, clouds, ground. Each layer takes the colour behind it and
  * returns the new colour; an absent or disabled layer is left out of the graph (changing which
  * layers exist is a rebuild, anything else is a uniform write).
  */
@@ -92,12 +101,17 @@ export type SkyUniforms = {
   clouds: CloudsUniforms;
   ground: GroundUniforms;
   staticLayers: StaticLayersUniforms;
+  /** One set per possible nebula (MAX_NEBULAE); the i-th enabled nebula uses set i. */
+  nebulae: NebulaUniforms[];
 };
 
-/** The static layers' lookup: world direction → their frame (the sidereal rotation with
- * day-night on, else identity). */
 export type StaticLayersUniforms = {
+  /** World direction → the static layers' frame (the sidereal rotation with day-night on, else
+   * identity). */
   rotation: THREE.UniformNode<'mat3', THREE.Matrix3>;
+  /** The stars' frame → the static layers' frame (identity unless the stars don't turn with
+   * the sky): where the stars look up their boost mask. */
+  starsToStatic: THREE.UniformNode<'mat3', THREE.Matrix3>;
 };
 
 /** What the composite samples that isn't a uniform. */
@@ -130,11 +144,19 @@ export const isMilkyWayEnabled = (def: SkyBoxDef) =>
 /** Clouds need the atmosphere (the schema rejects them without one). */
 export const isCloudsEnabled = (def: SkyBoxDef) => isOn(def.clouds) && isAtmosphereEnabled(def);
 export const isGroundEnabled = (def: SkyBoxDef) => isOn(def.ground);
-/** Whether it has static layers (baked into a cube, SkyStaticLayers.ts). */
-export const hasStaticLayers = (def: SkyBoxDef) => getStaticLayersSourceOf(def) !== null;
-/** A definition's static layers. Until nebulae exist (p114 Phase 2), only the debug test layer. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export const getStaticLayersSourceOf = (_def: SkyBoxDef) => getStaticLayersSource();
+/** Whether it has static layers: an enabled nebula (baked into a cube, SkyStaticLayers.ts). */
+export const hasStaticLayers = (def: SkyBoxDef) => getEnabledNebulae(def.nebulae).length > 0;
+/** The nebula cube's face size. */
+export const getNebulaSize = (def: SkyBoxDef | undefined) =>
+  def?.env?.nebulaSize ?? ENV_DEFAULTS.nebulaSize;
+/** A definition's static layers (its enabled nebulae), or null without any. */
+export const getStaticLayersSourceOf = (
+  def: SkyBoxDef,
+  u: SkyUniforms
+): StaticLayersSource | null =>
+  hasStaticLayers(def)
+    ? { resolution: getNebulaSize(def), build: (dir) => nebulaeNode(dir, def.nebulae, u.nebulae) }
+    : null;
 /** While on, suns[0]'s and moons[0]'s directions come from the time of day (SkyTime.ts). */
 export const isDayNightEnabled = (def: SkyBoxDef | undefined) => isOn(def?.dayNight);
 
@@ -152,7 +174,11 @@ export const createSkyUniforms = (def: SkyBoxDef, time: SkyTimeState): SkyUnifor
     atmosphere: createAtmosphereUniforms(),
     clouds: createCloudsUniforms(),
     ground: createGroundUniforms(),
-    staticLayers: { rotation: uniform(new THREE.Matrix3()) },
+    staticLayers: {
+      rotation: uniform(new THREE.Matrix3()),
+      starsToStatic: uniform(new THREE.Matrix3()),
+    },
+    nebulae: createNebulaeUniforms(),
   };
   applySkyUniforms(u, def, time);
   return u;
@@ -186,8 +212,13 @@ const applySkyRotation = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeState) =>
     ? computeSkyRotation(def.dayNight, time.timeOfDay, _skyRotation)
     : null;
   applyStarsSkyUniforms(u.stars, def.stars, u.sun.direction.value, rotation);
-  if (rotation) u.staticLayers.rotation.value.copy(rotation);
-  else u.staticLayers.rotation.value.identity();
+  const { rotation: staticRotation, starsToStatic } = u.staticLayers;
+  if (rotation) staticRotation.value.copy(rotation);
+  else staticRotation.value.identity();
+  // The stars' frame is the static layers' unless the stars stay put while the sky turns
+  const starsTurn = def.stars?.rotateWithSky ?? STARS_DEFAULTS.rotateWithSky;
+  if (rotation && !starsTurn) starsToStatic.value.copy(rotation);
+  else starsToStatic.value.identity();
 };
 
 /** The moon's position-dependent values and the clouds' moonlight (after the atmosphere's). */
@@ -217,6 +248,7 @@ export const applySkyUniforms = (u: SkyUniforms, def: SkyBoxDef, time: SkyTimeSt
   applyMoonUniforms(u.moon, def.moons?.[0], getEnvSize(def));
   applyStarsUniforms(u.stars, def.stars);
   applySkyRotation(u, def, time);
+  applyNebulaeUniforms(u.nebulae, def.nebulae);
   applyCloudsUniforms(u.clouds, def.clouds, u.sun.direction.value);
   applyMoonPosition(u, def, time);
   applyGroundUniforms(u.ground, def.ground, isAtmosphereEnabled(def), u.sun.direction.value);
@@ -263,31 +295,18 @@ export const getCompositeSignature = (def: SkyBoxDef) =>
     isAtmosphereEnabled(def),
     isCloudsEnabled(def),
     isGroundEnabled(def),
-    hasStaticLayers(def),
+    getNebulaeSignature(def.nebulae),
+    hasStaticLayers(def) ? getNebulaSize(def) : 0,
   ].join('|');
 
-/**
- * The static layers over `behind`: the baked cube in their frame. The debug test harness can
- * show them live, or the difference to live (in place of the sky behind); the env bake always
- * samples the cube.
- */
+/** The static layers (the nebulae) over `behind`: the baked cube, looked up in their frame. */
 const staticLayersNode = (
   dir: THREE.Node<'vec3'>,
   behind: THREE.Node,
   u: StaticLayersUniforms,
-  cube: THREE.CubeTexture,
-  source: StaticLayersSource,
-  mode: SkyCompositeMode
-): THREE.Node => {
-  const s = u.rotation.mul(dir);
-  const baked = cubeTexture(cube, s, float(0)).rgb;
-  const color = vec3(behind as THREE.Node<'vec3'>);
-  const view = mode === 'VIEW' ? source.view ?? 'BAKED' : 'BAKED';
-  if (view === 'BAKED') return color.add(baked);
-  const live = source.build(s);
-  if (view === 'LIVE') return color.add(live);
-  return abs(baked.sub(live)).mul(10);
-};
+  cube: THREE.CubeTexture
+): THREE.Node =>
+  vec3(behind as THREE.Node<'vec3'>).add(cubeTexture(cube, u.rotation.mul(dir), float(0)).rgb);
 
 /**
  * The composite colour in direction `dir` (a world direction: normalWorldGeometry of the
@@ -301,13 +320,14 @@ export const buildSkyComposite = (
   dir: THREE.Node<'vec3'>
 ): THREE.Node => {
   let color = baseNode(dir, def.base, u.base, sources.basePMREM);
-  const staticSource = getStaticLayersSourceOf(def);
-  if (staticSource && sources.staticLayers) {
-    color = staticLayersNode(dir, color, u.staticLayers, sources.staticLayers, staticSource, mode);
-  }
+  const staticLayers = hasStaticLayers(def) ? sources.staticLayers : null;
+  if (staticLayers) color = staticLayersNode(dir, color, u.staticLayers, staticLayers);
   // Stars: never in the env bake (p110 §0.2)
   if (isStarsEnabled(def) && mode === 'VIEW') {
-    color = starsNode(dir, color, u.stars, isMilkyWayEnabled(def));
+    const boost = staticLayers
+      ? { cube: staticLayers, starsToStatic: u.staticLayers.starsToStatic }
+      : null;
+    color = starsNode(dir, color, u.stars, isMilkyWayEnabled(def), boost);
   }
   if (isSunEnabled(def)) color = sunNode(dir, color, u.sun, mode, isSunLightEnabled(def));
   if (isMoonEnabled(def)) {

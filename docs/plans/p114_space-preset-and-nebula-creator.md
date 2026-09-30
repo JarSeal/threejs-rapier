@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phases 1–2 implemented
 Category: Skybox, Rendering
 Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md, \_DONE_p113_night-sky-and-day-night-cycle.md (stars layer, sidereal rotation)
 Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic)
@@ -52,11 +52,11 @@ The **SPACE** preset is stars, one or more suns and nebulae, with no atmosphere,
 
 1. **Static-layer cube bake** (`SkyBox/SkyStaticLayers.ts`).
    - **What gets baked.**
-     - One HalfFloat RGBA `CubeRenderTarget` per active sky box, with `nebula.resolution` per face (default **512**, options 256 and 1024).
+     - One HalfFloat RGBA `CubeRenderTarget` per active sky box, with `env.nebulaSize` per face (default **512**, options 256 and 1024). It sits next to `env.size`, because `nebulae` is an array.
      - No mipmaps: nebulae are smooth, and the view magnifies the cube (a 512 face is about 0.18° per texel, a 1080p pixel at 60° FOV about 0.05°).
      - No depth buffer.
      - Nebulae are the only thing baked by default.
-     - Optionally, far background stars too (`stars.bakeDistant`): the dense, faint, non-twinkling star layer. The live stars layer then draws only the bright twinkling ones.
+     - ~~Optionally, far background stars too (`stars.bakeDistant`).~~ **Dropped in Phase 2.** At 512, a cube texel is about 0.18°, so a baked star (≈ 0.05°) would blur to 3–4 screen pixels and dim, and it would leak into the env bake. The live stars stay live.
    - **How it bakes.** A private scene holds a `backgroundNode` that is the sum of every nebula's emission. A `CubeCamera` renders it with `update()`.
    - **When it bakes.**
      - On activation, and on structural changes: the next `skyBoxSystem` tick.
@@ -77,8 +77,8 @@ The **SPACE** preset is stars, one or more suns and nebulae, with no atmosphere,
      - `falloff`: edge softness.
      - `stretch` / `orientation`: an elongated, rotated shape.
      - `colors`: 2–3 stops mapped by density.
-     - `density`, `octaves` (2–6, structural), `warp` (domain-warp strength via `mx_fractal_noise_vec3`).
-     - `dust`: dark lanes through `mx_worley_noise_float`, subtracted.
+     - `density`, `octaves` (2–6, structural), `warp` (domain-warp strength, from three offset `mx_fractal_noise_float` calls: the vec3 fbm hangs SwiftShader's WebGL2).
+     - `dust`: dark lanes, subtracted. Made from ridged fbm, not `mx_worley_noise_float`: Worley is a 27-cell loop per sample and makes blotches, not lanes.
      - `brightness` (HDR emission).
      - `starBoost`: extra live-star density inside the nebula. This is sampled from a low-resolution mask channel stored in the cube's alpha.
    - **Compositing.** Additive over the base (usually black `COLOR` in space). It sits behind the stars and suns, and behind the atmosphere when an atmosphere exists (a night sky with a faint nebula).
@@ -113,7 +113,7 @@ The **SPACE** preset is stars, one or more suns and nebulae, with no atmosphere,
      - Params use `skybox.param`, coalesced by path, e.g. `nebulae.1.warp`.
      - Adding, removing or duplicating an entry records `skybox.param` on the **array path** (`nebulae`, `suns`, `moons`) with the whole array as `prev`/`next`, not coalesced.
      - "Apply preset" records the new action `skybox.applyPreset { sceneId, skyBoxId, prevOverride, nextOverride }`.
-6. **Static-layers test harness** (Phase 1 only; debug).
+6. **Static-layers test harness** (Phase 1 only; debug; removed in Phase 2).
    - **Where.** A "Static layers" folder (`core/Debug/SkyBox/_dbg__StaticLayersFolder.ts`) turns on a hard-coded test layer for the active sky box. This is session-only: it's never saved or undoable.
    - **The test layer.** A coloured fbm field on the direction plus three axis markers (+X red, +Y green, +Z blue), so a flip, swapped face or seam is obvious.
    - **Injected from the debug module.** Its node builder is passed in from the `_dbg__` module (`_setStaticLayersTest` in `SkyBox.ts`), so production has no test code.
@@ -177,31 +177,31 @@ The **SPACE** preset is stars, one or more suns and nebulae, with no atmosphere,
 
 ## Files touched
 
-| File                                                                                                          | Change                                                          |
-| ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `src/_engine/core/SkyBox/SkyStaticLayers.ts` (new)                                                            | Cube bake scheduler, target, private scene                      |
-| `src/_engine/core/SkyBox/SkyBox.ts`, `SkyComposite.ts`                                                        | Static layers in the composite, bake order, test hook (Phase 1) |
-| `src/_engine/core/SkyBox/layers/nebula.ts` (new)                                                              | Nebula emission node                                            |
-| `src/_engine/core/SkyBox/layers/{sun,moon}.ts`, `SkyLights.ts`, `SkyComposite.ts`                             | Unrolled arrays, per-index lights and roles                     |
-| `src/_engine/core/SkyBox/layers/stars.ts`                                                                     | `bakeDistant`, `starBoost` mask                                 |
-| `src/_engine/core/SkyBox/presets.ts` (new)                                                                    | Preset templates + merge                                        |
-| `src/_engine/schemas/skyBoxSchema.ts`                                                                         | `nebulae[]`, `preset`, array limits                             |
-| `devTools/gatherAppData.ts`                                                                                   | Build-time preset resolution                                    |
-| `src/_engine/core/Debug/SkyBox/_dbg__StaticLayersFolder.ts` (new, Phase 1), `_dbg__EnvBakeStats.ts`           | Test harness; bake stats as a shared factory                    |
-| `src/_engine/core/Debug/SkyBox/_dbg__{Nebula,Suns}Folder.ts` (new), `_dbg__MoonFolder.ts`, `_dbg__SkyBox.ts`  | Creator, lists, preset dropdown, `skybox.applyPreset` handler   |
-| `src/_engine/debug/DebuggerGUI.ts`, `src/_engine/core/Debug/_dbg__DebuggerGUI.ts`                             | `sceneId` scene-scoped tabs                                     |
-| `src/toolkit/geometry/generateAsteroid.ts` (new)                                                              | Procedural asteroid geometry                                    |
-| `src/toolkit/materials/asteroid.material.json`, `asteroid.tsl.ts` (new)                                       | Procedural asteroid material                                    |
-| `src/toolkit/ecs/effects/MutualGravity.ts` (new), `src/AppECSPlugins.ts`                                      | N-body gravity system                                           |
-| `src/app/space.scene.json`, `space.ts`, `cameras/spaceCamera.camera.json`, `skyboxes/space.skybox.json` (new) | Space demo scene + scene debug tab                              |
-| `src/app/skyShowcase.scene.json`                                                                              | Also lists `space` (reflection check)                           |
-| `package.json`, `CHANGELOG.md`, `.claude/CLAUDE.md`                                                           | Engine minor, toolkit minor, app minor                          |
+| File                                                                                                                            | Change                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `src/_engine/core/SkyBox/SkyStaticLayers.ts` (new)                                                                              | Cube bake scheduler, target, private scene                        |
+| `src/_engine/core/SkyBox/SkyBox.ts`, `SkyComposite.ts`                                                                          | Static layers in the composite, bake order, test hook (Phase 1)   |
+| `src/_engine/core/SkyBox/layers/nebula.ts` (new)                                                                                | Nebula emission node                                              |
+| `src/_engine/core/SkyBox/layers/{sun,moon}.ts`, `SkyLights.ts`, `SkyComposite.ts`                                               | Unrolled arrays, per-index lights and roles                       |
+| `src/_engine/core/SkyBox/layers/stars.ts`                                                                                       | `starBoost` mask                                                  |
+| `src/_engine/core/SkyBox/presets.ts` (new)                                                                                      | Preset templates + merge                                          |
+| `src/_engine/schemas/skyBoxSchema.ts`                                                                                           | `nebulae[]`, `preset`, array limits                               |
+| `devTools/gatherAppData.ts`                                                                                                     | Build-time preset resolution                                      |
+| `src/_engine/core/Debug/SkyBox/_dbg__StaticLayersFolder.ts` (Phase 1 only), `_dbg__EnvBakeStats.ts`, `_dbg__BakeStats.ts` (new) | Test harness (removed in Phase 2); bake stats as a shared factory |
+| `src/_engine/core/Debug/SkyBox/_dbg__{Nebula,Suns}Folder.ts` (new), `_dbg__MoonFolder.ts`, `_dbg__SkyBox.ts`                    | Creator, lists, preset dropdown, `skybox.applyPreset` handler     |
+| `src/_engine/debug/DebuggerGUI.ts`, `src/_engine/core/Debug/_dbg__DebuggerGUI.ts`                                               | `sceneId` scene-scoped tabs                                       |
+| `src/toolkit/geometry/generateAsteroid.ts` (new)                                                                                | Procedural asteroid geometry                                      |
+| `src/toolkit/materials/asteroid.material.json`, `asteroid.tsl.ts` (new)                                                         | Procedural asteroid material                                      |
+| `src/toolkit/ecs/effects/MutualGravity.ts` (new), `src/AppECSPlugins.ts`                                                        | N-body gravity system                                             |
+| `src/app/space.scene.json`, `space.ts`, `cameras/spaceCamera.camera.json`, `skyboxes/space.skybox.json` (new)                   | Space demo scene + scene debug tab                                |
+| `src/app/skyShowcase.scene.json`                                                                                                | Also lists `space` (reflection check)                             |
+| `package.json`, `CHANGELOG.md`, `.claude/CLAUDE.md`                                                                             | Engine minor, toolkit minor, app minor                            |
 
 ## Phases
 
 Each phase compiles, lints, and leaves existing skyboxes unchanged.
 
-1. **Static-layer cube bake infrastructure.**
+1. **Static-layer cube bake infrastructure.** **Done** (see Implementation notes, Phase 1).
    - Build `SkyStaticLayers.ts`, the composite and env-bake sampling, the bake order and throttle, and disposal.
    - Build the shared bake stats and the DD6 test harness.
    - Verify:
@@ -211,7 +211,7 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
      - the environment picks up the cube (PBR spheres in the showcase);
      - memory matches the estimate;
      - `renderer.info.memory` is stable over test on/off, resolution changes and scene round trips.
-2. **Nebula layer + schema + nebula creator.** The test layer is removed.
+2. **Nebula layer + schema + nebula creator.** **Done** (see Implementation notes, Phase 2). The test layer is removed.
    - Verify: every param behaves, dragging stays responsive (bakes at most every 150 ms), seeds are deterministic across reloads, and nebulae rotate with the sky when day-night is on.
 3. **Multiple suns and moons.**
    - Verify: 1–4 suns render with the right colours and optional lights, only `suns[0]` shapes the atmosphere, the shadow-count warning appears, and adding or removing an entry is a single rebuild.
@@ -251,18 +251,18 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
 
 ## Risks / open questions
 
-| Risk                                                                   | Mitigation                                                                                                                                                                                          |
-| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Nebula bake time at 1024 per face with 8 nebulae (one-time hitch)      | Default 512 with ≤ 3 nebulae in presets. The bake-time readout is shown, and slider bakes are throttled.                                                                                            |
-| Cube seams from noise evaluated per face                               | Noise is evaluated on the 3D direction, not face UVs, so it is seamless by construction. Verified in Phase 1 (`DIFF`).                                                                              |
-| Memory of a HalfFloat cube (12.6 MB at 512, 50.3 MB at 1024)           | No mipmaps. Shown in the debugger. The resolution is a param, and RGBA8 plus an intensity scale is a fallback if needed.                                                                            |
-| `stars.bakeDistant` stars leak into the env bake (it samples the cube) | They're faint and sub-texel, and the PMREM blur averages them out. If they show up in reflections, bake them into a second cube the env bake doesn't sample. Decide in Phase 2.                     |
-| The background shows the cleared (black) cube until the first bake     | It lasts one frame after the scene load ends, the same as the env bake today. Acceptable.                                                                                                           |
-| `mx_fractal_noise_vec3` hangs SwiftShader's WebGL2 (found in Phase 1)  | DD2's domain warp uses it. In Phase 2, check it on a real WebGL2 GPU. If it's slow there too, warp with three offset `mx_fractal_noise_float` calls instead (the float fbm is fine on SwiftShader). |
-| Several shadow-casting sky lights                                      | Defaults of one; a warning above two (DD3).                                                                                                                                                         |
-| Preset changes silently alter JSON-authored skyboxes on engine upgrade | Resolution happens at build time into generated data, and preset templates are versioned in the file header. A change to a preset template is noted in the changelog as a visual change.            |
-| Asteroid hulls from high-detail icospheres are slow to build           | The hull takes the displaced unique vertices (≤ 2562 at detail 4). Rapier computes the hull once per body. The demo uses detail 2–3.                                                                |
-| Close encounters fling bodies apart (N-body singularity)               | Softening `ε` in the force, plus the colliders keep bodies apart.                                                                                                                                   |
+| Risk                                                                   | Mitigation                                                                                                                                                                               |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Nebula bake time at 1024 per face with 8 nebulae (one-time hitch)      | Default 512 with ≤ 3 nebulae in presets. The bake-time readout is shown, and slider bakes are throttled.                                                                                 |
+| Cube seams from noise evaluated per face                               | Noise is evaluated on the 3D direction, not face UVs, so it is seamless by construction. Verified in Phase 1 (`DIFF`).                                                                   |
+| Memory of a HalfFloat cube (12.6 MB at 512, 50.3 MB at 1024)           | No mipmaps. Shown in the debugger. The resolution is a param, and RGBA8 plus an intensity scale is a fallback if needed.                                                                 |
+| `stars.bakeDistant` stars leak into the env bake (it samples the cube) | Moot: `bakeDistant` was dropped in Phase 2 (DD1).                                                                                                                                        |
+| The background shows the cleared (black) cube until the first bake     | It lasts one frame after the scene load ends, the same as the env bake today. Acceptable.                                                                                                |
+| `mx_fractal_noise_vec3` hangs SwiftShader's WebGL2 (found in Phase 1)  | Resolved in Phase 2: the warp uses three offset `mx_fractal_noise_float` calls. Nothing in the sky uses the vec3 fbm.                                                                    |
+| Several shadow-casting sky lights                                      | Defaults of one; a warning above two (DD3).                                                                                                                                              |
+| Preset changes silently alter JSON-authored skyboxes on engine upgrade | Resolution happens at build time into generated data, and preset templates are versioned in the file header. A change to a preset template is noted in the changelog as a visual change. |
+| Asteroid hulls from high-detail icospheres are slow to build           | The hull takes the displaced unique vertices (≤ 2562 at detail 4). Rapier computes the hull once per body. The demo uses detail 2–3.                                                     |
+| Close encounters fling bodies apart (N-body singularity)               | Softening `ε` in the force, plus the colliders keep bodies apart.                                                                                                                        |
 
 ## Verification
 
@@ -295,3 +295,47 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
 - **DIFF reading.** With the harness's soft (3°+) edges, DIFF is black apart from a faint, symmetric outline pair around the ring markers: bilinear filtering error, × 10. That holds with the day-night rotation too. An orientation or face error would show as a displaced ghost instead. The first version had 1° edges, and its outlines were bright enough to look like a bug.
 - **DIFF needs a dark sky.** The diff replaces only the sky behind it: the atmosphere, clouds and stars still draw on top, so read it at night or on a sky box without an atmosphere.
 - **Changing the view mode rebuilds the nodes**, which makes one extra bake. That's harmless, and it's harness-only.
+
+### Phase 2: nebula layer, schema and creator
+
+- **What was built.**
+  - `layers/nebula.ts`: the nebula node and uniforms.
+    - Every nebula shares one pipeline: an elliptical shape (size, stretch, orientation, falloff) in azimuthal-equidistant coordinates around its direction, eroding a domain-warped fbm cloud.
+    - The cloud is bright filaments over a soft glow body. It's coloured by density through 2–3 stops, with ridged-fbm dust lanes cut out.
+    - A nebula is skipped beyond its widest extent (a branch; the bake has no derivatives).
+    - The seed feeds a mulberry32 noise-domain offset, so the same seed always gives the same cloud.
+    - Every param but `octaves` and which nebulae exist is a uniform: 8 uniform sets, created once per activation.
+  - Schema: `SkyBoxNebulaSchema` and `nebulae[]` (max 8), `env.nebulaSize` (256, 512 or 1024), and `nebulae` in the overrides (array or index object, like the suns).
+  - `SkyStaticLayers.ts`: the bake draws its own back-side sphere with `NoBlending`, not the scene's `backgroundNode`. The background material is opaque, and three writes alpha 1 for opaque materials (`NodeMaterial.setupDiffuseColor`), which dropped the star-boost mask.
+  - `SkyComposite.ts`: `hasStaticLayers` means an enabled nebula. The signature adds each enabled nebula's octaves and the cube size. `starsToStatic` maps the stars' frame to the cube's (identity unless `stars.rotateWithSky` is false).
+  - `SkyBox.ts`: `nebulae` merges like the suns. A nebula change requests a throttled bake and leaves the env bake to follow it (not a second, stale one first).
+  - `layers/stars.ts`: each cell's star chance is multiplied by `1 + 2 × mask`, where the mask is sampled at the cell's centre so a star is never cut.
+  - Debug:
+    - The "Nebulae" folder (`_dbg__NebulaFolder.ts`, after Stars) has the list controls: a nebula dropdown, "Add (at view)", "Duplicate" (with a new seed) and "Remove".
+    - The selected nebula's folder has every DD2 param, direction as elevation/azimuth in the sky frame, "Randomize seed", "Point at view", colour stops, "Reset nebula" and "Reset nebulae list".
+    - A "Nebula cube" subfolder shows the size, memory and bake stats (the live bake-time readout).
+  - `_dbg__SkyBoxShared.ts`:
+    - `selectNebula` repoints the `nebula` layer path.
+    - The sun, moon and nebula defaults are shared by every index.
+    - `setSkyBoxArray` records a list edit as one undo step (`skybox.param` on `nebulae`, not coalesced) and rebuilds the tab.
+    - `withPath` / `writeSkyBoxOverride` write into a whole-array override by index, and never drop "equal to the definition" values there.
+  - The Phase 1 test harness is removed.
+- **Checked on WebGL2 (SwiftShader), with a test sky box registered in code (black base, three nebulae) in the showcase:**
+  - bakes: 1 on activation, 0 over 4 s idle;
+  - a 1.6 s drag of 30 warp ticks made 8 bakes (under the ~12 cap), ending on the final value;
+  - an octaves change is one rebuild and one bake;
+  - a time-of-day change makes no nebula bake, and the nebulae turn with the sky;
+  - the same seeds give byte-identical sky pixels across a reload;
+  - the cube's alpha holds the boost mask: 0 with `starBoost` 0, and up to 1 over about 17.5k texels of one face with 1;
+  - list edits and undo through the debug helpers:
+    - add, then a param on the new entry: the array override is updated in place;
+    - undo twice returns to 3 nebulae with no override left;
+    - a param on a definition's nebula makes `{ "1": { "dust": 0.9 } }`, and "Reset nebula" clears it;
+  - `renderer.info.memory` is back at its baseline after three switches to and from the test sky box;
+  - a production build keeps the creator in the lazy debug chunk.
+- **Not checked yet:**
+  - WebGPU (WSL2 headless can't);
+  - the folder's buttons by hand in the drawer (the script drove the same helpers they call);
+  - bake times on a real GPU.
+- **Reading the showcase.** In the showcase, the stone gate's lintel and the unlit ground hide part of the sky: straight dark cuts across a nebula there are those, not cube seams (confirmed by hiding the meshes and by dumping the cube faces).
+- **Stars need the fade off without a sun.** Without a sun, the default sun is at 30° elevation, so the stars' day fade hides them. A space sky box needs `stars.fadeRange: [90, 90]` (the SPACE preset in Phase 4 will set it).
