@@ -1,6 +1,7 @@
 // THIS IS AN AUTO-GENERATED FILE, DO NOT MODIFY!
 // ALSO, DO NOT MODIFY THE 'generatedAppData.json' FILE)!
 import * as testTslMatFn from '../app/materials/testTslMat.tsl.ts';
+import * as asteroidFn from '../toolkit/materials/asteroid.tsl.ts';
 import * as checkerBoardFn from '../toolkit/materials/checkerBoard.tsl.ts';
 import * as triplanarCheckerboardFn from '../toolkit/materials/triplanarCheckerboard.tsl.ts';
 import * as triplanarGridFn from '../toolkit/materials/triplanarGrid.tsl.ts';
@@ -91,6 +92,9 @@ export const sceneFileObjects: {
 export const tslMaterialFileObjects = {
   testTslMat: {
     colorNode: testTslMatFn.colorNode,
+  },
+  asteroid: {
+    colorNode: asteroidFn.colorNode,
   },
   checkerBoard: {
     colorNode: checkerBoardFn.colorNode,

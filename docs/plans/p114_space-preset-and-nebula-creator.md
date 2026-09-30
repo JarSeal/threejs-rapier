@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–5 implemented
+Status: in progress | Phases 1–6 implemented
 Category: Skybox, Rendering
 Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md, \_DONE_p113_night-sky-and-day-night-cycle.md (stars layer, sidereal rotation)
 Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic)
@@ -56,6 +56,12 @@ The **SPACE** preset is stars, one or more suns and nebulae, with no atmosphere,
   - `base` was required, so it's now optional when a `preset` gives one (a refine). The editor's JSON Schema can't say "required unless preset", so it no longer marks `base` as required; the gatherer still enforces it.
   - The "clouds need an atmosphere" refine runs on the resolved definition, since a preset may give the atmosphere.
   - The runtime `SkyBoxDef` type has no `preset`. Code definitions go through `resolveSkyBoxPreset` (the plan only covered JSON), so `presets.ts` stays out of the main chunk unless code uses it.
+- **Toolkit details (found in Phase 6).**
+  - Three's `IcosahedronGeometry` splits each edge into `detail + 1` segments, so detail 2–4 is 92–252 vertices, not up to 2562. `generateAsteroid` takes detail 1–10 (default 4).
+  - Rapier's mass for a `CONVEXHULL` collider is density × the **hull's** volume, about 10% more than the cratered mesh's. `generateAsteroid` also returns `hullVolume`, and the gravity mass should use it.
+  - `RigidBodyAPI` has no `translationSync()` (only colliders do). Its `readPoseInto` is exact on the main thread and reads the last synced pose in worker mode, so the gravity reads that in both modes. That's better than `TRANSFORM`, which can hold an interpolated render pose.
+  - three's `bumpMap()` only works on texture nodes: it re-samples the texture at UVs offset by the screen derivatives, so a procedural height gives no bump. The asteroid material does its own derivative bump.
+  - `createMaterial` gives each node socket its own inputs, so the asteroid material keeps every input on `colorNode`, which also sets `roughnessNode` and `normalNode`. One `seed` in `matOverrides` then changes all three.
 - **"Apply preset" is a computed override (found in Phase 4).** An override can't delete a key or change `base.type`. So the override that makes a definition look like a preset is a diff against the definition: layers the preset lacks get `enabled: false`, every key either side sets gets the preset's effective value, and the lists are whole arrays. A texture base is kept, with a toast.
 
 ## Design decisions
@@ -144,7 +150,7 @@ The **SPACE** preset is stars, one or more suns and nebulae, with no atmosphere,
    - **Menu order.** Scene tabs sort after the configured `tabOrder` (unless `orderNr` says otherwise), and are marked as scene tabs in the tooltip.
 8. **Asteroid geometry and material** (toolkit).
    - **Geometry.** `toolkit/geometry/generateAsteroid.ts`: `generateAsteroid({ radius, detail, seed, shape, noise, craters, flatShading })`.
-     - An icosphere (`IcosahedronGeometry`, detail 2–4). Its vertices are merged, then displaced along the normal:
+     - An icosphere (`IcosahedronGeometry`, detail 1–10, default 4; see "Changes since the plan was written"). Its vertices are merged, then displaced along the normal:
        - a seeded 3D simplex fbm (`SimplexNoise` with `createSeededRandom`), for lumps;
        - a few spherical-cap craters with raised rims;
        - a per-axis `shape` scale, for elongated rocks.
@@ -152,14 +158,15 @@ The **SPACE** preset is stars, one or more suns and nebulae, with no atmosphere,
      - It returns:
        - `geometry`;
        - `hullVertices` (the displaced unique positions, for a `CONVEXHULL` collider);
-       - `volume` (from the closed mesh, for the mass);
+       - `volume` (from the closed mesh);
+       - `hullVolume` (of the convex hull, which is what the physics mass comes from);
        - `boundingRadius`.
      - Same seed, same rock.
    - **Material.** `toolkit/materials/asteroid.material.json` + `asteroid.tsl.ts`, a `STANDARDNODEMATERIAL` with `colorNode`, `roughnessNode` and `normalNode`, following the toolkit's `tslFile` pattern.
      - It uses object-space 3D noise (`positionLocal`), so the pattern needs no UVs and turns with the rock.
      - Colour: two rock colours mixed by fbm, plus darker Worley pits and light mineral speckles.
      - Roughness varies with the same noise.
-     - The normal is a bump from the noise height (`bumpMap`).
+     - The normal is a bump from the noise height (screen-derivative bump, not `bumpMap`).
      - Inputs are colours, scales and strengths, with a `seed` offset, so one material gives different-looking rocks per mesh through `matOverrides`.
 9. **Mutual gravity** (toolkit, `toolkit/ecs/effects/MutualGravity.ts`).
    - **The system.** An `APP_PHYSICS_STEP` system, registered like the other toolkit effects (`registerMutualGravityEffect(world)` in `AppECSPlugins.ts`). Every sub-step, it resets each registered body's forces and adds the pairwise Newtonian pull `G·m₁·m₂ / (r² + ε²)`, where `ε` is a softening length, so touching rocks don't explode.
@@ -168,8 +175,9 @@ The **SPACE** preset is stars, one or more suns and nebulae, with no atmosphere,
      - `setMutualGravityConfig({ G, softening, enabled })`.
      - Bodies are dropped when their entity is gone, and all of them on scene exit.
    - **Positions.**
-     - `MAIN_THREAD`: `translationSync()`, exact per sub-step.
-     - `WORKER_THREAD`: the entity's `TRANSFORM` (the last synced frame), because sync reads throw on the worker proxy. That makes the forces up to a frame stale, so the simulation is not deterministic in worker mode. This is documented, like the characters' non-determinism.
+     - Both modes read `rb.readPoseInto`.
+     - `MAIN_THREAD`: exact per sub-step.
+     - `WORKER_THREAD`: the last pose the worker synced back. That makes the forces up to a frame stale, so the simulation is not deterministic in worker mode. This is documented, like the characters' non-determinism.
    - **Cost.** O(n²), fine for the demo's handful of bodies. A spatial or Barnes-Hut version is out of scope.
 10. **Space demo scene** (app).
     - **Files.** `app/space.scene.json` + `app/space.ts`, `app/cameras/spaceCamera.camera.json` and `app/skyboxes/space.skybox.json` (`"preset": "SPACE"`).
@@ -235,7 +243,7 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
      - a test tab with `sceneId` disappears on scene exit and comes back on re-entry;
      - a reload with that tab open lands on it once the scene has created it;
      - other tabs are unaffected.
-6. **Toolkit: asteroid geometry, asteroid material, mutual gravity** (DD8, DD9).
+6. **Toolkit: asteroid geometry, asteroid material, mutual gravity** (DD8, DD9). **Done** (see Implementation notes, Phase 6).
    - Verify:
      - the same seed gives the same rock;
      - the hull collider matches the mesh (Physics debug render);
@@ -271,7 +279,7 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
 | `mx_fractal_noise_vec3` hangs SwiftShader's WebGL2 (found in Phase 1)  | Resolved in Phase 2: the warp uses three offset `mx_fractal_noise_float` calls. Nothing in the sky uses the vec3 fbm.                                                                    |
 | Several shadow-casting sky lights                                      | Defaults of one; a warning above two (DD3).                                                                                                                                              |
 | Preset changes silently alter JSON-authored skyboxes on engine upgrade | Resolution happens at build time into generated data, and preset templates are versioned in the file header. A change to a preset template is noted in the changelog as a visual change. |
-| Asteroid hulls from high-detail icospheres are slow to build           | The hull takes the displaced unique vertices (≤ 2562 at detail 4). Rapier computes the hull once per body. The demo uses detail 2–3.                                                     |
+| Asteroid hulls from high-detail icospheres are slow to build           | The hull takes the displaced unique vertices (252 at the default detail 4, 1212 at the maximum 10). Rapier computes the hull once per body.                                              |
 | Close encounters fling bodies apart (N-body singularity)               | Softening `ε` in the force, plus the colliders keep bodies apart.                                                                                                                        |
 
 ## Verification
@@ -456,3 +464,36 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
   - after clicking another tab, entering the scene doesn't jump back to the scene tab;
   - no new console warnings or errors.
 - **Not checked yet:** by hand in the drawer. Phase 7's "Space demo" tab is the first real scene tab.
+
+### Phase 6: toolkit asteroid geometry, material and mutual gravity
+
+- **What was built.**
+  - `toolkit/geometry/generateAsteroid.ts`: `generateAsteroid({ radius, detail, seed, shape, noise, craters, flatShading })`.
+    - It merges the icosphere's corners, then displaces every vertex along its direction: simplex fbm lumps, plus crater bowls with raised rims. It never goes below 35% of the radius, so the mesh stays star-shaped. Then it applies `shape`.
+    - The noise and the craters come from one seeded stream.
+    - It returns `geometry`, `hullVertices`, `volume`, `hullVolume` (three's `ConvexHull`) and `boundingRadius`.
+    - The geometry isn't registered: the caller passes it through `saveBufferGeometry`, as with `generateTerrain`. Otherwise `MeshManager` warns that it is never disposed.
+  - `toolkit/materials/asteroid.material.json` + `asteroid.tsl.ts`:
+    - object-space mottling (fbm), Worley pits and Perlin speckles, with a sine-hashed `seed` offset;
+    - roughness from the same field;
+    - a Mikkelsen bump with unnormalized surface derivatives, so `bumpStrength` is in object units and looks the same at any distance;
+    - `staticDefines.octaves` (default 4).
+  - `toolkit/ecs/effects/MutualGravity.ts`: `registerMutualGravityEffect` (`APP_PHYSICS_STEP`, wired in `AppECSPlugins.ts`), `addGravityBody` / `removeGravityBody` / `clearGravityBodies` / `getGravityBodies`, and `set/getMutualGravityConfig` (defaults G 1, softening 0.5).
+    - Plummer softening: `G·m₁·m₂·r / (r² + ε²)^(3/2)`.
+    - Each pair is computed once, equal and opposite.
+    - Allocation-free per sub-step.
+    - Turning it off resets the forces once. Scene exit clears the bodies.
+  - An engine fix: `createRigidBody` skipped `gravityScale: 0`, a falsy check (`EngineRapier.ts`). This is a patch-level change for the Phase 7 changelog.
+- **Checked:**
+  - Node (tsx):
+    - the same seed gives byte-identical positions and hull vertices at details 2–4, and seed 8 differs;
+    - with no lumps or craters, the volume approaches 4/3·π·r³ (32.78 vs 33.51 at detail 4, r = 2), and the same holds for an ellipsoid;
+    - `flatShading: false` stays indexed.
+  - WebGL2 (SwiftShader), ECS test scene, three rocks created in the page (`gravityScale` 0, density 2, G 0.3), in both `WORKER_THREAD` and `MAIN_THREAD`:
+    - Rapier's mass equals `hullVolume` × density to 4 digits. The mesh volume is 11% less.
+    - Total momentum stays at 1.2–2.2·10⁻⁵ of Σ|p| after 3 s. Before the `gravityScale` fix, world gravity leaked in.
+    - The Physics debug hull wireframes wrap the meshes, with craters spanned, as a convex hull should.
+    - A close-up shows no seams or UV artefacts across faces.
+    - The rocks collide without exploding.
+    - No new console errors.
+- **Not checked yet:** WebGPU (WSL2 headless can't), and the look under the space scene's lighting (Phase 7 may retune the material's defaults and the crater sizes).

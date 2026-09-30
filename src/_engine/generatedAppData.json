@@ -1488,6 +1488,42 @@
       "type": "STANDARDNODEMATERIAL",
       "__sourcePath": "src/app/materials/testTslMat.material.json"
     },
+    "asteroid": {
+      "id": "asteroid",
+      "debugData": {
+        "name": "Asteroid",
+        "description": "Procedural object-space rock (no UVs): mottled colours, Worley pits, mineral speckles, bump. Every input is on colorNode, which also sets roughnessNode and normalNode; override `seed` per mesh for a different rock."
+      },
+      "params": {
+        "color": "#6b6158",
+        "roughness": 0.9,
+        "metalness": 0
+      },
+      "tslFile": "materials/asteroid.tsl.ts",
+      "staticDefines": {
+        "octaves": 4
+      },
+      "nodes": {
+        "colorNode": {
+          "seed": 0,
+          "noiseScale": 1.4,
+          "colorA": "#5d554d",
+          "colorB": "#8a7f72",
+          "pitColor": "#2b2622",
+          "pitScale": 2.2,
+          "pitSize": 0.35,
+          "pitStrength": 0.7,
+          "speckleColor": "#c9c2b4",
+          "speckleScale": 9,
+          "speckleAmount": 0.25,
+          "roughnessMin": 0.75,
+          "roughnessMax": 0.95,
+          "bumpStrength": 0.05
+        }
+      },
+      "type": "STANDARDNODEMATERIAL",
+      "__sourcePath": "src/toolkit/materials/asteroid.material.json"
+    },
     "checkerBoard": {
       "id": "checkerBoard",
       "params": {
