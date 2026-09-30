@@ -27,6 +27,7 @@ import {
   createSkyUniforms,
   getCompositeSignature,
   getEnvSize,
+  getStaticLayersSourceOf,
   hasProceduralLayer,
   isAtmosphereEnabled,
   isDayNightEnabled,
@@ -41,6 +42,13 @@ import {
   runRequestedEnvBake,
   setEnvBake,
 } from './SkyEnvironment';
+import {
+  _setStaticLayersTestSource,
+  disposeStaticLayers,
+  runRequestedStaticLayersBake,
+  setStaticLayers,
+  type StaticLayersSource,
+} from './SkyStaticLayers';
 import {
   deleteSkyLights,
   syncSkyLights,
@@ -254,6 +262,7 @@ const buildNodes = (
 ): SkyBoxBuild => {
   if (!hasProceduralLayer(def)) {
     disposeEnvBake();
+    disposeStaticLayers();
     const layer = buildBaseLayer(def.base, u.base, texture);
     return {
       isComposite: false,
@@ -261,7 +270,18 @@ const buildNodes = (
       textures: { source: layer.texture, environment: layer.environmentTexture, moon: null },
     };
   }
-  const sources = { basePMREM: texture ? getPMREMTexture(texture) : null, moonTexture };
+  // Before the composites: they sample its cube
+  const staticSource = getStaticLayersSourceOf(def);
+  const staticLayers = staticSource
+    ? setStaticLayers(staticSource.resolution, staticSource.build(normalWorldGeometry)).target
+        .texture
+    : null;
+  if (!staticSource) disposeStaticLayers();
+  const sources = {
+    basePMREM: texture ? getPMREMTexture(texture) : null,
+    moonTexture,
+    staticLayers,
+  };
   const bake = setEnvBake(
     getEnvSize(def),
     buildSkyComposite(def, u, 'ENV_BAKE', sources, normalWorldGeometry)
@@ -469,6 +489,7 @@ export const clearSkyBox = () => {
   activationSeq++;
   active = null;
   disposeEnvBake();
+  disposeStaticLayers();
   deleteSkyLights();
   resetSceneProperties();
   notify('clear');
@@ -685,13 +706,16 @@ ECSWorld.registerPlugin((world) => {
 });
 
 /** Steps the day-night cycle, moves the sky lights with their follow point, and runs a
- * requested env bake (never while a scene loads). The sky box is global: only the default world
- * drives it. */
+ * requested static-layer bake and then env bake (it samples the static layers), never while a
+ * scene loads. The sky box is global: only the default world drives it. */
 function skyBoxSystem(world: ECSWorld) {
   if (world !== getECSWorld()) return;
   stepDayNight(world);
   updateSkyLightsFrame(world);
-  if (!isEnvBakeRequested() || isCurrentlyLoading()) return;
+  if (isCurrentlyLoading()) return;
+  // The environment follows the static layers (activation requests both anyway)
+  if (runRequestedStaticLayersBake() && active && isBakeDynamic(active.def)) requestEnvBake();
+  if (!isEnvBakeRequested()) return;
   // The bake's clouds are frozen where the view's are now
   if (active) active.uniforms.clouds.bakeTime.value = getFrameTime();
   if (runRequestedEnvBake()) noteEnvBake();
@@ -703,6 +727,22 @@ const getFrameTime = () =>
     ?.nodeFrame?.time ?? 0;
 
 // Debug
+
+/**
+ * @internal Sets (or, with null, removes) the static-layers test layer (the p114 Phase 1 test
+ * harness, from the debug tab) and rebuilds the active sky box's nodes. Session only: every sky
+ * box activated while it's set gets it.
+ */
+export const _setStaticLayersTest = (source: StaticLayersSource | null) => {
+  _setStaticLayersTestSource(source);
+  const current = active;
+  if (!current) return;
+  show({
+    ...current,
+    ...buildNodes(current.def, current.uniforms, current.textures.source, current.textures.moon),
+  });
+  notify('update');
+};
 
 type SkyBoxGUIModule = typeof import('../Debug/_dbg__SkyBox');
 let debugGUI: DebugModuleRef<SkyBoxGUIModule> | null = null;
