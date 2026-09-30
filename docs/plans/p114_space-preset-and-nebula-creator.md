@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Skybox, Rendering
-Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md, p113_night-sky-and-day-night-cycle.md (stars layer, sidereal rotation)
+Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md, \_DONE_p113_night-sky-and-day-night-cycle.md (stars layer, sidereal rotation)
 Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic)
 
 # Space Preset and Nebula Creator — Plan
