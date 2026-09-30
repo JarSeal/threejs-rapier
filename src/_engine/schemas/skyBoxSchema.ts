@@ -11,6 +11,7 @@ import {
   fromLegacySkyBoxProps,
   isLegacySkyBoxProps,
 } from '../core/SkyBox/legacySkyBox';
+import { mergeSkyBoxPreset, SKYBOX_PRESET_NAMES } from '../core/SkyBox/presets';
 
 // A sky box definition is a set of layers. p111 has the base and env layers, p112 the atmosphere
 // and suns, p113 the day-night cycle and p114 the nebulae; later plans add their own layers as
@@ -491,9 +492,14 @@ export const SkyBoxDefSchema = z
     id: z.string(),
     /** Whether this is the sky box its scene starts with. Without one, the first registered is. */
     isDefault: z.boolean().optional(),
-    /** A preset to start from (p114). Accepted, but not used yet. */
-    preset: z.string().optional(),
-    base: SkyBoxBaseSchema,
+    /** A preset to start from: its layers, under this definition's (a layer given here is
+     * merged over the preset's key by key; arrays and the base replace the preset's). Resolved
+     * at build time. DAY_SKY: atmosphere, sun and light, clouds, ground. NIGHT_SKY: the sun
+     * down, a moon and light, stars and Milky Way, clouds, ground. DAY_NIGHT: every p113 layer
+     * on a running cycle. SPACE: dense stars, a sun and light, two nebulae; no atmosphere. */
+    preset: z.enum(SKYBOX_PRESET_NAMES).optional(),
+    /** Required, unless a preset gives it. */
+    base: SkyBoxBaseSchema.optional(),
     env: SkyBoxEnvSchema.optional(),
     atmosphere: SkyBoxAtmosphereSchema.optional(),
     /** Up to 4. suns[0] is the primary: it drives the atmosphere, the clouds' light and the
@@ -520,9 +526,17 @@ export const SkyBoxDefSchema = z
       z.preprocess((entry) => fromLegacySkyBoxOverrides(entry) ?? entry, SkyBoxOverridesSchema)
     ),
   })
+  .refine((def) => Boolean(def.base || def.preset), {
+    error: 'A sky box needs a base, unless it has a preset (which gives one).',
+    path: ['base'],
+  })
   .refine(
-    // A layer is on when its key is there, unless it says `enabled: false`
-    (def) => !isLayerOn(def.clouds) || isLayerOn(def.atmosphere),
+    // A layer is on when its key is there, unless it says `enabled: false` (checked with the
+    // preset's layers: they may give the atmosphere)
+    (def) => {
+      const resolved = mergeSkyBoxPreset(def);
+      return !isLayerOn(resolved.clouds) || isLayerOn(resolved.atmosphere);
+    },
     {
       error: 'Clouds need an enabled atmosphere (they are lit and seen through it).',
       path: ['clouds'],

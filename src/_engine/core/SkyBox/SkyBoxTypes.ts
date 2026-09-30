@@ -80,9 +80,10 @@ export type SkyTimeSource = NonNullable<SkyBoxDayNightDef['timeSource']>;
 
 /**
  * A sky box definition: the JSON shape (`SkyBoxDefSchema`), plus what only code can give, a
- * loaded texture and the scene to register in.
+ * loaded texture and the scene to register in. It has no `preset`: JSON presets are resolved at
+ * build time, and code resolves one with `resolveSkyBoxPreset` (SkyBox/presets.ts).
  */
-export type SkyBoxDef = Omit<z.input<typeof SkyBoxDefSchema>, 'base'> & {
+export type SkyBoxDef = Omit<z.input<typeof SkyBoxDefSchema>, 'base' | 'preset'> & {
   base: SkyBoxBaseDef;
   /** Code only: the scene the sky box belongs to. Default: the loading scene, or else the current one. In JSON, the scene that lists the sky box owns it. */
   sceneId?: string;

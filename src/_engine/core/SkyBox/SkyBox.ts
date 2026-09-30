@@ -73,6 +73,12 @@ import {
 } from './SkyTime';
 
 export type { SkyBoxDef } from './SkyBoxTypes';
+export {
+  resolveSkyBoxPreset,
+  SKYBOX_PRESET_NAMES,
+  type SkyBoxPresetDef,
+  type SkyBoxPresetName,
+} from './presets';
 
 /** The one sky box the root scene shows. */
 export type ActiveSkyBox = {
@@ -160,6 +166,11 @@ export const registerSkyBox = (def: SkyBoxDef, sceneId?: string) => {
     const msg = `Could not find a scene to register sky box "${def.id}" in (no current or loading scene).`;
     lerror(msg);
     throw new Error(msg);
+  }
+  if ('preset' in def && isDebugEnvironment()) {
+    lwarn(
+      `Sky box "${def.id}" still has a preset, which is ignored here: pass the definition through resolveSkyBoxPreset first (JSON sky boxes are resolved at build time).`
+    );
   }
   let sceneDefs = registry.get(targetSceneId);
   if (!sceneDefs) {

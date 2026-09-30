@@ -20,6 +20,7 @@ import {
   LEGACY_SKYBOX_WARNING,
 } from '../src/_engine/core/SkyBox/legacySkyBox';
 import { deepMerge } from '../src/_engine/utils/deepMerge';
+import { mergeSkyBoxPreset } from '../src/_engine/core/SkyBox/presets';
 import pkg from '../package.json';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -614,7 +615,8 @@ export const gatherSceneData = () => {
           hasError = true;
           continue;
         }
-        const skyJSON = validation.data;
+        // The runtime only sees plain definitions: the preset is merged in here
+        const skyJSON: SkyBoxAsset = mergeSkyBoxPreset(validation.data);
         const skyId = skyJSON.id;
         if (ids.skyboxes.includes(skyId)) {
           logDuplicateIdError('skybox', skyId, file);
@@ -982,7 +984,9 @@ export const gatherSceneData = () => {
       if (Array.isArray(fileContentJSON.skyboxes)) {
         fileContentJSON.skyboxes = fileContentJSON.skyboxes.map((skyIdOrInline) => {
           const sky =
-            typeof skyIdOrInline === 'string' ? skyRegistry[skyIdOrInline] : skyIdOrInline;
+            typeof skyIdOrInline === 'string'
+              ? skyRegistry[skyIdOrInline]
+              : mergeSkyBoxPreset(skyIdOrInline);
           if (!sky) return skyIdOrInline; // Fallback to raw string ID if asset file doesn't exist yet
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { $schema, __sourcePath, __saveData, ...def } = sky;

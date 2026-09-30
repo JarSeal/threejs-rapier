@@ -2667,7 +2667,13 @@
                 "type": "boolean"
               },
               "preset": {
-                "type": "string"
+                "type": "string",
+                "enum": [
+                  "DAY_SKY",
+                  "NIGHT_SKY",
+                  "DAY_NIGHT",
+                  "SPACE"
+                ]
               },
               "base": {
                 "oneOf": [
@@ -5603,8 +5609,7 @@
               }
             },
             "required": [
-              "id",
-              "base"
+              "id"
             ],
             "additionalProperties": false
           }
@@ -8571,7 +8576,13 @@
                         "type": "boolean"
                       },
                       "preset": {
-                        "type": "string"
+                        "type": "string",
+                        "enum": [
+                          "DAY_SKY",
+                          "NIGHT_SKY",
+                          "DAY_NIGHT",
+                          "SPACE"
+                        ]
                       },
                       "base": {
                         "oneOf": [
@@ -11507,8 +11518,7 @@
                       }
                     },
                     "required": [
-                      "id",
-                      "base"
+                      "id"
                     ],
                     "additionalProperties": false
                   }

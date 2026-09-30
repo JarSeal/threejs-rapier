@@ -1,5 +1,6 @@
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
-import { updateDebuggerTab } from '../../../debug/DebuggerGUI';
+import { DEBUG_TOASTER_ID, updateDebuggerTab } from '../../../debug/DebuggerGUI';
+import { addToast } from '../../UI/Toaster';
 import { getCurrentSceneId } from '../../Scene';
 import {
   _getSkyBoxRegistry,
@@ -30,6 +31,7 @@ import { GROUND_DEFAULTS } from '../../SkyBox/layers/ground';
 import { MAX_NEBULAE, NEBULA_DEFAULTS } from '../../SkyBox/layers/nebula';
 import { SHADOW_PRESETS } from '../../LightManager';
 import { getEnvSize } from '../../SkyBox/SkyComposite';
+import { resolveSkyBoxPreset, type SkyBoxPresetName } from '../../SkyBox/presets';
 import {
   _recordOrCoalesceUndoRedoAction,
   _recordUndoRedoAction,
@@ -668,6 +670,127 @@ _registerUndoRedoActionHandler<SkyBoxParamPayload>('skybox.param', {
 _registerUndoRedoActionHandler<SkyBoxResetLayerPayload>('skybox.resetLayer', {
   undo: ({ sceneId, skyBoxId, layer, prev }) => applyLayerOverride(sceneId, skyBoxId, layer, prev),
   redo: ({ sceneId, skyBoxId, layer }) => applyLayerOverride(sceneId, skyBoxId, layer, undefined),
+});
+
+// Apply preset: one override that makes a definition look like a preset
+
+/** Objects without an `enabled` key: absent means all defaults. */
+const WITHOUT_ENABLED = new Set(['env', 'stars.twinkle']);
+const PRESET_LAYER_KEYS = [
+  'env',
+  'atmosphere',
+  'stars',
+  'ambientLight',
+  'clouds',
+  'ground',
+  'dayNight',
+] as const;
+const PRESET_LIST_KEYS: SkyBoxListKey[] = ['suns', 'moons', 'nebulae'];
+
+/** The override of the object at `path` that makes `from` what `to` has there: a layer `to`
+ * doesn't have is turned off, and every key either one sets gets `to`'s value (or default). */
+const diffLayer = (from: SkyBoxDef, to: SkyBoxDef, path: string): Obj | undefined => {
+  const hasEnabled = !WITHOUT_ENABLED.has(path);
+  if (hasEnabled && getDefValue(to, `${path}.enabled`) === false) {
+    return getDefValue(from, `${path}.enabled`) === false ? undefined : { enabled: false };
+  }
+  const keys = new Set([
+    ...Object.keys(asObj(getPath(from, path))),
+    ...Object.keys(asObj(getPath(to, path))),
+  ]);
+  if (hasEnabled) keys.add('enabled');
+  const result: Obj = {};
+  for (const key of keys) {
+    const keyPath = `${path}.${key}`;
+    if (isObj(getPath(from, keyPath)) || isObj(getPath(to, keyPath))) {
+      const nested = diffLayer(from, to, keyPath);
+      if (nested) result[key] = nested;
+      continue;
+    }
+    const next = getDefValue(to, keyPath);
+    if (next !== undefined && !isEqual(next, getDefValue(from, keyPath))) result[key] = next;
+  }
+  return Object.keys(result).length ? result : undefined;
+};
+
+/**
+ * The overrides that make a definition look like a preset (its id and debug data stay). The
+ * lists are whole arrays. Overrides can't change the base's type, so a texture base is kept
+ * (`keptBase`).
+ */
+export const getPresetOverrides = (def: SkyBoxDef, presetName: SkyBoxPresetName) => {
+  const to = resolveSkyBoxPreset({ id: def.id, preset: presetName });
+  const overrides: Obj = {};
+  const keptBase = def.base.type !== to.base.type;
+  if (!keptBase && def.base.type === 'COLOR' && to.base.type === 'COLOR') {
+    if (!isEqual(def.base.color, to.base.color)) overrides.base = { color: to.base.color };
+  }
+  for (const layer of PRESET_LAYER_KEYS) {
+    const layerOverride = diffLayer(def, to, layer);
+    if (layerOverride) overrides[layer] = layerOverride;
+  }
+  for (const list of PRESET_LIST_KEYS) {
+    const next = getDefValue(to, list);
+    if (!isEqual(next, getDefValue(def, list))) overrides[list] = structuredClone(next);
+  }
+  return { overrides: overrides as SkyBoxOverrides, keptBase };
+};
+
+type SkyBoxApplyPresetPayload = {
+  sceneId: string;
+  skyBoxId: string;
+  preset: SkyBoxPresetName;
+  prevOverride: SkyBoxOverrides | undefined;
+  nextOverride: SkyBoxOverrides | undefined;
+};
+
+/** Replaces a sky box's overrides, and shows the result when that sky box is showing. */
+const applyWholeOverride = async (
+  sceneId: string,
+  skyBoxId: string,
+  overrides: SkyBoxOverrides | undefined
+) => {
+  setSkyBoxOverrides(sceneId, skyBoxId, overrides);
+  // Layers turn on and off, and the lists change: activate again from the definition
+  if (isActive(sceneId, skyBoxId)) await setActiveSkyBox(skyBoxId, sceneId);
+  else refreshTab();
+};
+
+/**
+ * "Apply preset": replaces the active sky box's overrides with the ones that make it look like
+ * the preset (undoable as one step, `skybox.applyPreset`). A texture base is kept (a toast says
+ * so): overrides can't change the base's type.
+ */
+export const applySkyBoxPreset = (presetName: SkyBoxPresetName) => {
+  const active = getActiveSkyBox();
+  if (!active) return;
+  const { sceneId, id: skyBoxId } = active;
+  const def = getSkyBoxDef(sceneId, skyBoxId);
+  if (!def) return;
+  const { overrides, keptBase } = getPresetOverrides(def, presetName);
+  const prevOverride = getSkyBoxOverrides(sceneId, skyBoxId);
+  const nextOverride = Object.keys(overrides).length ? overrides : undefined;
+  if (keptBase) {
+    addToast({
+      toasterId: DEBUG_TOASTER_ID,
+      title: `Applied ${presetName}, kept the base`,
+      message: `The preset's base is a colour; a ${def.base.type} base stays (a base type change is a different definition).`,
+    });
+  }
+  void applyWholeOverride(sceneId, skyBoxId, nextOverride);
+  if (isEqual(prevOverride, nextOverride)) return;
+  _recordUndoRedoAction<SkyBoxApplyPresetPayload>(
+    'skybox.applyPreset',
+    `Sky box ${skyBoxId}: apply preset ${presetName}`,
+    { sceneId, skyBoxId, preset: presetName, prevOverride, nextOverride }
+  );
+};
+
+_registerUndoRedoActionHandler<SkyBoxApplyPresetPayload>('skybox.applyPreset', {
+  undo: ({ sceneId, skyBoxId, prevOverride }) =>
+    applyWholeOverride(sceneId, skyBoxId, prevOverride),
+  redo: ({ sceneId, skyBoxId, nextOverride }) =>
+    applyWholeOverride(sceneId, skyBoxId, nextOverride),
 });
 
 /** Whether the current scene has any sky box overrides stored. */

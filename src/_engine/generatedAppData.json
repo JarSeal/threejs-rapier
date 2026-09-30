@@ -515,7 +515,6 @@
       ],
       "skyboxes": [
         {
-          "id": "dayNight",
           "base": {
             "type": "COLOR",
             "color": "#000000"
@@ -550,9 +549,10 @@
             "cycleDurationSec": 300,
             "dayOfYear": 100
           },
+          "id": "dayNight",
           "debugData": {
             "name": "Day-night (showcase)",
-            "description": "Every p113 layer: atmosphere, sun and light, moon and light, stars and Milky Way, clouds and ground, on a 5-minute day."
+            "description": "The DAY_NIGHT preset (every p113 layer: atmosphere, sun and light, moon and light, stars and Milky Way, clouds and ground) on a 5-minute day."
           }
         }
       ],
@@ -1655,7 +1655,6 @@
       "__sourcePath": "src/app/skyboxes/basicSkybox.skybox.json"
     },
     "dayNight": {
-      "id": "dayNight",
       "base": {
         "type": "COLOR",
         "color": "#000000"
@@ -1690,9 +1689,10 @@
         "cycleDurationSec": 300,
         "dayOfYear": 100
       },
+      "id": "dayNight",
       "debugData": {
         "name": "Day-night (showcase)",
-        "description": "Every p113 layer: atmosphere, sun and light, moon and light, stars and Milky Way, clouds and ground, on a 5-minute day."
+        "description": "The DAY_NIGHT preset (every p113 layer: atmosphere, sun and light, moon and light, stars and Milky Way, clouds and ground) on a 5-minute day."
       },
       "__sourcePath": "src/app/skyboxes/dayNight.skybox.json"
     }

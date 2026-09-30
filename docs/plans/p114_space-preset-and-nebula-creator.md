@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–3 implemented
+Status: in progress | Phases 1–4 implemented
 Category: Skybox, Rendering
 Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md, \_DONE_p113_night-sky-and-day-night-cycle.md (stars layer, sidereal rotation)
 Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic)
@@ -52,6 +52,11 @@ The **SPACE** preset is stars, one or more suns and nebulae, with no atmosphere,
   - `moons[1]` is a second p113 orbit, not an offset: its own phase, `phaseMode`, `lunarCycleDays` and `inclination` (`computeMoonDirection` already took the moon). `SkyTimeState.moonPhase` became `moonPhases[]`.
 - **What stays primary-only.** `suns[0]` drives the atmosphere, the stars' fade, the clouds' light, the ground and the ambient light. `moons[0]` lights the clouds. Every sun is dimmed and coloured by the atmosphere along its own direction: a custom colour's compensation, the disc's `sunE` cap and the light's AUTO colour are per sun (`computeSunE`, `computeExtinction` at its height).
 - **The Suns and Moons lists (DD5) are built in Phase 3**, since the Phase 3 check "adding or removing an entry is a single rebuild" needs them. "Apply preset" stays in Phase 4.
+- **Presets and the schema (found in Phase 4).**
+  - `base` was required, so it's now optional when a `preset` gives one (a refine). The editor's JSON Schema can't say "required unless preset", so it no longer marks `base` as required; the gatherer still enforces it.
+  - The "clouds need an atmosphere" refine runs on the resolved definition, since a preset may give the atmosphere.
+  - The runtime `SkyBoxDef` type has no `preset`. Code definitions go through `resolveSkyBoxPreset` (the plan only covered JSON), so `presets.ts` stays out of the main chunk unless code uses it.
+- **"Apply preset" is a computed override (found in Phase 4).** An override can't delete a key or change `base.type`. So the override that makes a definition look like a preset is a diff against the definition: layers the preset lacks get `enabled: false`, every key either side sets gets the preset's effective value, and the lists are whole arrays. A texture base is kept, with a toast.
 
 ## Design decisions
 
@@ -220,7 +225,7 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
    - Verify: every param behaves, dragging stays responsive (bakes at most every 150 ms), seeds are deterministic across reloads, and nebulae rotate with the sky when day-night is on.
 3. **Multiple suns and moons.** **Done** (see Implementation notes, Phase 3).
    - Verify: 1–4 suns render with the right colours and optional lights, only `suns[0]` shapes the atmosphere, the shadow-count warning appears, and adding or removing an entry is a single rebuild.
-4. **Presets.** `presets.ts`, the schema's `preset`, build-time resolution in `gatherAppData`, and "Apply preset" with `skybox.applyPreset`.
+4. **Presets.** **Done** (see Implementation notes, Phase 4). `presets.ts`, the schema's `preset`, build-time resolution in `gatherAppData`, and "Apply preset" with `skybox.applyPreset`.
    - Verify:
      - `gatherAppData` emits the resolved preset def;
      - `dayNight.skybox.json` on `DAY_NIGHT` looks unchanged;
@@ -394,3 +399,40 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
   - bloom on the extra suns.
 - **Custom disc colours clip to white at the core** without bloom or strong tone mapping (radiance 40 × colour); the glow shows the colour. It's the same for `suns[0]`.
 - **Changing `dayNight.timeOfDay` moves the extra suns that turn with the sky**, because their elevation/azimuth is anchored to the start time.
+
+### Phase 4: presets
+
+- **What was built.**
+  - `SkyBox/presets.ts`: the `DAY_SKY`, `NIGHT_SKY`, `DAY_NIGHT` and `SPACE` templates (template version 1, in the header).
+    - It imports only `deepMerge` and types, because the gatherer and the schema run it in Node.
+    - `mergeSkyBoxPreset` is generic, for the schema and the gatherer. The definition's type comes from the schema, so a typed version there would be a type cycle.
+    - `resolveSkyBoxPreset` is the typed version for code, re-exported from `SkyBox.ts`.
+    - The definition's layers merge over the preset's key by key. Its arrays and its base replace the preset's. The template is cloned first, so a result never shares its arrays.
+  - Schema: `preset` is `z.enum(SKYBOX_PRESET_NAMES)`, `base` is optional with a preset (see "Changes since the plan was written").
+  - `gatherAppData`: sky box files and inline scene sky boxes are resolved after validation. The emitted definition has no `preset` key, and scene save data merges over the resolved definition.
+  - `registerSkyBox` warns (debug env) about a definition that still has a `preset` (a cast or plain JS).
+  - `dayNight.skybox.json` is now `"preset": "DAY_NIGHT"` plus its own cycle (17:30, a 5-minute day, day 100). The preset has the default cycle.
+  - Debug: in "Scene's skyboxes", a "Preset" dropdown (session-only) and "Apply preset (replaces the overrides)".
+    - `getPresetOverrides` / `applySkyBoxPreset` are in `_dbg__SkyBoxShared.ts`, next to the other override helpers. The plan put them in `_dbg__SkyBox.ts`, but `getPath` and `getDefValue` live in the shared module.
+    - It writes the whole override and activates again from the definition.
+    - Undo records `skybox.applyPreset { sceneId, skyBoxId, preset, prevOverride, nextOverride }`.
+- **Checked:**
+  - The generated `dayNight` definition (and the showcase scene's copy) is identical to the pre-preset JSON, compared with sorted keys. Only `debugData.description` changed. So the showcase looks unchanged by construction.
+  - Schema cases:
+    - no base and no preset is an error;
+    - a preset alone is valid;
+    - an unknown preset is an enum error;
+    - clouds with DAY_SKY are valid, and with SPACE, or with DAY_SKY's atmosphere turned off, they are errors;
+    - an inline scene sky box with a preset validates and resolves.
+  - WebGL2 (SwiftShader), showcase. Each preset was applied in turn, and the active definition compared with the resolved preset on every leaf path:
+    - NIGHT_SKY, SPACE and DAY_NIGHT match exactly.
+    - DAY_SKY differs only in `stars.milkyWay.enabled` under stars that are off: the override is `stars: { enabled: false }`, which hides the Milky Way too.
+    - Screenshots of all four look as intended (SPACE: nebula, dense stars, sun shadows, no horizon glow).
+  - Undo four times: each step restores the previous override, and it ends on the registered definition with `AEK_debugSkyBox` removed.
+  - Production build: the templates are only in the lazy `_dbg__SkyBox` chunk.
+- **Not checked yet:**
+  - WebGPU;
+  - the dropdown and button by hand in the drawer (the script called `applySkyBoxPreset`, which the button calls);
+  - SPACE with the space scene's camera (Phase 7 may retune its nebulae).
+- **The preset templates are a first pass.** SPACE's second nebula (teal, `[0.7, -0.1, 0.6]`) is behind the showcase camera. Phase 7's space scene is where the SPACE look gets its final tuning.
+

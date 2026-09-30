@@ -25,7 +25,9 @@ import {
 import { _registerManagerDebugInfo } from './_dbg__ManagedEntities';
 import { getCurrentSceneId } from '../Scene';
 import { _recordUndoRedoAction, _registerUndoRedoActionHandler } from './_dbg__UndoRedo';
+import { SKYBOX_PRESET_NAMES, type SkyBoxPresetName } from '../SkyBox/presets';
 import {
+  applySkyBoxPreset,
   clearSkyBoxOverrides,
   getSceneIdsWithOverrides,
   migrateLegacySkyBoxLS,
@@ -72,6 +74,10 @@ _registerUndoRedoActionHandler<SkyBoxSelectPayload>('skybox.select', {
   redo: ({ sceneId, next }) => selectSkyBox(sceneId, next),
 });
 
+/** The preset "Apply preset" applies (session-only). */
+const presetProxy: { name: SkyBoxPresetName } = { name: 'DAY_SKY' };
+const PRESET_OPTIONS = SKYBOX_PRESET_NAMES.map((name) => ({ text: name, value: name }));
+
 const buildSelectFolder = (): DebuggerPaneItem => {
   const sceneId = getCurrentSceneId();
   const sceneDefs = sceneId ? _getSkyBoxRegistry().get(sceneId) : undefined;
@@ -107,6 +113,20 @@ const buildSelectFolder = (): DebuggerPaneItem => {
             next,
           });
         },
+      },
+      { type: 'separator' },
+      {
+        key: 'name',
+        target: presetProxy,
+        label: 'Preset',
+        options: PRESET_OPTIONS,
+        disabled: () => !getActiveSkyBox(),
+      },
+      {
+        type: 'button',
+        title: 'Apply preset (replaces the overrides)',
+        disabled: () => !getActiveSkyBox(),
+        onClick: () => applySkyBoxPreset(presetProxy.name),
       },
     ],
   };
