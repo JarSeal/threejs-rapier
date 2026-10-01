@@ -4,7 +4,11 @@ import {
   stopProdTestMode,
   updateOnScreenTools,
 } from '../../debug/OnScreenTools';
-import { toggleAxesGizmo, toggleEnvBall } from '../../debug/DebugToolsManager';
+import {
+  toggleAxesGizmo,
+  toggleEnvBall,
+  toggleOnScreenToolsDisabled,
+} from '../../debug/DebugToolsManager';
 import { redoLastAction, undoLastAction } from '../../debug/UndoRedo';
 import { lwarn } from '../../utils/Logger';
 import { isDebugCameraActive, toggleDebugCamera } from '../CameraManager';
@@ -40,6 +44,21 @@ const showLoopToast = (title: string, isPlaying: boolean) => {
   } catch {
     // No debug toaster yet (it's created at the end of InitEngine) — the toggle itself still ran
   }
+};
+
+/** The pressed chord as readable text (eg. 'Shift+§'), or undefined for keys with no readable
+ * name (dead keys etc.). Read from the event, so it's right for a rebound key and for layouts
+ * where the key is shifted. */
+const getPressedChordHint = (e: KeyboardEvent) => {
+  if (e.key === 'Dead' || e.key === 'Unidentified') return undefined;
+  const key = e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  const modifiers = [
+    e.ctrlKey && 'Ctrl',
+    e.altKey && 'Alt',
+    e.shiftKey && 'Shift',
+    e.metaKey && 'Meta',
+  ].filter(Boolean);
+  return [...modifiers, key].join('+');
 };
 
 const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
@@ -126,6 +145,20 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
       e.preventDefault();
       if (e.repeat || isTypingInField()) return;
       toggleAxesGizmo();
+    },
+  },
+  {
+    id: 'sc-toggle-on-screen-tools',
+    // keydown: where § is a shifted key (eg. German layout: Shift+3), releasing Shift first
+    // would make the keyup's key '3'. ignoreModifiers, so the shifted § matches too. No § key on
+    // US ANSI keyboards: rebind it with AppConfig.debugKeys.
+    type: 'KEY_DOWN',
+    chord: { key: '§' },
+    ignoreModifiers: true,
+    name: 'Toggle on-screen tools click-through',
+    fn: (e) => {
+      if (e.repeat || isTypingInField()) return;
+      toggleOnScreenToolsDisabled(getPressedChordHint(e));
     },
   },
   // Undo/redo are keydown: macOS browsers fire no keyup for other keys while ⌘ is held, and

@@ -94,6 +94,23 @@ Earlier releases are only recorded in the git history.
 - `dayNight.skybox.json` uses `"preset": "DAY_NIGHT"` plus its own cycle, with the same look.
 - The gym's environment intensity is set in its sky box definitions (`env.environmentIntensity`) instead of by hand on scene enter and exit.
 
+## 2026-09-30 — add-on-screen-tools-disabler-settings
+
+### Engine 2.3.0 (Morning)
+
+**Added**
+
+- "Disable on-screen tools" (debug only): the on-screen tool groups, the debug drawer handle, the stats panel and the axes gizmo become click-through, so clicks and drags reach the canvas under them. All but the gizmo (which renders into the canvas) are dimmed to a configurable opacity. Keyboard shortcuts and the drawer contents keep working. It is applied at boot, before the first scene load, and set with a body class (`aekOnScreenToolsDisabled`) and a CSS variable (`--aek-disabled-on-screen-tools-opacity`), so rebuilt tool groups keep it.
+- The `§` debug shortcut (`sc-toggle-on-screen-tools`, rebindable through `AppConfig.debugKeys`) toggles it and shows a toast naming the key that was pressed. It also matches with modifiers held, for layouts where § is a shifted key.
+- `toggleOnScreenToolsDisabled()` (`debug/DebugToolsManager.ts`).
+- The axes gizmo slot has a global class, `aekAxesGizmoSlot`.
+
+**Changed**
+
+- The Debug Tools Controls tab's "Production test mode" folder is now "On-screen tools". It holds "Disable on-screen tools [§]", "Disabled on-screen tools opacity" and the existing prod test switch.
+- `DebugToolsState.prodTestMode` is replaced by `onScreenTools` (`showOnScreenToolsInProdTest`, `disableOnScreenTools`, `disabledOnScreenToolsOpacity`). A saved `prodTestMode` is migrated on load and written back right away.
+- The on-screen tool groups, the drawer handle and the stats panel fade their opacity changes (0.2s).
+
 ## 2026-09-29 — ray-casting-refactoring
 
 ### Engine 2.2.0 (Morning)

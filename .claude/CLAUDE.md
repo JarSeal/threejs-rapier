@@ -169,4 +169,5 @@ Rules:
 ## Workflow
 
 - A Stop hook runs lint and type-check, plus the version rule check when `package.json` changed. Leave the tree compiling.
+- `readme.md` (root) is the project's public face. Update it in the same branch when a change alters what it lists: a new engine subsystem or toolkit module (Features), a new asset JSON type, a new command or URL flag, a changed runtime/browser requirement, a changed signature of an API its Examples use (`InitEngine`, `createRenderer`, `createSceneLoader`/`loadScene`, `createMeshEntity`, `createPhysicsEntity`, `addSystem`/`registerPlugin`, `AppConfig`), or a Roadmap item that lands (move it into Features). Physics objects in the scene JSON schema, the procedural sky/day-night cycle, the editor/material editor and the LOD system are the ones that call for a new highlight or example. Keep version numbers out of it (they live in `CHANGELOG.md`).
 - `docs/plans/` holds specs for unstarted work. Never treat one as current state or implement one unless I reference it explicitly.

@@ -48,7 +48,9 @@
   background: variables.$debugGuiBackground;
   color: variables.$debugTextColor;
   user-select: none;
-  transition: background 0.2s ease-in-out;
+  transition:
+    background 0.2s ease-in-out,
+    opacity 0.2s ease-in-out;
 
   &:hover {
     background: variables.$debugGuiBackgroundLighter;

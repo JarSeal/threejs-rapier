@@ -11,6 +11,20 @@ If for some reason this plan can't or shouldn't be created with this specificati
 
 ************************************
 
+Create "Fog system" plan in docs/plans/p102_fog-system.md
+
+Category: Fog
+
+Create a fog system for Aekasha. The debugger drawer should have its own  Fog system tab (design an icon for this) and each fog setup should be scene specific. It should be toggleable on/off (the whole system) and it should have at least three different fog passes available to choose from (or notify if some of these should not be implemented, or something else would be beneficial for Aekasha):
+- Basic Three.js fog (simple fog)
+- Three.js FogExp2
+- Global volumetric fog (or something like it)
+Also all the parameters for the fog should be editable in the debugger drawer. It can be defined in its own file: myScene.fog.json.
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+************************************
+
 UNDER_CONSTRUCTION
 Create "Statistics Profiler mega window" plan in docs/plans/p220_stats-profiler-mega-window.md
 
