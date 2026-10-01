@@ -1,10 +1,9 @@
 import * as THREE from 'three/webgpu';
 import { createGeometry } from '../_engine/core/Geometry';
-import { createMaterial, getMaterial, getMaterialVariant } from '../_engine/core/Material';
+import { getMaterial, getMaterialVariant } from '../_engine/core/Material';
 import { createMeshEntity, getMeshByAppId, setMeshMaterial } from '../_engine/core/MeshManager';
 import { createSkyBox } from '../_engine/core/SkyBox/SkyBox';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
-import { loadTexture } from '../_engine/core/Texture';
 import { createDynamicCharacter } from '../_engine/core/Character/DynamicCharacter';
 import { characterTestObstacles } from '../_engine/utils/world/characterTestObjects';
 import { importAssetAsync } from '../_engine/core/Import/ImportRegistry';
@@ -25,6 +24,7 @@ import {
   deleteFollowObjectCameraRig,
 } from '../_engine/utils/cameras/followObjectCameraRig';
 import { ECSSystemStage } from '../AppECSRegistry';
+import { createCharacterVisual } from './characterVisual';
 
 export const SCENE_THIRD_PERSON_GYM_META = {
   id: 'thirdPersonGymScene',
@@ -142,50 +142,13 @@ const createGymCharacters = async () => {
     _height: 1.6,
     _radius: 0.5,
   };
-  const charCapsule = createGeometry({
-    id: 'capsuleDynamicChar',
-    type: 'CAPSULE',
-    params: {
+  const createCharacterMesh = (index: number, beakColor: string) =>
+    createCharacterVisual({
+      key: index,
+      height: characterData._height,
       radius: characterData._radius,
-      height: characterData._height - characterData._radius * 2,
-    },
-  });
-  const charMaterial = createMaterial({
-    id: 'materialDynamicChar',
-    type: 'PHONG',
-    params: {
-      map: loadTexture({
-        id: 'box1Texture',
-        fileName: '/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg',
-      }),
-    },
-  });
-  /** The character capsule with a beak pointing along its facing (+X at yaw 0). */
-  const createCharacterMesh = (index: number, beakColor: string) => {
-    createMeshEntity(
-      {
-        geo: createGeometry({
-          id: `directionBeakGeoDynamicChar${index}`,
-          type: 'BOX',
-          params: { width: 0.25, height: 0.25, depth: 0.7 },
-        }),
-        mat: createMaterial({
-          id: `directionBeakMatDynamicChar${index}`,
-          type: 'BASIC',
-          params: { color: beakColor },
-        }),
-        position: { x: 0.35, y: 0.43, z: 0 },
-      },
-      { appId: `directionBeakMeshDynamicChar-${index}`, doNotAddToScene: true }
-    );
-    createMeshEntity(
-      { geo: charCapsule, mat: charMaterial, receiveShadow: true, castShadow: true },
-      { appId: `meshDynamicChar-${index}` }
-    );
-    const mesh = getMeshByAppId(`meshDynamicChar-${index}`)!;
-    mesh.add(getMeshByAppId(`directionBeakMeshDynamicChar-${index}`)!);
-    return mesh;
-  };
+      beakColor,
+    });
 
   const characterMesh = createCharacterMesh(1, '#333');
   const { character: playerCharacter } = await createDynamicCharacter({

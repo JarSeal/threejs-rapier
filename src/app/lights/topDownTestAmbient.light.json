@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "AMBIENT",
+    "color": "#dfe8ff",
+    "intensity": 0.35
+  },
+  "entityOpts": {
+    "appId": "topDownTestAmbient",
+    "debugData": {
+      "name": "Top-down test ambient fill",
+      "description": "Low-intensity baseline fill so shadowed geometry isn't pure black — topDownTestSun is the dominant light."
+    }
+  }
+}

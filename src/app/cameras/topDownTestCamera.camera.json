@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../.schemas/camera.schema.json",
+  "camProps": {
+    "type": "PERSPECTIVE",
+    "fov": 50,
+    "near": 1,
+    "far": 400,
+    "position": { "x": 0, "y": 21, "z": 8 },
+    "lookAtPoint": { "x": 0, "y": 1, "z": 0 },
+    "active": true
+  },
+  "entityOpts": {
+    "appId": "topDownTestCamera",
+    "debugData": {
+      "name": "Top-down test camera",
+      "description": "Follow camera driven by createFollowObjectCameraRig at a (0, 20, 8) offset: straight South of and above the player, so North (-Z) is screen-up. This initial position/lookAt only matters until the rig takes over."
+    }
+  }
+}

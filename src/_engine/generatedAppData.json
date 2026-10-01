@@ -1203,6 +1203,237 @@
       "postFxEnabled": true,
       "id": "thirdPersonGymScene",
       "sceneFile": "./scene_thirdPersonGym.ts"
+    },
+    "topDownTestScene": {
+      "name": "Top-down test",
+      "description": "Top-down character test scene (docs/plans/_DONE_p066_character-definitions-and-refactoring.md Phase 6): a WORLD_FIXED player (W = North = screen-up) on a large flat ground with a hills patch on the East side, scattered static obstacles and dynamic props, and a sun whose shadow is fitted to the camera view (SunShadowFit).",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 1,
+            "far": 400,
+            "position": {
+              "x": 0,
+              "y": 21,
+              "z": 8
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 50,
+            "appId": "topDownTestCamera"
+          },
+          "entityOpts": {
+            "appId": "topDownTestCamera",
+            "debugData": {
+              "name": "Top-down test camera",
+              "description": "Follow camera driven by createFollowObjectCameraRig at a (0, 20, 8) offset: straight South of and above the player, so North (-Z) is screen-up. This initial position/lookAt only matters until the rig takes over."
+            }
+          }
+        }
+      ],
+      "lights": [
+        {
+          "lightProps": {
+            "type": "AMBIENT",
+            "color": "#dfe8ff",
+            "intensity": 0.35,
+            "appId": "topDownTestAmbient"
+          },
+          "entityOpts": {
+            "appId": "topDownTestAmbient",
+            "debugData": {
+              "name": "Top-down test ambient fill",
+              "description": "Low-intensity baseline fill so shadowed geometry isn't pure black — topDownTestSun is the dominant light."
+            }
+          }
+        },
+        {
+          "lightProps": {
+            "type": "DIRECTIONAL",
+            "color": "#fff2d9",
+            "intensity": 3,
+            "position": {
+              "x": 25,
+              "y": 30,
+              "z": 30
+            },
+            "targetPos": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "castShadow": true,
+            "shadowPreset": "HIGH",
+            "shadowCameraNearFar": [
+              1,
+              120
+            ],
+            "shadowCameraFrustum": [
+              -35,
+              35,
+              35,
+              -35
+            ],
+            "shadowIntensity": 0.8,
+            "appId": "topDownTestSun"
+          },
+          "entityOpts": {
+            "appId": "topDownTestSun",
+            "debugData": {
+              "name": "Top-down test sun",
+              "description": "Directional shadow-casting sun from the South-East, about 38° above the horizon. Only its direction (position → targetPos) is kept: scene_topDownTest.ts adds a SUN_SHADOW_FIT component on scene enter, which moves it with the camera view and owns its shadow frustum (the values here only apply until then)."
+            }
+          }
+        }
+      ],
+      "materials": [
+        {
+          "id": "triplanarGrid",
+          "params": {
+            "color": "#808080",
+            "roughness": 0.85,
+            "metalness": 0
+          },
+          "tslFile": "materials/triplanarGrid.tsl.ts",
+          "staticDefines": {
+            "alignToObject": true,
+            "fitToBounds": true,
+            "dominantAxis": false,
+            "minorLines": true,
+            "seamNormals": false
+          },
+          "nodes": {
+            "colorNode": {
+              "lineThickness": 0.05,
+              "lineFrequency": 1,
+              "lineColor": "#999999",
+              "backgroundColor": "#808080",
+              "minorLineDivisions": 2,
+              "minorLineColor": "#878787"
+            },
+            "normalNode": {
+              "seamNormalStrength": 0.5,
+              "minorSeamNormalStrength": 0.25
+            }
+          },
+          "type": "STANDARDNODEMATERIAL"
+        },
+        {
+          "id": "triplanarCheckerboard",
+          "params": {
+            "color": "#ff0000",
+            "roughness": 0.85,
+            "metalness": 0
+          },
+          "tslFile": "materials/triplanarCheckerboard.tsl.ts",
+          "staticDefines": {
+            "alignToObject": true,
+            "fitToBounds": false,
+            "dominantAxis": false,
+            "plusSigns": true
+          },
+          "nodes": {
+            "colorNode": {
+              "checkerSize": 0.25,
+              "checkerColorA": "#898989",
+              "checkerColorB": "#787878",
+              "plusSignColor": "#555555"
+            }
+          },
+          "type": "STANDARDNODEMATERIAL"
+        }
+      ],
+      "skyboxes": [
+        {
+          "id": "topDownTestSky",
+          "base": {
+            "type": "EQUIRECTANGULAR",
+            "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
+            "textureId": "equiRectEmptyId",
+            "colorSpace": "srgb",
+            "rotate": 3.141592653589793
+          },
+          "env": {
+            "environmentIntensity": 0.3
+          }
+        }
+      ],
+      "postFx": [
+        {
+          "id": "ambientOcclusion",
+          "tslFile": "postFx/ambientOcclusion.tsl.ts",
+          "enabled": true,
+          "params": {
+            "radius": 0.25,
+            "thickness": 1,
+            "distanceExponent": 1,
+            "distanceFallOff": 1,
+            "scale": 1,
+            "samples": 16,
+            "resolutionScale": 1,
+            "useTemporalFiltering": false
+          },
+          "paramsMeta": {
+            "radius": {
+              "label": "Radius",
+              "min": 0.01,
+              "max": 2,
+              "step": 0.01
+            },
+            "thickness": {
+              "label": "Thickness",
+              "min": 0.01,
+              "max": 2,
+              "step": 0.01
+            },
+            "distanceExponent": {
+              "label": "Distance exponent (no effect since three r186)",
+              "min": 1,
+              "max": 2,
+              "step": 0.01
+            },
+            "distanceFallOff": {
+              "label": "Distance falloff (no effect since three r186)",
+              "min": 0.01,
+              "max": 1,
+              "step": 0.01
+            },
+            "scale": {
+              "label": "Scale",
+              "min": 0.01,
+              "max": 2,
+              "step": 0.01
+            },
+            "samples": {
+              "label": "Samples (recompiles the AO shader)",
+              "min": 1,
+              "max": 64,
+              "step": 1
+            },
+            "resolutionScale": {
+              "label": "Resolution scale",
+              "min": 0.25,
+              "max": 1,
+              "step": 0.05
+            },
+            "useTemporalFiltering": {
+              "label": "Temporal filtering (needs a TRAA pass after it)"
+            }
+          },
+          "debugData": {
+            "name": "Ambient Occlusion",
+            "description": "Ground Truth Ambient Occlusion (GTAO). Darkens creases and contact points using the scene depth and normal buffers. Screen-space only — cannot see off-screen geometry."
+          }
+        }
+      ],
+      "postFxEnabled": true,
+      "id": "topDownTestScene",
+      "sceneFile": "./scene_topDownTest.ts"
     }
   },
   "cameras": {
@@ -1409,6 +1640,34 @@
         }
       },
       "__sourcePath": "src/app/cameras/thirdPersonGymCamera.camera.json"
+    },
+    "topDownTestCamera": {
+      "camProps": {
+        "active": true,
+        "near": 1,
+        "far": 400,
+        "position": {
+          "x": 0,
+          "y": 21,
+          "z": 8
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 1,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 50,
+        "appId": "topDownTestCamera"
+      },
+      "entityOpts": {
+        "appId": "topDownTestCamera",
+        "debugData": {
+          "name": "Top-down test camera",
+          "description": "Follow camera driven by createFollowObjectCameraRig at a (0, 20, 8) offset: straight South of and above the player, so North (-Z) is screen-up. This initial position/lookAt only matters until the rig takes over."
+        }
+      },
+      "__sourcePath": "src/app/cameras/topDownTestCamera.camera.json"
     }
   },
   "lights": {
@@ -1658,6 +1917,61 @@
         }
       },
       "__sourcePath": "src/app/lights/thirdPersonGymSun.light.json"
+    },
+    "topDownTestAmbient": {
+      "lightProps": {
+        "type": "AMBIENT",
+        "color": "#dfe8ff",
+        "intensity": 0.35,
+        "appId": "topDownTestAmbient"
+      },
+      "entityOpts": {
+        "appId": "topDownTestAmbient",
+        "debugData": {
+          "name": "Top-down test ambient fill",
+          "description": "Low-intensity baseline fill so shadowed geometry isn't pure black — topDownTestSun is the dominant light."
+        }
+      },
+      "__sourcePath": "src/app/lights/topDownTestAmbient.light.json"
+    },
+    "topDownTestSun": {
+      "lightProps": {
+        "type": "DIRECTIONAL",
+        "color": "#fff2d9",
+        "intensity": 3,
+        "position": {
+          "x": 25,
+          "y": 30,
+          "z": 30
+        },
+        "targetPos": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "castShadow": true,
+        "shadowPreset": "HIGH",
+        "shadowCameraNearFar": [
+          1,
+          120
+        ],
+        "shadowCameraFrustum": [
+          -35,
+          35,
+          35,
+          -35
+        ],
+        "shadowIntensity": 0.8,
+        "appId": "topDownTestSun"
+      },
+      "entityOpts": {
+        "appId": "topDownTestSun",
+        "debugData": {
+          "name": "Top-down test sun",
+          "description": "Directional shadow-casting sun from the South-East, about 38° above the horizon. Only its direction (position → targetPos) is kept: scene_topDownTest.ts adds a SUN_SHADOW_FIT component on scene enter, which moves it with the camera view and owns its shadow frustum (the values here only apply until then)."
+        }
+      },
+      "__sourcePath": "src/app/lights/topDownTestSun.light.json"
     }
   },
   "geometries": {

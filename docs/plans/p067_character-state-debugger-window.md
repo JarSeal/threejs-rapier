@@ -1,6 +1,5 @@
 Status: draft | not-implemented
 Category: Character, Debugger
-Blocked by: p066_character-definitions-and-refactoring.md
 Blocks: p068_character-debug-gizmos.md, p069_character-live-config-editing.md
 
 # Character State Debugger Window — Plan

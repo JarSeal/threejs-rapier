@@ -297,7 +297,7 @@ const config: AppConfig = {
 };
 ```
 
-The example scenes in [`src/app/`](src/app/) cover more: a physics and joints test, a large procedural world with instancing and culling, a third-person character gym, and an ECS stress test.
+The example scenes in [`src/app/`](src/app/) cover more: a physics and joints test, a large procedural world with instancing and culling, a third-person character gym, a top-down character scene (world-fixed controls, hills, and sun shadows fitted to the view), and an ECS stress test.
 
 ---
 

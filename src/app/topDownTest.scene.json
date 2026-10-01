@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schemas/scene.schema.json",
+  "id": "topDownTestScene",
+  "sceneFile": "./scene_topDownTest.ts",
+  "name": "Top-down test",
+  "description": "Top-down character test scene (docs/plans/_DONE_p066_character-definitions-and-refactoring.md Phase 6): a WORLD_FIXED player (W = North = screen-up) on a large flat ground with a hills patch on the East side, scattered static obstacles and dynamic props, and a sun whose shadow is fitted to the camera view (SunShadowFit).",
+  "cameras": ["topDownTestCamera"],
+  "lights": ["topDownTestAmbient", "topDownTestSun"],
+  "materials": ["triplanarGrid", "triplanarCheckerboard"],
+  "skyboxes": [
+    {
+      "id": "topDownTestSky",
+      "base": {
+        "type": "EQUIRECTANGULAR",
+        "file": "/debugger/assets/testTextures/skyboxes/sunset_stylized/sky_empty_2k.png",
+        "textureId": "equiRectEmptyId",
+        "colorSpace": "srgb",
+        "rotate": 3.141592653589793
+      },
+      "env": { "environmentIntensity": 0.3 }
+    }
+  ],
+  "postFx": ["ambientOcclusion"],
+  "postFxEnabled": true
+}

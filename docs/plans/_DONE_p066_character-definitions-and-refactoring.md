@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–5 implemented
+Status: implemented
 Category: Character, Controls
 Blocks: p067_character-state-debugger-window.md (and through it p068_character-debug-gizmos.md and p069_character-live-config-editing.md: this plan moves the files they cite and changes some of the data they read. Phase 2 updates their references.)
 
@@ -510,7 +510,7 @@ Each phase leaves the tree compiling (`yarn lint`, `yarn build`), keeps the gym 
 - **Also updated:** the readme's toolkit effects line.
 - **Verified** headless against the running dev server (`WORKER_THREAD`): in the gym, with `gymSunFollow` removed and `SUN_SHADOW_FIT` (`maxDistance: 40`, `casterExtension: 20`) on its sun, all 8 corners of the main camera's 40 m view slice are inside the shadow camera's box. They stay inside while the player walks, after `direction` turns the sun, and after `maxDistance` drops to 25. The target is on whole texels in light space. The light stops moving once the camera stops, and the direction is unchanged by the fit. Adding it to the ambient light logs one warning. Leaving the scene removes the component, with no console errors. Not covered: `MAIN_THREAD` (the effect doesn't touch physics), shimmer judged by eye in a real browser, an orthographic main camera, and `followEntityId` without a camera.
 
-### Phase 6 — Top-down test scene
+### Phase 6 — Top-down test scene — done
 
 New files (the `topDownTest` id family, following the gym's `thirdPersonGym.scene.json` + `scene_thirdPersonGym.ts` pattern):
 
@@ -530,6 +530,27 @@ Scene content:
 - **Camera:** `createFollowObjectCameraRig` at offset `{ x: 0, y: 20, z: 8 }`: directly South of and above the player, so North (`-Z`) is screen-up and W moves straight up the screen.
 - **Sun:** a `SUN_SHADOW_FIT` component on the sun entity, added in `registerOnSceneEnter`, because the JSON lights are created after the scene TS runs (`SceneLoader.ts:332-338`).
 - **Cleanup:** `registerOnSceneExit` deletes the follow rig. The character, the bindings and the `SUN_SHADOW_FIT` component go with their entities through the hooks, with no manual cleanup, which exercises Phase 2.
+
+**Implementation notes** (where Phase 6 differs from the plan):
+
+- **Files:** as listed, plus `src/app/characterVisual.ts` (`createCharacterVisual`): the gym's capsule-and-beak visual, which was a local helper in `scene_thirdPersonGym.ts`. The gym uses it too, unchanged except that the capsule geometry's id now carries its size (geometries are cached by id).
+- **Sky box:** `emptyBlueSkyEquiRect` is created in code by the gym, so no JSON can reference it. The scene JSON defines an inline sky box with the same texture and the gym's `environmentIntensity: 0.3` (at 1 the sky tints the shadowed faces blue).
+- **Load order:** the JSON lights are created at `SceneLoader.ts:568` (`createNextSceneObject3Ds`), still after the scene function, so `SUN_SHADOW_FIT` is added in `registerOnSceneEnter`, with the player as `followEntityId`.
+- **Ground:** 300 × 300 with its top at y = 0, in the gym ground's tint of `triplanarGrid` (`toolkit/materials/checkerBoard` is a sci-fi panel shader with another scene's saved overrides). The static meshes use `triplanarGrid`, the props `triplanarCheckerboard`, as in the gym.
+- **Hills:** 120 × 300 at x 30…150, 60 × 150 segments (2 m square cells; 80–100 along both sides would give oblong ones). The noise is reshaped to `n² × 16` (hills with flat valleys): the highest peak is 14.1 m at (132, −18), and about 5% of the surface is steeper than the 45° walkable slope. The mask rises over 35 m from the West edge and falls over 12 m to the other three, and every edge sinks to −0.3. The TRIMESH collider needs explicit `vertices` and a `Uint32Array` of `indices` (`createPhysicsEntity` derives sizes for primitives only). `createHills` returns the world-space ground height, which places the hills' obstacles.
+- **Shadow fit:** `maxDistance: 48`, `casterExtension: 25`. On the flat, the screen's top corners are ~28 m deep, but from the peak, looking down to the valleys, ~46 m. The box is then ±45.7 m with 2048 texels (~4.5 cm). The peaks' shadows reach ~24 m along the 38° sun.
+- **Obstacles:** 15, seeded (`createSeededRandom(66)`), with a random yaw, 6 m (plus their radius) clear of the spawn and 3 m apart. On the flat (x −28…24, z −24…24): a 10 m ramp at 18° up to ~3.1 m, a 0.8 m low box, 5 walls (6–12 m) and 4 pillars. On the hills' first slopes: 2 pillars and 2 blocks, each on the lowest ground under its footprint, sunk 0.3 m. They keep the default friction (see "Found, not fixed").
+- **Props:** 25 (8 boxes, 7 balls, 5 cylinders, 5 capsules; half the cylinders and capsules on their side), seeded (67), 1 m apart and clear of the obstacles. Densities 0.2 / 1 / 4 (masses 0.03–11.8), the light ones tan and the heavy ones dark.
+- **Found, not fixed:** a character pushing into a wall at 45° can stick to it instead of sliding. `refreshWallHit` (`DynamicCharacter.ts:492-499`) casts along the body's actual horizontal velocity and skips the cast when that velocity is near zero. If the character touches the wall before an async cast result arrives and friction stops it (the character's 0.9 averaged with a wall's 1 nearly does at 45°), no cast fires again. It was seen once, on one wall with `friction: 1`, in `WORKER_THREAD` mode. With the default friction every wall slides, in both modes. Casting along the intended (input) velocity would fix it.
+- **Verified** headless against the running dev server (Playwright, `?isDebug=true`), in both worker targets, 55 checks each, no console errors besides a missing `/favicon.ico`:
+  - W moves exactly North (sideways drift under 10⁻⁵ m) and faces North; S+A moves exactly South-West and faces it; North → South moves South within 150 ms and ends facing South; Space jumps;
+  - shadows: at 10 spots across the flat area, its far corners, the hills' slopes and the peak, the ground under every screen corner is inside the shadow camera's box, and the fitted center is on whole texels in light space;
+  - running East from the spawn climbs the hills on the trimesh collider, and the player lands on the peak;
+  - all 5 walls block and slide at 45° both ways, a pillar blocks, the ramp is walkable, and a running jump lands on the low box;
+  - the props rest after the load; the lightest is pushed 7.6 m and the heaviest 4.6 m in 2 s;
+  - leaving for the gym and coming back: no character or bindings left behind, the gym's 3 characters, then 1 player with the same 7 bindings, the shadow fit back on the sun, and the same obstacle and prop layout.
+
+  Not covered: shimmer judged by eye in a real browser (the texel snap is verified), 144 Hz, `SLIDE` on the hills' steep slopes, crouching and running on the hills, and the debug Characters tab.
 
 ---
 
