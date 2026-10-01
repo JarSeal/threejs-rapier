@@ -3,26 +3,37 @@ import { createPhysicsEntity } from './PhysicsManager';
 import { ColliderParams, RigidBodyParams } from './Physics/PhysicsAPITypes';
 import { createKeyBinding, deleteKeyBinding, type KeyBinding } from './Input/KeyboardInput';
 import { createMouseBinding, deleteMouseBinding, type MouseBinding } from './Input/MouseInput';
-import { getMeshByAppId } from './MeshManager';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
-import type { CharacterIntent, CharacterObject } from './Character/CharacterTypes';
+import type {
+  CharacterControlMode,
+  CharacterIntent,
+  CharacterObject,
+  LocomotionState,
+  LocomotionStateListener,
+} from './Character/CharacterTypes';
 import { createIntent } from './Character/CharacterIntent';
 import { ECSSystemStage } from '../../AppECSRegistry';
 import { existsOrThrow } from '../utils/assert';
-import { lwarn } from '../utils/Logger';
+import { lerror, lwarn } from '../utils/Logger';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
 
 export type {
+  CharacterBodyPlan,
+  CharacterControlMode,
   CharacterController,
   CharacterIntent,
   CharacterObject,
+  LocomotionState,
+  LocomotionStateListener,
 } from './Character/CharacterTypes';
 
 /** Character id → entity id, in the default ECS world (where createCharacter puts every
  * character). The characters themselves live in the CHARACTER component storage. */
 const characterEntityIds = new Map<string, number>();
 let onDeleteCharacter: { [characterId: string]: () => void } = {};
+/** Entity id → its character's locomotion state listeners (gone with the entity). */
+const locomotionStateListeners = new Map<number, LocomotionStateListener[]>();
 
 /** After the other APP_PHYSICS_STEP systems (default order 0), so what those request from a
  * character (eg. an AI's moves) applies in the same sub-step. */
@@ -56,6 +67,7 @@ ECSWorld.registerComponentHooks(ComponentType.CHARACTER, {
       deleteMouseBinding(char.mouseBindingIds[i]);
     }
     if (characterEntityIds.get(char.id) === entityId) characterEntityIds.delete(char.id);
+    locomotionStateListeners.delete(entityId);
     const onDelete = onDeleteCharacter[char.id];
     delete onDeleteCharacter[char.id];
     onDelete?.();
@@ -64,59 +76,64 @@ ECSWorld.registerComponentHooks(ComponentType.CHARACTER, {
   },
 });
 
+/** {@link createCharacter}'s options. */
+export type CreateCharacterOpts = {
+  /** The character's id: the public handle ({@link getCharacterById}, {@link deleteCharacter}). */
+  id: string;
+  /** A display name (the debug tools show it). */
+  name?: string;
+  /** The body's kind (eg. `'HUMANOID'`), usually from its body plan. */
+  kind: string;
+  /** The (possibly compound) physics body: colliders and an optional shared rigid body. */
+  physicsParams: { colliders: ColliderParams | ColliderParams[]; rigidBody?: RigidBodyParams };
+  /** The visual root (eg. a mesh or a group made with createMeshEntity or createGroupEntity), or
+   * its app id: its entity becomes the character. */
+  visual: THREE.Object3D | string;
+  /** The character's input bindings ({@link KeyBinding}s and {@link MouseBinding}s), deleted with
+   * it. */
+  controls?: (KeyBinding | MouseBinding)[];
+  /** The controller's live data ({@link CharacterObject}'s `data`). */
+  data?: { [key: string]: unknown };
+  /** The intent the controller reads (default: a new one); pass it when the bindings write it. */
+  intent?: CharacterIntent;
+};
+
 /**
- * Creates a character with controls. The character can be either a player controllable
- * character or controlled by an agent (AI). The mesh's entity gets the physics components, a
- * `CHARACTER` component ({@link CharacterObject}) and `TAG_IS_CHARACTER`. Deleting that entity
+ * Creates a character: adds the physics body, a `CHARACTER` component ({@link CharacterObject})
+ * and `TAG_IS_CHARACTER` to the visual's entity, and registers the bindings. Deleting that entity
  * any way deletes the character and its bindings. An existing character with the same id is
- * replaced.
- * @param physicsParams (colliders + optional shared rigidBody) ({@link ColliderParams}, {@link RigidBodyParams}) describes the (possibly compound) physics body for this character
- * @param meshOrMeshId (THREE.Mesh | string) mesh or mesh id of the representation of the physics object
- * @param controls (array of {@link KeyBinding} and/or {@link MouseBinding}) the input bindings for this character
- * @param intent ({@link CharacterIntent}) the intent the controller reads (default: a new one); pass it when the bindings write it
- * @returns CharacterObject ({@link CharacterObject})
+ * replaced. Controllers build on this (eg. createDynamicCharacter): a character created here alone
+ * has no controller, so nothing moves it.
+ * @param opts see {@link CreateCharacterOpts}
+ * @returns the character ({@link CharacterObject})
  */
 export const createCharacter = async ({
   id,
   name,
+  kind,
   physicsParams,
-  meshOrMeshId,
+  visual,
   controls,
   data = {},
   intent = createIntent(),
-}: {
-  id: string;
-  name?: string;
-  physicsParams: { colliders: ColliderParams | ColliderParams[]; rigidBody?: RigidBodyParams };
-  meshOrMeshId: THREE.Mesh | string;
-  controls?: (KeyBinding | MouseBinding)[];
-  data?: { [key: string]: unknown };
-  intent?: CharacterIntent;
-}) => {
+}: CreateCharacterOpts) => {
   // Before the new bindings exist: the old character's delete hook removes its bindings by id
   if (deleteCharacter(id)) {
     lwarn(`createCharacter: replaced the existing character with id '${id}'.`);
   }
 
-  let mesh: THREE.Mesh;
-  let meshId: string;
-  if (typeof meshOrMeshId === 'string') {
-    meshId = meshOrMeshId;
-    mesh = existsOrThrow(
-      getMeshByAppId(meshId),
-      `Mesh not found with id '${meshId}' in createCharacter.`
-    );
-  } else {
-    mesh = meshOrMeshId;
-    meshId = mesh.userData.id;
-    existsOrThrow(mesh, 'Mesh not found in createCharacter.');
-  }
-
   const ecsWorld = getECSWorld();
+  const visualAppId = typeof visual === 'string' ? visual : (visual.userData.id as string);
   const entityId: number = existsOrThrow(
-    mesh.userData.entityId ?? getEntityIdByAppId(meshId, ecsWorld),
-    `Could not find entity id for mesh '${meshId}' in createCharacter.`
+    (typeof visual === 'string' ? undefined : visual.userData.entityId) ??
+      (visualAppId !== undefined ? getEntityIdByAppId(visualAppId, ecsWorld) : undefined),
+    `Could not find the entity of visual '${visualAppId}' in createCharacter.`
   );
+  existsOrThrow(
+    ecsWorld.getComponent(entityId, ComponentType.OBJECT3D),
+    `The entity of visual '${visualAppId}' has no Object3D in createCharacter.`
+  );
+  const visualId = ecsWorld.getComponent(entityId, ComponentType.APP_ID)?.id ?? visualAppId;
 
   await createPhysicsEntity(
     physicsParams.colliders,
@@ -129,12 +146,14 @@ export const createCharacter = async ({
   const char: CharacterObject = {
     id,
     name,
+    kind,
     entityId,
-    visualId: meshId,
+    visualId,
     keyBindingIds: [],
     mouseBindingIds: [],
     data,
     intent,
+    controlMode: 'CONTROLLED',
   };
   ecsWorld.addComponent(entityId, ComponentType.CHARACTER, char);
   ecsWorld.addComponent(entityId, ComponentType.TAG_IS_CHARACTER, true);
@@ -174,6 +193,8 @@ export const deleteAllCharacters = (world: ECSWorld = getECSWorld()) => {
   onDeleteCharacter = {};
 };
 
+/** Calls `fn` when the character with this id is deleted (any way). One function per id: a new
+ * one replaces the old. */
 export const registerOnDeleteCharacter = (id: string, fn: () => void) =>
   (onDeleteCharacter[id] = fn);
 
@@ -185,10 +206,68 @@ export const getCharacters = (world: ECSWorld = getECSWorld()): CharacterObject[
   return characters;
 };
 
+/** The character with this id, or undefined. */
 export const getCharacterById = (id: string): CharacterObject | undefined => {
   const entityId = characterEntityIds.get(id);
   if (entityId === undefined) return undefined;
   return getECSWorld().getComponent(entityId, ComponentType.CHARACTER);
+};
+
+/**
+ * Sets who moves a character's body ({@link CharacterControlMode}): `PHYSICS_ONLY` hands it to
+ * physics alone (eg. a ragdoll), `CONTROLLED` gives it back to the controller, which first makes
+ * the character get up. The controller applies the change on its next tick, so nothing outside
+ * the tick touches the body. Returns false when no character has this id.
+ */
+export const setControlMode = (id: string, mode: CharacterControlMode) => {
+  const char = getCharacterById(id);
+  if (!char) return false;
+  char.controlMode = mode;
+  return true;
+};
+
+/**
+ * Calls `listener` once per change of a character's locomotion state ({@link LocomotionState}),
+ * from its controller's tick. The listener goes with the character (a new character with the same
+ * id needs a new one). Returns a function that removes it (a no-op when no character has this id).
+ */
+export const onLocomotionStateChange = (id: string, listener: LocomotionStateListener) => {
+  const entityId = characterEntityIds.get(id);
+  if (entityId === undefined) {
+    lwarn(`onLocomotionStateChange: no character with id '${id}'.`);
+    return () => {};
+  }
+  let listeners = locomotionStateListeners.get(entityId);
+  if (!listeners) {
+    listeners = [];
+    locomotionStateListeners.set(entityId, listeners);
+  }
+  listeners.push(listener);
+  return () => {
+    const list = locomotionStateListeners.get(entityId);
+    const index = list ? list.indexOf(listener) : -1;
+    if (index !== -1) list!.splice(index, 1);
+  };
+};
+
+/** For controllers: calls the character's locomotion state listeners. A throwing listener is
+ * logged and doesn't stop the others (or the physics sub-step). */
+export const emitLocomotionStateChange = (
+  char: CharacterObject,
+  next: LocomotionState,
+  prev: LocomotionState
+) => {
+  const listeners = locomotionStateListeners.get(char.entityId);
+  if (!listeners?.length) return;
+  // A copy: a listener may remove itself. State changes are rare, so is this allocation.
+  const snapshot = listeners.slice();
+  for (let i = 0; i < snapshot.length; i++) {
+    try {
+      snapshot[i](next, prev, char);
+    } catch (err) {
+      lerror(`Locomotion state listener of character '${char.id}' threw:`, err);
+    }
+  }
 };
 
 // Debugger stuff for characters
@@ -197,14 +276,18 @@ export const getCharacterById = (id: string): CharacterObject | undefined => {
 type CharacterDebugModule = typeof import('../core/Debug/_dbg__Character');
 let debugGUI: DebugModuleRef<CharacterDebugModule> | null = null;
 
+/** Loads the characters' debug tools (debug environment only; `InitEngine` calls it). */
 export const registerCharacterTools = async () => {
   debugGUI = await loadDebugModuleAsync(() => import('../core/Debug/_dbg__Character'), true);
 };
 
+/** Creates the Characters debugger tab (debug environment only; `InitEngine` calls it). */
 export const createCharactersDebuggerGUI = () => {
   useDebug(debugGUI, true)?._createCharactersDebuggerGUI();
 };
 
+/** Refreshes the Characters debugger tab's list and the open character window, or only one of
+ * them (a no-op outside the debug environment). */
 export const updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   useDebug(debugGUI, true)?._updateCharactersDebuggerGUI(only);
 };

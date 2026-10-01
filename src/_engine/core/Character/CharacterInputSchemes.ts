@@ -19,9 +19,18 @@ export type CharacterInputScheme = 'TANK' | 'WORLD_FIXED' | 'CAMERA_RELATIVE';
 /** `TOGGLE`: a key press switches the state (default). `HOLD`: on while the key is held. */
 export type CharacterInputHoldMode = 'TOGGLE' | 'HOLD';
 
-/** Keys are `KeyboardEvent.key` values (case-insensitive); any of them triggers the action. */
-type CharacterActionMappings = { jump?: string[]; run?: string[]; crouch?: string[] };
+/** The keys every scheme has (all optional). Keys are `KeyboardEvent.key` values
+ * (case-insensitive); any of them triggers the action. */
+export type CharacterActionMappings = {
+  /** Jump (on key press). */
+  jump?: string[];
+  /** Run (see `runMode`). */
+  run?: string[];
+  /** Crouch (see `crouchMode`). */
+  crouch?: string[];
+};
 
+/** `TANK` keys: turn left and right, and move along the facing. */
 export type TankInputMappings = CharacterActionMappings & {
   rotateLeft: string[];
   rotateRight: string[];
@@ -29,6 +38,7 @@ export type TankInputMappings = CharacterActionMappings & {
   moveBackward: string[];
 };
 
+/** `WORLD_FIXED` keys: move North (-Z), South (+Z), West (-X) and East (+X). */
 export type WorldFixedInputMappings = CharacterActionMappings & {
   moveNorth: string[];
   moveSouth: string[];
@@ -36,6 +46,8 @@ export type WorldFixedInputMappings = CharacterActionMappings & {
   moveEast: string[];
 };
 
+/** `CAMERA_RELATIVE` keys: move up, down, left and right on the screen (along the camera's view
+ * on the ground). */
 export type CameraRelativeInputMappings = CharacterActionMappings & {
   moveForward: string[];
   moveBackward: string[];
@@ -43,7 +55,8 @@ export type CameraRelativeInputMappings = CharacterActionMappings & {
   moveRight: string[];
 };
 
-type CharacterInputCommonOpts = {
+/** The input options every scheme has. */
+export type CharacterInputCommonOpts = {
   /** How the run key works (default `TOGGLE`). */
   runMode?: CharacterInputHoldMode;
   /** How the crouch key works (default `TOGGLE`). */
@@ -67,7 +80,9 @@ export type CharacterInputOpts = CharacterInputCommonOpts &
 /** What a scheme gives the character: its bindings, and what the controller runs at the start of
  * each tick, before it reads the intent. */
 export type CharacterInput = {
+  /** The key bindings, ids namespaced `${characterId}:${action}`. */
   bindings: KeyBinding[];
+  /** Hands latched `HOLD` states to the intent (set only when a `HOLD` mode is used). */
   beforeTick?: () => void;
 };
 

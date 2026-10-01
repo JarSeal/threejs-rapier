@@ -188,9 +188,9 @@ const createGymCharacters = async () => {
   };
 
   const characterMesh = createCharacterMesh(1, '#333');
-  const { dynamicCharacterObject } = await createDynamicCharacter({
+  const { character: playerCharacter } = await createDynamicCharacter({
     id: 'topDownChar',
-    charMesh: characterMesh,
+    visual: characterMesh,
     charData: characterData,
     input: {
       scheme: 'TANK',
@@ -205,9 +205,7 @@ const createGymCharacters = async () => {
       },
     },
   });
-  getECSWorld()
-    .getRigidBody(dynamicCharacterObject.entityId)
-    ?.setTranslation({ x: 5, y: 3, z: -5 }, true);
+  getECSWorld().getRigidBody(playerCharacter.entityId)?.setTranslation({ x: 5, y: 3, z: -5 }, true);
 
   // Follow camera tracking the player-controlled character from above.
   createFollowObjectCameraRig({
@@ -235,9 +233,9 @@ const createGymCharacters = async () => {
   // A second player character on other keys (the arrow keys, Enter to jump, no run or crouch),
   // moving relative to the follow camera's view and turning toward where it goes
   const arrowsCharacterMesh = createCharacterMesh(3, '#d08a18');
-  const { dynamicCharacterObject: arrowsCharacterObject } = await createDynamicCharacter({
+  const { character: arrowsCharacter } = await createDynamicCharacter({
     id: 'arrowKeysChar',
-    charMesh: arrowsCharacterMesh,
+    visual: arrowsCharacterMesh,
     charData: characterData,
     input: {
       scheme: 'CAMERA_RELATIVE',
@@ -250,21 +248,16 @@ const createGymCharacters = async () => {
       },
     },
   });
-  getECSWorld()
-    .getRigidBody(arrowsCharacterObject.entityId)
-    ?.setTranslation({ x: 2, y: 3, z: -8 }, true);
+  getECSWorld().getRigidBody(arrowsCharacter.entityId)?.setTranslation({ x: 2, y: 3, z: -8 }, true);
 
   // Another character without input, driven by writing its intent
   const characterMesh2 = createCharacterMesh(2, '#333');
-  const { intent: dummyIntent, dynamicCharacterObject: dummyCharacterObject } =
-    await createDynamicCharacter({
-      id: 'testDummyChar',
-      charMesh: characterMesh2,
-      charData: characterData,
-    });
-  getECSWorld()
-    .getRigidBody(dummyCharacterObject.entityId)
-    ?.setTranslation({ x: -2, y: 5, z: -2 }, true);
+  const { intent: dummyIntent, character: dummyCharacter } = await createDynamicCharacter({
+    id: 'testDummyChar',
+    visual: characterMesh2,
+    charData: characterData,
+  });
+  getECSWorld().getRigidBody(dummyCharacter.entityId)?.setTranslation({ x: -2, y: 5, z: -2 }, true);
 
   // A named ECS system re-registered on every scene load would be a silent no-op the second
   // time (world.addSystem ignores a duplicate id) — remove any stale registration from a

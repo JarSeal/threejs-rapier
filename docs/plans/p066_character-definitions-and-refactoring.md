@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–3 implemented
+Status: in progress | Phases 1–4 implemented
 Category: Character, Controls
 Blocks: p067_character-state-debugger-window.md (and through it p068_character-debug-gizmos.md and p069_character-live-config-editing.md: this plan moves the files they cite and changes some of the data they read. Phase 2 updates their references.)
 
@@ -46,7 +46,7 @@ The plan was originally requested as `p180`. It was renumbered to `p066` so that
    - With `_height: 2, _radius: 0.3` it gives 1.4 instead of 2.
    - The correct value is `max(0, _height / 2 - _radius)`. The gym's mesh already uses the correct formula (`scene_thirdPersonGym.ts:186-193`), so custom dimensions desync the mesh and the collider.
 2. **Global key binding ids.** The ids `charRotateLeft`, `charMoveForward`, … are fixed strings (`:797-865`). `createKeyBinding` replaces any binding with the same id (`KeyboardInput.ts:235`), and `deleteKeyBinding` removes by id. A second input-mapped character therefore silently steals the first one's controls, and deleting either one removes both sets. This is hidden today only because the gym's dummy passes no `inputMappings`.
-3. **`hasMoveInput` cleared too early.** A KEY_UP of _any_ move key sets it to `false` (`:831-841`), even while the other move key is still held. The landing and sliding logic reads it.
+3. **`hasMoveInput` cleared too early.** A KEY*UP of \_any* move key sets it to `false` (`:831-841`), even while the other move key is still held. The landing and sliding logic reads it.
 4. **Getting-up ease.** `ratio = now / (start + duration)` (`:931-934`) reaches 1 at the right time, but starts near `start / (start + duration)`, which is ≈ 0.98 a minute into a session. The ease-in torque ramp therefore never ramps. It should be `(now - start) / duration`.
 5. **`CharacterObject.data` is always `{}`.** The `data: characterData` argument to `createCharacter` was dropped in `22a72a0` (see p067 §2.1). p067's Phase 1 fixes it; this plan does it instead, since it lands first.
 6. **W+S held runs `move()` twice per sub-step.** Each call re-reads `linvel`, recomputes the whole slope/wall pipeline and fires another floor ray.
@@ -462,11 +462,34 @@ Each phase leaves the tree compiling (`yarn lint`, `yarn build`), keeps the gym 
 
   Not covered: the feel at 144 Hz in a real browser, stairs, platforms, tumbling, `HOLD` mode and `WORLD_FIXED` (no gym character uses them; Phase 6's top-down scene is `WORLD_FIXED`).
 
-### Phase 4 — Body plans, locomotion state, control mode
+### Phase 4 — Body plans, locomotion state, control mode — done
 
-- Add `CharacterBodyPlans.ts` with `HUMANOID_CAPSULE`: colliders by role, `getDimensions`, and `kind: 'HUMANOID'`. `createDynamicCharacter` gets the final options shape (§3.2).
-- Add `locomotionState` and `onLocomotionStateChange`, `setControlMode`, and the `visual` option.
-- Add JSDoc to all public exports (they appear in `yarn docs`).
+- (done) Add `CharacterBodyPlans.ts` with `HUMANOID_CAPSULE`: colliders by role, `getDimensions`, and `kind: 'HUMANOID'`. `createDynamicCharacter` gets the final options shape (§3.2).
+- (done) Add `locomotionState` and `onLocomotionStateChange`, `setControlMode`, and the `visual` option.
+- (done) Add JSDoc to all public exports (they appear in `yarn docs`).
+
+**Implementation notes** (where Phase 4 differs from the plan, and what later phases must know):
+
+- **Body plan types** (`CharacterTypes.ts`): `CharacterBodyPlan<Dims>` is `{ kind, getDimensions(data), getColliders(dims, data) }`, where `data` is `CharacterBodyData` (the six size keys). The generic `CharacterDimensions` holds only what the controller needs, the probes per stance (`standing`/`crouching`: `wallCastOffsetY`, `wallCastHalfHeight`, `wallCastRadius`, `floorRayLength`); `HUMANOID_CAPSULE`'s `HumanoidCapsuleDimensions` adds the capsule and sensor sizes. The numbers are Phase 1's, unchanged. The floor ray's length now comes from the dimensions too: `_radius` is no longer read live anywhere.
+- **Colliders by role:** `getColliders` returns `{ role, params }[]`. The controller needs the first collider of each of `MAIN`, `CROUCH`, `WALL_SENSOR` and `FLOOR_SENSOR` (it throws without one), forces `MAIN` enabled and `CROUCH` disabled, and adds the sensors' collision handlers; other roles pass through. It maps role → index into the entity's `COLLIDER` array (same order as the params). Neither the body plan nor its dimensions are kept on the character (only `kind`): p068 and p069 have to expose them.
+- **`createCharacter`** takes `visual: THREE.Object3D | string` (was `meshOrMeshId`, mesh only) and a required `kind`, and its options are the exported `CreateCharacterOpts`. Any object with an entity works (a mesh or a group); `visualId` is the entity's app id.
+- **`createDynamicCharacter`'s options** are `DynamicCharacterOpts`: §3.2's shape, plus `name`. The unused `sceneId` option and `camera` return field are gone. It returns `{ character, data, intent, controlFns }`.
+- **Locomotion state:** `data.locomotionState` (with `__locomotionStateStartTime`), derived at the end of every tick. Listeners: `onLocomotionStateChange(id, listener)` in `Character.ts` (returns the unsubscribe function; the listeners go with the entity) or the creator's `onLocomotionStateChange` option. A throwing listener is logged and doesn't break the sub-step. The rules, beyond §2.5's "from the existing booleans":
+  - `JUMP` lasts from the jump until the character, after leaving the ground, stops rising or lands (`__isJumping`, `__jumpLeftGround`); a jump that never leaves the ground ends after 250 ms. Speed alone can't tell: in `WORKER_THREAD` mode the velocity a later sub-step of the same frame reads may predate the impulse.
+  - `FALL` waits `_fallStateDelay` (new config key, 100 ms) off the ground, so a stair step or a bump keeps the grounded state.
+  - `SLIDE` is `isSliding` only on unwalkable ground or above `_maxVelocity × _runningMultiplier` (+0.1 m/s). `isSliding` alone is also true for a few sub-steps while the character slows down after a move, which would put a `SLIDE` between every `WALK` and `IDLE`.
+  - In `PHYSICS_ONLY` the state is `TUMBLE`.
+- **Control mode:** `CharacterObject.controlMode` (`CharacterControlMode`, default `CONTROLLED`), set with `setControlMode(id, mode)` (false for an unknown id). The tick applies a change at its start, so nothing outside it touches the body. `PHYSICS_ONLY` unlocks the rotations, resets the angular damping to the body's default (0) and ends a get-up; then the tick writes nothing to the body (no move, turn, jump, crouch swap, platform carry, slope slide or tumble clamp), and the sensors start no tumbling and skip the landing correction. Data, intent clearing, the floor ray and the state go on. Back to `CONTROLLED`, the character always goes through the getting-up path (`_gettingUpDuration`, also when it is still upright), which locks the rotations again at its end.
+- **Debug:** the character edit window shows `kind` and `controlMode`.
+- **JSDoc:** every export of `Character.ts` and `Character/*.ts` and every field of their exported types, including the `__` memory fields of `CharacterData`. `CharacterActionMappings` and `CharacterInputCommonOpts` are exported so TypeDoc documents them. TypeDoc reports nothing for these files beyond the folder entry-point warning every folder gets.
+- **Also updated:** p067–p069's line references, p067's field counts (21 / 36 / 14) and a string row type for `locomotionState`, p068/p069's notes on colliders by role and the dimensions, and the readme's Characters line.
+- **Verified** headless against the running dev server, in both worker targets, no console errors:
+
+  - the gym's 3 characters are `HUMANOID` with 4 colliders each and the right visual ids and binding counts; walking, crouching, jumping and the arrow-keys character work as in Phase 3;
+  - states: `IDLE → WALK → IDLE`, `RUN`, `CROUCH`, `CROUCH_WALK`, `JUMP → FALL → IDLE`; the dummy reports `WALK`, `JUMP` and `FALL`; unsubscribing stops the callbacks;
+  - `PHYSICS_ONLY`: `TUMBLE`, W moves the body 0 m, a torque impulse tilts it; back to `CONTROLLED`: `GET_UP → IDLE`, exactly upright, and W walks again.
+
+  Not covered: `SLIDE` on the slide obstacle, `onLocomotionStateChange` across a scene re-enter, a custom body plan, and a `visual` that is a group.
 
 ### Phase 5 — Toolkit additions
 

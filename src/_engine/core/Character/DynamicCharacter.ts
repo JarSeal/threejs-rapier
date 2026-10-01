@@ -1,6 +1,15 @@
 import * as THREE from 'three/webgpu';
-import { createCharacter } from '../Character';
-import type { CharacterIntent, CharacterObject } from './CharacterTypes';
+import { createCharacter, emitLocomotionStateChange, onLocomotionStateChange } from '../Character';
+import type {
+  CharacterBodyPlan,
+  CharacterColliderRole,
+  CharacterControlMode,
+  CharacterIntent,
+  CharacterObject,
+  LocomotionState,
+  LocomotionStateListener,
+} from './CharacterTypes';
+import { HUMANOID_CAPSULE } from './CharacterBodyPlans';
 import {
   clearIntentSubStep,
   createIntent,
@@ -35,6 +44,8 @@ import { existsOrThrow } from '../../utils/assert';
  * reference to one across ticks expecting a snapshot. Times are physics game time in milliseconds.
  */
 export type CharacterData = {
+  /** What the body is doing (see {@link LocomotionState}), derived at the end of every tick. */
+  locomotionState: LocomotionState;
   /** World position of the body's center. */
   position: { x: number; y: number; z: number };
   /** World linear velocity (m/s) and its length. */
@@ -152,24 +163,69 @@ export type CharacterData = {
   /** Downhill acceleration (m/s²) on unwalkable slopes, up to `_maxVelocity` (gravity can slide
    * the character faster). */
   _slopeSlideSpeed: number;
+  /** How long (ms) the character must be off the ground, without a jump, before its locomotion
+   * state is `FALL` (shorter gaps, like a stair step, keep the grounded state). */
+  _fallStateDelay: number;
+  /** When `locomotionState` last changed. */
+  __locomotionStateStartTime: number;
+  /** In a jump (locomotionState `JUMP`): from the jump until the character stops rising in the
+   * air or lands. */
+  __isJumping: boolean;
+  /** Whether the current jump has left the ground yet. */
+  __jumpLeftGround: boolean;
+  /** When the character left the ground (0 while grounded). */
   __isFallingStartTime: number;
+  /** When tumbling started (0 while not tumbling). */
   __isTumblingStartTime: number;
+  /** When the last jump was applied. */
   __jumpTime: number;
+  /** `isGrounded` as of the floor sensor's last collision event (the landing logic reads it). */
   __lastIsGroundedState: boolean;
+  /** cos(`_maxWalkableAngle`), computed at creation. */
   __maxWalkableAngleCos: number;
+  /** Ids of the non-dynamic colliders the wall sensor touches. */
   __touchingWallColliders: number[];
+  /** Ids of the colliders the floor sensor touches. */
   __touchingGroundColliders: number[];
+  /** The angular damping restored when tumbling ends (the body's default, 0). */
   __charAngDamping: number;
+  /** When getting up started (0 while not getting up). */
   __isGettingUpStartTime: number;
+  /** The moving platform's velocity the tick added to the body on the last sub-step. */
   __lastAppliedPlatformVelocity: { x: number; y: number; z: number };
+  /** The velocity of the moving platform's floor under the character this sub-step. */
   __currentPlatformVelocity: { x: number; y: number; z: number };
 };
 
+/** {@link createDynamicCharacter}'s options. */
+export type DynamicCharacterOpts = {
+  /** The character's id (namespaces its binding ids). An existing character with it is replaced. */
+  id: string;
+  /** A display name (the debug tools show it). */
+  name?: string;
+  /** The visual root the body moves (eg. a mesh or a group), with an entity (made with
+   * createMeshEntity or createGroupEntity): that entity becomes the character. The controller
+   * never reads it, so any Object3D works (a capsule, a skinned mesh, a group). */
+  visual: THREE.Object3D;
+  /** The body's shape and kind (default {@link HUMANOID_CAPSULE}). */
+  body?: CharacterBodyPlan;
+  /** Overrides of the default {@link CharacterData} (usually `_` configuration keys). */
+  charData?: Partial<CharacterData>;
+  /** Keyboard input: a scheme and its key mappings. Without it the character is driven by code,
+   * through its intent. */
+  input?: CharacterInputOpts;
+  /** Called on every locomotion state change (the same as registering it with
+   * `onLocomotionStateChange` right after creation). */
+  onLocomotionStateChange?: LocomotionStateListener;
+};
+
+/** What {@link createDynamicCharacter} returns. */
 export type DynamicCharacter = {
-  dynamicCharacterObject: CharacterObject;
-  charMesh: THREE.Mesh;
-  charData: CharacterData;
-  /** The character's intent (the same object as `dynamicCharacterObject.intent`). */
+  /** The registry entry (the entity's `CHARACTER` component). */
+  character: CharacterObject;
+  /** The live data (the same object as `character.data`). */
+  data: CharacterData;
+  /** The character's intent (the same object as `character.intent`). */
   intent: CharacterIntent;
   /** Shorthands that write the intent (nothing else: the tick is what moves the body). Call the
    * per-sub-step ones (rotate, move) once per sub-step, eg. from an APP_PHYSICS_STEP system. */
@@ -186,10 +242,10 @@ export type DynamicCharacter = {
     /** Toggles crouching. */
     crouch: () => void;
   };
-  camera?: THREE.PerspectiveCamera;
 };
 
 const DEFAULT_CHARACTER_DATA: CharacterData = {
+  locomotionState: 'IDLE',
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0, length: 0 },
   relVelocity: { x: 0, y: 0, z: 0, length: 0 },
@@ -245,6 +301,10 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   _wallNormalMaxY: 0.7,
   _wallCastDistance: 0.2,
   _slopeSlideSpeed: 15,
+  _fallStateDelay: 100,
+  __locomotionStateStartTime: 0,
+  __isJumping: false,
+  __jumpLeftGround: false,
   __isFallingStartTime: 0,
   __isTumblingStartTime: 0,
   __jumpTime: 0,
@@ -274,28 +334,6 @@ const getDefaultCharacterData = (): CharacterData => {
   };
 };
 
-/** Collider and probe dimensions derived from the character's data. Every dimension-dependent
- * number (colliders, sensors, the wall cast, the floor ray) comes from here. */
-type CharacterDimensions = {
-  /** Half the walk capsule's cylinder part (its total height is 2 × (this + radius)). */
-  walkHalfHeight: number;
-  /** Half the crouch capsule's cylinder part. */
-  crouchHalfHeight: number;
-  /** Body-space Y of the crouch capsule's center: its bottom lines up with the walk capsule's. */
-  crouchOffsetY: number;
-  wallSensorRadius: number;
-  wallSensorHalfHeight: number;
-  /** The wall sensor is lifted this much, so it never touches the floor under the character. */
-  wallSensorOffsetY: number;
-  floorSensorRadius: number;
-  floorSensorOffsetY: number;
-};
-
-const WALL_SENSOR_LIFT = 0.05;
-/** The wall cast sits this much above the active capsule's center. */
-const WALL_CAST_LIFT = 0.1;
-/** The wall cast's cylinder, as a fraction of the active capsule's cylinder part. */
-const WALL_CAST_HEIGHT_FACTOR = 0.9;
 /** Below this (rad/s), a platform's spin doesn't turn the character. */
 const PLATFORM_ROTATION_EPSILON = 0.001;
 /** Below this (m/s or rad/s), the character counts as resting (isAwake = false). */
@@ -304,21 +342,37 @@ const AWAKE_EPSILON = 0.001;
 const MOVE_EPSILON_SQ = 1e-6;
 /** Closer than this (rad) to a target yaw, the character doesn't turn. */
 const YAW_EPSILON = 1e-4;
+/** A jump that hasn't left the ground after this long (ms, eg. under a low ceiling) is over. */
+const JUMP_LIFT_OFF_GRACE = 250;
+/** How much faster (m/s) than its own top speed a sliding character must go to be in `SLIDE`. */
+const SLIDE_STATE_SPEED_MARGIN = 0.1;
 
-const getCharacterDimensions = (d: CharacterData): CharacterDimensions => {
-  const walkHalfHeight = Math.max(0, d._height / 2 - d._radius);
-  const crouchHalfHeight = Math.max(0, Math.min(d._crouchHeight, d._height) / 2 - d._radius);
-  const wallSensorRadius = d._radius * (1 + d._skinThickness);
-  return {
-    walkHalfHeight,
-    crouchHalfHeight,
-    crouchOffsetY: crouchHalfHeight - walkHalfHeight,
-    wallSensorRadius,
-    wallSensorHalfHeight: Math.max(0, walkHalfHeight + d._radius - wallSensorRadius),
-    wallSensorOffsetY: WALL_SENSOR_LIFT,
-    floorSensorRadius: d._radius * d._groundDetectorRadius,
-    floorSensorOffsetY: -(walkHalfHeight + d._radius) + d._groundDetectorOffset,
-  };
+/** The locomotion state from the controller's data (see {@link LocomotionState}). */
+const deriveLocomotionState = (
+  d: CharacterData,
+  now: number,
+  isControlled: boolean
+): LocomotionState => {
+  // Physics alone moves the body (eg. a ragdoll): it's tumbling as far as animation goes
+  if (!isControlled) return 'TUMBLE';
+  if (d.isGettingUp) return 'GET_UP';
+  if (d.isTumbling) return 'TUMBLE';
+  if (d.__isJumping) return 'JUMP';
+  // A short time off the ground (a stair step, a bump) keeps the grounded state
+  if (!d.isGrounded && now - d.__isFallingStartTime >= d._fallStateDelay) return 'FALL';
+  // Only a slide the character can't make by itself: on too steep ground, or faster than it moves
+  // (isSliding alone is also true while it slows down after a move)
+  if (
+    d.isSliding &&
+    (!d.groundIsWalkable ||
+      Math.hypot(d.relVelocity.x, d.relVelocity.z) >
+        d._maxVelocity * Math.max(1, d._runningMultiplier) + SLIDE_STATE_SPEED_MARGIN)
+  ) {
+    return 'SLIDE';
+  }
+  if (d.isCrouching) return d.hasMoveInput ? 'CROUCH_WALK' : 'CROUCH';
+  if (d.hasMoveInput) return d.isRunning ? 'RUN' : 'WALK';
+  return 'IDLE';
 };
 
 const eulerForCharRotation = new THREE.Euler();
@@ -354,23 +408,45 @@ const setVec = (x: number, y: number, z: number) => {
   return _vec;
 };
 
-export const createDynamicCharacter = async (opts: {
-  id: string;
-  charMesh: THREE.Mesh;
-  charData?: Partial<CharacterData>;
-  sceneId?: string;
-  /** Keyboard input: a scheme and its key mappings. Without it the character is driven by code,
-   * through its intent. */
-  input?: CharacterInputOpts;
-}) => {
-  const { id, charMesh, charData, input: inputOpts } = opts;
+/** The collider roles the controller needs from a body plan. */
+const REQUIRED_COLLIDER_ROLES: CharacterColliderRole[] = [
+  'MAIN',
+  'CROUCH',
+  'WALL_SENSOR',
+  'FLOOR_SENSOR',
+];
+
+/**
+ * Creates a dynamic character: a dynamic, rotation-locked rigid body moved by setting its
+ * velocities, with gravity and contacts left to the physics engine. It walks, runs, crouches,
+ * jumps, slides down too steep slopes, rides moving platforms, and tumbles and gets up again.
+ *
+ * The body's shape comes from the body plan (`body`, default {@link HUMANOID_CAPSULE}), its
+ * tuning from `charData` (see {@link CharacterData}). It moves only by its intent, which the
+ * `input` scheme's key bindings, `controlFns` or game code (eg. an AI in an APP_PHYSICS_STEP
+ * system) write; the controller's tick reads it once per physics sub-step. Deleting the
+ * character's entity any way deletes the character.
+ * @returns the character, its live data, its intent and the `controlFns` shorthands
+ */
+export const createDynamicCharacter = async (
+  opts: DynamicCharacterOpts
+): Promise<DynamicCharacter> => {
+  const {
+    id,
+    name,
+    visual,
+    body = HUMANOID_CAPSULE,
+    charData,
+    input: inputOpts,
+    onLocomotionStateChange: locomotionStateListener,
+  } = opts;
 
   // Combine character data
   const characterData: CharacterData = { ...getDefaultCharacterData(), ...charData };
   if (charData?._turnToMoveDirection === undefined && inputOpts) {
     characterData._turnToMoveDirection = SCHEME_TURNS_TO_MOVE_DIRECTION[inputOpts.scheme];
   }
-  const dims = getCharacterDimensions(characterData);
+  const dims = body.getDimensions(characterData);
 
   // Set __maxWalkableAngleCos
   characterData.__maxWalkableAngleCos = Math.cos(characterData._maxWalkableAngle);
@@ -380,15 +456,17 @@ export const createDynamicCharacter = async (opts: {
   const jumpAmountVector3 = new THREE.Vector3();
   const justLandedVector3 = new THREE.Vector3();
 
-  // currentColliderIndex tracks which of the walk (0) / crouch (1) colliders is enabled,
-  // mirroring legacy switchPhysicsCollider's default (index 0 enabled at creation).
-  let currentColliderIndex = 0;
   // Forward-declared: closures below (controlFns, collider collisionEventFn) close over
-  // this and are only ever invoked after createCharacter() resolves and assigns it once.
+  // these and are only ever invoked after createCharacter() resolves and assigns them once.
   // eslint-disable-next-line prefer-const
   let characterBody: RigidBodyAPI;
   let characterBodyId = -1;
-  let liveColliders: ColliderAPI[] = [];
+  // The standing (MAIN, enabled at creation) and crouching (CROUCH) colliders
+  // eslint-disable-next-line prefer-const
+  let mainCollider: ColliderAPI, crouchCollider: ColliderAPI;
+  /** The control mode the tick last applied (the character's `controlMode` takes effect on the
+   * next tick). */
+  let appliedControlMode: CharacterControlMode = 'CONTROLLED';
 
   // Written by the input scheme's bindings, controlFns and game code; read only by the tick
   const intent = createIntent();
@@ -424,14 +502,12 @@ export const createDynamicCharacter = async (opts: {
     _castDir.y = 0; // Force horizontal
     _castDir.z = _moveDir.z;
 
-    // Known collider dimensions (walk/crouch capsule, tracked from creation-time params —
-    // geometry can't be queried off the active collider synchronously in WORKER_THREAD mode).
-    const isCrouching = characterData.isCrouching;
-    const activeHalfHeight = isCrouching ? dims.crouchHalfHeight : dims.walkHalfHeight;
-    const activeCenterY = isCrouching ? dims.crouchOffsetY : 0;
+    // The body plan's creation-time sizes (geometry can't be queried off the active collider
+    // synchronously in WORKER_THREAD mode)
+    const probes = characterData.isCrouching ? dims.crouching : dims.standing;
 
     _castPos.x = _pose[0];
-    _castPos.y = _pose[1] + activeCenterY + WALL_CAST_LIFT;
+    _castPos.y = _pose[1] + probes.wallCastOffsetY;
     _castPos.z = _pose[2];
 
     wallHitCastInFlight = true;
@@ -442,8 +518,8 @@ export const createDynamicCharacter = async (opts: {
         _castDir,
         {
           type: 'CYLINDER',
-          halfHeight: Math.max(0.01, activeHalfHeight * WALL_CAST_HEIGHT_FACTOR),
-          radius: dims.wallSensorRadius,
+          halfHeight: probes.wallCastHalfHeight,
+          radius: probes.wallCastRadius,
         },
         0.0,
         characterData._wallCastDistance,
@@ -477,14 +553,12 @@ export const createDynamicCharacter = async (opts: {
     _castPos.x = _pose[0];
     _castPos.y = _pose[1];
     _castPos.z = _pose[2];
-    const activeHalfHeight = characterData.isCrouching
-      ? dims.crouchHalfHeight
-      : dims.walkHalfHeight;
+    const probes = characterData.isCrouching ? dims.crouching : dims.standing;
     floorRayCastInFlight = true;
     getPhysicsWorld()
       .castRayAndGetNormal(
         _floorRay,
-        activeHalfHeight * 2 + characterData._radius * 4,
+        probes.floorRayLength,
         false,
         QueryFilterFlags.EXCLUDE_SENSORS,
         undefined,
@@ -519,7 +593,7 @@ export const createDynamicCharacter = async (opts: {
   /** Turns the character by `amount` radians around the world up axis. The yaw accumulates in
    * characterData.charRotation and goes only into the body: the body is the single source of
    * truth and the mesh follows it like any other physics-driven Object3D. Never write
-   * charMesh.quaternion here: it is rewritten from the physics pose (interpolated, and one step
+   * the visual's quaternion here: it is rewritten from the physics pose (interpolated, and one step
    * late in WORKER_THREAD mode), and since this only runs on frames with a physics sub-step, a
    * direct write makes the rendered yaw alternate between the live and the physics yaw whenever
    * the render rate exceeds the physics rate. */
@@ -696,160 +770,164 @@ export const createDynamicCharacter = async (opts: {
     crouch: () => (intent.crouch = !intent.crouch),
   };
 
-  /** Swaps the walk and crouch capsules. */
+  /** Swaps the standing (MAIN) and crouching (CROUCH) colliders. */
   const setCrouching = (isCrouching: boolean) => {
     characterData.isCrouching = isCrouching;
-    const nextIndex = isCrouching ? 1 : 0;
-    liveColliders[currentColliderIndex].setEnabled(false);
-    liveColliders[nextIndex].setEnabled(true);
-    currentColliderIndex = nextIndex;
+    (isCrouching ? mainCollider : crouchCollider).setEnabled(false);
+    (isCrouching ? crouchCollider : mainCollider).setEnabled(true);
   };
 
-  // Compound colliders (all sharing one rigid body). Radius is set explicitly to
-  // characterData._radius on the walk/crouch capsules: legacy derived this from the
-  // character mesh's CapsuleGeometry (radius: characterData._radius) when the collider
-  // params omitted their own radius — the new Physics API has no such mesh-derivation
-  // fallback (EngineRapier.ts defaults an unset capsule radius to 0.25), so it must be
-  // explicit here to reproduce the same collision size.
-  const colliders: ColliderParams[] = [
-    {
-      // Main character collider (walk / run) [INDEX: 0]
-      type: 'CAPSULE',
-      halfHeight: dims.walkHalfHeight,
-      radius: characterData._radius,
-      // friction: 0.7,
-      // frictionCombineRule: 'MULTIPLY',
-    },
-    {
-      // Crouch collider [INDEX: 1]
-      type: 'CAPSULE',
-      friction: 0.9,
-      halfHeight: dims.crouchHalfHeight,
-      radius: characterData._radius,
-      enabled: false,
-      // Offset from the body so the shorter capsule's bottom lines up with the walk capsule's
-      translation: { x: 0, y: dims.crouchOffsetY, z: 0 },
-    },
-    {
-      // Wall sensor [INDEX: 2]
-      type: 'CAPSULE',
-      halfHeight: dims.wallSensorHalfHeight,
-      radius: dims.wallSensorRadius,
-      isSensor: true,
-      density: 0,
-      translation: { x: 0, y: dims.wallSensorOffsetY, z: 0 },
-      collisionEventFn: (collider1: ColliderAPI, collider2: ColliderAPI, started: boolean) => {
-        // Whichever of the pair belongs to the character's own rigid body is "me" — the
-        // wall sensor's own collisionEventFn only ever fires for events that include it.
-        const isColl1Mine = collider1.parentId === characterBodyId;
-        const otherCollider = isColl1Mine ? collider2 : collider1;
+  /** The wall sensor's collisions: counts the touching non-dynamic bodies (isNearWall), and a
+   * fast enough hit starts tumbling. */
+  const onWallSensorCollision = (
+    collider1: ColliderAPI,
+    collider2: ColliderAPI,
+    started: boolean
+  ) => {
+    // Whichever of the pair belongs to the character's own rigid body is "me" — the
+    // wall sensor's own collisionEventFn only ever fires for events that include it.
+    const isColl1Mine = collider1.parentId === characterBodyId;
+    const otherCollider = isColl1Mine ? collider2 : collider1;
 
-        if (started) {
-          void getPhysicsWorld()
-            .getRigidBodySync(otherCollider.parentId ?? -1)
-            ?.bodyType()
-            .then((bodyType) => {
-              if (bodyType !== RigidBodyTypeAPI.Dynamic) {
-                characterData.__touchingWallColliders.push(otherCollider.id);
-                characterData.isNearWall = true;
-              }
-              if (characterData.relVelocity.length > characterData._tumblingWallSpeedThreshold) {
-                startCharacterTumbling(characterData, characterBody);
-              }
-            });
-          return;
-        }
-        const indexToRemove = characterData.__touchingWallColliders.indexOf(otherCollider.id);
-        if (indexToRemove !== -1) {
-          characterData.__touchingWallColliders.splice(indexToRemove, 1);
-        }
-        if (!characterData.__touchingWallColliders.length) characterData.isNearWall = false;
-      },
-    },
-    {
-      // Floor sensor [INDEX: 3]
-      type: 'BALL',
-      radius: dims.floorSensorRadius,
-      isSensor: true,
-      density: 0,
-      translation: { x: 0, y: dims.floorSensorOffsetY, z: 0 },
-      collisionEventFn: (collider1: ColliderAPI, collider2: ColliderAPI, started: boolean) => {
-        // 1. Identify "The Other Collider" immediately
-        const isColl1Mine = collider1.parentId === characterBodyId;
-        const otherCollider = isColl1Mine ? collider2 : collider1;
-
-        // 2. Get the other body's userData ONCE
-        const otherBody = getPhysicsWorld().getRigidBodySync(otherCollider.parentId ?? -1);
-        const userData = otherBody?.getUserDataSync() as
-          | {
-              isStairs?: boolean;
-              stairsColliderIndex?: number | number[]; // Support array or number
-              isMovingPlatform?: boolean;
-            }
-          | undefined;
-
-        if (started) {
-          // --- STARTED TOUCHING ---
-          characterData.__touchingGroundColliders.push(otherCollider.id);
-          characterData.isGrounded = true;
-
-          // Tumble Check
+    if (started) {
+      void getPhysicsWorld()
+        .getRigidBodySync(otherCollider.parentId ?? -1)
+        ?.bodyType()
+        .then((bodyType) => {
+          if (bodyType !== RigidBodyTypeAPI.Dynamic) {
+            characterData.__touchingWallColliders.push(otherCollider.id);
+            characterData.isNearWall = true;
+          }
           if (
-            characterData.relVelocity.length > characterData._tumblingGroundSpeedThreshold &&
-            !characterData.__lastIsGroundedState
+            appliedControlMode === 'CONTROLLED' &&
+            characterData.relVelocity.length > characterData._tumblingWallSpeedThreshold
           ) {
             startCharacterTumbling(characterData, characterBody);
-            return;
           }
+        });
+      return;
+    }
+    const indexToRemove = characterData.__touchingWallColliders.indexOf(otherCollider.id);
+    if (indexToRemove !== -1) {
+      characterData.__touchingWallColliders.splice(indexToRemove, 1);
+    }
+    if (!characterData.__touchingWallColliders.length) characterData.isNearWall = false;
+  };
 
-          // Keep Moving / Landing Logic. Collision events run before the tick, so this sub-step's
-          // move input is still only in the intent.
-          if (
-            !characterData.isFalling &&
-            !characterData.__lastIsGroundedState &&
-            (characterData.hasMoveInput || hasMoveIntent(intent)) &&
-            characterBody
-          ) {
-            const linvel = characterBody.lvel;
-            if (characterData._keepMovingAfterJumpThreshold < linvel.y) {
-              characterBody.setLinvel(justLandedVector3.set(linvel.x, 0, linvel.z), true);
-            }
-          }
-          characterData.__lastIsGroundedState = characterData.isGrounded;
+  /** The floor sensor's collisions: grounded, stairs and moving platform state, landing, and
+   * tumbling on a hard landing. */
+  const onFloorSensorCollision = (
+    collider1: ColliderAPI,
+    collider2: ColliderAPI,
+    started: boolean
+  ) => {
+    // 1. Identify "The Other Collider" immediately
+    const isColl1Mine = collider1.parentId === characterBodyId;
+    const otherCollider = isColl1Mine ? collider2 : collider1;
 
-          // --- STAIRS CHECK ---
-          if (userData?.isStairs) {
-            characterData.isOnStairs = true;
-          }
-
-          // --- MOVING PLATFORM CHECK ---
-          if (userData?.isMovingPlatform) {
-            characterData.isOnMovingPlatform = true;
-          }
-        } else {
-          // --- STOPPED TOUCHING ---
-          const index = characterData.__touchingGroundColliders.indexOf(otherCollider.id);
-          if (index !== -1) {
-            characterData.__touchingGroundColliders.splice(index, 1);
-          }
-
-          if (characterData.__touchingGroundColliders.length === 0) {
-            characterData.isGrounded = false;
-          }
-
-          characterData.__lastIsGroundedState = characterData.isGrounded;
-
-          if (userData?.isStairs) {
-            characterData.isOnStairs = false;
-          }
-
-          if (userData?.isMovingPlatform) {
-            characterData.isOnMovingPlatform = false;
-          }
+    // 2. Get the other body's userData ONCE
+    const otherBody = getPhysicsWorld().getRigidBodySync(otherCollider.parentId ?? -1);
+    const userData = otherBody?.getUserDataSync() as
+      | {
+          isStairs?: boolean;
+          stairsColliderIndex?: number | number[]; // Support array or number
+          isMovingPlatform?: boolean;
         }
-      },
-    },
-  ];
+      | undefined;
+
+    if (started) {
+      // --- STARTED TOUCHING ---
+      characterData.__touchingGroundColliders.push(otherCollider.id);
+      characterData.isGrounded = true;
+
+      // Tumble Check (in PHYSICS_ONLY mode, physics alone moves the body)
+      const isControlled = appliedControlMode === 'CONTROLLED';
+      if (
+        isControlled &&
+        characterData.relVelocity.length > characterData._tumblingGroundSpeedThreshold &&
+        !characterData.__lastIsGroundedState
+      ) {
+        startCharacterTumbling(characterData, characterBody);
+        return;
+      }
+
+      // Keep Moving / Landing Logic. Collision events run before the tick, so this sub-step's
+      // move input is still only in the intent.
+      if (
+        isControlled &&
+        !characterData.isFalling &&
+        !characterData.__lastIsGroundedState &&
+        (characterData.hasMoveInput || hasMoveIntent(intent)) &&
+        characterBody
+      ) {
+        const linvel = characterBody.lvel;
+        if (characterData._keepMovingAfterJumpThreshold < linvel.y) {
+          characterBody.setLinvel(justLandedVector3.set(linvel.x, 0, linvel.z), true);
+        }
+      }
+      characterData.__lastIsGroundedState = characterData.isGrounded;
+
+      // --- STAIRS CHECK ---
+      if (userData?.isStairs) {
+        characterData.isOnStairs = true;
+      }
+
+      // --- MOVING PLATFORM CHECK ---
+      if (userData?.isMovingPlatform) {
+        characterData.isOnMovingPlatform = true;
+      }
+    } else {
+      // --- STOPPED TOUCHING ---
+      const index = characterData.__touchingGroundColliders.indexOf(otherCollider.id);
+      if (index !== -1) {
+        characterData.__touchingGroundColliders.splice(index, 1);
+      }
+
+      if (characterData.__touchingGroundColliders.length === 0) {
+        characterData.isGrounded = false;
+      }
+
+      characterData.__lastIsGroundedState = characterData.isGrounded;
+
+      if (userData?.isStairs) {
+        characterData.isOnStairs = false;
+      }
+
+      if (userData?.isMovingPlatform) {
+        characterData.isOnMovingPlatform = false;
+      }
+    }
+  };
+
+  // The body plan's colliders (all sharing one rigid body), with the controller's parts added by
+  // role: the crouch collider starts disabled, and the sensors get their collision handlers.
+  // Capsule radii must be explicit: the Physics API doesn't derive them from the mesh.
+  const bodyColliders = body.getColliders(dims, characterData);
+  const colliderIndexes = {} as Record<CharacterColliderRole, number>;
+  for (let i = 0; i < REQUIRED_COLLIDER_ROLES.length; i++) {
+    const role = REQUIRED_COLLIDER_ROLES[i];
+    const index = bodyColliders.findIndex((collider) => collider.role === role);
+    if (index === -1) {
+      throw new Error(
+        `createDynamicCharacter: body plan '${body.kind}' has no '${role}' collider (character '${id}').`
+      );
+    }
+    colliderIndexes[role] = index;
+  }
+  const colliders: ColliderParams[] = bodyColliders.map(({ role, params }) => {
+    switch (role) {
+      case 'MAIN':
+        return { ...params, enabled: true };
+      case 'CROUCH':
+        return { ...params, enabled: false };
+      case 'WALL_SENSOR':
+        return { ...params, collisionEventFn: onWallSensorCollision };
+      case 'FLOOR_SENSOR':
+        return { ...params, collisionEventFn: onFloorSensorCollision };
+      default:
+        return params;
+    }
+  });
 
   const rigidBodyParams: RigidBodyParams = {
     rigidType: 'DYNAMIC',
@@ -859,26 +937,33 @@ export const createDynamicCharacter = async (opts: {
 
   const ecsWorld = getECSWorld();
 
-  const dynamicCharacterObject = await createCharacter({
+  const character = await createCharacter({
     id,
+    name,
+    kind: body.kind,
     physicsParams: { colliders, rigidBody: rigidBodyParams },
-    meshOrMeshId: charMesh,
+    visual,
     data: characterData,
     intent,
     controls: input?.bindings,
   });
+  const entityId = character.entityId;
 
   characterBody = existsOrThrow(
-    ecsWorld.getRigidBody(dynamicCharacterObject.entityId),
-    `Could not find character physics object rigid body with id: '${dynamicCharacterObject.entityId}'.`
+    ecsWorld.getRigidBody(entityId),
+    `Could not find character physics object rigid body with id: '${entityId}'.`
   );
   characterBodyId = characterBody.id;
-  wallCastDebug.id = `char_wall_${dynamicCharacterObject.entityId}`;
-  floorRayDebug.id = `char_floor_${dynamicCharacterObject.entityId}`;
-  liveColliders = existsOrThrow(
-    ecsWorld.getComponent(dynamicCharacterObject.entityId, ComponentType.COLLIDER),
-    `Could not find character colliders for entity id: '${dynamicCharacterObject.entityId}'.`
+  wallCastDebug.id = `char_wall_${entityId}`;
+  floorRayDebug.id = `char_floor_${entityId}`;
+  // The entity's colliders are in the order of their params
+  const liveColliders = existsOrThrow(
+    ecsWorld.getComponent(entityId, ComponentType.COLLIDER),
+    `Could not find character colliders for entity id: '${entityId}'.`
   );
+  mainCollider = liveColliders[colliderIndexes.MAIN];
+  crouchCollider = liveColliders[colliderIndexes.CROUCH];
+  if (locomotionStateListener) onLocomotionStateChange(id, locomotionStateListener);
 
   const getUpQuat = new THREE.Quaternion();
   const getUpVector3 = new THREE.Vector3();
@@ -890,7 +975,7 @@ export const createDynamicCharacter = async (opts: {
   // Run by Character.ts's character system once per fixed physics sub-step. The tick's per-step
   // amounts (eg. turning with a rotating platform by angVelo * timestep) are only right at that
   // cadence. It goes with the entity: no cleanup needed.
-  dynamicCharacterObject.controller = {
+  character.controller = {
     tick: (dt: number) => {
       const body = characterBody;
       if (!body) return;
@@ -899,6 +984,25 @@ export const createDynamicCharacter = async (opts: {
       // The body's state, read once (no allocation); every velocity write below updates _vels too
       body.readPoseInto(_pose);
       body.readVelocitiesInto(_vels);
+
+      // A control mode change (setControlMode) applies here, so only the tick touches the body
+      if (character.controlMode !== appliedControlMode) {
+        appliedControlMode = character.controlMode;
+        if (appliedControlMode === 'PHYSICS_ONLY') {
+          // Physics alone: free rotations and the body's own (default) angular damping
+          characterData.isGettingUp = false;
+          characterData.__isGettingUpStartTime = 0;
+          body.setAngularDamping(0);
+          body.lockRotations(false, true);
+          body.setEnabledRotations(true, true, true, true);
+        } else {
+          // Back from physics: get up first (the getting-up path locks the rotations at its end)
+          characterData.isTumbling = true;
+          characterData.isGettingUp = true;
+          characterData.__isGettingUpStartTime = now;
+        }
+      }
+      const isControlled = appliedControlMode === 'CONTROLLED';
 
       // The intent of this sub-step, read once (its per-sub-step fields are cleared right away)
       input?.beforeTick?.();
@@ -909,11 +1013,13 @@ export const createDynamicCharacter = async (opts: {
       const wantsJump = intent.jump;
       clearIntentSubStep(intent);
       characterData.isRunning = intent.run;
-      if (intent.crouch !== characterData.isCrouching) setCrouching(intent.crouch);
+      if (isControlled && intent.crouch !== characterData.isCrouching) {
+        setCrouching(intent.crouch);
+      }
 
       // Turn: turn input, else toward faceYaw, else toward the move direction (at most
       // _rotateSpeed). Before the move, so a forward move goes along the new facing.
-      if (!characterData.isTumbling) {
+      if (isControlled && !characterData.isTumbling) {
         const maxTurn = characterData._rotateSpeed * dt;
         if (turnInput !== 0) {
           turnCharacter(turnInput * maxTurn);
@@ -938,9 +1044,10 @@ export const createDynamicCharacter = async (opts: {
       const moveZ = worldMoveZ - moveForward * Math.sin(characterData.charRotation);
       const moveLength = Math.hypot(moveX, moveZ);
       characterData.hasMoveInput = moveLength * moveLength > MOVE_EPSILON_SQ;
-      if (characterData.hasMoveInput && !characterData.isTumbling) {
+      if (isControlled && characterData.hasMoveInput && !characterData.isTumbling) {
         applyMove(moveX / moveLength, moveZ / moveLength, Math.min(1, moveLength), dt);
       } else if (
+        isControlled &&
         !characterData.groundIsWalkable &&
         characterData.isGrounded &&
         !characterData.isTumbling &&
@@ -958,6 +1065,7 @@ export const createDynamicCharacter = async (opts: {
 
       // Check isTumbling
       if (
+        isControlled &&
         characterData.isTumbling &&
         !characterData.isGettingUp &&
         characterData.__isTumblingStartTime + characterData._tumblingMinTime < now &&
@@ -967,7 +1075,7 @@ export const createDynamicCharacter = async (opts: {
         // End tumbling and start isGettingUp phase
         characterData.isGettingUp = true;
         characterData.__isGettingUpStartTime = now;
-      } else if (characterData.isTumbling) {
+      } else if (isControlled && characterData.isTumbling) {
         // Clamp angular velocity when tumbling
         const maxAngVel = characterData._tumblingMaxAngVelo;
         const len = Math.hypot(_vels[3], _vels[4], _vels[5]);
@@ -981,7 +1089,7 @@ export const createDynamicCharacter = async (opts: {
       }
 
       // Perform isGettingUp
-      if (characterData.isGettingUp) {
+      if (isControlled && characterData.isGettingUp) {
         body.setAngularDamping(characterData._gettingUpAngularDamping);
         const ratio = Math.min(
           (now - characterData.__isGettingUpStartTime) / characterData._gettingUpDuration,
@@ -1067,7 +1175,7 @@ export const createDynamicCharacter = async (opts: {
       currentPlatformVelo.z = 0;
 
       // Handle character on moving platform
-      if (characterData.isOnMovingPlatform) {
+      if (isControlled && characterData.isOnMovingPlatform) {
         for (let i = 0; i < characterData.__touchingGroundColliders.length; i++) {
           const collider = getPhysicsWorld().getColliderSync(
             characterData.__touchingGroundColliders[i]
@@ -1203,10 +1311,23 @@ export const createDynamicCharacter = async (opts: {
       // Ground normal for the next sub-steps (also while idle or sliding)
       refreshFloorNormal();
 
+      // The jump phase (JUMP) lasts until the character stops rising in the air or lands
+      if (characterData.__isJumping) {
+        if (!characterData.isGrounded) characterData.__jumpLeftGround = true;
+        if (
+          characterData.isTumbling ||
+          (characterData.__jumpLeftGround && (characterData.isGrounded || relVelocity.y <= 0)) ||
+          (!characterData.__jumpLeftGround && now - characterData.__jumpTime > JUMP_LIFT_OFF_GRACE)
+        ) {
+          characterData.__isJumping = false;
+        }
+      }
+
       // Jump last: an impulse after this tick's setLinvel calls adds to them instead of being
       // overwritten (the WORKER_THREAD commands replay in order)
       if (
         wantsJump &&
+        isControlled &&
         !characterData.isTumbling &&
         characterData.isGrounded &&
         !characterData.isCrouching &&
@@ -1214,18 +1335,22 @@ export const createDynamicCharacter = async (opts: {
       ) {
         body.applyImpulse(jumpAmountVector3.set(0, characterData._jumpAmount, 0), true);
         characterData.__jumpTime = now;
+        characterData.__isJumping = true;
+        characterData.__jumpLeftGround = false;
+      }
+
+      // Locomotion state, once per change
+      const prevState = characterData.locomotionState;
+      const nextState = deriveLocomotionState(characterData, now, isControlled);
+      if (nextState !== prevState) {
+        characterData.locomotionState = nextState;
+        characterData.__locomotionStateStartTime = now;
+        emitLocomotionStateChange(character, nextState, prevState);
       }
     },
   };
 
-  const dynamicCharacter: DynamicCharacter = {
-    dynamicCharacterObject,
-    charMesh,
-    charData: characterData,
-    intent,
-    controlFns,
-  };
-  return dynamicCharacter;
+  return { character, data: characterData, intent, controlFns };
 };
 
 const _tumbleStartImpulseVector3 = new THREE.Vector3();
