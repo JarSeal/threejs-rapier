@@ -1,0 +1,133 @@
+// The dropdown's default styles (DropDown.ts). Every rule is in :where(), so it has zero
+// specificity: any class (the className/triggerClass/... props, or a consumer's own selector)
+// overrides it, whatever the stylesheet order.
+@use '../../styles/variables.scss';
+
+$listGap: 0.4rem;
+
+// The font size is set here, not on the trigger: normalize.scss's `button { font-size: 100% }`
+// beats a :where() rule, and 100% inherits this one (the list inherits it too)
+:where(.aekDropDown) {
+  position: relative;
+  display: inline-flex;
+  font-size: 1.2rem;
+}
+
+:where(.aekDropDownTrigger) {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 12rem;
+  margin: 0;
+  padding: 0.5rem 0.8rem;
+  border: 0;
+  border-radius: 0.2rem;
+  outline: 0;
+  background-color: variables.$debugGuiBackgroundLighter2;
+  color: variables.$debugTextColor;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.17s ease-in-out;
+}
+
+:where(.aekDropDownTrigger:hover:not(:disabled)) {
+  background-color: variables.$debugGuiBackgroundLighter;
+}
+
+:where(.aekDropDownTrigger:focus-visible) {
+  box-shadow: 0 0 0 0.1rem variables.$debugTextColor;
+}
+
+:where(.aekDropDownTrigger:disabled) {
+  cursor: default;
+  opacity: 0.35;
+}
+
+:where(.aekDropDownTrigger svg) {
+  display: block;
+  flex-shrink: 0;
+  width: 1.7rem;
+}
+
+:where(.aekDropDownTrigger svg path) {
+  fill: currentColor;
+}
+
+:where(.aekDropDownLabel) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// A triangle pointing to the side the list opens on
+:where(.aekDropDownCaret) {
+  flex-shrink: 0;
+  width: 0;
+  height: 0;
+  margin-right: 0.2rem;
+  border-left: 0.4rem solid transparent;
+  border-right: 0.4rem solid transparent;
+  border-top: 0.5rem solid currentColor;
+}
+
+:where(.aekDropDown_top .aekDropDownCaret) {
+  border-top: 0;
+  border-bottom: 0.5rem solid currentColor;
+}
+
+:where(.aekDropDownList) {
+  position: absolute;
+  left: 0;
+  z-index: 1;
+  min-width: 100%;
+  max-height: 40vh;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.4rem;
+  list-style: none;
+  background-color: variables.$debugGuiBackgroundLighter2;
+  border-radius: 0.2rem;
+  box-shadow:
+    rgba(0, 0, 0, 0.19) 0px 10px 20px,
+    rgba(0, 0, 0, 0.23) 0px 6px 6px;
+  color: variables.$debugTextColor;
+  outline: 0;
+  scrollbar-color: variables.$debugTextColor variables.$debugGuiBackgroundLighter2;
+  scrollbar-width: thin;
+}
+
+:where(.aekDropDown_bottom .aekDropDownList) {
+  top: calc(100% + $listGap);
+}
+
+:where(.aekDropDown_top .aekDropDownList) {
+  bottom: calc(100% + $listGap);
+}
+
+:where(.aekDropDownItem) {
+  position: relative;
+  padding: 0.5rem 0.8rem 0.5rem 1.6rem;
+  border-radius: 0.2rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+:where(.aekDropDownItem.isHighlighted) {
+  background-color: rgba(variables.$debugTextColor, 0.2);
+  color: variables.$white;
+}
+
+// The current option: a dot in front, like a checked option
+:where(.aekDropDownItem.isCurrent)::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0.6rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: -0.25rem;
+  border-radius: 50%;
+  background-color: currentColor;
+}

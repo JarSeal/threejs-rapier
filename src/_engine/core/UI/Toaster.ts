@@ -1,5 +1,8 @@
 import { CMP, TCMP, TStyle } from '../../utils/CMP';
 
+type ToastType = 'info' | 'warning' | 'alert';
+type Direction = 'up' | 'down' | 'left' | 'right';
+
 type ToasterSettings = {
   /** Where is the toast positioned (fixed) vertically on the screen? */
   verticalPosition: 'top' | 'center' | 'bottom';
@@ -11,13 +14,13 @@ type ToasterSettings = {
   offset: { x: string; y: string };
 
   /** Which way is the toast line forming from the toaster? */
-  toastDirection: 'up' | 'down' | 'left' | 'right';
+  toastDirection: Direction;
 
   /** From which direction is a new toast appearing from to its position?
    * If the toastDirection is vertical then this should be horizontal and
    * vice versa (for the best effect).
    */
-  toastAppearFromDirection: 'up' | 'down' | 'left' | 'right';
+  toastAppearFromDirection: Direction;
 
   /** Minimum width for a single toast (including the unit). */
   toastMinWidth: string;
@@ -51,7 +54,8 @@ type ToasterSettings = {
   /** Icons to be used for a toast. This can either be a single string
    * and then all the icons will have the same icon or an object
    * defininig each toast type icon. An empty string ("") will omit
-   * the icon (it will not be shown then).
+   * the icon (it will not be shown then). A TCMP icon is moved into
+   * the toast, so it can only be used by one toast.
    */
   icons?: string | { [key in ToastType]?: string | TCMP };
 
@@ -68,12 +72,11 @@ type ToasterProps = {
   setAsDefaultToaster?: boolean;
 };
 
-type ToastType = 'info' | 'warning' | 'alert';
-
-type ToastProps = {
+export type ToastProps = {
   type?: ToastType;
   title?: string | TCMP;
   message?: string | TCMP;
+  /** Overrides the toaster's icon for this toast. An empty string ("") omits the icon. */
   icon?: string | TCMP;
   showingTime?: number;
   animationTime?: number;
@@ -82,7 +85,47 @@ type ToastProps = {
   isClosable?: boolean;
 };
 
-type ToasterObj = { cmp: TCMP; toasterId: string; settings: ToasterSettings };
+export type AddToastResponse = {
+  id: string;
+  toasterId: string;
+  dimensions: { x: number; y: number };
+  startedTime: number;
+  animationTime: number;
+  showingTime: number;
+  totalTime: number;
+  toastCmp: TCMP;
+  hasCloseButton: boolean;
+  /** The toast's first lifecycle timer (later phases replace it internally). Use
+   * `removeToast` to remove the toast early, not `clearTimeout`. */
+  timeout: ReturnType<typeof setTimeout>;
+  type: ToastType;
+  title: TCMP | string | undefined;
+  message: TCMP | string | undefined;
+  icon: TCMP | string | undefined;
+  removeToast: () => void;
+};
+
+type Toaster = {
+  id: string;
+  cmp: TCMP;
+  styleElem: HTMLStyleElement;
+  settings: ToasterSettings;
+};
+
+/** A toast's lifecycle: ENTERING (measured off-screen) → APPEARING (sliding in, the queue
+ * making room) → SHOWING → REMOVING (fading out) → disposed. */
+type ToastPhase = 'ENTERING' | 'APPEARING' | 'SHOWING' | 'REMOVING';
+
+type Toast = {
+  id: string;
+  toaster: Toaster;
+  cmp: TCMP;
+  animationTime: number;
+  phase: ToastPhase;
+  /** The one pending timer of the current phase, so removing a toast (or its toaster) clears
+   * everything still scheduled for it. */
+  timer: ReturnType<typeof setTimeout> | null;
+};
 
 const DEFAULT_ANIM_TIME = 200;
 const DEFAULT_SHOW_TIME = 3200;
@@ -92,11 +135,11 @@ const DEFAULT_SHOW_TIMES = {
   alert: 0,
 };
 export const DEFAULT_TOASTER_SETTINGS: ToasterSettings = {
-  verticalPosition: 'bottom' as ToasterSettings['verticalPosition'],
-  horizontalPosition: 'left' as ToasterSettings['horizontalPosition'],
+  verticalPosition: 'bottom',
+  horizontalPosition: 'left',
   offset: { x: '0', y: '0' },
-  toastDirection: 'up' as ToasterSettings['toastDirection'],
-  toastAppearFromDirection: 'left' as ToasterSettings['toastAppearFromDirection'],
+  toastDirection: 'up',
+  toastAppearFromDirection: 'left',
   toastMinWidth: '200px',
   toastMaxWidth: '200px',
   toastMinHeight: '0',
@@ -105,70 +148,103 @@ export const DEFAULT_TOASTER_SETTINGS: ToasterSettings = {
   showingTimeMs: DEFAULT_SHOW_TIMES,
   isClosable: { alert: true },
 };
-const toasterCMPs: { [id: string]: ToasterObj } = {};
-const toastCMPs: {
-  [id: string]: {
-    toasterId: string;
-    cmp: TCMP;
-    time: number;
-    animationTime: number;
-    timeout: NodeJS.Timeout;
-  };
-} = {};
-let defaultToaster: ToasterObj | null = null;
+
+/** Lets a new toast render (off-screen) once before its transition starts. */
+const ENTER_DELAY_MS = 10;
 const START_PHASE_CLASS = 'toastStart';
 const END_PHASE_CLASS = 'toastEnd';
 const TOASTER_UPDATE_CLASS = 'toasterUpdating';
+const NO_PADDING: TStyle = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
+const SETTLED_TOAST_STYLE: TStyle = {
+  position: 'relative',
+  left: 'auto',
+  right: 'auto',
+  top: 'auto',
+  bottom: 'auto',
+};
 
-export const createToaster = ({ id, className, settings, setAsDefaultToaster }: ToasterProps) => {
-  const newId = id || `toaster-${performance.now()}`;
-  const classes = ['toaster'];
-  if (className) classes.push(className);
-  const toasterStyle: TStyle = { position: 'fixed' };
+/** Where a new toast starts its slide from, by `toastAppearFromDirection`. */
+const APPEAR_START_TRANSFORM: Record<Direction, (w: number, h: number) => string> = {
+  down: (_, h) => `translate(0, -${h}px)`,
+  up: (_, h) => `translate(0, ${h}px)`,
+  left: (w) => `translate(-${w}px, 0)`,
+  right: (w) => `translate(${w}px, 0)`,
+};
 
-  const config = {
-    ...DEFAULT_TOASTER_SETTINGS,
-    ...settings,
+/** How a new toast pushes the queue, by `toastDirection`: where it is anchored while it
+ * appears, and the toaster padding (animated) that makes room for it. */
+const QUEUE_PUSH: Record<Direction, { anchor: TStyle; padding: (w: number, h: number) => TStyle }> =
+  {
+    down: {
+      anchor: { top: 0, left: 0, bottom: 'auto', right: 'auto' },
+      padding: (_, h) => ({ paddingTop: `${h}px` }),
+    },
+    up: {
+      anchor: { top: 'auto', left: 0, bottom: 0, right: 'auto' },
+      padding: (_, h) => ({ paddingBottom: `${h}px` }),
+    },
+    left: {
+      anchor: { top: 0, left: 'auto', bottom: 'auto', right: 0 },
+      padding: (w) => ({ paddingRight: `${w}px` }),
+    },
+    right: {
+      anchor: { top: 0, left: 0, bottom: 'auto', right: 'auto' },
+      padding: (w) => ({ paddingLeft: `${w}px` }),
+    },
   };
 
-  if (config.verticalPosition === 'top') {
-    toasterStyle.top = 0;
-  } else if (config.verticalPosition === 'center') {
-    toasterStyle.bottom = '50%';
+const toasters = new Map<string, Toaster>();
+const toasts = new Map<string, Toast>();
+let defaultToaster: Toaster | null = null;
+// Counters, not timestamps: two toasts in the same timer tick would share an id (and CMP
+// throws on a taken id)
+let toasterCount = 0;
+let toastCount = 0;
+
+/** A setting that is either one value for all toast types or a per-type object. */
+const resolvePerType = <T>(
+  value: T | { [key in ToastType]?: T } | undefined,
+  type: ToastType,
+  fallback: T
+): T => {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'object' || value === null) return value as T;
+  return (value as { [key in ToastType]?: T })[type] ?? fallback;
+};
+
+const getToasterStyle = (config: ToasterSettings): TStyle => {
+  const style: TStyle = { position: 'fixed' };
+  const { x, y } = config.offset;
+
+  if (config.verticalPosition === 'top') style.top = 0;
+  else if (config.verticalPosition === 'center') style.bottom = '50%';
+  else style.bottom = 0;
+
+  if (config.horizontalPosition === 'right') {
+    style.right = 0;
+    style.transform = `translate(${x}, ${y})`;
+  } else if (config.horizontalPosition === 'center') {
+    style.left = '50%';
+    style.transform = `translate(calc(-50% + ${x}), ${y})`;
   } else {
-    // 'bottom'
-    toasterStyle.bottom = 0;
+    style.left = 0;
+    style.transform = `translate(${x}, ${y})`;
   }
-  if (config.offset) {
-    toasterStyle.transform = `translate(${config.offset.x}, ${config.offset.y})`;
-  }
+  return style;
+};
 
-  const toaster = CMP({
-    id: newId,
-    idAttr: true,
-    class: classes,
-    style: toasterStyle,
-  });
-
-  toasterCMPs[newId] = { cmp: toaster, toasterId: newId, settings: config };
-  if (!defaultToaster || setAsDefaultToaster) defaultToaster = toasterCMPs[newId];
-
-  // @TODO: Add a style tag to the head HTML section that has the definitions for the START_PHASE_CLASS and the TOASTER_UPDATE_CLASS
-  const head = document.head || document.getElementsByTagName('head')[0];
-  if (head) {
-    const css = `
-  #${newId}.toaster {
+const getToasterCss = (id: string, config: ToasterSettings) => {
+  const anim = config.animationTimeMs;
+  return `
+  #${id}.toaster {
     transition: none;
     font-size: 1.4rem;
   }
-  #${newId}.toaster.${TOASTER_UPDATE_CLASS} {
-    padding-top: 0;
-    padding-bottom: 0;
-    padding-left: 0;
-    padding-right: 0;
-    transition: padding-top ${config.animationTimeMs}ms ease-out, padding-bottom ${config.animationTimeMs}ms ease-out, padding-left ${config.animationTimeMs}ms ease-out, padding-right ${config.animationTimeMs}ms ease-out;
+  #${id}.toaster.${TOASTER_UPDATE_CLASS} {
+    padding: 0;
+    transition: padding ${anim}ms ease-out;
   }
-  #${newId} .toast {
+  #${id} .toast {
     min-width: ${config.toastMinWidth};
     max-width: ${config.toastMaxWidth};
     min-height: ${config.toastMinHeight};
@@ -182,22 +258,22 @@ export const createToaster = ({ id, className, settings, setAsDefaultToaster }: 
     margin-bottom: 0.2rem;
     border-radius: 0.4rem;
   }
-  #${newId} .toast .toastIcon {
+  #${id} .toast .toastIcon {
     width: 1.6rem;
     height: 1.6rem;
     display: inline-block;
     vertical-align: top;
   }
-  #${newId} .toast .toastContent {
+  #${id} .toast .toastContent {
     width: 100%;
     display: inline-block;
     vertical-align: top;
   }
-  #${newId} .toast .toastIcon + .toastContent {
+  #${id} .toast .toastIcon + .toastContent {
     width: calc(100% - 2.4rem);
     margin-left: 0.8rem;
   }
-  #${newId} .toast .toastCloseBtn {
+  #${id} .toast .toastCloseBtn {
     position: absolute;
     top: 0;
     right: 0;
@@ -212,110 +288,95 @@ export const createToaster = ({ id, className, settings, setAsDefaultToaster }: 
     opacity: 0.65;
     transition: opacity 0.2s ease-in-out;
   }
-  #${newId} .toast .toastCloseBtn:hover {
+  #${id} .toast .toastCloseBtn:hover {
     opacity: 1;
   }
-  #${newId} .toast .toastCloseBtn.noIcon:before {
+  #${id} .toast .toastCloseBtn.noIcon:before {
     display: block;
     content: "+";
     transform: rotate(45deg);
     font-size: 2rem;
     line-height: 0;
   }
-  #${newId} .toast .toastTitle {
+  #${id} .toast .toastTitle {
     font-weight: 700;
     padding-right: 1.6rem;
   }
-  #${newId} .toast .toastMessage {
+  #${id} .toast .toastMessage {
     font-size: 1.2rem;
   }
-  #${newId} .toast .toastTitle + .toastMessage {
+  #${id} .toast .toastTitle + .toastMessage {
     margin-top: 0.4rem;
   }
-  #${newId} .toast.${START_PHASE_CLASS} {
+  #${id} .toast.${START_PHASE_CLASS} {
     transform: translate(0,0) !important;
     opacity: 1;
-    transition: transform ${config.animationTimeMs}ms ease-in-out, opacity ${config.animationTimeMs}ms ease-in-out;
+    transition: transform ${anim}ms ease-in-out, opacity ${anim}ms ease-in-out;
   }
-  #${newId} .toast.${END_PHASE_CLASS} {
+  #${id} .toast.${END_PHASE_CLASS} {
     opacity: 0;
-  }'
+  }
   `;
-    const style = document.createElement('style');
-    style.setAttribute('id', newId);
-    style.appendChild(document.createTextNode(css));
-    head.appendChild(style);
-  }
-
-  return toaster;
 };
 
+export const createToaster = ({ id, className, settings, setAsDefaultToaster }: ToasterProps) => {
+  const toasterId = id || `toaster-${++toasterCount}`;
+  const config: ToasterSettings = { ...DEFAULT_TOASTER_SETTINGS, ...settings };
+
+  const cmp = CMP({
+    id: toasterId,
+    idAttr: true,
+    class: className ? ['toaster', className] : 'toaster',
+    style: getToasterStyle(config),
+  });
+
+  const styleElem = document.createElement('style');
+  styleElem.setAttribute('id', `${toasterId}-styles`);
+  styleElem.textContent = getToasterCss(toasterId, config);
+  document.head.appendChild(styleElem);
+
+  const toaster: Toaster = { id: toasterId, cmp, styleElem, settings: config };
+  toasters.set(toasterId, toaster);
+  if (!defaultToaster || setAsDefaultToaster) defaultToaster = toaster;
+
+  return cmp;
+};
+
+/** Whether a toaster with this id exists (eg. to skip a toast before the toaster is created). */
+export const hasToaster = (toasterId: string) => toasters.has(toasterId);
+
+/** Removes a toaster, its toasts (with their pending timers) and its styles. */
 export const removeToaster = (toasterId: string) => {
-  const toastKeys = Object.keys(toastCMPs);
-  for (let i = 0; i < toastKeys.length; i++) {
-    const toast = toastCMPs[toastKeys[i]];
-    if (toast?.toasterId === toasterId) {
-      clearTimeout(toast.timeout);
-      toast.cmp?.remove();
-      delete toastCMPs[toastKeys[i]];
-    }
+  for (const toast of toasts.values()) {
+    if (toast.toaster.id === toasterId) disposeToast(toast);
   }
 
-  const toaster = toasterCMPs[toasterId];
+  const toaster = toasters.get(toasterId);
   if (toaster) {
-    toaster.cmp?.remove();
-    delete toasterCMPs[toasterId];
+    toaster.cmp.remove();
+    toaster.styleElem.remove();
+    toasters.delete(toasterId);
   }
 
-  if (defaultToaster?.toasterId === toasterId) {
-    let newDefaultToaster = null;
-    const firstToasterId = Object.keys(toasterCMPs)[0];
-    if (firstToasterId) newDefaultToaster = toasterCMPs[firstToasterId];
-    defaultToaster = newDefaultToaster;
+  if (defaultToaster?.id === toasterId) {
+    defaultToaster = toasters.values().next().value ?? null;
   }
 };
 
-export const addToast = ({
-  type,
-  title,
-  message,
-  icon,
-  showingTime,
-  animationTime,
-  className,
-  toasterId,
-  isClosable,
-}: ToastProps): AddToastResponse => {
-  const toaster = toasterId ? toasterCMPs[toasterId] : defaultToaster;
-  if (!toaster) {
-    const errorMsg = `Error while adding toast. Could not find toaster (${toasterId ? `toasterId: ${toasterId}` : 'using defaultToaster'}).`;
-    throw new Error(errorMsg);
-  }
+const createToastCmp = (
+  id: string,
+  toaster: Toaster,
+  type: ToastType,
+  { title, message, icon, className }: ToastProps,
+  hasCloseButton: boolean
+) => {
+  const { settings } = toaster;
+  const toastCmp = CMP({
+    id,
+    class: className ? ['toast', `toastType-${type}`, className] : ['toast', `toastType-${type}`],
+  });
 
-  const timeNow = performance.now();
-  const id = `toast-${timeNow}`;
-
-  const toastType = type || 'info';
-
-  const animTime =
-    animationTime !== undefined
-      ? animationTime
-      : toaster.settings.animationTimeMs || DEFAULT_ANIM_TIME;
-  let showTime =
-    showingTime !== undefined ? showingTime : toaster.settings.showingTimeMs || DEFAULT_SHOW_TIMES;
-  if (typeof showTime !== 'number') {
-    showTime = showTime[toastType] !== undefined ? showTime[toastType] : DEFAULT_SHOW_TIME;
-  }
-  const totalTime = showTime + animTime * 2;
-
-  const classNames = ['toast', `toastType-${toastType || 'info'}`];
-  if (className) classNames.push(className);
-  const toastCmp = CMP({ class: classNames, id });
-
-  let toastIcon = icon || toaster.settings.icons;
-  if (toastIcon !== undefined && typeof toastIcon !== 'string') {
-    toastIcon = (toaster.settings.icons as { [key in ToastType]?: string })[toastType] || '';
-  }
+  const toastIcon = icon ?? resolvePerType(settings.icons, type, '');
   if (toastIcon) {
     toastCmp.add(
       typeof toastIcon === 'string'
@@ -323,10 +384,10 @@ export const addToast = ({
         : toastIcon
     );
   }
+
   const contentCmp = toastCmp.add({
     class: 'toastContent',
-    prepend:
-      toaster.settings.toastDirection === 'down' || toaster.settings.toastDirection === 'right',
+    prepend: settings.toastDirection === 'down' || settings.toastDirection === 'right',
   });
   if (title) {
     contentCmp.add(typeof title === 'string' ? { class: 'toastTitle', text: title } : title);
@@ -336,141 +397,116 @@ export const addToast = ({
       typeof message === 'string' ? { class: 'toastMessage', text: message } : message
     );
   }
-  toastCmp.add(contentCmp);
 
-  let hasCloseButton = isClosable !== undefined ? isClosable : toaster.settings.isClosable;
-  if (typeof hasCloseButton !== 'boolean') {
-    hasCloseButton =
-      hasCloseButton[toastType] !== undefined ? Boolean(hasCloseButton[toastType]) : false;
-  }
-  const closeBtnIcon = toaster.settings.closeBtnIcon;
   if (hasCloseButton) {
+    const closeBtnIcon = settings.closeBtnIcon;
     toastCmp.add({
-      class: `toastCloseBtn${!closeBtnIcon ? ' noIcon' : ''}`,
       tag: 'button',
+      class: closeBtnIcon ? 'toastCloseBtn' : ['toastCloseBtn', 'noIcon'],
       ...(closeBtnIcon ? { html: `<button>${closeBtnIcon}</button>` } : {}),
-      onClick: () => {
-        removeToast(id);
-      },
+      onClick: () => removeToast(id),
     });
   }
 
-  const timeout = setTimeout(() => {
-    // Start (appear) animation is done
-    toastCmp?.updateStyle({
-      position: 'relative',
-      left: 'auto',
-      right: 'auto',
-      top: 'auto',
-      bottom: 'auto',
-    });
-    toaster?.cmp.updateStyle({ paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 });
-    toaster?.cmp.updateClass(TOASTER_UPDATE_CLASS, 'remove');
-    if (showTime) {
-      setTimeout(() => {
-        removeToast(id);
-      }, showTime);
-    }
-  }, animTime + 10);
+  return toastCmp;
+};
 
-  toastCMPs[id] = {
-    toasterId: toaster.toasterId,
+/** Ends a toast's appearing: it joins the queue's flow and the toaster drops the room it made. */
+const settleToast = (toast: Toast) => {
+  toast.cmp.updateStyle(SETTLED_TOAST_STYLE);
+  toast.toaster.cmp.updateStyle(NO_PADDING);
+  toast.toaster.cmp.updateClass(TOASTER_UPDATE_CLASS, 'remove');
+};
+
+/** Clears the toast's pending timer and removes it right away (no fade). */
+const disposeToast = (toast: Toast) => {
+  if (toast.timer) clearTimeout(toast.timer);
+  toast.timer = null;
+  toast.cmp.remove();
+  toasts.delete(toast.id);
+};
+
+export const addToast = (props: ToastProps): AddToastResponse => {
+  const { type = 'info', toasterId, showingTime, animationTime, isClosable } = props;
+  const toaster = toasterId ? toasters.get(toasterId) : defaultToaster;
+  if (!toaster) {
+    throw new Error(
+      `Error while adding toast. Could not find toaster (${toasterId ? `toasterId: ${toasterId}` : 'using defaultToaster'}).`
+    );
+  }
+  const { settings } = toaster;
+
+  const startedTime = performance.now();
+  const id = `toast-${++toastCount}`;
+  const animTime = animationTime ?? (settings.animationTimeMs || DEFAULT_ANIM_TIME);
+  const showTime =
+    showingTime ?? resolvePerType(settings.showingTimeMs, type, DEFAULT_SHOW_TIMES[type]);
+  const hasCloseButton = isClosable ?? resolvePerType(settings.isClosable, type, false);
+
+  const toastCmp = createToastCmp(id, toaster, type, props, hasCloseButton);
+  const toast: Toast = {
+    id,
+    toaster,
     cmp: toastCmp,
     animationTime: animTime,
-    time: totalTime,
-    timeout,
+    phase: 'ENTERING',
+    timer: null,
   };
+  toasts.set(id, toast);
 
+  // Rendered off-screen first (see the .toast CSS) to get its size
   toaster.cmp.add(toastCmp);
-
-  // Get toast dimensions
   const width = toastCmp.elem.offsetWidth;
   const height = toastCmp.elem.offsetHeight;
+  toastCmp.updateStyle({
+    transform: APPEAR_START_TRANSFORM[settings.toastAppearFromDirection](width, height),
+  });
+  toaster.cmp.updateStyle(NO_PADDING);
 
-  // Get right start position for the appearance of the toast
-  if (toaster.settings.toastAppearFromDirection === 'down') {
-    toastCmp.updateStyle({ transform: `translate(0, -${height}px)` });
-  } else if (toaster.settings.toastAppearFromDirection === 'up') {
-    toastCmp.updateStyle({ transform: `translate(0, ${height}px)` });
-  } else if (toaster.settings.toastAppearFromDirection === 'left') {
-    toastCmp.updateStyle({ transform: `translate(-${width}px, 0)` });
-  } else if (toaster.settings.toastAppearFromDirection === 'right') {
-    toastCmp.updateStyle({ transform: `translate(${width}px, 0)` });
-  }
-  toaster.cmp.updateStyle({ paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 });
-
-  setTimeout(() => {
-    // Set the transition for the toast to appear
+  toast.timer = setTimeout(() => {
+    // Slide in while the queue makes room
+    toast.phase = 'APPEARING';
+    const push = QUEUE_PUSH[settings.toastDirection];
     toastCmp.updateClass(START_PHASE_CLASS, 'add');
+    toastCmp.updateStyle(push.anchor);
     toaster.cmp.updateClass(TOASTER_UPDATE_CLASS, 'add');
-    // Get right direction to push the existing toast
-    if (toaster.settings.toastDirection === 'down') {
-      toastCmp.updateStyle({ top: 0, left: 0, bottom: 'auto', right: 'auto' });
-      toaster.cmp.updateStyle({ paddingTop: `${height}px` });
-    } else if (toaster.settings.toastDirection === 'up') {
-      toastCmp.updateStyle({ top: 'auto', left: 0, bottom: 0, right: 'auto' });
-      toaster.cmp.updateStyle({ paddingBottom: `${height}px` });
-    } else if (toaster.settings.toastDirection === 'left') {
-      toastCmp.updateStyle({ top: 0, left: 'auto', bottom: 'auto', right: 0 });
-      toaster.cmp.updateStyle({ paddingRight: `${width}px` });
-    } else if (toaster.settings.toastDirection === 'right') {
-      toastCmp.updateStyle({ top: 0, left: 0, bottom: 'auto', right: 'auto' });
-      toaster.cmp.updateStyle({ paddingLeft: `${width}px` });
-    }
-  }, 10);
+    toaster.cmp.updateStyle(push.padding(width, height));
+
+    toast.timer = setTimeout(() => {
+      toast.phase = 'SHOWING';
+      settleToast(toast);
+      toast.timer = showTime ? setTimeout(() => removeToast(id), showTime) : null;
+    }, animTime);
+  }, ENTER_DELAY_MS);
 
   return {
     id,
-    toasterId: toaster.toasterId,
+    toasterId: toaster.id,
     dimensions: { x: width, y: height },
-    startedTime: timeNow,
+    startedTime,
     animationTime: animTime,
     showingTime: showTime,
-    totalTime,
+    totalTime: showTime + animTime * 2,
     toastCmp,
     hasCloseButton,
-    timeout,
-    type: toastType,
-    title,
-    message,
-    icon,
+    timeout: toast.timer,
+    type,
+    title: props.title,
+    message: props.message,
+    icon: props.icon,
     removeToast: () => removeToast(id),
   };
 };
 
-export type AddToastResponse = {
-  id: string;
-  toasterId: string;
-  dimensions: { x: number; y: number };
-  startedTime: number;
-  animationTime: number;
-  showingTime: number;
-  totalTime: number;
-  toastCmp: TCMP;
-  hasCloseButton: boolean;
-  timeout: NodeJS.Timeout;
-  type: ToastType;
-  title: TCMP | string | undefined;
-  message: TCMP | string | undefined;
-  icon: TCMP | string | undefined;
-  removeToast: () => void;
-};
-
+/** Fades a toast out and disposes it. A no-op for a toast that is gone or already fading out. */
 export const removeToast = (id: string) => {
-  const toastData = toastCMPs[id];
-  if (!toastData) return;
+  const toast = toasts.get(id);
+  if (!toast || toast.phase === 'REMOVING') return;
 
-  const toastCmp = toastData.cmp;
-  const animTime = toastData.animationTime;
-
-  // Clear the timeout
-  clearTimeout(toastData.timeout);
-
-  // Set the end transition
-  toastCmp?.updateClass(END_PHASE_CLASS, 'add');
-  setTimeout(() => {
-    // Destroy the cmp and clear queue
-    toastCmp?.remove();
-    delete toastCMPs[id];
-  }, animTime);
+  if (toast.timer) clearTimeout(toast.timer);
+  // Closed before it finished appearing: the toaster must not keep the room it was making
+  if (toast.phase !== 'SHOWING') settleToast(toast);
+  toast.phase = 'REMOVING';
+  toast.cmp.updateClass(END_PHASE_CLASS, 'add');
+  toast.timer = setTimeout(() => disposeToast(toast), toast.animationTime);
 };

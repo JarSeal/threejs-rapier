@@ -1,0 +1,219 @@
+@use 'sass:color';
+@use '../../styles/variables.scss';
+
+.dialogContent {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1rem 1.2rem 1.2rem;
+}
+
+.tabBar {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 0.1rem solid variables.$debugTextColorDark;
+}
+
+.tabButton {
+  @include variables.nakedButton;
+  margin-bottom: -0.1rem;
+  margin-right: 0.4rem;
+  padding: 0.6rem 1.2rem;
+  background-color: rgba(0, 0, 0, 0.25);
+  border: 0.1rem solid transparent;
+  border-radius: variables.$borderRadiusSmall variables.$borderRadiusSmall 0 0;
+  color: variables.$debugTextColorDark;
+  font-size: 1.2rem;
+  transition:
+    background-color 0.2s ease-in-out,
+    color 0.2s ease-in-out;
+
+  &:hover:not(.tabButtonSelected) {
+    background-color: rgba(0, 0, 0, 0.1);
+    color: variables.$debugTextColor;
+  }
+}
+
+// The window's own background, so the selected tab joins the panel below it
+.tabButtonSelected {
+  background-color: variables.$debugGuiBackgroundLighter2;
+  border-color: variables.$debugTextColorDark;
+  border-bottom-color: variables.$debugGuiBackgroundLighter2;
+  color: variables.$white;
+  cursor: default;
+}
+
+.panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.4rem 0.8rem 0 0;
+  scrollbar-color: variables.$debugTextColor variables.$debugGuiBackgroundLighter2;
+  scrollbar-width: thin;
+}
+
+.section {
+  margin-top: 1.6rem;
+
+  h4 {
+    margin: 0 0 0.2rem;
+    font-size: 1.3rem;
+    color: variables.$white;
+  }
+}
+
+.sectionDescription,
+.empty {
+  margin: 0 0 0.6rem;
+  font-size: 1.1rem;
+  color: variables.$debugTextColorDark;
+}
+
+.empty {
+  font-style: italic;
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 12rem 1fr;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-top: 0.1rem solid rgba(variables.$debugTextColor, 0.12);
+
+  @media screen and (max-width: variables.$breakpointSmall) {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+}
+
+.inactive {
+  .keys,
+  .name {
+    opacity: 0.5;
+  }
+
+  .keys kbd {
+    text-decoration: line-through;
+  }
+}
+
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+  align-self: start;
+
+  kbd {
+    display: inline-block;
+    min-width: 2rem;
+    padding: 0.2rem 0.5rem;
+    border: 0.1rem solid variables.$debugTextColorDark;
+    border-bottom-width: 0.2rem;
+    border-radius: 0.3rem;
+    background-color: variables.$debugGuiBackground;
+    color: variables.$white;
+    font-family: inherit;
+    font-size: 1.1rem;
+    text-align: center;
+    white-space: nowrap;
+  }
+}
+
+.keyJoin,
+.keyOr {
+  font-size: 1rem;
+  color: variables.$debugTextColorDark;
+}
+
+.keyOr {
+  margin: 0 0.2rem;
+}
+
+.info {
+  min-width: 0;
+}
+
+.name {
+  color: variables.$debugTextColor;
+}
+
+.id {
+  margin-left: 0.4rem;
+  font-family: monospace;
+  font-size: 1rem;
+  color: variables.$debugTextColorDark;
+}
+
+.description {
+  margin-top: 0.2rem;
+  font-size: 1.1rem;
+  color: variables.$debugTextColorDark;
+}
+
+.note {
+  margin-top: 0.2rem;
+  font-size: 1.1rem;
+
+  &.info {
+    color: color.adjust(variables.$info, $lightness: 30%);
+  }
+
+  &.warning {
+    color: color.adjust(variables.$warning, $lightness: 35%);
+  }
+
+  &.muted {
+    color: variables.$debugTextColorDark;
+  }
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.badge {
+  padding: 0.1rem 0.6rem;
+  border: 0.1rem solid transparent;
+  border-radius: 1rem;
+  font-size: 1rem;
+  white-space: nowrap;
+
+  &.muted {
+    border-color: rgba(variables.$debugTextColor, 0.3);
+    color: variables.$debugTextColorDark;
+  }
+
+  &.info {
+    background-color: rgba(variables.$info, 0.35);
+    border-color: variables.$info;
+    color: variables.$white;
+  }
+
+  &.warning {
+    background-color: rgba(variables.$warning, 0.35);
+    border-color: variables.$warning;
+    color: variables.$white;
+  }
+}
+
+.footer {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  padding-top: 1rem;
+  border-top: 0.1rem solid variables.$debugTextColorDark;
+
+  :global(.debuggerClearLSDialogButton) {
+    margin: 0;
+  }
+}

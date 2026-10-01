@@ -2,8 +2,8 @@ import * as THREE from 'three/webgpu';
 import { getRenderer, getRendererOptions } from '../../core/Renderer';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import {
+  addDebugToast,
   createDebuggerTab,
-  DEBUG_TOASTER_ID,
   DEBUGGER_SCENE_LOADER_ID,
   persistDebuggerTabValue,
   updateDebuggerTab,
@@ -43,6 +43,9 @@ import {
   setAxesGizmoInMainCamera,
   setAxesGizmoVisible,
 } from '../../debug/AxesGizmo';
+import { openDebugKeyShortcutsDialog } from './_dbg__DebugKeyShortcuts';
+
+export { openDebugKeyShortcutsDialog as _openDebugKeyShortcutsDialog };
 import {
   initEnvBall,
   setEnvBallInMainCamera,
@@ -179,18 +182,13 @@ export const _toggleOnScreenToolsDisabled = (keyHint?: string) => {
     // directly, or the tab's hydration would restore the old value over this one.
     lsSetItem(LS_KEY, { ...(lsGetItem(LS_KEY, {}) as object), onScreenTools });
   }
-  try {
-    addToast({
-      toasterId: DEBUG_TOASTER_ID,
-      title: 'On-screen tools',
-      message: onScreenTools.disableOnScreenTools
-        ? `Disabled (click-through).${keyHint ? ` Press ${keyHint} to enable.` : ''}`
-        : 'Enabled',
-      showingTime: ON_SCREEN_TOOLS_TOAST_SHOWING_TIME_MS,
-    });
-  } catch {
-    // No debug toaster yet (it's created at the end of InitEngine) — the toggle itself still ran
-  }
+  addDebugToast({
+    title: 'On-screen tools',
+    message: onScreenTools.disableOnScreenTools
+      ? `Disabled (click-through).${keyHint ? ` Press ${keyHint} to enable.` : ''}`
+      : 'Enabled',
+    showingTime: ON_SCREEN_TOOLS_TOAST_SHOWING_TIME_MS,
+  });
 };
 
 type GizmoKey = 'axesGizmo' | 'envBall';
@@ -232,11 +230,7 @@ const toggleGizmoFromShortcut = (key: GizmoKey) => {
   let title = `${name} hidden`;
   if (opts.show && isMainCamera) title = `${name} visible and showing in main camera`;
   else if (opts.show) title = `${name} visible`;
-  try {
-    addToast({ toasterId: DEBUG_TOASTER_ID, title });
-  } catch {
-    // No debug toaster yet (it's created at the end of InitEngine) — the toggle itself still ran
-  }
+  addDebugToast({ title });
 };
 
 /** The axes gizmo shortcut (F10), see toggleGizmoFromShortcut. */
@@ -418,6 +412,19 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
   const logActionList = getLogActionList();
 
   return [
+    // Key shortcuts
+    {
+      type: 'button',
+      title: 'Debug key shortcuts [I]',
+      onClick: () => openDebugKeyShortcutsDialog('AEKASHA'),
+    },
+    {
+      type: 'button',
+      title: 'App key shortcuts (current scene) [U]',
+      onClick: () => openDebugKeyShortcutsDialog('APP'),
+    },
+    { type: 'separator' },
+
     // Scene listing
     {
       type: 'folder',

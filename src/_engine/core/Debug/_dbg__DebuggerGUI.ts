@@ -120,7 +120,9 @@ const createTabMenuButtons = () => {
     const tooltip = def.sceneId ? `${def.title} (scene tab: ${def.sceneId})` : def.title;
     entry.button = CMP({
       id: `debugTabsMenuButton-${def.id}`,
-      class: styles.debugDrawerTabButton,
+      class: def.sceneId
+        ? [styles.debugDrawerTabButton, styles.debugDrawerTabButton_scene]
+        : styles.debugDrawerTabButton,
       html: () => `<button>${buttonIcon}</button>`,
       attr: tooltip ? { title: tooltip } : undefined,
       onClick: (_, cmp) => {

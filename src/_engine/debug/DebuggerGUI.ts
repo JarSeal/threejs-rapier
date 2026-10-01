@@ -6,9 +6,20 @@ import { IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../core/Config';
 import { lsGetItem } from '../utils/LocalAndSessionStorage';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
 import { lerror } from '../utils/Logger';
+import { addToast, hasToaster, type ToastProps } from '../core/UI/Toaster';
 
 export const DEBUGGER_SCENE_LOADER_ID = '__debugger-scene-loader';
 export const DEBUG_TOASTER_ID = 'debugToaster';
+
+/**
+ * Adds a toast to the debug toaster (bottom left, above the stats). A no-op returning null while
+ * there is no debug toaster: before it is created at the end of InitEngine, and outside the
+ * debug environment.
+ * @param props (object) the toast's props, without `toasterId`
+ * @returns the {@link addToast} response, or null
+ */
+export const addDebugToast = (props: Omit<ToastProps, 'toasterId'>) =>
+  hasToaster(DEBUG_TOASTER_ID) ? addToast({ ...props, toasterId: DEBUG_TOASTER_ID }) : null;
 
 type DebuggerGUIModule = typeof import('../core/Debug/_dbg__DebuggerGUI');
 let debugGUI: DebugModuleRef<DebuggerGUIModule> | null = null;

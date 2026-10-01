@@ -97,6 +97,10 @@ export type OpenDraggableWindowProps = {
   windowClass?: string | string[];
   backDropClass?: string | string[];
   onClose?: () => void;
+  /** Focuses the first focusable element of the window (its content first, then its header
+   * buttons) when it opens. Default true. The engine's own reopens (restoring from LS, rebuilding
+   * after a scene change or an update) pass false, so they never steal the focus. */
+  focusFirstElement?: boolean;
 };
 
 let draggableWindows: { [id: string]: DraggableWindow } = {};
@@ -206,6 +210,7 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     windowClass: winClass,
     backDropClass: bdClass,
     onClose,
+    focusFirstElement = true,
   } = props;
   const screenSize = getWindowSize();
   if (!id) {
@@ -443,6 +448,28 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   }
   checkAndSetMaxWindowPosition(draggableWindows[id]);
   saveDraggableWindowStatesToLS();
+  if (focusFirstElement) focusFirstFocusableElement(windowCMP.elem);
+};
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), a[href], input:not([disabled]):not([type="hidden"]), ' +
+  'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** The first rendered (not hidden, eg. in a collapsed folder) focusable element in `root`. */
+const getFirstFocusable = (root: Element | null) => {
+  if (!root) return null;
+  const candidates = root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+  for (let i = 0; i < candidates.length; i++) {
+    if (candidates[i].getClientRects().length) return candidates[i];
+  }
+  return null;
+};
+
+/** Focuses the window's first focusable content element, else its first header button. */
+const focusFirstFocusableElement = (windowElem: HTMLElement) => {
+  const contentElem = windowElem.querySelector(`.${CONTENT_CONTAINER_CLASS_NAME}`);
+  const target = getFirstFocusable(contentElem) || getFirstFocusable(windowElem);
+  target?.focus({ preventScroll: true });
 };
 
 export const closeDraggableWindow = (id: string) => {
@@ -639,7 +666,7 @@ export const updateDraggableWindow = (id: string) => {
   // A suspended window is rebuilt (or closed) at the scene change end, not mid scene load
   if (!state?.isOpen || suspendedWindowIds.has(id)) return;
   removeDraggableWindow(id, true);
-  openDraggableWindow(state);
+  openDraggableWindow({ ...state, focusFirstElement: false });
 };
 
 const createBackDropId = (id: string) => `backdrop-${id}`;
@@ -1074,7 +1101,7 @@ export const handleDraggableWindowsOnSceneChangeEnd = (loadFailed?: boolean) => 
     const state = draggableWindows[ids[i]];
     if (!state) continue;
     if (!loadFailed && resolveSceneTarget(state)) {
-      openDraggableWindow(state);
+      openDraggableWindow({ ...state, focusFirstElement: false });
     } else {
       closeDraggableWindow(state.id);
     }
@@ -1105,7 +1132,7 @@ export const loadDraggableWindowStatesFromLS = () => {
       return;
     }
     // The registered content has to be passed, a window restored from LS has none of its own
-    openDraggableWindow({ id, content: draggableWindows[id].content });
+    openDraggableWindow({ id, content: draggableWindows[id].content, focusFirstElement: false });
   };
 
   let activeId: string | null = null;

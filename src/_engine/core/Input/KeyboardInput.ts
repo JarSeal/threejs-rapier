@@ -64,13 +64,15 @@ let keyupListener: ((e: KeyboardEvent) => void) | null = null;
 const getChordArray = (chord: KeyChord | KeyChord[]): KeyChord[] =>
   Array.isArray(chord) ? chord : [chord];
 
-const chordLabel = (chord: KeyChord | KeyChord[]): string =>
+/** A chord as readable text, eg. 'Ctrl+Shift+Z' (alternative chords joined with ' / '). */
+export const getKeyChordLabel = (chord: KeyChord | KeyChord[]): string =>
   getChordArray(chord)
-    .map((c) =>
-      [c.ctrl && 'Ctrl', c.shift && 'Shift', c.alt && 'Alt', c.meta && 'Meta', c.key]
+    .map((c) => {
+      const key = c.key === ' ' ? 'Space' : c.key.length === 1 ? c.key.toUpperCase() : c.key;
+      return [c.ctrl && 'Ctrl', c.shift && 'Shift', c.alt && 'Alt', c.meta && 'Meta', key]
         .filter(Boolean)
-        .join('+')
-    )
+        .join('+');
+    })
     .join(' / ');
 
 const isInputInDebugCamInvalid = (enabledInDebugCam?: EnabledInDebugCam) =>
@@ -145,7 +147,8 @@ const chordIsHeld = (
   return keyHeld && (!!ignoreModifiers || modifiersMatch(chord, heldModifiers));
 };
 
-const chordsCollide = (a: KeyChord | KeyChord[], b: KeyChord | KeyChord[]): boolean => {
+/** Whether two chords (or chord lists) share a chord: same key (any case), same modifiers. */
+export const doKeyChordsCollide = (a: KeyChord | KeyChord[], b: KeyChord | KeyChord[]): boolean => {
   const arrA = getChordArray(a);
   const arrB = getChordArray(b);
   for (let i = 0; i < arrA.length; i++) {
@@ -243,7 +246,7 @@ export const createKeyBinding = (binding: KeyBinding): void => {
   if (isDebugEnvironment()) {
     for (let i = 0; i < reservedChords.length; i++) {
       const reserved = reservedChords[i];
-      if (reserved.id !== binding.id && chordsCollide(reserved.chord, binding.chord)) {
+      if (reserved.id !== binding.id && doKeyChordsCollide(reserved.chord, binding.chord)) {
         lwarn(
           `Debugger shortcut key for "${reserved.chordLabel}" ("${reserved.id}") has been ` +
             `overwritten with app code ("${binding.id}"). Please overwrite it from the CONFIG.ts ` +
@@ -257,6 +260,9 @@ export const createKeyBinding = (binding: KeyBinding): void => {
   bindings.push(binding);
   initKeyListeners();
 };
+
+/** The registered key bindings, in registration order (read-only, eg. for listing shortcuts). */
+export const getKeyBindings = (): readonly Readonly<KeyBinding>[] => bindings;
 
 export const deleteKeyBinding = (id: string): void => {
   bindings = bindings.filter((b) => b.id !== id);
@@ -301,5 +307,5 @@ export const pollHeldKeyBindings = (delta: number): void => {
 /** Used by DefaultDebugKeyBindings.ts to register a chord as a collision-check target. */
 export const markChordReserved = (id: string, chord: KeyChord | KeyChord[]): void => {
   reservedChords = reservedChords.filter((r) => r.id !== id);
-  reservedChords.push({ id, chord, chordLabel: chordLabel(chord) });
+  reservedChords.push({ id, chord, chordLabel: getKeyChordLabel(chord) });
 };
