@@ -1,9 +1,21 @@
 import * as THREE from 'three/webgpu';
 import { createCharacter } from '../Character';
-import type { CharacterObject } from './CharacterTypes';
+import type { CharacterIntent, CharacterObject } from './CharacterTypes';
+import {
+  clearIntentSubStep,
+  createIntent,
+  hasMoveIntent,
+  wrapToPi,
+  yawFromDirection,
+} from './CharacterIntent';
+import {
+  createCharacterInput,
+  SCHEME_TURNS_TO_MOVE_DIRECTION,
+  type CharacterInputOpts,
+} from './CharacterInputSchemes';
 import { getECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
-import { getPhysGameTime, getPhysicsState, getPhysicsWorld } from '../PhysicsAPI';
+import { getPhysGameTime, getPhysicsWorld } from '../PhysicsAPI';
 import {
   QueryFilterFlags,
   RigidBodyTypeAPI,
@@ -35,15 +47,16 @@ export type CharacterData = {
   charRotation: number;
   /** Whether the body moves or turns (derived from its velocities, not the physics sleep state). */
   isAwake: boolean;
-  /** Whether a move was requested this sub-step (a move key or `controlFns.move`). */
+  /** Whether the intent asked for a move this sub-step (moves that cancel out don't count). */
   hasMoveInput: boolean;
   /** Whether the floor sensor touches anything. */
   isGrounded: boolean;
   /** Whether the character has been off the ground for longer than `_isFallingThreshold`. */
   isFalling: boolean;
-  /** Run toggle: raises the max speed by `_runningMultiplier` while grounded and standing. */
+  /** Running (the intent's `run`): raises the max speed by `_runningMultiplier` while grounded
+   * and standing. */
   isRunning: boolean;
-  /** Crouch toggle: the crouch capsule replaces the walk capsule. */
+  /** Crouching (the intent's `crouch`): the crouch capsule replaces the walk capsule. */
   isCrouching: boolean;
   /** Whether the wall sensor touches a non-dynamic body. */
   isNearWall: boolean;
@@ -100,8 +113,11 @@ export type CharacterData = {
   _gettingUpMaxAngVelo: number;
   /** Strength of the uprighting torque impulse (per radian off upright), once fully eased in. */
   _gettingUpTorque: number;
-  /** Turn speed (rad/s). */
+  /** Turn speed (rad/s), for turn input and for turning toward a yaw or the move direction. */
   _rotateSpeed: number;
+  /** Turn toward the move direction while moving (default: per input scheme, on for
+   * `WORLD_FIXED` and `CAMERA_RELATIVE`). The intent's `turn` and `faceYaw` override it. */
+  _turnToMoveDirection: boolean;
   /** Max walking speed (m/s). */
   _maxVelocity: number;
   /** Steepest walkable slope (radians). */
@@ -153,14 +169,22 @@ export type DynamicCharacter = {
   dynamicCharacterObject: CharacterObject;
   charMesh: THREE.Mesh;
   charData: CharacterData;
+  /** The character's intent (the same object as `dynamicCharacterObject.intent`). */
+  intent: CharacterIntent;
+  /** Shorthands that write the intent (nothing else: the tick is what moves the body). Call the
+   * per-sub-step ones (rotate, move) once per sub-step, eg. from an APP_PHYSICS_STEP system. */
   controlFns: {
-    /** `delta` = simulated seconds this call covers (default: the fixed physics timestep —
-     * correct when called once per sub-step, e.g. from an APP_PHYSICS_STEP system). */
-    rotate: (direction: 'LEFT' | 'RIGHT', delta?: number) => void;
-    /** Requests a move for this sub-step. The requests are summed (FORWARD + BACKWARD cancel out)
-     * and applied once, by the character's next tick, over its fixed sub-step. */
+    /** Turns this sub-step (the intent's `turn`). */
+    rotate: (direction: 'LEFT' | 'RIGHT') => void;
+    /** Moves along the facing this sub-step (the intent's `moveForward`): FORWARD + BACKWARD
+     * cancel out. */
     move: (direction: 'FORWARD' | 'BACKWARD') => void;
+    /** Jumps on the next tick, if grounded, standing and off the jump cooldown. */
     jump: () => void;
+    /** Toggles running. */
+    run: () => void;
+    /** Toggles crouching. */
+    crouch: () => void;
   };
   camera?: THREE.PerspectiveCamera;
 };
@@ -204,6 +228,7 @@ const DEFAULT_CHARACTER_DATA: CharacterData = {
   _gettingUpMaxAngVelo: 2,
   _gettingUpTorque: 0.2,
   _rotateSpeed: 5,
+  _turnToMoveDirection: false,
   _maxVelocity: 3.7,
   _maxWalkableAngle: Math.PI / 4, // 45 degrees (radians)
   _minSlidingVelocity: 2,
@@ -275,6 +300,10 @@ const WALL_CAST_HEIGHT_FACTOR = 0.9;
 const PLATFORM_ROTATION_EPSILON = 0.001;
 /** Below this (m/s or rad/s), the character counts as resting (isAwake = false). */
 const AWAKE_EPSILON = 0.001;
+/** Below this squared length (of the intent's summed move), there is no move input. */
+const MOVE_EPSILON_SQ = 1e-6;
+/** Closer than this (rad) to a target yaw, the character doesn't turn. */
+const YAW_EPSILON = 1e-4;
 
 const getCharacterDimensions = (d: CharacterData): CharacterDimensions => {
   const walkHalfHeight = Math.max(0, d._height / 2 - d._radius);
@@ -330,20 +359,17 @@ export const createDynamicCharacter = async (opts: {
   charMesh: THREE.Mesh;
   charData?: Partial<CharacterData>;
   sceneId?: string;
-  inputMappings?: {
-    rotateLeft: string[];
-    rotateRight: string[];
-    moveForward: string[];
-    moveBackward: string[];
-    jump: string[];
-    run: string[];
-    crouch: string[];
-  };
+  /** Keyboard input: a scheme and its key mappings. Without it the character is driven by code,
+   * through its intent. */
+  input?: CharacterInputOpts;
 }) => {
-  const { id, charMesh, charData, inputMappings } = opts;
+  const { id, charMesh, charData, input: inputOpts } = opts;
 
   // Combine character data
   const characterData: CharacterData = { ...getDefaultCharacterData(), ...charData };
+  if (charData?._turnToMoveDirection === undefined && inputOpts) {
+    characterData._turnToMoveDirection = SCHEME_TURNS_TO_MOVE_DIRECTION[inputOpts.scheme];
+  }
   const dims = getCharacterDimensions(characterData);
 
   // Set __maxWalkableAngleCos
@@ -364,10 +390,9 @@ export const createDynamicCharacter = async (opts: {
   let characterBodyId = -1;
   let liveColliders: ColliderAPI[] = [];
 
-  // The move requested for the next tick: the summed directions (+1 forward, -1 backward) and
-  // whether any move was requested at all (hasMoveInput). Both are consumed and reset by the tick.
-  let pendingMoveDir = 0;
-  let isMoveRequested = false;
+  // Written by the input scheme's bindings, controlFns and game code; read only by the tick
+  const intent = createIntent();
+  const input = inputOpts ? createCharacterInput(id, intent, inputOpts) : undefined;
 
   // WorldAPI.castShapeSync()/castRayAndGetNormalSync() throw in WORKER_THREAD mode (spatial
   // queries need the live physics world, which lives off-thread there — unlike pos/rot/lvel/
@@ -542,9 +567,10 @@ export const createDynamicCharacter = async (opts: {
     vel.z += (targetDownhill - velDownhill) * downhillZ;
   };
 
-  /** Applies one sub-step's move along the facing (`direction` +1 forward, -1 backward) to the
-   * body's velocity. Called by the tick, with the pose and velocity scratch already read. */
-  const applyMove = (direction: number, delta: number) => {
+  /** Applies one sub-step's move to the body's velocity: along the unit horizontal direction
+   * (`dirX`, `dirZ`), at `magnitude` (0..1) of the max speed. Called by the tick, with the pose
+   * and velocity scratch already read. */
+  const applyMove = (dirX: number, dirZ: number, magnitude: number, delta: number) => {
     const rigidBody = characterBody;
     const bodyVelX = _vels[0];
     const bodyVelZ = _vels[2];
@@ -557,7 +583,7 @@ export const createDynamicCharacter = async (opts: {
           characterData.isGrounded && characterData.isCrouching
           ? characterData._crouchingMultiplier
           : 1;
-    const maxVelo = characterData._maxVelocity * maxVeloMultiplier;
+    const maxVelo = characterData._maxVelocity * maxVeloMultiplier * magnitude;
     const inTheAirDiminisher =
       characterData.isGrounded && !characterData.isFalling ? 1 : characterData._inTheAirDiminisher;
     const crouchVeloAccuMultiplier = characterData.isCrouching
@@ -568,11 +594,6 @@ export const createDynamicCharacter = async (opts: {
       inTheAirDiminisher *
       crouchVeloAccuMultiplier *
       delta;
-    const xVelo = Math.cos(characterData.charRotation) * veloAccu * direction;
-    const zVelo = -Math.sin(characterData.charRotation) * veloAccu * direction;
-
-    const xMaxVelo = Math.cos(characterData.charRotation) * maxVelo * direction;
-    const zMaxVelo = -Math.sin(characterData.charRotation) * maxVelo * direction;
 
     // The velocity the move builds on: on a moving platform it's relative to the platform. This
     // sub-step's collision events ran before the tick, so when one of them just took the character
@@ -583,26 +604,24 @@ export const createDynamicCharacter = async (opts: {
     const leftPlatformVeloZ = characterData.isOnMovingPlatform ? 0 : lastPlatformVelo.z;
     const curLinvelX = (characterData.relVelocity.x || 0) + leftPlatformVeloX;
     const curLinvelZ = (characterData.relVelocity.z || 0) + leftPlatformVeloZ;
-    const xAddition =
-      xVelo > 0
-        ? Math.min(
-            curLinvelX + xVelo,
-            characterData.isGrounded ? xMaxVelo : curLinvelX > xMaxVelo ? curLinvelX : xMaxVelo
-          )
-        : Math.max(
-            curLinvelX + xVelo,
-            characterData.isGrounded ? xMaxVelo : curLinvelX < xMaxVelo ? curLinvelX : xMaxVelo
-          );
-    const zAddition =
-      zVelo > 0
-        ? Math.min(
-            curLinvelZ + zVelo,
-            characterData.isGrounded ? zMaxVelo : curLinvelZ > zMaxVelo ? curLinvelZ : zMaxVelo
-          )
-        : Math.max(
-            curLinvelZ + zVelo,
-            characterData.isGrounded ? zMaxVelo : curLinvelZ < zMaxVelo ? curLinvelZ : zMaxVelo
-          );
+
+    // The horizontal velocity moves toward dir × maxVelo by at most veloAccu. Along the
+    // direction, grounded speed over the max is cut to it at once, while in the air it's kept
+    // (the target is then the current speed).
+    const along = curLinvelX * dirX + curLinvelZ * dirZ;
+    const overMax = characterData.isGrounded ? Math.max(0, along - maxVelo) : 0;
+    const startX = curLinvelX - overMax * dirX;
+    const startZ = curLinvelZ - overMax * dirZ;
+    const targetAlong = characterData.isGrounded ? maxVelo : Math.max(maxVelo, along);
+    let stepX = dirX * targetAlong - startX;
+    let stepZ = dirZ * targetAlong - startZ;
+    const stepLength = Math.hypot(stepX, stepZ);
+    if (stepLength > veloAccu) {
+      stepX *= veloAccu / stepLength;
+      stepZ *= veloAccu / stepLength;
+    }
+    const xAddition = startX + stepX;
+    const zAddition = startZ + stepZ;
 
     let charLinvelY = _vels[1];
     if (characterData.isGrounded) {
@@ -669,47 +688,21 @@ export const createDynamicCharacter = async (opts: {
     _vels[2] = vel.z;
   };
 
-  const controlFns = {
-    // rotate takes the simulation delta it is driven with (KEY_HELD bindings pass the fixed
-    // sub-step delta), never the render-frame delta: it runs once per physics sub-step, so a
-    // render-rate delta would make turning depend on the display's refresh rate.
-    rotate: (direction: 'LEFT' | 'RIGHT', delta = getPhysicsState().timestepRatio) => {
-      if (characterData.isTumbling) return;
-      const dir = direction === 'LEFT' ? 1 : -1;
-      const speed = characterData._rotateSpeed || 2;
-      turnCharacter(speed * delta * dir);
-    },
-    move: (direction: 'FORWARD' | 'BACKWARD') => {
-      pendingMoveDir += direction === 'FORWARD' ? 1 : -1;
-      isMoveRequested = true;
-      // Already visible to this sub-step's collision events (they run before the tick)
-      characterData.hasMoveInput = true;
-    },
-    jump: () => {
-      // Jump
-      const charData = characterData;
-      if (charData.isTumbling) return;
-      const jumpCheckOk =
-        charData.isGrounded &&
-        !charData.isCrouching &&
-        charData.__jumpTime + charData._jumpCooldown < getPhysGameTime();
-      if (jumpCheckOk) {
-        characterBody?.applyImpulse(jumpAmountVector3.set(0, charData._jumpAmount, 0), true);
-        charData.__jumpTime = getPhysGameTime();
-      }
-    },
-    run: () => {
-      // Set isRunning state
-      characterData.isRunning = !characterData.isRunning;
-    },
-    crouch: () => {
-      // Set isCrouching state
-      characterData.isCrouching = !characterData.isCrouching;
-      const nextIndex = characterData.isCrouching ? 1 : 0;
-      liveColliders[currentColliderIndex].setEnabled(false);
-      liveColliders[nextIndex].setEnabled(true);
-      currentColliderIndex = nextIndex;
-    },
+  const controlFns: DynamicCharacter['controlFns'] = {
+    rotate: (direction) => (intent.turn += direction === 'LEFT' ? 1 : -1),
+    move: (direction) => (intent.moveForward += direction === 'FORWARD' ? 1 : -1),
+    jump: () => (intent.jump = true),
+    run: () => (intent.run = !intent.run),
+    crouch: () => (intent.crouch = !intent.crouch),
+  };
+
+  /** Swaps the walk and crouch capsules. */
+  const setCrouching = (isCrouching: boolean) => {
+    characterData.isCrouching = isCrouching;
+    const nextIndex = isCrouching ? 1 : 0;
+    liveColliders[currentColliderIndex].setEnabled(false);
+    liveColliders[nextIndex].setEnabled(true);
+    currentColliderIndex = nextIndex;
   };
 
   // Compound colliders (all sharing one rigid body). Radius is set explicitly to
@@ -809,11 +802,12 @@ export const createDynamicCharacter = async (opts: {
             return;
           }
 
-          // Keep Moving / Landing Logic
+          // Keep Moving / Landing Logic. Collision events run before the tick, so this sub-step's
+          // move input is still only in the intent.
           if (
             !characterData.isFalling &&
             !characterData.__lastIsGroundedState &&
-            characterData.hasMoveInput &&
+            (characterData.hasMoveInput || hasMoveIntent(intent)) &&
             characterBody
           ) {
             const linvel = characterBody.lvel;
@@ -865,82 +859,13 @@ export const createDynamicCharacter = async (opts: {
 
   const ecsWorld = getECSWorld();
 
-  // Binding ids are namespaced by the character id: createKeyBinding replaces (and
-  // deleteKeyBinding removes) by id, so shared ids would let characters steal each other's keys.
-  const bindingId = (name: string) => `${id}:${name}`;
-
   const dynamicCharacterObject = await createCharacter({
     id,
     physicsParams: { colliders, rigidBody: rigidBodyParams },
     meshOrMeshId: charMesh,
     data: characterData,
-    // Every binding ignores modifiers (as the legacy input system did): Shift and Ctrl are the
-    // run/crouch toggles themselves, and pressing one must not interrupt a held move/turn key.
-    controls: inputMappings
-      ? [
-          {
-            id: bindingId('rotateLeft'),
-            ignoreModifiers: true,
-            type: 'KEY_HELD',
-            chord: inputMappings.rotateLeft.map((key) => ({ key })),
-            fn: (delta) => controlFns.rotate('LEFT', delta),
-          },
-          {
-            id: bindingId('rotateRight'),
-            ignoreModifiers: true,
-            type: 'KEY_HELD',
-            chord: inputMappings.rotateRight.map((key) => ({ key })),
-            fn: (delta) => controlFns.rotate('RIGHT', delta),
-          },
-          {
-            id: bindingId('moveForward'),
-            ignoreModifiers: true,
-            type: 'KEY_HELD',
-            chord: inputMappings.moveForward.map((key) => ({ key })),
-            fn: () => controlFns.move('FORWARD'),
-          },
-          {
-            id: bindingId('moveBackward'),
-            ignoreModifiers: true,
-            type: 'KEY_HELD',
-            chord: inputMappings.moveBackward.map((key) => ({ key })),
-            fn: () => controlFns.move('BACKWARD'),
-          },
-          {
-            id: bindingId('jump'),
-            ignoreModifiers: true,
-            type: 'KEY_DOWN',
-            chord: inputMappings.jump.map((key) => ({ key })),
-            fn: (e) => {
-              e.preventDefault();
-              if (e.repeat) return;
-              controlFns.jump();
-            },
-          },
-          {
-            id: bindingId('run'),
-            ignoreModifiers: true,
-            type: 'KEY_DOWN',
-            chord: inputMappings.run.map((key) => ({ key })),
-            fn: (e) => {
-              e.preventDefault();
-              if (e.repeat) return;
-              controlFns.run();
-            },
-          },
-          {
-            id: bindingId('crouch'),
-            ignoreModifiers: true,
-            type: 'KEY_DOWN',
-            chord: inputMappings.crouch.map((key) => ({ key })),
-            fn: (e) => {
-              e.preventDefault();
-              if (e.repeat) return;
-              controlFns.crouch();
-            },
-          },
-        ]
-      : undefined,
+    intent,
+    controls: input?.bindings,
   });
 
   characterBody = existsOrThrow(
@@ -975,13 +900,46 @@ export const createDynamicCharacter = async (opts: {
       body.readPoseInto(_pose);
       body.readVelocitiesInto(_vels);
 
-      // Move input of this sub-step (key bindings and controlFns.move), applied once
-      characterData.hasMoveInput = isMoveRequested;
-      const moveDir = Math.sign(pendingMoveDir);
-      isMoveRequested = false;
-      pendingMoveDir = 0;
-      if (moveDir !== 0 && !characterData.isTumbling) {
-        applyMove(moveDir, dt);
+      // The intent of this sub-step, read once (its per-sub-step fields are cleared right away)
+      input?.beforeTick?.();
+      const turnInput = Math.max(-1, Math.min(1, intent.turn));
+      const worldMoveX = intent.moveX;
+      const worldMoveZ = intent.moveZ;
+      const moveForward = intent.moveForward;
+      const wantsJump = intent.jump;
+      clearIntentSubStep(intent);
+      characterData.isRunning = intent.run;
+      if (intent.crouch !== characterData.isCrouching) setCrouching(intent.crouch);
+
+      // Turn: turn input, else toward faceYaw, else toward the move direction (at most
+      // _rotateSpeed). Before the move, so a forward move goes along the new facing.
+      if (!characterData.isTumbling) {
+        const maxTurn = characterData._rotateSpeed * dt;
+        if (turnInput !== 0) {
+          turnCharacter(turnInput * maxTurn);
+        } else {
+          const hasWorldMove = worldMoveX * worldMoveX + worldMoveZ * worldMoveZ > MOVE_EPSILON_SQ;
+          const targetYaw =
+            intent.faceYaw ??
+            (characterData._turnToMoveDirection && hasWorldMove
+              ? yawFromDirection(worldMoveX, worldMoveZ)
+              : null);
+          if (targetYaw !== null) {
+            const yawDiff = wrapToPi(targetYaw - characterData.charRotation);
+            if (Math.abs(yawDiff) > YAW_EPSILON) {
+              turnCharacter(Math.max(-maxTurn, Math.min(maxTurn, yawDiff)));
+            }
+          }
+        }
+      }
+
+      // Move: the world move plus the forward move along the (new) facing, up to length 1
+      const moveX = worldMoveX + moveForward * Math.cos(characterData.charRotation);
+      const moveZ = worldMoveZ - moveForward * Math.sin(characterData.charRotation);
+      const moveLength = Math.hypot(moveX, moveZ);
+      characterData.hasMoveInput = moveLength * moveLength > MOVE_EPSILON_SQ;
+      if (characterData.hasMoveInput && !characterData.isTumbling) {
+        applyMove(moveX / moveLength, moveZ / moveLength, Math.min(1, moveLength), dt);
       } else if (
         !characterData.groundIsWalkable &&
         characterData.isGrounded &&
@@ -1244,6 +1202,19 @@ export const createDynamicCharacter = async (opts: {
 
       // Ground normal for the next sub-steps (also while idle or sliding)
       refreshFloorNormal();
+
+      // Jump last: an impulse after this tick's setLinvel calls adds to them instead of being
+      // overwritten (the WORKER_THREAD commands replay in order)
+      if (
+        wantsJump &&
+        !characterData.isTumbling &&
+        characterData.isGrounded &&
+        !characterData.isCrouching &&
+        characterData.__jumpTime + characterData._jumpCooldown < now
+      ) {
+        body.applyImpulse(jumpAmountVector3.set(0, characterData._jumpAmount, 0), true);
+        characterData.__jumpTime = now;
+      }
     },
   };
 
@@ -1251,6 +1222,7 @@ export const createDynamicCharacter = async (opts: {
     dynamicCharacterObject,
     charMesh,
     charData: characterData,
+    intent,
     controlFns,
   };
   return dynamicCharacter;

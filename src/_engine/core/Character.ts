@@ -6,13 +6,18 @@ import { createMouseBinding, deleteMouseBinding, type MouseBinding } from './Inp
 import { getMeshByAppId } from './MeshManager';
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
-import type { CharacterObject } from './Character/CharacterTypes';
+import type { CharacterIntent, CharacterObject } from './Character/CharacterTypes';
+import { createIntent } from './Character/CharacterIntent';
 import { ECSSystemStage } from '../../AppECSRegistry';
 import { existsOrThrow } from '../utils/assert';
 import { lwarn } from '../utils/Logger';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
 
-export type { CharacterController, CharacterObject } from './Character/CharacterTypes';
+export type {
+  CharacterController,
+  CharacterIntent,
+  CharacterObject,
+} from './Character/CharacterTypes';
 
 /** Character id → entity id, in the default ECS world (where createCharacter puts every
  * character). The characters themselves live in the CHARACTER component storage. */
@@ -68,6 +73,7 @@ ECSWorld.registerComponentHooks(ComponentType.CHARACTER, {
  * @param physicsParams (colliders + optional shared rigidBody) ({@link ColliderParams}, {@link RigidBodyParams}) describes the (possibly compound) physics body for this character
  * @param meshOrMeshId (THREE.Mesh | string) mesh or mesh id of the representation of the physics object
  * @param controls (array of {@link KeyBinding} and/or {@link MouseBinding}) the input bindings for this character
+ * @param intent ({@link CharacterIntent}) the intent the controller reads (default: a new one); pass it when the bindings write it
  * @returns CharacterObject ({@link CharacterObject})
  */
 export const createCharacter = async ({
@@ -77,6 +83,7 @@ export const createCharacter = async ({
   meshOrMeshId,
   controls,
   data = {},
+  intent = createIntent(),
 }: {
   id: string;
   name?: string;
@@ -84,6 +91,7 @@ export const createCharacter = async ({
   meshOrMeshId: THREE.Mesh | string;
   controls?: (KeyBinding | MouseBinding)[];
   data?: { [key: string]: unknown };
+  intent?: CharacterIntent;
 }) => {
   // Before the new bindings exist: the old character's delete hook removes its bindings by id
   if (deleteCharacter(id)) {
@@ -126,6 +134,7 @@ export const createCharacter = async ({
     keyBindingIds: [],
     mouseBindingIds: [],
     data,
+    intent,
   };
   ecsWorld.addComponent(entityId, ComponentType.CHARACTER, char);
   ecsWorld.addComponent(entityId, ComponentType.TAG_IS_CHARACTER, true);

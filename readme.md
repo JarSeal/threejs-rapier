@@ -39,7 +39,7 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 - **Spatial index**: a uniform grid with an oversized tier for "what's near this point/volume" queries.
 - **Ray casting**: Three.js and physics ray APIs with per-frame statistics and debug helpers.
 - **Input**: keyboard, mouse, touch and gamepad, plus picking and rebindable key chords.
-- **Characters**: a dynamic, physics-driven character controller that handles slopes and moving platforms.
+- **Characters**: a dynamic, physics-driven character controller that handles slopes and moving platforms. Characters are driven through an intent object, from tank, world-fixed (8-direction) or camera-relative keyboard controls, or from code.
 - **Skyboxes**: equirectangular (including HDR), cube map and sky-and-sun skyboxes.
 - **UI**: a lightweight component helper (`CMP`), a HUD layer, draggable windows, dialogs and toasts.
 

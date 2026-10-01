@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–2 implemented
+Status: in progress | Phases 1–3 implemented
 Category: Character, Controls
 Blocks: p067_character-state-debugger-window.md (and through it p068_character-debug-gizmos.md and p069_character-live-config-editing.md: this plan moves the files they cite and changes some of the data they read. Phase 2 updates their references.)
 
@@ -432,12 +432,35 @@ Each phase leaves the tree compiling (`yarn lint`, `yarn build`), keeps the gym 
 
   Not covered: stairs, platforms, tumbling, and the debug delete button.
 
-### Phase 3 — Intent and control schemes
+### Phase 3 — Intent and control schemes — done
 
-- Add `CharacterIntent.ts` and `CharacterInputSchemes.ts` (`TANK`, `WORLD_FIXED`; `CAMERA_RELATIVE` if it fits in the phase, otherwise a follow-up).
-- The tick consumes the intent: vector move math (§2.4), auto-turn, and `hasMoveInput` derived from the intent.
-- Turn `controlFns` into intent-writing wrappers. Switch the gym's `dummyCharLooper` to writing the intent.
+- (done) Add `CharacterIntent.ts` and `CharacterInputSchemes.ts` (`TANK`, `WORLD_FIXED`; `CAMERA_RELATIVE` if it fits in the phase, otherwise a follow-up).
+- (done) The tick consumes the intent: vector move math (§2.4), auto-turn, and `hasMoveInput` derived from the intent.
+- (done) Turn `controlFns` into intent-writing wrappers. Switch the gym's `dummyCharLooper` to writing the intent.
 - **Verify:** `TANK` in the gym feels identical to Phase 2 (§5). A second input-mapped test character in the gym, with different keys, works independently, and deleting it leaves the first one's controls intact.
+
+**Implementation notes** (where Phase 3 differs from the plan, and what later phases must know):
+
+- **The intent has a `moveForward` axis** (-1..1, along the facing after this sub-step's turn), next to the world `moveX`/`moveZ`. §2.4's type has no facing-relative move, and a `TANK` W key writing world `moveX`/`moveZ` at poll time would move along the facing from before the tick's turn (one turn step late, ~0.08 rad at 60 Hz). `TANK` and scripted "walk forward" AI write `moveForward`. The type is in `CharacterTypes.ts` (with the yaw convention), the helpers (`createIntent`, `clearIntentSubStep`, `addIntentMove`, `hasMoveIntent`, `yawFromDirection`, `wrapToPi`) in `CharacterIntent.ts`. `CharacterObject.intent` exists now; `createCharacter` takes an optional `intent`.
+- **Per-sub-step fields** (`moveX`, `moveZ`, `moveForward`, `turn`, `jump`) are summed by writers and cleared by the tick right after it reads them. The tick caps the summed move at length 1 (so W+A is normalized, and an analog input keeps its magnitude) and `turn` at -1..1. Input that piles up while physics is paused (KEY_HELD then polls per frame) is capped the same way on resume; a jump pressed while paused stays latched until then.
+- **Turn precedence:** `turn` ≠ 0, else toward `faceYaw`, else toward the world move direction when `_turnToMoveDirection` is on (the shortest way, at most `_rotateSpeed · dt`). Only the world part of the move is turned toward; `moveForward` follows the facing by definition. `_turnToMoveDirection` defaults per scheme (`SCHEME_TURNS_TO_MOVE_DIRECTION`) unless `charData` sets it, and is `false` without input.
+- **Vector move math** (`applyMove(dirX, dirZ, magnitude, delta)`): the horizontal (platform-relative, with Phase 1's left-platform add-back) velocity moves toward `dir · maxVelo · magnitude` by at most the acceleration. Grounded speed over the max along the direction is cut to it at once, as the per-axis clamp did; in the air it's kept. Compared with the per-axis form (math only): accelerating, reversing, air overspeed and grounded overspeed are identical. Turning while running holds full speed with no velocity-to-facing lag, where the per-axis form dipped to 3.2–3.7 m/s and lagged 0–17°, jittering with the facing angle. Sideways drift now decays the same in both directions; the per-axis form kept +Z drift at the spawn facing indefinitely (4.2 m/s total) and killed -Z drift at once (the sign of `-0`). No `TANK`-only per-axis fallback was kept.
+- **Jump, run and crouch go through the tick.** `jump` is edge-triggered and applied last in the tick, after every `setLinvel`, so it adds to them. Before, a keydown jump in `WORKER_THREAD` mode was posted ahead of that frame's STEP message, and the sub-step's captured `setLinvel` (replayed later) overwrote it while moving. `run`/`crouch` are persistent; the tick copies `intent.run` into `isRunning` and swaps the capsules when `intent.crouch` differs from `isCrouching`. Nothing outside the tick touches the body any more, which fixes Phase 2's "controlFns write to a deleted body".
+- **`hasMoveInput`** is the summed move's length > ε, so W+S is no input now (Phase 1 counted it as input with no move). The floor sensor's landing logic runs in the collision events, before the tick, so it reads `hasMoveInput || hasMoveIntent(intent)`.
+- **Schemes** (`createCharacterInput(charId, intent, opts)` → `{ bindings, beforeTick? }`): `TANK`, `WORLD_FIXED` (`moveNorth/South/West/East`) and `CAMERA_RELATIVE` (`moveForward/Backward/Left/Right`; screen-up is the camera's view direction on the ground, or its up axis when it looks straight down; the camera is `cameraEntityId` or `getMainCamera()`, so the debug camera doesn't redirect it). `jump`/`run`/`crouch` mappings are optional. `runMode`/`crouchMode`: `TOGGLE` (default) or `HOLD`. `HOLD` doesn't use KEY_UP (blur, a hidden page or disabled inputs clear the held keys without one, so the state would stick): a KEY_HELD binding latches the held state, and `beforeTick`, run by the controller at the start of its tick, copies it into the intent.
+- **Options:** `createDynamicCharacter`'s `input: CharacterInputOpts` (§3.2's `input` shape) replaces `inputMappings` now. The return value gained `intent`; the rest of §3.2 is still Phase 4. `controlFns.rotate` lost its `delta` argument (the tick applies `_rotateSpeed · dt`) and `run`/`crouch` are in its type; every entry only writes the intent.
+- **Gym:** the player is `TANK` on WASD; a second player character, `arrowKeysChar`, is `CAMERA_RELATIVE` on the arrow keys with Enter to jump and no run or crouch (the gym camera isn't North-aligned, so world-fixed keys would move diagonally on screen); the dummy writes `intent.moveForward`/`turn`/`jump` from its `APP_PHYSICS_STEP` system. The three character meshes come from one local helper.
+- **Also updated:** the `pollHeldKeyBindings` comment in `KeyboardInput.ts`, the readme's Characters feature line, and p067–p069's `DynamicCharacter.ts` line references, config key counts (35, one of them the boolean `_turnToMoveDirection`) and a p067 note on the intent.
+- **Verified** headless against the running dev server (a Playwright script driving the keys and reading the registry), in both worker targets, all checks passing:
+
+  - `TANK`: W moves along the facing at 3.70 m/s, A turns 2.58 rad in 0.5 s, W+S neither moves nor sets `hasMoveInput`, Shift runs at 5.55 m/s and toggles back, Control toggles crouching, Space jumps 1.28 m standing and while moving;
+  - `CAMERA_RELATIVE`: ArrowUp moves along the camera's ground-forward and turns the character to face it, ArrowDown+Left moves back-left at 3.70 m/s facing it, Enter jumps; each character's keys leave the other one still;
+  - the dummy walks and turns by itself;
+  - `deleteCharacter('arrowKeysChar')` (true, then false) removes only its 5 bindings, and the player's W still works;
+  - leaving and re-entering the scene leaves no characters or bindings behind, then 3 characters and 12 bindings again, with both input characters working;
+  - no console errors besides a missing `/favicon.ico`.
+
+  Not covered: the feel at 144 Hz in a real browser, stairs, platforms, tumbling, `HOLD` mode and `WORLD_FIXED` (no gym character uses them; Phase 6's top-down scene is `WORLD_FIXED`).
 
 ### Phase 4 — Body plans, locomotion state, control mode
 

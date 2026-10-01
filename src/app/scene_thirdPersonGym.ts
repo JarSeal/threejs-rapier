@@ -133,8 +133,9 @@ const followWithSun = (
   };
 };
 
-/** The player character (with its follow camera) and an input-less dummy that walks and jumps
- * around. Both are frame-timing dependent (wall clock, random tumbling, async shape casts in
+/** The player character (TANK controls, with its follow camera), a second player character on
+ * the arrow keys (CAMERA_RELATIVE) and an input-less dummy that walks and jumps around. All are
+ * frame-timing dependent (wall clock, random tumbling, async shape casts in
  * WORKER_THREAD mode), so they're left out when ARE_CHARACTERS_ENABLED is off (p101 §1). */
 const createGymCharacters = async () => {
   const characterData = {
@@ -159,43 +160,49 @@ const createGymCharacters = async () => {
       }),
     },
   });
-  createMeshEntity(
-    {
-      geo: createGeometry({
-        id: 'directionBeakGeoDynamicChar',
-        type: 'BOX',
-        params: { width: 0.25, height: 0.25, depth: 0.7 },
-      }),
-      mat: createMaterial({
-        id: 'directionBeakMatDynamicChar',
-        type: 'BASIC',
-        params: { color: '#333' },
-      }),
-      position: { x: 0.35, y: 0.43, z: 0 },
-    },
-    { appId: 'directionBeakMeshDynamicChar-1', doNotAddToScene: true }
-  );
-  const directionBeakMesh = getMeshByAppId('directionBeakMeshDynamicChar-1')!;
+  /** The character capsule with a beak pointing along its facing (+X at yaw 0). */
+  const createCharacterMesh = (index: number, beakColor: string) => {
+    createMeshEntity(
+      {
+        geo: createGeometry({
+          id: `directionBeakGeoDynamicChar${index}`,
+          type: 'BOX',
+          params: { width: 0.25, height: 0.25, depth: 0.7 },
+        }),
+        mat: createMaterial({
+          id: `directionBeakMatDynamicChar${index}`,
+          type: 'BASIC',
+          params: { color: beakColor },
+        }),
+        position: { x: 0.35, y: 0.43, z: 0 },
+      },
+      { appId: `directionBeakMeshDynamicChar-${index}`, doNotAddToScene: true }
+    );
+    createMeshEntity(
+      { geo: charCapsule, mat: charMaterial, receiveShadow: true, castShadow: true },
+      { appId: `meshDynamicChar-${index}` }
+    );
+    const mesh = getMeshByAppId(`meshDynamicChar-${index}`)!;
+    mesh.add(getMeshByAppId(`directionBeakMeshDynamicChar-${index}`)!);
+    return mesh;
+  };
 
-  createMeshEntity(
-    { geo: charCapsule, mat: charMaterial, receiveShadow: true, castShadow: true },
-    { appId: 'meshDynamicChar-1' }
-  );
-  const characterMesh = getMeshByAppId('meshDynamicChar-1')!;
-  characterMesh.add(directionBeakMesh);
-
+  const characterMesh = createCharacterMesh(1, '#333');
   const { dynamicCharacterObject } = await createDynamicCharacter({
     id: 'topDownChar',
     charMesh: characterMesh,
     charData: characterData,
-    inputMappings: {
-      rotateLeft: ['a', 'A'],
-      rotateRight: ['d', 'D'],
-      moveForward: ['w', 'W'],
-      moveBackward: ['s', 'S'],
-      jump: [' '],
-      run: ['Shift'],
-      crouch: ['Control'],
+    input: {
+      scheme: 'TANK',
+      mappings: {
+        rotateLeft: ['a'],
+        rotateRight: ['d'],
+        moveForward: ['w'],
+        moveBackward: ['s'],
+        jump: [' '],
+        run: ['Shift'],
+        crouch: ['Control'],
+      },
     },
   });
   getECSWorld()
@@ -225,39 +232,36 @@ const createGymCharacters = async () => {
   });
   world.addSystem(ECSSystemStage.APP_LOGIC, 'gymSunFollow', followSun);
 
-  // Another character without input
-  createMeshEntity(
-    {
-      geo: createGeometry({
-        id: 'directionBeakGeoDynamicChar2',
-        type: 'BOX',
-        params: { width: 0.25, height: 0.25, depth: 0.7 },
-      }),
-      mat: createMaterial({
-        id: 'directionBeakMatDynamicChar',
-        type: 'BASIC',
-        params: { color: '#333' },
-      }),
-      position: { x: 0.35, y: 0.43, z: 0 },
+  // A second player character on other keys (the arrow keys, Enter to jump, no run or crouch),
+  // moving relative to the follow camera's view and turning toward where it goes
+  const arrowsCharacterMesh = createCharacterMesh(3, '#d08a18');
+  const { dynamicCharacterObject: arrowsCharacterObject } = await createDynamicCharacter({
+    id: 'arrowKeysChar',
+    charMesh: arrowsCharacterMesh,
+    charData: characterData,
+    input: {
+      scheme: 'CAMERA_RELATIVE',
+      mappings: {
+        moveForward: ['ArrowUp'],
+        moveBackward: ['ArrowDown'],
+        moveLeft: ['ArrowLeft'],
+        moveRight: ['ArrowRight'],
+        jump: ['Enter'],
+      },
     },
-    { appId: 'directionBeakMeshDynamicChar-2', doNotAddToScene: true }
-  );
-  const directionBeakMesh2 = getMeshByAppId('directionBeakMeshDynamicChar-2')!;
+  });
+  getECSWorld()
+    .getRigidBody(arrowsCharacterObject.entityId)
+    ?.setTranslation({ x: 2, y: 3, z: -8 }, true);
 
-  createMeshEntity(
-    { geo: charCapsule, mat: charMaterial, receiveShadow: true, castShadow: true },
-    { appId: 'meshDynamicChar-2' }
-  );
-  const characterMesh2 = getMeshByAppId('meshDynamicChar-2')!;
-  characterMesh2.add(directionBeakMesh2);
-
-  const { controlFns, dynamicCharacterObject: dummyCharacterObject } = await createDynamicCharacter(
-    {
+  // Another character without input, driven by writing its intent
+  const characterMesh2 = createCharacterMesh(2, '#333');
+  const { intent: dummyIntent, dynamicCharacterObject: dummyCharacterObject } =
+    await createDynamicCharacter({
       id: 'testDummyChar',
       charMesh: characterMesh2,
       charData: characterData,
-    }
-  );
+    });
   getECSWorld()
     .getRigidBody(dummyCharacterObject.entityId)
     ?.setTranslation({ x: -2, y: 5, z: -2 }, true);
@@ -265,27 +269,24 @@ const createGymCharacters = async () => {
   // A named ECS system re-registered on every scene load would be a silent no-op the second
   // time (world.addSystem ignores a duplicate id) — remove any stale registration from a
   // previous load of this scene first, since it'd otherwise keep running against this
-  // instance's now-deleted character/controlFns closure.
+  // instance's now-deleted character.
   let action: 'F' | 'T' | null = null;
   let accDelta = 0;
   getECSWorld().removeSystem('dummyCharLooper');
   // ...and it's removed on leaving too (see the scene's exit callback), or it would keep driving
   // the deleted dummy character.
   getECSWorld().addSystem(ECSSystemStage.APP_PHYSICS_STEP, 'dummyCharLooper', (_world, dt) => {
+    // Every second: jump, and switch between walking forward and turning left. The move and turn
+    // are per sub-step (the character's tick clears them), so they are written every sub-step.
     if (accDelta > 1) {
-      if (action !== 'F') {
-        action = 'F';
-        controlFns.jump();
-      } else {
-        action = 'T';
-        controlFns.jump();
-      }
+      action = action !== 'F' ? 'F' : 'T';
+      dummyIntent.jump = true;
       accDelta = 0;
     }
     if (action === 'F') {
-      controlFns.move('FORWARD');
+      dummyIntent.moveForward = 1;
     } else {
-      controlFns.rotate('LEFT', dt);
+      dummyIntent.turn = 1;
     }
     accDelta += dt;
   });

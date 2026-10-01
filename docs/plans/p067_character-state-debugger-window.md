@@ -34,7 +34,7 @@ This plan revives the legacy per-character "Character data tracker" window as a 
 
 - The tracker reads `CharacterObject.data` (`src/_engine/core/Character/CharacterTypes.ts:10-24`, `data: Record<string, unknown>`, default `{}` in `createCharacter`, `src/_engine/core/Character.ts:73-79`). `CharacterObject` is the data of the character entity's `CHARACTER` component.
 - Commit `22a72a0` ("Input system refactoring…") accidentally dropped `data: characterData` from `createDynamicCharacter`'s `createCharacter()` call, so `data` was always `{}` and the tracker rendered an empty `<ul></ul>`.
-- p066 Phase 1 put it back: `createDynamicCharacter` (`src/_engine/core/Character/DynamicCharacter.ts:328`) builds the live `characterData` object at `:346` and passes it at `:876`. The legacy tracker shows values again.
+- p066 Phase 1 put it back: `createDynamicCharacter` (`src/_engine/core/Character/DynamicCharacter.ts:357`) builds the live `characterData` object at `:369` and passes it at `:866`. The legacy tracker shows values again.
 - p066 Phase 2 removed the controller's private character map: `CharacterObject.data` (or the returned `DynamicCharacter.charData`, the same object) is the only way to the live data.
 
 ### 2.2 The legacy tracker (`src/_engine/core/Debug/_dbg__Character.ts:85-135`)
@@ -62,7 +62,7 @@ This plan revives the legacy per-character "Character data tracker" window as a 
   - `createSceneMainLooper(fn, sceneId?, isLateLooper = true)` (`src/_engine/core/Scene.ts:394`) returns an index.
   - They run in `runSceneMainLateLoopers` (`MainLoop.ts:183`): after physics, the app loop and render, only on rendered frames (after the FPS-limiter `skipFrame` return), and **also while the app is paused**.
   - `deleteSceneMainLooper(index, sceneId?, isLateLooper?)` (`Scene.ts:431`) defaults to `currentSceneId`, so the owning scene id must be captured at creation and passed back.
-- **Timestamps.** `getPhysGameTime()` (`src/_engine/core/PhysicsAPI.ts:628`) is pause-aware real time in ms. The character code stamps `__jumpTime`, `__isFallingStartTime`, `__isTumblingStartTime` and `__isGettingUpStartTime` with it (`DynamicCharacter.ts:698, 1079, 1263, 1011`) and resets them to `0`.
+- **Timestamps.** `getPhysGameTime()` (`src/_engine/core/PhysicsAPI.ts:628`) is pause-aware real time in ms. The character code stamps `__jumpTime`, `__isFallingStartTime`, `__isTumblingStartTime` and `__isGettingUpStartTime` with it (`DynamicCharacter.ts:1216, 1037, 1235, 969`) and resets them to `0`.
 - **Nested objects are mutated in place** (since p066 Phase 1): `position`, `velocity`, `relVelocity`, `angularVelocity`, `groundNormal` and the platform velocities keep their object every tick, and only their fields change. Two consequences:
   - The diff must compare the components (§3.3). Comparing object references would never see a change.
   - The window still re-reads `data[key]` on every update and doesn't cache nested object references: the convention on `CharacterObject.data` keeps controllers free to replace them.
@@ -73,15 +73,17 @@ This plan revives the legacy per-character "Character data tracker" window as a 
   - `lsGetItem`/`lsSetItem` are in `src/_engine/utils/LocalAndSessionStorage.ts:75/92`; `addToast` is in `src/_engine/core/UI/Toaster.ts:278`.
   - There is no reusable collapsible-group DOM component. Tweakpane folders exist, but this window is plain DOM.
 
-### 2.4 The data shape (`CharacterData`, `DynamicCharacter.ts:19-150`)
+### 2.4 The data shape (`CharacterData`, `DynamicCharacter.ts:31-166`)
 
-The comment at `:19-24` defines the convention: `_` = configuration, `__` = memory slot (not configurable). Every field has a one-line JSDoc (p066 Phase 1).
+The comment at `:31-36` defines the convention: `_` = configuration, `__` = memory slot (not configurable). Every field has a one-line JSDoc (p066 Phase 1).
 
-| Group                            | Fields                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **State** (20)                   | `position` {x,y,z}; `velocity`, `relVelocity`, `angularVelocity` {x,y,z,length}; `charRotation` (rad); `groundNormal` {x,y,z}; booleans `isAwake`, `hasMoveInput`, `isGrounded`, `isFalling`, `isRunning`, `isCrouching`, `isNearWall`, `isOnStairs`, `isOnMovingPlatform`, `isSliding`, `isTumbling`, `isGettingUp`, `groundIsWalkable`, `isMovingTowardsImpossibleSlope`                                                                                                                                                          |
-| **Properties** (34, all numbers) | `_height`, `_radius`, `_crouchHeight`, `_skinThickness`, `_groundDetectorOffset`, `_groundDetectorRadius`, `_tumbling*` (7), `_gettingUp*` (4), `_rotateSpeed`, `_maxVelocity`, `_maxWalkableAngle` (rad), `_minSlidingVelocity`, `_moveYOffset`, `_jumpAmount`, `_jumpCooldown` (ms), `_inTheAirDiminisher`, `_accumulateVeloPerInterval`, `_isFallingThreshold` (ms), `_runningMultiplier`, `_crouchingMultiplier`, `_keepMovingAfterJumpThreshold`, `_wallMicroPush`, `_wallNormalMaxY`, `_wallCastDistance`, `_slopeSlideSpeed` |
-| **Internal memory** (11)         | timestamps `__isFallingStartTime`, `__isTumblingStartTime`, `__jumpTime`, `__isGettingUpStartTime`; `__lastIsGroundedState` (bool); `__maxWalkableAngleCos`, `__charAngDamping` (number); `__touchingWallColliders`, `__touchingGroundColliders` (`number[]`); `__lastAppliedPlatformVelocity`, `__currentPlatformVelocity` {x,y,z}                                                                                                                                                                                                 |
+| Group                                        | Fields                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **State** (20)                               | `position` {x,y,z}; `velocity`, `relVelocity`, `angularVelocity` {x,y,z,length}; `charRotation` (rad); `groundNormal` {x,y,z}; booleans `isAwake`, `hasMoveInput`, `isGrounded`, `isFalling`, `isRunning`, `isCrouching`, `isNearWall`, `isOnStairs`, `isOnMovingPlatform`, `isSliding`, `isTumbling`, `isGettingUp`, `groundIsWalkable`, `isMovingTowardsImpossibleSlope`                                                                                                                                                                                                       |
+| **Properties** (35, numbers but one boolean) | `_height`, `_radius`, `_crouchHeight`, `_skinThickness`, `_groundDetectorOffset`, `_groundDetectorRadius`, `_tumbling*` (7), `_gettingUp*` (4), `_rotateSpeed`, `_maxVelocity`, `_maxWalkableAngle` (rad), `_minSlidingVelocity`, `_moveYOffset`, `_jumpAmount`, `_jumpCooldown` (ms), `_inTheAirDiminisher`, `_accumulateVeloPerInterval`, `_isFallingThreshold` (ms), `_runningMultiplier`, `_crouchingMultiplier`, `_keepMovingAfterJumpThreshold`, `_wallMicroPush`, `_wallNormalMaxY`, `_wallCastDistance`, `_slopeSlideSpeed`; `_turnToMoveDirection` (bool, p066 Phase 3) |
+| **Internal memory** (11)                     | timestamps `__isFallingStartTime`, `__isTumblingStartTime`, `__jumpTime`, `__isGettingUpStartTime`; `__lastIsGroundedState` (bool); `__maxWalkableAngleCos`, `__charAngDamping` (number); `__touchingWallColliders`, `__touchingGroundColliders` (`number[]`); `__lastAppliedPlatformVelocity`, `__currentPlatformVelocity` {x,y,z}                                                                                                                                                                                                                                              |
+
+Since p066 Phase 3, `isRunning` and `isCrouching` follow the character's intent (`CharacterObject.intent`, outside `data`): the tick copies them from it. The intent's move, turn and jump fields are cleared by every tick, so a window reading them between frames sees zeros; `hasMoveInput` is the state field that shows the last sub-step's move input. Showing the intent is out of scope here.
 
 ---
 
@@ -91,7 +93,7 @@ The comment at `:19-24` defines the convention: `_` = configuration, `__` = memo
 
 - The window keeps reading `CharacterObject.data`. It knows nothing about `DynamicCharacter` and classifies keys only by prefix: `__` → Internal memory, `_` → Properties, otherwise → State. Any future character type that follows the same naming convention gets the window for free.
 - The doc comment on `CharacterObject.data` (`CharacterTypes.ts:19-21`, added by p066) describes the convention and says the debug tools rely on it.
-- Key order within a group follows `Object.keys` order, which matches the declaration order in `DEFAULT_CHARACTER_DATA` (`DynamicCharacter.ts:168`).
+- Key order within a group follows `Object.keys` order, which matches the declaration order in `DEFAULT_CHARACTER_DATA` (`DynamicCharacter.ts:192`).
 
 ### 3.2 Module layout
 
@@ -177,7 +179,7 @@ In this order, using `winSmallLabel` / `winSmallIconButton` / `winFlexContent`:
 
 ### 3.7 Collapsible groups
 
-- Native `<details><summary>`, with the title and field count (`State (20)`, `Properties (34)`, `Internal memory (11)`). This is native, accessible and needs no JavaScript to toggle.
+- Native `<details><summary>`, with the title and field count (`State (20)`, `Properties (35)`, `Internal memory (11)`). This is native, accessible and needs no JavaScript to toggle.
 - The update loop checks `details.open` and skips the whole group when it's closed.
 - When a group is opened, it is fully refreshed right away (the `toggle` event), so it never shows stale values until the next interval tick.
 - The whole update is skipped when the window is collapsed (`getDraggableWindow(id)?.isCollapsed`) or Freeze is on.
@@ -231,7 +233,7 @@ A small `key → formatter` map, used only for known keys. Any other key uses th
 
 ### Phase 1: Restore the data link (bug fix) — done by p066
 
-- p066 Phase 1 added `data: characterData` back to the `createCharacter()` call (`DynamicCharacter.ts:876`), and p066 Phase 2 added the doc comment on `CharacterObject.data` (§3.1). Nothing is left to do here.
+- p066 Phase 1 added `data: characterData` back to the `createCharacter()` call (`DynamicCharacter.ts:866`), and p066 Phase 2 added the doc comment on `CharacterObject.data` (§3.1). Nothing is left to do here.
 - **Result:** the legacy tracker shows values again (still slow and ungrouped). This is the "before" baseline for the §6 measurement.
 
 ### Phase 2: New Character state window (core)
@@ -252,7 +254,7 @@ A small `key → formatter` map, used only for known keys. Any other key uses th
 ## 5. Risks, notes, out of scope
 
 - **Sub-step timing.** `characterData` is mutated in `APP_PHYSICS_STEP`, 0–N times per frame. The window reads it in the late loop, so it shows the last sub-step's state. A frame with 0 sub-steps shows no change, which is correct.
-- **One-step-late fields.** `groundNormal`, `groundIsWalkable` and the wall-hit results come from async physics queries (worker-safe) and are one step behind by design (`DynamicCharacter.ts:372-377`). Mention this in the window as a `title` on those rows, so it isn't mistaken for a window bug. (`isAwake` is no longer late: since p066 it is derived from the velocities in the tick.)
+- **One-step-late fields.** `groundNormal`, `groundIsWalkable` and the wall-hit results come from async physics queries (worker-safe) and are one step behind by design (`DynamicCharacter.ts:397-402`). Mention this in the window as a `title` on those rows, so it isn't mistaken for a window bug. (`isAwake` is no longer late: since p066 it is derived from the velocities in the tick.)
 - **Dead fields.** p066 removed `_groundedRayMaxDistance`, `_tumblingAngDamping`, `__wasOnMovingPlatformLastFrame` and `_roundVelocitiesScalingFactor`. Only `isMovingTowardsImpossibleSlope` is left: declared but never written. The window shows it as it is.
 - **Out of scope (`DraggableWindow` quirks):**
   - close vs. remove semantics (the reason `removeOnClose` stays)
