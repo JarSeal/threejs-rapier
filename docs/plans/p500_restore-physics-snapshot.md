@@ -437,6 +437,7 @@ Manual verification: take/restore/clear from the tab in all four configurations 
 | **`useSAB: false` visibility window.** Between the restore reply and the `TRANSFORMS_PUSH` it triggers, the main thread reads stale poses. | Decision 13 puts both inside the same handler, so the window is one message hop. Confirm visually with `useSAB: false`. |
 | **Snapshot cost per capture is O(world size)** and allocates a fresh `Uint8Array` out of WASM every time. | Measure in Phase 4's readout before any per-frame rewind consumer is built on top of it. |
 | **No test suite exists in this repo.** | Accepted. Every phase is verified manually via `?isDebug=true`, Phase 4's tab and `physicsTest.ts`. Phase 4 is worth pulling earlier if needed. |
+| **Interplay with p101 (scene-load determinism, implemented).** Every scene load replaces the physics world (`resetPhysicsWorld`) while stepping is held, so a snapshot can never outlive its scene, and every body/collider reference from the previous scene is stale. Two questions p101 left open land here: (1) a `LoadSceneProps.keepPhysicsWorld` opt-out for persistent physics entities (none exist yet), and (2) whether identical output **across** `MAIN_THREAD` and `WORKER_THREAD` is a goal, or repeatability within one mode is enough (p101 delivered the latter). | Reject (or drop) a restore whose snapshot was taken in another scene load. Answer (2) together with decision 16; the determinism probe (`?physicsProbe=N`, `_dbg__PhysicsDeterminism.ts`) is the tool for both. |
 
 ## Verification
 

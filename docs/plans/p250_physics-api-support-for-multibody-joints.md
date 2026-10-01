@@ -1,12 +1,12 @@
 Status: draft | not-implemented | needs-replanning
 Category: Physics
-Blocked by: _DONE_p026_physics-api-support-for-joints.md (implemented — no longer blocking; replan against its final shapes)
+Related: p026 (impulse joints, implemented; its plan file has been removed, so replan against the shipped code: `JointParams`/`JointAPI` in `Physics/PhysicsAPITypes.ts`, `workers/physics/physicsSwitchJoint.ts`, the joint registries in `Physics/EngineRapier.ts`/`PhysicsAPI.ts`, and the joint showcase in `app/physicsTest.ts`)
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
 
 # Physics API Support for Multibody Joints — Plan
 
 Adds Rapier **multibody-joint** support to the engine-agnostic Physics API, as a follow-up to
-`_DONE_p026_physics-api-support-for-joints.md`'s impulse-joint work. Split out because multibody joints
+p026's impulse-joint work (implemented). Split out because multibody joints
 are a genuinely separate Rapier solver with different tradeoffs and a smaller JS-level surface —
 bundling both into one plan would roughly double p026's scope for a feature most game-engine use
 cases don't need immediately.
@@ -26,14 +26,14 @@ wakeUp): MultibodyJoint`, `RAPIER.World.multibodyJoints: MultibodyJointSet` (`cr
   reduced-coordinate articulated-body solver — no drift between connected bodies, better suited to
   rigid chains (e.g. robot arms) than impulse joints' soft-constraint solver, at the cost of the
   missing motor/limit controls.
-- This plan assumes `_DONE_p026_physics-api-support-for-joints.md` has been implemented first: the
-  `JointParams`/`JointAPI` shape, the `PhysicsProtocolType.JOINT` numeric range (800-999), the
-  `physicsSwitchJoint.ts` worker file, and the `EngineRapier.ts`/`PhysicsAPI.ts` registries it
-  introduces are the direct precedent this plan extends. **Do not start detailed design on this
-  plan until p026 is implemented and its exact final shapes are known** — this document is a
-  placeholder outlining the shape of the work, not a fully grounded implementation plan yet.
+- p026 (implemented) is the direct precedent this plan extends: the `JointParams`/`JointAPI`
+  shape, the `PhysicsProtocolType.JOINT` numeric range (800-999), the `physicsSwitchJoint.ts`
+  worker file, and the `EngineRapier.ts`/`PhysicsAPI.ts` registries it introduced. **This
+  document was written before p026 landed: re-check every shape below against the shipped code
+  before detailed design** — it is a placeholder outlining the shape of the work, not a fully
+  grounded implementation plan yet.
 
-## Design decisions (draft — revisit once p026 lands)
+## Design decisions (draft — revisit against the shipped p026 code)
 
 1. **Separate id space and API surface from impulse joints**, not a `solver` flag on the existing
    `JointParams`/`JointAPI` — motor/limit methods don't apply to multibody joints, so folding them

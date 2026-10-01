@@ -2,7 +2,7 @@ Status: draft | not-implemented
 Category: Editor-Creator View, Materials
 Blocked by: p083_editor-creator-view.md (view registry, scene suspension, view tools group, camera rig)
 Blocks: p085_material-editor-params-and-persistence.md
-Related: p083_editor-creator-view.md (epic), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (the right drawer reuses its declarative tabs), p111_skybox-core-refactor-and-layered-schema.md (skybox environments in the editor come after it), \_DONE_p115_debug-environment-ball-viewport.md (same "ball + environment" idea for the scene)
+Related: p083_editor-creator-view.md (epic), `createDebuggerTab` (p105, implemented: the right drawer reuses its declarative tabs), the layered sky box (p111, implemented: skybox environments in the editor can now build on it, still a non-goal here), the debug environment ball (`debug/EnvBall.ts`, p115, implemented: same "ball + environment" idea for the scene)
 
 # Material Editor — Stage, Camera and Material Selector
 
@@ -69,7 +69,7 @@ In this plan the editor is a viewer: clicking a material shows it on the ball. A
      - `SHADOW`, `DEPTH`, `DISTANCE`, `SHADER`, `SHADERRAW` show a centred "Preview not supported for <type>" notice instead of the ball (`SHADER`/`SHADERRAW` don't work on WebGPU at all).
    - **Lights**: a `HemisphereLight` (low), a key `DirectionalLight` from the upper front left and a weaker fill from the right, fixed to the stage (not to the camera). Values are constants in this plan; p085 exposes them.
    - **Environment**: a neutral studio environment, the PMREM of three's `RoomEnvironment` (`PMREMGenerator.fromScene(new RoomEnvironment(), 0.04)`), set as `scene.environment`. **Background**: a solid neutral grey. (Phase 1 checks that `fromScene` works on both backends; if not, fall back to an equirect gradient texture run through the renderer's own PMREM path.)
-   - Using a skybox asset as the editor environment waits for p111 (see Non-goals). The scene's `SkyBox.ts` state is never touched: the root scene keeps its background and environment while it is suspended.
+   - Using a skybox asset as the editor environment is a follow-up (see Non-goals; p111's layered sky box has landed). The scene's `SkyBox.ts` state is never touched: the root scene keeps its background and environment while it is suspended.
 3. **Loading a material into the editor** (`loadEditorMaterial(id)`).
    - Look up the asset in `getGeneratedAppData().materials`.
    - Load its missing textures (`params` texture keys, and TSL string inputs not starting with `#`) with `loadTextureAsync` from `generatedAppData.textures`.
@@ -145,7 +145,7 @@ Each phase compiles, lints and leaves the app working.
 
 - Editable params and editor settings, per-material clear-LS, undo/redo (p085).
 - Preview thumbnails in the selector (the slot is reserved).
-- Skybox assets as the editor environment (after p111), HDR/EXR environment files.
+- Skybox assets as the editor environment (p111 has landed, so this is unblocked), HDR/EXR environment files.
 - Other preview shapes (cube, plane, torus knot), several balls side by side, comparing two materials.
 - Creating a new material, duplicating one, or saving anything to JSON.
 - Materials created only in code (not in a `*.material.json`).

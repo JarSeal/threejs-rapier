@@ -1,7 +1,7 @@
 Status: draft | not-implemented
 Category: Editor-Creator View
 Blocks: p084_material-editor-stage-and-selector.md, p085_material-editor-params-and-persistence.md
-Related: \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (the axes gizmo must follow the editor camera), \_DONE_p062_add-undo-and-redo-ui.md and \_DONE_p060_debugger-undo-engine-core.md (undo buckets per view), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (the editor drawers reuse its declarative tabs), p110_skybox-refactor-and-layered-sky-system.md (later editors: skybox), \_DONE_p130_add-on-screen-tools-disabler-settings.md (the view tools group joins its disabled set)
+Related (all implemented; their plan files have been removed, see `.claude/CLAUDE.md` and the code): p080 viewports (`core/Viewports.ts`; the axes gizmo must follow the editor camera), p060/p062 debugger undo (`core/Debug/_dbg__UndoRedo.ts`; undo buckets per view), p105 `createDebuggerTab` (the editor drawers reuse its declarative tabs), p110-p115 layered sky box (later editors: skybox), p130 on-screen tools disabler (`DebugToolsState.onScreenTools`; the view tools group joins its disabled set)
 
 # Editor-Creator View — Epic and View Switching Core
 
@@ -21,7 +21,7 @@ This file is the epic. It also holds the first implementation plan: the **view s
 
 All three can land on one branch (one engine minor bump at merge) or on separate branches (a minor bump each).
 
-**Future plans (not written yet):** material preview thumbnails in the selector, deeper material params (textures, TSL graph inputs by type, all three.js material types), saving editor results to JSON, skybox editor (after p111), animation editor, particle editor, views in production builds (configurator).
+**Future plans (not written yet):** material preview thumbnails in the selector, deeper material params (textures, TSL graph inputs by type, all three.js material types), saving editor results to JSON, skybox editor (p111 has landed), animation editor, particle editor, views in production builds (configurator).
 
 ## Naming
 
@@ -43,7 +43,7 @@ All three can land on one branch (one engine minor bump at merge) or on separate
   - `updateGizmo()` follows `getActiveCamera()` (`_dbg__AxesGizmo.ts:284-304`).
   - Align/drag use the ECS debug camera entity and its `ORBIT_CONTROLS` (`getDebugCamera()`, `:309-316`) and `setDebugCameraControlsSuspended` (`:469,482`).
   - Visibility and clickability are decided in `axesGizmoSystem`, an ECS `MAIN` system of the default world (`:126-152`) that checks `isDebugCameraActive()`.
-- **On-screen tools** (`core/Debug/_dbg__OnScreenTools.ts`): three groups rebuilt from scratch on every update: `playTools` (prod-test play/stop, master loop, app pause; top centre), `switchTools` (debug cam, camera, scene, helpers; bottom centre), `undoRedoTools` (top left). `ToolTypes` is `'SWITCH' | 'PLAY' | 'UNDO'` (`debug/OnScreenTools.ts:3`). The top-centre group shifts left with the `debugDrawerOpen` body class (`OnScreenTools.module.scss:54-66`); so does the top-right viewport stack (p080 DD9).
+- **On-screen tools** (`core/Debug/_dbg__OnScreenTools.ts`): three groups rebuilt from scratch on every update: `playTools` (prod-test play/stop, master loop, app pause; top centre), `switchTools` (debug cam, camera, scene, helpers; bottom centre), `undoRedoTools` (top left). `ToolTypes` is `'SWITCH' | 'PLAY' | 'UNDO'` (`debug/OnScreenTools.ts:3`). The top-centre group shifts left with the `debugDrawerOpen` body class (`OnScreenTools.module.scss:54-66`); so does the top-right viewport stack (`aekViewportStack_TOP_RIGHT`, p080).
 - **Debug drawer** (`core/Debug/_dbg__DebuggerGUI.ts`): a module singleton on the right, `$drawerWidth: 40rem`. `_toggleDrawer` sets/clears `debugDrawerOpen` on `<body>` (`:368-395`). Bound to `h` (`Input/DefaultDebugKeyBindings.ts:27-32`).
 - **Undo buckets** (`core/Debug/_dbg__UndoRedo.ts:57-84`): `perScene` actions go into the current scene's bucket (`getCurrentSceneId()`), `global` ones into `_global`; undo works on the current scene's bucket merged with the global one.
 - **Inputs.** `setAllInputsEnabled(false)` (`Input/InputState.ts`) gates app keyboard, mouse and touch handlers (`KeyboardInput.ts:180,201,267`, `MouseInput.ts:113,222`, `TouchInput.ts:91`). `SceneLoader.loadScene` uses it during loads.
@@ -90,7 +90,7 @@ All three can land on one branch (one engine minor bump at merge) or on separate
      6. `updateOnScreenTools()` and persist the active view id (DD9).
    - Leave: the reverse. `view.onExit()`, remove the body classes, restore `debugDrawerOpen` from `getDrawerState().isOpen`, re-enable the debug camera input, `setAllInputsEnabled(true)` (unless a scene load is running, which re-enables it itself), clear the suspension, update the on-screen tools.
    - Switching between two editor views is `onExit` of one and `onEnter` of the other; the scene stays suspended.
-4. **HUD rules per view** (a body class plus one SCSS rule, like p130 DD1).
+4. **HUD rules per view** (a body class plus one SCSS rule, like p130's disabled on-screen tools).
    - `body.aekNonSceneView #hudRoot > :not(.aekKeepInViews) { display: none }`. That hides the scene debug drawer, the bottom switch tools, draggable windows, the debugger scene loader and any app HUD, without touching their state.
    - Kept (global class `aekKeepInViews`): the top on-screen row (DD6), the undo/redo group, the stats container, the debug toaster, the viewports layer if it is inside the HUD root, and every editor view's own UI.
    - `display: none` keeps the hidden CMPs mounted, so returning to the scene shows them as they were.

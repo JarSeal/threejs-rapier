@@ -6,9 +6,10 @@ Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-en
 
 ## Context
 
-Follow-up to [\_DONE_p059_interpolation-optimization-and-fixes.md](./_DONE_p059_interpolation-optimization-and-fixes.md),
-whose Phase 8 ("double-banked buffer, D9") was split out into this plan. p059 fixed render
-interpolation without it; this plan fixes the one defect it left open.
+Follow-up to p059 (interpolation optimization and fixes, implemented; its plan file has been
+removed, and the parts this plan needs are in "Verification method" below). p059's Phase 8
+("double-banked buffer, D9") was split out into this plan. p059 fixed render interpolation
+without it; this plan fixes the one defect it left open.
 
 **D9 — `SHARED_MEMORY` reads tear.** `PhysicsTransformBuffer` is a single bank. The worker's
 `writeBackTransforms` (`physicsWorker.ts`) rewrites every slot in place and then calls
@@ -17,10 +18,11 @@ and at any point in its frame. Nothing stops the worker from writing between two
 reads, so:
 
 1. **Stamp vs. poses.** `readPhysicsSnapshotStamp()` can read step index N while the poses read
-   right after it already belong to N+1. p059's probe measured the result: on `SHARED_MEMORY`
+   right after it already belong to N+1. p059's smoothness probe measured the result: on `SHARED_MEMORY`
    roughly one run in three showed an isolated interpolation spike (2.4% velocity jitter, one
    frame 21% off, against the usual 0.31%), which never appeared on `MESSAGE_BATCH`. p059
-   Phase 4's temporary stamp self-check also flagged 1-2 such mid-read writes per ~1400 reads.
+   Phase 4's temporary stamp self-check (see Verification method) also flagged 1-2 such
+   mid-read writes per ~1400 reads.
 2. **Across systems in one frame.** `physicsToTransformSystem` (`APP_POST_PHYSICS`),
    `APP_PHYSICS_STEP` gameplay code (e.g. `dynamicCharacter.ts` reading `rb.pos`/`lvel`),
    `physicsInterpolationSystem` and the debug wireframe (`APP_RENDER_SYNC`) can each see a
@@ -94,8 +96,8 @@ write-side (`beginWrite()`/`publish(stepIndex)`) and read-side (`latch()`) API. 
 1 bank in both transports and route the worker's `writeBackTransforms` and every reader through
 the new API. Remove the now-unused `getWriteCount()` reader (it has had no caller since p059
 Phase 4), or keep it bank-aware if the debug tab turns out to want it.
-*Verify:* p059's headless probes (method in its implementation notes: the smoothness matrix,
-teleport + two worlds, world recreation) give the same numbers as at the end of p059. `SHARED_MEMORY` still
+*Verify:* the headless probes (see Verification method: the smoothness matrix, teleport + two
+worlds, world recreation) give the same numbers as the p059 baselines listed there. `SHARED_MEMORY` still
 shows its occasional spike, because nothing has changed yet.
 
 **Phase 2 — Triple buffering on `SHARED_MEMORY`.**
@@ -108,8 +110,8 @@ assumption, so both sides agree on the layout.
 `MESSAGE_BATCH` is byte-for-byte unchanged.
 
 **Phase 3 — Docs.**
-Update the `PhysicsTransformBuffer` class doc, the Physics section of `.claude/CLAUDE.md` (the
-hot-path buffer description), and the D9 entries of p059's done notes (so they point here).
+Update the `PhysicsTransformBuffer` class doc and the Physics section of `.claude/CLAUDE.md` (the
+hot-path buffer description).
 
 ## Non-goals
 
@@ -134,8 +136,8 @@ hot-path buffer description), and the D9 entries of p059's done notes (so they p
 ## Verification
 
 - `tsc --noEmit` and `yarn lint` clean after every phase.
-- **The tearing test (the one that matters).** Run p059's smoothness probe (method in its
-  implementation notes) on `SHARED_MEMORY` at 25Hz physics 20 times. Before this plan, about one run in three shows a spike (max velocity error
+- **The tearing test (the one that matters).** Run the smoothness probe (see Verification
+  method) on `SHARED_MEMORY` at 25Hz physics 20 times. Before this plan, about one run in three shows a spike (max velocity error
   well above 1%). After, zero runs may, and jitter must stay at p059's ~0.31%. Re-add p059
   Phase 4's temporary stamp self-check: its "raced" count must be exactly 0.
 - **Lapping stress test (the case double buffering gets wrong).** 2000 bodies with the main
@@ -147,6 +149,54 @@ hot-path buffer description), and the D9 entries of p059's done notes (so they p
 - **Cross-system agreement.** In one frame, the pose `physicsToTransformSystem` wrote into
   TRANSFORM equals the newest pose `physicsInterpolationSystem` captured, for every body
   (a probe system at `APP_RENDER_SYNC` compares them).
-- **No regressions.** The rest of p059's probes: teleport streaks 0, two worlds
+- **No regressions.** The rest of the probes: teleport streaks 0, two worlds
   interpolate independently, D10 world recreation, `MESSAGE_BATCH` unchanged, allocation profile
   not worse.
+
+## Verification method (carried over from p059)
+
+No test runner exists, so p059 checked every phase with small headless Playwright scripts
+(`playwright-core` from `.claude/skills/run-aekasha-js/`) against a dev server on a spare port.
+They weren't committed; this is the method, for reuse:
+
+- **Driving the engine.** Vite serves source modules, so a script can `import()` engine
+  modules in the page. Import the exact URLs the app loaded (from
+  `performance.getEntriesByType('resource')`): after an HMR update Vite appends `?t=…`, and a
+  bare path then gives a _second_ module instance with its own state. Boot overrides go into
+  `localStorage['AEK_debugPhysicsApiBoot']` (`workerTarget`, `useSAB`) via `addInitScript`.
+- **Rendering isn't needed.** WebGPU can't render in headless Chrome under WSL2 (buffer-size
+  errors). The ECS stages still run, so probes read the pose that would be drawn from a system
+  at `APP_RENDER_SYNC` with order −100 (after every pose writer, before `renderScene()`).
+- **Emulating high refresh.** Headless rAF is 60Hz. Setting physics to 25Hz
+  (`state.timestep`, `timestepRatio`, `getPhysicsWorld().setTimestep`) gives the same
+  render-to-physics ratio as 144Hz against 60Hz physics.
+- **Smoothness metric.** A box created 5000 units up falls freely. Per frame: rendered
+  velocity = Δy / Δ(`getPhysicsSimClock()`), fitted linearly. Jitter = RMS residual / mean
+  velocity; also counted: reversals, stalls. A "second difference of y is constant" test can't
+  pass even when everything is correct, because blending straight lines between points on a
+  parabola puts kinks in the velocity at every step boundary. The fit residual measures that
+  floor instead (~0.31%).
+- **Stamp self-check (p059 Phase 4).** A temporary probe that compares the producer's step
+  stamp (`getPhysicsSnapshotStepIndex()`, written by the worker's `writeBackTransforms`) with
+  the main thread's own count of snapshots, read by read. It counts a read as "raced" when the
+  stamp changed between reading it and reading the poses. p059 saw 0 disagreements in ~8,400
+  reads on `MESSAGE_BATCH`, and 1-2 races per ~1400 reads on `SHARED_MEMORY` (D9).
+- **Teleport, two worlds, world recreation.** A teleported body must render 0 frames
+  mid-streak; two ECS worlds with physics must both interpolate; recreating the world on
+  `MESSAGE_BATCH` must not leave `isWritePending()` stuck true (p059's D10).
+- **Allocations.** CDP `HeapProfiler.startSampling` with `includeObjectsCollectedByMajorGC`/
+  `MinorGC`, aggregated by function; 500 dynamic bodies for 10s.
+- **Baselines** are run from a throwaway `git worktree` of the previous commit, with its own
+  Vite `cacheDir` (a wrapper config). With a symlinked `node_modules`, the default cache is
+  shared, and a second server rewriting it gives every other running dev server `504
+  Outdated Optimize Dep` errors, the user's own `yarn dev` included.
+
+p059's final numbers, the baselines for this plan:
+
+| Check | p059 result |
+| --- | --- |
+| `RENDERER` jitter, 25Hz physics, `MAIN_THREAD` / SAB / `MESSAGE_BATCH` | 0.31-0.33% everywhere, no stalls (SAB: about one run in three spikes, D9) |
+| `FIXED_PHYSICS` + SAB worker, 25Hz | ~55% (unsupported pairing, warned) |
+| `MAIN_THREAD`: `RENDERER` vs. `FIXED_PHYSICS` | identical: lag = `D`, servo error 0, same jitter |
+| Teleport, frames rendered mid-streak | 0 |
+| Allocations on the physics/interpolation paths, 500 bodies (worker / main) | 1.1 / 4.4 MB/s |

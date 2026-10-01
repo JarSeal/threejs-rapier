@@ -266,7 +266,7 @@ The top-down camera follows the player, so fitting to the camera view _is_ follo
   - one large flat ground, a thin BOX with a BOX collider, the cheapest possible;
   - one hills patch on the East side, generated with a `heightModifier` mask. The mask is a smoothstep from 0 at the West edge of the patch to 1 further East. The patch edges sink slightly below the ground level (about −0.3), so no seam shows where the patch pokes out of the plane.
   - The patch gets a **TRIMESH** collider, built from the geometry's `position` and `index` arrays.
-- HEIGHTFIELD is avoided (see §1.6). The bug is noted for `p100_small-bug-fixes-and-tweaks.md`, not fixed here.
+- HEIGHTFIELD is avoided (see §1.6). The column-count bug in `EngineRapier.ts` was fixed by p125 (implemented); the importer's heightfield offset is still open (`p990_follow-ups-from-done-plans.md`).
 
 ---
 
@@ -375,7 +375,7 @@ Each phase leaves the tree compiling (`yarn lint`, `yarn build`), keeps the gym 
 - Apply the hot-path rules from §3.4 and the config cleanup from §3.5.
 - Namespace the binding ids. This part of bug 2's fix doesn't need the intent.
 - Fix `hasMoveInput` by tracking a held-move-key count until the intent lands in Phase 3.
-- **Verify:** the gym works in `MAIN_THREAD` and `WORKER_THREAD` (walk, run, crouch, jump, stairs, slopes, the slide obstacle, all moving platforms, tumble and get up). The worker RPC count per frame drops (Physics API stats tracker, `_DONE_p027`).
+- **Verify:** the gym works in `MAIN_THREAD` and `WORKER_THREAD` (walk, run, crouch, jump, stairs, slopes, the slide obstacle, all moving platforms, tumble and get up). The worker RPC count per frame drops (Physics API stats tracker, p027).
 
 ### Phase 2 — `CHARACTER` component, a single registry, and the move
 
@@ -446,7 +446,7 @@ Scene content:
 - A kinematic (Rapier KCC) controller.
 - Characters or physics in the scene/asset JSON schema.
 - CSM / multi-cascade shadows.
-- The HEIGHTFIELD `nCols` fix (→ p100).
+- The HEIGHTFIELD collider fixes (`nCols` fixed by p125; the importer offset is in `p990_follow-ups-from-done-plans.md`).
 - Gamepad input.
 - Moving `followObjectCameraRig.ts` or `utils/world/*`.
 

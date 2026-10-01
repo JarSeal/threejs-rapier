@@ -136,8 +136,8 @@ need a multi-component compound-query cache:
 - The worker-thread transform sync (`Physics/PhysicsTransformBuffer.ts`) transfers
   transform *values* for already-known entities via the single-component
   `BODY_DYNAMIC_VISUAL` bucket — never derives/caches which entities satisfy a
-  component conjunction. `docs/plans/_DONE_p050_spatial-index.md:20` (Rapier broadphase
-  only knows entities with the single `TAG_IS_PHYSICS_OBJECT` tag) corroborates the same
+  component conjunction. p050's spatial index research (implemented) found the same: the Rapier broadphase
+  only knows entities with the single `TAG_IS_PHYSICS_OBJECT` tag, the same
   single-component-type pattern.
 
 **Verdict: no current or planned system in this codebase needs a multi-component

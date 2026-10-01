@@ -21,6 +21,8 @@ Create a fog system for Aekasha. The debugger drawer should have its own  Fog sy
 - Global volumetric fog (or something like it)
 Also all the parameters for the fog should be editable in the debugger drawer. It can be defined in its own file: myScene.fog.json.
 
+Context from the removed sky box plans (p110-p115; full texts in git history): fog coupling with the sky box was an explicit non-goal of the sky box epic, so it is open for this plan. The sky box's `ground` layer already has `useAtmosphereHorizon` (blends toward the atmosphere's horizon colour, a form of aerial perspective), and the day-night cycle changes the horizon colour over time, so consider a fog colour that can follow the active sky box. Screen-space passes belong in the PostFX chain (`core/PostFX.ts`). Headless WebGPU doesn't render under WSL2, so visual checks need a real browser.
+
 If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
 ************************************
@@ -40,6 +42,11 @@ The Overview tab will have some key data on it like TFPS (true FPS, meaning how 
 The Objects tab should do a breakdown of the different entity, mesh, triangle, vertices (etc.) counts. This view can have graphs, but I am not sure yet how to display them (you can suggest what to use here).
 
 TODO_SETTINGS_TAB_PLAN
+
+Context from removed _DONE_ plans (p027, p070/p071, p140, p142; full texts in git history):
+- Existing opt-in stats sources to read rather than re-measure: physics step time and the worker messaging latency (`getLastPhysicsStepDuration`, `getLastPhysicsStepMessagingLatency` in `core/PhysicsAPI.ts`, gated by `AppConfig.physics.stepStatsEnabled`, default off; dispatch and write-back are kept separate from the step time and never summed, and `writeBackMs` means different things on `MESSAGE_BATCH` vs `SHARED_MEMORY`, so label it), Three.js ray stats (`getRayCastStats`, `core/Raycast.ts`), physics ray stats (`getPhysicsRayStats`, `core/PhysicsAPI.ts`), PostFX per-pass GPU timings (`getPostFxPassStats`, `debug/PostFXProfiler.ts`, console-only today) and the sky box bake stats (`core/Debug/SkyBox/_dbg__BakeStats.ts`, GPU timer `_dbg__GPUTimer.ts`, WebGPU only). The shared windowed-counter util is `utils/stats/IntervalCounterStats.ts`.
+- p140 proposed introducing a generic `registerStatsSource(id, getter)` registry here if the profiler needs to enumerate sources.
+- Every stats source is opt-in so it costs nothing when off; keep that for whatever the profiler turns on (enable while the window is open).
 
 If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 

@@ -28,3 +28,11 @@ Read the plan and the files it names before proposing anything. If the code has 
 
 Work through it in order. Stop after each section for my review — don't run the whole thing end to end.
 *****************************
+
+
+
+
+Clean up plans:
+*****************************
+Go through the _DONE_*/implemented plans and delete the plans that aren't needed anymore to avoid context bloat. If some plans have only small parts that are valuable to other plans (and check also upcoming plans from docs/templates/todo-plan-prompts.txt), then you can either include them in the not-implemented plan as a note or just modify the content of that implemented plan to include that small information (and say in the header that this is modified from the original plan to hold relating and vital information until a specific plan has been implemented).
+*****************************

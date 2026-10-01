@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Physics
-Related: \_DONE_p101_physics-scene-load-determinism.md (exits must happen on a fixed step, and the determinism probe must stay green), p500_restore-physics-snapshot.md (bounds are configuration, not simulation state, see §8), \_DONE_p058_line-rendering-system.md (Phase 3 draws the bounds with it)
+Related: p101 scene-load determinism (implemented, see the Physics section of `.claude/CLAUDE.md`: exits must happen on a fixed step, and the determinism probe must stay green), p500_restore-physics-snapshot.md (bounds are configuration, not simulation state, see §8), the line rendering system (`LineManager.ts`, p058, implemented: Phase 3 draws the bounds with it)
 
 # Physics World Bounds (Kill Volume) — Plan
 
@@ -192,9 +192,9 @@ Each phase compiles, lints and can merge on its own.
 
 ### Phase 3 — Debug tooling
 
-- Physics API debug tab: a "World bounds" folder (declarative pane, per `_DONE_p105`) with the active global box (read-only, source: config / scene / none), the exit count for the current scene and a list of the last exits (`debuggerListCMP`, clicking a row logs the entity).
+- Physics API debug tab: a "World bounds" folder (declarative pane, `createDebuggerTab`) with the active global box (read-only, source: config / scene / none), the exit count for the current scene and a list of the last exits (`debuggerListCMP`, clicking a row logs the entity).
 - A toggle that draws the global box with the line system (`createLines`), open sides clipped to a large finite size, and per-entity boxes for selected entities. Implementation in a `_dbg__` file, dynamically imported.
-- Optional: live editing of the scene's global box, stored as a debug override with an undo action (`_DONE_p061` pattern). Skip if it isn't needed.
+- Optional: live editing of the scene's global box, stored as a debug override with an undo action (the `_dbg__UndoRedo.ts` action-handler pattern). Skip if it isn't needed.
 
 ### Phase 4 — Scene JSON
 

@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Performance, Settings
-Related: \_DONE_p070_post-fx-system.md (`setPostFxEnabled` is one of the switches the recommendations target), p350_lod-system-research.md (the device levels are a natural LOD budget input), p063_triple-buffered-physics-transform-buffer.md (SAB availability is part of the probe), p112_procedural-sky-atmosphere-sun-and-env-bake.md (its sky box sun light `shadowPreset` uses the same `LOW`…`ULTRA` scale as the device levels, see §3.1)
+Related: the PostFX system (`core/PostFX.ts`, p070, implemented: `setPostFxEnabled` is one of the switches the recommendations target), p350_lod-system-research.md (the device levels are a natural LOD budget input), p063_triple-buffered-physics-transform-buffer.md (SAB availability is part of the probe), the procedural sky box (p112, implemented: its sky box sun light `shadowPreset` uses the same `LOW`…`ULTRA` scale as the device levels, see §3.1)
 
 # Client Device Capability Sniffer — Plan
 
@@ -173,7 +173,7 @@ type DeviceCapabilityVerdict = {
 **One scale.** Device levels use the same `LOW | MEDIUM | HIGH | ULTRA` scale as the shadow presets, so a level can be used directly as a preset key:
 
 - `ShadowQuality` enum + `SHADOW_PRESETS` in `core/LightManager.ts` (on `main` and on `skybox-overhaul`).
-- On the `skybox-overhaul` branch, also `ShadowQualitySchema = z.enum(['LOW', 'MEDIUM', 'HIGH', 'ULTRA'])` in `schemas/_helperSchemas.ts`. The light JSON `shadowPreset` and the sky box sun light (`SUN_LIGHT_DEFAULTS.shadowPreset: 'MEDIUM'` in `core/SkyBox/SkyLights.ts`, p112) use it.
+- Since engine 3.0 (the merged `skybox-overhaul` branch), also `ShadowQualitySchema = z.enum(['LOW', 'MEDIUM', 'HIGH', 'ULTRA'])` in `schemas/_helperSchemas.ts`. The light JSON `shadowPreset` and the sky box sun light (`SUN_LIGHT_DEFAULTS.shadowPreset: 'MEDIUM'` in `core/SkyBox/SkyLights.ts`, p112) use it.
 
 **Shared type.** Add a general `QualityLevelSchema` (same enum) and `QualityLevel` type to `schemas/_helperSchemas.ts`, with `QUALITY_LEVELS` (ordered array), `compareQualityLevels(a, b)` and `minQualityLevel(...levels)`. Then make `ShadowQualitySchema` an alias of it (`export const ShadowQualitySchema = QualityLevelSchema`). This is non-breaking and the generated JSON schema is unchanged.
 
