@@ -22,7 +22,9 @@ export const MetaSchema = z.object({
   // author: z.string().optional(),
 });
 
-export function createSaveDataSchema<T extends z.ZodObject>(propertyOverrideObject: T) {
+// A ZodType, not only a ZodObject: an overrides schema can be wrapped (eg. the sky box's legacy
+// adapter is a z.preprocess)
+export function createSaveDataSchema<T extends z.ZodType>(propertyOverrideObject: T) {
   return z
     .record(
       z.string(), // Scene ID

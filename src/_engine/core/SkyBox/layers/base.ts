@@ -1,0 +1,260 @@
+import * as THREE from 'three/webgpu';
+import { context, float, normalWorldGeometry, pmremTexture, uniform, vec3 } from 'three/tsl';
+import type { SkyBoxBaseDef, SkyBoxEnvDef, SkyBoxEnvSize, SkyBoxNebulaSize } from '../SkyBoxTypes';
+import { getPMREMTexture } from '../SkyEnvironment';
+import { toSkyColor } from '../skyColor';
+import { getTexture, loadTextureAsync } from '../../Texture';
+import { isDebugEnvironment } from '../../Config';
+import { isHDR } from '../../../utils/helpers';
+import { lerror } from '../../../utils/Logger';
+
+/** Base keys that change the texture or the node graph: changing one re-runs the activation.
+ * Any other base key is a uniform or scene property write. */
+export const BASE_STRUCTURAL_KEYS = [
+  'type',
+  'file',
+  'fileNames',
+  'path',
+  'textureId',
+  'texture',
+  'colorSpace',
+  'flipY',
+] as const;
+
+export const BASE_DEFAULTS = { rotate: 0, intensity: 1, flipY: false };
+export const ENV_DEFAULTS = {
+  backgroundRoughness: 0,
+  backgroundIntensity: 1,
+  environmentIntensity: 1,
+  size: 256 as SkyBoxEnvSize,
+  dynamic: true,
+  updateAngleDeg: 1,
+  maxUpdatesPerSec: 1,
+  nebulaSize: 512 as SkyBoxNebulaSize,
+};
+
+/** The base layer's uniforms, created once per activation and kept across node rebuilds. */
+export type BaseUniforms = {
+  intensity: THREE.UniformNode<'float', number>;
+  backgroundRoughness: THREE.UniformNode<'float', number>;
+  /** The COLOR base's colour (black for texture bases, which is what a failed load shows). */
+  color: THREE.UniformNode<'color', THREE.Color>;
+  /** The background's rotation (see buildBaseLayer). */
+  rotation: THREE.UniformNode<'mat3', THREE.Matrix3>;
+};
+
+export type BaseLayer = {
+  /** The source texture (its PMREM is what's sampled), null for a COLOR base. */
+  texture: THREE.Texture | null;
+  /** The PMREM both nodes sample (the source texture itself until it's ready), null for a COLOR base. */
+  environmentTexture: THREE.Texture | null;
+  backgroundNode: THREE.Node;
+  /** Null for a COLOR base (the composite path bakes one, see SkyBox.ts). */
+  environmentNode: THREE.Node | null;
+};
+
+/** Default sRGB, or linear sRGB for .hdr files. An empty string is unset (the legacy save data
+ * has one). */
+const resolveColorSpace = (colorSpace: string | undefined, fileName?: string): THREE.ColorSpace =>
+  (colorSpace as THREE.ColorSpace) ||
+  (isHDR(fileName) ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace);
+
+/** Sets a texture's colour space, and marks its upload and PMREM stale when that changed it. */
+const setColorSpace = (texture: THREE.Texture, colorSpace: THREE.ColorSpace) => {
+  if (texture.colorSpace === colorSpace) return;
+  texture.colorSpace = colorSpace;
+  texture.needsUpdate = true;
+  texture.needsPMREMUpdate = true;
+};
+
+const loadEquirectTexture = async (
+  base: Extract<SkyBoxBaseDef, { type: 'EQUIRECTANGULAR' }>
+): Promise<THREE.Texture | null> => {
+  let texture: THREE.Texture | null = base.texture || null;
+  if (!texture && base.file) {
+    texture = await loadTextureAsync({
+      id: base.textureId,
+      fileName: base.file,
+      path: base.path,
+      useHDRLoader: isHDR(base.file),
+      throwOnError: isDebugEnvironment(),
+    });
+  } else if (!texture && base.textureId) {
+    texture = getTexture(base.textureId) || null;
+  }
+  if (!texture) {
+    lerror(`Could not find or load the equirectangular sky box texture (${JSON.stringify(base)}).`);
+    return null;
+  }
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  setColorSpace(texture, resolveColorSpace(base.colorSpace, base.file));
+  return texture;
+};
+
+const loadCubeTexture = async (
+  base: Extract<SkyBoxBaseDef, { type: 'CUBE_TEXTURE' }>
+): Promise<THREE.Texture> => {
+  const texture =
+    base.texture ||
+    ((await loadTextureAsync({
+      id: base.textureId,
+      fileName: base.fileNames,
+      path: base.path,
+      throwOnError: isDebugEnvironment(),
+    })) as THREE.CubeTexture);
+  texture.userData.id = base.textureId || texture.userData.id || texture.uuid;
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  setColorSpace(texture, resolveColorSpace(base.colorSpace, base.fileNames[0]));
+  return texture;
+};
+
+/**
+ * Loads (or gets, by texture id) a texture base's texture. Returns null for a COLOR base, or
+ * when the texture can't be found or loaded (the error is logged).
+ */
+export const loadBaseTexture = (base: SkyBoxBaseDef): Promise<THREE.Texture | null> => {
+  if (base.type === 'EQUIRECTANGULAR') return loadEquirectTexture(base);
+  if (base.type === 'CUBE_TEXTURE') return loadCubeTexture(base);
+  return Promise.resolve(null);
+};
+
+/** Whether the base is a cube with flipY on. */
+export const isBaseFlipY = (base: SkyBoxBaseDef) =>
+  base.type === 'CUBE_TEXTURE' && Boolean(base.flipY);
+
+/** A cube's flipY: turns a world direction a half turn about the X axis (upside down). */
+export const turnUpsideDown = (dir: THREE.Node) => {
+  const d = dir as THREE.Node<'vec3'>;
+  return vec3(d.x, d.y.negate(), d.z.negate());
+};
+
+/**
+ * An environment node whose lookup direction, given by the lighting context (the reflection
+ * vector for radiance, the normal for irradiance), goes through `remap` first. EnvironmentNode
+ * isolates each use of the environment, so setup() runs once per use and captures that use's
+ * own getUV.
+ */
+class RemappedEnvironmentNode extends THREE.Node {
+  constructor(
+    private envNode: THREE.Node,
+    private remap: (dir: THREE.Node) => THREE.Node
+  ) {
+    super();
+  }
+
+  getNodeType(builder: THREE.NodeBuilder) {
+    return this.envNode.getNodeType(builder);
+  }
+
+  setup(builder: THREE.NodeBuilder) {
+    const parentGetUV = (
+      builder.context as {
+        getUV?: (node: THREE.Node, builder: THREE.NodeBuilder) => THREE.Node;
+      }
+    ).getUV;
+    if (!parentGetUV) return this.envNode;
+    return context(this.envNode, {
+      getUV: (node: THREE.Node, b: THREE.NodeBuilder) => this.remap(parentGetUV(node, b)),
+    });
+  }
+}
+
+const _rotation4 = new THREE.Matrix4();
+
+/** The inverse (transposed) Y rotation, as PMREMNode applies scene.environmentRotation. */
+const setRotation = (target: THREE.Matrix3, rotate: number) =>
+  target.setFromMatrix4(_rotation4.makeRotationY(rotate).transpose());
+
+const getRotate = (base: SkyBoxBaseDef) =>
+  base.type === 'COLOR' ? 0 : base.rotate ?? BASE_DEFAULTS.rotate;
+
+const getIntensity = (base: SkyBoxBaseDef) =>
+  base.type === 'COLOR' ? 1 : base.intensity ?? BASE_DEFAULTS.intensity;
+
+export const createBaseUniforms = (
+  base: SkyBoxBaseDef,
+  env: SkyBoxEnvDef | undefined
+): BaseUniforms => ({
+  intensity: uniform(getIntensity(base)),
+  backgroundRoughness: uniform(env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness),
+  color: uniform(base.type === 'COLOR' ? toSkyColor(base.color) : new THREE.Color(0x000000)),
+  rotation: uniform(setRotation(new THREE.Matrix3(), getRotate(base))),
+});
+
+/** Writes the base layer's non-structural values to its uniforms. */
+export const applyBaseUniforms = (
+  u: BaseUniforms,
+  base: SkyBoxBaseDef,
+  env: SkyBoxEnvDef | undefined
+) => {
+  u.intensity.value = getIntensity(base);
+  u.backgroundRoughness.value = env?.backgroundRoughness ?? ENV_DEFAULTS.backgroundRoughness;
+  setRotation(u.rotation.value, getRotate(base));
+  if (base.type === 'COLOR') u.color.value.copy(toSkyColor(base.color));
+};
+
+/** The PMREM's lookup direction for a view direction: the cube's flip, then the rotation. */
+const toLookupDir = (base: SkyBoxBaseDef, u: BaseUniforms, dir: THREE.Node) => {
+  const flipY = isBaseFlipY(base);
+  return u.rotation.mul((flipY ? turnUpsideDown(dir) : dir) as THREE.Node<'vec3'>);
+};
+
+/**
+ * The base layer in the composite (SkyComposite.ts): the colour it shows in direction `dir`,
+ * with the flip and rotation applied here (the bake then holds them, so the environment node
+ * gets neither). Sampled sharp: the composite's background blur comes from the env bake.
+ * @param pmrem the source texture's PMREM (getPMREMTexture), null for a COLOR base or a
+ * texture that failed to load (black, as on the direct path)
+ */
+export const baseNode = (
+  dir: THREE.Node,
+  base: SkyBoxBaseDef,
+  u: BaseUniforms,
+  pmrem: THREE.Texture | null
+): THREE.Node => {
+  if (base.type === 'COLOR' || !pmrem) return u.color.mul(u.intensity);
+  return pmremTexture(pmrem, toLookupDir(base, u, dir), float(0)).mul(u.intensity);
+};
+
+/**
+ * Builds the base layer's nodes from one PMREM (the direct path, for sky boxes without
+ * procedural layers): the background (blurred by env.backgroundRoughness), and the environment
+ * (a bare PMREM, so the lighting context drives its direction and level). Both look up the same
+ * world direction (the background's is its view direction, normalWorldGeometry of the back-side
+ * background box; not normalWorld, which is negated on back sides), so what materials reflect
+ * matches the background.
+ *
+ * Rotation: PMREMNode applies scene.environmentRotation (set by SkyBox.ts) to the environment,
+ * but only for materials whose `envMap` is null, and the background box's plain NodeMaterial has
+ * no envMap at all, so it always gets the identity there. The background applies the same
+ * (transposed) rotation itself, after the flip, exactly as the environment gets it.
+ */
+export const buildBaseLayer = (
+  base: SkyBoxBaseDef,
+  u: BaseUniforms,
+  texture: THREE.Texture | null
+): BaseLayer => {
+  // A texture base whose texture failed to load shows black, like a black COLOR base
+  if (base.type === 'COLOR' || !texture) {
+    return {
+      texture: null,
+      environmentTexture: null,
+      backgroundNode: u.color.mul(u.intensity),
+      environmentNode: null,
+    };
+  }
+
+  const pmrem = getPMREMTexture(texture);
+  const flipY = isBaseFlipY(base);
+  const backgroundNode = pmremTexture(
+    pmrem,
+    toLookupDir(base, u, normalWorldGeometry),
+    u.backgroundRoughness
+  ).mul(u.intensity);
+  const environmentNode = flipY
+    ? new RemappedEnvironmentNode(pmremTexture(pmrem), turnUpsideDown)
+    : pmremTexture(pmrem);
+
+  return { texture, environmentTexture: pmrem, backgroundNode, environmentNode };
+};

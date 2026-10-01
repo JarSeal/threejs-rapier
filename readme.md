@@ -54,7 +54,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 ### Debug suite (debug builds only)
 
 - A tabbed **debug drawer** (`h`) built on Tweakpane, with tabs for stats, main loop, renderer, physics, ECS, assets, PostFX (with a GPU profiler), skybox, spatial index, ray casting and characters. Its state is saved to localStorage.
-- A **debug fly camera** (`F1`), an axes gizmo (`F8`) and a debug scene loader.
+- A **debug fly camera** (`F1`), an axes gizmo (`F10`), an environment ball (`F9`) and a debug scene loader.
 - **Undo/redo** for changes made in the debugger.
 - **Physics visualizers**: collider wireframes colored by body state, ray helpers, and query statistics.
 - **Ray tester windows** for firing Three.js or physics rays at the scene.

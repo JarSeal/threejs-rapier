@@ -128,6 +128,11 @@ export type DebuggerTabDef<S extends object = object> = {
   /** Explicit place in the menu, overriding `AppConfig.debugDrawer.tabOrder`. It is on the same
    * 0-based scale as the tabOrder indexes (eg. 1.5 = between the 2nd and the 3rd tab). */
   orderNr?: number;
+  /** Makes this a scene tab: it is removed when this scene exits, so the scene creates it in its
+   * scene code (it comes back on every visit). Unless `orderNr` or the tabOrder place it, it
+   * goes after all the other tabs. When the saved open tab is a scene tab that doesn't exist yet
+   * (eg. after a reload), the drawer shows the first tab until it is created. */
+  sceneId?: string;
   /** LocalStorage key of this tab's own data. When set, the heading gets a clear-LS button for
    * it (see `clearLSButton`). */
   lsKey?: string;
@@ -262,9 +267,14 @@ export const createDebuggerTab = <S extends object>(
 
 /**
  * Restores a tab's persisted values into its state. Runs at registration (not on the first tab
- * open, and also in prod test mode), so the module can use the values at boot.
+ * open, and also in prod test mode), so the module can use the values at boot. A module can also
+ * call it earlier than its tab's registration, for values something reads before that (the tab
+ * then hydrates the same values again).
+ * @param def (object) the tab's `lsKey`, `state` and `persistKeys` (see {@link DebuggerTabDef})
  */
-const hydrateDebuggerTabState = <S extends object>(def: DebuggerTabDef<S>) => {
+export const hydrateDebuggerTabState = <S extends object>(
+  def: Pick<DebuggerTabDef<S>, 'lsKey' | 'state' | 'persistKeys'>
+) => {
   if (!IS_DEBUG_ENV && !IS_PROD_TEST_MODE) return;
   const { lsKey, state, persistKeys } = def;
   if (!lsKey || !state || !persistKeys?.length) return;
@@ -307,7 +317,16 @@ export const isDebuggerTabOpen = (id: string) =>
   useDebug(debugGUI)?._isDebuggerTabOpen(id) ?? false;
 
 /**
- * Removes a debugger tab
+ * Opens the drawer on a debugger tab (switching to it if another one is showing).
+ * @param id (string) tab id
+ */
+export const openDebuggerTab = (id: string) => {
+  useDebug(debugGUI)?._openDebuggerTab(id);
+};
+
+/**
+ * Removes a debugger tab (a scene tab, see `DebuggerTabDef.sceneId`, is removed automatically on
+ * its scene's exit)
  * @param id (string) tab id
  */
 export const removeDebuggerTab = (id: string) => {

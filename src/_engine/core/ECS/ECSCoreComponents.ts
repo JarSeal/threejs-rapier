@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/Addons.js';
 
 import { ColliderAPI, RigidBodyAPI } from '../Physics/PhysicsAPITypes';
 import type { PhysicsWireframeColors } from '../Config';
-import { CoreComponentType as CoreType, EntityDebugData } from './ECSRegistry';
+import { CoreComponentType as CoreType, EntityDebugData, ManagedByData } from './ECSRegistry';
 import { AppComponentData, AppComponentType as AppType } from '../../../AppECSRegistry';
 
 export type ECSPosition = { x: number; y: number; z: number };
@@ -44,6 +44,7 @@ export interface CoreComponentData {
    * line swaps its Object3D when it moves between the thin and thick backends, so a stored
    * object would go stale. Resolve it with getLineForEntity. */
   [CoreType.LINE]: { lineId: string };
+  [CoreType.MANAGED_BY]: ManagedByData;
   // Physics
   [CoreType.COLLIDER]: ColliderAPI[];
   [CoreType.BODY_DYNAMIC_VISUAL]: RigidBodyAPI;

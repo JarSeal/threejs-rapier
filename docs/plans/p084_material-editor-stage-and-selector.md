@@ -2,7 +2,7 @@ Status: draft | not-implemented
 Category: Editor-Creator View, Materials
 Blocked by: p083_editor-creator-view.md (view registry, scene suspension, view tools group, camera rig)
 Blocks: p085_material-editor-params-and-persistence.md
-Related: p083_editor-creator-view.md (epic), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (the right drawer reuses its declarative tabs), p111_skybox-core-refactor-and-layered-schema.md (skybox environments in the editor come after it), p115_debug-environment-ball-viewport.md (same "ball + environment" idea for the scene)
+Related: p083_editor-creator-view.md (epic), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (the right drawer reuses its declarative tabs), p111_skybox-core-refactor-and-layered-schema.md (skybox environments in the editor come after it), \_DONE_p115_debug-environment-ball-viewport.md (same "ball + environment" idea for the scene)
 
 # Material Editor — Stage, Camera and Material Selector
 
@@ -167,7 +167,7 @@ Each phase compiles, lints and leaves the app working.
 - `yarn dev`, `?isDebug=true`:
   - The material button switches to the editor: grey background, the ball, no scene objects, no skybox; the scene button switches back to the unchanged, resumed scene.
   - Every material in the selector loads: `testMaterial` (PHONG), `testTslMat` (TSL with a texture), the three toolkit materials. A material the current scene doesn't use still loads its textures.
-  - The filter narrows by id and by name, the count updates, `Escape` clears it, and `h`/`F8` don't fire while typing.
+  - The filter narrows by id and by name, the count updates, `Escape` clears it, and `h`/`F10` don't fire while typing.
   - With the right drawer open, the selector's cards all stay visible at each breakpoint (resize from wide to `$breakpointXSmall`). With the stats panel on, it sits under the selector.
   - Orbit the camera on two materials, switch between them, and each keeps its own pose; a material with no saved pose uses the default; "Reset camera" works. The gizmo follows and aligns the editor camera.
   - Refresh with the editor open: same view, material, camera pose, drawers, tab, filter and scroll positions.

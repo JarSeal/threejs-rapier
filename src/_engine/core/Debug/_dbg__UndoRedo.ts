@@ -6,6 +6,7 @@ import { lerror, lwarn } from '../../utils/Logger';
 import { updateOnScreenTools } from '../../debug/OnScreenTools';
 import { DEBUG_TOASTER_ID } from '../../debug/DebuggerGUI';
 import { addToast } from '../UI/Toaster';
+import { getSvgIcon } from '../UI/icons/SvgIcon';
 import type {
   UndoRedoActionHandler,
   UndoRedoClearScope,
@@ -212,6 +213,7 @@ const showActionToast = (entry: UndoRedoEntry, direction: 'undo' | 'redo') => {
     addToast({
       toasterId: DEBUG_TOASTER_ID,
       title: direction === 'undo' ? 'Undo' : 'Redo',
+      icon: getSvgIcon(direction),
       message: entry.label,
       showingTime: TOAST_SHOWING_TIME_MS,
     });

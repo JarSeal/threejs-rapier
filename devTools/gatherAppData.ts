@@ -15,6 +15,12 @@ import { SkyBoxAsset, SkyBoxAssetSchema } from '../src/_engine/schemas/skyBoxSch
 import { PostFxAsset, PostFxAssetSchema } from '../src/_engine/schemas/postFxSchema';
 import { toUniqueJsIdentifier } from '../src/_engine/utils/jsIdentifier';
 import { MetaSchema } from '../src/_engine/schemas/_saveDataSchema';
+import {
+  isLegacySkyBoxProps,
+  LEGACY_SKYBOX_WARNING,
+} from '../src/_engine/core/SkyBox/legacySkyBox';
+import { deepMerge } from '../src/_engine/utils/deepMerge';
+import { mergeSkyBoxPreset } from '../src/_engine/core/SkyBox/presets';
 import pkg from '../package.json';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -74,6 +80,19 @@ const warnOnStaleSaveData = (
       );
     }
   }
+};
+
+/** Warns (doesn't fail) about a sky box in the legacy `{ type, params }` shape: the schema still
+ * converts it, but it should be migrated to the layered one. */
+const warnOnLegacySkyBox = (file: string, data: unknown) => {
+  if (!isLegacySkyBoxProps(data)) return;
+  const skyAndSunNote =
+    data.type === 'SKYANDSUN'
+      ? ' The SKYANDSUN type is now the atmosphere layer (p112), so it becomes a COLOR base.'
+      : '';
+  console.warn(
+    `\x1b[33m⚠ [Scene Gatherer] Sky box "${data.id}" in ${file}: ${LEGACY_SKYBOX_WARNING}.${skyAndSunNote}\x1b[0m`
+  );
 };
 
 const logDuplicateIdError = (type: string, id: string, file: string) => {
@@ -237,6 +256,7 @@ export const gatherSceneData = () => {
         const parsedData = JSON.parse(fileContent);
 
         // Validate scene file content against schema
+        for (const sky of parsedData?.skyboxes || []) warnOnLegacySkyBox(file, sky);
         const validation = SceneAssetSchema.safeParse(parsedData);
         if (validation.success) warnOnStaleSaveData(file, validation.data);
         if (!validation.success) {
@@ -579,14 +599,30 @@ export const gatherSceneData = () => {
       const fullPath = path.resolve(srcDir, file);
       const fileContent = fs.readFileSync(fullPath, 'utf-8');
       try {
-        const skyJSON = JSON.parse(fileContent);
-        const skyId = skyJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.skybox);
+        const parsedData = JSON.parse(fileContent);
+        // The id defaults to the file name (set before validating: the schema requires one)
+        if (parsedData && typeof parsedData === 'object' && !parsedData.id) {
+          parsedData.id = path.basename(file, JSON_ENDING_SIGNATURES.skybox);
+        }
+        warnOnLegacySkyBox(file, parsedData);
+        const validation = SkyBoxAssetSchema.safeParse(parsedData);
+        if (validation.success) warnOnStaleSaveData(file, validation.data);
+        if (!validation.success) {
+          logValidationError(
+            `Validation error inside skybox file ${file}`,
+            validation.error.issues
+          );
+          hasError = true;
+          continue;
+        }
+        // The runtime only sees plain definitions: the preset is merged in here
+        const skyJSON: SkyBoxAsset = mergeSkyBoxPreset(validation.data);
+        const skyId = skyJSON.id;
         if (ids.skyboxes.includes(skyId)) {
           logDuplicateIdError('skybox', skyId, file);
           continue;
         }
         ids.skyboxes.push(skyId);
-        skyJSON.id = skyId;
         skyJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         delete skyJSON.$schema;
         skyRegistry[skyId] = skyJSON;
@@ -943,25 +979,22 @@ export const gatherSceneData = () => {
         });
       }
 
-      // Add skyboxes to scenes
+      // Add skyboxes to scenes (the definition with this scene's latest save entry deep-merged
+      // over it; inline ones too)
       if (Array.isArray(fileContentJSON.skyboxes)) {
-        fileContentJSON.skyboxes = fileContentJSON.skyboxes.map((skyId) => {
-          if (typeof skyId !== 'string') return skyId;
-          if (skyRegistry[skyId]) {
-            const __saveData = skyRegistry[skyId].__saveData?.[sceneId]?.length
-              ? skyRegistry[skyId].__saveData?.[sceneId]?.[0] || {}
-              : {};
-            if (isProduction) delete skyRegistry[skyId].debugData;
-            const skyData = {
-              id: skyId,
-              type: skyRegistry[skyId].type,
-              isCurrent: Boolean(skyRegistry[skyId].isCurrent),
-              params: { ...skyRegistry[skyId].params, ...__saveData },
-            };
-            if ('__meta' in skyData.params) delete skyData.params.__meta;
-            return skyData;
-          }
-          return skyId; // Fallback to raw string ID if asset file doesn't exist yet
+        fileContentJSON.skyboxes = fileContentJSON.skyboxes.map((skyIdOrInline) => {
+          const sky =
+            typeof skyIdOrInline === 'string'
+              ? skyRegistry[skyIdOrInline]
+              : mergeSkyBoxPreset(skyIdOrInline);
+          if (!sky) return skyIdOrInline; // Fallback to raw string ID if asset file doesn't exist yet
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { $schema, __sourcePath, __saveData, ...def } = sky;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { __meta, ...overrides } = __saveData?.[sceneId]?.[0] || {};
+          const skyData = deepMerge(def, overrides);
+          if (isProduction) delete skyData.debugData;
+          return skyData;
         });
       }
 

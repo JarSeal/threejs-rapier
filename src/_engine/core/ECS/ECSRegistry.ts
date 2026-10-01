@@ -13,6 +13,8 @@ export enum CoreComponentType {
   CAMERA_SETTINGS = 'CORE_CAMERA_SETTINGS',
   ORBIT_CONTROLS = 'CORE_ORBIT_CONTROLS',
   LINE = 'CORE_LINE',
+  /** An entity a manager owns and drives (eg. a sky box's sun light), see ManagedByData. */
+  MANAGED_BY = 'CORE_MANAGED_BY',
   // Physics
   COLLIDER = 'CORE_COLLIDER',
   BODY_DYNAMIC_VISUAL = 'CORE_BODY_DYNAMIC_VISUAL', // Moving + Has Mesh
@@ -48,6 +50,20 @@ export enum CoreComponentType {
   DEBUG_PHYSICS_WIREFRAME = 'CORE_DEBUG_PHYSICS_WIREFRAME',
   DEBUG_TAG_IS_DEBUG_CAMERA = 'CORE_DEBUG_IS_DEBUG_CAMERA',
 }
+
+/**
+ * Marks an entity as owned by a manager, which creates, drives and deletes it (only created in
+ * code, never from JSON). Tools treat it as read-only: no persisted debug overrides, no editing
+ * or deleting from the debugger, no undo entries.
+ */
+export type ManagedByData = {
+  /** The manager's id, eg. 'SKYBOX'. */
+  manager: string;
+  /** The owner within that manager, eg. the sky box id. */
+  ownerId: string;
+  /** What the entity is for its owner, eg. 'SUN_0'. */
+  role: string;
+};
 
 export type EntityDebugData = {
   name?: string;

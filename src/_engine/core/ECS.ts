@@ -467,6 +467,7 @@ export class ECSWorld {
     this.addComponent(id, CoreComponentType.TRANSFORM, new Transform());
     this.addComponent(id, CoreComponentType.USER_DATA, opts?.userData || {});
     this.addComponent(id, CoreComponentType.DEBUG_DATA, opts?.debugData || {});
+    if (opts?.managedBy) this.addComponent(id, CoreComponentType.MANAGED_BY, { ...opts.managedBy });
     this.setDisabled(id, Boolean(opts?.disabled));
     ECSWorld.notifyEntityCountChange(this);
     return id;

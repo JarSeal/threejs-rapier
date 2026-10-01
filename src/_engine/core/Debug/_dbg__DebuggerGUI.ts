@@ -15,6 +15,7 @@ import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import { _buildDebuggerPane, persistDebuggerTabStateValue } from './_dbg__DebuggerPaneBuilder';
 import { _refreshDebuggerLists } from './_dbg__DebuggerList';
+import { doesSceneExist, getCurrentSceneId, registerOnAllSceneExits } from '../Scene';
 
 export { _debuggerListCMP } from './_dbg__DebuggerList';
 
@@ -26,6 +27,7 @@ let debugSceneLoaderCreated = false;
 let debuggerDisabled = false;
 const DRAWER_OPEN_BODY_CLASS = 'debugDrawerOpen';
 const LS_KEY = 'AEK_debugDrawerState';
+const SCENE_EXIT_HOOK_ID = 'debuggerSceneTabs';
 
 type DrawerState = {
   isOpen: boolean;
@@ -91,7 +93,9 @@ const getTabSortValue = (def: AnyDebuggerTabDef, tabOrder: string[]) => {
   return index === -1 ? Infinity : index;
 };
 
-/** All tabs in menu order: `orderNr ?? tabOrder index`, ties (and unlisted tabs) in registration order. */
+/** All tabs in menu order: `orderNr ?? tabOrder index`, ties (and unlisted tabs) in registration
+ * order, except that scene tabs come after the other tabs of the same value (unlisted scene tabs
+ * go last). */
 const getOrderedTabs = () => {
   const tabOrder = getConfig().debugDrawer?.tabOrder || DEFAULT_DEBUG_DRAWER_TAB_ORDER;
   // Array.sort is stable, so equal values keep the Map's registration order
@@ -100,20 +104,25 @@ const getOrderedTabs = () => {
     const bValue = getTabSortValue(b.def, tabOrder);
     if (aValue < bValue) return -1;
     if (aValue > bValue) return 1;
-    return 0;
+    return Number(Boolean(a.def.sceneId)) - Number(Boolean(b.def.sceneId));
   });
 };
+
+/** Whether the saved open tab is registered (or none is saved). When it isn't, the drawer shows
+ * the first tab as a fallback, and the saved id (and scroll position) is kept for the saved tab. */
+const isSavedTabShown = () => !drawerState.currentTabId || tabs.has(drawerState.currentTabId);
 
 const createTabMenuButtons = () => {
   for (const entry of tabs.values()) {
     const def = entry.def;
     if (entry.button) entry.button.remove();
     const buttonIcon = getSvgIcon(def.icon);
+    const tooltip = def.sceneId ? `${def.title} (scene tab: ${def.sceneId})` : def.title;
     entry.button = CMP({
       id: `debugTabsMenuButton-${def.id}`,
       class: styles.debugDrawerTabButton,
       html: () => `<button>${buttonIcon}</button>`,
-      attr: def.title ? { title: def.title } : undefined,
+      attr: tooltip ? { title: tooltip } : undefined,
       onClick: (_, cmp) => {
         if (cmp.elem.classList.contains(styles.debugDrawerTabButton_selected)) return;
         mountTab(entry);
@@ -336,6 +345,8 @@ export const _createDebugGui = (opts?: DebugGUIOpts) => {
       {
         type: 'scroll',
         fn: () => {
+          // The fallback tab's scroll position is not the saved tab's
+          if (!isSavedTabShown()) return;
           const scrollPos = tabsContainerWrapper?.elem.scrollTop;
           saveDrawerState({ currentScrollPos: scrollPos || 0 });
         },
@@ -395,6 +406,11 @@ export const _toggleDrawer = (openOrClose?: 'OPEN' | 'CLOSE') => {
 };
 
 export const _createDebuggerTab = (def: AnyDebuggerTabDef, opts?: DebugGUIOpts) => {
+  if (def.sceneId && !doesSceneExist(def.sceneId)) {
+    lwarn(
+      `Debugger tab "${def.id}" has a sceneId "${def.sceneId}" that is not a scene, so it is never removed on a scene exit (in createDebuggerTab)`
+    );
+  }
   const existing = tabs.get(def.id);
   if (existing) {
     // Replace (keeps the registration position)
@@ -410,19 +426,57 @@ export const _createDebuggerTab = (def: AnyDebuggerTabDef, opts?: DebugGUIOpts) 
   _createDebugGui(options);
 };
 
+export const _openDebuggerTab = (id: string) => {
+  const entry = tabs.get(id);
+  if (!entry) {
+    lwarn(`Could not find a debugger tab to open with id "${id}" in openDebuggerTab`);
+    return;
+  }
+  saveDrawerState({ currentTabId: id, currentScrollPos: 0 });
+  if (tabsContainerWrapper && mountedTab?.id !== id) {
+    mountTab(entry);
+    tabsContainerWrapper.elem.scrollTop = 0;
+  }
+  _toggleDrawer('OPEN');
+};
+
+/** Removes a tab entry, without rebuilding the drawer. */
+const deleteTabEntry = (entry: TabEntry) => {
+  if (mountedTab?.id === entry.def.id) unmountTab();
+  entry.button?.remove();
+  tabs.delete(entry.def.id);
+};
+
 export const _removeDebuggerTab = (id: string) => {
   const entry = tabs.get(id);
   if (!entry) {
     lwarn(`Could not find a debugger tab to remove with id "${id}" in removeDebuggerTab`);
     return;
   }
-  if (mountedTab?.id === id) unmountTab();
-  entry.button?.remove();
-  tabs.delete(id);
+  deleteTabEntry(entry);
   createTabMenuButtons();
   if (!drawerCMP) return;
   _createDebugGui(guiOpts);
 };
+
+/** Removes the scene tabs of the scene being exited (registered on all scene exits), with one
+ * drawer rebuild. The saved open tab id is kept, so a re-entry shows the tab again. */
+const removeSceneTabs = () => {
+  const sceneId = getCurrentSceneId();
+  if (!sceneId) return;
+  let removed = false;
+  for (const entry of [...tabs.values()]) {
+    if (entry.def.sceneId !== sceneId) continue;
+    deleteTabEntry(entry);
+    removed = true;
+  }
+  if (!removed) return;
+  createTabMenuButtons();
+  if (!drawerCMP) return;
+  _createDebugGui(guiOpts);
+};
+
+registerOnAllSceneExits(SCENE_EXIT_HOOK_ID, removeSceneTabs);
 
 export const _persistDebuggerTabValue = (id: string, key: string) => {
   const entry = tabs.get(id);

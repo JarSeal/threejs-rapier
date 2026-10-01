@@ -1,6 +1,6 @@
 Status: implemented
 Category: Rendering, Multi-viewport, Debugger
-Related: p110_skybox-refactor-and-layered-sky-system.md (epic), p115_debug-environment-ball-viewport.md (env ball as a second viewport left of the gizmo, F7; builds on this plan), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed first: this plan's Debug Tools options were built on its declarative tab API)
+Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic), \_DONE_p115_debug-environment-ball-viewport.md (env ball as a second viewport left of the gizmo, F7; builds on this plan), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed first: this plan's Debug Tools options were built on its declarative tab API)
 
 # Multi-viewport Rendering and Axes Gizmo — Plan
 
@@ -35,7 +35,7 @@ A core engine **viewport** feature: extra rectangles rendered on top of the main
 - **Keyboard.**
   - Debug shortcuts are `DEFAULT_DEBUG_KEY_BINDINGS` entries in `src/_engine/core/Input/DefaultDebugKeyBindings.ts`, with chord reservation and `AppConfig.debugKeys` overrides by id.
   - F1 is the precedent: `KEY_DOWN`, `preventDefault`, and a `repeat`/`isTypingInField` guard.
-  - **F8 is unused.** F7 is reserved for the env ball (p115_debug-environment-ball-viewport.md).
+  - **F8 is unused.** F7 is reserved for the env ball (\_DONE_p115_debug-environment-ball-viewport.md).
 - **Input conflicts.**
   - OrbitControls listens for pointer events on the canvas.
   - `MouseInput.ts` listens on `window` but only acts when `e.target === canvas`. A click is at most 5px of movement (`CLICK_MAX_MOVE_PX`, `:74`).
@@ -256,7 +256,7 @@ Each phase compiles, lints and leaves the app working.
 - Blender's auto-orthographic switch on align, and its zoom, pan, camera and ortho buttons under the gizmo.
 - Camera roll and view-rotation controls. Aligning the main camera from the gizmo (display only by design: the main camera has no controls and belongs to gameplay code).
 - Viewports in the scene/asset JSON schema, and a debugger tab listing viewports (candidate follow-ups).
-- The env ball viewport, which belongs to p115_debug-environment-ball-viewport.md and is built on this API.
+- The env ball viewport, which belongs to \_DONE_p115_debug-environment-ball-viewport.md and is built on this API.
 
 ## Risks / open questions
 

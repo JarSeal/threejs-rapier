@@ -8,10 +8,14 @@ import {
 } from './core/Config';
 import { initAssets } from './core/Assets/AssetsAPI';
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
-import { registerDefaultDebugKeyBindings } from './core/Input/DefaultDebugKeyBindings';
+import {
+  registerDefaultDebugKeyBindings,
+  registerDefaultProdTestKeyBindings,
+} from './core/Input/DefaultDebugKeyBindings';
 import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
 import {
   createPhysicsAPIDebugGUI,
+  registerPhysicsAPIDebugGUI,
   createPhysicsWorld,
   initPhysics as initNewPhysics,
 } from './core/PhysicsAPI';
@@ -19,7 +23,7 @@ import { registerPhysicsDeterminismProbe, registerPhysicsManager } from './core/
 import { createRootScene, getRootScene, registerScenesFromGeneratedData } from './core/Scene';
 import './styles/index.scss';
 import { lerror, llog } from './utils/Logger';
-import { createSkyBoxDebugGUI, registerSkyBoxDebugGUI } from './core/SkyBox';
+import { createSkyBoxDebugGUI, registerSkyBoxDebugGUI } from './core/SkyBox/SkyBox';
 import { createRendererDebugGUI } from './core/Renderer';
 import { loadDraggableWindowStatesFromLS } from './core/UI/DraggableWindow';
 import { createCharactersDebuggerGUI, registerCharacterTools } from './core/Character';
@@ -51,6 +55,7 @@ import { DEBUG_TOASTER_ID, registerDebuggerGUI } from './debug/DebuggerGUI';
 import { initUndoRedo, registerUndoRedoModule } from './debug/UndoRedo';
 import { registerPostFxProfiler } from './debug/PostFXProfiler';
 import { registerAxesGizmoModule } from './debug/AxesGizmo';
+import { registerEnvBallModule } from './debug/EnvBall';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -92,6 +97,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     registerPhysicsManager(ecsWorld);
     await initNewPhysics(true); // doNotCreateWorld — createPhysicsWorld() below owns that + physicsWorldEnabled
+    // Before the first world: the debugger's saved world settings are what worlds are built from
+    if (IS_DEBUG_ENV) await registerPhysicsAPIDebugGUI();
     if (getConfig().physics?.enabled) {
       await createPhysicsWorld();
     }
@@ -105,6 +112,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerRaycastDebugGUI();
       await registerDebuggerGUI();
       await registerAxesGizmoModule();
+      await registerEnvBallModule();
       registerDefaultDebugKeyBindings();
       await registerCharacterTools();
       await registerECSModule();
@@ -118,6 +126,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerDebugToolsModule();
       await registerMainLoopDebugGUI();
       await registerOnScreenTools();
+      if (IS_PROD_TEST_MODE) registerDefaultProdTestKeyBindings();
     }
 
     // Before appStartFn, so it is ready for the first scene load (it needs no renderer yet)
@@ -132,7 +141,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Create debug GUIs and utils
     if (IS_DEBUG_ENV) {
       await createRendererDebugGUI();
-      await createPhysicsAPIDebugGUI();
+      createPhysicsAPIDebugGUI();
       await createAssetsDebugGUI();
       // After appStartFn: measuring needs the renderer
       await registerPostFxProfiler();

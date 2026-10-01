@@ -1,7 +1,9 @@
-Status: draft | feasibility study — not-implemented
+Status: implemented (Phase 0 feasibility study and spike done: go, with adjusted re-bake defaults, see Implementation notes → Phase 0 spike results; the implementation itself is in p111–p115)
 Category: Skybox, Refactor, Rendering
-Blocks: p111_skybox-core-refactor-and-layered-schema.md, p112_procedural-sky-atmosphere-sun-and-env-bake.md, p113_night-sky-and-day-night-cycle.md, p114_space-preset-and-nebula-creator.md, p115_debug-environment-ball-viewport.md
-Related: \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (the env ball viewport builds on it), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will migrate the SkyBox tab and the Debug Tools env ball options)
+Blocks: \_DONE_p111_skybox-core-refactor-and-layered-schema.md, \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md, \_DONE_p113_night-sky-and-day-night-cycle.md, \_DONE_p114_space-preset-and-nebula-creator.md, \_DONE_p115_debug-environment-ball-viewport.md
+Related: \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (the env ball viewport builds on it), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed: the SkyBox and Debug Tools tabs are already on `createDebuggerTab` and the pane builder)
+
+> **Re-verified 2026-09-29** against the tree at `de1024e` (engine 2.1.0 "Morning", three 0.186.1). Line refs below are current. What changed since the first draft is listed under "Implementation notes → Plan refresh".
 
 # SkyBox Refactor and Layered Sky System — Epic Plan
 
@@ -17,13 +19,13 @@ This file holds the **Phase 0 feasibility study** (research is done; one measure
 
 ## Sub-plans
 
-| Plan                                                 | Scope                                                                                                                                  | Blocked by   | Engine bump                |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------ | -------------------------- |
-| `p111_skybox-core-refactor-and-layered-schema.md`    | Clean refactor: layered definition + schema v2 with legacy adapter, base layer, state flow, LS migration, debug tab rewrite, bug fixes | p110 Phase 0 | **major** (see Versioning) |
-| `p112_procedural-sky-atmosphere-sun-and-env-bake.md` | Composite node builder, dynamic env bake, atmosphere, sun, managed ECS lights, clouds, ground                                          | p111         | minor                      |
-| `p113_night-sky-and-day-night-cycle.md`              | Moon (+ light), stars, day-night production API, budgeted re-bakes, transport UI, showcase scene                                       | p112         | minor                      |
-| `p114_space-preset-and-nebula-creator.md`            | Static-layer cube bake, nebula creator, multiple suns, SPACE / DAY_SKY / NIGHT_SKY presets                                             | p112, p113   | minor                      |
-| `p115_debug-environment-ball-viewport.md`            | Env ball viewport left of the axes gizmo, F7, Debug Tools section                                                                      | p080, p111   | minor                      |
+| Plan                                                       | Scope                                                                                                                                  | Blocked by   | Engine bump                           |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------- |
+| `_DONE_p111_skybox-core-refactor-and-layered-schema.md`    | Clean refactor: layered definition + schema v2 with legacy adapter, base layer, state flow, LS migration, debug tab rewrite, bug fixes | p110 Phase 0 | **major** (see Versioning)            |
+| `_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md` | Composite node builder, dynamic env bake, atmosphere, sun, managed ECS lights, clouds, ground                                          | p111         | none (same branch as p111: its 3.0.0) |
+| `_DONE_p113_night-sky-and-day-night-cycle.md`              | Moon (+ light), stars, day-night production API, budgeted re-bakes, transport UI, showcase scene                                       | p112         | minor                                 |
+| `_DONE_p114_space-preset-and-nebula-creator.md`            | Static-layer cube bake, nebula creator, multiple suns, SPACE / DAY_SKY / NIGHT_SKY presets                                             | p112, p113   | minor                                 |
+| `_DONE_p115_debug-environment-ball-viewport.md`            | Env ball viewport left of the axes gizmo, F9, Debug Tools section                                                                      | p080, p111   | none (same branch as p111: its 3.0.0) |
 
 Order: p111 → p112 → p113 → p114. p115 can start as soon as p080 and p111 are both done, and runs in parallel with p112–p114.
 
@@ -56,22 +58,27 @@ Order: p111 → p112 → p113 → p114. p115 can start as soon as p080 and p111 
   - **`extractSkyBoxParamsFromState` uses `|| undefined`** (`:447, :459-461`), so a roughness or rotation of `0` is dropped.
   - **An equirect's `path` is never stored**, so re-applying it loses the path.
   - **The JSON schema and the runtime disagree.** `skyBoxSchema.ts:42-54` uses `type: 'CUBEMAP'`, `fileName: string` and `cubeTextureRotate`. The runtime (`SkyBox.ts:40-52`) uses `'CUBETEXTURE'`, `fileNames: string[]` and `cubeTextRotate`. `Scene.ts:741` just spreads the JSON through, so **a JSON cube skybox is silently recorded as type `CUBEMAP` and never renders.**
-  - **`devTools/gatherAppData.ts:543` never `safeParse`s skybox JSON.** Every other asset type is validated (`:209, :243, :282, …`).
-  - **`gatherAppData.ts:906-925` drops `debugData`**, and flattens `__saveData` into `params`.
-  - `src/app/skyboxes/basicSkybox.skybox.json` carries an invalid `__saveData` override `colorSpace: ""` for `sceneTestECS`.
+  - **`devTools/gatherAppData.ts:573-597` never `safeParse`s skybox JSON.** Every other asset type is validated (`:240, :275, :315, :352, :389, :427, :507, :544, :609`). `SkyBoxAssetSchema` is imported only to emit `.schemas/skyBox.schema.json` (`:136`).
+  - **`gatherAppData.ts:946-966` drops `debugData` and `sceneId` in every build** (it copies only `id`/`type`/`isCurrent`/`params`; the explicit production `delete` at `:954` is redundant), and flattens `__saveData` into `params`.
+  - **Inline skyboxes in scene JSON are never validated.** `sceneSchema.ts:38` types them as `AssetReferenceOrInline` (`record(string, unknown)`, `:11`).
+  - `src/app/skyboxes/basicSkybox.skybox.json` carries a `__saveData` override `colorSpace: ""` for `sceneTestECS`. The empty string is schema-valid (`ColorSpaceSchema` allows `''`) but means "no colour space" at runtime. The entry fails validation for another reason: it lacks `textureId`, which `SkyBoxOverridesSchema` requires (a requirement that makes no sense for a partial override).
 - **Unfinished pieces:**
   - `SKYANDSUN` is only an `lwarn` (`SkyBox.ts:368-372`).
-  - Cube rotation is `@TODO` in both the runtime (`:49`) and the debugger (`_dbg__SkyBox.ts:366-374`).
-  - The env ball is commented-out code (`SkyBox.ts:285-288, 300-304, 350-354`; `_dbg__SkyBox.ts:276-277, 292-293, 351-352, 376-377`). There is also a dead `DebugToolsState.env` block (`debug/DebugToolsManager.ts:8-48`, duplicated in `_dbg__DebugTools.ts:44-51`) that no UI binds.
+  - Cube rotation is `@TODO` in both the runtime (`:49`) and the debugger (`_dbg__SkyBox.ts:332`). The runtime value is a **multiple of π** (`makeRotationY(Math.PI * cubeTextRotate)`, `:333`), not radians.
+  - The env ball is commented-out code (`SkyBox.ts:285-288, 300-304, 350-354`; `_dbg__SkyBox.ts:244-245, 261-262`). There is also a dead `DebugToolsState.env` block (type `debug/DebugToolsManager.ts:8-15`, default `:56-63`, duplicated in `_dbg__DebugTools.ts:48-54`) that no UI binds, but `'env'` is still in the tab's `persistKeys` (`_dbg__DebugTools.ts:117`), so it is still hydrated and written to LS.
+- **Scene-level workarounds already in app code:**
+  - `scene_thirdPersonGym.ts:308` sets `rootScene.environmentIntensity = 0.3` by hand and resets it to 1 on exit (`:315`), because the blue sky over-tints its PBR triplanar materials. This belongs in the skybox definition (`env.environmentIntensity`, p111 Phase 4).
+  - `scene_thirdPersonGym.ts:80-133` (`gymSunFollow`, `APP_LOGIC`, registered at `:227`) moves the gym sun and its target with the player character, snapped to whole shadow-map texels along the light-space X/Y axes. It is the working prototype for `light.shadowFollow` (0.4), keyed to an entity instead of the camera.
 - **Callers.**
   - Engine:
-    - `InitApp.ts:102, :139`: `registerSkyBoxDebugGUI` and `createSkyBoxDebugGUI`.
-    - `Scene.ts:240-245`: texture release in `deleteScene`.
+    - `InitApp.ts:104, :142`: `registerSkyBoxDebugGUI` and `createSkyBoxDebugGUI`.
+    - `Scene.ts:238-245`: texture release in `deleteScene`.
     - `Scene.ts:741`: JSON skyboxes are registered with `isCurrent: false`.
-    - `SceneLoader.ts:499`: `clearSkyBox` on exit.
-    - `SceneLoader.ts:538`: `applySkyBoxForScene` on enter.
+    - `SceneLoader.ts:517`: `clearSkyBox` on exit.
+    - `SceneLoader.ts:562`: `applySkyBoxForScene` on enter. It runs **before** `createNextSceneObject3Ds` (`:563`, which creates the scene's JSON lights at `:342`).
     - `Assets/SceneAssetRelease.ts:51`: `getActiveSkyBoxTexture`.
-  - App: `scene01.ts:29` (cube), `scene01_v2.ts:24, 33, 42, 59` (three equirects and a cube), `scene_thirdPersonGym.ts:82, 92` (two equirects), and `largeWorld` / `testECS` through `basicSkybox.skybox.json`.
+    - `Debug/_dbg__SkyBox.ts:14-27`: most of the legacy exports (see Versioning).
+  - App: `scene01.ts:29` (cube), `scene01_v2.ts:25, 34, 43, 60` (three equirects and a cube; scene id `scene01V2`), `scene_thirdPersonGym.ts:319, 329` (two equirects), and `largeWorld` / `sceneTestECS` through `basicSkybox.skybox.json`.
 - **What already works and must be kept.**
   - `getPMREMTexture` (`SkyBox.ts:132-156`) bakes one PMREM per source texture and PMREM version, reuses the target on re-bake, and disposes it with its source texture.
   - This fixes PMREMNode's own leak, where a `pmremTexture(source)` bakes with a private generator and nothing disposes it.
@@ -122,17 +129,17 @@ Everything below was checked against `node_modules/three` **0.186.1** and the cu
 
 ### 0.3 PMREM re-bake cost and the chosen strategy
 
-| `env.size` | LODs | `render()` calls per bake | GGX texel fetches (≈) | Estimated GPU time                     |
-| ---------- | ---- | ------------------------- | --------------------- | -------------------------------------- |
-| 256        | 11   | 26 (6 faces + 20 GGX)     | ~36 M                 | ~0.5–1.5 ms desktop dGPU, ~2–5 ms iGPU |
-| 128        | 10   | 24                        | ~9 M                  | ~0.2–0.5 ms dGPU, ~0.8–1.5 ms iGPU     |
-| 64         | 9    | 22                        | ~2.3 M                | draw-call bound, ~0.2–0.5 ms           |
+| `env.size` | LODs | `render()` calls per bake (measured) | GGX texel fetches (≈) | Estimated GPU time (first draft)       | Measured GPU time (RX 7900 XT, WebGPU) |
+| ---------- | ---- | ------------------------------------ | --------------------- | -------------------------------------- | -------------------------------------- |
+| 256        | 11   | 27 (1 clear + 6 faces + 20 GGX)      | ~36 M                 | ~0.5–1.5 ms desktop dGPU, ~2–5 ms iGPU | 2.07–2.37 ms                           |
+| 128        | 10   | 25                                   | ~9 M                  | ~0.2–0.5 ms dGPU, ~0.8–1.5 ms iGPU     | 1.94–2.15 ms                           |
+| 64         | 9    | 23                                   | ~2.3 M                | draw-call bound, ~0.2–0.5 ms           | 1.85–1.90 ms                           |
 
 - **Where the counts come from.**
   - `LOD_MIN = 4`, `EXTRA_LODS = 6` and `GGX_SAMPLES = 256` (`PMREMGenerator.js:33-44`).
   - Each GGX step is two draws: filter into the ping-pong target, then copy back (`:620-666`).
   - The fetch counts sum 256 samples over each filtered level. The largest level at size 256 is 384×256 texels.
-- **The times are estimates**, which the Phase 0 spike replaces with measurements.
+- **The first-draft times were estimates. The spike measured them** (Implementation notes → Phase 0 spike results): the cost is **per pass (~80 µs each), not per texel**. The six face renders (the atmosphere shader) take ~0.04 ms; the GGX filter passes take the rest. Size barely changes the cost, so only the bake rate is a real lever.
 
 Options compared:
 
@@ -140,10 +147,11 @@ Options compared:
 - **Amortized bake (faces over frames).** `_sceneToCubeUV` and `_applyPMREM` are private and run back to back, so time-slicing means forking PMREMGenerator. That is fragile across three upgrades. **Rejected.**
 - **Throttled full bakes into a fixed-size target. Chosen.** A bake writes the same target within one frame's command stream, so no double buffering is needed.
   - **Event-driven.** A `dirty` flag is set by any change to layer uniforms or structure, and consumed at most once per frame by `skyBoxSystem`. Debug slider drags therefore cost at most one bake per frame, and zero once released.
-  - **During day-night (p113).** Re-bake only when the sun or moon direction has moved more than `env.updateAngleDeg` (default **1°**) since the last bake, **and** at least `1 / env.maxUpdatesPerSec` has passed (default **4/s**). Do one final bake when the cycle pauses.
-    - With the default 20-minute cycle the sun moves 0.3°/s, which gives one bake every ~3.3 s.
-    - At 100× fast-forward the 4/s cap applies.
-  - **Size.** `env.size` defaults to 256, or **128 when day-night is enabled**. It is fixed for the skybox's lifetime (see 0.2).
+  - **During day-night (p113).** Re-bake only when the sun or moon direction has moved more than `env.updateAngleDeg` (default **1°**) since the last bake, **and** at least `1 / env.maxUpdatesPerSec` has passed (default **1/s**, lowered from the first draft's 4/s by the spike). Do one final bake when the cycle pauses.
+    - With the default 20-minute cycle the sun moves 0.3°/s, which gives one bake (~2 ms) every ~3.3 s.
+    - At 100× fast-forward the 1/s cap applies: one ~2 ms bake per second.
+  - **Size.** `env.size` defaults to 256, or **128 when day-night is enabled**. It is fixed for the skybox's lifetime (see 0.2). The spike showed size buys almost no GPU time on a dGPU; the 128 default for day-night stays only as insurance until an iGPU is measured (p113 Phase 2), since a weak GPU may be fetch-bound where a dGPU is not.
+  - **A size change needs a new env node.** Swapping `.value` of the same `pmremTexture` node to the new target left stale texture bindings on WebGL2 (the spike). A size change is structural: new target, new node, one material rebuild.
   - **Generator.** A dedicated long-lived `PMREMGenerator` is used for dynamic bakes, and disposed on `clearSkyBox`. The existing create-bake-dispose generator in `getPMREMTexture` stays for texture PMREMs. It is right for one-off bakes and wrong for repeated ones, because it would reallocate the working set every time.
   - **Escape hatch.** With `env.dynamic: false`, bakes happen only on activation, on structural changes and on explicit `bakeEnvironment()`. The background and lights still animate; only reflections lag.
 - **How the spike measures it.** It reuses the WebGPU timestamp-query code in `core/Debug/_dbg__PostFXProfiler.ts:243, 341-360` (`backend.trackTimestamp`, `resolveTimestampsAsync(TimestampQuery.RENDER)`), plus `renderer.info.render.calls` and CPU `performance.now()` around `fromScene`. On WebGL2 only CPU times are available.
@@ -152,21 +160,22 @@ Options compared:
 
 What exists today:
 
-- **One entry point.** `createLightEntity(lightProps, entityOpts?, world?)` (`LightManager.ts:156-358`) is the only way to create a light.
+- **One entry point.** `createLightEntity(lightProps, entityOpts?, ecsWorld?)` (`LightManager.ts:156-358`) is the only way to create a light. (The Lights tab's `refreshLightShadows` also makes one, by cloning an existing light.)
   - It creates the light, a separate target entity linked with `TARGET_LINK` (`:293-307`), `TRANSFORM` and `OBJECT3D`.
   - Tags come from the `OBJECT3D` hook (`ECS/ECSCoreSystems.ts:79-95`).
   - Lights are added to the root scene, not the scene group (`:332`).
 - **Movement is TRANSFORM-driven.**
-  - `object3DSyncSystem` (MAIN, `ECSCoreSystems.ts:134, 156-192`) copies TRANSFORM to the Object3D.
-  - `lookAtSystem` (APP_RENDER_SYNC, `:142, 218-255`) aims the light at its target.
+  - `object3DSyncSystem` (MAIN, order 0, `ECSCoreSystems.ts:134, 156-192`) copies TRANSFORM to the Object3D.
+  - `lookAtSystem` (APP_RENDER_SYNC, `:140-142, 218-268`) aims the light at its target.
+  - System order: `addSystem(stage, id, fn, order = 0)` (`ECS.ts:342`) runs higher `order` first, ties in registration order; core plugins register before app plugins. `_dbg__AxesGizmo.ts:129` already uses MAIN with order 1, the slot `skyBoxSystem` needs.
   - The target is moved with `setLightTargetPosition` (`LightManager.ts:381-394`).
 - **No owner concept.**
   - Nothing marks a light as owned or managed.
-  - The Lights tab lists every `TAG_IS_LIGHT` (`Debug/Light/_dbg__LightGUI.ts:1004-1041`), and "toggle all helpers" iterates them all (`:1066-1084`).
+  - The Lights tab lists every `TAG_IS_LIGHT` (`Debug/Light/_dbg__LightGUI.ts:1055-1081`, `getLightsListData`), and "toggle all helpers" iterates them all (`_toggleAllLightHelpers`, `:1127-1167`).
   - LS overrides are merged in at creation by appId (`PropertyLoader.ts:18-51`, called at `LightManager.ts:166`).
-  - The edit window can edit, move, re-create (`refreshLightShadows`, `:1124-1188`, which **swaps `OBJECT3D.value`**) and delete a light (`:879`).
-- **Scene lifetime.** Lights have no `sceneId`. They die with `clearNonPersistent()` (`SceneLoader.ts:518`), which runs after `clearSkyBox()` (`:499`).
-  - `createEntity` ignores `entityOpts.persistent` for the light itself (`ECS.ts:456-469`); only the target gets `PERSISTENT` (`LightManager.ts:294-296`). This is noted here only; skybox lights are non-persistent anyway.
+  - The edit window (`createEditLightContent`, `:426`) can edit, move, re-create (`refreshLightShadows`, `:1186-1250`, which **swaps `OBJECT3D.value`** at `:1225`), save to LS (`saveLightToLS`, `:1287`) and delete a light (`:905-907`).
+- **Scene lifetime.** Lights have no `sceneId`. They die with `clearNonPersistent()` (`SceneLoader.ts:536`), which runs after `clearSkyBox()` (`:517`).
+  - `createEntity` ignores `entityOpts.persistent` for the light itself (`ECS.ts:460-474`); only the target gets `PERSISTENT` (`LightManager.ts:294-296`). So a `persistent: true` light is still wiped by `clearNonPersistent`, and its delete hook then deletes the persistent target too. This is noted here only; skybox lights are non-persistent anyway.
 - **Shadow toggling is expensive.** `castShadow` is part of `LightsNode.customCacheKey` (`src/nodes/lighting/LightsNode.js:156`), which feeds every lit render object's cache key (`NodeManager.js:653`). Toggling it rebuilds the nodes of every lit material. `shadow.intensity` is a uniform (`ShadowNode.js:451`), and `shadow.autoUpdate = false` skips the shadow render (`:792-822`).
 
 Decision (implemented in p112):
@@ -182,7 +191,7 @@ Decision (implemented in p112):
    - The system writes only when a value actually changed.
 4. **Fading below the horizon** ramps `intensity` and `shadow.intensity` down, and sets `shadow.autoUpdate = false` once the light is fully faded. **The system never toggles `castShadow` at runtime.** `castShadow` is a structural light param: changing it from the debug UI costs one rebuild, and gameplay never changes it.
 5. **Shadow frustum follow.** `light.shadowFollow: 'ACTIVE_CAMERA' | 'ORIGIN'` (default `ACTIVE_CAMERA`). A directional shadow camera covers a fixed ortho box (`DirectionalLightShadow.js:16`), so it follows the camera, snapped to shadow-map texels to avoid shimmering.
-6. **Cleanup.** The lights are created when the skybox activates and deleted by `clearSkyBox` / deactivation through `world.deleteEntity`, which also deletes the target (`LightManager.ts:477-500`). A scene switch runs `clearSkyBox` first (`SceneLoader.ts:499`), so nothing leaks into `clearNonPersistent`.
+6. **Cleanup.** The lights are created when the skybox activates and deleted by `clearSkyBox` / deactivation through `world.deleteEntity`, which also deletes the target (`LightManager.ts:477-500`). A scene switch runs `clearSkyBox` first (`SceneLoader.ts:517`), so nothing leaks into `clearNonPersistent`.
 
 ### 0.5 Tone mapping, exposure, Renderer and PostFX
 
@@ -190,13 +199,13 @@ Decision (implemented in p112):
   - PostFX off: the renderer renders into its internal half-float framebuffer and applies tone mapping in the output pass (`Renderer.js:1561`, `:2609-2615`).
   - PostFX on: `PostFX.ts:166` is `pass(rootScene, camera)`, which renders the background and environment. `RenderPipeline` forces `NoToneMapping` for the scene pass, then applies `renderOutput(output, toneMapping, colorSpace)` once (`RenderPipeline.js:75, 138-156, 192-194`).
 - **Bakes are linear HDR.** `currentToneMapping` is `NoToneMapping` for non-output render targets (`Renderer.js:2663-2666`).
-- **The example's "exposure" can't be the renderer's.** The three.js example's exposure slider sets `renderer.toneMappingExposure`. Here the Renderer tab owns that value (`_dbg__Renderer.ts:172-182`), and `src/index.ts:9-21` sets it to 0.7 with ACES.
+- **The example's "exposure" can't be the renderer's.** The three.js example's exposure slider sets `renderer.toneMappingExposure`. Here the Renderer tab owns (and persists) that value (`_dbg__Renderer.ts:132-141`), and `src/index.ts:9-21` sets it to 0.7 with ACES.
   - Hence the second deviation from the brief: **`atmosphere.exposure` is a sky-only radiance multiplier**, applied inside the composite before tone mapping. Its default is chosen so the look matches the example at exposure 0.7.
   - The global exposure stays with the Renderer tab.
 - **Skybox-level intensities.**
   - `env.backgroundIntensity` maps to `scene.backgroundIntensity`.
   - `env.environmentIntensity` maps to `scene.environmentIntensity`.
-  - Nothing in `src/` sets either today.
+  - Nothing in the engine sets either today. The only app use is the gym's manual `environmentIntensity = 0.3` (see Context), which p111 Phase 4 moves into the gym's skybox definitions.
 - **PostFX interactions.**
   - **Bloom.** Sun and moon discs are HDR, so bloom picks them up, which is usually wanted. `sun.discIntensity` is clamped (default ~40, versus the 60,800 peak) so bloom and TAA don't blow out.
   - **AO and depth passes.** They see the background at the far plane, as today.
@@ -213,7 +222,8 @@ Decision (implemented in p112):
 - **JSON.** `*.skybox.json` gets the layered shape (see "Definition shape" below).
   - **Legacy files keep working.** A Zod `z.preprocess` adapter converts the legacy `{ type, params }` shape into the layered shape. It accepts `EQUIRECTANGULAR`, `CUBETEXTURE` and `CUBEMAP`, maps `fileName`/`fileNames` and `cubeTextRotate`/`cubeTextureRotate`, and warns once in dev. The runtime `createSkyBox` uses the same adapter.
   - `gatherAppData.ts` gains the missing `safeParse`, keeps `debugData` in non-production builds, and **deep-merges** `__saveData[sceneId][0]` over the definition instead of spreading it into `params`.
-  - `basicSkybox.skybox.json` is rewritten to the new shape, and its invalid `colorSpace: ""` save entry is dropped.
+  - `SkyBoxOverridesSchema` stops requiring `textureId`.
+  - `basicSkybox.skybox.json` is rewritten to the new shape, and its `colorSpace: ""` save entry (invalid, since it lacks `textureId`) is dropped.
 - **localStorage.**
   - `AEK_debugSkyBoxStates` (a full copy of the flat state per scene and id) is replaced by **`AEK_debugSkyBox`**: `{ [sceneId]: { [skyBoxId]: DeepPartial<SkyBoxDef> } }`, holding only the values changed from the definition, like p071's PostFX settings.
   - A one-time migration moves each saved `equiRectRoughness` / `cubeTextRoughness` that differs from the definition into `env.backgroundRoughness`, then removes the old key. Nothing else in the old key is worth keeping: `isCurrent` and `isDefaultForScene` are session-only by design (`_DONE_p061` §SkyBox).
@@ -237,24 +247,31 @@ Decision (implemented in p112):
 
 **Degrade order**, if the spike misses budget (bake > 2 ms at 128 on the iGPU reference):
 
-1. `env.size` 64, and `maxUpdatesPerSec` 1.
+1. `env.size` 64, and `maxUpdatesPerSec` 1. **Applied in part:** the spike missed the dGPU budget, and `maxUpdatesPerSec` is now 1 by default. Size 64 was **not** applied, because it saves only ~5% (the cost is per pass, not per texel).
 2. `env.dynamic: false` by default: bake on activation and explicit `bakeEnvironment()` only.
 3. Only if the composite background itself fails on a backend (not expected: it is the same NodeMaterial path Background.js already uses), fall back to **mutually exclusive types** (none/background colour, equirectangular, cube texture, sky and sun with an integrated directional light and ambient), keeping the p111 clean refactor.
 
 ## Phase 0 — Spike (go/no-go gate, not committed)
 
-A throwaway, uncommitted spike in a dev scene (`scene01_v2`):
+A throwaway, uncommitted spike, written directly into the `scene01V2` scene (`src/app/scene01_v2.ts` + `scene01_v2.scene.json`):
 
-1. A minimal ported `atmosphere(dir)` Fn as `rootScene.backgroundNode`, with the sun parameters as uniforms.
+The spike was run on 2026-09-29; results are in "Implementation notes → Phase 0 spike results".
+
+1. A minimal ported `atmosphere(dir)` Fn as `rootScene.backgroundNode`, with the sun parameters as uniforms. It replaces the scene's four `createSkyBox` calls for the spike.
 2. `fromScene(envBakeScene, 0, 0.1, 100, { size, renderTarget })` into a reused target, with `rootScene.environmentNode = pmremTexture(target.texture)`.
-3. Keys to re-bake per frame, or at 4/s, while the sun rotates. Log the timestamp-query bake ms, `renderer.info.render.calls` and the pipeline and program counts.
+3. A row of `MeshStandardNodeMaterial` spheres (roughness 0 → 1, plus a metal one), because the scene's own materials are Basic/Phong/Lambert.
+4. A temporary `SkyMesh` for the visual side-by-side (a key swaps the two).
+5. Keys to rotate the sun, switch the bake mode (per frame, 4/s, paused) and switch `size` (256/128/64). Log the timestamp-query bake ms, `renderer.info.render.calls` and the pipeline and program counts.
+6. `"postFx": ["ambientOcclusion"], "postFxEnabled": true` in `scene01_v2.scene.json`, so PostFX on and off are measured in the same scene with the PostFX tab's master toggle.
 
 Matrix:
 
 - backend: WebGPU, WebGL2 (the Renderer tab's `forceWebGL`)
-- PostFX: on, off (`largeWorld` with AO)
+- PostFX: on, off (the PostFX tab's master toggle)
 - `env.size`: 256, 128, 64
 - a desktop dGPU plus an iGPU laptop, if one is available
+
+The measurements are manual, in a real browser: headless WebGPU doesn't render under WSL2, and the `run-aekasha-js` skill's WebGL2 fallback runs on SwiftShader, whose timings mean nothing. The skill is used only to smoke-test the spike for errors.
 
 Pass criteria:
 
@@ -359,7 +376,7 @@ getSunElevation(index?: number): number;                       // radians, < 0 b
     "size": 256,
     "dynamic": true,
     "updateAngleDeg": 1,
-    "maxUpdatesPerSec": 4,
+    "maxUpdatesPerSec": 1,
   },
   "atmosphere": {
     "enabled": true,
@@ -420,8 +437,8 @@ getSunElevation(index?: number): number;                       // radians, < 0 b
 
 - **p111 is breaking for the engine's public API**, which TypeDoc covers for `src/_engine/**`. It removes `defaultRoughness`, `getEnvMapRoughnessBg`, `extractSkyBoxParamsFromState`, `SkyBoxState`, `defaultSkyBoxState`, `LS_KEY_ALL_STATES`, `NO_SKYBOX_ID` (it moves into the debug module), `deleteCurrentSkyBox`, `applySkyBoxForScene` and `getCurSceneSkyBoxSceneId`, and it replaces the `SkyBoxProps` shape.
   - Legacy `createSkyBox` props and legacy JSON stay accepted through the adapter, with a deprecation `lwarn`, so **app code keeps working without edits**.
-  - It is still a **major** bump under CLAUDE.md's rules: 1.x → 2.0.0, with codename **"Morning"** as the next in the sun's path after "Sunrise".
-  - **If p105, which also plans 2.0.0 "Morning", merges in the same release window, fold both into one major bump.** Otherwise, whichever merges second takes 3.0.0 "Zenith". Decide this when p111 merges.
+  - It is still a **major** bump under CLAUDE.md's rules. The engine is already at 2.1.0 "Morning" (p105 took 2.0.0), so p111 takes **3.0.0 "Zenith"**, the next in the sun's path.
+  - The toolkit is untouched by p111 and keeps its version.
 - **p112, p113, p114 and p115** each add features: an engine minor bump each.
 - **App:**
   - p111's call-site migration is an app patch bump.
@@ -441,17 +458,17 @@ getSunElevation(index?: number): number;                       // radians, < 0 b
 
 ## Risks / open questions
 
-| Risk                                                                     | Mitigation                                                                                                                                                                                                                        |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The ported atmosphere drifts from three's `SkyMesh` over upgrades        | The file header records the source file and three version. The upgrade checklist diffs `examples/jsm/objects/SkyMesh.js` and re-runs the visual side-by-side from the spike.                                                      |
-| Dynamic bakes are too slow on iGPUs or mobile                            | Phase 0 gate plus the degrade order; `env.dynamic` / `size` / `maxUpdatesPerSec` are per-skybox settings.                                                                                                                         |
-| A layer toggle recompiles the background, the bake and the lit materials | Only the background and bake materials rebuild; lit materials keep the same `environmentNode` identity (0.2). It is a debug-time or load-time hitch only. Games use uniforms (fades) at runtime.                                  |
-| `castShadow` changes rebuild every lit material                          | It is a structural light param (0.4). Fades use `intensity`, `shadow.intensity` and `shadow.autoUpdate`.                                                                                                                          |
-| Managed lights edited from the Lights tab would fight the skybox         | Managed lights are read-only in the Lights tab (0.4) and skip LS overrides.                                                                                                                                                       |
-| Legacy JSON or props hide mistakes                                       | The adapter warns once per id in dev. p111 Phase 4 migrates every app file, so warnings only show up for third-party code.                                                                                                        |
-| The HDR sun disc interacts with bloom and TAA                            | `discIntensity` clamp. The showcase scene is verified with PostFX bloom on.                                                                                                                                                       |
-| No automated tests, and headless WebGPU doesn't run under WSL2           | Manual matrices per phase (`run-aekasha-js` skill), as in p071 and p080.                                                                                                                                                          |
-| Overlap with p105 (SkyBox tab migration)                                 | If p105 Phase 2 has landed, p111 writes the new tab against the pane builder. If not, p111 uses the legacy API and p105 Phase 4 migrates the new tab. Either way, p111's tab is folder-per-layer so it maps 1:1 to p105 sections. |
+| Risk                                                                     | Mitigation                                                                                                                                                                                       |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The ported atmosphere drifts from three's `SkyMesh` over upgrades        | The file header records the source file and three version. The upgrade checklist diffs `examples/jsm/objects/SkyMesh.js` and re-runs the visual side-by-side from the spike.                     |
+| Dynamic bakes are too slow on iGPUs or mobile                            | Phase 0 gate plus the degrade order; `env.dynamic` / `size` / `maxUpdatesPerSec` are per-skybox settings.                                                                                        |
+| A layer toggle recompiles the background, the bake and the lit materials | Only the background and bake materials rebuild; lit materials keep the same `environmentNode` identity (0.2). It is a debug-time or load-time hitch only. Games use uniforms (fades) at runtime. |
+| `castShadow` changes rebuild every lit material                          | It is a structural light param (0.4). Fades use `intensity`, `shadow.intensity` and `shadow.autoUpdate`.                                                                                         |
+| Managed lights edited from the Lights tab would fight the skybox         | Managed lights are read-only in the Lights tab (0.4) and skip LS overrides.                                                                                                                      |
+| Legacy JSON or props hide mistakes                                       | The adapter warns once per id in dev. p111 Phase 4 migrates every app file, so warnings only show up for third-party code.                                                                       |
+| The HDR sun disc interacts with bloom and TAA                            | `discIntensity` clamp. The showcase scene is verified with PostFX bloom on.                                                                                                                      |
+| No automated tests, and headless WebGPU doesn't run under WSL2           | Manual matrices per phase (`run-aekasha-js` skill), as in p071 and p080.                                                                                                                         |
+| Overlap with p105 (SkyBox tab migration)                                 | **Resolved:** p105 has landed and the current tab is already on `createDebuggerTab` / the pane builder. p111 writes the new folder-per-layer tab on the pane builder directly.                   |
 
 ## Verification (epic level)
 
@@ -465,3 +482,76 @@ getSunElevation(index?: number): number;                       // radians, < 0 b
 ## Implementation notes
 
 (Filled in by the Phase 0 spike and the sub-plans.)
+
+### Phase 0 spike results (2026-09-29)
+
+**Verdict: go.** The layered design (0.1–0.7) holds. The dynamic re-bake budget failed as written, so the re-bake defaults changed (below). The spike (`src/app/scene01_v2.skySpike.ts`, wired into `scene01V2`) was not committed.
+
+Machine: AMD Radeon RX 7900 XT (RDNA-3), Chrome with `#enable-webgpu-developer-features` (unrounded timestamps). No iGPU was available.
+
+**Pass criteria:**
+
+| Criterion                                          | Result                                                                                                                                                                                                                            |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Background matches SkyMesh                         | **Pass.** Pixel-identical to three's `SkyMesh` (clouds off) at sun elevations 2°, 10°, 30° and 60° (headless WebGL2, sampled pixels). In the browser (WebGPU), swapping the two shows no visible change.                          |
+| PBR spheres pick up the sky's colour               | **Pass.** Metal spheres reflect the baked sky (blue zenith, bright horizon), and the rough ones blur it. With the environment off, the smooth metal spheres go black and the rough ones keep only direct light (browser, WebGPU). |
+| No pipeline/material growth over 60 s of re-baking | **Pass.** Over 60 s+ of per-frame bakes: pipelines +1, programs −3, render targets +0, textures +0 (noise). ~20 scene switches settle at the same counts on every visit (WebGPU and WebGL2).                                      |
+| Bake at 128 ≤ 1 ms (dGPU) / ≤ 2 ms (iGPU)          | **Fail on the dGPU:** 1.94 ms (PostFX on), 2.15 ms (PostFX off). iGPU not measured.                                                                                                                                               |
+
+**WebGPU, RX 7900 XT** (per-frame bakes; GPU = sum of the bake's render-pass timestamps):
+
+| PostFX | Size | Bakes  | GPU avg ms | GPU p95 ms | GPU faces ms | GPU filter ms | GPU per pass ms | CPU avg ms | CPU p95 ms | `render()` calls/bake |
+| ------ | ---- | ------ | ---------- | ---------- | ------------ | ------------- | --------------- | ---------- | ---------- | --------------------- |
+| on     | 256  | 4,419  | 2.068      | 2.543      | 0.044        | 2.023         | 0.077           | 0.507      | 0.695      | 27                    |
+| on     | 128  | 10,794 | 1.937      | 2.324      | 0.040        | 1.897         | 0.077           | 0.494      | 0.685      | 25                    |
+| on     | 64   | 3,728  | 1.847      | 2.131      | 0.043        | 1.805         | 0.080           | 0.461      | 0.640      | 23                    |
+| off    | 256  | 3,673  | 2.367      | 2.826      | 0.051        | 2.315         | 0.088           | 0.859      | 1.260      | 27                    |
+| off    | 128  | 7,838  | 2.150      | 2.477      | 0.045        | 2.105         | 0.086           | 0.498      | 0.685      | 25                    |
+| off    | 64   | 9,858  | 1.897      | 2.174      | 0.044        | 1.852         | 0.082           | 0.511      | 0.915      | 23                    |
+
+**WebGL2, same machine** (CPU only; WebGL2 has no usable timer queries for nested renders):
+
+| PostFX | Size | Bakes  | CPU avg ms | CPU p95 ms | `render()` calls/bake |
+| ------ | ---- | ------ | ---------- | ---------- | --------------------- |
+| off    | 256  | 6,663  | 0.296      | 0.375      | 27                    |
+| off    | 128  | 6,669  | 0.278      | 0.360      | 25                    |
+| off    | 64   | 3,329  | 0.258      | 0.330      | 23                    |
+| on     | 256  | 11,369 | 0.296      | 0.375      | 27                    |
+| on     | 128  | 12,450 | 0.277      | 0.355      | 25                    |
+| on     | 64   | 13,021 | 0.278      | 0.410      | 23                    |
+
+**Reading the numbers:**
+
+- **The cost is per pass, not per texel.** ~80 µs per pass at every size, and 95% of it in the GGX filter passes (18–20 dependent passes, each reading the previous one's output). The atmosphere shader (6 faces) costs ~0.04 ms. Size 64 has ~1/16 of the texel work of 256 and saves ~12%.
+- **PostFX on measures faster than off.** The likely cause is the GPU's clock state: the light spike scene leaves the GPU near idle, so each tiny pass runs at low clocks. A game scene that loads the GPU should bake faster, so these numbers are probably pessimistic. This was not cross-checked against whole-frame GPU time (the stats panel in `PER_FRAME` vs `ON_CHANGE` with the sun paused); p113 Phase 2 repeats it.
+- **`render()` calls are the first draft's estimate + 1:** `fromScene` draws a solid-colour clear box when the bake scene has no `background` (`PMREMGenerator.js:466-510`). It costs nothing measurable.
+- **CPU cost** is ~0.5 ms per bake on WebGPU and ~0.3 ms on WebGL2 (encoding 23–27 passes).
+
+**What changed because of it:**
+
+- `env.maxUpdatesPerSec` defaults to **1** (was 4): at 100× fast-forward, one ~2 ms bake per second instead of four. `updateAngleDeg` stays 1° (a bake every ~3.3 s at the default cycle).
+- `env.size` defaults are unchanged (256, or 128 with day-night). The 128 is kept only as iGPU insurance, pending a measurement.
+- Per-frame dynamic bakes stay rejected. Debug slider drags still bake at most once per frame, which is a debug-only cost.
+- A size change creates a new env node (see 0.3); `.value` swaps are only for the same target.
+
+**Other findings:**
+
+- **Stale bindings after a `.value` swap (WebGL2).** Swapping a `pmremTexture` node's `.value` to a new target of a different size, after disposing the old one, gave endless `bindTexture: attempt to use a deleted object` warnings. A new node was clean. Not checked on WebGPU (the spike's `?skySpikeSwap=1` keeps the swap for that). p115 relies on `.value` swaps for the env ball; it must hand over a new node when the target is replaced.
+- **Exposure.** At the renderer's exposure 0.7 with ACES, the sky toward the sun saturates to near-white from ~10° elevation up (SkyMesh does the same). p112 tunes the `atmosphere.exposure` default.
+- **Low sun, looking away from it, is very dark** (zenith radiance ~0.03 at 10°). That is Preetham, not a bug, but it matters for the night-sky floor (`nightSkyColor`, p113).
+- **Ordering.** `setCurrentScene` resets `backgroundNode` after the scene function runs, so anything that installs a background from a scene function must do it at scene enter (the spike used `registerOnSceneEnter`). p111's `setActiveSkyBox` on enter (`SceneLoader.ts:562`) already runs after it.
+- **Unrelated bug found:** `scene01_v2.ts` registers its looper with `createSceneAppLooper(fn)` while the scene is loading, when there is no current scene yet, so the looper is never registered ("Could not find scene with id null") and its wireframe sphere never rotates. The fix is to pass the scene id.
+
+**Still open (not blocking p111):**
+
+- An iGPU measurement, and the whole-frame GPU cross-check. Both move to p113 Phase 2, which measures the day-night path anyway.
+
+### Plan refresh (2026-09-29)
+
+Re-verified against `de1024e` before the spike. The three.js 0.186.1 findings (0.1, 0.2, 0.5, 0.6) all still hold. Changes from the first draft:
+
+- **Versioning.** p105 took 2.0.0 "Morning" (engine now 2.1.0), so p111 is 3.0.0 "Zenith".
+- **p105 has landed.** `_dbg__SkyBox.ts` and `_dbg__DebugTools.ts` are on `createDebuggerTab` and the pane builder. Debug Tools state now loads through `persistKeys` hydration, not a shallow merge.
+- **New facts in Context:** the gym's manual `environmentIntensity`; `gymSunFollow` as the shadow-follow prototype; the π unit of the legacy cube rotate; unvalidated inline skyboxes; `debugData` and `sceneId` dropped in every build; the real reason the `basicSkybox` save entry is invalid; `'env'` still in the Debug Tools `persistKeys`.
+- **Spike location.** Written straight into `scene01V2` (not a separate harness), with AO PostFX added to its scene JSON for the PostFX rows and PBR test spheres, since the scene has no PBR materials.
+- **Line refs** updated throughout (gatherAppData, InitApp, SceneLoader, the Lights GUI, `_dbg__Renderer`, the gym, `ECS.ts`).

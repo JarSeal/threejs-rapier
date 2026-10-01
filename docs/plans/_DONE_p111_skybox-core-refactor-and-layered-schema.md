@@ -1,8 +1,8 @@
-Status: draft | not-implemented
+Status: implemented (Phases 1–4, engine 3.0.0 "Zenith"; see Implementation notes for where it differs from this plan)
 Category: Skybox, Refactor
-Blocked by: p110_skybox-refactor-and-layered-sky-system.md (the Phase 0 spike / go-no-go gate)
-Blocks: p112_procedural-sky-atmosphere-sun-and-env-bake.md, p115_debug-environment-ball-viewport.md
-Related: \_DONE_p105_refactor-debugger-drawer-tab-creation.md (Phase 4 migrates the Skybox tab; see Risks)
+Blocked by: none (p110's Phase 0 spike / go-no-go gate passed on 2026-09-29: go)
+Blocks: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md, \_DONE_p115_debug-environment-ball-viewport.md
+Related: \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed: the Skybox tab is already on `createDebuggerTab` and the pane builder)
 
 # SkyBox Core Refactor and Layered Schema — Plan
 
@@ -48,9 +48,10 @@ See p110 "Context" (everything that is wrong today, with file:line) and Phase 0 
    - The schema wraps it with `z.preprocess`, so legacy JSON validates, and `createSkyBox` calls it for legacy objects.
    - Each id warns **once** in dev: "legacy sky box shape, see p111 migration notes".
 3. **The data pipeline** (`devTools/gatherAppData.ts`):
-   - Run `SkyBoxDefSchema.safeParse` at `:543`, like every other asset type. On failure, report through the Vite overlay path.
-   - At `:906-925`:
-     - keep `debugData` outside production;
+   - Run `SkyBoxDefSchema.safeParse` in the skybox loop (`:573-597`), like every other asset type. On failure, report through the Vite overlay path.
+   - Also validate inline skyboxes in scene JSON (today `AssetReferenceOrInline`, `sceneSchema.ts:11, :38`, lets any object through).
+   - At `:946-966`:
+     - keep `debugData` (and `sceneId`) outside production; today both are dropped in every build;
      - carry `isDefault`;
      - **deep-merge** `__saveData[sceneId][0]` (minus `__meta`) over the definition, instead of spreading it into `params`;
      - drop the `params` flattening.
@@ -79,7 +80,7 @@ See p110 "Context" (everything that is wrong today, with file:line) and Phase 0 
         Activation is **serialized**: a second call during an `await` wins, and the stale one is dropped by a sequence number, instead of racing the way `selectSkyBox`'s `setTimeout` does today.
    - **`createSkyBox(defOrLegacy)`.** Adapter, then register, then activate if the def belongs to the current scene and `isDefault !== false`. If it belongs to the loading scene, it only registers; the scene default is activated by the loader. This keeps today's call semantics.
    - **`clearSkyBox()`.** Nulls the nodes, clears the scene intensities and rotation, resets `active`, and notifies.
-   - **Scene switch.** `SceneLoader.ts:538` calls `activateSceneDefaultSkyBox(sceneId)`, which picks the `isDefault` def or else the first one registered. It replaces `applySkyBoxForScene`. `Scene.ts:741` calls `registerSkyBox` instead of `createSkyBox({ …, isCurrent: false })`.
+   - **Scene switch.** `SceneLoader.ts:562` calls `activateSceneDefaultSkyBox(sceneId)`, which picks the `isDefault` def or else the first one registered. It replaces `applySkyBoxForScene`. `Scene.ts:741` calls `registerSkyBox` instead of `createSkyBox({ …, isCurrent: false })`.
    - **Released textures.** `getSceneSkyBoxTextureIds(sceneId)` reads the registry's `base.textureId`s.
    - **The scene's own background.** `Scene.ts:271-291` still applies scene `backgroundColor` / `backgroundTexture` in `setCurrentScene`. Activating a skybox overrides them, and clearing it restores nothing, as today. `setCurrentScene` also resets `rootScene.environmentNode = null` (a missing reset, `:272-273`).
 6. **The base layer** (`layers/base.ts`) builds two nodes from one PMREM:
@@ -107,8 +108,8 @@ See p110 "Context" (everything that is wrong today, with file:line) and Phase 0 
      - **"Environment"**: background roughness, background intensity, environment intensity, and a "Reset layer" button.
      - **"Copy JSON"**: copies the resolved def, minus meta, to the clipboard. It exists because there is no JSON write-back (p110 Non-goals).
    - **Rebuilds.**
-     - Folders are rebuilt with `{ hidden }`, instead of the dispose-all-blades loop (`_dbg__SkyBox.ts:234-237`).
-     - The tab no longer receives state objects to hold on to (`_dbg__SkyBox.ts:39-42`). It reads `getActiveSkyBox()` and a new debug accessor, `_getSkyBoxRegistry()`.
+     - The tab is already a p105 `createDebuggerTab` with pane-builder folders using `{ hidden }` (`_dbg__SkyBox.ts:156-206, 278-372`). The rewrite keeps that shape: one folder builder per layer returning `DebuggerPaneItem`s.
+     - The tab no longer receives state objects to hold on to (`latestSkyBoxState` / `latestAllSkyBoxStates`, `_dbg__SkyBox.ts:40-43`, fed by `_createSkyBoxDebugGUI` at `:212-229`). It reads `getActiveSkyBox()` and a new debug accessor, `_getSkyBoxRegistry()`, and refreshes with `updateDebuggerTab(TAB_ID, { rebuild })`.
    - **Overrides.**
      - `AEK_debugSkyBox = { [sceneId]: { [skyBoxId]: DeepPartial<SkyBoxDef> } }` stores only the values changed from the definition.
      - A value edited back to the definition is **removed** from the override, and an empty override is deleted.
@@ -124,12 +125,12 @@ See p110 "Context" (everything that is wrong today, with file:line) and Phase 0 
 
      `skybox.param` is the one action later plans use for every new layer, so p112–p114 add bindings without adding action types.
 
-   - `_dbg__SkyBox.ts` keeps `createDebuggerTab({ id: 'skyBoxControls', orderNr: 5 })` and the `cloudSun` icon. If p105 Phase 2 has landed, write the tab against its pane builder instead (see Risks).
+   - `_dbg__SkyBox.ts` keeps `createDebuggerTab({ id: 'skyBoxControls' })` (its place comes from `DEFAULT_DEBUG_DRAWER_TAB_ORDER`, `Config.ts:25`) and the `cloudSun` icon, and is written on the p105 pane builder.
 
 8. **Dead code removed:**
-   - the commented env ball code (`SkyBox.ts:285-288, 300-304, 350-354`; `_dbg__SkyBox.ts:276-277, 292-293, 351-352, 376-377`);
+   - the commented env ball code (`SkyBox.ts:285-288, 300-304, 350-354`; `_dbg__SkyBox.ts:244-245, 261-262`);
    - `SkyBoxState.envBallRoughness`;
-   - `DebugToolsState.env` in both `debug/DebugToolsManager.ts:8-57` and `core/Debug/_dbg__DebugTools.ts:44-51`. p115 adds a fresh top-level `envBall`. The shallow LS merge (`_dbg__DebugTools.ts:96-97`) leaves an old `env` key in saved state as harmless dead data.
+   - `DebugToolsState.env` in both `debug/DebugToolsManager.ts` (type `:8-15`, default `:56-63`) and `core/Debug/_dbg__DebugTools.ts:48-54`, **and `'env'` in its `persistKeys` (`:117`)**. p115 adds a fresh top-level `envBall`. Once `'env'` leaves `persistKeys` it is no longer hydrated; an old `env` key already in saved LS stays as harmless dead data until the tab next writes its state.
 9. **Public API after p111** (`SkyBox/SkyBox.ts`):
 
    - `registerSkyBox`, `createSkyBox`, `setActiveSkyBox`, `getActiveSkyBox`, `updateSkyBox`, `clearSkyBox`;
@@ -212,6 +213,7 @@ Each phase compiles, lints, and leaves every app scene rendering as before, or b
    - Verify: edits persist per scene and id. Reverting a value to its definition removes it from LS. Undo and redo work for param, reset and select, including across the "[No skybox]" choice. The old key is migrated, then gone.
 4. **App + JSON migration, shim removal, docs, version.**
    - Migrate the three app files and `basicSkybox.skybox.json` to the new shape. Delete `core/SkyBox.ts`, the shim, and any remaining legacy imports.
+   - The gym's manual `rootScene.environmentIntensity = 0.3` and its exit reset (`scene_thirdPersonGym.ts:308, 315`) become `env.environmentIntensity: 0.3` on both gym skybox definitions, and the manual lines are deleted.
    - Update CLAUDE.md and bump the version.
    - Verify: no legacy warnings in the console for app scenes. `grep -rn "CUBETEXTURE\|cubeTextRotate\|equiRect\|extractSkyBoxParamsFromState" src/` returns only `legacySkyBox.ts`.
 
@@ -224,14 +226,14 @@ Each phase compiles, lints, and leaves every app scene rendering as before, or b
 
 ## Risks / open questions
 
-| Risk                                                                                                                      | Mitigation                                                                                                                                                                                               |
-| ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The environment-sampling fix makes existing scenes look different: materials become more reflective, rough materials blur | This is a correctness fix. Call it out in the PR with before and after screenshots. App scenes may need a lower `env.environmentIntensity`; tune it in Phase 4.                                          |
-| Cube flip for the environment through context chaining                                                                    | Phase 2 validates it; the fallback is a one-time corrected cube bake (DD6).                                                                                                                              |
-| `rotate` changes unit (a multiple of π → radians)                                                                         | The adapter converts; migration notes.                                                                                                                                                                   |
-| p105 Phase 4 rewrites the same tab                                                                                        | If p105's pane builder exists, write the new tab on it. Otherwise use the legacy API with one folder per layer builder, which maps 1:1 onto p105 sections. Update p105's Phase 4 bullet when this lands. |
-| Deep-merged `__saveData` could change generated data for other scenes                                                     | Only `basicSkybox` has save data today. Diff `generatedAppData.json` in Phase 1.                                                                                                                         |
-| Breaking-API bump                                                                                                         | p110 Versioning: major, possibly folded into p105's 2.0.0.                                                                                                                                               |
+| Risk                                                                                                                      | Mitigation                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The environment-sampling fix makes existing scenes look different: materials become more reflective, rough materials blur | This is a correctness fix. Call it out in the PR with before and after screenshots. App scenes may need a lower `env.environmentIntensity`; tune it in Phase 4. |
+| Cube flip for the environment through context chaining                                                                    | Phase 2 validates it; the fallback is a one-time corrected cube bake (DD6).                                                                                     |
+| `rotate` changes unit (a multiple of π → radians)                                                                         | The adapter converts; migration notes.                                                                                                                          |
+| p105 Phase 4 rewrites the same tab                                                                                        | Resolved: p105 has landed and the tab is already on the pane builder. The rewrite builds on it directly.                                                        |
+| Deep-merged `__saveData` could change generated data for other scenes                                                     | Only `basicSkybox` has save data today. Diff `generatedAppData.json` in Phase 1.                                                                                |
+| Breaking-API bump                                                                                                         | p110 Versioning: engine 2.1.0 → 3.0.0 "Zenith".                                                                                                                 |
 
 ## Verification
 
@@ -245,3 +247,19 @@ Each phase compiles, lints, and leaves every app scene rendering as before, or b
 - Scene switching ten times leaves `renderer.info.memory.textures` stable, and the displayed skybox texture is never released.
 - WebGPU and WebGL2 (`forceWebGL`), with PostFX on and off, on `largeWorld`.
 - `?isProdTest=true` and a production build: no LS reads for skyboxes, and no `_dbg__SkyBox*` in the main chunk (`dist-stats/bundle-stats.html`).
+
+## Implementation notes
+
+Where the implementation differs from the plan above (2026-09-29). The code and `.claude/CLAUDE.md` ("Sky box") are the current state; these are the reasons.
+
+- **Orientation (DD6).** The old background looked up `normalWorld`, which three negates on back faces (`negateOnBackSide`), so on the back-side background box it sampled the antipodal direction. It made up for it with a forced `texture.flipY = false` (equirect) and an x mirror (cube), and the app's `map02` cube lists its ±y faces swapped to match. The plan assumed `normalWorld` = `normalWorldGeometry`.
+  - Now both nodes use three's standard orientation: the background looks up `normalWorldGeometry`, and nothing forces `flipY` (the old force was also a no-op for worker-loaded textures, so the old look depended on the load target).
+  - The old looks are exact half turns in the standard orientation: legacy equirects convert to `rotate: π`, legacy cubes to `flipY: true`. The app files keep that look (the user's call).
+  - A cube's `flipY` is a half turn about X (`(x, -y, -z)`), not the old `(-x, ±y, z)`. There is no x mirror any more: three's `CubeTextureNode` already handles cube handedness. A legacy `flipY: true` (a z mirror, which no rotation gives) becomes `flipY: false`.
+  - The cube environment's flip goes through context chaining (`RemappedEnvironmentNode` in `layers/base.ts`), validated with a mirror sphere. The corrected-cube-bake fallback wasn't needed.
+- **Rotation.** PMREMNode applies `scene.environmentRotation` only to materials whose `envMap` is `null`; the background box's plain `NodeMaterial` has no `envMap` property, so it always gets the identity. The background applies the same transposed rotation itself (a `mat3` uniform, after the flip). `backgroundRotation` never reaches our node (it has an explicit UV).
+- **Scene default (DD5).** Every legacy `createSkyBox` call used to take over `isCurrent`, so the last one created was the default. To keep that, `createSkyBox` defaults `isDefault` to true, and the scene default is the last one registered with `isDefault: true`, else the first. JSON definitions (no `isDefault`) still get "first".
+- **Schema (DD1, DD3).** Zod 4 has no `.deepPartial()`: the overrides schema is written out, with a flat `base` override that can't change `type`. The runtime type comes from the inner `SkyBoxDefSchema` (the preprocessed `SkyBoxAssetSchema` has an `unknown` input type). `id` is required; the gatherer fills it from the file name first. `sceneId` is code-only, and JSON drops it. Flat legacy save entries convert too (`fromLegacySkyBoxOverrides`).
+- **Gym (Phase 4 item).** Moved in Phase 2: activation owns `scene.environmentIntensity`, so the gym's manual 0.3 would have been overwritten on enter.
+- **Debug tab (DD7).** "Reset layer" is on both folders; a `COLOR` base gets a colour binding; edited numbers are rounded to 6 decimals (Tweakpane's step snapping leaves float noise). The LS migration runs when the debug module is imported (before the first activation), so code-created sky boxes, not registered yet, are compared to the default (0) only.
+- **Verification.** Done on WebGL2 (SwiftShader; headless WebGPU doesn't render on WSL2), against the pre-Phase-2 build. The final grep also matches the app's `equiRect*Id` texture ids and the LS migration's old field names; those are expected.

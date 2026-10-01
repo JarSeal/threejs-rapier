@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ManagedByData } from '../core/ECS/ECSRegistry';
 
 export const Vector3Schema = z.object({
   x: z.number(),
@@ -88,7 +89,11 @@ export const CoreEntityOptsSchema = z.object({
   ecsFrustumCullingEnabled: z.boolean().optional(),
 });
 
-export type CoreEntityOpts = z.infer<typeof CoreEntityOptsSchema>;
+export type CoreEntityOpts = z.infer<typeof CoreEntityOptsSchema> & {
+  /** Code only (not in the JSON schema): the manager that owns the entity (a MANAGED_BY
+   * component). */
+  managedBy?: ManagedByData;
+};
 
 export const ShadowQualitySchema = z.enum(['LOW', 'MEDIUM', 'HIGH', 'ULTRA']);
 

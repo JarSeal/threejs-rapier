@@ -9,11 +9,11 @@ import { LightProps } from './LightManager';
 import type { ImportAssetParams } from './Import/ImportTypes';
 import {
   clearSkyBox,
-  createSkyBox,
   getActiveSkyBoxTexture,
   getSceneSkyBoxTextureIds,
-  SkyBoxProps,
-} from './SkyBox';
+  registerSkyBox,
+} from './SkyBox/SkyBox';
+import type { SkyBoxDef } from './SkyBox/SkyBoxTypes';
 import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
@@ -47,7 +47,7 @@ export type SceneData = {
   materials?: (MatProps | string)[];
   meshes?: ({ props: MeshProps; entityOpts?: CoreEntityOpts } | string)[];
   importedAssets?: (ImportAssetParams | string)[];
-  skyboxes?: (SkyBoxProps | string)[];
+  skyboxes?: (SkyBoxDef | string)[];
   /** Ordered PostFX pass chain (array order is execution order). */
   postFx?: (PostFxPassProps | string)[];
   postFxEnabled?: boolean;
@@ -271,6 +271,7 @@ export const setCurrentScene = (id: string | null) => {
   if (nextScene) {
     rootScene.background = null;
     rootScene.backgroundNode = null;
+    rootScene.environmentNode = null;
     if (currentSceneOpts?.backgroundColor) {
       rootScene.background = new THREE.Color(currentSceneOpts.backgroundColor);
     }
@@ -738,7 +739,7 @@ export const registerScenesFromGeneratedData = async () => {
       for (let j = 0; j < sceneData.skyboxes.length; j++) {
         const props = sceneData.skyboxes[j];
         if (typeof props === 'string') continue;
-        await createSkyBox({ ...props, sceneId, isCurrent: false });
+        registerSkyBox(props, sceneId);
       }
     }
   }

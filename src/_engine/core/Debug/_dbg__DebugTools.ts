@@ -34,7 +34,7 @@ import { type SceneAsset } from '../../schemas/sceneSchema';
 import { DEBUG_CAMERA_ID, DebugToolsState } from '../../debug/DebugToolsManager';
 import { getECSWorld, getEntityIdByAppId } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
-import type { DebugCamLSProps } from '../CameraManager';
+import { isDebugCameraActive, type DebugCamLSProps } from '../CameraManager';
 import { getDebugCamProps, saveDebugCameraToLS } from './Camera/_dbg__CameraGUI';
 import { DEFAULT_DEBUG_CAM_PROPS, setDebugCameraPanelRefresh } from './Camera/_dbg__DebugCamera';
 import { getUndoRedoSettings, setUndoRedoSettings } from '../../debug/UndoRedo';
@@ -43,6 +43,12 @@ import {
   setAxesGizmoInMainCamera,
   setAxesGizmoVisible,
 } from '../../debug/AxesGizmo';
+import {
+  initEnvBall,
+  setEnvBallInMainCamera,
+  setEnvBallRoughness,
+  setEnvBallVisible,
+} from '../../debug/EnvBall';
 
 const LS_KEY = 'AEK_debugTools';
 const TAB_ID = 'debugToolsControls';
@@ -51,13 +57,6 @@ let debugCamPanelProxy: DebugCamLSProps | null = null;
 
 let firstDebugToolsStateLoaded = false;
 let debugToolsState: DebugToolsState = {
-  env: {
-    envBallFolderExpanded: false,
-    envBallVisible: false,
-    separateBallValues: false,
-    ballRoughness: 0,
-    ballDefaultRoughness: 0,
-  },
   scenesListing: {
     scenesFolderExpanded: false,
     useDebugStartScene: false,
@@ -79,6 +78,11 @@ let debugToolsState: DebugToolsState = {
   axesGizmo: {
     show: true,
     showInMainCamera: false,
+  },
+  envBall: {
+    show: true,
+    showInMainCamera: false,
+    roughness: 0,
   },
   helpers: {
     helpersFolderExpanded: false,
@@ -121,7 +125,7 @@ const createDebugToolsDebugGUI = () => {
     state: debugToolsState,
     // The nested objects are persisted whole (the same LS shape as before). The *FolderExpanded
     // fields in them are no longer used: folder states are in `${LS_KEY}UI`.
-    persistKeys: ['scenesListing', 'onScreenTools', 'helpers', 'env', 'axesGizmo'],
+    persistKeys: ['scenesListing', 'onScreenTools', 'helpers', 'axesGizmo', 'envBall'],
     // Live-refresh the Debug Camera folder from the viewport (dragging the debug camera with
     // OrbitControls): debugCameraSystem calls this only on frames where OrbitControls reported
     // a change. Unregistered on unmount, so a stale callback never runs against a disposed pane.
@@ -138,6 +142,7 @@ const createDebugToolsDebugGUI = () => {
   toggleGridHelperVisibility(debugToolsState.helpers.showGridHelper);
   togglePolarGridHelperVisibility(debugToolsState.helpers.showPolarGridHelper);
   initAxesGizmo(debugToolsState.axesGizmo);
+  initEnvBall(debugToolsState.envBall);
 };
 
 const ON_SCREEN_TOOLS_DISABLED_BODY_CLASS = 'aekOnScreenToolsDisabled';
@@ -188,14 +193,57 @@ export const _toggleOnScreenToolsDisabled = (keyHint?: string) => {
   }
 };
 
-/** The axes gizmo shortcut (F8): flips the "Show axes gizmo" option. */
-export const _toggleAxesGizmo = () => {
-  const axesGizmo = debugToolsState.axesGizmo;
-  axesGizmo.show = !axesGizmo.show;
-  setAxesGizmoVisible(axesGizmo.show);
-  persistDebuggerTabValue(TAB_ID, 'axesGizmo');
-  updateDebuggerTab(TAB_ID);
+type GizmoKey = 'axesGizmo' | 'envBall';
+
+const GIZMO_SHORTCUTS: Record<
+  GizmoKey,
+  { name: string; setVisible: (show: boolean) => void; setInMainCamera: (show: boolean) => void }
+> = {
+  axesGizmo: {
+    name: 'Axes gizmo',
+    setVisible: setAxesGizmoVisible,
+    setInMainCamera: setAxesGizmoInMainCamera,
+  },
+  envBall: {
+    name: 'Environment ball',
+    setVisible: setEnvBallVisible,
+    setInMainCamera: setEnvBallInMainCamera,
+  },
 };
+
+/** A gizmo shortcut: hides a shown gizmo, and shows a hidden one. With the main camera active,
+ * showing it also turns on its "in main camera" option, so it appears right away. */
+const toggleGizmoFromShortcut = (key: GizmoKey) => {
+  const opts = debugToolsState[key];
+  const { name, setVisible, setInMainCamera } = GIZMO_SHORTCUTS[key];
+  const isMainCamera = !isDebugCameraActive();
+  const isShown = opts.show && (!isMainCamera || opts.showInMainCamera);
+  if (isShown) {
+    opts.show = false;
+  } else {
+    opts.show = true;
+    if (isMainCamera) opts.showInMainCamera = true;
+  }
+  setVisible(opts.show);
+  setInMainCamera(opts.showInMainCamera);
+  persistDebuggerTabValue(TAB_ID, key);
+  updateDebuggerTab(TAB_ID);
+
+  let title = `${name} hidden`;
+  if (opts.show && isMainCamera) title = `${name} visible and showing in main camera`;
+  else if (opts.show) title = `${name} visible`;
+  try {
+    addToast({ toasterId: DEBUG_TOASTER_ID, title });
+  } catch {
+    // No debug toaster yet (it's created at the end of InitEngine) — the toggle itself still ran
+  }
+};
+
+/** The axes gizmo shortcut (F10), see toggleGizmoFromShortcut. */
+export const _toggleAxesGizmo = () => toggleGizmoFromShortcut('axesGizmo');
+
+/** The environment ball shortcut (F9), see toggleGizmoFromShortcut. */
+export const _toggleEnvBall = () => toggleGizmoFromShortcut('envBall');
 
 /**
  * Getter for the debugToolsState object
@@ -234,7 +282,7 @@ const loadDebugToolsStateFromLS = () => {
 };
 
 const getSceneStarterDropDownOptions = () => {
-  const scenesObj = getGeneratedAppData().scenes as { [id: string]: SceneAsset };
+  const scenesObj = getGeneratedAppData().scenes as unknown as { [id: string]: SceneAsset };
   const sceneIds = Object.keys(scenesObj);
   const scenes = sceneIds.map((id) => ({ id, name: scenesObj[id].name }));
   return [
@@ -341,7 +389,7 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) return [];
 
-  const scenesObj = getGeneratedAppData().scenes as { [id: string]: SceneAsset };
+  const scenesObj = getGeneratedAppData().scenes as unknown as { [id: string]: SceneAsset };
   const sceneIds = Object.keys(scenesObj);
   const scenes = sceneIds.map((id) => ({ id, name: scenesObj[id].name }));
   const sceneProxy = { sceneId: currentSceneId };
@@ -516,8 +564,27 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
       expanded: false,
       content: [
         {
+          key: 'envBall.show',
+          label: 'Show environment ball [F9]',
+          onChange: (value) => setEnvBallVisible(Boolean(value)),
+        },
+        {
+          key: 'envBall.showInMainCamera',
+          label: 'Show env ball in main camera',
+          onChange: (value) => setEnvBallInMainCamera(Boolean(value)),
+        },
+        {
+          key: 'envBall.roughness',
+          label: 'Env ball roughness',
+          min: 0,
+          max: 1,
+          step: 0.01,
+          onChange: (value) => setEnvBallRoughness(Number(value)),
+        },
+        { type: 'separator' },
+        {
           key: 'axesGizmo.show',
-          label: 'Show axes gizmo [F8]',
+          label: 'Show axes gizmo [F10]',
           onChange: (value) => setAxesGizmoVisible(Boolean(value)),
         },
         {

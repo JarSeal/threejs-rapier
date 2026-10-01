@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../.schemas/skyBox.schema.json",
+  "id": "dayNight",
+  "preset": "DAY_NIGHT",
+  "dayNight": { "timeOfDay": 17.5, "cycleDurationSec": 300, "dayOfYear": 100 },
+  "debugData": {
+    "name": "Day-night (showcase)",
+    "description": "The DAY_NIGHT preset (every p113 layer: atmosphere, sun and light, moon and light, stars and Milky Way, clouds and ground) on a 5-minute day."
+  }
+}

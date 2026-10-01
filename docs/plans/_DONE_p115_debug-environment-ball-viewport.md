@@ -1,7 +1,7 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Debugger, Rendering, Multi-viewport
-Blocked by: p111_skybox-core-refactor-and-layered-schema.md (`getActiveEnvironmentTexture`, `onSkyBoxChange`)
-Related: p110_skybox-refactor-and-layered-sky-system.md (epic), \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (implemented: Viewports API + axes gizmo), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will migrate the Debug Tools options this plan adds)
+Blocked by: none (\_DONE_p111_skybox-core-refactor-and-layered-schema.md landed on 2026-09-29: `getActiveEnvironmentTexture`, `onSkyBoxChange`)
+Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic), \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md (implemented: Viewports API + axes gizmo), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (landed: the Debug Tools tab is a `createDebuggerTab` with pane-builder bindings and `persistKeys`)
 
 # Debug Environment Ball Viewport — Plan
 
@@ -22,11 +22,11 @@ It replaces the env ball that the pre-ECS code once had and that now only surviv
   - Corner stacks: `anchor: 'TOP_RIGHT'` plus `order`, where **order 0 is the rightmost**. The gizmo uses `order: 0` (p080 DD4, DD8).
   - A single SCSS rule shifts the whole top-right stack when the drawer opens (`.debugDrawerOpen .aekViewportStack_TOP_RIGHT`, p080 DD9). **Any viewport in that stack moves with the drawer for free.**
   - `toneMapping: 'RENDERER'` matches the main view (p080 DD3).
-  - The visibility rule and the Debug Tools state pattern: a new **top-level** key, because the LS load is a shallow merge (`_dbg__DebugTools.ts:96-97`; p080 DD12).
+  - The visibility rule and the Debug Tools state pattern: a new **top-level** key, because `persistKeys` persists and hydrates top-level keys whole (`_dbg__DebugTools.ts:117`; p080 DD12).
 - **p111 provides the environment.** `getActiveEnvironmentTexture()` returns the PMREM texture in use: a texture PMREM from `getPMREMTexture`, or the p112 bake target. `onSkyBoxChange(id, fn)` fires on activation, clear and structural rebuilds.
 - **PMREM facts (three r186).**
   - `pmremTexture(tex, uv, level)` samples a CubeUV texture directly (`PMREMNode.js:299-301`).
-  - Setting `.value` swaps the texture without a material rebuild (`PMREMNode.js:256-260`).
+  - Setting `.value` swaps the texture without a material rebuild (`PMREMNode.js:256-260`). **Caveat from the p110 spike:** swapping to a _different-size_ target after the old one was disposed left stale texture bindings on WebGL2 (`bindTexture: attempt to use a deleted object`); a new node was clean.
   - `reflectVector` is the world-space reflection (`accessors/ReflectVector.js:28`).
   - `materialEnvRotation` uses `material.envMapRotation` when the scene has no environment (`MaterialProperties.js:35-48`). That is the case for the private ball scene.
 - **Debug Tools tab** (`core/Debug/_dbg__DebugTools.ts`).
@@ -56,6 +56,7 @@ It replaces the env ball that the pre-ECS code once had and that now only surviv
    - `material.envMapRotation` is copied from the active skybox's `environmentRotation` on every `onSkyBoxChange`, so a rotated skybox reflects correctly.
 3. **Environment swap.**
    - On `onSkyBoxChange`, set `pmremNode.value = getActiveEnvironmentTexture()`. There is no rebuild, because PMREMNode resets its internal PMREM on `value` set.
+     - If the texture's size changed (another skybox, or an `env.size` change), build a new `pmremTexture` node for the ball's material instead (see the caveat above). Verify on WebGL2.
    - With no environment (no skybox, or a COLOR base without layers), the viewport is disabled.
    - A p112 dynamic re-bake writes into the same target, so the ball updates live with no extra wiring.
 4. **Visibility rule**, evaluated in `onBeforeRender` (a per-frame boolean compare; the slot changes only on transitions):
@@ -63,19 +64,18 @@ It replaces the env ball that the pre-ECS code once had and that now only surviv
    - When not visible, the viewport is disabled and costs no GPU time.
 5. **Debug Tools state, options and shortcut.**
 
-   - **State:** a new top-level `envBall: { show: boolean; showInMainCamera: boolean; roughness: number }`, default `{ show: true, showInMainCamera: false, roughness: 0 }`. It goes in the `DebugToolsState` type and in both default objects (`debug/DebugToolsManager.ts`, `core/Debug/_dbg__DebugTools.ts`). p111 has already removed the dead `env` block.
-   - **Bindings.** A separator plus three bindings **after "Axes helper size"** and before the grid-helper separator, forming the section directly under the axes section:
+   - **State:** a new top-level `envBall: { show: boolean; showInMainCamera: boolean; roughness: number }`, default `{ show: true, showInMainCamera: false, roughness: 0 }`. It goes in the `DebugToolsState` type, in both default objects (`debug/DebugToolsManager.ts`, `core/Debug/_dbg__DebugTools.ts`) and in the tab's `persistKeys` (`_dbg__DebugTools.ts:117`, next to `axesGizmo`). p111 has already removed the dead `env` block.
+   - **Bindings.** In the "Helpers" folder, a separator plus three pane-builder bindings **after "Axes helper size"** and before the grid-helper separator, forming the section directly under the axes section:
 
      - "Show environment ball [F7]" (boolean)
      - "Show env ball in main camera" (boolean)
      - "Env ball roughness" (slider 0–1, step 0.01)
 
-     Each `on('change')` calls the matching `EnvBall.ts` setter and `lsSetItem(LS_KEY, debugToolsState)`, like its neighbours. They are cosmetic, so there is no undo (per `_DONE_p061`).
+     They use one-level `key` paths (`'envBall.show'`, …), like the `axesGizmo.*` bindings (`_dbg__DebugTools.ts:428-436`). Each `onChange` calls the matching `EnvBall.ts` setter; the tab persists the value itself. They are cosmetic, so there is no undo (per `_DONE_p061`).
 
    - **Shortcut.** A `DEFAULT_DEBUG_KEY_BINDINGS` entry: `id: 'sc-toggle-env-ball'`, `KEY_DOWN`, `chord: { key: 'F7' }`, `preventDefault`, and the same `repeat` / `isTypingInField` guard as F1 and F8.
-     - It flips `envBall.show`, saves to LS, and refreshes the Debug Tools pane if it exists (the same refresh approach as p080's F8).
+     - It flips `envBall.show`, then calls `persistDebuggerTabValue(TAB_ID, 'envBall')` and `updateDebuggerTab(TAB_ID)`, exactly like `_toggleAxesGizmo` (`_dbg__DebugTools.ts:137-143`).
      - It can be rebound through `AppConfig.debugKeys`.
-   - **p105.** When p105 lands, these three options migrate with the rest of the tab (`updateDebuggerTab` replaces the manual refresh). p105's Phase 4 DebugTools bullet lists them.
 
 6. **Drawer offset.** Nothing new is needed: p080's `.aekViewportStack_TOP_RIGHT` rule moves the stack, including the ball, and its breakpoint rules (hidden below `$breakpointSmall` while the drawer is open) apply to the whole stack.
 
@@ -129,3 +129,23 @@ Each phase compiles, lints and leaves the app working.
 - `yarn lint` and `yarn build` after each phase.
 - `yarn dev`, `?isDebug=true`, driven with the `run-aekasha-js` skill: `scene01_v2` with all its skyboxes, and the p113 showcase scene if present. Run it on WebGPU and WebGL2, with PostFX on and off, at pixel ratios 1 and 2.
 - Production build (`dist-stats/bundle-stats.html`): `_dbg__EnvBall` is not in the main chunk.
+
+## Implementation notes
+
+What changed from the plan, and why (the code had moved since it was written):
+
+- **Visibility runs in a MAIN-stage system** (`envBallSystem`), not in `onBeforeRender`: Viewports only call that hook while a viewport is enabled, so a disabled ball could never turn itself back on. Same pattern as the axes gizmo.
+- **`onSkyBoxChange(listener)`** takes only a listener (no id).
+- **A new `pmremTexture` node per texture**, never a `.value` swap. The env bake's own node isn't re-pointed either (WebGL2 stale bindings), and on the direct path every texture has its own PMREM target. A re-bake writes into the same target, so day-night updates need no wiring.
+- **A direct-path cube's `flipY` isn't in its PMREM**: the root scene's environment is a `RemappedEnvironmentNode(…, turnUpsideDown)` (`layers/base.ts`). The ball applies the same flip to its lookup (`isBaseFlipY` and `turnUpsideDown` are exported for it); the composite path bakes the flip in.
+- **The drawer-open hide rule** is per slot (`.axesGizmoSlot`, 650px), not per stack, so the ball has its own (730px: the gizmo's plus the ball and the gap).
+- **No tooltips**: the pane builder has none.
+- **Versioning**: no bump. The branch already takes the engine 2.2.0 → 3.0.0, and a branch bumps once; the ball is in the 3.0.0 CHANGELOG entry.
+
+Added after the plan (same branch):
+
+- **Keys moved and added**: F9 env ball, F10 axes gizmo (was F8), F5 play in prod test mode, F6 main loop, F7 app loop pause. With the main camera active, a gizmo key on a hidden gizmo also turns on its "in main camera" option. The gizmo and loop keys show toasts (the loop toasts with a play or pause icon); undo/redo toasts got icons too.
+- **Production test mode keys**: F5 stops it, F6 and F7 toggle the loops (no toasts). They use the new `yieldToOtherBindings` key binding option, so an app binding of the same key takes over.
+- **Helpers folder order**: the env ball section comes before the axes section.
+
+Verified on WebGL2 (SwiftShader, WSL2 headless): placement and centring, hidden in the main camera, the cube sky box matching a roughness-0 PBR sphere, roughness blur, F-keys and toasts, the drawer slide and both narrow-width rules, the prod test keys and an app binding taking F7 over. **Not checked yet:** WebGPU, sky box switching (including "[No skybox]"), a rotated sky box, PostFX on/off, pixel ratio 2, the TOP toggler position, a live day-night re-bake, whether Chrome lets the page take F6/F10, and the production bundle split.

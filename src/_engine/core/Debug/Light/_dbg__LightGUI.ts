@@ -6,6 +6,7 @@ import { CMP } from '../../../utils/CMP';
 import {
   createDebuggerTab,
   debuggerListCMP,
+  openDebuggerTab,
   updateDebuggerTab,
   type DebuggerListItem,
 } from '../../../debug/DebuggerGUI';
@@ -43,6 +44,7 @@ import {
   _recordUndoRedoAction,
   _registerUndoRedoActionHandler,
 } from '../_dbg__UndoRedo';
+import { _getEntityManagerInfo } from '../_dbg__ManagedEntities';
 
 export interface LightEntityDebugState {
   enabled: boolean;
@@ -88,6 +90,10 @@ export const EDIT_LIGHT_WIN_ID = 'lightEditorWindow';
 const LS_LIGHTS_KEY = 'AEK_debugLights';
 const LIGHTS_TAB_ID = 'lightsControls';
 export let globalHelpersVisible = false;
+
+/** Managed lights' helper choices, session only (by app id): nothing about a managed light goes
+ * to LS. Without one, a managed light follows the global helpers toggle. */
+const managedHelperPrefs = new Map<string, boolean>();
 
 const reconcileDebugVisuals = (
   entityId: number,
@@ -148,6 +154,12 @@ export const getLightDebugVisibilityPref = (
   const isDisabled = world.getComponent(entityId, ComponentType.DISABLED);
   const showHelper = !isDisabled ? globalHelpersVisible : false;
   if (!sceneId || !appId) return { helper: showHelper, symbol: true };
+  if (world.hasComponent(entityId, ComponentType.MANAGED_BY)) {
+    return {
+      helper: !isDisabled && (managedHelperPrefs.get(appId) ?? globalHelpersVisible),
+      symbol: true,
+    };
+  }
 
   const data = dataOverride || (lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData);
   const saved = data[sceneId]?.lights?.[appId];
@@ -174,6 +186,11 @@ export const setLightDebugPreference = async (
   const sceneId = getCurrentSceneId();
   const appId = world.getComponent(entityId, ComponentType.APP_ID)?.id;
   if (!sceneId || !appId) return;
+  if (world.hasComponent(entityId, ComponentType.MANAGED_BY)) {
+    if (key === 'helperVisible') managedHelperPrefs.set(appId, value);
+    reconcileDebugVisuals(entityId, world);
+    return;
+  }
 
   const data = lsGetItem('AEK_debugLights', {}) as LightDebugLSData;
   if (!data[sceneId]) data[sceneId] = { lights: {}, globalHelpersVisible };
@@ -422,6 +439,98 @@ for (const key of Object.keys(UNDOABLE_LIGHT_LABELS) as UndoableLightKey[]) {
   registerLightUndoHandler(key);
 }
 
+type EntityManagerInfo = NonNullable<ReturnType<typeof _getEntityManagerInfo>>;
+
+const formatVector = (v: THREE.Vector3) =>
+  `${v.x.toFixed(2)}, ${v.y.toFixed(2)}, ${v.z.toFixed(2)}`;
+
+/**
+ * The edit window of a managed light (MANAGED_BY): a read-only live summary, since its manager
+ * owns and drives it. Only the helper (cosmetic) can be toggled; nothing is saved to LS or
+ * recorded for undo, and it can't be deleted here.
+ */
+const createManagedLightContent = (
+  entityId: number,
+  world: ECSWorld,
+  light: THREE.Light,
+  info: EntityManagerInfo
+) => {
+  const appId = world.getComponent(entityId, ComponentType.APP_ID)?.id;
+  const container = CMP({ onRemoveCmp: () => pane.dispose() });
+  container.add({
+    class: ['winNotRightPaddedContent', 'winFlexContent'],
+    html: () => `<div>
+      <div><span class="winSmallLabel">Ent. ID:</span> ${entityId}</div>
+      <div><span class="winSmallLabel">App ID:</span> ${appId || 'None'}</div>
+      <div><span class="winSmallLabel">Type:</span> ${light.type}</div>
+    </div>`,
+  });
+  container.add({
+    class: ['winNotRightPaddedContent', 'winFlexContent'],
+    html: () => `<div>
+      <div><span class="winSmallLabel">Managed by:</span> ${info.label} (${info.ownerId}, ${info.role})</div>
+      <div>Edit it in its manager's tab: here it is read-only.</div>
+    </div>`,
+  });
+  const pane = new Pane({ container: container.elem });
+  // Ambient and hemisphere lights have no shadow
+  const shadow = (light as THREE.Light & { shadow?: THREE.LightShadow }).shadow;
+
+  // Read live from the light: its manager keeps changing the values
+  const readout = {
+    get enabled() {
+      return light.visible;
+    },
+    get intensity() {
+      return light.intensity;
+    },
+    get color() {
+      return `#${light.color.getHexString()}`;
+    },
+    get position() {
+      return formatVector(light.position);
+    },
+    get castShadow() {
+      return light.castShadow;
+    },
+    get shadowIntensity() {
+      return shadow ? shadow.intensity : 0;
+    },
+  };
+  const monitor = { readonly: true, interval: 250 };
+  pane.addBinding(readout, 'enabled', { label: 'Enabled', ...monitor });
+  pane.addBinding(readout, 'intensity', { label: 'Intensity', ...monitor });
+  pane.addBinding(readout, 'color', { label: 'Color', ...monitor });
+  pane.addBinding(readout, 'position', { label: 'Position', ...monitor });
+  if (shadow) {
+    pane.addBinding(readout, 'castShadow', { label: 'Cast shadow', ...monitor });
+    pane.addBinding(readout, 'shadowIntensity', { label: 'Shadow intensity', ...monitor });
+  }
+
+  const helperComp = world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER);
+  if (helperComp && getLightCharacteristics(light).hasHelper) {
+    const helperProxy = { visible: getLightDebugVisibilityPref(entityId, world).helper };
+    pane.addBinding(helperProxy, 'visible', { label: 'Show Helper' }).on('change', (e) => {
+      setLightHelperVisible(entityId, world, e.value);
+      updateDebuggerTab(LIGHTS_TAB_ID);
+    });
+  }
+
+  const tabId = info.tabId;
+  if (tabId) {
+    pane
+      .addButton({ title: `Open in ${info.label} tab` })
+      .on('click', () => openDebuggerTab(tabId));
+  }
+
+  queueMicrotask(() => {
+    addOnCloseToWindow(EDIT_LIGHT_WIN_ID, () => updateDebuggerTab(LIGHTS_TAB_ID));
+    updateDebuggerTab(LIGHTS_TAB_ID);
+  });
+
+  return container;
+};
+
 /** Logic for the Edit Light Draggable Window */
 export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   const d = data as { id: string; winId: string };
@@ -437,6 +546,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   const debugData = world.getComponent(entityId, ComponentType.DEBUG_DATA);
 
   if (!objComp || !(objComp.value instanceof THREE.Light)) return CMP();
+  const managerInfo = _getEntityManagerInfo(entityId, world);
+  if (managerInfo) return createManagedLightContent(entityId, world, objComp.value, managerInfo);
   const prefs = getLightDebugVisibilityPref(entityId, world);
 
   const light = objComp.value;
@@ -1065,14 +1176,19 @@ const getLightsListData = (world: ECSWorld): DebuggerListItem[] => {
       Boolean(world.getComponent(entityId, ComponentType.DEBUG_LIGHT_HELPER)) &&
       getLightCharacteristics(light).hasHelper;
     const itemId = appId || String(entityId);
+    const managerInfo = _getEntityManagerInfo(entityId, world);
     items.push({
       itemId,
       title: debugData?.name || `[${itemId}]`,
       titlePlaceholder: !debugData?.name,
-      subTitle: `[${appId}] [${entityId}]`,
+      subTitle: managerInfo
+        ? `Managed by ${managerInfo.label} [${entityId}]`
+        : `[${appId}] [${entityId}]`,
+      ...(managerInfo?.icon ? { icon: managerInfo.icon } : {}),
       badge: getLightTypeShorthand(world, entityId),
+      // A managed light's enabled state is its manager's: no toggle here (the helper is cosmetic)
       toggleValues: [
-        light instanceof THREE.Light ? light.visible : null,
+        light instanceof THREE.Light && !managerInfo ? light.visible : null,
         hasHelper ? getLightDebugVisibilityPref(entityId, world, lsData).helper : null,
       ],
     });
@@ -1088,7 +1204,11 @@ const openEditLightWindow = (itemId: string) => {
     : undefined;
   openDraggableWindow({
     id: EDIT_LIGHT_WIN_ID,
-    title: `Edit Light: ${debugData?.name || `[${itemId}]`}`,
+    title: `${
+      target && _getEntityManagerInfo(target.entityId, target.world)
+        ? 'Managed Light'
+        : 'Edit Light'
+    }: ${debugData?.name || `[${itemId}]`}`,
     isDebugWindow: true,
     content: createEditLightContent,
     data: { id: appId, winId: EDIT_LIGHT_WIN_ID },
@@ -1101,7 +1221,7 @@ const openEditLightWindow = (itemId: string) => {
 /** List toggle: the same path as the edit window's Enabled input (LS, undo, open window). */
 const toggleLightEnabled = (itemId: string, next: boolean) => {
   const target = resolveLightListItem(itemId);
-  if (!target) return;
+  if (!target || _getEntityManagerInfo(target.entityId, target.world)) return;
   const prev = target.light.visible;
   applyLightField.enabled(target, next);
   saveLightToLS(target.entityId, 'enabled', next);
@@ -1141,10 +1261,13 @@ export const _toggleAllLightHelpers = (show?: boolean) => {
   globalHelpersVisible = targetState;
   currentData[sceneId].globalHelpersVisible = globalHelpersVisible;
 
+  // Managed lights follow the global state (they have no LS entries)
+  managedHelperPrefs.clear();
+
   // Update the in-memory data object (Ignoring Symbols)
   for (const [entityId] of storage) {
     const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
-    if (appIdComp?.isFixed) {
+    if (appIdComp?.isFixed && !world.hasComponent(entityId, ComponentType.MANAGED_BY)) {
       if (!currentData[sceneId].lights[appIdComp.id]) {
         currentData[sceneId].lights[appIdComp.id] = {
           enabled: true, // Default is true
@@ -1292,7 +1415,10 @@ const saveLightToLS = <K extends keyof LightEntityDebugState>(
   const world = getECSWorld();
   const sceneId = getCurrentSceneId();
   const appIdComp = world.getComponent(entityId, ComponentType.APP_ID);
-  if (!sceneId || !appIdComp?.isFixed) return;
+  // A managed light's values are its manager's (and it gets no LS overrides at creation)
+  if (!sceneId || !appIdComp?.isFixed || world.hasComponent(entityId, ComponentType.MANAGED_BY)) {
+    return;
+  }
   const currentData = lsGetItem(LS_LIGHTS_KEY, {}) as LightDebugLSData;
   if (!currentData[sceneId]) currentData[sceneId] = { lights: {}, globalHelpersVisible: false };
   const appId = appIdComp.id;

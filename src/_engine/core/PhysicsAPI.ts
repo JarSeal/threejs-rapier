@@ -3968,7 +3968,15 @@ class JointProxyAPI implements JointAPI {
 type PhysicsAPIGUIModule = typeof import('./Debug/_dbg__PhysicsAPI');
 let debugGUI: DebugModuleRef<PhysicsAPIGUIModule> | null = null;
 
-export const createPhysicsAPIDebugGUI = async () => {
+/** Debug env: loads the Physics API debug module and restores its persisted world settings
+ * (gravity, timestep, solver iterations...) into the physics state. Call it before the first
+ * physics world is created: every world, the boot one and each scene load's, is built from them. */
+export const registerPhysicsAPIDebugGUI = async () => {
   debugGUI = await loadDebugModuleAsync(() => import('./Debug/_dbg__PhysicsAPI'));
+  useDebug(debugGUI)?._hydratePhysicsLiveSettings();
+};
+
+/** Debug env: creates the Physics API debugger tab (after registerPhysicsAPIDebugGUI). */
+export const createPhysicsAPIDebugGUI = () => {
   useDebug(debugGUI)?._createPhysicsAPIDebugGUI();
 };

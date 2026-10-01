@@ -6,13 +6,6 @@ let debugGUI: DebugModuleRef<LightGUIModule> | null = null;
 export const DEBUG_CAMERA_ID = '_debugCamera';
 
 export type DebugToolsState = {
-  env: {
-    envBallFolderExpanded: boolean;
-    envBallVisible: boolean;
-    separateBallValues: boolean;
-    ballRoughness: number;
-    ballDefaultRoughness: number;
-  };
   scenesListing: {
     scenesFolderExpanded: boolean;
     useDebugStartScene: boolean;
@@ -40,6 +33,12 @@ export type DebugToolsState = {
     show: boolean;
     showInMainCamera: boolean;
   };
+  /** Top-level, as axesGizmo. */
+  envBall: {
+    show: boolean;
+    showInMainCamera: boolean;
+    roughness: number;
+  };
   helpers: {
     helpersFolderExpanded: boolean;
     showAxesHelper: boolean;
@@ -58,13 +57,6 @@ export type DebugToolsState = {
 };
 
 const defaultDebugToolsState: DebugToolsState = {
-  env: {
-    envBallFolderExpanded: false,
-    envBallVisible: false,
-    separateBallValues: false,
-    ballRoughness: 0,
-    ballDefaultRoughness: 0,
-  },
   scenesListing: {
     scenesFolderExpanded: false,
     useDebugStartScene: false,
@@ -86,6 +78,11 @@ const defaultDebugToolsState: DebugToolsState = {
   axesGizmo: {
     show: true,
     showInMainCamera: false,
+  },
+  envBall: {
+    show: true,
+    showInMainCamera: false,
+    roughness: 0,
   },
   helpers: {
     helpersFolderExpanded: false,
@@ -136,11 +133,19 @@ export const getDebugToolsState = (loadFromLS?: boolean) =>
   useDebug(debugGUI, true)?._getDebugToolsState(loadFromLS) || defaultDebugToolsState;
 
 /**
- * Toggles the axes gizmo option (the F8 shortcut): persisted, and the Debug Tools tab is
- * refreshed if open.
+ * The axes gizmo shortcut (F10): hides it, or shows it (also in the main camera, when that is
+ * active), with a toast. Persisted, and the Debug Tools tab is refreshed if open.
  */
 export const toggleAxesGizmo = () => {
   useDebug(debugGUI)?._toggleAxesGizmo();
+};
+
+/**
+ * The environment ball shortcut (F9): hides it, or shows it (also in the main camera, when that
+ * is active), with a toast. Persisted, and the Debug Tools tab is refreshed if open.
+ */
+export const toggleEnvBall = () => {
+  useDebug(debugGUI)?._toggleEnvBall();
 };
 
 /**

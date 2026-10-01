@@ -6,6 +6,7 @@ import { GeoPropsSchema } from './geometrySchema';
 import { TextureAssetSchema, TextureOverridesSchema } from './textureSchema';
 import { MaterialAssetSchema } from './materialSchema';
 import { PostFxAssetSchema } from './postFxSchema';
+import { SkyBoxAssetSchema } from './skyBoxSchema';
 import { ColorJSONSchema } from './_helperSchemas';
 
 const AssetReferenceOrInline = z.union([z.string(), z.record(z.string(), z.unknown())]);
@@ -35,7 +36,7 @@ const SceneOverridesSchema = z.object({
   materials: z.array(z.union([z.string(), MaterialAssetSchema])).optional(),
   meshes: z.array(AssetReferenceOrInline).optional(),
   importedAssets: z.array(AssetReferenceOrInline).optional(),
-  skyboxes: z.array(AssetReferenceOrInline).optional(),
+  skyboxes: z.array(z.union([z.string(), SkyBoxAssetSchema])).optional(),
   /** Ordered PostFX pass chain: unlike the other registries, array order is execution order (each pass builds on the previous pass's output). */
   postFx: z.array(z.union([z.string(), PostFxAssetSchema])).optional(),
   /** Whether the scene's PostFX chain starts switched on. Default true when `postFx` is non-empty. */

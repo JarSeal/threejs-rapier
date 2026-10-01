@@ -270,7 +270,7 @@ export const createRigidBody = (params: RigidBodyParams) => {
   if (params.rotation) rigidBody.setRotation(params.rotation, wakeUp);
   if (params.linvel) rigidBody.setLinvel(params.linvel, wakeUp);
   if (params.angvel) rigidBody.setAngvel(params.angvel, wakeUp);
-  if (params.gravityScale) rigidBody.setGravityScale(params.gravityScale, wakeUp);
+  if (params.gravityScale !== undefined) rigidBody.setGravityScale(params.gravityScale, wakeUp);
   if (params.force) rigidBody.addForce(params.force, wakeUp);
   if (params.torqueForce) rigidBody.addTorque(params.torqueForce, wakeUp);
   if (params.forceAtPoint)

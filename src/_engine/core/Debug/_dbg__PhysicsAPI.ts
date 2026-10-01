@@ -3,6 +3,7 @@ import { Pane } from 'tweakpane';
 import {
   createDebuggerTab,
   debuggerListCMP,
+  hydrateDebuggerTabState,
   persistDebuggerTabValue,
   updateDebuggerTab,
   type DebuggerListItem,
@@ -161,17 +162,19 @@ const LIVE_PERSIST_KEYS = [
   'interpolationMode',
 ] as const satisfies readonly (keyof PhysicsState)[];
 
-/** gravity/solverIterations/internalPgsIterations/timestep are baked into the Rapier
- * world once at createPhysicsWorld() time, which runs before this debug tab's LS
- * restore — so a restored custom value has to be re-pushed into the already-running
- * world explicitly, the same way each field's own live onChange handler does. */
-const applyLiveStateToWorld = (state: PhysicsState) => {
-  if (!isPhysicsWorldEnabled()) return;
-  const world = getPhysicsWorld();
-  world.setGravity(state.gravity);
-  world.setNumSolverIterations(state.solverIterations);
-  world.setNumInternalPgsIterations(state.internalPgsIterations);
-  world.setTimestep(state.timestepRatio);
+/**
+ * Restores the persisted world settings into the physics state, before the first physics world
+ * is created (registerPhysicsAPIDebugGUI in InitApp.ts). gravity/solverIterations/
+ * internalPgsIterations/timestep are baked into a Rapier world when it's created, and every
+ * world (the boot one, and each scene load's fresh one) is built from the physics state. So
+ * nothing is pushed into a running world: that would overwrite what the start scene set on its
+ * own world (eg. the space scene's zero gravity). The tab hydrates the same values again when it
+ * registers, after the start scene.
+ */
+export const _hydratePhysicsLiveSettings = () => {
+  const state = getPhysicsState();
+  hydrateDebuggerTabState({ lsKey: LS_KEY, state, persistKeys: LIVE_PERSIST_KEYS });
+  state.timestepRatio = 1 / (state.timestep || 60);
 };
 
 const getAllPhysicsEntityIds = (): number[] => {
@@ -970,9 +973,8 @@ export const _createPhysicsAPIDebugGUI = () => {
     },
   });
 
-  // Hydrated at registration
+  // Hydrated at registration (the same values _hydratePhysicsLiveSettings restored at boot)
   state.timestepRatio = 1 / (state.timestep || 60);
-  applyLiveStateToWorld(state);
 
   // The edit window's `content` is a function, which can't survive the JSON
   // serialization DraggableWindow uses to persist open/position state — after a reload,

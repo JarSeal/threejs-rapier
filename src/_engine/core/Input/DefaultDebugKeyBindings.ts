@@ -1,11 +1,22 @@
-import { toggleDrawer } from '../../debug/DebuggerGUI';
-import { updateOnScreenTools } from '../../debug/OnScreenTools';
-import { toggleAxesGizmo, toggleOnScreenToolsDisabled } from '../../debug/DebugToolsManager';
+import { DEBUG_TOASTER_ID, toggleDrawer } from '../../debug/DebuggerGUI';
+import {
+  playInProdTestMode,
+  stopProdTestMode,
+  updateOnScreenTools,
+} from '../../debug/OnScreenTools';
+import {
+  toggleAxesGizmo,
+  toggleEnvBall,
+  toggleOnScreenToolsDisabled,
+} from '../../debug/DebugToolsManager';
 import { redoLastAction, undoLastAction } from '../../debug/UndoRedo';
 import { lwarn } from '../../utils/Logger';
 import { isDebugCameraActive, toggleDebugCamera } from '../CameraManager';
 import { getConfig } from '../Config';
 import { getECSWorld } from '../ECS';
+import { getReadOnlyLoopState, isAppPlaying, toggleAppPlay, toggleMainPlay } from '../MainLoop';
+import { addToast } from '../UI/Toaster';
+import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createKeyBinding, markChordReserved, type KeyUpDownBinding } from './KeyboardInput';
 
 /**
@@ -21,6 +32,19 @@ const isTypingInField = () =>
   document.activeElement?.matches(
     'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
   ) ?? false;
+
+/** A loop shortcut's toast: the pause icon when the loop stopped, the play icon when it plays. */
+const showLoopToast = (title: string, isPlaying: boolean) => {
+  try {
+    addToast({
+      toasterId: DEBUG_TOASTER_ID,
+      title,
+      icon: getSvgIcon(isPlaying ? 'playFill' : 'pause'),
+    });
+  } catch {
+    // No debug toaster yet (it's created at the end of InitEngine) — the toggle itself still ran
+  }
+};
 
 /** The pressed chord as readable text (eg. 'Shift+§'), or undefined for keys with no readable
  * name (dead keys etc.). Read from the event, so it's right for a rebound key and for layouts
@@ -59,10 +83,63 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
       updateOnScreenTools('SWITCH');
     },
   },
+  // The F keys are keydown, so preventDefault can stop the browser's own action (F5 reload,
+  // F6 address bar, F7 caret browsing, F10 menu bar). With a modifier they don't match, so eg.
+  // Ctrl+F5 and Shift+F5 still reload.
+  {
+    id: 'sc-play-prod-test',
+    type: 'KEY_DOWN',
+    chord: { key: 'F5' },
+    name: 'Play in production test mode',
+    fn: (e) => {
+      e.preventDefault();
+      if (e.repeat || isTypingInField()) return;
+      playInProdTestMode();
+    },
+  },
+  {
+    id: 'sc-toggle-main-loop',
+    type: 'KEY_DOWN',
+    chord: { key: 'F6' },
+    name: 'Toggle main loop',
+    fn: (e) => {
+      e.preventDefault();
+      if (e.repeat || isTypingInField()) return;
+      toggleMainPlay();
+      updateOnScreenTools('PLAY');
+      const isPlaying = getReadOnlyLoopState().masterPlay;
+      showLoopToast(isPlaying ? 'Main loop playing' : 'Main loop stopped', isPlaying);
+    },
+  },
+  {
+    id: 'sc-toggle-app-pause',
+    type: 'KEY_DOWN',
+    chord: { key: 'F7' },
+    name: 'Pause / play app loop',
+    fn: (e) => {
+      e.preventDefault();
+      if (e.repeat || isTypingInField()) return;
+      toggleAppPlay();
+      updateOnScreenTools('PLAY');
+      const isPlaying = isAppPlaying();
+      showLoopToast(isPlaying ? 'App loop playing' : 'App loop paused', isPlaying);
+    },
+  },
+  {
+    id: 'sc-toggle-env-ball',
+    type: 'KEY_DOWN',
+    chord: { key: 'F9' },
+    name: 'Toggle environment ball',
+    fn: (e) => {
+      e.preventDefault();
+      if (e.repeat || isTypingInField()) return;
+      toggleEnvBall();
+    },
+  },
   {
     id: 'sc-toggle-axes-gizmo',
-    type: 'KEY_DOWN', // keydown, so preventDefault can stop the browser's own F8 action
-    chord: { key: 'F8' },
+    type: 'KEY_DOWN',
+    chord: { key: 'F10' },
     name: 'Toggle axes gizmo',
     fn: (e) => {
       e.preventDefault();
@@ -148,4 +225,55 @@ export const registerDefaultDebugKeyBindings = (): void => {
     }
     createKeyBinding({ ...appKey, type: appKey.type ?? 'KEY_UP', chord, fn });
   }
+};
+
+/** Production test mode keys: the on-screen play tools' stop, main loop and app loop pause
+ * buttons. Each gives way to an app binding of the same key (yieldToOtherBindings). */
+const DEFAULT_PROD_TEST_KEY_BINDINGS: KeyUpDownBinding[] = [
+  {
+    id: 'sc-prod-test-stop',
+    type: 'KEY_DOWN', // keydown, so preventDefault can stop the browser's reload
+    chord: { key: 'F5' },
+    name: 'Stop production test mode',
+    yieldToOtherBindings: true,
+    fn: (e) => {
+      e.preventDefault();
+      if (e.repeat || isTypingInField()) return;
+      stopProdTestMode();
+    },
+  },
+  {
+    id: 'sc-prod-test-toggle-main-loop',
+    type: 'KEY_DOWN',
+    chord: { key: 'F6' },
+    name: 'Toggle main loop',
+    yieldToOtherBindings: true,
+    fn: (e) => {
+      e.preventDefault();
+      if (e.repeat || isTypingInField()) return;
+      toggleMainPlay();
+      updateOnScreenTools('PLAY');
+    },
+  },
+  {
+    id: 'sc-prod-test-toggle-app-pause',
+    type: 'KEY_DOWN',
+    chord: { key: 'F7' },
+    name: 'Pause / play app loop',
+    yieldToOtherBindings: true,
+    fn: (e) => {
+      e.preventDefault();
+      if (e.repeat || isTypingInField()) return;
+      toggleAppPlay();
+      updateOnScreenTools('PLAY');
+    },
+  },
+];
+
+/**
+ * Registers the production test mode keys (F5 stop, F6 main loop, F7 app loop pause, no
+ * toasts). An app binding of the same key takes over. Production test mode only.
+ */
+export const registerDefaultProdTestKeyBindings = (): void => {
+  for (const binding of DEFAULT_PROD_TEST_KEY_BINDINGS) createKeyBinding(binding);
 };

@@ -567,18 +567,6 @@ export const PROJECT_METADATA: {
     /** Toolkit author */
     author: string;
   };
-  /** Merged version number. This is a sum of each SemVar number (major.minor.patch). Example of calculation:
-   *
-   * App version: 1.3.23
-   *
-   * Engine version: 0.1.12
-   *
-   * Merge version: 1.3.23 + 0.1.12 = 1.4.37
-   *
-   * @deprecated Not a real version (different combinations sum to the same value) and no longer
-   * part of the checksum or the HTML meta tags. To be removed in the next major engine version.
-   * */
-  mergeVersion: string;
   /** package.json version number */
   pkgVersion: string;
   /** Version hash created from versionChecksumString. */

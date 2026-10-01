@@ -477,6 +477,14 @@ export const setIsLoadingScene = (isLoading: boolean) => (loopState.isLoadingSce
 export const getReadOnlyLoopState = () => JSON.parse(JSON.stringify(loopState)) as LoopState;
 
 /**
+ * Whether the app loop is set to play (loopState.appPlay): a cheap read for per-frame code,
+ * unlike getReadOnlyLoopState. Read at the MAIN stage it already tells this frame's state
+ * (loopState.isAppPlaying is only set later in the frame).
+ * @returns (boolean) loopState.appPlay
+ */
+export const isAppPlaying = () => loopState.appPlay;
+
+/**
  * Returns the play speed multiplier
  * @returns (number) loopState.playSpeedMultiplier
  */

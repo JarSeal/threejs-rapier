@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../.schemas/camera.schema.json",
+  "camProps": {
+    "type": "PERSPECTIVE",
+    "fov": 55,
+    "near": 0.1,
+    "far": 200,
+    "position": { "x": 9.2, "y": 3.6, "z": 12.7 },
+    "lookAtPoint": { "x": 0, "y": 0.5, "z": 0 },
+    "active": true
+  },
+  "entityOpts": {
+    "appId": "spaceCamera",
+    "debugData": {
+      "name": "Space camera",
+      "description": "Looks at the asteroids around the origin, toward the SPACE preset's first nebula; the sun lights them from the right."
+    }
+  }
+}

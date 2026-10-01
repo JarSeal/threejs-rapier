@@ -47,21 +47,6 @@ const createVersionHash = (inputString: string) => {
   return (hash >>> 0).toString(16).toUpperCase();
 };
 
-const createMergeVersion = (appVersion?: string, engineVersion?: string) => {
-  const semverRegex = /(\d+)\.(\d+)\.(\d+)/;
-  const parse = (v: unknown) => {
-    const match = String(v).match(semverRegex);
-    if (!match) return [0, 0, 0];
-    return [parseInt(match[1], 10), parseInt(match[2], 10), parseInt(match[3], 10)];
-  };
-  const [aMajor, aMinor, aPatch] = parse(appVersion);
-  const [eMajor, eMinor, ePatch] = parse(engineVersion);
-  const mergedMajor = aMajor + eMajor;
-  const mergedMinor = aMinor + eMinor;
-  const mergedPatch = aPatch + ePatch;
-  return `${mergedMajor}.${mergedMinor}.${mergedPatch}`;
-};
-
 const createVersionChecksumString = (m?: typeof meta) => {
   if (!m) return '';
   const appVersion = m.app?.version;
@@ -109,8 +94,6 @@ const meta = {
     author: pkg.engine_metadata?.author || '',
   },
   pkgVersion: pkg.version || '',
-  // Deprecated (see PROJECT_METADATA.mergeVersion), kept until the next major engine version
-  mergeVersion: createMergeVersion(appVersion, engineVersion),
   versionChecksum: '',
   versionChecksumString: '',
 };

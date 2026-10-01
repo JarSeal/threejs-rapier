@@ -1,0 +1,10 @@
+{
+  "$schema": "../.schemas/scene.schema.json",
+  "id": "space",
+  "sceneFile": "./space.ts",
+  "name": "Space demo (zero-g asteroids)",
+  "description": "The SPACE sky box around a few procedural asteroids near the origin: zero world gravity, mutual (N-body) gravity, loose orbits and collisions. Debug env: the scene's own \"Space demo\" tab.",
+  "cameras": ["spaceCamera"],
+  "skyboxes": ["space"],
+  "materials": ["asteroid"]
+}

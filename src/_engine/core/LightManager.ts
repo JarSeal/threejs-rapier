@@ -161,9 +161,13 @@ export const createLightEntity = (
   const world = ecsWorld || getECSWorld();
   const rootScene = existsOrThrow(getRootScene(), 'Could not find root scene.');
 
-  // Load light properties
+  // Load light properties. A managed light gets no persisted debug overrides: its manager
+  // owns its values.
   const appId = lightProps.appId || entityOpts?.appId;
-  const props = loadPersistentProps<LightProps>({ ...lightProps, appId }, 'LIGHT');
+  const managedBy = entityOpts?.managedBy;
+  const props = managedBy
+    ? { ...lightProps, appId }
+    : loadPersistentProps<LightProps>({ ...lightProps, appId }, 'LIGHT');
 
   let light:
     | THREE.AmbientLight
@@ -290,7 +294,10 @@ export const createLightEntity = (
     (props.type === 'DIRECTIONAL' || props.type === 'SPOT') &&
     (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight)
   ) {
-    const targetId = world.createEntity({ userData: { name: 'LightTarget' } });
+    const targetId = world.createEntity({
+      userData: { name: 'LightTarget' },
+      ...(managedBy ? { managedBy: { ...managedBy, role: `${managedBy.role}_TARGET` } } : {}),
+    });
     if (entityOpts?.persistent) {
       world.addComponent(targetId, ComponentType.PERSISTENT, true);
     }
