@@ -1,7 +1,7 @@
 Status: implemented
 Category: Skybox, Rendering
 Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md
-Blocks: p114_space-preset-and-nebula-creator.md (its space layers reuse the stars layer and sidereal rotation)
+Blocks: \_DONE_p114_space-preset-and-nebula-creator.md (its space layers reuse the stars layer and sidereal rotation)
 Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic; Phase 0 §0.3 re-bake strategy, §0.4 lights)
 
 # Night Sky and Day-Night Cycle — Plan

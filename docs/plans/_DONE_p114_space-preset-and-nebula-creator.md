@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–6 implemented
+Status: implemented
 Category: Skybox, Rendering
 Blocked by: \_DONE_p112_procedural-sky-atmosphere-sun-and-env-bake.md, \_DONE_p113_night-sky-and-day-night-cycle.md (stars layer, sidereal rotation)
 Related: \_DONE_p110_skybox-refactor-and-layered-sky-system.md (epic)
@@ -249,7 +249,7 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
      - the hull collider matches the mesh (Physics debug render);
      - the material shows no seams or UV artefacts, on WebGPU and WebGL2;
      - two bodies attract symmetrically (momentum is conserved within float error).
-7. **Space demo scene + docs + versions** (DD10).
+7. **Space demo scene + docs + versions** (DD10). **Done** (see Implementation notes, Phase 7).
    - Verify:
      - SPACE shows stars, suns and nebulae with no horizon;
      - the asteroids orbit each other, and collide without exploding;
@@ -497,3 +497,18 @@ Each phase compiles, lints, and leaves existing skyboxes unchanged.
     - The rocks collide without exploding.
     - No new console errors.
 - **Not checked yet:** WebGPU (WSL2 headless can't), and the look under the space scene's lighting (Phase 7 may retune the material's defaults and the crater sizes).
+
+### Phase 7: space demo scene, docs and versions
+
+- **What was built.**
+  - `app/space.scene.json` + `space.ts`, `cameras/spaceCamera.camera.json` and `skyboxes/space.skybox.json`.
+    - The sky box is `"preset": "SPACE"` with its own `suns`: the primary (its light frames the shadows on the origin, `shadowFollow: 'ORIGIN'`) and a small blue second sun without a light.
+    - The scene sets the world gravity to zero on its own fresh world, and the demo's mutual gravity config (G 1, softening 0.5) on every load.
+    - Four asteroids (`generateAsteroid` + the `asteroid` material with per-rock palettes and seeds): a primary, and three rocks on softened circular-speed orbits round it. One is tilted, one is retrograde, and the last starts at 0.75 of the circular speed, so it falls in and hits the primary (the collision demo). The centre of mass and the net momentum start at zero, so the group stays in view.
+    - They are dynamic `CONVEXHULL` bodies (density 1, restitution 0.3) with a starting spin. Their gravity mass is `hullVolume` × density, Rapier's own mass. They cast and receive shadows.
+  - `app/_dbg__spaceDemo.ts`: the "Space demo" tab (`sceneId: 'space'`), imported only in the debug env. It has gravity on/off, G and softening; "Reset asteroids" (the demo set, on orbits for the current G); "Spawn asteroid" (a random seed, 6–11 m out on a slower than circular orbit, retried to avoid overlaps); the group's kinetic, potential (softened) and total energy; and the asteroid list (mass, speed). Session-only, as planned.
+  - `skyShowcase.scene.json` also lists `space`.
+  - An engine fix found here: the Physics API tab pushed its saved world settings into the running world after the start scene had loaded, overwriting the space scene's zero gravity. `registerPhysicsAPIDebugGUI` (`InitApp.ts`) now restores them into the physics state before the first world is created, and every world is built from that state. `hydrateDebuggerTabState` is exported for it.
+  - Docs and versions: the branch already bumps the engine to 3.0.0 (major, p111) and the app to 1.3.0 (minor), which cover p114's engine and app minors. The toolkit gets its minor: 1.0.0 → 1.1.0 (Crescent). The branch's CHANGELOG entry gained p114's additions and fixes, and lost its "only index 0 for now" and "`preset` not used yet" remarks. CLAUDE.md covers the suns/moons limits, nebulae and the static-layer bake, presets, the list folders and "Apply preset", scene-scoped tabs and the space scene.
+- **Checked (statically):** `yarn lint`, `tsc`, `yarn build` and `yarn checkVersions --against main` pass. In the production build, the "Space demo" tab is only in its lazy `_dbg__spaceDemo` chunk, and the preset templates only in the lazy `_dbg__SkyBox` chunk.
+- **Still to check on real hardware** (Phase 7 and Verification): SPACE with the space camera, the orbits and collisions over time, the tab appearing only in the space scene, the showcase spheres reflecting the `space` nebulae, both worker targets, WebGPU, PostFX with bloom on the suns, and `renderer.info.memory` over preset switches and scene round trips. The material defaults and crater sizes under the space lighting (Phase 6) and SPACE's final look (Phase 4) are tuned in the app's sky box file, not in the preset template.
