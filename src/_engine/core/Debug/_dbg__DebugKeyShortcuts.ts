@@ -299,7 +299,8 @@ const getAppSections = (): ShortcutSection[] => {
     },
     {
       title: 'All scenes',
-      description: 'Bound in app code without a sceneId: every mode, every scene.',
+      description:
+        'Bound in app code without a sceneId: every mode, every scene. Notice that if the scene that defines these keys has not been loaded yet, they are not listed here.',
       rows: globalRows,
     },
     {

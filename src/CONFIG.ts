@@ -1,7 +1,5 @@
 import { AppConfig } from './_engine/core/Config';
 
-export const MAIN_APP_CAM_ID = 'mainAppCam';
-
 const config: AppConfig = {
   // Debug-only key bindings. The engine's defaults ('h' = debug drawer, 'F1' = debug camera)
   // are overridden by reusing their id (only the given fields change, `enabled: false` turns
