@@ -8,7 +8,10 @@ import {
 } from './core/Config';
 import { initAssets } from './core/Assets/AssetsAPI';
 import { createHudContainer, getHUDRootCMP } from './core/HUD';
-import { registerDefaultDebugKeyBindings } from './core/Input/DefaultDebugKeyBindings';
+import {
+  registerDefaultDebugKeyBindings,
+  registerDefaultProdTestKeyBindings,
+} from './core/Input/DefaultDebugKeyBindings';
 import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
 import {
   createPhysicsAPIDebugGUI,
@@ -123,6 +126,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerDebugToolsModule();
       await registerMainLoopDebugGUI();
       await registerOnScreenTools();
+      if (IS_PROD_TEST_MODE) registerDefaultProdTestKeyBindings();
     }
 
     // Before appStartFn, so it is ready for the first scene load (it needs no renderer yet)

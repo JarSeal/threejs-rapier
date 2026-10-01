@@ -1,5 +1,5 @@
 /**
- * Environment ball (docs/plans/p115_debug-environment-ball-viewport.md): a reflective sphere in
+ * Environment ball (docs/plans/_DONE_p115_debug-environment-ball-viewport.md): a reflective sphere in
  * the top-right viewport stack, left of the axes gizmo, showing the environment map PBR
  * materials sample (the PMREM, not the background). It is a core viewport (Viewports.ts) with
  * a private scene: one unlit sphere sampling the PMREM along the reflection vector at the

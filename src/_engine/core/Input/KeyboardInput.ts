@@ -30,6 +30,10 @@ type KeyBindingBase = BindingMeta & {
 export type KeyUpDownBinding = KeyBindingBase & {
   type: 'KEY_UP' | 'KEY_DOWN';
   fn: (e: KeyboardEvent, time: number) => void;
+  /** Default false. When true, the binding doesn't fire for an event that another (not
+   * yielding) binding also fires for, whenever that one was registered (eg. the engine's
+   * production test mode keys give way to the app's own bindings of the same keys). */
+  yieldToOtherBindings?: boolean;
 };
 
 /** KEY_HELD bindings are polled once per tick (see pollHeldKeyBindings), not event-driven,
@@ -171,24 +175,52 @@ const clearHeldKeys = () => {
   heldModifiers = {};
 };
 
+/** Whether a binding is active and its chord matches the event. */
+const bindingMatchesEvent = (
+  binding: KeyBinding,
+  type: 'KEY_UP' | 'KEY_DOWN',
+  e: KeyboardEvent
+): binding is KeyUpDownBinding => {
+  if (binding.type !== type) return false;
+  if (isBindingDisabled(binding) || !isSceneMatch(binding.sceneId)) return false;
+  const caseInsensitive = binding.caseInsensitive ?? true;
+  return getChordArray(binding.chord).some((c) =>
+    eventMatchesChord(e, c, caseInsensitive, binding.ignoreModifiers)
+  );
+};
+
+/** Whether a binding other than `self`, and not yielding itself, fires for the event. */
+const isEventTakenByOther = (
+  self: KeyUpDownBinding,
+  type: 'KEY_UP' | 'KEY_DOWN',
+  e: KeyboardEvent
+) => {
+  for (let i = 0; i < bindings.length; i++) {
+    const binding = bindings[i];
+    if (binding === self || (binding as KeyUpDownBinding).yieldToOtherBindings) continue;
+    if (bindingMatchesEvent(binding, type, e)) return true;
+  }
+  return false;
+};
+
+const dispatchKeyEvent = (e: KeyboardEvent, type: 'KEY_UP' | 'KEY_DOWN') => {
+  if (!keyInputsEnabled || !areAllInputsEnabled()) return;
+  const timeNow = performance.now();
+  for (let i = 0; i < bindings.length; i++) {
+    const binding = bindings[i];
+    if (!bindingMatchesEvent(binding, type, e)) continue;
+    if (binding.yieldToOtherBindings && isEventTakenByOther(binding, type, e)) continue;
+    binding.fn(e, timeNow);
+  }
+};
+
 const initKeyListeners = () => {
   if (keydownListener) return;
 
   keydownListener = (e: KeyboardEvent) => {
     if (!e.repeat) heldRawKeys.add(e.key);
     updateHeldModifiers(e);
-    if (!keyInputsEnabled || !areAllInputsEnabled()) return;
-    const timeNow = performance.now();
-    for (let i = 0; i < bindings.length; i++) {
-      const binding = bindings[i];
-      if (binding.type !== 'KEY_DOWN') continue;
-      if (isBindingDisabled(binding) || !isSceneMatch(binding.sceneId)) continue;
-      const caseInsensitive = binding.caseInsensitive ?? true;
-      const matched = getChordArray(binding.chord).some((c) =>
-        eventMatchesChord(e, c, caseInsensitive, binding.ignoreModifiers)
-      );
-      if (matched) binding.fn(e, timeNow);
-    }
+    dispatchKeyEvent(e, 'KEY_DOWN');
   };
 
   keyupListener = (e: KeyboardEvent) => {
@@ -198,18 +230,7 @@ const initKeyListeners = () => {
     heldRawKeys.delete(e.key.toLowerCase());
     heldRawKeys.delete(e.key.toUpperCase());
     updateHeldModifiers(e);
-    if (!keyInputsEnabled || !areAllInputsEnabled()) return;
-    const timeNow = performance.now();
-    for (let i = 0; i < bindings.length; i++) {
-      const binding = bindings[i];
-      if (binding.type !== 'KEY_UP') continue;
-      if (isBindingDisabled(binding) || !isSceneMatch(binding.sceneId)) continue;
-      const caseInsensitive = binding.caseInsensitive ?? true;
-      const matched = getChordArray(binding.chord).some((c) =>
-        eventMatchesChord(e, c, caseInsensitive, binding.ignoreModifiers)
-      );
-      if (matched) binding.fn(e, timeNow);
-    }
+    dispatchKeyEvent(e, 'KEY_UP');
   };
 
   window.addEventListener('keydown', keydownListener);

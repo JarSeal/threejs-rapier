@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Debugger
-Related: \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md and p115_debug-environment-ball-viewport.md (add clickable on-screen gizmos that should join the disabled set), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will migrate the Debug Tools options this plan adds)
+Related: \_DONE_p080_multi-viewport-rendering-and-axis-gizmo.md and \_DONE_p115_debug-environment-ball-viewport.md (add clickable on-screen gizmos that should join the disabled set), \_DONE_p105_refactor-debugger-drawer-tab-creation.md (will migrate the Debug Tools options this plan adds)
 
 # Add On-Screen Tools Disabler Settings — Plan
 

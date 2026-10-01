@@ -38,6 +38,22 @@ let undoRedoToolsCMP: TCMP | null = null;
 const physicsDebugDrawRef: DebugModuleRef<typeof import('./_dbg__PhysicsDebugDraw')> | null =
   loadDebugModule(() => import('./_dbg__PhysicsDebugDraw'));
 
+/** Reloads the app with one mode query param on and the other one removed. */
+const reloadInMode = (onParam: 'isProdTest' | 'isDebug', offParam: 'isProdTest' | 'isDebug') => {
+  const queryData = new URLSearchParams(window.location.search.slice(1));
+  queryData.set(onParam, 'true');
+  queryData.delete(offParam);
+  const newUrl = new URL(window.location.href);
+  newUrl.search = queryData.toString();
+  window.location.href = newUrl.toString();
+};
+
+/** Reloads the app in production test mode (the on-screen play button). */
+export const _playInProdTestMode = () => reloadInMode('isProdTest', 'isDebug');
+
+/** Reloads the app in debug mode (the on-screen stop button in production test mode). */
+export const _stopProdTestMode = () => reloadInMode('isDebug', 'isProdTest');
+
 // PLAY TOOLS
 const playTools = () => {
   const hudRootCMP = getHUDRootCMP();
@@ -61,15 +77,10 @@ const playTools = () => {
     const playProdTestBtn = CMP({
       class: buttonBaseClasses,
       html: () => `<button>${getSvgIcon('playFill')}</button>`,
-      attr: { title: 'Play in production test mode' },
+      attr: { title: 'Play in production test mode (F5)' },
       onClick: (e) => {
         e.stopPropagation();
-        const queryData = new URLSearchParams(window.location.search.slice(1));
-        queryData.set('isProdTest', 'true');
-        queryData.delete('isDebug');
-        const newUrl = new URL(window.location.href);
-        newUrl.search = queryData.toString();
-        window.location.href = newUrl.toString();
+        _playInProdTestMode();
       },
     });
     playToolsCMP.add(playProdTestBtn);
@@ -78,15 +89,10 @@ const playTools = () => {
     const stopProdTestBtn = CMP({
       class: buttonBaseClasses,
       html: () => `<button>${getSvgIcon('stop')}</button>`,
-      attr: { title: 'Stop production test mode' },
+      attr: { title: 'Stop production test mode (F5)' },
       onClick: (e) => {
         e.stopPropagation();
-        const queryData = new URLSearchParams(window.location.search.slice(1));
-        queryData.set('isDebug', 'true');
-        queryData.delete('isProdTest');
-        const newUrl = new URL(window.location.href);
-        newUrl.search = queryData.toString();
-        window.location.href = newUrl.toString();
+        _stopProdTestMode();
       },
     });
     playToolsCMP.add(stopProdTestBtn);
@@ -101,7 +107,7 @@ const playTools = () => {
     ],
     html: () => `<button>${getSvgIcon('infinity')}</button>`,
     attr: {
-      title: `Play main loop (currently ${loopState.masterPlay ? 'playing' : 'not playing'})`,
+      title: `Play main loop (F6, currently ${loopState.masterPlay ? 'playing' : 'not playing'})`,
     },
     onClick: (e) => {
       e.stopPropagation();
@@ -118,7 +124,7 @@ const playTools = () => {
     ],
     html: () => `<button>${getSvgIcon('pause')}</button>`,
     attr: {
-      title: `Pause app loop (currently ${loopState.appPlay ? 'playing' : 'not playing'})`,
+      title: `Pause app loop (F7, currently ${loopState.appPlay ? 'playing' : 'not playing'})`,
     },
     onClick: (e) => {
       e.stopPropagation();

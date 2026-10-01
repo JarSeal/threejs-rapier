@@ -122,11 +122,19 @@ export const getDebugToolsState = (loadFromLS?: boolean) =>
   useDebug(debugGUI, true)?._getDebugToolsState(loadFromLS) || defaultDebugToolsState;
 
 /**
- * Toggles the axes gizmo option (the F8 shortcut): persisted, and the Debug Tools tab is
- * refreshed if open.
+ * The axes gizmo shortcut (F10): hides it, or shows it (also in the main camera, when that is
+ * active), with a toast. Persisted, and the Debug Tools tab is refreshed if open.
  */
 export const toggleAxesGizmo = () => {
   useDebug(debugGUI)?._toggleAxesGizmo();
+};
+
+/**
+ * The environment ball shortcut (F9): hides it, or shows it (also in the main camera, when that
+ * is active), with a toast. Persisted, and the Debug Tools tab is refreshed if open.
+ */
+export const toggleEnvBall = () => {
+  useDebug(debugGUI)?._toggleEnvBall();
 };
 
 /**
