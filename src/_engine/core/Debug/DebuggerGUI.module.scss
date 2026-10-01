@@ -92,6 +92,34 @@
   color: variables.$black;
 }
 
+// Scene tabs (`sceneId`, removed on their scene's exit): a tinted, dashed button with a corner dot
+.debugDrawerTabButton_scene {
+  position: relative;
+  border-style: dashed;
+  border-color: color.adjust(variables.$info, $lightness: 25%);
+  background-color: rgba(variables.$info, 0.22);
+
+  &:after {
+    content: '';
+    position: absolute;
+    top: 0.2rem;
+    right: 0.2rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background-color: color.adjust(variables.$info, $lightness: 30%);
+  }
+
+  &.debugDrawerTabButton_selected {
+    background-color: color.adjust(variables.$info, $lightness: 40%);
+    border-color: transparent;
+
+    &:after {
+      background-color: variables.$info;
+    }
+  }
+}
+
 .debugDrawerTabsContainer {
   color: variables.$debugTextColor;
   overflow: auto;

@@ -1,5 +1,6 @@
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../core/Config';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import type { DebugKeyShortcutsTab } from '../core/Debug/_dbg__DebugKeyShortcuts';
 
 type LightGUIModule = typeof import('../core/Debug/_dbg__DebugTools');
 let debugGUI: DebugModuleRef<LightGUIModule> | null = null;
@@ -155,6 +156,15 @@ export const toggleEnvBall = () => {
  */
 export const toggleOnScreenToolsDisabled = (keyHint?: string) => {
   useDebug(debugGUI)?._toggleOnScreenToolsDisabled(keyHint);
+};
+
+/**
+ * Opens the Debug key shortcuts dialog on a tab, or switches the open dialog to it (the i and o
+ * shortcuts, and the Debug Tools tab's buttons). Debug env only.
+ * @param tab ('APP' | 'AEKASHA') the tab to show
+ */
+export const openDebugKeyShortcutsDialog = (tab: DebugKeyShortcutsTab) => {
+  useDebug(debugGUI)?._openDebugKeyShortcutsDialog(tab);
 };
 
 /**

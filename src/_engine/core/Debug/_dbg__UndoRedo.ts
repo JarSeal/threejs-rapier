@@ -4,8 +4,7 @@ import { getCurrentSceneId } from '../Scene';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { lerror, lwarn } from '../../utils/Logger';
 import { updateOnScreenTools } from '../../debug/OnScreenTools';
-import { DEBUG_TOASTER_ID } from '../../debug/DebuggerGUI';
-import { addToast } from '../UI/Toaster';
+import { addDebugToast } from '../../debug/DebuggerGUI';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import type {
   UndoRedoActionHandler,
@@ -209,17 +208,12 @@ export const _recordOrCoalesceUndoRedoAction = <TPayload extends { prev: unknown
 
 const showActionToast = (entry: UndoRedoEntry, direction: 'undo' | 'redo') => {
   if (!settings.showToasts) return;
-  try {
-    addToast({
-      toasterId: DEBUG_TOASTER_ID,
-      title: direction === 'undo' ? 'Undo' : 'Redo',
-      icon: getSvgIcon(direction),
-      message: entry.label,
-      showingTime: TOAST_SHOWING_TIME_MS,
-    });
-  } catch {
-    // No debug toaster yet (it's created at the end of InitEngine) — the action itself still ran
-  }
+  addDebugToast({
+    title: direction === 'undo' ? 'Undo' : 'Redo',
+    icon: getSvgIcon(direction),
+    message: entry.label,
+    showingTime: TOAST_SHOWING_TIME_MS,
+  });
 };
 
 /** Runs one direction of an entry's handler. Returns false (pointer must not move) when the

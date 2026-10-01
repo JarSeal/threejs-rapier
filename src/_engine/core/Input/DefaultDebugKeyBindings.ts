@@ -1,21 +1,20 @@
-import { DEBUG_TOASTER_ID, toggleDrawer } from '../../debug/DebuggerGUI';
+import { addDebugToast, toggleDrawer } from '../../debug/DebuggerGUI';
 import {
   playInProdTestMode,
   stopProdTestMode,
+  toggleDebugCameraWithToast,
   updateOnScreenTools,
 } from '../../debug/OnScreenTools';
 import {
+  openDebugKeyShortcutsDialog,
   toggleAxesGizmo,
   toggleEnvBall,
   toggleOnScreenToolsDisabled,
 } from '../../debug/DebugToolsManager';
 import { redoLastAction, undoLastAction } from '../../debug/UndoRedo';
 import { lwarn } from '../../utils/Logger';
-import { isDebugCameraActive, toggleDebugCamera } from '../CameraManager';
 import { getConfig } from '../Config';
-import { getECSWorld } from '../ECS';
 import { getReadOnlyLoopState, isAppPlaying, toggleAppPlay, toggleMainPlay } from '../MainLoop';
-import { addToast } from '../UI/Toaster';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { createKeyBinding, markChordReserved, type KeyUpDownBinding } from './KeyboardInput';
 
@@ -34,17 +33,8 @@ const isTypingInField = () =>
   ) ?? false;
 
 /** A loop shortcut's toast: the pause icon when the loop stopped, the play icon when it plays. */
-const showLoopToast = (title: string, isPlaying: boolean) => {
-  try {
-    addToast({
-      toasterId: DEBUG_TOASTER_ID,
-      title,
-      icon: getSvgIcon(isPlaying ? 'playFill' : 'pause'),
-    });
-  } catch {
-    // No debug toaster yet (it's created at the end of InitEngine) — the toggle itself still ran
-  }
-};
+const showLoopToast = (title: string, isPlaying: boolean) =>
+  addDebugToast({ title, icon: getSvgIcon(isPlaying ? 'playFill' : 'pause') });
 
 /** The pressed chord as readable text (eg. 'Shift+§'), or undefined for keys with no readable
  * name (dead keys etc.). Read from the event, so it's right for a rebound key and for layouts
@@ -61,9 +51,16 @@ const getPressedChordHint = (e: KeyboardEvent) => {
   return [...modifiers, key].join('+');
 };
 
-const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
+/** The sub category a default debug key is listed under (the Debug key shortcuts dialog). */
+export type DebugKeyCategory = 'DEBUGGER' | 'CAMERA' | 'LOOPS_AND_MODES' | 'VIEWPORT' | 'PROD_TEST';
+
+/** An engine default key binding with its listing category. */
+export type DefaultDebugKeyBinding = KeyUpDownBinding & { category: DebugKeyCategory };
+
+const DEFAULT_DEBUG_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
   {
     id: 'sc-toggle-debug-drawer',
+    category: 'DEBUGGER',
     type: 'KEY_UP',
     chord: { key: 'h' },
     name: 'Toggle debug drawer',
@@ -72,15 +69,35 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
     },
   },
   {
+    id: 'sc-open-app-key-shortcuts',
+    category: 'DEBUGGER',
+    type: 'KEY_UP',
+    chord: { key: 'i' },
+    name: 'Open app key shortcuts (current scene)',
+    fn: () => {
+      if (!isTypingInField()) openDebugKeyShortcutsDialog('APP');
+    },
+  },
+  {
+    id: 'sc-open-engine-key-shortcuts',
+    category: 'DEBUGGER',
+    type: 'KEY_UP',
+    chord: { key: 'o' },
+    name: 'Open Aekasha key shortcuts',
+    fn: () => {
+      if (!isTypingInField()) openDebugKeyShortcutsDialog('AEKASHA');
+    },
+  },
+  {
     id: 'sc-toggle-debug-camera',
+    category: 'CAMERA',
     type: 'KEY_DOWN', // keydown, so preventDefault can stop the browser's own F1 (help) action
     chord: { key: 'F1' },
     name: 'Toggle debug camera',
     fn: (e) => {
       e.preventDefault();
       if (e.repeat || isTypingInField()) return;
-      toggleDebugCamera(getECSWorld(), !isDebugCameraActive());
-      updateOnScreenTools('SWITCH');
+      toggleDebugCameraWithToast();
     },
   },
   // The F keys are keydown, so preventDefault can stop the browser's own action (F5 reload,
@@ -88,6 +105,7 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
   // Ctrl+F5 and Shift+F5 still reload.
   {
     id: 'sc-play-prod-test',
+    category: 'LOOPS_AND_MODES',
     type: 'KEY_DOWN',
     chord: { key: 'F5' },
     name: 'Play in production test mode',
@@ -99,6 +117,7 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
   },
   {
     id: 'sc-toggle-main-loop',
+    category: 'LOOPS_AND_MODES',
     type: 'KEY_DOWN',
     chord: { key: 'F6' },
     name: 'Toggle main loop',
@@ -113,6 +132,7 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
   },
   {
     id: 'sc-toggle-app-pause',
+    category: 'LOOPS_AND_MODES',
     type: 'KEY_DOWN',
     chord: { key: 'F7' },
     name: 'Pause / play app loop',
@@ -127,6 +147,7 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
   },
   {
     id: 'sc-toggle-env-ball',
+    category: 'VIEWPORT',
     type: 'KEY_DOWN',
     chord: { key: 'F9' },
     name: 'Toggle environment ball',
@@ -138,6 +159,7 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
   },
   {
     id: 'sc-toggle-axes-gizmo',
+    category: 'VIEWPORT',
     type: 'KEY_DOWN',
     chord: { key: 'F10' },
     name: 'Toggle axes gizmo',
@@ -149,6 +171,7 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
   },
   {
     id: 'sc-toggle-on-screen-tools',
+    category: 'VIEWPORT',
     // keydown: where § is a shifted key (eg. German layout: Shift+3), releasing Shift first
     // would make the keyup's key '3'. ignoreModifiers, so the shifted § matches too. No § key on
     // US ANSI keyboards: rebind it with AppConfig.debugKeys.
@@ -166,6 +189,7 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
   // preventDefault either), so the field's native undo still works.
   {
     id: 'sc-undo',
+    category: 'DEBUGGER',
     type: 'KEY_DOWN',
     chord: [
       { key: 'z', ctrl: true },
@@ -180,6 +204,7 @@ const DEFAULT_DEBUG_KEY_BINDINGS: KeyUpDownBinding[] = [
   },
   {
     id: 'sc-redo',
+    category: 'DEBUGGER',
     type: 'KEY_DOWN',
     chord: [
       { key: 'z', ctrl: true, shift: true },
@@ -229,9 +254,10 @@ export const registerDefaultDebugKeyBindings = (): void => {
 
 /** Production test mode keys: the on-screen play tools' stop, main loop and app loop pause
  * buttons. Each gives way to an app binding of the same key (yieldToOtherBindings). */
-const DEFAULT_PROD_TEST_KEY_BINDINGS: KeyUpDownBinding[] = [
+const DEFAULT_PROD_TEST_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
   {
     id: 'sc-prod-test-stop',
+    category: 'PROD_TEST',
     type: 'KEY_DOWN', // keydown, so preventDefault can stop the browser's reload
     chord: { key: 'F5' },
     name: 'Stop production test mode',
@@ -244,6 +270,7 @@ const DEFAULT_PROD_TEST_KEY_BINDINGS: KeyUpDownBinding[] = [
   },
   {
     id: 'sc-prod-test-toggle-main-loop',
+    category: 'PROD_TEST',
     type: 'KEY_DOWN',
     chord: { key: 'F6' },
     name: 'Toggle main loop',
@@ -257,6 +284,7 @@ const DEFAULT_PROD_TEST_KEY_BINDINGS: KeyUpDownBinding[] = [
   },
   {
     id: 'sc-prod-test-toggle-app-pause',
+    category: 'PROD_TEST',
     type: 'KEY_DOWN',
     chord: { key: 'F7' },
     name: 'Pause / play app loop',
@@ -277,3 +305,12 @@ const DEFAULT_PROD_TEST_KEY_BINDINGS: KeyUpDownBinding[] = [
 export const registerDefaultProdTestKeyBindings = (): void => {
   for (const binding of DEFAULT_PROD_TEST_KEY_BINDINGS) createKeyBinding(binding);
 };
+
+/**
+ * The engine's default key bindings as defined (before any CONFIG.ts `debugKeys` override), for
+ * listing them: `debug` for the debug environment, `prodTest` for production test mode.
+ */
+export const getDefaultDebugKeyBindings = (): {
+  debug: readonly Readonly<DefaultDebugKeyBinding>[];
+  prodTest: readonly Readonly<DefaultDebugKeyBinding>[];
+} => ({ debug: DEFAULT_DEBUG_KEY_BINDINGS, prodTest: DEFAULT_PROD_TEST_KEY_BINDINGS });

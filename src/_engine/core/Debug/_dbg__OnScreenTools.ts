@@ -20,7 +20,7 @@ import styles from './OnScreenTools.module.scss';
 import { getECSWorld } from '../../core/ECS';
 import { type SceneAsset } from '../../schemas/sceneSchema';
 import { type ToolTypes } from '../../debug/OnScreenTools';
-import { DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerGUI';
+import { addDebugToast, DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerGUI';
 import { DebugModuleRef, loadDebugModule, useDebug } from '../../utils/helpers';
 import { getDebugToolsState } from '../../debug/DebugToolsManager';
 import { canRedo, canUndo, redoLastAction, undoLastAction } from '../../debug/UndoRedo';
@@ -53,6 +53,29 @@ export const _playInProdTestMode = () => reloadInMode('isProdTest', 'isDebug');
 
 /** Reloads the app in debug mode (the on-screen stop button in production test mode). */
 export const _stopProdTestMode = () => reloadInMode('isDebug', 'isProdTest');
+
+/** A toast of the camera that is now active: the debug camera, or the app camera by name (with
+ * the same icons as the on-screen debug camera button and camera dropdown). */
+const showActiveCameraToast = () => {
+  if (isDebugCameraActive()) {
+    addDebugToast({ title: 'Debug camera', icon: getSvgIcon('aspectRatio') });
+    return;
+  }
+  const appCamId = getMainAppCameraId();
+  const appCamName = getAllCamerasAsArray().find((c) => c.appId === appCamId)?.name;
+  addDebugToast({
+    title: 'App camera',
+    message: appCamName || 'No app camera',
+    icon: getSvgIcon('camera'),
+  });
+};
+
+/** Toggles between the debug camera and the app camera (F1, the debug camera button). */
+export const _toggleDebugCameraWithToast = () => {
+  toggleDebugCamera(getECSWorld(), !isDebugCameraActive());
+  _updateOnScreenTools('SWITCH');
+  showActiveCameraToast();
+};
 
 // PLAY TOOLS
 const playTools = () => {
@@ -157,9 +180,7 @@ const switchTools = () => {
     attr: { title: 'Toggle between debug camera and app camera' },
     onClick: (e) => {
       e.stopPropagation();
-      // Directly toggle ECS state
-      toggleDebugCamera(getECSWorld(), !isDebugActive);
-      _updateOnScreenTools('SWITCH');
+      _toggleDebugCameraWithToast();
     },
   });
 
@@ -212,6 +233,7 @@ const switchTools = () => {
       }
 
       _updateOnScreenTools('SWITCH');
+      showActiveCameraToast();
     },
   });
 
