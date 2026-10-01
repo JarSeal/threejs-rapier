@@ -71,6 +71,14 @@ export const sceneFileObjects: {
       }
     ).scene({ sceneData, assets });
   },
+  space: async ({ sceneData, assets }) => {
+    const module = await import('../app/./space.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
   sceneTestECS: async ({ sceneData, assets }) => {
     const module = await import('../app/./testECS.ts');
     await (

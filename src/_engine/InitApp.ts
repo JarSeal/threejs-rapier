@@ -12,6 +12,7 @@ import { registerDefaultDebugKeyBindings } from './core/Input/DefaultDebugKeyBin
 import { initMainLoop, registerMainLoopDebugGUI } from './core/MainLoop';
 import {
   createPhysicsAPIDebugGUI,
+  registerPhysicsAPIDebugGUI,
   createPhysicsWorld,
   initPhysics as initNewPhysics,
 } from './core/PhysicsAPI';
@@ -92,6 +93,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     registerPhysicsManager(ecsWorld);
     await initNewPhysics(true); // doNotCreateWorld — createPhysicsWorld() below owns that + physicsWorldEnabled
+    // Before the first world: the debugger's saved world settings are what worlds are built from
+    if (IS_DEBUG_ENV) await registerPhysicsAPIDebugGUI();
     if (getConfig().physics?.enabled) {
       await createPhysicsWorld();
     }
@@ -132,7 +135,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
     // Create debug GUIs and utils
     if (IS_DEBUG_ENV) {
       await createRendererDebugGUI();
-      await createPhysicsAPIDebugGUI();
+      createPhysicsAPIDebugGUI();
       await createAssetsDebugGUI();
       // After appStartFn: measuring needs the renderer
       await registerPostFxProfiler();

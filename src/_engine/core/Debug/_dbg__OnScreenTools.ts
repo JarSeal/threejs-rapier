@@ -222,7 +222,7 @@ const switchTools = () => {
 
   // Select scene dropdown
   const sceneSelectorId = 'onScreenSelectSceneDropDown';
-  const scenes = getGeneratedAppData().scenes as { [id: string]: SceneAsset };
+  const scenes = getGeneratedAppData().scenes as unknown as { [id: string]: SceneAsset };
   const generatedSceneIds = Object.keys(scenes);
   const currentActiveSceneId = getCurrentSceneId();
   const sceneOptions = generatedSceneIds

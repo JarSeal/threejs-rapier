@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../.schemas/skyBox.schema.json",
+  "id": "space",
+  "preset": "SPACE",
+  "suns": [
+    {
+      "elevation": 20,
+      "azimuth": 135,
+      "discSize": 2,
+      "glowIntensity": 1.2,
+      "glowSize": 12,
+      "light": { "shadowFollow": "ORIGIN", "shadowFrustumSize": 14 }
+    },
+    {
+      "elevation": -8,
+      "azimuth": 246,
+      "discSize": 0.8,
+      "color": "#9fc4ff",
+      "glowIntensity": 0.5,
+      "glowSize": 5
+    }
+  ],
+  "debugData": {
+    "name": "Space",
+    "description": "The SPACE preset (dense stars, two nebulae, no atmosphere) with a second, small blue sun. The primary sun's light frames its shadows on the origin, where the space demo's asteroids are."
+  }
+}

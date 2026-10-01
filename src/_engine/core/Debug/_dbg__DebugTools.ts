@@ -149,7 +149,7 @@ export const _getDebugToolsState = (loadFromLS?: boolean) => {
 };
 
 const getSceneStarterDropDownOptions = () => {
-  const scenesObj = getGeneratedAppData().scenes as { [id: string]: SceneAsset };
+  const scenesObj = getGeneratedAppData().scenes as unknown as { [id: string]: SceneAsset };
   const sceneIds = Object.keys(scenesObj);
   const scenes = sceneIds.map((id) => ({ id, name: scenesObj[id].name }));
   return [
@@ -256,7 +256,7 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
   const currentSceneId = getCurrentSceneId();
   if (!currentSceneId) return [];
 
-  const scenesObj = getGeneratedAppData().scenes as { [id: string]: SceneAsset };
+  const scenesObj = getGeneratedAppData().scenes as unknown as { [id: string]: SceneAsset };
   const sceneIds = Object.keys(scenesObj);
   const scenes = sceneIds.map((id) => ({ id, name: scenesObj[id].name }));
   const sceneProxy = { sceneId: currentSceneId };

@@ -483,7 +483,7 @@
     },
     "skyShowcase": {
       "name": "Sky showcase (day-night)",
-      "description": "The verification scene for the sky box plans (p113-p115): a day-night sky box with every layer, rows of metal and dielectric PBR spheres (roughness 0 to 1) and shadow casters.",
+      "description": "The verification scene for the sky box plans (p113-p115): a day-night sky box with every layer, rows of metal and dielectric PBR spheres (roughness 0 to 1) and shadow casters. It also lists the space sky box (p114), for the nebula reflection check.",
       "cameras": [
         {
           "camProps": {
@@ -554,10 +554,256 @@
             "name": "Day-night (showcase)",
             "description": "The DAY_NIGHT preset (every p113 layer: atmosphere, sun and light, moon and light, stars and Milky Way, clouds and ground) on a 5-minute day."
           }
+        },
+        {
+          "base": {
+            "type": "COLOR",
+            "color": "#000005"
+          },
+          "env": {
+            "dynamic": false,
+            "size": 256
+          },
+          "suns": [
+            {
+              "elevation": 20,
+              "azimuth": 135,
+              "discSize": 2,
+              "glowIntensity": 1.2,
+              "glowSize": 12,
+              "light": {
+                "shadowFrustumSize": 14,
+                "shadowFollow": "ORIGIN"
+              }
+            },
+            {
+              "elevation": -8,
+              "azimuth": 246,
+              "discSize": 0.8,
+              "glowIntensity": 0.5,
+              "glowSize": 5,
+              "color": "#9fc4ff"
+            }
+          ],
+          "stars": {
+            "density": 0.8,
+            "brightness": 1.2,
+            "fadeRange": [
+              90,
+              90
+            ],
+            "milkyWay": {
+              "intensity": 0.1
+            }
+          },
+          "nebulae": [
+            {
+              "seed": 7,
+              "direction": [
+                -0.6,
+                0.25,
+                -0.75
+              ],
+              "size": 35,
+              "stretch": 1.8,
+              "orientation": 30,
+              "density": 0.55,
+              "warp": 0.8,
+              "dust": 0.45,
+              "brightness": 1.2,
+              "starBoost": 0.5
+            },
+            {
+              "seed": 23,
+              "direction": [
+                0.7,
+                -0.1,
+                0.6
+              ],
+              "size": 28,
+              "stretch": 1.3,
+              "orientation": -50,
+              "colors": [
+                "#08203a",
+                "#1f7a8c",
+                "#bdf2e6"
+              ],
+              "density": 0.45,
+              "warp": 0.6,
+              "dust": 0.3,
+              "brightness": 0.9,
+              "starBoost": 0.3
+            }
+          ],
+          "id": "space",
+          "debugData": {
+            "name": "Space",
+            "description": "The SPACE preset (dense stars, two nebulae, no atmosphere) with a second, small blue sun. The primary sun's light frames its shadows on the origin, where the space demo's asteroids are."
+          }
         }
       ],
       "id": "skyShowcase",
       "sceneFile": "./skyShowcase.ts"
+    },
+    "space": {
+      "name": "Space demo (zero-g asteroids)",
+      "description": "The SPACE sky box around a few procedural asteroids near the origin: zero world gravity, mutual (N-body) gravity, loose orbits and collisions. Debug env: the scene's own \"Space demo\" tab.",
+      "cameras": [
+        {
+          "camProps": {
+            "active": true,
+            "near": 0.1,
+            "far": 200,
+            "position": {
+              "x": 9.2,
+              "y": 3.6,
+              "z": 12.7
+            },
+            "lookAtPoint": {
+              "x": 0,
+              "y": 0.5,
+              "z": 0
+            },
+            "type": "PERSPECTIVE",
+            "fov": 55,
+            "appId": "spaceCamera"
+          },
+          "entityOpts": {
+            "appId": "spaceCamera",
+            "debugData": {
+              "name": "Space camera",
+              "description": "Looks at the asteroids around the origin, toward the SPACE preset's first nebula; the sun lights them from the right."
+            }
+          }
+        }
+      ],
+      "materials": [
+        {
+          "id": "asteroid",
+          "debugData": {
+            "name": "Asteroid",
+            "description": "Procedural object-space rock (no UVs): mottled colours, Worley pits, mineral speckles, bump. Every input is on colorNode, which also sets roughnessNode and normalNode; override `seed` per mesh for a different rock."
+          },
+          "params": {
+            "color": "#6b6158",
+            "roughness": 0.9,
+            "metalness": 0
+          },
+          "tslFile": "materials/asteroid.tsl.ts",
+          "staticDefines": {
+            "octaves": 4
+          },
+          "nodes": {
+            "colorNode": {
+              "seed": 0,
+              "noiseScale": 1.4,
+              "colorA": "#5d554d",
+              "colorB": "#8a7f72",
+              "pitColor": "#2b2622",
+              "pitScale": 2.2,
+              "pitSize": 0.35,
+              "pitStrength": 0.7,
+              "speckleColor": "#c9c2b4",
+              "speckleScale": 9,
+              "speckleAmount": 0.25,
+              "roughnessMin": 0.75,
+              "roughnessMax": 0.95,
+              "bumpStrength": 0.05
+            }
+          },
+          "type": "STANDARDNODEMATERIAL"
+        }
+      ],
+      "skyboxes": [
+        {
+          "base": {
+            "type": "COLOR",
+            "color": "#000005"
+          },
+          "env": {
+            "dynamic": false,
+            "size": 256
+          },
+          "suns": [
+            {
+              "elevation": 20,
+              "azimuth": 135,
+              "discSize": 2,
+              "glowIntensity": 1.2,
+              "glowSize": 12,
+              "light": {
+                "shadowFrustumSize": 14,
+                "shadowFollow": "ORIGIN"
+              }
+            },
+            {
+              "elevation": -8,
+              "azimuth": 246,
+              "discSize": 0.8,
+              "glowIntensity": 0.5,
+              "glowSize": 5,
+              "color": "#9fc4ff"
+            }
+          ],
+          "stars": {
+            "density": 0.8,
+            "brightness": 1.2,
+            "fadeRange": [
+              90,
+              90
+            ],
+            "milkyWay": {
+              "intensity": 0.1
+            }
+          },
+          "nebulae": [
+            {
+              "seed": 7,
+              "direction": [
+                -0.6,
+                0.25,
+                -0.75
+              ],
+              "size": 35,
+              "stretch": 1.8,
+              "orientation": 30,
+              "density": 0.55,
+              "warp": 0.8,
+              "dust": 0.45,
+              "brightness": 1.2,
+              "starBoost": 0.5
+            },
+            {
+              "seed": 23,
+              "direction": [
+                0.7,
+                -0.1,
+                0.6
+              ],
+              "size": 28,
+              "stretch": 1.3,
+              "orientation": -50,
+              "colors": [
+                "#08203a",
+                "#1f7a8c",
+                "#bdf2e6"
+              ],
+              "density": 0.45,
+              "warp": 0.6,
+              "dust": 0.3,
+              "brightness": 0.9,
+              "starBoost": 0.3
+            }
+          ],
+          "id": "space",
+          "debugData": {
+            "name": "Space",
+            "description": "The SPACE preset (dense stars, two nebulae, no atmosphere) with a second, small blue sun. The primary sun's light frames its shadows on the origin, where the space demo's asteroids are."
+          }
+        }
+      ],
+      "id": "space",
+      "sceneFile": "./space.ts"
     },
     "sceneTestECS": {
       "name": "ECS test scene",
@@ -1107,6 +1353,34 @@
         }
       },
       "__sourcePath": "src/app/cameras/skyShowcaseCamera.camera.json"
+    },
+    "spaceCamera": {
+      "camProps": {
+        "active": true,
+        "near": 0.1,
+        "far": 200,
+        "position": {
+          "x": 9.2,
+          "y": 3.6,
+          "z": 12.7
+        },
+        "lookAtPoint": {
+          "x": 0,
+          "y": 0.5,
+          "z": 0
+        },
+        "type": "PERSPECTIVE",
+        "fov": 55,
+        "appId": "spaceCamera"
+      },
+      "entityOpts": {
+        "appId": "spaceCamera",
+        "debugData": {
+          "name": "Space camera",
+          "description": "Looks at the asteroids around the origin, toward the SPACE preset's first nebula; the sun lights them from the right."
+        }
+      },
+      "__sourcePath": "src/app/cameras/spaceCamera.camera.json"
     },
     "thirdPersonGymCamera": {
       "camProps": {
@@ -1731,6 +2005,93 @@
         "description": "The DAY_NIGHT preset (every p113 layer: atmosphere, sun and light, moon and light, stars and Milky Way, clouds and ground) on a 5-minute day."
       },
       "__sourcePath": "src/app/skyboxes/dayNight.skybox.json"
+    },
+    "space": {
+      "base": {
+        "type": "COLOR",
+        "color": "#000005"
+      },
+      "env": {
+        "dynamic": false,
+        "size": 256
+      },
+      "suns": [
+        {
+          "elevation": 20,
+          "azimuth": 135,
+          "discSize": 2,
+          "glowIntensity": 1.2,
+          "glowSize": 12,
+          "light": {
+            "shadowFrustumSize": 14,
+            "shadowFollow": "ORIGIN"
+          }
+        },
+        {
+          "elevation": -8,
+          "azimuth": 246,
+          "discSize": 0.8,
+          "glowIntensity": 0.5,
+          "glowSize": 5,
+          "color": "#9fc4ff"
+        }
+      ],
+      "stars": {
+        "density": 0.8,
+        "brightness": 1.2,
+        "fadeRange": [
+          90,
+          90
+        ],
+        "milkyWay": {
+          "intensity": 0.1
+        }
+      },
+      "nebulae": [
+        {
+          "seed": 7,
+          "direction": [
+            -0.6,
+            0.25,
+            -0.75
+          ],
+          "size": 35,
+          "stretch": 1.8,
+          "orientation": 30,
+          "density": 0.55,
+          "warp": 0.8,
+          "dust": 0.45,
+          "brightness": 1.2,
+          "starBoost": 0.5
+        },
+        {
+          "seed": 23,
+          "direction": [
+            0.7,
+            -0.1,
+            0.6
+          ],
+          "size": 28,
+          "stretch": 1.3,
+          "orientation": -50,
+          "colors": [
+            "#08203a",
+            "#1f7a8c",
+            "#bdf2e6"
+          ],
+          "density": 0.45,
+          "warp": 0.6,
+          "dust": 0.3,
+          "brightness": 0.9,
+          "starBoost": 0.3
+        }
+      ],
+      "id": "space",
+      "debugData": {
+        "name": "Space",
+        "description": "The SPACE preset (dense stars, two nebulae, no atmosphere) with a second, small blue sun. The primary sun's light frames its shadows on the origin, where the space demo's asteroids are."
+      },
+      "__sourcePath": "src/app/skyboxes/space.skybox.json"
     }
   },
   "postFx": {

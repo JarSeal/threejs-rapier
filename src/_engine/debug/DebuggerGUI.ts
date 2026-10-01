@@ -267,9 +267,14 @@ export const createDebuggerTab = <S extends object>(
 
 /**
  * Restores a tab's persisted values into its state. Runs at registration (not on the first tab
- * open, and also in prod test mode), so the module can use the values at boot.
+ * open, and also in prod test mode), so the module can use the values at boot. A module can also
+ * call it earlier than its tab's registration, for values something reads before that (the tab
+ * then hydrates the same values again).
+ * @param def (object) the tab's `lsKey`, `state` and `persistKeys` (see {@link DebuggerTabDef})
  */
-const hydrateDebuggerTabState = <S extends object>(def: DebuggerTabDef<S>) => {
+export const hydrateDebuggerTabState = <S extends object>(
+  def: Pick<DebuggerTabDef<S>, 'lsKey' | 'state' | 'persistKeys'>
+) => {
   if (!IS_DEBUG_ENV && !IS_PROD_TEST_MODE) return;
   const { lsKey, state, persistKeys } = def;
   if (!lsKey || !state || !persistKeys?.length) return;
