@@ -1,0 +1,13 @@
+@use '../../styles/variables.scss';
+
+// Order 1 in the top-right viewport stack (left of the axes gizmo), centred on its height
+.envBallSlot {
+  align-self: center;
+  width: 7rem;
+  height: 7rem;
+
+  @media screen and (max-width: variables.$breakpointSmall) {
+    width: 6rem;
+    height: 6rem;
+  }
+}

@@ -29,6 +29,12 @@ export type DebugToolsState = {
     show: boolean;
     showInMainCamera: boolean;
   };
+  /** Top-level, as axesGizmo. */
+  envBall: {
+    show: boolean;
+    showInMainCamera: boolean;
+    roughness: number;
+  };
   helpers: {
     helpersFolderExpanded: boolean;
     showAxesHelper: boolean;
@@ -67,6 +73,11 @@ const defaultDebugToolsState: DebugToolsState = {
   axesGizmo: {
     show: true,
     showInMainCamera: false,
+  },
+  envBall: {
+    show: true,
+    showInMainCamera: false,
+    roughness: 0,
   },
   helpers: {
     helpersFolderExpanded: false,

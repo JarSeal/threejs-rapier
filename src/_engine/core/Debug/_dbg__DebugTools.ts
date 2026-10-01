@@ -37,6 +37,12 @@ import {
   setAxesGizmoInMainCamera,
   setAxesGizmoVisible,
 } from '../../debug/AxesGizmo';
+import {
+  initEnvBall,
+  setEnvBallInMainCamera,
+  setEnvBallRoughness,
+  setEnvBallVisible,
+} from '../../debug/EnvBall';
 
 const LS_KEY = 'AEK_debugTools';
 const TAB_ID = 'debugToolsControls';
@@ -65,6 +71,11 @@ let debugToolsState: DebugToolsState = {
   axesGizmo: {
     show: true,
     showInMainCamera: false,
+  },
+  envBall: {
+    show: true,
+    showInMainCamera: false,
+    roughness: 0,
   },
   helpers: {
     helpersFolderExpanded: false,
@@ -107,7 +118,7 @@ const createDebugToolsDebugGUI = () => {
     state: debugToolsState,
     // The nested objects are persisted whole (the same LS shape as before). The *FolderExpanded
     // fields in them are no longer used: folder states are in `${LS_KEY}UI`.
-    persistKeys: ['scenesListing', 'prodTestMode', 'helpers', 'axesGizmo'],
+    persistKeys: ['scenesListing', 'prodTestMode', 'helpers', 'axesGizmo', 'envBall'],
     // Live-refresh the Debug Camera folder from the viewport (dragging the debug camera with
     // OrbitControls): debugCameraSystem calls this only on frames where OrbitControls reported
     // a change. Unregistered on unmount, so a stale callback never runs against a disposed pane.
@@ -124,6 +135,7 @@ const createDebugToolsDebugGUI = () => {
   toggleGridHelperVisibility(debugToolsState.helpers.showGridHelper);
   togglePolarGridHelperVisibility(debugToolsState.helpers.showPolarGridHelper);
   initAxesGizmo(debugToolsState.axesGizmo);
+  initEnvBall(debugToolsState.envBall);
 };
 
 /** The axes gizmo shortcut (F8): flips the "Show axes gizmo" option. */
@@ -438,6 +450,25 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
           min: 0.1,
           step: 0.1,
           onChange: (value) => createAxesHelper(Number(value)),
+        },
+        { type: 'separator' },
+        {
+          key: 'envBall.show',
+          label: 'Show environment ball',
+          onChange: (value) => setEnvBallVisible(Boolean(value)),
+        },
+        {
+          key: 'envBall.showInMainCamera',
+          label: 'Show env ball in main camera',
+          onChange: (value) => setEnvBallInMainCamera(Boolean(value)),
+        },
+        {
+          key: 'envBall.roughness',
+          label: 'Env ball roughness',
+          min: 0,
+          max: 1,
+          step: 0.01,
+          onChange: (value) => setEnvBallRoughness(Number(value)),
         },
         { type: 'separator' },
         {

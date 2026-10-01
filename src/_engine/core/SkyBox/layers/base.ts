@@ -119,8 +119,12 @@ export const loadBaseTexture = (base: SkyBoxBaseDef): Promise<THREE.Texture | nu
   return Promise.resolve(null);
 };
 
+/** Whether the base is a cube with flipY on. */
+export const isBaseFlipY = (base: SkyBoxBaseDef) =>
+  base.type === 'CUBE_TEXTURE' && Boolean(base.flipY);
+
 /** A cube's flipY: turns a world direction a half turn about the X axis (upside down). */
-const turnUpsideDown = (dir: THREE.Node) => {
+export const turnUpsideDown = (dir: THREE.Node) => {
   const d = dir as THREE.Node<'vec3'>;
   return vec3(d.x, d.y.negate(), d.z.negate());
 };
@@ -192,7 +196,7 @@ export const applyBaseUniforms = (
 
 /** The PMREM's lookup direction for a view direction: the cube's flip, then the rotation. */
 const toLookupDir = (base: SkyBoxBaseDef, u: BaseUniforms, dir: THREE.Node) => {
-  const flipY = base.type === 'CUBE_TEXTURE' && Boolean(base.flipY);
+  const flipY = isBaseFlipY(base);
   return u.rotation.mul((flipY ? turnUpsideDown(dir) : dir) as THREE.Node<'vec3'>);
 };
 
@@ -242,7 +246,7 @@ export const buildBaseLayer = (
   }
 
   const pmrem = getPMREMTexture(texture);
-  const flipY = base.type === 'CUBE_TEXTURE' && Boolean(base.flipY);
+  const flipY = isBaseFlipY(base);
   const backgroundNode = pmremTexture(
     pmrem,
     toLookupDir(base, u, normalWorldGeometry),

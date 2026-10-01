@@ -52,6 +52,7 @@ import { DEBUG_TOASTER_ID, registerDebuggerGUI } from './debug/DebuggerGUI';
 import { initUndoRedo, registerUndoRedoModule } from './debug/UndoRedo';
 import { registerPostFxProfiler } from './debug/PostFXProfiler';
 import { registerAxesGizmoModule } from './debug/AxesGizmo';
+import { registerEnvBallModule } from './debug/EnvBall';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -108,6 +109,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerRaycastDebugGUI();
       await registerDebuggerGUI();
       await registerAxesGizmoModule();
+      await registerEnvBallModule();
       registerDefaultDebugKeyBindings();
       await registerCharacterTools();
       await registerECSModule();
