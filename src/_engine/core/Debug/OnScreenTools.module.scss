@@ -145,22 +145,20 @@
   }
 }
 
+// An on-screen dropdown's trigger (core/UI/DropDown.ts, its default styles in DropDown.scss):
+// the on-screen tool look, wider
 .onScreenToolDropDown {
+  display: flex;
   width: 16rem;
+  height: 3.2rem;
 
-  select {
-    display: block;
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 140%;
-    height: 100%;
-    border: 0;
-    outline: 0;
-    padding: 0.4rem 0 0.3rem 3rem;
-    background: transparent;
-    color: variables.$debugTextColor;
-    font-size: 1.2rem;
-    cursor: pointer;
+  // The group's small icon margins are for a lone icon
+  :global(.uiIcon):global(.smallIcon) {
+    margin: 0 0 0 0.3rem;
   }
+}
+
+.dropDownLabelStruck {
+  text-decoration: line-through;
+  opacity: 0.6;
 }

@@ -159,7 +159,7 @@ export const toggleOnScreenToolsDisabled = (keyHint?: string) => {
 };
 
 /**
- * Opens the Debug key shortcuts dialog on a tab, or switches the open dialog to it (the i and o
+ * Opens the Debug key shortcuts dialog on a tab, or switches the open dialog to it (the u and i
  * shortcuts, and the Debug Tools tab's buttons). Debug env only.
  * @param tab ('APP' | 'AEKASHA') the tab to show
  */

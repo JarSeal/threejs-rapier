@@ -15,11 +15,12 @@ import { getPhysicsState } from '../../core/PhysicsAPI';
 import { getCurrentSceneId, getGeneratedAppData } from '../../core/Scene';
 import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
 import { getSvgIcon } from '../../core/UI/icons/SvgIcon';
+import { createDropDown, type DropDownProps, type TDropDown } from '../../core/UI/DropDown';
 import { CMP, TCMP } from '../../utils/CMP';
 import styles from './OnScreenTools.module.scss';
 import { getECSWorld } from '../../core/ECS';
 import { type SceneAsset } from '../../schemas/sceneSchema';
-import { type ToolTypes } from '../../debug/OnScreenTools';
+import { type OnScreenDropDownKey, type ToolTypes } from '../../debug/OnScreenTools';
 import { addDebugToast, DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerGUI';
 import { DebugModuleRef, loadDebugModule, useDebug } from '../../utils/helpers';
 import { getDebugToolsState } from '../../debug/DebugToolsManager';
@@ -75,6 +76,54 @@ export const _toggleDebugCameraWithToast = () => {
   toggleDebugCamera(getECSWorld(), !isDebugCameraActive());
   _updateOnScreenTools('SWITCH');
   showActiveCameraToast();
+};
+
+/** The scenes in the order of the on-screen scene selector, with their labels. */
+const getSceneOptions = () => {
+  const scenes = getGeneratedAppData().scenes as unknown as { [id: string]: SceneAsset };
+  // The scene's name if declared, else its id
+  return Object.keys(scenes).map((id) => ({ value: id, label: scenes[id]?.name || `[${id}]` }));
+};
+
+const loadSceneFromTools = (sceneId: string) => {
+  if (isCurrentlyLoading() || sceneId === getCurrentSceneId()) return;
+  loadScene({ sceneId, loaderId: DEBUGGER_SCENE_LOADER_ID });
+};
+
+// DROPDOWNS (the camera and scene selectors, the o and p shortcuts)
+
+/** The dropdowns of the current switch tools group (rebuilt with it). */
+const dropDowns = new Map<OnScreenDropDownKey, TDropDown>();
+
+/**
+ * Opens an on-screen dropdown's list on its current option (the o and p shortcuts), or closes it
+ * when it is open. An open other dropdown closes (its list loses the focus).
+ * @param key ('CAMERA' | 'SCENE') the dropdown
+ */
+export const _toggleOnScreenDropDown = (key: OnScreenDropDownKey) => {
+  dropDowns.get(key)?.toggle();
+};
+
+/** An on-screen tool styled dropdown, registered for its shortcut. */
+const createOnScreenDropDown = (
+  key: OnScreenDropDownKey,
+  props: Omit<DropDownProps, 'placement' | 'triggerClass'> & { isActive?: boolean }
+) => {
+  const { isActive, ...dropDownProps } = props;
+  const dropDown = createDropDown({
+    ...dropDownProps,
+    // The tools sit at the bottom of the screen
+    placement: 'top',
+    triggerClass: [
+      styles.onScreenTool,
+      styles.onScreenToolDropDown,
+      'onScreenTool',
+      'onScreenDropDown',
+      ...(isActive ? [styles.active, 'onScreenToolActive'] : []),
+    ],
+  });
+  dropDowns.set(key, dropDown);
+  return dropDown.cmp;
 };
 
 // PLAY TOOLS
@@ -166,6 +215,7 @@ const switchTools = () => {
   if (!hudRootCMP) return;
 
   if (switchToolsCMP) switchToolsCMP.remove();
+  dropDowns.clear();
   switchToolsCMP = CMP({ class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'switchTools'] });
 
   const isDebugActive = isDebugCameraActive();
@@ -184,110 +234,33 @@ const switchTools = () => {
     },
   });
 
-  // Select camera dropdown
-  const selectDropdownClasses = [
-    styles.onScreenTool,
-    styles.onScreenToolDropDown,
-    'onScreenTool',
-    'onScreenDropDown',
-  ];
-  const camSelectorId = 'onScreenSelectCamDropDown';
-
-  const allAppCameras = getAllCamerasAsArray();
-  const currentAppCamId = getMainAppCameraId();
-
-  // Find the current app camera's human-readable name
-  const currentAppCam = allAppCameras.find((c) => c.appId === currentAppCamId);
-  const currentAppCamName = currentAppCam ? currentAppCam.name : 'No App Camera';
-
-  // The dummy option now uses the App Camera's name.
-  // It is 'hidden' from the expanded list but shows when the dropdown is closed.
-  let camOptions = isDebugActive
-    ? `<option value="_debug_placeholder_" disabled selected hidden>${currentAppCamName}</option>`
-    : '';
-
-  camOptions += allAppCameras
-    .map((cam) => {
-      // Only mark it selected if the debug camera is OFF
-      const isSelected = !isDebugActive && currentAppCamId === cam.appId;
-      return `<option value="${cam.appId}"${isSelected ? ' selected="true"' : ''}>${cam.name}</option>`;
-    })
-    .join('');
-
-  // Apply the strikethrough to the <select> element itself when debug is active.
-  const selectStyle = isDebugActive ? ' style="text-decoration: line-through; opacity: 0.6;"' : '';
-
-  const camSelectCMP = CMP({
-    id: camSelectorId,
-    idAttr: true,
-    html: () => `<select title="Change camera"${selectStyle}>\n  ${camOptions}\n</select>`,
-    onInput: (e) => {
-      const target = e.target as HTMLSelectElement;
-      const selectedAppId = target.options[target.options.selectedIndex].value;
-      if (!selectedAppId || selectedAppId === '_debug_placeholder_') return;
-
-      setCurrentCamera(selectedAppId);
-
-      if (isDebugCameraActive()) {
-        toggleDebugCamera(getECSWorld(), false);
-      }
-
+  // Camera dropdown (the o shortcut)
+  const selectCamDropDown = createOnScreenDropDown('CAMERA', {
+    icon: getSvgIcon('camera', 'small'),
+    title: 'Change camera (O)',
+    placeholder: 'No App Camera',
+    // The app camera is not the one rendering while the debug camera is active
+    labelClass: isDebugActive ? styles.dropDownLabelStruck : undefined,
+    isActive: !isDebugActive,
+    options: () => getAllCamerasAsArray().map((c) => ({ value: c.appId, label: c.name })),
+    value: getMainAppCameraId,
+    onChange: (appId) => {
+      if (appId === getMainAppCameraId() && !isDebugCameraActive()) return;
+      setCurrentCamera(appId);
+      if (isDebugCameraActive()) toggleDebugCamera(getECSWorld(), false);
       _updateOnScreenTools('SWITCH');
       showActiveCameraToast();
     },
   });
 
-  const selectCamDropDown = CMP({
-    class: [
-      ...selectDropdownClasses,
-      ...(!isDebugActive ? [styles.active, 'onScreenToolActive'] : []),
-    ],
-    html: () => `<label for="${camSelectorId}">
-  ${getSvgIcon('camera', 'small')}
-  ${camSelectCMP}
-</label>`,
-  });
-
-  // Select scene dropdown
-  const sceneSelectorId = 'onScreenSelectSceneDropDown';
-  const scenes = getGeneratedAppData().scenes as unknown as { [id: string]: SceneAsset };
-  const generatedSceneIds = Object.keys(scenes);
-  const currentActiveSceneId = getCurrentSceneId();
-  const sceneOptions = generatedSceneIds
-    .map((id) => {
-      const isSelected = currentActiveSceneId === id;
-      // Use the config name attribute if declared, otherwise fall back to raw key string ID
-      const label = scenes[id as keyof typeof scenes]?.name || `[${id}]`;
-      return `<option value="${id}"${isSelected ? ' selected="true"' : ''}>${label}</option>`;
-    })
-    .join('\n');
-
-  const sceneSelectCMP = CMP({
-    id: sceneSelectorId,
-    idAttr: true,
-    html: () => `<select title="Change scene">
-      ${sceneOptions}
-    </select>`,
-    onInput: (e) => {
-      const target = e.target as HTMLSelectElement;
-      const value = target.options[target.options.selectedIndex].value;
-
-      if (isCurrentlyLoading()) return; // Protection block
-
-      loadScene({
-        sceneId: value,
-        // If a classic panel matches, pass it. Otherwise, pass undefined so it reads sceneFileObjects natively
-        loaderId: DEBUGGER_SCENE_LOADER_ID,
-      });
-    },
-  });
-
-  const selectSceneDropDown = CMP({
-    class: selectDropdownClasses,
-    html: () => `<label for="${sceneSelectorId}">
-      ${getSvgIcon('easel', 'small')}
-      ${sceneSelectCMP}
-    </label>`,
+  // Scene dropdown (the p shortcut)
+  const selectSceneDropDown = createOnScreenDropDown('SCENE', {
+    icon: getSvgIcon('easel', 'small'),
+    title: 'Change scene (P)',
+    placeholder: 'No scene',
+    options: getSceneOptions,
+    value: getCurrentSceneId,
+    onChange: loadSceneFromTools,
   });
 
   // Light helpers toggle

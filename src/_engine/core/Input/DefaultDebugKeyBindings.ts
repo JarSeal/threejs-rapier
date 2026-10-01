@@ -3,6 +3,7 @@ import {
   playInProdTestMode,
   stopProdTestMode,
   toggleDebugCameraWithToast,
+  toggleOnScreenDropDown,
   updateOnScreenTools,
 } from '../../debug/OnScreenTools';
 import {
@@ -72,7 +73,7 @@ const DEFAULT_DEBUG_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
     id: 'sc-open-app-key-shortcuts',
     category: 'DEBUGGER',
     type: 'KEY_UP',
-    chord: { key: 'i' },
+    chord: { key: 'u' },
     name: 'Open app key shortcuts (current scene)',
     fn: () => {
       if (!isTypingInField()) openDebugKeyShortcutsDialog('APP');
@@ -82,7 +83,7 @@ const DEFAULT_DEBUG_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
     id: 'sc-open-engine-key-shortcuts',
     category: 'DEBUGGER',
     type: 'KEY_UP',
-    chord: { key: 'o' },
+    chord: { key: 'i' },
     name: 'Open Aekasha key shortcuts',
     fn: () => {
       if (!isTypingInField()) openDebugKeyShortcutsDialog('AEKASHA');
@@ -167,6 +168,28 @@ const DEFAULT_DEBUG_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
       e.preventDefault();
       if (e.repeat || isTypingInField()) return;
       toggleAxesGizmo();
+    },
+  },
+  {
+    id: 'sc-open-camera-selector',
+    category: 'VIEWPORT',
+    type: 'KEY_DOWN',
+    chord: { key: 'o' },
+    name: 'Open / close the on-screen camera list',
+    fn: (e) => {
+      if (e.repeat || isTypingInField()) return;
+      toggleOnScreenDropDown('CAMERA');
+    },
+  },
+  {
+    id: 'sc-open-scene-selector',
+    category: 'VIEWPORT',
+    type: 'KEY_DOWN',
+    chord: { key: 'p' },
+    name: 'Open / close the on-screen scene list',
+    fn: (e) => {
+      if (e.repeat || isTypingInField()) return;
+      toggleOnScreenDropDown('SCENE');
     },
   },
   {

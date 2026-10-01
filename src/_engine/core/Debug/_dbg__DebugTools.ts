@@ -415,12 +415,12 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
     // Key shortcuts
     {
       type: 'button',
-      title: 'Debug key shortcuts [O]',
+      title: 'Debug key shortcuts [I]',
       onClick: () => openDebugKeyShortcutsDialog('AEKASHA'),
     },
     {
       type: 'button',
-      title: 'App key shortcuts (current scene) [I]',
+      title: 'App key shortcuts (current scene) [U]',
       onClick: () => openDebugKeyShortcutsDialog('APP'),
     },
     { type: 'separator' },

@@ -22,7 +22,7 @@ const DIALOG_ID = 'debugKeyShortcutsDialog';
 
 const TABS: { id: DebugKeyShortcutsTab; title: string }[] = [
   { id: 'APP', title: 'App (current scene)' },
-  { id: 'AEKASHA', title: 'Aekasha' },
+  { id: 'AEKASHA', title: 'Ækasha' },
 ];
 
 type Tone = 'muted' | 'info' | 'warning';
