@@ -286,7 +286,7 @@ export const isChordHeld = (chord: KeyChord, caseInsensitive: boolean = true): b
 /**
  * Drives KEY_HELD bindings once per tick. Called from exactly two places in MainLoop.ts
  * (runPhysicsSubStep, once per fixed physics sub-step, and the physics-disabled branch) so
- * dynamicCharacter.ts's fixed-substep timing coupling holds. New Physics-API-based
+ * DynamicCharacter.ts's fixed-substep timing coupling holds. New Physics-API-based
  * code should prefer isChordHeld() polled from its own APP_PRE_PHYSICS system instead.
  */
 export const pollHeldKeyBindings = (delta: number): void => {

@@ -127,12 +127,12 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 .
 ├── src/
 │   ├── _engine/            # The core engine: stable library code
-│   │   ├── core/           # Renderer, ECS, scenes, physics, assets, cameras, lights,
-│   │   │                   # PostFX, viewports, lines, input, spatial index, UI
+│   │   ├── core/           # Renderer, ECS, scenes, physics, characters, assets, cameras,
+│   │   │                   # lights, PostFX, viewports, lines, input, spatial index, UI
 │   │   ├── debug/          # Thin public debug entry points (lazy-load core/Debug/_dbg__*)
 │   │   ├── schemas/        # Zod schemas for every asset JSON type
 │   │   ├── workers/        # Physics and asset worker threads
-│   │   └── utils/          # Helpers, character controller, camera rigs, stress tests
+│   │   └── utils/          # Helpers, camera rigs, world test objects, stress tests
 │   ├── toolkit/            # Reusable ECS effects, TSL materials and procedural geometry
 │   ├── app/                # Your game: *.scene.json + scene .ts files and asset JSON files
 │   ├── AppECSPlugins.ts    # Wires app and toolkit systems into the ECS

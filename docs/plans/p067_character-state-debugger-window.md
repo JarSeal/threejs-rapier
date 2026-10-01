@@ -1,10 +1,11 @@
 Status: draft | not-implemented
 Category: Character, Debugger
+Blocked by: p066_character-definitions-and-refactoring.md
 Blocks: p068_character-debug-gizmos.md, p069_character-live-config-editing.md
 
 # Character State Debugger Window — Plan
 
-This plan revives the legacy per-character "Character data tracker" window as a fast **Character state** window. The window shows a character's `data` object split into three collapsible groups by name prefix (state / `_` properties / `__` internal memory). Each value has its own display: vectors on one line, booleans as green/red circle icons with the check or X cut out, and numbers with a fixed width. The window has an update-interval input. It updates only values that changed, and only in open groups, so it costs almost nothing per frame. It also shows timestamps as "ms ago", radians with degrees, flashes rows whose value changed, and can freeze the view or copy it as JSON. The legacy window currently shows an empty list (see §2.1), so this plan also restores that data link.
+This plan revives the legacy per-character "Character data tracker" window as a fast **Character state** window. The window shows a character's `data` object split into three collapsible groups by name prefix (state / `_` properties / `__` internal memory). Each value has its own display: vectors on one line, booleans as green/red circle icons with the check or X cut out, and numbers with a fixed width. The window has an update-interval input. It updates only values that changed, and only in open groups, so it costs almost nothing per frame. It also shows timestamps as "ms ago", radians with degrees, flashes rows whose value changed, and can freeze the view or copy it as JSON. The legacy window showed an empty list until p066 restored its data link (see §2.1).
 
 ---
 
@@ -29,14 +30,14 @@ This plan revives the legacy per-character "Character data tracker" window as a 
 
 ## 2. Current state (grounded in the actual code)
 
-### 2.1 The data link is broken today
+### 2.1 The data link (restored by p066)
 
-- The tracker reads `CharacterObject.data` from `src/_engine/core/Character.ts:11-19` (`data?: { [key: string]: unknown }`, default `{}` in `createCharacter`, `Character.ts:33-40`).
-- `createDynamicCharacter` (`src/_engine/utils/character/dynamicCharacter.ts:234`) builds the live `characterData` object at `:252`. Before commit `22a72a0` ("Input system refactoring…") it passed that object to `createCharacter()` as `data: characterData`. That commit dropped the line while rewriting the `controls` array (`git show 22a72a0 -- src/_engine/utils/character/dynamicCharacter.ts`, around diff line 626). The drop looks accidental.
-- The call is now at `dynamicCharacter.ts:779`. As a result `CharacterObject.data` is always `{}`, and the tracker renders an empty `<ul></ul>`.
-- The live object is still reachable elsewhere: through the module-private `characters[id].charData` map in `dynamicCharacter.ts:190`, which is not exported, and through the returned `DynamicCharacter.charData`.
+- The tracker reads `CharacterObject.data` (`src/_engine/core/Character/CharacterTypes.ts:10-24`, `data: Record<string, unknown>`, default `{}` in `createCharacter`, `src/_engine/core/Character.ts:73-79`). `CharacterObject` is the data of the character entity's `CHARACTER` component.
+- Commit `22a72a0` ("Input system refactoring…") accidentally dropped `data: characterData` from `createDynamicCharacter`'s `createCharacter()` call, so `data` was always `{}` and the tracker rendered an empty `<ul></ul>`.
+- p066 Phase 1 put it back: `createDynamicCharacter` (`src/_engine/core/Character/DynamicCharacter.ts:328`) builds the live `characterData` object at `:346` and passes it at `:876`. The legacy tracker shows values again.
+- p066 Phase 2 removed the controller's private character map: `CharacterObject.data` (or the returned `DynamicCharacter.charData`, the same object) is the only way to the live data.
 
-### 2.2 The legacy tracker (`src/_engine/core/Debug/_dbg__Character.ts:33-84`)
+### 2.2 The legacy tracker (`src/_engine/core/Debug/_dbg__Character.ts:85-135`)
 
 - **Content.** A plain-DOM `CMP()` with an `Update interval: …` text line. Its child CMP's `html` function rebuilds one string for the whole list:
   - arrays are joined with `', '`
@@ -45,12 +46,12 @@ This plan revives the legacy per-character "Character data tracker" window as a 
 - **Loop.** A `createSceneAppLooper` with `TRACKER_UPDATE_INTERVAL = 0.0000001`, so the window's `innerHTML` is rebuilt on every app frame.
   - App loopers run only while `loopState.appPlay` is on (`src/_engine/core/MainLoop.ts:157-166`), so the tracker freezes when the app is paused.
 - **Bugs:**
-  - `trackCharLoopIndex` and `debuggerTrackerWindowCmp` (`:25-26`) are single module-level variables. With two tracker windows open, the second overwrites the first's looper index, and closing one can delete the other's looper.
-  - `onClose` is attached inside a `setTimeout(…, 200)` (`:76-81`, marked as a hack).
-  - The window is opened (`:125-136`) with `removeOnClose: true`, which its own TODO describes as a workaround for "won't work the second time".
+  - `trackCharLoopIndex` and `debuggerTrackerWindowCmp` (`:31-32`) are single module-level variables. With two tracker windows open, the second overwrites the first's looper index, and closing one can delete the other's looper.
+  - `onClose` is attached inside a `setTimeout(…, 200)` (`:128-133`, marked as a hack).
+  - The window is opened (`:170-188`) with `removeOnClose: true`, which its own TODO describes as a workaround for "won't work the second time".
 - **Wiring:**
-  - The debug module is lazy-loaded by `Character.ts:158-175` (`loadDebugModuleAsync(() => import('../core/Debug/_dbg__Character'), true)`, which also loads in prod-test mode).
-  - After a reload, `_updateCharactersDebuggerGUI` (`_dbg__Character.ts:317-344`) re-attaches content functions to windows restored from localStorage via `registerDraggableWindowCmp`.
+  - The debug module is lazy-loaded by `Character.ts:188-201` (`loadDebugModuleAsync(() => import('../core/Debug/_dbg__Character'), true)`, which also loads in prod-test mode).
+  - After a reload, `_updateCharactersDebuggerGUI` (`_dbg__Character.ts:348-375`) re-attaches content functions to windows restored from localStorage via `registerDraggableWindowCmp`.
 
 ### 2.3 Window and loop facts this design relies on
 
@@ -61,8 +62,10 @@ This plan revives the legacy per-character "Character data tracker" window as a 
   - `createSceneMainLooper(fn, sceneId?, isLateLooper = true)` (`src/_engine/core/Scene.ts:394`) returns an index.
   - They run in `runSceneMainLateLoopers` (`MainLoop.ts:183`): after physics, the app loop and render, only on rendered frames (after the FPS-limiter `skipFrame` return), and **also while the app is paused**.
   - `deleteSceneMainLooper(index, sceneId?, isLateLooper?)` (`Scene.ts:431`) defaults to `currentSceneId`, so the owning scene id must be captured at creation and passed back.
-- **Timestamps.** `getPhysGameTime()` (`src/_engine/core/PhysicsAPI.ts:628`) is pause-aware real time in ms. The character code stamps `__jumpTime`, `__isFallingStartTime`, `__isTumblingStartTime` and `__isGettingUpStartTime` with it (`dynamicCharacter.ts:607, 906, 974, 1223`) and resets them to `0`.
-- **Reassigned fields.** `position` is replaced by a new object every tick (`dynamicCharacter.ts:1196`). `velocity`, `angularVelocity` and `groundNormal` are also reassigned (`:990, :1004, :371`). The window must re-read `data[key]` on every update and never cache nested object references.
+- **Timestamps.** `getPhysGameTime()` (`src/_engine/core/PhysicsAPI.ts:628`) is pause-aware real time in ms. The character code stamps `__jumpTime`, `__isFallingStartTime`, `__isTumblingStartTime` and `__isGettingUpStartTime` with it (`DynamicCharacter.ts:698, 1079, 1263, 1011`) and resets them to `0`.
+- **Nested objects are mutated in place** (since p066 Phase 1): `position`, `velocity`, `relVelocity`, `angularVelocity`, `groundNormal` and the platform velocities keep their object every tick, and only their fields change. Two consequences:
+  - The diff must compare the components (§3.3). Comparing object references would never see a change.
+  - The window still re-reads `data[key]` on every update and doesn't cache nested object references: the convention on `CharacterObject.data` keeps controllers free to replace them.
 - **UI building blocks:**
   - `getSvgIcon(key, size?)` (`src/_engine/core/UI/icons/SvgIcon.ts`) takes Bootstrap-style 16×16 `fill="currentColor"` SVGs from `icons/svg/`, imported with `?raw`.
   - Window helper classes (`winSmallIconButton`, `winSmallLabel`, `winFlexContent`) are in `DraggableWindow.module.scss`.
@@ -70,15 +73,15 @@ This plan revives the legacy per-character "Character data tracker" window as a 
   - `lsGetItem`/`lsSetItem` are in `src/_engine/utils/LocalAndSessionStorage.ts:75/92`; `addToast` is in `src/_engine/core/UI/Toaster.ts:278`.
   - There is no reusable collapsible-group DOM component. Tweakpane folders exist, but this window is plain DOM.
 
-### 2.4 The data shape (`CharacterData`, `dynamicCharacter.ts:23-84`)
+### 2.4 The data shape (`CharacterData`, `DynamicCharacter.ts:19-150`)
 
-The comment at `:21-22` defines the convention: `_` = configuration, `__` = memory slot (not configurable).
+The comment at `:19-24` defines the convention: `_` = configuration, `__` = memory slot (not configurable). Every field has a one-line JSDoc (p066 Phase 1).
 
-| Group                            | Fields                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **State** (20)                   | `position` {x,y,z}; `velocity`, `relVelocity`, `angularVelocity` {x,y,z,length}; `charRotation` (rad); `groundNormal` {x,y,z}; booleans `isAwake`, `hasMoveInput`, `isGrounded`, `isFalling`, `isRunning`, `isCrouching`, `isNearWall`, `isOnStairs`, `isOnMovingPlatform`, `isSliding`, `isTumbling`, `isGettingUp`, `groundIsWalkable`, `isMovingTowardsImpossibleSlope`                                                                                                    |
-| **Properties** (27, all numbers) | `_height`, `_radius`, `_skinThickness`, `_groundDetectorOffset`, `_groundDetectorRadius`, `_tumbling*` (7), `_gettingUpDuration`, `_rotateSpeed`, `_maxVelocity`, `_maxWalkableAngle` (rad), `_minSlidingVelocity`, `_moveYOffset`, `_jumpAmount`, `_inTheAirDiminisher`, `_accumulateVeloPerInterval`, `_groundedRayMaxDistance`, `_isFallingThreshold` (ms), `_runningMultiplier`, `_crouchingMultiplier`, `_keepMovingAfterJumpThreshold`, `_roundVelocitiesScalingFactor` |
-| **Internal memory** (12)         | timestamps `__isFallingStartTime`, `__isTumblingStartTime`, `__jumpTime`, `__isGettingUpStartTime`; `__lastIsGroundedState`, `__wasOnMovingPlatformLastFrame` (bool); `__maxWalkableAngleCos`, `__charAngDamping` (number); `__touchingWallColliders`, `__touchingGroundColliders` (`number[]`); `__lastAppliedPlatformVelocity`, `__currentPlatformVelocity` {x,y,z}                                                                                                         |
+| Group                            | Fields                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **State** (20)                   | `position` {x,y,z}; `velocity`, `relVelocity`, `angularVelocity` {x,y,z,length}; `charRotation` (rad); `groundNormal` {x,y,z}; booleans `isAwake`, `hasMoveInput`, `isGrounded`, `isFalling`, `isRunning`, `isCrouching`, `isNearWall`, `isOnStairs`, `isOnMovingPlatform`, `isSliding`, `isTumbling`, `isGettingUp`, `groundIsWalkable`, `isMovingTowardsImpossibleSlope`                                                                                                                                                          |
+| **Properties** (34, all numbers) | `_height`, `_radius`, `_crouchHeight`, `_skinThickness`, `_groundDetectorOffset`, `_groundDetectorRadius`, `_tumbling*` (7), `_gettingUp*` (4), `_rotateSpeed`, `_maxVelocity`, `_maxWalkableAngle` (rad), `_minSlidingVelocity`, `_moveYOffset`, `_jumpAmount`, `_jumpCooldown` (ms), `_inTheAirDiminisher`, `_accumulateVeloPerInterval`, `_isFallingThreshold` (ms), `_runningMultiplier`, `_crouchingMultiplier`, `_keepMovingAfterJumpThreshold`, `_wallMicroPush`, `_wallNormalMaxY`, `_wallCastDistance`, `_slopeSlideSpeed` |
+| **Internal memory** (11)         | timestamps `__isFallingStartTime`, `__isTumblingStartTime`, `__jumpTime`, `__isGettingUpStartTime`; `__lastIsGroundedState` (bool); `__maxWalkableAngleCos`, `__charAngDamping` (number); `__touchingWallColliders`, `__touchingGroundColliders` (`number[]`); `__lastAppliedPlatformVelocity`, `__currentPlatformVelocity` {x,y,z}                                                                                                                                                                                                 |
 
 ---
 
@@ -86,16 +89,16 @@ The comment at `:21-22` defines the convention: `_` = configuration, `__` = memo
 
 ### 3.1 Data source: generic, prefix-driven
 
-- The window keeps reading `CharacterObject.data`. It knows nothing about `dynamicCharacter` and classifies keys only by prefix: `__` → Internal memory, `_` → Properties, otherwise → State. Any future character type that follows the same naming convention gets the window for free.
-- A doc comment on `CharacterObject.data` (`Character.ts:18`) describes the convention and says the debug window relies on it.
-- Key order within a group follows `Object.keys` order, which matches the declaration order in `DEFAULT_CHARACTER_DATA`.
+- The window keeps reading `CharacterObject.data`. It knows nothing about `DynamicCharacter` and classifies keys only by prefix: `__` → Internal memory, `_` → Properties, otherwise → State. Any future character type that follows the same naming convention gets the window for free.
+- The doc comment on `CharacterObject.data` (`CharacterTypes.ts:19-21`, added by p066) describes the convention and says the debug tools rely on it.
+- Key order within a group follows `Object.keys` order, which matches the declaration order in `DEFAULT_CHARACTER_DATA` (`DynamicCharacter.ts:168`).
 
 ### 3.2 Module layout
 
 - New `src/_engine/core/Debug/Character/_dbg__CharacterStateWindow.ts`, following the `Debug/Camera/` and `Debug/Light/` subfolder pattern, plus `src/_engine/core/Debug/Character/CharacterStateWindow.module.scss`.
 - It exports `_createCharacterStateWindowContent(winData)` and `_openCharacterStateWindow(character)`.
 - `_dbg__Character.ts` imports it statically. It is already dynamically imported and gated, so the new module still tree-shakes out of production builds, and `InitApp.ts` doesn't change.
-- `createTrackCharacterContent`, `debuggerTrackerWindowCmp` and `trackCharLoopIndex` are removed from `_dbg__Character.ts`. The tracker button (`:120-138`) and the `CHAR_TRACKER_WIN_ID` branch of `_updateCharactersDebuggerGUI` (`:334-338`) call the new module instead.
+- `createTrackCharacterContent`, `debuggerTrackerWindowCmp` and `trackCharLoopIndex` are removed from `_dbg__Character.ts`. The tracker button (`:170-188`) and the `CHAR_TRACKER_WIN_ID` branch of `_updateCharactersDebuggerGUI` (`:365-369`) call the new module instead.
 - The window id `characterDataTrackerWindow_<charId>` stays the same, so window positions and sizes already saved in localStorage keep working.
 - The window title becomes `Character state: <name | [id]>`, and the button tooltip becomes "Open character state window".
 
@@ -116,7 +119,7 @@ This answers the open question in the request: yes, updating only the changed va
 The plan:
 
 1. **Build once.** On open, build a row per key: a label element and one value cell per display part. Each row keeps its `Text` node and element references and its **last raw values** (numbers or booleans, never object references).
-2. **Diff raw, format lazily.** On update, for each row in an _open_ group, read `data[key]` again and compare the raw primitives with `!==` (per component for vectors). Only when something changed, format it and write `nodeValue`. Unchanged values cost one comparison and allocate nothing.
+2. **Diff raw, format lazily.** On update, for each row in an _open_ group, read `data[key]` again and compare the raw primitives with `!==` (per component for vectors: they are mutated in place, §2.3). Only when something changed, format it and write `nodeValue`. Unchanged values cost one comparison and allocate nothing.
 3. **Fixed widths.** Number cells use `font-variant-numeric: tabular-nums`, a monospace-ish stack and a `min-width` in `ch`, right-aligned. A changing number therefore never re-flows its neighbours.
 4. **Structural rebuild only when needed.** If `Object.keys(data).length` changes or a key's detected type changes, rebuild that group. This is a rare, cheap check.
 5. **Measure it.** Each update is timed with `performance.now()`. The average is shown in the header (`upd 0.03 ms`) and refreshed at most 4× per second, so the readout itself costs almost nothing. This gives a real number for the performance study (see §6).
@@ -174,7 +177,7 @@ In this order, using `winSmallLabel` / `winSmallIconButton` / `winFlexContent`:
 
 ### 3.7 Collapsible groups
 
-- Native `<details><summary>`, with the title and field count (`State (20)`, `Properties (27)`, `Internal memory (12)`). This is native, accessible and needs no JavaScript to toggle.
+- Native `<details><summary>`, with the title and field count (`State (20)`, `Properties (34)`, `Internal memory (11)`). This is native, accessible and needs no JavaScript to toggle.
 - The update loop checks `details.open` and skips the whole group when it's closed.
 - When a group is opened, it is fully refreshed right away (the `toggle` event), so it never shows stale values until the next interval tick.
 - The whole update is skipped when the window is collapsed (`getDraggableWindow(id)?.isCollapsed`) or Freeze is on.
@@ -197,7 +200,7 @@ In this order, using `winSmallLabel` / `winSmallIconButton` / `winFlexContent`:
 - localStorage key `AEK_charStateWin` holds `{ intervalMs: number, flash: boolean, groupsOpen: { state: boolean, props: boolean, internal: boolean } }`, shared by all character windows, read with `lsGetItem`/`lsSetItem`.
 - Defaults: `{ intervalMs: 0, flash: true, groupsOpen: { state: true, props: true, internal: false } }`.
 - It is written on change, never per frame.
-- This is a debug-UI convenience only. It holds no scene or character data, so it doesn't need a clear-LS button entry. The Characters tab's clear-LS buttons stay permanently disabled (`_dbg__Character.ts:289-293`).
+- This is a debug-UI convenience only. It holds no scene or character data, so it doesn't need a clear-LS button entry. The Characters tab's clear-LS buttons stay permanently disabled (`_dbg__Character.ts:324-328`).
 
 ### 3.10 Readable values
 
@@ -226,11 +229,10 @@ A small `key → formatter` map, used only for known keys. Any other key uses th
 
 ## 4. Phases (each non-breaking and committable on its own)
 
-### Phase 1: Restore the data link (bug fix)
+### Phase 1: Restore the data link (bug fix) — done by p066
 
-- Add `data: characterData` back to the `createCharacter()` call in `dynamicCharacter.ts:779`.
-- Add a doc comment on `CharacterObject.data` about the prefix convention (§3.1).
-- **Result:** the legacy tracker shows values again (still slow and ungrouped). This gives the "before" baseline for the §6 measurement.
+- p066 Phase 1 added `data: characterData` back to the `createCharacter()` call (`DynamicCharacter.ts:876`), and p066 Phase 2 added the doc comment on `CharacterObject.data` (§3.1). Nothing is left to do here.
+- **Result:** the legacy tracker shows values again (still slow and ungrouped). This is the "before" baseline for the §6 measurement.
 
 ### Phase 2: New Character state window (core)
 
@@ -250,12 +252,8 @@ A small `key → formatter` map, used only for known keys. Any other key uses th
 ## 5. Risks, notes, out of scope
 
 - **Sub-step timing.** `characterData` is mutated in `APP_PHYSICS_STEP`, 0–N times per frame. The window reads it in the late loop, so it shows the last sub-step's state. A frame with 0 sub-steps shows no change, which is correct.
-- **One-step-late fields.** `isAwake`, `groundNormal`, `groundIsWalkable` and the wall-hit results come from async physics queries (worker-safe) and are one step behind by design (`dynamicCharacter.ts:278-284`). Mention this in the window as a `title` on those rows, so it isn't mistaken for a window bug.
-- **Dead or stale fields.**
-  - `isMovingTowardsImpossibleSlope` is declared but never written.
-  - `_groundedRayMaxDistance` and `_tumblingAngDamping` are declared with defaults but never read anywhere in `src/`.
-  - `__wasOnMovingPlatformLastFrame` is marked `@TODO: remove`.
-  - The window shows them as they are. Cleaning them up belongs to character-controller work, not this plan. p069 has to account for the unused config values, since editing them would do nothing.
+- **One-step-late fields.** `groundNormal`, `groundIsWalkable` and the wall-hit results come from async physics queries (worker-safe) and are one step behind by design (`DynamicCharacter.ts:372-377`). Mention this in the window as a `title` on those rows, so it isn't mistaken for a window bug. (`isAwake` is no longer late: since p066 it is derived from the velocities in the tick.)
+- **Dead fields.** p066 removed `_groundedRayMaxDistance`, `_tumblingAngDamping`, `__wasOnMovingPlatformLastFrame` and `_roundVelocitiesScalingFactor`. Only `isMovingTowardsImpossibleSlope` is left: declared but never written. The window shows it as it is.
 - **Out of scope (`DraggableWindow` quirks):**
   - close vs. remove semantics (the reason `removeOnClose` stays)
   - `updateDraggableWindow` being hard-wired to call `updateDebuggerCharactersListSelectedClass()` (`DraggableWindow.ts:611`)

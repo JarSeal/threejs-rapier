@@ -100,7 +100,7 @@ const readBodyValues = (rb: RigidBodyAPI) => {
 /** Dynamic bodies (characters split out), keyed by appId or by creation order. */
 const collectBodies = () => {
   const world = getECSWorld();
-  const characterEntityIds = new Set(Object.values(getCharacters()).map((c) => c.entityId));
+  const characterEntityIds = new Set(getCharacters(world).map((c) => c.entityId));
   const keyed: ProbeBody[] = [];
   const keyless: { body: ProbeBody; rbId: number }[] = [];
   const characters: ProbeBody[] = [];

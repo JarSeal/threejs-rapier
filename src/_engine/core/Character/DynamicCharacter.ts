@@ -1,9 +1,9 @@
 import * as THREE from 'three/webgpu';
-import { CharacterObject, createCharacter, deleteCharacter } from '../../core/Character';
-import { getECSWorld, type ECSWorld } from '../../core/ECS';
-import { ComponentType } from '../../core/ECS/ECSCoreComponents';
-import { ECSSystemStage } from '../../../AppECSRegistry';
-import { getPhysGameTime, getPhysicsState, getPhysicsWorld } from '../../core/PhysicsAPI';
+import { createCharacter } from '../Character';
+import type { CharacterObject } from './CharacterTypes';
+import { getECSWorld } from '../ECS';
+import { ComponentType } from '../ECS/ECSCoreComponents';
+import { getPhysGameTime, getPhysicsState, getPhysicsWorld } from '../PhysicsAPI';
 import {
   QueryFilterFlags,
   RigidBodyTypeAPI,
@@ -11,10 +11,10 @@ import {
   type ColliderParams,
   type RigidBodyAPI,
   type RigidBodyParams,
-} from '../../core/Physics/PhysicsAPITypes';
-import type { RayDebugOpts } from '../../core/RayDebugTypes';
-import { LEVEL_GROUND_NORMAL } from '../constants';
-import { existsOrThrow } from '../assert';
+} from '../Physics/PhysicsAPITypes';
+import type { RayDebugOpts } from '../RayDebugTypes';
+import { LEVEL_GROUND_NORMAL } from '../../utils/constants';
+import { existsOrThrow } from '../../utils/assert';
 
 /**
  * A dynamic character's live data. Prop name prefixes: none = state (written by the controller),
@@ -275,9 +275,6 @@ const WALL_CAST_HEIGHT_FACTOR = 0.9;
 const PLATFORM_ROTATION_EPSILON = 0.001;
 /** Below this (m/s or rad/s), the character counts as resting (isAwake = false). */
 const AWAKE_EPSILON = 0.001;
-/** The character system runs after the other APP_PHYSICS_STEP systems (default order 0), so moves
- * requested from those (eg. an AI) are applied in the same sub-step. */
-const DYNAMIC_CHARACTER_SYSTEM_ORDER = -10;
 
 const getCharacterDimensions = (d: CharacterData): CharacterDimensions => {
   const walkHalfHeight = Math.max(0, d._height / 2 - d._radius);
@@ -328,42 +325,6 @@ const setVec = (x: number, y: number, z: number) => {
   return _vec;
 };
 
-const characters: { [id: string]: DynamicCharacter } = {};
-
-// Per-instance tick closures for the shared APP_PHYSICS_STEP system (mirrors the
-// movingPlatform.ts / followObjectCameraRig.ts registerXSystem(world) convention).
-// Each tick is owned by its character's entity: it only runs for that entity's world, and the
-// character is cleaned up once the entity is gone (e.g. deleted with its scene) — otherwise the
-// tick would keep driving a rigid body that no longer exists.
-type CharacterTick = { world: ECSWorld; entityId: number; tick: (dt: number) => void };
-const activeCharacterTicks = new Map<string, CharacterTick>();
-
-const characterMovementSystemFn = (world: ECSWorld, dt: number) => {
-  for (const [id, character] of activeCharacterTicks) {
-    if (character.world !== world) continue;
-    if (!world.isAlive(character.entityId)) {
-      activeCharacterTicks.delete(id);
-      delete characters[id];
-      continue;
-    }
-    character.tick(dt);
-  }
-};
-
-/** Registers the shared per-tick character-movement system, run once per fixed physics
- * sub-step (APP_PHYSICS_STEP), after that stage's other systems. The tick's per-step amounts
- * (e.g. turning with a rotating platform by angVelo * timestep) are only right at that cadence.
- * Idempotent to call more than once (world.addSystem dedupes by name) — call once from wherever
- * the owning scene/app wires up its ECS systems. */
-export const registerDynamicCharacterSystem = (world: ECSWorld) => {
-  world.addSystem(
-    ECSSystemStage.APP_PHYSICS_STEP,
-    'dynamicCharacterSystem',
-    characterMovementSystemFn,
-    DYNAMIC_CHARACTER_SYSTEM_ORDER
-  );
-};
-
 export const createDynamicCharacter = async (opts: {
   id: string;
   charMesh: THREE.Mesh;
@@ -383,7 +344,6 @@ export const createDynamicCharacter = async (opts: {
 
   // Combine character data
   const characterData: CharacterData = { ...getDefaultCharacterData(), ...charData };
-  const character: Partial<DynamicCharacter> = { charData: characterData };
   const dims = getCharacterDimensions(characterData);
 
   // Set __maxWalkableAngleCos
@@ -1002,9 +962,10 @@ export const createDynamicCharacter = async (opts: {
   const getUpUprightQuat = new THREE.Quaternion();
   const getUpUprightEuler = new THREE.Euler();
 
-  activeCharacterTicks.set(id, {
-    world: ecsWorld,
-    entityId: dynamicCharacterObject.entityId,
+  // Run by Character.ts's character system once per fixed physics sub-step. The tick's per-step
+  // amounts (eg. turning with a rotating platform by angVelo * timestep) are only right at that
+  // cadence. It goes with the entity: no cleanup needed.
+  dynamicCharacterObject.controller = {
     tick: (dt: number) => {
       const body = characterBody;
       if (!body) return;
@@ -1284,25 +1245,15 @@ export const createDynamicCharacter = async (opts: {
       // Ground normal for the next sub-steps (also while idle or sliding)
       refreshFloorNormal();
     },
-  });
+  };
 
-  character.charMesh = charMesh;
-  character.dynamicCharacterObject = dynamicCharacterObject;
-  character.controlFns = controlFns;
-
-  characters[id] = character as DynamicCharacter;
-
-  return characters[id];
-};
-
-/** Deletes a dynamic character: disposes its ECS entity (physics body/colliders, mesh, key
- * bindings — via Character.ts's deleteCharacter) and stops its per-tick movement/tumbling
- * system entry. Without this second part, deleting only via Character.ts's deleteCharacter()
- * would leave a zombie entry in activeCharacterTicks referencing a disposed rigid body. */
-export const deleteDynamicCharacter = (id: string) => {
-  deleteCharacter(id);
-  activeCharacterTicks.delete(id);
-  delete characters[id];
+  const dynamicCharacter: DynamicCharacter = {
+    dynamicCharacterObject,
+    charMesh,
+    charData: characterData,
+    controlFns,
+  };
+  return dynamicCharacter;
 };
 
 const _tumbleStartImpulseVector3 = new THREE.Vector3();

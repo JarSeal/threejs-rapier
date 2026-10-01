@@ -15,6 +15,8 @@ export enum CoreComponentType {
   LINE = 'CORE_LINE',
   /** An entity a manager owns and drives (eg. a sky box's sun light), see ManagedByData. */
   MANAGED_BY = 'CORE_MANAGED_BY',
+  /** A character's registry entry (Character.ts's createCharacter), see CharacterObject. */
+  CHARACTER = 'CORE_CHARACTER',
   // Physics
   COLLIDER = 'CORE_COLLIDER',
   BODY_DYNAMIC_VISUAL = 'CORE_BODY_DYNAMIC_VISUAL', // Moving + Has Mesh

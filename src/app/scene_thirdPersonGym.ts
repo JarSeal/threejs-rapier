@@ -5,7 +5,7 @@ import { createMeshEntity, getMeshByAppId, setMeshMaterial } from '../_engine/co
 import { createSkyBox } from '../_engine/core/SkyBox/SkyBox';
 import { getLoaderStatusUpdater } from '../_engine/core/SceneLoader';
 import { loadTexture } from '../_engine/core/Texture';
-import { createDynamicCharacter } from '../_engine/utils/character/dynamicCharacter';
+import { createDynamicCharacter } from '../_engine/core/Character/DynamicCharacter';
 import { characterTestObstacles } from '../_engine/utils/world/characterTestObjects';
 import { importAssetAsync } from '../_engine/core/Import/ImportRegistry';
 import { spawnImportedAsset } from '../_engine/core/Import/SpawnImported';

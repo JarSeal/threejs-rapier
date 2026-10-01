@@ -24,7 +24,7 @@ reads, so:
    Phase 4's temporary stamp self-check (see Verification method) also flagged 1-2 such
    mid-read writes per ~1400 reads.
 2. **Across systems in one frame.** `physicsToTransformSystem` (`APP_POST_PHYSICS`),
-   `APP_PHYSICS_STEP` gameplay code (e.g. `dynamicCharacter.ts` reading `rb.pos`/`lvel`),
+   `APP_PHYSICS_STEP` gameplay code (e.g. `core/Character/DynamicCharacter.ts` reading `readPoseInto`/`readVelocitiesInto`),
    `physicsInterpolationSystem` and the debug wireframe (`APP_RENDER_SYNC`) can each see a
    different snapshot within the same frame — TRANSFORM and the rendered pose can disagree.
 3. **Across bodies in one pass.** One loop over all bodies can read some from N and some from

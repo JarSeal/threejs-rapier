@@ -5,7 +5,6 @@ import { registerInstancedMeshPoolEffect } from './toolkit/ecs/InstancedMeshPool
 import { registerMutualGravityEffect } from './toolkit/ecs/effects/MutualGravity';
 import { registerMovingPlatformSystem } from './_engine/utils/world/movingPlatform';
 import { registerFollowObjectCameraRigSystem } from './_engine/utils/cameras/followObjectCameraRig';
-import { registerDynamicCharacterSystem } from './_engine/utils/character/dynamicCharacter';
 
 /**
  * IMPORT YOUR MANAGERS HERE
@@ -30,5 +29,4 @@ ECSWorld.registerPlugin((world) => {
   registerMutualGravityEffect(world);
   registerMovingPlatformSystem(world);
   registerFollowObjectCameraRigSystem(world);
-  registerDynamicCharacterSystem(world);
 });

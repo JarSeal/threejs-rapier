@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1–2 implemented
 Category: Character, Controls
 Blocks: p067_character-state-debugger-window.md (and through it p068_character-debug-gizmos.md and p069_character-live-config-editing.md: this plan moves the files they cite and changes some of the data they read. Phase 2 updates their references.)
 
@@ -391,17 +391,46 @@ Each phase leaves the tree compiling (`yarn lint`, `yarn build`), keeps the gym 
 - **Verified** headless in both worker targets, against `main`: walk, run, W+S, turning, jump, crouch, the carousel, jumping off it, tumble and get-up, the slide obstacle's 50° and 60° faces, and leaving and re-entering the scene. The 70° face (nearly a wall) can tumble the character, idle or strafing. Not covered: stairs, the elevator and the Ferris wheel, 144 Hz, the RPC stats, a heap timeline.
 - **Corrections to this plan** found while implementing: the engine is at 3.0.0 "Zenith", the app at 1.3.0 and the toolkit at 1.1.0, so §8's bumps become engine 4.0.0 (the codename after Zenith), app 1.4.0, plus a toolkit minor bump for Phase 5. Phase 2's caller list misses `core/Debug/_dbg__PhysicsDeterminism.ts` (`getCharacters()`), and `DraggableWindow.ts` doesn't reference characters. For Phase 5 (§2.6): the gym already has its own `followWithSun`, and the sky box's sun light already follows the active camera with texel snapping (`SkyBox/SkyLights.ts`).
 
-### Phase 2 — `CHARACTER` component, a single registry, and the move
+### Phase 2 — `CHARACTER` component, a single registry, and the move — done
 
-- Add `ComponentType.CHARACTER` and its data type, and add `TAG_IS_CHARACTER` in `createCharacter`. Register the `onDeleteEntity` hook in `Character.ts`. Switch `Character.ts` to the `id → entityId` index plus storage iteration.
-- Move `utils/character/dynamicCharacter.ts` to `core/Character/DynamicCharacter.ts`. Extract `CharacterTypes.ts`. The system iterates `getStorage(CHARACTER)` and calls `character.controller.tick(dt)`. Remove `activeCharacterTicks` and the second map.
-- Apply the `CharacterObject` field renames (§3.1) and update `_dbg__Character.ts`, `SceneLoader.ts`, `InitApp.ts`, `DraggableWindow.ts`, `AppECSPlugins.ts` and `scene_thirdPersonGym.ts`.
-- **Update the dependent plans:**
+- (done) Add `ComponentType.CHARACTER` and its data type, and add `TAG_IS_CHARACTER` in `createCharacter`. Register the `onDeleteEntity` hook in `Character.ts`. Switch `Character.ts` to the `id → entityId` index plus storage iteration.
+- (done) Move `utils/character/dynamicCharacter.ts` to `core/Character/DynamicCharacter.ts`. Extract `CharacterTypes.ts`. The system iterates `getStorage(CHARACTER)` and calls `character.controller.tick(dt)`. Remove `activeCharacterTicks` and the second map.
+- (done) Apply the `CharacterObject` field renames (§3.1) and update `_dbg__Character.ts`, `SceneLoader.ts`, `InitApp.ts`, `DraggableWindow.ts`, `AppECSPlugins.ts` and `scene_thirdPersonGym.ts`.
+- (done) **Update the dependent plans:**
   - In p067, p068 and p069, update the file paths and line references, and the renamed fields.
   - p067 §2.3: data is now mutated in place (still re-read `data[key]`); §2.1: the data link is already restored, so its Phase 1 shrinks.
   - p068: colliders by role instead of index.
   - p069: the new and removed config keys; the dimensions now come from `getDimensions` (the derived-value hook).
   - Add `Blocked by: p066_character-definitions-and-refactoring.md` to p067's header.
+  - Also: the old `dynamicCharacter.ts` paths in p063 and p500, and p102 §8.
+
+**Implementation notes** (where Phase 2 differs from the plan, and what later phases must know):
+
+- **The controller system is in `Character.ts`, not `DynamicCharacter.ts`** (§2.3). It only loops over the `CHARACTER` storage and calls `controller?.tick(dt)`, so nothing in it is specific to one controller, and a second controller with its own copy would tick every character twice. It registers itself with a module-level `ECSWorld.registerPlugin` (like `SkyBox.ts` and `Raycast.ts`), at order -10 in `APP_PHYSICS_STEP`. The line in `AppECSPlugins.ts` is gone. `DynamicCharacter.ts` only creates the character and sets its `controller`.
+- **`CharacterObject` so far** (`Character/CharacterTypes.ts`): §3.1's fields minus `kind`, `intent` and `controlMode`, which come with Phases 3–4. `controller` is a `CharacterController` (`{ tick, dispose? }`), set by the creator once the character exists; the delete hook calls `dispose`. `data` is no longer optional.
+- **`createDynamicCharacter`'s return shape is unchanged** (`dynamicCharacterObject`, `charMesh`, `charData`, `controlFns`), and so are its options: §3.2's shape is Phase 4.
+- **Registry API:**
+  - `getCharacters(world?)` returns an array (it was an `id → object` map).
+  - `deleteAllCharacters(world?)` deletes every entity with the component.
+  - `createCharacter` with an id that is already in use replaces the old character, with a warning. Before, the old one leaked, and with namespaced binding ids its later deletion would have removed the new one's keys.
+  - `registerOnDeleteCharacter` still works: the hook calls it.
+  - `deleteDynamicCharacter` is removed (no callers).
+- **The delete hook refreshes the debugger once, in a microtask**, because the entity still exists while its hooks run. A scene change therefore refreshes it once, not once per character.
+- **Also updated:** `_dbg__PhysicsDeterminism.ts` (`getCharacters()`), the path comments in `KeyboardInput.ts` and `movingPlatform.ts`, both paths in `.claude/CLAUDE.md`, the readme's folder tree, and p102 §8 (deleting a character entity no longer leaves the registry stale). `SceneLoader.ts`, `InitApp.ts` and `DraggableWindow.ts` needed no change.
+- **The dependent plans** now cite `core/Character/DynamicCharacter.ts` with current line numbers, and the renamed fields. Beyond what the bullet above lists:
+  - p067: Phase 1 is marked done by p066 (the data link and the `data` doc comment). §2.4's field table and §3.7's group counts are now 20 / 34 / 11. `isAwake` is off the one-step-late list (it is derived in the tick), and only `isMovingTowardsImpossibleSlope` is left as a dead field.
+  - p068: the wall-hit result is private to the controller's closure, so p068 has to expose it. The floor ray and the wall cast already have physics ray helpers (`char_floor_<entityId>`, `char_wall_<entityId>`), so p068 must decide whether to reuse or replace them.
+  - p069: the 34 keys are classified as read live / derived / baked into colliders, and the "declared but unused" kind is gone. `_tumblingAngularDamping` applies on the next tumble. `_radius` is also read live for the floor ray's length.
+- **Found, not fixed (also on `main`):** `controlFns` keep writing to the body after their character is deleted. The gym's `dummyCharLooper` driving a deleted dummy logs "Could not find RigidBodyAPI" in `WORKER_THREAD` mode. In `MAIN_THREAD` mode, `rotate` writing to the freed body crashes Rapier's WebAssembly, and physics stays broken for the rest of the session. Phase 3 should make every `controlFns` entry (`jump` and `crouch` too, not only `rotate`/`move`) write only the intent, so nothing touches the body outside the tick.
+- **Verified** headless against the running dev server, in both worker targets:
+
+  - walking with W, and the dummy moving on its own;
+  - `deleteCharacter` (true, then false), and the player's keys still working after the dummy is deleted;
+  - a direct `world.deleteEntity` on the player emptying the registry and the bindings;
+  - leaving and re-entering the scene (no stale characters or bindings, exactly 2 characters and 7 bindings again);
+  - the debug edit window showing the renamed fields.
+
+  Not covered: stairs, platforms, tumbling, and the debug delete button.
 
 ### Phase 3 — Intent and control schemes
 

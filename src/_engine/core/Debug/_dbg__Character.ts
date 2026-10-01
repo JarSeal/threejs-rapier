@@ -83,15 +83,14 @@ const recordCharacterPose = <T extends CharVec3 | CharQuat>(
 };
 
 const createTrackCharacterContent = (winData?: { [key: string]: unknown }) => {
-  const characters = getCharacters();
   const TRACKER_UPDATE_INTERVAL = 0.0000001;
   const d = winData as { id: string; winId: string };
   debuggerTrackerWindowCmp = CMP();
   debuggerTrackerWindowCmp.add({ text: `Update interval: ${TRACKER_UPDATE_INTERVAL}` }); // @TODO: add Pane and input to set TRACKER_UPDATE_INTERVAL
   const trackerContainer = debuggerTrackerWindowCmp.add({
     html: () => {
-      const character = characters[d.id];
-      if (!character?.data) return '';
+      const character = getCharacterById(d.id);
+      if (!character) return '';
       const data = character.data;
       const keys = data ? Object.keys(data) : [];
       let htmlString = '<ul>';
@@ -119,7 +118,7 @@ const createTrackCharacterContent = (winData?: { [key: string]: unknown }) => {
   let trackerUpdateAccTime = 0;
   trackCharLoopIndex = createSceneAppLooper((delta) => {
     trackerUpdateAccTime += delta;
-    if (trackerUpdateAccTime > TRACKER_UPDATE_INTERVAL && characters[d.id]) {
+    if (trackerUpdateAccTime > TRACKER_UPDATE_INTERVAL && getCharacterById(d.id)) {
       trackerContainer.update();
       trackerUpdateAccTime = 0;
     }
@@ -214,13 +213,9 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   <div><span class="winSmallLabel">Name:</span> ${character.name || ''}</div>
   <div><span class="winSmallLabel">Id:</span> ${character.id}</div>
   <div><span class="winSmallLabel">Entity id:</span> ${character.entityId}</div>
-  ${
-    Array.isArray(character.meshId)
-      ? `<div><span class="winSmallLabel">Mesh ids:</span> ${character.meshId.join(', ')}</div>`
-      : `<div><span class="winSmallLabel">Mesh id:</span> ${character.meshId}</div>`
-  }
-  <div><span class="winSmallLabel">Key control ids:</span> ${character.keyControlIds.length ? character.keyControlIds.join(', ') : ''}</div>
-  <div><span class="winSmallLabel">Mouse control ids:</span> ${character.mouseControlIds.length ? character.mouseControlIds.join(', ') : ''}</div>
+  <div><span class="winSmallLabel">Visual id:</span> ${character.visualId}</div>
+  <div><span class="winSmallLabel">Key binding ids:</span> ${character.keyBindingIds.join(', ')}</div>
+  <div><span class="winSmallLabel">Mouse binding ids:</span> ${character.mouseBindingIds.join(', ')}</div>
 </div>
 <div style="text-align:right">${openCharacterDataButton}${logButton}${deleteButton}</div>
 </div>`,
@@ -290,17 +285,12 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   return debuggerWindowCmp[d.id];
 };
 
-const getCharactersListData = (): DebuggerListItem[] => {
-  const characters = getCharacters();
-  return Object.keys(characters).map((key) => {
-    const character = characters[key];
-    return {
-      itemId: key,
-      title: character.name || `[${character.id}]`,
-      subTitle: `[${character.id}]`,
-    };
-  });
-};
+const getCharactersListData = (): DebuggerListItem[] =>
+  getCharacters().map((character) => ({
+    itemId: character.id,
+    title: character.name || `[${character.id}]`,
+    subTitle: `[${character.id}]`,
+  }));
 
 const toggleEditCharacterWindow = (charId: string) => {
   const character = getCharacterById(charId);
@@ -342,9 +332,9 @@ export const _createCharactersDebuggerGUI = () => {
         emptyText: 'No characters registered to this scene..',
         data: getCharactersListData,
         selectedItemId: () =>
-          Object.keys(getCharacters()).filter(
-            (key) => getDraggableWindow(getEditWindowId(key))?.isOpen
-          ),
+          getCharacters()
+            .map((character) => character.id)
+            .filter((charId) => getDraggableWindow(getEditWindowId(charId))?.isOpen),
         perItemConfig: { onClick: toggleEditCharacterWindow },
       }),
     ],

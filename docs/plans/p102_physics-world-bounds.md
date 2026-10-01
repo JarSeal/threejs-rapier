@@ -162,7 +162,7 @@ Fix: the probe excludes every body with an exit record whose `step` is ≤ its t
 
 ## 8. Interaction with other systems
 
-- **Characters** (`Character.ts`, `utils/character/dynamicCharacter.ts`) are created through `createPhysicsEntity`, so they are covered. A player character usually wants `action: 'CALLBACK'` (respawn) or `ignore: true`. Deleting a character entity behind `Character.ts`'s back would leave its registry stale, so `createCharacter` should default characters to `'CALLBACK'` with an `onExit` that calls `deleteCharacter(id)`. Decide in Phase 2.
+- **Characters** (`Character.ts`, `core/Character/DynamicCharacter.ts`) are created through `createPhysicsEntity`, so they are covered. A player character usually wants `action: 'CALLBACK'` (respawn) or `ignore: true`. The default `'DELETE'` is safe for them: since p066 Phase 2, deleting a character's entity any way runs the `CHARACTER` delete hook, which removes it from the registry with its bindings. Whether `createCharacter` should still default characters to `'CALLBACK'` (respawn rather than vanish) is a gameplay default. Decide in Phase 2.
 - **Joints:** deleting a body that has joints goes through the existing body deletion path; nothing new. `'DISABLE'` leaves the joint in place with a disabled body on one end: document it.
 - **Snapshots (p500):** bounds are configuration, not simulation state, so a Rapier snapshot does not contain them. When p500 is implemented, a restore must re-send the current global and per-body bounds (the ECS side is the source of truth). Add a line to p500 when this lands.
 - **`maxBodies` / transform buffer:** deleting exited bodies frees their slots, which is a real benefit in long-running scenes with spawners.
