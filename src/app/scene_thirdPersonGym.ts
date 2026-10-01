@@ -283,7 +283,7 @@ const createGymCharacters = async () => {
       accDelta = 0;
     }
     if (action === 'F') {
-      controlFns.move('FORWARD', dt);
+      controlFns.move('FORWARD');
     } else {
       controlFns.rotate('LEFT', dt);
     }

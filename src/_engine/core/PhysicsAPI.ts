@@ -2584,6 +2584,32 @@ class RigidBodyProxyAPI implements RigidBodyWorkerEngine {
       out[offset + 6] = r.w;
     }
   }
+  readVelocitiesInto(out: PoseArray, offset = 0): void {
+    if (this.pendingLvel && !isWritePending(this.pendingLvel.visibleAt)) {
+      this.pendingLvel = undefined;
+    }
+    if (this.pendingAvel && !isWritePending(this.pendingAvel.visibleAt)) {
+      this.pendingAvel = undefined;
+    }
+    if (transformBuffer && this.slot !== -1) {
+      transformBuffer.readVelocitiesInto(this.slot, out, offset);
+    } else {
+      // Same zeroed defaults as the lvel/avel getters before the first step/push
+      for (let i = 0; i < 6; i++) out[offset + i] = 0;
+    }
+    const l = this.pendingLvel?.value;
+    if (l) {
+      out[offset] = l.x;
+      out[offset + 1] = l.y;
+      out[offset + 2] = l.z;
+    }
+    const a = this.pendingAvel?.value;
+    if (a) {
+      out[offset + 3] = a.x;
+      out[offset + 4] = a.y;
+      out[offset + 5] = a.z;
+    }
+  }
   get lvel(): PhysVector {
     if (this.pendingLvel) {
       if (isWritePending(this.pendingLvel.visibleAt)) return { ...this.pendingLvel.value };

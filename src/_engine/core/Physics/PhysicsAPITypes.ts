@@ -343,6 +343,10 @@ export type RigidBodyAPI = {
    * [posX, posY, posZ, rotX, rotY, rotZ, rotW], starting at `offset` (default 0) — instead of
    * two fresh objects per `pos`/`rot` read. */
   readPoseInto(out: PoseArray, offset?: number): void;
+  /** The velocity twin of `readPoseInto`: writes the same values as `lvel`/`avel` (including a
+   * still-pending write in WORKER_THREAD mode) into `out` as
+   * [linvelX, linvelY, linvelZ, angvelX, angvelY, angvelZ], starting at `offset` (default 0). */
+  readVelocitiesInto(out: PoseArray, offset?: number): void;
 
   isBeingDeleted: boolean;
 

@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Character, Controls
 Blocks: p067_character-state-debugger-window.md (and through it p068_character-debug-gizmos.md and p069_character-live-config-editing.md: this plan moves the files they cite and changes some of the data they read. Phase 2 updates their references.)
 
@@ -368,7 +368,7 @@ All call sites read these values instead of `_height / 5` and `_height / 10`. Fo
 
 Each phase leaves the tree compiling (`yarn lint`, `yarn build`), keeps the gym scene working in both physics worker targets, and is committed on its own.
 
-### Phase 1 — Bug fixes and performance, in place (no file moves)
+### Phase 1 — Bug fixes and performance, in place (no file moves) — done
 
 - Fix bugs 1–6 (§1.3), including `data: characterData` → `createCharacter`.
 - Implement the derived dimensions from §3.3 inside `dynamicCharacter.ts`, as a local function for now.
@@ -376,6 +376,20 @@ Each phase leaves the tree compiling (`yarn lint`, `yarn build`), keeps the gym 
 - Namespace the binding ids. This part of bug 2's fix doesn't need the intent.
 - Fix `hasMoveInput` by tracking a held-move-key count until the intent lands in Phase 3.
 - **Verify:** the gym works in `MAIN_THREAD` and `WORKER_THREAD` (walk, run, crouch, jump, stairs, slopes, the slide obstacle, all moving platforms, tumble and get up). The worker RPC count per frame drops (Physics API stats tracker, p027).
+
+**Implementation notes** (where Phase 1 differs from the plan, and what later phases must know):
+
+- **`readVelocitiesInto`.** `readPoseInto` only reads the position and rotation, not the velocities as §3.4 assumed. `RigidBodyAPI` gained `readVelocitiesInto(out, offset?)` ([linvel xyz, angvel xyz], with the pending-write handling of `lvel`/`avel`). The tick reads the pose and the velocities once each. On `MAIN_THREAD`, Rapier's own getters still allocate inside both reads.
+- **Scratch reuse is safe** (§3.4's "verify"): `messageWorker` structured-clones captured sub-step commands, `MAIN_THREAD` copies into Rapier, and the ray helpers copy the origin and direction.
+- **`hasMoveInput`** is a per-sub-step flag, not a held-key count. A count would get stuck: blur and visibility changes clear the held keys without a KEY_UP. The KEY_UP binding is gone.
+- **The move is applied once, by the tick.** `controlFns.move(direction)` only records the request (summed, so W+S cancel; its `delta` argument is gone). The tick applies it with its sub-step delta, which fixes bug 6. The character system runs at order -10 in `APP_PHYSICS_STEP`, so moves requested by that stage's other systems (the gym's dummy) apply in the same sub-step.
+- **Event order changed.** The move now runs after the sub-step's collision events (it used to run before them, from the held-key poll). In the sub-step whose event takes the character off a moving platform, `relVelocity` is still platform-relative, so the move adds back `__lastAppliedPlatformVelocity`: jumping off keeps the platform's momentum. Phase 3's vector move math must keep this.
+- **Steep slopes** (an older bug, also on `main`). Moving across ground steeper than `_maxWalkableAngle` overwrote the downhill velocity every sub-step, and the old correction removed only part of the uphill input, so the character could cross or hold steep slopes. Now (`applySteepSlope`): the uphill part of the input is dropped, the body's downhill speed is kept, and `_slopeSlideSpeed` pushes it up to `_maxVelocity` (gravity alone goes faster), while grounded and off stairs. The character also slides without move input. §2.4's "the unwalkable-slope correction stays exactly as it is" now means this version.
+- **The wall cast and the floor ray exclude sensors** (`QueryFilterFlags.EXCLUDE_SENSORS`). This removes the `isSensor()` RPC per wall hit; before, a sensor in front of a wall cancelled the wall slide. The wall cast is centred on the active capsule (it was off-centre while crouching), and each character has its own wall-hit result (one normal object used to be shared by all of them).
+- **The floor ray** runs from the tick, at most one in flight per character, also while idle.
+- **Derived dimensions:** the wall sensor's half-height is `walkHalfHeight + _radius − wallSensorRadius` (0.275 with the defaults, was 0.291), lifted 0.05.
+- **Verified** headless in both worker targets, against `main`: walk, run, W+S, turning, jump, crouch, the carousel, jumping off it, tumble and get-up, the slide obstacle's 50° and 60° faces, and leaving and re-entering the scene. The 70° face (nearly a wall) can tumble the character, idle or strafing. Not covered: stairs, the elevator and the Ferris wheel, 144 Hz, the RPC stats, a heap timeline.
+- **Corrections to this plan** found while implementing: the engine is at 3.0.0 "Zenith", the app at 1.3.0 and the toolkit at 1.1.0, so §8's bumps become engine 4.0.0 (the codename after Zenith), app 1.4.0, plus a toolkit minor bump for Phase 5. Phase 2's caller list misses `core/Debug/_dbg__PhysicsDeterminism.ts` (`getCharacters()`), and `DraggableWindow.ts` doesn't reference characters. For Phase 5 (§2.6): the gym already has its own `followWithSun`, and the sky box's sun light already follows the active camera with texel snapping (`SkyBox/SkyLights.ts`).
 
 ### Phase 2 — `CHARACTER` component, a single registry, and the move
 
