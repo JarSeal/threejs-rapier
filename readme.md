@@ -47,7 +47,7 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 
 These are ready-made modules you can import as they are, or copy into your app and change:
 
-- **ECS effects**: `HoverEffect` (bobbing), `FollowTool` (follow a target) and `InstancedMeshPool` (instanced rendering managed by the ECS).
+- **ECS effects**: `HoverEffect` (bobbing), `FollowTool` (follow a target), `SunShadowFit` (fits a directional light's shadow to the camera's view) and `InstancedMeshPool` (instanced rendering managed by the ECS).
 - **TSL materials**: checkerboard, triplanar checkerboard and triplanar grid materials.
 - **Procedural geometry**: seeded noise terrain, foliage generation and scattering on surfaces.
 

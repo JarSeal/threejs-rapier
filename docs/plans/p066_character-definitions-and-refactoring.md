@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–4 implemented
+Status: in progress | Phases 1–5 implemented
 Category: Character, Controls
 Blocks: p067_character-state-debugger-window.md (and through it p068_character-debug-gizmos.md and p069_character-live-config-editing.md: this plan moves the files they cite and changes some of the data they read. Phase 2 updates their references.)
 
@@ -491,10 +491,24 @@ Each phase leaves the tree compiling (`yarn lint`, `yarn build`), keeps the gym 
 
   Not covered: `SLIDE` on the slide obstacle, `onLocomotionStateChange` across a scene re-enter, a custom body plan, and a `visual` that is a group.
 
-### Phase 5 — Toolkit additions
+### Phase 5 — Toolkit additions — done
 
-- Add the `generateTerrain` `heightModifier` option (§2.7).
-- Add the `SunShadowFit` effect (§2.6), registered in `AppECSPlugins.ts` and added to `AppECSRegistry.ts`'s component types in the toolkit pattern (`HoverEffect.ts`/`FollowTool.ts`).
+- (done) Add the `generateTerrain` `heightModifier` option (§2.7).
+- (done) Add the `SunShadowFit` effect (§2.6), registered in `AppECSPlugins.ts` and added to `AppECSRegistry.ts`'s component types in the toolkit pattern (`HoverEffect.ts`/`FollowTool.ts`).
+
+**Implementation notes** (where Phase 5 differs from the plan, and what Phase 6 must know):
+
+- **`heightModifier`** runs per vertex right after the noise, so the mesh, `heights` and `getHeightAt` agree.
+- **`SunShadowFitData`** is §2.6's shape with two changes:
+  - `lightDistance` is optional. Its default, `radius + casterExtension + 1`, keeps the shadow camera's near plane at 1; a fixed value smaller than `radius + casterExtension` would give a negative near plane.
+  - It gains an optional `direction` (toward the sun). Without one, the direction is taken once, from the target to the light, when the effect first runs. It is stored rather than re-derived from the transforms the effect writes, which would drift through rounding. Setting it turns the sun.
+- **The sphere** is the closed-form bounding sphere of the view slice: the zoom-adjusted FOV, aspect, near and `min(far, maxDistance)`, with a box for orthographic cameras. Its radius only changes on a zoom, a resize or a settings change. With a camera 40 m deep the radius is about 40 m, so `maxDistance` sets the shadow resolution.
+- **Writes only on change.** The light, its target and their TRANSFORMs are written only when the snapped center, the direction, the distance or the extents change. The per-component state is in a `WeakMap` keyed by the component data, so it goes with the component and needs no hooks.
+- **Order:** `APP_RENDER_SYNC_ORDER.SHADOW_FIT` (-0.75), a new constant in `AppECSRegistry.ts`.
+- **Import cycle.** `AppECSRegistry.ts` imports the file for its enum, so like `InstancedMeshPool.ts` it value-imports only `ECS/ECSRegistry` and the Logger. The main camera is found through the world's `TAG_IS_MAIN_CAMERA` (as `getMainCamera` does), not by importing `CameraManager`.
+- **Skipped lights:** a non-directional light, or one with `MANAGED_BY` (the sky box's sun already follows the camera itself, `SkyBox/SkyLights.ts`), is skipped with one warning per component. The gym keeps its own `followWithSun`.
+- **Also updated:** the readme's toolkit effects line.
+- **Verified** headless against the running dev server (`WORKER_THREAD`): in the gym, with `gymSunFollow` removed and `SUN_SHADOW_FIT` (`maxDistance: 40`, `casterExtension: 20`) on its sun, all 8 corners of the main camera's 40 m view slice are inside the shadow camera's box. They stay inside while the player walks, after `direction` turns the sun, and after `maxDistance` drops to 25. The target is on whole texels in light space. The light stops moving once the camera stops, and the direction is unchanged by the fit. Adding it to the ambient light logs one warning. Leaving the scene removes the component, with no console errors. Not covered: `MAIN_THREAD` (the effect doesn't touch physics), shimmer judged by eye in a real browser, an orthographic main camera, and `followEntityId` without a camera.
 
 ### Phase 6 — Top-down test scene
 

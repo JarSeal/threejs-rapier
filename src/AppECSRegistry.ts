@@ -3,6 +3,10 @@ import type * as THREE from 'three/webgpu';
 import { HoverComponentData, HoverToolComponentType } from './toolkit/ecs/effects/HoverEffect';
 import { FollowComponentData, FollowToolComponentType } from './toolkit/ecs/effects/FollowTool';
 import {
+  SunShadowFitComponentData,
+  SunShadowFitComponentType,
+} from './toolkit/ecs/effects/SunShadowFit';
+import {
   InstancedMeshPoolComponentData,
   InstancedMeshPoolComponentType,
 } from './toolkit/ecs/InstancedMeshPool';
@@ -20,6 +24,7 @@ export const AppComponentType = {
   INSTANCED_STRESS_TEST_DATA: 'APP_INSTANCED_STRESS_TEST_DATA',
   ...HoverToolComponentType,
   ...FollowToolComponentType,
+  ...SunShadowFitComponentType,
   ...InstancedMeshPoolComponentType,
 } as const;
 
@@ -29,7 +34,10 @@ export const AppComponentType = {
  * type ToolKitComponentData = {};
  * type ToolKitComponentData = HoverComponentData & SomeOtherComponentData;
  */
-type ExtraComponentData = HoverComponentData & FollowComponentData & InstancedMeshPoolComponentData;
+type ExtraComponentData = HoverComponentData &
+  FollowComponentData &
+  SunShadowFitComponentData &
+  InstancedMeshPoolComponentData;
 
 /** App specific components (extended by ExtraComponentData) */
 export interface AppComponentData extends ExtraComponentData {
@@ -85,12 +93,15 @@ export enum ECSSystemStage {
  *   registration sequence (the follow camera rig registers before PhysicsManager does), and
  *   still before frustum culling, which reads the main camera's matrices — running a rig after
  *   culling would cull against a one-frame-stale camera and pop objects at the frustum edges.
+ * - SHADOW_FIT: systems that fit something to this frame's final camera (the toolkit's
+ *   SunShadowFit): after the camera rigs, before frustum culling.
  * - FRUSTUM_CULLING / LIGHT_CULLING: objectFrustumCullingSystem, then lightObjectCullingSystem
  *   (which depends on this frame's frustum-culling result).
  */
 export const APP_RENDER_SYNC_ORDER = {
   POSE_PRODUCERS: 0,
   POSE_CONSUMERS: -0.5,
+  SHADOW_FIT: -0.75,
   FRUSTUM_CULLING: -1,
   LIGHT_CULLING: -2,
 } as const;

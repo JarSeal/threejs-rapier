@@ -24,6 +24,13 @@ export interface TerrainOptions {
   noiseOctaves?: TerrainNoiseOctave[];
   /** Deterministic seed — same seed always produces the same terrain. */
   seed?: number;
+  /**
+   * Reshapes the noise height per vertex: gets the vertex's world-space (x, z) and its noise
+   * height `h`, returns the final height. Applied before the geometry is built, so the mesh,
+   * `heights` and `getHeightAt` all agree. Eg. a mask that flattens part of the terrain, or sinks
+   * its edges below a ground plane.
+   */
+  heightModifier?: (x: number, z: number, h: number) => number;
 }
 
 export interface GeneratedTerrain {
@@ -66,6 +73,7 @@ export const generateTerrain = (opts: TerrainOptions): GeneratedTerrain => {
       { frequency: 1 / 18, amplitude: 0.35 },
     ],
     seed = 1,
+    heightModifier,
   } = opts;
 
   const random = createSeededRandom(seed);
@@ -88,6 +96,7 @@ export const generateTerrain = (opts: TerrainOptions): GeneratedTerrain => {
         h += simplex.noise(x * octave.frequency, z * octave.frequency) * octave.amplitude;
       }
       h = (h / totalAmplitude) * maxHeight;
+      if (heightModifier) h = heightModifier(x, z, h);
 
       const i = row * cols + col;
       heights[i] = h;
