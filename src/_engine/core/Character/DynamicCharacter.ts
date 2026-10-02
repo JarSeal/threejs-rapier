@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { createCharacter, emitLocomotionStateChange, onLocomotionStateChange } from '../Character';
 import type {
+  CharacterBodyData,
   CharacterBodyPlan,
   CharacterCastRecord,
   CharacterColliderRole,
@@ -337,6 +338,30 @@ const getDefaultCharacterData = (): CharacterData => {
   };
 };
 
+/** The configuration keys the body plan sizes the colliders and probes from: read only at
+ * creation (CharacterConfigHooks' `bakedKeys`). */
+const BAKED_CONFIG_KEYS: ReadonlySet<string> = new Set(
+  Object.keys({
+    _height: true,
+    _radius: true,
+    _crouchHeight: true,
+    _skinThickness: true,
+    _groundDetectorOffset: true,
+    _groundDetectorRadius: true,
+  } satisfies Record<keyof CharacterBodyData, true>)
+);
+
+/** Configuration key → what derives its internal (`__`) values from it. Run at creation and on
+ * CharacterConfigHooks' `onChange`. */
+const DERIVED_CONFIG = new Map<string, (d: CharacterData) => void>([
+  [
+    '_maxWalkableAngle' satisfies keyof CharacterData,
+    (d) => {
+      d.__maxWalkableAngleCos = Math.cos(d._maxWalkableAngle);
+    },
+  ],
+]);
+
 /** Below this (rad/s), a platform's spin doesn't turn the character. */
 const PLATFORM_ROTATION_EPSILON = 0.001;
 /** Below this (m/s or rad/s), the character counts as resting (isAwake = false). */
@@ -498,9 +523,7 @@ export const createDynamicCharacter = async (
     characterData._turnToMoveDirection = SCHEME_TURNS_TO_MOVE_DIRECTION[inputOpts.scheme];
   }
   const dims = body.getDimensions(characterData);
-
-  // Set __maxWalkableAngleCos
-  characterData.__maxWalkableAngleCos = Math.cos(characterData._maxWalkableAngle);
+  for (const derive of DERIVED_CONFIG.values()) derive(characterData);
 
   const moveVector3 = new THREE.Vector3();
   const flatNormalVector3 = new THREE.Vector3();
@@ -1069,6 +1092,10 @@ export const createDynamicCharacter = async (
   // cadence. It goes with the entity: no cleanup needed.
   character.controller = {
     probes,
+    config: {
+      bakedKeys: BAKED_CONFIG_KEYS,
+      onChange: (key) => DERIVED_CONFIG.get(key)?.(characterData),
+    },
     tick: (dt: number) => {
       const body = characterBody;
       if (!body) return;

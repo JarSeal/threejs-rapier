@@ -31,6 +31,7 @@ Earlier releases are only recorded in the git history.
   - They start from the visual's pose of the frame being drawn, so they don't jitter against an interpolated mesh. Freezing the window freezes them too.
   - Drawn on top by default, with a Depth toggle, and a Scale for the velocity arrows (metres per m/s). The toggles, depth and scale persist in `AEK_charGizmos`.
   - Pin keeps a character's gizmos after its window closes, set from the window or from the character's row in the Characters tab. A pin is kept over a scene change when the next scene has a character with the same id (session only).
+- `CharacterObject.initialConfig`: a frozen copy of the character's configuration (the `_` keys of its data) as it was created. `CharacterController.config` (`CharacterConfigHooks`): the keys sized into the body at creation (`bakedKeys`) and `onChange(key)`, which recomputes what is derived from a key written from outside (the dynamic character's `__maxWalkableAngleCos`).
 - The character edit window (debug) shows `kind` and `controlMode`.
 - The `circleCheckCutout`, `circleXCutout` and `pin` icons, and the `$debugBoolTrue`, `$debugBoolFalse` and `$debugValueFlash` Sass colours.
 

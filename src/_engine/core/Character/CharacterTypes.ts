@@ -182,6 +182,20 @@ export type LocomotionStateListener = (
  */
 export type CharacterControlMode = 'CONTROLLED' | 'PHYSICS_ONLY';
 
+/** A character's configuration values: the `_` keys of its data that hold a primitive value. */
+export type CharacterConfigValues = Readonly<Record<string, number | boolean | string>>;
+
+/** How a controller takes a configuration (`_`) key of its data written from outside, eg. by
+ * the debug tools. Without these hooks, every `_` key is read live and nothing is derived. */
+export type CharacterConfigHooks = {
+  /** `_` keys only read at creation (eg. sized into the colliders): writing them changes nothing
+   * until the body is rebuilt. */
+  bakedKeys: ReadonlySet<string>;
+  /** Call it after writing a `_` key of the data: recomputes the values derived from it (eg.
+   * `__maxWalkableAngleCos`). A key nothing is derived from is a no-op. */
+  onChange: (key: string) => void;
+};
+
 /** What moves a character (eg. createDynamicCharacter's controller). */
 export type CharacterController = {
   /** Runs once per fixed physics sub-step (APP_PHYSICS_STEP), with the fixed timestep. */
@@ -190,6 +204,8 @@ export type CharacterController = {
   dispose?: () => void;
   /** The body and the probes' last results, for diagnostics (read-only). */
   probes?: Readonly<CharacterProbes>;
+  /** How the controller takes its configuration being edited from outside. */
+  config?: CharacterConfigHooks;
 };
 
 /** A character's registry entry: the data of its entity's `CHARACTER` component. */
@@ -212,6 +228,9 @@ export type CharacterObject = {
   /** Live controller data. Keys follow the naming convention the debug tools rely on: no prefix =
    * state, `_` = configuration, `__` = internal memory. */
   data: Record<string, unknown>;
+  /** The configuration (`_` keys of `data`) as the character was created with it: what the
+   * scene's code asked for, before any debug edit. Frozen. */
+  initialConfig: CharacterConfigValues;
   /** What the character wants to do this sub-step: write it to drive the character. */
   intent: CharacterIntent;
   /** Who moves the body. Change it with `setControlMode`: the controller applies it on its next

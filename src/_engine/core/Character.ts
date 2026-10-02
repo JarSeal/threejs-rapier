@@ -6,6 +6,7 @@ import { createMouseBinding, deleteMouseBinding, type MouseBinding } from './Inp
 import { ECSWorld, getECSWorld, getEntityIdByAppId } from './ECS';
 import { ComponentType } from './ECS/ECSCoreComponents';
 import type {
+  CharacterConfigValues,
   CharacterControlMode,
   CharacterIntent,
   CharacterObject,
@@ -20,6 +21,8 @@ import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/he
 
 export type {
   CharacterBodyPlan,
+  CharacterConfigHooks,
+  CharacterConfigValues,
   CharacterControlMode,
   CharacterController,
   CharacterIntent,
@@ -76,6 +79,19 @@ ECSWorld.registerComponentHooks(ComponentType.CHARACTER, {
   },
 });
 
+/** The `_` keys of the data with a primitive value, copied and frozen. */
+const getConfigSnapshot = (data: Record<string, unknown>): CharacterConfigValues => {
+  const config: Record<string, number | boolean | string> = {};
+  for (const key of Object.keys(data)) {
+    if (!key.startsWith('_') || key.startsWith('__')) continue;
+    const value = data[key];
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string') {
+      config[key] = value;
+    }
+  }
+  return Object.freeze(config);
+};
+
 /** {@link createCharacter}'s options. */
 export type CreateCharacterOpts = {
   /** The character's id: the public handle ({@link getCharacterById}, {@link deleteCharacter}). */
@@ -117,6 +133,9 @@ export const createCharacter = async ({
   data = {},
   intent = createIntent(),
 }: CreateCharacterOpts) => {
+  // Before anything else can write the data
+  const initialConfig = getConfigSnapshot(data);
+
   // Before the new bindings exist: the old character's delete hook removes its bindings by id
   if (deleteCharacter(id)) {
     lwarn(`createCharacter: replaced the existing character with id '${id}'.`);
@@ -152,6 +171,7 @@ export const createCharacter = async ({
     keyBindingIds: [],
     mouseBindingIds: [],
     data,
+    initialConfig,
     intent,
     controlMode: 'CONTROLLED',
   };
