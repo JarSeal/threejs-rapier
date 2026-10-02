@@ -13,7 +13,6 @@ Each item names the plan it came from; the full plan text is in git history (e.g
 - **The Physics API tab's position editor streaks once under interpolation** (p059). It doesn't go through `setTransform`, so the interpolation history isn't reset.
 - **`FIXED_PHYSICS` + worker at matched 60/60 Hz has ~17% jitter** (p059, headless). The pairing is unsupported and warned about.
 - **Unchanged p059 non-goals**: `FollowTool`'s write-direction lag, smoothing `camera.lookAt`, an `EXTRAPOLATION` interpolation mode.
-- **Heightfield importer mismatches** (p125, `core/Import/MeshColliderGeometry.ts`): the heightfield collider is centred on the node origin, but the Gym's spiked terrain mesh isn't, so its physics surface sits ~0.5 units off in z. Up to ~190 heights near one edge of each Gym terrain differ from the mesh (≤ 0.22 units), probably from the vertex order after `mergeVertices`. Visible with the Physics API tab's wireframe.
 
 ## Ray casting and physics queries
 
@@ -36,7 +35,7 @@ Each item names the plan it came from; the full plan text is in git history (e.g
 
 - **Retune the default day sky** (p112): with the sun at 30° it is very pale toward the horizon, and the default ground colour (`#3b3a36`) reads as nearly black against it. Both are SkyMesh's defaults and were never retuned. A preset change is a visible change: bump its template version and note it in the changelog.
 - **three.js upgrades** (p110): `layers/atmosphere.ts` is a port of `examples/jsm/objects/SkyMesh.js` (r186, recorded in its header). On a three upgrade, diff that file and re-check the sky against SkyMesh side by side.
-- **Deferred epic ideas** (p110 non-goals): auto-exposure / eye adaptation for night scenes (a PostFX pass), a precomputed-LUT atmosphere layer (Hillaire 2020 multiple scattering), volumetric 3D clouds and weather, day-night events (`onSunrise` / `onSunset`; today games poll the getters), a JSON write-back endpoint (the Skybox tab's "Copy JSON" covers authoring), the sky in viewports other than the env ball, sky boxes in secondary ECS worlds.
+- **Deferred epic ideas** (p110 non-goals): auto-exposure / eye adaptation for night scenes (a PostFX pass), a precomputed-LUT atmosphere layer (Hillaire 2020 multiple scattering), volumetric 3D clouds and weather (the surface side of weather, i.e. wetness, puddles, rain ripples and snow coverage as global state that materials read, is planned in `p307_wet-and-dry-surface-states.md`; precipitation, clouds and a weather driver remain open here), day-night events (`onSunrise` / `onSunset`; today games poll the getters), a JSON write-back endpoint (the Skybox tab's "Copy JSON" covers authoring), the sky in viewports other than the env ball, sky boxes in secondary ECS worlds.
 - **A lit material-preview env ball** (p115): a metal and dielectric pair next to the unlit ball. Overlaps with the material editor (p084).
 
 ## Bundle size and rendering

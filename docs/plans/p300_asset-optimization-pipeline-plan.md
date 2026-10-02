@@ -1,17 +1,20 @@
 Status: draft | not-implemented
 Category: Assets
+Blocks: p301_terrain-texturing-epic.md (and through it p302–p310: the terrain texture library ships as KTX2, terrain blocks as meshopt GLBs)
 
-# glTF Asset Optimization Pipeline — Plan
+# Asset Optimization Pipeline (KTX2 + meshopt) — Plan
 
-A manifest-driven, build-time pipeline that converts source GLB/glTF assets into GPU-compressed, runtime-ready assets (KTX2 textures + compressed mesh data).
+A build-time pipeline that turns the source textures and GLB/glTF files the asset JSONs point at into GPU-compressed, runtime-ready files: KTX2 (Basis Universal) textures and meshopt-compressed meshes. It also adds the runtime decoders the engine lacks today.
+
+Updated 2026-10-02 to match the engine (three r186, `WebGPURenderer`, asset worker, JSON asset pipeline). The original version assumed a generic three.js app with a separate asset manifest. This version hooks into the existing `*.texture.json` / `*.importedAsset.json` files and `gatherAppData` instead.
 
 ---
 
 ## 1. Goal
 
-Reduce both **download size** and **GPU memory** for 3D assets, with per-asset control expressed as data (a JSON manifest) rather than ad-hoc manual runs of a web tool.
+Reduce both **download size** and **GPU memory**. Each asset's settings are data in the asset's own JSON, not ad-hoc runs of a web tool.
 
-Target outcome, based on published figures for this class of optimization:
+Published figures for this class of optimization:
 
 |                                               | File size | VRAM   |
 | --------------------------------------------- | --------- | ------ |
@@ -19,247 +22,290 @@ Target outcome, based on published figures for this class of optimization:
 | Size-only optimization (typical online tools) | 4.26 MB   | 22 MB  |
 | KTX2 + mesh compression                       | 0.68 MB   | 6 MB   |
 
-The VRAM column is the part that ordinary "compress my GLB" tools miss. PNG/JPEG/WebP textures are fully decoded to raw RGBA in VRAM — a 2048×2048 texture costs ~16 MB regardless of file size, plus ~33% for mipmaps. KTX2/Basis textures stay block-compressed on the GPU, transcoded at load into whatever format the device supports (BC7, ASTC, ETC2).
+Ordinary "compress my GLB" tools only fix the file-size column, not VRAM. PNG/JPEG/WebP textures are decoded to raw RGBA in VRAM, so a 2048² texture costs ~16 MB whatever its file size, plus ~33% for mips. KTX2/Basis textures stay block-compressed on the GPU: they are transcoded at load into whatever the device supports (BC7, ASTC, ETC2).
+
+This plan is a hard prerequisite of the terrain texturing epic (p301). A terrain material samples 6–36 textures per pixel across up to 8 layers. Uncompressed, a 16-set terrain library at 1K costs ~260 MB of VRAM; as KTX2 it costs ~40–65 MB.
 
 ---
 
-## 2. Key decision: build-time, not load-time
+## 2. Current engine state (grounded, 2026-10-02)
 
-Encoding runs **at build time only**. Reasons:
-
-- Basis/KTX2 **encoding** is orders of magnitude slower than **transcoding**. Encoding is seconds-to-minutes per texture; transcoding (what the client does at load) is milliseconds. They are different operations.
-- Encoding at load would require shipping the uncompressed source asset to the client, throwing away the entire download win and keeping only the VRAM win.
-- The encoder is a large WASM payload that would ship to every user.
-
-**Exception:** if end users ever upload their own models and there is no build step to hook into, a client-side encode path becomes necessary. Out of scope for now; noted in Open Questions.
-
-**Dev ergonomics:** a watch mode that re-encodes changed assets on save gives most of the convenience of "on every load" without any of the cost. Same code path as the build, just triggered by a file watcher.
-
----
-
-## 3. Architecture
-
-```
-source assets/            assets.config.json
-  models/*.glb       +    (profiles + asset rules)
-  models/**/*.gltf
-          |
-          v
-  +---------------------------+
-  |  build script             |
-  |   1. resolve manifest     |
-  |   2. hash check / cache   |
-  |   3. gltf-transform pass  |
-  |   4. write output + stats |
-  +---------------------------+
-          |
-          v
-  dist/assets/<name>.<hash>.glb
-  dist/assets.generated.json      <- consumed by the app at runtime
-  .cache/asset-pipeline/          <- content-addressed, gitignored
-```
-
-Source assets stay in the repo (Git LFS if large). Optimized outputs are build artifacts — either gitignored and built in CI, or committed if the team prefers not to run the toolchain locally. Pick one and be consistent.
+- **No compressed texture path.** There is no `KTX2Loader`, `CompressedTexture`, `CompressedArrayTexture`, `DataArrayTexture` or Basis transcoder anywhere in `src`. Nothing exists for gltf-transform, meshoptimizer, KTX-Software or sharp in `package.json` either.
+- **Textures** (`core/Texture.ts`, `schemas/textureSchema.ts`):
+  - `loadTextureAsync` (`Texture.ts:412-488`) picks a loader by type:
+    - `HDRLoader` when `useHDRLoader` is set;
+    - `CubeTextureLoader` for a 6-entry file name array (main thread);
+    - otherwise `TextureLoader`, or the asset worker's `createImageBitmap` (`workers/assets/assetsSwitchTexture.ts`), chosen by `assets.textureWorkerTarget` (`Config.ts:126`).
+  - Paths resolve as `new URL((path || './') + fileName, document.baseURI)` (`Texture.ts:61-62`). In practice `fileName` is a root-absolute URL served from `src/public`.
+  - The schema has no `repeat`, `offset`, `rotation`, `flipY`, `generateMipmaps`, `format` or `isPersistent`. p302 adds them.
+- **Imported assets** (`core/Import/*`, `schemas/importedAssetSchema.ts`):
+  - `GLTFLoader` is set up with Draco only, in `GLTFSource.ts:12-18` and in the worker (`workers/assets/assetsSwitchGLTF.ts:25-39`). There is no `setMeshoptDecoder` or `setKTX2Loader`.
+  - glTF materials are always discarded. `importTextures` registers slot textures as `${id}/${name}` (`GLTFTextures.ts:50-121`). So embedded textures only matter when `importTextures` is on.
+  - Draco decoders are copied from `node_modules/three/examples/jsm/libs/draco/gltf` into the gitignored `src/public/draco/gltf/` by `devTools/copyDracoDecoders.ts`, which runs before `dev`/`build`.
+  - `MeshColliderGeometry.ts:239-244` refuses Draco-compressed geometry for HEIGHTFIELD/TRIMESH colliders.
+- **Where binaries live:** `vite.config.ts` has `root: './src'` and no `publicDir`, so the public dir is `src/public`, served at `/`.
+  - `src/public/debugger/assets/` is 287 MB of git-tracked test textures and models (8K HDRs, 8K PNGs, 24 GLBs).
+  - There is no `.gitattributes` and Git LFS isn't installed or configured.
+  - `gatherAppData` computes `__fileSize` against `src/public` (`gatherAppData.ts:107-123`).
+- **Data pipeline:** `devTools/gatherAppData.ts` gathers 10 JSON suffixes into `src/_engine/generatedAppData.json`. It is re-run by the `sceneGathererPlugin` Vite plugin on file change.
 
 ---
 
-## 4. Input manifest
+## 3. Key decisions
 
-Settings are defined as **profiles**, with assets pointing at a profile. This avoids maintaining dozens of near-identical per-asset config blocks while still allowing per-asset overrides where genuinely needed.
+### DD1 — Encode at build time, never at load
+
+- Basis/KTX2 **encoding** is seconds to minutes per texture; **transcoding** (what the client does) is milliseconds.
+- Encoding at load would mean shipping the uncompressed source, which throws away the download win.
+- The encoder is a large WASM payload.
+- User-uploaded models would need a client-side encoder. That is out of scope (Open questions).
+- Dev ergonomics come from the existing gatherer plugin: a changed source re-encodes only that asset, through the cache (§7).
+
+### DD2 — Settings live in the asset JSONs; profiles live in one config
+
+- **No separate asset list.** `*.texture.json` and `*.importedAsset.json` gain an optional `optimize` key: a profile name plus per-slot overrides.
+- **Profiles and defaults** live in `assets.config.json` at the repo root, validated by a Zod schema that compiles to `.schemas/assetsConfig.schema.json` like the other schemas.
+- **A glob rule list** in the config covers binaries that have no JSON (e.g. the debugger test models), so they can be optimized without adding JSONs.
+- Rationale: the engine is data-driven by its asset JSONs, and the gatherer already walks them. A second manifest listing the same files would drift.
+
+### DD3 — Sources sit next to their JSON; outputs are generated into the public dir
+
+- **New rule:** `fileName` may be **relative to the JSON file** (`"fileName": "./source/sand01_albedoHeight.png"`). A root-absolute `fileName` keeps working unchanged (legacy, `src/public`).
+- **Outputs** are written to `src/public/aek-assets/<logical path>.<contentHash>.<ext>`:
+  - `.ktx2` for textures;
+  - `.glb` for models, with `EXT_meshopt_compression` and `KHR_texture_basisu`.
+- **Resolution:** `gatherAppData` writes the resolved output URL into the generated data (`__url`, plus `__bytes` and `__vramBytes`). The runtime loads `__url ?? (path + fileName)`.
+- **Recommended for this repo: commit `src/public/aek-assets/`.** This is the open question from the original plan, resolved for a template repo: someone who clones Ækasha can run it without installing KTX-Software. The encoder is only needed by whoever changes an asset.
+  - Sources that can be re-downloaded (the CC0 terrain textures, p303) are fetched by script into gitignored `source/` folders.
+  - Small app sources (Blender-exported GLBs, painted splat maps) are committed.
+  - Override this if CI is preferred. The cache (§7) makes CI builds cheap.
+
+### DD4 — Standalone textures are first class, not just GLB-embedded ones
+
+- The terrain library (p303) is standalone texture files, not GLBs.
+- The pipeline therefore encodes `*.texture.json` sources directly with the `ktx` CLI (KTX-Software ≥ 4.3, `ktx create`).
+- GLBs go through gltf-transform, which shells out to the same binary.
+
+### DD5 — Channel packing is a pipeline step
+
+- A texture JSON may have a `pack` source instead of a single file: per output channel, a source file plus a channel, or a constant, with optional ops (`invert`, `multiply` by another channel, `remap`).
+- Example: build the ORM map from `ao.png:R`, `roughness.png:R` and constant `0`, or put `height.png:R` in the albedo's alpha.
+- This is generic glTF ORM packing that every PBR asset benefits from. p303 defines the terrain packings (`FULL` / `LITE` / `MINIMAL`) on top of it.
+- Image I/O uses `sharp` (dev dependency, prebuilt binaries). 16-bit sources (height maps) are read at 16 bits and quantized once, at the end.
+
+### DD6 — Meshopt over Draco by default
+
+- Meshopt decodes faster than Draco, and its quantization also shrinks vertex buffers in memory. Draco only shrinks the download.
+- Draco stays available per asset.
+- **Collider sources** (anything with `colliderType` custom props) default to `mesh.quantize: false`. Both the heightfield extraction (`MeshColliderGeometry.ts`) and the trimesh path read positions directly. With `KHR_mesh_quantization`, positions become normalized integers and the dequantization moves into the node transform, which the collider builder doesn't apply. Meshopt without quantization is lossless and safe. See risks.
+
+### DD7 — KTX2 textures load on the main thread, through `KTX2Loader`'s own workers
+
+- `KTX2Loader` already transcodes in its own worker pool, so threading is preserved.
+- `KTX2Loader.detectSupport(renderer)` needs the renderer, which the asset worker doesn't have.
+- GLBs that carry `KHR_texture_basisu` textures need a KTX2 loader inside the asset worker's `GLTFLoader`. Phase 0 spikes passing the main thread's detected `workerConfig` (`astcSupported`, `bptcSupported`, `etc2Supported`, …) into the worker. If that fails, such GLBs load on the main thread.
+
+---
+
+## 4. Configuration
+
+`assets.config.json` (repo root):
 
 ```json
 {
-  "$schema": "./asset-config.schema.json",
+  "$schema": "./.schemas/assetsConfig.schema.json",
   "defaults": {
     "mesh": { "codec": "meshopt", "quantize": true, "simplify": null },
     "textures": {
-      "default": { "codec": "etc1s", "maxSize": 1024, "quality": 200 }
+      "default": { "codec": "etc1s", "maxSize": 1024, "quality": 200, "mipmaps": true }
     }
   },
   "profiles": {
     "hero": {
       "textures": {
-        "baseColor": { "codec": "uastc", "maxSize": 2048, "level": 4, "rdo": 4 },
-        "normal": { "codec": "uastc", "maxSize": 2048, "level": 4 },
-        "metallicRoughness": { "codec": "uastc", "maxSize": 1024 },
+        "baseColor": { "codec": "uastc", "maxSize": 2048, "level": 4, "rdo": 4, "zstd": 18 },
+        "normal": { "codec": "uastc", "maxSize": 2048, "normalMode": true },
+        "orm": { "codec": "uastc", "maxSize": 1024 },
         "default": { "codec": "etc1s", "maxSize": 1024 }
-      },
-      "mesh": { "codec": "meshopt", "simplify": null }
+      }
     },
     "prop": {
       "textures": { "default": { "codec": "etc1s", "maxSize": 512 } },
-      "mesh": { "codec": "meshopt", "simplify": 0.6 }
+      "mesh": { "simplify": 0.6 }
     },
-    "ui-preview": {
-      "textures": { "default": { "codec": "none", "maxSize": 256 } },
-      "mesh": { "codec": "none" }
-    }
+    "terrainLayer": {
+      "textures": {
+        "baseColor": { "codec": "uastc", "maxSize": 1024, "rdo": 2, "zstd": 18 },
+        "normal": { "codec": "uastc", "maxSize": 1024, "normalMode": true, "zstd": 18 },
+        "orm": { "codec": "uastc", "maxSize": 1024, "zstd": 18 }
+      }
+    },
+    "terrainBlock": { "mesh": { "codec": "meshopt", "quantize": false } },
+    "data": { "textures": { "default": { "codec": "none" } } }
   },
-  "assets": [
-    { "src": "models/player.glb", "profile": "hero" },
-    { "src": "models/props/**/*.glb", "profile": "prop" },
-    {
-      "src": "models/terrain.glb",
-      "profile": "prop",
-      "overrides": { "mesh": { "simplify": null } }
-    },
-    {
-      "src": "models/logo.glb",
-      "profile": "ui-preview",
-      "note": "Lossless required — brand asset, viewed at close range"
-    }
-  ]
+  "rules": [{ "glob": "src/public/debugger/assets/testModels/**/*.glb", "profile": "prop" }]
 }
 ```
 
-### Resolution order
-
-`defaults` → `profile` → `overrides`, deep-merged. Later wins.
-
-### Texture slot keys
-
-Match glTF material slots: `baseColor`, `normal`, `metallicRoughness`, `occlusion`, `emissive`, plus `default` as the fallback. This matters because the right codec differs per slot:
-
-- **ETC1S** — small and fast, acceptable for base color and emissive. Visibly destructive on normal maps and packed ORM maps.
-- **UASTC** — higher quality, larger files. Correct default for normal maps and metallic-roughness.
-- **none** — pass through uncompressed. Needed for data textures, LUTs, anything read back on the CPU, and anything where compression artifacts are unacceptable.
-
-### Validation
-
-Ship a JSON Schema (`asset-config.schema.json`) alongside the config. Gives editor autocomplete and catches typos like `"codec": "uastcc"` before a 20-minute encode run.
-
----
-
-## 5. Output manifest
-
-The build emits `assets.generated.json`. The app loads this rather than hardcoding paths, which gives content-hash cache busting for free.
+Per asset (in a `*.texture.json`):
 
 ```json
 {
-  "generatedAt": "2026-09-12T10:00:00Z",
-  "pipelineVersion": "1.0.0",
-  "assets": {
-    "models/player.glb": {
-      "url": "assets/player.8f3a21c9.glb",
-      "profile": "hero",
-      "bytes": { "in": 40894464, "out": 713031 },
-      "vram": { "in": 358612992, "out": 6291456 },
-      "extensions": ["KHR_texture_basisu", "EXT_meshopt_compression"],
-      "warnings": []
-    }
+  "id": "sand01_albedoHeight",
+  "fileName": "./source/sand01_albedoHeight.png",
+  "optimize": { "profile": "terrainLayer", "slot": "baseColor" }
+}
+```
+
+- **Resolution order:** `defaults` → rule (glob) → profile → the JSON's `optimize` overrides, deep-merged, later wins.
+- **Slot keys:**
+  - glTF slots: `baseColor`, `normal`, `metallicRoughness`, `occlusion`, `emissive`;
+  - `orm` (packed occlusion/roughness/metalness);
+  - `data` (splat maps, masks, LUTs, height);
+  - `default`.
+- A standalone texture names its slot. A GLB's embedded textures are classified by the material slot that references them.
+- **Codec guidance:**
+  - **ETC1S**: small and fast. Fine for base colour and emissive. Destroys normal maps and packed ORM.
+  - **UASTC** (with RDO + Zstd supercompression): the default for normal, ORM and terrain layers. Terrain layers are tiled many times across the screen, so artifacts repeat and show.
+  - **none**: data textures, LUTs, splat maps that must stay exact, anything read back on the CPU.
+- **Block-compressed sizes must be multiples of 4.** The resize step enforces it and warns when that changes the aspect ratio.
+
+---
+
+## 5. Generated data
+
+`gatherAppData` merges the pipeline results into `generatedAppData.json`. There is no separate runtime manifest file.
+
+```json
+"textures": {
+  "sand01_albedoHeight": {
+    "id": "sand01_albedoHeight",
+    "__url": "/aek-assets/toolkit/terrain/textureSets/sand01/sand01_albedoHeight.3fa9c21b.ktx2",
+    "__bytes": { "in": 5872311, "out": 1043220 },
+    "__vramBytes": { "in": 5592405, "out": 1398101 },
+    "__codec": "uastc"
   }
 }
 ```
 
-`vram` is an estimate computed from texture dimensions, format block size and mip chain — not a measurement, but enough to catch regressions.
+- `__vramBytes` is an estimate from dimensions, format block size and the mip chain. It's for catching regressions and for the future profiler (p220), not a measurement.
+- A stats summary is also written to `.cache/asset-pipeline/last-run.json` and printed per run: totals in/out, cache hit rate, slowest assets.
 
 ---
 
-## 6. Caching
+## 6. Runtime
 
-Non-negotiable. Without it, a full encode pass makes builds slow enough that people start skipping the step.
-
-Cache key = hash of:
-
-1. Source file bytes
-2. Resolved settings for that asset (post-merge, canonically serialized)
-3. Pipeline version + pinned encoder tool versions
-
-On hit, copy from `.cache/asset-pipeline/<key>` and skip encoding entirely. In CI, persist this directory between runs.
-
----
-
-## 7. Tooling
-
-### Chosen: gltf-transform JS API
-
-- `@gltf-transform/core`, `@gltf-transform/functions`, `@gltf-transform/extensions`
-- Maps close to one-to-one onto the manifest structure
-- Supports Draco, Meshopt, UASTC and ETC1S, texture resizing, and per-slot targeting
-- Full programmatic control over which slot gets which treatment
-
-**Dependency to be aware of:** KTX2 encoding shells out to the `ktx` binary from KTX-Software. It is a system dependency, not an npm package. Pin the version in the Dockerfile / CI setup, and have the build fail with a clear message if it's missing.
-
-### Alternative considered: gltfpack
-
-Single static binary (`-tc` for KTX2, `-cc` for meshopt). Far easier to install and pin, but coarser — much less control over per-slot codec choice, which is the main thing this pipeline exists to provide. Reasonable fallback if the KTX-Software dependency proves painful in CI.
-
-### Mesh codec note
-
-**Meshopt** is the default over **Draco**. Draco reduces download size but has higher decode cost and does not reduce VRAM. Meshopt decodes faster, and its quantization also shrinks vertex buffers in memory. Draco stays available in the schema for assets where download size dominates.
+- **Decoders:**
+  - Generalize `devTools/copyDracoDecoders.ts` → `copyDecoders.ts`, which also copies `three/examples/jsm/libs/basis/basis_transcoder.{js,wasm}` to `src/public/basis/` (gitignored, like Draco).
+  - The meshopt decoder (`three/examples/jsm/libs/meshopt_decoder.module.js`, ~20 kB) is imported dynamically, only when an asset uses `EXT_meshopt_compression`, so apps without meshopt don't ship it.
+- **`core/Import/KTX2.ts`** (new): a lazily created, shared `KTX2Loader` with `setTranscoderPath(`${BASE_URL}basis/`)` and `detectSupport(renderer)`, run after `renderer.init()`. Check the r186 API (`detectSupport` vs `detectSupportAsync`) for `WebGPURenderer`. Disposed on renderer teardown.
+- **Textures:** `loadTextureAsync` routes `.ktx2` (by the resolved URL's extension) to the shared KTX2 loader on the main thread (DD7).
+  - The result is a `CompressedTexture`, or a `CompressedArrayTexture` for KTX2 arrays.
+  - `flipY` cannot be applied to compressed textures. Encode them flipped instead: the pipeline flips by default for textures whose JSON doesn't set `flipY: false`, matching the `createImageBitmap(flipY)` path's orientation. Phase 1 verifies this visually against the PNG path.
+  - Compressed textures can't generate mipmaps at runtime, so the pipeline always writes the full mip chain unless `mipmaps: false`.
+- **GLTF:**
+  - `GLTFSource.ts` and `assetsSwitchGLTF.ts` get `setMeshoptDecoder` and `setKTX2Loader` (DD7 for the worker).
+  - `MeshColliderGeometry.ts` keeps refusing Draco and also refuses quantized positions (a normalized integer position attribute), with an actionable error ("set `optimize.mesh.quantize: false` for collider sources").
+- **Caching headers:** hashed file names can be served with long-lived cache headers. The dev server needs nothing.
 
 ---
 
-## 8. Runtime setup
+## 7. Caching
 
-> Assumes three.js. Adjust if the target is Babylon.js, model-viewer, or an engine
-> importer — see Open Questions.
+Without a cache, a full encode pass slows builds enough that people skip it.
 
-- `KTX2Loader` with `setTranscoderPath()` and `detectSupport(renderer)`, wired into `GLTFLoader` via `setKTX2Loader()`
-- `MeshoptDecoder` via `gltfLoader.setMeshoptDecoder()`
-- **Self-host** the transcoder and decoder WASM files; do not depend on a CDN
-- Set long-lived cache headers on hashed asset filenames
-- Load `assets.generated.json` at startup and resolve logical names through it
+- **Cache key** = hash of:
+  1. the source bytes (all sources, for packed textures);
+  2. the resolved settings (post-merge, canonically serialized);
+  3. the pipeline version plus the pinned `ktx` and gltf-transform versions.
+- On a hit, copy from `.cache/asset-pipeline/<key>` (gitignored) and skip encoding.
+- On a miss, encode, write to the cache, then copy to the output.
+- Stale outputs (hashes no longer referenced) are deleted from `src/public/aek-assets/` at the end of a full run, never during a watch-triggered single-asset run.
 
 ---
 
-## 9. Phased rollout
+## 8. Tooling
 
-### Phase 1 — Validate the approach (~half a day)
+- **gltf-transform JS API** (`@gltf-transform/core`, `/functions`, `/extensions`) for GLBs: meshopt, Draco, quantize, resize, per-slot KTX2 through `ktx`.
+- **`ktx` CLI** (KTX-Software ≥ 4.3) for standalone textures and texture arrays (`ktx create --layers N`, used by p303 if runtime array assembly proves unworkable).
+  - It's a system dependency, not an npm package. Pin the version in the docs/CI and fail with a clear message if it's missing or too old.
+  - Without `ktx`, the pipeline still runs: cached and committed outputs are used, and assets that need encoding report "encoder missing" and fall back to their source file at runtime (dev only, warned).
+- **`sharp`** for channel packing and resizing (DD5).
+- **Alternative considered: gltfpack.** It's a single binary, `-tc`/`-cc`, but much coarser per-slot control and no standalone texture packing. It's the fallback if KTX-Software proves painful.
+- **Commands:**
+  - `yarn assets` runs the full pipeline.
+  - `yarn assets --only <id|glob>` runs part of it.
+  - `yarn gatherAppData` runs the cached pipeline first, so `dev`/`build` stay one command.
 
-1. Pick 2–3 representative assets (one hero, one prop, one problem case).
-2. Baseline: file size, `renderer.info.memory`, Spector.js or browser GPU memory capture.
-3. Run them through `gltf-optimizer.simondev.io` by hand to find settings that look right.
-4. A/B the visuals at actual on-screen resolution — not zoomed in.
-5. Test on the weakest target device, including iOS Safari.
-6. Record the settings that worked. These become the first profiles.
+---
 
-Exit criteria: measured VRAM reduction with no visual regression anyone notices.
+## 9. Phases
 
-### Phase 2 — Build the pipeline (~2–3 days)
+### Phase 0 — Runtime decoders (no build tooling yet) (~1 day)
 
-1. Manifest schema + resolver (defaults → profile → overrides).
-2. gltf-transform pipeline implementing the resolved settings.
-3. Content-hash cache.
-4. Output manifest with stats.
-5. npm script: `npm run assets:build`.
+1. `copyDecoders.ts` (Basis transcoder), `core/Import/KTX2.ts`, meshopt decoder wiring in `GLTFSource.ts`.
+2. `.ktx2` route in `loadTextureAsync` (main thread, DD7).
+3. Spike: GLB with `KHR_texture_basisu` in the asset worker, with the main thread's `workerConfig` passed in. Record the outcome in this plan.
+4. Hand-encode two textures and one GLB (gltf-transform CLI or `gltf-optimizer.simondev.io`) and load them in `debugScene`.
 
-Exit criteria: Phase 1 results reproduced by running one command.
+**Exit:** hand-optimized assets load on WebGPU and on the WebGL2 fallback (`forceWebGL`), with the PNG orientation (flip check) and no console errors.
+
+### Phase 1 — Validate settings (~half a day)
+
+1. Pick 3 representative assets: one terrain layer set (from p303's candidates), one prop GLB, and one problem case (a normal map, or an ORM with sharp channel edges).
+2. Baseline: file size, `renderer.info.memory`, and a browser GPU memory capture.
+3. A/B the visuals at on-screen resolution, not zoomed in, including a tiled terrain layer at grazing angles.
+4. Test on the weakest target device, including iOS Safari.
+5. Record the settings that worked as the first profiles.
+
+**Exit:** a measured VRAM reduction with no visual regression anyone notices.
+
+### Phase 2 — Pipeline (~2–3 days)
+
+1. Config schema plus resolver (DD2), compiled to `.schemas/`.
+2. `optimize` and relative `fileName` in `textureSchema` / `importedAssetSchema`.
+3. Packing step (DD5).
+4. Texture encoder (`ktx`) and GLB pipeline (gltf-transform).
+5. Content-hash cache (§7).
+6. Generated-data integration (§5).
+7. `yarn assets`.
+
+**Exit:** Phase 1 results reproduced by one command, and a second run is all cache hits.
 
 ### Phase 3 — Integrate (~1 day)
 
-1. Runtime loader setup (section 8).
-2. App loads `assets.generated.json` instead of hardcoded paths.
-3. Wire into the build: run before the bundler, or as a bundler plugin.
-4. Watch mode for local development.
+1. `gatherAppData` runs the cached pipeline, and the gatherer plugin re-encodes a changed source.
+2. The runtime resolves `__url`.
+3. Wire into `yarn build`.
 
 ### Phase 4 — Harden
 
-1. CI integration with a persisted cache.
-2. Budget enforcement — fail the build if an asset exceeds a size or VRAM threshold.
-3. A stats summary printed per build (total in/out, cache hit rate, slowest assets).
-4. Document how to add a new asset and how to pick a profile.
+1. Budgets: fail the build if an asset exceeds a size or VRAM threshold set per profile.
+2. A missing or too-old `ktx` gives a clear error and a working fallback (§8).
+3. Write the docs: a section in `readme.md`'s asset section, plus `docs/techniques/asset-optimization.md` (how to add an asset and pick a profile; codec cheat sheet).
+4. Versioning: an engine minor bump (new runtime decoders and schema keys), plus Project tooling in `CHANGELOG.md`.
 
 ---
 
 ## 10. Risks and gotchas
 
-| Risk                                          | Mitigation                                                                                                                |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| ETC1S ruins normal / ORM maps                 | Per-slot codec config; UASTC default for those slots                                                                      |
-| Block compression wants dimensions ÷ 4        | Resize step enforces it; warn when it changes aspect-affecting dimensions                                                 |
-| Transcode cost at load causes stutter         | Measure on min-spec device; consider staggering loads                                                                     |
-| KTX-Software missing in CI                    | Pin in Docker image; fail fast with an actionable error                                                                   |
-| Encode times balloon as assets grow           | Content-hash cache; report slowest assets each build                                                                      |
-| Compressed textures can't be read back on CPU | `"codec": "none"` escape hatch per slot                                                                                   |
-| Asset licensing                               | Optimization doesn't change the source model's license — track licenses separately for anything from Sketchfab or similar |
+| Risk                                                                         | Mitigation                                                                                                                                |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| ETC1S ruins normal / ORM maps                                                | Per-slot codecs; UASTC is the default for those slots and for terrain layers                                                              |
+| Quantized positions break colliders (HEIGHTFIELD/TRIMESH read raw positions) | `quantize: false` for collider sources (`terrainBlock` profile); the runtime refuses quantized collider geometry with an actionable error |
+| `flipY` can't apply to compressed textures                                   | Encode flipped; Phase 0 visual check against the PNG path                                                                                 |
+| `KTX2Loader` support detection in the asset worker                           | Main-thread fallback (DD7), Phase 0 spike                                                                                                 |
+| Transcode stalls on load                                                     | `KTX2Loader` already uses its own workers; measure on a min-spec device; stagger big batches                                              |
+| KTX-Software missing or old                                                  | Committed outputs plus source fallback in dev; clear error; pinned version                                                                |
+| Encode times grow                                                            | Content-hash cache; slowest-asset report                                                                                                  |
+| Compressed textures can't be read back on the CPU                            | `codec: "none"` per slot; CPU-side data (e.g. height for colliders) comes from geometry, never from textures                              |
+| Asset licensing                                                              | The pipeline doesn't change licenses; terrain sources record theirs in `source.json` (p303)                                               |
 
 ---
 
 ## 11. Open questions
 
-1. **Which runtime/engine?** Determines the loader setup in section 8 and whether `KHR_texture_basisu` is supported at all. Web engines (three.js, Babylon.js, model-viewer) are fine. Unity / Unreal / Godot importers vary.
-2. **Do optimized assets get committed, or built in CI?** Affects whether every developer needs KTX-Software installed locally.
-3. **Any user-uploaded models?** If so, a client-side encode path is needed for that flow specifically.
-4. **Are there assets requiring lossless textures?** Data textures, LUTs, brand assets. Identify these up front so they get `"codec": "none"`.
-5. **What's the minimum target device?** Sets the quality bar and the VRAM budget.
+1. **Commit outputs or build in CI?** Recommended: commit (DD3). Confirm before Phase 2.
+2. **User-uploaded models?** Would need a client-side encode path for that flow. Not planned.
+3. **Minimum target device?** Sets the quality bar and the VRAM budgets (Phase 4). p240 (device capability sniffer) would make this measurable.
+4. **Should the 287 MB of debugger test assets be optimized and re-pointed, or left as raw test inputs?** They are useful as "raw import" tests. Suggested: leave them as is, and add optimized copies only where a test needs one.
