@@ -311,7 +311,7 @@ export const createMovingPlatform = async (props: {
   // The new Physics API's rigid body userData (RigidBodyAPI.uData) is a plain snapshot pushed
   // via setUserData(...) — in WORKER_THREAD mode it round-trips a message to the worker, unlike
   // the legacy system's raw Rapier RigidBody.userData object, which callers (e.g. a future
-  // dynamicCharacter.ts port) could read AND mutate as one shared live reference. So velo/
+  // DynamicCharacter.ts port) could read AND mutate as one shared live reference. So velo/
   // angVelo are computed into local scratch vectors, then explicitly pushed with setUserData
   // instead of being mutated in place.
   const veloScratch = new THREE.Vector3();

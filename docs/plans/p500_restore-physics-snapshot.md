@@ -75,7 +75,7 @@ All of the following was read out of the original TypeScript embedded in
   `EngineRapier.ts:281-292` (including the `lockRotationsX/Y/Z` mirror) and `:292`, and read
   **nowhere** in `core/Physics/`, `core/PhysicsAPI.ts` or `workers/` — every other `.userData` hit
   in those files is the proxy's own `this.uData` field or a constructor pass-through. The only
-  reader in the repo is `utils/character/dynamicCharacter.ts` (the legacy
+  reader in the repo is `core/Character/DynamicCharacter.ts` (the legacy
   `core/PhysicsRapier.ts` reader has since been removed). Rapier does not serialize `userData` — but because nothing reads it back, **no userData
   sidecar inside the snapshot is required.** The API-level `uData` lives on the engine proxy
   objects and therefore survives re-pointing for free. (This is worth stating explicitly because

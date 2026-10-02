@@ -1390,6 +1390,17 @@ class EngineRigidBodyProxyAPI implements RigidBodyAPI {
   get avel(): PhysVector {
     return this.rb.angvel();
   }
+  readVelocitiesInto(out: PoseArray, offset = 0): void {
+    // Rapier's own getters allocate one object each (as in readPoseInto)
+    const l = this.rb.linvel();
+    const a = this.rb.angvel();
+    out[offset] = l.x;
+    out[offset + 1] = l.y;
+    out[offset + 2] = l.z;
+    out[offset + 3] = a.x;
+    out[offset + 4] = a.y;
+    out[offset + 5] = a.z;
+  }
 
   constructor(
     public id: number,

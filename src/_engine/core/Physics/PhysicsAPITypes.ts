@@ -251,19 +251,22 @@ export type ShapeCastHitAPI = {
    */
   timeOfImpact: number;
   /**
-   * The local-space contact point on the cast shape, at the time of impact.
+   * The world-space contact point on the hit collider, at the time of impact.
    */
   witness1: PhysVector;
   /**
-   * The local-space contact point on the hit collider's shape, at the time of impact.
+   * The contact point on the cast shape, at the time of impact, in the cast shape's local space
+   * (relative to its position at the time of impact, in its rotation).
    */
   witness2: PhysVector;
   /**
-   * The local-space contact normal on the cast shape, at the time of impact.
+   * The world-space contact normal on the hit collider (pointing out of it, toward the cast
+   * shape), at the time of impact.
    */
   normal1: PhysVector;
   /**
-   * The local-space contact normal on the hit collider's shape, at the time of impact.
+   * The contact normal on the cast shape (pointing out of it, toward the hit collider), at the
+   * time of impact, in the cast shape's local space.
    */
   normal2: PhysVector;
 };
@@ -343,6 +346,10 @@ export type RigidBodyAPI = {
    * [posX, posY, posZ, rotX, rotY, rotZ, rotW], starting at `offset` (default 0) — instead of
    * two fresh objects per `pos`/`rot` read. */
   readPoseInto(out: PoseArray, offset?: number): void;
+  /** The velocity twin of `readPoseInto`: writes the same values as `lvel`/`avel` (including a
+   * still-pending write in WORKER_THREAD mode) into `out` as
+   * [linvelX, linvelY, linvelZ, angvelX, angvelY, angvelZ], starting at `offset` (default 0). */
+  readVelocitiesInto(out: PoseArray, offset?: number): void;
 
   isBeingDeleted: boolean;
 

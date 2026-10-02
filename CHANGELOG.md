@@ -4,6 +4,98 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-02 — character-definitions-and-refactoring
+
+### Engine 4.0.0 (Afternoon)
+
+**Added**
+
+- Characters are ECS entities: a `CHARACTER` component (`CharacterObject`) and a `TAG_IS_CHARACTER` tag. Deleting the entity (or leaving the scene) removes the character, its key and mouse bindings and its controller. `getCharacterById(id)`, `getCharacters(world?)` and `deleteAllCharacters(world?)`.
+- Character intent (`CharacterObject.intent`, `core/Character/CharacterIntent.ts`): what the player or AI wants this sub-step (`moveX`/`moveZ` in world space, `moveForward` along the facing, `turn`, `faceYaw`, `jump`, `run`, `crouch`). Input, AI and game code write it, and only the controller's tick moves the body. Helpers: `createIntent`, `addIntentMove`, `hasMoveIntent`, `yawFromDirection` and `wrapToPi`.
+- Input schemes (`createDynamicCharacter`'s `input`, `core/Character/CharacterInputSchemes.ts`): `TANK`, `WORLD_FIXED` (`moveNorth`/`South`/`West`/`East`) and `CAMERA_RELATIVE` (`moveForward`/`Backward`/`Left`/`Right` on screen). The `jump`, `run` and `crouch` mappings are optional, and `runMode`/`crouchMode` are `TOGGLE` (default) or `HOLD`. Binding ids are namespaced per character (`<id>:…`), so several input-driven characters work side by side.
+- `_turnToMoveDirection` (default per scheme) turns the character toward its world move direction at `_rotateSpeed`.
+- Body plans (`core/Character/CharacterBodyPlans.ts`): `HUMANOID_CAPSULE` derives the colliders by role (`MAIN`, `CROUCH`, `WALL_SENSOR`, `FLOOR_SENSOR`) and the probe dimensions from the size keys. `createDynamicCharacter`'s `body` takes a custom `CharacterBodyPlan`. `CharacterObject.kind` is the plan's kind (`'HUMANOID'`).
+- Locomotion state: `data.locomotionState` (`IDLE`, `WALK`, `RUN`, `CROUCH`, `CROUCH_WALK`, `JUMP`, `FALL`, `SLIDE`, `TUMBLE`, `GET_UP`), with `onLocomotionStateChange(id, listener)` (returns the unsubscribe function) or the creator's `onLocomotionStateChange` option.
+- Control mode: `setControlMode(id, 'CONTROLLED' | 'PHYSICS_ONLY')`. `PHYSICS_ONLY` leaves the body to physics (state `TUMBLE`). Back to `CONTROLLED`, the character gets up.
+- Character config keys that replace hard-coded values, with the same defaults: `_tumblingAngularDamping`, `_gettingUpAngularDamping`, `_gettingUpMaxAngVelo`, `_gettingUpTorque`, `_wallMicroPush`, `_slopeSlideSpeed`, `_jumpCooldown`, `_wallNormalMaxY`, `_wallCastDistance`, `_crouchHeight` and `_fallStateDelay`. Every `CharacterData` field has a JSDoc line.
+- `RigidBodyAPI.readVelocitiesInto(out, offset?)`: an allocation-free read of the linear and angular velocity, the twin of `readPoseInto`.
+- Character state window (debug), opened from a character's edit window. It replaces the Character data tracker and keeps its window id, so saved positions and sizes still apply. It shows the character's `data` in three collapsible groups by key prefix: State, Properties (`_`) and Internal memory (`__`, closed by default).
+  - Rows are built once, and an update writes only the values that changed, in open groups only. The update interval (0 = every rendered frame) is in the header, next to the update's measured cost.
+  - Values are formatted for reading: booleans as green/red icons, vectors on one line, fixed-width numbers, timestamps as "ms ago" and angles with degrees.
+  - A row flashes when its value changes. Vectors and State numbers don't flash, and the Flash toggle turns it off.
+  - Freeze keeps the current values on screen, and Copy JSON copies the live data.
+  - Several windows run side by side. A window stays open over a scene change when the next scene has a character with the same id.
+  - The interval, flash and group states persist in `AEK_charStateWin`.
+- `CharacterController.probes` (`CharacterProbes`): the controller's body plan, dimensions and collider roles, and its last floor ray and wall cast as it used them (`CharacterCastRecord`: origin, direction, stance, length, hit point and normal, and when the result arrived). Read-only diagnostics, written in place with no allocation per cast. Rejected wall hits and misses are kept too.
+- Character debug gizmos, toggled in a second header row of the Character state window: velocity, velocity relative to a moving platform, facing, the ground normal (green walkable, red too steep), the floor ray (solid to the hit, dashed past it), the floor sensor (lit while grounded), the last wall cast (its cylinder and sweep, with the hit normal green when used as a wall and red when rejected) and a trail of the last ~2 s.
+  - They start from the visual's pose of the frame being drawn, so they don't jitter against an interpolated mesh. Freezing the window freezes them too.
+  - Drawn on top by default, with a Depth toggle, and a Scale for the velocity arrows (metres per m/s). The toggles, depth and scale persist in `AEK_charGizmos`.
+  - Pin keeps a character's gizmos after its window closes, set from the window or from the character's row in the Characters tab. A pin is kept over a scene change when the next scene has a character with the same id (session only).
+- `CharacterObject.initialConfig`: a frozen copy of the character's configuration (the `_` keys of its data) as it was created. `CharacterController.config` (`CharacterConfigHooks`): the keys sized into the body at creation (`bakedKeys`) and `onChange(key)`, which recomputes what is derived from a key written from outside (the dynamic character's `__maxWalkableAngleCos`).
+- Live character config editing (debug), in the Character state window's Properties group:
+  - Number values are edited in place (Enter or blur commits, ArrowUp/ArrowDown step, Shift ×10, Escape cancels), clamped and stepped per key, with the unit and the key's description in the tooltip. `_maxWalkableAngle` is edited in degrees. Booleans toggle with a click on their icon. Keys typed into an editor don't reach the game's key bindings (the F-keys still do).
+  - The keys sized into the body at creation (`_height`, `_radius`, `_crouchHeight`, `_skinThickness`, `_groundDetectorOffset`, `_groundDetectorRadius`) are shown locked.
+  - A value that differs from the creation-time one is marked and gets a reset button. The group's header shows the changed count, "Reset all" and "Copy changes" (a `charData` snippet of the changed keys, to paste into the scene's code).
+  - Every edit, reset and Reset all is one undo step (`character.config`); a held arrow key is one.
+  - Edits are saved per scene and character id in `AEK_debugCharConfig` (only the values that differ from the creation-time ones) and applied when the character is created, in the debug environment only. A saved row has a blue dot, and the window header shows the saved count with a clear button for that character. The Characters tab's clear button clears them for this scene or all scenes. Clearing leaves the live values as they are.
+- `applySavedCharacterConfig(character)`: for controllers, applies the character's saved debug config values. Call it once, right after assigning `character.controller` (`createDynamicCharacter` does). A no-op outside the debug environment.
+- `confirmClearScope`'s optional `note`, a second paragraph in the clear dialog.
+- The character edit window (debug) shows `kind` and `controlMode`.
+- The `circleCheckCutout`, `circleXCutout`, `pin` and `lock` icons, and the `$debugBoolTrue`, `$debugBoolFalse` and `$debugValueFlash` Sass colours.
+
+**Changed**
+
+- Breaking: the dynamic character moved from `utils/character/dynamicCharacter.ts` to `core/Character/DynamicCharacter.ts`, with the shared types in `core/Character/CharacterTypes.ts`.
+- Breaking: `createDynamicCharacter` takes `DynamicCharacterOpts` (`id`, `name`, `visual`, `body`, `charData`, `input`, `onLocomotionStateChange`) and returns `{ character, data, intent, controlFns }`. `input` replaces `inputMappings`. The `sceneId` option and the `camera` return field are gone.
+- Breaking: `CharacterObject`'s `keyControlIds`/`mouseControlIds` are `keyBindingIds`/`mouseBindingIds`, and `meshId` is `visualId`. `createCharacter` takes `visual` (an object with an entity, or its app id; was `meshOrMeshId`) and a required `kind`.
+- Breaking: `controlFns` only write the intent. `move(direction)` and `rotate` lost their `delta` argument (the tick applies its sub-step delta).
+- Breaking: `getCharacters()` returns an array (was an id → object map).
+- Breaking: the character system registers itself (`Character.ts`, order -10 in `APP_PHYSICS_STEP`); `registerDynamicCharacterSystem` is gone.
+- The move is a vector: speed holds through turns, with no lag between the velocity and the facing. Diagonals are normalized. Holding W+S cancels out and counts as no move input.
+- Jump, run and crouch are applied by the tick, so a jump while moving in `WORKER_THREAD` mode is no longer overwritten by that sub-step's velocity write.
+- `CharacterObject.data` is mutated in place: nested objects keep their identity, so re-read `data[key]`.
+- The tick makes no `isMoving()` call each sub-step (an RPC per character in `WORKER_THREAD` mode), allocates nothing and doesn't round values. `isAwake` is derived from the velocities.
+- The wall cast and the floor ray ignore sensors. The floor ray also runs while idle, with at most one in flight per character.
+- `createCharacter` with an id already in use replaces the old character, with a warning.
+
+**Removed**
+
+- `deleteDynamicCharacter`.
+- The config keys `_groundedRayMaxDistance`, `_tumblingAngDamping` (now `_tumblingAngularDamping`), `__wasOnMovingPlatformLastFrame` and `_roundVelocitiesScalingFactor`.
+
+**Fixed**
+
+- The capsule was the wrong size for anything but the default height and radius, so the collider didn't match the mesh.
+- A second input-mapped character took over the first one's keys, and deleting either one removed both sets.
+- `hasMoveInput` cleared when one move key was released while another was still held.
+- The get-up torque never eased in after the first minute of a session.
+- `CharacterObject.data` was always `{}`, so the debug tracker showed an empty list.
+- Holding W+S ran the move twice per sub-step.
+- A character could cross or stand on slopes steeper than `_maxWalkableAngle`. It now slides down them, pushed by `_slopeSlideSpeed`.
+- A sensor in front of a wall cancelled the wall slide, the wall cast was off-centre while crouching, and all characters shared one wall-hit result.
+- `controlFns` kept writing to the body after the character was deleted, which crashed Rapier in `MAIN_THREAD` mode.
+- `ShapeCastHitAPI`'s docs had the witness and normal pairs the wrong way round: `witness1`/`normal1` are on the hit collider, in world space.
+
+### Toolkit 1.2.0 (Crescent)
+
+**Added**
+
+- `SunShadowFit` (`ecs/effects/SunShadowFit.ts`, `registerSunShadowFitEffect`): a `SUN_SHADOW_FIT` component on a directional light fits its shadow camera to the main camera's view, up to `maxDistance`, plus `casterExtension` toward the sun. The fit is snapped to shadow texels and written only when it changes. Optional: `cameraEntityId`, `followEntityId`, `direction` (setting it turns the sun), `lightDistance` and `snapToTexels`. It skips non-directional lights and managed ones (like the sky box's sun), with a warning.
+- `generateTerrain`'s `heightModifier(x, z, h)` option, applied per vertex so the mesh, `heights` and `getHeightAt` agree.
+
+### App 1.4.0 (Preschooler)
+
+**Added**
+
+- `topDownTest` scene: a `WORLD_FIXED` character on a 300 × 300 ground with hills on the East side (`generateTerrain` with a `heightModifier`, a TRIMESH collider), 15 seeded static obstacles and 25 dynamic props. The follow camera looks from the South, so W moves straight up the screen, and `SunShadowFit` keeps the sun's shadow over the view.
+- `characterVisual.ts` (`createCharacterVisual`): the capsule-and-beak character visual, used by the gym and the top-down scene.
+- `SunShadowFit` is registered in `AppECSPlugins.ts`, and `AppECSRegistry.ts` has its component and `APP_RENDER_SYNC_ORDER.SHADOW_FIT` (-0.75: after the camera rigs, before frustum culling).
+
+**Changed**
+
+- The gym uses the new character API. The player is `TANK` on WASD. A second character, `arrowKeysChar`, is `CAMERA_RELATIVE` on the arrow keys, with Enter to jump. The dummy writes its intent from an `APP_PHYSICS_STEP` system.
+- `AppECSPlugins.ts` no longer registers the character system (the engine does).
+
 ## 2026-09-29 — skybox-overhaul
 
 ### Engine 3.0.0 (Zenith)

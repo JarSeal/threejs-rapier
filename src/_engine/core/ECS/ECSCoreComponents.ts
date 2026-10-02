@@ -5,6 +5,7 @@ import { ColliderAPI, RigidBodyAPI } from '../Physics/PhysicsAPITypes';
 import type { PhysicsWireframeColors } from '../Config';
 import { CoreComponentType as CoreType, EntityDebugData, ManagedByData } from './ECSRegistry';
 import { AppComponentData, AppComponentType as AppType } from '../../../AppECSRegistry';
+import type { CharacterObject } from '../Character/CharacterTypes';
 
 export type ECSPosition = { x: number; y: number; z: number };
 export type ECSRotation = { x: number; y: number; z: number; w: number };
@@ -45,6 +46,7 @@ export interface CoreComponentData {
    * object would go stale. Resolve it with getLineForEntity. */
   [CoreType.LINE]: { lineId: string };
   [CoreType.MANAGED_BY]: ManagedByData;
+  [CoreType.CHARACTER]: CharacterObject;
   // Physics
   [CoreType.COLLIDER]: ColliderAPI[];
   [CoreType.BODY_DYNAMIC_VISUAL]: RigidBodyAPI;

@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../.schemas/light.schema.json",
+  "lightProps": {
+    "type": "DIRECTIONAL",
+    "color": "#fff2d9",
+    "intensity": 3,
+    "position": { "x": 25, "y": 30, "z": 30 },
+    "targetPos": { "x": 0, "y": 0, "z": 0 },
+    "castShadow": true,
+    "shadowPreset": "HIGH",
+    "shadowCameraNearFar": [1, 120],
+    "shadowCameraFrustum": [-35, 35, 35, -35],
+    "shadowIntensity": 0.8
+  },
+  "entityOpts": {
+    "appId": "topDownTestSun",
+    "debugData": {
+      "name": "Top-down test sun",
+      "description": "Directional shadow-casting sun from the South-East, about 38° above the horizon. Only its direction (position → targetPos) is kept: scene_topDownTest.ts adds a SUN_SHADOW_FIT component on scene enter, which moves it with the camera view and owns its shadow frustum (the values here only apply until then)."
+    }
+  }
+}

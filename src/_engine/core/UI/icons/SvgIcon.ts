@@ -5,6 +5,8 @@ import assetsIcon from './svg/assets-collection.svg?raw';
 import aspectRatioIcon from './svg/aspect-ratio.svg?raw';
 import cameraIcon from './svg/camera2.svg?raw';
 import cameraReelsIcon from './svg/camera-reels.svg?raw';
+import circleCheckCutoutIcon from './svg/circle-check-cutout.svg?raw';
+import circleXCutoutIcon from './svg/circle-x-cutout.svg?raw';
 import cloudSunIcon from './svg/cloud-sun-fill.svg?raw';
 import databaseXIcon from './svg/database-fill-x.svg?raw';
 import easelIcon from './svg/easel-fill.svg?raw';
@@ -19,7 +21,9 @@ import infinityIcon from './svg/infinity.svg?raw';
 import infoIcon from './svg/info-circle-fill.svg?raw';
 import lightBulbIcon from './svg/lightbulb-fill.svg?raw';
 import lampIcon from './svg/lamp.svg?raw';
+import lockIcon from './svg/lock-fill.svg?raw';
 import pauseIcon from './svg/pause-fill.svg?raw';
+import pinIcon from './svg/pin-angle-fill.svg?raw';
 import personArmsUpIcon from './svg/person-arms-up.svg?raw';
 import playFillIcon from './svg/play-fill.svg?raw';
 import postFxIcon from './svg/post-fx.svg?raw';
@@ -44,6 +48,8 @@ const icons = {
   aspectRatio: aspectRatioIcon,
   camera: cameraIcon,
   cameraReels: cameraReelsIcon,
+  circleCheckCutout: circleCheckCutoutIcon,
+  circleXCutout: circleXCutoutIcon,
   cloudSun: cloudSunIcon,
   databaseX: databaseXIcon,
   easel: easelIcon,
@@ -58,8 +64,10 @@ const icons = {
   info: infoIcon,
   lightBulb: lightBulbIcon,
   lamp: lampIcon,
+  lock: lockIcon,
   pause: pauseIcon,
   personArmsUp: personArmsUpIcon,
+  pin: pinIcon,
   playFill: playFillIcon,
   postFx: postFxIcon,
   redo: redoIcon,

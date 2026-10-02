@@ -39,7 +39,7 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 - **Spatial index**: a uniform grid with an oversized tier for "what's near this point/volume" queries.
 - **Ray casting**: Three.js and physics ray APIs with per-frame statistics and debug helpers.
 - **Input**: keyboard, mouse, touch and gamepad, plus picking and rebindable key chords.
-- **Characters**: a dynamic, physics-driven character controller that handles slopes and moving platforms.
+- **Characters**: a dynamic, physics-driven character controller that handles slopes and moving platforms, with swappable body plans (a humanoid capsule built in). Characters are driven through an intent object, from tank, world-fixed (8-direction) or camera-relative keyboard controls, or from code. A locomotion state (idle, walk, run, jump, fall, slide, tumble, …) reports what each one is doing, and a physics-only control mode hands the body to physics, eg. for a ragdoll.
 - **Skyboxes**: equirectangular (including HDR), cube map and sky-and-sun skyboxes.
 - **UI**: a lightweight component helper (`CMP`), a HUD layer, draggable windows, dialogs and toasts.
 
@@ -47,7 +47,7 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 
 These are ready-made modules you can import as they are, or copy into your app and change:
 
-- **ECS effects**: `HoverEffect` (bobbing), `FollowTool` (follow a target) and `InstancedMeshPool` (instanced rendering managed by the ECS).
+- **ECS effects**: `HoverEffect` (bobbing), `FollowTool` (follow a target), `SunShadowFit` (fits a directional light's shadow to the camera's view) and `InstancedMeshPool` (instanced rendering managed by the ECS).
 - **TSL materials**: checkerboard, triplanar checkerboard and triplanar grid materials.
 - **Procedural geometry**: seeded noise terrain, foliage generation and scattering on surfaces.
 
@@ -58,6 +58,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 - **Undo/redo** for changes made in the debugger.
 - **Physics visualizers**: collider wireframes colored by body state, ray helpers, and query statistics.
 - **Ray tester windows** for firing Three.js or physics rays at the scene.
+- A **character state window** per character, showing its live data grouped and formatted, with freeze and copy. Its configuration values can be **edited live** (with undo, reset, copy-out as code and saving across reloads). It also toggles in-world **character gizmos** for the vectors and probes its controller decides from (velocity, facing, ground normal, floor ray and sensor, wall cast, trail), which can be pinned to stay after the window closes.
 - A **determinism probe** (`?physicsProbe=N`) that hashes and diffs the physics state after N fixed steps.
 - **Production test mode** (`?isProdTest=true`), which runs a production build with a subset of the debug tools.
 - **Stress tests** for the ECS and physics.
@@ -127,12 +128,12 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 .
 ├── src/
 │   ├── _engine/            # The core engine: stable library code
-│   │   ├── core/           # Renderer, ECS, scenes, physics, assets, cameras, lights,
-│   │   │                   # PostFX, viewports, lines, input, spatial index, UI
+│   │   ├── core/           # Renderer, ECS, scenes, physics, characters, assets, cameras,
+│   │   │                   # lights, PostFX, viewports, lines, input, spatial index, UI
 │   │   ├── debug/          # Thin public debug entry points (lazy-load core/Debug/_dbg__*)
 │   │   ├── schemas/        # Zod schemas for every asset JSON type
 │   │   ├── workers/        # Physics and asset worker threads
-│   │   └── utils/          # Helpers, character controller, camera rigs, stress tests
+│   │   └── utils/          # Helpers, camera rigs, world test objects, stress tests
 │   ├── toolkit/            # Reusable ECS effects, TSL materials and procedural geometry
 │   ├── app/                # Your game: *.scene.json + scene .ts files and asset JSON files
 │   ├── AppECSPlugins.ts    # Wires app and toolkit systems into the ECS
@@ -297,7 +298,7 @@ const config: AppConfig = {
 };
 ```
 
-The example scenes in [`src/app/`](src/app/) cover more: a physics and joints test, a large procedural world with instancing and culling, a third-person character gym, and an ECS stress test.
+The example scenes in [`src/app/`](src/app/) cover more: a physics and joints test, a large procedural world with instancing and culling, a third-person character gym, a top-down character scene (world-fixed controls, hills, and sun shadows fitted to the view), and an ECS stress test.
 
 ---
 
@@ -307,7 +308,6 @@ Planned work is specified in [`docs/plans/`](docs/plans/), where a lower number 
 
 - A procedural sky and atmosphere, a day/night cycle and a layered skybox system
 - An editor/creator view and a material editor
-- Character definitions and character debugging tools
 - Physics objects in the scene JSON schema, physics world bounds, multibody joints and physics snapshot restore
 - Component query caching and a triple-buffered physics transform buffer
 - A client device capability sniffer, an asset optimization pipeline and an LOD system

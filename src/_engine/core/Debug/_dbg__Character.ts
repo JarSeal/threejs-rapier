@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
+  addDebugToast,
   createDebuggerTab,
   debuggerListCMP,
   updateDebuggerTab,
@@ -18,25 +19,42 @@ import {
 } from '../UI/DraggableWindow';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { Pane } from 'tweakpane';
-import { createSceneAppLooper, deleteSceneAppLooper } from '../Scene';
 import { llog, lwarn } from '../../utils/Logger';
 import { deleteCharacter, getCharacterById, getCharacters } from '../Character';
 import { getECSWorld } from '../ECS';
-import { createClearListLSButton } from './_dbg__ClearLSButtons';
+import { confirmClearScope, createClearListLSButton } from './_dbg__ClearLSButtons';
+import {
+  CHAR_CONFIG_LS_KEY,
+  clearSavedConfigScenes,
+  getSceneIdsWithSavedConfig,
+} from './Character/_dbg__CharacterConfigOverrides';
+import { getCurrentSceneId } from '../Scene';
 import { _recordUndoRedoAction, _registerUndoRedoActionHandler } from './_dbg__UndoRedo';
+import {
+  _openCharacterStateWindow,
+  _registerCharacterStateWindowCmp,
+  CHAR_STATE_WIN_ID,
+  getCharacterStateWindowId,
+} from './Character/_dbg__CharacterStateWindow';
+import {
+  isCharacterGizmosPinned,
+  onCharacterGizmoPinsChange,
+  setCharacterGizmosPinned,
+  syncCharacterGizmoPins,
+} from './Character/_dbg__CharacterGizmos';
+
+export { _applySavedCharacterConfig } from './Character/_dbg__CharacterConfigOverrides';
 
 const CHARACTERS_TAB_ID = 'charactersControls';
 const debuggerWindowCmp: { [id: string]: TCMP } = {};
 const debuggerWindowPane: { [id: string]: Pane } = {};
-let debuggerTrackerWindowCmp: TCMP | null = null;
-let trackCharLoopIndex = -1;
 const CHAR_EDIT_WIN_ID = 'characterEditorWindow';
-const CHAR_TRACKER_WIN_ID = 'characterDataTrackerWindow';
 
 const getEditWindowId = (charId: string) => `${CHAR_EDIT_WIN_ID}_${charId}`;
 /** The list's selection follows the edit windows' open states. */
 const refreshCharactersList = () => updateDebuggerTab(CHARACTERS_TAB_ID);
-const getTrackerWindowId = (charId: string) => `${CHAR_TRACKER_WIN_ID}_${charId}`;
+// The rows' pin toggles follow the state windows' pin buttons
+onCharacterGizmoPinsChange(refreshCharactersList);
 
 // Undo/redo
 
@@ -82,59 +100,6 @@ const recordCharacterPose = <T extends CharVec3 | CharQuat>(
   );
 };
 
-const createTrackCharacterContent = (winData?: { [key: string]: unknown }) => {
-  const characters = getCharacters();
-  const TRACKER_UPDATE_INTERVAL = 0.0000001;
-  const d = winData as { id: string; winId: string };
-  debuggerTrackerWindowCmp = CMP();
-  debuggerTrackerWindowCmp.add({ text: `Update interval: ${TRACKER_UPDATE_INTERVAL}` }); // @TODO: add Pane and input to set TRACKER_UPDATE_INTERVAL
-  const trackerContainer = debuggerTrackerWindowCmp.add({
-    html: () => {
-      const character = characters[d.id];
-      if (!character?.data) return '';
-      const data = character.data;
-      const keys = data ? Object.keys(data) : [];
-      let htmlString = '<ul>';
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        const value = data[key];
-        if (Array.isArray(value)) {
-          htmlString += `<li>${key}: ${value.join(', ')}</li>`;
-        } else if (typeof value === 'object' && value !== null) {
-          const objKeys = Object.keys(value);
-          let objString = '';
-          for (let j = 0; j < objKeys.length; j++) {
-            objString += `<li>${objKeys[j]}: ${(value as { [key: string]: unknown })[objKeys[j]]}</li>`;
-          }
-          htmlString += `<li>${key}:<ul>${objString}</ul></li>`;
-        } else {
-          htmlString += `<li>${key}: ${value}</li>`;
-        }
-      }
-      htmlString += '</ul>';
-      return htmlString;
-    },
-  });
-
-  let trackerUpdateAccTime = 0;
-  trackCharLoopIndex = createSceneAppLooper((delta) => {
-    trackerUpdateAccTime += delta;
-    if (trackerUpdateAccTime > TRACKER_UPDATE_INTERVAL && characters[d.id]) {
-      trackerContainer.update();
-      trackerUpdateAccTime = 0;
-    }
-  });
-
-  // @TODO: at some point fix the onClose registering (this is a hack to get it working)
-  setTimeout(() => {
-    addOnCloseToWindow(getTrackerWindowId(d.id), () => {
-      deleteSceneAppLooper(trackCharLoopIndex);
-    });
-  }, 200);
-
-  return debuggerTrackerWindowCmp;
-};
-
 const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   const d = data as { id: string; winId: string };
   const character = getCharacterById(d.id);
@@ -168,24 +133,11 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   // @NOTE: The copy code button is not that easy to implement here
   // because the character object only has references to the mesh and phys objects,
   // and also controls (especially these would be hard to print).
-  const openCharacterDataButton = CMP({
+  const openCharacterStateButton = CMP({
     class: 'winSmallIconButton',
     html: () =>
-      `<button title="Open character data tracker">${getSvgIcon('personArmsUp')}</button>`,
-    onClick: () => {
-      openDraggableWindow({
-        id: getTrackerWindowId(d.id),
-        position: { x: 130, y: 80 },
-        size: { w: 400, h: 400 },
-        saveToLS: true,
-        title: `Character data: ${character.name || `[${character.id}]`}`,
-        isDebugWindow: true,
-        content: createTrackCharacterContent,
-        data: { id: character.id, winId: getTrackerWindowId(d.id) },
-        closeOnSceneChange: true,
-        removeOnClose: true, // @TODO: Without this the tracker won't work on the second time opening it. Fix this at some point in the DraggableWindow.
-      });
-    },
+      `<button title="Open character state window">${getSvgIcon('personArmsUp')}</button>`,
+    onClick: () => _openCharacterStateWindow(character),
   });
   const logButton = CMP({
     class: 'winSmallIconButton',
@@ -201,7 +153,7 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
       `<button title="Remove character (only for this browser load, does not delete character permanently)">${getSvgIcon('thrash')}</button>`,
     onClick: () => {
       closeDraggableWindow(getEditWindowId(d.id));
-      closeDraggableWindow(getTrackerWindowId(d.id));
+      closeDraggableWindow(getCharacterStateWindowId(d.id));
       deleteCharacter(character.id);
     },
   });
@@ -213,16 +165,14 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
 <div>
   <div><span class="winSmallLabel">Name:</span> ${character.name || ''}</div>
   <div><span class="winSmallLabel">Id:</span> ${character.id}</div>
+  <div><span class="winSmallLabel">Kind:</span> ${character.kind}</div>
+  <div><span class="winSmallLabel">Control mode:</span> ${character.controlMode}</div>
   <div><span class="winSmallLabel">Entity id:</span> ${character.entityId}</div>
-  ${
-    Array.isArray(character.meshId)
-      ? `<div><span class="winSmallLabel">Mesh ids:</span> ${character.meshId.join(', ')}</div>`
-      : `<div><span class="winSmallLabel">Mesh id:</span> ${character.meshId}</div>`
-  }
-  <div><span class="winSmallLabel">Key control ids:</span> ${character.keyControlIds.length ? character.keyControlIds.join(', ') : ''}</div>
-  <div><span class="winSmallLabel">Mouse control ids:</span> ${character.mouseControlIds.length ? character.mouseControlIds.join(', ') : ''}</div>
+  <div><span class="winSmallLabel">Visual id:</span> ${character.visualId}</div>
+  <div><span class="winSmallLabel">Key binding ids:</span> ${character.keyBindingIds.join(', ')}</div>
+  <div><span class="winSmallLabel">Mouse binding ids:</span> ${character.mouseBindingIds.join(', ')}</div>
 </div>
-<div style="text-align:right">${openCharacterDataButton}${logButton}${deleteButton}</div>
+<div style="text-align:right">${openCharacterStateButton}${logButton}${deleteButton}</div>
 </div>`,
   });
 
@@ -290,17 +240,13 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   return debuggerWindowCmp[d.id];
 };
 
-const getCharactersListData = (): DebuggerListItem[] => {
-  const characters = getCharacters();
-  return Object.keys(characters).map((key) => {
-    const character = characters[key];
-    return {
-      itemId: key,
-      title: character.name || `[${character.id}]`,
-      subTitle: `[${character.id}]`,
-    };
-  });
-};
+const getCharactersListData = (): DebuggerListItem[] =>
+  getCharacters().map((character) => ({
+    itemId: character.id,
+    title: character.name || `[${character.id}]`,
+    subTitle: `[${character.id}]`,
+    toggleValues: [isCharacterGizmosPinned(character.id)],
+  }));
 
 const toggleEditCharacterWindow = (charId: string) => {
   const character = getCharacterById(charId);
@@ -325,27 +271,68 @@ const toggleEditCharacterWindow = (charId: string) => {
   });
 };
 
+// Clear LS
+
+const CLEARED_NOTE =
+  'The live values stay as they are: the code values return the next time each character is created.';
+
+/** Clears the characters' saved config values (the state windows' edits). With more than one
+ * scene's, asks which. */
+const createClearSavedConfigButton = () =>
+  createClearListLSButton({
+    hasData: () => getSceneIdsWithSavedConfig().length > 0,
+    watchKey: CHAR_CONFIG_LS_KEY,
+    onClear: () => {
+      const sceneIds = getSceneIdsWithSavedConfig();
+      const clear = (ids: string[]) => {
+        clearSavedConfigScenes(ids);
+        addDebugToast({ title: 'Saved character values cleared', message: CLEARED_NOTE });
+      };
+      if (sceneIds.length > 1) {
+        confirmClearScope({
+          onClearAllScenes: () => clear(sceneIds),
+          onClearThisScene: () => {
+            const sceneId = getCurrentSceneId();
+            if (sceneId) clear([sceneId]);
+          },
+          note: CLEARED_NOTE,
+        });
+      } else {
+        clear(sceneIds);
+      }
+    },
+  });
+
 export const _createCharactersDebuggerGUI = () => {
   if (!IS_DEBUG_ENV) return;
   createDebuggerTab({
     id: CHARACTERS_TAB_ID,
     title: 'Character controls',
     icon: 'personArmsUp',
-    // No LS key exists for character data today (see §2.1/§3.1 of the clear-LS-buttons
-    // plan) - both buttons exist for consistency with every other list tab, but stay
-    // permanently disabled until character data persistence is ever added.
+    // The tab has no data of its own (its button stays disabled, kept for consistency); the
+    // list's button clears the characters' saved config values (scene-scoped, module-owned)
     clearLSButton: true,
-    headerButtons: () => [createClearListLSButton({ hasData: () => false, onClear: () => {} })],
+    headerButtons: () => [createClearSavedConfigButton()],
     content: () => [
       debuggerListCMP({
         id: 'characters',
         emptyText: 'No characters registered to this scene..',
         data: getCharactersListData,
         selectedItemId: () =>
-          Object.keys(getCharacters()).filter(
-            (key) => getDraggableWindow(getEditWindowId(key))?.isOpen
-          ),
-        perItemConfig: { onClick: toggleEditCharacterWindow },
+          getCharacters()
+            .map((character) => character.id)
+            .filter((charId) => getDraggableWindow(getEditWindowId(charId))?.isOpen),
+        perItemConfig: {
+          onClick: toggleEditCharacterWindow,
+          toggles: [
+            {
+              icon: 'pin',
+              title:
+                "Pin the character's debug gizmos: they stay after its state window closes (session only)",
+              fn: setCharacterGizmosPinned,
+            },
+          ],
+        },
       }),
     ],
   });
@@ -357,11 +344,13 @@ export const _createCharactersDebuggerGUI = () => {
 
 export const _updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (!IS_DEBUG_ENV) return;
+  // A character created under a pinned id (eg. a respawn) gets its gizmos back
+  syncCharacterGizmoPins();
   if (only !== 'WINDOW') refreshCharactersList();
   if (only === 'LIST') return;
   const winStates = [
     ...getDraggableWindowsStartingWith(CHAR_EDIT_WIN_ID),
-    ...getDraggableWindowsStartingWith(CHAR_TRACKER_WIN_ID),
+    ...getDraggableWindowsStartingWith(CHAR_STATE_WIN_ID),
   ];
   for (let i = 0; i < winStates.length; i++) {
     const winState = winStates[i];
@@ -372,11 +361,8 @@ export const _updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
             content: createEditCharacterContent,
             onClose: refreshCharactersList,
           });
-        } else if (winState.id?.startsWith(CHAR_TRACKER_WIN_ID)) {
-          registerDraggableWindowCmp(winState.id, {
-            content: createTrackCharacterContent,
-            onClose: refreshCharactersList,
-          });
+        } else if (winState.id?.startsWith(CHAR_STATE_WIN_ID)) {
+          _registerCharacterStateWindowCmp(winState.id);
         }
       }
       updateDraggableWindow(winState.id);

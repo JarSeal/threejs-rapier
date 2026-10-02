@@ -179,6 +179,13 @@ export class PhysicsTransformBuffer {
     this.floats[o + 12] = angvel.z;
   }
 
+  /** Allocation-free velocity read: [linvelXYZ, angvelXYZ] into `out` at `offset`. */
+  readVelocitiesInto(slot: number, out: PoseArray, offset = 0): void {
+    const o = slot * PHYSICS_TRANSFORM_FIELD_COUNT + 7;
+    const f = this.floats;
+    for (let i = 0; i < 6; i++) out[offset + i] = f[o + i];
+  }
+
   getLinvel(slot: number): PhysVector {
     const o = slot * PHYSICS_TRANSFORM_FIELD_COUNT;
     return { x: this.floats[o + 7], y: this.floats[o + 8], z: this.floats[o + 9] };

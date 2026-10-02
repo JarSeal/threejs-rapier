@@ -1,6 +1,6 @@
-Status: draft | not-implemented
+Status: implemented
 Category: Character, Controls
-Blocks: p067_character-state-debugger-window.md (and through it p068_character-debug-gizmos.md and p069_character-live-config-editing.md: this plan moves the files they cite and changes some of the data they read. Phase 2 updates their references.)
+Blocks: _DONE_p067_character-state-debugger-window.md (and through it p068_character-debug-gizmos.md and p069_character-live-config-editing.md: this plan moves the files they cite and changes some of the data they read. Phase 2 updates their references.)
 
 # Character Definitions and Refactoring — Plan
 
@@ -46,7 +46,7 @@ The plan was originally requested as `p180`. It was renumbered to `p066` so that
    - With `_height: 2, _radius: 0.3` it gives 1.4 instead of 2.
    - The correct value is `max(0, _height / 2 - _radius)`. The gym's mesh already uses the correct formula (`scene_thirdPersonGym.ts:186-193`), so custom dimensions desync the mesh and the collider.
 2. **Global key binding ids.** The ids `charRotateLeft`, `charMoveForward`, … are fixed strings (`:797-865`). `createKeyBinding` replaces any binding with the same id (`KeyboardInput.ts:235`), and `deleteKeyBinding` removes by id. A second input-mapped character therefore silently steals the first one's controls, and deleting either one removes both sets. This is hidden today only because the gym's dummy passes no `inputMappings`.
-3. **`hasMoveInput` cleared too early.** A KEY_UP of _any_ move key sets it to `false` (`:831-841`), even while the other move key is still held. The landing and sliding logic reads it.
+3. **`hasMoveInput` cleared too early.** A KEY*UP of \_any* move key sets it to `false` (`:831-841`), even while the other move key is still held. The landing and sliding logic reads it.
 4. **Getting-up ease.** `ratio = now / (start + duration)` (`:931-934`) reaches 1 at the right time, but starts near `start / (start + duration)`, which is ≈ 0.98 a minute into a session. The ease-in torque ramp therefore never ramps. It should be `(now - start) / duration`.
 5. **`CharacterObject.data` is always `{}`.** The `data: characterData` argument to `createCharacter` was dropped in `22a72a0` (see p067 §2.1). p067's Phase 1 fixes it; this plan does it instead, since it lands first.
 6. **W+S held runs `move()` twice per sub-step.** Each call re-reads `linvel`, recomputes the whole slope/wall pipeline and fires another floor ray.
@@ -368,7 +368,7 @@ All call sites read these values instead of `_height / 5` and `_height / 10`. Fo
 
 Each phase leaves the tree compiling (`yarn lint`, `yarn build`), keeps the gym scene working in both physics worker targets, and is committed on its own.
 
-### Phase 1 — Bug fixes and performance, in place (no file moves)
+### Phase 1 — Bug fixes and performance, in place (no file moves) — done
 
 - Fix bugs 1–6 (§1.3), including `data: characterData` → `createCharacter`.
 - Implement the derived dimensions from §3.3 inside `dynamicCharacter.ts`, as a local function for now.
@@ -377,37 +377,140 @@ Each phase leaves the tree compiling (`yarn lint`, `yarn build`), keeps the gym 
 - Fix `hasMoveInput` by tracking a held-move-key count until the intent lands in Phase 3.
 - **Verify:** the gym works in `MAIN_THREAD` and `WORKER_THREAD` (walk, run, crouch, jump, stairs, slopes, the slide obstacle, all moving platforms, tumble and get up). The worker RPC count per frame drops (Physics API stats tracker, p027).
 
-### Phase 2 — `CHARACTER` component, a single registry, and the move
+**Implementation notes** (where Phase 1 differs from the plan, and what later phases must know):
 
-- Add `ComponentType.CHARACTER` and its data type, and add `TAG_IS_CHARACTER` in `createCharacter`. Register the `onDeleteEntity` hook in `Character.ts`. Switch `Character.ts` to the `id → entityId` index plus storage iteration.
-- Move `utils/character/dynamicCharacter.ts` to `core/Character/DynamicCharacter.ts`. Extract `CharacterTypes.ts`. The system iterates `getStorage(CHARACTER)` and calls `character.controller.tick(dt)`. Remove `activeCharacterTicks` and the second map.
-- Apply the `CharacterObject` field renames (§3.1) and update `_dbg__Character.ts`, `SceneLoader.ts`, `InitApp.ts`, `DraggableWindow.ts`, `AppECSPlugins.ts` and `scene_thirdPersonGym.ts`.
-- **Update the dependent plans:**
+- **`readVelocitiesInto`.** `readPoseInto` only reads the position and rotation, not the velocities as §3.4 assumed. `RigidBodyAPI` gained `readVelocitiesInto(out, offset?)` ([linvel xyz, angvel xyz], with the pending-write handling of `lvel`/`avel`). The tick reads the pose and the velocities once each. On `MAIN_THREAD`, Rapier's own getters still allocate inside both reads.
+- **Scratch reuse is safe** (§3.4's "verify"): `messageWorker` structured-clones captured sub-step commands, `MAIN_THREAD` copies into Rapier, and the ray helpers copy the origin and direction.
+- **`hasMoveInput`** is a per-sub-step flag, not a held-key count. A count would get stuck: blur and visibility changes clear the held keys without a KEY_UP. The KEY_UP binding is gone.
+- **The move is applied once, by the tick.** `controlFns.move(direction)` only records the request (summed, so W+S cancel; its `delta` argument is gone). The tick applies it with its sub-step delta, which fixes bug 6. The character system runs at order -10 in `APP_PHYSICS_STEP`, so moves requested by that stage's other systems (the gym's dummy) apply in the same sub-step.
+- **Event order changed.** The move now runs after the sub-step's collision events (it used to run before them, from the held-key poll). In the sub-step whose event takes the character off a moving platform, `relVelocity` is still platform-relative, so the move adds back `__lastAppliedPlatformVelocity`: jumping off keeps the platform's momentum. Phase 3's vector move math must keep this.
+- **Steep slopes** (an older bug, also on `main`). Moving across ground steeper than `_maxWalkableAngle` overwrote the downhill velocity every sub-step, and the old correction removed only part of the uphill input, so the character could cross or hold steep slopes. Now (`applySteepSlope`): the uphill part of the input is dropped, the body's downhill speed is kept, and `_slopeSlideSpeed` pushes it up to `_maxVelocity` (gravity alone goes faster), while grounded and off stairs. The character also slides without move input. §2.4's "the unwalkable-slope correction stays exactly as it is" now means this version.
+- **The wall cast and the floor ray exclude sensors** (`QueryFilterFlags.EXCLUDE_SENSORS`). This removes the `isSensor()` RPC per wall hit; before, a sensor in front of a wall cancelled the wall slide. The wall cast is centred on the active capsule (it was off-centre while crouching), and each character has its own wall-hit result (one normal object used to be shared by all of them).
+- **The floor ray** runs from the tick, at most one in flight per character, also while idle.
+- **Derived dimensions:** the wall sensor's half-height is `walkHalfHeight + _radius − wallSensorRadius` (0.275 with the defaults, was 0.291), lifted 0.05.
+- **Verified** headless in both worker targets, against `main`: walk, run, W+S, turning, jump, crouch, the carousel, jumping off it, tumble and get-up, the slide obstacle's 50° and 60° faces, and leaving and re-entering the scene. The 70° face (nearly a wall) can tumble the character, idle or strafing. Not covered: stairs, the elevator and the Ferris wheel, 144 Hz, the RPC stats, a heap timeline.
+- **Corrections to this plan** found while implementing: the engine is at 3.0.0 "Zenith", the app at 1.3.0 and the toolkit at 1.1.0, so §8's bumps become engine 4.0.0 (the codename after Zenith), app 1.4.0, plus a toolkit minor bump for Phase 5. Phase 2's caller list misses `core/Debug/_dbg__PhysicsDeterminism.ts` (`getCharacters()`), and `DraggableWindow.ts` doesn't reference characters. For Phase 5 (§2.6): the gym already has its own `followWithSun`, and the sky box's sun light already follows the active camera with texel snapping (`SkyBox/SkyLights.ts`).
+
+### Phase 2 — `CHARACTER` component, a single registry, and the move — done
+
+- (done) Add `ComponentType.CHARACTER` and its data type, and add `TAG_IS_CHARACTER` in `createCharacter`. Register the `onDeleteEntity` hook in `Character.ts`. Switch `Character.ts` to the `id → entityId` index plus storage iteration.
+- (done) Move `utils/character/dynamicCharacter.ts` to `core/Character/DynamicCharacter.ts`. Extract `CharacterTypes.ts`. The system iterates `getStorage(CHARACTER)` and calls `character.controller.tick(dt)`. Remove `activeCharacterTicks` and the second map.
+- (done) Apply the `CharacterObject` field renames (§3.1) and update `_dbg__Character.ts`, `SceneLoader.ts`, `InitApp.ts`, `DraggableWindow.ts`, `AppECSPlugins.ts` and `scene_thirdPersonGym.ts`.
+- (done) **Update the dependent plans:**
   - In p067, p068 and p069, update the file paths and line references, and the renamed fields.
   - p067 §2.3: data is now mutated in place (still re-read `data[key]`); §2.1: the data link is already restored, so its Phase 1 shrinks.
   - p068: colliders by role instead of index.
   - p069: the new and removed config keys; the dimensions now come from `getDimensions` (the derived-value hook).
   - Add `Blocked by: p066_character-definitions-and-refactoring.md` to p067's header.
+  - Also: the old `dynamicCharacter.ts` paths in p063 and p500, and p102 §8.
 
-### Phase 3 — Intent and control schemes
+**Implementation notes** (where Phase 2 differs from the plan, and what later phases must know):
 
-- Add `CharacterIntent.ts` and `CharacterInputSchemes.ts` (`TANK`, `WORLD_FIXED`; `CAMERA_RELATIVE` if it fits in the phase, otherwise a follow-up).
-- The tick consumes the intent: vector move math (§2.4), auto-turn, and `hasMoveInput` derived from the intent.
-- Turn `controlFns` into intent-writing wrappers. Switch the gym's `dummyCharLooper` to writing the intent.
+- **The controller system is in `Character.ts`, not `DynamicCharacter.ts`** (§2.3). It only loops over the `CHARACTER` storage and calls `controller?.tick(dt)`, so nothing in it is specific to one controller, and a second controller with its own copy would tick every character twice. It registers itself with a module-level `ECSWorld.registerPlugin` (like `SkyBox.ts` and `Raycast.ts`), at order -10 in `APP_PHYSICS_STEP`. The line in `AppECSPlugins.ts` is gone. `DynamicCharacter.ts` only creates the character and sets its `controller`.
+- **`CharacterObject` so far** (`Character/CharacterTypes.ts`): §3.1's fields minus `kind`, `intent` and `controlMode`, which come with Phases 3–4. `controller` is a `CharacterController` (`{ tick, dispose? }`), set by the creator once the character exists; the delete hook calls `dispose`. `data` is no longer optional.
+- **`createDynamicCharacter`'s return shape is unchanged** (`dynamicCharacterObject`, `charMesh`, `charData`, `controlFns`), and so are its options: §3.2's shape is Phase 4.
+- **Registry API:**
+  - `getCharacters(world?)` returns an array (it was an `id → object` map).
+  - `deleteAllCharacters(world?)` deletes every entity with the component.
+  - `createCharacter` with an id that is already in use replaces the old character, with a warning. Before, the old one leaked, and with namespaced binding ids its later deletion would have removed the new one's keys.
+  - `registerOnDeleteCharacter` still works: the hook calls it.
+  - `deleteDynamicCharacter` is removed (no callers).
+- **The delete hook refreshes the debugger once, in a microtask**, because the entity still exists while its hooks run. A scene change therefore refreshes it once, not once per character.
+- **Also updated:** `_dbg__PhysicsDeterminism.ts` (`getCharacters()`), the path comments in `KeyboardInput.ts` and `movingPlatform.ts`, both paths in `.claude/CLAUDE.md`, the readme's folder tree, and p102 §8 (deleting a character entity no longer leaves the registry stale). `SceneLoader.ts`, `InitApp.ts` and `DraggableWindow.ts` needed no change.
+- **The dependent plans** now cite `core/Character/DynamicCharacter.ts` with current line numbers, and the renamed fields. Beyond what the bullet above lists:
+  - p067: Phase 1 is marked done by p066 (the data link and the `data` doc comment). §2.4's field table and §3.7's group counts are now 20 / 34 / 11. `isAwake` is off the one-step-late list (it is derived in the tick), and only `isMovingTowardsImpossibleSlope` is left as a dead field.
+  - p068: the wall-hit result is private to the controller's closure, so p068 has to expose it. The floor ray and the wall cast already have physics ray helpers (`char_floor_<entityId>`, `char_wall_<entityId>`), so p068 must decide whether to reuse or replace them.
+  - p069: the 34 keys are classified as read live / derived / baked into colliders, and the "declared but unused" kind is gone. `_tumblingAngularDamping` applies on the next tumble. `_radius` is also read live for the floor ray's length.
+- **Found, not fixed (also on `main`):** `controlFns` keep writing to the body after their character is deleted. The gym's `dummyCharLooper` driving a deleted dummy logs "Could not find RigidBodyAPI" in `WORKER_THREAD` mode. In `MAIN_THREAD` mode, `rotate` writing to the freed body crashes Rapier's WebAssembly, and physics stays broken for the rest of the session. Phase 3 should make every `controlFns` entry (`jump` and `crouch` too, not only `rotate`/`move`) write only the intent, so nothing touches the body outside the tick.
+- **Verified** headless against the running dev server, in both worker targets:
+
+  - walking with W, and the dummy moving on its own;
+  - `deleteCharacter` (true, then false), and the player's keys still working after the dummy is deleted;
+  - a direct `world.deleteEntity` on the player emptying the registry and the bindings;
+  - leaving and re-entering the scene (no stale characters or bindings, exactly 2 characters and 7 bindings again);
+  - the debug edit window showing the renamed fields.
+
+  Not covered: stairs, platforms, tumbling, and the debug delete button.
+
+### Phase 3 — Intent and control schemes — done
+
+- (done) Add `CharacterIntent.ts` and `CharacterInputSchemes.ts` (`TANK`, `WORLD_FIXED`; `CAMERA_RELATIVE` if it fits in the phase, otherwise a follow-up).
+- (done) The tick consumes the intent: vector move math (§2.4), auto-turn, and `hasMoveInput` derived from the intent.
+- (done) Turn `controlFns` into intent-writing wrappers. Switch the gym's `dummyCharLooper` to writing the intent.
 - **Verify:** `TANK` in the gym feels identical to Phase 2 (§5). A second input-mapped test character in the gym, with different keys, works independently, and deleting it leaves the first one's controls intact.
 
-### Phase 4 — Body plans, locomotion state, control mode
+**Implementation notes** (where Phase 3 differs from the plan, and what later phases must know):
 
-- Add `CharacterBodyPlans.ts` with `HUMANOID_CAPSULE`: colliders by role, `getDimensions`, and `kind: 'HUMANOID'`. `createDynamicCharacter` gets the final options shape (§3.2).
-- Add `locomotionState` and `onLocomotionStateChange`, `setControlMode`, and the `visual` option.
-- Add JSDoc to all public exports (they appear in `yarn docs`).
+- **The intent has a `moveForward` axis** (-1..1, along the facing after this sub-step's turn), next to the world `moveX`/`moveZ`. §2.4's type has no facing-relative move, and a `TANK` W key writing world `moveX`/`moveZ` at poll time would move along the facing from before the tick's turn (one turn step late, ~0.08 rad at 60 Hz). `TANK` and scripted "walk forward" AI write `moveForward`. The type is in `CharacterTypes.ts` (with the yaw convention), the helpers (`createIntent`, `clearIntentSubStep`, `addIntentMove`, `hasMoveIntent`, `yawFromDirection`, `wrapToPi`) in `CharacterIntent.ts`. `CharacterObject.intent` exists now; `createCharacter` takes an optional `intent`.
+- **Per-sub-step fields** (`moveX`, `moveZ`, `moveForward`, `turn`, `jump`) are summed by writers and cleared by the tick right after it reads them. The tick caps the summed move at length 1 (so W+A is normalized, and an analog input keeps its magnitude) and `turn` at -1..1. Input that piles up while physics is paused (KEY_HELD then polls per frame) is capped the same way on resume; a jump pressed while paused stays latched until then.
+- **Turn precedence:** `turn` ≠ 0, else toward `faceYaw`, else toward the world move direction when `_turnToMoveDirection` is on (the shortest way, at most `_rotateSpeed · dt`). Only the world part of the move is turned toward; `moveForward` follows the facing by definition. `_turnToMoveDirection` defaults per scheme (`SCHEME_TURNS_TO_MOVE_DIRECTION`) unless `charData` sets it, and is `false` without input.
+- **Vector move math** (`applyMove(dirX, dirZ, magnitude, delta)`): the horizontal (platform-relative, with Phase 1's left-platform add-back) velocity moves toward `dir · maxVelo · magnitude` by at most the acceleration. Grounded speed over the max along the direction is cut to it at once, as the per-axis clamp did; in the air it's kept. Compared with the per-axis form (math only): accelerating, reversing, air overspeed and grounded overspeed are identical. Turning while running holds full speed with no velocity-to-facing lag, where the per-axis form dipped to 3.2–3.7 m/s and lagged 0–17°, jittering with the facing angle. Sideways drift now decays the same in both directions; the per-axis form kept +Z drift at the spawn facing indefinitely (4.2 m/s total) and killed -Z drift at once (the sign of `-0`). No `TANK`-only per-axis fallback was kept.
+- **Jump, run and crouch go through the tick.** `jump` is edge-triggered and applied last in the tick, after every `setLinvel`, so it adds to them. Before, a keydown jump in `WORKER_THREAD` mode was posted ahead of that frame's STEP message, and the sub-step's captured `setLinvel` (replayed later) overwrote it while moving. `run`/`crouch` are persistent; the tick copies `intent.run` into `isRunning` and swaps the capsules when `intent.crouch` differs from `isCrouching`. Nothing outside the tick touches the body any more, which fixes Phase 2's "controlFns write to a deleted body".
+- **`hasMoveInput`** is the summed move's length > ε, so W+S is no input now (Phase 1 counted it as input with no move). The floor sensor's landing logic runs in the collision events, before the tick, so it reads `hasMoveInput || hasMoveIntent(intent)`.
+- **Schemes** (`createCharacterInput(charId, intent, opts)` → `{ bindings, beforeTick? }`): `TANK`, `WORLD_FIXED` (`moveNorth/South/West/East`) and `CAMERA_RELATIVE` (`moveForward/Backward/Left/Right`; screen-up is the camera's view direction on the ground, or its up axis when it looks straight down; the camera is `cameraEntityId` or `getMainCamera()`, so the debug camera doesn't redirect it). `jump`/`run`/`crouch` mappings are optional. `runMode`/`crouchMode`: `TOGGLE` (default) or `HOLD`. `HOLD` doesn't use KEY_UP (blur, a hidden page or disabled inputs clear the held keys without one, so the state would stick): a KEY_HELD binding latches the held state, and `beforeTick`, run by the controller at the start of its tick, copies it into the intent.
+- **Options:** `createDynamicCharacter`'s `input: CharacterInputOpts` (§3.2's `input` shape) replaces `inputMappings` now. The return value gained `intent`; the rest of §3.2 is still Phase 4. `controlFns.rotate` lost its `delta` argument (the tick applies `_rotateSpeed · dt`) and `run`/`crouch` are in its type; every entry only writes the intent.
+- **Gym:** the player is `TANK` on WASD; a second player character, `arrowKeysChar`, is `CAMERA_RELATIVE` on the arrow keys with Enter to jump and no run or crouch (the gym camera isn't North-aligned, so world-fixed keys would move diagonally on screen); the dummy writes `intent.moveForward`/`turn`/`jump` from its `APP_PHYSICS_STEP` system. The three character meshes come from one local helper.
+- **Also updated:** the `pollHeldKeyBindings` comment in `KeyboardInput.ts`, the readme's Characters feature line, and p067–p069's `DynamicCharacter.ts` line references, config key counts (35, one of them the boolean `_turnToMoveDirection`) and a p067 note on the intent.
+- **Verified** headless against the running dev server (a Playwright script driving the keys and reading the registry), in both worker targets, all checks passing:
 
-### Phase 5 — Toolkit additions
+  - `TANK`: W moves along the facing at 3.70 m/s, A turns 2.58 rad in 0.5 s, W+S neither moves nor sets `hasMoveInput`, Shift runs at 5.55 m/s and toggles back, Control toggles crouching, Space jumps 1.28 m standing and while moving;
+  - `CAMERA_RELATIVE`: ArrowUp moves along the camera's ground-forward and turns the character to face it, ArrowDown+Left moves back-left at 3.70 m/s facing it, Enter jumps; each character's keys leave the other one still;
+  - the dummy walks and turns by itself;
+  - `deleteCharacter('arrowKeysChar')` (true, then false) removes only its 5 bindings, and the player's W still works;
+  - leaving and re-entering the scene leaves no characters or bindings behind, then 3 characters and 12 bindings again, with both input characters working;
+  - no console errors besides a missing `/favicon.ico`.
 
-- Add the `generateTerrain` `heightModifier` option (§2.7).
-- Add the `SunShadowFit` effect (§2.6), registered in `AppECSPlugins.ts` and added to `AppECSRegistry.ts`'s component types in the toolkit pattern (`HoverEffect.ts`/`FollowTool.ts`).
+  Not covered: the feel at 144 Hz in a real browser, stairs, platforms, tumbling, `HOLD` mode and `WORLD_FIXED` (no gym character uses them; Phase 6's top-down scene is `WORLD_FIXED`).
 
-### Phase 6 — Top-down test scene
+### Phase 4 — Body plans, locomotion state, control mode — done
+
+- (done) Add `CharacterBodyPlans.ts` with `HUMANOID_CAPSULE`: colliders by role, `getDimensions`, and `kind: 'HUMANOID'`. `createDynamicCharacter` gets the final options shape (§3.2).
+- (done) Add `locomotionState` and `onLocomotionStateChange`, `setControlMode`, and the `visual` option.
+- (done) Add JSDoc to all public exports (they appear in `yarn docs`).
+
+**Implementation notes** (where Phase 4 differs from the plan, and what later phases must know):
+
+- **Body plan types** (`CharacterTypes.ts`): `CharacterBodyPlan<Dims>` is `{ kind, getDimensions(data), getColliders(dims, data) }`, where `data` is `CharacterBodyData` (the six size keys). The generic `CharacterDimensions` holds only what the controller needs, the probes per stance (`standing`/`crouching`: `wallCastOffsetY`, `wallCastHalfHeight`, `wallCastRadius`, `floorRayLength`); `HUMANOID_CAPSULE`'s `HumanoidCapsuleDimensions` adds the capsule and sensor sizes. The numbers are Phase 1's, unchanged. The floor ray's length now comes from the dimensions too: `_radius` is no longer read live anywhere.
+- **Colliders by role:** `getColliders` returns `{ role, params }[]`. The controller needs the first collider of each of `MAIN`, `CROUCH`, `WALL_SENSOR` and `FLOOR_SENSOR` (it throws without one), forces `MAIN` enabled and `CROUCH` disabled, and adds the sensors' collision handlers; other roles pass through. It maps role → index into the entity's `COLLIDER` array (same order as the params). Neither the body plan nor its dimensions are kept on the character (only `kind`): p068 and p069 have to expose them.
+- **`createCharacter`** takes `visual: THREE.Object3D | string` (was `meshOrMeshId`, mesh only) and a required `kind`, and its options are the exported `CreateCharacterOpts`. Any object with an entity works (a mesh or a group); `visualId` is the entity's app id.
+- **`createDynamicCharacter`'s options** are `DynamicCharacterOpts`: §3.2's shape, plus `name`. The unused `sceneId` option and `camera` return field are gone. It returns `{ character, data, intent, controlFns }`.
+- **Locomotion state:** `data.locomotionState` (with `__locomotionStateStartTime`), derived at the end of every tick. Listeners: `onLocomotionStateChange(id, listener)` in `Character.ts` (returns the unsubscribe function; the listeners go with the entity) or the creator's `onLocomotionStateChange` option. A throwing listener is logged and doesn't break the sub-step. The rules, beyond §2.5's "from the existing booleans":
+  - `JUMP` lasts from the jump until the character, after leaving the ground, stops rising or lands (`__isJumping`, `__jumpLeftGround`); a jump that never leaves the ground ends after 250 ms. Speed alone can't tell: in `WORKER_THREAD` mode the velocity a later sub-step of the same frame reads may predate the impulse.
+  - `FALL` waits `_fallStateDelay` (new config key, 100 ms) off the ground, so a stair step or a bump keeps the grounded state.
+  - `SLIDE` is `isSliding` only on unwalkable ground or above `_maxVelocity × _runningMultiplier` (+0.1 m/s). `isSliding` alone is also true for a few sub-steps while the character slows down after a move, which would put a `SLIDE` between every `WALK` and `IDLE`.
+  - In `PHYSICS_ONLY` the state is `TUMBLE`.
+- **Control mode:** `CharacterObject.controlMode` (`CharacterControlMode`, default `CONTROLLED`), set with `setControlMode(id, mode)` (false for an unknown id). The tick applies a change at its start, so nothing outside it touches the body. `PHYSICS_ONLY` unlocks the rotations, resets the angular damping to the body's default (0) and ends a get-up; then the tick writes nothing to the body (no move, turn, jump, crouch swap, platform carry, slope slide or tumble clamp), and the sensors start no tumbling and skip the landing correction. Data, intent clearing, the floor ray and the state go on. Back to `CONTROLLED`, the character always goes through the getting-up path (`_gettingUpDuration`, also when it is still upright), which locks the rotations again at its end.
+- **Debug:** the character edit window shows `kind` and `controlMode`.
+- **JSDoc:** every export of `Character.ts` and `Character/*.ts` and every field of their exported types, including the `__` memory fields of `CharacterData`. `CharacterActionMappings` and `CharacterInputCommonOpts` are exported so TypeDoc documents them. TypeDoc reports nothing for these files beyond the folder entry-point warning every folder gets.
+- **Also updated:** p067–p069's line references, p067's field counts (21 / 36 / 14) and a string row type for `locomotionState`, p068/p069's notes on colliders by role and the dimensions, and the readme's Characters line.
+- **Verified** headless against the running dev server, in both worker targets, no console errors:
+
+  - the gym's 3 characters are `HUMANOID` with 4 colliders each and the right visual ids and binding counts; walking, crouching, jumping and the arrow-keys character work as in Phase 3;
+  - states: `IDLE → WALK → IDLE`, `RUN`, `CROUCH`, `CROUCH_WALK`, `JUMP → FALL → IDLE`; the dummy reports `WALK`, `JUMP` and `FALL`; unsubscribing stops the callbacks;
+  - `PHYSICS_ONLY`: `TUMBLE`, W moves the body 0 m, a torque impulse tilts it; back to `CONTROLLED`: `GET_UP → IDLE`, exactly upright, and W walks again.
+
+  Not covered: `SLIDE` on the slide obstacle, `onLocomotionStateChange` across a scene re-enter, a custom body plan, and a `visual` that is a group.
+
+### Phase 5 — Toolkit additions — done
+
+- (done) Add the `generateTerrain` `heightModifier` option (§2.7).
+- (done) Add the `SunShadowFit` effect (§2.6), registered in `AppECSPlugins.ts` and added to `AppECSRegistry.ts`'s component types in the toolkit pattern (`HoverEffect.ts`/`FollowTool.ts`).
+
+**Implementation notes** (where Phase 5 differs from the plan, and what Phase 6 must know):
+
+- **`heightModifier`** runs per vertex right after the noise, so the mesh, `heights` and `getHeightAt` agree.
+- **`SunShadowFitData`** is §2.6's shape with two changes:
+  - `lightDistance` is optional. Its default, `radius + casterExtension + 1`, keeps the shadow camera's near plane at 1; a fixed value smaller than `radius + casterExtension` would give a negative near plane.
+  - It gains an optional `direction` (toward the sun). Without one, the direction is taken once, from the target to the light, when the effect first runs. It is stored rather than re-derived from the transforms the effect writes, which would drift through rounding. Setting it turns the sun.
+- **The sphere** is the closed-form bounding sphere of the view slice: the zoom-adjusted FOV, aspect, near and `min(far, maxDistance)`, with a box for orthographic cameras. Its radius only changes on a zoom, a resize or a settings change. With a camera 40 m deep the radius is about 40 m, so `maxDistance` sets the shadow resolution.
+- **Writes only on change.** The light, its target and their TRANSFORMs are written only when the snapped center, the direction, the distance or the extents change. The per-component state is in a `WeakMap` keyed by the component data, so it goes with the component and needs no hooks.
+- **Order:** `APP_RENDER_SYNC_ORDER.SHADOW_FIT` (-0.75), a new constant in `AppECSRegistry.ts`.
+- **Import cycle.** `AppECSRegistry.ts` imports the file for its enum, so like `InstancedMeshPool.ts` it value-imports only `ECS/ECSRegistry` and the Logger. The main camera is found through the world's `TAG_IS_MAIN_CAMERA` (as `getMainCamera` does), not by importing `CameraManager`.
+- **Skipped lights:** a non-directional light, or one with `MANAGED_BY` (the sky box's sun already follows the camera itself, `SkyBox/SkyLights.ts`), is skipped with one warning per component. The gym keeps its own `followWithSun`.
+- **Also updated:** the readme's toolkit effects line.
+- **Verified** headless against the running dev server (`WORKER_THREAD`): in the gym, with `gymSunFollow` removed and `SUN_SHADOW_FIT` (`maxDistance: 40`, `casterExtension: 20`) on its sun, all 8 corners of the main camera's 40 m view slice are inside the shadow camera's box. They stay inside while the player walks, after `direction` turns the sun, and after `maxDistance` drops to 25. The target is on whole texels in light space. The light stops moving once the camera stops, and the direction is unchanged by the fit. Adding it to the ambient light logs one warning. Leaving the scene removes the component, with no console errors. Not covered: `MAIN_THREAD` (the effect doesn't touch physics), shimmer judged by eye in a real browser, an orthographic main camera, and `followEntityId` without a camera.
+
+### Phase 6 — Top-down test scene — done
 
 New files (the `topDownTest` id family, following the gym's `thirdPersonGym.scene.json` + `scene_thirdPersonGym.ts` pattern):
 
@@ -427,6 +530,27 @@ Scene content:
 - **Camera:** `createFollowObjectCameraRig` at offset `{ x: 0, y: 20, z: 8 }`: directly South of and above the player, so North (`-Z`) is screen-up and W moves straight up the screen.
 - **Sun:** a `SUN_SHADOW_FIT` component on the sun entity, added in `registerOnSceneEnter`, because the JSON lights are created after the scene TS runs (`SceneLoader.ts:332-338`).
 - **Cleanup:** `registerOnSceneExit` deletes the follow rig. The character, the bindings and the `SUN_SHADOW_FIT` component go with their entities through the hooks, with no manual cleanup, which exercises Phase 2.
+
+**Implementation notes** (where Phase 6 differs from the plan):
+
+- **Files:** as listed, plus `src/app/characterVisual.ts` (`createCharacterVisual`): the gym's capsule-and-beak visual, which was a local helper in `scene_thirdPersonGym.ts`. The gym uses it too, unchanged except that the capsule geometry's id now carries its size (geometries are cached by id).
+- **Sky box:** `emptyBlueSkyEquiRect` is created in code by the gym, so no JSON can reference it. The scene JSON defines an inline sky box with the same texture and the gym's `environmentIntensity: 0.3` (at 1 the sky tints the shadowed faces blue).
+- **Load order:** the JSON lights are created at `SceneLoader.ts:568` (`createNextSceneObject3Ds`), still after the scene function, so `SUN_SHADOW_FIT` is added in `registerOnSceneEnter`, with the player as `followEntityId`.
+- **Ground:** 300 × 300 with its top at y = 0, in the gym ground's tint of `triplanarGrid` (`toolkit/materials/checkerBoard` is a sci-fi panel shader with another scene's saved overrides). The static meshes use `triplanarGrid`, the props `triplanarCheckerboard`, as in the gym.
+- **Hills:** 120 × 300 at x 30…150, 60 × 150 segments (2 m square cells; 80–100 along both sides would give oblong ones). The noise is reshaped to `n² × 16` (hills with flat valleys): the highest peak is 14.1 m at (132, −18), and about 5% of the surface is steeper than the 45° walkable slope. The mask rises over 35 m from the West edge and falls over 12 m to the other three, and every edge sinks to −0.3. The TRIMESH collider needs explicit `vertices` and a `Uint32Array` of `indices` (`createPhysicsEntity` derives sizes for primitives only). `createHills` returns the world-space ground height, which places the hills' obstacles.
+- **Shadow fit:** `maxDistance: 48`, `casterExtension: 25`. On the flat, the screen's top corners are ~28 m deep, but from the peak, looking down to the valleys, ~46 m. The box is then ±45.7 m with 2048 texels (~4.5 cm). The peaks' shadows reach ~24 m along the 38° sun.
+- **Obstacles:** 15, seeded (`createSeededRandom(66)`), with a random yaw, 6 m (plus their radius) clear of the spawn and 3 m apart. On the flat (x −28…24, z −24…24): a 10 m ramp at 18° up to ~3.1 m, a 0.8 m low box, 5 walls (6–12 m) and 4 pillars. On the hills' first slopes: 2 pillars and 2 blocks, each on the lowest ground under its footprint, sunk 0.3 m. They keep the default friction (see "Found, not fixed").
+- **Props:** 25 (8 boxes, 7 balls, 5 cylinders, 5 capsules; half the cylinders and capsules on their side), seeded (67), 1 m apart and clear of the obstacles. Densities 0.2 / 1 / 4 (masses 0.03–11.8), the light ones tan and the heavy ones dark.
+- **Found, not fixed:** a character pushing into a wall at 45° can stick to it instead of sliding. `refreshWallHit` (`DynamicCharacter.ts:492-499`) casts along the body's actual horizontal velocity and skips the cast when that velocity is near zero. If the character touches the wall before an async cast result arrives and friction stops it (the character's 0.9 averaged with a wall's 1 nearly does at 45°), no cast fires again. It was seen once, on one wall with `friction: 1`, in `WORKER_THREAD` mode. With the default friction every wall slides, in both modes. Casting along the intended (input) velocity would fix it.
+- **Verified** headless against the running dev server (Playwright, `?isDebug=true`), in both worker targets, 55 checks each, no console errors besides a missing `/favicon.ico`:
+  - W moves exactly North (sideways drift under 10⁻⁵ m) and faces North; S+A moves exactly South-West and faces it; North → South moves South within 150 ms and ends facing South; Space jumps;
+  - shadows: at 10 spots across the flat area, its far corners, the hills' slopes and the peak, the ground under every screen corner is inside the shadow camera's box, and the fitted center is on whole texels in light space;
+  - running East from the spawn climbs the hills on the trimesh collider, and the player lands on the peak;
+  - all 5 walls block and slide at 45° both ways, a pillar blocks, the ramp is walkable, and a running jump lands on the low box;
+  - the props rest after the load; the lightest is pushed 7.6 m and the heaviest 4.6 m in 2 s;
+  - leaving for the gym and coming back: no character or bindings left behind, the gym's 3 characters, then 1 player with the same 7 bindings, the shadow fit back on the sun, and the same obstacle and prop layout.
+
+  Not covered: shimmer judged by eye in a real browser (the texel snap is verified), 144 Hz, `SLIDE` on the hills' steep slopes, crouching and running on the hills, and the debug Characters tab.
 
 ---
 

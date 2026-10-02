@@ -95,6 +95,14 @@ export const sceneFileObjects: {
       }
     ).scene({ sceneData, assets });
   },
+  topDownTestScene: async ({ sceneData, assets }) => {
+    const module = await import('../app/./scene_topDownTest.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
 };
 
 export const tslMaterialFileObjects = {
