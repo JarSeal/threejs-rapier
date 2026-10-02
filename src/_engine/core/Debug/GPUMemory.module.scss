@@ -1,0 +1,82 @@
+@use '../../styles/variables.scss';
+
+.gpuMemorySummary {
+  padding: 0.4rem 0.4rem 1.2rem;
+  color: variables.$debugTextColor;
+  font-size: 1.1rem;
+}
+
+.gpuMemoryTotalRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.6rem;
+
+  strong {
+    font-size: 1.6rem;
+  }
+}
+
+.gpuMemoryBar {
+  height: 0.8rem;
+  border-radius: variables.$borderRadiusSmall;
+  background-color: variables.$debugGuiBackgroundLighter2;
+  overflow: hidden;
+}
+
+.gpuMemoryBarFill {
+  height: 100%;
+  background-color: variables.$debugBoolTrue;
+  transition: width 0.2s ease-in-out;
+
+  .gpuMemoryOverBudget & {
+    background-color: variables.$debugBoolFalse;
+  }
+}
+
+.gpuMemoryBarLabel {
+  margin-top: 0.4rem;
+
+  .gpuMemoryOverBudget & {
+    color: variables.$debugBoolFalse;
+  }
+}
+
+.gpuMemoryNote {
+  margin-top: 0.6rem;
+  color: variables.$debugTextColorDark;
+}
+
+.gpuMemoryHeading {
+  margin: 0 0 0.6rem;
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.gpuMemoryTable {
+  width: 100%;
+  margin-top: 1rem;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+
+  th {
+    color: variables.$debugTextColorDark;
+    font-weight: normal;
+    text-align: right;
+  }
+
+  td {
+    padding: 0.15rem 0;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  th:first-child,
+  td:first-child {
+    text-align: left;
+  }
+
+  tbody tr:hover {
+    background-color: variables.$debugGuiBackgroundLighter2;
+  }
+}

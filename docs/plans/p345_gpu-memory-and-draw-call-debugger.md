@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Debug, Rendering, Performance
 Epic: p350_lod-system-research.md (Tier 0)
 Blocks: nothing hard; p347, p348, p351 and p353 each measure their result with it
@@ -106,7 +106,7 @@ a release that `releaseSceneOwnedAssets` missed. Snapshots live in memory only.
 
 ## 3. Phases
 
-### Phase 1 — Totals and frame counters
+### Phase 1 — Totals and frame counters — done
 
 1. The tab with Totals and Frame (§2.1, sections 1–2), high-water marks, budget bar.
 2. Fill in the draw-call part of `_dbg__Stats.ts`'s `@TODO` by linking to the tab, and remove those
@@ -114,6 +114,29 @@ a release that `releaseSceneOwnedAssets` missed. Snapshots live in memory only.
 
 **Exit:** switching between `largeWorld` and `skyShowcase` shows the totals and draw calls change,
 and the high-water marks reset on scene enter.
+
+As built:
+
+- `info.render` is reset at the start of three's own animation frame (`Animation.js`, started by
+  `renderer.init()`), not per `render()` call, so the tab never reads it from its refresh interval.
+  A debug-only `LATE_MAIN` system (`gpuMemorySamplerSystem`, default world) reads it right after
+  the frame's `renderScene()`, keeps min/avg/max per 500 ms window, and also tracks the memory
+  peaks and the budget toast, so those work while the tab is closed. `MainLoop.ts` is unchanged.
+- Frame rows: draw calls, triangles, render calls (`info.render.frameCalls`) and compute calls.
+  Totals: one row per `info.memory` category, plus render target and geometry counts (their bytes
+  are in textures and attributes). The backend (WebGPU / WebGL2) is labelled.
+- The axes gizmo and env ball note names their keys (F10 / F9) and links to the Debug tools tab
+  instead of duplicating their toggles, which that tab persists. A second link opens the PostFX
+  profiler for GPU time.
+- The Stats tab got an "Open GPU memory" button; only the draw-call line left its `@TODO`.
+- New `memory` icon (Bootstrap Icons). Budget persisted in `AEK_debugGPUMemory`.
+- Open question 2 answered: the WebGL2 fallback fills `info.memory` through the same shared
+  classes (same figures as WebGPU in `largeWorld`).
+- First finding: `largeWorld` → `skyShowcase` → `largeWorld` comes back with ~3.7 MB more
+  attributes (76 → 112), more programs (46 → 68) and uniform buffers (104 → 178), on both
+  backends. Phase 2's diff should name what stays alive.
+- Known gap: three r186 counts compressed textures as 1 B (`Info._getTextureMemorySize`). Nothing
+  uses KTX2 yet; p300 will, and Phase 2's per-owner sizes need a better estimate for them.
 
 ### Phase 2 — Owners and snapshots
 

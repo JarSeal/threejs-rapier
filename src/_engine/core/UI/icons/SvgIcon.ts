@@ -22,6 +22,7 @@ import infoIcon from './svg/info-circle-fill.svg?raw';
 import lightBulbIcon from './svg/lightbulb-fill.svg?raw';
 import lampIcon from './svg/lamp.svg?raw';
 import lockIcon from './svg/lock-fill.svg?raw';
+import memoryIcon from './svg/memory.svg?raw';
 import pauseIcon from './svg/pause-fill.svg?raw';
 import pinIcon from './svg/pin-angle-fill.svg?raw';
 import personArmsUpIcon from './svg/person-arms-up.svg?raw';
@@ -65,6 +66,7 @@ const icons = {
   lightBulb: lightBulbIcon,
   lamp: lampIcon,
   lock: lockIcon,
+  memory: memoryIcon,
   pause: pauseIcon,
   personArmsUp: personArmsUpIcon,
   pin: pinIcon,

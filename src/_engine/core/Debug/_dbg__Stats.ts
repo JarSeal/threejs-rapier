@@ -1,7 +1,8 @@
 import Stats from 'stats-gl';
 import { TimestampQuery, type Renderer } from 'three/webgpu';
 import { getRenderer } from '../../core/Renderer';
-import { createDebuggerTab } from '../../debug/DebuggerGUI';
+import { createDebuggerTab, openDebuggerTab } from '../../debug/DebuggerGUI';
+import { GPU_MEMORY_TAB_ID } from '../../debug/GPUMemory';
 import { getHUDRootCMP } from '../../core/HUD';
 import { CMP, type TCMP } from '../../utils/CMP';
 import { defaultStatsOptions, type StatsOptions } from '../../debug/Stats';
@@ -349,15 +350,21 @@ const setDebuggerUI = () => {
               title: `Measuring Outlook ${RELOAD_NOTE}`,
               content: [{ key: 'horizontal', label: 'Horizontal', onChange: reloadApp }],
             },
+            {
+              type: 'button',
+              label: 'Draw calls, memory',
+              title: 'Open GPU memory',
+              onClick: () => openDebuggerTab(GPU_MEMORY_TAB_ID),
+            },
           ],
         },
       ];
     },
   });
 
-  // @TODO: add current scene and all loaded scene stats
+  // @TODO: add current scene and all loaded scene stats (draw calls and GPU memory are in the
+  // GPU memory tab, _dbg__GPUMemory.ts)
   // Current and all scenes stats:
-  // - drawcalls count
   // - objects count (Object3D)
   // - mesh count
   // - face count
