@@ -327,7 +327,7 @@ const writeBackTransforms = (stats?: StepStats) => {
     transformBuffer.setTransform(slot, rb.pos, rb.rot);
     transformBuffer.setVelocity(slot, rb.linvel(), rb.angvel());
   }
-  transformBuffer.markWritten(stepsExecuted);
+  transformBuffer.publish(stepsExecuted);
   if (!resolvedUseSAB) {
     const copy = transformBuffer.buffer.slice(0) as ArrayBuffer;
     sendMessageSimple(
