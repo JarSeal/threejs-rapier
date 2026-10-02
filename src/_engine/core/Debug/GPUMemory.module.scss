@@ -76,7 +76,25 @@
     text-align: left;
   }
 
+  tfoot td {
+    border-top: 1px solid variables.$debugGuiBackgroundLighter2;
+    font-weight: bold;
+  }
+
   tbody tr:hover {
     background-color: variables.$debugGuiBackgroundLighter2;
   }
+}
+
+.gpuMemoryCurrent td:first-child {
+  font-weight: bold;
+}
+
+.gpuMemoryCell td:first-child {
+  padding-left: 1.2rem;
+}
+
+.gpuMemoryUntracked td {
+  color: variables.$debugTextColorDark;
+  font-style: italic;
 }

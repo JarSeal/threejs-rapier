@@ -5,8 +5,14 @@ import { CMP } from '../../utils/CMP';
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import { ECSWorld, getECSWorld } from '../ECS';
 import { getRenderer } from '../Renderer';
-import { registerOnAllSceneEnterings } from '../Scene';
+import { getCurrentSceneId, registerOnAllSceneEnterings } from '../Scene';
 import { formatBytes, formatNumber } from './_dbg__AssetStats';
+import {
+  BOOT_OWNER,
+  collectGPUAssets,
+  groupByOwner,
+  type OwnerSums,
+} from './_dbg__GPUMemoryOwners';
 import styles from './GPUMemory.module.scss';
 
 /**
@@ -203,6 +209,84 @@ const frameHtml = () => {
 </div>`;
 };
 
+const esc = (value: string) =>
+  value.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string
+  );
+
+const ownerLabel = (owner: string) =>
+  owner === BOOT_OWNER ? 'boot (before the first scene)' : esc(owner);
+
+const ownerRowHtml = (sums: OwnerSums, label: string, className = '') =>
+  `<tr${className ? ` class="${className}"` : ''}><td>${label}</td><td>${formatBytes(sums.textures)}</td><td>${formatBytes(sums.geometries)}</td><td>${formatBytes(sums.total)}</td><td>${formatNumber(sums.count)}</td></tr>`;
+
+const ownersHtml = () => {
+  const renderer = getRenderer();
+  if (!renderer) return '';
+  const memory: MemoryInfo = renderer.info.memory;
+  const rows = collectGPUAssets(renderer);
+  const groups = groupByOwner(rows);
+  const currentSceneId = getCurrentSceneId();
+
+  let trackedTextures = 0;
+  let trackedGeometries = 0;
+  for (const group of groups) {
+    trackedTextures += group.textures;
+    trackedGeometries += group.geometries;
+  }
+  const notOnGPU = rows.filter((row) => !row.bytes).length;
+
+  const ownerRows = groups
+    .map((group) => {
+      const isCurrent = group.owner === currentSceneId;
+      const label = `${ownerLabel(group.owner)}${isCurrent ? ' (current)' : ''}`;
+      return (
+        ownerRowHtml(group, label, isCurrent ? styles.gpuMemoryCurrent : '') +
+        group.cells
+          .map((cell) =>
+            ownerRowHtml(cell, esc(cell.owner.slice(group.owner.length + 1)), styles.gpuMemoryCell)
+          )
+          .join('')
+      );
+    })
+    .join('');
+
+  // What the registries can't name: render targets (shadow maps, PostFX, sky bakes, viewports),
+  // unregistered and instanced geometry, uniform buffers, shader code
+  const untrackedRows = [
+    { label: 'Textures', bytes: memory.texturesSize - trackedTextures },
+    {
+      label: 'Attributes + index',
+      bytes: memory.attributesSize + memory.indexAttributesSize - trackedGeometries,
+    },
+    ...MEMORY_CATEGORIES.filter(
+      (c) =>
+        c.size !== 'texturesSize' && c.size !== 'attributesSize' && c.size !== 'indexAttributesSize'
+    ).map((c) => ({ label: c.label, bytes: memory[c.size] })),
+  ]
+    .filter((row) => row.bytes > 0)
+    .sort((a, b) => b.bytes - a.bytes);
+  const untracked = memory.total - trackedTextures - trackedGeometries;
+  const untrackedRatio = memory.total > 0 ? untracked / memory.total : 0;
+
+  return `<div class="${styles.gpuMemorySummary}">
+  <h4 class="${styles.gpuMemoryHeading}">By owner</h4>
+  <table class="${styles.gpuMemoryTable}">
+    <thead><tr><th>Owner</th><th>Textures</th><th>Geometry</th><th>Total</th><th>Assets</th></tr></thead>
+    <tbody>${ownerRows || '<tr><td>No registered assets on the GPU.</td></tr>'}
+      <tr class="${styles.gpuMemoryUntracked}"><td>Untracked</td><td></td><td></td><td>${formatBytes(untracked)}</td><td>${(untrackedRatio * 100).toFixed(0)} %</td></tr>
+    </tbody>
+    <tfoot><tr><td>Total</td><td></td><td></td><td>${formatBytes(memory.total)}</td><td></td></tr></tfoot>
+  </table>
+  <table class="${styles.gpuMemoryTable}">
+    <thead><tr><th>Untracked</th><th>Size</th></tr></thead>
+    <tbody>${untrackedRows.map((row) => `<tr><td>${row.label}</td><td>${formatBytes(row.bytes)}</td></tr>`).join('')}</tbody>
+  </table>
+  <div class="${styles.gpuMemoryNote}">Registered textures and geometries, and the textures a material holds alone (eg. clones), summed per owning scene with three's own byte counts. ${notOnGPU ? `${formatNumber(notOnGPU)} registered asset${notOnGPU === 1 ? ' is' : 's are'} not on the GPU (never drawn, or not uploaded yet). ` : ''}Untracked is everything else: render targets (shadow maps, PostFX, sky bakes, viewports), unregistered and instanced geometry, uniform buffers and shader code. A large or growing figure is a finding.</div>
+</div>`;
+};
+
 export const _createGPUMemoryDebugGUI = () => {
   createDebuggerTab({
     id: GPU_MEMORY_TAB_ID,
@@ -216,6 +300,7 @@ export const _createGPUMemoryDebugGUI = () => {
     content: () => [
       CMP({ html: totalsHtml }),
       CMP({ html: frameHtml }),
+      CMP({ html: ownersHtml }),
       {
         pane: true,
         content: [
