@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Debugger, UI Component
 
 # Refactor Draggable Windows and Dialogs — Plan
@@ -272,10 +272,18 @@ Each edit-window module moves to the same pattern:
   - A reopen that changes a structural flag (resize handles, header buttons, backdrop, layer) remounts the window.
   - Also fixed: the clear-LS scope dialog (`confirmClearScope`) opened in the app layer, under the debug windows.
 
-### Phase 2: Units and keeping windows reachable
+### Phase 2: Units and keeping windows reachable — done
 
 - §3.5 and §3.6.
 - Fixes issue 1 (non-px units) and issue 2 (lost windows).
+- As built, where it differs from §3:
+  - `keepOnScreen` works per axis: a window wider than the viewport goes to x = 0 but keeps its y (and the other way round).
+  - `keepOnScreen` runs when a window mounts (open, reload restore, scene change rebuild) and on a `resetPosition`/`resetSize` reopen. A reopen of a live window without a reset keeps its place, so a window hung off an edge on purpose stays there.
+  - The default position (no `position` prop) is the viewport's centre as `50% / 50%`, converted at mount like any non-px position. A non-draggable px window without a position is therefore CSS-centred now.
+  - Units go with their value when resolving: a stored position or size keeps its stored units, a passed one takes the passed units. A caller that passes a `%` position on every open keeps the user's stored px place.
+  - `maxSize` is optional in the config and is always stored with its `units.maxSize`. A stored `maxSize` without units is a pre-p094 viewport snapshot and is dropped on load.
+  - The grab area is the header's `h3` title (measured at drag start), and a resize end always saves (its units may change while the numbers don't).
+  - Verification 4: the Debug tools test window uses a px position, so the `%` path was checked by opening windows through the module in a headless browser.
 
 ### Phase 3: Fit to screen
 

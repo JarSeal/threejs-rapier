@@ -15,6 +15,8 @@ export type DraggableWindowContent = TCMP | ((data?: DraggableWindowData) => TCM
 
 export type DraggableWindowUnits = {
   // Default is 'px'
+  /** A non-px position is the window's centre. A draggable window converts it to px (its
+   * left/top) when it mounts; a non-draggable one (eg. a dialog) stays CSS-centred. */
   position?: { x?: Units; y?: Units };
   size?: { w?: Units; h?: Units };
   maxSize?: { w?: Units; h?: Units };
@@ -26,10 +28,12 @@ export type DraggableWindowConfig = {
   id: string;
   title: string;
   data?: DraggableWindowData;
-  /** Position (left/top) and size, in `units` (px by default) */
+  /** Position (left/top) and size, in `units` (px by default). A draggable window's position is
+   * always px. */
   geometry: { x: number; y: number; w: number; h: number };
   minSize: { w: number; h: number };
-  maxSize: { w: number; h: number };
+  /** Without one, the window is at most the viewport's size (100vw × 100vh) */
+  maxSize?: { w: number; h: number };
   units?: DraggableWindowUnits;
   /** The window's index in its layer's stack (0 = bottom) */
   orderNr: number;
@@ -111,6 +115,10 @@ export type OpenDraggableWindowProps = {
 
 type DragMode = 'MOVE' | 'RESIZE_H' | 'RESIZE_V' | 'RESIZE_HV';
 
+/** The part of the header that can be grabbed (the title, without the buttons), relative to the
+ * window's left edge, and the header's height. */
+type GrabArea = { left: number; width: number; headerH: number };
+
 /** One pointer drag of a window's header (move) or of one of its resize handles. */
 type DragSession = {
   mode: DragMode;
@@ -119,6 +127,8 @@ type DragSession = {
   target: HTMLElement;
   startPointer: { x: number; y: number };
   startGeometry: { x: number; y: number; w: number; h: number };
+  /** MOVE only: the header's title area, which clampToGrabbable keeps on screen */
+  grabArea: GrabArea | null;
   /** The latest pointer position, applied at most once per animation frame */
   pointer: { x: number; y: number };
   /** The geometry last written to the DOM */
@@ -132,6 +142,7 @@ type DraggableWindowRuntime = {
   onClose?: () => void;
   windowCMP?: TCMP;
   backDropCMP?: TCMP;
+  headerCMP?: TCMP;
   titleCMP?: TCMP;
   contentWrapperCMP?: TCMP;
   session: DragSession | null;
@@ -164,9 +175,9 @@ const DEFAULT_MIN_HEIGHT = 120;
  * engine's loaders (1000), so there is room for about 450 of them. */
 const Z_INDEX_BASES: Record<Layer, number> = { APP: 100, DEBUG: 20000 };
 const DEBUG_ADDITION_TO_CUSTOM_Z_INDEX = 100;
-const MAX_OFF_SCREEN_HORI_THRESHOLD = 65;
-const MAX_OFF_SCREEN_VERT_THRESHOLD = 10; // For the bottom threshold this number is *2
-const RESIZE_DEBOUNCE_MS = 200;
+/** How much of a window's title area a drag keeps horizontally on screen */
+const MIN_GRAB_VISIBLE_PX = 80;
+const RESIZE_DEBOUNCE_MS = 150;
 
 /** Every known window, open or not. Hydrated from LS on the first access (see getWindows). */
 let windows: Map<string, WindowEntry> | null = null;
@@ -213,8 +224,8 @@ const createConfig = (
   ...(v.data !== undefined ? { data: v.data } : {}),
   geometry: v.geometry,
   minSize: v.minSize || { w: DEFAULT_MIN_WIDTH, h: DEFAULT_MIN_HEIGHT },
-  maxSize: v.maxSize || getDefaultMaxSize(),
-  ...(v.units ? { units: v.units } : {}),
+  ...(v.maxSize ? { maxSize: v.maxSize } : {}),
+  ...(v.units && Object.keys(v.units).length ? { units: v.units } : {}),
   orderNr: v.orderNr ?? 0,
   isOpen: Boolean(v.isOpen),
   isCollapsed: Boolean(v.isCollapsed),
@@ -236,34 +247,57 @@ const createConfig = (
   ...(v.backDropClass !== undefined ? { backDropClass: v.backDropClass } : {}),
 });
 
-const getDefaultMaxSize = () => {
-  const { width, height } = getWindowSize();
-  return { w: width, h: height };
-};
-
 /**
  * Resolves a window's config from the open props and its stored config (live, closed or from
  * LS). One rule set:
- * - Behaviour flags, min/max size, units and classes: a passed prop wins, then the stored value,
- *   then the default.
+ * - Behaviour flags, min/max size and classes: a passed prop wins, then the stored value, then
+ *   the default.
  * - Geometry and the collapsed state (the user's layout): the stored value wins, unless
- *   `resetPosition`/`resetSize` is set. Then the prop wins, and the default comes last.
+ *   `resetPosition`/`resetSize` is set. Then the prop wins, and the default (centred) comes last.
+ * - Units go with their value: a stored position or size keeps its stored units, a passed one
+ *   takes the passed units.
  * - Title and `data`: the passed value wins.
  */
 const resolveWindowConfig = (
   props: OpenDraggableWindowProps,
   stored?: DraggableWindowConfig
 ): DraggableWindowConfig => {
-  const keepSize = stored && !props.resetSize;
-  const keepPosition = stored && !props.resetPosition;
-  const size = keepSize
-    ? { w: stored.geometry.w, h: stored.geometry.h }
-    : props.size || { w: DEFAULT_WIDTH, h: DEFAULT_HEIGHT };
-  let position = keepPosition ? { x: stored.geometry.x, y: stored.geometry.y } : props.position;
-  if (!position) {
-    const { width, height } = getWindowSize();
-    position = { x: width / 2 - size.w / 2, y: height / 2 - size.h / 2 };
+  const units: DraggableWindowUnits = {};
+  const setUnits = <K extends keyof DraggableWindowUnits>(key: K, u?: DraggableWindowUnits[K]) => {
+    if (u) units[key] = u;
+  };
+
+  let size: { w: number; h: number };
+  if (stored && !props.resetSize) {
+    size = { w: stored.geometry.w, h: stored.geometry.h };
+    setUnits('size', stored.units?.size);
+  } else {
+    size = props.size || { w: DEFAULT_WIDTH, h: DEFAULT_HEIGHT };
+    if (props.size) setUnits('size', props.units?.size);
   }
+
+  let position: { x: number; y: number };
+  if (stored && !props.resetPosition) {
+    position = { x: stored.geometry.x, y: stored.geometry.y };
+    setUnits('position', stored.units?.position);
+  } else if (props.position) {
+    position = props.position;
+    setUnits('position', props.units?.position);
+  } else {
+    // The viewport's centre (converted to px at mount when the window is draggable)
+    position = { x: 50, y: 50 };
+    setUnits('position', { x: '%', y: '%' });
+  }
+
+  const minSize = props.minSize ?? stored?.minSize;
+  setUnits('minSize', props.minSize ? props.units?.minSize : stored?.units?.minSize);
+  const maxSize = props.maxSize ?? stored?.maxSize;
+  // Always stored with its units: LS tells a pre-p094 viewport snapshot apart by the missing units
+  if (maxSize) {
+    const maxUnits = props.maxSize ? props.units?.maxSize : stored?.units?.maxSize;
+    setUnits('maxSize', { w: 'px', h: 'px', ...maxUnits });
+  }
+
   const flag = <K extends keyof OpenDraggableWindowProps & keyof DraggableWindowConfig>(key: K) =>
     props[key] !== undefined ? props[key] : stored?.[key];
 
@@ -271,9 +305,9 @@ const resolveWindowConfig = (
     title: props.title ?? stored?.title,
     data: props.data ?? stored?.data,
     geometry: { ...position, ...size },
-    minSize: props.minSize ?? stored?.minSize,
-    maxSize: props.maxSize ?? stored?.maxSize,
-    units: props.units ?? stored?.units,
+    minSize,
+    maxSize,
+    units,
     orderNr: stored?.orderNr,
     isOpen: true,
     isCollapsed: stored ? stored.isCollapsed : props.isCollapsed,
@@ -323,8 +357,11 @@ const hydrateFromLS = (map: Map<string, WindowEntry>) => {
       w: s.size?.w ?? DEFAULT_WIDTH,
       h: s.size?.h ?? DEFAULT_HEIGHT,
     };
+    // A maxSize without units is the viewport snapshot pre-p094 windows took at open: dropped,
+    // so the window gets the default (the current viewport)
+    const maxSize = s.units?.maxSize ? s.maxSize : undefined;
     map.set(ids[i], {
-      config: createConfig(ids[i], { ...s, geometry }),
+      config: createConfig(ids[i], { ...s, geometry, maxSize }),
       runtime: createRuntime(ids[i]),
     });
   }
@@ -424,14 +461,17 @@ export const getDraggableWindowsDefaultZIndexes = () => ({
 
 // Geometry
 
-const isPxPosition = ({ units }: DraggableWindowConfig) =>
-  (!units?.position?.x || units.position.x === 'px') &&
-  (!units?.position?.y || units.position.y === 'px');
+const isNonPx = (unit?: Units) => Boolean(unit && unit !== 'px');
+
+/** A window with a non-px position axis is CSS-centred on that axis (a dialog): it follows a
+ * viewport resize without JS, and the clamps leave it alone. */
+const isCssCentred = ({ units }: DraggableWindowConfig) =>
+  isNonPx(units?.position?.x) || isNonPx(units?.position?.y);
 
 /** A non-px position is the window's centre, so it is translated by half its size. */
 const getGeometryStyle = ({ geometry: g, minSize, maxSize, units }: DraggableWindowConfig) => {
-  const isCentredX = Boolean(units?.position?.x && units.position.x !== 'px');
-  const isCentredY = Boolean(units?.position?.y && units.position.y !== 'px');
+  const isCentredX = isNonPx(units?.position?.x);
+  const isCentredY = isNonPx(units?.position?.y);
   return {
     left: `${g.x}${units?.position?.x || 'px'}`,
     top: `${g.y}${units?.position?.y || 'px'}`,
@@ -439,8 +479,8 @@ const getGeometryStyle = ({ geometry: g, minSize, maxSize, units }: DraggableWin
     height: `${g.h}${units?.size?.h || 'px'}`,
     minWidth: `${minSize.w}${units?.minSize?.w || 'px'}`,
     minHeight: `${minSize.h}${units?.minSize?.h || 'px'}`,
-    maxWidth: `${maxSize.w}${units?.maxSize?.w || 'px'}`,
-    maxHeight: `${maxSize.h}${units?.maxSize?.h || 'px'}`,
+    maxWidth: maxSize ? `${maxSize.w}${units?.maxSize?.w || 'px'}` : '100vw',
+    maxHeight: maxSize ? `${maxSize.h}${units?.maxSize?.h || 'px'}` : '100vh',
     transform:
       isCentredX || isCentredY
         ? `translate3d(${isCentredX ? '-50%' : '0'}, ${isCentredY ? '-50%' : '0'}, 0)`
@@ -448,39 +488,76 @@ const getGeometryStyle = ({ geometry: g, minSize, maxSize, units }: DraggableWin
   };
 };
 
-/** Keeps part of the window on screen (the MAX_OFF_SCREEN_* thresholds). */
-const clampPosition = (pos: { x: number; y: number }, winWidth: number) => {
-  const { width, height } = getWindowSize();
-  if (pos.x < -(winWidth - MAX_OFF_SCREEN_HORI_THRESHOLD)) {
-    pos.x = -(winWidth - MAX_OFF_SCREEN_HORI_THRESHOLD);
-  } else if (pos.x > width - MAX_OFF_SCREEN_HORI_THRESHOLD) {
-    pos.x = width - MAX_OFF_SCREEN_HORI_THRESHOLD;
-  }
-  if (pos.y < -MAX_OFF_SCREEN_VERT_THRESHOLD) {
-    pos.y = -MAX_OFF_SCREEN_VERT_THRESHOLD;
-  } else if (pos.y > height - MAX_OFF_SCREEN_VERT_THRESHOLD * 2) {
-    pos.y = height - MAX_OFF_SCREEN_VERT_THRESHOLD * 2;
-  }
+const writePosition = (elem: HTMLElement, { x, y }: { x: number; y: number }) => {
+  elem.style.left = `${x}px`;
+  elem.style.top = `${y}px`;
 };
 
-/** Clamps a mounted px-positioned window's position. Returns whether it moved. */
-const clampWindowPosition = ({ config, runtime }: WindowEntry) => {
+/** Converts a mounted draggable window's non-px (centre) position to px left/top, where the CSS
+ * centring rendered it, and drops `units.position`. */
+const convertPositionToPx = ({ config, runtime }: WindowEntry) => {
   const elem = runtime.windowCMP?.elem;
-  if (!elem || !isPxPosition(config)) return false;
+  if (!elem || config.disableDragging || !isCssCentred(config)) return;
+  const rect = elem.getBoundingClientRect();
+  config.geometry.x = Math.round(rect.left);
+  config.geometry.y = Math.round(rect.top);
+  if (config.units) delete config.units.position;
+  elem.style.transform = '';
+  writePosition(elem, config.geometry);
+};
+
+const getGrabArea = ({ windowCMP, headerCMP, titleCMP }: DraggableWindowRuntime): GrabArea => {
+  const windowRect = windowCMP?.elem.getBoundingClientRect();
+  const titleRect = titleCMP?.elem.getBoundingClientRect();
+  return {
+    left: windowRect && titleRect ? titleRect.left - windowRect.left : 0,
+    width: titleRect?.width || 0,
+    headerH: headerCMP?.elem.getBoundingClientRect().height || 0,
+  };
+};
+
+/** Lets a window hang off an edge, but keeps MIN_GRAB_VISIBLE_PX of its title area horizontally
+ * and its whole header vertically on screen, so it can always be grabbed. */
+const clampToGrabbable = (pos: { x: number; y: number }, area: GrabArea) => {
+  const { width, height } = getWindowSize();
+  const grab = Math.min(MIN_GRAB_VISIBLE_PX, area.width);
+  // The min bound last: on a viewport too narrow for both, the title's start stays visible
+  pos.x = Math.max(grab - area.left - area.width, Math.min(pos.x, width - grab - area.left));
+  pos.y = Math.max(0, Math.min(pos.y, height - area.headerH));
+};
+
+/**
+ * Moves a mounted window fully on screen, per axis: a window that fits is shifted in, a larger
+ * one is aligned to the left / top edge. The size never changes. CSS-centred windows are skipped.
+ * Returns whether it moved.
+ */
+const keepOnScreen = ({ config, runtime }: WindowEntry) => {
+  const elem = runtime.windowCMP?.elem;
+  if (!elem || isCssCentred(config)) return false;
+  const { width, height } = getWindowSize();
+  const rect = elem.getBoundingClientRect();
   const g = config.geometry;
-  const { x, y } = g;
-  clampPosition(g, elem.getBoundingClientRect().width);
-  if (g.x === x && g.y === y) return false;
-  elem.style.left = `${g.x}px`;
-  elem.style.top = `${g.y}px`;
+  const x = rect.width > width ? 0 : Math.max(0, Math.min(g.x, width - rect.width));
+  const y = rect.height > height ? 0 : Math.max(0, Math.min(g.y, height - rect.height));
+  if (x === g.x && y === g.y) return false;
+  g.x = Math.round(x);
+  g.y = Math.round(y);
+  writePosition(elem, g);
   return true;
+};
+
+/** Settles a freshly mounted (or reset) window's position: px for a draggable window, then fully
+ * on screen. */
+const placeWindow = (entry: WindowEntry) => {
+  convertPositionToPx(entry);
+  keepOnScreen(entry);
 };
 
 const onViewportResized = () => {
   viewportResizeTimer = null;
   let isChanged = false;
   for (const entry of getWindows().values()) {
-    if (clampWindowPosition(entry)) isChanged = true;
+    if (keepOnScreen(entry)) isChanged = true;
   }
   if (isChanged) saveDraggableWindowStatesToLS();
 };
@@ -508,18 +585,14 @@ const startDragSession = (entry: WindowEntry, mode: DragMode, e: PointerEvent) =
   const target = e.currentTarget as HTMLElement;
   target.setPointerCapture(e.pointerId);
   const rect = windowElem.getBoundingClientRect();
-  const startGeometry = {
-    x: config.geometry.x,
-    y: config.geometry.y,
-    w: rect.width,
-    h: rect.height,
-  };
+  const startGeometry = { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
   runtime.session = {
     mode,
     pointerId: e.pointerId,
     target,
     startPointer: { x: e.clientX, y: e.clientY },
     startGeometry,
+    grabArea: mode === 'MOVE' ? getGrabArea(runtime) : null,
     pointer: { x: e.clientX, y: e.clientY },
     geometry: { ...startGeometry },
     rafId: null,
@@ -540,9 +613,8 @@ const applyDragSession = ({ runtime }: WindowEntry) => {
   if (s.mode === 'MOVE') {
     g.x = start.x + dx;
     g.y = start.y + dy;
-    clampPosition(g, start.w);
-    elem.style.left = `${g.x}px`;
-    elem.style.top = `${g.y}px`;
+    if (s.grabArea) clampToGrabbable(g, s.grabArea);
+    writePosition(elem, g);
     return;
   }
   // The CSS min/max size clamps what is shown, the end of the drag stores that
@@ -577,26 +649,32 @@ const onDragPointerEnd = (entry: WindowEntry, e: PointerEvent) => {
   if (s.target.hasPointerCapture(s.pointerId)) s.target.releasePointerCapture(s.pointerId);
 
   const g = config.geometry;
-  const { x, y, w, h } = g;
+  const { x, y } = g;
   if (s.mode === 'MOVE') {
-    g.x = s.geometry.x;
-    g.y = s.geometry.y;
+    g.x = Math.round(s.geometry.x);
+    g.y = Math.round(s.geometry.y);
   } else {
     runtime.windowCMP?.updateClass(styles.resizing, 'remove');
     const elem = runtime.windowCMP?.elem;
     if (elem) {
+      // A resized axis is stored in px from now on, whatever unit it had
       const rect = elem.getBoundingClientRect();
+      const sizeUnits = { ...config.units?.size };
       if (s.mode !== 'RESIZE_V') {
         g.w = Math.round(rect.width);
+        sizeUnits.w = 'px';
         elem.style.width = `${g.w}px`;
       }
       if (s.mode !== 'RESIZE_H') {
         g.h = Math.round(rect.height);
+        sizeUnits.h = 'px';
         elem.style.height = `${g.h}px`;
       }
+      config.units = { ...config.units, size: sizeUnits };
     }
   }
-  if (g.x !== x || g.y !== y || g.w !== w || g.h !== h) saveDraggableWindowStatesToLS();
+  // A resize always saves: its units may have changed even when the numbers didn't
+  if (s.mode !== 'MOVE' || g.x !== x || g.y !== y) saveDraggableWindowStatesToLS();
 };
 
 /** Drops an unfinished drag without committing it (eg. the window closes mid drag). */
@@ -696,6 +774,7 @@ const mountWindow = (entry: WindowEntry) => {
   windowCMP.elem.addEventListener('pointerdown', () => bringDraggableWindowToFront(id), true);
 
   const headerCMP = windowCMP.add({ tag: 'header', class: styles.headerBar });
+  runtime.headerCMP = headerCMP;
   runtime.titleCMP = headerCMP.add({ tag: 'h3', class: styles.title, text: config.title });
   if (!config.disableCollapseBtn) {
     headerCMP.add({
@@ -765,6 +844,7 @@ const unmountWindow = (entry: WindowEntry, keepInStack?: boolean) => {
   runtime.windowCMP?.remove();
   runtime.backDropCMP = undefined;
   runtime.windowCMP = undefined;
+  runtime.headerCMP = undefined;
   runtime.titleCMP = undefined;
   runtime.contentWrapperCMP = undefined;
   runtime.zIndex = -1;
@@ -826,14 +906,17 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
   if (props.content) entry.runtime.content = props.content;
   if (props.onClose) entry.runtime.onClose = props.onClose;
 
+  // A live window keeps its place (it may hang off an edge on purpose), unless the open resets it
+  let shouldPlace = Boolean(props.resetPosition || props.resetSize);
   if (entry.runtime.windowCMP && !hasStructuralChange(prev, config)) {
     updateMountedWindow(entry, prev);
   } else {
     if (entry.runtime.windowCMP) unmountWindow(entry);
     mountWindow(entry);
+    shouldPlace = true;
   }
+  if (shouldPlace) placeWindow(entry);
   moveToTop(id);
-  clampWindowPosition(entry);
   saveDraggableWindowStatesToLS();
   if (focusFirstElement) focusFirstFocusableElement(entry);
 };
@@ -944,7 +1027,7 @@ export const handleDraggableWindowsOnSceneChangeEnd = (loadFailed?: boolean) => 
     if (!entry) continue;
     if (!loadFailed && resolveSceneTarget(entry)) {
       mountWindow(entry);
-      clampWindowPosition(entry);
+      placeWindow(entry);
     } else {
       closeDraggableWindow(entry.config.id);
     }
