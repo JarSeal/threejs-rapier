@@ -2,10 +2,12 @@ import * as THREE from 'three/webgpu';
 import { createCharacter, emitLocomotionStateChange, onLocomotionStateChange } from '../Character';
 import type {
   CharacterBodyPlan,
+  CharacterCastRecord,
   CharacterColliderRole,
   CharacterControlMode,
   CharacterIntent,
   CharacterObject,
+  CharacterProbes,
   LocomotionState,
   LocomotionStateListener,
 } from './CharacterTypes';
@@ -30,6 +32,7 @@ import {
   RigidBodyTypeAPI,
   type ColliderAPI,
   type ColliderParams,
+  type PhysVector,
   type RigidBodyAPI,
   type RigidBodyParams,
 } from '../Physics/PhysicsAPITypes';
@@ -408,6 +411,54 @@ const setVec = (x: number, y: number, z: number) => {
   return _vec;
 };
 
+const copyVec = (to: PhysVector, from: PhysVector) => {
+  to.x = from.x;
+  to.y = from.y;
+  to.z = from.z;
+};
+
+const createCastRecord = (): CharacterCastRecord => ({
+  resolvedAt: 0,
+  isCrouching: false,
+  origin: { x: 0, y: 0, z: 0 },
+  dir: { x: 0, y: 0, z: 0 },
+  maxDistance: 0,
+  isHit: false,
+  distance: 0,
+  point: { x: 0, y: 0, z: 0 },
+  normal: { x: 0, y: 0, z: 0 },
+});
+
+/** Keeps a cast as it fires, in `shot`: the cast scratch is reused before the result arrives. */
+const recordCastShot = (
+  shot: CharacterCastRecord,
+  origin: PhysVector,
+  dir: PhysVector,
+  maxDistance: number,
+  isCrouching: boolean
+) => {
+  copyVec(shot.origin, origin);
+  copyVec(shot.dir, dir);
+  shot.maxDistance = maxDistance;
+  shot.isCrouching = isCrouching;
+};
+
+/** Publishes a cast's result into its record, with the cast it belongs to (`shot`). A hit's
+ * point and normal are the caller's to write, right after (`distance` < 0 = a miss). */
+const resolveCastRecord = (
+  record: CharacterCastRecord,
+  shot: CharacterCastRecord,
+  distance: number
+) => {
+  record.resolvedAt = getPhysGameTime();
+  copyVec(record.origin, shot.origin);
+  copyVec(record.dir, shot.dir);
+  record.maxDistance = shot.maxDistance;
+  record.isCrouching = shot.isCrouching;
+  record.isHit = distance >= 0;
+  record.distance = Math.max(0, distance);
+};
+
 /** The collider roles the controller needs from a body plan. */
 const REQUIRED_COLLIDER_ROLES: CharacterColliderRole[] = [
   'MAIN',
@@ -481,6 +532,11 @@ export const createDynamicCharacter = async (
   const wallHit = { isValid: false, normal: new THREE.Vector3(), distance: 0 };
   let wallHitCastInFlight = false;
   let floorRayCastInFlight = false;
+  // The casts' last results for diagnostics (CharacterController.probes), and the cast in flight
+  const wallCastRecord = createCastRecord();
+  const floorRayRecord = createCastRecord();
+  const wallCastShot = createCastRecord();
+  const floorRayShot = createCastRecord();
   // The casts' physics ray helper ids (drawn only while the physics helpers are on), set once
   // the character entity exists
   const wallCastDebug: RayDebugOpts = { id: '' };
@@ -510,6 +566,13 @@ export const createDynamicCharacter = async (
     _castPos.y = _pose[1] + probes.wallCastOffsetY;
     _castPos.z = _pose[2];
 
+    recordCastShot(
+      wallCastShot,
+      _castPos,
+      _castDir,
+      characterData._wallCastDistance,
+      characterData.isCrouching
+    );
     wallHitCastInFlight = true;
     getPhysicsWorld()
       .castShape(
@@ -533,6 +596,12 @@ export const createDynamicCharacter = async (
       )
       .then((hit) => {
         wallHitCastInFlight = false;
+        resolveCastRecord(wallCastRecord, wallCastShot, hit ? hit.timeOfImpact : -1);
+        if (hit) {
+          // Both on the hit collider, in world space
+          copyVec(wallCastRecord.point, hit.witness1);
+          copyVec(wallCastRecord.normal, hit.normal1);
+        }
         if (!hit || Math.abs(hit.normal1.y) > characterData._wallNormalMaxY) {
           wallHit.isValid = false;
           return;
@@ -554,6 +623,13 @@ export const createDynamicCharacter = async (
     _castPos.y = _pose[1];
     _castPos.z = _pose[2];
     const probes = characterData.isCrouching ? dims.crouching : dims.standing;
+    recordCastShot(
+      floorRayShot,
+      _castPos,
+      _rayDown,
+      probes.floorRayLength,
+      characterData.isCrouching
+    );
     floorRayCastInFlight = true;
     getPhysicsWorld()
       .castRayAndGetNormal(
@@ -569,6 +645,14 @@ export const createDynamicCharacter = async (
       )
       .then((hit) => {
         floorRayCastInFlight = false;
+        resolveCastRecord(floorRayRecord, floorRayShot, hit ? hit.timeOfImpact : -1);
+        if (hit) {
+          const { origin, dir, point } = floorRayRecord;
+          point.x = origin.x + dir.x * hit.timeOfImpact;
+          point.y = origin.y + dir.y * hit.timeOfImpact;
+          point.z = origin.z + dir.z * hit.timeOfImpact;
+          copyVec(floorRayRecord.normal, hit.normal);
+        }
         const groundNormal = characterData.groundNormal;
         if (hit) {
           groundNormal.x = hit.normal.x;
@@ -972,10 +1056,19 @@ export const createDynamicCharacter = async (
   const getUpUprightQuat = new THREE.Quaternion();
   const getUpUprightEuler = new THREE.Euler();
 
+  const probes: CharacterProbes = {
+    body,
+    dims,
+    colliderRoles: bodyColliders.map((collider) => collider.role),
+    floorRay: floorRayRecord,
+    wallCast: wallCastRecord,
+  };
+
   // Run by Character.ts's character system once per fixed physics sub-step. The tick's per-step
   // amounts (eg. turning with a rotating platform by angVelo * timestep) are only right at that
   // cadence. It goes with the entity: no cleanup needed.
   character.controller = {
+    probes,
     tick: (dt: number) => {
       const body = characterBody;
       if (!body) return;

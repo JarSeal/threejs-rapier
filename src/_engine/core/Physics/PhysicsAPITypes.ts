@@ -251,19 +251,22 @@ export type ShapeCastHitAPI = {
    */
   timeOfImpact: number;
   /**
-   * The local-space contact point on the cast shape, at the time of impact.
+   * The world-space contact point on the hit collider, at the time of impact.
    */
   witness1: PhysVector;
   /**
-   * The local-space contact point on the hit collider's shape, at the time of impact.
+   * The contact point on the cast shape, at the time of impact, in the cast shape's local space
+   * (relative to its position at the time of impact, in its rotation).
    */
   witness2: PhysVector;
   /**
-   * The local-space contact normal on the cast shape, at the time of impact.
+   * The world-space contact normal on the hit collider (pointing out of it, toward the cast
+   * shape), at the time of impact.
    */
   normal1: PhysVector;
   /**
-   * The local-space contact normal on the hit collider's shape, at the time of impact.
+   * The contact normal on the cast shape (pointing out of it, toward the hit collider), at the
+   * time of impact, in the cast shape's local space.
    */
   normal2: PhysVector;
 };

@@ -70,6 +70,47 @@ export type CharacterDimensions = {
   crouching: CharacterProbeDimensions;
 };
 
+/** A controller cast's last result, as the controller used it: the cast as it was fired (origin,
+ * direction, length, stance) together with what it found. Mutated in place (re-read it, never
+ * keep a nested object), and updated as a whole when a result arrives, so its fields always
+ * belong to one cast. In WORKER_THREAD mode a result arrives a physics step or so late. */
+export type CharacterCastRecord = {
+  /** `getPhysGameTime()` when the result arrived, 0 = no result yet. */
+  resolvedAt: number;
+  /** The stance the cast was sized for. */
+  isCrouching: boolean;
+  /** World origin of the cast. */
+  origin: { x: number; y: number; z: number };
+  /** Unit direction of the cast. */
+  dir: { x: number; y: number; z: number };
+  /** The cast's length along `dir` (m). */
+  maxDistance: number;
+  /** Whether the cast hit something (a hit the controller then rejected counts too). */
+  isHit: boolean;
+  /** Distance to the hit along `dir` (valid when `isHit`). */
+  distance: number;
+  /** World hit point (valid when `isHit`). */
+  point: { x: number; y: number; z: number };
+  /** World normal of the hit surface (valid when `isHit`). */
+  normal: { x: number; y: number; z: number };
+};
+
+/** What a controller's body and probes look like at runtime: read-only diagnostics (eg. for
+ * debug gizmos). Never write to it. */
+export type CharacterProbes = {
+  /** The body plan the character was created with. */
+  body: CharacterBodyPlan;
+  /** The body plan's dimensions for the character's creation-time data. */
+  dims: CharacterDimensions;
+  /** The body plan's collider roles, by index into the entity's `COLLIDER` array. */
+  colliderRoles: readonly string[];
+  /** The last floor ray (straight down from the body's center). */
+  floorRay: CharacterCastRecord;
+  /** The last wall shape-cast (a cylinder along the horizontal move direction). Fired only while
+   * the character is near a wall and moving, so it can be old: check `resolvedAt`. */
+  wallCast: CharacterCastRecord;
+};
+
 /** The collider roles the dynamic controller looks up. A body plan has exactly one collider for
  * each of them, and can add colliders with roles of its own (eg. `'TAIL'`).
  * - `MAIN`: the solid body while standing (enabled at creation).
@@ -147,6 +188,8 @@ export type CharacterController = {
   tick: (dt: number) => void;
   /** Runs when the character's entity is deleted, before its components are gone. */
   dispose?: () => void;
+  /** The body and the probes' last results, for diagnostics (read-only). */
+  probes?: Readonly<CharacterProbes>;
 };
 
 /** A character's registry entry: the data of its entity's `CHARACTER` component. */
