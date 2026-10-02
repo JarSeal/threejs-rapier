@@ -12,12 +12,10 @@ import { textureMapKeys } from '../../utils/constants';
 import { CMP, type TCMP } from '../../utils/CMP';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import {
-  addOnCloseToWindow,
-  closeDraggableWindow,
-  getDraggableWindow,
-  openDraggableWindow,
-  registerDraggableWindowCmp,
-  registerDraggableWindowSceneTargetResolver,
+  getDraggableWindowsOfKind,
+  getKindWindowId,
+  registerDraggableWindowKind,
+  toggleDraggableWindow,
 } from '../UI/DraggableWindow';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
 import { getGeometryRegistry } from '../Geometry';
@@ -61,10 +59,10 @@ type Scope = 'SCENE' | 'ALL';
 /** The tab's UI key: the list scope (module-owned) next to the tab's folder states. */
 const UI_LS_KEY = 'AEK_debugAssetsUI';
 const TAB_ID = 'assetsControls';
+/** The info windows' kind: one window per asset, keyed by its row key (`kind:id`) */
 const INFO_WIN_ID = 'assetsInfoWindow';
 
 const uiState: { scope: Scope } = { scope: 'SCENE' };
-let infoWindowCmp: TCMP | null = null;
 
 /** Merged, so the tab's folder states in the same key are kept. */
 const persistUIState = () =>
@@ -172,35 +170,22 @@ const getListState = () => {
   return { rows, notInSceneCount: all.length - inScene.length };
 };
 
+/** List row click: opens the asset's window, brings it to the front, or closes it when on top. */
 const openInfoWindow = (key: string) => {
   const row = getAllRows().find((r) => rowKey(r.kind, r.id) === key);
   if (!row) return;
-  const winState = getDraggableWindow(INFO_WIN_ID);
-  if (winState?.isOpen && winState.data?.key === key) {
-    closeDraggableWindow(INFO_WIN_ID);
-    return;
-  }
-  openDraggableWindow({
-    id: INFO_WIN_ID,
+  toggleDraggableWindow({
+    id: getKindWindowId(INFO_WIN_ID, key),
+    kind: INFO_WIN_ID,
     position: { x: 110, y: 60 },
     size: { w: 420, h: 520 },
     saveToLS: true,
     title: `${row.kind === 'texture' ? 'Texture' : 'Geometry'}: ${row.name}`,
     isDebugWindow: true,
-    content: createInfoContent,
     data: { key, kind: row.kind, id: row.id },
     closeOnSceneChange: true,
-    onClose: refreshAssetsTab,
   });
 };
-
-// Kept open on a scene change when the asset is still loaded (eg. shared with the next scene)
-registerDraggableWindowSceneTargetResolver(INFO_WIN_ID, (data) => {
-  const d = data as { kind: AssetKind; id: string };
-  return d.kind === 'texture'
-    ? Boolean(getTextureRegistry()[d.id])
-    : Boolean(getGeometryRegistry()[d.id]);
-});
 
 /** The list's count heading and its scope switch button. */
 const getListHeadingHtml = () => {
@@ -600,24 +585,14 @@ ${
 
 const createInfoContent = (data?: { [key: string]: unknown }) => {
   const d = data as { key: string; kind: AssetKind; id: string };
-  infoWindowCmp?.remove();
 
-  const isLoaded =
-    d.kind === 'texture'
-      ? Boolean(getTextureRegistry()[d.id])
-      : Boolean(getGeometryRegistry()[d.id]);
-  // The content is built before the window state is open: refresh the list selection after it.
-  // The onClose is set here too, because a window restored from LS has none.
-  queueMicrotask(() => {
-    addOnCloseToWindow(INFO_WIN_ID, refreshAssetsTab);
-    refreshAssetsTab();
-  });
-  if (!isLoaded) {
-    infoWindowCmp = CMP({
+  // The content is built before the window state is open: refresh the list selection after it
+  queueMicrotask(refreshAssetsTab);
+  if (!isAssetLoaded(d)) {
+    return CMP({
       class: 'winPaddedContent',
       html: `<div>${esc(d.kind)} "${esc(d.id)}" is not loaded (any more).</div>`,
     });
-    return infoWindowCmp;
   }
 
   const content = d.kind === 'texture' ? createTextureContent(d.id) : createGeometryContent(d.id);
@@ -627,18 +602,24 @@ const createInfoContent = (data?: { [key: string]: unknown }) => {
       `<button title="Console.log / print this ${d.kind} to browser console">${getSvgIcon('fileAsterix')}</button>`,
     onClick: content.log,
   });
-  infoWindowCmp = CMP({
+  return CMP({
     class: ['winPaddedContent'],
     html: () => `<div>
 <div style="float:right">${logButton}</div>
 ${content.html()}
 </div>`,
-    onRemoveCmp: () => {
-      infoWindowCmp = null;
-    },
   });
-  return infoWindowCmp;
 };
+
+const isAssetLoaded = ({ kind, id }: { kind: AssetKind; id: string }) =>
+  kind === 'texture' ? Boolean(getTextureRegistry()[id]) : Boolean(getGeometryRegistry()[id]);
+
+registerDraggableWindowKind(INFO_WIN_ID, {
+  content: createInfoContent,
+  onClose: refreshAssetsTab,
+  // Kept open on a scene change when the asset is still loaded (eg. shared with the next scene)
+  sceneTargetResolver: (data) => isAssetLoaded(data as { kind: AssetKind; id: string }),
+});
 
 export const _createAssetsDebugGUI = () => {
   const savedScope = (lsGetItem(UI_LS_KEY, {}) as { scope?: Scope }).scope;
@@ -678,24 +659,10 @@ export const _createAssetsDebugGUI = () => {
         id: 'assets',
         emptyText: 'No loaded assets..',
         data: getAssetsListData,
-        selectedItemId: () => {
-          const winState = getDraggableWindow(INFO_WIN_ID);
-          return winState?.isOpen ? (winState.data?.key as string | undefined) : null;
-        },
+        selectedItemId: () =>
+          getDraggableWindowsOfKind(INFO_WIN_ID).map((win) => String(win.data?.key)),
         perItemConfig: { onClick: openInfoWindow },
       }),
     ],
   });
-
-  // The window's `content` function can't survive DraggableWindow's JSON persistence: re-attach
-  // it at boot so a window left open survives a reload (same as _dbg__PhysicsAPI.ts)
-  setTimeout(() => {
-    const winState = getDraggableWindow(INFO_WIN_ID);
-    if (winState && !winState.content) {
-      registerDraggableWindowCmp(INFO_WIN_ID, {
-        content: createInfoContent,
-        onClose: refreshAssetsTab,
-      });
-    }
-  }, 0);
 };

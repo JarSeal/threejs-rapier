@@ -177,7 +177,8 @@ type KindGeometry = {
   saveToLS: boolean;
 };
 
-/** What every window of a kind shares: the functions LS can't hold. */
+/** What every window of a kind (or every open of a single window) shares: the functions LS can't
+ * hold. */
 export type DraggableWindowKindOpts = {
   /** Builds a window's content from its `data`, for the opens without `content` (eg. the restore
    * from LS after a reload) */
@@ -1322,20 +1323,33 @@ export const getKindWindowId = (kind: string, key: string | number) => `${kind}_
  *
  * The first registration brings the kind's stored windows in: the window whose id is the kind
  * (from before the kind existed) only seeds the kind's geometry and is dropped, and a window
- * without a kind whose id is `getKindWindowId(kind, key)` gets the kind. So a single window keeps
- * using {@link registerDraggableWindowContentFn} and
- * {@link registerDraggableWindowSceneTargetResolver} (keyed by its id), not this.
+ * without a kind whose id is `getKindWindowId(kind, key)` gets the kind. So a single window uses
+ * {@link registerDraggableWindow} (keyed by its id), not this.
  * @param kind (string) the window kind
  * @param opts ({@link DraggableWindowKindOpts}) optional, a later registration replaces the
  * options it passes
  */
 export const registerDraggableWindowKind = (kind: string, opts?: DraggableWindowKindOpts) => {
-  if (opts?.content) registerDraggableWindowContentFn(kind, opts.content);
-  if (opts?.sceneTargetResolver) sceneTargetResolvers[kind] = opts.sceneTargetResolver;
-  if (opts?.onClose) kindOnCloses[kind] = opts.onClose;
+  if (opts) registerDraggableWindow(kind, opts);
   if (registeredKinds.has(kind)) return;
   registeredKinds.add(kind);
   adoptKind(kind);
+};
+
+/**
+ * Registers what a single window (one without a kind) gets on every open, also one restored after
+ * a reload: its content function, onClose and scene target resolver (the functions LS can't
+ * hold). Call it once at module load, before the engine restores the windows from LS. The
+ * window's own `content`/`onClose` passed on an open win. For several windows of a kind, see
+ * {@link registerDraggableWindowKind}.
+ * @param id (string) window id
+ * @param opts ({@link DraggableWindowKindOpts}) a later registration replaces the options it
+ * passes
+ */
+export const registerDraggableWindow = (id: string, opts: DraggableWindowKindOpts) => {
+  if (opts.content) setContentFn(id, opts.content);
+  if (opts.sceneTargetResolver) sceneTargetResolvers[id] = opts.sceneTargetResolver;
+  if (opts.onClose) kindOnCloses[id] = opts.onClose;
 };
 
 /**
@@ -1388,11 +1402,15 @@ export const getDraggableWindowsStartingWith = (startingWithId: string) => {
   return result;
 };
 
+/** @deprecated Register the window's onClose once with {@link registerDraggableWindow} (or
+ * {@link registerDraggableWindowKind}): it also covers a window restored from LS. */
 export const addOnCloseToWindow = (id: string, onClose: () => void) => {
   const entry = getWindows().get(id);
   if (entry) entry.runtime.onClose = onClose;
 };
 
+/** @deprecated Register the window's content and onClose once with
+ * {@link registerDraggableWindow} (or {@link registerDraggableWindowKind}). */
 export const registerDraggableWindowCmp = (
   id: string,
   fn: { content?: DraggableWindowContent; onClose?: () => void }
@@ -1408,6 +1426,9 @@ export const registerDraggableWindowCmp = (
 };
 
 /**
+ * @deprecated Use {@link registerDraggableWindow}'s `sceneTargetResolver` (or
+ * {@link registerDraggableWindowKind}'s).
+ *
  * Registers a scene target resolver for a window flagged `closeOnSceneChange`: on a scene change
  * the window stays open (rebuilt for the next scene) when the resolver returns true for the
  * window's `data`, and closes otherwise. It is also checked when restoring the window on reload.
@@ -1423,6 +1444,9 @@ export const registerDraggableWindowSceneTargetResolver = (
 };
 
 /**
+ * @deprecated Use {@link registerDraggableWindow}'s `content` (or
+ * {@link registerDraggableWindowKind}'s).
+ *
  * Registers the content function of a window, for the opens without `content` (eg. a restore from
  * LS). One registration covers every window of the kind.
  * @param id (string) window kind (a window's id when it has no kind)
@@ -1431,8 +1455,11 @@ export const registerDraggableWindowSceneTargetResolver = (
 export const registerDraggableWindowContentFn = (
   id: string,
   registerContentFn: (data?: DraggableWindowData) => TCMP
-) => {
+) => setContentFn(id, registerContentFn);
+
+/** Kept in the app config, next to the content functions an app can set there itself. */
+const setContentFn = (id: string, contentFn: (data?: DraggableWindowData) => TCMP) => {
   const config = getConfig();
   if (!config.draggableWindows) config.draggableWindows = {};
-  config.draggableWindows[id] = { contentFn: registerContentFn };
+  config.draggableWindows[id] = { contentFn };
 };

@@ -11,14 +11,15 @@ import {
   type DebuggerListItem,
 } from '../../../debug/DebuggerGUI';
 import {
-  addOnCloseToWindow,
   closeDraggableWindow,
-  getDraggableWindow,
-  openDraggableWindow,
-  registerDraggableWindowContentFn,
-  registerDraggableWindowSceneTargetResolver,
+  getDraggableWindowsOfKind,
+  getKindWindowId,
+  registerDraggableWindowKind,
+  toggleDraggableWindow,
   updateDraggableWindow,
+  updateDraggableWindowsOfKind,
 } from '../../UI/DraggableWindow';
+import { isCurrentlyLoading } from '../../SceneLoader';
 import {
   setLightEnabled,
   setLightFrustumCullingEnabled,
@@ -86,6 +87,7 @@ export interface LightDebugLSData {
   [sceneId: string]: LightSceneDebugState;
 }
 
+/** The edit windows' kind: one window per light, keyed by its app id */
 export const EDIT_LIGHT_WIN_ID = 'lightEditorWindow';
 const LS_LIGHTS_KEY = 'AEK_debugLights';
 const LIGHTS_TAB_ID = 'lightsControls';
@@ -404,7 +406,7 @@ const setLightField = <K extends UndoableLightKey>(
   applyLightField[key](target, value);
   saveLightToLS(target.entityId, key, value as LightEntityDebugState[K]);
   // refreshLightShadows rebuilds the window itself once the new light's helpers exist
-  if (key !== 'shadowMapSize') updateLightsDebuggerGUI();
+  if (key !== 'shadowMapSize') updateLightsDebuggerGUI(undefined, appId);
 };
 
 /** Records a (not coalesced) light change to the undo/redo history. */
@@ -523,17 +525,15 @@ const createManagedLightContent = (
       .on('click', () => openDebuggerTab(tabId));
   }
 
-  queueMicrotask(() => {
-    addOnCloseToWindow(EDIT_LIGHT_WIN_ID, () => updateDebuggerTab(LIGHTS_TAB_ID));
-    updateDebuggerTab(LIGHTS_TAB_ID);
-  });
+  queueMicrotask(() => updateDebuggerTab(LIGHTS_TAB_ID));
 
   return container;
 };
 
 /** Logic for the Edit Light Draggable Window */
 export const createEditLightContent = (data?: { [key: string]: unknown }) => {
-  const d = data as { id: string; winId: string };
+  const d = data as { id: string };
+  const winId = getKindWindowId(EDIT_LIGHT_WIN_ID, d.id);
   const world = getECSWorld();
   const entityId = getEntityIdByAppId(d.id);
   if (!entityId) return CMP();
@@ -803,7 +803,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     pane.addBinding(light, 'castShadow', { label: 'Cast Shadow' }).on('change', (ev) => {
       reconcileDebugVisuals(entityId, world);
       // We need to wait a cycle for the pane to be updated
-      setTimeout(() => updateDraggableWindow(EDIT_LIGHT_WIN_ID), 0);
+      setTimeout(() => updateDraggableWindow(winId), 0);
       save('castShadow', ev.value);
       record('castShadow', ev.value);
     });
@@ -1014,7 +1014,7 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
   });
 
   pane.addButton({ title: 'Delete light' }).on('click', () => {
-    closeDraggableWindow(EDIT_LIGHT_WIN_ID);
+    closeDraggableWindow(winId);
     world.deleteEntity(entityId);
     // deleteEntity fires disposeLight's onDeleteEntity hook (which already
     // refreshes this list) before clearing the entity's component storages,
@@ -1023,12 +1023,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     updateLightsDebuggerGUI('LIST');
   });
 
-  // The content is built before the window state is open: refresh the list selection after it.
-  // The onClose is set here too, because a window restored from LS has none.
-  queueMicrotask(() => {
-    addOnCloseToWindow(EDIT_LIGHT_WIN_ID, () => updateDebuggerTab(LIGHTS_TAB_ID));
-    updateDebuggerTab(LIGHTS_TAB_ID);
-  });
+  // The content is built before the window state is open: refresh the list selection after it
+  queueMicrotask(() => updateDebuggerTab(LIGHTS_TAB_ID));
 
   return container;
 };
@@ -1128,10 +1124,8 @@ export const initLightDebuggerGUI = () => {
         id: 'lights',
         emptyText: 'No ECS lights found.',
         data: () => getLightsListData(getECSWorld()),
-        selectedItemId: () => {
-          const winState = getDraggableWindow(EDIT_LIGHT_WIN_ID);
-          return winState?.isOpen ? (winState.data?.id as string | undefined) : null;
-        },
+        selectedItemId: () =>
+          getDraggableWindowsOfKind(EDIT_LIGHT_WIN_ID).map((win) => String(win.data?.id)),
         perItemConfig: {
           onClick: openEditLightWindow,
           toggles: [
@@ -1145,11 +1139,14 @@ export const initLightDebuggerGUI = () => {
   lightDebuggerGUIInitiated = true;
 };
 
-registerDraggableWindowContentFn(EDIT_LIGHT_WIN_ID, createEditLightContent);
-// Kept open on a scene change when the next scene has a light with the same appId
-registerDraggableWindowSceneTargetResolver(EDIT_LIGHT_WIN_ID, (data) => {
-  const entityId = getEntityIdByAppId(String(data?.id));
-  return Boolean(entityId && getECSWorld().isAlive(entityId));
+registerDraggableWindowKind(EDIT_LIGHT_WIN_ID, {
+  content: createEditLightContent,
+  onClose: () => updateDebuggerTab(LIGHTS_TAB_ID),
+  // Kept open on a scene change when the next scene has a light with the same appId
+  sceneTargetResolver: (data) => {
+    const entityId = getEntityIdByAppId(String(data?.id));
+    return Boolean(entityId && getECSWorld().isAlive(entityId));
+  },
 });
 
 /** Finds a list row's light (the row id is the app id, or the entity id without one). */
@@ -1196,25 +1193,22 @@ const getLightsListData = (world: ECSWorld): DebuggerListItem[] => {
   return items;
 };
 
+/** List row click: opens the light's window, brings it to the front, or closes it when on top. */
 const openEditLightWindow = (itemId: string) => {
   const target = resolveLightListItem(itemId);
-  const appId = target ? target.world.getComponent(target.entityId, ComponentType.APP_ID)?.id : '';
-  const debugData = target
-    ? target.world.getComponent(target.entityId, ComponentType.DEBUG_DATA)
-    : undefined;
-  openDraggableWindow({
-    id: EDIT_LIGHT_WIN_ID,
+  if (!target) return;
+  const appId = target.world.getComponent(target.entityId, ComponentType.APP_ID)?.id || itemId;
+  const debugData = target.world.getComponent(target.entityId, ComponentType.DEBUG_DATA);
+  toggleDraggableWindow({
+    id: getKindWindowId(EDIT_LIGHT_WIN_ID, appId),
+    kind: EDIT_LIGHT_WIN_ID,
     title: `${
-      target && _getEntityManagerInfo(target.entityId, target.world)
-        ? 'Managed Light'
-        : 'Edit Light'
+      _getEntityManagerInfo(target.entityId, target.world) ? 'Managed Light' : 'Edit Light'
     }: ${debugData?.name || `[${itemId}]`}`,
     isDebugWindow: true,
-    content: createEditLightContent,
-    data: { id: appId, winId: EDIT_LIGHT_WIN_ID },
+    data: { id: appId },
     closeOnSceneChange: true,
     saveToLS: true,
-    onClose: () => updateDebuggerTab(LIGHTS_TAB_ID),
   });
 };
 
@@ -1227,7 +1221,7 @@ const toggleLightEnabled = (itemId: string, next: boolean) => {
   saveLightToLS(target.entityId, 'enabled', next);
   const stableAppId = getStableAppId(target.entityId, target.world);
   if (stableAppId && prev !== next) recordLightAction('enabled', stableAppId, prev, next);
-  updateLightsDebuggerGUI('WINDOW');
+  updateLightsDebuggerGUI('WINDOW', itemId);
 };
 
 /** List toggle: the same path as the edit window's Show Helper input. */
@@ -1235,13 +1229,43 @@ const toggleLightHelper = (itemId: string, next: boolean) => {
   const target = resolveLightListItem(itemId);
   if (!target) return;
   setLightHelperVisible(target.entityId, target.world, next);
-  updateLightsDebuggerGUI('WINDOW');
+  updateLightsDebuggerGUI('WINDOW', itemId);
 };
 
-export const updateLightsDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
+/**
+ * Refreshes the Lights tab and the open light edit windows.
+ * @param only ('LIST' | 'WINDOW') optional, refreshes only the list or only the windows
+ * @param appId (string) optional, rebuilds only this light's window (default: every open one)
+ */
+export const updateLightsDebuggerGUI = (only?: 'LIST' | 'WINDOW', appId?: string) => {
   if (only !== 'WINDOW') updateDebuggerTab(LIGHTS_TAB_ID);
   if (only === 'LIST') return;
-  if (getDraggableWindow(EDIT_LIGHT_WIN_ID)?.isOpen) updateDraggableWindow(EDIT_LIGHT_WIN_ID);
+  if (appId) {
+    updateDraggableWindow(getKindWindowId(EDIT_LIGHT_WIN_ID, appId));
+  } else {
+    updateDraggableWindowsOfKind(EDIT_LIGHT_WIN_ID);
+  }
+};
+
+/**
+ * Called from a light's delete hook: refreshes the list and closes the light's edit window. The
+ * entity is still alive in its delete hook, and a manager can re-create a light under the same
+ * app id in the same call (eg. a sky light's castShadow change), so the window is checked a
+ * microtask later: it is rebuilt when the light is back. A scene change leaves the windows to the
+ * scene change handling (kept when the next scene has the light).
+ */
+export const _onLightDeleted = (entityId: number, world: ECSWorld) => {
+  updateLightsDebuggerGUI('LIST');
+  const appId = world.getComponent(entityId, ComponentType.APP_ID)?.id;
+  if (!appId || world !== getECSWorld() || isCurrentlyLoading()) return;
+  queueMicrotask(() => {
+    const winId = getKindWindowId(EDIT_LIGHT_WIN_ID, appId);
+    if (resolveLightListItem(appId)) {
+      updateDraggableWindow(winId);
+    } else {
+      closeDraggableWindow(winId);
+    }
+  });
 };
 
 export const _toggleAllLightHelpers = (show?: boolean) => {
@@ -1285,8 +1309,7 @@ export const _toggleAllLightHelpers = (show?: boolean) => {
 
   lsSetItem(LS_LIGHTS_KEY, currentData);
 
-  updateDraggableWindow(EDIT_LIGHT_WIN_ID);
-  updateDebuggerTab(LIGHTS_TAB_ID);
+  updateLightsDebuggerGUI();
 };
 
 export const syncDebugVisualsFromLS = (sceneId: string, world: ECSWorld) => {
@@ -1369,7 +1392,7 @@ const refreshLightShadows = async (light: THREE.Light, entityId: number, world: 
   }
 
   reconcileDebugVisuals(entityId, world);
-  updateLightsDebuggerGUI();
+  updateLightsDebuggerGUI(undefined, world.getComponent(entityId, ComponentType.APP_ID)?.id);
 };
 
 /**

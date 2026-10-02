@@ -6,16 +6,53 @@ Earlier releases are only recorded in the git history.
 
 ## 2026-10-02 — triple-buffered-physics-transform-buffer
 
-### Engine 4.0.1 (Afternoon)
+### Engine 4.1.0 (Afternoon)
+
+**Added**
+
+- One debug edit window per entity: the Light, Camera, ECS world, PostFX pass, physics entity, asset info and character edit windows open a window per entity, so several can be open at a time.
+  - A list row opens its entity's window. A second click brings it to the front when another window covers it, and closes it when it is on top. The list shows every entity with an open window as selected.
+  - An edit, an undo/redo or a list toggle rebuilds only its entity's window. A global action (eg. toggling all light helpers) rebuilds every open window of the tab.
+  - A new window opens where that tab's last window was moved, resized or closed, offset by one header height per window of the tab that is already open.
+  - The windows come back after a reload, and stay open over a scene change when the next scene has their entity.
+  - Deleting a light, a camera or an ECS world closes only its window. A sky light that the sky box re-creates under the same id keeps its window.
+  - The character edit window now stays open over a scene change like the others (it used to be removed).
+- Window kinds (`core/UI/DraggableWindow.ts`), for several windows of one kind: the `kind` open prop, `getKindWindowId(kind, key)`, `registerDraggableWindowKind(kind, { content, onClose, sceneTargetResolver })`, `getDraggableWindowsOfKind`, `updateDraggableWindowsOfKind` and `toggleDraggableWindow` (the list row rule above). A kind's options cover each of its windows, also one restored from LS. Closing a kind window removes it, so closed ones don't pile up in LS.
+- `registerDraggableWindow(id, { content, onClose, sceneTargetResolver })`: the same once-at-module-load registration for a single window.
+- A real stacking order: each layer (app and debug windows) keeps its windows in click order, and a reload restores it. `bringDraggableWindowToFront(id)` and `isDraggableWindowOnTop(id)`.
+- Fit to screen: double-clicking a draggable window's header (not a dialog's) moves it to the top center, and shrinks a resizable one that still overflows, never below its min size. `fitDraggableWindowToScreen(id, cascadeIndex?)`, and `fitAllDraggableWindowsToScreen()`, which fits every open window cascaded so every header stays visible. The Debug tools tab's "Center and fit all windows" button runs it.
+
+**Changed**
+
+- Windows are dragged and resized with per-window pointer events, which write at most once per frame (touch dragging works as a side effect).
+- Z-indexes follow the stack: app windows from 100 up (below the loaders' 1000), debug windows from 20000 up, two levels per window (its backdrop sits right below it). `getDraggableWindowsDefaultZIndexes`'s active values are the current top window's.
+- A draggable window's position is stored and rendered in px. A non-px position (`%`, `vw`, `vh`, the window's centre) is converted when the window mounts. A non-draggable window with a non-px position, like a dialog, stays CSS-centred. Without a `position`, a window opens at the viewport's centre.
+- The default max size is the viewport (`100vw` × `100vh`), not its size when the window opened.
+- Windows stay reachable. A drag keeps 80 px of the title and the whole header on screen. A viewport resize, a mount and a restore from LS move a window fully on screen (to the top left when it is larger than the viewport). A manual resize stores that axis in px.
+- A closed window keeps no DOM: closing tears its content down, and reopening builds it fresh.
+- `updateDraggableWindow` rebuilds only the content: it no longer runs `onClose`, brings the window to the front or resets its scroll.
+- `DraggableWindowConfig` is the persisted part of a window, with `geometry: { x, y, w, h }` in place of `position` and `size`. `getDraggableWindow` still returns the live objects too (`windowCMP`, `content`, …). The LS key (`AEK_popupWindows`) is the same and old entries load. A kind's last place is stored in it under `__kindGeometry`.
+- The ray tester buttons follow the list row rule (open, bring to front, close).
+- One time: a Light, Camera, ECS world, PostFX pass, physics entity or asset info window that was open before this update doesn't reopen. Its saved place becomes where the tab's next window opens.
+- `PhysicsTransformBuffer` (internal to the physics transport): `markWritten` is `publish`, `latch()` is new, the constructor and `createPhysicsTransformArrayBuffer` take a bank count (1 or `PHYSICS_TRANSFORM_SHARED_BANKS`), and `getWriteCount()` is gone. `CREATE_WORLD`'s response carries `bankCount`.
+- `latchPhysicsSnapshot()` (`PhysicsAPI.ts`), called by every main loop variant right after `timer.update()`. Custom loops that drive `stepPhysics` themselves must call it first in each frame.
+
+**Deprecated**
+
+- `registerDraggableWindowContentFn`, `registerDraggableWindowSceneTargetResolver`, `registerDraggableWindowCmp` and `addOnCloseToWindow`: use `registerDraggableWindow` or `registerDraggableWindowKind`.
+- `getDraggableWindowsStartingWith` and `closeAllDraggableWindowsStartingWith`: use window kinds.
 
 **Fixed**
 
 - Physics reads no longer tear in `WORKER_THREAD` mode with the `SharedArrayBuffer` transport (`SHARED_MEMORY`). The worker used to rewrite the one shared transform buffer while the main thread read it, so a snapshot's step stamp could disagree with its poses, two systems in the same frame could see different steps, one pass over the bodies could mix two steps, and a single body could be half old, half new. This showed up as occasional interpolation spikes. The buffer is now a lock-free triple buffer: the worker publishes each finished, stamped write-back by an atomic bank swap, and the main loop latches the newest one at the start of every frame. Every reader in a frame (held keys, `APP_PHYSICS_STEP`, the TRANSFORM sync, interpolation, debug wireframes) sees the same complete snapshot, and a write-back that lands mid-frame is read from the next frame on. Memory: three banks, about 320 KiB at the default 2048 bodies. `MAIN_THREAD` and the `MESSAGE_BATCH` fallback are unchanged.
-
-**Changed**
-
-- `PhysicsTransformBuffer` (internal to the physics transport): `markWritten` is `publish`, `latch()` is new, the constructor and `createPhysicsTransformArrayBuffer` take a bank count (1 or `PHYSICS_TRANSFORM_SHARED_BANKS`), and `getWriteCount()` is gone. `CREATE_WORLD`'s response carries `bankCount`.
-- `latchPhysicsSnapshot()` (`PhysicsAPI.ts`), called by every main loop variant right after `timer.update()`. Custom loops that drive `stepPhysics` themselves must call it first in each frame.
+- Draggable windows:
+  - Windows with a non-px position no longer jump by half their size when a drag starts, and come back at the same place after a reload.
+  - A window can no longer be lost off screen after a viewport resize or a reload on a smaller screen, or left with only its header buttons on screen (which can't be grabbed).
+  - A reopen with `resetPosition` / `resetSize` moves a live window. It used to overwrite the stored position while the window stayed where it was.
+  - `onClose` ran twice for a `removeOnClose` window, and on every `updateDraggableWindow`.
+  - Array `windowClass` / `backDropClass` values were ignored, and the height was clamped by the min width.
+  - The last saveable window removed stayed in LS, and every window lookup parsed LS.
+  - The clear-LS scope dialog opened under the debug windows.
 
 ## 2026-10-02 — character-definitions-and-refactoring
 

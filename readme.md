@@ -57,6 +57,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 - A **debug fly camera** (`F1`), an axes gizmo (`F10`), an environment ball (`F9`) and a debug scene loader.
 - **Undo/redo** for changes made in the debugger.
 - **Physics visualizers**: collider wireframes colored by body state, ray helpers, and query statistics.
+- **Edit windows per entity** (lights, cameras, ECS worlds, PostFX passes, physics entities, assets, characters), several open at a time, kept over reloads and scene changes. Double-clicking a window's header (or the Debug tools tab's "Center and fit all windows") brings windows back to the top of the screen, fitted to it.
 - **Ray tester windows** for firing Three.js or physics rays at the scene.
 - A **character state window** per character, showing its live data grouped and formatted, with freeze and copy. Its configuration values can be **edited live** (with undo, reset, copy-out as code and saving across reloads). It also toggles in-world **character gizmos** for the vectors and probes its controller decides from (velocity, facing, ground normal, floor ray and sensor, wall cast, trail), which can be pinned to stay after the window closes.
 - A **determinism probe** (`?physicsProbe=N`) that hashes and diffs the physics state after N fixed steps.

@@ -23,13 +23,13 @@ import {
 import { isPostFxMeasureEnabled, setPostFxMeasureEnabled } from '../../debug/PostFXProfiler';
 import { getCurrentSceneId, getSceneOpts, registerOnAllSceneEnterings } from '../Scene';
 import {
-  addOnCloseToWindow,
   closeDraggableWindow,
-  getDraggableWindow,
-  openDraggableWindow,
-  registerDraggableWindowContentFn,
-  registerDraggableWindowSceneTargetResolver,
+  getDraggableWindowsOfKind,
+  getKindWindowId,
+  registerDraggableWindowKind,
+  toggleDraggableWindow,
   updateDraggableWindow,
+  updateDraggableWindowsOfKind,
 } from '../UI/DraggableWindow';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { CMP } from '../../utils/CMP';
@@ -64,6 +64,7 @@ const SETTINGS_LS_KEY = 'AEK_debugPostFxSettings';
 const LS_KEY = 'AEK_debugPostFx';
 
 const TAB_ID = 'postFxControls';
+/** The edit windows' kind: one window per PostFX pass, keyed by its id */
 const EDIT_POSTFX_PASS_WIN_ID = 'postFxPassEditorWindow';
 
 const UNDO_POSTFX_ENABLED = 'postFx.enabled';
@@ -79,9 +80,10 @@ const settingsProxy = { postFxEnabled: false, measureEnabled: false };
 /** The current scene's PostFX passes as authored, taken on scene enter before the persisted
  * overrides are applied (the chain has just been set up from the scene data then). */
 let authoredPostFxPasses = new Map<string, { enabled: boolean; params: Record<string, unknown> }>();
-/** What the open edit window was built for, so a chain rebuild only rebuilds the window when
- * the PostFX pass's live param mode actually changed (eg. 'unknown' → 'setParam'). */
-let windowBuiltFor: { postFxPassId: string; liveParams: PostFxLiveParams } | null = null;
+/** The live param mode each open edit window was built with, by PostFX pass id, so a chain
+ * rebuild only rebuilds a window when its pass's mode actually changed (eg. 'unknown' →
+ * 'setParam'). */
+const windowsBuiltFor = new Map<string, { liveParams: PostFxLiveParams }>();
 
 const isMasterEnabled = () => getConfig().postFx?.enabled !== false;
 const getAuthoredPostFxEnabled = (sceneId: string) =>
@@ -110,22 +112,17 @@ const getPostFxPassListData = (): DebuggerListItem[] =>
     ...(debugData?.description ? { tooltip: debugData.description } : {}),
   }));
 
+/** List row click: opens the pass's window, brings it to the front, or closes it when on top. */
 const toggleEditPostFxPassWindow = (id: string) => {
-  const winState = getDraggableWindow(EDIT_POSTFX_PASS_WIN_ID);
-  if (winState?.isOpen && winState.data?.id === id) {
-    closeDraggableWindow(EDIT_POSTFX_PASS_WIN_ID);
-    return;
-  }
   const debugData = findPostFxPass(id)?.debugData;
-  openDraggableWindow({
-    id: EDIT_POSTFX_PASS_WIN_ID,
+  toggleDraggableWindow({
+    id: getKindWindowId(EDIT_POSTFX_PASS_WIN_ID, id),
+    kind: EDIT_POSTFX_PASS_WIN_ID,
     title: `Edit PostFX pass: ${debugData?.name || `[${id}]`}`,
     isDebugWindow: true,
-    content: createEditPostFxPassContent,
-    data: { id, winId: EDIT_POSTFX_PASS_WIN_ID },
+    data: { id },
     closeOnSceneChange: true,
     saveToLS: true,
-    onClose: onEditWindowClose,
   });
 };
 
@@ -228,12 +225,13 @@ const applyPostFxPassOverridesFromLS = () => {
   }
 };
 
-/** Rebuilds the open edit window when it shows this PostFX pass (or any, without an id). */
+/** Rebuilds this PostFX pass's open edit window (every open one, without an id). */
 const refreshEditWindow = (postFxPassId?: string) => {
-  const winState = getDraggableWindow(EDIT_POSTFX_PASS_WIN_ID);
-  if (!winState?.isOpen) return;
-  if (postFxPassId && winState.data?.id !== postFxPassId) return;
-  updateDraggableWindow(EDIT_POSTFX_PASS_WIN_ID);
+  if (postFxPassId) {
+    updateDraggableWindow(getKindWindowId(EDIT_POSTFX_PASS_WIN_ID, postFxPassId));
+  } else {
+    updateDraggableWindowsOfKind(EDIT_POSTFX_PASS_WIN_ID);
+  }
 };
 
 const applyPostFxPassEnabled = (postFxPassId: string, enabled: boolean) => {
@@ -360,29 +358,27 @@ const LIVE_PARAMS_TEXT: Record<PostFxLiveParams, string> = {
   unknown: 'Not built yet (edits apply when the PostFX pass is next built)',
 };
 
-const onEditWindowClose = () => {
-  windowBuiltFor = null;
-  refreshGUI();
-};
-
 const createEditPostFxPassContent = (data?: { [key: string]: unknown }) => {
-  const d = data as { id: string; winId: string };
+  const d = data as { id: string };
   const info = findPostFxPass(d.id);
   if (!info) {
-    // Eg. restored after a reload into a scene without this PostFX pass: close it, but return first
-    setTimeout(() => closeDraggableWindow(EDIT_POSTFX_PASS_WIN_ID), 0);
+    // Eg. the pass left the chain while its window was open: close it, but return first
+    const winId = getKindWindowId(EDIT_POSTFX_PASS_WIN_ID, d.id);
+    setTimeout(() => closeDraggableWindow(winId), 0);
     return CMP({ text: 'PostFX pass not found' });
   }
 
-  // The content is built before the window state is open: refresh the list selection after it.
-  // The onClose is set here too, because a window restored from LS has none.
-  queueMicrotask(() => {
-    addOnCloseToWindow(EDIT_POSTFX_PASS_WIN_ID, onEditWindowClose);
-    refreshGUI();
-  });
-  windowBuiltFor = { postFxPassId: info.id, liveParams: info.liveParams };
+  // The content is built before the window state is open: refresh the list selection after it
+  queueMicrotask(refreshGUI);
+  const builtFor = { liveParams: info.liveParams };
+  windowsBuiltFor.set(info.id, builtFor);
 
-  const container = CMP({ onRemoveCmp: () => pane.dispose() });
+  const container = CMP({
+    onRemoveCmp: () => {
+      pane.dispose();
+      if (windowsBuiltFor.get(info.id) === builtFor) windowsBuiltFor.delete(info.id);
+    },
+  });
   const isLive = info.liveParams === 'setParam';
   if (!isLive) {
     container.add({
@@ -475,11 +471,12 @@ const addParamBindings = (pane: Pane, info: PostFxPassInfo, isLive: boolean) => 
   }
 };
 
-registerDraggableWindowContentFn(EDIT_POSTFX_PASS_WIN_ID, createEditPostFxPassContent);
-// Kept open on a scene change when the next scene's PostFX chain has the same pass
-registerDraggableWindowSceneTargetResolver(EDIT_POSTFX_PASS_WIN_ID, (data) =>
-  Boolean(findPostFxPass(String(data?.id)))
-);
+registerDraggableWindowKind(EDIT_POSTFX_PASS_WIN_ID, {
+  content: createEditPostFxPassContent,
+  onClose: refreshGUI,
+  // Kept open on a scene change when the next scene's PostFX chain has the same pass
+  sceneTargetResolver: (data) => Boolean(findPostFxPass(String(data?.id))),
+});
 
 const clearSettingsLS = (scope: 'ALL' | 'THIS_SCENE') => {
   const sceneId = getCurrentSceneId();
@@ -525,13 +522,12 @@ export const _createPostFXDebugGUI = async () => {
   });
 
   // A PostFX pass only shows whether it has a live setParam once it's built: rebuild the open
-  // edit window when that changed (deferred, as the chain is built mid-frame)
+  // edit windows whose mode changed (deferred, as the chain is built mid-frame)
   addPostFxChainListener(() => {
     setTimeout(() => {
-      if (!windowBuiltFor) return;
-      const info = findPostFxPass(windowBuiltFor.postFxPassId);
-      if (info && info.liveParams !== windowBuiltFor.liveParams) {
-        refreshEditWindow(info.id);
+      for (const [postFxPassId, builtFor] of [...windowsBuiltFor]) {
+        const info = findPostFxPass(postFxPassId);
+        if (info && info.liveParams !== builtFor.liveParams) refreshEditWindow(postFxPassId);
       }
     }, 0);
   });
@@ -626,10 +622,8 @@ export const _createPostFXDebugGUI = async () => {
         heading: 'PostFX passes (in chain order)',
         emptyText: 'No PostFX passes in this scene..',
         data: getPostFxPassListData,
-        selectedItemId: () => {
-          const winState = getDraggableWindow(EDIT_POSTFX_PASS_WIN_ID);
-          return winState?.isOpen ? (winState.data?.id as string | undefined) : null;
-        },
+        selectedItemId: () =>
+          getDraggableWindowsOfKind(EDIT_POSTFX_PASS_WIN_ID).map((win) => String(win.data?.id)),
         // No row toggle (p071 Design decision 9): the pass toggle rebuilds the PostFX chain (a
         // shader recompile), so it stays in the edit window
         perItemConfig: { onClick: toggleEditPostFxPassWindow },

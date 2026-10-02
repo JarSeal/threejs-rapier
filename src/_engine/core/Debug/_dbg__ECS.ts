@@ -26,15 +26,15 @@ import { ComponentType } from '../ECS/ECSCoreComponents';
 import { resetECSStressTest, spawnECSStressTestBatch } from '../../utils/ECSStressTest';
 import { CMP } from '../../utils/CMP';
 import {
-  addOnCloseToWindow,
   closeDraggableWindow,
-  getDraggableWindow,
-  openDraggableWindow,
-  registerDraggableWindowContentFn,
-  registerDraggableWindowSceneTargetResolver,
-  updateDraggableWindow,
+  getDraggableWindowsOfKind,
+  getKindWindowId,
+  registerDraggableWindowKind,
+  toggleDraggableWindow,
 } from '../UI/DraggableWindow';
+import { isCurrentlyLoading } from '../SceneLoader';
 
+/** The edit windows' kind: one window per world, keyed by its id */
 export const EDIT_ECS_WORLD_WIN_ID = 'ecsWorldEditorWindow';
 const TAB_ID = 'ecsControls';
 let worldRegistryListenerRegistered = false;
@@ -55,36 +55,31 @@ const scheduleListRefresh = () => {
   });
 };
 
-// The currently-open edit window's cheap entity-count refresh — set by
-// createEditECSWorldContent, cleared when its container is torn down.
+// Each open edit window's cheap entity-count refresh, by world id — set by
+// createEditECSWorldContent, removed when its container is torn down.
 // Deliberately NOT routed through updateDraggableWindow (that disposes and
 // rebuilds the entire Tweakpane pane), since this can also fire at
 // stress-test frequency.
-let openWorldEditRefresh: { worldId: string; refresh: () => void } | null = null;
+const openWorldEditRefreshes = new Map<string, () => void>();
 
 /** Logic for the Edit ECS World Draggable Window */
 export const createEditECSWorldContent = (data?: { [key: string]: unknown }) => {
   const d = data as { id: string };
   const world = ECSWorld.getWorld(d.id);
-  openWorldEditRefresh = null;
   if (!world)
     return CMP({
       style: { padding: '10px' },
       text: 'ECS World no longer exists',
     });
 
-  // The content is built before the window state is open: refresh the list selection after it.
-  // The onClose is set here too, because a window restored from LS has none.
-  queueMicrotask(() => {
-    addOnCloseToWindow(EDIT_ECS_WORLD_WIN_ID, refreshECSTab);
-    refreshECSTab();
-  });
+  // The content is built before the window state is open: refresh the list selection after it
+  queueMicrotask(refreshECSTab);
 
   const isDefault = world.id === DEFAULT_ECS_WORLD_ID;
   const container = CMP({
     onRemoveCmp: () => {
       pane.dispose();
-      if (openWorldEditRefresh?.worldId === world.id) openWorldEditRefresh = null;
+      if (openWorldEditRefreshes.get(world.id) === refresh) openWorldEditRefreshes.delete(world.id);
     },
   });
   const pane = new Pane({ container: container.elem });
@@ -109,13 +104,11 @@ export const createEditECSWorldContent = (data?: { [key: string]: unknown }) => 
   // Kept live by the onECSEntityCountChange listener registered in
   // _initECSDebugGUI — a cheap pane.refresh() rather than tearing down and
   // rebuilding this whole window on every entity add/remove.
-  openWorldEditRefresh = {
-    worldId: world.id,
-    refresh: () => {
-      readout.entities = world.getEntityCount();
-      pane.refresh();
-    },
+  const refresh = () => {
+    readout.entities = world.getEntityCount();
+    pane.refresh();
   };
+  openWorldEditRefreshes.set(world.id, refresh);
 
   // --- Storage (moved here from the tab-level list so it's per world) ---
   const storageFolder = pane.addFolder({
@@ -163,7 +156,7 @@ export const createEditECSWorldContent = (data?: { [key: string]: unknown }) => 
       // Close first so the registry-change notification (fired from inside
       // deleteECSWorld) doesn't try to refresh a window whose world is
       // already gone.
-      closeDraggableWindow(EDIT_ECS_WORLD_WIN_ID);
+      closeDraggableWindow(getKindWindowId(EDIT_ECS_WORLD_WIN_ID, world.id));
       deleteECSWorld(world.id);
     });
   }
@@ -171,11 +164,12 @@ export const createEditECSWorldContent = (data?: { [key: string]: unknown }) => 
   return container;
 };
 
-registerDraggableWindowContentFn(EDIT_ECS_WORLD_WIN_ID, createEditECSWorldContent);
-// Kept open on a scene change when the world still exists (secondary worlds are scene-scoped)
-registerDraggableWindowSceneTargetResolver(EDIT_ECS_WORLD_WIN_ID, (data) =>
-  Boolean(ECSWorld.getWorld(String(data?.id)))
-);
+registerDraggableWindowKind(EDIT_ECS_WORLD_WIN_ID, {
+  content: createEditECSWorldContent,
+  onClose: refreshECSTab,
+  // Kept open on a scene change when the world still exists (secondary worlds are scene-scoped)
+  sceneTargetResolver: (data) => Boolean(ECSWorld.getWorld(String(data?.id))),
+});
 
 /** The default world's TRANSFORM entity count (and capacity), for the benchmark readout. */
 const benchmarkReadout = { entities: '' };
@@ -190,13 +184,12 @@ const benchmarkConfig = { batchSize: 1000 };
 
 /** Creates the Tab in the Debug Drawer */
 export const _initECSDebugGUI = () => {
-  // Registered once (not per tab-open): refreshes the live list (and the
-  // edit window, if open) whenever any world is created or deleted anywhere
-  // in the app — mirrors LightManager's TAG_IS_LIGHT onAddComponent hook
-  // triggering updateLightsDebuggerGUI().
+  // Registered once (not per tab-open): refreshes the live list (and closes
+  // a deleted world's edit window) whenever any world is created or deleted
+  // anywhere in the app.
   if (!worldRegistryListenerRegistered) {
     worldRegistryListenerRegistered = true;
-    onECSWorldRegistryChange(() => updateECSWorldsDebuggerGUI());
+    onECSWorldRegistryChange(onWorldRegistryChange);
 
     // Entity add/remove in any world — keeps list entity counts and the
     // open edit window's count correct. Routed through the rAF-coalesced
@@ -204,7 +197,7 @@ export const _initECSDebugGUI = () => {
     // path), since this can fire thousands of times per stress-test batch.
     onECSEntityCountChange((world) => {
       scheduleListRefresh();
-      if (openWorldEditRefresh?.worldId === world.id) openWorldEditRefresh.refresh();
+      openWorldEditRefreshes.get(world.id)?.();
     });
   }
 
@@ -231,10 +224,8 @@ export const _initECSDebugGUI = () => {
         id: 'ecsWorlds',
         emptyText: 'No ECS worlds found.',
         data: getECSWorldsListData,
-        selectedItemId: () => {
-          const winState = getDraggableWindow(EDIT_ECS_WORLD_WIN_ID);
-          return winState?.isOpen ? (winState.data?.id as string | undefined) : null;
-        },
+        selectedItemId: () =>
+          getDraggableWindowsOfKind(EDIT_ECS_WORLD_WIN_ID).map((win) => String(win.data?.id)),
         perItemConfig: { onClick: openEditECSWorldWindow },
       }),
       // --- Benchmark ---
@@ -303,24 +294,29 @@ const getECSWorldsListData = (): DebuggerListItem[] =>
     suffix: `(${world.getEntityCount()} ent.)`,
   }));
 
+/** List row click: opens the world's window, brings it to the front, or closes it when on top. */
 const openEditECSWorldWindow = (worldId: string) => {
   const world = ECSWorld.getWorld(worldId);
   if (!world) return;
-  openDraggableWindow({
-    id: EDIT_ECS_WORLD_WIN_ID,
+  toggleDraggableWindow({
+    id: getKindWindowId(EDIT_ECS_WORLD_WIN_ID, world.id),
+    kind: EDIT_ECS_WORLD_WIN_ID,
     title: `Edit ECS World: ${world.name}`,
     isDebugWindow: true,
-    content: createEditECSWorldContent,
     data: { id: world.id },
     closeOnSceneChange: true,
     saveToLS: true,
-    onClose: refreshECSTab,
   });
 };
 
-export const updateECSWorldsDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
-  if (only !== 'WINDOW') refreshECSTab();
-  if (only === 'LIST') return;
-  if (getDraggableWindow(EDIT_ECS_WORLD_WIN_ID)?.isOpen)
-    updateDraggableWindow(EDIT_ECS_WORLD_WIN_ID);
+/** A world was created or deleted: refreshes the list and closes the deleted worlds' windows. A
+ * scene change leaves the windows to the scene change handling (kept when the next scene has the
+ * world). */
+const onWorldRegistryChange = () => {
+  refreshECSTab();
+  if (isCurrentlyLoading()) return;
+  const wins = getDraggableWindowsOfKind(EDIT_ECS_WORLD_WIN_ID);
+  for (let i = 0; i < wins.length; i++) {
+    if (!ECSWorld.getWorld(String(wins[i].data?.id))) closeDraggableWindow(wins[i].id);
+  }
 };

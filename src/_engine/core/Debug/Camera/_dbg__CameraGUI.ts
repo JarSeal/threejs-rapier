@@ -10,15 +10,16 @@ import {
   type DebuggerListItem,
 } from '../../../debug/DebuggerGUI';
 import {
-  addOnCloseToWindow,
   closeDraggableWindow,
-  getDraggableWindow,
-  openDraggableWindow,
-  registerDraggableWindowContentFn,
-  registerDraggableWindowSceneTargetResolver,
+  getDraggableWindowsOfKind,
+  getKindWindowId,
+  registerDraggableWindowKind,
+  toggleDraggableWindow,
   updateDraggableWindow,
+  updateDraggableWindowsOfKind,
 } from '../../UI/DraggableWindow';
 import { getCurrentSceneId } from '../../Scene';
+import { isCurrentlyLoading } from '../../SceneLoader';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
 import {
   confirmClearScope,
@@ -73,6 +74,7 @@ export interface CamDebugLSData {
   [sceneId: string]: CamSceneDebugState;
 }
 
+/** The edit windows' kind: one window per camera, keyed by its app id */
 export const EDIT_CAMERA_WIN_ID = 'cameraEditorWindow';
 export const LS_KEY = 'AEK_debugCams';
 const CAMERAS_TAB_ID = 'camerasControls';
@@ -179,7 +181,7 @@ const setCamField = <K extends UndoableCamKey>(
   if (!cam) return;
   applyCamField[key](cam, value);
   saveCameraToLS(cam.entityId, key, value);
-  updateCamerasDebuggerGUI('WINDOW');
+  updateCamerasDebuggerGUI('WINDOW', appId);
 };
 
 const registerCamUndoHandler = <K extends UndoableCamKey>(key: K) => {
@@ -192,7 +194,8 @@ for (const key of UNDOABLE_CAM_KEYS) registerCamUndoHandler(key);
 
 /** Content for the Edit Camera Draggable Window */
 export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
-  const d = data as { id: string; winId: string };
+  const d = data as { id: string };
+  const winId = getKindWindowId(EDIT_CAMERA_WIN_ID, d.id);
   const world = getECSWorld();
   const entityId = getEntityIdByAppId(d.id);
 
@@ -332,7 +335,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
       record('responsiveAspect', ev.value);
       // Without this one iteration timeout, Tweakpane will crash (maybe fix at one point)
       setTimeout(() => {
-        updateCamerasDebuggerGUI('WINDOW'); // rebuild so the fov/frustumSize label reflects the new mode
+        updateDraggableWindow(winId); // rebuild so the fov/frustumSize label reflects the new mode
       }, 0);
     });
   lensFolder
@@ -409,7 +412,7 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
       disabled: getAllCamerasAsArray().length <= 1,
     })
     .on('click', () => {
-      closeDraggableWindow(EDIT_CAMERA_WIN_ID);
+      closeDraggableWindow(winId);
       world.deleteEntity(entityId);
       // deleteEntity fires disposeCamera's onDeleteEntity hook (which already
       // refreshes this list) before clearing the entity's component storages,
@@ -418,12 +421,8 @@ export const createEditCameraContent = (data?: { [key: string]: unknown }) => {
       updateCamerasDebuggerGUI('LIST');
     });
 
-  // The content is built before the window state is open: refresh the list selection after it.
-  // The onClose is set here too, because a window restored from LS has none.
-  queueMicrotask(() => {
-    addOnCloseToWindow(EDIT_CAMERA_WIN_ID, () => updateDebuggerTab(CAMERAS_TAB_ID));
-    updateDebuggerTab(CAMERAS_TAB_ID);
-  });
+  // The content is built before the window state is open: refresh the list selection after it
+  queueMicrotask(() => updateDebuggerTab(CAMERAS_TAB_ID));
   return container;
 };
 
@@ -449,18 +448,19 @@ const resolveCameraListItem = (itemId: string) => {
   return entityId !== undefined && world.isAlive(entityId) ? { world, entityId } : null;
 };
 
+/** List row click: opens the camera's window, brings it to the front, or closes it when on top. */
 const openEditCameraWindow = (itemId: string) => {
   const target = resolveCameraListItem(itemId);
-  const appId = target ? target.world.getComponent(target.entityId, ComponentType.APP_ID)?.id : '';
-  openDraggableWindow({
-    id: EDIT_CAMERA_WIN_ID,
+  if (!target) return;
+  const appId = target.world.getComponent(target.entityId, ComponentType.APP_ID)?.id || itemId;
+  toggleDraggableWindow({
+    id: getKindWindowId(EDIT_CAMERA_WIN_ID, appId),
+    kind: EDIT_CAMERA_WIN_ID,
     title: `Edit Camera: ${appId}`,
     isDebugWindow: true,
-    content: createEditCameraContent,
-    data: { id: appId, winId: EDIT_CAMERA_WIN_ID },
+    data: { id: appId },
     closeOnSceneChange: true,
     saveToLS: true,
-    onClose: () => updateDebuggerTab(CAMERAS_TAB_ID),
   });
 };
 
@@ -469,7 +469,7 @@ const toggleCameraHelper = (itemId: string, next: boolean) => {
   const target = resolveCameraListItem(itemId);
   if (!target) return;
   setCameraHelperVisible(target.entityId, target.world, next);
-  updateCamerasDebuggerGUI('WINDOW');
+  updateCamerasDebuggerGUI('WINDOW', itemId);
 };
 
 const getCamerasListData = (world: ECSWorld): DebuggerListItem[] => {
@@ -595,10 +595,8 @@ export const initCameraDebuggerGUI = () => {
       debuggerListCMP({
         id: 'cameras',
         data: () => getCamerasListData(getECSWorld()),
-        selectedItemId: () => {
-          const winState = getDraggableWindow(EDIT_CAMERA_WIN_ID);
-          return winState?.isOpen ? (winState.data?.id as string | undefined) : null;
-        },
+        selectedItemId: () =>
+          getDraggableWindowsOfKind(EDIT_CAMERA_WIN_ID).map((win) => String(win.data?.id)),
         perItemConfig: {
           onClick: openEditCameraWindow,
           toggles: [{ icon: 'cameraReels', title: 'Show helper', fn: toggleCameraHelper }],
@@ -609,10 +607,38 @@ export const initCameraDebuggerGUI = () => {
   cameraDebuggerGUIInitiated = true;
 };
 
-export const updateCamerasDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
+/**
+ * Refreshes the Cameras tab and the open camera edit windows.
+ * @param only ('LIST' | 'WINDOW') optional, refreshes only the list or only the windows
+ * @param appId (string) optional, rebuilds only this camera's window (default: every open one)
+ */
+export const updateCamerasDebuggerGUI = (only?: 'LIST' | 'WINDOW', appId?: string) => {
   if (only !== 'WINDOW') updateDebuggerTab(CAMERAS_TAB_ID);
-  const winState = getDraggableWindow(EDIT_CAMERA_WIN_ID);
-  if (only !== 'LIST' && winState?.isOpen) updateDraggableWindow(EDIT_CAMERA_WIN_ID);
+  if (only === 'LIST') return;
+  if (appId) {
+    updateDraggableWindow(getKindWindowId(EDIT_CAMERA_WIN_ID, appId));
+  } else {
+    updateDraggableWindowsOfKind(EDIT_CAMERA_WIN_ID);
+  }
+};
+
+/**
+ * Called from a camera's delete hook: refreshes the list and closes the camera's edit window
+ * (checked a microtask later, like the lights' `_onLightDeleted`: rebuilt when the camera is back
+ * under the same app id). A scene change leaves the windows to the scene change handling.
+ */
+export const _onCameraDeleted = (entityId: number, world: ECSWorld) => {
+  updateCamerasDebuggerGUI('LIST');
+  const appId = world.getComponent(entityId, ComponentType.APP_ID)?.id;
+  if (!appId || world !== getECSWorld() || isCurrentlyLoading()) return;
+  queueMicrotask(() => {
+    const winId = getKindWindowId(EDIT_CAMERA_WIN_ID, appId);
+    if (resolveCameraListItem(appId)) {
+      updateDraggableWindow(winId);
+    } else {
+      closeDraggableWindow(winId);
+    }
+  });
 };
 
 export const getDebugCamProps = (sceneId: string) => {
@@ -682,9 +708,12 @@ export const saveDebugCameraToLS = (debugCamProps: Partial<DebugCamLSProps>) => 
   lsSetItem(LS_KEY, currentData);
 };
 
-registerDraggableWindowContentFn(EDIT_CAMERA_WIN_ID, createEditCameraContent);
-// Kept open on a scene change when the next scene has a camera with the same appId
-registerDraggableWindowSceneTargetResolver(EDIT_CAMERA_WIN_ID, (data) => {
-  const entityId = getEntityIdByAppId(String(data?.id));
-  return Boolean(entityId && getECSWorld().isAlive(entityId));
+registerDraggableWindowKind(EDIT_CAMERA_WIN_ID, {
+  content: createEditCameraContent,
+  onClose: () => updateDebuggerTab(CAMERAS_TAB_ID),
+  // Kept open on a scene change when the next scene has a camera with the same appId
+  sceneTargetResolver: (data) => {
+    const entityId = getEntityIdByAppId(String(data?.id));
+    return Boolean(entityId && getECSWorld().isAlive(entityId));
+  },
 });
