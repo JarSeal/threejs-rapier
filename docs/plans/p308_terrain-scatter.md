@@ -3,7 +3,7 @@ Category: Terrain, Rendering, Assets
 Blocked by: p306_terrain-blocks-and-procedural-terrain-meshes.md
 Blocks: p310_terrain-preview-scenes.md
 Epic: p301_terrain-texturing-epic.md
-Related: p350_lod-system-research.md (instancing/batching layer, LOD selection), p307_wet-and-dry-surface-states.md (scatter gets wet too)
+Related: p350_lod-system-research.md (instancing/batching layer, LOD selection), p348_ecs-lod-selection.md (§4.3 defines the LOD contract for this plan's cells: a cell is a plain mesh entity with `LOD`, and `cullScreenSize` replaces `maxDistance`), p346_spatial-domains.md (shared cell keys), p307_wet-and-dry-surface-states.md (scatter gets wet too)
 
 # Terrain Scatter (rocks, pebbles, ground details)
 
