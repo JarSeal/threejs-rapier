@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Debugger, UI Component
 
 # Refactor Draggable Windows and Dialogs — Plan
@@ -259,12 +259,18 @@ Each edit-window module moves to the same pattern:
 
 ## 4. Phases (each non-breaking and committable on its own)
 
-### Phase 1: Internal refactor and small bug fixes
+### Phase 1: Internal refactor and small bug fixes — done
 
 - §3.1, §3.2, §3.3 and §3.4. The public API and the props stay as they are.
 - Fix the §2.1 bugs: the dropped `concat`, the `minSize.w` height clamp, the `typeof content` check, the double `onClose`, `onClose` on rebuild, live reset not moving the window, the stale last LS entry, and the LS parse on every lookup.
 - Visible change: windows stack in click order.
 - Check: every window kind still opens, drags, resizes, collapses, restores after a reload and handles a scene change as before (Verification 2–3).
+- As built, where it differs from §3:
+  - LS is read once, on the module's first use, not in `loadDraggableWindowStatesFromLS`. The Assets and Physics modules look their window up (to re-attach its content) from a `setTimeout(0)` that can run before the load.
+  - A closed window keeps no DOM: closing tears its content down, and reopening builds it fresh (a reopened dialog no longer shows its previous content).
+  - `updateDraggableWindow` rebuilds only the content, so a refresh doesn't bring the window to the front or reset its scroll.
+  - A reopen that changes a structural flag (resize handles, header buttons, backdrop, layer) remounts the window.
+  - Also fixed: the clear-LS scope dialog (`confirmClearScope`) opened in the app layer, under the debug windows.
 
 ### Phase 2: Units and keeping windows reachable
 

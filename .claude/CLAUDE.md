@@ -58,6 +58,15 @@ This boundary is convention only — nothing in `eslint.config.js` enforces impo
   - "Blocks" (optional): describes a plan file name that this plan is blocking the implementation.
   - "Epic" (optional): link to the epic (usually a Trello ticket).
 - Bigger plans should have non-breaking phases described so that the changes can be reviewed and committed in smaller chunks.
+- "Mark the phase done":
+  - Append ` — done` to the phase heading (`### Phase 2: Units — done`).
+  - Status line: `in progress | Phase 1 implemented`, then `in progress | Phases 1-2 implemented`, and so on.
+  - When the built code differs from the plan, add an "As built" list under the phase, so later phases don't build on stale assumptions.
+- "Mark the plan done" (the last phase's own steps included):
+  - Status line: `implemented`, with the phases when it had some (`implemented (Phases 1-4)`, `implemented (Phases 1-3; Phase 4 dropped)`).
+  - `git mv` the file to `_DONE_<same name>` (`_DONE_p094_….md`), then update the references to the old name: other plans' `Blocked by` / `Blocks` lines and mentions (drop a `Blocked by` that pointed only at this plan) and this file.
+  - Update this file and `readme.md` where the change alters what they describe (see Workflow).
+  - Bump the versions in `package.json` and add (or extend) the branch's `CHANGELOG.md` entry (see Versioning), then run `yarn checkVersions --against main`.
 
 ### ECS core
 

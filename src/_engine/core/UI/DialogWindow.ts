@@ -30,7 +30,7 @@ let isEscapeKeyUpSwallowed = false;
 const getTopEscapeDialogId = () => {
   for (let i = escapeDialogIds.length - 1; i >= 0; i--) {
     const id = escapeDialogIds[i];
-    // windowCMP: only a live window has one (getDraggableWindow can fall back to the LS state)
+    // windowCMP: only a mounted window has one (not one suspended over a scene change)
     const dialog = getDraggableWindow(id);
     if (dialog?.isOpen && dialog.windowCMP) return id;
     escapeDialogIds.splice(i, 1); // closed some other way
