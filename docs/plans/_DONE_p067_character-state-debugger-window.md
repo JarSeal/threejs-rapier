@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–3 implemented (the §6 step 8 performance study is open)
+Status: implemented
 Category: Character, Debugger
 Blocks: p068_character-debug-gizmos.md, p069_character-live-config-editing.md
 
@@ -302,7 +302,7 @@ A small `key → formatter` map, used only for known keys. Any other key uses th
 5. Collapse **State**. In DevTools → Elements, confirm its text nodes stop changing. Reopen it: it refreshes immediately.
 6. Open the state windows of **both** characters and close one. The other keeps updating. Check in the console that the scene late-looper count doesn't grow after repeated open/close cycles.
 7. Pause the app: nothing breaks and the values hold. Test Freeze and Copy JSON (paste the result into an editor). Change scene and come back: the window closes on scene change, and reopening works. Reload with the window open: it is restored and works.
-8. **Performance study.** In the Chrome Performance panel, record 5 s at interval 0 with all groups open, on the Phase 1 build (legacy rebuild) and on the Phase 2 build. Compare scripting, style and layout time per frame against the in-window `upd` readout. Record the numbers in this plan when marking it `implemented`.
+8. **Performance study.** In the Chrome Performance panel, record 5 s at interval 0 with all groups open, on the Phase 1 build (legacy rebuild) and on the Phase 2 build. Compare scripting, style and layout time per frame against the in-window `upd` readout. (Not done: skipped when the plan was marked `implemented`, as the in-window readout and use already showed the gain over the legacy window.)
 9. Run `yarn lint` and `yarn build` (type-check plus production build). Confirm with `dist-stats/bundle-stats.html` that the new module isn't in the production main chunk.
 
 ---

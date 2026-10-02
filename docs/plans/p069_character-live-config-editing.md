@@ -1,6 +1,5 @@
 Status: draft | not-implemented (stub)
 Category: Character, Debugger
-Blocked by: p067_character-state-debugger-window.md
 
 # Character Live Config Editing — Plan
 
