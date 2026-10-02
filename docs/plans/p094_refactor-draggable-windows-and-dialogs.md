@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: in progress | Phases 1-4 implemented
 Category: Debugger, UI Component
 
 # Refactor Draggable Windows and Dialogs — Plan
@@ -296,14 +296,23 @@ Each edit-window module moves to the same pattern:
   - A window that still overflows after the fit (not resizable, or held by its min size) takes `keepOnScreen` and loses its cascade offset on that axis. Its title stays visible, but it can cover the header buttons of windows below it.
   - `fitDraggableWindowToScreen` returns whether the window was fitted, and `fitAllDraggableWindowsToScreen` returns the number of windows fitted (the button's toast uses it).
 
-### Phase 4: Window kinds
+### Phase 4: Window kinds — done
 
 - §3.8, in `DraggableWindow.ts` only.
 - No caller changes yet, so single-id windows behave exactly as before.
+- As built, where it differs from §3:
+  - A kind is registered with `registerDraggableWindowKind(kind, { content?, onClose?, sceneTargetResolver? })`, once at module load (§3.8 left "registered kind" open, and the content and resolver registries can't tell a kind from a single-id window like the ray testers). The options are what LS can't hold: every window of the kind gets them, also one restored after a reload, so a kind needs no per-window registration (`registerDraggableWindowCmp`, `addOnCloseToWindow`, the `setTimeout` re-attaches). A window's own `content`/`onClose` win over the kind's. The kind `onClose` gets the window id. Opening a window with `kind` registers the kind too (without options). Declaring runs the LS migration: the entry whose id is the kind (and has no `kind`) seeds the kind's geometry and is dropped, also when it was already restored and mounted. An entry without a `kind` whose id is `${kind}_…` gets the kind, which covers the stored Character windows (they have the id format but no `kind` field). Phase 5 modules call it.
+  - The kind geometry is stored in the same LS object under `__kindGeometry`, with its position and size units, and only for `saveToLS` windows. A new kind window takes it as its stored geometry, so `resetPosition`/`resetSize` still pick the props.
+  - It is recorded at a drag or resize end and when a kind window is closed or removed (a suspended one included), not by a fit or a viewport-resize `keepOnScreen`.
+  - The cascade index is the number of the kind's other open windows. It applies to a new window only, after the px conversion and before `keepOnScreen`.
+  - A kind window restored on reload into a scene without its target is removed, not kept closed. A closed kind entry found in LS is dropped at load.
+  - `toggleDraggableWindow` ignores `closeIfOpen`.
+  - Also fixed, a Phase 1 regression: windows left open didn't all come back after a reload. Phase 1's lazy LS read let the boot's first scene load (inside `appStartFn`, before `loadDraggableWindowStatesFromLS`) treat the stored windows as live ones: it removed the `removeOnSceneChange` ones (Character edit) and closed the `closeOnSceneChange` ones whose resolver wasn't registered yet (PostFX pass, Assets info, whose modules load after `appStartFn`). The scene change start now skips open windows that are neither mounted nor suspended, and leaves them to the restore.
+  - The caller line references in §2.4 have moved since the plan was written (eg. the Character state window's resolver registrations are now at `_dbg__CharacterStateWindow.ts:1396`/`:1402`).
 
 ### Phase 5: Edit windows, one per entity
 
-- §3.9, one commit per group:
+- §3.9, one commit per group. Each module registers its kind once with `registerDraggableWindowKind(kind, { content, onClose, sceneTargetResolver })` (Phase 4 as built), in place of `registerDraggableWindowContentFn` + `registerDraggableWindowSceneTargetResolver`, and drops its per-window registrations: the `registerDraggableWindowCmp` / `addOnCloseToWindow` re-attaches and their `setTimeout`s, and `content`/`onClose` passed on each open where the kind's are the same.
   - **5a:** Light and Camera
   - **5b:** ECS world, PostFX pass, Physics entity and Assets info (these hold the single-window module state)
   - **5c:** Character edit and Character state (kind registries; drop the per-window resolver and the `registerDraggableWindowCmp` re-attach)

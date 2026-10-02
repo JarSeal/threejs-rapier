@@ -26,6 +26,9 @@ export type DraggableWindowUnits = {
 /** The persisted part of a window (LS): serializable values only. */
 export type DraggableWindowConfig = {
   id: string;
+  /** The window's kind (see {@link OpenDraggableWindowProps.kind}). Without one, the window's
+   * kind is its id. */
+  kind?: string;
   title: string;
   data?: DraggableWindowData;
   /** Position (left/top) and size, in `units` (px by default). A draggable window's position is
@@ -74,6 +77,14 @@ export type DraggableWindow = DraggableWindowConfig & {
 
 export type OpenDraggableWindowProps = {
   id: string;
+  /**
+   * Makes this one of several windows of a kind (eg. one edit window per entity), with the id
+   * `getKindWindowId(kind, key)`. The content function and scene target resolver registered for
+   * the kind cover each of its windows. A new window of the kind starts from where the kind's
+   * last window was dragged, resized or closed, cascaded by the kind's open windows. Closing it
+   * removes it. Without a kind, the window's kind is its id.
+   */
+  kind?: string;
   content?: DraggableWindowContent;
   data?: DraggableWindowData;
   isCollapsed?: boolean;
@@ -159,6 +170,24 @@ type StoredWindow = Partial<DraggableWindowConfig> & {
   isActive?: boolean;
 };
 
+/** Where a kind's next window starts: the last geometry of one of its windows. */
+type KindGeometry = {
+  geometry: DraggableWindowConfig['geometry'];
+  units?: Pick<DraggableWindowUnits, 'position' | 'size'>;
+  saveToLS: boolean;
+};
+
+/** What every window of a kind shares: the functions LS can't hold. */
+export type DraggableWindowKindOpts = {
+  /** Builds a window's content from its `data`, for the opens without `content` (eg. the restore
+   * from LS after a reload) */
+  content?: (data?: DraggableWindowData) => TCMP;
+  /** Runs after a window of the kind closes (or is removed), unless the window has its own */
+  onClose?: (id: string) => void;
+  /** See {@link registerDraggableWindowSceneTargetResolver} */
+  sceneTargetResolver?: SceneTargetResolver;
+};
+
 type Layer = 'APP' | 'DEBUG';
 
 /** Checks whether a window's target (eg. an entity, by the window's `data`) exists in the
@@ -167,6 +196,8 @@ type Layer = 'APP' | 'DEBUG';
 type SceneTargetResolver = (data?: DraggableWindowData) => boolean;
 
 const LS_KEY = 'AEK_popupWindows';
+/** The kinds' geometries, in the same LS object as the windows */
+const LS_KIND_GEOMETRY_KEY = '__kindGeometry';
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 320;
 const DEFAULT_MIN_WIDTH = 100;
@@ -187,7 +218,11 @@ let windows: Map<string, WindowEntry> | null = null;
 const stacks: Record<Layer, string[]> = { APP: [], DEBUG: [] };
 /** Content and onClose registered for a window that doesn't exist yet. */
 const pendingRuntimes: { [id: string]: Pick<DraggableWindowRuntime, 'content' | 'onClose'> } = {};
-const sceneTargetResolvers: { [id: string]: SceneTargetResolver } = {};
+/** Keyed by kind (a window's kind, or its id when it has none) */
+const sceneTargetResolvers: { [kind: string]: SceneTargetResolver } = {};
+const registeredKinds = new Set<string>();
+const kindOnCloses: { [kind: string]: (id: string) => void } = {};
+const kindGeometry: { [kind: string]: KindGeometry } = {};
 /** Windows suspended at a scene change start: torn down but kept open until the scene change end
  * decides whether their target exists in the next scene. */
 const suspendedWindowIds = new Set<string>();
@@ -198,6 +233,9 @@ let viewportResizeTimer: ReturnType<typeof setTimeout> | null = null;
  * prodTest mode only when they opt in with `showInProdTest`. */
 const isDraggableWindowAllowed = (config: { isDebugWindow?: boolean; showInProdTest?: boolean }) =>
   !config.isDebugWindow || IS_DEBUG_ENV || (Boolean(config.showInProdTest) && IS_PROD_TEST_MODE);
+
+/** A window's kind: its `kind`, else its id. The kind registries are keyed by it. */
+const getWindowKind = (config: DraggableWindowConfig) => config.kind ?? config.id;
 
 // State
 
@@ -222,6 +260,7 @@ const createConfig = (
   v: Partial<DraggableWindowConfig> & Pick<DraggableWindowConfig, 'geometry'>
 ): DraggableWindowConfig => ({
   id,
+  ...(v.kind ? { kind: v.kind } : {}),
   title: v.title || '',
   ...(v.data !== undefined ? { data: v.data } : {}),
   geometry: v.geometry,
@@ -256,32 +295,35 @@ const createConfig = (
  *   the default.
  * - Geometry and the collapsed state (the user's layout): the stored value wins, unless
  *   `resetPosition`/`resetSize` is set. Then the prop wins, and the default (centred) comes last.
+ *   A new window of a kind takes the kind's geometry as its stored geometry.
  * - Units go with their value: a stored position or size keeps its stored units, a passed one
  *   takes the passed units.
  * - Title and `data`: the passed value wins.
  */
 const resolveWindowConfig = (
   props: OpenDraggableWindowProps,
-  stored?: DraggableWindowConfig
+  stored?: DraggableWindowConfig,
+  storedKindGeometry?: KindGeometry
 ): DraggableWindowConfig => {
+  const layout = stored ?? storedKindGeometry;
   const units: DraggableWindowUnits = {};
   const setUnits = <K extends keyof DraggableWindowUnits>(key: K, u?: DraggableWindowUnits[K]) => {
     if (u) units[key] = u;
   };
 
   let size: { w: number; h: number };
-  if (stored && !props.resetSize) {
-    size = { w: stored.geometry.w, h: stored.geometry.h };
-    setUnits('size', stored.units?.size);
+  if (layout && !props.resetSize) {
+    size = { w: layout.geometry.w, h: layout.geometry.h };
+    setUnits('size', layout.units?.size);
   } else {
     size = props.size || { w: DEFAULT_WIDTH, h: DEFAULT_HEIGHT };
     if (props.size) setUnits('size', props.units?.size);
   }
 
   let position: { x: number; y: number };
-  if (stored && !props.resetPosition) {
-    position = { x: stored.geometry.x, y: stored.geometry.y };
-    setUnits('position', stored.units?.position);
+  if (layout && !props.resetPosition) {
+    position = { x: layout.geometry.x, y: layout.geometry.y };
+    setUnits('position', layout.units?.position);
   } else if (props.position) {
     position = props.position;
     setUnits('position', props.units?.position);
@@ -304,6 +346,7 @@ const resolveWindowConfig = (
     props[key] !== undefined ? props[key] : stored?.[key];
 
   return createConfig(props.id, {
+    kind: props.kind ?? stored?.kind,
     title: props.title ?? stored?.title,
     data: props.data ?? stored?.data,
     geometry: { ...position, ...size },
@@ -332,6 +375,15 @@ const resolveWindowConfig = (
   });
 };
 
+/** Runs the window's own onClose, else its kind's. */
+const runOnClose = ({ config, runtime }: WindowEntry) => {
+  if (runtime.onClose) {
+    runtime.onClose();
+    return;
+  }
+  kindOnCloses[getWindowKind(config)]?.(config.id);
+};
+
 const toPublicWindow = ({ config, runtime }: WindowEntry): DraggableWindow => ({
   ...config,
   isActive: isDraggableWindowOnTop(config.id),
@@ -346,13 +398,19 @@ const toPublicWindow = ({ config, runtime }: WindowEntry): DraggableWindow => ({
 /** Reads LS once. The entries go into the map in their saved stack order, so restoring them in
  * map order rebuilds the stacks. */
 const hydrateFromLS = (map: Map<string, WindowEntry>) => {
-  const stored = (lsGetItem(LS_KEY, {}) || {}) as { [id: string]: StoredWindow };
+  const { [LS_KIND_GEOMETRY_KEY]: storedKindGeometry, ...stored } = (lsGetItem(LS_KEY, {}) ||
+    {}) as { [id: string]: StoredWindow } & { [LS_KIND_GEOMETRY_KEY]?: typeof kindGeometry };
+  if (storedKindGeometry && typeof storedKindGeometry === 'object') {
+    Object.assign(kindGeometry, storedKindGeometry);
+  }
   // A pre-p094 state flags its last clicked window instead of saving the stack: restore it last
   const order = (s: StoredWindow) => (s.isActive ? Infinity : s.orderNr ?? 9999);
   const ids = Object.keys(stored).sort((a, b) => order(stored[a]) - order(stored[b]));
   for (let i = 0; i < ids.length; i++) {
     const s = stored[ids[i]];
     if (!s || typeof s !== 'object') continue;
+    // Closing a kind window removes it, so a closed one is a leftover
+    if (s.kind && !s.isOpen) continue;
     const geometry = s.geometry || {
       x: s.position?.x ?? 0,
       y: s.position?.y ?? 0,
@@ -371,9 +429,13 @@ const hydrateFromLS = (map: Map<string, WindowEntry>) => {
 
 /** Writes every `saveToLS` window's config. Called on finished changes only. */
 const saveDraggableWindowStatesToLS = () => {
-  const saved: { [id: string]: DraggableWindowConfig } = {};
+  const saved: { [id: string]: unknown } = {};
   for (const { config } of getWindows().values()) {
     if (config.saveToLS) saved[config.id] = config;
+  }
+  const kinds = Object.keys(kindGeometry).filter((kind) => kindGeometry[kind].saveToLS);
+  if (kinds.length) {
+    saved[LS_KIND_GEOMETRY_KEY] = Object.fromEntries(kinds.map((k) => [k, kindGeometry[k]]));
   }
   lsSetItem(LS_KEY, saved as unknown as StorageValue);
 };
@@ -618,11 +680,66 @@ const fitWindow = (entry: WindowEntry, cascadeIndex: number) => {
   return JSON.stringify([g, config.units?.size]) !== prev;
 };
 
-/** Settles a freshly mounted (or reset) window's position: px for a draggable window, then fully
- * on screen. */
-const placeWindow = (entry: WindowEntry) => {
+/** Settles a freshly mounted (or reset) window's position: px for a draggable window, offset by
+ * `cascadeIndex` header heights (a new window of a kind), then fully on screen. */
+const placeWindow = (entry: WindowEntry, cascadeIndex = 0) => {
   convertPositionToPx(entry);
+  const elem = entry.runtime.windowCMP?.elem;
+  if (elem && cascadeIndex && !isCssCentred(entry.config)) {
+    const offset = getCascadeOffset(cascadeIndex, entry.runtime.headerCMP?.elem.offsetHeight || 0);
+    entry.config.geometry.x += offset;
+    entry.config.geometry.y += offset;
+    writePosition(elem, entry.config.geometry);
+  }
   keepOnScreen(entry);
+};
+
+// Kinds
+
+/** Stores a kind window's geometry as where the kind's next window starts. */
+const recordKindGeometry = ({ config }: WindowEntry) => {
+  if (!config.kind) return;
+  const units: KindGeometry['units'] = {};
+  if (config.units?.position) units.position = config.units.position;
+  if (config.units?.size) units.size = config.units.size;
+  kindGeometry[config.kind] = {
+    geometry: { ...config.geometry },
+    ...(Object.keys(units).length ? { units } : {}),
+    saveToLS: config.saveToLS,
+  };
+};
+
+const getOpenWindowsOfKind = (kind: string) => {
+  const result: WindowEntry[] = [];
+  for (const entry of getWindows().values()) {
+    if (entry.config.isOpen && getWindowKind(entry.config) === kind) result.push(entry);
+  }
+  return result;
+};
+
+/** Brings a kind's stored windows into the kind: the pre-kind window whose id is the kind (a
+ * window that used to be the kind's only one) seeds the kind's geometry and is dropped, and a
+ * window without a kind whose id is a `getKindWindowId(kind, key)` id gets the kind. */
+const adoptKind = (kind: string) => {
+  const map = getWindows();
+  let isChanged = false;
+  const legacy = map.get(kind);
+  if (legacy && !legacy.config.kind) {
+    if (!kindGeometry[kind]) {
+      recordKindGeometry({ ...legacy, config: { ...legacy.config, kind } });
+    }
+    unmountWindow(legacy);
+    suspendedWindowIds.delete(kind);
+    map.delete(kind);
+    isChanged = true;
+  }
+  const prefix = `${kind}_`;
+  for (const { config } of map.values()) {
+    if (config.kind || !config.id.startsWith(prefix)) continue;
+    config.kind = kind;
+    isChanged = true;
+  }
+  if (isChanged) saveDraggableWindowStatesToLS();
 };
 
 const onViewportResized = () => {
@@ -746,7 +863,10 @@ const onDragPointerEnd = (entry: WindowEntry, e: PointerEvent) => {
     }
   }
   // A resize always saves: its units may have changed even when the numbers didn't
-  if (s.mode !== 'MOVE' || g.x !== x || g.y !== y) saveDraggableWindowStatesToLS();
+  if (s.mode !== 'MOVE' || g.x !== x || g.y !== y) {
+    recordKindGeometry(entry);
+    saveDraggableWindowStatesToLS();
+  }
 };
 
 /** Drops an unfinished drag without committing it (eg. the window closes mid drag). */
@@ -798,7 +918,7 @@ const buildContent = ({ config, runtime }: WindowEntry) => {
   const { content } = runtime;
   if (typeof content === 'function') return content(config.data);
   if (content) return content;
-  return getConfig().draggableWindows?.[config.id]?.contentFn?.(config.data);
+  return getConfig().draggableWindows?.[getWindowKind(config)]?.contentFn?.(config.data);
 };
 
 /** Content passed as a CMP (not a function) outlives the window's DOM: it is detached before the
@@ -958,9 +1078,12 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     throw new Error(msg);
   }
 
+  if (props.kind) registerDraggableWindowKind(props.kind);
   const map = getWindows();
   let entry = map.get(id);
-  const config = resolveWindowConfig(props, entry?.config);
+  const isNew = !entry;
+  const kind = props.kind ?? entry?.config.kind;
+  const config = resolveWindowConfig(props, entry?.config, kind ? kindGeometry[kind] : undefined);
   // Also gates the content: every path that builds a window's content goes through here
   if (!isDraggableWindowAllowed(config)) return;
   suspendedWindowIds.delete(id);
@@ -990,7 +1113,9 @@ export const openDraggableWindow = (props: OpenDraggableWindowProps) => {
     mountWindow(entry);
     shouldPlace = true;
   }
-  if (shouldPlace) placeWindow(entry);
+  // A new window of a kind cascades from the kind's geometry by the kind's other open windows
+  const cascadeIndex = isNew && config.kind ? getOpenWindowsOfKind(config.kind).length - 1 : 0;
+  if (shouldPlace) placeWindow(entry, cascadeIndex);
   moveToTop(id);
   saveDraggableWindowStatesToLS();
   if (focusFirstElement) focusFirstFocusableElement(entry);
@@ -1001,7 +1126,8 @@ export const closeDraggableWindow = (id: string) => {
   if (!entry) return;
   suspendedWindowIds.delete(id);
 
-  if (entry.config.removeOnClose) {
+  // A kind window is removed (its geometry stays as the kind's), so closed ones don't pile up
+  if (entry.config.removeOnClose || entry.config.kind) {
     removeDraggableWindow(id);
     return;
   }
@@ -1009,9 +1135,10 @@ export const closeDraggableWindow = (id: string) => {
   unmountWindow(entry);
   entry.config.isOpen = false;
   saveDraggableWindowStatesToLS();
-  entry.runtime.onClose?.();
+  runOnClose(entry);
 };
 
+/** @deprecated Use window kinds: close each of {@link getDraggableWindowsOfKind}'s windows. */
 export const closeAllDraggableWindowsStartingWith = (startingWithId: string) => {
   const ids = [...getWindows().keys()];
   for (let i = 0; i < ids.length; i++) {
@@ -1080,14 +1207,15 @@ export const removeDraggableWindow = (id: string, doNotSaveToLS?: boolean) => {
   if (!entry) return;
   suspendedWindowIds.delete(id);
 
+  if (entry.config.isOpen) recordKindGeometry(entry);
   unmountWindow(entry);
   map.delete(id);
   if (!doNotSaveToLS) saveDraggableWindowStatesToLS();
-  entry.runtime.onClose?.();
+  runOnClose(entry);
 };
 
 const resolveSceneTarget = ({ config }: WindowEntry) => {
-  const resolver = sceneTargetResolvers[config.id];
+  const resolver = sceneTargetResolvers[getWindowKind(config)];
   if (!resolver) return false;
   try {
     return resolver(config.data);
@@ -1108,12 +1236,15 @@ export const handleDraggableWindowsOnSceneChangeStart = () => {
     const { config } = entry;
     // Never opened in this mode: kept as is, so it comes back in the mode that allows it
     if (!isDraggableWindowAllowed(config)) continue;
+    // Open but neither mounted nor suspended: stored in LS and not restored yet (the boot's first
+    // scene load runs before loadDraggableWindowStatesFromLS), so the restore handles it
+    if (config.isOpen && !entry.runtime.windowCMP && !suspendedWindowIds.has(config.id)) continue;
     if (config.removeOnSceneChange) {
       removeDraggableWindow(config.id);
       continue;
     }
     if (!config.closeOnSceneChange || !config.isOpen) continue;
-    if (sceneTargetResolvers[config.id]) {
+    if (sceneTargetResolvers[getWindowKind(config)]) {
       // Torn down rather than kept live, so no content refresh runs against the entities that
       // are being torn down. It keeps its place in the stack.
       unmountWindow(entry, true);
@@ -1156,8 +1287,13 @@ export const loadDraggableWindowStatesFromLS = () => {
     // (eg. back in debug mode from prodTest mode)
     if (!isDraggableWindowAllowed(config)) continue;
     // Reloaded into a scene without the window's target: close it instead of showing "not found"
-    if (sceneTargetResolvers[config.id] && !resolveSceneTarget(entries[i])) {
-      config.isOpen = false;
+    // (a kind window is removed, like any closed kind window)
+    if (sceneTargetResolvers[getWindowKind(config)] && !resolveSceneTarget(entries[i])) {
+      if (config.kind) {
+        removeDraggableWindow(config.id, true);
+      } else {
+        config.isOpen = false;
+      }
       continue;
     }
     openDraggableWindow({ id: config.id, focusFirstElement: false });
@@ -1170,6 +1306,80 @@ export const getDraggableWindow = (id: string): DraggableWindow | undefined => {
   return entry ? toPublicWindow(entry) : undefined;
 };
 
+/**
+ * The id of a kind's window for one key (eg. an entity id): `${kind}_${key}`.
+ * @param kind (string) the window kind
+ * @param key (string | number) what the window is for, unique in the kind
+ */
+export const getKindWindowId = (kind: string, key: string | number) => `${kind}_${key}`;
+
+/**
+ * Registers a window kind (see {@link OpenDraggableWindowProps.kind}) and what its windows share:
+ * their content function, onClose and scene target resolver. Call it once at module load (before
+ * the engine restores the windows from LS), and every window of the kind, also one restored after
+ * a reload, gets them without any per-window registration. Opening a window with a `kind` also
+ * registers the kind (without options).
+ *
+ * The first registration brings the kind's stored windows in: the window whose id is the kind
+ * (from before the kind existed) only seeds the kind's geometry and is dropped, and a window
+ * without a kind whose id is `getKindWindowId(kind, key)` gets the kind. So a single window keeps
+ * using {@link registerDraggableWindowContentFn} and
+ * {@link registerDraggableWindowSceneTargetResolver} (keyed by its id), not this.
+ * @param kind (string) the window kind
+ * @param opts ({@link DraggableWindowKindOpts}) optional, a later registration replaces the
+ * options it passes
+ */
+export const registerDraggableWindowKind = (kind: string, opts?: DraggableWindowKindOpts) => {
+  if (opts?.content) registerDraggableWindowContentFn(kind, opts.content);
+  if (opts?.sceneTargetResolver) sceneTargetResolvers[kind] = opts.sceneTargetResolver;
+  if (opts?.onClose) kindOnCloses[kind] = opts.onClose;
+  if (registeredKinds.has(kind)) return;
+  registeredKinds.add(kind);
+  adoptKind(kind);
+};
+
+/**
+ * The windows of a kind (a window without a `kind` is the only one of the kind named by its id).
+ * @param kind (string) the window kind
+ * @param onlyOpen (boolean) optional, only the open windows (default true)
+ */
+export const getDraggableWindowsOfKind = (kind: string, onlyOpen = true) => {
+  const result: DraggableWindow[] = [];
+  for (const entry of getWindows().values()) {
+    if (getWindowKind(entry.config) !== kind || (onlyOpen && !entry.config.isOpen)) continue;
+    result.push(toPublicWindow(entry));
+  }
+  return result;
+};
+
+/**
+ * Rebuilds the content of every open window of a kind (see {@link updateDraggableWindow}).
+ * @param kind (string) the window kind
+ */
+export const updateDraggableWindowsOfKind = (kind: string) => {
+  const entries = getOpenWindowsOfKind(kind);
+  for (let i = 0; i < entries.length; i++) updateDraggableWindow(entries[i].config.id);
+};
+
+/**
+ * The list row click rule: opens the window when it isn't open, brings it to the front when it is
+ * open under another window of its layer, and closes it when it is on top.
+ * @param props (OpenDraggableWindowProps) the props to open the window with
+ */
+export const toggleDraggableWindow = (props: OpenDraggableWindowProps) => {
+  const entry = getWindows().get(props.id);
+  if (!entry?.config.isOpen || !entry.runtime.windowCMP) {
+    openDraggableWindow({ ...props, closeIfOpen: false });
+    return;
+  }
+  if (!isDraggableWindowOnTop(props.id)) {
+    bringDraggableWindowToFront(props.id);
+    return;
+  }
+  closeDraggableWindow(props.id);
+};
+
+/** @deprecated Use window kinds: {@link getDraggableWindowsOfKind}. */
 export const getDraggableWindowsStartingWith = (startingWithId: string) => {
   const result: DraggableWindow[] = [];
   for (const entry of getWindows().values()) {
@@ -1201,7 +1411,8 @@ export const registerDraggableWindowCmp = (
  * Registers a scene target resolver for a window flagged `closeOnSceneChange`: on a scene change
  * the window stays open (rebuilt for the next scene) when the resolver returns true for the
  * window's `data`, and closes otherwise. It is also checked when restoring the window on reload.
- * @param id (string) window id
+ * One registration covers every window of the kind.
+ * @param id (string) window kind (a window's id when it has no kind)
  * @param resolver ((data) => boolean) whether the window's target exists in the current scene
  */
 export const registerDraggableWindowSceneTargetResolver = (
@@ -1211,6 +1422,12 @@ export const registerDraggableWindowSceneTargetResolver = (
   sceneTargetResolvers[id] = resolver;
 };
 
+/**
+ * Registers the content function of a window, for the opens without `content` (eg. a restore from
+ * LS). One registration covers every window of the kind.
+ * @param id (string) window kind (a window's id when it has no kind)
+ * @param registerContentFn ((data) => TCMP) builds the content from the window's `data`
+ */
 export const registerDraggableWindowContentFn = (
   id: string,
   registerContentFn: (data?: DraggableWindowData) => TCMP

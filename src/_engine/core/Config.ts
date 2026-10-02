@@ -178,8 +178,9 @@ export type AppConfig = {
     /** Max number of history entries kept per scene bucket. Default 50. */
     historySize?: number;
   };
+  /** Keyed by window kind (a window's id when it has no kind) */
   draggableWindows?: {
-    [id: string]: Partial<DraggableWindow> & {
+    [kind: string]: Partial<DraggableWindow> & {
       contentFn?: (data?: { [key: string]: unknown }) => TCMP;
     };
   };
