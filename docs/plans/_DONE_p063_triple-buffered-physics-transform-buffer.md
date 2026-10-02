@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented (Phases 1-3)
 Category: Physics
 Epic: https://trello.com/c/8ROzNdXe/161-make-a-possibility-to-run-the-physics-engine-in-a-thread-threading-architecture-for-all-upcoming-thread-implemantations-not-just
 
@@ -200,3 +200,29 @@ p059's final numbers, the baselines for this plan:
 | `MAIN_THREAD`: `RENDERER` vs. `FIXED_PHYSICS` | identical: lag = `D`, servo error 0, same jitter |
 | Teleport, frames rendered mid-streak | 0 |
 | Allocations on the physics/interpolation paths, 500 bodies (worker / main) | 1.1 / 4.4 MB/s |
+
+## Outcome (implemented)
+
+What landed differs from the design in two places:
+
+- **No `beginWrite()`.** The worker writes the back bank outside write-backs too (the seed pose in `allocateBodySlot`, the zeroing in `freeSlot`), so it owns the back bank for the whole time between publishes, and there is no moment to "begin". Those writes land in the back bank and go out with the next publish. A freed slot is zeroed in that bank only; the other banks keep the deleted body's pose until a write-back reaches them. A new body in a reused slot never reads that pose, because its proxy returns its creation pose until a snapshot stamped after its creation is latched. So the slot-reuse risk above needed no fix on body creation.
+- **Write count.** The worker keeps the write-back counter itself and stores it into each bank's header, so it stays global across banks (on `MESSAGE_BATCH` the values are the same as before). `getWriteCount()` was removed.
+
+The control word is initialised by `createPhysicsTransformArrayBuffer` (middle = bank 1, not fresh), before either side wraps the buffer: the main thread starts on bank 0 and the worker on bank 2. `PhysicsTransformBuffer` accepts 1 or 3 banks only.
+
+### Verification results
+
+The tearing test used a direct per-read check instead of the smoothness spike: kinematic `VELO_BASED` bodies moving at a constant velocity (different per body, the same on x, y and z) all created in one `createRigidBodies` message, so each coordinate gives back the exact step it was captured at. A `requestAnimationFrame` probe compared that step with the snapshot stamp for every body (cases 1 and 3), the three axes with each other (case 4), and a second read pass of the same frame after a busy-wait with the first (case 2). Baseline = Phase 1 (single bank). 2000 bodies, 60Hz physics, 10s per run, headless Chrome on macOS:
+
+| Run | Reads torn vs. stamp | Frames where bodies disagree | Frames where two passes differ | Mean lag (steps) |
+| --- | --- | --- | --- | --- |
+| Baseline SAB | 1,799 / 1.2M | 17 / 600 | 35 / 600 | 1.0 |
+| New SAB (6 runs) | 0 | 0 | 0 | 1.0 |
+| Baseline SAB, 40ms busy-wait between passes | 0 | 0 | 247 / 247 | 2.43 |
+| New SAB, 40ms busy-wait | 0 | 0 | 0 | 2.46 |
+| `MESSAGE_BATCH`, both, with and without busy-wait | 0 | 0 | 0 | 1.0 / 2.45 |
+
+- Lapping, which the browser can't provoke reliably, was tested on the buffer itself in Node (`worker_threads`, 512 slots, 5s): a writer publishing as fast as it can (~2.1M publishes) while the reader latched at random moments (~150k latches, nearly all after several publishes) and read every slot one to three times per latch. 3 banks: 0 torn reads out of 153M. 1 bank: ~99.8% torn.
+- Latency: the expected ~+½ frame didn't show at 2000 bodies (the worker almost always publishes before the next frame starts); a 500-body trial showed +0.2 steps.
+- SAB still allocates when cross-origin isolated (`bankCount` 3, 639,004 B at `maxBodies` 4096); `MESSAGE_BATCH` pushes keep the single-bank size (213,000 B) and carry no `bankCount`.
+- Not re-run: the smoothness jitter matrix, teleport, two worlds, world recreation, the allocation profile and the TRANSFORM-vs-interpolation agreement probe.

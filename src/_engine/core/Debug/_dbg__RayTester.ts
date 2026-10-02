@@ -7,11 +7,8 @@ import {
 } from '../../debug/DebuggerGUI';
 import { _buildDebuggerPane, type BuiltDebuggerPane } from './_dbg__DebuggerPaneBuilder';
 import {
-  addOnCloseToWindow,
-  closeDraggableWindow,
-  getDraggableWindow,
-  openDraggableWindow,
-  registerDraggableWindowContentFn,
+  registerDraggableWindow,
+  toggleDraggableWindow,
   updateDraggableWindow,
 } from '../UI/DraggableWindow';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
@@ -287,7 +284,8 @@ let isPhysicsFiring = false;
  * arrive (eg. the scene changed meanwhile) drops them */
 let physicsFireSerial = 0;
 
-/** The mounted views (stale while a window is closed: they are only written to) */
+/** The mounted windows' views, cleared when a window's content is removed (a closed window's
+ * removed CMPs can't be written to) */
 const resultsViews: Partial<Record<RayTesterKind, TCMP>> = {};
 const helperNotices: Partial<Record<RayTesterKind, TCMP>> = {};
 const pickStatusViews: Partial<Record<RayTesterKind, TCMP>> = {};
@@ -297,22 +295,16 @@ const paneRefreshers: Partial<Record<RayTesterKind, () => void>> = {};
 // Windows
 // ----------------------------------------------------------------------------
 
-/** Opens the kind's tester window, or closes it when it is open. */
+/** Opens the kind's tester window, brings it to the front when it is open under another window,
+ * or closes it when it is on top. */
 export const _toggleRayTesterWindow = (kind: RayTesterKind) => {
-  const id = WINDOW_IDS[kind];
-  if (getDraggableWindow(id)?.isOpen) {
-    closeDraggableWindow(id);
-    cancelPickFor(kind);
-    return;
-  }
-  openDraggableWindow({
-    id,
+  toggleDraggableWindow({
+    id: WINDOW_IDS[kind],
     title: WINDOW_TITLES[kind],
     isDebugWindow: true,
     saveToLS: true,
     position: kind === 'THREE' ? { x: 120, y: 80 } : { x: 160, y: 110 },
     size: { w: 380, h: 640 },
-    content: CONTENT_FNS[kind],
   });
 };
 
@@ -353,19 +345,28 @@ const createTesterContent = <P extends AimedRay>(
   paneItems: (refreshPane: () => void) => DebuggerPaneItem<P>[],
   renderResults: () => void
 ) => {
-  const container = CMP({ class: 'rayTesterWindow' });
+  const container = CMP({
+    class: 'rayTesterWindow',
+    // Only this content's views, never ones a newer content of the kind has set
+    onRemoveCmp: () => {
+      if (helperNotices[kind] === helperNotice) delete helperNotices[kind];
+      if (pickStatusViews[kind] === pickStatusView) delete pickStatusViews[kind];
+      if (paneRefreshers[kind] === refreshPane) delete paneRefreshers[kind];
+      if (resultsViews[kind] === resultsView) delete resultsViews[kind];
+    },
+  });
   container.add(createToolbar(kind));
-  container.add(createHelperNotice(kind));
-  pickStatusViews[kind] = container.add({
+  const helperNotice = createHelperNotice(kind);
+  container.add(helperNotice);
+  const pickStatusView = container.add({
     class: ['winPaddedContent', 'rayTesterPickStatus'],
     // A text CMP, so syncPickStatus can updateText it
     text: '',
   });
+  pickStatusViews[kind] = pickStatusView;
   syncPickStatus(kind);
   // A pick armed for the previous content would write into a replaced params object
   cancelPickFor(kind);
-  // After the window state exists (a window restored from LS has no onClose of its own)
-  queueMicrotask(() => addOnCloseToWindow(WINDOW_IDS[kind], () => cancelPickFor(kind)));
 
   let built: BuiltDebuggerPane | null = null;
   const refreshPane = () => built?.refresh();
@@ -381,7 +382,8 @@ const createTesterContent = <P extends AimedRay>(
   container.add(built.cmp);
   paneRefreshers[kind] = refreshPane;
 
-  resultsViews[kind] = container.add({ class: ['winPaddedContent', 'rayTesterResults'] });
+  const resultsView = container.add({ class: ['winPaddedContent', 'rayTesterResults'] });
+  resultsViews[kind] = resultsView;
   renderResults();
   return container;
 };
@@ -1250,7 +1252,11 @@ const fmt = (n: number) => (Number.isFinite(n) ? n.toFixed(3) : String(n));
 const fmtVec = (v: Vec3) => `(${fmt(v.x)}, ${fmt(v.y)}, ${fmt(v.z)})`;
 
 // Registered at module load (before the saved windows are restored), so a tester window that
-// was open before a reload gets its content
-registerDraggableWindowContentFn(WINDOW_IDS.THREE, createThreeTesterContent);
-registerDraggableWindowContentFn(WINDOW_IDS.PHYSICS, createPhysicsTesterContent);
+// was open before a reload gets its content and its onClose (closing it drops an armed pick)
+for (const kind of Object.keys(WINDOW_IDS) as RayTesterKind[]) {
+  registerDraggableWindow(WINDOW_IDS[kind], {
+    content: CONTENT_FNS[kind],
+    onClose: () => cancelPickFor(kind),
+  });
+}
 registerOnAllSceneEnterings('rayTester', onSceneEnter);

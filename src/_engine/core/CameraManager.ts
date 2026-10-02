@@ -246,7 +246,7 @@ export const disposeCamera = (entityId: number, ecsWorld?: ECSWorld) => {
 
   const camera = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
   if (!camera) {
-    useDebug(cameraDebugGUI)?.updateCamerasDebuggerGUI('LIST');
+    useDebug(cameraDebugGUI)?._onCameraDeleted(entityId, world);
     return;
   }
 
@@ -255,7 +255,7 @@ export const disposeCamera = (entityId: number, ecsWorld?: ECSWorld) => {
   // Note: PerspectiveCamera/OrthographicCamera don't have a .dispose()
   // but if we had custom RenderTargets, we'd kill them here.
 
-  useDebug(cameraDebugGUI)?.updateCamerasDebuggerGUI('LIST');
+  useDebug(cameraDebugGUI)?._onCameraDeleted(entityId, world);
 };
 
 /**

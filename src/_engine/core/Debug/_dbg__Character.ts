@@ -6,16 +6,15 @@ import {
   updateDebuggerTab,
   type DebuggerListItem,
 } from '../../debug/DebuggerGUI';
-import { CMP, type TCMP } from '../../utils/CMP';
+import { CMP } from '../../utils/CMP';
 import { IS_DEBUG_ENV } from '../Config';
 import {
-  addOnCloseToWindow,
   closeDraggableWindow,
-  getDraggableWindow,
-  getDraggableWindowsStartingWith,
-  openDraggableWindow,
-  registerDraggableWindowCmp,
-  updateDraggableWindow,
+  getDraggableWindowsOfKind,
+  getKindWindowId,
+  registerDraggableWindowKind,
+  toggleDraggableWindow,
+  updateDraggableWindowsOfKind,
 } from '../UI/DraggableWindow';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { Pane } from 'tweakpane';
@@ -32,7 +31,6 @@ import { getCurrentSceneId } from '../Scene';
 import { _recordUndoRedoAction, _registerUndoRedoActionHandler } from './_dbg__UndoRedo';
 import {
   _openCharacterStateWindow,
-  _registerCharacterStateWindowCmp,
   CHAR_STATE_WIN_ID,
   getCharacterStateWindowId,
 } from './Character/_dbg__CharacterStateWindow';
@@ -46,11 +44,10 @@ import {
 export { _applySavedCharacterConfig } from './Character/_dbg__CharacterConfigOverrides';
 
 const CHARACTERS_TAB_ID = 'charactersControls';
-const debuggerWindowCmp: { [id: string]: TCMP } = {};
-const debuggerWindowPane: { [id: string]: Pane } = {};
+/** The edit windows' kind: one window per character, keyed by its id */
 const CHAR_EDIT_WIN_ID = 'characterEditorWindow';
 
-const getEditWindowId = (charId: string) => `${CHAR_EDIT_WIN_ID}_${charId}`;
+const getEditWindowId = (charId: string) => getKindWindowId(CHAR_EDIT_WIN_ID, charId);
 /** The list's selection follows the edit windows' open states. */
 const refreshCharactersList = () => updateDebuggerTab(CHARACTERS_TAB_ID);
 // The rows' pin toggles follow the state windows' pin buttons
@@ -101,16 +98,8 @@ const recordCharacterPose = <T extends CharVec3 | CharQuat>(
 };
 
 const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
-  const d = data as { id: string; winId: string };
+  const d = data as { id: string };
   const character = getCharacterById(d.id);
-  if (debuggerWindowPane[d.id]) {
-    debuggerWindowPane[d.id].dispose();
-    delete debuggerWindowPane[d.id];
-  }
-  if (debuggerWindowCmp[d.id]) {
-    debuggerWindowCmp[d.id].remove();
-    delete debuggerWindowCmp[d.id];
-  }
   if (!character) {
     // We want to close the window when no character is found,
     // but we have to return first, so wait one iteration.
@@ -120,15 +109,11 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
     return CMP();
   }
 
-  addOnCloseToWindow(getEditWindowId(d.id), refreshCharactersList);
   // The content is built before the window state is open: refresh the list selection after it
   queueMicrotask(refreshCharactersList);
 
-  debuggerWindowCmp[d.id] = CMP({
-    onRemoveCmp: () => delete debuggerWindowPane[d.id],
-  });
-
-  debuggerWindowPane[d.id] = new Pane({ container: debuggerWindowCmp[d.id].elem });
+  const windowCmp = CMP({ onRemoveCmp: () => pane.dispose() });
+  const pane = new Pane({ container: windowCmp.elem });
 
   // @NOTE: The copy code button is not that easy to implement here
   // because the character object only has references to the mesh and phys objects,
@@ -158,7 +143,7 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
     },
   });
 
-  debuggerWindowCmp[d.id].add({
+  windowCmp.add({
     prepend: true,
     class: ['winNotRightPaddedContent', 'winFlexContent'],
     html: () => `<div>
@@ -177,7 +162,7 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   });
 
   const physRigidBody = getECSWorld().getRigidBody(character.entityId);
-  if (!physRigidBody) return debuggerWindowCmp[d.id];
+  if (!physRigidBody) return windowCmp;
 
   {
     const rigidBody = {
@@ -192,26 +177,26 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
       ),
     };
     // Position
-    const positionInput = debuggerWindowPane[d.id].addBinding(rigidBody, 'position', {
+    const positionInput = pane.addBinding(rigidBody, 'position', {
       label: 'Position',
     });
-    debuggerWindowPane[d.id].addButton({ title: 'Set position' }).on('click', () => {
+    pane.addButton({ title: 'Set position' }).on('click', () => {
       const { x, y, z } = physRigidBody.pos;
       const next = { x: rigidBody.position.x, y: rigidBody.position.y, z: rigidBody.position.z };
       physRigidBody.setTranslation(new THREE.Vector3(next.x, next.y, next.z), true);
       recordCharacterPose(character.id, 'position', { x, y, z }, next);
     });
-    debuggerWindowPane[d.id].addButton({ title: 'Update position input' }).on('click', () => {
+    pane.addButton({ title: 'Update position input' }).on('click', () => {
       rigidBody.position = physRigidBody.pos;
       positionInput.refresh();
     });
-    debuggerWindowPane[d.id].addBlade({ view: 'separator' });
+    pane.addBlade({ view: 'separator' });
     // Rotation
-    const rotationInput = debuggerWindowPane[d.id].addBinding(rigidBody, 'rotation', {
+    const rotationInput = pane.addBinding(rigidBody, 'rotation', {
       label: 'Rotation',
       step: Math.PI / 8,
     });
-    debuggerWindowPane[d.id].addButton({ title: 'Set rotation' }).on('click', () => {
+    pane.addButton({ title: 'Set rotation' }).on('click', () => {
       const { x, y, z, w } = physRigidBody.rot;
       const quat = new THREE.Quaternion().setFromEuler(
         new THREE.Euler(rigidBody.rotation.x, rigidBody.rotation.y, rigidBody.rotation.z)
@@ -224,7 +209,7 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
         { x: quat.x, y: quat.y, z: quat.z, w: quat.w }
       );
     });
-    debuggerWindowPane[d.id].addButton({ title: 'Update rotation input' }).on('click', () => {
+    pane.addButton({ title: 'Update rotation input' }).on('click', () => {
       rigidBody.rotation = new THREE.Euler().setFromQuaternion(
         new THREE.Quaternion(
           physRigidBody.rot.x,
@@ -237,7 +222,7 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
     });
   }
 
-  return debuggerWindowCmp[d.id];
+  return windowCmp;
 };
 
 const getCharactersListData = (): DebuggerListItem[] =>
@@ -248,26 +233,28 @@ const getCharactersListData = (): DebuggerListItem[] =>
     toggleValues: [isCharacterGizmosPinned(character.id)],
   }));
 
+registerDraggableWindowKind(CHAR_EDIT_WIN_ID, {
+  content: createEditCharacterContent,
+  onClose: refreshCharactersList,
+  // Kept open on a scene change when the next scene has a character with the same id
+  sceneTargetResolver: (data) => Boolean(getCharacterById(String(data?.id))),
+});
+
+/** List row click: opens the character's window, brings it to the front, or closes it when on
+ * top. */
 const toggleEditCharacterWindow = (charId: string) => {
   const character = getCharacterById(charId);
   if (!character) return;
-  const winId = getEditWindowId(character.id);
-  const winState = getDraggableWindow(winId);
-  if (winState?.isOpen && winState?.data?.id === charId) {
-    closeDraggableWindow(winId);
-    return;
-  }
-  openDraggableWindow({
-    id: winId,
+  toggleDraggableWindow({
+    id: getEditWindowId(character.id),
+    kind: CHAR_EDIT_WIN_ID,
     position: { x: 110, y: 60 },
     size: { w: 400, h: 400 },
     saveToLS: true,
     title: `Edit character: ${character.name || `[${character.id}]`}`,
     isDebugWindow: true,
-    content: createEditCharacterContent,
-    data: { id: character.id, CHAR_EDIT_WIN_ID: winId },
-    removeOnSceneChange: true, // @TODO: This is the only way to get the character window to work properly after scene change (and coming back), fix this
-    onClose: refreshCharactersList,
+    data: { id: character.id },
+    closeOnSceneChange: true,
   });
 };
 
@@ -319,9 +306,7 @@ export const _createCharactersDebuggerGUI = () => {
         emptyText: 'No characters registered to this scene..',
         data: getCharactersListData,
         selectedItemId: () =>
-          getCharacters()
-            .map((character) => character.id)
-            .filter((charId) => getDraggableWindow(getEditWindowId(charId))?.isOpen),
+          getDraggableWindowsOfKind(CHAR_EDIT_WIN_ID).map((win) => String(win.data?.id)),
         perItemConfig: {
           onClick: toggleEditCharacterWindow,
           toggles: [
@@ -348,24 +333,8 @@ export const _updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   syncCharacterGizmoPins();
   if (only !== 'WINDOW') refreshCharactersList();
   if (only === 'LIST') return;
-  const winStates = [
-    ...getDraggableWindowsStartingWith(CHAR_EDIT_WIN_ID),
-    ...getDraggableWindowsStartingWith(CHAR_STATE_WIN_ID),
-  ];
-  for (let i = 0; i < winStates.length; i++) {
-    const winState = winStates[i];
-    if (winState) {
-      if (!winState.content) {
-        if (winState.id?.startsWith(CHAR_EDIT_WIN_ID)) {
-          registerDraggableWindowCmp(winState.id, {
-            content: createEditCharacterContent,
-            onClose: refreshCharactersList,
-          });
-        } else if (winState.id?.startsWith(CHAR_STATE_WIN_ID)) {
-          _registerCharacterStateWindowCmp(winState.id);
-        }
-      }
-      updateDraggableWindow(winState.id);
-    }
-  }
+  // An edit window whose character is gone closes itself; a state window stays (a character
+  // created again under its id, eg. a respawn, shows up in it)
+  updateDraggableWindowsOfKind(CHAR_EDIT_WIN_ID);
+  updateDraggableWindowsOfKind(CHAR_STATE_WIN_ID);
 };

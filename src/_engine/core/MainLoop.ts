@@ -13,7 +13,12 @@ import { lerror, lwarn } from '../utils/Logger';
 import { getWindowSize } from '../utils/Window';
 import { getEnv, isDebugEnvironment, isProdTestMode, isProductionEnvironment } from './Config';
 import { initDebugTools } from '../debug/DebugToolsManager';
-import { flushPhysicsEvents, getPhysicsState, stepPhysics } from './PhysicsAPI';
+import {
+  flushPhysicsEvents,
+  getPhysicsState,
+  latchPhysicsSnapshot,
+  stepPhysics,
+} from './PhysicsAPI';
 import { pollHeldKeyBindings } from './Input/KeyboardInput';
 import { initRayCasting } from './Raycast';
 import { getAllECSWorlds } from './ECS';
@@ -194,6 +199,7 @@ const mainLoopForDebug = async () => {
   startCustomMeasurements();
 
   timer.update();
+  latchPhysicsSnapshot();
   const dt = timer.getDelta();
 
   if (loopState.masterPlay) {
@@ -245,6 +251,7 @@ const mainLoopForDebug = async () => {
 // **************************************
 const mainLoopForProduction = async () => {
   timer.update();
+  latchPhysicsSnapshot();
   const dt = timer.getDelta();
   if (loopState.masterPlay) {
     delta = dt * loopState.playSpeedMultiplier;
@@ -283,6 +290,7 @@ const mainLoopForProduction = async () => {
 // **************************************
 const mainLoopForProductionWithFPSLimiter = async () => {
   timer.update();
+  latchPhysicsSnapshot();
   const dt = timer.getDelta();
 
   if (loopState.masterPlay) {

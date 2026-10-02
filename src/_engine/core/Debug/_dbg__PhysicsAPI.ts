@@ -11,15 +11,14 @@ import {
 } from '../../debug/DebuggerGUI';
 import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { llog, lwarn } from '../../utils/Logger';
-import { CMP, type TCMP } from '../../utils/CMP';
+import { CMP } from '../../utils/CMP';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import {
-  addOnCloseToWindow,
   closeDraggableWindow,
-  getDraggableWindow,
-  openDraggableWindow,
-  registerDraggableWindowCmp,
-  registerDraggableWindowSceneTargetResolver,
+  getDraggableWindowsOfKind,
+  getKindWindowId,
+  registerDraggableWindowKind,
+  toggleDraggableWindow,
   updateDraggableWindow,
 } from '../UI/DraggableWindow';
 import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
@@ -86,15 +85,14 @@ let physicsApiUIState = {
 /** Merged, so the tab's own folder states in the same key are kept. */
 const persistUIState = () =>
   lsSetItem(UI_LS_KEY, { ...(lsGetItem(UI_LS_KEY, {}) as object), ...physicsApiUIState });
+/** The edit windows' kind: one window per physics entity, keyed by its stable app id (the entity
+ * id without one, see getPhysWinKey) */
 const EDIT_PHYS_ENTITY_WIN_ID = 'physicsApiEntityEditorWindow';
 const PHYSICS_ENTITY_COMPONENT_TYPES = [
   ComponentType.BODY_STATIC,
   ComponentType.BODY_DYNAMIC_VISUAL,
   ComponentType.BODY_DYNAMIC_HEADLESS,
 ] as const;
-
-let entityWindowCmp: TCMP | null = null;
-let entityWindowPane: Pane | null = null;
 
 type PersistedWireframeState = {
   colors?: Partial<Record<WireframeColorState, number>>;
@@ -314,14 +312,11 @@ const getPhysWinEntityId = (data?: { [key: string]: unknown }) => {
   return d.appId ? getEntityIdByAppId(d.appId) : d.entityId;
 };
 
-// Kept open on a scene change when the next scene has a physics entity with the same stable appId
-registerDraggableWindowSceneTargetResolver(EDIT_PHYS_ENTITY_WIN_ID, (data) => {
-  if (!(data as Partial<PhysEntityWinData>)?.appId) return false;
-  const entityId = getPhysWinEntityId(data);
-  return entityId !== undefined && Boolean(getPhysicsEntityRigidBody(entityId));
-});
+/** An entity's edit window key: its stable appId (found again after a scene change or a
+ * reload), else its entity id (session only: the resolver never keeps such a window). */
+const getPhysWinKey = (data: PhysEntityWinData) => data.appId ?? String(data.entityId);
 
-/** The list's selection follows the edit window. */
+/** The list's selection follows the edit windows. */
 const refreshPhysicsTab = () => updateDebuggerTab(TAB_ID);
 
 const getPhysicsEntitiesListData = (): DebuggerListItem[] => {
@@ -334,33 +329,35 @@ const getPhysicsEntitiesListData = (): DebuggerListItem[] => {
   }));
 };
 
+/** The entity's edit window id (the row id is the entity id). */
+const getPhysWinId = (entityId: number) =>
+  getKindWindowId(
+    EDIT_PHYS_ENTITY_WIN_ID,
+    getPhysWinKey({ entityId, appId: getStableAppId(entityId) })
+  );
+
+/** List row click: opens the entity's window, brings it to the front, or closes it when on top. */
 const toggleEditPhysicsEntityWindow = (itemId: string) => {
   const entityId = Number(itemId);
-  const winState = getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
-  if (winState?.isOpen && getPhysWinEntityId(winState.data) === entityId) {
-    closeDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
-    return;
-  }
-  openDraggableWindow({
-    id: EDIT_PHYS_ENTITY_WIN_ID,
+  const data: PhysEntityWinData = { entityId, appId: getStableAppId(entityId) };
+  toggleDraggableWindow({
+    id: getKindWindowId(EDIT_PHYS_ENTITY_WIN_ID, getPhysWinKey(data)),
+    kind: EDIT_PHYS_ENTITY_WIN_ID,
     position: { x: 110, y: 60 },
     size: { w: 400, h: 400 },
     saveToLS: true,
     title: `Edit physics entity: ${getPhysicsEntityLabel(entityId)}`,
     isDebugWindow: true,
-    content: createEditPhysicsEntityContent,
-    data: { entityId, appId: getStableAppId(entityId) },
+    data,
     closeOnSceneChange: true,
-    onClose: refreshPhysicsTab,
   });
 };
 
 /** List toggle: the same setter as the edit window's "Show wireframe" input. */
 const togglePhysicsEntityWireframe = (itemId: string, next: boolean) => {
-  setWireframeVisible(Number(itemId), getECSWorld(), next);
-  if (getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID)?.isOpen) {
-    updateDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
-  }
+  const entityId = Number(itemId);
+  setWireframeVisible(entityId, getECSWorld(), next);
+  updateDraggableWindow(getPhysWinId(entityId));
 };
 
 /**
@@ -433,44 +430,32 @@ const addEntityWireframeControls = (
 };
 
 const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
+  const winId = getKindWindowId(EDIT_PHYS_ENTITY_WIN_ID, getPhysWinKey(data as PhysEntityWinData));
   const entityId = getPhysWinEntityId(data);
   const world = getECSWorld();
-
-  if (entityWindowPane) {
-    entityWindowPane.dispose();
-    entityWindowPane = null;
-  }
-  if (entityWindowCmp) {
-    entityWindowCmp.remove();
-    entityWindowCmp = null;
-  }
 
   const rigidBody = entityId === undefined ? undefined : getPhysicsEntityRigidBody(entityId);
   if (entityId === undefined || !rigidBody) {
     // We want to close the window when no entity is found,
     // but we have to return first, so wait one iteration.
-    setTimeout(() => closeDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID), 0);
+    setTimeout(() => closeDraggableWindow(winId), 0);
     return CMP();
   }
 
-  // The content is built before the window state is open: refresh the list selection after it.
-  // The onClose is set here too, because a window restored from LS has none.
-  queueMicrotask(() => {
-    addOnCloseToWindow(EDIT_PHYS_ENTITY_WIN_ID, refreshPhysicsTab);
-    refreshPhysicsTab();
-  });
+  // The content is built before the window state is open: refresh the list selection after it
+  queueMicrotask(refreshPhysicsTab);
 
   const label = getPhysicsEntityLabel(entityId);
   const colliders = world.getComponent(entityId, ComponentType.COLLIDER);
 
   let isClosed = false;
-  entityWindowCmp = CMP({
+  const entityWindowCmp = CMP({
     onRemoveCmp: () => {
-      entityWindowPane = null;
+      entityWindowPane.dispose();
       isClosed = true;
     },
   });
-  entityWindowPane = new Pane({ container: entityWindowCmp.elem });
+  const entityWindowPane = new Pane({ container: entityWindowCmp.elem });
 
   const logButton = CMP({
     class: 'winSmallIconButton',
@@ -486,7 +471,7 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
       `<button title="Delete this physics entity (removes the ECS entity and its rigid body/colliders)">${getSvgIcon('thrash')}</button>`,
     onClick: () => {
       world.deleteEntity(entityId);
-      closeDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
+      closeDraggableWindow(winId);
     },
   });
 
@@ -588,6 +573,18 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
 
   return entityWindowCmp;
 };
+
+registerDraggableWindowKind(EDIT_PHYS_ENTITY_WIN_ID, {
+  content: createEditPhysicsEntityContent,
+  onClose: refreshPhysicsTab,
+  // Kept open on a scene change when the next scene has a physics entity with the same stable
+  // appId
+  sceneTargetResolver: (data) => {
+    if (!(data as Partial<PhysEntityWinData>)?.appId) return false;
+    const entityId = getPhysWinEntityId(data);
+    return entityId !== undefined && Boolean(getPhysicsEntityRigidBody(entityId));
+  },
+});
 
 type WireframeProxies = {
   colors: Record<WireframeColorState, number>;
@@ -957,11 +954,11 @@ export const _createPhysicsAPIDebugGUI = () => {
           heading: 'Physics entities',
           emptyText: 'No physics entities registered..',
           data: getPhysicsEntitiesListData,
-          selectedItemId: () => {
-            const winState = getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
-            const entityId = winState?.isOpen ? getPhysWinEntityId(winState.data) : undefined;
-            return entityId !== undefined ? String(entityId) : null;
-          },
+          selectedItemId: () =>
+            getDraggableWindowsOfKind(EDIT_PHYS_ENTITY_WIN_ID)
+              .map((win) => getPhysWinEntityId(win.data))
+              .filter((entityId) => entityId !== undefined)
+              .map(String),
           perItemConfig: {
             onClick: toggleEditPhysicsEntityWindow,
             toggles: [
@@ -975,20 +972,4 @@ export const _createPhysicsAPIDebugGUI = () => {
 
   // Hydrated at registration (the same values _hydratePhysicsLiveSettings restored at boot)
   state.timestepRatio = 1 / (state.timestep || 60);
-
-  // The edit window's `content` is a function, which can't survive the JSON
-  // serialization DraggableWindow uses to persist open/position state — after a reload,
-  // a previously-open window reopens with no content attached. Re-attach it, mirroring
-  // _dbg__Character.ts's identical restore pattern. This runs unconditionally at boot
-  // (not inside the tab's lazy `container` callback above) because the window can be
-  // open on reload whether or not this tab has ever been clicked open this session.
-  setTimeout(() => {
-    const winState = getDraggableWindow(EDIT_PHYS_ENTITY_WIN_ID);
-    if (winState && !winState.content) {
-      registerDraggableWindowCmp(EDIT_PHYS_ENTITY_WIN_ID, {
-        content: createEditPhysicsEntityContent,
-        onClose: refreshPhysicsTab,
-      });
-    }
-  }, 0);
 };

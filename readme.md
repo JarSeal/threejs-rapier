@@ -28,7 +28,7 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 - **Rendering**: Three.js `WebGPURenderer` with automatic WebGL fallback, configurable tone mapping, color space and shadow maps.
 - **ECS**: entity ids pack an index and a generation. Plugins and component hooks can be registered at runtime, systems run in fixed stages, and transform storage is either a `Map` or a typed-array (SoA) store.
 - **Physics API**: an engine-agnostic facade with Rapier as the backend. It covers rigid bodies, colliders (including heightfields and imported mesh colliders), impulse joints, ray casts and shape casts, contact and collision events, and fixed-timestep stepping with render interpolation.
-- **Threaded physics**: `WORKER_THREAD` or `MAIN_THREAD` mode. The worker syncs every body's transform through one shared buffer per frame, never one message per body.
+- **Threaded physics**: `WORKER_THREAD` or `MAIN_THREAD` mode. The worker syncs every body's transform through one shared buffer per frame, never one message per body. The buffer is a lock-free triple buffer, so every system in a frame reads the same complete physics step.
 - **Deterministic scene loads**: physics is held during a scene load, the world is recreated fresh, and stepping resumes only after every body exists.
 - **Scene system**: JSON scenes with per-scene overrides (`__saveData`), a customizable scene loader with progress callbacks, and persistent or scene-scoped entities.
 - **Assets**: glTF/GLB import (with Draco), textures, HDR environment maps, per-scene asset ownership and release, and optional worker-thread loading.
@@ -40,7 +40,7 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 - **Ray casting**: Three.js and physics ray APIs with per-frame statistics and debug helpers.
 - **Input**: keyboard, mouse, touch and gamepad, plus picking and rebindable key chords.
 - **Characters**: a dynamic, physics-driven character controller that handles slopes and moving platforms, with swappable body plans (a humanoid capsule built in). Characters are driven through an intent object, from tank, world-fixed (8-direction) or camera-relative keyboard controls, or from code. A locomotion state (idle, walk, run, jump, fall, slide, tumble, …) reports what each one is doing, and a physics-only control mode hands the body to physics, eg. for a ragdoll.
-- **Skyboxes**: equirectangular (including HDR), cube map and sky-and-sun skyboxes.
+- **Sky box**: a layered sky that is both the background and the scene's environment lighting, so reflections match what you see. The base is a colour, an equirectangular (including HDR) or a cube map, and procedural layers go on top: a physically based atmosphere, up to four suns and two phased moons (each can drive a shadow-casting light), stars with a Milky Way, baked nebulae, clouds, a ground and ambient light. A day/night cycle moves the suns, moons and stars from a time of day you can play, pause, speed up or set from code. Presets (`DAY_SKY`, `NIGHT_SKY`, `DAY_NIGHT`, `SPACE`) give a starting point for a definition.
 - **UI**: a lightweight component helper (`CMP`), a HUD layer, draggable windows, dialogs and toasts.
 
 ### Toolkit (`src/toolkit/`)
@@ -57,6 +57,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 - A **debug fly camera** (`F1`), an axes gizmo (`F10`), an environment ball (`F9`) and a debug scene loader.
 - **Undo/redo** for changes made in the debugger.
 - **Physics visualizers**: collider wireframes colored by body state, ray helpers, and query statistics.
+- **Edit windows per entity** (lights, cameras, ECS worlds, PostFX passes, physics entities, assets, characters), several open at a time, kept over reloads and scene changes. Double-clicking a window's header (or the Debug tools tab's "Center and fit all windows") brings windows back to the top of the screen, fitted to it.
 - **Ray tester windows** for firing Three.js or physics rays at the scene.
 - A **character state window** per character, showing its live data grouped and formatted, with freeze and copy. Its configuration values can be **edited live** (with undo, reset, copy-out as code and saving across reloads). It also toggles in-world **character gizmos** for the vectors and probes its controller decides from (velocity, facing, ground normal, floor ray and sensor, wall cast, trail), which can be pinned to stay after the window closes.
 - A **determinism probe** (`?physicsProbe=N`) that hashes and diffs the physics state after N fixed steps.
@@ -306,10 +307,9 @@ The example scenes in [`src/app/`](src/app/) cover more: a physics and joints te
 
 Planned work is specified in [`docs/plans/`](docs/plans/), where a lower number means a higher priority. Highlights:
 
-- A procedural sky and atmosphere, a day/night cycle and a layered skybox system
 - An editor/creator view and a material editor
 - Physics objects in the scene JSON schema, physics world bounds, multibody joints and physics snapshot restore
-- Component query caching and a triple-buffered physics transform buffer
+- Component query caching
 - A client device capability sniffer, an asset optimization pipeline and an LOD system
 
 ---

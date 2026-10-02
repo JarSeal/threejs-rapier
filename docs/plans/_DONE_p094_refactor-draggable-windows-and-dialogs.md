@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented (Phases 1-6)
 Category: Debugger, UI Component
 
 # Refactor Draggable Windows and Dialogs — Plan
@@ -253,45 +253,103 @@ Each edit-window module moves to the same pattern:
 - **Module state that assumed one window becomes per window**, a `Map` keyed by window id that is cleaned up in the content CMP's `onRemoveCmp`. This covers `openWorldEditRefresh`, `infoWindowCmp`, `entityWindowCmp`/`entityWindowPane` and `windowBuiltFor` (§2.4). Each module is also checked for closures that assume one window.
 - **The `setTimeout` / `queueMicrotask` `onClose` re-attach workarounds** (e.g. `_dbg__Assets.ts:693-700`, `_dbg__PhysicsAPI.ts:985-993`) go away where kind registration (§3.8) covers them.
 - **The Character edit window** uses `closeOnSceneChange` with a kind resolver (`getCharacterById`) instead of `removeOnSceneChange` (the `@TODO` at `_dbg__Character.ts:259`). If a rebuild across scenes still fails, it keeps `removeOnSceneChange`, and the reason is recorded here.
-- **Not changed:** the ray tester windows, the dialogs and the Debug tools test windows.
+- **Not changed:** the dialogs and the Debug tools test windows. (The ray tester windows were left out here too, then changed on request: see Phase 5's As built.)
 
 ---
 
 ## 4. Phases (each non-breaking and committable on its own)
 
-### Phase 1: Internal refactor and small bug fixes
+### Phase 1: Internal refactor and small bug fixes — done
 
 - §3.1, §3.2, §3.3 and §3.4. The public API and the props stay as they are.
 - Fix the §2.1 bugs: the dropped `concat`, the `minSize.w` height clamp, the `typeof content` check, the double `onClose`, `onClose` on rebuild, live reset not moving the window, the stale last LS entry, and the LS parse on every lookup.
 - Visible change: windows stack in click order.
 - Check: every window kind still opens, drags, resizes, collapses, restores after a reload and handles a scene change as before (Verification 2–3).
+- As built, where it differs from §3:
+  - LS is read once, on the module's first use, not in `loadDraggableWindowStatesFromLS`. The Assets and Physics modules look their window up (to re-attach its content) from a `setTimeout(0)` that can run before the load.
+  - A closed window keeps no DOM: closing tears its content down, and reopening builds it fresh (a reopened dialog no longer shows its previous content).
+  - `updateDraggableWindow` rebuilds only the content, so a refresh doesn't bring the window to the front or reset its scroll.
+  - A reopen that changes a structural flag (resize handles, header buttons, backdrop, layer) remounts the window.
+  - Also fixed: the clear-LS scope dialog (`confirmClearScope`) opened in the app layer, under the debug windows.
 
-### Phase 2: Units and keeping windows reachable
+### Phase 2: Units and keeping windows reachable — done
 
 - §3.5 and §3.6.
 - Fixes issue 1 (non-px units) and issue 2 (lost windows).
+- As built, where it differs from §3:
+  - `keepOnScreen` works per axis: a window wider than the viewport goes to x = 0 but keeps its y (and the other way round).
+  - `keepOnScreen` runs when a window mounts (open, reload restore, scene change rebuild) and on a `resetPosition`/`resetSize` reopen. A reopen of a live window without a reset keeps its place, so a window hung off an edge on purpose stays there.
+  - The default position (no `position` prop) is the viewport's centre as `50% / 50%`, converted at mount like any non-px position. A non-draggable px window without a position is therefore CSS-centred now.
+  - Units go with their value when resolving: a stored position or size keeps its stored units, a passed one takes the passed units. A caller that passes a `%` position on every open keeps the user's stored px place.
+  - `maxSize` is optional in the config and is always stored with its `units.maxSize`. A stored `maxSize` without units is a pre-p094 viewport snapshot and is dropped on load.
+  - The grab area is the header's `h3` title (measured at drag start), and a resize end always saves (its units may change while the numbers don't).
+  - Verification 4: the Debug tools test window uses a px position, so the `%` path was checked by opening windows through the module in a headless browser.
 
-### Phase 3: Fit to screen
+### Phase 3: Fit to screen — done
 
 - §3.7: `fitDraggableWindowToScreen`, the header double-click, `fitAllDraggableWindowsToScreen` and the Debug tools button.
+- As built, where it differs from §3:
+  - The cascade index runs over the app stack and then the debug stack, not per layer: per-layer indices would put the bottom debug window exactly over the bottom app window's header. Only fitted windows count.
+  - The width is fitted to `viewportW − 2 × margin` without the cascade offset. The x position is clamped so the right edge stays inside the margin, so a wide window gives up its x offset; the y offset alone keeps the headers apart.
+  - The CSS min/max size clamps the shrunk size (like a manual resize), and a shrunk axis is stored in px.
+  - A collapsed window is measured and fitted with `collapsed` removed and transitions off, then collapsed again in the same frame (no flash, no animation).
+  - A window that still overflows after the fit (not resizable, or held by its min size) takes `keepOnScreen` and loses its cascade offset on that axis. Its title stays visible, but it can cover the header buttons of windows below it.
+  - `fitDraggableWindowToScreen` returns whether the window was fitted, and `fitAllDraggableWindowsToScreen` returns the number of windows fitted (the button's toast uses it).
 
-### Phase 4: Window kinds
+### Phase 4: Window kinds — done
 
 - §3.8, in `DraggableWindow.ts` only.
 - No caller changes yet, so single-id windows behave exactly as before.
+- As built, where it differs from §3:
+  - A kind is registered with `registerDraggableWindowKind(kind, { content?, onClose?, sceneTargetResolver? })`, once at module load (§3.8 left "registered kind" open, and the content and resolver registries can't tell a kind from a single-id window like the ray testers). The options are what LS can't hold: every window of the kind gets them, also one restored after a reload, so a kind needs no per-window registration (`registerDraggableWindowCmp`, `addOnCloseToWindow`, the `setTimeout` re-attaches). A window's own `content`/`onClose` win over the kind's. The kind `onClose` gets the window id. Opening a window with `kind` registers the kind too (without options). Declaring runs the LS migration: the entry whose id is the kind (and has no `kind`) seeds the kind's geometry and is dropped, also when it was already restored and mounted. An entry without a `kind` whose id is `${kind}_…` gets the kind, which covers the stored Character windows (they have the id format but no `kind` field). Phase 5 modules call it.
+  - The kind geometry is stored in the same LS object under `__kindGeometry`, with its position and size units, and only for `saveToLS` windows. A new kind window takes it as its stored geometry, so `resetPosition`/`resetSize` still pick the props.
+  - It is recorded at a drag or resize end and when a kind window is closed or removed (a suspended one included), not by a fit or a viewport-resize `keepOnScreen`.
+  - The cascade index is the number of the kind's other open windows. It applies to a new window only, after the px conversion and before `keepOnScreen`.
+  - A kind window restored on reload into a scene without its target is removed, not kept closed. A closed kind entry found in LS is dropped at load.
+  - `toggleDraggableWindow` ignores `closeIfOpen`.
+  - Also fixed, a Phase 1 regression: windows left open didn't all come back after a reload. Phase 1's lazy LS read let the boot's first scene load (inside `appStartFn`, before `loadDraggableWindowStatesFromLS`) treat the stored windows as live ones: it removed the `removeOnSceneChange` ones (Character edit) and closed the `closeOnSceneChange` ones whose resolver wasn't registered yet (PostFX pass, Assets info, whose modules load after `appStartFn`). The scene change start now skips open windows that are neither mounted nor suspended, and leaves them to the restore.
+  - The caller line references in §2.4 have moved since the plan was written (eg. the Character state window's resolver registrations are now at `_dbg__CharacterStateWindow.ts:1396`/`:1402`).
 
-### Phase 5: Edit windows, one per entity
+### Phase 5: Edit windows, one per entity — done
 
-- §3.9, one commit per group:
-  - **5a:** Light and Camera
-  - **5b:** ECS world, PostFX pass, Physics entity and Assets info (these hold the single-window module state)
-  - **5c:** Character edit and Character state (kind registries; drop the per-window resolver and the `registerDraggableWindowCmp` re-attach)
+- §3.9, one commit per group. Each module registers its kind once with `registerDraggableWindowKind(kind, { content, onClose, sceneTargetResolver })` (Phase 4 as built), in place of `registerDraggableWindowContentFn` + `registerDraggableWindowSceneTargetResolver`, and drops its per-window registrations: the `registerDraggableWindowCmp` / `addOnCloseToWindow` re-attaches and their `setTimeout`s, and `content`/`onClose` passed on each open where the kind's are the same.
+  - **5a:** Light and Camera — done
+    - The window key is the app id. Every entity has one (a generated UUID without an `appId`), so it is also the list row id, and `data` is `{ id: appId }` (the unused `winId` is dropped). The content derives its window id with `getKindWindowId`.
+    - `updateLightsDebuggerGUI` / `updateCamerasDebuggerGUI` take an optional `appId` after `only`. With it, they rebuild that window only (undo/redo, list toggles, the shadow map refresh). Without it, they rebuild every open window of the kind (helper toggle all, light added).
+    - Deletes: `disposeLight` / `disposeCamera` call `_onLightDeleted` / `_onCameraDeleted` (in place of the list refresh). That closes the entity's window a microtask later, unless its app id resolves again by then. Then the window is rebuilt: the sky box re-creates a sun light under the same app id in the same call (its `castShadow` change). The check is skipped while a scene loads (`isCurrentlyLoading`), so the scene change still decides which windows stay. A sky light whose sky box re-activates asynchronously (a structural update) comes back too late, and its window closes.
+    - A row with no resolvable entity no longer opens a window.
+  - **5b:** ECS world, PostFX pass, Physics entity and Assets info (these hold the single-window module state) — done
+    - Keys: the world id, the PostFX pass id, the asset row key (`kind:id`), and for a physics entity its stable app id, else its entity id. The physics rows stay keyed by entity id, which changes on every load, so the selection maps each window's `data` back to the current entity id. A window without a stable app id is session only: the resolver never keeps it.
+    - Module state:
+      - `openWorldEditRefresh` → `openWorldEditRefreshes` (by world id)
+      - `windowBuiltFor` → `windowsBuiltFor` (by pass id); the chain listener checks each entry
+      - `entityWindowCmp` / `entityWindowPane` → locals of the content (the pane is now disposed in `onRemoveCmp`)
+      - `infoWindowCmp` dropped: each content build removed the previous window's content, which would have wiped one window's content when another opened
+      - Each map entry is removed in its content's `onRemoveCmp`, only while it is still the one that content set (a rebuild sets a new one).
+    - All four modules load before `loadDraggableWindowStatesFromLS` (Physics through `registerPhysicsAPIDebugGUI`, Assets and PostFX awaited in `InitEngine`), so a kind registered at module load covers the restore. The `setTimeout` `registerDraggableWindowCmp` re-attaches in Assets and Physics are gone.
+    - ECS: a world deleted outside a scene load closes its window on the registry change (which fires after the world is gone). `updateECSWorldsDebuggerGUI` had no callers left and was removed.
+    - Physics: a delete from outside the window still leaves its window open (no delete hook reaches the debug module, as before). The pose undo handlers still don't refresh the window (its inputs have "Update … input" buttons, as before).
+    - PostFX: every scene has one pass, so two PostFX windows at once weren't checked in the app.
+  - **5c:** Character edit and Character state (kind registries; drop the per-window resolver and the `registerDraggableWindowCmp` re-attach) — done
+    - The Character edit window uses `closeOnSceneChange` with a kind resolver (`getCharacterById`). Its `removeOnSceneChange` `@TODO` is gone: re-entering the scene keeps the window and rebuilds it. The state window's `removeOnClose` `@TODO` is gone too: a kind window is removed on close, and a closed one reopens fine.
+    - The edit content's per-character `debuggerWindowCmp` / `debuggerWindowPane` maps are now locals (the pane is disposed in `onRemoveCmp`). The old dispose-the-previous-one step was a workaround for rebuilds that didn't remove the old content.
+    - `_updateCharactersDebuggerGUI` rebuilds both kinds (`updateDraggableWindowsOfKind`) in place of the `getDraggableWindowsStartingWith` loop and its re-registration. `_registerCharacterStateWindowCmp` is gone.
+    - A deleted character's edit window still closes itself from its content. Its state window stays open with "Character not found", so a character created again under its id (a respawn) shows up in it, as before.
+  - **The ray tester windows** (not in §3.9's scope, done on request). They stay two fixed single windows (`debugRayTesterThree` / `debugRayTesterPhysics`). Registering them as kinds would drop their stored windows: the kind adoption treats a window whose id is the kind as a pre-kind leftover.
+    - New `registerDraggableWindow(id, opts)` registers a single window's content, onClose and scene target resolver. It uses the same registries as a kind (keyed by `kind ?? id`) but does no adoption. `registerDraggableWindowKind` now calls it.
+    - The testers register their content and their `onClose` (which drops an armed pick) with it. That replaces `registerDraggableWindowContentFn` and the content's `queueMicrotask` `addOnCloseToWindow`. Their tab buttons use `toggleDraggableWindow`.
+    - Also fixed: closing a tester window with an armed pick threw "Cannot update text, CMP is not a text CMP", since Phase 1 (`onClose` runs after the content is removed, and the pick status view was a removed CMP). The content now clears its kind's views in `onRemoveCmp`, and every reader already skips a missing view.
+  - After Phase 5, the engine no longer calls `registerDraggableWindowCmp`, `addOnCloseToWindow`, `registerDraggableWindowContentFn`, `registerDraggableWindowSceneTargetResolver`, `getDraggableWindowsStartingWith` or `closeAllDraggableWindowsStartingWith` (public API, kept).
 
-### Phase 6: Docs and version
+### Phase 6: Docs and version — done
 
 - Engine minor bump with a `CHANGELOG.md` entry. It mentions the one-time loss of the old fixed-id edit windows' open state (§3.8).
 - `CLAUDE.md` Debug system: one line on window kinds, `toggleDraggableWindow`, the fit actions and the header double-click.
 - `readme.md` only if its debug suite line lists window features.
+- As built:
+  - Engine 4.0.1 → 4.1.0, extending the branch's existing `CHANGELOG.md` entry (the physics patch). Its "Changed" items moved up next to the new ones.
+  - The old per-window helpers are marked `@deprecated` (`registerDraggableWindowContentFn`, `registerDraggableWindowSceneTargetResolver`, `registerDraggableWindowCmp`, `addOnCloseToWindow`, and the two `…StartingWith` functions). The module no longer calls them itself.
+  - `readme.md` gets an "Edit windows per entity" bullet in its Debug suite list, which already names the ray tester and character state windows.
 
 ---
 

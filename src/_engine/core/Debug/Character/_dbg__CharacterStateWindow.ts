@@ -8,9 +8,9 @@ import type { CharacterObject } from '../../Character/CharacterTypes';
 import { createSceneMainLooper, deleteSceneMainLooper, getCurrentSceneId } from '../../Scene';
 import {
   getDraggableWindow,
+  getKindWindowId,
   openDraggableWindow,
-  registerDraggableWindowCmp,
-  registerDraggableWindowSceneTargetResolver,
+  registerDraggableWindowKind,
 } from '../../UI/DraggableWindow';
 import { getSvgIcon, type SvgIconKey } from '../../UI/icons/SvgIcon';
 import {
@@ -48,9 +48,11 @@ import styles from './CharacterStateWindow.module.scss';
  * changed, in open groups only.
  */
 
-// Kept from the legacy tracker window, so saved window positions and sizes still apply
+// The windows' kind: one window per character, keyed by its id. Kept from the legacy tracker
+// window, so saved window positions and sizes still apply.
 export const CHAR_STATE_WIN_ID = 'characterDataTrackerWindow';
-export const getCharacterStateWindowId = (charId: string) => `${CHAR_STATE_WIN_ID}_${charId}`;
+export const getCharacterStateWindowId = (charId: string) =>
+  getKindWindowId(CHAR_STATE_WIN_ID, charId);
 
 const LS_KEY = 'AEK_charStateWin';
 const COST_READOUT_INTERVAL_MS = 250;
@@ -1384,34 +1386,27 @@ export const _createCharacterStateWindowContent = (winData?: { [key: string]: un
   return rootCmp;
 };
 
-// The window stays open over a scene change when the next scene has a character with the same id
-const characterStateWindowTarget = (data?: { [key: string]: unknown }) => {
-  const charId = (data as { id?: string } | undefined)?.id;
-  return Boolean(charId && getCharacterById(charId));
-};
+registerDraggableWindowKind(CHAR_STATE_WIN_ID, {
+  content: _createCharacterStateWindowContent,
+  // The window stays open over a scene change when the next scene has a character with the same
+  // id
+  sceneTargetResolver: (data) => {
+    const charId = (data as { id?: string } | undefined)?.id;
+    return Boolean(charId && getCharacterById(charId));
+  },
+});
 
-/** Attaches the content function and the scene target resolver to a window (eg. one restored
- * from LS, which has neither). */
-export const _registerCharacterStateWindowCmp = (winId: string) => {
-  registerDraggableWindowSceneTargetResolver(winId, characterStateWindowTarget);
-  registerDraggableWindowCmp(winId, { content: _createCharacterStateWindowContent });
-};
-
-/** Opens the character's state window. */
+/** Opens the character's state window (or brings it to the front). */
 export const _openCharacterStateWindow = (character: CharacterObject) => {
-  const winId = getCharacterStateWindowId(character.id);
-  registerDraggableWindowSceneTargetResolver(winId, characterStateWindowTarget);
   openDraggableWindow({
-    id: winId,
+    id: getCharacterStateWindowId(character.id),
+    kind: CHAR_STATE_WIN_ID,
     position: { x: 130, y: 80 },
     size: { w: 460, h: 520 },
     saveToLS: true,
     title: `Character state: ${character.name || `[${character.id}]`}`,
     isDebugWindow: true,
-    content: _createCharacterStateWindowContent,
-    data: { id: character.id, winId },
+    data: { id: character.id },
     closeOnSceneChange: true,
-    // @TODO: Without this the window won't work on the second open (DraggableWindow close vs. remove)
-    removeOnClose: true,
   });
 };

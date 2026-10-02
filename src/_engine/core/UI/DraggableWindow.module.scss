@@ -45,6 +45,7 @@ $collapseAnimLength: 150ms;
   background: rgba(255, 255, 255, 0.05);
   cursor: ns-resize;
   user-select: none;
+  touch-action: none;
   border-radius: 0.2rem;
 }
 
@@ -59,6 +60,7 @@ $collapseAnimLength: 150ms;
   background: rgba(255, 255, 255, 0.05);
   cursor: ew-resize;
   user-select: none;
+  touch-action: none;
   border-radius: 0.2rem;
 }
 
@@ -71,6 +73,7 @@ $collapseAnimLength: 150ms;
   max-width: 50%;
   cursor: nwse-resize;
   user-select: none;
+  touch-action: none;
 
   &:before,
   &:after {
@@ -122,6 +125,7 @@ $collapseAnimLength: 150ms;
   overflow: hidden;
   border-bottom-width: 0;
   user-select: none;
+  touch-action: none;
   border-radius: variables.$borderRadiusSmall variables.$borderRadiusSmall 0 0;
 
   .draggable & {

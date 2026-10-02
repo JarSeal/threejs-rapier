@@ -69,6 +69,7 @@ export const confirmClearScope = (opts: {
     id: CONFIRM_CLEAR_SCOPE_DIALOG_ID,
     closeIfOpen: true,
     title: 'Clear local storage data',
+    isDebugWindow: true,
     size: { w: 360, h: 200 },
     content: () => {
       const wrapper = CMP({

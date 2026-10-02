@@ -491,7 +491,7 @@ export const disposeLight = (entityId: number, ecsWorld?: ECSWorld) => {
 
   const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
   if (!objComp) {
-    useDebug(debugGUI)?.updateLightsDebuggerGUI();
+    useDebug(debugGUI)?._onLightDeleted(entityId, world);
     return;
   }
 
@@ -503,7 +503,7 @@ export const disposeLight = (entityId: number, ecsWorld?: ECSWorld) => {
   light.removeFromParent();
   light.dispose();
 
-  useDebug(debugGUI)?.updateLightsDebuggerGUI();
+  useDebug(debugGUI)?._onLightDeleted(entityId, world);
 };
 
 // --- DEBUG LIGHT HELPERS ---
