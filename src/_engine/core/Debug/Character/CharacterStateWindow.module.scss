@@ -11,17 +11,22 @@ $monoStack: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   color: variables.$debugTextColor;
 }
 
-.header {
+.headerRows {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  flex-direction: column;
+  gap: 0.4rem;
   padding-bottom: 0.6rem;
   margin-bottom: 0.4rem;
   border-bottom: 0.1rem solid variables.$debugGuiBackgroundLighter2;
 }
 
-.intervalInput {
-  width: 6.4rem;
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+@mixin numberInput {
   padding: 0.1rem 0.4rem;
   border: 0.1rem solid variables.$debugGuiBackgroundLighter2;
   border-radius: 0.2rem;
@@ -32,17 +37,49 @@ $monoStack: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   text-align: right;
 }
 
-.flashToggle {
+.intervalInput {
+  @include numberInput;
+  width: 6.4rem;
+}
+
+.scaleInput {
+  @include numberInput;
+  width: 5.6rem;
+}
+
+.toggle {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  margin-left: 0.6rem;
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
 
   input {
     margin: 0;
   }
+
+  &.isDisabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+}
+
+.flashToggle {
+  margin-left: 0.6rem;
+}
+
+.gizmoRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.8rem;
+}
+
+.rowSeparator {
+  align-self: stretch;
+  width: 0.1rem;
+  background-color: variables.$debugGuiBackgroundLighter2;
 }
 
 // Beats the global class's margins (both are one class), which are for a button row

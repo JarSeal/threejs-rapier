@@ -13,6 +13,17 @@ import {
   registerDraggableWindowSceneTargetResolver,
 } from '../../UI/DraggableWindow';
 import { getSvgIcon } from '../../UI/icons/SvgIcon';
+import {
+  acquireCharacterGizmos,
+  CHARACTER_GIZMOS,
+  isCharacterGizmoAvailable,
+  releaseCharacterGizmos,
+  setCharacterGizmoDepthTest,
+  setCharacterGizmoEnabled,
+  setCharacterGizmosFrozen,
+  setCharacterGizmoVectorScale,
+  type CharacterGizmoSet,
+} from './_dbg__CharacterGizmos';
 import styles from './CharacterStateWindow.module.scss';
 
 /**
@@ -87,6 +98,8 @@ type StateWindowInstance = {
   settings: StateWindowSettings;
   /** Updates are skipped and the snapshot stays on screen (per window, not persisted) */
   isFrozen: boolean;
+  /** The character's gizmo set, owned by this window while it lives (null: no character) */
+  gizmos: CharacterGizmoSet | null;
   lastUpdate: number;
   costSum: number;
   costCount: number;
@@ -475,6 +488,8 @@ const setFrozen = (inst: StateWindowInstance, isFrozen: boolean) => {
   }
   inst.isFrozen = isFrozen;
   inst.lastUpdate = performance.now();
+  // The gizmos hold the same moment as the table
+  if (inst.gizmos) setCharacterGizmosFrozen(inst.gizmos, isFrozen);
 };
 
 /** Copies the character's live data (also while frozen). Logs it when the clipboard fails. */
@@ -501,6 +516,10 @@ const disposeInstance = (inst: StateWindowInstance) => {
   if (inst.looperIndex > -1) {
     deleteSceneMainLooper(inst.looperIndex, inst.sceneId || undefined, true);
     inst.looperIndex = -1;
+  }
+  if (inst.gizmos) {
+    releaseCharacterGizmos(inst.gizmos, inst);
+    inst.gizmos = null;
   }
   // A rebuilt window's new instance may already be registered under the same character
   if (instances.get(inst.charId) === inst) instances.delete(inst.charId);
@@ -573,6 +592,77 @@ const createLooper = (inst: StateWindowInstance, rootElem: HTMLElement) => () =>
   updateCostReadout(inst, end);
 };
 
+/** A compact checkbox label (the header rows' toggles). */
+const createToggle = (
+  text: string,
+  title: string,
+  checked: boolean,
+  onChange: (checked: boolean) => void
+) => {
+  const label = createElem('label', `winSmallLabel ${styles.toggle}`);
+  label.title = title;
+  const input = createElem('input') as HTMLInputElement;
+  input.type = 'checkbox';
+  input.checked = checked;
+  input.addEventListener('change', () => onChange(input.checked));
+  label.appendChild(input);
+  label.appendChild(document.createTextNode(text));
+  return label;
+};
+
+/** The gizmo toggles, the depth test and the vector scale. Wraps on a narrow window. */
+const createGizmoRow = (gizmos: CharacterGizmoSet) => {
+  const row = createElem('div', styles.gizmoRow);
+  row.appendChild(createElem('span', 'winSmallLabel', 'Gizmos:'));
+
+  for (const { id, label, title, isLate } of CHARACTER_GIZMOS) {
+    const toggle = createToggle(
+      label,
+      isLate ? `${title}\n${LATE_VALUE_NOTE}` : title,
+      gizmos.settings.enabled[id],
+      (checked) => setCharacterGizmoEnabled(gizmos, id, checked)
+    );
+    if (!isCharacterGizmoAvailable(id)) {
+      (toggle.firstChild as HTMLInputElement).disabled = true;
+      toggle.classList.add(styles.isDisabled);
+    }
+    row.appendChild(toggle);
+  }
+
+  row.appendChild(createElem('span', styles.rowSeparator));
+
+  row.appendChild(
+    createToggle(
+      'Depth',
+      'Hide the gizmos behind geometry (off: drawn on top of everything)',
+      gizmos.settings.depthTest,
+      (checked) => setCharacterGizmoDepthTest(gizmos, checked)
+    )
+  );
+
+  const scaleLabel = createElem('label', `winSmallLabel ${styles.toggle}`);
+  scaleLabel.title = "The velocity arrows' length per m/s (m)";
+  scaleLabel.appendChild(document.createTextNode('Scale'));
+  const scaleInput = createElem('input', styles.scaleInput) as HTMLInputElement;
+  scaleInput.type = 'number';
+  scaleInput.min = '0.01';
+  scaleInput.step = '0.05';
+  scaleInput.value = String(gizmos.settings.vectorScale);
+  scaleInput.addEventListener('input', () => {
+    // An emptied or invalid input keeps the last valid scale
+    if (Number(scaleInput.value) > 0) setCharacterGizmoVectorScale(gizmos, scaleInput.value);
+  });
+  // Shows the value in use once editing is done
+  scaleInput.addEventListener(
+    'change',
+    () => (scaleInput.value = String(gizmos.settings.vectorScale))
+  );
+  scaleLabel.appendChild(scaleInput);
+  row.appendChild(scaleLabel);
+
+  return row;
+};
+
 const createHeader = (inst: StateWindowInstance) => {
   const header = createElem('div', styles.header);
 
@@ -594,17 +684,16 @@ const createHeader = (inst: StateWindowInstance) => {
   header.appendChild(input);
   header.appendChild(createElem('span', 'winSmallLabel', 'ms'));
 
-  const flashToggle = createElem('label', `winSmallLabel ${styles.flashToggle}`);
-  flashToggle.title = 'Flash a row when its value changes (not vectors or State numbers)';
-  const flashInput = createElem('input') as HTMLInputElement;
-  flashInput.type = 'checkbox';
-  flashInput.checked = inst.settings.flash;
-  flashInput.addEventListener('change', () => {
-    inst.settings.flash = flashInput.checked;
-    saveSettings(inst.settings);
-  });
-  flashToggle.appendChild(flashInput);
-  flashToggle.appendChild(document.createTextNode('Flash'));
+  const flashToggle = createToggle(
+    'Flash',
+    'Flash a row when its value changes (not vectors or State numbers)',
+    inst.settings.flash,
+    (checked) => {
+      inst.settings.flash = checked;
+      saveSettings(inst.settings);
+    }
+  );
+  flashToggle.classList.add(styles.flashToggle);
   header.appendChild(flashToggle);
 
   const freezeButton = createElem('button', `winSmallIconButton ${styles.headerButton}`);
@@ -661,6 +750,7 @@ export const _createCharacterStateWindowContent = (winData?: { [key: string]: un
     keyCount: 0,
     settings: loadSettings(),
     isFrozen: false,
+    gizmos: null,
     lastUpdate: 0,
     costSum: 0,
     costCount: 0,
@@ -672,7 +762,9 @@ export const _createCharacterStateWindowContent = (winData?: { [key: string]: un
     class: styles.root,
     onRemoveCmp: () => disposeInstance(inst),
   });
-  rootCmp.elem.appendChild(createHeader(inst));
+  const headerRows = createElem('div', styles.headerRows);
+  headerRows.appendChild(createHeader(inst));
+  rootCmp.elem.appendChild(headerRows);
   rootCmp.elem.appendChild(inst.body);
 
   const character = getCharacterById(charId);
@@ -681,6 +773,8 @@ export const _createCharacterStateWindowContent = (winData?: { [key: string]: un
     return rootCmp;
   }
 
+  inst.gizmos = acquireCharacterGizmos(charId, inst);
+  if (inst.gizmos) headerRows.appendChild(createGizmoRow(inst.gizmos));
   buildGroups(inst, character.data);
   if (sceneId) {
     inst.looperIndex = createSceneMainLooper(createLooper(inst, rootCmp.elem), sceneId, true);
