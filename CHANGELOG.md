@@ -26,8 +26,13 @@ Earlier releases are only recorded in the git history.
   - Freeze keeps the current values on screen, and Copy JSON copies the live data.
   - Several windows run side by side. A window stays open over a scene change when the next scene has a character with the same id.
   - The interval, flash and group states persist in `AEK_charStateWin`.
+- `CharacterController.probes` (`CharacterProbes`): the controller's body plan, dimensions and collider roles, and its last floor ray and wall cast as it used them (`CharacterCastRecord`: origin, direction, stance, length, hit point and normal, and when the result arrived). Read-only diagnostics, written in place with no allocation per cast. Rejected wall hits and misses are kept too.
+- Character debug gizmos, toggled in a second header row of the Character state window: velocity, velocity relative to a moving platform, facing, the ground normal (green walkable, red too steep), the floor ray (solid to the hit, dashed past it), the floor sensor (lit while grounded), the last wall cast (its cylinder and sweep, with the hit normal green when used as a wall and red when rejected) and a trail of the last ~2 s.
+  - They start from the visual's pose of the frame being drawn, so they don't jitter against an interpolated mesh. Freezing the window freezes them too.
+  - Drawn on top by default, with a Depth toggle, and a Scale for the velocity arrows (metres per m/s). The toggles, depth and scale persist in `AEK_charGizmos`.
+  - Pin keeps a character's gizmos after its window closes, set from the window or from the character's row in the Characters tab. A pin is kept over a scene change when the next scene has a character with the same id (session only).
 - The character edit window (debug) shows `kind` and `controlMode`.
-- The `circleCheckCutout` and `circleXCutout` icons, and the `$debugBoolTrue`, `$debugBoolFalse` and `$debugValueFlash` Sass colours.
+- The `circleCheckCutout`, `circleXCutout` and `pin` icons, and the `$debugBoolTrue`, `$debugBoolFalse` and `$debugValueFlash` Sass colours.
 
 **Changed**
 
@@ -60,6 +65,7 @@ Earlier releases are only recorded in the git history.
 - A character could cross or stand on slopes steeper than `_maxWalkableAngle`. It now slides down them, pushed by `_slopeSlideSpeed`.
 - A sensor in front of a wall cancelled the wall slide, the wall cast was off-centre while crouching, and all characters shared one wall-hit result.
 - `controlFns` kept writing to the body after the character was deleted, which crashed Rapier in `MAIN_THREAD` mode.
+- `ShapeCastHitAPI`'s docs had the witness and normal pairs the wrong way round: `witness1`/`normal1` are on the hit collider, in world space.
 
 ### Toolkit 1.2.0 (Crescent)
 

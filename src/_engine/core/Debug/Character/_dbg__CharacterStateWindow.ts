@@ -17,10 +17,13 @@ import {
   acquireCharacterGizmos,
   CHARACTER_GIZMOS,
   isCharacterGizmoAvailable,
+  isCharacterGizmosPinned,
+  onCharacterGizmoPinsChange,
   releaseCharacterGizmos,
   setCharacterGizmoDepthTest,
   setCharacterGizmoEnabled,
   setCharacterGizmosFrozen,
+  setCharacterGizmosPinned,
   setCharacterGizmoVectorScale,
   type CharacterGizmoSet,
 } from './_dbg__CharacterGizmos';
@@ -100,6 +103,8 @@ type StateWindowInstance = {
   isFrozen: boolean;
   /** The character's gizmo set, owned by this window while it lives (null: no character) */
   gizmos: CharacterGizmoSet | null;
+  /** Stops the pin button following pin changes made elsewhere (the Characters tab) */
+  unsubscribePin: (() => void) | null;
   lastUpdate: number;
   costSum: number;
   costCount: number;
@@ -517,6 +522,8 @@ const disposeInstance = (inst: StateWindowInstance) => {
     deleteSceneMainLooper(inst.looperIndex, inst.sceneId || undefined, true);
     inst.looperIndex = -1;
   }
+  inst.unsubscribePin?.();
+  inst.unsubscribePin = null;
   if (inst.gizmos) {
     releaseCharacterGizmos(inst.gizmos, inst);
     inst.gizmos = null;
@@ -610,8 +617,28 @@ const createToggle = (
   return label;
 };
 
-/** The gizmo toggles, the depth test and the vector scale. Wraps on a narrow window. */
-const createGizmoRow = (gizmos: CharacterGizmoSet) => {
+/** The pin: the gizmos stay after the window closes. Also set from the Characters tab. */
+const createPinButton = (inst: StateWindowInstance) => {
+  const button = createElem('button', `winSmallIconButton ${styles.headerButton}`);
+  button.innerHTML = getSvgIcon('pin');
+  const render = () => {
+    const isPinned = isCharacterGizmosPinned(inst.charId);
+    button.title = isPinned
+      ? 'Unpin the gizmos (they go when this window closes)'
+      : 'Pin the gizmos (they stay after this window closes, until unpinned here or in the Characters tab)';
+    button.classList.toggle('current', isPinned);
+    button.setAttribute('aria-pressed', String(isPinned));
+  };
+  render();
+  button.addEventListener('click', () =>
+    setCharacterGizmosPinned(inst.charId, !isCharacterGizmosPinned(inst.charId))
+  );
+  inst.unsubscribePin = onCharacterGizmoPinsChange(render);
+  return button;
+};
+
+/** The gizmo toggles, the depth test, the vector scale and the pin. Wraps on a narrow window. */
+const createGizmoRow = (inst: StateWindowInstance, gizmos: CharacterGizmoSet) => {
   const row = createElem('div', styles.gizmoRow);
   row.appendChild(createElem('span', 'winSmallLabel', 'Gizmos:'));
 
@@ -659,6 +686,9 @@ const createGizmoRow = (gizmos: CharacterGizmoSet) => {
   );
   scaleLabel.appendChild(scaleInput);
   row.appendChild(scaleLabel);
+
+  row.appendChild(createElem('span', styles.rowSeparator));
+  row.appendChild(createPinButton(inst));
 
   return row;
 };
@@ -751,6 +781,7 @@ export const _createCharacterStateWindowContent = (winData?: { [key: string]: un
     settings: loadSettings(),
     isFrozen: false,
     gizmos: null,
+    unsubscribePin: null,
     lastUpdate: 0,
     costSum: 0,
     costCount: 0,
@@ -774,7 +805,7 @@ export const _createCharacterStateWindowContent = (winData?: { [key: string]: un
   }
 
   inst.gizmos = acquireCharacterGizmos(charId, inst);
-  if (inst.gizmos) headerRows.appendChild(createGizmoRow(inst.gizmos));
+  if (inst.gizmos) headerRows.appendChild(createGizmoRow(inst, inst.gizmos));
   buildGroups(inst, character.data);
   if (sceneId) {
     inst.looperIndex = createSceneMainLooper(createLooper(inst, rootCmp.elem), sceneId, true);

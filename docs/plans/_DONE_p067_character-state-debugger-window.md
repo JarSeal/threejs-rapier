@@ -1,6 +1,6 @@
 Status: implemented
 Category: Character, Debugger
-Blocks: p068_character-debug-gizmos.md, p069_character-live-config-editing.md
+Blocks: _DONE_p068_character-debug-gizmos.md, p069_character-live-config-editing.md
 
 # Character State Debugger Window — Plan
 

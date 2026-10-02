@@ -20,10 +20,12 @@ import {
 } from '../../LineManager';
 import type { ColliderParams } from '../../Physics/PhysicsAPITypes';
 import { getPhysGameTime } from '../../PhysicsAPI';
+import { registerOnAllSceneEnterings } from '../../Scene';
 
 /**
  * Character debug gizmos: in-world overlays of the vectors and probes a character's controller
- * decides its state from. A character's gizmo set lives while it has an owner (its state window).
+ * decides its state from. A character's gizmo set lives while it has an owner (its state window,
+ * its pin).
  *
  * The lines are refilled at APP_RENDER_SYNC after the pose producers (POSE_CONSUMERS), so they
  * start from the visual's pose of the frame being drawn (a main late looper runs after the render,
@@ -88,7 +90,11 @@ export const CHARACTER_GIZMOS: {
       'Hit normal: green used as a wall, red rejected (|y| > _wallNormalMaxY)',
     isLate: true,
   },
-  { id: 'trail', label: 'Trail', title: 'The last ~2 s of the path' },
+  {
+    id: 'trail',
+    label: 'Trail',
+    title: "The last ~2 s of the visual's path (restarts when turned on or unfrozen)",
+  },
 ];
 const GIZMO_IDS = CHARACTER_GIZMOS.map((g) => g.id);
 
@@ -127,6 +133,7 @@ type GizmoFrame = {
   /** The visual's world rotation this frame */
   rotation: THREE.Quaternion;
   settings: CharacterGizmoSettings;
+  trail: TrailBuffer;
 };
 
 type GizmoImpl = {
@@ -147,6 +154,7 @@ const GIZMO_COLORS = {
   sensorGrounded: 0xc6ff00,
   sensorAirborne: 0x707070,
   wallCast: 0xff9a1f,
+  trail: 0xb388ff,
 };
 const FACING_LENGTH = 0.8;
 const NORMAL_LENGTH = 0.5;
@@ -164,6 +172,9 @@ const SPHERE_SEGMENTS = CIRCLE_SEGMENTS * 3;
 const WALL_CAST_SEGMENTS = CIRCLE_SEGMENTS * 2 + 5;
 /** A wall cast is drawn this long after its result arrived (physics time) */
 const WALL_CAST_HOLD_MS = 300;
+const TRAIL_SAMPLES = 64;
+/** About 2 s of path over TRAIL_SAMPLES (performance.now()) */
+const TRAIL_SAMPLE_INTERVAL_MS = 33;
 const CIRCLE_COS: number[] = [];
 const CIRCLE_SIN: number[] = [];
 for (let i = 0; i <= CIRCLE_SEGMENTS; i++) {
@@ -369,6 +380,43 @@ const getFloorSensorBall = (probes: Readonly<CharacterProbes>, character: Charac
 
 const _sensorCenter = new THREE.Vector3();
 
+/** A ring of anchor positions, oldest overwritten first. */
+type TrailBuffer = {
+  /** xyz per sample */
+  positions: Float64Array;
+  /** The next sample's index */
+  head: number;
+  count: number;
+  /** performance.now() of the newest sample */
+  sampledAt: number;
+};
+
+const createTrailBuffer = (): TrailBuffer => ({
+  positions: new Float64Array(TRAIL_SAMPLES * 3),
+  head: 0,
+  count: 0,
+  sampledAt: 0,
+});
+
+/** Empties the trail, so the next refill starts a new path. */
+const resetTrail = (trail: TrailBuffer) => {
+  trail.head = 0;
+  trail.count = 0;
+  trail.sampledAt = 0;
+};
+
+const sampleTrail = (trail: TrailBuffer, anchor: THREE.Vector3) => {
+  const now = performance.now();
+  if (trail.count && now - trail.sampledAt < TRAIL_SAMPLE_INTERVAL_MS) return;
+  trail.sampledAt = now;
+  const i = trail.head * 3;
+  trail.positions[i] = anchor.x;
+  trail.positions[i + 1] = anchor.y;
+  trail.positions[i + 2] = anchor.z;
+  trail.head = (trail.head + 1) % TRAIL_SAMPLES;
+  if (trail.count < TRAIL_SAMPLES) trail.count++;
+};
+
 /** A vector arrow from the anchor, scaled by the vector scale. */
 const writeVectorFromAnchor = (line: LineObject, vec: Vec3 | undefined, frame: GizmoFrame) => {
   const w = line.beginWrite();
@@ -504,6 +552,32 @@ const GIZMO_IMPLS: Partial<Record<CharacterGizmoId, GizmoImpl>> = {
       }
     },
   },
+  trail: {
+    // The samples' polyline, and the newest sample to the anchor (so it always reaches the mesh)
+    lines: [{ capacity: TRAIL_SAMPLES, color: GIZMO_COLORS.trail }],
+    write: (lines, frame) => {
+      const { trail, anchor } = frame;
+      sampleTrail(trail, anchor);
+      const w = lines[0].beginWrite();
+      const p = trail.positions;
+      // Oldest first: the ring's head is the oldest sample once it is full
+      const start = trail.count < TRAIL_SAMPLES ? 0 : trail.head;
+      let prev = start * 3;
+      for (let n = 1; n < trail.count; n++) {
+        const next = ((start + n) % TRAIL_SAMPLES) * 3;
+        w.segment(p[prev], p[prev + 1], p[prev + 2], p[next], p[next + 1], p[next + 2]);
+        prev = next;
+      }
+      // None on the frame it sampled (the newest sample is the anchor)
+      if (
+        trail.count &&
+        (p[prev] !== anchor.x || p[prev + 1] !== anchor.y || p[prev + 2] !== anchor.z)
+      ) {
+        w.segment(p[prev], p[prev + 1], p[prev + 2], anchor.x, anchor.y, anchor.z);
+      }
+      lines[0].endWrite();
+    },
+  },
   wallCast: {
     lines: [
       // The cast that hit, and the one that missed
@@ -559,6 +633,7 @@ export type CharacterGizmoSet = {
   lines: Partial<Record<CharacterGizmoId, LineObject[]>>;
   /** Refills are skipped and the lines keep their last geometry */
   isFrozen: boolean;
+  trail: TrailBuffer;
   isDisposed: boolean;
 };
 
@@ -570,6 +645,7 @@ const frame: GizmoFrame = {
   anchor: new THREE.Vector3(),
   rotation: new THREE.Quaternion(),
   settings: DEFAULT_SETTINGS,
+  trail: createTrailBuffer(),
 };
 const _scale = new THREE.Vector3();
 
@@ -629,6 +705,7 @@ const refillSet = (set: CharacterGizmoSet, world: ECSWorld, all = false) => {
   frame.character = character;
   frame.probes = character.controller?.probes;
   frame.settings = set.settings;
+  frame.trail = set.trail;
 
   for (let i = 0; i < GIZMO_IDS.length; i++) {
     const id = GIZMO_IDS[i];
@@ -662,6 +739,7 @@ const createSet = (character: CharacterObject): CharacterGizmoSet => {
     settings,
     lines: {},
     isFrozen: false,
+    trail: createTrailBuffer(),
     isDisposed: false,
   };
   for (const id of GIZMO_IDS) {
@@ -730,11 +808,71 @@ export const acquireCharacterGizmos = (charId: string, owner: object) => {
   return set;
 };
 
-/** Removes an owner. The last one out disposes the set (its lines). */
+/** Removes an owner. The last one out disposes the set (its lines). A set kept by the pin is
+ * unfrozen: only its window could unfreeze it. */
 export const releaseCharacterGizmos = (set: CharacterGizmoSet, owner: object) => {
   set.owners.delete(owner);
-  if (!set.owners.size) disposeSet(set);
+  if (!set.owners.size) {
+    disposeSet(set);
+    return;
+  }
+  setCharacterGizmosFrozen(set, false);
 };
+
+// Pins
+
+/** The pin's owner of a set (a set is one character's, so one object serves every pin) */
+const PIN_OWNER = {};
+/** Session only. A pin is by character id: it outlives its set while the character is gone (eg.
+ * during a scene load) and is dropped at a scene enter without the character. */
+const pinnedCharIds = new Set<string>();
+const pinListeners = new Set<() => void>();
+
+const notifyPinsChanged = () => {
+  for (const listener of pinListeners) listener();
+};
+
+export const isCharacterGizmosPinned = (charId: string) => pinnedCharIds.has(charId);
+
+/** A pinned set stays after its state window closes. Pinning a missing character does nothing. */
+export const setCharacterGizmosPinned = (charId: string, isPinned: boolean) => {
+  if (pinnedCharIds.has(charId) === isPinned) return;
+  if (isPinned) {
+    if (!acquireCharacterGizmos(charId, PIN_OWNER)) return;
+    pinnedCharIds.add(charId);
+  } else {
+    pinnedCharIds.delete(charId);
+    const set = sets.get(charId);
+    if (set) releaseCharacterGizmos(set, PIN_OWNER);
+  }
+  notifyPinsChanged();
+};
+
+/** Called on every pin change (the window's pin button, the Characters tab's row toggle). Returns
+ * the unsubscribe function. */
+export const onCharacterGizmoPinsChange = (listener: () => void) => {
+  pinListeners.add(listener);
+  return () => {
+    pinListeners.delete(listener);
+  };
+};
+
+/** Gives every pinned character that exists its set (a new entity under a pinned id gets a new
+ * one). `dropMissing`: also unpins the ids without a character (at a scene enter). */
+export const syncCharacterGizmoPins = (dropMissing = false) => {
+  let isChanged = false;
+  for (const charId of pinnedCharIds) {
+    if (acquireCharacterGizmos(charId, PIN_OWNER)) continue;
+    if (dropMissing) {
+      pinnedCharIds.delete(charId);
+      isChanged = true;
+    }
+  }
+  if (isChanged) notifyPinsChanged();
+};
+
+// After the scene code ran, so its characters exist (before the suspended state windows rebuild)
+registerOnAllSceneEnterings('characterGizmoPins', () => syncCharacterGizmoPins(true));
 
 export const setCharacterGizmoEnabled = (
   set: CharacterGizmoSet,
@@ -744,6 +882,9 @@ export const setCharacterGizmoEnabled = (
   if (set.settings.enabled[id] === enabled) return;
   set.settings.enabled[id] = enabled;
   saveSettings(set.settings);
+  // Not sampled while off: old samples would join the current position with a straight line (and
+  // a freeze with it off would draw them)
+  if (id === 'trail') resetTrail(set.trail);
   refillNow(set);
   // Also when frozen: the lines hold the freeze moment
   syncVisibility(set, id);
@@ -776,6 +917,8 @@ export const setCharacterGizmoVectorScale = (set: CharacterGizmoSet, value: unkn
 export const setCharacterGizmosFrozen = (set: CharacterGizmoSet, isFrozen: boolean) => {
   if (set.isFrozen === isFrozen || set.isDisposed) return;
   if (isFrozen) refillSet(set, getECSWorld(), true);
+  // Unfrozen, it restarts: the character moved meanwhile, and no samples were taken
+  else resetTrail(set.trail);
   set.isFrozen = isFrozen;
   refillNow(set);
 };

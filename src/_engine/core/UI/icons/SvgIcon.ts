@@ -22,6 +22,7 @@ import infoIcon from './svg/info-circle-fill.svg?raw';
 import lightBulbIcon from './svg/lightbulb-fill.svg?raw';
 import lampIcon from './svg/lamp.svg?raw';
 import pauseIcon from './svg/pause-fill.svg?raw';
+import pinIcon from './svg/pin-angle-fill.svg?raw';
 import personArmsUpIcon from './svg/person-arms-up.svg?raw';
 import playFillIcon from './svg/play-fill.svg?raw';
 import postFxIcon from './svg/post-fx.svg?raw';
@@ -64,6 +65,7 @@ const icons = {
   lamp: lampIcon,
   pause: pauseIcon,
   personArmsUp: personArmsUpIcon,
+  pin: pinIcon,
   playFill: playFillIcon,
   postFx: postFxIcon,
   redo: redoIcon,

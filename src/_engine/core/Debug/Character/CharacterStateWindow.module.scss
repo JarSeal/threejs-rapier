@@ -83,7 +83,8 @@ $monoStack: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 // Beats the global class's margins (both are one class), which are for a button row
-.header .headerButton {
+.header .headerButton,
+.gizmoRow .headerButton {
   flex-shrink: 0;
   margin: 0;
 }

@@ -29,6 +29,12 @@ import {
   CHAR_STATE_WIN_ID,
   getCharacterStateWindowId,
 } from './Character/_dbg__CharacterStateWindow';
+import {
+  isCharacterGizmosPinned,
+  onCharacterGizmoPinsChange,
+  setCharacterGizmosPinned,
+  syncCharacterGizmoPins,
+} from './Character/_dbg__CharacterGizmos';
 
 const CHARACTERS_TAB_ID = 'charactersControls';
 const debuggerWindowCmp: { [id: string]: TCMP } = {};
@@ -38,6 +44,8 @@ const CHAR_EDIT_WIN_ID = 'characterEditorWindow';
 const getEditWindowId = (charId: string) => `${CHAR_EDIT_WIN_ID}_${charId}`;
 /** The list's selection follows the edit windows' open states. */
 const refreshCharactersList = () => updateDebuggerTab(CHARACTERS_TAB_ID);
+// The rows' pin toggles follow the state windows' pin buttons
+onCharacterGizmoPinsChange(refreshCharactersList);
 
 // Undo/redo
 
@@ -228,6 +236,7 @@ const getCharactersListData = (): DebuggerListItem[] =>
     itemId: character.id,
     title: character.name || `[${character.id}]`,
     subTitle: `[${character.id}]`,
+    toggleValues: [isCharacterGizmosPinned(character.id)],
   }));
 
 const toggleEditCharacterWindow = (charId: string) => {
@@ -273,7 +282,17 @@ export const _createCharactersDebuggerGUI = () => {
           getCharacters()
             .map((character) => character.id)
             .filter((charId) => getDraggableWindow(getEditWindowId(charId))?.isOpen),
-        perItemConfig: { onClick: toggleEditCharacterWindow },
+        perItemConfig: {
+          onClick: toggleEditCharacterWindow,
+          toggles: [
+            {
+              icon: 'pin',
+              title:
+                "Pin the character's debug gizmos: they stay after its state window closes (session only)",
+              fn: setCharacterGizmosPinned,
+            },
+          ],
+        },
       }),
     ],
   });
@@ -285,6 +304,8 @@ export const _createCharactersDebuggerGUI = () => {
 
 export const _updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (!IS_DEBUG_ENV) return;
+  // A character created under a pinned id (eg. a respawn) gets its gizmos back
+  syncCharacterGizmoPins();
   if (only !== 'WINDOW') refreshCharactersList();
   if (only === 'LIST') return;
   const winStates = [
