@@ -178,6 +178,8 @@ const DEBUG_ADDITION_TO_CUSTOM_Z_INDEX = 100;
 /** How much of a window's title area a drag keeps horizontally on screen */
 const MIN_GRAB_VISIBLE_PX = 80;
 const RESIZE_DEBOUNCE_MS = 150;
+/** The gap a fit keeps from the viewport's edges */
+const FIT_MARGIN_PX = 8;
 
 /** Every known window, open or not. Hydrated from LS on the first access (see getWindows). */
 let windows: Map<string, WindowEntry> | null = null;
@@ -546,6 +548,76 @@ const keepOnScreen = ({ config, runtime }: WindowEntry) => {
   return true;
 };
 
+/** Whether the fit actions apply to the window: an open, mounted, draggable one (never a dialog). */
+const isFittable = ({ config, runtime }: WindowEntry) =>
+  config.isOpen && Boolean(runtime.windowCMP) && !config.disableDragging && !isCssCentred(config);
+
+/** The cascade step's offset (x and y), wrapping before it passes a third of the viewport. */
+const getCascadeOffset = (cascadeIndex: number, headerH: number) => {
+  if (!headerH || cascadeIndex <= 0) return 0;
+  const { width, height } = getWindowSize();
+  const steps = Math.floor(Math.min(width, height) / 3 / headerH) + 1;
+  return (cascadeIndex % steps) * headerH;
+};
+
+/**
+ * Moves a fittable window to the top center (plus the cascade offset), shrinks a resizable axis
+ * that overflows (the CSS min size wins), and falls back to keepOnScreen for what still overflows.
+ * A collapsed window fits its expanded size. Returns whether the geometry changed.
+ */
+const fitWindow = (entry: WindowEntry, cascadeIndex: number) => {
+  const { config, runtime } = entry;
+  const elem = runtime.windowCMP?.elem;
+  if (!elem || !isFittable(entry)) return false;
+  const { width, height } = getWindowSize();
+  const offset = getCascadeOffset(cascadeIndex, runtime.headerCMP?.elem.offsetHeight || 0);
+  const g = config.geometry;
+  const prev = JSON.stringify([g, config.units?.size]);
+
+  // Measured expanded and without the height transition, so the reads are the final size
+  elem.classList.add(styles.resizing);
+  if (config.isCollapsed) elem.classList.remove(styles.collapsed);
+
+  let rect = elem.getBoundingClientRect();
+  const sizeUnits = { ...config.units?.size };
+  const maxW = width - 2 * FIT_MARGIN_PX;
+  const maxH = height - 2 * FIT_MARGIN_PX - offset;
+  const shrinkW = rect.width > maxW && !config.disableHoriResize;
+  const shrinkH = rect.height > maxH && !config.disableVertResize;
+  if (shrinkW) elem.style.width = `${Math.max(0, maxW)}px`;
+  if (shrinkH) elem.style.height = `${Math.max(0, maxH)}px`;
+  if (shrinkW || shrinkH) {
+    rect = elem.getBoundingClientRect();
+    // A shrunk axis is stored in px from now on, like a manual resize
+    if (shrinkW) {
+      g.w = Math.round(rect.width);
+      sizeUnits.w = 'px';
+      elem.style.width = `${g.w}px`;
+    }
+    if (shrinkH) {
+      g.h = Math.round(rect.height);
+      sizeUnits.h = 'px';
+      elem.style.height = `${g.h}px`;
+    }
+    config.units = { ...config.units, size: sizeUnits };
+  }
+
+  // The right edge stays inside the margin, so a wide window gives up its x offset
+  const x = Math.min((width - rect.width) / 2 + offset, width - FIT_MARGIN_PX - rect.width);
+  g.x = Math.round(Math.max(FIT_MARGIN_PX, x));
+  g.y = Math.round(FIT_MARGIN_PX + offset);
+  writePosition(elem, g);
+  keepOnScreen(entry);
+
+  if (config.isCollapsed) {
+    elem.classList.add(styles.collapsed);
+    // Flushes the collapsed height before the transition comes back, so it doesn't animate
+    void elem.offsetHeight;
+  }
+  elem.classList.remove(styles.resizing);
+  return JSON.stringify([g, config.units?.size]) !== prev;
+};
+
 /** Settles a freshly mounted (or reset) window's position: px for a draggable window, then fully
  * on screen. */
 const placeWindow = (entry: WindowEntry) => {
@@ -799,6 +871,9 @@ const mountWindow = (entry: WindowEntry) => {
     });
   }
   addDragHandle(entry, headerCMP.elem, 'MOVE');
+  headerCMP.elem.addEventListener('dblclick', (e) => {
+    if (!(e.target as Element).closest('button')) fitDraggableWindowToScreen(id);
+  });
 
   runtime.contentWrapperCMP = windowCMP.add({ class: styles.contentWrapper });
 
@@ -953,6 +1028,42 @@ export const toggleCollapse = (id: string) => {
     entry.config.isCollapsed ? 'add' : 'remove'
   );
   saveDraggableWindowStatesToLS();
+};
+
+/**
+ * Moves an open draggable window to the top center of the screen, and shrinks a resizable one
+ * that still overflows (never below its min size). A collapsed window fits its expanded size.
+ * Dialogs and other non-draggable windows are skipped. Header double-clicks call this.
+ * @param id (string) window id
+ * @param cascadeIndex (number) optional, offsets the window by this many header heights (x and y),
+ * wrapping before the offset passes a third of the viewport
+ * @returns whether the window was fitted (false when it is closed or not draggable)
+ */
+export const fitDraggableWindowToScreen = (id: string, cascadeIndex = 0) => {
+  const entry = getWindows().get(id);
+  if (!entry || !isFittable(entry)) return false;
+  if (fitWindow(entry, cascadeIndex)) saveDraggableWindowStatesToLS();
+  return true;
+};
+
+/**
+ * Fits every open draggable window to the screen (see {@link fitDraggableWindowToScreen}),
+ * cascaded bottom to top over the app windows and then the debug windows, so the top window
+ * lands last and every header stays visible.
+ * @returns the number of windows fitted
+ */
+export const fitAllDraggableWindowsToScreen = () => {
+  const ids = [...stacks.APP, ...stacks.DEBUG];
+  let count = 0;
+  let isChanged = false;
+  for (let i = 0; i < ids.length; i++) {
+    const entry = getWindows().get(ids[i]);
+    if (!entry || !isFittable(entry)) continue;
+    if (fitWindow(entry, count)) isChanged = true;
+    count++;
+  }
+  if (isChanged) saveDraggableWindowStatesToLS();
+  return count;
 };
 
 /** Rebuilds an open window's content (its `onClose` doesn't run). */

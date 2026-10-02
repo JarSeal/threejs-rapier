@@ -18,7 +18,7 @@ import {
 } from '../../core/Config';
 import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
 import { lerror, llog } from '../../utils/Logger';
-import { openDraggableWindow } from '../../core/UI/DraggableWindow';
+import { fitAllDraggableWindowsToScreen, openDraggableWindow } from '../../core/UI/DraggableWindow';
 import { openDialog } from '../../core/UI/DialogWindow';
 import {
   createAxesHelper,
@@ -422,6 +422,13 @@ const buildDebugToolsItems = (): DebuggerPaneItem<DebugToolsState>[] => {
       type: 'button',
       title: 'App key shortcuts (current scene) [U]',
       onClick: () => openDebugKeyShortcutsDialog('APP'),
+    },
+    {
+      type: 'button',
+      title: 'Center and fit all windows',
+      onClick: () => {
+        if (!fitAllDraggableWindowsToScreen()) addDebugToast({ title: 'No open windows' });
+      },
     },
     { type: 'separator' },
 

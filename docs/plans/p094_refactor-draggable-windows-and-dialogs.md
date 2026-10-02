@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Debugger, UI Component
 
 # Refactor Draggable Windows and Dialogs — Plan
@@ -285,9 +285,16 @@ Each edit-window module moves to the same pattern:
   - The grab area is the header's `h3` title (measured at drag start), and a resize end always saves (its units may change while the numbers don't).
   - Verification 4: the Debug tools test window uses a px position, so the `%` path was checked by opening windows through the module in a headless browser.
 
-### Phase 3: Fit to screen
+### Phase 3: Fit to screen — done
 
 - §3.7: `fitDraggableWindowToScreen`, the header double-click, `fitAllDraggableWindowsToScreen` and the Debug tools button.
+- As built, where it differs from §3:
+  - The cascade index runs over the app stack and then the debug stack, not per layer: per-layer indices would put the bottom debug window exactly over the bottom app window's header. Only fitted windows count.
+  - The width is fitted to `viewportW − 2 × margin` without the cascade offset. The x position is clamped so the right edge stays inside the margin, so a wide window gives up its x offset; the y offset alone keeps the headers apart.
+  - The CSS min/max size clamps the shrunk size (like a manual resize), and a shrunk axis is stored in px.
+  - A collapsed window is measured and fitted with `collapsed` removed and transitions off, then collapsed again in the same frame (no flash, no animation).
+  - A window that still overflows after the fit (not resizable, or held by its min size) takes `keepOnScreen` and loses its cascade offset on that axis. Its title stays visible, but it can cover the header buttons of windows below it.
+  - `fitDraggableWindowToScreen` returns whether the window was fitted, and `fitAllDraggableWindowsToScreen` returns the number of windows fitted (the button's toast uses it).
 
 ### Phase 4: Window kinds
 
