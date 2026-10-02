@@ -1,4 +1,4 @@
-Status: in progress | Phases 1–2 implemented
+Status: in progress | Phases 1–3 implemented (the §6 step 8 performance study is open)
 Category: Character, Debugger
 Blocks: p068_character-debug-gizmos.md, p069_character-live-config-editing.md
 
@@ -257,9 +257,18 @@ A small `key → formatter` map, used only for known keys. Any other key uses th
 - **Verified** headless (Chrome, WebGPU, Gym scene): all three groups fill, Internal memory starts closed, values update while a character moves, two windows run side by side, closing one leaves the other running, the late-looper count stays at one after five open/close cycles, a closed group's DOM stays unchanged, a negative interval clamps to 0, reloading the Gym keeps the window, switching to `sceneTestECS` closes it. `yarn lint` and `yarn build` pass; the module is only in the lazy `_dbg__Character` chunk. The in-window readout shows about 0.02–0.06 ms per update at interval 0 with State and Properties open. The §6 step 8 Performance-panel comparison is not done yet.
 - **Plan references that moved:** `closeDraggableWindow` is at `DraggableWindow.ts:475`, `updateDraggableWindow` at `:664`, `removeDraggableWindow` at `:1030`; `getPhysGameTime` at `PhysicsAPI.ts:816`; `CharacterData` at `DynamicCharacter.ts:46`. The Gym has three characters (`topDownChar`, `arrowKeysChar`, `testDummyChar`).
 
-### Phase 3: Readability extras
+### Phase 3: Readability extras — done
 
-- Add the readable-value formatters (§3.10), the change flash with its persisted toggle (§3.11), and Freeze and Copy JSON (§3.12).
+- (done) Add the readable-value formatters (§3.10), the change flash with its persisted toggle (§3.11), and Freeze and Copy JSON (§3.12).
+
+**Implementation notes** (where Phase 3 differs from the plan):
+
+- **Late rows (§5).** The wall shape-cast result is a closure local in `DynamicCharacter.ts`, not in `data`. The `title` note ("Set by an async physics query: can be a physics step behind.") is on the rows that really trail: `groundNormal` and `groundIsWalkable` (async floor ray) and `isNearWall` and `__touchingWallColliders` (a collision event plus an async `bodyType()` lookup).
+- **Formatters.** `NUMBER_FORMATS` maps the five timestamps to `MS_AGO` and `charRotation`/`_maxWalkableAngle` to `RAD_DEG`. A timestamp row is checked on every update while its group is open and rewritten only when the whole-ms age changes. The two formats have their own fixed-width cells (`numAgo` 13ch, `numRad` 20ch). The collider arrays needed nothing: Phase 2's `NUM_ARRAY` display already shows `(2) 14, 31`.
+- **Flash.** It animates the opacity of a `.row::before` layer (Web Animations API, `pseudoElement: '::before'`, 400 ms) instead of the row's `backgroundColor`, so the colour stays in Sass (`$debugValueFlash`, amber, so it doesn't read as true/false) and the animation needs no repaint. `rowFlashes` (decided at build) flashes every `_` row and everything else except vectors and State numbers, so strings like `locomotionState` flash too. Timestamp rows flash when the timestamp is set, not when the age ticks. A forced write (build, group open, freeze/unfreeze) never flashes.
+- **Freeze.** Freezing first fills every group, closed ones too, so a group opened while frozen shows the freeze-time values. Unfreezing refreshes the open groups without flashing, so everything that changed meanwhile doesn't flash at once. It is per window and not persisted. The header shows a `FROZEN` badge.
+- **Copy JSON** reuses the `fileCode` icon (as `_dbg__RayTester.ts` does; there is no copy icon). On a clipboard failure it logs the JSON string (a snapshot, not the live object) with `llog` and shows a warning toast. Toasts go through `addDebugToast`.
+- **Verified** headless (Chrome, WebGPU, Gym, `topDownChar`): angles and "ms ago" read correctly through a turn and a jump, the late rows' titles carry the note, no row flashes while idle, a run and jump flashes only event rows (no vector or `charRotation`), unchecking Flash stops it and persists `flash: false`, a frozen window keeps the position while the character moves, opening Internal memory while frozen shows the freeze-time values, Copy JSON round-trips through the clipboard (71 keys) and, with `navigator.clipboard` removed, logs the data and shows "Copy failed". The update readout stays at about 0.03–0.1 ms. `eslint` and `tsc` pass.
 
 ---
 

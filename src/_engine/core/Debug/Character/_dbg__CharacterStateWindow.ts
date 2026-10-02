@@ -1,6 +1,9 @@
+import { addDebugToast } from '../../../debug/DebuggerGUI';
 import { CMP, type TCMP } from '../../../utils/CMP';
 import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
+import { llog } from '../../../utils/Logger';
 import { getCharacterById } from '../../Character';
+import { getPhysGameTime } from '../../PhysicsAPI';
 import type { CharacterObject } from '../../Character/CharacterTypes';
 import { createSceneMainLooper, deleteSceneMainLooper, getCurrentSceneId } from '../../Scene';
 import {
@@ -26,6 +29,8 @@ const LS_KEY = 'AEK_charStateWin';
 const COST_READOUT_INTERVAL_MS = 250;
 const ARRAY_MAX_ITEMS = 8;
 const OTHER_MAX_CHARS = 120;
+const FLASH_KEYFRAMES: Keyframe[] = [{ opacity: 1 }, { opacity: 0 }];
+const FLASH_OPTIONS: KeyframeAnimationOptions = { duration: 400, pseudoElement: '::before' };
 
 type GroupId = 'state' | 'props' | 'internal';
 const GROUPS: { id: GroupId; title: string }[] = [
@@ -35,23 +40,37 @@ const GROUPS: { id: GroupId; title: string }[] = [
 ];
 
 /** Per viewer, shared by all character windows: the last used values are the next window's. */
-type StateWindowSettings = { intervalMs: number; groupsOpen: Record<GroupId, boolean> };
+type StateWindowSettings = {
+  intervalMs: number;
+  flash: boolean;
+  groupsOpen: Record<GroupId, boolean>;
+};
 const DEFAULT_SETTINGS: StateWindowSettings = {
   intervalMs: 0,
+  flash: true,
   groupsOpen: { state: true, props: true, internal: false },
 };
 
 type RowKind = 'BOOL' | 'NUMBER' | 'STRING' | 'VECTOR' | 'NUM_ARRAY' | 'OTHER';
+/** A known number key's display: a `getPhysGameTime()` timestamp, or an angle in radians */
+type NumberFormat = 'MS_AGO' | 'RAD_DEG';
 type RawValue = number | boolean | string | undefined;
 type Row = {
   key: string;
   kind: RowKind;
+  /** NUMBER only: a known key's display (null: the generic number) */
+  format: NumberFormat | null;
   elem: HTMLElement;
+  /** Whether a raw value change flashes the row (see `rowFlashes`) */
+  flashes: boolean;
+  /** The flash, created on the first one and restarted after that */
+  flashAnim: Animation | null;
   /** The value text nodes (VECTOR: one per component, BOOL: none) */
   texts: Text[];
   /** VECTOR only: the component keys, in the object's key order */
   vecKeys: string[];
-  /** The last raw values (per component for vectors and arrays), never object references */
+  /** The last raw values (per component for vectors and arrays), never object references. MS_AGO
+   * also keeps the last shown ms at index 1. */
   last: RawValue[];
 };
 type Group = { id: GroupId; details: HTMLDetailsElement; rows: Row[] };
@@ -66,6 +85,8 @@ type StateWindowInstance = {
   groups: Group[];
   keyCount: number;
   settings: StateWindowSettings;
+  /** Updates are skipped and the snapshot stays on screen (per window, not persisted) */
+  isFrozen: boolean;
   lastUpdate: number;
   costSum: number;
   costCount: number;
@@ -91,6 +112,7 @@ const loadSettings = (): StateWindowSettings => {
   }
   return {
     intervalMs: sanitizeInterval(saved?.intervalMs),
+    flash: typeof saved?.flash === 'boolean' ? saved.flash : DEFAULT_SETTINGS.flash,
     groupsOpen: { ...DEFAULT_SETTINGS.groupsOpen, ...(saved?.groupsOpen || {}) },
   };
 };
@@ -98,6 +120,26 @@ const loadSettings = (): StateWindowSettings => {
 const saveSettings = (settings: StateWindowSettings) => lsSetItem(LS_KEY, settings);
 
 // Classifying and formatting
+
+/** Readable displays for known keys (any other key gets its type's display) */
+const NUMBER_FORMATS: Record<string, NumberFormat> = {
+  __jumpTime: 'MS_AGO',
+  __isFallingStartTime: 'MS_AGO',
+  __isTumblingStartTime: 'MS_AGO',
+  __isGettingUpStartTime: 'MS_AGO',
+  __locomotionStateStartTime: 'MS_AGO',
+  charRotation: 'RAD_DEG',
+  _maxWalkableAngle: 'RAD_DEG',
+};
+
+/** Values written by an async physics query, so they can trail the other values by a step */
+const LATE_VALUE_NOTE = 'Set by an async physics query: can be a physics step behind.';
+const LATE_KEYS = new Set([
+  'groundNormal',
+  'groundIsWalkable',
+  'isNearWall',
+  '__touchingWallColliders',
+]);
 
 const getGroupId = (key: string): GroupId =>
   key.startsWith('__') ? 'internal' : key.startsWith('_') ? 'props' : 'state';
@@ -120,6 +162,11 @@ const getRowKind = (value: unknown): RowKind => {
   }
   return 'OTHER';
 };
+
+/** Vectors and State numbers change almost every frame, so they never flash. Everything else
+ * changes on an event worth seeing (eg. a one-frame `isGrounded` flip, a stamped timestamp). */
+const rowFlashes = (groupId: GroupId, kind: RowKind) =>
+  groupId === 'props' || (kind !== 'VECTOR' && !(groupId === 'state' && kind === 'NUMBER'));
 
 /** A cheap per-update check that a row's value still has the shape the row was built for. */
 const matchesRowKind = (kind: RowKind, value: unknown) => {
@@ -145,6 +192,15 @@ const hasChanged = (prev: RawValue, next: RawValue) =>
 
 const formatNumber = (value: unknown) =>
   typeof value === 'number' ? value.toFixed(3) : String(value);
+
+const RAD_TO_DEG = 180 / Math.PI;
+const formatRadians = (value: number) =>
+  `${value.toFixed(3)} rad (${(value * RAD_TO_DEG).toFixed(1)}°)`;
+
+const NUMBER_FORMAT_CELL_CLASSES: Record<NumberFormat, string> = {
+  MS_AGO: styles.numAgo,
+  RAD_DEG: styles.numRad,
+};
 
 const formatNumArray = (arr: unknown[]) => {
   const shown = arr.length > ARRAY_MAX_ITEMS ? arr.slice(0, ARRAY_MAX_ITEMS) : arr;
@@ -198,14 +254,27 @@ const createRow = (key: string, value: unknown, charId: string): Row => {
   elem.appendChild(createLabel(key));
   const valueElem = createElem('span', styles.value);
   elem.appendChild(valueElem);
-  const row: Row = { key, kind, elem, texts: [], vecKeys: [], last: [] };
+  const format = (kind === 'NUMBER' && NUMBER_FORMATS[key]) || null;
+  const row: Row = {
+    key,
+    kind,
+    format,
+    elem,
+    flashes: rowFlashes(getGroupId(key), kind),
+    flashAnim: null,
+    texts: [],
+    vecKeys: [],
+    last: [],
+  };
 
   if (kind === 'BOOL') {
     const icon = createElem('span', styles.boolIcon);
     icon.innerHTML = `${getSvgIcon('circleXCutout')}${getSvgIcon('circleCheckCutout')}`;
     valueElem.appendChild(icon);
   } else if (kind === 'NUMBER') {
-    row.texts.push(createTextCell(valueElem, styles.num));
+    row.texts.push(
+      createTextCell(valueElem, format ? NUMBER_FORMAT_CELL_CLASSES[format] : styles.num)
+    );
   } else if (kind === 'VECTOR') {
     row.vecKeys = Object.keys(value as object);
     for (let i = 0; i < row.vecKeys.length; i++) {
@@ -221,8 +290,9 @@ const createRow = (key: string, value: unknown, charId: string): Row => {
   }
 
   // The raw value, refreshed only when hovered
+  const note = LATE_KEYS.has(key) ? `\n${LATE_VALUE_NOTE}` : '';
   elem.addEventListener('mouseenter', () => {
-    elem.title = `${key}: ${formatRawForTitle(getCharacterById(charId)?.data[key])}`;
+    elem.title = `${key}: ${formatRawForTitle(getCharacterById(charId)?.data[key])}${note}`;
   });
 
   return row;
@@ -232,40 +302,79 @@ const createEmptyState = (text: string) => createElem('div', styles.emptyState, 
 
 // Updating
 
-/** Writes the row's value if it changed since the last write (`force`: always). Returns false
- * when the value no longer has the row's shape (the group needs a rebuild). */
-const updateRow = (row: Row, value: unknown, force: boolean) => {
+/** Restarts the row's flash (no class toggling, no forced reflow, so it is safe every frame). */
+const flashRow = (row: Row) => {
+  if (!row.flashAnim) {
+    row.flashAnim = row.elem.animate(FLASH_KEYFRAMES, FLASH_OPTIONS);
+    return;
+  }
+  row.flashAnim.currentTime = 0;
+  row.flashAnim.play();
+};
+
+/** A timestamp row: the age changes with the clock, so it is checked on every update (shown in
+ * whole ms, written only when that changes). 0 = unset. */
+const updateMsAgoRow = (row: Row, value: number, force: boolean, flash: boolean) => {
+  const last = row.last;
+  if (flash && hasChanged(last[0], value)) flashRow(row);
+  last[0] = value;
+  const shown = value ? Math.max(0, Math.round(getPhysGameTime() - value)) : -1;
+  if (!force && shown === last[1]) return;
+  last[1] = shown;
+  row.texts[0].nodeValue = shown < 0 ? '—' : `${shown} ms ago`;
+};
+
+/** Writes the row's value if it changed since the last write (`force`: always, never flashes).
+ * Returns false when the value no longer has the row's shape (the group needs a rebuild). */
+const updateRow = (row: Row, value: unknown, force: boolean, flashOn: boolean) => {
   if (!matchesRowKind(row.kind, value)) return false;
   const last = row.last;
+  const flash = flashOn && row.flashes && !force;
 
   switch (row.kind) {
     case 'BOOL': {
       const next = value as boolean;
       if (force || last[0] !== next) {
+        if (flash) flashRow(row);
         last[0] = next;
         row.elem.classList.toggle(styles.isTrue, next);
       }
       return true;
     }
-    case 'NUMBER':
-    case 'STRING': {
-      const next = value as number | string;
-      if (force || hasChanged(last[0], next)) {
+    case 'NUMBER': {
+      const next = value as number;
+      if (row.format === 'MS_AGO') {
+        updateMsAgoRow(row, next, force, flash);
+      } else if (force || hasChanged(last[0], next)) {
+        if (flash) flashRow(row);
         last[0] = next;
-        row.texts[0].nodeValue = row.kind === 'NUMBER' ? formatNumber(next) : (next as string);
+        row.texts[0].nodeValue =
+          row.format === 'RAD_DEG' ? formatRadians(next) : formatNumber(next);
+      }
+      return true;
+    }
+    case 'STRING': {
+      const next = value as string;
+      if (force || last[0] !== next) {
+        if (flash) flashRow(row);
+        last[0] = next;
+        row.texts[0].nodeValue = next;
       }
       return true;
     }
     case 'VECTOR': {
       // Mutated in place: compare the components, never the object reference
       const obj = value as Record<string, RawValue>;
+      let changed = false;
       for (let i = 0; i < row.vecKeys.length; i++) {
         const next = obj[row.vecKeys[i]];
         if (force || hasChanged(last[i], next)) {
+          changed = true;
           last[i] = next;
           row.texts[i].nodeValue = formatNumber(next);
         }
       }
+      if (flash && changed) flashRow(row);
       return true;
     }
     case 'NUM_ARRAY': {
@@ -273,6 +382,7 @@ const updateRow = (row: Row, value: unknown, force: boolean) => {
       let changed = force || arr.length !== last.length;
       for (let i = 0; !changed && i < arr.length; i++) changed = hasChanged(last[i], arr[i]);
       if (changed) {
+        if (flash) flashRow(row);
         last.length = arr.length;
         for (let i = 0; i < arr.length; i++) last[i] = arr[i];
         row.texts[0].nodeValue = formatNumArray(arr);
@@ -282,6 +392,7 @@ const updateRow = (row: Row, value: unknown, force: boolean) => {
     default: {
       const next = stringifyOther(value);
       if (force || last[0] !== next) {
+        if (flash) flashRow(row);
         last[0] = next;
         row.texts[0].nodeValue = truncate(next, OTHER_MAX_CHARS);
       }
@@ -291,10 +402,15 @@ const updateRow = (row: Row, value: unknown, force: boolean) => {
 };
 
 /** Updates an open group's rows. Returns false when a row needs a rebuild. */
-const updateGroup = (group: Group, data: Record<string, unknown>, force: boolean) => {
+const updateGroup = (
+  group: Group,
+  data: Record<string, unknown>,
+  force: boolean,
+  flash: boolean
+) => {
   const rows = group.rows;
   for (let i = 0; i < rows.length; i++) {
-    if (!updateRow(rows[i], data[rows[i].key], force)) return false;
+    if (!updateRow(rows[i], data[rows[i].key], force, flash)) return false;
   }
   return true;
 };
@@ -332,19 +448,52 @@ const buildGroups = (inst: StateWindowInstance, data: Record<string, unknown>) =
         inst.settings.groupsOpen[id] = details.open;
         saveSettings(inst.settings);
       }
-      // Refreshed right away, so an opened group never shows stale values until the next tick
-      if (details.open) refreshGroup(inst, group);
+      // Refreshed right away, so an opened group never shows stale values until the next tick.
+      // While frozen it keeps the freeze-time values (`setFrozen` filled every group).
+      if (details.open && !inst.isFrozen) refreshGroup(inst, group);
     });
     return group;
   });
 
-  for (const group of inst.groups) updateGroup(group, data, true);
+  for (const group of inst.groups) updateGroup(group, data, true, false);
 };
 
 const refreshGroup = (inst: StateWindowInstance, group: Group) => {
   const character = getCharacterById(inst.charId);
   if (!character) return;
-  if (!updateGroup(group, character.data, true)) buildGroups(inst, character.data);
+  if (!updateGroup(group, character.data, true, false)) buildGroups(inst, character.data);
+};
+
+/** Freezing first fills every group, closed ones too, so a group opened while frozen shows the
+ * same moment. Unfreezing refreshes the open groups without flashing everything since the freeze. */
+const setFrozen = (inst: StateWindowInstance, isFrozen: boolean) => {
+  if (inst.isFrozen === isFrozen) return;
+  if (!inst.isDisposed) {
+    for (const group of inst.groups) {
+      if (isFrozen || group.details.open) refreshGroup(inst, group);
+    }
+  }
+  inst.isFrozen = isFrozen;
+  inst.lastUpdate = performance.now();
+};
+
+/** Copies the character's live data (also while frozen). Logs it when the clipboard fails. */
+const copyDataAsJson = async (charId: string) => {
+  const character = getCharacterById(charId);
+  if (!character) return;
+  const json = JSON.stringify(character.data, null, 2);
+  const name = character.name || `[${character.id}]`;
+  try {
+    await navigator.clipboard.writeText(json);
+    addDebugToast({ title: 'Character data copied', message: name });
+  } catch {
+    llog(`CHARACTER DATA (${name}):`, json);
+    addDebugToast({
+      type: 'warning',
+      title: 'Copy failed',
+      message: 'The clipboard is not available: the data was logged to the console instead',
+    });
+  }
 };
 
 const disposeInstance = (inst: StateWindowInstance) => {
@@ -380,7 +529,7 @@ const updateInstance = (inst: StateWindowInstance, data: Record<string, unknown>
   for (let i = 0; i < inst.groups.length; i++) {
     const group = inst.groups[i];
     if (!group.details.open) continue;
-    if (!updateGroup(group, data, false)) {
+    if (!updateGroup(group, data, false, inst.settings.flash)) {
       // A value changed its shape: rebuild (rare)
       buildGroups(inst, data);
       return;
@@ -405,7 +554,7 @@ const createLooper = (inst: StateWindowInstance, rootElem: HTMLElement) => () =>
     disposeFromLooper(inst);
     return;
   }
-  if (getDraggableWindow(inst.winId)?.isCollapsed) return;
+  if (inst.isFrozen || getDraggableWindow(inst.winId)?.isCollapsed) return;
 
   const start = performance.now();
   if (inst.settings.intervalMs > 0 && start - inst.lastUpdate < inst.settings.intervalMs) return;
@@ -445,6 +594,45 @@ const createHeader = (inst: StateWindowInstance) => {
   header.appendChild(input);
   header.appendChild(createElem('span', 'winSmallLabel', 'ms'));
 
+  const flashToggle = createElem('label', `winSmallLabel ${styles.flashToggle}`);
+  flashToggle.title = 'Flash a row when its value changes (not vectors or State numbers)';
+  const flashInput = createElem('input') as HTMLInputElement;
+  flashInput.type = 'checkbox';
+  flashInput.checked = inst.settings.flash;
+  flashInput.addEventListener('change', () => {
+    inst.settings.flash = flashInput.checked;
+    saveSettings(inst.settings);
+  });
+  flashToggle.appendChild(flashInput);
+  flashToggle.appendChild(document.createTextNode('Flash'));
+  header.appendChild(flashToggle);
+
+  const freezeButton = createElem('button', `winSmallIconButton ${styles.headerButton}`);
+  const frozenBadge = createElem('span', styles.frozenBadge, 'FROZEN');
+  frozenBadge.hidden = true;
+  const renderFreezeButton = () => {
+    freezeButton.innerHTML = getSvgIcon(inst.isFrozen ? 'playFill' : 'pause');
+    freezeButton.title = inst.isFrozen
+      ? 'Resume updates'
+      : 'Freeze the view (keeps the current values on screen)';
+    freezeButton.classList.toggle('current', inst.isFrozen);
+    frozenBadge.hidden = !inst.isFrozen;
+  };
+  renderFreezeButton();
+  freezeButton.addEventListener('click', () => {
+    setFrozen(inst, !inst.isFrozen);
+    renderFreezeButton();
+  });
+  header.appendChild(freezeButton);
+
+  const copyButton = createElem('button', `winSmallIconButton ${styles.headerButton}`);
+  copyButton.innerHTML = getSvgIcon('fileCode');
+  copyButton.title = "Copy the character's data as JSON (the live data, also while frozen)";
+  copyButton.addEventListener('click', () => void copyDataAsJson(inst.charId));
+  header.appendChild(copyButton);
+
+  header.appendChild(frozenBadge);
+
   const cost = createElem('span', styles.costReadout);
   cost.title = 'Average cost of one update of this window';
   cost.appendChild(inst.costText);
@@ -472,6 +660,7 @@ export const _createCharacterStateWindowContent = (winData?: { [key: string]: un
     groups: [],
     keyCount: 0,
     settings: loadSettings(),
+    isFrozen: false,
     lastUpdate: 0,
     costSum: 0,
     costCount: 0,

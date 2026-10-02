@@ -32,6 +32,35 @@ $monoStack: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   text-align: right;
 }
 
+.flashToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.6rem;
+  cursor: pointer;
+  user-select: none;
+
+  input {
+    margin: 0;
+  }
+}
+
+// Beats the global class's margins (both are one class), which are for a button row
+.header .headerButton {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.frozenBadge {
+  padding: 0 0.4rem;
+  border-radius: 0.2rem;
+  background-color: variables.$debugValueFlash;
+  color: variables.$white;
+  font-size: 1rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+}
+
 .costReadout {
   margin-left: auto;
   color: $dimText;
@@ -57,6 +86,9 @@ $monoStack: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 .row {
+  position: relative;
+  // The flash layer goes behind the row's content but above its (hover) background
+  isolation: isolate;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -67,6 +99,18 @@ $monoStack: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   &:hover {
     background-color: rgba(variables.$debugTextColor, 0.06);
+  }
+
+  // The change flash: its opacity is animated (Web Animations API), so the colour stays here
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background-color: variables.$debugValueFlash;
+    opacity: 0;
+    pointer-events: none;
   }
 }
 
@@ -105,6 +149,21 @@ $monoStack: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   display: inline-block;
   min-width: 7ch;
   text-align: right;
+}
+
+// Known keys' readable values: wide enough for "-3.142 rad (-180.0°)" and "999999 ms ago"
+.numRad,
+.numAgo {
+  display: inline-block;
+  text-align: right;
+}
+
+.numRad {
+  min-width: 20ch;
+}
+
+.numAgo {
+  min-width: 13ch;
 }
 
 .vecComp {
