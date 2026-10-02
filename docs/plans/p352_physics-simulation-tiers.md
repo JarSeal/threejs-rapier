@@ -2,7 +2,7 @@ Status: draft | not-implemented
 Category: Physics
 Epic: p350_lod-system-research.md (Tier 1.2, §6)
 Blocks: p353_macro-streaming-grid.md (its physics phase)
-Related: p420_npc-simulation-tiers.md (characters and NPCs: their tiers, kinematic movers and crowds live there, not here), p102_physics-world-bounds.md (its `DISABLE` action is this plan's `DISABLED` tier), p500_restore-physics-snapshot.md (body snapshots share a format), p063_triple-buffered-physics-transform-buffer.md (slot allocation), p101 scene-load determinism (implemented; CLAUDE.md Physics section)
+Related: p420_npc-simulation-tiers.md (characters and NPCs: their tiers, kinematic movers and crowds live there, not here), p102_physics-world-bounds.md (its `DISABLE` action is this plan's `DISABLED` tier), p500_restore-physics-snapshot.md (body snapshots share a format), _DONE_p063_triple-buffered-physics-transform-buffer.md (slot allocation), p101 scene-load determinism (implemented; CLAUDE.md Physics section)
 
 # Physics Simulation Tiers
 

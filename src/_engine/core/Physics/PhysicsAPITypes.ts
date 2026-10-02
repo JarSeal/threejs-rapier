@@ -2596,6 +2596,9 @@ export type PhysicsDownProtocol =
         transportMode?: 'SHARED_MEMORY' | 'MESSAGE_BATCH';
         /** Only present (and only a SharedArrayBuffer) when transportMode is 'SHARED_MEMORY'. */
         buffer?: ArrayBuffer | SharedArrayBuffer;
+        /** Banks in `buffer` (PhysicsTransformBuffer), present with it, so the main-thread
+         * wrapper uses the worker's layout instead of assuming one. */
+        bankCount?: number;
         /** Step-statistics scratch buffer (p027), only present when transportMode is
          * 'SHARED_MEMORY' AND PhysicsState.stepStatsEnabled is on. See
          * PHYSICS_STEP_STATS_SLOTS for its layout. In MESSAGE_BATCH mode the same numbers

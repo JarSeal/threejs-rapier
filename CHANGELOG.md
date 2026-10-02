@@ -4,6 +4,19 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-02 — triple-buffered-physics-transform-buffer
+
+### Engine 4.0.1 (Afternoon)
+
+**Fixed**
+
+- Physics reads no longer tear in `WORKER_THREAD` mode with the `SharedArrayBuffer` transport (`SHARED_MEMORY`). The worker used to rewrite the one shared transform buffer while the main thread read it, so a snapshot's step stamp could disagree with its poses, two systems in the same frame could see different steps, one pass over the bodies could mix two steps, and a single body could be half old, half new. This showed up as occasional interpolation spikes. The buffer is now a lock-free triple buffer: the worker publishes each finished, stamped write-back by an atomic bank swap, and the main loop latches the newest one at the start of every frame. Every reader in a frame (held keys, `APP_PHYSICS_STEP`, the TRANSFORM sync, interpolation, debug wireframes) sees the same complete snapshot, and a write-back that lands mid-frame is read from the next frame on. Memory: three banks, about 320 KiB at the default 2048 bodies. `MAIN_THREAD` and the `MESSAGE_BATCH` fallback are unchanged.
+
+**Changed**
+
+- `PhysicsTransformBuffer` (internal to the physics transport): `markWritten` is `publish`, `latch()` is new, the constructor and `createPhysicsTransformArrayBuffer` take a bank count (1 or `PHYSICS_TRANSFORM_SHARED_BANKS`), and `getWriteCount()` is gone. `CREATE_WORLD`'s response carries `bankCount`.
+- `latchPhysicsSnapshot()` (`PhysicsAPI.ts`), called by every main loop variant right after `timer.update()`. Custom loops that drive `stepPhysics` themselves must call it first in each frame.
+
 ## 2026-10-02 — character-definitions-and-refactoring
 
 ### Engine 4.0.0 (Afternoon)

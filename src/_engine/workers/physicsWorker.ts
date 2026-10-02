@@ -11,6 +11,7 @@ import {
 import { initPhysicsEngine } from '../core/Physics/PhysicsUtils';
 import {
   createPhysicsTransformArrayBuffer,
+  PHYSICS_TRANSFORM_SHARED_BANKS,
   PhysicsTransformBuffer,
 } from '../core/Physics/PhysicsTransformBuffer';
 import {
@@ -190,9 +191,13 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
             typeof SharedArrayBuffer !== 'undefined' &&
             self.crossOriginIsolated
         );
+        // SHARED_MEMORY triple-buffers (p063): the main thread reads the SAB concurrently, so a
+        // single bank tears. MESSAGE_BATCH pushes private copies of one bank.
+        const bankCount = resolvedUseSAB ? PHYSICS_TRANSFORM_SHARED_BANKS : 1;
         transformBuffer = new PhysicsTransformBuffer(
           maxBodies,
-          createPhysicsTransformArrayBuffer(maxBodies, resolvedUseSAB)
+          createPhysicsTransformArrayBuffer(maxBodies, resolvedUseSAB, bankCount),
+          bankCount
         );
         // Step-stats buffer (p027): only in SHARED_MEMORY mode, where there is no per-step
         // message to carry the numbers on, and only when the measurement is switched on.
@@ -207,6 +212,7 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
             worldCreated: true,
             transportMode: resolvedUseSAB ? 'SHARED_MEMORY' : 'MESSAGE_BATCH',
             buffer: resolvedUseSAB ? transformBuffer.buffer : undefined,
+            bankCount: resolvedUseSAB ? bankCount : undefined,
             statsBuffer,
           },
           data

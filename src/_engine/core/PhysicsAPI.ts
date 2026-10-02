@@ -193,8 +193,9 @@ let physicsWorldEnabled = false;
 let engineInitiated = false;
 let engAPI: EngineAPIType | null = null;
 /** Main-thread wrapper for the worker's hot-path transform buffer (WORKER_THREAD mode only).
- * SHARED_MEMORY: set once at createPhysicsWorld() and never replaced. MESSAGE_BATCH: undefined
- * until the first TRANSFORMS_PUSH, then replaced on every subsequent push.
+ * SHARED_MEMORY: set once at createPhysicsWorld() and never replaced; every read sees the
+ * snapshot latched at the start of the frame (latchPhysicsSnapshot). MESSAGE_BATCH: undefined
+ * until the first TRANSFORMS_PUSH, then re-pointed at every subsequent push.
  */
 let transformBuffer: PhysicsTransformBuffer | undefined;
 /** Which hot-path transport createPhysicsWorld() resolved to for the current world (WORKER_THREAD only). */
@@ -929,6 +930,15 @@ const resetSimClock = () => {
   simHistoryEpoch++;
 };
 
+/** Latches the newest physics snapshot for this frame (p063). Called by MainLoop at the very
+ * start of every frame, before any stage, held-key polling, APP_PHYSICS_STEP or event callback
+ * reads a pose, so all of them see the same complete snapshot. Only SHARED_MEMORY has anything
+ * to latch (the worker writes it concurrently); a write-back that lands mid-frame waits for the
+ * next frame. MAIN_THREAD and MESSAGE_BATCH are already consistent, and this is a no-op there. */
+export const latchPhysicsSnapshot = () => {
+  transformBuffer?.latch();
+};
+
 /** Step index of the latest physics snapshot readable on the main thread — how many steps had
  * been executed on the current world when its poses were captured (0 before the first one).
  * MAIN_THREAD steps synchronously, so it is simply the steps issued; WORKER_THREAD reads the
@@ -1049,7 +1059,11 @@ export const createPhysicsWorld = async (
       resetSimClock();
       resolvedTransportMode = response.transportMode;
       if (response.transportMode === 'SHARED_MEMORY' && response.buffer) {
-        transformBuffer = new PhysicsTransformBuffer(physicsState.maxBodies, response.buffer);
+        transformBuffer = new PhysicsTransformBuffer(
+          physicsState.maxBodies,
+          response.buffer,
+          response.bankCount ?? 1
+        );
         pendingEventPushes = [];
       } else {
         // MESSAGE_BATCH: a previous world's last pushed copy must never be read as this one's.

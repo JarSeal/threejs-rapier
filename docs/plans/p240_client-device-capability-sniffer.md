@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Performance, Settings
-Related: the PostFX system (`core/PostFX.ts`, p070, implemented: `setPostFxEnabled` is one of the switches the recommendations target), p350_lod-system-research.md (the device levels are a natural LOD budget input), p063_triple-buffered-physics-transform-buffer.md (SAB availability is part of the probe), the procedural sky box (p112, implemented: its sky box sun light `shadowPreset` uses the same `LOW`…`ULTRA` scale as the device levels, see §3.1)
+Related: the PostFX system (`core/PostFX.ts`, p070, implemented: `setPostFxEnabled` is one of the switches the recommendations target), p350_lod-system-research.md (the device levels are a natural LOD budget input), _DONE_p063_triple-buffered-physics-transform-buffer.md (SAB availability is part of the probe), the procedural sky box (p112, implemented: its sky box sun light `shadowPreset` uses the same `LOW`…`ULTRA` scale as the device levels, see §3.1)
 
 # Client Device Capability Sniffer — Plan
 
