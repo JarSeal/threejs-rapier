@@ -18,25 +18,26 @@ import {
 } from '../UI/DraggableWindow';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
 import { Pane } from 'tweakpane';
-import { createSceneAppLooper, deleteSceneAppLooper } from '../Scene';
 import { llog, lwarn } from '../../utils/Logger';
 import { deleteCharacter, getCharacterById, getCharacters } from '../Character';
 import { getECSWorld } from '../ECS';
 import { createClearListLSButton } from './_dbg__ClearLSButtons';
 import { _recordUndoRedoAction, _registerUndoRedoActionHandler } from './_dbg__UndoRedo';
+import {
+  _openCharacterStateWindow,
+  _registerCharacterStateWindowCmp,
+  CHAR_STATE_WIN_ID,
+  getCharacterStateWindowId,
+} from './Character/_dbg__CharacterStateWindow';
 
 const CHARACTERS_TAB_ID = 'charactersControls';
 const debuggerWindowCmp: { [id: string]: TCMP } = {};
 const debuggerWindowPane: { [id: string]: Pane } = {};
-let debuggerTrackerWindowCmp: TCMP | null = null;
-let trackCharLoopIndex = -1;
 const CHAR_EDIT_WIN_ID = 'characterEditorWindow';
-const CHAR_TRACKER_WIN_ID = 'characterDataTrackerWindow';
 
 const getEditWindowId = (charId: string) => `${CHAR_EDIT_WIN_ID}_${charId}`;
 /** The list's selection follows the edit windows' open states. */
 const refreshCharactersList = () => updateDebuggerTab(CHARACTERS_TAB_ID);
-const getTrackerWindowId = (charId: string) => `${CHAR_TRACKER_WIN_ID}_${charId}`;
 
 // Undo/redo
 
@@ -82,58 +83,6 @@ const recordCharacterPose = <T extends CharVec3 | CharQuat>(
   );
 };
 
-const createTrackCharacterContent = (winData?: { [key: string]: unknown }) => {
-  const TRACKER_UPDATE_INTERVAL = 0.0000001;
-  const d = winData as { id: string; winId: string };
-  debuggerTrackerWindowCmp = CMP();
-  debuggerTrackerWindowCmp.add({ text: `Update interval: ${TRACKER_UPDATE_INTERVAL}` }); // @TODO: add Pane and input to set TRACKER_UPDATE_INTERVAL
-  const trackerContainer = debuggerTrackerWindowCmp.add({
-    html: () => {
-      const character = getCharacterById(d.id);
-      if (!character) return '';
-      const data = character.data;
-      const keys = data ? Object.keys(data) : [];
-      let htmlString = '<ul>';
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        const value = data[key];
-        if (Array.isArray(value)) {
-          htmlString += `<li>${key}: ${value.join(', ')}</li>`;
-        } else if (typeof value === 'object' && value !== null) {
-          const objKeys = Object.keys(value);
-          let objString = '';
-          for (let j = 0; j < objKeys.length; j++) {
-            objString += `<li>${objKeys[j]}: ${(value as { [key: string]: unknown })[objKeys[j]]}</li>`;
-          }
-          htmlString += `<li>${key}:<ul>${objString}</ul></li>`;
-        } else {
-          htmlString += `<li>${key}: ${value}</li>`;
-        }
-      }
-      htmlString += '</ul>';
-      return htmlString;
-    },
-  });
-
-  let trackerUpdateAccTime = 0;
-  trackCharLoopIndex = createSceneAppLooper((delta) => {
-    trackerUpdateAccTime += delta;
-    if (trackerUpdateAccTime > TRACKER_UPDATE_INTERVAL && getCharacterById(d.id)) {
-      trackerContainer.update();
-      trackerUpdateAccTime = 0;
-    }
-  });
-
-  // @TODO: at some point fix the onClose registering (this is a hack to get it working)
-  setTimeout(() => {
-    addOnCloseToWindow(getTrackerWindowId(d.id), () => {
-      deleteSceneAppLooper(trackCharLoopIndex);
-    });
-  }, 200);
-
-  return debuggerTrackerWindowCmp;
-};
-
 const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   const d = data as { id: string; winId: string };
   const character = getCharacterById(d.id);
@@ -167,24 +116,11 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   // @NOTE: The copy code button is not that easy to implement here
   // because the character object only has references to the mesh and phys objects,
   // and also controls (especially these would be hard to print).
-  const openCharacterDataButton = CMP({
+  const openCharacterStateButton = CMP({
     class: 'winSmallIconButton',
     html: () =>
-      `<button title="Open character data tracker">${getSvgIcon('personArmsUp')}</button>`,
-    onClick: () => {
-      openDraggableWindow({
-        id: getTrackerWindowId(d.id),
-        position: { x: 130, y: 80 },
-        size: { w: 400, h: 400 },
-        saveToLS: true,
-        title: `Character data: ${character.name || `[${character.id}]`}`,
-        isDebugWindow: true,
-        content: createTrackCharacterContent,
-        data: { id: character.id, winId: getTrackerWindowId(d.id) },
-        closeOnSceneChange: true,
-        removeOnClose: true, // @TODO: Without this the tracker won't work on the second time opening it. Fix this at some point in the DraggableWindow.
-      });
-    },
+      `<button title="Open character state window">${getSvgIcon('personArmsUp')}</button>`,
+    onClick: () => _openCharacterStateWindow(character),
   });
   const logButton = CMP({
     class: 'winSmallIconButton',
@@ -200,7 +136,7 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
       `<button title="Remove character (only for this browser load, does not delete character permanently)">${getSvgIcon('thrash')}</button>`,
     onClick: () => {
       closeDraggableWindow(getEditWindowId(d.id));
-      closeDraggableWindow(getTrackerWindowId(d.id));
+      closeDraggableWindow(getCharacterStateWindowId(d.id));
       deleteCharacter(character.id);
     },
   });
@@ -219,7 +155,7 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
   <div><span class="winSmallLabel">Key binding ids:</span> ${character.keyBindingIds.join(', ')}</div>
   <div><span class="winSmallLabel">Mouse binding ids:</span> ${character.mouseBindingIds.join(', ')}</div>
 </div>
-<div style="text-align:right">${openCharacterDataButton}${logButton}${deleteButton}</div>
+<div style="text-align:right">${openCharacterStateButton}${logButton}${deleteButton}</div>
 </div>`,
   });
 
@@ -353,7 +289,7 @@ export const _updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
   if (only === 'LIST') return;
   const winStates = [
     ...getDraggableWindowsStartingWith(CHAR_EDIT_WIN_ID),
-    ...getDraggableWindowsStartingWith(CHAR_TRACKER_WIN_ID),
+    ...getDraggableWindowsStartingWith(CHAR_STATE_WIN_ID),
   ];
   for (let i = 0; i < winStates.length; i++) {
     const winState = winStates[i];
@@ -364,11 +300,8 @@ export const _updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {
             content: createEditCharacterContent,
             onClose: refreshCharactersList,
           });
-        } else if (winState.id?.startsWith(CHAR_TRACKER_WIN_ID)) {
-          registerDraggableWindowCmp(winState.id, {
-            content: createTrackCharacterContent,
-            onClose: refreshCharactersList,
-          });
+        } else if (winState.id?.startsWith(CHAR_STATE_WIN_ID)) {
+          _registerCharacterStateWindowCmp(winState.id);
         }
       }
       updateDraggableWindow(winState.id);

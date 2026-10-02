@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phases 1–2 implemented
 Category: Character, Debugger
 Blocks: p068_character-debug-gizmos.md, p069_character-live-config-editing.md
 
@@ -236,14 +236,26 @@ A small `key → formatter` map, used only for known keys. Any other key uses th
 - p066 Phase 1 added `data: characterData` back to the `createCharacter()` call (`DynamicCharacter.ts:946`), and p066 Phase 2 added the doc comment on `CharacterObject.data` (§3.1). Nothing is left to do here.
 - **Result:** the legacy tracker shows values again (still slow and ungrouped). This is the "before" baseline for the §6 measurement.
 
-### Phase 2: New Character state window (core)
+### Phase 2: New Character state window (core) — done
 
-- Add `Debug/Character/_dbg__CharacterStateWindow.ts` and `CharacterStateWindow.module.scss`.
-- Build rows once and update with the diff (§3.3, §3.4), including the cost readout.
-- Add the two SVGs, the `SvgIcon.ts` keys and the colour variables (§3.5).
-- Add the header with the interval input (§3.6), the `<details>` groups with skip-when-closed (§3.7), and the per-window late looper, instance map and cleanup (§3.8).
-- Add LS persistence for interval and group state (§3.9).
-- Update `_dbg__Character.ts`: remove the legacy tracker code and module-level variables, and point the tracker button and the `_updateCharactersDebuggerGUI` re-registration at the new module.
+- (done) Add `Debug/Character/_dbg__CharacterStateWindow.ts` and `CharacterStateWindow.module.scss`.
+- (done) Build rows once and update with the diff (§3.3, §3.4), including the cost readout.
+- (done) Add the two SVGs, the `SvgIcon.ts` keys and the colour variables (§3.5).
+- (done) Add the header with the interval input (§3.6), the `<details>` groups with skip-when-closed (§3.7), and the per-window late looper, instance map and cleanup (§3.8).
+- (done) Add LS persistence for interval and group state (§3.9).
+- (done) Update `_dbg__Character.ts`: remove the legacy tracker code and module-level variables, and point the tracker button and the `_updateCharactersDebuggerGUI` re-registration at the new module.
+
+**Implementation notes** (where Phase 2 differs from the plan, and what Phase 3 must know):
+
+- **Scene target resolver.** `DraggableWindow.ts` gained `registerDraggableWindowSceneTargetResolver` (commit `4bc48db`) after this plan was written, and the other edit windows use it. The state window registers one too (`getCharacterById(data.id)` exists), so it stays open over a scene change when the next scene has a character with the same id, and closes otherwise. This replaces "the window closes on scene change" in §3.8 and §6 step 7. The window is torn down at the scene change start (`onRemoveCmp` deletes its looper) and rebuilt with a new looper in the new scene. Resolvers are per exact window id, so they are registered on open and when `_updateCharactersDebuggerGUI` re-attaches content (`_registerCharacterStateWindowCmp`). A window restored from LS on a page reload runs before its resolver exists: reloading into a scene without that character still shows "Character not found (deleted?)".
+- **Exports:** `_createCharacterStateWindowContent`, `_openCharacterStateWindow`, `_registerCharacterStateWindowCmp`, plus `CHAR_STATE_WIN_ID` and `getCharacterStateWindowId` (the id moved out of `_dbg__Character.ts`). The legacy `onClose: refreshCharactersList` on the tracker window is gone (the list selection follows the edit windows only).
+- **Rebuilds.** `_updateCharactersDebuggerGUI` rebuilds every open state window (`updateDraggableWindow` = remove + reopen) on each character create and delete, so a new instance can be registered before the old one is removed: `disposeInstance` deletes the map entry only when it is its own. A key-count change or a value changing its type rebuilds all three groups, not only the affected one (both rare). The key count is checked with a `for…in` count, so the check allocates nothing.
+- **Disposal from inside the looper** (character not found, the `isConnected` safety net) is deferred to a microtask: `deleteSceneMainLooper` replaces the late loopers array, and `runSceneMainLateLoopers` would then skip the next looper for that frame. An `isDisposed` flag stops the looper meanwhile.
+- **Settings** are read once per window and kept per window. A change writes `AEK_charStateWin`, which is the next window's default; other open windows keep their values. Phase 3 adds `flash` to the same object.
+- **Layout.** The label shrinks with an ellipsis before the value does (the full key is in the hover `title`), number cells are `min-width: 7ch`, and the vector length is labelled `len`. The default window size is 460×520 (was 400×400) so four-component vectors fit; sizes saved in LS still apply.
+- **Not done here:** the "one step late" `title` on `groundNormal`, `groundIsWalkable` and the wall-hit rows (§5) has no phase. It goes into Phase 3 with the known-key map (§3.10). The row `title` is the key and the raw value, refreshed on `mouseenter`.
+- **Verified** headless (Chrome, WebGPU, Gym scene): all three groups fill, Internal memory starts closed, values update while a character moves, two windows run side by side, closing one leaves the other running, the late-looper count stays at one after five open/close cycles, a closed group's DOM stays unchanged, a negative interval clamps to 0, reloading the Gym keeps the window, switching to `sceneTestECS` closes it. `yarn lint` and `yarn build` pass; the module is only in the lazy `_dbg__Character` chunk. The in-window readout shows about 0.02–0.06 ms per update at interval 0 with State and Properties open. The §6 step 8 Performance-panel comparison is not done yet.
+- **Plan references that moved:** `closeDraggableWindow` is at `DraggableWindow.ts:475`, `updateDraggableWindow` at `:664`, `removeDraggableWindow` at `:1030`; `getPhysGameTime` at `PhysicsAPI.ts:816`; `CharacterData` at `DynamicCharacter.ts:46`. The Gym has three characters (`topDownChar`, `arrowKeysChar`, `testDummyChar`).
 
 ### Phase 3: Readability extras
 

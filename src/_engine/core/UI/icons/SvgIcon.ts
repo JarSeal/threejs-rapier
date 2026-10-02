@@ -5,6 +5,8 @@ import assetsIcon from './svg/assets-collection.svg?raw';
 import aspectRatioIcon from './svg/aspect-ratio.svg?raw';
 import cameraIcon from './svg/camera2.svg?raw';
 import cameraReelsIcon from './svg/camera-reels.svg?raw';
+import circleCheckCutoutIcon from './svg/circle-check-cutout.svg?raw';
+import circleXCutoutIcon from './svg/circle-x-cutout.svg?raw';
 import cloudSunIcon from './svg/cloud-sun-fill.svg?raw';
 import databaseXIcon from './svg/database-fill-x.svg?raw';
 import easelIcon from './svg/easel-fill.svg?raw';
@@ -44,6 +46,8 @@ const icons = {
   aspectRatio: aspectRatioIcon,
   camera: cameraIcon,
   cameraReels: cameraReelsIcon,
+  circleCheckCutout: circleCheckCutoutIcon,
+  circleXCutout: circleXCutoutIcon,
   cloudSun: cloudSunIcon,
   databaseX: databaseXIcon,
   easel: easelIcon,
