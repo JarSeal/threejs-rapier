@@ -58,7 +58,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 - **Undo/redo** for changes made in the debugger.
 - **Physics visualizers**: collider wireframes colored by body state, ray helpers, and query statistics.
 - **Ray tester windows** for firing Three.js or physics rays at the scene.
-- A **character state window** per character, showing its live data grouped and formatted, with freeze and copy, and in-world **character gizmos** for the vectors and probes its controller decides from (velocity, facing, ground normal, floor ray and sensor, wall cast, trail), which can be pinned to stay after the window closes.
+- A **character state window** per character, showing its live data grouped and formatted, with freeze and copy. Its configuration values can be **edited live** (with undo, reset, copy-out as code and saving across reloads). It also toggles in-world **character gizmos** for the vectors and probes its controller decides from (velocity, facing, ground normal, floor ray and sensor, wall cast, trail), which can be pinned to stay after the window closes.
 - A **determinism probe** (`?physicsProbe=N`) that hashes and diffs the physics state after N fixed steps.
 - **Production test mode** (`?isProdTest=true`), which runs a production build with a subset of the debug tools.
 - **Stress tests** for the ECS and physics.
@@ -308,7 +308,6 @@ Planned work is specified in [`docs/plans/`](docs/plans/), where a lower number 
 
 - A procedural sky and atmosphere, a day/night cycle and a layered skybox system
 - An editor/creator view and a material editor
-- Live character config editing in the debugger
 - Physics objects in the scene JSON schema, physics world bounds, multibody joints and physics snapshot restore
 - Component query caching and a triple-buffered physics transform buffer
 - A client device capability sniffer, an asset optimization pipeline and an LOD system

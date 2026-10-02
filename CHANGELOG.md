@@ -32,8 +32,16 @@ Earlier releases are only recorded in the git history.
   - Drawn on top by default, with a Depth toggle, and a Scale for the velocity arrows (metres per m/s). The toggles, depth and scale persist in `AEK_charGizmos`.
   - Pin keeps a character's gizmos after its window closes, set from the window or from the character's row in the Characters tab. A pin is kept over a scene change when the next scene has a character with the same id (session only).
 - `CharacterObject.initialConfig`: a frozen copy of the character's configuration (the `_` keys of its data) as it was created. `CharacterController.config` (`CharacterConfigHooks`): the keys sized into the body at creation (`bakedKeys`) and `onChange(key)`, which recomputes what is derived from a key written from outside (the dynamic character's `__maxWalkableAngleCos`).
+- Live character config editing (debug), in the Character state window's Properties group:
+  - Number values are edited in place (Enter or blur commits, ArrowUp/ArrowDown step, Shift ×10, Escape cancels), clamped and stepped per key, with the unit and the key's description in the tooltip. `_maxWalkableAngle` is edited in degrees. Booleans toggle with a click on their icon. Keys typed into an editor don't reach the game's key bindings (the F-keys still do).
+  - The keys sized into the body at creation (`_height`, `_radius`, `_crouchHeight`, `_skinThickness`, `_groundDetectorOffset`, `_groundDetectorRadius`) are shown locked.
+  - A value that differs from the creation-time one is marked and gets a reset button. The group's header shows the changed count, "Reset all" and "Copy changes" (a `charData` snippet of the changed keys, to paste into the scene's code).
+  - Every edit, reset and Reset all is one undo step (`character.config`); a held arrow key is one.
+  - Edits are saved per scene and character id in `AEK_debugCharConfig` (only the values that differ from the creation-time ones) and applied when the character is created, in the debug environment only. A saved row has a blue dot, and the window header shows the saved count with a clear button for that character. The Characters tab's clear button clears them for this scene or all scenes. Clearing leaves the live values as they are.
+- `applySavedCharacterConfig(character)`: for controllers, applies the character's saved debug config values. Call it once, right after assigning `character.controller` (`createDynamicCharacter` does). A no-op outside the debug environment.
+- `confirmClearScope`'s optional `note`, a second paragraph in the clear dialog.
 - The character edit window (debug) shows `kind` and `controlMode`.
-- The `circleCheckCutout`, `circleXCutout` and `pin` icons, and the `$debugBoolTrue`, `$debugBoolFalse` and `$debugValueFlash` Sass colours.
+- The `circleCheckCutout`, `circleXCutout`, `pin` and `lock` icons, and the `$debugBoolTrue`, `$debugBoolFalse` and `$debugValueFlash` Sass colours.
 
 **Changed**
 

@@ -306,6 +306,16 @@ export const createCharactersDebuggerGUI = () => {
   useDebug(debugGUI, true)?._createCharactersDebuggerGUI();
 };
 
+/**
+ * For controllers: applies the character's saved debug config overrides (the Character state
+ * window's tuned values; debug environment only, a no-op elsewhere). Call it once, right after
+ * assigning `character.controller`, so its `config.onChange` recomputes what derives from them.
+ * `initialConfig` never contains them.
+ */
+export const applySavedCharacterConfig = (char: CharacterObject) => {
+  useDebug(debugGUI)?._applySavedCharacterConfig(char);
+};
+
 /** Refreshes the Characters debugger tab's list and the open character window, or only one of
  * them (a no-op outside the debug environment). */
 export const updateCharactersDebuggerGUI = (only?: 'LIST' | 'WINDOW') => {

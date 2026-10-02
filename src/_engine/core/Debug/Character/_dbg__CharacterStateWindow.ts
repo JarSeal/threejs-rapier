@@ -1,6 +1,6 @@
 import { addDebugToast } from '../../../debug/DebuggerGUI';
 import { CMP, type TCMP } from '../../../utils/CMP';
-import { lsGetItem, lsSetItem } from '../../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsSetItem, lsSubscribe } from '../../../utils/LocalAndSessionStorage';
 import { llog } from '../../../utils/Logger';
 import { getCharacterById } from '../../Character';
 import { getPhysGameTime } from '../../PhysicsAPI';
@@ -33,6 +33,13 @@ import {
   _registerUndoRedoActionHandler,
 } from '../_dbg__UndoRedo';
 import { getConfigKeyHint, type ConfigKeyHint } from './_dbg__CharacterConfigHints';
+import {
+  CHAR_CONFIG_LS_KEY,
+  clearSavedCharacterConfig,
+  getSavedCharacterConfig,
+  isSameConfigValue,
+  saveCharacterConfig,
+} from './_dbg__CharacterConfigOverrides';
 import styles from './CharacterStateWindow.module.scss';
 
 /**
@@ -142,6 +149,10 @@ type StateWindowInstance = {
     resetAll: HTMLButtonElement;
     changedText: HTMLElement;
   } | null;
+  /** The window header's saved count and its clear button (hidden while nothing is saved) */
+  savedActions: { wrap: HTMLElement; text: HTMLElement };
+  /** Stops following the saved overrides' LS key */
+  unsubscribeSaved: (() => void) | null;
 };
 
 const instances = new Map<string, StateWindowInstance>();
@@ -320,11 +331,13 @@ const refreshRow = (row: Row, charId: string) => {
   if (character) updateRow(row, character.data[row.key], true, false);
 };
 
-/** Writes several configuration values, then shows them in the character's open window (if any).
- * The edits, the resets and undo all write through here. */
+/** Writes several configuration values, saves them (only the ones that differ from the
+ * creation-time values, so they survive a reload), then shows them in the character's open window
+ * (if any). The edits, the resets and undo all write through here. */
 const applyConfigValues = (character: CharacterObject, values: Record<string, ConfigValue>) => {
   const keys = Object.keys(values);
   for (let i = 0; i < keys.length; i++) writeConfig(character, keys[i], values[keys[i]]);
+  saveCharacterConfig(character, keys);
   const inst = instances.get(character.id);
   const props = inst?.groups.find((group) => group.id === 'props');
   if (!props) return;
@@ -375,14 +388,6 @@ const formatLabelValue = (editor: ConfigEditor | null, value: ConfigValue) => {
   return `${parseFloat((isDeg ? value * RAD_TO_DEG : value).toFixed(3))}${isDeg ? '°' : ''}`;
 };
 
-/** Equal, or numbers equal but for float noise (eg. a value typed in degrees, which comes back a
- * rounding step off the code's `Math.PI / 4`). */
-const isSameConfigValue = (a: unknown, b: unknown) =>
-  a === b ||
-  (typeof a === 'number' &&
-    typeof b === 'number' &&
-    Math.abs(a - b) <= 1e-12 * Math.max(1, Math.abs(b)));
-
 /** Marks the row when its value differs from the creation-time one. Runs only when the row's raw
  * value is written, so it costs nothing per frame. */
 const updateConfigMarker = (row: Row, value: unknown) => {
@@ -404,6 +409,51 @@ const renderConfigActions = (inst: StateWindowInstance) => {
   inst.configActions.copy.disabled = count === 0;
   inst.configActions.resetAll.disabled = count === 0;
   inst.configActions.changedText.textContent = count ? `${count} changed` : '';
+};
+
+// Saved values (they survive a reload)
+
+const SAVED_NOTE = 'Saved: applied again when the character is created (eg. after a reload).';
+
+/** Marks the rows with a saved value and shows the saved count. Runs on the window's build and on
+ * every write to the saved values' LS key (never per frame). */
+const renderSavedState = (inst: StateWindowInstance) => {
+  if (inst.isDisposed) return;
+  const character = getCharacterById(inst.charId);
+  const saved = character ? getSavedCharacterConfig(character) : null;
+  const props = inst.groups.find((group) => group.id === 'props');
+  for (const row of props?.rows ?? []) {
+    if (!row.editor || row.editor.isLocked) continue;
+    const isSaved = saved !== null && Object.prototype.hasOwnProperty.call(saved, row.key);
+    row.elem.classList.toggle(styles.isSaved, isSaved);
+  }
+  const keys = saved ? Object.keys(saved) : [];
+  inst.savedActions.wrap.hidden = keys.length === 0;
+  inst.savedActions.text.textContent = `${keys.length} saved`;
+  inst.savedActions.text.title = `Saved values (applied on the character's next creation):\n${keys.join('\n')}`;
+};
+
+/** The window header's saved count and its clear button. */
+const createSavedActions = (charId: string) => {
+  const wrap = createElem('span', styles.savedActions);
+  wrap.hidden = true;
+  const text = createElem('span', styles.savedCount);
+  const clear = createIconButton(
+    `winSmallIconButton ${styles.headerButton}`,
+    'databaseX',
+    "Clear this character's saved values (this scene). The live values stay as they are: the code values return the next time the character is created."
+  );
+  clear.addEventListener('click', () => {
+    const character = getCharacterById(charId);
+    if (!character) return;
+    clearSavedCharacterConfig(character);
+    addDebugToast({
+      title: 'Saved character values cleared',
+      message: `${character.name || `[${character.id}]`}: the code values return on its next creation`,
+    });
+  });
+  wrap.append(text, clear);
+  return { wrap, text };
 };
 
 /** Whether the row's value is edited in degrees (stored in radians). */
@@ -716,8 +766,11 @@ const createRow = (
     editor,
   };
 
-  // A fixed slot first, so the values line up whether a row is changed or not
+  // Fixed slots first, so the values line up whether a row is saved or changed or not
   if (editor && !editor.isLocked) {
+    const savedDot = createElem('span', styles.savedDot);
+    savedDot.title = SAVED_NOTE;
+    valueElem.appendChild(savedDot);
     if (editor.initial !== undefined) {
       valueElem.appendChild(createResetButton(row, editor, charId));
     } else {
@@ -956,6 +1009,7 @@ const buildGroups = (inst: StateWindowInstance, character: CharacterObject) => {
 
   for (const group of inst.groups) updateGroup(group, data, true, false);
   renderConfigActions(inst);
+  renderSavedState(inst);
 };
 
 /** The Properties header's actions: the changed count, "Copy changes" and "Reset all". Shown while
@@ -1030,6 +1084,8 @@ const disposeInstance = (inst: StateWindowInstance) => {
   }
   inst.unsubscribePin?.();
   inst.unsubscribePin = null;
+  inst.unsubscribeSaved?.();
+  inst.unsubscribeSaved = null;
   if (inst.gizmos) {
     releaseCharacterGizmos(inst.gizmos, inst);
     inst.gizmos = null;
@@ -1257,6 +1313,7 @@ const createHeader = (inst: StateWindowInstance) => {
   copyButton.addEventListener('click', () => void copyDataAsJson(inst.charId));
   header.appendChild(copyButton);
 
+  header.appendChild(inst.savedActions.wrap);
   header.appendChild(frozenBadge);
 
   const cost = createElem('span', styles.costReadout);
@@ -1296,6 +1353,8 @@ export const _createCharacterStateWindowContent = (winData?: { [key: string]: un
     costText: document.createTextNode('upd – ms'),
     changedKeys: new Set(),
     configActions: null,
+    savedActions: createSavedActions(charId),
+    unsubscribeSaved: null,
   };
 
   const rootCmp: TCMP = CMP({
@@ -1316,6 +1375,8 @@ export const _createCharacterStateWindowContent = (winData?: { [key: string]: un
   inst.gizmos = acquireCharacterGizmos(charId, inst);
   if (inst.gizmos) headerRows.appendChild(createGizmoRow(inst, inst.gizmos));
   buildGroups(inst, character);
+  // Saves from this window, the Characters tab's clear button and undo all write through LS
+  inst.unsubscribeSaved = lsSubscribe(CHAR_CONFIG_LS_KEY, () => renderSavedState(inst));
   if (sceneId) {
     inst.looperIndex = createSceneMainLooper(createLooper(inst, rootCmp.elem), sceneId, true);
   }

@@ -4,6 +4,8 @@
 $dimText: variables.$debugTextColorDark;
 // A configuration value that differs from the character's creation-time one
 $changedColor: #e3b341;
+// A configuration value saved for the character's next creation (AEK_debugCharConfig)
+$savedColor: #58a6ff;
 $monoStack: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
 .root {
@@ -281,6 +283,38 @@ $monoStack: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
 .isChanged .resetButton {
   visibility: visible;
+}
+
+// A fixed slot too: the row's value is saved (applied again on the character's next creation)
+.savedDot {
+  flex-shrink: 0;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background-color: $savedColor;
+  cursor: help;
+  visibility: hidden;
+}
+
+.isSaved .savedDot {
+  visibility: visible;
+}
+
+.savedActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.savedCount {
+  color: $savedColor;
+  font-size: 1rem;
+  white-space: nowrap;
+  cursor: help;
 }
 
 // Out of the flow, so the summary's line height (and the first row) stay as they are

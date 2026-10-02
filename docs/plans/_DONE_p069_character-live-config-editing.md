@@ -1,4 +1,4 @@
-Status: draft | Phases 1-2 implemented
+Status: implemented (Phases 1-3; Phase 4 dropped)
 Category: Character, Debugger
 
 # Character Live Config Editing — Plan
@@ -173,21 +173,30 @@ Each phase can be reviewed and committed on its own.
 - (done) Copy changes: the diff is read from the data, not the markers, in `initialConfig` order (the generic window can't import `DEFAULT_CHARACTER_DATA`; the merge keeps its order anyway). Baked keys are left out. Radians are written in full (4 decimals would move them up to 0.003°) with the degree comment.
 - (done) Verified headless (Playwright, real Ctrl+Z / Ctrl+Shift+Z) in both worker targets on `arrowKeysChar`: peak speed 3.70 → 6.00 m/s, peak jump speed 4.86 → 7.88 (WORKER_THREAD) / 7.71 (MAIN_THREAD) m/s; `_tumblingAngularDamping` = 7 read back from the body during the next tumble; the copied snippet merged over `initialConfig` equals the tuned config for every key (the gym's code was not edited); update cost 0.034 / 0.037 ms against 0.038 / 0.036 ms at the Phase 1 commit (noise). Undo survives a reload, and is a quiet no-op for a deleted character.
 
-### Phase 3 — Persistence
+### Phase 3 — Persistence — done
 
 - `AEK_debugCharConfig` (§4.6): save, apply at creation, the `N saved` header, the Characters tab's clear-LS button.
 - Check: a tuned character keeps its values after a reload and after leaving and re-entering the scene; another scene's character with the same id is not affected; clearing restores the code values on the next creation; a production build doesn't read the key (search the bundle for `AEK_debugCharConfig`).
+- (done) Not the `resolveSkyBoxDef` pattern (§2.5, §4.6): that reads LS from engine code, which puts `AEK_debugSkyBox` in the main chunk. Everything that touches the key is in `core/Debug/Character/_dbg__CharacterConfigOverrides.ts`, reached through the Characters debug module (`useDebug`, debug env only, not prod test mode).
+- (done) Applied after the controller exists, not in `createDynamicCharacter` before `getDimensions`: the latter would put the overrides into `initialConfig` (its snapshot is taken after the merge), and baked keys stay locked anyway. `createCharacter` can't call `config.onChange` (the controller is assigned after it resolves), so a controller calls `applySavedCharacterConfig(character)` (`Character.ts`) once, right after assigning `character.controller`; `createDynamicCharacter` does. A character without a controller gets none. A saved value equal to the creation value (the code caught up) is dropped; a renamed, retyped or baked key is skipped with one `lwarn` and kept (it may come back). One `llog` per character lists the applied keys.
+- (done) Saved from `applyConfigValues` (edits, resets, Reset all, undo, redo: one LS write per call, only on a change), under the scene the character was created in (a `WeakMap` set when its overrides are applied; else the current scene). Only values with the creation value's type are saved.
+- (done) Window: a blue dot in a fixed slot left of the reset button on saved rows, and `N saved` with a clear button (this character, this scene; the live values stay) in the header, hidden while nothing is saved. Both follow the key with `lsSubscribe`, so nothing runs per frame. Clearing is not an undo step (like the other clear-LS buttons).
+- (done) Characters tab: the list's clear-LS button (the sky box's pattern: the all/this-scene dialog only with more than one scene's data). `confirmClearScope` got an optional `note` paragraph, used here for "the live values stay". The tab's own button stays disabled (the tab has no data).
+- (done) Verified headless (Playwright, gym, WORKER_THREAD): applied on re-enter and after a reload, `__maxWalkableAngleCos` recomputed, `initialConfig` untouched, `topDownChar` and another scene's same-id entry unaffected; nothing applied without `?isDebug=true` or with `?isProdTest=true`; every edit, reset, undo and clear path writes the expected LS; the markers follow. `yarn build`: `AEK_debugCharConfig` is only in the lazily loaded `_dbg__Character` chunk. Found on the way, not fixed: the clear-scope dialog opens behind a focused debug window (z-index 105 vs 20000), for every caller; and a number edit coalesced back to its start value leaves a no-op undo entry.
 
-### Phase 4 — Body rebuild (optional)
+### Phase 4 — Body rebuild (optional) — dropped
+
+- Not implemented: dropped after Phase 3. The baked keys stay locked. It was the largest and riskiest phase (an in-place collider swap, async in `WORKER_THREAD` mode; `PhysicsManager` has no helper to add colliders to an existing entity) for the smallest gain: the app owns the visual, so a resized capsule wouldn't match the model. If it is ever picked up, note that Phase 3 applies saved values after the colliders exist, so saved baked values would need a rebuild right after creation, or reading them before `getDimensions` while keeping them out of `initialConfig`.
 
 - `rebuildBody` (§4.8), staged baked edits and the "Apply body changes" button, unlocked baked rows.
 - Check in both worker targets: a larger `_radius` grows the colliders (physics debug draw), the gizmos' floor sensor ball and the probes; crouching still swaps the capsules; the character keeps standing on the elevator through a rebuild; undo rebuilds back.
 
-### Docs and version (with the last phase that lands)
+### Docs and version (with the last phase that lands) — done
 
 - `CLAUDE.md`: one line on editing in the Character debugging bullet (the `config` hook, `AEK_debugCharConfig`).
 - `readme.md`: the debug suite's character line, if it lists the state window's features.
 - `CHANGELOG.md` and the engine minor bump (new `CharacterObject`/`CharacterController` fields), unless this branch's bump already covers it.
+- (done) The branch's engine bump (3.0.0 → 4.0.0, Afternoon) covers it: no further bump. The editing and saving are in the changelog's Engine 4.0.0 section, the CLAUDE.md Character debugging bullet has a line on them, and the readme moved "Live character config editing" from the Roadmap into the state window's Features line.
 
 ## 6. Out of scope
 

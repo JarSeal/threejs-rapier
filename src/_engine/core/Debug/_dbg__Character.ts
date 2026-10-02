@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
+  addDebugToast,
   createDebuggerTab,
   debuggerListCMP,
   updateDebuggerTab,
@@ -21,7 +22,13 @@ import { Pane } from 'tweakpane';
 import { llog, lwarn } from '../../utils/Logger';
 import { deleteCharacter, getCharacterById, getCharacters } from '../Character';
 import { getECSWorld } from '../ECS';
-import { createClearListLSButton } from './_dbg__ClearLSButtons';
+import { confirmClearScope, createClearListLSButton } from './_dbg__ClearLSButtons';
+import {
+  CHAR_CONFIG_LS_KEY,
+  clearSavedConfigScenes,
+  getSceneIdsWithSavedConfig,
+} from './Character/_dbg__CharacterConfigOverrides';
+import { getCurrentSceneId } from '../Scene';
 import { _recordUndoRedoAction, _registerUndoRedoActionHandler } from './_dbg__UndoRedo';
 import {
   _openCharacterStateWindow,
@@ -35,6 +42,8 @@ import {
   setCharacterGizmosPinned,
   syncCharacterGizmoPins,
 } from './Character/_dbg__CharacterGizmos';
+
+export { _applySavedCharacterConfig } from './Character/_dbg__CharacterConfigOverrides';
 
 const CHARACTERS_TAB_ID = 'charactersControls';
 const debuggerWindowCmp: { [id: string]: TCMP } = {};
@@ -262,17 +271,48 @@ const toggleEditCharacterWindow = (charId: string) => {
   });
 };
 
+// Clear LS
+
+const CLEARED_NOTE =
+  'The live values stay as they are: the code values return the next time each character is created.';
+
+/** Clears the characters' saved config values (the state windows' edits). With more than one
+ * scene's, asks which. */
+const createClearSavedConfigButton = () =>
+  createClearListLSButton({
+    hasData: () => getSceneIdsWithSavedConfig().length > 0,
+    watchKey: CHAR_CONFIG_LS_KEY,
+    onClear: () => {
+      const sceneIds = getSceneIdsWithSavedConfig();
+      const clear = (ids: string[]) => {
+        clearSavedConfigScenes(ids);
+        addDebugToast({ title: 'Saved character values cleared', message: CLEARED_NOTE });
+      };
+      if (sceneIds.length > 1) {
+        confirmClearScope({
+          onClearAllScenes: () => clear(sceneIds),
+          onClearThisScene: () => {
+            const sceneId = getCurrentSceneId();
+            if (sceneId) clear([sceneId]);
+          },
+          note: CLEARED_NOTE,
+        });
+      } else {
+        clear(sceneIds);
+      }
+    },
+  });
+
 export const _createCharactersDebuggerGUI = () => {
   if (!IS_DEBUG_ENV) return;
   createDebuggerTab({
     id: CHARACTERS_TAB_ID,
     title: 'Character controls',
     icon: 'personArmsUp',
-    // No LS key exists for character data today (see §2.1/§3.1 of the clear-LS-buttons
-    // plan) - both buttons exist for consistency with every other list tab, but stay
-    // permanently disabled until character data persistence is ever added.
+    // The tab has no data of its own (its button stays disabled, kept for consistency); the
+    // list's button clears the characters' saved config values (scene-scoped, module-owned)
     clearLSButton: true,
-    headerButtons: () => [createClearListLSButton({ hasData: () => false, onClear: () => {} })],
+    headerButtons: () => [createClearSavedConfigButton()],
     content: () => [
       debuggerListCMP({
         id: 'characters',

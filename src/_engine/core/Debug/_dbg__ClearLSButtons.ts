@@ -62,6 +62,8 @@ export const createClearListLSButton = (opts: ClearLSButtonOpts): TCMP =>
 export const confirmClearScope = (opts: {
   onClearAllScenes: () => void;
   onClearThisScene: () => void;
+  /** A second paragraph, eg. what clearing does or leaves as it is */
+  note?: string;
 }) => {
   openDialog({
     id: CONFIRM_CLEAR_SCOPE_DIALOG_ID,
@@ -70,7 +72,8 @@ export const confirmClearScope = (opts: {
     size: { w: 360, h: 200 },
     content: () => {
       const wrapper = CMP({
-        html: () => `<p>Do you want to clear this from all scenes or just the current scene?</p>`,
+        html: () =>
+          `<div><p>Do you want to clear this from all scenes or just the current scene?</p>${opts.note ? `<p>${opts.note}</p>` : ''}</div>`,
       });
       const buttonRow = wrapper.add({ class: 'debuggerClearLSDialogButtonRow' });
       buttonRow.add({

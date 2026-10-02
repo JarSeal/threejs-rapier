@@ -1,5 +1,10 @@
 import * as THREE from 'three/webgpu';
-import { createCharacter, emitLocomotionStateChange, onLocomotionStateChange } from '../Character';
+import {
+  applySavedCharacterConfig,
+  createCharacter,
+  emitLocomotionStateChange,
+  onLocomotionStateChange,
+} from '../Character';
 import type {
   CharacterBodyData,
   CharacterBodyPlan,
@@ -1469,6 +1474,8 @@ export const createDynamicCharacter = async (
       }
     },
   };
+  // The tuned values saved by the debugger (debug env only), now that onChange exists
+  applySavedCharacterConfig(character);
 
   return { character, data: characterData, intent, controlFns };
 };
