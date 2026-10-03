@@ -61,6 +61,7 @@ import {
 } from './_dbg__PhysicsDeterminism';
 import { getECSWorld, getEntityIdByAppId, getStableAppId } from '../ECS';
 import { getPhysicsInterpolationReadout } from '../PhysicsManager';
+import { registerEntityWindowOpener } from '../../debug/Profiler';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import {
   _recordOrCoalesceUndoRedoAction,
@@ -353,6 +354,15 @@ const toggleEditPhysicsEntityWindow = (itemId: string) => {
     closeOnSceneChange: true,
   });
 };
+
+// The profiler's heaviest objects open a physics entity's window too
+registerEntityWindowOpener({
+  id: 'physicsEntity',
+  label: 'Edit physics entity',
+  canOpen: (world, entityId) =>
+    world === getECSWorld() && Boolean(getPhysicsEntityRigidBody(entityId)),
+  toggle: (_world, entityId) => toggleEditPhysicsEntityWindow(String(entityId)),
+});
 
 /** List toggle: the same setter as the edit window's "Show wireframe" input. */
 const togglePhysicsEntityWireframe = (itemId: string, next: boolean) => {

@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-4 implemented
+Status: in progress | Phases 1-5 implemented
 Category: Debug, Performance, UI
 Epic: Profiler (this plan is the base; later profiler plans build on its window, tab host and stats sources)
 Related: _DONE_p345_gpu-memory-and-draw-call-debugger.md (its tab moves in, Phase 6), p240_client-device-capability-sniffer.md (device budgets next to the measured figures), p350_lod-system-research.md (the LOD plans measure their result with it), p354_gpu-driven-culling.md (GPU culling makes the CPU "in view" census an estimate of what the GPU draws, §2.7), docs/templates/todo-plan-prompts.txt (the prodTest follow-up after this plan, §2.4)
@@ -480,12 +480,45 @@ As built:
   world-sized bounding spheres, and three culls an `InstancedMesh` whole. The figure is right;
   that is a finding for the LOD and culling plans (p350, p354).
 
-### Phase 5: Objects tab
+### Phase 5: Objects tab — done
 
 The Objects tab (§2.8) on the census.
 
 **Exit:** the kind and owner bars add up to the totals. The top-10 rows open edit windows where one
 exists. The graphs move with the camera.
+
+As built:
+
+- `Profiler/_dbg__ProfilerObjects.ts`, tab id `profilerObjects`, `orderNr` 10, icon
+  `objectsCubes`. It holds the census and the draw counters while mounted and reads them once
+  per refresh (`onRefresh`). Sections in §2.8's order, each a CMP with its own `html`, so only
+  a changed section re-renders.
+- Census additions (`_dbg__Census.ts`, shared with the Overview's walk): a `triangles` figure per
+  bucket (the primitives of mesh-kind objects only), `owners` and `heaviest`. The owner is the
+  nearest entity whose OBJECT3D is the object or an ancestor of it: "Managed: <manager>"
+  (`MANAGED_BY`), "Persistent entities" (`PERSISTENT`), else "Scene entities" (any world, no
+  per-scene split), then "Non-ECS objects" and "Debug helpers". Every counted object goes into
+  one kind and one owner bucket, so both tables have the same Total row. `heaviest` is 10
+  preallocated slots (object name or type, the entity's debug name or app id, world id + entity
+  id), with no scene graph reference kept. Census cost in `largeWorld` is now 0.17-0.23 ms.
+- Bars: a Triangles / Vertices / Objects picker in the tab, persisted as the new setting
+  `objectsBarMeasure`. Lines, points and sprites have no triangles: their own primitives are
+  shown under the kind. The bar's 100% is the Total row, debug helpers included.
+- Edit windows: there is no mesh edit window. Lights and cameras have one, but no triangles, so
+  they never reach the top 10. New registry `registerEntityWindowOpener({ id, label, priority?,
+  canOpen, toggle })` in `debug/Profiler.ts` (the profiler never imports the drawer modules). The
+  character window (priority 10) and the physics entity window register. The Edit button shows
+  in the debug env only.
+- Over time: inline SVG sparklines (0 to the window's max, gaps where there is no value), not
+  Tweakpane `graph` monitors: those show no scale, and `pane.refresh()` adds a sample on every
+  tab refresh (a click too). One sample per census walk, the last 60, kept while the tab is
+  mounted. Draw calls are the 1 s per-frame average.
+- ECS: entities per world, and the component types (enum keys) summed over the worlds from
+  `getStorage(type).size`, sorted by count.
+- Verified in `largeWorld`, the ECS test scene and the GYM scene: the kind and owner totals are
+  equal; with the debug camera, a drag changes the in-view figures and the sparklines while the
+  totals stay put; a GYM row's Edit opens "Edit character". `largeWorld` has no physics bodies,
+  so its rows have no Edit button.
 
 ### Phase 6: GPU memory tab moves in
 

@@ -22,6 +22,8 @@ export const PROFILER_SETTINGS_PERSIST_KEYS = [
   'enabledInProdTest',
   'measureGpu',
   'excludeDebugHelpers',
+  // Picked in the Objects tab
+  'objectsBarMeasure',
 ] as const satisfies readonly (keyof ProfilerSettings)[];
 
 type SettingsTabOpts = {

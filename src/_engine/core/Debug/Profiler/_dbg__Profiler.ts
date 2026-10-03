@@ -17,6 +17,7 @@ import {
 } from '../../../debug/DebuggerGUI';
 import {
   DEFAULT_PROFILER_SETTINGS,
+  PROFILER_BAR_MEASURES,
   PROFILER_LS_KEY,
   PROFILER_UI_LS_KEY,
   PROFILER_UPDATE_RATES_HZ,
@@ -33,6 +34,7 @@ import {
   PROFILER_OVERVIEW_TAB_ID,
   sanitizeOverviewMetrics,
 } from './_dbg__ProfilerOverview';
+import { createProfilerObjectsTabDef, PROFILER_OBJECTS_TAB_ID } from './_dbg__ProfilerObjects';
 import { registerBuiltInStatsSources } from './_dbg__ProfilerSources';
 import { _syncStatsSources } from './_dbg__StatsSources';
 import {
@@ -56,6 +58,9 @@ const sanitizeSettings = () => {
   settings.enabledInProdTest = Boolean(settings.enabledInProdTest);
   settings.measureGpu = Boolean(settings.measureGpu);
   settings.excludeDebugHelpers = Boolean(settings.excludeDebugHelpers);
+  if (!PROFILER_BAR_MEASURES.includes(settings.objectsBarMeasure)) {
+    settings.objectsBarMeasure = DEFAULT_PROFILER_SETTINGS.objectsBarMeasure;
+  }
 };
 
 hydrateDebuggerTabState({
@@ -78,7 +83,8 @@ const applySetting = (key: keyof ProfilerSettings) => {
       updateOnScreenTools('PLAY');
       break;
     case 'updateRateHz':
-      // The Overview reads it on its next mount (it isn't visible next to the Settings tab)
+      // The Overview and Objects tabs read it on their next mount (they aren't visible next to
+      // the Settings tab)
       break;
     case 'overviewMetrics':
       // An open Overview (eg. changed through setProfilerSettings) applies it now, otherwise
@@ -91,6 +97,9 @@ const applySetting = (key: keyof ProfilerSettings) => {
       break;
     case 'excludeDebugHelpers':
       // The census reads it on its next sample (a cached one taken with the old value isn't reused)
+      break;
+    case 'objectsBarMeasure':
+      _updateProfilerTab(PROFILER_OBJECTS_TAB_ID);
       break;
   }
 };
@@ -279,4 +288,7 @@ registerBuiltInStatsSources(settings);
 // BUILT-IN TABS
 
 _createProfilerTab(createProfilerOverviewTabDef(settings));
+_createProfilerTab(
+  createProfilerObjectsTabDef({ settings, setSettings: (partial) => _setProfilerSettings(partial) })
+);
 _createProfilerTab(settingsTabDef);

@@ -1,4 +1,5 @@
 import type { Object3D } from 'three/webgpu';
+import type { ECSWorld } from '../core/ECS';
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../core/Config';
 import { lsGetItem } from '../utils/LocalAndSessionStorage';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
@@ -40,7 +41,13 @@ export type ProfilerSettings = {
   /** The in-view census counts debug helpers ({@link markDebugHelper}, three's `*Helper`s) in a
    * row of their own instead of the scene figures. */
   excludeDebugHelpers: boolean;
+  /** What the Objects tab's bars measure (their length is the share of the scene total). */
+  objectsBarMeasure: ProfilerBarMeasure;
 };
+
+/** The Objects tab's bar measures. */
+export const PROFILER_BAR_MEASURES = ['TRIANGLES', 'VERTICES', 'OBJECTS'] as const;
+export type ProfilerBarMeasure = (typeof PROFILER_BAR_MEASURES)[number];
 
 export const DEFAULT_PROFILER_SETTINGS: Readonly<ProfilerSettings> = {
   updateRateHz: 4,
@@ -49,6 +56,7 @@ export const DEFAULT_PROFILER_SETTINGS: Readonly<ProfilerSettings> = {
   enabledInProdTest: false,
   measureGpu: true,
   excludeDebugHelpers: true,
+  objectsBarMeasure: 'TRIANGLES',
 };
 
 type ProfilerModule = typeof import('../core/Debug/Profiler/_dbg__Profiler');
@@ -226,3 +234,44 @@ export const registerStatsSource = <T>(source: StatsSource<T>) => {
 
 /** @internal The registered stats sources (the profiler). */
 export const _getStatsSources = (): ReadonlyMap<string, AnyStatsSource> => statsSources;
+
+// ENTITY WINDOWS (the Objects tab's heaviest objects)
+
+/** Opens an entity's debug edit window from a profiler view (eg. a physics entity's). */
+export type EntityWindowOpener = {
+  /** Unique; registering the same id again replaces the opener. */
+  id: string;
+  /** What the window is, eg. 'Edit physics entity' (the link's tooltip). */
+  label: string;
+  /** Openers are tried in descending priority (default 0), the first that can open the entity
+   * does: eg. a character (also a physics entity) opens the character window. */
+  priority?: number;
+  canOpen: (world: ECSWorld, entityId: number) => boolean;
+  /** Opens the window and brings it to the front, or closes it when it is on top. */
+  toggle: (world: ECSWorld, entityId: number) => void;
+};
+
+const entityWindowOpeners: EntityWindowOpener[] = [];
+
+/**
+ * Registers an entity edit window the profiler can open (the Objects tab's heaviest objects). A
+ * no-op where the profiler doesn't load (see {@link registerProfiler}).
+ * @param opener ({@link EntityWindowOpener})
+ */
+export const registerEntityWindowOpener = (opener: EntityWindowOpener) => {
+  if (!isProfilerLoadedInThisMode()) return;
+  const index = entityWindowOpeners.findIndex((o) => o.id === opener.id);
+  if (index !== -1) entityWindowOpeners.splice(index, 1);
+  entityWindowOpeners.push(opener);
+  // Stable: equal priorities keep their registration order
+  entityWindowOpeners.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+};
+
+/** @internal The opener of an entity's edit window, or null (the profiler). */
+export const _getEntityWindowOpener = (world: ECSWorld, entityId: number) => {
+  if (!world.isAlive(entityId)) return null;
+  for (let i = 0; i < entityWindowOpeners.length; i++) {
+    if (entityWindowOpeners[i].canOpen(world, entityId)) return entityWindowOpeners[i];
+  }
+  return null;
+};
