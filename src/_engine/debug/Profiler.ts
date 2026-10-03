@@ -1,3 +1,4 @@
+import type { Object3D } from 'three/webgpu';
 import { IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../core/Config';
 import { lsGetItem } from '../utils/LocalAndSessionStorage';
 import { loadDebugModuleAsync, useDebug, type DebugModuleRef } from '../utils/helpers';
@@ -36,6 +37,9 @@ export type ProfilerSettings = {
   /** Time the GPU work of every frame while a profiler view needs it (WebGPU with timestamp
    * queries only). */
   measureGpu: boolean;
+  /** The in-view census counts debug helpers ({@link markDebugHelper}, three's `*Helper`s) in a
+   * row of their own instead of the scene figures. */
+  excludeDebugHelpers: boolean;
 };
 
 export const DEFAULT_PROFILER_SETTINGS: Readonly<ProfilerSettings> = {
@@ -44,6 +48,7 @@ export const DEFAULT_PROFILER_SETTINGS: Readonly<ProfilerSettings> = {
   openFromStatsPanels: true,
   enabledInProdTest: false,
   measureGpu: true,
+  excludeDebugHelpers: true,
 };
 
 type ProfilerModule = typeof import('../core/Debug/Profiler/_dbg__Profiler');
@@ -153,6 +158,24 @@ export const getProfilerSettings = (): Readonly<ProfilerSettings> | undefined =>
  */
 export const setProfilerSettings = (partial: Partial<ProfilerSettings>) => {
   useProfiler()?._setProfilerSettings(partial);
+};
+
+// DEBUG HELPERS (§2.7)
+
+/** The `userData` flag {@link markDebugHelper} sets. */
+export const DEBUG_HELPER_USER_DATA_KEY = 'aekDebugHelper';
+
+/**
+ * Marks an object (and its subtree) as a debug helper: the profiler's in-view census then counts
+ * it in its own row, not in the scene figures (`excludeDebugHelpers`). Debug code that adds
+ * gizmos, wireframes or lines to the root scene should mark them. three's `*Helper` types are
+ * recognised without it.
+ * @param obj (THREE.Object3D) the helper's root
+ * @returns the same object
+ */
+export const markDebugHelper = <T extends Object3D>(obj: T) => {
+  obj.userData[DEBUG_HELPER_USER_DATA_KEY] = true;
+  return obj;
 };
 
 // STATS SOURCES (§2.5)

@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { createLines, preloadFatLineBackend, type LineObject } from '../LineManager';
 import { lwarn } from '../../utils/Logger';
+import { markDebugHelper } from '../../debug/Profiler';
 import type { RayDebugOpts, RayHelperKind } from '../RayDebugTypes';
 
 /**
@@ -407,6 +408,7 @@ const createHelper = (pool: KindPool): Helper => {
     attach: { to: 'ROOT_SCENE' },
     visible: false,
   });
+  markDebugHelper(line.object3D);
   const activeColor = new THREE.Color(s.activeColor);
   const helper: Helper = {
     index,

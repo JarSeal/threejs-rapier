@@ -21,6 +21,7 @@ import {
 import type { ColliderParams } from '../../Physics/PhysicsAPITypes';
 import { getPhysGameTime } from '../../PhysicsAPI';
 import { registerOnAllSceneEnterings } from '../../Scene';
+import { markDebugHelper } from '../../../debug/Profiler';
 
 /**
  * Character debug gizmos: in-world overlays of the vectors and probes a character's controller
@@ -745,8 +746,8 @@ const createSet = (character: CharacterObject): CharacterGizmoSet => {
   for (const id of GIZMO_IDS) {
     const impl = GIZMO_IMPLS[id];
     if (!impl) continue;
-    set.lines[id] = impl.lines.map((spec, i) =>
-      createLines({
+    set.lines[id] = impl.lines.map((spec, i) => {
+      const line = createLines({
         name: `charGizmo_${character.id}_${id}_${i}`,
         capacity: spec.capacity,
         growth: 'FIXED',
@@ -762,8 +763,10 @@ const createSet = (character: CharacterObject): CharacterGizmoSet => {
         attach: { to: 'ROOT_SCENE' },
         // Shown by the first refill that draws something
         visible: false,
-      })
-    );
+      });
+      markDebugHelper(line.object3D);
+      return line;
+    });
   }
   return set;
 };

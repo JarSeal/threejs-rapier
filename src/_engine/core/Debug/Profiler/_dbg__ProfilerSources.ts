@@ -36,6 +36,7 @@ import {
   _requestTimestampResolve,
   _sumGpuMs,
 } from '../_dbg__GPUTimer';
+import { getCensusAvailability, runSceneCensus, type SceneCensus } from './_dbg__Census';
 import { SampleWindow, type WindowStat } from './_dbg__SampleWindow';
 
 /** The built-in stats sources (§2.5). Each one measures only while it is acquired. */
@@ -52,6 +53,7 @@ export const PROFILER_SOURCE = {
   POSTFX: 'postFx',
   LONG_TASKS: 'longTasks',
   SCENE: 'scene',
+  CENSUS: 'scene.census',
 } as const;
 
 /** The per-frame sources summarize the frames of the last second (like the frame probe). */
@@ -332,6 +334,26 @@ const releasePostFx = () => {
 const longTaskWindow = new SampleWindow(1, 256);
 let longTaskObserver: PerformanceObserver | null = null;
 
+export type { SceneCensus } from './_dbg__Census';
+
+/** The census walks the scene at most once per half update interval, so views that read it in
+ * the same refresh (or two refreshes close together) share one walk. */
+const readCensus = (settings: Readonly<ProfilerSettings>) => {
+  let last: Readonly<SceneCensus> | null = null;
+  return () => {
+    const minAgeMs = 500 / settings.updateRateHz;
+    if (
+      last &&
+      last.excludesDebugHelpers === settings.excludeDebugHelpers &&
+      performance.now() - last.sampledAt < minAgeMs
+    ) {
+      return last;
+    }
+    last = runSceneCensus(settings.excludeDebugHelpers);
+    return last;
+  };
+};
+
 // --- REGISTRATION ---
 
 /**
@@ -540,5 +562,12 @@ export const registerBuiltInStatsSources = (settings: Readonly<ProfilerSettings>
       isLoading: isCurrentlyLoading(),
       nextId: getNextSceneId() || null,
     }),
+  });
+
+  registerStatsSource<SceneCensus>({
+    id: PROFILER_SOURCE.CENSUS,
+    label: 'In-view census',
+    availability: getCensusAvailability,
+    read: readCensus(settings),
   });
 };

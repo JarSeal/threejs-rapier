@@ -21,6 +21,7 @@ export const PROFILER_SETTINGS_PERSIST_KEYS = [
   'openFromStatsPanels',
   'enabledInProdTest',
   'measureGpu',
+  'excludeDebugHelpers',
 ] as const satisfies readonly (keyof ProfilerSettings)[];
 
 type SettingsTabOpts = {
@@ -136,6 +137,11 @@ export const createProfilerSettingsTabDef = (
               key: 'measureGpu',
               label: 'Measure GPU time',
               onChange: () => opts.onChange('measureGpu'),
+            },
+            {
+              key: 'excludeDebugHelpers',
+              label: 'Exclude debug helpers',
+              onChange: () => opts.onChange('excludeDebugHelpers'),
             },
           ],
         },

@@ -55,6 +55,7 @@ const sanitizeSettings = () => {
   settings.openFromStatsPanels = Boolean(settings.openFromStatsPanels);
   settings.enabledInProdTest = Boolean(settings.enabledInProdTest);
   settings.measureGpu = Boolean(settings.measureGpu);
+  settings.excludeDebugHelpers = Boolean(settings.excludeDebugHelpers);
 };
 
 hydrateDebuggerTabState({
@@ -87,6 +88,9 @@ const applySetting = (key: keyof ProfilerSettings) => {
     case 'measureGpu':
       // A held GPU frame time source is released or acquired right away
       _syncStatsSources();
+      break;
+    case 'excludeDebugHelpers':
+      // The census reads it on its next sample (a cached one taken with the old value isn't reused)
       break;
   }
 };

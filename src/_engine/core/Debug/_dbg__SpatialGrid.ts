@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { createDebuggerTab } from '../../debug/DebuggerGUI';
+import { markDebugHelper } from '../../debug/Profiler';
 import { ECSWorld, getECSWorld } from '../ECS';
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import type { SpatialGrid } from '../Spatial/SpatialGrid';
@@ -125,8 +126,8 @@ const spatialGridVisualizerSystem = (world: ECSWorld) => {
   refillOverlay(oversizedOverlay, grid);
 };
 
-const createOverlayLine = (id: string, maxBoxes: number) =>
-  createLines({
+const createOverlayLine = (id: string, maxBoxes: number) => {
+  const line = createLines({
     id,
     capacity: maxBoxes * BOX_EDGE_SEGMENT_COUNT,
     growth: 'FIXED',
@@ -135,6 +136,9 @@ const createOverlayLine = (id: string, maxBoxes: number) =>
     // Created once and outlives scenes, so a scene switch must not dispose it.
     persistent: true,
   });
+  markDebugHelper(line.object3D);
+  return line;
+};
 
 const initSpatialGridVisualizer = (settings: {
   visualizerEnabled: boolean;

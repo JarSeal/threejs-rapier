@@ -7,6 +7,7 @@ import symbolsTextureUrl from '../core/UI/3DSymbols/3DSymbolsTextures.png?url';
 import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
 import { getECSWorld } from '../core/ECS';
 import { registerGPUMemorySource } from './GPUMemory';
+import { markDebugHelper } from './Profiler';
 
 const symbols: {
   camera?: THREE.Group;
@@ -142,6 +143,7 @@ const createSymbolClone = (template?: THREE.Group): THREE.Group | null => {
   if (!template) return null;
   const clone = template.clone();
   clone.userData.isHelperSymbol = true;
+  markDebugHelper(clone);
 
   // Per-instance materials so tinting one light's gizmo (docs/plans/light-culling.md §10)
   // never affects any other — Object3D.clone() copies material references, not values,
