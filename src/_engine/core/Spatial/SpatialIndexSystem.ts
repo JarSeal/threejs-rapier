@@ -23,8 +23,9 @@ export const registerSpatialIndexDebugGUI = async () => {
  * with its own cell size, capacity and update policy. `DEFAULT` is created lazily on its first
  * SPATIAL_INDEXED member and is the one LightObjectCullingSystem.ts queries.
  *
- * A domain's grid instance is replaced when the domain is re-registered with other settings, so
- * read it with `getSpatialDomain`/`getSpatialGrid` where it's used instead of keeping it.
+ * A domain's grid instance is replaced when the domain is re-registered with other settings, and
+ * dropped when it's unregistered, so read it with `getSpatialDomain`/`getSpatialGrid` where it's
+ * used instead of keeping it.
  */
 
 /**
@@ -96,8 +97,8 @@ type WorldDomains = {
   /** Registration order, which is also the rebuild order. */
   list: SpatialDomain[];
   byId: Map<string, SpatialDomain>;
-  /** The non-default domains, by mask bit. */
-  byBit: SpatialDomain[];
+  /** The non-default domains, by mask bit. An unregistered domain leaves a hole, reused lowest first. */
+  byBit: (SpatialDomain | undefined)[];
   /** Debug env only: how many times the rebuild system has run in this world. */
   frame: number;
 };
@@ -195,6 +196,14 @@ const setMaskBit = (world: ECSWorld, domain: SpatialDomain, entityId: number) =>
   else world.addComponent(entityId, ComponentType.SPATIAL_DOMAINS, { mask: 1 << domain.bit });
 };
 
+/** The lowest bit no registered domain holds, or -1 when all of them are taken. */
+const findFreeBit = (byBit: WorldDomains['byBit']) => {
+  for (let bit = 0; bit < MAX_NON_DEFAULT_DOMAINS; bit++) {
+    if (!byBit[bit]) return bit;
+  }
+  return -1;
+};
+
 /** Removes SPATIAL_DOMAINS with the last bit (its onRemoveComponent hook then has nothing left to leave). */
 const clearMaskBit = (world: ECSWorld, domain: SpatialDomain, entityId: number) => {
   const membership = world.getComponent(entityId, ComponentType.SPATIAL_DOMAINS);
@@ -209,7 +218,7 @@ const clearMaskBit = (world: ECSWorld, domain: SpatialDomain, entityId: number) 
  * cell size is baked into the grid's layout, so there is no cheaper path). Members past a
  * smaller `maxMembers` leave the domain. Registering `DEFAULT` before its first member sets its
  * settings (cell size 20 and `world.maxEntities` members otherwise). A world holds at most 31
- * domains besides `DEFAULT`.
+ * domains besides `DEFAULT` at once ({@link unregisterSpatialDomain} frees one).
  */
 export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOptions): void {
   const resolved = resolveDomainOptions(
@@ -226,7 +235,8 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
   const existing = domains.byId.get(resolved.id);
   if (!existing) {
     const isDefault = resolved.id === DEFAULT_SPATIAL_DOMAIN;
-    if (!isDefault && domains.byBit.length >= MAX_NON_DEFAULT_DOMAINS) {
+    const bit = isDefault ? -1 : findFreeBit(domains.byBit);
+    if (!isDefault && bit < 0) {
       throw new Error(
         `Spatial domain '${resolved.id}': world '${world.id}' already has the maximum of ` +
           `${MAX_NON_DEFAULT_DOMAINS} domains besides ${DEFAULT_SPATIAL_DOMAIN}.`
@@ -234,7 +244,7 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
     }
     const domain: SpatialDomain = {
       id: resolved.id,
-      bit: isDefault ? -1 : domains.byBit.length,
+      bit,
       requested: { ...opts },
       opts: resolved,
       grid: createDomainGrid(resolved),
@@ -249,7 +259,7 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
     };
     domains.list.push(domain);
     domains.byId.set(domain.id, domain);
-    if (!isDefault) domains.byBit.push(domain);
+    if (!isDefault) domains.byBit[bit] = domain;
     return;
   }
   existing.requested = { ...opts };
@@ -273,6 +283,45 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
   }
   // The re-insert read every member's current position and radius
   rebuildDomain(existing, domains.frame);
+}
+
+/**
+ * Removes `world`'s domain `id`: every member leaves it (losing its SPATIAL_DOMAINS bit, and the
+ * component with its last one), and its grid and oracle state are dropped. Its bit is free for
+ * the next registration. A no-op if it isn't registered. `DEFAULT` can't be unregistered: its
+ * membership is SPATIAL_INDEXED, which other code adds.
+ */
+export function unregisterSpatialDomain(world: ECSWorld, id: string): void {
+  if (id === DEFAULT_SPATIAL_DOMAIN) {
+    if (IS_DEBUG_ENV) {
+      lwarn(
+        `SpatialIndex: domain '${DEFAULT_SPATIAL_DOMAIN}' can't be unregistered (its ` +
+          `membership is SPATIAL_INDEXED); register it with other settings instead.`
+      );
+    }
+    return;
+  }
+  const domains = domainsByWorld.get(world);
+  const domain = domains?.byId.get(id);
+  if (!domains || !domain) return;
+
+  // Out of the registries first, so the hooks of the removals below have nothing to leave
+  domains.list.splice(domains.list.indexOf(domain), 1);
+  domains.byId.delete(id);
+  domains.byBit[domain.bit] = undefined;
+  oracleByWorld.get(world)?.delete(id);
+
+  // Every holder loses the bit, so a domain that reuses it can't inherit a stale membership
+  const bit = 1 << domain.bit;
+  const emptied: number[] = [];
+  for (const [entityId, membership] of world.getStorage(ComponentType.SPATIAL_DOMAINS)) {
+    if (!(membership.mask & bit)) continue;
+    membership.mask &= ~bit;
+    if (membership.mask === 0) emptied.push(entityId);
+  }
+  for (let i = 0; i < emptied.length; i++) {
+    world.removeComponent(emptied[i], ComponentType.SPATIAL_DOMAINS);
+  }
 }
 
 /** The grid of `world`'s domain `id`, or undefined if it isn't registered. Never creates one. */
@@ -427,7 +476,8 @@ const leaveMaskedDomains = (entityId: number, world: ECSWorld) => {
   const byBit = domainsByWorld.get(world)?.byBit;
   if (!mask || !byBit) return;
   for (let bit = 0; bit < byBit.length; bit++) {
-    if (mask & (1 << bit)) removeFromDomain(byBit[bit], entityId);
+    const domain = byBit[bit];
+    if (domain && mask & (1 << bit)) removeFromDomain(domain, entityId);
   }
 };
 

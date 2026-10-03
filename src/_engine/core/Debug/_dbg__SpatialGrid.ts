@@ -197,9 +197,15 @@ const setOverlayEnabled = (overlay: BoxOverlay, enabled: boolean) => {
   overlay.line.setVisible(enabled);
 };
 
-const refillOverlay = (overlay: BoxOverlay, grid: SpatialGrid) => {
+/** `grid` undefined: the domain isn't registered (any more), so the line is emptied. */
+const refillOverlay = (overlay: BoxOverlay, grid: SpatialGrid | undefined) => {
   if (!overlay.enabled) return;
   const line = overlay.line;
+  if (!grid) {
+    line.beginWrite();
+    line.endWrite();
+    return;
+  }
 
   let count = overlay.getBoundsInto(grid, overlay.bounds);
   if (count * 6 > overlay.bounds.length) {
@@ -227,9 +233,8 @@ const spatialGridVisualizerSystem = (world: ECSWorld) => {
   for (let i = 0; i < domainOverlays.length; i++) {
     const overlays = domainOverlays[i];
     if (!overlays.cells.enabled && !overlays.oversized.enabled) continue;
-    // Re-read every frame: re-registering a domain replaces its grid
+    // Re-read every frame: re-registering a domain replaces its grid, unregistering drops it
     const grid = getSpatialDomain(world, overlays.domainId);
-    if (!grid) continue;
     refillOverlay(overlays.cells, grid);
     refillOverlay(overlays.oversized, grid);
   }
