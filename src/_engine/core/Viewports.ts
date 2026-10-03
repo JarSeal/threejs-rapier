@@ -32,6 +32,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { texture, uniform, uv } from 'three/tsl';
+import { registerGPUMemorySource } from '../debug/GPUMemory';
 import type { TCMP } from '../utils/CMP';
 import { lwarn } from '../utils/Logger';
 import { getHUDRootCMP } from './HUD';
@@ -134,6 +135,8 @@ type ViewportState = {
   /** The camera and aspect syncCameraAspect last applied. */
   syncedCamera: THREE.Camera | null;
   syncedAspect: number;
+  /** Removes its render target from the GPU memory tab's sources (debug env only). */
+  removeGPUMemorySource: () => void;
 };
 
 const LAYER_ID = 'aekViewportsLayer';
@@ -300,6 +303,12 @@ export const createViewport = (props: ViewportProps): Viewport => {
     builtColorSpace: null,
     syncedCamera: null,
     syncedAspect: 0,
+    removeGPUMemorySource: registerGPUMemorySource({
+      id: `viewport.${props.id}`,
+      label: `Viewport "${props.id}"`,
+      owner: props.sceneId,
+      getResources: () => [vp.renderTarget],
+    }),
   };
   viewports.push(vp);
   if (vp.enabled) enabledCount++;
@@ -320,6 +329,7 @@ export const deleteViewport = (id: string) => {
   vp.renderTarget?.dispose();
   vp.material.dispose();
   vp.slotCmp.remove();
+  vp.removeGPUMemorySource();
   // Removing a slot can move the others in its stack
   isLayoutDirty = true;
 };

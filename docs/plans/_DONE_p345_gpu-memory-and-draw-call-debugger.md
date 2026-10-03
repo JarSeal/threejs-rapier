@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: implemented (Phases 1-3)
 Category: Debug, Rendering, Performance
 Epic: p350_lod-system-research.md (Tier 0)
 Blocks: nothing hard; p347, p348, p351 and p353 each measure their result with it
@@ -162,6 +162,7 @@ As built:
   what the first A left behind can be told from what the second A made. The tracker works out the
   visits itself; `SceneLoader` has no load-start hook.
 - `_dbg__GPUMemorySnapshots.ts`: one in-memory snapshot. The tab shows a live diff against it:
+
   - category changes;
   - **Left behind**: allocations from the snapshot's visit or later (not the current visit) that are
     still counted, grouped by kind, label, visit and call site, with how many were garbage
@@ -169,6 +170,7 @@ As built:
   - registered assets new / gone / changed, with a net figure.
 
   "Log diff to console" logs it all; the tab shows up to 12 rows per table.
+
 - Exit result (`largeWorld` → `skyShowcase` → `largeWorld`): the diff names the leak, 24 interleaved
   instance-matrix attributes (2.44 MB) left by the first `largeWorld` visit. It's a three r186 bug,
   fixed for r187 (`docs/issues/three-instanced-node-attribute-leak.md`). All 24 are collected, so
@@ -180,11 +182,49 @@ As built:
 - Call sites of render-time allocations point at `MainLoop.ts`'s render call: three allocates lazily
   while rendering, so that's the first non-three frame.
 
-### Phase 3 — Sources
+### Phase 3 — Sources — done
 
 1. `registerGPUMemorySource` and the first registrations (§2.3).
 
 **Exit:** untracked is under ~10 % of the total in `skyShowcase` with PostFX on.
+
+As built:
+
+- A source hands over three objects, not a byte estimate: `getResources()` returns textures, render
+  targets, geometries and attributes, and the tab counts three's own bytes for them
+  (`_dbg__GPUMemorySources.ts`), so assets, sources and untracked still add up to
+  `info.memory.total` (Phase 2). Assets are counted first; a GPU object an asset or an earlier source
+  counts is never counted again. A render target counts its textures and its internal depth texture,
+  and an attribute every buffer three made from its array (eg. an `instanceMatrix`'s interleaved
+  attributes). Those two aren't reachable from the object, so they are found through the Phase 2
+  allocation tracker's live objects.
+- `registerGPUMemorySource({ id, label, getResources, owner? })` in `debug/GPUMemory.ts` returns
+  its remover. The registry lives in that thin module, so registering needs no `_dbg__` import.
+  `owner` can be a function (eg. the current scene); without one, the source is listed under
+  "engine (no scene)". Sources sum into "By owner" (textures under Textures, buffers under Geometry,
+  the count column is now "Items") and have their own table, with a row per source, also at 0 B.
+- Most engine sources are defined on the debug side, reading getters that already exist
+  (`registerEngineGPUMemorySources`): sky box env bake (with its PMREM generator's working set), sky
+  box nebula cube, sky box PMREM (texture sky), shadow maps, PostFX chain, instance buffers (every
+  `InstancedMesh` in the root scene, not only pools) and the renderer's output target (not in §2.3,
+  and the largest untracked item: three's MSAA / output-pass target, read from the private
+  `_frameBufferTargets`). Viewports register themselves (one row each, owned by their `sceneId`),
+  and so do the debug 3D symbols (debug only, ~1.6 MB), so debug overhead is named.
+- PostFX: every render target reachable from the built chain's node graph, found by its property
+  values, so TSL's PassNode, the effect nodes and app-written PostFX passes need no names.
+- Shadows: the app uses `VSMShadowMap`, whose blur pair lives on three's `ShadowNode`, which a light
+  can't reach (three keeps light nodes in a module-private `WeakMap`). The tab wraps
+  `ShadowNode.prototype.setupShadow` (debug only, at tab creation, before the first render) to map
+  each `shadow.map` to its node.
+- Not tracked: small instance counts (three keeps their matrices in uniform buffers), uniform
+  buffers, programs and unregistered geometry.
+- Found: three r186 counts a cube texture's faces as 1×1 each (it sizes a texture by its image, an
+  array of faces or none on a `CubeRenderTarget`). The tab estimates what's left out with three's own
+  formula at the real face size (`getUncountedCubeBytes`) and shows it per source and as one line
+  under "By owner", outside every total. `space`'s nebula cube at 512: 72 KB counted, ~12 MB real.
+- Exit result (untracked, debug mode): `skyShowcase` 0.26 MB of 36.9 MB (0.7 %), `space` 0.30 MB of
+  47.5 MB (0.6 %), `largeWorld` with its PostFX chain (`ambientOcclusion`) 0.57 MB of 150.9 MB
+  (0.4 %). `skyShowcase` has no PostFX passes, so `largeWorld` stands in for "with PostFX on".
 
 ## 4. Versioning
 

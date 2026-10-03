@@ -4,6 +4,32 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-03 — gpu-memory-debug-tab
+
+### Engine 4.2.0 (Afternoon)
+
+**Added**
+
+- GPU memory tab in the debug drawer (debug builds only, after Renderer). Its figures are three's own bookkeeping of what it created (`renderer.info`), not a driver measurement, and the tab labels the backend (WebGPU or WebGL2).
+  - Totals: `info.memory.total` and one row per category (bytes and count), plus render target and geometry counts. A budget bar against a budget in MB (default 512, persisted in `AEK_debugGPUMemory`), with a debug toast once per scene when it's over. The peak since boot and since the last scene enter, with the time it was reached.
+  - Frame: draw calls, triangles, render calls and compute calls of the last frame, with min / avg / max over 500 ms. A debug `LATE_MAIN` system samples them right after the render, so the peaks and the budget toast work while the tab is closed too.
+  - By owner: registered textures and geometries, the textures a registered material holds alone (eg. clones) and the sources below, summed per owner with three's per-object bytes, so the owners and "untracked" add up to the total. Owner keys of the form `sceneId#cellKey` are listed as cells under their scene. Untracked has its own table per category.
+  - Sources: GPU resources that aren't registered assets. Built in: the renderer's output target (MSAA, output pass), shadow maps (VSM blur targets included), the PostFX chain (every render target reachable from its nodes), instance buffers of every `InstancedMesh` in the scene, the sky box env bake, nebula cube and texture-sky PMREM, each viewport, and the debug 3D symbols. Untracked is under 1 % of the total in `skyShowcase`, `space` and `largeWorld`.
+  - Cube textures: three r186 counts a cube's faces as 1×1 each, so the tab estimates what's left out (eg. ~12 MB for `space`'s nebula cube) and shows it per source and under "By owner", outside every total.
+  - Snapshot and live diff, for leak hunting across scene switches: changed categories; "Left behind", what earlier scene visits since the snapshot created and is still allocated (grouped by kind, label, scene visit and call site, with how many were garbage collected without being destroyed); and registered assets new, gone or changed. "Log diff to console" logs it all, and "Call sites" records where each allocation was made.
+  - The Stats tab's "Draw calls, memory" button opens it.
+- `registerGPUMemorySource({ id, label, getResources, owner? })` (`debug/GPUMemory.ts`): names a GPU resource that isn't a registered asset for the GPU memory tab. `getResources` returns the three objects (textures, render targets, geometries, attributes), and the tab counts three's bytes for them. Returns a function that removes the source; a no-op outside the debug env.
+- `onRendererCreated(fn)` (`core/Renderer.ts`): runs `fn` once with the renderer, right after it is constructed and before its `init()`, or right away if it exists.
+- A `memory` icon.
+
+**Changed**
+
+- `DEFAULT_DEBUG_DRAWER_TAB_ORDER` has `gpuMemoryControls` after `rendererControls`.
+
+**Known issues**
+
+- three r186 never deletes a removed `InstancedMesh`'s instance attributes, so `renderer.info.memory` grows by ~3.7 MB of counted attributes on every `largeWorld` visit (the GPU memory tab's diff names them). Fixed in three r187; see `docs/issues/three-instanced-node-attribute-leak.md`.
+
 ## 2026-10-02 — triple-buffered-physics-transform-buffer
 
 ### Engine 4.1.0 (Afternoon)

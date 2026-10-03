@@ -29,6 +29,8 @@ export type GPUAssetRow = {
   owner: string;
   /** three's counted bytes, 0 when not on the GPU */
   bytes: number;
+  /** An estimate of what three leaves out of it (cube textures, {@link getUncountedCubeBytes}) */
+  uncounted: number;
 };
 
 type MemoryMapEntry = number | { size: number; type: string };
@@ -41,7 +43,33 @@ const getMemoryMap = (renderer: Renderer) =>
 const entryBytes = (entry: MemoryMapEntry | undefined) =>
   entry === undefined ? 0 : typeof entry === 'number' ? entry : entry.size;
 
-/** The textures a material holds: its map slots and its TSL texture node inputs (createMaterial
+type TextureSizer = { _getTextureMemorySize: (texture: THREE.Texture) => number };
+
+/**
+ * What three r186 leaves out of a cube texture: it sizes a texture by its image, and a cube's image
+ * is an array of faces (or nothing, on a CubeRenderTarget), so it counts each face as 1×1. The
+ * size three's own formula gives at the real face size (a render target's, or the first face's),
+ * minus the `counted` bytes. 0 for anything else.
+ */
+export const getUncountedCubeBytes = (
+  renderer: Renderer,
+  texture: THREE.Texture,
+  counted: number,
+  faceSize?: { width: number; height: number }
+) => {
+  if (!(texture as THREE.CubeTexture).isCubeTexture || texture.width) return 0;
+  const face = faceSize ?? (texture.image as { width?: number; height?: number }[] | null)?.[0];
+  if (!face?.width || !face.height) return 0;
+  // A view of the texture with the face size; type, format and mipmaps read through to it
+  const sized = Object.create(texture, {
+    width: { value: face.width },
+    height: { value: face.height },
+  }) as THREE.Texture;
+  const bytes = (renderer.info as unknown as TextureSizer)._getTextureMemorySize(sized);
+  return Math.max(0, bytes - counted);
+};
+
+/** The textures a material holds:its map slots and its TSL texture node inputs (createMaterial
  * keeps those in userData.uniforms), the same places Material.ts checks before a release. */
 const forEachMaterialTexture = (
   material: Materials,
@@ -61,11 +89,14 @@ const forEachMaterialTexture = (
 /**
  * Every registered texture and geometry, plus the textures registered materials hold alone (eg.
  * clones: three uploads each Texture object on its own), with three's bytes and their owner.
- * A GPU object shared by two assets counts once, for the first.
+ * A GPU object shared by two assets counts once, for the first. `counted` collects the GPU
+ * objects counted, for the sources to skip (_dbg__GPUMemorySources.ts).
  */
-export const collectGPUAssets = (renderer: Renderer): GPUAssetRow[] => {
+export const collectGPUAssets = (
+  renderer: Renderer,
+  counted = new Set<object>()
+): GPUAssetRow[] => {
   const memoryMap = getMemoryMap(renderer);
-  const counted = new Set<object>();
   const bytesOf = (gpuObject: object) => {
     if (counted.has(gpuObject)) return 0;
     counted.add(gpuObject);
@@ -73,13 +104,18 @@ export const collectGPUAssets = (renderer: Renderer): GPUAssetRow[] => {
   };
   const rows: GPUAssetRow[] = [];
 
+  const uncountedOf = (texture: THREE.Texture, bytes: number) =>
+    bytes ? getUncountedCubeBytes(renderer, texture, bytes) : 0;
+
   for (const [id, entry] of Object.entries(getTextureRegistry())) {
+    const bytes = bytesOf(entry.resource);
     rows.push({
       key: `texture:${id}`,
       kind: 'texture',
       id,
       owner: getAssetOwner(entry.resource) ?? BOOT_OWNER,
-      bytes: bytesOf(entry.resource),
+      bytes,
+      uncounted: uncountedOf(entry.resource, bytes),
     });
   }
 
@@ -94,6 +130,7 @@ export const collectGPUAssets = (renderer: Renderer): GPUAssetRow[] => {
       id,
       owner: getAssetOwner(geometry) ?? BOOT_OWNER,
       bytes,
+      uncounted: 0,
     });
   }
 
@@ -110,6 +147,7 @@ export const collectGPUAssets = (renderer: Renderer): GPUAssetRow[] => {
         id: `${materialId} › ${slot}`,
         owner,
         bytes,
+        uncounted: uncountedOf(texture, bytes),
       });
     });
   }
@@ -117,12 +155,19 @@ export const collectGPUAssets = (renderer: Renderer): GPUAssetRow[] => {
   return rows;
 };
 
-export type OwnerSums = {
-  owner: string;
-  textures: number;
-  geometries: number;
+/** What one asset or source adds to its owner: texture bytes, and buffer bytes (attributes,
+ * index, storage) under geometries. */
+export type OwnerItem = { owner: string; textures: number; geometries: number };
+
+export const assetOwnerItem = (row: GPUAssetRow): OwnerItem => ({
+  owner: row.owner,
+  textures: row.kind === 'texture' ? row.bytes : 0,
+  geometries: row.kind === 'geometry' ? row.bytes : 0,
+});
+
+export type OwnerSums = OwnerItem & {
   total: number;
-  /** Assets with bytes on the GPU */
+  /** Assets and sources with bytes on the GPU */
   count: number;
 };
 
@@ -139,34 +184,34 @@ const emptySums = (owner: string): OwnerSums => ({
   count: 0,
 });
 
-const addRow = (sums: OwnerSums, row: GPUAssetRow) => {
-  if (row.kind === 'texture') sums.textures += row.bytes;
-  else sums.geometries += row.bytes;
-  sums.total += row.bytes;
+const addItem = (sums: OwnerSums, item: OwnerItem) => {
+  sums.textures += item.textures;
+  sums.geometries += item.geometries;
+  sums.total += item.textures + item.geometries;
   sums.count++;
 };
 
-/** Sums the rows per owner, grouped by the part before `#` (a scene, with its cells under it),
- * largest first. Rows with 0 bytes (not on the GPU) are left out. */
-export const groupByOwner = (rows: GPUAssetRow[]): OwnerGroup[] => {
+/** Sums the items per owner, grouped by the part before `#` (a scene, with its cells under it),
+ * largest first. Items with 0 bytes (not on the GPU) are left out. */
+export const groupByOwner = (items: OwnerItem[]): OwnerGroup[] => {
   const groups = new Map<string, OwnerGroup>();
-  for (const row of rows) {
-    if (!row.bytes) continue;
-    const hashAt = row.owner.indexOf('#');
-    const groupKey = hashAt < 0 ? row.owner : row.owner.slice(0, hashAt);
+  for (const item of items) {
+    if (!item.textures && !item.geometries) continue;
+    const hashAt = item.owner.indexOf('#');
+    const groupKey = hashAt < 0 ? item.owner : item.owner.slice(0, hashAt);
     let group = groups.get(groupKey);
     if (!group) {
       group = { ...emptySums(groupKey), cells: [] };
       groups.set(groupKey, group);
     }
-    addRow(group, row);
+    addItem(group, item);
     if (hashAt < 0) continue;
-    let cell = group.cells.find((c) => c.owner === row.owner);
+    let cell = group.cells.find((c) => c.owner === item.owner);
     if (!cell) {
-      cell = emptySums(row.owner);
+      cell = emptySums(item.owner);
       group.cells.push(cell);
     }
-    addRow(cell, row);
+    addItem(cell, item);
   }
   const sorted = [...groups.values()].sort((a, b) => b.total - a.total);
   for (const group of sorted) group.cells.sort((a, b) => b.total - a.total);

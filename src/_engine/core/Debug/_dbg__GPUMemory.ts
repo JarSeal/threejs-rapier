@@ -14,11 +14,18 @@ import { getRenderer, onRendererCreated } from '../Renderer';
 import { getCurrentSceneId, registerOnAllSceneEnterings } from '../Scene';
 import { formatBytes, formatNumber } from './_dbg__AssetStats';
 import {
+  assetOwnerItem,
   BOOT_OWNER,
   collectGPUAssets,
   groupByOwner,
   type OwnerSums,
 } from './_dbg__GPUMemoryOwners';
+import {
+  collectGPUMemorySources,
+  ENGINE_OWNER,
+  registerEngineGPUMemorySources,
+  type GPUMemorySourceRow,
+} from './_dbg__GPUMemorySources';
 import {
   ALLOCATION_KIND_LABELS,
   installAllocationTracker,
@@ -34,7 +41,7 @@ import {
 import styles from './GPUMemory.module.scss';
 
 /**
- * GPU memory and draw-call tab (docs/plans/p345_gpu-memory-and-draw-call-debugger.md).
+ * GPU memory and draw-call tab (docs/plans/_DONE_p345_gpu-memory-and-draw-call-debugger.md).
  *
  * Everything here is three's own bookkeeping (`renderer.info`) of the buffers and textures it
  * created, not a driver measurement: browsers expose no real VRAM figure.
@@ -237,26 +244,66 @@ const esc = (value: string) =>
   );
 
 const ownerLabel = (owner: string) =>
-  owner === BOOT_OWNER ? 'boot (before the first scene)' : esc(owner);
+  owner === BOOT_OWNER
+    ? 'boot (before the first scene)'
+    : owner === ENGINE_OWNER
+      ? 'engine (no scene)'
+      : esc(owner);
 
 const ownerRowHtml = (sums: OwnerSums, label: string, className = '') =>
   `<tr${className ? ` class="${className}"` : ''}><td>${label}</td><td>${formatBytes(sums.textures)}</td><td>${formatBytes(sums.geometries)}</td><td>${formatBytes(sums.total)}</td><td>${formatNumber(sums.count)}</td></tr>`;
+
+const sourcesHtml = (sources: GPUMemorySourceRow[]) => {
+  const rows = sources
+    .map(
+      (source) =>
+        `<tr${source.bytes ? '' : ` class="${styles.gpuMemoryUntracked}"`}><td class="${styles.gpuMemoryWrap}" title="${esc(source.id)}">${esc(source.label)}<br><span class="${styles.gpuMemoryDim}">${ownerLabel(source.owner)}${source.uncounted ? ` · about +${formatBytes(source.uncounted)} not counted (cube)` : ''}</span></td><td>${formatBytes(source.bytes)}</td><td>${formatNumber(source.count)}</td></tr>`
+    )
+    .join('');
+  const total = sources.reduce((sum, source) => sum + source.bytes, 0);
+  return `<div class="${styles.gpuMemorySummary}">
+  <h4 class="${styles.gpuMemoryHeading}">Sources</h4>
+  <table class="${styles.gpuMemoryTable}">
+    <thead><tr><th>Source (owner)</th><th>Size</th><th>GPU objects</th></tr></thead>
+    <tbody>${rows || '<tr><td>No sources registered.</td></tr>'}</tbody>
+    <tfoot><tr><td>Total</td><td>${formatBytes(total)}</td><td></td></tr></tfoot>
+  </table>
+  <div class="${styles.gpuMemoryNote}">GPU resources that aren't registered assets, named with registerGPUMemorySource (debug/GPUMemory.ts) and counted in "By owner" under their owner. A render target counts its textures and depth buffer, an attribute every buffer three made from its array. A GPU object an asset or an earlier source already counts is not counted again.</div>
+</div>`;
+};
 
 const ownersHtml = () => {
   const renderer = getRenderer();
   if (!renderer) return '';
   const memory: MemoryInfo = renderer.info.memory;
-  const rows = collectGPUAssets(renderer);
-  const groups = groupByOwner(rows);
+  // Assets first: a GPU object an asset holds is never counted again by a source
+  const counted = new Set<object>();
+  const rows = collectGPUAssets(renderer, counted);
+  const sources = collectGPUMemorySources(renderer, counted);
+  const groups = groupByOwner([
+    ...rows.map(assetOwnerItem),
+    ...sources.map((source) => {
+      const textures = source.bySize.texturesSize ?? 0;
+      return { owner: source.owner, textures, geometries: source.bytes - textures };
+    }),
+  ]);
   const currentSceneId = getCurrentSceneId();
 
-  let trackedTextures = 0;
-  let trackedGeometries = 0;
-  for (const group of groups) {
-    trackedTextures += group.textures;
-    trackedGeometries += group.geometries;
+  let trackedTotal = 0;
+  let assetTextures = 0;
+  let assetGeometries = 0;
+  for (const group of groups) trackedTotal += group.total;
+  for (const row of rows) {
+    if (row.kind === 'texture') assetTextures += row.bytes;
+    else assetGeometries += row.bytes;
   }
+  /** Bytes the sources count in an `info.memory` size category */
+  const sourceBytes = (sizeKey: string) =>
+    sources.reduce((sum, source) => sum + (source.bySize[sizeKey] ?? 0), 0);
   const notOnGPU = rows.filter((row) => !row.bytes).length;
+  const uncounted =
+    rows.reduce((sum, row) => sum + row.uncounted, 0) +
+    sources.reduce((sum, source) => sum + source.uncounted, 0);
 
   const ownerRows = groups
     .map((group) => {
@@ -273,39 +320,47 @@ const ownersHtml = () => {
     })
     .join('');
 
-  // What the registries can't name: render targets (shadow maps, PostFX, sky bakes, viewports),
-  // unregistered and instanced geometry, uniform buffers, shader code
+  // What neither the registries nor the sources name: unregistered geometry, render targets
+  // without a source, uniform buffers, shader code
   const untrackedRows = [
-    { label: 'Textures', bytes: memory.texturesSize - trackedTextures },
+    { label: 'Textures', bytes: memory.texturesSize - assetTextures - sourceBytes('texturesSize') },
     {
       label: 'Attributes + index',
-      bytes: memory.attributesSize + memory.indexAttributesSize - trackedGeometries,
+      bytes:
+        memory.attributesSize +
+        memory.indexAttributesSize -
+        assetGeometries -
+        sourceBytes('attributesSize') -
+        sourceBytes('indexAttributesSize'),
     },
     ...MEMORY_CATEGORIES.filter(
       (c) =>
         c.size !== 'texturesSize' && c.size !== 'attributesSize' && c.size !== 'indexAttributesSize'
-    ).map((c) => ({ label: c.label, bytes: memory[c.size] })),
+    ).map((c) => ({ label: c.label, bytes: memory[c.size] - sourceBytes(c.size) })),
   ]
     .filter((row) => row.bytes > 0)
     .sort((a, b) => b.bytes - a.bytes);
-  const untracked = memory.total - trackedTextures - trackedGeometries;
+  const untracked = memory.total - trackedTotal;
   const untrackedRatio = memory.total > 0 ? untracked / memory.total : 0;
 
-  return `<div class="${styles.gpuMemorySummary}">
+  // One root element: CMP renders only the first
+  return `<div><div class="${styles.gpuMemorySummary}">
   <h4 class="${styles.gpuMemoryHeading}">By owner</h4>
   <table class="${styles.gpuMemoryTable}">
-    <thead><tr><th>Owner</th><th>Textures</th><th>Geometry</th><th>Total</th><th>Assets</th></tr></thead>
-    <tbody>${ownerRows || '<tr><td>No registered assets on the GPU.</td></tr>'}
+    <thead><tr><th>Owner</th><th>Textures</th><th>Geometry</th><th>Total</th><th>Items</th></tr></thead>
+    <tbody>${ownerRows || '<tr><td>No registered assets or sources on the GPU.</td></tr>'}
       <tr class="${styles.gpuMemoryUntracked}"><td>Untracked</td><td></td><td></td><td>${formatBytes(untracked)}</td><td>${(untrackedRatio * 100).toFixed(0)} %</td></tr>
     </tbody>
     <tfoot><tr><td>Total</td><td></td><td></td><td>${formatBytes(memory.total)}</td><td></td></tr></tfoot>
   </table>
+  ${uncounted ? `<div class="${styles.gpuMemoryNote}">Cube textures: about +${formatBytes(uncounted)} more on the GPU, in none of the figures here. three r186 counts a cube's faces as 1×1 each; the estimate uses its formula at the real face size.</div>` : ''}
   <table class="${styles.gpuMemoryTable}">
     <thead><tr><th>Untracked</th><th>Size</th></tr></thead>
     <tbody>${untrackedRows.map((row) => `<tr><td>${row.label}</td><td>${formatBytes(row.bytes)}</td></tr>`).join('')}</tbody>
   </table>
-  <div class="${styles.gpuMemoryNote}">Registered textures and geometries, and the textures a material holds alone (eg. clones), summed per owning scene with three's own byte counts. ${notOnGPU ? `${formatNumber(notOnGPU)} registered asset${notOnGPU === 1 ? ' is' : 's are'} not on the GPU (never drawn, or not uploaded yet). ` : ''}Untracked is everything else: render targets (shadow maps, PostFX, sky bakes, viewports), unregistered and instanced geometry, uniform buffers and shader code. A large or growing figure is a finding.</div>
-</div>`;
+  <div class="${styles.gpuMemoryNote}">Registered textures and geometries, the textures a material holds alone (eg. clones) and the sources below, summed per owner with three's own byte counts. Geometry includes every buffer (attributes, index, storage). ${notOnGPU ? `${formatNumber(notOnGPU)} registered asset${notOnGPU === 1 ? ' is' : 's are'} not on the GPU (never drawn, or not uploaded yet). ` : ''}Untracked is everything else: unregistered geometry, uniform buffers, shader code, small instance counts (three keeps those in uniform buffers) and render targets no source names. A large or growing figure is a finding.</div>
+</div>
+${sourcesHtml(sources)}</div>`;
 };
 
 // --- SNAPSHOTS ---
@@ -506,6 +561,7 @@ export const _createGPUMemoryDebugGUI = () => {
   // Hydrated above; the tracker is installed before the renderer's init(), so it sees everything
   setRecordAllocationSites(state.recordSites);
   onRendererCreated(installAllocationTracker);
+  registerEngineGPUMemorySources();
 
   registerOnAllSceneEnterings('gpuMemoryScenePeak', () => {
     // Starts from what is held now: the previous scene's assets are already released here
