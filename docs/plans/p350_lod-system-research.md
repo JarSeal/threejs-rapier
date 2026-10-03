@@ -1,6 +1,6 @@
 Status: research done — epic, not-implemented
 Category: Rendering, LOD
-Blocks: p345_gpu-memory-and-draw-call-debugger.md, p346_spatial-domains.md, p347_lod-chain-generation.md, p348_ecs-lod-selection.md, p351_impostor-billboard-lod.md, p352_physics-simulation-tiers.md, p353_macro-streaming-grid.md, p354_gpu-driven-culling.md
+Blocks: \_DONE_p345_gpu-memory-and-draw-call-debugger.md, p346_spatial-domains.md, p347_lod-chain-generation.md, p348_ecs-lod-selection.md, p351_impostor-billboard-lod.md, p352_physics-simulation-tiers.md, p353_macro-streaming-grid.md, p354_gpu-driven-culling.md
 Related: p300_asset-optimization-pipeline-plan.md (LOD chains reuse its pipeline), p308_terrain-scatter.md (its static instance cells are the static case of p348), p306_terrain-blocks-and-procedural-terrain-meshes.md (block sizes line up with p353's cells), p420_npc-simulation-tiers.md (characters' side of p352), p240_client-device-capability-sniffer.md (device level as a LOD budget input), \_DONE_p050_spatial-index.md (p346 builds its Phase 4)
 
 # LOD System — Research & Epic
@@ -225,17 +225,17 @@ world. Cluster-level LOD stays research (§8, Tier 4).
 
 Child plans, in the order they should run. Each is independently useful.
 
-| Tier | Plan                                     | What it delivers                                                                                                  | Depends on                               |
-| ---- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| 0    | `p345_gpu-memory-and-draw-call-debugger` | GPU memory by category and owner, draw calls, high-water marks, snapshot diff                                     | —                                        |
-| 0    | `p346_spatial-domains`                   | Named spatial grids per world; shared cell maths; radius fixes; pool instances indexable                          | —                                        |
-| 1    | `p347_lod-chain-generation`              | meshoptimizer LOD chains: runtime (worker) for procedural geometry, build time for GLBs                           | p300 Phase 2 (build-time part only)      |
-| 1    | `p352_physics-simulation-tiers`          | Slot-less static bodies, no throw on capacity, then `STATIC`/`DISABLED`/`REMOVED` tiers                           | — (Phase 5: p353)                        |
-| 1    | `p348_ecs-lod-selection`                 | Screen-size selection with hysteresis; apply to meshes, instanced pools, static cells                             | p347 (for generated chains), p346 (soft) |
-| 2    | `p353_macro-streaming-grid`              | Cell residency state machine, per-cell asset ownership, build-time manifest, priming                              | p346 Phase 1; p352 for its physics phase |
-| 2    | `p351_impostor-billboard-lod`            | Cross-quads, dithered cross-fade, octahedral impostors                                                            | p348 Phase 3                             |
-| 3    | `p354_gpu-driven-culling` (stub)         | Compute frustum culling, indirect draws, per-instance LOD on the GPU                                              | p348, p346                               |
-| 4    | — (research only)                        | Cluster (meshlet) LOD, §7: a timeboxed spike whose output is a recommendation, only if huge single meshes need it | p354                                     |
+| Tier | Plan                                           | What it delivers                                                                                                  | Depends on                               |
+| ---- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 0    | `_DONE_p345_gpu-memory-and-draw-call-debugger` | GPU memory by category and owner, draw calls, high-water marks, snapshot diff                                     | —                                        |
+| 0    | `p346_spatial-domains`                         | Named spatial grids per world; shared cell maths; radius fixes; pool instances indexable                          | —                                        |
+| 1    | `p347_lod-chain-generation`                    | meshoptimizer LOD chains: runtime (worker) for procedural geometry, build time for GLBs                           | p300 Phase 2 (build-time part only)      |
+| 1    | `p352_physics-simulation-tiers`                | Slot-less static bodies, no throw on capacity, then `STATIC`/`DISABLED`/`REMOVED` tiers                           | — (Phase 5: p353)                        |
+| 1    | `p348_ecs-lod-selection`                       | Screen-size selection with hysteresis; apply to meshes, instanced pools, static cells                             | p347 (for generated chains), p346 (soft) |
+| 2    | `p353_macro-streaming-grid`                    | Cell residency state machine, per-cell asset ownership, build-time manifest, priming                              | p346 Phase 1; p352 for its physics phase |
+| 2    | `p351_impostor-billboard-lod`                  | Cross-quads, dithered cross-fade, octahedral impostors                                                            | p348 Phase 3                             |
+| 3    | `p354_gpu-driven-culling` (stub)               | Compute frustum culling, indirect draws, per-instance LOD on the GPU                                              | p348, p346                               |
+| 4    | — (research only)                              | Cluster (meshlet) LOD, §7: a timeboxed spike whose output is a recommendation, only if huge single meshes need it | p354                                     |
 
 Physics tiers (p352) rank high because they are a stability ceiling (`maxBodies`, no runtime
 bucket migration), and designing the async transition before there are many call sites is far

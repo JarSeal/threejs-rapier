@@ -8,6 +8,7 @@ import { existsOrThrow } from '../utils/assert';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
 
 let r: THREE.WebGPURenderer | null = null;
+let rendererCreatedCallbacks: ((renderer: THREE.WebGPURenderer) => void)[] = [];
 const ELEM_ID = 'mainCanvas';
 const CANVAS_ID = 'AEK_CANVAS_ELEM';
 const LS_KEY = 'debugRenderer';
@@ -74,10 +75,23 @@ export const createRenderer = async (opts?: Partial<RendererOptions>) => {
   canvasParentElem.appendChild(renderer.domElement);
 
   r = renderer;
+  const callbacks = rendererCreatedCallbacks;
+  rendererCreatedCallbacks = [];
+  for (const fn of callbacks) fn(renderer);
 
   await renderer.init();
 
   return renderer;
+};
+
+/**
+ * Runs `fn` with the renderer once createRenderer has constructed it, before its init() (so it
+ * sees every GPU resource the renderer creates), or right away if it already exists.
+ * @param fn callback, called once
+ */
+export const onRendererCreated = (fn: (renderer: THREE.WebGPURenderer) => void) => {
+  if (r) fn(r);
+  else rendererCreatedCallbacks.push(fn);
 };
 
 /**

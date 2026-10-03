@@ -56,6 +56,7 @@ import { initUndoRedo, registerUndoRedoModule } from './debug/UndoRedo';
 import { registerPostFxProfiler } from './debug/PostFXProfiler';
 import { registerAxesGizmoModule } from './debug/AxesGizmo';
 import { registerEnvBallModule } from './debug/EnvBall';
+import { registerGPUMemoryDebugGUI } from './debug/GPUMemory';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -117,6 +118,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerCharacterTools();
       await registerECSModule();
       await registerSpatialIndexDebugGUI();
+      await registerGPUMemoryDebugGUI();
     }
     if (IS_DEBUG_ENV || IS_PROD_TEST_MODE) {
       // Loaded here (not the IS_DEBUG_ENV-only block above) so isProdTest mode can still read

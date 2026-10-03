@@ -6,6 +6,7 @@ import symbolsModelUrl from '../core/UI/3DSymbols/3DSymbols.glb?url';
 import symbolsTextureUrl from '../core/UI/3DSymbols/3DSymbolsTextures.png?url';
 import { DebugModuleRef, loadDebugModule, useDebug } from '../utils/helpers';
 import { getECSWorld } from '../core/ECS';
+import { registerGPUMemorySource } from './GPUMemory';
 
 const symbols: {
   camera?: THREE.Group;
@@ -28,6 +29,19 @@ export const load3DSymbols = async () => {
     const symbolsTexture = await textureLoader.loadAsync(symbolsTextureUrl);
     symbolsTexture.colorSpace = THREE.SRGBColorSpace;
     symbolsTexture.flipY = false;
+    registerGPUMemorySource({
+      id: 'debug.3dSymbols',
+      label: 'Debug 3D symbols (debug only)',
+      getResources: () => {
+        const resources: (THREE.Texture | THREE.BufferGeometry)[] = [symbolsTexture];
+        for (const group of Object.values(symbols)) {
+          group.traverse((o) => {
+            if ((o as THREE.Mesh).isMesh) resources.push((o as THREE.Mesh).geometry);
+          });
+        }
+        return resources;
+      },
+    });
 
     const symbolMaterial = new THREE.MeshBasicMaterial({
       map: symbolsTexture,
