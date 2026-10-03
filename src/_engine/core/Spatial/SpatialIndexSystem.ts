@@ -7,6 +7,8 @@ import { lwarn } from '../../utils/Logger';
 import { MAX_SPOT_ANGLE } from '../ECS/ObjectFrustumCullingSystem';
 import { ReadonlyVec3, SpatialGrid } from './SpatialGrid';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
+import { getCurrentSceneId } from '../Scene';
+import { getNextSceneId, isCurrentlyLoading } from '../SceneLoader';
 
 // Debug
 type SpatialGridDebugModule = typeof import('../Debug/_dbg__SpatialGrid');
@@ -22,6 +24,9 @@ export const registerSpatialIndexDebugGUI = async () => {
  * holds named spatial domains (docs/plans/_DONE_p346_spatial-domains.md §3.1): separate grids, each
  * with its own cell size, capacity and update policy. `DEFAULT` is created lazily on its first
  * SPATIAL_INDEXED member and is the one LightObjectCullingSystem.ts queries.
+ *
+ * A domain (or `DEFAULT`'s settings) can belong to a scene and is released on its exit
+ * (docs/plans/p349_scene-scoped-spatial-domains.md, `sceneId` in SpatialDomainOptions).
  *
  * A domain's grid instance is replaced when the domain is re-registered with other settings, and
  * dropped when it's unregistered, so read it with `getSpatialDomain`/`getSpatialGrid` where it's
@@ -51,7 +56,18 @@ export interface SpatialDomainOptions {
   update?: SpatialUpdatePolicy;
   /** See SpatialGridOptions (default 2). */
   oversizedRadiusMultiplier?: number;
+  /**
+   * The scene these settings belong to (docs/plans/p349_scene-scoped-spatial-domains.md §3.1).
+   * While they exist they replace the domain's world settings (the last ones registered without
+   * a scene). On that scene's exit the domain goes back to its world settings, or is
+   * unregistered if it has none. A scope, not a setting: registering the same settings for
+   * another scene doesn't re-create the grid.
+   */
+  sceneId?: string;
 }
+
+/** A domain's settings in use: every default filled in, without the scope. */
+export type ResolvedSpatialDomainOptions = Required<Omit<SpatialDomainOptions, 'sceneId'>>;
 
 /** The domain SPATIAL_INDEXED entities are members of. */
 export const DEFAULT_SPATIAL_DOMAIN = 'DEFAULT';
@@ -68,10 +84,12 @@ type SpatialDomain = {
   readonly id: string;
   /** This domain's bit in SPATIAL_DOMAINS' mask; -1 for DEFAULT, whose membership is SPATIAL_INDEXED. */
   readonly bit: number;
-  /** The settings it was last registered with, before the debug override. */
-  requested: SpatialDomainOptions;
+  /** The last registration without a scene, before the debug override. Always set for DEFAULT. */
+  worldRequested?: SpatialDomainOptions;
+  /** The last registration with a scene, before the debug override. Wins while it's set. */
+  sceneRequested?: SpatialDomainOptions & { sceneId: string };
   /** The settings in use. */
-  opts: Required<SpatialDomainOptions>;
+  opts: ResolvedSpatialDomainOptions;
   grid: SpatialGrid;
   /**
    * The local (unscaled) radius of every member whose radius follows its Transform scale, read
@@ -105,7 +123,7 @@ type WorldDomains = {
 
 const domainsByWorld = new WeakMap<ECSWorld, WorldDomains>();
 
-const resolveDomainOptions = (opts: SpatialDomainOptions): Required<SpatialDomainOptions> => {
+const resolveDomainOptions = (opts: SpatialDomainOptions): ResolvedSpatialDomainOptions => {
   if (!(opts.cellSize > 0) || !Number.isFinite(opts.cellSize)) {
     throw new Error(`Spatial domain '${opts.id}': cellSize must be a positive number.`);
   }
@@ -121,16 +139,25 @@ const resolveDomainOptions = (opts: SpatialDomainOptions): Required<SpatialDomai
   };
 };
 
-const isSameDomainOptions = (
-  a: Required<SpatialDomainOptions>,
-  b: Required<SpatialDomainOptions>
-) =>
+/** The settings the app asked for in effect: the scene's while it has some, else the world's. */
+const getRequested = (domain: SpatialDomain): SpatialDomainOptions =>
+  domain.sceneRequested ?? domain.worldRequested!;
+
+/** `requested` through the debug override (debug env only; it can't change the id), resolved. */
+const resolveRequested = (world: ECSWorld, requested: SpatialDomainOptions) =>
+  resolveDomainOptions(
+    IS_DEBUG_ENV && debugOptionsOverride
+      ? { ...debugOptionsOverride(world, { ...requested }), id: requested.id }
+      : requested
+  );
+
+const isSameDomainOptions = (a: ResolvedSpatialDomainOptions, b: ResolvedSpatialDomainOptions) =>
   a.cellSize === b.cellSize &&
   a.maxMembers === b.maxMembers &&
   a.update === b.update &&
   a.oversizedRadiusMultiplier === b.oversizedRadiusMultiplier;
 
-const createDomainGrid = (opts: Required<SpatialDomainOptions>) =>
+const createDomainGrid = (opts: ResolvedSpatialDomainOptions) =>
   new SpatialGrid({
     cellSize: opts.cellSize,
     maxMembers: opts.maxMembers,
@@ -212,20 +239,36 @@ const clearMaskBit = (world: ECSWorld, domain: SpatialDomain, entityId: number) 
   if (membership.mask === 0) world.removeComponent(entityId, ComponentType.SPATIAL_DOMAINS);
 };
 
+/** Debug env only: a scene's settings that no current or loading scene will release soon. */
+const warnIfNotActiveScene = (id: string, sceneId: string) => {
+  const activeSceneId = isCurrentlyLoading() ? getNextSceneId() : getCurrentSceneId();
+  if (sceneId === activeSceneId) return;
+  lwarn(
+    `SpatialIndex: domain '${id}' was registered for scene '${sceneId}', which isn't the ` +
+      `${isCurrentlyLoading() ? 'loading' : 'current'} scene ('${activeSceneId}'). Its settings ` +
+      `stay until '${sceneId}' exits (docs/plans/p349_scene-scoped-spatial-domains.md §3.1).`
+  );
+};
+
 /**
- * Registers a spatial domain in `world`. Registering an existing id with the same settings is a
- * no-op; with different settings it replaces the domain's grid and re-inserts its members (the
- * cell size is baked into the grid's layout, so there is no cheaper path). Members past a
- * smaller `maxMembers` leave the domain. Registering `DEFAULT` before its first member sets its
- * settings (cell size 20 and `world.maxEntities` members otherwise). A world holds at most 31
- * domains besides `DEFAULT` at once ({@link unregisterSpatialDomain} frees one).
+ * Registers a spatial domain in `world`, or new settings for one. Registering an existing id
+ * with the same settings is a no-op; with different settings it replaces the domain's grid and
+ * re-inserts its members (the cell size is baked into the grid's layout, so there is no cheaper
+ * path). Members past a smaller `maxMembers` leave the domain. Registering `DEFAULT` before its
+ * first member sets its settings (cell size 20 and `world.maxEntities` members otherwise). A
+ * world holds at most 31 domains besides `DEFAULT` at once ({@link unregisterSpatialDomain}
+ * frees one).
+ *
+ * With `sceneId` the settings belong to that scene: they win until it exits, and then the domain
+ * goes back to its world settings (registered without `sceneId`), or is unregistered if it has
+ * none. A registration without `sceneId` while a scene's settings are in effect only updates the
+ * world settings.
  */
 export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOptions): void {
-  const resolved = resolveDomainOptions(
-    IS_DEBUG_ENV && debugOptionsOverride
-      ? { ...debugOptionsOverride(world, { ...opts }), id: opts.id }
-      : opts
-  );
+  const { sceneId, ...settings } = opts;
+  // Also validates world settings that a scene's settings keep from taking effect yet
+  const resolved = resolveRequested(world, settings);
+  if (IS_DEBUG_ENV && sceneId !== undefined) warnIfNotActiveScene(opts.id, sceneId);
   let domains = domainsByWorld.get(world);
   if (!domains) {
     domains = { list: [], byId: new Map(), byBit: [], frame: 0 };
@@ -233,61 +276,104 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
   }
 
   const existing = domains.byId.get(resolved.id);
-  if (!existing) {
-    const isDefault = resolved.id === DEFAULT_SPATIAL_DOMAIN;
-    const bit = isDefault ? -1 : findFreeBit(domains.byBit);
-    if (!isDefault && bit < 0) {
-      throw new Error(
-        `Spatial domain '${resolved.id}': world '${world.id}' already has the maximum of ` +
-          `${MAX_NON_DEFAULT_DOMAINS} domains besides ${DEFAULT_SPATIAL_DOMAIN}.`
-      );
+  if (existing) {
+    if (sceneId === undefined) {
+      existing.worldRequested = settings;
+      if (existing.sceneRequested) return;
+    } else {
+      existing.sceneRequested = { ...settings, sceneId };
     }
-    const domain: SpatialDomain = {
-      id: resolved.id,
-      bit,
-      requested: { ...opts },
-      opts: resolved,
-      grid: createDomainGrid(resolved),
-      localRadius: new Map(),
-      needsRebuild: false,
-      needsRefresh: false,
-      hasWarnedFull: false,
-      lastRebuildMs: 0,
-      rebuildCount: 0,
-      lastRebuildFrame: -1,
-      registeredFrame: domains.frame,
-    };
-    domains.list.push(domain);
-    domains.byId.set(domain.id, domain);
-    if (!isDefault) domains.byBit[bit] = domain;
+    applyDomainOptions(world, domains, existing, resolved);
     return;
   }
-  existing.requested = { ...opts };
-  if (isSameDomainOptions(existing.opts, resolved)) return;
 
-  const oldGrid = existing.grid;
-  if (existing.bit < 0 && oldGrid.memberCount > resolved.maxMembers) {
+  const isDefault = resolved.id === DEFAULT_SPATIAL_DOMAIN;
+  const bit = isDefault ? -1 : findFreeBit(domains.byBit);
+  if (!isDefault && bit < 0) {
+    throw new Error(
+      `Spatial domain '${resolved.id}': world '${world.id}' already has the maximum of ` +
+        `${MAX_NON_DEFAULT_DOMAINS} domains besides ${DEFAULT_SPATIAL_DOMAIN}.`
+    );
+  }
+  const domain: SpatialDomain = {
+    id: resolved.id,
+    bit,
+    worldRequested:
+      sceneId === undefined ? settings : isDefault ? defaultDomainOptions(world) : undefined,
+    sceneRequested: sceneId === undefined ? undefined : { ...settings, sceneId },
+    opts: resolved,
+    grid: createDomainGrid(resolved),
+    localRadius: new Map(),
+    needsRebuild: false,
+    needsRefresh: false,
+    hasWarnedFull: false,
+    lastRebuildMs: 0,
+    rebuildCount: 0,
+    lastRebuildFrame: -1,
+    registeredFrame: domains.frame,
+  };
+  domains.list.push(domain);
+  domains.byId.set(domain.id, domain);
+  if (!isDefault) domains.byBit[bit] = domain;
+}
+
+/**
+ * Puts `domain`'s settings in effect: those it was asked for (see `getRequested`) unless
+ * `resolved` is given. A changed setting re-creates the grid and re-inserts the members.
+ */
+function applyDomainOptions(
+  world: ECSWorld,
+  domains: WorldDomains,
+  domain: SpatialDomain,
+  resolved: ResolvedSpatialDomainOptions = resolveRequested(world, getRequested(domain))
+): void {
+  if (isSameDomainOptions(domain.opts, resolved)) return;
+
+  const oldGrid = domain.grid;
+  if (domain.bit < 0 && oldGrid.memberCount > resolved.maxMembers) {
     // DEFAULT's membership is SPATIAL_INDEXED, which a refusal can't take away
     throw new Error(
       `Spatial domain '${DEFAULT_SPATIAL_DOMAIN}': maxMembers ${resolved.maxMembers} is below ` +
         `its current ${oldGrid.memberCount} members.`
     );
   }
-  existing.opts = resolved;
-  existing.grid = createDomainGrid(resolved);
-  existing.localRadius.clear(); // re-read below, from the providers
-  existing.hasWarnedFull = false;
+  domain.opts = resolved;
+  domain.grid = createDomainGrid(resolved);
+  domain.localRadius.clear(); // re-read below, from the providers
+  domain.hasWarnedFull = false;
   for (let i = 0; i < oldGrid.memberCount; i++) {
     const entityId = oldGrid.memberAt(i);
-    if (!addToDomain(world, existing, entityId)) clearMaskBit(world, existing, entityId);
+    if (!addToDomain(world, domain, entityId)) clearMaskBit(world, domain, entityId);
   }
   // The re-insert read every member's current position and radius
-  rebuildDomain(existing, domains.frame);
+  rebuildDomain(domain, domains.frame);
 }
 
 /**
- * Removes `world`'s domain `id`: every member leaves it (losing its SPATIAL_DOMAINS bit, and the
- * component with its last one), and its grid and oracle state are dropped. Its bit is free for
+ * Drops the settings `sceneId` registered (§3.2): each domain they belong to goes back to its
+ * world settings, or is unregistered if it has none (its persistent members leave it too). The
+ * scene loader calls it for the default world right after the previous scene's entities are
+ * deleted, so a reverted grid re-inserts only the persistent ones.
+ */
+export function releaseSceneSpatialDomains(
+  world: ECSWorld,
+  sceneId: string | null | undefined
+): void {
+  const domains = domainsByWorld.get(world);
+  if (!domains || !sceneId) return;
+  // A copy: unregistering takes the domain out of the list
+  for (const domain of [...domains.list]) {
+    if (domain.sceneRequested?.sceneId !== sceneId) continue;
+    domain.sceneRequested = undefined;
+    if (domain.worldRequested) applyDomainOptions(world, domains, domain);
+    else unregisterSpatialDomain(world, domain.id);
+  }
+}
+
+/**
+ * Removes `world`'s domain `id`, whichever settings (world or scene) it has: every member leaves
+ * it (losing its SPATIAL_DOMAINS bit, and the component with its last one), and its grid and
+ * oracle state are dropped. Its bit is free for
  * the next registration. A no-op if it isn't registered. `DEFAULT` can't be unregistered: its
  * membership is SPATIAL_INDEXED, which other code adds.
  */
@@ -338,7 +424,7 @@ export function getSpatialDomainIds(world: ECSWorld): string[] {
 export function getSpatialDomainOptions(
   world: ECSWorld,
   id: string
-): Readonly<Required<SpatialDomainOptions>> | undefined {
+): Readonly<ResolvedSpatialDomainOptions> | undefined {
   return domainsByWorld.get(world)?.byId.get(id)?.opts;
 }
 
@@ -357,10 +443,20 @@ export function getSpatialGrid(world: ECSWorld): SpatialGrid {
   return getDefaultDomain(world).grid;
 }
 
-/** Re-registers `DEFAULT` with a new cell size and its other settings unchanged. In the debug env, a cell size set in the "Spatial index" tab wins. */
-export function setSpatialGridCellSize(world: ECSWorld, cellSize: number): void {
-  const current = domainsByWorld.get(world)?.byId.get(DEFAULT_SPATIAL_DOMAIN)?.requested;
-  registerSpatialDomain(world, { ...(current ?? defaultDomainOptions(world)), cellSize });
+/**
+ * Re-registers `DEFAULT` with a new cell size and its other settings unchanged: its world
+ * settings, or with `sceneId` that scene's settings (its world settings when the scene has none
+ * yet), which revert on the scene's exit. In the debug env, a cell size set in the
+ * "Spatial index" tab wins.
+ */
+export function setSpatialGridCellSize(world: ECSWorld, cellSize: number, sceneId?: string): void {
+  const domain = domainsByWorld.get(world)?.byId.get(DEFAULT_SPATIAL_DOMAIN);
+  const scene = domain?.sceneRequested;
+  const base =
+    sceneId !== undefined && scene?.sceneId === sceneId
+      ? scene
+      : domain?.worldRequested ?? defaultDomainOptions(world);
+  registerSpatialDomain(world, { ...base, cellSize, sceneId });
 }
 
 // --- DEBUG OVERRIDES ---
@@ -381,8 +477,9 @@ export function setSpatialDomainOptionsOverride(fn: SpatialDomainOptionsOverride
 
 /** Debug env only: registers `world`'s domain `id` again with the settings the app asked for, through the current override. */
 export function reapplySpatialDomainOptions(world: ECSWorld, id: string): void {
-  const domain = domainsByWorld.get(world)?.byId.get(id);
-  if (domain) registerSpatialDomain(world, domain.requested);
+  const domains = domainsByWorld.get(world);
+  const domain = domains?.byId.get(id);
+  if (domains && domain) applyDomainOptions(world, domains, domain);
 }
 
 // --- MEMBERSHIP (p346 §3.2) ---

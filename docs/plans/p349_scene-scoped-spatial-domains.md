@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phases 1-2 implemented
 Category: ECS, Spatial
 Related: \_DONE_p346_spatial-domains.md (the domains this scopes), p102_physics-world-bounds.md (the same "a scene's own settings replace the app default while it's active" model), p353_macro-streaming-grid.md (its `STREAMING` domain belongs to the streamed scene), p348_ecs-lod-selection.md and p308_terrain-scatter.md (per-scene static cell domains)
 
@@ -149,7 +149,7 @@ documented, not warned about: persistence is about the entity, the domain is the
 
 ## 4. Phases
 
-### Phase 1 — Unregister and bit reuse
+### Phase 1 — Unregister and bit reuse — done
 
 1. `unregisterSpatialDomain` (§3.3), freed bits reused lowest first, the bit loops skip empty
    entries.
@@ -157,7 +157,14 @@ documented, not warned about: persistence is about the entity, the domain is the
 **Exit:** register a domain, join entities, unregister it, register another: it gets the same
 bit, and none of the old members reports membership in it (`isInSpatialDomain`, the oracle).
 
-### Phase 2 — Scene scope
+As built:
+
+- Unregistering an id that isn't registered is a quiet no-op (like deleting a stale physics
+  body), not a warning.
+- The tab's visualizer empties a shown overlay whose domain is no longer registered, instead of
+  leaving its last contents on screen.
+
+### Phase 2 — Scene scope — done
 
 1. `sceneId` in `SpatialDomainOptions`, the world and scene settings layers (§3.1).
 2. `releaseSceneSpatialDomains`, called by `SceneLoader` after `clearNonPersistent()` (§3.2).
@@ -166,6 +173,21 @@ bit, and none of the old members reports membership in it (`isInSpatialDomain`, 
 **Exit:** after `largeWorld` → Top-down test, `FOLIAGE` isn't registered. A scene that sets
 `DEFAULT`'s cell size with its `sceneId` gets it; the next scene gets 20 again, and the revert
 re-inserts only persistent members. The oracle stays clean in both domains.
+
+As built:
+
+- The layers are `worldRequested` and `sceneRequested` on the domain (the single `requested` is
+  gone); `applyDomainOptions` is the one path that puts the layer in effect (re-registration,
+  release, `reapplySpatialDomainOptions`).
+- `setSpatialGridCellSize(world, cellSize, sceneId?)`: without `sceneId` it builds on the world
+  settings; with it, on that scene's settings when it has some, else on the world settings.
+- `getSpatialDomainOptions` returns `ResolvedSpatialDomainOptions` (the settings in use, without
+  `sceneId`).
+- The "other scene" warning compares against the loading scene during a load and the current one
+  otherwise (as sky boxes resolve theirs), so a load that registers for the scene it's leaving is
+  warned about too: that scene's release has already run.
+- The debug override still gets one cell size per domain id, applied to whichever layer is in
+  effect, until Phase 3.
 
 ### Phase 3 — Debug tab
 
