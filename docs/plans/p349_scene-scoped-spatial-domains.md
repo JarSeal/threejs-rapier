@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: in progress | Phases 1-4 implemented
 Category: ECS, Spatial
 Related: \_DONE_p346_spatial-domains.md (the domains this scopes), p102_physics-world-bounds.md (the same "a scene's own settings replace the app default while it's active" model), p353_macro-streaming-grid.md (its `STREAMING` domain belongs to the streamed scene), p348_ecs-lod-selection.md and p308_terrain-scatter.md (per-scene static cell domains)
 
@@ -283,7 +283,7 @@ As built:
   world scope). The exit check registered `DEFAULT` with a `sceneId` from code. Phase 5's scene
   JSON is the first non-code way to get a scene-scoped `DEFAULT`.
 
-### Phase 4 — `DEFAULT`'s grid per scene
+### Phase 4 — `DEFAULT`'s grid per scene — done
 
 1. `DEFAULT`'s settings layers kept apart from its grid: registering without a grid stores
    them only (§3.6).
@@ -299,6 +299,25 @@ As built:
 entity is a member again once the next scene builds the grid. `setSpatialGridCellSize` in a
 scene without a grid allocates nothing, and the grid that scene builds later has that cell size.
 The oracle stays clean.
+
+As built:
+
+- §3.6's "no grid means no indexed receivers" didn't hold after a release: persistent entities
+  keep `SPATIAL_INDEXED` with the grid freed, and nothing joins again to build it. So
+  `spatialIndexRebuildSystem` builds `DEFAULT` when it has no grid and `SPATIAL_INDEXED` has
+  holders (one size check per frame, before light culling at `APP_RENDER_SYNC`). The build is
+  still deferred, so Phase 5's scene settings are in place before it.
+- Each domain's two layers are a `layers` object (`DomainSettingsLayers`). `DEFAULT`'s is the
+  world's `defaultLayers`, created with the world's registry and kept for the session; its
+  domain record (and so `list`, `byId`, the rebuild loop) exists only while it has a grid.
+- A build rebuilds the grid at once, so an explicit `getSpatialGrid` caller can query it right
+  away. The join hook builds instead of adding when there's no grid (the build already holds the
+  joiner), so it doesn't rely on `addMember`'s update path.
+- The release doesn't revert `DEFAULT`'s scene settings before freeing its grid (the revert
+  would re-create a grid that's dropped right after).
+- `getSpatialDomainOptions(world, 'DEFAULT')` without a grid resolves the layers through the
+  debug override on every call (the tab reads it every 500 ms).
+- The tab's "All domains" summary shows `DEFAULT DYNAMIC` / `no grid`.
 
 ### Phase 5 — Scene JSON
 

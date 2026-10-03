@@ -182,8 +182,10 @@ function formatDomainSummary(world: ECSWorld, ids: string[]): string {
   return ids
     .map((id) => {
       const opts = getSpatialDomainOptions(world, id);
+      if (!opts) return `${id}\n  not registered`;
       const stats = getSpatialDomainRebuildStats(world, id);
-      if (!opts || !stats) return `${id}\n  not registered`;
+      // DEFAULT has settings without a grid (p349 §3.6)
+      if (!stats) return `${id} ${opts.update}\n  no grid`;
       const members = getSpatialDomain(world, id)?.memberCount ?? 0;
       return (
         `${id} ${opts.update} ${members}\n` +
@@ -354,7 +356,14 @@ export const _createSpatialGridDebugGUI = () => {
   const histogramState = { text: '(no occupied cells)' };
   const summaryState = { text: '' };
 
+  // DEFAULT always is: its settings exist without its grid (p349 §3.6)
   const isRegistered = (id: string) => Boolean(getSpatialDomainOptions(world, id));
+  const getDomainLabel = (id: string) =>
+    !isRegistered(id)
+      ? `${id} (not registered)`
+      : getSpatialDomain(world, id)
+        ? id
+        : `${id} (no grid)`;
   const getSceneId = () => getCurrentSceneId() ?? undefined;
 
   /**
@@ -375,10 +384,7 @@ export const _createSpatialGridDebugGUI = () => {
       ]),
     ];
   };
-  const getDomainListKey = () =>
-    listDomainIds()
-      .map((id) => (isRegistered(id) ? id : `${id}?`))
-      .join(',');
+  const getDomainListKey = () => listDomainIds().map(getDomainLabel).join(',');
   let builtDomainListKey = '';
 
   /**
@@ -485,10 +491,7 @@ export const _createSpatialGridDebugGUI = () => {
               key: 'domain',
               target: selected,
               label: 'Domain',
-              options: listDomainIds().map((id) => ({
-                value: id,
-                text: isRegistered(id) ? id : `${id} (not registered)`,
-              })),
+              options: listDomainIds().map((id) => ({ value: id, text: getDomainLabel(id) })),
               onChange: (value) => {
                 state.selectedDomain = String(value);
                 persistDebuggerTabValue(TAB_ID, 'selectedDomain');
@@ -503,6 +506,7 @@ export const _createSpatialGridDebugGUI = () => {
               label: 'Cell size',
               min: 0.1,
               step: 0.5,
+              // Editable for DEFAULT without a grid too: the edit applies at its next build
               disabled: () => !isShownRegistered(),
               onChange: (value, e) => {
                 // Re-creating the grid per drag tick would be costly (DEFAULT holds 100k slots)

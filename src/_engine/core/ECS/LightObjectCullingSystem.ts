@@ -5,9 +5,11 @@ import { getMainCamera } from '../CameraManager';
 import { ComponentType } from './ECSCoreComponents';
 import { reconcileObject3DVisibility } from './ECSCoreSystems';
 import { getMeshWorldBoundingSphere } from './ObjectFrustumCullingSystem';
+import type { SpatialGrid } from '../Spatial/SpatialGrid';
 import {
   computeLightInfluenceRadius,
-  getSpatialGrid,
+  DEFAULT_SPATIAL_DOMAIN,
+  getSpatialDomain,
   validateSpatialGridQuery,
 } from '../Spatial/SpatialIndexSystem';
 
@@ -55,6 +57,7 @@ function meshIsVisibleReceiver(entityId: number, world: ECSWorld): boolean {
 function testLightAgainstMeshList(
   lightId: number,
   world: ECSWorld,
+  grid: SpatialGrid,
   light: THREE.PointLight | THREE.SpotLight
 ): boolean {
   const radius = computeLightInfluenceRadius(light);
@@ -64,7 +67,7 @@ function testLightAgainstMeshList(
   validateSpatialGridQuery(world, _lightSphere.center, radius);
 
   let found = false;
-  getSpatialGrid(world).queryVisit(_lightSphere.center, radius, (candidateId) => {
+  grid.queryVisit(_lightSphere.center, radius, (candidateId) => {
     if (found || candidateId === lightId) return;
     if (meshIsVisibleReceiver(candidateId, world)) found = true;
   });
@@ -79,6 +82,10 @@ export const lightObjectCullingSystem = (world: ECSWorld) => {
 
   const camera = getMainCamera();
   if (!camera) return;
+
+  // Read, never built here: every SPATIAL_INDEXED entity builds DEFAULT's grid, so a scene
+  // without one has no indexed receivers, the same result as an empty grid (p349 §3.6)
+  const grid = getSpatialDomain(world, DEFAULT_SPATIAL_DOMAIN);
 
   camera.updateMatrixWorld();
   _frustum.setFromProjectionMatrix(
@@ -95,7 +102,9 @@ export const lightObjectCullingSystem = (world: ECSWorld) => {
     const light = objComp.value as THREE.PointLight | THREE.SpotLight;
     light.updateWorldMatrix(true, false);
 
-    const hasNearbyVisibleMesh = testLightAgainstMeshList(entityId, world, light);
+    const hasNearbyVisibleMesh = grid
+      ? testLightAgainstMeshList(entityId, world, grid, light)
+      : false;
     const isCulled = world.hasComponent(entityId, ComponentType.TAG_OBJECT_CULLED);
     if (hasNearbyVisibleMesh && isCulled) {
       world.removeComponent(entityId, ComponentType.TAG_OBJECT_CULLED);
