@@ -144,12 +144,14 @@ const getRequested = (domain: SpatialDomain): SpatialDomainOptions =>
   domain.sceneRequested ?? domain.worldRequested!;
 
 /** `requested` through the debug override (debug env only; it can't change the id), resolved. */
-const resolveRequested = (world: ECSWorld, requested: SpatialDomainOptions) =>
-  resolveDomainOptions(
-    IS_DEBUG_ENV && debugOptionsOverride
-      ? { ...debugOptionsOverride(world, { ...requested }), id: requested.id }
-      : requested
-  );
+const resolveRequested = (world: ECSWorld, requested: SpatialDomainOptions) => {
+  if (!IS_DEBUG_ENV || !debugOptionsOverride) return resolveDomainOptions(requested);
+  const { sceneId, ...settings } = requested;
+  return resolveDomainOptions({
+    ...debugOptionsOverride(world, settings, sceneId),
+    id: requested.id,
+  });
+};
 
 const isSameDomainOptions = (a: ResolvedSpatialDomainOptions, b: ResolvedSpatialDomainOptions) =>
   a.cellSize === b.cellSize &&
@@ -267,7 +269,7 @@ const warnIfNotActiveScene = (id: string, sceneId: string) => {
 export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOptions): void {
   const { sceneId, ...settings } = opts;
   // Also validates world settings that a scene's settings keep from taking effect yet
-  const resolved = resolveRequested(world, settings);
+  const resolved = resolveRequested(world, opts);
   if (IS_DEBUG_ENV && sceneId !== undefined) warnIfNotActiveScene(opts.id, sceneId);
   let domains = domainsByWorld.get(world);
   if (!domains) {
@@ -428,6 +430,14 @@ export function getSpatialDomainOptions(
   return domainsByWorld.get(world)?.byId.get(id)?.opts;
 }
 
+/**
+ * The scene whose settings `world`'s domain `id` uses, or undefined when it uses its world
+ * settings (or isn't registered).
+ */
+export function getSpatialDomainSceneId(world: ECSWorld, id: string): string | undefined {
+  return domainsByWorld.get(world)?.byId.get(id)?.sceneRequested?.sceneId;
+}
+
 const getDefaultDomain = (world: ECSWorld): SpatialDomain => {
   const domain = domainsByWorld.get(world)?.byId.get(DEFAULT_SPATIAL_DOMAIN);
   if (domain) return domain;
@@ -463,14 +473,19 @@ export function setSpatialGridCellSize(world: ECSWorld, cellSize: number, sceneI
 // The "Spatial index" tab's per-domain settings (_dbg__SpatialGrid.ts). Applied on every
 // registration, so they hold when the app registers a domain again on its next scene visit.
 
+/**
+ * Gets the settings of a registration without its scope, and the scope separately: `sceneId`
+ * for a scene's settings, undefined for the world settings (p349 §3.5).
+ */
 type SpatialDomainOptionsOverride = (
   world: ECSWorld,
-  requested: SpatialDomainOptions
-) => SpatialDomainOptions;
+  requested: Omit<SpatialDomainOptions, 'sceneId'>,
+  sceneId: string | undefined
+) => Omit<SpatialDomainOptions, 'sceneId'>;
 
 let debugOptionsOverride: SpatialDomainOptionsOverride | null = null;
 
-/** Debug env only: sets (or clears) the function that adjusts every domain's settings on registration (the id can't be changed). Call {@link reapplySpatialDomainOptions} for the domains it now treats differently. */
+/** Debug env only: sets (or clears) the function that adjusts every domain's settings when they take effect (the id and scope can't be changed). Call {@link reapplySpatialDomainOptions} for the domains it now treats differently. */
 export function setSpatialDomainOptionsOverride(fn: SpatialDomainOptionsOverride | null): void {
   debugOptionsOverride = fn;
 }

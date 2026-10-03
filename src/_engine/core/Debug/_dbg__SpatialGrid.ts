@@ -10,6 +10,7 @@ import { ECSSystemStage } from '../../../AppECSRegistry';
 import type { SpatialGrid } from '../Spatial/SpatialGrid';
 import { BOX_EDGE_SEGMENT_COUNT, createLines, LineObject, writeBox3Edges } from '../LineManager';
 import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { getCurrentSceneId } from '../Scene';
 import {
   DEFAULT_SPATIAL_DOMAIN,
   getLastRebuildDurationMs,
@@ -19,6 +20,7 @@ import {
   getSpatialDomainIds,
   getSpatialDomainOptions,
   getSpatialDomainRebuildStats,
+  getSpatialDomainSceneId,
   isSpatialGridOracleEnabled,
   reapplySpatialDomainOptions,
   setSpatialDomainOptionsOverride,
@@ -31,8 +33,13 @@ const LS_KEY = 'AEK_debugSpatialGrid';
 
 /** One domain's tab settings (docs/plans/_DONE_p346_spatial-domains.md §3.6). */
 type DomainDebugSettings = {
-  /** Overrides the cell size the app registered the domain with; absent = the app's. */
+  /** Overrides the cell size of the domain's world settings; absent = the app's. */
   cellSize?: number;
+  /**
+   * Overrides the cell size of a scene's settings, by scene id; absent = the app's (never the
+   * world value, docs/plans/p349_scene-scoped-spatial-domains.md §3.5).
+   */
+  cellSizeByScene?: Record<string, number>;
   showCells: boolean;
   cellsColor: number;
   showOversized: boolean;
@@ -77,6 +84,26 @@ const getSettings = (id: string) => state.domains[id] ?? defaultDomainSettings(i
 const editSettings = (id: string) => (state.domains[id] ??= defaultDomainSettings(id));
 
 const persistDomainSettings = () => persistDebuggerTabValue(TAB_ID, 'domains');
+
+/** The saved cell size of domain `id`'s settings with scope `sceneId` (undefined = the world settings). */
+const getSavedCellSize = (id: string, sceneId: string | undefined) => {
+  const settings = state.domains[id];
+  return sceneId === undefined ? settings?.cellSize : settings?.cellSizeByScene?.[sceneId];
+};
+
+/** Clears the saved cell size of domain `id`'s settings with scope `sceneId`. */
+const clearSavedCellSize = (id: string, sceneId: string | undefined) => {
+  const settings = state.domains[id];
+  if (!settings) return;
+  if (sceneId === undefined) {
+    delete settings.cellSize;
+    return;
+  }
+  const byScene = settings.cellSizeByScene;
+  if (!byScene) return;
+  delete byScene[sceneId];
+  if (Object.keys(byScene).length === 0) delete settings.cellSizeByScene;
+};
 
 /**
  * Before domains, the tab saved one grid's settings as flat keys. They become DEFAULT's entry
@@ -300,8 +327,10 @@ export const _createSpatialGridDebugGUI = () => {
   // Before createDebuggerTab, which hydrates `state` from the saved settings
   migrateLegacySettings();
 
-  // The selected domain's values, which the bindings show. Synced on every refresh.
+  // The shown domain's values, which the bindings show. Synced on every refresh.
   const selected = {
+    domain: DEFAULT_SPATIAL_DOMAIN,
+    scope: '',
     cellSize: 0,
     maxMembers: 0,
     update: '',
@@ -326,31 +355,61 @@ export const _createSpatialGridDebugGUI = () => {
   const summaryState = { text: '' };
 
   const isRegistered = (id: string) => Boolean(getSpatialDomainOptions(world, id));
-  const isSelectedRegistered = () => isRegistered(state.selectedDomain);
+  const getSceneId = () => getCurrentSceneId() ?? undefined;
 
-  /** Registered domains first (DEFAULT leading), then the ones with saved settings only. */
-  const listDomainIds = () => [
-    ...new Set([
-      DEFAULT_SPATIAL_DOMAIN,
-      ...getSpatialDomainIds(world),
-      ...Object.keys(state.domains),
-      state.selectedDomain,
-    ]),
-  ];
+  /**
+   * Registered domains first (DEFAULT leading), then the unregistered ones with a cell size
+   * saved for the current scene or id-wide, so it can be seen and cleared (p349 §3.5).
+   */
+  const listDomainIds = () => {
+    const sceneId = getSceneId();
+    return [
+      ...new Set([
+        DEFAULT_SPATIAL_DOMAIN,
+        ...getSpatialDomainIds(world),
+        ...Object.keys(state.domains).filter(
+          (id) =>
+            getSavedCellSize(id, undefined) !== undefined ||
+            (sceneId !== undefined && getSavedCellSize(id, sceneId) !== undefined)
+        ),
+      ]),
+    ];
+  };
   const getDomainListKey = () =>
     listDomainIds()
       .map((id) => (isRegistered(id) ? id : `${id}?`))
       .join(',');
   let builtDomainListKey = '';
 
-  /** Writes one overlay setting of the selected domain from the bound proxy. */
+  /**
+   * The domain the tab shows: the saved selection while it's listed, else DEFAULT. The saved
+   * selection is kept, so it's shown again when its domain is registered again.
+   */
+  const getShownDomain = () =>
+    listDomainIds().includes(state.selectedDomain) ? state.selectedDomain : DEFAULT_SPATIAL_DOMAIN;
+  const isShownRegistered = () => isRegistered(getShownDomain());
+
+  /**
+   * The scope (scene id, undefined = world) the tab edits domain `id`'s cell size in: that of
+   * the settings in use. For an unregistered domain, that of the saved value it shows.
+   */
+  const getEditScope = (id: string) => {
+    if (isRegistered(id)) return getSpatialDomainSceneId(world, id);
+    const sceneId = getSceneId();
+    return sceneId !== undefined && state.domains[id]?.cellSizeByScene?.[sceneId] !== undefined
+      ? sceneId
+      : undefined;
+  };
+
+  /** Writes one overlay setting of the shown domain from the bound proxy. */
   const setOverlaySetting =
     (key: 'showCells' | 'cellsColor' | 'showOversized' | 'oversizedColor') =>
     (value: unknown, e: { last: boolean }) => {
-      const settings = editSettings(state.selectedDomain);
+      const id = getShownDomain();
+      const settings = editSettings(id);
       if (key === 'showCells' || key === 'showOversized') settings[key] = Boolean(value);
       else settings[key] = Number(value);
-      syncOverlays(state.selectedDomain);
+      syncOverlays(id);
       if (e.last) persistDomainSettings();
     };
 
@@ -373,10 +432,13 @@ export const _createSpatialGridDebugGUI = () => {
     // subscriber through the rebuild system (it only runs while the tab is visible)
     refreshIntervalMs: 500,
     onRefresh: () => {
-      const id = state.selectedDomain;
+      const id = getShownDomain();
       const opts = getSpatialDomainOptions(world, id);
       const settings = getSettings(id);
-      selected.cellSize = opts?.cellSize ?? settings.cellSize ?? 0;
+      const scope = getEditScope(id);
+      selected.domain = id;
+      selected.scope = scope === undefined ? 'world' : `scene: ${scope}`;
+      selected.cellSize = opts?.cellSize ?? getSavedCellSize(id, scope) ?? 0;
       selected.maxMembers = opts?.maxMembers ?? 0;
       selected.update = opts ? opts.update : 'not registered';
       selected.showCells = settings.showCells;
@@ -404,8 +466,8 @@ export const _createSpatialGridDebugGUI = () => {
       statsState.oracleMismatches = getOracleMismatchCount(world, id);
       histogramState.text = formatOccupancyHistogram(grid?.getCellOccupancyCounts() ?? []);
 
-      // A domain registered (or first saved) since the build: the dropdown needs a rebuild.
-      // Deferred, since this runs inside a refresh or a build.
+      // A domain registered, unregistered or saved since the build, or a scene change: the
+      // dropdown needs a rebuild. Deferred, since this runs inside a refresh or a build.
       if (builtDomainListKey && getDomainListKey() !== builtDomainListKey) {
         builtDomainListKey = '';
         queueMicrotask(() => updateDebuggerTab(TAB_ID, { rebuild: true }));
@@ -413,47 +475,63 @@ export const _createSpatialGridDebugGUI = () => {
     },
     content: () => {
       builtDomainListKey = getDomainListKey();
+      selected.domain = getShownDomain();
       return [
         {
           pane: true,
           content: [
             {
-              key: 'selectedDomain',
+              // A proxy of the saved selection, which may not be listed (see getShownDomain)
+              key: 'domain',
+              target: selected,
               label: 'Domain',
               options: listDomainIds().map((id) => ({
                 value: id,
                 text: isRegistered(id) ? id : `${id} (not registered)`,
               })),
-              // The refresh syncs the bound values to the newly selected domain
-              onChange: () => updateDebuggerTab(TAB_ID),
+              onChange: (value) => {
+                state.selectedDomain = String(value);
+                persistDebuggerTabValue(TAB_ID, 'selectedDomain');
+                // The refresh syncs the bound values to the newly selected domain
+                updateDebuggerTab(TAB_ID);
+              },
             },
+            { key: 'scope', target: selected, label: 'Scope', readonly: true },
             {
               key: 'cellSize',
               target: selected,
               label: 'Cell size',
               min: 0.1,
               step: 0.5,
-              disabled: () => !isSelectedRegistered(),
+              disabled: () => !isShownRegistered(),
               onChange: (value, e) => {
                 // Re-creating the grid per drag tick would be costly (DEFAULT holds 100k slots)
                 if (!e.last) return;
-                editSettings(state.selectedDomain).cellSize = Number(value);
+                const id = getShownDomain();
+                const sceneId = getEditScope(id);
+                const settings = editSettings(id);
+                if (sceneId === undefined) settings.cellSize = Number(value);
+                else (settings.cellSizeByScene ??= {})[sceneId] = Number(value);
                 persistDomainSettings();
-                reapplySpatialDomainOptions(world, state.selectedDomain);
+                reapplySpatialDomainOptions(world, id);
                 updateDebuggerTab(TAB_ID);
               },
             },
             {
               type: 'button',
               title: "Reset to the app's cell size",
-              disabled: () => getSettings(state.selectedDomain).cellSize === undefined,
+              // Only the shown scope's value, so a reset never changes another scene
+              disabled: () => {
+                const id = getShownDomain();
+                return getSavedCellSize(id, getEditScope(id)) === undefined;
+              },
               onClick: () => {
-                const settings = state.domains[state.selectedDomain];
-                if (!settings) return;
-                delete settings.cellSize;
+                const id = getShownDomain();
+                clearSavedCellSize(id, getEditScope(id));
                 persistDomainSettings();
-                reapplySpatialDomainOptions(world, state.selectedDomain);
-                updateDebuggerTab(TAB_ID);
+                reapplySpatialDomainOptions(world, id);
+                // Rebuilt: an unregistered domain without a saved value leaves the dropdown
+                updateDebuggerTab(TAB_ID, { rebuild: true });
               },
             },
             {
@@ -469,7 +547,7 @@ export const _createSpatialGridDebugGUI = () => {
               target: selected,
               label: 'Brute-force oracle',
               onChange: (value) => {
-                setSpatialGridOracleEnabled(world, Boolean(value), state.selectedDomain);
+                setSpatialGridOracleEnabled(world, Boolean(value), getShownDomain());
               },
             },
             {
@@ -597,9 +675,10 @@ export const _createSpatialGridDebugGUI = () => {
   });
 
   // The saved cell sizes apply to every registration in the default world from here on (the
-  // tab only covers that world), and to the domains registered before the tab
-  setSpatialDomainOptionsOverride((w, requested) => {
-    const cellSize = w === world ? state.domains[requested.id]?.cellSize : undefined;
+  // tab only covers that world), and to the domains registered before the tab. Each scope gets
+  // only its own value: a scene's settings never get the world value.
+  setSpatialDomainOptionsOverride((w, requested, sceneId) => {
+    const cellSize = w === world ? getSavedCellSize(requested.id, sceneId) : undefined;
     return cellSize === undefined ? requested : { ...requested, cellSize };
   });
   for (const id of getSpatialDomainIds(world)) reapplySpatialDomainOptions(world, id);
