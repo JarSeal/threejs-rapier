@@ -4,6 +4,21 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-03 — small-changes-and-refactorings-20261003
+
+### Engine 4.4.0 (Afternoon)
+
+**Added**
+
+- Debug shortcut: F8 opens and closes the profiler window. In production test mode it does the same when the profiler is enabled there, and gives way to an app binding of the same key. It can be rebound through `AppConfig.debugKeys` (`sc-toggle-profiler`).
+- Physics entity and character edit windows: a "Set position and cancel velocities" button under "Set position". It moves the body and zeroes its linear and angular velocity (undo restores the position only).
+- Characters tab: each row has a Character state window toggle (lit while the window is open) next to the gizmo pin. It follows the row click rule: opens the window, brings it to the front, or closes it when on top. The edit window's button still opens it too.
+
+**Changed**
+
+- The profiler button in the top on-screen tools uses the small icon size, matching the drawer's tab icons.
+- The Character state window's false boolean icon is a light grey (the debug text colour) bold X instead of a red circled X, so it no longer looks like the true icon and doesn't dominate the list. New `xBold` icon; `circleXCutout` removed. `$debugBoolFalse` changed with it; the GPU memory tab's over-budget red is now `$debugAlertLight`.
+
 ## 2026-10-03 — profiler-mega-window
 
 ### Engine 4.3.0 (Afternoon)

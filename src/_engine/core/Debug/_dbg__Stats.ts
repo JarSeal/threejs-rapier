@@ -384,7 +384,7 @@ const setDebuggerUI = () => {
                 {
                   type: 'button',
                   label: 'Profiler',
-                  title: 'Open profiler',
+                  title: 'Open profiler (F8)',
                   onClick: toggleProfilerWindow,
                 },
                 {

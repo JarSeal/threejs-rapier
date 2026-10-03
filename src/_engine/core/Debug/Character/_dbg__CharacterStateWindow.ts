@@ -11,6 +11,8 @@ import {
   getKindWindowId,
   openDraggableWindow,
   registerDraggableWindowKind,
+  toggleDraggableWindow,
+  type OpenDraggableWindowProps,
 } from '../../UI/DraggableWindow';
 import { getSvgIcon, type SvgIconKey } from '../../UI/icons/SvgIcon';
 import {
@@ -53,6 +55,12 @@ import styles from './CharacterStateWindow.module.scss';
 export const CHAR_STATE_WIN_ID = 'characterDataTrackerWindow';
 export const getCharacterStateWindowId = (charId: string) =>
   getKindWindowId(CHAR_STATE_WIN_ID, charId);
+
+/** Listeners of the state windows' open and close (the Characters tab's row toggles). */
+const openStateListeners = new Set<() => void>();
+const notifyOpenStateChange = () => {
+  for (const listener of openStateListeners) listener();
+};
 
 const LS_KEY = 'AEK_charStateWin';
 const COST_READOUT_INTERVAL_MS = 250;
@@ -785,7 +793,7 @@ const createRow = (
       editor && !editor.isLocked
         ? createBoolButton(row, charId)
         : createElem('span', styles.boolIcon);
-    icon.innerHTML = `${getSvgIcon('circleXCutout')}${getSvgIcon('circleCheckCutout')}`;
+    icon.innerHTML = `${getSvgIcon('xBold')}${getSvgIcon('circleCheckCutout')}`;
     valueElem.appendChild(icon);
   } else if (kind === 'NUMBER') {
     if (editor && !editor.isLocked) {
@@ -1383,11 +1391,14 @@ export const _createCharacterStateWindowContent = (winData?: { [key: string]: un
     inst.looperIndex = createSceneMainLooper(createLooper(inst, rootCmp.elem), sceneId, true);
   }
   instances.set(charId, inst);
+  // The content is built before the window state is open: notify after it
+  queueMicrotask(notifyOpenStateChange);
   return rootCmp;
 };
 
 registerDraggableWindowKind(CHAR_STATE_WIN_ID, {
   content: _createCharacterStateWindowContent,
+  onClose: notifyOpenStateChange,
   // The window stays open over a scene change when the next scene has a character with the same
   // id
   sceneTargetResolver: (data) => {
@@ -1396,17 +1407,36 @@ registerDraggableWindowKind(CHAR_STATE_WIN_ID, {
   },
 });
 
+const getStateWindowProps = (character: CharacterObject): OpenDraggableWindowProps => ({
+  id: getCharacterStateWindowId(character.id),
+  kind: CHAR_STATE_WIN_ID,
+  position: { x: 130, y: 80 },
+  size: { w: 460, h: 520 },
+  saveToLS: true,
+  title: `Character state: ${character.name || `[${character.id}]`}`,
+  isDebugWindow: true,
+  data: { id: character.id },
+  closeOnSceneChange: true,
+});
+
 /** Opens the character's state window (or brings it to the front). */
 export const _openCharacterStateWindow = (character: CharacterObject) => {
-  openDraggableWindow({
-    id: getCharacterStateWindowId(character.id),
-    kind: CHAR_STATE_WIN_ID,
-    position: { x: 130, y: 80 },
-    size: { w: 460, h: 520 },
-    saveToLS: true,
-    title: `Character state: ${character.name || `[${character.id}]`}`,
-    isDebugWindow: true,
-    data: { id: character.id },
-    closeOnSceneChange: true,
-  });
+  openDraggableWindow(getStateWindowProps(character));
+};
+
+/** The list row toggle: opens the character's state window, brings it to the front, or closes
+ * it when on top. */
+export const _toggleCharacterStateWindow = (character: CharacterObject) => {
+  toggleDraggableWindow(getStateWindowProps(character));
+};
+
+export const isCharacterStateWindowOpen = (charId: string) =>
+  Boolean(getDraggableWindow(getCharacterStateWindowId(charId))?.isOpen);
+
+/** Calls `listener` when a state window opens or closes. Returns the unsubscriber. */
+export const onCharacterStateWindowsChange = (listener: () => void) => {
+  openStateListeners.add(listener);
+  return () => {
+    openStateListeners.delete(listener);
+  };
 };

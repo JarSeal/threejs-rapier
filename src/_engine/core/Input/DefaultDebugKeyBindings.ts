@@ -12,6 +12,7 @@ import {
   toggleEnvBall,
   toggleOnScreenToolsDisabled,
 } from '../../debug/DebugToolsManager';
+import { toggleProfilerWindow } from '../../debug/Profiler';
 import { redoLastAction, undoLastAction } from '../../debug/UndoRedo';
 import { lwarn } from '../../utils/Logger';
 import { getConfig } from '../Config';
@@ -147,6 +148,18 @@ const DEFAULT_DEBUG_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
     },
   },
   {
+    id: 'sc-toggle-profiler',
+    category: 'DEBUGGER',
+    type: 'KEY_DOWN',
+    chord: { key: 'F8' },
+    name: 'Open / close the profiler window',
+    fn: (e) => {
+      e.preventDefault();
+      if (e.repeat || isTypingInField()) return;
+      toggleProfilerWindow();
+    },
+  },
+  {
     id: 'sc-toggle-env-ball',
     category: 'VIEWPORT',
     type: 'KEY_DOWN',
@@ -275,8 +288,8 @@ export const registerDefaultDebugKeyBindings = (): void => {
   }
 };
 
-/** Production test mode keys: the on-screen play tools' stop, main loop and app loop pause
- * buttons. Each gives way to an app binding of the same key (yieldToOtherBindings). */
+/** Production test mode keys: the on-screen play tools' stop, main loop, app loop pause and
+ * profiler buttons. Each gives way to an app binding of the same key (yieldToOtherBindings). */
 const DEFAULT_PROD_TEST_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
   {
     id: 'sc-prod-test-stop',
@@ -319,11 +332,25 @@ const DEFAULT_PROD_TEST_KEY_BINDINGS: DefaultDebugKeyBinding[] = [
       updateOnScreenTools('PLAY');
     },
   },
+  {
+    id: 'sc-prod-test-toggle-profiler',
+    category: 'PROD_TEST',
+    type: 'KEY_DOWN',
+    chord: { key: 'F8' },
+    name: 'Open / close the profiler window (when enabled in production test mode)',
+    yieldToOtherBindings: true,
+    fn: (e) => {
+      e.preventDefault();
+      if (e.repeat || isTypingInField()) return;
+      toggleProfilerWindow(); // a no-op while the profiler isn't loaded
+    },
+  },
 ];
 
 /**
- * Registers the production test mode keys (F5 stop, F6 main loop, F7 app loop pause, no
- * toasts). An app binding of the same key takes over. Production test mode only.
+ * Registers the production test mode keys (F5 stop, F6 main loop, F7 app loop pause, F8
+ * profiler window, no toasts). An app binding of the same key takes over. Production test mode
+ * only.
  */
 export const registerDefaultProdTestKeyBindings = (): void => {
   for (const binding of DEFAULT_PROD_TEST_KEY_BINDINGS) createKeyBinding(binding);

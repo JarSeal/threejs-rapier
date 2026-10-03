@@ -6,7 +6,6 @@ import aspectRatioIcon from './svg/aspect-ratio.svg?raw';
 import cameraIcon from './svg/camera2.svg?raw';
 import cameraReelsIcon from './svg/camera-reels.svg?raw';
 import circleCheckCutoutIcon from './svg/circle-check-cutout.svg?raw';
-import circleXCutoutIcon from './svg/circle-x-cutout.svg?raw';
 import cloudSunIcon from './svg/cloud-sun-fill.svg?raw';
 import databaseXIcon from './svg/database-fill-x.svg?raw';
 import easelIcon from './svg/easel-fill.svg?raw';
@@ -43,6 +42,7 @@ import toolsIcon from './svg/tools.svg?raw';
 import undoIcon from './svg/arrow-90deg-left.svg?raw';
 import warningIcon from './svg/exclamation-triangle-fill.svg?raw';
 import xIcon from './svg/x.svg?raw';
+import xBoldIcon from './svg/x-bold.svg?raw';
 
 const icons = {
   alert: alertIcon,
@@ -53,7 +53,6 @@ const icons = {
   camera: cameraIcon,
   cameraReels: cameraReelsIcon,
   circleCheckCutout: circleCheckCutoutIcon,
-  circleXCutout: circleXCutoutIcon,
   cloudSun: cloudSunIcon,
   databaseX: databaseXIcon,
   easel: easelIcon,
@@ -90,6 +89,7 @@ const icons = {
   undo: undoIcon,
   warning: warningIcon,
   x: xIcon,
+  xBold: xBoldIcon,
 };
 
 /** Key of an engine UI icon (see {@link getSvgIcon}). */

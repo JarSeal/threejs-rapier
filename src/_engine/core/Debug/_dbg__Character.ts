@@ -33,8 +33,11 @@ import { getCurrentSceneId } from '../Scene';
 import { _recordUndoRedoAction, _registerUndoRedoActionHandler } from './_dbg__UndoRedo';
 import {
   _openCharacterStateWindow,
+  _toggleCharacterStateWindow,
   CHAR_STATE_WIN_ID,
   getCharacterStateWindowId,
+  isCharacterStateWindowOpen,
+  onCharacterStateWindowsChange,
 } from './Character/_dbg__CharacterStateWindow';
 import {
   isCharacterGizmosPinned,
@@ -52,7 +55,8 @@ const CHAR_EDIT_WIN_ID = 'characterEditorWindow';
 const getEditWindowId = (charId: string) => getKindWindowId(CHAR_EDIT_WIN_ID, charId);
 /** The list's selection follows the edit windows' open states. */
 const refreshCharactersList = () => updateDebuggerTab(CHARACTERS_TAB_ID);
-// The rows' pin toggles follow the state windows' pin buttons
+// The rows' toggles follow the state windows' open states and pin buttons
+onCharacterStateWindowsChange(refreshCharactersList);
 onCharacterGizmoPinsChange(refreshCharactersList);
 
 // Undo/redo
@@ -182,11 +186,18 @@ const createEditCharacterContent = (data?: { [key: string]: unknown }) => {
     const positionInput = pane.addBinding(rigidBody, 'position', {
       label: 'Position',
     });
-    pane.addButton({ title: 'Set position' }).on('click', () => {
+    const setPosition = () => {
       const { x, y, z } = physRigidBody.pos;
       const next = { x: rigidBody.position.x, y: rigidBody.position.y, z: rigidBody.position.z };
       physRigidBody.setTranslation(new THREE.Vector3(next.x, next.y, next.z), true);
       recordCharacterPose(character.id, 'position', { x, y, z }, next);
+    };
+    pane.addButton({ title: 'Set position' }).on('click', setPosition);
+    // Undo restores the position only, not the cancelled velocities
+    pane.addButton({ title: 'Set position and cancel velocities' }).on('click', () => {
+      setPosition();
+      physRigidBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      physRigidBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
     });
     pane.addButton({ title: 'Update position input' }).on('click', () => {
       rigidBody.position = physRigidBody.pos;
@@ -232,8 +243,14 @@ const getCharactersListData = (): DebuggerListItem[] =>
     itemId: character.id,
     title: character.name || `[${character.id}]`,
     subTitle: `[${character.id}]`,
-    toggleValues: [isCharacterGizmosPinned(character.id)],
+    toggleValues: [isCharacterStateWindowOpen(character.id), isCharacterGizmosPinned(character.id)],
   }));
+
+/** Row toggle: the open / front / close rule of a row click, for the character's state window. */
+const toggleCharacterStateWindow = (charId: string) => {
+  const character = getCharacterById(charId);
+  if (character) _toggleCharacterStateWindow(character);
+};
 
 registerDraggableWindowKind(CHAR_EDIT_WIN_ID, {
   content: createEditCharacterContent,
@@ -324,6 +341,11 @@ export const _createCharactersDebuggerGUI = () => {
         perItemConfig: {
           onClick: toggleEditCharacterWindow,
           toggles: [
+            {
+              icon: 'personArmsUp',
+              title: 'Character state window (open / bring to front / close)',
+              fn: toggleCharacterStateWindow,
+            },
             {
               icon: 'pin',
               title:

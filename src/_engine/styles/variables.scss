@@ -14,9 +14,12 @@ $debugTabButton: #1f1f1f;
 $debugTextColor: #bbbcc4;
 $debugTextColorDark: color.adjust($debugTextColor, $lightness: -20%);
 $debugOnScreenAlphaBack: rgba($debugTextColor, 0.2);
-// Debug boolean icons ($info/$alert are too dark to read at icon size on the debug background)
+// Debug boolean icons ($info is too dark to read at icon size on the debug background). False is
+// the text colour: a red one would dominate a list of flags.
 $debugBoolTrue: #3fb56b;
-$debugBoolFalse: #d04848;
+$debugBoolFalse: $debugTextColor;
+// Debug alert text and fills ($alert is too dark to read on the debug background)
+$debugAlertLight: #d04848;
 // Debug value change flash (amber, so it doesn't read as the true/false colours)
 $debugValueFlash: rgba(#e3b341, 0.35);
 // A debug figure that needs attention ($warning is too dark to read as text)
