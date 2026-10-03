@@ -19,7 +19,7 @@ export const registerSpatialIndexDebugGUI = async () => {
 
 /**
  * ECS wiring for SpatialGrid (docs/plans/_DONE_p050_spatial-index.md §3, §8). Each ECS world
- * holds named spatial domains (docs/plans/p346_spatial-domains.md §3.1): separate grids, each
+ * holds named spatial domains (docs/plans/_DONE_p346_spatial-domains.md §3.1): separate grids, each
  * with its own cell size, capacity and update policy. `DEFAULT` is created lazily on its first
  * SPATIAL_INDEXED member and is the one LightObjectCullingSystem.ts queries.
  *
@@ -27,8 +27,18 @@ export const registerSpatialIndexDebugGUI = async () => {
  * read it with `getSpatialDomain`/`getSpatialGrid` where it's used instead of keeping it.
  */
 
-/** How a domain's grid is kept current. `DYNAMIC`: positions refreshed and the grid rebuilt every frame. */
-export type SpatialUpdatePolicy = 'DYNAMIC';
+/**
+ * How a domain's grid is kept current (p346 §3.1):
+ * - `DYNAMIC`: positions and scaled radii refreshed and the grid rebuilt every frame.
+ * - `STATIC`: positions and radii are read when a member joins. The grid is rebuilt only in a
+ *   frame where a member joined or left, and refreshed from every member's Transform first when
+ *   `invalidateSpatialDomain` was called.
+ * - `MANUAL`: rebuilt only by `rebuildSpatialDomain` (or at the next frame after
+ *   `invalidateSpatialDomain`). Queries see the last rebuild: a member that joined since is
+ *   missing, and one that left can make another member show up at its old cell, so rebuild
+ *   before querying.
+ */
+export type SpatialUpdatePolicy = 'DYNAMIC' | 'STATIC' | 'MANUAL';
 
 export interface SpatialDomainOptions {
   id: string;
@@ -68,9 +78,18 @@ type SpatialDomain = {
    * rebuild. Members with a scale-independent or zero radius aren't in here.
    */
   localRadius: Map<number, number>;
+  /** A member joined, left or got a new radius since the last rebuild (`STATIC` rebuilds on it). */
+  needsRebuild: boolean;
+  /** `invalidateSpatialDomain` was called: refresh every member and rebuild at the next frame. */
+  needsRefresh: boolean;
   hasWarnedFull: boolean;
-  /** Debug env only — the last rebuild's wall-clock cost, for _dbg__SpatialGrid.ts. */
+  /** Debug env only, for _dbg__SpatialGrid.ts: see {@link SpatialDomainRebuildStats}. */
   lastRebuildMs: number;
+  rebuildCount: number;
+  /** The world's `frame` at the last rebuild; -1 before the first. */
+  lastRebuildFrame: number;
+  /** The world's `frame` at registration. */
+  registeredFrame: number;
 };
 
 type WorldDomains = {
@@ -79,6 +98,8 @@ type WorldDomains = {
   byId: Map<string, SpatialDomain>;
   /** The non-default domains, by mask bit. */
   byBit: SpatialDomain[];
+  /** Debug env only: how many times the rebuild system has run in this world. */
+  frame: number;
 };
 
 const domainsByWorld = new WeakMap<ECSWorld, WorldDomains>();
@@ -137,11 +158,14 @@ const insertMember = (world: ECSWorld, domain: SpatialDomain, entityId: number) 
     domain.localRadius.delete(entityId);
   }
   domain.grid.addMember(entityId, pos?.x ?? 0, pos?.y ?? 0, pos?.z ?? 0, radius);
+  domain.needsRebuild = true;
 };
 
 const removeFromDomain = (domain: SpatialDomain, entityId: number) => {
+  if (!domain.grid.has(entityId)) return;
   domain.grid.removeMember(entityId);
   domain.localRadius.delete(entityId);
+  domain.needsRebuild = true;
 };
 
 /**
@@ -195,7 +219,7 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
   );
   let domains = domainsByWorld.get(world);
   if (!domains) {
-    domains = { list: [], byId: new Map(), byBit: [] };
+    domains = { list: [], byId: new Map(), byBit: [], frame: 0 };
     domainsByWorld.set(world, domains);
   }
 
@@ -215,8 +239,13 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
       opts: resolved,
       grid: createDomainGrid(resolved),
       localRadius: new Map(),
+      needsRebuild: false,
+      needsRefresh: false,
       hasWarnedFull: false,
       lastRebuildMs: 0,
+      rebuildCount: 0,
+      lastRebuildFrame: -1,
+      registeredFrame: domains.frame,
     };
     domains.list.push(domain);
     domains.byId.set(domain.id, domain);
@@ -242,7 +271,8 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
     const entityId = oldGrid.memberAt(i);
     if (!addToDomain(world, existing, entityId)) clearMaskBit(world, existing, entityId);
   }
-  existing.grid.rebuild();
+  // The re-insert read every member's current position and radius
+  rebuildDomain(existing, domains.frame);
 }
 
 /** The grid of `world`'s domain `id`, or undefined if it isn't registered. Never creates one. */
@@ -541,7 +571,36 @@ export function getLastRebuildDurationMs(
   return domainsByWorld.get(world)?.byId.get(domainId)?.lastRebuildMs ?? 0;
 }
 
-const refreshAndRebuildDomain = (world: ECSWorld, domain: SpatialDomain) => {
+/** Debug env only (p346 Phase 3): how often a domain actually rebuilds, and what it costs. */
+export type SpatialDomainRebuildStats = {
+  /** Wall-clock cost of the last rebuild (the grid's `rebuild()`, not the position refresh). */
+  lastRebuildMs: number;
+  /** Rebuilds since the domain was registered, from any source (the system, `rebuildSpatialDomain`, a re-registration). */
+  rebuildCount: number;
+  /** Frames (rebuild system runs) since the domain was registered. */
+  frameCount: number;
+  /** Frames since the last rebuild; -1 if it never rebuilt. */
+  framesSinceRebuild: number;
+};
+
+/** Debug env only — the rebuild counts of `world`'s domain `domainId`, or undefined if it isn't registered. */
+export function getSpatialDomainRebuildStats(
+  world: ECSWorld,
+  domainId: string
+): SpatialDomainRebuildStats | undefined {
+  const domains = domainsByWorld.get(world);
+  const domain = domains?.byId.get(domainId);
+  if (!domains || !domain) return undefined;
+  return {
+    lastRebuildMs: domain.lastRebuildMs,
+    rebuildCount: domain.rebuildCount,
+    frameCount: domains.frame - domain.registeredFrame,
+    framesSinceRebuild: domain.lastRebuildFrame < 0 ? -1 : domains.frame - domain.lastRebuildFrame,
+  };
+}
+
+/** Re-reads every member's position and scaled radius from its Transform. */
+function refreshDomainMembers(world: ECSWorld, domain: SpatialDomain): void {
   const grid = domain.grid;
   const localRadius = domain.localRadius;
   for (let i = 0; i < grid.memberCount; i++) {
@@ -553,21 +612,78 @@ const refreshAndRebuildDomain = (world: ECSWorld, domain: SpatialDomain) => {
     const local = localRadius.get(entityId);
     if (local !== undefined) grid.updateRadius(entityId, local * maxAbsScale(transform.scale));
   }
+}
 
+/** `frame`: the world's rebuild-system frame, for the debug stats. */
+function rebuildDomain(domain: SpatialDomain, frame: number): void {
   const start = IS_DEBUG_ENV ? performance.now() : 0;
-  grid.rebuild();
-  if (IS_DEBUG_ENV) domain.lastRebuildMs = performance.now() - start;
+  domain.grid.rebuild();
+  domain.needsRebuild = false;
+  domain.needsRefresh = false;
+  if (IS_DEBUG_ENV) {
+    domain.lastRebuildMs = performance.now() - start;
+    domain.rebuildCount++;
+    domain.lastRebuildFrame = frame;
+  }
+}
+
+const getDomainOrWarn = (world: ECSWorld, domainId: string, action: string) => {
+  const domain = domainsByWorld.get(world)?.byId.get(domainId);
+  if (!domain && IS_DEBUG_ENV) {
+    lwarn(
+      `SpatialIndex: can't ${action} domain '${domainId}', it isn't registered in world ` +
+        `'${world.id}' (registerSpatialDomain).`
+    );
+  }
+  return domain;
 };
 
-/** Refreshes the members' positions and scaled radii and rebuilds the grid of every `DYNAMIC` domain, in registration order. Registered last in APP_POST_PHYSICS (§8) so APP_LOGIC/APP_RENDER_SYNC consumers see a current snapshot. */
+/**
+ * Refreshes every member of `world`'s domain `domainId` from its Transform and rebuilds the grid
+ * at the next frame's rebuild (APP_POST_PHYSICS), for any update policy. For a `STATIC` domain
+ * whose members moved, or a `MANUAL` one whose owner doesn't need the result before then. A
+ * no-op change for `DYNAMIC`, which does this every frame.
+ */
+export function invalidateSpatialDomain(world: ECSWorld, domainId: string): void {
+  const domain = getDomainOrWarn(world, domainId, 'invalidate');
+  if (domain) domain.needsRefresh = true;
+}
+
+/**
+ * Refreshes every member of `world`'s domain `domainId` from its Transform and rebuilds the grid
+ * now, for any update policy. The way a `MANUAL` domain is kept current: call it before
+ * querying when members joined, left or moved since the last rebuild.
+ */
+export function rebuildSpatialDomain(world: ECSWorld, domainId: string): void {
+  const domain = getDomainOrWarn(world, domainId, 'rebuild');
+  if (!domain) return;
+  refreshDomainMembers(world, domain);
+  rebuildDomain(domain, domainsByWorld.get(world)!.frame);
+}
+
+/**
+ * Keeps every domain current by its update policy, in registration order: `DYNAMIC` is refreshed
+ * and rebuilt, `STATIC` is rebuilt when a member joined or left, and any domain is refreshed and
+ * rebuilt when invalidated. Registered last in APP_POST_PHYSICS (§8) so APP_LOGIC/APP_RENDER_SYNC
+ * consumers see a current snapshot.
+ */
 export const spatialIndexRebuildSystem = (world: ECSWorld) => {
   const domains = domainsByWorld.get(world);
   if (!domains) return; // no domain registered in this world yet
 
+  const frame = IS_DEBUG_ENV ? ++domains.frame : 0;
   const list = domains.list;
   for (let i = 0; i < list.length; i++) {
-    if (list[i].opts.update === 'DYNAMIC') refreshAndRebuildDomain(world, list[i]);
-    if (IS_DEBUG_ENV) runOracleProbes(world, list[i]);
+    const domain = list[i];
+    const policy = domain.opts.update;
+    if (policy === 'DYNAMIC' || domain.needsRefresh) {
+      refreshDomainMembers(world, domain);
+      rebuildDomain(domain, frame);
+    } else if (policy === 'STATIC' && domain.needsRebuild) {
+      // The members that joined were read on joining; the others haven't moved
+      rebuildDomain(domain, frame);
+    }
+    if (IS_DEBUG_ENV) runOracleProbes(world, domain);
   }
 };
 
@@ -579,7 +695,9 @@ export const spatialIndexRebuildSystem = (world: ECSWorld) => {
 // _dbg__SpatialGrid.ts; a no-op call in production (IS_DEBUG_ENV-gated).
 // While on, it checks the queries consumers pass to validateSpatialGridQuery,
 // plus a few probe queries near random members every frame, so a domain that
-// no consumer queries yet is checked too.
+// no consumer queries yet is checked too. It compares against live positions,
+// so in a STATIC or MANUAL domain it also flags members that moved without an
+// invalidateSpatialDomain/rebuildSpatialDomain call.
 
 type OracleState = { enabled: boolean; checked: number; mismatches: number; warned: number };
 

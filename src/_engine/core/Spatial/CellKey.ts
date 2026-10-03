@@ -1,5 +1,5 @@
 /**
- * Shared cell maths for every cell-keyed spatial structure (docs/plans/p346_spatial-domains.md
+ * Shared cell maths for every cell-keyed spatial structure (docs/plans/_DONE_p346_spatial-domains.md
  * §3.4): SpatialGrid, and later the streaming cells (p353) and static instance cells (p308). For
  * a given cell size, a cell key means the same cell everywhere.
  *

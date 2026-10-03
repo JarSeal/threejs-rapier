@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: implemented (Phases 1-3)
 Category: ECS, Spatial
 Epic: p350_lod-system-research.md (Tier 0)
 Blocks: p353_macro-streaming-grid.md (Phase 1: shared cell maths; Phase 4: per-cell entity lookup)
@@ -206,7 +206,7 @@ and light culling (on `DEFAULT`) is unchanged.
 
 As built:
 
-- `SpatialUpdatePolicy` is only `'DYNAMIC'`; Phase 3 widens it. `registerSpatialDomain` returns
+- `SpatialUpdatePolicy` was only `'DYNAMIC'` (Phase 3 widened it). `registerSpatialDomain` returns
   nothing, and `getSpatialDomain` never creates a domain (`getSpatialGrid` still creates
   `DEFAULT` lazily). An app can register `DEFAULT` itself before its first member to set its
   settings. Extra getters for the tab: `getSpatialDomainIds`, `getSpatialDomainOptions`.
@@ -238,13 +238,38 @@ As built:
   app asked for (`reapplySpatialDomainOptions`). The grid is re-created only on a finished edit,
   not per drag tick. Non-default domains' overlay colors come from a palette by id.
 
-### Phase 3 — Static and manual policies
+### Phase 3 — Static and manual policies — done
 
 1. `STATIC` and `MANUAL` (§3.1), `invalidateSpatialDomain`, `rebuildSpatialDomain`.
 2. Rebuild time per domain in the tab, and the frames each domain actually rebuilt.
 
 **Exit:** `largeWorld`'s `FOLIAGE` domain as `STATIC` rebuilds once at load and then never, and the
 oracle stays clean.
+
+As built:
+
+- A domain has two flags: `needsRebuild` (a member joined, left or got a new radius through
+  `refreshSpatialRadius`) and `needsRefresh` (`invalidateSpatialDomain`). The rebuild system
+  refreshes and rebuilds `DYNAMIC` every frame and any domain with `needsRefresh`, and rebuilds
+  `STATIC` (without a refresh) on `needsRebuild`. A radius refresh counts because it can move a
+  member between the oversized tier and the cells.
+- `MANUAL` is never rebuilt on a join or leave. `SpatialGrid.removeMember` swap-removes slots, so
+  until the next rebuild the cells still hold the old slots: the member moved into the freed slot
+  shows up at the removed member's cell instead of its own, and the emptied last slot is `-1`. The
+  grid's query loop now skips `-1` slots (this also covers `DEFAULT` between a removal and that
+  frame's rebuild, which could hand `-1` to a visitor before). A `MANUAL` owner rebuilds before
+  querying, as p353 §4.3 does.
+- `invalidateSpatialDomain` works on every policy: it refreshes and rebuilds at the next frame (a
+  no-op change for `DYNAMIC`). `rebuildSpatialDomain` does the same immediately. Both warn in the
+  debug env for an unregistered domain.
+- Debug stats: `getSpatialDomainRebuildStats(world, id)` (`lastRebuildMs`, `rebuildCount`,
+  `frameCount` since registration, `framesSinceRebuild`), where a frame is one run of the rebuild
+  system in that world, counted in the debug env only. The tab shows "Rebuilds" and "Last
+  rebuilt" for the selected domain, and an "All domains" summary, two lines per domain (the value
+  column fits about 20 characters).
+- Verified in `largeWorld` (WebGL fallback): `FOLIAGE` rebuilt once per load and not in the 20
+  frames after, once per `invalidateSpatialDomain`, and once when the scene exit emptied it;
+  `DEFAULT` rebuilt every frame. No oracle mismatches in either domain (160 and 360 queries).
 
 ## 5. Not in this plan
 

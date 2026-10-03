@@ -192,7 +192,9 @@ export class SpatialGrid {
     this.slotToEntity[lastSlot] = -1;
     this.entityToSlot.delete(entityId);
     this.liveCount--;
-    // maxIndexedRadius may now overestimate; the next rebuild() makes it exact.
+    // maxIndexedRadius may now overestimate; the next rebuild() makes it exact. Until then the
+    // cells still hold the old slots: queries skip the emptied one, but the member moved into
+    // `slot` shows up at the removed member's cell instead of its own.
   }
 
   updatePosition(entityId: number, x: number, y: number, z: number): void {
@@ -428,7 +430,9 @@ export class SpatialGrid {
             const slot = this.items[k];
             if (this.queryStamp[slot] === stamp) continue;
             this.queryStamp[slot] = stamp;
-            visit(this.slotToEntity[slot]);
+            const entityId = this.slotToEntity[slot];
+            // A slot emptied by removeMember since the last rebuild (-1)
+            if (entityId >= 0) visit(entityId);
           }
         }
       }

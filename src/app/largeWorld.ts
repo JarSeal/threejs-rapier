@@ -86,12 +86,14 @@ export const scene = async () => {
     type: 'PHONG',
     params: { color: '#2f5d34', flatShading: true },
   });
-  // The trees get their own spatial domain (docs/plans/p346_spatial-domains.md), apart from
-  // DEFAULT's light culling members. Re-registering on the next visit is a no-op.
+  // The trees get their own spatial domain (docs/plans/_DONE_p346_spatial-domains.md), apart from
+  // DEFAULT's light culling members. The trees never move, so it's rebuilt only when they're
+  // spawned or deleted. Re-registering on the next visit is a no-op.
   registerSpatialDomain(ecsWorld, {
     id: 'FOLIAGE',
     cellSize: 16,
     maxMembers: treePlacements.length,
+    update: 'STATIC',
   });
   const treePool = createInstancedMeshPool({
     world: ecsWorld,

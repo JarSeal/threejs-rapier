@@ -36,7 +36,7 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 - **PostFX**: an ordered, per-scene chain of TSL passes (`*.postFx.json` + `*.tsl.ts`), switchable per pass at runtime, with ambient occlusion (GTAO) included.
 - **Viewports**: extra render rectangles with their own scene and camera (picture-in-picture, minimaps, item previews), placed by the DOM and working with or without PostFX.
 - **Lines**: pooled thin and thick lines with screen-space dashes and ECS binding.
-- **Spatial index**: a uniform grid with an oversized tier for "what's near this point/volume" queries.
+- **Spatial index**: uniform grids with an oversized tier for "what's near this point/volume" queries. Each ECS world can hold several named domains, each with its own cell size, capacity and update policy (rebuilt every frame, only when its members change, or on demand), and an entity can join several of them. Instanced-pool instances can be indexed too.
 - **Ray casting**: Three.js and physics ray APIs with per-frame statistics and debug helpers.
 - **Input**: keyboard, mouse, touch and gamepad, plus picking and rebindable key chords.
 - **Characters**: a dynamic, physics-driven character controller that handles slopes and moving platforms, with swappable body plans (a humanoid capsule built in). Characters are driven through an intent object, from tank, world-fixed (8-direction) or camera-relative keyboard controls, or from code. A locomotion state (idle, walk, run, jump, fall, slide, tumble, …) reports what each one is doing, and a physics-only control mode hands the body to physics, eg. for a ragdoll.

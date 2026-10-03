@@ -154,6 +154,15 @@ To check determinism, append `?physicsProbe=N` (debug mode) or use "Determinism 
 - The first consumer is the debug-only axes gizmo (`debug/AxesGizmo.ts` → `core/Debug/_dbg__AxesGizmo.ts`): top right, follows the active camera, F10 and two Debug Tools options. With the debug camera, clicking a bubble aligns it and dragging orbits it.
 - The environment ball (`debug/EnvBall.ts` → `core/Debug/_dbg__EnvBall.ts`) sits left of the gizmo (`order: 1`): an unlit sphere sampling `getActiveEnvironmentTexture()` along the reflection vector (with a direct-path cube's `flipY` and the scene's `environmentRotation`), following the active camera, F9 and three Debug Tools options. A new PMREM texture gets a new node, never a `.value` swap.
 
+### Spatial index
+
+`core/Spatial/SpatialGrid.ts` is the grid (sparse CSR cells, an oversized tier, zero-allocation queries that return candidates, not results); `CellKey.ts` holds the cell maths every cell-keyed structure shares; `SpatialIndexSystem.ts` is the ECS wiring (`_DONE_p050`, `_DONE_p346`).
+
+- Each world holds named domains (`registerSpatialDomain(world, { id, cellSize, maxMembers, update })`), each its own grid. Read a grid with `getSpatialDomain` / `getSpatialGrid` where it's used: re-registering with other settings replaces it. `DEFAULT` is created lazily (cell size 20, `world.maxEntities` members); its membership is `SPATIAL_INDEXED` (the `spatialIndex` entity flag, on by default for meshes and point/spot lights), and light object culling queries it. Other domains use `joinSpatialDomain` / `leaveSpatialDomain` (a `SPATIAL_DOMAINS` bit mask, at most 31 per world); a full one refuses with a dev warning. `InstancedMeshPool`'s `spatialDomain` option joins its instances.
+- Update policies: `DYNAMIC` refreshes positions and rebuilds every frame; `STATIC` rebuilds only in a frame where a member joined or left; `MANUAL` only on `rebuildSpatialDomain`. `invalidateSpatialDomain` refreshes and rebuilds any domain at the next frame (a `STATIC` domain whose members moved). The rebuild runs at `APP_POST_PHYSICS`, order -1. Between a leave and the next rebuild the cells hold stale slots, so a `MANUAL` owner rebuilds before it queries.
+- Radii come from providers (`registerSpatialRadiusProvider(componentType, fn, { scaleIndependent? })`): meshes and pool instances return their geometry's `|center| + radius`, scaled by the Transform on every refresh; lights their range. `refreshSpatialRadius(entityId)` re-reads one after what its provider measures changed.
+- The "Spatial index" debug tab (`core/Debug/_dbg__SpatialGrid.ts`, default world only) works per domain: cell size override, brute-force oracle, overlays, rebuild counts and an all-domains summary.
+
 ### Build config notes (`vite.config.ts`)
 
 - `root: './src'`, output to `../dist`.

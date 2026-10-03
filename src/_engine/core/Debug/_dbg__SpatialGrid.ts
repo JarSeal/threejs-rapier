@@ -18,6 +18,7 @@ import {
   getSpatialDomain,
   getSpatialDomainIds,
   getSpatialDomainOptions,
+  getSpatialDomainRebuildStats,
   isSpatialGridOracleEnabled,
   reapplySpatialDomainOptions,
   setSpatialDomainOptionsOverride,
@@ -28,7 +29,7 @@ const TAB_ID = 'spatialGridControls';
 const formatInt = (v: number) => v.toFixed(0);
 const LS_KEY = 'AEK_debugSpatialGrid';
 
-/** One domain's tab settings (docs/plans/p346_spatial-domains.md §3.6). */
+/** One domain's tab settings (docs/plans/_DONE_p346_spatial-domains.md §3.6). */
 type DomainDebugSettings = {
   /** Overrides the cell size the app registered the domain with; absent = the app's. */
   cellSize?: number;
@@ -137,6 +138,32 @@ function formatOccupancyHistogram(counts: number[]): string {
     lines.push(`${String(k).padStart(4)} members: ${'#'.repeat(barLen)} (${f})`);
   }
   return lines.join('\n');
+}
+
+const formatFramesSinceRebuild = (frames: number) =>
+  frames < 0 ? 'never' : frames === 0 ? 'this frame' : `${frames} frames ago`;
+
+/** Lines per domain in {@link formatDomainSummary}. */
+const DOMAIN_SUMMARY_LINES = 2;
+
+/**
+ * Two short lines per domain (the value column is narrow): its policy and members, then its
+ * rebuilds out of the frames since it was registered and the last rebuild's cost. Shows at a
+ * glance which domains rebuild every frame (p346 Phase 3).
+ */
+function formatDomainSummary(world: ECSWorld, ids: string[]): string {
+  return ids
+    .map((id) => {
+      const opts = getSpatialDomainOptions(world, id);
+      const stats = getSpatialDomainRebuildStats(world, id);
+      if (!opts || !stats) return `${id}\n  not registered`;
+      const members = getSpatialDomain(world, id)?.memberCount ?? 0;
+      return (
+        `${id} ${opts.update} ${members}\n` +
+        `  ${stats.rebuildCount}/${stats.frameCount} · ${stats.lastRebuildMs.toFixed(3)} ms`
+      );
+    })
+    .join('\n');
 }
 
 // --- VISUALIZER (docs/plans/_DONE_p125_spatial-index-system-visualizer.md) ---
@@ -285,10 +312,13 @@ export const _createSpatialGridDebugGUI = () => {
     occupiedCellCount: 0,
     maxIndexedRadius: 0,
     lastRebuildMs: 0,
+    rebuilds: '',
+    lastRebuilt: '',
     oracleChecked: 0,
     oracleMismatches: 0,
   };
   const histogramState = { text: '(no occupied cells)' };
+  const summaryState = { text: '' };
 
   const isRegistered = (id: string) => Boolean(getSpatialDomainOptions(world, id));
   const isSelectedRegistered = () => isRegistered(state.selectedDomain);
@@ -357,6 +387,14 @@ export const _createSpatialGridDebugGUI = () => {
       statsState.occupiedCellCount = stats?.occupiedCellCount ?? 0;
       statsState.maxIndexedRadius = stats?.maxIndexedRadius ?? 0;
       statsState.lastRebuildMs = getLastRebuildDurationMs(world, id);
+      const rebuildStats = getSpatialDomainRebuildStats(world, id);
+      statsState.rebuilds = rebuildStats
+        ? `${rebuildStats.rebuildCount} in ${rebuildStats.frameCount} frames`
+        : '-';
+      statsState.lastRebuilt = rebuildStats
+        ? formatFramesSinceRebuild(rebuildStats.framesSinceRebuild)
+        : '-';
+      summaryState.text = formatDomainSummary(world, listDomainIds());
       statsState.oracleChecked = getOracleCheckedQueryCount(world, id);
       statsState.oracleMismatches = getOracleMismatchCount(world, id);
       histogramState.text = formatOccupancyHistogram(grid?.getCellOccupancyCounts() ?? []);
@@ -500,6 +538,18 @@ export const _createSpatialGridDebugGUI = () => {
                   format: (v: number) => v.toFixed(3),
                 },
                 {
+                  key: 'rebuilds',
+                  target: statsState,
+                  label: 'Rebuilds',
+                  readonly: true,
+                },
+                {
+                  key: 'lastRebuilt',
+                  target: statsState,
+                  label: 'Last rebuilt',
+                  readonly: true,
+                },
+                {
                   key: 'oracleChecked',
                   target: statsState,
                   label: 'Oracle queries',
@@ -514,6 +564,17 @@ export const _createSpatialGridDebugGUI = () => {
                   format: formatInt,
                 },
               ],
+            },
+            {
+              key: 'text',
+              target: summaryState,
+              // Members, then rebuilds / frames since registration and the last rebuild's cost
+              label: 'All domains',
+              readonly: true,
+              multiline: true,
+              // The list changes only with a rebuild of the tab (see onRefresh)
+              rows: Math.min(listDomainIds().length * DOMAIN_SUMMARY_LINES, 12),
+              interval: 0,
             },
             {
               key: 'text',

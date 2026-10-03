@@ -3,7 +3,7 @@ Category: ECS, Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 1.3)
 Blocked by: p347_lod-chain-generation.md (soft: only Phase 2's `lod: 'AUTO'`)
 Blocks: p351_impostor-billboard-lod.md (needs Phase 3's per-level instanced pools), p354_gpu-driven-culling.md
-Related: p346_spatial-domains.md (pool instances indexable; static domains for cells), p308_terrain-scatter.md (its static instance cells are Phase 4's contract), p240_client-device-capability-sniffer.md (global LOD bias), \_DONE_p345_gpu-memory-and-draw-call-debugger.md
+Related: \_DONE_p346_spatial-domains.md (pool instances indexable; static domains for cells), p308_terrain-scatter.md (its static instance cells are Phase 4's contract), p240_client-device-capability-sniffer.md (global LOD bias), \_DONE_p345_gpu-memory-and-draw-call-debugger.md
 
 # ECS LOD Selection & Apply
 

@@ -4,6 +4,51 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-03 — spatial-domains
+
+### Engine 4.5.0 (Afternoon)
+
+**Added**
+
+- Spatial domains (`core/Spatial/SpatialIndexSystem.ts`): an ECS world can hold several named spatial grids, each with its own cell size, capacity and update policy. `registerSpatialDomain(world, { id, cellSize, maxMembers, update?, oversizedRadiusMultiplier? })`, `getSpatialDomain`, `getSpatialDomainIds`, `getSpatialDomainOptions`. The existing grid is the `DEFAULT` domain, created lazily as before (`getSpatialGrid` still returns it); an app can register `DEFAULT` itself before its first member to set its settings. Registering an id again with other settings re-creates its grid and re-inserts the members.
+- Update policies: `DYNAMIC` (refreshed and rebuilt every frame, as before), `STATIC` (rebuilt only in a frame where a member joined or left) and `MANUAL` (rebuilt only by `rebuildSpatialDomain`). `invalidateSpatialDomain(world, id)` refreshes and rebuilds any domain at the next frame; `rebuildSpatialDomain(world, id)` does it now.
+- Membership: `joinSpatialDomain`, `leaveSpatialDomain` and `isInSpatialDomain`. An entity can be in several domains. `DEFAULT`'s membership is still `SPATIAL_INDEXED`; the others' is the new runtime `SPATIAL_DOMAINS` component (a bit mask, at most 31 domains besides `DEFAULT`). A full non-default domain refuses a member with one dev warning, where `DEFAULT` still throws.
+- Radius providers: `registerSpatialRadiusProvider(componentType, fn, { scaleIndependent? })` replaces the hard-coded mesh and light radii. `refreshSpatialRadius(entityId)` re-reads a member's radius after what its provider measures changed, and `getConservativeGeometryRadius(geometry)` is the mesh provider's measure.
+- `core/Spatial/CellKey.ts`: the cell maths (`worldToCell`, `packCellKey`, `unpackCellKey`, `isCellInRange`, `cellBounds`, the axis constants), shared by every cell-keyed structure so a cell key means the same thing everywhere for a given cell size.
+- `SpatialGrid.getRadius(entityId)` and `memberAt(index)` (iterating the members without an allocation).
+- "Spatial index" debug tab: a domain dropdown; stats, histogram, oracle, overlays and the cell size apply to the selected domain, and each domain's overlays have their own colours, so several can be shown at once. New rows show how often the selected domain rebuilds and when it last did, and an "All domains" summary lists every domain's policy, members, rebuilds per frame and rebuild time (`getSpatialDomainRebuildStats`, debug env only). A cell size set in the tab now holds when the app registers the domain again, and "Reset to the app's cell size" goes back to the app's.
+- The brute-force oracle works per domain (`setSpatialGridOracleEnabled(world, enabled, domainId?)` and the other oracle functions take a domain id, default `DEFAULT`; `getOracleCheckedQueryCount` is new). While on, it also runs 8 probe queries near random members every frame, so a domain nobody queries yet is checked too.
+
+**Changed**
+
+- A member's radius follows its Transform scale: the provider's local radius is multiplied by the largest scale axis on every refresh (light ranges are scale-independent). Mesh radii are `|center| + radius` of the geometry's bounding sphere, so geometry that isn't centred on its origin is covered (eg. `largeWorld`'s crate stack: 1.885 → 2.667).
+- `SpatialGrid.addMember`, `removeMember` and `updateRadius` are O(1): the largest indexed radius is only ever raised between rebuilds and made exact by `rebuild()`. This also removes the O(n²) re-insert when the cell size changes.
+- `setSpatialGridCellSize` re-registers `DEFAULT` with the new cell size.
+- The tab's saved settings are kept per domain (`AEK_debugSpatialGrid`); the old flat settings become `DEFAULT`'s.
+- The Lights tab's distance edits refresh the light's radius in the spatial index.
+
+**Fixed**
+
+- A mesh's spatial radius no longer goes stale when its scale changes.
+- A query between a member's removal and the next rebuild no longer hands `-1` to the visitor.
+
+### Toolkit 1.3.0 (Crescent)
+
+**Added**
+
+- `InstancedMeshPool`'s `spatialDomain` option: `spawn()` joins every instance to that domain, so pool instances can be indexed. The pool registers a radius provider for `INSTANCED_MESH_SLOT` (the pool geometry's radius, scaled by the instance's Transform).
+
+**Changed**
+
+- `InstancedMeshPool`'s component keys and data moved to `ecs/InstancedMeshPoolTypes.ts`, which `InstancedMeshPool.ts` re-exports, so the pool can import the engine's spatial index without an import cycle.
+
+### App 1.4.1 (Preschooler)
+
+**Changed**
+
+- `largeWorld`'s trees are in their own `STATIC` spatial domain, `FOLIAGE` (cell size 16), apart from `DEFAULT`'s light culling members. It rebuilds once when the trees spawn and when they're deleted, never in between.
+- `AppECSRegistry.ts` imports the pool's component types from `InstancedMeshPoolTypes.ts`.
+
 ## 2026-10-03 — small-changes-and-refactorings-20261003
 
 ### Engine 4.4.0 (Afternoon)

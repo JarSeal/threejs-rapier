@@ -27,7 +27,7 @@ import {
 
 export * from './InstancedMeshPoolTypes';
 
-// A pool instance's spatial radius (docs/plans/p346_spatial-domains.md §3.3): the pool
+// A pool instance's spatial radius (docs/plans/_DONE_p346_spatial-domains.md §3.3): the pool
 // geometry's, scaled by the instance's Transform. Registered here so the engine never imports
 // the toolkit.
 registerSpatialRadiusProvider(
@@ -54,7 +54,7 @@ export interface CreateInstancedMeshPoolOptions {
   receiveShadow?: boolean;
   /** Passed to the mesh's own owning entity (e.g. to mark a long-lived pool `persistent`). */
   entityOpts?: CoreEntityOpts;
-  /** A registered spatial domain `spawn()` joins every instance to (docs/plans/p346_spatial-domains.md). Default: none. */
+  /** A registered spatial domain `spawn()` joins every instance to (docs/plans/_DONE_p346_spatial-domains.md). Default: none. */
   spatialDomain?: string;
 }
 
