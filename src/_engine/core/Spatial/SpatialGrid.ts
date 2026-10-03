@@ -206,7 +206,8 @@ export class SpatialGrid {
   /** O(1); a shrinking radius leaves `maxIndexedRadius` high until the next rebuild(). */
   updateRadius(entityId: number, radius: number): void {
     const slot = this.entityToSlot.get(entityId);
-    if (slot === undefined) return;
+    // Unchanged (as stored, in float32): already counted in maxIndexedRadius and the tiers
+    if (slot === undefined || this.radius[slot] === Math.fround(radius)) return;
     this._setRadius(slot, radius);
   }
 

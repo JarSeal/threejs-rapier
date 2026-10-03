@@ -59,6 +59,12 @@ type SpatialDomain = {
   readonly bit: number;
   opts: Required<SpatialDomainOptions>;
   grid: SpatialGrid;
+  /**
+   * The local (unscaled) radius of every member whose radius follows its Transform scale, read
+   * from its provider when it joined. The grid holds the scaled radius, refreshed on every
+   * rebuild. Members with a scale-independent or zero radius aren't in here.
+   */
+  localRadius: Map<number, number>;
   hasWarnedFull: boolean;
   /** Debug env only — the last rebuild's wall-clock cost, for _dbg__SpatialGrid.ts. */
   lastRebuildMs: number;
@@ -114,9 +120,25 @@ const defaultDomainOptions = (world: ECSWorld): SpatialDomainOptions => ({
 
 /** Adds (or refreshes) a member with its current position and radius. */
 const insertMember = (world: ECSWorld, domain: SpatialDomain, entityId: number) => {
-  const pos = world.getPosition(entityId);
-  const radius = computeSpatialRadius(entityId, world);
+  const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+  const pos = transform?.position;
+  const entry = findRadiusProvider(entityId, world);
+  const local = entry?.provider(entityId, world) ?? 0;
+
+  let radius = local;
+  // Infinity stays Infinity (and a zero scale must not make it NaN)
+  if (entry && !entry.isScaleIndependent && local > 0 && Number.isFinite(local)) {
+    domain.localRadius.set(entityId, local);
+    radius = local * maxAbsScale(transform?.scale);
+  } else {
+    domain.localRadius.delete(entityId);
+  }
   domain.grid.addMember(entityId, pos?.x ?? 0, pos?.y ?? 0, pos?.z ?? 0, radius);
+};
+
+const removeFromDomain = (domain: SpatialDomain, entityId: number) => {
+  domain.grid.removeMember(entityId);
+  domain.localRadius.delete(entityId);
 };
 
 /**
@@ -184,6 +206,7 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
       bit: isDefault ? -1 : domains.byBit.length,
       opts: resolved,
       grid: createDomainGrid(resolved),
+      localRadius: new Map(),
       hasWarnedFull: false,
       lastRebuildMs: 0,
     };
@@ -204,6 +227,7 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
   }
   existing.opts = resolved;
   existing.grid = createDomainGrid(resolved);
+  existing.localRadius.clear(); // re-read below, from the providers
   existing.hasWarnedFull = false;
   for (let i = 0; i < oldGrid.memberCount; i++) {
     const entityId = oldGrid.memberAt(i);
@@ -305,7 +329,7 @@ export function leaveSpatialDomain(
 
   const domain = domainsByWorld.get(world)?.byId.get(domainId);
   if (!domain || !domain.grid.has(entityId)) return;
-  domain.grid.removeMember(entityId);
+  removeFromDomain(domain, entityId);
   clearMaskBit(world, domain, entityId);
 }
 
@@ -323,13 +347,26 @@ export function isInSpatialDomain(
   return (mask & (1 << domain.bit)) !== 0;
 }
 
+/**
+ * Re-reads `entityId`'s radius from its provider in every domain it's a member of. Call it after
+ * changing what the provider measures (a light's distance or angle, a mesh's geometry); a
+ * Transform scale change needs no call.
+ */
+export function refreshSpatialRadius(entityId: number, world: ECSWorld = getECSWorld()): void {
+  const list = domainsByWorld.get(world)?.list;
+  if (!list) return;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].grid.has(entityId)) insertMember(world, list[i], entityId);
+  }
+}
+
 /** Takes the entity out of every domain in its SPATIAL_DOMAINS mask. */
 const leaveMaskedDomains = (entityId: number, world: ECSWorld) => {
   const mask = world.getComponent(entityId, ComponentType.SPATIAL_DOMAINS)?.mask ?? 0;
   const byBit = domainsByWorld.get(world)?.byBit;
   if (!mask || !byBit) return;
   for (let bit = 0; bit < byBit.length; bit++) {
-    if (mask & (1 << bit)) byBit[bit].grid.removeMember(entityId);
+    if (mask & (1 << bit)) removeFromDomain(byBit[bit], entityId);
   }
 };
 
@@ -358,23 +395,88 @@ export function computeLightInfluenceRadius(light: THREE.PointLight | THREE.Spot
   return light.distance;
 }
 
-function computeSpatialRadius(entityId: number, world: ECSWorld): number {
-  const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
+// --- RADIUS PROVIDERS (p346 §3.3) ---
+// Like ObjectFrustumCullingSystem.ts's bounding-volume providers: the first registered component
+// type an entity has picks the provider that measures it. A member none of them measures gets
+// radius 0 (a point).
 
-  if (obj instanceof THREE.Mesh) {
-    const geometry = obj.geometry;
-    if (!geometry.boundingSphere) geometry.computeBoundingSphere();
-    const localRadius = geometry.boundingSphere?.radius ?? 0;
-    const maxScale = Math.max(Math.abs(obj.scale.x), Math.abs(obj.scale.y), Math.abs(obj.scale.z));
-    return localRadius * maxScale;
-  }
+/** A member's radius in its local space (before its Transform scale), or undefined if it can't be measured. */
+export type SpatialRadiusProvider = (entityId: number, world: ECSWorld) => number | undefined;
 
-  if (obj instanceof THREE.PointLight || obj instanceof THREE.SpotLight) {
-    return computeLightInfluenceRadius(obj);
-  }
+type RadiusProviderEntry = {
+  componentType: ComponentType;
+  provider: SpatialRadiusProvider;
+  isScaleIndependent: boolean;
+};
 
-  return 0;
+const radiusProviders: RadiusProviderEntry[] = [];
+
+/**
+ * Measures the members that have `componentType`. The radius is read when an entity joins a
+ * domain, and multiplied by the largest axis of its Transform scale on every rebuild, unless
+ * `scaleIndependent` (eg. a light's range). Registering a type again replaces its provider.
+ */
+export function registerSpatialRadiusProvider(
+  componentType: ComponentType,
+  provider: SpatialRadiusProvider,
+  opts?: { scaleIndependent?: boolean }
+): void {
+  const entry: RadiusProviderEntry = {
+    componentType,
+    provider,
+    isScaleIndependent: opts?.scaleIndependent ?? false,
+  };
+  const index = radiusProviders.findIndex((e) => e.componentType === componentType);
+  if (index >= 0) radiusProviders[index] = entry;
+  else radiusProviders.push(entry);
 }
+
+function findRadiusProvider(entityId: number, world: ECSWorld): RadiusProviderEntry | undefined {
+  for (let i = 0; i < radiusProviders.length; i++) {
+    if (world.hasComponent(entityId, radiusProviders[i].componentType)) return radiusProviders[i];
+  }
+  return undefined;
+}
+
+const maxAbsScale = (scale: THREE.Vector3 | undefined) =>
+  scale ? Math.max(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z)) : 1;
+
+/**
+ * A sphere around the geometry's local origin (where its entity's position is) that holds its
+ * whole bounding sphere: `|center| + radius`. Conservative for geometry that isn't centred on its
+ * origin, where the bounding sphere's radius alone would miss part of it.
+ */
+export function getConservativeGeometryRadius(geometry: THREE.BufferGeometry): number {
+  if (!geometry.boundingSphere) geometry.computeBoundingSphere();
+  const sphere = geometry.boundingSphere;
+  return sphere ? sphere.center.length() + sphere.radius : 0;
+}
+
+/** The radius `entityId` has as a member right now: its provider's, scaled by its Transform. */
+function computeSpatialRadius(entityId: number, world: ECSWorld): number {
+  const entry = findRadiusProvider(entityId, world);
+  const local = entry?.provider(entityId, world) ?? 0;
+  if (!entry || entry.isScaleIndependent || !(local > 0) || !Number.isFinite(local)) return local;
+  return local * maxAbsScale(world.getScale(entityId));
+}
+
+const getLightRadius: SpatialRadiusProvider = (entityId, world) => {
+  const light = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
+  return light instanceof THREE.PointLight || light instanceof THREE.SpotLight
+    ? computeLightInfluenceRadius(light)
+    : undefined;
+};
+
+registerSpatialRadiusProvider(ComponentType.TAG_IS_POINT_LIGHT, getLightRadius, {
+  scaleIndependent: true,
+});
+registerSpatialRadiusProvider(ComponentType.TAG_IS_SPOT_LIGHT, getLightRadius, {
+  scaleIndependent: true,
+});
+registerSpatialRadiusProvider(ComponentType.TAG_IS_MESH, (entityId, world) => {
+  const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
+  return obj instanceof THREE.Mesh ? getConservativeGeometryRadius(obj.geometry) : undefined;
+});
 
 ECSWorld.registerComponentHooks(ComponentType.SPATIAL_INDEXED, {
   onAddComponent: (entityId, world) => {
@@ -391,13 +493,14 @@ ECSWorld.registerComponentHooks(ComponentType.SPATIAL_INDEXED, {
     }
     addToDomain(world, getDefaultDomain(world), entityId);
   },
-  onRemoveComponent: (entityId, world) => {
-    getSpatialDomain(world, DEFAULT_SPATIAL_DOMAIN)?.removeMember(entityId);
-  },
-  onDeleteEntity: (entityId, world) => {
-    getSpatialDomain(world, DEFAULT_SPATIAL_DOMAIN)?.removeMember(entityId);
-  },
+  onRemoveComponent: (entityId, world) => leaveDefaultDomain(entityId, world),
+  onDeleteEntity: (entityId, world) => leaveDefaultDomain(entityId, world),
 });
+
+function leaveDefaultDomain(entityId: number, world: ECSWorld) {
+  const domain = domainsByWorld.get(world)?.byId.get(DEFAULT_SPATIAL_DOMAIN);
+  if (domain) removeFromDomain(domain, entityId);
+}
 
 /** Debug env only (§9) — the last rebuild's wall-clock cost of `world`'s domain `domainId`. */
 export function getLastRebuildDurationMs(
@@ -409,10 +512,15 @@ export function getLastRebuildDurationMs(
 
 const refreshAndRebuildDomain = (world: ECSWorld, domain: SpatialDomain) => {
   const grid = domain.grid;
+  const localRadius = domain.localRadius;
   for (let i = 0; i < grid.memberCount; i++) {
     const entityId = grid.memberAt(i);
-    const pos = world.getPosition(entityId);
-    if (pos) grid.updatePosition(entityId, pos.x, pos.y, pos.z);
+    const transform = world.getComponent(entityId, ComponentType.TRANSFORM);
+    if (!transform) continue;
+    const pos = transform.position;
+    grid.updatePosition(entityId, pos.x, pos.y, pos.z);
+    const local = localRadius.get(entityId);
+    if (local !== undefined) grid.updateRadius(entityId, local * maxAbsScale(transform.scale));
   }
 
   const start = IS_DEBUG_ENV ? performance.now() : 0;
@@ -420,7 +528,7 @@ const refreshAndRebuildDomain = (world: ECSWorld, domain: SpatialDomain) => {
   if (IS_DEBUG_ENV) domain.lastRebuildMs = performance.now() - start;
 };
 
-/** Refreshes the members' positions and rebuilds the grid of every `DYNAMIC` domain, in registration order. Registered last in APP_POST_PHYSICS (§8) so APP_LOGIC/APP_RENDER_SYNC consumers see a current snapshot. */
+/** Refreshes the members' positions and scaled radii and rebuilds the grid of every `DYNAMIC` domain, in registration order. Registered last in APP_POST_PHYSICS (§8) so APP_LOGIC/APP_RENDER_SYNC consumers see a current snapshot. */
 export const spatialIndexRebuildSystem = (world: ECSWorld) => {
   const domains = domainsByWorld.get(world);
   if (!domains) return; // no domain registered in this world yet

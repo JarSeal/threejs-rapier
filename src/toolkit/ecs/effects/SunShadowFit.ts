@@ -7,7 +7,7 @@ import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
 
 // Only type-only imports from `_engine/core` here, besides ECSRegistry and Logger (no local
 // imports): AppECSRegistry.ts imports this file for SunShadowFitComponentType, inside the
-// ECSCoreComponents ↔ AppECSRegistry import cycle (see InstancedMeshPool.ts). So the main camera
+// ECSCoreComponents ↔ AppECSRegistry import cycle (see InstancedMeshPoolTypes.ts). So the main camera
 // is looked up through the world, not with CameraManager's getMainCamera.
 
 /** Internal Key (Values) */

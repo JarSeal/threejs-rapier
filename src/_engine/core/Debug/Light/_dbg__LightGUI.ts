@@ -38,6 +38,7 @@ import { getLightCharacteristics } from '../../../utils/helpers';
 import { BladeController, View } from '@tweakpane/core';
 import { FOUR_PX_TO_8K_LIST } from '../../../utils/constants';
 import { getRendererOptions } from '../../Renderer';
+import { refreshSpatialRadius } from '../../Spatial/SpatialIndexSystem';
 import { updateOnScreenTools } from '../../../debug/OnScreenTools';
 import { lwarn } from '../../../utils/Logger';
 import {
@@ -334,8 +335,9 @@ const applyLightField: {
   intensity: ({ light }, value) => {
     light.intensity = value;
   },
-  distance: ({ light }, value) => {
+  distance: ({ world, entityId, light }, value) => {
     (light as THREE.PointLight | THREE.SpotLight).distance = value;
+    refreshSpatialRadius(entityId, world);
   },
   decay: ({ light }, value) => {
     (light as THREE.PointLight | THREE.SpotLight).decay = value;
@@ -701,6 +703,8 @@ export const createEditLightContent = (data?: { [key: string]: unknown }) => {
     const l = light as THREE.PointLight | THREE.SpotLight;
     committed.distance = l.distance;
     pane.addBinding(l, 'distance', { label: 'Distance', min: 0, step: 0.01 }).on('change', (ev) => {
+      // The spatial index reads a light's range only when it joins
+      refreshSpatialRadius(entityId, world);
       save('distance', ev.value);
       record('distance', ev.value);
     });
