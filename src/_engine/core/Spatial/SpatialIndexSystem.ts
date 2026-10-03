@@ -18,62 +18,174 @@ export const registerSpatialIndexDebugGUI = async () => {
 };
 
 /**
- * ECS wiring for SpatialGrid (docs/plans/_DONE_p050_spatial-index.md §3, §8). One
- * dynamic grid per ECS world, lazily created on first SPATIAL_INDEXED
- * member, kept current every frame. First consumer: LightObjectCullingSystem.ts.
+ * ECS wiring for SpatialGrid (docs/plans/_DONE_p050_spatial-index.md §3, §8). Each ECS world
+ * holds named spatial domains (docs/plans/p346_spatial-domains.md §3.1): separate grids, each
+ * with its own cell size, capacity and update policy. `DEFAULT` is created lazily on its first
+ * SPATIAL_INDEXED member and is the one LightObjectCullingSystem.ts queries.
+ *
+ * A domain's grid instance is replaced when the domain is re-registered with other settings, so
+ * read it with `getSpatialDomain`/`getSpatialGrid` where it's used instead of keeping it.
  */
 
-const gridsByWorld = new WeakMap<ECSWorld, SpatialGrid>();
-const cellSizeByWorld = new WeakMap<ECSWorld, number>();
+/** How a domain's grid is kept current. `DYNAMIC`: positions refreshed and the grid rebuilt every frame. */
+export type SpatialUpdatePolicy = 'DYNAMIC';
+
+export interface SpatialDomainOptions {
+  id: string;
+  /** World-space edge length of one grid cell. */
+  cellSize: number;
+  /** How many members the domain can hold at once. */
+  maxMembers: number;
+  /** Default `DYNAMIC`. */
+  update?: SpatialUpdatePolicy;
+  /** See SpatialGridOptions (default 2). */
+  oversizedRadiusMultiplier?: number;
+}
+
+/** The domain SPATIAL_INDEXED entities are members of. */
+export const DEFAULT_SPATIAL_DOMAIN = 'DEFAULT';
 
 // Starting guess pending real tuning data — §9's occupancy histogram (see
 // _dbg__SpatialGrid.ts) is what should actually decide this, not a guess
 // made ahead of a consumer.
 const DEFAULT_CELL_SIZE = 20;
 
-function ensureGrid(world: ECSWorld): SpatialGrid {
-  let grid = gridsByWorld.get(world);
-  if (!grid) {
-    grid = new SpatialGrid({
-      cellSize: cellSizeByWorld.get(world) ?? DEFAULT_CELL_SIZE,
-      maxMembers: world.maxEntities,
-    });
-    gridsByWorld.set(world, grid);
+type SpatialDomain = {
+  readonly id: string;
+  opts: Required<SpatialDomainOptions>;
+  grid: SpatialGrid;
+  /** Debug env only — the last rebuild's wall-clock cost, for _dbg__SpatialGrid.ts. */
+  lastRebuildMs: number;
+};
+
+type WorldDomains = {
+  /** Registration order, which is also the rebuild order. */
+  list: SpatialDomain[];
+  byId: Map<string, SpatialDomain>;
+};
+
+const domainsByWorld = new WeakMap<ECSWorld, WorldDomains>();
+
+const resolveDomainOptions = (opts: SpatialDomainOptions): Required<SpatialDomainOptions> => {
+  if (!(opts.cellSize > 0) || !Number.isFinite(opts.cellSize)) {
+    throw new Error(`Spatial domain '${opts.id}': cellSize must be a positive number.`);
   }
-  return grid;
-}
+  if (!(opts.maxMembers >= 1)) {
+    throw new Error(`Spatial domain '${opts.id}': maxMembers must be at least 1.`);
+  }
+  return {
+    id: opts.id,
+    cellSize: opts.cellSize,
+    maxMembers: Math.floor(opts.maxMembers),
+    update: opts.update ?? 'DYNAMIC',
+    oversizedRadiusMultiplier: opts.oversizedRadiusMultiplier ?? 2,
+  };
+};
+
+const isSameDomainOptions = (
+  a: Required<SpatialDomainOptions>,
+  b: Required<SpatialDomainOptions>
+) =>
+  a.cellSize === b.cellSize &&
+  a.maxMembers === b.maxMembers &&
+  a.update === b.update &&
+  a.oversizedRadiusMultiplier === b.oversizedRadiusMultiplier;
+
+const createDomainGrid = (opts: Required<SpatialDomainOptions>) =>
+  new SpatialGrid({
+    cellSize: opts.cellSize,
+    maxMembers: opts.maxMembers,
+    oversizedRadiusMultiplier: opts.oversizedRadiusMultiplier,
+  });
+
+const defaultDomainOptions = (world: ECSWorld): SpatialDomainOptions => ({
+  id: DEFAULT_SPATIAL_DOMAIN,
+  cellSize: DEFAULT_CELL_SIZE,
+  maxMembers: world.maxEntities,
+});
+
+/** Adds (or refreshes) a member with its current position and radius. */
+const insertMember = (world: ECSWorld, domain: SpatialDomain, entityId: number) => {
+  const pos = world.getPosition(entityId);
+  const radius = computeSpatialRadius(entityId, world);
+  domain.grid.addMember(entityId, pos?.x ?? 0, pos?.y ?? 0, pos?.z ?? 0, radius);
+};
 
 /**
- * The dynamic spatial index for `world`. Lazily created on first use so a
- * world that never opts anything in never pays for one.
+ * Registers a spatial domain in `world`. Registering an existing id with the same settings is a
+ * no-op; with different settings it replaces the domain's grid and re-inserts its members (the
+ * cell size is baked into the grid's layout, so there is no cheaper path). Registering
+ * `DEFAULT` before its first member sets its settings (cell size 20 and `world.maxEntities`
+ * members otherwise).
+ */
+export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOptions): void {
+  const resolved = resolveDomainOptions(opts);
+  let domains = domainsByWorld.get(world);
+  if (!domains) {
+    domains = { list: [], byId: new Map() };
+    domainsByWorld.set(world, domains);
+  }
+
+  const existing = domains.byId.get(resolved.id);
+  if (!existing) {
+    const domain: SpatialDomain = {
+      id: resolved.id,
+      opts: resolved,
+      grid: createDomainGrid(resolved),
+      lastRebuildMs: 0,
+    };
+    domains.list.push(domain);
+    domains.byId.set(domain.id, domain);
+    return;
+  }
+  if (isSameDomainOptions(existing.opts, resolved)) return;
+
+  const oldGrid = existing.grid;
+  existing.opts = resolved;
+  existing.grid = createDomainGrid(resolved);
+  for (let i = 0; i < oldGrid.memberCount; i++) {
+    insertMember(world, existing, oldGrid.memberAt(i));
+  }
+  existing.grid.rebuild();
+}
+
+/** The grid of `world`'s domain `id`, or undefined if it isn't registered. Never creates one. */
+export function getSpatialDomain(world: ECSWorld, id: string): SpatialGrid | undefined {
+  return domainsByWorld.get(world)?.byId.get(id)?.grid;
+}
+
+/** The ids of `world`'s registered domains, in registration order. */
+export function getSpatialDomainIds(world: ECSWorld): string[] {
+  return domainsByWorld.get(world)?.list.map((domain) => domain.id) ?? [];
+}
+
+/** The resolved settings of `world`'s domain `id`, or undefined if it isn't registered. */
+export function getSpatialDomainOptions(
+  world: ECSWorld,
+  id: string
+): Readonly<Required<SpatialDomainOptions>> | undefined {
+  return domainsByWorld.get(world)?.byId.get(id)?.opts;
+}
+
+const getDefaultDomain = (world: ECSWorld): SpatialDomain => {
+  const domain = domainsByWorld.get(world)?.byId.get(DEFAULT_SPATIAL_DOMAIN);
+  if (domain) return domain;
+  registerSpatialDomain(world, defaultDomainOptions(world));
+  return domainsByWorld.get(world)!.byId.get(DEFAULT_SPATIAL_DOMAIN)!;
+};
+
+/**
+ * The `DEFAULT` domain's grid for `world`. Created on first use, so a world that never opts
+ * anything in never pays for one.
  */
 export function getSpatialGrid(world: ECSWorld): SpatialGrid {
-  return ensureGrid(world);
+  return getDefaultDomain(world).grid;
 }
 
-/**
- * Debug tooling only (§9) — replaces `world`'s grid with a freshly sized
- * one and re-inserts every current SPATIAL_INDEXED member. A live "change
- * cell size, see it rebuild" control has no cheaper path than this: cell
- * size is baked into the CSR layout at construction (§2.3).
- */
+/** Re-registers `DEFAULT` with a new cell size and its other settings unchanged (the debug tab's cell size control). */
 export function setSpatialGridCellSize(world: ECSWorld, cellSize: number): void {
-  cellSizeByWorld.set(world, cellSize);
-  const grid = new SpatialGrid({ cellSize, maxMembers: world.maxEntities });
-  gridsByWorld.set(world, grid);
-
-  const storage = world.getStorage(ComponentType.SPATIAL_INDEXED);
-  for (const [entityId] of storage) {
-    const pos = world.getPosition(entityId);
-    grid.addMember(
-      entityId,
-      pos?.x ?? 0,
-      pos?.y ?? 0,
-      pos?.z ?? 0,
-      computeSpatialRadius(entityId, world)
-    );
-  }
-  grid.rebuild();
+  const current = domainsByWorld.get(world)?.byId.get(DEFAULT_SPATIAL_DOMAIN)?.opts;
+  registerSpatialDomain(world, { ...(current ?? defaultDomainOptions(world)), cellSize });
 }
 
 /**
@@ -126,38 +238,46 @@ ECSWorld.registerComponentHooks(ComponentType.SPATIAL_INDEXED, {
         );
       }
     }
-    const pos = world.getPosition(entityId);
-    const radius = computeSpatialRadius(entityId, world);
-    ensureGrid(world).addMember(entityId, pos?.x ?? 0, pos?.y ?? 0, pos?.z ?? 0, radius);
+    insertMember(world, getDefaultDomain(world), entityId);
   },
   onRemoveComponent: (entityId, world) => {
-    gridsByWorld.get(world)?.removeMember(entityId);
+    getSpatialDomain(world, DEFAULT_SPATIAL_DOMAIN)?.removeMember(entityId);
   },
   onDeleteEntity: (entityId, world) => {
-    gridsByWorld.get(world)?.removeMember(entityId);
+    getSpatialDomain(world, DEFAULT_SPATIAL_DOMAIN)?.removeMember(entityId);
   },
 });
 
-// Debug tooling only (§9) — last rebuild's wall-clock cost, for _dbg__SpatialGrid.ts.
-const lastRebuildMsByWorld = new WeakMap<ECSWorld, number>();
-export function getLastRebuildDurationMs(world: ECSWorld): number {
-  return lastRebuildMsByWorld.get(world) ?? 0;
+/** Debug env only (§9) — the last rebuild's wall-clock cost of `world`'s domain `domainId`. */
+export function getLastRebuildDurationMs(
+  world: ECSWorld,
+  domainId: string = DEFAULT_SPATIAL_DOMAIN
+): number {
+  return domainsByWorld.get(world)?.byId.get(domainId)?.lastRebuildMs ?? 0;
 }
 
-/** Refreshes every member's position and rebuilds the grid. Registered last in APP_POST_PHYSICS (§8) so APP_LOGIC/APP_RENDER_SYNC consumers see a current snapshot. */
-export const spatialIndexRebuildSystem = (world: ECSWorld) => {
-  const grid = gridsByWorld.get(world);
-  if (!grid) return; // nothing has opted in yet in this world
-
-  const storage = world.getStorage(ComponentType.SPATIAL_INDEXED);
-  for (const [entityId] of storage) {
+const refreshAndRebuildDomain = (world: ECSWorld, domain: SpatialDomain) => {
+  const grid = domain.grid;
+  for (let i = 0; i < grid.memberCount; i++) {
+    const entityId = grid.memberAt(i);
     const pos = world.getPosition(entityId);
     if (pos) grid.updatePosition(entityId, pos.x, pos.y, pos.z);
   }
 
   const start = IS_DEBUG_ENV ? performance.now() : 0;
   grid.rebuild();
-  if (IS_DEBUG_ENV) lastRebuildMsByWorld.set(world, performance.now() - start);
+  if (IS_DEBUG_ENV) domain.lastRebuildMs = performance.now() - start;
+};
+
+/** Refreshes the members' positions and rebuilds the grid of every `DYNAMIC` domain, in registration order. Registered last in APP_POST_PHYSICS (§8) so APP_LOGIC/APP_RENDER_SYNC consumers see a current snapshot. */
+export const spatialIndexRebuildSystem = (world: ECSWorld) => {
+  const domains = domainsByWorld.get(world);
+  if (!domains) return; // no domain registered in this world yet
+
+  const list = domains.list;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].opts.update === 'DYNAMIC') refreshAndRebuildDomain(world, list[i]);
+  }
 };
 
 // --- BRUTE-FORCE ORACLE (§9) ---

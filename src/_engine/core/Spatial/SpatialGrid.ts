@@ -220,6 +220,14 @@ export class SpatialGrid {
     return this.entityToSlot.has(entityId);
   }
 
+  /**
+   * The member at `index` (`0 <= index < memberCount`), for iterating the members without an
+   * allocation. The order is unspecified, and `removeMember` changes it.
+   */
+  memberAt(index: number): number {
+    return this.slotToEntity[index];
+  }
+
   get memberCount(): number {
     return this.liveCount;
   }
