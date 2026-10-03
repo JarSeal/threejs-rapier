@@ -1,10 +1,16 @@
 import type { Renderer } from 'three/webgpu';
-import { addDebugToast, createDebuggerTab, openDebuggerTab } from '../../debug/DebuggerGUI';
+import {
+  addDebugToast,
+  createDebuggerTab,
+  openDebuggerTab,
+  updateDebuggerTab,
+} from '../../debug/DebuggerGUI';
 import { GPU_MEMORY_TAB_ID } from '../../debug/GPUMemory';
 import { CMP } from '../../utils/CMP';
+import { llog } from '../../utils/Logger';
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import { ECSWorld, getECSWorld } from '../ECS';
-import { getRenderer } from '../Renderer';
+import { getRenderer, onRendererCreated } from '../Renderer';
 import { getCurrentSceneId, registerOnAllSceneEnterings } from '../Scene';
 import { formatBytes, formatNumber } from './_dbg__AssetStats';
 import {
@@ -13,6 +19,18 @@ import {
   groupByOwner,
   type OwnerSums,
 } from './_dbg__GPUMemoryOwners';
+import {
+  ALLOCATION_KIND_LABELS,
+  installAllocationTracker,
+  setRecordAllocationSites,
+} from './_dbg__GPUMemoryAllocations';
+import {
+  clearGPUMemorySnapshot,
+  getGPUMemoryDiff,
+  getGPUMemorySnapshot,
+  takeGPUMemorySnapshot,
+  type GPUMemoryDiff,
+} from './_dbg__GPUMemorySnapshots';
 import styles from './GPUMemory.module.scss';
 
 /**
@@ -37,7 +55,10 @@ const FRAME_WINDOW_MS = 500;
 const PAUSED_AFTER_MS = 1000;
 const MB = 1024 * 1024;
 
-const state = { budgetMB: DEFAULT_BUDGET_MB };
+/** Rows per diff table; "Log diff" prints them all. */
+const DIFF_MAX_ROWS = 12;
+
+const state = { budgetMB: DEFAULT_BUDGET_MB, recordSites: false };
 
 // --- MEMORY ---
 
@@ -287,6 +308,117 @@ const ownersHtml = () => {
 </div>`;
 };
 
+// --- SNAPSHOTS ---
+
+const formatDelta = (delta: number, format: (n: number) => string) =>
+  delta === 0 ? '0' : `${delta > 0 ? '+' : '−'}${format(Math.abs(delta))}`;
+const formatBytesDelta = (delta: number) => formatDelta(delta, formatBytes);
+const formatCountDelta = (delta: number) => formatDelta(delta, formatNumber);
+
+const moreRow = (total: number, columns: number) =>
+  total > DIFF_MAX_ROWS
+    ? `<tr class="${styles.gpuMemoryUntracked}"><td colspan="${columns}">+${formatNumber(total - DIFF_MAX_ROWS)} more (Log diff lists all)</td></tr>`
+    : '';
+
+/** One row per info.memory category that changed, by its size and count keys. */
+const memoryChangeRows = (diff: GPUMemoryDiff) => {
+  const delta = (key: string) => {
+    const change = diff.memory.find((c) => c.key === key);
+    return change ? change.after - change.before : 0;
+  };
+  const rows = [
+    ...MEMORY_CATEGORIES.map((c) => ({
+      label: c.label,
+      size: delta(c.size),
+      count: delta(c.count),
+    })),
+    { label: 'Render targets', size: 0, count: delta('renderTargets') },
+    { label: 'Geometries', size: 0, count: delta('geometries') },
+  ].filter((row) => row.size !== 0 || row.count !== 0);
+  return { total: delta('total'), rows };
+};
+
+const snapshotHtml = () => {
+  const renderer = getRenderer();
+  const snapshot = getGPUMemorySnapshot();
+  if (!renderer || !snapshot) {
+    return `<div class="${styles.gpuMemorySummary}">
+  <h4 class="${styles.gpuMemoryHeading}">Snapshot</h4>
+  <div class="${styles.gpuMemoryNote}">No snapshot. For leak hunting: take one in scene A, go to scene B and back to A, and the diff lists what B left allocated.</div>
+</div>`;
+  }
+  const diff = getGPUMemoryDiff(renderer)!;
+  const { total, rows } = memoryChangeRows(diff);
+
+  const categoryRows = rows
+    .map(
+      (row) =>
+        `<tr><td>${row.label}</td><td>${row.size ? formatBytesDelta(row.size) : ''}</td><td>${formatCountDelta(row.count)}</td></tr>`
+    )
+    .join('');
+  const assetRows = diff.assets
+    .slice(0, DIFF_MAX_ROWS)
+    .map(
+      (change) =>
+        `<tr><td class="${styles.gpuMemoryWrap}" title="${esc(change.key)}">${esc(change.id)}<br><span class="${styles.gpuMemoryDim}">${change.kind}, ${ownerLabel(change.owner)}</span></td><td>${change.before ? formatBytes(change.before) : 'new'}</td><td>${change.after ? formatBytes(change.after) : 'gone'}</td><td>${formatBytesDelta(change.after - change.before)}</td></tr>`
+    )
+    .join('');
+  const leftRows = diff.leftBehind
+    .slice(0, DIFF_MAX_ROWS)
+    .map(
+      (group) =>
+        `<tr><td class="${styles.gpuMemoryWrap}">${ALLOCATION_KIND_LABELS[group.kind]}: ${esc(group.label)}<br><span class="${styles.gpuMemoryDim}">${ownerLabel(group.scene)}, visit ${group.visit}${group.site ? ` · ${esc(group.site)}` : ''}${group.collected ? ` · ${formatNumber(group.collected)} collected` : ''}</span></td><td>${formatNumber(group.count)}</td><td>${formatBytes(group.bytes)}</td></tr>`
+    )
+    .join('');
+  const assetsNew = diff.assets.filter((change) => !change.before).length;
+  const assetsGone = diff.assets.filter((change) => !change.after).length;
+  const assetsNet = diff.assets.reduce((sum, change) => sum + change.after - change.before, 0);
+  const leftBytes = diff.leftBehind.reduce((sum, group) => sum + group.bytes, 0);
+  const leftCount = diff.leftBehind.reduce((sum, group) => sum + group.count, 0);
+
+  return `<div class="${styles.gpuMemorySummary}">
+  <h4 class="${styles.gpuMemoryHeading}">Since the snapshot in ${ownerLabel(snapshot.sceneId)} at ${formatTime(snapshot.at)}</h4>
+  <div class="${styles.gpuMemoryTotalRow}"><span>Total</span><strong>${formatBytesDelta(total)}</strong></div>
+  ${
+    categoryRows
+      ? `<table class="${styles.gpuMemoryTable}">
+    <thead><tr><th>Category</th><th>Size</th><th>Count</th></tr></thead>
+    <tbody>${categoryRows}</tbody>
+  </table>`
+      : `<div class="${styles.gpuMemoryNote}">No category changed.</div>`
+  }
+  ${
+    leftRows
+      ? `<table class="${styles.gpuMemoryTable}">
+    <thead><tr><th>Left behind (scene, visit)</th><th>Count</th><th>Size</th></tr></thead>
+    <tbody>${leftRows}${moreRow(diff.leftBehind.length, 3)}</tbody>
+    <tfoot><tr><td>Total</td><td>${formatNumber(leftCount)}</td><td>${formatBytes(leftBytes)}</td></tr></tfoot>
+  </table>`
+      : `<div class="${styles.gpuMemoryNote}">No earlier scene visit since the snapshot left anything allocated.</div>`
+  }
+  ${
+    assetRows
+      ? `<table class="${styles.gpuMemoryTable}">
+    <thead><tr><th>Registered asset (${formatNumber(assetsNew)} new, ${formatNumber(assetsGone)} gone, net ${formatBytesDelta(assetsNet)})</th><th>Then</th><th>Now</th><th>Change</th></tr></thead>
+    <tbody>${assetRows}${moreRow(diff.assets.length, 4)}</tbody>
+  </table>`
+      : `<div class="${styles.gpuMemoryNote}">No registered asset changed.</div>`
+  }
+  <div class="${styles.gpuMemoryNote}">Since the snapshot: ${formatNumber(diff.currentVisit.count)} allocations (${formatBytes(diff.currentVisit.bytes)}) made in this scene visit are still live, and ${formatNumber(diff.freed.count)} that existed at the snapshot (${formatBytes(diff.freed.bytes)}) were freed. "Left behind" lists what the snapshot's scene visit and the visits after it, up to this one, created and is still counted: what a scene left behind, or something long-lived it created first (a new visit starts on every scene load, so the same scene twice is two visits). Collected ones were garbage collected without being destroyed, so three counts them for good.${state.recordSites ? '' : ' Turn on "Call sites" to see where each one was created (from the next allocation on).'}</div>
+</div>`;
+};
+
+const logDiff = () => {
+  const renderer = getRenderer();
+  const snapshot = getGPUMemorySnapshot();
+  if (!renderer || !snapshot) return;
+  const diff = getGPUMemoryDiff(renderer)!;
+  llog(
+    `[GPU memory] Diff since the snapshot in "${snapshot.sceneId}" at ${formatTime(snapshot.at)}:`,
+    diff
+  );
+};
+
 export const _createGPUMemoryDebugGUI = () => {
   createDebuggerTab({
     id: GPU_MEMORY_TAB_ID,
@@ -294,7 +426,7 @@ export const _createGPUMemoryDebugGUI = () => {
     icon: 'memory',
     lsKey: LS_KEY,
     state,
-    persistKeys: ['budgetMB'],
+    persistKeys: ['budgetMB', 'recordSites'],
     // Only re-renders the tables; the sampling runs in gpuMemorySamplerSystem
     refreshIntervalMs: 500,
     content: () => [
@@ -328,8 +460,52 @@ export const _createGPUMemoryDebugGUI = () => {
           },
         ],
       },
+      CMP({ html: snapshotHtml }),
+      {
+        pane: true,
+        content: [
+          {
+            type: 'button',
+            label: 'Snapshot',
+            title: 'Take snapshot',
+            disabled: () => !getRenderer(),
+            onClick: () => {
+              const renderer = getRenderer();
+              if (!renderer) return;
+              takeGPUMemorySnapshot(renderer);
+              updateDebuggerTab(GPU_MEMORY_TAB_ID);
+            },
+          },
+          {
+            type: 'button',
+            label: 'Diff',
+            title: 'Log diff to console',
+            disabled: () => !getGPUMemorySnapshot(),
+            onClick: logDiff,
+          },
+          {
+            type: 'button',
+            label: 'Clear',
+            title: 'Clear snapshot',
+            disabled: () => !getGPUMemorySnapshot(),
+            onClick: () => {
+              clearGPUMemorySnapshot();
+              updateDebuggerTab(GPU_MEMORY_TAB_ID);
+            },
+          },
+          {
+            key: 'recordSites',
+            label: 'Call sites',
+            onChange: (value) => setRecordAllocationSites(Boolean(value)),
+          },
+        ],
+      },
     ],
   });
+
+  // Hydrated above; the tracker is installed before the renderer's init(), so it sees everything
+  setRecordAllocationSites(state.recordSites);
+  onRendererCreated(installAllocationTracker);
 
   registerOnAllSceneEnterings('gpuMemoryScenePeak', () => {
     // Starts from what is held now: the previous scene's assets are already released here

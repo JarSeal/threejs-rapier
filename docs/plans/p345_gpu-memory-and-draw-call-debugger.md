@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Debug, Rendering, Performance
 Epic: p350_lod-system-research.md (Tier 0)
 Blocks: nothing hard; p347, p348, p351 and p353 each measure their result with it
@@ -134,16 +134,51 @@ As built:
   classes (same figures as WebGPU in `largeWorld`).
 - First finding: `largeWorld` → `skyShowcase` → `largeWorld` comes back with ~3.7 MB more
   attributes (76 → 112), more programs (46 → 68) and uniform buffers (104 → 178), on both
-  backends. Phase 2's diff should name what stays alive.
+  backends. Phase 2's diff should name what stays alive. (It does: see Phase 2's As built.)
 - Known gap: three r186 counts compressed textures as 1 B (`Info._getTextureMemorySize`). Nothing
   uses KTX2 yet; p300 will, and Phase 2's per-owner sizes need a better estimate for them.
 
-### Phase 2 — Owners and snapshots
+### Phase 2 — Owners and snapshots — done
 
 1. "By owner" from `AssetOwners` plus the Assets tab's estimates; untracked row.
 2. Snapshots and diff (§2.5).
 
 **Exit:** a scene A → B → A round trip diffs to (near) zero, or the diff names the leak.
+
+As built:
+
+- "By owner" (`_dbg__GPUMemoryOwners.ts`) uses three's own per-object bytes (`info.memoryMap`, not in
+  @types/three), not the Assets tab's estimates. Owners plus untracked add up exactly to
+  `info.memory.total`. An asset that was never drawn counts 0, and the tab says how many there are.
+  Textures a registered material holds alone (eg. clones; three uploads every `Texture` object on
+  its own) are counted under the material's owner. Untracked has its own table per category.
+- The diff doesn't stop at registered assets: §2.5's per-asset list alone would have missed the
+  leak below. An allocation tracker (`_dbg__GPUMemoryAllocations.ts`) wraps `renderer.info`'s create
+  / destroy calls for every kind three counts (textures, attributes, uniform buffers, programs,
+  readback buffers). It is installed through a new `onRendererCreated` (`core/Renderer.ts`), before
+  `renderer.init()`. It holds objects through `WeakRef`s and records kind, bytes, a label, the scene
+  visit and, with the persisted "Call sites" toggle, the first engine/app stack frame.
+- Scene visits, not scene ids: a new visit starts on every scene load or scene change. That way,
+  what the first A left behind can be told from what the second A made. The tracker works out the
+  visits itself; `SceneLoader` has no load-start hook.
+- `_dbg__GPUMemorySnapshots.ts`: one in-memory snapshot. The tab shows a live diff against it:
+  - category changes;
+  - **Left behind**: allocations from the snapshot's visit or later (not the current visit) that are
+    still counted, grouped by kind, label, visit and call site, with how many were garbage
+    collected without a destroy call (three counts those for good);
+  - registered assets new / gone / changed, with a net figure.
+
+  "Log diff to console" logs it all; the tab shows up to 12 rows per table.
+- Exit result (`largeWorld` → `skyShowcase` → `largeWorld`): the diff names the leak, 24 interleaved
+  instance-matrix attributes (2.44 MB) left by the first `largeWorld` visit. It's a three r186 bug,
+  fixed for r187 (`docs/issues/three-instanced-node-attribute-leak.md`). All 24 are collected, so
+  what leaks for sure is three's count; the buffers themselves are only held weakly. The registered
+  asset diff nets to 0 (unnamed geometries get new uuids per visit, so they show as new / gone
+  pairs). Smaller leftovers named by the same diff: the sky background's programs and uniform
+  buffers, and, in debug mode only, the light / camera debug symbols' render objects (their cloned
+  materials are never disposed).
+- Call sites of render-time allocations point at `MainLoop.ts`'s render call: three allocates lazily
+  while rendering, so that's the first non-three frame.
 
 ### Phase 3 — Sources
 

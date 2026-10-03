@@ -76,6 +76,15 @@
     text-align: left;
   }
 
+  th + th,
+  td + td {
+    padding-left: 0.8rem;
+  }
+
+  th {
+    vertical-align: bottom;
+  }
+
   tfoot td {
     border-top: 1px solid variables.$debugGuiBackgroundLighter2;
     font-weight: bold;
@@ -97,4 +106,19 @@
 .gpuMemoryUntracked td {
   color: variables.$debugTextColorDark;
   font-style: italic;
+}
+
+.gpuMemoryDim {
+  color: variables.$debugTextColorDark;
+}
+
+.gpuMemoryTable td.gpuMemoryWrap {
+  white-space: normal;
+  word-break: break-word;
+  text-align: left;
+  vertical-align: top;
+}
+
+.gpuMemoryTable td.gpuMemoryWrap ~ td {
+  vertical-align: top;
 }
