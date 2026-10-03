@@ -26,7 +26,6 @@ export const DEFAULT_DEBUG_DRAWER_TAB_ORDER = [
   'debugToolsControls',
   'physicsApiControls',
   'rendererControls',
-  'gpuMemoryControls',
   'assetsControls',
   'postFxControls',
   'rayCastControls',

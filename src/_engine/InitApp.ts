@@ -119,7 +119,6 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerCharacterTools();
       await registerECSModule();
       await registerSpatialIndexDebugGUI();
-      await registerGPUMemoryDebugGUI();
     }
     if (IS_DEBUG_ENV || IS_PROD_TEST_MODE) {
       // Loaded here (not the IS_DEBUG_ENV-only block above) so isProdTest mode can still read
@@ -129,6 +128,9 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerDebugToolsModule();
       // Debug env, and prodTest when enabled there. Before the windows are restored from LS
       await registerProfiler();
+      // A profiler tab (loads where the profiler does). Before appStartFn: its allocation
+      // tracker must see the renderer's init()
+      await registerGPUMemoryDebugGUI();
       await registerMainLoopDebugGUI();
       await registerOnScreenTools();
       if (IS_PROD_TEST_MODE) registerDefaultProdTestKeyBindings();

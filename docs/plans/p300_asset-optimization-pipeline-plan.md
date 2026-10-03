@@ -188,7 +188,7 @@ Per asset (in a `*.texture.json`):
 }
 ```
 
-- `__vramBytes` is an estimate from dimensions, format block size and the mip chain. It's for catching regressions and for the future profiler (p220), not a measurement.
+- `__vramBytes` is an estimate from dimensions, format block size and the mip chain. It's for catching regressions and for the profiler window (`_DONE_p344`), not a measurement.
 - A stats summary is also written to `.cache/asset-pipeline/last-run.json` and printed per run: totals in/out, cache hit rate, slowest assets.
 
 ---

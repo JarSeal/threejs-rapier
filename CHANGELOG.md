@@ -4,6 +4,42 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-03 — profiler-mega-window
+
+### Engine 4.3.0 (Afternoon)
+
+**Added**
+
+- Profiler window (debug builds, and production test mode when it is enabled there): a draggable window with a row of icon tabs. It opens from three places: a click on the on-screen stats panels (a setting can turn this off), the Statistics tab's Profiler folder, and a speedometer button next to pause in the top on-screen tools (shown active while the window is open). It measures only while it is open, and releases every measurement it turned on when it closes.
+  - Overview: one table of key figures, refreshed 1, 2, 4 or 10 times a second. Shown by default: TFPS estimate (from CPU and GPU time, or labelled CPU-bound without GPU timing), FPS, frame time (average and worst), CPU, GPU, physics (step, dispatch and write-back, plus sub-steps per frame, flagged at the maximum), draw calls and triangles drawn, triangles / vertices / meshes / entities in view and in total, JS heap, and three's GPU memory estimate. Hidden by default: instances, lights and shadow passes, physics bodies, ray casts, PostFX GPU time, long tasks and the scene. A row that can't be measured says why ("WebGPU only", "Chromium only").
+  - Objects: breakdowns by kind and by owner (count, triangles, vertices) with two-tone bars (in view solid, culled faded), measured in triangles, vertices or objects; ECS entities per world and entities per component type; the 10 heaviest objects in view, with an Edit button where the entity has an edit window (debug env only); and sparklines of triangles in view, meshes in view and draw calls.
+  - GPU memory: the drawer's GPU memory tab, moved here (see Changed).
+  - Settings: the update rate, which Overview rows show and in what order, the stats panel entry point, GPU timing, leaving debug helpers out of the counts, and enabling the profiler in production test mode.
+  - "In view" comes from a census that repeats three r186's frustum and layer culling against the active camera (the debug camera when it is active), at the update rate. It costs about 0.2 ms per sample in `largeWorld`. Draw calls and triangles drawn (`renderer.info`) remain the ground truth.
+- `debug/Profiler.ts`:
+  - Tabs: `createProfilerTab`, `openProfilerTab`, `updateProfilerTab` and `isProfilerTabOpen`, the drawer tab contract without `sceneId`.
+  - Window and settings: `toggleProfilerWindow`, `isProfilerWindowOpen`, `isProfilerAvailable`, `isProfilerLoadedInThisMode`, `isProfilerEnabledInProdTest`, `getProfilerSettings` / `setProfilerSettings`.
+  - `registerStatsSource({ id, label, acquire?, release?, read, availability? })`: a refcounted figure from engine or app code that the profiler views can show.
+  - `markDebugHelper(obj)`: the census counts a debug object in its own row. The engine marks its light and camera helpers, physics wireframes, ray helpers, character gizmos, spatial grid overlays and 3D symbols.
+  - `registerEntityWindowOpener`: an edit window the Objects tab's Edit button can open. Characters and physics entities register one.
+- `setPhysicsStepStatsEnabled(on)` / `isPhysicsStepStatsEnabled()` (`PhysicsAPI.ts`): physics step stats can be switched on and off at runtime in every worker target, through a new one-way `SET_STEP_STATS` worker message. The `stepStatsEnabled` boot setting is the initial value. The PHY stats panel still follows the boot setting only. The `SharedArrayBuffer` stats buffer is now allocated at every `CREATE_WORLD`.
+- `getPhysicsObjectCounts()` (bodies, colliders, joints) and `getPhysicsSubStepTotal()` (fixed sub-steps since boot) in `PhysicsAPI.ts`.
+- `setFrameProbe(probe | null)` (`MainLoop.ts`): `begin(now)` and `end(now, rendered)` around every frame, in the debug loop and both production loops. While no probe is set, it costs one null check per frame.
+- Draggable windows take an `icon`, shown in the header and persisted.
+- `profiler`, `objectsCubes` and `gear` icons.
+
+**Changed**
+
+- The GPU memory tab moved from the debug drawer into the profiler window. Its id is `gpuMemory` (was `gpuMemoryControls`), and its settings are kept. The Statistics tab's "Draw calls, memory" button opens it there. It now also shows in production test mode when the profiler is enabled there, without the budget toast and the links to drawer tabs. `registerGPUMemorySource` registers wherever the profiler loads.
+- `DEFAULT_DEBUG_DRAWER_TAB_ORDER` no longer lists `gpuMemoryControls`. An app `tabOrder` that still lists it is unaffected (unknown ids are ignored).
+- The drawer's tab lifecycle moved into a tab host (`core/Debug/_dbg__TabHost.ts`) that the profiler uses too. The drawer behaves as before.
+- The Physics API tab's "Track physics step time (reloads)" shows the boot setting, not the runtime state the profiler switches.
+- While the profiler holds the ray stats, the Raycast tab shows live stats with its checkbox off.
+
+**Fixed**
+
+- Physics step stats in `WORKER_THREAD` mode: `dispatchMs` and `writeBackMs` were off by the worker's start time (about ±1.3 s), because a worker's `performance.now()` counts from the worker's creation. The worker now puts its stamps on the main thread's clock (`INIT_PHYSICS` carries `mainTimeOrigin`).
+
 ## 2026-10-03 — gpu-memory-debug-tab
 
 ### Engine 4.2.0 (Afternoon)

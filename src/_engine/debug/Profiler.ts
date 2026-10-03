@@ -76,8 +76,13 @@ export const isProfilerEnabledInProdTest = () => {
 
 let isProfilerMode: boolean | null = null;
 
-/** Whether this mode loads the profiler (see {@link registerProfiler}). Read once. */
-const isProfilerLoadedInThisMode = () => {
+/**
+ * Whether this mode loads the profiler (see {@link registerProfiler}): the debug env, and prodTest
+ * mode when it is enabled there. Read once, and known before the profiler module loads, so code
+ * that registers profiler content can gate on it.
+ * @returns boolean
+ */
+export const isProfilerLoadedInThisMode = () => {
   if (isProfilerMode === null) {
     isProfilerMode = IS_DEBUG_ENV || (IS_PROD_TEST_MODE && isProfilerEnabledInProdTest());
   }

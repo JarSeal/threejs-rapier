@@ -1,7 +1,7 @@
-Status: in progress | Phases 1-5 implemented
+Status: implemented (Phases 1-6)
 Category: Debug, Performance, UI
 Epic: Profiler (this plan is the base; later profiler plans build on its window, tab host and stats sources)
-Related: _DONE_p345_gpu-memory-and-draw-call-debugger.md (its tab moves in, Phase 6), p240_client-device-capability-sniffer.md (device budgets next to the measured figures), p350_lod-system-research.md (the LOD plans measure their result with it), p354_gpu-driven-culling.md (GPU culling makes the CPU "in view" census an estimate of what the GPU draws, §2.7), docs/templates/todo-plan-prompts.txt (the prodTest follow-up after this plan, §2.4)
+Related: _DONE_p345_gpu-memory-and-draw-call-debugger.md (its tab moves in, Phase 6), p240_client-device-capability-sniffer.md (device budgets next to the measured figures), p350_lod-system-research.md (the LOD plans measure their result with it), p354_gpu-driven-culling.md (GPU culling makes the CPU "in view" census an estimate of what the GPU draws, §2.7)
 
 # Profiler Mega Window
 
@@ -132,10 +132,7 @@ apply at the next refresh, with no rebuild of the window.
 - The play button reloads into prodTest, and the window's persisted `isOpen` +
   `showInProdTest: enabledInProdTest` reopen it there. That is "stay open in prodTest".
 - In prodTest there are no stats-gl panels and no drawer. The Profiler measures by itself (§2.5),
-  the GPU memory tab is hidden (it is debug-only, §2.9), and the Settings tab works as usual.
-- Follow-up (`todo-plan-prompts.txt`, not a plan): the "Enable Profiler mega window in prodTest"
-  checkboxes in the Statistics and Debug tools tabs bind to this same `enabledInProdTest`. They
-  don't get a second flag.
+  and the GPU memory (§2.9) and Settings tabs work as usual.
 
 ### 2.5 Measurement core
 
@@ -277,8 +274,8 @@ against. The Statistics tab's "Draw calls, memory" button already treats it as a
   equivalents. `gpuMemoryControls` leaves `DEFAULT_DEBUG_DRAWER_TAB_ORDER`. An app `tabOrder`
   that still lists it is harmless (unknown ids are ignored).
 - Its `LATE_MAIN` sampler and peak tracking keep running with the window closed, as now.
-- It stays debug-only, so it is hidden in prodTest. Its allocation tracker installs at renderer
-  creation in the debug env.
+- It loads wherever the profiler does, so in prodTest too when the profiler is enabled there. Its
+  allocation tracker installs at renderer creation in those modes.
 - The Statistics tab's "Draw calls, memory" button opens the profiler on that tab.
 
 ## 3. Phases
@@ -520,20 +517,41 @@ As built:
   totals stay put; a GYM row's Edit opens "Edit character". `largeWorld` has no physics bodies,
   so its rows have no Edit button.
 
-### Phase 6: GPU memory tab moves in
+### Phase 6: GPU memory tab moves in — done
 
 §2.9. Update `CLAUDE.md`'s GPU memory paragraph, and the readme if it names the tab's place.
 
 **Exit:** the tab works in the profiler as it did in the drawer (snapshots, diff, budget toast,
-sources). The drawer no longer lists it. Hidden in prodTest.
+sources). The drawer no longer lists it. Shown in prodTest when the profiler is enabled there.
+
+As built:
+
+- `GPU_MEMORY_TAB_ID` is `gpuMemory`, `orderNr` 20. Its `lsKey` (`AEK_debugGPUMemory`) is
+  unchanged, so the budget and "Call sites" settings carry over. A drawer whose saved open tab
+  was `gpuMemoryControls` falls back to its first tab.
+- Changed after review: the tab shows in prodTest too (the plan had it debug-only). It loads
+  where the profiler does: `isProfilerLoadedInThisMode()` (now exported from
+  `debug/Profiler.ts`) gates `registerGPUMemoryDebugGUI` and `registerGPUMemorySource`, which
+  was debug-env only before. In prodTest there is no budget toast (no debug toaster; the budget
+  bar still shows it), and the "Viewports" and "GPU time" buttons, which open drawer tabs, are
+  hidden.
+- `registerGPUMemoryDebugGUI()` moved in `InitApp.ts` from the debug-only block to right after
+  `registerProfiler()`: `createProfilerTab` is a no-op before the profiler module loads. It
+  still runs before `appStartFn`, so the allocation tracker sees the renderer's `init()`.
+- The budget toast now says "See the profiler's GPU memory tab."
+- The readme's drawer line lost GPU memory, so the readme got a profiler bullet (the plan-done
+  readme step only needs to check it).
+- Verified in the ECS test scene: the drawer has no GPU memory tab; the Statistics tab's "Draw
+  calls, memory" opens the profiler on it; the menu order is Overview > Objects > GPU memory >
+  Settings; snapshot and clear work; a reload restores it. In prodTest (enabled there) the window
+  restores on the GPU memory tab with its sources and snapshots and without the drawer links. On the
+  plain URL nothing of it loads.
 
 **Plan done:** engine minor bump (new debug window and public `debug/Profiler.ts` API,
 `setPhysicsStepStatsEnabled`); app untouched; CHANGELOG entry; `yarn checkVersions --against main`.
 
 ## 4. Out of scope (later profiler plans)
 
-- prodTest checkboxes in the Statistics and Debug tools tabs, and stats panels in prodTest (the
-  `todo-plan-prompts.txt` follow-up; it binds to `enabledInProdTest`).
 - More tabs: a Physics tab (bodies awake / sleeping from the debug state buffer, contacts), a
   Frame / passes tab (`getPostFxPassStats` per pass, shadow passes, viewports), Assets / textures
   (the Statistics `@TODO` list), Streaming cells (p353), LOD (p348).

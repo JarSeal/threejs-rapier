@@ -1,7 +1,7 @@
 import Stats from 'stats-gl';
 import { TimestampQuery, type Renderer } from 'three/webgpu';
 import { getRenderer } from '../../core/Renderer';
-import { createDebuggerTab, openDebuggerTab, updateDebuggerTab } from '../../debug/DebuggerGUI';
+import { createDebuggerTab, updateDebuggerTab } from '../../debug/DebuggerGUI';
 import { GPU_MEMORY_TAB_ID } from '../../debug/GPUMemory';
 import { getHUDRootCMP } from '../../core/HUD';
 import { CMP, type TCMP } from '../../utils/CMP';
@@ -11,6 +11,7 @@ import { getConfig } from '../../core/Config';
 import {
   DEFAULT_PROFILER_SETTINGS,
   getProfilerSettings,
+  openProfilerTab,
   setProfilerSettings,
   toggleProfilerWindow,
   type ProfilerSettings,
@@ -373,7 +374,7 @@ const setDebuggerUI = () => {
               type: 'button',
               label: 'Draw calls, memory',
               title: 'Open GPU memory',
-              onClick: () => openDebuggerTab(GPU_MEMORY_TAB_ID),
+              onClick: () => openProfilerTab(GPU_MEMORY_TAB_ID),
             },
             {
               type: 'folder',
@@ -402,7 +403,7 @@ const setDebuggerUI = () => {
   });
 
   // @TODO: add current scene and all loaded scene stats (draw calls and GPU memory are in the
-  // GPU memory tab, _dbg__GPUMemory.ts)
+  // profiler's GPU memory tab, _dbg__GPUMemory.ts)
   // Current and all scenes stats:
   // - objects count (Object3D)
   // - mesh count

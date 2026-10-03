@@ -1,17 +1,24 @@
 import type * as THREE from 'three/webgpu';
-import { IS_DEBUG_ENV } from '../core/Config';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../utils/helpers';
+import { isProfilerLoadedInThisMode } from './Profiler';
 
-/** Debugger drawer tab id of the GPU memory and draw-call tab. */
-export const GPU_MEMORY_TAB_ID = 'gpuMemoryControls';
+/** Profiler window tab id of the GPU memory and draw-call tab. */
+export const GPU_MEMORY_TAB_ID = 'gpuMemory';
 
 let debugGUI: DebugModuleRef<typeof import('../core/Debug/_dbg__GPUMemory')> | null = null;
 
-/** Creates the GPU memory debugger tab (three's GPU memory bookkeeping, draw calls) and its
- * per-frame sampler. The implementation is only loaded in debug builds. */
+/** Creates the profiler's GPU memory tab (three's GPU memory bookkeeping, draw calls) and its
+ * per-frame sampler. The implementation is only loaded where the profiler is: the debug env, and
+ * prodTest mode when the profiler is enabled there. Call after `registerProfiler` (the tab needs
+ * the profiler) and before the renderer is created (the allocation tracker). */
 export const registerGPUMemoryDebugGUI = async () => {
-  debugGUI = await loadDebugModuleAsync(() => import('../core/Debug/_dbg__GPUMemory'));
-  useDebug(debugGUI)?._createGPUMemoryDebugGUI();
+  if (!isProfilerLoadedInThisMode()) return;
+  debugGUI = await loadDebugModuleAsync(
+    () => import('../core/Debug/_dbg__GPUMemory'),
+    true,
+    'GPU memory'
+  );
+  useDebug(debugGUI, true)?._createGPUMemoryDebugGUI();
 };
 
 // Sources (p345 §2.3)
@@ -44,11 +51,12 @@ const sources = new Map<string, GPUMemorySource>();
 
 /**
  * Names GPU resources that aren't registered assets (render targets, instance buffers), so the
- * GPU memory tab can list them and take them out of "untracked". A no-op outside the debug env.
+ * GPU memory tab can list them and take them out of "untracked". A no-op where the profiler
+ * doesn't load (outside the debug env, unless it is enabled in prodTest mode).
  * @returns a function that removes the source
  */
 export const registerGPUMemorySource = (source: GPUMemorySource) => {
-  if (!IS_DEBUG_ENV) return () => {};
+  if (!isProfilerLoadedInThisMode()) return () => {};
   sources.set(source.id, source);
   return () => {
     if (sources.get(source.id) === source) sources.delete(source.id);

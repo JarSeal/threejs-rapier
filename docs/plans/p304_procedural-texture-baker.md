@@ -69,7 +69,7 @@ bakeTexture(opts: {
   - During scene load, bakes run inside the loader's hold, with loader status updates (`getLoaderStatusUpdater`).
   - Outside loads they queue into `textureBakeSystem` (MAIN, after `skyBoxSystem`), which runs at most one bake per frame and throttles rebakes of the same id to one per 150 ms (the latest request always runs; same rule as the static layers).
 - **Memory:** `getBakedTextureMemoryBytes()` (RGBA8 1K + mips ≈ 5.6 MB; HalfFloat doubles that). This number goes into each page's "VRAM" section.
-- **Stats (debug only):** last bake GPU ms per id through `_dbg__GPUTimer`, shown in the gallery tab and the p220 profiler later.
+- **Stats (debug only):** last bake GPU ms per id through `_dbg__GPUTimer`, shown in the gallery tab and in the profiler window (`_DONE_p344`, a `registerStatsSource` or a profiler tab) later.
 
 ### D2 — Periodic noise library (toolkit: `src/toolkit/terrain/nodes/noise/`)
 
