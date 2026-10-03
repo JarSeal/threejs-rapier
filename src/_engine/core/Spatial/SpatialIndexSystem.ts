@@ -57,6 +57,9 @@ type SpatialDomain = {
   readonly id: string;
   /** This domain's bit in SPATIAL_DOMAINS' mask; -1 for DEFAULT, whose membership is SPATIAL_INDEXED. */
   readonly bit: number;
+  /** The settings it was last registered with, before the debug override. */
+  requested: SpatialDomainOptions;
+  /** The settings in use. */
   opts: Required<SpatialDomainOptions>;
   grid: SpatialGrid;
   /**
@@ -185,7 +188,11 @@ const clearMaskBit = (world: ECSWorld, domain: SpatialDomain, entityId: number) 
  * domains besides `DEFAULT`.
  */
 export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOptions): void {
-  const resolved = resolveDomainOptions(opts);
+  const resolved = resolveDomainOptions(
+    IS_DEBUG_ENV && debugOptionsOverride
+      ? { ...debugOptionsOverride(world, { ...opts }), id: opts.id }
+      : opts
+  );
   let domains = domainsByWorld.get(world);
   if (!domains) {
     domains = { list: [], byId: new Map(), byBit: [] };
@@ -204,6 +211,7 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
     const domain: SpatialDomain = {
       id: resolved.id,
       bit: isDefault ? -1 : domains.byBit.length,
+      requested: { ...opts },
       opts: resolved,
       grid: createDomainGrid(resolved),
       localRadius: new Map(),
@@ -215,6 +223,7 @@ export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOption
     if (!isDefault) domains.byBit.push(domain);
     return;
   }
+  existing.requested = { ...opts };
   if (isSameDomainOptions(existing.opts, resolved)) return;
 
   const oldGrid = existing.grid;
@@ -269,10 +278,32 @@ export function getSpatialGrid(world: ECSWorld): SpatialGrid {
   return getDefaultDomain(world).grid;
 }
 
-/** Re-registers `DEFAULT` with a new cell size and its other settings unchanged (the debug tab's cell size control). */
+/** Re-registers `DEFAULT` with a new cell size and its other settings unchanged. In the debug env, a cell size set in the "Spatial index" tab wins. */
 export function setSpatialGridCellSize(world: ECSWorld, cellSize: number): void {
-  const current = domainsByWorld.get(world)?.byId.get(DEFAULT_SPATIAL_DOMAIN)?.opts;
+  const current = domainsByWorld.get(world)?.byId.get(DEFAULT_SPATIAL_DOMAIN)?.requested;
   registerSpatialDomain(world, { ...(current ?? defaultDomainOptions(world)), cellSize });
+}
+
+// --- DEBUG OVERRIDES ---
+// The "Spatial index" tab's per-domain settings (_dbg__SpatialGrid.ts). Applied on every
+// registration, so they hold when the app registers a domain again on its next scene visit.
+
+type SpatialDomainOptionsOverride = (
+  world: ECSWorld,
+  requested: SpatialDomainOptions
+) => SpatialDomainOptions;
+
+let debugOptionsOverride: SpatialDomainOptionsOverride | null = null;
+
+/** Debug env only: sets (or clears) the function that adjusts every domain's settings on registration (the id can't be changed). Call {@link reapplySpatialDomainOptions} for the domains it now treats differently. */
+export function setSpatialDomainOptionsOverride(fn: SpatialDomainOptionsOverride | null): void {
+  debugOptionsOverride = fn;
+}
+
+/** Debug env only: registers `world`'s domain `id` again with the settings the app asked for, through the current override. */
+export function reapplySpatialDomainOptions(world: ECSWorld, id: string): void {
+  const domain = domainsByWorld.get(world)?.byId.get(id);
+  if (domain) registerSpatialDomain(world, domain.requested);
 }
 
 // --- MEMBERSHIP (p346 §3.2) ---
@@ -536,6 +567,7 @@ export const spatialIndexRebuildSystem = (world: ECSWorld) => {
   const list = domains.list;
   for (let i = 0; i < list.length; i++) {
     if (list[i].opts.update === 'DYNAMIC') refreshAndRebuildDomain(world, list[i]);
+    if (IS_DEBUG_ENV) runOracleProbes(world, list[i]);
   }
 };
 
@@ -543,64 +575,148 @@ export const spatialIndexRebuildSystem = (world: ECSWorld) => {
 // Debug-only cross-check that the grid's candidates for a query are a
 // superset of an exact distance test — never the reverse, since the grid's
 // candidates are conservative by design (§7's "candidates, not results").
-// Opt-in per world via setSpatialGridOracleEnabled, surfaced in
+// Opt-in per world and domain via setSpatialGridOracleEnabled, surfaced in
 // _dbg__SpatialGrid.ts; a no-op call in production (IS_DEBUG_ENV-gated).
+// While on, it checks the queries consumers pass to validateSpatialGridQuery,
+// plus a few probe queries near random members every frame, so a domain that
+// no consumer queries yet is checked too.
 
-const oracleEnabledByWorld = new WeakMap<ECSWorld, boolean>();
-const oracleMismatchCountByWorld = new WeakMap<ECSWorld, number>();
+type OracleState = { enabled: boolean; checked: number; mismatches: number; warned: number };
 
-export function setSpatialGridOracleEnabled(world: ECSWorld, enabled: boolean): void {
-  oracleEnabledByWorld.set(world, enabled);
-  oracleMismatchCountByWorld.set(world, 0);
+const oracleByWorld = new WeakMap<ECSWorld, Map<string, OracleState>>();
+const ORACLE_PROBES_PER_FRAME = 8;
+/** Mismatches past this many (per enable) are only counted, not logged. */
+const ORACLE_MAX_WARNINGS = 10;
+
+function getOracle(world: ECSWorld, domainId: string): OracleState | undefined {
+  return oracleByWorld.get(world)?.get(domainId);
 }
 
-export function isSpatialGridOracleEnabled(world: ECSWorld): boolean {
-  return oracleEnabledByWorld.get(world) ?? false;
+/** Turns the oracle on or off for one domain, and resets its counts. */
+export function setSpatialGridOracleEnabled(
+  world: ECSWorld,
+  enabled: boolean,
+  domainId: string = DEFAULT_SPATIAL_DOMAIN
+): void {
+  let byDomain = oracleByWorld.get(world);
+  if (!byDomain) {
+    byDomain = new Map();
+    oracleByWorld.set(world, byDomain);
+  }
+  byDomain.set(domainId, { enabled, checked: 0, mismatches: 0, warned: 0 });
 }
 
-export function getOracleMismatchCount(world: ECSWorld): number {
-  return oracleMismatchCountByWorld.get(world) ?? 0;
+export function isSpatialGridOracleEnabled(
+  world: ECSWorld,
+  domainId: string = DEFAULT_SPATIAL_DOMAIN
+): boolean {
+  return getOracle(world, domainId)?.enabled ?? false;
 }
 
-/** The true "within range" set, computed by iterating every SPATIAL_INDEXED member directly — the thing the grid is trying to approximate cheaply. */
-function bruteForceQuery(world: ECSWorld, p: ReadonlyVec3, r: number): Set<number> {
+export function getOracleMismatchCount(
+  world: ECSWorld,
+  domainId: string = DEFAULT_SPATIAL_DOMAIN
+): number {
+  return getOracle(world, domainId)?.mismatches ?? 0;
+}
+
+/** How many queries the oracle has checked in the domain since it was turned on. */
+export function getOracleCheckedQueryCount(
+  world: ECSWorld,
+  domainId: string = DEFAULT_SPATIAL_DOMAIN
+): number {
+  return getOracle(world, domainId)?.checked ?? 0;
+}
+
+/** The true "within range" set, computed by iterating the domain's members as the ECS records them (SPATIAL_INDEXED, or the domain's SPATIAL_DOMAINS bit) — the thing the grid is trying to approximate cheaply. */
+function bruteForceQuery(
+  world: ECSWorld,
+  domain: SpatialDomain,
+  p: ReadonlyVec3,
+  r: number
+): Set<number> {
   const result = new Set<number>();
-  const storage = world.getStorage(ComponentType.SPATIAL_INDEXED);
-  for (const [entityId] of storage) {
+  const test = (entityId: number) => {
     const pos = world.getPosition(entityId);
-    if (!pos) continue;
+    if (!pos) return;
     const radius = computeSpatialRadius(entityId, world);
     const dx = pos.x - p.x;
     const dy = pos.y - p.y;
     const dz = pos.z - p.z;
     if (Math.sqrt(dx * dx + dy * dy + dz * dz) <= r + radius) result.add(entityId);
+  };
+
+  if (domain.bit < 0) {
+    for (const [entityId] of world.getStorage(ComponentType.SPATIAL_INDEXED)) test(entityId);
+  } else {
+    const bit = 1 << domain.bit;
+    for (const [entityId, membership] of world.getStorage(ComponentType.SPATIAL_DOMAINS)) {
+      if (membership.mask & bit) test(entityId);
+    }
   }
   return result;
 }
 
-/**
- * Call after a real `queryVisit`/`queryInto` call, when `isSpatialGridOracleEnabled`
- * is true, to validate that call's result. No-op unless both `IS_DEBUG_ENV`
- * and the oracle are on for `world` — safe to call unconditionally from a
- * hot path.
- */
-export function validateSpatialGridQuery(world: ECSWorld, p: ReadonlyVec3, r: number): void {
-  if (!IS_DEBUG_ENV || !isSpatialGridOracleEnabled(world)) return;
-
-  const exact = bruteForceQuery(world, p, r);
+function checkQuery(
+  world: ECSWorld,
+  domain: SpatialDomain,
+  oracle: OracleState,
+  p: ReadonlyVec3,
+  r: number
+): void {
+  const exact = bruteForceQuery(world, domain, p, r);
   const found = new Set<number>();
-  getSpatialGrid(world).queryVisit(p, r, (id) => found.add(id));
+  domain.grid.queryVisit(p, r, (id) => found.add(id));
+  oracle.checked++;
 
   for (const id of exact) {
-    if (!found.has(id)) {
-      oracleMismatchCountByWorld.set(world, getOracleMismatchCount(world) + 1);
-      lwarn(
-        `SpatialGrid oracle: entity ${id} is within range of query ` +
-          `(${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}) r=${r.toFixed(2)} but the ` +
-          `grid's candidates missed it — see docs/plans/_DONE_p050_spatial-index.md §9.`
-      );
-    }
+    if (found.has(id)) continue;
+    oracle.mismatches++;
+    if (oracle.warned >= ORACLE_MAX_WARNINGS) continue;
+    oracle.warned++;
+    lwarn(
+      `SpatialGrid oracle: entity ${id} is within range of query ` +
+        `(${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}) r=${r.toFixed(2)} in domain ` +
+        `'${domain.id}' but the grid's candidates missed it — see docs/plans/_DONE_p050_spatial-index.md §9.` +
+        (oracle.warned === ORACLE_MAX_WARNINGS ? ' Further mismatches are only counted.' : '')
+    );
   }
+}
+
+const _probe = { x: 0, y: 0, z: 0 };
+
+/** Probe queries near random members, within a cell of them, with radii up to two cells. */
+function runOracleProbes(world: ECSWorld, domain: SpatialDomain): void {
+  const oracle = getOracle(world, domain.id);
+  const memberCount = domain.grid.memberCount;
+  if (!oracle?.enabled || memberCount === 0) return;
+  const cellSize = domain.opts.cellSize;
+  for (let i = 0; i < ORACLE_PROBES_PER_FRAME; i++) {
+    const pos = world.getPosition(domain.grid.memberAt(Math.floor(Math.random() * memberCount)));
+    if (!pos) continue;
+    _probe.x = pos.x + (Math.random() * 2 - 1) * cellSize;
+    _probe.y = pos.y + (Math.random() * 2 - 1) * cellSize;
+    _probe.z = pos.z + (Math.random() * 2 - 1) * cellSize;
+    checkQuery(world, domain, oracle, _probe, Math.random() * cellSize * 2);
+  }
+}
+
+/**
+ * Call after a real `queryVisit`/`queryInto` call on domain `domainId`'s grid, to validate that
+ * call's result. No-op unless both `IS_DEBUG_ENV` and the oracle are on for that domain — safe
+ * to call unconditionally from a hot path.
+ */
+export function validateSpatialGridQuery(
+  world: ECSWorld,
+  p: ReadonlyVec3,
+  r: number,
+  domainId: string = DEFAULT_SPATIAL_DOMAIN
+): void {
+  if (!IS_DEBUG_ENV) return;
+  const oracle = getOracle(world, domainId);
+  const domain = domainsByWorld.get(world)?.byId.get(domainId);
+  if (!oracle?.enabled || !domain) return;
+  checkQuery(world, domain, oracle, p, r);
 }
 
 ECSWorld.registerPlugin((world) => {

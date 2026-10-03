@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: ECS, Spatial
 Epic: p350_lod-system-research.md (Tier 0)
 Blocks: p353_macro-streaming-grid.md (Phase 1: shared cell maths; Phase 4: per-cell entity lookup)
@@ -192,7 +192,7 @@ As built:
   oracle. `largeWorld` (26 members) showed no mismatches, also on 2000 direct random
   `validateSpatialGridQuery` calls.
 
-### Phase 2 — Domains and membership
+### Phase 2 — Domains and membership — done
 
 1. `registerSpatialDomain`, `getSpatialDomain`, `DYNAMIC` policy, `DEFAULT` routed through the
    registry (§3.1).
@@ -203,6 +203,40 @@ As built:
 
 **Exit:** `largeWorld` registers a `FOLIAGE` domain for its tree pool. The tab shows both domains,
 and light culling (on `DEFAULT`) is unchanged.
+
+As built:
+
+- `SpatialUpdatePolicy` is only `'DYNAMIC'`; Phase 3 widens it. `registerSpatialDomain` returns
+  nothing, and `getSpatialDomain` never creates a domain (`getSpatialGrid` still creates
+  `DEFAULT` lazily). An app can register `DEFAULT` itself before its first member to set its
+  settings. Extra getters for the tab: `getSpatialDomainIds`, `getSpatialDomainOptions`.
+- The rebuild loops over each grid's own members (`SpatialGrid.memberAt(index)`), not over the
+  membership components.
+- Mask bits are 0-30; a 32nd non-default domain throws. Re-registering with a smaller
+  `maxMembers` drops the members past it from a non-default domain (bit cleared) and throws for
+  `DEFAULT` before changing anything. `SPATIAL_DOMAINS` also has an `onRemoveComponent` hook, so
+  removing it directly leaves every domain in the mask. `joinSpatialDomain`/`leaveSpatialDomain`/
+  `isInSpatialDomain` with `DEFAULT` add, remove or check `SPATIAL_INDEXED`.
+- Radii: the mesh and pool providers return `|center| + radius` of the geometry's bounding
+  sphere (`getConservativeGeometryRadius`), so off-centre geometry is covered (the `largeWorld`
+  crate stack: 1.885 → 2.667). The local radius is cached per domain (`localRadius`, scaled
+  members only), not in the grid. `SpatialGrid.updateRadius` returns early for an unchanged
+  radius. `refreshSpatialRadius(entityId)` re-reads a member's radius after what its provider
+  measures changed; the debug Lights tab's distance edits call it.
+- The pool's component keys and data moved to `toolkit/ecs/InstancedMeshPoolTypes.ts` (which
+  `AppECSRegistry.ts` imports), so `InstancedMeshPool.ts` left the `ECSCoreComponents ↔
+  AppECSRegistry` import cycle and can import `SpatialIndexSystem`. It re-exports the types.
+- The oracle is per domain (`setSpatialGridOracleEnabled(world, enabled, domainId?)` and so on,
+  plus `getOracleCheckedQueryCount`). While on, it also runs 8 probe queries near random members
+  every frame, from the system loop (not the rebuild), so a domain nobody queries yet, and a
+  Phase 3 `STATIC` domain between rebuilds, is checked too. It logs the first 10 mismatches.
+- Tab settings are `{ selectedDomain, domains: { [id]: { cellSize?, showCells, cellsColor,
+  showOversized, oversizedColor } } }`; the old flat keys migrate into `DEFAULT` (its cell size
+  only when it wasn't 20). A cell size set in the tab is a debug override
+  (`setSpatialDomainOptionsOverride`) applied on every registration, so it holds when the app
+  registers the domain again; "Reset to the app's cell size" re-registers with the settings the
+  app asked for (`reapplySpatialDomainOptions`). The grid is re-created only on a finished edit,
+  not per drag tick. Non-default domains' overlay colors come from a palette by id.
 
 ### Phase 3 — Static and manual policies
 
