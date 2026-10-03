@@ -10,8 +10,10 @@ import {
   getPhysicsSubStepTotal,
   getResolvedTransportMode,
   isPhysicsRayStatsEnabled,
+  isPhysicsStepStatsEnabled,
   isPhysicsWorldEnabled,
   setPhysicsRayStatsEnabled,
+  setPhysicsStepStatsEnabled,
 } from '../../PhysicsAPI';
 import { getActivePostFxPipeline } from '../../PostFX';
 import { getRayCastStats, isRayCastStatsEnabled, setRayCastStatsEnabled } from '../../Raycast';
@@ -57,8 +59,6 @@ const WINDOW_MS = 1000;
 
 const NO_RENDERER = 'no renderer yet';
 const PHYSICS_OFF = 'physics off';
-/** The physics step source's n/a reason while the boot-time step stats flag is off. */
-export const STEP_STATS_OFF = 'step stats off';
 
 // --- FRAME SAMPLER ---
 // One LATE_MAIN system on the default world (right after the frame's renderScene(), the p345
@@ -312,6 +312,7 @@ const createSharedSwitch = (isOn: () => boolean, setOn: (on: boolean) => unknown
 
 const threeRaySwitch = createSharedSwitch(isRayCastStatsEnabled, setRayCastStatsEnabled);
 const physicsRaySwitch = createSharedSwitch(isPhysicsRayStatsEnabled, setPhysicsRayStatsEnabled);
+const physicsStepSwitch = createSharedSwitch(isPhysicsStepStatsEnabled, setPhysicsStepStatsEnabled);
 
 // PostFX measuring is switched by an async call (it loads its module first): a release that
 // lands before the switch-on finished turns it off once it has.
@@ -376,12 +377,10 @@ export const registerBuiltInStatsSources = (settings: Readonly<ProfilerSettings>
   registerStatsSource<PhysicsStepStats>({
     id: PROFILER_SOURCE.PHYSICS_STEP,
     label: 'Physics step',
-    // Read-only: step stats are a boot-time flag (AppConfig.physics.stepStatsEnabled)
-    availability: () => {
-      const state = getPhysicsState();
-      if (!state.enabled) return PHYSICS_OFF;
-      return state.stepStatsEnabled ? true : STEP_STATS_OFF;
-    },
+    availability: () => (getPhysicsState().enabled ? true : PHYSICS_OFF),
+    // On at boot (AppConfig.physics.stepStatsEnabled), they stay on after the release
+    acquire: physicsStepSwitch.acquire,
+    release: physicsStepSwitch.release,
     read: () => {
       const stepMs = getLastPhysicsStepDuration();
       if (stepMs === undefined) return null;

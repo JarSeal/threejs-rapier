@@ -208,8 +208,9 @@ let lastPhysicsStepDurationMs: number | undefined;
 /** Messaging overhead bracketing the step, WORKER_THREAD only (stays undefined on
  * MAIN_THREAD, where no message crosses a thread at all). */
 let lastPhysicsMessagingLatency: { dispatchMs: number; writeBackMs: number } | undefined;
-/** SHARED_MEMORY-transport view onto the worker's step-stats buffer. Undefined in every
- * other configuration (MAIN_THREAD, MESSAGE_BATCH, or stepStatsEnabled off). */
+/** SHARED_MEMORY-transport view onto the current world's step-stats buffer (handed over at
+ * every CREATE_WORLD, whatever stepStatsEnabled is). Undefined in every other configuration
+ * (MAIN_THREAD, MESSAGE_BATCH). */
 let stepStatsFloats: Float64Array | undefined;
 /** Main-thread wrapper for the worker's debug wireframe state buffer (WORKER_THREAD
  * only). Undefined until setPhysicsDebugStateTracking() turns tracking on for the first
@@ -268,6 +269,7 @@ export const initPhysics = async (doNotCreateWorld?: boolean) => {
       isDebugEnvironment: isDebugEnvironment(),
       loopState: getReadOnlyLoopState(),
       doNotCreateWorld,
+      mainTimeOrigin: performance.timeOrigin,
     });
     // Resolving without throwing means the worker's own engAPI.init() already
     // completed — mirrors the MAIN_THREAD branch's engineInitiated = Boolean(engine).
@@ -473,8 +475,9 @@ const readSharedStepStats = () => {
  * milliseconds — the sum of that frame's fixed-timestep sub-steps and nothing else.
  *
  * Returns `undefined` until a measured step has happened, and stays frozen at its last value
- * while `AppConfig.physics.stepStatsEnabled` is off (the default), since nothing measures
- * then. Enable it from the Physics API debug tab; it is a boot-time flag and needs a reload.
+ * while step stats are off (the default), since nothing measures then. The boot value is
+ * `AppConfig.physics.stepStatsEnabled` (the Physics API debug tab's reloading switch);
+ * {@link setPhysicsStepStatsEnabled} switches it at runtime, which resets this to `undefined`.
  *
  * This figure never includes main-thread↔worker messaging overhead, in any `workerTarget` or
  * transport configuration — see {@link getLastPhysicsStepMessagingLatency} for that, which is
@@ -499,6 +502,34 @@ export const getLastPhysicsStepDuration = () => lastPhysicsStepDurationMs;
  * adjacent, never overlapping, and the two are never combined into a single figure.
  */
 export const getLastPhysicsStepMessagingLatency = () => lastPhysicsMessagingLatency;
+
+/**
+ * Switches the physics step measurement ({@link getLastPhysicsStepDuration},
+ * {@link getLastPhysicsStepMessagingLatency}) on or off at runtime. Its initial value is
+ * `AppConfig.physics.stepStatsEnabled`. The debug "PHY" stats panel exists only when that boot
+ * value is on.
+ *
+ * Switching it on clears the last figures, so a reader sees `undefined` ("no measured step
+ * yet") instead of what an earlier measuring period left behind. `WORKER_THREAD`: the worker
+ * gets a one-way message and measures from its next STEP message on (in every transport).
+ * Called before {@link initPhysics}, the config value replaces it.
+ */
+export const setPhysicsStepStatsEnabled = (enabled: boolean) => {
+  if (physicsState.stepStatsEnabled === enabled) return;
+  physicsState.stepStatsEnabled = enabled;
+  if (enabled) {
+    lastPhysicsStepDurationMs = undefined;
+    lastPhysicsMessagingLatency = undefined;
+    // The worker writes it only while measuring, which it isn't yet, so this can't race
+    if (stepStatsFloats) stepStatsFloats[PHYSICS_STEP_STATS_SLOTS.STEP_END_AT] = 0;
+  }
+  if (physicsState.workerTarget === 'WORKER_THREAD') {
+    messageWorker({ type: PhysicsProtocolType.SET_STEP_STATS, enabled, isOneWay: true });
+  }
+};
+
+/** Whether the physics step measurement is on (see {@link setPhysicsStepStatsEnabled}). */
+export const isPhysicsStepStatsEnabled = () => physicsState.stepStatsEnabled;
 
 // PHYSICS RAY STATS AND HELPERS (p142) -- [ START ] -----------------------
 // Physics queries are counted and drawn by a query observer. It is installed only while the
@@ -1091,11 +1122,11 @@ export const createPhysicsWorld = async (
         // MESSAGE_BATCH: a previous world's last pushed copy must never be read as this one's.
         transformBuffer = undefined;
       }
-      // Only handed over in SHARED_MEMORY mode with stepStatsEnabled on (p027); allocated
-      // once here, like the transform buffer, which is why the flag is boot-time only.
-      if (response.statsBuffer) {
-        stepStatsFloats = new Float64Array(response.statsBuffer, 0, PHYSICS_STEP_STATS_FIELD_COUNT);
-      }
+      // Handed over in SHARED_MEMORY mode (p027), whatever stepStatsEnabled is, so the flag can
+      // be switched at runtime (setPhysicsStepStatsEnabled). A fresh one per world.
+      stepStatsFloats = response.statsBuffer
+        ? new Float64Array(response.statsBuffer, 0, PHYSICS_STEP_STATS_FIELD_COUNT)
+        : undefined;
       // MESSAGE_BATCH: transformBuffer stays undefined until the first TRANSFORMS_PUSH arrives.
       addVisibilityChangeFn('pausePhysicsApiOnVisibilityChange', physicsVisibilityChangeHandler);
     } else {

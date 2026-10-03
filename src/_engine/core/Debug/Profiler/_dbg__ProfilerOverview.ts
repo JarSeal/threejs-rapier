@@ -1,14 +1,11 @@
 import { CMP } from '../../../utils/CMP';
-import { IS_DEBUG_ENV } from '../../Config';
 import { getAllECSWorlds } from '../../ECS';
 import type { AnyDebuggerTabDef } from '../../../debug/DebuggerGUI';
 import type { ProfilerOverviewMetricEntry, ProfilerSettings } from '../../../debug/Profiler';
 import { formatBytes, formatNumber } from '../_dbg__AssetStats';
-import { setBootOverride } from '../_dbg__PhysicsBootOverrides';
 import { _getFrameProbeSummary, type FrameProbeSummary } from './_dbg__FrameProbe';
 import {
   PROFILER_SOURCE,
-  STEP_STATS_OFF,
   type DrawStats,
   type GpuFrameStats,
   type GpuMemoryStats,
@@ -86,12 +83,6 @@ const censusRow = (id: string, label: string, defaultVisible: boolean): Overview
   read: () => ({ value: '—', na: NO_CENSUS }),
 });
 
-const ENABLE_STEP_STATS: MetricAction = {
-  label: 'enable (reloads)',
-  title: 'Turn physics step stats on (a boot-time flag) and reload',
-  run: () => setBootOverride({ stepStatsEnabled: true }),
-};
-
 const readPhysics = (s: OverviewSample): MetricValue => {
   const step = s.get<PhysicsStepStats>(PROFILER_SOURCE.PHYSICS_STEP);
   const subSteps = s.get<PhysicsSubStepStats>(PROFILER_SOURCE.PHYSICS_SUB_STEPS);
@@ -103,8 +94,6 @@ const readPhysics = (s: OverviewSample): MetricValue => {
   const result: MetricValue = { value: '—' };
   if (step.na) {
     result.na = step.na;
-    // The boot overrides are only applied in the debug env (loadConfig)
-    if (step.na === STEP_STATS_OFF && IS_DEBUG_ENV) result.action = ENABLE_STEP_STATS;
   } else if (!step.value) {
     parts.push('waiting for a step');
   } else {

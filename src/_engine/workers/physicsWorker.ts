@@ -47,10 +47,15 @@ let debugStateBuffer: PhysicsDebugStateBuffer | undefined;
 /** Tracked ids, in the order the main thread sent them — index IS slot on both sides. */
 let debugTrackedRigidBodyIds: number[] = [];
 let debugTrackedColliderIds: number[] = [];
-/** Step-statistics scratch view (p027). Only allocated when stepStatsEnabled is on AND the
- * SHARED_MEMORY transport resolved; in MESSAGE_BATCH mode the stats ride on TRANSFORMS_PUSH
- * and this stays undefined. */
+/** Step-statistics scratch view (p027). Allocated at every CREATE_WORLD with the SHARED_MEMORY
+ * transport, whatever stepStatsEnabled is (it can be switched at runtime, SET_STEP_STATS), and
+ * written only while it is on. In MESSAGE_BATCH mode the stats ride on TRANSFORMS_PUSH and this
+ * stays undefined. */
 let stepStatsFloats: Float64Array | undefined;
+/** Added to this worker's `performance.now()` to read the main thread's clock: a dedicated
+ * worker's clock counts from the worker's own creation, not from the page's time origin. Set
+ * at INIT_PHYSICS. Only the step stats' timestamps (receipt, step end) use it. */
+let mainClockOffset = 0;
 
 /** One frame's step measurements, kept as three independent numbers all the way through —
  * they are never added together (p027). */
@@ -108,9 +113,10 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
         // land on the step they were computed for, exactly like on MAIN_THREAD.
         {
           // Step statistics (p027) are entirely opt-in: with stepStatsEnabled off, not even
-          // a performance.now() call is made here.
+          // a performance.now() call is made here. Read once per message, so a SET_STEP_STATS
+          // replayed as a sub-step command applies from the next STEP.
           const trackStats = Boolean(workerPhysicsState?.stepStatsEnabled);
-          const receivedAt = trackStats ? performance.now() : 0;
+          const receivedAt = trackStats ? performance.now() + mainClockOffset : 0;
           let stepMs = 0;
           let stepEndAt = 0;
           for (let i = 0; i < (data.steps ?? 1); i++) {
@@ -128,8 +134,9 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
             const subStepStart = performance.now();
             engAPI.step();
             stepsExecuted++;
-            stepEndAt = performance.now();
-            stepMs += stepEndAt - subStepStart;
+            const subStepEnd = performance.now();
+            stepMs += subStepEnd - subStepStart;
+            stepEndAt = subStepEnd + mainClockOffset;
           }
           writeBackTransforms(
             trackStats
@@ -170,6 +177,11 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
           data
         );
       }
+      case PhysicsProtocolType.SET_STEP_STATS:
+        // SET_STEP_STATS (one-way). Read at the start of each STEP message, so it applies from
+        // the next one. workerPhysicsState outlives world resets, so the flag does too.
+        if (workerPhysicsState) workerPhysicsState.stepStatsEnabled = data.enabled;
+        return;
       case PhysicsProtocolType.FLUSH:
         // FLUSH (ordering barrier: messages are handled in arrival order, so replying is enough)
         return sendMessage({ type }, data);
@@ -200,9 +212,11 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
           bankCount
         );
         // Step-stats buffer (p027): only in SHARED_MEMORY mode, where there is no per-step
-        // message to carry the numbers on, and only when the measurement is switched on.
+        // message to carry the numbers on. Allocated whatever stepStatsEnabled is, so the
+        // measurement can be switched on at runtime (SET_STEP_STATS); it is 24 bytes.
         let statsBuffer: SharedArrayBuffer | undefined = undefined;
-        if (resolvedUseSAB && workerPhysicsState?.stepStatsEnabled) {
+        stepStatsFloats = undefined;
+        if (resolvedUseSAB) {
           statsBuffer = createPhysicsStepStatsArrayBuffer();
           stepStatsFloats = new Float64Array(statsBuffer, 0, PHYSICS_STEP_STATS_FIELD_COUNT);
         }
@@ -234,6 +248,7 @@ const handleMessage = async (data: PhysicsUpProtocol) => {
       case PhysicsProtocolType.INIT_PHYSICS:
         // INIT_PHYSICS
         workerPhysicsState = data.physicsState;
+        mainClockOffset = performance.timeOrigin - data.mainTimeOrigin;
         const response = await initPhysics(
           data.physicsState,
           data.isDebugEnvironment,

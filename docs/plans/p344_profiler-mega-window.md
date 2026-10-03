@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Debug, Performance, UI
 Epic: Profiler (this plan is the base; later profiler plans build on its window, tab host and stats sources)
 Related: _DONE_p345_gpu-memory-and-draw-call-debugger.md (its tab moves in, Phase 6), p240_client-device-capability-sniffer.md (device budgets next to the measured figures), p350_lod-system-research.md (the LOD plans measure their result with it), p354_gpu-driven-culling.md (GPU culling makes the CPU "in view" census an estimate of what the GPU draws, §2.7), docs/templates/todo-plan-prompts.txt (the prodTest follow-up after this plan, §2.4)
@@ -391,7 +391,7 @@ As built:
   handler. Metric rows can carry `warn` (sub-steps at `maxSubSteps`, long tasks) and an `action`
   button. New SCSS variable `$debugValueWarn`.
 
-### Phase 3: Runtime physics step stats
+### Phase 3: Runtime physics step stats — done
 
 1. `setPhysicsStepStatsEnabled(on)` in `PhysicsAPI.ts`.
    - `MAIN_THREAD`: flip `physicsState.stepStatsEnabled`.
@@ -407,6 +407,31 @@ write-back figures in `MAIN_THREAD`, `WORKER_THREAD` + `SHARED_MEMORY` and `MESS
 (`?physicsProbe` hashes unchanged). Closing it stops the measuring.
 
 Can be dropped. The Overview then keeps Phase 2's "enable (reloads)".
+
+As built:
+
+- `SET_STEP_STATS = 7` (ENGINE range, one-way) sets the worker's `workerPhysicsState`, which
+  outlives `DELETE_WORLD` / `CREATE_WORLD`, so it is sent once per change, not re-sent after a
+  world reset. The worker reads the flag once per STEP message.
+- The SHARED_MEMORY stats SAB is allocated at every `CREATE_WORLD` (a fresh one reads
+  `STEP_END_AT` 0, "no step yet"); both sides drop their view when a world resolves
+  MESSAGE_BATCH.
+- Also `isPhysicsStepStatsEnabled()`. Switching on clears the last figures (and zeroes the SAB's
+  `STEP_END_AT`), so the Overview says "waiting for a step" instead of showing an earlier
+  period's frozen values.
+- The physics source uses `createSharedSwitch` (like the ray stats): step stats that were on at
+  boot stay on after the release. Its only n/a reason is "physics off"; `STEP_STATS_OFF` and the
+  "enable (reloads)" action are gone. The metric row `action` support stays (no user now).
+- The Physics API tab's "Track physics step time (reloads)" binds to the boot value (a proxy,
+  like `workerTargetProxy`), so the profiler's runtime switch doesn't show as the boot setting.
+- Verified: on/off with the window in MAIN_THREAD, SHARED_MEMORY and MESSAGE_BATCH;
+  `?physicsProbe=120` on `physicsTest` hashes the same with stats on and off in all three.
+- Fixed, older than this phase (p027): `dispatchMs` and `writeBackMs` were off by the worker's
+  start time (about ±1.3 s, opposite signs). A dedicated worker's `performance.now()` counts from
+  its own creation, not from the page's time origin. `INIT_PHYSICS` now carries
+  `mainTimeOrigin`, and the worker puts its receipt and step-end stamps on the main thread's
+  clock. After the fix: dispatch 0.05–0.2 ms, MESSAGE_BATCH transit ~0.8 ms, SHARED_MEMORY read
+  latency ~1 frame (polled on the next frame).
 
 ### Phase 4: In-view census
 
