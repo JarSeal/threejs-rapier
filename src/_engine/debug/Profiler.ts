@@ -18,9 +18,16 @@ export const PROFILER_UI_LS_KEY = 'AEK_debugProfilerUI';
 /** The Overview and Objects refresh rates offered in the Settings tab. */
 export const PROFILER_UPDATE_RATES_HZ = [1, 2, 4, 10] as const;
 
+/** One Overview row: its metric id and whether it is shown. */
+export type ProfilerOverviewMetricEntry = { id: string; visible: boolean };
+
 export type ProfilerSettings = {
   /** Overview and Objects refresh rate, one of {@link PROFILER_UPDATE_RATES_HZ}. */
   updateRateHz: number;
+  /** The Overview rows in order. Unknown ids are dropped and new metrics appended (with their
+   * default visibility) when the profiler loads, so a saved list survives new metrics. Empty =
+   * the default order. */
+  overviewMetrics: ProfilerOverviewMetricEntry[];
   /** Clicking the on-screen stats panels toggles the profiler window. */
   openFromStatsPanels: boolean;
   /** The profiler loads in prodTest mode too: its window stays open over the play button, and
@@ -33,6 +40,7 @@ export type ProfilerSettings = {
 
 export const DEFAULT_PROFILER_SETTINGS: Readonly<ProfilerSettings> = {
   updateRateHz: 4,
+  overviewMetrics: [],
   openFromStatsPanels: true,
   enabledInProdTest: false,
   measureGpu: true,

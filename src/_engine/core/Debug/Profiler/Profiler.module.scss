@@ -70,6 +70,86 @@
     :global(.isNA) :global(.profilerValue) {
       color: variables.$debugTextColorDark;
     }
+
+    :global(.isWarn) {
+      th,
+      :global(.profilerValue),
+      :global(.profilerSub) {
+        color: variables.$debugValueWarn;
+      }
+    }
+  }
+
+  :global(.profilerAction),
+  :global(.profilerMetricList) button {
+    @include variables.nakedButton;
+    padding: 0.1rem 0.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: variables.$borderRadiusSmall;
+    background-color: variables.$debugGuiBackgroundLighter2;
+    color: variables.$debugTextColor;
+    font-size: 1rem;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background-color: rgba(255, 255, 255, 0.12);
+    }
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+  }
+
+  :global(.profilerAction) {
+    margin-left: 0.4rem;
+  }
+
+  :global(.profilerMetricList) {
+    margin: 0.8rem 0;
+    font-size: 1.2rem;
+
+    :global(.profilerMetricListHead) {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.4rem;
+
+      h4 {
+        margin: 0;
+        font-size: 1.2rem;
+        font-weight: 700;
+      }
+    }
+
+    ol {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.2rem 0.6rem;
+
+      &:nth-child(odd) {
+        background-color: rgba(255, 255, 255, 0.04);
+      }
+
+      &:global(.isHidden) label {
+        color: variables.$debugTextColorDark;
+      }
+    }
+
+    label {
+      display: flex;
+      flex: 1 1 auto;
+      align-items: center;
+      gap: 0.6rem;
+      cursor: pointer;
+    }
   }
 
   :global(.profilerNote) {

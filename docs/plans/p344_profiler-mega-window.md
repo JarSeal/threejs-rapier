@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Debug, Performance, UI
 Epic: Profiler (this plan is the base; later profiler plans build on its window, tab host and stats sources)
 Related: _DONE_p345_gpu-memory-and-draw-call-debugger.md (its tab moves in, Phase 6), p240_client-device-capability-sniffer.md (device budgets next to the measured figures), p350_lod-system-research.md (the LOD plans measure their result with it), p354_gpu-driven-culling.md (GPU culling makes the CPU "in view" census an estimate of what the GPU draws, §2.7), docs/templates/todo-plan-prompts.txt (the prodTest follow-up after this plan, §2.4)
@@ -340,7 +340,7 @@ As built:
 - Icons: `gear-fill.svg` and `cubes-wireframe.svg` (Bootstrap Icons 1.11.3 `gear-fill` and
   `boxes`); `profiler-pulse.svg` is a monitor frame with Bootstrap's `activity` pulse.
 
-### Phase 2: Stats sources and the full Overview
+### Phase 2: Stats sources and the full Overview — done
 
 1. `registerStatsSource` registry with refcounted acquire/release. Sources: GPU timer, draw
    counters (`LATE_MAIN` system), physics (read-only, boot flag: "off: enable (reloads)" through
@@ -352,6 +352,44 @@ As built:
 **Exit:** with GPU timing on (WebGPU), TFPS drops below the CPU-only figure in a GPU-heavy scene.
 With the window closed: no GPU timer holder, no probe set, no extra `LATE_MAIN` system, and the
 Raycast tab's switches are as the user left them. In prodTest the Overview also shows draw calls.
+
+As built:
+
+- Sources are held by the tab that shows them, not by the window: the Overview holds the sources
+  of its shown rows while it is mounted (`createStatsSourceHolder`, set in `onRefresh`, released
+  in the `onOpen` cleanup), so hidden rows cost nothing and the Settings tab holds nothing. The
+  frame probe stays window-level (Phase 1). A per-frame source starts from an empty 1 s window on
+  every mount.
+- Registry: the source map is in the public `debug/Profiler.ts` (so code can register before the
+  profiler loads), the refcounts in `Profiler/_dbg__StatsSources.ts` (`_acquireStatsSource`,
+  `_releaseStatsSource`, `_readStatsSource` → `{ value } | { value: null, na }`,
+  `_syncStatsSources`). Availability is re-checked on every acquire, release and read: a held
+  source is acquired once it becomes available (eg. the renderer exists after the window was
+  restored open from LS) and released when it stops being available.
+- Built-in sources in `Profiler/_dbg__ProfilerSources.ts` (ids in `PROFILER_SOURCE`): `gpu.frame`,
+  `render.draw`, `physics.step`, `physics.subSteps`, `physics.objects`, `memory.js`,
+  `memory.gpu`, `rays`, `postFx`, `longTasks`, `scene`. GPU time, draw counters and sub-steps
+  share one `LATE_MAIN` system (`aekProfilerFrameSampler`, order -10000), added with the first of
+  them and removed with the last. Per-frame figures are summarized over the last 1 s
+  (`_dbg__SampleWindow.ts`, preallocated ring).
+- GPU time: WebGPU with `timestamp-query` only (three's WebGL pool can't time nested contexts).
+  The render contexts between two sampler runs are one frame's record (pooled); a record whose
+  batch another resolver took is dropped after 8 frames.
+- Physics sub-steps: no per-frame count existed, so PhysicsAPI got `getPhysicsSubStepTotal()` (a
+  since-boot total, never reset; the sampler diffs it). `getPhysicsObjectCounts()` also counts
+  joints.
+- The physics row's "enable (reloads)" action shows in the debug env only: `loadConfig` applies
+  the boot overrides there only. The PostFX profiler is debug-only too ("debug env only" in
+  prodTest). PostFX GPU = the PostFX passes' own render passes + the composite (not the scene
+  pass).
+- Ray stats use the existing 3 s per-frame average window (`RAY_STATS_WINDOWS`) and the last
+  frame. While the profiler holds them the Raycast tab shows live stats with its checkbox off,
+  and a user turning them on while the profiler holds them has them turned off with the window
+  (no refcount in `Raycast.ts`, as planned).
+- New setting `measureGpu` (Settings → Measuring); `overviewMetrics` defaults to `[]`, which the
+  sanitizer turns into the default rows. The row editor is a CMP list with a delegated click
+  handler. Metric rows can carry `warn` (sub-steps at `maxSubSteps`, long tasks) and an `action`
+  button. New SCSS variable `$debugValueWarn`.
 
 ### Phase 3: Runtime physics step stats
 

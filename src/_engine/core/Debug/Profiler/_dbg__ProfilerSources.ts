@@ -57,6 +57,8 @@ const WINDOW_MS = 1000;
 
 const NO_RENDERER = 'no renderer yet';
 const PHYSICS_OFF = 'physics off';
+/** The physics step source's n/a reason while the boot-time step stats flag is off. */
+export const STEP_STATS_OFF = 'step stats off';
 
 // --- FRAME SAMPLER ---
 // One LATE_MAIN system on the default world (right after the frame's renderScene(), the p345
@@ -378,7 +380,7 @@ export const registerBuiltInStatsSources = (settings: Readonly<ProfilerSettings>
     availability: () => {
       const state = getPhysicsState();
       if (!state.enabled) return PHYSICS_OFF;
-      return state.stepStatsEnabled ? true : 'step stats off';
+      return state.stepStatsEnabled ? true : STEP_STATS_OFF;
     },
     read: () => {
       const stepMs = getLastPhysicsStepDuration();

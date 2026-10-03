@@ -28,7 +28,11 @@ import { updateStatsProfilerEntryPoint } from '../../../debug/Stats';
 import { createTabHost } from '../_dbg__TabHost';
 import { persistDebuggerTabStateValue } from '../_dbg__DebuggerPaneBuilder';
 import { _acquireFrameProbe, _releaseFrameProbe } from './_dbg__FrameProbe';
-import { createProfilerOverviewTabDef } from './_dbg__ProfilerOverview';
+import {
+  createProfilerOverviewTabDef,
+  PROFILER_OVERVIEW_TAB_ID,
+  sanitizeOverviewMetrics,
+} from './_dbg__ProfilerOverview';
 import { registerBuiltInStatsSources } from './_dbg__ProfilerSources';
 import { _syncStatsSources } from './_dbg__StatsSources';
 import {
@@ -46,6 +50,8 @@ const sanitizeSettings = () => {
   if (!(PROFILER_UPDATE_RATES_HZ as readonly number[]).includes(settings.updateRateHz)) {
     settings.updateRateHz = DEFAULT_PROFILER_SETTINGS.updateRateHz;
   }
+  // Also turns the default's empty list into the default rows (always a new array)
+  settings.overviewMetrics = sanitizeOverviewMetrics(settings.overviewMetrics);
   settings.openFromStatsPanels = Boolean(settings.openFromStatsPanels);
   settings.enabledInProdTest = Boolean(settings.enabledInProdTest);
   settings.measureGpu = Boolean(settings.measureGpu);
@@ -73,6 +79,11 @@ const applySetting = (key: keyof ProfilerSettings) => {
     case 'updateRateHz':
       // The Overview reads it on its next mount (it isn't visible next to the Settings tab)
       break;
+    case 'overviewMetrics':
+      // An open Overview (eg. changed through setProfilerSettings) applies it now, otherwise
+      // its next mount does
+      _updateProfilerTab(PROFILER_OVERVIEW_TAB_ID);
+      break;
     case 'measureGpu':
       // A held GPU frame time source is released or acquired right away
       _syncStatsSources();
@@ -89,8 +100,10 @@ const applyAllSettings = () => {
 const settingsTabDef = createProfilerSettingsTabDef({
   settings,
   onChange: applySetting,
+  setSettings: (partial) => _setProfilerSettings(partial),
   onClearLS: () => {
     Object.assign(settings, DEFAULT_PROFILER_SETTINGS);
+    sanitizeSettings();
     applyAllSettings();
     _updateProfilerTab(PROFILER_SETTINGS_TAB_ID);
   },
