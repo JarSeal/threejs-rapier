@@ -10,5 +10,6 @@ yarn-error.log
 docs-api/
 *.blend[0-9]
 *.kra~
-# DRACO decoders, copied from three.js by devTools/copyDracoDecoders.ts
+# DRACO decoders and the Basis transcoder, copied from three.js by devTools/copyDecoders.ts
 src/public/draco/
+src/public/basis/

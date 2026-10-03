@@ -116,7 +116,11 @@ export default defineConfig({
   optimizeDeps: {
     // Deps only the assets worker imports: Vite's dep scan doesn't follow `?worker` imports, so
     // without these, the first dev run re-optimizes when the worker starts and reloads the page
-    include: ['three/addons/loaders/HDRLoader.js'],
+    include: [
+      'three/addons/loaders/HDRLoader.js',
+      'three/addons/loaders/KTX2Loader.js',
+      'three/addons/libs/meshopt_decoder.module.js',
+    ],
   },
   server: {
     fs: {

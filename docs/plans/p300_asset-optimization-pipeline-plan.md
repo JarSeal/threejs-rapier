@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 0 implemented (its WebGPU check pending)
 Category: Assets
 Blocks: p301_terrain-texturing-epic.md (and through it p302–p310: the terrain texture library ships as KTX2, terrain blocks as meshopt GLBs), p347_lod-chain-generation.md (soft: only its build-time Phase 3, which adds a LOD-chain step to this pipeline)
 
@@ -41,8 +41,8 @@ This plan is a hard prerequisite of the terrain texturing epic (p301). A terrain
 - **Imported assets** (`core/Import/*`, `schemas/importedAssetSchema.ts`):
   - `GLTFLoader` is set up with Draco only, in `GLTFSource.ts:12-18` and in the worker (`workers/assets/assetsSwitchGLTF.ts:25-39`). There is no `setMeshoptDecoder` or `setKTX2Loader`.
   - glTF materials are always discarded. `importTextures` registers slot textures as `${id}/${name}` (`GLTFTextures.ts:50-121`). So embedded textures only matter when `importTextures` is on.
-  - Draco decoders are copied from `node_modules/three/examples/jsm/libs/draco/gltf` into the gitignored `src/public/draco/gltf/` by `devTools/copyDracoDecoders.ts`, which runs before `dev`/`build`.
-  - `MeshColliderGeometry.ts:239-244` refuses Draco-compressed geometry for HEIGHTFIELD/TRIMESH colliders.
+  - Draco decoders are copied from `node_modules/three/examples/jsm/libs/draco/gltf` into the gitignored `src/public/draco/gltf/` by `devTools/copyDracoDecoders.ts` (`copyDecoders.ts` since Phase 0), which runs before `dev`/`build`.
+  - `MeshColliderGeometry.ts:75` refuses Draco-compressed geometry for HEIGHTFIELD colliders only. TRIMESH reads positions through the attribute getters, which already de-normalize quantized positions (`:50`).
 - **Where binaries live:** `vite.config.ts` has `root: './src'` and no `publicDir`, so the public dir is `src/public`, served at `/`.
   - `src/public/debugger/assets/` is 287 MB of git-tracked test textures and models (8K HDRs, 8K PNGs, 24 GLBs).
   - There is no `.gitattributes` and Git LFS isn't installed or configured.
@@ -97,7 +97,7 @@ This plan is a hard prerequisite of the terrain texturing epic (p301). A terrain
 
 - Meshopt decodes faster than Draco, and its quantization also shrinks vertex buffers in memory. Draco only shrinks the download.
 - Draco stays available per asset.
-- **Collider sources** (anything with `colliderType` custom props) default to `mesh.quantize: false`. Both the heightfield extraction (`MeshColliderGeometry.ts`) and the trimesh path read positions directly. With `KHR_mesh_quantization`, positions become normalized integers and the dequantization moves into the node transform, which the collider builder doesn't apply. Meshopt without quantization is lossless and safe. See risks.
+- **Collider sources** (anything with `colliderType` custom props) default to `mesh.quantize: false`. With `KHR_mesh_quantization`, positions become integers and the dequantization moves into the node transform (gltfpack writes eg. `translation: [-0.5, -0.5, -0.5]`, `scale: 6.1e-5`). The attribute getters de-normalize, and the collider builder applies the node's scale but not its translation, so TRIMESH/HEIGHTFIELD shapes would be offset. Meshopt without quantization is lossless and safe. Phase 1 tests a quantized collider source rather than assuming. See risks.
 
 ### DD7 — KTX2 textures load on the main thread, through `KTX2Loader`'s own workers
 
@@ -250,6 +250,18 @@ Without a cache, a full encode pass slows builds enough that people skip it.
 
 **Exit:** hand-optimized assets load on WebGPU and on the WebGL2 fallback (`forceWebGL`), with the PNG orientation (flip check) and no console errors.
 
+**Spike outcome (step 3):** works. The worker's own `KTX2Loader` takes the main thread's transcoder path and detected `workerConfig` (`KTX2WorkerSettings` in the LOAD_GLTF request) and starts its nested transcoder workers. Passing the config was not enough on its own: `TextureTransfer.ts` only carried `ImageBitmap`s, so it now also carries a `CompressedTexture`'s mip levels (transferred, rebuilt as a `CompressedTexture` on the main thread). Verified on WebGL2 (SwiftShader) with both the GLTF and texture worker targets on: no fallback.
+
+**As built:**
+
+- Verified headless on WebGL2 only (main thread and worker targets, flip check against the sRGB PNG, `yarn build`). WSL2's headless Chromium can't render WebGPU, so the WebGPU half of the exit is a manual check.
+- Hand encoding used the native gltfpack 1.3 binary (`-c -tc`, `-tu normal`, `-tfy` for standalone textures). The npm `gltfpack` has no BasisU. gltfpack only reads glTF, so a standalone texture was wrapped in a one-triangle glTF and cut back out. The test files are in `src/public/debugger/assets/testOptimized/`; the test scene is `debugScene.scene.ts` (`testDebugScene`).
+- `KTX2.ts` imports `KTX2Loader` on first use (like the meshopt decoder, `MeshoptDecoder.ts`), so apps without KTX2 never download it. The worker imports both statically: the assets worker is an IIFE bundle and can't be code-split.
+- The decoders are set per file from its `extensionsUsed` (`GLTFExtensions.ts`), read from the bytes before GLTFLoader parses.
+- There's no renderer teardown hook, so the KTX2 loader isn't disposed on `deleteRenderer()`: `getKTX2Loader()` replaces it when the renderer has changed, and `disposeKTX2Loader()` is exported.
+- `loadTexture` (sync) and `loadTextures` (batch) refuse `.ktx2` with an error pointing to `loadTextureAsync`: KTX2Loader has no synchronous placeholder.
+- A KTX2 texture's colour space comes from its file (sRGB for colour slots). A PNG loaded without `texOpts.colorSpace` has none, so the two only match with the PNG set to sRGB.
+
 ### Phase 1 — Validate settings (~half a day)
 
 1. Pick 3 representative assets: one terrain layer set (from p303's candidates), one prop GLB, and one problem case (a normal map, or an ORM with sharp channel edges).
@@ -289,17 +301,18 @@ Without a cache, a full encode pass slows builds enough that people skip it.
 
 ## 10. Risks and gotchas
 
-| Risk                                                                         | Mitigation                                                                                                                                |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| ETC1S ruins normal / ORM maps                                                | Per-slot codecs; UASTC is the default for those slots and for terrain layers                                                              |
-| Quantized positions break colliders (HEIGHTFIELD/TRIMESH read raw positions) | `quantize: false` for collider sources (`terrainBlock` profile); the runtime refuses quantized collider geometry with an actionable error |
-| `flipY` can't apply to compressed textures                                   | Encode flipped; Phase 0 visual check against the PNG path                                                                                 |
-| `KTX2Loader` support detection in the asset worker                           | Main-thread fallback (DD7), Phase 0 spike                                                                                                 |
-| Transcode stalls on load                                                     | `KTX2Loader` already uses its own workers; measure on a min-spec device; stagger big batches                                              |
-| KTX-Software missing or old                                                  | Committed outputs plus source fallback in dev; clear error; pinned version                                                                |
-| Encode times grow                                                            | Content-hash cache; slowest-asset report                                                                                                  |
-| Compressed textures can't be read back on the CPU                            | `codec: "none"` per slot; CPU-side data (e.g. height for colliders) comes from geometry, never from textures                              |
-| Asset licensing                                                              | The pipeline doesn't change licenses; terrain sources record theirs in `source.json` (p303)                                               |
+| Risk                                                                                                                          | Mitigation                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ETC1S ruins normal / ORM maps                                                                                                 | Per-slot codecs; UASTC is the default for those slots and for terrain layers                                                                                                                                                       |
+| Quantized positions break colliders (the dequantization offset is in the node transform)                                      | `quantize: false` for collider sources (`terrainBlock` profile); the runtime refuses quantized collider geometry with an actionable error                                                                                          |
+| Quantized UVs: the UV dequantization moves into the glTF material's `KHR_texture_transform`, and glTF materials are discarded | Imported textures carry it (`offset`/`repeat`), so the glTF's own maps are right; any other texture on that geometry samples the wrong UVs. Don't quantize texcoords by default, or bake the transform back into the UVs at import |
+| `flipY` can't apply to compressed textures                                                                                    | Encode flipped; Phase 0 visual check against the PNG path                                                                                                                                                                          |
+| `KTX2Loader` support detection in the asset worker                                                                            | Main-thread fallback (DD7), Phase 0 spike                                                                                                                                                                                          |
+| Transcode stalls on load                                                                                                      | `KTX2Loader` already uses its own workers; measure on a min-spec device; stagger big batches                                                                                                                                       |
+| KTX-Software missing or old                                                                                                   | Committed outputs plus source fallback in dev; clear error; pinned version                                                                                                                                                         |
+| Encode times grow                                                                                                             | Content-hash cache; slowest-asset report                                                                                                                                                                                           |
+| Compressed textures can't be read back on the CPU                                                                             | `codec: "none"` per slot; CPU-side data (e.g. height for colliders) comes from geometry, never from textures                                                                                                                       |
+| Asset licensing                                                                                                               | The pipeline doesn't change licenses; terrain sources record theirs in `source.json` (p303)                                                                                                                                        |
 
 ---
 

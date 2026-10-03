@@ -12,7 +12,12 @@ import { disposeGLTFLeftovers, extractPrimitives } from './GLTFExtract';
 import { loadGLTF, toAbsoluteUrl, validateGLTFFileName } from './GLTFSource';
 import { collectGLTFTextures } from './GLTFTextureCollect';
 import { registerGLTFTextures, type RegisteredGLTFTextures } from './GLTFTextures';
-import { deserializeTexture } from './TextureTransfer';
+import { getKTX2WorkerSettings } from './KTX2';
+import {
+  createTransferredSources,
+  deserializeTexture,
+  releaseTransferableImage,
+} from './TextureTransfer';
 import type { ImportAssetParams, ImportedAssetManifest, ImportedGeometryInfo } from './ImportTypes';
 
 type ImportRecord = {
@@ -149,6 +154,7 @@ const loadInWorker = async (params: ImportAssetParams, id: string): Promise<Load
     meshIndex: params.meshIndex,
     importTextures: Boolean(params.importTextures),
     draco: getDracoWorkerSettings(),
+    ktx2: await getKTX2WorkerSettings(),
   });
   if (response.error !== undefined) return { error: response.error };
 
@@ -159,7 +165,7 @@ const loadInWorker = async (params: ImportAssetParams, id: string): Promise<Load
   }));
 
   // One source per image: textures sharing an image share its source, as GLTFLoader's clones do
-  const sources = response.images.map((image) => new THREE.TextureSource(image));
+  const sources = createTransferredSources(response.images);
   const rebuiltTextures = response.textures.map(({ texture }) =>
     deserializeTexture(texture, sources[texture.imageIndex])
   );
@@ -186,11 +192,13 @@ const loadInWorker = async (params: ImportAssetParams, id: string): Promise<Load
       // disposed, and its image closed unless a registered texture shares it
       const keptSources = new Set<THREE.TextureSource<unknown>>();
       textures?.keep.forEach((texture) => keptSources.add(texture.source));
-      for (const texture of rebuiltTextures) {
-        if (textures?.keep.has(texture)) continue;
+      rebuiltTextures.forEach((texture, i) => {
+        if (textures?.keep.has(texture)) return;
         texture.dispose();
-        if (!keptSources.has(texture.source)) (texture.source.data as ImageBitmap).close();
-      }
+        if (!keptSources.has(texture.source)) {
+          releaseTransferableImage(response.images[response.textures[i].texture.imageIndex]);
+        }
+      });
     },
   };
 };
