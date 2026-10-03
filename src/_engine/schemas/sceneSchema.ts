@@ -8,6 +8,7 @@ import { MaterialAssetSchema } from './materialSchema';
 import { PostFxAssetSchema } from './postFxSchema';
 import { SkyBoxAssetSchema } from './skyBoxSchema';
 import { ColorJSONSchema } from './_helperSchemas';
+import { SceneSpatialDomainsSchema } from './spatialDomainSchema';
 
 const AssetReferenceOrInline = z.union([z.string(), z.record(z.string(), z.unknown())]);
 
@@ -41,6 +42,8 @@ const SceneOverridesSchema = z.object({
   postFx: z.array(z.union([z.string(), PostFxAssetSchema])).optional(),
   /** Whether the scene's PostFX chain starts switched on. Default true when `postFx` is non-empty. */
   postFxEnabled: z.boolean().optional(),
+  /** Spatial domains this scene registers for itself, before any of its entities join one; dropped on its exit (`DEFAULT`: partial, merged over its world settings). */
+  spatialDomains: SceneSpatialDomainsSchema.optional(),
 });
 
 export type SceneOverrides = z.infer<typeof SceneOverridesSchema>;

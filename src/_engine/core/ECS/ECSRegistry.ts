@@ -43,7 +43,8 @@ export enum CoreComponentType {
   OBJECT_CULLING_ENABLED = 'CORE_OBJECT_CULLING_ENABLED', // opt-in, user-authored
   TAG_OBJECT_CULLED = 'CORE_TAG_OBJECT_CULLED', // runtime-only, current culled state
   // Spatial index (docs/plans/_DONE_p050_spatial-index.md)
-  SPATIAL_INDEXED = 'CORE_SPATIAL_INDEXED', // opt-in, membership in the spatial index
+  SPATIAL_INDEXED = 'CORE_SPATIAL_INDEXED', // opt-in, membership in the DEFAULT spatial domain
+  SPATIAL_DOMAINS = 'CORE_SPATIAL_DOMAINS', // runtime-only, membership in the other spatial domains
   // Debug
   DEBUG_DATA = 'CORE_DEBUG_DATA',
   DEBUG_LIGHT_HELPER = 'CORE_DEBUG_LIGHT_HELPER',

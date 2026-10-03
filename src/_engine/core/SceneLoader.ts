@@ -60,6 +60,10 @@ import { getImportedAsset, importAssetAsync, retagImportedAsset } from './Import
 import type { ImportedAssetManifest } from './Import/ImportTypes';
 import { retagAssetOwner, setAssetOwnerScene } from './Assets/AssetOwners';
 import { releaseSceneOwnedAssets } from './Assets/SceneAssetRelease';
+import {
+  registerSceneSpatialDomains,
+  releaseSceneSpatialDomains,
+} from './Spatial/SpatialIndexSystem';
 
 export type UpdateLoaderStatusFn = (
   loader: SceneLoader,
@@ -539,6 +543,14 @@ export const loadScene = async (loadSceneProps: LoadSceneProps) => {
         void ecsWorld.getEntitiesWith(ComponentType.DEBUG_TAG_IS_DEBUG_CAMERA).next().value;
       }
       ecsWorld.clearNonPersistent();
+      // After the delete, so a domain going back to its world settings re-inserts only the
+      // persistent members, and before anything of the next scene joins a domain
+      releaseSceneSpatialDomains(ecsWorld, prevSceneId);
+      // Before the next scene's assets, code and JSON objects join anything, so each grid is
+      // created once, at the scene's own settings
+      if (sceneData.spatialDomains?.length) {
+        registerSceneSpatialDomains(ecsWorld, sceneId, sceneData.spatialDomains);
+      }
       if (loadSceneProps.deletePrevScene && prevSceneId && prevSceneId !== sceneId) {
         releaseSceneOwnedAssets(prevSceneId);
       }

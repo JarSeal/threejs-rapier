@@ -1,5 +1,6 @@
 import { IS_DEBUG_ENV } from '../Config';
 import { lwarn } from '../../utils/Logger';
+import { CELL_AXIS_OFFSET, cellBounds, isCellInRange, packCellKey, worldToCell } from './CellKey';
 
 /**
  * Standalone, instantiable "what's near this point/volume" primitive.
@@ -34,22 +35,6 @@ export interface SpatialGridStats {
   maxIndexedRadius: number;
 }
 
-// Packed with multiplication rather than bitwise ops, so the key stays a
-// JS safe integer (<= 2^53) instead of silently wrapping at 32 bits — see
-// docs/plans/_DONE_p050_spatial-index.md §2.4. 17 bits/axis is the largest budget
-// whose cube fits under 2^53.
-const CELL_AXIS_BITS = 17;
-const CELL_AXIS_SIZE = 1 << CELL_AXIS_BITS; // 131072 cells per axis
-const CELL_AXIS_OFFSET = CELL_AXIS_SIZE >> 1; // centers the range on the origin
-const CELL_AXIS_MIN = -CELL_AXIS_OFFSET;
-const CELL_AXIS_MAX = CELL_AXIS_OFFSET - 1;
-
-function worldToCell(coord: number, invCellSize: number): number {
-  // Math.floor, not `| 0`/Math.trunc — truncation rounds toward zero and
-  // makes the cell straddling the origin double-width on each axis (§2.4).
-  return Math.floor(coord * invCellSize);
-}
-
 export class SpatialGrid {
   private readonly _cellSize: number;
   private readonly invCellSize: number;
@@ -67,6 +52,11 @@ export class SpatialGrid {
   private readonly radius: Float32Array;
   private readonly isOversized: Uint8Array;
   private readonly oversizedSlots = new Set<number>();
+  /**
+   * Largest non-oversized radius, which queries expand by. Exact after `rebuild()`; between
+   * rebuilds, add/remove/updateRadius only ever raise it (O(1)), so it can overestimate (more
+   * candidates) but never underestimate (missed candidates).
+   */
   private maxIndexedRadius = 0;
 
   /**
@@ -112,18 +102,7 @@ export class SpatialGrid {
     const out = this.cellBoundsOut!;
     const i = cellIndex * 6;
     if (i + 6 > out.length) return;
-    // Inverse of _packCellKey. CELL_AXIS_SIZE is a power of two, so these divisions are
-    // exact on the (safe-integer) key.
-    const cx = Math.floor(key / (CELL_AXIS_SIZE * CELL_AXIS_SIZE)) - CELL_AXIS_OFFSET;
-    const cy = (Math.floor(key / CELL_AXIS_SIZE) % CELL_AXIS_SIZE) - CELL_AXIS_OFFSET;
-    const cz = (key % CELL_AXIS_SIZE) - CELL_AXIS_OFFSET;
-    const s = this._cellSize;
-    out[i] = cx * s;
-    out[i + 1] = cy * s;
-    out[i + 2] = cz * s;
-    out[i + 3] = (cx + 1) * s;
-    out[i + 4] = (cy + 1) * s;
-    out[i + 5] = (cz + 1) * s;
+    cellBounds(key, this._cellSize, out, i);
   };
 
   // Bound once so getOversizedBoundsInto never allocates a closure per call.
@@ -183,7 +162,6 @@ export class SpatialGrid {
     this.posZ[slot] = z;
     this.lastCell[slot] = NaN;
     this._setRadius(slot, radius);
-    this._recomputeMaxIndexedRadius();
   }
 
   removeMember(entityId: number): void {
@@ -214,7 +192,9 @@ export class SpatialGrid {
     this.slotToEntity[lastSlot] = -1;
     this.entityToSlot.delete(entityId);
     this.liveCount--;
-    this._recomputeMaxIndexedRadius();
+    // maxIndexedRadius may now overestimate; the next rebuild() makes it exact. Until then the
+    // cells still hold the old slots: queries skip the emptied one, but the member moved into
+    // `slot` shows up at the removed member's cell instead of its own.
   }
 
   updatePosition(entityId: number, x: number, y: number, z: number): void {
@@ -225,16 +205,30 @@ export class SpatialGrid {
     this.posZ[slot] = z;
   }
 
-  /** Radii change rarely (§4) — this is not a hot-path call. */
+  /** O(1); a shrinking radius leaves `maxIndexedRadius` high until the next rebuild(). */
   updateRadius(entityId: number, radius: number): void {
     const slot = this.entityToSlot.get(entityId);
-    if (slot === undefined) return;
+    // Unchanged (as stored, in float32): already counted in maxIndexedRadius and the tiers
+    if (slot === undefined || this.radius[slot] === Math.fround(radius)) return;
     this._setRadius(slot, radius);
-    this._recomputeMaxIndexedRadius();
+  }
+
+  /** The member's radius as last set, or undefined for a non-member. */
+  getRadius(entityId: number): number | undefined {
+    const slot = this.entityToSlot.get(entityId);
+    return slot === undefined ? undefined : this.radius[slot];
   }
 
   has(entityId: number): boolean {
     return this.entityToSlot.has(entityId);
+  }
+
+  /**
+   * The member at `index` (`0 <= index < memberCount`), for iterating the members without an
+   * allocation. The order is unspecified, and `removeMember` changes it.
+   */
+  memberAt(index: number): number {
+    return this.slotToEntity[index];
   }
 
   get memberCount(): number {
@@ -297,28 +291,14 @@ export class SpatialGrid {
     const oversized = radius > this.oversizedRadiusThreshold;
     this.isOversized[slot] = oversized ? 1 : 0;
     if (oversized) this.oversizedSlots.add(slot);
-    else this.oversizedSlots.delete(slot);
-  }
-
-  private _recomputeMaxIndexedRadius(): void {
-    let max = 0;
-    for (let slot = 0; slot < this.liveCount; slot++) {
-      if (!this.isOversized[slot] && this.radius[slot] > max) max = this.radius[slot];
+    else {
+      this.oversizedSlots.delete(slot);
+      if (radius > this.maxIndexedRadius) this.maxIndexedRadius = radius;
     }
-    this.maxIndexedRadius = max;
   }
 
   private _packCellKey(cx: number, cy: number, cz: number): number {
-    if (
-      IS_DEBUG_ENV &&
-      !this.hasWarnedOutOfRange &&
-      (cx < CELL_AXIS_MIN ||
-        cx > CELL_AXIS_MAX ||
-        cy < CELL_AXIS_MIN ||
-        cy > CELL_AXIS_MAX ||
-        cz < CELL_AXIS_MIN ||
-        cz > CELL_AXIS_MAX)
-    ) {
+    if (IS_DEBUG_ENV && !this.hasWarnedOutOfRange && !isCellInRange(cx, cy, cz)) {
       this.hasWarnedOutOfRange = true;
       lwarn(
         `SpatialGrid: cell coordinate (${cx}, ${cy}, ${cz}) is outside the packable range ` +
@@ -326,20 +306,19 @@ export class SpatialGrid {
           `silently misbucket. Increase cellSize or split into a per-domain grid (plan §5.1).`
       );
     }
-    return (
-      (cx + CELL_AXIS_OFFSET) * CELL_AXIS_SIZE * CELL_AXIS_SIZE +
-      (cy + CELL_AXIS_OFFSET) * CELL_AXIS_SIZE +
-      (cz + CELL_AXIS_OFFSET)
-    );
+    return packCellKey(cx, cy, cz);
   }
 
-  /** Rebuilds the CSR buckets from current member positions. Call once per frame for a dynamic grid (§8). */
+  /** Rebuilds the CSR buckets from current member positions and makes `maxIndexedRadius` exact. Call once per frame for a dynamic grid (§8). */
   rebuild(): void {
     this.compactCount = 0;
+    let maxRadius = 0;
     for (let slot = 0; slot < this.liveCount; slot++) {
       if (this.isOversized[slot]) continue;
       this.memberSlotByCompactIndex[this.compactCount++] = slot;
+      if (this.radius[slot] > maxRadius) maxRadius = this.radius[slot];
     }
+    this.maxIndexedRadius = maxRadius;
 
     this.cellKeyToIndex.clear();
     let nextCellIndex = 0;
@@ -451,7 +430,9 @@ export class SpatialGrid {
             const slot = this.items[k];
             if (this.queryStamp[slot] === stamp) continue;
             this.queryStamp[slot] = stamp;
-            visit(this.slotToEntity[slot]);
+            const entityId = this.slotToEntity[slot];
+            // A slot emptied by removeMember since the last rebuild (-1)
+            if (entityId >= 0) visit(entityId);
           }
         }
       }

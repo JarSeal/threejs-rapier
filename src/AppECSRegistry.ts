@@ -9,7 +9,7 @@ import {
 import {
   InstancedMeshPoolComponentData,
   InstancedMeshPoolComponentType,
-} from './toolkit/ecs/InstancedMeshPool';
+} from './toolkit/ecs/InstancedMeshPoolTypes';
 
 /**
  * App and toolkit components (app specific)

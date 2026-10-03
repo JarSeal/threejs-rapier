@@ -17,6 +17,7 @@ import type { SkyBoxDef } from './SkyBox/SkyBoxTypes';
 import generatedAppData from '../generatedAppData.json';
 import { CameraProps } from '../schemas/cameraSchema';
 import { CoreEntityOpts } from '../schemas/_helperSchemas';
+import type { SceneSpatialDomainEntry } from '../schemas/spatialDomainSchema';
 import { MeshProps } from './MeshManager';
 import { deleteEntity } from '../utils/ECSHelpers';
 import { getECSWorld, getEntityIdByAppId } from './ECS';
@@ -51,6 +52,8 @@ export type SceneData = {
   /** Ordered PostFX pass chain (array order is execution order). */
   postFx?: (PostFxPassProps | string)[];
   postFxEnabled?: boolean;
+  /** Registered for this scene by the loader, see registerSceneSpatialDomains (SpatialIndexSystem.ts). */
+  spatialDomains?: SceneSpatialDomainEntry[];
 };
 
 const scenes: { [id: string]: THREE.Group } = {};

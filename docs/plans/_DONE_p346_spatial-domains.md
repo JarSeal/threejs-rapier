@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: implemented (Phases 1-3)
 Category: ECS, Spatial
 Epic: p350_lod-system-research.md (Tier 0)
 Blocks: p353_macro-streaming-grid.md (Phase 1: shared cell maths; Phase 4: per-cell entity lookup)
@@ -170,7 +170,7 @@ domain id (the old flat `cellSize` is read as `DEFAULT`'s).
 
 ## 4. Phases
 
-### Phase 1 — Extract and fix, no behaviour change
+### Phase 1 — Extract and fix, no behaviour change — done
 
 1. `CellKey.ts` (§3.4).
 2. `getRadius`, `maxIndexedRadius` recomputed once per rebuild (§3.3, grid side).
@@ -178,7 +178,21 @@ domain id (the old flat `cellSize` is read as `DEFAULT`'s).
 **Exit:** the oracle shows no mismatches in `debugScene` and `largeWorld`; the "Spatial index"
 tab's rebuild time is the same or lower.
 
-### Phase 2 — Domains and membership
+As built:
+
+- No `setRadiusNoRecompute`. `addMember`, `removeMember` and `updateRadius` are all O(1) now:
+  they only ever raise `maxIndexedRadius` (a conservative bound, so queries between rebuilds get
+  extra candidates, never missed ones), and `rebuild()` makes it exact in its first loop. Phase 2's
+  rebuild calls plain `updateRadius`. This also removes the O(n²) re-insert in
+  `setSpatialGridCellSize`, which called the O(n) recompute on every `addMember`.
+- `CellKey.ts` also exports `isCellInRange` (the grid keeps its one-time out-of-range warning around
+  the now-pure `packCellKey`), `unpackCellKey` writes into an `out` object, and `cellBounds` takes
+  an `offset` (the grid writes 6 floats per cell into one array).
+- `debugScene` (`testDebugScene`) has no meshes or indexed members, so it can't exercise the
+  oracle. `largeWorld` (26 members) showed no mismatches, also on 2000 direct random
+  `validateSpatialGridQuery` calls.
+
+### Phase 2 — Domains and membership — done
 
 1. `registerSpatialDomain`, `getSpatialDomain`, `DYNAMIC` policy, `DEFAULT` routed through the
    registry (§3.1).
@@ -190,13 +204,72 @@ tab's rebuild time is the same or lower.
 **Exit:** `largeWorld` registers a `FOLIAGE` domain for its tree pool. The tab shows both domains,
 and light culling (on `DEFAULT`) is unchanged.
 
-### Phase 3 — Static and manual policies
+As built:
+
+- `SpatialUpdatePolicy` was only `'DYNAMIC'` (Phase 3 widened it). `registerSpatialDomain` returns
+  nothing, and `getSpatialDomain` never creates a domain (`getSpatialGrid` still creates
+  `DEFAULT` lazily). An app can register `DEFAULT` itself before its first member to set its
+  settings. Extra getters for the tab: `getSpatialDomainIds`, `getSpatialDomainOptions`.
+- The rebuild loops over each grid's own members (`SpatialGrid.memberAt(index)`), not over the
+  membership components.
+- Mask bits are 0-30; a 32nd non-default domain throws. Re-registering with a smaller
+  `maxMembers` drops the members past it from a non-default domain (bit cleared) and throws for
+  `DEFAULT` before changing anything. `SPATIAL_DOMAINS` also has an `onRemoveComponent` hook, so
+  removing it directly leaves every domain in the mask. `joinSpatialDomain`/`leaveSpatialDomain`/
+  `isInSpatialDomain` with `DEFAULT` add, remove or check `SPATIAL_INDEXED`.
+- Radii: the mesh and pool providers return `|center| + radius` of the geometry's bounding
+  sphere (`getConservativeGeometryRadius`), so off-centre geometry is covered (the `largeWorld`
+  crate stack: 1.885 → 2.667). The local radius is cached per domain (`localRadius`, scaled
+  members only), not in the grid. `SpatialGrid.updateRadius` returns early for an unchanged
+  radius. `refreshSpatialRadius(entityId)` re-reads a member's radius after what its provider
+  measures changed; the debug Lights tab's distance edits call it.
+- The pool's component keys and data moved to `toolkit/ecs/InstancedMeshPoolTypes.ts` (which
+  `AppECSRegistry.ts` imports), so `InstancedMeshPool.ts` left the `ECSCoreComponents ↔
+  AppECSRegistry` import cycle and can import `SpatialIndexSystem`. It re-exports the types.
+- The oracle is per domain (`setSpatialGridOracleEnabled(world, enabled, domainId?)` and so on,
+  plus `getOracleCheckedQueryCount`). While on, it also runs 8 probe queries near random members
+  every frame, from the system loop (not the rebuild), so a domain nobody queries yet, and a
+  Phase 3 `STATIC` domain between rebuilds, is checked too. It logs the first 10 mismatches.
+- Tab settings are `{ selectedDomain, domains: { [id]: { cellSize?, showCells, cellsColor,
+  showOversized, oversizedColor } } }`; the old flat keys migrate into `DEFAULT` (its cell size
+  only when it wasn't 20). A cell size set in the tab is a debug override
+  (`setSpatialDomainOptionsOverride`) applied on every registration, so it holds when the app
+  registers the domain again; "Reset to the app's cell size" re-registers with the settings the
+  app asked for (`reapplySpatialDomainOptions`). The grid is re-created only on a finished edit,
+  not per drag tick. Non-default domains' overlay colors come from a palette by id.
+
+### Phase 3 — Static and manual policies — done
 
 1. `STATIC` and `MANUAL` (§3.1), `invalidateSpatialDomain`, `rebuildSpatialDomain`.
 2. Rebuild time per domain in the tab, and the frames each domain actually rebuilt.
 
 **Exit:** `largeWorld`'s `FOLIAGE` domain as `STATIC` rebuilds once at load and then never, and the
 oracle stays clean.
+
+As built:
+
+- A domain has two flags: `needsRebuild` (a member joined, left or got a new radius through
+  `refreshSpatialRadius`) and `needsRefresh` (`invalidateSpatialDomain`). The rebuild system
+  refreshes and rebuilds `DYNAMIC` every frame and any domain with `needsRefresh`, and rebuilds
+  `STATIC` (without a refresh) on `needsRebuild`. A radius refresh counts because it can move a
+  member between the oversized tier and the cells.
+- `MANUAL` is never rebuilt on a join or leave. `SpatialGrid.removeMember` swap-removes slots, so
+  until the next rebuild the cells still hold the old slots: the member moved into the freed slot
+  shows up at the removed member's cell instead of its own, and the emptied last slot is `-1`. The
+  grid's query loop now skips `-1` slots (this also covers `DEFAULT` between a removal and that
+  frame's rebuild, which could hand `-1` to a visitor before). A `MANUAL` owner rebuilds before
+  querying, as p353 §4.3 does.
+- `invalidateSpatialDomain` works on every policy: it refreshes and rebuilds at the next frame (a
+  no-op change for `DYNAMIC`). `rebuildSpatialDomain` does the same immediately. Both warn in the
+  debug env for an unregistered domain.
+- Debug stats: `getSpatialDomainRebuildStats(world, id)` (`lastRebuildMs`, `rebuildCount`,
+  `frameCount` since registration, `framesSinceRebuild`), where a frame is one run of the rebuild
+  system in that world, counted in the debug env only. The tab shows "Rebuilds" and "Last
+  rebuilt" for the selected domain, and an "All domains" summary, two lines per domain (the value
+  column fits about 20 characters).
+- Verified in `largeWorld` (WebGL fallback): `FOLIAGE` rebuilt once per load and not in the 20
+  frames after, once per `invalidateSpatialDomain`, and once when the scene exit emptied it;
+  `DEFAULT` rebuilt every frame. No oracle mismatches in either domain (160 and 360 queries).
 
 ## 5. Not in this plan
 

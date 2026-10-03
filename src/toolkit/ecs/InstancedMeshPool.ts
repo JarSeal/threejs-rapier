@@ -6,35 +6,40 @@ import { ECSSystemStage } from '../../AppECSRegistry';
 import { lwarn } from '../../_engine/utils/Logger';
 import type { CoreEntityOpts } from '../../_engine/schemas/_helperSchemas';
 import type { ScatterPlacement } from '../geometry/scatterOnSurface';
+import {
+  DEFAULT_SPATIAL_DOMAIN,
+  getConservativeGeometryRadius,
+  getSpatialDomain,
+  joinSpatialDomain,
+  registerSpatialRadiusProvider,
+} from '../../_engine/core/Spatial/SpatialIndexSystem';
+import {
+  InstancedMeshPoolComponentType,
+  type InstancedMeshSlotData,
+} from './InstancedMeshPoolTypes';
 
 // --- src/toolkit/ecs/InstancedMeshPool.ts ---
 //
-// Only type-only imports from `_engine/core/ECS` here (never `getECSWorld`/`getRootScene` as
-// values) — this file is imported by `AppECSRegistry.ts` (to register `InstancedMeshPoolComponentType`,
-// same seam `HoverEffect.ts` uses for `HoverToolComponentType`), which is itself imported by
-// `ECS/ECSCoreComponents.ts`, which `ECS.ts`/`Scene.ts` import — a value import of either here
-// would close that loop. `world`/`scene` are always passed in by the caller instead of resolved
-// internally, and the app-specific component type is accessed via its own local enum (cast
-// `as any` at the ECS-world call sites) rather than the merged `ComponentType`, exactly like
-// `HoverEffect.ts` does for the same reason.
+// The component keys and data live in InstancedMeshPoolTypes.ts, which `AppECSRegistry.ts`
+// imports, so this file stays out of the ECSCoreComponents ↔ AppECSRegistry import cycle. The
+// component type is accessed via its own local enum (cast `as any` at the ECS-world call sites)
+// rather than the merged `ComponentType`, like `HoverEffect.ts` does.
 
-/** Internal Key (Values) */
-export enum InstancedMeshPoolComponentType {
-  INSTANCED_MESH_SLOT = 'TOOLKIT_INSTANCED_MESH_SLOT',
-}
+export * from './InstancedMeshPoolTypes';
 
-/** Internal Data Shape (Types) */
-export interface InstancedMeshSlotData {
-  mesh: THREE.InstancedMesh;
-  index: number;
-  /** Last `Transform.version` baked into `mesh`'s instance matrix — skips the write once a
-   * (typically static, e.g. foliage) instance's transform stops changing. */
-  _lastVersion: number;
-}
-
-export interface InstancedMeshPoolComponentData {
-  [InstancedMeshPoolComponentType.INSTANCED_MESH_SLOT]: InstancedMeshSlotData;
-}
+// A pool instance's spatial radius (docs/plans/_DONE_p346_spatial-domains.md §3.3): the pool
+// geometry's, scaled by the instance's Transform. Registered here so the engine never imports
+// the toolkit.
+registerSpatialRadiusProvider(
+  InstancedMeshPoolComponentType.INSTANCED_MESH_SLOT as any,
+  (entityId, world) => {
+    const slot = world.getComponent(
+      entityId,
+      InstancedMeshPoolComponentType.INSTANCED_MESH_SLOT as any
+    ) as InstancedMeshSlotData | undefined;
+    return slot ? getConservativeGeometryRadius(slot.mesh.geometry) : undefined;
+  }
+);
 
 export interface CreateInstancedMeshPoolOptions {
   /** Used to create one dedicated ECS entity that owns `mesh` itself (distinct from the
@@ -49,6 +54,8 @@ export interface CreateInstancedMeshPoolOptions {
   receiveShadow?: boolean;
   /** Passed to the mesh's own owning entity (e.g. to mark a long-lived pool `persistent`). */
   entityOpts?: CoreEntityOpts;
+  /** A registered spatial domain `spawn()` joins every instance to (docs/plans/_DONE_p346_spatial-domains.md). Default: none. */
+  spatialDomain?: string;
 }
 
 export interface InstancedMeshPool {
@@ -105,6 +112,20 @@ export const createInstancedMeshPool = (
   const spawn: InstancedMeshPool['spawn'] = (world, placements, entityOpts) => {
     const entityIds: number[] = [];
 
+    let spatialDomain = opts.spatialDomain;
+    if (
+      spatialDomain &&
+      spatialDomain !== DEFAULT_SPATIAL_DOMAIN &&
+      !getSpatialDomain(world, spatialDomain)
+    ) {
+      // Checked once here, or joinSpatialDomain would warn for every instance
+      lwarn(
+        `InstancedMeshPool: spatial domain '${spatialDomain}' isn't registered — the instances ` +
+          `aren't indexed (register it with registerSpatialDomain before spawning).`
+      );
+      spatialDomain = undefined;
+    }
+
     for (const placement of placements) {
       if (nextIndex >= maxInstances) {
         lwarn(
@@ -137,6 +158,8 @@ export const createInstancedMeshPool = (
         _lastVersion: transform.version,
       });
       mesh.count = nextIndex;
+      // After the slot, which its radius provider reads
+      if (spatialDomain) joinSpatialDomain(entityId, spatialDomain, world);
 
       entityIds.push(entityId);
     }

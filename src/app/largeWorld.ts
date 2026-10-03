@@ -19,6 +19,7 @@ import { generateTerrain } from '../toolkit/geometry/generateTerrain';
 import { generateBushGeometry, generateTreeGeometry } from '../toolkit/geometry/generateFoliage';
 import { scatterOnSurface } from '../toolkit/geometry/scatterOnSurface';
 import { createInstancedMeshPool } from '../toolkit/ecs/InstancedMeshPool';
+import { registerSpatialDomain } from '../_engine/core/Spatial/SpatialIndexSystem';
 
 /**
  * Phase 4/5 (docs/plans/p090_large-ecs-test-world-scene.md §3): terrain + static overview
@@ -85,6 +86,17 @@ export const scene = async () => {
     type: 'PHONG',
     params: { color: '#2f5d34', flatShading: true },
   });
+  // The trees get their own spatial domain (docs/plans/_DONE_p346_spatial-domains.md), apart from
+  // DEFAULT's light culling members. The trees never move, so it's rebuilt only when they're
+  // spawned or deleted. It belongs to this scene, so leaving it unregisters the domain
+  // (docs/plans/_DONE_p349_scene-scoped-spatial-domains.md).
+  registerSpatialDomain(ecsWorld, {
+    id: 'FOLIAGE',
+    cellSize: 16,
+    maxMembers: treePlacements.length,
+    update: 'STATIC',
+    sceneId: 'largeWorld',
+  });
   const treePool = createInstancedMeshPool({
     world: ecsWorld,
     geometry: treeGeometry,
@@ -92,6 +104,7 @@ export const scene = async () => {
     maxInstances: treePlacements.length,
     castShadow: true,
     receiveShadow: true,
+    spatialDomain: 'FOLIAGE',
   });
   rootScene.add(treePool.mesh);
   treePool.spawn(ecsWorld, treePlacements);
