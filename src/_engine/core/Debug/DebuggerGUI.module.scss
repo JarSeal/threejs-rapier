@@ -1,5 +1,6 @@
 @use 'sass:color';
 @use '../../styles/variables.scss';
+@use './debugTabButtons' as tabButtons;
 
 .debuggerGUI {
   position: fixed;
@@ -70,26 +71,11 @@
 }
 
 .debugDrawerTabButton {
-  @include variables.nakedButton;
-  margin-right: -0.1rem;
-  margin-bottom: -0.1rem;
-  padding: 0.6rem 1.2rem 0.4rem;
-  background-color: variables.$debugTabButton;
-  border: 0.1rem solid variables.$debugTextColor;
-  color: variables.$debugTextColor;
-  user-select: none;
-  font-size: 1rem;
-  transition: background-color 0.2s ease-in-out;
-
-  &:hover:not(.debugDrawerTabButton_selected) {
-    background-color: rgba(255, 255, 255, 0.25);
-  }
+  @include tabButtons.tabButton(debugDrawerTabButton_selected);
 }
 
 .debugDrawerTabButton_selected {
-  background-color: variables.$debugTextColor;
-  border: 0.1rem solid transparent;
-  color: variables.$black;
+  @include tabButtons.tabButtonSelected;
 }
 
 // Scene tabs (`sceneId`, removed on their scene's exit): a tinted, dashed button with a corner dot

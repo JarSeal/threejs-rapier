@@ -1,10 +1,10 @@
 import { CMP, TCMP } from '../../utils/CMP';
 import styles from './DebuggerGUI.module.scss';
-import { lsGetItem, lsRemoveItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
+import { lsGetItem, lsSetItem } from '../../utils/LocalAndSessionStorage';
 import { getWindowSize } from '../../utils/Window';
 import { getHUDRootCMP } from '../../core/HUD';
 import { DEFAULT_DEBUG_DRAWER_TAB_ORDER, getConfig, isDebugEnvironment } from '../../core/Config';
-import { lerror, lwarn } from '../../utils/Logger';
+import { lwarn } from '../../utils/Logger';
 import {
   type DebugGUIOpts,
   type AnyDebuggerTabDef,
@@ -12,9 +12,8 @@ import {
 } from '../../debug/DebuggerGUI';
 import { createDebuggerSceneLoader } from './_dbg__DebuggerSceneLoader';
 import { getSvgIcon } from '../UI/icons/SvgIcon';
-import { createClearTabLSButton, lsKeyHasData } from './_dbg__ClearLSButtons';
-import { _buildDebuggerPane, persistDebuggerTabStateValue } from './_dbg__DebuggerPaneBuilder';
-import { _refreshDebuggerLists } from './_dbg__DebuggerList';
+import { persistDebuggerTabStateValue } from './_dbg__DebuggerPaneBuilder';
+import { createTabHost } from './_dbg__TabHost';
 import { doesSceneExist, getCurrentSceneId, registerOnAllSceneExits } from '../Scene';
 
 export { _debuggerListCMP } from './_dbg__DebuggerList';
@@ -76,16 +75,18 @@ type TabEntry = { def: AnyDebuggerTabDef; button: TCMP | null };
 // registration position for the ordering tie-break.
 const tabs = new Map<string, TabEntry>();
 
-/** The tab whose content is currently in the drawer (drawerState.currentTabId is only the saved
- * preference, and it can point to a tab that is not registered yet). */
-type MountedTab = {
-  id: string;
-  /** Refresh function of each content section. */
-  sectionRefreshers: (() => void)[];
-  onOpenCleanup: (() => void) | null;
-  intervalId: ReturnType<typeof setInterval> | null;
-};
-let mountedTab: MountedTab | null = null;
+/** The mounted tab's lifecycle (drawerState.currentTabId is only the saved preference, and it can
+ * point to a tab that is not registered yet). */
+const host = createTabHost({
+  getContainer: () => tabsContainerWrapper,
+  isVisible: () => Boolean(drawerCMP) && drawerState.isOpen,
+  onMount: (def) => {
+    for (const other of tabs.values()) {
+      other.button?.updateClass(styles.debugDrawerTabButton_selected, 'remove');
+    }
+    tabs.get(def.id)?.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
+  },
+});
 
 const getTabSortValue = (def: AnyDebuggerTabDef, tabOrder: string[]) => {
   if (def.orderNr !== undefined) return def.orderNr;
@@ -127,137 +128,11 @@ const createTabMenuButtons = () => {
       attr: tooltip ? { title: tooltip } : undefined,
       onClick: (_, cmp) => {
         if (cmp.elem.classList.contains(styles.debugDrawerTabButton_selected)) return;
-        mountTab(entry);
+        host.mount(entry.def);
         saveDrawerState({ currentTabId: def.id, currentScrollPos: 0 });
       },
     });
   }
-};
-
-/** Builds a tab: container with the heading row, then the content sections. */
-const buildTabContent = (def: AnyDebuggerTabDef) => {
-  const container = CMP({ id: `debuggerPane-${def.id}`, class: styles.childContainer });
-
-  const headingRow = container.add({ class: 'debuggerTabHeadingRow' });
-  const icon = getSvgIcon(def.icon);
-  headingRow.add({ html: () => `<h3>${icon} ${def.title}</h3>`, class: 'debuggerTabHeading' });
-  const lsKey = def.lsKey;
-  if (def.clearLSButton ?? Boolean(lsKey)) {
-    headingRow.add(
-      createClearTabLSButton({
-        hasData: () => (lsKey ? lsKeyHasData(lsKey) : false),
-        onClear: () => {
-          if (!lsKey) return;
-          lsRemoveItem(lsKey);
-          def.onClearLS?.();
-        },
-        watchKey: lsKey,
-      })
-    );
-  }
-  const headerButtons = def.headerButtons?.() || [];
-  for (let i = 0; i < headerButtons.length; i++) headingRow.add(headerButtons[i]);
-
-  runOnRefresh(def);
-  const sections = def.content();
-  const sectionRefreshers: (() => void)[] = [];
-  for (let i = 0; i < sections.length; i++) {
-    const section = sections[i];
-    if ('isCmp' in section) {
-      container.add(section);
-      // Only a dynamic template has anything to refresh (a static CMP is left alone), and it is
-      // only re-rendered when its html changed (a re-render replaces the element: hover, focus)
-      const html = section.props?.html;
-      if (typeof html === 'function') {
-        let lastHtml = html(section);
-        sectionRefreshers.push(() => {
-          const nextHtml = html(section);
-          if (nextHtml === lastHtml) return;
-          lastHtml = nextHtml;
-          section.update();
-        });
-      }
-      continue;
-    }
-    const built = _buildDebuggerPane(def, section);
-    container.add(built.cmp);
-    sectionRefreshers.push(built.refresh);
-  }
-
-  return { container, sectionRefreshers };
-};
-
-const runOnRefresh = (def: AnyDebuggerTabDef) => {
-  try {
-    def.onRefresh?.();
-  } catch (err) {
-    lerror(`Debugger tab "${def.id}" onRefresh failed`, err);
-  }
-};
-
-const startTabInterval = () => {
-  if (!mountedTab || mountedTab.intervalId !== null || !drawerState.isOpen) return;
-  const entry = tabs.get(mountedTab.id);
-  if (!entry?.def.refreshIntervalMs) return;
-  const id = mountedTab.id;
-  mountedTab.intervalId = setInterval(() => _updateDebuggerTab(id), entry.def.refreshIntervalMs);
-};
-
-const stopTabInterval = () => {
-  if (!mountedTab || mountedTab.intervalId === null) return;
-  clearInterval(mountedTab.intervalId);
-  mountedTab.intervalId = null;
-};
-
-/** Runs the mounted tab's lifecycle cleanup. The DOM/CMP removal is up to the caller. */
-const unmountTab = () => {
-  if (!mountedTab) return;
-  stopTabInterval();
-  const cleanup = mountedTab.onOpenCleanup;
-  const id = mountedTab.id;
-  mountedTab = null;
-  try {
-    cleanup?.();
-  } catch (err) {
-    lerror(`Debugger tab "${id}" onOpen cleanup failed`, err);
-  }
-};
-
-/** Replaces the drawer's tab content with this tab's (fresh) content and selects its button. */
-const mountTab = (entry: TabEntry) => {
-  if (!tabsContainerWrapper) return;
-  unmountTab();
-  tabsContainerWrapper.removeChildren();
-
-  const def = entry.def;
-  const { container, sectionRefreshers } = buildTabContent(def);
-  tabsContainerWrapper.add(container);
-
-  for (const other of tabs.values()) {
-    other.button?.updateClass(styles.debugDrawerTabButton_selected, 'remove');
-  }
-  entry.button?.updateClass(styles.debugDrawerTabButton_selected, 'add');
-
-  mountedTab = { id: def.id, sectionRefreshers, onOpenCleanup: null, intervalId: null };
-  if (def.onOpen) {
-    try {
-      mountedTab.onOpenCleanup = def.onOpen() || null;
-    } catch (err) {
-      lerror(`Debugger tab "${def.id}" onOpen failed`, err);
-    }
-  }
-  startTabInterval();
-};
-
-/** Refreshes the mounted tab's content: panes, lists and CMP sections with an `html` function. */
-const refreshMountedTab = () => {
-  if (!mountedTab) return;
-  const entry = tabs.get(mountedTab.id);
-  if (!entry) return;
-  runOnRefresh(entry.def);
-  const refreshers = mountedTab.sectionRefreshers;
-  for (let i = 0; i < refreshers.length; i++) refreshers[i]();
-  if (tabsContainerWrapper) _refreshDebuggerLists(tabsContainerWrapper.elem);
 };
 
 let guiOpts: DebugGUIOpts | undefined = undefined;
@@ -270,7 +145,7 @@ export const _createDebugGui = (opts?: DebugGUIOpts) => {
   createTabMenuButtons();
 
   // Drawer (the lifecycle cleanup of the mounted tab runs before its CMPs are removed)
-  unmountTab();
+  host.unmount();
   if (drawerCMP) drawerCMP.remove();
   drawerCMP = getHUDRootCMP().add({
     id: 'debugDrawer',
@@ -372,7 +247,7 @@ export const _createDebugGui = (opts?: DebugGUIOpts) => {
   const entry = savedTab || orderedTabs[0];
   if (!entry) return drawerCMP;
 
-  mountTab(entry);
+  host.mount(entry.def);
   tabsContainerWrapper.elem.scrollTop = savedTab ? drawerState.currentScrollPos || 0 : 0;
 
   return drawerCMP;
@@ -394,14 +269,11 @@ export const _toggleDrawer = (openOrClose?: 'OPEN' | 'CLOSE') => {
     drawerCMP.updateClass(styles.debuggerGUI_open, 'add');
     drawerCMP.updateClass(styles.debuggerGUI_closed, 'remove');
     document.body.classList.add(DRAWER_OPEN_BODY_CLASS);
-    if (!wasOpen) {
-      // The tab was not refreshed while hidden
-      refreshMountedTab();
-      startTabInterval();
-    }
+    // The tab was not refreshed while hidden
+    if (!wasOpen) host.resume();
     return;
   }
-  stopTabInterval();
+  host.pause();
   drawerCMP.updateClass(styles.debuggerGUI_open, 'remove');
   drawerCMP.updateClass(styles.debuggerGUI_closed, 'add');
   document.body.classList.remove(DRAWER_OPEN_BODY_CLASS);
@@ -435,8 +307,8 @@ export const _openDebuggerTab = (id: string) => {
     return;
   }
   saveDrawerState({ currentTabId: id, currentScrollPos: 0 });
-  if (tabsContainerWrapper && mountedTab?.id !== id) {
-    mountTab(entry);
+  if (tabsContainerWrapper && host.mountedId !== id) {
+    host.mount(entry.def);
     tabsContainerWrapper.elem.scrollTop = 0;
   }
   _toggleDrawer('OPEN');
@@ -444,7 +316,7 @@ export const _openDebuggerTab = (id: string) => {
 
 /** Removes a tab entry, without rebuilding the drawer. */
 const deleteTabEntry = (entry: TabEntry) => {
-  if (mountedTab?.id === entry.def.id) unmountTab();
+  if (host.mountedId === entry.def.id) host.unmount();
   entry.button?.remove();
   tabs.delete(entry.def.id);
 };
@@ -490,19 +362,11 @@ export const _persistDebuggerTabValue = (id: string, key: string) => {
 };
 
 export const _isDebuggerTabOpen = (id: string) =>
-  Boolean(drawerCMP) && drawerState.isOpen && mountedTab?.id === id;
+  Boolean(drawerCMP) && drawerState.isOpen && host.mountedId === id;
 
 export const _updateDebuggerTab = (id: string, opts?: UpdateDebuggerTabOpts) => {
   if (!_isDebuggerTabOpen(id)) return;
-  if (!opts?.rebuild) {
-    refreshMountedTab();
-    return;
-  }
-  const entry = tabs.get(id);
-  if (!entry || !tabsContainerWrapper) return;
-  const scrollPos = tabsContainerWrapper.elem.scrollTop;
-  mountTab(entry);
-  tabsContainerWrapper.elem.scrollTop = scrollPos;
+  host.refresh(opts?.rebuild);
 };
 
 export const _getDrawerState = () => drawerState;
