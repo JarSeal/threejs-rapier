@@ -19,6 +19,8 @@ $debugBoolTrue: #3fb56b;
 $debugBoolFalse: #d04848;
 // Debug value change flash (amber, so it doesn't read as the true/false colours)
 $debugValueFlash: rgba(#e3b341, 0.35);
+// A debug figure that needs attention ($warning is too dark to read as text)
+$debugValueWarn: #e3b341;
 
 // Drawer
 $drawerWidth: 40rem;

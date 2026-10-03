@@ -1,0 +1,382 @@
+@use 'sass:color';
+@use '../../../styles/variables.scss';
+@use '../debugTabButtons' as tabButtons;
+
+.profiler {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tabMenu {
+  display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding: 0.8rem 1rem 0;
+}
+
+.tabButton {
+  @include tabButtons.tabButton(tabButton_selected);
+}
+
+.tabButton_selected {
+  @include tabButtons.tabButtonSelected;
+}
+
+.tabContent {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 1rem 0.8rem;
+  color: variables.$debugTextColor;
+  scrollbar-color: variables.$debugTextColor variables.$debugGuiBackgroundLighter2;
+  scrollbar-width: thin;
+
+  :global(.profilerTable) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 1.2rem;
+    font-variant-numeric: tabular-nums;
+
+    tr:nth-child(odd) {
+      background-color: rgba(255, 255, 255, 0.04);
+    }
+
+    th,
+    td {
+      padding: 0.4rem 0.6rem;
+      vertical-align: baseline;
+    }
+
+    th {
+      text-align: left;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+
+    :global(.profilerValue) {
+      text-align: right;
+      font-weight: 700;
+      color: variables.$white;
+      white-space: nowrap;
+    }
+
+    :global(.profilerSub) {
+      width: 100%;
+      font-size: 1rem;
+      color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+    }
+
+    :global(.isNA) :global(.profilerValue) {
+      color: variables.$debugTextColorDark;
+    }
+
+    :global(.isWarn) {
+      th,
+      :global(.profilerValue),
+      :global(.profilerSub) {
+        color: variables.$debugValueWarn;
+      }
+    }
+  }
+
+  :global(.profilerAction),
+  :global(.profilerMetricList) button {
+    @include variables.nakedButton;
+    padding: 0.1rem 0.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: variables.$borderRadiusSmall;
+    background-color: variables.$debugGuiBackgroundLighter2;
+    color: variables.$debugTextColor;
+    font-size: 1rem;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background-color: rgba(255, 255, 255, 0.12);
+    }
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+  }
+
+  :global(.profilerAction) {
+    margin-left: 0.4rem;
+  }
+
+  :global(.profilerMetricList) {
+    margin: 0.8rem 0;
+    font-size: 1.2rem;
+
+    :global(.profilerMetricListHead) {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.4rem;
+
+      h4 {
+        margin: 0;
+        font-size: 1.2rem;
+        font-weight: 700;
+      }
+    }
+
+    ol {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.2rem 0.6rem;
+
+      &:nth-child(odd) {
+        background-color: rgba(255, 255, 255, 0.04);
+      }
+
+      &:global(.isHidden) label {
+        color: variables.$debugTextColorDark;
+      }
+    }
+
+    label {
+      display: flex;
+      flex: 1 1 auto;
+      align-items: center;
+      gap: 0.6rem;
+      cursor: pointer;
+    }
+  }
+
+  :global(.profilerNote) {
+    margin: 0.8rem 0;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+  }
+
+  // OBJECTS TAB
+
+  :global(.profilerSection) {
+    margin: 1.2rem 0;
+
+    h4 {
+      margin: 0 0 0.4rem;
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+
+    h5 {
+      margin: 0.8rem 0 0.4rem;
+      font-size: 1.1rem;
+      font-weight: 400;
+      color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+    }
+  }
+
+  :global(.profilerObjectsHead) {
+    :global(.profilerNote) {
+      margin: 0.4rem 0 0;
+    }
+  }
+
+  :global(.profilerSegmented) {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    margin-top: 0.4rem;
+    font-size: 1rem;
+
+    span {
+      margin-right: 0.4rem;
+    }
+
+    button {
+      @include variables.nakedButton;
+      padding: 0.2rem 0.8rem;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: variables.$borderRadiusSmall;
+      background-color: variables.$debugGuiBackgroundLighter2;
+      color: variables.$debugTextColor;
+      font-size: 1rem;
+      cursor: pointer;
+
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.12);
+      }
+
+      &:global(.isSelected),
+      &:global(.isSelected):hover {
+        background-color: variables.$debugTextColor;
+        color: variables.$debugGuiBackground;
+      }
+    }
+  }
+
+  :global(.profilerTable) {
+    thead th {
+      padding-top: 0;
+      font-size: 1rem;
+      color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+      white-space: nowrap;
+    }
+
+    th :global(.profilerSub) {
+      display: block;
+      font-size: 1rem;
+      white-space: normal;
+      color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+    }
+
+    :global(.profilerNum) {
+      text-align: right;
+      white-space: nowrap;
+
+      b {
+        color: variables.$white;
+      }
+
+      span {
+        font-size: 1rem;
+        color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+      }
+    }
+
+    :global(.isTotal) {
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+
+      th {
+        font-weight: 700;
+      }
+    }
+  }
+
+  :global(.profilerBreakdown) {
+    thead th:not(:first-child) {
+      text-align: right;
+    }
+
+    thead th:last-child {
+      text-align: left;
+    }
+
+    :global(.profilerBarCell) {
+      width: 35%;
+      min-width: 6rem;
+      vertical-align: middle;
+    }
+  }
+
+  :global(.profilerBar) {
+    display: flex;
+    height: 0.8rem;
+    border-radius: 0.2rem;
+    background-color: rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+
+    :global(.profilerBarInView) {
+      background-color: variables.$debugTextColor;
+    }
+
+    :global(.profilerBarCulled) {
+      background-color: rgba(variables.$debugTextColor, 0.3);
+    }
+  }
+
+  :global(.profilerHeaviest) {
+    th {
+      word-break: break-word;
+      white-space: normal;
+    }
+
+    thead th {
+      white-space: nowrap;
+    }
+
+    :global(.profilerRank) {
+      color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+      text-align: right;
+    }
+
+    :global(.profilerSub) {
+      width: auto;
+      white-space: nowrap;
+    }
+
+    :global(.profilerAction) {
+      margin-left: 0;
+    }
+  }
+
+  :global(.profilerComponentGrid) {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    column-gap: 1.2rem;
+    font-size: 1.1rem;
+    font-variant-numeric: tabular-nums;
+
+    div {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.6rem;
+      padding: 0.1rem 0.6rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    b {
+      color: variables.$white;
+    }
+  }
+
+  :global(.profilerSpark) {
+    margin: 0.6rem 0;
+
+    :global(.profilerSparkHead) {
+      display: flex;
+      align-items: baseline;
+      gap: 0.8rem;
+      font-size: 1.2rem;
+
+      b {
+        color: variables.$white;
+        font-variant-numeric: tabular-nums;
+      }
+
+      :global(.profilerSub) {
+        margin-left: auto;
+        font-size: 1rem;
+        color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+      }
+    }
+  }
+
+  :global(.profilerSparkline) {
+    display: block;
+    width: 100%;
+    height: 3.6rem;
+    margin-top: 0.2rem;
+    background-color: rgba(255, 255, 255, 0.04);
+    color: variables.$debugTextColor;
+
+    polygon {
+      fill: currentColor;
+      fill-opacity: 0.15;
+    }
+
+    polyline {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.5;
+    }
+  }
+}

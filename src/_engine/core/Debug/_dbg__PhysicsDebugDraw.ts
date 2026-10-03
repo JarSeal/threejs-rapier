@@ -28,6 +28,7 @@ import {
   setPhysicsDebugStateTracking,
 } from '../PhysicsAPI';
 import { getCurrentSceneId, getRootScene } from '../Scene';
+import { markDebugHelper } from '../../debug/Profiler';
 
 /**
  * Per-entity collider wireframes.
@@ -659,6 +660,8 @@ const createColliderLine = (geometry: THREE.BufferGeometry, name: string): LineO
     persistent: true,
     attach: { to: 'NONE' },
   });
+  // Parented to the entity's Object3D or to a host, so the line itself carries the mark
+  markDebugHelper(line.object3D);
   // The source geometry was only ever a staging buffer for this.
   geometry.dispose();
   return line;
@@ -733,7 +736,7 @@ const buildEntityWireframes = async (entityId: number, world: ECSWorld) => {
     } else {
       // A plain Object3D this module owns (physicsWireframeSystem moves it every frame when
       // the body moves)
-      host = new THREE.Object3D();
+      host = markDebugHelper(new THREE.Object3D());
       host.name = `physicsWireframeHost_e${entityId}`;
       for (const cw of built) cw.line.attach({ to: 'PARENT', parent: host });
       existsOrThrow(getRootScene(), 'No root scene in physics debug wireframes').add(host);

@@ -1,12 +1,9 @@
 import type { Renderer } from 'three/webgpu';
-import {
-  addDebugToast,
-  createDebuggerTab,
-  openDebuggerTab,
-  updateDebuggerTab,
-} from '../../debug/DebuggerGUI';
+import { addDebugToast, openDebuggerTab } from '../../debug/DebuggerGUI';
 import { GPU_MEMORY_TAB_ID } from '../../debug/GPUMemory';
+import { createProfilerTab, updateProfilerTab } from '../../debug/Profiler';
 import { CMP } from '../../utils/CMP';
+import { IS_DEBUG_ENV } from '../Config';
 import { llog } from '../../utils/Logger';
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import { ECSWorld, getECSWorld } from '../ECS';
@@ -41,7 +38,11 @@ import {
 import styles from './GPUMemory.module.scss';
 
 /**
- * GPU memory and draw-call tab (docs/plans/_DONE_p345_gpu-memory-and-draw-call-debugger.md).
+ * GPU memory and draw-call tab (docs/plans/_DONE_p345_gpu-memory-and-draw-call-debugger.md), a
+ * profiler window tab (docs/plans/_DONE_p344_profiler-mega-window.md §2.9). Loaded wherever the
+ * profiler is, so in prodTest mode too when the profiler is enabled there. prodTest has no drawer
+ * and no debug toaster: the links to drawer tabs are hidden and there is no budget toast (the
+ * budget bar still shows it).
  *
  * Everything here is three's own bookkeeping (`renderer.info`) of the buffers and textures it
  * created, not a driver measurement: browsers expose no real VRAM figure.
@@ -101,13 +102,14 @@ const raisePeak = (peak: Peak, bytes: number) => {
 const trackMemory = (total: number) => {
   raisePeak(bootPeak, total);
   raisePeak(scenePeak, total);
-  if (isBudgetToastShown || total <= state.budgetMB * MB) return;
+  // No debug toaster in prodTest mode
+  if (!IS_DEBUG_ENV || isBudgetToastShown || total <= state.budgetMB * MB) return;
   // addDebugToast is a no-op (null) before the debug toaster exists: try again next frame
   isBudgetToastShown = Boolean(
     addDebugToast({
       type: 'warning',
       title: 'GPU memory over budget',
-      message: `${formatBytes(total)} of the ${state.budgetMB} MB budget (three's estimate). See the GPU memory tab.`,
+      message: `${formatBytes(total)} of the ${state.budgetMB} MB budget (three's estimate). See the profiler's GPU memory tab.`,
     })
   );
 };
@@ -475,10 +477,12 @@ const logDiff = () => {
 };
 
 export const _createGPUMemoryDebugGUI = () => {
-  createDebuggerTab({
+  createProfilerTab({
     id: GPU_MEMORY_TAB_ID,
     title: 'GPU memory',
     icon: 'memory',
+    // After Objects (10), before Settings (100)
+    orderNr: 20,
     lsKey: LS_KEY,
     state,
     persistKeys: ['budgetMB', 'recordSites'],
@@ -501,16 +505,19 @@ export const _createGPUMemoryDebugGUI = () => {
               if (e.last) isBudgetToastShown = false;
             },
           },
+          // Drawer tabs: there is no drawer in prodTest mode
           {
             type: 'button',
             label: 'Viewports',
             title: 'Open Debug tools',
+            hidden: !IS_DEBUG_ENV,
             onClick: () => openDebuggerTab('debugToolsControls'),
           },
           {
             type: 'button',
             label: 'GPU time',
             title: 'Open PostFX profiler',
+            hidden: !IS_DEBUG_ENV,
             onClick: () => openDebuggerTab('postFxControls'),
           },
         ],
@@ -528,7 +535,7 @@ export const _createGPUMemoryDebugGUI = () => {
               const renderer = getRenderer();
               if (!renderer) return;
               takeGPUMemorySnapshot(renderer);
-              updateDebuggerTab(GPU_MEMORY_TAB_ID);
+              updateProfilerTab(GPU_MEMORY_TAB_ID);
             },
           },
           {
@@ -545,7 +552,7 @@ export const _createGPUMemoryDebugGUI = () => {
             disabled: () => !getGPUMemorySnapshot(),
             onClick: () => {
               clearGPUMemorySnapshot();
-              updateDebuggerTab(GPU_MEMORY_TAB_ID);
+              updateProfilerTab(GPU_MEMORY_TAB_ID);
             },
           },
           {

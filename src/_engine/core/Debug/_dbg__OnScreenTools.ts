@@ -25,6 +25,11 @@ import { addDebugToast, DEBUGGER_SCENE_LOADER_ID } from '../../debug/DebuggerGUI
 import { DebugModuleRef, loadDebugModule, useDebug } from '../../utils/helpers';
 import { getDebugToolsState } from '../../debug/DebugToolsManager';
 import { canRedo, canUndo, redoLastAction, undoLastAction } from '../../debug/UndoRedo';
+import {
+  isProfilerAvailable,
+  isProfilerWindowOpen,
+  toggleProfilerWindow,
+} from '../../debug/Profiler';
 
 let playToolsCMP: TCMP | null = null;
 let switchToolsCMP: TCMP | null = null;
@@ -205,6 +210,24 @@ const playTools = () => {
     },
   });
   playToolsCMP.add(appLoopBtn);
+
+  // Profiler window (loaded in prodTest only when it is enabled there)
+  if (isProfilerAvailable()) {
+    const profilerBtn = CMP({
+      class: [
+        ...buttonBaseClasses,
+        ...(isProfilerWindowOpen() ? [styles.active, 'onScreenToolActive'] : []),
+      ],
+      html: () => `<button>${getSvgIcon('speedometer')}</button>`,
+      attr: { title: 'Profiler (open / close)' },
+      onClick: (e) => {
+        e.stopPropagation();
+        // The window's open and close refresh these tools
+        toggleProfilerWindow();
+      },
+    });
+    playToolsCMP.add(profilerBtn);
+  }
 
   hudRootCMP.add(playToolsCMP);
 };

@@ -29,6 +29,7 @@ import {
   isPhysicsWorldEnabled,
 } from '../PhysicsAPI';
 import { setBootOverride } from './_dbg__PhysicsBootOverrides';
+import { getConfig } from '../Config';
 import { ShapeType, type PhysicsState, type PhysicsWorkerTarget } from '../Physics/PhysicsAPITypes';
 import {
   getEntityWireframeColor,
@@ -60,6 +61,7 @@ import {
 } from './_dbg__PhysicsDeterminism';
 import { getECSWorld, getEntityIdByAppId, getStableAppId } from '../ECS';
 import { getPhysicsInterpolationReadout } from '../PhysicsManager';
+import { registerEntityWindowOpener } from '../../debug/Profiler';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import {
   _recordOrCoalesceUndoRedoAction,
@@ -352,6 +354,15 @@ const toggleEditPhysicsEntityWindow = (itemId: string) => {
     closeOnSceneChange: true,
   });
 };
+
+// The profiler's heaviest objects open a physics entity's window too
+registerEntityWindowOpener({
+  id: 'physicsEntity',
+  label: 'Edit physics entity',
+  canOpen: (world, entityId) =>
+    world === getECSWorld() && Boolean(getPhysicsEntityRigidBody(entityId)),
+  toggle: (_world, entityId) => toggleEditPhysicsEntityWindow(String(entityId)),
+});
 
 /** List toggle: the same setter as the edit window's "Show wireframe" input. */
 const togglePhysicsEntityWireframe = (itemId: string, next: boolean) => {
@@ -761,6 +772,10 @@ export const _createPhysicsAPIDebugGUI = () => {
       };
       // The boot value, not the live one: it only takes effect after a reload
       const workerTargetProxy = { workerTarget: state.workerTarget };
+      // The boot value too: the live one is on while the profiler measures the step
+      const stepStatsBootProxy = {
+        stepStatsEnabled: Boolean(getConfig().physics?.stepStatsEnabled),
+      };
       // Displayed as Hz (1 / seconds), matching the 'Global timestep' control — the state
       // fields are stored as seconds.
       const deltaTimeHzProxy = {
@@ -803,10 +818,12 @@ export const _createPhysicsAPIDebugGUI = () => {
             // Feeds the stats "PHY" panel, and getLastPhysicsStepDuration()/
             // getLastPhysicsStepMessagingLatency(). Off by default so the measurement costs
             // nothing — including the risk of the timing overhead skewing the very number it
-            // reports — unless someone asks for it. Boot-time, because the SHARED_MEMORY
-            // transport's stats buffer is allocated once at world creation.
+            // reports — unless someone asks for it. The boot value: the PHY panel is created
+            // at boot, and the profiler switches the measurement on at runtime while it shows
+            // it (setPhysicsStepStatsEnabled).
             {
               key: 'stepStatsEnabled',
+              target: stepStatsBootProxy,
               label: 'Track physics step time (reloads)',
               onChange: (value) => setBootOverride({ stepStatsEnabled: Boolean(value) }),
             },

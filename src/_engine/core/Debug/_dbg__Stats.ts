@@ -1,13 +1,21 @@
 import Stats from 'stats-gl';
 import { TimestampQuery, type Renderer } from 'three/webgpu';
 import { getRenderer } from '../../core/Renderer';
-import { createDebuggerTab, openDebuggerTab } from '../../debug/DebuggerGUI';
+import { createDebuggerTab, updateDebuggerTab } from '../../debug/DebuggerGUI';
 import { GPU_MEMORY_TAB_ID } from '../../debug/GPUMemory';
 import { getHUDRootCMP } from '../../core/HUD';
 import { CMP, type TCMP } from '../../utils/CMP';
 import { defaultStatsOptions, type StatsOptions } from '../../debug/Stats';
 import { setBootOverride } from './_dbg__PhysicsBootOverrides';
 import { getConfig } from '../../core/Config';
+import {
+  DEFAULT_PROFILER_SETTINGS,
+  getProfilerSettings,
+  openProfilerTab,
+  setProfilerSettings,
+  toggleProfilerWindow,
+  type ProfilerSettings,
+} from '../../debug/Profiler';
 
 type StatsPanel = {
   update: (value: number, maxValue: number, decimals: number) => void;
@@ -113,7 +121,14 @@ export const _initStats = (config?: StatsOptions) => {
       class: ['statsContainer', ...(!cfg.horizontal ? ['vertical'] : [])],
     });
     statsCmp.elem.appendChild(stats.dom);
+    // stats-gl only listens to clicks in its minimal mode, which is forced off above
+    statsCmp.elem.addEventListener('click', (e) => {
+      if (!getProfilerSettings()?.openFromStatsPanels) return;
+      e.stopPropagation();
+      toggleProfilerWindow();
+    });
     getHUDRootCMP().add(statsCmp);
+    _applyProfilerEntryPoint();
     // Ordered once now so nothing flashes in creation order, and again once init() settles,
     // because that is when the GPU/CPT panels may get detached (no timestamp-query support,
     // which stats-gl only checks in init()). Reordering on settle rather than on success: a
@@ -310,6 +325,11 @@ const setDebuggerUI = () => {
       const physicsStepTrackingProxy = {
         stepStatsEnabled: Boolean(getConfig().physics?.stepStatsEnabled),
       };
+      // Bound to the profiler's own settings object (one source of truth, persisted by the
+      // profiler). The fallback only exists if the profiler failed to load.
+      const profilerSettings = (getProfilerSettings() as ProfilerSettings | undefined) || {
+        ...DEFAULT_PROFILER_SETTINGS,
+      };
       return [
         {
           pane: true,
@@ -354,7 +374,27 @@ const setDebuggerUI = () => {
               type: 'button',
               label: 'Draw calls, memory',
               title: 'Open GPU memory',
-              onClick: () => openDebuggerTab(GPU_MEMORY_TAB_ID),
+              onClick: () => openProfilerTab(GPU_MEMORY_TAB_ID),
+            },
+            {
+              type: 'folder',
+              id: 'profiler',
+              title: 'Profiler',
+              content: [
+                {
+                  type: 'button',
+                  label: 'Profiler',
+                  title: 'Open profiler',
+                  onClick: toggleProfilerWindow,
+                },
+                {
+                  key: 'openFromStatsPanels',
+                  target: profilerSettings,
+                  label:
+                    'Profiler mega window can be opened by clicking the on screen stats panels',
+                  onChange: (value) => setProfilerSettings({ openFromStatsPanels: Boolean(value) }),
+                },
+              ],
             },
           ],
         },
@@ -363,7 +403,7 @@ const setDebuggerUI = () => {
   });
 
   // @TODO: add current scene and all loaded scene stats (draw calls and GPU memory are in the
-  // GPU memory tab, _dbg__GPUMemory.ts)
+  // profiler's GPU memory tab, _dbg__GPUMemory.ts)
   // Current and all scenes stats:
   // - objects count (Object3D)
   // - mesh count
@@ -377,3 +417,18 @@ const setDebuggerUI = () => {
 };
 
 export const _getStatsCmp = () => statsCmp;
+
+/** The stats panels show that a click opens the profiler (when its setting allows it), and the
+ * Statistics tab's toggle of the setting is refreshed. */
+export const _applyProfilerEntryPoint = () => {
+  if (statsCmp) {
+    const isOn = Boolean(getProfilerSettings()?.openFromStatsPanels);
+    statsCmp.elem.style.cursor = isOn ? 'pointer' : '';
+    if (isOn) {
+      statsCmp.elem.title = 'Open the profiler';
+    } else {
+      statsCmp.elem.removeAttribute('title');
+    }
+  }
+  updateDebuggerTab(STATS_TAB_ID);
+};

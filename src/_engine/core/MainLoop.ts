@@ -128,6 +128,26 @@ export const transformTimeValue = (durationInMs: number) =>
 
 export let mainLoop: () => void = () => {};
 
+/** Measures every main loop frame (see {@link setFrameProbe}). */
+export type FrameProbe = {
+  /** At the start of the loop function. */
+  begin: (now: number) => void;
+  /** At the end of the loop function. `rendered` is false on a frame the max FPS limiter skipped. */
+  end: (now: number, rendered: boolean) => void;
+};
+
+let frameProbe: FrameProbe | null = null;
+
+/**
+ * Sets (or with null clears) the frame probe that every main loop variant calls at its start and
+ * end. Only the profiler sets one, while its window is open, so without it a frame costs two null
+ * checks.
+ * @param probe ({@link FrameProbe} | null)
+ */
+export const setFrameProbe = (probe: FrameProbe | null) => {
+  frameProbe = probe;
+};
+
 /** Everything that has to run in lockstep with the simulation, once per fixed physics
  * sub-step right before it (see stepPhysics): held-key input, then the previous step's
  * collision events, then every world's APP_PHYSICS_STEP systems (see flushPhysicsEvents for
@@ -196,6 +216,7 @@ const renderScene = () => {
 // LOOP (for debug)
 // **************************************
 const mainLoopForDebug = async () => {
+  frameProbe?.begin(performance.now());
   startCustomMeasurements();
 
   timer.update();
@@ -234,7 +255,10 @@ const mainLoopForDebug = async () => {
     notePhysicsAppPause();
   }
 
-  if (skipFrame) return;
+  if (skipFrame) {
+    frameProbe?.end(performance.now(), false);
+    return;
+  }
 
   // Update stats-gl
   getStats()?.update();
@@ -245,11 +269,13 @@ const mainLoopForDebug = async () => {
   runSceneMainLateLoopers(delta);
 
   updateRestOfStats(getRenderer() as Renderer);
+  frameProbe?.end(performance.now(), true);
 };
 
 // LOOP (for production)
 // **************************************
 const mainLoopForProduction = async () => {
+  frameProbe?.begin(performance.now());
   timer.update();
   latchPhysicsSnapshot();
   const dt = timer.getDelta();
@@ -284,11 +310,13 @@ const mainLoopForProduction = async () => {
 
   for (const world of getAllECSWorlds()) world.updateLateMainLoop(delta);
   runSceneMainLateLoopers(delta);
+  frameProbe?.end(performance.now(), true);
 };
 
 // LOOP (for production with FPS limiter)
 // **************************************
 const mainLoopForProductionWithFPSLimiter = async () => {
+  frameProbe?.begin(performance.now());
   timer.update();
   latchPhysicsSnapshot();
   const dt = timer.getDelta();
@@ -316,20 +344,27 @@ const mainLoopForProductionWithFPSLimiter = async () => {
     // Step the physics (always, even on a skipped render frame, so it doesn't fall behind)
     stepPhysicsAndPollHeldKeys(delta);
 
-    if (skipFrame) return;
+    if (skipFrame) {
+      frameProbe?.end(performance.now(), false);
+      return;
+    }
 
     // app loopers
     for (const world of getAllECSWorlds()) world.updateAppLoop(deltaApp);
     runSceneAppLoopers(deltaApp);
   } else {
     notePhysicsAppPause();
-    if (skipFrame) return;
+    if (skipFrame) {
+      frameProbe?.end(performance.now(), false);
+      return;
+    }
   }
 
   renderScene();
 
   for (const world of getAllECSWorlds()) world.updateLateMainLoop(delta);
   runSceneMainLateLoopers(delta);
+  frameProbe?.end(performance.now(), true);
 };
 
 /**

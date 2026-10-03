@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { ECSWorld } from '../../ECS';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import { ECSSystemStage } from '../../../../AppECSRegistry';
+import { markDebugHelper } from '../../../debug/Profiler';
 
 // Register hook to clean up the helper when the camera entity dies
 ECSWorld.registerComponentHooks(ComponentType.DEBUG_CAMERA_HELPER, {
@@ -56,7 +57,7 @@ export const attachCameraHelpers = (
 
   // Default to false. The _CameraManager's Scene Enter hook will sync the true state.
   helper.visible = false;
-  rootScene.add(helper);
+  rootScene.add(markDebugHelper(helper));
 
   ecsWorld.addComponent(entityId, ComponentType.DEBUG_CAMERA_HELPER, { value: helper });
 };

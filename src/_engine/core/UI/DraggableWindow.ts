@@ -6,6 +6,7 @@ import { getConfig, IS_DEBUG_ENV, IS_PROD_TEST_MODE } from '../Config';
 import { getHUDRootCMP } from '../HUD';
 import { addResizer } from '../MainLoop';
 import styles from './DraggableWindow.module.scss';
+import { getSvgIcon, type SvgIconKey } from './icons/SvgIcon';
 
 type Units = 'px' | '%' | 'vw' | 'vh';
 
@@ -30,6 +31,8 @@ export type DraggableWindowConfig = {
    * kind is its id. */
   kind?: string;
   title: string;
+  /** An icon before the title in the header */
+  icon?: SvgIconKey;
   data?: DraggableWindowData;
   /** Position (left/top) and size, in `units` (px by default). A draggable window's position is
    * always px. */
@@ -98,6 +101,8 @@ export type OpenDraggableWindowProps = {
   closeIfOpen?: boolean;
   saveToLS?: boolean;
   title?: string;
+  /** An icon before the title in the header */
+  icon?: SvgIconKey;
   isDebugWindow?: boolean;
   /** Shows this debug window (`isDebugWindow`) in prodTest mode too (default false, debug
    * windows are debug mode only). The window's content module must then be loaded in prodTest
@@ -263,6 +268,7 @@ const createConfig = (
   id,
   ...(v.kind ? { kind: v.kind } : {}),
   title: v.title || '',
+  ...(v.icon ? { icon: v.icon } : {}),
   ...(v.data !== undefined ? { data: v.data } : {}),
   geometry: v.geometry,
   minSize: v.minSize || { w: DEFAULT_MIN_WIDTH, h: DEFAULT_MIN_HEIGHT },
@@ -349,6 +355,7 @@ const resolveWindowConfig = (
   return createConfig(props.id, {
     kind: props.kind ?? stored?.kind,
     title: props.title ?? stored?.title,
+    icon: props.icon ?? stored?.icon,
     data: props.data ?? stored?.data,
     geometry: { ...position, ...size },
     minSize,
@@ -969,6 +976,7 @@ const mountWindow = (entry: WindowEntry) => {
   const headerCMP = windowCMP.add({ tag: 'header', class: styles.headerBar });
   runtime.headerCMP = headerCMP;
   runtime.titleCMP = headerCMP.add({ tag: 'h3', class: styles.title, text: config.title });
+  renderTitle(runtime.titleCMP, config);
   if (!config.disableCollapseBtn) {
     headerCMP.add({
       tag: 'button',
@@ -1021,12 +1029,20 @@ const mountWindow = (entry: WindowEntry) => {
   restack(stack);
 };
 
+/** The header title: the icon (if any) and the title text. */
+const renderTitle = (titleCMP: TCMP, config: DraggableWindowConfig) => {
+  titleCMP.updateText(config.title);
+  if (config.icon) titleCMP.elem.insertAdjacentHTML('afterbegin', getSvgIcon(config.icon, 'small'));
+};
+
 /** Applies a reopen's changes to a mounted window. The content is rebuilt when `data` changed. */
 const updateMountedWindow = (entry: WindowEntry, prev: DraggableWindowConfig) => {
   const { config, runtime } = entry;
   runtime.windowCMP?.updateClass(getWindowClasses(config), 'replace');
   runtime.windowCMP?.updateStyle(getGeometryStyle(config));
-  if (config.title !== prev.title) runtime.titleCMP?.updateText(config.title);
+  if ((config.title !== prev.title || config.icon !== prev.icon) && runtime.titleCMP) {
+    renderTitle(runtime.titleCMP, config);
+  }
   if (JSON.stringify(config.data) !== JSON.stringify(prev.data)) rebuildContent(entry);
 };
 

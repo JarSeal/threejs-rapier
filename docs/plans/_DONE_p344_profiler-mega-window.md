@@ -1,7 +1,7 @@
-Status: draft | not-implemented
+Status: implemented (Phases 1-6)
 Category: Debug, Performance, UI
 Epic: Profiler (this plan is the base; later profiler plans build on its window, tab host and stats sources)
-Related: _DONE_p345_gpu-memory-and-draw-call-debugger.md (its tab moves in, Phase 6), p240_client-device-capability-sniffer.md (device budgets next to the measured figures), p350_lod-system-research.md (the LOD plans measure their result with it), p354_gpu-driven-culling.md (GPU culling makes the CPU "in view" census an estimate of what the GPU draws, §2.7), docs/templates/todo-plan-prompts.txt (the prodTest follow-up after this plan, §2.4)
+Related: _DONE_p345_gpu-memory-and-draw-call-debugger.md (its tab moves in, Phase 6), p240_client-device-capability-sniffer.md (device budgets next to the measured figures), p350_lod-system-research.md (the LOD plans measure their result with it), p354_gpu-driven-culling.md (GPU culling makes the CPU "in view" census an estimate of what the GPU draws, §2.7)
 
 # Profiler Mega Window
 
@@ -132,10 +132,7 @@ apply at the next refresh, with no rebuild of the window.
 - The play button reloads into prodTest, and the window's persisted `isOpen` +
   `showInProdTest: enabledInProdTest` reopen it there. That is "stay open in prodTest".
 - In prodTest there are no stats-gl panels and no drawer. The Profiler measures by itself (§2.5),
-  the GPU memory tab is hidden (it is debug-only, §2.9), and the Settings tab works as usual.
-- Follow-up (`todo-plan-prompts.txt`, not a plan): the "Enable Profiler mega window in prodTest"
-  checkboxes in the Statistics and Debug tools tabs bind to this same `enabledInProdTest`. They
-  don't get a second flag.
+  and the GPU memory (§2.9) and Settings tabs work as usual.
 
 ### 2.5 Measurement core
 
@@ -277,15 +274,15 @@ against. The Statistics tab's "Draw calls, memory" button already treats it as a
   equivalents. `gpuMemoryControls` leaves `DEFAULT_DEBUG_DRAWER_TAB_ORDER`. An app `tabOrder`
   that still lists it is harmless (unknown ids are ignored).
 - Its `LATE_MAIN` sampler and peak tracking keep running with the window closed, as now.
-- It stays debug-only, so it is hidden in prodTest. Its allocation tracker installs at renderer
-  creation in the debug env.
+- It loads wherever the profiler does, so in prodTest too when the profiler is enabled there. Its
+  allocation tracker installs at renderer creation in those modes.
 - The Statistics tab's "Draw calls, memory" button opens the profiler on that tab.
 
 ## 3. Phases
 
 Each phase is non-breaking and can be committed on its own.
 
-### Phase 1: Window shell, entry points, Settings
+### Phase 1: Window shell, entry points, Settings — done
 
 1. Extract `_dbg__TabHost.ts` from `_dbg__DebuggerGUI.ts`. The drawer uses it, with no behaviour
    change. Move the tab button styles to a shared mixin.
@@ -304,7 +301,43 @@ button. The panel click respects the toggle. Settings persist over a reload. Wit
 there. The Overview's FPS matches the stats-gl FPS panel within ±1. Every drawer tab behaves as
 before (open/close, refresh intervals, scene tabs, folder states).
 
-### Phase 2: Stats sources and the full Overview
+As built:
+
+- Tab host: `createTabHost({ getContainer, isVisible, onMount, label })`. `getContainer` (not a
+  fixed `container`) because the drawer and the window both rebuild their scroller.
+  `isVisible()` gates the refresh interval (the drawer's `drawerState.isOpen`, the window's
+  mounted content). Besides `mount` / `refresh(rebuild?)` / `unmount` / `mountedId` it has
+  `resume()` (refresh + start the interval, the drawer's open) and `pause()` (the drawer's
+  close). It keeps the mounted def, and it imports `DebuggerGUI.module.scss`, so the profiler
+  gets the debugger styles in prodTest, where the drawer module never loads.
+- Shared tab button mixins: `core/Debug/_debugTabButtons.scss` (`tabButton($selectedClass)`,
+  `tabButtonSelected`). The scene tab variant stays in the drawer's SCSS.
+- `DraggableWindow` got an `icon` option (config and open props, persisted) for the header icon.
+- Public `debug/Profiler.ts` also has `isProfilerAvailable`, `isProfilerWindowOpen`,
+  `isProfilerEnabledInProdTest`, `getProfilerSettings` / `setProfilerSettings` (persist and
+  apply), `DEFAULT_PROFILER_SETTINGS`, `PROFILER_UPDATE_RATES_HZ` and the LS key constants.
+- Files: `core/Debug/Profiler/_dbg__Profiler.ts` (window, menu, tab registry, settings and their
+  side effects), `_dbg__ProfilerOverview.ts` (`OVERVIEW_METRICS`: `{ id, label, read(sample) }`
+  rows; Phase 2 adds rows, the sample's sources and the order/visibility list),
+  `_dbg__ProfilerSettings.ts`, `_dbg__FrameProbe.ts`, `Profiler.module.scss`.
+- Tab ids and `orderNr`: `profilerOverview` 0, `profilerSettings` 100 (Objects and GPU memory go
+  between). The Overview's `refreshIntervalMs` is a getter on `updateRateHz`, read at mount.
+- Frame probe: a 1024-frame `Float64Array` ring, summarized over the rendered frames of the last
+  1000 ms. A limiter-skipped frame's CPU time is added to the next rendered frame, and a gap
+  over 1 s (paused main loop, hidden tab) is not counted as a frame time. Refcounted
+  `_acquireFrameProbe` / `_releaseFrameProbe`: the window content acquires on build and releases
+  on removal.
+- The window's measurements and the mounted tab's `onOpen` cleanup are released in the content
+  root's `onRemoveCmp`, so (unlike the drawer) the cleanup runs after the tab's CMPs are removed.
+- The Statistics tab's toggle binds straight to the profiler's settings object (a `target`, one
+  source of truth, no proxy copy) and its `onChange` calls `setProfilerSettings`. It sits with
+  the "Profiler" button in a Profiler folder.
+- The on-screen button is in `playTools()`, so in prodTest it also needs the Debug tools tab's
+  `showOnScreenToolsInProdTest`.
+- Icons: `gear-fill.svg` and `cubes-wireframe.svg` (Bootstrap Icons 1.11.3 `gear-fill` and
+  `boxes`); `profiler-pulse.svg` is a monitor frame with Bootstrap's `activity` pulse.
+
+### Phase 2: Stats sources and the full Overview — done
 
 1. `registerStatsSource` registry with refcounted acquire/release. Sources: GPU timer, draw
    counters (`LATE_MAIN` system), physics (read-only, boot flag: "off: enable (reloads)" through
@@ -317,7 +350,45 @@ before (open/close, refresh intervals, scene tabs, folder states).
 With the window closed: no GPU timer holder, no probe set, no extra `LATE_MAIN` system, and the
 Raycast tab's switches are as the user left them. In prodTest the Overview also shows draw calls.
 
-### Phase 3: Runtime physics step stats
+As built:
+
+- Sources are held by the tab that shows them, not by the window: the Overview holds the sources
+  of its shown rows while it is mounted (`createStatsSourceHolder`, set in `onRefresh`, released
+  in the `onOpen` cleanup), so hidden rows cost nothing and the Settings tab holds nothing. The
+  frame probe stays window-level (Phase 1). A per-frame source starts from an empty 1 s window on
+  every mount.
+- Registry: the source map is in the public `debug/Profiler.ts` (so code can register before the
+  profiler loads), the refcounts in `Profiler/_dbg__StatsSources.ts` (`_acquireStatsSource`,
+  `_releaseStatsSource`, `_readStatsSource` → `{ value } | { value: null, na }`,
+  `_syncStatsSources`). Availability is re-checked on every acquire, release and read: a held
+  source is acquired once it becomes available (eg. the renderer exists after the window was
+  restored open from LS) and released when it stops being available.
+- Built-in sources in `Profiler/_dbg__ProfilerSources.ts` (ids in `PROFILER_SOURCE`): `gpu.frame`,
+  `render.draw`, `physics.step`, `physics.subSteps`, `physics.objects`, `memory.js`,
+  `memory.gpu`, `rays`, `postFx`, `longTasks`, `scene`. GPU time, draw counters and sub-steps
+  share one `LATE_MAIN` system (`aekProfilerFrameSampler`, order -10000), added with the first of
+  them and removed with the last. Per-frame figures are summarized over the last 1 s
+  (`_dbg__SampleWindow.ts`, preallocated ring).
+- GPU time: WebGPU with `timestamp-query` only (three's WebGL pool can't time nested contexts).
+  The render contexts between two sampler runs are one frame's record (pooled); a record whose
+  batch another resolver took is dropped after 8 frames.
+- Physics sub-steps: no per-frame count existed, so PhysicsAPI got `getPhysicsSubStepTotal()` (a
+  since-boot total, never reset; the sampler diffs it). `getPhysicsObjectCounts()` also counts
+  joints.
+- The physics row's "enable (reloads)" action shows in the debug env only: `loadConfig` applies
+  the boot overrides there only. The PostFX profiler is debug-only too ("debug env only" in
+  prodTest). PostFX GPU = the PostFX passes' own render passes + the composite (not the scene
+  pass).
+- Ray stats use the existing 3 s per-frame average window (`RAY_STATS_WINDOWS`) and the last
+  frame. While the profiler holds them the Raycast tab shows live stats with its checkbox off,
+  and a user turning them on while the profiler holds them has them turned off with the window
+  (no refcount in `Raycast.ts`, as planned).
+- New setting `measureGpu` (Settings → Measuring); `overviewMetrics` defaults to `[]`, which the
+  sanitizer turns into the default rows. The row editor is a CMP list with a delegated click
+  handler. Metric rows can carry `warn` (sub-steps at `maxSubSteps`, long tasks) and an `action`
+  button. New SCSS variable `$debugValueWarn`.
+
+### Phase 3: Runtime physics step stats — done
 
 1. `setPhysicsStepStatsEnabled(on)` in `PhysicsAPI.ts`.
    - `MAIN_THREAD`: flip `physicsState.stepStatsEnabled`.
@@ -334,7 +405,32 @@ write-back figures in `MAIN_THREAD`, `WORKER_THREAD` + `SHARED_MEMORY` and `MESS
 
 Can be dropped. The Overview then keeps Phase 2's "enable (reloads)".
 
-### Phase 4: In-view census
+As built:
+
+- `SET_STEP_STATS = 7` (ENGINE range, one-way) sets the worker's `workerPhysicsState`, which
+  outlives `DELETE_WORLD` / `CREATE_WORLD`, so it is sent once per change, not re-sent after a
+  world reset. The worker reads the flag once per STEP message.
+- The SHARED_MEMORY stats SAB is allocated at every `CREATE_WORLD` (a fresh one reads
+  `STEP_END_AT` 0, "no step yet"); both sides drop their view when a world resolves
+  MESSAGE_BATCH.
+- Also `isPhysicsStepStatsEnabled()`. Switching on clears the last figures (and zeroes the SAB's
+  `STEP_END_AT`), so the Overview says "waiting for a step" instead of showing an earlier
+  period's frozen values.
+- The physics source uses `createSharedSwitch` (like the ray stats): step stats that were on at
+  boot stay on after the release. Its only n/a reason is "physics off"; `STEP_STATS_OFF` and the
+  "enable (reloads)" action are gone. The metric row `action` support stays (no user now).
+- The Physics API tab's "Track physics step time (reloads)" binds to the boot value (a proxy,
+  like `workerTargetProxy`), so the profiler's runtime switch doesn't show as the boot setting.
+- Verified: on/off with the window in MAIN_THREAD, SHARED_MEMORY and MESSAGE_BATCH;
+  `?physicsProbe=120` on `physicsTest` hashes the same with stats on and off in all three.
+- Fixed, older than this phase (p027): `dispatchMs` and `writeBackMs` were off by the worker's
+  start time (about ±1.3 s, opposite signs). A dedicated worker's `performance.now()` counts from
+  its own creation, not from the page's time origin. `INIT_PHYSICS` now carries
+  `mainTimeOrigin`, and the worker puts its receipt and step-end stamps on the main thread's
+  clock. After the fix: dispatch 0.05–0.2 ms, MESSAGE_BATCH transit ~0.8 ms, SHARED_MEMORY read
+  latency ~1 frame (polled on the next frame).
+
+### Phase 4: In-view census — done
 
 1. The census (§2.7), `markDebugHelper` and its call sites.
 2. The Overview's census rows (triangles, vertices, meshes, entities, instances, lights).
@@ -343,27 +439,119 @@ Can be dropped. The Overview then keeps Phase 2's "enable (reloads)".
 Toggling light helpers doesn't change the triangle totals with `excludeDebugHelpers` on. The
 sample costs < 2 ms at 4 Hz (measured with the probe).
 
-### Phase 5: Objects tab
+As built:
+
+- `Profiler/_dbg__Census.ts`: `runSceneCensus(excludeDebugHelpers)` returns one reused
+  `SceneCensus`: per kind (`CENSUS_KINDS`: MESH, INSTANCED_MESH, BATCHED_MESH, SKINNED_MESH, LINES,
+  POINTS, SPRITES, LIGHTS, CAMERAS, DEBUG_HELPERS) a bucket of `objects`, `instances`,
+  `primitives` (triangles for the mesh kinds, segments for lines, points, sprite quads) and
+  `vertices`, each `{ inView, total }`; `meshes` (the mesh kinds summed); `lights` (count, shadow
+  casters, shadow passes: 6 per point light); `entities`; `isDebugCamera`, `isApprox`,
+  `sampleMs`. Phase 5's kind bars read the buckets; the owner breakdown and the heaviest objects
+  still need adding to the walk.
+- It mirrors three r186's WebGPU `Renderer._projectObject`: it calls `object.intersectsFrustum`
+  (three's own test, `FrustumArray` for an `ArrayCamera`) and skips objects whose materials are
+  all hidden. The layer test gates only the object itself (its children are still walked).
+  Instances are three's draw count (`InstancedBufferGeometry.instanceCount`, else `object.count`).
+- The engine's `FAT` line backend (`FatLineSegments`) and three's `Line2` are `Mesh`es: they count
+  as LINES, one segment per instance, never as triangles.
+- Totals count hidden objects too. Lights and cameras are never culled: their "in view" is
+  "shown". An entity is in view when its OBJECT3D or a descendant was drawn in view, so entities
+  without an Object3D of their own (eg. `InstancedMeshPool` slots) never are; the row says "own
+  Object3D".
+- No per-geometry cache: the counts are O(1) getters. A BatchedMesh sums its visible instances
+  from three's private `_instanceInfo` / `_geometryInfo` (nothing uses one yet) and marks the
+  census `isApprox`.
+- `markDebugHelper(obj)` and `DEBUG_HELPER_USER_DATA_KEY` (`aekDebugHelper`) in
+  `debug/Profiler.ts`. Marked: light and camera helpers, physics wireframe lines and hosts, ray
+  helpers, character gizmos, spatial grid overlays and 3D symbols (a line's mark is on
+  `line.object3D`; its `userData` survives a backend swap). `isHelperSymbol` and three's `*Helper`
+  types count without the mark.
+- New setting `excludeDebugHelpers` (Settings → Measuring). The census source (`scene.census`,
+  no acquire) walks at most once per half update interval, so views reading it together share a
+  walk; a sample of the other `excludeDebugHelpers` value isn't reused.
+- The census runs in the Overview's refresh interval, outside the main loop, so it times itself
+  (shown on the Meshes row) instead of the frame probe. Measured in `largeWorld`: median 0.10 ms,
+  max 0.15 ms (the first sample after a load 0.4-0.75 ms).
+- `largeWorld`'s in-view triangles barely move with the camera: its instanced pools have
+  world-sized bounding spheres, and three culls an `InstancedMesh` whole. The figure is right;
+  that is a finding for the LOD and culling plans (p350, p354).
+
+### Phase 5: Objects tab — done
 
 The Objects tab (§2.8) on the census.
 
 **Exit:** the kind and owner bars add up to the totals. The top-10 rows open edit windows where one
 exists. The graphs move with the camera.
 
-### Phase 6: GPU memory tab moves in
+As built:
+
+- `Profiler/_dbg__ProfilerObjects.ts`, tab id `profilerObjects`, `orderNr` 10, icon
+  `objectsCubes`. It holds the census and the draw counters while mounted and reads them once
+  per refresh (`onRefresh`). Sections in §2.8's order, each a CMP with its own `html`, so only
+  a changed section re-renders.
+- Census additions (`_dbg__Census.ts`, shared with the Overview's walk): a `triangles` figure per
+  bucket (the primitives of mesh-kind objects only), `owners` and `heaviest`. The owner is the
+  nearest entity whose OBJECT3D is the object or an ancestor of it: "Managed: <manager>"
+  (`MANAGED_BY`), "Persistent entities" (`PERSISTENT`), else "Scene entities" (any world, no
+  per-scene split), then "Non-ECS objects" and "Debug helpers". Every counted object goes into
+  one kind and one owner bucket, so both tables have the same Total row. `heaviest` is 10
+  preallocated slots (object name or type, the entity's debug name or app id, world id + entity
+  id), with no scene graph reference kept. Census cost in `largeWorld` is now 0.17-0.23 ms.
+- Bars: a Triangles / Vertices / Objects picker in the tab, persisted as the new setting
+  `objectsBarMeasure`. Lines, points and sprites have no triangles: their own primitives are
+  shown under the kind. The bar's 100% is the Total row, debug helpers included.
+- Edit windows: there is no mesh edit window. Lights and cameras have one, but no triangles, so
+  they never reach the top 10. New registry `registerEntityWindowOpener({ id, label, priority?,
+  canOpen, toggle })` in `debug/Profiler.ts` (the profiler never imports the drawer modules). The
+  character window (priority 10) and the physics entity window register. The Edit button shows
+  in the debug env only.
+- Over time: inline SVG sparklines (0 to the window's max, gaps where there is no value), not
+  Tweakpane `graph` monitors: those show no scale, and `pane.refresh()` adds a sample on every
+  tab refresh (a click too). One sample per census walk, the last 60, kept while the tab is
+  mounted. Draw calls are the 1 s per-frame average.
+- ECS: entities per world, and the component types (enum keys) summed over the worlds from
+  `getStorage(type).size`, sorted by count.
+- Verified in `largeWorld`, the ECS test scene and the GYM scene: the kind and owner totals are
+  equal; with the debug camera, a drag changes the in-view figures and the sparklines while the
+  totals stay put; a GYM row's Edit opens "Edit character". `largeWorld` has no physics bodies,
+  so its rows have no Edit button.
+
+### Phase 6: GPU memory tab moves in — done
 
 §2.9. Update `CLAUDE.md`'s GPU memory paragraph, and the readme if it names the tab's place.
 
 **Exit:** the tab works in the profiler as it did in the drawer (snapshots, diff, budget toast,
-sources). The drawer no longer lists it. Hidden in prodTest.
+sources). The drawer no longer lists it. Shown in prodTest when the profiler is enabled there.
+
+As built:
+
+- `GPU_MEMORY_TAB_ID` is `gpuMemory`, `orderNr` 20. Its `lsKey` (`AEK_debugGPUMemory`) is
+  unchanged, so the budget and "Call sites" settings carry over. A drawer whose saved open tab
+  was `gpuMemoryControls` falls back to its first tab.
+- Changed after review: the tab shows in prodTest too (the plan had it debug-only). It loads
+  where the profiler does: `isProfilerLoadedInThisMode()` (now exported from
+  `debug/Profiler.ts`) gates `registerGPUMemoryDebugGUI` and `registerGPUMemorySource`, which
+  was debug-env only before. In prodTest there is no budget toast (no debug toaster; the budget
+  bar still shows it), and the "Viewports" and "GPU time" buttons, which open drawer tabs, are
+  hidden.
+- `registerGPUMemoryDebugGUI()` moved in `InitApp.ts` from the debug-only block to right after
+  `registerProfiler()`: `createProfilerTab` is a no-op before the profiler module loads. It
+  still runs before `appStartFn`, so the allocation tracker sees the renderer's `init()`.
+- The budget toast now says "See the profiler's GPU memory tab."
+- The readme's drawer line lost GPU memory, so the readme got a profiler bullet (the plan-done
+  readme step only needs to check it).
+- Verified in the ECS test scene: the drawer has no GPU memory tab; the Statistics tab's "Draw
+  calls, memory" opens the profiler on it; the menu order is Overview > Objects > GPU memory >
+  Settings; snapshot and clear work; a reload restores it. In prodTest (enabled there) the window
+  restores on the GPU memory tab with its sources and snapshots and without the drawer links. On the
+  plain URL nothing of it loads.
 
 **Plan done:** engine minor bump (new debug window and public `debug/Profiler.ts` API,
 `setPhysicsStepStatsEnabled`); app untouched; CHANGELOG entry; `yarn checkVersions --against main`.
 
 ## 4. Out of scope (later profiler plans)
 
-- prodTest checkboxes in the Statistics and Debug tools tabs, and stats panels in prodTest (the
-  `todo-plan-prompts.txt` follow-up; it binds to `enabledInProdTest`).
 - More tabs: a Physics tab (bodies awake / sleeping from the debug state buffer, contacts), a
   Frame / passes tab (`getPostFxPassStats` per pass, shadow passes, viewports), Assets / textures
   (the Statistics `@TODO` list), Streaming cells (p353), LOD (p348).

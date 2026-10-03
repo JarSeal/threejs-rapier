@@ -26,7 +26,6 @@ export const DEFAULT_DEBUG_DRAWER_TAB_ORDER = [
   'debugToolsControls',
   'physicsApiControls',
   'rendererControls',
-  'gpuMemoryControls',
   'assetsControls',
   'postFxControls',
   'rayCastControls',
@@ -112,7 +111,8 @@ export type AppConfig = {
     /** Measure how long the physics engine spends stepping the world each frame (and, in
      * WORKER_THREAD mode, the messaging overhead around it) and feed it to the debug "PHY"
      * panel. Opt-in and default false so the measurement itself costs nothing unless asked
-     * for. Boot-time only — read once here, same as useSAB/maxBodies. */
+     * for. The initial value: setPhysicsStepStatsEnabled() switches the measurement at runtime
+     * (the profiler does while it shows it), but the PHY panel exists only when this is on. */
     stepStatsEnabled?: boolean;
   };
   /** Where asset files are loaded and decoded.

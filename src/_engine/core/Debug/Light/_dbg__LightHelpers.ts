@@ -7,6 +7,7 @@ import { ECSSystemStage } from '../../../../AppECSRegistry';
 import { existsOrThrow } from '../../../utils/assert';
 import { getRootScene } from '../../Scene';
 import { isAnyLightHelperVisible } from '../../LightManager';
+import { markDebugHelper } from '../../../debug/Profiler';
 
 /**
  * Removes a light's helper and its shadow camera helper from the scene and
@@ -114,12 +115,12 @@ export const attachLightHelpers = (
     const isVisible = !isEnabled && Boolean(obj?.visible);
     helper.visible = isVisible && isAnyLightHelperVisible();
 
-    rootScene.add(helper);
+    rootScene.add(markDebugHelper(helper));
 
     let camHelper: THREE.CameraHelper | undefined;
     if ('castShadow' in light) {
       camHelper = new THREE.CameraHelper(light.shadow.camera);
-      rootScene.add(camHelper);
+      rootScene.add(markDebugHelper(camHelper));
       if (!light.castShadow || !isEnabled) camHelper.visible = false;
     }
 

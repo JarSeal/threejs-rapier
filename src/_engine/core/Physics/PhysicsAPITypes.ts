@@ -168,9 +168,9 @@ export type PhysicsState = {
   maxBodies: number;
   /** Whether per-frame step-duration (and, in WORKER_THREAD mode, messaging-latency)
    * measurement is on. Opt-in, default false: with it off, no extra performance.now() call,
-   * buffer allocation or message field is paid anywhere in the step hot path. Boot-time only
-   * (reload to change), so it also reaches the worker inside the one-off INIT_PHYSICS
-   * payload with no protocol message of its own. */
+   * buffer allocation or message field is paid anywhere in the step hot path. The boot value
+   * reaches the worker inside the INIT_PHYSICS payload; setPhysicsStepStatsEnabled() changes
+   * it at runtime (SET_STEP_STATS). */
   stepStatsEnabled: boolean;
 };
 
@@ -2135,6 +2135,10 @@ export type PhysicsUpProtocol =
         isDebugEnvironment: boolean;
         loopState: LoopState;
         doNotCreateWorld?: boolean;
+        /** The main thread's `performance.timeOrigin`. A dedicated worker's `performance.now()`
+         * counts from the worker's own creation, so the worker uses this to put the step stats'
+         * timestamps (STEP `sentAt`, `stepEndAt`) on the main thread's clock. */
+        mainTimeOrigin: number;
       }
     | {
         type: PhysicsProtocolType.STEP;
@@ -2145,9 +2149,9 @@ export type PhysicsUpProtocol =
          * APP_PHYSICS_STEP systems issued for it — replayed right before that sub-step. */
         substepCommands?: PhysicsUpProtocol[][];
         /** Main thread's performance.now() at postMessage time, only stamped when
-         * PhysicsState.stepStatsEnabled is on. The worker subtracts it from its own clock
-         * to derive the dispatch latency (a dedicated worker shares its owning document's
-         * time origin, so the two clocks are directly comparable). */
+         * PhysicsState.stepStatsEnabled is on. The worker subtracts it from its own clock,
+         * moved onto the main thread's time origin (INIT_PHYSICS `mainTimeOrigin`), to derive
+         * the dispatch latency. */
         sentAt?: number;
       }
     | {
@@ -2157,6 +2161,11 @@ export type PhysicsUpProtocol =
          * knows the mapping and no slot allocator is needed on either side. */
         rigidBodyIds: number[];
         colliderIds: number[];
+      }
+    | {
+        type: PhysicsProtocolType.SET_STEP_STATS;
+        /** The worker's PhysicsState.stepStatsEnabled from the next STEP message on. */
+        enabled: boolean;
       }
     | { type: PhysicsProtocolType.FLUSH }
     // World --------------------------------------
@@ -2599,10 +2608,10 @@ export type PhysicsDownProtocol =
         /** Banks in `buffer` (PhysicsTransformBuffer), present with it, so the main-thread
          * wrapper uses the worker's layout instead of assuming one. */
         bankCount?: number;
-        /** Step-statistics scratch buffer (p027), only present when transportMode is
-         * 'SHARED_MEMORY' AND PhysicsState.stepStatsEnabled is on. See
-         * PHYSICS_STEP_STATS_SLOTS for its layout. In MESSAGE_BATCH mode the same numbers
-         * ride on TRANSFORMS_PUSH instead, so no buffer is handed over. */
+        /** Step-statistics scratch buffer (p027), present whenever transportMode is
+         * 'SHARED_MEMORY', whatever PhysicsState.stepStatsEnabled is, so the flag can be
+         * switched at runtime. See PHYSICS_STEP_STATS_SLOTS for its layout. In MESSAGE_BATCH
+         * mode the same numbers ride on TRANSFORMS_PUSH instead, so no buffer is handed over. */
         statsBuffer?: SharedArrayBuffer;
       }
     | { type: PhysicsProtocolType.DELETE_WORLD; worldDeleted: boolean }
@@ -2959,6 +2968,9 @@ export enum PhysicsProtocolType {
   /** Round-trip ordering barrier: the worker replies immediately, so the reply arrives only
    * after every message posted before it has been handled. */
   FLUSH = 6,
+  /** One-way: sets the worker's PhysicsState.stepStatsEnabled (setPhysicsStepStatsEnabled).
+   * The worker's state outlives world resets, so it is sent once per change. */
+  SET_STEP_STATS = 7,
   CREATE_WORLD = 100,
   DELETE_WORLD = 101,
   /** Worker -> main thread unsolicited push of the hot-path transform buffer (MESSAGE_BATCH fallback only). */

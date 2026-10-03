@@ -21,6 +21,8 @@ import { Pane } from 'tweakpane';
 import { llog, lwarn } from '../../utils/Logger';
 import { deleteCharacter, getCharacterById, getCharacters } from '../Character';
 import { getECSWorld } from '../ECS';
+import { ComponentType } from '../ECS/ECSCoreComponents';
+import { registerEntityWindowOpener } from '../../debug/Profiler';
 import { confirmClearScope, createClearListLSButton } from './_dbg__ClearLSButtons';
 import {
   CHAR_CONFIG_LS_KEY,
@@ -257,6 +259,18 @@ const toggleEditCharacterWindow = (charId: string) => {
     closeOnSceneChange: true,
   });
 };
+
+// The profiler's heaviest objects open a character's window (before the physics entity one)
+registerEntityWindowOpener({
+  id: 'character',
+  label: 'Edit character',
+  priority: 10,
+  canOpen: (world, entityId) => Boolean(world.getComponent(entityId, ComponentType.CHARACTER)),
+  toggle: (world, entityId) => {
+    const character = world.getComponent(entityId, ComponentType.CHARACTER);
+    if (character) toggleEditCharacterWindow(character.id);
+  },
+});
 
 // Clear LS
 
