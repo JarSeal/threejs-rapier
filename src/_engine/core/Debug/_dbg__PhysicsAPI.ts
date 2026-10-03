@@ -546,11 +546,18 @@ const createEditPhysicsEntityContent = (data?: { [key: string]: unknown }) => {
   };
 
   const positionInput = entityWindowPane.addBinding(transform, 'position', { label: 'Position' });
-  entityWindowPane.addButton({ title: 'Set position' }).on('click', () => {
+  const setPosition = () => {
     const { x, y, z } = rigidBody.translation();
     const next = { x: transform.position.x, y: transform.position.y, z: transform.position.z };
     rigidBody.setTranslation(next, true);
     recordPose('position', { x, y, z }, next);
+  };
+  entityWindowPane.addButton({ title: 'Set position' }).on('click', setPosition);
+  // Undo restores the position only, not the cancelled velocities
+  entityWindowPane.addButton({ title: 'Set position and cancel velocities' }).on('click', () => {
+    setPosition();
+    rigidBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    rigidBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
   });
   entityWindowPane.addButton({ title: 'Update position input' }).on('click', () => {
     transform.position = rigidBody.translation();

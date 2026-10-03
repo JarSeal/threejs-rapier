@@ -218,8 +218,8 @@ const playTools = () => {
         ...buttonBaseClasses,
         ...(isProfilerWindowOpen() ? [styles.active, 'onScreenToolActive'] : []),
       ],
-      html: () => `<button>${getSvgIcon('speedometer')}</button>`,
-      attr: { title: 'Profiler (open / close)' },
+      html: () => `<button>${getSvgIcon('speedometer', 'small')}</button>`,
+      attr: { title: 'Profiler (F8, open / close)' },
       onClick: (e) => {
         e.stopPropagation();
         // The window's open and close refresh these tools
