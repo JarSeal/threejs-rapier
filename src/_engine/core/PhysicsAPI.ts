@@ -896,6 +896,8 @@ const updateTimer = () => {
 /** Fixed steps issued to the current world since it was created (MAIN_THREAD: stepped;
  * WORKER_THREAD: sent in STEP messages, possibly not executed yet). */
 let stepsIssued = 0;
+/** Fixed steps issued since boot, over every world (never reset, unlike stepsIssued). */
+let subStepTotal = 0;
 /** Bumped whenever the simulated-time clock is discontinuous: the accumulator is discarded
  * (pause → resume, maxSubSteps overflow) or the world is replaced. */
 let simClockEpoch = 0;
@@ -916,6 +918,7 @@ const snapshotPhase = new Float64Array(SNAPSHOT_PHASE_RING_SIZE);
  * of a step at that moment (the phase of the continuous clock when this batch was issued). */
 const stampStepBatch = (stepsTaken: number) => {
   stepsIssued += stepsTaken;
+  subStepTotal += stepsTaken;
   const i = stepsIssued % SNAPSHOT_PHASE_RING_SIZE;
   snapshotPhaseStep[i] = stepsIssued;
   snapshotPhase[i] = physicsState.timestepRatio > 0 ? accDelta / physicsState.timestepRatio : 0;
@@ -994,6 +997,25 @@ export const setPhysicsStepLimit = (steps: number | null) => {
   stepLimit = steps === null ? null : stepsIssued + Math.max(0, Math.floor(steps));
   return stepLimit;
 };
+
+/**
+ * Fixed physics sub-steps issued since boot, over every world (WORKER_THREAD: sent, possibly not
+ * executed yet). Never reset, so the difference of two reads is the sub-steps in between, eg. per
+ * frame (a count near maxSubSteps warns of the spiral of death).
+ * @returns (number) sub-step count
+ */
+export const getPhysicsSubStepTotal = () => subStepTotal;
+
+/**
+ * How many physics objects the current world has (counted on the main thread, both worker
+ * targets).
+ * @returns ({ bodies: number; colliders: number; joints: number })
+ */
+export const getPhysicsObjectCounts = () => ({
+  bodies: rigidBodies.size,
+  colliders: colliders.size,
+  joints: joints.size,
+});
 
 /** Returns the current physicsState */
 export const getPhysicsState = () => physicsState;

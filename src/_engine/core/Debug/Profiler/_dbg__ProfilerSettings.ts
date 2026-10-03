@@ -13,6 +13,7 @@ export const PROFILER_SETTINGS_PERSIST_KEYS = [
   'updateRateHz',
   'openFromStatsPanels',
   'enabledInProdTest',
+  'measureGpu',
 ] as const satisfies readonly (keyof ProfilerSettings)[];
 
 type SettingsTabOpts = {
@@ -57,6 +58,18 @@ export const createProfilerSettingsTabDef = (
               label: 'Update rate',
               options: UPDATE_RATE_OPTIONS,
               onChange: () => opts.onChange('updateRateHz'),
+            },
+          ],
+        },
+        {
+          type: 'folder',
+          id: 'measuring',
+          title: 'Measuring',
+          content: [
+            {
+              key: 'measureGpu',
+              label: 'Measure GPU time',
+              onChange: () => opts.onChange('measureGpu'),
             },
           ],
         },

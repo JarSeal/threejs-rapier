@@ -29,6 +29,8 @@ import { createTabHost } from '../_dbg__TabHost';
 import { persistDebuggerTabStateValue } from '../_dbg__DebuggerPaneBuilder';
 import { _acquireFrameProbe, _releaseFrameProbe } from './_dbg__FrameProbe';
 import { createProfilerOverviewTabDef } from './_dbg__ProfilerOverview';
+import { registerBuiltInStatsSources } from './_dbg__ProfilerSources';
+import { _syncStatsSources } from './_dbg__StatsSources';
 import {
   createProfilerSettingsTabDef,
   PROFILER_SETTINGS_PERSIST_KEYS,
@@ -46,6 +48,7 @@ const sanitizeSettings = () => {
   }
   settings.openFromStatsPanels = Boolean(settings.openFromStatsPanels);
   settings.enabledInProdTest = Boolean(settings.enabledInProdTest);
+  settings.measureGpu = Boolean(settings.measureGpu);
 };
 
 hydrateDebuggerTabState({
@@ -69,6 +72,10 @@ const applySetting = (key: keyof ProfilerSettings) => {
       break;
     case 'updateRateHz':
       // The Overview reads it on its next mount (it isn't visible next to the Settings tab)
+      break;
+    case 'measureGpu':
+      // A held GPU frame time source is released or acquired right away
+      _syncStatsSources();
       break;
   }
 };
@@ -245,6 +252,12 @@ export const _updateProfilerTab = (id: string, opts?: UpdateDebuggerTabOpts) => 
   if (!_isProfilerTabOpen(id)) return;
   host.refresh(opts?.rebuild);
 };
+
+// STATS SOURCES
+
+export { _onStatsSourceReplaced } from './_dbg__StatsSources';
+
+registerBuiltInStatsSources(settings);
 
 // BUILT-IN TABS
 
