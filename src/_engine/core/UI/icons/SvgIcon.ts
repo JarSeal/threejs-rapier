@@ -14,6 +14,7 @@ import ecsNodesIcon from './svg/ecs-nodes.svg?raw';
 import eraserIcon from './svg/eraser-fill.svg?raw';
 import fileAsterixIcon from './svg/file-earmark-medical-fill.svg?raw';
 import fileCodeIcon from './svg/file-earmark-code-fill.svg?raw';
+import gearIcon from './svg/gear-fill.svg?raw';
 import geometryIcon from './svg/geometry-cube.svg?raw';
 import gpuCardIcon from './svg/gpu-card.svg?raw';
 import heartArrowIcon from './svg/heart-arrow.svg?raw';
@@ -23,11 +24,13 @@ import lightBulbIcon from './svg/lightbulb-fill.svg?raw';
 import lampIcon from './svg/lamp.svg?raw';
 import lockIcon from './svg/lock-fill.svg?raw';
 import memoryIcon from './svg/memory.svg?raw';
+import objectsCubesIcon from './svg/cubes-wireframe.svg?raw';
 import pauseIcon from './svg/pause-fill.svg?raw';
 import pinIcon from './svg/pin-angle-fill.svg?raw';
 import personArmsUpIcon from './svg/person-arms-up.svg?raw';
 import playFillIcon from './svg/play-fill.svg?raw';
 import postFxIcon from './svg/post-fx.svg?raw';
+import profilerIcon from './svg/profiler-pulse.svg?raw';
 import redoIcon from './svg/arrow-90deg-right.svg?raw';
 import rocketIcon from './svg/rocket.svg?raw';
 import rocketTakeoffIcon from './svg/rocket-takeoff-fill.svg?raw';
@@ -58,6 +61,7 @@ const icons = {
   eraser: eraserIcon,
   fileAsterix: fileAsterixIcon,
   fileCode: fileCodeIcon,
+  gear: gearIcon,
   geometry: geometryIcon,
   gpuCard: gpuCardIcon,
   heartArrow: heartArrowIcon,
@@ -67,11 +71,13 @@ const icons = {
   lamp: lampIcon,
   lock: lockIcon,
   memory: memoryIcon,
+  objectsCubes: objectsCubesIcon,
   pause: pauseIcon,
   personArmsUp: personArmsUpIcon,
   pin: pinIcon,
   playFill: playFillIcon,
   postFx: postFxIcon,
+  profiler: profilerIcon,
   redo: redoIcon,
   rocket: rocketIcon,
   rocketTakeoff: rocketTakeoffIcon,

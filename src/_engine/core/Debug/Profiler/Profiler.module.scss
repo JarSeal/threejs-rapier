@@ -1,0 +1,81 @@
+@use 'sass:color';
+@use '../../../styles/variables.scss';
+@use '../debugTabButtons' as tabButtons;
+
+.profiler {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tabMenu {
+  display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding: 0.8rem 1rem 0;
+}
+
+.tabButton {
+  @include tabButtons.tabButton(tabButton_selected);
+}
+
+.tabButton_selected {
+  @include tabButtons.tabButtonSelected;
+}
+
+.tabContent {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 1rem 0.8rem;
+  color: variables.$debugTextColor;
+  scrollbar-color: variables.$debugTextColor variables.$debugGuiBackgroundLighter2;
+  scrollbar-width: thin;
+
+  :global(.profilerTable) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 1.2rem;
+    font-variant-numeric: tabular-nums;
+
+    tr:nth-child(odd) {
+      background-color: rgba(255, 255, 255, 0.04);
+    }
+
+    th,
+    td {
+      padding: 0.4rem 0.6rem;
+      vertical-align: baseline;
+    }
+
+    th {
+      text-align: left;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+
+    :global(.profilerValue) {
+      text-align: right;
+      font-weight: 700;
+      color: variables.$white;
+      white-space: nowrap;
+    }
+
+    :global(.profilerSub) {
+      width: 100%;
+      font-size: 1rem;
+      color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+    }
+
+    :global(.isNA) :global(.profilerValue) {
+      color: variables.$debugTextColorDark;
+    }
+  }
+
+  :global(.profilerNote) {
+    margin: 0.8rem 0;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: color.adjust(variables.$debugTextColor, $lightness: -20%);
+  }
+}

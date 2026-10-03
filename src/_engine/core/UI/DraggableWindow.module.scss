@@ -149,6 +149,13 @@ $collapseAnimLength: 150ms;
   color: variables.$debugTextColor;
   user-select: none;
   overflow: hidden;
+
+  :global(.uiIcon) {
+    display: inline-block;
+    width: 1.2rem;
+    margin-right: 0.5rem;
+    vertical-align: -0.1rem;
+  }
 }
 
 .collapseBtn {

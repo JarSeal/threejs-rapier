@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Debug, Performance, UI
 Epic: Profiler (this plan is the base; later profiler plans build on its window, tab host and stats sources)
 Related: _DONE_p345_gpu-memory-and-draw-call-debugger.md (its tab moves in, Phase 6), p240_client-device-capability-sniffer.md (device budgets next to the measured figures), p350_lod-system-research.md (the LOD plans measure their result with it), p354_gpu-driven-culling.md (GPU culling makes the CPU "in view" census an estimate of what the GPU draws, §2.7), docs/templates/todo-plan-prompts.txt (the prodTest follow-up after this plan, §2.4)
@@ -285,7 +285,7 @@ against. The Statistics tab's "Draw calls, memory" button already treats it as a
 
 Each phase is non-breaking and can be committed on its own.
 
-### Phase 1: Window shell, entry points, Settings
+### Phase 1: Window shell, entry points, Settings — done
 
 1. Extract `_dbg__TabHost.ts` from `_dbg__DebuggerGUI.ts`. The drawer uses it, with no behaviour
    change. Move the tab button styles to a shared mixin.
@@ -303,6 +303,42 @@ button. The panel click respects the toggle. Settings persist over a reload. Wit
 `enabledInProdTest` on, an open window survives the play button into prodTest and shows FPS / CPU
 there. The Overview's FPS matches the stats-gl FPS panel within ±1. Every drawer tab behaves as
 before (open/close, refresh intervals, scene tabs, folder states).
+
+As built:
+
+- Tab host: `createTabHost({ getContainer, isVisible, onMount, label })`. `getContainer` (not a
+  fixed `container`) because the drawer and the window both rebuild their scroller.
+  `isVisible()` gates the refresh interval (the drawer's `drawerState.isOpen`, the window's
+  mounted content). Besides `mount` / `refresh(rebuild?)` / `unmount` / `mountedId` it has
+  `resume()` (refresh + start the interval, the drawer's open) and `pause()` (the drawer's
+  close). It keeps the mounted def, and it imports `DebuggerGUI.module.scss`, so the profiler
+  gets the debugger styles in prodTest, where the drawer module never loads.
+- Shared tab button mixins: `core/Debug/_debugTabButtons.scss` (`tabButton($selectedClass)`,
+  `tabButtonSelected`). The scene tab variant stays in the drawer's SCSS.
+- `DraggableWindow` got an `icon` option (config and open props, persisted) for the header icon.
+- Public `debug/Profiler.ts` also has `isProfilerAvailable`, `isProfilerWindowOpen`,
+  `isProfilerEnabledInProdTest`, `getProfilerSettings` / `setProfilerSettings` (persist and
+  apply), `DEFAULT_PROFILER_SETTINGS`, `PROFILER_UPDATE_RATES_HZ` and the LS key constants.
+- Files: `core/Debug/Profiler/_dbg__Profiler.ts` (window, menu, tab registry, settings and their
+  side effects), `_dbg__ProfilerOverview.ts` (`OVERVIEW_METRICS`: `{ id, label, read(sample) }`
+  rows; Phase 2 adds rows, the sample's sources and the order/visibility list),
+  `_dbg__ProfilerSettings.ts`, `_dbg__FrameProbe.ts`, `Profiler.module.scss`.
+- Tab ids and `orderNr`: `profilerOverview` 0, `profilerSettings` 100 (Objects and GPU memory go
+  between). The Overview's `refreshIntervalMs` is a getter on `updateRateHz`, read at mount.
+- Frame probe: a 1024-frame `Float64Array` ring, summarized over the rendered frames of the last
+  1000 ms. A limiter-skipped frame's CPU time is added to the next rendered frame, and a gap
+  over 1 s (paused main loop, hidden tab) is not counted as a frame time. Refcounted
+  `_acquireFrameProbe` / `_releaseFrameProbe`: the window content acquires on build and releases
+  on removal.
+- The window's measurements and the mounted tab's `onOpen` cleanup are released in the content
+  root's `onRemoveCmp`, so (unlike the drawer) the cleanup runs after the tab's CMPs are removed.
+- The Statistics tab's toggle binds straight to the profiler's settings object (a `target`, one
+  source of truth, no proxy copy) and its `onChange` calls `setProfilerSettings`. It sits with
+  the "Profiler" button in a Profiler folder.
+- The on-screen button is in `playTools()`, so in prodTest it also needs the Debug tools tab's
+  `showOnScreenToolsInProdTest`.
+- Icons: `gear-fill.svg` and `cubes-wireframe.svg` (Bootstrap Icons 1.11.3 `gear-fill` and
+  `boxes`); `profiler-pulse.svg` is a monitor frame with Bootstrap's `activity` pulse.
 
 ### Phase 2: Stats sources and the full Overview
 

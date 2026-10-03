@@ -57,6 +57,7 @@ import { registerPostFxProfiler } from './debug/PostFXProfiler';
 import { registerAxesGizmoModule } from './debug/AxesGizmo';
 import { registerEnvBallModule } from './debug/EnvBall';
 import { registerGPUMemoryDebugGUI } from './debug/GPUMemory';
+import { registerProfiler } from './debug/Profiler';
 
 /**
  * Initializes the engine and injects the start function (startFn) into the engine
@@ -126,6 +127,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       // registerDebugToolsModule()/getDebugToolsState() are prod-test-aware themselves; the
       // debug tools UI panel they back stays IS_DEBUG_ENV-only regardless (initDebugTools()).
       await registerDebugToolsModule();
+      // Debug env, and prodTest when enabled there. Before the windows are restored from LS
+      await registerProfiler();
       await registerMainLoopDebugGUI();
       await registerOnScreenTools();
       if (IS_PROD_TEST_MODE) registerDefaultProdTestKeyBindings();
