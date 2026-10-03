@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { ECSWorld } from '../ECS';
+import { ECSWorld, getECSWorld } from '../ECS';
 import { ECSSystemStage } from '../../../AppECSRegistry';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { IS_DEBUG_ENV } from '../Config';
@@ -50,10 +50,16 @@ export const DEFAULT_SPATIAL_DOMAIN = 'DEFAULT';
 // made ahead of a consumer.
 const DEFAULT_CELL_SIZE = 20;
 
+/** Bits 0-30 of SPATIAL_DOMAINS' mask, so the mask stays a small positive integer. */
+const MAX_NON_DEFAULT_DOMAINS = 31;
+
 type SpatialDomain = {
   readonly id: string;
+  /** This domain's bit in SPATIAL_DOMAINS' mask; -1 for DEFAULT, whose membership is SPATIAL_INDEXED. */
+  readonly bit: number;
   opts: Required<SpatialDomainOptions>;
   grid: SpatialGrid;
+  hasWarnedFull: boolean;
   /** Debug env only — the last rebuild's wall-clock cost, for _dbg__SpatialGrid.ts. */
   lastRebuildMs: number;
 };
@@ -62,6 +68,8 @@ type WorldDomains = {
   /** Registration order, which is also the rebuild order. */
   list: SpatialDomain[];
   byId: Map<string, SpatialDomain>;
+  /** The non-default domains, by mask bit. */
+  byBit: SpatialDomain[];
 };
 
 const domainsByWorld = new WeakMap<ECSWorld, WorldDomains>();
@@ -112,39 +120,94 @@ const insertMember = (world: ECSWorld, domain: SpatialDomain, entityId: number) 
 };
 
 /**
+ * The one path every member takes into a domain. A full non-default domain refuses the member
+ * (false) with one dev warning per domain; a full `DEFAULT` throws the grid's capacity error, as
+ * it did before domains.
+ */
+const addToDomain = (world: ECSWorld, domain: SpatialDomain, entityId: number): boolean => {
+  const grid = domain.grid;
+  if (domain.bit >= 0 && !grid.has(entityId) && grid.memberCount >= domain.opts.maxMembers) {
+    if (IS_DEBUG_ENV && !domain.hasWarnedFull) {
+      domain.hasWarnedFull = true;
+      lwarn(
+        `SpatialIndex: domain '${domain.id}' is full (maxMembers ${domain.opts.maxMembers}), ` +
+          `entity ${entityId} was refused. Further refusals in this domain aren't logged (p346 §3.1).`
+      );
+    }
+    return false;
+  }
+  insertMember(world, domain, entityId);
+  return true;
+};
+
+const setMaskBit = (world: ECSWorld, domain: SpatialDomain, entityId: number) => {
+  const membership = world.getComponent(entityId, ComponentType.SPATIAL_DOMAINS);
+  if (membership) membership.mask |= 1 << domain.bit;
+  else world.addComponent(entityId, ComponentType.SPATIAL_DOMAINS, { mask: 1 << domain.bit });
+};
+
+/** Removes SPATIAL_DOMAINS with the last bit (its onRemoveComponent hook then has nothing left to leave). */
+const clearMaskBit = (world: ECSWorld, domain: SpatialDomain, entityId: number) => {
+  const membership = world.getComponent(entityId, ComponentType.SPATIAL_DOMAINS);
+  if (!membership) return;
+  membership.mask &= ~(1 << domain.bit);
+  if (membership.mask === 0) world.removeComponent(entityId, ComponentType.SPATIAL_DOMAINS);
+};
+
+/**
  * Registers a spatial domain in `world`. Registering an existing id with the same settings is a
  * no-op; with different settings it replaces the domain's grid and re-inserts its members (the
- * cell size is baked into the grid's layout, so there is no cheaper path). Registering
- * `DEFAULT` before its first member sets its settings (cell size 20 and `world.maxEntities`
- * members otherwise).
+ * cell size is baked into the grid's layout, so there is no cheaper path). Members past a
+ * smaller `maxMembers` leave the domain. Registering `DEFAULT` before its first member sets its
+ * settings (cell size 20 and `world.maxEntities` members otherwise). A world holds at most 31
+ * domains besides `DEFAULT`.
  */
 export function registerSpatialDomain(world: ECSWorld, opts: SpatialDomainOptions): void {
   const resolved = resolveDomainOptions(opts);
   let domains = domainsByWorld.get(world);
   if (!domains) {
-    domains = { list: [], byId: new Map() };
+    domains = { list: [], byId: new Map(), byBit: [] };
     domainsByWorld.set(world, domains);
   }
 
   const existing = domains.byId.get(resolved.id);
   if (!existing) {
+    const isDefault = resolved.id === DEFAULT_SPATIAL_DOMAIN;
+    if (!isDefault && domains.byBit.length >= MAX_NON_DEFAULT_DOMAINS) {
+      throw new Error(
+        `Spatial domain '${resolved.id}': world '${world.id}' already has the maximum of ` +
+          `${MAX_NON_DEFAULT_DOMAINS} domains besides ${DEFAULT_SPATIAL_DOMAIN}.`
+      );
+    }
     const domain: SpatialDomain = {
       id: resolved.id,
+      bit: isDefault ? -1 : domains.byBit.length,
       opts: resolved,
       grid: createDomainGrid(resolved),
+      hasWarnedFull: false,
       lastRebuildMs: 0,
     };
     domains.list.push(domain);
     domains.byId.set(domain.id, domain);
+    if (!isDefault) domains.byBit.push(domain);
     return;
   }
   if (isSameDomainOptions(existing.opts, resolved)) return;
 
   const oldGrid = existing.grid;
+  if (existing.bit < 0 && oldGrid.memberCount > resolved.maxMembers) {
+    // DEFAULT's membership is SPATIAL_INDEXED, which a refusal can't take away
+    throw new Error(
+      `Spatial domain '${DEFAULT_SPATIAL_DOMAIN}': maxMembers ${resolved.maxMembers} is below ` +
+        `its current ${oldGrid.memberCount} members.`
+    );
+  }
   existing.opts = resolved;
   existing.grid = createDomainGrid(resolved);
+  existing.hasWarnedFull = false;
   for (let i = 0; i < oldGrid.memberCount; i++) {
-    insertMember(world, existing, oldGrid.memberAt(i));
+    const entityId = oldGrid.memberAt(i);
+    if (!addToDomain(world, existing, entityId)) clearMaskBit(world, existing, entityId);
   }
   existing.grid.rebuild();
 }
@@ -187,6 +250,94 @@ export function setSpatialGridCellSize(world: ECSWorld, cellSize: number): void 
   const current = domainsByWorld.get(world)?.byId.get(DEFAULT_SPATIAL_DOMAIN)?.opts;
   registerSpatialDomain(world, { ...(current ?? defaultDomainOptions(world)), cellSize });
 }
+
+// --- MEMBERSHIP (p346 §3.2) ---
+// DEFAULT's membership is the SPATIAL_INDEXED component (also its JSON flag, `spatialIndex`);
+// the other domains' is one SPATIAL_DOMAINS bit mask per entity, since domains are runtime
+// configuration and components are declared statically. An entity can be in several domains.
+
+/**
+ * Adds `entityId` to `world`'s domain `domainId` with its current position and radius. Returns
+ * false if the domain isn't registered, the entity isn't alive, or the domain is full; true if
+ * the entity is (or already was) a member. Joining `DEFAULT` adds SPATIAL_INDEXED.
+ */
+export function joinSpatialDomain(
+  entityId: number,
+  domainId: string,
+  world: ECSWorld = getECSWorld()
+): boolean {
+  if (!world.isAlive(entityId)) return false;
+  if (domainId === DEFAULT_SPATIAL_DOMAIN) {
+    if (!world.hasComponent(entityId, ComponentType.SPATIAL_INDEXED)) {
+      world.addComponent(entityId, ComponentType.SPATIAL_INDEXED, true);
+    }
+    return true;
+  }
+
+  const domain = domainsByWorld.get(world)?.byId.get(domainId);
+  if (!domain) {
+    if (IS_DEBUG_ENV) {
+      lwarn(
+        `SpatialIndex: can't join entity ${entityId} to domain '${domainId}', it isn't ` +
+          `registered in world '${world.id}' (registerSpatialDomain).`
+      );
+    }
+    return false;
+  }
+  if (domain.grid.has(entityId)) return true;
+  if (!addToDomain(world, domain, entityId)) return false;
+  setMaskBit(world, domain, entityId);
+  return true;
+}
+
+/** Removes `entityId` from `world`'s domain `domainId` (a no-op for a non-member). Leaving `DEFAULT` removes SPATIAL_INDEXED. */
+export function leaveSpatialDomain(
+  entityId: number,
+  domainId: string,
+  world: ECSWorld = getECSWorld()
+): void {
+  if (domainId === DEFAULT_SPATIAL_DOMAIN) {
+    if (world.hasComponent(entityId, ComponentType.SPATIAL_INDEXED)) {
+      world.removeComponent(entityId, ComponentType.SPATIAL_INDEXED);
+    }
+    return;
+  }
+
+  const domain = domainsByWorld.get(world)?.byId.get(domainId);
+  if (!domain || !domain.grid.has(entityId)) return;
+  domain.grid.removeMember(entityId);
+  clearMaskBit(world, domain, entityId);
+}
+
+export function isInSpatialDomain(
+  entityId: number,
+  domainId: string,
+  world: ECSWorld = getECSWorld()
+): boolean {
+  if (domainId === DEFAULT_SPATIAL_DOMAIN) {
+    return world.hasComponent(entityId, ComponentType.SPATIAL_INDEXED);
+  }
+  const domain = domainsByWorld.get(world)?.byId.get(domainId);
+  if (!domain) return false;
+  const mask = world.getComponent(entityId, ComponentType.SPATIAL_DOMAINS)?.mask ?? 0;
+  return (mask & (1 << domain.bit)) !== 0;
+}
+
+/** Takes the entity out of every domain in its SPATIAL_DOMAINS mask. */
+const leaveMaskedDomains = (entityId: number, world: ECSWorld) => {
+  const mask = world.getComponent(entityId, ComponentType.SPATIAL_DOMAINS)?.mask ?? 0;
+  const byBit = domainsByWorld.get(world)?.byBit;
+  if (!mask || !byBit) return;
+  for (let bit = 0; bit < byBit.length; bit++) {
+    if (mask & (1 << bit)) byBit[bit].grid.removeMember(entityId);
+  }
+};
+
+// onRemoveComponent too, so removing the component directly can't leave stale grid members
+ECSWorld.registerComponentHooks(ComponentType.SPATIAL_DOMAINS, {
+  onRemoveComponent: leaveMaskedDomains,
+  onDeleteEntity: leaveMaskedDomains,
+});
 
 /**
  * A point/spot light's influence-sphere radius — shared with
@@ -238,7 +389,7 @@ ECSWorld.registerComponentHooks(ComponentType.SPATIAL_INDEXED, {
         );
       }
     }
-    insertMember(world, getDefaultDomain(world), entityId);
+    addToDomain(world, getDefaultDomain(world), entityId);
   },
   onRemoveComponent: (entityId, world) => {
     getSpatialDomain(world, DEFAULT_SPATIAL_DOMAIN)?.removeMember(entityId);

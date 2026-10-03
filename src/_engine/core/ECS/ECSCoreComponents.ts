@@ -75,6 +75,9 @@ export interface CoreComponentData {
   // Spatial index — a plain marker; the SpatialGrid instance (Spatial/SpatialIndexSystem.ts)
   // owns position/radius data derived from it, not this component.
   [CoreType.SPATIAL_INDEXED]: boolean;
+  /** Bit i = member of the world's spatial domain with bit index i. Kept by
+   * joinSpatialDomain/leaveSpatialDomain (Spatial/SpatialIndexSystem.ts): don't add it directly. */
+  [CoreType.SPATIAL_DOMAINS]: { mask: number };
   // Debug
   [CoreType.DEBUG_DATA]: EntityDebugData;
   [CoreType.DEBUG_LIGHT_HELPER]: {
