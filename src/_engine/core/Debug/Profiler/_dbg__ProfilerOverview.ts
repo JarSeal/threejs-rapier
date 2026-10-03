@@ -1,5 +1,4 @@
 import { CMP } from '../../../utils/CMP';
-import { getAllECSWorlds } from '../../ECS';
 import type { AnyDebuggerTabDef } from '../../../debug/DebuggerGUI';
 import type { ProfilerOverviewMetricEntry, ProfilerSettings } from '../../../debug/Profiler';
 import { formatBytes, formatNumber } from '../_dbg__AssetStats';
@@ -16,8 +15,10 @@ import {
   type PhysicsSubStepStats,
   type PostFxGpuStats,
   type RayStats,
+  type SceneCensus,
   type SceneStats,
 } from './_dbg__ProfilerSources';
+import type { CensusBucket, InViewTotal } from './_dbg__Census';
 import { _readStatsSource, createStatsSourceHolder, type StatsReading } from './_dbg__StatsSources';
 
 export const PROFILER_OVERVIEW_TAB_ID = 'profilerOverview';
@@ -55,8 +56,6 @@ type OverviewMetric = {
 
 const NO_FRAMES = 'no frames (main loop paused)';
 const MEASURING = 'measuring…';
-/** The in-view census rows (§2.7) have no source yet. */
-const NO_CENSUS = 'in-view census not available yet';
 
 const formatMs = (ms: number) => `${ms < 10 ? ms.toFixed(2) : ms.toFixed(1)} ms`;
 const formatAvg = (n: number) => formatNumber(Math.round(n));
@@ -76,12 +75,34 @@ const fromSource =
     return reading.value === null ? { value: '—', sub: MEASURING } : read(reading.value);
   };
 
-const censusRow = (id: string, label: string, defaultVisible: boolean): OverviewMetric => ({
+/** An in-view census row: the in-view figure, "of <total>", and what it was counted against. */
+const censusRow = (
+  id: string,
+  label: string,
+  defaultVisible: boolean,
+  pick: (c: SceneCensus) => InViewTotal,
+  extra?: (c: SceneCensus) => string
+): OverviewMetric => ({
   id,
   label,
   defaultVisible,
-  read: () => ({ value: '—', na: NO_CENSUS }),
+  sources: [PROFILER_SOURCE.CENSUS],
+  read: fromSource<SceneCensus>(PROFILER_SOURCE.CENSUS, (c) => {
+    const { inView, total } = pick(c);
+    let sub = `in view, of ${formatNumber(total)}`;
+    if (c.isDebugCamera) sub += " · debug camera's view";
+    if (c.isApprox) sub += ' · approx. (BatchedMesh)';
+    const more = extra?.(c);
+    if (more) sub += ` · ${more}`;
+    return { value: formatNumber(inView), sub };
+  }),
 });
+
+/** The debug helpers the census left out of the scene figures, if any. */
+const excludedHelpers = (c: SceneCensus, pick: (b: CensusBucket) => InViewTotal) => {
+  const total = c.excludesDebugHelpers ? pick(c.kinds.DEBUG_HELPERS).total : 0;
+  return total ? `${formatNumber(total)} in debug helpers (excluded)` : '';
+};
 
 const readPhysics = (s: OverviewSample): MetricValue => {
   const step = s.get<PhysicsStepStats>(PROFILER_SOURCE.PHYSICS_STEP);
@@ -206,22 +227,29 @@ const OVERVIEW_METRICS: OverviewMetric[] = [
       return { value: formatAvg(d.triangles.avg), sub };
     }),
   },
-  censusRow('triangles', 'Triangles', true),
-  censusRow('vertices', 'Vertices', true),
-  censusRow('meshes', 'Meshes', true),
+  censusRow('triangles', 'Triangles', true, (c) => c.meshes.primitives),
+  censusRow('vertices', 'Vertices', true, (c) => c.meshes.vertices),
+  censusRow(
+    'meshes',
+    'Meshes',
+    true,
+    (c) => c.meshes.objects,
+    (c) => {
+      const helpers = excludedHelpers(c, (b) => b.objects);
+      return `${helpers ? `${helpers} · ` : ''}census ${formatMs(c.sampleMs)}`;
+    }
+  ),
   {
     id: 'entities',
     label: 'Entities',
     defaultVisible: true,
-    read: () => {
-      let total = 0;
-      const worlds = getAllECSWorlds();
-      for (let i = 0; i < worlds.length; i++) total += worlds[i].getEntityCount();
-      return {
-        value: formatNumber(total),
-        sub: `total, ${worlds.length} world${worlds.length === 1 ? '' : 's'} (in view: needs the census)`,
-      };
-    },
+    sources: [PROFILER_SOURCE.CENSUS],
+    read: fromSource<SceneCensus>(PROFILER_SOURCE.CENSUS, (c) => {
+      const worlds = `${c.worlds} world${c.worlds === 1 ? '' : 's'}`;
+      let sub = `own Object3D drawn in view, of ${formatNumber(c.entities.total)} in ${worlds}`;
+      if (c.isDebugCamera) sub += " · debug camera's view";
+      return { value: formatNumber(c.entities.inView), sub };
+    }),
   },
   {
     id: 'memJs',
@@ -243,8 +271,20 @@ const OVERVIEW_METRICS: OverviewMetric[] = [
       sub: "three's own estimate",
     })),
   },
-  censusRow('instances', 'Instances', false),
-  censusRow('lights', 'Lights', false),
+  censusRow('instances', 'Instances', false, (c) => c.meshes.instances),
+  {
+    id: 'lights',
+    label: 'Lights',
+    defaultVisible: false,
+    sources: [PROFILER_SOURCE.CENSUS],
+    read: fromSource<SceneCensus>(PROFILER_SOURCE.CENSUS, ({ lights }) => {
+      const casters = `${lights.shadowCasters} shadow caster${lights.shadowCasters === 1 ? '' : 's'}`;
+      const passes = lights.shadowPasses
+        ? ` · ${lights.shadowPasses} shadow pass${lights.shadowPasses === 1 ? '' : 'es'} per frame`
+        : '';
+      return { value: formatNumber(lights.count), sub: `shown · ${casters}${passes}` };
+    }),
+  },
   {
     id: 'bodies',
     label: 'Physics bodies',

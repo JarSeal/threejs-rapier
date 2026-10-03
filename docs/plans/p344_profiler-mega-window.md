@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: in progress | Phases 1-4 implemented
 Category: Debug, Performance, UI
 Epic: Profiler (this plan is the base; later profiler plans build on its window, tab host and stats sources)
 Related: _DONE_p345_gpu-memory-and-draw-call-debugger.md (its tab moves in, Phase 6), p240_client-device-capability-sniffer.md (device budgets next to the measured figures), p350_lod-system-research.md (the LOD plans measure their result with it), p354_gpu-driven-culling.md (GPU culling makes the CPU "in view" census an estimate of what the GPU draws, §2.7), docs/templates/todo-plan-prompts.txt (the prodTest follow-up after this plan, §2.4)
@@ -433,7 +433,7 @@ As built:
   clock. After the fix: dispatch 0.05–0.2 ms, MESSAGE_BATCH transit ~0.8 ms, SHARED_MEMORY read
   latency ~1 frame (polled on the next frame).
 
-### Phase 4: In-view census
+### Phase 4: In-view census — done
 
 1. The census (§2.7), `markDebugHelper` and its call sites.
 2. The Overview's census rows (triangles, vertices, meshes, entities, instances, lights).
@@ -441,6 +441,44 @@ As built:
 **Exit:** in `largeWorld`, turning the camera changes the in-view figures, and the totals stay put.
 Toggling light helpers doesn't change the triangle totals with `excludeDebugHelpers` on. The
 sample costs < 2 ms at 4 Hz (measured with the probe).
+
+As built:
+
+- `Profiler/_dbg__Census.ts`: `runSceneCensus(excludeDebugHelpers)` returns one reused
+  `SceneCensus`: per kind (`CENSUS_KINDS`: MESH, INSTANCED_MESH, BATCHED_MESH, SKINNED_MESH, LINES,
+  POINTS, SPRITES, LIGHTS, CAMERAS, DEBUG_HELPERS) a bucket of `objects`, `instances`,
+  `primitives` (triangles for the mesh kinds, segments for lines, points, sprite quads) and
+  `vertices`, each `{ inView, total }`; `meshes` (the mesh kinds summed); `lights` (count, shadow
+  casters, shadow passes: 6 per point light); `entities`; `isDebugCamera`, `isApprox`,
+  `sampleMs`. Phase 5's kind bars read the buckets; the owner breakdown and the heaviest objects
+  still need adding to the walk.
+- It mirrors three r186's WebGPU `Renderer._projectObject`: it calls `object.intersectsFrustum`
+  (three's own test, `FrustumArray` for an `ArrayCamera`) and skips objects whose materials are
+  all hidden. The layer test gates only the object itself (its children are still walked).
+  Instances are three's draw count (`InstancedBufferGeometry.instanceCount`, else `object.count`).
+- The engine's `FAT` line backend (`FatLineSegments`) and three's `Line2` are `Mesh`es: they count
+  as LINES, one segment per instance, never as triangles.
+- Totals count hidden objects too. Lights and cameras are never culled: their "in view" is
+  "shown". An entity is in view when its OBJECT3D or a descendant was drawn in view, so entities
+  without an Object3D of their own (eg. `InstancedMeshPool` slots) never are; the row says "own
+  Object3D".
+- No per-geometry cache: the counts are O(1) getters. A BatchedMesh sums its visible instances
+  from three's private `_instanceInfo` / `_geometryInfo` (nothing uses one yet) and marks the
+  census `isApprox`.
+- `markDebugHelper(obj)` and `DEBUG_HELPER_USER_DATA_KEY` (`aekDebugHelper`) in
+  `debug/Profiler.ts`. Marked: light and camera helpers, physics wireframe lines and hosts, ray
+  helpers, character gizmos, spatial grid overlays and 3D symbols (a line's mark is on
+  `line.object3D`; its `userData` survives a backend swap). `isHelperSymbol` and three's `*Helper`
+  types count without the mark.
+- New setting `excludeDebugHelpers` (Settings → Measuring). The census source (`scene.census`,
+  no acquire) walks at most once per half update interval, so views reading it together share a
+  walk; a sample of the other `excludeDebugHelpers` value isn't reused.
+- The census runs in the Overview's refresh interval, outside the main loop, so it times itself
+  (shown on the Meshes row) instead of the frame probe. Measured in `largeWorld`: median 0.10 ms,
+  max 0.15 ms (the first sample after a load 0.4-0.75 ms).
+- `largeWorld`'s in-view triangles barely move with the camera: its instanced pools have
+  world-sized bounding spheres, and three culls an `InstancedMesh` whole. The figure is right;
+  that is a finding for the LOD and culling plans (p350, p354).
 
 ### Phase 5: Objects tab
 
