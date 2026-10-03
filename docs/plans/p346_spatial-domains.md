@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: ECS, Spatial
 Epic: p350_lod-system-research.md (Tier 0)
 Blocks: p353_macro-streaming-grid.md (Phase 1: shared cell maths; Phase 4: per-cell entity lookup)
@@ -170,13 +170,27 @@ domain id (the old flat `cellSize` is read as `DEFAULT`'s).
 
 ## 4. Phases
 
-### Phase 1 — Extract and fix, no behaviour change
+### Phase 1 — Extract and fix, no behaviour change — done
 
 1. `CellKey.ts` (§3.4).
 2. `getRadius`, `maxIndexedRadius` recomputed once per rebuild (§3.3, grid side).
 
 **Exit:** the oracle shows no mismatches in `debugScene` and `largeWorld`; the "Spatial index"
 tab's rebuild time is the same or lower.
+
+As built:
+
+- No `setRadiusNoRecompute`. `addMember`, `removeMember` and `updateRadius` are all O(1) now:
+  they only ever raise `maxIndexedRadius` (a conservative bound, so queries between rebuilds get
+  extra candidates, never missed ones), and `rebuild()` makes it exact in its first loop. Phase 2's
+  rebuild calls plain `updateRadius`. This also removes the O(n²) re-insert in
+  `setSpatialGridCellSize`, which called the O(n) recompute on every `addMember`.
+- `CellKey.ts` also exports `isCellInRange` (the grid keeps its one-time out-of-range warning around
+  the now-pure `packCellKey`), `unpackCellKey` writes into an `out` object, and `cellBounds` takes
+  an `offset` (the grid writes 6 floats per cell into one array).
+- `debugScene` (`testDebugScene`) has no meshes or indexed members, so it can't exercise the
+  oracle. `largeWorld` (26 members) showed no mismatches, also on 2000 direct random
+  `validateSpatialGridQuery` calls.
 
 ### Phase 2 — Domains and membership
 
