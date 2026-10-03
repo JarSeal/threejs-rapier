@@ -10,12 +10,15 @@ Earlier releases are only recorded in the git history.
 
 **Added**
 
-- Spatial domains (`core/Spatial/SpatialIndexSystem.ts`): an ECS world can hold several named spatial grids, each with its own cell size, capacity and update policy. `registerSpatialDomain(world, { id, cellSize, maxMembers, update?, oversizedRadiusMultiplier? })`, `getSpatialDomain`, `getSpatialDomainIds`, `getSpatialDomainOptions`. The existing grid is the `DEFAULT` domain, created lazily as before (`getSpatialGrid` still returns it); an app can register `DEFAULT` itself before its first member to set its settings. Registering an id again with other settings re-creates its grid and re-inserts the members.
+- Spatial domains (`core/Spatial/SpatialIndexSystem.ts`): an ECS world can hold several named spatial grids, each with its own cell size, capacity and update policy. `registerSpatialDomain(world, { id, cellSize, maxMembers, update?, oversizedRadiusMultiplier? })`, `getSpatialDomain`, `getSpatialDomainIds`, `getSpatialDomainOptions`. The existing grid is the `DEFAULT` domain (`getSpatialGrid` still returns it); an app can register `DEFAULT` itself to set its settings. Registering an id again with other settings re-creates its grid and re-inserts the members.
 - Update policies: `DYNAMIC` (refreshed and rebuilt every frame, as before), `STATIC` (rebuilt only in a frame where a member joined or left) and `MANUAL` (rebuilt only by `rebuildSpatialDomain`). `invalidateSpatialDomain(world, id)` refreshes and rebuilds any domain at the next frame; `rebuildSpatialDomain(world, id)` does it now.
 - Membership: `joinSpatialDomain`, `leaveSpatialDomain` and `isInSpatialDomain`. An entity can be in several domains. `DEFAULT`'s membership is still `SPATIAL_INDEXED`; the others' is the new runtime `SPATIAL_DOMAINS` component (a bit mask, at most 31 domains besides `DEFAULT`). A full non-default domain refuses a member with one dev warning, where `DEFAULT` still throws.
 - Radius providers: `registerSpatialRadiusProvider(componentType, fn, { scaleIndependent? })` replaces the hard-coded mesh and light radii. `refreshSpatialRadius(entityId)` re-reads a member's radius after what its provider measures changed, and `getConservativeGeometryRadius(geometry)` is the mesh provider's measure.
 - `core/Spatial/CellKey.ts`: the cell maths (`worldToCell`, `packCellKey`, `unpackCellKey`, `isCellInRange`, `cellBounds`, the axis constants), shared by every cell-keyed structure so a cell key means the same thing everywhere for a given cell size.
 - `SpatialGrid.getRadius(entityId)` and `memberAt(index)` (iterating the members without an allocation).
+- Scene-scoped domains: `registerSpatialDomain`'s `sceneId` makes the settings that scene's. They win over the domain's world settings (registered without `sceneId`) until the scene exits, when the domain goes back to its world settings or, without any, is unregistered. `setSpatialGridCellSize(world, cellSize, sceneId?)` and `getSpatialDomainSceneId(world, id)` take and tell the scope. The scene loader releases the previous scene's settings right after its entities are deleted (`releaseSceneSpatialDomains`).
+- `unregisterSpatialDomain(world, id)`: every member leaves the domain, its grid is dropped and its bit is reused by the next registration. `DEFAULT` can't be unregistered.
+- Scene JSON `spatialDomains`: the domains a scene registers for itself, before any of its entities join one (`registerSceneSpatialDomains`). `DEFAULT` takes a partial entry merged over its world settings; other domains need `cellSize` and `maxMembers`.
 - "Spatial index" debug tab: a domain dropdown; stats, histogram, oracle, overlays and the cell size apply to the selected domain, and each domain's overlays have their own colours, so several can be shown at once. New rows show how often the selected domain rebuilds and when it last did, and an "All domains" summary lists every domain's policy, members, rebuilds per frame and rebuild time (`getSpatialDomainRebuildStats`, debug env only). A cell size set in the tab now holds when the app registers the domain again, and "Reset to the app's cell size" goes back to the app's.
 - The brute-force oracle works per domain (`setSpatialGridOracleEnabled(world, enabled, domainId?)` and the other oracle functions take a domain id, default `DEFAULT`; `getOracleCheckedQueryCount` is new). While on, it also runs 8 probe queries near random members every frame, so a domain nobody queries yet is checked too.
 
@@ -25,13 +28,14 @@ Earlier releases are only recorded in the git history.
 - `SpatialGrid.addMember`, `removeMember` and `updateRadius` are O(1): the largest indexed radius is only ever raised between rebuilds and made exact by `rebuild()`. This also removes the O(n²) re-insert when the cell size changes.
 - `setSpatialGridCellSize` re-registers `DEFAULT` with the new cell size.
 - The tab's saved settings are kept per domain (`AEK_debugSpatialGrid`); the old flat settings become `DEFAULT`'s.
+- `DEFAULT`'s grid is per scene: built on demand (by its first `SPATIAL_INDEXED` member, a `getSpatialGrid` call, or the rebuild system when persistent members are left) and freed on every scene change, so a scene that indexes nothing has no grid. Its settings outlive the grid, and registering `DEFAULT` without one only stores them. `getSpatialDomain(world, 'DEFAULT')` can now be undefined after a scene change, where it used to return the session's grid. Light object culling reads it that way and no longer creates the grid.
+- The tab's cell size override is saved for the scope it was edited in (the world settings, or one scene's), and a scene's settings don't fall back to the world value. A "Scope" row shows which is in use, the dropdown lists only registered domains (plus unregistered ones with a value saved for the current scene or the world), and `DEFAULT` without a grid shows as `DEFAULT (no grid)`.
 - The Lights tab's distance edits refresh the light's radius in the spatial index.
 
 **Fixed**
 
 - A mesh's spatial radius no longer goes stale when its scale changes.
 - A query between a member's removal and the next rebuild no longer hands `-1` to the visitor.
-
 ### Toolkit 1.3.0 (Crescent)
 
 **Added**
@@ -46,7 +50,8 @@ Earlier releases are only recorded in the git history.
 
 **Changed**
 
-- `largeWorld`'s trees are in their own `STATIC` spatial domain, `FOLIAGE` (cell size 16), apart from `DEFAULT`'s light culling members. It rebuilds once when the trees spawn and when they're deleted, never in between.
+- `largeWorld`'s trees are in their own `STATIC` spatial domain, `FOLIAGE` (cell size 16), apart from `DEFAULT`'s light culling members. It rebuilds once when the trees spawn and when they're deleted, never in between. It belongs to the scene, so leaving `largeWorld` unregisters it.
+- `largeWorld.scene.json` sets `DEFAULT`'s cell size to 24 for that scene (`spatialDomains`).
 - `AppECSRegistry.ts` imports the pool's component types from `InstancedMeshPoolTypes.ts`.
 
 ## 2026-10-03 — small-changes-and-refactorings-20261003

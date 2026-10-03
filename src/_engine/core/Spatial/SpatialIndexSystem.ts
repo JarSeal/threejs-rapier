@@ -9,6 +9,7 @@ import { ReadonlyVec3, SpatialGrid } from './SpatialGrid';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
 import { getCurrentSceneId } from '../Scene';
 import { getNextSceneId, isCurrentlyLoading } from '../SceneLoader';
+import type { SceneSpatialDomainEntry } from '../../schemas/spatialDomainSchema';
 
 // Debug
 type SpatialGridDebugModule = typeof import('../Debug/_dbg__SpatialGrid');
@@ -25,10 +26,10 @@ export const registerSpatialIndexDebugGUI = async () => {
  * with its own cell size, capacity and update policy. `DEFAULT` is the one
  * LightObjectCullingSystem.ts queries. Its grid is built per scene on demand (by its first
  * SPATIAL_INDEXED member or a `getSpatialGrid` call) and freed on every scene change; its
- * settings outlive the grid (docs/plans/p349_scene-scoped-spatial-domains.md §3.6).
+ * settings outlive the grid (docs/plans/_DONE_p349_scene-scoped-spatial-domains.md §3.6).
  *
  * A domain (or `DEFAULT`'s settings) can belong to a scene and is released on its exit
- * (docs/plans/p349_scene-scoped-spatial-domains.md, `sceneId` in SpatialDomainOptions).
+ * (docs/plans/_DONE_p349_scene-scoped-spatial-domains.md, `sceneId` in SpatialDomainOptions).
  *
  * A domain's grid instance is replaced when the domain is re-registered with other settings, and
  * dropped when it's unregistered, so read it with `getSpatialDomain`/`getSpatialGrid` where it's
@@ -59,7 +60,7 @@ export interface SpatialDomainOptions {
   /** See SpatialGridOptions (default 2). */
   oversizedRadiusMultiplier?: number;
   /**
-   * The scene these settings belong to (docs/plans/p349_scene-scoped-spatial-domains.md §3.1).
+   * The scene these settings belong to (docs/plans/_DONE_p349_scene-scoped-spatial-domains.md §3.1).
    * While they exist they replace the domain's world settings (the last ones registered without
    * a scene). On that scene's exit the domain goes back to its world settings, or is
    * unregistered if it has none. A scope, not a setting: registering the same settings for
@@ -303,7 +304,7 @@ const warnIfNotActiveScene = (id: string, sceneId: string) => {
   lwarn(
     `SpatialIndex: domain '${id}' was registered for scene '${sceneId}', which isn't the ` +
       `${isCurrentlyLoading() ? 'loading' : 'current'} scene ('${activeSceneId}'). Its settings ` +
-      `stay until '${sceneId}' exits (docs/plans/p349_scene-scoped-spatial-domains.md §3.1).`
+      `stay until '${sceneId}' exits (docs/plans/_DONE_p349_scene-scoped-spatial-domains.md §3.1).`
   );
 };
 
@@ -445,6 +446,29 @@ export function releaseSceneSpatialDomains(
     }
   }
   freeDefaultGrid(domains);
+}
+
+/**
+ * Registers a scene's `spatialDomains` (its scene JSON, §3.4) with `sceneId` as their scope.
+ * `DEFAULT`'s entry is partial, merged over its world settings, and only stores them (its grid is
+ * built by the scene's first join, at those settings); every other domain is created here. The
+ * scene loader calls it for the default world right after `releaseSceneSpatialDomains`, before
+ * anything of the scene joins a domain, so each grid is created once at its final size.
+ */
+export function registerSceneSpatialDomains(
+  world: ECSWorld,
+  sceneId: string,
+  entries: readonly SceneSpatialDomainEntry[]
+): void {
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    const base =
+      entry.id === DEFAULT_SPATIAL_DOMAIN
+        ? getWorldDomains(world).defaultLayers.worldRequested
+        : {};
+    // A non-default entry without cellSize or maxMembers fails resolveDomainOptions' checks
+    registerSpatialDomain(world, { ...base, ...entry, sceneId } as SpatialDomainOptions);
+  }
 }
 
 /**

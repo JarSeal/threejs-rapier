@@ -188,6 +188,12 @@
         }
       ],
       "postFxEnabled": true,
+      "spatialDomains": [
+        {
+          "id": "DEFAULT",
+          "cellSize": 24
+        }
+      ],
       "id": "largeWorld",
       "sceneFile": "./largeWorld.ts"
     },

@@ -37,7 +37,7 @@ type DomainDebugSettings = {
   cellSize?: number;
   /**
    * Overrides the cell size of a scene's settings, by scene id; absent = the app's (never the
-   * world value, docs/plans/p349_scene-scoped-spatial-domains.md §3.5).
+   * world value, docs/plans/_DONE_p349_scene-scoped-spatial-domains.md §3.5).
    */
   cellSizeByScene?: Record<string, number>;
   showCells: boolean;

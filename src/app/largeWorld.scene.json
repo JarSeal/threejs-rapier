@@ -8,5 +8,6 @@
   "lights": ["largeWorldAmbient", "largeWorldSun"],
   "skyboxes": ["basicSkybox"],
   "postFx": ["ambientOcclusion"],
-  "postFxEnabled": true
+  "postFxEnabled": true,
+  "spatialDomains": [{ "id": "DEFAULT", "cellSize": 24 }]
 }

@@ -5871,6 +5871,43 @@
     "postFxEnabled": {
       "type": "boolean"
     },
+    "spatialDomains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "cellSize": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "maxMembers": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "update": {
+            "type": "string",
+            "enum": [
+              "DYNAMIC",
+              "STATIC",
+              "MANUAL"
+            ]
+          },
+          "oversizedRadiusMultiplier": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
     "id": {
       "type": "string"
     },
@@ -11779,6 +11816,43 @@
             },
             "postFxEnabled": {
               "type": "boolean"
+            },
+            "spatialDomains": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "cellSize": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "maxMembers": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "update": {
+                    "type": "string",
+                    "enum": [
+                      "DYNAMIC",
+                      "STATIC",
+                      "MANUAL"
+                    ]
+                  },
+                  "oversizedRadiusMultiplier": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "additionalProperties": false
