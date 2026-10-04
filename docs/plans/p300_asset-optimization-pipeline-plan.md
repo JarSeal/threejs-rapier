@@ -1,4 +1,4 @@
-Status: in progress | Phase 0 implemented (its WebGPU check pending)
+Status: in progress | Phase 0 implemented
 Category: Assets
 Blocks: p301_terrain-texturing-epic.md (and through it p302–p310: the terrain texture library ships as KTX2, terrain blocks as meshopt GLBs), p347_lod-chain-generation.md (soft: only its build-time Phase 3, which adds a LOD-chain step to this pipeline)
 
@@ -241,7 +241,7 @@ Without a cache, a full encode pass slows builds enough that people skip it.
 
 ## 9. Phases
 
-### Phase 0 — Runtime decoders (no build tooling yet) (~1 day)
+### Phase 0 — Runtime decoders (no build tooling yet) (~1 day) — done
 
 1. `copyDecoders.ts` (Basis transcoder), `core/Import/KTX2.ts`, meshopt decoder wiring in `GLTFSource.ts`.
 2. `.ktx2` route in `loadTextureAsync` (main thread, DD7).
@@ -254,8 +254,9 @@ Without a cache, a full encode pass slows builds enough that people skip it.
 
 **As built:**
 
-- Verified headless on WebGL2 only (main thread and worker targets, flip check against the sRGB PNG, `yarn build`). WSL2's headless Chromium can't render WebGPU, so the WebGPU half of the exit is a manual check.
-- Hand encoding used the native gltfpack 1.3 binary (`-c -tc`, `-tu normal`, `-tfy` for standalone textures). The npm `gltfpack` has no BasisU. gltfpack only reads glTF, so a standalone texture was wrapped in a one-triangle glTF and cut back out. The test files are in `src/public/debugger/assets/testOptimized/`; the test scene is `debugScene.scene.ts` (`testDebugScene`).
+- Verified headless on WebGL2 (main thread and worker targets, flip check against the sRGB PNG, `yarn build`) and by hand on WebGPU (WSL2's headless Chromium can't render WebGPU).
+- Open: WebGPU logs "Calling [RenderPassEncoder (unlabeled)].Draw with a vertex count of 0 is unusual" in `testDebugScene`. A warning, not an error, and not traced to this phase: no visible root-scene object ever has 0 vertices there, and the phase adds no non-indexed draw, so it comes from a private scene or pass. three r186 skips only 0-instance draws, so any visible empty non-indexed geometry triggers it (eg. an empty thin line: created with `setDrawRange(0, 0)` and `frustumCulled: false` by default). Still to check: whether it also shows in other scenes or on `main`.
+- Hand encoding used the native gltfpack 1.3 binary (`-c -tc`, `-tu normal`, `-tfy` for standalone textures). The npm `gltfpack` has no BasisU. gltfpack only reads glTF, so a standalone texture was wrapped in a one-triangle glTF and cut back out. The test files are in `src/public/debugger/assets/testOptimized/`; the test scene is `debugScene.scene.ts` (`testDebugScene`): the PNG/KTX2 texture pairs, then `box01Textured.glb` with its meshopt + KTX2 and quantized copies, and `box01.glb` with its meshopt copy.
 - `KTX2.ts` imports `KTX2Loader` on first use (like the meshopt decoder, `MeshoptDecoder.ts`), so apps without KTX2 never download it. The worker imports both statically: the assets worker is an IIFE bundle and can't be code-split.
 - The decoders are set per file from its `extensionsUsed` (`GLTFExtensions.ts`), read from the bytes before GLTFLoader parses.
 - There's no renderer teardown hook, so the KTX2 loader isn't disposed on `deleteRenderer()`: `getKTX2Loader()` replaces it when the renderer has changed, and `disposeKTX2Loader()` is exported.
