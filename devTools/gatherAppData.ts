@@ -13,6 +13,7 @@ import { MeshAsset, MeshAssetSchema } from '../src/_engine/schemas/meshSchema';
 import { ImportedAsset, ImportedAssetSchema } from '../src/_engine/schemas/importedAssetSchema';
 import { SkyBoxAsset, SkyBoxAssetSchema } from '../src/_engine/schemas/skyBoxSchema';
 import { PostFxAsset, PostFxAssetSchema } from '../src/_engine/schemas/postFxSchema';
+import { AssetsConfigSchema } from '../src/_engine/schemas/assetsConfigSchema';
 import { toUniqueJsIdentifier } from '../src/_engine/utils/jsIdentifier';
 import { MetaSchema } from '../src/_engine/schemas/_saveDataSchema';
 import {
@@ -154,6 +155,7 @@ const compileJsonSchemas = () => {
     { name: 'importedAsset.schema.json', schema: ImportedAssetSchema },
     { name: 'skyBox.schema.json', schema: SkyBoxAssetSchema },
     { name: 'postFx.schema.json', schema: PostFxAssetSchema },
+    { name: 'assetsConfig.schema.json', schema: AssetsConfigSchema },
   ];
 
   for (const target of targets) {

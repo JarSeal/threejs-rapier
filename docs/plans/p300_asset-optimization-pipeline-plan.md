@@ -75,10 +75,10 @@ This plan is a hard prerequisite of the terrain texturing epic (p301). A terrain
   - `.ktx2` for textures;
   - `.glb` for models, with `EXT_meshopt_compression` and `KHR_texture_basisu`.
 - **Resolution:** `gatherAppData` writes the resolved output URL into the generated data (`__url`, plus `__bytes` and `__vramBytes`). The runtime loads `__url ?? (path + fileName)`.
-- **Recommended for this repo: commit `src/public/aek-assets/`.** This is the open question from the original plan, resolved for a template repo: someone who clones Ækasha can run it without installing KTX-Software. The encoder is only needed by whoever changes an asset.
+- **Decided (2026-10-04): commit `src/public/aek-assets/`** (§11 question 1). For a template repo, someone who clones Ækasha can run it without installing KTX-Software. The encoder is only needed by whoever changes an asset.
   - Sources that can be re-downloaded (the CC0 terrain textures, p303) are fetched by script into gitignored `source/` folders.
   - Small app sources (Blender-exported GLBs, painted splat maps) are committed.
-  - Override this if CI is preferred. The cache (§7) makes CI builds cheap.
+  - An app built on the template can build them in CI instead. The cache (§7) makes CI builds cheap.
 
 ### DD4 — Standalone textures are first class, not just GLB-embedded ones
 
@@ -515,7 +515,7 @@ Sections:
   - **Not run:**
     - Desktop BC7 (no Windows JSON). The claim that ETC1S saves no VRAM there rests on KTX2Loader's format priorities.
     - iOS.
-    - The weak device. §11 question 3 is still open, and Phase 4's budgets need its answer.
+    - The weak device. §11 question 3 now sets a temporary minimum target. Phase 1 ran only on an M2, well above it.
 
 **1f as built:**
 
@@ -541,6 +541,18 @@ Sections:
 8. `yarn assets`.
 
 **Exit:** Phase 1 results reproduced by one command (byte-identical to the `phase1/` variant files with the same settings; then delete those), and a second run is all cache hits. With `optimization.enabled: false`, a run needs no `ktx` and the app looks and loads as it did before p300.
+
+**Step 1 as built:**
+
+- Schemas in `src/_engine/schemas/assetsConfigSchema.ts`: `AssetsConfigSchema` (compiled to `.schemas/assetsConfig.schema.json` by `gatherAppData`) and `AssetOptimizeSchema`, the asset JSONs' `optimize` (wired into their schemas in step 2). Strict objects with descriptions, so a misspelt key is an error and the IDE explains each key.
+- The resolver is `createSettingsResolver(config)` in `devTools/assetPipeline/settings.ts`; `loadAssetsConfig()` reads `assets.config.json` (a missing file is an empty config).
+  - Its first level is `BUILTIN_DEFAULTS`, the §4 defaults. The config's `defaults` merges over it, so it's optional. The built-ins also fill in what §4 leaves out: `quality: 128` (ktx's default) and `normalMode: false`.
+  - It returns every slot's settings (a GLB's textures are classified later), plus the standalone texture's `slot`, the `profile`, the matched rules and the pass-through reasons.
+  - It prunes each slot to the keys its codec reads (`none` keeps only `maxSize`), so equal encodes hash equally (§7).
+- Rules: `{ glob, optimize?: false, profile?, slot?, textures?, mesh? }`, all that match apply in order. The profile is the JSON's, else the last matching rule's; the same goes for `slot`. Globs are matched against the source path relative to the repo root by `devTools/assetPipeline/glob.ts` (`**`, `*`, `?`, `{a,b}`): Node 22's `path.matchesGlob` is still experimental and warns.
+- **Rules apply only to assets that a JSON references.** DD2's "binaries that have no JSON" would get an output that nothing points to (no `__url`). So `assets.config.json` ships with `rules: []`, without §4's `testModels` rule (§11 question 4: leave them raw).
+- The collider default (DD6, `mesh.quantize: false`) is applied after the profile, not at the defaults, so a profile can't quantize a collider source. Only the asset's own JSON can.
+- Not yet: the project switches (DD8 level 1), which are step 3.
 
 ### Phase 3 — Integrate (~1 day)
 
@@ -581,7 +593,19 @@ Sections:
 
 ## 11. Open questions
 
-1. **Commit outputs or build in CI?** Recommended: commit (DD3). Confirm before Phase 2.
+1. **Commit outputs or build in CI?** Decided (2026-10-04): commit (DD3).
 2. **User-uploaded models?** Would need a client-side encode path for that flow. Not planned.
-3. **Minimum target device?** Sets the quality bar and the VRAM budgets (Phase 4). p240 (device capability sniffer) would make this measurable.
+3. **Minimum target device?** Decided (2026-10-04), as a temporary, general target until p240 (device capability sniffer) can measure devices: the oldest devices that run WebGPU, from about 2020.
+   - **Phones:**
+     - iPhone 11 (A13, 4 GB): the oldest that runs iOS 26, which Safari's WebGPU needs.
+     - An Android mid-range phone of the same age: Adreno 6xx or Mali-G7x, 4 GB, Android 12+, where Chrome has WebGPU.
+     - Both read ASTC and ETC2.
+   - **Desktop and laptop:** integrated graphics, Intel UHD 620 / Iris Xe class, with 8 GB of RAM. They read BC (BC7 included).
+   - **Formats:** every profile's codec has a compressed path on all of these. UASTC loads as ASTC or BC7, and ETC1S as ETC2 or BC7, so nothing falls back to uncompressed RGBA.
+   - **Quality bar:** Phase 1's. A variant has to look like the source at screen resolution (1d's toggle).
+   - **Budgets for Phase 4, as starting values:**
+     - A scene's GPU memory, by three's figure (the profiler's GPU memory tab), stays ≤ 512 MB: the tab's default budget, so the two agree. Textures get ≤ 256 MB of it.
+     - Per texture: its profile's `maxSize` at its codec's rate plus mips. That is 1 B/px for UASTC and ETC1S (1K 1.4 MB, 2K 5.6 MB) and 4 B/px for `none` (1K 5.6 MB). A texture over its figure has a size or codec that slipped past its profile.
+     - Per GLB, textures plus geometry: `prop` ≤ 8 MB (three 1K maps are 4.2 MB), `hero` ≤ 24 MB (three 2K maps are 16.8 MB).
+   - **Still to check:** "Measure all variants" (1d) on an iPhone 11 or Android device of this class, when one is at hand. That replaces the M2 as the transcode-time and frame-time reference.
 4. **Should the 287 MB of debugger test assets be optimized and re-pointed, or left as raw test inputs?** They are useful as "raw import" tests. Suggested: leave them as is, and add optimized copies only where a test needs one.
