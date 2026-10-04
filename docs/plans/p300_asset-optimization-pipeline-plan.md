@@ -554,6 +554,20 @@ Sections:
 - The collider default (DD6, `mesh.quantize: false`) is applied after the profile, not at the defaults, so a profile can't quantize a collider source. Only the asset's own JSON can.
 - Not yet: the project switches (DD8 level 1), which are step 3.
 
+**Step 2 as built:**
+
+- `optimize` is a key of the asset itself, not of its per-scene save entries: an encode is per source file. Each JSON type has its own variant (`assetsConfigSchema.ts`): `TextureOptimizeSchema` has no `mesh`, and `ImportedAssetOptimizeSchema` has no `slot`, because a GLB's textures are classified by their material slot.
+- `fileName` (`AssetFileNameSchema`) can be relative to the JSON: `./` or `../`, nothing else, because a bare `rock.png` already means `path` + `rock.png` in `src/public`. `devTools/assetPipeline/sources.ts` resolves a `fileName` to one of three kinds, which later steps reuse:
+  - `relative`: must exist, must stay inside `src/` (the Vite root, so DD8 level 3 can serve it), and can't be combined with `path`.
+  - `public`: resolved the way the runtime's loaders do (`new URL((path || './') + fileName)` at the site root). A missing file is no error, as before.
+  - `remote`: never optimized, so an `optimize` object on one is an error.
+- `gatherAppData` checks each texture and imported asset JSON: its source, each scene's latest save entry that changes `fileName` / `path` (relative to the same JSON), and its `optimize` through the step 1 resolver, so an unknown profile fails the gather. An invalid `assets.config.json` fails it too. `__fileSize` now comes from the resolved source, relative ones included.
+- The scene entries in the generated data drop `optimize`, because the runtime never reads it. The dev-only registries keep it, like `__sourcePath`.
+- Scene-inline textures and a scene's `backgroundTexture` (`InlineTextureSchema`, `InlineTextureOverridesSchema`) take no `./` file name: the pipeline reads only `*.texture.json` / `*.importedAsset.json`. Inline imported assets are an unvalidated record, so they aren't checked.
+- Zod reports a mistake inside `optimize` as the union's "Invalid input". The gatherer's `logValidationError` now shows the issues of the one branch that got past its type check (eg. `[optimize.textures.default]: Unrecognized key: "maxsize"`). This applies to every schema's unions.
+- **A relative `fileName` doesn't load at runtime yet.** It reaches the generated data as written, and nothing resolves it until step 3's pass-through copy, step 7's `__url` and Phase 3 step 2. No asset uses one yet.
+- Open for steps 5–7: a scene's save entry can point a texture at another file. That file needs its own output (and `__url`), with the asset's one `optimize`.
+
 ### Phase 3 — Integrate (~1 day)
 
 1. `gatherAppData` runs the cached pipeline, and the gatherer plugin re-encodes a changed source.

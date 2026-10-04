@@ -52,7 +52,8 @@
               "type": "string"
             },
             "fileName": {
-              "type": "string"
+              "type": "string",
+              "description": "A URL path served from src/public (\"/textures/rock.png\", optionally after `path`)."
             },
             "path": {
               "type": "string"
@@ -1879,7 +1880,8 @@
                 "type": "string"
               },
               "fileName": {
-                "type": "string"
+                "type": "string",
+                "description": "A URL path served from src/public (\"/textures/rock.png\", optionally after `path`)."
               },
               "path": {
                 "type": "string"
@@ -2021,7 +2023,8 @@
                         "type": "string"
                       },
                       "fileName": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Relative to this JSON file (\"./source/rock.png\", optimized into src/public/aek-assets/), or a URL path served from src/public (\"/textures/rock.png\", optionally after `path`)."
                       },
                       "path": {
                         "type": "string"
@@ -5998,7 +6001,8 @@
                       "type": "string"
                     },
                     "fileName": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "A URL path served from src/public (\"/textures/rock.png\", optionally after `path`)."
                     },
                     "path": {
                       "type": "string"
@@ -7825,7 +7829,8 @@
                         "type": "string"
                       },
                       "fileName": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "A URL path served from src/public (\"/textures/rock.png\", optionally after `path`)."
                       },
                       "path": {
                         "type": "string"
@@ -7967,7 +7972,8 @@
                                 "type": "string"
                               },
                               "fileName": {
-                                "type": "string"
+                                "type": "string",
+                                "description": "Relative to this JSON file (\"./source/rock.png\", optimized into src/public/aek-assets/), or a URL path served from src/public (\"/textures/rock.png\", optionally after `path`)."
                               },
                               "path": {
                                 "type": "string"

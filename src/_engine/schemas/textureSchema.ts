@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { ColorSpaceSchema, DebugDataSchema, UserDataSchema } from './_helperSchemas';
+import {
+  AssetFileNameSchema,
+  PublicFileNameSchema,
+  TextureOptimizeSchema,
+} from './assetsConfigSchema';
 
 export const TexOptsSchema = z.object({
   image: z.unknown().optional(), // Can't validate TexImageSource or OffscreenCanvas with zod, so using unknown
@@ -20,7 +25,8 @@ export const TextureOverridesSchema = z.object({
   __meta: MetaSchema.optional(),
 
   id: z.string().optional(),
-  fileName: z.string().optional(),
+  fileName: AssetFileNameSchema.optional(),
+  /** URL prefix of a src/public file name; not with a `./` file name */
   path: z.string().optional(),
   useHDRLoader: z.boolean().optional(),
   texOpts: TexOptsSchema.optional(),
@@ -34,6 +40,8 @@ export type TextureOverrides = z.infer<typeof TextureOverridesSchema>;
 export const TextureAssetSchema = z.object({
   $schema: z.string().optional(),
   ...TextureOverridesSchema.omit({ __meta: true }).shape,
+  /** Build time only (p300): not per scene, and never read by the runtime */
+  optimize: TextureOptimizeSchema.optional(),
   __saveData: createSaveDataSchema(TextureOverridesSchema),
   __sourcePath: z.string().optional(),
   /** Bytes on disk (all six faces for a cube texture), baked in by gatherAppData. */
@@ -41,3 +49,13 @@ export const TextureAssetSchema = z.object({
 });
 
 export type TextureAsset = z.infer<typeof TextureAssetSchema>;
+
+/** A texture declared inline in a scene JSON: the asset pipeline only reads `*.texture.json`s. */
+export const InlineTextureSchema = TextureAssetSchema.omit({ optimize: true }).extend({
+  fileName: PublicFileNameSchema.optional(),
+});
+
+/** A scene's `backgroundTexture` given inline */
+export const InlineTextureOverridesSchema = TextureOverridesSchema.omit({ __meta: true }).extend({
+  fileName: PublicFileNameSchema.optional(),
+});

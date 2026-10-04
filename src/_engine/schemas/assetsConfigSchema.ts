@@ -138,6 +138,38 @@ export const AssetOptimizeSchema = z
 
 export type AssetOptimize = z.infer<typeof AssetOptimizeSchema>;
 
+/** A `*.texture.json`'s `optimize`: it names its slot and has no geometry. */
+export const TextureOptimizeSchema = z
+  .union([z.literal(false), z.strictObject(OptimizeObjectShape).omit({ mesh: true })])
+  .describe(
+    'Asset optimization (p300): a profile, the slot and per-slot overrides, or false to keep the file as it is.'
+  );
+
+/** A `*.importedAsset.json`'s `optimize`: its textures are classified by their material slot. */
+export const ImportedAssetOptimizeSchema = z
+  .union([z.literal(false), z.strictObject(OptimizeObjectShape).omit({ slot: true })])
+  .describe(
+    'Asset optimization (p300): a profile plus texture / mesh overrides, or false to keep the file as it is.'
+  );
+
+/** `./` or `../`: a source file relative to its asset JSON (p300 DD3). */
+export const isJsonRelativeFileName = (fileName: string) => /^\.\.?\//.test(fileName);
+
+export const AssetFileNameSchema = z
+  .string()
+  .describe(
+    'Relative to this JSON file ("./source/rock.png", optimized into src/public/aek-assets/), or a URL path served from src/public ("/textures/rock.png", optionally after `path`).'
+  );
+
+/** For assets declared inline in a scene JSON: the pipeline doesn't see those, so no `./` sources. */
+export const PublicFileNameSchema = z
+  .string()
+  .refine((fileName) => !isJsonRelativeFileName(fileName), {
+    message:
+      'A file relative to the JSON ("./", "../") needs its own *.texture.json / *.importedAsset.json, not an inline asset.',
+  })
+  .describe('A URL path served from src/public ("/textures/rock.png", optionally after `path`).');
+
 export const AssetsConfigRuleSchema = z.strictObject({
   glob: z
     .string()

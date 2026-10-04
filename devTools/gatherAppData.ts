@@ -13,7 +13,7 @@ import { MeshAsset, MeshAssetSchema } from '../src/_engine/schemas/meshSchema';
 import { ImportedAsset, ImportedAssetSchema } from '../src/_engine/schemas/importedAssetSchema';
 import { SkyBoxAsset, SkyBoxAssetSchema } from '../src/_engine/schemas/skyBoxSchema';
 import { PostFxAsset, PostFxAssetSchema } from '../src/_engine/schemas/postFxSchema';
-import { AssetsConfigSchema } from '../src/_engine/schemas/assetsConfigSchema';
+import { AssetsConfigSchema, type AssetOptimize } from '../src/_engine/schemas/assetsConfigSchema';
 import { toUniqueJsIdentifier } from '../src/_engine/utils/jsIdentifier';
 import { MetaSchema } from '../src/_engine/schemas/_saveDataSchema';
 import {
@@ -23,6 +23,8 @@ import {
 import { deepMerge } from '../src/_engine/utils/deepMerge';
 import { mergeSkyBoxPreset } from '../src/_engine/core/SkyBox/presets';
 import pkg from '../package.json';
+import { createSettingsResolver } from './assetPipeline/settings';
+import { getAssetSourceFileSize, resolveAssetSource } from './assetPipeline/sources';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
@@ -47,8 +49,28 @@ const JSON_ENDING_SIGNATURES = {
   postFx: '.postFx.json',
 };
 
+type ZodIssue = z.ZodError['issues'][number];
+
+/** A union's "Invalid input" says nothing: when exactly one branch got past its type check (eg.
+ * `optimize`'s object, not its `false`), its own issues are the ones to show. */
+const expandUnionIssues = (issues: ZodIssue[]): ZodIssue[] =>
+  issues.flatMap((issue) => {
+    if (issue.code !== 'invalid_union') return [issue];
+    const isTypeMismatch = (branchIssue: ZodIssue) =>
+      !branchIssue.path.length &&
+      (branchIssue.code === 'invalid_type' || branchIssue.code === 'invalid_value');
+    const matching = issue.errors.filter((branch) => !branch.every(isTypeMismatch));
+    if (matching.length !== 1) return [issue];
+    return expandUnionIssues(
+      matching[0].map((branchIssue) => ({
+        ...branchIssue,
+        path: [...issue.path, ...branchIssue.path],
+      }))
+    );
+  });
+
 const logValidationError = (msg: string, issues: z.ZodError['issues']) => {
-  const errorDetails = issues
+  const errorDetails = expandUnionIssues(issues)
     .map((err) => ` └─ [${err.path.join('.')}]: ${err.message}`)
     .join('\n');
   console.error(`\x1b[31m✗ [Scene Gatherer] ${msg}:\n${errorDetails}\x1b[0m`);
@@ -102,25 +124,63 @@ const logDuplicateIdError = (type: string, id: string, file: string) => {
   );
 };
 
-/** Size in bytes of a file served from src/public by its URL path (eg.
- * '/debugger/assets/box.glb'), summed over an array of files, or undefined if any is missing.
+/** Bytes on disk of an asset JSON's source file (relative to the JSON, or served from
+ * src/public by its URL path, eg. '/debugger/assets/box.glb'), or undefined if it is missing.
  * Remote URLs have no size here (the debugger can measure them on demand). */
-const getPublicFileSize = (fileName?: string | string[], urlPath?: string) => {
-  const fileNames = Array.isArray(fileName) ? fileName : fileName ? [fileName] : [];
-  if (!fileNames.length) return undefined;
-  let size = 0;
-  for (const name of fileNames) {
-    if (/^[a-z]+:\/\//i.test(name)) return undefined;
-    const filePath = path.resolve(
-      __dirname,
-      '../src/public',
-      (urlPath || '').replace(/^\//, ''),
-      name.replace(/^\//, '')
-    );
-    if (!fs.existsSync(filePath)) return undefined;
-    size += fs.statSync(filePath).size;
+const getSourceFileSize = (jsonFile: string, fileName?: string, urlPath?: string) => {
+  if (!fileName) return undefined;
+  const source = resolveAssetSource({ jsonFile, fileName, path: urlPath });
+  return 'error' in source ? undefined : getAssetSourceFileSize(source);
+};
+
+type SourcedAsset = {
+  fileName?: string;
+  path?: string;
+  optimize?: AssetOptimize;
+  __saveData?: Record<string, { fileName?: string; path?: string }[] | undefined>;
+};
+
+/** Checks an asset JSON's source files, its own and each scene's latest save entry's (p300 DD3),
+ * and resolves its `optimize` settings for each (an unknown profile throws). Logs every problem
+ * and returns false if there was one. */
+const checkAssetSources = (
+  file: string,
+  fullPath: string,
+  data: SourcedAsset,
+  resolveSettings: ReturnType<typeof createSettingsResolver>
+) => {
+  const sources = [{ label: '', fileName: data.fileName, path: data.path }];
+  for (const [sceneId, entries] of Object.entries(data.__saveData ?? {})) {
+    const entry = entries?.[0];
+    if (!entry?.fileName && !entry?.path) continue;
+    sources.push({
+      label: ` (save data of scene "${sceneId}")`,
+      fileName: entry.fileName ?? data.fileName,
+      path: entry.path ?? data.path,
+    });
   }
-  return size;
+  let isValid = true;
+  for (const { label, fileName, path: urlPath } of sources) {
+    if (!fileName) continue;
+    const source = resolveAssetSource({ jsonFile: fullPath, fileName, path: urlPath });
+    let error = 'error' in source ? source.error : undefined;
+    if (!('error' in source) && data.optimize) {
+      if (source.kind === 'remote') {
+        error = `"optimize" is set, but a remote file ("${fileName}") can't be optimized`;
+      } else {
+        try {
+          resolveSettings({ sourcePath: source.repoPath, optimize: data.optimize });
+        } catch (e) {
+          error = (e as Error).message;
+        }
+      }
+    }
+    if (error) {
+      console.error(`\x1b[31m✗ [Scene Gatherer] ${file}${label}: ${error}\x1b[0m`);
+      isValid = false;
+    }
+  }
+  return isValid;
 };
 
 export const isFilePathValid = (filePath: string) => {
@@ -241,6 +301,15 @@ export const gatherSceneData = () => {
     console.error(
       `\x1b[31m✗ [Scene Gatherer] File content for file '${file}' is invalid or empty.\x1b[0m`
     );
+
+  // Validates assets.config.json (p300); its errors stop the gathering like an asset's would
+  let resolveSettings: ReturnType<typeof createSettingsResolver>;
+  try {
+    resolveSettings = createSettingsResolver();
+  } catch (err) {
+    console.error(`\x1b[31m✗ [Scene Gatherer] ${(err as Error).message}\x1b[0m`);
+    return false;
+  }
 
   try {
     // Read src directory recursively (Supported natively in Node 22+)
@@ -419,6 +488,10 @@ export const gatherSceneData = () => {
           continue;
         }
         const texJSON = validation.data;
+        if (!checkAssetSources(file, fullPath, texJSON, resolveSettings)) {
+          hasError = true;
+          continue;
+        }
         const texId = texJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.texture);
         if (ids.textures.includes(texId)) {
           logDuplicateIdError('texture', texId, file);
@@ -426,7 +499,7 @@ export const gatherSceneData = () => {
         }
         ids.textures.push(texId);
         texJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
-        texJSON.__fileSize = getPublicFileSize(texJSON.fileName, texJSON.path);
+        texJSON.__fileSize = getSourceFileSize(fullPath, texJSON.fileName, texJSON.path);
         texJSON.id = texId;
         delete texJSON.$schema;
         texRegistry[texId] = texJSON;
@@ -574,6 +647,10 @@ export const gatherSceneData = () => {
           continue;
         }
         const importedAssetJSON = validation.data;
+        if (!checkAssetSources(file, fullPath, importedAssetJSON, resolveSettings)) {
+          hasError = true;
+          continue;
+        }
         const id =
           importedAssetJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.importedAsset);
         if (ids.importedAssets.includes(id)) {
@@ -583,7 +660,7 @@ export const gatherSceneData = () => {
         ids.importedAssets.push(id);
         importedAssetJSON.id = id;
         importedAssetJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
-        importedAssetJSON.__fileSize = getPublicFileSize(importedAssetJSON.fileName);
+        importedAssetJSON.__fileSize = getSourceFileSize(fullPath, importedAssetJSON.fileName);
         delete importedAssetJSON.$schema;
         importedAssetRegistry[id] = importedAssetJSON;
       } catch {
@@ -879,8 +956,13 @@ export const gatherSceneData = () => {
             if (isProduction) delete texRegistry[texId].debugData;
             const texData = { ...texRegistry[texId], ...__saveData };
             // A per-scene override can point at another file
-            texData.__fileSize = getPublicFileSize(texData.fileName, texData.path);
+            texData.__fileSize = getSourceFileSize(
+              texRegistry[texId].__sourcePath || '',
+              texData.fileName,
+              texData.path
+            );
             if ('__meta' in texData) delete texData.__meta;
+            delete texData.optimize; // Build time only (p300)
             delete texData.__sourcePath;
             delete texData.__saveData;
             return texData;
@@ -971,8 +1053,12 @@ export const gatherSceneData = () => {
               : {};
             if (isProduction) delete importedAssetRegistry[importId].debugData;
             const importData = { ...importedAssetRegistry[importId], ...__saveData, id: importId };
-            importData.__fileSize = getPublicFileSize(importData.fileName);
+            importData.__fileSize = getSourceFileSize(
+              importedAssetRegistry[importId].__sourcePath || '',
+              importData.fileName
+            );
             if ('__meta' in importData) delete importData.__meta;
+            delete importData.optimize; // Build time only (p300)
             delete importData.__sourcePath;
             delete importData.__saveData;
             return importData;
