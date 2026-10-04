@@ -315,7 +315,7 @@ Sections:
 
 - **1a — Tooling — done.** `yarn setupAssetTools`, `sharp`, `@gltf-transform/cli`.
 - **1b — Measuring — done.** Count compressed textures' real bytes in the GPU memory tab.
-- **1c — Assets and encoding.** Terrain layer `rocks01` (ambientCG `Ground079S`, LITE), a CC0 Poly Haven prop GLB at 2K (with an ARM map), the Poliigon MetalRust set as the problem case (ORM with hard metal / rust edges, and its normal map), a quantized copy of `stairsStraightTrimesh.glb` for the collider test. Variants: ETC1S q128 / q255, UASTC without RDO, UASTC + RDO λ 1 / 2 / 4 (all Zstd 18), normal mode on / off. Downloaded sources go in a gitignored folder; the outputs are committed, like Phase 0's.
+- **1c — Assets and encoding — done.** Terrain layer `rocks01` (ambientCG `Ground079S`, LITE), a CC0 Poly Haven prop GLB at 2K (with an ARM map), the Poliigon MetalRust set as the problem case (ORM with hard metal / rust edges, and its normal map), a quantized copy of `stairsStraightTrimesh.glb` for the collider test. Variants: ETC1S q128 / q255, UASTC without RDO, UASTC + RDO λ 1 / 2 / 4 (all Zstd 18), normal mode on / off. Downloaded sources go in a gitignored folder; the outputs are committed, like Phase 0's.
 - **1d — Comparison scene.** A tiled ground plane at grazing angles (REPEAT, max anisotropy), the prop, the MetalRust ORM on a sphere; a scene-scoped debug tab that swaps variants in place (a key) and shows each one's file size and VRAM.
 - **1e — Measurements.** File sizes, three's estimate, headless WebGL2 screenshots; a checklist for WebGPU on a real GPU, Chrome's GPU memory, the weak device and iOS (HTTPS on the LAN: a `--host` run with `@vitejs/plugin-basic-ssl` and WSL port forwarding, or a tunnel).
 - **1f — Record.** The results table and profiles in §4, the collider outcome in DD6.
@@ -336,6 +336,50 @@ Sections:
 - The bytes are the transcoded data, so they follow the device's format family (the Phase 1 finding on ETC1S): no per-format table to maintain. `getUncountedCubeBytes` now skips compressed cubes (counted in full).
 - The Assets tab's info window (`getTextureByteSize`) shows the same figure for compressed textures instead of "—".
 - Verified on WebGL2 (SwiftShader) in `testDebugScene`: every KTX2 texture's `memoryMap` entry equals its levels' bytes, where three's sizer gives 1; PNGs are unchanged. SwiftShader transcodes ETC1S to ETC2 RGB and UASTC to ASTC 4×4: `uvChecker` 1024² PNG 5.59 MB → ETC1S 699 KB (0.5 B/px + mips), `normal` UASTC 1024² 1.40 MB (1 B/px + mips; the PNG is 2048², 22.4 MB), the GLB's 256² maps 349 KB (PNG) → 44 KB (ETC1S) / 87 KB (UASTC normal). Not run: WebGPU (expected BC7 on desktop, 1 B/px for both codecs) and a compressed cube (no KTX2 cube asset yet; the per-face path is from KTX2Loader's code).
+
+**1c as built:**
+
+- `devTools/assetPipeline/phase1Variants.ts` (`npx tsx devTools/assetPipeline/phase1Variants.ts [--only rocks01|metalRust|metalToolbox|colliders] [--force]`; not a yarn script, Phase 2's pipeline replaces it) downloads, packs, encodes and measures everything below into `src/public/debugger/assets/testOptimized/phase1/<group>/`.
+  - `report.json` lists every output: bytes, encode time, the `ktx create` options, estimated VRAM (RGBA8, BC7 / ASTC 4×4, ETC2) and the errors. It also records each source's provider and licence.
+  - Downloads go to `.cache/p300-phase1/`; `.cache/` is now gitignored (§7).
+  - A full run takes ~3.5 min; a second run skips the existing outputs (under 1 s).
+  - `ktx` encodes are byte-reproducible: UASTC + RDO and ETC1S outputs rebuild to identical hashes.
+- Packing and resizing run in plain JS on floats; sharp only reads and writes the files.
+  - sRGB channels are linearized, then halved by a 2:1 box filter (normals renormalized).
+  - The result is written as an 8-bit PNG: the uncompressed baseline (`<name>.png`, loaded with flipY). A flipped copy is the encoder input.
+  - A 16-bit source needs `toColourspace('grey16' | 'rgb16')`, or sharp returns 8-bit sRGB.
+- Dependencies: `@gltf-transform/core`, `/functions`, `/extensions` 4.5.1 and `meshoptimizer` 1.1.1 are now declared directly; before, they were only installed through the CLI. The ambientCG zip is unpacked with three's bundled `fflate`.
+- Assets:
+  - `rocks01`: ambientCG `Ground079S` 2K-JPG, packed as LITE at 1K. `albedoRough` is albedo × AO (strength 0.8, p303 D3's example) with roughness in A. `normalHeight` is the NormalGL XY plus the height remapped to 0..1.
+  - `metalRust`: the Poliigon set already committed in `testTextures/` (no download), 2K → 1K. `orm` is packed from the AO / Roughness / Metallic maps; `normal` is also encoded with `--normal-mode`.
+  - `metalToolbox`: Poly Haven `metal_toolbox` (CC0; one material, 14k triangles, painted metal with detailed 2K maps, ARM = glTF ORM). `source.glb` keeps its JPGs. Each codec gets one GLB: meshopt (`high`) geometry plus all three maps in that codec.
+  - `colliders`: `stairsStraightTrimesh` (TRIMESH), `obstacles` (BOX + CONVEXHULL) and `terrainSmooth` (HEIGHTFIELD + TRIMESH), three copies each:
+    - `_quantized`: `quantize()` only;
+    - `_meshopt`: gltf-transform's `meshopt()`, which reorders, quantizes and filters;
+    - `_meshoptLossless`: `EXT_meshopt_compression` alone, with no reorder, quantization or filters.
+- Variants:
+  - ETC1S q128 / q255; UASTC level 2 without RDO; UASTC + RDO λ 1 / 2 / 4.
+  - Zstd 18 applies to UASTC only: ETC1S has its own BasisLZ supercompression, and `ktx` rejects Zstd there.
+  - Mipmaps are generated by `ktx` (lanczos4); normal maps get `--normalize`.
+- Errors are measured by the script, not by `ktx`. It transcodes each base level back to RGBA8 (`ktx extract --transcode rgba8`) and compares it with the encoder input: PSNR and max error per channel group, plus the angle error (mean / p99 / max) for normals. `ktx create --compare-psnr/-ssim` doesn't work for the normal-mode A/B: it compares the X/X/X/Y layout against XYZ.
+- Findings for 1d–1f:
+  - **Normal mode needs material support.**
+    - Both codecs store two channels (ETC1S `RRR` + `GGG` slices, UASTC `RRRG`), and KTX2Loader transcodes them with alpha: X in RGB, Y in A.
+    - three r186 has `NormalGAPacking` (`NormalMapNode.unpackNormalMode`), but sets an unpack mode on its own only for RG formats (`MaterialNode.js:240`). So a normal-mode texture used as a plain `normalMap` renders wrong.
+    - 1d sets the material's `normalNode` itself. A profile can use `normalMode` only once the engine has a texture or material flag for it.
+  - **gltf-transform's `toktx` drops RDO for any `*normal*` slot without a warning** (both codecs), and has no normal mode. So Phase 2 encodes a GLB's textures with its own `ktx create` call, as this script does: decode the embedded image, encode it, then `setImage` and `KHR_texture_basisu`.
+  - **Quantization moves the dequantization into the collider node's own transform** (gltf-transform `transformMeshParents`, for a leaf node without animation). For example, the stairs go from translation `[-12, 1.55, 30.55]` to `[-12, 1.8, 32]` with scale 6, and the terrain HEIGHTFIELD gets +10.8 in Y with scale 50.
+    - The body is placed at the node's position and the shape derivation applies the node's scale, so TRIMESH, BOX and HEIGHTFIELD should come out right. DD6's "translation not applied" was about gltfpack's output; it doesn't hold for gltf-transform's.
+    - Two expected failures, to confirm in 1d. CONVEXHULL runs `applyMatrix4` on what would be a normalized Int16 attribute, then reads `position.array` raw (`MeshColliderGeometry.ts:68-74`). gltf-transform's `meshopt()` always reorders vertices, which scrambles a HEIGHTFIELD's grid the way Draco does.
+    - A node with children or animation is handled differently: the mesh moves to a new unnamed child, which has no extras. None of the test models has one.
+  - Download vs VRAM: the UASTC prop GLBs (8.9–13 MB) are bigger than the JPG source (9.9 MB); the ETC1S ones are 1.5–2.2 MB. RDO + Zstd barely shrinks normal maps (MetalRust normal 1190 → 976 KB at λ 4).
+  - For p303's LITE packing:
+    - UASTC keeps the noisy roughness alpha of `albedoRough` worse than ETC1S q255 does (33.8 vs 36.4 dB).
+    - The packed `normalHeight` has twice the normal error of a plain normal map (UASTC 3.8° vs 1.9° mean).
+- Outputs total 90 MB: rocks01 17, metalRust 17, metalToolbox 56 (43 of it the four UASTC GLBs), colliders 1.
+  - Committed: the script, `report.json`, the PNG baselines, the standalone KTX2s and the collider copies (34 MB).
+  - Gitignored: `metalToolbox/`, all seven prop GLBs. A clone rebuilds them with `--only metalToolbox` (~2 min; needs `ktx` and the Poly Haven download), so the 1d scene skips a missing variant with a message instead of failing.
+  - The variants only matter until 1f picks the profiles. Then the losing ones are deleted, or the whole `phase1/` folder: `report.json` and this plan keep the numbers, and the script rebuilds any variant identically.
 
 ### Phase 2 — Pipeline (~2–3 days)
 

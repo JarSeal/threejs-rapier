@@ -421,14 +421,14 @@
     tmp "~0.2.7"
     watlas "^1.0.1"
 
-"@gltf-transform/core@^4.5.1":
+"@gltf-transform/core@4.5.1", "@gltf-transform/core@^4.5.1":
   version "4.5.1"
   resolved "https://registry.yarnpkg.com/@gltf-transform/core/-/core-4.5.1.tgz#08bb4198fdaa976432892315b2903b4568e5d835"
   integrity sha512-OWgBYssKHKoXMIrMb2N20jXqWRnMP9HdtcTFQBEAJtz4P+OOxx5fozl5eAeK7nktIs5uDE/lu4NbkE5VCZaR9g==
   dependencies:
     property-graph "^4.1.0"
 
-"@gltf-transform/extensions@^4.5.1":
+"@gltf-transform/extensions@4.5.1", "@gltf-transform/extensions@^4.5.1":
   version "4.5.1"
   resolved "https://registry.yarnpkg.com/@gltf-transform/extensions/-/extensions-4.5.1.tgz#c6c319fde4e08cc209e12e55b22a0821c3c77e3c"
   integrity sha512-3jTe+GWRy4fj1TU790LPsO+rpO/4byUWPTpNkjy6M6h8RvrUivRf12Mptc0770K4ZczibpJDNHXZFkFsFMRDLA==
@@ -436,7 +436,7 @@
     "@gltf-transform/core" "^4.5.1"
     ktx-parse "^1.1.0"
 
-"@gltf-transform/functions@^4.5.1":
+"@gltf-transform/functions@4.5.1", "@gltf-transform/functions@^4.5.1":
   version "4.5.1"
   resolved "https://registry.yarnpkg.com/@gltf-transform/functions/-/functions-4.5.1.tgz#da12e67bc36a6bd1140d260b0cf6b7dd76ee4f8d"
   integrity sha512-rfm4nQY2DJ+ip1e15xp7YfQwhRno3kPLcGw4EZiRk1dVwMV3cdFMcF08glYcO/+oLyYkUEs3xXMJYXa0cPgcTg==
@@ -3089,7 +3089,7 @@ mdurl@^2.0.0:
   resolved "https://registry.yarnpkg.com/mdurl/-/mdurl-2.0.0.tgz#80676ec0433025dd3e17ee983d0fe8de5a2237e0"
   integrity sha512-Lf+9+2r+Tdp5wXDXC4PcIBjTDtq4UKjCPMQhKIuzpJNW0b96kVqSwW0bT7FhRSfmAiFYgP+SCRvdrDozfh0U5w==
 
-meshoptimizer@~1.1.1:
+meshoptimizer@1.1.1, meshoptimizer@~1.1.1:
   version "1.1.1"
   resolved "https://registry.yarnpkg.com/meshoptimizer/-/meshoptimizer-1.1.1.tgz#20c7d050d59bdc573154814f6a37d47d89908cca"
   integrity sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==

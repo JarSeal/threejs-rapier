@@ -1,0 +1,2514 @@
+{
+  "generated": "2026-10-04T07:58:04.554Z",
+  "ktxVersion": "4.4.2",
+  "sources": {
+    "metalRust": {
+      "provider": "Poliigon",
+      "page": "https://www.poliigon.com/texture/7642",
+      "license": "Poliigon free asset (already committed in testTextures/)",
+      "note": "ORM packed from AO / Roughness / Metallic, 2K → 1K"
+    },
+    "rocks01": {
+      "provider": "ambientCG",
+      "page": "https://ambientcg.com/view?id=Ground079S",
+      "license": "CC0-1.0",
+      "note": "2K-JPG, packed as p303 LITE at 1K (AO strength 0.8)"
+    },
+    "metalToolbox": {
+      "provider": "Poly Haven",
+      "page": "https://polyhaven.com/a/metal_toolbox",
+      "license": "CC0-1.0",
+      "note": "2K glTF; the ARM map is glTF ORM (occlusion + metallicRoughness share it)"
+    }
+  },
+  "textures": [
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "etc1s_q128",
+      "file": "metalRust/normal_etc1s_q128.ktx2",
+      "bytes": 109863,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 493,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode basis-lz --qlevel 128",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 699064
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 27.25
+        },
+        "maxAbs": {
+          "xy": 77
+        },
+        "normalErrorDeg": {
+          "mean": 5.959,
+          "p99": 18.37,
+          "max": 43.08
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "etc1s_q255",
+      "file": "metalRust/normal_etc1s_q255.ktx2",
+      "bytes": 220961,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 654,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode basis-lz --qlevel 255",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 699064
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 28.36
+        },
+        "maxAbs": {
+          "xy": 72
+        },
+        "normalErrorDeg": {
+          "mean": 5.239,
+          "p99": 16.38,
+          "max": 39.97
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "nm_etc1s_q128",
+      "normalMode": true,
+      "file": "metalRust/normal_nm_etc1s_q128.ktx2",
+      "bytes": 332874,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 882,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --normal-mode --encode basis-lz --qlevel 128",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 30.21
+        },
+        "maxAbs": {
+          "xy": 57
+        },
+        "normalErrorDeg": {
+          "mean": 4.241,
+          "p99": 12.62,
+          "max": 27.84
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "nm_etc1s_q255",
+      "normalMode": true,
+      "file": "metalRust/normal_nm_etc1s_q255.ktx2",
+      "bytes": 423187,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 1104,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --normal-mode --encode basis-lz --qlevel 255",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 31.67
+        },
+        "maxAbs": {
+          "xy": 42
+        },
+        "normalErrorDeg": {
+          "mean": 3.607,
+          "p99": 10.56,
+          "max": 21.83
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "nm_uastc_rdo1",
+      "normalMode": true,
+      "file": "metalRust/normal_nm_uastc_rdo1.ktx2",
+      "bytes": 1166835,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2961,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --normal-mode --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 1 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 37.66
+        },
+        "maxAbs": {
+          "xy": 23
+        },
+        "normalErrorDeg": {
+          "mean": 1.865,
+          "p99": 4.89,
+          "max": 11.06
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "nm_uastc_rdo2",
+      "normalMode": true,
+      "file": "metalRust/normal_nm_uastc_rdo2.ktx2",
+      "bytes": 1157074,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 3126,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --normal-mode --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 2 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 37.63
+        },
+        "maxAbs": {
+          "xy": 46
+        },
+        "normalErrorDeg": {
+          "mean": 1.869,
+          "p99": 4.94,
+          "max": 20.93
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "nm_uastc_rdo4",
+      "normalMode": true,
+      "file": "metalRust/normal_nm_uastc_rdo4.ktx2",
+      "bytes": 1123449,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2929,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --normal-mode --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 4 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 36.49
+        },
+        "maxAbs": {
+          "xy": 60
+        },
+        "normalErrorDeg": {
+          "mean": 1.991,
+          "p99": 7.22,
+          "max": 27.61
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "nm_uastc",
+      "normalMode": true,
+      "file": "metalRust/normal_nm_uastc.ktx2",
+      "bytes": 1168765,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 918,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --normal-mode --encode uastc --uastc-quality 2 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 37.66
+        },
+        "maxAbs": {
+          "xy": 23
+        },
+        "normalErrorDeg": {
+          "mean": 1.865,
+          "p99": 4.89,
+          "max": 11.06
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "uastc_rdo1",
+      "file": "metalRust/normal_uastc_rdo1.ktx2",
+      "bytes": 1211299,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2644,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 1 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 37.51
+        },
+        "maxAbs": {
+          "xy": 30
+        },
+        "normalErrorDeg": {
+          "mean": 1.898,
+          "p99": 4.99,
+          "max": 16.05
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "uastc_rdo2",
+      "file": "metalRust/normal_uastc_rdo2.ktx2",
+      "bytes": 1140965,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2587,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 2 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 36.84
+        },
+        "maxAbs": {
+          "xy": 51
+        },
+        "normalErrorDeg": {
+          "mean": 1.971,
+          "p99": 5.9,
+          "max": 22.91
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "uastc_rdo4",
+      "file": "metalRust/normal_uastc_rdo4.ktx2",
+      "bytes": 999084,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2311,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 4 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 32.35
+        },
+        "maxAbs": {
+          "xy": 68
+        },
+        "normalErrorDeg": {
+          "mean": 2.775,
+          "p99": 15.03,
+          "max": 35.07
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "uastc",
+      "file": "metalRust/normal_uastc.ktx2",
+      "bytes": 1218989,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 476,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode uastc --uastc-quality 2 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 37.52
+        },
+        "maxAbs": {
+          "xy": 24
+        },
+        "normalErrorDeg": {
+          "mean": 1.897,
+          "p99": 4.98,
+          "max": 12.09
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "normal",
+      "kind": "normal",
+      "variant": "png",
+      "file": "metalRust/normal.png",
+      "bytes": 2095299,
+      "width": 1024,
+      "height": 1024,
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "orm",
+      "kind": "data",
+      "variant": "etc1s_q128",
+      "file": "metalRust/orm_etc1s_q128.ktx2",
+      "bytes": 118014,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 424,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode basis-lz --qlevel 128",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 699064
+      },
+      "metrics": {
+        "psnr": {
+          "ao": 37.68,
+          "roughness": 34.16,
+          "metalness": 40.64
+        },
+        "maxAbs": {
+          "ao": 91,
+          "roughness": 76,
+          "metalness": 11
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "orm",
+      "kind": "data",
+      "variant": "etc1s_q255",
+      "file": "metalRust/orm_etc1s_q255.ktx2",
+      "bytes": 191484,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 575,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode basis-lz --qlevel 255",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 699064
+      },
+      "metrics": {
+        "psnr": {
+          "ao": 37.68,
+          "roughness": 35.51,
+          "metalness": 40.48
+        },
+        "maxAbs": {
+          "ao": 73,
+          "roughness": 51,
+          "metalness": 27
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "orm",
+      "kind": "data",
+      "variant": "uastc_rdo1",
+      "file": "metalRust/orm_uastc_rdo1.ktx2",
+      "bytes": 812025,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2133,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 1 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "ao": 46.83,
+          "roughness": 41.55,
+          "metalness": 55.88
+        },
+        "maxAbs": {
+          "ao": 20,
+          "roughness": 39,
+          "metalness": 3
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "orm",
+      "kind": "data",
+      "variant": "uastc_rdo2",
+      "file": "metalRust/orm_uastc_rdo2.ktx2",
+      "bytes": 608518,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 1925,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 2 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "ao": 46.06,
+          "roughness": 36.37,
+          "metalness": 55.81
+        },
+        "maxAbs": {
+          "ao": 46,
+          "roughness": 54,
+          "metalness": 3
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "orm",
+      "kind": "data",
+      "variant": "uastc_rdo4",
+      "file": "metalRust/orm_uastc_rdo4.ktx2",
+      "bytes": 489532,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 1722,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 4 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "ao": 44.12,
+          "roughness": 33.94,
+          "metalness": 55.76
+        },
+        "maxAbs": {
+          "ao": 79,
+          "roughness": 62,
+          "metalness": 4
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "orm",
+      "kind": "data",
+      "variant": "uastc",
+      "file": "metalRust/orm_uastc.ktx2",
+      "bytes": 998140,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 543,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "ao": 47.01,
+          "roughness": 49.94,
+          "metalness": 56.05
+        },
+        "maxAbs": {
+          "ao": 18,
+          "roughness": 18,
+          "metalness": 3
+        }
+      }
+    },
+    {
+      "group": "metalRust",
+      "texture": "orm",
+      "kind": "data",
+      "variant": "png",
+      "file": "metalRust/orm.png",
+      "bytes": 1346143,
+      "width": 1024,
+      "height": 1024,
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "albedoRough",
+      "kind": "color",
+      "variant": "etc1s_q128",
+      "file": "rocks01/albedoRough_etc1s_q128.ktx2",
+      "bytes": 338467,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 1086,
+      "ktxArgs": "--format R8G8B8A8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode basis-lz --qlevel 128",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "rgb": 26.74,
+          "roughness": 35.21
+        },
+        "maxAbs": {
+          "rgb": 85,
+          "roughness": 37
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "albedoRough",
+      "kind": "color",
+      "variant": "etc1s_q255",
+      "file": "rocks01/albedoRough_etc1s_q255.ktx2",
+      "bytes": 477265,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 1296,
+      "ktxArgs": "--format R8G8B8A8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode basis-lz --qlevel 255",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "rgb": 28.72,
+          "roughness": 36.4
+        },
+        "maxAbs": {
+          "rgb": 67,
+          "roughness": 28
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "albedoRough",
+      "kind": "color",
+      "variant": "uastc_rdo1",
+      "file": "rocks01/albedoRough_uastc_rdo1.ktx2",
+      "bytes": 1259880,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2505,
+      "ktxArgs": "--format R8G8B8A8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 1 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "rgb": 37.17,
+          "roughness": 33.75
+        },
+        "maxAbs": {
+          "rgb": 38,
+          "roughness": 39
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "albedoRough",
+      "kind": "color",
+      "variant": "uastc_rdo2",
+      "file": "rocks01/albedoRough_uastc_rdo2.ktx2",
+      "bytes": 1225905,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2475,
+      "ktxArgs": "--format R8G8B8A8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 2 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "rgb": 35.36,
+          "roughness": 33.69
+        },
+        "maxAbs": {
+          "rgb": 47,
+          "roughness": 39
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "albedoRough",
+      "kind": "color",
+      "variant": "uastc_rdo4",
+      "file": "rocks01/albedoRough_uastc_rdo4.ktx2",
+      "bytes": 1080174,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2233,
+      "ktxArgs": "--format R8G8B8A8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 4 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "rgb": 30.21,
+          "roughness": 33.33
+        },
+        "maxAbs": {
+          "rgb": 66,
+          "roughness": 40
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "albedoRough",
+      "kind": "color",
+      "variant": "uastc",
+      "file": "rocks01/albedoRough_uastc.ktx2",
+      "bytes": 1262075,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 678,
+      "ktxArgs": "--format R8G8B8A8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode uastc --uastc-quality 2 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "rgb": 37.25,
+          "roughness": 33.75
+        },
+        "maxAbs": {
+          "rgb": 34,
+          "roughness": 39
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "albedoRough",
+      "kind": "color",
+      "variant": "png",
+      "file": "rocks01/albedoRough.png",
+      "bytes": 3557642,
+      "width": 1024,
+      "height": 1024,
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "normalHeight",
+      "kind": "normalHeight",
+      "variant": "etc1s_q128",
+      "file": "rocks01/normalHeight_etc1s_q128.ktx2",
+      "bytes": 137695,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 578,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode basis-lz --qlevel 128",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 699064
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 20.87,
+          "height": 26.57
+        },
+        "maxAbs": {
+          "xy": 156,
+          "height": 118
+        },
+        "normalErrorDeg": {
+          "mean": 12.622,
+          "p99": 38.85,
+          "max": 77.88
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "normalHeight",
+      "kind": "normalHeight",
+      "variant": "etc1s_q255",
+      "file": "rocks01/normalHeight_etc1s_q255.ktx2",
+      "bytes": 293433,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 860,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode basis-lz --qlevel 255",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 699064
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 22.17,
+          "height": 26.32
+        },
+        "maxAbs": {
+          "xy": 124,
+          "height": 93
+        },
+        "normalErrorDeg": {
+          "mean": 10.828,
+          "p99": 34.31,
+          "max": 68.59
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "normalHeight",
+      "kind": "normalHeight",
+      "variant": "uastc_rdo1",
+      "file": "rocks01/normalHeight_uastc_rdo1.ktx2",
+      "bytes": 1288192,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2513,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 1 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 31.62,
+          "height": 32.88
+        },
+        "maxAbs": {
+          "xy": 73,
+          "height": 63
+        },
+        "normalErrorDeg": {
+          "mean": 3.772,
+          "p99": 10.55,
+          "max": 39.9
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "normalHeight",
+      "kind": "normalHeight",
+      "variant": "uastc_rdo2",
+      "file": "rocks01/normalHeight_uastc_rdo2.ktx2",
+      "bytes": 1277523,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2477,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 2 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 31.3,
+          "height": 32.86
+        },
+        "maxAbs": {
+          "xy": 73,
+          "height": 63
+        },
+        "normalErrorDeg": {
+          "mean": 3.891,
+          "p99": 11.32,
+          "max": 39.9
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "normalHeight",
+      "kind": "normalHeight",
+      "variant": "uastc_rdo4",
+      "file": "rocks01/normalHeight_uastc_rdo4.ktx2",
+      "bytes": 1194493,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 2291,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 4 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 28.46,
+          "height": 32.73
+        },
+        "maxAbs": {
+          "xy": 82,
+          "height": 63
+        },
+        "normalErrorDeg": {
+          "mean": 5.056,
+          "p99": 18.7,
+          "max": 40.27
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "normalHeight",
+      "kind": "normalHeight",
+      "variant": "uastc",
+      "file": "rocks01/normalHeight_uastc.ktx2",
+      "bytes": 1305633,
+      "width": 1024,
+      "height": 1024,
+      "encodeMs": 573,
+      "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --zstd 18",
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      },
+      "metrics": {
+        "psnr": {
+          "xy": 31.64,
+          "height": 32.88
+        },
+        "maxAbs": {
+          "xy": 73,
+          "height": 63
+        },
+        "normalErrorDeg": {
+          "mean": 3.758,
+          "p99": 10.51,
+          "max": 39.9
+        }
+      }
+    },
+    {
+      "group": "rocks01",
+      "texture": "normalHeight",
+      "kind": "normalHeight",
+      "variant": "png",
+      "file": "rocks01/normalHeight.png",
+      "bytes": 2715819,
+      "width": 1024,
+      "height": 1024,
+      "vramBytes": {
+        "rgba8": 5592404,
+        "bc7Astc": 1398128,
+        "etc2": 1398128
+      }
+    }
+  ],
+  "models": [
+    {
+      "group": "colliders",
+      "model": "obstacles",
+      "variant": "source",
+      "file": "../../testModels/obstacles.glb",
+      "bytes": 201940,
+      "geometryBytes": 190752,
+      "colliderNodes": [
+        {
+          "name": "Block1m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            -0.5,
+            -10.575333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Block2m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            0,
+            -3.075333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Block3m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            0.5,
+            4.424667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Block4m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            1,
+            11.924667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump01",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.536026,
+            6.924667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump02",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.648673,
+            1.924667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump03",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.749375,
+            -3.075333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump04",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.839658,
+            -8.075333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump05",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.839658,
+            -8.075333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump06",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.648673,
+            1.924667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump07",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.749375,
+            -3.075333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump08",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.536026,
+            6.924667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "group": "colliders",
+      "model": "stairsStraightTrimesh",
+      "variant": "source",
+      "file": "../../testModels/stairsStraightTrimesh.glb",
+      "bytes": 9364,
+      "geometryBytes": 8184,
+      "colliderNodes": [
+        {
+          "name": "Stairs_TRIMESH",
+          "colliderType": "TRIMESH",
+          "translation": [
+            -12,
+            1.549612,
+            30.550388
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "group": "colliders",
+      "model": "terrainSmooth",
+      "variant": "source",
+      "file": "../../testModels/terrainSmooth.glb",
+      "bytes": 461412,
+      "geometryBytes": 459264,
+      "colliderNodes": [
+        {
+          "name": "TerrainSmooth",
+          "colliderType": "HEIGHTFIELD",
+          "translation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "TerrainSmoothEdge",
+          "colliderType": "TRIMESH",
+          "translation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "group": "colliders",
+      "model": "obstacles",
+      "variant": "meshopt",
+      "file": "colliders/obstacles_meshopt.glb",
+      "bytes": 59516,
+      "geometryBytes": 136032,
+      "colliderNodes": [
+        {
+          "name": "Block1m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            -0.5,
+            -10.575333
+          ],
+          "scale": [
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "name": "Block2m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            0,
+            -3.075333
+          ],
+          "scale": [
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "name": "Block3m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            0.5,
+            4.424667
+          ],
+          "scale": [
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "name": "Block4m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            1,
+            11.924667
+          ],
+          "scale": [
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "name": "DomeBump01",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.593818,
+            6.924667
+          ],
+          "scale": [
+            0.980785,
+            0.980785,
+            0.980785
+          ]
+        },
+        {
+          "name": "DomeBump02",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.688978,
+            1.924668
+          ],
+          "scale": [
+            0.923879,
+            0.923879,
+            0.923879
+          ]
+        },
+        {
+          "name": "DomeBump03",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.772596,
+            -3.075333
+          ],
+          "scale": [
+            0.831469,
+            0.831469,
+            0.831469
+          ]
+        },
+        {
+          "name": "DomeBump04",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.847994,
+            -8.075333
+          ],
+          "scale": [
+            0.707107,
+            0.707107,
+            0.707107
+          ]
+        },
+        {
+          "name": "DomeBump05",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331795,
+            -0.847994,
+            -8.075333
+          ],
+          "scale": [
+            5.09866,
+            5.09866,
+            5.09866
+          ]
+        },
+        {
+          "name": "DomeBump06",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.688978,
+            1.924668
+          ],
+          "scale": [
+            6.66172,
+            6.66172,
+            6.66172
+          ]
+        },
+        {
+          "name": "DomeBump07",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.772596,
+            -3.075333
+          ],
+          "scale": [
+            5.99539,
+            5.99539,
+            5.99539
+          ]
+        },
+        {
+          "name": "DomeBump08",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.593818,
+            6.924667
+          ],
+          "scale": [
+            7.07205,
+            7.07205,
+            7.07205
+          ]
+        }
+      ]
+    },
+    {
+      "group": "colliders",
+      "model": "obstacles",
+      "variant": "meshoptLossless",
+      "file": "colliders/obstacles_meshoptLossless.glb",
+      "bytes": 123404,
+      "geometryBytes": 190752,
+      "colliderNodes": [
+        {
+          "name": "Block1m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            -0.5,
+            -10.575333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Block2m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            0,
+            -3.075333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Block3m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            0.5,
+            4.424667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "Block4m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            1,
+            11.924667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump01",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.536026,
+            6.924667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump02",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.648673,
+            1.924667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump03",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.749375,
+            -3.075333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump04",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.839658,
+            -8.075333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump05",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.839658,
+            -8.075333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump06",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.648673,
+            1.924667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump07",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.749375,
+            -3.075333
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "DomeBump08",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.536026,
+            6.924667
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "group": "colliders",
+      "model": "obstacles",
+      "variant": "quantized",
+      "file": "colliders/obstacles_quantized.glb",
+      "bytes": 123348,
+      "geometryBytes": 103200,
+      "colliderNodes": [
+        {
+          "name": "Block1m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            -0.5,
+            -10.575333
+          ],
+          "scale": [
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "name": "Block2m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            0,
+            -3.075333
+          ],
+          "scale": [
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "name": "Block3m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            0.5,
+            4.424667
+          ],
+          "scale": [
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "name": "Block4m",
+          "colliderType": "BOX",
+          "translation": [
+            -11.508429,
+            1,
+            11.924667
+          ],
+          "scale": [
+            2,
+            2,
+            2
+          ]
+        },
+        {
+          "name": "DomeBump01",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.593818,
+            6.924667
+          ],
+          "scale": [
+            0.980785,
+            0.980785,
+            0.980785
+          ]
+        },
+        {
+          "name": "DomeBump02",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.688978,
+            1.924668
+          ],
+          "scale": [
+            0.923879,
+            0.923879,
+            0.923879
+          ]
+        },
+        {
+          "name": "DomeBump03",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.772596,
+            -3.075333
+          ],
+          "scale": [
+            0.831469,
+            0.831469,
+            0.831469
+          ]
+        },
+        {
+          "name": "DomeBump04",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            -3.689175,
+            -0.847994,
+            -8.075333
+          ],
+          "scale": [
+            0.707107,
+            0.707107,
+            0.707107
+          ]
+        },
+        {
+          "name": "DomeBump05",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331795,
+            -0.847994,
+            -8.075333
+          ],
+          "scale": [
+            5.09866,
+            5.09866,
+            5.09866
+          ]
+        },
+        {
+          "name": "DomeBump06",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.688978,
+            1.924668
+          ],
+          "scale": [
+            6.66172,
+            6.66172,
+            6.66172
+          ]
+        },
+        {
+          "name": "DomeBump07",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.772596,
+            -3.075333
+          ],
+          "scale": [
+            5.99539,
+            5.99539,
+            5.99539
+          ]
+        },
+        {
+          "name": "DomeBump08",
+          "colliderType": "CONVEXHULL",
+          "translation": [
+            8.331796,
+            -0.593818,
+            6.924667
+          ],
+          "scale": [
+            7.07205,
+            7.07205,
+            7.07205
+          ]
+        }
+      ]
+    },
+    {
+      "group": "colliders",
+      "model": "stairsStraightTrimesh",
+      "variant": "meshopt",
+      "file": "colliders/stairsStraightTrimesh_meshopt.glb",
+      "bytes": 3848,
+      "geometryBytes": 5904,
+      "colliderNodes": [
+        {
+          "name": "Stairs_TRIMESH",
+          "colliderType": "TRIMESH",
+          "translation": [
+            -12,
+            1.8,
+            32.000001
+          ],
+          "scale": [
+            6,
+            6,
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "group": "colliders",
+      "model": "stairsStraightTrimesh",
+      "variant": "meshoptLossless",
+      "file": "colliders/stairsStraightTrimesh_meshoptLossless.glb",
+      "bytes": 5012,
+      "geometryBytes": 8184,
+      "colliderNodes": [
+        {
+          "name": "Stairs_TRIMESH",
+          "colliderType": "TRIMESH",
+          "translation": [
+            -12,
+            1.549612,
+            30.550388
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "group": "colliders",
+      "model": "stairsStraightTrimesh",
+      "variant": "quantized",
+      "file": "colliders/stairsStraightTrimesh_quantized.glb",
+      "bytes": 6692,
+      "geometryBytes": 4536,
+      "colliderNodes": [
+        {
+          "name": "Stairs_TRIMESH",
+          "colliderType": "TRIMESH",
+          "translation": [
+            -12,
+            1.8,
+            32.000001
+          ],
+          "scale": [
+            6,
+            6,
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "group": "colliders",
+      "model": "terrainSmooth",
+      "variant": "meshopt",
+      "file": "colliders/terrainSmooth_meshopt.glb",
+      "bytes": 95796,
+      "geometryBytes": 353364,
+      "colliderNodes": [
+        {
+          "name": "TerrainSmooth",
+          "colliderType": "HEIGHTFIELD",
+          "translation": [
+            0,
+            10.821254,
+            0
+          ],
+          "scale": [
+            50,
+            50,
+            50
+          ]
+        },
+        {
+          "name": "TerrainSmoothEdge",
+          "colliderType": "TRIMESH",
+          "translation": [
+            -0.059233,
+            -0.471505,
+            0.102131
+          ],
+          "scale": [
+            51.0007,
+            51.0007,
+            51.0007
+          ]
+        }
+      ]
+    },
+    {
+      "group": "colliders",
+      "model": "terrainSmooth",
+      "variant": "meshoptLossless",
+      "file": "colliders/terrainSmooth_meshoptLossless.glb",
+      "bytes": 264980,
+      "geometryBytes": 459264,
+      "colliderNodes": [
+        {
+          "name": "TerrainSmooth",
+          "colliderType": "HEIGHTFIELD",
+          "translation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "name": "TerrainSmoothEdge",
+          "colliderType": "TRIMESH",
+          "translation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "group": "colliders",
+      "model": "terrainSmooth",
+      "variant": "quantized",
+      "file": "colliders/terrainSmooth_quantized.glb",
+      "bytes": 334476,
+      "geometryBytes": 289824,
+      "colliderNodes": [
+        {
+          "name": "TerrainSmooth",
+          "colliderType": "HEIGHTFIELD",
+          "translation": [
+            0,
+            10.821254,
+            0
+          ],
+          "scale": [
+            50,
+            50,
+            50
+          ]
+        },
+        {
+          "name": "TerrainSmoothEdge",
+          "colliderType": "TRIMESH",
+          "translation": [
+            -0.059233,
+            -0.471505,
+            0.102131
+          ],
+          "scale": [
+            51.0007,
+            51.0007,
+            51.0007
+          ]
+        }
+      ]
+    },
+    {
+      "group": "metalToolbox",
+      "model": "metal_toolbox",
+      "variant": "etc1s_q128",
+      "file": "metalToolbox/etc1s_q128.glb",
+      "bytes": 1568296,
+      "geometryBytes": 349038,
+      "textures": [
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_nor_gl_2k",
+          "kind": "normal",
+          "variant": "etc1s_q128",
+          "file": "metalToolbox/etc1s_q128.glb#metal_toolbox_nor_gl_2k",
+          "bytes": 283116,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 1178,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode basis-lz --qlevel 128",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 2796216
+          },
+          "metrics": {
+            "psnr": {
+              "xy": 31.73
+            },
+            "maxAbs": {
+              "xy": 187
+            },
+            "normalErrorDeg": {
+              "mean": 2.454,
+              "p99": 20.37,
+              "max": 150.66
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_diff_2k",
+          "kind": "color",
+          "variant": "etc1s_q128",
+          "file": "metalToolbox/etc1s_q128.glb#metal_toolbox_diff_2k",
+          "bytes": 560295,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 1860,
+          "ktxArgs": "--format R8G8B8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode basis-lz --qlevel 128",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 2796216
+          },
+          "metrics": {
+            "psnr": {
+              "rgb": 33.88
+            },
+            "maxAbs": {
+              "rgb": 108
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_arm_2k",
+          "kind": "data",
+          "variant": "etc1s_q128",
+          "file": "metalToolbox/etc1s_q128.glb#metal_toolbox_arm_2k",
+          "bytes": 602861,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 1651,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode basis-lz --qlevel 128",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 2796216
+          },
+          "metrics": {
+            "psnr": {
+              "ao": 28,
+              "roughness": 27.21,
+              "metalness": 29.64
+            },
+            "maxAbs": {
+              "ao": 185,
+              "roughness": 157,
+              "metalness": 185
+            }
+          }
+        }
+      ]
+    },
+    {
+      "group": "metalToolbox",
+      "model": "metal_toolbox",
+      "variant": "etc1s_q255",
+      "file": "metalToolbox/etc1s_q255.glb",
+      "bytes": 2292136,
+      "geometryBytes": 349038,
+      "textures": [
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_nor_gl_2k",
+          "kind": "normal",
+          "variant": "etc1s_q255",
+          "file": "metalToolbox/etc1s_q255.glb#metal_toolbox_nor_gl_2k",
+          "bytes": 405841,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 1494,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode basis-lz --qlevel 255",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 2796216
+          },
+          "metrics": {
+            "psnr": {
+              "xy": 32.76
+            },
+            "maxAbs": {
+              "xy": 137
+            },
+            "normalErrorDeg": {
+              "mean": 2.244,
+              "p99": 17.48,
+              "max": 173.41
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_diff_2k",
+          "kind": "color",
+          "variant": "etc1s_q255",
+          "file": "metalToolbox/etc1s_q255.glb#metal_toolbox_diff_2k",
+          "bytes": 794164,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 2126,
+          "ktxArgs": "--format R8G8B8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode basis-lz --qlevel 255",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 2796216
+          },
+          "metrics": {
+            "psnr": {
+              "rgb": 35.58
+            },
+            "maxAbs": {
+              "rgb": 71
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_arm_2k",
+          "kind": "data",
+          "variant": "etc1s_q255",
+          "file": "metalToolbox/etc1s_q255.glb#metal_toolbox_arm_2k",
+          "bytes": 970098,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 2598,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode basis-lz --qlevel 255",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 2796216
+          },
+          "metrics": {
+            "psnr": {
+              "ao": 29,
+              "roughness": 28.62,
+              "metalness": 30.89
+            },
+            "maxAbs": {
+              "ao": 199,
+              "roughness": 144,
+              "metalness": 153
+            }
+          }
+        }
+      ]
+    },
+    {
+      "group": "metalToolbox",
+      "model": "metal_toolbox",
+      "variant": "source",
+      "file": "metalToolbox/source.glb",
+      "bytes": 10116672,
+      "geometryBytes": 468888
+    },
+    {
+      "group": "metalToolbox",
+      "model": "metal_toolbox",
+      "variant": "uastc_rdo1",
+      "file": "metalToolbox/uastc_rdo1.glb",
+      "bytes": 11257048,
+      "geometryBytes": 349038,
+      "textures": [
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_nor_gl_2k",
+          "kind": "normal",
+          "variant": "uastc_rdo1",
+          "file": "metalToolbox/uastc_rdo1.glb#metal_toolbox_nor_gl_2k",
+          "bytes": 2516267,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 8713,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 1 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "xy": 39.46
+            },
+            "maxAbs": {
+              "xy": 92
+            },
+            "normalErrorDeg": {
+              "mean": 0.93,
+              "p99": 5.4,
+              "max": 39.41
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_diff_2k",
+          "kind": "color",
+          "variant": "uastc_rdo1",
+          "file": "metalToolbox/uastc_rdo1.glb#metal_toolbox_diff_2k",
+          "bytes": 3728881,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 8626,
+          "ktxArgs": "--format R8G8B8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 1 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "rgb": 44.28
+            },
+            "maxAbs": {
+              "rgb": 30
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_arm_2k",
+          "kind": "data",
+          "variant": "uastc_rdo1",
+          "file": "metalToolbox/uastc_rdo1.glb#metal_toolbox_arm_2k",
+          "bytes": 4889843,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 10149,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 1 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "ao": 38.37,
+              "roughness": 38.17,
+              "metalness": 39.2
+            },
+            "maxAbs": {
+              "ao": 50,
+              "roughness": 61,
+              "metalness": 52
+            }
+          }
+        }
+      ]
+    },
+    {
+      "group": "metalToolbox",
+      "model": "metal_toolbox",
+      "variant": "uastc_rdo2",
+      "file": "metalToolbox/uastc_rdo2.glb",
+      "bytes": 10306992,
+      "geometryBytes": 349038,
+      "textures": [
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_nor_gl_2k",
+          "kind": "normal",
+          "variant": "uastc_rdo2",
+          "file": "metalToolbox/uastc_rdo2.glb#metal_toolbox_nor_gl_2k",
+          "bytes": 2370109,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 8166,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 2 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "xy": 38.32
+            },
+            "maxAbs": {
+              "xy": 92
+            },
+            "normalErrorDeg": {
+              "mean": 1.109,
+              "p99": 6.81,
+              "max": 39.41
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_diff_2k",
+          "kind": "color",
+          "variant": "uastc_rdo2",
+          "file": "metalToolbox/uastc_rdo2.glb#metal_toolbox_diff_2k",
+          "bytes": 3169193,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 7344,
+          "ktxArgs": "--format R8G8B8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 2 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "rgb": 40.86
+            },
+            "maxAbs": {
+              "rgb": 43
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_arm_2k",
+          "kind": "data",
+          "variant": "uastc_rdo2",
+          "file": "metalToolbox/uastc_rdo2.glb#metal_toolbox_arm_2k",
+          "bytes": 4645639,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 9840,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 2 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "ao": 37.3,
+              "roughness": 36.47,
+              "metalness": 38.51
+            },
+            "maxAbs": {
+              "ao": 56,
+              "roughness": 61,
+              "metalness": 55
+            }
+          }
+        }
+      ]
+    },
+    {
+      "group": "metalToolbox",
+      "model": "metal_toolbox",
+      "variant": "uastc_rdo4",
+      "file": "metalToolbox/uastc_rdo4.glb",
+      "bytes": 9152836,
+      "geometryBytes": 349038,
+      "textures": [
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_nor_gl_2k",
+          "kind": "normal",
+          "variant": "uastc_rdo4",
+          "file": "metalToolbox/uastc_rdo4.glb#metal_toolbox_nor_gl_2k",
+          "bytes": 2224993,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 8221,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 4 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "xy": 36.45
+            },
+            "maxAbs": {
+              "xy": 92
+            },
+            "normalErrorDeg": {
+              "mean": 1.398,
+              "p99": 9.51,
+              "max": 39.41
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_diff_2k",
+          "kind": "color",
+          "variant": "uastc_rdo4",
+          "file": "metalToolbox/uastc_rdo4.glb#metal_toolbox_diff_2k",
+          "bytes": 2718118,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 6857,
+          "ktxArgs": "--format R8G8B8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 4 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "rgb": 37.68
+            },
+            "maxAbs": {
+              "rgb": 61
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_arm_2k",
+          "kind": "data",
+          "variant": "uastc_rdo4",
+          "file": "metalToolbox/uastc_rdo4.glb#metal_toolbox_arm_2k",
+          "bytes": 4087696,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 9135,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --uastc-rdo --uastc-rdo-l 4 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "ao": 34.43,
+              "roughness": 32.83,
+              "metalness": 36.42
+            },
+            "maxAbs": {
+              "ao": 77,
+              "roughness": 77,
+              "metalness": 74
+            }
+          }
+        }
+      ]
+    },
+    {
+      "group": "metalToolbox",
+      "model": "metal_toolbox",
+      "variant": "uastc",
+      "file": "metalToolbox/uastc.glb",
+      "bytes": 13324320,
+      "geometryBytes": 349038,
+      "textures": [
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_nor_gl_2k",
+          "kind": "normal",
+          "variant": "uastc",
+          "file": "metalToolbox/uastc.glb#metal_toolbox_nor_gl_2k",
+          "bytes": 3753697,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 2160,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --normalize --encode uastc --uastc-quality 2 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "xy": 40.9
+            },
+            "maxAbs": {
+              "xy": 92
+            },
+            "normalErrorDeg": {
+              "mean": 0.545,
+              "p99": 4.56,
+              "max": 39.41
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_diff_2k",
+          "kind": "color",
+          "variant": "uastc",
+          "file": "metalToolbox/uastc.glb#metal_toolbox_diff_2k",
+          "bytes": 4458109,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 1881,
+          "ktxArgs": "--format R8G8B8_SRGB --assign-tf srgb --assign-primaries bt709 --generate-mipmap --encode uastc --uastc-quality 2 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "rgb": 47.38
+            },
+            "maxAbs": {
+              "rgb": 27
+            }
+          }
+        },
+        {
+          "group": "metalToolbox",
+          "texture": "metal_toolbox_arm_2k",
+          "kind": "data",
+          "variant": "uastc",
+          "file": "metalToolbox/uastc.glb#metal_toolbox_arm_2k",
+          "bytes": 4990460,
+          "width": 2048,
+          "height": 2048,
+          "encodeMs": 1683,
+          "ktxArgs": "--format R8G8B8_UNORM --assign-tf linear --assign-primaries none --generate-mipmap --encode uastc --uastc-quality 2 --zstd 18",
+          "vramBytes": {
+            "rgba8": 22369620,
+            "bc7Astc": 5592432,
+            "etc2": 5592432
+          },
+          "metrics": {
+            "psnr": {
+              "ao": 38.69,
+              "roughness": 38.58,
+              "metalness": 39.37
+            },
+            "maxAbs": {
+              "ao": 50,
+              "roughness": 61,
+              "metalness": 52
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

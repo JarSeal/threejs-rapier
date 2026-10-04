@@ -15,3 +15,7 @@ src/public/draco/
 src/public/basis/
 # Asset pipeline tools (KTX-Software), downloaded by devTools/setupAssetTools.ts
 .tools/
+# Asset pipeline cache and downloaded sources (p300)
+.cache/
+# p300 Phase 1 prop variants (56 MB), rebuilt identically by devTools/assetPipeline/phase1Variants.ts
+src/public/debugger/assets/testOptimized/phase1/metalToolbox/
