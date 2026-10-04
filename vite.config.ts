@@ -5,6 +5,8 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import pkg from './package.json';
 // Gathers the scene data and runs the asset pipeline on file changes
 import { sceneGathererPlugin } from './devTools/sceneGathererPlugin.ts';
+// Ships only the asset pipeline outputs the production data loads
+import { assetOutputsBuildPlugin } from './devTools/assetOutputsBuildPlugin.ts';
 
 // Required for self.crossOriginIsolated/SharedArrayBuffer to be available at all in dev, so
 // worker-thread physics can use the SHARED_MEMORY hot-path transport instead of automatically
@@ -125,6 +127,7 @@ export default defineConfig({
     // (WebGPU, SharedArrayBuffer); a plain http:// LAN address isn't one
     ...(process.env.AEK_DEV_HTTPS === 'true' ? [basicSsl()] : []),
     sceneGathererPlugin(),
+    assetOutputsBuildPlugin(),
     {
       name: 'html-transform',
       transformIndexHtml(html) {

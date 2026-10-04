@@ -58,16 +58,19 @@ export const writeOutput = (
 };
 
 /** An output's (or a public source's) file on disk, from its root-absolute URL */
-export const getOutputFile = (url: string) => path.join(PUBLIC_DIR, ...url.split('/'));
+export const getOutputFile = (url: string, publicDir = PUBLIC_DIR) =>
+  path.join(publicDir, ...url.split('/'));
 
 /**
  * Deletes every file in `aek-assets/` that no URL in `usedUrls` points to, leftover temp files
  * included, and the folders that leaves empty (§7). Only for the end of a full, successful run:
  * an asset that wasn't processed in it would lose its output. Returns the deleted files, relative
  * to the repo root.
+ * @param publicDir Default: `src/public`. The build's `dist/` for its copy (Phase 3 step 4).
  */
-export const removeStaleOutputs = (usedUrls: Iterable<string>) => {
-  const used = new Set([...usedUrls].map(getOutputFile));
+export const removeStaleOutputs = (usedUrls: Iterable<string>, publicDir = PUBLIC_DIR) => {
+  const aekAssetsDir = path.join(publicDir, 'aek-assets');
+  const used = new Set([...usedUrls].map((url) => getOutputFile(url, publicDir)));
   const removed: string[] = [];
   const sweep = (dir: string) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -81,7 +84,7 @@ export const removeStaleOutputs = (usedUrls: Iterable<string>) => {
       }
     }
   };
-  if (fs.existsSync(AEK_ASSETS_DIR)) sweep(AEK_ASSETS_DIR);
+  if (fs.existsSync(aekAssetsDir)) sweep(aekAssetsDir);
   return removed;
 };
 

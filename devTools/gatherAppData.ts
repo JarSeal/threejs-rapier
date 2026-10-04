@@ -29,8 +29,17 @@ import { mergeSkyBoxPreset } from '../src/_engine/core/SkyBox/presets';
 import pkg from '../package.json';
 import { createSettingsResolver } from './assetPipeline/settings';
 import { listPackFiles } from './assetPipeline/pack';
-import { GENERATED_FIELD_KEYS, getGeneratedFields } from './assetPipeline/generated';
-import type { PipelineRun } from './assetPipeline/run';
+import {
+  GENERATED_FIELD_KEYS,
+  getGeneratedFields,
+  getMissingOutputResult,
+} from './assetPipeline/generated';
+import type { PipelineRun, PipelineRunResult } from './assetPipeline/run';
+import {
+  ALLOW_UNOPTIMIZED_ENV_KEY,
+  isUnoptimizedAllowed,
+  loadProjectOptOut,
+} from './assetPipeline/switches';
 import {
   createPackSource,
   getAssetSourceFileSize,
@@ -299,6 +308,19 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
   ) => {
     for (const key of GENERATED_FIELD_KEYS) delete (data as Record<string, unknown>)[key];
     Object.assign(data, getGeneratedFields(opts.pipeline, type, jsonFile, data, { isProduction }));
+  };
+  // A production build ships only the outputs (p300): the scenes using an asset without one
+  const missingOutputs = new Map<PipelineRunResult, Set<string>>();
+  const checkShippedOutput = (
+    data: Parameters<typeof getGeneratedFields>[3],
+    type: 'texture' | 'importedAsset',
+    jsonFile: string,
+    sceneId: string
+  ) => {
+    if (!isProduction || !opts.pipeline) return;
+    const result = getMissingOutputResult(opts.pipeline, type, jsonFile, data);
+    if (!result) return;
+    missingOutputs.set(result, (missingOutputs.get(result) ?? new Set()).add(sceneId));
   };
 
   const srcDir = path.resolve(__dirname, '../src');
@@ -1024,6 +1046,7 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
               texData.path
             );
             setGeneratedFields(texData, 'texture', texRegistry[texId].__sourcePath || '');
+            checkShippedOutput(texData, 'texture', texRegistry[texId].__sourcePath || '', sceneId);
             if ('__meta' in texData) delete texData.__meta;
             delete texData.optimize; // Build time only (p300)
             delete texData.pack;
@@ -1126,6 +1149,12 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
               'importedAsset',
               importedAssetRegistry[importId].__sourcePath || ''
             );
+            checkShippedOutput(
+              importData,
+              'importedAsset',
+              importedAssetRegistry[importId].__sourcePath || '',
+              sceneId
+            );
             if ('__meta' in importData) delete importData.__meta;
             delete importData.optimize; // Build time only (p300)
             delete importData.__sourcePath;
@@ -1193,6 +1222,32 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
       combinedData.scenes[sceneId] = fileContentJSON;
     }
 
+    if (missingOutputs.size) {
+      hasError = true;
+      const results = [...missingOutputs.keys()];
+      console.error(
+        `\x1b[31m✗ [Scene Gatherer] A production build ships the asset pipeline's outputs only, and ${results.length} asset(s) that shipped scenes use have none:\x1b[0m`
+      );
+      for (const [result, sceneIds] of missingOutputs) {
+        const { asset } = result;
+        const source = asset.source.kind === 'remote' ? asset.source.url : asset.source.repoPath;
+        const reason = 'reason' in result ? result.reason : result.status;
+        console.error(
+          `  ${asset.id} (${source}; ${[...sceneIds].join(', ')}): ${result.status === 'error' ? `failed: ${reason}` : reason}`
+        );
+      }
+      if (results.some((result) => result.status === 'encoderMissing')) {
+        console.error(
+          `  Without ktx: run yarn setupAssetTools, then yarn assets, and commit src/public/aek-assets/ and assets.lock.json. Or ship them unoptimized in this build: ${ALLOW_UNOPTIMIZED_ENV_KEY}=true yarn build`
+        );
+      }
+      if (results.some((result) => result.status === 'error')) {
+        console.error(
+          `  A failed asset: fix it, or opt it out with "optimize": false in its JSON.`
+        );
+      }
+    }
+
     if (hasError) return false;
 
     // Create generatedScenes.json
@@ -1244,22 +1299,27 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
  * the gather with its outputs. It builds what isn't in the cache, but never removes stale outputs:
  * that's `yarn assets`' full run. A run that can't start (an invalid `assets.lock.json`) gathers
  * nothing, so the generated data keeps its `__url`s.
+ *
+ * In production (`yarn build`), a failed gather exits 1 and stops the build, and so does an asset
+ * a shipped scene uses without an output. `AEK_ASSETS_ALLOW_UNOPTIMIZED=true` ships the ones that
+ * lack `ktx` unoptimized instead.
  */
 const gatherWithAssetPipeline = async () => {
   const { runAssetsCommand } = await import('./assetPipeline/command');
-  const { loadProjectOptOut } = await import('./assetPipeline/switches');
+  const isProduction = process.env.NODE_ENV === 'production';
   let pipeline: PipelineRun;
   try {
     ({ run: pipeline } = await runAssetsCommand({
       projectOptOut: await loadProjectOptOut(),
       verbosity: 'brief',
+      isUnoptimizedFallback: isProduction && isUnoptimizedAllowed(),
     }));
   } catch (err) {
     console.error(`\x1b[31m✗ [Assets] ${(err as Error).message}\x1b[0m`);
     process.exitCode = 1;
     return;
   }
-  gatherSceneData({ pipeline });
+  if (!gatherSceneData({ pipeline }) && isProduction) process.exitCode = 1;
 };
 
 // Execute automatically if run directly via Node command line

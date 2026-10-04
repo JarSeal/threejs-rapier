@@ -24,7 +24,7 @@ Maintain the brand, feeling, and core principles in creating the best UX for bot
 - `yarn dev:https` — `yarn dev` over HTTPS on port 8443 (`AEK_DEV_HTTPS=true` adds `@vitejs/plugin-basic-ssl`'s self-signed certificate): a phone on the LAN needs a secure context for WebGPU and `SharedArrayBuffer`, which a plain `http://` LAN address isn't.
 - `yarn dev:test` — dev server with `VITE_APP_ENV=test`.
 - `yarn dev:production` — dev server against production env vars.
-- `yarn build` — type-check (`tsc`) + production build to `dist/`.
+- `yarn build` — type-check (`tsc`) + production build to `dist/`. Its production gather fails when an asset a shipped scene uses has no asset pipeline output (`encoderMissing` or a failed encode). `AEK_ASSETS_ALLOW_UNOPTIMIZED=true yarn build` ships the ones without `ktx` unoptimized instead (p300 Phase 3 step 4). `dist/aek-assets/` gets only the outputs the production data loads (`devTools/assetOutputsBuildPlugin.ts`).
 - `yarn build:test` — production build with `VITE_APP_ENV=test`.
 - `yarn lint` — ESLint (flat config in `eslint.config.js`, Prettier enforced as a lint rule).
 - `yarn docs` — generate TypeDoc docs into `docs-api/` (scoped to `src/_engine/**` and `src/toolkit/**` — the engine and the toolkit are the documented public API surface; `app` is not documented). The folder is gitignored and TypeDoc wipes it on every run, so never point `out` at `docs/`.
@@ -197,6 +197,7 @@ Rules:
 
 ## Workflow
 
+- **Always run Node with the version in `.nvmrc` (22.13.0).** The shell's default Node can be older than `package.json`'s `engines` (≥ 22.13.0); yarn then refuses to run, and checks fail or silently do nothing. Every Bash command that runs `yarn`, `npx`, `node` or `tsx` starts with `source .claude/hooks/use-node.sh &&` (from the repo root; it works in bash and zsh and stops the command when that Node isn't installed), eg. `source .claude/hooks/use-node.sh && yarn build`. The hooks source it too. Never report a check result from another Node version.
 - A Stop hook runs lint and type-check, plus the version rule check when `package.json` changed. Leave the tree compiling.
 - `readme.md` (root) is the project's public face. Update it in the same branch when a change alters what it lists: a new engine subsystem or toolkit module (Features), a new asset JSON type, a new command or URL flag, a changed runtime/browser requirement, a changed signature of an API its Examples use (`InitEngine`, `createRenderer`, `createSceneLoader`/`loadScene`, `createMeshEntity`, `createPhysicsEntity`, `addSystem`/`registerPlugin`, `AppConfig`), or a Roadmap item that lands (move it into Features). Physics objects in the scene JSON schema, the procedural sky/day-night cycle, the editor/material editor and the LOD system are the ones that call for a new highlight or example. Keep version numbers out of it (they live in `CHANGELOG.md`).
 - `docs/plans/` holds specs for unstarted work. Never treat one as current state or implement one unless I reference it explicitly.

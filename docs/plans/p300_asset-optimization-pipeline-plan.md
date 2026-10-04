@@ -830,6 +830,28 @@ Sections:
   - **Packs**, called in the page: `loadTextureAsync({ id, __url })` with no `fileName` loads a `CompressedTexture`, and with the override on it logs the "no source file" line. With neither, the no-file texture, as before.
   - **`yarn build:test`, served statically, `?isDebug=true`, override saved:** only the outputs load, plus the one warning. `yarn lint` and `tsc` pass.
 
+**Step 4 as built:**
+
+- **The build already ran the pipeline:** `yarn build` runs `NODE_ENV=production yarn gatherAppData`, which runs the cached pipeline since step 1. What was left was making the production build safe. It had two gaps:
+  - **It could ship broken assets and still pass.** An `encoderMissing` or `error` asset gets only `__sourceUrl`, which production data leaves out. A relative source or a pack then hits `resolveAssetUrl`'s error at runtime, and a public source loads unoptimized with no warning. Also, `gatherWithAssetPipeline` ignored `gatherSceneData`'s result, so a failed gather never stopped a build. That one was older than p300: `main` ignored it too.
+  - **`dist/` got all of `src/public/aek-assets/`**, including stale outputs (dev-server runs never prune) and outputs used only by debug scenes, which the production data leaves out.
+- **Shipped assets must have an output** (`checkShippedOutput` in `gatherSceneData`, `getMissingOutputResult` in `generated.ts`). In a production gather, a texture or imported asset that a shipped scene entry uses (debug scenes are already dropped) whose run result is `encoderMissing` or `error` is a gather error. It's reported once per asset, with its scenes and reason, plus the fix for each kind:
+  - without `ktx`: `yarn setupAssetTools`, then `yarn assets`, and commit the outputs and the lock; or the bypass below;
+  - a failed asset: fix it, or `"optimize": false`.
+  - Remote files and missing public files load as they did before the pipeline, so they pass. An asset used only by a debug scene doesn't block the build.
+- **The production gather exits 1 when it fails**, so `yarn build` stops before `tsc` and `vite build`. A dev gather keeps its old behaviour: `yarn dev` starts and shows the errors.
+- **Bypass, decided (2026-10-04): fail by default, easy to bypass.** `AEK_ASSETS_ALLOW_UNOPTIMIZED=true yarn build` (`switches.ts`; true / false / 1 / 0 like `AEK_ASSETS_OPTIMIZE`, anything else throws) re-runs the `encoderMissing` assets with their textures side off (`runAssetsCommand`'s `isUnoptimizedFallback`).
+  - They pass through, with a warning per asset: a relative source is copied, a pack is written as a PNG, a public source keeps its own URL, and a GLB gets its mesh optimized with its textures kept as they are.
+  - The fallback isn't cached, so the lock keeps only the real settings' entries. Its copies in `aek-assets/` are stale for the next full `yarn assets`.
+  - It applies to production gathers only, because dev has `__sourceUrl`. An `error` still fails: the asset itself is broken.
+- **`dist/aek-assets/` holds only what the build loads** (`devTools/assetOutputsBuildPlugin.ts`, build only, `closeBundle`). It collects every `__url` in the bundled `generatedAppData.json` and removes the other files from `dist/aek-assets/` (`removeStaleOutputs` now takes the public dir to sweep). Then it prints one line with the outputs kept and removed, and their sizes. `src/public/aek-assets/` is untouched. Every `__url` counts, so a `vite build` of dev data keeps every current output, never too few.
+- **Verified** (throwaway fixtures, removed). The shipped `oneMoreScene` used three: a relative-source texture, a public-source texture and a PNG that isn't an image. `debugScene` used a fourth, relative-source texture. All builds ran with `AEK_KTX` pointing nowhere:
+  - **Warm, no fixtures:** passes, and `dist/aek-assets` has the two app outputs (1.14 MB).
+  - **Fixtures uncached:** the build stops after the gather, with no `dist/`. It lists the two shipped `encoderMissing` textures and the broken one, each with its fix; the debug-only texture isn't listed.
+  - **Bypass with the broken PNG still in the scene:** the three `encoderMissing` textures pass through, and the build still fails, on the broken one only.
+  - **Bypass, broken PNG removed from the scene, plus a stale file planted in `src/public/aek-assets/`:** passes. `dist/` has the relative source's copy and the public PNG at its own URL. The debug-only copy and the stale file were removed from `dist/` only. The lock is unchanged.
+  - A running dev server builds new fixtures with its own `ktx` as soon as they appear. To get a miss, purge their lock entries, store copies and outputs: the plugin doesn't react to any of those.
+
 ### Phase 4 — Harden
 
 1. Budgets: fail the build if an asset exceeds a size or VRAM threshold set per profile.

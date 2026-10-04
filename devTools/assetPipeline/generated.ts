@@ -81,6 +81,26 @@ export const getResultFigures = (result: PipelineRunResult) => {
 };
 
 /**
+ * The run's result for asset data that a production build can't ship (Phase 3 step 4): its source
+ * is local, but the run has no output for it (`encoderMissing`, `error`), and production data has
+ * no `__sourceUrl` to fall back to. A relative source or a pack wouldn't load at all, and a public
+ * one would load unoptimized. Null when it ships as it should, or as it did before the pipeline
+ * (a remote file, a public file that doesn't exist).
+ * @param jsonFile The asset JSON, absolute or relative to the repo root
+ */
+export const getMissingOutputResult = (
+  run: PipelineRun,
+  type: PipelineAssetType,
+  jsonFile: string,
+  data: Parameters<typeof resolveAssetUse>[1]
+) => {
+  const use = resolveAssetUse(jsonFile, data);
+  if (!use || 'error' in use) return null;
+  const result = run.results.get(getPipelineAssetKey(type, jsonFile, use));
+  return result?.status === 'encoderMissing' || result?.status === 'error' ? result : null;
+};
+
+/**
  * The generated fields of an asset's data (the JSON, or merged with a scene's latest entry)
  * from a run. None without a run; only the source's URL for data the run didn't optimize or
  * pass through.

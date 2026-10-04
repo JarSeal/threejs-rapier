@@ -10,7 +10,7 @@ import { LAST_RUN_FILE, summarizeRun, writeRunSummary, type RunSummary } from '.
 import { runPipeline, type PipelineRun, type PipelineRunResult } from './run';
 import { createSettingsResolver, loadAssetsConfig } from './settings';
 import { ROOT } from './sources';
-import { ENV_KEY, type ProjectOptOut } from './switches';
+import { ALLOW_UNOPTIMIZED_ENV_KEY, ENV_KEY, type ProjectOptOut } from './switches';
 
 /**
  * One pipeline run as a command (p300): collects the assets, runs them through the cache, saves
@@ -194,6 +194,13 @@ export type AssetsCommandOpts = {
    */
   verbosity: 'full' | 'brief';
   isQuietWhenUpToDate?: boolean;
+  /**
+   * Re-runs the assets that got no output for want of `ktx` with their textures side off, so they
+   * pass through as unoptimized outputs (a production build under `AEK_ASSETS_ALLOW_UNOPTIMIZED`,
+   * which has no `__sourceUrl` to fall back to). Not cached: the lock keeps the real settings'
+   * entries only. Default: false.
+   */
+  isUnoptimizedFallback?: boolean;
 };
 
 export type AssetsCommandResult = {
@@ -212,7 +219,8 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
   const start = performance.now();
   const { projectOptOut, isSelected, verbosity } = opts;
   const isFull = verbosity === 'full';
-  const resolveSettings = createSettingsResolver(loadAssetsConfig(), projectOptOut);
+  const assetsConfig = loadAssetsConfig();
+  const resolveSettings = createSettingsResolver(assetsConfig, projectOptOut);
   const projectReasons = new Set(Object.values(projectOptOut));
   const assets = collectPipelineAssets(readAssetJsons());
 
@@ -260,6 +268,26 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
       else clearProgress();
     },
   });
+
+  if (opts.isUnoptimizedFallback) {
+    const missing = new Map(
+      [...pipelineRun.results].flatMap(([key, result]) =>
+        result.status === 'encoderMissing' ? [[key, result.asset] as const] : []
+      )
+    );
+    if (missing.size) {
+      const reason = `${ALLOW_UNOPTIMIZED_ENV_KEY}: shipped unoptimized, ktx is missing`;
+      log(`  ${YELLOW}⚠ ${missing.size} asset(s) without ktx ship unoptimized:${RESET}`);
+      const fallback = await runPipeline(missing, {
+        resolveSettings: createSettingsResolver(assetsConfig, {
+          ...projectOptOut,
+          textures: reason,
+        }),
+        onResult: (_key, result) => log(formatResult(result, projectReasons)),
+      });
+      for (const [key, result] of fallback.results) pipelineRun.results.set(key, result);
+    }
+  }
 
   const results = [...pipelineRun.results.values()];
   const hasErrors = results.some((result) => result.status === 'error');
