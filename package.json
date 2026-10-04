@@ -49,6 +49,7 @@
     "gatherAppData": "tsx ./devTools/gatherAppData.ts",
     "copyDecoders": "tsx ./devTools/copyDecoders.ts",
     "setupAssetTools": "tsx ./devTools/setupAssetTools.ts",
+    "assets": "tsx ./devTools/assets.ts",
     "checkVersions": "tsx ./devTools/checkVersions.ts",
     "tagRelease": "tsx ./devTools/tagRelease.ts",
     "dev": "yarn copyDecoders && yarn gatherAppData && VITE_APP_ENV=development vite serve --port 8080 --host",

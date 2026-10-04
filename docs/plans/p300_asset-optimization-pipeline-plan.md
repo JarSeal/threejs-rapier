@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-1 implemented
+Status: in progress | Phases 0-2 implemented
 Category: Assets
 Blocks: p301_terrain-texturing-epic.md (and through it p302–p310: the terrain texture library ships as KTX2, terrain blocks as meshopt GLBs), p347_lod-chain-generation.md (soft: only its build-time Phase 3, which adds a LOD-chain step to this pipeline)
 
@@ -528,9 +528,9 @@ Sections:
 - The per-slot λ (2 for colour, 1 for the rest) comes from 1c's per-texture errors. Phase 1 never rendered that mix as one variant, since every 1d variant uses one λ for all slots. On screen, the λ 1 and λ 2 runs differed by ≤ 0.5 dB in every region, so the mix sits between them.
 - Lossless meshopt, for Phase 2: gltf-transform's `meshopt()` can't do it, because it always reorders and quantizes. 1c's script writes it as the `EXTMeshoptCompression` extension alone, with `EncoderMethod.QUANTIZE` (meaning "no filters": it doesn't quantize by itself) and no `reorder()` / `quantize()` transforms.
 - Not changed, for p303's own review: its LITE estimate of "≈ 0.6–1.2 MB per map" is at the top of what `rocks01` measures with `terrainLayer` (`albedoRough` 1.17 MB at λ 2, `normalHeight` 1.23 MB at λ 1). Rocks are a noisy material, so smoother sets should come in lower.
-- The variants stay until Phase 2's exit, which deletes them (or the whole `phase1/` folder). `ktx` encodes are byte-reproducible (1c), so Phase 2 can check that it reproduces Phase 1 by comparing its outputs with these files, eg. `orm_uastc_rdo1.ktx2` for the default `orm` slot.
+- The variants stay until Phase 2's exit, which deletes them (or the whole `phase1/` folder). (Changed at Phase 2's exit: the folder stays while the `assetCompare` scene needs it, see Step 8 as built.) `ktx` encodes are byte-reproducible (1c), so Phase 2 can check that it reproduces Phase 1 by comparing its outputs with these files, eg. `orm_uastc_rdo1.ktx2` for the default `orm` slot.
 
-### Phase 2 — Pipeline (~2–3 days)
+### Phase 2 — Pipeline (~2–3 days) — done
 
 1. Config schema plus resolver (DD2), compiled to `.schemas/`.
 2. `optimize` (incl. `optimize: false`) and relative `fileName` in `textureSchema` / `importedAssetSchema`.
@@ -724,6 +724,25 @@ Sections:
   - **No run** (`yarn gatherAppData`): `generatedAppData.json` is unchanged.
 - **For step 8:** with the defaults, the app's two asset JSONs (`testTexture`, the 2K MetalRust base colour JPG, and `testImport`, `box01.glb`) are optimized: a 1K UASTC KTX2 and a meshopt GLB. Once Phase 3 step 2 resolves `__url`, the scenes that use them load those. §11 question 4 leaves the debugger test assets raw, but that answer was about the test models without a JSON. These two have JSONs, so they need an `optimize: false` (or a rule) to stay raw. Decided (2026-10-04): leave them as they are for now, so they're optimized.
 - Not done here: §5's stats summary (`last-run.json`, totals, cache hit rate, slowest assets). It reports on a run of the command, so it's step 8's.
+
+**Step 8 as built:**
+
+- `yarn assets [--only <id|glob>]...` (`devTools/assets.ts`): reads the project switches and `assets.config.json`, collects the assets (step 7), runs them through the cache, saves the lock, prints and writes the stats, then gathers the generated data with the run (`gatherSceneData({ pipeline })`). Exits 1 when an asset failed or the gather failed. `encoderMissing` is a warning, not a failure (§8).
+- **`--only` (repeatable)** selects the assets whose id is the pattern, or whose JSON or source path (from the repo root) matches it as a glob (`glob.ts`). No match is an error.
+  - A partial run still has to give the gatherer every asset's output, or the generated data would lose the others' `__url`. So the unselected assets run with `processAsset`'s new `lookupOnly` (`runPipeline`'s `isSelected`): a cache hit or restore is used, a miss is `skipped` ("not built: outside this run"), and nothing is encoded or packed. A plain pass-through still runs: it's a copy.
+  - Only the selected assets are printed; `last-run.json` has them all.
+- **Stale outputs and lock entries** are removed (`cache.prune()` + `removeStaleOutputs`) only by a full run with no failed asset, and not under `AEK_ASSETS_OPTIMIZE`. DD8 calls the env var a one-run override (eg. a quick CI build); a full run with `=false` would otherwise delete every committed KTX2 / GLB and prune the lock. Each case prints why the stale outputs were kept.
+- **Output:** one line per asset: status, codecs (`meshopt lossless` for a collider), cache (`hit`, `restored` or `built`), download and VRAM before → after, time, then its reason and warnings. A reason that comes from the project switches is printed once at the top instead of per asset. In a terminal, the asset being built shows on the last line until its result replaces it, and `ktx`'s setup log goes in between.
+- **§5's stats** (`report.ts`, `summarizeRun`): counts per status, cache hits / restores / builds and the hit rate, download totals (every output) and VRAM totals (optimized assets only: a pass-through's image isn't read), the 5 slowest assets, the removed stale outputs and one entry per asset. Printed as a summary and written to `.cache/asset-pipeline/last-run.json`. The per-result figures moved into `getResultFigures` (`generated.ts`), so the totals and `__bytes` / `__vramBytes` can't disagree.
+- **The app's two asset JSONs** (step 7's decision): `testTexture` becomes a 1K UASTC KTX2 (967 KB JPG → 1.12 MB, VRAM 22.4 → 1.4 MB: UASTC is bigger than a JPEG, as 1e found), `testImport` a meshopt GLB (46.7 → 14.7 KB). Their outputs (1.1 MB) and `assets.lock.json` are new in the tree, to be committed (DD3).
+- **`generatedAppData.json` isn't committed with the `__url` fields:** `yarn dev` runs the plain `yarn gatherAppData`, which writes it without them until Phase 3 step 1, so committing them would only churn. The runtime doesn't read them before Phase 3 step 2 either.
+- **Verified** with throwaway fixture JSONs (removed, and their outputs pruned by the next full run): the Phase 1 picks with the §4 profiles as they are, plus the two app assets.
+  - **One command, cold** (43.5 s, 8 encodes), **byte-identical to `phase1/`**: `rocks01` `albedoRough_uastc_rdo2` and `normalHeight_uastc_rdo1` (packs, `terrainLayer`), `metalRust` `orm_uastc_rdo1` (pack) and `normal_uastc_rdo1`, the toolbox's `uastc_rdo2.glb` (`hero`, one λ), and the three `_meshoptLossless` colliders (the detected default).
+  - **Warm, `AEK_KTX` pointing nowhere:** 10 / 10 hits in 19 ms, the lock not rewritten, the generated data byte-identical to the cold run's.
+  - **`--only exitOrm` after a change to λ 4:** one encode, identical to `orm_uastc_rdo4.ktx2`; every other asset kept its `__url`; a new uncached pack outside the selection was `skipped`; the old output stayed. The next full run built the pack and removed the old output and its lock entry. Back to λ 1: `restored` from the store, no encode, no `ktx`.
+  - **`AEK_ASSETS_OPTIMIZE=false`, no `ktx`:** all passed through (public sources at their own URL, packs as PNGs), nothing removed.
+  - **A failing pack** (a non-image source): `error` with sharp's message, exit 1, stale outputs kept, the gather still ran.
+- **Phase 2's exit** is met, except that the `phase1/` variant files aren't deleted. Decided (2026-10-04): the folder stays until it isn't needed. The `assetCompare` scene (1d) loads the variants, and the 1e measurements and `report.json` are in the same folder. Whoever removes the scene deletes the folder with it (`devTools/assetPipeline/phase1Variants.ts` too, which only writes there).
 
 ### Phase 3 — Integrate (~1 day)
 

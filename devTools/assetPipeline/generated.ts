@@ -1,7 +1,7 @@
 import path from 'path';
 import type { GeneratedAssetFields } from '../../src/_engine/schemas/assetsConfigSchema';
 import { getPipelineAssetKey, resolveAssetUse, type PipelineAssetType } from './assets';
-import type { PipelineRun } from './run';
+import type { PipelineRun, PipelineRunResult } from './run';
 import { PUBLIC_DIR, SRC_DIR, type AssetSource, type PackSource } from './sources';
 import type { EncodedTexture } from './textures';
 
@@ -63,6 +63,24 @@ export const estimateTextureVramBytes = (texture: EncodedTexture) => ({
 });
 
 /**
+ * A result's download figure (`__bytes`) and, for an optimized one, its VRAM estimate
+ * (`__vramBytes`). A GLB's VRAM is its textures (none when they were dropped) plus its geometry.
+ * Null for a result without an output.
+ */
+export const getResultFigures = (result: PipelineRunResult) => {
+  if (result.status !== 'optimized' && result.status !== 'passThrough') return null;
+  const bytes = { in: result.sourceBytes ?? result.output.bytes, out: result.output.bytes };
+  if (result.status === 'passThrough') return { bytes };
+  const vramBytes = { in: result.geometryBytes?.in ?? 0, out: result.geometryBytes?.out ?? 0 };
+  for (const texture of result.textures) {
+    const textureVram = estimateTextureVramBytes(texture);
+    vramBytes.in += textureVram.in;
+    vramBytes.out += textureVram.out;
+  }
+  return { bytes, vramBytes };
+};
+
+/**
  * The generated fields of an asset's data (the JSON, or merged with a scene's latest entry)
  * from a run. None without a run; only the source's URL for data the run didn't optimize or
  * pass through.
@@ -81,22 +99,15 @@ export const getGeneratedFields = (
   const sourceUrl = opts.isProduction ? undefined : getSourceUrl(use.source);
   const fields: GeneratedAssetFields = sourceUrl ? { __sourceUrl: sourceUrl } : {};
   const result = run.results.get(getPipelineAssetKey(type, jsonFile, use));
-  if (!result || (result.status !== 'optimized' && result.status !== 'passThrough')) {
+  const figures = result && getResultFigures(result);
+  if (!result || !figures || (result.status !== 'optimized' && result.status !== 'passThrough')) {
     return fields;
   }
 
   fields.__url = result.output.url;
-  fields.__bytes = { in: result.sourceBytes ?? result.output.bytes, out: result.output.bytes };
+  fields.__bytes = figures.bytes;
   if (result.status === 'passThrough') return fields;
-
-  // A GLB's figure is its textures (none when they were dropped) plus its geometry
-  const vram = { in: result.geometryBytes?.in ?? 0, out: result.geometryBytes?.out ?? 0 };
-  for (const texture of result.textures) {
-    const textureVram = estimateTextureVramBytes(texture);
-    vram.in += textureVram.in;
-    vram.out += textureVram.out;
-  }
-  fields.__vramBytes = vram;
+  fields.__vramBytes = figures.vramBytes;
   if (type === 'texture' && result.textures[0]) fields.__codec = result.textures[0].codec;
   return fields;
 };

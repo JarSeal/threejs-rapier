@@ -122,7 +122,15 @@ export type ProcessAssetOpts = {
   getKtx?: KtxProvider;
   /** The run's cache (§7); without one, nothing is cached and every call encodes */
   cache?: PipelineCache;
+  /**
+   * Only look the asset up, never encode or pack it: a cache miss is `skipped` (a plain
+   * pass-through still runs, it's a copy). For the assets a partial run (`yarn assets --only`)
+   * leaves out, so the generated data keeps their outputs.
+   */
+  lookupOnly?: boolean;
 };
+
+const NOT_BUILT_REASON = 'not built: outside this run (--only), and not in the cache';
 
 type CacheKeyInput = Parameters<typeof getCacheKey>[0];
 
@@ -227,6 +235,7 @@ const runAsset = async (
         cache: getCacheStatus(hit),
       };
     }
+    if (opts.lookupOnly) return { status: 'skipped', reason: NOT_BUILT_REASON };
     const output = await passThroughPack(source, isSrgb);
     const result = { status: 'passThrough' as const, reason, isCopy: true, output, settings };
     if (key) cache.set(key, toCacheEntry(source.repoPath, result));
@@ -286,6 +295,7 @@ const runAsset = async (
   if (hit) {
     return { status: 'optimized', settings, ...fromCacheEntry(hit), cache: getCacheStatus(hit) };
   }
+  if (opts.lookupOnly) return { status: 'skipped', reason: NOT_BUILT_REASON };
 
   const getKtx = opts.getKtx ?? createKtxProvider();
   const warnings: string[] = [];

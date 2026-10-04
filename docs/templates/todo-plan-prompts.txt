@@ -48,3 +48,14 @@ There are for sure several plans worth of material to create so please divide th
 If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
 ************************************
+
+UNDER_CONSTRUCTION
+Create "" plan in docs/plans/p.md
+
+Category: 
+
+
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+************************************

@@ -6,7 +6,7 @@ import type { createSettingsResolver } from './settings';
 /**
  * Runs the pipeline over a list of assets (`collectPipelineAssets`), one at a time: `ktx` and
  * sharp use every core for one encode. One `ktx` setup for the whole run. The caller owns the
- * cache: it saves the lock, and only a full run prunes it (step 8).
+ * cache: it saves the lock, and only a full run prunes it (`yarn assets`, devTools/assets.ts).
  */
 
 export type PipelineRunResult = (
@@ -30,19 +30,28 @@ export const runPipeline = async (
     resolveSettings: ReturnType<typeof createSettingsResolver>;
     cache?: PipelineCache;
     getKtx?: KtxProvider;
-    /** After each asset, eg. for progress */
+    /**
+     * The assets to build (a partial run); the others are only looked up in the cache, so the
+     * run still has every output there is. Default: all.
+     */
+    isSelected?: (key: string, asset: PipelineAsset) => boolean;
+    /** Before each asset, eg. for progress */
+    onStart?: (key: string, asset: PipelineAsset) => void;
+    /** After each asset */
     onResult?: (key: string, result: PipelineRunResult) => void;
   }
 ): Promise<PipelineRun> => {
   const getKtx = opts.getKtx ?? createKtxProvider();
   const results = new Map<string, PipelineRunResult>();
   for (const [key, asset] of assets) {
+    opts.onStart?.(key, asset);
     const start = performance.now();
     let result: PipelineRunResult;
     try {
       const outcome = await processAsset(asset, opts.resolveSettings, {
         getKtx,
         cache: opts.cache,
+        lookupOnly: opts.isSelected ? !opts.isSelected(key, asset) : false,
       });
       result = { ...outcome, asset, sourceBytes: getSourceBytes(asset) };
     } catch (error) {
