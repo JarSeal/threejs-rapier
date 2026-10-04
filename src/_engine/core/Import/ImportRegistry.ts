@@ -6,6 +6,7 @@ import { deleteTexture, doesTextureExist, getTextureRegistry } from '../Texture'
 import { loadGLTFInWorker, recordAssetLoadReport, runAssetTask } from '../Assets/AssetsAPI';
 import type { AssetLoadReport } from '../Assets/AssetsAPITypes';
 import { getAssetOwner, recordAssetOwner, retagAssetOwner } from '../Assets/AssetOwners';
+import { resolveAssetUrl } from '../Assets/AssetUrl';
 import { getDracoWorkerSettings } from './DracoDecoder';
 import { deserializeGeometry } from './GeometryTransfer';
 import { disposeGLTFLeftovers, extractPrimitives } from './GLTFExtract';
@@ -115,11 +116,15 @@ const getTextureRegistrationOpts = (params: ImportAssetParams, id: string) => {
   };
 };
 
-const loadOnMainThread = async (params: ImportAssetParams, id: string): Promise<LoadOutcome> => {
-  const { fileName, meshIndex, importTextures } = params;
+const loadOnMainThread = async (
+  params: ImportAssetParams,
+  id: string,
+  url: string
+): Promise<LoadOutcome> => {
+  const { meshIndex, importTextures } = params;
   let gltf;
   try {
-    gltf = await loadGLTF(fileName);
+    gltf = await loadGLTF(url);
   } catch (err) {
     return { error: LOAD_ERROR_MESSAGE, cause: err };
   }
@@ -148,8 +153,12 @@ const loadOnMainThread = async (params: ImportAssetParams, id: string): Promise<
 /** The same stage in the assets worker: it runs the same extractPrimitives() (and
  * collectGLTFTextures()) and sends the geometries (and texture images) back as transferable data,
  * which are wrapped here (nothing is parsed, decoded or copied). */
-const loadInWorker = async (params: ImportAssetParams, id: string): Promise<LoadOutcome> => {
-  const response = await loadGLTFInWorker(toAbsoluteUrl(params.fileName), {
+const loadInWorker = async (
+  params: ImportAssetParams,
+  id: string,
+  url: string
+): Promise<LoadOutcome> => {
+  const response = await loadGLTFInWorker(url, {
     importId: id,
     meshIndex: params.meshIndex,
     importTextures: Boolean(params.importTextures),
@@ -218,13 +227,23 @@ const runImport = async (
   const fileNameError = validateGLTFFileName(fileName);
   if (fileNameError) return fail(fileNameError);
 
+  // The file to load: the asset pipeline's output when the params come from generated data
+  let url: string;
+  try {
+    url = resolveAssetUrl(params, toAbsoluteUrl);
+  } catch (err) {
+    return fail((err as Error).message);
+  }
+  const urlError = validateGLTFFileName(url);
+  if (urlError) return fail(urlError);
+
   let loaded: LoadOutcome;
   let report: AssetLoadReport;
   try {
     ({ result: loaded, report } = await runAssetTask(
       'GLTF',
-      () => loadInWorker(params, id),
-      () => loadOnMainThread(params, id)
+      () => loadInWorker(params, id, url),
+      () => loadOnMainThread(params, id, url)
     ));
   } catch (err) {
     return fail(LOAD_ERROR_MESSAGE, err);
@@ -294,7 +313,7 @@ const runImport = async (
     sourceKey,
   };
   recordAssetOwner(imports[id]);
-  recordAssetLoadReport(`import:${id}`, report);
+  recordAssetLoadReport(`import:${id}`, { ...report, sourceUrl: url });
   logWarnings(manifest);
   return manifest;
 };

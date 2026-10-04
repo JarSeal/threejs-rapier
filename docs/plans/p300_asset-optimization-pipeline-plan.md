@@ -790,6 +790,31 @@ Sections:
   - A lock with a merge conflict: the overlay with the lock's message, the generated data unchanged.
   - `yarn gatherAppData` and `yarn assets` (full, `--only`, no match) on a warm cache: 17–20 ms, output as before.
 
+**Step 2 as built:**
+
+- **No `SceneLoader` change:** it already passes each scene entry whole to `loadTextureAsync` / `importAssetAsync`, and the gatherer puts each file's generated keys on the scene entries (step 7). So the resolution is in those two loaders, and any code that passes generated data gets it too.
+- `core/Assets/AssetUrl.ts`, `resolveAssetUrl(asset, legacyUrl)`, returns the absolute URL to load, in this order:
+  1. `__url`;
+  2. `__sourceUrl`: dev data only, set when the pipeline has no output (encoder missing, a failed encode, not built yet). It warns once per source;
+  3. a `fileName` relative to its JSON (`./`, `../`) with neither: an error that names the cause and `yarn assets`. Before, it would have been a 404 against the document's URL;
+  4. otherwise the `fileName` as the loader always resolved it.
+
+  Step 3's "Load source files" override is one more branch here.
+- **Generated URLs resolve against `BASE_URL`**, like the decoders' paths (`${BASE_URL}aek-assets/…`). The legacy rule, `(path || './') + fileName`, turns a root-absolute file name into `//debugger/…` (relative to the document, with a double slash). It works on the dev server and a static server, and it is left as it is.
+- `TextureProps` and `ImportAssetParams` take `__url` / `__sourceUrl` (`GeneratedAssetUrls`, picked from `GeneratedAssetFields`).
+- **`loadTextureAsync`** resolves first, then picks the loader by the resolved URL's extension (§6). The KTX2 loader, the worker, `HDRLoader` and `TextureLoader` all get that one absolute URL, which legacy calls resolve exactly as before. Errors name the `fileName` and the URL. Cube arrays and the sync `loadTexture` / `loadTextures` are unchanged: no generated data reaches them.
+- **`importAssetAsync`:** the id, the source key and `manifest.fileName` stay on the declared `fileName`, so one asset shares one import across scenes, and a default id doesn't pick up the hash. The worker and the main thread load the resolved URL, and its extension is checked. The import's load report now has `sourceUrl` (the loaded URL), like a texture's.
+- **Not changed here:** the Assets tab's info window still shows the declared file and its `__fileSize`, not the loaded output and its `__bytes.out`. That's step 3's, which edits the same tab.
+- **Verified** headless on WebGL2 (SwiftShader), `sceneTestECS` (its imported box has `testTexture` as its map):
+  - **Dev server, main-thread and worker targets:** the network log shows only the `aek-assets/` KTX2 and GLB for the two assets. `testTexture` is a `CompressedTexture` (1024², 11 mips, its JSON's wrap kept); the GLB loaded in the worker for the worker target.
+  - **Orientation:** the KTX2 and the JPG were each put on an unlit plane filling the view, and a 500 px crop of the frame compared. They match at 45.6 dB; the JPG upside down gives 29.6 dB, and two shots of one state are identical. Same result with the worker targets, where the JPG's flip is baked into its `ImageBitmap`.
+  - **Called in the page:**
+    - `__sourceUrl` only: the source loads, with one warning per source.
+    - A `__url` to a plain image (a pass-through): the `TextureLoader` route.
+    - A relative `fileName` with neither: the error, then the no-file texture (texture) or `null` (import).
+    - A legacy import by `fileName`: as before.
+  - **`yarn build:test`, served statically, `?isProdTest=true`:** the two outputs and the Basis transcoder load, the box is textured, and the console shows no errors. The bundle has no `__sourceUrl` data. `yarn build` and `yarn lint` pass.
+
 ### Phase 4 — Harden
 
 1. Budgets: fail the build if an asset exceeds a size or VRAM threshold set per profile.
