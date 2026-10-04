@@ -1,7 +1,7 @@
 Status: draft | epic — not-implemented
 Category: Terrain, Materials, Assets
-Blocked by: p300_asset-optimization-pipeline-plan.md
 Blocks: p302_material-and-texture-system-refactor.md, p303_texture-sets-and-terrain-texture-library.md, p304_procedural-texture-baker.md, p305_terrain-material-generator.md, p306_terrain-blocks-and-procedural-terrain-meshes.md, p307_wet-and-dry-surface-states.md, p308_terrain-scatter.md, p309_terrain-decals.md, p310_terrain-preview-scenes.md
+Related: p299_texture-arrays-and-atlases.md (the array/atlas core p303 and p309 build on), p370_static-mesh-merging-and-texture-atlas-systems.md (mesh merging; new terrain processes in its §10)
 
 # Terrain Texturing — Epic
 
@@ -74,6 +74,7 @@ This file is the epic: shared decisions, conventions, the plan map and the techn
 
 ```
 p300 asset pipeline (KTX2, meshopt, packing)
+  ├─ p299 texture arrays & atlases (engine; p370 epic) ──► p303 D4, p309 D1
   └─ p302 material & texture system refactor (engine)
        └─ p303 texture sets + terrain texture library (engine asset type, toolkit sets, gallery skeleton)
             ├─ p304 procedural texture baker (engine core + toolkit generators)
@@ -98,6 +99,8 @@ p300 asset pipeline (KTX2, meshopt, packing)
 | p310 | Complete `terrainGallery` with measurements, `terrainShowcase` (3 Blender blocks + 1 procedural + a structure), final handbook pass                                      | App + Docs             |
 
 p304 can be implemented in parallel with p305 Phase 1. p308 and p309 are independent of each other.
+
+p299 (texture arrays and atlases) is outside this epic but runs before p303: p303's layer arrays and p309's decal atlases are built on it. The mesh merging plans (p370 epic, p371–p376) run after the LOD plans; nothing here is blocked by them, but they add the modular kit and tile-chunk processes (§5) and lower the draw count of a block's static dressing (§7).
 
 ---
 
@@ -161,24 +164,25 @@ AO baked into albedo is the standard trade-off on these surfaces. It removes a f
 
 Each technique gets a page in `docs/techniques/`. The plan that implements it writes it, in its last phase, together with the Blender template. One exception: for p305's pages, the Blender, Export and Import sections and the templates are finished by p306, which owns the block workflow. p303 creates `docs/techniques/README.md` (index, decision matrix, page template), and p310 fills in the measured numbers.
 
-| Page                            | Technique                                                                                                | Owner plan                               | Blender template                 |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------- | -------------------------------- |
-| `README.md`                     | Index; "which technique for my game" matrix; page template                                               | p303 (created), p310 (measurements)      | —                                |
-| `asset-optimization.md`         | KTX2/meshopt pipeline, profiles, codec cheat sheet                                                       | p300                                     | —                                |
-| `texture-sets.md`               | Maps (required/optional), packings, AO-into-albedo, height, texel density, sources, sizes, KTX2 settings | p303                                     | —                                |
-| `procedural-textures.md`        | Live vs baked procedural, the baker, seeds, VRAM trade-off                                               | p304                                     | —                                |
-| `terrain-single-layer.md`       | One tiled layer + anti-tiling (dual-scale, hex) + macro variation                                        | p305 (Blender sections + template: p306) | `terrain_singleLayer.blend`      |
-| `terrain-vertex-color-splat.md` | Up to 5 layers painted as vertex colours, height blend                                                   | p305 (Blender sections + template: p306) | `terrain_vertexColorSplat.blend` |
-| `terrain-splat-map.md`          | Painted splat textures (4/8 layers), resolution-independent borders                                      | p305 (Blender sections + template: p306) | `terrain_splatMap.blend`         |
-| `terrain-procedural-rules.md`   | Slope/height/noise rules, no painting; also for generated meshes                                         | p305                                     | — (engine only)                  |
-| `terrain-triplanar-cliffs.md`   | Triplanar / biplanar / slope-gated projection for steep faces                                            | p305 (Blender sections + template: p306) | `terrain_triplanarCliff.blend`   |
-| `terrain-colormap-detail.md`    | Unique baked colour map + tiled grayscale detail; also as far-distance mode                              | p305 (Blender sections + template: p306) | `terrain_colormapDetail.blend`   |
-| `structure-materials.md`        | Concrete and large structures: world-space/triplanar, macro, edge wear, decals                           | p305 (Blender sections + template: p306) | `structure_concrete.blend`       |
-| `terrain-blocks-blender.md`     | The common block workflow: grid, shaping, normals, custom props, export, import                          | p306                                     | `terrain_blockTemplate.blend`    |
-| `terrain-procedural-meshes.md`  | Engine-generated terrain: noise, rules → vertex splat, CPU AO, colliders                                 | p306                                     | —                                |
-| `wet-dry-surfaces.md`           | Wetness, puddles, rain ripples, drying, shoreline, snow coverage                                         | p307                                     | (uses the splat template)        |
-| `terrain-scatter.md`            | GPU-instanced rocks and details from Blender and procedural masks                                        | p308                                     | `terrain_scatter.blend`          |
-| `terrain-decals.md`             | Mesh decals with an atlas, projected decals, procedural decals                                           | p309                                     | `terrain_decals.blend`           |
+| Page                            | Technique                                                                                                  | Owner plan                               | Blender template                 |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------- | -------------------------------- |
+| `README.md`                     | Index; "which technique for my game" matrix; page template                                                 | p303 (created), p310 (measurements)      | —                                |
+| `asset-optimization.md`         | KTX2/meshopt pipeline, profiles, codec cheat sheet                                                         | p300                                     | —                                |
+| `texture-sets.md`               | Maps (required/optional), packings, AO-into-albedo, height, texel density, sources, sizes, KTX2 settings   | p303                                     | —                                |
+| `procedural-textures.md`        | Live vs baked procedural, the baker, seeds, VRAM trade-off                                                 | p304                                     | —                                |
+| `terrain-single-layer.md`       | One tiled layer + anti-tiling (dual-scale, hex) + macro variation                                          | p305 (Blender sections + template: p306) | `terrain_singleLayer.blend`      |
+| `terrain-vertex-color-splat.md` | Up to 5 layers painted as vertex colours, height blend                                                     | p305 (Blender sections + template: p306) | `terrain_vertexColorSplat.blend` |
+| `terrain-splat-map.md`          | Painted splat textures (4/8 layers), resolution-independent borders                                        | p305 (Blender sections + template: p306) | `terrain_splatMap.blend`         |
+| `terrain-procedural-rules.md`   | Slope/height/noise rules, no painting; also for generated meshes                                           | p305                                     | — (engine only)                  |
+| `terrain-triplanar-cliffs.md`   | Triplanar / biplanar / slope-gated projection for steep faces                                              | p305 (Blender sections + template: p306) | `terrain_triplanarCliff.blend`   |
+| `terrain-colormap-detail.md`    | Unique baked colour map + tiled grayscale detail; also as far-distance mode                                | p305 (Blender sections + template: p306) | `terrain_colormapDetail.blend`   |
+| `structure-materials.md`        | Concrete and large structures: world-space/triplanar, macro, edge wear, decals                             | p305 (Blender sections + template: p306) | `structure_concrete.blend`       |
+| `terrain-blocks-blender.md`     | The common block workflow: grid, shaping, normals, custom props, export, import                            | p306                                     | `terrain_blockTemplate.blend`    |
+| `terrain-procedural-meshes.md`  | Engine-generated terrain: noise, rules → vertex splat, CPU AO, colliders                                   | p306                                     | —                                |
+| `wet-dry-surfaces.md`           | Wetness, puddles, rain ripples, drying, shoreline, snow coverage                                           | p307                                     | (uses the splat template)        |
+| `terrain-scatter.md`            | GPU-instanced rocks and details from Blender and procedural masks                                          | p308                                     | `terrain_scatter.blend`          |
+| `terrain-decals.md`             | Mesh decals with an atlas, projected decals, procedural decals                                             | p309                                     | `terrain_decals.blend`           |
+| `terrain-modular-kits.md`       | Terrain from kit modules (cliffs, ledges, caves) and tile-chunk worlds (hex/square tiles), merged per cell | p372 (array-material variation: p374)    | — (decided in p372)              |
 
 **Page template** (every technique page has these sections, in this order):
 
@@ -220,6 +224,8 @@ Fetches per pixel ≈ `P × L × A × T + S + M + W`, where:
 | `M`  | Macro variation              | 1                                                                       |
 | `W`  | Wet effects                  | 0–2 (ripple atlas)                                                      |
 
+Draw calls are outside this formula: a block is one draw per material (plus the shadow passes), and its scatter and decals add theirs (p308, p309). Merging a block's static dressing into one draw per material (p372, p370 §10) is the lever there.
+
 Examples:
 
 - LITE, 4 layers, dual-scale, world UV, splat map, macro = 2·4·2·1 + 1 + 1 = **18**. This is a good default.
@@ -242,6 +248,7 @@ These are not built here, but nothing may block them:
 - **Determinism.** Procedural seeds derive from `(worldSeed, gridX, gridZ)`, never from load order.
 - **Shared materials.** One terrain material per biome. Blocks differ only in variant inputs (textures), so the program and pipeline are shared.
 - **Colliders** are per block (HEIGHTFIELD), centred on the block origin.
+- **Merged dressing.** A block's static props and cutout mesh decals can be merged per block and material (p372 groups that never cross a block or streaming cell), and a far block can become one simplified proxy (p376 HLOD). Keep block-owned statics as entities so they can be merged later.
 - **Material LOD hook.** p305's `quality` variants, together with the colour-map far mode, are what a future block LOD (p350) would switch between.
 
 ---

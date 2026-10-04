@@ -1,0 +1,35 @@
+{
+  "$schema": "./.schemas/assetsConfig.schema.json",
+  "defaults": {
+    "mesh": { "codec": "meshopt", "quantize": true, "simplify": null },
+    "textures": {
+      "default": {
+        "codec": "uastc",
+        "maxSize": 1024,
+        "level": 2,
+        "rdo": 2,
+        "zstd": 18,
+        "mipmaps": true
+      },
+      "normal": { "rdo": 1 },
+      "orm": { "rdo": 1 },
+      "metallicRoughness": { "rdo": 1 },
+      "occlusion": { "rdo": 1 },
+      "data": { "codec": "none" }
+    }
+  },
+  "profiles": {
+    "hero": { "textures": { "default": { "maxSize": 2048 } }, "budget": { "vramMB": 24 } },
+    "prop": { "textures": { "default": { "maxSize": 1024 } }, "budget": { "vramMB": 8 } },
+    "compact": {
+      "textures": {
+        "baseColor": { "codec": "etc1s", "quality": 255 },
+        "emissive": { "codec": "etc1s", "quality": 255 }
+      }
+    },
+    "terrainLayer": { "textures": { "data": { "codec": "uastc", "rdo": 1 } } },
+    "terrainBlock": { "mesh": { "codec": "meshopt", "quantize": false } },
+    "data": { "textures": { "default": { "codec": "none" } } }
+  },
+  "rules": []
+}

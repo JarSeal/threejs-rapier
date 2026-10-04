@@ -1,7 +1,7 @@
 Status: research done — epic, not-implemented
 Category: Rendering, LOD
 Blocks: \_DONE_p345_gpu-memory-and-draw-call-debugger.md, \_DONE_p346_spatial-domains.md, p347_lod-chain-generation.md, p348_ecs-lod-selection.md, p351_impostor-billboard-lod.md, p352_physics-simulation-tiers.md, p353_macro-streaming-grid.md, p354_gpu-driven-culling.md
-Related: p300_asset-optimization-pipeline-plan.md (LOD chains reuse its pipeline), p308_terrain-scatter.md (its static instance cells are the static case of p348), p306_terrain-blocks-and-procedural-terrain-meshes.md (block sizes line up with p353's cells), p420_npc-simulation-tiers.md (characters' side of p352), p240_client-device-capability-sniffer.md (device level as a LOD budget input), \_DONE_p050_spatial-index.md (p346 builds its Phase 4)
+Related: \_DONE_p300_asset-optimization-pipeline-plan.md (LOD chains reuse its pipeline), p308_terrain-scatter.md (its static instance cells are the static case of p348), p306_terrain-blocks-and-procedural-terrain-meshes.md (block sizes line up with p353's cells), p420_npc-simulation-tiers.md (characters' side of p352), p240_client-device-capability-sniffer.md (device level as a LOD budget input), \_DONE_p050_spatial-index.md (p346 builds its Phase 4)
 
 # LOD System — Research & Epic
 
@@ -161,7 +161,8 @@ order of impact:
 
 1. **GPU-compressed textures** (KTX2: BC7/ASTC/ETC2 via Basis): 4–6× smaller resident than RGBA8.
    That is p300.
-2. **Atlasing / array textures**, so distant levels share one material and one batch (p351).
+2. **Atlasing / array textures**, so distant levels share one material and one batch (p351). The
+   generic array and atlas tools are p299; merge materials built on them are p374 (p370 epic).
 3. **Disposal on cell unload**, driven by the streaming state machine (p353).
 4. **A budget tracker** (p345). Build it first: without it every later optimization is
    unmeasured.
@@ -236,6 +237,11 @@ Child plans, in the order they should run. Each is independently useful.
 | 2    | `p351_impostor-billboard-lod`                  | Cross-quads, dithered cross-fade, octahedral impostors                                                            | p348 Phase 3                             |
 | 3    | `p354_gpu-driven-culling` (stub)               | Compute frustum culling, indirect draws, per-instance LOD on the GPU                                              | p348, p346                               |
 | 4    | — (research only)                              | Cluster (meshlet) LOD, §7: a timeboxed spike whose output is a recommendation, only if huge single meshes need it | p354                                     |
+
+**Follow-on epic:** `p370_static-mesh-merging-and-texture-atlas-systems` (after these plans) merges
+static meshes into fewer draws. Its HLOD stub (p376) turns merged groups into LOD units with p347's
+simplifier and p348's selection. Its §2.1 records that a `BatchedMesh` on WebGPU (r186) is one draw
+call per member.
 
 Physics tiers (p352) rank high because they are a stability ceiling (`maxBodies`, no runtime
 bucket migration), and designing the async transition before there are many call sites is far

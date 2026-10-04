@@ -1,8 +1,9 @@
 Status: draft | not-implemented
 Category: Terrain, Rendering, Materials
-Blocked by: p306_terrain-blocks-and-procedural-terrain-meshes.md, p304_procedural-texture-baker.md (procedural decals), p307_wet-and-dry-surface-states.md (soft: wet decals)
+Blocked by: p299_texture-arrays-and-atlases.md (D1's atlases are p299 D3 atlases), p306_terrain-blocks-and-procedural-terrain-meshes.md, p304_procedural-texture-baker.md (procedural decals), p307_wet-and-dry-surface-states.md (soft: wet decals)
 Blocks: p310_terrain-preview-scenes.md
 Epic: p301_terrain-texturing-epic.md
+Related: p370_static-mesh-merging-and-texture-atlas-systems.md (mesh merging; §2.1 on `BatchedMesh` draw counts), p372_mesh-merge-groups.md (merging a block's cutout mesh decals), p375_batched-mesh-batches.md (its Phase 0 spike answers this plan's `BatchedMesh` risk)
 
 # Terrain Decals
 
@@ -45,6 +46,7 @@ Searches for footprint, crack and stain decals found nothing, so those come from
 - **`DECAL` packing** (2 textures, same channels for imported and procedural):
   - `albedoAlpha`: RGB albedo (sRGB), A opacity;
   - `normalRough`: RG normal XY, B roughness, A **puddle mask** (where water collects, e.g. tyre ruts; 0 for most decals).
+- **Built on p299's 2D atlases** (p299 D3): the atlas is a `*.textureAtlas.json` with the `albedoAlpha` / `normalRough` slots, so the composition, padding, 4×4 snapping, per-slot encoding and the generated cell table are p299's. The decal-specific fields below go into each cell's free-form `data`. The `*.decalAtlas.json` and `devTools/buildDecalAtlas.ts` described next are replaced by that; the fields stay as listed.
 - **The atlas JSON** (`*.decalAtlas.json`, a toolkit data file read by the build script) lists cells, each with:
   - `id`;
   - source maps (an imported asset's maps, or an exported procedural PNG);
@@ -89,6 +91,7 @@ Searches for footprint, crack and stain decals found nothing, so those come from
 ```
 
 - Spawned with the owning terrain block (p306's `decals` ids) or by `spawnDecalSet(id)`.
+- **Merging:** `CUTOUT` mesh decals are opaque, so a block's mesh decals can join a p372 merge group (one draw per decal material per block). `BLEND` decals are transparent and are never merged (p372 §5).
 - **Engine-level, but tiny:** a typed wrapper around `spawnImportedAsset` with material, render order and no physics. It exists so a terrain block's manifest can list decals as data.
 - **Blender workflow** (`terrain_decals.blend`):
   - **Quad decals:** a plane UV'd onto an atlas cell. The template has one pre-UV'd quad per cell, so you duplicate the cell you want.
@@ -99,7 +102,8 @@ Searches for footprint, crack and stain decals found nothing, so those come from
 ### D4 — Runtime decals (toolkit: `src/toolkit/terrain/decals/runtimeDecals.ts`)
 
 - **`createDecalPool({ atlas, mode, maxDecals = 128 })`:**
-  - one `BatchedMesh` per pool (one draw call), geometry slots reused FIFO;
+  - one `BatchedMesh` per pool, geometry slots reused FIFO;
+  - **note (p370 §2.1):** on WebGPU, three r186 draws a `BatchedMesh` as one draw call per visible member, so a pool of 128 decals is 128 draws, not 1 (it still saves per-object CPU work). For a real single draw, consider one preallocated geometry per pool with fixed-size vertex slots reused FIFO and a per-vertex fade attribute. Decide in Phase 4 with p375's spike numbers;
   - per-instance colour alpha for fades (`setColorAt`);
   - owned per scene.
 - **`spawnDecal(pool, { target, position, normal, size, rotation, cell, lifetimeSec?, fadeSec? })`:**
@@ -163,7 +167,7 @@ Searches for footprint, crack and stain decals found nothing, so those come from
 
 ### Phase 1 — Atlas tooling (D1)
 
-**Exit:** `decalsGround` and `decalsStructure` built from the ambientCG sources (procedural cells still placeholders), encoded, with cell tables generated.
+**Exit:** `decalsGround` and `decalsStructure` built as p299 atlases from the ambientCG sources (procedural cells still placeholders), encoded, with cell tables generated.
 
 ### Phase 2 — Decal material (D2)
 
@@ -181,7 +185,7 @@ Searches for footprint, crack and stain decals found nothing, so those come from
 
 1. Pool (`BatchedMesh`), terrain patch projection, `DecalGeometry` for meshes, ribbons, fades.
 
-**Exit:** 128 footprints spawned while walking stay at one draw call and fade FIFO; ribbon tracks follow a moving point.
+**Exit:** 128 footprints spawned while walking stay at one draw call (with the single-geometry pool; a `BatchedMesh` pool counts one per decal on WebGPU, see D4) and fade FIFO; ribbon tracks follow a moving point.
 
 ### Phase 5 — Procedural decals (D5)
 
@@ -197,9 +201,9 @@ Searches for footprint, crack and stain decals found nothing, so those come from
 
 ## Risks
 
-| Risk                                                                                             | Mitigation                                                                                             |
-| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| `BatchedMesh` behaviour on the WebGPU backend in r186 (per-instance colour, geometry slot reuse) | Spike in Phase 4; fallback: a fixed pool of individual meshes (more draw calls, documented)            |
-| Transparent sorting conflicts with other transparents (water later, particles)                   | `renderOrder` bands documented: terrain 0, decals 10, scatter cards (CUTOUT) opaque, transparents ≥ 20 |
-| Polygon offset differs between depth ranges or backends                                          | Offsets in the material are tunable; the gallery checks at 1, 50 and 200 m                             |
-| Atlas mip bleeding                                                                               | Cell padding (≥ 16 px at 2K) with edge extension; mips are generated per atlas, so padding scales      |
+| Risk                                                                                             | Mitigation                                                                                                                          |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `BatchedMesh` behaviour on the WebGPU backend in r186 (per-instance colour, geometry slot reuse) | Answered by p375's Phase 0 spike (shared with p348 §4.4); fallback: a fixed pool of individual meshes (more draw calls, documented) |
+| Transparent sorting conflicts with other transparents (water later, particles)                   | `renderOrder` bands documented: terrain 0, decals 10, scatter cards (CUTOUT) opaque, transparents ≥ 20                              |
+| Polygon offset differs between depth ranges or backends                                          | Offsets in the material are tunable; the gallery checks at 1, 50 and 200 m                                                          |
+| Atlas mip bleeding                                                                               | Cell padding (≥ 16 px at 2K) with edge extension; mips are generated per atlas, so padding scales                                   |

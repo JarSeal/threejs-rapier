@@ -3,20 +3,49 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+// Static, unlike the main thread's on-demand import: the worker bundle can't be code-split
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import {
   AssetsDownProtocol,
   AssetsLoadGLTFRequest,
   DracoWorkerSettings,
+  KTX2WorkerSettings,
 } from '../../core/Assets/AssetsAPITypes';
 import { disposeGLTFLeftovers, extractPrimitives } from '../../core/Import/GLTFExtract';
+import {
+  getGLTFDecoderNeeds,
+  readGLTFExtensionsUsed,
+  setGLTFDecoders,
+} from '../../core/Import/GLTFExtensions';
 import { collectGLTFTextures } from '../../core/Import/GLTFTextureCollect';
 import { serializeGeometry, TransferableGeometry } from '../../core/Import/GeometryTransfer';
-import { serializeTexture } from '../../core/Import/TextureTransfer';
+import {
+  collectImageTransferables,
+  serializeTexture,
+  TransferableImage,
+} from '../../core/Import/TextureTransfer';
 import { fetchAsset } from './assetsFetch';
 
 let gltfLoader: GLTFLoader | null = null;
 let dracoLoader: DRACOLoader | null = null;
 let dracoKey = '';
+let ktx2Loader: KTX2Loader | null = null;
+let ktx2Key = '';
+
+/** The worker's own KTX2Loader (it starts its own nested transcoder workers), set up with the
+ * main thread's transcoder path and detected GPU formats (there's no renderer here). Changed
+ * settings (a new renderer on the main thread) replace it. */
+const getKTX2Loader = (settings: KTX2WorkerSettings) => {
+  const key = JSON.stringify(settings);
+  if (!ktx2Loader || key !== ktx2Key) {
+    ktx2Loader?.dispose();
+    ktx2Loader = new KTX2Loader().setTranscoderPath(settings.transcoderPath);
+    ktx2Loader.workerConfig = { ...settings.workerConfig };
+    ktx2Key = key;
+  }
+  return ktx2Loader;
+};
 
 /** The worker's own GLTFLoader + DRACOLoader (DRACOLoader starts its own nested decoder
  * workers). Like the main thread's shared loader, the decoder files are only fetched when the
@@ -45,9 +74,18 @@ export const assetsSwitchGLTF = async (
   data: AssetsLoadGLTFRequest,
   sendMessage: (message: AssetsDownProtocol, transfer?: Transferable[]) => void
 ) => {
-  const { type, requestId, url, importId, meshIndex, importTextures, draco } = data;
+  const { type, requestId, url, importId, meshIndex, importTextures, draco, ktx2 } = data;
   const buffer = await (await fetchAsset(url)).arrayBuffer();
-  const gltf = await getGLTFLoader(draco).parseAsync(buffer, THREE.LoaderUtils.extractUrlBase(url));
+  const needs = getGLTFDecoderNeeds(readGLTFExtensionsUsed(buffer));
+  if (needs.ktx2 && !ktx2) {
+    throw new Error(`"${url}" has KTX2 textures, but the main thread sent no KTX2 settings.`);
+  }
+  const loader = getGLTFLoader(draco);
+  setGLTFDecoders(loader, {
+    meshopt: needs.meshopt ? MeshoptDecoder : null,
+    ktx2: needs.ktx2 && ktx2 ? getKTX2Loader(ktx2) : null,
+  });
+  const gltf = await loader.parseAsync(buffer, THREE.LoaderUtils.extractUrlBase(url));
 
   // The same extraction the main-thread import runs, so both produce the same manifest
   const extracted = extractPrimitives(gltf, { importId, meshIndex });
@@ -78,7 +116,7 @@ export const assetsSwitchGLTF = async (
   });
 
   // The same texture collection the main-thread import runs; registering happens there
-  const images: ImageBitmap[] = [];
+  const images: TransferableImage[] = [];
   const keepTextures = new Set<THREE.Texture>();
   const collected = importTextures ? collectGLTFTextures(gltf, extracted.primitives) : null;
   const imageIndexBySource = new Map<THREE.Source<unknown>, number>();
@@ -93,6 +131,8 @@ export const assetsSwitchGLTF = async (
     geometries: new Set(indexByGeometry.keys()),
     textures: keepTextures,
   });
+  const imageTransfer = new Set<Transferable>();
+  for (const image of images) collectImageTransferables(image, imageTransfer);
   sendMessage(
     {
       type,
@@ -103,6 +143,6 @@ export const assetsSwitchGLTF = async (
       textures,
       textureSlotsPerPrimitive: collected?.slotsPerPrimitive || [],
     },
-    [...transfer, ...images]
+    [...transfer, ...imageTransfer]
   );
 };

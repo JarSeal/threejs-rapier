@@ -5,7 +5,7 @@ import type { DracoWorkerSettings } from '../Assets/AssetsAPITypes';
 export type DracoConfig = {
   /** Directory (with a trailing slash) that serves `draco_decoder.js`, `draco_decoder.wasm` and
    * `draco_wasm_wrapper.js`. Default: `${BASE_URL}draco/gltf/`, filled by
-   * `devTools/copyDracoDecoders.ts`. A cross-origin path (eg. a CDN) must send CORS/CORP
+   * `devTools/copyDecoders.ts`. A cross-origin path (eg. a CDN) must send CORS/CORP
    * headers, because the dev server enables cross-origin isolation (COEP `require-corp`). */
   decoderPath?: string;
   /** 'wasm' (default) or the slower pure-JS 'js' decoder (used automatically when WebAssembly

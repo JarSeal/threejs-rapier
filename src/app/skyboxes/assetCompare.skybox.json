@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../.schemas/skyBox.schema.json",
+  "id": "assetCompare",
+  "preset": "DAY_SKY",
+  "suns": [{ "elevation": 20, "azimuth": 200, "glowIntensity": 0.4, "light": {} }],
+  "clouds": { "enabled": false },
+  "debugData": {
+    "name": "Asset compare",
+    "description": "DAY_SKY with a low sun and no clouds: raking light shows the normal maps, the sky reflects in the metals."
+  }
+}

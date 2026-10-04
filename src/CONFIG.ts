@@ -1,4 +1,5 @@
-import { AppConfig } from './_engine/core/Config';
+// Type imports only: the asset pipeline imports this file in Node (p300)
+import type { AppConfig } from './_engine/core/Config';
 
 const config: AppConfig = {
   // Debug-only key bindings. The engine's defaults ('h' = debug drawer, 'F1' = debug camera)
@@ -38,6 +39,15 @@ const config: AppConfig = {
   // debugDrawer: {
   //   tabOrder: ['statsControls', 'loopControls', 'rendererControls', 'physicsApiControls'],
   // },
+  // Build-time asset optimization (KTX2 textures, meshopt geometry). Off passes the source
+  // files through as they are, and needs no `ktx` encoder. Profiles are in assets.config.json.
+  assets: {
+    optimization: {
+      enabled: true,
+      textures: true,
+      meshes: true,
+    },
+  },
   debugCamera: {
     position: { x: 3, y: 3, z: 1.5 },
     target: { x: 0, y: 0, z: 0 },

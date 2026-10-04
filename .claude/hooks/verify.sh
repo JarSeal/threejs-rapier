@@ -6,13 +6,9 @@ set -uo pipefail
 
 cd "${CLAUDE_PROJECT_DIR:-}" 2>/dev/null || exit 0
 
-# The hook's shell can start on an older default Node than package.json's engines field
-# allows, and yarn then refuses to run at all. Prefer the newest nvm-installed Node.
-NVM_NODE_DIR="$HOME/.nvm/versions/node"
-if [[ -d "$NVM_NODE_DIR" ]]; then
-  LATEST_NODE=$(ls "$NVM_NODE_DIR" | sort -V | tail -1)
-  [[ -n "$LATEST_NODE" ]] && export PATH="$NVM_NODE_DIR/$LATEST_NODE/bin:$PATH"
-fi
+# The Node from .nvmrc: the hook's shell can start on an older default one, and yarn then
+# refuses to run at all
+source .claude/hooks/use-node.sh
 
 # Version rules (project version = engine version, valid semver). package.json is outside
 # src/, so this runs before the src/ skip below, and only when package.json changed. The

@@ -2,7 +2,7 @@ Status: implemented (Phases 1-3)
 Category: Debug, Rendering, Performance
 Epic: p350_lod-system-research.md (Tier 0)
 Blocks: nothing hard; p347, p348, p351 and p353 each measure their result with it
-Related: p300_asset-optimization-pipeline-plan.md (its `__vramBytes` estimates and Phase 1 baseline read `renderer.info.memory` too), p240_client-device-capability-sniffer.md (a device memory target is the natural default budget), p353_macro-streaming-grid.md (per-cell owners)
+Related: \_DONE_p300_asset-optimization-pipeline-plan.md (its `__vramBytes` estimates and Phase 1 baseline read `renderer.info.memory` too), p240_client-device-capability-sniffer.md (a device memory target is the natural default budget), p353_macro-streaming-grid.md (per-cell owners)
 
 # GPU Memory & Draw-Call Debug Tab
 

@@ -1,0 +1,9 @@
+{
+  "$schema": "../.schemas/scene.schema.json",
+  "id": "assetCompare",
+  "sceneFile": "./assetCompare.ts",
+  "isDebugScene": true,
+  "name": "Asset compare (p300 codec variants)",
+  "description": "p300 Phase 1d: the codec variants of phase1Variants.ts against their uncompressed baselines. A tiled rock ground at grazing angles, a MetalRust sphere and the metal toolbox prop, built twice (slots A and B); V switches between them. Debug env: the scene's own \"Asset compare\" tab picks the variants, shows each texture's file size and VRAM, and runs the collider check.",
+  "skyboxes": ["assetCompare"]
+}

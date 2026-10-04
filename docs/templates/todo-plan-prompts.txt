@@ -4,6 +4,7 @@ Category: Bug, Refactor
 
 Fix or tweak these list items:
 - When loading the page the browser console warns: "using deprecated parameters for the initialization function; pass a single object instead". There is an issue for this but it seems to be closed/solved: https://github.com/dimforge/rapier/issues/811 . Maybe updating Rapier could help.
+- If a custom domain Spatial index has wirefame set on and we change a scene the console warns: Calling [RenderPassEncoder (unlabeled)].Draw with a vertex count of 0 is unusual. This should be fixed (probably is trying to draw lines for something that isn't there).
 
 If any of these fixes/tweaks are large refactorings/fixes then produce a plan for those.
 
@@ -22,6 +23,17 @@ Create a fog system for Aekasha. The debugger drawer should have its own  Fog sy
 Also all the parameters for the fog should be editable in the debugger drawer. It can be defined in its own file: myScene.fog.json.
 
 Context from the removed sky box plans (p110-p115; full texts in git history): fog coupling with the sky box was an explicit non-goal of the sky box epic, so it is open for this plan. The sky box's `ground` layer already has `useAtmosphereHorizon` (blends toward the atmosphere's horizon colour, a form of aerial perspective), and the day-night cycle changes the horizon colour over time, so consider a fog colour that can follow the active sky box. Screen-space passes belong in the PostFX chain (`core/PostFX.ts`). Headless WebGPU doesn't render under WSL2, so visual checks need a real browser.
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+************************************
+
+UNDER_CONSTRUCTION
+Create "" plan in docs/plans/p.md
+
+Category: 
+
+
 
 If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 

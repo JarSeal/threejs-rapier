@@ -1,6 +1,6 @@
 Status: draft | not-implemented
 Category: Assets, Materials, Terrain
-Blocked by: p300_asset-optimization-pipeline-plan.md, p302_material-and-texture-system-refactor.md
+Blocked by: p302_material-and-texture-system-refactor.md, p299_texture-arrays-and-atlases.md (D4's array assembly is p299 D1)
 Blocks: p304_procedural-texture-baker.md, p305_terrain-material-generator.md
 Epic: p301_terrain-texturing-epic.md
 
@@ -28,7 +28,7 @@ This plan delivers:
   - scenes get per-scene dependency closure.
 - `gatherAppData` gathers 10 suffixes (`gatherAppData.ts:35-47`). A new suffix needs: a schema in `src/_engine/schemas/`, an entry in the suffix table, a `generatedAppData` section, and JSON Schema compilation.
 - Asset ownership and release are in `core/Assets/AssetOwners.ts` and `SceneAssetRelease.ts:57-94`. Textures are released when no material uses them (`isTextureUsedByAnyMaterial`, `Material.ts:601-634`).
-- No `DataArrayTexture` or `CompressedArrayTexture` is used anywhere yet.
+- After p299: `buildTextureArray` (`core/TextureArray.ts`) assembles same-sized KTX2 members into a `CompressedArrayTexture` (uncompressed fallback: `DataArrayTexture`), ref counted, with layer swaps; build-time `*.textureArray.json` arrays and `sampleArrayLayer` exist too.
 - WebGPU's default `maxSampledTexturesPerShaderStage` is 16. Shadow maps and the environment PMREM count against it (p301 §6).
 - `toolkit/geometry/generateTerrain.ts` builds an indexed grid with `position`, `uv` and `normal` (no tangents, no colour), seeded simplex noise, and returns `getHeightAt` / `heights`.
 
@@ -131,22 +131,12 @@ The LITE `albedoRough` of `sand01`:
 
 ### D4 — Layer arrays
 
-**`buildTextureSetArray({ id, sets: string[], packing }): TextureSetArray`**, in `core/TextureSet.ts`:
+**`buildTextureSetArray({ id, sets: string[], packing }): TextureSetArray`**, in `core/TextureSet.ts`, a thin layer over p299's `buildTextureArray` (p299 D1 owns the assembly: KTX2 per-mip concatenation, the uncompressed fallback, format validation, the optional GPU assembly spike, ref counting and layer swaps):
 
-- Returns one array texture per slot of the packing (2 for LITE). Layer `i` = `sets[i]`.
+- Returns one array texture per slot of the packing (2 for LITE): one `buildTextureArray` call per slot, with `members` = that slot's texture id of each set. Layer `i` = `sets[i]`.
 - A per-layer uniform array holds `physicalSize`, `heightScale` and the surface defaults.
-- **Requirements:**
-  - all sets have the packing;
-  - every slot has the same resolution and mip count;
-  - the transcoded format is the same, which holds when every slot was encoded with the same codec.
-- A mismatch throws a clear error naming the offending set, slot and value.
-- **Baseline: CPU assembly.**
-  - For KTX2, `CompressedTexture.mipmaps[level].data` of each member is concatenated per level into a `CompressedArrayTexture`, and the result is uploaded once.
-  - For uncompressed dev fallbacks (PNG source while p300 can't encode), it's a `DataArrayTexture` built from `ImageBitmap`s through an `OffscreenCanvas`, with mipmaps generated on the GPU.
-  - This works on both backends. The member textures are never uploaded on their own, so no VRAM is spent twice.
-  - Each member's CPU mip data is kept only until assembly, then released.
-- **Optional optimization: GPU assembly** (`renderer.copyTextureToTexture` into layer `z`, per mip). WebGPU only. Spike it in Phase 3; adopt it only if it's measurably faster on large arrays.
-- **Swapping a member** at runtime (`setTextureSetArrayLayer(arrayId, i, setId)`, used by the debug tab and p310's gallery) reassembles that layer only: it re-fetches the member's KTX2 and re-uploads that layer, through `texture.needsUpdate` with a layer-update range if r186 supports it, otherwise a full re-upload.
+- **Requirements** (checked by p299 D1, errors name the set): all sets have the packing; every slot has the same resolution and mip count; the transcoded format is the same, which holds when every slot was encoded with the same codec.
+- **Runtime assembly, not p299's build-time arrays**, so the debug tab and p310's gallery can swap a member: `setTextureSetArrayLayer(arrayId, i, setId)` calls p299's `setTextureArrayLayer` per slot.
 - **Resolver** (p302 D4): `{ "textureSetArray": ["sand01", "grass01", "rocks01", "cliffs01"], "packing": "LITE" }` → a bundle `{ arrays: { albedoRough, normalHeight }, layerCount, layerParams }`. Its `dependencies` list every member texture.
 - Array ids are derived from the member list and packing, so two materials with the same palette share one array. The array is ref counted like textures.
 
@@ -255,10 +245,9 @@ Map key: C colour, N normal (GL), R roughness, AO ambient occlusion, H height/di
 
 ### Phase 3 — Layer arrays (D4)
 
-1. CPU assembly (compressed and uncompressed), validation errors, ref counting.
-2. Layer swap.
-3. Spike GPU assembly (record the result in this plan).
-4. Verify on WebGPU and WebGL2: sample layer `i` in a test material and compare against the single-texture path.
+1. `buildTextureSetArray` and `setTextureSetArrayLayer` on p299's `buildTextureArray` / `setTextureArrayLayer` (assembly, validation, ref counting and the GPU assembly spike are p299's).
+2. The per-layer uniform array and the resolver.
+3. Verify on WebGPU and WebGL2: sample layer `i` in a test material and compare against the single-texture path.
 
 **Exit:** a 4-set LITE array renders identically to 4 separate sets, using 2 bindings.
 

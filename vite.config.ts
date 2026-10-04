@@ -1,40 +1,33 @@
 import { defineConfig, type ViteDevServer } from 'vite';
 import wasm from 'vite-plugin-wasm';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import { visualizer } from 'rollup-plugin-visualizer';
 import pkg from './package.json';
-import {
-  gatherSceneData,
-  isFilePathValid,
-  OUTPUT_FILE_DATA,
-  OUTPUT_FILE_FN,
-} from './devTools/gatherAppData.ts';
+// Gathers the scene data and runs the asset pipeline on file changes
+import { sceneGathererPlugin } from './devTools/sceneGathererPlugin.ts';
+// Ships only the asset pipeline outputs the production data loads
+import { assetOutputsBuildPlugin } from './devTools/assetOutputsBuildPlugin.ts';
 
-// --- Custom Vite Plugin for gathering scene data ---
-const sceneGathererPlugin = () => ({
-  name: 'vite-plugin-scene-gatherer',
+// Required for self.crossOriginIsolated/SharedArrayBuffer to be available at all in dev, so
+// worker-thread physics can use the SHARED_MEMORY hot-path transport instead of automatically
+// falling back to MESSAGE_BATCH (see PhysicsTransformBuffer.ts).
+const CROSS_ORIGIN_ISOLATION_HEADERS = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+};
+
+// Sets the headers on every response, 304s included: Vite's `server.headers` skips a 304, and
+// Safari then blocks a revalidated worker script under COEP ("Worker load was blocked by
+// Cross-Origin-Embedder-Policy"). Added before Vite's own middlewares, so they keep the headers.
+const crossOriginIsolationPlugin = () => ({
+  name: 'vite-plugin-cross-origin-isolation',
   configureServer(server: ViteDevServer) {
-    const handleFileEvent = (filePath: string) => {
-      if (filePath === OUTPUT_FILE_DATA || filePath === OUTPUT_FILE_FN) return;
-
-      if (isFilePathValid(filePath)) {
-        const isSuccess = gatherSceneData();
-        if (isSuccess) {
-          server.hot.send({ type: 'full-reload' });
-        } else {
-          server.ws.send({
-            type: 'error',
-            err: {
-              message: '[Scene Pipeline Error] Consolidation Failed',
-              stack: 'Check your backend terminal terminal console for tracking logs.',
-              plugin: 'vite-plugin-scene-gatherer',
-            },
-          });
-        }
+    server.middlewares.use((_req, res, next) => {
+      for (const [name, value] of Object.entries(CROSS_ORIGIN_ISOLATION_HEADERS)) {
+        res.setHeader(name, value);
       }
-    };
-    server.watcher.on('add', handleFileEvent); // Catches: New files created or moved into src
-    server.watcher.on('change', handleFileEvent); // Catches: Standard manual file saves
-    server.watcher.on('unlink', handleFileEvent); // Catches: Files deleted or moved out/renamed
+      next();
+    });
   },
 });
 
@@ -116,23 +109,25 @@ export default defineConfig({
   optimizeDeps: {
     // Deps only the assets worker imports: Vite's dep scan doesn't follow `?worker` imports, so
     // without these, the first dev run re-optimizes when the worker starts and reloads the page
-    include: ['three/addons/loaders/HDRLoader.js'],
+    include: [
+      'three/addons/loaders/HDRLoader.js',
+      'three/addons/loaders/KTX2Loader.js',
+      'three/addons/libs/meshopt_decoder.module.js',
+    ],
   },
   server: {
     fs: {
       strict: false,
     },
-    // Required for self.crossOriginIsolated/SharedArrayBuffer to be available at all in
-    // dev, so worker-thread physics can use the SHARED_MEMORY hot-path transport instead
-    // of automatically falling back to MESSAGE_BATCH (see PhysicsTransformBuffer.ts).
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
   },
   plugins: [
+    crossOriginIsolationPlugin(),
     wasm(),
+    // `yarn dev:https`: a self-signed certificate, so a phone on the LAN gets a secure context
+    // (WebGPU, SharedArrayBuffer); a plain http:// LAN address isn't one
+    ...(process.env.AEK_DEV_HTTPS === 'true' ? [basicSsl()] : []),
     sceneGathererPlugin(),
+    assetOutputsBuildPlugin(),
     {
       name: 'html-transform',
       transformIndexHtml(html) {

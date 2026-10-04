@@ -4,6 +4,80 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-04 — asset-optimization-pipeline
+
+### Engine 4.6.0 (Afternoon)
+
+**Added**
+
+- KTX2 textures: `loadTextureAsync` loads a `.ktx2` file (picked by the resolved URL's extension) through a shared `KTX2Loader` on the main thread (`core/Import/KTX2.ts`). The loader is imported on first use and transcodes in its own workers, into what the device supports (BC7, ASTC, ETC2). It loads the Basis transcoder from `${BASE_URL}basis/`. `getKTX2Loader()` replaces the loader when the renderer has changed, and `disposeKTX2Loader()` disposes it. The sync `loadTexture` / `loadTextures` refuse `.ktx2` with an error that points to `loadTextureAsync`.
+- Meshopt and KTX2 in GLBs: `GLTFLoader` gets the meshopt decoder (`MeshoptDecoder.ts`, imported only when a file uses `EXT_meshopt_compression`) and the KTX2 loader for `KHR_texture_basisu`. Both are set per file from its `extensionsUsed` (`GLTFExtensions.ts`), on the main thread and in the asset worker. The worker gets the main thread's transcoder path and detected formats (`KTX2WorkerSettings`), and `TextureTransfer.ts` sends a compressed texture's mip levels back.
+- Pipeline outputs at runtime: `loadTextureAsync` and `importAssetAsync` load an asset's generated `__url` instead of its `fileName` (`resolveAssetUrl`, `core/Assets/AssetUrl.ts`). Generated URLs resolve against `BASE_URL`. In dev data, an asset without an output loads its `__sourceUrl`, with a warning. A relative `fileName` with neither is an error that names `yarn assets`. A packed texture (a `__url` and no `fileName`) loads too. An import keeps its id and source key on the declared `fileName`, so scenes still share one import.
+- Asset JSON keys:
+  - `*.texture.json` and `*.importedAsset.json` take `optimize`: a profile, a slot (textures), texture and mesh settings, a `budget`, or `false`.
+  - Their `fileName` can be relative to the JSON (`./`, `../`).
+  - `*.texture.json` takes `pack` (channel packing from several sources) in place of `fileName`.
+  - The generated data has `__url`, `__sourceUrl`, `__bytes`, `__vramBytes` and, for textures, `__codec`.
+  - `assets.config.json`'s schema is `AssetsConfigSchema` (`schemas/assetsConfigSchema.ts`), compiled to `.schemas/assetsConfig.schema.json`.
+- `AppConfig.assets.optimization` (`enabled`, `textures`, `meshes`, each default true): the asset pipeline's project switches. Build time only: the runtime never reads them.
+- Assets debug tab, Asset loading folder: "Load source files (boot)" loads the source files instead of the pipeline outputs from the next reload (debug env only). A production build ignores it with a warning, and a packed texture keeps its output. The "Resolved" box has a `Files:` line.
+- The texture and geometry info windows show the file this page load loaded and what it is: a pipeline output, a pass-through source, a packed output, or the source (the override, or no output). A new "Asset pipeline" section shows the output, the source, the codec, and the download and VRAM estimates as in → out.
+- GPU memory: a compressed texture counts its uploaded mip levels in the format the device transcoded it to (`installCompressedTextureSizer`). three r186 counts it as 1 B. This applies to every figure of the GPU memory tab and the profiler, and to the Assets tab's info window.
+- `isKTX2(fileName)` (`utils/helpers.ts`).
+
+**Changed**
+
+- Imported HEIGHTFIELD colliders refuse a quantized position attribute (any array other than `Float32Array`) with an error that names the fix (`"optimize": { "mesh": { "quantize": false } }`), and the collider is skipped, as with Draco. Interleaved float attributes now work.
+- Scene-inline textures and a scene's `backgroundTexture` have their own schemas (`InlineTextureSchema`, `InlineTextureOverridesSchema`) and take no relative `fileName`: the pipeline reads only `*.texture.json` files.
+
+**Fixed**
+
+- Imported CONVEXHULL colliders sit on their meshes. The derivation centred the hull's vertices on their bounding box while the body stayed at the node's origin, so a hull whose mesh isn't centred on its origin sat off it (57.8 mm on `obstacles`). This moves the hulls in existing scenes (eg. the gym's Suzanne). Hulls made in code (`vertices` given) are unaffected.
+- CONVEXHULL colliders from quantized geometry: the hull was built from the raw integer values (32.7 km off). It now reads positions through the attribute getters, like TRIMESH. A quantized HEIGHTFIELD no longer throws in `mergeVertices` (see Changed).
+
+### App 1.5.0 (Preschooler)
+
+**Added**
+
+- The `assetCompare` debug scene and its "Asset compare" tab, where the pipeline's profiles were chosen. It has a tiled ground at grazing angles, a MetalRust sphere and a Poly Haven prop. Two slots each hold one texture variant (PNG, ETC1S, UASTC with RDO λ 0–4, normal mode on or off), and V switches between them instantly. The tab lists each texture's VRAM, file size and encode error. "Measure all variants" and "Copy results" record per-device formats and timings, and "Run collider check" compares colliders from quantized and meshopt geometry with their sources. Its sky box is `assetCompare.skybox.json`.
+- `testDebugScene` (`debugScene.scene.ts`) has PNG / KTX2 texture pairs and meshopt / KTX2 GLB copies, which check the decoders.
+- `src/CONFIG.ts`: the `assets.optimization` switches, all on. It imports `AppConfig` with `import type`, because the asset pipeline imports the file in Node.
+
+**Changed**
+
+- `testTexture` and `testImport` load their pipeline outputs: a 1K UASTC KTX2 (VRAM 22.4 → 1.4 MB) and a meshopt GLB (46.7 → 14.7 KB).
+
+### Project
+
+**Added**
+
+- The asset optimization pipeline (`devTools/assetPipeline/`, guide in `docs/techniques/asset-optimization.md`). `yarn assets [--only <id|glob>]` encodes the sources of `*.texture.json` / `*.importedAsset.json` into `src/public/aek-assets/`:
+  - textures as KTX2 (UASTC or ETC1S) through KTX-Software's `ktx`;
+  - GLBs through glTF Transform, with meshopt (lossless for collider sources) or Draco, and their textures as KTX2. Without `importTextures`, a GLB's textures are dropped.
+  - Settings come from defaults, profiles and glob rules in `assets.config.json`, then the asset's own `optimize`. Channel packing and resizing use sharp.
+  - A content-hash cache: the committed `assets.lock.json` plus `.cache/asset-pipeline/store/`, so a clone needs no encoder. Only a full run removes stale outputs and lock entries. Run stats go to `.cache/asset-pipeline/last-run.json`.
+  - Opt-outs: `"optimize": false` (JSON or rule), the `src/CONFIG.ts` switches, and `AEK_ASSETS_OPTIMIZE=false` for one run. A skipped asset is passed through as it is.
+- `yarn gatherAppData` and the dev server run the cached pipeline before they gather. The dev server's plugin (`devTools/sceneGathererPlugin.ts`, moved out of `vite.config.ts`) builds only what a change touched and shows a failed asset in the error overlay.
+- Production builds:
+  - The gather fails when an asset that a shipped scene uses has no output (encoder missing, or a failed encode) or is over its budget. Budgets are a `budget` per profile or asset, plus a per-texture ceiling from the profile's `maxSize` and codec.
+  - `AEK_ASSETS_ALLOW_UNOPTIMIZED=true yarn build` ships the assets without `ktx` unoptimized instead.
+  - `dist/aek-assets/` gets only the outputs the build loads (`devTools/assetOutputsBuildPlugin.ts`).
+- `yarn setupAssetTools [--force]` downloads the pinned KTX-Software 4.4.2 into `.tools/` (Linux incl. WSL2, macOS; x64, arm64), checks its SHA-256 and unpacks it in Node. The pipeline runs the same setup before its first encode. It needs `ktx` ≥ 4.4.0, and names a skipped one that is too old or broken. A download times out after 120 s, and the dev server doesn't retry a failed one for 5 minutes.
+- `yarn dev:https` (port 8443, a self-signed certificate through `@vitejs/plugin-basic-ssl`): a phone on the LAN needs a secure context for WebGPU and `SharedArrayBuffer`.
+- `.nvmrc` (22.13.0) and `.claude/hooks/use-node.sh`, which the hooks and Claude's commands source.
+- `devTools/assetPipeline/phase1Variants.ts` builds the `assetCompare` scene's variants into `src/public/debugger/assets/testOptimized/phase1/`.
+- Dev dependencies: `@gltf-transform/core`, `/functions`, `/extensions` and `/cli` 4.5.1, `meshoptimizer` 1.1.1, `draco3dgltf` 1.5.7, `sharp` 0.35.5, `@vitejs/plugin-basic-ssl` 2.3.0.
+
+**Changed**
+
+- `yarn copyDracoDecoders` is now `yarn copyDecoders`. It also copies the Basis transcoder to the gitignored `src/public/basis/`.
+- The dev server sets COOP / COEP on every response, 304s included (`crossOriginIsolationPlugin` replaces `server.headers`). With Web Inspector open, Safari revalidated the physics worker and blocked it.
+- `tsconfig.json` lists `"types": ["node"]`: yarn 1 installs the stub `@types/wrap-ansi@8.1.0` for `@gltf-transform/cli`, and tsc failed on it (TS2688; `docs/issues/gltf-transform-cli-types-wrap-ansi-stub.md`).
+
+**Fixed**
+
+- A failed production gather stops `yarn build`. Its result was ignored before.
+
 ## 2026-10-03 — spatial-domains
 
 ### Engine 4.5.0 (Afternoon)
@@ -36,6 +110,7 @@ Earlier releases are only recorded in the git history.
 
 - A mesh's spatial radius no longer goes stale when its scale changes.
 - A query between a member's removal and the next rebuild no longer hands `-1` to the visitor.
+
 ### Toolkit 1.3.0 (Crescent)
 
 **Added**

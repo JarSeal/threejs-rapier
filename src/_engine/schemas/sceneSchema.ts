@@ -3,7 +3,7 @@ import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { CameraAssetSchema } from './cameraSchema';
 import { LightAssetSchema } from './lightSchema';
 import { GeoPropsSchema } from './geometrySchema';
-import { TextureAssetSchema, TextureOverridesSchema } from './textureSchema';
+import { InlineTextureOverridesSchema, InlineTextureSchema } from './textureSchema';
 import { MaterialAssetSchema } from './materialSchema';
 import { PostFxAssetSchema } from './postFxSchema';
 import { SkyBoxAssetSchema } from './skyBoxSchema';
@@ -25,15 +25,13 @@ const SceneOverridesSchema = z.object({
   todo: z.any().optional(),
 
   backgroundColor: ColorJSONSchema.optional(),
-  backgroundTexture: z
-    .union([TextureOverridesSchema.omit({ __meta: true }), z.string()])
-    .optional(),
+  backgroundTexture: z.union([InlineTextureOverridesSchema, z.string()]).optional(),
 
   // Scene Asset Registries Map arrays
   cameras: z.array(z.union([z.string(), CameraAssetSchema])).optional(),
   lights: z.array(z.union([z.string(), LightAssetSchema])).optional(),
   geometries: z.array(z.union([z.string(), GeoPropsSchema])).optional(),
-  textures: z.array(z.union([z.string(), TextureAssetSchema])).optional(),
+  textures: z.array(z.union([z.string(), InlineTextureSchema])).optional(),
   materials: z.array(z.union([z.string(), MaterialAssetSchema])).optional(),
   meshes: z.array(AssetReferenceOrInline).optional(),
   importedAssets: z.array(AssetReferenceOrInline).optional(),

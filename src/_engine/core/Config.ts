@@ -134,6 +134,19 @@ export type AppConfig = {
      * reply or crash) on the main thread, warning once per cause. When false, the request
      * fails instead. Default true. */
     fallbackToMainThread?: boolean;
+    /** Build time only: read by the asset pipeline (gatherAppData, `yarn assets`), never by the
+     * runtime, so a change needs a pipeline run. Off passes every asset through as it is
+     * (copied, content-hashed, into src/public/aek-assets/). The env var
+     * `AEK_ASSETS_OPTIMIZE=false` turns `enabled` off for one run. Asset profiles and rules
+     * are in assets.config.json (p300). */
+    optimization?: {
+      /** Master switch. Default true. */
+      enabled?: boolean;
+      /** KTX2 texture encoding (standalone textures and a GLB's own). Default true. */
+      textures?: boolean;
+      /** GLB geometry: meshopt / Draco, quantization, simplification. Default true. */
+      meshes?: boolean;
+    };
   };
   ecs?: {
     /** Build-time-selectable ECS component storage backend. Default 'MAP'. */

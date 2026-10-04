@@ -3,6 +3,7 @@ Category: Terrain, Assets, Physics, Toolkit
 Blocked by: p305_terrain-material-generator.md
 Blocks: p307_wet-and-dry-surface-states.md, p308_terrain-scatter.md, p309_terrain-decals.md, p310_terrain-preview-scenes.md
 Epic: p301_terrain-texturing-epic.md
+Related: p370_static-mesh-merging-and-texture-atlas-systems.md (merging a block's static dressing, modular kit terrain, HLOD far blocks: its §10)
 
 # Terrain Blocks & Procedural Terrain Meshes
 
@@ -180,6 +181,8 @@ A single-file add-on (Blender ≥ 4.2; installable with _Edit → Preferences �
 ---
 
 ## Handbook content
+
+**Merging (p370 §10, after p372):** a block's static props and cutout mesh decals can be merged per block and material with p372 groups (a group id per block, or `AUTO` with a cell size that divides the block size), so they never cross the block that owns them. `terrain-blocks-blender.md` mentions it under step 9 once p372 has landed. Terrain built from modules instead of a heightfield grid (cliffs with overhangs, caves, tile worlds) has its own page, `terrain-modular-kits.md` (p372).
 
 ### `docs/techniques/terrain-blocks-blender.md` (the common workflow every technique page links)
 

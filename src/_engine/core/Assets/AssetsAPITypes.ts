@@ -2,9 +2,10 @@
 // runtime imports, so the worker never pulls in main-thread-only modules (eg. Config.ts reads
 // `window` at module load).
 
+import type { KTX2LoaderWorkerConfig } from 'three/addons/loaders/KTX2Loader.js';
 import type { TransferableGeometry } from '../Import/GeometryTransfer';
 import type { ImportedGeometryInfo } from '../Import/ImportTypes';
-import type { TransferableTexture } from '../Import/TextureTransfer';
+import type { TransferableImage, TransferableTexture } from '../Import/TextureTransfer';
 import type { TextureMapKeys } from '../Material';
 
 /** Where an asset kind is loaded. */
@@ -43,6 +44,15 @@ export type DracoWorkerSettings = {
   decoderPath: string;
   decoderType: 'wasm' | 'js';
   workerLimit?: number;
+};
+
+/** The main thread's KTX2 settings (KTX2.ts), for the worker's own KTX2Loader. The worker has no
+ * renderer to detect the supported GPU formats with, so it gets the main thread's result. */
+export type KTX2WorkerSettings = {
+  /** Absolute URL of the Basis transcoder directory. */
+  transcoderPath: string;
+  /** KTX2Loader.detectSupport()'s result on the main thread's renderer. */
+  workerConfig: KTX2LoaderWorkerConfig;
 };
 
 export type AssetsWorkerStatus = 'NOT_STARTED' | 'STARTING' | 'READY' | 'FAILED';
@@ -125,6 +135,9 @@ export type AssetsLoadGLTFRequest = {
   /** Also send the textures of the primitives' glTF material slots. */
   importTextures: boolean;
   draco: DracoWorkerSettings;
+  /** Null when the main thread has no KTX2 support set up (no renderer yet): a file with
+   * KHR_texture_basisu then fails in the worker and re-runs on the main thread. */
+  ktx2: KTX2WorkerSettings | null;
 };
 
 export type AssetsUpProtocol =
@@ -173,7 +186,7 @@ export type AssetsLoadHDRTextureResponse = {
  * one geometry (`geometryIndex`), as they share one BufferGeometry on the main thread. With
  * importTextures, also GLTFTextureCollect's collectGLTFTextures() result (textures sharing one
  * image share its `imageIndex`, as they share one THREE.Source). The geometries' arrays and the
- * images are transferred, not copied. */
+ * images (ImageBitmaps, or compressed mip data) are transferred, not copied. */
 export type AssetsLoadGLTFResponse = {
   type: AssetsProtocolType.LOAD_GLTF;
   requestId: number;
@@ -181,8 +194,8 @@ export type AssetsLoadGLTFResponse = {
   error?: string;
   geometries: TransferableGeometry[];
   primitives: { geometryIndex: number; info: ImportedGeometryInfo }[];
-  /** Empty without importTextures. */
-  images: ImageBitmap[];
+  /** Empty without importTextures. ImageBitmaps, or KTX2 textures' compressed mip levels. */
+  images: TransferableImage[];
   /** Empty without importTextures. */
   textures: { texture: TransferableTexture; name: string; gltfTextureKey: string }[];
   /** Per primitive (same order): slot → index in `textures`. Empty without importTextures. */

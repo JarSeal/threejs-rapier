@@ -8,6 +8,7 @@ import AssetsWorker from '../../workers/assetsWorker?worker';
 import { getConfig, isDebugEnvironment } from '../Config';
 import { initWorker } from '../../utils/helpers';
 import { lerror, llog, lwarn } from '../../utils/Logger';
+import { releaseTransferableImage } from '../Import/TextureTransfer';
 import {
   createNewResolver,
   isRequestPending,
@@ -32,6 +33,7 @@ import {
   AssetsWorkerStatus,
   AssetsWorkerTarget,
   DracoWorkerSettings,
+  KTX2WorkerSettings,
 } from './AssetsAPITypes';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -158,7 +160,7 @@ const onWorkerMessage = (event: MessageEvent<AssetsDownProtocol>) => {
     } else if (data.type === AssetsProtocolType.LOAD_TEXTURE) {
       data.bitmap.close();
     } else if (data.type === AssetsProtocolType.LOAD_GLTF) {
-      for (const image of data.images) image.close();
+      for (const image of data.images) releaseTransferableImage(image);
     }
     return;
   }
@@ -441,6 +443,7 @@ export const loadHDRTextureInWorker = async (url: string) => {
  * @param opts.importTextures also send the textures of the primitives' glTF material slots
  * (TextureTransfer.ts's deserializeTexture() rebuilds them)
  * @param opts.draco the main thread's DRACO settings (DracoDecoder.ts's getDracoWorkerSettings())
+ * @param opts.ktx2 the main thread's KTX2 settings (KTX2.ts's getKTX2WorkerSettings())
  */
 export const loadGLTFInWorker = (
   url: string,
@@ -449,6 +452,7 @@ export const loadGLTFInWorker = (
     meshIndex?: number | number[];
     importTextures: boolean;
     draco: DracoWorkerSettings;
+    ktx2: KTX2WorkerSettings | null;
   }
 ) =>
   requestAssetsWorker<AssetsLoadGLTFResponse>({
@@ -458,4 +462,5 @@ export const loadGLTFInWorker = (
     ...(opts.meshIndex !== undefined ? { meshIndex: opts.meshIndex } : {}),
     importTextures: opts.importTextures,
     draco: opts.draco,
+    ktx2: opts.ktx2,
   });

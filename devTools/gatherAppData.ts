@@ -13,6 +13,11 @@ import { MeshAsset, MeshAssetSchema } from '../src/_engine/schemas/meshSchema';
 import { ImportedAsset, ImportedAssetSchema } from '../src/_engine/schemas/importedAssetSchema';
 import { SkyBoxAsset, SkyBoxAssetSchema } from '../src/_engine/schemas/skyBoxSchema';
 import { PostFxAsset, PostFxAssetSchema } from '../src/_engine/schemas/postFxSchema';
+import {
+  AssetsConfigSchema,
+  type AssetOptimize,
+  type TexturePack,
+} from '../src/_engine/schemas/assetsConfigSchema';
 import { toUniqueJsIdentifier } from '../src/_engine/utils/jsIdentifier';
 import { MetaSchema } from '../src/_engine/schemas/_saveDataSchema';
 import {
@@ -22,6 +27,27 @@ import {
 import { deepMerge } from '../src/_engine/utils/deepMerge';
 import { mergeSkyBoxPreset } from '../src/_engine/core/SkyBox/presets';
 import pkg from '../package.json';
+import { createSettingsResolver } from './assetPipeline/settings';
+import { listPackFiles } from './assetPipeline/pack';
+import { BUDGET_FIX, getBudgetViolations } from './assetPipeline/budgets';
+import {
+  GENERATED_FIELD_KEYS,
+  getAssetResult,
+  getGeneratedFields,
+  isMissingOutput,
+} from './assetPipeline/generated';
+import type { PipelineRun, PipelineRunResult } from './assetPipeline/run';
+import {
+  ALLOW_UNOPTIMIZED_ENV_KEY,
+  isUnoptimizedAllowed,
+  loadProjectOptOut,
+} from './assetPipeline/switches';
+import {
+  createPackSource,
+  getAssetSourceFileSize,
+  resolveAssetSource,
+  resolvePackFile,
+} from './assetPipeline/sources';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
@@ -46,8 +72,28 @@ const JSON_ENDING_SIGNATURES = {
   postFx: '.postFx.json',
 };
 
+type ZodIssue = z.ZodError['issues'][number];
+
+/** A union's "Invalid input" says nothing: when exactly one branch got past its type check (eg.
+ * `optimize`'s object, not its `false`), its own issues are the ones to show. */
+const expandUnionIssues = (issues: ZodIssue[]): ZodIssue[] =>
+  issues.flatMap((issue) => {
+    if (issue.code !== 'invalid_union') return [issue];
+    const isTypeMismatch = (branchIssue: ZodIssue) =>
+      !branchIssue.path.length &&
+      (branchIssue.code === 'invalid_type' || branchIssue.code === 'invalid_value');
+    const matching = issue.errors.filter((branch) => !branch.every(isTypeMismatch));
+    if (matching.length !== 1) return [issue];
+    return expandUnionIssues(
+      matching[0].map((branchIssue) => ({
+        ...branchIssue,
+        path: [...issue.path, ...branchIssue.path],
+      }))
+    );
+  });
+
 const logValidationError = (msg: string, issues: z.ZodError['issues']) => {
-  const errorDetails = issues
+  const errorDetails = expandUnionIssues(issues)
     .map((err) => ` └─ [${err.path.join('.')}]: ${err.message}`)
     .join('\n');
   console.error(`\x1b[31m✗ [Scene Gatherer] ${msg}:\n${errorDetails}\x1b[0m`);
@@ -101,25 +147,96 @@ const logDuplicateIdError = (type: string, id: string, file: string) => {
   );
 };
 
-/** Size in bytes of a file served from src/public by its URL path (eg.
- * '/debugger/assets/box.glb'), summed over an array of files, or undefined if any is missing.
+/** Bytes on disk of an asset JSON's source file (relative to the JSON, or served from
+ * src/public by its URL path, eg. '/debugger/assets/box.glb'), or undefined if it is missing.
  * Remote URLs have no size here (the debugger can measure them on demand). */
-const getPublicFileSize = (fileName?: string | string[], urlPath?: string) => {
-  const fileNames = Array.isArray(fileName) ? fileName : fileName ? [fileName] : [];
-  if (!fileNames.length) return undefined;
-  let size = 0;
-  for (const name of fileNames) {
-    if (/^[a-z]+:\/\//i.test(name)) return undefined;
-    const filePath = path.resolve(
-      __dirname,
-      '../src/public',
-      (urlPath || '').replace(/^\//, ''),
-      name.replace(/^\//, '')
-    );
-    if (!fs.existsSync(filePath)) return undefined;
-    size += fs.statSync(filePath).size;
+const getSourceFileSize = (jsonFile: string, fileName?: string, urlPath?: string) => {
+  if (!fileName) return undefined;
+  const source = resolveAssetSource({ jsonFile, fileName, path: urlPath });
+  return 'error' in source ? undefined : getAssetSourceFileSize(source);
+};
+
+type SourcedAsset = {
+  fileName?: string;
+  path?: string;
+  optimize?: AssetOptimize;
+  pack?: TexturePack;
+  useHDRLoader?: boolean;
+  __saveData?: Record<string, { fileName?: string; path?: string }[] | undefined>;
+};
+
+/** A texture's `pack` (p300 DD5): in place of `fileName`, and every source file must exist. */
+const checkPackSources = (fullPath: string, data: SourcedAsset & { pack: TexturePack }) => {
+  const errors: string[] = [];
+  if (data.fileName || data.path) {
+    errors.push('"pack" builds the texture: it can\'t be combined with "fileName" or "path"');
   }
-  return size;
+  if (data.useHDRLoader) errors.push('"pack" writes an 8-bit image: remove "useHDRLoader"');
+  for (const src of listPackFiles(data.pack)) {
+    try {
+      resolvePackFile(fullPath, src);
+    } catch (e) {
+      errors.push((e as Error).message);
+    }
+  }
+  return errors;
+};
+
+/** Checks an asset JSON's source files, its own and each scene's latest save entry's (p300 DD3),
+ * and resolves its `optimize` settings for each (an unknown profile throws). Logs every problem
+ * and returns false if there was one. */
+const checkAssetSources = (
+  file: string,
+  fullPath: string,
+  data: SourcedAsset,
+  resolveSettings: ReturnType<typeof createSettingsResolver>
+) => {
+  if (data.pack) {
+    const { pack } = data;
+    const errors = checkPackSources(fullPath, { ...data, pack });
+    try {
+      const { repoPath } = createPackSource(fullPath, pack);
+      resolveSettings({ sourcePath: repoPath, optimize: data.optimize });
+    } catch (e) {
+      errors.push((e as Error).message);
+    }
+    for (const error of errors) {
+      console.error(`\x1b[31m✗ [Scene Gatherer] ${file}: ${error}\x1b[0m`);
+    }
+    if (errors.length) return false;
+  }
+  const sources = [{ label: '', fileName: data.fileName, path: data.path }];
+  for (const [sceneId, entries] of Object.entries(data.__saveData ?? {})) {
+    const entry = entries?.[0];
+    if (!entry?.fileName && !entry?.path) continue;
+    sources.push({
+      label: ` (save data of scene "${sceneId}")`,
+      fileName: entry.fileName ?? data.fileName,
+      path: entry.path ?? data.path,
+    });
+  }
+  let isValid = true;
+  for (const { label, fileName, path: urlPath } of sources) {
+    if (!fileName) continue;
+    const source = resolveAssetSource({ jsonFile: fullPath, fileName, path: urlPath });
+    let error = 'error' in source ? source.error : undefined;
+    if (!('error' in source) && data.optimize) {
+      if (source.kind === 'remote') {
+        error = `"optimize" is set, but a remote file ("${fileName}") can't be optimized`;
+      } else {
+        try {
+          resolveSettings({ sourcePath: source.repoPath, optimize: data.optimize });
+        } catch (e) {
+          error = (e as Error).message;
+        }
+      }
+    }
+    if (error) {
+      console.error(`\x1b[31m✗ [Scene Gatherer] ${file}${label}: ${error}\x1b[0m`);
+      isValid = false;
+    }
+  }
+  return isValid;
 };
 
 export const isFilePathValid = (filePath: string) => {
@@ -154,6 +271,7 @@ const compileJsonSchemas = () => {
     { name: 'importedAsset.schema.json', schema: ImportedAssetSchema },
     { name: 'skyBox.schema.json', schema: SkyBoxAssetSchema },
     { name: 'postFx.schema.json', schema: PostFxAssetSchema },
+    { name: 'assetsConfig.schema.json', schema: AssetsConfigSchema },
   ];
 
   for (const target of targets) {
@@ -175,9 +293,44 @@ const compileJsonSchemas = () => {
 // Execute compilation immediately when the script spins up
 compileJsonSchemas();
 
-export const gatherSceneData = () => {
+/**
+ * Gathers the asset JSONs into the generated data.
+ * @param opts.pipeline An asset pipeline run over the same JSONs (p300 §5): each texture and
+ * imported asset gets its output's `__url` and figures, per scene when a scene's save entry
+ * points at another file. Without one, they get none.
+ */
+export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
   const isProduction = process.env.NODE_ENV === 'production';
   let hasError = false;
+  // Removes the asset's own generated keys from a scene entry and adds its file's
+  const setGeneratedFields = (
+    data: Parameters<typeof getGeneratedFields>[3],
+    type: 'texture' | 'importedAsset',
+    jsonFile: string
+  ) => {
+    for (const key of GENERATED_FIELD_KEYS) delete (data as Record<string, unknown>)[key];
+    Object.assign(data, getGeneratedFields(opts.pipeline, type, jsonFile, data, { isProduction }));
+  };
+  // A production build ships only the outputs (p300), within their budgets (Phase 4): the scenes
+  // using an asset without one, or over its budget
+  const missingOutputs = new Map<PipelineRunResult, Set<string>>();
+  const overBudget = new Map<PipelineRunResult, Set<string>>();
+  const checkShippedOutput = (
+    data: Parameters<typeof getGeneratedFields>[3],
+    type: 'texture' | 'importedAsset',
+    jsonFile: string,
+    sceneId: string
+  ) => {
+    if (!isProduction || !opts.pipeline) return;
+    const result = getAssetResult(opts.pipeline, type, jsonFile, data);
+    if (!result) return;
+    const failed = isMissingOutput(result)
+      ? missingOutputs
+      : getBudgetViolations(result).length
+        ? overBudget
+        : null;
+    failed?.set(result, (failed.get(result) ?? new Set()).add(sceneId));
+  };
 
   const srcDir = path.resolve(__dirname, '../src');
   const combinedData: {
@@ -239,6 +392,15 @@ export const gatherSceneData = () => {
     console.error(
       `\x1b[31m✗ [Scene Gatherer] File content for file '${file}' is invalid or empty.\x1b[0m`
     );
+
+  // Validates assets.config.json (p300); its errors stop the gathering like an asset's would
+  let resolveSettings: ReturnType<typeof createSettingsResolver>;
+  try {
+    resolveSettings = createSettingsResolver();
+  } catch (err) {
+    console.error(`\x1b[31m✗ [Scene Gatherer] ${(err as Error).message}\x1b[0m`);
+    return false;
+  }
 
   try {
     // Read src directory recursively (Supported natively in Node 22+)
@@ -417,6 +579,10 @@ export const gatherSceneData = () => {
           continue;
         }
         const texJSON = validation.data;
+        if (!checkAssetSources(file, fullPath, texJSON, resolveSettings)) {
+          hasError = true;
+          continue;
+        }
         const texId = texJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.texture);
         if (ids.textures.includes(texId)) {
           logDuplicateIdError('texture', texId, file);
@@ -424,7 +590,8 @@ export const gatherSceneData = () => {
         }
         ids.textures.push(texId);
         texJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
-        texJSON.__fileSize = getPublicFileSize(texJSON.fileName, texJSON.path);
+        texJSON.__fileSize = getSourceFileSize(fullPath, texJSON.fileName, texJSON.path);
+        setGeneratedFields(texJSON, 'texture', fullPath);
         texJSON.id = texId;
         delete texJSON.$schema;
         texRegistry[texId] = texJSON;
@@ -572,6 +739,10 @@ export const gatherSceneData = () => {
           continue;
         }
         const importedAssetJSON = validation.data;
+        if (!checkAssetSources(file, fullPath, importedAssetJSON, resolveSettings)) {
+          hasError = true;
+          continue;
+        }
         const id =
           importedAssetJSON.id || path.basename(file, JSON_ENDING_SIGNATURES.importedAsset);
         if (ids.importedAssets.includes(id)) {
@@ -581,7 +752,8 @@ export const gatherSceneData = () => {
         ids.importedAssets.push(id);
         importedAssetJSON.id = id;
         importedAssetJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
-        importedAssetJSON.__fileSize = getPublicFileSize(importedAssetJSON.fileName);
+        importedAssetJSON.__fileSize = getSourceFileSize(fullPath, importedAssetJSON.fileName);
+        setGeneratedFields(importedAssetJSON, 'importedAsset', fullPath);
         delete importedAssetJSON.$schema;
         importedAssetRegistry[id] = importedAssetJSON;
       } catch {
@@ -877,8 +1049,16 @@ export const gatherSceneData = () => {
             if (isProduction) delete texRegistry[texId].debugData;
             const texData = { ...texRegistry[texId], ...__saveData };
             // A per-scene override can point at another file
-            texData.__fileSize = getPublicFileSize(texData.fileName, texData.path);
+            texData.__fileSize = getSourceFileSize(
+              texRegistry[texId].__sourcePath || '',
+              texData.fileName,
+              texData.path
+            );
+            setGeneratedFields(texData, 'texture', texRegistry[texId].__sourcePath || '');
+            checkShippedOutput(texData, 'texture', texRegistry[texId].__sourcePath || '', sceneId);
             if ('__meta' in texData) delete texData.__meta;
+            delete texData.optimize; // Build time only (p300)
+            delete texData.pack;
             delete texData.__sourcePath;
             delete texData.__saveData;
             return texData;
@@ -969,8 +1149,23 @@ export const gatherSceneData = () => {
               : {};
             if (isProduction) delete importedAssetRegistry[importId].debugData;
             const importData = { ...importedAssetRegistry[importId], ...__saveData, id: importId };
-            importData.__fileSize = getPublicFileSize(importData.fileName);
+            importData.__fileSize = getSourceFileSize(
+              importedAssetRegistry[importId].__sourcePath || '',
+              importData.fileName
+            );
+            setGeneratedFields(
+              importData,
+              'importedAsset',
+              importedAssetRegistry[importId].__sourcePath || ''
+            );
+            checkShippedOutput(
+              importData,
+              'importedAsset',
+              importedAssetRegistry[importId].__sourcePath || '',
+              sceneId
+            );
             if ('__meta' in importData) delete importData.__meta;
+            delete importData.optimize; // Build time only (p300)
             delete importData.__sourcePath;
             delete importData.__saveData;
             return importData;
@@ -1036,6 +1231,44 @@ export const gatherSceneData = () => {
       combinedData.scenes[sceneId] = fileContentJSON;
     }
 
+    if (missingOutputs.size) {
+      hasError = true;
+      const results = [...missingOutputs.keys()];
+      console.error(
+        `\x1b[31m✗ [Scene Gatherer] A production build ships the asset pipeline's outputs only, and ${results.length} asset(s) that shipped scenes use have none:\x1b[0m`
+      );
+      for (const [result, sceneIds] of missingOutputs) {
+        const { asset } = result;
+        const source = asset.source.kind === 'remote' ? asset.source.url : asset.source.repoPath;
+        // The run's one ktx setup failure, and its fix, are printed by the [Assets] lines above
+        const reason = result.status === 'error' ? `failed: ${result.reason}` : 'encoder missing';
+        console.error(`  ${asset.id} (${source}; ${[...sceneIds].join(', ')}): ${reason}`);
+      }
+      if (results.some((result) => result.status === 'encoderMissing')) {
+        console.error(
+          `  Without ktx: set it up (see [Assets] above), run yarn assets, and commit src/public/aek-assets/ and assets.lock.json. Or ship them unoptimized in this build: ${ALLOW_UNOPTIMIZED_ENV_KEY}=true yarn build`
+        );
+      }
+      if (results.some((result) => result.status === 'error')) {
+        console.error(
+          `  A failed asset: fix it, or opt it out with "optimize": false in its JSON.`
+        );
+      }
+    }
+    if (overBudget.size) {
+      hasError = true;
+      console.error(
+        `\x1b[31m✗ [Scene Gatherer] ${overBudget.size} asset(s) that shipped scenes use are over their budget (p300 Phase 4):\x1b[0m`
+      );
+      for (const [result, sceneIds] of overBudget) {
+        const { asset } = result;
+        const source = asset.source.kind === 'remote' ? asset.source.url : asset.source.repoPath;
+        console.error(`  ${asset.id} (${source}; ${[...sceneIds].join(', ')}):`);
+        for (const violation of getBudgetViolations(result)) console.error(`    ${violation}`);
+      }
+      console.error(`  ${BUDGET_FIX}`);
+    }
+
     if (hasError) return false;
 
     // Create generatedScenes.json
@@ -1082,7 +1315,35 @@ export const gatherSceneData = () => {
   }
 };
 
+/**
+ * `yarn gatherAppData` (before `dev` and `build`): the asset pipeline's cached run (p300), then
+ * the gather with its outputs. It builds what isn't in the cache, but never removes stale outputs:
+ * that's `yarn assets`' full run. A run that can't start (an invalid `assets.lock.json`) gathers
+ * nothing, so the generated data keeps its `__url`s.
+ *
+ * In production (`yarn build`), a failed gather exits 1 and stops the build, and so does an asset
+ * a shipped scene uses without an output or over its budget. `AEK_ASSETS_ALLOW_UNOPTIMIZED=true`
+ * ships the ones that lack `ktx` unoptimized instead.
+ */
+const gatherWithAssetPipeline = async () => {
+  const { runAssetsCommand } = await import('./assetPipeline/command');
+  const isProduction = process.env.NODE_ENV === 'production';
+  let pipeline: PipelineRun;
+  try {
+    ({ run: pipeline } = await runAssetsCommand({
+      projectOptOut: await loadProjectOptOut(),
+      verbosity: 'brief',
+      isUnoptimizedFallback: isProduction && isUnoptimizedAllowed(),
+    }));
+  } catch (err) {
+    console.error(`\x1b[31m✗ [Assets] ${(err as Error).message}\x1b[0m`);
+    process.exitCode = 1;
+    return;
+  }
+  if (!gatherSceneData({ pipeline }) && isProduction) process.exitCode = 1;
+};
+
 // Execute automatically if run directly via Node command line
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  gatherSceneData();
+  void gatherWithAssetPipeline();
 }

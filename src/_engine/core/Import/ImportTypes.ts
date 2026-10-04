@@ -3,6 +3,7 @@ import type { TextureMapKeys } from '../Material';
 import type { TexOpts } from '../Texture';
 import type { MeshProps } from '../MeshManager';
 import type { CoreEntityOpts } from '../../schemas/_helperSchemas';
+import type { GeneratedAssetUrls } from '../Assets/AssetUrl';
 import type * as THREE from 'three/webgpu';
 
 /** Plain, structured-clone-safe vector (no THREE classes: a manifest must survive a worker hop). */
@@ -14,7 +15,9 @@ export type ImportAssetParams = {
   /** Import id, also the geometry id prefix (`${id}/${nodeName}`). Default: file basename
    * without the extension. */
   id?: string;
-  /** URL of a .glb or .gltf file (eg. '/debugger/assets/testModels/box01.glb'). */
+  /** URL of a .glb or .gltf file (eg. '/debugger/assets/testModels/box01.glb'). From generated
+   * data (an `*.importedAsset.json`), the asset pipeline's output (`__url`) is loaded instead, see
+   * resolveAssetUrl; the import's id and identity stay this file. */
   fileName: string;
   /** Default false: glTF materials and their textures are disposed. true = also register every
    * texture used by an imported primitive's glTF material slot (as `${id}/${textureName}`), with
@@ -32,7 +35,7 @@ export type ImportAssetParams = {
   throwOnError?: boolean;
   /** Name/description for debug tooling (the Assets debugger tab). */
   debugData?: { name?: string; description?: string };
-};
+} & GeneratedAssetUrls;
 
 /** Physics override for one imported node. Wins field-by-field over the node's Blender custom
  * props, or adds physics to a node that has none (then a collider and a rigid body are needed). */

@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { lerror, lwarn } from '../utils/Logger';
 import { HDRLoader } from 'three/examples/jsm/Addons.js';
-import { isHDR } from '../utils/helpers';
+import { isHDR, isKTX2 } from '../utils/helpers';
 import {
   loadHDRTextureInWorker,
   loadTextureInWorker,
@@ -10,6 +10,8 @@ import {
 } from './Assets/AssetsAPI';
 import type { AssetLoadReport } from './Assets/AssetsAPITypes';
 import { recordAssetOwner, retagAssetOwner } from './Assets/AssetOwners';
+import { resolveAssetUrl, type GeneratedAssetUrls } from './Assets/AssetUrl';
+import { loadKTX2Texture } from './Import/KTX2';
 
 export type TexOpts = {
   image?: TexImageSource | OffscreenCanvas;
@@ -34,7 +36,7 @@ export type TextureProps = {
   isPersistent?: boolean;
   userData?: Record<string, unknown>;
   debugData?: { name?: string; description?: string };
-};
+} & GeneratedAssetUrls;
 
 const textures: {
   [id: string]: {
@@ -219,6 +221,13 @@ const createTexture = (
 
   if (!fileName) return getNoFileTexture(texOpts);
 
+  if (isKTX2(fileName)) {
+    const errorMsg = `KTX2 textures can only be loaded with loadTextureAsync (id: "${id}", fileName: "${fileName}")`;
+    lerror(errorMsg);
+    if (throwOnError) throw new Error(errorMsg);
+    return getNoFileTexture(texOpts);
+  }
+
   if (isHDR(fileName)) {
     const loader = new HDRLoader();
     const texture = setTextureOpts(
@@ -306,7 +315,28 @@ export const loadTextures = (
       return;
     }
 
-    if (fileName) {
+    if (fileName && isKTX2(fileName)) {
+      lerror(
+        `KTX2 textures can only be loaded with loadTextureAsync, skipped in loadTextures (id: ${id}, fileName: ${fileName})`
+      );
+      if (onErrorAction === 'THROW_ERROR') {
+        throw new Error(`KTX2 texture in loadTextures (id: ${id}, fileName: ${fileName})`);
+      }
+      if (onErrorAction === 'EMPTY_TEXTURE') {
+        const texture = createTexture(
+          id,
+          undefined,
+          texOpts,
+          false,
+          userData,
+          debugData,
+          isPersistent
+        );
+        batchTextures[id || texture.uuid] = texture;
+      }
+      loadedCount++;
+      if (updateStatusFn) updateStatusFn(batchTextures, loadedCount, totalCount);
+    } else if (fileName) {
       loader.load(
         fileName,
         (texture) => {
@@ -405,9 +435,14 @@ export const loadTexture = ({
 };
 
 /**
- * Loads a texture asynchronously supporting standard textures, HDR data textures, and CubeTextures.
- * Standard and HDR textures load where AppConfig.assets targets textures (main thread or the
- * assets worker, with the same result either way); cube textures always load on the main thread.
+ * Loads a texture asynchronously supporting standard textures, HDR data textures, KTX2 compressed
+ * textures and CubeTextures. Standard and HDR textures load where AppConfig.assets targets
+ * textures (main thread or the assets worker, with the same result either way). KTX2 textures
+ * are transcoded in the KTX2 loader's own worker pool, from the main thread (it needs the
+ * renderer), and cube textures always load on the main thread.
+ *
+ * A texture from generated data (a `*.texture.json`) loads the asset pipeline's output (`__url`)
+ * instead of its `fileName`, see resolveAssetUrl. The loader is picked by the loaded URL.
  */
 export const loadTextureAsync = async ({
   id,
@@ -419,44 +454,63 @@ export const loadTextureAsync = async ({
   isPersistent,
   userData,
   debugData,
+  __url,
+  __sourceUrl,
 }: TextureProps) => {
   if (id && textures[id]) {
     retagAssetOwner(textures[id].resource);
     return textures[id].resource;
   }
 
-  if (!fileName) return getNoFileTexture(texOpts);
+  // A packed texture (p300 DD5) has no fileName, only its output
+  if (!fileName && !__url) return getNoFileTexture(texOpts);
 
   let loaderType = '';
+  let url: string | undefined;
 
   try {
-    if (typeof fileName === 'string') {
-      if (useHDRLoader && isHDR(fileName)) {
+    if (!Array.isArray(fileName)) {
+      url = resolveAssetUrl({ id, fileName, __url, __sourceUrl }, (name) =>
+        toLoaderUrl(name, path)
+      );
+      if (isKTX2(url)) {
+        // Compressed texture: flipY and mipmaps are baked into the file (see loadKTX2Texture)
+        loaderType = 'KTX2Loader';
+        const startedAt = performance.now();
+        const result = await loadKTX2Texture(url);
+        const report: AssetLoadReport = {
+          target: 'MAIN_THREAD',
+          loadedOn: 'MAIN_THREAD',
+          durationMs: performance.now() - startedAt,
+        };
+        const loadedTexture = setTextureOpts(result, texOpts, userData, debugData);
+        return saveAndReport(loadedTexture, id, isPersistent, report, url);
+      } else if (useHDRLoader && isHDR(url)) {
         // Data texture
         loaderType = 'HDRLoader';
-        const url = toLoaderUrl(fileName, path);
+        const hdrUrl = url;
         const { result, report } = await runAssetTask<THREE.DataTexture>(
           'TEXTURE',
-          async () => createHDRTextureFromWorkerData(await loadHDRTextureInWorker(url)),
-          () => new HDRLoader().setPath(path || './').loadAsync(fileName),
+          async () => createHDRTextureFromWorkerData(await loadHDRTextureInWorker(hdrUrl)),
+          () => new HDRLoader().loadAsync(hdrUrl),
           null // HDR parsing is plain JS, no worker capability needed
         );
         const loadedTexture = setTextureOpts(result, texOpts, userData, debugData);
         return saveAndReport(loadedTexture, id, isPersistent, report, url) as THREE.DataTexture;
       } else {
-        if (useHDRLoader && !isHDR(fileName)) {
+        if (useHDRLoader && !isHDR(url)) {
           lwarn(
-            `[Aekasha Texture Pipeline] useHDRLoader override ignored for non-HDR file extension: ${fileName}`
+            `[Aekasha Texture Pipeline] useHDRLoader override ignored for non-HDR file extension: ${url}`
           );
         }
 
         // Texture
         loaderType = 'TextureLoader';
-        const url = toLoaderUrl(fileName, path);
+        const textureUrl = url;
         const { result, report } = await runAssetTask<THREE.Texture>(
           'TEXTURE',
-          async () => createTextureFromWorkerBitmap(await loadTextureInWorker(url)),
-          () => new THREE.TextureLoader().setPath(path || './').loadAsync(fileName)
+          async () => createTextureFromWorkerBitmap(await loadTextureInWorker(textureUrl)),
+          () => new THREE.TextureLoader().loadAsync(textureUrl)
         );
         const loadedTexture = setTextureOpts(result, texOpts, userData, debugData);
         return saveAndReport(loadedTexture, id, isPersistent, report, url);
@@ -479,7 +533,7 @@ export const loadTextureAsync = async ({
       return saveLoadedTexture(loadedTexture, id, isPersistent) as THREE.CubeTexture;
     }
   } catch (err) {
-    const errorMsg = `Could not load texture in loadTextureAsync (id: "${id}", fileName: "${typeof fileName === 'string' ? fileName : fileName.join(', ')}", ${path ? `path: "${path}", ` : ''}loaderType: "${loaderType}")`;
+    const errorMsg = `Could not load texture in loadTextureAsync (id: "${id}", fileName: "${Array.isArray(fileName) ? fileName.join(', ') : fileName ?? ''}", ${path ? `path: "${path}", ` : ''}${url ? `url: "${url}", ` : ''}loaderType: "${loaderType}")`;
     lerror(errorMsg, err);
     if (throwOnError) throw new Error(errorMsg);
     if (Array.isArray(fileName)) return getNoFileTexture(texOpts, true) as THREE.CubeTexture;

@@ -16,7 +16,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "typeRoots": ["./src/types", "./node_modules/@types"]
+    "typeRoots": ["./src/types", "./node_modules/@types"],
+    // Only these @types are global; the rest come in through imports. Without the list, every
+    // folder in the typeRoots is, and with typeRoots set explicitly, tsc fails on one that has
+    // no typings: the deprecated stub @types/wrap-ansi@8.1.0, which yarn 1 installs for
+    // @gltf-transform/cli (docs/issues/gltf-transform-cli-types-wrap-ansi-stub.md).
+    "types": ["node"]
   },
   "typedocOptions": {
     "entryPoints": ["src/_engine/**", "src/toolkit/**"],
