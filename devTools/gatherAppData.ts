@@ -1239,7 +1239,30 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
   }
 };
 
+/**
+ * `yarn gatherAppData` (before `dev` and `build`): the asset pipeline's cached run (p300), then
+ * the gather with its outputs. It builds what isn't in the cache, but never removes stale outputs:
+ * that's `yarn assets`' full run. A run that can't start (an invalid `assets.lock.json`) gathers
+ * nothing, so the generated data keeps its `__url`s.
+ */
+const gatherWithAssetPipeline = async () => {
+  const { runAssetsCommand } = await import('./assetPipeline/command');
+  const { loadProjectOptOut } = await import('./assetPipeline/switches');
+  let pipeline: PipelineRun;
+  try {
+    ({ run: pipeline } = await runAssetsCommand({
+      projectOptOut: await loadProjectOptOut(),
+      verbosity: 'brief',
+    }));
+  } catch (err) {
+    console.error(`\x1b[31m✗ [Assets] ${(err as Error).message}\x1b[0m`);
+    process.exitCode = 1;
+    return;
+  }
+  gatherSceneData({ pipeline });
+};
+
 // Execute automatically if run directly via Node command line
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  gatherSceneData();
+  void gatherWithAssetPipeline();
 }

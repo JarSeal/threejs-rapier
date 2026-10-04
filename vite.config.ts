@@ -3,41 +3,8 @@ import wasm from 'vite-plugin-wasm';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import { visualizer } from 'rollup-plugin-visualizer';
 import pkg from './package.json';
-import {
-  gatherSceneData,
-  isFilePathValid,
-  OUTPUT_FILE_DATA,
-  OUTPUT_FILE_FN,
-} from './devTools/gatherAppData.ts';
-
-// --- Custom Vite Plugin for gathering scene data ---
-const sceneGathererPlugin = () => ({
-  name: 'vite-plugin-scene-gatherer',
-  configureServer(server: ViteDevServer) {
-    const handleFileEvent = (filePath: string) => {
-      if (filePath === OUTPUT_FILE_DATA || filePath === OUTPUT_FILE_FN) return;
-
-      if (isFilePathValid(filePath)) {
-        const isSuccess = gatherSceneData();
-        if (isSuccess) {
-          server.hot.send({ type: 'full-reload' });
-        } else {
-          server.ws.send({
-            type: 'error',
-            err: {
-              message: '[Scene Pipeline Error] Consolidation Failed',
-              stack: 'Check your backend terminal terminal console for tracking logs.',
-              plugin: 'vite-plugin-scene-gatherer',
-            },
-          });
-        }
-      }
-    };
-    server.watcher.on('add', handleFileEvent); // Catches: New files created or moved into src
-    server.watcher.on('change', handleFileEvent); // Catches: Standard manual file saves
-    server.watcher.on('unlink', handleFileEvent); // Catches: Files deleted or moved out/renamed
-  },
-});
+// Gathers the scene data and runs the asset pipeline on file changes
+import { sceneGathererPlugin } from './devTools/sceneGathererPlugin.ts';
 
 // Required for self.crossOriginIsolated/SharedArrayBuffer to be available at all in dev, so
 // worker-thread physics can use the SHARED_MEMORY hot-path transport instead of automatically

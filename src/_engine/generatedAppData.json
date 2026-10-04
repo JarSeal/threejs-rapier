@@ -936,7 +936,18 @@
             "wrapS": 1000,
             "wrapT": 1000
           },
-          "__fileSize": 967035
+          "__fileSize": 967035,
+          "__sourceUrl": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
+          "__url": "/aek-assets/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.316c3c57.ktx2",
+          "__bytes": {
+            "in": 967035,
+            "out": 1122854
+          },
+          "__vramBytes": {
+            "in": 22369620,
+            "out": 1398128
+          },
+          "__codec": "uastc"
         }
       ],
       "materials": [
@@ -1025,7 +1036,17 @@
         {
           "id": "testImport",
           "fileName": "/debugger/assets/testModels/box01.glb",
-          "__fileSize": 46676
+          "__fileSize": 46676,
+          "__sourceUrl": "/debugger/assets/testModels/box01.glb",
+          "__url": "/aek-assets/debugger/assets/testModels/box01.2acf7d9b.glb",
+          "__bytes": {
+            "in": 46676,
+            "out": 14664
+          },
+          "__vramBytes": {
+            "in": 45544,
+            "out": 33824
+          }
         }
       ],
       "skyboxes": [
@@ -2079,7 +2100,18 @@
         ]
       },
       "__sourcePath": "src/app/textures/testTexture.texture.json",
-      "__fileSize": 967035
+      "__fileSize": 967035,
+      "__sourceUrl": "/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.jpg",
+      "__url": "/aek-assets/debugger/assets/testTextures/Poliigon_MetalRust_7642_BaseColor.316c3c57.ktx2",
+      "__bytes": {
+        "in": 967035,
+        "out": 1122854
+      },
+      "__vramBytes": {
+        "in": 22369620,
+        "out": 1398128
+      },
+      "__codec": "uastc"
     }
   },
   "materials": {
@@ -2318,7 +2350,17 @@
       "id": "testImport",
       "fileName": "/debugger/assets/testModels/box01.glb",
       "__sourcePath": "src/app/importedAssets/testImport.importedAsset.json",
-      "__fileSize": 46676
+      "__fileSize": 46676,
+      "__sourceUrl": "/debugger/assets/testModels/box01.glb",
+      "__url": "/aek-assets/debugger/assets/testModels/box01.2acf7d9b.glb",
+      "__bytes": {
+        "in": 46676,
+        "out": 14664
+      },
+      "__vramBytes": {
+        "in": 45544,
+        "out": 33824
+      }
     }
   },
   "skyboxes": {

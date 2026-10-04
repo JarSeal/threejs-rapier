@@ -755,6 +755,41 @@ Sections:
    - HEIGHTFIELD: refuse a quantized position attribute (§6) before `mergeVertices`, which throws on an `InterleavedBufferAttribute`. Draco keeps its own refusal.
    - Check: 1d's collider check passes CONVEXHULL `quantized` / `meshopt`, and reports HEIGHTFIELD `quantized` / `meshopt` as refused (a clear error, nothing thrown).
 
+**Step 1 as built:**
+
+- **One runner for every caller:** `runAssetsCommand` (`devTools/assetPipeline/command.ts`, moved out of `devTools/assets.ts`) collects the assets, runs them through the cache, saves the lock, prints and writes `last-run.json`. The callers differ in three ways:
+
+  | Caller                                | Builds                                                | Prints                                            | Removes stale outputs     |
+  | ------------------------------------- | ----------------------------------------------------- | ------------------------------------------------- | ------------------------- |
+  | `yarn assets [--only]`                | all, or the `--only` matches                          | every selected asset, the full summary            | full run only (as before) |
+  | `yarn gatherAppData` (`dev`, `build`) | all                                                   | what was built, restored or failed, plus one line | never                     |
+  | The dev server (gatherer plugin)      | what the change touched (below); the rest are lookups | the same, and nothing when it built nothing       | never                     |
+
+  - So stale outputs and lock entries pile up from dev-server edits until a full `yarn assets`, the one command that removes them. Run it before committing assets.
+  - A run that can't start (an invalid `assets.lock.json` or `assets.config.json`) gathers nothing, so the generated data keeps its `__url`s. `yarn gatherAppData` exits 1, which stops `yarn dev`; the dev server shows the error in the overlay.
+
+- **`generatedAppData.json` now has the `__url` fields** (step 8 left them out): `yarn dev` writes them. The runtime ignores them until step 2.
+- **The plugin** is `devTools/sceneGathererPlugin.ts` (was inline in `vite.config.ts`). It keeps the last run and reuses it for a gather that nothing the pipeline reads has changed (a scene, mesh or light JSON): without a run, a gather would drop every `__url`. What a change runs:
+  - An asset JSON: its assets are built. So is any asset the last run didn't have (a new JSON, or a scene entry that points at another file).
+  - A file that an asset reads (a source, a pack's file, a .gltf's external file): the assets that read it.
+  - `assets.config.json` (added to the watcher: it's outside the Vite root) or a change to `assets.optimization` in `src/CONFIG.ts`: every asset. Assets whose settings didn't change are cache hits. Other `CONFIG.ts` edits run nothing.
+  - Any file added or deleted while the last gather failed (eg. a JSON's missing source turning up).
+  - The switches are loaded with `server.ssrLoadModule` (invalidated first). As a side effect, Vite logs "(ssr) page reload CONFIG.ts" on every `CONFIG.ts` edit; the browser's own reload is unaffected.
+  - Writes into `aek-assets/` are ignored, so the pipeline's outputs don't re-trigger it.
+  - On start, one lookup-only run (it builds nothing: `yarn dev` just ran the full one), so the first change has a run to gather with.
+  - Changes are debounced (100 ms) and queued: one run at a time, and changes made during a run go into the next one.
+  - A failed asset is gathered with its source (`__sourceUrl` only) and shown in the error overlay instead of a reload. It isn't retried until its JSON or source changes again.
+- **Lookups stay cheap as assets grow:** `getCacheKey` memoizes keys in the process by their inputs plus each file's size and mtime, so a lookup no longer re-reads the source bytes. The key itself is unchanged, and so is the lock. `readGLTFJson` reads only a .glb's header and JSON chunk.
+- **Verified** on the dev server (with throwaway fixtures, removed; their outputs pruned by a full `yarn assets` afterwards):
+  - A scene JSON touched: gathered with the last run, `__url`s kept.
+  - `testTexture`'s `optimize` set to λ 4: that texture built (2.8 s), the GLB a lookup. Reverted: a cache hit.
+  - The GLB source touched: a gather, no output. An unrelated file: nothing.
+  - `assets.optimization.enabled: false` in `CONFIG.ts`: everything passed through (public sources at their own URL). Back on: the KTX2 / GLB `__url`s again. A `CONFIG.ts` edit outside `assets.optimization`: no run.
+  - `assets.config.json`'s default λ changed: the texture built, the GLB a hit (its textures are dropped).
+  - A `.png` that isn't an image: an `error` line and the error overlay over the HMR socket, gather done. A texture JSON whose source didn't exist yet: the gather failed; adding the file built it and the gather passed.
+  - A lock with a merge conflict: the overlay with the lock's message, the generated data unchanged.
+  - `yarn gatherAppData` and `yarn assets` (full, `--only`, no match) on a warm cache: 17–20 ms, output as before.
+
 ### Phase 4 — Harden
 
 1. Budgets: fail the build if an asset exceeds a size or VRAM threshold set per profile.

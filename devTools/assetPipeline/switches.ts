@@ -14,7 +14,7 @@ export type OptimizationConfig = NonNullable<NonNullable<AppConfig['assets']>['o
 /** Why each side is off for the whole project; an absent key means it's on. */
 export type ProjectOptOut = { textures?: string; mesh?: string };
 
-const CONFIG_FILE = path.join(SRC_DIR, 'CONFIG.ts');
+export const CONFIG_FILE = path.join(SRC_DIR, 'CONFIG.ts');
 export const ENV_KEY = 'AEK_ASSETS_OPTIMIZE';
 
 /** Throws for an `AEK_ASSETS_OPTIMIZE` that isn't true / false / 1 / 0. */

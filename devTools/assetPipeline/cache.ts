@@ -93,6 +93,13 @@ const getToolVersions = (type: 'texture' | 'importedAsset') => {
 };
 
 /**
+ * Keys computed in this process, by their inputs and their files' size and mtime: the dev server
+ * looks every asset up again on each asset change (Phase 3), and a key reads all its source bytes.
+ */
+const keyMemo = new Map<string, string>();
+const KEY_MEMO_LIMIT = 1000;
+
+/**
  * An encode's cache key (SHA-256, hex).
  * @param files Every source file the encode reads, in a fixed order
  * @param params Every other input: the settings that apply, the asset's own inputs and the
@@ -103,13 +110,25 @@ export const getCacheKey = (input: {
   files: string[];
   params: unknown;
 }) => {
+  const inputs = stableStringify({ tools: getToolVersions(input.type), params: input.params });
+  const fileStats = input.files.map((file) => {
+    const stat = fs.statSync(file);
+    return `${file}\0${stat.size}\0${stat.mtimeMs}`;
+  });
+  const memoKey = `${inputs}\0${fileStats.join('\0')}`;
+  const memoized = keyMemo.get(memoKey);
+  if (memoized) return memoized;
+
   const hash = createHash('sha256');
-  hash.update(stableStringify({ tools: getToolVersions(input.type), params: input.params }));
+  hash.update(inputs);
   for (const file of input.files) {
     const bytes = fs.readFileSync(file);
     hash.update(`\0${bytes.byteLength}\0`).update(bytes);
   }
-  return hash.digest('hex');
+  const key = hash.digest('hex');
+  if (keyMemo.size >= KEY_MEMO_LIMIT) keyMemo.clear();
+  keyMemo.set(memoKey, key);
+  return key;
 };
 
 const writeFileAtomic = (file: string, bytes: Uint8Array | string) => {

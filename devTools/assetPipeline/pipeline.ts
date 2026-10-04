@@ -147,17 +147,26 @@ const listGLTFFiles = (file: string, json: GLTFJson) => [
 ];
 
 /**
+ * Every file an asset's encode reads: the file, every file a pack reads, or a glTF with its
+ * external files. Empty for a remote or missing source. Throws like `resolvePackFile` and
+ * `readGLTFJson`.
+ */
+export const listAssetSourceFiles = (asset: PipelineAsset) => {
+  const { source } = asset;
+  if (source.kind === 'remote') return [];
+  if (source.kind !== 'pack' && !fs.existsSync(source.file)) return [];
+  return asset.type === 'importedAsset' && source.kind !== 'pack'
+    ? listGLTFFiles(source.file, readGLTFJson(source.file))
+    : listTextureFiles(source);
+};
+
+/**
  * The bytes the runtime downloads without the pipeline: the file, every file a pack reads, or a
  * glTF with its external files. Undefined for a remote or missing source.
  */
 export const getSourceBytes = (asset: PipelineAsset) => {
-  const { source } = asset;
-  if (source.kind === 'remote') return undefined;
-  if (source.kind !== 'pack' && !fs.existsSync(source.file)) return undefined;
-  const files =
-    asset.type === 'importedAsset' && source.kind !== 'pack'
-      ? listGLTFFiles(source.file, readGLTFJson(source.file))
-      : listTextureFiles(source);
+  const files = listAssetSourceFiles(asset);
+  if (!files.length) return undefined;
   return files.reduce((sum, file) => sum + (fs.existsSync(file) ? fs.statSync(file).size : 0), 0);
 };
 
