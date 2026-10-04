@@ -60,15 +60,6 @@ class WarningLogger extends Logger {
   }
 }
 
-/** A node with a mesh and a `colliderType` custom property (CustomProps.ts reads the same). */
-export const hasColliderNodes = (doc: Document) =>
-  doc
-    .getRoot()
-    .listNodes()
-    .some(
-      (node) => node.getMesh() && (node.getExtras() as { colliderType?: unknown }).colliderType
-    );
-
 /** Vertex and index bytes as uploaded (quantized attributes stay quantized in VRAM) */
 export const getGeometryBytes = (doc: Document) => {
   let bytes = 0;
@@ -275,17 +266,17 @@ const encodeTextures = async (
 
 /**
  * Optimizes a GLB / glTF source into a .glb.
- * @param resolveSettings The asset's settings; `isColliderSource` adds the collider default (DD6)
+ * @param settings The asset's settings, with the collider default (DD6) for a collider source
+ * (`hasColliderNodes`)
  * @param opts.importTextures The runtime registers the file's textures: else they are dropped,
  * whatever the textures settings say
  */
 export const encodeGLTFAsset = async (
   source: Extract<AssetSource, { file: string }>,
-  resolveSettings: (isColliderSource: boolean) => ResolvedAssetSettings,
+  settings: ResolvedAssetSettings,
   opts: { importTextures: boolean; getKtx: KtxProvider; warn: (message: string) => void }
 ): Promise<{
   output: PipelineOutput;
-  settings: ResolvedAssetSettings;
   textures: EncodedTexture[];
   droppedTextures: number;
   geometryBytes: { in: number; out: number };
@@ -293,7 +284,6 @@ export const encodeGLTFAsset = async (
   const io = await getIO();
   const doc = await io.read(source.file);
   doc.setLogger(new WarningLogger(opts.warn));
-  const settings = resolveSettings(hasColliderNodes(doc));
   const droppedTextures = opts.importTextures ? 0 : dropTextures(doc);
   const geometryIn = getGeometryBytes(doc);
   if (settings.mesh) await compressGeometry(doc, settings.mesh, opts.warn);
@@ -305,7 +295,6 @@ export const encodeGLTFAsset = async (
   const output = writeOutput(getLogicalPath(source), '.glb', await io.writeBinary(doc));
   return {
     output,
-    settings,
     textures,
     droppedTextures,
     geometryBytes: { in: geometryIn, out: getGeometryBytes(doc) },

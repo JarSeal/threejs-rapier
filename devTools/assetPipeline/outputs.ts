@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
-import { PUBLIC_DIR, SRC_DIR, type AssetSource, type PackSource } from './sources';
+import { listExternalGLTFUris, readGLTFJson } from './gltfJson';
+import { PUBLIC_DIR, ROOT, SRC_DIR, type AssetSource, type PackSource } from './sources';
 
 /**
  * The pipeline's outputs (p300 DD3): `src/public/aek-assets/<logical path>.<content hash>.<ext>`,
@@ -56,15 +57,32 @@ export const writeOutput = (
   return { file, url: `/${toPosix(path.relative(PUBLIC_DIR, file))}`, bytes: bytes.byteLength };
 };
 
-/** A .gltf's buffers and images that are separate files: a copy of the .gltf alone loses them. */
-const getExternalGLTFUris = (file: string) => {
-  const gltf = JSON.parse(fs.readFileSync(file, 'utf-8')) as {
-    buffers?: { uri?: string }[];
-    images?: { uri?: string }[];
+/** An output's (or a public source's) file on disk, from its root-absolute URL */
+export const getOutputFile = (url: string) => path.join(PUBLIC_DIR, ...url.split('/'));
+
+/**
+ * Deletes every file in `aek-assets/` that no URL in `usedUrls` points to, leftover temp files
+ * included, and the folders that leaves empty (§7). Only for the end of a full, successful run:
+ * an asset that wasn't processed in it would lose its output. Returns the deleted files, relative
+ * to the repo root.
+ */
+export const removeStaleOutputs = (usedUrls: Iterable<string>) => {
+  const used = new Set([...usedUrls].map(getOutputFile));
+  const removed: string[] = [];
+  const sweep = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        sweep(file);
+        if (!fs.readdirSync(file).length) fs.rmdirSync(file);
+      } else if (!used.has(file)) {
+        fs.rmSync(file);
+        removed.push(toPosix(path.relative(ROOT, file)));
+      }
+    }
   };
-  return [...(gltf.buffers ?? []), ...(gltf.images ?? [])]
-    .map((entry) => entry.uri)
-    .filter((uri): uri is string => !!uri && !uri.startsWith('data:'));
+  if (fs.existsSync(AEK_ASSETS_DIR)) sweep(AEK_ASSETS_DIR);
+  return removed;
 };
 
 /**
@@ -83,7 +101,7 @@ export const passThroughSource = (
   }
   const ext = path.extname(source.file);
   if (ext.toLowerCase() === '.gltf') {
-    const uris = getExternalGLTFUris(source.file);
+    const uris = listExternalGLTFUris(readGLTFJson(source.file));
     if (uris.length) {
       throw new Error(
         `${source.repoPath} refers to external files (${uris.join(', ')}), which a copy would lose: export it as a .glb, or optimize it`

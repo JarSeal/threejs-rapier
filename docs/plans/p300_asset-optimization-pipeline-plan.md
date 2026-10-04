@@ -290,8 +290,9 @@ Without a cache, a full encode pass slows builds enough that people skip it.
   1. the source bytes (all sources, for packed textures);
   2. the resolved settings (post-merge, canonically serialized);
   3. the pipeline version plus the pinned `ktx` and gltf-transform versions.
-- On a hit, copy from `.cache/asset-pipeline/<key>` (gitignored) and skip encoding.
-- On a miss, encode, write to the cache, then copy to the output.
+- **The committed index** `assets.lock.json` (repo root, decided 2026-10-04, Phase 2 step 6) maps each key to its output URL and the result's metadata. A hit is the entry plus its file in `aek-assets/`, so a clone without `.cache/` or `ktx` uses the committed outputs (DD3, §8).
+- When the output is missing (e.g. removed by the stale cleanup), it is copied back from `.cache/asset-pipeline/store/<key>` (gitignored) and nothing is encoded.
+- On a miss, encode, write the output, then record it in the lock and the store.
 - Stale outputs (hashes no longer referenced) are deleted from `src/public/aek-assets/` at the end of a full run, never during a watch-triggered single-asset run.
 
 ---
@@ -659,6 +660,43 @@ Sections:
   - Encode times on this machine: 1–4 s per 1K texture, 30 s for the toolbox's three 2K UASTC maps, 10 s as ETC1S.
 - The reproduction checks pass `importTextures: true` for the toolbox; without it, its output has no textures, needs no `ktx` (checked with `AEK_KTX` pointing nowhere) and keeps its one material.
 - Not yet: the cache (step 6), so every call re-encodes; nothing calls `processAsset` yet (steps 7–8); the runtime doesn't load the outputs (Phase 3).
+
+**Step 6 as built:**
+
+- **The plan's cache alone couldn't serve a clone.** §7 put the cache only in the gitignored `.cache/`. An output's name hashes its _output_ bytes, so nothing linked a committed output to its inputs: a fresh clone would re-encode everything, or report `encoderMissing` without `ktx`, and §8's "committed outputs are used" had no mechanism. Decided (2026-10-04): a committed index, `assets.lock.json` at the repo root. §7 is updated. Outputs keep their content-hash names, so a version bump that doesn't change the bytes churns only the lock, not the committed binaries.
+- `devTools/assetPipeline/cache.ts`:
+  - **`getCacheKey`** (SHA-256 hex) hashes three things:
+    - **The source bytes:** every file a pack reads, and a glTF's external buffers and images.
+    - **The params,** serialized with sorted keys (`stableStringify`):
+      - a standalone texture: its slot's settings only (a change to the `normal` defaults doesn't re-encode an albedo), plus `slot`, `isSrgb` and the pack recipe;
+      - a GLB: `mesh` and `importTextures`, plus every slot's texture settings, which are `null` without `importTextures` because the textures are dropped then;
+      - the output's logical path in both cases, so the key also decides the output's name.
+    - **The versions:** `PIPELINE_VERSION` (bumped by hand when the pipeline's code changes what it writes) and the pinned tool versions per type. Textures key on `ktx` and sharp; GLBs also on gltf-transform, meshoptimizer and draco3dgltf. A gltf-transform update therefore doesn't re-encode the standalone textures.
+  - **The `ktx` version is the pinned `KTX_VERSION`, not the installed one.** Probing the installed one would call `ensureKtx()` on a hit, and a clone without `ktx` would always miss. An encode by a different `ktx` (PATH, `AEK_KTX`) gets a warning, and its lock entry records `ktxVersion`.
+  - **`createPipelineCache()`**, one per run: `get(key)` / `set(key, entry)` / `prune()` / `save()`.
+    - **`get`** checks the lock entry and its file (exists, same size). If either is missing, it falls back to `.cache/asset-pipeline/store/<key>/` (the output plus `entry.json`). That covers a lock entry whose file is gone, and a key the lock doesn't have (e.g. encoded on another branch).
+    - **`save`** writes the lock only when this run changed it. It merges over the file as it is at that moment, so two runs at once keep each other's entries.
+    - **`prune`** is for a full run only (step 8): it drops the lock entries this run didn't look up. The store keeps them.
+  - The store has no eviction: deleting `.cache/asset-pipeline/` is always safe.
+- **`removeStaleOutputs(usedUrls)`** (`outputs.ts`) deletes the `aek-assets/` files no result points to, plus leftover temp files and empty folders. It is for the end of a full, successful run, together with `prune()`, never a watch run (step 8).
+- **`processAsset`:**
+  - Takes `opts.cache`; without one, nothing is cached.
+  - Results get `cache: 'hit' | 'restored' | 'miss'` (`restored` means from the store), and every result gets `durationMs` (for §5's slowest-asset report).
+  - Not cached: a plain pass-through copy (cheaper than hashing its source), `skipped` and `encoderMissing`. A packed texture that's passed through is cached.
+  - A `codec: "none"` public file that is kept as it is gets a lock entry but no store copy: it's the source, not an output.
+- **A GLB's collider default is found before encoding.** It's part of the key, and gltf-transform reads the file only on a miss. `gltfJson.ts` reads the glTF JSON (a .glb's first chunk) to find `colliderType` nodes and external files. `encodeGLTFAsset` now takes the resolved settings, so the key and the encode can't disagree. `passThroughSource` reuses the same reader.
+- **Verified** with a scratch script, using its own lock and store (removed, with its outputs):
+  - **Cold run, byte-identical to `phase1/`:**
+    - `metalRust` `orm` (pack) and `normal`;
+    - `rocks01` `albedoRough` and `normalHeight` (packs, `terrainLayer`);
+    - `stairsStraightTrimesh` (`_meshoptLossless`);
+    - the toolbox `uastc_rdo2.glb` (`hero`, one λ).
+    - Also a pack that's passed through, and a `none` public file.
+  - **Warm run, `AEK_KTX` pointing nowhere:** 8 / 8 hits, the lock not rewritten. The toolbox went from 30.6 s to 20 ms.
+  - **Restores:** two outputs deleted → `restored`, identical. The lock deleted, then two runs started at once on different assets → both `restored`, and the merged lock has all four entries.
+  - **A changed setting** (`orm` λ 4): `encoderMissing` without `ktx`; with it, a miss whose output is identical to `orm_uastc_rdo4.ktx2`.
+  - **Prune:** a run of two assets with `prune()` + `removeStaleOutputs` leaves a two-entry lock and two files. The next full run restores the other six from the store, except the `none` public file, which has no store copy: it's a cheap miss that needs no `ktx`.
+- Not yet: nothing calls `processAsset` with a cache, and no `assets.lock.json` is committed (steps 7–8).
 
 ### Phase 3 — Integrate (~1 day)
 

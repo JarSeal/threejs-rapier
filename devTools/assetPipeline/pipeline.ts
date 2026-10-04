@@ -3,9 +3,23 @@ import path from 'path';
 import type { AssetOptimize } from '../../src/_engine/schemas/assetsConfigSchema';
 import { encodePng } from './images';
 import { createKtxProvider, EncoderMissingError, type KtxProvider } from './ktxEncode';
-import { getPackLogicalPath, passThroughSource, writeOutput, type PipelineOutput } from './outputs';
-import { buildPackedImage } from './pack';
-import type { createSettingsResolver, ResolvedAssetSettings } from './settings';
+import { getCacheKey, type CacheEntry, type CacheHit, type PipelineCache } from './cache';
+import { hasColliderNodes, listExternalGLTFFiles, readGLTFJson, type GLTFJson } from './gltfJson';
+import { KTX_VERSION } from './ktxTool';
+import {
+  getLogicalPath,
+  getOutputFile,
+  getPackLogicalPath,
+  passThroughSource,
+  writeOutput,
+  type PipelineOutput,
+} from './outputs';
+import { buildPackedImage, listPackFiles } from './pack';
+import type {
+  createSettingsResolver,
+  ResolvedAssetSettings,
+  ResolvedTextureSettings,
+} from './settings';
 import { resolvePackFile, type AssetSource, type PackSource } from './sources';
 import { encodeTextureAsset, type EncodedTexture } from './textures';
 
@@ -32,7 +46,10 @@ export type PipelineAsset = {
   importTextures?: boolean;
 };
 
-export type PipelineResult =
+/** How the cache (§7) answered: the output was there, was copied back from the store, or was encoded */
+export type PipelineCacheStatus = 'hit' | 'restored' | 'miss';
+
+export type PipelineOutcome =
   | {
       status: 'optimized';
       output: PipelineOutput;
@@ -45,6 +62,8 @@ export type PipelineResult =
       geometryBytes?: { in: number; out: number };
       /** Worth a look, but not errors (eg. an aspect ratio changed by the rounding to 4) */
       warnings: string[];
+      /** Unset without a cache */
+      cache?: PipelineCacheStatus;
     }
   | {
       status: 'passThrough';
@@ -55,10 +74,17 @@ export type PipelineResult =
       isCopy: boolean;
       output: PipelineOutput;
       settings: ResolvedAssetSettings;
+      /** A pack's PNG only: a copy is cheaper than its cache key */
+      cache?: PipelineCacheStatus;
     }
   /** It needs `ktx`, and there is none (§8); nothing was written */
   | { status: 'encoderMissing'; reason: string; settings: ResolvedAssetSettings }
   | { status: 'skipped'; reason: string };
+
+export type PipelineResult = PipelineOutcome & {
+  /** Wall time, cache lookup included (the run's slowest assets, §5) */
+  durationMs: number;
+};
 
 /** KTX2's UASTC / ETC1S are LDR formats: an HDR source keeps its own file. */
 const HDR_EXTENSIONS = ['.hdr', '.exr'];
@@ -94,69 +120,215 @@ const passThroughPack = async (source: PackSource, isSrgb: boolean) => {
 export type ProcessAssetOpts = {
   /** The run's `ktx` (one setup per run); default: one for this asset */
   getKtx?: KtxProvider;
+  /** The run's cache (§7); without one, nothing is cached and every call encodes */
+  cache?: PipelineCache;
 };
 
-/**
- * Throws when a pass-through can't copy its source (see `passThroughSource`), a pack can't be
- * built (see `buildPackedImage`), a source can't be read or `ktx create` fails.
- */
-export const processAsset = async (
+type CacheKeyInput = Parameters<typeof getCacheKey>[0];
+
+/** What a texture's encode reads: its file, or every file its pack reads */
+const listTextureFiles = (source: Extract<AssetSource, { file: string }> | PackSource) =>
+  source.kind === 'pack'
+    ? listPackFiles(source.pack).map((src) => resolvePackFile(source.jsonFile, src))
+    : [source.file];
+
+/** What a GLB's encode reads: the file, and a .gltf's (or a .glb's) external buffers and images */
+const listGLTFFiles = (file: string, json: GLTFJson) => [
+  file,
+  ...listExternalGLTFFiles(file, json),
+];
+
+/** The entry a hit restores: the output and the result's metadata (the settings aren't kept). */
+const toCacheEntry = (
+  repoPath: string,
+  result: Extract<PipelineOutcome, { status: 'optimized' | 'passThrough' }>,
+  ktxVersion?: string
+): CacheEntry => {
+  const { url, bytes } = result.output;
+  if (result.status === 'passThrough') return { source: repoPath, url, bytes };
+  const { textures, droppedTextures, geometryBytes, warnings } = result;
+  return {
+    source: repoPath,
+    url,
+    bytes,
+    ...(textures.length ? { textures } : {}),
+    ...(droppedTextures ? { droppedTextures } : {}),
+    ...(geometryBytes ? { geometryBytes } : {}),
+    ...(warnings.length ? { warnings } : {}),
+    ...(ktxVersion ? { ktxVersion } : {}),
+  };
+};
+
+const fromCacheEntry = ({ entry }: CacheHit) => ({
+  output: { file: getOutputFile(entry.url), url: entry.url, bytes: entry.bytes },
+  textures: entry.textures ?? [],
+  ...(entry.droppedTextures !== undefined ? { droppedTextures: entry.droppedTextures } : {}),
+  ...(entry.geometryBytes ? { geometryBytes: entry.geometryBytes } : {}),
+  warnings: entry.warnings ?? [],
+});
+
+const getCacheStatus = (hit: CacheHit): PipelineCacheStatus =>
+  hit.from === 'output' ? 'hit' : 'restored';
+
+const runAsset = async (
   asset: PipelineAsset,
   resolveSettings: ReturnType<typeof createSettingsResolver>,
-  opts: ProcessAssetOpts = {}
-): Promise<PipelineResult> => {
+  opts: ProcessAssetOpts
+): Promise<PipelineOutcome> => {
   const { source } = asset;
+  const { cache } = opts;
   if (source.kind === 'remote') {
     return { status: 'skipped', reason: 'a remote file is loaded from where it is' };
   }
-  const settings = resolveSettings({ sourcePath: source.repoPath, optimize: asset.optimize });
+  let settings = resolveSettings({ sourcePath: source.repoPath, optimize: asset.optimize });
   const reason = getPassThroughReason(asset, settings);
+  const isSrgb = !!asset.isSrgb;
   if (reason) {
-    if (source.kind === 'pack') {
-      const output = await passThroughPack(source, !!asset.isSrgb);
-      return { status: 'passThrough', reason, isCopy: true, output, settings };
+    if (source.kind !== 'pack') {
+      const { isCopy, ...output } = passThroughSource(source);
+      return { status: 'passThrough', reason, isCopy, output, settings };
     }
-    const { isCopy, ...output } = passThroughSource(source);
-    return { status: 'passThrough', reason, isCopy, output, settings };
+    const key =
+      cache &&
+      getCacheKey({
+        type: 'texture',
+        files: listTextureFiles(source),
+        params: {
+          kind: 'packPassThrough',
+          pack: source.pack,
+          isSrgb,
+          output: getPackLogicalPath(source),
+        },
+      });
+    const hit = key ? cache.get(key) : null;
+    if (hit) {
+      const { output } = fromCacheEntry(hit);
+      return {
+        status: 'passThrough',
+        reason,
+        isCopy: true,
+        output,
+        settings,
+        cache: getCacheStatus(hit),
+      };
+    }
+    const output = await passThroughPack(source, isSrgb);
+    const result = { status: 'passThrough' as const, reason, isCopy: true, output, settings };
+    if (key) cache.set(key, toCacheEntry(source.repoPath, result));
+    return { ...result, ...(key ? { cache: 'miss' as const } : {}) };
   }
   // Only a public source can be missing (legacy, see `resolveAssetSource`): loaded as before
   if (source.kind === 'public' && !fs.existsSync(source.file)) {
     return { status: 'skipped', reason: `${source.repoPath} doesn't exist` };
   }
 
+  // The settings are the cache key's: a GLB's collider default (DD6) is found before encoding
+  let keyInput: CacheKeyInput;
+  let slotSettings: ResolvedTextureSettings | undefined;
+  if (asset.type === 'texture') {
+    // Not passed through, so its textures side is on
+    slotSettings = (settings.textures && settings.textures[settings.slot]) || undefined;
+    if (!slotSettings) throw new Error(`${asset.jsonFile}: no texture settings`);
+    keyInput = {
+      type: 'texture',
+      files: listTextureFiles(source),
+      params: {
+        kind: 'texture',
+        slot: settings.slot,
+        settings: slotSettings,
+        isSrgb,
+        ...(source.kind === 'pack'
+          ? { pack: source.pack, output: getPackLogicalPath(source) }
+          : { output: getLogicalPath(source) }),
+      },
+    };
+  } else {
+    if (source.kind === 'pack') throw new Error('an imported asset has no pack');
+    const json = readGLTFJson(source.file);
+    if (hasColliderNodes(json)) {
+      settings = resolveSettings({
+        sourcePath: source.repoPath,
+        optimize: asset.optimize,
+        isColliderSource: true,
+      });
+    }
+    const importTextures = !!asset.importTextures;
+    keyInput = {
+      type: 'importedAsset',
+      files: listGLTFFiles(source.file, json),
+      params: {
+        kind: 'gltf',
+        importTextures,
+        // Without importTextures the textures are dropped, whatever their settings
+        textures: importTextures ? settings.textures : null,
+        mesh: settings.mesh,
+        output: getLogicalPath(source),
+      },
+    };
+  }
+  const key = cache && getCacheKey(keyInput);
+  const hit = key ? cache.get(key) : null;
+  if (hit) {
+    return { status: 'optimized', settings, ...fromCacheEntry(hit), cache: getCacheStatus(hit) };
+  }
+
   const getKtx = opts.getKtx ?? createKtxProvider();
   const warnings: string[] = [];
   const warn = (message: string) => warnings.push(message);
+  let result: Extract<PipelineOutcome, { status: 'optimized' }>;
   try {
-    if (asset.type === 'texture') {
-      // Not passed through, so its textures side is on
-      const slotSettings = settings.textures && settings.textures[settings.slot];
-      if (!slotSettings) throw new Error(`${asset.jsonFile}: no texture settings`);
+    if (slotSettings) {
       const { output, texture } = await encodeTextureAsset(source, settings.slot, slotSettings, {
-        isSrgb: !!asset.isSrgb,
+        isSrgb,
         getKtx,
         warn,
       });
-      return { status: 'optimized', output, settings, textures: [texture], warnings };
+      result = { status: 'optimized', output, settings, textures: [texture], warnings };
+    } else {
+      if (source.kind === 'pack') throw new Error('an imported asset has no pack');
+      // Loaded on first use: gltf-transform and the meshopt / Draco WASM codecs
+      const { encodeGLTFAsset } = await import('./gltf');
+      const encoded = await encodeGLTFAsset(source, settings, {
+        importTextures: !!asset.importTextures,
+        getKtx,
+        warn,
+      });
+      result = { status: 'optimized', ...encoded, settings, warnings };
     }
-    if (source.kind === 'pack') throw new Error('an imported asset has no pack');
-    // Loaded on first use: gltf-transform and the meshopt / Draco WASM codecs
-    const { encodeGLTFAsset } = await import('./gltf');
-    const result = await encodeGLTFAsset(
-      source,
-      (isColliderSource) =>
-        resolveSettings({
-          sourcePath: source.repoPath,
-          optimize: asset.optimize,
-          isColliderSource,
-        }),
-      { importTextures: !!asset.importTextures, getKtx, warn }
-    );
-    return { status: 'optimized', ...result, warnings };
   } catch (error) {
     if (error instanceof EncoderMissingError) {
       return { status: 'encoderMissing', reason: error.message, settings };
     }
     throw error;
   }
+
+  // The key has the pinned ktx; an encode by another version may differ from everyone else's
+  let ktxVersion: string | undefined;
+  if (result.textures.some((texture) => texture.codec !== 'none')) {
+    ktxVersion = (await getKtx()).version;
+    if (ktxVersion !== KTX_VERSION) {
+      warn(
+        `encoded with ktx ${ktxVersion}, not the pinned ${KTX_VERSION} (yarn setupAssetTools): its KTX2 may differ from other machines' encodes`
+      );
+    }
+  }
+  if (!key) return result;
+  cache.set(key, toCacheEntry(source.repoPath, result, ktxVersion));
+  return { ...result, cache: 'miss' };
+};
+
+/**
+ * Passes an asset through, or optimizes it: from the cache when it has the output (§7), else by
+ * encoding it (and caching the output). Throws when a pass-through can't copy its source (see
+ * `passThroughSource`), a pack can't be built (see `buildPackedImage`), a source can't be read or
+ * `ktx create` fails.
+ */
+export const processAsset = async (
+  asset: PipelineAsset,
+  resolveSettings: ReturnType<typeof createSettingsResolver>,
+  opts: ProcessAssetOpts = {}
+): Promise<PipelineResult> => {
+  const start = performance.now();
+  const outcome = await runAsset(asset, resolveSettings, opts);
+  return { ...outcome, durationMs: Math.round(performance.now() - start) };
 };
