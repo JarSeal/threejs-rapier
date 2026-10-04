@@ -31,7 +31,8 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 - **Threaded physics**: `WORKER_THREAD` or `MAIN_THREAD` mode. The worker syncs every body's transform through one shared buffer per frame, never one message per body. The buffer is a lock-free triple buffer, so every system in a frame reads the same complete physics step.
 - **Deterministic scene loads**: physics is held during a scene load, the world is recreated fresh, and stepping resumes only after every body exists.
 - **Scene system**: JSON scenes with per-scene overrides (`__saveData`), a customizable scene loader with progress callbacks, and persistent or scene-scoped entities.
-- **Assets**: glTF/GLB import (with Draco), textures, HDR environment maps, per-scene asset ownership and release, and optional worker-thread loading.
+- **Assets**: glTF/GLB import (with meshopt and Draco), textures (including KTX2), HDR environment maps, per-scene asset ownership and release, and optional worker-thread loading.
+- **Asset optimization**: a build-time pipeline that turns the textures and models your asset JSONs point at into KTX2 textures, which stay block-compressed on the GPU (about a quarter of the VRAM of a PNG), and meshopt-compressed GLBs. Profiles and per-asset settings live in the JSONs, it can pack channels (eg. ORM maps from separate images), and it gets colliders right (lossless geometry for collider meshes). A content-hash cache and a committed lock file mean a clone runs and builds without the encoder, and per-asset VRAM and download budgets fail the build when an asset grows past them. Optimization can be switched off for the whole project or one asset.
 - **Cameras and lights**: ECS-managed perspective and orthographic cameras, all Three.js light types, frustum culling for objects and lights, and a follow-camera rig.
 - **PostFX**: an ordered, per-scene chain of TSL passes (`*.postFx.json` + `*.tsl.ts`), switchable per pass at runtime, with ambient occlusion (GTAO) included.
 - **Viewports**: extra render rectangles with their own scene and camera (picture-in-picture, minimaps, item previews), placed by the DOM and working with or without PostFX.
@@ -69,15 +70,16 @@ These are ready-made modules you can import as they are, or copy into your app a
 
 ## Technical highlights
 
-| Area                   | How it works                                                                                                                                                                                                                     |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Frame pipeline         | Fixed stage order every frame: `MAIN → APP_PRE_PHYSICS → [APP_PHYSICS_STEP × N] → APP_POST_PHYSICS → APP_LOGIC → APP_RENDER_SYNC → LATE_MAIN`. `APP_PHYSICS_STEP` runs once per fixed sub-step, in lockstep with the simulation. |
-| Physics ↔ render sync | A physics-owned transform buffer, which is a real `SharedArrayBuffer` when the page is cross-origin isolated (the dev server sends COOP/COEP headers) and falls back to one batched message per frame otherwise.                 |
-| Worker commands        | The commands issued in `APP_PHYSICS_STEP` are captured per sub-step, carried in that frame's single STEP message, and replayed in order in the worker.                                                                           |
-| Content pipeline       | `devTools/gatherAppData.ts` walks `src/`, validates every asset JSON file with Zod, generates typed runtime data and emits JSON Schema for editor autocomplete. It runs on every file save through a Vite plugin.                |
-| Tree-shaking           | Debug implementations live in `_dbg__*` files that are loaded only through a dynamic `import()` behind `IS_DEBUG_ENV`, so production bundles don't contain them.                                                                 |
-| Save data              | Each asset file stores per-scene override history stamped with the engine, toolkit and app versions, and the gatherer warns when an entry comes from another major version.                                                      |
-| Versioning             | Engine, toolkit and app are versioned independently, with release tags and a checksum meta tag in the built HTML.                                                                                                                |
+| Area                   | How it works                                                                                                                                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frame pipeline         | Fixed stage order every frame: `MAIN → APP_PRE_PHYSICS → [APP_PHYSICS_STEP × N] → APP_POST_PHYSICS → APP_LOGIC → APP_RENDER_SYNC → LATE_MAIN`. `APP_PHYSICS_STEP` runs once per fixed sub-step, in lockstep with the simulation.         |
+| Physics ↔ render sync | A physics-owned transform buffer, which is a real `SharedArrayBuffer` when the page is cross-origin isolated (the dev server sends COOP/COEP headers) and falls back to one batched message per frame otherwise.                         |
+| Worker commands        | The commands issued in `APP_PHYSICS_STEP` are captured per sub-step, carried in that frame's single STEP message, and replayed in order in the worker.                                                                                   |
+| Content pipeline       | `devTools/gatherAppData.ts` walks `src/`, validates every asset JSON file with Zod, generates typed runtime data and emits JSON Schema for editor autocomplete. It runs on every file save through a Vite plugin.                        |
+| Asset pipeline         | Textures are encoded to KTX2 (Basis UASTC or ETC1S) and transcoded at load to whatever the device reads (BC7, ASTC, ETC2), in the transcoder's own workers. GLBs get meshopt geometry. Outputs are content-hashed, cached and committed. |
+| Tree-shaking           | Debug implementations live in `_dbg__*` files that are loaded only through a dynamic `import()` behind `IS_DEBUG_ENV`, so production bundles don't contain them.                                                                         |
+| Save data              | Each asset file stores per-scene override history stamped with the engine, toolkit and app versions, and the gatherer warns when an entry comes from another major version.                                                              |
+| Versioning             | Engine, toolkit and app are versioned independently, with release tags and a checksum meta tag in the built HTML.                                                                                                                        |
 
 ---
 
@@ -87,6 +89,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 
 - Node.js `>= 22.13.0` and Yarn `>= 1.22.15`
 - A browser with WebGPU (recent Chrome, Edge or Safari; Firefox with WebGPU enabled). Other browsers fall back to WebGL 2.
+- Only to add or change optimized assets: the `ktx` encoder (KTX-Software ≥ 4.4.0), which the pipeline downloads by itself on Linux, WSL2 and macOS. Running and building the committed assets doesn't need it.
 
 ### Install and run
 
@@ -101,21 +104,21 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 
 ### Commands
 
-| Command                               | Description                                                                     |
-| ------------------------------------- | ------------------------------------------------------------------------------- |
-| `yarn dev`                            | Dev server (development env) with hot scene/asset regeneration.                 |
-| `yarn dev:https`                      | `yarn dev` over HTTPS (self-signed) on port 8443, for testing on a phone.       |
-| `yarn dev:test`                       | Dev server with `VITE_APP_ENV=test`.                                            |
-| `yarn dev:production`                 | Dev server with production env vars.                                            |
-| `yarn build`                          | Type-check and production build to `dist/` (bundle treemap in `dist-stats/`).   |
-| `yarn build:test`                     | Production build with `VITE_APP_ENV=test`.                                      |
-| `yarn lint`                           | ESLint with Prettier.                                                           |
-| `yarn docs`                           | TypeDoc API docs for the engine and toolkit, written to `docs-api/`.            |
-| `yarn gatherAppData`                  | Runs the JSON → generated data pipeline by hand.                                |
-| `yarn setupAssetTools [--force]`      | Downloads the KTX2 texture encoder into `.tools/` (Linux, WSL2, macOS).         |
-| `yarn assets [--only <id\|glob>]`     | Optimizes the asset JSONs' textures and models (KTX2, meshopt), with a cache.   |
-| `yarn checkVersions [--against main]` | Checks the versioning rules (run it with `--against main` before opening a PR). |
-| `yarn tagRelease`                     | Tags the engine, toolkit and app versions after a merge to `main`.              |
+| Command                               | Description                                                                                                                                         |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yarn dev`                            | Dev server (development env) with hot scene/asset regeneration.                                                                                     |
+| `yarn dev:https`                      | `yarn dev` over HTTPS (self-signed) on port 8443, for testing on a phone.                                                                           |
+| `yarn dev:test`                       | Dev server with `VITE_APP_ENV=test`.                                                                                                                |
+| `yarn dev:production`                 | Dev server with production env vars.                                                                                                                |
+| `yarn build`                          | Type-check and production build to `dist/` (bundle treemap in `dist-stats/`). Fails on a shipped asset with no optimized output or over its budget. |
+| `yarn build:test`                     | Production build with `VITE_APP_ENV=test`.                                                                                                          |
+| `yarn lint`                           | ESLint with Prettier.                                                                                                                               |
+| `yarn docs`                           | TypeDoc API docs for the engine and toolkit, written to `docs-api/`.                                                                                |
+| `yarn gatherAppData`                  | Runs the JSON → generated data pipeline by hand.                                                                                                    |
+| `yarn setupAssetTools [--force]`      | Downloads the KTX2 texture encoder into `.tools/` (Linux, WSL2, macOS).                                                                             |
+| `yarn assets [--only <id\|glob>]`     | Optimizes the asset JSONs' textures and models (KTX2, meshopt), with a cache.                                                                       |
+| `yarn checkVersions [--against main]` | Checks the versioning rules (run it with `--against main` before opening a PR).                                                                     |
+| `yarn tagRelease`                     | Tags the engine, toolkit and app versions after a merge to `main`.                                                                                  |
 
 ### URL flags (development and test builds)
 
@@ -145,10 +148,15 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 │   ├── AppECSRegistry.ts   # App component types, data shapes and system stages (type-only)
 │   ├── CONFIG.ts           # App configuration (physics, debug keys, debug camera…)
 │   ├── index.ts            # App entry: renderer, scene loader, first scene
+│   ├── public/aek-assets/  # Optimized asset outputs (generated, committed)
 │   └── index.html
-├── devTools/               # Data gatherer, version checks, release tagging
-├── docs/plans/             # Feature plans and specs (priority-ordered)
+├── devTools/               # Data gatherer, asset pipeline, version checks, release tagging
+├── docs/
+│   ├── plans/              # Feature plans and specs (priority-ordered)
+│   └── techniques/         # How-to guides (eg. asset optimization)
 ├── .schemas/               # Generated JSON Schemas for editor autocomplete
+├── assets.config.json      # Asset optimization defaults, profiles and rules
+├── assets.lock.json        # Asset pipeline cache index (generated, committed)
 ├── CHANGELOG.md
 └── vite.config.ts
 ```
@@ -213,7 +221,24 @@ Each file is validated against its schema, and the `$schema` line gives you auto
 }
 ```
 
-### 3. Add code-driven content and physics
+### 3. Optimize textures and models
+
+Put the source next to its asset JSON and choose a profile. On save, the dev server encodes it into `src/public/aek-assets/`, and the scene loads the KTX2 instead of the PNG. Commit the output and `assets.lock.json` with the source.
+
+```jsonc
+// src/app/textures/rock.texture.json
+{
+  "$schema": "../../../.schemas/texture.schema.json",
+  "id": "rock",
+  "fileName": "./source/rock_albedo.png",
+  "texOpts": { "colorSpace": "srgb" },
+  "optimize": { "profile": "hero", "slot": "baseColor" },
+}
+```
+
+`*.importedAsset.json` files take the same `optimize` key. See [`docs/techniques/asset-optimization.md`](docs/techniques/asset-optimization.md) for profiles, channel packing, budgets, colliders and opting out.
+
+### 4. Add code-driven content and physics
 
 The `sceneFile` exports a `scene` function that runs while the scene loads.
 
@@ -240,7 +265,7 @@ export const scene = async () => {
 };
 ```
 
-### 4. Write your own component and system
+### 5. Write your own component and system
 
 ```ts
 // src/AppECSRegistry.ts: declare the component type and its data shape
@@ -286,7 +311,7 @@ ecsWorld.addComponent(ballId, ComponentType.SPIN, { speed: 2 });
 
 > Anything that moves physics bodies (poses, velocities, impulses, kinematic targets) goes in an `APP_PHYSICS_STEP` system, so it stays in lockstep with the simulation and deterministic.
 
-### 5. Configure the app
+### 6. Configure the app
 
 ```ts
 // src/CONFIG.ts
@@ -314,7 +339,7 @@ Planned work is specified in [`docs/plans/`](docs/plans/), where a lower number 
 - An editor/creator view and a material editor
 - Physics objects in the scene JSON schema, physics world bounds, multibody joints and physics snapshot restore
 - Component query caching
-- A client device capability sniffer, an asset optimization pipeline and an LOD system
+- A client device capability sniffer and an LOD system
 
 ---
 
@@ -325,12 +350,13 @@ The engine, toolkit and example app each have their own semantic version and cod
 ## Documentation
 
 - **API reference**: run `yarn docs` and open `docs-api/index.html` (covers the engine and the toolkit).
+- **Guides**: [`docs/techniques/`](docs/techniques/), eg. [asset optimization](docs/techniques/asset-optimization.md).
 - **Design docs**: [`docs/plans/`](docs/plans/). Files prefixed `_DONE_` describe features that are already implemented.
 - **Contributor and agent guide**: [`.claude/CLAUDE.md`](.claude/CLAUDE.md).
 
 ## Built with
 
-[Three.js](https://threejs.org/) (WebGPU + TSL) · [Rapier](https://rapier.rs/) · [Vite](https://vitejs.dev/) · [TypeScript](https://www.typescriptlang.org/) · [Zod](https://zod.dev/) · [Tweakpane](https://tweakpane.github.io/docs/) · [stats-gl](https://github.com/RenaudRohlinger/stats-gl)
+[Three.js](https://threejs.org/) (WebGPU + TSL) · [Rapier](https://rapier.rs/) · [Vite](https://vitejs.dev/) · [TypeScript](https://www.typescriptlang.org/) · [Zod](https://zod.dev/) · [glTF Transform](https://gltf-transform.dev/) · [KTX-Software](https://github.com/KhronosGroup/KTX-Software) · [Tweakpane](https://tweakpane.github.io/docs/) · [stats-gl](https://github.com/RenaudRohlinger/stats-gl)
 
 ## License
 

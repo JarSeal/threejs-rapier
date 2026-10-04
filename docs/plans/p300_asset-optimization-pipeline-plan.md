@@ -905,6 +905,15 @@ Sections:
   - Two relative-source textures in the shipped `oneMoreScene`, with no usable `ktx`: `yarn assets --only` (exit 0) and the dev gather print the reason once; the production gather lists both as `encoder missing` and exits 1; with `AEK_ASSETS_ALLOW_UNOPTIMIZED` both pass through.
   - Warm `yarn assets`, `yarn lint` and `yarn build` on the committed assets: all hits, the lock and outputs unchanged.
 
+**Step 3 as built:**
+
+- **`docs/techniques/asset-optimization.md`** (a new `docs/techniques/` folder): how it works (with the committed outputs and lock), the encoder and its platforms, adding a texture and a model (`importTextures` dropping textures, collider sources), the resolution order, the shipped profiles and the slots, overrides and rules, packing, budgets, opting out at the three levels, the codec cheat sheet, builds and CI, troubleshooting. Written for developers building on the template, not as a summary of this plan.
+- **`readme.md` has no asset section**, so the pipeline is spread over the places the Workflow rules name:
+  - Features: the Assets bullet mentions meshopt and KTX2, and a new "Asset optimization" bullet. The Roadmap item moved out (it landed).
+  - A Technical highlights row, a Requirements line (`ktx` only to change assets), `yarn build`'s budget / missing-output failure in Commands, the project tree (`aek-assets/`, `assets.config.json`, `assets.lock.json`, `docs/techniques/`), the Documentation section's guides link, glTF Transform and KTX-Software in Built with.
+  - A new Example 3, "Optimize textures and models" (a texture JSON with a profile; the later examples move up one).
+- **The `AppConfig` example (now Example 6) is unchanged:** it doesn't list `assets`, the plan's condition. The switches are in the techniques doc and in `src/CONFIG.ts`'s own comment.
+
 ---
 
 ## 10. Risks and gotchas
