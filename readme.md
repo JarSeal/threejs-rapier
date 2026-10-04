@@ -104,6 +104,7 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 | Command                               | Description                                                                     |
 | ------------------------------------- | ------------------------------------------------------------------------------- |
 | `yarn dev`                            | Dev server (development env) with hot scene/asset regeneration.                 |
+| `yarn dev:https`                      | `yarn dev` over HTTPS (self-signed) on port 8443, for testing on a phone.       |
 | `yarn dev:test`                       | Dev server with `VITE_APP_ENV=test`.                                            |
 | `yarn dev:production`                 | Dev server with production env vars.                                            |
 | `yarn build`                          | Type-check and production build to `dist/` (bundle treemap in `dist-stats/`).   |

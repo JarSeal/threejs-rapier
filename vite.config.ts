@@ -1,5 +1,6 @@
 import { defineConfig, type ViteDevServer } from 'vite';
 import wasm from 'vite-plugin-wasm';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import { visualizer } from 'rollup-plugin-visualizer';
 import pkg from './package.json';
 import {
@@ -136,6 +137,9 @@ export default defineConfig({
   },
   plugins: [
     wasm(),
+    // `yarn dev:https`: a self-signed certificate, so a phone on the LAN gets a secure context
+    // (WebGPU, SharedArrayBuffer); a plain http:// LAN address isn't one
+    ...(process.env.AEK_DEV_HTTPS === 'true' ? [basicSsl()] : []),
     sceneGathererPlugin(),
     {
       name: 'html-transform',

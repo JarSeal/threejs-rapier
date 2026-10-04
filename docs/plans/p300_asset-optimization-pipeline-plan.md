@@ -307,7 +307,7 @@ Found when Phase 1 started (2026-10-04), and the sections it was split into:
 
 - **`renderer.info.memory` can't measure KTX2:** three r186 counts every compressed texture as 1 B (`Info.js` `_getTextureMemorySize`). A compressed texture's `mipmaps[i].data` is exactly what is uploaded, so the GPU memory tab can count it.
 - **ETC1S saves no VRAM over UASTC on desktop:** without ETC2, KTX2Loader transcodes ETC1S to BC7 (priority 3, before BC1), 1 B/px like UASTC; ETC1S wins there on download only. On ETC2 devices (iOS, Android) ETC1S becomes ETC2 RGB at 0.5 B/px (without alpha). So `__vramBytes` (§5) depends on the device's format family.
-- **iOS can't reach the dev server:** it listens on localhost over HTTP, and WebGPU and `SharedArrayBuffer` need a secure context (a LAN `http://` address isn't one); WSL2's NAT adds a hop.
+- **iOS can't use the dev server:** it serves HTTP, and WebGPU and `SharedArrayBuffer` need a secure context (a LAN `http://` address isn't one). (Corrected in 1e: it already listens on every interface, and WSL2's mirrored networking needs no port forwarding.)
 - **DD6's quantized collider test** was not in the step list; it is now (1c).
 - WebGPU in r186 requests every adapter feature, so BC / ASTC / ETC2 are available to KTX2Loader.
 
@@ -317,7 +317,7 @@ Sections:
 - **1b — Measuring — done.** Count compressed textures' real bytes in the GPU memory tab.
 - **1c — Assets and encoding — done.** Terrain layer `rocks01` (ambientCG `Ground079S`, LITE), a CC0 Poly Haven prop GLB at 2K (with an ARM map), the Poliigon MetalRust set as the problem case (ORM with hard metal / rust edges, and its normal map), a quantized copy of `stairsStraightTrimesh.glb` for the collider test. Variants: ETC1S q128 / q255, UASTC without RDO, UASTC + RDO λ 1 / 2 / 4 (all Zstd 18), normal mode on / off. Downloaded sources go in a gitignored folder; the outputs are committed, like Phase 0's.
 - **1d — Comparison scene — done.** A tiled ground plane at grazing angles (REPEAT, max anisotropy), the prop, the MetalRust ORM on a sphere; a scene-scoped debug tab that swaps variants in place (a key) and shows each one's file size and VRAM.
-- **1e — Measurements.** File sizes, three's estimate, headless WebGL2 screenshots; a checklist for WebGPU on a real GPU, Chrome's GPU memory, the weak device and iOS (HTTPS on the LAN: a `--host` run with `@vitejs/plugin-basic-ssl` and WSL port forwarding, or a tunnel).
+- **1e — Measurements — done (headless; the device checklist is open).** File sizes, three's estimate, headless WebGL2 screenshots; a checklist for WebGPU on a real GPU, Chrome's GPU memory, the weak device and iOS (HTTPS on the LAN: `yarn dev:https`).
 - **1f — Record.** The results table and profiles in §4, the collider outcome in DD6.
 
 **1a as built:**
@@ -409,6 +409,54 @@ Sections:
   - Not p300's, found on the way: the source CONVEXHULLs already sit 57.8 mm off their meshes. The derivation centres the hull's vertices (`geoClone.center()`), but the body stays at the node's origin.
 
 - Not run: WebGPU, and Chrome's GPU memory (1e's checklist).
+
+**1e as built:**
+
+- The plan was out of date on the dev server: `yarn dev` has passed `--host` since the first commit, so it was never localhost-only. This machine's WSL2 runs mirrored networking (`networkingMode=mirrored`), so the server is on the Windows host's own LAN address with no port forwarding. Only HTTP was in the way.
+- **"Measure all variants"** (Asset compare tab, `measureAllVariants` in `_dbg__assetCompare.ts`) makes every device report the same thing.
+  - It builds 13 runs in slot B: `png`, then each KTX2 variant with normal mode off and on. Each one stays shown until all its textures were drawn.
+  - Per texture, it records the format three uploaded it as (eg. `RGBA_BPTC_Format`), three's VRAM figure (1b) and the file size. Per run: the build time (load, transcode, import) and the time to first draw. Per device: backend, adapter, user agent, DPR. Slot B and the shown slot are restored at the end.
+  - "Copy results" puts the JSON on the clipboard. It's a separate button because Safari refuses the clipboard once the async run has lost the click's activation.
+  - One file per device goes in `phase1/measurements/`. The first is `webgl2-swiftshader.json`.
+- **`yarn dev:https`**: `AEK_DEV_HTTPS=true` adds `@vitejs/plugin-basic-ssl` (2.3.0, a self-signed certificate) on port 8443, so `yarn dev` is unchanged. Verified headless over the LAN address with the certificate warning bypassed: `isSecureContext`, `crossOriginIsolated` and `SharedArrayBuffer` all hold, and the boot shows no errors.
+- **Headless WebGL2** (SwiftShader, 1280×720, the scene's grazing camera): SwiftShader transcodes ETC1S to ETC2 and UASTC to ASTC 4×4. VRAM is three's figure (all 7 textures of a slot). The four standalone textures are 1K; the prop's three are 2K. PSNR compares each screenshot with the `png` one, per region.
+
+  | Variant      | Texture files | Prop GLB | VRAM    | PSNR frame | Near ground | Far ground | Sphere | Prop |
+  | ------------ | ------------- | -------- | ------- | ---------- | ----------- | ---------- | ------ | ---- |
+  | `png`        | 9.26 MB       | 9.65 MB  | 85.3 MB | —          | —           | —          | —      | —    |
+  | `etc1s_q128` | 0.67 MB       | 1.50 MB  | 11.3 MB | 27.5       | 21.8        | 34.2       | 38.9   | 30.9 |
+  | `etc1s_q255` | 1.13 MB       | 2.19 MB  | 11.3 MB | 28.7       | 22.9        | 35.7       | 40.2   | 32.1 |
+  | `uastc`      | 4.56 MB       | 12.71 MB | 21.3 MB | 38.7       | 33.5        | 41.9       | 47.7   | 41.4 |
+  | `uastc_rdo1` | 4.36 MB       | 10.74 MB | 21.3 MB | 38.7       | 33.5        | 41.9       | 47.6   | 41.1 |
+  | `uastc_rdo2` | 4.06 MB       | 9.83 MB  | 21.3 MB | 38.4       | 33.2        | 41.8       | 47.1   | 40.6 |
+  | `uastc_rdo4` | 3.59 MB       | 8.73 MB  | 21.3 MB | 35.5       | 30.2        | 39.9       | 45.0   | 38.1 |
+
+  - **ETC1S fails the visual bar for terrain and props.** In a 2× crop, it smears the near ground's pebbles (flatter normals, blocky albedo) and softens the toolbox's dial. The UASTC variants can't be told from the PNG at this resolution; λ 4 is slightly softer.
+  - **RDO λ 2 looks like the sweet spot:** −0.3 dB against λ 0 for an 11% smaller download (prop GLB 12.7 → 9.8 MB, about the JPG source's size at a quarter of its VRAM). λ 4 costs 3 dB more.
+  - **Normal mode:** sphere +0.1–0.4 dB. On ETC2 devices it costs VRAM with ETC1S: the Y channel in alpha makes it `RGBA_ETC2_EAC`, 1 B/px instead of 0.5. With UASTC (ASTC 4×4, 1 B/px) it costs nothing.
+  - **three's estimate:** 1c's `vramBytes` per format family equals three's measured bytes for every KTX2 texture (`albedoRough` and the ETC1S normal-mode files included, as RGBA ETC2). The PNGs differ by 1,397 B (three's mip rounding). So `__vramBytes` (§5) can use the same estimate.
+  - The render is deterministic: regions with the same textures in two runs (eg. the ground in `uastc` and `uastc_nm`) match to 0.01 dB. Build times (0.1–0.5 s KTX2, 1.3 s `png`) are SwiftShader on localhost, a single run: not a performance figure.
+  - Console: no errors, one deprecation warning from a dependency's init.
+  - The screenshots and 2× crop strips are in `.cache/p300-phase1/screenshots/` (gitignored).
+    - They were made by a throwaway Playwright script that isn't committed. It imports the dev server's modules in the page (`import('/app/assetCompare.ts')` gets the app's own module instances).
+    - It hides every DOM element except the renderer's canvas, and every root-scene child except the slots' objects and the lights (the debug camera and light symbols stood in the view).
+
+- **Checklist** (by hand; save each device's "Copy results" as `phase1/measurements/<device>.json`):
+  1. **Desktop WebGPU, real GPU.**
+     - Open `http://localhost:8080/?isDebug=true` in Windows Chrome: WSL2 forwards localhost, and localhost is a secure context.
+     - Switch to "Asset compare" (P), then run "Measure all variants". Expected: `RGBA_BPTC` (BC7) for both codecs, 1 B/px, so ETC1S saves no VRAM there.
+     - Then V between `png` and `uastc_rdo2`, and between `png` and `etc1s_q255`, full screen. Move the debug camera (F1) over the far ground to look for shimmer.
+     - Note whether Phase 0's "Draw with a vertex count of 0" warning shows in this scene.
+  2. **Chrome's GPU memory.** Chrome's Task Manager (Shift+Esc) has a "GPU memory" column on the GPU Process row.
+     - Both slots stay resident, so set A = B = `png`, reload, enter the scene and note the figure. Then do the same with A = B = `uastc_rdo2`.
+     - three's figures predict a difference of 2 × (85.3 − 21.3) = 128 MB.
+  3. **The weak device** (§11 question 3 picks it). Run "Measure all variants": its build and first-draw times are the transcode cost. With the profiler (F8), compare frame times with `png` and with `uastc_rdo2` shown.
+  4. **iOS Safari** (WebGPU needs iOS 26).
+     - On the Windows host, as admin, allow inbound 8443 through the Hyper-V firewall, which mirrored mode uses: `New-NetFirewallHyperVRule -Name AekDevHttps -DisplayName "Aekasha dev HTTPS" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 8443 -Action Allow`.
+     - Run `yarn dev:https`, then open `https://<host LAN IP>:8443/?isDebug=true` on the phone. Accept the certificate (Show Details → visit this website).
+     - The drawer and the scene switch have on-screen buttons. Use the tab's "Toggle A / B" button in place of V.
+     - Expected: ASTC 4×4 for UASTC and ETC2 for ETC1S (no BC on A-series GPUs), like SwiftShader. Also check that the KTX2 transcoder's workers and WASM load with the self-signed certificate.
+     - Fallback if they don't: a tunnel with a real certificate (eg. `cloudflared tunnel --url https://localhost:8443 --no-tls-verify`). That needs the tunnel's host in Vite's `server.allowedHosts`, and it exposes the dev server publicly while it runs.
 
 ### Phase 2 — Pipeline (~2–3 days)
 
