@@ -49,10 +49,11 @@ export const BUILTIN_DEFAULTS = {
 
 /**
  * Collider sources (DD6) get lossless meshopt: quantized positions break CONVEXHULL and
- * HEIGHTFIELD colliders (Phase 1d). Applied after the profile, so only the asset's own JSON
- * can turn quantization back on.
+ * HEIGHTFIELD colliders (Phase 1d). No simplification either: it changes the collider's shape
+ * and, like a reorder, scrambles a HEIGHTFIELD's grid. Applied after the profile, so only the
+ * asset's own JSON can turn either back on.
  */
-const COLLIDER_LEVEL: OptimizeLevel = { mesh: { quantize: false } };
+const COLLIDER_LEVEL: OptimizeLevel = { mesh: { quantize: false, simplify: null } };
 
 /** Only the keys the codec reads, so equal encodes resolve (and hash) equally. */
 export type ResolvedTextureSettings =

@@ -27,3 +27,24 @@ Context from the removed sky box plans (p110-p115; full texts in git history): f
 If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
 
 ************************************
+
+UNDER_CONSTRUCTION
+Create "Static mesh merging and texture atlas systems" plan in docs/plans/p370_static-mesh-merging-and-texture-atlas-systems.md
+
+Category: Merging, Texture atlas
+
+To improve optimization and performance (and to enable larger worlds with lowering the draw count) we need to have a feature to merge static meshes together. I am not sure if this should consern only static meshes so it needs to be studied if some others can also be merged to reduce draw count.
+
+In debug mode we should see somehow that a static (physics or not physics) entity consists of these meshes and that they are merged. We will later implement a select/transform tools for the debug mode so we should still be able to select and transform the individual meshes and then remerge them after the transform so that should be taken into account.
+
+I am not sure but maybe we could set a merge option for the created/imported meshes/geometries, like for example merge: [groupId or "AUTO"] or something like that. This would then create a group for the merged meshes and would then create one large mesh to be rendered. I think we need to have two tools: one for merging only geometries and one merging meshes.
+
+When mergin meshes I think they need to share the same material, right? This needs to studied that is it possible to merge several meshes with different materials together and how much does it complicate things and what are the performance costs. This also introduces the need to have the possibility to use texture atlases (for each map type in the material, meaning also normal maps, ao maps, etc. should have their own atlases but they should be linked to that "merge" material). I don't know again if necessary but if needed, the atlas system should work also without merging meshes, so that if the developer wishes to create some custom atlases, they can do so.
+
+This plan (or plans) will be implemented after the LOD plans and check whether this can be implemented before the terrain plans (or some other) or if this should can be done before them. Does these systems also provide some new ways to create terrains? If yes, then that should be noted in the terrain plans that desribe the different processes about creating terrains.
+
+There are for sure several plans worth of material to create so please divide the work to several plans.
+
+If for some reason this plan can't or shouldn't be created with this specification or has some high risks of failing the implementation, notify immediately. You are allowed to change the naming of the plan or the header information if they are not well described, but please notify about this.
+
+************************************

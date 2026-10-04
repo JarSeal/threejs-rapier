@@ -91,6 +91,30 @@ export const extractChannels = (image: SourceImage, count: number): Img => {
   return out;
 };
 
+/**
+ * A whole image file as floats for the encoder: grey becomes RGB (grey + alpha RGBA), as a
+ * browser decodes it, and the colour channels are decoded from sRGB to linear when `isSrgb`.
+ * @param opts.rgbOnly drop the alpha (a normal map's XYZ)
+ */
+export const readImageFile = async (
+  input: string | Buffer,
+  opts: { isSrgb: boolean; rgbOnly?: boolean }
+): Promise<Img> => {
+  const image = await readSourceImage(input);
+  const hasAlpha = !opts.rgbOnly && getSampleIndex(image, 'a') >= 0;
+  const indices = [...(hasAlpha ? 'rgba' : 'rgb')].map((letter) => getSampleIndex(image, letter));
+  const out = createImage(image.width, image.height, indices.length);
+  const { samples, channels, max } = image;
+  const pixels = image.width * image.height;
+  for (let i = 0; i < pixels; i++) {
+    for (let c = 0; c < indices.length; c++) {
+      const v = samples[i * channels + indices[c]] / max;
+      out.data[i * indices.length + c] = opts.isSrgb && c < 3 ? srgbToLinear(v) : v;
+    }
+  }
+  return out;
+};
+
 /** Normalizes each texel's first three channels as a tangent-space normal (0..1 encoded). */
 const renormalize = (img: Img, o: number) => {
   const nx = img.data[o] * 2 - 1;

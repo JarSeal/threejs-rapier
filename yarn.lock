@@ -1710,7 +1710,7 @@ doctrine@^2.1.0:
   dependencies:
     esutils "^2.0.2"
 
-draco3dgltf@~1.5.7:
+draco3dgltf@1.5.7, draco3dgltf@~1.5.7:
   version "1.5.7"
   resolved "https://registry.yarnpkg.com/draco3dgltf/-/draco3dgltf-1.5.7.tgz#6edf556f0984b4a20ce261fb06d2815af6030eb7"
   integrity sha512-LeqcpmoHIyYUi0z70/H3tMkGj8QhqVxq6FJGPjlzR24BNkQ6jyMheMvFKJBI0dzGZrEOUyQEmZ8axM1xRrbRiw==

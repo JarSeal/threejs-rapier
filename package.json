@@ -80,6 +80,7 @@
     "@typescript-eslint/eslint-plugin": "8.70.0",
     "@typescript-eslint/parser": "8.70.0",
     "@vitejs/plugin-basic-ssl": "2.3.0",
+    "draco3dgltf": "1.5.7",
     "eslint": "9.39.5",
     "eslint-config-import": "0.13.0",
     "eslint-config-prettier": "9.1.0",
