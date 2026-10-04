@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-2 implemented
+Status: in progress | Phases 0-3 implemented
 Category: Assets
 Blocks: p301_terrain-texturing-epic.md (and through it p302–p310: the terrain texture library ships as KTX2, terrain blocks as meshopt GLBs), p347_lod-chain-generation.md (soft: only its build-time Phase 3, which adds a LOD-chain step to this pipeline)
 
@@ -99,7 +99,7 @@ This plan is a hard prerequisite of the terrain texturing epic (p301). A terrain
 - Draco stays available per asset.
 - **Collider sources** (anything with `colliderType` custom props) default to `mesh.quantize: false`, which means lossless meshopt: `EXT_meshopt_compression` alone, with no quantization, vertex reorder or filters. Measured in Phase 1 (1c, 1d's collider check):
   - gltf-transform's `quantize()` moves the dequantization into the collider node's own transform, and the body and the shape derivation apply it. TRIMESH and BOX come out right, within 2.4 mm.
-  - CONVEXHULL is built from the raw Int16 values, so it ends up 32.7 km off. HEIGHTFIELD throws: GLTFLoader loads a quantized position as an `InterleavedBufferAttribute`, which `mergeVertices` rejects. Phase 3 step 5 fixes the first and turns the second into a clear refusal.
+  - CONVEXHULL is built from the raw Int16 values, so it ends up 32.7 km off. HEIGHTFIELD throws: GLTFLoader loads a quantized position as an `InterleavedBufferAttribute`, which `mergeVertices` rejects. Phase 3 step 5 fixed the first and turned the second into a clear refusal.
   - gltf-transform's `meshopt()` always reorders vertices as well as quantizing them. The quantized HEIGHTFIELD throws before the reorder can be checked, but a reorder scrambles its grid the way Draco does. That is why lossless also means no reorder.
   - Lossless meshopt is exact for all four shapes, heights included. It still shrinks the download (terrain 461 → 265 KB), but not the vertex buffers.
   - The pre-Phase 1 worry, that the collider builder skips the node's translation, came from gltfpack's output and doesn't hold for gltf-transform's.
@@ -277,7 +277,7 @@ Per asset (in a `*.texture.json`):
   - Compressed textures can't generate mipmaps at runtime, so the pipeline always writes the full mip chain unless `mipmaps: false`.
 - **GLTF:**
   - `GLTFSource.ts` and `assetsSwitchGLTF.ts` get `setMeshoptDecoder` and `setKTX2Loader` (DD7 for the worker).
-  - `MeshColliderGeometry.ts` keeps refusing Draco and also refuses quantized positions (a normalized integer position attribute) for HEIGHTFIELD, with an actionable error ("set `optimize.mesh.quantize: false` for collider sources"). TRIMESH and the primitives already handle quantized positions, and CONVEXHULL will once it reads them through the getters (Phase 3 step 5).
+  - `MeshColliderGeometry.ts` keeps refusing Draco and also refuses quantized positions (a normalized integer position attribute) for HEIGHTFIELD, with an actionable error ("set `optimize.mesh.quantize: false` for collider sources"). TRIMESH, CONVEXHULL (since Phase 3 step 5) and the primitives handle quantized positions.
 - **Caching headers:** hashed file names can be served with long-lived cache headers. The dev server needs nothing.
 
 ---
@@ -449,7 +449,7 @@ Sections:
   - CONVEXHULL fails as 1c expected: the raw Int16 values become the hull's vertices.
   - HEIGHTFIELD fails earlier than expected: `mergeVertices` throws on an `InterleavedBufferAttribute`. GLTFLoader loads a quantized position (Int16 vec3, 6 bytes padded to an 8-byte stride) as interleaved. So `spawnImportedAsset` would reject, not just build a wrong shape, and the meshopt reorder can't be checked behind it.
   - For 1f: a collider source takes meshopt without quantization (`meshoptLossless`), which is exact for all four shapes. §6's runtime refusal of quantized positions has to run before the HEIGHTFIELD and CONVEXHULL derivations.
-  - Not p300's, found on the way: the source CONVEXHULLs already sit 57.8 mm off their meshes. The derivation centres the hull's vertices (`geoClone.center()`), but the body stays at the node's origin.
+  - Not p300's, found on the way: the source CONVEXHULLs already sit 57.8 mm off their meshes. The derivation centres the hull's vertices (`geoClone.center()`), but the body stays at the node's origin. (Fixed in Phase 3 step 5: the centring is gone.)
 
 - Not run: WebGPU, and Chrome's GPU memory (1e's checklist).
 
@@ -744,7 +744,7 @@ Sections:
   - **A failing pack** (a non-image source): `error` with sharp's message, exit 1, stale outputs kept, the gather still ran.
 - **Phase 2's exit** is met, except that the `phase1/` variant files aren't deleted. Decided (2026-10-04): the folder stays until it isn't needed. The `assetCompare` scene (1d) loads the variants, and the 1e measurements and `report.json` are in the same folder. Whoever removes the scene deletes the folder with it (`devTools/assetPipeline/phase1Variants.ts` too, which only writes there).
 
-### Phase 3 — Integrate (~1 day)
+### Phase 3 — Integrate (~1 day) — done
 
 1. `gatherAppData` runs the cached pipeline, and the gatherer plugin re-encodes a changed source.
 2. The runtime resolves `__url`.
@@ -852,12 +852,24 @@ Sections:
   - **Bypass, broken PNG removed from the scene, plus a stale file planted in `src/public/aek-assets/`:** passes. `dist/` has the relative source's copy and the public PNG at its own URL. The debug-only copy and the stale file were removed from `dist/` only. The lock is unchanged.
   - A running dev server builds new fixtures with its own `ktx` as soon as they appear. To get a miss, purge their lock entries, store copies and outputs: the plugin doesn't react to any of those.
 
+**Step 5 as built:**
+
+- `MeshColliderGeometry.ts`: `readScaledPositions` reads the positions × node scale through the attribute getters, for TRIMESH (as before) and now CONVEXHULL.
+- **The hull is no longer centred** (decided 2026-10-04). The derivation centred the hull's vertices on their bounding box (`geoClone.center()`), but the body stays at the node's origin, so every imported CONVEXHULL whose mesh isn't centred on its origin sat off its mesh (1d: 57.8 mm on `obstacles`). The vertices are now in the node's space, like TRIMESH's. That moves the hulls in existing scenes onto their meshes (eg. the gym's Suzanne). Code-made hulls (`vertices` given) are unaffected. The centring came from the convex hull's first commit (legacy `PhysicsRapier.ts`); nothing compensated for it.
+- **HEIGHTFIELD's refusal tests the array type, not interleaving** (`isQuantizedPosition`: not a `Float32Array`). On the main thread a quantized position is an interleaved normalized Int16 attribute, but the GLTF worker target hands it over de-interleaved (`GeometryTransfer.ts`), and `mergeVertices` accepts that form. So an interleaving test would let the worker target build a grid that meshopt's reorder may have scrambled. Draco keeps its own refusal, checked first. The error names the array type and the fix (`"optimize": { "mesh": { "quantize": false } }`, or export unquantized), and the collider is skipped (`null`), like Draco's.
+- **Interleaved float attributes now work for HEIGHTFIELD:** `deinterleaveGeometry` on the scratch geometry before `mergeVertices`, which throws on any interleaved attribute (eg. a third-party GLB with interleaved normals). Only the scratch's attribute map gets the copies; the registered geometry keeps its own.
+- **Verified** with 1d's collider check (the tab's button, driven headless on WebGPU, macOS Chrome), on the main thread and the GLTF worker target, with identical results. Every variant passes except the two refusals:
+  - HEIGHTFIELD `quantized` / `meshopt`: refused with the error, nothing thrown; `meshoptLossless` still exact (heights included).
+  - CONVEXHULL: every variant 0 mm from its own mesh (was 57.8 mm for the source and `meshoptLossless`, 32.7 km for `quantized` / `meshopt`); `quantized` / `meshopt` 0.4 mm from the source.
+  - TRIMESH and BOX: unchanged (≤ 2.4 mm, 0.2 mm).
+  - Interleaving, called in the page: `terrainSmooth`'s float geometry with every attribute interleaved derives the same HEIGHTFIELD as the plain one (same grid, height difference 0), and the input geometry stays interleaved.
+
 ### Phase 4 — Harden
 
 1. Budgets: fail the build if an asset exceeds a size or VRAM threshold set per profile.
 2. A missing or too-old `ktx` gives a clear error and a working fallback (§8).
 3. Write the docs: a section in `readme.md`'s asset section, plus `docs/techniques/asset-optimization.md` (how to add an asset and pick a profile, how to opt out (DD8); codec cheat sheet). `AppConfig.assets.optimization` also goes into `readme.md`'s `AppConfig` example if it lists `assets`.
-4. Versioning: an engine minor bump (new runtime decoders and schema keys), plus Project tooling in `CHANGELOG.md`.
+4. Versioning: an engine minor bump (new runtime decoders and schema keys), plus Project tooling in `CHANGELOG.md`. The Engine section's **Fixed** gets Phase 3 step 5's hull fix: imported CONVEXHULL colliders were centred on their bounding box while the body stayed at the node's origin, so they sat off their meshes (57.8 mm on `obstacles`). They now sit on them, which moves the hulls in existing scenes (eg. the gym's Suzanne).
 
 ---
 
