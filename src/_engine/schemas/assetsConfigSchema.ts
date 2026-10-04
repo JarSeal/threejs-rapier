@@ -108,10 +108,30 @@ export const MeshSettingsSchema = z.strictObject({
 
 export type MeshSettings = z.infer<typeof MeshSettingsSchema>;
 
+const BudgetMBSchema = z.number().positive().nullable().optional();
+
+/**
+ * Limits an optimized asset must stay within (p300 Phase 4), or the production build fails for an
+ * asset that a shipped scene uses and `yarn assets` exits 1. MB are 10^6 bytes.
+ */
+export const AssetBudgetSchema = z
+  .strictObject({
+    vramMB: BudgetMBSchema.describe(
+      "Estimated GPU memory of the whole asset in MB: its textures (KTX2 at 1 B/px, the most it takes on any device) plus a GLB's geometry (null: no limit)."
+    ),
+    downloadMB: BudgetMBSchema.describe("The output file's size in MB (null: no limit)."),
+  })
+  .describe(
+    "Per-asset limits. Set in an asset JSON's own optimize, it also replaces the per-texture ceiling (each texture's VRAM must fit its slot's maxSize and codec as set without the asset JSON's overrides)."
+  );
+
+export type AssetBudget = z.infer<typeof AssetBudgetSchema>;
+
 /** One level of settings: the defaults, a profile, a rule's or an asset's own overrides. */
 export const OptimizeLevelSchema = z.strictObject({
   textures: TexturesSettingsSchema.optional(),
   mesh: MeshSettingsSchema.optional(),
+  budget: AssetBudgetSchema.optional(),
 });
 
 export type OptimizeLevel = z.infer<typeof OptimizeLevelSchema>;
@@ -129,6 +149,7 @@ const OptimizeObjectShape = {
     .union([z.literal(false), MeshSettingsSchema])
     .optional()
     .describe('Overrides, or false to keep the geometry as it is.'),
+  budget: AssetBudgetSchema.optional(),
 };
 
 /** The `optimize` key of an asset JSON: false passes the asset through as it is. */

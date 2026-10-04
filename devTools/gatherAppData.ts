@@ -29,10 +29,12 @@ import { mergeSkyBoxPreset } from '../src/_engine/core/SkyBox/presets';
 import pkg from '../package.json';
 import { createSettingsResolver } from './assetPipeline/settings';
 import { listPackFiles } from './assetPipeline/pack';
+import { BUDGET_FIX, getBudgetViolations } from './assetPipeline/budgets';
 import {
   GENERATED_FIELD_KEYS,
+  getAssetResult,
   getGeneratedFields,
-  getMissingOutputResult,
+  isMissingOutput,
 } from './assetPipeline/generated';
 import type { PipelineRun, PipelineRunResult } from './assetPipeline/run';
 import {
@@ -309,8 +311,10 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
     for (const key of GENERATED_FIELD_KEYS) delete (data as Record<string, unknown>)[key];
     Object.assign(data, getGeneratedFields(opts.pipeline, type, jsonFile, data, { isProduction }));
   };
-  // A production build ships only the outputs (p300): the scenes using an asset without one
+  // A production build ships only the outputs (p300), within their budgets (Phase 4): the scenes
+  // using an asset without one, or over its budget
   const missingOutputs = new Map<PipelineRunResult, Set<string>>();
+  const overBudget = new Map<PipelineRunResult, Set<string>>();
   const checkShippedOutput = (
     data: Parameters<typeof getGeneratedFields>[3],
     type: 'texture' | 'importedAsset',
@@ -318,9 +322,14 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
     sceneId: string
   ) => {
     if (!isProduction || !opts.pipeline) return;
-    const result = getMissingOutputResult(opts.pipeline, type, jsonFile, data);
+    const result = getAssetResult(opts.pipeline, type, jsonFile, data);
     if (!result) return;
-    missingOutputs.set(result, (missingOutputs.get(result) ?? new Set()).add(sceneId));
+    const failed = isMissingOutput(result)
+      ? missingOutputs
+      : getBudgetViolations(result).length
+        ? overBudget
+        : null;
+    failed?.set(result, (failed.get(result) ?? new Set()).add(sceneId));
   };
 
   const srcDir = path.resolve(__dirname, '../src');
@@ -1247,6 +1256,19 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
         );
       }
     }
+    if (overBudget.size) {
+      hasError = true;
+      console.error(
+        `\x1b[31m✗ [Scene Gatherer] ${overBudget.size} asset(s) that shipped scenes use are over their budget (p300 Phase 4):\x1b[0m`
+      );
+      for (const [result, sceneIds] of overBudget) {
+        const { asset } = result;
+        const source = asset.source.kind === 'remote' ? asset.source.url : asset.source.repoPath;
+        console.error(`  ${asset.id} (${source}; ${[...sceneIds].join(', ')}):`);
+        for (const violation of getBudgetViolations(result)) console.error(`    ${violation}`);
+      }
+      console.error(`  ${BUDGET_FIX}`);
+    }
 
     if (hasError) return false;
 
@@ -1301,8 +1323,8 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
  * nothing, so the generated data keeps its `__url`s.
  *
  * In production (`yarn build`), a failed gather exits 1 and stops the build, and so does an asset
- * a shipped scene uses without an output. `AEK_ASSETS_ALLOW_UNOPTIMIZED=true` ships the ones that
- * lack `ktx` unoptimized instead.
+ * a shipped scene uses without an output or over its budget. `AEK_ASSETS_ALLOW_UNOPTIMIZED=true`
+ * ships the ones that lack `ktx` unoptimized instead.
  */
 const gatherWithAssetPipeline = async () => {
   const { runAssetsCommand } = await import('./assetPipeline/command');

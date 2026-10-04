@@ -1,5 +1,8 @@
 import path from 'path';
-import type { GeneratedAssetFields } from '../../src/_engine/schemas/assetsConfigSchema';
+import type {
+  GeneratedAssetFields,
+  TextureCodec,
+} from '../../src/_engine/schemas/assetsConfigSchema';
 import { getPipelineAssetKey, resolveAssetUse, type PipelineAssetType } from './assets';
 import type { PipelineRun, PipelineRunResult } from './run';
 import { PUBLIC_DIR, SRC_DIR, type AssetSource, type PackSource } from './sources';
@@ -50,16 +53,23 @@ const getLevelsBytes = (
 
 /**
  * Phase 1's estimate (1c), which equals three's figure on every backend it was run on (1e). A
- * PNG is RGBA8 with the mips the runtime generates. KTX2 is counted at 1 B/px (BC7, ASTC 4×4,
- * RGBA ETC2): the most it takes on any device. ETC1S without alpha takes half of that on an ETC2
- * device (phones), which is the figure Phase 4's budgets use too (§11 question 3).
+ * PNG (`none`) is RGBA8 with the mips the runtime generates. KTX2 is counted at 1 B/px (BC7, ASTC
+ * 4×4, RGBA ETC2): the most it takes on any device. ETC1S without alpha takes half of that on an
+ * ETC2 device (phones). Phase 4's budgets use the same figure (§11 question 3).
  */
+export const estimateVramBytes = (
+  width: number,
+  height: number,
+  codec: TextureCodec,
+  mipmaps: boolean
+) =>
+  codec === 'none'
+    ? getLevelsBytes(width, height, 1, 4, true)
+    : getLevelsBytes(width, height, 4, 16, mipmaps);
+
 export const estimateTextureVramBytes = (texture: EncodedTexture) => ({
-  in: getLevelsBytes(texture.source.width, texture.source.height, 1, 4, true),
-  out:
-    texture.codec === 'none'
-      ? getLevelsBytes(texture.width, texture.height, 1, 4, true)
-      : getLevelsBytes(texture.width, texture.height, 4, 16, texture.mipmaps),
+  in: estimateVramBytes(texture.source.width, texture.source.height, 'none', true),
+  out: estimateVramBytes(texture.width, texture.height, texture.codec, texture.mipmaps),
 });
 
 /**
@@ -81,14 +91,11 @@ export const getResultFigures = (result: PipelineRunResult) => {
 };
 
 /**
- * The run's result for asset data that a production build can't ship (Phase 3 step 4): its source
- * is local, but the run has no output for it (`encoderMissing`, `error`), and production data has
- * no `__sourceUrl` to fall back to. A relative source or a pack wouldn't load at all, and a public
- * one would load unoptimized. Null when it ships as it should, or as it did before the pipeline
- * (a remote file, a public file that doesn't exist).
+ * The run's result for an asset's data (the JSON, or merged with a scene's latest entry), for the
+ * production gather's checks of what shipped scenes use. Null for data the run has no result for.
  * @param jsonFile The asset JSON, absolute or relative to the repo root
  */
-export const getMissingOutputResult = (
+export const getAssetResult = (
   run: PipelineRun,
   type: PipelineAssetType,
   jsonFile: string,
@@ -96,9 +103,18 @@ export const getMissingOutputResult = (
 ) => {
   const use = resolveAssetUse(jsonFile, data);
   if (!use || 'error' in use) return null;
-  const result = run.results.get(getPipelineAssetKey(type, jsonFile, use));
-  return result?.status === 'encoderMissing' || result?.status === 'error' ? result : null;
+  return run.results.get(getPipelineAssetKey(type, jsonFile, use)) ?? null;
 };
+
+/**
+ * A result a production build can't ship (Phase 3 step 4): its source is local, but the run has
+ * no output for it (`encoderMissing`, `error`), and production data has no `__sourceUrl` to fall
+ * back to. A relative source or a pack wouldn't load at all, and a public one would load
+ * unoptimized. A remote file, or a public file that doesn't exist, ships as it did before the
+ * pipeline (`skipped`).
+ */
+export const isMissingOutput = (result: PipelineRunResult) =>
+  result.status === 'encoderMissing' || result.status === 'error';
 
 /**
  * The generated fields of an asset's data (the JSON, or merged with a scene's latest entry)

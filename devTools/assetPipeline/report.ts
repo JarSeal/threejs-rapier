@@ -12,6 +12,13 @@ import { ROOT } from './sources';
 
 export const LAST_RUN_FILE = path.join(ROOT, '.cache', 'asset-pipeline', 'last-run.json');
 
+/** Decimal units, like the budgets (§11) */
+export const formatBytes = (bytes: number) => {
+  if (bytes < 1e3) return `${bytes} B`;
+  if (bytes < 1e6) return `${(bytes / 1e3).toFixed(1)} KB`;
+  return `${(bytes / 1e6).toFixed(2)} MB`;
+};
+
 /** How many of the slowest assets the summary lists */
 const SLOWEST_COUNT = 5;
 
@@ -34,6 +41,8 @@ export type RunSummaryAsset = {
   /** Why it was passed through, skipped or not encoded, or what failed */
   reason?: string;
   warnings?: string[];
+  /** Why it is over its budget (`getBudgetViolations`) */
+  overBudget?: string[];
   durationMs: number;
 };
 
@@ -52,10 +61,16 @@ const addInOut = (total: InOut, value?: InOut) => {
 
 /**
  * @param opts.only The `--only` patterns of a partial run (its other assets were only looked up)
+ * @param opts.overBudget By result key, why each asset over its budget is (`getBudgetViolations`)
  */
 export const summarizeRun = (
   run: PipelineRun,
-  opts: { only: string[]; durationMs: number; staleOutputsRemoved: string[] }
+  opts: {
+    only: string[];
+    durationMs: number;
+    staleOutputsRemoved: string[];
+    overBudget: Map<string, string[]>;
+  }
 ) => {
   const assets: RunSummaryAsset[] = [];
   const statuses: Partial<Record<RunSummaryAsset['status'], number>> = {};
@@ -88,6 +103,7 @@ export const summarizeRun = (
         : {}),
       ...('reason' in result ? { reason: result.reason } : {}),
       ...('warnings' in result && result.warnings.length ? { warnings: result.warnings } : {}),
+      ...(opts.overBudget.has(key) ? { overBudget: opts.overBudget.get(key) } : {}),
       durationMs: result.durationMs,
     });
   }
@@ -98,6 +114,7 @@ export const summarizeRun = (
     only: opts.only,
     durationMs: opts.durationMs,
     statuses,
+    overBudget: opts.overBudget.size,
     cache: { ...cache, hitRate: lookups ? (cache.hit + cache.restored) / lookups : null },
     totals: { bytes, vramBytes },
     slowest: [...assets]

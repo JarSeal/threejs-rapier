@@ -19,8 +19,8 @@
     }
   },
   "profiles": {
-    "hero": { "textures": { "default": { "maxSize": 2048 } } },
-    "prop": { "textures": { "default": { "maxSize": 1024 } } },
+    "hero": { "textures": { "default": { "maxSize": 2048 } }, "budget": { "vramMB": 24 } },
+    "prop": { "textures": { "default": { "maxSize": 1024 } }, "budget": { "vramMB": 8 } },
     "compact": {
       "textures": {
         "baseColor": { "codec": "etc1s", "quality": 255 },

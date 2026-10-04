@@ -168,8 +168,8 @@ On by default, never required. An app that doesn't want it (no encoder, source f
     }
   },
   "profiles": {
-    "hero": { "textures": { "default": { "maxSize": 2048 } } },
-    "prop": { "textures": { "default": { "maxSize": 1024 } } },
+    "hero": { "textures": { "default": { "maxSize": 2048 } }, "budget": { "vramMB": 24 } },
+    "prop": { "textures": { "default": { "maxSize": 1024 } }, "budget": { "vramMB": 8 } },
     "compact": {
       "textures": {
         "baseColor": { "codec": "etc1s", "quality": 255 },
@@ -194,6 +194,7 @@ The profiles are Phase 1's results (1c–1e, see below):
 - **`prop`** dropped the pre-Phase 1 `simplify: 0.6`: Phase 1 didn't test simplification, and p347 owns the LOD ratios.
 - **`terrainLayer`** is the defaults plus UASTC for the `data` slot, which p303's LITE `normalHeight` uses (the `data` default is `none`).
 - **`terrainBlock`** is the collider default (DD6). A collider source gets it without naming the profile.
+- **`budget`** (Phase 4): §11 question 3's per-GLB starting values, for the whole asset (textures plus geometry). Each texture also has a ceiling from its profile's `maxSize` and codec, with no key (Phase 4 step 1 as built).
 
 Phase 1 results, headless WebGL2 (SwiftShader: ETC1S → ETC2, UASTC → ASTC 4×4; full table in 1e). Each slot holds the four 1K standalone textures and the prop's three 2K maps. VRAM is three's figure, with 1b's compressed sizes.
 
@@ -870,6 +871,25 @@ Sections:
 2. A missing or too-old `ktx` gives a clear error and a working fallback (§8).
 3. Write the docs: a section in `readme.md`'s asset section, plus `docs/techniques/asset-optimization.md` (how to add an asset and pick a profile, how to opt out (DD8); codec cheat sheet). `AppConfig.assets.optimization` also goes into `readme.md`'s `AppConfig` example if it lists `assets`.
 4. Versioning: an engine minor bump (new runtime decoders and schema keys), plus Project tooling in `CHANGELOG.md`. The Engine section's **Fixed** gets Phase 3 step 5's hull fix: imported CONVEXHULL colliders were centred on their bounding box while the body stayed at the node's origin, so they sat off their meshes (57.8 mm on `obstacles`). They now sit on them, which moves the hulls in existing scenes (eg. the gym's Suzanne).
+
+**Step 1 as built:**
+
+- **Found first:** §11's per-texture rule ("its profile's `maxSize` at its codec's rate") can't fail if it's read from the resolved settings: the encoder always fits a texture to them. It's read from the settings without the asset JSON's own overrides instead, so it catches a size or codec that the JSON raised past its profile (decided 2026-10-04).
+- **`budget: { vramMB?, downloadMB? }`** (`AssetBudgetSchema`, `assetsConfigSchema.ts`): a key of every settings level (`defaults`, profiles, rules, an asset's own `optimize`). It resolves through the same levels, key by key, later wins; a `null` clears a limit an earlier level set. MB are 10^6 B, like the pipeline's figures and §11's. It's checked against the whole asset's `__vramBytes.out` and `__bytes.out`. `assets.config.json`: `prop` 8 MB and `hero` 24 MB of VRAM; no download budget.
+- **Per-texture ceiling**, with no key: every encoded texture (standalone, or in a GLB with `importTextures`) must fit its slot's `maxSize`² at its codec's rate plus mips (`estimateVramBytes`, the `__vramBytes` formula), from the levels without the asset JSON's (`ResolvedBudget.profileTextures`). For example, 1.40 MB for the default 1K UASTC, 5.59 MB for 1K `none`. `maxSize: null` at the profile level has no ceiling. A `budget` in the asset's own JSON replaces the ceiling: it's the explicit, reviewable way to allow a bigger texture.
+- **The budget isn't part of the cache key** (it doesn't change the output): changing one re-encodes nothing.
+- **Pass-throughs aren't checked:** their images aren't read (no VRAM figure), and opting out opts out of budgets too. So `AEK_ASSETS_ALLOW_UNOPTIMIZED`'s fallbacks aren't either.
+- **Where it fails** (decided 2026-10-04), `devTools/assetPipeline/budgets.ts` (`getBudgetViolations`):
+  - **`yarn build`:** the production gather fails for an over-budget asset that a shipped scene uses, next to Phase 3 step 4's missing outputs, with its scenes and the fix. Debug-only assets don't block it. There's no env bypass: the asset's own `budget` is the bypass.
+  - **`yarn assets`:** lists every selected asset over budget (red), counts them in the summary, exits 1. Stale outputs are still removed: the outputs are valid.
+  - **`yarn gatherAppData` (before `dev`) and the dev server:** a yellow warning per asset. The dev server prints it only for the assets a change touched, so an untouched one doesn't make every save noisy.
+  - `last-run.json` gets `overBudget` (a count, and the reasons per asset). `getMissingOutputResult` became `getAssetResult` plus `isMissingOutput` (`generated.ts`), so the gatherer runs both checks on one result.
+- **The scene budget stays at runtime** (decided 2026-10-04): the GPU memory tab's 512 budget measures everything, and a build-time sum would only see declared assets (not code-loaded ones, render targets or shadow maps). Its 512 is MiB (`1024 * 1024`), not §11's MB.
+- **Verified:**
+  - A scratch script on synthetic results: the default 1K UASTC at its ceiling passes; an own `maxSize: 2048` and an own `codec: "none"` fail the ceiling; adding an own `budget` passes; `prop` GLBs with three 1K maps pass and with six fail (8.39 MB); a `prop` GLB's own 2K normal fails; rule budgets and a `null` clearing one; a pass-through isn't checked.
+  - End to end, `testTexture` with its own `maxSize: 2048`: `yarn assets` lists it and exits 1; the dev gather warns and exits 0; the production gather fails with `sceneTestECS` named and exits 1. With an own `budget: { vramMB: 6 }`: a cache hit, and both pass. The dev server's path (`isQuietWhenUpToDate`) prints nothing when the change touched another asset.
+  - Warm `yarn assets`, `yarn lint` and `yarn build` on the committed assets: all hits, the lock and outputs unchanged.
+- **Found on the way, not this step's:** `ktx` 4.4.2 on macOS arm64 doesn't reproduce the committed `testTexture` KTX2: same cache key, 1,122,848 B vs the committed 1,122,854 B (encoded on another machine, probably Phase 2's WSL2 x64). 1c's "byte-reproducible" holds per machine, not across platforms. Nothing breaks: the lock is what decides, and a hit uses the committed file. But a re-encode on another platform (a pruned lock entry, a settings round trip) changes the committed binary and its name, and the Phase 1 / Phase 2 "byte-identical" checks only hold on the machine that made the reference files. The test's outputs, lock change and store entries were removed again.
 
 ---
 

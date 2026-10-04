@@ -16,6 +16,7 @@ import { loadProjectOptOut } from './assetPipeline/switches';
  *   the cache.
  * - Only a full run removes stale outputs and lock entries, and not under `AEK_ASSETS_OPTIMIZE`:
  *   a one-run override (eg. a quick CI build) leaves the committed state as it is.
+ * - Exits 1 when a selected asset failed or is over its budget (Phase 4, `budgets.ts`).
  */
 
 const USAGE = 'Usage: yarn assets [--only <id|glob>]...';
@@ -51,7 +52,11 @@ const run = async () => {
         (asset.source.kind !== 'remote' && regExp.test(asset.source.repoPath))
     );
 
-  const { run: pipelineRun, hasErrors } = await runAssetsCommand({
+  const {
+    run: pipelineRun,
+    hasErrors,
+    overBudget,
+  } = await runAssetsCommand({
     projectOptOut: await loadProjectOptOut(),
     ...(only.length ? { isSelected, only } : {}),
     prune: true,
@@ -61,7 +66,7 @@ const run = async () => {
   // Imported here: it compiles the JSON schemas on load
   const { gatherSceneData } = await import('./gatherAppData');
   const isGathered = gatherSceneData({ pipeline: pipelineRun });
-  if (hasErrors || !isGathered) process.exitCode = 1;
+  if (hasErrors || overBudget.length || !isGathered) process.exitCode = 1;
 };
 
 try {

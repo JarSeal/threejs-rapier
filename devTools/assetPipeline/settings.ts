@@ -21,6 +21,7 @@ import type { ProjectOptOut } from './switches';
  * later wins. Within each level, a texture slot's entry merges over that level's `default`.
  * The project switches (src/CONFIG.ts, `AEK_ASSETS_OPTIMIZE`) and an `optimize: false` (or
  * `textures: false` / `mesh: false`) in a rule or the asset JSON win over all of it.
+ * The `budget` (Phase 4, checked by `budgets.ts`) resolves through the same levels, key by key.
  */
 
 export const ASSETS_CONFIG_FILE = path.join(ROOT, 'assets.config.json');
@@ -77,6 +78,22 @@ export type ResolvedTextureSettings =
 
 export type ResolvedMeshSettings = Required<MeshSettings>;
 
+/** A budget limit and the level that set it (eg. `the profile "prop"`) */
+export type BudgetLimit = { mb: number; from: string };
+
+/** Phase 4's budgets: not part of the cache key, they don't change what is written */
+export type ResolvedBudget = {
+  vramMB: BudgetLimit | null;
+  downloadMB: BudgetLimit | null;
+  /** The asset JSON sets its own `budget`, which replaces the per-texture ceiling */
+  isOwn: boolean;
+  /**
+   * Every slot's settings without the asset JSON's own overrides: what its profile allows. Each
+   * encoded texture's ceiling is its slot's `maxSize` at this codec's rate (§11 question 3).
+   */
+  profileTextures: Record<TextureSlot, ResolvedTextureSettings>;
+};
+
 export type ResolvedAssetSettings = {
   /** The profile applied, if any */
   profile: string | null;
@@ -88,6 +105,7 @@ export type ResolvedAssetSettings = {
   textures: false | Record<TextureSlot, ResolvedTextureSettings>;
   /** false: keep the geometry as it is */
   mesh: false | ResolvedMeshSettings;
+  budget: ResolvedBudget;
   /** Why a side is kept as it is */
   passThrough: { textures?: string; mesh?: string };
 };
@@ -195,26 +213,34 @@ export const createSettingsResolver = (
       throw new Error(`Unknown optimization profile "${profile}" (profiles: ${profileNames()})`);
     }
 
-    // A level's `false` sides were handled above: only settings objects take part in merging
-    const toLevel = (level?: {
-      textures?: OptimizeLevel['textures'] | false;
-      mesh?: OptimizeLevel['mesh'] | false;
-    }): OptimizeLevel => ({
+    // A level's `false` sides were handled above: only settings objects take part in merging.
+    // `from` names the level in budget messages.
+    const toLevel = (
+      from: string,
+      level?: {
+        textures?: OptimizeLevel['textures'] | false;
+        mesh?: OptimizeLevel['mesh'] | false;
+        budget?: OptimizeLevel['budget'];
+      }
+    ): OptimizeLevel & { from: string } => ({
+      from,
       textures: level?.textures || undefined,
       mesh: level?.mesh || undefined,
+      budget: level?.budget,
     });
-    const levels: OptimizeLevel[] = [
-      BUILTIN_DEFAULTS,
-      toLevel(config.defaults),
-      ...matched.map(toLevel),
-      toLevel(profile ? profiles[profile] : undefined),
-      input.isColliderSource ? COLLIDER_LEVEL : {},
-      toLevel(own ?? undefined),
+    const configLevels = [
+      toLevel('the built-in defaults', BUILTIN_DEFAULTS),
+      toLevel('the defaults of assets.config.json', config.defaults),
+      ...matched.map((rule) => toLevel(`the rule "${rule.glob}"`, rule)),
+      toLevel(`the profile "${profile}"`, profile ? profiles[profile] : undefined),
+      toLevel('the collider default', input.isColliderSource ? COLLIDER_LEVEL : undefined),
     ];
+    const ownLevel = toLevel('the asset JSON', own ?? undefined);
+    const levels = [...configLevels, ownLevel];
 
-    const resolveSlot = (slot: TextureSlot) => {
+    const resolveSlot = (slot: TextureSlot, from = levels) => {
       let merged: TextureSettings = {};
-      for (const { textures } of levels) {
+      for (const { textures } of from) {
         merged = {
           ...merged,
           ...textures?.default,
@@ -223,21 +249,36 @@ export const createSettingsResolver = (
       }
       return pickTextureSettings(merged);
     };
+    const resolveSlots = (from = levels) =>
+      Object.fromEntries(TEXTURE_SLOTS.map((slot) => [slot, resolveSlot(slot, from)])) as Record<
+        TextureSlot,
+        ResolvedTextureSettings
+      >;
 
     let mesh: MeshSettings = {};
     for (const level of levels) mesh = { ...mesh, ...level.mesh };
+
+    // Key by key, later wins; a null clears the limit an earlier level set
+    const budget: ResolvedBudget = {
+      vramMB: null,
+      downloadMB: null,
+      isOwn: !!ownLevel.budget,
+      profileTextures: resolveSlots(configLevels),
+    };
+    for (const { budget: levelBudget, from } of levels) {
+      for (const key of ['vramMB', 'downloadMB'] as const) {
+        const mb = levelBudget?.[key];
+        if (mb !== undefined) budget[key] = mb === null ? null : { mb, from };
+      }
+    }
 
     return {
       profile,
       rules: matched.map((rule) => rule.glob),
       slot: own?.slot ?? lastRules.find((rule) => rule.slot)?.slot ?? 'default',
-      textures: passThrough.textures
-        ? false
-        : (Object.fromEntries(TEXTURE_SLOTS.map((slot) => [slot, resolveSlot(slot)])) as Record<
-            TextureSlot,
-            ResolvedTextureSettings
-          >),
+      textures: passThrough.textures ? false : resolveSlots(),
       mesh: passThrough.mesh ? false : (mesh as ResolvedMeshSettings),
+      budget,
       passThrough,
     };
   };

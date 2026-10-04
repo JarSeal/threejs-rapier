@@ -1,12 +1,19 @@
 /* eslint-disable no-console */
 import path from 'path';
 import { collectPipelineAssets, readAssetJsons } from './assets';
+import { BUDGET_FIX, getBudgetViolations } from './budgets';
 import { createPipelineCache } from './cache';
 import { getResultFigures } from './generated';
 import { createKtxProvider } from './ktxEncode';
 import { removeStaleOutputs } from './outputs';
 import type { PipelineAsset } from './pipeline';
-import { LAST_RUN_FILE, summarizeRun, writeRunSummary, type RunSummary } from './report';
+import {
+  formatBytes,
+  LAST_RUN_FILE,
+  summarizeRun,
+  writeRunSummary,
+  type RunSummary,
+} from './report';
 import { runPipeline, type PipelineRun, type PipelineRunResult } from './run';
 import { createSettingsResolver, loadAssetsConfig } from './settings';
 import { ROOT } from './sources';
@@ -24,12 +31,6 @@ const YELLOW = '\x1b[33m';
 const RED = '\x1b[31m';
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
-
-const formatBytes = (bytes: number) => {
-  if (bytes < 1e3) return `${bytes} B`;
-  if (bytes < 1e6) return `${(bytes / 1e3).toFixed(1)} KB`;
-  return `${(bytes / 1e6).toFixed(2)} MB`;
-};
 
 const formatInOut = (value: { in: number; out: number }) =>
   `${formatBytes(value.in)} → ${formatBytes(value.out)}`;
@@ -50,8 +51,15 @@ const STATUS_LABELS: Record<PipelineRunResult['status'], string> = {
   error: `${RED}✗${RESET}`,
 };
 
-/** @param projectReasons The project switches' reasons, printed once instead of per asset */
-const formatResult = (result: PipelineRunResult, projectReasons: Set<string>) => {
+/**
+ * @param projectReasons The project switches' reasons, printed once instead of per asset
+ * @param isBudgetError Over budget fails this command (`yarn assets`), else it's a warning
+ */
+const formatResult = (
+  result: PipelineRunResult,
+  projectReasons: Set<string>,
+  isBudgetError: boolean
+) => {
   const figures = getResultFigures(result);
   const details: string[] = [];
   if (result.status === 'optimized') {
@@ -89,6 +97,10 @@ const formatResult = (result: PipelineRunResult, projectReasons: Set<string>) =>
   if ('warnings' in result) {
     for (const warning of result.warnings) lines.push(`      ${YELLOW}⚠ ${warning}${RESET}`);
   }
+  const [mark, color] = isBudgetError ? ['✗', RED] : ['⚠', YELLOW];
+  for (const violation of getBudgetViolations(result)) {
+    lines.push(`      ${color}${mark} over budget: ${violation}${RESET}`);
+  }
   return lines.join('\n');
 };
 
@@ -119,14 +131,22 @@ const printProjectOptOut = (projectOptOut: ProjectOptOut) => {
 
 const printSummary = (
   summary: RunSummary,
-  opts: { selectedCount: number; isPartial: boolean; staleNote: string }
+  opts: {
+    selectedCount: number;
+    isPartial: boolean;
+    staleNote: string;
+    selectedOverBudget: number;
+  }
 ) => {
   const { statuses } = summary;
   const total = summary.assets.length;
-  const hasErrors = !!statuses.error;
-  const counts = Object.entries(statuses)
-    .map(([status, count]) => `${count} ${STATUS_NAMES[status as PipelineRunResult['status']]}`)
-    .join(', ');
+  const hasErrors = !!statuses.error || opts.selectedOverBudget > 0;
+  const counts = [
+    ...Object.entries(statuses).map(
+      ([status, count]) => `${count} ${STATUS_NAMES[status as PipelineRunResult['status']]}`
+    ),
+    ...(opts.selectedOverBudget ? [`${opts.selectedOverBudget} over budget`] : []),
+  ].join(', ');
   const color = hasErrors ? RED : statuses.encoderMissing ? YELLOW : GREEN;
   console.log(
     `${color}${hasErrors ? '✗' : '✓'} [Assets] ${total}${opts.isPartial ? ` (${opts.selectedCount} selected)` : ''} in ${formatDuration(summary.durationMs)}: ${counts || 'none'}${RESET}`
@@ -148,6 +168,7 @@ const printSummary = (
       `  Slowest: ${slowest.map((asset) => `${asset.id} ${formatDuration(asset.durationMs)}`).join(', ')}`
     );
   }
+  if (opts.selectedOverBudget) console.log(`  ${RED}Over budget: ${BUDGET_FIX}${RESET}`);
   if (summary.staleOutputsRemoved.length) {
     console.log(`  Removed ${summary.staleOutputsRemoved.length} stale output(s):`);
     for (const file of summary.staleOutputsRemoved) console.log(`    ${DIM}${file}${RESET}`);
@@ -156,7 +177,11 @@ const printSummary = (
 };
 
 /** The short form: one line, and only when the run did something worth a line */
-const printBriefSummary = (summary: RunSummary, results: PipelineRunResult[]) => {
+const printBriefSummary = (
+  summary: RunSummary,
+  results: PipelineRunResult[],
+  selectedOverBudget: number
+) => {
   const { statuses } = summary;
   const built = summary.cache.miss;
   const restored = summary.cache.restored;
@@ -164,9 +189,14 @@ const printBriefSummary = (summary: RunSummary, results: PipelineRunResult[]) =>
     ...(built ? [`${built} built`] : []),
     ...(restored ? [`${restored} restored from the store`] : []),
     ...(statuses.encoderMissing ? [`${statuses.encoderMissing} encoder missing`] : []),
+    ...(selectedOverBudget ? [`${selectedOverBudget} over budget`] : []),
     ...(statuses.error ? [`${statuses.error} failed`] : []),
   ];
-  const color = statuses.error ? RED : statuses.encoderMissing ? YELLOW : GREEN;
+  const color = statuses.error
+    ? RED
+    : statuses.encoderMissing || selectedOverBudget
+      ? YELLOW
+      : GREEN;
   const label = `${results.length} asset${results.length === 1 ? '' : 's'}`;
   console.log(
     `${color}${statuses.error ? '✗' : '✓'} [Assets] ${label}, ${parts.length ? parts.join(', ') : 'all up to date'} (${formatDuration(summary.durationMs)})${RESET}`
@@ -188,9 +218,10 @@ export type AssetsCommandOpts = {
    */
   prune?: boolean;
   /**
-   * `full`: every selected asset's line and the whole summary (`yarn assets`). `brief`: only the
-   * assets the run built, restored or failed on, and one summary line; nothing at all when every
-   * asset was a plain lookup and `isQuietWhenUpToDate` (the dev server).
+   * `full`: every selected asset's line and the whole summary (`yarn assets`), over budget as
+   * errors. `brief`: only the assets the run built, restored or failed on, or that are over budget
+   * (as warnings), and one summary line; nothing at all when every asset was a plain lookup within
+   * its budget and `isQuietWhenUpToDate` (the dev server).
    */
   verbosity: 'full' | 'brief';
   isQuietWhenUpToDate?: boolean;
@@ -209,6 +240,11 @@ export type AssetsCommandResult = {
   hasErrors: boolean;
   /** The selected assets that failed */
   errors: PipelineRunResult[];
+  /**
+   * The selected assets over their budget (Phase 4): `yarn assets` fails on them, the production
+   * gather on the ones shipped scenes use, the dev server only warns
+   */
+  overBudget: PipelineRunResult[];
 };
 
 /**
@@ -264,8 +300,11 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
     },
     onResult: (key, result) => {
       if (!selectedKeys.has(key)) return;
-      if (isFull || isNotable(result)) log(formatResult(result, projectReasons));
-      else clearProgress();
+      if (isFull || isNotable(result) || getBudgetViolations(result).length) {
+        log(formatResult(result, projectReasons, isFull));
+      } else {
+        clearProgress();
+      }
     },
   });
 
@@ -283,7 +322,7 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
           ...projectOptOut,
           textures: reason,
         }),
-        onResult: (_key, result) => log(formatResult(result, projectReasons)),
+        onResult: (_key, result) => log(formatResult(result, projectReasons, isFull)),
       });
       for (const [key, result] of fallback.results) pipelineRun.results.set(key, result);
     }
@@ -310,18 +349,32 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
   }
   cache.save();
 
+  const overBudget = new Map(
+    [...pipelineRun.results].flatMap(([key, result]) => {
+      const violations = getBudgetViolations(result);
+      return violations.length ? [[key, violations] as const] : [];
+    })
+  );
+  const selectedOverBudget = [...overBudget.keys()].filter((key) => selectedKeys.has(key));
   const summary = summarizeRun(pipelineRun, {
     only: opts.only ?? [],
     durationMs: Math.round(performance.now() - start),
     staleOutputsRemoved,
+    overBudget,
   });
   writeRunSummary(summary);
 
+  const isNotableRun = results.some(isNotable) || selectedOverBudget.length > 0;
   if (isFull) {
-    printSummary(summary, { selectedCount: selectedKeys.size, isPartial: !!isSelected, staleNote });
-  } else if (!opts.isQuietWhenUpToDate || results.some(isNotable)) {
-    if (results.some(isNotable)) printProjectOptOut(projectOptOut);
-    printBriefSummary(summary, results);
+    printSummary(summary, {
+      selectedCount: selectedKeys.size,
+      isPartial: !!isSelected,
+      staleNote,
+      selectedOverBudget: selectedOverBudget.length,
+    });
+  } else if (!opts.isQuietWhenUpToDate || isNotableRun) {
+    if (isNotableRun) printProjectOptOut(projectOptOut);
+    printBriefSummary(summary, results, selectedOverBudget.length);
   }
   if (summary.statuses.encoderMissing && (isFull || results.some(isNotable))) {
     console.log(
@@ -336,5 +389,6 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
     errors: [...pipelineRun.results].flatMap(([key, result]) =>
       result.status === 'error' && selectedKeys.has(key) ? [result] : []
     ),
+    overBudget: selectedOverBudget.flatMap((key) => pipelineRun.results.get(key) ?? []),
   };
 };
