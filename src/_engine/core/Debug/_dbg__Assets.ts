@@ -24,6 +24,7 @@ import { getMaterialRegistry } from '../Material';
 import { getCurrentSceneId, getGeneratedAppData, getGeneratedSceneData } from '../Scene';
 import { getImportedAsset } from '../Import/ImportRegistry';
 import { getAssetOwner } from '../Assets/AssetOwners';
+import { isLoadingSourceFiles, toAppUrl } from '../Assets/AssetUrl';
 import { DEBUG_ASSETS_BOOT_LS_KEY } from '../Config';
 import {
   getAssetLoadReport,
@@ -32,6 +33,7 @@ import {
 } from '../Assets/AssetsAPI';
 import type { AssetLoadReport, AssetsWorkerTarget } from '../Assets/AssetsAPITypes';
 import type { ImportedGeometryInfo } from '../Import/ImportTypes';
+import type { GeneratedAssetFields } from '../../schemas/assetsConfigSchema';
 import {
   computeUniqueEdgeCount,
   describeTexture,
@@ -84,7 +86,7 @@ type DeclaredFile = {
   fileName?: string | string[];
   path?: string;
   __fileSize?: number;
-};
+} & GeneratedAssetFields;
 type GeneratedData = {
   textures?: Record<string, DeclaredFile>;
   importedAssets?: Record<string, DeclaredFile>;
@@ -96,14 +98,22 @@ type GeneratedData = {
 
 const getGeneratedData = () => getGeneratedAppData() as unknown as GeneratedData;
 
-/** A texture's or import's declaration: the dev registry, else any scene's resolved entry (a
- * production-gathered build only keeps the scenes). */
+/** A texture's or import's declaration: the current scene's resolved entry (a scene's save
+ * entry can point the asset at another file, with its own pipeline output), else the dev registry,
+ * else any scene's entry (a production-gathered build only keeps the scenes). */
 const findDeclaration = (kind: 'textures' | 'importedAssets', id: string) => {
   const data = getGeneratedData();
+  const findInScene = (scene?: GeneratedData['scenes'][string]) => {
+    const found = scene?.[kind]?.find((entry) => typeof entry !== 'string' && entry.id === id);
+    return found && typeof found !== 'string' ? found : undefined;
+  };
+  const sceneId = getCurrentSceneId();
+  const inCurrentScene = sceneId ? findInScene(data.scenes[sceneId]) : undefined;
+  if (inCurrentScene) return inCurrentScene;
   if (data[kind]?.[id]) return data[kind]![id];
   for (const scene of Object.values(data.scenes)) {
-    const found = scene[kind]?.find((entry) => typeof entry !== 'string' && entry.id === id);
-    if (found && typeof found !== 'string') return found;
+    const found = findInScene(scene);
+    if (found) return found;
   }
   return undefined;
 };
@@ -215,12 +225,16 @@ const getAssetsListData = (): DebuggerListItem[] =>
 
 // --- Asset loading (assets worker) ---
 
-/** Debug-only boot-time overrides, applied by loadConfig() on the next reload. */
+/** Debug-only boot-time overrides, applied on the next reload: the worker targets by
+ * loadConfig(), `loadSourceFiles` by the asset URL resolution (isLoadingSourceFiles). */
 type DebugAssetsBoot = {
   workerTarget?: AssetsWorkerTarget;
   gltfWorkerTarget?: AssetsWorkerTarget;
   textureWorkerTarget?: AssetsWorkerTarget;
+  /** Load the asset pipeline's source files instead of its outputs (p300 DD8 level 3) */
+  loadSourceFiles?: boolean;
 };
+type WorkerTargetKey = 'workerTarget' | 'gltfWorkerTarget' | 'textureWorkerTarget';
 
 const getBootOverrides = () => lsGetItem(DEBUG_ASSETS_BOOT_LS_KEY, {}) as DebugAssetsBoot;
 /** The overrides this page load booted with (nothing else writes the key before this tab). */
@@ -272,12 +286,12 @@ const workerStatus = { status: '', capabilities: '', requests: '', fallbacks: ''
 const getLoadingFolder = (): DebuggerPaneItem => {
   // Boot-time targets: written to LS here, applied by loadConfig() on the next reload
   const overrides = getBootOverrides();
-  const targetsProxy: Record<keyof DebugAssetsBoot, AssetsWorkerTarget | ''> = {
+  const targetsProxy: Record<WorkerTargetKey, AssetsWorkerTarget | ''> = {
     workerTarget: overrides.workerTarget || '',
     gltfWorkerTarget: overrides.gltfWorkerTarget || '',
     textureWorkerTarget: overrides.textureWorkerTarget || '',
   };
-  const targetDropDown = (key: keyof DebugAssetsBoot, label: string): DebuggerPaneItem => ({
+  const targetDropDown = (key: WorkerTargetKey, label: string): DebuggerPaneItem => ({
     key,
     target: targetsProxy,
     label,
@@ -295,8 +309,14 @@ const getLoadingFolder = (): DebuggerPaneItem => {
       refreshAssetsTab();
     },
   });
+  const sourceFilesProxy = { loadSourceFiles: Boolean(overrides.loadSourceFiles) };
+  const filesText = isLoadingSourceFiles()
+    ? 'Source files (override)'
+    : bootedOverrides.loadSourceFiles && !import.meta.env.DEV
+      ? 'Pipeline outputs (override ignored: a production build has no sources)'
+      : 'Pipeline outputs';
   const resolved = {
-    current: `GLTF: ${THREAD_TEXT[getAssetsWorkerTarget('GLTF')]}\nTextures: ${THREAD_TEXT[getAssetsWorkerTarget('TEXTURE')]}`,
+    current: `GLTF: ${THREAD_TEXT[getAssetsWorkerTarget('GLTF')]}\nTextures: ${THREAD_TEXT[getAssetsWorkerTarget('TEXTURE')]}\nFiles: ${filesText}`,
   };
 
   return {
@@ -309,6 +329,20 @@ const getLoadingFolder = (): DebuggerPaneItem => {
       targetDropDown('gltfWorkerTarget', 'GLTF target (boot)'),
       targetDropDown('textureWorkerTarget', 'Texture target (boot)'),
       {
+        // p300 DD8 level 3: A/B the asset pipeline's outputs against their sources. Only the dev
+        // server serves the sources (src/ is the Vite root); a production build ignores it.
+        key: 'loadSourceFiles',
+        target: sourceFilesProxy,
+        label: 'Load source files (boot)',
+        onChange: (value) => {
+          const next = { ...getBootOverrides() };
+          if (value) next.loadSourceFiles = true;
+          else delete next.loadSourceFiles;
+          lsSetItem(DEBUG_ASSETS_BOOT_LS_KEY, next);
+          refreshAssetsTab();
+        },
+      },
+      {
         type: 'button',
         title: 'Reload to apply',
         // Enabled while the saved overrides differ from the ones this page load booted with
@@ -318,10 +352,10 @@ const getLoadingFolder = (): DebuggerPaneItem => {
       {
         key: 'current',
         target: resolved,
-        label: 'Resolved targets',
+        label: 'Resolved',
         readonly: true,
         multiline: true,
-        rows: 2,
+        rows: 3,
       },
       { key: 'status', target: workerStatus, label: 'Worker status', readonly: true },
       {
@@ -390,6 +424,74 @@ const createFileSizeCmp = (bakedSize: number | undefined, urls: string[]) => {
   return cmp;
 };
 
+const formatInOut = (bytes?: { in: number; out: number }) => {
+  if (!bytes) return undefined;
+  const change = bytes.in ? Math.round((bytes.out / bytes.in - 1) * 100) : 0;
+  return `${formatBytes(bytes.in)} → ${formatBytes(bytes.out)} (${change > 0 ? '+' : ''}${change}%)`;
+};
+
+/**
+ * The asset pipeline's side of a declared asset (p300): the file this page load loaded (the
+ * pipeline's output, or its source with the "Load source files" override or without an output)
+ * and the pipeline's figures. Undefined for an asset without pipeline data.
+ * @param declared the asset's generated data
+ * @param report its load report, whose `sourceUrl` is the URL it was loaded from
+ * @param isImport whether the figures are a whole import's (shown for one of its parts)
+ */
+const describePipelineFile = (
+  declared: DeclaredFile | undefined,
+  report?: AssetLoadReport,
+  isImport?: boolean
+) => {
+  if (!declared?.__url && !declared?.__sourceUrl) return undefined;
+  const { __url, __sourceUrl, __bytes, __vramBytes, __codec } = declared;
+  const isPacked = !declared.fileName;
+  const loadedUrl = report?.sourceUrl;
+  const isOutput = Boolean(loadedUrl && __url && loadedUrl === toAppUrl(__url));
+  const isSource =
+    !isOutput && Boolean(loadedUrl && __sourceUrl && loadedUrl === toAppUrl(__sourceUrl));
+
+  let loadedAs = 'not the pipeline’s output or source';
+  if (isOutput) {
+    loadedAs =
+      __url === __sourceUrl
+        ? 'the source, passed through as is'
+        : isPacked && isLoadingSourceFiles()
+          ? 'pipeline output: packed, no source file'
+          : 'pipeline output';
+  } else if (isSource) {
+    loadedAs = __url
+      ? 'source file, "Load source files" override'
+      : 'source file: no pipeline output';
+  }
+  const loadedText = loadedUrl
+    ? `${new URL(loadedUrl).pathname} (${loadedAs})`
+    : '— (no load report)';
+  const loadedBytes = isOutput
+    ? __bytes?.out
+    : isSource
+      ? __bytes?.in ?? declared.__fileSize
+      : undefined;
+
+  const sectionHtml = section(
+    isImport ? 'Asset pipeline (whole import)' : 'Asset pipeline',
+    [
+      field('Output', __url ?? '— (none: encoder missing, the encode failed, or not built yet)'),
+      field(
+        'Source',
+        __sourceUrl ?? (isPacked ? '— (packed from several files)' : '— (not in production data)')
+      ),
+      __codec ? field('Codec', __codec) : '',
+      field('Download', formatInOut(__bytes) ?? '—'),
+      field(
+        'Est. GPU memory',
+        formatInOut(__vramBytes) ?? '— (not optimized: the pipeline doesn’t read the image)'
+      ),
+    ].join('')
+  );
+  return { loadedUrl, loadedText, loadedBytes, sectionHtml };
+};
+
 const describeOwner = (asset: object) =>
   getAssetOwner(asset) ?? '— (registered before the first scene load)';
 
@@ -414,6 +516,11 @@ const createTextureContent = (id: string) => {
   const importDeclaration = importId ? findDeclaration('importedAssets', importId) : undefined;
   const importFile = importId ? getImportedAsset(importId)?.fileName : undefined;
   const report = getAssetLoadReport(importId ? `import:${importId}` : `texture:${id}`);
+  const pipeline = describePipelineFile(
+    importFile ? importDeclaration : declared,
+    report,
+    Boolean(importFile)
+  );
 
   let file = '—';
   let urls: string[] = [];
@@ -422,19 +529,32 @@ const createTextureContent = (id: string) => {
     urls = toUrls(declared.fileName, declared.path);
   } else if (importFile) {
     file = `embedded in ${importFile}`;
+  } else if (pipeline) {
+    file = '— (packed by the asset pipeline)';
   } else {
     // An <img> knows its URL; an ImageBitmap (assets worker) or HDR data doesn't, but the load
     // report does
     urls = getTextureImageSrc(texture) || (report?.sourceUrl ? [report.sourceUrl] : []);
     if (urls.length) file = urls.join(', ');
   }
+  // The loaded file (the pipeline's output or source), not the declared one
+  if (pipeline?.loadedUrl && !importFile) urls = [pipeline.loadedUrl];
   const fileType = importFile
     ? (texture.userData.mimeType as string | undefined) ?? '—'
     : getFileType(urls[0] || file);
   const fileSizeCmp = createFileSizeCmp(
-    declared?.__fileSize ?? (importFile ? importDeclaration?.__fileSize : undefined),
-    importFile ? toUrls(importFile) : urls
+    pipeline
+      ? pipeline.loadedBytes
+      : declared?.__fileSize ?? (importFile ? importDeclaration?.__fileSize : undefined),
+    pipeline?.loadedUrl ? [pipeline.loadedUrl] : importFile ? toUrls(importFile) : urls
   );
+  const fileSizeLabel = importFile
+    ? pipeline
+      ? 'Loaded import file size'
+      : 'Source file size'
+    : pipeline
+      ? 'Loaded file size'
+      : 'File size';
   const users = getTextureMaterialUsers(texture, id);
   const d = describeTexture(texture);
   const load = describeLoadReport(report);
@@ -443,8 +563,9 @@ const createTextureContent = (id: string) => {
 ${field('Type', d.kind)}
 ${field('Id', id)}
 ${field('File', file)}
+${pipeline ? field(importFile ? 'Loaded import file' : 'Loaded file', pipeline.loadedText) : ''}
 ${field('File type', fileType)}
-<div><span class="winSmallLabel">${importFile ? 'Source file size' : 'File size'}:</span> ${fileSizeCmp}</div>
+<div><span class="winSmallLabel">${fileSizeLabel}:</span> ${fileSizeCmp}</div>
 ${field('Loaded on', load.loadedOn)}
 ${field(importId ? 'Load duration (whole import)' : 'Load duration', load.duration)}
 ${field('Used by materials', `${users} (texture ref counts aren't tracked)`)}
@@ -464,6 +585,7 @@ ${section(
     field('Est. GPU memory', d.gpuMemory),
   ].join('')
 )}
+${pipeline?.sectionHtml ?? ''}
 ${
   importId
     ? section(
@@ -490,14 +612,19 @@ const createGeometryContent = (id: string) => {
   const generatorType = (geometry.userData.props as { type?: string } | undefined)?.type;
   const sourceFile = manifest?.fileName ?? importDeclaration?.fileName;
   const triangles = getTriangleCount(geometry);
-  const load = importInfo
-    ? describeLoadReport(getAssetLoadReport(`import:${importInfo.importId}`))
-    : undefined;
+  const report = importInfo ? getAssetLoadReport(`import:${importInfo.importId}`) : undefined;
+  const load = importInfo ? describeLoadReport(report) : undefined;
+  const pipeline = importInfo ? describePipelineFile(importDeclaration, report, true) : undefined;
 
   const fileSizeCmp = createFileSizeCmp(
-    importDeclaration?.__fileSize,
-    typeof sourceFile === 'string' ? toUrls(sourceFile) : []
+    pipeline ? pipeline.loadedBytes : importDeclaration?.__fileSize,
+    pipeline?.loadedUrl
+      ? [pipeline.loadedUrl]
+      : typeof sourceFile === 'string'
+        ? toUrls(sourceFile)
+        : []
   );
+  const loadedFile = pipeline?.loadedUrl ?? (typeof sourceFile === 'string' ? sourceFile : '');
   const uniqueEdgesCmp: TCMP = geometry.index
     ? CMP({
         tag: 'span',
@@ -519,8 +646,9 @@ const createGeometryContent = (id: string) => {
 ${field('Type', importInfo ? 'Imported geometry' : generatorType ? `${generatorType} (generated)` : geometry.type)}
 ${field('Id', id)}
 ${field('File', typeof sourceFile === 'string' ? sourceFile : '—')}
-${field('File type', typeof sourceFile === 'string' ? getFileType(sourceFile) : '—')}
-<div><span class="winSmallLabel">${importInfo ? 'Source file size' : 'File size'}:</span> ${fileSizeCmp}</div>
+${pipeline ? field('Loaded file', pipeline.loadedText) : ''}
+${field('File type', loadedFile ? getFileType(loadedFile) : '—')}
+<div><span class="winSmallLabel">${pipeline ? 'Loaded file size' : importInfo ? 'Source file size' : 'File size'}:</span> ${fileSizeCmp}</div>
 ${load ? field('Loaded on', load.loadedOn) : ''}
 ${load ? field('Load duration (whole import)', load.duration) : ''}
 ${field('Ref count', entry.count)}
@@ -538,6 +666,7 @@ ${section(
     field('Est. VRAM (buffers)', formatBytes(getGeometryByteSize(geometry))),
   ].join('')
 )}
+${pipeline?.sectionHtml ?? ''}
 ${
   importInfo && p
     ? section(

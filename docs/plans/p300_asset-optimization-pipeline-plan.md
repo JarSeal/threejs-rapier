@@ -804,7 +804,7 @@ Sections:
 - `TextureProps` and `ImportAssetParams` take `__url` / `__sourceUrl` (`GeneratedAssetUrls`, picked from `GeneratedAssetFields`).
 - **`loadTextureAsync`** resolves first, then picks the loader by the resolved URL's extension (§6). The KTX2 loader, the worker, `HDRLoader` and `TextureLoader` all get that one absolute URL, which legacy calls resolve exactly as before. Errors name the `fileName` and the URL. Cube arrays and the sync `loadTexture` / `loadTextures` are unchanged: no generated data reaches them.
 - **`importAssetAsync`:** the id, the source key and `manifest.fileName` stay on the declared `fileName`, so one asset shares one import across scenes, and a default id doesn't pick up the hash. The worker and the main thread load the resolved URL, and its extension is checked. The import's load report now has `sourceUrl` (the loaded URL), like a texture's.
-- **Not changed here:** the Assets tab's info window still shows the declared file and its `__fileSize`, not the loaded output and its `__bytes.out`. That's step 3's, which edits the same tab.
+- **Not changed here:** the Assets tab's info window still shows the declared file and its `__fileSize`, not the loaded output and its `__bytes.out`. That's step 3's, which edits the same tab. (Done in step 3.)
 - **Verified** headless on WebGL2 (SwiftShader), `sceneTestECS` (its imported box has `testTexture` as its map):
   - **Dev server, main-thread and worker targets:** the network log shows only the `aek-assets/` KTX2 and GLB for the two assets. `testTexture` is a `CompressedTexture` (1024², 11 mips, its JSON's wrap kept); the GLB loaded in the worker for the worker target.
   - **Orientation:** the KTX2 and the JPG were each put on an unlit plane filling the view, and a 500 px crop of the frame compared. They match at 45.6 dB; the JPG upside down gives 29.6 dB, and two shots of one state are identical. Same result with the worker targets, where the JPG's flip is baked into its `ImageBitmap`.
@@ -814,6 +814,21 @@ Sections:
     - A relative `fileName` with neither: the error, then the no-file texture (texture) or `null` (import).
     - A legacy import by `fileName`: as before.
   - **`yarn build:test`, served statically, `?isProdTest=true`:** the two outputs and the Basis transcoder load, the box is textured, and the console shows no errors. The bundle has no `__sourceUrl` data. `yarn build` and `yarn lint` pass.
+
+**Step 3 as built:**
+
+- **Found first: packed textures didn't load at runtime.** A pack's scene entry has `__url` but no `fileName` (the gatherer drops `pack` and never sets one), and `loadTextureAsync` returned the no-file texture on a missing `fileName` before it resolved anything. Step 2 didn't hit it: no app asset is a pack. Fixed here, because this step's "a packed texture stays optimized" needs packs to load: `loadTextureAsync` resolves whenever there's a `fileName` or a `__url`, and `resolveAssetUrl` takes an optional `fileName` (its messages fall back to the id).
+- **The override is read where URLs resolve, not by the tab.** `isLoadingSourceFiles()` (`AssetUrl.ts`) reads `loadSourceFiles` from `AEK_debugAssetsBoot` once, on the first resolution, in the debug env only (like the worker targets). The Assets tab is created after `appStartFn`, so after the first scene load: it can only write the key. The value isn't an `AppConfig` key, so `loadConfig` doesn't carry it.
+- **`resolveAssetUrl` with the override on:** `__url` plus `__sourceUrl` loads the source. `__url` without `__sourceUrl` is a pack in dev data, so it loads its output (logged once per asset). Without `__url`, nothing changes: the source loads as before, with step 2's warning.
+- **A production build ignores it:** `import.meta.env.DEV` is false, and the production-gathered data has no `__sourceUrl` anyway. One warning at the first resolution. The tab doesn't disable the checkbox, so a saved override can still be cleared there.
+- **Assets tab, "Asset loading" folder:** a "Load source files (boot)" checkbox next to the worker targets (same LS key, same "Reload to apply" button), and the read-only "Resolved" box (was "Resolved targets") gains a `Files:` line: pipeline outputs, source files (override), or the override ignored in a production build.
+- **Info windows** (step 2's leftover): for an asset with pipeline data, the texture and geometry windows show the file this page load loaded, from the load report's `sourceUrl`, and what it is: pipeline output, a pass-through source, a packed output, the source with the override, or the source without an output. Its file type and size come from that file (`__bytes.out`, or `__bytes.in` / `__fileSize` for a source). A new "Asset pipeline" section lists the output, the source, the codec, and the download and VRAM estimates as in → out. An imported texture shows its import's ("whole import").
+  - `findDeclaration` now checks the current scene's entry before the dev registry, since a scene's save entry can point the asset at its own file and output.
+- **Verified** headless on WebGPU (macOS Chrome, the dev server), `sceneTestECS`:
+  - **Default:** the network log has only the `aek-assets/` KTX2 and GLB. `testTexture` is a `CompressedTexture` (1024²). The windows show "pipeline output", 1.07 MB / 14.3 KB, UASTC, VRAM 21.3 MB → 1.33 MB. The tab reads `Files: Pipeline outputs`.
+  - **Override saved, reloaded:** the JPG and `box01.glb` from `/debugger/…` load, and the KTX2 / GLB outputs don't. `testTexture` is a plain 2048² `Texture`, the windows say "source file, "Load source files" override", the tab reads `Files: Source files (override)`, and the console logs the override once.
+  - **Packs**, called in the page: `loadTextureAsync({ id, __url })` with no `fileName` loads a `CompressedTexture`, and with the override on it logs the "no source file" line. With neither, the no-file texture, as before.
+  - **`yarn build:test`, served statically, `?isDebug=true`, override saved:** only the outputs load, plus the one warning. `yarn lint` and `tsc` pass.
 
 ### Phase 4 — Harden
 

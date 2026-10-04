@@ -462,14 +462,17 @@ export const loadTextureAsync = async ({
     return textures[id].resource;
   }
 
-  if (!fileName) return getNoFileTexture(texOpts);
+  // A packed texture (p300 DD5) has no fileName, only its output
+  if (!fileName && !__url) return getNoFileTexture(texOpts);
 
   let loaderType = '';
   let url: string | undefined;
 
   try {
-    if (typeof fileName === 'string') {
-      url = resolveAssetUrl({ fileName, __url, __sourceUrl }, (name) => toLoaderUrl(name, path));
+    if (!Array.isArray(fileName)) {
+      url = resolveAssetUrl({ id, fileName, __url, __sourceUrl }, (name) =>
+        toLoaderUrl(name, path)
+      );
       if (isKTX2(url)) {
         // Compressed texture: flipY and mipmaps are baked into the file (see loadKTX2Texture)
         loaderType = 'KTX2Loader';
@@ -530,7 +533,7 @@ export const loadTextureAsync = async ({
       return saveLoadedTexture(loadedTexture, id, isPersistent) as THREE.CubeTexture;
     }
   } catch (err) {
-    const errorMsg = `Could not load texture in loadTextureAsync (id: "${id}", fileName: "${typeof fileName === 'string' ? fileName : fileName.join(', ')}", ${path ? `path: "${path}", ` : ''}${url ? `url: "${url}", ` : ''}loaderType: "${loaderType}")`;
+    const errorMsg = `Could not load texture in loadTextureAsync (id: "${id}", fileName: "${Array.isArray(fileName) ? fileName.join(', ') : fileName ?? ''}", ${path ? `path: "${path}", ` : ''}${url ? `url: "${url}", ` : ''}loaderType: "${loaderType}")`;
     lerror(errorMsg, err);
     if (throwOnError) throw new Error(errorMsg);
     if (Array.isArray(fileName)) return getNoFileTexture(texOpts, true) as THREE.CubeTexture;
