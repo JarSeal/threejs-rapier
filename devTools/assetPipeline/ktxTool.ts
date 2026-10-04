@@ -13,12 +13,26 @@ import { readAr, readCpio, readTar, readXar, type ArchiveEntry } from './archive
  * `bin/ktx` plus the one library it loads from `../lib`.
  *
  * Lookup order: the `AEK_KTX` env var (path to a `ktx` binary; an error if it doesn't work), the
- * local copy, then a `ktx` on PATH. Any of them must be at least {@link MIN_KTX_VERSION}.
+ * local copy, then a `ktx` on PATH. Any of them must be at least {@link MIN_KTX_VERSION}. One
+ * that is too old or doesn't run is skipped, and named in the log and in the setup's error.
  */
 
 export const KTX_VERSION = '4.4.2';
-/** `ktx create` (the one-command encoder the pipeline uses) arrived in 4.3 */
-export const MIN_KTX_VERSION = '4.3.0';
+/**
+ * `ktx create` arrived in 4.3, but `--assign-tf` and `--normalize` (`ktxEncode.ts`) in 4.4.0:
+ * 4.3.x rejects every encode
+ */
+export const MIN_KTX_VERSION = '4.4.0';
+/** What fixes a missing `ktx`, for messages */
+export const KTX_FIX = `yarn setupAssetTools, or put KTX-Software ≥ ${MIN_KTX_VERSION} on PATH, or set AEK_KTX to a ktx binary`;
+/** The release download: a stalled network fails the setup instead of hanging the run */
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+/**
+ * A long-lived process (the dev server) doesn't retry a failed setup sooner than this, so every
+ * save that needs an encode doesn't try the download again. A `ktx` set up meanwhile (eg. by
+ * `yarn setupAssetTools` in another terminal) is found at once: only the download waits.
+ */
+const INSTALL_RETRY_MS = 5 * 60_000;
 /** The prebuilt Linux binaries need this glibc (Ubuntu 22.04+, Debian 12+, Fedora 35+) */
 const MIN_GLIBC_VERSION = '2.34';
 
@@ -84,14 +98,21 @@ const compareVersions = (a: string, b: string) => {
   return 0;
 };
 
-/** Runs `<binary> --version`: returns the version, or the reason it couldn't. */
-const probeKtx = (binary: string): { version: string } | { error: string } => {
+/**
+ * Runs `<binary> --version`: returns the version, or the reason it couldn't (the first line of
+ * the output: a missing library's loader error is several lines). `isMissing`: no such file.
+ */
+const probeKtx = (binary: string): { version: string } | { error: string; isMissing: boolean } => {
   const result = spawnSync(binary, ['--version'], { encoding: 'utf-8' });
-  if (result.error) return { error: result.error.message };
+  if (result.error) {
+    const isMissing = (result.error as NodeJS.ErrnoException).code === 'ENOENT';
+    return { error: result.error.message, isMissing };
+  }
   const output = `${result.stdout}${result.stderr}`;
   const version = output.match(/v?(\d+\.\d+\.\d+)/)?.[1];
   if (result.status !== 0 || !version) {
-    return { error: output.trim() || `exited with code ${result.status}` };
+    const firstLine = output.trim().split('\n')[0];
+    return { error: firstLine || `exited with code ${result.status}`, isMissing: false };
   }
   return { version };
 };
@@ -128,11 +149,17 @@ const getRelease = (): Release | { error: string } => {
   return release;
 };
 
+export type KtxLookup = {
+  tool: KtxTool | null;
+  /** The `ktx` binaries found but skipped, and why (eg. `ktx 4.3.2 on PATH (older than 4.4.0)`) */
+  rejected: string[];
+};
+
 /**
- * Finds a working `ktx` ≥ {@link MIN_KTX_VERSION} without downloading anything, or returns
- * null. Throws when `AEK_KTX` is set but doesn't point to one.
+ * Finds a working `ktx` ≥ {@link MIN_KTX_VERSION} without downloading anything. Throws when
+ * `AEK_KTX` is set but doesn't point to one.
  */
-export const findKtx = (): KtxTool | null => {
+export const findKtx = (): KtxLookup => {
   const envPath = process.env.AEK_KTX;
   if (envPath) {
     const probe = probeKtx(envPath);
@@ -142,27 +169,44 @@ export const findKtx = (): KtxTool | null => {
         `AEK_KTX="${envPath}" is ktx ${probe.version}, the pipeline needs ≥ ${MIN_KTX_VERSION}.`
       );
     }
-    return { path: envPath, version: probe.version, source: 'env' };
+    return { tool: { path: envPath, version: probe.version, source: 'env' }, rejected: [] };
   }
 
-  const candidates: [string, KtxTool['source']][] = [
-    [LOCAL_KTX_PATH, 'local'],
-    ['ktx', 'path'],
+  const candidates: [string, KtxTool['source'], string][] = [
+    [LOCAL_KTX_PATH, 'local', path.relative(ROOT, LOCAL_KTX_PATH)],
+    ['ktx', 'path', 'on PATH'],
   ];
-  for (const [binary, source] of candidates) {
+  const rejected: string[] = [];
+  for (const [binary, source, where] of candidates) {
     if (source === 'local' && !fs.existsSync(binary)) continue;
     const probe = probeKtx(binary);
-    if ('version' in probe && compareVersions(probe.version, MIN_KTX_VERSION) >= 0) {
-      return { path: binary, version: probe.version, source };
+    if ('error' in probe) {
+      if (!probe.isMissing) rejected.push(`ktx ${where} (doesn't run: ${probe.error})`);
+    } else if (compareVersions(probe.version, MIN_KTX_VERSION) < 0) {
+      rejected.push(`ktx ${probe.version} ${where} (older than ${MIN_KTX_VERSION})`);
+    } else {
+      return { tool: { path: binary, version: probe.version, source }, rejected };
     }
   }
-  return null;
+  return { tool: null, rejected };
 };
 
 const download = async (url: string) => {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`${url}: HTTP ${response.status} ${response.statusText}`);
-  return Buffer.from(await response.arrayBuffer());
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+    if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    return Buffer.from(await response.arrayBuffer());
+  } catch (error) {
+    // fetch's own message is only "fetch failed": the network error is its cause
+    const { name, message, cause } = error as Error & { cause?: unknown };
+    const reason =
+      name === 'TimeoutError'
+        ? `timed out after ${DOWNLOAD_TIMEOUT_MS / 1000} s`
+        : cause instanceof Error
+          ? cause.message
+          : message;
+    throw new Error(`can't download ${url}: ${reason}`);
+  }
 };
 
 /** All files and symlinks in the release archive. */
@@ -202,7 +246,9 @@ export const installLocalKtx = async (log: Log = () => {}): Promise<KtxTool> => 
 
   const url = `${RELEASE_URL}/${release.file}`;
   log(`Downloading ${url}`);
-  const archive = await download(url);
+  const archive = await download(url).catch((error: Error) => {
+    throw new Error(`Can't set up KTX-Software: ${error.message}`);
+  });
   const sha256 = crypto.createHash('sha256').update(archive).digest('hex');
   if (sha256 !== release.sha256) {
     throw new Error(
@@ -248,17 +294,40 @@ export const installLocalKtx = async (log: Log = () => {}): Promise<KtxTool> => 
   return { path: LOCAL_KTX_PATH, version: probe.version, source: 'local' };
 };
 
+/** The last failed setup in this process, for {@link INSTALL_RETRY_MS} */
+let lastInstallFailure: { message: string; at: number } | null = null;
+
 /**
  * Returns a working `ktx` (see the lookup order above), setting up the local copy when there
- * is none. Throws with an actionable message when that isn't possible.
- * @param opts.force reinstall the local copy even when a working `ktx` is found
+ * is none. Throws with an actionable message when that isn't possible, naming the `ktx`
+ * binaries it skipped. A failed setup isn't retried for {@link INSTALL_RETRY_MS}.
+ * @param opts.force reinstall the local copy even when a working `ktx` is found (and retry a
+ *   failed setup at once)
  */
 export const ensureKtx = async (opts: { force?: boolean; log?: Log } = {}) => {
+  const log = opts.log ?? (() => {});
+  let rejected: string[] = [];
   if (!opts.force) {
-    const found = findKtx();
-    if (found) return found;
+    const lookup = findKtx();
+    if (lookup.tool) return lookup.tool;
+    rejected = lookup.rejected;
+    if (lastInstallFailure && Date.now() - lastInstallFailure.at < INSTALL_RETRY_MS) {
+      throw new Error(
+        `${lastInstallFailure.message} (not retried for ${INSTALL_RETRY_MS / 60_000} min; yarn setupAssetTools retries now)`
+      );
+    }
   }
-  return installLocalKtx(opts.log);
+  for (const reason of rejected) log(`Skipped ${reason}`);
+  try {
+    const tool = await installLocalKtx(log);
+    lastInstallFailure = null;
+    return tool;
+  } catch (error) {
+    const skipped = rejected.length ? ` Skipped: ${rejected.join(', ')}.` : '';
+    const message = `${(error as Error).message.replace(/\.?$/, '.')}${skipped}`;
+    lastInstallFailure = { message, at: Date.now() };
+    throw new Error(message);
+  }
 };
 
 /**

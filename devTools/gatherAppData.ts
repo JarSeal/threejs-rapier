@@ -1240,14 +1240,13 @@ export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
       for (const [result, sceneIds] of missingOutputs) {
         const { asset } = result;
         const source = asset.source.kind === 'remote' ? asset.source.url : asset.source.repoPath;
-        const reason = 'reason' in result ? result.reason : result.status;
-        console.error(
-          `  ${asset.id} (${source}; ${[...sceneIds].join(', ')}): ${result.status === 'error' ? `failed: ${reason}` : reason}`
-        );
+        // The run's one ktx setup failure, and its fix, are printed by the [Assets] lines above
+        const reason = result.status === 'error' ? `failed: ${result.reason}` : 'encoder missing';
+        console.error(`  ${asset.id} (${source}; ${[...sceneIds].join(', ')}): ${reason}`);
       }
       if (results.some((result) => result.status === 'encoderMissing')) {
         console.error(
-          `  Without ktx: run yarn setupAssetTools, then yarn assets, and commit src/public/aek-assets/ and assets.lock.json. Or ship them unoptimized in this build: ${ALLOW_UNOPTIMIZED_ENV_KEY}=true yarn build`
+          `  Without ktx: set it up (see [Assets] above), run yarn assets, and commit src/public/aek-assets/ and assets.lock.json. Or ship them unoptimized in this build: ${ALLOW_UNOPTIMIZED_ENV_KEY}=true yarn build`
         );
       }
       if (results.some((result) => result.status === 'error')) {

@@ -25,13 +25,14 @@ export type KtxProvider = () => Promise<KtxTool>;
 
 /**
  * One `ensureKtx()` per run, called before the first encode only (so a run that encodes
- * nothing needs no `ktx`). A failure is kept too: the run doesn't retry the setup per asset.
+ * nothing needs no `ktx`). A failure is kept too: the run doesn't retry the setup per asset, and
+ * every asset gets the same reason (`runAssetsCommand` prints it once).
  */
 export const createKtxProvider = (log?: (message: string) => void): KtxProvider => {
   let promise: Promise<KtxTool> | null = null;
   return () =>
     (promise ??= ensureKtx({ log }).catch((error: Error) => {
-      throw new EncoderMissingError(`no ktx encoder: ${error.message}`);
+      throw new EncoderMissingError(error.message);
     }));
 };
 

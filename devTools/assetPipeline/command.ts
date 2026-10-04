@@ -5,6 +5,7 @@ import { BUDGET_FIX, getBudgetViolations } from './budgets';
 import { createPipelineCache } from './cache';
 import { getResultFigures } from './generated';
 import { createKtxProvider } from './ktxEncode';
+import { KTX_FIX } from './ktxTool';
 import { removeStaleOutputs } from './outputs';
 import type { PipelineAsset } from './pipeline';
 import {
@@ -89,10 +90,13 @@ const formatResult = (
   const lines = [
     `  ${STATUS_LABELS[result.status]} ${getAssetLabel(result.asset)}  ${details.join(', ')}`,
   ];
-  if ('reason' in result && !projectReasons.has(result.reason)) {
-    const color =
-      result.status === 'error' ? RED : result.status === 'encoderMissing' ? YELLOW : DIM;
-    lines.push(`      ${color}${result.reason}${RESET}`);
+  // A run's assets share one `ktx` setup, so its reason is printed once (`getEncoderMissingReason`)
+  if (
+    'reason' in result &&
+    !projectReasons.has(result.reason) &&
+    result.status !== 'encoderMissing'
+  ) {
+    lines.push(`      ${result.status === 'error' ? RED : DIM}${result.reason}${RESET}`);
   }
   if ('warnings' in result) {
     for (const warning of result.warnings) lines.push(`      ${YELLOW}⚠ ${warning}${RESET}`);
@@ -109,6 +113,12 @@ const isNotable = (result: PipelineRunResult) =>
   result.status === 'error' ||
   result.status === 'encoderMissing' ||
   ('cache' in result && (result.cache === 'miss' || result.cache === 'restored'));
+
+/** Why the run has no `ktx`: one setup per run, so every `encoderMissing` result has this reason */
+const getEncoderMissingReason = (results: Iterable<PipelineRunResult>) => {
+  for (const result of results) if (result.status === 'encoderMissing') return result.reason;
+  return null;
+};
 
 const STATUS_NAMES: Record<PipelineRunResult['status'], string> = {
   optimized: 'optimized',
@@ -316,7 +326,9 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
     );
     if (missing.size) {
       const reason = `${ALLOW_UNOPTIMIZED_ENV_KEY}: shipped unoptimized, ktx is missing`;
-      log(`  ${YELLOW}⚠ ${missing.size} asset(s) without ktx ship unoptimized:${RESET}`);
+      log(
+        `  ${YELLOW}⚠ ${missing.size} asset(s) ship unoptimized, ktx is missing: ${getEncoderMissingReason(pipelineRun.results.values())}${RESET}`
+      );
       const fallback = await runPipeline(missing, {
         resolveSettings: createSettingsResolver(assetsConfig, {
           ...projectOptOut,
@@ -376,10 +388,12 @@ export const runAssetsCommand = async (opts: AssetsCommandOpts): Promise<AssetsC
     if (isNotableRun) printProjectOptOut(projectOptOut);
     printBriefSummary(summary, results, selectedOverBudget.length);
   }
-  if (summary.statuses.encoderMissing && (isFull || results.some(isNotable))) {
+  const encoderMissing = summary.statuses.encoderMissing;
+  if (encoderMissing) {
     console.log(
-      `  ${YELLOW}Assets that need ktx got no output. yarn setupAssetTools shows why it can't be set up.${RESET}`
+      `  ${YELLOW}! ${encoderMissing} asset${encoderMissing === 1 ? ' needs' : 's need'} ktx and got no output: ${getEncoderMissingReason(results)}${RESET}`
     );
+    console.log(`    ${YELLOW}Fix: ${KTX_FIX}; then yarn assets.${RESET}`);
   }
   if (isFull) console.log(`  ${DIM}Stats: ${path.relative(ROOT, LAST_RUN_FILE)}${RESET}`);
 

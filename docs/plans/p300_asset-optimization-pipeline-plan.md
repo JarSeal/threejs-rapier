@@ -83,7 +83,7 @@ This plan is a hard prerequisite of the terrain texturing epic (p301). A terrain
 ### DD4 — Standalone textures are first class, not just GLB-embedded ones
 
 - The terrain library (p303) is standalone texture files, not GLBs.
-- The pipeline therefore encodes `*.texture.json` sources directly with the `ktx` CLI (KTX-Software ≥ 4.3, `ktx create`).
+- The pipeline therefore encodes `*.texture.json` sources directly with the `ktx` CLI (KTX-Software ≥ 4.4.0, `ktx create`; 4.3 has `ktx create` but not `--assign-tf` or `--normalize`, Phase 4 step 2).
 - GLBs go through gltf-transform, which shells out to the same binary.
 
 ### DD5 — Channel packing is a pipeline step
@@ -301,7 +301,7 @@ Without a cache, a full encode pass slows builds enough that people skip it.
 ## 8. Tooling
 
 - **gltf-transform JS API** (`@gltf-transform/core`, `/functions`, `/extensions`) for GLBs: meshopt, Draco, quantize, resize, per-slot KTX2 through `ktx`.
-- **`ktx` CLI** (KTX-Software ≥ 4.3) for standalone textures and texture arrays (`ktx create --layers N`, used by p303 if runtime array assembly proves unworkable).
+- **`ktx` CLI** (KTX-Software ≥ 4.4.0) for standalone textures and texture arrays (`ktx create --layers N`, used by p303 if runtime array assembly proves unworkable).
   - It's a native binary, not an npm package, but nobody installs it by hand: `yarn setupAssetTools` (`devTools/assetPipeline/ktxTool.ts`, Phase 1) downloads the pinned release into the gitignored `.tools/`. The pipeline calls `ensureKtx()` itself before its first encode (Phase 2), so the script is only the explicit way.
   - Without `ktx`, the pipeline still runs: cached and committed outputs are used, and assets that need encoding report "encoder missing" and fall back to their source file at runtime (dev only, warned).
 - **`sharp`** for channel packing and resizing (DD5).
@@ -366,7 +366,7 @@ Sections:
 
 **1a as built:**
 
-- `yarn setupAssetTools [--force]` (`devTools/setupAssetTools.ts`) → `ensureKtx()` in `devTools/assetPipeline/ktxTool.ts`. Lookup order: `AEK_KTX` (an error if it doesn't run), `.tools/ktx-4.4.2/bin/ktx`, `ktx` on PATH; ≥ 4.3 each. When none works, it downloads the pinned KTX-Software 4.4.2 asset from GitHub, checks it against the SHA-256 pinned in the script (Khronos publishes SHA-1s for some assets only, none for the macOS packages) and writes `bin/ktx` plus the one library it loads to `.tools/ktx-4.4.2/{bin,lib}/` (temp folder, swapped in after `ktx --version` runs).
+- `yarn setupAssetTools [--force]` (`devTools/setupAssetTools.ts`) → `ensureKtx()` in `devTools/assetPipeline/ktxTool.ts`. Lookup order: `AEK_KTX` (an error if it doesn't run), `.tools/ktx-4.4.2/bin/ktx`, `ktx` on PATH; ≥ 4.3 each (≥ 4.4.0 since Phase 4 step 2). When none works, it downloads the pinned KTX-Software 4.4.2 asset from GitHub, checks it against the SHA-256 pinned in the script (Khronos publishes SHA-1s for some assets only, none for the macOS packages) and writes `bin/ktx` plus the one library it loads to `.tools/ktx-4.4.2/{bin,lib}/` (temp folder, swapped in after `ktx --version` runs).
 - No install step on any platform: the binaries find their library through `$ORIGIN/../lib` (Linux RUNPATH) and `@executable_path/../lib` (macOS rpath). The Linux `.deb` (`ar` → `data.tar.gz`) and the macOS `.pkg` (`xar` → gzipped `cpio` Payloads) are unpacked by `devTools/assetPipeline/archives.ts` in plain Node: no `tar`, `bzip2` or `pkgutil`. The library is written as a real file under the name the binary loads (no symlinks, for Windows-mounted WSL2 drives).
 - Platforms: Linux and WSL2 x64 / arm64 (glibc ≥ 2.34: Ubuntu 22.04+, Debian 12+, Fedora 35+; checked first, with a message), macOS arm64 / x64. Native Windows exits with "use WSL2". Verified: Linux x64 on WSL2 (installs in ~1 s, second run is a no-op, `ktx create` UASTC + Zstd encodes); the macOS arm64 / x64 and Linux arm64 archives unpack to the expected files (byte-identical to a reference unpack for macOS arm64). Not run on a Mac yet.
 - No `postinstall`: only whoever encodes assets needs `ktx` (DD3), so `yarn install` stays download-free.
@@ -890,6 +890,20 @@ Sections:
   - End to end, `testTexture` with its own `maxSize: 2048`: `yarn assets` lists it and exits 1; the dev gather warns and exits 0; the production gather fails with `sceneTestECS` named and exits 1. With an own `budget: { vramMB: 6 }`: a cache hit, and both pass. The dev server's path (`isQuietWhenUpToDate`) prints nothing when the change touched another asset.
   - Warm `yarn assets`, `yarn lint` and `yarn build` on the committed assets: all hits, the lock and outputs unchanged.
 - **Found on the way, not this step's:** `ktx` 4.4.2 on macOS arm64 doesn't reproduce the committed `testTexture` KTX2: same cache key, 1,122,848 B vs the committed 1,122,854 B (encoded on another machine, probably Phase 2's WSL2 x64). 1c's "byte-reproducible" holds per machine, not across platforms. Nothing breaks: the lock is what decides, and a hit uses the committed file. But a re-encode on another platform (a pruned lock entry, a settings round trip) changes the committed binary and its name, and the Phase 1 / Phase 2 "byte-identical" checks only hold on the machine that made the reference files. The test's outputs, lock change and store entries were removed again.
+
+**Step 2 as built:**
+
+- **The fallback was already there** (Phases 2–3): without `ktx`, cached and committed outputs are used and the assets that need an encode are `encoderMissing`, which falls back to the source in dev (Phase 3 step 2), fails a production build, or ships unoptimized under `AEK_ASSETS_ALLOW_UNOPTIMIZED` (Phase 3 step 4). This step made the error clear and fixed the version floor.
+- **Found first: the minimum was wrong.** `ktx create` arrived in 4.3, but `--assign-tf` and `--normalize`, which `getKtxCreateArgs` passes, arrived in 4.4.0 (checked in the v4.3.2 and v4.4.0 sources; 4.4 keeps `--assign-oetf` as a deprecated alias). So a 4.3.x `ktx` passed the check and failed every encode as an `error`. `MIN_KTX_VERSION` is now 4.4.0.
+- **A skipped `ktx` is named.** `findKtx` returns `{ tool, rejected }`: a local copy or a PATH `ktx` that is too old or doesn't run (the first line of its output, eg. a loader's missing-library error) is listed; one that isn't there isn't. `ensureKtx` logs `Skipped ktx 4.3.2 on PATH (older than 4.4.0)` before it downloads, and adds the list to its error when the setup fails. `AEK_KTX` keeps its own errors.
+- **Download errors name the URL and the cause** (the network error under fetch's "fetch failed", an HTTP status, or "timed out after 120 s"). The download has a 120 s timeout, so a stalled network fails the setup instead of hanging a build or the dev server's queue.
+- **No retry storm.** A failed setup is kept in the process for 5 minutes (`INSTALL_RETRY_MS`): the dev server doesn't try the download on every save that needs an encode. Only the download waits: a `ktx` that appears meanwhile (eg. `yarn setupAssetTools` in another terminal) is found by the next run's lookup. `--force` (`yarn setupAssetTools --force`) retries at once.
+- **The reason is printed once per run**, not per asset: every asset shares the run's one setup (`createKtxProvider`), so `encoderMissing` lines carry no reason, and the run ends with `! N assets need ktx and got no output: <reason>` plus the fix (`KTX_FIX`: `yarn setupAssetTools`, a ≥ 4.4.0 `ktx` on PATH, or `AEK_KTX`). It replaces "yarn setupAssetTools shows why". The production gather's list says `encoder missing` per asset and points at those lines; `AEK_ASSETS_ALLOW_UNOPTIMIZED`'s line carries the reason.
+- **Verified** (throwaway fixtures, removed; the running dev server built them first, so their lock entries, store copies and outputs were purged to get misses):
+  - Lookup and setup, with fake `ktx` scripts and `fetch` replaced: `AEK_KTX` at a 4.3.2 throws with its version; a 4.3.2 on PATH, offline (`getaddrinfo ENOTFOUND`): skipped, logged, named in the error; a broken one on PATH (a dyld error), timed out: the same; an HTTP 404. A second call in the process doesn't fetch, `force` does, and a `ktx` that turns up is used at once.
+  - `yarn setupAssetTools` with a 4.3.2 on PATH and no `.tools/`: skipped, downloaded the real 4.4.2 (byte-identical to the previous install), a second run a no-op.
+  - Two relative-source textures in the shipped `oneMoreScene`, with no usable `ktx`: `yarn assets --only` (exit 0) and the dev gather print the reason once; the production gather lists both as `encoder missing` and exits 1; with `AEK_ASSETS_ALLOW_UNOPTIMIZED` both pass through.
+  - Warm `yarn assets`, `yarn lint` and `yarn build` on the committed assets: all hits, the lock and outputs unchanged.
 
 ---
 
