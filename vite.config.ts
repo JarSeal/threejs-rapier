@@ -39,6 +39,29 @@ const sceneGathererPlugin = () => ({
   },
 });
 
+// Required for self.crossOriginIsolated/SharedArrayBuffer to be available at all in dev, so
+// worker-thread physics can use the SHARED_MEMORY hot-path transport instead of automatically
+// falling back to MESSAGE_BATCH (see PhysicsTransformBuffer.ts).
+const CROSS_ORIGIN_ISOLATION_HEADERS = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+};
+
+// Sets the headers on every response, 304s included: Vite's `server.headers` skips a 304, and
+// Safari then blocks a revalidated worker script under COEP ("Worker load was blocked by
+// Cross-Origin-Embedder-Policy"). Added before Vite's own middlewares, so they keep the headers.
+const crossOriginIsolationPlugin = () => ({
+  name: 'vite-plugin-cross-origin-isolation',
+  configureServer(server: ViteDevServer) {
+    server.middlewares.use((_req, res, next) => {
+      for (const [name, value] of Object.entries(CROSS_ORIGIN_ISOLATION_HEADERS)) {
+        res.setHeader(name, value);
+      }
+      next();
+    });
+  },
+});
+
 const createVersionHash = (inputString: string) => {
   let hash = 5381; // Starting seed
   let i = inputString.length;
@@ -127,15 +150,9 @@ export default defineConfig({
     fs: {
       strict: false,
     },
-    // Required for self.crossOriginIsolated/SharedArrayBuffer to be available at all in
-    // dev, so worker-thread physics can use the SHARED_MEMORY hot-path transport instead
-    // of automatically falling back to MESSAGE_BATCH (see PhysicsTransformBuffer.ts).
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
   },
   plugins: [
+    crossOriginIsolationPlugin(),
     wasm(),
     // `yarn dev:https`: a self-signed certificate, so a phone on the LAN gets a secure context
     // (WebGPU, SharedArrayBuffer); a plain http:// LAN address isn't one

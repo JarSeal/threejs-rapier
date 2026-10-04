@@ -1,0 +1,1124 @@
+{
+  "measuredAt": "2026-10-04T09:52:25.616Z",
+  "backend": "WebGPU",
+  "adapter": "apple / metal-3",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+  "devicePixelRatio": 2,
+  "variants": [
+    {
+      "variant": "png",
+      "normalMode": false,
+      "buildMs": 622,
+      "firstDrawMs": 645,
+      "textureFileBytes": 9714903,
+      "propFileBytes": 10116672,
+      "vramBytes": 89456115,
+      "textures": [
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough.png",
+          "format": "RGBAFormat",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 3557642,
+          "vramBytes": 5591007,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight.png",
+          "format": "RGBAFormat",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 2715819,
+          "vramBytes": 5591007,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm.png",
+          "format": "RGBAFormat",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1346143,
+          "vramBytes": 5591007,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal.png",
+          "format": "RGBAFormat",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 2095299,
+          "vramBytes": 5591007,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/source.glb#metal_toolbox_diff",
+          "format": "RGBAFormat",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 22364029
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/source.glb#metal_toolbox_nor_gl",
+          "format": "RGBAFormat",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 22364029
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/source.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGBAFormat",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 22364029
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "etc1s_q128",
+      "normalMode": false,
+      "buildMs": 170,
+      "firstDrawMs": 190,
+      "textureFileBytes": 704039,
+      "propFileBytes": 1568296,
+      "vramBytes": 11883968,
+      "textures": [
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_etc1s_q128.ktx2",
+          "format": "RGB_ETC2_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 109863,
+          "vramBytes": 699064,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_etc1s_q128.ktx2",
+          "format": "RGB_ETC2_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 137695,
+          "vramBytes": 699064,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_etc1s_q128.ktx2",
+          "format": "RGB_ETC2_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 118014,
+          "vramBytes": 699064,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_etc1s_q128.ktx2",
+          "format": "RGBA_ETC2_EAC_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 338467,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/etc1s_q128.glb#metal_toolbox_diff",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/etc1s_q128.glb#metal_toolbox_nor_gl",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/etc1s_q128.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "etc1s_q128",
+      "normalMode": true,
+      "buildMs": 145,
+      "firstDrawMs": 379,
+      "textureFileBytes": 927050,
+      "propFileBytes": 1568296,
+      "vramBytes": 12583032,
+      "textures": [
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_etc1s_q128.ktx2",
+          "format": "RGB_ETC2_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 118014,
+          "vramBytes": 699064,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_etc1s_q128.ktx2",
+          "format": "RGB_ETC2_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 137695,
+          "vramBytes": 699064,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_etc1s_q128.ktx2",
+          "format": "RGBA_ETC2_EAC_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 338467,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_nm_etc1s_q128.ktx2",
+          "format": "RGBA_ETC2_EAC_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 332874,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/etc1s_q128.glb#metal_toolbox_diff",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/etc1s_q128.glb#metal_toolbox_nor_gl",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/etc1s_q128.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "etc1s_q255",
+      "normalMode": false,
+      "buildMs": 195,
+      "firstDrawMs": 255,
+      "textureFileBytes": 1183143,
+      "propFileBytes": 2292136,
+      "vramBytes": 11883968,
+      "textures": [
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_etc1s_q255.ktx2",
+          "format": "RGB_ETC2_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 220961,
+          "vramBytes": 699064,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_etc1s_q255.ktx2",
+          "format": "RGB_ETC2_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 293433,
+          "vramBytes": 699064,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_etc1s_q255.ktx2",
+          "format": "RGB_ETC2_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 191484,
+          "vramBytes": 699064,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_etc1s_q255.ktx2",
+          "format": "RGBA_ETC2_EAC_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 477265,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/etc1s_q255.glb#metal_toolbox_diff",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/etc1s_q255.glb#metal_toolbox_nor_gl",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/etc1s_q255.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "etc1s_q255",
+      "normalMode": true,
+      "buildMs": 219,
+      "firstDrawMs": 234,
+      "textureFileBytes": 1385369,
+      "propFileBytes": 2292136,
+      "vramBytes": 12583032,
+      "textures": [
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_etc1s_q255.ktx2",
+          "format": "RGB_ETC2_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 191484,
+          "vramBytes": 699064,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_etc1s_q255.ktx2",
+          "format": "RGB_ETC2_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 293433,
+          "vramBytes": 699064,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_nm_etc1s_q255.ktx2",
+          "format": "RGBA_ETC2_EAC_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 423187,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_etc1s_q255.ktx2",
+          "format": "RGBA_ETC2_EAC_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 477265,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/etc1s_q255.glb#metal_toolbox_diff",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/etc1s_q255.glb#metal_toolbox_nor_gl",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/etc1s_q255.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGB_ETC2_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 2796216,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "uastc",
+      "normalMode": false,
+      "buildMs": 825,
+      "firstDrawMs": 848,
+      "textureFileBytes": 4784837,
+      "propFileBytes": 13324320,
+      "vramBytes": 22369808,
+      "textures": [
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_uastc.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1262075,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_uastc.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 998140,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_uastc.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1305633,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_uastc.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1218989,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/uastc.glb#metal_toolbox_diff",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/uastc.glb#metal_toolbox_nor_gl",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/uastc.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "uastc",
+      "normalMode": true,
+      "buildMs": 878,
+      "firstDrawMs": 899,
+      "textureFileBytes": 4734613,
+      "propFileBytes": 13324320,
+      "vramBytes": 22369808,
+      "textures": [
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_uastc.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 998140,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_nm_uastc.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1168765,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_uastc.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1305633,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_uastc.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1262075,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/uastc.glb#metal_toolbox_diff",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/uastc.glb#metal_toolbox_nor_gl",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/uastc.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "uastc_rdo1",
+      "normalMode": false,
+      "buildMs": 824,
+      "firstDrawMs": 847,
+      "textureFileBytes": 4571396,
+      "propFileBytes": 11257048,
+      "vramBytes": 22369808,
+      "textures": [
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_uastc_rdo1.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 812025,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_uastc_rdo1.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1211299,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_uastc_rdo1.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1288192,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_uastc_rdo1.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1259880,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/uastc_rdo1.glb#metal_toolbox_diff",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/uastc_rdo1.glb#metal_toolbox_nor_gl",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/uastc_rdo1.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "uastc_rdo1",
+      "normalMode": true,
+      "buildMs": 772,
+      "firstDrawMs": 786,
+      "textureFileBytes": 4526932,
+      "propFileBytes": 11257048,
+      "vramBytes": 22369808,
+      "textures": [
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_uastc_rdo1.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 812025,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_nm_uastc_rdo1.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1166835,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_uastc_rdo1.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1288192,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_uastc_rdo1.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1259880,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/uastc_rdo1.glb#metal_toolbox_diff",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/uastc_rdo1.glb#metal_toolbox_nor_gl",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/uastc_rdo1.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "uastc_rdo2",
+      "normalMode": false,
+      "buildMs": 877,
+      "firstDrawMs": 899,
+      "textureFileBytes": 4252911,
+      "propFileBytes": 10306992,
+      "vramBytes": 22369808,
+      "textures": [
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_uastc_rdo2.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 608518,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_uastc_rdo2.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1277523,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_uastc_rdo2.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1225905,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_uastc_rdo2.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1140965,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/uastc_rdo2.glb#metal_toolbox_diff",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/uastc_rdo2.glb#metal_toolbox_nor_gl",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/uastc_rdo2.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "uastc_rdo2",
+      "normalMode": true,
+      "buildMs": 695,
+      "firstDrawMs": 715,
+      "textureFileBytes": 4269020,
+      "propFileBytes": 10306992,
+      "vramBytes": 22369808,
+      "textures": [
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_uastc_rdo2.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 608518,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_nm_uastc_rdo2.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1157074,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_uastc_rdo2.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1277523,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_uastc_rdo2.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1225905,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/uastc_rdo2.glb#metal_toolbox_diff",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/uastc_rdo2.glb#metal_toolbox_nor_gl",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/uastc_rdo2.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "uastc_rdo4",
+      "normalMode": false,
+      "buildMs": 709,
+      "firstDrawMs": 733,
+      "textureFileBytes": 3763283,
+      "propFileBytes": 9152836,
+      "vramBytes": 22369808,
+      "textures": [
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_uastc_rdo4.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 489532,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_uastc_rdo4.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 999084,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_uastc_rdo4.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1080174,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_uastc_rdo4.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1194493,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/uastc_rdo4.glb#metal_toolbox_diff",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/uastc_rdo4.glb#metal_toolbox_nor_gl",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/uastc_rdo4.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    },
+    {
+      "variant": "uastc_rdo4",
+      "normalMode": true,
+      "buildMs": 700,
+      "firstDrawMs": 721,
+      "textureFileBytes": 3887648,
+      "propFileBytes": 9152836,
+      "vramBytes": 22369808,
+      "textures": [
+        {
+          "subject": "sphere",
+          "name": "orm",
+          "file": "metalRust/orm_uastc_rdo4.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 489532,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "sphere",
+          "name": "normal",
+          "file": "metalRust/normal_nm_uastc_rdo4.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1123449,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "normalHeight",
+          "file": "rocks01/normalHeight_uastc_rdo4.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1194493,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "ground",
+          "name": "albedoRough",
+          "file": "rocks01/albedoRough_uastc_rdo4.ktx2",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 1024,
+          "height": 1024,
+          "fileBytes": 1080174,
+          "vramBytes": 1398128,
+          "rgba8Bytes": 5592404
+        },
+        {
+          "subject": "prop",
+          "name": "map",
+          "file": "metalToolbox/uastc_rdo4.glb#metal_toolbox_diff",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "normalMap",
+          "file": "metalToolbox/uastc_rdo4.glb#metal_toolbox_nor_gl",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        },
+        {
+          "subject": "prop",
+          "name": "roughnessMap + metalnessMap",
+          "file": "metalToolbox/uastc_rdo4.glb#metal_toolbox_metal-metal_toolbox_rough",
+          "format": "RGBA_ASTC_4x4_Format",
+          "width": 2048,
+          "height": 2048,
+          "vramBytes": 5592432,
+          "rgba8Bytes": 22369620
+        }
+      ],
+      "messages": []
+    }
+  ]
+}

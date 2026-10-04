@@ -1,4 +1,4 @@
-Status: in progress | Phase 0 implemented
+Status: in progress | Phases 0-1 implemented
 Category: Assets
 Blocks: p301_terrain-texturing-epic.md (and through it p302–p310: the terrain texture library ships as KTX2, terrain blocks as meshopt GLBs), p347_lod-chain-generation.md (soft: only its build-time Phase 3, which adds a LOD-chain step to this pipeline)
 
@@ -97,7 +97,12 @@ This plan is a hard prerequisite of the terrain texturing epic (p301). A terrain
 
 - Meshopt decodes faster than Draco, and its quantization also shrinks vertex buffers in memory. Draco only shrinks the download.
 - Draco stays available per asset.
-- **Collider sources** (anything with `colliderType` custom props) default to `mesh.quantize: false`. With `KHR_mesh_quantization`, positions become integers and the dequantization moves into the node transform (gltfpack writes eg. `translation: [-0.5, -0.5, -0.5]`, `scale: 6.1e-5`). The attribute getters de-normalize, and the collider builder applies the node's scale but not its translation, so TRIMESH/HEIGHTFIELD shapes would be offset. Meshopt without quantization is lossless and safe. Phase 1 tests a quantized collider source rather than assuming. See risks.
+- **Collider sources** (anything with `colliderType` custom props) default to `mesh.quantize: false`, which means lossless meshopt: `EXT_meshopt_compression` alone, with no quantization, vertex reorder or filters. Measured in Phase 1 (1c, 1d's collider check):
+  - gltf-transform's `quantize()` moves the dequantization into the collider node's own transform, and the body and the shape derivation apply it. TRIMESH and BOX come out right, within 2.4 mm.
+  - CONVEXHULL is built from the raw Int16 values, so it ends up 32.7 km off. HEIGHTFIELD throws: GLTFLoader loads a quantized position as an `InterleavedBufferAttribute`, which `mergeVertices` rejects. Phase 3 step 5 fixes the first and turns the second into a clear refusal.
+  - gltf-transform's `meshopt()` always reorders vertices as well as quantizing them. The quantized HEIGHTFIELD throws before the reorder can be checked, but a reorder scrambles its grid the way Draco does. That is why lossless also means no reorder.
+  - Lossless meshopt is exact for all four shapes, heights included. It still shrinks the download (terrain 461 → 265 KB), but not the vertex buffers.
+  - The pre-Phase 1 worry, that the collider builder skips the node's translation, came from gltfpack's output and doesn't hold for gltf-transform's.
 
 ### DD7 — KTX2 textures load on the main thread, through `KTX2Loader`'s own workers
 
@@ -147,35 +152,71 @@ On by default, never required. An app that doesn't want it (no encoder, source f
   "defaults": {
     "mesh": { "codec": "meshopt", "quantize": true, "simplify": null },
     "textures": {
-      "default": { "codec": "etc1s", "maxSize": 1024, "quality": 200, "mipmaps": true }
+      "default": {
+        "codec": "uastc",
+        "maxSize": 1024,
+        "level": 2,
+        "rdo": 2,
+        "zstd": 18,
+        "mipmaps": true
+      },
+      "normal": { "rdo": 1 },
+      "orm": { "rdo": 1 },
+      "metallicRoughness": { "rdo": 1 },
+      "occlusion": { "rdo": 1 },
+      "data": { "codec": "none" }
     }
   },
   "profiles": {
-    "hero": {
+    "hero": { "textures": { "default": { "maxSize": 2048 } } },
+    "prop": { "textures": { "default": { "maxSize": 1024 } } },
+    "compact": {
       "textures": {
-        "baseColor": { "codec": "uastc", "maxSize": 2048, "level": 4, "rdo": 4, "zstd": 18 },
-        "normal": { "codec": "uastc", "maxSize": 2048, "normalMode": true },
-        "orm": { "codec": "uastc", "maxSize": 1024 },
-        "default": { "codec": "etc1s", "maxSize": 1024 }
+        "baseColor": { "codec": "etc1s", "quality": 255 },
+        "emissive": { "codec": "etc1s", "quality": 255 }
       }
     },
-    "prop": {
-      "textures": { "default": { "codec": "etc1s", "maxSize": 512 } },
-      "mesh": { "simplify": 0.6 }
-    },
-    "terrainLayer": {
-      "textures": {
-        "baseColor": { "codec": "uastc", "maxSize": 1024, "rdo": 2, "zstd": 18 },
-        "normal": { "codec": "uastc", "maxSize": 1024, "normalMode": true, "zstd": 18 },
-        "orm": { "codec": "uastc", "maxSize": 1024, "zstd": 18 }
-      }
-    },
+    "terrainLayer": { "textures": { "data": { "codec": "uastc", "rdo": 1 } } },
     "terrainBlock": { "mesh": { "codec": "meshopt", "quantize": false } },
     "data": { "textures": { "default": { "codec": "none" } } }
   },
   "rules": [{ "glob": "src/public/debugger/assets/testModels/**/*.glb", "profile": "prop" }]
 }
 ```
+
+The profiles are Phase 1's results (1c–1e, see below):
+
+- **UASTC everywhere by default, Zstd 18, `level` 2** (`--uastc-quality`). Phase 1 never tried level 4, which is several times slower to encode.
+- **RDO λ 2 for colour, λ 1 for normal, ORM and data.** On screen, λ 0 and λ 2 differ by ≤ 0.8 dB in every region. Per texture, λ 2 costs the hard-edged ORM's roughness 13.5 dB and adds 1–2° to the normals' p99 angle error. λ 1 keeps most of that for a smaller saving (the table below). λ 4 loses 3 dB on screen.
+  - `orm`, `metallicRoughness` and `occlusion` share settings on purpose: a glTF's ARM image is referenced by more than one slot (the Poly Haven toolbox's fills both roughness and metalness), so the classification can't make them disagree.
+- **`normalMode` is in no profile.** A normal-mode texture needs the material to unpack it (1c), and the engine has no flag for that yet. It's not worth adding one either: with UASTC it gains 0.1–0.4 dB at the same VRAM, and with ETC1S on ETC2 devices it doubles the VRAM (RGBA ETC2 instead of RGB). The key stays in the schema.
+- **`compact`** is ETC1S q255 for the colour slots only: a 2.5–4× smaller download than UASTC λ 2, and half the VRAM on ETC2 devices (mobile) for maps without alpha. On desktop (BC7) its VRAM is the same as UASTC's. ETC1S failed the visual bar where it was tried on every slot (terrain, the prop; 1e). Phase 1 never tried it on colour alone, so `compact` is for distant or background assets, and for mobile VRAM budgets.
+- **`prop`** dropped the pre-Phase 1 `simplify: 0.6`: Phase 1 didn't test simplification, and p347 owns the LOD ratios.
+- **`terrainLayer`** is the defaults plus UASTC for the `data` slot, which p303's LITE `normalHeight` uses (the `data` default is `none`).
+- **`terrainBlock`** is the collider default (DD6). A collider source gets it without naming the profile.
+
+Phase 1 results, headless WebGL2 (SwiftShader: ETC1S → ETC2, UASTC → ASTC 4×4; full table in 1e). Each slot holds the four 1K standalone textures and the prop's three 2K maps. VRAM is three's figure, with 1b's compressed sizes.
+
+| Variant      | Download (textures + prop GLB) | VRAM    | PSNR vs PNG on screen | Verdict                       |
+| ------------ | ------------------------------ | ------- | --------------------- | ----------------------------- |
+| PNG / JPG    | 18.9 MB                        | 85.3 MB | —                     | baseline                      |
+| `etc1s_q255` | 3.3 MB                         | 11.3 MB | 28.7 dB               | fails (near ground, the dial) |
+| `uastc`      | 17.3 MB                        | 21.3 MB | 38.7 dB               | passes                        |
+| `uastc_rdo2` | 13.9 MB                        | 21.3 MB | 38.4 dB               | passes, the pick              |
+
+So UASTC + RDO cuts VRAM by 75% with no visible difference at screen resolution, and its download is a quarter smaller than the source's. Per texture (1c, size / error against the encoder input), the basis for the per-slot λ:
+
+| Slot (texture)                  | Error measure        | λ 0                 | λ 1                 | λ 2                 | λ 4                 |
+| ------------------------------- | -------------------- | ------------------- | ------------------- | ------------------- | ------------------- |
+| `baseColor` (toolbox diff, 2K)  | RGB PSNR             | 4354 KB, 47.4       | 3641 KB, 44.3       | 3095 KB, 40.9       | 2654 KB, 37.7       |
+| `baseColor` (rocks01, 1K)       | RGB PSNR             | 1232 KB, 37.3       | 1230 KB, 37.2       | 1197 KB, 35.4       | 1055 KB, 30.2       |
+| `normal` (toolbox, 2K)          | angle mean / p99 (°) | 3666 KB, 0.55 / 4.6 | 2457 KB, 0.93 / 5.4 | 2315 KB, 1.11 / 6.8 | 2173 KB, 1.40 / 9.5 |
+| `normal` (MetalRust, 1K)        | angle mean / p99 (°) | 1190 KB, 1.90 / 5.0 | 1183 KB, 1.90 / 5.0 | 1114 KB, 1.97 / 5.9 | 976 KB, 2.78 / 15.0 |
+| `orm` (toolbox ARM, 2K)         | roughness PSNR       | 4873 KB, 38.6       | 4775 KB, 38.2       | 4537 KB, 36.5       | 3992 KB, 32.8       |
+| `orm` (MetalRust, 1K)           | roughness PSNR       | 975 KB, 49.9        | 793 KB, 41.6        | 594 KB, 36.4        | 478 KB, 33.9        |
+| `data` (rocks01 `normalHeight`) | angle mean (°)       | 1275 KB, 3.76       | 1258 KB, 3.77       | 1248 KB, 3.89       | 1166 KB, 5.06       |
+
+The device runs (1e, an M2 MacBook Air with WebGPU in Chrome and Safari) uploaded every texture in the same format and at the same VRAM as SwiftShader, and looked the same as the PNG on screen. Desktop BC7 (Windows), iOS and a weak device weren't measured (1e).
 
 Per asset (in a `*.texture.json`):
 
@@ -187,16 +228,17 @@ Per asset (in a `*.texture.json`):
 }
 ```
 
-- **Resolution order:** `defaults` → rule (glob) → profile → the JSON's `optimize` overrides, deep-merged, later wins. An `optimize: false` (rule or JSON) and the project switches in `src/CONFIG.ts` (DD8) win over all of it.
+- **Resolution order:** `defaults` → rule (glob) → profile → the JSON's `optimize` overrides, deep-merged, later wins. Within each level, a texture slot's entry merges over that level's `textures.default`. So a profile's `default.maxSize` reaches every slot, and the defaults' `normal: { rdo: 1 }` changes only the λ. An `optimize: false` (rule or JSON) and the project switches in `src/CONFIG.ts` (DD8) win over all of it.
 - **Slot keys:**
   - glTF slots: `baseColor`, `normal`, `metallicRoughness`, `occlusion`, `emissive`;
   - `orm` (packed occlusion/roughness/metalness);
   - `data` (splat maps, masks, LUTs, height);
   - `default`.
 - A standalone texture names its slot. A GLB's embedded textures are classified by the material slot that references them.
+- **Codec keys** apply only to their own codec: `level`, `rdo` and `zstd` to UASTC, `quality` to ETC1S. So `compact` inherits the defaults' `zstd` without breaking: `ktx` rejects Zstd with ETC1S (1c), so the encoder drops the key there.
 - **Codec guidance:**
-  - **ETC1S**: small and fast. Fine for base colour and emissive. Destroys normal maps and packed ORM.
-  - **UASTC** (with RDO + Zstd supercompression): the default for normal, ORM and terrain layers. Terrain layers are tiled many times across the screen, so artifacts repeat and show.
+  - **UASTC** (with RDO + Zstd supercompression): the default for every slot. 1 B/px in VRAM on every device (BC7 or ASTC 4×4). Terrain layers are tiled many times across the screen, so artifacts repeat and show.
+  - **ETC1S**: the smallest download. Its VRAM matches UASTC's on desktop (BC7) and is half on ETC2 devices, for maps without alpha. Visibly worse on terrain and detailed props (1e). Destroys normal maps (2–4× UASTC's angle error, up to 6° mean on MetalRust) and packed ORM. Colour slots only (`compact`).
   - **none**: data textures, LUTs, splat maps that must stay exact, anything read back on the CPU.
 - **Block-compressed sizes must be multiples of 4.** The resize step enforces it and warns when that changes the aspect ratio.
 
@@ -293,7 +335,7 @@ Without a cache, a full encode pass slows builds enough that people skip it.
 - `loadTexture` (sync) and `loadTextures` (batch) refuse `.ktx2` with an error pointing to `loadTextureAsync`: KTX2Loader has no synchronous placeholder.
 - A KTX2 texture's colour space comes from its file (sRGB for colour slots). A PNG loaded without `texOpts.colorSpace` has none, so the two only match with the PNG set to sRGB.
 
-### Phase 1 — Validate settings (~half a day)
+### Phase 1 — Validate settings (~half a day) — done
 
 1. Pick 3 representative assets: one terrain layer set (from p303's candidates), one prop GLB, and one problem case (a normal map, or an ORM with sharp channel edges).
 2. Baseline: file size, `renderer.info.memory`, and a browser GPU memory capture.
@@ -317,8 +359,8 @@ Sections:
 - **1b — Measuring — done.** Count compressed textures' real bytes in the GPU memory tab.
 - **1c — Assets and encoding — done.** Terrain layer `rocks01` (ambientCG `Ground079S`, LITE), a CC0 Poly Haven prop GLB at 2K (with an ARM map), the Poliigon MetalRust set as the problem case (ORM with hard metal / rust edges, and its normal map), a quantized copy of `stairsStraightTrimesh.glb` for the collider test. Variants: ETC1S q128 / q255, UASTC without RDO, UASTC + RDO λ 1 / 2 / 4 (all Zstd 18), normal mode on / off. Downloaded sources go in a gitignored folder; the outputs are committed, like Phase 0's.
 - **1d — Comparison scene — done.** A tiled ground plane at grazing angles (REPEAT, max anisotropy), the prop, the MetalRust ORM on a sphere; a scene-scoped debug tab that swaps variants in place (a key) and shows each one's file size and VRAM.
-- **1e — Measurements — done (headless; the device checklist is open).** File sizes, three's estimate, headless WebGL2 screenshots; a checklist for WebGPU on a real GPU, Chrome's GPU memory, the weak device and iOS (HTTPS on the LAN: `yarn dev:https`).
-- **1f — Record.** The results table and profiles in §4, the collider outcome in DD6.
+- **1e — Measurements — done.** File sizes, three's estimate, headless WebGL2 screenshots; a checklist for WebGPU on a real GPU, Chrome's GPU memory, the weak device and iOS (HTTPS on the LAN: `yarn dev:https`).
+- **1f — Record — done.** The results table and profiles in §4, the collider outcome in DD6.
 
 **1a as built:**
 
@@ -442,6 +484,7 @@ Sections:
     - It hides every DOM element except the renderer's canvas, and every root-scene child except the slots' objects and the lights (the debug camera and light symbols stood in the view).
 
 - **Checklist** (by hand; save each device's "Copy results" as `phase1/measurements/<device>.json`):
+
   1. **Desktop WebGPU, real GPU.**
      - Open `http://localhost:8080/?isDebug=true` in Windows Chrome: WSL2 forwards localhost, and localhost is a secure context.
      - Switch to "Asset compare" (P), then run "Measure all variants". Expected: `RGBA_BPTC` (BC7) for both codecs, 1 B/px, so ETC1S saves no VRAM there.
@@ -458,6 +501,34 @@ Sections:
      - Expected: ASTC 4×4 for UASTC and ETC2 for ETC1S (no BC on A-series GPUs), like SwiftShader. Also check that the KTX2 transcoder's workers and WASM load with the self-signed certificate.
      - Fallback if they don't: a tunnel with a real certificate (eg. `cloudflared tunnel --url https://localhost:8443 --no-tls-verify`). That needs the tunnel's host in Vite's `server.allowedHosts`, and it exposes the dev server publicly while it runs.
 
+- **Device results** (2026-10-04): an M2 MacBook Air with WebGPU, in Chrome 139 and Safari 26.5, over `yarn dev:https` on the LAN (`measurements/webgpu-macbook-air-m2-{chrome,safari}.json`).
+  - **Formats and VRAM:** identical to SwiftShader's in all 13 runs in both browsers. UASTC loads as ASTC 4×4 (1 B/px), and ETC1S as ETC2 RGB (0.5 B/px), or RGBA ETC2 with alpha or normal mode. So Apple GPUs get ETC1S's VRAM saving. Slot totals: `png` 85.3 MB, UASTC 21.3 MB, ETC1S 11.3 MB.
+  - **Visuals:** checked full screen at DPR 2. Toggling showed no difference, in both browsers and, by eye, on the Windows PC. Only the near ground's pebbles change slightly up close, without looking worse.
+    - A shimmer while the debug camera moves comes from the shadows (it stops with them off) and shows in every variant, so it isn't p300's.
+  - **Load:** an ETC1S run builds in 0.13–0.27 s, the download and the transcode of all seven textures included. A UASTC run takes 0.5–0.9 s, mostly its 15–18 MB download over Wi-Fi. The first draw follows within ~30 ms, with one ~230 ms outlier per browser. No transcode stall.
+  - **Frame time:** 16.7 ms with `png` and with `uastc_rdo2` shown (Chrome, the 60 Hz vsync cap), so no measurable difference.
+  - **Chrome's GPU memory figure isn't usable on this Mac.** Its Task Manager tab row showed 124 MB with two `png` slots, which hold ~170 MB of textures by three's count, and the figure changed with the visible slot. three's figure, which equals 1c's estimate on all three backends, stays the VRAM measure.
+  - **Console:** nothing from p300 (a favicon 404 and an unrelated Tweakpane error). Phase 0's "vertex count of 0" warning wasn't checked.
+  - **Safari with Web Inspector open blocked the physics worker** ("Worker load was blocked by Cross-Origin-Embedder-Policy"), so the engine didn't start.
+    - Cause: Vite's `server.headers` skips 304 responses, and Safari revalidates the worker script there.
+    - Fix: `crossOriginIsolationPlugin` (`vite.config.ts`) sets COOP / COEP on every dev-server response and replaces `server.headers`. Verified with curl on a 304; not re-checked in Safari. A Project tooling change for `CHANGELOG.md`.
+  - **Not run:**
+    - Desktop BC7 (no Windows JSON). The claim that ETC1S saves no VRAM there rests on KTX2Loader's format priorities.
+    - iOS.
+    - The weak device. §11 question 3 is still open, and Phase 4's budgets need its answer.
+
+**1f as built:**
+
+- Written from the headless data, then checked against the device runs (1e's "Device results"). They change no profile.
+- §4: the example config is now the measured profiles, with the reasons and both results tables under it. Two rules the profiles rely on are new in §4, for Phase 2's resolver:
+  - A slot's entry merges over its level's `textures.default`.
+  - Codec keys apply only to their own codec.
+- DD6: the measured collider outcome replaces the pre-Phase 1 reasoning. The risks table (§10) follows it.
+- The per-slot λ (2 for colour, 1 for the rest) comes from 1c's per-texture errors. Phase 1 never rendered that mix as one variant, since every 1d variant uses one λ for all slots. On screen, the λ 1 and λ 2 runs differed by ≤ 0.5 dB in every region, so the mix sits between them.
+- Lossless meshopt, for Phase 2: gltf-transform's `meshopt()` can't do it, because it always reorders and quantizes. 1c's script writes it as the `EXTMeshoptCompression` extension alone, with `EncoderMethod.QUANTIZE` (meaning "no filters": it doesn't quantize by itself) and no `reorder()` / `quantize()` transforms.
+- Not changed, for p303's own review: its LITE estimate of "≈ 0.6–1.2 MB per map" is at the top of what `rocks01` measures with `terrainLayer` (`albedoRough` 1.17 MB at λ 2, `normalHeight` 1.23 MB at λ 1). Rocks are a noisy material, so smoother sets should come in lower.
+- The variants stay until Phase 2's exit, which deletes them (or the whole `phase1/` folder). `ktx` encodes are byte-reproducible (1c), so Phase 2 can check that it reproduces Phase 1 by comparing its outputs with these files, eg. `orm_uastc_rdo1.ktx2` for the default `orm` slot.
+
 ### Phase 2 — Pipeline (~2–3 days)
 
 1. Config schema plus resolver (DD2), compiled to `.schemas/`.
@@ -469,7 +540,7 @@ Sections:
 7. Generated-data integration (§5), with `__sourceUrl` next to `__url`.
 8. `yarn assets`.
 
-**Exit:** Phase 1 results reproduced by one command, and a second run is all cache hits. With `optimization.enabled: false`, a run needs no `ktx` and the app looks and loads as it did before p300.
+**Exit:** Phase 1 results reproduced by one command (byte-identical to the `phase1/` variant files with the same settings; then delete those), and a second run is all cache hits. With `optimization.enabled: false`, a run needs no `ktx` and the app looks and loads as it did before p300.
 
 ### Phase 3 — Integrate (~1 day)
 
@@ -495,8 +566,8 @@ Sections:
 
 | Risk                                                                                                                          | Mitigation                                                                                                                                                                                                                         |
 | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ETC1S ruins normal / ORM maps                                                                                                 | Per-slot codecs; UASTC is the default for those slots and for terrain layers                                                                                                                                                       |
-| Quantized positions break colliders (the dequantization offset is in the node transform)                                      | `quantize: false` for collider sources (`terrainBlock` profile); CONVEXHULL reads quantized positions through the getters, and HEIGHTFIELD refuses them with an actionable error (Phase 3 step 5)                                  |
+| ETC1S ruins normal / ORM maps (and softens terrain and detailed props, 1e)                                                    | UASTC is the default for every slot; ETC1S only through `compact`, for colour slots                                                                                                                                                |
+| Quantized positions break CONVEXHULL and HEIGHTFIELD colliders (1d); a meshopt reorder scrambles a HEIGHTFIELD grid           | Collider sources get lossless meshopt (DD6, `terrainBlock` profile); CONVEXHULL reads quantized positions through the getters, and HEIGHTFIELD refuses them with an actionable error (Phase 3 step 5)                              |
 | Quantized UVs: the UV dequantization moves into the glTF material's `KHR_texture_transform`, and glTF materials are discarded | Imported textures carry it (`offset`/`repeat`), so the glTF's own maps are right; any other texture on that geometry samples the wrong UVs. Don't quantize texcoords by default, or bake the transform back into the UVs at import |
 | `flipY` can't apply to compressed textures                                                                                    | Encode flipped; Phase 0 visual check against the PNG path                                                                                                                                                                          |
 | `KTX2Loader` support detection in the asset worker                                                                            | Main-thread fallback (DD7), Phase 0 spike                                                                                                                                                                                          |
