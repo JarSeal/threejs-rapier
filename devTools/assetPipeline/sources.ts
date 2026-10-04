@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { isJsonRelativeFileName } from '../../src/_engine/schemas/assetsConfigSchema';
+import {
+  isJsonRelativeFileName,
+  type TexturePack,
+} from '../../src/_engine/schemas/assetsConfigSchema';
 
 /**
  * Where an asset JSON's `fileName` points (p300 DD3):
@@ -65,6 +68,35 @@ export const resolveAssetSource = (params: {
   const { pathname } = new URL((urlPath || './') + fileName, 'http://aek.local/');
   const file = path.join(PUBLIC_DIR, decodeURIComponent(pathname));
   return { kind: 'public', file, repoPath: toRepoPath(file) };
+};
+
+/**
+ * A packed texture (DD5): no single source file, so its rules match, and its output is named
+ * after, the asset JSON.
+ */
+export type PackSource = {
+  kind: 'pack';
+  pack: TexturePack;
+  /** The asset JSON, absolute */
+  jsonFile: string;
+  /** The asset JSON, '/'-separated, relative to the repo root */
+  repoPath: string;
+};
+
+export const createPackSource = (jsonFile: string, pack: TexturePack): PackSource => {
+  const file = path.resolve(ROOT, jsonFile);
+  return { kind: 'pack', pack, jsonFile: file, repoPath: toRepoPath(file) };
+};
+
+/** A pack's `src` as a file on disk: relative to the JSON or under src/public, and it must exist. */
+export const resolvePackFile = (jsonFile: string, src: string) => {
+  const source = resolveAssetSource({ jsonFile, fileName: src });
+  if ('error' in source) throw new Error(`pack: ${source.error}`);
+  if (source.kind === 'remote') throw new Error(`pack: "${src}" is remote, which isn't read`);
+  if (!fs.existsSync(source.file) || !fs.statSync(source.file).isFile()) {
+    throw new Error(`pack: source file "${src}" not found (expected at ${source.repoPath})`);
+  }
+  return source.file;
 };
 
 /** Bytes on disk, or undefined for a remote or missing file */

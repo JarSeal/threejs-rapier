@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
-import { PUBLIC_DIR, SRC_DIR, type AssetSource } from './sources';
+import { PUBLIC_DIR, SRC_DIR, type AssetSource, type PackSource } from './sources';
 
 /**
  * The pipeline's outputs (p300 DD3): `src/public/aek-assets/<logical path>.<content hash>.<ext>`,
@@ -26,6 +26,10 @@ export const getLogicalPath = (source: Extract<AssetSource, { file: string }>) =
   const relative = toPosix(path.relative(base, source.file));
   return relative.slice(0, relative.length - path.extname(relative).length);
 };
+
+/** A packed texture's logical path: its JSON's, eg. 'app/textures/rock.pack' for rock.texture.json */
+export const getPackLogicalPath = (source: PackSource) =>
+  `${toPosix(path.relative(SRC_DIR, source.jsonFile)).replace(/(\.[^./]+)?\.json$/, '')}.pack`;
 
 export type PipelineOutput = {
   /** Absolute path on disk */

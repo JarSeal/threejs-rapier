@@ -637,6 +637,732 @@
       ],
       "description": "Asset optimization (p300): a profile, the slot and per-slot overrides, or false to keep the file as it is."
     },
+    "pack": {
+      "type": "object",
+      "properties": {
+        "size": {
+          "description": "Width and height the channels are combined at (default: the sources' size, which must then agree). The optimize step resizes the result to its maxSize.",
+          "type": "array",
+          "items": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          ]
+        },
+        "channels": {
+          "type": "object",
+          "properties": {
+            "r": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "description": "A constant (0..1, linear) in every channel of the target."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "src": {
+                      "type": "string",
+                      "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                    },
+                    "channel": {
+                      "description": "The channels of `src`, one per target channel (default: the target's own, eg. \"rgb\"). A greyscale image has its grey in r, g and b.",
+                      "type": "string",
+                      "pattern": "^[rgba]{1,4}$"
+                    },
+                    "colorSpace": {
+                      "description": "How `src` is encoded (alpha is always linear). Default: srgb for the colour channels of an sRGB texture (texOpts.colorSpace), else linear.",
+                      "type": "string",
+                      "enum": [
+                        "srgb",
+                        "linear"
+                      ]
+                    },
+                    "normal": {
+                      "description": "`src` is a normal map: it is resized as unit vectors, before its channels are taken. Only `invert` applies.",
+                      "type": "boolean"
+                    },
+                    "remap": {
+                      "description": "Maps [min, max] to 0..1; auto: the full range of the channels taken.",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "auto"
+                        },
+                        {
+                          "type": "array",
+                          "items": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "invert": {
+                      "description": "1 − value, after remap (eg. a DirectX normal's G).",
+                      "type": "boolean"
+                    },
+                    "multiply": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "description": "A constant factor."
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "src": {
+                              "type": "string",
+                              "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                            },
+                            "channel": {
+                              "description": "The channel of `src` (default r).",
+                              "type": "string",
+                              "enum": [
+                                "r",
+                                "g",
+                                "b",
+                                "a"
+                              ]
+                            },
+                            "strength": {
+                              "description": "value × (1 + (factor − 1) × strength), eg. 0.8 for AO into albedo (default 1).",
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "src"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "description": "Multiplied in after remap and invert (linear values), eg. AO into the albedo."
+                    }
+                  },
+                  "required": [
+                    "src"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "g": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "description": "A constant (0..1, linear) in every channel of the target."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "src": {
+                      "type": "string",
+                      "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                    },
+                    "channel": {
+                      "description": "The channels of `src`, one per target channel (default: the target's own, eg. \"rgb\"). A greyscale image has its grey in r, g and b.",
+                      "type": "string",
+                      "pattern": "^[rgba]{1,4}$"
+                    },
+                    "colorSpace": {
+                      "description": "How `src` is encoded (alpha is always linear). Default: srgb for the colour channels of an sRGB texture (texOpts.colorSpace), else linear.",
+                      "type": "string",
+                      "enum": [
+                        "srgb",
+                        "linear"
+                      ]
+                    },
+                    "normal": {
+                      "description": "`src` is a normal map: it is resized as unit vectors, before its channels are taken. Only `invert` applies.",
+                      "type": "boolean"
+                    },
+                    "remap": {
+                      "description": "Maps [min, max] to 0..1; auto: the full range of the channels taken.",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "auto"
+                        },
+                        {
+                          "type": "array",
+                          "items": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "invert": {
+                      "description": "1 − value, after remap (eg. a DirectX normal's G).",
+                      "type": "boolean"
+                    },
+                    "multiply": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "description": "A constant factor."
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "src": {
+                              "type": "string",
+                              "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                            },
+                            "channel": {
+                              "description": "The channel of `src` (default r).",
+                              "type": "string",
+                              "enum": [
+                                "r",
+                                "g",
+                                "b",
+                                "a"
+                              ]
+                            },
+                            "strength": {
+                              "description": "value × (1 + (factor − 1) × strength), eg. 0.8 for AO into albedo (default 1).",
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "src"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "description": "Multiplied in after remap and invert (linear values), eg. AO into the albedo."
+                    }
+                  },
+                  "required": [
+                    "src"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "b": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "description": "A constant (0..1, linear) in every channel of the target."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "src": {
+                      "type": "string",
+                      "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                    },
+                    "channel": {
+                      "description": "The channels of `src`, one per target channel (default: the target's own, eg. \"rgb\"). A greyscale image has its grey in r, g and b.",
+                      "type": "string",
+                      "pattern": "^[rgba]{1,4}$"
+                    },
+                    "colorSpace": {
+                      "description": "How `src` is encoded (alpha is always linear). Default: srgb for the colour channels of an sRGB texture (texOpts.colorSpace), else linear.",
+                      "type": "string",
+                      "enum": [
+                        "srgb",
+                        "linear"
+                      ]
+                    },
+                    "normal": {
+                      "description": "`src` is a normal map: it is resized as unit vectors, before its channels are taken. Only `invert` applies.",
+                      "type": "boolean"
+                    },
+                    "remap": {
+                      "description": "Maps [min, max] to 0..1; auto: the full range of the channels taken.",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "auto"
+                        },
+                        {
+                          "type": "array",
+                          "items": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "invert": {
+                      "description": "1 − value, after remap (eg. a DirectX normal's G).",
+                      "type": "boolean"
+                    },
+                    "multiply": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "description": "A constant factor."
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "src": {
+                              "type": "string",
+                              "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                            },
+                            "channel": {
+                              "description": "The channel of `src` (default r).",
+                              "type": "string",
+                              "enum": [
+                                "r",
+                                "g",
+                                "b",
+                                "a"
+                              ]
+                            },
+                            "strength": {
+                              "description": "value × (1 + (factor − 1) × strength), eg. 0.8 for AO into albedo (default 1).",
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "src"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "description": "Multiplied in after remap and invert (linear values), eg. AO into the albedo."
+                    }
+                  },
+                  "required": [
+                    "src"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "a": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "description": "A constant (0..1, linear) in every channel of the target."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "src": {
+                      "type": "string",
+                      "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                    },
+                    "channel": {
+                      "description": "The channels of `src`, one per target channel (default: the target's own, eg. \"rgb\"). A greyscale image has its grey in r, g and b.",
+                      "type": "string",
+                      "pattern": "^[rgba]{1,4}$"
+                    },
+                    "colorSpace": {
+                      "description": "How `src` is encoded (alpha is always linear). Default: srgb for the colour channels of an sRGB texture (texOpts.colorSpace), else linear.",
+                      "type": "string",
+                      "enum": [
+                        "srgb",
+                        "linear"
+                      ]
+                    },
+                    "normal": {
+                      "description": "`src` is a normal map: it is resized as unit vectors, before its channels are taken. Only `invert` applies.",
+                      "type": "boolean"
+                    },
+                    "remap": {
+                      "description": "Maps [min, max] to 0..1; auto: the full range of the channels taken.",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "auto"
+                        },
+                        {
+                          "type": "array",
+                          "items": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "invert": {
+                      "description": "1 − value, after remap (eg. a DirectX normal's G).",
+                      "type": "boolean"
+                    },
+                    "multiply": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "description": "A constant factor."
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "src": {
+                              "type": "string",
+                              "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                            },
+                            "channel": {
+                              "description": "The channel of `src` (default r).",
+                              "type": "string",
+                              "enum": [
+                                "r",
+                                "g",
+                                "b",
+                                "a"
+                              ]
+                            },
+                            "strength": {
+                              "description": "value × (1 + (factor − 1) × strength), eg. 0.8 for AO into albedo (default 1).",
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "src"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "description": "Multiplied in after remap and invert (linear values), eg. AO into the albedo."
+                    }
+                  },
+                  "required": [
+                    "src"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "rg": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "description": "A constant (0..1, linear) in every channel of the target."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "src": {
+                      "type": "string",
+                      "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                    },
+                    "channel": {
+                      "description": "The channels of `src`, one per target channel (default: the target's own, eg. \"rgb\"). A greyscale image has its grey in r, g and b.",
+                      "type": "string",
+                      "pattern": "^[rgba]{1,4}$"
+                    },
+                    "colorSpace": {
+                      "description": "How `src` is encoded (alpha is always linear). Default: srgb for the colour channels of an sRGB texture (texOpts.colorSpace), else linear.",
+                      "type": "string",
+                      "enum": [
+                        "srgb",
+                        "linear"
+                      ]
+                    },
+                    "normal": {
+                      "description": "`src` is a normal map: it is resized as unit vectors, before its channels are taken. Only `invert` applies.",
+                      "type": "boolean"
+                    },
+                    "remap": {
+                      "description": "Maps [min, max] to 0..1; auto: the full range of the channels taken.",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "auto"
+                        },
+                        {
+                          "type": "array",
+                          "items": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "invert": {
+                      "description": "1 − value, after remap (eg. a DirectX normal's G).",
+                      "type": "boolean"
+                    },
+                    "multiply": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "description": "A constant factor."
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "src": {
+                              "type": "string",
+                              "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                            },
+                            "channel": {
+                              "description": "The channel of `src` (default r).",
+                              "type": "string",
+                              "enum": [
+                                "r",
+                                "g",
+                                "b",
+                                "a"
+                              ]
+                            },
+                            "strength": {
+                              "description": "value × (1 + (factor − 1) × strength), eg. 0.8 for AO into albedo (default 1).",
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "src"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "description": "Multiplied in after remap and invert (linear values), eg. AO into the albedo."
+                    }
+                  },
+                  "required": [
+                    "src"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "rgb": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "description": "A constant (0..1, linear) in every channel of the target."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "src": {
+                      "type": "string",
+                      "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                    },
+                    "channel": {
+                      "description": "The channels of `src`, one per target channel (default: the target's own, eg. \"rgb\"). A greyscale image has its grey in r, g and b.",
+                      "type": "string",
+                      "pattern": "^[rgba]{1,4}$"
+                    },
+                    "colorSpace": {
+                      "description": "How `src` is encoded (alpha is always linear). Default: srgb for the colour channels of an sRGB texture (texOpts.colorSpace), else linear.",
+                      "type": "string",
+                      "enum": [
+                        "srgb",
+                        "linear"
+                      ]
+                    },
+                    "normal": {
+                      "description": "`src` is a normal map: it is resized as unit vectors, before its channels are taken. Only `invert` applies.",
+                      "type": "boolean"
+                    },
+                    "remap": {
+                      "description": "Maps [min, max] to 0..1; auto: the full range of the channels taken.",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "auto"
+                        },
+                        {
+                          "type": "array",
+                          "items": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "invert": {
+                      "description": "1 − value, after remap (eg. a DirectX normal's G).",
+                      "type": "boolean"
+                    },
+                    "multiply": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "description": "A constant factor."
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "src": {
+                              "type": "string",
+                              "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                            },
+                            "channel": {
+                              "description": "The channel of `src` (default r).",
+                              "type": "string",
+                              "enum": [
+                                "r",
+                                "g",
+                                "b",
+                                "a"
+                              ]
+                            },
+                            "strength": {
+                              "description": "value × (1 + (factor − 1) × strength), eg. 0.8 for AO into albedo (default 1).",
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "src"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "description": "Multiplied in after remap and invert (linear values), eg. AO into the albedo."
+                    }
+                  },
+                  "required": [
+                    "src"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "rgba": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "description": "A constant (0..1, linear) in every channel of the target."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "src": {
+                      "type": "string",
+                      "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                    },
+                    "channel": {
+                      "description": "The channels of `src`, one per target channel (default: the target's own, eg. \"rgb\"). A greyscale image has its grey in r, g and b.",
+                      "type": "string",
+                      "pattern": "^[rgba]{1,4}$"
+                    },
+                    "colorSpace": {
+                      "description": "How `src` is encoded (alpha is always linear). Default: srgb for the colour channels of an sRGB texture (texOpts.colorSpace), else linear.",
+                      "type": "string",
+                      "enum": [
+                        "srgb",
+                        "linear"
+                      ]
+                    },
+                    "normal": {
+                      "description": "`src` is a normal map: it is resized as unit vectors, before its channels are taken. Only `invert` applies.",
+                      "type": "boolean"
+                    },
+                    "remap": {
+                      "description": "Maps [min, max] to 0..1; auto: the full range of the channels taken.",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "auto"
+                        },
+                        {
+                          "type": "array",
+                          "items": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "invert": {
+                      "description": "1 − value, after remap (eg. a DirectX normal's G).",
+                      "type": "boolean"
+                    },
+                    "multiply": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "description": "A constant factor."
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "src": {
+                              "type": "string",
+                              "description": "A source image relative to this JSON (\"./source/ao.png\"), or a URL path served from src/public. 8 or 16 bits."
+                            },
+                            "channel": {
+                              "description": "The channel of `src` (default r).",
+                              "type": "string",
+                              "enum": [
+                                "r",
+                                "g",
+                                "b",
+                                "a"
+                              ]
+                            },
+                            "strength": {
+                              "description": "value × (1 + (factor − 1) × strength), eg. 0.8 for AO into albedo (default 1).",
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "src"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "description": "Multiplied in after remap and invert (linear values), eg. AO into the albedo."
+                    }
+                  },
+                  "required": [
+                    "src"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "description": "Per output channel or channel group: a source channel, or a constant."
+        }
+      },
+      "required": [
+        "channels"
+      ],
+      "additionalProperties": false,
+      "description": "Build time only (p300 DD5): the texture packed from source images, in place of `fileName`."
+    },
     "__saveData": {
       "type": "object",
       "propertyNames": {

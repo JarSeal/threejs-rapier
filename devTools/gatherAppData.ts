@@ -13,7 +13,11 @@ import { MeshAsset, MeshAssetSchema } from '../src/_engine/schemas/meshSchema';
 import { ImportedAsset, ImportedAssetSchema } from '../src/_engine/schemas/importedAssetSchema';
 import { SkyBoxAsset, SkyBoxAssetSchema } from '../src/_engine/schemas/skyBoxSchema';
 import { PostFxAsset, PostFxAssetSchema } from '../src/_engine/schemas/postFxSchema';
-import { AssetsConfigSchema, type AssetOptimize } from '../src/_engine/schemas/assetsConfigSchema';
+import {
+  AssetsConfigSchema,
+  type AssetOptimize,
+  type TexturePack,
+} from '../src/_engine/schemas/assetsConfigSchema';
 import { toUniqueJsIdentifier } from '../src/_engine/utils/jsIdentifier';
 import { MetaSchema } from '../src/_engine/schemas/_saveDataSchema';
 import {
@@ -24,7 +28,13 @@ import { deepMerge } from '../src/_engine/utils/deepMerge';
 import { mergeSkyBoxPreset } from '../src/_engine/core/SkyBox/presets';
 import pkg from '../package.json';
 import { createSettingsResolver } from './assetPipeline/settings';
-import { getAssetSourceFileSize, resolveAssetSource } from './assetPipeline/sources';
+import { listPackFiles } from './assetPipeline/pack';
+import {
+  createPackSource,
+  getAssetSourceFileSize,
+  resolveAssetSource,
+  resolvePackFile,
+} from './assetPipeline/sources';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const generatedAppDataJSONFilename = 'generatedAppData.json';
@@ -137,7 +147,26 @@ type SourcedAsset = {
   fileName?: string;
   path?: string;
   optimize?: AssetOptimize;
+  pack?: TexturePack;
+  useHDRLoader?: boolean;
   __saveData?: Record<string, { fileName?: string; path?: string }[] | undefined>;
+};
+
+/** A texture's `pack` (p300 DD5): in place of `fileName`, and every source file must exist. */
+const checkPackSources = (fullPath: string, data: SourcedAsset & { pack: TexturePack }) => {
+  const errors: string[] = [];
+  if (data.fileName || data.path) {
+    errors.push('"pack" builds the texture: it can\'t be combined with "fileName" or "path"');
+  }
+  if (data.useHDRLoader) errors.push('"pack" writes an 8-bit image: remove "useHDRLoader"');
+  for (const src of listPackFiles(data.pack)) {
+    try {
+      resolvePackFile(fullPath, src);
+    } catch (e) {
+      errors.push((e as Error).message);
+    }
+  }
+  return errors;
 };
 
 /** Checks an asset JSON's source files, its own and each scene's latest save entry's (p300 DD3),
@@ -149,6 +178,20 @@ const checkAssetSources = (
   data: SourcedAsset,
   resolveSettings: ReturnType<typeof createSettingsResolver>
 ) => {
+  if (data.pack) {
+    const { pack } = data;
+    const errors = checkPackSources(fullPath, { ...data, pack });
+    try {
+      const { repoPath } = createPackSource(fullPath, pack);
+      resolveSettings({ sourcePath: repoPath, optimize: data.optimize });
+    } catch (e) {
+      errors.push((e as Error).message);
+    }
+    for (const error of errors) {
+      console.error(`\x1b[31m✗ [Scene Gatherer] ${file}: ${error}\x1b[0m`);
+    }
+    if (errors.length) return false;
+  }
   const sources = [{ label: '', fileName: data.fileName, path: data.path }];
   for (const [sceneId, entries] of Object.entries(data.__saveData ?? {})) {
     const entry = entries?.[0];
@@ -963,6 +1006,7 @@ export const gatherSceneData = () => {
             );
             if ('__meta' in texData) delete texData.__meta;
             delete texData.optimize; // Build time only (p300)
+            delete texData.pack;
             delete texData.__sourcePath;
             delete texData.__saveData;
             return texData;

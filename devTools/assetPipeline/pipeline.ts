@@ -1,12 +1,15 @@
 import path from 'path';
 import type { AssetOptimize } from '../../src/_engine/schemas/assetsConfigSchema';
-import { passThroughSource, type PipelineOutput } from './outputs';
+import { encodePng } from './images';
+import { getPackLogicalPath, passThroughSource, writeOutput, type PipelineOutput } from './outputs';
+import { buildPackedImage } from './pack';
 import type { createSettingsResolver, ResolvedAssetSettings } from './settings';
-import type { AssetSource } from './sources';
+import { resolvePackFile, type AssetSource, type PackSource } from './sources';
 
 /**
  * One asset JSON's source through the pipeline (p300 §7): pass it through as it is (DD8), or
- * encode it (Phase 2 step 5; until then such an asset is `pending`).
+ * encode it (Phase 2 step 5; until then such an asset is `pending`). A packed texture (DD5) is
+ * built either way: passed through, it's written as a PNG.
  */
 
 export type PipelineAsset = {
@@ -14,8 +17,10 @@ export type PipelineAsset = {
   id: string;
   /** The asset JSON, relative to the repo root */
   jsonFile: string;
-  source: AssetSource;
+  source: AssetSource | PackSource;
   optimize?: AssetOptimize;
+  /** A texture whose `texOpts.colorSpace` is sRGB: its colour channels are sRGB-encoded */
+  isSrgb?: boolean;
 };
 
 export type PipelineResult =
@@ -23,7 +28,8 @@ export type PipelineResult =
       status: 'passThrough';
       /** Why it isn't optimized */
       reason: string;
-      /** A relative source copied into aek-assets/ (a public one is used where it is) */
+      /** Written into aek-assets/: a relative source's copy, or a pack's PNG (a public source is
+       * used where it is) */
       isCopy: boolean;
       output: PipelineOutput;
       settings: ResolvedAssetSettings;
@@ -49,17 +55,33 @@ const getPassThroughReason = (asset: PipelineAsset, settings: ResolvedAssetSetti
     : `${passThrough.textures}; ${passThrough.mesh}`;
 };
 
-/** Throws when a pass-through can't copy its source (see `passThroughSource`). */
-export const processAsset = (
+/** A pack passed through: built at its own size, unflipped, as the runtime loads a PNG. */
+const passThroughPack = async (source: PackSource, isSrgb: boolean) => {
+  const image = await buildPackedImage(source.pack, {
+    resolveFile: (src) => resolvePackFile(source.jsonFile, src),
+    isSrgb,
+  });
+  return writeOutput(getPackLogicalPath(source), '.png', await encodePng(image, isSrgb));
+};
+
+/**
+ * Throws when a pass-through can't copy its source (see `passThroughSource`) or a pack can't be
+ * built (see `buildPackedImage`).
+ */
+export const processAsset = async (
   asset: PipelineAsset,
   resolveSettings: ReturnType<typeof createSettingsResolver>
-): PipelineResult => {
+): Promise<PipelineResult> => {
   if (asset.source.kind === 'remote') {
     return { status: 'skipped', reason: 'a remote file is loaded from where it is' };
   }
   const settings = resolveSettings({ sourcePath: asset.source.repoPath, optimize: asset.optimize });
   const reason = getPassThroughReason(asset, settings);
   if (reason) {
+    if (asset.source.kind === 'pack') {
+      const output = await passThroughPack(asset.source, !!asset.isSrgb);
+      return { status: 'passThrough', reason, isCopy: true, output, settings };
+    }
     const { isCopy, ...output } = passThroughSource(asset.source);
     return { status: 'passThrough', reason, isCopy, output, settings };
   }

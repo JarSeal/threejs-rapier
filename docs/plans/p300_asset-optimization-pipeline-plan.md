@@ -595,6 +595,32 @@ Sections:
   - Otherwise `pending`, until step 5's encoder.
 - Verified with a scratch script on throwaway fixtures (removed): every switch and env combination, JSON / rule / project opt-outs, public and `path` sources, HDR, remote, GLB sides, and both `.gltf` kinds. The copy is byte-identical, its hash is the source's, and a second run doesn't rewrite it.
 
+**Step 4 as built:**
+
+- **The shape is p303 D3's sketch**, not a new one: `pack: { size?, channels: { <target>: … } }` in `*.texture.json` (`TexturePackSchema`, `assetsConfigSchema.ts`), in place of `fileName`. It is build time only, like `optimize`: not per scene, and dropped from the scene entries.
+  - Targets: `r`, `g`, `b`, `a`, `rg`, `rgb`, `rgba`. Together they must cover r, rg, rgb or rgba, with no overlap (the schema's refinement names the gap or the clash). Two channels are written as RGB with B = 0, because a PNG's two-channel form is grey + alpha.
+  - A target is a constant, or `{ src, channel?, colorSpace?, normal?, remap?, invert?, multiply? }`:
+    - `src` is relative to the JSON, or a `src/public` URL path. It must exist; remote files aren't read.
+    - `channel` defaults to the target's own letters. A greyscale image has its grey in r, g and b. Alpha from an image without alpha is an error, not a silent 1.
+    - `colorSpace` defaults to sRGB for the colour channels of an sRGB texture (`texOpts.colorSpace: "srgb"`), else linear. Alpha is always linear. So p303's albedo needs no flag, and its AO and roughness stay linear.
+    - `remap` is `[min, max]` or `auto` (the full range of the channels taken, Phase 1's height). Then `invert`, then `multiply`: a constant, or `{ src, channel = r, strength = 1 }` as `value × (1 + (factor − 1) × strength)` (Phase 1's AO into albedo).
+- **Order of work** (`devTools/assetPipeline/pack.ts`), chosen to reproduce Phase 1 exactly:
+  - Every channel is computed at the pack size (`size`, else the sources' common size; different sizes without `size` are an error) and then resized to the output size. So AO is multiplied and height remapped at source resolution, before downscaling.
+  - A `normal: true` source is resized on its own, as unit vectors, straight to the output size, and its channels are taken from that. Packing it first would lose the Z the renormalization needs (LITE's `normalHeight` keeps X and Y only). It takes `invert` only.
+- **The resize is in this step** (`devTools/assetPipeline/images.ts`), because the pack can't be built without it. Step 5 reuses it for single-file textures.
+  - `getOutputSize` fits `maxSize` (never up) and rounds to multiples of 4 for a block-compressed codec (§4). It returns the aspect `stretch` for step 5's warning.
+  - `resizeImage` does exact 2:1 box steps while both sides can halve (Phase 1's filter), then an area filter for any other ratio. Normals are renormalized at each step.
+  - Images are read at their own bit depth. sRGB is decoded from the integer samples, as Phase 1 did. Output is an 8-bit PNG. sharp is imported on first use, so the gatherer (and through it the Vite config) doesn't load the native module.
+- **Pass-through** (`processAsset`, now async): a pack is built at its pack size, unflipped (the runtime loads it like any PNG), and written as `aek-assets/<JSON path>.pack.<hash>.png`, eg. `app/textures/rock.pack.284666a2.png`. The `.pack` suffix keeps it apart from a source file next to the JSON with the same name. With optimization on, it's `pending` until step 5. Rules match a pack by its JSON's path, since it has no single source file.
+- **Gatherer:** a pack can't be combined with `fileName`, `path` or `useHDRLoader`, and each source must exist. The `optimize` profile is resolved against the JSON's path.
+- **Verified:**
+  - Phase 1's three packed baselines were rebuilt from `pack` recipes at `maxSize` 1024 and compared with the committed `phase1/` PNGs: `rocks01/albedoRough`, `rocks01/normalHeight` and `metalRust/orm` are **pixel-identical** (0 differing samples). So step 5's encodes of them can be byte-identical.
+  - Also checked with a scratch script and throwaway fixtures (removed): every schema error, alpha from a JPG, a constants-only pack, mixed sizes with and without `size`, odd output sizes, the area filter (mean kept, normals unit length within 1e-7), and the pass-through (written once, same URL on a second run; `optimize: false` and `AEK_ASSETS_OPTIMIZE=false` pass it through, all on is `pending`). The gatherer reports each invalid JSON with its reason.
+- Not done here:
+  - A **16-bit output**: packs are always written at 8 bits (DD5's "quantized once, at the end").
+  - p303's cavity AO from height and `__averageColor`: they are p303's pack options, on top of this step.
+- **A packed texture doesn't load at runtime yet**: it has no `fileName` until step 7's `__url`.
+
 ### Phase 3 — Integrate (~1 day)
 
 1. `gatherAppData` runs the cached pipeline, and the gatherer plugin re-encodes a changed source.

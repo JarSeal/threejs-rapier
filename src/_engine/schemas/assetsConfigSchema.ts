@@ -170,6 +170,146 @@ export const PublicFileNameSchema = z
   })
   .describe('A URL path served from src/public ("/textures/rock.png", optionally after `path`).');
 
+const PackFileSchema = z
+  .string()
+  .describe(
+    'A source image relative to this JSON ("./source/ao.png"), or a URL path served from src/public. 8 or 16 bits.'
+  );
+
+const PackMultiplySchema = z
+  .union([
+    z.number().describe('A constant factor.'),
+    z.strictObject({
+      src: PackFileSchema,
+      channel: z
+        .enum(['r', 'g', 'b', 'a'])
+        .optional()
+        .describe('The channel of `src` (default r).'),
+      strength: z
+        .number()
+        .min(0)
+        .optional()
+        .describe('value × (1 + (factor − 1) × strength), eg. 0.8 for AO into albedo (default 1).'),
+    }),
+  ])
+  .describe('Multiplied in after remap and invert (linear values), eg. AO into the albedo.');
+
+export const PACK_TARGETS = ['r', 'g', 'b', 'a', 'rg', 'rgb', 'rgba'] as const;
+
+export type PackTarget = (typeof PACK_TARGETS)[number];
+
+const PackChannelSchema = z.union([
+  z.number().describe('A constant (0..1, linear) in every channel of the target.'),
+  z.strictObject({
+    src: PackFileSchema,
+    channel: z
+      .string()
+      .regex(/^[rgba]{1,4}$/)
+      .optional()
+      .describe(
+        'The channels of `src`, one per target channel (default: the target\'s own, eg. "rgb"). A greyscale image has its grey in r, g and b.'
+      ),
+    colorSpace: z
+      .enum(['srgb', 'linear'])
+      .optional()
+      .describe(
+        'How `src` is encoded (alpha is always linear). Default: srgb for the colour channels of an sRGB texture (texOpts.colorSpace), else linear.'
+      ),
+    normal: z
+      .boolean()
+      .optional()
+      .describe(
+        '`src` is a normal map: it is resized as unit vectors, before its channels are taken. Only `invert` applies.'
+      ),
+    remap: z
+      .union([z.literal('auto'), z.tuple([z.number(), z.number()])])
+      .optional()
+      .describe('Maps [min, max] to 0..1; auto: the full range of the channels taken.'),
+    invert: z.boolean().optional().describe("1 − value, after remap (eg. a DirectX normal's G)."),
+    multiply: PackMultiplySchema.optional(),
+  }),
+]);
+
+/**
+ * A texture built from several source images (p300 DD5), in place of `fileName`. The output has
+ * the channels its targets cover: r, rg, rgb or rgba (two channels are written as RGB, B = 0).
+ */
+export const TexturePackSchema = z
+  .strictObject({
+    size: z
+      .tuple([z.number().int().min(1), z.number().int().min(1)])
+      .optional()
+      .describe(
+        "Width and height the channels are combined at (default: the sources' size, which must then agree). The optimize step resizes the result to its maxSize."
+      ),
+    channels: z
+      .strictObject(
+        Object.fromEntries(
+          PACK_TARGETS.map((target) => [target, PackChannelSchema.optional()])
+        ) as {
+          [target in PackTarget]: z.ZodOptional<typeof PackChannelSchema>;
+        }
+      )
+      .describe('Per output channel or channel group: a source channel, or a constant.'),
+  })
+  .superRefine((pack, ctx) => {
+    const covered = new Map<string, PackTarget>();
+    for (const target of PACK_TARGETS) {
+      const spec = pack.channels[target];
+      if (spec === undefined) continue;
+      for (const letter of target) {
+        const other = covered.get(letter);
+        if (other) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['channels', target],
+            message: `"${other}" and "${target}" both set ${letter}`,
+          });
+        }
+        covered.set(letter, target);
+      }
+      if (typeof spec === 'number') continue;
+      if (spec.channel && spec.channel.length !== target.length) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['channels', target, 'channel'],
+          message: `"${target}" takes ${target.length} channel(s), "${spec.channel}" names ${spec.channel.length}`,
+        });
+      }
+      if (spec.normal && (spec.remap || spec.multiply || spec.colorSpace)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['channels', target],
+          message: 'a normal map source takes `invert` only (no remap, multiply or colorSpace)',
+        });
+      }
+      if (spec.normal && (spec.channel ?? target).includes('a')) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['channels', target],
+          message: "a normal map's channels are r, g and b",
+        });
+      }
+    }
+    const letters = ['r', 'g', 'b', 'a'];
+    const last = Math.max(...[...covered.keys()].map((letter) => letters.indexOf(letter)));
+    const missing = letters.slice(0, last + 1).filter((letter) => !covered.has(letter));
+    if (!covered.size) {
+      ctx.addIssue({ code: 'custom', path: ['channels'], message: 'no channels' });
+    } else if (missing.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['channels'],
+        message: `the output channels are r, rg, rgb or rgba: set ${missing.map((l) => `"${l}"`).join(', ')} too (eg. to 0)`,
+      });
+    }
+  })
+  .describe(
+    'Build time only (p300 DD5): the texture packed from source images, in place of `fileName`.'
+  );
+
+export type TexturePack = z.infer<typeof TexturePackSchema>;
+
 export const AssetsConfigRuleSchema = z.strictObject({
   glob: z
     .string()
