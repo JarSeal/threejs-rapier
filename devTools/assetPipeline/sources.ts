@@ -12,9 +12,9 @@ import { isJsonRelativeFileName } from '../../src/_engine/schemas/assetsConfigSc
  * - `remote`: a URL with a scheme (or `//host`). Never optimized.
  */
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const SRC_DIR = path.join(ROOT, 'src');
-const PUBLIC_DIR = path.join(SRC_DIR, 'public');
+export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+export const SRC_DIR = path.join(ROOT, 'src');
+export const PUBLIC_DIR = path.join(SRC_DIR, 'public');
 
 export type AssetSource =
   | {

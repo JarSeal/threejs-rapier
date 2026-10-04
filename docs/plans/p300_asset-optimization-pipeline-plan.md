@@ -567,6 +567,33 @@ Sections:
 - Zod reports a mistake inside `optimize` as the union's "Invalid input". The gatherer's `logValidationError` now shows the issues of the one branch that got past its type check (eg. `[optimize.textures.default]: Unrecognized key: "maxsize"`). This applies to every schema's unions.
 - **A relative `fileName` doesn't load at runtime yet.** It reaches the generated data as written, and nothing resolves it until step 3's pass-through copy, step 7's `__url` and Phase 3 step 2. No asset uses one yet.
 - Open for steps 5–7: a scene's save entry can point a texture at another file. That file needs its own output (and `__url`), with the asset's one `optimize`.
+  - Decided (2026-10-04): it's optimized like the asset's own file, with the asset's `optimize`. The list of sources is what `checkAssetSources` already walks: the asset's file plus each scene's latest entry. Two scenes that share a file share one encode (the cache), and step 6's stale-output cleanup must count these files as in use.
+
+**Step 3 as built:**
+
+- **The project switches are build time only** (decided 2026-10-04). `AppConfig.assets.optimization` (`enabled`, `textures`, `meshes`, each default true) is in `src/CONFIG.ts`, with a doc comment saying the runtime never reads it.
+  - `CONFIG.ts` now imports `AppConfig` with `import type`. It only worked in Node before because tsx and esbuild drop imports used only as types.
+  - `CONFIG.ts` had no `assets` block yet. `loadConfig` merges the app config shallowly, so the new block replaces the engine's default `assets` object. Nothing changes: `initAssets` falls back to the same values (`DEFAULT_ASSETS_STATE`) for every key.
+- `devTools/assetPipeline/switches.ts`:
+  - `resolveProjectOptOut(optimization, env)` returns why each side is off (`{ textures?, mesh? }`).
+  - `AEK_ASSETS_OPTIMIZE` (`true` / `false` / `1` / `0`; anything else throws, empty is ignored) overrides `enabled` only. `=true` on a project with `meshes: false` keeps the meshes off.
+  - `loadProjectOptOut()` imports `CONFIG.ts` when it's called, for the command line (tsx).
+  - **Not a static import from anything `vite.config.ts` loads:** that would make `CONFIG.ts` part of the Vite config, which restarts the dev server on every edit. Node 22 can't import `.ts` by itself, so Phase 3 step 1 loads it with `server.ssrLoadModule` and passes `assets.optimization` in. Phase 3 step 1 also re-runs the pipeline when `CONFIG.ts` changes.
+- `createSettingsResolver(config, projectOptOut)` puts the project's reasons first, ahead of rules and the JSON. The gatherer's step 2 validation passes none (all on); the switches don't change what's valid.
+- **Every pass-through reason names its side** (eg. `textures: false in the rule "…"`, `assets.optimization.meshes: false in src/CONFIG.ts`). A GLB with both sides off joins them with `; `.
+- `devTools/assetPipeline/outputs.ts`:
+  - `writeOutput` writes `src/public/aek-assets/<logical path>.<hash>.<ext>`. The hash is the first 8 hex digits of the content's SHA-256. The file is written once (an existing name has the same content), through a temp file and a rename.
+  - The logical path is the source's path under `src/`, or under `src/public/` for a public source, without its extension (eg. `app/textures/source/rock`). It differs from §5's example, which drops the `source/` folder. This form is unique per source file, which a scene's save entry with its own file needs. A packed texture has no single source file, so step 4 gives it the JSON's path.
+- `passThroughSource`:
+  - A relative source is copied, because the production build doesn't ship `src/`.
+  - A public source is already served, so its own URL is the output (no copy, no duplicate in `dist/`). Like the gatherer, it doesn't require the file to exist.
+  - A relative `.gltf` with external buffers or images is refused, since a copy would lose them: export a `.glb`, or optimize it (gltf-transform reads the external files).
+- `devTools/assetPipeline/pipeline.ts`, `processAsset(asset, resolveSettings)`, is the per-asset unit that steps 5–7 extend:
+  - `skipped` for a remote file.
+  - `passThrough` (with its reason and output) when the asset's side is off. A GLB passes through only when both sides are off; with one off it still goes through gltf-transform for the other.
+  - An HDR texture source (`.hdr`, `.exr`) always passes through: UASTC and ETC1S are LDR formats.
+  - Otherwise `pending`, until step 5's encoder.
+- Verified with a scratch script on throwaway fixtures (removed): every switch and env combination, JSON / rule / project opt-outs, public and `path` sources, HDR, remote, GLB sides, and both `.gltf` kinds. The copy is byte-identical, its hash is the source's, and a second run doesn't rewrite it.
 
 ### Phase 3 — Integrate (~1 day)
 

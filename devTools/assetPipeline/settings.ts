@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import {
   AssetsConfigSchema,
   TEXTURE_SLOTS,
@@ -12,17 +11,18 @@ import {
   type TextureSlot,
 } from '../../src/_engine/schemas/assetsConfigSchema';
 import { globToRegExp } from './glob';
+import { ROOT } from './sources';
+import type { ProjectOptOut } from './switches';
 
 /**
  * Resolves an asset's optimization settings (p300 §4): the built-in defaults, then
  * `assets.config.json`'s `defaults`, its matching rules (in order), the profile (the asset's own,
  * else the last matching rule's), the collider default and the asset JSON's own overrides,
  * later wins. Within each level, a texture slot's entry merges over that level's `default`.
- * An `optimize: false` (or `textures: false` / `mesh: false`) in a rule or the asset JSON wins
- * over all of it.
+ * The project switches (src/CONFIG.ts, `AEK_ASSETS_OPTIMIZE`) and an `optimize: false` (or
+ * `textures: false` / `mesh: false`) in a rule or the asset JSON win over all of it.
  */
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const ASSETS_CONFIG_FILE = path.join(ROOT, 'assets.config.json');
 
 /** Phase 1's measured defaults (§4). `assets.config.json`'s `defaults` merge over these. */
@@ -142,8 +142,12 @@ const pickTextureSettings = (merged: TextureSettings): ResolvedTextureSettings =
 /**
  * Returns the resolver for a config. Throws when a rule names a profile that doesn't exist or
  * has an invalid glob; the resolver itself throws for an asset that names an unknown profile.
+ * @param projectOptOut The project switches (`resolveProjectOptOut`); default: all on
  */
-export const createSettingsResolver = (config: AssetsConfig = loadAssetsConfig()) => {
+export const createSettingsResolver = (
+  config: AssetsConfig = loadAssetsConfig(),
+  projectOptOut: ProjectOptOut = {}
+) => {
   const profiles = config.profiles ?? {};
   const profileNames = () => Object.keys(profiles).join(', ') || 'none';
   const rules = (config.rules ?? []).map((rule, index) => {
@@ -163,13 +167,18 @@ export const createSettingsResolver = (config: AssetsConfig = loadAssetsConfig()
       passThrough[side] ??= reason;
     };
 
+    if (projectOptOut.textures) setPassThrough('textures', projectOptOut.textures);
+    if (projectOptOut.mesh) setPassThrough('mesh', projectOptOut.mesh);
+
     for (const rule of matched) {
       if (rule.optimize === false) {
         setPassThrough('textures', `optimize: false in the rule "${rule.glob}"`);
         setPassThrough('mesh', `optimize: false in the rule "${rule.glob}"`);
       }
-      if (rule.textures === false) setPassThrough('textures', `in the rule "${rule.glob}"`);
-      if (rule.mesh === false) setPassThrough('mesh', `in the rule "${rule.glob}"`);
+      if (rule.textures === false) {
+        setPassThrough('textures', `textures: false in the rule "${rule.glob}"`);
+      }
+      if (rule.mesh === false) setPassThrough('mesh', `mesh: false in the rule "${rule.glob}"`);
     }
     if (input.optimize === false) {
       setPassThrough('textures', 'optimize: false in the asset JSON');
