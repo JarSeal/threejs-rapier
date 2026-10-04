@@ -1,5 +1,54 @@
 {
   "scenes": {
+    "assetCompare": {
+      "isDebugScene": true,
+      "name": "Asset compare (p300 codec variants)",
+      "description": "p300 Phase 1d: the codec variants of phase1Variants.ts against their uncompressed baselines. A tiled rock ground at grazing angles, a MetalRust sphere and the metal toolbox prop, built twice (slots A and B); V switches between them. Debug env: the scene's own \"Asset compare\" tab picks the variants, shows each texture's file size and VRAM, and runs the collider check.",
+      "skyboxes": [
+        {
+          "base": {
+            "type": "COLOR",
+            "color": "#000000"
+          },
+          "atmosphere": {},
+          "suns": [
+            {
+              "elevation": 20,
+              "azimuth": 200,
+              "glowIntensity": 0.4,
+              "light": {}
+            }
+          ],
+          "clouds": {
+            "coverage": 0.35,
+            "enabled": false
+          },
+          "ground": {},
+          "id": "assetCompare",
+          "debugData": {
+            "name": "Asset compare",
+            "description": "DAY_SKY with a low sun and no clouds: raking light shows the normal maps, the sky reflects in the metals."
+          }
+        }
+      ],
+      "id": "assetCompare",
+      "sceneFile": "./assetCompare.ts",
+      "cameras": [
+        {
+          "camProps": {
+            "type": "PERSPECTIVE",
+            "fov": 90,
+            "active": true
+          },
+          "entityOpts": {
+            "debugData": {
+              "name": "_camera",
+              "description": "Auto-generated camera for the scene"
+            }
+          }
+        }
+      ]
+    },
     "testDebugScene": {
       "isDebugScene": true,
       "id": "testDebugScene",
@@ -2273,6 +2322,32 @@
     }
   },
   "skyboxes": {
+    "assetCompare": {
+      "base": {
+        "type": "COLOR",
+        "color": "#000000"
+      },
+      "atmosphere": {},
+      "suns": [
+        {
+          "elevation": 20,
+          "azimuth": 200,
+          "glowIntensity": 0.4,
+          "light": {}
+        }
+      ],
+      "clouds": {
+        "coverage": 0.35,
+        "enabled": false
+      },
+      "ground": {},
+      "id": "assetCompare",
+      "debugData": {
+        "name": "Asset compare",
+        "description": "DAY_SKY with a low sun and no clouds: raking light shows the normal maps, the sky reflects in the metals."
+      },
+      "__sourcePath": "src/app/skyboxes/assetCompare.skybox.json"
+    },
     "basicSkybox": {
       "id": "basicSkybox",
       "base": {

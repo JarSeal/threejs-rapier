@@ -235,7 +235,7 @@ Per asset (in a `*.texture.json`):
   - Compressed textures can't generate mipmaps at runtime, so the pipeline always writes the full mip chain unless `mipmaps: false`.
 - **GLTF:**
   - `GLTFSource.ts` and `assetsSwitchGLTF.ts` get `setMeshoptDecoder` and `setKTX2Loader` (DD7 for the worker).
-  - `MeshColliderGeometry.ts` keeps refusing Draco and also refuses quantized positions (a normalized integer position attribute), with an actionable error ("set `optimize.mesh.quantize: false` for collider sources").
+  - `MeshColliderGeometry.ts` keeps refusing Draco and also refuses quantized positions (a normalized integer position attribute) for HEIGHTFIELD, with an actionable error ("set `optimize.mesh.quantize: false` for collider sources"). TRIMESH and the primitives already handle quantized positions, and CONVEXHULL will once it reads them through the getters (Phase 3 step 5).
 - **Caching headers:** hashed file names can be served with long-lived cache headers. The dev server needs nothing.
 
 ---
@@ -316,7 +316,7 @@ Sections:
 - **1a — Tooling — done.** `yarn setupAssetTools`, `sharp`, `@gltf-transform/cli`.
 - **1b — Measuring — done.** Count compressed textures' real bytes in the GPU memory tab.
 - **1c — Assets and encoding — done.** Terrain layer `rocks01` (ambientCG `Ground079S`, LITE), a CC0 Poly Haven prop GLB at 2K (with an ARM map), the Poliigon MetalRust set as the problem case (ORM with hard metal / rust edges, and its normal map), a quantized copy of `stairsStraightTrimesh.glb` for the collider test. Variants: ETC1S q128 / q255, UASTC without RDO, UASTC + RDO λ 1 / 2 / 4 (all Zstd 18), normal mode on / off. Downloaded sources go in a gitignored folder; the outputs are committed, like Phase 0's.
-- **1d — Comparison scene.** A tiled ground plane at grazing angles (REPEAT, max anisotropy), the prop, the MetalRust ORM on a sphere; a scene-scoped debug tab that swaps variants in place (a key) and shows each one's file size and VRAM.
+- **1d — Comparison scene — done.** A tiled ground plane at grazing angles (REPEAT, max anisotropy), the prop, the MetalRust ORM on a sphere; a scene-scoped debug tab that swaps variants in place (a key) and shows each one's file size and VRAM.
 - **1e — Measurements.** File sizes, three's estimate, headless WebGL2 screenshots; a checklist for WebGPU on a real GPU, Chrome's GPU memory, the weak device and iOS (HTTPS on the LAN: a `--host` run with `@vitejs/plugin-basic-ssl` and WSL port forwarding, or a tunnel).
 - **1f — Record.** The results table and profiles in §4, the collider outcome in DD6.
 
@@ -381,6 +381,35 @@ Sections:
   - Gitignored: `metalToolbox/`, all seven prop GLBs. A clone rebuilds them with `--only metalToolbox` (~2 min; needs `ktx` and the Poly Haven download), so the 1d scene skips a missing variant with a message instead of failing.
   - The variants only matter until 1f picks the profiles. Then the losing ones are deleted, or the whole `phase1/` folder: `report.json` and this plan keep the numbers, and the script rebuilds any variant identically.
 
+**1d as built:**
+
+- The `assetCompare` scene (`src/app/assetCompare.ts`, `assetCompare.scene.json`, debug scene) with a scene tab, "Asset compare" (`src/app/_dbg__assetCompare.ts`). Its sky box (`skyboxes/assetCompare.skybox.json`) is DAY_SKY with the sun at 20° and no clouds: raking light for the normal maps, a sky for the metals to reflect.
+- Two slots, A and B, each build the whole set at the same spots, one variant each (`png` = the uncompressed baselines and the toolbox's JPG `source.glb`). V (a scene key binding) or the tab switches which one is visible (`Object3D.visible`), so a switch is instant: both stay resident, and no shader is rebuilt. Changing a slot's variant rebuilds that slot only: its entities, materials and textures are deleted, and its prop import released.
+  - The slot settings persist in `appDebugAssetCompare` (the tab's `persistKeys`). The scene creates the tab before it builds, so the builds read the saved settings.
+- Ground: a 120 m plane, `rocks01` tiled every 2 m, REPEAT, the renderer's max anisotropy. The LITE material is TSL: colour from `albedoRough.rgb`, roughness from `.a`, and the normal from `normalHeight`'s XY with `NormalRGPacking` (Z reconstructed, height unused).
+- Sphere: MetalRust with the committed base colour JPG (one texture, the same in every variant), the ORM in `aoNode` / `roughnessNode` / `metalnessNode`, and the normal map. A normal-mode variant gets `NormalGAPacking`, and it renders like the PNG (WebGL2).
+- Prop: each variant's `metalToolbox` GLB, imported with its textures and given a STANDARD material from its slots. **The Poly Haven glTF has no `occlusionTexture`:** the ARM map fills `roughnessMap` and `metalnessMap` only, unlike 1c's note.
+  - A GLB that isn't built is skipped with a message in the tab: the dev server answers a missing file with `200 text/html`, so the scene checks with a HEAD request.
+- The tab lists each slot's textures: the VRAM three counts (`renderer.info.memoryMap`, with 1b's compressed sizes, "not drawn" until first drawn), the file size, the RGBA8 size, and the 1c errors (PSNR, normal angle) from `report.json`. Prop textures are matched to the report by kind: the importer names them after the glTF texture, the report after the image file.
+- One camera only: every camera other than the active one shows its debug symbol, which stood in this view. For close-ups, use the debug camera (F1). In a fresh browser, the engine's own debug camera symbol still stands in the default view.
+- The engine's `three/tsl` type shim (`_engine/types/three-node-material-helpers.d.ts`) types `texture` and `uv` loosely, and its nodes don't fit the material's node slots. The scene re-types the two with the real `Node` type (`sampleTexture`, `meshUv`).
+- Smoke figures, WebGL2 on SwiftShader (ETC1S → ETC2, UASTC → ASTC 4×4), slot totals: `png` 85.3 MB (the four 1K textures at 5.33 MB each, the prop's three 2K maps at 21.3 MB each), `uastc` 21.3 MB, `etc1s_q128` 11.3 MB (683 KB per 1K ETC2 RGB texture, 1.33 MB for `albedoRough`, which has alpha). The real measurements are 1e's.
+- **Collider check (DD6)**, the tab's "Run collider check". It imports the source and the three copies of each collider model, derives every collider with `deriveColliderFromGeometry` (as `spawnImportedAsset` does), and compares each one's world AABB (and a HEIGHTFIELD's heights) with the source's. Tolerance: 1 cm.
+
+  | Collider                  | `quantized` | `meshopt`  | `meshoptLossless` |
+  | ------------------------- | ----------- | ---------- | ----------------- |
+  | TRIMESH (stairs, terrain) | ✓ ≤ 2.4 mm  | ✓ ≤ 2.4 mm | ✓ 0               |
+  | BOX (obstacles)           | ✓ 0.2 mm    | ✓ 0.2 mm   | ✓ 0               |
+  | CONVEXHULL (obstacles)    | ✗ 32.7 km   | ✗ 32.7 km  | ✓ 0               |
+  | HEIGHTFIELD (terrain)     | ✗ throws    | ✗ throws   | ✓ 0 (heights too) |
+
+  - CONVEXHULL fails as 1c expected: the raw Int16 values become the hull's vertices.
+  - HEIGHTFIELD fails earlier than expected: `mergeVertices` throws on an `InterleavedBufferAttribute`. GLTFLoader loads a quantized position (Int16 vec3, 6 bytes padded to an 8-byte stride) as interleaved. So `spawnImportedAsset` would reject, not just build a wrong shape, and the meshopt reorder can't be checked behind it.
+  - For 1f: a collider source takes meshopt without quantization (`meshoptLossless`), which is exact for all four shapes. §6's runtime refusal of quantized positions has to run before the HEIGHTFIELD and CONVEXHULL derivations.
+  - Not p300's, found on the way: the source CONVEXHULLs already sit 57.8 mm off their meshes. The derivation centres the hull's vertices (`geoClone.center()`), but the body stays at the node's origin.
+
+- Not run: WebGPU, and Chrome's GPU memory (1e's checklist).
+
 ### Phase 2 — Pipeline (~2–3 days)
 
 1. Config schema plus resolver (DD2), compiled to `.schemas/`.
@@ -400,6 +429,10 @@ Sections:
 2. The runtime resolves `__url`.
 3. The "Load source files" boot-time override in the Assets debug tab (DD8 level 3).
 4. Wire into `yarn build`.
+5. Colliders from quantized geometry (`core/Import/MeshColliderGeometry.ts`, found in 1d):
+   - CONVEXHULL: read the positions through the attribute getters into a `Float32Array`, as TRIMESH does, instead of `applyMatrix4` and the raw `position.array`. That makes quantized and interleaved positions safe.
+   - HEIGHTFIELD: refuse a quantized position attribute (§6) before `mergeVertices`, which throws on an `InterleavedBufferAttribute`. Draco keeps its own refusal.
+   - Check: 1d's collider check passes CONVEXHULL `quantized` / `meshopt`, and reports HEIGHTFIELD `quantized` / `meshopt` as refused (a clear error, nothing thrown).
 
 ### Phase 4 — Harden
 
@@ -415,7 +448,7 @@ Sections:
 | Risk                                                                                                                          | Mitigation                                                                                                                                                                                                                         |
 | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ETC1S ruins normal / ORM maps                                                                                                 | Per-slot codecs; UASTC is the default for those slots and for terrain layers                                                                                                                                                       |
-| Quantized positions break colliders (the dequantization offset is in the node transform)                                      | `quantize: false` for collider sources (`terrainBlock` profile); the runtime refuses quantized collider geometry with an actionable error                                                                                          |
+| Quantized positions break colliders (the dequantization offset is in the node transform)                                      | `quantize: false` for collider sources (`terrainBlock` profile); CONVEXHULL reads quantized positions through the getters, and HEIGHTFIELD refuses them with an actionable error (Phase 3 step 5)                                  |
 | Quantized UVs: the UV dequantization moves into the glTF material's `KHR_texture_transform`, and glTF materials are discarded | Imported textures carry it (`offset`/`repeat`), so the glTF's own maps are right; any other texture on that geometry samples the wrong UVs. Don't quantize texcoords by default, or bake the transform back into the UVs at import |
 | `flipY` can't apply to compressed textures                                                                                    | Encode flipped; Phase 0 visual check against the PNG path                                                                                                                                                                          |
 | `KTX2Loader` support detection in the asset worker                                                                            | Main-thread fallback (DD7), Phase 0 spike                                                                                                                                                                                          |

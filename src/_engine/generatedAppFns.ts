@@ -15,6 +15,14 @@ export const sceneFileObjects: {
     assets: ScenePrimitiveAssets;
   }) => Promise<void>;
 } = {
+  assetCompare: async ({ sceneData, assets }) => {
+    const module = await import('../app/./assetCompare.ts');
+    await (
+      module as {
+        scene: (sceneData: { sceneData: SceneData; assets: ScenePrimitiveAssets }) => Promise<void>;
+      }
+    ).scene({ sceneData, assets });
+  },
   testDebugScene: async ({ sceneData, assets }) => {
     const module = await import('../app/debugScene.scene.ts');
     await (
