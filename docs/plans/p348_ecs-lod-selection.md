@@ -182,6 +182,10 @@ Spike, half a day: does `@three.ez/batched-mesh-extensions`' `addGeometryLOD` wo
 §4.2 on draw calls for a scene with many different assets? Record the outcome here. §4.2 doesn't
 depend on the answer.
 
+Run it once, as p375's Phase 0 (`p375_batched-mesh-batches.md`), which also answers p309's decal
+pool risk. Known already (p370 §2.1): on WebGPU r186 a `BatchedMesh` is one draw call per visible
+member, so it can't beat §4.2's one draw per level on draw count; the question is CPU cost.
+
 ## 5. JSON and generated chains
 
 `meshSchema` gets `lod`:

@@ -2,6 +2,7 @@ Status: draft | not-implemented
 Category: App, Terrain, Docs
 Blocked by: p305_terrain-material-generator.md, p306_terrain-blocks-and-procedural-terrain-meshes.md, p307_wet-and-dry-surface-states.md, p308_terrain-scatter.md, p309_terrain-decals.md
 Epic: p301_terrain-texturing-epic.md
+Related: p370_static-mesh-merging-and-texture-atlas-systems.md (merged dressing and modular kit terrain, for the matrix and the measurements)
 
 # Terrain Preview Scenes (gallery + showcase) and the Final Handbook Pass
 
@@ -281,6 +282,8 @@ export const scene = async () => {
 | Racing / flight             | Rules + colour map far                | LITE                        | DUAL_SCALE (far scale matters most) | Slope-gated                         | COLOR_MAP early           | FULL near the track | Sparse; roadside decals              |
 | Stylized (any camera)       | Vertex colour                         | MINIMAL or baked procedural | NONE                                | Planar / biplanar                   | AVERAGE_COLOR             | SIMPLE              | Low-poly procedural rocks            |
 | Low-end tier (any)          | Vertex colour                         | MINIMAL                     | NONE                                | Planar + biplanar cliffs            | AVERAGE_COLOR early       | SIMPLE              | Minimal                              |
+
+If p372 has landed, the matrix gets a "Static dressing" note (merge a block's props and cutout decals per material, `AUTO` groups) and the "start here" path links `terrain-modular-kits.md` for worlds built from modules or tiles; the gallery's measurement mode then records draws with and without merging.
 
 2. **Every page's "Performance" section** gets its measured rows; every page's "Template file" points at existing files.
 3. **A "start here" path** in the README: pick your camera → the matrix row → the pages to read, in order.
