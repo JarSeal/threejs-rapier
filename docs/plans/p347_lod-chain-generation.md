@@ -1,7 +1,6 @@
 Status: draft | not-implemented
 Category: Assets, Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 1.1)
-Blocked by: p300_asset-optimization-pipeline-plan.md Phase 2 (soft: only this plan's Phase 3, the build-time GLB path)
 Blocks: p348_ecs-lod-selection.md Phase 2 (`lod: 'AUTO'` reads these chains)
 Related: \_DONE_p345_gpu-memory-and-draw-call-debugger.md (measures the chains' memory), p306_terrain-blocks-and-procedural-terrain-meshes.md (block geometry is a chain candidate)
 

@@ -1,6 +1,5 @@
 Status: draft | epic — not-implemented
 Category: Terrain, Materials, Assets
-Blocked by: p300_asset-optimization-pipeline-plan.md
 Blocks: p302_material-and-texture-system-refactor.md, p303_texture-sets-and-terrain-texture-library.md, p304_procedural-texture-baker.md, p305_terrain-material-generator.md, p306_terrain-blocks-and-procedural-terrain-meshes.md, p307_wet-and-dry-surface-states.md, p308_terrain-scatter.md, p309_terrain-decals.md, p310_terrain-preview-scenes.md
 
 # Terrain Texturing — Epic

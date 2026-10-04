@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-3 implemented
+Status: implemented (Phases 0-4)
 Category: Assets
 Blocks: p301_terrain-texturing-epic.md (and through it p302–p310: the terrain texture library ships as KTX2, terrain blocks as meshopt GLBs), p347_lod-chain-generation.md (soft: only its build-time Phase 3, which adds a LOD-chain step to this pipeline)
 
@@ -795,12 +795,14 @@ Sections:
 
 - **No `SceneLoader` change:** it already passes each scene entry whole to `loadTextureAsync` / `importAssetAsync`, and the gatherer puts each file's generated keys on the scene entries (step 7). So the resolution is in those two loaders, and any code that passes generated data gets it too.
 - `core/Assets/AssetUrl.ts`, `resolveAssetUrl(asset, legacyUrl)`, returns the absolute URL to load, in this order:
+
   1. `__url`;
   2. `__sourceUrl`: dev data only, set when the pipeline has no output (encoder missing, a failed encode, not built yet). It warns once per source;
   3. a `fileName` relative to its JSON (`./`, `../`) with neither: an error that names the cause and `yarn assets`. Before, it would have been a 404 against the document's URL;
   4. otherwise the `fileName` as the loader always resolved it.
 
   Step 3's "Load source files" override is one more branch here.
+
 - **Generated URLs resolve against `BASE_URL`**, like the decoders' paths (`${BASE_URL}aek-assets/…`). The legacy rule, `(path || './') + fileName`, turns a root-absolute file name into `//debugger/…` (relative to the document, with a double slash). It works on the dev server and a static server, and it is left as it is.
 - `TextureProps` and `ImportAssetParams` take `__url` / `__sourceUrl` (`GeneratedAssetUrls`, picked from `GeneratedAssetFields`).
 - **`loadTextureAsync`** resolves first, then picks the loader by the resolved URL's extension (§6). The KTX2 loader, the worker, `HDRLoader` and `TextureLoader` all get that one absolute URL, which legacy calls resolve exactly as before. Errors name the `fileName` and the URL. Cube arrays and the sync `loadTexture` / `loadTextures` are unchanged: no generated data reaches them.
@@ -865,7 +867,7 @@ Sections:
   - TRIMESH and BOX: unchanged (≤ 2.4 mm, 0.2 mm).
   - Interleaving, called in the page: `terrainSmooth`'s float geometry with every attribute interleaved derives the same HEIGHTFIELD as the plain one (same grid, height difference 0), and the input geometry stays interleaved.
 
-### Phase 4 — Harden
+### Phase 4 — Harden — done
 
 1. Budgets: fail the build if an asset exceeds a size or VRAM threshold set per profile.
 2. A missing or too-old `ktx` gives a clear error and a working fallback (§8).
@@ -913,6 +915,14 @@ Sections:
   - A Technical highlights row, a Requirements line (`ktx` only to change assets), `yarn build`'s budget / missing-output failure in Commands, the project tree (`aek-assets/`, `assets.config.json`, `assets.lock.json`, `docs/techniques/`), the Documentation section's guides link, glTF Transform and KTX-Software in Built with.
   - A new Example 3, "Optimize textures and models" (a texture JSON with a profile; the later examples move up one).
 - **The `AppConfig` example (now Example 6) is unchanged:** it doesn't list `assets`, the plan's condition. The switches are in the techniques doc and in `src/CONFIG.ts`'s own comment.
+
+**Step 4 as built:**
+
+- **Engine 4.5.0 → 4.6.0** (minor), as planned. Its changelog entry covers the whole branch (Phases 0–4), with the hull fix under **Fixed**.
+- **App 1.4.1 → 1.5.0** (minor), which the step didn't name: the branch also changed the app, with the `assetCompare` scene (1d), `testDebugScene` (Phase 0) and `assets.optimization` in `src/CONFIG.ts`. `yarn checkVersions` requires that bump. The toolkit has no changes and keeps 1.3.0.
+- **Project** covers the pipeline commands, `dev:https`, the dev server's COOP / COEP plugin, `.nvmrc` and the Node hook, the `copyDecoders` rename and the `tsconfig.json` `types` fix.
+- The local `main` was behind `origin/main` (no spatial-domains merge), so the check ran with `--against origin/main`.
+- The CONVEXHULL item in `p990_follow-ups-from-done-plans.md` is removed: Phase 3 step 5 fixed it.
 
 ---
 

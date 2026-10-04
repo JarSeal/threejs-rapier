@@ -1,6 +1,5 @@
 Status: draft | not-implemented
 Category: Materials, Assets, Refactoring
-Blocked by: p300_asset-optimization-pipeline-plan.md
 Blocks: p303_texture-sets-and-terrain-texture-library.md, p305_terrain-material-generator.md
 Epic: p301_terrain-texturing-epic.md
 

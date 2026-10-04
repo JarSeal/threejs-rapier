@@ -14,10 +14,6 @@ Each item names the plan it came from; the full plan text is in git history (e.g
 - **`FIXED_PHYSICS` + worker at matched 60/60 Hz has ~17% jitter** (p059, headless). The pairing is unsupported and warned about.
 - **Unchanged p059 non-goals**: `FollowTool`'s write-direction lag, smoothing `camera.lookAt`, an `EXTRAPOLATION` interpolation mode.
 
-## Import and colliders
-
-- **Imported CONVEXHULL colliders sit off their meshes** (found by p300 Phase 1d, not from a done plan). `deriveMeshDependentColliderFields` (`core/Import/MeshColliderGeometry.ts`) centres the hull's vertices (`geoClone.center()`), but the body stays at the node's origin. So a hull whose geometry isn't centred on its origin is moved by its bounding box centre: `obstacles.glb`'s domes are 57.8 mm off. Fix: drop the centring, since vertices in node space are already right (a non-anchor collider's `translation` is relative to the node as well). This moves every imported hull by its own offset: re-check the gym's obstacle domes with the Physics API tab's collider wireframe, and p300 1d's collider check (vs own mesh Δ 0, and the copies still match their source).
-
 ## Ray casting and physics queries
 
 - **A batched physics query message** (`WORLD_QUERY_BATCH`, p142/p143) if gameplay or a multi-ray tester needs many queries per frame in `WORKER_THREAD` mode.

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Asset optimization settings (docs/plans/p300_asset-optimization-pipeline-plan.md, DD2): the
+ * Asset optimization settings (docs/plans/_DONE_p300_asset-optimization-pipeline-plan.md, DD2): the
  * `assets.config.json` at the repo root (defaults, profiles, glob rules) and the per-asset
  * `optimize` key of `*.texture.json` / `*.importedAsset.json`. Build time only: the runtime never
  * reads these. Strict objects, so a misspelt key is an error instead of a silently ignored one.
