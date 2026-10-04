@@ -1,0 +1,150 @@
+import fs from 'fs';
+import path from 'path';
+import { TextureAssetSchema, type TextureAsset } from '../../src/_engine/schemas/textureSchema';
+import {
+  ImportedAssetSchema,
+  type ImportedAsset,
+} from '../../src/_engine/schemas/importedAssetSchema';
+import type { PipelineAsset } from './pipeline';
+import {
+  createPackSource,
+  resolveAssetSource,
+  ROOT,
+  SRC_DIR,
+  toRepoPath,
+  type AssetSource,
+  type PackSource,
+} from './sources';
+
+/**
+ * The pipeline's asset list (p300 Phase 2 step 7): every source file a `*.texture.json` or
+ * `*.importedAsset.json` loads, its own and each scene's latest save entry's (step 2's decision:
+ * a scene's file is optimized with the asset's one `optimize`). One {@link PipelineAsset} per
+ * distinct encode, and a key both the run and the gatherer compute the same way, so the gatherer
+ * finds each scene entry's output.
+ */
+
+export type PipelineAssetType = PipelineAsset['type'];
+
+/** What decides an asset's source and encode: the JSON's keys, with a scene's entry merged over */
+type AssetData = {
+  fileName?: string;
+  path?: string;
+  pack?: TextureAsset['pack'];
+  texOpts?: TextureAsset['texOpts'];
+  importTextures?: ImportedAsset['importTextures'];
+  __saveData?: Record<string, object[] | undefined>;
+};
+
+/** One use of an asset: the JSON as it is, or merged with a scene's latest save entry. */
+type AssetUse = { source: AssetSource | PackSource; isSrgb: boolean; importTextures: boolean };
+
+/**
+ * The source and the encode inputs of an asset's data, as the gatherer merges it for a scene
+ * (`{ ...asset, ...latestEntry }`, shallow: an entry's `texOpts` replaces the JSON's). Returns
+ * `{ error }` like `resolveAssetSource`, or null when there's no file at all.
+ * @param jsonFile The asset JSON, absolute or relative to the repo root
+ */
+export const resolveAssetUse = (
+  jsonFile: string,
+  data: AssetData
+): AssetUse | { error: string } | null => {
+  const isSrgb = data.texOpts?.colorSpace === 'srgb';
+  const importTextures = !!data.importTextures;
+  if (data.pack) return { source: createPackSource(jsonFile, data.pack), isSrgb, importTextures };
+  if (!data.fileName) return null;
+  const source = resolveAssetSource({ jsonFile, fileName: data.fileName, path: data.path });
+  return 'error' in source ? source : { source, isSrgb, importTextures };
+};
+
+/**
+ * The key of an encode: the JSON (its `optimize` applies), the source and, for a texture, its
+ * colour space. A GLB's `importTextures` isn't part of it: every use of a file shares one output,
+ * with its textures when any use imports them (step 5).
+ */
+export const getPipelineAssetKey = (type: PipelineAssetType, jsonFile: string, use: AssetUse) => {
+  const source = use.source.kind === 'remote' ? use.source.url : use.source.repoPath;
+  const kind = use.source.kind === 'pack' ? 'pack' : 'file';
+  const colorSpace = type === 'texture' ? (use.isSrgb ? ':srgb' : ':linear') : '';
+  return `${type}:${toRepoPath(path.resolve(ROOT, jsonFile))}:${kind}:${source}${colorSpace}`;
+};
+
+/** The asset's own data and each scene's latest save entry merged over it */
+const listAssetUses = (data: AssetData) => [
+  data,
+  ...Object.values(data.__saveData ?? {}).flatMap((entries) =>
+    entries?.[0] ? [{ ...data, ...entries[0] }] : []
+  ),
+];
+
+export type AssetJson = {
+  type: PipelineAssetType;
+  id: string;
+  /** Absolute */
+  jsonFile: string;
+  data: TextureAsset | ImportedAsset;
+};
+
+const JSON_SUFFIXES: Record<PipelineAssetType, string> = {
+  texture: '.texture.json',
+  importedAsset: '.importedAsset.json',
+};
+
+/**
+ * Reads every `*.texture.json` and `*.importedAsset.json` under `src/`. An invalid one is
+ * skipped: the gatherer reports it.
+ */
+export const readAssetJsons = (srcDir = SRC_DIR): AssetJson[] => {
+  const files = fs
+    .readdirSync(srcDir, { recursive: true })
+    .filter((file): file is string => typeof file === 'string')
+    .sort();
+  const assets: AssetJson[] = [];
+  for (const type of ['texture', 'importedAsset'] as const) {
+    const suffix = JSON_SUFFIXES[type];
+    for (const file of files.filter((f) => f.endsWith(suffix))) {
+      const jsonFile = path.join(srcDir, file);
+      let json: unknown;
+      try {
+        json = JSON.parse(fs.readFileSync(jsonFile, 'utf-8'));
+      } catch {
+        continue;
+      }
+      const schema = type === 'texture' ? TextureAssetSchema : ImportedAssetSchema;
+      const validation = schema.safeParse(json);
+      if (!validation.success) continue;
+      const data = validation.data;
+      assets.push({ type, id: data.id || path.basename(file, suffix), jsonFile, data });
+    }
+  }
+  return assets;
+};
+
+/**
+ * Every encode the asset JSONs need, one per key ({@link getPipelineAssetKey}). A use whose
+ * source doesn't resolve is left out (the gatherer reports it).
+ */
+export const collectPipelineAssets = (assetJsons: AssetJson[]) => {
+  const assets = new Map<string, PipelineAsset>();
+  for (const { type, id, jsonFile, data } of assetJsons) {
+    for (const useData of listAssetUses(data)) {
+      const use = resolveAssetUse(jsonFile, useData);
+      if (!use || 'error' in use) continue;
+      const key = getPipelineAssetKey(type, jsonFile, use);
+      const existing = assets.get(key);
+      if (existing) {
+        if (use.importTextures) existing.importTextures = true;
+        continue;
+      }
+      assets.set(key, {
+        type,
+        id,
+        jsonFile: toRepoPath(jsonFile),
+        source: use.source,
+        ...(data.optimize !== undefined ? { optimize: data.optimize } : {}),
+        ...(type === 'texture' ? { isSrgb: use.isSrgb } : { importTextures: use.importTextures }),
+      });
+    }
+  }
+  return assets;
+};

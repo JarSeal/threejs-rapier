@@ -3,6 +3,7 @@ import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { ColorSpaceSchema, DebugDataSchema, UserDataSchema } from './_helperSchemas';
 import {
   AssetFileNameSchema,
+  GeneratedAssetFieldsSchema,
   PublicFileNameSchema,
   TextureOptimizeSchema,
   TexturePackSchema,
@@ -49,12 +50,21 @@ export const TextureAssetSchema = z.object({
   __sourcePath: z.string().optional(),
   /** Bytes on disk (all six faces for a cube texture), baked in by gatherAppData. */
   __fileSize: z.number().optional(),
+  ...GeneratedAssetFieldsSchema.shape,
 });
 
 export type TextureAsset = z.infer<typeof TextureAssetSchema>;
 
 /** A texture declared inline in a scene JSON: the asset pipeline only reads `*.texture.json`s. */
-export const InlineTextureSchema = TextureAssetSchema.omit({ optimize: true, pack: true }).extend({
+export const InlineTextureSchema = TextureAssetSchema.omit({
+  optimize: true,
+  pack: true,
+  __url: true,
+  __sourceUrl: true,
+  __bytes: true,
+  __vramBytes: true,
+  __codec: true,
+}).extend({
   fileName: PublicFileNameSchema.optional(),
 });
 

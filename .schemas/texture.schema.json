@@ -1516,6 +1516,53 @@
     },
     "__fileSize": {
       "type": "number"
+    },
+    "__url": {
+      "type": "string"
+    },
+    "__sourceUrl": {
+      "type": "string"
+    },
+    "__bytes": {
+      "type": "object",
+      "properties": {
+        "in": {
+          "type": "number"
+        },
+        "out": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "in",
+        "out"
+      ],
+      "additionalProperties": false
+    },
+    "__vramBytes": {
+      "type": "object",
+      "properties": {
+        "in": {
+          "type": "number"
+        },
+        "out": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "in",
+        "out"
+      ],
+      "additionalProperties": false
+    },
+    "__codec": {
+      "type": "string",
+      "enum": [
+        "uastc",
+        "etc1s",
+        "none"
+      ],
+      "description": "uastc: 1 B/px on every device (BC7 / ASTC 4×4), the default. etc1s: smallest download, colour slots only. none: not encoded (exact data, CPU readback)."
     }
   },
   "additionalProperties": false

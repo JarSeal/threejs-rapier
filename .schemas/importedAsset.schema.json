@@ -689,6 +689,44 @@
     "__fileSize": {
       "type": "number"
     },
+    "__url": {
+      "type": "string"
+    },
+    "__sourceUrl": {
+      "type": "string"
+    },
+    "__bytes": {
+      "type": "object",
+      "properties": {
+        "in": {
+          "type": "number"
+        },
+        "out": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "in",
+        "out"
+      ],
+      "additionalProperties": false
+    },
+    "__vramBytes": {
+      "type": "object",
+      "properties": {
+        "in": {
+          "type": "number"
+        },
+        "out": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "in",
+        "out"
+      ],
+      "additionalProperties": false
+    },
     "__saveData": {
       "type": "object",
       "propertyNames": {

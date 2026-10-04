@@ -338,3 +338,26 @@ export const AssetsConfigSchema = z.strictObject({
 });
 
 export type AssetsConfig = z.infer<typeof AssetsConfigSchema>;
+
+const BytesInOutSchema = z.object({ in: z.number(), out: z.number() });
+
+/**
+ * Baked into the generated data by gatherAppData from a pipeline run (p300 §5), never written by
+ * hand. Every key is unset without a run.
+ */
+export const GeneratedAssetFieldsSchema = z.object({
+  /** The pipeline's output, what the runtime loads. Unset when there's none (encoder missing, a
+   * failed encode, a remote file): the runtime loads the source. */
+  __url: z.string().optional(),
+  /** The source as the dev server serves it (DD8 level 3's override). Not in production data,
+   * which ships no relative sources; none for a pack. */
+  __sourceUrl: z.string().optional(),
+  /** Download: the source files vs the output */
+  __bytes: BytesInOutSchema.optional(),
+  /** Estimated GPU memory (optimized only): the source as RGBA8 vs the output */
+  __vramBytes: BytesInOutSchema.optional(),
+  /** A standalone texture's codec (optimized only) */
+  __codec: TextureCodecSchema.optional(),
+});
+
+export type GeneratedAssetFields = z.infer<typeof GeneratedAssetFieldsSchema>;

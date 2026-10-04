@@ -698,6 +698,33 @@ Sections:
   - **Prune:** a run of two assets with `prune()` + `removeStaleOutputs` leaves a two-entry lock and two files. The next full run restores the other six from the store, except the `none` public file, which has no store copy: it's a cheap miss that needs no `ktx`.
 - Not yet: nothing calls `processAsset` with a cache, and no `assets.lock.json` is committed (steps 7–8).
 
+**Step 7 as built:**
+
+- **The gatherer takes a run's results, it doesn't run the pipeline.** `gatherSceneData` is synchronous and the Vite plugin calls it on every save, while `processAsset` is async. Running the pipeline from the gatherer is Phase 3 step 1, which also brings the project switches in through `ssrLoadModule` (step 3). So `gatherSceneData({ pipeline })` takes a finished `PipelineRun`; without one (`yarn gatherAppData`, the plugin, until Phase 3 step 1) the generated data is as before. Its callers are step 8's `yarn assets` and Phase 3 step 1.
+- `devTools/assetPipeline/assets.ts`:
+  - `readAssetJsons()` reads every `*.texture.json` / `*.importedAsset.json` under `src/` and skips invalid ones (the gatherer reports those).
+  - `collectPipelineAssets()` lists one `PipelineAsset` per encode. It covers each JSON's own data and each scene's latest save entry merged over it, shallowly, as the gatherer merges a scene entry (an entry's `texOpts` replaces the JSON's).
+  - `getPipelineAssetKey()` is computed the same way by the run and by the gatherer: type, JSON, source (or `pack`), and for a texture its colour space. So a scene that only switches a texture to sRGB gets its own encode. A GLB's `importTextures` isn't part of the key: every use of a file shares one output, kept with its textures when any use imports them (step 5).
+- `devTools/assetPipeline/run.ts`, `runPipeline(assets, { resolveSettings, cache?, getKtx?, onResult? })`: one asset at a time (`ktx` and sharp use every core for one encode), one `ktx` setup for the run. A throw becomes an `error` result, so the run goes on. The caller owns the cache: it saves the lock, and only a full run prunes it (step 8).
+- `devTools/assetPipeline/generated.ts`, `getGeneratedFields()`. The keys are in `GeneratedAssetFieldsSchema` (`assetsConfigSchema.ts`), which is spread into `TextureAssetSchema` (`__codec` included) and `ImportedAssetSchema` (without it). Inline scene textures don't get the keys: the pipeline never sees them.
+  - `optimized`: `__url`, `__sourceUrl`, `__bytes`, `__vramBytes`, `__codec` (standalone textures only; a GLB mixes codecs).
+  - `passThrough`: `__url`, `__sourceUrl`, `__bytes`. No VRAM figure: the image isn't read.
+  - `encoderMissing`, `skipped` and `error`: only `__sourceUrl`, so Phase 3 step 2 can fall back to the source in dev (§8).
+  - `__sourceUrl` is the source as the dev server serves it: `/app/…` for a relative source, its own URL for a public one. A pack has none. It's left out of production data, which ships no relative sources (DD8 level 3).
+  - `__bytes.in` counts every file the runtime would download without the pipeline: all of a pack's sources, and a glTF's external files (`getSourceBytes`, `pipeline.ts`).
+  - `__vramBytes` uses Phase 1's estimate, which equals three's figure (1e). `in` is the source as RGBA8 with mips. `out` is RGBA8 with mips for `none`, and 1 B/px for KTX2 (the most it takes on any device, which is also Phase 4's budget figure). ETC1S without alpha takes half that on an ETC2 device. A GLB's figure is its textures (none when they were dropped) plus its geometry, so a lossless collider shows `in` = `out`.
+- The gatherer writes the keys into the dev registries (the JSON's own data) and into each scene entry. A scene entry drops what it spread from the registry and gets its own file's keys. `__fileSize` stays as it is: the debug Assets tab reads it.
+- **Verified** with throwaway fixtures and a scratch script (removed, with their outputs and a scratch lock):
+  - **Cold run:** 8 encodes. The fixtures were a normal map, a colour texture with a scene that switches it to sRGB, a pack with `optimize: false`, a collider GLB, a textured GLB whose scene alone sets `importTextures`, plus the app's own `testTexture` and `testImport`.
+    - The normal map is byte-identical to `phase1/metalRust/normal_uastc_rdo1.ktx2`, and the collider to `stairsStraightTrimesh_meshoptLossless.glb`.
+    - The sRGB scene entry gets its own output. The GLB keeps its textures (VRAM in 1.09 MB → out 0.30 MB).
+  - **Warm run with `AEK_KTX` pointing nowhere:** 8 / 8 hits, the lock not rewritten, and the generated data byte-identical to the cold run's.
+  - **Production gather:** no `__sourceUrl`.
+  - **Cold run without `ktx`:** the textures and the textured GLB get `__sourceUrl` only. The texture-less GLBs and the pack are still written.
+  - **No run** (`yarn gatherAppData`): `generatedAppData.json` is unchanged.
+- **For step 8:** with the defaults, the app's two asset JSONs (`testTexture`, the 2K MetalRust base colour JPG, and `testImport`, `box01.glb`) are optimized: a 1K UASTC KTX2 and a meshopt GLB. Once Phase 3 step 2 resolves `__url`, the scenes that use them load those. §11 question 4 leaves the debugger test assets raw, but that answer was about the test models without a JSON. These two have JSONs, so they need an `optimize: false` (or a rule) to stay raw. Decided (2026-10-04): leave them as they are for now, so they're optimized.
+- Not done here: §5's stats summary (`last-run.json`, totals, cache hit rate, slowest assets). It reports on a run of the command, so it's step 8's.
+
 ### Phase 3 — Integrate (~1 day)
 
 1. `gatherAppData` runs the cached pipeline, and the gatherer plugin re-encodes a changed source.

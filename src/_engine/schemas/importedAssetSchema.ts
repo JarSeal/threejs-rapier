@@ -2,7 +2,11 @@ import { z } from 'zod';
 import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { DebugDataSchema } from './_helperSchemas';
 import { TexOptsSchema } from './textureSchema';
-import { AssetFileNameSchema, ImportedAssetOptimizeSchema } from './assetsConfigSchema';
+import {
+  AssetFileNameSchema,
+  GeneratedAssetFieldsSchema,
+  ImportedAssetOptimizeSchema,
+} from './assetsConfigSchema';
 
 /** A GLTF/GLB import: only assets (geometries + opt-in textures) are registered, no entities.
  * Scene `meshes` reference the imported geometries by id (`${id}/${nodeName}`). */
@@ -38,6 +42,7 @@ export const ImportedAssetSchema = z.object({
   __sourcePath: z.string().optional(),
   /** Bytes on disk of the .glb/.gltf (not a .gltf's external buffers), baked in by gatherAppData. */
   __fileSize: z.number().optional(),
+  ...GeneratedAssetFieldsSchema.omit({ __codec: true }).shape,
   __saveData: createSaveDataSchema(ImportedAssetOverridesSchema),
 });
 

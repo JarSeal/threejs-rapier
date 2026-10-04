@@ -138,6 +138,21 @@ const listGLTFFiles = (file: string, json: GLTFJson) => [
   ...listExternalGLTFFiles(file, json),
 ];
 
+/**
+ * The bytes the runtime downloads without the pipeline: the file, every file a pack reads, or a
+ * glTF with its external files. Undefined for a remote or missing source.
+ */
+export const getSourceBytes = (asset: PipelineAsset) => {
+  const { source } = asset;
+  if (source.kind === 'remote') return undefined;
+  if (source.kind !== 'pack' && !fs.existsSync(source.file)) return undefined;
+  const files =
+    asset.type === 'importedAsset' && source.kind !== 'pack'
+      ? listGLTFFiles(source.file, readGLTFJson(source.file))
+      : listTextureFiles(source);
+  return files.reduce((sum, file) => sum + (fs.existsSync(file) ? fs.statSync(file).size : 0), 0);
+};
+
 /** The entry a hit restores: the output and the result's metadata (the settings aren't kept). */
 const toCacheEntry = (
   repoPath: string,

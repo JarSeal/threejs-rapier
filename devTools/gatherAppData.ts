@@ -29,6 +29,8 @@ import { mergeSkyBoxPreset } from '../src/_engine/core/SkyBox/presets';
 import pkg from '../package.json';
 import { createSettingsResolver } from './assetPipeline/settings';
 import { listPackFiles } from './assetPipeline/pack';
+import { GENERATED_FIELD_KEYS, getGeneratedFields } from './assetPipeline/generated';
+import type { PipelineRun } from './assetPipeline/run';
 import {
   createPackSource,
   getAssetSourceFileSize,
@@ -280,9 +282,24 @@ const compileJsonSchemas = () => {
 // Execute compilation immediately when the script spins up
 compileJsonSchemas();
 
-export const gatherSceneData = () => {
+/**
+ * Gathers the asset JSONs into the generated data.
+ * @param opts.pipeline An asset pipeline run over the same JSONs (p300 §5): each texture and
+ * imported asset gets its output's `__url` and figures, per scene when a scene's save entry
+ * points at another file. Without one, they get none.
+ */
+export const gatherSceneData = (opts: { pipeline?: PipelineRun } = {}) => {
   const isProduction = process.env.NODE_ENV === 'production';
   let hasError = false;
+  // Removes the asset's own generated keys from a scene entry and adds its file's
+  const setGeneratedFields = (
+    data: Parameters<typeof getGeneratedFields>[3],
+    type: 'texture' | 'importedAsset',
+    jsonFile: string
+  ) => {
+    for (const key of GENERATED_FIELD_KEYS) delete (data as Record<string, unknown>)[key];
+    Object.assign(data, getGeneratedFields(opts.pipeline, type, jsonFile, data, { isProduction }));
+  };
 
   const srcDir = path.resolve(__dirname, '../src');
   const combinedData: {
@@ -543,6 +560,7 @@ export const gatherSceneData = () => {
         ids.textures.push(texId);
         texJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         texJSON.__fileSize = getSourceFileSize(fullPath, texJSON.fileName, texJSON.path);
+        setGeneratedFields(texJSON, 'texture', fullPath);
         texJSON.id = texId;
         delete texJSON.$schema;
         texRegistry[texId] = texJSON;
@@ -704,6 +722,7 @@ export const gatherSceneData = () => {
         importedAssetJSON.id = id;
         importedAssetJSON.__sourcePath = path.relative(path.resolve(__dirname, '..'), fullPath);
         importedAssetJSON.__fileSize = getSourceFileSize(fullPath, importedAssetJSON.fileName);
+        setGeneratedFields(importedAssetJSON, 'importedAsset', fullPath);
         delete importedAssetJSON.$schema;
         importedAssetRegistry[id] = importedAssetJSON;
       } catch {
@@ -1004,6 +1023,7 @@ export const gatherSceneData = () => {
               texData.fileName,
               texData.path
             );
+            setGeneratedFields(texData, 'texture', texRegistry[texId].__sourcePath || '');
             if ('__meta' in texData) delete texData.__meta;
             delete texData.optimize; // Build time only (p300)
             delete texData.pack;
@@ -1100,6 +1120,11 @@ export const gatherSceneData = () => {
             importData.__fileSize = getSourceFileSize(
               importedAssetRegistry[importId].__sourcePath || '',
               importData.fileName
+            );
+            setGeneratedFields(
+              importData,
+              'importedAsset',
+              importedAssetRegistry[importId].__sourcePath || ''
             );
             if ('__meta' in importData) delete importData.__meta;
             delete importData.optimize; // Build time only (p300)
