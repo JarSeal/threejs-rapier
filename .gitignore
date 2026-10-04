@@ -13,3 +13,5 @@ docs-api/
 # DRACO decoders and the Basis transcoder, copied from three.js by devTools/copyDecoders.ts
 src/public/draco/
 src/public/basis/
+# Asset pipeline tools (KTX-Software), downloaded by devTools/setupAssetTools.ts
+.tools/

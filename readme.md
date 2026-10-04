@@ -111,6 +111,7 @@ Open `http://localhost:8080/?isDebug=true` to get the full debug suite, then pre
 | `yarn lint`                           | ESLint with Prettier.                                                           |
 | `yarn docs`                           | TypeDoc API docs for the engine and toolkit, written to `docs-api/`.            |
 | `yarn gatherAppData`                  | Runs the JSON → generated data pipeline by hand.                                |
+| `yarn setupAssetTools [--force]`      | Downloads the KTX2 texture encoder into `.tools/` (Linux, WSL2, macOS).         |
 | `yarn checkVersions [--against main]` | Checks the versioning rules (run it with `--against main` before opening a PR). |
 | `yarn tagRelease`                     | Tags the engine, toolkit and app versions after a merge to `main`.              |
 

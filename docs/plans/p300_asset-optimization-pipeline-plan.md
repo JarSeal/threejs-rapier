@@ -105,6 +105,36 @@ This plan is a hard prerequisite of the terrain texturing epic (p301). A terrain
 - `KTX2Loader.detectSupport(renderer)` needs the renderer, which the asset worker doesn't have.
 - GLBs that carry `KHR_texture_basisu` textures need a KTX2 loader inside the asset worker's `GLTFLoader`. Phase 0 spikes passing the main thread's detected `workerConfig` (`astcSupported`, `bptcSupported`, `etc2Supported`, …) into the worker. If that fails, such GLBs load on the main thread.
 
+### DD8 — Optimization is opt-out, at three levels
+
+On by default, never required. An app that doesn't want it (no encoder, source files as they are) turns it off in one place.
+
+1. **Project (build time)**: switches in `src/CONFIG.ts`, the app's one settings file:
+
+   ```ts
+   assets: {
+     optimization: {
+       enabled: true, // master switch
+       textures: true, // KTX2 encoding
+       meshes: true, // meshopt / Draco, quantize, simplify
+     },
+   },
+   ```
+
+   - Off means no encoding and no `ktx`. Every affected asset is **passed through**: its source is copied unchanged (content-hashed) into `aek-assets/`, and `__url` points to the copy. So the runtime has one resolution path either way, and relative-path sources (DD3) still reach the production build.
+   - Packing (DD5) still runs: a `pack` texture has no single source file. Its output is written as PNG.
+   - `gatherAppData` reads the switches by importing `src/CONFIG.ts`, which therefore must stay importable in Node. It is today: it imports only a type (checked 2026-10-04 with tsx). Keep it that way.
+   - The env var `AEK_ASSETS_OPTIMIZE=false` overrides `enabled` for one run (eg. a quick CI build), like the `VITE_*` overrides in `Config.ts`.
+   - Profiles and rules stay in `assets.config.json` (DD2): they are asset data, the switches are app settings.
+   - Nothing to switch off at runtime: the decoders load only when a KTX2 or meshopt file is loaded (Phase 0).
+
+2. **Per asset**: `"optimize": false` in the asset's JSON, or `{ "glob": "…", "optimize": false }` as a config rule, passes it through. A GLB can keep only one side as is: `"optimize": { "textures": false }` or `{ "mesh": false }`.
+
+3. **Runtime A/B (dev / test only)**: a boot-time override in the Assets debug tab ("Load source files", in `AEK_debugAssetsBoot` like the worker targets) loads `__sourceUrl` instead of `__url`.
+   - It works where sources are served: the dev server serves `src/` (the Vite root), so a relative-path source loads.
+   - A production build ships no sources, so the override is ignored there, with a warning.
+   - A packed texture has no source file and stays optimized (logged).
+
 ---
 
 ## 4. Configuration
@@ -157,7 +187,7 @@ Per asset (in a `*.texture.json`):
 }
 ```
 
-- **Resolution order:** `defaults` → rule (glob) → profile → the JSON's `optimize` overrides, deep-merged, later wins.
+- **Resolution order:** `defaults` → rule (glob) → profile → the JSON's `optimize` overrides, deep-merged, later wins. An `optimize: false` (rule or JSON) and the project switches in `src/CONFIG.ts` (DD8) win over all of it.
 - **Slot keys:**
   - glTF slots: `baseColor`, `normal`, `metallicRoughness`, `occlusion`, `emissive`;
   - `orm` (packed occlusion/roughness/metalness);
@@ -228,7 +258,7 @@ Without a cache, a full encode pass slows builds enough that people skip it.
 
 - **gltf-transform JS API** (`@gltf-transform/core`, `/functions`, `/extensions`) for GLBs: meshopt, Draco, quantize, resize, per-slot KTX2 through `ktx`.
 - **`ktx` CLI** (KTX-Software ≥ 4.3) for standalone textures and texture arrays (`ktx create --layers N`, used by p303 if runtime array assembly proves unworkable).
-  - It's a system dependency, not an npm package. Pin the version in the docs/CI and fail with a clear message if it's missing or too old.
+  - It's a native binary, not an npm package, but nobody installs it by hand: `yarn setupAssetTools` (`devTools/assetPipeline/ktxTool.ts`, Phase 1) downloads the pinned release into the gitignored `.tools/`. The pipeline calls `ensureKtx()` itself before its first encode (Phase 2), so the script is only the explicit way.
   - Without `ktx`, the pipeline still runs: cached and committed outputs are used, and assets that need encoding report "encoder missing" and fall back to their source file at runtime (dev only, warned).
 - **`sharp`** for channel packing and resizing (DD5).
 - **Alternative considered: gltfpack.** It's a single binary, `-tc`/`-cc`, but much coarser per-slot control and no standalone texture packing. It's the fallback if KTX-Software proves painful.
@@ -273,29 +303,57 @@ Without a cache, a full encode pass slows builds enough that people skip it.
 
 **Exit:** a measured VRAM reduction with no visual regression anyone notices.
 
+Found when Phase 1 started (2026-10-04), and the sections it was split into:
+
+- **`renderer.info.memory` can't measure KTX2:** three r186 counts every compressed texture as 1 B (`Info.js` `_getTextureMemorySize`). A compressed texture's `mipmaps[i].data` is exactly what is uploaded, so the GPU memory tab can count it.
+- **ETC1S saves no VRAM over UASTC on desktop:** without ETC2, KTX2Loader transcodes ETC1S to BC7 (priority 3, before BC1), 1 B/px like UASTC; ETC1S wins there on download only. On ETC2 devices (iOS, Android) ETC1S becomes ETC2 RGB at 0.5 B/px (without alpha). So `__vramBytes` (§5) depends on the device's format family.
+- **iOS can't reach the dev server:** it listens on localhost over HTTP, and WebGPU and `SharedArrayBuffer` need a secure context (a LAN `http://` address isn't one); WSL2's NAT adds a hop.
+- **DD6's quantized collider test** was not in the step list; it is now (1c).
+- WebGPU in r186 requests every adapter feature, so BC / ASTC / ETC2 are available to KTX2Loader.
+
+Sections:
+
+- **1a — Tooling — done.** `yarn setupAssetTools`, `sharp`, `@gltf-transform/cli`.
+- **1b — Measuring.** Count compressed textures' real bytes in the GPU memory tab.
+- **1c — Assets and encoding.** Terrain layer `rocks01` (ambientCG `Ground079S`, LITE), a CC0 Poly Haven prop GLB at 2K (with an ARM map), the Poliigon MetalRust set as the problem case (ORM with hard metal / rust edges, and its normal map), a quantized copy of `stairsStraightTrimesh.glb` for the collider test. Variants: ETC1S q128 / q255, UASTC without RDO, UASTC + RDO λ 1 / 2 / 4 (all Zstd 18), normal mode on / off. Downloaded sources go in a gitignored folder; the outputs are committed, like Phase 0's.
+- **1d — Comparison scene.** A tiled ground plane at grazing angles (REPEAT, max anisotropy), the prop, the MetalRust ORM on a sphere; a scene-scoped debug tab that swaps variants in place (a key) and shows each one's file size and VRAM.
+- **1e — Measurements.** File sizes, three's estimate, headless WebGL2 screenshots; a checklist for WebGPU on a real GPU, Chrome's GPU memory, the weak device and iOS (HTTPS on the LAN: a `--host` run with `@vitejs/plugin-basic-ssl` and WSL port forwarding, or a tunnel).
+- **1f — Record.** The results table and profiles in §4, the collider outcome in DD6.
+
+**1a as built:**
+
+- `yarn setupAssetTools [--force]` (`devTools/setupAssetTools.ts`) → `ensureKtx()` in `devTools/assetPipeline/ktxTool.ts`. Lookup order: `AEK_KTX` (an error if it doesn't run), `.tools/ktx-4.4.2/bin/ktx`, `ktx` on PATH; ≥ 4.3 each. When none works, it downloads the pinned KTX-Software 4.4.2 asset from GitHub, checks it against the SHA-256 pinned in the script (Khronos publishes SHA-1s for some assets only, none for the macOS packages) and writes `bin/ktx` plus the one library it loads to `.tools/ktx-4.4.2/{bin,lib}/` (temp folder, swapped in after `ktx --version` runs).
+- No install step on any platform: the binaries find their library through `$ORIGIN/../lib` (Linux RUNPATH) and `@executable_path/../lib` (macOS rpath). The Linux `.deb` (`ar` → `data.tar.gz`) and the macOS `.pkg` (`xar` → gzipped `cpio` Payloads) are unpacked by `devTools/assetPipeline/archives.ts` in plain Node: no `tar`, `bzip2` or `pkgutil`. The library is written as a real file under the name the binary loads (no symlinks, for Windows-mounted WSL2 drives).
+- Platforms: Linux and WSL2 x64 / arm64 (glibc ≥ 2.34: Ubuntu 22.04+, Debian 12+, Fedora 35+; checked first, with a message), macOS arm64 / x64. Native Windows exits with "use WSL2". Verified: Linux x64 on WSL2 (installs in ~1 s, second run is a no-op, `ktx create` UASTC + Zstd encodes); the macOS arm64 / x64 and Linux arm64 archives unpack to the expected files (byte-identical to a reference unpack for macOS arm64). Not run on a Mac yet.
+- No `postinstall`: only whoever encodes assets needs `ktx` (DD3), so `yarn install` stays download-free.
+- `getKtxEnv(tool)` puts the found binary first on PATH for child processes: gltf-transform's CLI `uastc` / `etc1s` find it there (verified, with no system `ktx`).
+- `@gltf-transform/cli` depends on `@donmccurdy/caporal`, which lists `@types/wrap-ansi@^8.0.1`; yarn 1 installs `8.1.0`, a deprecated stub with no typings. With an explicit `typeRoots` (ours), tsc fails on it (TS2688); with the default it skips it. `tsconfig.json` now lists `"types": ["node"]` (everything else was already imported explicitly). Upstream report: `docs/issues/gltf-transform-cli-types-wrap-ansi-stub.md`.
+
 ### Phase 2 — Pipeline (~2–3 days)
 
 1. Config schema plus resolver (DD2), compiled to `.schemas/`.
-2. `optimize` and relative `fileName` in `textureSchema` / `importedAssetSchema`.
-3. Packing step (DD5).
-4. Texture encoder (`ktx`) and GLB pipeline (gltf-transform).
-5. Content-hash cache (§7).
-6. Generated-data integration (§5).
-7. `yarn assets`.
+2. `optimize` (incl. `optimize: false`) and relative `fileName` in `textureSchema` / `importedAssetSchema`.
+3. Opting out (DD8 levels 1–2): `AppConfig.assets.optimization` and `AEK_ASSETS_OPTIMIZE`, `optimize: false` in asset JSONs and rules, and the pass-through copy.
+4. Packing step (DD5).
+5. Texture encoder (`ktx`, through `ensureKtx()`) and GLB pipeline (gltf-transform).
+6. Content-hash cache (§7).
+7. Generated-data integration (§5), with `__sourceUrl` next to `__url`.
+8. `yarn assets`.
 
-**Exit:** Phase 1 results reproduced by one command, and a second run is all cache hits.
+**Exit:** Phase 1 results reproduced by one command, and a second run is all cache hits. With `optimization.enabled: false`, a run needs no `ktx` and the app looks and loads as it did before p300.
 
 ### Phase 3 — Integrate (~1 day)
 
 1. `gatherAppData` runs the cached pipeline, and the gatherer plugin re-encodes a changed source.
 2. The runtime resolves `__url`.
-3. Wire into `yarn build`.
+3. The "Load source files" boot-time override in the Assets debug tab (DD8 level 3).
+4. Wire into `yarn build`.
 
 ### Phase 4 — Harden
 
 1. Budgets: fail the build if an asset exceeds a size or VRAM threshold set per profile.
 2. A missing or too-old `ktx` gives a clear error and a working fallback (§8).
-3. Write the docs: a section in `readme.md`'s asset section, plus `docs/techniques/asset-optimization.md` (how to add an asset and pick a profile; codec cheat sheet).
+3. Write the docs: a section in `readme.md`'s asset section, plus `docs/techniques/asset-optimization.md` (how to add an asset and pick a profile, how to opt out (DD8); codec cheat sheet). `AppConfig.assets.optimization` also goes into `readme.md`'s `AppConfig` example if it lists `assets`.
 4. Versioning: an engine minor bump (new runtime decoders and schema keys), plus Project tooling in `CHANGELOG.md`.
 
 ---
