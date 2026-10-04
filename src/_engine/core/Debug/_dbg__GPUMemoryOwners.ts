@@ -5,6 +5,7 @@ import { getGeometryRegistry } from '../Geometry';
 import { getMaterialRegistry, type Materials } from '../Material';
 import { getTextureRegistry } from '../Texture';
 import { getAssetOwner } from '../Assets/AssetOwners';
+import { getCompressedTextureByteSize } from './_dbg__AssetStats';
 
 /**
  * Per-asset GPU bytes for the GPU memory tab's "By owner" view (p345 §2.1–2.2).
@@ -46,10 +47,27 @@ const entryBytes = (entry: MemoryMapEntry | undefined) =>
 type TextureSizer = { _getTextureMemorySize: (texture: THREE.Texture) => number };
 
 /**
+ * three r186 sizes every compressed texture as 1 B (`Info._getTextureMemorySize`). This replaces
+ * the sizer on the renderer's `info` with one that counts a compressed texture's uploaded bytes
+ * ({@link getCompressedTextureByteSize}) and leaves everything else to three. So `info.memory`,
+ * `info.memoryMap` and everything read from them (totals, owners, snapshots, peaks, budget, the
+ * profiler's GPU memory figure) count KTX2 textures at their real size, where the profiler loads.
+ * Call before renderer.init(), like the allocation tracker: three sizes a texture once, when it
+ * creates it, and frees what it counted then.
+ */
+export const installCompressedTextureSizer = (renderer: Renderer) => {
+  const info = renderer.info as unknown as TextureSizer;
+  const getTextureMemorySize = info._getTextureMemorySize.bind(info);
+  info._getTextureMemorySize = (texture) =>
+    getCompressedTextureByteSize(texture) ?? getTextureMemorySize(texture);
+};
+
+/**
  * What three r186 leaves out of a cube texture: it sizes a texture by its image, and a cube's image
  * is an array of faces (or nothing, on a CubeRenderTarget), so it counts each face as 1×1. The
  * size three's own formula gives at the real face size (a render target's, or the first face's),
- * minus the `counted` bytes. 0 for anything else.
+ * minus the `counted` bytes. 0 for anything else, compressed cubes included (counted in full by
+ * {@link installCompressedTextureSizer}).
  */
 export const getUncountedCubeBytes = (
   renderer: Renderer,
@@ -57,7 +75,13 @@ export const getUncountedCubeBytes = (
   counted: number,
   faceSize?: { width: number; height: number }
 ) => {
-  if (!(texture as THREE.CubeTexture).isCubeTexture || texture.width) return 0;
+  if (
+    !(texture as THREE.CubeTexture).isCubeTexture ||
+    (texture as THREE.CompressedTexture).isCompressedTexture ||
+    texture.width
+  ) {
+    return 0;
+  }
   const face = faceSize ?? (texture.image as { width?: number; height?: number }[] | null)?.[0];
   if (!face?.width || !face.height) return 0;
   // A view of the texture with the face size; type, format and mipmaps read through to it

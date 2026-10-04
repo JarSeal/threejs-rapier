@@ -153,13 +153,34 @@ export const getTextureSize = (texture: THREE.Texture) => {
   return { width: image.width, height: image.height };
 };
 
+type CompressedMips = { data?: ArrayBufferView }[] | undefined;
+
+/**
+ * A compressed texture's GPU memory: the bytes of every mip level it uploads, as transcoded (so
+ * for the device's format, eg. BC7 or ETC2), every face of a cube and every layer of an array
+ * (KTX2Loader concatenates a level's layers). Null for anything else, or when no level has data.
+ */
+export const getCompressedTextureByteSize = (texture: THREE.Texture) => {
+  if (!('isCompressedTexture' in texture && texture.isCompressedTexture)) return null;
+  // A CompressedCubeTexture keeps its levels per face, in its image
+  const levelSets: CompressedMips[] = Array.isArray(texture.image)
+    ? (texture.image as { mipmaps?: CompressedMips }[]).map((face) => face.mipmaps)
+    : [texture.mipmaps as CompressedMips];
+  let bytes = 0;
+  for (const levels of levelSets) {
+    for (const level of levels ?? []) bytes += level.data?.byteLength ?? 0;
+  }
+  return bytes || null;
+};
+
 /** Estimated GPU memory: width × height × bytes per pixel (× 6 faces for a cube texture), plus a
- * third for the mipmap chain. Null for compressed or unknown formats. */
+ * third for the mipmap chain; a compressed texture's uploaded bytes. Null for unknown formats. */
 export const getTextureByteSize = (texture: THREE.Texture) => {
+  if ('isCompressedTexture' in texture) return getCompressedTextureByteSize(texture);
   const size = getTextureSize(texture);
   const channels = FORMAT_CHANNELS.get(texture.format as number);
   const bytesPerChannel = TYPE_BYTES.get(texture.type);
-  if (!size || !channels || !bytesPerChannel || 'isCompressedTexture' in texture) return null;
+  if (!size || !channels || !bytesPerChannel) return null;
   const faces = 'isCubeTexture' in texture && texture.isCubeTexture ? 6 : 1;
   const base = size.width * size.height * channels * bytesPerChannel * faces;
   return Math.round(texture.generateMipmaps ? (base * 4) / 3 : base);

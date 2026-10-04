@@ -15,6 +15,7 @@ import {
   BOOT_OWNER,
   collectGPUAssets,
   groupByOwner,
+  installCompressedTextureSizer,
   type OwnerSums,
 } from './_dbg__GPUMemoryOwners';
 import {
@@ -217,7 +218,7 @@ const totalsHtml = () => {
       <tr><td>Since scene enter</td><td>${formatBytes(scenePeak.bytes)}</td><td>${formatTime(scenePeak.at)}</td></tr>
     </tbody>
   </table>
-  <div class="${styles.gpuMemoryNote}">${getBackendLabel(renderer)} backend. three's own estimate of what it created, since boot, not a driver measurement. Compressed textures count as 1 B each (three r186).</div>
+  <div class="${styles.gpuMemoryNote}">${getBackendLabel(renderer)} backend. three's own estimate of what it created, since boot, not a driver measurement. Compressed textures (KTX2) count their uploaded mip levels, in the format this device transcodes to (three r186 counts them as 1 B).</div>
 </div>`;
 };
 
@@ -567,6 +568,7 @@ export const _createGPUMemoryDebugGUI = () => {
 
   // Hydrated above; the tracker is installed before the renderer's init(), so it sees everything
   setRecordAllocationSites(state.recordSites);
+  onRendererCreated(installCompressedTextureSizer);
   onRendererCreated(installAllocationTracker);
   registerEngineGPUMemorySources();
 

@@ -314,7 +314,7 @@ Found when Phase 1 started (2026-10-04), and the sections it was split into:
 Sections:
 
 - **1a — Tooling — done.** `yarn setupAssetTools`, `sharp`, `@gltf-transform/cli`.
-- **1b — Measuring.** Count compressed textures' real bytes in the GPU memory tab.
+- **1b — Measuring — done.** Count compressed textures' real bytes in the GPU memory tab.
 - **1c — Assets and encoding.** Terrain layer `rocks01` (ambientCG `Ground079S`, LITE), a CC0 Poly Haven prop GLB at 2K (with an ARM map), the Poliigon MetalRust set as the problem case (ORM with hard metal / rust edges, and its normal map), a quantized copy of `stairsStraightTrimesh.glb` for the collider test. Variants: ETC1S q128 / q255, UASTC without RDO, UASTC + RDO λ 1 / 2 / 4 (all Zstd 18), normal mode on / off. Downloaded sources go in a gitignored folder; the outputs are committed, like Phase 0's.
 - **1d — Comparison scene.** A tiled ground plane at grazing angles (REPEAT, max anisotropy), the prop, the MetalRust ORM on a sphere; a scene-scoped debug tab that swaps variants in place (a key) and shows each one's file size and VRAM.
 - **1e — Measurements.** File sizes, three's estimate, headless WebGL2 screenshots; a checklist for WebGPU on a real GPU, Chrome's GPU memory, the weak device and iOS (HTTPS on the LAN: a `--host` run with `@vitejs/plugin-basic-ssl` and WSL port forwarding, or a tunnel).
@@ -328,6 +328,14 @@ Sections:
 - No `postinstall`: only whoever encodes assets needs `ktx` (DD3), so `yarn install` stays download-free.
 - `getKtxEnv(tool)` puts the found binary first on PATH for child processes: gltf-transform's CLI `uastc` / `etc1s` find it there (verified, with no system `ktx`).
 - `@gltf-transform/cli` depends on `@donmccurdy/caporal`, which lists `@types/wrap-ansi@^8.0.1`; yarn 1 installs `8.1.0`, a deprecated stub with no typings. With an explicit `typeRoots` (ours), tsc fails on it (TS2688); with the default it skips it. `tsconfig.json` now lists `"types": ["node"]` (everything else was already imported explicitly). Upstream report: `docs/issues/gltf-transform-cli-types-wrap-ansi-stub.md`.
+
+**1b as built:**
+
+- Fixed at the source, not as a side estimate like the cube gap: `installCompressedTextureSizer` (`_dbg__GPUMemoryOwners.ts`) replaces `_getTextureMemorySize` on the renderer's `info` instance (`onRendererCreated`, before `init()`, next to the allocation tracker). A compressed texture is sized by `getCompressedTextureByteSize` (`_dbg__AssetStats.ts`): the sum of its levels' `data.byteLength`, per face for a `CompressedCubeTexture` (its `image` holds the faces), layers included for an array (KTX2Loader concatenates a level's layers). Everything else still goes to three's sizer.
+- So `info.memory`, `info.memoryMap` and everything read from them count KTX2 at its real size with no other change: the totals, "By owner", untracked, snapshot diffs, the allocation tracker, peaks, the budget toast and the profiler Overview's GPU memory figure. three frees what `memoryMap` holds, so a destroy subtracts the same bytes. Only where the profiler loads (debug env, prodTest with the profiler on); nothing reads `info.memory` elsewhere.
+- The bytes are the transcoded data, so they follow the device's format family (the Phase 1 finding on ETC1S): no per-format table to maintain. `getUncountedCubeBytes` now skips compressed cubes (counted in full).
+- The Assets tab's info window (`getTextureByteSize`) shows the same figure for compressed textures instead of "—".
+- Verified on WebGL2 (SwiftShader) in `testDebugScene`: every KTX2 texture's `memoryMap` entry equals its levels' bytes, where three's sizer gives 1; PNGs are unchanged. SwiftShader transcodes ETC1S to ETC2 RGB and UASTC to ASTC 4×4: `uvChecker` 1024² PNG 5.59 MB → ETC1S 699 KB (0.5 B/px + mips), `normal` UASTC 1024² 1.40 MB (1 B/px + mips; the PNG is 2048², 22.4 MB), the GLB's 256² maps 349 KB (PNG) → 44 KB (ETC1S) / 87 KB (UASTC normal). Not run: WebGPU (expected BC7 on desktop, 1 B/px for both codecs) and a compressed cube (no KTX2 cube asset yet; the per-face path is from KTX2Loader's code).
 
 ### Phase 2 — Pipeline (~2–3 days)
 
