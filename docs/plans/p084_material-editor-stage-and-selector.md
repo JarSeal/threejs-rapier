@@ -1,8 +1,7 @@
 Status: draft | not-implemented
 Category: Editor-Creator View, Materials
-Blocked by: p083_editor-creator-view.md (view registry, scene suspension, view tools group, camera rig)
 Blocks: p085_material-editor-params-and-persistence.md
-Related: p083_editor-creator-view.md (epic), `createDebuggerTab` (p105, implemented: the right drawer reuses its declarative tabs), the layered sky box (p111, implemented: skybox environments in the editor can now build on it, still a non-goal here), the debug environment ball (`debug/EnvBall.ts`, p115, implemented: same "ball + environment" idea for the scene)
+Related: \_DONE_p083_editor-creator-view.md (epic), `createDebuggerTab` (p105, implemented: the right drawer reuses its declarative tabs), the layered sky box (p111, implemented: skybox environments in the editor can now build on it, still a non-goal here), the debug environment ball (`debug/EnvBall.ts`, p115, implemented: same "ball + environment" idea for the scene)
 
 # Material Editor — Stage, Camera and Material Selector
 

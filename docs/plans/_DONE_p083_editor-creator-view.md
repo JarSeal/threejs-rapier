@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: implemented (Phases 1-4)
 Category: Editor-Creator View
 Blocks: p084_material-editor-stage-and-selector.md, p085_material-editor-params-and-persistence.md
 Related (all implemented; their plan files have been removed, see `.claude/CLAUDE.md` and the code): p080 viewports (`core/Viewports.ts`; the axes gizmo must follow the editor camera), p060/p062 debugger undo (`core/Debug/_dbg__UndoRedo.ts`; undo buckets per view), p105 `createDebuggerTab` (the editor drawers reuse its declarative tabs), p110-p115 layered sky box (later editors: skybox), p130 on-screen tools disabler (`DebugToolsState.onScreenTools`; the view tools group joins its disabled set)
@@ -15,8 +15,8 @@ This file is the epic. It also holds the first implementation plan: the **view s
 
 | Plan                                             | Scope                                                                                                                                                                                                                                                     | Blocked by | Engine bump |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----------- |
-| `p083_editor-creator-view.md` (this file)        | View registry, scene suspension in the main loop, view tools group with the Runtime view's button and icon, HUD rules per view, undo buckets per view, gizmo camera rig, a reusable editor camera with its pose per view, active view restored on refresh | —          | minor       |
-| `p084_material-editor-stage-and-selector.md`     | Material editor view: stage (ball, lights, environment), editor camera with per-material memory, bottom material selector with filter, right drawer shell                                                                                                 | p083       | minor       |
+| `_DONE_p083_editor-creator-view.md` (this file)  | View registry, scene suspension in the main loop, view tools group with the Runtime view's button and icon, HUD rules per view, undo buckets per view, gizmo camera rig, a reusable editor camera with its pose per view, active view restored on refresh | —          | minor       |
+| `p084_material-editor-stage-and-selector.md`     | Material editor view: stage (ball, lights, environment), editor camera with per-material memory, bottom material selector with filter, right drawer shell                                                                                                 | —          | minor       |
 | `p085_material-editor-params-and-persistence.md` | Basic editable params (Params tab), editor settings (Settings tab), per-material LS + clear, undo/redo, full state restored on refresh                                                                                                                    | p084       | minor       |
 
 All three can land on one branch (one engine minor bump at merge) or on separate branches (a minor bump each).
@@ -180,7 +180,8 @@ Each phase compiles, lints and leaves the app working.
 3. **Gizmo rig, undo buckets, refresh restore.** — done
    - `ViewCameraRig`, the gizmo refactor (`tickAxesGizmo`, frame listeners), view-aware undo buckets, `AEK_debugViews` persistence and restore.
    - `createViewCamera` (DD7). Verify it with two throwaway test views: each keeps its own pose across view switches and a refresh, a pose key switch applies that key's pose or the default, and the Runtime view's debug camera pose is unchanged.
-4. **Docs.** The CLAUDE.md "Views" paragraph. (The version bump happens with the epic's merge, see Sub-plans.)
+4. **Docs.** — done
+   - The CLAUDE.md "Views" paragraph. (The version bump happens with the epic's merge, see Sub-plans.)
 
 ## Non-goals
 
@@ -259,7 +260,7 @@ Each phase compiles, lints and leaves the app working.
   - Undo: `perScene` actions recorded in an editor view go to `__view:<id>`. `_clearUndoRedoHistory('scene')` in a view clears that view's bucket.
   - `AEK_debugViews` is written on every finished switch (also the fall back after a failed `onEnter`) and every editor view play toggle, in the debug env only. `restoreSavedView()` (`ViewManager.ts`) runs at the very end of `InitEngine`, after the debug GUIs and the draggable windows from LS, not right after `initMainLoop()`, so everything the Runtime view shows exists before it's hidden. It isn't awaited. It restores the play flags also when the saved view is the Runtime view.
   - `createViewCamera` (`core/Debug/Editors/_dbg__ViewCamera.ts`): `near` / `far` default to 0.1 / 1000. The aspect comes from `renderer.getSize()`, compared every `mainUpdate` and in `onEnter`, instead of a registered resizer. It also returns `getPoseKey()` and `dispose()`. A second view camera for the same view id replaces and disposes the first. Stored poses are validated on load. `store.clear()` with no argument clears all of the view's poses, `null` the view's own, and a key that key's. `resetPose()` clears the current key's saved pose and applies `defaultPose`. `clearViewCameraPoses(viewId)` also puts a live view camera back to its default pose.
-  - The Phase 1 test view (`src/app/_tmp_testView.ts`) was committed with Phase 1. It now has two views on `createViewCamera` (B with a `RoomEnvironment` PMREM). Phase 4 removes it.
+  - The Phase 1 test view (`src/app/_tmp_testView.ts`) was committed with Phase 1. It now has two views on `createViewCamera` (B with a `RoomEnvironment` PMREM). Phase 4 removed it.
 - **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2 on WSL2, Playwright scripts driving the console API, the test views registered at boot through a temporary, reverted import in `index.ts`):
   - Each test view starts at its default pose. A canvas orbit, a gizmo drag and a gizmo +Y align (top view) each move the view camera and save it to `AEK_debugViewCams`.
   - Each view keeps its own pose across switches. A new pose key gets the default pose, and switching keys applies each key's saved pose.
@@ -272,3 +273,14 @@ Each phase compiles, lints and leaves the app working.
     - The Overview rows say "<title>'s view" where they said "debug camera's view", and Entities is n/a there.
     - The Objects tab's note names the view, and its ECS section notes that the worlds are the suspended scene's. Its history restarts when the counted view changes.
     - Availability between two editor views is "switching views". The census reads the view camera from `ViewManager.ts`, not `_dbg__CameraRig.ts`, because the profiler also loads in prodTest, where importing `_dbg__DebugCamera.ts` would register its ECS plugin.
+
+### Phase 4
+
+- **Code drift since the plan.** None in the docs themselves. Two verification items had no recorded result: the production bundle and the determinism probe with a view switch. Both were run before the test view was removed (below).
+- **As built.**
+  - The CLAUDE.md "Views" section sits under Architecture, right after "Viewports". It covers what the plan named (view vs viewport, suspension rules, how to register a view) and also the input, HUD, rig, view camera, undo and refresh rules from Phases 2-3, since p084 and p085 build on all of them.
+  - `src/app/_tmp_testView.ts` is removed. `createViewCamera` has no importer until p084.
+  - `readme.md` is unchanged: no editor view is registered yet, so nothing it lists changed, and its Roadmap item ("An editor/creator view and a material editor") moves into Features with p084.
+- **Verified.**
+  - `yarn build` passes. The main chunk holds `ViewManager.ts` (its `aekEditorView` and `AEK_debugViews` strings); `_dbg__CameraRig`, `_dbg__AxesGizmo`, `_dbg__EnvBall` and `_dbg__UndoRedo` are their own lazy chunks, and `_dbg__ViewCamera.ts` isn't bundled at all (no importer).
+  - Determinism probe (`?isDebug=true&physicsProbe=600`, SwiftShader WebGL2, `WORKER_THREAD` / `SHARED_MEMORY`, `physicsTest` loaded through the debugger scene loader, 9 dynamic bodies hashed): a run without a switch, then a reload with a switch to a test view at step 202 for 4 s and back, gave the same hash (`ae4f1bae`, "MATCH"). The snapshot step went from 202 to 208 during the 4 s in the view and no further: the frame's STEP message already sent to the worker finishes, then nothing is stepped.

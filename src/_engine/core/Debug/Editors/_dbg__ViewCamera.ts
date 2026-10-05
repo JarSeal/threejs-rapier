@@ -1,5 +1,5 @@
 /**
- * An editor view's orbit camera (docs/plans/p083_editor-creator-view.md DD7), written once for
+ * An editor view's orbit camera (docs/plans/_DONE_p083_editor-creator-view.md DD7), written once for
  * every editor (material, particles, skybox, animation, …). A `PerspectiveCamera` with
  * `OrbitControls` on the canvas, owned by the view (not an ECS entity), and its
  * {@link ViewCameraRig}, which the axes gizmo follows, aligns and orbits.

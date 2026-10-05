@@ -1,6 +1,6 @@
 /**
  * The camera the view-following debug viewports (the axes gizmo, the environment ball) follow,
- * and the rig they can drive (docs/plans/p083_editor-creator-view.md DD7). One resolver for
+ * and the rig they can drive (docs/plans/_DONE_p083_editor-creator-view.md DD7). One resolver for
  * every view:
  * - Runtime view: the active camera; the scene debug camera's rig while it is active.
  * - Editor view: the view's rig camera (`getCameraRig`), or its plain camera (`getCamera`)
