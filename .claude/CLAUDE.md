@@ -175,6 +175,7 @@ To check determinism, append `?physicsProbe=N` (debug mode) or use "Determinism 
 - A level shares the base's `BufferAttribute`s and has its own index (`compactVertices: true` gives it its own trimmed arrays; a non-indexed base is welded, and its levels share the welded arrays). Disposing any geometry of a chain frees the shared GPU buffers (three r186), so a geometry of the chain still drawn re-uploads them.
 - The chain holds one ref on each level, and `onGeometryDeleted` (`core/Geometry.ts`) releases it with the base, so a scene's asset release takes the levels too. Levels get the base's owner (`copyAssetOwner`).
 - Flat-shaded geometry (a normal per face) only simplifies with `permissive: true`. Very low-poly meshes (largeWorld's tree and bush) have nothing to remove. Either way, a chain without levels warns.
+- An import asks for chains with `lodChain` (`true` or the options; `ImportAssetParams` and `*.importedAsset.json`): `importAssetAsync` generates one per rendered geometry without a chain after it resolves (also from a cached manifest), not awaited, loading `LodChains` on first use.
 - Skinned and morph-target geometry is refused. Nothing selects a level yet (p348). The Assets tab's geometry info window shows a geometry's chain and generates or releases one.
 
 ### Build config notes (`vite.config.ts`)

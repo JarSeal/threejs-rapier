@@ -19,6 +19,7 @@ import {
   deserializeTexture,
   releaseTransferableImage,
 } from './TextureTransfer';
+import type { LodChainOptions } from '../Lod/LodSimplify';
 import type { ImportAssetParams, ImportedAssetManifest, ImportedGeometryInfo } from './ImportTypes';
 
 type ImportRecord = {
@@ -87,6 +88,33 @@ const logWarnings = (manifest: ImportedAssetManifest) => {
       lwarn(`Import "${manifest.id}" (${manifest.fileName}), node "${info.nodeName}": ${warning}`);
     }
   }
+};
+
+/** Starts the LOD chains an import asks for (`lodChain`, p347): one per rendered geometry that
+ * has no chain yet and none pending. Not awaited by the import. LodChains is loaded on first use,
+ * so apps that never ask for a chain don't download it. generateLodChain refuses (and warns about)
+ * skinned and morph-target geometry. */
+const requestLodChains = (manifest: ImportedAssetManifest, lodChain: true | LodChainOptions) => {
+  const geometryIds = new Set<string>();
+  for (const { geometryId, customProps } of manifest.geometries) {
+    // Collider only: never rendered (spawnImportedAsset gives it no mesh)
+    if (customProps.isPhysObj && !customProps.keepMesh) continue;
+    geometryIds.add(geometryId);
+  }
+  if (!geometryIds.size) return;
+  const opts = lodChain === true ? undefined : lodChain;
+  import('../Lod/LodChains')
+    .then(({ generateLodChain, getLodChain, isLodChainPending }) => {
+      for (const geometryId of geometryIds) {
+        // Released while the module loaded, or already chained (the first options win)
+        if (!doesGeoExist(geometryId)) continue;
+        if (getLodChain(geometryId) || isLodChainPending(geometryId)) continue;
+        generateLodChain(geometryId, opts).catch((err) =>
+          lerror(`Import "${manifest.id}": LOD chain for geometry "${geometryId}" failed.`, err)
+        );
+      }
+    })
+    .catch((err) => lerror(`Import "${manifest.id}": could not load the LOD chain module.`, err));
 };
 
 const LOAD_ERROR_MESSAGE = 'loading or parsing the file failed.';
@@ -318,20 +346,8 @@ const runImport = async (
   return manifest;
 };
 
-/**
- * Imports the assets of a .glb/.gltf file: registers one geometry per mesh primitive in the
- * geometry registry (as `${id}/${nodeName}`, with `userData.importInfo`) and, with importTextures,
- * the textures of their glTF material slots. Returns a manifest describing them (node transforms,
- * parsed Blender custom props, texture slots). Creates no entities and imports no glTF materials.
- *
- * A repeated call with the same id returns the cached manifest while all of its geometries are
- * still registered (re-imports otherwise), and parallel calls share one import.
- * @param params {@link ImportAssetParams}
- * @returns Promise<{@link ImportedAssetManifest} | null> (null on error, unless throwOnError)
- */
-export const importAssetAsync = async (
-  params: ImportAssetParams
-): Promise<ImportedAssetManifest | null> => {
+/** importAssetAsync without the LOD chain request: a cached, shared or fresh import. */
+const resolveImport = async (params: ImportAssetParams): Promise<ImportedAssetManifest | null> => {
   const id = params.id || getDefaultImportId(params.fileName || '');
 
   const sourceKey = getSourceKey(params);
@@ -359,11 +375,33 @@ export const importAssetAsync = async (
     retagImportOwner(record);
     return record.manifest;
   }
-  if (pendingImports.has(id)) return importAssetAsync(params);
+  if (pendingImports.has(id)) return resolveImport(params);
 
   const promise = runImport(params, id, sourceKey).finally(() => pendingImports.delete(id));
   pendingImports.set(id, { promise, sourceKey });
   return promise;
+};
+
+/**
+ * Imports the assets of a .glb/.gltf file: registers one geometry per mesh primitive in the
+ * geometry registry (as `${id}/${nodeName}`, with `userData.importInfo`) and, with importTextures,
+ * the textures of their glTF material slots. Returns a manifest describing them (node transforms,
+ * parsed Blender custom props, texture slots). Creates no entities and imports no glTF materials.
+ *
+ * A repeated call with the same id returns the cached manifest while all of its geometries are
+ * still registered (re-imports otherwise), and parallel calls share one import.
+ *
+ * With `lodChain`, the rendered geometries that have no LOD chain get one after the import (also
+ * when the manifest was cached), without delaying it.
+ * @param params {@link ImportAssetParams}
+ * @returns Promise<{@link ImportedAssetManifest} | null> (null on error, unless throwOnError)
+ */
+export const importAssetAsync = async (
+  params: ImportAssetParams
+): Promise<ImportedAssetManifest | null> => {
+  const manifest = await resolveImport(params);
+  if (manifest && params.lodChain) requestLodChains(manifest, params.lodChain);
+  return manifest;
 };
 
 /**

@@ -1,4 +1,4 @@
-Status: in progress | Phases 0-1 implemented
+Status: in progress | Phases 0-2 implemented
 Category: Assets, Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 1.1)
 Blocks: p348_ecs-lod-selection.md Phase 2 (`lod: 'AUTO'` reads these chains)
@@ -251,10 +251,36 @@ clean). (The tree was the target, but it can't be simplified: Phase 0.)
   leftovers match a control run without the chain (each level was drawn for a few frames first,
   so its index reached the GPU). Safari not checked.
 
-### Phase 2 — JSON opt-in
+### Phase 2 — JSON opt-in — done
 
 1. `lodChain` on `geometrySchema` / `importedAssetSchema`, compiled into `.schemas/`.
 2. Runtime path for JSON assets (after load).
+
+**As built:**
+
+- Only `importedAssetSchema` has `lodChain` (`schemas/lodChainSchema.ts`: `true` or the
+  `LodChainOptions`, strict). `geometrySchema` has only primitive types, which §2.4 already leaves
+  out, so it gets no key and no warning. `meshSchema` gets none either: several meshes can share a
+  geometry, and its one chain would have to pick one mesh's options (noted in p348).
+- `lodChain` is an `ImportAssetParams` option, so code imports get it too. `importAssetAsync`
+  requests the chains once it has its manifest (`requestLodChains` in `ImportRegistry.ts`), also for
+  a cached or shared import: not awaited, one per rendered geometry (collider-only nodes are skipped,
+  a geometry shared by several nodes counts once), skipping a geometry that already has a chain or
+  one pending (the first options win) or was released meanwhile. Skinned and morph-target geometry
+  is refused by `generateLodChain` (warned).
+- `LodChains` is loaded with a dynamic `import()` on the first request, so an app that never asks
+  for a chain doesn't download it (only debug code imports it statically).
+- A scene that references an import by id only, without its JSON (an import made in code), gets no
+  chain from the scene: it has no `lodChain` to read.
+- `lodChain` isn't part of p300's cache key (it hashes the resolved optimize settings, not the
+  JSON), so adding it doesn't re-encode the GLB. Phase 3 step 2 adds it.
+- Known gap: `retagImportOwner` re-tags a cached import's geometries, not their LOD levels, so the
+  levels keep the scene that generated them as owner. The chain's ref keeps them from the owner
+  sweep and they are released with the base, so only the GPU memory tab's "by owner" is off.
+- Checked (2026-10-05, Chrome on macOS, `?isDebug=true`): `"lodChain": true` on
+  `testImport.importedAsset.json` gave `testImport/Cube` 1340 → 670 → 426 triangles in the worker at
+  the boot scene's load (68 ms, 0.6 ms on the main thread). Not checked: the cached-manifest path on
+  a scene re-enter.
 
 ### Phase 3 — Build time (after p300 Phase 2)
 
