@@ -11,7 +11,7 @@ import { preWarmMesh, setMeshGeometry, setMeshMaterial } from '../MeshManager';
 import { getConservativeGeometryRadius } from '../Spatial/SpatialIndexSystem';
 import { lwarn } from '../../utils/Logger';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
-import type { LodData, LodResolvedLevel } from './LodTypes';
+import type { LodData, LodResolvedLevel, LodTarget } from './LodTypes';
 
 // Debug
 type LodDebugModule = typeof import('../Debug/_dbg__LOD');
@@ -29,17 +29,50 @@ export const registerLodDebugGUI = async () => {
 // Refs: the mesh always holds one ref on the geometry and material it shows (the apply moves it
 // with setMeshGeometry/setMeshMaterial), and the LOD component one on every level's. So a level's
 // assets live as long as the component, and deleting the entity releases them in any hook order.
+//
+// An entity without a plain mesh (a toolkit pool instance) gets its levels from a LodTarget
+// registered for one of its components, which then applies them and handles LOD culling.
 
 const DEFAULT_HYSTERESIS = 0.1;
 
 ECSWorld.registerComponentHooks(ComponentType.TAG_LOD_CULLED, {
   onAddComponent: (entityId, world) => {
     reconcileObject3DVisibility(entityId, world, { isLodCulled: true });
+    world.getComponent(entityId, ComponentType.LOD)?._target?.setCulled(entityId, world, true);
   },
   onRemoveComponent: (entityId, world) => {
     reconcileObject3DVisibility(entityId, world, { isLodCulled: false });
+    world.getComponent(entityId, ComponentType.LOD)?._target?.setCulled(entityId, world, false);
   },
 });
+
+// --- TARGETS ---
+
+const lodTargets: { componentType: ComponentType; target: LodTarget }[] = [];
+
+/**
+ * Lets `LOD` work on entities with `componentType` that have no plain mesh (eg. the toolkit's
+ * instanced LOD pool). See {@link LodTarget}. Registering a type again replaces its target.
+ */
+export const registerLodTarget = (componentType: ComponentType, target: LodTarget) => {
+  const index = lodTargets.findIndex((e) => e.componentType === componentType);
+  if (index >= 0) lodTargets[index].target = target;
+  else lodTargets.push({ componentType, target });
+};
+
+/** Sets the entity's levels from the first target that has them. False when none does. */
+const resolveTargetLevels = (entityId: number, world: ECSWorld, lod: LodData) => {
+  for (const { componentType, target } of lodTargets) {
+    if (!world.hasComponent(entityId, componentType)) continue;
+    const levels = target.resolveLevels(entityId, world, lod);
+    if (!levels || levels.length === 0) continue;
+    lod._levels = levels;
+    lod._target = target;
+    lod.radius = getConservativeGeometryRadius(levels[0].geometry);
+    return true;
+  }
+  return false;
+};
 
 // --- GLOBAL BIAS ---
 
@@ -196,8 +229,10 @@ ECSWorld.registerComponentHooks(ComponentType.LOD, {
     lod.level = -1;
     lod.applied = -1;
     lod._levels = [];
+    lod._target = undefined;
     const mesh = getLodMesh(entityId, world);
     if (!mesh) {
+      if (resolveTargetLevels(entityId, world, lod)) return;
       lwarn(`[LOD] Entity ${entityId} has no mesh: its LOD does nothing.`);
       return;
     }
@@ -215,6 +250,16 @@ ECSWorld.registerComponentHooks(ComponentType.LOD, {
   onRemoveComponent: (entityId, world) => {
     const lod = world.getComponent(entityId, ComponentType.LOD);
     if (!lod) return;
+    if (world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED)) {
+      world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
+    }
+    const target = lod._target;
+    if (target) {
+      if (lod.applied > 0) target.applyLevel(entityId, world, 0);
+      lod._target = undefined;
+      lod._levels = [];
+      return;
+    }
     const mesh = getLodMesh(entityId, world);
     const level0 = lod._levels[0];
     if (mesh && level0 && lod.applied > 0) {
@@ -222,17 +267,17 @@ ECSWorld.registerComponentHooks(ComponentType.LOD, {
       setMeshMaterial(mesh, level0.material);
       mesh.castShadow = level0.castShadow;
     }
-    if (world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED)) {
-      world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
-    }
     for (const level of lod._levels) refLevel(level, false);
     lod._levels = [];
   },
   onDeleteEntity: (entityId, world) => {
     const lod = world.getComponent(entityId, ComponentType.LOD);
     if (!lod) return;
-    for (const level of lod._levels) refLevel(level, false);
+    if (!lod._target) {
+      for (const level of lod._levels) refLevel(level, false);
+    }
     lod._levels = [];
+    lod._target = undefined;
   },
 });
 
@@ -341,14 +386,18 @@ export const lodSelectionSystem = (world: ECSWorld) => {
       continue;
     }
 
-    const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
-    if (!obj) continue;
-
     // Directly under the scene (the usual case), the local transform object3DSyncSystem wrote is
-    // the world one; nested, read the world matrix
+    // the world one; nested, read the world matrix. A target's entity has no Object3D: its
+    // Transform is in world space.
     let maxScale: number;
-    const parent = obj.parent;
-    if (!parent || !parent.parent) {
+    const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
+    if (!obj) {
+      const transform = lod._target && world.getComponent(entityId, ComponentType.TRANSFORM);
+      if (!transform) continue;
+      _objPos.copy(transform.position);
+      const { x, y, z } = transform.scale;
+      maxScale = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));
+    } else if (!obj.parent || !obj.parent.parent) {
       _objPos.copy(obj.position);
       const { x, y, z } = obj.scale;
       maxScale = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));
@@ -390,7 +439,7 @@ export const lodSelectionSystem = (world: ECSWorld) => {
 // --- APPLY ---
 
 /** Applies the levels lodSelectionSystem changed this frame: a mesh's geometry, material(s) and
- * `castShadow`. */
+ * `castShadow`, or the entity's {@link LodTarget}. */
 export const lodApplySystem = (world: ECSWorld) => {
   const stats = getFrameStats(world);
   stats.applies = 0;
@@ -403,6 +452,12 @@ export const lodApplySystem = (world: ECSWorld) => {
     const lod = world.getComponent(entityId, ComponentType.LOD);
     if (!lod || lod.level < 0 || lod.level === lod.applied) continue;
     const level = lod._levels[lod.level];
+    if (lod._target) {
+      if (level) lod._target.applyLevel(entityId, world, lod.level);
+      lod.applied = lod.level;
+      applies++;
+      continue;
+    }
     const mesh = getLodMesh(entityId, world);
     if (mesh && level) {
       setMeshGeometry(mesh, level.geometry);

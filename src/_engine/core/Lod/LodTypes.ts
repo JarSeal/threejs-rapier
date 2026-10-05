@@ -2,6 +2,7 @@
 // imports them.
 
 import type * as THREE from 'three/webgpu';
+import type { ECSWorld } from '../ECS';
 
 /** One level of a {@link LodDef}. */
 export type LodLevelDef = {
@@ -58,6 +59,27 @@ export type LodData = {
    * `radius × max(|scale|)`. */
   radius: number;
   /** `def.levels` resolved when the component was added (Lod/LodSystem.ts), each holding a
-   * registry ref on its geometry and material(s) until the component goes. */
+   * registry ref on its geometry and material(s) until the component goes. A target's levels hold
+   * none. */
   _levels: LodResolvedLevel[];
+  /** What shows the levels when the entity has no plain mesh, set by the add hook. */
+  _target?: LodTarget;
+};
+
+/**
+ * How a `LOD` entity without a plain mesh shows its levels, eg. a toolkit instanced LOD pool's
+ * instance (registered with `registerLodTarget`). The entity's `Transform` gives its position and
+ * scale, in world space. The target owns its levels' assets: the component takes no refs on them.
+ */
+export type LodTarget = {
+  /** The entity's levels, called by the `LOD` add hook. Undefined: not this target's entity. */
+  resolveLevels: (
+    entityId: number,
+    world: ECSWorld,
+    lod: LodData
+  ) => LodResolvedLevel[] | undefined;
+  /** Shows level `level` (an index into the resolved levels). Also called while LOD culled. */
+  applyLevel: (entityId: number, world: ECSWorld, level: number) => void;
+  /** TAG_LOD_CULLED was added (true) or removed (false). */
+  setCulled: (entityId: number, world: ECSWorld, isCulled: boolean) => void;
 };
