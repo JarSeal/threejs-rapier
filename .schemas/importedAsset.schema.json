@@ -815,6 +815,58 @@
       ],
       "additionalProperties": false
     },
+    "__lodChain": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "mesh": {
+            "type": "string"
+          },
+          "primitive": {
+            "type": "number"
+          },
+          "extent": {
+            "type": "number"
+          },
+          "vertices": {
+            "type": "string",
+            "enum": [
+              "BASE",
+              "WELDED",
+              "OWN"
+            ]
+          },
+          "levels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "triangles": {
+                  "type": "number"
+                },
+                "error": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "triangles",
+                "error"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "mesh",
+          "primitive",
+          "extent",
+          "vertices",
+          "levels"
+        ],
+        "additionalProperties": false
+      }
+    },
     "__saveData": {
       "type": "object",
       "propertyNames": {

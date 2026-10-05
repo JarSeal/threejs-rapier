@@ -21,6 +21,11 @@ import {
 import { collectGLTFTextures } from '../../core/Import/GLTFTextureCollect';
 import { serializeGeometry, TransferableGeometry } from '../../core/Import/GeometryTransfer';
 import {
+  readGLTFLodChains,
+  serializeLodChain,
+  type TransferableLodChain,
+} from '../../core/Lod/LodChainGLTF';
+import {
   collectImageTransferables,
   serializeTexture,
   TransferableImage,
@@ -88,7 +93,11 @@ export const assetsSwitchGLTF = async (
   const gltf = await loader.parseAsync(buffer, THREE.LoaderUtils.extractUrlBase(url));
 
   // The same extraction the main-thread import runs, so both produce the same manifest
-  const extracted = extractPrimitives(gltf, { importId, meshIndex });
+  const extracted = extractPrimitives(gltf, {
+    importId,
+    meshIndex,
+    lodChains: await readGLTFLodChains(gltf),
+  });
   if (extracted.error !== undefined) {
     disposeGLTFLeftovers(gltf, {});
     return sendMessage({
@@ -97,6 +106,7 @@ export const assetsSwitchGLTF = async (
       error: extracted.error,
       geometries: [],
       primitives: [],
+      lodChains: [],
       images: [],
       textures: [],
       textureSlotsPerPrimitive: [],
@@ -106,11 +116,18 @@ export const assetsSwitchGLTF = async (
   const transfer = new Set<ArrayBuffer>();
   const geometries: TransferableGeometry[] = [];
   const indexByGeometry = new Map<THREE.BufferGeometry, number>();
-  const primitives = extracted.primitives.map(({ geometry, info }) => {
+  const lodChains: { geometryIndex: number; chain: TransferableLodChain }[] = [];
+  const keepGeometries = new Set<THREE.BufferGeometry>();
+  const primitives = extracted.primitives.map(({ geometry, info, lodChain }) => {
     let geometryIndex = indexByGeometry.get(geometry);
     if (geometryIndex === undefined) {
       geometryIndex = geometries.push(serializeGeometry(geometry, transfer)) - 1;
       indexByGeometry.set(geometry, geometryIndex);
+      keepGeometries.add(geometry);
+      if (lodChain) {
+        lodChains.push({ geometryIndex, chain: serializeLodChain(lodChain, geometry, transfer) });
+        for (const level of lodChain.levels) keepGeometries.add(level.geometry);
+      }
     }
     return { geometryIndex, info };
   });
@@ -128,7 +145,7 @@ export const assetsSwitchGLTF = async (
   // Free the rest of the parse (materials, unused images) before the buffers and images are
   // transferred: after postMessage, nothing here may touch the kept geometries/textures again
   disposeGLTFLeftovers(gltf, {
-    geometries: new Set(indexByGeometry.keys()),
+    geometries: keepGeometries,
     textures: keepTextures,
   });
   const imageTransfer = new Set<Transferable>();
@@ -139,6 +156,7 @@ export const assetsSwitchGLTF = async (
       requestId,
       geometries,
       primitives,
+      lodChains,
       images,
       textures,
       textureSlotsPerPrimitive: collected?.slotsPerPrimitive || [],

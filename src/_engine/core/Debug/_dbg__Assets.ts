@@ -656,7 +656,9 @@ const describeLodChain = (chain: LodChain) => {
     field('Extent / radius', `${chain.extent.toPrecision(3)} / ${chain.radius.toPrecision(3)}`),
     field(
       'Generated on',
-      `${describeLoadReport(report).loadedOn}, ${report.durationMs.toFixed(1)} ms (main thread's own work ${report.mainThreadMs.toFixed(2)} ms)`
+      report
+        ? `${describeLoadReport(report).loadedOn}, ${report.durationMs.toFixed(1)} ms (main thread's own work ${report.mainThreadMs.toFixed(2)} ms)`
+        : 'build time (asset pipeline), loaded with the GLB'
     ),
     field(
       'Options',

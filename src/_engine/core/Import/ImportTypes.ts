@@ -4,7 +4,7 @@ import type { TexOpts } from '../Texture';
 import type { MeshProps } from '../MeshManager';
 import type { CoreEntityOpts } from '../../schemas/_helperSchemas';
 import type { GeneratedAssetUrls } from '../Assets/AssetUrl';
-import type { LodChainOptions } from '../Lod/LodSimplify';
+import type { LodChainOptions } from '../Lod/LodChainOptions';
 import type * as THREE from 'three/webgpu';
 
 /** Plain, structured-clone-safe vector (no THREE classes: a manifest must survive a worker hop). */

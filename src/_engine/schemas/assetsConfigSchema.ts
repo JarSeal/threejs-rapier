@@ -379,6 +379,20 @@ export const GeneratedAssetFieldsSchema = z.object({
   __vramBytes: BytesInOutSchema.optional(),
   /** A standalone texture's codec (optimized only) */
   __codec: TextureCodecSchema.optional(),
+  /** An imported asset's LOD chains built into its GLB (p347 Phase 3), for tooling: per glTF mesh
+   * primitive, its extent (in its own, possibly quantized, units) and each level's triangles and
+   * error (levels[0] is the base). The runtime reads the GLB's own. */
+  __lodChain: z
+    .array(
+      z.object({
+        mesh: z.string(),
+        primitive: z.number(),
+        extent: z.number(),
+        vertices: z.enum(['BASE', 'WELDED', 'OWN']),
+        levels: z.array(z.object({ triangles: z.number(), error: z.number() })),
+      })
+    )
+    .optional(),
 });
 
 export type GeneratedAssetFields = z.infer<typeof GeneratedAssetFieldsSchema>;

@@ -1,5 +1,5 @@
 import path from 'path';
-import { Logger, NodeIO, type Document, type Texture } from '@gltf-transform/core';
+import { Logger, NodeIO, type Accessor, type Document, type Texture } from '@gltf-transform/core';
 import {
   ALL_EXTENSIONS,
   EXTMeshoptCompression,
@@ -14,9 +14,11 @@ import {
   weld,
 } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
+import type { ResolvedLodChainOptions } from '../../src/_engine/core/Lod/LodChainOptions';
 import type { TextureSlot } from '../../src/_engine/schemas/assetsConfigSchema';
 import { readImageFile, resizeImage } from './images';
 import type { KtxProvider } from './ktxEncode';
+import { buildLodChains, type BuiltLodChain } from './lodChains';
 import { getLogicalPath, writeOutput, type PipelineOutput } from './outputs';
 import type { ResolvedAssetSettings, ResolvedMeshSettings } from './settings';
 import type { AssetSource } from './sources';
@@ -60,15 +62,21 @@ class WarningLogger extends Logger {
   }
 }
 
-/** Vertex and index bytes as uploaded (quantized attributes stay quantized in VRAM) */
+/**
+ * Vertex and index bytes as uploaded (quantized attributes stay quantized in VRAM). An accessor
+ * that several primitives share (LOD levels over their base's vertices) is uploaded once.
+ */
 export const getGeometryBytes = (doc: Document) => {
-  let bytes = 0;
+  const accessors = new Set<Accessor>();
   for (const mesh of doc.getRoot().listMeshes()) {
     for (const prim of mesh.listPrimitives()) {
-      bytes += prim.getIndices()?.getByteLength() || 0;
-      for (const attribute of prim.listAttributes()) bytes += attribute.getByteLength();
+      const indices = prim.getIndices();
+      if (indices) accessors.add(indices);
+      for (const attribute of prim.listAttributes()) accessors.add(attribute);
     }
   }
+  let bytes = 0;
+  for (const accessor of accessors) bytes += accessor.getByteLength();
   return bytes;
 };
 
@@ -270,16 +278,24 @@ const encodeTextures = async (
  * (`hasColliderNodes`)
  * @param opts.importTextures The runtime registers the file's textures: else they are dropped,
  * whatever the textures settings say
+ * @param opts.lodChain Build LOD chains into the file (p347 Phase 3), after the geometry's
+ * compression. Only with the mesh side on: a geometry kept as it is gets its chain at runtime.
  */
 export const encodeGLTFAsset = async (
   source: Extract<AssetSource, { file: string }>,
   settings: ResolvedAssetSettings,
-  opts: { importTextures: boolean; getKtx: KtxProvider; warn: (message: string) => void }
+  opts: {
+    importTextures: boolean;
+    lodChain?: ResolvedLodChainOptions;
+    getKtx: KtxProvider;
+    warn: (message: string) => void;
+  }
 ): Promise<{
   output: PipelineOutput;
   textures: EncodedTexture[];
   droppedTextures: number;
   geometryBytes: { in: number; out: number };
+  lodChains?: BuiltLodChain[];
 }> => {
   const io = await getIO();
   const doc = await io.read(source.file);
@@ -287,6 +303,17 @@ export const encodeGLTFAsset = async (
   const droppedTextures = opts.importTextures ? 0 : dropTextures(doc);
   const geometryIn = getGeometryBytes(doc);
   if (settings.mesh) await compressGeometry(doc, settings.mesh, opts.warn);
+  let lodChains: BuiltLodChain[] | undefined;
+  if (opts.lodChain && settings.mesh) {
+    let { lodChain } = opts;
+    if (settings.mesh.codec === 'draco' && !lodChain.compactVertices) {
+      opts.warn(
+        'Draco primitives share all of their accessors or none: the LOD levels get their own vertices (compactVertices)'
+      );
+      lodChain = { ...lodChain, compactVertices: true };
+    }
+    lodChains = await buildLodChains(doc, lodChain, opts.warn);
+  }
   const textures =
     settings.textures && opts.importTextures
       ? await encodeTextures(doc, settings.textures, opts)
@@ -298,5 +325,6 @@ export const encodeGLTFAsset = async (
     textures,
     droppedTextures,
     geometryBytes: { in: geometryIn, out: getGeometryBytes(doc) },
+    ...(lodChains?.length ? { lodChains } : {}),
   };
 };

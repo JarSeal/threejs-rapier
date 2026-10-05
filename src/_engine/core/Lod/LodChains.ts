@@ -29,18 +29,14 @@ import type { AssetLoadReport } from '../Assets/AssetsAPITypes';
 import { serializeGeometry, type TransferableAttribute } from '../Import/GeometryTransfer';
 import {
   resolveLodChainOptions,
-  simplifyLodChain,
   type LodChainOptions,
+  type LodLevelVertices,
   type ResolvedLodChainOptions,
-  type SimplifiedLodChain,
-} from './LodSimplify';
+} from './LodChainOptions';
+import type { ExtractedLodChain } from './LodChainGLTF';
+import { simplifyLodChain, type SimplifiedLodChain } from './LodSimplify';
 
-export type { LodChainOptions, ResolvedLodChainOptions } from './LodSimplify';
-
-/** Where a level's vertex arrays come from: the base's own (`BASE`, only the index differs), the
- * welded copy of a non-indexed base that the levels share (`WELDED`), or its own (`OWN`,
- * `compactVertices`). */
-export type LodLevelVertices = 'BASE' | 'WELDED' | 'OWN';
+export type { LodChainOptions, LodLevelVertices, ResolvedLodChainOptions } from './LodChainOptions';
 
 export type LodChainLevel = {
   /** Level 0 is the base geometry's id, level n is `${baseId}#lod${n}`. */
@@ -61,9 +57,12 @@ export type LodChain = {
   options: ResolvedLodChainOptions;
   /** levels[0] is the base. Can be shorter than the requested ratios, or just the base. */
   levels: LodChainLevel[];
-  /** Where it was generated and how long it took. `mainThreadMs` is the main thread's own work
-   * (copying the input, registering the levels), not the simplifier's. */
-  report: AssetLoadReport & { mainThreadMs: number };
+  /** `BUILD`: the asset pipeline built it into the GLB (p347 Phase 3), the import registered it.
+   * `RUNTIME`: generateLodChain() simplified it on the client. */
+  origin: 'BUILD' | 'RUNTIME';
+  /** Where it was generated and how long it took (`RUNTIME` only). `mainThreadMs` is the main
+   * thread's own work (copying the input, registering the levels), not the simplifier's. */
+  report?: AssetLoadReport & { mainThreadMs: number };
 };
 
 const chains = new Map<string, LodChain>();
@@ -98,26 +97,19 @@ const toBufferAttributes = (attributes: Record<string, TransferableAttribute>) =
   return out;
 };
 
-/** Registers the simplified levels as geometries (ids `${baseId}#lod${n}`), each with one ref. */
-const registerLevels = (baseId: string, base: THREE.BufferGeometry, result: SimplifiedLodChain) => {
-  if (!base.boundingBox) base.computeBoundingBox();
-  if (!base.boundingSphere) base.computeBoundingSphere();
-  const baseName = getGeometryRegistry()[baseId]?.debugData?.name || baseId;
-  const welded = result.welded ? toBufferAttributes(result.welded) : null;
-  const levels: LodChainLevel[] = [
-    { geometryId: baseId, triangles: result.baseTriangles, error: 0, vertices: 'BASE' },
-  ];
+type LevelInput = {
+  geometry: THREE.BufferGeometry;
+  triangles: number;
+  error: number;
+  vertices: LodLevelVertices;
+};
 
-  result.levels.forEach((level, i) => {
-    const n = i + 1;
-    const levelId = `${baseId}#lod${n}`;
-    if (getGeometryRegistry()[levelId]) {
-      // An earlier chain's level that something else still holds
-      lwarn(`LOD chain: "${levelId}" is still registered (in use), so this level is left out.`);
-      return;
-    }
+/** The simplifier's levels as geometries: its index over the base's, the welded or its own
+ * attributes. */
+const toLevelInputs = (base: THREE.BufferGeometry, result: SimplifiedLodChain): LevelInput[] => {
+  const welded = result.welded ? toBufferAttributes(result.welded) : null;
+  return result.levels.map((level) => {
     const geometry = new THREE.BufferGeometry();
-    geometry.name = base.name ? `${base.name}#lod${n}` : '';
     const attributes = level.attributes
       ? toBufferAttributes(level.attributes)
       : welded ?? base.attributes;
@@ -126,6 +118,34 @@ const registerLevels = (baseId: string, base: THREE.BufferGeometry, result: Simp
     for (const { start, count, materialIndex } of level.groups) {
       geometry.addGroup(start, count, materialIndex);
     }
+    const vertices: LodLevelVertices = level.attributes ? 'OWN' : welded ? 'WELDED' : 'BASE';
+    return { geometry, triangles: level.triangles, error: level.error, vertices };
+  });
+};
+
+/** Registers the levels as geometries (ids `${baseId}#lod${n}`), each with one ref. */
+const registerLevels = (
+  baseId: string,
+  base: THREE.BufferGeometry,
+  baseTriangles: number,
+  inputs: LevelInput[]
+) => {
+  if (!base.boundingBox) base.computeBoundingBox();
+  if (!base.boundingSphere) base.computeBoundingSphere();
+  const baseName = getGeometryRegistry()[baseId]?.debugData?.name || baseId;
+  const levels: LodChainLevel[] = [
+    { geometryId: baseId, triangles: baseTriangles, error: 0, vertices: 'BASE' },
+  ];
+
+  inputs.forEach(({ geometry, triangles, error, vertices }, i) => {
+    const n = i + 1;
+    const levelId = `${baseId}#lod${n}`;
+    if (getGeometryRegistry()[levelId]) {
+      // An earlier chain's level that something else still holds
+      lwarn(`LOD chain: "${levelId}" is still registered (in use), so this level is left out.`);
+      return;
+    }
+    geometry.name = base.name ? `${base.name}#lod${n}` : '';
     // The base's bounds: a level stays within them (near enough for culling)
     geometry.boundingBox = base.boundingBox!.clone();
     geometry.boundingSphere = base.boundingSphere!.clone();
@@ -135,18 +155,13 @@ const registerLevels = (baseId: string, base: THREE.BufferGeometry, result: Simp
       id: levelId,
       debugData: {
         name: `${baseName} · LOD${n}`,
-        description: `LOD${n} of "${baseId}": ${level.triangles} triangles, error ${level.error.toFixed(4)}`,
+        description: `LOD${n} of "${baseId}": ${triangles} triangles, error ${error.toFixed(4)}`,
       },
     });
     copyAssetOwner(base, geometry);
     incGeometryRef(levelId);
     baseIdOfLevel.set(levelId, baseId);
-    levels.push({
-      geometryId: levelId,
-      triangles: level.triangles,
-      error: level.error,
-      vertices: level.attributes ? 'OWN' : welded ? 'WELDED' : 'BASE',
-    });
+    levels.push({ geometryId: levelId, triangles, error, vertices });
   });
   return levels;
 };
@@ -204,7 +219,12 @@ const runGeneration = async (geometryId: string, options: ResolvedLodChainOption
 
   const startedAt = performance.now();
   releaseLodChain(geometryId);
-  const levels = registerLevels(geometryId, base, result);
+  const levels = registerLevels(
+    geometryId,
+    base,
+    result.baseTriangles,
+    toLevelInputs(base, result)
+  );
   mainThreadMs += performance.now() - startedAt;
 
   const chain: LodChain = {
@@ -213,6 +233,7 @@ const runGeneration = async (geometryId: string, options: ResolvedLodChainOption
     extent: result.extent,
     options,
     levels,
+    origin: 'RUNTIME',
     report: { ...report, mainThreadMs },
   };
   chains.set(geometryId, chain);
@@ -255,6 +276,42 @@ export const generateLodChain = (
   );
   pending.set(geometryId, promise);
   return promise;
+};
+
+/**
+ * Registers a LOD chain the asset pipeline built into a GLB (p347 Phase 3), for a geometry the
+ * import just registered: its levels become geometries `${geometryId}#lod${n}` as generated ones
+ * do. A chain without levels is registered too (the build found nothing to remove), so a
+ * `lodChain` import doesn't simplify it again on the client.
+ * @param geometryId the base geometry (registered, without a chain)
+ * @param prebuilt the chain the import extracted (LodChainGLTF.ts)
+ * @returns the chain, or null when the base isn't registered or already has or awaits one
+ */
+export const registerPrebuiltLodChain = (geometryId: string, prebuilt: ExtractedLodChain) => {
+  const entry = getGeometryRegistry()[geometryId];
+  if (!entry || chains.has(geometryId) || pending.has(geometryId)) return null;
+  const base = entry.resource;
+  const levels = registerLevels(
+    geometryId,
+    base,
+    prebuilt.baseTriangles,
+    prebuilt.levels.map((level) => ({ ...level, vertices: prebuilt.vertices }))
+  );
+  const chain: LodChain = {
+    baseId: geometryId,
+    radius: base.boundingSphere!.radius,
+    extent: prebuilt.extent,
+    options: prebuilt.options,
+    levels,
+    origin: 'BUILD',
+  };
+  chains.set(geometryId, chain);
+  if (levels.length > 1 && isDebugEnvironment()) {
+    llog(
+      `[LOD] Chain for geometry "${geometryId}" from the asset pipeline: ${levels.map((l) => l.triangles).join(' → ')} triangles.`
+    );
+  }
+  return chain;
 };
 
 /** Returns a base geometry's LOD chain, if it has one. */

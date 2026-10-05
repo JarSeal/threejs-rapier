@@ -101,7 +101,13 @@ export const serializeGeometry = (
   };
 };
 
-const toBufferAttribute = ({ array, itemSize, normalized, name }: TransferableAttribute) => {
+/** Wraps a {@link TransferableAttribute}'s (transferred) array as a BufferAttribute, uncopied. */
+export const deserializeAttribute = ({
+  array,
+  itemSize,
+  normalized,
+  name,
+}: TransferableAttribute) => {
   const attr = new THREE.BufferAttribute(array, itemSize, normalized);
   attr.name = name;
   return attr;
@@ -116,14 +122,14 @@ export const deserializeGeometry = (data: TransferableGeometry) => {
   const geometry = new THREE.BufferGeometry();
   geometry.name = data.name;
   for (const [name, attr] of Object.entries(data.attributes)) {
-    geometry.setAttribute(name, toBufferAttribute(attr));
+    geometry.setAttribute(name, deserializeAttribute(attr));
   }
   const morphAttributes = geometry.morphAttributes as Record<string, THREE.BufferAttribute[]>;
   for (const [name, list] of Object.entries(data.morphAttributes)) {
-    morphAttributes[name] = list.map(toBufferAttribute);
+    morphAttributes[name] = list.map(deserializeAttribute);
   }
   geometry.morphTargetsRelative = data.morphTargetsRelative;
-  if (data.index) geometry.setIndex(toBufferAttribute(data.index));
+  if (data.index) geometry.setIndex(deserializeAttribute(data.index));
   for (const { start, count, materialIndex } of data.groups) {
     geometry.addGroup(start, count, materialIndex);
   }

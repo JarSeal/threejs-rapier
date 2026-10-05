@@ -12,33 +12,14 @@ import {
   type TransferableAttribute,
   type TransferableGeometry,
 } from '../Import/GeometryTransfer';
+import type { ResolvedLodChainOptions } from './LodChainOptions';
 
-export type LodChainOptions = {
-  /** Target triangle counts, as ratios of the base's, one per level. Default [0.5, 0.25, 0.1]. */
-  ratios?: number[];
-  /** meshoptimizer's target error cap, relative to the mesh's extent. Default 0.05. */
-  maxError?: number;
-  /** How much normal and uv deviation count against a collapse. Default 0.5 each (0 ignores it). */
-  attributeWeights?: { normal?: number; uv?: number };
-  /** Each level gets its own trimmed vertex arrays, instead of sharing the base's (only its index
-   * differs). Better for large meshes whose far levels use few vertices. Default false. */
-  compactVertices?: boolean;
-  /** Keeps the mesh's open borders in place, so tiling geometry (eg. terrain blocks) still meets
-   * its neighbours. Default false. */
-  lockBorder?: boolean;
-  /** Lets collapses cross attribute seams. Flat-shaded geometry (a normal per face) has a seam on
-   * every edge and doesn't simplify without it. Default false. */
-  permissive?: boolean;
-};
-
-export type ResolvedLodChainOptions = {
-  ratios: number[];
-  maxError: number;
-  attributeWeights: { normal: number; uv: number };
-  compactVertices: boolean;
-  lockBorder: boolean;
-  permissive: boolean;
-};
+export {
+  DEFAULT_LOD_CHAIN_OPTIONS,
+  resolveLodChainOptions,
+  type LodChainOptions,
+  type ResolvedLodChainOptions,
+} from './LodChainOptions';
 
 export type SimplifiedLevel = {
   /** Uint16 when the vertices it indexes fit. */
@@ -63,15 +44,6 @@ export type SimplifiedLodChain = {
   levels: SimplifiedLevel[];
 };
 
-export const DEFAULT_LOD_CHAIN_OPTIONS: ResolvedLodChainOptions = {
-  ratios: [0.5, 0.25, 0.1],
-  maxError: 0.05,
-  attributeWeights: { normal: 0.5, uv: 0.5 },
-  compactVertices: false,
-  lockBorder: false,
-  permissive: false,
-};
-
 /** A non-indexed base is welded (all attributes) with this tolerance. */
 const WELD_TOLERANCE = 1e-4;
 /** A level must have at least this much fewer triangles than the previous one, or it's dropped. */
@@ -80,26 +52,6 @@ const MIN_LEVEL_DROP = 0.1;
 const MIN_GROUP_TRIANGLES = 4;
 /** meshopt's remap value for an unreferenced vertex. */
 const NO_VERTEX = 0xffffffff;
-
-/**
- * Fills in a chain's defaults. Ratios outside (0, 1) are dropped, the rest sorted from the most
- * detailed level down.
- * @param opts {@link LodChainOptions}
- */
-export const resolveLodChainOptions = (opts?: LodChainOptions): ResolvedLodChainOptions => {
-  const d = DEFAULT_LOD_CHAIN_OPTIONS;
-  return {
-    ratios: (opts?.ratios ?? d.ratios).filter((r) => r > 0 && r < 1).sort((a, b) => b - a),
-    maxError: opts?.maxError ?? d.maxError,
-    attributeWeights: {
-      normal: opts?.attributeWeights?.normal ?? d.attributeWeights.normal,
-      uv: opts?.attributeWeights?.uv ?? d.attributeWeights.uv,
-    },
-    compactVertices: opts?.compactVertices ?? d.compactVertices,
-    lockBorder: opts?.lockBorder ?? d.lockBorder,
-    permissive: opts?.permissive ?? d.permissive,
-  };
-};
 
 type Meshopt = { simplifier: typeof MeshoptSimplifier; encoder: typeof MeshoptEncoder };
 let meshoptPromise: Promise<Meshopt> | null = null;

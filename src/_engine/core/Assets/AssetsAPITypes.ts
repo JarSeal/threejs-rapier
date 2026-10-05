@@ -5,6 +5,7 @@
 import type { KTX2LoaderWorkerConfig } from 'three/addons/loaders/KTX2Loader.js';
 import type { TransferableGeometry } from '../Import/GeometryTransfer';
 import type { ResolvedLodChainOptions, SimplifiedLodChain } from '../Lod/LodSimplify';
+import type { TransferableLodChain } from '../Lod/LodChainGLTF';
 import type { ImportedGeometryInfo } from '../Import/ImportTypes';
 import type { TransferableImage, TransferableTexture } from '../Import/TextureTransfer';
 import type { TextureMapKeys } from '../Material';
@@ -209,6 +210,8 @@ export type AssetsLoadGLTFResponse = {
   error?: string;
   geometries: TransferableGeometry[];
   primitives: { geometryIndex: number; info: ImportedGeometryInfo }[];
+  /** The asset pipeline's prebuilt LOD chains (p347 Phase 3), one per base in `geometries`. */
+  lodChains: { geometryIndex: number; chain: TransferableLodChain }[];
   /** Empty without importTextures. ImageBitmaps, or KTX2 textures' compressed mip levels. */
   images: TransferableImage[];
   /** Empty without importTextures. */

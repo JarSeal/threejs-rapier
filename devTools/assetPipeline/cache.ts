@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { KTX_VERSION } from './ktxTool';
 import { AEK_ASSETS_DIR, getOutputFile } from './outputs';
 import { ROOT } from './sources';
+import type { BuiltLodChain } from './lodChains';
 import type { EncodedTexture } from './textures';
 
 /**
@@ -40,6 +41,8 @@ export type CacheEntry = {
   textures?: EncodedTexture[];
   droppedTextures?: number;
   geometryBytes?: { in: number; out: number };
+  /** A GLB's LOD chains (p347 Phase 3), for the generated data's `__lodChain` */
+  lodChains?: BuiltLodChain[];
   warnings?: string[];
   /** The `ktx` that encoded it, when one did (the key has the pinned version) */
   ktxVersion?: string;

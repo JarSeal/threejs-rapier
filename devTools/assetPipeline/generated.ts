@@ -11,7 +11,8 @@ import type { EncodedTexture } from './textures';
 /**
  * What the gatherer writes into an asset's generated data from a pipeline run (p300 §5): the
  * output to load, the source for the dev-only "Load source files" override (DD8 level 3), and
- * the download and VRAM figures before and after (`GeneratedAssetFieldsSchema`).
+ * the download and VRAM figures before and after, and a GLB's LOD chains
+ * (`GeneratedAssetFieldsSchema`).
  */
 
 /** Every generated key: a scene entry drops the asset's own before it gets its file's. */
@@ -21,6 +22,7 @@ export const GENERATED_FIELD_KEYS = [
   '__bytes',
   '__vramBytes',
   '__codec',
+  '__lodChain',
 ] as const satisfies readonly (keyof GeneratedAssetFields)[];
 
 const toUrl = (base: string, file: string) =>
@@ -145,5 +147,6 @@ export const getGeneratedFields = (
   if (result.status === 'passThrough') return fields;
   fields.__vramBytes = figures.vramBytes;
   if (type === 'texture' && result.textures[0]) fields.__codec = result.textures[0].codec;
+  if (result.lodChains?.length) fields.__lodChain = result.lodChains;
   return fields;
 };
