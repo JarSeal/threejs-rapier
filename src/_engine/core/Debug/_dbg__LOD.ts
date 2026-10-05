@@ -1,4 +1,10 @@
-import { createDebuggerTab, updateDebuggerTab } from '../../debug/DebuggerGUI';
+import {
+  addDebugToast,
+  createDebuggerTab,
+  debuggerListCMP,
+  type DebuggerListItem,
+  updateDebuggerTab,
+} from '../../debug/DebuggerGUI';
 import { getECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { getConfig } from '../Config';
@@ -6,17 +12,84 @@ import {
   getLodBias,
   getLodDebugOptions,
   getLodFrameStats,
+  getLodMaxSelectionsPerFrame,
   setLodBias,
   setLodDebugOptions,
+  setLodMaxSelectionsPerFrame,
 } from '../Lod/LodSystem';
+import {
+  findNearestLodEntityInView,
+  getLodEntityName,
+  getOpenLodEntityWindowIds,
+  toggleLodEntityWindow,
+} from './Lod/_dbg__LodEntityWindow';
+import {
+  isLodOverlayEnabled,
+  LOD_OVERLAY_COLOR_NAMES,
+  setLodOverlayEnabled,
+} from './Lod/_dbg__LodOverlay';
 
 // The LOD tab (docs/plans/p348_ecs-lod-selection.md §6): counts per level, the last frame's
-// selections and applies, and the selection's runtime overrides. Nothing is persisted: the bias,
-// freeze, forced level and camera are for inspecting, and a reload starts from the app's values.
+// selections and applies, the selection's runtime overrides, the level overlay
+// (Lod/_dbg__LodOverlay.ts) and the per-entity LOD windows (Lod/_dbg__LodEntityWindow.ts).
+// Nothing is persisted: it's all for inspecting, and a reload starts from the app's values.
 // Default world only.
 
 const TAB_ID = 'lodControls';
 const formatInt = (v: number) => v.toFixed(0);
+
+/** The cap's choices; -1 stands for Infinity (no cap) in the list. */
+const MAX_SELECTIONS_OPTIONS = [100, 250, 500, 1000, 2500, 5000, 10000];
+const toCapOption = (max: number) => (max === Infinity ? -1 : max);
+
+/** Rows the mesh list shows at most (a scene can have thousands of LOD meshes). */
+const MAX_LIST_ROWS = 100;
+
+/** The overlay's colour per level, as legend lines. */
+const formatLegend = (levelCount: number) =>
+  Array.from({ length: levelCount }, (_, i) => {
+    const name = LOD_OVERLAY_COLOR_NAMES[Math.min(i, LOD_OVERLAY_COLOR_NAMES.length - 1)];
+    return `${`Level ${i}`.padEnd(12)}${name}`;
+  }).join('\n');
+
+/** The default world's LOD meshes (not pool instances: those are too many to list; "Nearest in
+ * view" reaches them), the first MAX_LIST_ROWS. */
+const getMeshListData = (): DebuggerListItem[] => {
+  const world = getECSWorld();
+  const items: DebuggerListItem[] = [];
+  let more = 0;
+  for (const [entityId, lod] of world.getStorage(ComponentType.LOD)) {
+    if (lod._target) continue;
+    if (items.length >= MAX_LIST_ROWS) {
+      more++;
+      continue;
+    }
+    let suffix = `L${Math.max(lod.applied, 0)}`;
+    if (
+      world.isDisabled(entityId) ||
+      world.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED)
+    ) {
+      suffix = 'out of view';
+    } else if (world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED)) {
+      suffix = 'culled';
+    }
+    items.push({
+      itemId: String(entityId),
+      title: getLodEntityName(entityId, world),
+      subTitle: `[${entityId}]`,
+      suffix,
+    });
+  }
+  if (more) {
+    items.push({
+      itemId: 'more',
+      title: `…and ${more} more`,
+      disabled: true,
+      titlePlaceholder: true,
+    });
+  }
+  return items;
+};
 
 /** The fixed lines of the counts text after the level lines. */
 const COUNT_EXTRA_LINES = 3;
@@ -64,8 +137,15 @@ export const _createLodDebugGUI = () => {
   const world = getECSWorld();
 
   // Proxies of the runtime values, synced on every refresh (app code can change them too)
-  const controls = { bias: 1, freeze: false, forceLevel: -1, useActiveCamera: false };
-  const statsState = { selections: 0, applies: 0, totalApplies: 0, selectionMs: 0 };
+  const controls = {
+    overlay: false,
+    bias: 1,
+    maxSelections: -1,
+    freeze: false,
+    forceLevel: -1,
+    useActiveCamera: false,
+  };
+  const statsState = { selections: 0, lapFrames: 1, applies: 0, totalApplies: 0, selectionMs: 0 };
   const countsState = { text: '' };
 
   /** Levels of the entity with the most, which the counts and the force options list. */
@@ -81,13 +161,16 @@ export const _createLodDebugGUI = () => {
     refreshIntervalMs: 500,
     onRefresh: () => {
       const opts = getLodDebugOptions();
+      controls.overlay = isLodOverlayEnabled();
       controls.bias = getLodBias();
+      controls.maxSelections = toCapOption(getLodMaxSelectionsPerFrame());
       controls.freeze = opts.freeze;
       controls.forceLevel = opts.forceLevel;
       controls.useActiveCamera = opts.useActiveCamera;
 
       const stats = getLodFrameStats(world);
       statsState.selections = stats.selections;
+      statsState.lapFrames = stats.lapFrames;
       statsState.applies = stats.applies;
       statsState.totalApplies = stats.totalApplies;
       statsState.selectionMs = stats.selectionMs;
@@ -107,6 +190,13 @@ export const _createLodDebugGUI = () => {
       builtLevelCount = levelCount;
       // A forced level past every entity's last stays listed while it is set
       const forceOptionCount = Math.max(levelCount, controls.forceLevel + 1);
+      // A cap the app set that isn't one of the choices is listed too
+      const capOptions = MAX_SELECTIONS_OPTIONS.includes(controls.maxSelections)
+        ? MAX_SELECTIONS_OPTIONS
+        : [...MAX_SELECTIONS_OPTIONS, controls.maxSelections]
+            .filter((v) => v > 0)
+            .sort((a, b) => a - b);
+      const legendState = { text: formatLegend(levelCount) };
       return [
         {
           pane: true,
@@ -128,6 +218,13 @@ export const _createLodDebugGUI = () => {
                   key: 'selections',
                   target: statsState,
                   label: 'Selections',
+                  readonly: true,
+                  format: formatInt,
+                },
+                {
+                  key: 'lapFrames',
+                  target: statsState,
+                  label: 'Frames per lap',
                   readonly: true,
                   format: formatInt,
                 },
@@ -177,6 +274,30 @@ export const _createLodDebugGUI = () => {
                   },
                 },
                 {
+                  key: 'maxSelections',
+                  target: controls,
+                  label: 'Max selections / frame',
+                  options: [
+                    { value: -1, text: 'No cap' },
+                    ...capOptions.map((value) => ({ value, text: String(value) })),
+                  ],
+                  onChange: (value) => {
+                    const max = Number(value);
+                    setLodMaxSelectionsPerFrame(max < 0 ? Infinity : max);
+                  },
+                },
+                {
+                  type: 'button',
+                  title: "Reset to the app's cap",
+                  disabled: () =>
+                    getLodMaxSelectionsPerFrame() ===
+                    (getConfig().lod?.maxSelectionsPerFrame ?? Infinity),
+                  onClick: () => {
+                    setLodMaxSelectionsPerFrame(getConfig().lod?.maxSelectionsPerFrame ?? Infinity);
+                    updateDebuggerTab(TAB_ID, { rebuild: true });
+                  },
+                },
+                {
                   key: 'freeze',
                   target: controls,
                   label: 'Freeze',
@@ -209,8 +330,63 @@ export const _createLodDebugGUI = () => {
                 },
               ],
             },
+            {
+              type: 'folder',
+              title: 'Overlay',
+              content: [
+                {
+                  key: 'overlay',
+                  target: controls,
+                  label: 'Level boxes',
+                  onChange: (value) => setLodOverlayEnabled(Boolean(value)),
+                },
+                {
+                  key: 'text',
+                  target: legendState,
+                  label: 'Colours',
+                  readonly: true,
+                  multiline: true,
+                  rows: levelCount,
+                  interval: 0,
+                },
+              ],
+            },
+            {
+              type: 'folder',
+              title: 'Inspect',
+              content: [
+                {
+                  type: 'button',
+                  title: 'Nearest in view',
+                  onClick: () => {
+                    const entityId = findNearestLodEntityInView(world);
+                    if (entityId === undefined) {
+                      addDebugToast({ message: 'No LOD entity in view.' });
+                      return;
+                    }
+                    toggleLodEntityWindow(entityId);
+                    updateDebuggerTab(TAB_ID);
+                  },
+                },
+              ],
+            },
           ],
         },
+        debuggerListCMP({
+          id: 'lodMeshes',
+          heading: 'Meshes with a LOD',
+          emptyText: 'No meshes with a LOD (pool instances: "Nearest in view").',
+          data: getMeshListData,
+          selectedItemId: getOpenLodEntityWindowIds,
+          perItemConfig: {
+            onClick: (itemId) => {
+              if (itemId === 'more') return;
+              toggleLodEntityWindow(Number(itemId));
+              // The row selection follows the window
+              queueMicrotask(() => updateDebuggerTab(TAB_ID));
+            },
+          },
+        }),
       ];
     },
   });

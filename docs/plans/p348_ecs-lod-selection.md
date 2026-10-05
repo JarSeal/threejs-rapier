@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-4 implemented
+Status: in progress | Phases 1-4 implemented, Phase 5 step 1
 Category: ECS, Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 1.3)
 Blocks: p351_impostor-billboard-lod.md (needs Phase 3's per-level instanced pools), p354_gpu-driven-culling.md
@@ -462,7 +462,77 @@ As built:
 ### Phase 5 — Budget and spike
 
 1. `maxSelectionsPerFrame` round-robin, `setLodBias`, the overlay.
+   - a. `maxSelectionsPerFrame` — done (`setLodBias` landed in Phase 1)
+   - b. The overlay, and §6's per-mesh readout. — done
 2. The `BatchedMesh` spike (§4.4).
+
+As built (step 1a):
+
+- `AppConfig.lod.maxSelectionsPerFrame` (default `Infinity`), `setLodMaxSelectionsPerFrame` /
+  `getLodMaxSelectionsPerFrame`, applied per world. A value below 1 warns and means no cap. A
+  forced level ignores the cap.
+- The capped walk keeps an iterator of the `LOD` storage across frames, per world. The `LOD`
+  storage is always a `Map` (`TYPED_ARRAY` mode swaps only `TRANSFORM`), whose iterators survive
+  deletes and adds. A frame stops after the cap's selections or one full lap, so a frame where most
+  entities are out of view doesn't walk the storage twice. Skipped entities (disabled, frustum
+  culled) cost a walk step but not a selection.
+- §3.3's "an entity re-entering the view gets a fresh level in the same frame" doesn't hold for a
+  plain round-robin: the entity would keep the level it had when it left until its turn. Hooks on
+  `TAG_FRUSTUM_CULLED` and `DISABLED` removal, and the `LOD` add hook, queue the entity (only while
+  there is a cap), and the selection takes the queue first, past the cap. Queued selections count
+  against the cap, and the walk gets what's left (it can get nothing in a frame where many entities
+  came into view). Frozen or without a camera, the queue is dropped: those entities wait for the walk.
+- `LodFrameStats.lapFrames`: the frames the last full lap took (1 without a cap), how long an
+  entity in view can show a stale level. The tab shows it, and a "Max selections / frame" list
+  (no cap, 100-10,000, plus a value the app set) with a reset button. Runtime only, like the bias.
+- Verified (WebGPU, headless Chrome, through the app's modules):
+  - Re-entry, cap 1: 100 plain LOD meshes with ECS frustum culling held their level behind the
+    camera, then moved into view at 2-150 m in one frame. Their first frame in view had 100
+    selections and every mesh on the level (and LOD-culled state, and geometry) that an uncapped
+    selection settled on afterwards. The same through `setDisabled(true)` → move →
+    `setDisabled(false)`.
+  - largeWorld, 3,500 pool instances, overview camera: selection 0.667 ms per frame uncapped,
+    0.122 ms at a cap of 500 (500 selections per frame, a 7-frame lap). Switching between the
+    overview and the follow camera at cap 500, the levels differed from the uncapped result in
+    1,624 / 1,418 / 1,230 / 929 / 615 / 299 instances over the first six frames and matched from
+    the seventh on (both directions). With the camera still, the capped result equals the uncapped
+    one.
+
+As built (step 1b):
+
+- `LodSystem.ts` measures through one function, `measureEntity` (the world position and largest
+  scale), used by the selection and by two debug exports: `getLodWorldSphere(entityId, lod, world,
+out)` (level 0's sphere in world space, no camera) and `measureLodEntity(entityId, world, out)`
+  (the sphere plus distance, screen size and `k` against `getLodSelectionCamera()`, both biases
+  included). The camera terms became `computeCameraTerms(camera, out)`; `DEFAULT_LOD_HYSTERESIS` is
+  exported.
+- Overlay (`core/Debug/Lod/_dbg__LodOverlay.ts`, the tab's "Overlay" folder, runtime only): a box
+  around the sphere the selection measures, per `LOD` entity shown (not disabled, frustum-culled or
+  LOD-culled) and inside the selection camera's frustum, pool instances included. A line has one
+  colour, so there is one 1px FIXED line per colour (green, yellow, orange, red, magenta, then blue
+  for every level from 5), 8,192 boxes each, created on the first enable, persistent and marked for
+  the census. Not at `LATE_MAIN` as the spatial grid's: that stage runs after the render, so the boxes
+  would be a frame late. It refills at `APP_RENDER_SYNC`, `LOD_SELECTION` order, registered after
+  the apply. It also fills once when switched on, since the app loop (and the system) may be paused.
+  A line without boxes is hidden (an empty draw warns on WebGPU).
+- §6's per-mesh readout is a draggable window per entity (`core/Debug/Lod/_dbg__LodEntityWindow.ts`):
+  the entity's kind, state, the selection's overrides and camera, the live screen size, distance and
+  world radius, and a table of levels with their screen size, triangles and switch distances. "in ≤"
+  is `worldRadius × k / screenSize`, where the row is taken coming from a coarser one; "out >" is that
+  over `1 − hysteresis`, where it's left. The same for culling; orthographic shows none. There was no
+  mesh window to add it to (the engine has none), so it opens from the tab: a list of the LOD meshes
+  (pool instances are too many; at most 100 rows), a "Nearest in view" button that reaches pool
+  instances too, and an `EntityWindowOpener` (priority -1) for the profiler's heaviest objects. It
+  refreshes every 250 ms and closes on a scene change (entity ids don't survive one).
+- Verified (WebGPU, headless Chrome, through the app's own module instances, each LOD system
+  registered once):
+  - `p348LodSphere`'s window gives 3.57 / 3.97 m, 10.7 / 11.9 m and cull 107 / 119 m at fov 50. Sweeps
+    in 1.4% steps switch at 3.544, 10.688 and 106.03 m inward and 4.012, 11.95 and 120.04 m outward,
+    each within a step.
+  - largeWorld, overview camera: the overlay's boxes per level (585 / 1,824) equal the shown
+    instances inside the camera's frustum counted independently; 676 LOD-culled ones are left out.
+    Off hides every line, and on while the app loop is paused fills them at once.
+  - "Nearest in view" opens a tree instance's window (level 0, 188 / 209 m at fov 60).
 
 ## 8. Versioning
 
