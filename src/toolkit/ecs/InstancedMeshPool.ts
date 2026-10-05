@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as THREE from 'three/webgpu';
-import type { ECSWorld } from '../../_engine/core/ECS';
+import { ECSWorld } from '../../_engine/core/ECS';
 import { CoreComponentType } from '../../_engine/core/ECS/ECSRegistry';
 import { ECSSystemStage } from '../../AppECSRegistry';
 import { lwarn } from '../../_engine/utils/Logger';
@@ -41,6 +41,55 @@ registerSpatialRadiusProvider(
   }
 );
 
+const _matrix = new THREE.Matrix4();
+const _color = new THREE.Color();
+
+// Slot → entity per pooled mesh (docs/plans/p348_ecs-lod-selection.md §4.2): freeing a slot moves
+// the mesh's last instance into it and patches that instance's entity. Keyed by mesh, not by
+// pool, so a pool with several meshes (one per LOD level) shares the same swap-remove. Entity ids
+// can be negative int32s (the generation is in the high bits), which Int32Array holds exactly.
+const slotEntitiesByMesh = new WeakMap<THREE.InstancedMesh, Int32Array>();
+
+/** Frees `entityId`'s slot with a swap-remove: the last instance's matrix (and colour) moves into
+ * it, so the drawn range stays `0..count-1`. A no-op for a slot already freed. The mesh's bounds
+ * aren't recomputed: they only shrink, so the old ones stay conservative. */
+const freeInstanceSlot = (entityId: number, world: ECSWorld) => {
+  const slot = world.getComponent(
+    entityId,
+    InstancedMeshPoolComponentType.INSTANCED_MESH_SLOT as any
+  ) as InstancedMeshSlotData | undefined;
+  if (!slot) return;
+  const { mesh, index } = slot;
+  const slotEntities = slotEntitiesByMesh.get(mesh);
+  if (!slotEntities || index >= mesh.count || slotEntities[index] !== entityId) return;
+
+  const last = mesh.count - 1;
+  if (index !== last) {
+    const movedId = slotEntities[last];
+    mesh.getMatrixAt(last, _matrix);
+    mesh.setMatrixAt(index, _matrix);
+    if (mesh.instanceColor) {
+      mesh.getColorAt(last, _color);
+      mesh.setColorAt(index, _color);
+      mesh.instanceColor.needsUpdate = true;
+    }
+    slotEntities[index] = movedId;
+    const movedSlot = world.getComponent(
+      movedId,
+      InstancedMeshPoolComponentType.INSTANCED_MESH_SLOT as any
+    ) as InstancedMeshSlotData | undefined;
+    if (movedSlot) movedSlot.index = index;
+  }
+  mesh.count = last;
+  mesh.instanceMatrix.needsUpdate = true;
+};
+
+// onRemoveComponent too, so removing the slot directly can't leave its matrix drawn
+ECSWorld.registerComponentHooks(InstancedMeshPoolComponentType.INSTANCED_MESH_SLOT as any, {
+  onRemoveComponent: freeInstanceSlot,
+  onDeleteEntity: freeInstanceSlot,
+});
+
 export interface CreateInstancedMeshPoolOptions {
   /** Used to create one dedicated ECS entity that owns `mesh` itself (distinct from the
    * per-instance slot entities `spawn()` creates) — see `InstancedMeshPool.mesh`'s doc comment. */
@@ -48,7 +97,7 @@ export interface CreateInstancedMeshPoolOptions {
   geometry: THREE.BufferGeometry;
   /** A material array (with a matching-length `geometry.groups`) works the same as on a plain `Mesh` — see `generateTreeGeometry`'s `materialGroups`. */
   material: THREE.Material | THREE.Material[];
-  /** Hard cap on live instances this pool can ever hold — sized once, like `ECSStressTest.ts`'s `MAX_INSTANCES`. */
+  /** Hard cap on live instances this pool can hold at once — sized once, like `ECSStressTest.ts`'s `MAX_INSTANCES`. Despawning frees a slot for a later spawn. */
   maxInstances: number;
   castShadow?: boolean;
   receiveShadow?: boolean;
@@ -74,6 +123,14 @@ export interface InstancedMeshPool {
    * created entity ids (fewer than `placements.length` if the pool's `maxInstances` is reached).
    */
   spawn: (world: ECSWorld, placements: ScatterPlacement[], entityOpts?: CoreEntityOpts) => number[];
+  /**
+   * Deletes an instance's entity. The pool's last instance moves into its slot (swap-remove), so
+   * another instance's `INSTANCED_MESH_SLOT.index` can change; read it from the component, never
+   * keep it. Deleting the entity any other way, or removing its `INSTANCED_MESH_SLOT`, frees the
+   * slot the same way. Returns false (and deletes nothing) when `entityId` isn't a live instance
+   * of this pool.
+   */
+  despawn: (world: ECSWorld, entityId: number) => boolean;
 }
 
 /**
@@ -85,8 +142,6 @@ export interface InstancedMeshPool {
  * docs/plans/p090_large-ecs-test-world-scene.md §3 Phase 3) rather than tied to one debug
  * stress-test scene.
  */
-const _matrix = new THREE.Matrix4();
-
 export const createInstancedMeshPool = (
   opts: CreateInstancedMeshPoolOptions
 ): InstancedMeshPool => {
@@ -107,7 +162,8 @@ export const createInstancedMeshPool = (
   });
   world.addComponent(meshEntityId, CoreComponentType.TAG_IS_MESH as any, true);
 
-  let nextIndex = 0;
+  const slotEntities = new Int32Array(maxInstances);
+  slotEntitiesByMesh.set(mesh, slotEntities);
 
   const spawn: InstancedMeshPool['spawn'] = (world, placements, entityOpts) => {
     const entityIds: number[] = [];
@@ -127,7 +183,7 @@ export const createInstancedMeshPool = (
     }
 
     for (const placement of placements) {
-      if (nextIndex >= maxInstances) {
+      if (mesh.count >= maxInstances) {
         lwarn(
           `InstancedMeshPool: maxInstances (${maxInstances}) reached — skipping remaining placements.`
         );
@@ -145,7 +201,7 @@ export const createInstancedMeshPool = (
       // doc comment. Harmless in the default MAP mode, where it re-sets the same reference.
       world.commitTransform(entityId, transform);
 
-      const index = nextIndex++;
+      const index = mesh.count;
       // Baked synchronously (not left to instancedMeshPoolSyncSystem's next tick) so
       // computeBoundingSphere() below sees real placement data immediately, and so nothing
       // flashes at the pool's default (identity, i.e. world-origin) matrix for one frame.
@@ -157,7 +213,8 @@ export const createInstancedMeshPool = (
         index,
         _lastVersion: transform.version,
       });
-      mesh.count = nextIndex;
+      slotEntities[index] = entityId;
+      mesh.count = index + 1;
       // After the slot, which its radius provider reads
       if (spatialDomain) joinSpatialDomain(entityId, spatialDomain, world);
 
@@ -177,7 +234,18 @@ export const createInstancedMeshPool = (
     return entityIds;
   };
 
-  return { mesh, meshEntityId, spawn };
+  const despawn: InstancedMeshPool['despawn'] = (world, entityId) => {
+    const slot = world.getComponent(
+      entityId,
+      InstancedMeshPoolComponentType.INSTANCED_MESH_SLOT as any
+    ) as InstancedMeshSlotData | undefined;
+    if (!slot || slot.mesh !== mesh) return false;
+    // The slot hook frees the slot
+    world.deleteEntity(entityId);
+    return true;
+  };
+
+  return { mesh, meshEntityId, spawn, despawn };
 };
 
 /** Bakes each pooled entity's `Transform` into its `InstancedMesh` slot, skipping instances whose transform hasn't changed since the last bake (see `InstancedMeshSlotData._lastVersion`, mirroring `object3DSyncSystem`'s version-diff). */
