@@ -1032,6 +1032,66 @@
         },
         "frustumCullingEnabled": {
           "type": "boolean"
+        },
+        "lod": {
+          "type": "object",
+          "properties": {
+            "levels": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "screenSize": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Smallest screen size (bounding-sphere diameter / viewport height) this level is used at. Coarser levels need smaller values. Moving to a coarser level waits for `hysteresis` below it."
+                  },
+                  "geo": {
+                    "description": "Registered geometry id (the scene must load it). Omitted = the previous level's (level 0: the mesh's own).",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "mat": {
+                    "description": "Registered material id (the scene must load it). Omitted = the previous level's (level 0: the mesh's own).",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "castShadow": {
+                    "description": "Omitted = the previous level's (level 0: the mesh's own).",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "screenSize"
+                ],
+                "additionalProperties": false,
+                "description": "A level of detail."
+              },
+              "description": "Level 0 (the finest) first, screenSize descending."
+            },
+            "cullScreenSize": {
+              "description": "Below this screen size the mesh is hidden (with hysteresis, like the levels). 0 = never hidden. Default 0.",
+              "type": "number",
+              "minimum": 0
+            },
+            "hysteresis": {
+              "description": "Moving to a coarser level (or hiding) waits until the screen size is this fraction below the threshold, so a mesh on a boundary does not flip every frame. Default 0.1.",
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 1
+            },
+            "bias": {
+              "description": "Multiplies the screen size: >1 keeps detail longer. Default 1. The global bias (AppConfig.lod.bias, setLodBias) applies on top.",
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "levels"
+          ],
+          "additionalProperties": false,
+          "description": "Levels of detail (p348): each frame the mesh shows the level its screen size reaches, swapping its geometry, material and castShadow."
         }
       },
       "required": [
@@ -2126,6 +2186,66 @@
             },
             "frustumCullingEnabled": {
               "type": "boolean"
+            },
+            "lod": {
+              "type": "object",
+              "properties": {
+                "levels": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "screenSize": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Smallest screen size (bounding-sphere diameter / viewport height) this level is used at. Coarser levels need smaller values. Moving to a coarser level waits for `hysteresis` below it."
+                      },
+                      "geo": {
+                        "description": "Registered geometry id (the scene must load it). Omitted = the previous level's (level 0: the mesh's own).",
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "mat": {
+                        "description": "Registered material id (the scene must load it). Omitted = the previous level's (level 0: the mesh's own).",
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "castShadow": {
+                        "description": "Omitted = the previous level's (level 0: the mesh's own).",
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "screenSize"
+                    ],
+                    "additionalProperties": false,
+                    "description": "A level of detail."
+                  },
+                  "description": "Level 0 (the finest) first, screenSize descending."
+                },
+                "cullScreenSize": {
+                  "description": "Below this screen size the mesh is hidden (with hysteresis, like the levels). 0 = never hidden. Default 0.",
+                  "type": "number",
+                  "minimum": 0
+                },
+                "hysteresis": {
+                  "description": "Moving to a coarser level (or hiding) waits until the screen size is this fraction below the threshold, so a mesh on a boundary does not flip every frame. Default 0.1.",
+                  "type": "number",
+                  "minimum": 0,
+                  "exclusiveMaximum": 1
+                },
+                "bias": {
+                  "description": "Multiplies the screen size: >1 keeps detail longer. Default 1. The global bias (AppConfig.lod.bias, setLodBias) applies on top.",
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "levels"
+              ],
+              "additionalProperties": false,
+              "description": "Levels of detail (p348): each frame the mesh shows the level its screen size reaches, swapping its geometry, material and castShadow."
             },
             "__meta": {
               "type": "object",
