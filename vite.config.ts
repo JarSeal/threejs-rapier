@@ -106,6 +106,10 @@ export default defineConfig({
     minify: true,
     reportCompressedSize: true,
   },
+  // ES module workers: an IIFE worker can't be code-split, and the assets worker loads the
+  // meshopt simplifier on demand (docs/plans/p347_lod-chain-generation.md, Phase 0). The dev server
+  // loads workers as modules either way.
+  worker: { format: 'es' },
   optimizeDeps: {
     // Deps only the assets worker imports: Vite's dep scan doesn't follow `?worker` imports, so
     // without these, the first dev run re-optimizes when the worker starts and reloads the page
@@ -113,6 +117,8 @@ export default defineConfig({
       'three/addons/loaders/HDRLoader.js',
       'three/addons/loaders/KTX2Loader.js',
       'three/addons/libs/meshopt_decoder.module.js',
+      'meshoptimizer/simplifier',
+      'meshoptimizer/encoder',
     ],
   },
   server: {

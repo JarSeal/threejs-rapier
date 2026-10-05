@@ -26,5 +26,13 @@ export const retagAssetOwner = (asset: object) => {
   if (ownerSceneId && owners.has(asset)) owners.set(asset, ownerSceneId);
 };
 
+/** Gives an asset derived from another (eg. a LOD level from its base geometry) the same owner,
+ * or none. */
+export const copyAssetOwner = (from: object, to: object) => {
+  const owner = owners.get(from);
+  if (owner) owners.set(to, owner);
+  else owners.delete(to);
+};
+
 /** The id of the scene that owns the asset, or undefined if it has no owner. */
 export const getAssetOwner = (asset: object) => owners.get(asset);

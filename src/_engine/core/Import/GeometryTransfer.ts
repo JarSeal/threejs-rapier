@@ -42,11 +42,14 @@ const deinterleave = (attr: THREE.InterleavedBufferAttribute) => {
 
 const toTransferableAttribute = (
   attr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute,
-  transfer: Set<ArrayBuffer>
+  transfer: Set<ArrayBuffer>,
+  copy?: boolean
 ): TransferableAttribute => {
   const array = (attr as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute
     ? deinterleave(attr as THREE.InterleavedBufferAttribute)
-    : (attr as THREE.BufferAttribute).array;
+    : copy
+      ? (attr as THREE.BufferAttribute).array.slice()
+      : (attr as THREE.BufferAttribute).array;
   // A Set: several attributes can be views into one buffer (eg. a .glb's binary chunk), and a
   // buffer can only be listed once for transfer
   transfer.add(array.buffer as ArrayBuffer);
@@ -55,21 +58,25 @@ const toTransferableAttribute = (
 
 /**
  * Describes a geometry as structured-clone-safe data, adding the buffers to transfer to
- * `transfer`. After the transfer, the geometry's buffers are detached: don't touch it again.
+ * `transfer`. After the transfer, the geometry's buffers are detached: don't touch it again,
+ * unless `opts.copy` was set.
  * @param geometry the geometry to describe
  * @param transfer collects the ArrayBuffers to pass as the postMessage transfer list
+ * @param opts.copy describe copies of the arrays, so the geometry stays usable after the transfer
  */
 export const serializeGeometry = (
   geometry: THREE.BufferGeometry,
-  transfer: Set<ArrayBuffer>
+  transfer: Set<ArrayBuffer>,
+  opts?: { copy?: boolean }
 ): TransferableGeometry => {
+  const copy = opts?.copy;
   const attributes: TransferableGeometry['attributes'] = {};
   for (const [name, attr] of Object.entries(geometry.attributes)) {
-    attributes[name] = toTransferableAttribute(attr, transfer);
+    attributes[name] = toTransferableAttribute(attr, transfer, copy);
   }
   const morphAttributes: TransferableGeometry['morphAttributes'] = {};
   for (const [name, list] of Object.entries(geometry.morphAttributes)) {
-    morphAttributes[name] = list.map((attr) => toTransferableAttribute(attr, transfer));
+    morphAttributes[name] = list.map((attr) => toTransferableAttribute(attr, transfer, copy));
   }
   const { boundingBox, boundingSphere } = geometry;
   return {
@@ -77,7 +84,7 @@ export const serializeGeometry = (
     attributes,
     morphAttributes,
     morphTargetsRelative: geometry.morphTargetsRelative,
-    index: geometry.index ? toTransferableAttribute(geometry.index, transfer) : null,
+    index: geometry.index ? toTransferableAttribute(geometry.index, transfer, copy) : null,
     groups: geometry.groups.map(({ start, count, materialIndex }) => ({
       start,
       count,

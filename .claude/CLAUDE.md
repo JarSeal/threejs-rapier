@@ -168,10 +168,20 @@ To check determinism, append `?physicsProbe=N` (debug mode) or use "Determinism 
 - Radii come from providers (`registerSpatialRadiusProvider(componentType, fn, { scaleIndependent? })`): meshes and pool instances return their geometry's `|center| + radius`, scaled by the Transform on every refresh; lights their range. `refreshSpatialRadius(entityId)` re-reads one after what its provider measures changed.
 - The "Spatial index" debug tab (`core/Debug/_dbg__SpatialGrid.ts`, default world only) works per domain: cell size override (saved for the scope it was edited in: the world settings or one scene's), brute-force oracle, overlays, rebuild counts and an all-domains summary.
 
+### LOD chains
+
+`core/Lod/` (p347): `generateLodChain(geometryId, opts?)` (`LodChains.ts`) simplifies a registered geometry with meshoptimizer into levels registered as `${baseId}#lod${n}`, each with its triangle count and error (relative to the chain's `extent`, the base's largest bounding box side; it includes the normal/uv deviation). `LodSimplify.ts` is the worker-safe simplifier, run by the assets worker (`assetsSwitchSimplify.ts`, kind `SIMPLIFY`) or on the main thread. `AppConfig.assets.simplifyWorkerTarget` defaults to `WORKER_THREAD`, whatever `workerTarget` is. meshoptimizer is a lazy chunk on both threads, which is why the workers build as ES modules (`worker.format: 'es'`).
+
+- A level shares the base's `BufferAttribute`s and has its own index (`compactVertices: true` gives it its own trimmed arrays; a non-indexed base is welded, and its levels share the welded arrays). Disposing any geometry of a chain frees the shared GPU buffers (three r186), so a geometry of the chain still drawn re-uploads them.
+- The chain holds one ref on each level, and `onGeometryDeleted` (`core/Geometry.ts`) releases it with the base, so a scene's asset release takes the levels too. Levels get the base's owner (`copyAssetOwner`).
+- Flat-shaded geometry (a normal per face) only simplifies with `permissive: true`. Very low-poly meshes (largeWorld's tree and bush) have nothing to remove. Either way, a chain without levels warns.
+- Skinned and morph-target geometry is refused. Nothing selects a level yet (p348). The Assets tab's geometry info window shows a geometry's chain and generates or releases one.
+
 ### Build config notes (`vite.config.ts`)
 
 - `root: './src'`, output to `../dist`.
 - `vite-plugin-wasm` for Rapier's WASM binary.
+- `worker: { format: 'es' }`: ES module workers, so a worker can load chunks on demand (an IIFE worker can't be code-split, and a dynamic `import()` in one fails `vite build`). The dev server loads workers as modules either way.
 - Custom `sceneGathererPlugin` (see data pipeline above) and an `html-transform` plugin that injects `%APP_NAME%`/`%VERSION_CHECKSUM%`/etc. placeholders (sourced from `package.json`'s `app_metadata`/`engine_metadata`/`toolkit_metadata`) into `index.html`.
 - `rollup-plugin-visualizer` writes a bundle treemap to `dist-stats/bundle-stats.html`.
 - No TS path aliases are configured (`tsconfig.json` has no `paths`) — imports are relative.

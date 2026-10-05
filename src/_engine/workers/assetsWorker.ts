@@ -11,6 +11,7 @@ import {
 } from '../core/Assets/AssetsAPITypes';
 import { AssetsSourceError } from './assets/assetsFetch';
 import { assetsSwitchGLTF } from './assets/assetsSwitchGLTF';
+import { assetsSwitchSimplify } from './assets/assetsSwitchSimplify';
 import { assetsSwitchTexture } from './assets/assetsSwitchTexture';
 
 const STATUS_READY_STRING = 'INIT_READY';
@@ -50,6 +51,8 @@ const handleMessage = async (data: AssetsUpProtocol) => {
         return await assetsSwitchTexture(data, sendMessage);
       case AssetsProtocolType.LOAD_GLTF:
         return await assetsSwitchGLTF(data, sendMessage);
+      case AssetsProtocolType.SIMPLIFY_GEOMETRY:
+        return await assetsSwitchSimplify(data, sendMessage);
       default:
         return sendMessage({
           type: AssetsProtocolType.ERROR,

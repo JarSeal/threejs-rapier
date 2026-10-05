@@ -125,6 +125,10 @@ export type AppConfig = {
     /** Per-kind overrides; fall back to workerTarget. */
     gltfWorkerTarget?: AssetsWorkerTarget;
     textureWorkerTarget?: AssetsWorkerTarget;
+    /** Where LOD chains are generated (generateLodChain, core/Lod/LodChains.ts). Default
+     * 'WORKER_THREAD', whatever workerTarget is: the main thread runs the simplifier inline, which
+     * takes tens of ms for a large mesh. */
+    simplifyWorkerTarget?: AssetsWorkerTarget;
     /** Max number of requests in flight in the assets worker at once. Default 8. */
     maxConcurrentLoads?: number;
     /** A worker request not answered in this time (ms) falls back to the main thread. Also
@@ -346,6 +350,7 @@ export const loadConfig = () => {
     ['VITE_ASSETS_WORKER_TARGET', 'workerTarget'],
     ['VITE_ASSETS_GLTF_WORKER_TARGET', 'gltfWorkerTarget'],
     ['VITE_ASSETS_TEXTURE_WORKER_TARGET', 'textureWorkerTarget'],
+    ['VITE_ASSETS_SIMPLIFY_WORKER_TARGET', 'simplifyWorkerTarget'],
   ] as const;
   for (const [envKey, configKey] of assetsTargetEnvs) {
     const target = envVars[envKey];
@@ -383,6 +388,7 @@ export const loadConfig = () => {
       workerTarget?: AssetsWorkerTarget;
       gltfWorkerTarget?: AssetsWorkerTarget;
       textureWorkerTarget?: AssetsWorkerTarget;
+      simplifyWorkerTarget?: AssetsWorkerTarget;
     };
     if (debugAssetsBoot.workerTarget) config.assets.workerTarget = debugAssetsBoot.workerTarget;
     if (debugAssetsBoot.gltfWorkerTarget) {
@@ -390,6 +396,9 @@ export const loadConfig = () => {
     }
     if (debugAssetsBoot.textureWorkerTarget) {
       config.assets.textureWorkerTarget = debugAssetsBoot.textureWorkerTarget;
+    }
+    if (debugAssetsBoot.simplifyWorkerTarget) {
+      config.assets.simplifyWorkerTarget = debugAssetsBoot.simplifyWorkerTarget;
     }
   }
 
