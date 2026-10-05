@@ -114,6 +114,9 @@ const history: HistorySeries[] = [
 let historyHead = 0;
 let historyCount = 0;
 let lastHistorySampleAt = -Infinity;
+/** The editor view the kept samples were counted in (null: the root scene), so a view switch
+ * starts a new history instead of mixing two scenes. */
+let historyViewId: string | null = null;
 
 const pushHistory = () => {
   for (let i = 0; i < history.length; i++) history[i].values[historyHead] = history[i].read();
@@ -136,6 +139,11 @@ const readSample = () => {
   census = censusReading.value;
   censusNa = censusReading.na || '';
   draw = _readStatsSource<DrawStats>(PROFILER_SOURCE.DRAW).value;
+  const viewId = census?.view?.id ?? null;
+  if (census && viewId !== historyViewId) {
+    resetHistory();
+    historyViewId = viewId;
+  }
   // A refresh between two walks (eg. a bar measure change) reads the cached census
   if (census && census.sampledAt !== lastHistorySampleAt) {
     lastHistorySampleAt = census.sampledAt;
@@ -158,7 +166,9 @@ const renderHeader = (settings: Readonly<ProfilerSettings>) => {
   }
   const notes: string[] = [];
   if (census) {
-    notes.push(census.isDebugCamera ? "Counted in the debug camera's view" : 'Counted in view');
+    if (census.view) notes.push(`Counted in ${census.view.title}'s view`);
+    else
+      notes.push(census.isDebugCamera ? "Counted in the debug camera's view" : 'Counted in view');
     if (census.isApprox) notes.push('BatchedMesh approx. (counted whole)');
     notes.push(
       census.excludesDebugHelpers
@@ -324,8 +334,12 @@ const renderEcs = () => {
     types += `<div><span>${esc(sorted[i][0])}</span><b>${formatNumber(sorted[i][1])}</b></div>`;
   }
   const typesNote = worlds.length > 1 ? ' (all worlds)' : '';
+  // The census above counts the editor view, which has no entities of its own
+  const viewNote = census?.view
+    ? `<div class="profilerNote">${esc(`The suspended scene's worlds (${census.view.title} has no entities).`)}</div>`
+    : '';
   return (
-    `<div class="profilerSection"><h4>ECS</h4>` +
+    `<div class="profilerSection"><h4>ECS</h4>${viewNote}` +
     `<table class="profilerTable"><tbody>${worldRows}</tbody></table>` +
     `<h5>Component types by entity count${typesNote}</h5>` +
     (types

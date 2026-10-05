@@ -3,6 +3,7 @@ import { getActiveCamera, isDebugCameraActive } from '../../CameraManager';
 import { ComponentType } from '../../ECS/ECSCoreComponents';
 import { getAllECSWorlds, type ECSWorld } from '../../ECS';
 import { getRootScene } from '../../Scene';
+import { getActiveView, getActiveViewCamera, isRuntimeViewActive } from '../../ViewManager';
 import { DEBUG_HELPER_USER_DATA_KEY } from '../../../debug/Profiler';
 
 /**
@@ -22,6 +23,10 @@ import { DEBUG_HELPER_USER_DATA_KEY } from '../../../debug/Profiler';
  *
  * Viewport scenes (axes gizmo, env ball) and the sky box's bake scenes are not in the root
  * scene: they appear in the drawn counters (`info.render`) only.
+ *
+ * In an editor view (ViewManager.ts) it counts what is shown: the view's own scene against the
+ * view's camera, not the suspended root scene. A view's scene has no ECS entities, so its objects
+ * get one owner (the view) and the entity figures are 0 in 0 worlds.
  */
 
 export const CENSUS_KINDS = [
@@ -69,6 +74,7 @@ export type CensusOwnerKey =
   | 'PERSISTENT'
   | `MANAGED:${string}`
   | 'NON_ECS'
+  | 'VIEW'
   | 'DEBUG_HELPERS';
 
 export type CensusOwner = { key: CensusOwnerKey; label: string; bucket: CensusBucket };
@@ -113,8 +119,11 @@ export type SceneCensus = {
    * entity over all worlds. */
   entities: InViewTotal;
   worlds: number;
-  /** Counted against the debug camera, not the main camera. */
+  /** Counted against the debug camera, not the main camera (Runtime view only). */
   isDebugCamera: boolean;
+  /** Counted in this editor view's own scene and camera, or null for the root scene (the Runtime
+   * view). */
+  view: { id: string; title: string } | null;
   /** A BatchedMesh was counted whole (its per-instance culling isn't repeated). */
   isApprox: boolean;
   /** Debug helpers went into `kinds.DEBUG_HELPERS` instead of their own kinds. */
@@ -173,12 +182,15 @@ const addMeasured = (bucket: CensusBucket, isInView: boolean, isMeshKind: boolea
 
 // --- OWNERS ---
 
-const OWNER_LABELS: Record<'SCENE' | 'PERSISTENT' | 'NON_ECS' | 'DEBUG_HELPERS', string> = {
-  SCENE: 'Scene entities',
-  PERSISTENT: 'Persistent entities',
-  NON_ECS: 'Non-ECS objects',
-  DEBUG_HELPERS: 'Debug helpers',
-};
+const OWNER_LABELS: Record<'SCENE' | 'PERSISTENT' | 'NON_ECS' | 'VIEW' | 'DEBUG_HELPERS', string> =
+  {
+    SCENE: 'Scene entities',
+    PERSISTENT: 'Persistent entities',
+    NON_ECS: 'Non-ECS objects',
+    // Relabelled with the view's title on every walk
+    VIEW: 'Editor view',
+    DEBUG_HELPERS: 'Debug helpers',
+  };
 
 /** Every owner seen so far, kept (and reset) across samples so a manager's bucket is reused. */
 const ownerBuckets = new Map<CensusOwnerKey, CensusOwner>();
@@ -195,9 +207,10 @@ const getOwner = (key: CensusOwnerKey): CensusOwner => {
   return owner;
 };
 
-/** The owners in their display order: Scene, Persistent, managers (by name), Non-ECS, helpers. */
+/** The owners in their display order: Scene (or the editor view), Persistent, managers (by name),
+ * Non-ECS, helpers. */
 const getOwnerOrder = (key: CensusOwnerKey) => {
-  if (key === 'SCENE') return 0;
+  if (key === 'SCENE' || key === 'VIEW') return 0;
   if (key === 'PERSISTENT') return 1;
   if (key === 'NON_ECS') return 3;
   if (key === 'DEBUG_HELPERS') return 4;
@@ -231,6 +244,7 @@ const census: SceneCensus = {
   entities: createInViewTotal(),
   worlds: 0,
   isDebugCamera: false,
+  view: null,
   isApprox: false,
   excludesDebugHelpers: true,
   sampleMs: 0,
@@ -245,6 +259,8 @@ const projScreenMatrix = new THREE.Matrix4();
 let walkCamera: THREE.Camera | null = null;
 let walkFrustum: THREE.Frustum | THREE.FrustumArray = frustum;
 let walkExcludesHelpers = true;
+/** The owner of objects without an entity above them: Non-ECS, or in an editor view the view. */
+let walkNoEntityOwner: CensusOwnerKey = 'NON_ECS';
 /** Objects drawn in view, or with a descendant that was (the entity count reads it). */
 const inViewObjects = new Set<THREE.Object3D>();
 
@@ -447,7 +463,7 @@ const visit = (
     const owner = isInHelper
       ? getOwner('DEBUG_HELPERS')
       : entityIndex === -1
-        ? getOwner('NON_ECS')
+        ? getOwner(walkNoEntityOwner)
         : entityOwners[entityIndex];
     addMeasured(owner.bucket, isInView, isMeshKind);
     if (isInView) {
@@ -495,6 +511,8 @@ const collectEntityObjects = (worlds: readonly ECSWorld[]) => {
   }
   entityIds.length = entityWorlds.length = entityOwners.length = index;
 };
+
+const NO_WORLDS: readonly ECSWorld[] = [];
 
 const clearEntityObjects = () => {
   entityObjects.clear();
@@ -544,20 +562,33 @@ const countEntities = (worlds: readonly ECSWorld[]) => {
   }
 };
 
+/** What the census walks: the root scene and the active camera in the Runtime view, the editor
+ * view's own scene and camera in an editor view. */
+const getCensusTarget = () => {
+  if (isRuntimeViewActive())
+    return { scene: getRootScene(), camera: getActiveCamera(), view: null };
+  const view = getActiveView();
+  return { scene: view?.scene, camera: getActiveViewCamera(), view };
+};
+
 /** Why a census can't be taken right now, or true. */
 export const getCensusAvailability = (): true | string => {
-  if (!getRootScene()) return 'no root scene';
-  return getActiveCamera() ? true : 'no active camera';
+  if (isRuntimeViewActive()) {
+    if (!getRootScene()) return 'no root scene';
+    return getActiveCamera() ? true : 'no active camera';
+  }
+  if (!getActiveView()) return 'switching views';
+  return getActiveViewCamera() ? true : 'no view camera';
 };
 
 /**
- * Walks the root scene against the active camera.
+ * Walks the shown scene against its camera: the root scene and the active camera, or in an
+ * editor view the view's own scene and camera.
  * @param excludeDebugHelpers (boolean) debug helpers go into their own bucket
  * @returns the same {@link SceneCensus} object on every call, or null without a scene or camera
  */
 export const runSceneCensus = (excludeDebugHelpers: boolean): Readonly<SceneCensus> | null => {
-  const scene = getRootScene();
-  const camera = getActiveCamera();
+  const { scene, camera, view } = getCensusTarget();
   if (!scene || !camera) return null;
   const startedAt = performance.now();
 
@@ -568,7 +599,16 @@ export const runSceneCensus = (excludeDebugHelpers: boolean): Readonly<SceneCens
   census.lights.count = census.lights.shadowCasters = census.lights.shadowPasses = 0;
   census.isApprox = false;
   census.excludesDebugHelpers = excludeDebugHelpers;
-  census.isDebugCamera = isDebugCameraActive();
+  census.isDebugCamera = !view && isDebugCameraActive();
+  if (view) {
+    if (census.view?.id !== view.id || census.view.title !== view.title) {
+      census.view = { id: view.id, title: view.title };
+    }
+    getOwner('VIEW').label = view.title;
+  } else {
+    census.view = null;
+  }
+  walkNoEntityOwner = view ? 'VIEW' : 'NON_ECS';
 
   // The camera's matrices are the last render's (the renderer updates them)
   if ((camera as THREE.ArrayCamera).isArrayCamera) {
@@ -587,7 +627,8 @@ export const runSceneCensus = (excludeDebugHelpers: boolean): Readonly<SceneCens
   walkCamera = camera;
   walkExcludesHelpers = excludeDebugHelpers;
   inViewObjects.clear();
-  const worlds = getAllECSWorlds();
+  // A view's scene has no entities (the worlds are the suspended scene's)
+  const worlds = view ? NO_WORLDS : getAllECSWorlds();
   collectEntityObjects(worlds);
 
   visit(scene, true, false, -1);

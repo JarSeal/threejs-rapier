@@ -33,6 +33,7 @@ import { createAssetsDebugGUI } from './debug/Assets';
 import { getSvgIcon } from './core/UI/icons/SvgIcon';
 import { registerLineManager } from './core/LineManager';
 import { createPostFXDebugGUI, initPostFX } from './core/PostFX';
+import { restoreSavedView } from './core/ViewManager';
 
 // ECS Core Plugins
 import './core/ECS/ECSCoreSystems';
@@ -188,6 +189,10 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
 
     // Load draggableWindow states
     loadDraggableWindowStatesFromLS();
+
+    // Back to the view that was active before the refresh: last, so the scene and every debug
+    // GUI exist (hidden by the view) when switching back. Not awaited: the loop already runs
+    if (IS_DEBUG_ENV) void restoreSavedView();
   } catch (err) {
     const msg = 'Error at app start function (InitEngine)';
     lerror(msg, err);

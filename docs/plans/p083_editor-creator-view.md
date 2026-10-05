@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: Editor-Creator View
 Blocks: p084_material-editor-stage-and-selector.md, p085_material-editor-params-and-persistence.md
 Related (all implemented; their plan files have been removed, see `.claude/CLAUDE.md` and the code): p080 viewports (`core/Viewports.ts`; the axes gizmo must follow the editor camera), p060/p062 debugger undo (`core/Debug/_dbg__UndoRedo.ts`; undo buckets per view), p105 `createDebuggerTab` (the editor drawers reuse its declarative tabs), p110-p115 layered sky box (later editors: skybox), p130 on-screen tools disabler (`DebugToolsState.onScreenTools`; the view tools group joins its disabled set)
@@ -22,6 +22,8 @@ This file is the epic. It also holds the first implementation plan: the **view s
 All three can land on one branch (one engine minor bump at merge) or on separate branches (a minor bump each).
 
 **Future plans (not written yet):** material preview thumbnails in the selector, deeper material params (textures, TSL graph inputs by type, all three.js material types), saving editor results to JSON, skybox editor (p111 has landed), animation editor, particle editor, views in production builds (configurator).
+
+**Particle editor physics (to work out in its plan).** Still open: where the particle simulation runs. One option is a TSL/GPU compute simulation with simple collisions (shapes, the depth buffer), which scales to many particles and needs no physics engine. The other is physics-engine bodies on the main thread or in the physics worker, which fits a few hundred rigid pieces like debris. If it uses the engine, the editor gets a private world of its own and doesn't use the Physics API, which holds one world in module state (`PhysicsAPI.ts`, `Physics/EngineRapier.ts`). It steps that world from the view's `update(delta)` with a fixed-timestep accumulator, while the Runtime scene's world stays suspended. The particle system would then talk to a small backend interface: the Physics API in the Runtime view, the private world in the editor. A private world on the main thread loads Rapier's WASM there on first use, since the default `WORKER_THREAD` target loads it only in the worker.
 
 ## Naming
 
@@ -175,7 +177,7 @@ Each phase compiles, lints and leaves the app working.
 2. **HUD rules, view tools group and keys.** — done
    - Body classes and the HUD SCSS rule, `aekKeepInViews` on the kept elements, the top row container, `viewTools()` with the `runtime` icon, the switch toast, per-view play group, `h`/`F1` routing.
    - Still no committed editor view, so the group stays hidden; the test view from Phase 1 shows it (with any existing icon until p084 adds `material`).
-3. **Gizmo rig, undo buckets, refresh restore.**
+3. **Gizmo rig, undo buckets, refresh restore.** — done
    - `ViewCameraRig`, the gizmo refactor (`tickAxesGizmo`, frame listeners), view-aware undo buckets, `AEK_debugViews` persistence and restore.
    - `createViewCamera` (DD7). Verify it with two throwaway test views: each keeps its own pose across view switches and a refresh, a pose key switch applies that key's pose or the default, and the Runtime view's debug camera pose is unchanged.
 4. **Docs.** The CLAUDE.md "Views" paragraph. (The version bump happens with the epic's merge, see Sub-plans.)
@@ -244,3 +246,29 @@ Each phase compiles, lints and leaves the app working.
   - `getViews()` returns the editor views in button order (`orderNr`, then registration order). `RUNTIME_VIEW_BUTTON` holds the Runtime button's data.
   - The `runtime` icon's viewfinder corners are filled outlines of DD6's 1.3 stroke (same shape). Every on-screen and toast icon rule sets `path { fill }`, which overrides the `fill="none"` of a stroked path.
 - **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2, Phase 1's test view imported from the page): the view group appears on registration (Runtime active, then "Test view") left of the play group, and both shift with the drawer. In the test view: the drawer, switch tools and scene HUD are hidden, `debugDrawerOpen` is off, undo/redo, stats, the top row and toasts stay, the prod test play button is gone, F7 and the pause button toggle only the view's play flag (`appPlay` unchanged), F6 stops the master loop, `h` and F1 do nothing. Back in the Runtime view the drawer comes back open with `debugDrawerOpen`, the switch tools are rebuilt, and each switch shows its toast.
+
+### Phase 3
+
+- **Code drift since the plan.** DD7's "`mainUpdate` runs `controls.update()` unless the gizmo suspended them" doesn't match the debug camera it copies: `debugCameraSystem` keeps calling `controls.update()` during the gizmo's drag, and that call turns the camera to its target after `orbitBy` moves it. The phase also needed the profiler's `frameSamplerSystem` and `gpuMemorySamplerSystem` and the env ball (Phase 1's list), next to the gizmo.
+- **As built.**
+  - `ViewCameraRig` (`ViewManager.ts`) has an optional `onMoveEnd()`, called by the gizmo when an align or a drag ends. Poses are saved there, not on `setControlsSuspended(false)`: an align never suspends the controls, since a canvas drag must still be able to cancel it. The Runtime view's debug camera is a rig too, built from its ECS entity, with `setDebugCameraControlsSuspended` and the `AEK_debugCams` save as `onMoveEnd`. So the gizmo has one align and drag path for every view.
+  - One rig resolver, `core/Debug/Camera/_dbg__CameraRig.ts`, used by the gizmo and the env ball: `getViewSourceCamera()` (the camera they follow), `isCameraRigActive()` (the debug camera in the Runtime view, a view with a `getCameraRig` in an editor view) and `getActiveCameraRig()`. A view without a rig counts as "main camera": the gizmo follows `getCamera()`, is shown only with "in main camera" on, and can't be clicked.
+  - `tickAxesGizmo()` and `tickEnvBall()` run from their `MAIN` systems in the Runtime view and from `BEFORE_UPDATE` view frame listeners in an editor view. A view change listener cancels a gizmo align, ends a drag (saving the old rig's pose) and ticks both, so a switch while the master loop is paused renders them right.
+  - Env ball: in an editor view it follows the view's camera and shows the view scene's own `environment` (with its `environmentRotation`). It is checked every frame there, since a view sets its environment without an event. It is hidden while the view scene has no environment. The root scene's sky box environment shows only in the Runtime view.
+  - Profiler: the frame sampler adds an `AFTER_RENDER` view frame listener with its `LATE_MAIN` system and removes it with the system. The GPU memory sampler has one for good (`sampleGPUMemory`).
+  - Undo: `perScene` actions recorded in an editor view go to `__view:<id>`. `_clearUndoRedoHistory('scene')` in a view clears that view's bucket.
+  - `AEK_debugViews` is written on every finished switch (also the fall back after a failed `onEnter`) and every editor view play toggle, in the debug env only. `restoreSavedView()` (`ViewManager.ts`) runs at the very end of `InitEngine`, after the debug GUIs and the draggable windows from LS, not right after `initMainLoop()`, so everything the Runtime view shows exists before it's hidden. It isn't awaited. It restores the play flags also when the saved view is the Runtime view.
+  - `createViewCamera` (`core/Debug/Editors/_dbg__ViewCamera.ts`): `near` / `far` default to 0.1 / 1000. The aspect comes from `renderer.getSize()`, compared every `mainUpdate` and in `onEnter`, instead of a registered resizer. It also returns `getPoseKey()` and `dispose()`. A second view camera for the same view id replaces and disposes the first. Stored poses are validated on load. `store.clear()` with no argument clears all of the view's poses, `null` the view's own, and a key that key's. `resetPose()` clears the current key's saved pose and applies `defaultPose`. `clearViewCameraPoses(viewId)` also puts a live view camera back to its default pose.
+  - The Phase 1 test view (`src/app/_tmp_testView.ts`) was committed with Phase 1. It now has two views on `createViewCamera` (B with a `RoomEnvironment` PMREM). Phase 4 removes it.
+- **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2 on WSL2, Playwright scripts driving the console API, the test views registered at boot through a temporary, reverted import in `index.ts`):
+  - Each test view starts at its default pose. A canvas orbit, a gizmo drag and a gizmo +Y align (top view) each move the view camera and save it to `AEK_debugViewCams`.
+  - Each view keeps its own pose across switches. A new pose key gets the default pose, and switching keys applies each key's saved pose.
+  - Undo in a view sees only that view's action; back in the Runtime view the earlier scene action is still there and undoes.
+  - A refresh in view B returns to it with both views' poses and A's paused flag. A refresh without the test views registered stays in the Runtime view and clears `AEK_debugViews`.
+  - `AEK_debugCams` is unchanged by the views. In the Runtime view, the gizmo still aligns and saves the debug camera, which keeps its pose and stays active across a view visit.
+  - In view B the env ball shows the `RoomEnvironment`, and the profiler window (F8) samples draw calls and triangles.
+  - The census in view B counts its 1 mesh (12 triangles), 2 lights and 1 debug helper (the `AxesHelper`), under the owner "Test view B", and Entities reads n/a. Back in the Runtime view it counts the scene's 5 meshes and 15 entities in 2 worlds again.
+  - Profiler census (`Profiler/_dbg__Census.ts`): in an editor view it walks the view's own scene against the view's camera (`getActiveViewCamera()`, `ViewManager.ts`: the rig's camera, else `getCamera()`), not the suspended root scene. `SceneCensus.view` names the view. Its objects go to one `VIEW` owner labelled with the view's title. The entity figures are 0 in 0 worlds, since a view's scene has no entities.
+    - The Overview rows say "<title>'s view" where they said "debug camera's view", and Entities is n/a there.
+    - The Objects tab's note names the view, and its ECS section notes that the worlds are the suspended scene's. Its history restarts when the counted view changes.
+    - Availability between two editor views is "switching views". The census reads the view camera from `ViewManager.ts`, not `_dbg__CameraRig.ts`, because the profiler also loads in prodTest, where importing `_dbg__DebugCamera.ts` would register its ECS plugin.

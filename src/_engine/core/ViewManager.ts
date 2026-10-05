@@ -13,7 +13,9 @@
  * No view is registered in production (yet), where this costs the main loop one boolean check.
  */
 import type * as THREE from 'three/webgpu';
+import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import type { SvgIconKey } from './UI/icons/SvgIcon';
+import { IS_DEBUG_ENV } from './Config';
 import { setSceneDebugCameraInputEnabled } from './CameraManager';
 import { setAppInputsSuspended } from './Input/InputState';
 import {
@@ -24,6 +26,7 @@ import {
 } from './MainLoop';
 import { setDrawerSuspendedByView, toggleDrawer } from '../debug/DebuggerGUI';
 import { updateOnScreenTools } from '../debug/OnScreenTools';
+import { lsGetItem, lsRemoveItem, lsSetItem } from '../utils/LocalAndSessionStorage';
 import { lerror, lwarn } from '../utils/Logger';
 
 /** The built-in Runtime view's id: the loaded scene with the game/app debugger. */
@@ -42,6 +45,26 @@ const EDITOR_VIEW_BODY_CLASS = 'aekEditorView';
 /** On <body> while that editor view is active (`aekView_<id>`), for the view's own styles. */
 const getViewBodyClass = (id: string) => `aekView_${id}`;
 
+/** The active view and the editor views' play flags, restored on refresh (debug env only). */
+const LS_KEY = 'AEK_debugViews';
+type ViewsLSData = { activeViewId: string; viewPlay: Record<string, boolean> };
+
+/**
+ * An orbit camera that debug tools can drive, like the scene debug camera: the axes gizmo
+ * follows it, aligns it to an axis and orbits it by a drag. An editor view returns its own from
+ * `getCameraRig` (createViewCamera builds one).
+ */
+export type ViewCameraRig = {
+  camera: THREE.Camera;
+  controls: OrbitControls;
+  /** Disables the controls' canvas input while a debug tool moves the camera itself (the
+   * gizmo's drag). `controls.update()` keeps running: it turns the camera to its target. */
+  setControlsSuspended: (suspended: boolean) => void;
+  /** After a debug tool moved the camera (a gizmo align or drag ended), eg. to save its pose:
+   * OrbitControls' `end` event only fires for its own input. */
+  onMoveEnd?: () => void;
+};
+
 /** An editor view (the Runtime view is built in, not a ViewDef). */
 export type ViewDef = {
   /** Unique view id, never {@link RUNTIME_VIEW_ID}. */
@@ -56,6 +79,9 @@ export type ViewDef = {
   scene: THREE.Scene;
   /** The camera the view is rendered with (nothing is rendered while it returns null). */
   getCamera: () => THREE.Camera | null;
+  /** The view's orbit camera rig, which the axes gizmo follows and drives (without one, the
+   * gizmo only follows `getCamera`, like the main camera in the Runtime view). */
+  getCameraRig?: () => ViewCameraRig | null;
   /** Runs on every switch to this view, before it is rendered for the first time. */
   onEnter?: () => void | Promise<void>;
   /** Runs on every switch away from this view. */
@@ -135,6 +161,14 @@ export const getActiveViewId = () => activeView?.id ?? RUNTIME_VIEW_ID;
 /** The active editor view, or null while the Runtime view is active. */
 export const getActiveView = () => activeView;
 
+/** The camera the active editor view is rendered from: its rig's camera, else its `getCamera()`.
+ * Null in the Runtime view, and during a switch between editor views. */
+export const getActiveViewCamera = (): THREE.Camera | null => {
+  const view = activeView;
+  if (!view) return null;
+  return view.getCameraRig?.()?.camera ?? view.getCamera();
+};
+
 /** Whether the Runtime view is active (no editor view, and no switch to one running). */
 export const isRuntimeViewActive = () => !isSuspended;
 
@@ -158,6 +192,7 @@ export const toggleViewPlay = (value?: boolean) => {
     return;
   }
   viewPlay[id] = value ?? !isViewPlaying(id);
+  persistViews();
 };
 
 /** What the debug drawer key (h) does: the debug drawer in the Runtime view, the editor view's
@@ -240,6 +275,12 @@ const resumeScene = () => {
   isSuspended = false;
 };
 
+/** Saves the active view and the play flags (debug env only: no view is registered elsewhere). */
+const persistViews = () => {
+  if (!IS_DEBUG_ENV) return;
+  lsSetItem(LS_KEY, { activeViewId: getActiveViewId(), viewPlay } satisfies ViewsLSData);
+};
+
 const notifyViewChange = (viewId: string, prevViewId: string) => {
   for (const fn of changeListeners) {
     try {
@@ -285,6 +326,7 @@ const switchView = async (id: string) => {
       lerror(`View "${id}" onEnter failed, in setActiveView. Returning to the Runtime view.`, err);
       document.body.classList.remove(getViewBodyClass(id));
       resumeScene();
+      persistViews();
       notifyViewChange(RUNTIME_VIEW_ID, prevId);
       updateOnScreenTools();
       renderFrameWhileMasterPaused();
@@ -295,6 +337,7 @@ const switchView = async (id: string) => {
     resumeScene();
   }
 
+  persistViews();
   notifyViewChange(id, prevId);
   // The view tools' active button, the play group's pause button, and the switch tools (only
   // built in the Runtime view)
@@ -313,4 +356,30 @@ export const setActiveView = (id: string): Promise<boolean> => {
   const result = switchQueue.then(() => switchView(id));
   switchQueue = result.catch(() => false);
   return result;
+};
+
+/**
+ * Restores the view that was active before a refresh, and the editor views' play flags. InitApp
+ * calls it once at the end of the boot (debug env), after the views are registered and the first
+ * scene has loaded (the scene is needed when switching back). A saved view that is no longer
+ * registered falls back to the Runtime view and clears the saved state.
+ * @returns (Promise<boolean>) whether a saved editor view is now active
+ */
+export const restoreSavedView = async () => {
+  if (!IS_DEBUG_ENV) return false;
+  const saved = lsGetItem(LS_KEY, {}) as Partial<ViewsLSData> | null;
+  if (!saved || typeof saved !== 'object') return false;
+  const id = typeof saved.activeViewId === 'string' ? saved.activeViewId : RUNTIME_VIEW_ID;
+  if (id !== RUNTIME_VIEW_ID && !views.has(id)) {
+    lwarn(`Saved view "${id}" is not registered, staying in the Runtime view.`);
+    lsRemoveItem(LS_KEY);
+    return false;
+  }
+  if (saved.viewPlay && typeof saved.viewPlay === 'object') {
+    for (const [viewId, isPlaying] of Object.entries(saved.viewPlay)) {
+      if (typeof isPlaying === 'boolean') viewPlay[viewId] = isPlaying;
+    }
+  }
+  if (id === RUNTIME_VIEW_ID) return false;
+  return setActiveView(id);
 };
