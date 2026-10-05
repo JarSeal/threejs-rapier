@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import type { ResolvedLodChainOptions } from '../../src/_engine/core/Lod/LodChainOptions';
+import {
+  GLTF_LOD_FORMAT_VERSION,
+  LOD_SIMPLIFY_VERSION,
+  type ResolvedLodChainOptions,
+} from '../../src/_engine/core/Lod/LodChainOptions';
 import type { AssetOptimize } from '../../src/_engine/schemas/assetsConfigSchema';
 import { encodePng } from './images';
 import { createKtxProvider, EncoderMissingError, type KtxProvider } from './ktxEncode';
@@ -300,7 +304,8 @@ const runAsset = async (
     }
     const importTextures = !!asset.importTextures;
     // Only built with the mesh side on (else the runtime generates the chains), and only in the
-    // key when set: the keys of the assets without one don't change
+    // key when set: the keys of the assets without one don't change. The simplifier is engine
+    // code and the format is what the runtime reads, so both versions are in it too.
     const lodChain = settings.mesh ? asset.lodChain : undefined;
     keyInput = {
       type: 'importedAsset',
@@ -311,7 +316,15 @@ const runAsset = async (
         // Without importTextures the textures are dropped, whatever their settings
         textures: importTextures ? settings.textures : null,
         mesh: settings.mesh,
-        ...(lodChain ? { lodChain } : {}),
+        ...(lodChain
+          ? {
+              lodChain: {
+                options: lodChain,
+                simplifier: LOD_SIMPLIFY_VERSION,
+                format: GLTF_LOD_FORMAT_VERSION,
+              },
+            }
+          : {}),
         output: getLogicalPath(source),
       },
     };

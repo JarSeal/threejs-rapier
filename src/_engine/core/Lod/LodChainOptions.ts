@@ -33,6 +33,16 @@ export type ResolvedLodChainOptions = {
  * `compactVertices`). */
 export type LodLevelVertices = 'BASE' | 'WELDED' | 'OWN';
 
+/** Bump when simplifyLodChain() (LodSimplify.ts) gives other levels for the same input and
+ * options. The asset pipeline's cache key has it, so the chains built into shipped GLBs are built
+ * again (the pipeline's own writer, devTools/assetPipeline/lodChains.ts, bumps PIPELINE_VERSION). */
+export const LOD_SIMPLIFY_VERSION = 1;
+
+/** Bump on a change to the chains' description in a GLB (`GLTFLodChainsExtras` in
+ * LodChainGLTF.ts): a file with another version loads without its levels (and gets them at
+ * runtime, when its import asks). In the asset pipeline's cache key, so the GLBs are built again. */
+export const GLTF_LOD_FORMAT_VERSION = 1;
+
 export const DEFAULT_LOD_CHAIN_OPTIONS: ResolvedLodChainOptions = {
   ratios: [0.5, 0.25, 0.1],
   maxError: 0.05,

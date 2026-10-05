@@ -272,8 +272,8 @@ clean). (The tree was the target, but it can't be simplified: Phase 0.)
   for a chain doesn't download it (only debug code imports it statically).
 - A scene that references an import by id only, without its JSON (an import made in code), gets no
   chain from the scene: it has no `lodChain` to read.
-- `lodChain` isn't part of p300's cache key (it hashes the resolved optimize settings, not the
-  JSON), so adding it doesn't re-encode the GLB. Phase 3 step 2 adds it.
+- `lodChain` wasn't part of p300's cache key (it hashes the resolved optimize settings, not the
+  JSON), so adding it didn't re-encode the GLB. Phase 3 added it.
 - Known gap: `retagImportOwner` re-tags a cached import's geometries, not their LOD levels, so the
   levels keep the scene that generated them as owner. The chain's ref keeps them from the owner
   sweep and they are released with the base, so only the GPU memory tab's "by owner" is off.
@@ -290,6 +290,49 @@ clean). (The tree was the target, but it can't be simplified: Phase 0.)
 
 **Exit:** a test GLB with `lodChain: true` loads its chain without running the simplifier on the
 client.
+
+**As built (steps 1-2):**
+
+- Build side: `devTools/assetPipeline/lodChains.ts` runs the runtime's own `simplifyLodChain` per
+  rendered triangle primitive of the default scene (collider-only nodes skipped, skinned and
+  morph-target ones warned), after the geometry's compression, so the levels index the attributes
+  as they ship (reordered, quantized). Only with the mesh side on: with `mesh: false` or a
+  pass-through, the import's `lodChain` falls back to the runtime path (warned).
+- Format (`core/Lod/LodChainGLTF.ts`): the levels are meshes `<mesh>__lod<n>` that no node
+  references, found through the root's extras (`aekLodChains`: format version, options, and per
+  base its mesh/primitive indices, extent, base triangles, vertices kind and level mesh indices),
+  not by the name suffix. Not a second glTF scene: GLTFLoader keeps `parser.associations` for the
+  last scene it loads only. A chain without levels is recorded too, so the runtime doesn't try
+  again. A file with another `GLTF_LOD_FORMAT_VERSION` loads without its levels.
+- Draco primitives share all of their accessors or none, so Draco forces `compactVertices`
+  (warned). `getGeometryBytes` counts an accessor that several primitives share once.
+- Runtime: `readGLTFLodChains` loads the level meshes through the parser (so `BASE` levels get
+  the base's attribute objects), `extractPrimitives` attaches them to their base primitive, and the
+  worker sends a level that shares attributes as its index only (`serializeLodChain`).
+  `registerPrebuiltLodChain` (`LodChains.ts`) registers them whatever the import's `lodChain` says
+  (the levels were downloaded anyway), awaited before the import resolves; `LodChain.origin` is
+  `BUILD` or `RUNTIME`, and `report` is `RUNTIME` only.
+- `extent` of a build-time chain is in the primitive's own units, quantized ones included (the
+  same units as the registered base geometry).
+- `__lodChain` in the generated data is per glTF mesh primitive (`GeneratedAssetFieldsSchema`;
+  textures omit it), and comes from the lock entry's `lodChains`.
+- Uses of one file share one output: the first use asking for a chain (the JSON's own, then the
+  scenes', in sorted file order) decides the options; a use with others is warned.
+- Cache key (step 2): step 1 already added the resolved options (only when set, so no other key
+  changed). Step 2 added `LOD_SIMPLIFY_VERSION` (bump on a simplifier output change; the simplifier
+  is engine code, so `PIPELINE_VERSION` wouldn't be bumped for it) and `GLTF_LOD_FORMAT_VERSION`,
+  both in the import-free `LodChainOptions.ts` so the pipeline reads them without three. Checked
+  (2026-10-05): with `"lodChain": true` on `testImport`, its own key and output (1340 → 670 → 426
+  triangles); `{ "maxError": 0.02 }`, another (1340 → 670 → 568); the assets without `lodChain`
+  stayed cache hits.
+- Exit (2026-10-05, headless Chrome on macOS, `?isDebug=true`, boot scene, `"lodChain": true` on
+  `testImport`): with `gltfWorkerTarget` `MAIN_THREAD` and `WORKER_THREAD`, the optimized GLB
+  registered `testImport/Cube`'s chain from the file (1340 → 670 → 426 triangles), and neither the
+  page nor the assets worker fetched `meshoptimizer`'s simplifier (`LodSimplify.ts` loads with
+  `LodChains.ts`; meshoptimizer only on a call). Control: with "Load source files" the source GLB
+  has no chain, and the worker fetched the simplifier and generated one (1340 → 670 → 466: the
+  build simplifies the quantized, reordered geometry that ships, so the levels differ slightly).
+  Safari not checked.
 
 ## 4. Versioning
 

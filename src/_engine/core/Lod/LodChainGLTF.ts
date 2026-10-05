@@ -12,13 +12,17 @@ import {
   serializeGeometry,
   type TransferableAttribute,
 } from '../Import/GeometryTransfer';
-import type { LodLevelVertices, ResolvedLodChainOptions } from './LodChainOptions';
+import {
+  GLTF_LOD_FORMAT_VERSION,
+  type LodLevelVertices,
+  type ResolvedLodChainOptions,
+} from './LodChainOptions';
+
+// In the import-free LodChainOptions.ts: the asset pipeline's cache key reads it without three
+export { GLTF_LOD_FORMAT_VERSION };
 
 /** The key of the chains' description in the glTF root's extras. */
 export const GLTF_LOD_EXTRAS_KEY = 'aekLodChains';
-/** Bump on a change to {@link GLTFLodChainsExtras}: a file with another version loads without its
- * levels (and gets them at runtime, when its import asks). */
-export const GLTF_LOD_FORMAT_VERSION = 1;
 
 /** The chains' description in the root's extras. Mesh indices are the file's (`meshes[]`). */
 export type GLTFLodChainsExtras = {

@@ -74,6 +74,7 @@ Save it, and the dev server encodes it. Then commit the source, the new file in 
 - The geometry is meshopt-compressed and quantized (smaller download and smaller vertex buffers). The embedded textures are encoded to KTX2, each by the material slot that uses it.
 - **Without `importTextures`, the output has no textures.** The engine discards glTF materials and registers a GLB's textures only with `importTextures`, so the pipeline drops the textures instead of shipping them. If code imports the file with `importTextures` but the JSON doesn't set it (or a scene's save entry doesn't), the textures are gone: set it in the JSON.
 - `.gltf` files with external buffers and images work; the output is always a `.glb`.
+- **`"lodChain": true`** (or its options: `ratios`, `maxError`, `compactVertices`, …) builds the LOD levels into the output, so the client never runs the simplifier. They are extra meshes no node uses, so glTF viewers show the model as before. Every use of a file shares one output: if the JSON and a scene's save entry ask for different options, the first one wins and the run warns. With the mesh side off (`"optimize": { "mesh": false }`, or a pass-through), the chains are generated at runtime after the load instead. Changing the options re-encodes the file.
 
 ### Collider sources
 
