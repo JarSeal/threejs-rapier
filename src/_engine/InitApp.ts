@@ -38,6 +38,7 @@ import { createPostFXDebugGUI, initPostFX } from './core/PostFX';
 import './core/ECS/ECSCoreSystems';
 import './core/ECS/ObjectFrustumCullingSystem';
 import './core/ECS/LightObjectCullingSystem';
+import { registerLodDebugGUI } from './core/Lod/LodSystem';
 import { registerSpatialIndexDebugGUI } from './core/Spatial/SpatialIndexSystem';
 import './core/MeshManager';
 
@@ -119,6 +120,7 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerCharacterTools();
       await registerECSModule();
       await registerSpatialIndexDebugGUI();
+      await registerLodDebugGUI();
     }
     if (IS_DEBUG_ENV || IS_PROD_TEST_MODE) {
       // Loaded here (not the IS_DEBUG_ENV-only block above) so isProdTest mode can still read

@@ -1,25 +1,20 @@
-import type * as THREE from 'three/webgpu';
+import type { InstancedMeshSlotData } from '../../_engine/core/Instancing/InstancedMeshPoolTypes';
 
 // --- src/toolkit/ecs/InstancedMeshPoolTypes.ts ---
 //
-// InstancedMeshPool.ts's component keys and data, apart from it so `AppECSRegistry.ts` can
-// import them without pulling the pool itself into the ECSCoreComponents ↔ AppECSRegistry import
-// cycle. No local imports here (types only).
+// Deprecated: the pool's component is the core `ComponentType.INSTANCED_MESH_SLOT` now
+// (`_engine/core/Instancing/`). Kept, with the core key, so an `AppECSRegistry.ts` that still
+// spreads it into `AppComponentType` compiles and names the same component. Goes at the
+// toolkit's next major version. Types only (no local value imports).
 
-/** Internal Key (Values) */
+export type { InstancedMeshSlotData };
+
+/** @deprecated Use `ComponentType.INSTANCED_MESH_SLOT`. */
 export enum InstancedMeshPoolComponentType {
-  INSTANCED_MESH_SLOT = 'TOOLKIT_INSTANCED_MESH_SLOT',
+  INSTANCED_MESH_SLOT = 'CORE_INSTANCED_MESH_SLOT',
 }
 
-/** Internal Data Shape (Types) */
-export interface InstancedMeshSlotData {
-  mesh: THREE.InstancedMesh;
-  index: number;
-  /** Last `Transform.version` baked into `mesh`'s instance matrix — skips the write once a
-   * (typically static, e.g. foliage) instance's transform stops changing. */
-  _lastVersion: number;
-}
-
+/** @deprecated The core component data has it. */
 export interface InstancedMeshPoolComponentData {
   [InstancedMeshPoolComponentType.INSTANCED_MESH_SLOT]: InstancedMeshSlotData;
 }

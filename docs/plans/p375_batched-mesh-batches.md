@@ -2,7 +2,7 @@ Status: draft | spike-gated, not-implemented
 Category: Merging, Rendering
 Epic: p370_static-mesh-merging-and-texture-atlas-systems.md (Tier 2.2)
 Blocked by: p372_mesh-merge-groups.md
-Related: p348_ecs-lod-selection.md (§4.4's `BatchedMesh` spike is this plan's Phase 0, run once), p309_terrain-decals.md (its runtime decal pools are `BatchedMesh`es; its WebGPU risk is answered here), \_DONE_p347_lod-chain-generation.md (shared-vertex chains), p354_gpu-driven-culling.md
+Related: \_DONE_p348_ecs-lod-selection.md (§4.4's `BatchedMesh` spike is this plan's Phase 0, run once), p309_terrain-decals.md (its runtime decal pools are `BatchedMesh`es; its WebGPU risk is answered here), \_DONE_p347_lod-chain-generation.md (shared-vertex chains), p354_gpu-driven-culling.md
 
 # BatchedMesh Batches (movable and per-member-culled content)
 
@@ -43,6 +43,9 @@ baked p372 group, a `BatchedMesh`. Both backends. Measure (profiler):
 5. `perObjectFrustumCulled` cost vs. benefit;
 6. geometry slot reuse after deletes (p309's FIFO pools);
 7. `@three.ez/batched-mesh-extensions`' `addGeometryLOD` under `WebGPURenderer` (p348 §4.4).
+   Answered by p348's Phase 5 (`_DONE_p348_ecs-lod-selection.md` §4.4): broken on WebGPU r186 as
+   shipped (0.0.12 never sets `_multiDrawBytesPerElement`), and once fixed no faster than p348's
+   instanced LOD pool for 2,000 instances of one geometry (and 2,000 draws instead of 3).
 
 Record the numbers here, in p348 §4.4 and in p309's risk row. **Gate:** continue only if
 `BatchedMesh` beats separate meshes on CPU frame time by a margin worth a new code path (proposed:

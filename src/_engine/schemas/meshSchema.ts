@@ -3,6 +3,7 @@ import { createSaveDataSchema, MetaSchema } from './_saveDataSchema';
 import { CoreEntityOptsSchema, Vector3Schema, Vector4Schema } from './_helperSchemas';
 import { GeoPropsSchema } from './geometrySchema';
 import { MaterialAssetSchema, MaterialVariantOverridesSchema } from './materialSchema';
+import { MeshLodDefSchema } from './lodSchema';
 
 export const MeshPropsSchema = z.object({
   geo: z.union([GeoPropsSchema, z.string()]),
@@ -17,6 +18,8 @@ export const MeshPropsSchema = z.object({
   appId: z.string().optional(),
   /** Native Object3D.frustumCulled (Three.js's own per-mesh render-list culling). Defaults to Three's own default (true). */
   frustumCullingEnabled: z.boolean().optional(),
+  /** Levels of detail (p348), or `AUTO` from the geometry's LOD chain, see setMeshLod. */
+  lod: MeshLodDefSchema.optional(),
   // physicsParams: z.union([]),
 });
 
@@ -34,6 +37,8 @@ const MeshOverridesSchema = z.object({
   rotation: Vector3Schema.optional(),
   quaternion: Vector4Schema.optional(),
   frustumCullingEnabled: z.boolean().optional(),
+  /** Replaces the mesh's whole `lod` in this scene (the save entry merges shallowly). */
+  lod: MeshLodDefSchema.optional(),
   __meta: MetaSchema.optional(),
 });
 

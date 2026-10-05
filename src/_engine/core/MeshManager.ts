@@ -29,6 +29,7 @@ import { getGeometry } from './Geometry';
 import { CoreComponentType } from './ECS/ECSRegistry';
 import { setFrustumCullingEnabled } from './ECS/ObjectFrustumCullingSystem';
 import { IS_DEBUG_ENV } from './Config';
+import type { LodDef, MeshLodDef } from './Lod/LodTypes';
 
 // Register onDeleteEntity hook for TAG_IS_MESH
 ECSWorld.registerComponentHooks(ComponentType.TAG_IS_MESH, {
@@ -51,6 +52,8 @@ export type MeshProps = {
   appId?: string;
   /** Native Object3D.frustumCulled (Three.js's own per-mesh render-list culling). Defaults to Three's own default (true). */
   frustumCullingEnabled?: boolean;
+  /** Levels of detail, or `AUTO` from the geometry's LOD chain, see {@link setMeshLod}. */
+  lod?: MeshLodDef;
 };
 
 /** Debug only: warns about a geometry or material that isn't the registered one under its id (it
@@ -75,6 +78,39 @@ const warnIfUnregistered = (
     lwarn(
       `[MeshManager] Mesh "${appId}" uses an unregistered material (${describe(matId)}), which is never disposed. Create it with createMaterial or register it with saveMaterial.`
     );
+  }
+};
+
+/**
+ * Compiles a mesh's pipelines ahead of its first draw (`renderer.compileAsync`), so the frame it
+ * first shows in doesn't stall on it. Used by `createMeshEntity`'s `preWarm` and for every level
+ * of a pre-warmed mesh's LOD.
+ * @param mesh the mesh, or a stand-in with the geometry and material to compile
+ * @param label names the mesh in the warning
+ */
+export const preWarmMesh = (mesh: THREE.Mesh, label: string) => {
+  const renderer = getRenderer();
+  const rootScene = getRootScene();
+  const camera = new THREE.PerspectiveCamera(); // Consider using the actual active camera if available
+  if (!renderer || !rootScene) return;
+
+  // Check if we have any valid shadow maps in the scene
+  // WebGPU TSL needs a valid texture instance to compile a shadow-receiving shader.
+  const hasInitializedShadows = rootScene.children.some(
+    (child) =>
+      child instanceof THREE.Light &&
+      child.castShadow &&
+      'shadow' in child &&
+      (child as { shadow: { map?: unknown } }).shadow?.map
+  );
+
+  // Only compile if it's "safe"
+  if (!mesh.receiveShadow || hasInitializedShadows) {
+    renderer.compileAsync(mesh, camera, rootScene);
+  } else {
+    // If we can't pre-warm now, the renderer will just compile it
+    // on the first actual draw call (standard behavior).
+    lwarn(`[Engine] Skipping preWarm for ${label} - ShadowMap not ready.`);
   }
 };
 
@@ -135,34 +171,9 @@ export const createMeshEntity = (
   const rootScene = existsOrThrow(getRootScene(), 'Could not find root scene in createMeshEntity.');
 
   if (props.preWarm) {
-    const renderer = getRenderer();
-    const camera = new THREE.PerspectiveCamera(); // Consider using the actual active camera if available
-
-    if (renderer && camera && rootScene) {
-      // Check if this mesh is a "Shadow Receiver"
-      const isShadowReceiver = props.receiveShadow === true;
-
-      // Check if we have any valid shadow maps in the scene
-      // WebGPU TSL needs a valid texture instance to compile a shadow-receiving shader.
-      const hasInitializedShadows = rootScene.children.some(
-        (child) =>
-          child instanceof THREE.Light &&
-          child.castShadow &&
-          'shadow' in child &&
-          (child as { shadow: { map?: unknown } }).shadow?.map
-      );
-
-      // Only compile if it's "safe"
-      if (!isShadowReceiver || hasInitializedShadows) {
-        renderer.compileAsync(mesh, camera, rootScene);
-      } else {
-        // If we can't pre-warm now, the renderer will just compile it
-        // on the first actual draw call (standard behavior).
-        lwarn(
-          `[Engine] Skipping preWarm for ${entityOpts?.appId || 'mesh'} - ShadowMap not ready.`
-        );
-      }
-    }
+    // Remembered so a LOD added later pre-warms its levels too (Lod/LodSystem.ts)
+    mesh.userData.preWarm = true;
+    preWarmMesh(mesh, entityOpts?.appId || 'mesh');
   }
 
   // The appId resolved above is the entity's real (fixed) appId too, whichever of props/entityOpts
@@ -232,7 +243,114 @@ export const createMeshEntity = (
     setFrustumCullingEnabled(entityId, true, world);
   }
 
+  // Last: the LOD's level 0 is the mesh as created, and its add hook pre-warms the other levels
+  // when the mesh has preWarm
+  if (props.lod) setMeshLod(entityId, props.lod, world);
+
   return entityId;
+};
+
+/** Per world: the `AUTO` LODs waiting for their chain, by entity. A later setMeshLod or
+ * removeMeshLod replaces or drops the entry, which cancels the wait. */
+const pendingAutoLods = new WeakMap<ECSWorld, Map<number, object>>();
+
+const getPendingAutoLods = (world: ECSWorld) => {
+  let pending = pendingAutoLods.get(world);
+  if (!pending) {
+    pending = new Map();
+    pendingAutoLods.set(world, pending);
+  }
+  return pending;
+};
+
+const addLodComponent = (entityId: number, def: LodDef, world: ECSWorld) => {
+  world.addComponent(entityId, ComponentType.LOD, {
+    def,
+    level: -1,
+    applied: -1,
+    radius: 0,
+    _levels: [],
+  });
+};
+
+/**
+ * Gives a mesh entity levels of detail (docs/plans/_DONE_p348_ecs-lod-selection.md): from the next
+ * frame, lodSelectionSystem picks a level by the mesh's screen size and lodApplySystem swaps its
+ * geometry, material(s) and `castShadow`. Level 0 is the mesh's own unless it names others. Every
+ * level's assets are held (ref counted) until the LOD is removed or the entity deleted, and
+ * pre-warmed when the mesh was created with `preWarm`. Replaces a LOD the mesh already has (back
+ * to level 0 first). The definition is read, not copied: after changing its levels, set it again.
+ *
+ * `'AUTO'` (or `{ auto: true, ... }`) reads the levels from the geometry's LOD chain (p347): each
+ * is used while its simplification error stays within `maxPixelError` pixels at a viewport height
+ * of 1080. The mesh stays on level 0 until the chain is ready (it waits for one the geometry's
+ * import requested or one being generated), and warns when the geometry has none.
+ *
+ * An `InstancedMesh` entity (eg. a static instance cell) switches all its instances at once, by
+ * level 0's bounds over every instance: write its instance matrices first, and call
+ * `refreshLodBounds` after they change. Its mesh needs `userData.entityId` when it holds registry
+ * refs, like a pool's mesh, so the level swaps move them.
+ * @param entityId a mesh entity: one created with createMeshEntity, or an `InstancedMesh` entity
+ * @param def the levels, `screenSize` descending, or `AUTO`
+ * @param ecsWorld the entity's world (default: the default world)
+ * @returns resolves to whether the LOD was set: at once for levels, when the chain is ready for
+ *   `AUTO` (false when it has none, or the LOD was replaced, removed or the entity deleted first)
+ */
+export const setMeshLod = (
+  entityId: number,
+  def: MeshLodDef,
+  ecsWorld?: ECSWorld
+): Promise<boolean> => {
+  const world = ecsWorld || getECSWorld();
+  // addComponent overwrites without the remove hook: it would keep the old levels' refs and take
+  // the current (maybe coarser) level as level 0
+  removeMeshLod(entityId, world);
+  if (def !== 'AUTO' && !('auto' in def)) {
+    addLodComponent(entityId, def, world);
+    return Promise.resolve(true);
+  }
+
+  const mesh = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
+  if (!(mesh instanceof THREE.Mesh)) {
+    lwarn(`[LOD] Entity ${entityId} has no mesh: its LOD does nothing.`);
+    return Promise.resolve(false);
+  }
+  const geometry = mesh.geometry;
+  const request = {};
+  const pending = getPendingAutoLods(world);
+  pending.set(entityId, request);
+  const isCurrent = () => pending.get(entityId) === request;
+  return import('./Lod/LodAuto')
+    .then(({ resolveAutoLod }) =>
+      isCurrent() ? resolveAutoLod(geometry, def, mesh.userData.id || mesh.uuid, mesh) : null
+    )
+    .catch((err) => {
+      lerror(`[LOD] Mesh "${mesh.userData.id || mesh.uuid}": lod AUTO failed.`, err);
+      return null;
+    })
+    .then((resolved) => {
+      if (!isCurrent()) return false;
+      pending.delete(entityId);
+      // Deleted meanwhile, or its geometry changed: the chain isn't its level 0's any more
+      if (!resolved || !world.isAlive(entityId) || mesh.geometry !== geometry) return false;
+      addLodComponent(entityId, resolved, world);
+      return true;
+    });
+};
+
+/**
+ * Removes a mesh entity's levels of detail: it goes back to level 0, shows again if the LOD hid
+ * it, and the other levels' assets are released. Cancels an `AUTO` LOD still waiting for its
+ * chain. A no-op without a LOD.
+ * @param entityId a mesh entity
+ * @param ecsWorld the entity's world (default: the default world)
+ */
+export const removeMeshLod = (entityId: number, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+  pendingAutoLods.get(world)?.delete(entityId);
+  if (world.hasComponent(entityId, ComponentType.LOD)) {
+    world.removeComponent(entityId, ComponentType.LOD);
+  }
 };
 
 export const disposeMesh = (entityId: number, ecsWorld?: ECSWorld) => {
@@ -281,6 +399,21 @@ export const setMeshMaterial = (mesh: THREE.Mesh, material: THREE.Material | THR
   // New refs first: the old and new material can share ids (eg. the same one in an array)
   forEachMaterialId(material, incMaterialRef);
   forEachMaterialId(prev, decMaterialRef);
+};
+
+/**
+ * Swaps a mesh entity's geometry and moves its geometry ref count to the new one, like
+ * {@link setMeshMaterial} does for materials.
+ * @param mesh a mesh created with createMeshEntity (other meshes take no refs: only assigned)
+ * @param geometry the new geometry
+ */
+export const setMeshGeometry = (mesh: THREE.Mesh, geometry: THREE.BufferGeometry) => {
+  const prev = mesh.geometry;
+  mesh.geometry = geometry;
+  if (mesh.userData.entityId === undefined || prev === geometry) return;
+  warnIfUnregistered(mesh.userData.id, geometry);
+  if (geometry.userData.id) incGeometryRef(geometry.userData.id);
+  if (prev.userData.id) decGeometryRef(prev.userData.id);
 };
 
 export const getMeshByAppId = (appId: string, ecsWorld?: ECSWorld) => {

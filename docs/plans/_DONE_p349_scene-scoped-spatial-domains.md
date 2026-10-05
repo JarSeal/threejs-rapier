@@ -1,6 +1,6 @@
 Status: implemented (Phases 1-5)
 Category: ECS, Spatial
-Related: \_DONE_p346_spatial-domains.md (the domains this scopes), p102_physics-world-bounds.md (the same "a scene's own settings replace the app default while it's active" model), p353_macro-streaming-grid.md (its `STREAMING` domain belongs to the streamed scene), p348_ecs-lod-selection.md and p308_terrain-scatter.md (per-scene static cell domains)
+Related: \_DONE_p346_spatial-domains.md (the domains this scopes), p102_physics-world-bounds.md (the same "a scene's own settings replace the app default while it's active" model), p353_macro-streaming-grid.md (its `STREAMING` domain belongs to the streamed scene), \_DONE_p348_ecs-lod-selection.md and p308_terrain-scatter.md (per-scene static cell domains)
 
 # Scene-Scoped Spatial Domains
 

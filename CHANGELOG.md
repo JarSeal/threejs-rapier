@@ -4,6 +4,52 @@ One entry per branch merged to `main`, newest first, written in that branch's PR
 
 Earlier releases are only recorded in the git history.
 
+## 2026-10-05 — ecs-lod-selection
+
+### Engine 4.8.0 (Afternoon)
+
+**Added**
+
+- LOD selection (`core/Lod/LodSystem.ts`): an entity with the `LOD` component gets a level from its projected screen size (bounding-sphere diameter / viewport height, perspective or orthographic), with hysteresis (default 0.1). Below `cullScreenSize` it's hidden by the new `TAG_LOD_CULLED`, a fourth reason in `reconcileObject3DVisibility`.
+  - `lodSelectionSystem` and `lodApplySystem` run at `APP_RENDER_SYNC_ORDER.LOD_SELECTION` (-1.5): after frustum culling, so they skip frustum-culled and disabled entities, before light culling. They use the main camera.
+  - Each level has a `screenSize` and optional `geo`, `mat` and `castShadow` (omitted ones come from the previous level). A plain mesh swaps its geometry, material and `castShadow`. The component holds a ref on every level's assets, which are released with it. A mesh with `preWarm` pre-warms every level.
+  - Global bias: `AppConfig.lod.bias` (default 1), `setLodBias` / `getLodBias`. A definition has its own `bias`.
+  - Selection budget: `AppConfig.lod.maxSelectionsPerFrame` (default Infinity), `setLodMaxSelectionsPerFrame` / `getLodMaxSelectionsPerFrame`. With a cap, the selection walks the `LOD` entities round-robin from where it stopped. Entities that come into view (frustum culling, `DISABLED` removed) or just got their `LOD` are still selected in that frame, past the cap. `getLodFrameStats` has `lapFrames`, the frames the last full walk took.
+  - `setLodDebugOptions` / `getLodDebugOptions` (`freeze`, `forceLevel`, `useActiveCamera`) and `getLodFrameStats(world)` (selections, swaps, selection time in the debug environment).
+- Mesh LODs: `setMeshLod(entityId, def, world)` / `removeMeshLod(entityId, world)` (`MeshManager.ts`), and `lod` on `createMeshEntity`'s props, in `*.mesh.json` and in a scene's mesh overrides (`schemas/lodSchema.ts`, levels checked to be strictly descending). `setMeshLod` returns `Promise<boolean>`: whether the LOD was set.
+  - `lod: 'AUTO'` (or `{ auto: true, maxPixelError?, cullScreenSize?, hysteresis?, bias? }`) reads the geometry's LOD chain: a level is used while its error projects to at most `maxPixelError` pixels (default 1) at 1080 px high. It waits for a chain that is still requested or generating, also one an import has asked for but not started. A geometry without a chain warns and gets no LOD.
+  - `setMeshGeometry(mesh, geometry)` moves a mesh's geometry ref, like `setMeshMaterial`. `preWarmMesh(mesh, label)` is `createMeshEntity`'s pre-warm, exported.
+  - `getPendingLodChain(baseId)` (`LodChains.ts`).
+- Instanced mesh pools are an engine system (`core/Instancing/InstancedMeshPool.ts`, they were in the toolkit). Their component is the core `ComponentType.INSTANCED_MESH_SLOT`, and their sync system registers itself with the module. `spawn` takes `InstancePlacement` (the toolkit's `ScatterPlacement` is one).
+  - `despawn(world, entityId)` frees an instance's slot with a swap-remove (the pool's last instance moves into it), as do deleting the entity and removing its slot. Read an instance's `index` from its component, never keep it.
+  - `createInstancedLodPool({ world, levels: [{ geometry, material, screenSize, castShadow? }], maxInstances, lod?, ... })`: one `InstancedMesh` per level, each instance an entity with `INSTANCED_MESH_SLOT` and `LOD` that moves to its level's mesh. A LOD-culled instance is in no mesh. Every level mesh gets the bounds of every placement at spawn.
+  - `registerLodTarget(componentType, target)` lets `LOD` work on entities without a plain mesh (`LodTarget` in `Lod/LodTypes.ts`): the target resolves and applies the levels and handles LOD culling, and the entity's `Transform` gives its world position and scale.
+- An `InstancedMesh` entity (eg. a static instance cell, `OBJECT3D` + `TAG_IS_MESH`) can have a mesh LOD: the whole mesh switches levels, measured by level 0's bounds over all its instances (`Lod/LodBounds.ts`) instead of one instance at the mesh's origin. `refreshLodBounds(entityId, world?)` re-reads them after the instances change. Its levels pre-warm on instanced stand-ins, and `AUTO` thresholds account for the instances' scale.
+- "LOD" debug tab (`lodControls`, last in the default tab order): entities per level on screen, LOD culled and out of view, the last frame's stats, and the global bias, selection cap, freeze, force level and "use active camera" controls (runtime only).
+  - Level overlay: a wire box per LOD entity in the selection camera's view, coloured by the level it shows, around the sphere the selection measures.
+  - LOD window per entity (from the tab's mesh list, "Nearest in view" for pool instances, or the profiler's heaviest objects): the live screen size, distance and state, and each level's threshold as the distance it switches at with the current camera and biases.
+  - `getLodSelectionCamera`, `measureLodEntity` and `getLodWorldSphere` (`Lod/LodSystem.ts`) measure an entity the way the selection does.
+
+**Fixed**
+
+- Deleting a pooled instance's entity left its matrix drawn: the pool had no despawn.
+- A pool took no registry ref on its geometry and material(s) but released one when its mesh was deleted. It now takes them, and its mesh has `userData.entityId`, so `setMeshGeometry` / `setMeshMaterial` move them and `deleteScene` deletes its mesh entity.
+- Pre-warm stand-ins aren't frustum culled: `compileAsync` culls against its own camera, which skipped a mesh far from the origin.
+
+### Toolkit 1.3.1 (Crescent)
+
+**Changed**
+
+- `ecs/InstancedMeshPool.ts` and `ecs/InstancedMeshPoolTypes.ts` are deprecated re-exports of the engine's pool until the toolkit's next major version. `InstancedMeshPoolComponentType.INSTANCED_MESH_SLOT` is the core key, and `registerInstancedMeshPoolEffect` does nothing (the engine registers the sync system).
+
+### App 1.5.1 (Preschooler)
+
+**Changed**
+
+- largeWorld's trees and bushes are instanced LOD pools. Their levels are the same generators at lower segment counts (the default tree and bush are too low-poly for a LOD chain): trees 30 → 18 triangles, bushes 120 → 36, and bushes hidden far away. From the overview camera that cuts the foliage from 285k to 91k triangles.
+- `AppECSRegistry.ts` has the `LOD_SELECTION` order and no longer merges the toolkit pool's component, and `AppECSPlugins.ts` no longer registers the pool's effect.
+- `testDebugScene` has a sphere with three hand-made levels (`p348LodSphere`, a colour per level) for checking LOD switches, and a static instance cell on the same levels (`p348LodCell`, 25 spheres in one `InstancedMesh` entity).
+
 ## 2026-10-05 — lod-chain-generation
 
 ### Engine 4.7.0 (Afternoon)

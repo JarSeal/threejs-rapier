@@ -3,7 +3,7 @@ Category: Terrain, Rendering, Assets
 Blocked by: p306_terrain-blocks-and-procedural-terrain-meshes.md
 Blocks: p310_terrain-preview-scenes.md
 Epic: p301_terrain-texturing-epic.md
-Related: p370_static-mesh-merging-and-texture-atlas-systems.md (merging item types per cell, §3 decision table), p350_lod-system-research.md (instancing/batching layer, LOD selection), p348_ecs-lod-selection.md (§4.3 defines the LOD contract for this plan's cells: a cell is a plain mesh entity with `LOD`, and `cullScreenSize` replaces `maxDistance`), \_DONE_p346_spatial-domains.md (shared cell keys), p307_wet-and-dry-surface-states.md (scatter gets wet too)
+Related: p370_static-mesh-merging-and-texture-atlas-systems.md (merging item types per cell, §3 decision table), p350_lod-system-research.md (instancing/batching layer, LOD selection), \_DONE_p348_ecs-lod-selection.md (§4.3 defines the LOD contract for this plan's cells, built in its Phase 4: a cell is an `InstancedMesh` entity with `LOD`, measured by its bounds over all its instances, and `cullScreenSize` replaces `maxDistance`), \_DONE_p346_spatial-domains.md (shared cell keys), p307_wet-and-dry-surface-states.md (scatter gets wet too)
 
 # Terrain Scatter (rocks, pebbles, ground details)
 
@@ -24,7 +24,7 @@ Static scatter renders as **cell-chunked instanced meshes without per-instance e
   - `scatterOnSurface({ surface: Mesh, count, seed?, minSpacing?, maxAttemptsPerPoint?, scaleRange?, alignToNormal?, randomYRotation? })` → `ScatterPlacement[]` (`{ position, normal, quaternion, scale }`). Area-weighted `MeshSurfaceSampler`, seeded.
   - `minSpacing` is **O(n²) rejection** (`:78`).
   - `bakeScatterToInstancedMesh(mesh, placements, startIndex)` (`:153`), `spawnScatterAsMeshEntities` (`:174/:189`, one entity per placement).
-- **`toolkit/ecs/InstancedMeshPool.ts`:**
+- **`core/Instancing/InstancedMeshPool.ts`** (an engine system since p348 Phase 3; it was `toolkit/ecs/`):
   - Every instance is an ECS entity with a `Transform` and a slot component.
   - `instancedMeshPoolSyncSystem` re-bakes changed instances at `APP_RENDER_SYNC`.
   - The pool mesh must be added to the scene by the caller.
@@ -42,10 +42,10 @@ Static scatter renders as **cell-chunked instanced meshes without per-instance e
 
 ### D1 — Static instance chunks (engine: `core/StaticInstances.ts`)
 
-- **`createStaticInstances({ id, geometry, material, placements | matrices, cellSize = 16, castShadow, receiveShadow, instanceColors?, maxDistance? })`** splits instances into a grid of cells.
+- **`createStaticInstances({ id, geometry, material, placements | matrices, cellSize = 16, castShadow, receiveShadow, instanceColors?, lod? })`** splits instances into a grid of cells.
   - Each cell is one `InstancedMesh` with its own `boundingSphere` (computed from its instances), so three's per-object frustum culling skips whole cells.
   - Each cell is an entity with `OBJECT3D` + `TAG_IS_MESH`, and disposal follows the normal mesh path. A block's cells are owned by the block (p306's `spawnTerrainBlock` handle).
-- **`maxDistance`** hides cells beyond the distance, with hysteresis. It's evaluated by a system every N frames on cell centres (cheap; a few hundred cells). This is the only LOD here; p350 can replace it with real level selection (cell → level).
+- **`lod`** (a `LodDef`, p348 §4.3) is set on every cell with `setMeshLod`: the cell switches levels as a whole and hides below `cullScreenSize`, with hysteresis, by its screen size. This replaces the draft's `maxDistance`; a scatter without levels uses one level and `cullScreenSize`. The contract (p348 Phase 4, built): the cell mesh gets `userData.entityId` (it holds refs), its matrices are written before `setMeshLod`, and `refreshLodBounds` follows any later change. Don't opt cells into ECS frustum culling or spatial indexing: those read one instance's geometry at the mesh's origin (p348 Phase 4 As built).
 - **No per-instance entities, no per-frame sync.** Matrices are uploaded once.
 - **`instanceColors`** (tint variation) use `InstancedMesh.instanceColor`.
 - **Ownership:** registered geometries and materials are ref counted like other meshes (`createMeshEntity` path), so a shared rock material is released when the last cell goes.
@@ -81,7 +81,7 @@ Static scatter renders as **cell-chunked instanced meshes without per-instance e
     "seed": 3
   },
   "cellSize": 16,
-  "maxDistance": 120
+  "lod": { "levels": [{ "screenSize": 0 }], "cullScreenSize": 0.01 }
 }
 ```
 
@@ -150,7 +150,7 @@ Static scatter renders as **cell-chunked instanced meshes without per-instance e
 1. **What it is:** instanced detail, why instancing, cells, and why it isn't one entity per pebble.
 2. **"Best for":**
    - **Always useful.** Scatter does more to break up terrain repetition than any texture trick.
-   - First- and third-person: dense pebbles and rocks near the camera with `maxDistance`.
+   - First- and third-person: dense pebbles and rocks near the camera, culled per cell by `lod.cullScreenSize`.
    - Top-down/RTS: fewer and bigger rocks, often with colliders for pathing.
    - Stylized: low-poly procedural rocks with flat-shaded variants.
    - **Poor fit:** huge counts of unique hero meshes; use regular meshes for those.
@@ -160,7 +160,7 @@ Static scatter renders as **cell-chunked instanced meshes without per-instance e
    - card overdraw;
    - colliders (count limits);
    - measured gallery numbers;
-   - the `cellSize` / `maxDistance` trade-off.
+   - the `cellSize` / `cullScreenSize` trade-off.
 4. **Blender, step by step** (`terrain_scatter.blend`):
    - a collection of rock variants, applied scale, origin at the bottom centre;
    - a Geometry Nodes modifier on the terrain block:

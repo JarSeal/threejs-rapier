@@ -34,6 +34,7 @@ export const DEFAULT_DEBUG_DRAWER_TAB_ORDER = [
   'charactersControls',
   'ecsControls',
   'spatialGridControls',
+  'lodControls',
 ];
 
 export type Environments = 'development' | 'test' | 'unitTest' | 'production';
@@ -152,6 +153,16 @@ export type AppConfig = {
       meshes?: boolean;
     };
   };
+  /** LOD selection (Lod/LodSystem.ts, docs/plans/_DONE_p348_ecs-lod-selection.md). */
+  lod?: {
+    /** Global LOD bias: multiplies every entity's screen size, >1 keeps detail longer. The
+     * initial value: setLodBias() changes it at runtime. Default 1. */
+    bias?: number;
+    /** How many LOD entities the selection reconsiders per frame and world, round-robin. Entities
+     * that come into view or just got their LOD are selected at once, past the cap. The initial
+     * value: setLodMaxSelectionsPerFrame() changes it at runtime. Default Infinity (no cap). */
+    maxSelectionsPerFrame?: number;
+  };
   ecs?: {
     /** Build-time-selectable ECS component storage backend. Default 'MAP'. */
     storageMode?: ECSStorageMode;
@@ -232,6 +243,10 @@ let config: AppConfig = {
     maxConcurrentLoads: 8,
     requestTimeoutMs: 30_000,
     fallbackToMainThread: true,
+  },
+  lod: {
+    bias: 1,
+    maxSelectionsPerFrame: Infinity,
   },
   ecs: {
     storageMode: 'MAP',

@@ -9,9 +9,9 @@ import { CoreComponentType } from './ECSRegistry';
 
 /**
  * Single source of truth for Object3D.visible, recomputed from the full
- * three-way AND
- * whenever any of DISABLED/TAG_FRUSTUM_CULLED/TAG_OBJECT_CULLED changes,
- * instead of each hook fighting over the flag pairwise.
+ * four-way AND
+ * whenever any of DISABLED/TAG_FRUSTUM_CULLED/TAG_OBJECT_CULLED/TAG_LOD_CULLED
+ * changes, instead of each hook fighting over the flag pairwise.
  *
  * `overrides` lets a hook state the value of the flag IT is toggling
  * explicitly, rather than reading it live off `world` — `removeComponent`
@@ -22,7 +22,12 @@ import { CoreComponentType } from './ECSRegistry';
 export function reconcileObject3DVisibility(
   entityId: number,
   world: ECSWorld,
-  overrides?: { isDisabled?: boolean; isFrustumCulled?: boolean; isObjectCulled?: boolean }
+  overrides?: {
+    isDisabled?: boolean;
+    isFrustumCulled?: boolean;
+    isObjectCulled?: boolean;
+    isLodCulled?: boolean;
+  }
 ): void {
   const objComp = world.getComponent(entityId, ComponentType.OBJECT3D);
   if (!objComp) return;
@@ -32,8 +37,10 @@ export function reconcileObject3DVisibility(
     overrides?.isFrustumCulled ?? world.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED);
   const isObjectCulled =
     overrides?.isObjectCulled ?? world.hasComponent(entityId, ComponentType.TAG_OBJECT_CULLED);
+  const isLodCulled =
+    overrides?.isLodCulled ?? world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED);
 
-  objComp.value.visible = !isDisabled && !isFrustumCulled && !isObjectCulled;
+  objComp.value.visible = !isDisabled && !isFrustumCulled && !isObjectCulled && !isLodCulled;
 }
 
 ECSWorld.registerComponentHooks(ComponentType.DISABLED, {

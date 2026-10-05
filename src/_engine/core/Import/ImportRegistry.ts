@@ -20,6 +20,7 @@ import {
   releaseTransferableImage,
 } from './TextureTransfer';
 import type { LodChainOptions } from '../Lod/LodChainOptions';
+import { trackLodChainRequest } from '../Lod/LodChainRequests';
 import {
   deserializeLodChain,
   readGLTFLodChains,
@@ -108,18 +109,22 @@ const requestLodChains = (manifest: ImportedAssetManifest, lodChain: true | LodC
   }
   if (!geometryIds.size) return;
   const opts = lodChain === true ? undefined : lodChain;
-  import('../Lod/LodChains')
-    .then(({ generateLodChain, getLodChain, isLodChainPending }) => {
-      for (const geometryId of geometryIds) {
-        // Released while the module loaded, or already chained (the first options win)
-        if (!doesGeoExist(geometryId)) continue;
-        if (getLodChain(geometryId) || isLodChainPending(geometryId)) continue;
-        generateLodChain(geometryId, opts).catch((err) =>
-          lerror(`Import "${manifest.id}": LOD chain for geometry "${geometryId}" failed.`, err)
-        );
-      }
-    })
-    .catch((err) => lerror(`Import "${manifest.id}": could not load the LOD chain module.`, err));
+  const ready = import('../Lod/LodChains');
+  ready.catch((err) =>
+    lerror(`Import "${manifest.id}": could not load the LOD chain module.`, err)
+  );
+  for (const geometryId of geometryIds) {
+    // Tracked from now, so a mesh with `lod: 'AUTO'` created before the module loads waits for it
+    const settled = ready.then(({ generateLodChain, getLodChain, isLodChainPending }) => {
+      // Released while the module loaded, or already chained (the first options win)
+      if (!doesGeoExist(geometryId)) return;
+      if (getLodChain(geometryId) || isLodChainPending(geometryId)) return;
+      return generateLodChain(geometryId, opts).catch((err) =>
+        lerror(`Import "${manifest.id}": LOD chain for geometry "${geometryId}" failed.`, err)
+      );
+    });
+    trackLodChainRequest(geometryId, settled);
+  }
 };
 
 /** Registers the LOD chains the asset pipeline built into the file (p347 Phase 3), whatever the

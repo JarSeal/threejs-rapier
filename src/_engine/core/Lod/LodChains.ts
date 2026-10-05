@@ -330,6 +330,10 @@ export const getLodChainOfLevel = (levelId: string) => {
 /** Whether a LOD chain is being generated for the geometry. */
 export const isLodChainPending = (baseId: string) => pending.has(baseId);
 
+/** The generation pending for the geometry (resolves to the chain, or null when it was refused),
+ * or undefined when none is. */
+export const getPendingLodChain = (baseId: string) => pending.get(baseId);
+
 /**
  * Releases a base geometry's LOD chain: its refs on the levels, which are then disposed unless
  * something else holds them. Deleting the base does this too.
