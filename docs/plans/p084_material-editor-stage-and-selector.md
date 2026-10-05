@@ -1,4 +1,4 @@
-Status: in progress | Phase 1 implemented
+Status: in progress | Phases 1-2 implemented
 Category: Editor-Creator View, Materials
 Blocks: p085_material-editor-params-and-persistence.md
 Related: \_DONE_p083_editor-creator-view.md (epic), `createDebuggerTab` (p105, implemented: the right drawer reuses its declarative tabs), the layered sky box (p111, implemented: skybox environments in the editor can now build on it, still a non-goal here), the debug environment ball (`debug/EnvBall.ts`, p115, implemented: same "ball + environment" idea for the scene)
@@ -143,7 +143,7 @@ In this plan the editor is a viewer: clicking a material shows it on the ball. A
 Each phase compiles, lints and leaves the app working.
 
 1. **View, stage and camera.** — done. Register the view with its title and the `material` icon (the view tools group appears, Runtime + Material editor), the stage (ball, lights, studio environment, background), the camera rig with the default pose, and `loadEditorMaterial` hard-wired to the first material. Check the `RoomEnvironment` PMREM on WebGPU and on WebGL2 (`forceWebGL`) and record the outcome in the Implementation notes.
-2. **Material selector.** Bottom drawer, cards, filter, click to load, texture loading, the load token, errors and unavailable materials, non-mesh preview objects.
+2. **Material selector.** — done. Bottom drawer, cards, filter, click to load, texture loading, the load token, errors and unavailable materials, non-mesh preview objects.
 3. **Right drawer.** `_dbg__EditorDrawer.ts`, the two tabs with their info content, the `debugDrawerOpen` shift, `h`, and the selector's responsive offsets.
 4. **Persistence.** Per-material camera pose, UI state, and restore on refresh.
 
@@ -206,3 +206,27 @@ Each phase compiles, lints and leaves the app working.
   - A canvas orbit moves the camera, the gizmo follows, and the pose is saved to `AEK_debugViewCams` (`materialEditor.view`). A refresh in the editor returns to it with that pose.
   - `RoomEnvironment` PMREM on WebGL2: works (also p083 Phase 3's test view B). **WebGPU is not verified**: headless WebGPU can't render on WSL2 (`run-aekasha-js` skill), so it needs a check in a real browser.
   - The icon, rendered at 16 px on dark and light backgrounds, reads as a shaded ball, not an eye.
+
+### Phase 2
+
+- **Code drift since the plan.**
+  - A production-gathered build (`yarn build:test`) writes only `{ scenes }` to `generatedAppData.json` (`gatherAppData.ts:1278`): there is no `materials` or `textures` registry, so Phase 1's `Object.keys(getGeneratedAppData().materials)` threw there. Such a build also only has the graphs of the TSL materials a scene uses, and those are the only materials its scenes list, so DD3's "unavailable" case can't come up there in practice.
+  - The debug toaster has no z-index (`position: fixed`, `z-index: auto`, `InitApp.ts:170`), so it isn't "above the selector" as DD5 assumed: the selector covered its bottom-left toasts.
+- **As built.**
+  - Without a dev registry, the editor lists the scenes' material entries (the first scene's entry per id, with that scene's overrides applied, no `debugData`) and loads textures from any scene's entry (`findInScenes`). The unavailable check (a `tslFile` without a `tslMaterialFileObjects` entry) is still there.
+  - The selector is UI only (`createMaterialSelector({ parent, entries, initialState, onSelect, getSelectedId, getLoadingId, getFailure, onStateChange })`); the editor owns the data and the load state. `initialState` / `onStateChange` / `getState` are there for Phase 4 and not wired yet.
+  - The editor's HUD (`materialEditorHud`: the selector and the notice) is a direct child of the HUD root with `KEEP_IN_VIEWS_CLASS`, shown only under `body.aekView_materialEditor`. It is created on the first enter and kept mounted, so its state survives a view switch; `restoreScroll()` on enter puts back the scroll position `display: none` lost.
+  - While the editor is active, `.toaster` gets `z-index: 10150` (above the selector, below the right drawer), in `MaterialEditor.module.scss`.
+  - Cards are horizontal (a 5.6rem square preview slot left of the name, id and badges) in `minmax(18rem, 1fr)` columns: with `1rem = 10px`, DD5's square full-width slot in an 11rem column is about 15.5rem tall, more than the 15rem body. Two rows fit now.
+  - Card badges: the type without its `NODEMATERIAL` suffix, plus `TSL` for a material with a `tslFile`. The swatch is `params.color` or the first `#` TSL input, so it can differ from the rendered colour (`triplanarCheckerboard`'s red `params.color`). Classes: `selected`, `loading` (the slot pulses), `failed`, `unavailable` (`aria-disabled`, clicks ignored).
+  - Clicking the shown material only retries a failed load. Escape in the filter clears it, a second Escape blurs it.
+  - Loads: `loadEditorMaterial(id | null)` returns `Promise<boolean>`. The previous copy stays on the stage while the textures load; the token is checked after the textures, before anything is created, so an overtaken load has no copy to delete. `onExit` bumps the token. A call while the view isn't active only sets the selection, loaded on the next enter.
+  - Textures already registered aren't passed to `loadTextureAsync`, so the editor doesn't re-tag them to the current scene. A texture that fails to load is left out (createMaterial warns).
+  - Preview objects live in a `previewRoot` group (the auto-rotation turns it): the ball, `Points` and dashed-ready `LineSegments` (`WireframeGeometry`, `computeLineDistances()`) on a coarser `SphereGeometry(1, 48, 24)`, and a `Sprite` scaled to the ball's diameter. A hidden object gets its own default material back. `SHADOW` / `DEPTH` / `DISTANCE` / `SHADER` / `SHADERRAW` create no copy, only the notice.
+  - `getMaterialTextureIds(asset)` is exported for Phase 3's info section.
+- **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2 on WSL2, Playwright):
+  - All six project materials load from the selector, with the selection following; three fast clicks end on the last one. From `oneMoreScene` (no `testTexture`), `testTslMat` loads its texture and shows it.
+  - Filter by id and name, the count, the empty-state text, Escape, `h` typed into the field without toggling anything, collapse and expand.
+  - Injected test materials (in the page's generated data only): `POINTS`, `LINEDASHED` and `SPRITE` previews, the `SHADOW` notice, a bad type (toast, magenta ball, failed card with the reason) and a TSL material without a graph (unavailable, click ignored).
+  - A scene load while the editor is active keeps the copy; after the switch back to Runtime no `__matEditor__` material is registered, and the selector is hidden.
+  - Not verified: WebGPU (headless WebGPU can't render on WSL2), and the production-gathered fallback (`yarn build:test`).
