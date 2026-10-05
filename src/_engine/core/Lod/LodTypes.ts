@@ -67,7 +67,7 @@ export type LodData = {
 };
 
 /**
- * How a `LOD` entity without a plain mesh shows its levels, eg. a toolkit instanced LOD pool's
+ * How a `LOD` entity without a plain mesh shows its levels, eg. an instanced LOD pool's
  * instance (registered with `registerLodTarget`). The entity's `Transform` gives its position and
  * scale, in world space. The target owns its levels' assets: the component takes no refs on them.
  */

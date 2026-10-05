@@ -24,7 +24,7 @@ Static scatter renders as **cell-chunked instanced meshes without per-instance e
   - `scatterOnSurface({ surface: Mesh, count, seed?, minSpacing?, maxAttemptsPerPoint?, scaleRange?, alignToNormal?, randomYRotation? })` → `ScatterPlacement[]` (`{ position, normal, quaternion, scale }`). Area-weighted `MeshSurfaceSampler`, seeded.
   - `minSpacing` is **O(n²) rejection** (`:78`).
   - `bakeScatterToInstancedMesh(mesh, placements, startIndex)` (`:153`), `spawnScatterAsMeshEntities` (`:174/:189`, one entity per placement).
-- **`toolkit/ecs/InstancedMeshPool.ts`:**
+- **`core/Instancing/InstancedMeshPool.ts`** (an engine system since p348 Phase 3; it was `toolkit/ecs/`):
   - Every instance is an ECS entity with a `Transform` and a slot component.
   - `instancedMeshPoolSyncSystem` re-bakes changed instances at `APP_RENDER_SYNC`.
   - The pool mesh must be added to the scene by the caller.

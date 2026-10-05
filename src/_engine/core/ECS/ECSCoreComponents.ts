@@ -7,6 +7,7 @@ import { CoreComponentType as CoreType, EntityDebugData, ManagedByData } from '.
 import { AppComponentData, AppComponentType as AppType } from '../../../AppECSRegistry';
 import type { CharacterObject } from '../Character/CharacterTypes';
 import type { LodData } from '../Lod/LodTypes';
+import type { InstancedMeshSlotData } from '../Instancing/InstancedMeshPoolTypes';
 
 export type ECSPosition = { x: number; y: number; z: number };
 export type ECSRotation = { x: number; y: number; z: number; w: number };
@@ -82,6 +83,8 @@ export interface CoreComponentData {
   // LOD selection
   [CoreType.LOD]: LodData;
   [CoreType.TAG_LOD_CULLED]: boolean;
+  // Instanced mesh pools
+  [CoreType.INSTANCED_MESH_SLOT]: InstancedMeshSlotData;
   // Debug
   [CoreType.DEBUG_DATA]: EntityDebugData;
   [CoreType.DEBUG_LIGHT_HELPER]: {

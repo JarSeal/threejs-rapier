@@ -18,7 +18,7 @@ import { existsOrThrow } from '../_engine/utils/assert';
 import { generateTerrain } from '../toolkit/geometry/generateTerrain';
 import { generateBushGeometry, generateTreeGeometry } from '../toolkit/geometry/generateFoliage';
 import { scatterOnSurface } from '../toolkit/geometry/scatterOnSurface';
-import { createInstancedMeshPool } from '../toolkit/ecs/InstancedMeshPool';
+import { createInstancedMeshPool } from '../_engine/core/Instancing/InstancedMeshPool';
 import { registerSpatialDomain } from '../_engine/core/Spatial/SpatialIndexSystem';
 
 /**

@@ -6,10 +6,6 @@ import {
   SunShadowFitComponentData,
   SunShadowFitComponentType,
 } from './toolkit/ecs/effects/SunShadowFit';
-import {
-  InstancedMeshPoolComponentData,
-  InstancedMeshPoolComponentType,
-} from './toolkit/ecs/InstancedMeshPoolTypes';
 
 /**
  * App and toolkit components (app specific)
@@ -25,7 +21,6 @@ export const AppComponentType = {
   ...HoverToolComponentType,
   ...FollowToolComponentType,
   ...SunShadowFitComponentType,
-  ...InstancedMeshPoolComponentType,
 } as const;
 
 /**
@@ -34,10 +29,7 @@ export const AppComponentType = {
  * type ToolKitComponentData = {};
  * type ToolKitComponentData = HoverComponentData & SomeOtherComponentData;
  */
-type ExtraComponentData = HoverComponentData &
-  FollowComponentData &
-  SunShadowFitComponentData &
-  InstancedMeshPoolComponentData;
+type ExtraComponentData = HoverComponentData & FollowComponentData & SunShadowFitComponentData;
 
 /** App specific components (extended by ExtraComponentData) */
 export interface AppComponentData extends ExtraComponentData {

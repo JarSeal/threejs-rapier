@@ -25,7 +25,7 @@ Decide how Ækasha does LOD, given what is already true of the engine:
    fallback (`forceWebGL`). Some off-the-shelf options are WebGL-only (§7.1), and anything
    GPU-driven needs a CPU fallback for the WebGL2 backend.
 3. A `SpatialGrid` (`core/Spatial/SpatialGrid.ts`) and an `InstancedMeshPool`
-   (`toolkit/ecs/InstancedMeshPool.ts`) exist and are reused, not paralleled.
+   (`toolkit/ecs/InstancedMeshPool.ts`, moved to `core/Instancing/` by p348 Phase 3) exist and are reused, not paralleled.
 
 Secondary goal: decide whether "physics LOD" is worth building (§6). It is.
 

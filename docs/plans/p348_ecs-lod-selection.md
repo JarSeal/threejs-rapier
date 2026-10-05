@@ -32,7 +32,7 @@ culling. `THREE.LOD` is not used (p350 §2).
 - **Meshes** (`core/MeshManager.ts`): `createMeshEntity` resolves `geo` / `mat` ids or inline
   definitions (`schemas/meshSchema.ts`), takes registry refs, and supports `preWarm`
   (`compileAsync`, `MeshManager.ts:137-165`).
-- **Instanced pools** (`toolkit/ecs/InstancedMeshPool.ts`): one `InstancedMesh` per pool, one
+- **Instanced pools** (`toolkit/ecs/InstancedMeshPool.ts`, now `core/Instancing/`, Phase 3): one `InstancedMesh` per pool, one
   entity per instance holding `INSTANCED_MESH_SLOT { mesh, index, _lastVersion }`,
   `instancedMeshPoolSyncSystem` at `APP_RENDER_SYNC`. **No despawn**: slots are only appended,
   and `computeBoundingSphere()` over every instance runs after each `spawn`.
@@ -142,7 +142,7 @@ before light culling, which doesn't depend on it.
 
 ### 4.2 Instanced pools
 
-A new toolkit API next to `createInstancedMeshPool`:
+A new API next to `createInstancedMeshPool` (an engine API since Phase 3 step 3):
 
 ```ts
 createInstancedLodPool({
@@ -331,12 +331,49 @@ As built:
 
 ### Phase 3 — Instanced pools
 
-1. `InstancedMeshPool.despawn` and the delete hook (§4.2).
-2. `createInstancedLodPool`.
-3. largeWorld's trees and bushes on LOD pools with p347 chains.
+1. `InstancedMeshPool.despawn` and the delete hook (§4.2). — done
+2. `createInstancedLodPool`. — done
+3. Move the pool into the engine (`core/Instancing/`), with deprecated toolkit re-exports. — done
+4. largeWorld's trees and bushes on LOD pools with p347 chains.
 
 **Exit:** largeWorld's draw-call count is unchanged (one draw per level per pool), its triangle
 count drops (p345), and frame time doesn't rise with 3,500 instances selecting every frame.
+
+As built (steps 1-3):
+
+- The engine's `LOD` hooks handled plain meshes only, so the pool plugs in through a new engine
+  seam: `registerLodTarget(componentType, target)` with `LodTarget` (`resolveLevels`,
+  `applyLevel`, `setCulled`) in `Lod/LodTypes.ts`, and `LodData._target`. An entity without a
+  plain mesh gets its levels from the first target registered for one of its components; its
+  `Transform` gives the selection its world position and scale, and the target owns its levels'
+  assets (the component takes no refs). Apply and the `TAG_LOD_CULLED` hooks call the target.
+  Removing `LOD` drops the culled tag first, then goes back to level 0.
+- `createInstancedLodPool({ world, levels: [{ geometry, material, screenSize, castShadow? }],
+  maxInstances, lod?, receiveShadow?, entityOpts?, spatialDomain? })`: `screenSize` is per level
+  instead of the sketch's `lod.screenSizes` array, and `lod` is `Omit<LodDef, 'levels'>`. It returns
+  `{ meshes, meshEntityIds, spawn, despawn }`; add `pool.meshes` directly under the scene.
+  Instances spawn into level 0's mesh. A LOD-culled instance is in no mesh (`index -1`), its slot
+  still pointing at the applied level's mesh, and comes back with a matrix built from its
+  `Transform`. `maxInstances` counts live instances across levels and culled ones. Bounds: the
+  union of every placement's, from the union of every level's geometry bounds, extended at each
+  spawn and copied to every level mesh.
+- Both pools take a registry ref on their geometry and material(s), which the `TAG_IS_MESH` delete
+  hook releases (before, the pool released a ref it never took).
+- Not done: pre-warm for pool levels (every level in use compiles in the first frame, since
+  instances move before the first render); per-instance colours aren't carried between levels.
+- Step 3: the pool is `core/Instancing/InstancedMeshPool.ts`, its component the core
+  `ComponentType.INSTANCED_MESH_SLOT` (`CORE_INSTANCED_MESH_SLOT`, data in
+  `Instancing/InstancedMeshPoolTypes.ts`), and its sync system registers itself
+  (`APP_RENDER_SYNC`, `POSE_PRODUCERS`) when the module loads. `spawn` takes the engine's
+  `InstancePlacement` (`ScatterPlacement` is one). `toolkit/ecs/InstancedMeshPool.ts` and
+  `InstancedMeshPoolTypes.ts` are deprecated re-exports (the enum with the core key, and a no-op
+  `registerInstancedMeshPoolEffect`) until the toolkit's next major version.
+- Verified (WebGPU, headless Chrome, through the app's modules): 300 instances over 1-180 m with
+  bias sweeps, a forced level, moved instances, despawn / delete / `LOD` removal / slot removal and
+  a respawn past `maxInstances` keep every live instance in its applied level's mesh or culled,
+  no shared slots, every matrix equal to its `Transform`, and mesh counts + culled = live; the
+  first selection matches the formula exactly. largeWorld's pool refs are 1 inside the scene and
+  released on exit.
 
 ### Phase 4 — Static cells
 
@@ -349,8 +386,9 @@ count drops (p345), and frame time doesn't rise with 3,500 instances selecting e
 
 ## 8. Versioning
 
-Engine minor (components, systems, schema, mesh API). Toolkit minor (`createInstancedLodPool`,
-`despawn`). App patch for largeWorld's adoption.
+Engine minor (components, systems, schema, mesh API, the instanced pools with `despawn` and
+`createInstancedLodPool`). Toolkit patch (the deprecated pool re-exports). App patch for
+largeWorld's adoption and the pool's import path.
 
 ## 9. Open questions
 

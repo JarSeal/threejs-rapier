@@ -37,6 +37,7 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 - **Cameras and lights**: ECS-managed perspective and orthographic cameras, all Three.js light types, frustum culling for objects and lights, and a follow-camera rig.
 - **PostFX**: an ordered, per-scene chain of TSL passes (`*.postFx.json` + `*.tsl.ts`), switchable per pass at runtime, with ambient occlusion (GTAO) included.
 - **Viewports**: extra render rectangles with their own scene and camera (picture-in-picture, minimaps, item previews), placed by the DOM and working with or without PostFX.
+- **Instanced mesh pools**: one `InstancedMesh` draws many instances, each of them an ECS entity with its own `Transform`. Instances can be moved, despawned (their slot is reused) and indexed in a spatial domain.
 - **Lines**: pooled thin and thick lines with screen-space dashes and ECS binding.
 - **Spatial index**: uniform grids with an oversized tier for "what's near this point/volume" queries. Each ECS world can hold several named domains, each with its own cell size, capacity and update policy (rebuilt every frame, only when its members change, or on demand), and an entity can join several of them. A scene can register its own domains and settings (in code or in its scene JSON), dropped when it exits, and the default grid is built per scene only when something is indexed. Instanced-pool instances can be indexed too.
 - **Ray casting**: Three.js and physics ray APIs with per-frame statistics and debug helpers.
@@ -49,7 +50,7 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 
 These are ready-made modules you can import as they are, or copy into your app and change:
 
-- **ECS effects**: `HoverEffect` (bobbing), `FollowTool` (follow a target), `SunShadowFit` (fits a directional light's shadow to the camera's view) and `InstancedMeshPool` (instanced rendering managed by the ECS).
+- **ECS effects**: `HoverEffect` (bobbing), `FollowTool` (follow a target) and `SunShadowFit` (fits a directional light's shadow to the camera's view).
 - **TSL materials**: checkerboard, triplanar checkerboard and triplanar grid materials.
 - **Procedural geometry**: seeded noise terrain, foliage generation and scattering on surfaces.
 

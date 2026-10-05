@@ -30,7 +30,7 @@ export const registerLodDebugGUI = async () => {
 // with setMeshGeometry/setMeshMaterial), and the LOD component one on every level's. So a level's
 // assets live as long as the component, and deleting the entity releases them in any hook order.
 //
-// An entity without a plain mesh (a toolkit pool instance) gets its levels from a LodTarget
+// An entity without a plain mesh (an instanced LOD pool's instance) gets its levels from a LodTarget
 // registered for one of its components, which then applies them and handles LOD culling.
 
 const DEFAULT_HYSTERESIS = 0.1;
@@ -51,7 +51,7 @@ ECSWorld.registerComponentHooks(ComponentType.TAG_LOD_CULLED, {
 const lodTargets: { componentType: ComponentType; target: LodTarget }[] = [];
 
 /**
- * Lets `LOD` work on entities with `componentType` that have no plain mesh (eg. the toolkit's
+ * Lets `LOD` work on entities with `componentType` that have no plain mesh (eg. the
  * instanced LOD pool). See {@link LodTarget}. Registering a type again replaces its target.
  */
 export const registerLodTarget = (componentType: ComponentType, target: LodTarget) => {
