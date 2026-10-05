@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-2 implemented
+Status: in progress | Phases 1-3 implemented
 Category: ECS, Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 1.3)
 Blocks: p351_impostor-billboard-lod.md (needs Phase 3's per-level instanced pools), p354_gpu-driven-culling.md
@@ -329,17 +329,17 @@ As built:
   `removeMeshLod`, a replacing `setMeshLod` and deleting the entity all resolve the wait to false.
 - The debug tab is unchanged: it shows `AUTO` meshes like any other once their LOD is set.
 
-### Phase 3 — Instanced pools
+### Phase 3 — Instanced pools — done
 
 1. `InstancedMeshPool.despawn` and the delete hook (§4.2). — done
 2. `createInstancedLodPool`. — done
 3. Move the pool into the engine (`core/Instancing/`), with deprecated toolkit re-exports. — done
-4. largeWorld's trees and bushes on LOD pools with p347 chains.
+4. largeWorld's trees and bushes on LOD pools with p347 chains. — done (hand-made levels, see As built)
 
 **Exit:** largeWorld's draw-call count is unchanged (one draw per level per pool), its triangle
 count drops (p345), and frame time doesn't rise with 3,500 instances selecting every frame.
 
-As built (steps 1-3):
+As built:
 
 - The engine's `LOD` hooks handled plain meshes only, so the pool plugs in through a new engine
   seam: `registerLodTarget(componentType, target)` with `LodTarget` (`resolveLevels`,
@@ -374,6 +374,33 @@ As built (steps 1-3):
   no shared slots, every matrix equal to its `Transform`, and mesh counts + culled = live; the
   first selection matches the formula exactly. largeWorld's pool refs are 1 inside the scene and
   released on exit.
+- Step 4 doesn't use p347 chains. p347's Phase 0 measured these two geometries: the tree (30
+  triangles) and the bush (120) produce no levels at any setting, `permissive` included. Their
+  levels are hand-made from the same generators at lower segment counts, so the silhouette holds
+  (the bush's blobs are placed by its seed, not its segment count):
+  - Trees: `radialSegments` 5 (30 triangles), then 3 (18), level 1 below screen size 0.04
+    (about 145 m at scale 1 from the overview camera, fov 60).
+  - Bushes: 5 segments (120 triangles), then 3 (36), level 1 below 0.03 (about 75 m), hidden
+    below `cullScreenSize` 0.012 (past about 200 m with the hysteresis).
+  - Every level casts shadows. The trees keep their `FOLIAGE` spatial domain.
+- The exit's draw-call wording contradicts itself: with levels, a pool draws once per non-empty
+  level per material group in each pass, so "unchanged" can't hold. largeWorld goes from 82 to 91
+  draws per frame from the overview camera: 3 more non-empty level meshes (tree level 1 with 2
+  groups, bush level 1) in each of 3 passes.
+- Exit measured (WebGPU, headless Chrome, 1600×900, through the app's modules; "before" is level
+  0 forced for every instance, the old pools' content):
+  - Overview camera: foliage triangles 285,000 → 90,948 (trees 874 / 626 at levels 0 / 1, bushes
+    69 / 1,255, 676 hidden), renderer triangles per frame 1,035,676 → 453,520. Follow camera:
+    173,184 foliage triangles, 32 bushes hidden. The overview looks the same apart from the far
+    bushes thinning out.
+  - Selection of the 3,500 instances every frame took about 1.0 ms. Per entity,
+    `lodSelectionSystem` looked each storage up again (`hasComponent` / `getComponent`) and
+    looked up an `OBJECT3D` a pool instance never has. It now reads its five storages once per
+    frame and goes straight to a target entity's `Transform` (the `LodTarget` contract), which
+    brought it to about 0.5-0.65 ms with identical results. The way the loop iterates the
+    storage doesn't matter (a Node micro-benchmark: about 100 µs per 3,500-entry pass either
+    way). The remaining cost, about 0.15 µs per instance, is Phase 5's (`maxSelectionsPerFrame`,
+    §9 Q1). The whole-frame CPU varies too much between headless runs (±0.5 ms) to show it.
 
 ### Phase 4 — Static cells
 

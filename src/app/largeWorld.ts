@@ -18,7 +18,7 @@ import { existsOrThrow } from '../_engine/utils/assert';
 import { generateTerrain } from '../toolkit/geometry/generateTerrain';
 import { generateBushGeometry, generateTreeGeometry } from '../toolkit/geometry/generateFoliage';
 import { scatterOnSurface } from '../toolkit/geometry/scatterOnSurface';
-import { createInstancedMeshPool } from '../_engine/core/Instancing/InstancedMeshPool';
+import { createInstancedLodPool } from '../_engine/core/Instancing/InstancedMeshPool';
 import { registerSpatialDomain } from '../_engine/core/Spatial/SpatialIndexSystem';
 
 /**
@@ -74,8 +74,17 @@ export const scene = async () => {
     minSpacing: 2,
     scaleRange: [0.7, 1.3],
   });
-  const treeGeo = generateTreeGeometry();
-  const treeGeometry = saveBufferGeometry(treeGeo.geometry, { id: 'largeWorldTreeGeo' });
+  // Hand-made levels from the same generators at lower segment counts: the default tree (30
+  // triangles) and bush (120) are too low-poly for a p347 chain to simplify
+  // (docs/plans/_DONE_p347_lod-chain-generation.md, Phase 0), but fewer segments keep their
+  // silhouette (the bush's blobs are placed by its seed, not its segment count).
+  const treeGeometry = saveBufferGeometry(generateTreeGeometry().geometry, {
+    id: 'largeWorldTreeGeo',
+  });
+  const treeLod1Geometry = saveBufferGeometry(
+    generateTreeGeometry({ radialSegments: 3 }).geometry,
+    { id: 'largeWorldTreeLod1Geo' }
+  );
   const treeTrunkMat = createMaterial({
     id: 'largeWorldTreeTrunkMat',
     type: 'PHONG',
@@ -97,16 +106,21 @@ export const scene = async () => {
     update: 'STATIC',
     sceneId: 'largeWorld',
   });
-  const treePool = createInstancedMeshPool({
+  // One InstancedMesh per level, each instance in the one its LOD selects
+  // (docs/plans/p348_ecs-lod-selection.md §4.2). The thresholds are screen sizes (bounding-sphere
+  // diameter / viewport height): from the overview camera a tree at scale 1 crosses 0.04 at about
+  // 145 m.
+  const treePool = createInstancedLodPool({
     world: ecsWorld,
-    geometry: treeGeometry,
-    material: [treeTrunkMat, treeFoliageMat],
+    levels: [
+      { geometry: treeGeometry, material: [treeTrunkMat, treeFoliageMat], screenSize: 0.04 },
+      { geometry: treeLod1Geometry, material: [treeTrunkMat, treeFoliageMat], screenSize: 0 },
+    ],
     maxInstances: treePlacements.length,
-    castShadow: true,
     receiveShadow: true,
     spatialDomain: 'FOLIAGE',
   });
-  rootScene.add(treePool.mesh);
+  rootScene.add(...treePool.meshes);
   treePool.spawn(ecsWorld, treePlacements);
 
   const bushPlacements = scatterOnSurface({
@@ -117,20 +131,27 @@ export const scene = async () => {
     scaleRange: [0.6, 1.2],
   });
   const bushGeo = saveBufferGeometry(generateBushGeometry(), { id: 'largeWorldBushGeo' });
+  const bushLod1Geo = saveBufferGeometry(generateBushGeometry({ segments: 3 }), {
+    id: 'largeWorldBushLod1Geo',
+  });
   const bushMat = createMaterial({
     id: 'largeWorldBushMat',
     type: 'PHONG',
     params: { color: '#3c6e35', flatShading: true },
   });
-  const bushPool = createInstancedMeshPool({
+  // From the overview camera a bush at scale 1 crosses 0.03 at about 75 m, and is hidden below
+  // 0.012 (with the hysteresis, past about 200 m), where it's a few pixels tall.
+  const bushPool = createInstancedLodPool({
     world: ecsWorld,
-    geometry: bushGeo,
-    material: bushMat,
+    levels: [
+      { geometry: bushGeo, material: bushMat, screenSize: 0.03 },
+      { geometry: bushLod1Geo, material: bushMat, screenSize: 0 },
+    ],
+    lod: { cullScreenSize: 0.012 },
     maxInstances: bushPlacements.length,
-    castShadow: true,
     receiveShadow: true,
   });
-  rootScene.add(bushPool.mesh);
+  rootScene.add(...bushPool.meshes);
   bushPool.spawn(ecsWorld, bushPlacements);
 
   // --- Static props (Phase 5) — physics-less for now (§1.3). A few are placed behind the

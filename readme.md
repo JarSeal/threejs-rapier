@@ -32,12 +32,13 @@ Building a serious 3D app on the web usually means gluing together a renderer, a
 - **Deterministic scene loads**: physics is held during a scene load, the world is recreated fresh, and stepping resumes only after every body exists.
 - **Scene system**: JSON scenes with per-scene overrides (`__saveData`), a customizable scene loader with progress callbacks, and persistent or scene-scoped entities.
 - **Assets**: glTF/GLB import (with meshopt and Draco), textures (including KTX2), HDR environment maps, per-scene asset ownership and release, and optional worker-thread loading.
-- **LOD chains**: `generateLodChain` simplifies a registered geometry into a chain of lighter levels with meshoptimizer, in the asset worker. Each level records its triangle count and error, and shares the base's vertex buffer (only its index differs) unless asked for its own. Material groups are kept, and the chain is released with its base geometry. An imported asset asks for chains with `"lodChain": true` in its JSON: the asset pipeline builds them into the optimized GLB, so the client loads them instead of simplifying (and generates them after the load when the mesh isn't optimized). Nothing selects a level yet: that's the LOD system on the Roadmap.
+- **LOD chains**: `generateLodChain` simplifies a registered geometry into a chain of lighter levels with meshoptimizer, in the asset worker. Each level records its triangle count and error, and shares the base's vertex buffer (only its index differs) unless asked for its own. Material groups are kept, and the chain is released with its base geometry. An imported asset asks for chains with `"lodChain": true` in its JSON: the asset pipeline builds them into the optimized GLB, so the client loads them instead of simplifying (and generates them after the load when the mesh isn't optimized). A mesh with `lod: "AUTO"` uses its chain's levels.
+- **LOD selection**: a mesh (`lod` in its JSON or `createMeshEntity`'s props) or an instanced-pool instance gets a level of detail from its projected screen size, so it holds its detail when the camera zooms in, perspective or orthographic. Each level can swap the geometry, the material and shadow casting, and the entity hides past its last level. Hysteresis keeps an entity on a boundary from flipping, and a global bias trades detail for speed. Levels are hand-made, or `"AUTO"`, from the geometry's LOD chain within a pixel error you choose.
 - **Asset optimization**: a build-time pipeline that turns the textures and models your asset JSONs point at into KTX2 textures, which stay block-compressed on the GPU (about a quarter of the VRAM of a PNG), and meshopt-compressed GLBs. Profiles and per-asset settings live in the JSONs, it can pack channels (eg. ORM maps from separate images), and it gets colliders right (lossless geometry for collider meshes). A content-hash cache and a committed lock file mean a clone runs and builds without the encoder, and per-asset VRAM and download budgets fail the build when an asset grows past them. Optimization can be switched off for the whole project or one asset.
 - **Cameras and lights**: ECS-managed perspective and orthographic cameras, all Three.js light types, frustum culling for objects and lights, and a follow-camera rig.
 - **PostFX**: an ordered, per-scene chain of TSL passes (`*.postFx.json` + `*.tsl.ts`), switchable per pass at runtime, with ambient occlusion (GTAO) included.
 - **Viewports**: extra render rectangles with their own scene and camera (picture-in-picture, minimaps, item previews), placed by the DOM and working with or without PostFX.
-- **Instanced mesh pools**: one `InstancedMesh` draws many instances, each of them an ECS entity with its own `Transform`. Instances can be moved, despawned (their slot is reused) and indexed in a spatial domain.
+- **Instanced mesh pools**: one `InstancedMesh` draws many instances, each of them an ECS entity with its own `Transform`. Instances can be moved, despawned (their slot is reused) and indexed in a spatial domain. An instanced LOD pool keeps one `InstancedMesh` per level and moves each instance to its level's, one draw call per level.
 - **Lines**: pooled thin and thick lines with screen-space dashes and ECS binding.
 - **Spatial index**: uniform grids with an oversized tier for "what's near this point/volume" queries. Each ECS world can hold several named domains, each with its own cell size, capacity and update policy (rebuilt every frame, only when its members change, or on demand), and an entity can join several of them. A scene can register its own domains and settings (in code or in its scene JSON), dropped when it exits, and the default grid is built per scene only when something is indexed. Instanced-pool instances can be indexed too.
 - **Ray casting**: Three.js and physics ray APIs with per-frame statistics and debug helpers.
@@ -56,7 +57,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 
 ### Debug suite (debug builds only)
 
-- A tabbed **debug drawer** (`h`) built on Tweakpane, with tabs for stats, main loop, renderer, physics, ECS, assets, PostFX (with a GPU profiler), skybox, spatial index, ray casting and characters. Its state is saved to localStorage.
+- A tabbed **debug drawer** (`h`) built on Tweakpane, with tabs for stats, main loop, renderer, physics, ECS, assets, PostFX (with a GPU profiler), skybox, spatial index, LOD, ray casting and characters. Its state is saved to localStorage.
 - A **profiler window**, opened from the on-screen stats panels, the stats tab, the top on-screen tools or `F8`. Its tabs: an overview of frame, GPU, physics and memory figures; an objects breakdown (in view and total, with bars and short history); GPU memory (memory by category and owner, draw calls, a budget and leak-hunting snapshots); and settings. It measures only while it is open, and it can be enabled in production test mode.
 - A **debug fly camera** (`F1`), an axes gizmo (`F10`), an environment ball (`F9`) and a debug scene loader.
 - **Undo/redo** for changes made in the debugger.
@@ -79,6 +80,7 @@ These are ready-made modules you can import as they are, or copy into your app a
 | Worker commands        | The commands issued in `APP_PHYSICS_STEP` are captured per sub-step, carried in that frame's single STEP message, and replayed in order in the worker.                                                                                   |
 | Content pipeline       | `devTools/gatherAppData.ts` walks `src/`, validates every asset JSON file with Zod, generates typed runtime data and emits JSON Schema for editor autocomplete. It runs on every file save through a Vite plugin.                        |
 | Asset pipeline         | Textures are encoded to KTX2 (Basis UASTC or ETC1S) and transcoded at load to whatever the device reads (BC7, ASTC, ETC2), in the transcoder's own workers. GLBs get meshopt geometry. Outputs are content-hashed, cached and committed. |
+| LOD selection          | One distance and one multiply per entity (the camera terms are computed once per frame), after frustum culling. Only an entity whose level changed is touched; a pool instance moves between level meshes by a swap-remove.              |
 | Tree-shaking           | Debug implementations live in `_dbg__*` files that are loaded only through a dynamic `import()` behind `IS_DEBUG_ENV`, so production bundles don't contain them.                                                                         |
 | Save data              | Each asset file stores per-scene override history stamped with the engine, toolkit and app versions, and the gatherer warns when an entry comes from another major version.                                                              |
 | Versioning             | Engine, toolkit and app are versioned independently, with release tags and a checksum meta tag in the built HTML.                                                                                                                        |
@@ -223,6 +225,19 @@ Each file is validated against its schema, and the `$schema` line gives you auto
 }
 ```
 
+A mesh can have levels of detail. Each level starts at a screen size (the mesh's bounding-sphere diameter over the viewport height) and can swap the geometry, the material and shadow casting. Below `cullScreenSize` the mesh is hidden. `"lod": "AUTO"` reads the levels from the geometry's LOD chain instead.
+
+```jsonc
+// in testMesh.mesh.json's "props"
+"lod": {
+  "levels": [
+    { "screenSize": 0.1 },
+    { "screenSize": 0.03, "geo": "testSphereLow", "castShadow": false },
+  ],
+  "cullScreenSize": 0.005,
+},
+```
+
 ### 3. Optimize textures and models
 
 Put the source next to its asset JSON and choose a profile. On save, the dev server encodes it into `src/public/aek-assets/`, and the scene loads the KTX2 instead of the PNG. Commit the output and `assets.lock.json` with the source.
@@ -341,7 +356,7 @@ Planned work is specified in [`docs/plans/`](docs/plans/), where a lower number 
 - An editor/creator view and a material editor
 - Physics objects in the scene JSON schema, physics world bounds, multibody joints and physics snapshot restore
 - Component query caching
-- A client device capability sniffer and an LOD system
+- A client device capability sniffer, impostor (billboard) LODs and GPU-driven culling
 
 ---
 

@@ -369,42 +369,52 @@ export const lodSelectionSystem = (world: ECSWorld) => {
   }
   pending.length = 0;
 
+  // Read once per frame: a world.hasComponent / getComponent per entity looks the storage up again
+  // every time, which dominated the loop for a few thousand pool instances
+  // (docs/plans/p348_ecs-lod-selection.md, Phase 3 step 4)
+  const disabled = world.getStorage(ComponentType.DISABLED);
+  const frustumCulled = world.getStorage(ComponentType.TAG_FRUSTUM_CULLED);
+  const lodCulled = world.getStorage(ComponentType.TAG_LOD_CULLED);
+  const object3Ds = world.getStorage(ComponentType.OBJECT3D);
+  const transforms = world.getStorage(ComponentType.TRANSFORM);
+
   let selections = 0;
   for (const [entityId, lod] of storage) {
     const levels = lod.def.levels;
     if (lod._levels.length === 0) continue;
-    if (world.isDisabled(entityId)) continue;
-    if (world.hasComponent(entityId, ComponentType.TAG_FRUSTUM_CULLED)) continue;
+    if (disabled.has(entityId) || frustumCulled.has(entityId)) continue;
     selections++;
 
+    const isCulled = lodCulled.has(entityId);
     if (isForced) {
-      if (world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED)) {
-        world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
-      }
+      if (isCulled) world.removeComponent(entityId, ComponentType.TAG_LOD_CULLED);
       lod.level = Math.min(forceLevel, levels.length - 1);
       if (lod.level !== lod.applied) pending.push(entityId);
       continue;
     }
 
-    // Directly under the scene (the usual case), the local transform object3DSyncSystem wrote is
-    // the world one; nested, read the world matrix. A target's entity has no Object3D: its
-    // Transform is in world space.
+    // A target's entity (LodTarget) reads its Transform, which is in world space. A mesh directly
+    // under the scene (the usual case) reads the local transform object3DSyncSystem wrote, which is
+    // the world one; nested, the world matrix.
     let maxScale: number;
-    const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
-    if (!obj) {
-      const transform = lod._target && world.getComponent(entityId, ComponentType.TRANSFORM);
+    if (lod._target) {
+      const transform = transforms.get(entityId);
       if (!transform) continue;
       _objPos.copy(transform.position);
       const { x, y, z } = transform.scale;
       maxScale = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));
-    } else if (!obj.parent || !obj.parent.parent) {
-      _objPos.copy(obj.position);
-      const { x, y, z } = obj.scale;
-      maxScale = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));
     } else {
-      obj.updateWorldMatrix(true, false);
-      _objPos.setFromMatrixPosition(obj.matrixWorld);
-      maxScale = obj.matrixWorld.getMaxScaleOnAxis();
+      const obj = object3Ds.get(entityId)?.value;
+      if (!obj) continue;
+      if (!obj.parent || !obj.parent.parent) {
+        _objPos.copy(obj.position);
+        const { x, y, z } = obj.scale;
+        maxScale = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));
+      } else {
+        obj.updateWorldMatrix(true, false);
+        _objPos.setFromMatrixPosition(obj.matrixWorld);
+        maxScale = obj.matrixWorld.getMaxScaleOnAxis();
+      }
     }
 
     const worldRadius = lod.radius * maxScale;
@@ -419,7 +429,6 @@ export const lodSelectionSystem = (world: ECSWorld) => {
 
     const h = lod.def.hysteresis ?? DEFAULT_HYSTERESIS;
     const cull = lod.def.cullScreenSize ?? 0;
-    const isCulled = world.hasComponent(entityId, ComponentType.TAG_LOD_CULLED);
     if (cull > 0 && s < (isCulled ? cull : cull * (1 - h))) {
       // Hidden: the level holds (no swap while nothing shows it)
       if (!isCulled) world.addComponent(entityId, ComponentType.TAG_LOD_CULLED, true);
