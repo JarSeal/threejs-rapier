@@ -172,6 +172,8 @@ const createPoolMesh = (
 
   // TAG_IS_MESH: MeshManager's delete hook removes and disposes the mesh with its entity
   const meshEntityId = world.createEntity(entityOpts);
+  // Marks the mesh as holding refs: setMeshGeometry / setMeshMaterial then move them
+  mesh.userData.entityId = meshEntityId;
   world.addComponent(meshEntityId, ComponentType.OBJECT3D, {
     value: mesh,
     _lastVersion: -1,

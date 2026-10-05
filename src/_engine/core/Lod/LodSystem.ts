@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { APP_RENDER_SYNC_ORDER, ECSSystemStage } from '../../../AppECSRegistry';
-import { ECSWorld } from '../ECS';
+import { ECSWorld, getECSWorld } from '../ECS';
 import { ComponentType } from '../ECS/ECSCoreComponents';
 import { reconcileObject3DVisibility } from '../ECS/ECSCoreSystems';
 import { getActiveCamera, getMainCamera } from '../CameraManager';
@@ -11,6 +11,7 @@ import { preWarmMesh, setMeshGeometry, setMeshMaterial } from '../MeshManager';
 import { getConservativeGeometryRadius } from '../Spatial/SpatialIndexSystem';
 import { lwarn } from '../../utils/Logger';
 import { DebugModuleRef, loadDebugModuleAsync, useDebug } from '../../utils/helpers';
+import { getInstancedLodBounds } from './LodBounds';
 import type { LodData, LodResolvedLevel, LodTarget } from './LodTypes';
 
 // Debug
@@ -32,6 +33,9 @@ export const registerLodDebugGUI = async () => {
 //
 // An entity without a plain mesh (an instanced LOD pool's instance) gets its levels from a LodTarget
 // registered for one of its components, which then applies them and handles LOD culling.
+//
+// An InstancedMesh entity (a static instance cell, §4.3) is a plain mesh whose swap changes every
+// instance: its bounds are level 0 over all its instances (Lod/LodBounds.ts), not one instance.
 
 const DEFAULT_HYSTERESIS = 0.1;
 
@@ -195,6 +199,26 @@ const resolveLevels = (mesh: THREE.Mesh, lod: LodData): LodResolvedLevel[] => {
   return resolved;
 };
 
+/** A mesh that compiles to the pipelines `mesh` would draw `level` with: an InstancedMesh's shares
+ * its instance attributes. Never frustum culled, as compileAsync culls against its own camera. */
+const createStandIn = (mesh: THREE.Mesh, level: LodResolvedLevel) => {
+  let standIn: THREE.Mesh;
+  if ((mesh as THREE.InstancedMesh).isInstancedMesh) {
+    const instanced = mesh as THREE.InstancedMesh;
+    const standInInstanced = new THREE.InstancedMesh(level.geometry, level.material, 0);
+    standInInstanced.instanceMatrix = instanced.instanceMatrix;
+    standInInstanced.instanceColor = instanced.instanceColor;
+    standInInstanced.count = instanced.count;
+    standIn = standInInstanced;
+  } else {
+    standIn = new THREE.Mesh(level.geometry, level.material);
+  }
+  standIn.castShadow = level.castShadow;
+  standIn.receiveShadow = mesh.receiveShadow;
+  standIn.frustumCulled = false;
+  return standIn;
+};
+
 /** Pre-warms the levels the mesh doesn't already show (createMeshEntity pre-warmed that one). */
 const preWarmLevels = (mesh: THREE.Mesh, levels: LodResolvedLevel[]) => {
   const label = mesh.userData.id || 'mesh';
@@ -210,16 +234,43 @@ const preWarmLevels = (mesh: THREE.Mesh, levels: LodResolvedLevel[]) => {
     );
     if (isWarmed) continue;
     warmed.push(level);
-    const standIn = new THREE.Mesh(level.geometry, level.material);
-    standIn.castShadow = level.castShadow;
-    standIn.receiveShadow = mesh.receiveShadow;
-    preWarmMesh(standIn, label);
+    preWarmMesh(createStandIn(mesh, level), label);
   }
 };
 
 const getLodMesh = (entityId: number, world: ECSWorld) => {
   const obj = world.getComponent(entityId, ComponentType.OBJECT3D)?.value;
   return obj instanceof THREE.Mesh ? obj : undefined;
+};
+
+/** Sets the LOD's radius (and an InstancedMesh's centre) from level 0. */
+const setMeshLodBounds = (mesh: THREE.Mesh, lod: LodData) => {
+  const geometry = lod._levels[0].geometry;
+  if ((mesh as THREE.InstancedMesh).isInstancedMesh) {
+    const bounds = getInstancedLodBounds(mesh as THREE.InstancedMesh, geometry);
+    lod.radius = bounds.radius;
+    lod._center = bounds.center;
+  } else {
+    lod.radius = getConservativeGeometryRadius(geometry);
+    lod._center = undefined;
+  }
+};
+
+/**
+ * Re-reads an `InstancedMesh` entity's LOD bounds (eg. a static instance cell's) after its instance
+ * matrices or `count` changed: they are level 0 at every instance, read when the LOD was added. An
+ * `AUTO` LOD's thresholds were computed from the bounds then: after a large change, set the LOD
+ * again. A no-op for other entities (their bounds are level 0's geometry) and without a LOD.
+ * @param entityId the mesh entity
+ * @param ecsWorld the entity's world (default: the default world)
+ */
+export const refreshLodBounds = (entityId: number, ecsWorld?: ECSWorld) => {
+  const world = ecsWorld || getECSWorld();
+  const lod = world.getComponent(entityId, ComponentType.LOD);
+  const mesh = getLodMesh(entityId, world);
+  if (!lod || lod._target || lod._levels.length === 0) return;
+  if (!(mesh as THREE.InstancedMesh | undefined)?.isInstancedMesh) return;
+  setMeshLodBounds(mesh as THREE.Mesh, lod);
 };
 
 ECSWorld.registerComponentHooks(ComponentType.LOD, {
@@ -230,6 +281,7 @@ ECSWorld.registerComponentHooks(ComponentType.LOD, {
     lod.applied = -1;
     lod._levels = [];
     lod._target = undefined;
+    lod._center = undefined;
     const mesh = getLodMesh(entityId, world);
     if (!mesh) {
       if (resolveTargetLevels(entityId, world, lod)) return;
@@ -241,7 +293,7 @@ ECSWorld.registerComponentHooks(ComponentType.LOD, {
       return;
     }
     lod._levels = resolveLevels(mesh, lod);
-    lod.radius = getConservativeGeometryRadius(lod._levels[0].geometry);
+    setMeshLodBounds(mesh, lod);
     for (const level of lod._levels) refLevel(level, true);
     if (mesh.userData.preWarm) preWarmLevels(mesh, lod._levels);
   },
@@ -395,7 +447,7 @@ export const lodSelectionSystem = (world: ECSWorld) => {
 
     // A target's entity (LodTarget) reads its Transform, which is in world space. A mesh directly
     // under the scene (the usual case) reads the local transform object3DSyncSystem wrote, which is
-    // the world one; nested, the world matrix.
+    // the world one; nested, the world matrix. An InstancedMesh measures from its bounds' centre.
     let maxScale: number;
     if (lod._target) {
       const transform = transforms.get(entityId);
@@ -406,7 +458,11 @@ export const lodSelectionSystem = (world: ECSWorld) => {
     } else {
       const obj = object3Ds.get(entityId)?.value;
       if (!obj) continue;
-      if (!obj.parent || !obj.parent.parent) {
+      if (lod._center) {
+        obj.updateWorldMatrix(true, false);
+        _objPos.copy(lod._center).applyMatrix4(obj.matrixWorld);
+        maxScale = obj.matrixWorld.getMaxScaleOnAxis();
+      } else if (!obj.parent || !obj.parent.parent) {
         _objPos.copy(obj.position);
         const { x, y, z } = obj.scale;
         maxScale = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));

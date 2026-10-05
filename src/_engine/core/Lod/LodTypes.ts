@@ -56,8 +56,12 @@ export type LodData = {
   /** The level the render side last applied, -1 before the first apply. */
   applied: number;
   /** Level 0's local bounding radius, cached when the component is added. The world radius is
-   * `radius × max(|scale|)`. */
+   * `radius × max(|scale|)`. An `InstancedMesh`'s covers level 0 at every instance (Lod/LodBounds.ts),
+   * re-read by `refreshLodBounds`. */
   radius: number;
+  /** An `InstancedMesh`'s: the centre of its bounds in the mesh's space, which the selection
+   * measures the distance from. Undefined for other meshes (their origin). */
+  _center?: THREE.Vector3;
   /** `def.levels` resolved when the component was added (Lod/LodSystem.ts), each holding a
    * registry ref on its geometry and material(s) until the component goes. A target's levels hold
    * none. */

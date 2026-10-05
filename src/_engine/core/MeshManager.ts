@@ -285,7 +285,12 @@ const addLodComponent = (entityId: number, def: LodDef, world: ECSWorld) => {
  * is used while its simplification error stays within `maxPixelError` pixels at a viewport height
  * of 1080. The mesh stays on level 0 until the chain is ready (it waits for one the geometry's
  * import requested or one being generated), and warns when the geometry has none.
- * @param entityId a mesh entity created with createMeshEntity
+ *
+ * An `InstancedMesh` entity (eg. a static instance cell) switches all its instances at once, by
+ * level 0's bounds over every instance: write its instance matrices first, and call
+ * `refreshLodBounds` after they change. Its mesh needs `userData.entityId` when it holds registry
+ * refs, like a pool's mesh, so the level swaps move them.
+ * @param entityId a mesh entity: one created with createMeshEntity, or an `InstancedMesh` entity
  * @param def the levels, `screenSize` descending, or `AUTO`
  * @param ecsWorld the entity's world (default: the default world)
  * @returns resolves to whether the LOD was set: at once for levels, when the chain is ready for
@@ -317,7 +322,7 @@ export const setMeshLod = (
   const isCurrent = () => pending.get(entityId) === request;
   return import('./Lod/LodAuto')
     .then(({ resolveAutoLod }) =>
-      isCurrent() ? resolveAutoLod(geometry, def, mesh.userData.id || mesh.uuid) : null
+      isCurrent() ? resolveAutoLod(geometry, def, mesh.userData.id || mesh.uuid, mesh) : null
     )
     .catch((err) => {
       lerror(`[LOD] Mesh "${mesh.userData.id || mesh.uuid}": lod AUTO failed.`, err);

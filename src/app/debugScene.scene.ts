@@ -1,9 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { createCameraEntity } from '../_engine/core/CameraManager';
-import { createGeometry } from '../_engine/core/Geometry';
+import { getECSWorld } from '../_engine/core/ECS';
+import { ComponentType } from '../_engine/core/ECS/ECSCoreComponents';
+import { createGeometry, getGeometry, incGeometryRef } from '../_engine/core/Geometry';
 import { createLightEntity } from '../_engine/core/LightManager';
-import { createMaterial } from '../_engine/core/Material';
-import { createMeshEntity } from '../_engine/core/MeshManager';
+import { createMaterial, getMaterial, incMaterialRef } from '../_engine/core/Material';
+import { createMeshEntity, setMeshLod } from '../_engine/core/MeshManager';
+import { getRootScene } from '../_engine/core/Scene';
 import { getTexture, loadTextureAsync, type TexOpts } from '../_engine/core/Texture';
 import { importAssetAsync } from '../_engine/core/Import/ImportRegistry';
 import { spawnImportedAsset } from '../_engine/core/Import/SpawnImported';
@@ -90,6 +93,55 @@ const createLodTestMesh = () => {
   );
 };
 
+// p348 Phase 4 check: a static instance cell (§4.3) the way p308 builds one, an InstancedMesh entity
+// with OBJECT3D + TAG_IS_MESH and no per-instance entities, on the sphere's levels. Its 5×5 small
+// spheres (scale 0.3, 0.4 m apart) sit left of the origin, away from the mesh's own origin, so the
+// selection has to measure from the cell's bounds (radius ~1.28 m), not from one sphere at (0, 0, 0).
+// Level 0 holds to ~9.2 m, level 1 to ~27 m, level 2 to ~275 m; the whole cell switches at once.
+const createLodTestCell = () => {
+  const geometry = getGeometry('p348_sphere_lod0') as THREE.BufferGeometry;
+  const material = getMaterial('p348_sphere_lod0_material') as THREE.Material;
+  const mesh = new THREE.InstancedMesh(geometry, material, 25);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData.id = 'p348LodCell';
+  mesh.userData.preWarm = true;
+  const matrix = new THREE.Matrix4();
+  for (let i = 0; i < 25; i++) {
+    const x = -4.6 + (i % 5) * 0.4;
+    const z = 0.6 + Math.floor(i / 5) * 0.4;
+    mesh.setMatrixAt(i, matrix.makeScale(0.3, 0.3, 0.3).setPosition(x, 0.15, z));
+  }
+  incGeometryRef('p348_sphere_lod0');
+  incMaterialRef('p348_sphere_lod0_material');
+
+  const world = getECSWorld();
+  const entityId = world.createEntity({ appId: 'p348LodCell' });
+  // Marks the mesh as holding refs: the level swaps move them (setMeshGeometry / setMeshMaterial)
+  mesh.userData.entityId = entityId;
+  world.addComponent(entityId, ComponentType.OBJECT3D, { value: mesh, _lastVersion: -1 });
+  world.addComponent(entityId, ComponentType.TAG_IS_MESH, true);
+  getRootScene()?.add(mesh);
+
+  setMeshLod(
+    entityId,
+    {
+      levels: [
+        { screenSize: 0.3 },
+        { screenSize: 0.1, geo: 'p348_sphere_lod1', mat: 'p348_sphere_lod1_material' },
+        {
+          screenSize: 0.03,
+          geo: 'p348_sphere_lod2',
+          mat: 'p348_sphere_lod2_material',
+          castShadow: false,
+        },
+      ],
+      cullScreenSize: 0.01,
+    },
+    world
+  );
+};
+
 export const scene = async () => {
   createCameraEntity(
     {
@@ -117,6 +169,7 @@ export const scene = async () => {
   );
 
   createLodTestMesh();
+  createLodTestCell();
 
   const textures = await Promise.all(
     TEXTURES.map(({ id, fileName, texOpts }) => loadTextureAsync({ id, fileName, texOpts }))

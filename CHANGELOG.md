@@ -23,12 +23,14 @@ Earlier releases are only recorded in the git history.
   - `despawn(world, entityId)` frees an instance's slot with a swap-remove (the pool's last instance moves into it), as do deleting the entity and removing its slot. Read an instance's `index` from its component, never keep it.
   - `createInstancedLodPool({ world, levels: [{ geometry, material, screenSize, castShadow? }], maxInstances, lod?, ... })`: one `InstancedMesh` per level, each instance an entity with `INSTANCED_MESH_SLOT` and `LOD` that moves to its level's mesh. A LOD-culled instance is in no mesh. Every level mesh gets the bounds of every placement at spawn.
   - `registerLodTarget(componentType, target)` lets `LOD` work on entities without a plain mesh (`LodTarget` in `Lod/LodTypes.ts`): the target resolves and applies the levels and handles LOD culling, and the entity's `Transform` gives its world position and scale.
+- An `InstancedMesh` entity (eg. a static instance cell, `OBJECT3D` + `TAG_IS_MESH`) can have a mesh LOD: the whole mesh switches levels, measured by level 0's bounds over all its instances (`Lod/LodBounds.ts`) instead of one instance at the mesh's origin. `refreshLodBounds(entityId, world?)` re-reads them after the instances change. Its levels pre-warm on instanced stand-ins, and `AUTO` thresholds account for the instances' scale.
 - "LOD" debug tab (`lodControls`, last in the default tab order): entities per level on screen, LOD culled and out of view, the last frame's stats, and the global bias, freeze, force level and "use active camera" controls (runtime only).
 
 **Fixed**
 
 - Deleting a pooled instance's entity left its matrix drawn: the pool had no despawn.
-- A pool took no registry ref on its geometry and material(s) but released one when its mesh was deleted. It now takes them.
+- A pool took no registry ref on its geometry and material(s) but released one when its mesh was deleted. It now takes them, and its mesh has `userData.entityId`, so `setMeshGeometry` / `setMeshMaterial` move them and `deleteScene` deletes its mesh entity.
+- Pre-warm stand-ins aren't frustum culled: `compileAsync` culls against its own camera, which skipped a mesh far from the origin.
 
 ### Toolkit 1.3.1 (Crescent)
 
@@ -42,7 +44,7 @@ Earlier releases are only recorded in the git history.
 
 - largeWorld's trees and bushes are instanced LOD pools. Their levels are the same generators at lower segment counts (the default tree and bush are too low-poly for a LOD chain): trees 30 → 18 triangles, bushes 120 → 36, and bushes hidden far away. From the overview camera that cuts the foliage from 285k to 91k triangles.
 - `AppECSRegistry.ts` has the `LOD_SELECTION` order and no longer merges the toolkit pool's component, and `AppECSPlugins.ts` no longer registers the pool's effect.
-- `testDebugScene` has a sphere with three hand-made levels (`p348LodSphere`, a colour per level) for checking LOD switches.
+- `testDebugScene` has a sphere with three hand-made levels (`p348LodSphere`, a colour per level) for checking LOD switches, and a static instance cell on the same levels (`p348LodCell`, 25 spheres in one `InstancedMesh` entity).
 
 ## 2026-10-05 — lod-chain-generation
 

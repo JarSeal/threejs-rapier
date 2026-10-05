@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-3 implemented
+Status: in progress | Phases 1-4 implemented
 Category: ECS, Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 1.3)
 Blocks: p351_impostor-billboard-lod.md (needs Phase 3's per-level instanced pools), p354_gpu-driven-culling.md
@@ -171,8 +171,22 @@ createInstancedLodPool({
 p308's `StaticInstances` cells have no per-instance entities. Their LOD unit is the cell: one
 entity per cell with `LOD` and a radius covering the cell, and the apply swaps the cell's
 `InstancedMesh` geometry for the whole cell. This replaces p308's `maxDistance` with
-`cullScreenSize`. Implemented when p308 lands. This plan only fixes the contract, so p308 can
-build its cells as plain mesh entities that §4.1 already handles.
+`cullScreenSize` (a one-level LOD when the cell has no other levels).
+
+The contract (Phase 4, built ahead of p308): a cell is an `InstancedMesh` in `OBJECT3D` with
+`TAG_IS_MESH`, set up like a pool's mesh entity:
+
+- `mesh.userData.entityId` set when the mesh took registry refs on its geometry and material(s),
+  so the level swaps (`setMeshGeometry` / `setMeshMaterial`) move them;
+- instance matrices and `count` written before `setMeshLod`, and `refreshLodBounds(entityId)`
+  called after they change;
+- `mesh.userData.preWarm` for pre-warmed levels.
+
+The selection then measures the cell, not one instance: `radius` and the centre it measures the
+distance from are level 0 over every instance (`Lod/LodBounds.ts`), transformed by the mesh's world
+matrix. `AUTO` thresholds use that radius over the largest instance scale (an instance's error
+scales with its matrix), so `maxPixelError` holds at the cell's centre; instances nearer the camera
+show more.
 
 ### 4.4 `BatchedMesh` (spike)
 
@@ -349,7 +363,7 @@ As built:
   assets (the component takes no refs). Apply and the `TAG_LOD_CULLED` hooks call the target.
   Removing `LOD` drops the culled tag first, then goes back to level 0.
 - `createInstancedLodPool({ world, levels: [{ geometry, material, screenSize, castShadow? }],
-  maxInstances, lod?, receiveShadow?, entityOpts?, spatialDomain? })`: `screenSize` is per level
+maxInstances, lod?, receiveShadow?, entityOpts?, spatialDomain? })`: `screenSize` is per level
   instead of the sketch's `lod.screenSizes` array, and `lod` is `Omit<LodDef, 'levels'>`. It returns
   `{ meshes, meshEntityIds, spawn, despawn }`; add `pool.meshes` directly under the scene.
   Instances spawn into level 0's mesh. A LOD-culled instance is in no mesh (`index -1`), its slot
@@ -402,9 +416,48 @@ As built:
     way). The remaining cost, about 0.15 µs per instance, is Phase 5's (`maxSelectionsPerFrame`,
     §9 Q1). The whole-frame CPU varies too much between headless runs (±0.5 ms) to show it.
 
-### Phase 4 — Static cells
+### Phase 4 — Static cells — done
 
-1. The cell contract (§4.3), with p308.
+1. The cell contract (§4.3), with p308. — done ahead of p308 (engine side; p308's adoption is its own)
+
+As built:
+
+- p308 isn't built (draft, blocked by p306 ← p305), so this phase built the engine side of the
+  contract and checks it with a hand-made cell. §4.3's old claim, that §4.1 already handled an
+  `InstancedMesh` cell, didn't hold. Gaps found and closed:
+  - Bounds: the radius was one instance's geometry and the distance was measured from the mesh's
+    origin. `Lod/LodBounds.ts` (`getInstancedLodBounds`) gives level 0's sphere over every
+    instance, centred on their bounding box, in mesh space. It's tighter than
+    `InstancedMesh.computeBoundingSphere`, whose incremental union depends on the instance order
+    (24% too large on a 5×5 grid). `LodData._center` holds the centre; the selection transforms it
+    by the world matrix for these entities only, so the plain-mesh hot path is unchanged.
+    `refreshLodBounds(entityId, world?)` (`LodSystem.ts`) re-reads it.
+  - Pre-warm: the stand-in was a plain `Mesh`, another pipeline. An `InstancedMesh`'s stand-in is
+    an `InstancedMesh` sharing its `instanceMatrix`, `instanceColor` and `count`. Every stand-in is
+    now `frustumCulled = false`: `compileAsync` culls against its own camera at the origin, which
+    would skip a cell far from it.
+  - Refs: `setMeshGeometry` / `setMeshMaterial` move refs only for a mesh with
+    `userData.entityId`. A pool's mesh took refs without it, so a swap on it would have leaked one
+    and released another twice. `createPoolMesh` sets it now, which also makes `deleteScene`
+    delete a pool's mesh entity like a plain mesh's.
+  - `AUTO`: the thresholds came from one geometry's radius while the selection measures the cell.
+    `resolveAutoLod` takes the mesh and uses the bounds' radius over the largest instance scale.
+- The check is `p348LodCell` in `debugScene.scene.ts`: 25 small spheres on the Phase 1 sphere's
+  levels, away from the mesh's origin, built as p308 would (an `InstancedMesh` entity, refs taken
+  by hand). Verified (WebGPU, headless Chrome, through the app's modules): exact bounds (radius
+  1.2814, centre at the grid's); a 2-400 m sweep makes the six transitions within a step of their
+  thresholds, the whole cell swapping, `count` and matrices untouched; scale 2 and a rotation move
+  the thresholds and centre with the matrix; `refreshLodBounds` after squeezing the instances
+  changes the level; re-setting the LOD pre-warms levels 1 and 2 on instanced stand-ins; deleting
+  the cell at level 2 releases exactly its refs; `AUTO` on a cell matches
+  `lodDefFromChain(chain, R / maxInstanceScale)`. Phase 1's exit test (40/40) and Phase 3's pool
+  test (no errors in any state) still pass.
+- Not changed: the ECS frustum culling and light culling bounds (`getMeshWorldBoundingSphere`)
+  and the spatial radius provider still read one instance's geometry at the mesh's origin, so a
+  cell must not opt into ECS frustum culling or spatial indexing as is (p308's D1 relies on three's
+  per-object culling, which reads `mesh.boundingSphere`). Also, §4.1's "frustum culling keeps using
+  level 0's bounds" isn't what the code does: `getMeshWorldBoundingSphere` reads the geometry the
+  mesh shows. Chain levels' bounds are within the simplifier's error of level 0's.
 
 ### Phase 5 — Budget and spike
 

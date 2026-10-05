@@ -6,9 +6,15 @@
 // viewport H pixels high, for screen size `s` (the selection's metric, LodSystem.ts) and the LOD
 // radius. So level k is fine while `s ≤ 2 × radius × maxPixelError / (error × extent × H)`, for
 // perspective and orthographic cameras alike.
+//
+// An InstancedMesh (a static instance cell, §4.3) selects by its bounds over all its instances, and
+// an instance's error scales with its matrix: its radius here is the bounds' over the largest
+// instance scale. The pixel error is then the one at the cell's centre; instances nearer the camera
+// show more.
 import type * as THREE from 'three/webgpu';
 import { lwarn } from '../../utils/Logger';
 import { getConservativeGeometryRadius } from '../Spatial/SpatialIndexSystem';
+import { getInstancedLodBounds } from './LodBounds';
 import { getLodChain, getPendingLodChain, type LodChain } from './LodChains';
 import { getLodChainRequest } from './LodChainRequests';
 import type { LodAutoDef, LodDef, LodLevelDef } from './LodTypes';
@@ -59,6 +65,15 @@ export const lodDefFromChain = (
   return def;
 };
 
+/** The radius `lodDefFromChain` takes for the mesh showing `geometry` as level 0. */
+const getAutoLodRadius = (geometry: THREE.BufferGeometry, mesh?: THREE.Mesh) => {
+  if (!(mesh as THREE.InstancedMesh | undefined)?.isInstancedMesh) {
+    return getConservativeGeometryRadius(geometry);
+  }
+  const bounds = getInstancedLodBounds(mesh as THREE.InstancedMesh, geometry);
+  return bounds.radius / bounds.maxInstanceScale;
+};
+
 /**
  * Resolves a mesh's `AUTO` LOD: waits for a chain its geometry's import requested or one being
  * generated, then builds the levels from it ({@link lodDefFromChain}). Warns when the geometry has
@@ -67,12 +82,15 @@ export const lodDefFromChain = (
  * @param geometry the mesh's geometry (level 0)
  * @param auto `'AUTO'` or its options
  * @param label names the mesh in the warnings
+ * @param mesh the mesh, read once the chain is there: an InstancedMesh's thresholds come from its
+ *   instances' bounds
  * @returns the definition, or null when there is nothing to select (warned)
  */
 export const resolveAutoLod = async (
   geometry: THREE.BufferGeometry,
   auto: LodAutoDef | 'AUTO',
-  label: string
+  label: string,
+  mesh?: THREE.Mesh
 ): Promise<LodDef | null> => {
   const opts: LodAutoDef = auto === 'AUTO' ? { auto: true } : auto;
   const geometryId = geometry.userData.id as string | undefined;
@@ -91,7 +109,7 @@ export const resolveAutoLod = async (
     );
     return null;
   }
-  const def = lodDefFromChain(chain, getConservativeGeometryRadius(geometry), opts);
+  const def = lodDefFromChain(chain, getAutoLodRadius(geometry, mesh), opts);
   if (def.levels.length === 1 && (def.cullScreenSize ?? 0) <= 0) {
     lwarn(
       `[LOD] Mesh "${label}": lod AUTO, but the LOD chain of geometry "${geometryId}" has no simplified levels, so it stays on level 0.`
