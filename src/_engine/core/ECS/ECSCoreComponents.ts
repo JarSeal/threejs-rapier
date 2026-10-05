@@ -6,6 +6,7 @@ import type { PhysicsWireframeColors } from '../Config';
 import { CoreComponentType as CoreType, EntityDebugData, ManagedByData } from './ECSRegistry';
 import { AppComponentData, AppComponentType as AppType } from '../../../AppECSRegistry';
 import type { CharacterObject } from '../Character/CharacterTypes';
+import type { LodData } from '../Lod/LodTypes';
 
 export type ECSPosition = { x: number; y: number; z: number };
 export type ECSRotation = { x: number; y: number; z: number; w: number };
@@ -78,6 +79,9 @@ export interface CoreComponentData {
   /** Bit i = member of the world's spatial domain with bit index i. Kept by
    * joinSpatialDomain/leaveSpatialDomain (Spatial/SpatialIndexSystem.ts): don't add it directly. */
   [CoreType.SPATIAL_DOMAINS]: { mask: number };
+  // LOD selection
+  [CoreType.LOD]: LodData;
+  [CoreType.TAG_LOD_CULLED]: boolean;
   // Debug
   [CoreType.DEBUG_DATA]: EntityDebugData;
   [CoreType.DEBUG_LIGHT_HELPER]: {

@@ -38,6 +38,7 @@ import { createPostFXDebugGUI, initPostFX } from './core/PostFX';
 import './core/ECS/ECSCoreSystems';
 import './core/ECS/ObjectFrustumCullingSystem';
 import './core/ECS/LightObjectCullingSystem';
+import './core/Lod/LodSystem';
 import { registerSpatialIndexDebugGUI } from './core/Spatial/SpatialIndexSystem';
 import './core/MeshManager';
 

@@ -45,6 +45,9 @@ export enum CoreComponentType {
   // Spatial index (docs/plans/_DONE_p050_spatial-index.md)
   SPATIAL_INDEXED = 'CORE_SPATIAL_INDEXED', // opt-in, membership in the DEFAULT spatial domain
   SPATIAL_DOMAINS = 'CORE_SPATIAL_DOMAINS', // runtime-only, membership in the other spatial domains
+  // LOD selection (docs/plans/p348_ecs-lod-selection.md) — see Lod/LodSystem.ts
+  LOD = 'CORE_LOD', // opt-in, user-authored
+  TAG_LOD_CULLED = 'CORE_TAG_LOD_CULLED', // runtime-only, beyond the last level
   // Debug
   DEBUG_DATA = 'CORE_DEBUG_DATA',
   DEBUG_LIGHT_HELPER = 'CORE_DEBUG_LIGHT_HELPER',
