@@ -10,14 +10,17 @@
   border-radius: 0.2rem;
   transition: opacity 0.2s ease-in-out;
 
+  // The tool button centres it (an inline-block svg would leave a baseline gap under it)
   :global(.uiIcon) {
     display: block;
     width: 2.2rem;
 
     &:global(.smallIcon) {
       width: 1.7rem;
-      margin-top: 0.3rem;
-      margin-left: 0.3rem;
+    }
+
+    svg {
+      display: block;
     }
   }
 }
@@ -54,9 +57,9 @@
   }
 }
 
-// The top row: the view tools (debug env, with an editor view registered), then the play tools.
-// Only its groups take clicks, not the gap between them. debugDrawerOpen is set by whichever
-// right-side drawer is open: the debug drawer, or an editor view's own one.
+// The top row: the play tools. Only its groups take clicks, not the gap between them.
+// debugDrawerOpen is set by whichever right-side drawer is open: the debug drawer, or an editor
+// view's own one.
 .onScreenTopRow {
   display: flex;
   gap: 0.6rem;
@@ -82,10 +85,22 @@
   }
 }
 
-// The debug drawer opens from the right and the stats panel sits bottom-left, so this corner stays free
-:global(.undoRedoTools) {
+// The top left row: the About and undo / redo tools, then the view tools (debug env, with an
+// editor view registered). The debug drawer opens from the right and the stats panel sits
+// bottom-left, so this corner stays free. Only its groups take clicks, not the gap between them.
+.onScreenTopLeftRow {
+  display: flex;
+  gap: 0.6rem;
+  position: fixed;
+  z-index: 10000;
   top: 1.6rem;
   left: 1.6rem;
+  pointer-events: none;
+
+  .onScreenToolGroup {
+    position: static;
+    pointer-events: auto;
+  }
 }
 
 // Set on <body> by the Debug Tools "On-screen tools" folder / § shortcut (debug env only). Makes
@@ -123,6 +138,9 @@
   transition: background-color 0.17s ease-in-out;
   width: 3.2rem;
   height: 3.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
   &.active {
     &:before {
@@ -159,13 +177,12 @@
 // An on-screen dropdown's trigger (core/UI/DropDown.ts, its default styles in DropDown.scss):
 // the on-screen tool look, wider
 .onScreenToolDropDown {
-  display: flex;
+  justify-content: flex-start;
   width: 16rem;
-  height: 3.2rem;
 
-  // The group's small icon margins are for a lone icon
   :global(.uiIcon):global(.smallIcon) {
-    margin: 0 0 0 0.3rem;
+    flex-shrink: 0;
+    margin-left: 0.3rem;
   }
 }
 

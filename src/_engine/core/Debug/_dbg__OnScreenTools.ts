@@ -14,7 +14,7 @@ import { getReadOnlyLoopState, toggleMainPlay } from '../../core/MainLoop';
 import { getPhysicsState } from '../../core/PhysicsAPI';
 import { getCurrentSceneId, getGeneratedAppData } from '../../core/Scene';
 import { isCurrentlyLoading, loadScene } from '../../core/SceneLoader';
-import { getSvgIcon } from '../../core/UI/icons/SvgIcon';
+import { getSvgIcon, type SvgIconKey } from '../../core/UI/icons/SvgIcon';
 import { createDropDown, type DropDownProps, type TDropDown } from '../../core/UI/DropDown';
 import { CMP, TCMP } from '../../utils/CMP';
 import styles from './OnScreenTools.module.scss';
@@ -43,8 +43,10 @@ import {
   toggleViewPlay,
 } from '../ViewManager';
 
-/** The fixed, centred row at the top: the view tools, then the play tools. */
+/** The fixed, centred row at the top: the play tools. */
 let topRowCMP: TCMP | null = null;
+/** The fixed row in the top left corner: the About and undo / redo tools, then the view tools. */
+let topLeftRowCMP: TCMP | null = null;
 let viewToolsCMP: TCMP | null = null;
 let playToolsCMP: TCMP | null = null;
 let switchToolsCMP: TCMP | null = null;
@@ -156,6 +158,16 @@ const getTopRow = () => {
   return topRowCMP;
 };
 
+/** The top left row (created on first use). Kept in editor views, like its groups. */
+const getTopLeftRow = () => {
+  if (!topLeftRowCMP) {
+    topLeftRowCMP = getHUDRootCMP().add({
+      class: [styles.onScreenTopLeftRow, 'onScreenTopLeftRow', KEEP_IN_VIEWS_CLASS],
+    });
+  }
+  return topLeftRowCMP;
+};
+
 // VIEW TOOLS
 // One button per view (ViewManager.ts): the Runtime view first, then the editor views. Debug
 // environment only (never prod test mode), and only when an editor view is registered.
@@ -176,16 +188,16 @@ const viewTools = () => {
   const editorViews = getViews();
   if (!editorViews.length) return;
 
-  // Left of the play tools in the top row
-  viewToolsCMP = CMP({
-    class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'viewTools'],
-    prepend: true,
-  });
+  // After the undo / redo tools in the top left row
+  viewToolsCMP = CMP({ class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'viewTools'] });
 
   const activeId = getActiveViewId();
-  const buttons = [RUNTIME_VIEW_BUTTON, ...editorViews];
+  const buttons: { id: string; title: string; icon: SvgIconKey; iconSize?: 'small' }[] = [
+    RUNTIME_VIEW_BUTTON,
+    ...editorViews,
+  ];
   for (let i = 0; i < buttons.length; i++) {
-    const { id, title, icon } = buttons[i];
+    const { id, title, icon, iconSize } = buttons[i];
     viewToolsCMP.add(
       CMP({
         class: [
@@ -193,7 +205,7 @@ const viewTools = () => {
           'onScreenTool',
           ...(id === activeId ? [styles.active, 'onScreenToolActive'] : []),
         ],
-        html: () => `<button>${getSvgIcon(icon)}</button>`,
+        html: () => `<button>${getSvgIcon(icon, iconSize)}</button>`,
         attr: { title, 'aria-label': title },
         onClick: (e) => {
           e.stopPropagation();
@@ -203,7 +215,7 @@ const viewTools = () => {
     );
   }
 
-  getTopRow().add(viewToolsCMP);
+  getTopLeftRow().add(viewToolsCMP);
 };
 
 // PLAY TOOLS
@@ -327,7 +339,7 @@ const switchTools = () => {
 
   const useDebugCamBtn = CMP({
     class: useDebugCamBtnClasses,
-    html: () => `<button>${getSvgIcon('aspectRatio')}</button>`,
+    html: () => `<button>${getSvgIcon('aspectRatio', 'small')}</button>`,
     attr: { title: 'Toggle between debug camera and app camera' },
     onClick: (e) => {
       e.stopPropagation();
@@ -433,12 +445,13 @@ const switchTools = () => {
 // The undo/redo module refreshes this group itself (updateOnScreenTools('UNDO')) whenever
 // the history changes.
 const undoRedoTools = () => {
-  const hudRootCMP = getHUDRootCMP();
-  if (!hudRootCMP) return;
+  if (!getHUDRootCMP()) return;
 
   if (undoRedoToolsCMP) undoRedoToolsCMP.remove();
+  // First in the top left row, also when rebuilt after the view tools
   undoRedoToolsCMP = CMP({
-    class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'undoRedoTools', KEEP_IN_VIEWS_CLASS],
+    class: [styles.onScreenToolGroup, 'onScreenToolGroup', 'undoRedoTools'],
+    prepend: true,
   });
 
   const aboutBtn = CMP({
@@ -454,7 +467,7 @@ const undoRedoTools = () => {
 
   const undoBtn = CMP({
     class: [styles.onScreenTool, 'onScreenTool'],
-    html: () => `<button${!canUndo() ? ' disabled' : ''}>${getSvgIcon('undo')}</button>`,
+    html: () => `<button${!canUndo() ? ' disabled' : ''}>${getSvgIcon('undo', 'small')}</button>`,
     attr: { title: 'Undo (Ctrl+Z / ⌘Z)' },
     onClick: (e) => {
       e.stopPropagation();
@@ -465,7 +478,7 @@ const undoRedoTools = () => {
 
   const redoBtn = CMP({
     class: [styles.onScreenTool, 'onScreenTool'],
-    html: () => `<button${!canRedo() ? ' disabled' : ''}>${getSvgIcon('redo')}</button>`,
+    html: () => `<button${!canRedo() ? ' disabled' : ''}>${getSvgIcon('redo', 'small')}</button>`,
     attr: { title: 'Redo (Ctrl+Shift+Z / ⇧⌘Z)' },
     onClick: (e) => {
       e.stopPropagation();
@@ -474,7 +487,7 @@ const undoRedoTools = () => {
   });
   undoRedoToolsCMP.add(redoBtn);
 
-  hudRootCMP.add(undoRedoToolsCMP);
+  getTopLeftRow().add(undoRedoToolsCMP);
 };
 
 export const _InitOnScreenTools = () => {

@@ -607,6 +607,7 @@ export const _registerMaterialEditorView = () => {
     id: MATERIAL_EDITOR_VIEW_ID,
     title: 'Material editor',
     icon: 'material',
+    iconSize: 'small',
     orderNr: 0,
     scene: stage.scene,
     getCamera: () => viewCam?.camera ?? null,

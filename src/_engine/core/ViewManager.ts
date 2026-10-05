@@ -73,6 +73,8 @@ export type ViewDef = {
   title: string;
   /** Its view tools button's icon. */
   icon: SvgIconKey;
+  /** 'small' for an icon that fills its whole box (eg. a sphere), so it matches the others. */
+  iconSize?: 'small';
   /** Position in the view tools group (the Runtime view is always first). */
   orderNr?: number;
   /** The view's own private scene (never added to the root scene). */
