@@ -1,3 +1,4 @@
+import aekashaIcon from './svg/aekasha.svg?raw';
 import alertIcon from './svg/exclamation-octagon-fill.svg?raw';
 import arrowClockwiseIcon from './svg/arrow-clockwise.svg?raw';
 import arrowCounterClockwiseIcon from './svg/arrow-counterclockwise.svg?raw';
@@ -45,6 +46,7 @@ import xIcon from './svg/x.svg?raw';
 import xBoldIcon from './svg/x-bold.svg?raw';
 
 const icons = {
+  aekasha: aekashaIcon,
   alert: alertIcon,
   arrowClockwise: arrowClockwiseIcon,
   arrowCounterClockwise: arrowCounterClockwiseIcon,

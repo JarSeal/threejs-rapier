@@ -19,6 +19,7 @@ Earlier releases are only recorded in the git history.
 - `lodChain` (`true` or the options) on `*.importedAsset.json` and `ImportAssetParams`: `importAssetAsync` generates a chain for each rendered geometry after the import, without being awaited.
 - Build-time chains: a GLB built by the asset pipeline carries its chains (levels as meshes `<mesh>__lod<n>` that no node uses, described by the root's `aekLodChains` extras). The import registers them (`LodChain.origin: 'BUILD'`) and doesn't simplify on the client. The generated data's `__lodChain` lists each primitive's levels for tooling.
 - Assets tab: the geometry info window shows a geometry's chain (per level: triangles, error, bytes, shared or own vertices), with "Generate LOD chain" and release buttons.
+- The Ækasha symbol, a black and white Æ with rounded corners: a UI icon (`getSvgIcon('aekasha')`, `core/UI/icons/svg/aekasha.svg`, in `currentColor`) and the favicon: `favicon.svg` (white on a dark browser theme), `favicon.ico` (16, 32, 48, with a white halo for dark tabs) and `apple-touch-icon.png` in `src/public/`, linked from `index.html`.
 
 **Changed**
 
