@@ -58,6 +58,7 @@ import { initUndoRedo, registerUndoRedoModule } from './debug/UndoRedo';
 import { registerPostFxProfiler } from './debug/PostFXProfiler';
 import { registerAxesGizmoModule } from './debug/AxesGizmo';
 import { registerEnvBallModule } from './debug/EnvBall';
+import { registerMaterialEditor } from './debug/MaterialEditor';
 import { registerGPUMemoryDebugGUI } from './debug/GPUMemory';
 import { registerProfiler } from './debug/Profiler';
 
@@ -117,6 +118,8 @@ export const InitEngine = async (appStartFn: () => Promise<undefined>) => {
       await registerDebuggerGUI();
       await registerAxesGizmoModule();
       await registerEnvBallModule();
+      // Before restoreSavedView (the end of InitEngine) can switch back to it
+      await registerMaterialEditor();
       registerDefaultDebugKeyBindings();
       await registerCharacterTools();
       await registerECSModule();

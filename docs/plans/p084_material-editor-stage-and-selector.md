@@ -1,4 +1,4 @@
-Status: draft | not-implemented
+Status: in progress | Phase 1 implemented
 Category: Editor-Creator View, Materials
 Blocks: p085_material-editor-params-and-persistence.md
 Related: \_DONE_p083_editor-creator-view.md (epic), `createDebuggerTab` (p105, implemented: the right drawer reuses its declarative tabs), the layered sky box (p111, implemented: skybox environments in the editor can now build on it, still a non-goal here), the debug environment ball (`debug/EnvBall.ts`, p115, implemented: same "ball + environment" idea for the scene)
@@ -142,7 +142,7 @@ In this plan the editor is a viewer: clicking a material shows it on the ball. A
 
 Each phase compiles, lints and leaves the app working.
 
-1. **View, stage and camera.** Register the view with its title and the `material` icon (the view tools group appears, Runtime + Material editor), the stage (ball, lights, studio environment, background), the camera rig with the default pose, and `loadEditorMaterial` hard-wired to the first material. Check the `RoomEnvironment` PMREM on WebGPU and on WebGL2 (`forceWebGL`) and record the outcome in the Implementation notes.
+1. **View, stage and camera.** — done. Register the view with its title and the `material` icon (the view tools group appears, Runtime + Material editor), the stage (ball, lights, studio environment, background), the camera rig with the default pose, and `loadEditorMaterial` hard-wired to the first material. Check the `RoomEnvironment` PMREM on WebGPU and on WebGL2 (`forceWebGL`) and record the outcome in the Implementation notes.
 2. **Material selector.** Bottom drawer, cards, filter, click to load, texture loading, the load token, errors and unavailable materials, non-mesh preview objects.
 3. **Right drawer.** `_dbg__EditorDrawer.ts`, the two tabs with their info content, the `debugDrawerOpen` shift, `h`, and the selector's responsive offsets.
 4. **Persistence.** Per-material camera pose, UI state, and restore on refresh.
@@ -184,4 +184,25 @@ Each phase compiles, lints and leaves the app working.
 
 ## Implementation notes
 
-(Filled in during implementation.)
+### Phase 1
+
+- **Code drift since the plan.**
+  - Line numbers moved: the material gathering is `gatherAppData.ts:604-682` (the production gate `:637`), `deleteMaterial` is `Material.ts:674`, `loadTextureAsync` `Texture.ts:447`, `loadNextSceneAssets` `SceneLoader.ts:248-339`.
+  - There are six project materials: the toolkit's `asteroid` is new.
+  - The scene drawer no longer has its own `buildTabContent` / `mountTab` / `refreshMountedTab`: it mounts tabs through `createTabHost` (`core/Debug/_dbg__TabHost.ts`, from the profiler work), which doesn't depend on its owner and is also used by the profiler window. Phase 3's editor drawer gets a host of its own, so `_buildDebuggerTabContent` isn't exported. `hydrateDebuggerTabState` is already exported.
+  - Scene asset release (`core/Assets/SceneAssetRelease.ts`) deletes the non-persistent materials with ref count 0 that the scene being left owns. The editor copy is one of them (nothing refs it, and it is tagged to the current scene), so a scene loaded while the view is active (app code, HMR) would dispose it under the ball.
+  - The on-screen, toast and window icon rules set `svg path { fill }`, which fills DD1's stroked specular arc (p083 Phase 2 hit the same with the `runtime` icon).
+- **As built.**
+  - The `material` icon has DD1's geometry as filled shapes: the outline is an even-odd ring (r 7 / 5.9), the arc a filled outline of the 1.1 stroke with round ends.
+  - The editor copy is created with `isPersistent: true`, so a scene release skips it; `deleteMaterial` still removes it. While it exists, its textures count as used (`isTextureUsedByAnyMaterial`).
+  - `loadEditorMaterial` deletes the previous copy right before creating the new one, in the same task (no frame in between): `createMaterial` returns an id that is already registered, so reloading the same material would otherwise get the old copy back.
+  - Default pose `(0, 0.6, 4.8)`: DD4's `(0, 0.4, 3.2)` at fov 45 makes the ball fill about 75% of the height, not half.
+  - Stage constants: background `0x5a5a5a` (renders about `#434343`), hemisphere `0xffffff` / `0x606060` at 0.7, key light 2 at `(-3, 4, 4)`, fill 0.6 at `(4, 1, 1)`. A lower hemisphere left the side away from the key light black on non-PBR materials (Phong ignores the environment).
+  - The stage scene and the ball are created at registration (no GPU work). The environment and the view camera are created on the first enter, since they need the renderer and the canvas. The PMREM generator and the `RoomEnvironment` are disposed after the bake.
+  - `stageSettings.autoRotateSpeed` (0) drives `update`; p085 exposes it.
+  - This phase shows the first material in the generated data (`testMaterial`).
+- **Verified** (`yarn dev`, `?isDebug=true`, SwiftShader WebGL2 on WSL2, Playwright clicking the view buttons):
+  - The view group shows Runtime and Material editor. The editor shows the grey stage, the ball with `testMaterial`, no scene objects and no sky box; the env ball shows the `RoomEnvironment` PMREM, and the gizmo follows the editor camera. Back in the Runtime view the scene is as it was.
+  - A canvas orbit moves the camera, the gizmo follows, and the pose is saved to `AEK_debugViewCams` (`materialEditor.view`). A refresh in the editor returns to it with that pose.
+  - `RoomEnvironment` PMREM on WebGL2: works (also p083 Phase 3's test view B). **WebGPU is not verified**: headless WebGPU can't render on WSL2 (`run-aekasha-js` skill), so it needs a check in a real browser.
+  - The icon, rendered at 16 px on dark and light backgrounds, reads as a shaded ball, not an eye.
