@@ -3,7 +3,7 @@ import type { ECSWorld } from '../../_engine/core/ECS';
 // --- src/toolkit/ecs/InstancedMeshPool.ts ---
 //
 // Deprecated: the pool is an engine system now (`_engine/core/Instancing/InstancedMeshPool.ts`,
-// docs/plans/p348_ecs-lod-selection.md Phase 3). This re-export keeps old imports working until
+// docs/plans/_DONE_p348_ecs-lod-selection.md Phase 3). This re-export keeps old imports working until
 // the toolkit's next major version.
 
 /** @deprecated Import from `_engine/core/Instancing/InstancedMeshPool` instead. */

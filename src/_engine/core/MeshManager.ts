@@ -274,7 +274,7 @@ const addLodComponent = (entityId: number, def: LodDef, world: ECSWorld) => {
 };
 
 /**
- * Gives a mesh entity levels of detail (docs/plans/p348_ecs-lod-selection.md): from the next
+ * Gives a mesh entity levels of detail (docs/plans/_DONE_p348_ecs-lod-selection.md): from the next
  * frame, lodSelectionSystem picks a level by the mesh's screen size and lodApplySystem swaps its
  * geometry, material(s) and `castShadow`. Level 0 is the mesh's own unless it names others. Every
  * level's assets are held (ref counted) until the LOD is removed or the entity deleted, and

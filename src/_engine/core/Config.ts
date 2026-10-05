@@ -153,7 +153,7 @@ export type AppConfig = {
       meshes?: boolean;
     };
   };
-  /** LOD selection (Lod/LodSystem.ts, docs/plans/p348_ecs-lod-selection.md). */
+  /** LOD selection (Lod/LodSystem.ts, docs/plans/_DONE_p348_ecs-lod-selection.md). */
   lod?: {
     /** Global LOD bias: multiplies every entity's screen size, >1 keeps detail longer. The
      * initial value: setLodBias() changes it at runtime. Default 1. */

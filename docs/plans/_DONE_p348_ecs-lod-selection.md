@@ -1,4 +1,4 @@
-Status: in progress | Phases 1-4 implemented, Phase 5 step 1
+Status: implemented (Phases 1-5)
 Category: ECS, Rendering, LOD
 Epic: p350_lod-system-research.md (Tier 1.3)
 Blocks: p351_impostor-billboard-lod.md (needs Phase 3's per-level instanced pools), p354_gpu-driven-culling.md
@@ -198,6 +198,41 @@ depend on the answer.
 Run it once, as p375's Phase 0 (`p375_batched-mesh-batches.md`), which also answers p309's decal
 pool risk. Known already (p370 §2.1): on WebGPU r186 a `BatchedMesh` is one draw call per visible
 member, so it can't beat §4.2's one draw per level on draw count; the question is CPU cost.
+
+**Outcome** (Phase 5 step 2, only what p348 needs; p375's Phase 0 keeps its other questions): no.
+`addGeometryLOD` doesn't work under `WebGPURenderer` r186 as shipped, and fixed it doesn't beat
+§4.2 on CPU. Keep §4.2; don't adopt the extension.
+
+- Broken on WebGPU (0.0.12): its `onBeforeRender` replaces three's and never sets
+  `_multiDrawBytesPerElement`, which r186's own sets every frame and the WebGPU backend divides the
+  byte starts by. Left at 1, every draw that doesn't start at index 0 (every level above 0, every
+  geometry after the first) reads past the index buffer: a validation error and a rejected command
+  buffer every frame. Setting it per frame in a wrapper (it must be read at render time: the index
+  array is 16-bit at creation and 32-bit by the first render) fixes it.
+- Packaging: the `webgpu` build isn't in the package's `exports`, and both builds import `three`,
+  not `three/webgpu`. Under the dev server that's a second three (`three.module.js` raw next to the
+  prebundled `three/webgpu`), so `extendBatchedMeshPrototype()` patches the wrong `BatchedMesh`
+  ("Multiple instances of Three.js being imported"). A production build shares `three.core.js`.
+- Its LOD is the same metric (screen size squared), without hysteresis, recomputed per instance in
+  `onBeforeRender`, so once per render pass, shadow passes included (code reading, not measured).
+- Measured (WebGPU, headless Chrome, 1600×900): 2,000 instances of a 64×32 sphere with a p347 chain
+  (3,968 / 991 / 197 triangles), one standard material, no shadows, in the empty `oneMoreScene`,
+  camera still. All four ways select the same levels (80 / 230 / 1,690; the extension given our
+  thresholds, hysteresis 0) and draw 878,301 triangles. Frame CPU (MAIN start to LATE_MAIN start,
+  ECS systems plus `renderer.render`), median of 300 frames, over 3-5 runs:
+
+  | Way                                  | Draws | Frame CPU (ms) |
+  | ------------------------------------ | ----: | -------------- |
+  | Empty scene (baseline)               |     1 | 0.67-0.80      |
+  | Separate meshes, mesh LOD (§4.1)     | 2,001 | 3.39-3.63      |
+  | Instanced LOD pool (§4.2)            |     4 | 1.33-2.03      |
+  | `BatchedMesh` + `addGeometryLOD`     | 2,001 | 1.45-1.73      |
+  | The same with its BVH (`computeBVH`) | 2,001 | 2.17-2.33      |
+
+  The batched mesh and the pool are within the runs' noise of each other, both about half the
+  separate meshes' cost; the BVH costs more for content that is all in view. The pool does it in 3
+  draws instead of 2,000 (GPU time isn't measurable headless). Before the fix, the batched way
+  measured 0.66-0.89 ms: the rejected command buffers were cheap, not the rendering.
 
 ## 5. JSON and generated chains
 
@@ -459,12 +494,12 @@ As built:
   level 0's bounds" isn't what the code does: `getMeshWorldBoundingSphere` reads the geometry the
   mesh shows. Chain levels' bounds are within the simplifier's error of level 0's.
 
-### Phase 5 — Budget and spike
+### Phase 5 — Budget and spike — done
 
 1. `maxSelectionsPerFrame` round-robin, `setLodBias`, the overlay.
    - a. `maxSelectionsPerFrame` — done (`setLodBias` landed in Phase 1)
    - b. The overlay, and §6's per-mesh readout. — done
-2. The `BatchedMesh` spike (§4.4).
+2. The `BatchedMesh` spike (§4.4). — done (outcome in §4.4)
 
 As built (step 1a):
 
@@ -533,6 +568,15 @@ out)` (level 0's sphere in world space, no camera) and `measureLodEntity(entityI
     instances inside the camera's frustum counted independently; 676 LOD-culled ones are left out.
     Off hides every line, and on while the app loop is paused fills them at once.
   - "Nearest in view" opens a tree instance's window (level 0, 188 / 209 m at fov 60).
+
+As built (step 2):
+
+- Run as §4.4 says, limited to p348's question (the user's call): `addGeometryLOD` under WebGPU and
+  its CPU cost against §4.1 and §4.2. The rest of p375's Phase 0 (members of different geometries,
+  a baked p372 group, matrix updates, per-instance colour and visibility, slot reuse) stays there;
+  p375 is still blocked by p372.
+- The package was added as a dev dependency for the spike only and removed after it. The harness
+  was scratch code driving the dev app; nothing of it is in the repo. Outcome and numbers: §4.4.
 
 ## 8. Versioning
 

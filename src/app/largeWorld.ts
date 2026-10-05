@@ -107,7 +107,7 @@ export const scene = async () => {
     sceneId: 'largeWorld',
   });
   // One InstancedMesh per level, each instance in the one its LOD selects
-  // (docs/plans/p348_ecs-lod-selection.md §4.2). The thresholds are screen sizes (bounding-sphere
+  // (docs/plans/_DONE_p348_ecs-lod-selection.md §4.2). The thresholds are screen sizes (bounding-sphere
   // diameter / viewport height): from the overview camera a tree at scale 1 crosses 0.04 at about
   // 145 m.
   const treePool = createInstancedLodPool({

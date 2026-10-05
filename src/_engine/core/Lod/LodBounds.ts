@@ -1,5 +1,5 @@
 // The LOD bounds of an `InstancedMesh` entity, eg. a static instance cell
-// (docs/plans/p348_ecs-lod-selection.md §4.3): its level swaps every instance at once, so its LOD
+// (docs/plans/_DONE_p348_ecs-lod-selection.md §4.3): its level swaps every instance at once, so its LOD
 // measures the whole cell, not one instance. Imports only three: LodSystem.ts and LodAuto.ts (loaded
 // on demand) both use it.
 import * as THREE from 'three/webgpu';

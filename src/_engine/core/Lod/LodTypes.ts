@@ -1,4 +1,4 @@
-// LOD selection types (docs/plans/p348_ecs-lod-selection.md §2). Types only: ECSCoreComponents.ts
+// LOD selection types (docs/plans/_DONE_p348_ecs-lod-selection.md §2). Types only: ECSCoreComponents.ts
 // imports them.
 
 import type * as THREE from 'three/webgpu';

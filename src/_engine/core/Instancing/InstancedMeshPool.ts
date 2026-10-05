@@ -20,7 +20,7 @@ import type { InstancePlacement, InstancedMeshSlotData } from './InstancedMeshPo
 // Instanced mesh pools: one InstancedMesh drawing many instances, each instance an ECS entity
 // with a Transform and an INSTANCED_MESH_SLOT (its mesh and slot index), kept in sync onto the
 // instance matrix by instancedMeshPoolSyncSystem. An instanced LOD pool has one mesh per level
-// (docs/plans/p348_ecs-lod-selection.md §4.2). The sync system registers itself with the module.
+// (docs/plans/_DONE_p348_ecs-lod-selection.md §4.2). The sync system registers itself with the module.
 
 export type * from './InstancedMeshPoolTypes';
 
@@ -39,7 +39,7 @@ const _color = new THREE.Color();
 const _box = new THREE.Box3();
 const _sphere = new THREE.Sphere();
 
-// Slot → entity per pooled mesh (docs/plans/p348_ecs-lod-selection.md §4.2): freeing a slot moves
+// Slot → entity per pooled mesh (docs/plans/_DONE_p348_ecs-lod-selection.md §4.2): freeing a slot moves
 // the mesh's last instance into it and patches that instance's entity. Keyed by mesh, not by
 // pool, so a pool with several meshes (one per LOD level) shares the same swap-remove. Entity ids
 // can be negative int32s (the generation is in the high bits), which Int32Array holds exactly.
@@ -113,7 +113,7 @@ ECSWorld.registerComponentHooks(ComponentType.INSTANCED_MESH_SLOT, {
 });
 
 // A pool instance in an instanced LOD pool shows its level by moving to that level's mesh
-// (docs/plans/p348_ecs-lod-selection.md §4.2). Its slot keeps pointing at the applied level's
+// (docs/plans/_DONE_p348_ecs-lod-selection.md §4.2). Its slot keeps pointing at the applied level's
 // mesh while it's LOD culled (index -1, in no mesh), so it knows where to come back to.
 registerLodTarget(ComponentType.INSTANCED_MESH_SLOT, {
   resolveLevels: (entityId, world) => {
@@ -391,7 +391,7 @@ export interface InstancedLodPool {
 }
 
 /**
- * An instanced pool with levels of detail (docs/plans/p348_ecs-lod-selection.md §4.2): one
+ * An instanced pool with levels of detail (docs/plans/_DONE_p348_ecs-lod-selection.md §4.2): one
  * `InstancedMesh` per level, and every instance in exactly one of them. Each instance entity has
  * `INSTANCED_MESH_SLOT` (pointing at its level's mesh) and `LOD`, so the engine's LOD selection
  * picks its level and moves it to that level's mesh (a swap-remove from the old one, an append to

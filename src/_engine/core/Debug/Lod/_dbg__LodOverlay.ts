@@ -12,7 +12,7 @@ import {
 } from '../../LineManager';
 import { getLodSelectionCamera, getLodWorldSphere } from '../../Lod/LodSystem';
 
-// The LOD overlay (docs/plans/p348_ecs-lod-selection.md §6): a wire box per LOD entity in view,
+// The LOD overlay (docs/plans/_DONE_p348_ecs-lod-selection.md §6): a wire box per LOD entity in view,
 // coloured by the level it shows. The box bounds the sphere the selection measures (level 0's
 // bounds, scaled), so it shows what the screen size is computed from. A line has one colour, so
 // each level has its own line, refilled every frame while the overlay is on. Default world only.

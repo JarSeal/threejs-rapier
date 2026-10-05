@@ -24,7 +24,7 @@ export const registerLodDebugGUI = async () => {
   useDebug(debugGUI)?._createLodDebugGUI();
 };
 
-// LOD selection and apply (docs/plans/p348_ecs-lod-selection.md). `LOD` is the opt-in definition
+// LOD selection and apply (docs/plans/_DONE_p348_ecs-lod-selection.md). `LOD` is the opt-in definition
 // and the selected/applied level; TAG_LOD_CULLED is the runtime state "beyond the last level",
 // a fourth cull reason next to DISABLED, TAG_FRUSTUM_CULLED and TAG_OBJECT_CULLED.
 //
@@ -512,7 +512,7 @@ const getScreenSize = (center: THREE.Vector3, worldRadius: number, terms: Camera
 
 // The frame's inputs to selectEntity, read once per frame: a world.hasComponent / getComponent per
 // entity looks the storage up again every time, which dominated the loop for a few thousand pool
-// instances (docs/plans/p348_ecs-lod-selection.md, Phase 3 step 4)
+// instances (docs/plans/_DONE_p348_ecs-lod-selection.md, Phase 3 step 4)
 type SelectionFrame = {
   disabled: StorageOf<(typeof ComponentType)['DISABLED']>;
   frustumCulled: StorageOf<(typeof ComponentType)['TAG_FRUSTUM_CULLED']>;

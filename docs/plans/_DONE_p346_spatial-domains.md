@@ -2,7 +2,7 @@ Status: implemented (Phases 1-3)
 Category: ECS, Spatial
 Epic: p350_lod-system-research.md (Tier 0)
 Blocks: p353_macro-streaming-grid.md (Phase 1: shared cell maths; Phase 4: per-cell entity lookup)
-Related: \_DONE_p050_spatial-index.md (this is its Phase 4: §5 static/dynamic split and §5.1 per-domain grids), p348_ecs-lod-selection.md, p308_terrain-scatter.md (static cells), p420_npc-simulation-tiers.md (NPC perception queries)
+Related: \_DONE_p050_spatial-index.md (this is its Phase 4: §5 static/dynamic split and §5.1 per-domain grids), \_DONE_p348_ecs-lod-selection.md, p308_terrain-scatter.md (static cells), p420_npc-simulation-tiers.md (NPC perception queries)
 
 # Spatial Domains — Several Spatial Grids per World
 

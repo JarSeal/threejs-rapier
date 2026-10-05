@@ -29,7 +29,7 @@ import {
   setLodOverlayEnabled,
 } from './Lod/_dbg__LodOverlay';
 
-// The LOD tab (docs/plans/p348_ecs-lod-selection.md §6): counts per level, the last frame's
+// The LOD tab (docs/plans/_DONE_p348_ecs-lod-selection.md §6): counts per level, the last frame's
 // selections and applies, the selection's runtime overrides, the level overlay
 // (Lod/_dbg__LodOverlay.ts) and the per-entity LOD windows (Lod/_dbg__LodEntityWindow.ts).
 // Nothing is persisted: it's all for inspecting, and a reload starts from the app's values.

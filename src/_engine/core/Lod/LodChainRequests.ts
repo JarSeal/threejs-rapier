@@ -1,4 +1,4 @@
-// LOD chains requested but maybe not started yet (docs/plans/p348_ecs-lod-selection.md §5).
+// LOD chains requested but maybe not started yet (docs/plans/_DONE_p348_ecs-lod-selection.md §5).
 // Import-free: an import's `lodChain` generation starts only once LodChains has loaded, so
 // ImportRegistry records the request here synchronously, and a mesh with `lod: 'AUTO'` created
 // right after the import waits for it instead of finding no chain.

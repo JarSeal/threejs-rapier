@@ -3,7 +3,7 @@ Category: Terrain, Rendering, Assets
 Blocked by: p306_terrain-blocks-and-procedural-terrain-meshes.md
 Blocks: p310_terrain-preview-scenes.md
 Epic: p301_terrain-texturing-epic.md
-Related: p370_static-mesh-merging-and-texture-atlas-systems.md (merging item types per cell, §3 decision table), p350_lod-system-research.md (instancing/batching layer, LOD selection), p348_ecs-lod-selection.md (§4.3 defines the LOD contract for this plan's cells, built in its Phase 4: a cell is an `InstancedMesh` entity with `LOD`, measured by its bounds over all its instances, and `cullScreenSize` replaces `maxDistance`), \_DONE_p346_spatial-domains.md (shared cell keys), p307_wet-and-dry-surface-states.md (scatter gets wet too)
+Related: p370_static-mesh-merging-and-texture-atlas-systems.md (merging item types per cell, §3 decision table), p350_lod-system-research.md (instancing/batching layer, LOD selection), \_DONE_p348_ecs-lod-selection.md (§4.3 defines the LOD contract for this plan's cells, built in its Phase 4: a cell is an `InstancedMesh` entity with `LOD`, measured by its bounds over all its instances, and `cullScreenSize` replaces `maxDistance`), \_DONE_p346_spatial-domains.md (shared cell keys), p307_wet-and-dry-surface-states.md (scatter gets wet too)
 
 # Terrain Scatter (rocks, pebbles, ground details)
 

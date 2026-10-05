@@ -1,4 +1,4 @@
-// `lod: 'AUTO'` (docs/plans/p348_ecs-lod-selection.md §5): a mesh's levels read from its
+// `lod: 'AUTO'` (docs/plans/_DONE_p348_ecs-lod-selection.md §5): a mesh's levels read from its
 // geometry's LOD chain (p347). Loaded by setMeshLod (MeshManager.ts) on first use, like LodChains.
 //
 // A chain level's error is relative to the chain's `extent`, so its world-space error is
