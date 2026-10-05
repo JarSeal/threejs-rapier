@@ -78,6 +78,39 @@ const warnIfUnregistered = (
   }
 };
 
+/**
+ * Compiles a mesh's pipelines ahead of its first draw (`renderer.compileAsync`), so the frame it
+ * first shows in doesn't stall on it. Used by `createMeshEntity`'s `preWarm` and for every level
+ * of a pre-warmed mesh's LOD.
+ * @param mesh the mesh, or a stand-in with the geometry and material to compile
+ * @param label names the mesh in the warning
+ */
+export const preWarmMesh = (mesh: THREE.Mesh, label: string) => {
+  const renderer = getRenderer();
+  const rootScene = getRootScene();
+  const camera = new THREE.PerspectiveCamera(); // Consider using the actual active camera if available
+  if (!renderer || !rootScene) return;
+
+  // Check if we have any valid shadow maps in the scene
+  // WebGPU TSL needs a valid texture instance to compile a shadow-receiving shader.
+  const hasInitializedShadows = rootScene.children.some(
+    (child) =>
+      child instanceof THREE.Light &&
+      child.castShadow &&
+      'shadow' in child &&
+      (child as { shadow: { map?: unknown } }).shadow?.map
+  );
+
+  // Only compile if it's "safe"
+  if (!mesh.receiveShadow || hasInitializedShadows) {
+    renderer.compileAsync(mesh, camera, rootScene);
+  } else {
+    // If we can't pre-warm now, the renderer will just compile it
+    // on the first actual draw call (standard behavior).
+    lwarn(`[Engine] Skipping preWarm for ${label} - ShadowMap not ready.`);
+  }
+};
+
 export const createMeshEntity = (
   props: MeshProps,
   entityOpts?: CoreEntityOpts,
@@ -135,34 +168,9 @@ export const createMeshEntity = (
   const rootScene = existsOrThrow(getRootScene(), 'Could not find root scene in createMeshEntity.');
 
   if (props.preWarm) {
-    const renderer = getRenderer();
-    const camera = new THREE.PerspectiveCamera(); // Consider using the actual active camera if available
-
-    if (renderer && camera && rootScene) {
-      // Check if this mesh is a "Shadow Receiver"
-      const isShadowReceiver = props.receiveShadow === true;
-
-      // Check if we have any valid shadow maps in the scene
-      // WebGPU TSL needs a valid texture instance to compile a shadow-receiving shader.
-      const hasInitializedShadows = rootScene.children.some(
-        (child) =>
-          child instanceof THREE.Light &&
-          child.castShadow &&
-          'shadow' in child &&
-          (child as { shadow: { map?: unknown } }).shadow?.map
-      );
-
-      // Only compile if it's "safe"
-      if (!isShadowReceiver || hasInitializedShadows) {
-        renderer.compileAsync(mesh, camera, rootScene);
-      } else {
-        // If we can't pre-warm now, the renderer will just compile it
-        // on the first actual draw call (standard behavior).
-        lwarn(
-          `[Engine] Skipping preWarm for ${entityOpts?.appId || 'mesh'} - ShadowMap not ready.`
-        );
-      }
-    }
+    // Remembered so a LOD added later pre-warms its levels too (Lod/LodSystem.ts)
+    mesh.userData.preWarm = true;
+    preWarmMesh(mesh, entityOpts?.appId || 'mesh');
   }
 
   // The appId resolved above is the entity's real (fixed) appId too, whichever of props/entityOpts
@@ -281,6 +289,21 @@ export const setMeshMaterial = (mesh: THREE.Mesh, material: THREE.Material | THR
   // New refs first: the old and new material can share ids (eg. the same one in an array)
   forEachMaterialId(material, incMaterialRef);
   forEachMaterialId(prev, decMaterialRef);
+};
+
+/**
+ * Swaps a mesh entity's geometry and moves its geometry ref count to the new one, like
+ * {@link setMeshMaterial} does for materials.
+ * @param mesh a mesh created with createMeshEntity (other meshes take no refs: only assigned)
+ * @param geometry the new geometry
+ */
+export const setMeshGeometry = (mesh: THREE.Mesh, geometry: THREE.BufferGeometry) => {
+  const prev = mesh.geometry;
+  mesh.geometry = geometry;
+  if (mesh.userData.entityId === undefined || prev === geometry) return;
+  warnIfUnregistered(mesh.userData.id, geometry);
+  if (geometry.userData.id) incGeometryRef(geometry.userData.id);
+  if (prev.userData.id) decGeometryRef(prev.userData.id);
 };
 
 export const getMeshByAppId = (appId: string, ecsWorld?: ECSWorld) => {

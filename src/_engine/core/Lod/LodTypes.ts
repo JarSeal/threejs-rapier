@@ -1,6 +1,8 @@
 // LOD selection types (docs/plans/p348_ecs-lod-selection.md §2). Types only: ECSCoreComponents.ts
 // imports them.
 
+import type * as THREE from 'three/webgpu';
+
 /** One level of a {@link LodDef}. */
 export type LodLevelDef = {
   /** Smallest screen size (bounding-sphere diameter / viewport height) this level is used at. */
@@ -25,14 +27,25 @@ export type LodDef = {
   bias?: number;
 };
 
-/** The `LOD` component's data. */
+/** A level with its assets resolved, what the apply step assigns to the mesh. */
+export type LodResolvedLevel = {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material | THREE.Material[];
+  castShadow: boolean;
+};
+
+/** The `LOD` component's data. Add it with `level: -1, applied: -1, radius: 0, _levels: []`: the
+ * component's add hook resolves the levels and the radius. */
 export type LodData = {
   def: LodDef;
-  /** The selected level. */
+  /** The selected level, -1 before the first selection. */
   level: number;
   /** The level the render side last applied, -1 before the first apply. */
   applied: number;
   /** Level 0's local bounding radius, cached when the component is added. The world radius is
    * `radius × max(|scale|)`. */
   radius: number;
+  /** `def.levels` resolved when the component was added (Lod/LodSystem.ts), each holding a
+   * registry ref on its geometry and material(s) until the component goes. */
+  _levels: LodResolvedLevel[];
 };

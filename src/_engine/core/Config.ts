@@ -152,6 +152,12 @@ export type AppConfig = {
       meshes?: boolean;
     };
   };
+  /** LOD selection (Lod/LodSystem.ts, docs/plans/p348_ecs-lod-selection.md). */
+  lod?: {
+    /** Global LOD bias: multiplies every entity's screen size, >1 keeps detail longer. The
+     * initial value: setLodBias() changes it at runtime. Default 1. */
+    bias?: number;
+  };
   ecs?: {
     /** Build-time-selectable ECS component storage backend. Default 'MAP'. */
     storageMode?: ECSStorageMode;
@@ -232,6 +238,9 @@ let config: AppConfig = {
     maxConcurrentLoads: 8,
     requestTimeoutMs: 30_000,
     fallbackToMainThread: true,
+  },
+  lod: {
+    bias: 1,
   },
   ecs: {
     storageMode: 'MAP',
